@@ -3,7 +3,8 @@
     "allow": [
       "Bash(./gitboxcmd.exe init:*)",
       "Bash(go vet:*)",
-      "Bash(wails build:*)"
+      "Bash(wails build:*)",
+      "Bash(gh run:*)"
     ]
   }
 }

@@ -5,8 +5,8 @@
 <h1 align="center">Git Box</h1>
 
 <p align="center">
-  <a href="https://github.com/LuisPalacios/gitbox/actions/workflows/release.yaml">
-    <img src="https://github.com/LuisPalacios/gitbox/actions/workflows/release.yaml/badge.svg" alt="Release" />
+  <a href="https://github.com/LuisPalacios/gitbox/actions/workflows/ci.yml">
+    <img src="https://github.com/LuisPalacios/gitbox/actions/workflows/ci.yml/badge.svg" alt="CI" />
   </a>
 </p>
 
