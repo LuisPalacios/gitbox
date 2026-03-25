@@ -89,10 +89,12 @@ jobs:
       - name: Build GUI
         working-directory: cmd/gui
         run: wails build -ldflags "$LDFLAGS"
+      - name: Zip macOS app bundle
+        run: cd cmd/gui/build/bin && zip -r gitbox-macos.zip gitbox.app
       - uses: actions/upload-artifact@v4
         with:
           name: gui-macos
-          path: cmd/gui/build/bin/gitbox
+          path: cmd/gui/build/bin/gitbox-macos.zip
 
   gui-linux:
     runs-on: ubuntu-latest
@@ -138,12 +140,12 @@ jobs:
         run: |
           mkdir -p release
           # CLI binaries
-          cp artifacts/cli-binaries/gitboxcmd-linux-amd64  release/gitboxcmd-linux-amd64
+          cp artifacts/cli-binaries/gitboxcmd-linux-amd64   release/gitboxcmd-linux-amd64
           cp artifacts/cli-binaries/gitboxcmd-darwin-arm64  release/gitboxcmd-darwin-arm64
-          cp artifacts/cli-binaries/gitboxcmd.exe            release/gitboxcmd-windows-amd64.exe
+          cp artifacts/cli-binaries/gitboxcmd.exe           release/gitboxcmd-windows-amd64.exe
           # GUI binaries
-          cp artifacts/gui-linux/gitbox   release/gitbox-linux-amd64
-          cp artifacts/gui-macos/gitbox   release/gitbox-darwin-arm64
+          cp artifacts/gui-linux/gitbox       release/gitbox-linux-amd64
+          cp artifacts/gui-macos/gitbox-macos.zip  release/gitbox-darwin-arm64.zip
           cp artifacts/gui-windows/gitbox.exe release/gitbox-windows-amd64.exe
 
       - name: Create GitHub Release
