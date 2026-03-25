@@ -9,9 +9,43 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 )
+
+// gitBin is the resolved path to the git binary. Resolved once on first use.
+var (
+	gitBin     string
+	gitBinOnce sync.Once
+)
+
+// GitBin returns the path to the git binary.
+// On macOS, GUI apps inherit a minimal PATH that excludes /opt/homebrew/bin,
+// so Homebrew's git (and GCM) won't be found. We probe common locations first.
+func GitBin() string {
+	gitBinOnce.Do(func() {
+		if runtime.GOOS == "darwin" {
+			for _, candidate := range []string{
+				"/opt/homebrew/bin/git", // Apple Silicon Homebrew
+				"/usr/local/bin/git",    // Intel Homebrew
+			} {
+				if _, err := os.Stat(candidate); err == nil {
+					gitBin = candidate
+					return
+				}
+			}
+		}
+		// Fallback: whatever is on PATH.
+		if p, err := exec.LookPath("git"); err == nil {
+			gitBin = p
+		} else {
+			gitBin = "git" // last resort, let exec fail with a clear error
+		}
+	})
+	return gitBin
+}
 
 // CloneOpts configures a git clone operation.
 type CloneOpts struct {
@@ -84,7 +118,7 @@ func CloneWithProgress(url, dest string, opts CloneOpts, onProgress func(ClonePr
 	}
 	args = append(args, url, dest)
 
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command(GitBin(), args...)
 	cmd.Dir = "."
 	cmd.Stdout = nil
 
@@ -235,7 +269,7 @@ func Run(dir string, args ...string) error {
 
 // RunWithInput executes a git command with data piped to stdin.
 func RunWithInput(dir string, input string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command(GitBin(), args...)
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(input)
 	out, err := cmd.Output()
@@ -258,7 +292,7 @@ func CurrentBranch(repoPath string) (string, error) {
 
 // run executes a git command in the given directory.
 func run(dir string, args ...string) error {
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command(GitBin(), args...)
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -270,7 +304,7 @@ func run(dir string, args ...string) error {
 
 // output executes a git command and returns its stdout.
 func output(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command(GitBin(), args...)
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {

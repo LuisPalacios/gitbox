@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/spf13/cobra"
 )
 
@@ -33,7 +34,7 @@ func fullVersion() string {
 }
 
 func gitDescribe() string {
-	out, err := exec.Command("git", "describe", "--tags", "--always").Output()
+	out, err := exec.Command(git.GitBin(), "describe", "--tags", "--always").Output()
 	if err != nil {
 		return ""
 	}
@@ -41,7 +42,7 @@ func gitDescribe() string {
 }
 
 func gitShortSHA() string {
-	out, err := exec.Command("git", "rev-parse", "--short", "HEAD").Output()
+	out, err := exec.Command(git.GitBin(), "rev-parse", "--short", "HEAD").Output()
 	if err != nil {
 		return ""
 	}

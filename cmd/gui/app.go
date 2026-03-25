@@ -502,7 +502,7 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 	// Stderr MUST be connected so GCM can launch its browser auth window.
 	input := fmt.Sprintf("protocol=https\nhost=%s\nusername=%s\n\n", host, acct.Username)
 
-	fillCmd := exec.Command("git", "credential", "fill")
+	fillCmd := exec.Command(git.GitBin(), "credential", "fill")
 	fillCmd.Stdin = strings.NewReader(input)
 	var stderrBuf bytes.Buffer
 	fillCmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
@@ -546,7 +546,7 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 	}
 
 	// Approve so git stores it persistently.
-	approveCmd := exec.Command("git", "credential", "approve")
+	approveCmd := exec.Command(git.GitBin(), "credential", "approve")
 	approveCmd.Stdin = strings.NewReader(string(out))
 	approveCmd.Stderr = os.Stderr
 	if err := approveCmd.Run(); err != nil {

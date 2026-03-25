@@ -30,7 +30,6 @@ If you manage dozens of repos across multiple accounts (personal, corporate, hom
 Supports GitHub, GitLab, Forgejo, etc. — on Windows, macOS, and Linux.
 </p>
 
-
 ## Download
 
 Grab the latest binaries from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page.

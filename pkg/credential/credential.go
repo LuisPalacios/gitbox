@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/zalando/go-keyring"
 )
 
@@ -97,7 +98,7 @@ func ResolveGCMToken(accountURL, username string) (token, source string, err err
 
 	input := fmt.Sprintf("protocol=%s\nhost=%s\nusername=%s\n\n", u.Scheme, u.Host, username)
 
-	cmd := exec.Command("git", "credential", "fill")
+	cmd := exec.Command(git.GitBin(), "credential", "fill")
 	cmd.Stdin = strings.NewReader(input)
 	cmd.Env = append(os.Environ(),
 		"GIT_TERMINAL_PROMPT=0",
