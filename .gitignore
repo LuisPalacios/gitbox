@@ -9,6 +9,7 @@ gitboxcmd.exe
 gitbox
 gitbox.exe
 cli.exe
+gui.exe
 
 # Wails
 cmd/gui/build/
