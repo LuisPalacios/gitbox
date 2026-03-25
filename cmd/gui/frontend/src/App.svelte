@@ -1,0 +1,1328 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { fade, slide } from 'svelte/transition';
+  import { bridge, events } from './lib/bridge';
+  import {
+    configStore, accounts, sources, repoStates, summary,
+    accountStats, themeStore, applyStatusResults
+  } from './lib/stores';
+  import { statusColor, credColor, statusLabel, providerLabel, statusSymbol } from './lib/theme';
+  import type { RepoState, DiscoverResult } from './lib/types';
+
+  // ── Onboarding ──
+  let firstRun = false;
+  let onboardFolder = '~/00.git';
+  let onboardError = '';
+
+  async function browseFolder(target: 'onboard' | 'settings') {
+    const dir = await bridge.pickFolder('Choose clone folder');
+    if (dir) {
+      if (target === 'onboard') onboardFolder = dir;
+      else changeFolderPath = dir;
+    }
+  }
+
+  async function finishOnboarding() {
+    onboardError = '';
+    if (!onboardFolder.trim()) { onboardError = 'Folder path is required'; return; }
+    try {
+      await bridge.setGlobalFolder(onboardFolder);
+      firstRun = false;
+      await reloadFromDisk();
+    } catch (err: any) {
+      onboardError = err?.message || String(err);
+    }
+  }
+
+  // ── Change folder (settings) ──
+  let changeFolderModal = false;
+  let changeFolderPath = '';
+  let changeFolderError = '';
+
+  function openChangeFolder() {
+    changeFolderPath = '';
+    changeFolderError = '';
+    changeFolderModal = true;
+  }
+
+  async function confirmChangeFolder() {
+    changeFolderError = '';
+    if (!changeFolderPath.trim()) { changeFolderError = 'Folder path is required'; return; }
+    try {
+      await bridge.setGlobalFolder(changeFolderPath);
+      changeFolderModal = false;
+      await reloadFromDisk();
+    } catch (err: any) {
+      changeFolderError = err?.message || String(err);
+    }
+  }
+
+  // ── Theme ──
+  let themeChoice: 'system' | 'light' | 'dark' = 'system';
+  let resolvedTheme: 'light' | 'dark' = 'dark';
+
+  function applyTheme() {
+    if (themeChoice === 'system') {
+      resolvedTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    } else {
+      resolvedTheme = themeChoice;
+    }
+    themeStore.set(resolvedTheme);
+    document.documentElement.setAttribute('data-theme', resolvedTheme);
+  }
+
+  function cycleTheme() {
+    const order: Array<'system' | 'light' | 'dark'> = ['system', 'light', 'dark'];
+    themeChoice = order[(order.indexOf(themeChoice) + 1) % 3];
+    applyTheme();
+  }
+
+  function themeIcon(choice: string): string {
+    return ({ system: '◐', light: '☀', dark: '☾' } as Record<string, string>)[choice] || '◐';
+  }
+
+  // ── Sync state ──
+  let syncing = false;
+
+  async function syncAll() {
+    if (syncing) return;
+    syncing = true;
+
+    let currentStates: Record<string, RepoState> = {};
+    repoStates.subscribe((v) => (currentStates = v))();
+
+    const needsSync = Object.entries(currentStates).filter(
+      ([_, r]) => r.status === 'behind' || r.status === 'not cloned'
+    );
+
+    for (const [key] of needsSync) {
+      const [sourceKey, ...repoParts] = key.split('/');
+      const repoKey = repoParts.join('/');
+      const state = currentStates[key];
+
+      if (state.status === 'not cloned') {
+        repoStates.update((s) => {
+          s[key] = { ...s[key], status: 'cloning', progress: 0 };
+          return { ...s };
+        });
+        bridge.cloneRepo(sourceKey, repoKey);
+      } else {
+        repoStates.update((s) => {
+          s[key] = { ...s[key], status: 'syncing', progress: 0 };
+          return { ...s };
+        });
+        bridge.pullRepo(sourceKey, repoKey);
+      }
+    }
+    if (needsSync.length === 0) syncing = false;
+  }
+
+  function syncRepo(sourceKey: string, repoKey: string) {
+    const key = `${sourceKey}/${repoKey}`;
+    repoStates.update((s) => {
+      s[key] = { ...s[key], status: 'syncing', progress: 0 };
+      return { ...s };
+    });
+    bridge.pullRepo(sourceKey, repoKey);
+  }
+
+  function cloneRepo(sourceKey: string, repoKey: string) {
+    const key = `${sourceKey}/${repoKey}`;
+    repoStates.update((s) => {
+      s[key] = { ...s[key], status: 'cloning', progress: 0 };
+      return { ...s };
+    });
+    bridge.cloneRepo(sourceKey, repoKey);
+  }
+
+  // ── Discovery ──
+  let discoverModal: string | null = null;
+  let discoverLoading = false;
+  let discoverRepos: DiscoverResult[] = [];
+  let discoverSelected: Record<string, boolean> = {};
+
+  function openDiscover(accountKey: string) {
+    discoverModal = accountKey;
+    discoverLoading = true;
+    discoverRepos = [];
+    discoverSelected = {};
+    bridge.discover(accountKey);
+  }
+
+  $: selectedCount = Object.values(discoverSelected).filter(Boolean).length;
+  $: allSelected = discoverRepos.length > 0 && selectedCount === discoverRepos.length;
+
+  function toggleAll() {
+    if (allSelected) {
+      discoverSelected = {};
+    } else {
+      discoverSelected = Object.fromEntries(discoverRepos.map((r) => [r.fullName, true]));
+    }
+  }
+
+  async function addDiscovered() {
+    if (!discoverModal) return;
+    const selected = Object.entries(discoverSelected)
+      .filter(([_, v]) => v)
+      .map(([k]) => k);
+    if (selected.length > 0) {
+      await bridge.addDiscoveredRepos(discoverModal, selected);
+      await reloadFromDisk();
+    }
+    discoverModal = null;
+  }
+
+  // Re-read config from disk and refresh all repo statuses.
+  async function reloadFromDisk() {
+    const cfg = await bridge.reloadConfig();
+    configStore.set(cfg);
+    configPath = await bridge.getConfigPath();
+    const statuses = await bridge.getAllStatus();
+    applyStatusResults(statuses);
+  }
+
+  // ── Delete mode ──
+  let deleteMode = false;
+  let deleteConfirm: { sourceKey: string; repoKey: string; status: string } | null = null;
+  let deleteConfirmStep = 0; // 0=closed, 1=first confirm, 2=final confirm
+  let deleting = false;
+
+  function askDelete(sourceKey: string, repoKey: string, status: string) {
+    deleteConfirm = { sourceKey, repoKey, status };
+    deleteConfirmStep = 1;
+  }
+
+  function cancelDelete() {
+    deleteConfirm = null;
+    deleteConfirmStep = 0;
+  }
+
+  async function confirmDelete() {
+    if (!deleteConfirm) return;
+    if (deleteConfirmStep === 1) {
+      deleteConfirmStep = 2;
+      return;
+    }
+    // Step 2 — actually delete.
+    deleting = true;
+    try {
+      await bridge.deleteRepo(deleteConfirm.sourceKey, deleteConfirm.repoKey);
+      await reloadFromDisk();
+    } finally {
+      deleting = false;
+      deleteConfirm = null;
+      deleteConfirmStep = 0;
+      deleteMode = false;
+    }
+  }
+
+  function isDangerous(status: string): boolean {
+    return ['dirty', 'ahead', 'diverged', 'conflict'].includes(status);
+  }
+
+  function deleteWarning(status: string): string {
+    if (status === 'not cloned') return 'This will remove the config entry. No local folder exists.';
+    if (isDangerous(status)) return 'This repo has unpushed commits or local changes that will be permanently lost!';
+    return 'The local folder and config entry will be permanently deleted.';
+  }
+
+  // ── Add account ──
+  let addAccountModal = false;
+  let addAccountError = '';
+  let addAccountStep: 'form' | 'credential' = 'form';
+  let addAcct = { key: '', provider: 'github', url: 'https://github.com', username: '', name: '', email: '', defaultBranch: 'main', credentialType: 'gcm' };
+
+  // Credential setup state (shown after account is created)
+  let credSetupBusy = false;
+  let credSetupResult: { ok: boolean; message: string } | null = null;
+  let credTokenInput = '';
+  let credTokenGuide = '';
+
+  const providerURLs: Record<string, string> = {
+    github: 'https://github.com',
+    gitlab: 'https://gitlab.com',
+    gitea: '',
+    forgejo: '',
+    bitbucket: 'https://bitbucket.org',
+  };
+
+  function onProviderChange() {
+    const defaultURL = providerURLs[addAcct.provider];
+    if (defaultURL !== undefined) addAcct.url = defaultURL;
+  }
+
+  function resetAddAccount() {
+    addAcct = { key: '', provider: 'github', url: 'https://github.com', username: '', name: '', email: '', defaultBranch: 'main', credentialType: 'gcm' };
+    addAccountError = '';
+    addAccountStep = 'form';
+    addAccountModal = false;
+    credSetupBusy = false;
+    credSetupResult = null;
+    credTokenInput = '';
+    credTokenGuide = '';
+  }
+
+  async function submitAddAccount() {
+    addAccountError = '';
+    if (!addAcct.key.trim()) { addAccountError = 'Account key is required'; return; }
+    if (!addAcct.provider) { addAccountError = 'Provider is required'; return; }
+    if (!addAcct.url.trim()) { addAccountError = 'URL is required'; return; }
+    if (!addAcct.username.trim()) { addAccountError = 'Username is required'; return; }
+    try {
+      await bridge.addAccount(addAcct);
+      await reloadFromDisk();
+      // Move to credential setup step.
+      addAccountStep = 'credential';
+      credSetupResult = null;
+      // Auto-run for GCM and SSH; token needs user input first.
+      if (addAcct.credentialType === 'gcm' || addAcct.credentialType === 'ssh') {
+        runCredentialSetup();
+      } else if (addAcct.credentialType === 'token') {
+        const guide = await bridge.getTokenGuide(addAcct.key);
+        credTokenGuide = guide.creationURL || '';
+      }
+    } catch (err: any) {
+      addAccountError = err?.message || String(err);
+    }
+  }
+
+  async function runCredentialSetup() {
+    credSetupBusy = true;
+    credSetupResult = null;
+    try {
+      if (addAcct.credentialType === 'gcm') {
+        credSetupResult = await bridge.credentialSetupGCM(addAcct.key);
+      } else if (addAcct.credentialType === 'token') {
+        credSetupResult = await bridge.credentialStoreToken(addAcct.key, credTokenInput);
+      } else if (addAcct.credentialType === 'ssh') {
+        credSetupResult = await bridge.credentialSetupSSH(addAcct.key);
+      }
+    } catch (err: any) {
+      credSetupResult = { ok: false, message: err?.message || String(err) };
+    }
+    credSetupBusy = false;
+    // Refresh credential status on cards.
+    if (credSetupResult?.ok) {
+      bridge.credentialVerify(addAcct.key).then((cs) => {
+        credStatuses[addAcct.key] = cs.status;
+        credStatuses = credStatuses;
+      });
+    }
+  }
+
+  // ── Change credential type ──
+  let credChangeModal: string | null = null; // account key
+  let credChangeType = '';
+  let credChangeBusy = false;
+  let credChangeResult: { ok: boolean; message: string } | null = null;
+  let credChangeTokenInput = '';
+  let credChangeTokenGuide = '';
+
+  function openCredChange(accountKey: string, currentType: string) {
+    credChangeModal = accountKey;
+    credChangeType = currentType;
+    credChangeBusy = false;
+    credChangeResult = null;
+    credChangeTokenInput = '';
+    credChangeTokenGuide = '';
+  }
+
+  function closeCredChange() {
+    credChangeModal = null;
+    credChangeResult = null;
+  }
+
+  async function applyCredChange() {
+    if (!credChangeModal) return;
+    credChangeBusy = true;
+    credChangeResult = null;
+    try {
+      await bridge.changeCredentialType(credChangeModal, credChangeType);
+      await reloadFromDisk();
+      // Auto-run setup for GCM/SSH.
+      if (credChangeType === 'gcm') {
+        credChangeResult = await bridge.credentialSetupGCM(credChangeModal);
+      } else if (credChangeType === 'ssh') {
+        credChangeResult = await bridge.credentialSetupSSH(credChangeModal);
+      } else if (credChangeType === 'token') {
+        const guide = await bridge.getTokenGuide(credChangeModal);
+        credChangeTokenGuide = guide.creationURL || '';
+        credChangeBusy = false;
+        return; // Wait for user to paste token.
+      }
+    } catch (err: any) {
+      credChangeResult = { ok: false, message: err?.message || String(err) };
+    }
+    credChangeBusy = false;
+    if (credChangeResult?.ok && credChangeModal) {
+      bridge.credentialVerify(credChangeModal).then((cs) => {
+        credStatuses[credChangeModal!] = cs.status;
+        credStatuses = credStatuses;
+      });
+    }
+  }
+
+  async function storeCredChangeToken() {
+    if (!credChangeModal) return;
+    credChangeBusy = true;
+    try {
+      credChangeResult = await bridge.credentialStoreToken(credChangeModal, credChangeTokenInput);
+    } catch (err: any) {
+      credChangeResult = { ok: false, message: err?.message || String(err) };
+    }
+    credChangeBusy = false;
+    if (credChangeResult?.ok && credChangeModal) {
+      bridge.credentialVerify(credChangeModal).then((cs) => {
+        credStatuses[credChangeModal!] = cs.status;
+        credStatuses = credStatuses;
+      });
+    }
+  }
+
+  // ── Delete account ──
+  let deleteAcctConfirm: string | null = null; // account key
+  let deleteAcctStep = 0;
+  let deleteAcctBusy = false;
+
+  function askDeleteAccount(accountKey: string) {
+    deleteAcctConfirm = accountKey;
+    deleteAcctStep = 1;
+  }
+
+  function cancelDeleteAccount() {
+    deleteAcctConfirm = null;
+    deleteAcctStep = 0;
+  }
+
+  async function confirmDeleteAccount() {
+    if (!deleteAcctConfirm) return;
+    if (deleteAcctStep === 1) { deleteAcctStep = 2; return; }
+    deleteAcctBusy = true;
+    try {
+      await bridge.deleteAccount(deleteAcctConfirm);
+      await reloadFromDisk();
+    } finally {
+      deleteAcctBusy = false;
+      deleteAcctConfirm = null;
+      deleteAcctStep = 0;
+      deleteMode = false;
+    }
+  }
+
+  // ── Settings ──
+  let showSettings = false;
+  let configPath = '';
+  let appVersion = '';
+
+  // ── Credential status cache ──
+  let credStatuses: Record<string, string> = {};
+
+  // ── Lifecycle ──
+  onMount(async () => {
+    applyTheme();
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (themeChoice === 'system') applyTheme();
+    });
+
+    // Re-read config when the window regains focus (picks up external edits).
+    window.addEventListener('focus', () => reloadFromDisk());
+
+    // Check first run — show onboarding if no folder configured.
+    firstRun = await bridge.isFirstRun();
+    if (firstRun) return; // Don't load dashboard until onboarding completes.
+
+    // Load config
+    const cfg = await bridge.getConfig();
+    configStore.set(cfg);
+    configPath = await bridge.getConfigPath();
+    appVersion = await bridge.getAppVersion();
+
+    // Load status
+    const statuses = await bridge.getAllStatus();
+    applyStatusResults(statuses);
+
+    // Verify credentials for each account
+    for (const key of Object.keys(cfg.accounts)) {
+      bridge.credentialVerify(key).then((cs) => {
+        credStatuses[key] = cs.status;
+        credStatuses = credStatuses;
+      });
+    }
+
+    // ── Event listeners ──
+    events.on('status:updated', (results: any) => {
+      applyStatusResults(results);
+    });
+
+    events.on('clone:progress', (data: any) => {
+      const key = `${data.source}/${data.repo}`;
+      repoStates.update((s) => {
+        if (s[key]) {
+          s[key] = { ...s[key], progress: data.percent };
+        }
+        return { ...s };
+      });
+    });
+
+    events.on('clone:done', (data: any) => {
+      const key = `${data.source}/${data.repo}`;
+      repoStates.update((s) => {
+        if (s[key]) {
+          s[key] = {
+            ...s[key],
+            status: data.error ? 'error' : 'clean',
+            progress: 0,
+            error: data.error,
+          };
+        }
+        return { ...s };
+      });
+      checkSyncDone();
+    });
+
+    events.on('pull:done', (data: any) => {
+      const key = `${data.source}/${data.repo}`;
+      repoStates.update((s) => {
+        if (s[key]) {
+          s[key] = {
+            ...s[key],
+            status: data.error ? 'error' : 'clean',
+            progress: 0,
+            behind: 0,
+            error: data.error,
+          };
+        }
+        return { ...s };
+      });
+      checkSyncDone();
+    });
+
+    events.on('discover:done', (data: any) => {
+      discoverLoading = false;
+      if (data.error) {
+        discoverRepos = [];
+        return;
+      }
+      discoverRepos = data.repos || [];
+      discoverSelected = {};
+    });
+  });
+
+  function checkSyncDone() {
+    let states: Record<string, RepoState> = {};
+    repoStates.subscribe((v) => (states = v))();
+    const stillRunning = Object.values(states).some(
+      (r) => r.status === 'syncing' || r.status === 'cloning'
+    );
+    if (!stillRunning) syncing = false;
+  }
+
+  // Reactive helpers that depend on theme
+  $: sc = (s: string) => statusColor(s, $themeStore);
+  $: cc = (s: string) => credColor(s, $themeStore);
+</script>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  TEMPLATE                                                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<!-- ── ONBOARDING ── -->
+{#if firstRun}
+<div class="onboarding">
+  <div class="onboard-card">
+    <svg class="onboard-logo" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
+      <g transform="matrix(0.838711, 0, 0, 0.838711, 52.15668, 40.24861)">
+        <path d="M 119.779 265.572 L 146.694 265.582 C 146.694 265.582 162.549 310.895 163.783 313.997 L 145.642 332.841 L 166.338 355.62 L 185.565 336.41 C 184.801 337.405 234.42 356.617 234.42 356.617 L 234.74 387.858 L 265.36 389.26 L 265.013 356.868 L 313.812 336.358 L 339.89 361.913 L 362.266 340.797 L 336.562 314.13 L 354.13 265.424 L 394.197 265.15 L 393.609 234.438 L 353.715 234.488 C 352.82 232.067 335.975 185.534 335.975 185.534 L 360.441 160.899 L 337.258 140.162 L 313.098 163.288 C 313.098 163.288 266.045 143.401 265.958 143.359 L 265.79 114.664 L 234.642 116.098 L 234.194 143.169 L 186.316 163.095 L 168.728 146.231 L 147.462 168.692 L 163.361 185.54 L 146.557 234.451 L 120.386 234.37 M 210.493 187.051 L 256.57 234.488 C 256.57 234.488 320.45 234.364 320.586 234.229 C 320.721 234.094 306.162 193.954 306.162 193.954 C 306.162 193.954 250.088 170.32 249.69 170.347 M 187.967 210.526 C 187.649 210.754 174.103 248.738 174.103 249.471 C 174.103 250.2 187.998 289.362 188.741 289.362 C 189.632 289.362 227.328 250.756 227.328 249.843 C 227.328 248.581 188.7 209.996 187.967 210.526 M 257.27 265.455 C 256.179 265.594 249.754 271.775 232.923 288.884 C 220.348 301.667 210.161 312.294 210.285 312.494 C 210.41 312.695 212.068 313.532 213.966 314.356 C 215.864 315.18 220.73 317.306 224.778 319.081 C 241.811 326.551 248.988 329.565 249.748 329.565 C 250.514 329.565 252.968 328.567 267.247 322.463 C 272.788 320.092 283.196 315.705 300.652 308.373 L 306.313 305.995 L 308.715 299.518 C 310.034 295.957 311.861 291.004 312.774 288.514 C 313.686 286.021 315.955 279.905 317.813 274.924 C 319.673 269.94 321.108 265.771 321 265.655 C 320.761 265.397 259.289 265.202 257.27 265.455" fill="var(--logo-light)" fill-rule="evenodd"/>
+        <g>
+          <rect x="389.945" y="234.245" width="88.288" height="31.534" fill="var(--logo-dark)"/>
+          <rect x="145.508" y="578.72" width="57.346" height="31.534" fill="var(--logo-dark)" transform="matrix(0.707107, -0.707107, 0.707107, 0.707107, -37.625373, -231.099206)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
+          <rect x="268.056" y="574.269" width="50.735" height="31.007" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, 89.660145, -467.147635)" style="transform-origin: 152.09px 305.696px;"/>
+          <g transform="matrix(1.929278, 0, 0, 1.929278, -169.667138, -230.101468)">
+            <rect x="167.474" y="297.66" width="31.698" height="16.072" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, 97.683973, 6.752047)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
+            <ellipse cx="298.182" cy="330.143" rx="18.184" ry="18.184" fill="var(--logo-dark)"/>
+          </g>
+          <g transform="matrix(0, 1.929278, -1.929278, 0, -117.597083, 162.12922)" style="transform-origin: 290.242px 321.943px;">
+            <path d="M 234.052 304.012 L 295.85 303.793 L 295.85 319.865 L 240.576 320.139 L 236.241 324.134 L 225.125 312.911 L 234.052 304.012 Z" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, 4.206065, -14.423297)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
+            <ellipse cx="298.182" cy="330.143" rx="18.184" ry="18.184" fill="var(--logo-dark)"/>
+          </g>
+          <g transform="matrix(-1.364205, 1.364205, -1.364205, -1.364205, -225.276898, -72.630123)" style="transform-origin: 290.242px 321.943px;">
+            <rect x="167.474" y="297.66" width="31.698" height="16.072" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, 97.683973, 6.752047)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
+            <ellipse cx="298.182" cy="330.143" rx="18.184" ry="18.184" fill="var(--logo-dark)"/>
+          </g>
+          <g transform="matrix(-1.929277, 0, 0, -1.929277, -96.489034, -305.33812)" style="transform-origin: 290.242px 321.943px;">
+            <path d="M 157.74 296.617 L 199.172 297.66 L 199.172 313.732 L 151.483 313.732 L 133.58 295.866 L 144.962 284.648 L 157.74 296.617 Z" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, 107.248061, -3.32573)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
+            <ellipse cx="298.182" cy="330.143" rx="18.184" ry="18.184" fill="var(--logo-dark)"/>
+          </g>
+          <g transform="matrix(0, -1.929278, 1.929278, 0, 97.57237, -210.81805)" style="transform-origin: 290.242px 321.943px;">
+            <rect x="299.224" y="297.66" width="56.634" height="16.072" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, -37.717619, 15.568392)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
+            <ellipse cx="319.805" cy="350.736" rx="18.184" ry="18.184" fill="var(--logo-dark)"/>
+          </g>
+        </g>
+      </g>
+    </svg>
+    <h1 class="onboard-title">Welcome to gitbox</h1>
+    <p class="onboard-desc">Choose where to store your repositories</p>
+    {#if onboardError}
+      <p class="form-error">{onboardError}</p>
+    {/if}
+    <div class="onboard-input-row">
+      <input class="form-input onboard-input" bind:value={onboardFolder} placeholder="~/00.git" />
+      <button class="settings-btn onboard-browse" on:click={() => browseFolder('onboard')}>Browse</button>
+    </div>
+    <button class="btn-add onboard-go" on:click={finishOnboarding}>Get started</button>
+  </div>
+</div>
+{:else}
+
+<div class="app">
+
+  <!-- ── TOP BAR ── -->
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo-svg" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
+        <g transform="matrix(0.838711, 0, 0, 0.838711, 52.15668, 40.24861)">
+          <path d="M 119.779 265.572 L 146.694 265.582 C 146.694 265.582 162.549 310.895 163.783 313.997 L 145.642 332.841 L 166.338 355.62 L 185.565 336.41 C 184.801 337.405 234.42 356.617 234.42 356.617 L 234.74 387.858 L 265.36 389.26 L 265.013 356.868 L 313.812 336.358 L 339.89 361.913 L 362.266 340.797 L 336.562 314.13 L 354.13 265.424 L 394.197 265.15 L 393.609 234.438 L 353.715 234.488 C 352.82 232.067 335.975 185.534 335.975 185.534 L 360.441 160.899 L 337.258 140.162 L 313.098 163.288 C 313.098 163.288 266.045 143.401 265.958 143.359 L 265.79 114.664 L 234.642 116.098 L 234.194 143.169 L 186.316 163.095 L 168.728 146.231 L 147.462 168.692 L 163.361 185.54 L 146.557 234.451 L 120.386 234.37 M 210.493 187.051 L 256.57 234.488 C 256.57 234.488 320.45 234.364 320.586 234.229 C 320.721 234.094 306.162 193.954 306.162 193.954 C 306.162 193.954 250.088 170.32 249.69 170.347 M 187.967 210.526 C 187.649 210.754 174.103 248.738 174.103 249.471 C 174.103 250.2 187.998 289.362 188.741 289.362 C 189.632 289.362 227.328 250.756 227.328 249.843 C 227.328 248.581 188.7 209.996 187.967 210.526 M 257.27 265.455 C 256.179 265.594 249.754 271.775 232.923 288.884 C 220.348 301.667 210.161 312.294 210.285 312.494 C 210.41 312.695 212.068 313.532 213.966 314.356 C 215.864 315.18 220.73 317.306 224.778 319.081 C 241.811 326.551 248.988 329.565 249.748 329.565 C 250.514 329.565 252.968 328.567 267.247 322.463 C 272.788 320.092 283.196 315.705 300.652 308.373 L 306.313 305.995 L 308.715 299.518 C 310.034 295.957 311.861 291.004 312.774 288.514 C 313.686 286.021 315.955 279.905 317.813 274.924 C 319.673 269.94 321.108 265.771 321 265.655 C 320.761 265.397 259.289 265.202 257.27 265.455" fill="var(--logo-light)" fill-rule="evenodd"/>
+          <g>
+            <rect x="389.945" y="234.245" width="88.288" height="31.534" fill="var(--logo-dark)"/>
+            <rect x="145.508" y="578.72" width="57.346" height="31.534" fill="var(--logo-dark)" transform="matrix(0.707107, -0.707107, 0.707107, 0.707107, -37.625373, -231.099206)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
+            <rect x="268.056" y="574.269" width="50.735" height="31.007" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, 89.660145, -467.147635)" style="transform-origin: 152.09px 305.696px;"/>
+            <g transform="matrix(1.929278, 0, 0, 1.929278, -169.667138, -230.101468)">
+              <rect x="167.474" y="297.66" width="31.698" height="16.072" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, 97.683973, 6.752047)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
+              <ellipse cx="298.182" cy="330.143" rx="18.184" ry="18.184" fill="var(--logo-dark)"/>
+            </g>
+            <g transform="matrix(0, 1.929278, -1.929278, 0, -117.597083, 162.12922)" style="transform-origin: 290.242px 321.943px;">
+              <path d="M 234.052 304.012 L 295.85 303.793 L 295.85 319.865 L 240.576 320.139 L 236.241 324.134 L 225.125 312.911 L 234.052 304.012 Z" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, 4.206065, -14.423297)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
+              <ellipse cx="298.182" cy="330.143" rx="18.184" ry="18.184" fill="var(--logo-dark)"/>
+            </g>
+            <g transform="matrix(-1.364205, 1.364205, -1.364205, -1.364205, -225.276898, -72.630123)" style="transform-origin: 290.242px 321.943px;">
+              <rect x="167.474" y="297.66" width="31.698" height="16.072" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, 97.683973, 6.752047)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
+              <ellipse cx="298.182" cy="330.143" rx="18.184" ry="18.184" fill="var(--logo-dark)"/>
+            </g>
+            <g transform="matrix(-1.929277, 0, 0, -1.929277, -96.489034, -305.33812)" style="transform-origin: 290.242px 321.943px;">
+              <path d="M 157.74 296.617 L 199.172 297.66 L 199.172 313.732 L 151.483 313.732 L 133.58 295.866 L 144.962 284.648 L 157.74 296.617 Z" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, 107.248061, -3.32573)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
+              <ellipse cx="298.182" cy="330.143" rx="18.184" ry="18.184" fill="var(--logo-dark)"/>
+            </g>
+            <g transform="matrix(0, -1.929278, 1.929278, 0, 97.57237, -210.81805)" style="transform-origin: 290.242px 321.943px;">
+              <rect x="299.224" y="297.66" width="56.634" height="16.072" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, -37.717619, 15.568392)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
+              <ellipse cx="319.805" cy="350.736" rx="18.184" ry="18.184" fill="var(--logo-dark)"/>
+            </g>
+          </g>
+        </g>
+      </svg>
+      <span class="title">gitbox</span>
+      <span class="tagline">accounts & clones — nothing else</span>
+    </div>
+    <div class="health">
+      <span class="health-ring" style="--pct: {$summary.total ? ($summary.clean / $summary.total) * 100 : 0}">
+        <span class="health-num">{$summary.clean}/{$summary.total}</span>
+      </span>
+      <span class="health-label">synced</span>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn-sync" on:click={syncAll}
+        disabled={syncing || ($summary.behind === 0 && $summary.notCloned === 0)}>
+        <span class="sync-icon" class:spinning={syncing}>&#8635;</span>
+        {syncing ? 'Syncing...' : 'Sync All'}
+      </button>
+      <button class="btn-gear" class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title="{deleteMode ? 'Exit delete mode' : 'Delete mode'}">&#128465;</button>
+      <button class="btn-gear" on:click={cycleTheme} title="Theme: {themeChoice}">{themeIcon(themeChoice)}</button>
+      <button class="btn-gear" on:click={() => showSettings = !showSettings} title="Settings" class:active-gear={showSettings}>&#9881;</button>
+    </div>
+  </header>
+
+  <!-- ── SETTINGS PANEL ── -->
+  {#if showSettings}
+    <div class="settings" transition:slide={{ duration: 150 }}>
+      <div class="settings-row">
+        <span class="settings-label">Config</span>
+        <span class="settings-value">{configPath}</span>
+        <button class="settings-btn" on:click={() => bridge.openFileInEditor(configPath)}>Open in Editor</button>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">Clone folder</span>
+        <span class="settings-value">{$configStore?.global?.folder || '(not set)'}</span>
+        <button class="settings-btn" on:click={openChangeFolder}>Change</button>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">Theme</span>
+        <div class="theme-toggle">
+          <button class="theme-btn" class:theme-active={themeChoice === 'system'} on:click={() => { themeChoice = 'system'; applyTheme(); }}>System</button>
+          <button class="theme-btn" class:theme-active={themeChoice === 'light'} on:click={() => { themeChoice = 'light'; applyTheme(); }}>Light</button>
+          <button class="theme-btn" class:theme-active={themeChoice === 'dark'} on:click={() => { themeChoice = 'dark'; applyTheme(); }}>Dark</button>
+        </div>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">Accounts</span>
+        <span class="settings-value">{Object.keys($accounts).length} configured</span>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">Version</span>
+        <span class="settings-value">{appVersion}</span>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ── ACCOUNT CARDS ── -->
+  <section class="cards-row">
+    {#each Object.entries($accounts) as [key, acct]}
+      {@const stats = $accountStats[key] || { total: 0, synced: 0, issues: 0 }}
+      {@const cred = credStatuses[key] || 'ok'}
+      <div class="card" class:card-delete-mode={deleteMode}>
+        <div class="card-top">
+          {#if deleteMode}
+            <button class="btn-delete-x card-delete-btn" on:click={() => askDeleteAccount(key)} title="Delete account {key}">&#10005;</button>
+          {:else}
+            <span class="card-dot" style="background: {cc(cred)}"></span>
+          {/if}
+          <span class="card-provider">{providerLabel(acct.provider)}</span>
+          <button class="cred-badge" on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')} title="Credential: {acct.default_credential_type || 'gcm'}">{acct.default_credential_type || 'gcm'}</button>
+        </div>
+        <div class="card-name">{key.replace(/^(github|git)-/, '')}</div>
+        <div class="card-ring-row">
+          <svg class="mini-ring" viewBox="0 0 36 36">
+            <circle cx="18" cy="18" r="15" fill="none" stroke="#27272a" stroke-width="3"/>
+            <circle cx="18" cy="18" r="15" fill="none"
+              stroke="{stats.issues === 0 ? sc('clean') : sc('behind')}"
+              stroke-width="3" stroke-linecap="round"
+              stroke-dasharray="{(stats.synced / Math.max(stats.total, 1)) * 94.2} 94.2"
+              transform="rotate(-90 18 18)"/>
+          </svg>
+          <span class="card-stat">{stats.synced}/{stats.total}</span>
+          {#if stats.issues > 0}
+            <span class="card-issues" style="color: {sc('behind')}">{stats.issues} need{stats.issues > 1 ? '' : 's'} attention</span>
+          {:else}
+            <span class="card-ok" style="color: {sc('clean')}">All good</span>
+          {/if}
+        </div>
+        <button class="card-btn" on:click={() => openDiscover(key)}>Find projects</button>
+      </div>
+    {/each}
+    <button class="card card-add" on:click={() => addAccountModal = true} title="Add account">
+      <span class="card-add-icon">+</span>
+    </button>
+  </section>
+
+  <!-- ── REPO LIST ── -->
+  <section class="repo-list">
+    {#each Object.entries($sources) as [sourceKey, source]}
+      <div class="source-group">
+        <div class="source-header">{sourceKey}</div>
+        {#each (source.repoOrder && source.repoOrder.length > 0 ? source.repoOrder : Object.keys(source.repos)) as repoName}
+          {@const repoKey = `${sourceKey}/${repoName}`}
+          {@const state = $repoStates[repoKey] || { status: 'error', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
+          <div class="repo-row">
+            {#if deleteMode}
+              <button class="btn-delete-x" on:click={() => askDelete(sourceKey, repoName, state.status)} title="Delete {repoName}">&#10005;</button>
+            {/if}
+            <span class="dot" style="color: {sc(state.status)}">{statusSymbol(state.status)}</span>
+            <span class="repo-name">{repoName}</span>
+
+            {#if state.status === 'syncing' || state.status === 'cloning'}
+              <div class="progress-track">
+                <div class="progress-fill" style="width:{state.progress}%; background:{sc(state.status)}"></div>
+              </div>
+              <span class="progress-pct" style="color:{sc(state.status)}">{state.progress}%</span>
+            {:else}
+              <span class="status-text" style="color:{sc(state.status)}">
+                {statusLabel(state.status, state.behind, state.modified)}
+              </span>
+              {#if state.status === 'behind'}
+                <button class="btn-action" on:click={() => syncRepo(sourceKey, repoName)}>Refresh</button>
+              {:else if state.status === 'not cloned'}
+                <button class="btn-action" on:click={() => cloneRepo(sourceKey, repoName)}>Bring Local</button>
+              {/if}
+            {/if}
+          </div>
+        {/each}
+      </div>
+    {/each}
+  </section>
+
+  <!-- ── SUMMARY FOOTER ── -->
+  <footer class="summary">
+    <span class="sum" style="color:{sc('clean')}">{$summary.clean} synced</span>
+    {#if $summary.syncing > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('syncing')}">{$summary.syncing} syncing</span>{/if}
+    {#if $summary.behind > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('behind')}">{$summary.behind} behind</span>{/if}
+    {#if $summary.dirty > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('dirty')}">{$summary.dirty} local changes</span>{/if}
+    {#if $summary.notCloned > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('not cloned')}">{$summary.notCloned} not local</span>{/if}
+  </footer>
+
+  <!-- ── DISCOVER MODAL ── -->
+  {#if discoverModal}
+    <div class="overlay" on:click={() => discoverModal = null} transition:fade={{ duration: 120 }}>
+      <div class="modal" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+        <div class="modal-head">
+          <h3>Find projects &mdash; {discoverModal}</h3>
+          <button class="btn-x" on:click={() => discoverModal = null}>&#10005;</button>
+        </div>
+        <div class="modal-body">
+          {#if discoverLoading}
+            <div class="loading"><div class="spinner"></div><span>Checking your account...</span></div>
+          {:else if discoverRepos.length === 0}
+            <p class="found">No new projects found.</p>
+          {:else}
+            <p class="found">Found {discoverRepos.length} projects:</p>
+            <label class="dr dr-all">
+              <input type="checkbox" checked={allSelected} on:change={toggleAll} />
+              <span class="dr-name">Select all</span>
+            </label>
+            {#each discoverRepos as repo}
+              <label class="dr">
+                <input type="checkbox" bind:checked={discoverSelected[repo.fullName]} />
+                <span class="dr-name">{repo.fullName}</span>
+                {#if repo.archived}<span class="dr-tag">archived</span>{/if}
+                {#if repo.fork}<span class="dr-tag">fork</span>{/if}
+                <span class="dr-desc">{repo.description}</span>
+              </label>
+            {/each}
+          {/if}
+        </div>
+        {#if !discoverLoading && discoverRepos.length > 0}
+          <div class="modal-foot">
+            <button class="btn-cancel" on:click={() => discoverModal = null}>Cancel</button>
+            <button class="btn-add" on:click={addDiscovered} disabled={selectedCount === 0}>Add Selected ({selectedCount})</button>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
+
+  <!-- ── DELETE CONFIRMATION MODAL ── -->
+  {#if deleteConfirm}
+    <div class="overlay" on:click={cancelDelete} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-delete" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+        <div class="modal-head modal-head-delete">
+          <h3>Delete local clone</h3>
+          <button class="btn-x" on:click={cancelDelete}>&#10005;</button>
+        </div>
+        <div class="modal-body">
+          {#if deleteConfirmStep === 1}
+            <p class="delete-repo-name">{deleteConfirm.repoKey}</p>
+            <p class="delete-warning" class:delete-danger={isDangerous(deleteConfirm.status)}>
+              {deleteWarning(deleteConfirm.status)}
+            </p>
+          {:else}
+            <p class="delete-repo-name">{deleteConfirm.repoKey}</p>
+            <p class="delete-final">This action <strong>cannot be undone</strong>. Are you absolutely sure?</p>
+          {/if}
+        </div>
+        <div class="modal-foot">
+          <button class="btn-cancel" on:click={cancelDelete}>Cancel</button>
+          {#if deleteConfirmStep === 1}
+            <button class="btn-delete" on:click={confirmDelete}>Delete</button>
+          {:else}
+            <button class="btn-delete btn-delete-final" on:click={confirmDelete} disabled={deleting}>
+              {deleting ? 'Deleting...' : 'Yes, delete permanently'}
+            </button>
+          {/if}
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ── ADD ACCOUNT MODAL ── -->
+  {#if addAccountModal}
+    <div class="overlay" on:click={resetAddAccount} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-account" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+        <div class="modal-head">
+          <h3>{addAccountStep === 'form' ? 'Add account' : 'Credential setup'}</h3>
+          <button class="btn-x" on:click={resetAddAccount}>&#10005;</button>
+        </div>
+        <div class="modal-body">
+          {#if addAccountStep === 'form'}
+            <!-- ── Step 1: Account details ── -->
+            {#if addAccountError}
+              <p class="form-error">{addAccountError}</p>
+            {/if}
+            <div class="form-row">
+              <label class="form-label" for="aa-key">Account key</label>
+              <input class="form-input" id="aa-key" bind:value={addAcct.key} placeholder="github-MyUser" />
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="aa-provider">Provider</label>
+              <select class="form-input" id="aa-provider" bind:value={addAcct.provider} on:change={onProviderChange}>
+                <option value="github">GitHub</option>
+                <option value="gitlab">GitLab</option>
+                <option value="gitea">Gitea</option>
+                <option value="forgejo">Forgejo</option>
+                <option value="bitbucket">Bitbucket</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="aa-url">URL</label>
+              <input class="form-input" id="aa-url" bind:value={addAcct.url} placeholder="https://github.com" />
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="aa-user">Username</label>
+              <input class="form-input" id="aa-user" bind:value={addAcct.username} placeholder="MyUser" />
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="aa-name">Name</label>
+              <input class="form-input" id="aa-name" bind:value={addAcct.name} placeholder="Full Name" />
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="aa-email">Email</label>
+              <input class="form-input" id="aa-email" bind:value={addAcct.email} placeholder="user@example.com" />
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="aa-cred">Credential type</label>
+              <select class="form-input" id="aa-cred" bind:value={addAcct.credentialType}>
+                <option value="gcm">GCM</option>
+                <option value="ssh">SSH</option>
+                <option value="token">Token</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="aa-branch">Default branch</label>
+              <input class="form-input" id="aa-branch" bind:value={addAcct.defaultBranch} placeholder="main" />
+            </div>
+          {:else}
+            <!-- ── Step 2: Credential setup ── -->
+            <p class="cred-step-intro">Account <strong>{addAcct.key}</strong> created. Set up credentials:</p>
+
+            {#if addAcct.credentialType === 'gcm'}
+              <p class="cred-step-desc">Click below to authenticate via browser (Git Credential Manager).</p>
+              <button class="btn-add cred-action-btn" on:click={runCredentialSetup} disabled={credSetupBusy}>
+                {credSetupBusy ? 'Authenticating...' : 'Authenticate with GCM'}
+              </button>
+
+            {:else if addAcct.credentialType === 'token'}
+              <p class="cred-step-desc">Create a Personal Access Token at your provider and paste it below.</p>
+              {#if credTokenGuide}
+                <p class="cred-step-link"><a href={credTokenGuide} target="_blank" rel="noopener">{credTokenGuide}</a></p>
+              {/if}
+              <div class="form-row">
+                <label class="form-label" for="aa-token">Token</label>
+                <input class="form-input" id="aa-token" type="password" bind:value={credTokenInput} placeholder="ghp_..." />
+              </div>
+              <button class="btn-add cred-action-btn" on:click={runCredentialSetup} disabled={credSetupBusy || !credTokenInput.trim()}>
+                {credSetupBusy ? 'Storing...' : 'Store token'}
+              </button>
+
+            {:else if addAcct.credentialType === 'ssh'}
+              <p class="cred-step-desc">This will generate an SSH key and configure ~/.ssh/config.</p>
+              <button class="btn-add cred-action-btn" on:click={runCredentialSetup} disabled={credSetupBusy}>
+                {credSetupBusy ? 'Setting up SSH...' : 'Generate SSH key'}
+              </button>
+            {/if}
+
+            {#if credSetupResult}
+              <div class="cred-result" class:cred-result-ok={credSetupResult.ok} class:cred-result-err={!credSetupResult.ok}>
+                <pre class="cred-result-msg">{credSetupResult.message}</pre>
+              </div>
+            {/if}
+          {/if}
+        </div>
+        <div class="modal-foot">
+          {#if addAccountStep === 'form'}
+            <button class="btn-cancel" on:click={resetAddAccount}>Cancel</button>
+            <button class="btn-add" on:click={submitAddAccount}>Add account</button>
+          {:else}
+            <button class="btn-cancel" on:click={resetAddAccount}>
+              {credSetupResult?.ok ? 'Done' : 'Skip & close'}
+            </button>
+          {/if}
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ── CHANGE CREDENTIAL MODAL ── -->
+  {#if credChangeModal}
+    {@const currentAcct = $accounts[credChangeModal]}
+    <div class="overlay" on:click={closeCredChange} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-account" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+        <div class="modal-head">
+          <h3>Change credential &mdash; {credChangeModal}</h3>
+          <button class="btn-x" on:click={closeCredChange}>&#10005;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-row">
+            <label class="form-label" for="cc-type">Type</label>
+            <select class="form-input" id="cc-type" bind:value={credChangeType} disabled={credChangeBusy}>
+              <option value="gcm">GCM</option>
+              <option value="ssh">SSH</option>
+              <option value="token">Token</option>
+            </select>
+          </div>
+
+          {#if credChangeType === 'token' && credChangeTokenGuide && !credChangeResult}
+            <p class="cred-step-link"><a href={credChangeTokenGuide} target="_blank" rel="noopener">{credChangeTokenGuide}</a></p>
+            <div class="form-row">
+              <label class="form-label" for="cc-token">Token</label>
+              <input class="form-input" id="cc-token" type="password" bind:value={credChangeTokenInput} placeholder="ghp_..." />
+            </div>
+            <button class="btn-add cred-action-btn" on:click={storeCredChangeToken} disabled={credChangeBusy || !credChangeTokenInput.trim()}>
+              {credChangeBusy ? 'Storing...' : 'Store token'}
+            </button>
+          {/if}
+
+          {#if credChangeBusy}
+            <div class="loading"><div class="spinner"></div><span>Setting up credential...</span></div>
+          {/if}
+
+          {#if credChangeResult}
+            <div class="cred-result" class:cred-result-ok={credChangeResult.ok} class:cred-result-err={!credChangeResult.ok}>
+              <pre class="cred-result-msg">{credChangeResult.message}</pre>
+            </div>
+          {/if}
+        </div>
+        <div class="modal-foot">
+          {#if credChangeResult}
+            <button class="btn-cancel" on:click={closeCredChange}>{credChangeResult.ok ? 'Done' : 'Close'}</button>
+          {:else if credChangeType === 'token' && credChangeTokenGuide}
+            <button class="btn-cancel" on:click={closeCredChange}>Cancel</button>
+          {:else}
+            <button class="btn-cancel" on:click={closeCredChange}>Cancel</button>
+            <button class="btn-add" on:click={applyCredChange} disabled={credChangeBusy}>
+              {credChangeBusy ? 'Setting up...' : 'Change & setup'}
+            </button>
+          {/if}
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ── DELETE ACCOUNT MODAL ── -->
+  {#if deleteAcctConfirm}
+    {@const acctSources = Object.entries($sources).filter(([_, s]) => s.account === deleteAcctConfirm)}
+    {@const repoCount = acctSources.reduce((n, [_, s]) => n + Object.keys(s.repos).length, 0)}
+    <div class="overlay" on:click={cancelDeleteAccount} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-delete" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+        <div class="modal-head modal-head-delete">
+          <h3>Delete account</h3>
+          <button class="btn-x" on:click={cancelDeleteAccount}>&#10005;</button>
+        </div>
+        <div class="modal-body">
+          {#if deleteAcctStep === 1}
+            <p class="delete-repo-name">{deleteAcctConfirm}</p>
+            <p class="delete-warning delete-danger">
+              This will permanently delete the account, {acctSources.length} source{acctSources.length !== 1 ? 's' : ''}, {repoCount} repo{repoCount !== 1 ? 's' : ''}, and all their local clone folders.
+            </p>
+          {:else}
+            <p class="delete-repo-name">{deleteAcctConfirm}</p>
+            <p class="delete-final">This action <strong>cannot be undone</strong>. Are you absolutely sure?</p>
+          {/if}
+        </div>
+        <div class="modal-foot">
+          <button class="btn-cancel" on:click={cancelDeleteAccount}>Cancel</button>
+          {#if deleteAcctStep === 1}
+            <button class="btn-delete" on:click={confirmDeleteAccount}>Delete account</button>
+          {:else}
+            <button class="btn-delete btn-delete-final" on:click={confirmDeleteAccount} disabled={deleteAcctBusy}>
+              {deleteAcctBusy ? 'Deleting...' : 'Yes, delete everything'}
+            </button>
+          {/if}
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ── CHANGE FOLDER MODAL ── -->
+  {#if changeFolderModal}
+    <div class="overlay" on:click={() => changeFolderModal = false} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-account" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+        <div class="modal-head">
+          <h3>Change clone folder</h3>
+          <button class="btn-x" on:click={() => changeFolderModal = false}>&#10005;</button>
+        </div>
+        <div class="modal-body">
+          <p class="delete-warning delete-danger"><strong>WARNING:</strong> Changing the clone folder will <strong>not</strong> move existing repos. They will show as "Not local" until re-cloned at the new location (or moved manually).</p>
+          <div class="form-row" style="margin-top: 12px;">
+            <label class="form-label">Current</label>
+            <span class="settings-value">{$configStore?.global?.folder || '(not set)'}</span>
+          </div>
+          {#if changeFolderError}
+            <p class="form-error">{changeFolderError}</p>
+          {/if}
+          <div class="form-row">
+            <label class="form-label">New path</label>
+            <input class="form-input" bind:value={changeFolderPath} placeholder="~/new-folder" />
+            <button class="settings-btn" on:click={() => browseFolder('settings')}>Browse</button>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn-cancel" on:click={() => changeFolderModal = false}>Cancel</button>
+          <button class="btn-add" on:click={confirmChangeFolder} disabled={!changeFolderPath.trim()}>Change folder</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+</div>
+{/if}
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!--  STYLES                                                     -->
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<style>
+  /* ── Onboarding ── */
+  .onboarding {
+    position: fixed; inset: 0; background: var(--bg-base);
+    display: flex; align-items: center; justify-content: center; z-index: 200;
+  }
+  .onboard-card {
+    display: flex; flex-direction: column; align-items: center;
+    max-width: 380px; width: 100%; padding: 40px 32px;
+  }
+  .onboard-logo { width: 64px; height: 64px; margin-bottom: 16px; }
+  .onboard-title { font-size: 22px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.5px; }
+  .onboard-desc { font-size: 13px; color: var(--text-secondary); margin: 0 0 20px; }
+  .onboard-input-row { display: flex; gap: 8px; width: 100%; margin-bottom: 16px; }
+  .onboard-input { flex: 1; }
+  .onboard-browse { padding: 5px 12px; font-size: 12px; }
+  .onboard-go { width: 100%; padding: 9px 0; font-size: 13px; font-weight: 600; border-radius: 7px; }
+
+  :global([data-theme="dark"]) {
+    --bg-base: #09090b; --bg-card: #18181b; --bg-hover: #27272a;
+    --border: #27272a; --border-hover: #3f3f46;
+    --text-primary: #fafafa; --text-secondary: #a1a1aa; --text-muted: #71717a; --text-dim: #52525b;
+    --text-repo: #e4e4e7;
+    --logo-dark: #4abdd4; --logo-light: #7cd9ec;
+    --ring-bg: #27272a; --ring-accent: #61fd5f; --overlay: rgba(0,0,0,0.6);
+  }
+  :global([data-theme="light"]) {
+    --bg-base: #fafafa; --bg-card: #ffffff; --bg-hover: #f4f4f5;
+    --border: #e4e4e7; --border-hover: #d4d4d8;
+    --text-primary: #18181b; --text-secondary: #52525b; --text-muted: #71717a; --text-dim: #a1a1aa;
+    --text-repo: #27272a;
+    --logo-dark: #1c5566; --logo-light: #2e9fc0;
+    --ring-bg: #e4e4e7; --ring-accent: #166534; --overlay: rgba(0,0,0,0.3);
+  }
+  :global(html) { color-scheme: dark light; }
+  :global(body) {
+    margin: 0; background: var(--bg-base);
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+    color: var(--text-primary); -webkit-font-smoothing: antialiased;
+    transition: background 0.2s, color 0.2s;
+  }
+
+  .app { max-width: 860px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+
+  .topbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--border); }
+  .brand { display: flex; align-items: center; gap: 8px; }
+  .logo-svg { width: 26px; height: 26px; }
+  .title { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+  .tagline { font-size: 11px; font-weight: 400; color: var(--text-muted); letter-spacing: 0.3px; margin-left: 6px; white-space: nowrap; }
+
+  .health { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .health-ring {
+    width: 38px; height: 38px; border-radius: 50%;
+    background: conic-gradient(var(--ring-accent) calc(var(--pct) * 1%), var(--ring-bg) 0);
+    display: flex; align-items: center; justify-content: center; position: relative;
+  }
+  .health-ring::before { content: ''; position: absolute; inset: 4px; background: var(--bg-base); border-radius: 50%; transition: background 0.2s; }
+  .health-num { position: relative; z-index: 1; font-size: 10px; font-weight: 700; }
+  .health-label { font-size: 12px; color: var(--text-muted); }
+
+  .topbar-actions { display: flex; gap: 8px; }
+  .btn-sync {
+    display: flex; align-items: center; gap: 6px;
+    padding: 7px 14px; background: var(--bg-card); border: 1px solid var(--border);
+    color: var(--text-primary); border-radius: 7px; cursor: pointer;
+    font-size: 12px; font-weight: 500; transition: all 0.15s;
+  }
+  .btn-sync:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--border-hover); }
+  .btn-sync:disabled { opacity: 0.4; cursor: default; }
+  .sync-icon { font-size: 15px; display: inline-block; }
+  .spinning { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .btn-gear {
+    background: none; border: 1px solid transparent; color: var(--text-muted);
+    font-size: 18px; cursor: pointer; padding: 4px 6px; border-radius: 6px; transition: all 0.12s;
+  }
+  .btn-gear:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-hover); }
+  .btn-gear:disabled { opacity: 0.3; cursor: default; }
+
+  .cards-row { display: flex; gap: 10px; padding: 18px 24px; overflow-x: auto; }
+  .card {
+    flex: 1; min-width: 165px; background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px; transition: border-color 0.15s;
+  }
+  .card:hover { border-color: var(--border-hover); }
+  .card-top { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+  .card-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .card-provider { font-size: 10px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.3px; flex: 1; }
+  .cred-badge {
+    font-size: 8px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase;
+    padding: 1px 4px; border-radius: 3px; cursor: pointer;
+    background: var(--bg-hover); border: 1px solid var(--border); color: var(--text-muted);
+    transition: all 0.12s; line-height: 1.3;
+  }
+  .cred-badge:hover { color: var(--text-primary); border-color: var(--border-hover); background: var(--bg-card); }
+  .card-delete-btn { flex-shrink: 0; }
+  .card-name { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+
+  .card-ring-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .mini-ring { width: 28px; height: 28px; flex-shrink: 0; }
+  .card-stat { font-size: 12px; font-weight: 600; color: var(--text-repo); }
+  .card-issues { font-size: 11px; font-weight: 600; }
+  .card-ok { font-size: 11px; font-weight: 600; }
+
+  .card-btn {
+    width: 100%; padding: 5px 0; background: transparent; border: 1px solid var(--border);
+    color: var(--text-secondary); border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 500;
+    transition: all 0.15s;
+  }
+  .card-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
+
+  .repo-list { flex: 1; padding: 0 24px 12px; }
+  .source-group { margin-bottom: 6px; }
+  .source-header {
+    font-size: 11px; font-weight: 600; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.8px;
+    padding: 10px 0 5px; border-bottom: 1px solid var(--border);
+  }
+  .repo-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 6px; border-radius: 6px; transition: background 0.1s;
+  }
+  .repo-row:hover { background: var(--bg-card); }
+
+  .dot { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; }
+  .repo-name { font-size: 13px; color: var(--text-repo); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .progress-track { width: 110px; height: 4px; background: var(--ring-bg); border-radius: 2px; overflow: hidden; flex-shrink: 0; }
+  .progress-fill { height: 100%; border-radius: 2px; transition: width 0.12s ease-out; }
+  .progress-pct { font-size: 11px; width: 32px; text-align: right; flex-shrink: 0; font-weight: 600; }
+
+  .status-text { font-size: 12px; white-space: nowrap; font-weight: 600; }
+
+  .btn-action {
+    padding: 3px 10px; background: transparent; border: 1px solid var(--border);
+    color: var(--text-secondary); border-radius: 5px; cursor: pointer;
+    font-size: 11px; font-weight: 500; transition: all 0.15s; flex-shrink: 0;
+  }
+  .btn-action:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
+
+  .summary {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 10px 24px; border-top: 1px solid var(--border); font-size: 12px; font-weight: 500;
+  }
+  .sum { font-weight: 600; }
+  .sep { color: var(--border-hover); }
+
+  .settings {
+    padding: 14px 24px; border-bottom: 1px solid var(--border);
+    background: var(--bg-card); display: flex; flex-direction: column; gap: 8px;
+  }
+  .settings-row { display: flex; align-items: center; gap: 12px; }
+  .settings-label { font-size: 11px; font-weight: 600; color: var(--text-muted); width: 80px; flex-shrink: 0; }
+  .settings-value { font-size: 12px; color: var(--text-secondary); font-family: monospace; flex: 1; }
+  .settings-btn {
+    padding: 2px 8px; font-size: 10px; font-weight: 500;
+    background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
+    border-radius: 4px; cursor: pointer; transition: all 0.12s; white-space: nowrap;
+  }
+  .settings-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
+  .theme-toggle { display: flex; gap: 4px; }
+  .theme-btn {
+    padding: 3px 10px; font-size: 11px; border: 1px solid var(--border);
+    background: transparent; color: var(--text-secondary); border-radius: 5px;
+    cursor: pointer; transition: all 0.12s;
+  }
+  .theme-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .theme-active { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
+  .active-gear { color: var(--text-primary) !important; }
+
+  .overlay {
+    position: fixed; inset: 0; background: var(--overlay);
+    display: flex; align-items: center; justify-content: center; z-index: 100;
+  }
+  .modal {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; width: 440px; max-height: 70vh;
+    display: flex; flex-direction: column;
+  }
+  .modal-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+  }
+  .modal-head h3 { margin: 0; font-size: 14px; font-weight: 600; }
+  .btn-x { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; transition: color 0.12s; }
+  .btn-x:hover { color: var(--text-primary); }
+  .modal-body { padding: 14px 18px; overflow-y: auto; flex: 1; }
+  .modal-foot {
+    display: flex; justify-content: flex-end; gap: 8px;
+    padding: 10px 18px; border-top: 1px solid var(--border);
+  }
+
+  .loading { display: flex; align-items: center; gap: 12px; padding: 20px 0; color: var(--text-secondary); font-size: 13px; }
+  .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: #4B95E9; border-radius: 50%; animation: spin 0.7s linear infinite; }
+  .found { font-size: 12px; color: var(--text-muted); margin: 0 0 10px; }
+
+  .dr { display: flex; align-items: center; gap: 8px; padding: 6px 4px; cursor: pointer; border-radius: 4px; font-size: 13px; }
+  .dr:hover { background: var(--bg-hover); }
+  .dr-all { border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 4px; }
+  .dr input { accent-color: #4B95E9; }
+  .dr-name { color: var(--text-repo); font-weight: 500; }
+  .dr-desc { color: var(--text-dim); font-size: 11px; margin-left: auto; }
+  .dr-tag { font-size: 9px; padding: 1px 5px; background: var(--bg-hover); color: var(--text-dim); border-radius: 3px; }
+
+  .btn-cancel { padding: 6px 12px; background: var(--bg-hover); border: 1px solid var(--border-hover); color: var(--text-secondary); border-radius: 6px; cursor: pointer; font-size: 12px; }
+  .btn-cancel:hover { color: var(--text-primary); }
+  .btn-add { padding: 6px 12px; background: #4B95E9; border: none; color: #fff; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; }
+  .btn-add:hover:not(:disabled) { background: #3b82f6; }
+  .btn-add:disabled { opacity: 0.4; cursor: default; }
+
+  /* ── Add account card ── */
+  .card-add {
+    min-width: 60px; max-width: 80px; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; border-style: dashed; background: transparent;
+    color: var(--text-muted); transition: all 0.15s;
+  }
+  .card-add:hover { border-color: var(--border-hover); color: var(--text-primary); background: var(--bg-hover); }
+  .card-add-icon { font-size: 24px; font-weight: 300; line-height: 1; }
+
+  /* ── Add account form ── */
+  .modal-account { width: 420px; }
+  .form-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .form-label { font-size: 11px; font-weight: 600; color: var(--text-muted); width: 95px; flex-shrink: 0; }
+  .form-input {
+    flex: 1; padding: 5px 8px; font-size: 12px; border: 1px solid var(--border);
+    background: var(--bg-base); color: var(--text-primary); border-radius: 5px;
+    outline: none; font-family: inherit; transition: border-color 0.12s;
+  }
+  .form-input:focus { border-color: #4B95E9; }
+  select.form-input { cursor: pointer; }
+  .form-error { font-size: 12px; color: #D81E5B; margin: 0 0 10px; font-weight: 600; }
+
+  /* ── Credential setup step ── */
+  .cred-step-intro { font-size: 13px; color: var(--text-primary); margin: 0 0 10px; }
+  .cred-step-desc { font-size: 12px; color: var(--text-secondary); margin: 0 0 10px; line-height: 1.5; }
+  .cred-step-link { font-size: 11px; margin: 0 0 10px; }
+  .cred-step-link a { color: #4B95E9; text-decoration: none; word-break: break-all; }
+  .cred-step-link a:hover { text-decoration: underline; }
+  .cred-action-btn { margin-top: 4px; margin-bottom: 10px; }
+  .cred-result { margin-top: 10px; padding: 8px 10px; border-radius: 6px; font-size: 12px; }
+  .cred-result-ok { background: #16653412; border: 1px solid #166534; color: var(--text-primary); }
+  .cred-result-err { background: #D81E5B12; border: 1px solid #D81E5B; color: #D81E5B; }
+  .cred-result-msg { margin: 0; white-space: pre-wrap; font-family: monospace; font-size: 11px; line-height: 1.5; }
+
+  /* ── Delete mode ── */
+  .delete-active { color: #D81E5B !important; }
+  .btn-delete-x {
+    background: none; border: 1px solid #D81E5B55; color: #D81E5B;
+    cursor: pointer; font-size: 9px; font-weight: 600;
+    width: 16px; height: 16px; padding: 0; flex-shrink: 0;
+    border-radius: 3px; display: flex; align-items: center; justify-content: center;
+    opacity: 0.7; transition: all 0.12s; line-height: 1;
+  }
+  .btn-delete-x:hover { opacity: 1; background: #D81E5B22; border-color: #D81E5B; }
+
+  .modal-delete { width: 380px; }
+  .modal-head-delete { border-bottom-color: #D81E5B44; }
+  .modal-head-delete h3 { color: #D81E5B; }
+  .delete-repo-name { font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0 0 8px; font-family: monospace; }
+  .delete-warning { font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.5; }
+  .delete-danger { color: #D81E5B; font-weight: 600; }
+  .delete-final { font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.5; }
+  .btn-delete {
+    padding: 6px 12px; background: #D81E5B; border: none; color: #fff;
+    border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;
+  }
+  .btn-delete:hover:not(:disabled) { background: #be123c; }
+  .btn-delete-final { background: #991b1b; }
+  .btn-delete-final:hover:not(:disabled) { background: #7f1d1d; }
+  .btn-delete:disabled { opacity: 0.5; cursor: default; }
+</style>

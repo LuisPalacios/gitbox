@@ -1,0 +1,19 @@
+/* Base reset — theme variables are set by App.svelte via data-theme attribute */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  color-scheme: dark light;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-base, #09090b);
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+  color: var(--text-primary, #fafafa);
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.2s, color 0.2s;
+}
+
+#app {
+  min-height: 100vh;
+}

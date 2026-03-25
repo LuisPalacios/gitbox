@@ -1,0 +1,268 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+
+	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/credential"
+	"github.com/LuisPalacios/gitbox/pkg/status"
+	"github.com/spf13/cobra"
+)
+
+var (
+	statusSource string
+	statusRepo   string
+)
+
+var statusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show sync status of all repositories",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cfgPath := resolveConfigPath()
+		if cfgPath == "" {
+			cfgPath = config.DefaultV2Path()
+		}
+
+		cfg, err := config.Load(cfgPath)
+		if err != nil {
+			return fmt.Errorf("loading config: %w", err)
+		}
+
+		if jsonOutput {
+			results := status.CheckAll(cfg)
+			return printStatusJSON(results)
+		}
+
+		// Section 1: Global info.
+		printGlobalInfo(cfgPath, cfg)
+
+		// Section 2: Account credential status.
+		printAccountStatus(cfg)
+
+		// Section 3: Repo status.
+		printRepoStatus(cfg)
+
+		return nil
+	},
+}
+
+func init() {
+	statusCmd.Flags().StringVar(&statusSource, "source", "", "filter by source name")
+	statusCmd.Flags().StringVar(&statusRepo, "repo", "", "filter by repo name")
+}
+
+// --- Section 1: Global info ---
+
+func printGlobalInfo(cfgPath string, cfg *config.Config) {
+	fmt.Printf("%s\n", colorize("Configuration", colorWhite))
+	fmt.Printf("  Config:  %s\n", cfgPath)
+	fmt.Printf("  Folder:  %s\n", cfg.Global.Folder)
+	fmt.Println()
+}
+
+// --- Section 2: Account credential status ---
+
+func printAccountStatus(cfg *config.Config) {
+	fmt.Printf("%s\n", colorize("Accounts", colorWhite))
+
+	// Sort account keys for stable output.
+	keys := make([]string, 0, len(cfg.Accounts))
+	for k := range cfg.Accounts {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		acct := cfg.Accounts[key]
+		credType := acct.DefaultCredentialType
+		if credType == "" {
+			credType = "none"
+		}
+
+		// Quick credential check (non-interactive).
+		credStatus := checkCredentialQuick(acct, key)
+
+		symbol := "+"
+		color := colorGreen
+		if credStatus != "ok" {
+			symbol = "x"
+			color = colorRed
+		}
+
+		fmt.Printf("  %s  %-30s  %-8s  %-8s  %s\n",
+			colorize(symbol, color),
+			key,
+			credType,
+			colorize(credStatus, color),
+			acct.URL)
+	}
+	fmt.Println()
+}
+
+// checkCredentialQuick does a fast, non-interactive credential check.
+func checkCredentialQuick(acct config.Account, accountKey string) string {
+	switch acct.DefaultCredentialType {
+	case "token":
+		_, _, err := credential.ResolveToken(acct, accountKey)
+		if err != nil {
+			return "missing"
+		}
+		return "ok"
+	case "gcm":
+		_, _, err := credential.ResolveGCMToken(acct.URL, acct.Username)
+		if err != nil {
+			return "missing"
+		}
+		return "ok"
+	case "ssh":
+		hostAlias := credential.SSHHostAlias(accountKey)
+		_, err := credential.TestSSHConnection(hostAlias)
+		if err != nil {
+			// SSH connection failed, but maybe config+key exist.
+			sshFolder := "~/.ssh"
+			sshFolder = config.ExpandTilde(sshFolder)
+			if found, _ := credential.FindSSHConfigEntry(sshFolder, hostAlias); found {
+				if _, keyErr := credential.FindSSHKey(sshFolder, hostAlias, "ed25519"); keyErr == nil {
+					return "key ok"
+				}
+			}
+			return "missing"
+		}
+		return "ok"
+	default:
+		return "none"
+	}
+}
+
+// --- Section 3: Repo status ---
+
+func printRepoStatus(cfg *config.Config) {
+	results := status.CheckAll(cfg)
+
+	// Filter by source/repo if specified.
+	if statusSource != "" || statusRepo != "" {
+		var filtered []status.RepoStatus
+		for _, r := range results {
+			if statusSource != "" && r.Source != statusSource {
+				continue
+			}
+			if statusRepo != "" && r.Repo != statusRepo {
+				continue
+			}
+			filtered = append(filtered, r)
+		}
+		results = filtered
+	}
+
+	// Sort by source, then repo.
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Source != results[j].Source {
+			return results[i].Source < results[j].Source
+		}
+		return results[i].Repo < results[j].Repo
+	})
+
+	fmt.Printf("%s\n", colorize("Repositories", colorWhite))
+
+	if len(results) == 0 {
+		fmt.Println("  No repositories configured.")
+		return
+	}
+
+	// Group by source for cleaner output.
+	currentSource := ""
+	for _, r := range results {
+		if r.Source != currentSource {
+			currentSource = r.Source
+			fmt.Printf("  %s\n", colorize(currentSource, colorCyan))
+		}
+
+		symbol, color := stateToSymbolColor(r.State)
+		details := formatDetails(r)
+
+		// Show symbol + state label + repo + details.
+		stateLabel := r.State.String()
+		if details != "" {
+			fmt.Printf("    %s  %-50s  %s\n",
+				colorize(fmt.Sprintf("%s %-10s", symbol, stateLabel), color),
+				r.Repo,
+				details)
+		} else {
+			fmt.Printf("    %s  %s\n",
+				colorize(fmt.Sprintf("%s %-10s", symbol, stateLabel), color),
+				r.Repo)
+		}
+	}
+	fmt.Println()
+}
+
+func stateToSymbolColor(s status.State) (string, string) {
+	switch s {
+	case status.Clean:
+		return "+", colorGreen
+	case status.Dirty:
+		return "!", colorOrange
+	case status.Behind:
+		return "<", colorPurple
+	case status.Ahead:
+		return ">", colorBlue
+	case status.Diverged:
+		return "!", colorRed
+	case status.Conflict:
+		return "!", colorRed
+	case status.NotCloned:
+		return "o", colorPurple
+	case status.NoUpstream:
+		return "~", colorOrange
+	case status.Error:
+		return "x", colorRed
+	default:
+		return "?", colorWhite
+	}
+}
+
+func formatDetails(r status.RepoStatus) string {
+	switch r.State {
+	case status.Behind:
+		return fmt.Sprintf("%d behind", r.Behind)
+	case status.Ahead:
+		return fmt.Sprintf("%d ahead", r.Ahead)
+	case status.Diverged:
+		return fmt.Sprintf("%d ahead, %d behind", r.Ahead, r.Behind)
+	case status.Dirty:
+		parts := []string{}
+		if r.Modified > 0 {
+			parts = append(parts, fmt.Sprintf("%d modified", r.Modified))
+		}
+		if r.Untracked > 0 {
+			parts = append(parts, fmt.Sprintf("%d untracked", r.Untracked))
+		}
+		if len(parts) == 0 {
+			return "has changes"
+		}
+		return strings.Join(parts, ", ")
+	case status.Conflict:
+		return fmt.Sprintf("%d conflicts", r.Conflicts)
+	case status.NotCloned:
+		return "not cloned"
+	case status.NoUpstream:
+		return "no upstream"
+	case status.Error:
+		return r.ErrorMsg
+	default:
+		return ""
+	}
+}
+
+func printStatusJSON(results []status.RepoStatus) error {
+	data, err := json.MarshalIndent(results, "", "    ")
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(os.Stdout, string(data))
+	return nil
+}

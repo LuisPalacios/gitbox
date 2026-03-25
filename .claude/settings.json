@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gitboxcmd.exe init:*)",
+      "Bash(go vet:*)",
+      "Bash(wails build:*)"
+    ]
+  }
+}

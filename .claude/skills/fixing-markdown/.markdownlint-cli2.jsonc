@@ -1,0 +1,106 @@
+{
+  // markdownlint-cli2 configuration for palas plugin
+  // Docs: https://github.com/DavidAnson/markdownlint-cli2
+
+  // Auto-fix enabled by default
+  "fix": true,
+
+  // Paths to ignore
+  "ignores": [
+    "**/node_modules/",
+    "**/.venv/",
+    "**/themes/",
+    "**/public/"
+  ],
+
+  // Rule configuration
+  "config": {
+    // === ENABLED RULES ===
+
+    // MD001: Heading levels increment by one
+    "MD001": true,
+
+    // MD003: ATX style headings (## not underlines)
+    "MD003": { "style": "atx" },
+
+    // MD004: Dash for unordered lists
+    "MD004": { "style": "dash" },
+
+    // MD005: Consistent list indentation
+    "MD005": true,
+
+    // MD007: 2-space indent for nested lists
+    "MD007": { "indent": 2 },
+
+    // MD009: No trailing whitespace
+    "MD009": true,
+
+    // MD010: No hard tabs
+    "MD010": true,
+
+    // MD012: Max 1 consecutive blank line
+    "MD012": true,
+
+    // MD022: Blank lines around headings
+    "MD022": true,
+
+    // MD023: Headings start at line beginning
+    "MD023": true,
+
+    // MD024: Allow same heading text in different sections
+    "MD024": { "siblings_only": true },
+
+    // MD029: Ordered list prefix (1. 2. 3.)
+    "MD029": { "style": "ordered" },
+
+    // MD031: Blank lines around fenced code blocks
+    "MD031": true,
+
+    // MD032: Blank lines around lists
+    "MD032": true,
+
+    // MD035: Horizontal rule style (---)
+    "MD035": { "style": "---" },
+
+    // MD040: Language tag on fenced code blocks
+    "MD040": true,
+
+    // MD046: Fenced code blocks only (no indented)
+    "MD046": { "style": "fenced" },
+
+    // MD047: File ends with single newline
+    "MD047": true,
+
+    // MD048: Backticks for code fence (not tildes)
+    "MD048": { "style": "backtick" },
+
+    // MD055: Table pipe style (leading and trailing)
+    "MD055": { "style": "leading_and_trailing" },
+
+    // MD056: Table column count consistency
+    "MD056": true,
+
+    // MD058: Blank lines around tables
+    "MD058": true,
+
+    // === DISABLED RULES ===
+
+    // MD013: Line length — let editor soft-wrap
+    "MD013": false,
+
+    // MD025: Single H1 — frontmatter handles title
+    "MD025": false,
+
+    // MD033: Inline HTML — common in modern markdown
+    "MD033": false,
+
+    // MD036: Emphasis as heading — common in docs
+    "MD036": false,
+
+    // MD041: First line heading — frontmatter common
+    "MD041": false,
+
+    // MD043: Required headings — not applicable
+    "MD043": false
+  }
+}

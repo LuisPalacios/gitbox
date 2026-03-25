@@ -1,0 +1,57 @@
+# Build directories
+build/
+dist/
+
+# Go CLI
+gitboxcmd
+gitboxcmd.exe
+# Go GUI
+gitbox
+gitbox.exe
+cli.exe
+
+# Wails
+cmd/gui/build/
+cmd/gui/frontend/node_modules/
+cmd/gui/frontend/dist/
+
+# IDE
+.vs/
+.vscode/
+*.suo
+*.user
+*.sln
+*.vcxproj*
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Compiled (legacy)
+*.obj
+*.o
+*.a
+*.lib
+*.dll
+*.dylib
+*.so
+
+# Local environment (private host names, tokens, etc.)
+.env
+
+# Test scripts (contain real account data)
+test-*.sh
+
+# AI ignored paths
+/CONTINUITY*.md
+.continuity/
+.claude/*.local.*
+tmpclaude-*-cwd
+.gemini/
+.cursor/
+
+# Drawio backup files
+*.drawio.bkp

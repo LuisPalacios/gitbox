@@ -1,0 +1,89 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.6.1 Chrome/142.0.7444.265 Electron/39.8.0 Safari/537.36" version="29.6.1">
+  <diagram id="cli-workflow" name="CLI Workflow">
+    <mxGraphModel dx="1692" dy="1179" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="900" pageHeight="700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=18;fontStyle=1;" value="gitboxcmd — User Workflow" vertex="1">
+          <mxGeometry height="40" width="300" x="280" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="setup_label" parent="1" style="text;html=1;align=left;fontSize=12;fontStyle=3;fillColor=none;strokeColor=none;fontColor=#999999;" value="SETUP (once)" vertex="1">
+          <mxGeometry height="20" width="120" x="180" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="init" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;" value="gitboxcmd init&#xa;Create config file" vertex="1">
+          <mxGeometry height="50" width="200" x="330" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="account" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;" value="account add&#xa;Define your identities" vertex="1">
+          <mxGeometry height="50" width="200" x="330" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="cred" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;" value="credential setup&#xa;Store credentials" vertex="1">
+          <mxGeometry height="50" width="200" x="330" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="token" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" value="Token:&#xa;PAT → keyring" vertex="1">
+          <mxGeometry height="50" width="120" x="160" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="gcm" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" value="GCM:&#xa;Browser OAuth" vertex="1">
+          <mxGeometry height="50" width="120" x="590" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="ssh" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" value="SSH:&#xa;Generate key + config" vertex="1">
+          <mxGeometry height="50" width="120" x="590" y="280" as="geometry" />
+        </mxCell>
+        <mxCell id="discover" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;" value="account discover&#xa;Find repos from API" vertex="1">
+          <mxGeometry height="50" width="200" x="330" y="330" as="geometry" />
+        </mxCell>
+        <mxCell id="clone" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;" value="clone&#xa;Clone everything" vertex="1">
+          <mxGeometry height="50" width="200" x="330" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="daily_label" parent="1" style="text;html=1;align=left;fontSize=12;fontStyle=3;fillColor=none;strokeColor=none;fontColor=#999999;" value="DAY-TO-DAY" vertex="1">
+          <mxGeometry height="20" width="120" x="190" y="460" as="geometry" />
+        </mxCell>
+        <mxCell id="status" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;fontStyle=1;" value="status" vertex="1">
+          <mxGeometry height="40" width="120" x="200" y="510" as="geometry" />
+        </mxCell>
+        <mxCell id="pull" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;fontStyle=1;" value="pull" vertex="1">
+          <mxGeometry height="40" width="120" x="370" y="510" as="geometry" />
+        </mxCell>
+        <mxCell id="scan" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;fontStyle=1;" value="scan" vertex="1">
+          <mxGeometry height="40" width="120" x="540" y="510" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="init" target="account">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="account" target="cred">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="cred" style="dashed=1;" target="token">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="cred" style="dashed=1;" target="gcm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="cred" style="dashed=1;" target="ssh">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="cred" target="discover">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="discover" target="clone">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="clone" target="status">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="clone" target="pull">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" edge="1" parent="1" source="clone" target="scan">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="loop" edge="1" parent="1" source="pull" style="curved=1;dashed=1;" target="status" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="350" y="580" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
