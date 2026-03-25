@@ -31,6 +31,16 @@ Supports GitHub, GitLab, Forgejo, etc. — on Windows, macOS, and Linux.
 </p>
 
 
+## Download
+
+Grab the latest binaries from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page.
+
+> **macOS note:** The app is not signed/notarized. macOS will show *"gitbox is damaged and can't be opened"*. To fix, run:
+>
+> ```bash
+> xattr -cr /path/to/gitbox.app
+> ```
+
 ## Two binaries, one config
 
 | Binary          | For                                     | Auth                |
