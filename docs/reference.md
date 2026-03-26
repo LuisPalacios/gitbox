@@ -24,38 +24,22 @@ The configuration has two main sections:
 
 ## Installation
 
-### Windows
+Download the latest binaries from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page.
 
-Download the latest release from the [Releases page](https://github.com/LuisPalacios/gitbox/releases):
+| Platform | CLI | GUI |
+| --- | --- | --- |
+| Windows | `gitboxcmd-windows-amd64.exe` | `gitbox-windows-amd64.exe` |
+| macOS | `gitboxcmd-darwin-arm64` | `gitbox-darwin-arm64.zip` |
+| Linux | `gitboxcmd-linux-amd64` | `gitbox-linux-amd64` |
 
-- `gitboxcmd-windows-amd64.exe` — CLI
-- `gitbox-windows-amd64.exe` — GUI
+Place the CLI binary somewhere on your `PATH`. The GUI can go anywhere.
 
-Place them in a directory on your `PATH` (e.g., `C:\Users\<you>\bin`).
+**Prerequisites:**
 
-**Prerequisites:** [Git for Windows](https://gitforwindows.org/) must be installed.
-
-### macOS
-
-```bash
-curl -LO https://github.com/LuisPalacios/gitbox/releases/latest/download/gitboxcmd-darwin-arm64.tar.gz
-tar xzf gitboxcmd-darwin-arm64.tar.gz
-sudo mv gitboxcmd gitbox /usr/local/bin/
-```
-
-**Prerequisites:** Git (via Xcode Command Line Tools or Homebrew).
-
-### Linux
-
-```bash
-curl -LO https://github.com/LuisPalacios/gitbox/releases/latest/download/gitboxcmd-linux-amd64.tar.gz
-tar xzf gitboxcmd-linux-amd64.tar.gz
-sudo mv gitboxcmd /usr/local/bin/
-# GUI only if you have a desktop environment:
-sudo mv gitbox /usr/local/bin/
-```
-
-**Prerequisites:** Git. For the GUI, WebKitGTK is required (`sudo apt install libwebkit2gtk-4.1-dev` on Debian/Ubuntu).
+- **All platforms:** Git installed and on PATH
+- **macOS (GCM):** `brew install git-credential-manager` for GCM support
+- **macOS (GUI):** Run `xattr -cr /path/to/gitbox.app` after extracting (app is not signed)
+- **Linux (GUI):** WebKitGTK required (`sudo apt install libwebkit2gtk-4.1-dev` on Debian/Ubuntu)
 
 ---
 

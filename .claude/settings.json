@@ -7,7 +7,10 @@
       "Bash(gh run:*)",
       "Bash(gh release:*)",
       "Bash(magick convert:*)",
-      "Bash(magick cmd/gui/build/appicon.png -define icon:auto-resize=256,128,64,48,32,16 cmd/gui/build/windows/icon.ico)"
+      "Bash(magick cmd/gui/build/appicon.png -define icon:auto-resize=256,128,64,48,32,16 cmd/gui/build/windows/icon.ico)",
+      "Bash(./gitboxcmd.exe --help)",
+      "Bash(build/gitboxcmd.exe --help)",
+      "Bash(build/gitboxcmd.exe account:*)"
     ]
   }
 }

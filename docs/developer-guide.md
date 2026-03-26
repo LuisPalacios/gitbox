@@ -25,24 +25,28 @@
 
 ```bash
 # From the repository root
-go build -o gitboxcmd ./cmd/cli
+go build -o build/gitboxcmd ./cmd/cli
 
 # Cross-compile for other platforms
-GOOS=linux GOARCH=amd64 go build -o gitboxcmd-linux-amd64 ./cmd/cli
-GOOS=darwin GOARCH=arm64 go build -o gitboxcmd-darwin-arm64 ./cmd/cli
-GOOS=windows GOARCH=amd64 go build -o gitboxcmd.exe ./cmd/cli
+GOOS=linux  GOARCH=amd64 go build -o build/gitboxcmd-linux-amd64  ./cmd/cli
+GOOS=darwin GOARCH=arm64 go build -o build/gitboxcmd-darwin-arm64 ./cmd/cli
+GOOS=windows GOARCH=amd64 go build -o build/gitboxcmd.exe         ./cmd/cli
 ```
 
 ### GUI (Wails)
 
 ```bash
+# Copy app icons from assets/ into the Wails build directory
+cp assets/appicon.png cmd/gui/build/appicon.png
+cp assets/icon.ico    cmd/gui/build/windows/icon.ico   # Windows only
+
 # Development mode (hot reload)
 cd cmd/gui
 wails dev
 
 # Production build
 wails build
-# Output: cmd/gui/build/bin/gitbox[.exe]
+# Output: cmd/gui/build/bin/Gitbox[.exe]
 ```
 
 ---
@@ -52,7 +56,9 @@ wails build
 ```text
 gitbox/                    (repo root)
 ├── assets/
-│   └── logo.svg                Project logo
+│   ├── logo.svg                Project logo (SVG source, editable in Boxy SVG)
+│   ├── appicon.png             App icon 1024x1024 PNG (exported from logo.svg)
+│   └── icon.ico                Windows icon (256/128/64/48/32/16, converted from appicon.png)
 ├── cmd/
 │   ├── cli/                    CLI binary (Cobra subcommands, one file per command)
 │   │   ├── main.go             Root command, flag parsing, shared output helpers
@@ -70,8 +76,10 @@ gitbox/                    (repo root)
 │   │   ├── scan_cmd.go         scan — filesystem walk for git repos
 │   │   ├── migrate_cmd.go      migrate — v1→v2 config migration
 │   │   └── token_cmd.go        token — deprecated shim
-│   └── gui/                    Wails GUI app (planned)
-│       └── main.go             Wails app initialization stub
+│   └── gui/                    Wails GUI app (Svelte frontend)
+│       ├── main.go             Wails app initialization, build-time version vars
+│       ├── app.go              Backend bindings exposed to the frontend
+│       └── frontend/           Svelte SPA
 ├── pkg/                        Shared Go library (used by BOTH cli and gui)
 │   ├── config/                 Config v2 model, load/save, v1→v2 migration
 │   │   ├── config.go           Struct definitions (Config, Account, Source, Repo)
@@ -296,29 +304,50 @@ go build -ldflags "-X main.version=v0.2.0 -X main.commit=abc1234" -o gitboxcmd .
 #   Local: "v0.1.0-3-ga99cf17-dev (a99cf17)"
 ```
 
-### Building Release Binaries
-
-```bash
-# Build all platforms
-./scripts/build-all.sh
-# Or manually:
-GOOS=windows GOARCH=amd64 go build -ldflags "-X main.version=v0.2.0 -X main.commit=$(git rev-parse --short HEAD)" -o dist/gitboxcmd-windows-amd64.exe ./cmd/cli
-GOOS=darwin  GOARCH=arm64 go build -ldflags "-X main.version=v0.2.0 -X main.commit=$(git rev-parse --short HEAD)" -o dist/gitboxcmd-darwin-arm64 ./cmd/cli
-GOOS=linux   GOARCH=amd64 go build -ldflags "-X main.version=v0.2.0 -X main.commit=$(git rev-parse --short HEAD)" -o dist/gitboxcmd-linux-amd64 ./cmd/cli
-
-# GUI builds (requires Wails)
-cd cmd/gui
-GOOS=windows wails build
-GOOS=darwin  wails build
-GOOS=linux   wails build
-```
-
 ### Creating a Release
 
-1. Create a git tag: `git tag v0.2.0`
-2. Push tag: `git push origin v0.2.0`
-3. Build binaries for all platforms (CI will inject version via ldflags)
-4. Create GitHub release with the binaries
+Releases are fully automated via CI. Push a version tag and GitHub Actions builds all binaries, creates a GitHub Release, and attaches the assets:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+CI injects `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into both CLI and GUI builds. The release will contain:
+
+- `gitboxcmd-linux-amd64`, `gitboxcmd-darwin-arm64`, `gitboxcmd-windows-amd64.exe`
+- `gitbox-linux-amd64`, `gitbox-darwin-arm64.zip`, `gitbox-windows-amd64.exe`
+
+> **macOS note:** The GUI app is not codesigned. Users must run `xattr -cr gitbox.app` after downloading.
+
+---
+
+## Logo and App Icons
+
+The source of truth for the logo is `assets/logo.svg`. The derived icon files used by the Wails build live alongside it:
+
+| File                 | Format                    | Purpose                                                                          |
+| -------------------- | ------------------------- | -------------------------------------------------------------------------------- |
+| `assets/logo.svg`    | SVG                       | Source file, editable in [Boxy SVG](https://boxy-svg.com/) (Windows/macOS app)   |
+| `assets/appicon.png` | 1024x1024 PNG             | macOS `.app` bundle icon, Linux desktop icon                                     |
+| `assets/icon.ico`    | ICO (256/128/64/48/32/16) | Windows executable icon                                                          |
+
+### Editing the logo
+
+1. Open `assets/logo.svg` in [Boxy SVG](https://boxy-svg.com/) (available as a desktop app for Windows and macOS)
+2. Edit the design
+3. Export to PNG 1024x1024 — Boxy SVG has this configured in the SVG's `<bx:export>` metadata. Save as `assets/appicon.png`
+4. Convert PNG to ICO using [icoconverter.com](https://www.icoconverter.com/) — select all 6 sizes (256, 128, 64, 48, 32, 16). Save as `assets/icon.ico`
+5. Run `wails build` from `cmd/gui/` — the build copies icons from `assets/` automatically
+
+### Build-time icon flow
+
+The Wails build reads icons from `cmd/gui/build/`:
+
+- `cmd/gui/build/appicon.png` — used by Wails for all platforms
+- `cmd/gui/build/windows/icon.ico` — embedded in the Windows `.exe`
+
+These are **not checked in** (gitignored under `cmd/gui/build/`). Instead, the CI workflow and local builds copy them from `assets/` before running `wails build`.
 
 ---
 

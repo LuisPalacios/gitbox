@@ -20,7 +20,7 @@
 
 If you manage dozens of repos across multiple accounts (personal, corporate, home server), different credential types (GCM, SSH, tokens), and different machines (desktops, headless servers) — gitbox keeps it all in one config and one workflow. It handles **account setup, repo discovery, and cloning** — that's it. Your working trees are yours; gitbox won't touch them.
 
-</br>
+<br>
 
 <p align="center">
   <img src="assets/gitbox-screenshot.png" alt="Gitbox" width="600" />
@@ -34,41 +34,23 @@ Supports GitHub, GitLab, Forgejo, etc. — on Windows, macOS, and Linux.
 
 Grab the latest binaries from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page.
 
-> **macOS note:** The app is not signed/notarized. macOS will show *"gitbox is damaged and can't be opened"*. To fix, run:
->
-> ```bash
-> xattr -cr /path/to/gitbox.app
-> ```
+| Platform | CLI | GUI |
+| --- | --- | --- |
+| Windows | `gitboxcmd-windows-amd64.exe` | `Gitbox-windows-amd64.exe` |
+| macOS | `gitboxcmd-darwin-arm64` | `Gitbox-darwin-arm64.zip` |
+| Linux | `gitboxcmd-linux-amd64` | `Gitbox-linux-amd64` |
 
-## Two binaries, one config
+### The app is not signed
 
-| Binary          | For                                     | Auth                |
-|-----------------|-----------------------------------------|---------------------|
-| **`gitboxcmd`** | CLI — power users, headless servers, CI | GCM, SSH, Token     |
-| **`gitbox`**    | GUI — desktop users (Wails + Svelte)    | GCM (guided setup)  |
+This only happens once per download
 
-- Configuration: **`~/.config/gitbox/gitbox.json`**.
-- See the [CLI Quick Start Guide](docs/cli-guide.md) for a full walkthrough with 5 accounts.
+- **macOS:** After extracting, move it to *Applications*. From Terminal run `xattr -cr /Applications/Gitbox.app`. It should launch from Applications without problems.
+
+- **Windows SmartScreen note:** After extracting, move executable to any folder and launch it. Will show "Windows protected your PC" dialog. Click **More info** → **Run anyway**.
 
 ## Documentation
 
-| Doc                                          | What's in it                                               |
-|----------------------------------------------|------------------------------------------------------------|
-| [CLI Quick Start](docs/cli-guide.md)         | Step-by-step: init, accounts, credentials, discover, clone |
-| [GUI Guide](docs/gui-guide.md)               | Desktop app walkthrough                                    |
-| [Reference](docs/reference.md)               | All commands, config format, folder structure              |
-| [Credentials](docs/credentials.md)           | Token, GCM, and SSH setup in detail                        |
-| [Architecture](docs/architecture.md)         | Technical design, component diagram                        |
-| [Developer Guide](docs/developer-guide.md)   | Building from source, contributing                         |
-| [Shell Completion](docs/completion.md)       | Tab-completion setup for Bash, Zsh, Fish, PowerShell       |
-| [Legacy scripts](legacy/README.md)           | Original `git-config-repos.sh` and `git-status-pull.sh`    |
-| [Legacy migration](docs/migration.md)        | Migrating from `git-config-repos.sh` (v1)                  |
-
-See the [JSON annotated example](gitbox.jsonc) or the [JSON Schema](gitbox.schema.json).
-
-## Building
-
-See the [Developer Guide](docs/developer-guide.md) for cross-compilation and release builds.
+See the full [documentation index](docs/README.md) for all guides, reference, and technical docs.
 
 ## License
 

@@ -131,53 +131,23 @@ SSH keys cannot authenticate provider REST APIs. Discovery and status checks are
 gitboxcmd account credential setup <account-key> --token
 ```
 
-### Key setup
-
-1. **Generate a key pair** (one per account to support multi-account setups):
-
-   ```bash
-   ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_<ssh-host-alias> -C "<your-email>"
-   ```
-
-   Example:
-
-   ```bash
-   ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_gh-MyGitHubUser -C "myuser@example.com"
-   ```
-
-2. **Add the public key** to your provider:
-   - **GitHub**: <https://github.com/settings/keys> → "New SSH key"
-   - **GitLab**: `<url>/-/user_settings/ssh_keys`
-   - **Gitea/Forgejo**: `<url>/user/settings/keys`
-   - **Bitbucket**: `<url>/account/settings/ssh-keys/`
-
-   Paste the contents of `~/.ssh/id_ed25519_<alias>.pub`.
-
-3. **Add an entry to `~/.ssh/config`**:
-
-   ```text
-   Host gh-MyGitHubUser
-       HostName github.com
-       User git
-       IdentityFile ~/.ssh/id_ed25519_gh-MyGitHubUser
-       IdentitiesOnly yes
-   ```
-
-4. **Test the connection**:
-
-   ```bash
-   ssh -T gh-MyGitHubUser
-   ```
-
-   You should see a greeting like `Hi MyGitHubUser!`.
-
-### Adding SSH credentials
+### SSH setup
 
 ```bash
 gitboxcmd account credential setup <account-key>
 ```
 
-Validates the SSH key and config entry.
+This command handles everything automatically:
+
+1. **Generates an ed25519 key pair** in `~/.ssh/` (named `gitbox-<account-key>-sshkey`)
+2. **Writes an `~/.ssh/config` entry** with the correct Host alias, HostName, and IdentityFile
+3. **Displays the public key** for you to register at your provider:
+   - **GitHub**: <https://github.com/settings/keys> -> "New SSH key"
+   - **GitLab**: `<url>/-/user_settings/ssh_keys`
+   - **Gitea/Forgejo**: `<url>/user/settings/keys`
+   - **Bitbucket**: `<url>/account/settings/ssh-keys/`
+4. **Waits for confirmation**, then tests the SSH connection
+5. **Optionally stores a PAT** for API discovery
 
 ### Verifying SSH credentials
 

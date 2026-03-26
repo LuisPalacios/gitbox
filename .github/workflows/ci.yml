@@ -61,13 +61,17 @@ jobs:
           node-version: '20'
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+      - name: Copy app icons
+        run: |
+          cp assets/appicon.png cmd/gui/build/appicon.png
+          cp assets/icon.ico    cmd/gui/build/windows/icon.ico
       - name: Build GUI
         working-directory: cmd/gui
         run: wails build -ldflags "$LDFLAGS"
       - uses: actions/upload-artifact@v4
         with:
           name: gui-windows
-          path: cmd/gui/build/bin/gitbox.exe
+          path: cmd/gui/build/bin/Gitbox.exe
 
   gui-macos:
     runs-on: macos-latest
@@ -86,15 +90,17 @@ jobs:
           node-version: '20'
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+      - name: Copy app icons
+        run: cp assets/appicon.png cmd/gui/build/appicon.png
       - name: Build GUI
         working-directory: cmd/gui
         run: wails build -ldflags "$LDFLAGS"
       - name: Zip macOS app bundle
-        run: cd cmd/gui/build/bin && zip -r gitbox-macos.zip gitbox.app
+        run: cd cmd/gui/build/bin && zip -r Gitbox-macos.zip Gitbox.app
       - uses: actions/upload-artifact@v4
         with:
           name: gui-macos
-          path: cmd/gui/build/bin/gitbox-macos.zip
+          path: cmd/gui/build/bin/Gitbox-macos.zip
 
   gui-linux:
     runs-on: ubuntu-latest
@@ -117,13 +123,15 @@ jobs:
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+      - name: Copy app icons
+        run: cp assets/appicon.png cmd/gui/build/appicon.png
       - name: Build GUI
         working-directory: cmd/gui
         run: wails build -tags webkit2_41 -ldflags "$LDFLAGS"
       - uses: actions/upload-artifact@v4
         with:
           name: gui-linux
-          path: cmd/gui/build/bin/gitbox
+          path: cmd/gui/build/bin/Gitbox
 
   # ── GitHub Release with all binaries ──
   release:
@@ -144,9 +152,9 @@ jobs:
           cp artifacts/cli-binaries/gitboxcmd-darwin-arm64  release/gitboxcmd-darwin-arm64
           cp artifacts/cli-binaries/gitboxcmd.exe           release/gitboxcmd-windows-amd64.exe
           # GUI binaries
-          cp artifacts/gui-linux/gitbox       release/gitbox-linux-amd64
-          cp artifacts/gui-macos/gitbox-macos.zip  release/gitbox-darwin-arm64.zip
-          cp artifacts/gui-windows/gitbox.exe release/gitbox-windows-amd64.exe
+          cp artifacts/gui-linux/Gitbox             release/Gitbox-linux-amd64
+          cp artifacts/gui-macos/Gitbox-macos.zip   release/Gitbox-darwin-arm64.zip
+          cp artifacts/gui-windows/Gitbox.exe       release/Gitbox-windows-amd64.exe
 
       - name: Create GitHub Release
         env:
