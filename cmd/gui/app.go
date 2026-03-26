@@ -56,6 +56,12 @@ func (a *App) Startup(ctx context.Context) {
 // Shutdown is called by Wails when the app is closing.
 func (a *App) Shutdown(_ context.Context) {}
 
+// DomReady is called after the frontend DOM is ready.
+// We start hidden and show the window here to prevent flickering.
+func (a *App) DomReady(_ context.Context) {
+	wailsrt.WindowShow(a.ctx)
+}
+
 // GetAppVersion returns the application version string for the frontend.
 func (a *App) GetAppVersion() string {
 	if version == "dev" {
