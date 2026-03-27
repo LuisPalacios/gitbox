@@ -36,6 +36,8 @@ jobs:
         run: GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o build/gitboxcmd-linux-amd64 ./cmd/cli
       - name: Build CLI (darwin/arm64)
         run: GOOS=darwin GOARCH=arm64 go build -ldflags "$LDFLAGS" -o build/gitboxcmd-darwin-arm64 ./cmd/cli
+      - name: Build CLI (darwin/amd64)
+        run: GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" -o build/gitboxcmd-darwin-amd64 ./cmd/cli
       - name: Build CLI (windows/amd64)
         run: GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o build/gitboxcmd.exe ./cmd/cli
       - uses: actions/upload-artifact@v4
@@ -82,7 +84,7 @@ jobs:
           name: gui-windows
           path: cmd/gui/build/bin/Gitbox.exe
 
-  gui-macos:
+  gui-macos-arm64:
     runs-on: macos-latest
     needs: test
     env:
@@ -112,11 +114,47 @@ jobs:
         working-directory: cmd/gui
         run: wails build -ldflags "$LDFLAGS"
       - name: Zip macOS app bundle
-        run: cd cmd/gui/build/bin && zip -r Gitbox-macos.zip Gitbox.app
+        run: cd cmd/gui/build/bin && zip -r Gitbox-macos-arm64.zip Gitbox.app
       - uses: actions/upload-artifact@v4
         with:
-          name: gui-macos
-          path: cmd/gui/build/bin/Gitbox-macos.zip
+          name: gui-macos-arm64
+          path: cmd/gui/build/bin/Gitbox-macos-arm64.zip
+
+  gui-macos-amd64:
+    runs-on: macos-13
+    needs: test
+    env:
+      LDFLAGS: >-
+        -X main.version=${{ github.ref_name }}
+        -X main.commit=${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+      - name: Copy app icons
+        run: |
+          mkdir -p cmd/gui/build
+          cp assets/appicon.png cmd/gui/build/appicon.png
+      - name: Set version in wails.json
+        run: |
+          VER="${{ github.ref_name }}"
+          VER="${VER#v}"
+          sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
+      - name: Build GUI
+        working-directory: cmd/gui
+        run: wails build -ldflags "$LDFLAGS"
+      - name: Zip macOS app bundle
+        run: cd cmd/gui/build/bin && zip -r Gitbox-macos-amd64.zip Gitbox.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-macos-amd64
+          path: cmd/gui/build/bin/Gitbox-macos-amd64.zip
 
   gui-linux:
     runs-on: ubuntu-latest
@@ -159,7 +197,7 @@ jobs:
   # ── GitHub Release with all binaries ──
   release:
     runs-on: ubuntu-latest
-    needs: [cli, gui-windows, gui-macos, gui-linux]
+    needs: [cli, gui-windows, gui-macos-arm64, gui-macos-amd64, gui-linux]
     permissions:
       contents: write
     steps:
@@ -169,7 +207,7 @@ jobs:
 
       - name: Prepare release assets
         run: |
-          mkdir -p release tmp-win tmp-mac tmp-linux
+          mkdir -p release tmp-win tmp-mac-arm64 tmp-mac-amd64 tmp-linux
 
           # Windows (amd64): gitboxcmd.exe + Gitbox.exe → gitbox-win-amd64.zip
           cp artifacts/cli-binaries/gitboxcmd.exe  tmp-win/gitboxcmd.exe
@@ -177,10 +215,14 @@ jobs:
           (cd tmp-win && zip ../release/gitbox-win-amd64.zip *)
 
           # macOS (arm64): gitboxcmd + Gitbox.app → gitbox-macos-arm64.zip
-          cp artifacts/cli-binaries/gitboxcmd-darwin-arm64 tmp-mac/gitboxcmd
-          # Unpack the app bundle zip, then re-zip together with the CLI
-          (cd tmp-mac && unzip ../artifacts/gui-macos/Gitbox-macos.zip)
-          (cd tmp-mac && zip -r ../release/gitbox-macos-arm64.zip gitboxcmd Gitbox.app)
+          cp artifacts/cli-binaries/gitboxcmd-darwin-arm64 tmp-mac-arm64/gitboxcmd
+          (cd tmp-mac-arm64 && unzip ../artifacts/gui-macos-arm64/Gitbox-macos-arm64.zip)
+          (cd tmp-mac-arm64 && zip -r ../release/gitbox-macos-arm64.zip gitboxcmd Gitbox.app)
+
+          # macOS (amd64): gitboxcmd + Gitbox.app → gitbox-macos-amd64.zip
+          cp artifacts/cli-binaries/gitboxcmd-darwin-amd64 tmp-mac-amd64/gitboxcmd
+          (cd tmp-mac-amd64 && unzip ../artifacts/gui-macos-amd64/Gitbox-macos-amd64.zip)
+          (cd tmp-mac-amd64 && zip -r ../release/gitbox-macos-amd64.zip gitboxcmd Gitbox.app)
 
           # Linux (amd64): gitboxcmd + Gitbox → gitbox-linux-amd64.zip
           cp artifacts/cli-binaries/gitboxcmd-linux-amd64 tmp-linux/gitboxcmd
