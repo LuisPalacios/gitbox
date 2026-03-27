@@ -23,7 +23,7 @@ If you manage dozens of repos across multiple accounts (personal, corporate, hom
 <br>
 
 <p align="center">
-  <img src="assets/gitbox-screenshot.png" alt="Gitbox" width="600" />
+  <img src="assets/screenshot.png" alt="Gitbox" width="600" />
 </p>
 
 <p align="center">
