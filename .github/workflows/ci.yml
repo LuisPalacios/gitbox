@@ -62,7 +62,9 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
       - name: Copy app icons
+        shell: bash
         run: |
+          mkdir -p cmd/gui/build/windows
           cp assets/appicon.png cmd/gui/build/appicon.png
           cp assets/icon.ico    cmd/gui/build/windows/icon.ico
       - name: Build GUI
@@ -91,7 +93,9 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
       - name: Copy app icons
-        run: cp assets/appicon.png cmd/gui/build/appicon.png
+        run: |
+          mkdir -p cmd/gui/build
+          cp assets/appicon.png cmd/gui/build/appicon.png
       - name: Build GUI
         working-directory: cmd/gui
         run: wails build -ldflags "$LDFLAGS"
@@ -124,7 +128,9 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
       - name: Copy app icons
-        run: cp assets/appicon.png cmd/gui/build/appicon.png
+        run: |
+          mkdir -p cmd/gui/build
+          cp assets/appicon.png cmd/gui/build/appicon.png
       - name: Build GUI
         working-directory: cmd/gui
         run: wails build -tags webkit2_41 -ldflags "$LDFLAGS"
