@@ -152,15 +152,23 @@ jobs:
 
       - name: Prepare release assets
         run: |
-          mkdir -p release
-          # CLI binaries
-          cp artifacts/cli-binaries/gitboxcmd-linux-amd64   release/gitboxcmd-linux-amd64
-          cp artifacts/cli-binaries/gitboxcmd-darwin-arm64  release/gitboxcmd-darwin-arm64
-          cp artifacts/cli-binaries/gitboxcmd.exe           release/gitboxcmd-windows-amd64.exe
-          # GUI binaries
-          cp artifacts/gui-linux/Gitbox             release/Gitbox-linux-amd64
-          cp artifacts/gui-macos/Gitbox-macos.zip   release/Gitbox-darwin-arm64.zip
-          cp artifacts/gui-windows/Gitbox.exe       release/Gitbox-windows-amd64.exe
+          mkdir -p release tmp-win tmp-mac tmp-linux
+
+          # Windows (amd64): gitboxcmd.exe + Gitbox.exe → gitbox-win-amd64.zip
+          cp artifacts/cli-binaries/gitboxcmd.exe  tmp-win/gitboxcmd.exe
+          cp artifacts/gui-windows/Gitbox.exe      tmp-win/Gitbox.exe
+          (cd tmp-win && zip ../release/gitbox-win-amd64.zip *)
+
+          # macOS (arm64): gitboxcmd + Gitbox.app → gitbox-macos-arm64.zip
+          cp artifacts/cli-binaries/gitboxcmd-darwin-arm64 tmp-mac/gitboxcmd
+          # Unpack the app bundle zip, then re-zip together with the CLI
+          (cd tmp-mac && unzip ../artifacts/gui-macos/Gitbox-macos.zip)
+          (cd tmp-mac && zip -r ../release/gitbox-macos-arm64.zip gitboxcmd Gitbox.app)
+
+          # Linux (amd64): gitboxcmd + Gitbox → gitbox-linux-amd64.zip
+          cp artifacts/cli-binaries/gitboxcmd-linux-amd64 tmp-linux/gitboxcmd
+          cp artifacts/gui-linux/Gitbox                   tmp-linux/Gitbox
+          (cd tmp-linux && zip ../release/gitbox-linux-amd64.zip *)
 
       - name: Create GitHub Release
         env:

@@ -316,10 +316,11 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-CI injects `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into both CLI and GUI builds. The release will contain:
+CI injects `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into both CLI and GUI builds. The release will contain one ZIP per platform with both CLI and GUI binaries:
 
-- `gitboxcmd-linux-amd64`, `gitboxcmd-darwin-arm64`, `gitboxcmd-windows-amd64.exe`
-- `Gitbox-linux-amd64`, `Gitbox-darwin-arm64.zip`, `Gitbox-windows-amd64.exe`
+- `gitbox-win-amd64.zip` — `gitboxcmd.exe` + `Gitbox.exe`
+- `gitbox-macos-arm64.zip` — `gitboxcmd` + `Gitbox.app`
+- `gitbox-linux-amd64.zip` — `gitboxcmd` + `Gitbox`
 
 > **macOS note:** The GUI app is not codesigned. Users must run `xattr -cr gitbox.app` after downloading.
 

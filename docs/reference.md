@@ -26,11 +26,11 @@ The configuration has two main sections:
 
 Download the latest binaries from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page.
 
-| Platform | CLI | GUI |
+| Platform | Arch | Download |
 | --- | --- | --- |
-| Windows | `gitboxcmd-windows-amd64.exe` | `Gitbox-windows-amd64.exe` |
-| macOS | `gitboxcmd-darwin-arm64` | `Gitbox-darwin-arm64.zip` |
-| Linux | `gitboxcmd-linux-amd64` | `Gitbox-linux-amd64` |
+| Windows | amd64 | `gitbox-win-amd64.zip` (contains `gitboxcmd.exe` + `Gitbox.exe`) |
+| macOS | arm64 | `gitbox-macos-arm64.zip` (contains `gitboxcmd` + `Gitbox.app`) |
+| Linux | amd64 | `gitbox-linux-amd64.zip` (contains `gitboxcmd` + `Gitbox`) |
 
 Place the CLI binary somewhere on your `PATH`. The GUI can go anywhere.
 

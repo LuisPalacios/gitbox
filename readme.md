@@ -34,11 +34,11 @@ Supports GitHub, GitLab, Forgejo, etc. — on Windows, macOS, and Linux.
 
 Grab the latest binaries from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page.
 
-| Platform | CLI | GUI |
-| --- | --- | --- |
-| Windows | `gitboxcmd-windows-amd64.exe` | `Gitbox-windows-amd64.exe` |
-| macOS | `gitboxcmd-darwin-arm64` | `Gitbox-darwin-arm64.zip` |
-| Linux | `gitboxcmd-linux-amd64` | `Gitbox-linux-amd64` |
+| Platform | Arch | CLI | GUI | Download |
+| --- | --- | --- | --- | --- |
+| Windows | amd64 | `gitboxcmd.exe` | `Gitbox.exe` | `gitbox-win-amd64.zip` |
+| macOS | arm64 | `gitboxcmd` | `Gitbox.app` | `gitbox-macos-arm64.zip` |
+| Linux | amd64 | `gitboxcmd` | `Gitbox` | `gitbox-linux-amd64.zip` |
 
 ### The app is not signed
 
