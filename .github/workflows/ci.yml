@@ -121,9 +121,10 @@ jobs:
           path: cmd/gui/build/bin/Gitbox-macos-arm64.zip
 
   gui-macos-amd64:
-    runs-on: macos-13
+    runs-on: macos-latest
     needs: test
     env:
+      GOARCH: amd64
       LDFLAGS: >-
         -X main.version=${{ github.ref_name }}
         -X main.commit=${{ github.sha }}
@@ -148,7 +149,7 @@ jobs:
           sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
       - name: Build GUI
         working-directory: cmd/gui
-        run: wails build -ldflags "$LDFLAGS"
+        run: wails build -platform darwin/amd64 -ldflags "$LDFLAGS"
       - name: Zip macOS app bundle
         run: cd cmd/gui/build/bin && zip -r Gitbox-macos-amd64.zip Gitbox.app
       - uses: actions/upload-artifact@v4
