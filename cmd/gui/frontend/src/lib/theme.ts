@@ -2,14 +2,14 @@
 
 const darkPalette: Record<string, string> = {
   clean: '#61fd5f', behind: '#D91C9A', dirty: '#F07623',
-  ahead: '#4B95E9', syncing: '#4B95E9', cloning: '#4B95E9',
+  ahead: '#4B95E9', syncing: '#4B95E9', cloning: '#4B95E9', fetching: '#4B95E9',
   'not cloned': '#71717a', 'no upstream': '#71717a',
   diverged: '#D81E5B', conflict: '#D81E5B', error: '#D81E5B',
 };
 
 const lightPalette: Record<string, string> = {
   clean: '#166534', behind: '#a21caf', dirty: '#c2410c',
-  ahead: '#2563eb', syncing: '#2563eb', cloning: '#2563eb',
+  ahead: '#2563eb', syncing: '#2563eb', cloning: '#2563eb', fetching: '#2563eb',
   'not cloned': '#52525b', 'no upstream': '#52525b',
   diverged: '#be123c', conflict: '#be123c', error: '#be123c',
 };
@@ -34,6 +34,7 @@ export function statusLabel(status: string, behind: number, modified: number): s
     ahead: 'Ahead',
     syncing: 'Refreshing...',
     cloning: 'Bringing local...',
+    fetching: 'Fetching...',
     'not cloned': 'Not local',
     'no upstream': 'No upstream',
     diverged: 'Diverged',
@@ -54,7 +55,7 @@ export function providerLabel(p: string): string {
 export function statusSymbol(status: string): string {
   const map: Record<string, string> = {
     clean: '●', behind: '◗', dirty: '◆', ahead: '▲',
-    syncing: '◔', cloning: '◔', 'not cloned': '○',
+    syncing: '◔', cloning: '◔', fetching: '◔', 'not cloned': '○',
     'no upstream': '~', diverged: '⚠', conflict: '⚡', error: '✕',
   };
   return map[status] || '?';

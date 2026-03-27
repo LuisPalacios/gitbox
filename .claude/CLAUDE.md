@@ -55,6 +55,8 @@ go test ./pkg/...
 
 Git operations shell out to system `git` via `os/exec`. Provider APIs use `net/http`.
 
+**Windows console flash rule:** Every `exec.Command` in the GUI binary (`cmd/gui/`) **MUST** call `git.HideWindow(cmd)` before `.Run()`, `.Output()`, or `.Start()`. This sets `SysProcAttr.HideWindow = true` on Windows, preventing a console window from flashing. The CLI binary does not need this. Always check for bare `exec.Command` calls in `cmd/gui/` after any change.
+
 ## Shell scripts
 
 ### `legacy/git-config-repos/git-config-repos.sh`

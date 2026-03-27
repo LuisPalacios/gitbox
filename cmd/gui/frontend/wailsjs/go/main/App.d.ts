@@ -24,6 +24,10 @@ export function DeleteRepo(arg1:string,arg2:string):Promise<void>;
 
 export function Discover(arg1:string):Promise<void>;
 
+export function FetchAllRepos():Promise<void>;
+
+export function FetchRepo(arg1:string,arg2:string):Promise<void>;
+
 export function GetAllStatus():Promise<Array<main.StatusResult>>;
 
 export function GetAppVersion():Promise<string>;
@@ -33,6 +37,10 @@ export function GetConfig():Promise<main.ConfigDTO>;
 export function GetConfigPath():Promise<string>;
 
 export function GetGlobalFolder():Promise<string>;
+
+export function GetPeriodicSync():Promise<string>;
+
+export function GetRepoDetail(arg1:string,arg2:string):Promise<main.RepoDetail>;
 
 export function GetTokenGuide(arg1:string):Promise<main.TokenGuideInfo>;
 
@@ -49,3 +57,7 @@ export function RefreshStatus():Promise<void>;
 export function ReloadConfig():Promise<main.ConfigDTO>;
 
 export function SetGlobalFolder(arg1:string):Promise<void>;
+
+export function SetPeriodicSync(arg1:string):Promise<void>;
+
+export function UpdateAccount(arg1:main.UpdateAccountRequest):Promise<void>;

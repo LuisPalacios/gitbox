@@ -72,7 +72,7 @@ jobs:
         run: |
           VER="${{ github.ref_name }}"
           VER="${VER#v}"
-          sed -i "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json
+          sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
       - name: Build GUI
         shell: bash
         working-directory: cmd/gui
@@ -107,7 +107,7 @@ jobs:
         run: |
           VER="${{ github.ref_name }}"
           VER="${VER#v}"
-          sed -i "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json
+          sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
       - name: Build GUI
         working-directory: cmd/gui
         run: wails build -ldflags "$LDFLAGS"
@@ -147,7 +147,7 @@ jobs:
         run: |
           VER="${{ github.ref_name }}"
           VER="${VER#v}"
-          sed -i "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json
+          sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
       - name: Build GUI
         working-directory: cmd/gui
         run: wails build -tags webkit2_41 -ldflags "$LDFLAGS"

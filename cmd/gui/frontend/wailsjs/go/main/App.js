@@ -46,6 +46,14 @@ export function Discover(arg1) {
   return window['go']['main']['App']['Discover'](arg1);
 }
 
+export function FetchAllRepos() {
+  return window['go']['main']['App']['FetchAllRepos']();
+}
+
+export function FetchRepo(arg1, arg2) {
+  return window['go']['main']['App']['FetchRepo'](arg1, arg2);
+}
+
 export function GetAllStatus() {
   return window['go']['main']['App']['GetAllStatus']();
 }
@@ -64,6 +72,14 @@ export function GetConfigPath() {
 
 export function GetGlobalFolder() {
   return window['go']['main']['App']['GetGlobalFolder']();
+}
+
+export function GetPeriodicSync() {
+  return window['go']['main']['App']['GetPeriodicSync']();
+}
+
+export function GetRepoDetail(arg1, arg2) {
+  return window['go']['main']['App']['GetRepoDetail'](arg1, arg2);
 }
 
 export function GetTokenGuide(arg1) {
@@ -96,4 +112,12 @@ export function ReloadConfig() {
 
 export function SetGlobalFolder(arg1) {
   return window['go']['main']['App']['SetGlobalFolder'](arg1);
+}
+
+export function SetPeriodicSync(arg1) {
+  return window['go']['main']['App']['SetPeriodicSync'](arg1);
+}
+
+export function UpdateAccount(arg1) {
+  return window['go']['main']['App']['UpdateAccount'](arg1);
 }

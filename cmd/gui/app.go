@@ -70,14 +70,18 @@ func (a *App) GetAppVersion() string {
 
 	// If not set by ldflags, try to detect from git at runtime.
 	if v == "dev" {
-		if out, err := exec.Command(git.GitBin(), "describe", "--tags", "--always").Output(); err == nil {
+		cmd := exec.Command(git.GitBin(), "describe", "--tags", "--always")
+		git.HideWindow(cmd)
+		if out, err := cmd.Output(); err == nil {
 			if tag := strings.TrimSpace(string(out)); tag != "" {
 				v = tag + "-dev"
 			}
 		}
 	}
 	if c == "none" {
-		if out, err := exec.Command(git.GitBin(), "rev-parse", "--short", "HEAD").Output(); err == nil {
+		cmd := exec.Command(git.GitBin(), "rev-parse", "--short", "HEAD")
+		git.HideWindow(cmd)
+		if out, err := cmd.Output(); err == nil {
 			if sha := strings.TrimSpace(string(out)); sha != "" {
 				c = sha
 			}
@@ -196,11 +200,13 @@ func isWindows() bool {
 }
 
 func isDarwin() bool {
-	return strings.Contains(strings.ToLower(os.Getenv("OSTYPE")), "darwin") ||
-		exec.Command("uname").Run() == nil && func() bool {
-			out, _ := exec.Command("uname").Output()
-			return strings.TrimSpace(string(out)) == "Darwin"
-		}()
+	if strings.Contains(strings.ToLower(os.Getenv("OSTYPE")), "darwin") {
+		return true
+	}
+	cmd := exec.Command("uname")
+	git.HideWindow(cmd)
+	out, err := cmd.Output()
+	return err == nil && strings.TrimSpace(string(out)) == "Darwin"
 }
 
 // ─── Global Folder ────────────────────────────────────────────
@@ -252,6 +258,33 @@ func (a *App) SetGlobalFolder(folder string) error {
 	defer a.mu.Unlock()
 
 	a.cfg.Global.Folder = folder
+	return config.Save(a.cfg, a.cfgPath)
+}
+
+// GetPeriodicSync returns the current periodic sync interval from config.
+func (a *App) GetPeriodicSync() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cfg.Global.PeriodicSync == "" {
+		return "off"
+	}
+	return a.cfg.Global.PeriodicSync
+}
+
+// SetPeriodicSync saves the periodic sync interval to config.
+func (a *App) SetPeriodicSync(interval string) error {
+	switch interval {
+	case "off", "5m", "15m", "30m":
+	default:
+		return fmt.Errorf("invalid periodic sync interval: %s", interval)
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if interval == "off" {
+		a.cfg.Global.PeriodicSync = ""
+	} else {
+		a.cfg.Global.PeriodicSync = interval
+	}
 	return config.Save(a.cfg, a.cfgPath)
 }
 
@@ -422,6 +455,124 @@ func (a *App) PullRepo(sourceKey, repoKey string) {
 	}()
 }
 
+// RepoDetail holds human-readable status information for a single repo.
+type RepoDetail struct {
+	Branch    string           `json:"branch"`
+	Ahead     int              `json:"ahead"`
+	Behind    int              `json:"behind"`
+	Changed   []git.FileChange `json:"changed"`
+	Untracked []string         `json:"untracked"`
+	Error     string           `json:"error,omitempty"`
+}
+
+// GetRepoDetail returns detailed file-level status for a repo.
+func (a *App) GetRepoDetail(sourceKey, repoKey string) RepoDetail {
+	a.mu.Lock()
+	src, ok := a.cfg.Sources[sourceKey]
+	if !ok {
+		a.mu.Unlock()
+		return RepoDetail{Error: fmt.Sprintf("source %q not found", sourceKey)}
+	}
+	repo, ok := src.Repos[repoKey]
+	if !ok {
+		a.mu.Unlock()
+		return RepoDetail{Error: fmt.Sprintf("repo %q not found", repoKey)}
+	}
+	globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
+	sourceFolder := src.EffectiveFolder(sourceKey)
+	a.mu.Unlock()
+
+	path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
+	branch, ahead, behind, changed, untracked, err := git.DetailedStatus(path)
+	if err != nil {
+		return RepoDetail{Error: err.Error()}
+	}
+	return RepoDetail{
+		Branch:    branch,
+		Ahead:     ahead,
+		Behind:    behind,
+		Changed:   changed,
+		Untracked: untracked,
+	}
+}
+
+// FetchRepo runs git fetch on a single repo and emits fetch:done + refreshes status.
+func (a *App) FetchRepo(sourceKey, repoKey string) {
+	go func() {
+		a.mu.Lock()
+		src, ok := a.cfg.Sources[sourceKey]
+		if !ok {
+			a.mu.Unlock()
+			wailsrt.EventsEmit(a.ctx, "fetch:done", map[string]string{
+				"source": sourceKey, "repo": repoKey,
+				"error": fmt.Sprintf("source %q not found", sourceKey),
+			})
+			return
+		}
+		repo, ok := src.Repos[repoKey]
+		if !ok {
+			a.mu.Unlock()
+			wailsrt.EventsEmit(a.ctx, "fetch:done", map[string]string{
+				"source": sourceKey, "repo": repoKey,
+				"error": fmt.Sprintf("repo %q not found in source %q", repoKey, sourceKey),
+			})
+			return
+		}
+		globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
+		sourceFolder := src.EffectiveFolder(sourceKey)
+		a.mu.Unlock()
+
+		path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
+		err := git.Fetch(path)
+
+		result := map[string]interface{}{"source": sourceKey, "repo": repoKey}
+		if err != nil {
+			result["error"] = err.Error()
+		}
+		wailsrt.EventsEmit(a.ctx, "fetch:done", result)
+
+		// Refresh status after fetch so the UI picks up behind/ahead changes.
+		a.RefreshStatus()
+	}()
+}
+
+// FetchAllRepos runs git fetch on every cloned repo and emits fetch:alldone when finished.
+func (a *App) FetchAllRepos() {
+	go func() {
+		a.mu.Lock()
+		globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
+		type repoRef struct {
+			sourceKey, repoKey, path string
+		}
+		var repos []repoRef
+		for _, srcKey := range a.cfg.OrderedSourceKeys() {
+			src := a.cfg.Sources[srcKey]
+			sourceFolder := src.EffectiveFolder(srcKey)
+			for _, rKey := range src.OrderedRepoKeys() {
+				repo := src.Repos[rKey]
+				p := status.ResolveRepoPath(globalFolder, sourceFolder, rKey, repo)
+				if git.IsRepo(p) {
+					repos = append(repos, repoRef{srcKey, rKey, p})
+				}
+			}
+		}
+		a.mu.Unlock()
+
+		for _, r := range repos {
+			wailsrt.EventsEmit(a.ctx, "fetch:start", map[string]string{
+				"source": r.sourceKey, "repo": r.repoKey,
+			})
+			_ = git.Fetch(r.path)
+			wailsrt.EventsEmit(a.ctx, "fetch:done", map[string]interface{}{
+				"source": r.sourceKey, "repo": r.repoKey,
+			})
+		}
+
+		wailsrt.EventsEmit(a.ctx, "fetch:alldone", nil)
+		a.RefreshStatus()
+	}()
+}
+
 // ─── Account CRUD ─────────────────────────────────────────────
 
 // AddAccountRequest is the frontend payload for creating an account.
@@ -490,6 +641,40 @@ func (a *App) AddAccount(req AddAccountRequest) error {
 		return err
 	}
 
+	return config.Save(a.cfg, a.cfgPath)
+}
+
+// UpdateAccountRequest is the frontend payload for editing an account.
+type UpdateAccountRequest struct {
+	Key           string `json:"key"`
+	URL           string `json:"url"`
+	Username      string `json:"username"`
+	Name          string `json:"name"`
+	Email         string `json:"email"`
+	DefaultBranch string `json:"defaultBranch"`
+}
+
+// UpdateAccount updates the editable fields of an existing account and saves.
+func (a *App) UpdateAccount(req UpdateAccountRequest) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	acct, ok := a.cfg.Accounts[req.Key]
+	if !ok {
+		return fmt.Errorf("account %q not found", req.Key)
+	}
+
+	acct.URL = req.URL
+	acct.Username = req.Username
+	acct.Name = req.Name
+	acct.Email = req.Email
+	if req.DefaultBranch != "" {
+		acct.DefaultBranch = req.DefaultBranch
+	}
+
+	if err := a.cfg.UpdateAccount(req.Key, acct); err != nil {
+		return err
+	}
 	return config.Save(a.cfg, a.cfgPath)
 }
 

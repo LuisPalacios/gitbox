@@ -28,6 +28,7 @@ func (c *Config) OrderedSourceKeys() []string {
 // GlobalConfig holds global settings.
 type GlobalConfig struct {
 	Folder          string       `json:"folder"`
+	PeriodicSync    string       `json:"periodic_sync,omitempty"`
 	CredentialSSH   *SSHGlobal   `json:"credential_ssh,omitempty"`
 	CredentialGCM   *GCMGlobal   `json:"credential_gcm,omitempty"`
 	CredentialToken *TokenGlobal `json:"credential_token,omitempty"`

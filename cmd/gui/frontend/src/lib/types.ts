@@ -2,6 +2,7 @@
 
 export interface GlobalConfig {
   folder: string;
+  periodic_sync?: string;
 }
 
 export interface SSHConfig {

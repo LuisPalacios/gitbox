@@ -135,6 +135,49 @@
     bridge.cloneRepo(sourceKey, repoKey);
   }
 
+  // Track which repos are currently fetching (separate from status).
+  let fetchingRepos: Record<string, boolean> = {};
+
+  function fetchRepo(sourceKey: string, repoKey: string) {
+    const key = `${sourceKey}/${repoKey}`;
+    fetchingRepos[key] = true;
+    fetchingRepos = fetchingRepos;
+    bridge.fetchRepo(sourceKey, repoKey);
+  }
+
+  // ── Repo detail panel ──
+  let expandedRepo: string | null = null;
+  let repoDetail: { branch: string; ahead: number; behind: number; changed: { kind: string; path: string }[]; untracked: string[]; error?: string } | null = null;
+  let detailLoading = false;
+
+  async function toggleRepoDetail(sourceKey: string, repoName: string, status: string) {
+    // Only expand for repos that need attention (not clean, behind, not cloned, or in-progress)
+    if (status === 'clean' || status === 'behind' || status === 'not cloned' || status === 'cloning' || status === 'syncing') return;
+    const key = `${sourceKey}/${repoName}`;
+    if (expandedRepo === key) {
+      expandedRepo = null;
+      repoDetail = null;
+      return;
+    }
+    expandedRepo = key;
+    repoDetail = null;
+    detailLoading = true;
+    try {
+      repoDetail = await bridge.getRepoDetail(sourceKey, repoName);
+    } catch (e: any) {
+      repoDetail = { branch: '', ahead: 0, behind: 0, changed: [], untracked: [], error: String(e) };
+    }
+    detailLoading = false;
+  }
+
+  function kindIcon(kind: string): string {
+    return kind === 'deleted' ? '−' : kind === 'added' ? '+' : kind === 'renamed' ? '→' : '~';
+  }
+
+  function kindLabel(kind: string): string {
+    return kind === 'deleted' ? 'Deleted' : kind === 'added' ? 'New file' : kind === 'renamed' ? 'Renamed' : kind === 'conflict' ? 'Conflict' : 'Changed';
+  }
+
   // ── Discovery ──
   let discoverModal: string | null = null;
   let discoverLoading = false;
@@ -162,12 +205,21 @@
 
   async function addDiscovered() {
     if (!discoverModal) return;
+    const sourceKey = discoverModal;
     const selected = Object.entries(discoverSelected)
       .filter(([_, v]) => v)
       .map(([k]) => k);
     if (selected.length > 0) {
-      await bridge.addDiscoveredRepos(discoverModal, selected);
+      await bridge.addDiscoveredRepos(sourceKey, selected);
       await reloadFromDisk();
+      // Clone each newly added repo that isn't already local.
+      for (const repoName of selected) {
+        const repoKey = `${sourceKey}/${repoName}`;
+        const state = $repoStates[repoKey];
+        if (!state || state.status === 'not cloned') {
+          cloneRepo(sourceKey, repoName);
+        }
+      }
     }
     discoverModal = null;
   }
@@ -177,6 +229,8 @@
     const cfg = await bridge.reloadConfig();
     configStore.set(cfg);
     configPath = await bridge.getConfigPath();
+    const saved = await bridge.getPeriodicSync();
+    if (saved !== fetchInterval) applyFetchInterval(saved);
     const statuses = await bridge.getAllStatus();
     applyStatusResults(statuses);
   }
@@ -224,6 +278,39 @@
     if (status === 'not cloned') return 'This will remove the config entry. No local folder exists.';
     if (isDangerous(status)) return 'This repo has unpushed commits or local changes that will be permanently lost!';
     return 'The local folder and config entry will be permanently deleted.';
+  }
+
+  // ── Edit account ──
+  let editAccountModal: string | null = null;
+  let editAccountError = '';
+  let editAcct = { url: '', username: '', name: '', email: '', defaultBranch: '' };
+
+  function openEditAccount(key: string) {
+    const acct = $accounts[key];
+    if (!acct) return;
+    editAcct = {
+      url: acct.url || '',
+      username: acct.username || '',
+      name: acct.name || '',
+      email: acct.email || '',
+      defaultBranch: acct.default_branch || 'main',
+    };
+    editAccountError = '';
+    editAccountModal = key;
+  }
+
+  async function submitEditAccount() {
+    if (!editAccountModal) return;
+    editAccountError = '';
+    if (!editAcct.url.trim()) { editAccountError = 'URL is required'; return; }
+    if (!editAcct.username.trim()) { editAccountError = 'Username is required'; return; }
+    try {
+      await bridge.updateAccount({ key: editAccountModal, ...editAcct });
+      await reloadFromDisk();
+      editAccountModal = null;
+    } catch (e: any) {
+      editAccountError = e?.message || String(e);
+    }
   }
 
   // ── Add account ──
@@ -414,6 +501,31 @@
   let configPath = '';
   let appVersion = '';
 
+  // ── Periodic fetch ──
+  let fetchInterval: string = 'off';
+  let fetchTimerId: ReturnType<typeof setInterval> | null = null;
+  let lastFetchTime: string = '';
+  let fetchingAll = false;
+
+  function applyFetchInterval(val: string) {
+    fetchInterval = val;
+    if (fetchTimerId) { clearInterval(fetchTimerId); fetchTimerId = null; }
+    const minutes = val === '5m' ? 5 : val === '15m' ? 15 : val === '30m' ? 30 : 0;
+    if (minutes > 0) {
+      fetchTimerId = setInterval(() => runFetchAll(), minutes * 60 * 1000);
+    }
+  }
+
+  function setFetchInterval(val: string) {
+    applyFetchInterval(val);
+    bridge.setPeriodicSync(val);
+  }
+
+  async function runFetchAll() {
+    fetchingAll = true;
+    bridge.fetchAllRepos();
+  }
+
   // ── Credential status cache ──
   let credStatuses: Record<string, string> = {};
 
@@ -436,10 +548,14 @@
     configStore.set(cfg);
     configPath = await bridge.getConfigPath();
     appVersion = await bridge.getAppVersion();
+    fetchInterval = await bridge.getPeriodicSync();
 
     // Load status
     const statuses = await bridge.getAllStatus();
     applyStatusResults(statuses);
+
+    // Fetch all repos on startup to detect behind/ahead changes.
+    runFetchAll();
 
     // Verify credentials for each account
     for (const key of Object.keys(cfg.accounts)) {
@@ -497,6 +613,25 @@
       checkSyncDone();
     });
 
+    events.on('fetch:start', (data: any) => {
+      const key = `${data.source}/${data.repo}`;
+      fetchingRepos[key] = true;
+      fetchingRepos = fetchingRepos;
+    });
+
+    events.on('fetch:done', (data: any) => {
+      const key = `${data.source}/${data.repo}`;
+      delete fetchingRepos[key];
+      fetchingRepos = fetchingRepos;
+    });
+
+    events.on('fetch:alldone', () => {
+      fetchingAll = false;
+      fetchingRepos = {};
+      const now = new Date();
+      lastFetchTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    });
+
     events.on('discover:done', (data: any) => {
       discoverLoading = false;
       if (data.error) {
@@ -506,6 +641,9 @@
       discoverRepos = data.repos || [];
       discoverSelected = {};
     });
+
+    // Start periodic fetch if previously configured.
+    if (fetchInterval !== 'off') applyFetchInterval(fetchInterval);
   });
 
   function checkSyncDone() {
@@ -610,7 +748,7 @@
         </g>
       </svg>
       <span class="title">gitbox</span>
-      <span class="tagline">accounts & clones — nothing else</span>
+      <span class="tagline">accounts & clones</span>
     </div>
     <div class="health">
       <span class="health-ring" style="--pct: {$summary.total ? ($summary.clean / $summary.total) * 100 : 0}">
@@ -619,12 +757,18 @@
       <span class="health-label">synced</span>
     </div>
     <div class="topbar-actions">
-      <button class="btn-sync" on:click={syncAll}
-        disabled={syncing || ($summary.behind === 0 && $summary.notCloned === 0)}>
-        <span class="sync-icon" class:spinning={syncing}>&#8635;</span>
-        {syncing ? 'Syncing...' : 'Sync All'}
+      <button class="btn-gear" on:click={syncAll}
+        disabled={syncing || ($summary.behind === 0 && $summary.notCloned === 0)}
+        title="{syncing ? 'Pulling...' : 'Pull All'}">
+        <svg class="topbar-icon" class:spinning={syncing} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <line x1="8" y1="2" x2="8" y2="12"/><polyline points="4.5,8.5 8,12 11.5,8.5"/><line x1="4" y1="14" x2="12" y2="14"/>
+        </svg>
       </button>
-      <button class="btn-gear" class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title="{deleteMode ? 'Exit delete mode' : 'Delete mode'}">&#128465;</button>
+      <button class="btn-gear" on:click={runFetchAll} disabled={fetchingAll}
+        title="{fetchingAll ? 'Fetching...' : 'Fetch All'}">
+        <span class="sync-icon" class:spinning={fetchingAll}>&#8635;</span>
+      </button>
+      <button class="btn-gear btn-trash" class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title="{deleteMode ? 'Exit delete mode' : 'Delete mode'}">&#128465;</button>
       <button class="btn-gear" on:click={cycleTheme} title="Theme: {themeChoice}">{themeIcon(themeChoice)}</button>
       <button class="btn-gear" on:click={() => showSettings = !showSettings} title="Settings" class:active-gear={showSettings}>&#9881;</button>
     </div>
@@ -652,8 +796,16 @@
         </div>
       </div>
       <div class="settings-row">
-        <span class="settings-label">Accounts</span>
-        <span class="settings-value">{Object.keys($accounts).length} configured</span>
+        <span class="settings-label">Periodic fetch</span>
+        <div class="theme-toggle">
+          <button class="theme-btn" class:theme-active={fetchInterval === 'off'} on:click={() => setFetchInterval('off')}>Off</button>
+          <button class="theme-btn" class:theme-active={fetchInterval === '5m'} on:click={() => setFetchInterval('5m')}>5m</button>
+          <button class="theme-btn" class:theme-active={fetchInterval === '15m'} on:click={() => setFetchInterval('15m')}>15m</button>
+          <button class="theme-btn" class:theme-active={fetchInterval === '30m'} on:click={() => setFetchInterval('30m')}>30m</button>
+        </div>
+        {#if lastFetchTime}
+          <span class="settings-value" style="font-size:10px; margin-left:4px">last {lastFetchTime}</span>
+        {/if}
       </div>
       <div class="settings-row">
         <span class="settings-label">Version</span>
@@ -677,7 +829,7 @@
           <span class="card-provider">{providerLabel(acct.provider)}</span>
           <button class="cred-badge" on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')} title="Credential: {acct.default_credential_type || 'gcm'}">{acct.default_credential_type || 'gcm'}</button>
         </div>
-        <div class="card-name">{key.replace(/^(github|git)-/, '')}</div>
+        <div class="card-name card-name-edit" on:click={() => openEditAccount(key)} title="Edit account">{key.replace(/^(github|git)-/, '')}</div>
         <div class="card-ring-row">
           <svg class="mini-ring" viewBox="0 0 36 36">
             <circle cx="18" cy="18" r="15" fill="none" stroke="#27272a" stroke-width="3"/>
@@ -710,9 +862,10 @@
         {#each (source.repoOrder && source.repoOrder.length > 0 ? source.repoOrder : Object.keys(source.repos)) as repoName}
           {@const repoKey = `${sourceKey}/${repoName}`}
           {@const state = $repoStates[repoKey] || { status: 'error', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
-          <div class="repo-row">
+          <div class="repo-row" class:repo-row-clickable={state.status !== 'clean' && state.status !== 'behind' && state.status !== 'not cloned' && state.status !== 'cloning' && state.status !== 'syncing'}
+            on:click={() => toggleRepoDetail(sourceKey, repoName, state.status)}>
             {#if deleteMode}
-              <button class="btn-delete-x" on:click={() => askDelete(sourceKey, repoName, state.status)} title="Delete {repoName}">&#10005;</button>
+              <button class="btn-delete-x" on:click|stopPropagation={() => askDelete(sourceKey, repoName, state.status)} title="Delete {repoName}">&#10005;</button>
             {/if}
             <span class="dot" style="color: {sc(state.status)}">{statusSymbol(state.status)}</span>
             <span class="repo-name">{repoName}</span>
@@ -723,16 +876,73 @@
               </div>
               <span class="progress-pct" style="color:{sc(state.status)}">{state.progress}%</span>
             {:else}
-              <span class="status-text" style="color:{sc(state.status)}">
-                {statusLabel(state.status, state.behind, state.modified)}
+              <span class="status-badges">
+                {#if state.status === 'clean'}
+                  <span class="status-text" style="color:{sc('clean')}">Synced</span>
+                {:else if state.status === 'not cloned'}
+                  <span class="status-text" style="color:{sc('not cloned')}">Not local</span>
+                {:else if state.status === 'no upstream'}
+                  <span class="status-text" style="color:{sc('no upstream')}">No upstream</span>
+                {:else if state.status === 'error'}
+                  <span class="status-text" style="color:{sc('error')}">Error</span>
+                {:else}
+                  <span class="status-pending">Pending</span>
+                  {#if state.behind > 0}<span class="sbadge" style="color:{sc('behind')}" title="{state.behind} behind">↓{state.behind}</span>{/if}
+                  {#if state.ahead > 0}<span class="sbadge" style="color:{sc('ahead')}" title="{state.ahead} ahead">↑{state.ahead}</span>{/if}
+                  {#if state.modified > 0}<span class="sbadge" style="color:{sc('dirty')}" title="{state.modified} changed">✎{state.modified}</span>{/if}
+                  {#if state.untracked > 0}<span class="sbadge" style="color:{sc('not cloned')}" title="{state.untracked} untracked">?{state.untracked}</span>{/if}
+                {/if}
               </span>
               {#if state.status === 'behind'}
-                <button class="btn-action" on:click={() => syncRepo(sourceKey, repoName)}>Refresh</button>
+                <button class="btn-action" on:click|stopPropagation={() => syncRepo(sourceKey, repoName)}>Pull</button>
               {:else if state.status === 'not cloned'}
-                <button class="btn-action" on:click={() => cloneRepo(sourceKey, repoName)}>Bring Local</button>
+                <button class="btn-action" on:click|stopPropagation={() => cloneRepo(sourceKey, repoName)}>Bring Local</button>
+              {/if}
+              {#if !deleteMode && state.status !== 'not cloned'}
+                <button class="btn-fetch" class:spinning={fetchingRepos[repoKey]} on:click|stopPropagation={() => fetchRepo(sourceKey, repoName)} title="Fetch origin" disabled={!!fetchingRepos[repoKey]}>&#8635;</button>
               {/if}
             {/if}
           </div>
+          {#if expandedRepo === repoKey}
+            <div class="repo-detail" transition:slide={{ duration: 150 }}>
+              {#if detailLoading}
+                <span class="detail-loading">Loading...</span>
+              {:else if repoDetail?.error}
+                <span class="detail-error">{repoDetail.error}</span>
+              {:else if repoDetail}
+                <div class="detail-header">
+                  <span class="detail-branch">Branch: <strong>{repoDetail.branch}</strong></span>
+                  {#if repoDetail.ahead > 0}
+                    <span class="detail-badge" style="color:{sc('ahead')}">{repoDetail.ahead} ahead</span>
+                  {/if}
+                  {#if repoDetail.behind > 0}
+                    <span class="detail-badge" style="color:{sc('behind')}">{repoDetail.behind} behind</span>
+                  {/if}
+                </div>
+                {#if repoDetail.changed.length > 0}
+                  <div class="detail-section-title">Changed files <span class="sbadge" style="color:{sc('dirty')}">✎{repoDetail.changed.length}</span></div>
+                  {#each repoDetail.changed as file}
+                    <div class="detail-file">
+                      <span class="detail-kind" class:kind-added={file.kind === 'added'} class:kind-deleted={file.kind === 'deleted'} class:kind-conflict={file.kind === 'conflict'} title={kindLabel(file.kind)}>{kindIcon(file.kind)}</span>
+                      <span class="detail-path">{file.path}</span>
+                    </div>
+                  {/each}
+                {/if}
+                {#if repoDetail.untracked.length > 0}
+                  <div class="detail-section-title">New files (untracked) <span class="sbadge" style="color:{sc('not cloned')}">?{repoDetail.untracked.length}</span></div>
+                  {#each repoDetail.untracked as file}
+                    <div class="detail-file">
+                      <span class="detail-kind kind-untracked" title="Untracked">?</span>
+                      <span class="detail-path detail-path-dim">{file}</span>
+                    </div>
+                  {/each}
+                {/if}
+                {#if repoDetail.changed.length === 0 && repoDetail.untracked.length === 0 && repoDetail.ahead === 0 && repoDetail.behind === 0}
+                  <span class="detail-clean">Everything is up to date.</span>
+                {/if}
+              {/if}
+            </div>
+          {/if}
         {/each}
       </div>
     {/each}
@@ -780,9 +990,58 @@
         {#if !discoverLoading && discoverRepos.length > 0}
           <div class="modal-foot">
             <button class="btn-cancel" on:click={() => discoverModal = null}>Cancel</button>
-            <button class="btn-add" on:click={addDiscovered} disabled={selectedCount === 0}>Add Selected ({selectedCount})</button>
+            <button class="btn-add" on:click={addDiscovered} disabled={selectedCount === 0}>Add &amp; Pull ({selectedCount})</button>
           </div>
         {/if}
+      </div>
+    </div>
+  {/if}
+
+  <!-- ── EDIT ACCOUNT MODAL ── -->
+  {#if editAccountModal}
+    <div class="overlay" on:click={() => editAccountModal = null} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-account" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+        <div class="modal-head">
+          <h3>Edit account</h3>
+          <button class="btn-x" on:click={() => editAccountModal = null}>&#10005;</button>
+        </div>
+        <div class="modal-body">
+          {#if editAccountError}
+            <p class="form-error">{editAccountError}</p>
+          {/if}
+          <div class="form-row">
+            <label class="form-label">Account key</label>
+            <span class="form-static">{editAccountModal}</span>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Provider</label>
+            <span class="form-static">{$accounts[editAccountModal]?.provider || ''}</span>
+          </div>
+          <div class="form-row">
+            <label class="form-label" for="ea-url">URL</label>
+            <input class="form-input" id="ea-url" bind:value={editAcct.url} />
+          </div>
+          <div class="form-row">
+            <label class="form-label" for="ea-user">Username</label>
+            <input class="form-input" id="ea-user" bind:value={editAcct.username} />
+          </div>
+          <div class="form-row">
+            <label class="form-label" for="ea-name">Name</label>
+            <input class="form-input" id="ea-name" bind:value={editAcct.name} />
+          </div>
+          <div class="form-row">
+            <label class="form-label" for="ea-email">Email</label>
+            <input class="form-input" id="ea-email" bind:value={editAcct.email} />
+          </div>
+          <div class="form-row">
+            <label class="form-label" for="ea-branch">Default branch</label>
+            <input class="form-input" id="ea-branch" bind:value={editAcct.defaultBranch} />
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn-cancel" on:click={() => editAccountModal = null}>Cancel</button>
+          <button class="btn-add" on:click={submitEditAccount}>Save</button>
+        </div>
       </div>
     </div>
   {/if}
@@ -940,7 +1199,7 @@
           <div class="form-row">
             <label class="form-label" for="cc-type">Type</label>
             <select class="form-input" id="cc-type" bind:value={credChangeType} disabled={credChangeBusy}>
-              <option value="gcm">GCM</option>
+              <option value="gcm">Git Credential Manager (GCM)</option>
               <option value="ssh">SSH</option>
               <option value="token">Token</option>
             </select>
@@ -1076,10 +1335,12 @@
   :global([data-theme="dark"]) {
     --bg-base: #09090b; --bg-card: #18181b; --bg-hover: #27272a;
     --border: #27272a; --border-hover: #3f3f46;
-    --text-primary: #fafafa; --text-secondary: #a1a1aa; --text-muted: #71717a; --text-dim: #52525b;
+    --text-primary: #fafafa; --text-secondary: #b4b4bd; --text-muted: #8e8e99; --text-dim: #71717a;
     --text-repo: #e4e4e7;
     --logo-dark: #4abdd4; --logo-light: #7cd9ec;
     --ring-bg: #27272a; --ring-accent: #61fd5f; --overlay: rgba(0,0,0,0.6);
+    --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    --spin-color: #0AFFFF;
   }
   :global([data-theme="light"]) {
     --bg-base: #fafafa; --bg-card: #ffffff; --bg-hover: #f4f4f5;
@@ -1088,6 +1349,8 @@
     --text-repo: #27272a;
     --logo-dark: #1c5566; --logo-light: #2e9fc0;
     --ring-bg: #e4e4e7; --ring-accent: #166534; --overlay: rgba(0,0,0,0.3);
+    --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    --spin-color: #0000ff;
   }
   :global(html) { color-scheme: dark light; }
   :global(body) {
@@ -1097,7 +1360,7 @@
     transition: background 0.2s, color 0.2s;
   }
 
-  .app { max-width: 860px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+  .app { max-width: 860px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
   .topbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--border); }
   .brand { display: flex; align-items: center; gap: 8px; }
@@ -1116,28 +1379,25 @@
   .health-label { font-size: 12px; color: var(--text-muted); }
 
   .topbar-actions { display: flex; gap: 8px; }
-  .btn-sync {
-    display: flex; align-items: center; gap: 6px;
-    padding: 7px 14px; background: var(--bg-card); border: 1px solid var(--border);
-    color: var(--text-primary); border-radius: 7px; cursor: pointer;
-    font-size: 12px; font-weight: 500; transition: all 0.15s;
-  }
-  .btn-sync:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--border-hover); }
-  .btn-sync:disabled { opacity: 0.4; cursor: default; }
-  .sync-icon { font-size: 15px; display: inline-block; }
-  .spinning { animation: spin 0.8s linear infinite; }
+  .topbar-icon { width: 16px; height: 16px; display: inline-block; }
+  .sync-icon { font-size: 18px; display: inline-block; }
+  .spinning { animation: spin 0.8s linear infinite; color: var(--spin-color) !important; stroke: var(--spin-color); stroke-width: 2.5; font-weight: 900; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .btn-gear {
     background: none; border: 1px solid transparent; color: var(--text-muted);
     font-size: 18px; cursor: pointer; padding: 4px 6px; border-radius: 6px; transition: all 0.12s;
+    width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+    line-height: 1;
   }
   .btn-gear:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-hover); }
   .btn-gear:disabled { opacity: 0.3; cursor: default; }
+  .btn-trash { font-size: 15px; }
 
-  .cards-row { display: flex; gap: 10px; padding: 18px 24px; overflow-x: auto; }
+  .cards-row { display: flex; gap: 10px; padding: 18px 24px; overflow-x: auto; flex-shrink: 0; }
   .card {
     flex: 1; min-width: 165px; background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 10px; padding: 12px 14px; transition: border-color 0.15s;
+    border-radius: 10px; padding: 12px 14px; transition: border-color 0.15s, box-shadow 0.15s;
+    box-shadow: var(--card-shadow);
   }
   .card:hover { border-color: var(--border-hover); }
   .card-top { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
@@ -1152,6 +1412,8 @@
   .cred-badge:hover { color: var(--text-primary); border-color: var(--border-hover); background: var(--bg-card); }
   .card-delete-btn { flex-shrink: 0; }
   .card-name { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  .card-name-edit { cursor: pointer; }
+  .card-name-edit:hover { text-decoration: underline; }
 
   .card-ring-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
   .mini-ring { width: 28px; height: 28px; flex-shrink: 0; }
@@ -1166,7 +1428,7 @@
   }
   .card-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
 
-  .repo-list { flex: 1; padding: 0 24px 12px; }
+  .repo-list { flex: 1; padding: 0 24px 12px; overflow-y: auto; min-height: 0; }
   .source-group { margin-bottom: 6px; }
   .source-header {
     font-size: 11px; font-weight: 600; color: var(--text-dim);
@@ -1194,10 +1456,60 @@
     font-size: 11px; font-weight: 500; transition: all 0.15s; flex-shrink: 0;
   }
   .btn-action:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
+  .btn-fetch {
+    background: transparent; border: none; color: var(--text-dim); cursor: pointer;
+    font-size: 14px; padding: 2px 4px; border-radius: 4px; transition: color 0.15s;
+    flex-shrink: 0; line-height: 1;
+  }
+  .btn-fetch:hover { color: var(--text-primary); }
+  .btn-fetch:disabled { opacity: 0.6; cursor: default; }
+  .status-badges { display: flex; align-items: center; gap: 6px; }
+  .sbadge { font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .status-pending { font-size: 12px; font-weight: 600; color: var(--text-dim); }
+
+  /* ── Repo detail panel ── */
+  .repo-row-clickable { cursor: pointer; }
+  .repo-row-clickable:hover { background: var(--bg-card); }
+  .repo-detail {
+    margin: 0 0 2px 0; padding: 8px 16px 10px 30px;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+    max-height: 180px; overflow-y: auto; font-size: 12px;
+  }
+  .detail-loading, .detail-error, .detail-clean {
+    color: var(--text-muted); font-style: italic;
+  }
+  .detail-error { color: var(--text-primary); }
+  .detail-header {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    font-size: 11px; color: var(--text-secondary);
+  }
+  .detail-branch { color: var(--text-muted); }
+  .detail-branch strong { color: var(--text-primary); font-weight: 600; }
+  .detail-badge { font-weight: 600; font-size: 11px; }
+  .detail-section-title {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-dim); margin: 6px 0 3px 0;
+  }
+  .detail-file {
+    display: flex; align-items: baseline; gap: 6px; padding: 1px 0;
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 10px;
+  }
+  .detail-kind {
+    width: 14px; text-align: center; font-weight: 700; flex-shrink: 0;
+    color: var(--text-secondary);
+  }
+  .kind-added { color: #61fd5f; }
+  .kind-deleted { color: #D81E5B; }
+  .kind-conflict { color: #D81E5B; }
+  .kind-untracked { color: var(--text-dim); }
+  .detail-path { color: var(--text-repo); word-break: break-all; }
+  .detail-path-dim { color: var(--text-dim); }
 
   .summary {
     display: flex; align-items: center; justify-content: center; gap: 6px;
     padding: 10px 24px; border-top: 1px solid var(--border); font-size: 12px; font-weight: 500;
+    flex-shrink: 0;
   }
   .sum { font-weight: 600; }
   .sep { color: var(--border-hover); }
@@ -1285,6 +1597,7 @@
   }
   .form-input:focus { border-color: #4B95E9; }
   select.form-input { cursor: pointer; }
+  .form-static { font-size: 13px; color: var(--text-muted); padding: 6px 0; }
   .form-error { font-size: 12px; color: #D81E5B; margin: 0 0 10px; font-weight: 600; }
 
   /* ── Credential setup step ── */

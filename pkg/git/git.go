@@ -198,6 +198,82 @@ func Status(repoPath string) (RepoStatus, error) {
 	return parseStatus(out), nil
 }
 
+// FileChange describes a single changed file for human-readable display.
+type FileChange struct {
+	Kind string `json:"kind"` // "modified", "added", "deleted", "renamed", "conflict"
+	Path string `json:"path"`
+}
+
+// DetailedStatus returns the list of changed and untracked files in a repo.
+func DetailedStatus(repoPath string) (branch string, ahead, behind int, changed []FileChange, untracked []string, err error) {
+	out, err := output(repoPath, "status", "--porcelain=v2", "--branch")
+	if err != nil {
+		return "", 0, 0, nil, nil, err
+	}
+
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		if strings.HasPrefix(line, "# branch.head ") {
+			branch = strings.TrimPrefix(line, "# branch.head ")
+		} else if strings.HasPrefix(line, "# branch.ab ") {
+			parts := strings.Fields(strings.TrimPrefix(line, "# branch.ab "))
+			if len(parts) == 2 {
+				ahead, _ = strconv.Atoi(strings.TrimPrefix(parts[0], "+"))
+				behind, _ = strconv.Atoi(strings.TrimPrefix(parts[1], "-"))
+			}
+		} else if strings.HasPrefix(line, "1 ") {
+			// Ordinary changed entry: 1 XY sub mH mI mW hH hI path
+			parts := strings.SplitN(line, " ", 9)
+			if len(parts) < 9 {
+				continue
+			}
+			xy, path := parts[1], parts[8]
+			changed = append(changed, FileChange{Kind: classifyXY(xy), Path: path})
+		} else if strings.HasPrefix(line, "2 ") {
+			// Renamed/copied entry: 2 XY sub mH mI mW hH hI X<score> path\torigPath
+			parts := strings.SplitN(line, " ", 10)
+			if len(parts) < 10 {
+				continue
+			}
+			pathPart := parts[9]
+			// path\torigPath — show as "origPath → path"
+			if idx := strings.IndexByte(pathPart, '\t'); idx >= 0 {
+				pathPart = pathPart[idx+1:] + " → " + pathPart[:idx]
+			}
+			changed = append(changed, FileChange{Kind: "renamed", Path: pathPart})
+		} else if strings.HasPrefix(line, "u ") {
+			// Unmerged (conflict): u XY sub m1 m2 m3 mW h1 h2 h3 path
+			parts := strings.SplitN(line, " ", 11)
+			if len(parts) >= 11 {
+				changed = append(changed, FileChange{Kind: "conflict", Path: parts[10]})
+			}
+		} else if strings.HasPrefix(line, "? ") {
+			untracked = append(untracked, strings.TrimPrefix(line, "? "))
+		}
+	}
+	return branch, ahead, behind, changed, untracked, nil
+}
+
+func classifyXY(xy string) string {
+	if len(xy) < 2 {
+		return "modified"
+	}
+	// Prefer the working-tree status (2nd char), fall back to index (1st char).
+	wt := xy[1]
+	idx := xy[0]
+	if wt == 'D' || idx == 'D' {
+		return "deleted"
+	}
+	if wt == 'A' || idx == 'A' {
+		return "added"
+	}
+	return "modified"
+}
+
 // RevCount returns the number of commits ahead/behind the upstream.
 // Returns (0, 0, nil) if there's no upstream.
 func RevCount(repoPath string) (ahead, behind int, err error) {

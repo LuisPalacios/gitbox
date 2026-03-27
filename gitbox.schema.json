@@ -26,6 +26,11 @@
                     "type": "string",
                     "description": "Root directory for all git repositories. Supports ~ prefix for home directory or absolute paths."
                 },
+                "periodic_sync": {
+                    "type": "string",
+                    "enum": ["off", "5m", "15m", "30m"],
+                    "description": "Automatic periodic fetch interval. When set, the GUI will run 'git fetch' on all repos at this interval."
+                },
                 "credential_ssh": {
                     "type": "object",
                     "description": "Global SSH platform defaults. Presence indicates SSH is available on this platform.",
