@@ -154,16 +154,19 @@
     // Only expand for repos that need attention (not clean, behind, not cloned, or in-progress)
     if (status === 'clean' || status === 'behind' || status === 'not cloned' || status === 'cloning' || status === 'syncing') return;
     const key = `${sourceKey}/${repoName}`;
-    if (expandedRepo === key) {
+    if (expandedRepo === key && !detailLoading) {
       expandedRepo = null;
       repoDetail = null;
       return;
     }
+    if (detailLoading) return; // Ignore clicks while a detail fetch is in flight
     expandedRepo = key;
     repoDetail = null;
     detailLoading = true;
     try {
-      repoDetail = await bridge.getRepoDetail(sourceKey, repoName);
+      const raw = await bridge.getRepoDetail(sourceKey, repoName);
+      // Go nil slices serialize as JSON null — normalise to empty arrays.
+      repoDetail = { ...raw, changed: raw.changed || [], untracked: raw.untracked || [] };
     } catch (e: any) {
       repoDetail = { branch: '', ahead: 0, behind: 0, changed: [], untracked: [], error: String(e) };
     }
@@ -537,7 +540,12 @@
     });
 
     // Re-read config when the window regains focus (picks up external edits).
-    window.addEventListener('focus', () => reloadFromDisk());
+    // Debounce so a focus-by-click doesn't race with the click handler.
+    let focusTimer: ReturnType<typeof setTimeout> | null = null;
+    window.addEventListener('focus', () => {
+      if (focusTimer) clearTimeout(focusTimer);
+      focusTimer = setTimeout(() => reloadFromDisk(), 300);
+    });
 
     // Check first run — show onboarding if no folder configured.
     firstRun = await bridge.isFirstRun();
@@ -856,10 +864,10 @@
 
   <!-- ── REPO LIST ── -->
   <section class="repo-list">
-    {#each Object.entries($sources) as [sourceKey, source]}
+    {#each Object.entries($sources) as [sourceKey, source] (sourceKey)}
       <div class="source-group">
         <div class="source-header">{sourceKey}</div>
-        {#each (source.repoOrder && source.repoOrder.length > 0 ? source.repoOrder : Object.keys(source.repos)) as repoName}
+        {#each (source.repoOrder && source.repoOrder.length > 0 ? source.repoOrder : Object.keys(source.repos)) as repoName (repoName)}
           {@const repoKey = `${sourceKey}/${repoName}`}
           {@const state = $repoStates[repoKey] || { status: 'error', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
           <div class="repo-row" class:repo-row-clickable={state.status !== 'clean' && state.status !== 'behind' && state.status !== 'not cloned' && state.status !== 'cloning' && state.status !== 'syncing'}

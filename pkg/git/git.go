@@ -255,6 +255,13 @@ func DetailedStatus(repoPath string) (branch string, ahead, behind int, changed 
 			untracked = append(untracked, strings.TrimPrefix(line, "? "))
 		}
 	}
+	// Ensure non-nil slices so JSON serialization produces [] instead of null.
+	if changed == nil {
+		changed = []FileChange{}
+	}
+	if untracked == nil {
+		untracked = []string{}
+	}
 	return branch, ahead, behind, changed, untracked, nil
 }
 
