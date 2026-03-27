@@ -138,6 +138,8 @@ jobs:
           node-version: '20'
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+        env:
+          GOARCH: arm64
       - name: Copy app icons
         run: |
           mkdir -p cmd/gui/build
