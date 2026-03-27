@@ -167,6 +167,7 @@ func (a *App) OpenFileInEditor(path string) error {
 	default:
 		cmd = exec.Command("xdg-open", path)
 	}
+	git.HideWindow(cmd)
 	return cmd.Start()
 }
 
@@ -512,6 +513,7 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 	fillCmd.Stdin = strings.NewReader(input)
 	var stderrBuf bytes.Buffer
 	fillCmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
+	git.HideWindow(fillCmd)
 	out, err := fillCmd.Output()
 	if err != nil {
 		detail := strings.TrimSpace(stderrBuf.String())
@@ -555,6 +557,7 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 	approveCmd := exec.Command(git.GitBin(), "credential", "approve")
 	approveCmd.Stdin = strings.NewReader(string(out))
 	approveCmd.Stderr = os.Stderr
+	git.HideWindow(approveCmd)
 	if err := approveCmd.Run(); err != nil {
 		return CredentialSetupResult{OK: false, Message: fmt.Sprintf("git credential approve failed: %v", err)}
 	}

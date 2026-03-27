@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/LuisPalacios/gitbox/pkg/git"
 )
 
 // SSHKeyPath returns the convention-based key file path for an account.
@@ -184,6 +186,7 @@ func containsWord(s, word string) bool {
 // Returns the greeting message (e.g., "Hi MyUser!") or an error.
 func TestSSHConnection(host string) (string, error) {
 	cmd := exec.Command("ssh", "-T", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=accept-new", host)
+	git.HideWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
 
@@ -289,6 +292,7 @@ func GenerateSSHKey(sshFolder, accountKey, keyType string) (string, error) {
 	}
 	comment := fmt.Sprintf("gitbox-%s", localHost)
 	cmd := exec.Command("ssh-keygen", "-q", "-t", keyType, "-f", keyPath, "-C", comment, "-N", "")
+	git.HideWindow(cmd)
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("ssh-keygen failed: %w", err)
 	}

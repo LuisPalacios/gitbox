@@ -105,6 +105,7 @@ func ResolveGCMToken(accountURL, username string) (token, source string, err err
 		"GCM_INTERACTIVE=never",
 		"GIT_ASKPASS=",
 	)
+	git.HideWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", "", fmt.Errorf("git credential fill failed: %w (is GCM installed and authenticated?)", err)

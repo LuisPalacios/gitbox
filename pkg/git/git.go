@@ -121,6 +121,7 @@ func CloneWithProgress(url, dest string, opts CloneOpts, onProgress func(ClonePr
 	cmd := exec.Command(GitBin(), args...)
 	cmd.Dir = "."
 	cmd.Stdout = nil
+	HideWindow(cmd)
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
@@ -272,6 +273,7 @@ func RunWithInput(dir string, input string, args ...string) (string, error) {
 	cmd := exec.Command(GitBin(), args...)
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(input)
+	HideWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
@@ -296,6 +298,7 @@ func run(dir string, args ...string) error {
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	HideWindow(cmd)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
@@ -306,6 +309,7 @@ func run(dir string, args ...string) error {
 func output(dir string, args ...string) (string, error) {
 	cmd := exec.Command(GitBin(), args...)
 	cmd.Dir = dir
+	HideWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)

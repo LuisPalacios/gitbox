@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- **Go** 1.22+ ([install](https://go.dev/doc/install))
+- **Go** 1.26+ ([install](https://go.dev/doc/install))
 - **Node.js** 20+ ([install](https://nodejs.org/))
 - **Git** 2.39+
 - **Wails CLI** v2 (for GUI development):
@@ -93,9 +93,12 @@ gitbox/                    (repo root)
 │   ├── credential/             Credential management
 │   │   ├── credential.go       Token storage (OS keyring), resolution chain
 │   │   ├── validate.go         SSH key management, config parsing
-│   │   └── credential_test.go
+│   │   ├── credential_test.go
+│   │   └── validate_test.go
 │   ├── git/                    Git subprocess operations
 │   │   ├── git.go              Clone, CloneWithProgress, pull, status
+│   │   ├── hidewindow_windows.go  Hide console window on Windows (SysProcAttr)
+│   │   ├── hidewindow_other.go    No-op for non-Windows platforms
 │   │   └── git_test.go
 │   ├── provider/               Provider API clients
 │   │   ├── provider.go         Interface, factory, TestAuth
@@ -294,7 +297,7 @@ Version is **auto-detected from git tags** at runtime for local builds. CI build
 
 ```bash
 # CI build with explicit version
-go build -ldflags "-X main.version=v0.2.0 -X main.commit=abc1234" -o gitboxcmd ./cmd/cli
+go build -ldflags "-X main.version=v0.2.0 -X main.commit=abc1234" -o build/gitboxcmd ./cmd/cli
 
 # Local builds auto-detect by running:
 #   git describe --tags --always   → version (e.g., "v0.1.0-3-ga99cf17")
@@ -316,7 +319,7 @@ git push origin v1.0.0
 CI injects `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into both CLI and GUI builds. The release will contain:
 
 - `gitboxcmd-linux-amd64`, `gitboxcmd-darwin-arm64`, `gitboxcmd-windows-amd64.exe`
-- `gitbox-linux-amd64`, `gitbox-darwin-arm64.zip`, `gitbox-windows-amd64.exe`
+- `Gitbox-linux-amd64`, `Gitbox-darwin-arm64.zip`, `Gitbox-windows-amd64.exe`
 
 > **macOS note:** The GUI app is not codesigned. Users must run `xattr -cr gitbox.app` after downloading.
 

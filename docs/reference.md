@@ -28,9 +28,9 @@ Download the latest binaries from the [Releases](https://github.com/LuisPalacios
 
 | Platform | CLI | GUI |
 | --- | --- | --- |
-| Windows | `gitboxcmd-windows-amd64.exe` | `gitbox-windows-amd64.exe` |
-| macOS | `gitboxcmd-darwin-arm64` | `gitbox-darwin-arm64.zip` |
-| Linux | `gitboxcmd-linux-amd64` | `gitbox-linux-amd64` |
+| Windows | `gitboxcmd-windows-amd64.exe` | `Gitbox-windows-amd64.exe` |
+| macOS | `gitboxcmd-darwin-arm64` | `Gitbox-darwin-arm64.zip` |
+| Linux | `gitboxcmd-linux-amd64` | `Gitbox-linux-amd64` |
 
 Place the CLI binary somewhere on your `PATH`. The GUI can go anywhere.
 

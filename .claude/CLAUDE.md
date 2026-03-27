@@ -44,7 +44,7 @@ README.md                 Project overview
 
 ```bash
 # Build CLI
-go build -o gitboxcmd ./cmd/cli
+go build -o build/gitboxcmd ./cmd/cli
 
 # Build GUI (requires Wails CLI)
 cd cmd/gui && wails build
@@ -105,7 +105,7 @@ Both scripts share the same detection block: `PLATFORM` (`wsl2` | `gitbash` | `m
 
 - Never mark a task complete without proving it works
 - Test scripts with `bash -n` (syntax check) and `shellcheck` when available
-- Go: `go build ./...` + `go test ./...`
+- Go: `go vet ./...` + `go test ./...`
 - Validate config templates render correctly before committing
 - After any command that writes config files, read the actual file on disk (`cat` via SSH or locally) — never trust command output alone
 
