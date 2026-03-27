@@ -63,11 +63,31 @@ func (a *App) DomReady(_ context.Context) {
 }
 
 // GetAppVersion returns the application version string for the frontend.
+// CI builds:    "v1.0.6 (abc1234)" — version and commit set via ldflags
+// Local builds: "v1.0.5-3-ga99cf17-dev (a99cf17)" — auto-detected from git
 func (a *App) GetAppVersion() string {
-	if version == "dev" {
-		return fmt.Sprintf("dev-%s", commit)
+	v, c := version, commit
+
+	// If not set by ldflags, try to detect from git at runtime.
+	if v == "dev" {
+		if out, err := exec.Command(git.GitBin(), "describe", "--tags", "--always").Output(); err == nil {
+			if tag := strings.TrimSpace(string(out)); tag != "" {
+				v = tag + "-dev"
+			}
+		}
 	}
-	return fmt.Sprintf("%s (%s)", version, commit[:minInt(7, len(commit))])
+	if c == "none" {
+		if out, err := exec.Command(git.GitBin(), "rev-parse", "--short", "HEAD").Output(); err == nil {
+			if sha := strings.TrimSpace(string(out)); sha != "" {
+				c = sha
+			}
+		}
+	}
+
+	if v == "dev" {
+		return fmt.Sprintf("dev-%s", c)
+	}
+	return fmt.Sprintf("%s (%s)", v, c[:minInt(7, len(c))])
 }
 
 func minInt(a, b int) int {

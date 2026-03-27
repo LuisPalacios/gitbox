@@ -9,5 +9,12 @@
   "author": {
     "name": "Luis Palacios",
     "email": "luis.palacios.derqui@gmail.com"
+  },
+  "info": {
+    "companyName": "Luis Palacios",
+    "productName": "Gitbox",
+    "productVersion": "0.0.0",
+    "copyright": "Copyright 2025 Luis Palacios",
+    "comments": "Manage Git multi-account environments"
   }
 }

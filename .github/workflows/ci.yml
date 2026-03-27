@@ -67,7 +67,14 @@ jobs:
           mkdir -p cmd/gui/build/windows
           cp assets/appicon.png cmd/gui/build/appicon.png
           cp assets/icon.ico    cmd/gui/build/windows/icon.ico
+      - name: Set version in wails.json
+        shell: bash
+        run: |
+          VER="${{ github.ref_name }}"
+          VER="${VER#v}"
+          sed -i "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json
       - name: Build GUI
+        shell: bash
         working-directory: cmd/gui
         run: wails build -ldflags "$LDFLAGS"
       - uses: actions/upload-artifact@v4
@@ -96,6 +103,11 @@ jobs:
         run: |
           mkdir -p cmd/gui/build
           cp assets/appicon.png cmd/gui/build/appicon.png
+      - name: Set version in wails.json
+        run: |
+          VER="${{ github.ref_name }}"
+          VER="${VER#v}"
+          sed -i "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json
       - name: Build GUI
         working-directory: cmd/gui
         run: wails build -ldflags "$LDFLAGS"
@@ -131,6 +143,11 @@ jobs:
         run: |
           mkdir -p cmd/gui/build
           cp assets/appicon.png cmd/gui/build/appicon.png
+      - name: Set version in wails.json
+        run: |
+          VER="${{ github.ref_name }}"
+          VER="${VER#v}"
+          sed -i "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json
       - name: Build GUI
         working-directory: cmd/gui
         run: wails build -tags webkit2_41 -ldflags "$LDFLAGS"

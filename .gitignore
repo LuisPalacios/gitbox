@@ -11,8 +11,10 @@ gitbox.exe
 cli.exe
 gui.exe
 
-# Wails
-cmd/gui/build/
+# Wails — track template files, ignore build output and copied icons
+cmd/gui/build/bin/
+cmd/gui/build/appicon.png
+cmd/gui/build/windows/icon.ico
 cmd/gui/frontend/node_modules/
 cmd/gui/frontend/dist/
 
