@@ -44,9 +44,9 @@ Grab the latest binaries from the [Releases](https://github.com/LuisPalacios/git
 
 This only happens once per download
 
-- **macOS:** After extracting, move it to *Applications*. From Terminal run `xattr -cr /Applications/Gitbox.app`. It should launch from Applications without problems.
+- **macOS:** After extracting, move it to *Applications*. Run `xattr -cr /Applications/Gitbox.app` from Terminal, before you launch it.
 
-- **Windows SmartScreen note:** After extracting, move executable to any folder and launch it. Will show "Windows protected your PC" dialog. Click **More info** → **Run anyway**.
+- **Windows SmartScreen:** After extracting, move executable to any folder and launch it. Will show "Windows protected your PC" dialog. Click **More info** → **Run anyway**.
 
 ## Documentation
 
