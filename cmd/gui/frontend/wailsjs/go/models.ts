@@ -129,9 +129,28 @@ export namespace config {
 	        this.ssh_folder = source["ssh_folder"];
 	    }
 	}
+	export class WindowState {
+	    x: number;
+	    y: number;
+	    width: number;
+	    height: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new WindowState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	    }
+	}
 	export class GlobalConfig {
 	    folder: string;
 	    periodic_sync?: string;
+	    window?: WindowState;
 	    credential_ssh?: SSHGlobal;
 	    credential_gcm?: GCMGlobal;
 	    // Go type: TokenGlobal
@@ -145,6 +164,7 @@ export namespace config {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.folder = source["folder"];
 	        this.periodic_sync = source["periodic_sync"];
+	        this.window = this.convertValues(source["window"], WindowState);
 	        this.credential_ssh = this.convertValues(source["credential_ssh"], SSHGlobal);
 	        this.credential_gcm = this.convertValues(source["credential_gcm"], GCMGlobal);
 	        this.credential_token = this.convertValues(source["credential_token"], null);
@@ -188,6 +208,7 @@ export namespace config {
 	        this.clone_folder = source["clone_folder"];
 	    }
 	}
+	
 	
 	
 

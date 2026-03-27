@@ -31,6 +31,31 @@
                     "enum": ["off", "5m", "15m", "30m"],
                     "description": "Automatic periodic fetch interval. When set, the GUI will run 'git fetch' on all repos at this interval."
                 },
+                "window": {
+                    "type": "object",
+                    "description": "GUI window position and size. Saved automatically when the GUI is closed, restored on next launch.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "x": {
+                            "type": "integer",
+                            "description": "Window horizontal position (pixels from left edge of screen)."
+                        },
+                        "y": {
+                            "type": "integer",
+                            "description": "Window vertical position (pixels from top edge of screen)."
+                        },
+                        "width": {
+                            "type": "integer",
+                            "minimum": 640,
+                            "description": "Window width in pixels."
+                        },
+                        "height": {
+                            "type": "integer",
+                            "minimum": 480,
+                            "description": "Window height in pixels."
+                        }
+                    }
+                },
                 "credential_ssh": {
                     "type": "object",
                     "description": "Global SSH platform defaults. Presence indicates SSH is available on this platform.",

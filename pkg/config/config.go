@@ -29,9 +29,18 @@ func (c *Config) OrderedSourceKeys() []string {
 type GlobalConfig struct {
 	Folder          string       `json:"folder"`
 	PeriodicSync    string       `json:"periodic_sync,omitempty"`
+	Window          *WindowState `json:"window,omitempty"`
 	CredentialSSH   *SSHGlobal   `json:"credential_ssh,omitempty"`
 	CredentialGCM   *GCMGlobal   `json:"credential_gcm,omitempty"`
 	CredentialToken *TokenGlobal `json:"credential_token,omitempty"`
+}
+
+// WindowState stores the GUI window position and size for session persistence.
+type WindowState struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
 }
 
 // TokenGlobal holds global token/PAT credential settings.

@@ -23,10 +23,11 @@ import (
 // App is the Wails application struct. All exported methods become
 // frontend bindings via window.go.main.App.<Method>().
 type App struct {
-	ctx     context.Context
-	cfg     *config.Config
-	cfgPath string
-	mu      sync.Mutex
+	ctx            context.Context
+	cfg            *config.Config
+	cfgPath        string
+	mu             sync.Mutex
+	savedWindowPos *config.WindowState // pre-loaded from config before Wails starts
 }
 
 // NewApp creates a new App instance.
@@ -56,9 +57,24 @@ func (a *App) Startup(ctx context.Context) {
 // Shutdown is called by Wails when the app is closing.
 func (a *App) Shutdown(_ context.Context) {}
 
+// BeforeClose is called while the window is still alive, before it is destroyed.
+// We capture and persist the window position and size here.
+func (a *App) BeforeClose(_ context.Context) bool {
+	x, y := wailsrt.WindowGetPosition(a.ctx)
+	w, h := wailsrt.WindowGetSize(a.ctx)
+	a.mu.Lock()
+	a.cfg.Global.Window = &config.WindowState{X: x, Y: y, Width: w, Height: h}
+	_ = config.Save(a.cfg, a.cfgPath)
+	a.mu.Unlock()
+	return false // don't prevent closing
+}
+
 // DomReady is called after the frontend DOM is ready.
-// We start hidden and show the window here to prevent flickering.
+// We start hidden, restore saved position, then show the window to prevent flickering.
 func (a *App) DomReady(_ context.Context) {
+	if w := a.savedWindowPos; w != nil {
+		wailsrt.WindowSetPosition(a.ctx, w.X, w.Y)
+	}
 	wailsrt.WindowShow(a.ctx)
 }
 
