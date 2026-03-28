@@ -73,6 +73,12 @@ Each credential type is **self-sufficient** for the account — no mixing requir
 | **GCM**   | Browser OAuth via GCM      | `git credential fill` extracts OAuth token | GCM's own store         |
 | **SSH**   | Key pair + `~/.ssh/config` | Optional PAT (for discovery only)          | SSH key files + keyring |
 
+**Health checking:** The GUI verifies credentials on startup, after changes, and during periodic sync. `CredentialVerify` resolves the API token and calls `provider.TestAuth` to confirm it works. The result (`ok`, `warning`, `error`, `none`) drives the credential badge color on account cards.
+
+**Credential deletion:** All three types can be deleted from the GUI, removing the underlying artifacts (keyring entries, SSH key files, SSH config entries, GCM cached credentials). After deletion the account enters `none` state, prompting the user to reconfigure.
+
+**Account key rename:** Renaming an account key migrates all related artifacts: config map key, source references, source key, on-disk source folder, OS keyring tokens, SSH key files, and SSH config Host aliases.
+
 ### Config as Local Database
 
 The JSON config file (`~/.config/gitbox/gitbox.json`) is the **desired state** — a local database of what accounts, sources, and repos should exist.

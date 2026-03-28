@@ -200,15 +200,17 @@
   $: filteredDiscoverRepos = discoverFilter.trim()
     ? discoverRepos.filter((r) => r.fullName.toLowerCase().includes(discoverFilter.trim().toLowerCase()))
     : discoverRepos;
+  $: existingRepos = discoverModal ? ($sources[discoverModal]?.repos || {}) : {};
+  $: selectableRepos = filteredDiscoverRepos.filter((r) => !existingRepos[r.fullName]);
   $: selectedCount = Object.values(discoverSelected).filter(Boolean).length;
-  $: allSelected = filteredDiscoverRepos.length > 0 && filteredDiscoverRepos.every((r) => discoverSelected[r.fullName]);
+  $: allSelected = selectableRepos.length > 0 && selectableRepos.every((r) => discoverSelected[r.fullName]);
 
   function toggleAll() {
     if (allSelected) {
-      for (const r of filteredDiscoverRepos) delete discoverSelected[r.fullName];
+      for (const r of selectableRepos) delete discoverSelected[r.fullName];
       discoverSelected = discoverSelected;
     } else {
-      for (const r of filteredDiscoverRepos) discoverSelected[r.fullName] = true;
+      for (const r of selectableRepos) discoverSelected[r.fullName] = true;
       discoverSelected = discoverSelected;
     }
   }
@@ -616,6 +618,17 @@
     // ── Event listeners (always registered) ──
     events.on('status:updated', (results: any) => {
       applyStatusResults(results);
+      // Refresh expanded detail if a repo is open.
+      if (expandedRepo && !detailLoading) {
+        const slash = expandedRepo.indexOf('/');
+        const sk = expandedRepo.substring(0, slash);
+        const rn = expandedRepo.substring(slash + 1);
+        bridge.getRepoDetail(sk, rn).then((raw) => {
+          if (expandedRepo === `${sk}/${rn}`) {
+            repoDetail = { ...raw, changed: raw.changed || [], untracked: raw.untracked || [] };
+          }
+        }).catch(() => {});
+      }
     });
 
     events.on('clone:progress', (data: any) => {
@@ -1032,9 +1045,11 @@
               <span class="dr-name">Select all{discoverFilter ? ' (filtered)' : ''}</span>
             </label>
             {#each filteredDiscoverRepos as repo}
-              <label class="dr">
-                <input type="checkbox" bind:checked={discoverSelected[repo.fullName]} />
+              {@const alreadyAdded = !!($sources[discoverModal]?.repos?.[repo.fullName])}
+              <label class="dr" class:dr-disabled={alreadyAdded}>
+                <input type="checkbox" bind:checked={discoverSelected[repo.fullName]} disabled={alreadyAdded} />
                 <span class="dr-name">{repo.fullName}</span>
+                {#if alreadyAdded}<span class="dr-tag">added</span>{/if}
                 {#if repo.archived}<span class="dr-tag">archived</span>{/if}
                 {#if repo.fork}<span class="dr-tag">fork</span>{/if}
                 <span class="dr-desc">{repo.description}</span>
@@ -1299,7 +1314,7 @@
             <button class="btn-cancel" on:click={closeCredChange}>Cancel</button>
           {:else}
             <button class="btn-cancel" on:click={closeCredChange}>Cancel</button>
-            <button class="btn-add" on:click={applyCredChange} disabled={credChangeBusy}>
+            <button class="btn-add" on:click={applyCredChange} disabled={credChangeBusy || (credChangeType === (currentAcct?.default_credential_type || '') && credStatuses[credChangeModal || ''] === 'ok')}>
               {credChangeBusy ? 'Setting up...' : 'Change & setup'}
             </button>
           {/if}
@@ -1645,6 +1660,8 @@
   .dr-name { color: var(--text-repo); font-weight: 500; }
   .dr-desc { color: var(--text-dim); font-size: 11px; margin-left: auto; }
   .dr-tag { font-size: 9px; padding: 1px 5px; background: var(--bg-hover); color: var(--text-dim); border-radius: 3px; }
+  .dr-disabled { opacity: 0.4; cursor: default; }
+  .dr-disabled:hover { background: transparent; }
 
   .btn-cancel { padding: 6px 12px; background: var(--bg-hover); border: 1px solid var(--border-hover); color: var(--text-secondary); border-radius: 6px; cursor: pointer; font-size: 12px; }
   .btn-cancel:hover { color: var(--text-primary); }
