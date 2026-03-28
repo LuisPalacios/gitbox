@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -726,6 +727,131 @@ func (a *App) UpdateAccount(req UpdateAccountRequest) error {
 		return err
 	}
 	return config.Save(a.cfg, a.cfgPath)
+}
+
+// validAccountKey matches lowercase alphanumeric keys with hyphens.
+var validAccountKey = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]*$`)
+
+// RenameAccount renames an account key and migrates all related artifacts:
+// config references, source key + folder, OS keyring tokens, SSH keys/config.
+func (a *App) RenameAccount(oldKey, newKey string) error {
+	if newKey == "" {
+		return fmt.Errorf("new key cannot be empty")
+	}
+	if oldKey == newKey {
+		return nil
+	}
+	if !validAccountKey.MatchString(newKey) {
+		return fmt.Errorf("invalid key %q: use lowercase letters, numbers, and hyphens", newKey)
+	}
+
+	a.mu.Lock()
+	acct, ok := a.cfg.Accounts[oldKey]
+	if !ok {
+		a.mu.Unlock()
+		return fmt.Errorf("account %q not found", oldKey)
+	}
+	if _, exists := a.cfg.Accounts[newKey]; exists {
+		a.mu.Unlock()
+		return fmt.Errorf("account %q already exists", newKey)
+	}
+	cfg := a.cfg
+	a.mu.Unlock()
+
+	// ── Credential migration ──
+
+	switch acct.DefaultCredentialType {
+	case "token":
+		a.migrateKeyringToken(oldKey, newKey)
+
+	case "ssh":
+		sshFolder := "~/.ssh"
+		if cfg.Global.CredentialSSH != nil && cfg.Global.CredentialSSH.SSHFolder != "" {
+			sshFolder = cfg.Global.CredentialSSH.SSHFolder
+		}
+		sshFolder = config.ExpandTilde(sshFolder)
+
+		oldAlias := credential.SSHHostAlias(oldKey)
+		newAlias := credential.SSHHostAlias(newKey)
+		oldKeyPath := credential.SSHKeyPath(sshFolder, oldKey)
+		newKeyPath := credential.SSHKeyPath(sshFolder, newKey)
+
+		// Rename key files (ignore not-found).
+		_ = os.Rename(oldKeyPath, newKeyPath)
+		_ = os.Rename(oldKeyPath+".pub", newKeyPath+".pub")
+
+		// Update SSH config: remove old, write new.
+		_ = credential.RemoveSSHConfigEntry(sshFolder, oldAlias)
+		hostname := hostnameFromURL(acct.URL)
+		if acct.SSH != nil && acct.SSH.Hostname != "" {
+			hostname = acct.SSH.Hostname
+		}
+		_ = credential.WriteSSHConfigEntry(sshFolder, credential.SSHConfigEntryOpts{
+			Host:     newAlias,
+			Hostname: hostname,
+			KeyFile:  newKeyPath,
+			Username: acct.Username,
+			Name:     acct.Name,
+			Email:    acct.Email,
+			URL:      acct.URL,
+		})
+
+		// Update account SSH config.
+		if acct.SSH != nil {
+			acct.SSH.Host = newAlias
+		}
+
+		// Also migrate keyring token (SSH accounts may store a PAT).
+		a.migrateKeyringToken(oldKey, newKey)
+
+	case "gcm":
+		// GCM credentials are keyed by hostname+username, not account key.
+		// Still migrate keyring token in case one was stored.
+		a.migrateKeyringToken(oldKey, newKey)
+	}
+
+	// ── Source key + folder rename ──
+
+	a.mu.Lock()
+	if _, srcExists := cfg.Sources[oldKey]; srcExists {
+		if _, conflict := cfg.Sources[newKey]; !conflict {
+			// Rename on-disk folder if source uses default folder (source key).
+			src := cfg.Sources[oldKey]
+			if src.Folder == "" {
+				globalFolder := config.ExpandTilde(cfg.Global.Folder)
+				oldPath := filepath.Join(globalFolder, oldKey)
+				newPath := filepath.Join(globalFolder, newKey)
+				_ = os.Rename(oldPath, newPath)
+			}
+			_ = cfg.RenameSource(oldKey, newKey)
+		}
+	}
+
+	// ── Config mutation ──
+
+	// Update SSH host in the account before renaming.
+	if acct.SSH != nil {
+		cfg.Accounts[oldKey] = acct
+	}
+	if err := cfg.RenameAccount(oldKey, newKey); err != nil {
+		a.mu.Unlock()
+		return err
+	}
+	a.mu.Unlock()
+
+	return config.Save(cfg, a.cfgPath)
+}
+
+// migrateKeyringToken moves a token from oldKey to newKey in the OS keyring.
+func (a *App) migrateKeyringToken(oldKey, newKey string) {
+	tok, err := credential.GetToken(oldKey)
+	if err != nil || tok == "" {
+		return
+	}
+	if err := credential.StoreToken(newKey, tok); err != nil {
+		return
+	}
+	_ = credential.DeleteToken(oldKey)
 }
 
 // ─── Credential Setup ─────────────────────────────────────────

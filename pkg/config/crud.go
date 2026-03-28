@@ -48,6 +48,31 @@ func (c *Config) DeleteAccount(key string) error {
 	return nil
 }
 
+// RenameAccount moves an account from oldKey to newKey and updates all
+// source references. Returns error if oldKey not found or newKey already exists.
+func (c *Config) RenameAccount(oldKey, newKey string) error {
+	if newKey == "" {
+		return fmt.Errorf("new account key cannot be empty")
+	}
+	if _, exists := c.Accounts[oldKey]; !exists {
+		return fmt.Errorf("account %q not found", oldKey)
+	}
+	if _, exists := c.Accounts[newKey]; exists {
+		return fmt.Errorf("account %q already exists", newKey)
+	}
+	c.Accounts[newKey] = c.Accounts[oldKey]
+	delete(c.Accounts, oldKey)
+
+	// Update all source references.
+	for srcKey, src := range c.Sources {
+		if src.Account == oldKey {
+			src.Account = newKey
+			c.Sources[srcKey] = src
+		}
+	}
+	return nil
+}
+
 // GetAccountByKey returns an account by key.
 func (c *Config) GetAccountByKey(key string) (Account, bool) {
 	acct, ok := c.Accounts[key]
@@ -125,6 +150,23 @@ func (c *Config) DeleteSource(key string) error {
 		return fmt.Errorf("source %q not found", key)
 	}
 	delete(c.Sources, key)
+	return nil
+}
+
+// RenameSource moves a source from oldKey to newKey.
+// Returns error if oldKey not found or newKey already exists.
+func (c *Config) RenameSource(oldKey, newKey string) error {
+	if newKey == "" {
+		return fmt.Errorf("new source key cannot be empty")
+	}
+	if _, exists := c.Sources[oldKey]; !exists {
+		return fmt.Errorf("source %q not found", oldKey)
+	}
+	if _, exists := c.Sources[newKey]; exists {
+		return fmt.Errorf("source %q already exists", newKey)
+	}
+	c.Sources[newKey] = c.Sources[oldKey]
+	delete(c.Sources, oldKey)
 	return nil
 }
 

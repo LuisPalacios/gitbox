@@ -114,6 +114,10 @@ export function ReloadConfig() {
   return window['go']['main']['App']['ReloadConfig']();
 }
 
+export function RenameAccount(arg1, arg2) {
+  return window['go']['main']['App']['RenameAccount'](arg1, arg2);
+}
+
 export function SetGlobalFolder(arg1) {
   return window['go']['main']['App']['SetGlobalFolder'](arg1);
 }

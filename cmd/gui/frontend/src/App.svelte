@@ -293,12 +293,13 @@
   // ── Edit account ──
   let editAccountModal: string | null = null;
   let editAccountError = '';
-  let editAcct = { provider: '', url: '', username: '', name: '', email: '', defaultBranch: '' };
+  let editAcct = { key: '', provider: '', url: '', username: '', name: '', email: '', defaultBranch: '' };
 
   function openEditAccount(key: string) {
     const acct = $accounts[key];
     if (!acct) return;
     editAcct = {
+      key,
       provider: acct.provider || '',
       url: acct.url || '',
       username: acct.username || '',
@@ -313,11 +314,20 @@
   async function submitEditAccount() {
     if (!editAccountModal) return;
     editAccountError = '';
+    const newKey = editAcct.key.trim();
+    if (!newKey) { editAccountError = 'Account key is required'; return; }
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(newKey)) { editAccountError = 'Key: letters, numbers, hyphens only'; return; }
     if (!editAcct.url.trim()) { editAccountError = 'URL is required'; return; }
     if (!editAcct.username.trim()) { editAccountError = 'Username is required'; return; }
     try {
-      await bridge.updateAccount({ key: editAccountModal, ...editAcct });
+      const oldKey = editAccountModal;
+      const keyChanged = newKey !== oldKey;
+      if (keyChanged) {
+        await bridge.renameAccount(oldKey, newKey);
+      }
+      await bridge.updateAccount({ key: newKey, ...editAcct });
       await reloadFromDisk();
+      verifyAllCredentials();
       editAccountModal = null;
     } catch (e: any) {
       editAccountError = e?.message || String(e);
@@ -1055,8 +1065,8 @@
             <p class="form-error">{editAccountError}</p>
           {/if}
           <div class="form-row">
-            <label class="form-label">Account key</label>
-            <span class="form-static">{editAccountModal}</span>
+            <label class="form-label" for="ea-key">Account key</label>
+            <input class="form-input" id="ea-key" bind:value={editAcct.key} placeholder="account-key" />
           </div>
           <div class="form-row">
             <label class="form-label" for="ea-provider">Provider</label>

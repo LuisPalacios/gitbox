@@ -58,6 +58,8 @@ export function RefreshStatus():Promise<void>;
 
 export function ReloadConfig():Promise<main.ConfigDTO>;
 
+export function RenameAccount(arg1:string,arg2:string):Promise<void>;
+
 export function SetGlobalFolder(arg1:string):Promise<void>;
 
 export function SetPeriodicSync(arg1:string):Promise<void>;
