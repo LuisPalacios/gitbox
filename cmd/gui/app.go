@@ -71,11 +71,41 @@ func (a *App) BeforeClose(_ context.Context) bool {
 
 // DomReady is called after the frontend DOM is ready.
 // We start hidden, restore saved position, then show the window to prevent flickering.
+// If the saved position is off-screen (e.g. monitor disconnected), we center instead.
 func (a *App) DomReady(_ context.Context) {
 	if w := a.savedWindowPos; w != nil {
-		wailsrt.WindowSetPosition(a.ctx, w.X, w.Y)
+		if a.isPositionOnScreen(w.X, w.Y, w.Width, w.Height) {
+			wailsrt.WindowSetPosition(a.ctx, w.X, w.Y)
+		} else {
+			wailsrt.WindowCenter(a.ctx)
+		}
 	}
 	wailsrt.WindowShow(a.ctx)
+}
+
+// isPositionOnScreen checks whether the saved window position would be visible
+// on the primary screen. Negative coordinates or positions that push the window
+// entirely off-screen (common after disconnecting a secondary monitor) are rejected.
+func (a *App) isPositionOnScreen(x, y, w, h int) bool {
+	screens, err := wailsrt.ScreenGetAll(a.ctx)
+	if err != nil || len(screens) == 0 {
+		return x >= 0 && y >= 0 // conservative fallback
+	}
+	// Use the primary screen dimensions as the safe zone.
+	var sw, sh int
+	for _, s := range screens {
+		if s.IsPrimary {
+			sw, sh = s.Size.Width, s.Size.Height
+			break
+		}
+	}
+	if sw == 0 || sh == 0 {
+		sw, sh = screens[0].Size.Width, screens[0].Size.Height
+	}
+	// Reject if the window would be entirely off-screen.
+	// Allow some tolerance: at least 100px of the window must be visible.
+	const margin = 100
+	return x+w > margin && y+h > margin && x < sw-margin && y < sh-margin
 }
 
 // GetAppVersion returns the application version string for the frontend.
@@ -663,6 +693,7 @@ func (a *App) AddAccount(req AddAccountRequest) error {
 // UpdateAccountRequest is the frontend payload for editing an account.
 type UpdateAccountRequest struct {
 	Key           string `json:"key"`
+	Provider      string `json:"provider"`
 	URL           string `json:"url"`
 	Username      string `json:"username"`
 	Name          string `json:"name"`
@@ -680,6 +711,9 @@ func (a *App) UpdateAccount(req UpdateAccountRequest) error {
 		return fmt.Errorf("account %q not found", req.Key)
 	}
 
+	if req.Provider != "" {
+		acct.Provider = req.Provider
+	}
 	acct.URL = req.URL
 	acct.Username = req.Username
 	acct.Name = req.Name
@@ -783,12 +817,9 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 		return CredentialSetupResult{OK: false, Message: fmt.Sprintf("git credential approve failed: %v", err)}
 	}
 
-	// Verify the credential was actually persisted (using the real username).
-	_, _, err = credential.ResolveGCMToken(acct.URL, realUsername)
-	if err != nil {
-		return CredentialSetupResult{OK: false, Message: fmt.Sprintf("Credential approved but verification failed for %s@%s: %v", realUsername, host, err)}
-	}
-
+	// The credential fill + approve succeeded — the credential is persisted.
+	// We skip re-verifying via ResolveGCMToken here because for generic GCM
+	// providers (Forgejo, Gitea) it can trigger a second interactive prompt.
 	return CredentialSetupResult{OK: true, Message: fmt.Sprintf("GCM credential stored for %s@%s", realUsername, host)}
 }
 
@@ -1086,6 +1117,87 @@ func (a *App) ChangeCredentialType(accountKey, newType string) error {
 	return config.Save(a.cfg, a.cfgPath)
 }
 
+// CredentialDelete removes the credential artifacts for an account and clears
+// its credential configuration so it can be set up from scratch.
+func (a *App) CredentialDelete(accountKey string) CredentialSetupResult {
+	a.mu.Lock()
+	acct, ok := a.cfg.Accounts[accountKey]
+	cfg := a.cfg
+	a.mu.Unlock()
+
+	if !ok {
+		return CredentialSetupResult{OK: false, Message: "Account not found"}
+	}
+
+	var msgs []string
+
+	switch acct.DefaultCredentialType {
+	case "token":
+		if err := credential.DeleteToken(accountKey); err != nil {
+			msgs = append(msgs, fmt.Sprintf("removing token: %v", err))
+		} else {
+			msgs = append(msgs, "Token removed from OS keyring")
+		}
+
+	case "gcm":
+		host := hostnameFromURL(acct.URL)
+		input := fmt.Sprintf("protocol=https\nhost=%s\nusername=%s\n", host, acct.Username)
+		cmd := exec.Command(git.GitBin(), "credential", "reject")
+		git.HideWindow(cmd)
+		cmd.Stdin = strings.NewReader(input)
+		if err := cmd.Run(); err != nil {
+			msgs = append(msgs, fmt.Sprintf("git credential reject: %v", err))
+		} else {
+			msgs = append(msgs, fmt.Sprintf("GCM credential removed for %s@%s", acct.Username, host))
+		}
+
+	case "ssh":
+		sshFolder := "~/.ssh"
+		if cfg.Global.CredentialSSH != nil && cfg.Global.CredentialSSH.SSHFolder != "" {
+			sshFolder = cfg.Global.CredentialSSH.SSHFolder
+		}
+		sshFolder = config.ExpandTilde(sshFolder)
+
+		hostAlias := credential.SSHHostAlias(accountKey)
+		keyPath := credential.SSHKeyPath(sshFolder, accountKey)
+
+		if err := os.Remove(keyPath); err == nil {
+			msgs = append(msgs, fmt.Sprintf("Removed SSH key: %s", keyPath))
+		}
+		if err := os.Remove(keyPath + ".pub"); err == nil {
+			msgs = append(msgs, fmt.Sprintf("Removed SSH public key: %s.pub", keyPath))
+		}
+		if err := credential.RemoveSSHConfigEntry(sshFolder, hostAlias); err == nil {
+			msgs = append(msgs, fmt.Sprintf("Removed Host %s from ~/.ssh/config", hostAlias))
+		}
+		if err := credential.DeleteToken(accountKey); err == nil {
+			msgs = append(msgs, "Removed PAT from OS keyring")
+		}
+		msgs = append(msgs, fmt.Sprintf("Remember to remove the SSH public key from your provider:\n  %s", credential.SSHPublicKeyURL(acct.Provider, acct.URL)))
+
+	case "":
+		return CredentialSetupResult{OK: true, Message: "No credential configured"}
+	}
+
+	// Clear credential config.
+	a.mu.Lock()
+	acct.DefaultCredentialType = ""
+	acct.GCM = nil
+	acct.SSH = nil
+	acct.Token = nil
+	if err := a.cfg.UpdateAccount(accountKey, acct); err != nil {
+		a.mu.Unlock()
+		return CredentialSetupResult{OK: false, Message: err.Error()}
+	}
+	a.mu.Unlock()
+
+	if err := config.Save(a.cfg, a.cfgPath); err != nil {
+		return CredentialSetupResult{OK: false, Message: err.Error()}
+	}
+
+	return CredentialSetupResult{OK: true, Message: strings.Join(msgs, "\n")}
+}
+
 // ─── Discovery ────────────────────────────────────────────────
 
 // DiscoverResult is a repo found during discovery.
@@ -1206,12 +1318,16 @@ func (a *App) CredentialVerify(accountKey string) CredentialStatus {
 		return CredentialStatus{Status: "error", Message: "account not found"}
 	}
 
-	_, _, err := credential.ResolveAPIToken(acct, accountKey)
+	if acct.DefaultCredentialType == "" {
+		return CredentialStatus{Status: "none", Message: "no credential configured"}
+	}
+
+	token, _, err := credential.ResolveAPIToken(acct, accountKey)
 	if err != nil {
 		return CredentialStatus{Status: "error", Message: err.Error()}
 	}
 
-	err = provider.TestAuth(context.Background(), acct.Provider, acct.URL, "", acct.Username)
+	err = provider.TestAuth(context.Background(), acct.Provider, acct.URL, token, acct.Username)
 	if err != nil {
 		return CredentialStatus{Status: "warning", Message: err.Error()}
 	}

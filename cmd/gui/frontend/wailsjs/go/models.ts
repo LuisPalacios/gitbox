@@ -450,6 +450,7 @@ export namespace main {
 	}
 	export class UpdateAccountRequest {
 	    key: string;
+	    provider: string;
 	    url: string;
 	    username: string;
 	    name: string;
@@ -463,6 +464,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.key = source["key"];
+	        this.provider = source["provider"];
 	        this.url = source["url"];
 	        this.username = source["username"];
 	        this.name = source["name"];

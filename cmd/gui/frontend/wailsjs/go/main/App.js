@@ -18,6 +18,10 @@ export function CloneRepo(arg1, arg2) {
   return window['go']['main']['App']['CloneRepo'](arg1, arg2);
 }
 
+export function CredentialDelete(arg1) {
+  return window['go']['main']['App']['CredentialDelete'](arg1);
+}
+
 export function CredentialSetupGCM(arg1) {
   return window['go']['main']['App']['CredentialSetupGCM'](arg1);
 }

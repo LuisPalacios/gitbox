@@ -28,7 +28,7 @@
     try {
       await bridge.setGlobalFolder(onboardFolder);
       firstRun = false;
-      await reloadFromDisk();
+      await initDashboard();
     } catch (err: any) {
       onboardError = err?.message || String(err);
     }
@@ -186,23 +186,30 @@
   let discoverLoading = false;
   let discoverRepos: DiscoverResult[] = [];
   let discoverSelected: Record<string, boolean> = {};
+  let discoverFilter = '';
 
   function openDiscover(accountKey: string) {
     discoverModal = accountKey;
     discoverLoading = true;
     discoverRepos = [];
     discoverSelected = {};
+    discoverFilter = '';
     bridge.discover(accountKey);
   }
 
+  $: filteredDiscoverRepos = discoverFilter.trim()
+    ? discoverRepos.filter((r) => r.fullName.toLowerCase().includes(discoverFilter.trim().toLowerCase()))
+    : discoverRepos;
   $: selectedCount = Object.values(discoverSelected).filter(Boolean).length;
-  $: allSelected = discoverRepos.length > 0 && selectedCount === discoverRepos.length;
+  $: allSelected = filteredDiscoverRepos.length > 0 && filteredDiscoverRepos.every((r) => discoverSelected[r.fullName]);
 
   function toggleAll() {
     if (allSelected) {
-      discoverSelected = {};
+      for (const r of filteredDiscoverRepos) delete discoverSelected[r.fullName];
+      discoverSelected = discoverSelected;
     } else {
-      discoverSelected = Object.fromEntries(discoverRepos.map((r) => [r.fullName, true]));
+      for (const r of filteredDiscoverRepos) discoverSelected[r.fullName] = true;
+      discoverSelected = discoverSelected;
     }
   }
 
@@ -286,12 +293,13 @@
   // ── Edit account ──
   let editAccountModal: string | null = null;
   let editAccountError = '';
-  let editAcct = { url: '', username: '', name: '', email: '', defaultBranch: '' };
+  let editAcct = { provider: '', url: '', username: '', name: '', email: '', defaultBranch: '' };
 
   function openEditAccount(key: string) {
     const acct = $accounts[key];
     if (!acct) return;
     editAcct = {
+      provider: acct.provider || '',
       url: acct.url || '',
       username: acct.username || '',
       name: acct.name || '',
@@ -407,6 +415,7 @@
   let credChangeResult: { ok: boolean; message: string } | null = null;
   let credChangeTokenInput = '';
   let credChangeTokenGuide = '';
+  let credDeleteBusy = false;
 
   function openCredChange(accountKey: string, currentType: string) {
     credChangeModal = accountKey;
@@ -415,6 +424,25 @@
     credChangeResult = null;
     credChangeTokenInput = '';
     credChangeTokenGuide = '';
+    credDeleteBusy = false;
+  }
+
+  async function deleteCredential() {
+    if (!credChangeModal) return;
+    const key = credChangeModal;
+    credDeleteBusy = true;
+    try {
+      await bridge.credentialDelete(key);
+      await reloadFromDisk();
+      credStatuses[key] = 'none';
+      credStatuses = credStatuses;
+    } catch (err: any) {
+      credChangeResult = { ok: false, message: err?.message || String(err) };
+      credDeleteBusy = false;
+      return;
+    }
+    credDeleteBusy = false;
+    credChangeModal = null;
   }
 
   function closeCredChange() {
@@ -515,7 +543,7 @@
     if (fetchTimerId) { clearInterval(fetchTimerId); fetchTimerId = null; }
     const minutes = val === '5m' ? 5 : val === '15m' ? 15 : val === '30m' ? 30 : 0;
     if (minutes > 0) {
-      fetchTimerId = setInterval(() => runFetchAll(), minutes * 60 * 1000);
+      fetchTimerId = setInterval(() => { runFetchAll(); verifyAllCredentials(); }, minutes * 60 * 1000);
     }
   }
 
@@ -533,32 +561,13 @@
   let credStatuses: Record<string, string> = {};
 
   // ── Lifecycle ──
-  onMount(async () => {
-    applyTheme();
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-      if (themeChoice === 'system') applyTheme();
-    });
-
-    // Re-read config when the window regains focus (picks up external edits).
-    // Debounce so a focus-by-click doesn't race with the click handler.
-    let focusTimer: ReturnType<typeof setTimeout> | null = null;
-    window.addEventListener('focus', () => {
-      if (focusTimer) clearTimeout(focusTimer);
-      focusTimer = setTimeout(() => reloadFromDisk(), 300);
-    });
-
-    // Check first run — show onboarding if no folder configured.
-    firstRun = await bridge.isFirstRun();
-    if (firstRun) return; // Don't load dashboard until onboarding completes.
-
-    // Load config
+  async function initDashboard() {
     const cfg = await bridge.getConfig();
     configStore.set(cfg);
     configPath = await bridge.getConfigPath();
     appVersion = await bridge.getAppVersion();
     fetchInterval = await bridge.getPeriodicSync();
 
-    // Load status
     const statuses = await bridge.getAllStatus();
     applyStatusResults(statuses);
 
@@ -566,14 +575,35 @@
     runFetchAll();
 
     // Verify credentials for each account
-    for (const key of Object.keys(cfg.accounts)) {
+    verifyAllCredentials();
+
+    // Start periodic fetch if previously configured.
+    if (fetchInterval !== 'off') applyFetchInterval(fetchInterval);
+  }
+
+  function verifyAllCredentials() {
+    for (const key of Object.keys($accounts)) {
       bridge.credentialVerify(key).then((cs) => {
         credStatuses[key] = cs.status;
         credStatuses = credStatuses;
       });
     }
+  }
 
-    // ── Event listeners ──
+  onMount(async () => {
+    applyTheme();
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (themeChoice === 'system') applyTheme();
+    });
+
+    // Re-read config when the window regains focus (picks up external edits).
+    let focusTimer: ReturnType<typeof setTimeout> | null = null;
+    window.addEventListener('focus', () => {
+      if (focusTimer) clearTimeout(focusTimer);
+      focusTimer = setTimeout(() => reloadFromDisk(), 300);
+    });
+
+    // ── Event listeners (always registered) ──
     events.on('status:updated', (results: any) => {
       applyStatusResults(results);
     });
@@ -646,12 +676,15 @@
         discoverRepos = [];
         return;
       }
-      discoverRepos = data.repos || [];
+      discoverRepos = (data.repos || []).sort((a: DiscoverResult, b: DiscoverResult) => a.fullName.localeCompare(b.fullName));
       discoverSelected = {};
     });
 
-    // Start periodic fetch if previously configured.
-    if (fetchInterval !== 'off') applyFetchInterval(fetchInterval);
+    // Check first run — show onboarding if no folder configured.
+    firstRun = await bridge.isFirstRun();
+    if (firstRun) return; // Don't load dashboard until onboarding completes.
+
+    await initDashboard();
   });
 
   function checkSyncDone() {
@@ -826,8 +859,9 @@
   <section class="cards-row">
     {#each Object.entries($accounts) as [key, acct]}
       {@const stats = $accountStats[key] || { total: 0, synced: 0, issues: 0 }}
-      {@const cred = credStatuses[key] || 'ok'}
-      <div class="card" class:card-delete-mode={deleteMode}>
+      {@const cred = credStatuses[key] || 'unknown'}
+      <div class="card" class:card-delete-mode={deleteMode}
+        style={cred === 'none' || cred === 'error' ? `background: ${resolvedTheme === 'light' ? '#fef2f2' : '#2a1215'}` : ''}>
         <div class="card-top">
           {#if deleteMode}
             <button class="btn-delete-x card-delete-btn" on:click={() => askDeleteAccount(key)} title="Delete account {key}">&#10005;</button>
@@ -835,7 +869,9 @@
             <span class="card-dot" style="background: {cc(cred)}"></span>
           {/if}
           <span class="card-provider">{providerLabel(acct.provider)}</span>
-          <button class="cred-badge" on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')} title="Credential: {acct.default_credential_type || 'gcm'}">{acct.default_credential_type || 'gcm'}</button>
+          <button class="cred-badge cred-badge-{cred === 'ok' ? 'ok' : cred === 'error' ? 'err' : cred === 'warning' ? 'warn' : cred === 'none' ? 'none' : ''}"
+            on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')}
+            title="Credential: {acct.default_credential_type || 'none'}">{cred === 'none' ? 'config' : acct.default_credential_type || 'gcm'}</button>
         </div>
         <div class="card-name card-name-edit" on:click={() => openEditAccount(key)} title="Edit account">{key.replace(/^(github|git)-/, '')}</div>
         <div class="card-ring-row">
@@ -854,7 +890,7 @@
             <span class="card-ok" style="color: {sc('clean')}">All good</span>
           {/if}
         </div>
-        <button class="card-btn" on:click={() => openDiscover(key)}>Find projects</button>
+        <button class="card-btn" on:click={() => openDiscover(key)} disabled={cred === 'none' || cred === 'error'}>Find projects</button>
       </div>
     {/each}
     <button class="card card-add" on:click={() => addAccountModal = true} title="Add account">
@@ -968,7 +1004,7 @@
   <!-- ── DISCOVER MODAL ── -->
   {#if discoverModal}
     <div class="overlay" on:click={() => discoverModal = null} transition:fade={{ duration: 120 }}>
-      <div class="modal" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+      <div class="modal modal-discover" on:click|stopPropagation transition:slide={{ duration: 180 }}>
         <div class="modal-head">
           <h3>Find projects &mdash; {discoverModal}</h3>
           <button class="btn-x" on:click={() => discoverModal = null}>&#10005;</button>
@@ -979,12 +1015,13 @@
           {:else if discoverRepos.length === 0}
             <p class="found">No new projects found.</p>
           {:else}
-            <p class="found">Found {discoverRepos.length} projects:</p>
+            <p class="found">Found {discoverRepos.length} projects{discoverFilter ? ` (showing ${filteredDiscoverRepos.length})` : ''}:</p>
+            <input class="form-input discover-filter" type="text" placeholder="Filter projects..." bind:value={discoverFilter} />
             <label class="dr dr-all">
               <input type="checkbox" checked={allSelected} on:change={toggleAll} />
-              <span class="dr-name">Select all</span>
+              <span class="dr-name">Select all{discoverFilter ? ' (filtered)' : ''}</span>
             </label>
-            {#each discoverRepos as repo}
+            {#each filteredDiscoverRepos as repo}
               <label class="dr">
                 <input type="checkbox" bind:checked={discoverSelected[repo.fullName]} />
                 <span class="dr-name">{repo.fullName}</span>
@@ -1022,8 +1059,14 @@
             <span class="form-static">{editAccountModal}</span>
           </div>
           <div class="form-row">
-            <label class="form-label">Provider</label>
-            <span class="form-static">{$accounts[editAccountModal]?.provider || ''}</span>
+            <label class="form-label" for="ea-provider">Provider</label>
+            <select class="form-input" id="ea-provider" bind:value={editAcct.provider}>
+              <option value="github">GitHub</option>
+              <option value="gitlab">GitLab</option>
+              <option value="gitea">Gitea</option>
+              <option value="forgejo">Forgejo</option>
+              <option value="bitbucket">Bitbucket</option>
+            </select>
           </div>
           <div class="form-row">
             <label class="form-label" for="ea-url">URL</label>
@@ -1235,6 +1278,11 @@
           {/if}
         </div>
         <div class="modal-foot">
+          {#if currentAcct?.default_credential_type && !credChangeResult}
+            <button class="btn-delete cred-delete-btn" on:click={deleteCredential} disabled={credDeleteBusy || credChangeBusy}>
+              {credDeleteBusy ? 'Deleting...' : 'Delete credential'}
+            </button>
+          {/if}
           {#if credChangeResult}
             <button class="btn-cancel" on:click={closeCredChange}>{credChangeResult.ok ? 'Done' : 'Close'}</button>
           {:else if credChangeType === 'token' && credChangeTokenGuide}
@@ -1418,6 +1466,14 @@
     transition: all 0.12s; line-height: 1.3;
   }
   .cred-badge:hover { color: var(--text-primary); border-color: var(--border-hover); background: var(--bg-card); }
+  .cred-badge-ok { background: #14532d; border-color: #166534; color: #86efac; }
+  .cred-badge-err { background: #450a0a; border-color: #be123c; color: #fca5a5; }
+  .cred-badge-warn { background: #431407; border-color: #c2410c; color: #fdba74; }
+  .cred-badge-none { background: #1e3a5f; border-color: #2563eb; color: #93c5fd; }
+  :global([data-theme="light"]) .cred-badge-ok { background: #dcfce7; border-color: #166534; color: #166534; }
+  :global([data-theme="light"]) .cred-badge-err { background: #fee2e2; border-color: #be123c; color: #be123c; }
+  :global([data-theme="light"]) .cred-badge-warn { background: #ffedd5; border-color: #c2410c; color: #c2410c; }
+  :global([data-theme="light"]) .cred-badge-none { background: #dbeafe; border-color: #2563eb; color: #2563eb; }
   .card-delete-btn { flex-shrink: 0; }
   .card-name { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   .card-name-edit { cursor: pointer; }
@@ -1434,7 +1490,8 @@
     color: var(--text-secondary); border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 500;
     transition: all 0.15s;
   }
-  .card-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
+  .card-btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
+  .card-btn:disabled { opacity: 0.35; cursor: default; }
 
   .repo-list { flex: 1; padding: 0 24px 12px; overflow-y: auto; min-height: 0; }
   .source-group { margin-bottom: 6px; }
@@ -1596,6 +1653,8 @@
 
   /* ── Add account form ── */
   .modal-account { width: 420px; }
+  .modal-discover { width: 650px; }
+  .discover-filter { width: 100%; margin-bottom: 8px; font-size: 13px; }
   .form-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
   .form-label { font-size: 11px; font-weight: 600; color: var(--text-muted); width: 95px; flex-shrink: 0; }
   .form-input {
@@ -1646,4 +1705,5 @@
   .btn-delete-final { background: #991b1b; }
   .btn-delete-final:hover:not(:disabled) { background: #7f1d1d; }
   .btn-delete:disabled { opacity: 0.5; cursor: default; }
+  .cred-delete-btn { margin-right: auto; }
 </style>

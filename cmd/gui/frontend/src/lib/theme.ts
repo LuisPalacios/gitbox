@@ -20,6 +20,7 @@ export function statusColor(status: string, theme: string): string {
 }
 
 export function credColor(status: string, theme: string): string {
+  if (status === 'none') return theme === 'light' ? '#2563eb' : '#4B95E9';
   if (theme === 'light') {
     return status === 'ok' ? '#166534' : status === 'warning' ? '#c2410c' : '#be123c';
   }

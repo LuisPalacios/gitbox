@@ -10,6 +10,8 @@ export function ChangeCredentialType(arg1:string,arg2:string):Promise<void>;
 
 export function CloneRepo(arg1:string,arg2:string):Promise<void>;
 
+export function CredentialDelete(arg1:string):Promise<main.CredentialSetupResult>;
+
 export function CredentialSetupGCM(arg1:string):Promise<main.CredentialSetupResult>;
 
 export function CredentialSetupSSH(arg1:string):Promise<main.CredentialSetupResult>;

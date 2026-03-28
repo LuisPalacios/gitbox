@@ -47,6 +47,9 @@ README.md                 Project overview
 go build -o build/gitboxcmd ./cmd/cli
 
 # Build GUI (requires Wails CLI)
+# ALWAYS copy icons before building — they are not checked in under cmd/gui/build/
+cp assets/appicon.png cmd/gui/build/appicon.png
+cp assets/icon.ico    cmd/gui/build/windows/icon.ico
 cd cmd/gui && wails build
 
 # Run tests

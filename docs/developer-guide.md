@@ -11,6 +11,17 @@
   go install github.com/wailsapp/wails/v2/cmd/wails@latest
   ```
 
+Check:
+
+```bash
+go version            # Go compiler
+wails version         # Wails CLI (go install github.com/wailsapp/wails/v2/cmd/wails@latest)
+node --version        # Node.js (for Svelte frontend)
+npm --version         # npm
+git --version         # Git
+```
+
+
 ### Platform-Specific
 
 - **Windows:** Git for Windows (provides Git Bash)
