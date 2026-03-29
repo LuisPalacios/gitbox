@@ -34,17 +34,9 @@ Supports GitHub, GitLab, Forgejo, etc. — on Windows, macOS, and Linux.
 
 Grab the latest binaries from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page.
 
-| Platform | Arch | CLI | GUI | Download |
-| --- | --- | --- | --- | --- |
-| Windows | amd64 | `gitboxcmd.exe` | `Gitbox.exe` | `gitbox-win-amd64.zip` |
-| macOS | arm64 | `gitboxcmd` | `Gitbox.app` | `gitbox-macos-arm64.zip` |
-| Linux | amd64 | `gitboxcmd` | `Gitbox` | `gitbox-linux-amd64.zip` |
+The app is not signed, you need to do the following once per download:
 
-### The app is not signed
-
-This only happens once per download
-
-- **macOS:** After extracting, move it to *Applications*. Run `xattr -cr /Applications/Gitbox.app` and `xattr -cr /path/to/gitboxcmd` from Terminal, before you launch it.
+- **macOS:** After extracting, move it to *Applications*. Run `xattr -cr /Applications/Gitbox.app` and `xattr -cr /path/to/gitboxcmd && chmod +x /path/to/gitboxcmd` from Terminal, before you launch it.
 
 - **Windows SmartScreen:** After extracting, move executable to any folder and launch it. Will show "Windows protected your PC" dialog. Click **More info** → **Run anyway**.
 
