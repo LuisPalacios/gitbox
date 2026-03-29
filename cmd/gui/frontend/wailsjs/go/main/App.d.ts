@@ -46,6 +46,8 @@ export function GetRepoDetail(arg1:string,arg2:string):Promise<main.RepoDetail>;
 
 export function GetTokenGuide(arg1:string):Promise<main.TokenGuideInfo>;
 
+export function GetViewMode():Promise<string>;
+
 export function IsFirstRun():Promise<boolean>;
 
 export function OpenFileInEditor(arg1:string):Promise<void>;
@@ -63,5 +65,9 @@ export function RenameAccount(arg1:string,arg2:string):Promise<void>;
 export function SetGlobalFolder(arg1:string):Promise<void>;
 
 export function SetPeriodicSync(arg1:string):Promise<void>;
+
+export function SetViewMode(arg1:string):Promise<void>;
+
+export function ShowWindow():Promise<void>;
 
 export function UpdateAccount(arg1:main.UpdateAccountRequest):Promise<void>;

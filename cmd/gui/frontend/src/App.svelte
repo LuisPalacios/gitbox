@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { fade, slide } from 'svelte/transition';
   import { bridge, events } from './lib/bridge';
   import {
@@ -7,7 +7,68 @@
     accountStats, themeStore, applyStatusResults
   } from './lib/stores';
   import { statusColor, credColor, statusLabel, providerLabel, statusSymbol } from './lib/theme';
+  import { WindowSetSize, WindowSetMinSize, WindowGetSize } from '../wailsjs/runtime/runtime';
   import type { RepoState, DiscoverResult } from './lib/types';
+
+  // ── View mode ──
+  let viewMode: 'full' | 'compact' = 'full';
+  let compactExpanded: Record<string, boolean> = {};
+  let savedFullSize: { w: number; h: number } | null = null;
+
+  async function toggleViewMode() {
+    // SetViewMode saves current position to the slot we're leaving,
+    // then persists the new mode.
+    if (viewMode === 'full') {
+      const size = await WindowGetSize();
+      savedFullSize = { w: size.w, h: size.h };
+      await bridge.setViewMode('compact');
+      viewMode = 'compact';
+      WindowSetMinSize(200, 200);
+      await tick();
+      setTimeout(() => fitCompactHeight(), 50);
+    } else {
+      await bridge.setViewMode('full');
+      viewMode = 'full';
+      WindowSetMinSize(640, 480);
+      if (savedFullSize) {
+        WindowSetSize(savedFullSize.w, savedFullSize.h);
+      } else {
+        WindowSetSize(900, 700);
+      }
+    }
+  }
+
+  async function toggleCompactAcct(key: string) {
+    compactExpanded[key] = !compactExpanded[key];
+    compactExpanded = compactExpanded;
+    // Wait for Svelte to render + slide transition (120ms), then resize.
+    await tick();
+    setTimeout(() => fitCompactHeight(), 200);
+  }
+
+  async function fitCompactHeight() {
+    if (viewMode !== 'compact') return;
+    const strip = document.querySelector('.compact-strip') as HTMLElement | null;
+    if (!strip) return;
+    // Clone the strip off-screen with no height constraint to measure natural height.
+    const clone = strip.cloneNode(true) as HTMLElement;
+    clone.style.position = 'absolute';
+    clone.style.left = '-9999px';
+    clone.style.top = '0';
+    clone.style.minHeight = '0';
+    clone.style.height = 'auto';
+    clone.style.overflow = 'visible';
+    clone.style.width = strip.offsetWidth + 'px';
+    document.body.appendChild(clone);
+    const contentH = clone.offsetHeight;
+    document.body.removeChild(clone);
+    // Wails WebView2: window.outerHeight ≈ innerHeight (title bar not included).
+    // Use WindowGetSize() which returns the real OS window size to compute chrome.
+    const winSize = await WindowGetSize();
+    const chrome = winSize.h - window.innerHeight;
+    const desired = Math.min(contentH + chrome, screen.availHeight);
+    WindowSetSize(220, Math.max(desired, 200));
+  }
 
   // ── Onboarding ──
   let firstRun = false;
@@ -580,6 +641,20 @@
     appVersion = await bridge.getAppVersion();
     fetchInterval = await bridge.getPeriodicSync();
 
+    // Restore view mode.
+    const savedMode = await bridge.getViewMode();
+    if (savedMode === 'compact') {
+      viewMode = 'compact';
+      await tick();
+      // Fit to content, then show the window (it starts hidden in compact mode).
+      setTimeout(async () => {
+        await fitCompactHeight();
+        bridge.showWindow();
+      }, 300);
+      // Second pass to catch font/style loading shifts.
+      setTimeout(() => fitCompactHeight(), 800);
+    }
+
     const statuses = await bridge.getAllStatus();
     applyStatusResults(statuses);
 
@@ -778,6 +853,86 @@
 
 <div class="app">
 
+  {#if viewMode === 'compact'}
+  <!-- ══════ COMPACT STATUS VIEW ══════ -->
+  {@const cpct = Math.round(($summary.clean / Math.max($summary.total, 1)) * 100)}
+  {@const callGood = $summary.clean === $summary.total}
+  <div class="compact-strip">
+    <!-- Global health -->
+    <div class="compact-global">
+      <svg viewBox="0 0 36 36" class="compact-ring">
+        <circle cx="18" cy="18" r="14" fill="none" stroke="var(--ring-bg)" stroke-width="3"/>
+        <circle cx="18" cy="18" r="14" fill="none"
+          stroke={callGood ? sc('clean') : sc('behind')}
+          stroke-width="3" stroke-linecap="round"
+          stroke-dasharray="{($summary.clean / Math.max($summary.total, 1)) * 87.96} 87.96"
+          transform="rotate(-90 18 18)"/>
+      </svg>
+      <div class="compact-global-text">
+        <span class="compact-global-pct" style="color: {callGood ? sc('clean') : sc('behind')}">{cpct}%</span>
+        <span class="compact-global-label">{$summary.clean}/{$summary.total} synced</span>
+      </div>
+    </div>
+
+    <div class="compact-sep"></div>
+
+    <!-- Account pills -->
+    {#each Object.entries($accounts) as [key, acct]}
+      {@const stats = $accountStats[key] || { total: 0, synced: 0, issues: 0 }}
+      <button class="compact-acct" class:compact-acct-expanded={compactExpanded[key]} on:click={() => toggleCompactAcct(key)}>
+        <svg viewBox="0 0 36 36" class="compact-acct-ring">
+          <circle cx="18" cy="18" r="14" fill="none" stroke="var(--ring-bg)" stroke-width="3"/>
+          <circle cx="18" cy="18" r="14" fill="none"
+            stroke={stats.issues === 0 ? sc('clean') : sc('behind')}
+            stroke-width="3" stroke-linecap="round"
+            stroke-dasharray="{(stats.synced / Math.max(stats.total, 1)) * 87.96} 87.96"
+            transform="rotate(-90 18 18)"/>
+        </svg>
+        <div class="compact-acct-info">
+          <span class="compact-acct-name">{key}</span>
+          <span class="compact-acct-stat">
+            {#if stats.issues === 0}
+              <span style="color:{sc('clean')}">All good</span>
+            {:else}
+              <span style="color:{sc('behind')}">{stats.issues} need attention</span>
+            {/if}
+          </span>
+        </div>
+        <span class="compact-chevron">{compactExpanded[key] ? '▾' : '▸'}</span>
+      </button>
+
+      {#if compactExpanded[key] && $sources[key]}
+        <div class="compact-repo-list" transition:slide={{ duration: 120 }}>
+          {#each ($sources[key].repoOrder || Object.keys($sources[key].repos)) as repoName}
+            {@const repoKey = `${key}/${repoName}`}
+            {@const state = $repoStates[repoKey] || { status: 'error', behind: 0, modified: 0, ahead: 0 }}
+            <div class="compact-row" class:compact-row-ok={state.status === 'clean'}>
+              <span class="compact-dot" style="color: {sc(state.status)}">{statusSymbol(state.status)}</span>
+              <span class="compact-repo-name">{repoName.includes('/') ? repoName.split('/').pop() : repoName}</span>
+              {#if state.status === 'behind'}
+                <span class="compact-badge" style="color: {sc('behind')}">{state.behind} behind</span>
+              {:else if state.status === 'dirty'}
+                <span class="compact-badge" style="color: {sc('dirty')}">{state.modified} changed</span>
+              {:else if state.status === 'ahead'}
+                <span class="compact-badge" style="color: {sc('ahead')}">{state.ahead} ahead</span>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
+    {/each}
+
+    <!-- Bottom actions -->
+    <div class="compact-sep"></div>
+    <div class="compact-actions">
+      <button class="compact-action-btn" on:click={cycleTheme} title="Theme: {themeChoice}">{themeIcon(themeChoice)}</button>
+      <button class="compact-action-btn compact-full-btn" on:click={toggleViewMode}>◧ Full view</button>
+    </div>
+  </div>
+
+  {:else}
+  <!-- ══════ FULL DASHBOARD VIEW ══════ -->
+
   <!-- ── TOP BAR ── -->
   <header class="topbar">
     <div class="brand">
@@ -833,6 +988,7 @@
         <span class="sync-icon" class:spinning={fetchingAll}>&#8635;</span>
       </button>
       <button class="btn-gear btn-trash" class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title="{deleteMode ? 'Exit delete mode' : 'Delete mode'}">&#128465;</button>
+      <button class="btn-gear" on:click={toggleViewMode} title="Compact view">◧</button>
       <button class="btn-gear" on:click={cycleTheme} title="Theme: {themeChoice}">{themeIcon(themeChoice)}</button>
       <button class="btn-gear" on:click={() => showSettings = !showSettings} title="Settings" class:active-gear={showSettings}>&#9881;</button>
     </div>
@@ -1023,6 +1179,9 @@
     {#if $summary.dirty > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('dirty')}">{$summary.dirty} local changes</span>{/if}
     {#if $summary.notCloned > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('not cloned')}">{$summary.notCloned} not local</span>{/if}
   </footer>
+
+  {/if}
+  <!-- end viewMode -->
 
   <!-- ── DISCOVER MODAL ── -->
   {#if discoverModal}
@@ -1733,4 +1892,112 @@
   .btn-delete-final:hover:not(:disabled) { background: #7f1d1d; }
   .btn-delete:disabled { opacity: 0.5; cursor: default; }
   .cred-delete-btn { margin-right: auto; }
+
+  /* ── Compact status view ── */
+  .compact-strip {
+    width: 100%;
+    min-height: 100vh;
+    background: var(--bg-base);
+    color: var(--text-primary);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: hidden;
+    box-sizing: border-box;
+  }
+  .compact-global {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+  }
+  .compact-ring { width: 36px; height: 36px; flex-shrink: 0; }
+  .compact-global-text { display: flex; flex-direction: column; }
+  .compact-global-pct { font-size: 16px; font-weight: 700; line-height: 1.1; }
+  .compact-global-label { font-size: 10px; color: var(--text-dim); }
+
+  .compact-sep { border-top: 1px solid var(--border); margin: 2px 0; }
+
+  .compact-acct {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 6px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    transition: background 0.1s;
+    text-align: left;
+    width: 100%;
+    font-family: inherit;
+  }
+  .compact-acct:hover { background: var(--bg-hover); }
+  .compact-acct-expanded { background: var(--bg-hover); }
+  .compact-acct-ring { width: 24px; height: 24px; flex-shrink: 0; }
+  .compact-acct-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+  .compact-acct-name {
+    font-size: 11px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .compact-acct-stat { font-size: 9px; }
+  .compact-chevron {
+    font-size: 10px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+    width: 12px;
+    text-align: center;
+  }
+
+  .compact-repo-list {
+    padding: 0 0 4px 8px;
+    border-left: 2px solid var(--border);
+    margin-left: 17px;
+    margin-bottom: 2px;
+  }
+  .compact-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 6px;
+    font-size: 11px;
+    border-radius: 4px;
+    transition: background 0.1s;
+  }
+  .compact-row:hover { background: var(--bg-hover); }
+  .compact-row-ok { opacity: 0.5; }
+  .compact-dot { font-size: 9px; flex-shrink: 0; width: 10px; text-align: center; }
+  .compact-repo-name {
+    flex: 1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-weight: 500;
+  }
+  .compact-badge {
+    font-size: 8px;
+    font-weight: 600;
+    white-space: nowrap;
+    padding: 0 4px;
+    border-radius: 4px;
+    background: var(--bg-card);
+  }
+
+  .compact-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .compact-action-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 6px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.12s;
+    padding: 4px 8px;
+  }
+  .compact-action-btn:hover { color: var(--text-primary); border-color: #4B95E9; }
+  .compact-full-btn { flex: 1; text-align: center; }
 </style>

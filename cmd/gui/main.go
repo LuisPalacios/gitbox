@@ -21,25 +21,45 @@ var assets embed.FS
 func main() {
 	app := NewApp()
 
-	// Pre-load config to restore saved window dimensions.
+	// Pre-load config to restore saved window dimensions and view mode.
 	width, height := 900, 700
-	if cfg, err := config.Load(config.DefaultV2Path()); err == nil && cfg.Global.Window != nil {
-		w := cfg.Global.Window
-		if w.Width >= 640 {
-			width = w.Width
+	minWidth, minHeight := 640, 480
+	if cfg, err := config.Load(config.DefaultV2Path()); err == nil {
+		app.savedViewMode = cfg.Global.ViewMode
+		if cfg.Global.Window != nil {
+			app.savedWindowPos = cfg.Global.Window
 		}
-		if w.Height >= 480 {
-			height = w.Height
+		if cfg.Global.CompactWindow != nil {
+			app.savedCompactPos = cfg.Global.CompactWindow
 		}
-		app.savedWindowPos = w
+		if cfg.Global.ViewMode == "compact" {
+			minWidth, minHeight = 200, 200
+			if cw := cfg.Global.CompactWindow; cw != nil {
+				if cw.Width >= 200 {
+					width = cw.Width
+				}
+				if cw.Height >= 200 {
+					height = cw.Height
+				}
+			} else {
+				width, height = 220, 400
+			}
+		} else if fw := cfg.Global.Window; fw != nil {
+			if fw.Width >= 640 {
+				width = fw.Width
+			}
+			if fw.Height >= 480 {
+				height = fw.Height
+			}
+		}
 	}
 
 	err := wails.Run(&options.App{
 		Title:     "gitbox",
 		Width:     width,
 		Height:    height,
-		MinWidth:  640,
-		MinHeight: 480,
+		MinWidth:  minWidth,
+		MinHeight: minHeight,
 		StartHidden: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,

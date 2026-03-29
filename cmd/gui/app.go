@@ -24,11 +24,13 @@ import (
 // App is the Wails application struct. All exported methods become
 // frontend bindings via window.go.main.App.<Method>().
 type App struct {
-	ctx            context.Context
-	cfg            *config.Config
-	cfgPath        string
-	mu             sync.Mutex
-	savedWindowPos *config.WindowState // pre-loaded from config before Wails starts
+	ctx               context.Context
+	cfg               *config.Config
+	cfgPath           string
+	mu                sync.Mutex
+	savedWindowPos    *config.WindowState // full-mode window state pre-loaded from config
+	savedCompactPos   *config.WindowState // compact-mode window state pre-loaded from config
+	savedViewMode     string              // "full" or "compact" pre-loaded from config
 }
 
 // NewApp creates a new App instance.
@@ -59,12 +61,17 @@ func (a *App) Startup(ctx context.Context) {
 func (a *App) Shutdown(_ context.Context) {}
 
 // BeforeClose is called while the window is still alive, before it is destroyed.
-// We capture and persist the window position and size here.
+// We capture and persist the window position and size to the active view mode slot.
 func (a *App) BeforeClose(_ context.Context) bool {
 	x, y := wailsrt.WindowGetPosition(a.ctx)
 	w, h := wailsrt.WindowGetSize(a.ctx)
+	ws := &config.WindowState{X: x, Y: y, Width: w, Height: h}
 	a.mu.Lock()
-	a.cfg.Global.Window = &config.WindowState{X: x, Y: y, Width: w, Height: h}
+	if a.cfg.Global.ViewMode == "compact" {
+		a.cfg.Global.CompactWindow = ws
+	} else {
+		a.cfg.Global.Window = ws
+	}
 	_ = config.Save(a.cfg, a.cfgPath)
 	a.mu.Unlock()
 	return false // don't prevent closing
@@ -74,13 +81,28 @@ func (a *App) BeforeClose(_ context.Context) bool {
 // We start hidden, restore saved position, then show the window to prevent flickering.
 // If the saved position is off-screen (e.g. monitor disconnected), we center instead.
 func (a *App) DomReady(_ context.Context) {
-	if w := a.savedWindowPos; w != nil {
+	// Pick the right saved position based on view mode.
+	w := a.savedWindowPos
+	if a.savedViewMode == "compact" && a.savedCompactPos != nil {
+		w = a.savedCompactPos
+	}
+	if w != nil {
 		if a.isPositionOnScreen(w.X, w.Y, w.Width, w.Height) {
 			wailsrt.WindowSetPosition(a.ctx, w.X, w.Y)
 		} else {
 			wailsrt.WindowCenter(a.ctx)
 		}
 	}
+	// In compact mode, delay WindowShow — the frontend calls ShowWindow()
+	// after fitCompactHeight() to avoid flickering during resize.
+	if a.savedViewMode != "compact" {
+		wailsrt.WindowShow(a.ctx)
+	}
+}
+
+// ShowWindow makes the window visible. Called by the frontend after
+// compact mode layout is measured and the window is correctly sized.
+func (a *App) ShowWindow() {
 	wailsrt.WindowShow(a.ctx)
 }
 
@@ -331,6 +353,41 @@ func (a *App) SetPeriodicSync(interval string) error {
 		a.cfg.Global.PeriodicSync = ""
 	} else {
 		a.cfg.Global.PeriodicSync = interval
+	}
+	return config.Save(a.cfg, a.cfgPath)
+}
+
+// GetViewMode returns the persisted view mode ("full" or "compact").
+func (a *App) GetViewMode() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cfg.Global.ViewMode == "compact" {
+		return "compact"
+	}
+	return "full"
+}
+
+// SetViewMode saves the view mode and current window position/size to the
+// appropriate slot, then switches to the other mode's saved position/size.
+func (a *App) SetViewMode(mode string) error {
+	// Save current window position to the slot we're leaving.
+	x, y := wailsrt.WindowGetPosition(a.ctx)
+	w, h := wailsrt.WindowGetSize(a.ctx)
+	ws := &config.WindowState{X: x, Y: y, Width: w, Height: h}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.cfg.Global.ViewMode == "compact" {
+		a.cfg.Global.CompactWindow = ws
+	} else {
+		a.cfg.Global.Window = ws
+	}
+
+	if mode == "compact" {
+		a.cfg.Global.ViewMode = "compact"
+	} else {
+		a.cfg.Global.ViewMode = ""
 	}
 	return config.Save(a.cfg, a.cfgPath)
 }

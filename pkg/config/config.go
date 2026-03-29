@@ -30,6 +30,8 @@ type GlobalConfig struct {
 	Folder          string       `json:"folder"`
 	PeriodicSync    string       `json:"periodic_sync,omitempty"`
 	Window          *WindowState `json:"window,omitempty"`
+	CompactWindow   *WindowState `json:"compact_window,omitempty"`
+	ViewMode        string       `json:"view_mode,omitempty"` // "full" or "compact"
 	CredentialSSH   *SSHGlobal   `json:"credential_ssh,omitempty"`
 	CredentialGCM   *GCMGlobal   `json:"credential_gcm,omitempty"`
 	CredentialToken *TokenGlobal `json:"credential_token,omitempty"`

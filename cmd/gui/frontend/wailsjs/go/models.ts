@@ -151,6 +151,8 @@ export namespace config {
 	    folder: string;
 	    periodic_sync?: string;
 	    window?: WindowState;
+	    compact_window?: WindowState;
+	    view_mode?: string;
 	    credential_ssh?: SSHGlobal;
 	    credential_gcm?: GCMGlobal;
 	    // Go type: TokenGlobal
@@ -165,6 +167,8 @@ export namespace config {
 	        this.folder = source["folder"];
 	        this.periodic_sync = source["periodic_sync"];
 	        this.window = this.convertValues(source["window"], WindowState);
+	        this.compact_window = this.convertValues(source["compact_window"], WindowState);
+	        this.view_mode = source["view_mode"];
 	        this.credential_ssh = this.convertValues(source["credential_ssh"], SSHGlobal);
 	        this.credential_gcm = this.convertValues(source["credential_gcm"], GCMGlobal);
 	        this.credential_token = this.convertValues(source["credential_token"], null);

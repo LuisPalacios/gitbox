@@ -1,13 +1,20 @@
 ---
 name: screenshot-prototype
-description: Generate an anonymized, self-contained Svelte prototype of the gitbox GUI for SvelteLab screenshots. Use when updating the README screenshot or when the user asks to regenerate the screenshot prototype.
+description: Generate anonymized, self-contained Svelte prototypes of the gitbox GUI (full and compact views) for SvelteLab screenshots. Use when updating the README screenshot or when the user asks to regenerate the screenshot prototype.
 ---
 
-# /screenshot-prototype — Anonymized GUI Prototype
+# /screenshot-prototype — Anonymized GUI Prototypes
 
 **IMPORTANT:** Before starting, inform the user: "I'm executing `/screenshot-prototype`"
 
-Generate a self-contained Svelte file at `assets/screenshot.svelte` that visually replicates the gitbox GUI dashboard with anonymized demo data. The output is designed to be pasted into [SvelteLab](https://sveltelab.dev/) for taking README screenshots.
+Generate two self-contained Svelte files that visually replicate the gitbox GUI with anonymized demo data. The output is designed to be pasted into [SvelteLab](https://sveltelab.dev/) for taking README screenshots.
+
+## Output files
+
+| File | View | Description |
+| --- | --- | --- |
+| `assets/screenshot-full.svelte` | Full dashboard | Topbar + account cards + repo list + footer |
+| `assets/screenshot-small.svelte` | Compact status strip | Health ring + account pills + expandable repo rows |
 
 ## When to use
 
@@ -17,84 +24,91 @@ Generate a self-contained Svelte file at `assets/screenshot.svelte` that visuall
 
 ## Workflow
 
-1. **Read** the current `cmd/gui/frontend/src/App.svelte` (the real GUI)
-2. **Read** `cmd/gui/frontend/src/lib/theme.ts` (color palettes and helpers)
-3. **Read** the current `assets/screenshot.svelte` (if it exists, to preserve any manual tweaks)
-4. **Generate** `assets/screenshot.svelte` — a single-file Svelte component that:
-   - Is **100% self-contained** — no imports (except `svelte`), no Wails bridge, no stores
-   - Inlines all CSS variables, styles, and theme helpers from the real app
-   - Uses **hardcoded anonymized demo data** (see Data section below)
-   - Renders the **dashboard view**: topbar + settings panel + account cards + repo list + footer
-   - Skips modals (discover, add/edit account, delete, credential) and onboarding
-   - Matches the real app's visual output as closely as possible
-5. **Show** the user the output path and remind them to paste it into SvelteLab
+1. **Read** `cmd/gui/frontend/src/App.svelte` — capture both the full dashboard layout AND the compact view (`{#if viewMode === 'compact'}` section)
+2. **Read** `cmd/gui/frontend/src/lib/theme.ts` — color palettes and helpers
+3. **Read** existing `assets/screenshot-full.svelte` and `assets/screenshot-small.svelte` (if they exist, to preserve manual tweaks)
+4. **Generate** both files following the rules below
+5. **Show** the user the output paths and remind them to paste into SvelteLab
 
-## Demo Data
+## Demo data (shared by both files)
 
-Use these fake but realistic-looking accounts and repos. The mix of statuses should showcase the app's capabilities:
+Use these 3 fictional accounts and repos. The same data appears in both prototypes. The mix of statuses showcases the app's capabilities.
 
-### Accounts (4 cards)
+### Accounts (3 cards)
 
-| Key | Provider | Credential | Synced | Total | Issues |
-| --- | -------- | ---------- | ------ | ----- | ------ |
-| parchis-luis | Forgejo | gcm | 2 | 4 | 2 |
-| LuisPalacios | GitHub | gcm | 1 | 3 | 2 |
-| Renueva | GitHub | ssh | 3 | 3 | 0 |
-| Azelerum | GitHub | token | 1 | 1 | 0 |
+| Key | Provider | Credential | Cred Status | Synced | Total | Issues |
+| --- | -------- | ---------- | ----------- | ------ | ----- | ------ |
+| acme-ops | Forgejo | gcm | ok | 2 | 4 | 2 |
+| stellar-dev | GitHub | ssh | ok | 3 | 3 | 0 |
+| nebula-team | GitLab | token | ok | 1 | 2 | 1 |
 
 ### Repos per source
 
-**git-parchis-luis:**
+**acme-ops:**
 
 | Repo | Status | Details |
 | --- | --- | --- |
-| infra/homelab | clean | Synced |
-| infra/migration | clean | Synced |
-| familia/fotos | behind | 3 behind |
-| parchis/web | not cloned | Not local |
+| infra/k8s-prod | clean | Synced |
+| infra/terraform | clean | Synced |
+| platform/api | behind | 3 behind |
+| platform/web | not cloned | Not local |
 
-**github-LuisPalacios:**
-
-| Repo | Status | Details |
-| --- | --- | --- |
-| LuisPalacios/gitbox | clean | Synced |
-| LuisPalacios/dotfiles | dirty | 2 local changes |
-| LuisPalacios/homelab | behind | 2 behind |
-
-**github-Renueva:**
+**stellar-dev:**
 
 | Repo | Status | Details |
 | --- | --- | --- |
-| Renueva/platform | clean | Synced |
-| Renueva/docs | clean | Synced |
-| Renueva/infra | clean | Synced |
+| stellar-dev/cosmos | clean | Synced |
+| stellar-dev/orbit | clean | Synced |
+| stellar-dev/nova | clean | Synced |
 
-**github-Azelerum:**
+**nebula-team:**
 
 | Repo | Status | Details |
 | --- | --- | --- |
-| Azelerum/homelab | clean | Synced |
+| nebula/dashboard | clean | Synced |
+| nebula/pipeline | dirty | 2 local changes |
 
 ### Summary footer
 
-`7 synced · 2 behind · 1 local changes · 1 not local`
+`6 synced · 1 behind · 1 local changes · 1 not local`
 
-## Output
+## Rules for both files
 
-Write to `assets/screenshot.svelte`. This file is **not** part of the build — it's a standalone artifact for SvelteLab.
+- **100% self-contained** — no imports (except `svelte`), no Wails bridge, no stores
+- Inline all CSS variables, styles, and theme helpers from the real app
+- Copy CSS **exactly** from App.svelte — do not reinvent
+- Use `darkPalette` and `lightPalette` from `theme.ts` with `$:` reactive statements
+- **Theme cycling must work**: button cycles `dark` → `system` → `light`, icon updates (`☾` / `◐` / `☀`), all colors react to theme
+- Default to dark theme on mount via `data-theme="dark"`
+- SVG logo must be inlined (copy from App.svelte)
+- Keep each file under 500 lines
+- **Never expose real account names, URLs, emails, or repo names**
 
-## Interactive features
+## screenshot-full.svelte specifics
 
-The prototype is mostly static data, but these UI elements **must be functional** so the user can screenshot any state:
+Renders the **full dashboard view**:
 
-- **Theme cycling**: the topbar theme button cycles through `dark` → `system` → `light` via `cycleTheme()`. Icon updates to match (`☾` / `◐` / `☀`). Both dark and light CSS palettes must be present. Status colors must be **reactive** to theme changes (use both `darkPalette` and `lightPalette` from `theme.ts`, select via `$:` reactive statement).
-- **Settings panel toggle**: the gear button toggles a `showSettings` boolean. When open, show a static settings panel with fake config path (`~/.config/gitbox/gitbox.json`), clone folder (`~/00.git`), working theme buttons (same as cycling), periodic fetch buttons (static, "Off" active), and version. Copy the settings CSS from App.svelte (`.settings`, `.settings-row`, `.settings-label`, `.settings-value`, `.theme-toggle`, `.theme-btn`, `.theme-active`, `.active-gear`).
-- **Default to dark theme** on mount (`data-theme="dark"`).
+- Topbar (brand, health ring, action buttons including compact toggle `◧`)
+- Settings panel toggle (gear button, static config/folder/theme/version when open)
+- Account cards row with credential badges (colored by status: green ok, blue config, etc.)
+- Repo list grouped by source with status dots, labels, and badges
+- Summary footer
+- No modals, no onboarding
 
-## Key rules
+## screenshot-small.svelte specifics
 
-- **Never expose real account names, URLs, emails, or repo names** from the user's config
-- Keep the file under 500 lines if possible (it's just a static prototype)
-- Match the real app's CSS exactly — copy from App.svelte, don't reinvent
-- The SVG logo must be included inline (copy from App.svelte)
-- Set `document.documentElement.setAttribute('data-theme', 'dark')` on mount via `applyTheme()`
+Renders the **compact status strip** (~220px wide):
+
+- Global health ring with percentage and synced count
+- Per-account pills with mini ring + name + issue count + chevron
+- Click account pill to expand/collapse repo list underneath (interactive)
+- Repo rows with status symbol + name + badge
+- Clean repos dimmed (opacity 0.5)
+- Bottom actions: theme toggle + "Full view" button
+- All compact CSS classes from App.svelte (`.compact-strip`, `.compact-acct`, etc.)
+
+## Interactive features (both files)
+
+- **Theme cycling**: topbar/bottom theme button cycles through dark/system/light. Status colors are reactive.
+- **Settings panel toggle** (full only): gear button toggles settings panel visibility.
+- **Account expand/collapse** (small only): click account pills to show/hide repo list.

@@ -90,6 +90,10 @@ export function GetTokenGuide(arg1) {
   return window['go']['main']['App']['GetTokenGuide'](arg1);
 }
 
+export function GetViewMode() {
+  return window['go']['main']['App']['GetViewMode']();
+}
+
 export function IsFirstRun() {
   return window['go']['main']['App']['IsFirstRun']();
 }
@@ -124,6 +128,14 @@ export function SetGlobalFolder(arg1) {
 
 export function SetPeriodicSync(arg1) {
   return window['go']['main']['App']['SetPeriodicSync'](arg1);
+}
+
+export function SetViewMode(arg1) {
+  return window['go']['main']['App']['SetViewMode'](arg1);
+}
+
+export function ShowWindow() {
+  return window['go']['main']['App']['ShowWindow']();
 }
 
 export function UpdateAccount(arg1) {
