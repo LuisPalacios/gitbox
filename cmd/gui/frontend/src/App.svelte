@@ -231,6 +231,16 @@
   let repoDetail: { branch: string; ahead: number; behind: number; changed: { kind: string; path: string }[]; untracked: string[]; error?: string } | null = null;
   let detailLoading = false;
 
+  // Auto-collapse expanded detail when the repo no longer needs attention.
+  const nonExpandable = new Set(['clean', 'behind', 'not cloned', 'cloning', 'syncing']);
+  $: if (expandedRepo) {
+    const st = $repoStates[expandedRepo];
+    if (st && nonExpandable.has(st.status)) {
+      expandedRepo = null;
+      repoDetail = null;
+    }
+  }
+
   async function toggleRepoDetail(sourceKey: string, repoName: string, status: string) {
     // Only expand for repos that need attention (not clean, behind, not cloned, or in-progress)
     if (status === 'clean' || status === 'behind' || status === 'not cloned' || status === 'cloning' || status === 'syncing') return;
@@ -722,7 +732,7 @@
     // ── Event listeners (always registered) ──
     events.on('status:updated', (results: any) => {
       applyStatusResults(results);
-      // Refresh expanded detail if a repo is open.
+      // Refresh expanded detail if a repo is still open (reactive $: handles auto-collapse).
       if (expandedRepo && !detailLoading) {
         const slash = expandedRepo.indexOf('/');
         const sk = expandedRepo.substring(0, slash);
