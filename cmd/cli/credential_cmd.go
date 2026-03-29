@@ -163,6 +163,7 @@ func credentialAddGCM(acct config.Account, accountKey string) error {
 
 	input := fmt.Sprintf("protocol=https\nhost=%s\nusername=%s\n\n", host, acct.Username)
 	fillCmd := exec.Command(git.GitBin(), "credential", "fill")
+	fillCmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
 	fillCmd.Stdin = strings.NewReader(input)
 	fillCmd.Stderr = os.Stderr // GCM needs stderr for browser prompts
 	out, err := fillCmd.Output()
@@ -172,6 +173,7 @@ func credentialAddGCM(acct config.Account, accountKey string) error {
 
 	// Approve the credential so git stores it persistently.
 	approveCmd := exec.Command(git.GitBin(), "credential", "approve")
+	approveCmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
 	approveCmd.Stdin = strings.NewReader(string(out))
 	_ = approveCmd.Run()
 
@@ -546,6 +548,7 @@ func credentialDelGCM(acct config.Account, accountKey string) error {
 	input := fmt.Sprintf("protocol=https\nhost=%s\nusername=%s\n", host, acct.Username)
 
 	cmd := exec.Command(git.GitBin(), "credential", "reject")
+	cmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
 	cmd.Stdin = strings.NewReader(input)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

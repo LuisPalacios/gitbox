@@ -140,6 +140,7 @@ func (a *App) GetAppVersion() string {
 	// If not set by ldflags, try to detect from git at runtime.
 	if v == "dev" {
 		cmd := exec.Command(git.GitBin(), "describe", "--tags", "--always")
+		cmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
 		git.HideWindow(cmd)
 		if out, err := cmd.Output(); err == nil {
 			if tag := strings.TrimSpace(string(out)); tag != "" {
@@ -149,6 +150,7 @@ func (a *App) GetAppVersion() string {
 	}
 	if c == "none" {
 		cmd := exec.Command(git.GitBin(), "rev-parse", "--short", "HEAD")
+		cmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
 		git.HideWindow(cmd)
 		if out, err := cmd.Output(); err == nil {
 			if sha := strings.TrimSpace(string(out)); sha != "" {
@@ -948,6 +950,7 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 	input := fmt.Sprintf("protocol=https\nhost=%s\nusername=%s\n\n", host, acct.Username)
 
 	fillCmd := exec.Command(git.GitBin(), "credential", "fill")
+	fillCmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
 	fillCmd.Stdin = strings.NewReader(input)
 	var stderrBuf bytes.Buffer
 	fillCmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
@@ -993,6 +996,7 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 
 	// Approve so git stores it persistently.
 	approveCmd := exec.Command(git.GitBin(), "credential", "approve")
+	approveCmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
 	approveCmd.Stdin = strings.NewReader(string(out))
 	approveCmd.Stderr = os.Stderr
 	git.HideWindow(approveCmd)
@@ -1326,6 +1330,7 @@ func (a *App) CredentialDelete(accountKey string) CredentialSetupResult {
 		host := hostnameFromURL(acct.URL)
 		input := fmt.Sprintf("protocol=https\nhost=%s\nusername=%s\n", host, acct.Username)
 		cmd := exec.Command(git.GitBin(), "credential", "reject")
+		cmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
 		git.HideWindow(cmd)
 		cmd.Stdin = strings.NewReader(input)
 		if err := cmd.Run(); err != nil {

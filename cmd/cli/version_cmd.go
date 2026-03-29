@@ -34,7 +34,9 @@ func fullVersion() string {
 }
 
 func gitDescribe() string {
-	out, err := exec.Command(git.GitBin(), "describe", "--tags", "--always").Output()
+	cmd := exec.Command(git.GitBin(), "describe", "--tags", "--always")
+	cmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
+	out, err := cmd.Output()
 	if err != nil {
 		return ""
 	}
@@ -42,7 +44,9 @@ func gitDescribe() string {
 }
 
 func gitShortSHA() string {
-	out, err := exec.Command(git.GitBin(), "rev-parse", "--short", "HEAD").Output()
+	cmd := exec.Command(git.GitBin(), "rev-parse", "--short", "HEAD")
+	cmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
+	out, err := cmd.Output()
 	if err != nil {
 		return ""
 	}

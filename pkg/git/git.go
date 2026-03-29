@@ -21,16 +21,32 @@ var (
 	gitBinOnce sync.Once
 )
 
+// homebrewDirs are the Homebrew bin directories to prepend to PATH on macOS.
+// On macOS, GUI apps (and some SSH sessions) inherit a minimal PATH that
+// excludes Homebrew directories. Without these, git sub-commands like
+// "git-credential-manager" silently fail because they aren't on PATH —
+// even when we invoke the Homebrew git binary directly.
+//
+// Apple Silicon installs to /opt/homebrew/bin; Intel Macs use /usr/local/bin.
+// Both are listed so the binary works on either architecture.
+var homebrewDirs = []string{
+	"/opt/homebrew/bin", // Apple Silicon Homebrew
+	"/usr/local/bin",    // Intel Homebrew
+}
+
 // GitBin returns the path to the git binary.
-// On macOS, GUI apps inherit a minimal PATH that excludes /opt/homebrew/bin,
-// so Homebrew's git (and GCM) won't be found. We probe common locations first.
+//
+// On macOS the system git (/usr/bin/git) ships WITHOUT Git Credential Manager
+// and is often an outdated shim. We probe Homebrew install locations first so
+// that GCM and other Homebrew-installed git extensions are available.
+//
+// IMPORTANT: Do NOT remove the Homebrew probing — the macOS system git does
+// not include GCM, and using it breaks credential operations every time.
 func GitBin() string {
 	gitBinOnce.Do(func() {
 		if runtime.GOOS == "darwin" {
-			for _, candidate := range []string{
-				"/opt/homebrew/bin/git", // Apple Silicon Homebrew
-				"/usr/local/bin/git",    // Intel Homebrew
-			} {
+			for _, dir := range homebrewDirs {
+				candidate := filepath.Join(dir, "git")
 				if _, err := os.Stat(candidate); err == nil {
 					gitBin = candidate
 					return
@@ -45,6 +61,44 @@ func GitBin() string {
 		}
 	})
 	return gitBin
+}
+
+// Environ returns os.Environ() with Homebrew bin directories prepended to PATH
+// on macOS. This ensures that git sub-commands (e.g. git-credential-manager)
+// installed via Homebrew are found even when the parent process has a minimal
+// PATH (GUI apps, LaunchAgents, restricted SSH sessions).
+//
+// On non-macOS platforms this returns os.Environ() unchanged.
+//
+// IMPORTANT: Always use git.Environ() (not bare os.Environ()) when setting
+// cmd.Env for git subprocesses — otherwise GCM breaks on macOS.
+func Environ() []string {
+	env := os.Environ()
+	if runtime.GOOS != "darwin" {
+		return env
+	}
+	return ensureHomebrewPATH(env)
+}
+
+// ensureHomebrewPATH prepends Homebrew bin dirs to PATH if not already present.
+func ensureHomebrewPATH(env []string) []string {
+	for i, e := range env {
+		if strings.HasPrefix(e, "PATH=") {
+			currentPath := strings.TrimPrefix(e, "PATH=")
+			var missing []string
+			for _, dir := range homebrewDirs {
+				if !strings.Contains(currentPath, dir) {
+					missing = append(missing, dir)
+				}
+			}
+			if len(missing) > 0 {
+				env[i] = "PATH=" + strings.Join(missing, ":") + ":" + currentPath
+			}
+			return env
+		}
+	}
+	// No PATH found at all — set one with Homebrew dirs.
+	return append(env, "PATH="+strings.Join(homebrewDirs, ":"))
 }
 
 // CloneOpts configures a git clone operation.
@@ -120,6 +174,7 @@ func CloneWithProgress(url, dest string, opts CloneOpts, onProgress func(ClonePr
 
 	cmd := exec.Command(GitBin(), args...)
 	cmd.Dir = "."
+	cmd.Env = Environ() // Homebrew PATH for macOS — do not remove.
 	cmd.Stdout = nil
 	HideWindow(cmd)
 
@@ -355,6 +410,7 @@ func Run(dir string, args ...string) error {
 func RunWithInput(dir string, input string, args ...string) (string, error) {
 	cmd := exec.Command(GitBin(), args...)
 	cmd.Dir = dir
+	cmd.Env = Environ() // Homebrew PATH for macOS — do not remove.
 	cmd.Stdin = strings.NewReader(input)
 	HideWindow(cmd)
 	out, err := cmd.Output()
@@ -379,6 +435,7 @@ func CurrentBranch(repoPath string) (string, error) {
 func run(dir string, args ...string) error {
 	cmd := exec.Command(GitBin(), args...)
 	cmd.Dir = dir
+	cmd.Env = Environ() // Homebrew PATH for macOS — do not remove.
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	HideWindow(cmd)
@@ -392,6 +449,7 @@ func run(dir string, args ...string) error {
 func output(dir string, args ...string) (string, error) {
 	cmd := exec.Command(GitBin(), args...)
 	cmd.Dir = dir
+	cmd.Env = Environ() // Homebrew PATH for macOS — do not remove.
 	HideWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {

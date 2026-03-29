@@ -100,7 +100,11 @@ func ResolveGCMToken(accountURL, username string) (token, source string, err err
 
 	cmd := exec.Command(git.GitBin(), "credential", "fill")
 	cmd.Stdin = strings.NewReader(input)
-	cmd.Env = append(os.Environ(),
+	// Use git.Environ() to ensure Homebrew dirs are on PATH (macOS).
+	// Without this, git-credential-manager is not found on macOS because
+	// the system git (/usr/bin/git) doesn't ship GCM and GUI/SSH sessions
+	// inherit a minimal PATH. Do not replace with bare os.Environ().
+	cmd.Env = append(git.Environ(),
 		"GIT_TERMINAL_PROMPT=0",
 		"GCM_INTERACTIVE=never",
 		"GIT_ASKPASS=",
