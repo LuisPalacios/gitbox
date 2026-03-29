@@ -58,3 +58,6 @@ tmpclaude-*-cwd
 
 # Drawio backup files
 *.drawio.bkp
+
+# Local Svelte preview (screenshot prototypes)
+preview/
