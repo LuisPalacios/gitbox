@@ -14,6 +14,10 @@ export function ChangeCredentialType(arg1, arg2) {
   return window['go']['main']['App']['ChangeCredentialType'](arg1, arg2);
 }
 
+export function CheckGlobalIdentity() {
+  return window['go']['main']['App']['CheckGlobalIdentity']();
+}
+
 export function CloneRepo(arg1, arg2) {
   return window['go']['main']['App']['CloneRepo'](arg1, arg2);
 }
@@ -116,6 +120,10 @@ export function RefreshStatus() {
 
 export function ReloadConfig() {
   return window['go']['main']['App']['ReloadConfig']();
+}
+
+export function RemoveGlobalIdentity() {
+  return window['go']['main']['App']['RemoveGlobalIdentity']();
 }
 
 export function RenameAccount(arg1, arg2) {

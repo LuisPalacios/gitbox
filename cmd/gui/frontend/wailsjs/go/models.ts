@@ -237,6 +237,29 @@ export namespace git {
 
 }
 
+export namespace identity {
+	
+	export class GlobalIdentityStatus {
+	    hasName: boolean;
+	    hasEmail: boolean;
+	    name: string;
+	    email: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GlobalIdentityStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hasName = source["hasName"];
+	        this.hasEmail = source["hasEmail"];
+	        this.name = source["name"];
+	        this.email = source["email"];
+	    }
+	}
+
+}
+
 export namespace main {
 	
 	export class AddAccountRequest {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
+	"github.com/LuisPalacios/gitbox/pkg/identity"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 	"github.com/spf13/cobra"
 )
@@ -61,6 +62,20 @@ func printGlobalInfo(cfgPath string, cfg *config.Config) {
 	fmt.Printf("%s\n", colorize("Configuration", colorWhite))
 	fmt.Printf("  Config:  %s\n", cfgPath)
 	fmt.Printf("  Folder:  %s\n", cfg.Global.Folder)
+
+	gs := identity.CheckGlobalIdentity()
+	if gs.HasName || gs.HasEmail {
+		parts := []string{}
+		if gs.HasName {
+			parts = append(parts, fmt.Sprintf("user.name=%q", gs.Name))
+		}
+		if gs.HasEmail {
+			parts = append(parts, fmt.Sprintf("user.email=%q", gs.Email))
+		}
+		fmt.Printf("  %s  Global ~/.gitconfig has %s (NOT RECOMMENDED)\n",
+			colorize("!", colorOrange), strings.Join(parts, ", "))
+		fmt.Printf("       Run '%s' to remove global identity.\n", "gitboxcmd identity fix")
+	}
 	fmt.Println()
 }
 

@@ -58,10 +58,11 @@ func init() {
 	rootCmd.AddCommand(initCmd, globalCmd, accountCmd, sourceCmd, repoCmd, cloneCmd, statusCmd, pullCmd)
 
 	// Additional commands.
+	identityCmd.GroupID = "additional"
 	scanCmd.GroupID = "additional"
 	migrateCmd.GroupID = "additional"
 	versionCmd.GroupID = "additional"
-	rootCmd.AddCommand(scanCmd, migrateCmd, versionCmd, tokenDeprecatedCmd)
+	rootCmd.AddCommand(identityCmd, scanCmd, migrateCmd, versionCmd, tokenDeprecatedCmd)
 
 	// Assign the auto-generated help command to the additional group.
 	rootCmd.SetHelpCommandGroupID("additional")

@@ -16,6 +16,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/identity"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 	wailsrt "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -517,6 +518,10 @@ func (a *App) CloneRepo(sourceKey, repoKey string) {
 		result := map[string]interface{}{"source": sourceKey, "repo": repoKey}
 		if err != nil {
 			result["error"] = err.Error()
+		} else {
+			// Set per-repo identity (user.name, user.email).
+			wantName, wantEmail := identity.ResolveIdentity(repo, acct)
+			identity.EnsureRepoIdentity(dest, wantName, wantEmail)
 		}
 		wailsrt.EventsEmit(a.ctx, "clone:done", result)
 	}()
@@ -628,12 +633,17 @@ func (a *App) FetchRepo(sourceKey, repoKey string) {
 		sourceFolder := src.EffectiveFolder(sourceKey)
 		a.mu.Unlock()
 
+		acct := a.cfg.Accounts[src.Account]
 		path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
 		err := git.Fetch(path)
 
 		result := map[string]interface{}{"source": sourceKey, "repo": repoKey}
 		if err != nil {
 			result["error"] = err.Error()
+		} else {
+			// Verify per-repo identity after fetch.
+			wantName, wantEmail := identity.ResolveIdentity(repo, acct)
+			identity.EnsureRepoIdentity(path, wantName, wantEmail)
 		}
 		wailsrt.EventsEmit(a.ctx, "fetch:done", result)
 
@@ -649,16 +659,19 @@ func (a *App) FetchAllRepos() {
 		globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
 		type repoRef struct {
 			sourceKey, repoKey, path string
+			wantName, wantEmail      string
 		}
 		var repos []repoRef
 		for _, srcKey := range a.cfg.OrderedSourceKeys() {
 			src := a.cfg.Sources[srcKey]
+			acct := a.cfg.Accounts[src.Account]
 			sourceFolder := src.EffectiveFolder(srcKey)
 			for _, rKey := range src.OrderedRepoKeys() {
 				repo := src.Repos[rKey]
 				p := status.ResolveRepoPath(globalFolder, sourceFolder, rKey, repo)
 				if git.IsRepo(p) {
-					repos = append(repos, repoRef{srcKey, rKey, p})
+					wn, we := identity.ResolveIdentity(repo, acct)
+					repos = append(repos, repoRef{srcKey, rKey, p, wn, we})
 				}
 			}
 		}
@@ -668,7 +681,9 @@ func (a *App) FetchAllRepos() {
 			wailsrt.EventsEmit(a.ctx, "fetch:start", map[string]string{
 				"source": r.sourceKey, "repo": r.repoKey,
 			})
-			_ = git.Fetch(r.path)
+			if err := git.Fetch(r.path); err == nil {
+				identity.EnsureRepoIdentity(r.path, r.wantName, r.wantEmail)
+			}
 			wailsrt.EventsEmit(a.ctx, "fetch:done", map[string]interface{}{
 				"source": r.sourceKey, "repo": r.repoKey,
 			})
@@ -911,6 +926,18 @@ func (a *App) migrateKeyringToken(oldKey, newKey string) {
 		return
 	}
 	_ = credential.DeleteToken(oldKey)
+}
+
+// ─── Identity ────────────────────────────────────────────────
+
+// CheckGlobalIdentity returns whether ~/.gitconfig has user.name/user.email.
+func (a *App) CheckGlobalIdentity() identity.GlobalIdentityStatus {
+	return identity.CheckGlobalIdentity()
+}
+
+// RemoveGlobalIdentity removes user.name/user.email from ~/.gitconfig.
+func (a *App) RemoveGlobalIdentity() error {
+	return identity.RemoveGlobalIdentity()
 }
 
 // ─── Credential Setup ─────────────────────────────────────────

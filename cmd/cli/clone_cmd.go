@@ -7,6 +7,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/identity"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 	"github.com/spf13/cobra"
 )
@@ -109,17 +110,10 @@ var cloneCmd = &cobra.Command{
 					}
 				}
 
-				// Set user.name and user.email (per-repo, not global).
-				userName := repo.Name
-				if userName == "" {
-					userName = acct.Name
-				}
-				userEmail := repo.Email
-				if userEmail == "" {
-					userEmail = acct.Email
-				}
-				_ = git.ConfigSet(dest, "user.name", userName)
-				_ = git.ConfigSet(dest, "user.email", userEmail)
+				// Set per-repo identity (user.name, user.email).
+				wantName, wantEmail := identity.ResolveIdentity(repo, acct)
+				_ = git.ConfigSet(dest, "user.name", wantName)
+				_ = git.ConfigSet(dest, "user.email", wantEmail)
 
 				// For GCM: set per-repo credential.username so GCM picks the right account.
 				if credType == "gcm" {

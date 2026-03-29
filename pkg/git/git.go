@@ -381,6 +381,28 @@ func GlobalConfigSet(key, value string) error {
 	return run(".", "config", "--global", key, value)
 }
 
+// GlobalConfigGet reads a global git config value.
+func GlobalConfigGet(key string) (string, error) {
+	out, err := output(".", "config", "--global", "--get", key)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// GlobalConfigUnset removes a key from global git config.
+// Returns nil if the key does not exist.
+func GlobalConfigUnset(key string) error {
+	err := run(".", "config", "--global", "--unset", key)
+	if err != nil {
+		// git config --unset exits with code 5 if the key is not found.
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 5 {
+			return nil
+		}
+	}
+	return err
+}
+
 // IsRepo checks if the given path contains a .git directory or is a bare repo.
 func IsRepo(path string) bool {
 	gitDir := filepath.Join(path, ".git")

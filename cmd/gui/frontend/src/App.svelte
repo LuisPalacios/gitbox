@@ -71,6 +71,25 @@
     WindowSetSize(220, Math.max(desired, 200));
   }
 
+  // ── Global identity warning ──
+  let globalIdentityWarn: { hasName: boolean; hasEmail: boolean; name: string; email: string } | null = null;
+
+  async function checkGlobalIdentity() {
+    try {
+      const gs = await bridge.checkGlobalIdentity();
+      globalIdentityWarn = (gs.hasName || gs.hasEmail) ? gs : null;
+    } catch { globalIdentityWarn = null; }
+  }
+
+  async function fixGlobalIdentity() {
+    try {
+      await bridge.removeGlobalIdentity();
+      globalIdentityWarn = null;
+    } catch (e: any) {
+      console.error('Failed to remove global identity:', e);
+    }
+  }
+
   // ── Onboarding ──
   let firstRun = false;
   let onboardFolder = '~/00.git';
@@ -665,6 +684,9 @@
     // Verify credentials for each account
     verifyAllCredentials();
 
+    // Check for global ~/.gitconfig identity (warns user if set).
+    checkGlobalIdentity();
+
     // Start periodic fetch if previously configured.
     if (fetchInterval !== 'off') applyFetchInterval(fetchInterval);
   }
@@ -995,6 +1017,20 @@
     </div>
   </header>
 
+  <!-- ── GLOBAL IDENTITY WARNING ── -->
+  {#if globalIdentityWarn}
+  <div class="identity-warn">
+    <span class="identity-warn-icon">&#9888;</span>
+    <span class="identity-warn-text">
+      Global <code>~/.gitconfig</code> has
+      {#if globalIdentityWarn.hasName}user.name="{globalIdentityWarn.name}"{/if}{#if globalIdentityWarn.hasName && globalIdentityWarn.hasEmail}, {/if}{#if globalIdentityWarn.hasEmail}user.email="{globalIdentityWarn.email}"{/if}
+      &mdash; this can override per-repo identity.
+    </span>
+    <button class="identity-warn-fix" on:click={fixGlobalIdentity}>Remove</button>
+    <button class="identity-warn-dismiss" on:click={() => globalIdentityWarn = null}>&#10005;</button>
+  </div>
+  {/if}
+
   <!-- ── SETTINGS PANEL ── -->
   {#if showSettings}
     <div class="settings" transition:slide={{ duration: 150 }}>
@@ -1049,7 +1085,7 @@
             <span class="card-dot" style="background: {cc(cred)}"></span>
           {/if}
           <span class="card-provider">{providerLabel(acct.provider)}</span>
-          <button class="cred-badge cred-badge-{cred === 'ok' ? 'ok' : cred === 'error' ? 'err' : cred === 'warning' ? 'warn' : cred === 'none' ? 'none' : ''}"
+          <button class="cred-badge cred-badge-{cred === 'ok' ? 'ok' : cred === 'error' ? 'err' : cred === 'warning' ? 'warn' : cred === 'none' ? 'none' : cred === 'unknown' ? 'pending' : ''}"
             on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')}
             title="Credential: {acct.default_credential_type || 'none'}">{cred === 'none' ? 'config' : acct.default_credential_type || 'gcm'}</button>
         </div>
@@ -1655,6 +1691,8 @@
   .cred-badge-err { background: #450a0a; border-color: #be123c; color: #fca5a5; }
   .cred-badge-warn { background: #431407; border-color: #c2410c; color: #fdba74; }
   .cred-badge-none { background: #1e3a5f; border-color: #2563eb; color: #93c5fd; }
+  .cred-badge-pending { background: #27272a; border-color: #52525b; color: #a1a1aa; }
+  :global([data-theme="light"]) .cred-badge-pending { background: #f4f4f5; border-color: #a1a1aa; color: #71717a; }
   :global([data-theme="light"]) .cred-badge-ok { background: #dcfce7; border-color: #166534; color: #166534; }
   :global([data-theme="light"]) .cred-badge-err { background: #fee2e2; border-color: #be123c; color: #be123c; }
   :global([data-theme="light"]) .cred-badge-warn { background: #ffedd5; border-color: #c2410c; color: #c2410c; }
@@ -1777,6 +1815,34 @@
     border-radius: 4px; cursor: pointer; transition: all 0.12s; white-space: nowrap;
   }
   .settings-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
+
+  /* ── Global identity warning banner ── */
+  .identity-warn {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 12px; margin: 0 16px 8px;
+    background: #431407; border: 1px solid #c2410c; border-radius: 8px;
+    font-size: 12px; color: #fdba74;
+  }
+  :global([data-theme="light"]) .identity-warn {
+    background: #fff7ed; border-color: #c2410c; color: #7c2d12;
+  }
+  .identity-warn-icon { font-size: 15px; flex-shrink: 0; }
+  .identity-warn-text { flex: 1; line-height: 1.4; }
+  .identity-warn-text code { font-size: 11px; padding: 1px 4px; background: rgba(255,255,255,0.1); border-radius: 3px; }
+  :global([data-theme="light"]) .identity-warn-text code { background: rgba(0,0,0,0.06); }
+  .identity-warn-fix {
+    padding: 3px 10px; font-size: 11px; font-weight: 600;
+    background: #c2410c; color: #fff; border: none; border-radius: 5px; cursor: pointer;
+    white-space: nowrap;
+  }
+  .identity-warn-fix:hover { background: #ea580c; }
+  .identity-warn-dismiss {
+    background: none; border: none; color: #fdba74; cursor: pointer;
+    font-size: 14px; padding: 0 2px; line-height: 1;
+  }
+  :global([data-theme="light"]) .identity-warn-dismiss { color: #7c2d12; }
+  .identity-warn-dismiss:hover { opacity: 0.7; }
+
   .theme-toggle { display: flex; gap: 4px; }
   .theme-btn {
     padding: 3px 10px; font-size: 11px; border: 1px solid var(--border);
