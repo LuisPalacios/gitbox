@@ -940,6 +940,18 @@ func (a *App) RemoveGlobalIdentity() error {
 	return identity.RemoveGlobalIdentity()
 }
 
+// ─── Autostart ───────────────────────────────────────────────
+
+// GetAutostart returns whether the app is set to run at OS login.
+func (a *App) GetAutostart() (bool, error) {
+	return autostartEnabled()
+}
+
+// SetAutostart enables or disables run-at-login for the app.
+func (a *App) SetAutostart(enable bool) error {
+	return autostartSet(enable)
+}
+
 // ─── Credential Setup ─────────────────────────────────────────
 
 // CredentialSetupResult is the outcome of a credential setup step.

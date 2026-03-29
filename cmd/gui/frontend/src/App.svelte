@@ -640,6 +640,27 @@
   let showSettings = false;
   let configPath = '';
   let appVersion = '';
+  let autostartOn = false;
+  let autostartSupported = true;
+
+  async function loadAutostart() {
+    try {
+      autostartOn = await bridge.getAutostart();
+      autostartSupported = true;
+    } catch {
+      autostartSupported = false;
+    }
+  }
+
+  async function toggleAutostart() {
+    const want = !autostartOn;
+    try {
+      await bridge.setAutostart(want);
+      autostartOn = want;
+    } catch (e: any) {
+      console.error('Failed to set autostart:', e);
+    }
+  }
 
   // ── Periodic fetch ──
   let fetchInterval: string = 'off';
@@ -702,6 +723,9 @@
 
     // Check for global ~/.gitconfig identity (warns user if set).
     checkGlobalIdentity();
+
+    // Load autostart state.
+    loadAutostart();
 
     // Start periodic fetch if previously configured.
     if (fetchInterval !== 'off') applyFetchInterval(fetchInterval);
@@ -1080,6 +1104,15 @@
           <span class="settings-value" style="font-size:10px; margin-left:4px">last {lastFetchTime}</span>
         {/if}
       </div>
+      {#if autostartSupported}
+        <div class="settings-row">
+          <span class="settings-label">Run at startup</span>
+          <div class="theme-toggle">
+            <button class="theme-btn" class:theme-active={!autostartOn} on:click={() => { if (autostartOn) toggleAutostart(); }}>Off</button>
+            <button class="theme-btn" class:theme-active={autostartOn} on:click={() => { if (!autostartOn) toggleAutostart(); }}>On</button>
+          </div>
+        </div>
+      {/if}
       <div class="settings-row">
         <span class="settings-label">Version</span>
         <span class="settings-value">{appVersion}</span>
@@ -1517,7 +1550,7 @@
         <div class="modal-foot">
           {#if currentAcct?.default_credential_type && !credChangeResult}
             <button class="btn-delete cred-delete-btn" on:click={deleteCredential} disabled={credDeleteBusy || credChangeBusy}>
-              {credDeleteBusy ? 'Deleting...' : 'Delete credential'}
+              {credDeleteBusy ? 'Deleting...' : `Delete current ${(currentAcct?.default_credential_type || '').toUpperCase()} credential`}
             </button>
           {/if}
           {#if credChangeResult}
@@ -1527,7 +1560,7 @@
           {:else}
             <button class="btn-cancel" on:click={closeCredChange}>Cancel</button>
             <button class="btn-add" on:click={applyCredChange} disabled={credChangeBusy || (credChangeType === (currentAcct?.default_credential_type || '') && credStatuses[credChangeModal || ''] === 'ok')}>
-              {credChangeBusy ? 'Setting up...' : 'Change & setup'}
+              {credChangeBusy ? 'Setting up...' : 'Setup'}
             </button>
           {/if}
         </div>

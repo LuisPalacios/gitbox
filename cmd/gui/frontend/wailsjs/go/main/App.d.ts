@@ -37,6 +37,8 @@ export function GetAllStatus():Promise<Array<main.StatusResult>>;
 
 export function GetAppVersion():Promise<string>;
 
+export function GetAutostart():Promise<boolean>;
+
 export function GetConfig():Promise<main.ConfigDTO>;
 
 export function GetConfigPath():Promise<string>;
@@ -66,6 +68,8 @@ export function ReloadConfig():Promise<main.ConfigDTO>;
 export function RemoveGlobalIdentity():Promise<void>;
 
 export function RenameAccount(arg1:string,arg2:string):Promise<void>;
+
+export function SetAutostart(arg1:boolean):Promise<void>;
 
 export function SetGlobalFolder(arg1:string):Promise<void>;
 

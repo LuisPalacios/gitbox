@@ -70,6 +70,10 @@ export function GetAppVersion() {
   return window['go']['main']['App']['GetAppVersion']();
 }
 
+export function GetAutostart() {
+  return window['go']['main']['App']['GetAutostart']();
+}
+
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
@@ -128,6 +132,10 @@ export function RemoveGlobalIdentity() {
 
 export function RenameAccount(arg1, arg2) {
   return window['go']['main']['App']['RenameAccount'](arg1, arg2);
+}
+
+export function SetAutostart(arg1) {
+  return window['go']['main']['App']['SetAutostart'](arg1);
 }
 
 export function SetGlobalFolder(arg1) {
