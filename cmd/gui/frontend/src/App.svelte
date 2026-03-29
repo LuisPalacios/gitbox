@@ -352,8 +352,14 @@
     }
     // Step 2 — actually delete.
     deleting = true;
+    const deletedKey = `${deleteConfirm.sourceKey}/${deleteConfirm.repoKey}`;
     try {
       await bridge.deleteRepo(deleteConfirm.sourceKey, deleteConfirm.repoKey);
+      // Clear expanded detail if the deleted repo was open.
+      if (expandedRepo === deletedKey) {
+        expandedRepo = null;
+        repoDetail = null;
+      }
       await reloadFromDisk();
     } finally {
       deleting = false;

@@ -3,6 +3,7 @@ package git
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -396,7 +397,8 @@ func GlobalConfigUnset(key string) error {
 	err := run(".", "config", "--global", "--unset", key)
 	if err != nil {
 		// git config --unset exits with code 5 if the key is not found.
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 5 {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 5 {
 			return nil
 		}
 	}
