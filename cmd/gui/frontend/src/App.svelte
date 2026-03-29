@@ -7,7 +7,7 @@
     accountStats, themeStore, applyStatusResults
   } from './lib/stores';
   import { statusColor, credColor, statusLabel, providerLabel, statusSymbol } from './lib/theme';
-  import { WindowSetSize, WindowSetMinSize, WindowGetSize } from '../wailsjs/runtime/runtime';
+  import { WindowSetSize, WindowSetMinSize, WindowGetSize, BrowserOpenURL } from '../wailsjs/runtime/runtime';
   import type { RepoState, DiscoverResult } from './lib/types';
 
   // ── View mode ──
@@ -1117,6 +1117,10 @@
         <span class="settings-label">Version</span>
         <span class="settings-value">{appVersion}</span>
       </div>
+      <div class="settings-row">
+        <span class="settings-label">Author</span>
+        <span class="settings-value">Luis Palacios Derqui &mdash; <a href="https://github.com/LuisPalacios/gitbox" on:click|preventDefault={() => BrowserOpenURL('https://github.com/LuisPalacios/gitbox')}>github.com/LuisPalacios/gitbox</a></span>
+      </div>
     </div>
   {/if}
 
@@ -1469,7 +1473,7 @@
             {:else if addAcct.credentialType === 'token'}
               <p class="cred-step-desc">Create a Personal Access Token at your provider and paste it below.</p>
               {#if credTokenGuide}
-                <p class="cred-step-link"><a href={credTokenGuide} target="_blank" rel="noopener">{credTokenGuide}</a></p>
+                <p class="cred-step-link"><a href={credTokenGuide} on:click|preventDefault={() => BrowserOpenURL(credTokenGuide)}>{credTokenGuide}</a></p>
               {/if}
               <div class="form-row">
                 <label class="form-label" for="aa-token">Token</label>
@@ -1527,7 +1531,7 @@
           </div>
 
           {#if credChangeType === 'token' && credChangeTokenGuide && !credChangeResult}
-            <p class="cred-step-link"><a href={credChangeTokenGuide} target="_blank" rel="noopener">{credChangeTokenGuide}</a></p>
+            <p class="cred-step-link"><a href={credChangeTokenGuide} on:click|preventDefault={() => BrowserOpenURL(credChangeTokenGuide)}>{credChangeTokenGuide}</a></p>
             <div class="form-row">
               <label class="form-label" for="cc-token">Token</label>
               <input class="form-input" id="cc-token" type="password" bind:value={credChangeTokenInput} placeholder="ghp_..." />
