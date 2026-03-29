@@ -11,6 +11,12 @@
   go install github.com/wailsapp/wails/v2/cmd/wails@latest
   ```
 
+  After installing, ensure `$(go env GOPATH)/bin` is in your `PATH`. Add this to your shell profile (`~/.zshrc` on macOS, `~/.bashrc` on Linux) if `wails version` is not found:
+
+  ```bash
+  export PATH="$PATH:$(go env GOPATH)/bin"
+  ```
+
 Check:
 
 ```bash
@@ -21,11 +27,10 @@ npm --version         # npm
 git --version         # Git
 ```
 
-
 ### Platform-Specific
 
 - **Windows:** Git for Windows (provides Git Bash)
-- **macOS:** Xcode Command Line Tools
+- **macOS:** Xcode Command Line Tools (`xcode-select --install`)
 - **Linux:** `libwebkit2gtk-4.1-dev` and `libgtk-3-dev` (for GUI builds)
 
 ---
