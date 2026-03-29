@@ -2,7 +2,7 @@
   <img src="assets/logo.svg" width="128" alt="gitbox">
 </p>
 
-<h1 align="center">Gitox</h1>
+<h1 align="center">Gitbox</h1>
 
 <p align="center">
   <a href="https://github.com/LuisPalacios/gitbox/actions/workflows/ci.yml">
@@ -18,7 +18,7 @@
 
 ---
 
-This tools is for you if youy manage multiple clones from different servers and account, mixing different credential types (GCM, SSH, tokens), and work from various devices, desktops or headless servers).
+This is for you if you manage multiple clones from different servers and accounts, mixing different credential types (GCM, SSH, tokens), and work from various devices, desktops or headless servers.
 
 Gitbox establishes a bit of order, with just one file to manage **account setup, repo discovery, and cloning** — that's it. Your working trees are yours; gitbox won't touch them.
 
