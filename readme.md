@@ -36,9 +36,9 @@ Grab the latest binaries from the [Releases](https://github.com/LuisPalacios/git
 
 The app is not signed, you need to do the following once per download:
 
-- **macOS:** After extracting, move it to *Applications*. Run `xattr -cr /Applications/Gitbox.app` and `xattr -cr /path/to/gitboxcmd && chmod +x /path/to/gitboxcmd` from Terminal, before you launch it.
+- **macOS:** After extracting, move it to *Applications*. From Terminal `xattr -cr /Applications/Gitbox.app` and `xattr -cr /path/to/gitboxcmd && chmod +x /path/to/gitboxcmd`.
 
-- **Windows SmartScreen:** After extracting, move executable to any folder and launch it. Will show "Windows protected your PC" dialog. Click **More info** → **Run anyway**.
+- **Windows SmartScreen:** After extracting, move executables to any folder. when younlaunch the gui version, it will show "Windows protected your PC" dialog. Click **More info** → **Run anyway**.
 
 ## Documentation
 
