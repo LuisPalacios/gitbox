@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import { slide } from 'svelte/transition';
 
   // ── Theme ──
   let themeChoice = 'dark';
@@ -15,7 +16,7 @@
   }
 
   function cycleTheme() {
-    const order = ['system', 'light', 'dark'];
+    const order = ['dark', 'system', 'light'];
     themeChoice = order[(order.indexOf(themeChoice) + 1) % 3];
     applyTheme();
   }
@@ -24,7 +25,6 @@
     return { system: '◐', light: '☀', dark: '☾' }[choice] || '◐';
   }
 
-  // ── Settings toggle ──
   let showSettings = false;
 
   onMount(() => {
@@ -37,57 +37,73 @@
   // ── Color helpers (inlined from theme.ts) ──
   const darkPalette = {
     clean: '#61fd5f', behind: '#D91C9A', dirty: '#F07623',
-    ahead: '#4B95E9', 'not cloned': '#71717a', error: '#D81E5B',
+    ahead: '#4B95E9', 'not cloned': '#71717a', 'no upstream': '#71717a',
+    error: '#D81E5B',
   };
   const lightPalette = {
     clean: '#166534', behind: '#a21caf', dirty: '#c2410c',
-    ahead: '#2563eb', 'not cloned': '#52525b', error: '#be123c',
+    ahead: '#2563eb', 'not cloned': '#52525b', 'no upstream': '#52525b',
+    error: '#be123c',
   };
   $: palette = resolvedTheme === 'light' ? lightPalette : darkPalette;
   $: sc = (s) => palette[s] || (resolvedTheme === 'light' ? '#52525b' : '#71717a');
-  const symbols = {
-    clean: '●', behind: '◗', dirty: '◆', 'not cloned': '○',
-  };
+
+  function credBadgeClass(cred) {
+    return cred === 'ok' ? 'cred-badge-ok' : cred === 'error' ? 'cred-badge-err' : '';
+  }
+
+  const symbols = { clean: '●', behind: '◗', dirty: '◆', 'not cloned': '○' };
   const sym = (s) => symbols[s] || '?';
 
-  // ── Demo data ──
+  // ── Demo data (anonymized) ──
   const accounts = [
-    { key: 'parchis-luis', provider: 'Forgejo', cred: 'gcm', synced: 2, total: 4, issues: 2 },
-    { key: 'LuisPalacios', provider: 'GitHub', cred: 'gcm', synced: 1, total: 3, issues: 2 },
-    { key: 'Renueva', provider: 'GitHub', cred: 'ssh', synced: 3, total: 3, issues: 0 },
-    { key: 'Azelerum', provider: 'GitHub', cred: 'token', synced: 1, total: 1, issues: 0 },
+    { key: 'acme-ops', provider: 'Forgejo', cred: 'gcm', credStatus: 'ok', synced: 2, total: 4, issues: 2 },
+    { key: 'stellar-dev', provider: 'GitHub', cred: 'ssh', credStatus: 'ok', synced: 3, total: 3, issues: 0 },
+    { key: 'nebula-team', provider: 'GitLab', cred: 'token', credStatus: 'ok', synced: 1, total: 2, issues: 1 },
   ];
 
   const sources = [
-    { header: 'git-parchis-luis', repos: [
-      { name: 'infra/homelab', status: 'clean' },
-      { name: 'infra/migration', status: 'clean' },
-      { name: 'familia/fotos', status: 'behind', behind: 3 },
-      { name: 'parchis/web', status: 'not cloned' },
+    { header: 'acme-ops', repos: [
+      { name: 'infra/k8s-prod', status: 'clean' },
+      { name: 'infra/terraform', status: 'clean' },
+      { name: 'platform/api', status: 'behind', behind: 3 },
+      { name: 'platform/web', status: 'not cloned' },
     ]},
-    { header: 'github-LuisPalacios', repos: [
-      { name: 'LuisPalacios/gitbox', status: 'clean' },
-      { name: 'LuisPalacios/dotfiles', status: 'dirty', modified: 2 },
-      { name: 'LuisPalacios/homelab', status: 'behind', behind: 2 },
+    { header: 'stellar-dev', repos: [
+      { name: 'stellar-dev/cosmos', status: 'clean' },
+      { name: 'stellar-dev/orbit', status: 'clean' },
+      { name: 'stellar-dev/nova', status: 'clean' },
     ]},
-    { header: 'github-Renueva', repos: [
-      { name: 'Renueva/platform', status: 'clean' },
-      { name: 'Renueva/docs', status: 'clean' },
-      { name: 'Renueva/infra', status: 'clean' },
-    ]},
-    { header: 'github-Azelerum', repos: [
-      { name: 'Azelerum/homelab', status: 'clean' },
+    { header: 'nebula-team', repos: [
+      { name: 'nebula/dashboard', status: 'clean' },
+      { name: 'nebula/pipeline', status: 'dirty', modified: 2 },
     ]},
   ];
 
-  const summary = { clean: 7, behind: 2, dirty: 1, notCloned: 1, total: 11 };
+  const summary = { clean: 6, behind: 1, dirty: 1, notCloned: 1, total: 9 };
 
-  function statusLabel(repo) {
-    if (repo.status === 'clean') return 'Synced';
-    if (repo.status === 'behind') return `${repo.behind} behind`;
-    if (repo.status === 'dirty') return `${repo.modified} local change${repo.modified > 1 ? 's' : ''}`;
-    if (repo.status === 'not cloned') return 'Not local';
-    return repo.status;
+  // ── Repo detail expand/collapse ──
+  let expandedRepo = null;
+  const demoDetail = {
+    branch: 'main', ahead: 0, behind: 0,
+    changed: [
+      { kind: 'modified', path: 'src/ingest/parser.go' },
+      { kind: 'added', path: 'src/ingest/parser_test.go' },
+    ],
+    untracked: [],
+  };
+
+  function toggleDetail(sourceHeader, repoName, status) {
+    if (status !== 'dirty') return;
+    const key = `${sourceHeader}/${repoName}`;
+    expandedRepo = expandedRepo === key ? null : key;
+  }
+
+  function kindIcon(kind) {
+    return kind === 'deleted' ? '−' : kind === 'added' ? '+' : kind === 'renamed' ? '→' : '~';
+  }
+  function kindLabel(kind) {
+    return kind === 'deleted' ? 'Deleted' : kind === 'added' ? 'New file' : kind === 'renamed' ? 'Renamed' : 'Changed';
   }
 </script>
 
@@ -126,6 +142,7 @@
         </g>
       </svg>
       <span class="title">gitbox</span>
+      <span class="tagline">accounts & clones</span>
     </div>
     <div class="health">
       <span class="health-ring" style="--pct: {(summary.clean / summary.total) * 100}">
@@ -134,12 +151,14 @@
       <span class="health-label">synced</span>
     </div>
     <div class="topbar-actions">
-      <button class="btn-gear" title="Sync All">
+      <button class="btn-gear" title="Pull All">
         <svg class="topbar-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
           <line x1="8" y1="2" x2="8" y2="12"/><polyline points="4.5,8.5 8,12 11.5,8.5"/><line x1="4" y1="14" x2="12" y2="14"/>
         </svg>
       </button>
       <button class="btn-gear" title="Fetch All"><span class="sync-icon">&#8635;</span></button>
+      <button class="btn-gear btn-trash" title="Delete mode">&#128465;</button>
+      <button class="btn-gear" title="Compact view">◧</button>
       <button class="btn-gear" on:click={cycleTheme} title="Theme: {themeChoice}">{themeIcon(themeChoice)}</button>
       <button class="btn-gear" on:click={() => showSettings = !showSettings} title="Settings" class:active-gear={showSettings}>&#9881;</button>
     </div>
@@ -147,14 +166,14 @@
 
   <!-- ── SETTINGS PANEL ── -->
   {#if showSettings}
-    <div class="settings">
+    <div class="settings" transition:slide={{ duration: 150 }}>
       <div class="settings-row">
         <span class="settings-label">Config</span>
         <span class="settings-value">~/.config/gitbox/gitbox.json</span>
       </div>
       <div class="settings-row">
         <span class="settings-label">Clone folder</span>
-        <span class="settings-value">~/00.git</span>
+        <span class="settings-value">~/repos</span>
       </div>
       <div class="settings-row">
         <span class="settings-label">Theme</span>
@@ -175,7 +194,7 @@
       </div>
       <div class="settings-row">
         <span class="settings-label">Version</span>
-        <span class="settings-value">0.4.0</span>
+        <span class="settings-value">1.2.1</span>
       </div>
     </div>
   {/if}
@@ -188,7 +207,7 @@
         <div class="card-top">
           <span class="card-dot" style="background: {sc('clean')}"></span>
           <span class="card-provider">{acct.provider}</span>
-          <span class="cred-badge">{acct.cred}</span>
+          <span class="cred-badge {credBadgeClass(acct.credStatus)}">{acct.cred}</span>
         </div>
         <div class="card-name">{acct.key}</div>
         <div class="card-ring-row">
@@ -207,7 +226,7 @@
             <span class="card-ok" style="color: {sc('clean')}">All good</span>
           {/if}
         </div>
-        <button class="card-btn">Find Projects</button>
+        <button class="card-btn">Find projects</button>
       </div>
     {/each}
     <button class="card card-add" title="Add account">
@@ -221,7 +240,9 @@
       <div class="source-group">
         <div class="source-header">{source.header}</div>
         {#each source.repos as repo}
-          <div class="repo-row">
+          {@const repoKey = `${source.header}/${repo.name}`}
+          <div class="repo-row" class:repo-row-clickable={repo.status === 'dirty'}
+            on:click={() => toggleDetail(source.header, repo.name, repo.status)}>
             <span class="dot" style="color: {sc(repo.status)}">{sym(repo.status)}</span>
             <span class="repo-name">{repo.name}</span>
             <span class="status-badges">
@@ -236,7 +257,7 @@
               {/if}
             </span>
             {#if repo.status === 'behind'}
-              <button class="btn-action">Refresh</button>
+              <button class="btn-action">Pull</button>
             {:else if repo.status === 'not cloned'}
               <button class="btn-action">Bring Local</button>
             {/if}
@@ -244,6 +265,21 @@
               <button class="btn-fetch" title="Fetch origin">&#8635;</button>
             {/if}
           </div>
+          {#if expandedRepo === repoKey}
+            <div class="repo-detail" transition:slide={{ duration: 150 }}>
+              <div class="detail-header">
+                <span class="detail-branch">Branch: <strong>{demoDetail.branch}</strong></span>
+                <span class="detail-badge" style="color:{sc('dirty')}">&#9998; {repo.modified} changed</span>
+              </div>
+              <div class="detail-section-title">Changed files</div>
+              {#each demoDetail.changed as file}
+                <div class="detail-file">
+                  <span class="detail-kind" class:kind-added={file.kind === 'added'}>{kindIcon(file.kind)}</span>
+                  <span class="detail-path">{file.path}</span>
+                </div>
+              {/each}
+            </div>
+          {/if}
         {/each}
       </div>
     {/each}
@@ -265,7 +301,7 @@
   :global([data-theme="dark"]) {
     --bg-base: #09090b; --bg-card: #18181b; --bg-hover: #27272a;
     --border: #27272a; --border-hover: #3f3f46;
-    --text-primary: #fafafa; --text-secondary: #a1a1aa; --text-muted: #71717a; --text-dim: #52525b;
+    --text-primary: #fafafa; --text-secondary: #b4b4bd; --text-muted: #8e8e99; --text-dim: #71717a;
     --text-repo: #e4e4e7;
     --logo-dark: #4abdd4; --logo-light: #7cd9ec;
     --ring-bg: #27272a; --ring-accent: #61fd5f;
@@ -288,13 +324,14 @@
     transition: background 0.2s, color 0.2s;
   }
 
-  .app { max-width: 860px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+  .app { max-width: 860px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
   /* ── Topbar ── */
   .topbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--border); }
   .brand { display: flex; align-items: center; gap: 8px; }
   .logo-svg { width: 26px; height: 26px; }
   .title { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+  .tagline { font-size: 11px; font-weight: 400; color: var(--text-muted); letter-spacing: 0.3px; margin-left: 6px; white-space: nowrap; }
 
   .health { display: flex; align-items: center; gap: 8px; margin-left: auto; }
   .health-ring {
@@ -302,7 +339,7 @@
     background: conic-gradient(var(--ring-accent) calc(var(--pct) * 1%), var(--ring-bg) 0);
     display: flex; align-items: center; justify-content: center; position: relative;
   }
-  .health-ring::before { content: ''; position: absolute; inset: 4px; background: var(--bg-base); border-radius: 50%; }
+  .health-ring::before { content: ''; position: absolute; inset: 4px; background: var(--bg-base); border-radius: 50%; transition: background 0.2s; }
   .health-num { position: relative; z-index: 1; font-size: 10px; font-weight: 700; }
   .health-label { font-size: 12px; color: var(--text-muted); }
 
@@ -311,11 +348,12 @@
   .sync-icon { font-size: 18px; display: inline-block; }
   .btn-gear {
     background: none; border: 1px solid transparent; color: var(--text-muted);
-    font-size: 18px; cursor: pointer; padding: 4px 6px; border-radius: 6px;
+    font-size: 18px; cursor: pointer; padding: 4px 6px; border-radius: 6px; transition: all 0.12s;
     width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
-    line-height: 1; transition: all 0.12s;
+    line-height: 1;
   }
   .btn-gear:hover { color: var(--text-primary); background: var(--bg-hover); }
+  .btn-trash { font-size: 15px; }
   .active-gear { color: var(--text-primary) !important; }
 
   /* ── Settings ── */
@@ -336,11 +374,11 @@
   .theme-active { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
 
   /* ── Cards ── */
-  .cards-row { display: flex; gap: 10px; padding: 18px 24px; overflow-x: auto; }
+  .cards-row { display: flex; gap: 10px; padding: 18px 24px; overflow-x: auto; flex-shrink: 0; }
   .card {
     flex: 1; min-width: 165px; background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 10px; padding: 12px 14px; box-shadow: var(--card-shadow);
-    transition: border-color 0.15s;
+    border-radius: 10px; padding: 12px 14px; transition: border-color 0.15s, box-shadow 0.15s;
+    box-shadow: var(--card-shadow);
   }
   .card:hover { border-color: var(--border-hover); }
   .card-top { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
@@ -352,6 +390,8 @@
     background: var(--bg-hover); border: 1px solid var(--border); color: var(--text-muted);
     line-height: 1.3;
   }
+  .cred-badge-ok { background: #14532d; border-color: #166534; color: #86efac; }
+  :global([data-theme="light"]) .cred-badge-ok { background: #dcfce7; border-color: #166534; color: #166534; }
   .card-name { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   .card-ring-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
   .mini-ring { width: 28px; height: 28px; flex-shrink: 0; }
@@ -374,7 +414,7 @@
   .card-add-icon { font-size: 24px; font-weight: 300; line-height: 1; }
 
   /* ── Repo list ── */
-  .repo-list { flex: 1; padding: 0 24px 12px; }
+  .repo-list { flex: 1; padding: 0 24px 12px; overflow-y: auto; min-height: 0; }
   .source-group { margin-bottom: 6px; }
   .source-header {
     font-size: 11px; font-weight: 600; color: var(--text-dim);
@@ -403,10 +443,43 @@
   }
   .btn-fetch:hover { color: var(--text-primary); }
 
+  /* ── Repo detail panel ── */
+  .repo-row-clickable { cursor: pointer; }
+  .repo-row-clickable:hover { background: var(--bg-card); }
+  .repo-detail {
+    margin: 0 0 2px 0; padding: 8px 16px 10px 30px;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+    max-height: 180px; overflow-y: auto; font-size: 12px;
+  }
+  .detail-header {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    font-size: 11px; color: var(--text-secondary);
+  }
+  .detail-branch { color: var(--text-muted); }
+  .detail-branch strong { color: var(--text-primary); font-weight: 600; }
+  .detail-badge { font-weight: 600; font-size: 11px; }
+  .detail-section-title {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-dim); margin: 6px 0 3px 0;
+  }
+  .detail-file {
+    display: flex; align-items: baseline; gap: 6px; padding: 1px 0;
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 10px;
+  }
+  .detail-kind {
+    width: 14px; text-align: center; font-weight: 700; flex-shrink: 0;
+    color: var(--text-secondary);
+  }
+  .kind-added { color: #61fd5f; }
+  :global([data-theme="light"]) .kind-added { color: #166534; }
+  .detail-path { color: var(--text-repo); word-break: break-all; }
+
   /* ── Footer ── */
   .summary {
     display: flex; align-items: center; justify-content: center; gap: 6px;
     padding: 10px 24px; border-top: 1px solid var(--border); font-size: 12px; font-weight: 500;
+    flex-shrink: 0;
   }
   .sum { font-weight: 600; }
   .sep { color: var(--border-hover); }

@@ -25,16 +25,17 @@
       viewMode = 'compact';
       WindowSetMinSize(200, 200);
       await tick();
-      setTimeout(() => fitCompactHeight(), 50);
+      // Wait for slide transitions on expanded accounts (120ms) + buffer.
+      setTimeout(() => fitCompactHeight(), 250);
+      // Second pass catches any remaining layout shifts.
+      setTimeout(() => fitCompactHeight(), 500);
     } else {
       await bridge.setViewMode('full');
       viewMode = 'full';
       WindowSetMinSize(640, 480);
-      if (savedFullSize) {
-        WindowSetSize(savedFullSize.w, savedFullSize.h);
-      } else {
-        WindowSetSize(900, 700);
-      }
+      await tick();
+      const target = savedFullSize ?? { w: 900, h: 700 };
+      setTimeout(() => WindowSetSize(target.w, target.h), 50);
     }
   }
 

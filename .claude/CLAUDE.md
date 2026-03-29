@@ -18,22 +18,28 @@ cmd/
   gui/                    Wails v2 + Svelte GUI (gitbox)
 pkg/                      Shared Go library
   config/                 Config v2 model, load/save, v1→v2 migration
+  credential/             Credential verification (GCM, SSH, token)
   git/                    Git subprocess operations (os/exec)
   provider/               Provider API clients (GitHub, GitLab, Gitea, Forgejo)
   mirror/                 Repo migration + push mirrors
   status/                 Clone status checking
 docs/
   cli-guide.md            CLI quick start
-  gui-guide.md            GUI guide (placeholder)
+  gui-guide.md            GUI guide
   reference.md            Detailed command & config reference
   developer-guide.md      Build instructions, contributing
   architecture.md         Technical design
+  credentials.md          Credential setup guide
+  completion.md           Shell completion docs
   migration.md            v1→v2 migration guide
+  diagrams/               Architecture diagrams
+assets/                   Icons, logo, screenshot
 legacy/
   git-config-repos/       Shell script sub-project (UNTOUCHED)
   git-status-pull/        Shell script sub-project (UNTOUCHED)
-gitbox.schema.json   v2 JSON Schema
-gitbox.jsonc         v2 annotated example (Spanish comments)
+.github/workflows/ci.yml  CI: build, test, release
+gitbox.schema.json        v2 JSON Schema
+gitbox.jsonc              v2 annotated example (Spanish comments)
 go.mod / go.sum           Go module
 README.md                 Project overview
 ```
