@@ -1,0 +1,456 @@
+name: CI
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  # ── Go unit tests (fast, runs on all platforms) ──
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      - name: Run tests
+        run: go test -short ./pkg/... ./cmd/cli/...
+
+  # ── CLI cross-compile (from ubuntu, fast) ──
+  cli:
+    runs-on: ubuntu-latest
+    needs: test
+    env:
+      LDFLAGS: >-
+        -X main.version=${{ github.ref_name }}
+        -X main.commit=${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      - name: Build CLI (linux/amd64)
+        run: GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o build/gitbox-linux-amd64 ./cmd/cli
+      - name: Build CLI (darwin/arm64)
+        run: GOOS=darwin GOARCH=arm64 go build -ldflags "$LDFLAGS" -o build/gitbox-darwin-arm64 ./cmd/cli
+      - name: Build CLI (darwin/amd64)
+        run: GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" -o build/gitbox-darwin-amd64 ./cmd/cli
+      - name: Build CLI (windows/amd64)
+        run: GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o build/gitbox.exe ./cmd/cli
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-binaries
+          path: build/gitbox*
+
+  # ── GUI build (native per platform, needs webview libs) ──
+  gui-windows:
+    runs-on: windows-latest
+    needs: test
+    env:
+      LDFLAGS: >-
+        -X main.version=${{ github.ref_name }}
+        -X main.commit=${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+      - name: Copy app icons
+        shell: bash
+        run: |
+          mkdir -p cmd/gui/build/windows
+          cp assets/appicon.png cmd/gui/build/appicon.png
+          cp assets/icon.ico    cmd/gui/build/windows/icon.ico
+      - name: Set version in wails.json
+        shell: bash
+        run: |
+          VER="${{ github.ref_name }}"
+          VER="${VER#v}"
+          sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
+      - name: Build GUI
+        shell: bash
+        working-directory: cmd/gui
+        run: wails build -ldflags "$LDFLAGS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-windows
+          path: cmd/gui/build/bin/GitboxApp.exe
+
+  gui-macos-arm64:
+    runs-on: macos-latest
+    needs: test
+    env:
+      LDFLAGS: >-
+        -X main.version=${{ github.ref_name }}
+        -X main.commit=${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+      - name: Copy app icons
+        run: |
+          mkdir -p cmd/gui/build
+          cp assets/appicon.png cmd/gui/build/appicon.png
+      - name: Set version in wails.json
+        run: |
+          VER="${{ github.ref_name }}"
+          VER="${VER#v}"
+          sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
+      - name: Build GUI
+        working-directory: cmd/gui
+        run: wails build -ldflags "$LDFLAGS"
+      - name: Zip macOS app bundle
+        run: cd cmd/gui/build/bin && zip -r gitbox-macos-arm64.zip GitboxApp.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-macos-arm64
+          path: cmd/gui/build/bin/gitbox-macos-arm64.zip
+
+  gui-macos-amd64:
+    runs-on: macos-latest
+    needs: test
+    env:
+      GOARCH: amd64
+      LDFLAGS: >-
+        -X main.version=${{ github.ref_name }}
+        -X main.commit=${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+        env:
+          GOARCH: arm64
+      - name: Copy app icons
+        run: |
+          mkdir -p cmd/gui/build
+          cp assets/appicon.png cmd/gui/build/appicon.png
+      - name: Set version in wails.json
+        run: |
+          VER="${{ github.ref_name }}"
+          VER="${VER#v}"
+          sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
+      - name: Build GUI
+        working-directory: cmd/gui
+        run: wails build -platform darwin/amd64 -ldflags "$LDFLAGS"
+      - name: Zip macOS app bundle
+        run: cd cmd/gui/build/bin && zip -r gitbox-macos-amd64.zip GitboxApp.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-macos-amd64
+          path: cmd/gui/build/bin/gitbox-macos-amd64.zip
+
+  gui-linux:
+    runs-on: ubuntu-latest
+    needs: test
+    env:
+      LDFLAGS: >-
+        -X main.version=${{ github.ref_name }}
+        -X main.commit=${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+      - name: Copy app icons
+        run: |
+          mkdir -p cmd/gui/build
+          cp assets/appicon.png cmd/gui/build/appicon.png
+      - name: Set version in wails.json
+        run: |
+          VER="${{ github.ref_name }}"
+          VER="${VER#v}"
+          sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
+      - name: Build GUI
+        working-directory: cmd/gui
+        run: wails build -tags webkit2_41 -ldflags "$LDFLAGS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-linux
+          path: cmd/gui/build/bin/GitboxApp
+
+  # ── Windows Inno Setup installer ──
+  installer-windows:
+    runs-on: windows-latest
+    needs: [cli, gui-windows]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Prepare installer files
+        shell: bash
+        run: |
+          mkdir -p tmp-win release
+          cp artifacts/cli-binaries/gitbox.exe tmp-win/gitbox.exe
+          cp artifacts/gui-windows/GitboxApp.exe tmp-win/GitboxApp.exe
+      - name: Build installer
+        shell: cmd
+        env:
+          GITBOX_VERSION: ${{ github.ref_name }}
+        run: |
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" scripts\installer.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-windows
+          path: release/gitbox-win-amd64-setup.exe
+
+  # ── macOS DMG (arm64) ──
+  dmg-macos-arm64:
+    runs-on: macos-latest
+    needs: [cli, gui-macos-arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Install create-dmg
+        run: brew install create-dmg
+      - name: Stage DMG contents
+        run: |
+          mkdir -p staging release
+          cp artifacts/cli-binaries/gitbox-darwin-arm64 staging/gitbox
+          chmod +x staging/gitbox
+          cd staging && unzip ../artifacts/gui-macos-arm64/gitbox-macos-arm64.zip
+          cd ..
+          cp 'scripts/dmg/Install Gitbox.command' staging/
+          cp scripts/dmg/README.txt staging/
+          chmod +x 'staging/Install Gitbox.command'
+          sed -i '' 's/\r$//' 'staging/Install Gitbox.command'
+      - name: Import signing certificate
+        if: env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          echo "$APPLE_CERTIFICATE" | base64 --decode > cert.p12
+          security create-keychain -p "" build.keychain
+          security import cert.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+      - name: Codesign app bundle
+        if: env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_IDENTITY: ${{ secrets.APPLE_IDENTITY }}
+        run: |
+          codesign --force --deep --sign "$APPLE_IDENTITY" --options runtime staging/GitboxApp.app
+          codesign --force --sign "$APPLE_IDENTITY" --options runtime staging/gitbox
+      - name: Build DMG
+        run: |
+          create-dmg \
+            --volname "gitbox" \
+            --window-pos 200 120 --window-size 660 500 \
+            --icon-size 100 \
+            --icon "GitboxApp.app" 150 170 \
+            --app-drop-link 450 170 \
+            --hide-extension "GitboxApp.app" \
+            --icon "Install Gitbox.command" 150 370 \
+            --hide-extension "Install Gitbox.command" \
+            --icon "README.txt" 450 370 \
+            --icon "gitbox" 900 900 \
+            release/gitbox-macos-arm64.dmg staging/ || test $? -eq 2
+      - name: Notarize DMG
+        if: env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          xcrun notarytool submit release/gitbox-macos-arm64.dmg \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple release/gitbox-macos-arm64.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg-macos-arm64
+          path: release/gitbox-macos-arm64.dmg
+
+  # ── macOS DMG (amd64) ──
+  dmg-macos-amd64:
+    runs-on: macos-latest
+    needs: [cli, gui-macos-amd64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Install create-dmg
+        run: brew install create-dmg
+      - name: Stage DMG contents
+        run: |
+          mkdir -p staging release
+          cp artifacts/cli-binaries/gitbox-darwin-amd64 staging/gitbox
+          chmod +x staging/gitbox
+          cd staging && unzip ../artifacts/gui-macos-amd64/gitbox-macos-amd64.zip
+          cd ..
+          cp 'scripts/dmg/Install Gitbox.command' staging/
+          cp scripts/dmg/README.txt staging/
+          chmod +x 'staging/Install Gitbox.command'
+          sed -i '' 's/\r$//' 'staging/Install Gitbox.command'
+      - name: Import signing certificate
+        if: env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          echo "$APPLE_CERTIFICATE" | base64 --decode > cert.p12
+          security create-keychain -p "" build.keychain
+          security import cert.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+      - name: Codesign app bundle
+        if: env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_IDENTITY: ${{ secrets.APPLE_IDENTITY }}
+        run: |
+          codesign --force --deep --sign "$APPLE_IDENTITY" --options runtime staging/GitboxApp.app
+          codesign --force --sign "$APPLE_IDENTITY" --options runtime staging/gitbox
+      - name: Build DMG
+        run: |
+          create-dmg \
+            --volname "gitbox" \
+            --window-pos 200 120 --window-size 660 500 \
+            --icon-size 100 \
+            --icon "GitboxApp.app" 150 170 \
+            --app-drop-link 450 170 \
+            --hide-extension "GitboxApp.app" \
+            --icon "Install Gitbox.command" 150 370 \
+            --hide-extension "Install Gitbox.command" \
+            --icon "README.txt" 450 370 \
+            --icon "gitbox" 900 900 \
+            release/gitbox-macos-amd64.dmg staging/ || test $? -eq 2
+      - name: Notarize DMG
+        if: env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          xcrun notarytool submit release/gitbox-macos-amd64.dmg \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple release/gitbox-macos-amd64.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg-macos-amd64
+          path: release/gitbox-macos-amd64.dmg
+
+  # ── Linux AppImage ──
+  appimage-linux:
+    runs-on: ubuntu-latest
+    needs: [cli, gui-linux]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Download appimagetool
+        run: |
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          chmod +x appimagetool
+      - name: Build AppImage
+        run: |
+          mkdir -p AppDir/usr/bin AppDir/usr/share/icons/hicolor/256x256/apps release
+          cp artifacts/cli-binaries/gitbox-linux-amd64 AppDir/usr/bin/gitbox
+          cp artifacts/gui-linux/GitboxApp AppDir/usr/bin/GitboxApp
+          chmod +x AppDir/usr/bin/gitbox AppDir/usr/bin/GitboxApp
+          cp assets/appicon.png AppDir/usr/share/icons/hicolor/256x256/apps/gitbox.png
+          cp assets/appicon.png AppDir/gitbox.png
+          cp scripts/appimage/gitbox.desktop AppDir/gitbox.desktop
+          cp scripts/appimage/AppRun AppDir/AppRun
+          chmod +x AppDir/AppRun
+          ARCH=x86_64 ./appimagetool AppDir release/gitbox-linux-amd64.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage-linux
+          path: release/gitbox-linux-amd64.AppImage
+
+  # ── GitHub Release with all binaries ──
+  release:
+    runs-on: ubuntu-latest
+    needs: [cli, gui-windows, gui-macos-arm64, gui-macos-amd64, gui-linux, installer-windows, dmg-macos-arm64, dmg-macos-amd64, appimage-linux]
+    if: always() && needs.cli.result == 'success' && needs.gui-windows.result == 'success' && needs.gui-macos-arm64.result == 'success' && needs.gui-macos-amd64.result == 'success' && needs.gui-linux.result == 'success'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release tmp-win tmp-mac-arm64 tmp-mac-amd64 tmp-linux
+
+          # Windows (amd64): gitbox.exe + GitboxApp.exe → gitbox-win-amd64.zip
+          cp artifacts/cli-binaries/gitbox.exe  tmp-win/gitbox.exe
+          cp artifacts/gui-windows/GitboxApp.exe      tmp-win/GitboxApp.exe
+          (cd tmp-win && zip ../release/gitbox-win-amd64.zip *)
+
+          # macOS (arm64): gitbox + GitboxApp.app → gitbox-macos-arm64.zip
+          cp artifacts/cli-binaries/gitbox-darwin-arm64 tmp-mac-arm64/gitbox
+          (cd tmp-mac-arm64 && unzip ../artifacts/gui-macos-arm64/gitbox-macos-arm64.zip)
+          (cd tmp-mac-arm64 && zip -r ../release/gitbox-macos-arm64.zip gitbox GitboxApp.app)
+
+          # macOS (amd64): gitbox + GitboxApp.app → gitbox-macos-amd64.zip
+          cp artifacts/cli-binaries/gitbox-darwin-amd64 tmp-mac-amd64/gitbox
+          (cd tmp-mac-amd64 && unzip ../artifacts/gui-macos-amd64/gitbox-macos-amd64.zip)
+          (cd tmp-mac-amd64 && zip -r ../release/gitbox-macos-amd64.zip gitbox GitboxApp.app)
+
+          # Linux (amd64): gitbox + GitboxApp → gitbox-linux-amd64.zip
+          cp artifacts/cli-binaries/gitbox-linux-amd64 tmp-linux/gitbox
+          cp artifacts/gui-linux/GitboxApp                tmp-linux/GitboxApp
+          (cd tmp-linux && zip ../release/gitbox-linux-amd64.zip *)
+
+      - name: Collect installer artifacts
+        run: |
+          cp artifacts/installer-windows/gitbox-win-amd64-setup.exe release/ 2>/dev/null || true
+          cp artifacts/dmg-macos-arm64/gitbox-macos-arm64.dmg release/ 2>/dev/null || true
+          cp artifacts/dmg-macos-amd64/gitbox-macos-amd64.dmg release/ 2>/dev/null || true
+          cp artifacts/appimage-linux/gitbox-linux-amd64.AppImage release/ 2>/dev/null || true
+
+      - name: Generate checksums
+        run: cd release && sha256sum * > checksums.sha256
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "gitbox ${{ github.ref_name }}" \
+            --generate-notes \
+            release/*

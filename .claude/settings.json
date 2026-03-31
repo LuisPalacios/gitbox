@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gitbox.exe init:*)",
+      "Bash(go vet:*)",
+      "Bash(wails build:*)",
+      "Bash(gh run:*)",
+      "Bash(gh release:*)",
+      "Bash(magick convert:*)",
+      "Bash(magick cmd/gui/build/appicon.png -define icon:auto-resize=256,128,64,48,32,16 cmd/gui/build/windows/icon.ico)",
+      "Bash(./gitbox.exe --help)",
+      "Bash(build/gitbox.exe --help)",
+      "Bash(build/gitbox.exe account:*)"
+    ]
+  }
+}

@@ -1,0 +1,319 @@
+// Configuration file for gitbox (v2 format)
+// Location: $HOME/.config/gitbox/gitbox.json
+//
+// REMOVE ALL COMMENTS BEFORE USING THIS FILE
+// (Standard JSON does not support comments; this file is a documented template only)
+//
+// Structure:
+//   "accounts" → WHO you are on each server (credentials, identity)
+//   "sources"  → WHAT you clone from each account (repos organized by org/repo)
+//
+// Folder rules (3 levels):
+//   1st level: source key (or source "folder" if specified)
+//   2nd level: org (part before / in the repo key, or "id_folder" if specified)
+//   3rd level: repo (part after / in the repo key, or "clone_folder" if specified)
+//   If clone_folder is absolute (/, ~ or ../): replaces the entire path
+//
+{
+    // JSON Schema reference for editor validation and autocompletion
+    "$schema": "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/json/gitbox.schema.json",
+
+    // Format version. Always 2.
+    "version": 2,
+
+    // ──────────────────────────────────────────────────────────────────────────────
+    // GLOBAL SECTION
+    // ──────────────────────────────────────────────────────────────────────────────
+    "global": {
+
+        // Root directory where all repositories are organized.
+        //   "~/00.git"                 →  $HOME/00.git
+        //   "/home/user/00.git"        →  absolute path on Linux/macOS
+        //   "C:/Users/user/00.git"     →  absolute path on Windows (Git Bash)
+        "folder": "~/00.git",
+
+        // SSH credentials
+        // Recommended for headless servers (SSH access, no browser).
+        "credential_ssh": {
+            "ssh_folder": "~/.ssh"
+        },
+
+        // GCM (Git Credential Manager) credentials
+        // Recommended for desktops with a browser (Windows, macOS, Linux with GUI).
+        // credential_store per platform:
+        //   "wincredman"    → Windows Credential Manager
+        //   "keychain"      → macOS Keychain
+        //   "secretservice" → Linux Secret Service (GNOME Keyring / KWallet)
+        "credential_gcm": {
+            "helper": "manager",
+            "credential_store": "wincredman"
+        },
+
+        // Token/PAT credentials
+        // For Gitea/Forgejo servers, CI/CD and automation.
+        // Tokens are stored in the OS credential store, not here.
+        "credential_token": {}
+    },
+
+    // ──────────────────────────────────────────────────────────────────────────────
+    // ACCOUNTS SECTION — WHO you are on each server
+    // ──────────────────────────────────────────────────────────────────────────────
+    //
+    // Each key is a unique identifier (also used as the default first-level
+    // folder name). One account = one login (hostname + username).
+    //
+    "accounts": {
+
+        // ── Forgejo homelab (one account, multiple organizations) ─────────────
+        "git-example": {
+            "provider": "forgejo",
+            "url": "https://git.example.org",
+            "username": "myuser",
+            "name": "My Name",
+            "email": "myuser@example.com",
+            "default_credential_type": "gcm",
+            "ssh": {
+                "host": "gt-myuser",
+                "hostname": "git.example.org",
+                "key_type": "ed25519"
+            },
+            "gcm": {
+                "provider": "generic",
+                "useHttpPath": false
+            }
+        },
+
+        // ── GitHub personal account ───────────────────────────────────────────
+        "github-MyGitHubUser": {
+            "provider": "github",
+            "url": "https://github.com",
+            "username": "MyGitHubUser",
+            "name": "My Name",
+            "email": "myuser@example.com",
+            "default_credential_type": "gcm",
+            "ssh": {
+                "host": "gh-MyGitHubUser",
+                "hostname": "github.com",
+                "key_type": "ed25519"
+            },
+            "gcm": {
+                "provider": "github",
+                "useHttpPath": false
+            }
+        },
+
+        // ── GitHub corporate account (different username) ─────────────────────
+        "github-myorg": {
+            "provider": "github",
+            "url": "https://github.com",
+            "username": "OrgUser",
+            "name": "My Name",
+            "email": "orguser@example.com",
+            "default_credential_type": "gcm",
+            "ssh": {
+                "host": "gh-MyOrg",
+                "hostname": "github.com",
+                "key_type": "ed25519"
+            },
+            "gcm": {
+                "provider": "github",
+                "useHttpPath": false
+            }
+        },
+
+        // ── GitLab cloud account ──────────────────────────────────────────────
+        "gitlab-myuser": {
+            "provider": "gitlab",
+            "url": "https://gitlab.com",
+            "username": "myuser",
+            "name": "My Name",
+            "email": "myuser@example.com",
+            "default_credential_type": "gcm",
+            "ssh": {
+                "host": "gl-myuser",
+                "hostname": "gitlab.com",
+                "key_type": "ed25519"
+            },
+            "gcm": {
+                "provider": "gitlab",
+                "useHttpPath": false
+            }
+        },
+
+        // ── Gitea/Forgejo with token (PAT) authentication ─────────────────────
+        // To store: gitbox account credential setup gitea-ci
+        // For CI/CD: export GITBOX_TOKEN_GITEA_CI="ghp_xxxx"
+        "gitea-ci": {
+            "provider": "gitea",
+            "url": "https://gitea.example.org",
+            "username": "deploy-bot",
+            "name": "Deploy Bot",
+            "email": "deploy@example.org",
+            "default_credential_type": "token"
+        },
+
+        // ── Minimal account (required fields only) ────────────────────────────
+        "github-minimal": {
+            "provider": "github",
+            "url": "https://github.com",
+            "username": "AnotherUser",
+            "name": "My Name",
+            "email": "myuser@example.com"
+        }
+    },
+
+    // ──────────────────────────────────────────────────────────────────────────────
+    // SOURCES SECTION — WHAT you clone from each account
+    // ──────────────────────────────────────────────────────────────────────────────
+    //
+    // Each key is a source identifier (also used as the first-level folder,
+    // unless "folder" is specified).
+    //
+    // Repos use "org/repo" format:
+    //   "personal/my-project"      → folder: git-example/personal/my-project/
+    //   "MyGitHubUser/my-repo"     → folder: github-MyGitHubUser/MyGitHubUser/my-repo/
+    //
+    // Optional fields per repo:
+    //   credential_type  Overrides the account default ("gcm", "ssh", "token")
+    //   name             Overrides git user.name
+    //   email            Overrides git user.email
+    //   id_folder        Overrides the 2nd level (org folder). Always relative.
+    //   clone_folder     Overrides the 3rd level (clone folder).
+    //                    If absolute (/, ~ or ../): replaces the entire path.
+    //
+    "sources": {
+
+        // ── Forgejo: multiple organizations in a single source ────────────────
+        // Each repo indicates its org before the /: personal/, infra/, myuser/, etc.
+        "git-example": {
+            "account": "git-example",
+            "repos": {
+                // Org "personal"
+                "personal/my-project": {},
+
+                // Org "training"
+                "training/cpp-course": {},
+
+                // Org "ai-projects" (multiple repos)
+                "ai-projects/agentic-ai": {},
+                "ai-projects/notes-app": {},
+                "ai-projects/webinar-ai": {},
+
+                // Org "infra"
+                "infra/homelab": {},
+                "infra/migration": {},
+
+                // Org "myuser" — personal repo with absolute clone_folder
+                // Cloned directly into ~/.config/git-config-repos
+                "myuser/git-config-repos-json": {
+                    "clone_folder": "~/.config/git-config-repos"
+                },
+
+                // Org "projects"
+                "projects/mentoring": {}
+            }
+        },
+
+        // ── GitHub personal + cross-org repos ─────────────────────────────────
+        // Personal repos: "MyGitHubUser/repo-name"
+        // Other org repos: "external-org/repo-name" (accessed with your credentials)
+        "github-MyGitHubUser": {
+            "account": "github-MyGitHubUser",
+            "repos": {
+                "MyGitHubUser/MyGitHubUser.github.io": {},
+                "MyGitHubUser/airlink": {},
+                "MyGitHubUser/git-toolkit": {},
+                "MyGitHubUser/dotfiles": {},
+                "MyGitHubUser/zsh-zshrc": {},
+
+                // Repo with different name/email than the account
+                "MyGitHubUser/freelance-work": {
+                    "name": "Freelance User",
+                    "email": "freelance@example.com"
+                },
+
+                // Repo using SSH instead of the default GCM
+                "MyGitHubUser/ssh-repo": {
+                    "credential_type": "ssh"
+                },
+
+                // Repo from another organization (cross-org, same GitHub user)
+                "external-org/ext-project": {}
+            }
+        },
+
+        // ── GitHub corporate: org + split account with id_folder ──────────────
+        "github-myorg": {
+            "account": "github-myorg",
+            "repos": {
+                // Standard org repos
+                "MyOrg/myorg.browser": {},
+                "MyOrg/myorg.docs": {},
+                "MyOrg/myorg.project": {},
+                "MyOrg/myorg.services": {},
+                "MyOrg/myorg.web.tester": {},
+
+                // Repo with a different credential than the default
+                "MyOrg/myorg.api": {
+                    "credential_type": "token"
+                },
+
+                // Repo going to a different 2nd-level folder (split account)
+                // Instead of github-myorg/MyOrg/ goes to github-myorg/myorg-rest/
+                "MyOrg/myorg.github.io": {
+                    "id_folder": "myorg-rest"
+                },
+
+                // Example with BOTH overrides: id_folder + clone_folder
+                // Goes to github-myorg/myorg-legacy/web-old/
+                "MyOrg/myorg.web.legacy": {
+                    "id_folder": "myorg-legacy",
+                    "clone_folder": "web-old"
+                }
+            }
+        },
+
+        // ── GitLab ────────────────────────────────────────────────────────────
+        "gitlab-myuser": {
+            "account": "gitlab-myuser",
+            "repos": {
+                "myuser/my-gitlab-project": {},
+                "myuser/pipeline-templates": {
+                    "credential_type": "ssh"
+                }
+            }
+        },
+
+        // ── Gitea with token — CI/CD repos ────────────────────────────────────
+        // All repos inherit credential_type "token" from the account.
+        // The token is retrieved from the environment variable or credential store.
+        "gitea-ci": {
+            "account": "gitea-ci",
+            "repos": {
+                "deploy/infra-scripts": {},
+                "deploy/helm-charts": {}
+            }
+        },
+
+        // ── Minimal account (just the basics) ─────────────────────────────────
+        "github-minimal": {
+            "account": "github-minimal",
+            "repos": {
+                "AnotherUser/some-repo": {}
+            }
+        },
+
+        // ── Source with custom folder ─────────────────────────────────────────
+        // The source key is "my-headless-server" but clones go to
+        // ~/00.git/server-ssh/ instead of ~/00.git/my-headless-server/
+        "my-headless-server": {
+            "account": "git-example",
+            "folder": "server-ssh",
+            "repos": {
+                "infra/deploy-scripts": {
+                    "credential_type": "ssh"
+                }
+            }
+        }
+    }
+}
