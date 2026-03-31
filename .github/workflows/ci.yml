@@ -1,0 +1,243 @@
+name: CI
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  # ── Go unit tests (fast, runs on all platforms) ──
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      - name: Run tests
+        run: go test -short ./pkg/... ./cmd/cli/...
+
+  # ── CLI cross-compile (from ubuntu, fast) ──
+  cli:
+    runs-on: ubuntu-latest
+    needs: test
+    env:
+      LDFLAGS: >-
+        -X main.version=${{ github.ref_name }}
+        -X main.commit=${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      - name: Build CLI (linux/amd64)
+        run: GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o build/gitbox-linux-amd64 ./cmd/cli
+      - name: Build CLI (darwin/arm64)
+        run: GOOS=darwin GOARCH=arm64 go build -ldflags "$LDFLAGS" -o build/gitbox-darwin-arm64 ./cmd/cli
+      - name: Build CLI (darwin/amd64)
+        run: GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" -o build/gitbox-darwin-amd64 ./cmd/cli
+      - name: Build CLI (windows/amd64)
+        run: GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o build/gitbox.exe ./cmd/cli
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-binaries
+          path: build/gitbox*
+
+  # ── GUI build (native per platform, needs webview libs) ──
+  gui-windows:
+    runs-on: windows-latest
+    needs: test
+    env:
+      LDFLAGS: >-
+        -X main.version=${{ github.ref_name }}
+        -X main.commit=${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+      - name: Copy app icons
+        shell: bash
+        run: |
+          mkdir -p cmd/gui/build/windows
+          cp assets/appicon.png cmd/gui/build/appicon.png
+          cp assets/icon.ico    cmd/gui/build/windows/icon.ico
+      - name: Set version in wails.json
+        shell: bash
+        run: |
+          VER="${{ github.ref_name }}"
+          VER="${VER#v}"
+          sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
+      - name: Build GUI
+        shell: bash
+        working-directory: cmd/gui
+        run: wails build -ldflags "$LDFLAGS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-windows
+          path: cmd/gui/build/bin/GitboxApp.exe
+
+  gui-macos-arm64:
+    runs-on: macos-latest
+    needs: test
+    env:
+      LDFLAGS: >-
+        -X main.version=${{ github.ref_name }}
+        -X main.commit=${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+      - name: Copy app icons
+        run: |
+          mkdir -p cmd/gui/build
+          cp assets/appicon.png cmd/gui/build/appicon.png
+      - name: Set version in wails.json
+        run: |
+          VER="${{ github.ref_name }}"
+          VER="${VER#v}"
+          sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
+      - name: Build GUI
+        working-directory: cmd/gui
+        run: wails build -ldflags "$LDFLAGS"
+      - name: Zip macOS app bundle
+        run: cd cmd/gui/build/bin && zip -r gitbox-macos-arm64.zip GitboxApp.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-macos-arm64
+          path: cmd/gui/build/bin/gitbox-macos-arm64.zip
+
+  gui-macos-amd64:
+    runs-on: macos-latest
+    needs: test
+    env:
+      GOARCH: amd64
+      LDFLAGS: >-
+        -X main.version=${{ github.ref_name }}
+        -X main.commit=${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+        env:
+          GOARCH: arm64
+      - name: Copy app icons
+        run: |
+          mkdir -p cmd/gui/build
+          cp assets/appicon.png cmd/gui/build/appicon.png
+      - name: Set version in wails.json
+        run: |
+          VER="${{ github.ref_name }}"
+          VER="${VER#v}"
+          sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
+      - name: Build GUI
+        working-directory: cmd/gui
+        run: wails build -platform darwin/amd64 -ldflags "$LDFLAGS"
+      - name: Zip macOS app bundle
+        run: cd cmd/gui/build/bin && zip -r gitbox-macos-amd64.zip GitboxApp.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-macos-amd64
+          path: cmd/gui/build/bin/gitbox-macos-amd64.zip
+
+  gui-linux:
+    runs-on: ubuntu-latest
+    needs: test
+    env:
+      LDFLAGS: >-
+        -X main.version=${{ github.ref_name }}
+        -X main.commit=${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+      - name: Copy app icons
+        run: |
+          mkdir -p cmd/gui/build
+          cp assets/appicon.png cmd/gui/build/appicon.png
+      - name: Set version in wails.json
+        run: |
+          VER="${{ github.ref_name }}"
+          VER="${VER#v}"
+          sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
+      - name: Build GUI
+        working-directory: cmd/gui
+        run: wails build -tags webkit2_41 -ldflags "$LDFLAGS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-linux
+          path: cmd/gui/build/bin/GitboxApp
+
+  # ── GitHub Release with all binaries ──
+  release:
+    runs-on: ubuntu-latest
+    needs: [cli, gui-windows, gui-macos-arm64, gui-macos-amd64, gui-linux]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release tmp-win tmp-mac-arm64 tmp-mac-amd64 tmp-linux
+
+          # Windows (amd64): gitbox.exe + GitboxApp.exe → gitbox-win-amd64.zip
+          cp artifacts/cli-binaries/gitbox.exe  tmp-win/gitbox.exe
+          cp artifacts/gui-windows/GitboxApp.exe      tmp-win/GitboxApp.exe
+          (cd tmp-win && zip ../release/gitbox-win-amd64.zip *)
+
+          # macOS (arm64): gitbox + GitboxApp.app → gitbox-macos-arm64.zip
+          cp artifacts/cli-binaries/gitbox-darwin-arm64 tmp-mac-arm64/gitbox
+          (cd tmp-mac-arm64 && unzip ../artifacts/gui-macos-arm64/gitbox-macos-arm64.zip)
+          (cd tmp-mac-arm64 && zip -r ../release/gitbox-macos-arm64.zip gitbox GitboxApp.app)
+
+          # macOS (amd64): gitbox + GitboxApp.app → gitbox-macos-amd64.zip
+          cp artifacts/cli-binaries/gitbox-darwin-amd64 tmp-mac-amd64/gitbox
+          (cd tmp-mac-amd64 && unzip ../artifacts/gui-macos-amd64/gitbox-macos-amd64.zip)
+          (cd tmp-mac-amd64 && zip -r ../release/gitbox-macos-amd64.zip gitbox GitboxApp.app)
+
+          # Linux (amd64): gitbox + GitboxApp → gitbox-linux-amd64.zip
+          cp artifacts/cli-binaries/gitbox-linux-amd64 tmp-linux/gitbox
+          cp artifacts/gui-linux/GitboxApp                tmp-linux/GitboxApp
+          (cd tmp-linux && zip ../release/gitbox-linux-amd64.zip *)
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "gitbox ${{ github.ref_name }}" \
+            --generate-notes \
+            release/*

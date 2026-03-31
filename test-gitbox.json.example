@@ -1,0 +1,122 @@
+{
+  "_comment": [
+    "Test fixture for gitbox integration tests.",
+    "Copy to test-gitbox.json and fill in real values.",
+    "",
+    "accounts: identity + credentials on each provider.",
+    "  _test.token: API token used only for tests (see docs/testing.md for how to create them).",
+    "  Accounts WITHOUT _test are display-only — no API calls are made.",
+    "",
+    "sources: which repos to clone from each account.",
+    "  account: references an account key (e.g., gb-github-personal).",
+    "  repos: org/repo keys to clone.",
+    "",
+    "mirrors (optional): push/pull mirrors between providers.",
+    "  Both accounts need tokens. Destination token needs write access.",
+    "",
+    "credential_gcm.credential_store: Windows uses wincredman, macOS uses osxkeychain,",
+    "  Linux uses secretservice. Only relevant for GCM credential type.",
+    "",
+    "global.folder and credential_ssh.ssh_folder: isolated test paths.",
+    "  The test runner overrides global.folder with a temp directory.",
+    "  ssh_folder MUST NOT point at ~/.ssh — use an isolated path."
+  ],
+  "version": 2,
+  "global": {
+    "folder": "~/.gitbox-test/git",
+    "credential_ssh": { "ssh_folder": "~/.gitbox-test/ssh" },
+    "credential_gcm": { "helper": "manager", "credential_store": "wincredman" },
+    "credential_token": {}
+  },
+  "accounts": {
+    "gb-home-personal": {
+      "provider": "forgejo",
+      "url": "https://forge.example.com",
+      "username": "youruser",
+      "name": "Your Name",
+      "email": "you@example.com",
+      "default_credential_type": "ssh",
+      "ssh": {
+        "host": "gitbox-gb-home-personal",
+        "hostname": "forge.example.com",
+        "key_type": "ed25519"
+      },
+      "_test": {
+        "token": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    "gb-github-personal": {
+      "provider": "github",
+      "url": "https://github.com",
+      "username": "YourGitHubUser",
+      "name": "Your Name",
+      "email": "you@example.com",
+      "default_credential_type": "token",
+      "_test": {
+        "token": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    "gb-github-company": {
+      "provider": "github",
+      "url": "https://github.com",
+      "username": "YourOrgName",
+      "name": "Your Company",
+      "email": "you@company.com",
+      "default_credential_type": "token",
+      "_test": {
+        "token": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    "gb-gitlab-dummy": {
+      "provider": "gitlab",
+      "url": "https://gitlab.com",
+      "username": "demo",
+      "name": "Demo User",
+      "email": "demo@example.com",
+      "default_credential_type": "token"
+    }
+  },
+  "sources": {
+    "gb-home-personal": {
+      "account": "gb-home-personal",
+      "repos": {
+        "youruser/some-repo": {},
+        "org-one/some-other-repo": {},
+        "other-org/my-nice-repo": {}
+      }
+    },
+    "gb-github-personal": {
+      "account": "gb-github-personal",
+      "repos": {
+        "YourGitHubUser/some-small-repo": {},
+        "YourGitHubUser/some-big-repo": {}
+      }
+    },
+    "gb-github-company": {
+      "account": "gb-github-company",
+      "repos": {
+        "YourOrgName/some-repo": {}
+      }
+    }
+  },
+  "mirrors": {
+    "gb-home-to-github": {
+      "account_src": "gb-home-personal",
+      "account_dst": "gb-github-personal",
+      "repos": {
+        "YourGitHubUser/some-small-repo": {
+          "direction": "pull",
+          "origin": "dst"
+        },
+        "org-one/some-other-repo": {
+          "direction": "push",
+          "origin": "src"
+        },
+        "other-org/my-nice-repo": {
+          "direction": "push",
+          "origin": "src"
+        }
+      }
+    }
+  }
+}

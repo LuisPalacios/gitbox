@@ -1,0 +1,589 @@
+// Package git provides subprocess wrappers for Git operations.
+package git
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
+)
+
+// gitBin is the resolved path to the git binary. Resolved once on first use.
+var (
+	gitBin     string
+	gitBinOnce sync.Once
+)
+
+// homebrewDirs are the Homebrew bin directories to prepend to PATH on macOS.
+// On macOS, GUI apps (and some SSH sessions) inherit a minimal PATH that
+// excludes Homebrew directories. Without these, git sub-commands like
+// "git-credential-manager" silently fail because they aren't on PATH —
+// even when we invoke the Homebrew git binary directly.
+//
+// Apple Silicon installs to /opt/homebrew/bin; Intel Macs use /usr/local/bin.
+// Both are listed so the binary works on either architecture.
+var homebrewDirs = []string{
+	"/opt/homebrew/bin", // Apple Silicon Homebrew
+	"/usr/local/bin",    // Intel Homebrew
+}
+
+// GitBin returns the path to the git binary.
+//
+// On macOS the system git (/usr/bin/git) ships WITHOUT Git Credential Manager
+// and is often an outdated shim. We probe Homebrew install locations first so
+// that GCM and other Homebrew-installed git extensions are available.
+//
+// IMPORTANT: Do NOT remove the Homebrew probing — the macOS system git does
+// not include GCM, and using it breaks credential operations every time.
+func GitBin() string {
+	gitBinOnce.Do(func() {
+		if runtime.GOOS == "darwin" {
+			for _, dir := range homebrewDirs {
+				candidate := filepath.Join(dir, "git")
+				if _, err := os.Stat(candidate); err == nil {
+					gitBin = candidate
+					return
+				}
+			}
+		}
+		// Fallback: whatever is on PATH.
+		if p, err := exec.LookPath("git"); err == nil {
+			gitBin = p
+		} else {
+			gitBin = "git" // last resort, let exec fail with a clear error
+		}
+	})
+	return gitBin
+}
+
+// Environ returns os.Environ() with Homebrew bin directories prepended to PATH
+// on macOS. This ensures that git sub-commands (e.g. git-credential-manager)
+// installed via Homebrew are found even when the parent process has a minimal
+// PATH (GUI apps, LaunchAgents, restricted SSH sessions).
+//
+// On non-macOS platforms this returns os.Environ() unchanged.
+//
+// IMPORTANT: Always use git.Environ() (not bare os.Environ()) when setting
+// cmd.Env for git subprocesses — otherwise GCM breaks on macOS.
+func Environ() []string {
+	env := os.Environ()
+	if runtime.GOOS != "darwin" {
+		return env
+	}
+	return ensureHomebrewPATH(env)
+}
+
+// ensureHomebrewPATH prepends Homebrew bin dirs to PATH if not already present.
+func ensureHomebrewPATH(env []string) []string {
+	for i, e := range env {
+		if strings.HasPrefix(e, "PATH=") {
+			currentPath := strings.TrimPrefix(e, "PATH=")
+			var missing []string
+			for _, dir := range homebrewDirs {
+				if !strings.Contains(currentPath, dir) {
+					missing = append(missing, dir)
+				}
+			}
+			if len(missing) > 0 {
+				env[i] = "PATH=" + strings.Join(missing, ":") + ":" + currentPath
+			}
+			return env
+		}
+	}
+	// No PATH found at all — set one with Homebrew dirs.
+	return append(env, "PATH="+strings.Join(homebrewDirs, ":"))
+}
+
+// CloneOpts configures a git clone operation.
+type CloneOpts struct {
+	Depth      int      // Shallow clone depth (0 = full clone)
+	Branch     string   // Specific branch to clone
+	Bare       bool     // Bare clone (for mirrors)
+	Mirror     bool     // Mirror clone
+	Quiet      bool     // Suppress stdout/stderr (capture instead of forward)
+	ConfigArgs []string // Extra -c key=value args (e.g. "credential.helper=")
+}
+
+// RepoStatus holds the parsed output of git status.
+type RepoStatus struct {
+	Branch    string // Current branch name
+	Upstream  string // Upstream tracking branch
+	Ahead     int    // Commits ahead of upstream
+	Behind    int    // Commits behind upstream
+	Modified  int    // Modified files count
+	Added     int    // Added (staged) files count
+	Deleted   int    // Deleted files count
+	Untracked int    // Untracked files count
+	Conflicts int    // Conflicted files count
+}
+
+// Clone runs git clone with the given options.
+// When opts.Quiet is true, stdout/stderr are captured instead of forwarded.
+func Clone(url, dest string, opts CloneOpts) error {
+	args := []string{"clone"}
+	for _, c := range opts.ConfigArgs {
+		args = append(args, "-c", c)
+	}
+	if opts.Mirror {
+		args = append(args, "--mirror")
+	} else if opts.Bare {
+		args = append(args, "--bare")
+	}
+	if opts.Depth > 0 {
+		args = append(args, "--depth", strconv.Itoa(opts.Depth))
+	}
+	if opts.Branch != "" {
+		args = append(args, "--branch", opts.Branch)
+	}
+	args = append(args, url, dest)
+	if opts.Quiet {
+		_, err := output(".", args...)
+		return err
+	}
+	return run(".", args...)
+}
+
+// CloneProgress holds a progress update from git clone.
+type CloneProgress struct {
+	Phase   string // e.g. "Receiving objects", "Resolving deltas"
+	Percent int    // 0-100
+}
+
+// progressRe matches git progress lines like "Receiving objects:  45% (114/253)".
+var progressRe = regexp.MustCompile(`^(remote: )?([\w ]+):\s+(\d+)%`)
+
+// CloneWithProgress runs git clone --progress and calls onProgress with updates.
+// stderr is parsed for percentage lines; stdout is discarded.
+func CloneWithProgress(url, dest string, opts CloneOpts, onProgress func(CloneProgress)) error {
+	args := []string{"clone", "--progress"}
+	for _, c := range opts.ConfigArgs {
+		args = append(args, "-c", c)
+	}
+	if opts.Mirror {
+		args = append(args, "--mirror")
+	} else if opts.Bare {
+		args = append(args, "--bare")
+	}
+	if opts.Depth > 0 {
+		args = append(args, "--depth", strconv.Itoa(opts.Depth))
+	}
+	if opts.Branch != "" {
+		args = append(args, "--branch", opts.Branch)
+	}
+	args = append(args, url, dest)
+
+	cmd := exec.Command(GitBin(), args...)
+	cmd.Dir = "."
+	cmd.Env = nonInteractiveEnv()
+	cmd.Stdout = nil
+	HideWindow(cmd)
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("git clone: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("git clone: %w", err)
+	}
+
+	// Git progress uses \r for in-place updates within a line.
+	// Read stderr splitting on both \r and \n.
+	go parseProgress(stderr, onProgress)
+
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("git clone: %w", err)
+	}
+	return nil
+}
+
+// parseProgress reads git's stderr and extracts progress percentages.
+func parseProgress(r io.Reader, onProgress func(CloneProgress)) {
+	scanner := bufio.NewScanner(r)
+	// Git uses \r for progress updates — split on both \r and \n.
+	scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+		if atEOF && len(data) == 0 {
+			return 0, nil, nil
+		}
+		for i, b := range data {
+			if b == '\r' || b == '\n' {
+				return i + 1, data[:i], nil
+			}
+		}
+		if atEOF {
+			return len(data), data, nil
+		}
+		return 0, nil, nil // need more data
+	})
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		m := progressRe.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		phase := strings.TrimSpace(m[2])
+		pct, _ := strconv.Atoi(m[3])
+		onProgress(CloneProgress{Phase: phase, Percent: pct})
+	}
+}
+
+// Fetch runs git fetch --all in the given repo.
+func Fetch(repoPath string) error {
+	return run(repoPath, "fetch", "--all", "--prune")
+}
+
+// FetchQuiet runs git fetch --all --prune, capturing output instead of forwarding it.
+func FetchQuiet(repoPath string) error {
+	_, err := output(repoPath, "fetch", "--all", "--prune")
+	return err
+}
+
+// Pull runs git pull --ff-only in the given repo.
+func Pull(repoPath string) error {
+	return run(repoPath, "pull", "--ff-only")
+}
+
+// PullQuiet runs git pull --ff-only, capturing output instead of forwarding it.
+func PullQuiet(repoPath string) error {
+	_, err := output(repoPath, "pull", "--ff-only")
+	return err
+}
+
+// Status runs git status and parses the result.
+func Status(repoPath string) (RepoStatus, error) {
+	out, err := output(repoPath, "status", "--porcelain=v2", "--branch")
+	if err != nil {
+		return RepoStatus{}, err
+	}
+	return parseStatus(out), nil
+}
+
+// FileChange describes a single changed file for human-readable display.
+type FileChange struct {
+	Kind string `json:"kind"` // "modified", "added", "deleted", "renamed", "conflict"
+	Path string `json:"path"`
+}
+
+// DetailedStatus returns the list of changed and untracked files in a repo.
+func DetailedStatus(repoPath string) (branch string, ahead, behind int, changed []FileChange, untracked []string, err error) {
+	out, err := output(repoPath, "status", "--porcelain=v2", "--branch")
+	if err != nil {
+		return "", 0, 0, nil, nil, err
+	}
+
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		if strings.HasPrefix(line, "# branch.head ") {
+			branch = strings.TrimPrefix(line, "# branch.head ")
+		} else if strings.HasPrefix(line, "# branch.ab ") {
+			parts := strings.Fields(strings.TrimPrefix(line, "# branch.ab "))
+			if len(parts) == 2 {
+				ahead, _ = strconv.Atoi(strings.TrimPrefix(parts[0], "+"))
+				behind, _ = strconv.Atoi(strings.TrimPrefix(parts[1], "-"))
+			}
+		} else if strings.HasPrefix(line, "1 ") {
+			// Ordinary changed entry: 1 XY sub mH mI mW hH hI path
+			parts := strings.SplitN(line, " ", 9)
+			if len(parts) < 9 {
+				continue
+			}
+			xy, path := parts[1], parts[8]
+			changed = append(changed, FileChange{Kind: classifyXY(xy), Path: path})
+		} else if strings.HasPrefix(line, "2 ") {
+			// Renamed/copied entry: 2 XY sub mH mI mW hH hI X<score> path\torigPath
+			parts := strings.SplitN(line, " ", 10)
+			if len(parts) < 10 {
+				continue
+			}
+			pathPart := parts[9]
+			// path\torigPath — show as "origPath → path"
+			if idx := strings.IndexByte(pathPart, '\t'); idx >= 0 {
+				pathPart = pathPart[idx+1:] + " → " + pathPart[:idx]
+			}
+			changed = append(changed, FileChange{Kind: "renamed", Path: pathPart})
+		} else if strings.HasPrefix(line, "u ") {
+			// Unmerged (conflict): u XY sub m1 m2 m3 mW h1 h2 h3 path
+			parts := strings.SplitN(line, " ", 11)
+			if len(parts) >= 11 {
+				changed = append(changed, FileChange{Kind: "conflict", Path: parts[10]})
+			}
+		} else if strings.HasPrefix(line, "? ") {
+			untracked = append(untracked, strings.TrimPrefix(line, "? "))
+		}
+	}
+	// Ensure non-nil slices so JSON serialization produces [] instead of null.
+	if changed == nil {
+		changed = []FileChange{}
+	}
+	if untracked == nil {
+		untracked = []string{}
+	}
+	return branch, ahead, behind, changed, untracked, nil
+}
+
+func classifyXY(xy string) string {
+	if len(xy) < 2 {
+		return "modified"
+	}
+	// Prefer the working-tree status (2nd char), fall back to index (1st char).
+	wt := xy[1]
+	idx := xy[0]
+	if wt == 'D' || idx == 'D' {
+		return "deleted"
+	}
+	if wt == 'A' || idx == 'A' {
+		return "added"
+	}
+	return "modified"
+}
+
+// RevCount returns the number of commits ahead/behind the upstream.
+// Returns (0, 0, nil) if there's no upstream.
+func RevCount(repoPath string) (ahead, behind int, err error) {
+	out, err := output(repoPath, "rev-list", "--count", "--left-right", "HEAD...@{upstream}")
+	if err != nil {
+		// No upstream configured — not an error, just 0/0.
+		return 0, 0, nil
+	}
+	parts := strings.Fields(strings.TrimSpace(out))
+	if len(parts) != 2 {
+		return 0, 0, nil
+	}
+	ahead, _ = strconv.Atoi(parts[0])
+	behind, _ = strconv.Atoi(parts[1])
+	return ahead, behind, nil
+}
+
+// RemoteURL returns the URL of the 'origin' remote.
+func RemoteURL(repoPath string) (string, error) {
+	out, err := output(repoPath, "remote", "get-url", "origin")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// ConfigGet reads a git config value from the given repo.
+func ConfigGet(repoPath, key string) (string, error) {
+	out, err := output(repoPath, "config", "--get", key)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// ConfigSet sets a git config value in the given repo.
+func ConfigSet(repoPath, key, value string) error {
+	return run(repoPath, "config", key, value)
+}
+
+// ConfigUnset removes a key from repo-level git config.
+// Returns nil if the key does not exist.
+func ConfigUnset(repoPath, key string) error {
+	err := run(repoPath, "config", "--unset", key)
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 5 {
+			return nil
+		}
+	}
+	return err
+}
+
+// ConfigUnsetAll removes ALL values of a multi-value key from repo-level git config.
+// Returns nil if the key does not exist.
+func ConfigUnsetAll(repoPath, key string) error {
+	err := run(repoPath, "config", "--unset-all", key)
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 5 {
+			return nil
+		}
+	}
+	return err
+}
+
+// ConfigAdd appends a value to a multi-value key in repo-level git config.
+func ConfigAdd(repoPath, key, value string) error {
+	return run(repoPath, "config", "--add", key, value)
+}
+
+// GlobalConfigSet sets a global git config value (git config --global).
+func GlobalConfigSet(key, value string) error {
+	return run(".", "config", "--global", key, value)
+}
+
+// GlobalConfigGet reads a global git config value.
+func GlobalConfigGet(key string) (string, error) {
+	out, err := output(".", "config", "--global", "--get", key)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// GlobalConfigUnset removes a key from global git config.
+// Returns nil if the key does not exist.
+func GlobalConfigUnset(key string) error {
+	err := run(".", "config", "--global", "--unset", key)
+	if err != nil {
+		// git config --unset exits with code 5 if the key is not found.
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 5 {
+			return nil
+		}
+	}
+	return err
+}
+
+// IsRepo checks if the given path contains a .git directory or is a bare repo.
+func IsRepo(path string) bool {
+	gitDir := filepath.Join(path, ".git")
+	if info, err := os.Stat(gitDir); err == nil {
+		return info.IsDir()
+	}
+	// Check if it's a bare repo (has HEAD file directly).
+	if _, err := os.Stat(filepath.Join(path, "HEAD")); err == nil {
+		if _, err := os.Stat(filepath.Join(path, "refs")); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// SetRemoteURL sets the URL of a remote (typically "origin").
+func SetRemoteURL(repoPath, remote, url string) error {
+	return run(repoPath, "remote", "set-url", remote, url)
+}
+
+// Run executes a git command in the given directory (public wrapper).
+func Run(dir string, args ...string) error {
+	return run(dir, args...)
+}
+
+// RunWithInput executes a git command with data piped to stdin.
+func RunWithInput(dir string, input string, args ...string) (string, error) {
+	cmd := exec.Command(GitBin(), args...)
+	cmd.Dir = dir
+	cmd.Env = Environ() // Homebrew PATH for macOS — do not remove.
+	cmd.Stdin = strings.NewReader(input)
+	HideWindow(cmd)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+	return string(out), nil
+}
+
+// CurrentBranch returns the current branch name.
+func CurrentBranch(repoPath string) (string, error) {
+	out, err := output(repoPath, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// --- Internal helpers ---
+
+// nonInteractiveEnv returns Environ() with flags that prevent any interactive
+// credential prompt (browser popup, terminal prompt). Git operations that need
+// credentials will fail silently rather than blocking the GUI.
+func nonInteractiveEnv() []string {
+	return append(Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"GCM_INTERACTIVE=never",
+		"GIT_ASKPASS=",
+	)
+}
+
+// run executes a git command in the given directory.
+func run(dir string, args ...string) error {
+	cmd := exec.Command(GitBin(), args...)
+	cmd.Dir = dir
+	cmd.Env = nonInteractiveEnv()
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	HideWindow(cmd)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+	return nil
+}
+
+// output executes a git command and returns its stdout.
+func output(dir string, args ...string) (string, error) {
+	cmd := exec.Command(GitBin(), args...)
+	cmd.Dir = dir
+	cmd.Env = nonInteractiveEnv()
+	HideWindow(cmd)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+	return string(out), nil
+}
+
+// parseStatus parses git status --porcelain=v2 --branch output.
+func parseStatus(out string) RepoStatus {
+	var s RepoStatus
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Branch headers: # branch.oid, # branch.head, # branch.upstream, # branch.ab
+		if strings.HasPrefix(line, "# branch.head ") {
+			s.Branch = strings.TrimPrefix(line, "# branch.head ")
+		} else if strings.HasPrefix(line, "# branch.upstream ") {
+			s.Upstream = strings.TrimPrefix(line, "# branch.upstream ")
+		} else if strings.HasPrefix(line, "# branch.ab ") {
+			parts := strings.Fields(strings.TrimPrefix(line, "# branch.ab "))
+			if len(parts) == 2 {
+				s.Ahead, _ = strconv.Atoi(strings.TrimPrefix(parts[0], "+"))
+				s.Behind, _ = strconv.Atoi(strings.TrimPrefix(parts[1], "-"))
+			}
+		} else if strings.HasPrefix(line, "1 ") || strings.HasPrefix(line, "2 ") {
+			// Changed entry (ordinary or renamed).
+			// Format: 1 XY sub mH mI mW hH hI path
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				xy := parts[1]
+				if len(xy) == 2 {
+					indexStatus := xy[0]
+					workStatus := xy[1]
+					if indexStatus != '.' {
+						s.Added++ // Staged change.
+					}
+					if workStatus == 'M' || workStatus == 'A' || workStatus == 'D' {
+						s.Modified++ // Working tree change.
+					}
+					if workStatus == 'D' || indexStatus == 'D' {
+						s.Deleted++
+					}
+				}
+			}
+		} else if strings.HasPrefix(line, "u ") {
+			// Unmerged entry (conflict).
+			s.Conflicts++
+		} else if strings.HasPrefix(line, "? ") {
+			// Untracked file.
+			s.Untracked++
+		}
+	}
+	return s
+}

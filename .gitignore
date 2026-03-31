@@ -1,0 +1,62 @@
+# Build directories
+build/
+dist/
+
+# Go binaries (CLI + GUI share the name)
+gitbox
+gitbox.exe
+cli.exe
+gui.exe
+
+# Wails — track template files, ignore build output and copied icons
+cmd/gui/build/bin/
+cmd/gui/build/appicon.png
+cmd/gui/build/windows/icon.ico
+cmd/gui/frontend/node_modules/
+cmd/gui/frontend/dist/
+
+# IDE
+.vs/
+.vscode/
+*.suo
+*.user
+*.sln
+*.vcxproj*
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Compiled (legacy)
+*.obj
+*.o
+*.a
+*.lib
+*.dll
+*.dylib
+*.so
+
+# Local environment (private host names, tokens, etc.)
+.env*
+!.env.example
+test-gitbox.json
+
+# Test scripts at repo root (contain real account data)
+/test-*.sh
+
+# AI ignored paths
+/CONTINUITY*.md
+.continuity/
+.claude/*.local.*
+tmpclaude-*-cwd
+.gemini/
+.cursor/
+
+# Drawio backup files
+*.drawio.bkp
+
+# Local Svelte preview (screenshot prototypes)
+preview/

@@ -1,0 +1,244 @@
+{
+  "$name": "gitbox",
+  "$description": "W3C DTCG design tokens for the gitbox project, extracted from theme.ts and App.svelte",
+
+  "dark": {
+    "color": {
+      "bg": {
+        "base":     { "$value": "#1a1b26", "$type": "color", "$description": "App background" },
+        "card":     { "$value": "#1e2030", "$type": "color", "$description": "Card / panel background" },
+        "hover":    { "$value": "#252740", "$type": "color", "$description": "Hover / raised surface" },
+        "selected": { "$value": "#2a2d45", "$type": "color", "$description": "Selected item background" },
+        "input":    { "$value": "#252740", "$type": "color", "$description": "Input field background" }
+      },
+      "border": {
+        "default": { "$value": "#363a4f", "$type": "color", "$description": "Default border" },
+        "focus":   { "$value": "#7aa2f7", "$type": "color", "$description": "Focused element border" },
+        "accent":  { "$value": "#565a6e", "$type": "color", "$description": "Accent / secondary border" }
+      },
+      "text": {
+        "primary": { "$value": "#c0caf5", "$type": "color", "$description": "Primary text" },
+        "muted":   { "$value": "#565a6e", "$type": "color", "$description": "Muted / label text" },
+        "heading": { "$value": "#a9b1d6", "$type": "color", "$description": "Heading text" }
+      },
+      "brand": {
+        "default": { "$value": "#7aa2f7", "$type": "color", "$description": "Brand / primary accent" },
+        "hover":   { "$value": "#89b4fa", "$type": "color", "$description": "Brand hover state" },
+        "muted":   { "$value": "#3b4261", "$type": "color", "$description": "Brand muted / subtle" }
+      },
+      "ring": {
+        "track": { "$value": "#252740", "$type": "color", "$description": "Health ring track background" },
+        "bg":    { "$value": "#1a1b26", "$type": "color", "$description": "Health ring inner background" }
+      },
+      "overlay": { "$value": "rgba(0,0,0,0.6)", "$type": "color", "$description": "Modal backdrop overlay" },
+      "shadow":  { "$value": "rgba(0,0,0,0.5)", "$type": "color", "$description": "Shadow color" },
+      "spin":    { "$value": "#7aa2f7", "$type": "color", "$description": "Spinner / syncing animation color" },
+      "status": {
+        "clean":       { "$value": "#61fd5f", "$type": "color", "$description": "Synced / all good" },
+        "behind":      { "$value": "#D91C9A", "$type": "color", "$description": "Behind remote" },
+        "dirty":       { "$value": "#F07623", "$type": "color", "$description": "Local changes" },
+        "ahead":       { "$value": "#4B95E9", "$type": "color", "$description": "Ahead of remote" },
+        "syncing":     { "$value": "#4B95E9", "$type": "color", "$description": "Currently refreshing" },
+        "cloning":     { "$value": "#4B95E9", "$type": "color", "$description": "Clone in progress" },
+        "fetching":    { "$value": "#4B95E9", "$type": "color", "$description": "Fetch in progress" },
+        "not-cloned":  { "$value": "#71717a", "$type": "color", "$description": "Not cloned locally" },
+        "no-upstream": { "$value": "#71717a", "$type": "color", "$description": "No upstream configured" },
+        "diverged":    { "$value": "#D81E5B", "$type": "color", "$description": "Branches diverged" },
+        "conflict":    { "$value": "#D81E5B", "$type": "color", "$description": "Merge conflict" },
+        "error":       { "$value": "#D81E5B", "$type": "color", "$description": "Error state" }
+      },
+      "credential": {
+        "ok": {
+          "bg":     { "$value": "rgba(97,253,95,0.1)",  "$type": "color", "$description": "OK credential background" },
+          "border": { "$value": "rgba(97,253,95,0.3)",  "$type": "color", "$description": "OK credential border" },
+          "text":   { "$value": "#61fd5f",               "$type": "color", "$description": "OK credential text" }
+        },
+        "warning": {
+          "bg":     { "$value": "rgba(240,118,35,0.1)", "$type": "color", "$description": "Warning credential background" },
+          "border": { "$value": "rgba(240,118,35,0.3)", "$type": "color", "$description": "Warning credential border" },
+          "text":   { "$value": "#F07623",               "$type": "color", "$description": "Warning credential text" }
+        },
+        "error": {
+          "bg":     { "$value": "rgba(216,30,91,0.1)",  "$type": "color", "$description": "Error credential background" },
+          "border": { "$value": "rgba(216,30,91,0.3)",  "$type": "color", "$description": "Error credential border" },
+          "text":   { "$value": "#D81E5B",               "$type": "color", "$description": "Error credential text" }
+        },
+        "none": {
+          "bg":     { "$value": "rgba(75,149,233,0.1)", "$type": "color", "$description": "None credential background" },
+          "border": { "$value": "rgba(75,149,233,0.3)", "$type": "color", "$description": "None credential border" },
+          "text":   { "$value": "#4B95E9",               "$type": "color", "$description": "None credential text" }
+        },
+        "unknown": {
+          "bg":     { "$value": "rgba(113,113,122,0.1)", "$type": "color", "$description": "Unknown credential background" },
+          "border": { "$value": "rgba(113,113,122,0.2)", "$type": "color", "$description": "Unknown credential border" },
+          "text":   { "$value": "#71717a",                "$type": "color", "$description": "Unknown credential text" }
+        }
+      },
+      "accent": {
+        "link":         { "$value": "#7aa2f7", "$type": "color", "$description": "Link color" },
+        "success":      { "$value": "#61fd5f", "$type": "color", "$description": "Success / verified" },
+        "warning":      { "$value": "#F07623", "$type": "color", "$description": "Warning accent" },
+        "danger":       { "$value": "#D81E5B", "$type": "color", "$description": "Danger / destructive action" },
+        "danger-hover": { "$value": "#e8305a", "$type": "color", "$description": "Danger hover state" }
+      }
+    }
+  },
+
+  "light": {
+    "color": {
+      "bg": {
+        "base":     { "$value": "#f5f5f5", "$type": "color", "$description": "App background" },
+        "card":     { "$value": "#ffffff", "$type": "color", "$description": "Card / panel background" },
+        "hover":    { "$value": "#f0f0f0", "$type": "color", "$description": "Hover / raised surface" },
+        "selected": { "$value": "#e8e8e8", "$type": "color", "$description": "Selected item background" },
+        "input":    { "$value": "#f0f0f0", "$type": "color", "$description": "Input field background" }
+      },
+      "border": {
+        "default": { "$value": "#d4d4d8", "$type": "color", "$description": "Default border" },
+        "focus":   { "$value": "#2563eb", "$type": "color", "$description": "Focused element border" },
+        "accent":  { "$value": "#a1a1aa", "$type": "color", "$description": "Accent / secondary border" }
+      },
+      "text": {
+        "primary": { "$value": "#18181b", "$type": "color", "$description": "Primary text" },
+        "muted":   { "$value": "#71717a", "$type": "color", "$description": "Muted / label text" },
+        "heading": { "$value": "#3f3f46", "$type": "color", "$description": "Heading text" }
+      },
+      "brand": {
+        "default": { "$value": "#2563eb", "$type": "color", "$description": "Brand / primary accent" },
+        "hover":   { "$value": "#1d4ed8", "$type": "color", "$description": "Brand hover state" },
+        "muted":   { "$value": "#bfdbfe", "$type": "color", "$description": "Brand muted / subtle" }
+      },
+      "ring": {
+        "track": { "$value": "#e4e4e7", "$type": "color", "$description": "Health ring track background" },
+        "bg":    { "$value": "#f5f5f5", "$type": "color", "$description": "Health ring inner background" }
+      },
+      "overlay": { "$value": "rgba(0,0,0,0.3)", "$type": "color", "$description": "Modal backdrop overlay" },
+      "shadow":  { "$value": "rgba(0,0,0,0.1)", "$type": "color", "$description": "Shadow color" },
+      "spin":    { "$value": "#2563eb", "$type": "color", "$description": "Spinner / syncing animation color" },
+      "status": {
+        "clean":       { "$value": "#166534", "$type": "color", "$description": "Synced / all good" },
+        "behind":      { "$value": "#a21caf", "$type": "color", "$description": "Behind remote" },
+        "dirty":       { "$value": "#c2410c", "$type": "color", "$description": "Local changes" },
+        "ahead":       { "$value": "#2563eb", "$type": "color", "$description": "Ahead of remote" },
+        "syncing":     { "$value": "#2563eb", "$type": "color", "$description": "Currently refreshing" },
+        "cloning":     { "$value": "#2563eb", "$type": "color", "$description": "Clone in progress" },
+        "fetching":    { "$value": "#2563eb", "$type": "color", "$description": "Fetch in progress" },
+        "not-cloned":  { "$value": "#52525b", "$type": "color", "$description": "Not cloned locally" },
+        "no-upstream": { "$value": "#52525b", "$type": "color", "$description": "No upstream configured" },
+        "diverged":    { "$value": "#be123c", "$type": "color", "$description": "Branches diverged" },
+        "conflict":    { "$value": "#be123c", "$type": "color", "$description": "Merge conflict" },
+        "error":       { "$value": "#be123c", "$type": "color", "$description": "Error state" }
+      },
+      "credential": {
+        "ok": {
+          "bg":     { "$value": "rgba(22,101,52,0.08)",   "$type": "color", "$description": "OK credential background" },
+          "border": { "$value": "rgba(22,101,52,0.2)",    "$type": "color", "$description": "OK credential border" },
+          "text":   { "$value": "#166534",                  "$type": "color", "$description": "OK credential text" }
+        },
+        "warning": {
+          "bg":     { "$value": "rgba(194,65,12,0.08)",   "$type": "color", "$description": "Warning credential background" },
+          "border": { "$value": "rgba(194,65,12,0.2)",    "$type": "color", "$description": "Warning credential border" },
+          "text":   { "$value": "#92400e",                  "$type": "color", "$description": "Warning credential text" }
+        },
+        "error": {
+          "bg":     { "$value": "rgba(190,18,60,0.08)",   "$type": "color", "$description": "Error credential background" },
+          "border": { "$value": "rgba(190,18,60,0.2)",    "$type": "color", "$description": "Error credential border" },
+          "text":   { "$value": "#be123c",                  "$type": "color", "$description": "Error credential text" }
+        },
+        "none": {
+          "bg":     { "$value": "rgba(37,99,235,0.08)",   "$type": "color", "$description": "None credential background" },
+          "border": { "$value": "rgba(37,99,235,0.2)",    "$type": "color", "$description": "None credential border" },
+          "text":   { "$value": "#2563eb",                  "$type": "color", "$description": "None credential text" }
+        },
+        "unknown": {
+          "bg":     { "$value": "rgba(161,161,170,0.08)", "$type": "color", "$description": "Unknown credential background" },
+          "border": { "$value": "rgba(161,161,170,0.15)", "$type": "color", "$description": "Unknown credential border" },
+          "text":   { "$value": "#71717a",                  "$type": "color", "$description": "Unknown credential text" }
+        }
+      },
+      "accent": {
+        "link":         { "$value": "#2563eb", "$type": "color", "$description": "Link color" },
+        "success":      { "$value": "#166534", "$type": "color", "$description": "Success / verified" },
+        "warning":      { "$value": "#c2410c", "$type": "color", "$description": "Warning accent" },
+        "danger":       { "$value": "#be123c", "$type": "color", "$description": "Danger / destructive action" },
+        "danger-hover": { "$value": "#9f1239", "$type": "color", "$description": "Danger hover state" }
+      }
+    }
+  },
+
+  "shared": {
+    "typography": {
+      "fontFamily": {
+        "sans": { "$value": "Inter, system-ui, -apple-system, sans-serif", "$type": "fontFamily", "$description": "Primary font stack" },
+        "mono": { "$value": "JetBrains Mono, Fira Code, Consolas, monospace", "$type": "fontFamily", "$description": "Monospace font stack" }
+      },
+      "fontSize": {
+        "9":  { "$value": "9px",  "$type": "dimension", "$description": "Smallest UI text" },
+        "10": { "$value": "10px", "$type": "dimension", "$description": "Provider labels, small badges" },
+        "11": { "$value": "11px", "$type": "dimension", "$description": "Taglines, badges, progress text" },
+        "12": { "$value": "12px", "$type": "dimension", "$description": "Health label, card stat, form input" },
+        "13": { "$value": "13px", "$type": "dimension", "$description": "Repo name, onboard description" },
+        "14": { "$value": "14px", "$type": "dimension", "$description": "Card name, modal heading" },
+        "16": { "$value": "16px", "$type": "dimension", "$description": "Close button, base body text" },
+        "18": { "$value": "18px", "$type": "dimension", "$description": "Sync icon, gear button" },
+        "22": { "$value": "22px", "$type": "dimension", "$description": "Onboarding title, large heading" }
+      },
+      "fontWeight": {
+        "normal":   { "$value": "400", "$type": "dimension", "$description": "Normal body text" },
+        "medium":   { "$value": "500", "$type": "dimension", "$description": "Buttons, labels, repo names" },
+        "semibold": { "$value": "600", "$type": "dimension", "$description": "Card stats, headings, badges" },
+        "bold":     { "$value": "700", "$type": "dimension", "$description": "Title, health-num, section titles" }
+      }
+    },
+    "borderRadius": {
+      "sm":   { "$value": "4px",    "$type": "dimension", "$description": "Small radius" },
+      "md":   { "$value": "6px",    "$type": "dimension", "$description": "Medium radius" },
+      "lg":   { "$value": "8px",    "$type": "dimension", "$description": "Large radius" },
+      "xl":   { "$value": "12px",   "$type": "dimension", "$description": "Extra-large radius" },
+      "pill": { "$value": "9999px", "$type": "dimension", "$description": "Pill / fully rounded" }
+    },
+    "symbol": {
+      "status": {
+        "clean":       { "$value": "\u25cf", "$type": "string", "$description": "Filled circle for synced repos" },
+        "behind":      { "$value": "\u25d7", "$type": "string", "$description": "Half-filled circle for behind" },
+        "dirty":       { "$value": "\u25c6", "$type": "string", "$description": "Diamond for local changes" },
+        "ahead":       { "$value": "\u25b2", "$type": "string", "$description": "Triangle up for ahead" },
+        "syncing":     { "$value": "\u25d4", "$type": "string", "$description": "Quarter circle for syncing" },
+        "cloning":     { "$value": "\u25d4", "$type": "string", "$description": "Quarter circle for cloning" },
+        "fetching":    { "$value": "\u25d4", "$type": "string", "$description": "Quarter circle for fetching" },
+        "not-cloned":  { "$value": "\u25cb", "$type": "string", "$description": "Empty circle for not cloned" },
+        "no-upstream": { "$value": "~",      "$type": "string", "$description": "Tilde for no upstream" },
+        "diverged":    { "$value": "\u26a0", "$type": "string", "$description": "Warning sign for diverged" },
+        "conflict":    { "$value": "\u26a1", "$type": "string", "$description": "Lightning bolt for conflict" },
+        "error":       { "$value": "\u2715", "$type": "string", "$description": "Multiplication X for error" }
+      },
+      "mirror": {
+        "push": { "$value": "\u2192", "$type": "string", "$description": "Right arrow for push direction" },
+        "pull": { "$value": "\u2190", "$type": "string", "$description": "Left arrow for pull direction" }
+      }
+    },
+    "label": {
+      "status": {
+        "clean":       { "$value": "Synced",               "$type": "string", "$description": "Label for synced repos" },
+        "behind":      { "$value": "{n} behind",           "$type": "string", "$description": "Label for behind repos, {n} = commit count" },
+        "dirty":       { "$value": "{n} local change(s)",  "$type": "string", "$description": "Label for dirty repos, {n} = change count" },
+        "ahead":       { "$value": "Ahead",                "$type": "string", "$description": "Label for ahead repos" },
+        "syncing":     { "$value": "Refreshing...",        "$type": "string", "$description": "Label during refresh" },
+        "cloning":     { "$value": "Bringing local...",    "$type": "string", "$description": "Label during clone" },
+        "fetching":    { "$value": "Fetching...",          "$type": "string", "$description": "Label during fetch" },
+        "not-cloned":  { "$value": "Not local",            "$type": "string", "$description": "Label for uncloned repos" },
+        "no-upstream": { "$value": "No upstream",          "$type": "string", "$description": "Label for repos without upstream" },
+        "diverged":    { "$value": "Diverged",             "$type": "string", "$description": "Label for diverged repos" },
+        "conflict":    { "$value": "Conflict",             "$type": "string", "$description": "Label for conflicted repos" },
+        "error":       { "$value": "Error",                "$type": "string", "$description": "Label for errored repos" }
+      },
+      "provider": {
+        "github":    { "$value": "GitHub",    "$type": "string", "$description": "GitHub provider label" },
+        "forgejo":   { "$value": "Forgejo",   "$type": "string", "$description": "Forgejo provider label" },
+        "gitea":     { "$value": "Gitea",     "$type": "string", "$description": "Gitea provider label" },
+        "gitlab":    { "$value": "GitLab",    "$type": "string", "$description": "GitLab provider label" },
+        "bitbucket": { "$value": "Bitbucket", "$type": "string", "$description": "Bitbucket provider label" }
+      }
+    }
+  }
+}

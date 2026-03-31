@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Pre-push hook: lightweight safety net before pushing.
+# Runs go vet and unit tests. Blocks the push if either fails.
+# Skips checks for tag-only pushes (no code changed).
+#
+# Setup (one time):
+#   git config core.hooksPath .githooks
+
+set -e
+
+# Git passes the remote ref info via stdin. If every ref being pushed
+# is a tag (refs/tags/...), skip the checks — no code changed.
+all_tags=true
+while read local_ref local_sha remote_ref remote_sha; do
+    case "$local_ref" in
+        refs/tags/*) ;;
+        *) all_tags=false; break ;;
+    esac
+done
+
+if [ "$all_tags" = true ]; then
+    echo "pre-push: tag-only push, skipping checks"
+    exit 0
+fi
+
+echo "pre-push: running go vet..."
+go vet ./...
+
+echo "pre-push: running unit tests..."
+go test -short ./...
+
+echo "pre-push: all checks passed"

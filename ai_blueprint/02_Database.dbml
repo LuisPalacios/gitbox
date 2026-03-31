@@ -1,0 +1,423 @@
+// =============================================================================
+// gitbox Data Model (DBML)
+// =============================================================================
+//
+// This project has NO traditional database. The configuration file
+// (~/.config/gitbox/gitbox.json) IS the persistent store. The tables below
+// model the JSON config structure using DBML syntax so that tools like
+// dbdiagram.io can render an ERD.
+//
+// Map keys in the JSON (accounts.*, sources.*, mirrors.*, repos.*) are
+// represented as varchar [pk] columns with a note explaining they are not
+// stored fields but rather the JSON object key.
+//
+// Runtime-only types (never persisted) are grouped separately at the bottom.
+// =============================================================================
+
+// ---------------------------------------------------------------------------
+// PERSISTED TABLES  (stored in ~/.config/gitbox/gitbox.json)
+// ---------------------------------------------------------------------------
+
+Table Config {
+  schema        varchar  [note: 'optional — JSON Schema URI ($schema)']
+  version       int      [pk, note: 'always 2']
+
+  Note: '''
+    Root of the config file. One file = one Config.
+    JSON path: (root)
+    Go type: config.Config
+  '''
+}
+
+Table GlobalConfig {
+  config_version    int      [pk, ref: - Config.version, note: 'FK to Config (1:1)']
+  folder            varchar  [not null, note: 'root directory for all clones, supports ~']
+  periodic_sync     varchar  [note: 'optional — "off"|"5m"|"15m"|"30m"']
+  view_mode         varchar  [note: 'optional — "full"|"compact"']
+
+  Note: '''
+    Global settings shared across all accounts and sources.
+    JSON path: global
+    Go type: config.GlobalConfig
+  '''
+}
+
+Table WindowState {
+  id       varchar  [pk, note: 'synthetic — "window" or "compact_window"']
+  x        int
+  y        int
+  width    int
+  height   int
+
+  Note: '''
+    GUI window position/size. Two instances may exist:
+      - "window"         (global.window)
+      - "compact_window" (global.compact_window)
+    Belongs to GlobalConfig (1:0..2 relationship).
+    JSON path: global.window | global.compact_window
+    Go type: config.WindowState
+  '''
+}
+
+Table SSHGlobal {
+  config_version  int      [pk, ref: - Config.version, note: 'FK to Config (1:1, optional)']
+  ssh_folder      varchar  [note: 'optional — path to ~/.ssh or equivalent']
+
+  Note: '''
+    Global SSH credential settings. Presence means SSH is available.
+    JSON path: global.credential_ssh
+    Go type: config.SSHGlobal
+  '''
+}
+
+Table GCMGlobal {
+  config_version    int      [pk, ref: - Config.version, note: 'FK to Config (1:1, optional)']
+  helper            varchar  [note: 'optional — e.g. "manager"']
+  credential_store  varchar  [note: 'optional — "wincredman"|"keychain"|"secretservice"']
+
+  Note: '''
+    Global Git Credential Manager settings. Presence means GCM is available.
+    JSON path: global.credential_gcm
+    Go type: config.GCMGlobal
+  '''
+}
+
+Table TokenGlobal {
+  config_version  int  [pk, ref: - Config.version, note: 'FK to Config (1:1, optional)']
+
+  Note: '''
+    Global token/PAT settings. Presence means token auth is available.
+    Currently has no fields (marker object).
+    JSON path: global.credential_token
+    Go type: config.TokenGlobal
+  '''
+}
+
+Table Account {
+  account_key             varchar  [pk, note: 'In JSON, this is the map key, not a stored field.']
+  provider                varchar  [not null, note: '"github"|"gitlab"|"gitea"|"forgejo"|"bitbucket"|"generic"']
+  url                     varchar  [not null, note: 'provider base URL (scheme + host)']
+  username                varchar  [not null]
+  name                    varchar  [not null, note: 'default git user.name']
+  email                   varchar  [not null, note: 'default git user.email']
+  default_credential_type varchar  [note: 'optional — "gcm"|"ssh"|"token"']
+
+  Note: '''
+    WHO you are on a git server. One unique (hostname, username) pair.
+    JSON path: accounts.*
+    Go type: config.Account
+  '''
+}
+
+Table SSHConfig {
+  account_key  varchar  [pk, ref: - Account.account_key, note: 'FK to Account (1:0..1)']
+  host         varchar  [note: 'optional — SSH Host alias (e.g. "gh-MyUser")']
+  hostname     varchar  [note: 'optional — real SSH hostname (e.g. "github.com")']
+  key_type     varchar  [note: 'optional — "ed25519"|"rsa"']
+
+  Note: '''
+    SSH authentication config for an account.
+    JSON path: accounts.*.ssh
+    Go type: config.SSHConfig
+  '''
+}
+
+Table GCMConfig {
+  account_key   varchar  [pk, ref: - Account.account_key, note: 'FK to Account (1:0..1)']
+  provider      varchar  [note: 'optional — "github"|"gitlab"|"bitbucket"|"generic"']
+  useHttpPath   bool     [note: 'scope credentials by full HTTP path']
+
+  Note: '''
+    Git Credential Manager config for an account.
+    JSON path: accounts.*.gcm
+    Go type: config.GCMConfig
+  '''
+}
+
+Table Source {
+  source_key  varchar  [pk, note: 'In JSON, this is the map key, not a stored field.']
+  account     varchar  [not null, ref: > Account.account_key, note: 'references an account key']
+  folder      varchar  [note: 'optional — overrides first-level clone folder']
+
+  Note: '''
+    WHAT you clone — references an account, contains repos.
+    JSON path: sources.*
+    Go type: config.Source
+  '''
+}
+
+Table Repo {
+  source_key       varchar  [pk, ref: > Source.source_key, note: 'FK to owning Source']
+  repo_key         varchar  [pk, note: 'In JSON, this is the map key, not a stored field. Format: "org/repo"']
+  credential_type  varchar  [note: 'optional — "gcm"|"ssh"|"token", inherits from account']
+  name             varchar  [note: 'optional — override git user.name']
+  email            varchar  [note: 'optional — override git user.email']
+  id_folder        varchar  [note: 'optional — override 2nd-level dir (org)']
+  clone_folder     varchar  [note: 'optional — override 3rd-level dir; if absolute, replaces entire path']
+
+  Note: '''
+    A single repository configuration within a source.
+    All fields optional — repos inherit defaults from the account.
+    JSON path: sources.*.repos.*
+    Go type: config.Repo
+  '''
+}
+
+Table Mirror {
+  mirror_key   varchar  [pk, note: 'In JSON, this is the map key, not a stored field.']
+  account_src  varchar  [not null, ref: > Account.account_key, note: 'source account in the pair']
+  account_dst  varchar  [not null, ref: > Account.account_key, note: 'destination account in the pair']
+
+  Note: '''
+    Groups repos mirrored between two accounts. Mirror repos are
+    remote-only backups managed via provider APIs, NOT cloned locally.
+    JSON path: mirrors.*
+    Go type: config.Mirror
+  '''
+}
+
+Table MirrorRepo {
+  mirror_key   varchar  [pk, ref: > Mirror.mirror_key, note: 'FK to owning Mirror']
+  repo_key     varchar  [pk, note: 'In JSON, this is the map key, not a stored field. Format: "org/repo"']
+  direction    varchar  [not null, note: '"push"|"pull"']
+  origin       varchar  [not null, note: '"src"|"dst" — which account owns the source of truth']
+  target_repo  varchar  [note: 'optional — target full name if different from repo_key']
+  method       varchar  [not null, note: '"api"|"manual"']
+  status       varchar  [note: 'optional — "active"|"paused"|"error"|"pending"']
+  last_sync    varchar  [note: 'optional — RFC3339 timestamp of last known sync']
+  error        varchar  [note: 'optional — last error message']
+
+  Note: '''
+    A single repo mirror relationship within a mirror group.
+    JSON path: mirrors.*.repos.*
+    Go type: config.MirrorRepo
+  '''
+}
+
+// ---------------------------------------------------------------------------
+// Relationships between persisted tables
+// ---------------------------------------------------------------------------
+
+// Config 1--1 GlobalConfig  (expressed via FK above)
+// GlobalConfig 1--0..2 WindowState (two possible instances: "window", "compact_window")
+Ref: WindowState.id - GlobalConfig.config_version [note: 'logical only — two WindowState rows ("window", "compact_window") belong to one GlobalConfig']
+
+// Config 1--* Account
+Ref: Account.account_key > Config.version [note: 'logical — all accounts belong to the config']
+
+// Config 1--* Source  (via Source.source_key > Config)
+// Config 1--* Mirror  (optional, via Mirror.mirror_key > Config)
+
+// Source *--1 Account  (expressed via FK above: Source.account)
+// Mirror *--1 Account  (expressed via FKs above: account_src, account_dst)
+
+// Source 1--* Repo     (expressed via FK above: Repo.source_key)
+// Mirror 1--* MirrorRepo (expressed via FK above: MirrorRepo.mirror_key)
+// Account 1--0..1 SSHConfig, GCMConfig (expressed via FKs above)
+
+
+// ===========================================================================
+// RUNTIME-ONLY TYPES  (in-memory, never persisted to JSON config)
+// ===========================================================================
+
+TableGroup runtime_provider {
+  RemoteRepo
+  RepoInfo
+  PushMirrorInfo
+}
+
+TableGroup runtime_status {
+  StatusState
+  RepoStatus
+}
+
+TableGroup runtime_mirror {
+  SetupResult
+  StatusResult
+  DiscoveredMirror
+  DiscoveryResult
+  DiscoverProgress
+  MirrorSummary
+}
+
+// ---------------------------------------------------------------------------
+// Provider runtime types (pkg/provider/provider.go)
+// ---------------------------------------------------------------------------
+
+Table RemoteRepo {
+  full_name    varchar  [pk, note: '"org/repo" format']
+  description  varchar
+  clone_https  varchar
+  clone_ssh    varchar
+  private      bool
+  fork         bool
+  archived     bool
+  mirror       bool
+
+  Note: '''
+    RUNTIME ONLY — not persisted.
+    Normalized representation of a repository returned by any provider API.
+    Go type: provider.RemoteRepo
+  '''
+}
+
+Table RepoInfo {
+  default_branch  varchar
+  head_commit     varchar  [note: 'SHA of latest commit on default branch']
+  commit_time     int      [note: 'Unix timestamp of HEAD commit (0 if unknown)']
+  private         bool
+
+  Note: '''
+    RUNTIME ONLY — not persisted.
+    Basic repository metadata used for mirror sync comparison.
+    Go type: provider.RepoInfo
+  '''
+}
+
+Table PushMirrorInfo {
+  id              int      [pk]
+  remote_url      varchar
+  interval        varchar
+  sync_on_commit  bool
+
+  Note: '''
+    RUNTIME ONLY — not persisted.
+    Describes a server-side push mirror on a repository (Forgejo/Gitea).
+    Go type: provider.PushMirrorInfo
+  '''
+}
+
+// ---------------------------------------------------------------------------
+// Status runtime types (pkg/status/status.go)
+// ---------------------------------------------------------------------------
+
+Enum StatusState {
+  Clean      [note: 'Up to date, no changes']
+  Dirty      [note: 'Has modified/untracked files']
+  Behind     [note: 'Behind upstream (needs pull)']
+  Ahead      [note: 'Ahead of upstream (needs push)']
+  Diverged   [note: 'Both ahead and behind']
+  Conflict   [note: 'Has merge conflicts']
+  NotCloned  [note: 'Directory does not exist']
+  NoUpstream [note: 'No upstream tracking branch']
+  Error      [note: 'Could not determine status']
+}
+
+Table RepoStatus {
+  account    varchar
+  source     varchar
+  repo       varchar
+  path       varchar
+  state      StatusState
+  ahead      int       [note: 'optional — commits ahead of upstream']
+  behind     int       [note: 'optional — commits behind upstream']
+  modified   int       [note: 'optional — modified file count']
+  untracked  int       [note: 'optional — untracked file count']
+  conflicts  int       [note: 'optional — conflict count']
+  error      varchar   [note: 'optional — error message']
+
+  Note: '''
+    RUNTIME ONLY — not persisted.
+    Full sync status of a single local repository clone.
+    Go type: status.RepoStatus
+  '''
+}
+
+// ---------------------------------------------------------------------------
+// Mirror runtime types (pkg/mirror/mirror.go, discover.go, status.go)
+// ---------------------------------------------------------------------------
+
+Table SetupResult {
+  repo_key      varchar  [note: '"org/repo"']
+  created       bool     [note: 'target repo was created']
+  mirrored      bool     [note: 'mirror was configured via API']
+  method        varchar  [note: '"api"|"manual"']
+  instructions  varchar  [note: 'non-empty if method is "manual"']
+  error         varchar  [note: 'non-empty on failure']
+
+  Note: '''
+    RUNTIME ONLY — not persisted.
+    Describes the outcome of setting up a single mirror.
+    Go type: mirror.SetupResult
+  '''
+}
+
+Table StatusResult {
+  repo_key     varchar  [note: '"org/repo"']
+  active       bool     [note: 'mirror is functioning']
+  direction    varchar  [note: '"push"|"pull"']
+  origin_acct  varchar  [note: 'account key of source of truth']
+  backup_acct  varchar  [note: 'account key of backup']
+  sync_status  varchar  [note: '"synced"|"behind"|"ahead"|""']
+  head_commit  varchar  [note: 'short SHA when synced']
+  origin_head  varchar  [note: 'short SHA of origin when behind']
+  backup_head  varchar  [note: 'short SHA of backup when behind']
+  warning      varchar  [note: 'optional — e.g. repo is public']
+  error        varchar  [note: 'optional — on failure']
+
+  Note: '''
+    RUNTIME ONLY — not persisted.
+    Live status of a mirror repo from API queries.
+    Go type: mirror.StatusResult
+  '''
+}
+
+Table DiscoveredMirror {
+  repo_key     varchar  [note: '"org/repo" on the origin side']
+  target_repo  varchar  [note: 'name on the backup side if different']
+  direction    varchar  [note: '"push"|"pull"']
+  origin       varchar  [note: '"src"|"dst"']
+  confidence   varchar  [note: '"confirmed"|"likely"|"possible"']
+
+  Note: '''
+    RUNTIME ONLY — not persisted.
+    A single mirror relationship found by automated scanning.
+    Go type: mirror.DiscoveredMirror
+  '''
+}
+
+Table DiscoveryResult {
+  mirror_key   varchar  [note: 'suggested key for the mirror group']
+  account_src  varchar  [note: 'first account (source side)']
+  account_dst  varchar  [note: 'second account (destination side)']
+
+  Note: '''
+    RUNTIME ONLY — not persisted.
+    Groups discovered mirrors for one account pair.
+    Contains a list of DiscoveredMirror entries.
+    Go type: mirror.DiscoveryResult
+  '''
+}
+
+// DiscoveryResult contains a slice of DiscoveredMirror
+Ref: DiscoveredMirror.repo_key > DiscoveryResult.mirror_key [note: 'logical — DiscoveredMirror[] inside DiscoveryResult']
+
+Table DiscoverProgress {
+  phase    varchar  [note: '"listing"|"analyzing"']
+  account  varchar  [note: 'account key being listed/analyzed']
+  current  int      [note: 'current repo index (analyzing phase)']
+  total    int      [note: 'total repos to analyze']
+
+  Note: '''
+    RUNTIME ONLY — not persisted.
+    Reports scanning progress to a caller during mirror discovery.
+    Go type: mirror.DiscoverProgress
+  '''
+}
+
+Table MirrorSummary {
+  mirror_key   varchar  [pk]
+  account_src  varchar
+  account_dst  varchar
+  active       int      [note: 'count of active mirrors']
+  pending      int      [note: 'count of pending mirrors']
+  error        int      [note: 'count of errored mirrors']
+  total        int      [note: 'total mirror count']
+
+  Note: '''
+    RUNTIME ONLY — not persisted.
+    Summarizes mirror status counts for display. Built from
+    cached status values in the config (no live API queries).
+    Go type: mirror.MirrorSummary
+  '''
+}

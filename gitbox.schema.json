@@ -1,0 +1,309 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/gitbox.schema.json",
+    "title": "gitbox configuration v2",
+    "description": "Configuration file for gitbox — manages Git multi-account environments across multiple providers (GitHub, GitLab, Gitea, Forgejo, Bitbucket).",
+    "type": "object",
+    "required": ["version", "global", "accounts", "sources"],
+    "additionalProperties": false,
+    "properties": {
+        "$schema": {
+            "type": "string",
+            "description": "JSON Schema URI for editor validation and autocompletion."
+        },
+        "version": {
+            "type": "integer",
+            "const": 2,
+            "description": "Configuration format version. Must be 2."
+        },
+        "global": {
+            "type": "object",
+            "description": "Global settings: root directory for clones, SSH and GCM credential configuration.",
+            "required": ["folder"],
+            "additionalProperties": false,
+            "properties": {
+                "folder": {
+                    "type": "string",
+                    "description": "Root directory for all git repositories. Supports ~ prefix for home directory or absolute paths."
+                },
+                "periodic_sync": {
+                    "type": "string",
+                    "enum": ["off", "5m", "15m", "30m"],
+                    "description": "Automatic periodic fetch interval. When set, the GUI will run 'git fetch' on all repos at this interval."
+                },
+                "window": {
+                    "type": "object",
+                    "description": "GUI window position and size. Saved automatically when the GUI is closed, restored on next launch.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "x": {
+                            "type": "integer",
+                            "description": "Window horizontal position (pixels from left edge of screen)."
+                        },
+                        "y": {
+                            "type": "integer",
+                            "description": "Window vertical position (pixels from top edge of screen)."
+                        },
+                        "width": {
+                            "type": "integer",
+                            "minimum": 640,
+                            "description": "Window width in pixels."
+                        },
+                        "height": {
+                            "type": "integer",
+                            "minimum": 480,
+                            "description": "Window height in pixels."
+                        }
+                    }
+                },
+                "compact_window": {
+                    "type": "object",
+                    "description": "GUI compact-view window position and size. Saved automatically when switching to compact mode.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "x": {
+                            "type": "integer",
+                            "description": "Window horizontal position (pixels from left edge of screen)."
+                        },
+                        "y": {
+                            "type": "integer",
+                            "description": "Window vertical position (pixels from top edge of screen)."
+                        },
+                        "width": {
+                            "type": "integer",
+                            "minimum": 200,
+                            "description": "Window width in pixels."
+                        },
+                        "height": {
+                            "type": "integer",
+                            "minimum": 200,
+                            "description": "Window height in pixels."
+                        }
+                    }
+                },
+                "view_mode": {
+                    "type": "string",
+                    "enum": ["full", "compact"],
+                    "description": "Last active GUI view mode. Restored on next launch."
+                },
+                "credential_ssh": {
+                    "type": "object",
+                    "description": "Global SSH platform defaults. Presence indicates SSH is available on this platform.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "ssh_folder": {
+                            "type": "string",
+                            "description": "Path to the SSH configuration directory. Supports ~ prefix. Defaults to ~/.ssh."
+                        }
+                    }
+                },
+                "credential_gcm": {
+                    "type": "object",
+                    "description": "Git Credential Manager (HTTPS) platform defaults. Presence indicates GCM is available.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "helper": {
+                            "type": "string",
+                            "description": "Credential helper type. Typically 'manager' for GCM."
+                        },
+                        "credential_store": {
+                            "type": "string",
+                            "enum": ["wincredman", "keychain", "secretservice"],
+                            "description": "OS-specific credential storage backend. wincredman = Windows Credential Manager, keychain = macOS Keychain, secretservice = Linux GNOME Keyring / KWallet."
+                        }
+                    }
+                },
+                "credential_token": {
+                    "type": "object",
+                    "description": "Token/PAT authentication platform defaults. Presence indicates token auth is available. Tokens are stored in ~/.config/gitbox/credentials/.",
+                    "additionalProperties": false,
+                    "properties": {}
+                }
+            }
+        },
+        "accounts": {
+            "type": "object",
+            "description": "Map of account identifiers to account configurations. Each account represents WHO you are on a git server — one unique (hostname, username) pair. The map key is a human-friendly ID (e.g., 'github-personal') also used as the default first-level clone folder.",
+            "additionalProperties": {
+                "type": "object",
+                "description": "A Git provider account — identity and credentials for one server login.",
+                "required": ["provider", "url", "username", "name", "email"],
+                "additionalProperties": false,
+                "properties": {
+                    "provider": {
+                        "type": "string",
+                        "enum": ["github", "gitlab", "gitea", "forgejo", "bitbucket", "generic"],
+                        "description": "Git hosting provider type. Determines which API is used for discovery, migration, and mirrors. Use 'generic' for providers without API integration."
+                    },
+                    "url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "Provider base URL (scheme + host only, no path). E.g., 'https://github.com' or 'https://git.example.org'."
+                    },
+                    "username": {
+                        "type": "string",
+                        "description": "Account username on the Git provider. Used for authentication and API calls."
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Default git user.name for commits in repos under this account."
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "description": "Default git user.email for commits in repos under this account."
+                    },
+                    "default_credential_type": {
+                        "type": "string",
+                        "enum": ["gcm", "ssh", "token"],
+                        "description": "Default authentication method for repos in this account. Repos inherit this unless they override it. 'gcm' = Git Credential Manager (HTTPS), 'ssh' = SSH key pair, 'token' = Personal Access Token."
+                    },
+                    "ssh": {
+                        "type": "object",
+                        "description": "SSH authentication configuration for this account.",
+                        "additionalProperties": false,
+                        "properties": {
+                            "host": {
+                                "type": "string",
+                                "description": "SSH config Host alias (e.g., 'gh-MyGitHubUser'). Used in clone URLs: git@gh-MyGitHubUser:org/repo.git"
+                            },
+                            "hostname": {
+                                "type": "string",
+                                "description": "Real SSH server hostname (e.g., 'github.com'). Written to ~/.ssh/config."
+                            },
+                            "key_type": {
+                                "type": "string",
+                                "enum": ["ed25519", "rsa"],
+                                "description": "SSH key type to generate. ed25519 is recommended."
+                            }
+                        }
+                    },
+                    "gcm": {
+                        "type": "object",
+                        "description": "Git Credential Manager configuration for this account.",
+                        "additionalProperties": false,
+                        "properties": {
+                            "provider": {
+                                "type": "string",
+                                "enum": ["github", "gitlab", "bitbucket", "generic"],
+                                "description": "GCM provider hint for the OAuth authentication flow."
+                            },
+                            "useHttpPath": {
+                                "type": "boolean",
+                                "description": "If true, GCM scopes credentials by full HTTP path (one credential per repo). If false, credentials are shared per domain/user. Maps to git config credential.useHttpPath."
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "sources": {
+            "type": "object",
+            "description": "Map of source identifiers to source configurations. Each source defines WHAT you clone from an account. The map key is used as the default first-level clone folder (unless overridden by the 'folder' field).",
+            "additionalProperties": {
+                "type": "object",
+                "description": "A clone source — references an account and lists repositories to manage.",
+                "required": ["account", "repos"],
+                "additionalProperties": false,
+                "properties": {
+                    "account": {
+                        "type": "string",
+                        "description": "References an account key from the 'accounts' section. Defines which credentials and identity to use."
+                    },
+                    "folder": {
+                        "type": "string",
+                        "description": "Override the first-level clone folder. If omitted, the source map key is used. Path under global.folder."
+                    },
+                    "repos": {
+                        "type": "object",
+                        "description": "Map of repository keys to repo configurations. Keys use 'org/repo' format (e.g., 'myorg/my-project', 'MyUser/my-repo'). The org part becomes the second-level folder, the repo part becomes the third-level (clone) folder.",
+                        "additionalProperties": {
+                            "type": "object",
+                            "description": "Configuration for a single repository. All fields are optional — repos inherit defaults from the account.",
+                            "additionalProperties": false,
+                            "properties": {
+                                "credential_type": {
+                                    "type": "string",
+                                    "enum": ["gcm", "ssh", "token"],
+                                    "description": "Override authentication method for this repo. If omitted, inherits from account's default_credential_type."
+                                },
+                                "name": {
+                                    "type": "string",
+                                    "description": "Override git user.name for this specific repo."
+                                },
+                                "email": {
+                                    "type": "string",
+                                    "format": "email",
+                                    "description": "Override git user.email for this specific repo."
+                                },
+                                "id_folder": {
+                                    "type": "string",
+                                    "description": "Override the second-level directory (org folder). Default: the part before '/' in the repo key. Always relative."
+                                },
+                                "clone_folder": {
+                                    "type": "string",
+                                    "description": "Override the third-level directory (clone folder). Default: the part after '/' in the repo key. If absolute (starts with '/', '~', or '../'), replaces the entire clone path, ignoring source folder and id_folder."
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "mirrors": {
+            "type": "object",
+            "description": "Map of mirror group identifiers to mirror configurations. Each mirror group defines a pair of accounts between which repos are mirrored (push or pull). Mirror repos are NOT cloned locally — they are remote-only backups managed via provider APIs.",
+            "additionalProperties": {
+                "type": "object",
+                "description": "A mirror group — pairs two accounts and lists repos mirrored between them.",
+                "required": ["account_src", "account_dst", "repos"],
+                "additionalProperties": false,
+                "properties": {
+                    "account_src": {
+                        "type": "string",
+                        "description": "References an account key from the 'accounts' section. Source account in the mirror pair."
+                    },
+                    "account_dst": {
+                        "type": "string",
+                        "description": "References an account key from the 'accounts' section. Destination account in the mirror pair. Must differ from account_src."
+                    },
+                    "repos": {
+                        "type": "object",
+                        "description": "Map of repository keys to mirror repo configurations. Keys use 'org/repo' format matching the repo name on the origin account.",
+                        "additionalProperties": {
+                            "type": "object",
+                            "description": "Configuration for a single mirrored repository.",
+                            "required": ["direction", "origin"],
+                            "additionalProperties": false,
+                            "properties": {
+                                "direction": {
+                                    "type": "string",
+                                    "enum": ["push", "pull"],
+                                    "description": "Mirror direction. 'push' = origin server pushes to backup. 'pull' = backup server pulls from origin."
+                                },
+                                "origin": {
+                                    "type": "string",
+                                    "enum": ["src", "dst"],
+                                    "description": "Which account holds the source of truth. 'src' = account_src, 'dst' = account_dst."
+                                },
+                                "target_repo": {
+                                    "type": "string",
+                                    "description": "Full name of the repo on the backup account (e.g., 'org/repo'). Defaults to the same as the map key."
+                                },
+                                "last_sync": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "description": "RFC3339 timestamp of last known successful sync."
+                                },
+                                "error": {
+                                    "type": "string",
+                                    "description": "Last error message from setup or sync."
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
