@@ -90,7 +90,7 @@ You can also grab binaries from the [Releases](https://github.com/LuisPalacios/g
 
 On macOS `xattr -cr /Applications/GitboxApp.app && xattr -cr ~/bin/gitbox && chmod +x ~/bin/gitbox`. On Windows, SmartScreen shows "Windows protected your PC" on first launch, so click **More info** → **Run anyway**. On Linux just make the binaries executable `chmod +x gitbox GitboxApp`
 
-## macOS quick look
+Example of manual install on macOS:
 
 <p align="center">
   <img src="assets/screenshot-mac.png" alt="Gitbox on macOS showing GUI and terminal side by side" width="800" />
