@@ -72,7 +72,7 @@ Gitbox ships as two binaries built from the same Go library (`pkg/`). The CLI an
 > [!WARNING]
 > **Gitbox is not signed or notarized.** The binaries are not code-signed, so macOS Gatekeeper, Windows SmartScreen, and similar OS protections will flag them. The bootstrap installer removes these flags automatically (`xattr -cr` on macOS, `Unblock-File` on Windows) so the binaries can run. **You are explicitly trusting unsigned code when you do this.** I recommend you audit the [source code](https://github.com/LuisPalacios/gitbox) and the [bootstrap script](scripts/bootstrap.sh) before running anything. This project is MIT-licensed open source — inspect it, build it yourself, or don't use it at all.
 
-### Installation
+### Automatic Install
 
 The fastest way to install on macOS, Linux, or Windows (Git Bash) — one command handles the download, extraction, quarantine flags, and PATH setup:
 
@@ -84,9 +84,9 @@ bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scr
 
 Note: On macOS the CLI goes to `~/bin/gitbox` and the GUI to `/Applications/GitboxApp.app`. On Linux and Windows both go to `~/bin/`. The script adds `~/bin` to your PATH if needed.
 
-### Manual installation
+### Manual install
 
-You can also grab binaries from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page. Each release bundles CLI/TUI and GUI for all platforms. The app is not signed, so the OS will complain the first time.
+I prefer the previous automatic installation method, but you can also install it manually by grabing binaries from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page. Each release bundles CLI/TUI and GUI for all platforms. The app is not signed, so the OS will complain the first time.
 
 On macOS `xattr -cr /Applications/GitboxApp.app && xattr -cr ~/bin/gitbox && chmod +x ~/bin/gitbox`. On Windows, SmartScreen shows "Windows protected your PC" on first launch, so click **More info** → **Run anyway**. On Linux just make the binaries executable `chmod +x gitbox GitboxApp`
 
