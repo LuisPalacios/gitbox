@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/gitbox.schema.json",
+    "$id": "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/json/gitbox.schema.json",
     "title": "gitbox configuration v2",
     "description": "Configuration file for gitbox — manages Git multi-account environments across multiple providers (GitHub, GitLab, Gitea, Forgejo, Bitbucket).",
     "type": "object",

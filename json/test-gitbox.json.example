@@ -1,7 +1,7 @@
 {
   "_comment": [
     "Test fixture for gitbox integration tests.",
-    "Copy to test-gitbox.json and fill in real values.",
+    "Copy to the repo root as test-gitbox.json and fill in real values.",
     "",
     "accounts: identity + credentials on each provider.",
     "  _test.token: API token used only for tests (see docs/testing.md for how to create them).",

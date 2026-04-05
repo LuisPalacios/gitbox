@@ -50,7 +50,7 @@ your accounts and repositories.`,
 		fmt.Println("\nCredential type is set per-account via --default-credential-type")
 
 		cfg := &config.Config{
-			Schema:  "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/gitbox.schema.json",
+			Schema:  "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/json/gitbox.schema.json",
 			Version: 2,
 			Global: config.GlobalConfig{
 				Folder: folder,

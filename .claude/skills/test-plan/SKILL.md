@@ -17,7 +17,7 @@ description: Run the gitbox test plan. Use when the user wants to verify changes
 
 ## Checklist source
 
-Read the checklist from `docs/testing-checklist.md`. This is the single source of truth — always re-read it at execution time to pick up any updates.
+Read the checklists from `docs/testing.md` (sections "Pre-PR checklist" and "Full release checklist"). This is the single source of truth — always re-read it at execution time to pick up any updates.
 
 ## Pre-PR mode (default)
 
@@ -109,7 +109,7 @@ gitbox status --json
 
 ### Step 8: Interactive verification
 
-Read the "Full release checklist" sections 3-6 from `docs/testing-checklist.md` and present them as interactive instructions. For each section:
+Read the "Full release checklist" sections from `docs/testing.md` and present them as interactive instructions. For each section:
 
 1. Show the exact commands to run on each platform
 2. Use this format for interactive steps:

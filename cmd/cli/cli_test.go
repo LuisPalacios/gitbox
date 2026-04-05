@@ -371,7 +371,7 @@ func requireCLIIntegration(t *testing.T) cliTestFixture {
 	fixturePath := filepath.Join(root, "test-gitbox.json")
 	if _, err := os.Stat(fixturePath); os.IsNotExist(err) {
 		t.Fatal("test-gitbox.json not found. Integration tests need this file to run.\n" +
-			"  Create it:  cp test-gitbox.json.example test-gitbox.json\n" +
+			"  Create it:  cp json/test-gitbox.json.example test-gitbox.json\n" +
 			"  Or skip:    go test -short ./...")
 	}
 	fixture := loadCLITestFixture(t, fixturePath)

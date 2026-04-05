@@ -70,14 +70,14 @@ Gitbox ships as two binaries built from the same Go library (`pkg/`). The CLI an
 ## Getting started
 
 > [!WARNING]
-> **Gitbox is not signed or notarized.** The binaries are not code-signed, so macOS Gatekeeper, Windows SmartScreen, and similar OS protections will flag them. The bootstrap installer removes these flags automatically (`xattr -cr` on macOS, `Unblock-File` on Windows) so the binaries can run. **You are explicitly trusting unsigned code when you do this.** I recommend you audit the [source code](https://github.com/LuisPalacios/gitbox) and the [bootstrap script](bootstrap.sh) before running anything. This project is MIT-licensed open source — inspect it, build it yourself, or don't use it at all.
+> **Gitbox is not signed or notarized.** The binaries are not code-signed, so macOS Gatekeeper, Windows SmartScreen, and similar OS protections will flag them. The bootstrap installer removes these flags automatically (`xattr -cr` on macOS, `Unblock-File` on Windows) so the binaries can run. **You are explicitly trusting unsigned code when you do this.** I recommend you audit the [source code](https://github.com/LuisPalacios/gitbox) and the [bootstrap script](scripts/bootstrap.sh) before running anything. This project is MIT-licensed open source — inspect it, build it yourself, or don't use it at all.
 
 ### Installation
 
 The fastest way to install on macOS, Linux, or Windows (Git Bash) — one command handles the download, extraction, quarantine flags, and PATH setup:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/bootstrap.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
 ```
 
 > The installer supports additional options, add ` --help` at the end to view them

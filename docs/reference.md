@@ -1,103 +1,12 @@
-# Reference Guide
+# Reference guide
 
 Complete reference for all gitbox commands, configuration format, folder structure, and troubleshooting.
 
-For a quick walkthrough, see the [CLI Quick Start](cli-guide.md) first.
-
-## Overview
-
-gitbox helps you manage Git repositories across multiple accounts and providers (GitHub, GitLab, Gitea, Forgejo, Bitbucket) from a single configuration file and a unified interface.
-
-Two binaries are available:
-
-- **`gitbox`** (CLI) — For power users and headless servers. Runs anywhere Git runs.
-- **`gitbox`** (GUI) — For desktop users who prefer a visual interface. Modern, mouse-driven.
-
-Both read the same configuration file at `~/.config/gitbox/gitbox.json`.
-
-The configuration has two main sections:
-
-- **`accounts`** — WHO you are on each server (credentials, identity)
-- **`sources`** — WHAT you clone from each account (repos organized by org/repo)
+For getting started, see the [CLI guide](cli-guide.md) or [GUI guide](gui-guide.md). For installation, see the [README](../README.md).
 
 ---
 
-## Installation
-
-Download the latest binaries from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page.
-
-| Platform | Arch  | Download                                                         |
-| -------- | ----- | ---------------------------------------------------------------- |
-| Windows  | amd64 | `gitbox-win-amd64.zip` (contains `gitbox.exe` + `GitboxApp.exe`) |
-| macOS    | arm64 | `gitbox-macos-arm64.zip` (contains `gitbox` + `GitboxApp.app`)   |
-| Linux    | amd64 | `gitbox-linux-amd64.zip` (contains `gitbox` + `GitboxApp`)       |
-
-Place the CLI binary somewhere on your `PATH`. The GUI can go anywhere.
-
-**Prerequisites:**
-
-- **All platforms:** Git installed and on PATH
-- **macOS (GCM):** `brew install git-credential-manager` for GCM support
-- **macOS (GUI):** Run `xattr -cr /path/to/gitbox.app` after extracting (app is not signed)
-- **Linux (GUI):** WebKitGTK required (`sudo apt install libwebkit2gtk-4.1-dev` on Debian/Ubuntu)
-
----
-
-## First-Time Setup
-
-### Option 1: Interactive init (recommended)
-
-```bash
-gitbox init
-```
-
-This creates `~/.config/gitbox/gitbox.json` with your global settings (root folder, credential store). It auto-detects your OS for the credential store.
-
-Then add your accounts, sources, and repos:
-
-```bash
-# Add an account (who you are on a server)
-gitbox account add my-github \
-  --provider github \
-  --url https://github.com \
-  --username YourUser \
-  --name "Your Name" \
-  --email "you@example.com" \
-  --default-credential-type gcm
-
-# Add a source (what you clone from that account)
-gitbox source add my-github --account my-github
-
-# Add repos (org/repo format)
-gitbox repo add my-github "YourUser/my-project"
-gitbox repo add my-github "YourUser/dotfiles"
-```
-
-### Option 2: Migrate from git-config-repos.sh (v1)
-
-If you already have a `~/.config/git-config-repos/git-config-repos.json`:
-
-```bash
-# Preview what the migration will produce
-gitbox migrate --dry-run
-
-# Run the actual migration
-gitbox migrate
-```
-
-The original v1 file is never modified. Both tools can coexist.
-
-### Option 3: Launch the GUI
-
-```bash
-gitbox
-```
-
-The setup wizard will guide you through creating accounts and discovering repos.
-
----
-
-## Account Management
+## Account management
 
 An account represents WHO you are on a git server — one unique `(hostname, username)` pair.
 
@@ -163,7 +72,7 @@ gitbox account delete github-personal  # now succeeds
 
 ---
 
-## Source Management
+## Source management
 
 A source represents WHAT you clone from an account. Each source references one account and contains a list of repos.
 
@@ -189,7 +98,7 @@ gitbox source list --account github-personal
 
 ---
 
-## Repo Management
+## Repo management
 
 Repos use `org/repo` format. The org part becomes the second-level folder, the repo part becomes the third-level (clone) folder.
 
@@ -251,7 +160,7 @@ gitbox repo delete github-personal "MyGitHubUser/old-project"
 
 ---
 
-## Folder Structure
+## Folder structure
 
 Repos are cloned into a three-level directory structure:
 
@@ -307,7 +216,7 @@ Token resolution: env var `GITBOX_TOKEN_<KEY>` → `GIT_TOKEN` → OS keyring.
 
 ---
 
-## Status Monitoring
+## Status monitoring
 
 ```bash
 # All repos
@@ -420,7 +329,7 @@ Detection methods (in decreasing confidence): push mirror API (confirmed), pull 
 
 ---
 
-## Credential Management
+## Credential management
 
 Set up, verify, and remove credentials for accounts:
 
@@ -578,7 +487,7 @@ Remote servers need portable PATs (not machine-local GCM tokens). See [credentia
 
 ---
 
-## Shell Completion
+## Shell completion
 
 Generate tab-completion scripts for your shell:
 
@@ -600,23 +509,9 @@ See [completion.md](completion.md) for detailed setup instructions.
 
 ---
 
-## Migration from v1
+## Configuration file reference
 
-```bash
-# Preview
-gitbox migrate --dry-run
-
-# Execute
-gitbox migrate
-```
-
-See [migration.md](migration.md) for details on what changes and how accounts are deduplicated.
-
----
-
-## Configuration File Reference
-
-The config lives at `~/.config/gitbox/gitbox.json`. See [gitbox.jsonc](../gitbox.jsonc) for a fully annotated example.
+The config lives at `~/.config/gitbox/gitbox.json`. See [gitbox.jsonc](../json/gitbox.jsonc) for a fully annotated example.
 
 **Automatic backups:** Every time the config is saved, a dated backup is created in the same directory (e.g., `gitbox-2026-04-01.json`). A rolling 5-day history is maintained — older backups are pruned automatically.
 

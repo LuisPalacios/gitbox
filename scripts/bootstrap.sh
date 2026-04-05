@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # bootstrap.sh — cross-platform installer for gitbox
-# Usage: bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/bootstrap.sh)
+# Usage: bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
 set -euo pipefail
 
 REPO="LuisPalacios/gitbox"
@@ -34,7 +34,7 @@ show_help() {
 gitbox installer — download and install gitbox CLI/TUI and GUI
 
 Usage:
-  bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/bootstrap.sh) [OPTIONS]
+  bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh) [OPTIONS]
 
 Options:
   --version <tag>   Install a specific release (e.g. v1.2.18). Default: latest.
@@ -44,13 +44,13 @@ Options:
 
 Examples:
   # Install latest
-  bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/bootstrap.sh)
+  bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
 
   # Install specific version, CLI only
-  bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/bootstrap.sh) --version v1.2.18 --cli-only
+  bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh) --version v1.2.18 --cli-only
 
   # Custom install directory
-  bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/bootstrap.sh) --prefix ~/.local/bin
+  bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh) --prefix ~/.local/bin
 HELP
   exit 0
 }

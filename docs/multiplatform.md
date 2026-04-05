@@ -18,7 +18,7 @@ All three developer workstation perspectives have been validated: Windows (v1.0.
 ### 1. Configure SSH hosts
 
 ```bash
-cp .env.example .env
+cp docs/.env.example .env
 ```
 
 Edit `.env` with your remote SSH hosts. The scripts auto-detect your local OS, so leave that platform's variable empty. Set the others to `user@hostname`:
@@ -49,7 +49,7 @@ ssh -o ConnectTimeout=5 user@mac-host 'echo ok'
 ### 2. Prepare the test fixture
 
 ```bash
-cp test-gitbox.json.example test-gitbox.json
+cp json/test-gitbox.json.example test-gitbox.json
 ```
 
 Edit `test-gitbox.json` and fill in real accounts and tokens. Each account with a `_test` key needs a valid API token — create them on your provider's website:
@@ -61,7 +61,7 @@ Edit `test-gitbox.json` and fill in real accounts and tokens. Each account with 
 | **GitLab**          | Preferences → Access Tokens                              | `api` scope                                            |
 | **Bitbucket**       | Personal settings → App passwords                        | Repositories: Read+Write                               |
 
-See the [test-gitbox.json.example](../test-gitbox.json.example) for the full structure with inline comments.
+See the [test-gitbox.json.example](../json/test-gitbox.json.example) for the full structure with inline comments.
 
 ### 3. Set up credentials on all machines
 

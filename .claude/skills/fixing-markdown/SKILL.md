@@ -62,7 +62,7 @@ No per-project setup required. Dependencies are cached globally and resolved on 
 
 Replace `<plugin-path>` with the actual path to this plugin's installation directory.
 
-### Single File
+### Single file
 
 ```bash
 # Step 1: Fix structural issues (ALWAYS run, ignore exit code)
@@ -109,7 +109,7 @@ pnpm dlx markdownlint-cli2 --config .claude/skills/fixing-markdown/.markdownlint
 
 ## Output Format
 
-### Clean File
+### Clean file
 
 ```text
 Fixing: src/content/posts/example.md

@@ -3,7 +3,7 @@
   <img src="../assets/screenshot-cli.png" alt="Gitbox" width="800" />
 </p>
 
-# Getting Started with gitbox CLI
+# Getting started with gitbox CLI
 
 This guide walks you through the complete workflow — from a fresh install to a fully managed multi-account Git environment.
 
@@ -22,7 +22,7 @@ This guide walks you through the complete workflow — from a fresh install to a
 One command handles download, extraction, quarantine flags, and PATH setup:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/bootstrap.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
 ```
 
 Use `--cli-only` to skip the GUI, `--version <tag>` for a specific release, or `--prefix <dir>` to change the install directory (default `~/bin`). See the [README](../README.md) for more examples.
@@ -39,7 +39,7 @@ This creates `~/.config/gitbox/gitbox.json` with sensible defaults for your plat
 
 For tab-completion of commands and flags, see [Shell Completion](completion.md).
 
-## Step 2: Add Accounts
+## Step 2: Add accounts
 
 An **account** defines WHO you are on a Git provider — your identity, not your repos.
 
@@ -98,7 +98,7 @@ gitbox account add github-token \
 gitbox account list
 ```
 
-## Step 3: Set Up Credentials
+## Step 3: Set up credentials
 
 Run `credential setup` for each account. It detects the credential type and does the right thing:
 
@@ -120,7 +120,7 @@ gitbox account credential verify github-personal
 gitbox account credential verify github-ssh
 ```
 
-## Step 4: Discover Repos
+## Step 4: Discover repos
 
 Discover fetches all repos visible to your account from the provider's API and lets you choose which ones to manage:
 
@@ -159,7 +159,7 @@ gitbox account discover github-personal
 gitbox account discover github-ssh
 ```
 
-## Step 5: Clone Everything
+## Step 5: Clone everything
 
 ```bash
 gitbox clone
@@ -185,7 +185,7 @@ gitbox clone --repo MyOrg/tools     # Clone a specific repo only
 gitbox clone --verbose              # Show all repos including skipped
 ```
 
-## Step 6: Day-to-Day
+## Step 6: Day-to-day
 
 ### Check status
 
@@ -221,7 +221,7 @@ gitbox scan --dir ~/projects    # Scan a specific directory
 gitbox scan --pull              # Also pull repos that are behind
 ```
 
-## Step 7: Set Up Mirrors (Optional)
+## Step 7: Set up mirrors (optional)
 
 Mirrors let you keep backup copies of repos on another provider — for example, pushing from a homelab Forgejo to GitHub, or pulling GitHub repos into Forgejo.
 
@@ -283,34 +283,8 @@ gitbox account credential setup github-personal --token
 
 Token and SSH accounts already have a portable PAT — no extra setup needed. See [credentials.md](credentials.md) for details.
 
-## Quick Reference
-
-| Command                                       | What it does                  |
-| --------------------------------------------- | ----------------------------- |
-| `gitbox init`                              | Create config file            |
-| `gitbox account list`                      | List all accounts             |
-| `gitbox account add <key> ...`             | Add an account                |
-| `gitbox account credential setup <key>`    | Set up credentials            |
-| `gitbox account credential verify <key>`   | Verify credentials            |
-| `gitbox account discover <key>`            | Discover repos from provider  |
-| `gitbox source list`                       | List all sources              |
-| `gitbox repo list`                         | List all repos                |
-| `gitbox clone`                             | Clone configured repos        |
-| `gitbox status`                            | Show sync status              |
-| `gitbox pull`                              | Pull repos that are behind    |
-| `gitbox scan`                              | Scan filesystem for git repos |
-| `gitbox migrate --source ... --target ...` | Migrate v1 config to v2       |
-| `gitbox mirror list`                       | List all mirror groups        |
-| `gitbox mirror add <key> ...`              | Create a mirror group         |
-| `gitbox mirror add-repo <key> <repo> ...`  | Add a repo to mirror          |
-| `gitbox mirror setup [<key>]`              | Run API setup for mirrors     |
-| `gitbox mirror status [<key>]`             | Check live mirror sync status |
-| `gitbox mirror discover [--apply]`         | Detect existing mirrors       |
-| `gitbox completion <shell>`                | Generate shell completion     |
-
-## What's Next
+## What's next
 
 - See the [Reference Guide](reference.md) for all commands, config format, and troubleshooting
 - See [Credentials](credentials.md) for detailed PAT creation instructions per provider
 - See the [Architecture](architecture.md) for technical design and component details
-- See the [Migration Guide](migration.md) if coming from `git-config-repos.sh`

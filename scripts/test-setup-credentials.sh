@@ -37,7 +37,7 @@ fi
 
 if [[ ! -f "$FIXTURE" ]]; then
     echo -e "${R}error:${N} $FIXTURE not found"
-    echo "Copy test-gitbox.json.example to test-gitbox.json and fill in your accounts."
+    echo "Copy json/test-gitbox.json.example to test-gitbox.json and fill in your accounts."
     exit 1
 fi
 

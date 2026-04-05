@@ -15,7 +15,7 @@ source "$(dirname "$0")/_common.sh"
 SETUP_SCRIPT="$REPO_ROOT/scripts/test-setup-credentials.sh"
 
 if [[ ! -f "$FIXTURE" ]]; then
-    die "test-gitbox.json not found.\n  Copy test-gitbox.json.example to test-gitbox.json and add your tokens.\n  See docs/testing.md for details."
+    die "test-gitbox.json not found.\n  Copy json/test-gitbox.json.example to test-gitbox.json and add your tokens.\n  See docs/testing.md for details."
 fi
 
 if [[ ! -f "$SETUP_SCRIPT" ]]; then

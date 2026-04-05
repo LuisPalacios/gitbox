@@ -34,13 +34,13 @@ chmod +x gitbox-linux-amd64/GitboxApp
 
 Replace `v1.2.14` with the [latest version](https://github.com/LuisPalacios/gitbox/releases). The GUI requires a desktop environment with a display server (X11 or Wayland).
 
-## Step 1: First Launch
+## Step 1: First launch
 
 The first time you open Gitbox, it asks you to pick a **clone folder** — this is where all your projects will live on disk. Something like `~/00.git` or `C:\repos` works well.
 
 Click **Get started** and you're in.
 
-## Step 2: Add Accounts
+## Step 2: Add accounts
 
 An account tells Gitbox who you are on a particular server. For example, your GitHub account, or your company's GitLab.
 
@@ -53,7 +53,7 @@ Click the **+** card to add one. You'll fill in:
 5. **Name and Email** — the identity used in your Git commits.
 6. **Credential type** — how Gitbox will authenticate (see below).
 
-### Setting Up Credentials
+### Setting up credentials
 
 After creating your account, Gitbox needs a way to log in to your provider. There are three options:
 
@@ -63,7 +63,7 @@ After creating your account, Gitbox needs a way to log in to your provider. Ther
 
 Once credentials are set up, the account card shows a **green badge** with the credential type — you're good to go. For more details on each type and what permissions to select, see [credentials.md](credentials.md).
 
-## Step 3: Find and Add Projects
+## Step 3: Find and add projects
 
 Click **Find projects** on an account card. Gitbox contacts your provider and lists all the repositories visible to your account.
 
@@ -76,9 +76,9 @@ The discovery window features:
 
 Pick the ones you want, then click **Add & Pull**. Gitbox saves them to your config and starts cloning them into your folder.
 
-## Step 4: Day-to-Day
+## Step 4: Day-to-day
 
-### Understanding Account Cards
+### Understanding account cards
 
 Each account appears as a card on the **Accounts** tab. Here's what the elements mean:
 
@@ -93,7 +93,7 @@ Each account appears as a card on the **Accounts** tab. Here's what the elements
 
 If a credential is missing or broken, the entire card turns **light red** so you notice right away.
 
-### Keeping Projects in Sync
+### Keeping projects in sync
 
 #### Automatic Checking
 
@@ -127,7 +127,7 @@ Click a repo that shows local changes, conflicts, or other issues. An expandable
 
 This detail view **updates automatically** when Gitbox detects new changes — you don't need to close and reopen it.
 
-### Creating Repositories
+### Creating repositories
 
 Click **Create repo** on an account card to create a new repository directly on the provider without leaving Gitbox.
 
@@ -143,7 +143,7 @@ The button text changes based on the clone checkbox: **Create & Clone** or **Cre
 
 Repo creation is supported on all providers (GitHub, GitLab, Gitea, Forgejo, and Bitbucket) and works with all credential types. The same API token used for discovery is used for creation.
 
-### Editing an Account
+### Editing an account
 
 Click the account name on any card to open the edit screen. You can change:
 
@@ -151,7 +151,7 @@ Click the account name on any card to open the edit screen. You can change:
 - **Provider** — in case you picked the wrong one originally.
 - **All other fields** — URL, username, name, email, default branch.
 
-### Managing Credentials
+### Managing credentials
 
 Click the credential badge on a card to open the credential management screen. For details on each credential type and what permissions they need, see [credentials.md](credentials.md).
 
@@ -165,11 +165,11 @@ When viewing the current credential type, click the red **Delete** button to rem
 
 After deleting, the card turns red and the badge shows "config". Click it to set up a fresh credential.
 
-## Step 5: Mirrors (Optional)
+## Step 5: Mirrors (optional)
 
 Mirrors keep backup copies of repos on another provider — for example, pushing from a homelab Forgejo to GitHub. Repos are mirrored server-side via provider APIs, not cloned locally.
 
-### Accounts and Mirrors Tabs
+### Accounts and mirrors tabs
 
 The main screen uses two tabs above the cards section:
 
@@ -178,7 +178,7 @@ The main screen uses two tabs above the cards section:
 
 Switch tabs by clicking the tab buttons. The **summary footer** at the bottom always shows both repo and mirror counts regardless of which tab is active.
 
-### Mirror Cards
+### Mirror cards
 
 Each mirror group card shows:
 
@@ -188,18 +188,18 @@ Each mirror group card shows:
 - **Check status** button — verifies sync state by comparing HEAD commits on both sides
 - A **+** card is always visible on the Mirrors tab to create a new mirror group
 
-### Mirror Health Ring
+### Mirror health ring
 
 When mirrors are configured, a second **health ring** appears in the top bar next to the repo sync ring. It shows `active/total` mirrors and turns red if any mirrors have errors.
 
-### Mirror Actions
+### Mirror actions
 
 The Mirrors tab provides two section-level buttons:
 
 - **Discover** — scans all account pairs to detect existing mirror relationships. During scanning, a progress bar shows per-account progress (indeterminate during repo listing, determinate during analysis). When results appear, repos already in your config are marked as **"configured"** and dimmed. Each unconfigured result has an individual **+ Add** button to add it to your config one by one, or use **Apply to config** to add all at once.
 - **Check all** — checks sync status for every mirror group.
 
-### Mirror Detail List
+### Mirror detail list
 
 Below the mirror cards, each group expands into a detail list showing individual mirrored repos with:
 
@@ -209,13 +209,13 @@ Below the mirror cards, each group expands into a detail list showing individual
 - **Setup** button for pending repos that haven't been configured yet via API
 - **+ Repo** button to add new repos to the group
 
-## Dashboard Views
+## Dashboard views
 
-### Full View
+### Full view
 
 The full dashboard shows the top bar with health rings, the tab bar (Accounts/Mirrors), cards, repo or mirror detail lists, and the summary footer. Action buttons in the top bar include Pull All, Fetch All, Delete mode, and Compact view.
 
-### Compact View
+### Compact view
 
 Click the **◧** button in the top bar to switch to compact mode — a narrow status strip (~220px wide) that shows:
 
@@ -226,9 +226,9 @@ Click the **◧** button in the top bar to switch to compact mode — a narrow s
 
 This is useful when you want gitbox visible as a sidebar while working in other apps. Click **◧ Full view** to return to the full dashboard.
 
-## Settings and Maintenance
+## Settings and maintenance
 
-### Settings Panel
+### Settings panel
 
 Click the **gear icon** to open the settings panel:
 
@@ -240,13 +240,13 @@ Click the **gear icon** to open the settings panel:
 - **Version** — current app version
 - **Author** — project author and link to the GitHub repository
 
-### Deleting Repos and Accounts
+### Deleting repos and accounts
 
 Click the **trash icon** in the top bar to enter delete mode. Red X buttons appear on account cards, mirror group cards, and repo rows. Click one to remove it. Account deletion also removes its source and local clone folders.
 
 Exit delete mode by clicking the trash icon again.
 
-### Global Identity Warning
+### Global identity warning
 
 If your `~/.gitconfig` has a global `user.name` or `user.email`, Gitbox shows an **orange warning banner** at the top of the dashboard. A global identity can override the per-repo identities that gitbox sets up for each account.
 
@@ -259,7 +259,7 @@ Click **Remove** to clear the global identity entries, or dismiss the banner wit
 - **Same config** — the desktop app and the CLI tool (`gitbox`) share the same config file. Changes in one are visible in the other.
 - **Automatic backups** — every time the config is saved, Gitbox creates a dated backup (e.g., `gitbox-2026-04-01.json`) in the same directory. A rolling 5-day history is kept automatically.
 
-## See Also
+## See also
 
 - [CLI Quick Start](cli-guide.md) — for terminal users
 - [Configuration Reference](reference.md) — detailed config format and commands

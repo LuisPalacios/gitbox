@@ -16,7 +16,7 @@
 //
 {
     // JSON Schema reference for editor validation and autocompletion
-    "$schema": "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/gitbox.schema.json",
+    "$schema": "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/json/gitbox.schema.json",
 
     // Format version. Always 2.
     "version": 2,

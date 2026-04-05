@@ -41,7 +41,7 @@ Thumbs.db
 
 # Local environment (private host names, tokens, etc.)
 .env*
-!.env.example
+!docs/.env.example
 test-gitbox.json
 
 # Test scripts at repo root (contain real account data)

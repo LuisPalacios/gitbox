@@ -1,6 +1,6 @@
 # Testing reference
 
-Detailed test inventory and harness internals. For the guided testing workflow, see [Testing](testing.md).
+Detailed test inventory and harness internals. For running tests, checklists, and fixture setup, see [testing.md](testing.md).
 
 ## Test inventory
 
@@ -104,7 +104,7 @@ Real provider API calls and git operations via subprocess:
 
 ### Package tests — 138 tests (`pkg/`)
 
-- `pkg/config/` — 61 tests: config parsing, CRUD operations, save/load, v1→v2 migration
+- `pkg/config/` — 58 tests: config parsing, CRUD operations, save/load
 - `pkg/credential/` — 13 tests: token resolution, validation, CanOpenBrowser, EnsureGlobalGCMConfig
 - `pkg/git/` — 9 tests: git subprocess operations
 - `pkg/identity/` — 7 tests: ResolveIdentity, EnsureRepoIdentity, CheckGlobalIdentity
@@ -112,7 +112,7 @@ Real provider API calls and git operations via subprocess:
 - `pkg/provider/` — 35 tests: HTTP client, provider API parsing
 - `pkg/status/` — 8 tests: clone status checking
 
-### Total: ~212 tests
+### Total: ~208 tests
 
 ## How the test harness works
 

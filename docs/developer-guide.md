@@ -1,52 +1,20 @@
-# Developer Guide
+# Developer guide
 
 ## Prerequisites
 
-- **Go** 1.26+ ([install](https://go.dev/doc/install))
-- **Node.js** 20+ ([install](https://nodejs.org/))
+- **Go** 1.26+ — [install](https://go.dev/doc/install)
+- **Node.js** 20+ — [install](https://nodejs.org/) (for Svelte frontend)
 - **Git** 2.39+
-- **Wails CLI** v2 (for GUI development):
+- **Wails CLI** v2 — `go install github.com/wailsapp/wails/v2/cmd/wails@latest` (GUI builds only)
+- **Platform-specific:** Windows needs Git for Windows; macOS needs Xcode CLI Tools (`xcode-select --install`); Linux needs `libwebkit2gtk-4.1-dev` and `libgtk-3-dev`
 
-  ```bash
-  go install github.com/wailsapp/wails/v2/cmd/wails@latest
-  ```
-
-  After installing, ensure `$(go env GOPATH)/bin` is in your `PATH`. Add this to your shell profile (`~/.zshrc` on macOS, `~/.bashrc` on Linux) if `wails version` is not found:
-
-  ```bash
-  export PATH="$PATH:$(go env GOPATH)/bin"
-  ```
-
-Check:
-
-```bash
-go version            # Go compiler
-wails version         # Wails CLI (go install github.com/wailsapp/wails/v2/cmd/wails@latest)
-node --version        # Node.js (for Svelte frontend)
-npm --version         # npm
-git --version         # Git
-```
-
-### Platform-specific
-
-- **Windows:** Git for Windows (provides Git Bash)
-- **macOS:** Xcode Command Line Tools (`xcode-select --install`)
-- **Linux:** `libwebkit2gtk-4.1-dev` and `libgtk-3-dev` (for GUI builds)
-
-### Multiplatform testing (optional)
-
-If you want to build and test on multiple platforms from your dev machine:
-
-- **SSH client** with key-based auth to remote machines
-- **jq** and **curl** on all machines (for credential setup scripts)
-
-See [Multiplatform](multiplatform.md) for the full setup.
+For multiplatform testing via SSH, see [multiplatform.md](multiplatform.md).
 
 ---
 
-## Building from Source
+## Building from source
 
-### CLI Only
+### CLI only
 
 ```bash
 # From the repository root
@@ -74,7 +42,7 @@ wails build
 # Output: cmd/gui/build/bin/GitboxApp[.exe]
 ```
 
-### Key Design Decisions
+### Key design decisions
 
 - **`pkg/` is the heart** — both CLI and GUI import from here. All business logic lives in `pkg/`.
 - **CLI is a thin wrapper** — `cmd/cli/main.go` wires subcommands to `pkg/` functions.
@@ -82,7 +50,7 @@ wails build
 - **Git operations use `os/exec`** — we shell out to the system `git` binary, not libgit2.
 - **Provider APIs use `net/http`** — standard Go, no external HTTP client dependencies.
 - **Accounts (WHO) + Sources (WHAT)** — accounts define identity on a server (hostname, username, credentials); sources reference an account and contain the list of repos to manage. This separation allows multiple sources to share the same account.
-- **Account uniqueness** — an account is unique by `(hostname, username)`. During v1→v2 migration, duplicate accounts are deduplicated automatically.
+- **Account uniqueness** — an account is unique by `(hostname, username)`.
 - **Repo keys use `org/repo` format** — this produces a 3-level folder structure: `<source>/<org>/<repo>`. The `id_folder` field overrides the 2nd level (org), and `clone_folder` overrides the 3rd level (or replaces the entire path when absolute).
 - **Credential inheritance** — accounts have a `default_credential_type`; repos inherit it unless they set their own `credential_type`.
 - **CLI uses Cobra** — each subcommand lives in its own `*_cmd.go` file, registered in `main.go`'s `init()`.
@@ -90,7 +58,7 @@ wails build
 
 ---
 
-## Adding a New Provider
+## Adding a new provider
 
 > Providers are implemented in `pkg/provider/`. GitHub, GitLab, Gitea/Forgejo, and Bitbucket are all functional. To add a new provider:
 
@@ -141,13 +109,13 @@ func NewFromConfig(acct *config.Account) (Provider, error) {
 }
 ```
 
-1. Add `"newprovider"` to the `provider` enum in `gitbox.schema.json`.
+1. Add `"newprovider"` to the `provider` enum in `json/gitbox.schema.json`.
 
 1. Write tests in `pkg/provider/newprovider_test.go`.
 
 ---
 
-## Adding a New CLI Subcommand
+## Adding a new CLI subcommand
 
 Each command lives in its own file following the `*_cmd.go` naming convention. Here's the pattern used throughout the codebase:
 
@@ -197,73 +165,36 @@ rootCmd.AddCommand(newcommandCmd)
 
 ## Testing
 
-```bash
-# Unit tests only (integration tests require test-gitbox.json)
-go test -short ./...
-
-# All tests including TUI and CLI
-go test ./...
-
-# Integration tests (requires test-gitbox.json)
-go test -v -run Integration ./cmd/cli/...
-
-# Full lifecycle scenario test
-go test -v -run Scenario ./cmd/cli/...
-```
-
-There are three levels of testing, each building on the previous:
-
-1. **Unit tests** (no setup needed): `go test -short ./...`
-2. **Integration tests** (requires `test-gitbox.json` with real provider tokens): see [Testing](testing.md)
-3. **Multiplatform tests** (requires `.env` with SSH remotes): see [Multiplatform](multiplatform.md)
-
-### Git hooks
-
-The repo includes a pre-push hook that runs `go vet` and unit tests before allowing a push. I activate it once per clone:
+Quick start:
 
 ```bash
-git config core.hooksPath .githooks
+go test -short ./...    # unit tests (no setup needed)
+go test ./...           # everything (needs test-gitbox.json for integration tests)
 ```
 
-After that, every `git push` runs the checks automatically. If `go vet` or any test fails, the push is blocked until I fix it.
+Activate the pre-push hook once per clone: `git config core.hooksPath .githooks` — it runs `go vet` + unit tests before every push.
 
-The hook lives in `.githooks/pre-push` (version-controlled). To bypass it temporarily (not recommended):
-
-```bash
-git push --no-verify
-```
-
-### Test plan skill (Claude Code)
-
-If you use Claude Code, the `/test-plan` skill automates the pre-PR verification workflow — it reads `docs/testing-checklist.md` and runs the automated steps, then guides you through the interactive ones across all 3 platforms.
-
-```text
-/test-plan              Quick pre-PR checks (default)
-/test-plan full         Full release verification
-```
-
-Without Claude Code, follow the [testing checklist](testing-checklist.md) manually — every step is documented with the exact commands to run.
+For the full testing workflow (fixture setup, integration tests, pre-PR and release checklists), see [testing.md](testing.md). For multiplatform testing via SSH, see [multiplatform.md](multiplatform.md). If you use Claude Code, `/test-plan` automates the pre-PR checks.
 
 ---
 
-## Config Schema Evolution
+## Config schema evolution
 
 When adding new fields to the configuration:
 
 1. Add the field to the appropriate Go struct in `pkg/config/config.go` — use `json:"fieldName,omitempty"` with the correct casing (e.g., `useHttpPath` is camelCase to match GCM conventions)
-2. Add the field to `gitbox.schema.json` with a clear description
-3. Update `gitbox.jsonc` with an example
+2. Add the field to `json/gitbox.schema.json` with a clear description
+3. Update `json/gitbox.jsonc` with an example
 4. If the field belongs to an account vs a source, ensure it's in the right struct (`Account` for identity/credentials, `Source` for what to clone, `Repo` for per-repo overrides)
-5. If the field affects v1→v2 migration, update `pkg/config/migrate.go`
-6. If there are CRUD implications, update `pkg/config/crud.go`
-7. Update `docs/reference.md` config reference table
-8. Add tests for the new field in `pkg/config/config_test.go`
+5. If there are CRUD implications, update `pkg/config/crud.go`
+6. Update `docs/reference.md` config reference table
+7. Add tests for the new field in `pkg/config/config_test.go`
 
 **Never bump the version number for additive changes.** Version 2 can grow with optional fields. Only bump to version 3 if breaking changes are needed (renames, removals, type changes).
 
 ---
 
-## Release Process
+## Release process
 
 ### Versioning
 
@@ -282,7 +213,7 @@ go build -ldflags "-X main.version=v0.2.0 -X main.commit=$(git rev-parse HEAD)" 
 #   No tags: "dev-a99cf17"
 ```
 
-### Creating a Release
+### Creating a release
 
 Releases are fully automated via CI. Push a version tag and GitHub Actions builds all binaries, creates a GitHub Release, and attaches the assets:
 
@@ -301,7 +232,7 @@ CI injects `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into both CLI
 
 ---
 
-## Logo and App Icons
+## Logo and app icons
 
 The source of truth for the logo is `assets/logo.svg`. The derived icon files used by the Wails build live alongside it:
 
@@ -330,7 +261,7 @@ These are **not checked in** (gitignored under `cmd/gui/build/`). Instead, the C
 
 ---
 
-## TUI Demo Recordings (VHS)
+## TUI demo recordings (VHS)
 
 Use [VHS](https://github.com/charmbracelet/vhs) (by the Charm team) to record terminal demo GIFs for the README and docs. VHS reads declarative `.tape` files and renders GIF/MP4/WebM output.
 
@@ -391,7 +322,7 @@ VHS requires `ffmpeg` and `ttyd`. On first run it will prompt to install them.
 
 ---
 
-## Code Style
+## Code style
 
 - Follow standard Go conventions (`gofmt`, `go vet`)
 - Use `golangci-lint` if available

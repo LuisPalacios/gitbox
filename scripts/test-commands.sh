@@ -22,7 +22,7 @@ fi
 
 if [[ ! -f "$FIXTURE" ]]; then
     warn "test-gitbox.json not found — test-mode will fail on targets"
-    warn "run: cp test-gitbox.json.example test-gitbox.json"
+    warn "run: cp json/test-gitbox.json.example test-gitbox.json"
     echo ""
 fi
 

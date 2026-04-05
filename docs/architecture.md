@@ -1,48 +1,10 @@
-# Gitbox — Architecture & Design
+# Gitbox — Architecture & design
 
-> Product Requirements + Technical Design Document
-
----
-
-## 1. Product Vision
-
-### Problem
-
-Developers who work across multiple Git identities (personal, corporate, open-source, self-hosted) face a recurring operational burden: configuring credentials, cloning repos with the right identity, and keeping everything in sync across machines. Each new machine means re-doing the setup manually.
-
-### Solution
-
-**gitbox** is a single tool that manages the full lifecycle of multi-account Git environments:
-
-1. **Define** your accounts and credentials (once)
-2. **Discover** repositories from each provider's API
-3. **Clone** everything with the correct identity and folder structure
-4. **Monitor** sync status across all repos
-5. **Pull** updates safely (fast-forward only)
-
-### Target Users
-
-- Developers with 2+ Git identities (personal + work, multiple GitHub orgs, self-hosted Forgejo/Gitea)
-- DevOps engineers managing repos across multiple providers
-- Teams that need reproducible dev environment setup across machines
-
-### Success Criteria
-
-- A developer can go from a fresh machine to a fully configured multi-account Git environment in under 10 minutes
-- All operations work identically on Windows, macOS, and Linux
-- Non-technical users can follow the CLI workflow without knowing Git internals
-
-### Platform Support
-
-| Platform      | Status      | Notes                      |
-| ------------- | ----------- | -------------------------- |
-| Windows 11    | Primary dev | Git Bash, Windows Terminal |
-| macOS (arm64) | Tested      | Native terminal            |
-| Linux (amd64) | Tested      | Headless and desktop       |
+For the product overview (what gitbox does, who it's for, and why it exists), see the [README](../README.md).
 
 ---
 
-## 2. Architecture Overview
+## 1. Architecture overview
 
 gitbox is a Go monorepo producing two binaries from a shared library, with three runtime modes:
 
@@ -58,7 +20,7 @@ gitbox is a Go monorepo producing two binaries from a shared library, with three
 
 The TUI launches automatically when `gitbox` runs with no arguments and stdin is a terminal. Otherwise, Cobra CLI commands execute. Both binaries share the exact same `pkg/` library — neither the TUI nor the GUI reimplements logic that the CLI already has.
 
-## 3. Core Concepts
+## 2. Core concepts
 
 ### Accounts, Sources, and Repos
 
@@ -68,7 +30,7 @@ The TUI launches automatically when `gitbox` runs with no arguments and stdin is
 
 **Why separate?** One account can have multiple sources (e.g., different GitHub orgs under the same login). Sources group repos logically. Repos use `org/repo` naming — the org part becomes the folder structure.
 
-### Credential Model
+### Credential model
 
 See [credentials.md](credentials.md) for user-facing setup details. This section covers the design.
 
@@ -82,13 +44,13 @@ Each credential type is **self-sufficient** for the account. Per-repo credential
 
 **Credential lifecycle:** Type switching cleans up old artifacts before configuring the new type. Existing clones are automatically reconfigured (remote URL + credential config). Account key renames migrate all artifacts: config keys, source folders, keyring entries, credential files, SSH keys, and SSH config aliases.
 
-### Config as Local Database
+### Config as local database
 
 The JSON config file (`~/.config/gitbox/gitbox.json`) is the **desired state** — a local database of what accounts, sources, and repos should exist.
 
 **Discovery** is a northbound query — it asks the provider API "what repos exist?" and lets you add them to the config. Discovery is add-only on demand; it never auto-removes repos.
 
-### Folder Structure
+### Folder structure
 
 Repos are cloned into a 3-level hierarchy:
 
@@ -113,7 +75,7 @@ Each level can be overridden:
 
 ---
 
-## 4. Component Design
+## 3. Component design
 
 ### pkg/config — Configuration Management
 
@@ -121,11 +83,9 @@ Handles the v2 configuration file. Core types: `Config`, `Account`, `Source`, `R
 
 **Key design decisions:**
 
-- **Auto-detection:** `Load()` detects v1 vs v2 format (v1 has `accounts` but no `sources`)
 - **JSON order preservation:** `SourceOrder` and `RepoOrder` ensure iteration follows the user's config file order
 - **Credential inheritance:** Repos inherit `default_credential_type` from their account unless they override it
 - **CRUD with referential integrity:** `DeleteAccount` fails if any source references it; `DeleteSource` cascades to its repos
-- **v1 to v2 migration:** Deduplicates accounts by `(hostname, username)`, converts string booleans to native booleans, nests flat SSH/GCM fields into objects, and reformats repo names to `org/repo`
 
 ### pkg/credential — Credential Management
 
@@ -206,9 +166,9 @@ Handles push and pull mirror setup, status checking, and manual setup guides. Mi
 
 ---
 
-## 5. Config Format (v2)
+## 4. Config format (v2)
 
-See the [JSON annotated example](../gitbox.jsonc) for a complete config with comments, and the [JSON Schema](../gitbox.schema.json) for editor validation and autocompletion.
+See the [JSON annotated example](../json/gitbox.jsonc) for a complete config with comments, and the [JSON Schema](../json/gitbox.schema.json) for editor validation and autocompletion.
 
 **Credential type inheritance:** Repos inherit `default_credential_type` from their account unless they set their own `credential_type`.
 
@@ -216,7 +176,7 @@ See the [JSON annotated example](../gitbox.jsonc) for a complete config with com
 
 ---
 
-## 6. Credential Architecture
+## 5. Credential architecture
 
 <p align="center">
   <img src="diagrams/credential-flow.png" alt="Credential Flow" width="800" />
@@ -226,19 +186,19 @@ See the [JSON annotated example](../gitbox.jsonc) for a complete config with com
   <img src="diagrams/credential-types.png" alt="Credential Types" width="800" />
 </p>
 
-### Token Flow
+### Token flow
 
 User runs `credential setup` -> app shows the provider-specific PAT creation URL with required scopes -> user pastes the token -> app validates it via the provider API -> stores it in the credential file (`~/.config/gitbox/credentials/<key>`). On clone, the token is temporarily embedded in the URL for authentication, then sanitized from the remote URL. The per-repo `.git/config` is configured with `credential.helper = store --file <path>` pointing to the same gitbox-managed credential store file, so subsequent `git push/pull` from any terminal works without GCM.
 
-### GCM Flow
+### GCM flow
 
 User runs `credential setup` -> app triggers `git credential fill` which opens browser OAuth -> app runs `git credential approve` to persist -> tests API access with the GCM token. Clone uses HTTPS with username. The per-repo `.git/config` is configured with `credential.helper = manager` plus per-host `username`, `provider`, and `credentialStore`, making each clone self-contained. API access extracts the OAuth token via `git credential fill`.
 
-### SSH Flow
+### SSH flow
 
 User runs `credential setup` -> app creates `~/.ssh/config` entry and generates an ed25519 key pair -> displays the public key for the user to register at their provider -> tests the SSH connection. Clone uses `git@<host-alias>:repo.git` URLs routed through the SSH config. API access optionally uses a separately stored PAT for discovery. The per-repo `.git/config` sets an empty `credential.helper =` to defensively cancel any global credential helper.
 
-### Credential Type Switching
+### Credential type switching
 
 When changing an account's credential type, gitbox:
 
@@ -259,13 +219,13 @@ The cleanup matrix ensures no ghost credentials persist across type changes:
 
 ---
 
-## 7. CLI Command Structure
+## 6. CLI command structure
 
 <p align="center">
   <img src="diagrams/cli-workflow.png" alt="CLI Workflow" width="800" />
 </p>
 
-### Command Tree
+### Command tree
 
 ```text
 gitbox
@@ -312,12 +272,11 @@ gitbox
 |- identity [--remove]               Check/remove global git identity
 |- reconfigure [--account]           Update per-repo credential isolation
 |- scan [--dir] [--pull]             Filesystem walk for repo status
-|- migrate --source ... --target ... Migrate v1 config to v2
 |- completion <shell>                Generate shell completion
 +- version                           Show version info
 ```
 
-### Global Flags
+### Global flags
 
 ```text
 --config <path>    Custom config file path
@@ -327,47 +286,32 @@ gitbox
 
 ---
 
-## 8. UX Design Principles
+## 7. UX design principles
 
-These principles apply to both the CLI and the GUI.
+These apply to both CLI and GUI. The user should NOT need to know Git internals — commands are verbs that do what they say.
 
-### Core Philosophy
+**Output:**
 
-> The user should NOT need to think about or know Git internals. Commands are verbs that do what they say. Output is designed for people who don't know git well.
+- One colored line per item, streamed as it happens (not batched)
+- Long operations show progress bars, then snap to the final state
+- Quiet by default — only errors, warnings, and actual changes. `--verbose` shows everything
 
-### Output Patterns
+**Color system** (true-color ANSI, respects `NO_COLOR`):
 
-- **One-liner streaming:** Every operation shows one colored line per item as it happens, not in a batch after completion
-- **Progress feedback always:** Long operations show animated progress bars, then snap to the final state
-- **Quiet by default, verbose on demand:** Only show actionable items (errors, warnings, actual changes). Clean repos and skipped items are hidden unless `--verbose` is used
+| Color | Symbol | Meaning |
+| --- | --- | --- |
+| Green | `+` | Success, clean, ok |
+| Orange | `!` `~` | Warning, dirty, no upstream |
+| Red | `!` `x` | Diverged, conflict, error |
+| Purple | `<` `o` | Behind upstream, not cloned |
+| Blue | `>` | Ahead of upstream |
+| Cyan | | Info, skip, section header |
 
-### Color System
-
-True-color ANSI codes matching the Oh-My-Posh palette. All color output respects the `NO_COLOR` environment variable.
-
-| Color      | Symbol | Meaning                              |
-| ---------- | ------ | ------------------------------------ |
-| Green      | `+`    | Success, clean, ok                   |
-| Orange     | `!`    | Warning, dirty                       |
-| Orange     | `~`    | No upstream                          |
-| Red        | `!`    | Diverged, conflict                   |
-| Red        | `x`    | Error                                |
-| Purple     | `<`    | Behind upstream                      |
-| Purple     | `o`    | Not cloned                           |
-| Blue       | `>`    | Ahead of upstream                    |
-| Cyan       |        | Info, skip, section header           |
-| Bold white |        | Titles and headers                   |
-
-### Behavioral Rules
-
-- **JSON order preserved:** Output follows the user's config file order
-- **Idempotent commands:** Running `credential setup` or `clone` multiple times is safe
-- **Fail fast with actionable messages:** Errors tell the user what to do, not just what went wrong
-- **No secrets in output:** Tokens are never displayed, even in verbose mode
+**Behavioral rules:** JSON order follows config file order. Commands are idempotent. Errors tell the user what to do, not just what went wrong. Tokens are never displayed.
 
 ---
 
-## 9. GUI Architecture
+## 8. GUI architecture
 
 The GUI is a Wails v2 desktop app with a Svelte frontend. The Go backend (`cmd/gui/app.go`) exposes methods that the frontend calls via auto-generated TypeScript bindings. The frontend bridge is in `cmd/gui/frontend/src/lib/bridge.ts`.
 
@@ -393,7 +337,7 @@ See the [GUI Guide](gui-guide.md) for the user-facing walkthrough.
 
 ---
 
-## 10. Security
+## 9. Security
 
 - **Tokens are NEVER stored in the JSON config file.** PATs live in git-credential-store format files (`~/.config/gitbox/credentials/<key>`) with 0600 permissions. GCM OAuth tokens live in the OS credential store (Windows Credential Manager, macOS Keychain, Linux Secret Service) managed by Git Credential Manager.
 - **The config file contains no secrets** — only URLs, usernames, folder paths, and preference flags.
@@ -407,7 +351,7 @@ See the [GUI Guide](gui-guide.md) for the user-facing walkthrough.
 
 ---
 
-## 11. Diagrams
+## 10. Diagrams
 
 Architecture diagrams are available in `docs/diagrams/` as editable `.drawio` files:
 

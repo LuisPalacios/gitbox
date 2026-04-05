@@ -142,7 +142,7 @@ func findFixture() (string, error) {
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			return "", fmt.Errorf("test-gitbox.json not found (walk up from cwd to root).\n" +
-				"  Create it: cp test-gitbox.json.example test-gitbox.json\n" +
+				"  Create it: cp json/test-gitbox.json.example test-gitbox.json\n" +
 				"  See docs/testing.md for setup instructions")
 		}
 		dir = parent

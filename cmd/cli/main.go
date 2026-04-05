@@ -68,9 +68,8 @@ func init() {
 	reconfigureCmd.GroupID = "additional"
 	identityCmd.GroupID = "additional"
 	scanCmd.GroupID = "additional"
-	migrateCmd.GroupID = "additional"
 	versionCmd.GroupID = "additional"
-	rootCmd.AddCommand(reconfigureCmd, identityCmd, scanCmd, migrateCmd, versionCmd, tokenDeprecatedCmd)
+	rootCmd.AddCommand(reconfigureCmd, identityCmd, scanCmd, versionCmd, tokenDeprecatedCmd)
 
 	// Assign the auto-generated help command to the additional group.
 	rootCmd.SetHelpCommandGroupID("additional")

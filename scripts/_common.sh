@@ -29,7 +29,7 @@ die()    { printf '%berror:%b %s\n' "$R" "$N" "$*" >&2; exit 1; }
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="$REPO_ROOT/build"
 FIXTURE="$REPO_ROOT/test-gitbox.json"
-FIXTURE_EXAMPLE="$REPO_ROOT/test-gitbox.json.example"
+FIXTURE_EXAMPLE="$REPO_ROOT/json/test-gitbox.json.example"
 
 # ---------------------------------------------------------------------------
 # OS detection
@@ -59,7 +59,7 @@ LOCAL_OS="$(detect_local_os)"
 load_env() {
     local env_file="$REPO_ROOT/.env"
     if [[ ! -f "$env_file" ]]; then
-        die ".env not found.\n  Copy .env.example to .env and fill in your SSH hosts.\n  See docs/multiplatform.md for setup instructions."
+        die ".env not found.\n  Copy docs/.env.example to .env and fill in your SSH hosts.\n  See docs/multiplatform.md for setup instructions."
     fi
     set -a
     # shellcheck disable=SC1090

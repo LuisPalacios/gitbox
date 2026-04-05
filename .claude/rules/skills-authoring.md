@@ -61,7 +61,7 @@ description: What it does and WHEN to use it. Third person only.
 See [REFERENCE.md](REFERENCE.md) for details
 ```
 
-### Frontmatter Rules
+### Frontmatter rules
 
 | Field | Rules |
 | ----- | ----- |
@@ -70,7 +70,7 @@ See [REFERENCE.md](REFERENCE.md) for details
 
 **Reserved words (avoid):** anthropic, claude
 
-### Naming Conventions
+### Naming conventions
 
 **Prefer gerund form:** `processing-pdfs`, `analyzing-data`, `testing-code`
 
@@ -78,7 +78,7 @@ See [REFERENCE.md](REFERENCE.md) for details
 
 **Avoid:** `helper`, `utils`, `tools`, vague names
 
-### Effective Descriptions
+### Effective descriptions
 
 ```yaml
 # GOOD - specific, includes triggers
@@ -122,124 +122,6 @@ Skills can be invoked two ways:
 
 Both methods work. Use `disable-model-invocation: true` in frontmatter to allow only explicit slash commands.
 
-## Workflows
-
-### Use Checklists for Complex Tasks
-
-```markdown
-## Workflow
-
-Copy this checklist:
-```
-
-- [ ] Step 1: Configure
-- [ ] Step 2: Build
-- [ ] Step 3: Test
-- [ ] Step 4: Verify
-
-```text
-
-**Step 1: Configure**
-[Instructions...]
-```
-
-### Implement Feedback Loops
-
-Run validator -> fix errors -> repeat
-
-```markdown
-1. Make changes
-2. **Validate immediately**: `python validate.py`
-3. If validation fails, fix and re-validate
-4. **Only proceed when validation passes**
-```
-
-## Content Guidelines
-
-### Avoid Time-Sensitive Info
-
-```markdown
-# BAD
-If doing this before August 2025, use old API.
-
-# GOOD
-## Current method
-Use v2 API...
-
-## Old patterns (deprecated)
-<details>Legacy v1 API...</details>
-```
-
-### Consistent Terminology
-
-Pick ONE term and use it everywhere:
-
-- Always "API endpoint" (not mix with "URL", "route", "path")
-- Always "field" (not mix with "box", "element")
-
-## Common Patterns
-
-### Template Pattern
-
-```markdown
-## Output format
-
-ALWAYS use this structure:
-
-# [Title]
-## Summary
-[Overview]
-## Findings
-- Finding 1
-- Finding 2
-```
-
-### Conditional Workflow
-
-```markdown
-1. Determine type:
-   - **Creating new?** -> Follow "Creation workflow"
-   - **Editing existing?** -> Follow "Editing workflow"
-```
-
-## Scripts & Code
-
-### Solve, Don't Punt
-
-```python
-# GOOD - handles errors
-def process_file(path):
-    try:
-        return open(path).read()
-    except FileNotFoundError:
-        print(f"Creating {path}")
-        return ""
-
-# BAD - punts to Claude
-def process_file(path):
-    return open(path).read()  # Just fails
-```
-
-### Document Constants
-
-```python
-# GOOD
-REQUEST_TIMEOUT = 30  # HTTP requests typically complete within 30s
-
-# BAD
-TIMEOUT = 47  # Magic number, no explanation
-```
-
-### Make Execution Intent Clear
-
-```markdown
-# Execute the script
-Run `python scripts/build.py` to compile.
-
-# Read as reference
-See `scripts/build.py` for the build algorithm.
-```
-
 ## Anti-Patterns
 
 | Don't | Do Instead |
@@ -253,7 +135,7 @@ See `scripts/build.py` for the build algorithm.
 
 ## Checklist
 
-### Before Publishing
+### Before publishing
 
 - [ ] Description is specific and includes triggers
 - [ ] SKILL.md < 500 lines
@@ -264,7 +146,7 @@ See `scripts/build.py` for the build algorithm.
 - [ ] Workflows have clear steps
 - [ ] Tested with real scenarios
 
-### For Skills with Code
+### For skills with code
 
 - [ ] Scripts handle errors explicitly
 - [ ] No magic constants

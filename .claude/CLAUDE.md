@@ -6,9 +6,28 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 A multi-component project for managing Git multi-account environments across providers (GitHub, GitLab, Gitea, Forgejo, Bitbucket).
 
-1. **Go app** (`cmd/cli/`, `cmd/gui/`, `pkg/`) — CLI + TUI + Wails GUI sharing a Go library. In development.
-2. **`legacy/git-config-repos/`** — Bash script for automated repo configuration. Production, power users. UNTOUCHED.
-3. **`legacy/git-status-pull/`** — Bash script for sync status and auto-pull. Production, power users. UNTOUCHED.
+**Go app** (`cmd/cli/`, `cmd/gui/`, `pkg/`) — CLI + TUI + Wails GUI sharing a Go library.
+
+## Core Principles
+
+- **Simplicity First**: Make every change as simple as possible. Impact minimal code.
+- **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
+- **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
+- **Skills first**: Check if a skill exists before manual work
+- **Self-improve**: When a skill fails, update its SKILL.md with the fix
+- **Zero entropy**: Never create files outside defined structure
+
+## Documentation style
+
+When writing docs, READMEs, or code comments, follow these rules:
+
+- **First person singular** ("I install", "I use"), unless explaining to others ("Install from releases page")
+- **Sentence-case headings** — only capitalize the first word
+- **Hyphens (`-`)** for unordered lists, never asterisks
+- **Language tags** on every fenced code block
+- **Active voice**, direct phrasing, no AI filler ("Let's dive in", "In conclusion")
+- **Prose over tables** for concepts; tables only for CLI references or pure data
+- No passive voice, no long paragraphs, no placeholder TODOs
 
 ## Repository layout
 
@@ -32,19 +51,16 @@ docs/
   developer-guide.md      Build instructions, contributing
   architecture.md         Technical design
   credentials.md          Credential setup guide
-  testing.md              Test levels, fixture format, integration setup
-  testing-checklist.md    Pre-PR and release verification matrix
+  testing.md              Test levels, fixture format, pre-PR and release checklists
+  testing-reference.md    Test inventory, harness internals
   completion.md           Shell completion docs
-  migration.md            v1→v2 migration guide
   diagrams/               Architecture diagrams
 assets/                   Icons, logo, screenshot, VHS tape files
 .githooks/pre-push        Pre-push hook (go vet + unit tests)
-legacy/
-  git-config-repos/       Shell script sub-project (UNTOUCHED)
-  git-status-pull/        Shell script sub-project (UNTOUCHED)
 .github/workflows/ci.yml  CI: build, test, release
-gitbox.schema.json        v2 JSON Schema
-gitbox.jsonc              v2 annotated example (Spanish comments)
+json/
+  gitbox.schema.json      v2 JSON Schema
+  gitbox.jsonc            v2 annotated example (Spanish comments)
 go.mod / go.sum           Go module
 README.md                 Project overview
 ```
@@ -124,59 +140,33 @@ Every `exec.Command` in the GUI binary (`cmd/gui/`) **MUST** call `git.HideWindo
 
 Use VHS (`charmbracelet/vhs`) to record terminal demo GIFs. Tape files live in `assets/`. See [developer-guide.md](docs/developer-guide.md) for details.
 
-## Shell scripts
-
-### `legacy/git-config-repos/git-config-repos.sh`
-
-Reads `~/.config/git-config-repos/git-config-repos.json` and for each configured account/repo: verifies credentials, clones repos that don't exist, and fixes configuration of existing ones. Supports GCM, SSH, and token credential types per-repo.
-
-```bash
-./legacy/git-config-repos/git-config-repos.sh
-./legacy/git-config-repos/git-config-repos.sh --dry-run
-```
-
-### `legacy/git-status-pull/git-status-pull.sh`
-
-Scans all `.git` directories from CWD and reports sync status. Can auto-pull if safe.
-
-```bash
-./legacy/git-status-pull/git-status-pull.sh
-./legacy/git-status-pull/git-status-pull.sh -v pull
-```
-
-## Platform detection
-
-Both scripts share the same detection block: `PLATFORM` (`wsl2` | `gitbash` | `macos` | `linux`) and `cmdgit` (`git.exe` on WSL2, `git` elsewhere).
-
 ## Config format
 
-**v1** (shell scripts): `~/.config/git-config-repos/git-config-repos.json` — `accounts`, string booleans, `gcm`/`ssh` only.
+Config file: `~/.config/gitbox/gitbox.json` — `accounts` + `sources`, real booleans, `gcm`/`ssh`/`token` credential types, nested SSH/GCM objects, `provider` field, `version: 2`. Optional `mirrors` section for push/pull mirror configuration between providers.
 
-**v2** (Go app): `~/.config/gitbox/gitbox.json` — `sources`, real booleans, `gcm`/`ssh`/`token`, nested SSH/GCM objects, `provider` field, `version: 2`. Optional `mirrors` section for push/pull mirror configuration between providers.
-
-## Workflow Orchestration
+## Workflow orchestration
 
 **Priority order when rules conflict**: Correctness > Simplicity > Elegance.
 
-### 1. Plan First
+### 1. Plan first
 
 - Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
 - If something goes sideways, STOP and re-plan immediately
 - Write detailed specs upfront to reduce ambiguity
 
-### 2. Subagent Strategy
+### 2. Subagent strategy
 
 - Use subagents liberally to keep main context window clean
 - Offload research, exploration, and parallel analysis to subagents
 - One task per subagent for focused execution
 
-### 3. Verify Before Done
+### 3. Verify before done
 
 - Never mark a task complete without proving it works
 - Test scripts with `bash -n` (syntax check) and `shellcheck` when available
 - Go: `go vet ./...` + run the relevant test commands (see Testing section below)
 - Validate config templates render correctly before committing
-- After any command that writes config files, read the actual file on disk (`cat` via SSH or locally) — never trust command output alone
+- After any command that writes config files, read the actual file on disk — never trust command output alone
 
 ### Testing
 
@@ -210,7 +200,7 @@ The project has a comprehensive test suite. Read `.claude/context/testing-patter
 
 **Pre-push hook:** The repo includes `.githooks/pre-push` which runs `go vet` + `go test -short` before every push. Activate with `git config core.hooksPath .githooks`.
 
-**Test plan:** The full pre-PR and release verification workflow is documented in `docs/testing-checklist.md`. If using Claude Code, the `/test-plan` skill automates the automated steps and guides through interactive ones.
+**Test plan:** The full pre-PR and release verification workflow is documented in `docs/testing.md`. If using Claude Code, the `/test-plan` skill automates the automated steps and guides through interactive ones.
 
 ### Update stakeholder documents
 
@@ -219,21 +209,21 @@ A feature is not complete until all affected documents are updated. Review this 
 | Change type | Documents to review |
 | --- | --- |
 | New feature / behavior change | `docs/credentials.md`, `docs/cli-guide.md`, `docs/reference.md`, `docs/gui-guide.md` |
-| New/changed tests | `docs/testing.md` (inventory), `.claude/context/testing-patterns.md` (patterns) |
-| New tooling (skill, hook, script) | `docs/developer-guide.md`, `docs/testing-checklist.md` |
+| New/changed tests | `docs/testing.md`, `.claude/context/testing-patterns.md` |
+| New tooling (skill, hook, script) | `docs/developer-guide.md` |
 | Repo structure change | `.claude/CLAUDE.md` (repository layout), `docs/README.md` (index) |
 | All of the above | `.claude/CLAUDE.md` (relevant sections) |
 
-### 4. Autonomous Bug Fixing
+### 4. Autonomous bug fixing
 
 - When given a bug report: just fix it
 - Point at logs, errors, failing tests — then resolve them
 
-### 5. Learn from Corrections
+### 5. Learn from corrections
 
 - After corrections from the user: save a `feedback` memory via the memory system
 
-## Git Commits
+## Git commits
 
 - **Never** include `Co-Authored-By: Claude` or any Claude attribution in commit messages
 - **Never** modify git config for author/committer
@@ -243,15 +233,15 @@ A feature is not complete until all affected documents are updated. Review this 
 
 The developer workstation can be any OS. Remote machines are available via SSH for cross-platform testing. Every build-and-test cycle MUST cover all three platforms.
 
-Connection details are in `.env` (gitignored). Copy `.env.example` to `.env` and fill in your SSH hosts. See `docs/multiplatform.md` for the full setup guide.
+Connection details are in `.env` (gitignored). Copy `docs/.env.example` to `.env` and fill in your SSH hosts. See `docs/multiplatform.md` for the full setup guide.
 
-| Platform | Env var          | Arch  | GOOS/GOARCH     |
-| -------- | ---------------- | ----- | --------------- |
-| Windows  | `SSH_WIN_HOST`   | amd64 | `windows/amd64` |
-| macOS    | `SSH_MAC_HOST`   | arm64 | `darwin/arm64`  |
-| Linux    | `SSH_LINUX_HOST` | amd64 | `linux/amd64`   |
+| Platform | Env var | Arch | GOOS/GOARCH |
+| --- | --- | --- | --- |
+| Windows | `SSH_WIN_HOST` | amd64 | `windows/amd64` |
+| macOS | `SSH_MAC_HOST` | arm64 | `darwin/arm64` |
+| Linux | `SSH_LINUX_HOST` | amd64 | `linux/amd64` |
 
-### Build-Test-Deploy cycle
+### Build-test-deploy cycle
 
 Scripts in `scripts/` automate the full cycle:
 
@@ -287,11 +277,3 @@ ls -t ~/Desktop/*.png | head -1
 ```
 
 Read the file with the Read tool (it supports images). Then analyze the TUI output and report what you see.
-
-## Core Principles
-
-- **Simplicity First**: Make every change as simple as possible
-- **No Laziness**: Find root causes. No temporary fixes.
-- **Minimal Impact**: Changes should only touch what's necessary
-- **Skills first**: Check if a skill exists before doing work manually
-- **Zero entropy**: Never create files outside defined structure
