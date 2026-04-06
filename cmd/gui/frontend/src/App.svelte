@@ -1463,7 +1463,11 @@
     <!-- Account pills -->
     {#each Object.entries($accounts) as [key, acct]}
       {@const stats = $accountStats[key] || { total: 0, synced: 0, issues: 0 }}
-      <button class="compact-acct" class:compact-acct-expanded={compactExpanded[key]} on:click={() => toggleCompactAcct(key)}>
+      {@const compactCred = (credStatuses[key] || {primary: 'unknown'}).primary}
+      <button class="compact-acct" class:compact-acct-expanded={compactExpanded[key]}
+        class:compact-acct-cred-err={compactCred === 'none' || compactCred === 'error'}
+        class:compact-acct-cred-warn={compactCred === 'warning'}
+        on:click={() => toggleCompactAcct(key)}>
         <svg viewBox="0 0 36 36" class="compact-acct-ring">
           <circle cx="18" cy="18" r="14" fill="none" stroke="var(--ring-bg)" stroke-width="3"/>
           <circle cx="18" cy="18" r="14" fill="none"
@@ -3211,6 +3215,14 @@
   }
   .compact-acct:hover { background: var(--bg-hover); }
   .compact-acct-expanded { background: var(--bg-hover); }
+  .compact-acct-cred-err { background: #3a161b; }
+  .compact-acct-cred-err:hover { background: #4a1c23; }
+  :global([data-theme="light"]) .compact-acct-cred-err { background: #fee2e2; }
+  :global([data-theme="light"]) .compact-acct-cred-err:hover { background: #fcd5d5; }
+  .compact-acct-cred-warn { background: #3a240e; }
+  .compact-acct-cred-warn:hover { background: #4a2e12; }
+  :global([data-theme="light"]) .compact-acct-cred-warn { background: #feebd0; }
+  :global([data-theme="light"]) .compact-acct-cred-warn:hover { background: #fde0ba; }
   .compact-acct-ring { width: 24px; height: 24px; flex-shrink: 0; }
   .compact-acct-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
   .compact-acct-name {
