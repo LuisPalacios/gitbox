@@ -229,6 +229,16 @@ A feature is not complete until all affected documents are updated. Review this 
 - **Never** modify git config for author/committer
 - Commits should appear as the user's own work
 
+## GitHub CLI (`gh`) account
+
+This repo is owned by the `LuisPalacios` GitHub account. Before running any `gh` command (PR, issue, release, etc.), **always** switch to the correct account:
+
+```bash
+gh auth switch --user LuisPalacios
+```
+
+Do this at the start of any `gh` workflow — do not assume the active account is correct.
+
 ## Multiplatform testing
 
 The developer workstation can be any OS. Remote machines are available via SSH for cross-platform testing. Every build-and-test cycle MUST cover all three platforms.
