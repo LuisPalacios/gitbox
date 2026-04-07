@@ -13,7 +13,11 @@ export function AddMirrorRepo(arg1:string,arg2:string,arg3:string,arg4:string):P
 
 export function ApplyDiscoveredMirrors():Promise<void>;
 
+export function ApplyUpdate():Promise<void>;
+
 export function ChangeCredentialType(arg1:string,arg2:string):Promise<void>;
+
+export function CheckForUpdate():Promise<void>;
 
 export function CheckGlobalIdentity():Promise<identity.GlobalIdentityStatus>;
 

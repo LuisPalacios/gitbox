@@ -93,6 +93,11 @@
   // ── Global identity warning ──
   let globalIdentityWarn: { hasName: boolean; hasEmail: boolean; name: string; email: string } | null = null;
 
+  // ── Update banner ──
+  let updateInfo: { available: boolean; current: string; latest: string; url: string } | null = null;
+  let updateApplying = false;
+  let updateDone = false;
+
   async function checkGlobalIdentity() {
     try {
       const gs = await bridge.checkGlobalIdentity();
@@ -1382,6 +1387,15 @@
       checkAllMirrorStatus();
     });
 
+    events.on('update:available', (info: any) => {
+      updateInfo = info;
+    });
+
+    events.on('update:done', (ver: string) => {
+      updateApplying = false;
+      updateDone = true;
+    });
+
     // Check if config failed to parse (file exists but is broken/unsupported).
     const loadError = await bridge.getConfigLoadError();
     if (loadError) {
@@ -1641,6 +1655,25 @@
       <button class="btn-gear" on:click={() => showSettings = !showSettings} title="Settings" class:active-gear={showSettings}>&#9881;</button>
     </div>
   </header>
+
+  <!-- ── UPDATE BANNER ── -->
+  {#if updateInfo?.available && !updateDone}
+    <div class="update-banner" transition:slide={{ duration: 150 }}>
+      <span>{updateInfo.latest} available</span>
+      {#if updateApplying}
+        <span class="update-status">Updating...</span>
+      {:else}
+        <button class="update-btn" on:click={() => { updateApplying = true; bridge.applyUpdate().catch(() => { updateApplying = false; }); }}>Update</button>
+        <button class="update-dismiss" on:click={() => updateInfo = null} title="Dismiss">&#10005;</button>
+      {/if}
+    </div>
+  {/if}
+  {#if updateDone}
+    <div class="update-banner update-done" transition:slide={{ duration: 150 }}>
+      <span>Updated! Restart to apply.</span>
+      <button class="update-btn" on:click={() => window.close()}>Quit</button>
+    </div>
+  {/if}
 
   <!-- ── GLOBAL IDENTITY WARNING ── -->
   {#if globalIdentityWarn}
@@ -2846,6 +2879,21 @@
   .app { max-width: 860px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
   .topbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--border); }
+  .update-banner {
+    display: flex; align-items: center; gap: 8px; padding: 6px 24px;
+    background: #1a3a2a; border-bottom: 1px solid #2d5a3d; font-size: 12px; color: #8fefb0;
+  }
+  :global([data-theme="light"]) .update-banner { background: #e8f5e9; border-color: #c8e6c9; color: #2e7d32; }
+  .update-banner.update-done { background: #1a2a3a; border-color: #2d4a5d; color: #8fd0ef; }
+  :global([data-theme="light"]) .update-banner.update-done { background: #e3f2fd; border-color: #bbdefb; color: #1565c0; }
+  .update-btn {
+    padding: 2px 10px; border-radius: 4px; border: 1px solid currentColor;
+    background: transparent; color: inherit; cursor: pointer; font-size: 11px; font-weight: 600;
+  }
+  .update-btn:hover { opacity: 0.8; }
+  .update-dismiss { background: none; border: none; color: inherit; cursor: pointer; margin-left: auto; opacity: 0.6; font-size: 12px; }
+  .update-dismiss:hover { opacity: 1; }
+  .update-status { font-style: italic; opacity: 0.8; }
   .brand { display: flex; align-items: center; gap: 8px; }
   .logo-svg { width: 26px; height: 26px; }
   .title { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }

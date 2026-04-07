@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=gitbox
+Comment=Manage Git multi-account environments
+Exec=GitboxApp
+Icon=gitbox
+Type=Application
+Categories=Development;
+Terminal=false
