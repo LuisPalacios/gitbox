@@ -44,20 +44,25 @@ pkg/                      Shared Go library
   provider/               Provider API clients + mirror interfaces (GitHub, GitLab, Gitea, Forgejo)
   mirror/                 Push/pull mirror setup, status, guides
   status/                 Clone status checking
+  update/                 Auto-update: version check, download, self-replace
 docs/
   cli-guide.md            CLI quick start
   gui-guide.md            GUI guide
   reference.md            Detailed command & config reference
   developer-guide.md      Build instructions, contributing
   architecture.md         Technical design
+  macos-signing.md        macOS code signing setup
   credentials.md          Credential setup guide
   testing.md              Test levels, fixture format, pre-PR and release checklists
   testing-reference.md    Test inventory, harness internals
   completion.md           Shell completion docs
   diagrams/               Architecture diagrams
 assets/                   Icons, logo, screenshot, VHS tape files
+scripts/
+  installer.iss            Windows Inno Setup installer script
+  appimage/                Linux AppImage support files (desktop, AppRun)
 .githooks/pre-push        Pre-push hook (go vet + unit tests)
-.github/workflows/ci.yml  CI: build, test, release
+.github/workflows/ci.yml  CI: build, test, release (+ installers, DMGs, AppImage)
 json/
   gitbox.schema.json      v2 JSON Schema
   gitbox.jsonc            v2 annotated example (Spanish comments)
@@ -181,6 +186,7 @@ The project has a comprehensive test suite. Read `.claude/context/testing-patter
 | `cmd/cli/` (CLI commands) | `go test ./cmd/cli/` |
 | Credential logic (`pkg/credential/`) | `go test ./pkg/credential/ ./cmd/cli/tui/ ./cmd/cli/` |
 | Config logic (`pkg/config/`) | `go test ./pkg/config/ ./cmd/cli/tui/ ./cmd/cli/` |
+| Update logic (`pkg/update/`) | `go test ./pkg/update/` |
 | Unsure what's affected | `go test ./...` |
 
 **Test levels:**

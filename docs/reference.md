@@ -509,6 +509,21 @@ See [completion.md](completion.md) for detailed setup instructions.
 
 ---
 
+## Auto-update
+
+Gitbox can check for and apply updates from GitHub releases.
+
+```bash
+gitbox update           # check and install interactively
+gitbox update --check   # just check, no install (exit code 0 = up to date)
+```
+
+The updater downloads the platform-specific artifact, verifies the SHA256 checksum (if `checksums.sha256` is present in the release), and replaces the binaries in place. On Windows, the running binary is renamed to `.old` and cleaned up on the next startup.
+
+The GUI checks for updates automatically once per 24 hours and shows a banner when a newer version is available.
+
+---
+
 ## Configuration file reference
 
 The config lives at `~/.config/gitbox/gitbox.json`. See [gitbox.jsonc](../json/gitbox.jsonc) for a fully annotated example.
@@ -526,6 +541,9 @@ The config lives at `~/.config/gitbox/gitbox.json`. See [gitbox.jsonc](../json/g
 | `credential_gcm.helper`           | string | No       | Credential helper. Typically `"manager"`.                                |
 | `credential_gcm.credential_store` | string | No       | `"wincredman"`, `"keychain"`, or `"secretservice"`.                      |
 | `credential_token`                | object | No       | Token/PAT platform defaults. Presence indicates token auth is available. |
+| `editors`                         | array  | No       | Code editors for the "Open in" menu. Auto-populated on first launch.     |
+| `editors[].name`                  | string | Yes      | Display name (e.g. `"VS Code"`).                                         |
+| `editors[].command`               | string | Yes      | Full path or command name (e.g. `"C:\\...\\code.cmd"`).                   |
 
 ### Account
 

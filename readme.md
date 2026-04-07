@@ -72,25 +72,35 @@ Gitbox ships as two binaries built from the same Go library (`pkg/`). The CLI an
 > [!WARNING]
 > **Gitbox is not signed or notarized.** The binaries are not code-signed, so macOS Gatekeeper, Windows SmartScreen, and similar OS protections will flag them. The bootstrap installer removes these flags automatically (`xattr -cr` on macOS, `Unblock-File` on Windows) so the binaries can run. **You are explicitly trusting unsigned code when you do this.** I recommend you audit the [source code](https://github.com/LuisPalacios/gitbox) and the [bootstrap script](scripts/bootstrap.sh) before running anything. This project is MIT-licensed open source — inspect it, build it yourself, or don't use it at all.
 
-### Automatic Install
+### Install with native installer
 
-The fastest way to install on macOS, Linux, or Windows (Git Bash) — one command handles the download, extraction, quarantine flags, and PATH setup:
+Download the installer for your platform from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page:
+
+| Platform | Installer | What it does |
+| --- | --- | --- |
+| Windows | `gitbox-win-amd64-setup.exe` | Installs to Program Files, adds to PATH, creates Start Menu shortcuts |
+| macOS | `gitbox-macos-arm64.dmg` / `gitbox-macos-amd64.dmg` | Drag GitboxApp to Applications, CLI included inside the DMG |
+| Linux | `gitbox-linux-amd64.AppImage` | Self-contained, runs directly — no installation needed |
+
+Each release also includes a `checksums.sha256` file for verifying downloads.
+
+Once installed, gitbox checks for updates automatically (once per day). Run `gitbox update` from the CLI or click "Update" in the GUI banner when a new version is available.
+
+### Alternative: bootstrap script
+
+For macOS, Linux, or Windows (Git Bash) — a single command that downloads, extracts, and sets up PATH:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
 ```
 
-> The installer supports additional options, add ` --help` at the end to view them
+This installs to `~/bin/` (macOS GUI goes to `/Applications/`). Run with `--help` for options. Useful for headless servers or CI environments where the native installer is not practical.
 
-Note: On macOS the CLI goes to `~/bin/gitbox` and the GUI to `/Applications/GitboxApp.app`. On Linux and Windows both go to `~/bin/`. The script adds `~/bin` to your PATH if needed.
+### Manual install (zip)
 
-### Manual install
+The [Releases](https://github.com/LuisPalacios/gitbox/releases) page also has platform zips (`gitbox-<platform>-<arch>.zip`) containing the raw binaries. Extract and place them wherever you like. The app is not signed, so the OS will complain the first time.
 
-I prefer the previous automatic installation method, but you can also install it manually by grabing binaries from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page. Each release bundles CLI/TUI and GUI for all platforms. The app is not signed, so the OS will complain the first time.
-
-On macOS `xattr -cr /Applications/GitboxApp.app && xattr -cr ~/bin/gitbox && chmod +x ~/bin/gitbox`. On Windows, SmartScreen shows "Windows protected your PC" on first launch, so click **More info** → **Run anyway**. On Linux just make the binaries executable `chmod +x gitbox GitboxApp`
-
-Example of manual install on macOS:
+On macOS: `xattr -cr GitboxApp.app && xattr -cr gitbox && chmod +x gitbox`. On Windows: SmartScreen shows "Windows protected your PC" — click **More info** → **Run anyway**. On Linux: `chmod +x gitbox GitboxApp`.
 
 <p align="center">
   <img src="assets/screenshot-mac.png" alt="Gitbox on macOS showing GUI and terminal side by side" width="800" />

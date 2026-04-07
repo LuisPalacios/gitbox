@@ -136,6 +136,10 @@ Manages per-repo git identity (`user.name`, `user.email`) with a resolution chai
 
 `EnsureRepoIdentity()` checks each clone's local git config and fixes identity if it diverges from the expected values. `CheckGlobalIdentity()` and `RemoveGlobalIdentity()` handle global `~/.gitconfig` identity — gitbox encourages removing global identity so that per-repo identity (set during clone/reconfigure) is always authoritative.
 
+### pkg/update — Auto-update
+
+Provides version checking and self-update via GitHub Releases. `CheckLatest()` queries the GitHub API (throttled to once per 24h). `DownloadRelease()` fetches the platform-specific artifact and verifies its SHA256 checksum. `Apply()` extracts the zip and replaces binaries in place — on Unix via atomic rename, on Windows by renaming the running binary to `.old` first (`CleanupOldBinary()` removes stale `.old` files on the next startup).
+
 ### pkg/mirror — Repository Mirroring
 
 Handles push and pull mirror setup, status checking, and manual setup guides. Mirrors keep backup copies of repos on another provider without cloning locally.

@@ -222,13 +222,33 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-CI injects `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into both CLI and GUI builds. The release will contain one ZIP per platform with both CLI and GUI binaries:
+CI injects `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into both CLI and GUI builds.
 
-- `gitbox-win-amd64.zip` — `gitbox.exe` + `GitboxApp.exe`
-- `gitbox-macos-arm64.zip` — `gitbox` + `GitboxApp.app`
-- `gitbox-linux-amd64.zip` — `gitbox` + `GitboxApp`
+### Release assets
 
-> **macOS note:** The GUI app is not codesigned. Users must run `xattr -cr gitbox.app` after downloading.
+Each release produces the following artifacts:
+
+| Asset | Contents |
+| --- | --- |
+| `gitbox-win-amd64.zip` | `gitbox.exe` + `GitboxApp.exe` |
+| `gitbox-win-amd64-setup.exe` | Windows Inno Setup installer (PATH, Start Menu) |
+| `gitbox-macos-arm64.zip` | `gitbox` + `GitboxApp.app` |
+| `gitbox-macos-arm64.dmg` | macOS disk image (drag to Applications) |
+| `gitbox-macos-amd64.zip` | `gitbox` + `GitboxApp.app` |
+| `gitbox-macos-amd64.dmg` | macOS disk image (drag to Applications) |
+| `gitbox-linux-amd64.zip` | `gitbox` + `GitboxApp` |
+| `gitbox-linux-amd64.AppImage` | Self-contained Linux app (CLI + GUI) |
+| `checksums.sha256` | SHA256 hashes for all artifacts |
+
+The Windows installer is built with Inno Setup (`scripts/installer.iss`). macOS DMGs are built with `create-dmg`. The Linux AppImage is built with `appimagetool` using the support files in `scripts/appimage/`.
+
+### macOS code signing
+
+macOS DMGs are currently **unsigned**. Code signing and notarization steps are present in the CI workflow but gated on the `APPLE_CERTIFICATE` secret. See [macos-signing.md](macos-signing.md) for setup instructions. Until signing is configured, macOS users should use the bootstrap script or ZIP downloads, which handle quarantine removal automatically.
+
+### Auto-update
+
+The `pkg/update/` package provides version checking and self-update capabilities. Both the CLI (`gitbox update`) and GUI (background check + banner) use it. The updater downloads the platform-specific artifact from GitHub Releases, verifies the SHA256 checksum, and replaces the binaries in place.
 
 ---
 

@@ -17,15 +17,17 @@ This guide walks you through the complete workflow — from a fresh install to a
 - **gitbox** binary — install with the one-liner or [download manually](https://github.com/LuisPalacios/gitbox/releases) or [build from source](developer-guide.md)
 - For GCM accounts: [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager) installed. On Linux, GCM browser-based OAuth also needs a display server (X11 or Wayland) — see [credentials.md](credentials.md) for headless alternatives.
 
-### Installing (macOS, Linux, Git Bash)
+### Installing
 
-One command handles download, extraction, quarantine flags, and PATH setup:
+Download the native installer for your platform from [Releases](https://github.com/LuisPalacios/gitbox/releases): `.exe` setup for Windows, `.dmg` for macOS, `.AppImage` for Linux. See the [README](../README.md) for details.
+
+Alternatively, use the bootstrap script (macOS, Linux, Git Bash):
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
 ```
 
-Use `--cli-only` to skip the GUI, `--version <tag>` for a specific release, or `--prefix <dir>` to change the install directory (default `~/bin`). See the [README](../README.md) for more examples.
+Use `--cli-only` to skip the GUI, `--version <tag>` for a specific release, or `--prefix <dir>` to change the install directory (default `~/bin`).
 
 ## Step 1: Initialize
 
@@ -282,6 +284,17 @@ gitbox account credential setup github-personal --token
 ```
 
 Token and SSH accounts already have a portable PAT — no extra setup needed. See [credentials.md](credentials.md) for details.
+
+## Updating gitbox
+
+Gitbox checks for updates automatically (once per day in the GUI). From the CLI:
+
+```bash
+gitbox update --check   # just check, no install
+gitbox update           # check and install interactively
+```
+
+The updater downloads the release from GitHub, verifies the SHA256 checksum, and replaces the binaries in place. On Windows, a restart is needed after the update.
 
 ## What's next
 
