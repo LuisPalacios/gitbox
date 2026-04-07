@@ -3,6 +3,7 @@ package credential
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,6 +19,7 @@ const (
 	StatusChecking               // check in progress
 	StatusOK                     // working
 	StatusWarning                // partially configured (e.g., SSH key exists but connection fails)
+	StatusOffline                // server unreachable (network error, DNS failure, timeout)
 	StatusError                  // broken or missing
 	StatusNone                   // not configured (optional: user hasn't opted in)
 )
@@ -33,6 +35,8 @@ func (s Status) String() string {
 		return "ok"
 	case StatusWarning:
 		return "warning"
+	case StatusOffline:
+		return "offline"
 	case StatusError:
 		return "error"
 	case StatusNone:
@@ -205,21 +209,28 @@ func checkSSH(acct config.Account, accountKey string, cfg *config.Config) Status
 	}
 
 	if _, err := TestSSHConnection(sshFolder, acct.SSH.Host); err != nil {
-		r.Primary = StatusWarning
-		r.PrimaryDetail = "SSH key ready, connection failed"
+		if isSSHNetworkError(err) {
+			r.Primary = StatusOffline
+			r.PrimaryDetail = "server unreachable"
+		} else {
+			r.Primary = StatusWarning
+			r.PrimaryDetail = "SSH key ready, connection failed"
+		}
 	} else {
 		r.Primary = StatusOK
 		r.PrimaryDetail = "SSH connection OK"
 	}
 
 	// PAT: optional companion token for discovery/API.
-	r.PAT = checkPATStatus(acct, accountKey, cfg)
-	if r.PAT == StatusOK {
-		r.PATDetail = "PAT verified"
-	} else if r.PAT == StatusWarning {
-		r.PATDetail = "PAT stored but API check failed"
-	} else {
-		r.PATDetail = "no PAT (discovery/API unavailable)"
+	r.PAT, r.PATDetail = checkPATStatus(acct, accountKey, cfg)
+	if r.PATDetail == "" {
+		if r.PAT == StatusOK {
+			r.PATDetail = "PAT verified"
+		} else if r.PAT == StatusWarning {
+			r.PATDetail = "PAT stored but API check failed"
+		} else {
+			r.PATDetail = "no PAT (discovery/API unavailable)"
+		}
 	}
 
 	r.Overall = combineStatus(r.Primary, r.PAT)
@@ -239,8 +250,13 @@ func checkGCM(acct config.Account, accountKey string, cfg *config.Config) Status
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if err := provider.TestAuth(ctx, acct.Provider, acct.URL, token, acct.Username); err != nil {
-			r.Primary = StatusWarning
-			r.PrimaryDetail = fmt.Sprintf("GCM token found but API check failed: %v", err)
+			if provider.IsNetworkError(err) {
+				r.Primary = StatusOffline
+				r.PrimaryDetail = "server unreachable"
+			} else {
+				r.Primary = StatusWarning
+				r.PrimaryDetail = fmt.Sprintf("GCM token found but API check failed: %v", err)
+			}
 		} else {
 			r.Primary = StatusOK
 			r.PrimaryDetail = "GCM verified"
@@ -248,13 +264,15 @@ func checkGCM(acct config.Account, accountKey string, cfg *config.Config) Status
 	}
 
 	// PAT: optional companion token for repo creation/mirrors.
-	r.PAT = checkPATStatus(acct, accountKey, cfg)
-	if r.PAT == StatusOK {
-		r.PATDetail = "PAT verified"
-	} else if r.PAT == StatusWarning {
-		r.PATDetail = "PAT stored but API check failed"
-	} else {
-		r.PATDetail = "no PAT (repo creation unavailable)"
+	r.PAT, r.PATDetail = checkPATStatus(acct, accountKey, cfg)
+	if r.PATDetail == "" {
+		if r.PAT == StatusOK {
+			r.PATDetail = "PAT verified"
+		} else if r.PAT == StatusWarning {
+			r.PATDetail = "PAT stored but API check failed"
+		} else {
+			r.PATDetail = "no PAT (repo creation unavailable)"
+		}
 	}
 
 	r.Overall = combineStatus(r.Primary, r.PAT)
@@ -278,11 +296,19 @@ func checkToken(acct config.Account, accountKey string, cfg *config.Config) Stat
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := provider.TestAuth(ctx, acct.Provider, acct.URL, token, acct.Username); err != nil {
-		r.Primary = StatusWarning
-		r.PrimaryDetail = fmt.Sprintf("API check failed: %v", err)
-		r.PAT = StatusWarning
-		r.PATDetail = r.PrimaryDetail
-		r.Overall = StatusWarning
+		if provider.IsNetworkError(err) {
+			r.Primary = StatusOffline
+			r.PrimaryDetail = "server unreachable"
+			r.PAT = StatusOffline
+			r.PATDetail = r.PrimaryDetail
+			r.Overall = StatusOffline
+		} else {
+			r.Primary = StatusWarning
+			r.PrimaryDetail = fmt.Sprintf("API check failed: %v", err)
+			r.PAT = StatusWarning
+			r.PATDetail = r.PrimaryDetail
+			r.Overall = StatusWarning
+		}
 		return r
 	}
 
@@ -295,24 +321,32 @@ func checkToken(acct config.Account, accountKey string, cfg *config.Config) Stat
 }
 
 // checkPATStatus checks if a companion PAT file exists and works.
-func checkPATStatus(acct config.Account, accountKey string, cfg *config.Config) Status {
+// Returns (status, detail). Detail is empty for StatusOK/StatusNone so the
+// caller can fill in context-appropriate messages.
+func checkPATStatus(acct config.Account, accountKey string, cfg *config.Config) (Status, string) {
 	token, _, err := ResolveToken(acct, accountKey)
 	if err != nil {
-		return StatusNone // not configured (optional)
+		return StatusNone, "" // not configured (optional)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := provider.TestAuth(ctx, acct.Provider, acct.URL, token, acct.Username); err != nil {
-		return StatusWarning // stored but broken
+		if provider.IsNetworkError(err) {
+			return StatusOffline, "server unreachable"
+		}
+		return StatusWarning, "" // stored but broken
 	}
-	return StatusOK
+	return StatusOK, ""
 }
 
 // combineStatus derives the overall status from primary + PAT.
-// Primary errors dominate. PAT=None (optional, not configured) shows as warning.
+// Primary errors/offline dominate. PAT=None (optional, not configured) shows as warning.
 func combineStatus(primary, pat Status) Status {
 	if primary == StatusError {
 		return StatusError
+	}
+	if primary == StatusOffline {
+		return StatusOffline
 	}
 	if primary == StatusWarning {
 		return StatusWarning
@@ -321,6 +355,23 @@ func combineStatus(primary, pat Status) Status {
 	if pat == StatusOK {
 		return StatusOK
 	}
+	if pat == StatusOffline {
+		return StatusOffline
+	}
 	// PAT is None (not configured) or Warning (broken) — show as warning.
 	return StatusWarning
+}
+
+// isSSHNetworkError checks if an SSH connection error indicates a network
+// problem (server unreachable) rather than an authentication issue.
+func isSSHNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "Connection refused") ||
+		strings.Contains(msg, "Connection timed out") ||
+		strings.Contains(msg, "Could not resolve hostname") ||
+		strings.Contains(msg, "No route to host") ||
+		strings.Contains(msg, "Network is unreachable")
 }

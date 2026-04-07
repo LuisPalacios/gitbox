@@ -74,6 +74,20 @@ export namespace config {
 		    return a;
 		}
 	}
+	export class EditorEntry {
+	    name: string;
+	    command: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditorEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.command = source["command"];
+	    }
+	}
 	
 	export class GCMGlobal {
 	    helper?: string;
@@ -141,6 +155,7 @@ export namespace config {
 	    credential_gcm?: GCMGlobal;
 	    // Go type: TokenGlobal
 	    credential_token?: any;
+	    editors?: EditorEntry[];
 	
 	    static createFrom(source: any = {}) {
 	        return new GlobalConfig(source);
@@ -156,6 +171,7 @@ export namespace config {
 	        this.credential_ssh = this.convertValues(source["credential_ssh"], SSHGlobal);
 	        this.credential_gcm = this.convertValues(source["credential_gcm"], GCMGlobal);
 	        this.credential_token = this.convertValues(source["credential_token"], null);
+	        this.editors = this.convertValues(source["editors"], EditorEntry);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -463,6 +479,22 @@ export namespace main {
 	        this.archived = source["archived"];
 	    }
 	}
+	export class EditorInfo {
+	    id: string;
+	    name: string;
+	    command: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditorInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.command = source["command"];
+	    }
+	}
 	export class MirrorCredentialCheck {
 	    accountKey: string;
 	    hasMirrorToken: boolean;
@@ -591,6 +623,24 @@ export namespace main {
 	        this.username = source["username"];
 	        this.name = source["name"];
 	        this.email = source["email"];
+	    }
+	}
+	export class WindowStateDTO {
+	    x: number;
+	    y: number;
+	    width: number;
+	    height: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new WindowStateDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.width = source["width"];
+	        this.height = source["height"];
 	    }
 	}
 

@@ -748,6 +748,9 @@ func (m credentialModel) viewMenu() string {
 	case credential.StatusWarning:
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Palette.AccentWarning)).
 			Render(styles.SymDiverged + " " + credResult.PrimaryDetail))
+	case credential.StatusOffline:
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Palette.CredOffline)).
+			Render(styles.SymOffline + " " + credResult.PrimaryDetail))
 	case credential.StatusError:
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Palette.StatusError)).
 			Render(styles.SymError + " " + credResult.PrimaryDetail))
@@ -768,6 +771,9 @@ func (m credentialModel) viewMenu() string {
 		case credential.StatusWarning:
 			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Palette.AccentWarning)).
 				Render(styles.SymDiverged + " stored but API check failed"))
+		case credential.StatusOffline:
+			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Palette.CredOffline)).
+				Render(styles.SymOffline + " " + credResult.PATDetail))
 		case credential.StatusNone:
 			b.WriteString(m.theme.TextMuted.Render("optional — not stored"))
 		case credential.StatusError:

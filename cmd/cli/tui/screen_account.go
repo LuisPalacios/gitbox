@@ -307,6 +307,10 @@ func (m accountModel) viewDetail() string {
 		b.WriteString(lipgloss.NewStyle().
 			Foreground(lipgloss.Color(m.theme.Palette.AccentWarning)).
 			Render(styles.SymDiverged + " " + credResult.PrimaryDetail))
+	case credential.StatusOffline:
+		b.WriteString(lipgloss.NewStyle().
+			Foreground(lipgloss.Color(m.theme.Palette.CredOffline)).
+			Render(styles.SymOffline + " " + credResult.PrimaryDetail))
 	case credential.StatusError:
 		b.WriteString(lipgloss.NewStyle().
 			Foreground(lipgloss.Color(m.theme.Palette.StatusError)).
@@ -330,6 +334,10 @@ func (m accountModel) viewDetail() string {
 			b.WriteString(lipgloss.NewStyle().
 				Foreground(lipgloss.Color(m.theme.Palette.AccentWarning)).
 				Render(styles.SymDiverged + " stored but API check failed"))
+		case credential.StatusOffline:
+			b.WriteString(lipgloss.NewStyle().
+				Foreground(lipgloss.Color(m.theme.Palette.CredOffline)).
+				Render(styles.SymOffline + " " + credResult.PATDetail))
 		case credential.StatusNone:
 			b.WriteString(lipgloss.NewStyle().
 				Foreground(lipgloss.Color(m.theme.Palette.CredNone)).

@@ -44,6 +44,7 @@ export function applyStatusResults(results: StatusResult[]) {
       } else {
         next[key] = {
           status,
+          path: r.path,
           progress: 0,
           behind: r.behind,
           modified: r.modified,

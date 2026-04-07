@@ -14,7 +14,7 @@ type Palette struct {
 	Diverged, Conflict, StatusError   string
 
 	// Credential badge colors.
-	CredOK, CredWarning, CredError, CredNone string
+	CredOK, CredWarning, CredOffline, CredError, CredNone string
 
 	// Accent colors.
 	AccentLink, AccentSuccess, AccentWarning string
@@ -37,7 +37,7 @@ var Dark = Palette{
 	NotCloned: "#71717a", NoUpstream: "#71717a",
 	Diverged: "#D81E5B", Conflict: "#D81E5B", StatusError: "#D81E5B",
 
-	CredOK: "#61fd5f", CredWarning: "#F07623", CredError: "#D81E5B", CredNone: "#4B95E9",
+	CredOK: "#61fd5f", CredWarning: "#F07623", CredOffline: "#D81E5B", CredError: "#D81E5B", CredNone: "#4B95E9",
 
 	AccentLink: "#5b9bff", AccentSuccess: "#61fd5f", AccentWarning: "#F07623",
 	AccentDanger: "#D81E5B", AccentDangerHover: "#e8305a",
@@ -58,7 +58,7 @@ var Light = Palette{
 	NotCloned: "#52525b", NoUpstream: "#52525b",
 	Diverged: "#be123c", Conflict: "#be123c", StatusError: "#be123c",
 
-	CredOK: "#166534", CredWarning: "#92400e", CredError: "#be123c", CredNone: "#2563eb",
+	CredOK: "#166534", CredWarning: "#92400e", CredOffline: "#be123c", CredError: "#be123c", CredNone: "#2563eb",
 
 	AccentLink: "#2563eb", AccentSuccess: "#166534", AccentWarning: "#c2410c",
 	AccentDanger: "#be123c", AccentDangerHover: "#9f1239",

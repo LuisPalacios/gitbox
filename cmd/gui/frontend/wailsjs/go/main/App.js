@@ -82,6 +82,10 @@ export function DeleteRepo(arg1, arg2) {
   return window['go']['main']['App']['DeleteRepo'](arg1, arg2);
 }
 
+export function DetectEditors() {
+  return window['go']['main']['App']['DetectEditors']();
+}
+
 export function Discover(arg1) {
   return window['go']['main']['App']['Discover'](arg1);
 }
@@ -150,6 +154,10 @@ export function IsFirstRun() {
   return window['go']['main']['App']['IsFirstRun']();
 }
 
+export function IsPositionOnScreen(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['IsPositionOnScreen'](arg1, arg2, arg3, arg4);
+}
+
 export function IsTestMode() {
   return window['go']['main']['App']['IsTestMode']();
 }
@@ -164,6 +172,14 @@ export function ListRemoteRepos(arg1) {
 
 export function OpenFileInEditor(arg1) {
   return window['go']['main']['App']['OpenFileInEditor'](arg1);
+}
+
+export function OpenInApp(arg1, arg2) {
+  return window['go']['main']['App']['OpenInApp'](arg1, arg2);
+}
+
+export function OpenInExplorer(arg1) {
+  return window['go']['main']['App']['OpenInExplorer'](arg1);
 }
 
 export function PickFolder(arg1) {
@@ -212,6 +228,10 @@ export function SetupMirrorRepo(arg1, arg2) {
 
 export function ShowWindow() {
   return window['go']['main']['App']['ShowWindow']();
+}
+
+export function SyncEditors() {
+  return window['go']['main']['App']['SyncEditors']();
 }
 
 export function UpdateAccount(arg1) {

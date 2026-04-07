@@ -798,6 +798,8 @@ func (m dashboardModel) renderStatusBadge(s credential.Status, label string) str
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Palette.CredOK)).Render(label)
 	case credential.StatusWarning:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Palette.CredWarning)).Render(label)
+	case credential.StatusOffline:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Palette.CredOffline)).Render("offline")
 	case credential.StatusError:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Palette.CredError)).Render(label)
 	case credential.StatusNone:

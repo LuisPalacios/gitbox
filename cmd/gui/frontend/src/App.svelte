@@ -8,7 +8,7 @@
   } from './lib/stores';
   import { statusColor, credColor, statusLabel, providerLabel, statusSymbol } from './lib/theme';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL } from '../wailsjs/runtime/runtime';
-  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck } from './lib/types';
+  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo } from './lib/types';
 
   // ── View mode ──
   let viewMode: 'full' | 'compact' = 'full';
@@ -16,6 +16,10 @@
   let compactExpanded: Record<string, boolean> = {};
   let savedFullSize: { w: number; h: number } | null = null;
   let savedFullPos: { x: number; y: number } | null = null;
+
+  // ── Action menu (kebab) ──
+  let actionMenuRepo: string | null = null;
+  $: configEditors = ($configStore?.global?.editors || []) as EditorInfo[];
 
   async function toggleViewMode() {
     // SetViewMode saves current position to the slot we're leaving,
@@ -34,15 +38,21 @@
       // Second pass catches any remaining layout shifts.
       setTimeout(() => fitCompactHeight(), 500);
     } else {
-      await bridge.setViewMode('full');
+      const savedState = await bridge.setViewMode('full');
       viewMode = 'full';
       WindowSetMinSize(640, 480);
       await tick();
-      const target = savedFullSize ?? { w: 900, h: 700 };
-      setTimeout(() => {
+      const target = savedFullSize
+        ?? (savedState ? { w: savedState.width, h: savedState.height } : { w: 900, h: 700 });
+      const pos = savedFullPos
+        ?? (savedState ? { x: savedState.x, y: savedState.y } : null);
+      setTimeout(async () => {
         WindowSetSize(target.w, target.h);
-        if (savedFullPos) {
-          WindowSetPosition(savedFullPos.x, savedFullPos.y);
+        if (pos) {
+          const onScreen = await bridge.isPositionOnScreen(pos.x, pos.y, target.w, target.h);
+          if (onScreen) {
+            WindowSetPosition(pos.x, pos.y);
+          }
         }
       }, 50);
     }
@@ -233,6 +243,27 @@
     fetchingRepos[key] = true;
     fetchingRepos = fetchingRepos;
     bridge.fetchRepo(sourceKey, repoKey);
+  }
+
+  // ── Action menu (kebab) ──
+  function toggleActionMenu(repoKey: string) {
+    actionMenuRepo = actionMenuRepo === repoKey ? null : repoKey;
+  }
+
+  function closeActionMenu() {
+    actionMenuRepo = null;
+  }
+
+  async function openRepoInExplorer(repoKey: string) {
+    const state = $repoStates[repoKey];
+    if (state?.path) await bridge.openInExplorer(state.path);
+    closeActionMenu();
+  }
+
+  async function openRepoInApp(repoKey: string, command: string) {
+    const state = $repoStates[repoKey];
+    if (state?.path) await bridge.openInApp(state.path, command);
+    closeActionMenu();
   }
 
   // ── Repo detail panel ──
@@ -1191,6 +1222,7 @@
     // Load autostart state.
     loadAutostart();
 
+
     // Start periodic status check if previously configured.
     if (fetchInterval !== 'off') applyFetchInterval(fetchInterval);
   }
@@ -1383,6 +1415,8 @@
   $: cc = (s: string) => credColor(s, $themeStore);
 </script>
 
+<svelte:window on:click={(e) => { if (actionMenuRepo && !(e.target instanceof Element && e.target.closest('.action-menu-container'))) closeActionMenu(); }} />
+
 <!-- ════════════════════════════════════════════════════════════ -->
 <!--  TEMPLATE                                                   -->
 <!-- ════════════════════════════════════════════════════════════ -->
@@ -1467,6 +1501,7 @@
       <button class="compact-acct" class:compact-acct-expanded={compactExpanded[key]}
         class:compact-acct-cred-err={compactCred === 'none' || compactCred === 'error'}
         class:compact-acct-cred-warn={compactCred === 'warning'}
+        class:compact-acct-cred-offline={compactCred === 'offline'}
         on:click={() => toggleCompactAcct(key)}>
         <svg viewBox="0 0 36 36" class="compact-acct-ring">
           <circle cx="18" cy="18" r="14" fill="none" stroke="var(--ring-bg)" stroke-width="3"/>
@@ -1503,6 +1538,14 @@
                 <span class="compact-badge" style="color: {sc('dirty')}">{state.modified} changed</span>
               {:else if state.status === 'ahead'}
                 <span class="compact-badge" style="color: {sc('ahead')}">{state.ahead} ahead</span>
+              {/if}
+              {#if state.status !== 'not cloned'}
+                <span class="compact-actions-overlay">
+                  <button class="compact-action-btn" on:click|stopPropagation={() => openRepoInExplorer(repoKey)} title="Open folder">&#128193;</button>
+                  {#if configEditors.length > 0}
+                    <button class="compact-action-btn" on:click|stopPropagation={() => openRepoInApp(repoKey, configEditors[0].command)} title="Open in {configEditors[0].name}">&#9998;</button>
+                  {/if}
+                </span>
               {/if}
             </div>
           {/each}
@@ -1696,9 +1739,9 @@
             <span class="card-dot" style="background: {cc(credPrimary)}"></span>
           {/if}
           <span class="card-provider">{providerLabel(acct.provider)}</span>
-          <button class="cred-badge cred-badge-{credPrimary === 'ok' ? 'ok' : credPrimary === 'error' ? 'err' : credPrimary === 'warning' ? 'warn' : credPrimary === 'none' ? 'none' : credPrimary === 'unknown' ? 'pending' : ''}"
+          <button class="cred-badge cred-badge-{credPrimary === 'ok' ? 'ok' : credPrimary === 'error' ? 'err' : credPrimary === 'warning' ? 'warn' : credPrimary === 'offline' ? 'offline' : credPrimary === 'none' ? 'none' : credPrimary === 'unknown' ? 'pending' : ''}"
             on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')}
-            title="Credential: {acct.default_credential_type || 'none'}">{credPrimary === 'unknown' ? '···' : credPrimary === 'none' ? 'config' : acct.default_credential_type || 'gcm'}</button>
+            title="Credential: {acct.default_credential_type || 'none'}">{credPrimary === 'unknown' ? '···' : credPrimary === 'none' ? 'config' : credPrimary === 'offline' ? 'offline' : acct.default_credential_type || 'gcm'}</button>
         </div>
         <div class="card-name card-name-edit" on:click={() => openEditAccount(key)} title="Edit account">{key}</div>
         <div class="card-ring-row">
@@ -1718,8 +1761,8 @@
           {/if}
         </div>
         <div class="card-btn-row">
-          <button class="card-btn" on:click={() => openDiscover(key)} disabled={credPrimary === 'none' || credPrimary === 'error'}>Find projects</button>
-          <button class="card-btn" on:click={() => openCreateRepo(key)} disabled={credPrimary === 'none' || credPrimary === 'error'}>Create repo</button>
+          <button class="card-btn" on:click={() => openDiscover(key)} disabled={credPrimary === 'none' || credPrimary === 'error' || credPrimary === 'offline'}>Find projects</button>
+          <button class="card-btn" on:click={() => openCreateRepo(key)} disabled={credPrimary === 'none' || credPrimary === 'error' || credPrimary === 'offline'}>Create repo</button>
         </div>
       </div>
     {/each}
@@ -1774,6 +1817,17 @@
               {/if}
               {#if !deleteMode && state.status !== 'not cloned'}
                 <button class="btn-fetch" class:spinning={fetchingRepos[repoKey]} on:click|stopPropagation={() => fetchRepo(sourceKey, repoName)} title="Fetch origin" disabled={!!fetchingRepos[repoKey]}>&#8635;</button>
+                <div class="action-menu-container">
+                  <button class="btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title="Actions">&#8942;</button>
+                  {#if actionMenuRepo === repoKey}
+                    <div class="action-dropdown" transition:fade={{ duration: 80 }}>
+                      <button class="action-item" on:click|stopPropagation={() => openRepoInExplorer(repoKey)}>Open folder</button>
+                      {#each configEditors as editor}
+                        <button class="action-item" on:click|stopPropagation={() => openRepoInApp(repoKey, editor.command)}>Open in {editor.name}</button>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
               {/if}
             {/if}
           </div>
@@ -2864,8 +2918,10 @@
   .cred-badge-err { background: #450a0a; border-color: #be123c; color: #fca5a5; }
   .cred-badge-warn { background: #431407; border-color: #c2410c; color: #fdba74; }
   .cred-badge-none { background: #1e3a5f; border-color: #2563eb; color: #93c5fd; }
+  .cred-badge-offline { background: #450a0a; border-color: #D81E5B; color: #fca5a5; }
   .cred-badge-pending { background: #27272a; border-color: #52525b; color: #a1a1aa; animation: pulse-badge 1.5s ease-in-out infinite; }
   @keyframes pulse-badge { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  :global([data-theme="light"]) .cred-badge-offline { background: #fee2e2; border-color: #be123c; color: #be123c; }
   :global([data-theme="light"]) .cred-badge-pending { background: #f4f4f5; border-color: #a1a1aa; color: #71717a; }
   :global([data-theme="light"]) .cred-badge-ok { background: #dcfce7; border-color: #166534; color: #166534; }
   :global([data-theme="light"]) .cred-badge-err { background: #fee2e2; border-color: #be123c; color: #be123c; }
@@ -2938,6 +2994,26 @@
   }
   .btn-fetch:hover { color: var(--text-primary); }
   .btn-fetch:disabled { opacity: 0.6; cursor: default; }
+  .btn-kebab {
+    background: transparent; border: none; color: var(--text-dim); cursor: pointer;
+    font-size: 16px; padding: 2px 4px; border-radius: 4px; transition: color 0.15s;
+    flex-shrink: 0; line-height: 1;
+  }
+  .btn-kebab:hover { color: var(--text-primary); }
+  .action-menu-container { position: relative; }
+  .action-dropdown {
+    position: absolute; right: 0; top: 100%; margin-top: 4px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    min-width: 160px; z-index: 100; overflow: hidden;
+  }
+  .action-item {
+    display: block; width: 100%; padding: 8px 14px; border: none;
+    background: transparent; color: var(--text-secondary); text-align: left;
+    font-size: 12px; cursor: pointer; transition: background 0.1s;
+    white-space: nowrap;
+  }
+  .action-item:hover { background: var(--bg-hover); color: var(--text-primary); }
   .status-badges { display: flex; align-items: center; gap: 6px; }
   .sbadge { font-size: 11px; font-weight: 600; white-space: nowrap; }
   .status-pending { font-size: 12px; font-weight: 600; color: var(--text-dim); }
@@ -3223,6 +3299,10 @@
   .compact-acct-cred-warn:hover { background: #4a2e12; }
   :global([data-theme="light"]) .compact-acct-cred-warn { background: #feebd0; }
   :global([data-theme="light"]) .compact-acct-cred-warn:hover { background: #fde0ba; }
+  .compact-acct-cred-offline { background: #3a161b; }
+  .compact-acct-cred-offline:hover { background: #4a1c23; }
+  :global([data-theme="light"]) .compact-acct-cred-offline { background: #fee2e2; }
+  :global([data-theme="light"]) .compact-acct-cred-offline:hover { background: #fcd5d5; }
   .compact-acct-ring { width: 24px; height: 24px; flex-shrink: 0; }
   .compact-acct-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
   .compact-acct-name {
@@ -3253,8 +3333,23 @@
     border-radius: 4px;
     transition: background 0.1s;
   }
+  .compact-row { position: relative; }
   .compact-row:hover { background: var(--bg-hover); }
   .compact-row-ok { opacity: 0.5; }
+  .compact-actions-overlay {
+    position: absolute; right: 2px; top: 0; bottom: 0;
+    display: flex; align-items: center; gap: 2px;
+    background: var(--bg-card); padding: 0 2px;
+    opacity: 0; transition: opacity 0.1s;
+  }
+  .compact-row:hover .compact-actions-overlay { opacity: 1; }
+  .compact-row:hover.compact-row-ok .compact-actions-overlay { opacity: 1; }
+  .compact-action-btn {
+    background: transparent; border: none; cursor: pointer;
+    font-size: 11px; padding: 1px 3px; border-radius: 3px;
+    color: var(--text-dim); line-height: 1; transition: color 0.1s;
+  }
+  .compact-action-btn:hover { color: var(--text-primary); }
   .compact-dot { font-size: 9px; flex-shrink: 0; width: 10px; text-align: center; }
   .compact-repo-name {
     flex: 1;

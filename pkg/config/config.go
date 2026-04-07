@@ -30,14 +30,21 @@ func (c *Config) OrderedSourceKeys() []string {
 
 // GlobalConfig holds global settings.
 type GlobalConfig struct {
-	Folder          string       `json:"folder"`
-	PeriodicSync    string       `json:"periodic_sync,omitempty"`
-	Window          *WindowState `json:"window,omitempty"`
-	CompactWindow   *WindowState `json:"compact_window,omitempty"`
-	ViewMode        string       `json:"view_mode,omitempty"` // "full" or "compact"
-	CredentialSSH   *SSHGlobal   `json:"credential_ssh,omitempty"`
-	CredentialGCM   *GCMGlobal   `json:"credential_gcm,omitempty"`
-	CredentialToken *TokenGlobal `json:"credential_token,omitempty"`
+	Folder          string         `json:"folder"`
+	PeriodicSync    string         `json:"periodic_sync,omitempty"`
+	Window          *WindowState   `json:"window,omitempty"`
+	CompactWindow   *WindowState   `json:"compact_window,omitempty"`
+	ViewMode        string         `json:"view_mode,omitempty"` // "full" or "compact"
+	CredentialSSH   *SSHGlobal     `json:"credential_ssh,omitempty"`
+	CredentialGCM   *GCMGlobal     `json:"credential_gcm,omitempty"`
+	CredentialToken *TokenGlobal   `json:"credential_token,omitempty"`
+	Editors         []EditorEntry  `json:"editors,omitempty"`
+}
+
+// EditorEntry defines a user-configured code editor for opening repositories.
+type EditorEntry struct {
+	Name    string `json:"name"`
+	Command string `json:"command"`
 }
 
 // WindowState stores the GUI window position and size for session persistence.

@@ -3,6 +3,7 @@
 export interface GlobalConfig {
   folder: string;
   periodic_sync?: string;
+  editors?: EditorInfo[];
 }
 
 export interface SSHConfig {
@@ -125,10 +126,17 @@ export interface CredentialStatus {
 // Frontend-only UI state for a single repo row
 export interface RepoState {
   status: 'clean' | 'dirty' | 'behind' | 'ahead' | 'diverged' | 'conflict' | 'not cloned' | 'no upstream' | 'error' | 'syncing' | 'cloning';
+  path?: string;
   progress: number;
   behind: number;
   modified: number;
   untracked: number;
   ahead: number;
   error?: string;
+}
+
+export interface EditorInfo {
+  id: string;
+  name: string;
+  command: string;
 }

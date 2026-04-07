@@ -12,6 +12,7 @@ const (
 	SymDiverged  = "⚠" // U+26A0
 	SymConflict  = "⚡" // U+26A1
 	SymError     = "✕" // U+2715
+	SymOffline   = "⊘" // U+2298
 )
 
 // Mirror direction symbols.

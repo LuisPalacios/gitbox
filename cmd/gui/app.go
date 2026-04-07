@@ -124,6 +124,9 @@ func (a *App) DomReady(_ context.Context) {
 			wailsrt.WindowCenter(a.ctx)
 		}
 	}
+	// Sync detected editors into config before frontend reads it.
+	a.SyncEditors()
+
 	// In compact mode, delay WindowShow — the frontend calls ShowWindow()
 	// after fitCompactHeight() to avoid flickering during resize.
 	if a.savedViewMode != "compact" {
@@ -138,14 +141,22 @@ func (a *App) ShowWindow() {
 }
 
 // isPositionOnScreen checks whether the saved window position would be visible
-// on the primary screen. Negative coordinates or positions that push the window
-// entirely off-screen (common after disconnecting a secondary monitor) are rejected.
+// on any connected monitor. On Windows, uses the virtual desktop rectangle
+// (covers all monitors). Falls back to Wails primary-screen check on other platforms.
 func (a *App) isPositionOnScreen(x, y, w, h int) bool {
+	const margin = 100
+
+	// Try platform-specific virtual desktop bounds (all monitors combined).
+	if vx, vy, vw, vh, ok := virtualDesktopBounds(); ok {
+		// At least margin pixels of the window must overlap the virtual desktop.
+		return x+w > vx+margin && y+h > vy+margin && x < vx+vw-margin && y < vy+vh-margin
+	}
+
+	// Fallback: use Wails ScreenGetAll (no position info, only sizes).
 	screens, err := wailsrt.ScreenGetAll(a.ctx)
 	if err != nil || len(screens) == 0 {
-		return x >= 0 && y >= 0 // conservative fallback
+		return x >= 0 && y >= 0
 	}
-	// Use the primary screen dimensions as the safe zone.
 	var sw, sh int
 	for _, s := range screens {
 		if s.IsPrimary {
@@ -156,10 +167,13 @@ func (a *App) isPositionOnScreen(x, y, w, h int) bool {
 	if sw == 0 || sh == 0 {
 		sw, sh = screens[0].Size.Width, screens[0].Size.Height
 	}
-	// Reject if the window would be entirely off-screen.
-	// Allow some tolerance: at least 100px of the window must be visible.
-	const margin = 100
 	return x+w > margin && y+h > margin && x < sw-margin && y < sh-margin
+}
+
+// IsPositionOnScreen is the exported binding so the frontend can validate
+// a window position before calling WindowSetPosition.
+func (a *App) IsPositionOnScreen(x, y, w, h int) bool {
+	return a.isPositionOnScreen(x, y, w, h)
 }
 
 // GetAppVersion returns the application version string for the frontend.
@@ -340,6 +354,9 @@ func (a *App) GetGlobalFolder() string {
 }
 
 // OpenFileInEditor opens a file with the OS default application.
+// Do NOT use git.HideWindow here — these launch GUI apps (explorer, open,
+// xdg-open). HideWindow sets SW_HIDE in STARTUPINFO, which prevents GUI
+// windows from becoming visible.
 func (a *App) OpenFileInEditor(path string) error {
 	var cmd *exec.Cmd
 	switch {
@@ -350,8 +367,109 @@ func (a *App) OpenFileInEditor(path string) error {
 	default:
 		cmd = exec.Command("xdg-open", path)
 	}
-	git.HideWindow(cmd)
 	return cmd.Start()
+}
+
+// OpenInExplorer reveals a folder in the OS file manager.
+func (a *App) OpenInExplorer(path string) error {
+	var cmd *exec.Cmd
+	switch {
+	case isWindows():
+		native := filepath.FromSlash(path)
+		cmd = exec.Command("explorer", native)
+	case isDarwin():
+		cmd = exec.Command("open", path)
+	default:
+		cmd = exec.Command("xdg-open", path)
+	}
+	return cmd.Start()
+}
+
+// OpenInApp opens a folder in a specific application (e.g. VS Code).
+func (a *App) OpenInApp(path string, command string) error {
+	if command == "" {
+		return fmt.Errorf("command is required")
+	}
+	cmd := exec.Command(command, path)
+	return cmd.Start()
+}
+
+// EditorInfo describes an available code editor.
+type EditorInfo struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Command string `json:"command"`
+}
+
+// knownEditors lists editors to auto-detect on PATH.
+var knownEditors = []EditorInfo{
+	{ID: "vscode", Name: "VS Code", Command: "code"},
+	{ID: "cursor", Name: "Cursor", Command: "cursor"},
+	{ID: "zed", Name: "Zed", Command: "zed"},
+}
+
+// DetectEditors returns code editors available on the system.
+// It auto-detects known editors on PATH and merges any user-configured editors.
+func (a *App) DetectEditors() []EditorInfo {
+	var editors []EditorInfo
+	for _, e := range knownEditors {
+		if _, err := exec.LookPath(e.Command); err == nil {
+			editors = append(editors, e)
+		}
+	}
+	// Merge user-configured editors from config.
+	if a.cfg != nil {
+		for _, e := range a.cfg.Global.Editors {
+			editors = append(editors, EditorInfo{
+				ID:      e.Command,
+				Name:    e.Name,
+				Command: e.Command,
+			})
+		}
+	}
+	return editors
+}
+
+// SyncEditors merges detected editors into the config's global.editors array.
+// - Appends any detected editor not already present (matched by command basename)
+// - Writes the full resolved path so users see a concrete example
+// - Never removes existing entries (user-added or reordered)
+// - Saves config only if new editors were added
+func (a *App) SyncEditors() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	existing := a.cfg.Global.Editors
+
+	// Build a set of basenames already configured (e.g. "code", "code.cmd",
+	// or a full path like "C:\...\code.cmd" all resolve to "code.cmd").
+	seen := make(map[string]bool, len(existing))
+	for _, e := range existing {
+		seen[filepath.Base(e.Command)] = true
+	}
+
+	changed := false
+	for _, known := range knownEditors {
+		fullPath, err := exec.LookPath(known.Command)
+		if err != nil {
+			continue
+		}
+		// Match by basename so "code" and "C:\...\code.cmd" are the same editor.
+		base := filepath.Base(fullPath)
+		if seen[base] || seen[known.Command] {
+			continue
+		}
+		existing = append(existing, config.EditorEntry{
+			Name:    known.Name,
+			Command: fullPath,
+		})
+		seen[base] = true
+		changed = true
+	}
+	if changed {
+		a.cfg.Global.Editors = existing
+		_ = config.Save(a.cfg, a.cfgPath)
+	}
 }
 
 func isWindows() bool {
@@ -468,9 +586,18 @@ func (a *App) GetViewMode() string {
 	return "full"
 }
 
+// WindowStateDTO is the frontend-friendly window geometry.
+type WindowStateDTO struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
 // SetViewMode saves the view mode and current window position/size to the
-// appropriate slot, then switches to the other mode's saved position/size.
-func (a *App) SetViewMode(mode string) error {
+// appropriate slot, then switches to the target mode. Returns the target
+// mode's previously saved window state (or nil if none was persisted).
+func (a *App) SetViewMode(mode string) *WindowStateDTO {
 	// Save current window position to the slot we're leaving.
 	x, y := wailsrt.WindowGetPosition(a.ctx)
 	w, h := wailsrt.WindowGetSize(a.ctx)
@@ -490,7 +617,19 @@ func (a *App) SetViewMode(mode string) error {
 	} else {
 		a.cfg.Global.ViewMode = ""
 	}
-	return config.Save(a.cfg, a.cfgPath)
+	_ = config.Save(a.cfg, a.cfgPath)
+
+	// Return the target mode's saved window state.
+	var target *config.WindowState
+	if mode == "compact" {
+		target = a.cfg.Global.CompactWindow
+	} else {
+		target = a.cfg.Global.Window
+	}
+	if target == nil {
+		return nil
+	}
+	return &WindowStateDTO{X: target.X, Y: target.Y, Width: target.Width, Height: target.Height}
 }
 
 // ─── Status ───────────────────────────────────────────────────

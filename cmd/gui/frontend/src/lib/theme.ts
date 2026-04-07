@@ -22,6 +22,7 @@ export function statusColor(status: string, theme: string): string {
 export function credColor(status: string, theme: string): string {
   if (status === 'none') return theme === 'light' ? '#2563eb' : '#4B95E9';
   if (status === 'unknown') return theme === 'light' ? '#a1a1aa' : '#71717a';
+  if (status === 'offline') return theme === 'light' ? '#be123c' : '#D81E5B';
   if (theme === 'light') {
     return status === 'ok' ? '#166534' : status === 'warning' ? '#c2410c' : '#be123c';
   }

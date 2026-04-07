@@ -118,6 +118,25 @@
                     "description": "Token/PAT authentication platform defaults. Presence indicates token auth is available. Tokens are stored in ~/.config/gitbox/credentials/.",
                     "additionalProperties": false,
                     "properties": {}
+                },
+                "editors": {
+                    "type": "array",
+                    "description": "Custom code editors for opening repositories. Auto-detected editors (VS Code, Cursor, Zed) are always included when found on PATH.",
+                    "items": {
+                        "type": "object",
+                        "required": ["name", "command"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Display name shown in the menu (e.g. 'Sublime Text')."
+                            },
+                            "command": {
+                                "type": "string",
+                                "description": "CLI command to open a folder (e.g. 'subl'). Must be on PATH."
+                            }
+                        }
+                    }
                 }
             }
         },

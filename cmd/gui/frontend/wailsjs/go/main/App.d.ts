@@ -43,6 +43,8 @@ export function DeleteMirrorRepo(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteRepo(arg1:string,arg2:string):Promise<void>;
 
+export function DetectEditors():Promise<Array<main.EditorInfo>>;
+
 export function Discover(arg1:string):Promise<void>;
 
 export function DiscoverMirrors():Promise<void>;
@@ -77,6 +79,8 @@ export function GetViewMode():Promise<string>;
 
 export function IsFirstRun():Promise<boolean>;
 
+export function IsPositionOnScreen(arg1:number,arg2:number,arg3:number,arg4:number):Promise<boolean>;
+
 export function IsTestMode():Promise<boolean>;
 
 export function ListAccountOrgs(arg1:string):Promise<Array<string>>;
@@ -84,6 +88,10 @@ export function ListAccountOrgs(arg1:string):Promise<Array<string>>;
 export function ListRemoteRepos(arg1:string):Promise<Array<main.DiscoverResult>>;
 
 export function OpenFileInEditor(arg1:string):Promise<void>;
+
+export function OpenInApp(arg1:string,arg2:string):Promise<void>;
+
+export function OpenInExplorer(arg1:string):Promise<void>;
 
 export function PickFolder(arg1:string):Promise<string>;
 
@@ -103,10 +111,12 @@ export function SetGlobalFolder(arg1:string):Promise<void>;
 
 export function SetPeriodicSync(arg1:string):Promise<void>;
 
-export function SetViewMode(arg1:string):Promise<void>;
+export function SetViewMode(arg1:string):Promise<main.WindowStateDTO>;
 
 export function SetupMirrorRepo(arg1:string,arg2:string):Promise<void>;
 
 export function ShowWindow():Promise<void>;
+
+export function SyncEditors():Promise<void>;
 
 export function UpdateAccount(arg1:main.UpdateAccountRequest):Promise<void>;
