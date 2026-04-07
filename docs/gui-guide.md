@@ -11,28 +11,26 @@ This guide walks you through everything from first launch to day-to-day use.
 
 ## Prerequisites
 
-Download the app from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page. Pick the right file for your system:
+Download the installer for your platform from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page:
 
-- **Windows** — `gitbox-win-amd64.zip`
-- **macOS (Apple Silicon)** — `gitbox-macos-arm64.zip`
-- **Linux** — `gitbox-linux-amd64.zip`
+- **Windows** — `gitbox-win-amd64-setup.exe` (installer with PATH setup and Start Menu shortcuts)
+- **macOS** — `gitbox-macos-arm64.dmg` or `gitbox-macos-amd64.dmg` (drag to Applications)
+- **Linux** — `gitbox-linux-amd64.AppImage` (self-contained, just download and run)
 
-Extract the ZIP and run **GitboxApp** (or `GitboxApp.exe` on Windows).
+Alternatively, download the ZIP archives (`gitbox-<platform>-<arch>.zip`) and extract manually.
 
-> **macOS note:** The app is not signed by Apple. After extracting, open a terminal and run `xattr -cr /path/to/GitboxApp.app` to allow it to launch.
+> **macOS note:** The app is not currently signed by Apple. After mounting the DMG or extracting the ZIP, you may need to right-click the app and select "Open" or run `xattr -cr /path/to/GitboxApp.app` in a terminal.
 
-### Installing on Linux
+### Linux AppImage
 
-Download the latest release, extract, and move the binary to a convenient location:
+Download the AppImage, make it executable, and run:
 
 ```bash
-curl -L -O https://github.com/LuisPalacios/gitbox/releases/download/v1.2.14/gitbox-linux-amd64.zip
-unzip gitbox-linux-amd64.zip -d gitbox-linux-amd64
-chmod +x gitbox-linux-amd64/GitboxApp
-./gitbox-linux-amd64/GitboxApp
+chmod +x gitbox-linux-amd64.AppImage
+./gitbox-linux-amd64.AppImage
 ```
 
-Replace `v1.2.14` with the [latest version](https://github.com/LuisPalacios/gitbox/releases). The GUI requires a desktop environment with a display server (X11 or Wayland).
+The GUI requires a desktop environment with a display server (X11 or Wayland).
 
 ## Step 1: First launch
 
@@ -239,6 +237,21 @@ Click the **gear icon** to open the settings panel:
 - **Run at startup** — launch Gitbox automatically when you log in (platform dependent)
 - **Version** — current app version
 - **Author** — project author and link to the GitHub repository
+
+### Clone actions
+
+Each cloned repo row has a **kebab menu (⋮)** on the right side. Click it to see:
+
+- **Open folder** — opens the clone directory in the OS file manager (Explorer, Finder, or your Linux file manager)
+- **Open in \<editor\>** — opens the clone folder in a detected code editor (VS Code, Cursor, Zed, etc.)
+
+Editors are auto-detected on startup by scanning PATH. Gitbox writes the detected editors to `global.editors` in your config file with their full paths. You can reorder entries or add custom editors by editing the config — the menu always reflects the config order.
+
+In **compact mode**, the clone actions appear as two small icon buttons (folder and editor) that show on hover over each repo row. Only the first configured editor is shown — switch to full view for the complete list.
+
+### Update banner
+
+Gitbox checks for updates once per day in the background. When a newer version is available, a green banner appears below the header bar showing the new version. Click **Update** to download and apply it in place. After the update completes, restart the app to use the new version.
 
 ### Deleting repos and accounts
 

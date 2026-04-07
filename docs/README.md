@@ -26,6 +26,7 @@ If you're new to the project, read these in order:
 | [Testing](testing.md) | Test levels, fixture setup, pre-PR and release checklists |
 | [Testing Reference](testing-reference.md) | Full test inventory, harness internals |
 | [Architecture](architecture.md) | Technical design, component diagram |
+| [macOS Signing](macos-signing.md) | Code signing and notarization setup for macOS releases |
 
 ## Reference
 

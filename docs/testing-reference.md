@@ -111,8 +111,9 @@ Real provider API calls and git operations via subprocess:
 - `pkg/mirror/` — 5 tests: mirror discovery
 - `pkg/provider/` — 35 tests: HTTP client, provider API parsing
 - `pkg/status/` — 8 tests: clone status checking
+- `pkg/update/` — 6 tests: semver parsing, version comparison, update check (mock API), throttle, checksum verification
 
-### Total: ~208 tests
+### Total: ~214 tests
 
 ## How the test harness works
 
