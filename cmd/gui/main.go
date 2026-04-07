@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/update"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -21,6 +22,8 @@ var (
 var assets embed.FS
 
 func main() {
+	update.CleanupOldBinary()
+
 	app := NewApp()
 
 	// Check for --test-mode before Wails starts (Wails has no CLI arg support).

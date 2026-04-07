@@ -10,6 +10,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/cmd/cli/tui"
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/update"
 	"github.com/spf13/cobra"
 )
 
@@ -68,8 +69,9 @@ func init() {
 	reconfigureCmd.GroupID = "additional"
 	identityCmd.GroupID = "additional"
 	scanCmd.GroupID = "additional"
+	updateCmd.GroupID = "additional"
 	versionCmd.GroupID = "additional"
-	rootCmd.AddCommand(reconfigureCmd, identityCmd, scanCmd, versionCmd, tokenDeprecatedCmd)
+	rootCmd.AddCommand(reconfigureCmd, identityCmd, scanCmd, updateCmd, versionCmd, tokenDeprecatedCmd)
 
 	// Assign the auto-generated help command to the additional group.
 	rootCmd.SetHelpCommandGroupID("additional")
@@ -113,6 +115,9 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 }
 
 func main() {
+	// Clean up .old binaries from a previous Windows update.
+	update.CleanupOldBinary()
+
 	// Set up test-mode isolation before anything else.
 	// This applies to both TUI and CLI subcommands.
 	testCfgPath, cleanup, err := setupTestModeIfEnabled()

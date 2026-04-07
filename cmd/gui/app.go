@@ -18,6 +18,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
+	"github.com/LuisPalacios/gitbox/pkg/update"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/identity"
 	"github.com/LuisPalacios/gitbox/pkg/mirror"
@@ -127,6 +128,9 @@ func (a *App) DomReady(_ context.Context) {
 	// Sync detected editors into config before frontend reads it.
 	a.SyncEditors()
 
+	// Check for updates in background (throttled to once per 24h).
+	a.CheckForUpdate()
+
 	// In compact mode, delay WindowShow — the frontend calls ShowWindow()
 	// after fitCompactHeight() to avoid flickering during resize.
 	if a.savedViewMode != "compact" {
@@ -138,6 +142,85 @@ func (a *App) DomReady(_ context.Context) {
 // compact mode layout is measured and the window is correctly sized.
 func (a *App) ShowWindow() {
 	wailsrt.WindowShow(a.ctx)
+}
+
+// ─── Update ──────────────────────────────────────────────────
+
+// UpdateInfo is the frontend-friendly update check result.
+type UpdateInfo struct {
+	Available bool   `json:"available"`
+	Current   string `json:"current"`
+	Latest    string `json:"latest"`
+	URL       string `json:"url"`
+}
+
+func (a *App) updateOpts() update.Options {
+	cacheDir := filepath.Join(config.ConfigRoot(), config.V2ConfigDir)
+	return update.Options{
+		CurrentVersion: version,
+		Repo:           "LuisPalacios/gitbox",
+		CacheFile:      filepath.Join(cacheDir, ".update-check"),
+		ThrottleDur:    24 * time.Hour,
+	}
+}
+
+// CheckForUpdate runs a background update check (throttled to 24h).
+// Emits "update:available" event if a newer version exists.
+func (a *App) CheckForUpdate() {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		result, err := update.CheckLatest(ctx, a.updateOpts())
+		if err != nil || result == nil {
+			return
+		}
+		if !result.Available {
+			return
+		}
+
+		info := UpdateInfo{
+			Available: true,
+			Current:   result.Current,
+			Latest:    result.Latest,
+		}
+		if result.Release != nil {
+			info.URL = result.Release.HTMLURL
+		}
+		wailsrt.EventsEmit(a.ctx, "update:available", info)
+	}()
+}
+
+// ApplyUpdate downloads and applies the latest release.
+func (a *App) ApplyUpdate() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	opts := a.updateOpts()
+	result, err := update.CheckLatestForce(ctx, opts)
+	if err != nil {
+		return fmt.Errorf("checking for update: %w", err)
+	}
+	if !result.Available {
+		return fmt.Errorf("no update available")
+	}
+
+	wailsrt.EventsEmit(a.ctx, "update:progress", "Downloading...")
+
+	zipPath, err := update.DownloadRelease(ctx, result.Release, opts)
+	if err != nil {
+		return fmt.Errorf("downloading: %w", err)
+	}
+	defer os.RemoveAll(filepath.Dir(zipPath))
+
+	wailsrt.EventsEmit(a.ctx, "update:progress", "Applying...")
+
+	if err := update.Apply(zipPath); err != nil {
+		return fmt.Errorf("applying: %w", err)
+	}
+
+	wailsrt.EventsEmit(a.ctx, "update:done", result.Latest)
+	return nil
 }
 
 // isPositionOnScreen checks whether the saved window position would be visible

@@ -22,8 +22,16 @@ export function ApplyDiscoveredMirrors() {
   return window['go']['main']['App']['ApplyDiscoveredMirrors']();
 }
 
+export function ApplyUpdate() {
+  return window['go']['main']['App']['ApplyUpdate']();
+}
+
 export function ChangeCredentialType(arg1, arg2) {
   return window['go']['main']['App']['ChangeCredentialType'](arg1, arg2);
+}
+
+export function CheckForUpdate() {
+  return window['go']['main']['App']['CheckForUpdate']();
 }
 
 export function CheckGlobalIdentity() {
