@@ -252,6 +252,21 @@ The `pkg/update/` package provides version checking and self-update capabilities
 
 ---
 
+## Feature lifecycle
+
+I manage the feature backlog with the `/wish` Claude Code skill. The feature radar lives in `.claude/context/feature-radar.md` — a structured file with IDs, priorities, sizes, and codebase notes for each idea.
+
+The workflow:
+
+1. **Capture** — `/wish add <title>` records a new idea. Claude asks clarifying questions, explores the codebase for relevant patterns, and drafts a structured entry.
+2. **Plan** — `/wish plan <id>` deep-dives into the codebase, designs the implementation approach, and enters plan mode with a concrete file-by-file plan.
+3. **Build** — I implement the plan, then verify with `/test-plan`.
+4. **Ship** — `/wish done <id>` marks the feature as shipped and moves it to the shipped section.
+
+Run `/wish` (no arguments) to see the current radar overview and get a suggestion on what to build next.
+
+---
+
 ## Logo and app icons
 
 The source of truth for the logo is `assets/logo.svg`. The derived icon files used by the Wails build live alongside it:

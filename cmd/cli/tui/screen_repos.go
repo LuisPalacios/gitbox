@@ -165,6 +165,13 @@ func fetchRepoCmd(path, sourceKey, repoKey string) tea.Cmd {
 	}
 }
 
+func openInBrowserCmd(url string) tea.Cmd {
+	return func() tea.Msg {
+		err := git.OpenInBrowser(url)
+		return openBrowserDoneMsg{err: err}
+	}
+}
+
 func deleteRepoCmd(cfg *config.Config, cfgPath, sourceKey, repoKey, repoPath string) tea.Cmd {
 	return func() tea.Msg {
 		// Remove local clone if it exists.
@@ -275,6 +282,14 @@ func (m reposModel) Update(msg tea.Msg) (reposModel, tea.Cmd) {
 				m.errMsg = ""
 				return m, fetchRepoCmd(path, m.sourceKey, m.repoKey)
 			}
+
+		case msg.String() == "b":
+			source := m.cfg.Sources[m.sourceKey]
+			acct := m.cfg.Accounts[source.Account]
+			url := git.RepoWebURL(acct.URL, m.repoKey)
+			m.resultMsg = ""
+			m.errMsg = ""
+			return m, openInBrowserCmd(url)
 		}
 
 	case cloneProgressMsg:
@@ -326,6 +341,14 @@ func (m reposModel) Update(msg tea.Msg) (reposModel, tea.Cmd) {
 			m.resultMsg = "Fetched successfully."
 		}
 		return m, checkRepoStatusCmd(m.cfg, m.sourceKey, m.repoKey)
+
+	case openBrowserDoneMsg:
+		if msg.err != nil {
+			m.errMsg = msg.err.Error()
+		} else {
+			m.resultMsg = "Opened in browser."
+		}
+		return m, nil
 
 	case errMsg:
 		m.busy = false
@@ -429,7 +452,7 @@ func (m reposModel) View() string {
 	} else {
 		actions = append(actions, "f fetch", "p pull")
 	}
-	actions = append(actions, "D remove clone", "ESC back")
+	actions = append(actions, "b open browser", "D remove clone", "ESC back")
 	b.WriteString(renderHints(m.theme, actions...))
 
 	return b.String()

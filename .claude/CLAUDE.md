@@ -62,6 +62,18 @@ scripts/
   installer.iss            Windows Inno Setup installer script
   appimage/                Linux AppImage support files (desktop, AppRun)
 .githooks/pre-push        Pre-push hook (go vet + unit tests)
+.claude/
+  context/
+    feature-radar.md      Feature backlog (managed by /wish skill)
+    testing-patterns.md   Test helpers, naming conventions
+  skills/
+    wish/                 Feature lifecycle: view, add, plan, ship
+    test-plan/            Pre-PR and release verification
+    fixing-markdown/      Markdown lint + format
+    screenshot-prototype/ GUI screenshot generation
+    preview-prototype/    Local Svelte preview server
+  rules/
+    skills-authoring.md   Skill creation guidelines
 .github/workflows/ci.yml  CI: build, test, release (+ installers, DMGs, AppImage)
 json/
   gitbox.schema.json      v2 JSON Schema
@@ -152,6 +164,17 @@ Config file: `~/.config/gitbox/gitbox.json` — `accounts` + `sources`, real boo
 ## Workflow orchestration
 
 **Priority order when rules conflict**: Correctness > Simplicity > Elegance.
+
+### Feature lifecycle
+
+New features follow a structured pipeline managed by the `/wish` skill:
+
+1. **Capture** — `/wish add <title>` records the idea in `.claude/context/feature-radar.md` with priority, size, and codebase notes
+2. **Plan** — `/wish plan <id>` explores the codebase, designs the approach, and enters plan mode with a concrete implementation plan
+3. **Build** — implement in plan mode, then verify with `/test-plan`
+4. **Ship** — `/wish done <id>` marks the feature as shipped
+
+Run `/wish` (no arguments) to see the current radar and get a suggestion on what to build next.
 
 ### 1. Plan first
 

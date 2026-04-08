@@ -271,6 +271,16 @@
     closeActionMenu();
   }
 
+  async function openRepoInBrowser(sourceKey: string, repoName: string) {
+    const source = $sources[sourceKey];
+    const acct = source ? $accounts[source.account] : null;
+    if (acct?.url) {
+      const webURL = acct.url.replace(/\/+$/, '') + '/' + repoName;
+      await bridge.openInBrowser(webURL);
+    }
+    closeActionMenu();
+  }
+
   // ── Repo detail panel ──
   let expandedRepo: string | null = null;
   let repoDetail: { branch: string; ahead: number; behind: number; changed: { kind: string; path: string }[]; untracked: string[]; error?: string } | null = null;
@@ -1553,9 +1563,12 @@
               {:else if state.status === 'ahead'}
                 <span class="compact-badge" style="color: {sc('ahead')}">{state.ahead} ahead</span>
               {/if}
-              {#if state.status !== 'not cloned' && configEditors.length > 0}
+              {#if state.status !== 'not cloned'}
                 <span class="compact-actions-overlay">
-                  <button class="compact-action-btn" on:click|stopPropagation={() => openRepoInApp(repoKey, configEditors[0].command)} title="Open in {configEditors[0].name}">&#9998;</button>
+                  <button class="compact-action-btn" on:click|stopPropagation={() => openRepoInBrowser(key, repoName)} title="Open in browser">&#8599;</button>
+                  {#if configEditors.length > 0}
+                    <button class="compact-action-btn" on:click|stopPropagation={() => openRepoInApp(repoKey, configEditors[0].command)} title="Open in {configEditors[0].name}">&#9998;</button>
+                  {/if}
                 </span>
               {/if}
             </div>
@@ -1851,6 +1864,7 @@
                   <button class="btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title="Actions">&#8942;</button>
                   {#if actionMenuRepo === repoKey}
                     <div class="action-dropdown" transition:fade={{ duration: 80 }}>
+                      <button class="action-item" on:click|stopPropagation={() => openRepoInBrowser(sourceKey, repoName)}>Open in browser</button>
                       <button class="action-item" on:click|stopPropagation={() => openRepoInExplorer(repoKey)}>Open folder</button>
                       {#each configEditors as editor}
                         <button class="action-item" on:click|stopPropagation={() => openRepoInApp(repoKey, editor.command)}>Open in {editor.name}</button>

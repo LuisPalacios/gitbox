@@ -95,6 +95,8 @@ export function OpenFileInEditor(arg1:string):Promise<void>;
 
 export function OpenInApp(arg1:string,arg2:string):Promise<void>;
 
+export function OpenInBrowser(arg1:string):Promise<void>;
+
 export function OpenInExplorer(arg1:string):Promise<void>;
 
 export function PickFolder(arg1:string):Promise<string>;

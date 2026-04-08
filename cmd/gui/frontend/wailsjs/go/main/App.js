@@ -186,6 +186,10 @@ export function OpenInApp(arg1, arg2) {
   return window['go']['main']['App']['OpenInApp'](arg1, arg2);
 }
 
+export function OpenInBrowser(arg1) {
+  return window['go']['main']['App']['OpenInBrowser'](arg1);
+}
+
 export function OpenInExplorer(arg1) {
   return window['go']['main']['App']['OpenInExplorer'](arg1);
 }
