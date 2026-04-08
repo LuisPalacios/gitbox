@@ -514,43 +514,46 @@ func (a *App) DetectEditors() []EditorInfo {
 }
 
 // SyncEditors merges detected editors into the config's global.editors array.
-// - Appends any detected editor not already present (matched by command basename)
+// - Deduplicates existing entries by name (keeps the first occurrence)
+// - Appends any detected editor not already present (matched by name)
 // - Writes the full resolved path so users see a concrete example
-// - Never removes existing entries (user-added or reordered)
-// - Saves config only if new editors were added
+// - Saves config only if changes were made
 func (a *App) SyncEditors() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	existing := a.cfg.Global.Editors
-
-	// Build a set of basenames already configured (e.g. "code", "code.cmd",
-	// or a full path like "C:\...\code.cmd" all resolve to "code.cmd").
-	seen := make(map[string]bool, len(existing))
-	for _, e := range existing {
-		seen[filepath.Base(e.Command)] = true
+	// Step 1: deduplicate existing entries by name (keep first occurrence).
+	seenName := make(map[string]bool)
+	var deduped []config.EditorEntry
+	for _, e := range a.cfg.Global.Editors {
+		if seenName[e.Name] {
+			continue
+		}
+		seenName[e.Name] = true
+		deduped = append(deduped, e)
 	}
 
-	changed := false
+	changed := len(deduped) != len(a.cfg.Global.Editors)
+
+	// Step 2: append any detected editor not already present.
 	for _, known := range knownEditors {
+		if seenName[known.Name] {
+			continue
+		}
 		fullPath, err := exec.LookPath(known.Command)
 		if err != nil {
 			continue
 		}
-		// Match by basename so "code" and "C:\...\code.cmd" are the same editor.
-		base := filepath.Base(fullPath)
-		if seen[base] || seen[known.Command] {
-			continue
-		}
-		existing = append(existing, config.EditorEntry{
+		deduped = append(deduped, config.EditorEntry{
 			Name:    known.Name,
 			Command: fullPath,
 		})
-		seen[base] = true
+		seenName[known.Name] = true
 		changed = true
 	}
+
 	if changed {
-		a.cfg.Global.Editors = existing
+		a.cfg.Global.Editors = deduped
 		_ = config.Save(a.cfg, a.cfgPath)
 	}
 }
