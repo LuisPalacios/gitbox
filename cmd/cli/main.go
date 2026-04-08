@@ -62,8 +62,9 @@ func init() {
 	statusCmd.GroupID = "main"
 	pullCmd.GroupID = "main"
 	fetchCmd.GroupID = "main"
+	browseCmd.GroupID = "main"
 	mirrorCmd.GroupID = "main"
-	rootCmd.AddCommand(initCmd, globalCmd, accountCmd, sourceCmd, repoCmd, cloneCmd, statusCmd, pullCmd, fetchCmd, mirrorCmd)
+	rootCmd.AddCommand(initCmd, globalCmd, accountCmd, sourceCmd, repoCmd, cloneCmd, statusCmd, pullCmd, fetchCmd, browseCmd, mirrorCmd)
 
 	// Additional commands.
 	reconfigureCmd.GroupID = "additional"

@@ -468,6 +468,12 @@ func (a *App) OpenInExplorer(path string) error {
 	return cmd.Start()
 }
 
+// OpenInBrowser opens a URL in the default browser.
+// Do NOT use git.HideWindow here — same reason as OpenFileInEditor.
+func (a *App) OpenInBrowser(url string) error {
+	return git.OpenInBrowser(url)
+}
+
 // OpenInApp opens a folder in a specific application (e.g. VS Code).
 func (a *App) OpenInApp(path string, command string) error {
 	if command == "" {

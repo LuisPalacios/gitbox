@@ -274,6 +274,28 @@ Dirty or conflicted repos are skipped with a warning.
 
 ---
 
+## Browsing
+
+Open a repository's remote web page in the default browser:
+
+```bash
+# Open a specific repo
+gitbox browse --repo alice/hello-world
+
+# Narrow to a specific source
+gitbox browse --source github-personal --repo alice/hello-world
+
+# Output URL as JSON (without opening browser)
+gitbox browse --repo alice/hello-world --json
+```
+
+| Flag | Description |
+| --- | --- |
+| `--repo` | Repository to open (required) |
+| `--source` | Restrict search to a specific source |
+
+---
+
 ## Scanning
 
 Scan walks the filesystem (no config required) and reports the sync status of every git repo it finds:

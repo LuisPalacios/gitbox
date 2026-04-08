@@ -242,12 +242,13 @@ Click the **gear icon** to open the settings panel:
 
 Each cloned repo row has a **kebab menu (⋮)** on the right side. Click it to see:
 
+- **Open in browser** — opens the repository's remote web page (GitHub, GitLab, etc.) in the default browser
 - **Open folder** — opens the clone directory in the OS file manager (Explorer, Finder, or your Linux file manager)
 - **Open in \<editor\>** — opens the clone folder in a detected code editor (VS Code, Cursor, Zed, etc.)
 
 Editors are auto-detected on startup by scanning PATH. Gitbox writes the detected editors to `global.editors` in your config file with their full paths. You can reorder entries or add custom editors by editing the config — the menu always reflects the config order.
 
-In **compact mode**, the clone actions appear as two small icon buttons (folder and editor) that show on hover over each repo row. Only the first configured editor is shown — switch to full view for the complete list.
+In **compact mode**, the clone actions appear as small icon buttons (browser, folder, and editor) that show on hover over each repo row. Only the first configured editor is shown — switch to full view for the complete list.
 
 ### Update banner
 

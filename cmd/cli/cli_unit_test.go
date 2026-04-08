@@ -463,5 +463,66 @@ func TestCLI_SourceAdd_NoAccount(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Browse
+// ---------------------------------------------------------------------------
+
+func TestCLI_Browse_MissingRepo(t *testing.T) {
+	cfg := newCLITestConfig("/tmp/test-git")
+	env := setupCLIEnvWithConfig(t, cfg)
+
+	result := env.run(t, "browse")
+	if result.ExitCode == 0 {
+		t.Error("expected non-zero exit when --repo is missing")
+	}
+}
+
+func TestCLI_Browse_RepoNotFound(t *testing.T) {
+	cfg := newCLITestConfig("/tmp/test-git")
+	cfg.Accounts["github-test"] = config.Account{
+		Provider:              "github",
+		URL:                   "https://github.com",
+		Username:              "testuser",
+		Name:                  "Test User",
+		Email:                 "test@example.com",
+		DefaultCredentialType: "token",
+	}
+	cfg.Sources["test-src"] = config.Source{
+		Account: "github-test",
+		Repos:   map[string]config.Repo{"testuser/exists": {}},
+	}
+	env := setupCLIEnvWithConfig(t, cfg)
+
+	result := env.run(t, "browse", "--repo", "testuser/nonexistent")
+	if result.ExitCode == 0 {
+		t.Error("expected non-zero exit for nonexistent repo")
+	}
+}
+
+func TestCLI_Browse_JSON(t *testing.T) {
+	cfg := newCLITestConfig("/tmp/test-git")
+	cfg.Accounts["github-test"] = config.Account{
+		Provider:              "github",
+		URL:                   "https://github.com",
+		Username:              "testuser",
+		Name:                  "Test User",
+		Email:                 "test@example.com",
+		DefaultCredentialType: "token",
+	}
+	cfg.Sources["test-src"] = config.Source{
+		Account: "github-test",
+		Repos:   map[string]config.Repo{"testuser/myrepo": {}},
+	}
+	env := setupCLIEnvWithConfig(t, cfg)
+
+	result := env.run(t, "browse", "--repo", "testuser/myrepo", "--json")
+	if result.ExitCode != 0 {
+		t.Fatalf("browse --json failed: %s", result.Stderr)
+	}
+	if !strings.Contains(result.Stdout, "https://github.com/testuser/myrepo") {
+		t.Errorf("browse --json output missing URL: %s", result.Stdout)
+	}
+}
+
 // Ensure json is imported.
 var _ = json.Marshal

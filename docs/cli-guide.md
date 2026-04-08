@@ -210,6 +210,14 @@ gitbox pull --verbose    # Show all repos including clean ones
 gitbox pull --source my-forgejo  # Pull from one source only
 ```
 
+### Open in browser
+
+```bash
+gitbox browse --repo alice/hello-world
+```
+
+Opens the repository's remote web page in the default browser. Use `--source` to narrow the search if the same repo name appears in multiple sources.
+
 ### Scan any directory
 
 ```bash

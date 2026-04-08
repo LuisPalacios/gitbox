@@ -150,6 +150,7 @@ type fetchDoneMsg struct {
 	err                error
 }
 type fetchAllDoneMsg struct{ err error }
+type openBrowserDoneMsg struct{ err error }
 type syncTickMsg struct{}
 
 // --- Mirror messages ---
