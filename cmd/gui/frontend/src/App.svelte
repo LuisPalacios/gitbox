@@ -1553,12 +1553,9 @@
               {:else if state.status === 'ahead'}
                 <span class="compact-badge" style="color: {sc('ahead')}">{state.ahead} ahead</span>
               {/if}
-              {#if state.status !== 'not cloned'}
+              {#if state.status !== 'not cloned' && configEditors.length > 0}
                 <span class="compact-actions-overlay">
-                  <button class="compact-action-btn" on:click|stopPropagation={() => openRepoInExplorer(repoKey)} title="Open folder">&#128193;</button>
-                  {#if configEditors.length > 0}
-                    <button class="compact-action-btn" on:click|stopPropagation={() => openRepoInApp(repoKey, configEditors[0].command)} title="Open in {configEditors[0].name}">&#9998;</button>
-                  {/if}
+                  <button class="compact-action-btn" on:click|stopPropagation={() => openRepoInApp(repoKey, configEditors[0].command)} title="Open in {configEditors[0].name}">&#9998;</button>
                 </span>
               {/if}
             </div>
