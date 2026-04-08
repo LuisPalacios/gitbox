@@ -48,7 +48,7 @@ test-gitbox.json
 /test-*.sh
 
 # AI ignored paths
-#/CONTINUITY*.md
+/CONTINUITY*.md
 .continuity/
 .claude/*.local.*
 tmpclaude-*-cwd
