@@ -240,6 +240,11 @@ jobs:
           cp artifacts/cli-binaries/gitbox-darwin-arm64 staging/gitbox
           chmod +x staging/gitbox
           cd staging && unzip ../artifacts/gui-macos-arm64/gitbox-macos-arm64.zip
+          cd ..
+          cp 'scripts/dmg/Install Gitbox.command' staging/
+          cp scripts/dmg/README.txt staging/
+          chmod +x 'staging/Install Gitbox.command'
+          sed -i '' 's/\r$//' 'staging/Install Gitbox.command'
       - name: Import signing certificate
         if: env.APPLE_CERTIFICATE != ''
         env:
@@ -264,11 +269,15 @@ jobs:
         run: |
           create-dmg \
             --volname "gitbox" \
-            --window-pos 200 120 --window-size 600 400 \
+            --window-pos 200 120 --window-size 660 500 \
             --icon-size 100 \
-            --icon "GitboxApp.app" 150 190 \
-            --app-drop-link 450 190 \
+            --icon "GitboxApp.app" 150 170 \
+            --app-drop-link 450 170 \
             --hide-extension "GitboxApp.app" \
+            --icon "Install Gitbox.command" 150 370 \
+            --hide-extension "Install Gitbox.command" \
+            --icon "README.txt" 450 370 \
+            --icon "gitbox" 900 900 \
             release/gitbox-macos-arm64.dmg staging/ || test $? -eq 2
       - name: Notarize DMG
         if: env.APPLE_CERTIFICATE != ''
@@ -304,6 +313,11 @@ jobs:
           cp artifacts/cli-binaries/gitbox-darwin-amd64 staging/gitbox
           chmod +x staging/gitbox
           cd staging && unzip ../artifacts/gui-macos-amd64/gitbox-macos-amd64.zip
+          cd ..
+          cp 'scripts/dmg/Install Gitbox.command' staging/
+          cp scripts/dmg/README.txt staging/
+          chmod +x 'staging/Install Gitbox.command'
+          sed -i '' 's/\r$//' 'staging/Install Gitbox.command'
       - name: Import signing certificate
         if: env.APPLE_CERTIFICATE != ''
         env:
@@ -328,11 +342,15 @@ jobs:
         run: |
           create-dmg \
             --volname "gitbox" \
-            --window-pos 200 120 --window-size 600 400 \
+            --window-pos 200 120 --window-size 660 500 \
             --icon-size 100 \
-            --icon "GitboxApp.app" 150 190 \
-            --app-drop-link 450 190 \
+            --icon "GitboxApp.app" 150 170 \
+            --app-drop-link 450 170 \
             --hide-extension "GitboxApp.app" \
+            --icon "Install Gitbox.command" 150 370 \
+            --hide-extension "Install Gitbox.command" \
+            --icon "README.txt" 450 370 \
+            --icon "gitbox" 900 900 \
             release/gitbox-macos-amd64.dmg staging/ || test $? -eq 2
       - name: Notarize DMG
         if: env.APPLE_CERTIFICATE != ''
