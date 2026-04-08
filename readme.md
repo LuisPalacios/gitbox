@@ -79,7 +79,7 @@ Download the installer for your platform from the [Releases](https://github.com/
 | Platform | Installer | What it does |
 | --- | --- | --- |
 | Windows | `gitbox-win-amd64-setup.exe` | Installs to Program Files, adds to PATH, creates Start Menu shortcuts |
-| macOS | `gitbox-macos-arm64.dmg` / `gitbox-macos-amd64.dmg` | Double-click "Install Gitbox" in the DMG — installs GUI to Applications, CLI to ~/bin, clears quarantine flags |
+| macOS | `gitbox-macos-arm64.dmg` / `gitbox-macos-amd64.dmg` | Open DMG, run `bash "/Volumes/gitbox/Install Gitbox.command"` from Terminal — installs GUI + CLI, clears quarantine flags |
 | Linux | `gitbox-linux-amd64.AppImage` | Self-contained, runs directly — no installation needed |
 
 Each release also includes a `checksums.sha256` file for verifying downloads.
