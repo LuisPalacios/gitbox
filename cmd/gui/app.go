@@ -480,7 +480,27 @@ func (a *App) OpenInApp(path string, command string) error {
 		return fmt.Errorf("command is required")
 	}
 	cmd := exec.Command(command, path)
+	cmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
 	return cmd.Start()
+}
+
+// lookPathWithBrewPATH resolves a command using the Homebrew-augmented PATH.
+// On macOS, GUI apps inherit a minimal PATH that excludes /opt/homebrew/bin
+// and /usr/local/bin, so editors installed via Homebrew (code, cursor, zed)
+// are invisible to exec.LookPath. This helper sets the augmented env for the
+// lookup, falling back to the standard LookPath on non-macOS platforms.
+func lookPathWithBrewPATH(command string) (string, error) {
+	env := git.Environ() // no-op on non-macOS
+	for _, e := range env {
+		if strings.HasPrefix(e, "PATH=") {
+			origPath := os.Getenv("PATH")
+			os.Setenv("PATH", strings.TrimPrefix(e, "PATH="))
+			fullPath, err := exec.LookPath(command)
+			os.Setenv("PATH", origPath)
+			return fullPath, err
+		}
+	}
+	return exec.LookPath(command)
 }
 
 // EditorInfo describes an available code editor.
@@ -502,7 +522,7 @@ var knownEditors = []EditorInfo{
 func (a *App) DetectEditors() []EditorInfo {
 	var editors []EditorInfo
 	for _, e := range knownEditors {
-		if _, err := exec.LookPath(e.Command); err == nil {
+		if _, err := lookPathWithBrewPATH(e.Command); err == nil {
 			editors = append(editors, e)
 		}
 	}
@@ -546,7 +566,7 @@ func (a *App) SyncEditors() {
 		if seenName[known.Name] {
 			continue
 		}
-		fullPath, err := exec.LookPath(known.Command)
+		fullPath, err := lookPathWithBrewPATH(known.Command)
 		if err != nil {
 			continue
 		}

@@ -21,14 +21,6 @@ Active feature backlog for gitbox. Managed by the `/wish` skill.
 
 ## Radar
 
-### W6: Open in browser
-
-- **Status:** planning
-- **Priority:** P1
-- **Size:** S
-- **Concept:** Add a context action to open a repository's remote page in the default browser. Parse the origin remote URL (SSH or HTTPS) to construct the web URL. Expose in GUI context menu, TUI keybinding, and CLI command.
-- **Notes:** Web URL is `Account.URL + "/" + repoKey` (works for all providers). GUI: add `OpenInBrowser(url)` to `app.go` using same `open`/`xdg-open`/`cmd /c start` pattern as `OpenFileInEditor` (line 443). Wire through `bridge.ts`, add button to `App.svelte` kebab menu (line 1854) and compact view. TUI: add `b` keybinding in `screen_repos.go` (line 234). CLI: add `browse` Cobra command following `fetch_cmd.go` pattern. Tests: URL builder unit test in `helpers_test.go`, TUI keybinding test in `screen_repos_test.go`.
-
 ### W2: Bulk branch cleanup (`gitbox sweep`)
 
 - **Status:** radar
@@ -71,4 +63,11 @@ Active feature backlog for gitbox. Managed by the `/wish` skill.
 
 ## Shipped
 
-_None yet._
+### W6: Open in browser
+
+- **Status:** shipped
+- **Shipped:** 2026-04-08
+- **Priority:** P1
+- **Size:** S
+- **Concept:** Add a context action to open a repository's remote page in the default browser. Parse the origin remote URL (SSH or HTTPS) to construct the web URL. Expose in GUI context menu, TUI keybinding, and CLI command.
+- **Notes:** Web URL is `Account.URL + "/" + repoKey` (works for all providers). GUI: add `OpenInBrowser(url)` to `app.go` using same `open`/`xdg-open`/`cmd /c start` pattern as `OpenFileInEditor` (line 443). Wire through `bridge.ts`, add button to `App.svelte` kebab menu (line 1854) and compact view. TUI: add `b` keybinding in `screen_repos.go` (line 234). CLI: add `browse` Cobra command following `fetch_cmd.go` pattern. Tests: URL builder unit test in `helpers_test.go`, TUI keybinding test in `screen_repos_test.go`.

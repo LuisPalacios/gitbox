@@ -1,6 +1,6 @@
 ---
 name: wish
-description: Manage the gitbox feature radar — view priorities, capture new ideas, plan implementations, and mark features shipped. Use when the user wants to see the backlog, add a feature idea, plan a feature, or mark one done.
+description: Manage the gitbox feature radar — view priorities, capture new ideas, plan implementations, and mark features shipped. Use when the user wants to see the backlog, list pending wishes, add a feature idea, plan a feature, or mark one done.
 ---
 
 # /wish — Feature radar manager
@@ -11,6 +11,7 @@ description: Manage the gitbox feature radar — view priorities, capture new id
 
 ```text
 /wish                  Show the radar overview
+/wish list             One-line summary of all pending wishes
 /wish add <title>      Capture a new feature idea
 /wish plan <id>        Deep-dive and create implementation plan
 /wish done <id>        Mark a wish as shipped
@@ -46,6 +47,25 @@ Shipped: (none)
 ```
 
 4. End with a concrete suggestion: which wish to tackle next, based on priority, status, and codebase readiness
+
+## `/wish list` — Quick pending summary
+
+A compact, flat list of all non-shipped wishes — no grouping, no suggestion, just the facts.
+
+1. Read `.claude/context/feature-radar.md`
+2. Collect every wish under `## Radar` (skip `## Shipped`)
+3. Print one line per wish, sorted by priority then ID:
+
+```text
+Pending wishes:
+  W2  P1  M  radar     Bulk branch cleanup
+  W1  P2  L  radar     Config sync
+  W3  P2  M  radar     Dynamic workspaces
+  W4  P3  L  radar     Smart archiving
+  W5  P3  L  radar     Unified dashboard
+```
+
+4. End with the total count (e.g., "5 pending")
 
 ## `/wish add <title>` — Capture a new idea
 
