@@ -57,7 +57,7 @@ xcrun stapler staple gitbox-macos-arm64.dmg
 
 Until signing is configured, macOS users will see a Gatekeeper warning when opening the app. They can:
 
-- Right-click "Install Gitbox" inside the DMG → Open — it copies binaries and removes quarantine flags automatically (or run `bash "/Volumes/gitbox/Install Gitbox.command"` from Terminal)
+- Run `bash "/Volumes/gitbox/Install Gitbox.command"` from Terminal — the bundled install script copies binaries and removes quarantine flags automatically
 - Use `xattr -cr GitboxApp.app` and `xattr -cr gitbox` to remove the quarantine attribute manually
 - Use the `bootstrap.sh` script which handles this automatically
 - Use `gitbox update` from the CLI which replaces binaries without Gatekeeper checks

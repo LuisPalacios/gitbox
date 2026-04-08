@@ -30,17 +30,12 @@ and removes quarantine flags automatically. It will:
 The script asks for confirmation before making changes. It does not
 require administrator (sudo) privileges and does not access the network.
 
-Because this software is not signed, macOS Gatekeeper will also block
-the installer script itself when you double-click it. Two ways to run it:
+Because this software is not signed, macOS Gatekeeper blocks the
+installer script too. Open Terminal and run:
 
-  Option A — Right-click "Install Gitbox" and select "Open". macOS will
-  show a warning dialog; click "Open" to proceed.
+  bash "/Volumes/gitbox/Install Gitbox.command"
 
-  Option B — Open Terminal and run:
-
-    bash "/Volumes/gitbox/Install Gitbox.command"
-
-  This bypasses Gatekeeper because bash reads the script as a text file.
+This bypasses Gatekeeper because bash reads the script as a text file.
 
 
 MANUAL INSTALLATION
