@@ -14,12 +14,12 @@ This guide walks you through everything from first launch to day-to-day use.
 Download the installer for your platform from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page:
 
 - **Windows** — `gitbox-win-amd64-setup.exe` (installer with PATH setup and Start Menu shortcuts)
-- **macOS** — `gitbox-macos-arm64.dmg` or `gitbox-macos-amd64.dmg` (double-click "Install Gitbox" inside the DMG)
+- **macOS** — `gitbox-macos-arm64.dmg` or `gitbox-macos-amd64.dmg` (right-click "Install Gitbox" → Open inside the DMG)
 - **Linux** — `gitbox-linux-amd64.AppImage` (self-contained, just download and run)
 
 Alternatively, download the ZIP archives (`gitbox-<platform>-<arch>.zip`) and extract manually.
 
-> **macOS note:** The app is not signed by Apple. The DMG includes an "Install Gitbox" script that copies the binaries and removes quarantine flags automatically. If you prefer to install manually, run `xattr -cr /path/to/GitboxApp.app` and `xattr -cr /path/to/gitbox` in a terminal.
+> **macOS note:** The app is not signed by Apple. The DMG includes an "Install Gitbox" script that copies the binaries and removes quarantine flags automatically. Right-click the script and select "Open" to bypass Gatekeeper, or run `bash "/Volumes/gitbox/Install Gitbox.command"` from Terminal. For manual install, use `xattr -cr /path/to/GitboxApp.app` and `xattr -cr /path/to/gitbox`.
 
 ### Linux AppImage
 

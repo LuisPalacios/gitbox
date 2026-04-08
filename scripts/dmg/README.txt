@@ -19,8 +19,8 @@ LICENSE file in the repository for full terms.
 RECOMMENDED: USE THE INSTALLER
 -------------------------------
 
-Double-click "Install Gitbox" in this disk image. A Terminal window will
-open and the script will:
+The DMG includes an "Install Gitbox" script that copies the binaries
+and removes quarantine flags automatically. It will:
 
   1. Copy GitboxApp.app to /Applications/
   2. Copy the gitbox CLI to ~/bin/
@@ -30,9 +30,17 @@ open and the script will:
 The script asks for confirmation before making changes. It does not
 require administrator (sudo) privileges and does not access the network.
 
-Alternatively, from Terminal:
+Because this software is not signed, macOS Gatekeeper will also block
+the installer script itself when you double-click it. Two ways to run it:
 
-  bash "/Volumes/gitbox/Install Gitbox.command"
+  Option A — Right-click "Install Gitbox" and select "Open". macOS will
+  show a warning dialog; click "Open" to proceed.
+
+  Option B — Open Terminal and run:
+
+    bash "/Volumes/gitbox/Install Gitbox.command"
+
+  This bypasses Gatekeeper because bash reads the script as a text file.
 
 
 MANUAL INSTALLATION
