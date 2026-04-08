@@ -61,6 +61,7 @@ assets/                   Icons, logo, screenshot, VHS tape files
 scripts/
   installer.iss            Windows Inno Setup installer script
   appimage/                Linux AppImage support files (desktop, AppRun)
+  dmg/                     macOS DMG installer script + README
 .githooks/pre-push        Pre-push hook (go vet + unit tests)
 .claude/
   context/

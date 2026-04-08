@@ -233,18 +233,18 @@ Each release produces the following artifacts:
 | `gitbox-win-amd64.zip` | `gitbox.exe` + `GitboxApp.exe` |
 | `gitbox-win-amd64-setup.exe` | Windows Inno Setup installer (PATH, Start Menu) |
 | `gitbox-macos-arm64.zip` | `gitbox` + `GitboxApp.app` |
-| `gitbox-macos-arm64.dmg` | macOS disk image (drag to Applications) |
+| `gitbox-macos-arm64.dmg` | macOS disk image with bundled installer |
 | `gitbox-macos-amd64.zip` | `gitbox` + `GitboxApp.app` |
-| `gitbox-macos-amd64.dmg` | macOS disk image (drag to Applications) |
+| `gitbox-macos-amd64.dmg` | macOS disk image with bundled installer |
 | `gitbox-linux-amd64.zip` | `gitbox` + `GitboxApp` |
 | `gitbox-linux-amd64.AppImage` | Self-contained Linux app (CLI + GUI) |
 | `checksums.sha256` | SHA256 hashes for all artifacts |
 
-The Windows installer is built with Inno Setup (`scripts/installer.iss`). macOS DMGs are built with `create-dmg`. The Linux AppImage is built with `appimagetool` using the support files in `scripts/appimage/`.
+The Windows installer is built with Inno Setup (`scripts/installer.iss`). macOS DMGs are built with `create-dmg` and include a bundled `Install Gitbox.command` script (`scripts/dmg/`) that copies binaries and removes quarantine flags. The Linux AppImage is built with `appimagetool` using the support files in `scripts/appimage/`.
 
 ### macOS code signing
 
-macOS DMGs are currently **unsigned**. Code signing and notarization steps are present in the CI workflow but gated on the `APPLE_CERTIFICATE` secret. See [macos-signing.md](macos-signing.md) for setup instructions. Until signing is configured, macOS users should use the bootstrap script or ZIP downloads, which handle quarantine removal automatically.
+macOS DMGs are currently **unsigned**. Code signing and notarization steps are present in the CI workflow but gated on the `APPLE_CERTIFICATE` secret. See [macos-signing.md](macos-signing.md) for setup instructions. Until signing is configured, the DMG includes a bundled "Install Gitbox" script that handles quarantine removal automatically. Users can also use the bootstrap script or ZIP downloads.
 
 ### Auto-update
 
