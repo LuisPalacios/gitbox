@@ -7,7 +7,7 @@
     summary, accountStats, themeStore, applyStatusResults, applyMirrorStatusResults
   } from './lib/stores';
   import { statusColor, credColor, statusLabel, providerLabel, statusSymbol } from './lib/theme';
-  import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL } from '../wailsjs/runtime/runtime';
+  import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit } from '../wailsjs/runtime/runtime';
   import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo } from './lib/types';
 
   // ── View mode ──
@@ -93,9 +93,10 @@
   // ── Global identity warning ──
   let globalIdentityWarn: { hasName: boolean; hasEmail: boolean; name: string; email: string } | null = null;
 
-  // ── Update banner ──
+  // ── Update state ──
   let updateInfo: { available: boolean; current: string; latest: string; url: string } | null = null;
   let updateApplying = false;
+  let updateProgress = '';
   let updateDone = false;
 
   async function checkGlobalIdentity() {
@@ -1401,8 +1402,13 @@
       updateInfo = info;
     });
 
+    events.on('update:progress', (msg: string) => {
+      updateProgress = msg;
+    });
+
     events.on('update:done', (ver: string) => {
       updateApplying = false;
+      updateProgress = '';
       updateDone = true;
     });
 
@@ -1413,7 +1419,7 @@
         `Config file could not be loaded:\n\n${loadError}\n\nDo you want to reinitialize the configuration?\n\nClick OK to start fresh, or Cancel to exit and fix the file manually.`
       );
       if (!proceed) {
-        window.close();
+        Quit();
         return;
       }
     }
@@ -1666,24 +1672,7 @@
     </div>
   </header>
 
-  <!-- ── UPDATE BANNER ── -->
-  {#if updateInfo?.available && !updateDone}
-    <div class="update-banner" transition:slide={{ duration: 150 }}>
-      <span>{updateInfo.latest} available</span>
-      {#if updateApplying}
-        <span class="update-status">Updating...</span>
-      {:else}
-        <button class="update-btn" on:click={() => { updateApplying = true; bridge.applyUpdate().catch(() => { updateApplying = false; }); }}>Update</button>
-        <button class="update-dismiss" on:click={() => updateInfo = null} title="Dismiss">&#10005;</button>
-      {/if}
-    </div>
-  {/if}
-  {#if updateDone}
-    <div class="update-banner update-done" transition:slide={{ duration: 150 }}>
-      <span>Updated! Restart to apply.</span>
-      <button class="update-btn" on:click={() => window.close()}>Quit</button>
-    </div>
-  {/if}
+  <!-- update notification moved to summary footer -->
 
   <!-- ── GLOBAL IDENTITY WARNING ── -->
   {#if globalIdentityWarn}
@@ -2042,12 +2031,30 @@
 
   <!-- ── SUMMARY FOOTER ── -->
   <footer class="summary">
-    <span class="sum" style="color:{sc('clean')}">{$summary.clean} synced</span>
-    {#if $summary.syncing > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('syncing')}">{$summary.syncing} syncing</span>{/if}
-    {#if $summary.behind > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('behind')}">{$summary.behind} behind</span>{/if}
-    {#if $summary.dirty > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('dirty')}">{$summary.dirty} local changes</span>{/if}
-    {#if $summary.notCloned > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('not cloned')}">{$summary.notCloned} not local</span>{/if}
-    {#if $mirrorSummary.total > 0}<span class="sep">&middot;</span><span class="sum" style="color:{$mirrorSummary.error > 0 ? sc('error') : sc('clean')}">{$mirrorSummary.active}/{$mirrorSummary.total} mirrors</span>{/if}
+    <div class="summary-left">
+      <span class="sum" style="color:{sc('clean')}">{$summary.clean} synced</span>
+      {#if $summary.syncing > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('syncing')}">{$summary.syncing} syncing</span>{/if}
+      {#if $summary.behind > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('behind')}">{$summary.behind} behind</span>{/if}
+      {#if $summary.dirty > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('dirty')}">{$summary.dirty} local changes</span>{/if}
+      {#if $summary.notCloned > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('not cloned')}">{$summary.notCloned} not local</span>{/if}
+      {#if $mirrorSummary.total > 0}<span class="sep">&middot;</span><span class="sum" style="color:{$mirrorSummary.error > 0 ? sc('error') : sc('clean')}">{$mirrorSummary.active}/{$mirrorSummary.total} mirrors</span>{/if}
+    </div>
+    {#if updateDone}
+      <div class="update-pill update-done">
+        <span>&#10003; Updated — restart to apply</span>
+        <button class="update-pill-btn" on:click={() => Quit()}>Quit</button>
+      </div>
+    {:else if updateInfo?.available}
+      <div class="update-pill">
+        {#if updateApplying}
+          <span class="update-pill-spin">&#8635;</span> <span>{updateProgress || 'Updating…'}</span>
+        {:else}
+          <span>&#9650;</span>
+          <button class="update-pill-btn" on:click={() => { updateApplying = true; bridge.applyUpdate().catch(() => { updateApplying = false; }); }}>{updateInfo.latest} available</button>
+          <button class="update-pill-dismiss" on:click={() => updateInfo = null} title="Dismiss">&#10005;</button>
+        {/if}
+      </div>
+    {/if}
   </footer>
 
   {/if}
@@ -2890,21 +2897,23 @@
   .app { max-width: 860px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
   .topbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--border); }
-  .update-banner {
-    display: flex; align-items: center; gap: 8px; padding: 6px 24px;
-    background: #1a3a2a; border-bottom: 1px solid #2d5a3d; font-size: 12px; color: #8fefb0;
+  /* update pill in footer */
+  .update-pill {
+    display: flex; align-items: center; gap: 4px;
+    color: #f59e0b; font-size: 11px; font-weight: 600; white-space: nowrap;
   }
-  :global([data-theme="light"]) .update-banner { background: #e8f5e9; border-color: #c8e6c9; color: #2e7d32; }
-  .update-banner.update-done { background: #1a2a3a; border-color: #2d4a5d; color: #8fd0ef; }
-  :global([data-theme="light"]) .update-banner.update-done { background: #e3f2fd; border-color: #bbdefb; color: #1565c0; }
-  .update-btn {
-    padding: 2px 10px; border-radius: 4px; border: 1px solid currentColor;
-    background: transparent; color: inherit; cursor: pointer; font-size: 11px; font-weight: 600;
+  :global([data-theme="light"]) .update-pill { color: #d97706; }
+  .update-pill.update-done { color: #22d3ee; }
+  :global([data-theme="light"]) .update-pill.update-done { color: #0891b2; }
+  .update-pill-btn {
+    background: none; border: none; color: inherit; cursor: pointer;
+    font-size: 11px; font-weight: 600; padding: 0; text-decoration: underline; text-underline-offset: 2px;
   }
-  .update-btn:hover { opacity: 0.8; }
-  .update-dismiss { background: none; border: none; color: inherit; cursor: pointer; margin-left: auto; opacity: 0.6; font-size: 12px; }
-  .update-dismiss:hover { opacity: 1; }
-  .update-status { font-style: italic; opacity: 0.8; }
+  .update-pill-btn:hover { opacity: 0.8; }
+  .update-pill-dismiss { background: none; border: none; color: inherit; cursor: pointer; opacity: 0.5; font-size: 10px; padding: 0 2px; }
+  .update-pill-dismiss:hover { opacity: 1; }
+  .update-pill-spin { animation: spin 1s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .brand { display: flex; align-items: center; gap: 8px; }
   .logo-svg { width: 26px; height: 26px; }
   .title { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
@@ -3117,10 +3126,11 @@
   .detail-path-dim { color: var(--text-dim); }
 
   .summary {
-    display: flex; align-items: center; justify-content: center; gap: 6px;
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
     padding: 10px 24px; border-top: 1px solid var(--border); font-size: 12px; font-weight: 500;
     flex-shrink: 0;
   }
+  .summary-left { display: flex; align-items: center; gap: 6px; }
   .sum { font-weight: 600; }
   .sep { color: var(--border-hover); }
 
