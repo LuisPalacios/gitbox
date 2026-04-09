@@ -474,6 +474,67 @@ func (a *App) OpenInBrowser(url string) error {
 	return git.OpenInBrowser(url)
 }
 
+// SweepPreviewDTO holds the read-only preview of stale branches.
+type SweepPreviewDTO struct {
+	Merged   []string `json:"merged"`
+	Gone     []string `json:"gone"`
+	Squashed []string `json:"squashed"`
+	Error    string   `json:"error,omitempty"`
+}
+
+// SweepDeleteDTO holds the result of actually deleting branches.
+type SweepDeleteDTO struct {
+	Deleted []string `json:"deleted"`
+	Error   string   `json:"error,omitempty"`
+}
+
+// resolveRepoPath looks up a repo's local path from config. Returns ("", error) if not found.
+func (a *App) resolveRepoPath(sourceKey, repoKey string) (string, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	src, ok := a.cfg.Sources[sourceKey]
+	if !ok {
+		return "", fmt.Errorf("source %q not found", sourceKey)
+	}
+	repo, ok := src.Repos[repoKey]
+	if !ok {
+		return "", fmt.Errorf("repo %q not found", repoKey)
+	}
+	globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
+	sourceFolder := src.EffectiveFolder(sourceKey)
+	return status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo), nil
+}
+
+// PreviewSweep scans for stale branches without deleting anything.
+func (a *App) PreviewSweep(sourceKey, repoKey string) SweepPreviewDTO {
+	path, err := a.resolveRepoPath(sourceKey, repoKey)
+	if err != nil {
+		return SweepPreviewDTO{Error: err.Error()}
+	}
+	result, err := git.SweepBranches(path)
+	if err != nil {
+		return SweepPreviewDTO{Error: err.Error()}
+	}
+	return SweepPreviewDTO{Merged: result.Merged, Gone: result.Gone, Squashed: result.Squashed}
+}
+
+// ConfirmSweep deletes the stale branches found by PreviewSweep.
+func (a *App) ConfirmSweep(sourceKey, repoKey string) SweepDeleteDTO {
+	path, err := a.resolveRepoPath(sourceKey, repoKey)
+	if err != nil {
+		return SweepDeleteDTO{Error: err.Error()}
+	}
+	result, err := git.SweepBranches(path)
+	if err != nil {
+		return SweepDeleteDTO{Error: err.Error()}
+	}
+	deleted, errs := git.DeleteStaleBranches(path, result)
+	if len(errs) > 0 {
+		return SweepDeleteDTO{Deleted: deleted, Error: errs[0].Error()}
+	}
+	return SweepDeleteDTO{Deleted: deleted}
+}
+
 // OpenInApp opens a folder in a specific application (e.g. VS Code).
 func (a *App) OpenInApp(path string, command string) error {
 	if command == "" {

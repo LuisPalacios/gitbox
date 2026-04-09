@@ -1,6 +1,6 @@
 ---
 name: wish
-description: Manage the gitbox feature radar — view priorities, capture new ideas, plan implementations, and mark features shipped. Use when the user wants to see the backlog, list pending wishes, add a feature idea, plan a feature, or mark one done.
+description: Manage the gitbox feature radar — view priorities, capture new ideas, plan implementations, delete entries, and mark features shipped. Use when the user wants to see the backlog, list pending wishes, add a feature idea, plan a feature, delete a wish, or mark one done.
 ---
 
 # /wish — Feature radar manager
@@ -15,6 +15,7 @@ description: Manage the gitbox feature radar — view priorities, capture new id
 /wish add <title>      Capture a new feature idea
 /wish plan <id>        Deep-dive and create implementation plan
 /wish done <id>        Mark a wish as shipped
+/wish delete <id>      Remove a wish from the radar entirely
 ```
 
 ## Data file
@@ -116,6 +117,16 @@ This is the most valuable subcommand — it turns a vague wish into a concrete i
    - Add a shipped date: `- **Shipped:** YYYY-MM-DD`
 4. Move the wish entry from `## Radar` to `## Shipped`
 5. Confirm to the user
+
+## `/wish delete <id>` — Remove a wish
+
+1. Read the radar file and find the wish by ID (e.g., `W3`)
+2. If the wish does not exist, inform the user and stop
+3. Show the wish title, status, and priority — ask the user to confirm deletion
+4. On confirmation, remove the entire wish entry (the `### W<id>: ...` heading and all lines until the next heading or end of section) from whichever section it lives in (`## Radar` or `## Shipped`)
+5. Confirm to the user: "Deleted W<id>: <title>"
+
+**Note:** Deleted IDs are never reused — the next `/wish add` still uses `max+1` across all existing and deleted IDs.
 
 ## Behavior notes
 

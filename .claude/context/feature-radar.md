@@ -23,11 +23,11 @@ Active feature backlog for gitbox. Managed by the `/wish` skill.
 
 ### W2: Bulk branch cleanup (`gitbox sweep`)
 
-- **Status:** radar
+- **Status:** planning
 - **Priority:** P1
 - **Size:** M
 - **Concept:** Safely delete local branches that have been merged upstream or removed on the remote, across all repos in a source or across all sources. A `gitbox sweep` CLI command plus a TUI action and GUI panel.
-- **Notes:** `pkg/git/git.go` already wraps `git fetch`, `git branch`, and `git remote`. The iteration pattern exists in `cmd/cli/clone_cmd.go` and `cmd/cli/status_cmd.go` (loop over sources and repos). Needs new `git.MergedBranches()` and `git.DeleteBranch()` helpers, a new Cobra command, TUI integration (repo detail screen or dashboard action), and tests.
+- **Notes:** Plan: (1) Add git helpers — `DefaultBranch`, `StaleBranches`, `DeleteBranch` in `pkg/git/git.go`. (2) CLI `sweep_cmd.go` following `fetch_cmd.go` pattern with `--source`/`--repo`/`--dry-run` flags. (3) TUI `s` keybinding in `screen_repos.go`. (4) GUI "Sweep branches" in kebab menu via `app.go` + `App.svelte`. (5) Tests for git helpers + CLI subprocess tests.
 
 ### W1: Config sync
 
