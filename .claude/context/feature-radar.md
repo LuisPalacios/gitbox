@@ -21,6 +21,14 @@ Active feature backlog for gitbox. Managed by the `/wish` skill.
 
 ## Radar
 
+### W8: Orphan repo discovery and adoption (`gitbox scan` / `gitbox adopt`)
+
+- **Status:** planning
+- **Priority:** P1
+- **Size:** L
+- **Concept:** Discover git repos under the gitbox parent folder that aren't tracked in `gitbox.json` and adopt them into the gitbox world. Two-phase approach: `gitbox scan` (read-only, reports orphans with proposed actions) then `gitbox adopt` (executes the plan). Handles all cases: account exists or needs creation (inferred from remote URL), repo in the right folder or needs relocation (always ask before moving). Sanitizes `.git/config` on adoption — sets credential helper, local identity, and remote URL format per account config. CLI-first (`gitbox scan` + `gitbox adopt`), with TUI/GUI integration later designed to feel seamless and transparent.
+- **Notes:** Pending codebase exploration during planning phase.
+
 ### W7: Branch-aware status and UX
 
 - **Status:** planning

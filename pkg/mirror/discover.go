@@ -2,12 +2,12 @@ package mirror
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
+	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
 )
 
@@ -168,7 +168,7 @@ func detectPushMirrorsWithProgress(ctx context.Context, prov provider.Provider, 
 		}
 
 		for _, m := range mirrors {
-			host, mOwner, mRepo, err := parseRemoteURL(m.RemoteURL)
+			host, mOwner, mRepo, err := git.ParseRemoteURL(m.RemoteURL)
 			if err != nil {
 				continue
 			}
@@ -266,23 +266,6 @@ func buildRepoIndex(repos []provider.RemoteRepo) map[string]provider.RemoteRepo 
 		idx[short] = r
 	}
 	return idx
-}
-
-// parseRemoteURL extracts (host, owner, repo) from a mirror remote URL.
-// "https://github.com/LuisPalacios/migra-forgejo.git" → ("github.com", "LuisPalacios", "migra-forgejo")
-func parseRemoteURL(rawURL string) (host, owner, repo string, err error) {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return "", "", "", fmt.Errorf("parsing URL %q: %w", rawURL, err)
-	}
-	host = u.Hostname()
-	path := strings.Trim(u.Path, "/")
-	path = strings.TrimSuffix(path, ".git")
-	parts := strings.SplitN(path, "/", 2)
-	if len(parts) != 2 {
-		return "", "", "", fmt.Errorf("URL path %q does not contain owner/repo", u.Path)
-	}
-	return host, parts[0], parts[1], nil
 }
 
 // extractHost returns the hostname from a base URL.

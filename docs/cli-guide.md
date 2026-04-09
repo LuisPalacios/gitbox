@@ -251,6 +251,20 @@ gitbox scan --dir ~/projects    # Scan a specific directory
 gitbox scan --pull              # Also pull repos that are behind
 ```
 
+When a gitbox config exists and I scan inside the parent folder, each repo is annotated as `[tracked]` or `[ORPHAN]` with account-matching hints.
+
+### Adopt orphan repos
+
+If repos exist under the gitbox parent folder but aren't in `gitbox.json` (cloned manually, inherited from a previous setup), I adopt them:
+
+```bash
+gitbox adopt              # Interactive adoption of matched orphans
+gitbox adopt --dry-run    # Preview what would happen
+gitbox adopt --all        # Adopt all matched orphans without prompting
+```
+
+For each orphan with a matching account, `adopt` adds it to the config, sets up credential isolation, configures identity, and rewrites the remote URL. If the repo isn't in the standard folder, I'm asked whether to relocate it.
+
 ## Step 7: Set up mirrors (optional)
 
 Mirrors let you keep backup copies of repos on another provider — for example, pushing from a homelab Forgejo to GitHub, or pulling GitHub repos into Forgejo.

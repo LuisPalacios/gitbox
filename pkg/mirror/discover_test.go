@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/git"
 )
 
 func TestParseRemoteURL(t *testing.T) {
@@ -17,14 +18,14 @@ func TestParseRemoteURL(t *testing.T) {
 		{"https://github.com/LuisPalacios/migra-forgejo.git", "github.com", "LuisPalacios", "migra-forgejo", false},
 		{"https://github.com/LuisPalacios/migra-forgejo", "github.com", "LuisPalacios", "migra-forgejo", false},
 		{"https://git.parchis.org/infra/homelab.git", "git.parchis.org", "infra", "homelab", false},
-		{"https://gitlab.com/group/subgroup/repo.git", "gitlab.com", "group", "subgroup/repo", false},
+		{"https://gitlab.com/group/subgroup/repo.git", "gitlab.com", "group/subgroup", "repo", false},
 		{"https://example.com/noslash", "", "", "", true},
 		{"not-a-url", "", "", "", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.url, func(t *testing.T) {
-			host, owner, repo, err := parseRemoteURL(tt.url)
+			host, owner, repo, err := git.ParseRemoteURL(tt.url)
 			if tt.wantErr {
 				if err == nil {
 					t.Error("expected error")

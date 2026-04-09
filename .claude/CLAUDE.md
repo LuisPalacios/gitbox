@@ -43,6 +43,7 @@ pkg/                      Shared Go library
   git/                    Git subprocess operations (os/exec)
   provider/               Provider API clients + mirror interfaces (GitHub, GitLab, Gitea, Forgejo)
   mirror/                 Push/pull mirror setup, status, guides
+  adopt/                  Orphan repo discovery and adoption
   status/                 Clone status checking
   update/                 Auto-update: version check, download, self-replace
 docs/

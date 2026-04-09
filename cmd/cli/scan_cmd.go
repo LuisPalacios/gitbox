@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/LuisPalacios/gitbox/pkg/adopt"
+	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/spf13/cobra"
 )
@@ -46,12 +48,16 @@ func colorize(text, color string) string {
 	return color + text + colorReset
 }
 
+var colorYellow = "\033[38;2;255;215;0m" // #FFD700 — orphan tags
+
 var scanCmd = &cobra.Command{
 	Use:   "scan",
 	Short: "Scan filesystem for git repos and show their status",
 	Long: `Walks the directory tree from the current directory (or --dir) finding all
-git repositories and reports their sync status. Unlike 'status', this command
-does not require a gitbox configuration — it works on any directory.
+git repositories and reports their sync status.
+
+When a gitbox configuration exists, each repo is annotated as [tracked] or
+[ORPHAN]. Orphan repos can be adopted with 'gitbox adopt'.
 
 Use --pull to also pull repos that are behind (fast-forward only).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -66,7 +72,7 @@ Use --pull to also pull repos that are behind (fast-forward only).`,
 		dir = filepath.Clean(dir)
 
 		// Find all git repos.
-		repos, err := findGitRepos(dir)
+		repos, err := git.FindRepos(dir)
 		if err != nil {
 			return fmt.Errorf("scanning %s: %w", dir, err)
 		}
@@ -78,17 +84,36 @@ Use --pull to also pull repos that are behind (fast-forward only).`,
 
 		sort.Strings(repos)
 
-		home, _ := os.UserHomeDir()
-		count := 0
+		// Try to load config for orphan annotation.
+		var orphanSet map[string]*adopt.OrphanRepo
+		cfg, cfgErr := loadConfig()
+		if cfgErr == nil {
+			parentFolder := config.ExpandTilde(cfg.Global.Folder)
+			absDir, _ := filepath.Abs(dir)
+			absParent, _ := filepath.Abs(parentFolder)
+			// Only annotate if scanning within the gitbox parent folder.
+			if strings.HasPrefix(strings.ToLower(filepath.ToSlash(absDir)), strings.ToLower(filepath.ToSlash(absParent))) {
+				orphans, _ := adopt.FindOrphans(cfg)
+				orphanSet = make(map[string]*adopt.OrphanRepo, len(orphans))
+				for i := range orphans {
+					key := strings.ToLower(filepath.ToSlash(filepath.Clean(orphans[i].Path)))
+					orphanSet[key] = &orphans[i]
+				}
+			}
+		}
 
-		// Process and print each repo as we go (streaming).
+		home, _ := os.UserHomeDir()
+		tracked := 0
+		orphanCount := 0
+		total := 0
+
 		for _, repoPath := range repos {
 			displayPath := makeDisplayPath(repoPath, dir, home)
 
 			s, err := git.Status(repoPath)
 			if err != nil {
 				printStatusLine("x", "error", displayPath, err.Error(), colorRed)
-				count++
+				total++
 				continue
 			}
 
@@ -103,7 +128,7 @@ Use --pull to also pull repos that are behind (fast-forward only).`,
 				} else {
 					printStatusLine("+", "pulled", displayPath, fmt.Sprintf("%d behind → ok", s.Behind), colorGreen)
 				}
-				count++
+				total++
 				continue
 			}
 
@@ -119,11 +144,38 @@ Use --pull to also pull repos that are behind (fast-forward only).`,
 				color = colorRed
 			}
 
-			printStatusLine(symbol, state, displayPath, details, color)
-			count++
+			// Annotate with tracking status if config is available.
+			tag := ""
+			if orphanSet != nil {
+				key := strings.ToLower(filepath.ToSlash(filepath.Clean(repoPath)))
+				if o, isOrphan := orphanSet[key]; isOrphan {
+					orphanCount++
+					if o.LocalOnly {
+						tag = colorize(" [ORPHAN — local only]", colorYellow)
+					} else if o.MatchedAccount != "" {
+						tag = colorize(fmt.Sprintf(" [ORPHAN → %s]", o.MatchedAccount), colorYellow)
+					} else {
+						tag = colorize(" [ORPHAN — unknown account]", colorRed)
+					}
+				} else {
+					tracked++
+					tag = colorize(" [tracked]", "\033[2m") // dim
+				}
+			}
+
+			if details != "" {
+				displayPath = fmt.Sprintf("%-50s  %s", displayPath, details)
+			}
+			fmt.Printf("%s  %s%s\n", colorize(fmt.Sprintf("%s %-8s", symbol, state), color), displayPath, tag)
+			total++
 		}
 
-		fmt.Printf("\nScanned: %d repos\n", count)
+		// Summary.
+		if orphanSet != nil {
+			fmt.Printf("\nScanned: %d repos (%d tracked, %d orphans)\n", total, tracked, orphanCount)
+		} else {
+			fmt.Printf("\nScanned: %d repos\n", total)
+		}
 		return nil
 	},
 }
@@ -150,35 +202,6 @@ func makeDisplayPath(repoPath, scanDir, home string) string {
 	return displayPath
 }
 
-// findGitRepos walks the directory tree and returns paths to all git repositories.
-func findGitRepos(root string) ([]string, error) {
-	var repos []string
-
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil // Skip inaccessible directories.
-		}
-		if !d.IsDir() {
-			return nil
-		}
-
-		// Skip hidden directories (except .git itself).
-		name := d.Name()
-		if strings.HasPrefix(name, ".") && name != ".git" {
-			return filepath.SkipDir
-		}
-
-		// If this directory contains a .git subdirectory, it's a repo.
-		if name == ".git" {
-			repos = append(repos, filepath.Dir(path))
-			return filepath.SkipDir // Don't descend into .git.
-		}
-
-		return nil
-	})
-
-	return repos, err
-}
 
 // classifyStatus returns symbol, state name, and details for a repo status.
 func classifyStatus(s git.RepoStatus) (symbol, state, details string) {

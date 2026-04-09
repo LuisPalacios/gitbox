@@ -351,6 +351,40 @@ Output uses colored one-liners with symbols: `+` ok, `!` dirty, `<` behind, `>` 
 
 Unlike `status`, `scan` does not require a gitbox configuration — it works on any directory tree.
 
+When a gitbox configuration exists and scanning inside the parent folder, repos are annotated as `[tracked]` or `[ORPHAN]` with account-matching hints and a summary count.
+
+---
+
+## Adopting
+
+Adopt discovers orphan repos (not in `gitbox.json`) under the parent folder and brings them into the gitbox world:
+
+```bash
+# Interactive adoption — prompts for each orphan
+gitbox adopt
+
+# Preview what would happen
+gitbox adopt --dry-run
+
+# Adopt all matched orphans without prompting (relocations require interactive mode)
+gitbox adopt --all
+```
+
+| Flag | Description |
+| --- | --- |
+| `--dry-run` | Show the adoption plan without making changes |
+| `--all` | Adopt all matched orphans without prompting (adopts in place, does not auto-relocate) |
+
+For each adopted repo, gitbox:
+
+- Adds it to `gitbox.json` under the matched source
+- Configures per-repo credential isolation (GCM, SSH, or token)
+- Sets `user.name` and `user.email` from the account config
+- Rewrites the remote URL to match the credential type (SSH or HTTPS)
+- Optionally relocates the repo to the standard folder structure
+
+Orphans with no matching account are listed with their remote URL and a suggestion to create the account first.
+
 ---
 
 ## Discovery
