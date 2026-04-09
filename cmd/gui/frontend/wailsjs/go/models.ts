@@ -604,6 +604,7 @@ export namespace main {
 	export class SweepPreviewDTO {
 	    merged: string[];
 	    gone: string[];
+	    squashed: string[];
 	    error?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -614,6 +615,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.merged = source["merged"];
 	        this.gone = source["gone"];
+	        this.squashed = source["squashed"];
 	        this.error = source["error"];
 	    }
 	}
