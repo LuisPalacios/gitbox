@@ -21,13 +21,14 @@ Active feature backlog for gitbox. Managed by the `/wish` skill.
 
 ## Radar
 
-### W2: Bulk branch cleanup (`gitbox sweep`)
+### W7: Branch-aware status and UX
 
 - **Status:** planning
-- **Priority:** P1
+- **Priority:** P2
 - **Size:** M
-- **Concept:** Safely delete local branches that have been merged upstream or removed on the remote, across all repos in a source or across all sources. A `gitbox sweep` CLI command plus a TUI action and GUI panel.
-- **Notes:** Plan: (1) Add git helpers — `DefaultBranch`, `StaleBranches`, `DeleteBranch` in `pkg/git/git.go`. (2) CLI `sweep_cmd.go` following `fetch_cmd.go` pattern with `--source`/`--repo`/`--dry-run` flags. (3) TUI `s` keybinding in `screen_repos.go`. (4) GUI "Sweep branches" in kebab menu via `app.go` + `App.svelte`. (5) Tests for git helpers + CLI subprocess tests.
+- **Concept:** Make gitbox branch-aware across all views. Currently the dashboard (TUI and GUI) shows status relative to the current branch's upstream but never tells the user WHICH branch that is — a repo on `feature-x` that is clean looks identical to one on `main`. Local branches without upstream show alarming `~ No upstream` with no explanation. Detached HEAD is not handled. The fix is pure observability: show a branch badge in dashboard rows only when the current branch differs from default, soften "No upstream" labeling for local branches, handle detached HEAD explicitly, report skipped repos during bulk pull, and stop inflating account issue counts for normal feature-branch work. No new git write operations — gitbox is a fleet observer, not a repo-level client.
+- **Notes:** Plan: (1) Add `Branch string` + `IsDefault bool` to `status.RepoStatus`, populate in `Check()` from existing `git.Status().Branch` + `git.DefaultBranch()`. (2) TUI: branch badge `[feature-x]` in dashboard rows when not on default, soften `formatStatusDetail` for NoUpstream on non-default branch to "local branch", fix `computeAccountStats` to not count feature-branch NoUpstream as issue, detached HEAD display in `screen_repos.go`. (3) GUI: add fields to `StatusResult` + `toStatusResult()` in `app.go`, propagate through `types.ts` → `stores.ts` → `App.svelte`, branch badge in repo rows, "Local branch" vs "No upstream" conditional, fix `accountStats` issue counting. (4) CLI: branch badge in `status_cmd.go`, improved skip reporting in `pull_cmd.go` with branch name. 4 commits: data layer → TUI+CLI → GUI → docs.
+
 
 ### W1: Config sync
 
@@ -62,6 +63,15 @@ Active feature backlog for gitbox. Managed by the `/wish` skill.
 - **Notes:** Requires new API endpoints on each provider implementation (PR listing, review request queries). The provider interface would need a new method (e.g., `PendingReviews`). This is the largest feature — significant API surface area across 5 providers (GitHub, GitLab, Gitea, Forgejo, Bitbucket) with different PR/MR models.
 
 ## Shipped
+
+### W2: Bulk branch cleanup (`gitbox sweep`)
+
+- **Status:** shipped
+- **Shipped:** 2026-04-09
+- **Priority:** P1
+- **Size:** M
+- **Concept:** Safely delete local branches that have been merged upstream or removed on the remote, across all repos in a source or across all sources. A `gitbox sweep` CLI command plus a TUI action and GUI panel.
+- **Notes:** Implemented with `StaleBranches`/`DeleteBranch` git helpers, CLI `sweep` command with `--source`/`--repo`/`--dry-run` flags, TUI `s` keybinding, and GUI "Sweep branches" in kebab menu. Includes squash-merge detection via cherry/patch-id comparison.
 
 ### W6: Open in browser
 

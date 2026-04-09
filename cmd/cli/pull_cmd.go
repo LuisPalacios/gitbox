@@ -63,7 +63,11 @@ var pullCmd = &cobra.Command{
 				rs := status.Check(dest)
 				if rs.State == status.Clean || rs.State == status.Ahead || rs.State == status.NoUpstream {
 					if verbose {
-						printStatusLine("~", "skip", label, rs.State.String(), colorCyan)
+						reason := rs.State.String()
+						if rs.State == status.NoUpstream && rs.Branch != "" {
+							reason = fmt.Sprintf("local branch [%s]", rs.Branch)
+						}
+						printStatusLine("~", "skip", label, reason, colorCyan)
 					}
 					skipped++
 					continue

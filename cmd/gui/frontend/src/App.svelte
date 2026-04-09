@@ -1597,6 +1597,11 @@
             <div class="compact-row" class:compact-row-ok={state.status === 'clean'}>
               <span class="compact-dot" style="color: {sc(state.status)}">{statusSymbol(state.status)}</span>
               <span class="compact-repo-name">{repoName.includes('/') ? repoName.split('/').pop() : repoName}</span>
+              {#if state.branch === '(detached)'}
+                <span class="compact-badge" style="color: {sc('error')}">detached</span>
+              {:else if state.branch && !state.isDefault}
+                <span class="compact-badge branch-badge">{state.branch}</span>
+              {/if}
               {#if state.status === 'behind'}
                 <span class="compact-badge" style="color: {sc('behind')}">{state.behind} behind</span>
               {:else if state.status === 'dirty'}
@@ -1853,6 +1858,11 @@
             {/if}
             <span class="dot" style="color: {sc(state.status)}">{statusSymbol(state.status)}</span>
             <span class="repo-name">{repoName}</span>
+            {#if state.branch === '(detached)'}
+              <span class="branch-badge detached">detached</span>
+            {:else if state.branch && !state.isDefault}
+              <span class="branch-badge">{state.branch}</span>
+            {/if}
 
             {#if state.status === 'syncing' || state.status === 'cloning'}
               <div class="progress-track">
@@ -1866,7 +1876,11 @@
                 {:else if state.status === 'not cloned'}
                   <span class="status-text" style="color:{sc('not cloned')}">Not local</span>
                 {:else if state.status === 'no upstream'}
-                  <span class="status-text" style="color:{sc('no upstream')}">No upstream</span>
+                  {#if state.isDefault}
+                    <span class="status-text" style="color:{sc('no upstream')}">No upstream</span>
+                  {:else}
+                    <span class="status-text" style="color:{sc('clean')}">Local branch</span>
+                  {/if}
                 {:else if state.status === 'error'}
                   <span class="status-text" style="color:{sc('error')}">Error</span>
                 {:else}
@@ -3164,6 +3178,8 @@
   .status-badges { display: flex; align-items: center; gap: 6px; }
   .sbadge { font-size: 11px; font-weight: 600; white-space: nowrap; }
   .status-pending { font-size: 12px; font-weight: 600; color: var(--text-dim); }
+  .branch-badge { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: var(--bg-hover); color: var(--text-dim); white-space: nowrap; }
+  .branch-badge.detached { color: var(--status-error, #D81E5B); }
 
   /* ── Repo detail panel ── */
   .repo-row-clickable { cursor: pointer; }

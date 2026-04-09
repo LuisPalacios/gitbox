@@ -51,6 +51,8 @@ export function applyStatusResults(results: StatusResult[]) {
           untracked: r.untracked,
           ahead: r.ahead,
           error: r.error,
+          branch: r.branch,
+          isDefault: r.isDefault,
         };
       }
     }
@@ -87,6 +89,7 @@ export const accountStats = derived([sources, repoStates], ([$src, $rs]) => {
       if (!state) continue;
       stats[acctKey].total++;
       if (state.status === 'clean') stats[acctKey].synced++;
+      else if (state.status === 'no upstream' && !state.isDefault) stats[acctKey].synced++;
       else stats[acctKey].issues++;
     }
   }

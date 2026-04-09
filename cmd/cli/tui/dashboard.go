@@ -374,6 +374,12 @@ func computeAccountStats(statuses []status.RepoStatus, cfg *config.Config) map[s
 			s.behind++
 		case status.NotCloned:
 			s.notCloned++
+		case status.NoUpstream:
+			if r.IsDefault {
+				s.other++ // No upstream on default branch is a real issue.
+			} else {
+				s.clean++ // Feature branch with no upstream is normal.
+			}
 		default:
 			s.other++
 		}
@@ -868,11 +874,20 @@ func (m dashboardModel) viewRepoList() string {
 			}
 		}
 
+		// Branch badge: show when not on the default branch.
+		var branchTag string
+		if r.Branch == "(detached)" {
+			branchTag = " " + lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Palette.StatusError)).Render("[detached]")
+		} else if r.Branch != "" && !r.IsDefault {
+			branchTag = " " + m.theme.TextMuted.Render("["+r.Branch+"]")
+		}
+
 		symStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
-		line := fmt.Sprintf("    %s %-10s  %-25s  %s%s",
+		line := fmt.Sprintf("    %s %-10s  %-25s%s  %s%s",
 			symStyle.Render(sym),
 			symStyle.Render(stateLabel),
 			r.Repo,
+			branchTag,
 			m.theme.TextMuted.Render(detail),
 			inlineProgress)
 
@@ -1362,6 +1377,11 @@ func formatStatusDetail(r status.RepoStatus) string {
 		return strings.Join(parts, ", ")
 	case status.Conflict:
 		return fmt.Sprintf("%d conflicts", r.Conflicts)
+	case status.NoUpstream:
+		if r.IsDefault {
+			return "no upstream"
+		}
+		return "local branch"
 	case status.Error:
 		return r.ErrorMsg
 	default:

@@ -409,7 +409,10 @@ func (m reposModel) View() string {
 	b.WriteString(fmt.Sprintf("  %-15s %s\n", m.theme.TextMuted.Render("Source:"), m.theme.Text.Render(m.sourceKey)))
 	b.WriteString(fmt.Sprintf("  %-15s %s\n", m.theme.TextMuted.Render("Path:"), m.theme.Text.Render(m.repoPath())))
 
-	if m.branch != "" {
+	if m.branch == "(detached)" {
+		b.WriteString(fmt.Sprintf("  %-15s %s\n", m.theme.TextMuted.Render("Branch:"),
+			lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Palette.StatusError)).Render("HEAD detached")))
+	} else if m.branch != "" {
 		b.WriteString(fmt.Sprintf("  %-15s %s\n", m.theme.TextMuted.Render("Branch:"), m.theme.Text.Render(m.branch)))
 	}
 	if m.ahead > 0 || m.behind > 0 {

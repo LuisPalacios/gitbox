@@ -89,6 +89,8 @@ type RepoStatus struct {
 	Untracked int  `json:"untracked,omitempty"`
 	Conflicts int  `json:"conflicts,omitempty"`
 	ErrorMsg string `json:"error,omitempty"`
+	Branch    string `json:"branch,omitempty"`     // Current branch name (or "(detached)")
+	IsDefault bool   `json:"is_default,omitempty"` // True when current branch is the repo's default branch
 }
 
 // Check determines the sync status of a single repo at the given path.
@@ -112,6 +114,14 @@ func Check(repoPath string) RepoStatus {
 	rs.Modified = st.Modified
 	rs.Untracked = st.Untracked
 	rs.Conflicts = st.Conflicts
+	rs.Branch = st.Branch
+
+	// Determine if current branch is the default.
+	if st.Branch != "" && st.Branch != "(detached)" {
+		if def, err := git.DefaultBranch(repoPath); err == nil {
+			rs.IsDefault = st.Branch == def
+		}
+	}
 
 	// Determine state.
 	switch {

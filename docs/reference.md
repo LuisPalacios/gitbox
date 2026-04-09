@@ -243,6 +243,10 @@ Status indicators:
 | `~`    | Orange | no upstream | No tracking branch      |
 | `x`    | Red    | error       | Git error               |
 
+When a repo is checked out on a non-default branch, a `[branch-name]` badge appears after the repo name. Repos on the default branch show no badge. If a repo is on a local branch with no upstream tracking, the detail shows "local branch" instead of "no upstream" — this is normal for feature branches and is not counted as an issue in account summaries.
+
+The `--json` output includes `branch` (current branch name) and `is_default` (boolean) fields for each repo.
+
 ---
 
 ## Cloning

@@ -820,6 +820,8 @@ type StatusResult struct {
 	Untracked int  `json:"untracked"`
 	Conflicts int  `json:"conflicts"`
 	Error    string `json:"error,omitempty"`
+	Branch    string `json:"branch,omitempty"`
+	IsDefault bool   `json:"isDefault,omitempty"`
 }
 
 func toStatusResult(rs status.RepoStatus) StatusResult {
@@ -835,6 +837,8 @@ func toStatusResult(rs status.RepoStatus) StatusResult {
 		Untracked: rs.Untracked,
 		Conflicts: rs.Conflicts,
 		Error:    rs.ErrorMsg,
+		Branch:   rs.Branch,
+		IsDefault: rs.IsDefault,
 	}
 }
 

@@ -108,6 +108,8 @@ export interface StatusResult {
   untracked: number;
   conflicts: number;
   error?: string;
+  branch?: string;
+  isDefault?: boolean;
 }
 
 export interface DiscoverResult {
@@ -133,6 +135,8 @@ export interface RepoState {
   untracked: number;
   ahead: number;
   error?: string;
+  branch?: string;
+  isDefault?: boolean;
 }
 
 export interface EditorInfo {
