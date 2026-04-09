@@ -244,15 +244,16 @@ Each cloned repo row has a **kebab menu (⋮)** on the right side. Click it to s
 
 - **Open in browser** — opens the repository's remote web page (GitHub, GitLab, etc.) in the default browser
 - **Open folder** — opens the clone directory in the OS file manager (Explorer, Finder, or your Linux file manager)
+- **Sweep branches** — finds and deletes stale local branches (gone, merged, or squash-merged). Shows a confirmation dialog with the list of branches before deleting anything
 - **Open in \<editor\>** — opens the clone folder in a detected code editor (VS Code, Cursor, Zed, etc.)
 
 Editors are auto-detected on startup by scanning PATH. Gitbox writes the detected editors to `global.editors` in your config file with their full paths. You can reorder entries or add custom editors by editing the config — the menu always reflects the config order.
 
 In **compact mode**, the clone actions appear as small icon buttons (browser, folder, and editor) that show on hover over each repo row. Only the first configured editor is shown — switch to full view for the complete list.
 
-### Update banner
+### Update notification
 
-Gitbox checks for updates once per day in the background. When a newer version is available, a green banner appears below the header bar showing the new version. Click **Update** to download and apply it in place. After the update completes, restart the app to use the new version.
+Gitbox checks for updates once per day in the background. When a newer version is available, an amber pill appears on the right side of the footer status bar showing the new version. Click it to download and apply the update in place. After the update completes, click **Quit** and restart the app to use the new version.
 
 ### Deleting repos and accounts
 

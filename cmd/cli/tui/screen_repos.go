@@ -165,6 +165,24 @@ func fetchRepoCmd(path, sourceKey, repoKey string) tea.Cmd {
 	}
 }
 
+func sweepRepoCmd(path, sourceKey, repoKey string) tea.Cmd {
+	return func() tea.Msg {
+		result, err := git.SweepBranches(path)
+		if err != nil {
+			return sweepDoneMsg{sourceKey: sourceKey, repoKey: repoKey, err: err}
+		}
+		deleted, errs := git.DeleteStaleBranches(path, result)
+		var firstErr error
+		if len(errs) > 0 {
+			firstErr = errs[0]
+		}
+		return sweepDoneMsg{
+			sourceKey: sourceKey, repoKey: repoKey,
+			deleted: deleted, err: firstErr,
+		}
+	}
+}
+
 func openInBrowserCmd(url string) tea.Cmd {
 	return func() tea.Msg {
 		err := git.OpenInBrowser(url)
@@ -290,6 +308,16 @@ func (m reposModel) Update(msg tea.Msg) (reposModel, tea.Cmd) {
 			m.resultMsg = ""
 			m.errMsg = ""
 			return m, openInBrowserCmd(url)
+
+		case msg.String() == "s":
+			path := m.repoPath()
+			if git.IsRepo(path) {
+				m.busy = true
+				m.busyLabel = "Sweeping..."
+				m.resultMsg = ""
+				m.errMsg = ""
+				return m, sweepRepoCmd(path, m.sourceKey, m.repoKey)
+			}
 		}
 
 	case cloneProgressMsg:
@@ -339,6 +367,17 @@ func (m reposModel) Update(msg tea.Msg) (reposModel, tea.Cmd) {
 			m.errMsg = msg.err.Error()
 		} else {
 			m.resultMsg = "Fetched successfully."
+		}
+		return m, checkRepoStatusCmd(m.cfg, m.sourceKey, m.repoKey)
+
+	case sweepDoneMsg:
+		m.busy = false
+		if msg.err != nil {
+			m.errMsg = msg.err.Error()
+		} else if len(msg.deleted) == 0 {
+			m.resultMsg = "No stale branches found."
+		} else {
+			m.resultMsg = fmt.Sprintf("Swept %d branch(es): %s", len(msg.deleted), strings.Join(msg.deleted, ", "))
 		}
 		return m, checkRepoStatusCmd(m.cfg, m.sourceKey, m.repoKey)
 
@@ -450,7 +489,7 @@ func (m reposModel) View() string {
 	if m.repoStatus.State == status.NotCloned {
 		actions = append(actions, "c clone")
 	} else {
-		actions = append(actions, "f fetch", "p pull")
+		actions = append(actions, "f fetch", "p pull", "s sweep")
 	}
 	actions = append(actions, "b open browser", "D remove clone", "ESC back")
 	b.WriteString(renderHints(m.theme, actions...))

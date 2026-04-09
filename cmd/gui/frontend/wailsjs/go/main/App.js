@@ -46,6 +46,10 @@ export function CloneRepo(arg1, arg2) {
   return window['go']['main']['App']['CloneRepo'](arg1, arg2);
 }
 
+export function ConfirmSweep(arg1, arg2) {
+  return window['go']['main']['App']['ConfirmSweep'](arg1, arg2);
+}
+
 export function CreateNewRepo(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['CreateNewRepo'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
@@ -196,6 +200,10 @@ export function OpenInExplorer(arg1) {
 
 export function PickFolder(arg1) {
   return window['go']['main']['App']['PickFolder'](arg1);
+}
+
+export function PreviewSweep(arg1, arg2) {
+  return window['go']['main']['App']['PreviewSweep'](arg1, arg2);
 }
 
 export function PullRepo(arg1, arg2) {

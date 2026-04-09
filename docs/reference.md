@@ -296,6 +296,38 @@ gitbox browse --repo alice/hello-world --json
 
 ---
 
+## Sweeping
+
+Remove stale local branches across all configured repos:
+
+```bash
+# Preview what would be deleted (no changes)
+gitbox sweep --dry-run
+
+# Sweep all repos
+gitbox sweep
+
+# Sweep a specific source or repo
+gitbox sweep --source github-personal
+gitbox sweep --repo alice/hello-world
+```
+
+Three types of stale branches are detected:
+
+| Type | Meaning | Delete mode |
+| --- | --- | --- |
+| Gone | Remote tracking branch was deleted | `git branch -D` (force) |
+| Merged | Fully merged into the default branch | `git branch -d` (safe) |
+| Squashed | Squash-merged or rebase-merged on the server | `git branch -D` (force) |
+
+| Flag | Description |
+| --- | --- |
+| `--dry-run` | List stale branches without deleting |
+| `--source` | Restrict to a specific source |
+| `--repo` | Restrict to a specific repo |
+
+---
+
 ## Scanning
 
 Scan walks the filesystem (no config required) and reports the sync status of every git repo it finds:

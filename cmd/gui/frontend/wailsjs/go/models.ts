@@ -587,6 +587,36 @@ export namespace main {
 	        this.error = source["error"];
 	    }
 	}
+	export class SweepDeleteDTO {
+	    deleted: string[];
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SweepDeleteDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.deleted = source["deleted"];
+	        this.error = source["error"];
+	    }
+	}
+	export class SweepPreviewDTO {
+	    merged: string[];
+	    gone: string[];
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SweepPreviewDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.merged = source["merged"];
+	        this.gone = source["gone"];
+	        this.error = source["error"];
+	    }
+	}
 	export class TokenGuideInfo {
 	    creationURL: string;
 	    scopes: string;

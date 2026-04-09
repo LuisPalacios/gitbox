@@ -200,6 +200,226 @@ func TestCurrentBranch(t *testing.T) {
 	}
 }
 
+// ─── Sweep tests ──────────────────────────────────────────────
+
+func TestDefaultBranch(t *testing.T) {
+	clonePath, _ := initTestRepo(t)
+
+	// initTestRepo uses "master" as default.
+	branch, err := DefaultBranch(clonePath)
+	if err != nil {
+		t.Fatalf("DefaultBranch: %v", err)
+	}
+	if branch != "master" {
+		t.Errorf("DefaultBranch = %q, want master", branch)
+	}
+}
+
+func TestSweepBranches_Merged(t *testing.T) {
+	clonePath, _ := initTestRepo(t)
+
+	// Create a feature branch, add a commit, merge it back to master.
+	runGit(t, clonePath, "checkout", "-b", "feature-x")
+	writeFile(t, filepath.Join(clonePath, "feature.txt"), "feat\n")
+	runGit(t, clonePath, "add", "feature.txt")
+	runGit(t, clonePath, "commit", "-m", "feature work")
+	runGit(t, clonePath, "checkout", "master")
+	runGit(t, clonePath, "merge", "feature-x", "--no-ff", "-m", "merge feature-x")
+
+	result, err := SweepBranches(clonePath)
+	if err != nil {
+		t.Fatalf("SweepBranches: %v", err)
+	}
+	if len(result.Merged) != 1 || result.Merged[0] != "feature-x" {
+		t.Errorf("Merged = %v, want [feature-x]", result.Merged)
+	}
+	if len(result.Gone) != 0 {
+		t.Errorf("Gone = %v, want []", result.Gone)
+	}
+}
+
+func TestSweepBranches_Gone(t *testing.T) {
+	clonePath, barePath := initTestRepo(t)
+
+	// Create a branch, push it, then delete it on the remote.
+	runGit(t, clonePath, "checkout", "-b", "old-branch")
+	writeFile(t, filepath.Join(clonePath, "old.txt"), "old\n")
+	runGit(t, clonePath, "add", "old.txt")
+	runGit(t, clonePath, "commit", "-m", "old branch work")
+	runGit(t, clonePath, "push", "-u", "origin", "old-branch")
+	runGit(t, clonePath, "checkout", "master")
+
+	// Delete the branch on the bare remote.
+	runGit(t, barePath, "branch", "-D", "old-branch")
+
+	// Fetch with prune so the tracking ref is gone.
+	runGit(t, clonePath, "fetch", "--prune")
+
+	result, err := SweepBranches(clonePath)
+	if err != nil {
+		t.Fatalf("SweepBranches: %v", err)
+	}
+	if len(result.Gone) != 1 || result.Gone[0] != "old-branch" {
+		t.Errorf("Gone = %v, want [old-branch]", result.Gone)
+	}
+}
+
+func TestSweepBranches_ProtectsCurrentAndDefault(t *testing.T) {
+	clonePath, _ := initTestRepo(t)
+
+	// We're on master (which is also default). It should never appear.
+	result, err := SweepBranches(clonePath)
+	if err != nil {
+		t.Fatalf("SweepBranches: %v", err)
+	}
+	for _, b := range result.Merged {
+		if b == "master" {
+			t.Error("master should not be in Merged")
+		}
+	}
+	for _, b := range result.Gone {
+		if b == "master" {
+			t.Error("master should not be in Gone")
+		}
+	}
+}
+
+func TestDeleteStaleBranches(t *testing.T) {
+	clonePath, _ := initTestRepo(t)
+
+	// Create and merge two feature branches.
+	for _, name := range []string{"feat-a", "feat-b"} {
+		runGit(t, clonePath, "checkout", "-b", name)
+		writeFile(t, filepath.Join(clonePath, name+".txt"), name+"\n")
+		runGit(t, clonePath, "add", name+".txt")
+		runGit(t, clonePath, "commit", "-m", "work on "+name)
+		runGit(t, clonePath, "checkout", "master")
+		runGit(t, clonePath, "merge", name, "--no-ff", "-m", "merge "+name)
+	}
+
+	result, err := SweepBranches(clonePath)
+	if err != nil {
+		t.Fatalf("SweepBranches: %v", err)
+	}
+	if len(result.Merged) != 2 {
+		t.Fatalf("expected 2 merged, got %d: %v", len(result.Merged), result.Merged)
+	}
+
+	deleted, errs := DeleteStaleBranches(clonePath, result)
+	if len(errs) > 0 {
+		t.Fatalf("DeleteStaleBranches errors: %v", errs)
+	}
+	if len(deleted) != 2 {
+		t.Errorf("deleted = %v, want 2 branches", deleted)
+	}
+
+	// Verify branches no longer exist.
+	for _, name := range []string{"feat-a", "feat-b"} {
+		cmd := exec.Command("git", "rev-parse", "--verify", "refs/heads/"+name)
+		cmd.Dir = clonePath
+		if err := cmd.Run(); err == nil {
+			t.Errorf("branch %s should have been deleted", name)
+		}
+	}
+}
+
+func TestSweepBranches_SquashMerged(t *testing.T) {
+	clonePath, barePath := initTestRepo(t)
+
+	// Create a feature branch with a commit.
+	runGit(t, clonePath, "checkout", "-b", "feature-squashed")
+	writeFile(t, filepath.Join(clonePath, "squash.txt"), "squashed work\n")
+	runGit(t, clonePath, "add", "squash.txt")
+	runGit(t, clonePath, "commit", "-m", "feature: squashed work")
+	runGit(t, clonePath, "push", "-u", "origin", "feature-squashed")
+
+	// Simulate a squash-merge on the server: create a NEW commit on master
+	// with the same changes but a different SHA (as GitHub "Squash and merge" does).
+	runGit(t, clonePath, "checkout", "master")
+	// Apply the same file change as a new commit (not a merge).
+	writeFile(t, filepath.Join(clonePath, "squash.txt"), "squashed work\n")
+	runGit(t, clonePath, "add", "squash.txt")
+	runGit(t, clonePath, "commit", "-m", "feature: squashed work (#1)")
+	runGit(t, clonePath, "push", "origin", "master")
+
+	// Delete the remote branch (as GitHub does after squash-merge).
+	runGit(t, barePath, "branch", "-D", "feature-squashed")
+	runGit(t, clonePath, "fetch", "--prune")
+
+	result, err := SweepBranches(clonePath)
+	if err != nil {
+		t.Fatalf("SweepBranches: %v", err)
+	}
+
+	// The branch should be detected as either gone or squashed (or both).
+	// Since remote was deleted, it will be "gone". But it also qualifies as squashed.
+	// Our de-dup puts gone branches into Gone, skipping them from Squashed.
+	found := false
+	for _, b := range result.Gone {
+		if b == "feature-squashed" {
+			found = true
+		}
+	}
+	for _, b := range result.Squashed {
+		if b == "feature-squashed" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("feature-squashed not found in Gone or Squashed.\nGone=%v\nSquashed=%v\nMerged=%v",
+			result.Gone, result.Squashed, result.Merged)
+	}
+}
+
+func TestSweepBranches_SquashMergedLocalOnly(t *testing.T) {
+	clonePath, _ := initTestRepo(t)
+
+	// Create a feature branch with a commit (never pushed).
+	runGit(t, clonePath, "checkout", "-b", "local-squash")
+	writeFile(t, filepath.Join(clonePath, "local-sq.txt"), "local squash\n")
+	runGit(t, clonePath, "add", "local-sq.txt")
+	runGit(t, clonePath, "commit", "-m", "local squash work")
+
+	// Simulate squash-merge: apply same changes to master as a different commit.
+	runGit(t, clonePath, "checkout", "master")
+	writeFile(t, filepath.Join(clonePath, "local-sq.txt"), "local squash\n")
+	runGit(t, clonePath, "add", "local-sq.txt")
+	runGit(t, clonePath, "commit", "-m", "squashed: local squash work")
+
+	result, err := SweepBranches(clonePath)
+	if err != nil {
+		t.Fatalf("SweepBranches: %v", err)
+	}
+
+	// local-squash was never pushed (no upstream), not git-merged, but its
+	// changes are in master via the squash commit → should be in Squashed.
+	found := false
+	for _, b := range result.Squashed {
+		if b == "local-squash" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("local-squash not found in Squashed. Squashed=%v, Merged=%v, Gone=%v",
+			result.Squashed, result.Merged, result.Gone)
+	}
+}
+
+func TestSweepBranches_NothingToSweep(t *testing.T) {
+	clonePath, _ := initTestRepo(t)
+
+	result, err := SweepBranches(clonePath)
+	if err != nil {
+		t.Fatalf("SweepBranches: %v", err)
+	}
+	if len(result.Merged) != 0 {
+		t.Errorf("Merged = %v, want []", result.Merged)
+	}
+	if len(result.Gone) != 0 {
+		t.Errorf("Gone = %v, want []", result.Gone)
+	}
+}
+
 func TestParseStatus(t *testing.T) {
 	input := `# branch.oid abc123
 # branch.head main

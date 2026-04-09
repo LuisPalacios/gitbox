@@ -497,6 +497,249 @@ func CurrentBranch(repoPath string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
+// ─── Branch sweep ─────────────────────────────────────────────
+
+// SweepResult holds the outcome of scanning for stale branches.
+type SweepResult struct {
+	DefaultBranch string   `json:"defaultBranch"`
+	CurrentBranch string   `json:"currentBranch"`
+	Merged        []string `json:"merged"`   // merged into default branch
+	Gone          []string `json:"gone"`     // upstream tracking ref deleted
+	Squashed      []string `json:"squashed"` // squash-merged into default (different commits, same changes)
+}
+
+// DefaultBranch returns the default branch name (e.g. "main", "master").
+// It checks origin/HEAD first, then falls back to probing main/master locally.
+func DefaultBranch(repoPath string) (string, error) {
+	// Try origin/HEAD — set by git clone or git remote set-head.
+	out, err := output(repoPath, "symbolic-ref", "refs/remotes/origin/HEAD")
+	if err == nil {
+		ref := strings.TrimSpace(out)
+		// "refs/remotes/origin/main" → "main"
+		if parts := strings.Split(ref, "/"); len(parts) > 0 {
+			return parts[len(parts)-1], nil
+		}
+	}
+
+	// Fallback: check if main or master exist locally.
+	for _, candidate := range []string{"main", "master"} {
+		if _, err := output(repoPath, "rev-parse", "--verify", "refs/heads/"+candidate); err == nil {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("cannot determine default branch")
+}
+
+// SweepBranches identifies stale local branches without deleting anything.
+// A branch is stale if it is merged into the default branch or its upstream
+// tracking ref has been deleted. The current branch and default branch are
+// never included.
+func SweepBranches(repoPath string) (SweepResult, error) {
+	defBranch, err := DefaultBranch(repoPath)
+	if err != nil {
+		return SweepResult{}, err
+	}
+	curBranch, err := CurrentBranch(repoPath)
+	if err != nil {
+		return SweepResult{}, err
+	}
+
+	merged, err := mergedBranches(repoPath, defBranch)
+	if err != nil {
+		return SweepResult{}, err
+	}
+	gone, err := goneBranches(repoPath)
+	if err != nil {
+		return SweepResult{}, err
+	}
+
+	// Build sets for de-duplication.
+	protect := map[string]bool{defBranch: true, curBranch: true}
+	goneSet := make(map[string]bool, len(gone))
+	for _, b := range gone {
+		goneSet[b] = true
+	}
+	mergedSet := make(map[string]bool, len(merged))
+	for _, b := range merged {
+		mergedSet[b] = true
+	}
+
+	// Filter gone and merged: remove protected, de-dup.
+	var filteredGone []string
+	for _, b := range gone {
+		if protect[b] {
+			continue
+		}
+		filteredGone = append(filteredGone, b)
+	}
+	var filteredMerged []string
+	for _, b := range merged {
+		if protect[b] || goneSet[b] {
+			continue
+		}
+		filteredMerged = append(filteredMerged, b)
+	}
+
+	// Detect squash-merged branches: changes are in default but via
+	// different commits (squash-and-merge or rebase-and-merge on the server).
+	// Only check branches not already categorized as merged or gone.
+	allBranches, _ := listLocalBranches(repoPath)
+	var filteredSquashed []string
+	for _, b := range allBranches {
+		if protect[b] || goneSet[b] || mergedSet[b] {
+			continue
+		}
+		if isSquashMerged(repoPath, defBranch, b) {
+			filteredSquashed = append(filteredSquashed, b)
+		}
+	}
+
+	return SweepResult{
+		DefaultBranch: defBranch,
+		CurrentBranch: curBranch,
+		Merged:        filteredMerged,
+		Gone:          filteredGone,
+		Squashed:      filteredSquashed,
+	}, nil
+}
+
+// DeleteStaleBranches deletes branches listed in a SweepResult.
+// Gone and squashed branches use -D (force); merged branches use -d (safe).
+// Returns names of successfully deleted branches and any errors.
+func DeleteStaleBranches(repoPath string, result SweepResult) (deleted []string, errs []error) {
+	for _, b := range result.Gone {
+		if err := deleteBranch(repoPath, b, true); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", b, err))
+		} else {
+			deleted = append(deleted, b)
+		}
+	}
+	for _, b := range result.Merged {
+		if err := deleteBranch(repoPath, b, false); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", b, err))
+		} else {
+			deleted = append(deleted, b)
+		}
+	}
+	for _, b := range result.Squashed {
+		if err := deleteBranch(repoPath, b, true); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", b, err))
+		} else {
+			deleted = append(deleted, b)
+		}
+	}
+	return deleted, errs
+}
+
+// mergedBranches lists branches merged into the given base branch.
+func mergedBranches(repoPath, base string) ([]string, error) {
+	out, err := output(repoPath, "branch", "--merged", base, "--format=%(refname:short)")
+	if err != nil {
+		return nil, err
+	}
+	var branches []string
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		b := strings.TrimSpace(line)
+		if b != "" {
+			branches = append(branches, b)
+		}
+	}
+	return branches, nil
+}
+
+// goneBranches lists branches whose upstream tracking ref no longer exists.
+func goneBranches(repoPath string) ([]string, error) {
+	out, err := output(repoPath, "for-each-ref",
+		"--format=%(refname:short) %(upstream) %(upstream:track)",
+		"refs/heads/")
+	if err != nil {
+		return nil, err
+	}
+	var branches []string
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Format: "branchname refs/remotes/origin/branchname [gone]"
+		// A branch is "gone" if it has an upstream but the track status is [gone].
+		if strings.Contains(line, "[gone]") {
+			name := strings.Fields(line)[0]
+			branches = append(branches, name)
+		}
+	}
+	return branches, nil
+}
+
+// deleteBranch deletes a local branch. If force is true, uses -D; otherwise -d.
+func deleteBranch(repoPath, branch string, force bool) error {
+	flag := "-d"
+	if force {
+		flag = "-D"
+	}
+	return run(repoPath, "branch", flag, branch)
+}
+
+// listLocalBranches returns all local branch names.
+func listLocalBranches(repoPath string) ([]string, error) {
+	out, err := output(repoPath, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+	if err != nil {
+		return nil, err
+	}
+	var branches []string
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		b := strings.TrimSpace(line)
+		if b != "" {
+			branches = append(branches, b)
+		}
+	}
+	return branches, nil
+}
+
+// isSquashMerged checks if a branch was squash-merged (or rebase-merged) into
+// the base branch. The commits differ but the changes are identical.
+//
+// Two-step check:
+// 1. Tree comparison: if the branch tip's tree equals the base branch's tree,
+//    the branch content is fully in the base (covers identical-state squash merges).
+// 2. Synthetic ancestor: create a dangling commit with the branch's tree on the
+//    merge base and check if it's an ancestor of the base branch (covers squash
+//    merges where more commits landed on base after the squash).
+func isSquashMerged(repoPath, baseBranch, branch string) bool {
+	// Fast path: if both trees are identical, branch is fully incorporated.
+	baseTree, err := output(repoPath, "rev-parse", baseBranch+"^{tree}")
+	if err != nil {
+		return false
+	}
+	branchTree, err := output(repoPath, "rev-parse", branch+"^{tree}")
+	if err != nil {
+		return false
+	}
+	if strings.TrimSpace(baseTree) == strings.TrimSpace(branchTree) {
+		return true
+	}
+
+	// Slow path: synthetic commit-tree + is-ancestor check.
+	mbOut, err := output(repoPath, "merge-base", baseBranch, branch)
+	if err != nil {
+		return false
+	}
+	mergeBase := strings.TrimSpace(mbOut)
+	tree := strings.TrimSpace(branchTree)
+
+	commitOut, err := output(repoPath, "commit-tree", tree, "-p", mergeBase, "-m", "_")
+	if err != nil {
+		return false
+	}
+	synthetic := strings.TrimSpace(commitOut)
+
+	cmd := exec.Command(GitBin(), "merge-base", "--is-ancestor", synthetic, baseBranch)
+	cmd.Dir = repoPath
+	cmd.Env = nonInteractiveEnv()
+	HideWindow(cmd)
+	return cmd.Run() == nil
+}
+
 // --- Internal helpers ---
 
 // nonInteractiveEnv returns Environ() with flags that prevent any interactive

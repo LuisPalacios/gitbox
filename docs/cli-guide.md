@@ -218,6 +218,26 @@ gitbox browse --repo alice/hello-world
 
 Opens the repository's remote web page in the default browser. Use `--source` to narrow the search if the same repo name appears in multiple sources.
 
+### Sweep stale branches
+
+```bash
+gitbox sweep
+```
+
+Finds and deletes local branches that are no longer needed across all repos. Three types of stale branches are detected:
+
+- **Gone** — remote tracking branch was deleted (e.g. PR merged and branch deleted on the server)
+- **Merged** — branch is fully merged into the default branch locally
+- **Squashed** — PR was squash-merged or rebase-merged on the server (different commits but same changes)
+
+The current branch and default branch are never touched.
+
+```bash
+gitbox sweep --dry-run              # Preview without deleting
+gitbox sweep --source my-github     # Sweep one source only
+gitbox sweep --repo alice/my-repo   # Sweep a single repo
+```
+
 ### Scan any directory
 
 ```bash

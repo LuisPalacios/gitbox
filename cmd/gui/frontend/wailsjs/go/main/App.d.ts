@@ -25,6 +25,8 @@ export function CheckMirrorCredentials(arg1:string):Promise<main.MirrorCredentia
 
 export function CloneRepo(arg1:string,arg2:string):Promise<void>;
 
+export function ConfirmSweep(arg1:string,arg2:string):Promise<main.SweepDeleteDTO>;
+
 export function CreateNewRepo(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean,arg6:boolean):Promise<void>;
 
 export function CredentialDelete(arg1:string):Promise<main.CredentialSetupResult>;
@@ -100,6 +102,8 @@ export function OpenInBrowser(arg1:string):Promise<void>;
 export function OpenInExplorer(arg1:string):Promise<void>;
 
 export function PickFolder(arg1:string):Promise<string>;
+
+export function PreviewSweep(arg1:string,arg2:string):Promise<main.SweepPreviewDTO>;
 
 export function PullRepo(arg1:string,arg2:string):Promise<void>;
 
