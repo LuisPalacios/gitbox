@@ -3413,9 +3413,10 @@
   :global([data-theme="light"]) .sweep-label-squashed { color: #7c3aed; }
   .sweep-hint { font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px; }
   .sweep-list {
-    margin: 0; padding: 0 0 0 16px; font-size: 12px; color: var(--text-secondary);
+    margin: 0; padding: 0 0 0 16px; font-size: 12px; color: #D81E5B;
     list-style: disc; max-height: 120px; overflow-y: auto;
   }
+  :global([data-theme="light"]) .sweep-list { color: #be123c; }
   .sweep-list li { margin: 1px 0; }
   .btn-sweep-confirm {
     padding: 6px 12px; background: #f59e0b; border: none; color: #000;
