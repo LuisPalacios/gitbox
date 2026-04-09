@@ -164,6 +164,81 @@ func TestThrottle(t *testing.T) {
 	}
 }
 
+func TestCheckLatest_NoUpdate_DoesNotThrottle(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"tag_name": "v1.0.0", "html_url": "", "assets": []}`)
+	}))
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	cacheFile := filepath.Join(tmpDir, ".update-check")
+
+	opts := Options{
+		CurrentVersion: "v1.0.0",
+		Repo:           "test/test",
+		HTTPClient:     srv.Client(),
+		CacheFile:      cacheFile,
+		ThrottleDur:    24 * time.Hour,
+	}
+	opts.HTTPClient.Transport = rewriteTransport{base: http.DefaultTransport, target: srv.URL}
+
+	result, err := CheckLatest(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("CheckLatest error: %v", err)
+	}
+	if result.Available {
+		t.Error("expected no update available")
+	}
+
+	// Cache file should NOT exist — no-update results must not throttle.
+	if _, err := os.Stat(cacheFile); err == nil {
+		t.Error("throttle cache written after no-update result; should only cache when update is available")
+	}
+}
+
+func TestCheckLatest_UpdateAvailable_Throttles(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"tag_name": "v2.0.0", "html_url": "", "assets": []}`)
+	}))
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	cacheFile := filepath.Join(tmpDir, ".update-check")
+
+	opts := Options{
+		CurrentVersion: "v1.0.0",
+		Repo:           "test/test",
+		HTTPClient:     srv.Client(),
+		CacheFile:      cacheFile,
+		ThrottleDur:    24 * time.Hour,
+	}
+	opts.HTTPClient.Transport = rewriteTransport{base: http.DefaultTransport, target: srv.URL}
+
+	result, err := CheckLatest(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("CheckLatest error: %v", err)
+	}
+	if !result.Available {
+		t.Error("expected update available")
+	}
+
+	// Cache file SHOULD exist — positive results must throttle.
+	if _, err := os.Stat(cacheFile); err != nil {
+		t.Error("throttle cache not written after update-available result")
+	}
+
+	// Second call should be throttled (return nil).
+	result2, err := CheckLatest(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("second CheckLatest error: %v", err)
+	}
+	if result2 != nil {
+		t.Error("expected nil result (throttled) on second call")
+	}
+}
+
 // ── Checksum tests ──
 
 func TestVerifyChecksum(t *testing.T) {

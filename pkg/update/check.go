@@ -67,7 +67,10 @@ func CheckLatest(ctx context.Context, opts Options) (*CheckResult, error) {
 		return nil, err
 	}
 
-	if opts.CacheFile != "" {
+	// Only throttle when an update was found — avoids locking out checks
+	// for 24h after a "no update" result, which would hide a release
+	// published during that window.
+	if opts.CacheFile != "" && result.Available {
 		writeThrottleTimestamp(opts.CacheFile)
 	}
 
