@@ -3,11 +3,22 @@
 package update
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 )
+
+// ErrNeedElevation signals that the operation failed due to insufficient
+// privileges. On Unix this is defined for API compatibility but Apply
+// does not attempt automatic elevation.
+var ErrNeedElevation = errors.New("administrator privileges required")
+
+// ApplyElevated is not supported on Unix — return a clear message.
+func ApplyElevated(extractDir, installDir string) error {
+	return fmt.Errorf("elevated update not supported on this platform — run with sudo")
+}
 
 // replaceExecutable atomically replaces the binary at dst with src.
 // On Unix, rename(2) is atomic within the same filesystem and the OS keeps

@@ -355,3 +355,7 @@ The transition from gitbox to the new identity does not have to be abrupt:
 4. **Research the multi-harness CLI tool** mentioned in the conversation — evaluate integration vs. build
 5. **Design the template format** — the template.json schema and scaffold directory structure need careful design before implementation
 6. **Prototype the "New project" flow** — mock up the TUI/GUI experience for creating a project from a template
+
+## Similar ideas
+
+- https://github.com/AbdallaAliDev/HangarAI

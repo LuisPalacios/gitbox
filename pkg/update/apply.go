@@ -16,29 +16,36 @@ func Apply(artifactPath string) error {
 	if strings.HasSuffix(artifactPath, ".AppImage") {
 		return applyAppImage(artifactPath)
 	}
-	return applyZip(artifactPath)
+	extractDir, installDir, err := ExtractUpdate(artifactPath)
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(extractDir)
+	return InstallExtracted(extractDir, installDir)
 }
 
-func applyZip(zipPath string) error {
-	// Determine where the current binary lives.
+// ExtractUpdate extracts a zip artifact and resolves the install directory.
+// Returns (extractDir, installDir, error). The caller owns extractDir cleanup.
+func ExtractUpdate(zipPath string) (string, string, error) {
 	selfPath, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("finding current executable: %w", err)
+		return "", "", fmt.Errorf("finding current executable: %w", err)
 	}
 	selfPath, err = filepath.EvalSymlinks(selfPath)
 	if err != nil {
-		return fmt.Errorf("resolving symlinks: %w", err)
+		return "", "", fmt.Errorf("resolving symlinks: %w", err)
 	}
 	installDir := filepath.Dir(selfPath)
 
-	// Extract zip to temp directory.
 	extractDir, err := extractZip(zipPath)
 	if err != nil {
-		return fmt.Errorf("extracting update: %w", err)
+		return "", "", fmt.Errorf("extracting update: %w", err)
 	}
-	defer os.RemoveAll(extractDir)
+	return extractDir, installDir, nil
+}
 
-	// Find and replace each binary in the zip.
+// InstallExtracted replaces binaries from extractDir into installDir.
+func InstallExtracted(extractDir, installDir string) error {
 	entries, err := os.ReadDir(extractDir)
 	if err != nil {
 		return fmt.Errorf("reading extracted files: %w", err)

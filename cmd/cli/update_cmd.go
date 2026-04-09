@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -83,6 +84,12 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	// Apply.
 	fmt.Println("Applying update...")
 	if err := update.Apply(zipPath); err != nil {
+		if errors.Is(err, update.ErrNeedElevation) {
+			fmt.Println("\nThe install directory requires administrator privileges.")
+			fmt.Println("Please re-run from an elevated terminal:")
+			fmt.Println("  Run as Administrator → gitbox update")
+			return nil
+		}
 		return fmt.Errorf("applying update: %w", err)
 	}
 
