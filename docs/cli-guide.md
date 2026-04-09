@@ -195,7 +195,7 @@ gitbox clone --verbose              # Show all repos including skipped
 gitbox status
 ```
 
-Shows config info, account credential health, and per-repo sync state grouped by source.
+Shows config info, account credential health, and per-repo sync state grouped by source. Repos on a non-default branch display a `[branch-name]` badge. Feature branches with no upstream show "local branch" instead of the generic "no upstream."
 
 ### Pull updates
 
@@ -203,7 +203,7 @@ Shows config info, account credential health, and per-repo sync state grouped by
 gitbox pull
 ```
 
-Pulls repos that are behind (fast-forward only). Dirty or conflicted repos are skipped with a warning.
+Pulls repos that are behind (fast-forward only). Dirty or conflicted repos are skipped with a warning. Repos on local branches with no upstream are skipped — use `--verbose` to see which repos were skipped and why.
 
 ```bash
 gitbox pull --verbose    # Show all repos including clean ones

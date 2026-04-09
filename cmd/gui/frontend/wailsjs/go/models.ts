@@ -567,6 +567,8 @@ export namespace main {
 	    untracked: number;
 	    conflicts: number;
 	    error?: string;
+	    branch?: string;
+	    isDefault?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new StatusResult(source);
@@ -585,6 +587,8 @@ export namespace main {
 	        this.untracked = source["untracked"];
 	        this.conflicts = source["conflicts"];
 	        this.error = source["error"];
+	        this.branch = source["branch"];
+	        this.isDefault = source["isDefault"];
 	    }
 	}
 	export class SweepDeleteDTO {

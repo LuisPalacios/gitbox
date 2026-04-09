@@ -52,6 +52,55 @@ func TestCheckClean(t *testing.T) {
 	}
 }
 
+func TestCheck_BranchPopulated(t *testing.T) {
+	clone, _ := initTestRepo(t)
+	rs := Check(clone)
+	if rs.Branch == "" {
+		t.Error("expected Branch to be populated")
+	}
+	// initTestRepo creates a repo with master as default.
+	if rs.Branch != "master" {
+		t.Errorf("branch = %q, want %q", rs.Branch, "master")
+	}
+}
+
+func TestCheck_IsDefault(t *testing.T) {
+	clone, _ := initTestRepo(t)
+	rs := Check(clone)
+	if !rs.IsDefault {
+		t.Error("expected IsDefault = true for default branch")
+	}
+}
+
+func TestCheck_FeatureBranch(t *testing.T) {
+	clone, _ := initTestRepo(t)
+	runGit(t, clone, "checkout", "-b", "feature-xyz")
+	rs := Check(clone)
+	if rs.Branch != "feature-xyz" {
+		t.Errorf("branch = %q, want %q", rs.Branch, "feature-xyz")
+	}
+	if rs.IsDefault {
+		t.Error("expected IsDefault = false for feature branch")
+	}
+	// Local branch with no upstream → NoUpstream state.
+	if rs.State != NoUpstream {
+		t.Errorf("state = %v, want NoUpstream", rs.State)
+	}
+}
+
+func TestCheck_DetachedHead(t *testing.T) {
+	clone, _ := initTestRepo(t)
+	// Detach HEAD at the current commit.
+	runGit(t, clone, "checkout", "--detach", "HEAD")
+	rs := Check(clone)
+	if rs.Branch != "(detached)" {
+		t.Errorf("branch = %q, want %q", rs.Branch, "(detached)")
+	}
+	if rs.IsDefault {
+		t.Error("expected IsDefault = false for detached HEAD")
+	}
+}
+
 func TestCheckDirty(t *testing.T) {
 	clone, _ := initTestRepo(t)
 	writeFile(t, filepath.Join(clone, "README.md"), "# changed\n")

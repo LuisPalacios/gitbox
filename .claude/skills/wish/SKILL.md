@@ -11,6 +11,7 @@ description: Manage the gitbox feature radar — view priorities, capture new id
 
 ```text
 /wish                  Show the radar overview
+/wish help             Show available commands
 /wish list             One-line summary of all pending wishes
 /wish add <title>      Capture a new feature idea
 /wish plan <id>        Deep-dive and create implementation plan
@@ -21,6 +22,10 @@ description: Manage the gitbox feature radar — view priorities, capture new id
 ## Data file
 
 The single source of truth is `.claude/context/feature-radar.md`. Always re-read it at execution time — it may have been edited manually.
+
+## `/wish help` — Show available commands
+
+Print the usage block from the Usage section above, verbatim. No file reads, no radar parsing — just the command reference.
 
 ## `/wish` (no arguments) — Radar overview
 

@@ -204,17 +204,25 @@ func printRepoStatus(cfg *config.Config) {
 		symbol, color := stateToSymbolColor(r.State)
 		details := formatDetails(r)
 
+		// Branch badge: show when not on the default branch.
+		repoLabel := r.Repo
+		if r.Branch == "(detached)" {
+			repoLabel += colorize(" [detached]", colorRed)
+		} else if r.Branch != "" && !r.IsDefault {
+			repoLabel += colorize(" ["+r.Branch+"]", colorCyan)
+		}
+
 		// Show symbol + state label + repo + details.
 		stateLabel := r.State.String()
 		if details != "" {
 			fmt.Printf("    %s  %-50s  %s\n",
 				colorize(fmt.Sprintf("%s %-10s", symbol, stateLabel), color),
-				r.Repo,
+				repoLabel,
 				details)
 		} else {
 			fmt.Printf("    %s  %s\n",
 				colorize(fmt.Sprintf("%s %-10s", symbol, stateLabel), color),
-				r.Repo)
+				repoLabel)
 		}
 	}
 	fmt.Println()
@@ -270,7 +278,10 @@ func formatDetails(r status.RepoStatus) string {
 	case status.NotCloned:
 		return "not cloned"
 	case status.NoUpstream:
-		return "no upstream"
+		if r.IsDefault {
+			return "no upstream"
+		}
+		return "local branch"
 	case status.Error:
 		return r.ErrorMsg
 	default:

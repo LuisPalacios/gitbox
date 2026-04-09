@@ -102,6 +102,10 @@ Gitbox watches your projects and shows their status:
 - **Local changes** (orange) — you have uncommitted work
 - **Ahead** (blue) — you have commits that haven't been pushed
 - **Not local** (grey) — the repo hasn't been cloned yet
+- **Local branch** (green) — on a feature branch with no upstream tracking (normal)
+- **No upstream** (grey) — default branch has no upstream tracking (needs attention)
+
+When a repo is checked out on a non-default branch, a small branch badge appears next to the repo name (e.g., `feature-xyz`). Repos on the default branch show no badge. Detached HEAD state shows a red `detached` badge.
 
 #### Pull All
 
