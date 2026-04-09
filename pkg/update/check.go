@@ -130,9 +130,9 @@ func checkLatestAPI(ctx context.Context, opts Options) (*CheckResult, error) {
 	// Parse current version — if it's "dev" or unparseable, treat as "always behind".
 	newer, err := IsNewer(opts.CurrentVersion, release.TagName)
 	if err != nil {
-		// Dev builds can't compare — report as available.
+		// Dev builds can't compare — always report as available.
 		if strings.Contains(opts.CurrentVersion, "dev") {
-			newer = false
+			newer = true
 		} else {
 			return nil, fmt.Errorf("comparing versions: %w", err)
 		}
