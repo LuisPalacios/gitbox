@@ -139,6 +139,25 @@ export interface RepoState {
   isDefault?: boolean;
 }
 
+export interface OrphanRepoDTO {
+  path: string;
+  relPath: string;
+  remoteURL: string;
+  repoKey: string;
+  matchedAccount: string;
+  matchedSource: string;
+  expectedPath: string;
+  needsRelocate: boolean;
+  localOnly: boolean;
+}
+
+export interface AdoptResultDTO {
+  adopted: number;
+  relocated: number;
+  skipped: number;
+  error?: string;
+}
+
 export interface EditorInfo {
   id: string;
   name: string;

@@ -70,6 +70,8 @@ type dashboardModel struct {
 	// Debounce: skip refresh if last check was recent.
 	lastRefresh time.Time
 
+	orphanCount int // number of orphan repos found on last scan
+
 	showHelp bool
 	version  string
 }
@@ -106,6 +108,7 @@ func (m dashboardModel) Init() tea.Cmd {
 		checkAllStatusCmd(m.cfg),
 		periodicRefreshCmd(),
 		checkAllMirrorStatusCmd(m.cfg),
+		scanOrphansCmd(m.cfg),
 	}
 	// Start periodic sync if configured.
 	if cmd := periodicSyncCmd(m.cfg); cmd != nil {
@@ -502,10 +505,18 @@ func (m dashboardModel) Update(msg tea.Msg) (dashboardModel, tea.Cmd) {
 			return m, func() tea.Msg { return switchScreenMsg{screen: screenSettings} }
 		case msg.String() == "i":
 			return m, func() tea.Msg { return switchScreenMsg{screen: screenIdentity} }
+		case msg.String() == "O":
+			return m, func() tea.Msg { return switchScreenMsg{screen: screenOrphans} }
 		case key.Matches(msg, Keys.Help):
 			m.showHelp = true
 			return m, nil
 		}
+
+	case orphansScanDoneMsg:
+		if msg.err == nil {
+			m.orphanCount = len(msg.orphans)
+		}
+		return m, nil
 
 	case mirrorAllStatusMsg:
 		m.mirrorLiveResults = msg.results
@@ -1301,6 +1312,10 @@ func (m dashboardModel) viewStatusBar() string {
 		}
 	}
 
+	if m.orphanCount > 0 {
+		summary += fmt.Sprintf("  %d orphan(s)", m.orphanCount)
+	}
+
 	if m.pullAllLabel != "" {
 		summary += "  " + styles.SymSyncing + " " + m.pullAllLabel
 	} else if m.loading {
@@ -1315,7 +1330,12 @@ func (m dashboardModel) viewStatusBar() string {
 	case tabMirrors:
 		right = renderHintsFit(m.theme, hintsWidth, "←→ cards", "↑↓ mirrors", "tab section", "r refresh", "R reload", "? help", "ESC quit")
 	default:
-		right = renderHintsFit(m.theme, hintsWidth, "←→ cards", "↑↓ clones", "tab section", "P pull all", "r refresh", "R reload", "a add", "N new repo", "? help", "ESC quit")
+		hints := []string{"←→ cards", "↑↓ clones", "tab section", "P pull all", "r refresh", "R reload", "a add", "N new repo"}
+		if m.orphanCount > 0 {
+			hints = append(hints, "O orphans")
+		}
+		hints = append(hints, "? help", "ESC quit")
+		right = renderHintsFit(m.theme, hintsWidth, hints...)
 	}
 
 	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)

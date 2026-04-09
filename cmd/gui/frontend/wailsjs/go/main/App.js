@@ -18,6 +18,10 @@ export function AddMirrorRepo(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddMirrorRepo'](arg1, arg2, arg3, arg4);
 }
 
+export function AdoptOrphans(arg1) {
+  return window['go']['main']['App']['AdoptOrphans'](arg1);
+}
+
 export function ApplyDiscoveredMirrors() {
   return window['go']['main']['App']['ApplyDiscoveredMirrors']();
 }
@@ -112,6 +116,10 @@ export function FetchAllRepos() {
 
 export function FetchRepo(arg1, arg2) {
   return window['go']['main']['App']['FetchRepo'](arg1, arg2);
+}
+
+export function FindOrphans() {
+  return window['go']['main']['App']['FindOrphans']();
 }
 
 export function GetAllStatus() {

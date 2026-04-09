@@ -27,6 +27,7 @@ const (
 	screenSettings
 	screenIdentity
 	screenRepoCreate
+	screenOrphans
 )
 
 // --- Navigation messages ---
@@ -217,6 +218,7 @@ type model struct {
 	settings   settingsModel
 	identity   identityModel
 	repoCreate repoCreateModel
+	orphans    orphansModel
 }
 
 func newModel(cfgPath string) model {
@@ -275,6 +277,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case screenDiscovery:
 			m.discovery.width = msg.Width
 			m.discovery.height = msg.Height
+		case screenOrphans:
+			m.orphans.width = msg.Width
+			m.orphans.height = msg.Height
 		case screenRepos:
 			m.repos.width = msg.Width
 			m.repos.height = msg.Height
@@ -332,6 +337,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.credential, cmd = m.credential.Update(msg)
 	case screenDiscovery:
 		m.discovery, cmd = m.discovery.Update(msg)
+	case screenOrphans:
+		m.orphans, cmd = m.orphans.Update(msg)
 	case screenRepos:
 		m.repos, cmd = m.repos.Update(msg)
 	case screenMirrors:
@@ -412,6 +419,9 @@ func (m model) switchTo(msg switchScreenMsg) (model, tea.Cmd) {
 	case screenRepoCreate:
 		m.repoCreate = newRepoCreateModel(m.cfg, m.cfgPath, m.theme, m.width, m.height, msg.accountKey)
 		cmd = m.repoCreate.Init()
+	case screenOrphans:
+		m.orphans = newOrphansModel(m.cfg, m.cfgPath, m.theme, m.width, m.height)
+		cmd = m.orphans.Init()
 	}
 	return m, cmd
 }
@@ -444,6 +454,8 @@ func (m model) View() string {
 		return m.identity.View()
 	case screenRepoCreate:
 		return m.repoCreate.View()
+	case screenOrphans:
+		return m.orphans.View()
 	default:
 		return "Unknown screen"
 	}

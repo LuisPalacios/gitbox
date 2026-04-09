@@ -238,9 +238,9 @@ func TestHostnameFromURL(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.url, func(t *testing.T) {
-			got := hostnameFromURL(tt.url)
+			got := HostnameFromURL(tt.url)
 			if got != tt.want {
-				t.Errorf("hostnameFromURL(%q) = %q, want %q", tt.url, got, tt.want)
+				t.Errorf("HostnameFromURL(%q) = %q, want %q", tt.url, got, tt.want)
 			}
 		})
 	}

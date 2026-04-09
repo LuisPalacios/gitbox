@@ -305,6 +305,24 @@ export namespace main {
 	        this.credentialType = source["credentialType"];
 	    }
 	}
+	export class AdoptResultDTO {
+	    adopted: number;
+	    relocated: number;
+	    skipped: number;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AdoptResultDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.adopted = source["adopted"];
+	        this.relocated = source["relocated"];
+	        this.skipped = source["skipped"];
+	        this.error = source["error"];
+	    }
+	}
 	export class MirrorDTO {
 	    account_src: string;
 	    account_dst: string;
@@ -514,6 +532,34 @@ export namespace main {
 	    }
 	}
 	
+	export class OrphanRepoDTO {
+	    path: string;
+	    relPath: string;
+	    remoteURL: string;
+	    repoKey: string;
+	    matchedAccount: string;
+	    matchedSource: string;
+	    expectedPath: string;
+	    needsRelocate: boolean;
+	    localOnly: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new OrphanRepoDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.relPath = source["relPath"];
+	        this.remoteURL = source["remoteURL"];
+	        this.repoKey = source["repoKey"];
+	        this.matchedAccount = source["matchedAccount"];
+	        this.matchedSource = source["matchedSource"];
+	        this.expectedPath = source["expectedPath"];
+	        this.needsRelocate = source["needsRelocate"];
+	        this.localOnly = source["localOnly"];
+	    }
+	}
 	export class RepoDetail {
 	    branch: string;
 	    ahead: number;

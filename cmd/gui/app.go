@@ -16,6 +16,7 @@ import (
 
 	"time"
 
+	"github.com/LuisPalacios/gitbox/pkg/adopt"
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/update"
@@ -192,6 +193,8 @@ func (a *App) CheckForUpdate() {
 }
 
 // ApplyUpdate downloads and applies the latest release.
+// On Windows, if the install directory requires admin privileges (e.g.
+// Program Files), it falls back to a UAC-elevated helper process.
 func (a *App) ApplyUpdate() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -215,10 +218,30 @@ func (a *App) ApplyUpdate() error {
 
 	wailsrt.EventsEmit(a.ctx, "update:progress", "Applying...")
 
-	if err := update.Apply(zipPath); err != nil {
+	// Extract first so we can retry with elevation if the in-place
+	// install fails due to permissions (e.g. Program Files on Windows).
+	extractDir, installDir, err := update.ExtractUpdate(zipPath)
+	if err != nil {
+		return fmt.Errorf("extracting: %w", err)
+	}
+
+	if err := update.InstallExtracted(extractDir, installDir); err != nil {
+		if errors.Is(err, update.ErrNeedElevation) {
+			// Don't clean extractDir — the elevated script needs it.
+			wailsrt.EventsEmit(a.ctx, "update:progress", "Requesting admin privileges...")
+			if elevErr := update.ApplyElevated(extractDir, installDir); elevErr != nil {
+				os.RemoveAll(extractDir)
+				return fmt.Errorf("elevated update: %w", elevErr)
+			}
+			// Elevated script will copy files after we exit.
+			wailsrt.EventsEmit(a.ctx, "update:quit", result.Latest)
+			return nil
+		}
+		os.RemoveAll(extractDir)
 		return fmt.Errorf("applying: %w", err)
 	}
 
+	os.RemoveAll(extractDir)
 	wailsrt.EventsEmit(a.ctx, "update:done", result.Latest)
 	return nil
 }
@@ -533,6 +556,132 @@ func (a *App) ConfirmSweep(sourceKey, repoKey string) SweepDeleteDTO {
 		return SweepDeleteDTO{Deleted: deleted, Error: errs[0].Error()}
 	}
 	return SweepDeleteDTO{Deleted: deleted}
+}
+
+// ── Orphan repo adoption ──────────────────────────────────────────────────
+
+// OrphanRepoDTO describes an orphan repo for the frontend.
+type OrphanRepoDTO struct {
+	Path           string `json:"path"`
+	RelPath        string `json:"relPath"`
+	RemoteURL      string `json:"remoteURL"`
+	RepoKey        string `json:"repoKey"`
+	MatchedAccount string `json:"matchedAccount"`
+	MatchedSource  string `json:"matchedSource"`
+	ExpectedPath   string `json:"expectedPath"`
+	NeedsRelocate  bool   `json:"needsRelocate"`
+	LocalOnly      bool   `json:"localOnly"`
+}
+
+// AdoptResultDTO holds the result of adopting orphan repos.
+type AdoptResultDTO struct {
+	Adopted   int    `json:"adopted"`
+	Relocated int    `json:"relocated"`
+	Skipped   int    `json:"skipped"`
+	Error     string `json:"error,omitempty"`
+}
+
+// FindOrphans returns orphan repos under the parent folder.
+func (a *App) FindOrphans() []OrphanRepoDTO {
+	a.mu.Lock()
+	cfg := a.cfg
+	a.mu.Unlock()
+
+	orphans, err := adopt.FindOrphans(cfg)
+	if err != nil {
+		return nil
+	}
+
+	dtos := make([]OrphanRepoDTO, len(orphans))
+	for i, o := range orphans {
+		dtos[i] = OrphanRepoDTO{
+			Path:           o.Path,
+			RelPath:        o.RelPath,
+			RemoteURL:      o.RemoteURL,
+			RepoKey:        o.RepoKey,
+			MatchedAccount: o.MatchedAccount,
+			MatchedSource:  o.MatchedSource,
+			ExpectedPath:   o.ExpectedPath,
+			NeedsRelocate:  o.NeedsRelocate,
+			LocalOnly:      o.LocalOnly,
+		}
+	}
+	return dtos
+}
+
+// AdoptOrphans adopts the specified orphans by repoKey.
+func (a *App) AdoptOrphans(repoKeys []string) AdoptResultDTO {
+	a.mu.Lock()
+	cfg := a.cfg
+	a.mu.Unlock()
+
+	// Build lookup of requested keys.
+	requested := make(map[string]bool, len(repoKeys))
+	for _, k := range repoKeys {
+		requested[k] = true
+	}
+
+	orphans, err := adopt.FindOrphans(cfg)
+	if err != nil {
+		return AdoptResultDTO{Error: err.Error()}
+	}
+
+	adopted := 0
+	relocated := 0
+	skipped := 0
+
+	for _, o := range orphans {
+		if !requested[o.RepoKey] || o.MatchedAccount == "" || o.MatchedSource == "" || o.LocalOnly {
+			continue
+		}
+
+		repoPath := o.Path
+
+		// Relocate if needed.
+		if o.NeedsRelocate && o.ExpectedPath != "" {
+			if _, statErr := os.Stat(o.ExpectedPath); statErr != nil {
+				if mkErr := os.MkdirAll(filepath.Dir(o.ExpectedPath), 0o755); mkErr == nil {
+					if mvErr := os.Rename(o.Path, o.ExpectedPath); mvErr == nil {
+						repoPath = o.ExpectedPath
+						relocated++
+					}
+				}
+			}
+		}
+
+		// Add to config.
+		repo := config.Repo{}
+		if repoPath == o.Path && o.NeedsRelocate {
+			repo.CloneFolder = repoPath
+		}
+		if err := cfg.AddRepo(o.MatchedSource, o.RepoKey, repo); err != nil {
+			skipped++
+			continue
+		}
+
+		// Sanitize .git/config.
+		acct := cfg.Accounts[o.MatchedAccount]
+		credType := repo.EffectiveCredentialType(&acct)
+		newURL := adopt.PlainRemoteURL(acct, o.RepoKey, credType)
+		_ = git.SetRemoteURL(repoPath, "origin", newURL)
+		_ = credential.ConfigureRepoCredential(repoPath, acct, o.MatchedAccount, credType, cfg.Global)
+		_ = git.ConfigSet(repoPath, "user.name", acct.Name)
+		_ = git.ConfigSet(repoPath, "user.email", acct.Email)
+
+		adopted++
+	}
+
+	if adopted > 0 {
+		a.mu.Lock()
+		cfgPath := filepath.Join(config.ConfigRoot(), config.V2ConfigDir, config.V2ConfigFile)
+		saveErr := config.Save(cfg, cfgPath)
+		a.mu.Unlock()
+		if saveErr != nil {
+			return AdoptResultDTO{Adopted: adopted, Relocated: relocated, Skipped: skipped, Error: saveErr.Error()}
+		}
+	}
+
+	return AdoptResultDTO{Adopted: adopted, Relocated: relocated, Skipped: skipped}
 }
 
 // OpenInApp opens a folder in a specific application (e.g. VS Code).

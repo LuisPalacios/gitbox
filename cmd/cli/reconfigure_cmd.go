@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/LuisPalacios/gitbox/pkg/adopt"
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/git"
@@ -80,7 +81,7 @@ func reconfigureClonesForAccount(cfg *config.Config, accountKey string) (int, in
 			credType := repo.EffectiveCredentialType(&acct)
 
 			// Update remote URL (plain, no embedded token).
-			newURL := plainRemoteURL(acct, repoKey, credType)
+			newURL := adopt.PlainRemoteURL(acct, repoKey, credType)
 			if err := git.SetRemoteURL(path, "origin", newURL); err != nil {
 				printStatusLine("x", "error", label, "set-url: "+err.Error(), colorRed)
 				errors++
@@ -113,21 +114,4 @@ func reconfigureClonesForAccount(cfg *config.Config, accountKey string) (int, in
 	return count, errors
 }
 
-// plainRemoteURL builds a remote URL without embedded credentials.
-// SSH: git@host:repo.git, HTTPS: https://user@host/repo.git
-func plainRemoteURL(acct config.Account, repoKey, credType string) string {
-	switch credType {
-	case "ssh":
-		host := acct.URL
-		if acct.SSH != nil && acct.SSH.Host != "" {
-			host = acct.SSH.Host
-		} else {
-			host = extractHostname(acct.URL)
-		}
-		return fmt.Sprintf("git@%s:%s.git", host, repoKey)
-	default:
-		hostname := extractHostname(acct.URL)
-		return fmt.Sprintf("https://%s@%s/%s.git", acct.Username, hostname, repoKey)
-	}
-}
 

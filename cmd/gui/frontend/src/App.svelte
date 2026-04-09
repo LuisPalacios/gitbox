@@ -98,6 +98,7 @@
   let updateApplying = false;
   let updateProgress = '';
   let updateDone = false;
+  let updateError = '';
 
   async function checkGlobalIdentity() {
     try {
@@ -280,6 +281,50 @@
       await bridge.openInBrowser(webURL);
     }
     closeActionMenu();
+  }
+
+  // ── Orphan adoption ──
+  let orphanList: import('./lib/types').OrphanRepoDTO[] = [];
+  let orphanCount = 0;
+  let orphanModal: { orphans: import('./lib/types').OrphanRepoDTO[]; selected: Set<string>; } | null = null;
+  let orphanBusy = false;
+
+  async function loadOrphans() {
+    try {
+      const result = await bridge.findOrphans();
+      orphanList = result || [];
+      orphanCount = orphanList.filter(o => o.matchedAccount && !o.localOnly).length;
+    } catch { orphanCount = 0; }
+  }
+
+  function showOrphanModal() {
+    const matched = orphanList.filter(o => o.matchedAccount && !o.localOnly);
+    orphanModal = { orphans: orphanList, selected: new Set(matched.map(o => o.repoKey)) };
+  }
+
+  function toggleOrphan(repoKey: string) {
+    if (!orphanModal) return;
+    const s = new Set(orphanModal.selected);
+    if (s.has(repoKey)) s.delete(repoKey); else s.add(repoKey);
+    orphanModal = { ...orphanModal, selected: s };
+  }
+
+  async function confirmAdopt() {
+    if (!orphanModal) return;
+    orphanBusy = true;
+    const keys = [...orphanModal.selected];
+    const result = await bridge.adoptOrphans(keys);
+    orphanBusy = false;
+    orphanModal = null;
+    if (result.error) alert(`Adopt error: ${result.error}`);
+    // Reload config from disk (adoption saved there) so the dashboard
+    // picks up the new repos and the orphan scan uses fresh state.
+    $configStore = await bridge.reloadConfig();
+    // Refresh all repo statuses — includes newly adopted repos.
+    const statuses = await bridge.getAllStatus();
+    applyStatusResults(statuses);
+    // Rescan orphans with the reloaded config.
+    await loadOrphans();
   }
 
   // ── Sweep branches modal ──
@@ -1273,6 +1318,8 @@
     // Load autostart state.
     loadAutostart();
 
+    // Scan for orphan repos in the background.
+    loadOrphans();
 
     // Start periodic status check if previously configured.
     if (fetchInterval !== 'off') applyFetchInterval(fetchInterval);
@@ -1445,6 +1492,15 @@
       updateApplying = false;
       updateProgress = '';
       updateDone = true;
+    });
+
+    events.on('update:quit', (ver: string) => {
+      // Elevated update script is running — quit so it can overwrite binaries.
+      updateApplying = false;
+      updateProgress = '';
+      updateDone = true;
+      // Auto-quit after a brief moment so the user sees the message.
+      setTimeout(() => Quit(), 1500);
     });
 
     // Check if config failed to parse (file exists but is broken/unsupported).
@@ -1787,6 +1843,9 @@
       on:click={() => cardsTab = 'accounts'}>Accounts</button>
     <button class="cards-tab" class:cards-tab-active={cardsTab === 'mirrors'}
       on:click={() => cardsTab = 'mirrors'}>Mirrors</button>
+    {#if orphanCount > 0}
+      <button class="orphan-pill" on:click={showOrphanModal}>{orphanCount} orphan{orphanCount > 1 ? 's' : ''}</button>
+    {/if}
     {#if cardsTab === 'mirrors'}
       <div class="tab-bar-actions">
         <button class="btn-tab-action" on:click={runMirrorDiscover} disabled={mirrorDiscoverLoading}>{mirrorDiscoverLoading ? 'Scanning...' : 'Discover'}</button>
@@ -2094,13 +2153,21 @@
         <span>&#10003; Updated — restart to apply</span>
         <button class="update-pill-btn" on:click={() => Quit()}>Quit</button>
       </div>
+    {:else if updateError}
+      <div class="update-pill update-error">
+        <span>&#9888; {updateError}</span>
+        {#if updateInfo?.url}
+          <button class="update-pill-btn" on:click={() => BrowserOpenURL(updateInfo.url)}>Release page</button>
+        {/if}
+        <button class="update-pill-dismiss" on:click={() => updateError = ''} title="Dismiss">&#10005;</button>
+      </div>
     {:else if updateInfo?.available}
       <div class="update-pill">
         {#if updateApplying}
           <span class="update-pill-spin">&#8635;</span> <span>{updateProgress || 'Updating…'}</span>
         {:else}
           <span>&#9650;</span>
-          <button class="update-pill-btn" on:click={() => { updateApplying = true; bridge.applyUpdate().catch(() => { updateApplying = false; }); }}>{updateInfo.latest} available</button>
+          <button class="update-pill-btn" on:click={() => { updateApplying = true; updateError = ''; bridge.applyUpdate().catch((e) => { updateApplying = false; updateError = typeof e === 'string' ? e : (e?.message || 'Update failed'); }); }}>{updateInfo.latest} available</button>
           <button class="update-pill-dismiss" on:click={() => updateInfo = null} title="Dismiss">&#10005;</button>
         {/if}
       </div>
@@ -2306,6 +2373,55 @@
           <button class="btn-cancel" on:click={() => sweepModal = null}>Cancel</button>
           <button class="btn-sweep-confirm" on:click={confirmSweepAction} disabled={sweepBusy}>
             {sweepBusy ? 'Sweeping...' : `Delete ${sweepModal.merged.length + sweepModal.gone.length + sweepModal.squashed.length} branch(es)`}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ── ORPHAN ADOPTION MODAL ── -->
+  {#if orphanModal}
+    <div class="overlay" on:click={() => orphanModal = null} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-adopt" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+        <div class="modal-head modal-head-adopt">
+          <h3>Adopt orphan repos</h3>
+          <button class="btn-x" on:click={() => orphanModal = null}>&#10005;</button>
+        </div>
+        <div class="modal-body">
+          {#each orphanModal.orphans.filter(o => o.matchedAccount && !o.localOnly) as o, i}
+            {#if i === 0}
+              <p class="adopt-section-label">Ready to adopt ({orphanModal.orphans.filter(o => o.matchedAccount && !o.localOnly).length}):</p>
+            {/if}
+            <label class="adopt-item">
+              <input type="checkbox" checked={orphanModal.selected.has(o.repoKey)} on:change={() => toggleOrphan(o.repoKey)} />
+              <span class="adopt-repo-key">{o.repoKey}</span>
+              <span class="adopt-target">&rarr; {o.matchedSource}</span>
+              <span class="adopt-action">{o.needsRelocate ? 'relocate' : 'in place'}</span>
+            </label>
+          {/each}
+          {#each orphanModal.orphans.filter(o => !o.matchedAccount && !o.localOnly) as o, i}
+            {#if i === 0}
+              <p class="adopt-section-label adopt-section-unknown">Unknown account ({orphanModal.orphans.filter(o => !o.matchedAccount && !o.localOnly).length}):</p>
+            {/if}
+            <div class="adopt-item adopt-item-muted">
+              <span class="adopt-repo-key">{o.repoKey}</span>
+              <span class="adopt-remote">{o.remoteURL}</span>
+            </div>
+          {/each}
+          {#each orphanModal.orphans.filter(o => o.localOnly) as o, i}
+            {#if i === 0}
+              <p class="adopt-section-label adopt-section-local">Local only ({orphanModal.orphans.filter(o => o.localOnly).length}):</p>
+            {/if}
+            <div class="adopt-item adopt-item-muted">
+              <span class="adopt-repo-key">{o.relPath}</span>
+              <span class="adopt-remote">no remote</span>
+            </div>
+          {/each}
+        </div>
+        <div class="modal-foot">
+          <button class="btn-cancel" on:click={() => orphanModal = null}>Cancel</button>
+          <button class="btn-adopt-confirm" on:click={confirmAdopt} disabled={orphanBusy || orphanModal.selected.size === 0}>
+            {orphanBusy ? 'Adopting...' : `Adopt ${orphanModal.selected.size} repo(s)`}
           </button>
         </div>
       </div>
@@ -2998,6 +3114,8 @@
   :global([data-theme="light"]) .update-pill { color: #d97706; }
   .update-pill.update-done { color: #22d3ee; }
   :global([data-theme="light"]) .update-pill.update-done { color: #0891b2; }
+  .update-pill.update-error { color: #f87171; }
+  :global([data-theme="light"]) .update-pill.update-error { color: #dc2626; }
   .update-pill-btn {
     background: none; border: none; color: inherit; cursor: pointer;
     font-size: 11px; font-weight: 600; padding: 0; text-decoration: underline; text-underline-offset: 2px;
@@ -3440,6 +3558,45 @@
   }
   .btn-sweep-confirm:hover:not(:disabled) { background: #d97706; }
   .btn-sweep-confirm:disabled { opacity: 0.5; cursor: default; }
+
+  /* ── Orphan adoption ── */
+  .orphan-pill {
+    margin-left: auto; padding: 2px 10px; border: 1px solid #f59e0b88;
+    background: #f59e0b22; color: #f59e0b; border-radius: 12px;
+    font-size: 11px; font-weight: 600; cursor: pointer;
+  }
+  .orphan-pill:hover { background: #f59e0b44; }
+  :global([data-theme="light"]) .orphan-pill { color: #b45309; border-color: #b4530966; background: #fef3c722; }
+  :global([data-theme="light"]) .orphan-pill:hover { background: #fef3c7; }
+
+  .modal-adopt { width: 500px; }
+  .modal-head-adopt { border-bottom-color: #f59e0b44; }
+  .modal-head-adopt h3 { color: #f59e0b; }
+  :global([data-theme="light"]) .modal-head-adopt h3 { color: #b45309; }
+
+  .adopt-section-label { font-size: 12px; font-weight: 600; color: #22c55e; margin: 8px 0 4px; }
+  :global([data-theme="light"]) .adopt-section-label { color: #16a34a; }
+  .adopt-section-unknown { color: #f87171; }
+  :global([data-theme="light"]) .adopt-section-unknown { color: #dc2626; }
+  .adopt-section-local { color: var(--text-muted); }
+
+  .adopt-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 3px 0; font-size: 12px; color: var(--text-primary);
+  }
+  .adopt-item input[type="checkbox"] { margin: 0; accent-color: #22c55e; }
+  .adopt-item-muted { color: var(--text-muted); padding-left: 22px; }
+  .adopt-repo-key { font-weight: 500; }
+  .adopt-target { color: var(--text-secondary); font-size: 11px; }
+  .adopt-action { color: var(--text-muted); font-size: 11px; font-style: italic; margin-left: auto; }
+  .adopt-remote { color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
+
+  .btn-adopt-confirm {
+    padding: 6px 12px; background: #22c55e; border: none; color: #000;
+    border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;
+  }
+  .btn-adopt-confirm:hover:not(:disabled) { background: #16a34a; }
+  .btn-adopt-confirm:disabled { opacity: 0.5; cursor: default; }
   :global([data-theme="light"]) .btn-sweep-confirm { background: #f59e0b; color: #000; }
   :global([data-theme="light"]) .btn-sweep-confirm:hover:not(:disabled) { background: #d97706; }
 

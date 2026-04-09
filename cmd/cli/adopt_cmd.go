@@ -176,7 +176,7 @@ func runAdopt(cmd *cobra.Command, args []string) error {
 		credType := repo.EffectiveCredentialType(&acct)
 
 		// Rewrite remote URL.
-		newURL := plainRemoteURL(acct, o.RepoKey, credType)
+		newURL := adopt.PlainRemoteURL(acct, o.RepoKey, credType)
 		if err := git.SetRemoteURL(repoPath, "origin", newURL); err != nil {
 			printStatusLine("!", "warn", o.RepoKey, "set-url: "+err.Error(), colorOrange)
 		}

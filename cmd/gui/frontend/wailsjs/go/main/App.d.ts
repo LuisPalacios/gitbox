@@ -11,6 +11,8 @@ export function AddMirrorGroup(arg1:string,arg2:string,arg3:string):Promise<void
 
 export function AddMirrorRepo(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
+export function AdoptOrphans(arg1:Array<string>):Promise<main.AdoptResultDTO>;
+
 export function ApplyDiscoveredMirrors():Promise<void>;
 
 export function ApplyUpdate():Promise<void>;
@@ -58,6 +60,8 @@ export function DiscoverMirrors():Promise<void>;
 export function FetchAllRepos():Promise<void>;
 
 export function FetchRepo(arg1:string,arg2:string):Promise<void>;
+
+export function FindOrphans():Promise<Array<main.OrphanRepoDTO>>;
 
 export function GetAllStatus():Promise<Array<main.StatusResult>>;
 

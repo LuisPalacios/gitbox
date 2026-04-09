@@ -3,6 +3,7 @@
 package adopt
 
 import (
+	"fmt"
 	"net/url"
 	"path/filepath"
 	"sort"
@@ -150,7 +151,7 @@ func MatchAccount(cfg *config.Config, host, owner string) (string, string) {
 	var candidates []candidate
 
 	for acctKey, acct := range cfg.Accounts {
-		acctHost := hostnameFromURL(acct.URL)
+		acctHost := HostnameFromURL(acct.URL)
 
 		// Check direct hostname match.
 		hostMatch := strings.EqualFold(host, acctHost)
@@ -193,8 +194,26 @@ func MatchAccount(cfg *config.Config, host, owner string) (string, string) {
 	return candidates[0].accountKey, candidates[0].sourceKey
 }
 
-// hostnameFromURL extracts the hostname from a URL like "https://github.com".
-func hostnameFromURL(rawURL string) string {
+// PlainRemoteURL builds a remote URL without embedded credentials.
+// SSH: git@host:repo.git, HTTPS: https://user@host/repo.git
+func PlainRemoteURL(acct config.Account, repoKey, credType string) string {
+	switch credType {
+	case "ssh":
+		host := acct.URL
+		if acct.SSH != nil && acct.SSH.Host != "" {
+			host = acct.SSH.Host
+		} else {
+			host = HostnameFromURL(acct.URL)
+		}
+		return fmt.Sprintf("git@%s:%s.git", host, repoKey)
+	default:
+		hostname := HostnameFromURL(acct.URL)
+		return fmt.Sprintf("https://%s@%s/%s.git", acct.Username, hostname, repoKey)
+	}
+}
+
+// HostnameFromURL extracts the hostname from a URL like "https://github.com".
+func HostnameFromURL(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return rawURL
