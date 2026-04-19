@@ -2397,6 +2397,7 @@
               <span class="adopt-repo-key">{o.repoKey}</span>
               <span class="adopt-target">&rarr; {o.matchedSource}</span>
               <span class="adopt-action">{o.needsRelocate ? 'relocate' : 'in place'}</span>
+              <span class="adopt-path">{o.relPath}</span>
             </label>
           {/each}
           {#each orphanModal.orphans.filter(o => !o.matchedAccount && !o.localOnly) as o, i}
@@ -2409,6 +2410,7 @@
               {#if o.ambiguousCandidates && o.ambiguousCandidates.length > 1}
                 <span class="adopt-hint">ambiguous: {o.ambiguousCandidates.join(' | ')}</span>
               {/if}
+              <span class="adopt-path adopt-path-muted">{o.relPath}</span>
             </div>
           {/each}
           {#each orphanModal.orphans.filter(o => o.localOnly) as o, i}
@@ -3584,7 +3586,7 @@
   .adopt-section-local { color: var(--text-muted); }
 
   .adopt-item {
-    display: flex; align-items: center; gap: 8px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
     padding: 3px 0; font-size: 12px; color: var(--text-primary);
   }
   .adopt-item input[type="checkbox"] { margin: 0; accent-color: #22c55e; }
@@ -3594,6 +3596,12 @@
   .adopt-action { color: var(--text-muted); font-size: 11px; font-style: italic; margin-left: auto; }
   .adopt-remote { color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
   .adopt-hint { color: #f59e0b; font-size: 11px; font-style: italic; margin-left: auto; }
+  .adopt-path {
+    flex-basis: 100%; padding-left: 22px;
+    color: var(--text-muted); font-size: 11px; font-family: var(--font-mono, monospace);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .adopt-path-muted { padding-left: 0; }
 
   .btn-adopt-confirm {
     padding: 6px 12px; background: #22c55e; border: none; color: #000;
