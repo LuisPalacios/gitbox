@@ -153,6 +153,8 @@ Helper files:
 
 Every `exec.Command` in the GUI binary (`cmd/gui/`) **MUST** call `git.HideWindow(cmd)` before `.Run()`, `.Output()`, or `.Start()`. This sets `SysProcAttr.HideWindow = true` on Windows, preventing a console window from flashing. The CLI binary does not need this. Always check for bare `exec.Command` calls in `cmd/gui/` after any change.
 
+**One documented exception:** `OpenInTerminal` in `cmd/gui/app.go`. Terminals (`wt.exe`, `pwsh.exe`, `cmd.exe`, `git-bash.exe`, etc.) *are* the console window the user wants to see — applying `CREATE_NO_WINDOW` would launch them invisibly. The function has a block comment explaining this; do not "fix" it by adding `HideWindow`.
+
 ### TUI demo recordings
 
 Use VHS (`charmbracelet/vhs`) to record terminal demo GIFs. Tape files live in `assets/`. See [developer-guide.md](docs/developer-guide.md) for details.

@@ -1010,7 +1010,11 @@ func (a *App) SyncTerminals() {
 // OpenInTerminal launches a terminal emulator in the given folder.
 // Args may contain the token "{path}"; if present it is substituted with
 // path, otherwise path is appended as the final argv.
-// HideWindow prevents a transient cmd.exe flash on Windows (required in cmd/gui/).
+//
+// Intentionally does NOT call git.HideWindow: CREATE_NO_WINDOW would suppress
+// the terminal's console itself, not just a transient launcher flash — the
+// terminal would start invisible. Editors use HideWindow because their GUI
+// window is detached; terminals ARE the window we want to show.
 func (a *App) OpenInTerminal(path string, command string, args []string) error {
 	if command == "" {
 		return fmt.Errorf("command is required")
@@ -1018,7 +1022,6 @@ func (a *App) OpenInTerminal(path string, command string, args []string) error {
 	resolved := resolveTerminalArgs(args, path)
 	cmd := exec.Command(command, resolved...)
 	cmd.Env = git.Environ()
-	git.HideWindow(cmd)
 	return cmd.Start()
 }
 
