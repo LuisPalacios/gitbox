@@ -1,6 +1,6 @@
 ---
 name: work-issue
-description: Drive an issue from worktree creation through push and PR, with explicit user gates. Use when the user says "work on issue N", "let's tackle #N", or invokes /work-issue. Accepts an optional plan source (local path, URL, or the literal "issue") to adopt an existing plan instead of entering plan mode from scratch. Stops before merge; companion /merge-issue skill handles that.
+description: Drive an issue from worktree creation through push and PR, with explicit user gates. Use when the user says "work on issue N", "let's tackle #N", or invokes /work-issue. Accepts an optional plan source (local path, URL, or the literal "issue") to adopt an existing plan instead of entering plan mode from scratch. Stops before merge; companion /merge-pr skill handles that.
 ---
 
 # /work-issue — Drive an issue in an isolated worktree
@@ -215,7 +215,7 @@ EOF
 
 - Report the PR URL from the `gh pr create` output.
 - Do **not** merge, do not auto-enable merge, do not comment further.
-- Tell the user: "PR up at `<url>`. Run `/merge-issue <PR#>` when you're ready to merge."
+- Tell the user: "PR up at `<url>`. Run `/merge-pr <PR#>` when you're ready to merge."
 
 ## Behavior notes
 

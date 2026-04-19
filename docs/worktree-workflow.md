@@ -1,6 +1,6 @@
 # Worktree-based parallel workflow
 
-I use this workflow when I want to work on two or more GitHub issues at the same time, each in its own Claude Code session, each on its own branch, without the sessions stepping on each other. It's driven by two skills: `/work-issue <N>` creates a sibling worktree and walks the issue through plan, code, test, push, and PR; `/merge-issue <PR#>` handles the merge and cleanup.
+I use this workflow when I want to work on two or more GitHub issues at the same time, each in its own Claude Code session, each on its own branch, without the sessions stepping on each other. It's driven by two skills: `/work-issue <N>` creates a sibling worktree and walks the issue through plan, code, test, push, and PR; `/merge-pr <PR#>` handles the merge and cleanup.
 
 The skills enforce the gates I care about — nothing lands on GitHub without me saying so — so I don't have to re-explain the rules in every session.
 
@@ -36,7 +36,7 @@ The skill pauses at each gate and waits for me. I don't have to memorise them �
 - **Sync with main** — it checks whether `origin/main` moved and offers to rebase.
 - **Push gate** — I approve, it pushes the branch.
 - **PR gate** — it drafts title and body (anonymised), I approve, it runs `gh pr create`.
-- **Stop** — it reports the PR URL and tells me to run `/merge-issue` when I'm ready.
+- **Stop** — it reports the PR URL and tells me to run `/merge-pr` when I'm ready.
 
 At no point does the skill merge. Merging is a separate, deliberate action.
 
@@ -76,7 +76,7 @@ It isn't actually orphaned. The worktree has a valid `.git` pointer file and git
 
 Three ways to live with it:
 
-1. Ignore the noise. The worktree disappears when `/merge-issue` cleans up after the merge.
+1. Ignore the noise. The worktree disappears when `/merge-pr` cleans up after the merge.
 2. Place worktrees outside any gitbox-managed folder. This is not the skill's default today — it uses the sibling path because editors and file managers behave best there — but I can `git worktree add` manually to a different location if the noise bothers me on a particular branch.
 3. Track it as a follow-up issue if it starts biting. There's no CLI flag for excluding worktree patterns from discovery yet.
 
@@ -91,7 +91,7 @@ After a rebase, auto-verify and the smoke-test gate re-run. My earlier "ok, push
 When I'm ready:
 
 ```bash
-/merge-issue <PR#>
+/merge-pr <PR#>
 ```
 
 This runs in whichever Claude session — either the one that created the worktree, or a fresh window. The skill:
@@ -134,4 +134,4 @@ git worktree list
 
 **Can I skip the plan phase?** Yes. Either pass an existing plan as the second argument, or tell the skill during the Understand gate that the plan is trivial. It will still confirm with me before implementing.
 
-**What if `/merge-issue` fails after the merge but before cleanup?** Re-invoke it. It checks PR state first — if it's already `MERGED`, it jumps straight to cleanup.
+**What if `/merge-pr` fails after the merge but before cleanup?** Re-invoke it. It checks PR state first — if it's already `MERGED`, it jumps straight to cleanup.

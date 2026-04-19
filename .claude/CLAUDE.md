@@ -295,7 +295,7 @@ A feature is not complete until all affected documents are updated. Review this 
 
 ## Worktree-based parallel workflow
 
-For multi-issue work where several Claude sessions run in parallel, use the `/work-issue <N>` skill. It creates a sibling worktree at `../gitbox-<N>-<slug>`, drives the plan → code → auto-test → user-smoke-test → sync → push → PR flow, and stops before merge. `/merge-issue <PR#>` handles rebase check, CI gate, merge, and worktree cleanup as a separate, deliberate action.
+For multi-issue work where several Claude sessions run in parallel, use the `/work-issue <N>` skill. It creates a sibling worktree at `../gitbox-<N>-<slug>`, drives the plan → code → auto-test → user-smoke-test → sync → push → PR flow, and stops before merge. `/merge-pr <PR#>` handles rebase check, CI gate, merge, and worktree cleanup as a separate, deliberate action.
 
 If I already have a plan written (in the issue body, a local file, or a URL), I can pass it with `/work-issue <N> <plan-source>`. The skill evaluates completeness: adopts it if it covers files-to-change, verification, and key decisions; extends it via plan mode if partial; falls back to full plan mode if absent.
 
