@@ -40,6 +40,7 @@ type reposModel struct {
 	cloneDoneCh    <-chan error
 	deleteStep     int // 0=inactive, 1=type name, 2=final confirm
 	deleteInput    textinput.Model
+	launcher       launcherOverlay
 }
 
 func newReposModel(cfg *config.Config, cfgPath, sourceKey, repoKey string, theme styles.Theme, w, h int) reposModel {
@@ -55,6 +56,7 @@ func newReposModel(cfg *config.Config, cfgPath, sourceKey, repoKey string, theme
 		sourceKey:   sourceKey,
 		repoKey:     repoKey,
 		deleteInput: ti,
+		launcher:    newLauncherOverlay(cfg),
 	}
 }
 
@@ -214,6 +216,15 @@ func (m reposModel) Init() tea.Cmd {
 }
 
 func (m reposModel) Update(msg tea.Msg) (reposModel, tea.Cmd) {
+	// Launcher overlay intercepts input when active; must run before the
+	// KeyMsg switch so t/e/a/o and other letters don't double-fire.
+	if lo, cmd, handled := m.launcher.update(msg, m.cfg.Global.Terminals); handled {
+		m.launcher = lo
+		m.resultMsg = ""
+		m.errMsg = ""
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if m.busy {
@@ -318,7 +329,31 @@ func (m reposModel) Update(msg tea.Msg) (reposModel, tea.Cmd) {
 				m.errMsg = ""
 				return m, sweepRepoCmd(path, m.sourceKey, m.repoKey)
 			}
+
+		case msg.String() == "t":
+			// terminals[0] — skip if no terminal configured or repo not cloned.
+			return m.launchDefaultTerminal()
+
+		case msg.String() == "e":
+			// editors[0] — skip if no editor configured or repo not cloned.
+			return m.launchDefaultEditor()
+
+		case msg.String() == "a":
+			// ai_harnesses[0] — skip if none configured or repo not cloned.
+			return m.launchDefaultHarness()
+
+		case msg.String() == "o":
+			// Full launcher overlay listing every configured launcher.
+			return m.openLauncher()
 		}
+
+	case launchDoneMsg:
+		if msg.err != nil {
+			m.errMsg = msg.err.Error()
+		} else {
+			m.resultMsg = "Opened in " + msg.target + "."
+		}
+		return m, nil
 
 	case cloneProgressMsg:
 		m.clonePhase = msg.phase
@@ -493,9 +528,107 @@ func (m reposModel) View() string {
 		actions = append(actions, "c clone")
 	} else {
 		actions = append(actions, "f fetch", "p pull", "s sweep")
+		if len(m.cfg.Global.Terminals) > 0 {
+			actions = append(actions, "t terminal")
+		}
+		if len(m.cfg.Global.Editors) > 0 {
+			actions = append(actions, "e editor")
+		}
+		if len(m.cfg.Global.AIHarnesses) > 0 {
+			actions = append(actions, "a AI")
+		}
+		if m.launcher.hasAny() {
+			actions = append(actions, "o open in…")
+		}
 	}
 	actions = append(actions, "b open browser", "D remove clone", "ESC back")
 	b.WriteString(renderHints(m.theme, actions...))
 
+	if m.launcher.active {
+		return m.launcher.view(m.theme, m.width, m.height)
+	}
 	return b.String()
 }
+
+// openLauncher activates the launcher overlay. No-op with a hint when the
+// repo folder does not exist on disk (launchers need a real working
+// directory) or when the config has no launchers at all.
+func (m reposModel) openLauncher() (reposModel, tea.Cmd) {
+	path := m.repoPath()
+	if !pathIsDir(path) {
+		m.errMsg = "Clone the repo first (c) — launchers need a local folder."
+		m.resultMsg = ""
+		return m, nil
+	}
+	if !m.launcher.hasAny() {
+		m.errMsg = "No editors, terminals, or AI harnesses are configured."
+		m.resultMsg = ""
+		return m, nil
+	}
+	m.launcher = m.launcher.activate(path)
+	m.resultMsg = ""
+	m.errMsg = ""
+	return m, nil
+}
+
+// launchDefaultTerminal / launchDefaultEditor / launchDefaultHarness wire
+// the t / e / a keys to the first entry of each category. Launching against
+// a missing folder would surface confusing shell errors, so each helper
+// silently no-ops when the category is empty and surfaces a guard message
+// when the repo isn't on disk.
+func (m reposModel) launchDefaultTerminal() (reposModel, tea.Cmd) {
+	terms := m.cfg.Global.Terminals
+	if len(terms) == 0 {
+		return m, nil
+	}
+	path := m.repoPath()
+	if !pathIsDir(path) {
+		m.errMsg = "Clone the repo first (c) before opening a terminal."
+		m.resultMsg = ""
+		return m, nil
+	}
+	m.resultMsg = ""
+	m.errMsg = ""
+	return m, launchTerminalCmd(path, terms[0])
+}
+
+func (m reposModel) launchDefaultEditor() (reposModel, tea.Cmd) {
+	editors := m.cfg.Global.Editors
+	if len(editors) == 0 {
+		return m, nil
+	}
+	path := m.repoPath()
+	if !pathIsDir(path) {
+		m.errMsg = "Clone the repo first (c) before opening an editor."
+		m.resultMsg = ""
+		return m, nil
+	}
+	m.resultMsg = ""
+	m.errMsg = ""
+	return m, launchEditorCmd(path, editors[0].Command, editors[0].Name)
+}
+
+func (m reposModel) launchDefaultHarness() (reposModel, tea.Cmd) {
+	harnesses := m.cfg.Global.AIHarnesses
+	if len(harnesses) == 0 {
+		return m, nil
+	}
+	path := m.repoPath()
+	if !pathIsDir(path) {
+		m.errMsg = "Clone the repo first (c) before opening an AI harness."
+		m.resultMsg = ""
+		return m, nil
+	}
+	m.resultMsg = ""
+	m.errMsg = ""
+	return m, launchAIHarnessCmd(path, harnesses[0], m.cfg.Global.Terminals)
+}
+
+// pathIsDir reports whether path refers to an existing directory. Small
+// helper to keep the launcher guards readable and consistent between the
+// repos and account screens.
+func pathIsDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+

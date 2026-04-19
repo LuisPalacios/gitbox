@@ -253,24 +253,27 @@ Click the **gear icon** to open the settings panel:
 
 ### Clone actions
 
-Each cloned repo row has a **kebab menu (⋮)** on the right side. Click it to see:
+Each cloned repo row has a **kebab menu (⋮)** on the right side. The menu is split into three sections so the items you use most aren't buried behind scrolling:
 
-- **Open in browser** — opens the repository's remote web page (GitHub, GitLab, etc.) in the default browser
-- **Open folder** — opens the clone directory in the OS file manager (Explorer, Finder, or your Linux file manager)
-- **Sweep branches** — finds and deletes stale local branches (gone, merged, or squash-merged). Shows a confirmation dialog with the list of branches before deleting anything
-- **Open in \<editor\>** — opens the clone folder in a detected code editor (VS Code, Cursor, Zed, etc.)
-- **Open in \<terminal\>** — opens a new shell window in the clone folder using a detected terminal emulator (Windows Terminal, PowerShell 7/5, Git Bash, WSL, Command Prompt on Windows; Terminal, iTerm, Warp on macOS; gnome-terminal, Konsole, Kitty, Alacritty, Xfce Terminal, Terminator on Linux)
-- **Open in \<AI harness\>** — opens the clone folder inside the first configured terminal and spawns an AI CLI harness (Claude Code, Codex, Gemini, Aider, Cursor Agent, OpenCode) in it. See [AI harness actions](#ai-harness-actions) below
+1. **Always visible** — `🌐 Open in browser` and `📁 Open folder`.
+2. **Defaults** — one entry per category, using the first config entry as the default: `>_ Open in <terminals[0]>`, `✎ Open in <editors[0]>`, `🤖 Open in <ai_harnesses[0]>`. An entry is hidden when that category has zero configured items.
+3. **Submenus** — `Terminals ▸`, `Editors ▸`, `AI Harnesses ▸`. Each submenu only appears when the category has **two or more** entries — with just one, the default already covers it. Click the submenu to expand (not hover), click another submenu to switch, click outside or pick an item to close everything.
+
+Below the submenus:
+
+- **🧹 Sweep branches** — finds and deletes stale local branches (gone, merged, or squash-merged). Shows a confirmation dialog with the list of branches before deleting anything.
+
+To change which terminal/editor/harness appears as the top-level default, reorder the array in `gitbox.json` — the first entry is always the default. No separate flag required.
+
+The list of detected terminals covers Windows Terminal, PowerShell 7/5, Git Bash, WSL, and Command Prompt on Windows; Terminal, iTerm, and Warp on macOS; gnome-terminal, Konsole, Kitty, Alacritty, Xfce Terminal, and Terminator on Linux. Editors cover VS Code, Cursor, Zed, and anything else discoverable on `PATH`. AI harnesses (Claude Code, Codex, Gemini, Aider, Cursor Agent, OpenCode) run inside the first configured terminal — see [AI harness actions](#ai-harness-actions) below.
 
 ### Account actions
 
-Each source group in the repo list has a **kebab menu (⋮)** on the right side of its header (the account title above the list of clones). The account kebab exposes actions scoped to the account's parent folder (`<global.folder>/<account-key>`) rather than any single clone:
+Each source group in the repo list has a **kebab menu (⋮)** on the right side of its header (the account title above the list of clones). The account kebab uses the **same structure and icons** as the repo-row kebab — top-level defaults, per-category submenus, same hide rules — scoped to the account's parent folder (`<global.folder>/<account-key>`) rather than a single clone:
 
-- **Open in browser** — opens the provider profile/org page for the account (e.g. `https://github.com/<username>`, the GitLab group page, the Gitea/Forgejo user page)
-- **Open folder** — opens the account's parent folder in the OS file manager. The folder is the natural workspace root for cross-repo greps, multi-repo edits, or shell loops. If the folder doesn't exist yet (nothing cloned under that account), the action errors silently — clone at least one repo first.
-- **Open in \<editor\>** — opens the parent folder in each configured editor from `global.editors`
-- **Open in \<terminal\>** — opens a terminal in the parent folder using each configured entry from `global.terminals`
-- **Open in \<AI harness\>** — spawns an AI CLI harness inside the account's parent folder, using `global.terminals[0]` as the host terminal. See [AI harness actions](#ai-harness-actions) below
+- **🌐 Open in browser** — opens the provider profile/org page for the account (e.g. `https://github.com/<username>`, the GitLab group page, the Gitea/Forgejo user page).
+- **📁 Open folder** — opens the account's parent folder in the OS file manager. The folder is the natural workspace root for cross-repo greps, multi-repo edits, or shell loops. If the folder doesn't exist yet (nothing cloned under that account), the action errors silently — clone at least one repo first.
+- **>_ Open in \<terminal\>**, **✎ Open in \<editor\>**, **🤖 Open in \<AI harness\>** — same default-first entries as the repo kebab, plus the category submenus when you have multiple options configured. Sweep branches is dropped here — it's meaningful only on a specific clone.
 
 In compact view, hovering an account pill reveals the same folder / editor / terminal / AI harness shortcuts as small icons on the right side, matching the compact repo-row behavior.
 

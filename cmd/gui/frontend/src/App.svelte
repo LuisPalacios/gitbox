@@ -9,6 +9,7 @@
   import { statusColor, credColor, statusLabel, providerLabel, statusSymbol } from './lib/theme';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit } from '../wailsjs/runtime/runtime';
   import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo } from './lib/types';
+  import LauncherMenu from './lib/LauncherMenu.svelte';
 
   // ── View mode ──
   let viewMode: 'full' | 'compact' = 'full';
@@ -1997,18 +1998,18 @@
           <div class="action-menu-container source-header-kebab">
             <button class="btn-kebab" on:click|stopPropagation={() => toggleAccountMenu(accountKey)} title="Account actions">&#8942;</button>
             {#if actionMenuAccount === accountKey}
-              <div class="action-dropdown" transition:fade={{ duration: 80 }}>
-                <button class="action-item" on:click|stopPropagation={() => openAccountInBrowser(accountKey)}>Open in browser</button>
-                <button class="action-item" on:click|stopPropagation={() => openAccountInExplorer(accountKey)}>Open folder</button>
-                {#each configEditors as editor}
-                  <button class="action-item" on:click|stopPropagation={() => openAccountInApp(accountKey, editor.command)}>Open in {editor.name}</button>
-                {/each}
-                {#each configTerminals as terminal}
-                  <button class="action-item" on:click|stopPropagation={() => openAccountInTerminal(accountKey, terminal)}>Open in {terminal.name}</button>
-                {/each}
-                {#each configAIHarnesses as harness}
-                  <button class="action-item" on:click|stopPropagation={() => openAccountInAIHarness(accountKey, harness)}>Open in {harness.name}</button>
-                {/each}
+              <div transition:fade={{ duration: 80 }}>
+                <LauncherMenu
+                  kind="account"
+                  editors={configEditors}
+                  terminals={configTerminals}
+                  aiHarnesses={configAIHarnesses}
+                  onOpenBrowser={() => openAccountInBrowser(accountKey)}
+                  onOpenFolder={() => openAccountInExplorer(accountKey)}
+                  onOpenApp={(cmd) => openAccountInApp(accountKey, cmd)}
+                  onOpenTerminal={(t) => openAccountInTerminal(accountKey, t)}
+                  onOpenAIHarness={(h) => openAccountInAIHarness(accountKey, h)}
+                />
               </div>
             {/if}
           </div>
@@ -2066,19 +2067,19 @@
                 <div class="action-menu-container">
                   <button class="btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title="Actions">&#8942;</button>
                   {#if actionMenuRepo === repoKey}
-                    <div class="action-dropdown" transition:fade={{ duration: 80 }}>
-                      <button class="action-item" on:click|stopPropagation={() => openRepoInBrowser(sourceKey, repoName)}>Open in browser</button>
-                      <button class="action-item" on:click|stopPropagation={() => openRepoInExplorer(repoKey)}>Open folder</button>
-                      <button class="action-item" on:click|stopPropagation={() => sweepBranches(sourceKey, repoName)}>Sweep branches</button>
-                      {#each configEditors as editor}
-                        <button class="action-item" on:click|stopPropagation={() => openRepoInApp(repoKey, editor.command)}>Open in {editor.name}</button>
-                      {/each}
-                      {#each configTerminals as terminal}
-                        <button class="action-item" on:click|stopPropagation={() => openRepoInTerminal(repoKey, terminal)}>Open in {terminal.name}</button>
-                      {/each}
-                      {#each configAIHarnesses as harness}
-                        <button class="action-item" on:click|stopPropagation={() => openRepoInAIHarness(repoKey, harness)}>Open in {harness.name}</button>
-                      {/each}
+                    <div transition:fade={{ duration: 80 }}>
+                      <LauncherMenu
+                        kind="repo"
+                        editors={configEditors}
+                        terminals={configTerminals}
+                        aiHarnesses={configAIHarnesses}
+                        onOpenBrowser={() => openRepoInBrowser(sourceKey, repoName)}
+                        onOpenFolder={() => openRepoInExplorer(repoKey)}
+                        onOpenApp={(cmd) => openRepoInApp(repoKey, cmd)}
+                        onOpenTerminal={(t) => openRepoInTerminal(repoKey, t)}
+                        onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
+                        onSweep={() => sweepBranches(sourceKey, repoName)}
+                      />
                     </div>
                   {/if}
                 </div>
