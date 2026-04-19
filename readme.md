@@ -34,9 +34,9 @@ Gitbox does not implement any Git protocol or plumbing logic. It acts as an orch
 - **Safe pulling** — fast-forward-only pulls; dirty or conflicted repos are never touched
 - **Cross-provider mirroring** — push or pull mirrors between providers for backups (e.g., Forgejo → GitHub)
 - **Credential switching** — change auth types (GCM ↔ SSH ↔ Token) with automatic cleanup
-- **One-click clone actions** — every repo row (and every account header) has a kebab menu to open the clone in a browser, file manager, terminal, editor, or AI CLI harness (Claude Code, Codex, Gemini, …). Each category collapses to a single default entry plus a submenu when you have more than one configured. The TUI exposes the same actions via `t` / `e` / `a` keys and an `o` launcher modal.
+- **One-click clone actions** — every repo row (and every account header) has a kebab menu to open the clone in a browser, file manager, terminal, editor, or AI CLI harness (Claude Code, Codex, Gemini, …). Each category collapses to a single default entry plus a submenu when you have more than one configured.
 
-It support four providers. GitHub, GitLab, Gitea/Forgejo, and Bitbucket all work for discovery, cloning, and repo creation. Push mirrors work natively on Gitea/Forgejo and GitLab; pull mirrors work on Gitea/Forgejo. For GitHub and Bitbucket mirror setup, gitbox generates step-by-step guides.
+It support four providers. GitHub, GitLab, Gitea/Forgejo, and Bitbucket, all work for discovery, cloning, and repo creation. Push mirrors work natively on Gitea/Forgejo and GitLab; pull mirrors work on Gitea/Forgejo. For GitHub and Bitbucket mirror setup, gitbox generates step-by-step guides.
 
 ## Three interfaces
 
