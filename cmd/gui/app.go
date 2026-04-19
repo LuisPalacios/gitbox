@@ -1220,11 +1220,18 @@ func platformTerminalCandidates() []knownTerminalCandidate {
 			},
 		}
 	}
+	// Linux templates include "{command}" so AI harness launches splice the
+	// harness argv into the right slot for each terminal's CLI convention.
+	// For terminal-only launches the token expands to zero items.
+	// Xfce Terminal and Terminator don't accept a shell command after their
+	// workdir flag without a wrapper, so those entries omit {command} and
+	// remain terminal-only — harness launches will surface the actionable
+	// error until the user reorders global.terminals.
 	return []knownTerminalCandidate{
-		linuxEntry("GNOME Terminal", "gnome-terminal", []string{"--working-directory={path}"}),
-		linuxEntry("Konsole", "konsole", []string{"--workdir", "{path}"}),
-		linuxEntry("Kitty", "kitty", []string{"--directory={path}"}),
-		linuxEntry("Alacritty", "alacritty", []string{"--working-directory", "{path}"}),
+		linuxEntry("GNOME Terminal", "gnome-terminal", []string{"--working-directory={path}", "--", "{command}"}),
+		linuxEntry("Konsole", "konsole", []string{"--workdir", "{path}", "-e", "{command}"}),
+		linuxEntry("Kitty", "kitty", []string{"--directory={path}", "{command}"}),
+		linuxEntry("Alacritty", "alacritty", []string{"--working-directory", "{path}", "-e", "{command}"}),
 		linuxEntry("Xfce Terminal", "xfce4-terminal", []string{"--working-directory={path}"}),
 		linuxEntry("Terminator", "terminator", []string{"--working-directory={path}"}),
 	}
@@ -1379,6 +1386,32 @@ func (a *App) SyncTerminals() {
 
 	changed := len(deduped) != len(a.cfg.Global.Terminals)
 
+	// Upgrade legacy entries in place: if an existing entry's args are the
+	// pre-{command} shape of a matching known candidate (same Name, same
+	// Command), rewrite to the current template so harness launches work
+	// without the user editing the JSON. Customizations (different flags,
+	// reordered args) are left alone — only exact-legacy matches upgrade.
+	for i := range deduped {
+		for _, cand := range knownTerminals {
+			if cand.Name != deduped[i].Name {
+				continue
+			}
+			cmd, candArgs, ok := cand.Resolve()
+			if !ok {
+				continue
+			}
+			if cmd != deduped[i].Command {
+				continue
+			}
+			legacy := stripCommandTokens(candArgs)
+			if argsEqual(deduped[i].Args, legacy) && !argsEqual(deduped[i].Args, candArgs) {
+				deduped[i].Args = append([]string(nil), candArgs...)
+				changed = true
+			}
+			break
+		}
+	}
+
 	for _, cand := range knownTerminals {
 		if seenName[cand.Name] {
 			continue
@@ -1400,6 +1433,20 @@ func (a *App) SyncTerminals() {
 		a.cfg.Global.Terminals = deduped
 		_ = config.Save(a.cfg, a.cfgPath)
 	}
+}
+
+// stripCommandTokens returns args with every "{command}" entry removed, so
+// callers can compare a user's legacy (pre-harness) args against the current
+// candidate template and upgrade on exact match.
+func stripCommandTokens(args []string) []string {
+	out := make([]string, 0, len(args))
+	for _, a := range args {
+		if a == "{command}" {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
 }
 
 // OpenInTerminal launches a terminal emulator in the given folder.

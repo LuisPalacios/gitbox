@@ -194,6 +194,91 @@ func TestSyncTerminalsDedupByName(t *testing.T) {
 	}
 }
 
+func TestSyncTerminalsUpgradesLegacyNonWindowsEntries(t *testing.T) {
+	// Users on non-Windows platforms who launched gitbox before {command}
+	// templates landed have entries like:
+	//   {"GNOME Terminal", "gnome-terminal", ["--working-directory={path}"]}
+	// SyncTerminals must upgrade those to the new templates with {command}
+	// so harness launches succeed without manual edits. Customized entries
+	// (different flags, different command path) are left alone.
+	if isWindows() {
+		t.Skip("upgrade path is non-Windows only (Windows has its own WT-driven rebuild)")
+	}
+	if len(knownTerminals) == 0 {
+		t.Skip("no known terminals on this platform")
+	}
+
+	// Find a candidate whose current template has {command} and whose
+	// legacy shape (stripped of {command}) is distinguishable.
+	var cand *knownTerminalCandidate
+	var candCmd string
+	var candArgs []string
+	for i := range knownTerminals {
+		c, args, ok := knownTerminals[i].Resolve()
+		if !ok {
+			continue
+		}
+		stripped := stripCommandTokens(args)
+		if len(stripped) == len(args) {
+			continue
+		}
+		cand = &knownTerminals[i]
+		candCmd = c
+		candArgs = args
+		break
+	}
+	if cand == nil {
+		t.Skip("no {command}-aware terminal candidate resolved on this host")
+	}
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "gitbox.json")
+	legacy := stripCommandTokens(candArgs)
+	cfg := &config.Config{
+		Version: 2,
+		Global: config.GlobalConfig{
+			Folder: "~/x",
+			Terminals: []config.TerminalEntry{
+				{Name: cand.Name, Command: candCmd, Args: legacy},
+			},
+		},
+		Accounts: map[string]config.Account{
+			"A": {Provider: "github", URL: "https://github.com",
+				Username: "u", Name: "n", Email: "e@e"},
+		},
+		Sources: map[string]config.Source{},
+	}
+	a := &App{cfg: cfg, cfgPath: cfgPath, mu: sync.Mutex{}}
+	a.SyncTerminals()
+
+	got := findByName(cfg.Global.Terminals, cand.Name)
+	if got == nil {
+		t.Fatalf("%s disappeared after sync", cand.Name)
+	}
+	if !reflect.DeepEqual(got.Args, candArgs) {
+		t.Errorf("legacy %s args should be upgraded:\n got  %v\n want %v", cand.Name, got.Args, candArgs)
+	}
+}
+
+func TestStripCommandTokens(t *testing.T) {
+	tests := []struct {
+		in   []string
+		want []string
+	}{
+		{[]string{"-d", "{path}", "{command}"}, []string{"-d", "{path}"}},
+		{[]string{"{command}"}, []string{}},
+		{[]string{"-d", "{path}"}, []string{"-d", "{path}"}},
+		{[]string{}, []string{}},
+		{[]string{"{command}", "--", "{command}"}, []string{"--"}},
+	}
+	for _, tc := range tests {
+		got := stripCommandTokens(tc.in)
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("stripCommandTokens(%v) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestSyncTerminalsPreservesUserEdits(t *testing.T) {
 	// Same reason as TestSyncTerminalsDedupByName: force WT discovery to fail
 	// so the legacy candidate-merge path is what's under test here.
