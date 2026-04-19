@@ -188,27 +188,31 @@ Reference the issue in the commit with `Closes #N` — GitHub auto-closes on pus
 
 **External contributions** (anyone who is not me): always come through PRs from forks — I review, CI must pass, then merge.
 
-### Pause for user testing before shipping
+### Never push without asking first
 
-After any code change that affects runtime behaviour, STOP before the final publication step (`git push origin main` **or** `gh pr merge`) and hand the user the build to test. Publication makes the change visible to anyone on the internet and — for PRs and issue comments — is locked into GitHub's edit history. The user's hands-on smoke test is the last gate that catches "it compiles, unit tests pass, but the thing I asked for doesn't actually behave right on my machine".
+Local commits are fine — commit freely whenever a logical unit is ready. **But any action that makes work visible on GitHub requires the user's explicit go-ahead first.** That covers `git push origin main`, `git push origin <branch>`, `gh pr create`, `gh pr merge`, and any edit to an existing issue/PR/comment. No exemptions for "just a doc fix" or "just a typo" — publication is the point of no return, and the cost of one confirming message is zero.
 
-Concrete protocol:
+The protocol has two shapes depending on what was changed:
+
+**Runtime-affecting changes** (code under `cmd/` or `pkg/`, build config, UI behaviour):
 
 1. Finish the implementation locally: commits on the fix branch (or staged on main), `go vet ./...` clean, focused tests passing, **both binaries built** per the build-both rule.
-2. Stop. Tell the user, in one short message:
-   - Which commit(s) or branch are ready (and which binary paths to launch, e.g. `build/gitbox.exe`, `cmd/gui/build/bin/GitboxApp.exe`).
-   - A concrete check: what to click, what output to expect, what regression to rule out (e.g. "open Preferences → Open In Editor, confirm no cmd.exe flash").
-   - The exact command I intend to run next (`git push origin main` or `gh pr merge <n> --squash`) — not run yet.
-3. Wait for the user to say it works (or equivalent). **Do not push, do not merge, do not `gh pr merge`** in the meantime. If they report a regression, fix it and re-offer the build — never ship over an unresolved test failure from the user.
-4. Only after the user's go-ahead, run the publication step.
+2. Stop and send one short message with:
+   - Which commit(s) or branch are ready and the binary paths to launch (e.g. `build/gitbox.exe`, `cmd/gui/build/bin/GitboxApp.exe`).
+   - A concrete check: what to click, what output to expect, what regression to rule out ("open Preferences → Open In Editor, confirm no cmd.exe flash").
+   - The exact publish command I intend to run next (`git push origin main` or `gh pr merge <n> --squash`) — described, not executed.
+3. Wait. Do not push, do not merge, do not `gh pr create` with auto-merge. If the user reports a regression, fix it and re-offer the build — never ship over an unresolved user-reported failure.
+4. Only run the publish step after an explicit "ok, push it" / "go ahead" / "ship it".
 
-Exemptions — no pause needed:
+**Trivial or doc-only changes** (`.md`, `docs/`, comments, `.claude/` metadata, `.gitignore`, `go.mod` tidy, rename-a-test):
 
-- Doc-only changes (`.md`, `docs/`, comments, `.claude/` metadata).
-- The user has explicitly pre-authorised a ship-on-green flow for this specific task ("just push it when tests pass").
-- The change is literally invisible at runtime — `go.mod` tidy, renaming a test function, adjusting `.gitignore`.
+1. Commit locally with a clear message.
+2. Stop and ask: "Commit `<sha>` ready — want me to push directly / open a PR, or hold?" One sentence, no ceremony.
+3. Wait for the answer before any push or PR action.
 
-When in doubt, pause anyway. The cost of one extra "ready for you to test" message is zero; the cost of shipping a broken build to the public repo is a force-revert, a retracted PR, or a deleted issue.
+The only pre-authorisation that bypasses this is an explicit, in-session "ship on green" for a specific task ("just push it when tests pass"). A blanket "you have my approval" from a previous session does not count — authorisation applies to the scope it was granted for.
+
+When in doubt, ask. It is never wrong to pause; it is sometimes wrong to push.
 
 ### 1. Plan first
 
