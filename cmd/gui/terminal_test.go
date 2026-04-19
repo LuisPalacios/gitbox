@@ -257,6 +257,194 @@ func TestSanitizeWindowsTerminalEnv(t *testing.T) {
 	t.Error("unknown key FOO was not preserved verbatim")
 }
 
+func TestStripJSONComments(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "no comments",
+			in:   `{"a": 1}`,
+			want: `{"a": 1}`,
+		},
+		{
+			name: "line comment",
+			in:   "{\n  // pick a profile\n  \"a\": 1\n}",
+			want: "{\n  \n  \"a\": 1\n}",
+		},
+		{
+			name: "block comment",
+			in:   `{ /* hello */ "a": 1 }`,
+			want: `{  "a": 1 }`,
+		},
+		{
+			name: "comment markers inside string preserved",
+			in:   `{"name": "// not a comment", "p": "/* still string */"}`,
+			want: `{"name": "// not a comment", "p": "/* still string */"}`,
+		},
+		{
+			name: "escaped quote inside string",
+			in:   `{"name": "say \"hi\" //x"}`,
+			want: `{"name": "say \"hi\" //x"}`,
+		},
+		{
+			name: "block comment with stars inside",
+			in:   `a /* one ** two */ b`,
+			want: `a  b`,
+		},
+		{
+			name: "trailing line comment without newline",
+			in:   `{"a": 1} // tail`,
+			want: `{"a": 1} `,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := string(stripJSONComments([]byte(tc.in)))
+			if got != tc.want {
+				t.Errorf("stripJSONComments(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseWTProfiles(t *testing.T) {
+	const wtCmd = `C:\Users\test\AppData\Local\Microsoft\WindowsApps\wt.exe`
+
+	tests := []struct {
+		name      string
+		settings  string
+		wantNames []string
+		wantErr   bool
+	}{
+		{
+			name: "all profiles visible",
+			settings: `{
+				"profiles": {
+					"list": [
+						{"name": "PowerShell"},
+						{"name": "Command Prompt"},
+						{"name": "Git Bash"}
+					]
+				}
+			}`,
+			wantNames: []string{"PowerShell", "Command Prompt", "Git Bash"},
+		},
+		{
+			name: "hidden profile skipped",
+			settings: `{
+				"profiles": {
+					"list": [
+						{"name": "PowerShell"},
+						{"name": "Azure", "hidden": true},
+						{"name": "Ubuntu"}
+					]
+				}
+			}`,
+			wantNames: []string{"PowerShell", "Ubuntu"},
+		},
+		{
+			name: "hidden=false treated as visible",
+			settings: `{
+				"profiles": {
+					"list": [
+						{"name": "Foo", "hidden": false}
+					]
+				}
+			}`,
+			wantNames: []string{"Foo"},
+		},
+		{
+			name: "JSONC comments stripped before parse",
+			settings: `{
+				// top-level comment
+				"profiles": {
+					"list": [
+						/* block comment */
+						{"name": "PowerShell"},
+						{"name": "Ubuntu"} // trailing
+					]
+				}
+			}`,
+			wantNames: []string{"PowerShell", "Ubuntu"},
+		},
+		{
+			name: "non-ASCII profile names round-trip",
+			settings: `{
+				"profiles": {
+					"list": [
+						{"name": "Símbolo del sistema"},
+						{"name": "终端"}
+					]
+				}
+			}`,
+			wantNames: []string{"Símbolo del sistema", "终端"},
+		},
+		{
+			name:     "missing profiles.list",
+			settings: `{"defaultProfile": "{abc}"}`,
+			wantErr:  true,
+		},
+		{
+			name:     "malformed JSON",
+			settings: `{"profiles": {`,
+			wantErr:  true,
+		},
+		{
+			name:     "all profiles hidden",
+			settings: `{"profiles": {"list": [{"name": "Foo", "hidden": true}]}}`,
+			wantErr:  true,
+		},
+		{
+			name:     "empty name skipped",
+			settings: `{"profiles": {"list": [{"name": ""}, {"name": "Real"}]}}`,
+			wantNames: []string{"Real"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseWTProfiles([]byte(tc.settings), wtCmd)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got profiles %+v", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != len(tc.wantNames) {
+				t.Fatalf("got %d profiles, want %d (%+v)", len(got), len(tc.wantNames), got)
+			}
+			for i, p := range got {
+				if p.Name != tc.wantNames[i] {
+					t.Errorf("profile[%d].Name = %q, want %q", i, p.Name, tc.wantNames[i])
+				}
+				if p.Command != wtCmd {
+					t.Errorf("profile[%d].Command = %q, want %q", i, p.Command, wtCmd)
+				}
+				wantArgs := []string{"--profile", tc.wantNames[i], "-d", "{path}"}
+				if !reflect.DeepEqual(p.Args, wantArgs) {
+					t.Errorf("profile[%d].Args = %v, want %v", i, p.Args, wantArgs)
+				}
+			}
+		})
+	}
+}
+
+func TestDiscoverWTProfilesFileMissing(t *testing.T) {
+	// Point LOCALAPPDATA at an empty temp dir so all candidate paths are absent
+	// and wt.exe alias lookup fails. The function must return an error so the
+	// caller falls back to bare-binary candidates.
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	_, err := discoverWTProfiles()
+	if err == nil {
+		t.Error("expected error when no WT install present")
+	}
+}
+
 func countByName(entries []config.TerminalEntry, name string) int {
 	n := 0
 	for _, e := range entries {

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -904,8 +905,181 @@ type knownTerminalCandidate struct {
 // if a candidate has no token, the path is appended as the final argv.
 var knownTerminals = platformTerminalCandidates()
 
+// wtSettingsCandidates returns the locations gitbox checks for Windows
+// Terminal's settings.json, in priority order: Store install, Preview install,
+// then unpackaged install. Empty paths (e.g. when LOCALAPPDATA is unset on
+// non-Windows hosts) are filtered out.
+func wtSettingsCandidates() []string {
+	local := os.Getenv("LOCALAPPDATA")
+	if local == "" {
+		return nil
+	}
+	return []string{
+		filepath.Join(local, "Packages", "Microsoft.WindowsTerminal_8wekyb3d8bbwe", "LocalState", "settings.json"),
+		filepath.Join(local, "Packages", "Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe", "LocalState", "settings.json"),
+		filepath.Join(local, "Microsoft", "Windows Terminal", "settings.json"),
+	}
+}
+
+// wtExePath resolves the absolute path to wt.exe, preferring the App Execution
+// Alias under %LOCALAPPDATA%\Microsoft\WindowsApps so the config doesn't depend
+// on PATH. Falls back to exec.LookPath when the alias is missing.
+func wtExePath() (string, bool) {
+	if local := os.Getenv("LOCALAPPDATA"); local != "" {
+		alias := filepath.Join(local, "Microsoft", "WindowsApps", "wt.exe")
+		if _, err := os.Stat(alias); err == nil {
+			return alias, true
+		}
+	}
+	if p, err := exec.LookPath("wt.exe"); err == nil {
+		return p, true
+	}
+	return "", false
+}
+
+// stripJSONComments removes JSONC-style // line and /* block */ comments while
+// preserving string literals (including escaped quotes). Trailing commas are
+// left to the JSON decoder — Microsoft's settings.json doesn't emit them.
+func stripJSONComments(in []byte) []byte {
+	out := make([]byte, 0, len(in))
+	const (
+		stCode = iota
+		stString
+		stStringEscape
+		stLineComment
+		stBlockComment
+		stBlockCommentStar
+	)
+	state := stCode
+	for i := 0; i < len(in); i++ {
+		c := in[i]
+		switch state {
+		case stCode:
+			if c == '/' && i+1 < len(in) && in[i+1] == '/' {
+				state = stLineComment
+				i++
+				continue
+			}
+			if c == '/' && i+1 < len(in) && in[i+1] == '*' {
+				state = stBlockComment
+				i++
+				continue
+			}
+			out = append(out, c)
+			if c == '"' {
+				state = stString
+			}
+		case stString:
+			out = append(out, c)
+			if c == '\\' {
+				state = stStringEscape
+			} else if c == '"' {
+				state = stCode
+			}
+		case stStringEscape:
+			out = append(out, c)
+			state = stString
+		case stLineComment:
+			if c == '\n' {
+				out = append(out, c)
+				state = stCode
+			}
+		case stBlockComment:
+			if c == '*' {
+				state = stBlockCommentStar
+			}
+		case stBlockCommentStar:
+			if c == '/' {
+				state = stCode
+			} else if c != '*' {
+				state = stBlockComment
+			}
+		}
+	}
+	return out
+}
+
+// parseWTProfiles reads a JSONC-encoded settings.json blob and returns one
+// TerminalEntry per visible profile (hidden=false or absent). The wtCmd is
+// used as the entry's Command so tests can inject a deterministic path.
+func parseWTProfiles(data []byte, wtCmd string) ([]config.TerminalEntry, error) {
+	clean := stripJSONComments(data)
+	var doc struct {
+		Profiles struct {
+			List []struct {
+				Name   string `json:"name"`
+				Hidden *bool  `json:"hidden,omitempty"`
+			} `json:"list"`
+		} `json:"profiles"`
+	}
+	if err := json.Unmarshal(clean, &doc); err != nil {
+		return nil, err
+	}
+	if len(doc.Profiles.List) == 0 {
+		return nil, errors.New("no profiles in settings.json")
+	}
+	var out []config.TerminalEntry
+	for _, p := range doc.Profiles.List {
+		if p.Name == "" {
+			continue
+		}
+		if p.Hidden != nil && *p.Hidden {
+			continue
+		}
+		out = append(out, config.TerminalEntry{
+			Name:    p.Name,
+			Command: wtCmd,
+			Args:    []string{"--profile", p.Name, "-d", "{path}"},
+		})
+	}
+	if len(out) == 0 {
+		return nil, errors.New("no visible WT profiles")
+	}
+	return out, nil
+}
+
+// discoverWTProfiles locates Windows Terminal's settings.json, parses the
+// profile list, and returns one TerminalEntry per visible profile. Returns an
+// error if wt.exe is missing, no settings.json is found, or the file can't be
+// parsed — the caller is expected to fall back to bare-binary candidates.
+func discoverWTProfiles() ([]config.TerminalEntry, error) {
+	wtCmd, ok := wtExePath()
+	if !ok {
+		return nil, errors.New("wt.exe not found")
+	}
+	for _, path := range wtSettingsCandidates() {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		profiles, err := parseWTProfiles(data, wtCmd)
+		if err != nil {
+			return nil, err
+		}
+		return profiles, nil
+	}
+	return nil, errors.New("settings.json not found")
+}
+
 func platformTerminalCandidates() []knownTerminalCandidate {
 	if isWindows() {
+		// Prefer auto-discovered Windows Terminal profiles when settings.json is
+		// parseable: each visible profile becomes its own entry that launches
+		// `wt.exe --profile "<name>" -d "{path}"`, preserving the user's WT
+		// tuning. Fall back to bare-binary candidates only if discovery fails.
+		if profiles, err := discoverWTProfiles(); err == nil && len(profiles) > 0 {
+			out := make([]knownTerminalCandidate, 0, len(profiles))
+			for _, p := range profiles {
+				p := p // capture
+				out = append(out, knownTerminalCandidate{
+					Name: p.Name,
+					Resolve: func() (string, []string, bool) {
+						return p.Command, append([]string(nil), p.Args...), true
+					},
+				})
+			}
+			return out
+		}
 		return []knownTerminalCandidate{
 			{
 				Name: "Windows Terminal",
