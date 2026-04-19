@@ -280,13 +280,19 @@ On Windows, bare shell entries (`cmd.exe`, `powershell.exe`, `pwsh.exe`, `wsl.ex
 
 #### Opening a specific Windows Terminal profile
 
-If Windows Terminal is your default console host, bare launches of `wsl.exe`, `pwsh.exe`, and `powershell.exe` open inside WT's **default** profile — not the WT profile you've tuned with colors, font, or a specific distro. To pin a terminal entry to a specific WT profile, invoke `wt.exe` directly and pass `--profile "<name>"` plus `-d "{path}"`. Find the exact profile name in WT → Settings → Profiles.
+When Windows Terminal is installed, gitbox auto-discovers your WT profiles and rewrites `global.terminals` to mirror the WT menu: one entry per visible profile, in the same order as `profiles.list`, each launching `wt.exe --profile "<name>" -d "{path}"`. The shell opens with the exact profile you tuned in WT (colors, font, starting directory, oh-my-posh, specific WSL distro) — bare-binary launches (`pwsh.exe`, `powershell.exe`, `wsl.exe`, `cmd.exe`, `git-bash.exe`) always fall back to WT's *default* profile and miss that tuning, so they're dropped from `global.terminals` whenever WT discovery succeeds.
 
-Example — WSL with a specific distro profile:
+Discovery runs at startup and on every config sync. Renaming, adding, hiding, or disabling a profile in WT is picked up on the next launch — stale entries are pruned so the menu never drifts from WT itself. A profile is excluded when its `hidden` flag is `true` or when its `source` appears in WT's top-level `disabledProfileSources` (e.g. Visual Studio dynamic profiles disabled wholesale).
+
+Existing customizations are preserved when the entry's `name` matches a current visible profile: if you previously added `--maximized` or another flag to a profile entry, gitbox keeps your `command` and `args` intact and only restores entries it removed. Entries whose name doesn't match any visible profile are dropped, by design — that's how the legacy `Windows Terminal` / `PowerShell 7` / `WSL` / `Command Prompt` entries get cleaned up automatically on the first sync after upgrading.
+
+Locations checked, in order: `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json` (Store), `…\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\…` (Preview), `%LOCALAPPDATA%\Microsoft\Windows Terminal\settings.json` (unpackaged). If none parse — file missing, malformed JSON, no `profiles.list` — gitbox falls back to the bare-binary entries so something always works.
+
+If you want to override an auto-discovered entry (rename it, point at a different profile, add `--maximized`), edit `gitbox.json` directly. Format:
 
 ```json
 {
-    "name": "WSL",
+    "name": "WSL — Ubuntu",
     "command": "C:\\Users\\<you>\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe",
     "args": [
         "--profile",
@@ -297,26 +303,10 @@ Example — WSL with a specific distro profile:
 }
 ```
 
-Example — PowerShell 7 with your WT profile:
-
-```json
-{
-    "name": "PowerShell 7",
-    "command": "C:\\Users\\<you>\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe",
-    "args": [
-        "--profile",
-        "PowerShell 7",
-        "-d",
-        "{path}"
-    ]
-}
-```
-
 Notes:
 
-- `command` is the absolute path to the `wt.exe` App Execution Alias under `%LOCALAPPDATA%\Microsoft\WindowsApps`. Using the absolute path is more robust than relying on `wt.exe` being on `PATH`.
-- `--profile "<name>"` takes the profile's display name *verbatim*, including version suffixes like `Ubuntu 24.04.1 LTS` or the exact `PowerShell 7` spelling you configured in WT's settings.
-- `-d "{path}"` sets the starting directory for the shell the profile launches.
+- `--profile "<name>"` takes the profile's display name *verbatim*, including version suffixes like `Ubuntu 24.04.1 LTS` or the exact `PowerShell 7` spelling configured in WT's settings.
+- `-d "{path}"` sets the starting directory.
 - Routing through `wt.exe --profile` also sidesteps the Git Bash env-leak quirk described below — WT starts the shell from its own stored profile context, so any MSYS-form env vars inherited by the GUI don't reach the shell.
 
 #### Launching gitbox from Git Bash (developer note)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -78,6 +79,11 @@ func TestTerminalIDSlugification(t *testing.T) {
 }
 
 func TestSyncTerminalsDedupByName(t *testing.T) {
+	// Force the WT-discovery path to fail so the legacy dedup-and-append
+	// branch runs and the seeded "Custom" duplicates are exercised. On
+	// Windows hosts with a real WT install, the rebuild path would otherwise
+	// drop both entries because neither matches a visible WT profile.
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "gitbox.json")
 
@@ -111,6 +117,9 @@ func TestSyncTerminalsDedupByName(t *testing.T) {
 }
 
 func TestSyncTerminalsPreservesUserEdits(t *testing.T) {
+	// Same reason as TestSyncTerminalsDedupByName: force WT discovery to fail
+	// so the legacy candidate-merge path is what's under test here.
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "gitbox.json")
 
@@ -155,6 +164,10 @@ func TestSyncTerminalsPreservesUserEdits(t *testing.T) {
 }
 
 func TestDetectTerminalsIncludesConfigEntries(t *testing.T) {
+	// Disable WT discovery so DetectTerminals goes through the legacy merge
+	// path that surfaces user-defined config entries alongside detected
+	// platform terminals.
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 	cfg := &config.Config{
 		Version: 2,
 		Global: config.GlobalConfig{
@@ -255,6 +268,345 @@ func TestSanitizeWindowsTerminalEnv(t *testing.T) {
 		}
 	}
 	t.Error("unknown key FOO was not preserved verbatim")
+}
+
+func TestStripJSONComments(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "no comments",
+			in:   `{"a": 1}`,
+			want: `{"a": 1}`,
+		},
+		{
+			name: "line comment",
+			in:   "{\n  // pick a profile\n  \"a\": 1\n}",
+			want: "{\n  \n  \"a\": 1\n}",
+		},
+		{
+			name: "block comment",
+			in:   `{ /* hello */ "a": 1 }`,
+			want: `{  "a": 1 }`,
+		},
+		{
+			name: "comment markers inside string preserved",
+			in:   `{"name": "// not a comment", "p": "/* still string */"}`,
+			want: `{"name": "// not a comment", "p": "/* still string */"}`,
+		},
+		{
+			name: "escaped quote inside string",
+			in:   `{"name": "say \"hi\" //x"}`,
+			want: `{"name": "say \"hi\" //x"}`,
+		},
+		{
+			name: "block comment with stars inside",
+			in:   `a /* one ** two */ b`,
+			want: `a  b`,
+		},
+		{
+			name: "trailing line comment without newline",
+			in:   `{"a": 1} // tail`,
+			want: `{"a": 1} `,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := string(stripJSONComments([]byte(tc.in)))
+			if got != tc.want {
+				t.Errorf("stripJSONComments(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseWTProfiles(t *testing.T) {
+	const wtCmd = `C:\Users\test\AppData\Local\Microsoft\WindowsApps\wt.exe`
+
+	tests := []struct {
+		name      string
+		settings  string
+		wantNames []string
+		wantErr   bool
+	}{
+		{
+			name: "all profiles visible",
+			settings: `{
+				"profiles": {
+					"list": [
+						{"name": "PowerShell"},
+						{"name": "Command Prompt"},
+						{"name": "Git Bash"}
+					]
+				}
+			}`,
+			wantNames: []string{"PowerShell", "Command Prompt", "Git Bash"},
+		},
+		{
+			name: "hidden profile skipped",
+			settings: `{
+				"profiles": {
+					"list": [
+						{"name": "PowerShell"},
+						{"name": "Azure", "hidden": true},
+						{"name": "Ubuntu"}
+					]
+				}
+			}`,
+			wantNames: []string{"PowerShell", "Ubuntu"},
+		},
+		{
+			name: "hidden=false treated as visible",
+			settings: `{
+				"profiles": {
+					"list": [
+						{"name": "Foo", "hidden": false}
+					]
+				}
+			}`,
+			wantNames: []string{"Foo"},
+		},
+		{
+			name: "JSONC comments stripped before parse",
+			settings: `{
+				// top-level comment
+				"profiles": {
+					"list": [
+						/* block comment */
+						{"name": "PowerShell"},
+						{"name": "Ubuntu"} // trailing
+					]
+				}
+			}`,
+			wantNames: []string{"PowerShell", "Ubuntu"},
+		},
+		{
+			name: "non-ASCII profile names round-trip",
+			settings: `{
+				"profiles": {
+					"list": [
+						{"name": "Símbolo del sistema"},
+						{"name": "终端"}
+					]
+				}
+			}`,
+			wantNames: []string{"Símbolo del sistema", "终端"},
+		},
+		{
+			name:     "missing profiles.list",
+			settings: `{"defaultProfile": "{abc}"}`,
+			wantErr:  true,
+		},
+		{
+			name:     "malformed JSON",
+			settings: `{"profiles": {`,
+			wantErr:  true,
+		},
+		{
+			name:     "all profiles hidden",
+			settings: `{"profiles": {"list": [{"name": "Foo", "hidden": true}]}}`,
+			wantErr:  true,
+		},
+		{
+			name:     "empty name skipped",
+			settings: `{"profiles": {"list": [{"name": ""}, {"name": "Real"}]}}`,
+			wantNames: []string{"Real"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseWTProfiles([]byte(tc.settings), wtCmd)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got profiles %+v", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != len(tc.wantNames) {
+				t.Fatalf("got %d profiles, want %d (%+v)", len(got), len(tc.wantNames), got)
+			}
+			for i, p := range got {
+				if p.Name != tc.wantNames[i] {
+					t.Errorf("profile[%d].Name = %q, want %q", i, p.Name, tc.wantNames[i])
+				}
+				if p.Command != wtCmd {
+					t.Errorf("profile[%d].Command = %q, want %q", i, p.Command, wtCmd)
+				}
+				wantArgs := []string{"--profile", tc.wantNames[i], "-d", "{path}"}
+				if !reflect.DeepEqual(p.Args, wantArgs) {
+					t.Errorf("profile[%d].Args = %v, want %v", i, p.Args, wantArgs)
+				}
+			}
+		})
+	}
+}
+
+func TestParseWTProfilesDisabledSources(t *testing.T) {
+	// Profiles whose `source` is in `disabledProfileSources` must be skipped
+	// even when their `hidden` flag is absent — this matches WT's own menu
+	// rendering rules (e.g. Visual Studio dynamic profiles disabled wholesale).
+	settings := `{
+		"disabledProfileSources": ["Windows.Terminal.VisualStudio", "Windows.Terminal.Azure"],
+		"profiles": {
+			"list": [
+				{"name": "PowerShell"},
+				{"name": "DevPS", "source": "Windows.Terminal.VisualStudio"},
+				{"name": "Azure", "source": "Windows.Terminal.Azure"},
+				{"name": "Ubuntu", "source": "CanonicalGroupLimited.Ubuntu"}
+			]
+		}
+	}`
+	got, err := parseWTProfiles([]byte(settings), "wt.exe")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wantNames := []string{"PowerShell", "Ubuntu"}
+	if len(got) != len(wantNames) {
+		t.Fatalf("got %d profiles, want %d (%+v)", len(got), len(wantNames), got)
+	}
+	for i, p := range got {
+		if p.Name != wantNames[i] {
+			t.Errorf("profile[%d].Name = %q, want %q", i, p.Name, wantNames[i])
+		}
+	}
+}
+
+func TestMergeWTProfilesPreservesUserCustomization(t *testing.T) {
+	profiles := []config.TerminalEntry{
+		{Name: "PowerShell", Command: "wt.exe", Args: []string{"--profile", "PowerShell", "-d", "{path}"}},
+		{Name: "Ubuntu", Command: "wt.exe", Args: []string{"--profile", "Ubuntu", "-d", "{path}"}},
+	}
+	cfg := &config.Config{
+		Global: config.GlobalConfig{
+			Terminals: []config.TerminalEntry{
+				// User customized "PowerShell" with extra flag.
+				{Name: "PowerShell", Command: "wt.exe", Args: []string{"--profile", "PowerShell", "--maximized", "-d", "{path}"}},
+				// Stale legacy entry — must be dropped.
+				{Name: "Git Bash", Command: "C:\\Program Files\\Git\\git-bash.exe", Args: []string{"--cd={path}"}},
+			},
+		},
+	}
+	got := mergeWTProfilesWithConfig(profiles, cfg)
+
+	if len(got) != 2 {
+		t.Fatalf("merge should produce exactly the profile count; got %d (%+v)", len(got), got)
+	}
+	if got[0].Name != "PowerShell" || got[1].Name != "Ubuntu" {
+		t.Errorf("WT order must be preserved; got %v", []string{got[0].Name, got[1].Name})
+	}
+	// User customization preserved for "PowerShell".
+	if !reflect.DeepEqual(got[0].Args, []string{"--profile", "PowerShell", "--maximized", "-d", "{path}"}) {
+		t.Errorf("PowerShell user args clobbered; got %v", got[0].Args)
+	}
+	// Default WT entry used for "Ubuntu" (no prior customization).
+	if !reflect.DeepEqual(got[1].Args, []string{"--profile", "Ubuntu", "-d", "{path}"}) {
+		t.Errorf("Ubuntu should use default args; got %v", got[1].Args)
+	}
+}
+
+func TestSyncTerminalsRebuildsFromWT(t *testing.T) {
+	// Stage a fake LOCALAPPDATA with a WT settings.json so discoverWTProfiles
+	// succeeds without depending on a real WT install. Tests must run on any
+	// platform; isWindows() gates the rebuild path so on non-Windows hosts
+	// this test exercises the legacy merge path instead — short-circuit there.
+	if !isWindows() {
+		t.Skip("WT rebuild path is Windows-only")
+	}
+	local := t.TempDir()
+	t.Setenv("LOCALAPPDATA", local)
+
+	// Lay down the WindowsApps\wt.exe alias so wtExePath() succeeds.
+	wtDir := filepath.Join(local, "Microsoft", "WindowsApps")
+	if err := os.MkdirAll(wtDir, 0o755); err != nil {
+		t.Fatalf("mkdir WindowsApps: %v", err)
+	}
+	wtPath := filepath.Join(wtDir, "wt.exe")
+	if err := os.WriteFile(wtPath, []byte{}, 0o644); err != nil {
+		t.Fatalf("write wt.exe stub: %v", err)
+	}
+
+	// Lay down a Store-build settings.json with three profiles, one hidden.
+	settingsDir := filepath.Join(local, "Packages", "Microsoft.WindowsTerminal_8wekyb3d8bbwe", "LocalState")
+	if err := os.MkdirAll(settingsDir, 0o755); err != nil {
+		t.Fatalf("mkdir settings: %v", err)
+	}
+	settings := `{
+		"profiles": {
+			"list": [
+				{"name": "Git Bash"},
+				{"name": "PowerShell 7"},
+				{"name": "Hidden Thing", "hidden": true},
+				{"name": "Ubuntu"}
+			]
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(settingsDir, "settings.json"), []byte(settings), 0o644); err != nil {
+		t.Fatalf("write settings.json: %v", err)
+	}
+
+	cfgPath := filepath.Join(t.TempDir(), "gitbox.json")
+	cfg := &config.Config{
+		Version: 2,
+		Global: config.GlobalConfig{
+			Folder: "~/x",
+			Terminals: []config.TerminalEntry{
+				// Legacy bare-binary entries that must be pruned.
+				{Name: "Windows Terminal", Command: "C:\\wt.exe", Args: []string{"-d", "{path}"}},
+				{Name: "PowerShell 5", Command: "C:\\powershell.exe"},
+				// Stale entry for a now-hidden profile — must be pruned.
+				{Name: "Hidden Thing", Command: "C:\\old\\wt.exe", Args: []string{"--profile", "Hidden Thing"}},
+				// User-customized entry matching a current visible profile —
+				// command/args must be preserved verbatim.
+				{Name: "PowerShell 7", Command: wtPath, Args: []string{"--profile", "PowerShell 7", "--maximized", "-d", "{path}"}},
+			},
+		},
+		Accounts: map[string]config.Account{
+			"A": {Provider: "github", URL: "https://github.com",
+				Username: "u", Name: "n", Email: "e@e"},
+		},
+		Sources: map[string]config.Source{},
+	}
+
+	a := &App{cfg: cfg, cfgPath: cfgPath, mu: sync.Mutex{}}
+	a.SyncTerminals()
+
+	// Result must match WT order (visible only): Git Bash, PowerShell 7, Ubuntu.
+	wantNames := []string{"Git Bash", "PowerShell 7", "Ubuntu"}
+	if len(cfg.Global.Terminals) != len(wantNames) {
+		t.Fatalf("got %d terminals, want %d: %+v", len(cfg.Global.Terminals), len(wantNames), cfg.Global.Terminals)
+	}
+	for i, t0 := range cfg.Global.Terminals {
+		if t0.Name != wantNames[i] {
+			t.Errorf("terminal[%d].Name = %q, want %q", i, t0.Name, wantNames[i])
+		}
+	}
+
+	// PowerShell 7 customization preserved.
+	ps7 := findByName(cfg.Global.Terminals, "PowerShell 7")
+	if ps7 == nil {
+		t.Fatal("PowerShell 7 missing")
+	}
+	wantPS7Args := []string{"--profile", "PowerShell 7", "--maximized", "-d", "{path}"}
+	if !reflect.DeepEqual(ps7.Args, wantPS7Args) {
+		t.Errorf("PowerShell 7 customization lost: got %v, want %v", ps7.Args, wantPS7Args)
+	}
+}
+
+func TestDiscoverWTProfilesFileMissing(t *testing.T) {
+	// Point LOCALAPPDATA at an empty temp dir so all candidate paths are absent
+	// and wt.exe alias lookup fails. The function must return an error so the
+	// caller falls back to bare-binary candidates.
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	_, err := discoverWTProfiles()
+	if err == nil {
+		t.Error("expected error when no WT install present")
+	}
 }
 
 func countByName(entries []config.TerminalEntry, name string) int {
