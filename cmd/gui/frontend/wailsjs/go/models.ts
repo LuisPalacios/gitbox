@@ -103,6 +103,22 @@ export namespace config {
 	        this.credential_store = source["credential_store"];
 	    }
 	}
+	export class TerminalEntry {
+	    name: string;
+	    command: string;
+	    args?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.command = source["command"];
+	        this.args = source["args"];
+	    }
+	}
 	export class TokenGlobal {
 	
 	
@@ -156,6 +172,7 @@ export namespace config {
 	    // Go type: TokenGlobal
 	    credential_token?: any;
 	    editors?: EditorEntry[];
+	    terminals?: TerminalEntry[];
 	
 	    static createFrom(source: any = {}) {
 	        return new GlobalConfig(source);
@@ -172,6 +189,7 @@ export namespace config {
 	        this.credential_gcm = this.convertValues(source["credential_gcm"], GCMGlobal);
 	        this.credential_token = this.convertValues(source["credential_token"], null);
 	        this.editors = this.convertValues(source["editors"], EditorEntry);
+	        this.terminals = this.convertValues(source["terminals"], TerminalEntry);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -232,6 +250,7 @@ export namespace config {
 	        this.clone_folder = source["clone_folder"];
 	    }
 	}
+	
 	
 	
 
@@ -669,6 +688,24 @@ export namespace main {
 	        this.gone = source["gone"];
 	        this.squashed = source["squashed"];
 	        this.error = source["error"];
+	    }
+	}
+	export class TerminalInfo {
+	    id: string;
+	    name: string;
+	    command: string;
+	    args: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.command = source["command"];
+	        this.args = source["args"];
 	    }
 	}
 	export class TokenGuideInfo {

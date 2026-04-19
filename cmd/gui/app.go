@@ -126,8 +126,9 @@ func (a *App) DomReady(_ context.Context) {
 			wailsrt.WindowCenter(a.ctx)
 		}
 	}
-	// Sync detected editors into config before frontend reads it.
+	// Sync detected editors and terminals into config before frontend reads it.
 	a.SyncEditors()
+	a.SyncTerminals()
 
 	// Check for updates in background (throttled to once per 24h).
 	a.CheckForUpdate()
@@ -798,6 +799,269 @@ func (a *App) SyncEditors() {
 		a.cfg.Global.Editors = deduped
 		_ = config.Save(a.cfg, a.cfgPath)
 	}
+}
+
+// TerminalInfo describes an available terminal emulator for the frontend.
+type TerminalInfo struct {
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+}
+
+// knownTerminalCandidate is an internal record used to seed auto-detection.
+// Resolve is called lazily — a nil return means "not installed on this host".
+type knownTerminalCandidate struct {
+	Name    string
+	Resolve func() (command string, args []string, ok bool)
+}
+
+// knownTerminals lists terminals to auto-detect per platform.
+// Args use the literal token "{path}" to mark where the repo path is injected;
+// if a candidate has no token, the path is appended as the final argv.
+var knownTerminals = platformTerminalCandidates()
+
+func platformTerminalCandidates() []knownTerminalCandidate {
+	if isWindows() {
+		return []knownTerminalCandidate{
+			{
+				Name: "Windows Terminal",
+				Resolve: func() (string, []string, bool) {
+					p, err := exec.LookPath("wt.exe")
+					if err != nil {
+						return "", nil, false
+					}
+					return p, []string{"-d", "{path}"}, true
+				},
+			},
+			{
+				Name: "PowerShell 7",
+				Resolve: func() (string, []string, bool) {
+					p, err := exec.LookPath("pwsh.exe")
+					if err != nil {
+						return "", nil, false
+					}
+					return p, []string{"-NoExit", "-WorkingDirectory", "{path}"}, true
+				},
+			},
+			{
+				Name: "PowerShell 5",
+				Resolve: func() (string, []string, bool) {
+					p, err := exec.LookPath("powershell.exe")
+					if err != nil {
+						return "", nil, false
+					}
+					return p, []string{"-NoExit", "-WorkingDirectory", "{path}"}, true
+				},
+			},
+			{
+				Name: "Git Bash",
+				Resolve: func() (string, []string, bool) {
+					// git-bash.exe is usually not on PATH.
+					for _, root := range []string{os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)")} {
+						if root == "" {
+							continue
+						}
+						cand := filepath.Join(root, "Git", "git-bash.exe")
+						if _, err := os.Stat(cand); err == nil {
+							return cand, []string{"--cd={path}"}, true
+						}
+					}
+					return "", nil, false
+				},
+			},
+			{
+				Name: "WSL",
+				Resolve: func() (string, []string, bool) {
+					p, err := exec.LookPath("wsl.exe")
+					if err != nil {
+						return "", nil, false
+					}
+					return p, []string{"--cd", "{path}"}, true
+				},
+			},
+			{
+				Name: "Command Prompt",
+				Resolve: func() (string, []string, bool) {
+					p, err := exec.LookPath("cmd.exe")
+					if err != nil {
+						return "", nil, false
+					}
+					return p, []string{"/K", `cd /d "{path}"`}, true
+				},
+			},
+		}
+	}
+	if isDarwin() {
+		// macOS terminals launch through `open -a <App>`; path goes last.
+		macApp := func(name, bundle string) knownTerminalCandidate {
+			return knownTerminalCandidate{
+				Name: name,
+				Resolve: func() (string, []string, bool) {
+					for _, root := range []string{"/Applications", "/System/Applications/Utilities", "/Applications/Utilities"} {
+						if _, err := os.Stat(filepath.Join(root, bundle)); err == nil {
+							return "open", []string{"-a", strings.TrimSuffix(bundle, ".app")}, true
+						}
+					}
+					return "", nil, false
+				},
+			}
+		}
+		return []knownTerminalCandidate{
+			macApp("Terminal", "Terminal.app"),
+			macApp("iTerm", "iTerm.app"),
+			macApp("Warp", "Warp.app"),
+		}
+	}
+	// Linux and other Unixes.
+	linuxEntry := func(name, cmd string, args []string) knownTerminalCandidate {
+		return knownTerminalCandidate{
+			Name: name,
+			Resolve: func() (string, []string, bool) {
+				p, err := lookPathWithBrewPATH(cmd)
+				if err != nil {
+					return "", nil, false
+				}
+				return p, args, true
+			},
+		}
+	}
+	return []knownTerminalCandidate{
+		linuxEntry("GNOME Terminal", "gnome-terminal", []string{"--working-directory={path}"}),
+		linuxEntry("Konsole", "konsole", []string{"--workdir", "{path}"}),
+		linuxEntry("Kitty", "kitty", []string{"--directory={path}"}),
+		linuxEntry("Alacritty", "alacritty", []string{"--working-directory", "{path}"}),
+		linuxEntry("Xfce Terminal", "xfce4-terminal", []string{"--working-directory={path}"}),
+		linuxEntry("Terminator", "terminator", []string{"--working-directory={path}"}),
+	}
+}
+
+// DetectTerminals returns terminal emulators available on the system.
+// Auto-detects platform defaults and merges any user-configured terminals.
+func (a *App) DetectTerminals() []TerminalInfo {
+	var terminals []TerminalInfo
+	for _, cand := range knownTerminals {
+		cmd, args, ok := cand.Resolve()
+		if !ok {
+			continue
+		}
+		terminals = append(terminals, TerminalInfo{
+			ID:      terminalID(cand.Name),
+			Name:    cand.Name,
+			Command: cmd,
+			Args:    append([]string(nil), args...),
+		})
+	}
+	if a.cfg != nil {
+		for _, t := range a.cfg.Global.Terminals {
+			terminals = append(terminals, TerminalInfo{
+				ID:      terminalID(t.Name),
+				Name:    t.Name,
+				Command: t.Command,
+				Args:    append([]string(nil), t.Args...),
+			})
+		}
+	}
+	return terminals
+}
+
+// SyncTerminals merges detected terminals into config's global.terminals array.
+// Mirrors SyncEditors: dedup by Name, append any newly detected terminal, save
+// if anything changed. User-edited Command/Args are preserved once persisted.
+func (a *App) SyncTerminals() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	seenName := make(map[string]bool)
+	var deduped []config.TerminalEntry
+	for _, t := range a.cfg.Global.Terminals {
+		if seenName[t.Name] {
+			continue
+		}
+		seenName[t.Name] = true
+		deduped = append(deduped, t)
+	}
+
+	changed := len(deduped) != len(a.cfg.Global.Terminals)
+
+	for _, cand := range knownTerminals {
+		if seenName[cand.Name] {
+			continue
+		}
+		cmd, args, ok := cand.Resolve()
+		if !ok {
+			continue
+		}
+		deduped = append(deduped, config.TerminalEntry{
+			Name:    cand.Name,
+			Command: cmd,
+			Args:    append([]string(nil), args...),
+		})
+		seenName[cand.Name] = true
+		changed = true
+	}
+
+	if changed {
+		a.cfg.Global.Terminals = deduped
+		_ = config.Save(a.cfg, a.cfgPath)
+	}
+}
+
+// OpenInTerminal launches a terminal emulator in the given folder.
+// Args may contain the token "{path}"; if present it is substituted with
+// path, otherwise path is appended as the final argv.
+// HideWindow prevents a transient cmd.exe flash on Windows (required in cmd/gui/).
+func (a *App) OpenInTerminal(path string, command string, args []string) error {
+	if command == "" {
+		return fmt.Errorf("command is required")
+	}
+	resolved := resolveTerminalArgs(args, path)
+	cmd := exec.Command(command, resolved...)
+	cmd.Env = git.Environ()
+	git.HideWindow(cmd)
+	return cmd.Start()
+}
+
+// resolveTerminalArgs substitutes "{path}" tokens in args with the repo path.
+// If no token is found, path is appended as an extra final argv entry.
+func resolveTerminalArgs(args []string, path string) []string {
+	substituted := false
+	out := make([]string, len(args))
+	for i, a := range args {
+		if strings.Contains(a, "{path}") {
+			out[i] = strings.ReplaceAll(a, "{path}", path)
+			substituted = true
+		} else {
+			out[i] = a
+		}
+	}
+	if !substituted {
+		out = append(out, path)
+	}
+	return out
+}
+
+// terminalID returns a stable, lowercase slug used as the TerminalInfo.ID.
+// Unlike editors (where ID is the command binary), terminals often share a
+// launcher binary on macOS (`open`), so we slugify the display name instead.
+func terminalID(name string) string {
+	s := strings.ToLower(name)
+	var b strings.Builder
+	b.Grow(len(s))
+	prevDash := false
+	for _, r := range s {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			prevDash = false
+		default:
+			if !prevDash && b.Len() > 0 {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		}
+	}
+	return strings.TrimRight(b.String(), "-")
 }
 
 func isWindows() bool {

@@ -102,6 +102,10 @@ export function DetectEditors() {
   return window['go']['main']['App']['DetectEditors']();
 }
 
+export function DetectTerminals() {
+  return window['go']['main']['App']['DetectTerminals']();
+}
+
 export function Discover(arg1) {
   return window['go']['main']['App']['Discover'](arg1);
 }
@@ -206,6 +210,10 @@ export function OpenInExplorer(arg1) {
   return window['go']['main']['App']['OpenInExplorer'](arg1);
 }
 
+export function OpenInTerminal(arg1, arg2, arg3) {
+  return window['go']['main']['App']['OpenInTerminal'](arg1, arg2, arg3);
+}
+
 export function PickFolder(arg1) {
   return window['go']['main']['App']['PickFolder'](arg1);
 }
@@ -260,6 +268,10 @@ export function ShowWindow() {
 
 export function SyncEditors() {
   return window['go']['main']['App']['SyncEditors']();
+}
+
+export function SyncTerminals() {
+  return window['go']['main']['App']['SyncTerminals']();
 }
 
 export function UpdateAccount(arg1) {

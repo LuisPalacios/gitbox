@@ -53,6 +53,8 @@ export function DeleteRepo(arg1:string,arg2:string):Promise<void>;
 
 export function DetectEditors():Promise<Array<main.EditorInfo>>;
 
+export function DetectTerminals():Promise<Array<main.TerminalInfo>>;
+
 export function Discover(arg1:string):Promise<void>;
 
 export function DiscoverMirrors():Promise<void>;
@@ -105,6 +107,8 @@ export function OpenInBrowser(arg1:string):Promise<void>;
 
 export function OpenInExplorer(arg1:string):Promise<void>;
 
+export function OpenInTerminal(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
+
 export function PickFolder(arg1:string):Promise<string>;
 
 export function PreviewSweep(arg1:string,arg2:string):Promise<main.SweepPreviewDTO>;
@@ -132,5 +136,7 @@ export function SetupMirrorRepo(arg1:string,arg2:string):Promise<void>;
 export function ShowWindow():Promise<void>;
 
 export function SyncEditors():Promise<void>;
+
+export function SyncTerminals():Promise<void>;
 
 export function UpdateAccount(arg1:main.UpdateAccountRequest):Promise<void>;
