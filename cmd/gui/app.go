@@ -814,24 +814,41 @@ type EditorInfo struct {
 }
 
 // knownEditors lists editors to auto-detect on PATH.
+//
+// Cursor is deliberately absent — it's detected as an AI harness via
+// pkg/harness/tools-directory.md so it surfaces under the AI tools menu
+// instead of the editor menu. Same rationale for Windsurf and Cline.
+// Editor entries whose name collides with an AI harness name are pruned
+// on every SyncEditors run (see the claimedByHarness set below).
 var knownEditors = []EditorInfo{
 	{ID: "vscode", Name: "VS Code", Command: "code"},
-	{ID: "cursor", Name: "Cursor", Command: "cursor"},
 	{ID: "zed", Name: "Zed", Command: "zed"},
 }
 
 // DetectEditors returns code editors available on the system.
-// It auto-detects known editors on PATH and merges any user-configured editors.
+// It auto-detects known editors on PATH and merges any user-configured
+// editors, filtering out any entry whose name is claimed by an AI harness
+// (so Cursor doesn't show up as both an editor and a harness).
 func (a *App) DetectEditors() []EditorInfo {
+	claimedByHarness := make(map[string]bool, len(knownAIHarnesses))
+	for _, h := range knownAIHarnesses {
+		claimedByHarness[h.Name] = true
+	}
+
 	var editors []EditorInfo
 	for _, e := range knownEditors {
+		if claimedByHarness[e.Name] {
+			continue
+		}
 		if _, err := lookPathWithBrewPATH(e.Command); err == nil {
 			editors = append(editors, e)
 		}
 	}
-	// Merge user-configured editors from config.
 	if a.cfg != nil {
 		for _, e := range a.cfg.Global.Editors {
+			if claimedByHarness[e.Name] {
+				continue
+			}
 			editors = append(editors, EditorInfo{
 				ID:      e.Command,
 				Name:    e.Name,
@@ -851,10 +868,23 @@ func (a *App) SyncEditors() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	// Step 1: deduplicate existing entries by name (keep first occurrence).
+	// Names claimed by AI harnesses (Cursor, Windsurf, Cline, …). Any editor
+	// entry with one of these names is pruned — those tools surface under
+	// the AI harness menu instead, and duplicating them as editors was
+	// confusing (see #23 feedback).
+	claimedByHarness := make(map[string]bool, len(knownAIHarnesses))
+	for _, h := range knownAIHarnesses {
+		claimedByHarness[h.Name] = true
+	}
+
+	// Step 1: deduplicate existing entries by name (keep first occurrence),
+	// dropping any entry whose name is claimed by the harness list.
 	seenName := make(map[string]bool)
 	var deduped []config.EditorEntry
 	for _, e := range a.cfg.Global.Editors {
+		if claimedByHarness[e.Name] {
+			continue
+		}
 		if seenName[e.Name] {
 			continue
 		}
@@ -864,8 +894,14 @@ func (a *App) SyncEditors() {
 
 	changed := len(deduped) != len(a.cfg.Global.Editors)
 
-	// Step 2: append any detected editor not already present.
+	// Step 2: append any detected editor not already present. Skip any
+	// candidate whose name overlaps the harness list — defence in depth;
+	// knownEditors already excludes them, but new contributors editing the
+	// directory shouldn't have to remember to also edit knownEditors.
 	for _, known := range knownEditors {
+		if claimedByHarness[known.Name] {
+			continue
+		}
 		if seenName[known.Name] {
 			continue
 		}

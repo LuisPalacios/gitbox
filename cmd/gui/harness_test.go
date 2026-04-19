@@ -11,6 +11,61 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 )
 
+func TestSyncEditorsPrunesHarnessClaimedNames(t *testing.T) {
+	// User upgrades from a pre-#23 build where Cursor was auto-added as an
+	// editor. After the upgrade, Cursor is an AI harness instead — the
+	// editor entry must be pruned on the next SyncEditors run so the kebab
+	// doesn't show "Open in Cursor" under both sections.
+	dir := t.TempDir()
+	cfg := &config.Config{
+		Version: 2,
+		Global: config.GlobalConfig{
+			Folder: dir,
+			Editors: []config.EditorEntry{
+				{Name: "VS Code", Command: "/usr/bin/code"},
+				{Name: "Cursor", Command: "/usr/bin/cursor"},
+				{Name: "Zed", Command: "/usr/bin/zed"},
+			},
+		},
+		Accounts: map[string]config.Account{
+			"A": {Provider: "github", URL: "https://github.com",
+				Username: "u", Name: "n", Email: "e@e"},
+		},
+		Sources: map[string]config.Source{},
+	}
+	a := &App{cfg: cfg, cfgPath: filepath.Join(dir, "gitbox.json"), mu: sync.Mutex{}}
+	a.SyncEditors()
+
+	for _, e := range cfg.Global.Editors {
+		if e.Name == "Cursor" {
+			t.Errorf("Cursor should have been pruned from global.editors: %+v", cfg.Global.Editors)
+		}
+	}
+}
+
+func TestDetectEditorsExcludesHarnessClaimedNames(t *testing.T) {
+	cfg := &config.Config{
+		Version: 2,
+		Global: config.GlobalConfig{
+			Folder: "~/x",
+			Editors: []config.EditorEntry{
+				{Name: "Cursor", Command: "/usr/bin/cursor"},
+			},
+		},
+		Accounts: map[string]config.Account{
+			"A": {Provider: "github", URL: "https://github.com",
+				Username: "u", Name: "n", Email: "e@e"},
+		},
+		Sources: map[string]config.Source{},
+	}
+	a := &App{cfg: cfg}
+	for _, e := range a.DetectEditors() {
+		if e.Name == "Cursor" {
+			t.Errorf("DetectEditors should skip Cursor (claimed by harness): %+v", e)
+		}
+	}
+}
+
 func TestKnownAIHarnessesWiredFromEmbed(t *testing.T) {
 	// Proves the embed + parser chain produced a non-empty list at package
 	// init. The pkg/harness package has its own parser unit tests; this one
