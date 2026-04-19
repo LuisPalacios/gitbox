@@ -655,6 +655,10 @@ The config lives at `~/.config/gitbox/gitbox.json`. See [gitbox.jsonc](../json/g
 | `editors`                         | array  | No       | Code editors for the "Open in" menu. Auto-populated on first launch.     |
 | `editors[].name`                  | string | Yes      | Display name (e.g. `"VS Code"`).                                         |
 | `editors[].command`               | string | Yes      | Full path or command name (e.g. `"C:\\...\\code.cmd"`).                   |
+| `terminals`                       | array  | No       | Terminal emulators for the "Open in" menu. Auto-populated on first launch. |
+| `terminals[].name`                | string | Yes      | Display name (e.g. `"Windows Terminal"`).                                 |
+| `terminals[].command`             | string | Yes      | Full path or on-PATH launcher (e.g. `"wt.exe"`, `"gnome-terminal"`).      |
+| `terminals[].args`                | array  | No       | Arguments passed before the path. Use `"{path}"` as the path placeholder; if absent, path is appended. |
 
 ### Account
 

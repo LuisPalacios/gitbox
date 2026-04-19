@@ -126,8 +126,9 @@ func (a *App) DomReady(_ context.Context) {
 			wailsrt.WindowCenter(a.ctx)
 		}
 	}
-	// Sync detected editors into config before frontend reads it.
+	// Sync detected editors and terminals into config before frontend reads it.
 	a.SyncEditors()
+	a.SyncTerminals()
 
 	// Check for updates in background (throttled to once per 24h).
 	a.CheckForUpdate()
@@ -798,6 +799,355 @@ func (a *App) SyncEditors() {
 		a.cfg.Global.Editors = deduped
 		_ = config.Save(a.cfg, a.cfgPath)
 	}
+}
+
+// TerminalInfo describes an available terminal emulator for the frontend.
+type TerminalInfo struct {
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+}
+
+// knownTerminalCandidate is an internal record used to seed auto-detection.
+// Resolve is called lazily — a nil return means "not installed on this host".
+type knownTerminalCandidate struct {
+	Name    string
+	Resolve func() (command string, args []string, ok bool)
+}
+
+// knownTerminals lists terminals to auto-detect per platform.
+// Args use the literal token "{path}" to mark where the repo path is injected;
+// if a candidate has no token, the path is appended as the final argv.
+var knownTerminals = platformTerminalCandidates()
+
+func platformTerminalCandidates() []knownTerminalCandidate {
+	if isWindows() {
+		return []knownTerminalCandidate{
+			{
+				Name: "Windows Terminal",
+				Resolve: func() (string, []string, bool) {
+					p, err := exec.LookPath("wt.exe")
+					if err != nil {
+						return "", nil, false
+					}
+					return p, []string{"-d", "{path}"}, true
+				},
+			},
+			{
+				// pwsh (PS 7+) starts interactive with no args and honors cmd.Dir.
+				Name: "PowerShell 7",
+				Resolve: func() (string, []string, bool) {
+					p, err := exec.LookPath("pwsh.exe")
+					if err != nil {
+						return "", nil, false
+					}
+					return p, nil, true
+				},
+			},
+			{
+				// Windows PowerShell 5.1 does NOT support -WorkingDirectory;
+				// rely on cmd.Dir instead. Bare powershell.exe is interactive.
+				Name: "PowerShell 5",
+				Resolve: func() (string, []string, bool) {
+					p, err := exec.LookPath("powershell.exe")
+					if err != nil {
+						return "", nil, false
+					}
+					return p, nil, true
+				},
+			},
+			{
+				Name: "Git Bash",
+				Resolve: func() (string, []string, bool) {
+					// git-bash.exe is usually not on PATH.
+					for _, root := range []string{os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)")} {
+						if root == "" {
+							continue
+						}
+						cand := filepath.Join(root, "Git", "git-bash.exe")
+						if _, err := os.Stat(cand); err == nil {
+							return cand, []string{"--cd={path}"}, true
+						}
+					}
+					return "", nil, false
+				},
+			},
+			{
+				Name: "WSL",
+				Resolve: func() (string, []string, bool) {
+					p, err := exec.LookPath("wsl.exe")
+					if err != nil {
+						return "", nil, false
+					}
+					return p, []string{"--cd", "{path}"}, true
+				},
+			},
+			{
+				// Bare cmd.exe is interactive; cmd.Dir sets the starting directory.
+				Name: "Command Prompt",
+				Resolve: func() (string, []string, bool) {
+					p, err := exec.LookPath("cmd.exe")
+					if err != nil {
+						return "", nil, false
+					}
+					return p, nil, true
+				},
+			},
+		}
+	}
+	if isDarwin() {
+		// macOS terminals launch through `open -a <App>`; path goes last.
+		macApp := func(name, bundle string) knownTerminalCandidate {
+			return knownTerminalCandidate{
+				Name: name,
+				Resolve: func() (string, []string, bool) {
+					for _, root := range []string{"/Applications", "/System/Applications/Utilities", "/Applications/Utilities"} {
+						if _, err := os.Stat(filepath.Join(root, bundle)); err == nil {
+							return "open", []string{"-a", strings.TrimSuffix(bundle, ".app")}, true
+						}
+					}
+					return "", nil, false
+				},
+			}
+		}
+		return []knownTerminalCandidate{
+			macApp("Terminal", "Terminal.app"),
+			macApp("iTerm", "iTerm.app"),
+			macApp("Warp", "Warp.app"),
+		}
+	}
+	// Linux and other Unixes.
+	linuxEntry := func(name, cmd string, args []string) knownTerminalCandidate {
+		return knownTerminalCandidate{
+			Name: name,
+			Resolve: func() (string, []string, bool) {
+				p, err := lookPathWithBrewPATH(cmd)
+				if err != nil {
+					return "", nil, false
+				}
+				return p, args, true
+			},
+		}
+	}
+	return []knownTerminalCandidate{
+		linuxEntry("GNOME Terminal", "gnome-terminal", []string{"--working-directory={path}"}),
+		linuxEntry("Konsole", "konsole", []string{"--workdir", "{path}"}),
+		linuxEntry("Kitty", "kitty", []string{"--directory={path}"}),
+		linuxEntry("Alacritty", "alacritty", []string{"--working-directory", "{path}"}),
+		linuxEntry("Xfce Terminal", "xfce4-terminal", []string{"--working-directory={path}"}),
+		linuxEntry("Terminator", "terminator", []string{"--working-directory={path}"}),
+	}
+}
+
+// DetectTerminals returns terminal emulators available on the system.
+// Auto-detects platform defaults and merges any user-configured terminals.
+func (a *App) DetectTerminals() []TerminalInfo {
+	var terminals []TerminalInfo
+	for _, cand := range knownTerminals {
+		cmd, args, ok := cand.Resolve()
+		if !ok {
+			continue
+		}
+		terminals = append(terminals, TerminalInfo{
+			ID:      terminalID(cand.Name),
+			Name:    cand.Name,
+			Command: cmd,
+			Args:    append([]string(nil), args...),
+		})
+	}
+	if a.cfg != nil {
+		for _, t := range a.cfg.Global.Terminals {
+			terminals = append(terminals, TerminalInfo{
+				ID:      terminalID(t.Name),
+				Name:    t.Name,
+				Command: t.Command,
+				Args:    append([]string(nil), t.Args...),
+			})
+		}
+	}
+	return terminals
+}
+
+// SyncTerminals merges detected terminals into config's global.terminals array.
+// Mirrors SyncEditors: dedup by Name, append any newly detected terminal, save
+// if anything changed. User-edited Command/Args are preserved once persisted.
+func (a *App) SyncTerminals() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	seenName := make(map[string]bool)
+	var deduped []config.TerminalEntry
+	for _, t := range a.cfg.Global.Terminals {
+		if seenName[t.Name] {
+			continue
+		}
+		seenName[t.Name] = true
+		deduped = append(deduped, t)
+	}
+
+	changed := len(deduped) != len(a.cfg.Global.Terminals)
+
+	for _, cand := range knownTerminals {
+		if seenName[cand.Name] {
+			continue
+		}
+		cmd, args, ok := cand.Resolve()
+		if !ok {
+			continue
+		}
+		deduped = append(deduped, config.TerminalEntry{
+			Name:    cand.Name,
+			Command: cmd,
+			Args:    append([]string(nil), args...),
+		})
+		seenName[cand.Name] = true
+		changed = true
+	}
+
+	if changed {
+		a.cfg.Global.Terminals = deduped
+		_ = config.Save(a.cfg, a.cfgPath)
+	}
+}
+
+// OpenInTerminal launches a terminal emulator in the given folder.
+// Args may contain the token "{path}"; if present it is substituted with
+// path, otherwise path is appended as the final argv.
+//
+// Windows specifics: the Wails GUI is a /SUBSYSTEM:WINDOWS process with no
+// console. Go's exec always passes the parent's stdio handles to the child
+// with STARTF_USESTDHANDLES set, so plain console apps (cmd.exe, pwsh.exe,
+// powershell.exe, wsl.exe) see closed stdin and exit immediately — even if
+// we set CREATE_NEW_CONSOLE. Wrapping the launch in `cmd.exe /C start ""`
+// is the canonical workaround: `start` creates the terminal as a fresh
+// console process with properly connected console handles. The transient
+// wrapper `cmd.exe` itself is hidden via HideWindow so the user never sees
+// a flash. Editors (OpenInApp) don't need this dance because their GUI
+// window detaches from the launcher's console.
+//
+// On macOS/Linux we launch directly with cmd.Dir = path — no console
+// plumbing needed since those terminals spawn their own windows.
+func (a *App) OpenInTerminal(path string, command string, args []string) error {
+	if command == "" {
+		return fmt.Errorf("command is required")
+	}
+	resolved := resolveTerminalArgs(args, path)
+
+	var cmd *exec.Cmd
+	if isWindows() {
+		// cmd.exe /C start "" /D <path> <command> <args...>
+		// "" = empty title (required placeholder; first quoted arg to `start`
+		// is otherwise interpreted as the window title).
+		startArgs := make([]string, 0, 6+len(resolved))
+		startArgs = append(startArgs, "/C", "start", "", "/D", path, command)
+		startArgs = append(startArgs, resolved...)
+		cmd = exec.Command("cmd.exe", startArgs...)
+		git.HideWindow(cmd) // hide the transient wrapper, not the terminal
+		cmd.Env = sanitizeWindowsTerminalEnv(git.Environ())
+	} else {
+		cmd = exec.Command(command, resolved...)
+		cmd.Dir = path
+		cmd.Env = git.Environ()
+	}
+	return cmd.Start()
+}
+
+// sanitizeWindowsTerminalEnv scrubs MSYS / Git-Bash artefacts from the env
+// before handing it to a child terminal. When the GUI itself is launched
+// from Git Bash (dev workflow), env vars like LOCALAPPDATA, APPDATA, TEMP
+// etc. are inherited in posix form ("/c/Users/..."), which breaks Windows-
+// native tools like oh-my-posh in the spawned shell. Production launches
+// (from Explorer / Start Menu) are unaffected — sanitisation is a no-op on
+// a clean env.
+func sanitizeWindowsTerminalEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		i := strings.IndexByte(e, '=')
+		if i < 0 {
+			out = append(out, e)
+			continue
+		}
+		key, val := e[:i], e[i+1:]
+		switch strings.ToUpper(key) {
+		case "MSYSTEM", "MSYS", "MSYS2_PATH_TYPE", "MSYS_NO_PATHCONV":
+			// Drop — their presence triggers MSYS path translation in children.
+			continue
+		case "LOCALAPPDATA", "APPDATA", "USERPROFILE", "HOMEPATH",
+			"TEMP", "TMP", "HOME", "PROGRAMFILES", "PROGRAMDATA":
+			val = msysToWindowsPath(val)
+		}
+		out = append(out, key+"="+val)
+	}
+	return out
+}
+
+// msysToWindowsPath converts a single MSYS path ("/c/Users/foo") to Windows
+// form ("C:\\Users\\foo"). Values already in Windows form or not matching
+// the /<drive>/... shape are returned unchanged.
+func msysToWindowsPath(p string) string {
+	if len(p) < 2 || p[0] != '/' {
+		return p
+	}
+	c := p[1]
+	if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+		return p
+	}
+	if len(p) > 2 && p[2] != '/' {
+		return p
+	}
+	rest := ""
+	if len(p) > 2 {
+		rest = p[2:]
+	}
+	return strings.ToUpper(string(c)) + ":" + strings.ReplaceAll(rest, "/", `\`)
+}
+
+// resolveTerminalArgs substitutes "{path}" tokens in args with the repo path.
+// If no token is found AND args is non-empty, path is appended as a final argv
+// entry (covers patterns like `open -a Terminal <path>`). Empty args is
+// preserved as empty — the caller sets cmd.Dir so shells start in the repo.
+func resolveTerminalArgs(args []string, path string) []string {
+	if len(args) == 0 {
+		return nil
+	}
+	substituted := false
+	out := make([]string, len(args))
+	for i, a := range args {
+		if strings.Contains(a, "{path}") {
+			out[i] = strings.ReplaceAll(a, "{path}", path)
+			substituted = true
+		} else {
+			out[i] = a
+		}
+	}
+	if !substituted {
+		out = append(out, path)
+	}
+	return out
+}
+
+// terminalID returns a stable, lowercase slug used as the TerminalInfo.ID.
+// Unlike editors (where ID is the command binary), terminals often share a
+// launcher binary on macOS (`open`), so we slugify the display name instead.
+func terminalID(name string) string {
+	s := strings.ToLower(name)
+	var b strings.Builder
+	b.Grow(len(s))
+	prevDash := false
+	for _, r := range s {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			prevDash = false
+		default:
+			if !prevDash && b.Len() > 0 {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		}
+	}
+	return strings.TrimRight(b.String(), "-")
 }
 
 func isWindows() bool {

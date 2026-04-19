@@ -153,6 +153,8 @@ Helper files:
 
 Every `exec.Command` in the GUI binary (`cmd/gui/`) **MUST** call `git.HideWindow(cmd)` before `.Run()`, `.Output()`, or `.Start()`. This sets `SysProcAttr.HideWindow = true` on Windows, preventing a console window from flashing. The CLI binary does not need this. Always check for bare `exec.Command` calls in `cmd/gui/` after any change.
 
+**Launching a visible terminal** (e.g. `OpenInTerminal`) is a special case: a GUI parent has no console, and Go's exec inherits null stdio to the child with `STARTF_USESTDHANDLES` set, so plain console apps (`cmd.exe`, `pwsh.exe`, etc.) see closed stdin and exit. Solution: wrap the launch in `cmd.exe /C start "" /D <path> <command> <args...>`. `start` creates a fresh console for the terminal; `HideWindow` hides the intermediate `cmd.exe` wrapper so the rule above still holds.
+
 ### TUI demo recordings
 
 Use VHS (`charmbracelet/vhs`) to record terminal demo GIFs. Tape files live in `assets/`. See [developer-guide.md](docs/developer-guide.md) for details.

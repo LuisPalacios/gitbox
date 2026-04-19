@@ -4,6 +4,7 @@ export interface GlobalConfig {
   folder: string;
   periodic_sync?: string;
   editors?: EditorInfo[];
+  terminals?: TerminalInfo[];
 }
 
 export interface SSHConfig {
@@ -163,4 +164,11 @@ export interface EditorInfo {
   id: string;
   name: string;
   command: string;
+}
+
+export interface TerminalInfo {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
 }

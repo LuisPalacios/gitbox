@@ -52,7 +52,16 @@
         // Token/PAT credentials
         // For Gitea/Forgejo servers, CI/CD and automation.
         // Tokens are stored in the OS credential store, not here.
-        "credential_token": {}
+        "credential_token": {},
+
+        // Terminal emulators for "Open in ..." actions in the GUI.
+        // Auto-detected on first launch per platform and persisted here — edit
+        // or reorder freely. Use "{path}" as a placeholder for the repo path;
+        // if absent, the path is appended as the final argument.
+        "terminals": [
+            { "name": "Windows Terminal", "command": "wt.exe", "args": ["-d", "{path}"] },
+            { "name": "Git Bash",         "command": "C:/Program Files/Git/git-bash.exe", "args": ["--cd={path}"] }
+        ]
     },
 
     // ──────────────────────────────────────────────────────────────────────────────

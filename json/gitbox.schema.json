@@ -137,6 +137,30 @@
                             }
                         }
                     }
+                },
+                "terminals": {
+                    "type": "array",
+                    "description": "Terminal emulators for opening a shell in a repo folder. Auto-detected per platform (Windows: Windows Terminal, PowerShell 7/5, Git Bash, WSL, Command Prompt; macOS: Terminal, iTerm, Warp; Linux: gnome-terminal, konsole, kitty, alacritty, xfce4-terminal, terminator). Edit or reorder entries freely; the order here is the order they appear in the context menu.",
+                    "items": {
+                        "type": "object",
+                        "required": ["name", "command"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Display name shown in the menu (e.g. 'Windows Terminal')."
+                            },
+                            "command": {
+                                "type": "string",
+                                "description": "Absolute path or command on PATH for the terminal launcher."
+                            },
+                            "args": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Arguments passed before the path. Use the literal token '{path}' to mark where the repo path is injected; if absent, the path is appended as the final argument."
+                            }
+                        }
+                    }
                 }
             }
         },

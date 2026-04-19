@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -361,5 +362,88 @@ func TestEnsureDir(t *testing.T) {
 	}
 	if info, err := os.Stat(filepath.Join(dir, "a", "b")); err != nil || !info.IsDir() {
 		t.Error("directory not created")
+	}
+}
+
+// Ensure global.terminals parses and round-trips through Save, and that the
+// EditorEntry schema is preserved alongside it — the two share a GlobalConfig.
+func TestParseV2WithTerminals(t *testing.T) {
+	js := `{
+        "version": 2,
+        "global": {
+            "folder": "~/x",
+            "editors": [ { "name": "VS Code", "command": "code" } ],
+            "terminals": [
+                { "name": "Windows Terminal", "command": "wt.exe", "args": ["-d", "{path}"] },
+                { "name": "Terminal",         "command": "open",    "args": ["-a", "Terminal"] },
+                { "name": "Plain",            "command": "/usr/bin/plainterm" }
+            ]
+        },
+        "accounts": {
+            "A": {
+                "provider": "github", "url": "https://github.com",
+                "username": "u", "name": "n", "email": "e@e"
+            }
+        },
+        "sources": {}
+    }`
+	cfg, err := Parse([]byte(js))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got := len(cfg.Global.Terminals); got != 3 {
+		t.Fatalf("terminals count = %d, want 3", got)
+	}
+	wt := cfg.Global.Terminals[0]
+	if wt.Name != "Windows Terminal" || wt.Command != "wt.exe" {
+		t.Errorf("first terminal = %+v", wt)
+	}
+	if len(wt.Args) != 2 || wt.Args[0] != "-d" || wt.Args[1] != "{path}" {
+		t.Errorf("first terminal args = %v", wt.Args)
+	}
+	// Editors alongside terminals still parses.
+	if len(cfg.Global.Editors) != 1 || cfg.Global.Editors[0].Name != "VS Code" {
+		t.Error("editors should coexist with terminals")
+	}
+
+	// Round-trip through Save/Load.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gitbox.json")
+	if err := Save(cfg, path); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	reloaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(reloaded.Global.Terminals) != 3 {
+		t.Fatalf("reloaded terminals = %d, want 3", len(reloaded.Global.Terminals))
+	}
+	plain := reloaded.Global.Terminals[2]
+	if plain.Name != "Plain" || plain.Command != "/usr/bin/plainterm" || len(plain.Args) != 0 {
+		t.Errorf("plain terminal round-trip = %+v", plain)
+	}
+}
+
+// Empty global.terminals should be omitted from marshalled JSON (omitempty).
+func TestTerminalsOmitEmpty(t *testing.T) {
+	cfg, err := Parse([]byte(v2JSON))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(cfg.Global.Terminals) != 0 {
+		t.Fatalf("fixture should have no terminals; got %d", len(cfg.Global.Terminals))
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gitbox.json")
+	if err := Save(cfg, path); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := string(b); strings.Contains(s, `"terminals"`) {
+		t.Errorf("marshalled JSON should not include empty terminals array:\n%s", s)
 	}
 }

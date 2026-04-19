@@ -8,7 +8,7 @@
   } from './lib/stores';
   import { statusColor, credColor, statusLabel, providerLabel, statusSymbol } from './lib/theme';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit } from '../wailsjs/runtime/runtime';
-  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo } from './lib/types';
+  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo } from './lib/types';
 
   // ── View mode ──
   let viewMode: 'full' | 'compact' = 'full';
@@ -20,6 +20,7 @@
   // ── Action menu (kebab) ──
   let actionMenuRepo: string | null = null;
   $: configEditors = ($configStore?.global?.editors || []) as EditorInfo[];
+  $: configTerminals = ($configStore?.global?.terminals || []) as TerminalInfo[];
 
   async function toggleViewMode() {
     // SetViewMode saves current position to the slot we're leaving,
@@ -270,6 +271,12 @@
   async function openRepoInApp(repoKey: string, command: string) {
     const state = $repoStates[repoKey];
     if (state?.path) await bridge.openInApp(state.path, command);
+    closeActionMenu();
+  }
+
+  async function openRepoInTerminal(repoKey: string, terminal: TerminalInfo) {
+    const state = $repoStates[repoKey];
+    if (state?.path) await bridge.openInTerminal(state.path, terminal.command, terminal.args || []);
     closeActionMenu();
   }
 
@@ -1671,6 +1678,9 @@
                   {#if configEditors.length > 0}
                     <button class="compact-action-btn" on:click|stopPropagation={() => openRepoInApp(repoKey, configEditors[0].command)} title="Open in {configEditors[0].name}">&#9998;</button>
                   {/if}
+                  {#if configTerminals.length > 0}
+                    <button class="compact-action-btn" on:click|stopPropagation={() => openRepoInTerminal(repoKey, configTerminals[0])} title="Open in {configTerminals[0].name}">&gt;_</button>
+                  {/if}
                 </span>
               {/if}
             </div>
@@ -1966,6 +1976,9 @@
                       <button class="action-item" on:click|stopPropagation={() => sweepBranches(sourceKey, repoName)}>Sweep branches</button>
                       {#each configEditors as editor}
                         <button class="action-item" on:click|stopPropagation={() => openRepoInApp(repoKey, editor.command)}>Open in {editor.name}</button>
+                      {/each}
+                      {#each configTerminals as terminal}
+                        <button class="action-item" on:click|stopPropagation={() => openRepoInTerminal(repoKey, terminal)}>Open in {terminal.name}</button>
                       {/each}
                     </div>
                   {/if}

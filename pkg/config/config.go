@@ -39,12 +39,24 @@ type GlobalConfig struct {
 	CredentialGCM   *GCMGlobal     `json:"credential_gcm,omitempty"`
 	CredentialToken *TokenGlobal   `json:"credential_token,omitempty"`
 	Editors         []EditorEntry  `json:"editors,omitempty"`
+	Terminals       []TerminalEntry `json:"terminals,omitempty"`
 }
 
 // EditorEntry defines a user-configured code editor for opening repositories.
 type EditorEntry struct {
 	Name    string `json:"name"`
 	Command string `json:"command"`
+}
+
+// TerminalEntry defines a user-configured terminal emulator for opening a
+// shell in a repository folder. Args uses the literal token "{path}" as a
+// placeholder for the repo path; if no token is present, the path is appended
+// as the final argument. Args is required here (unlike EditorEntry) because
+// terminal launchers differ wildly across platforms.
+type TerminalEntry struct {
+	Name    string   `json:"name"`
+	Command string   `json:"command"`
+	Args    []string `json:"args,omitempty"`
 }
 
 // WindowState stores the GUI window position and size for session persistence.
