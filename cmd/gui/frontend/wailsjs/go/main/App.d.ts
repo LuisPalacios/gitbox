@@ -51,6 +51,8 @@ export function DeleteMirrorRepo(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteRepo(arg1:string,arg2:string):Promise<void>;
 
+export function DetectAIHarnesses():Promise<Array<main.AIHarnessInfo>>;
+
 export function DetectEditors():Promise<Array<main.EditorInfo>>;
 
 export function DetectTerminals():Promise<Array<main.TerminalInfo>>;
@@ -101,6 +103,8 @@ export function ListRemoteRepos(arg1:string):Promise<Array<main.DiscoverResult>>
 
 export function OpenAccountFolder(arg1:string):Promise<void>;
 
+export function OpenAccountInAIHarness(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
+
 export function OpenAccountInApp(arg1:string,arg2:string):Promise<void>;
 
 export function OpenAccountInBrowser(arg1:string):Promise<void>;
@@ -108,6 +112,8 @@ export function OpenAccountInBrowser(arg1:string):Promise<void>;
 export function OpenAccountInTerminal(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 
 export function OpenFileInEditor(arg1:string):Promise<void>;
+
+export function OpenInAIHarness(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 
 export function OpenInApp(arg1:string,arg2:string):Promise<void>;
 
@@ -141,7 +147,11 @@ export function SetViewMode(arg1:string):Promise<main.WindowStateDTO>;
 
 export function SetupMirrorRepo(arg1:string,arg2:string):Promise<void>;
 
+export function ShowErrorDialog(arg1:string,arg2:string):Promise<void>;
+
 export function ShowWindow():Promise<void>;
+
+export function SyncAIHarnesses():Promise<void>;
 
 export function SyncEditors():Promise<void>;
 

@@ -8,7 +8,7 @@
   } from './lib/stores';
   import { statusColor, credColor, statusLabel, providerLabel, statusSymbol } from './lib/theme';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit } from '../wailsjs/runtime/runtime';
-  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo } from './lib/types';
+  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo } from './lib/types';
 
   // ── View mode ──
   let viewMode: 'full' | 'compact' = 'full';
@@ -22,6 +22,7 @@
   let actionMenuAccount: string | null = null;
   $: configEditors = ($configStore?.global?.editors || []) as EditorInfo[];
   $: configTerminals = ($configStore?.global?.terminals || []) as TerminalInfo[];
+  $: configAIHarnesses = ($configStore?.global?.ai_harnesses || []) as AIHarnessInfo[];
 
   async function toggleViewMode() {
     // SetViewMode saves current position to the slot we're leaving,
@@ -281,6 +282,21 @@
     closeActionMenu();
   }
 
+  async function openRepoInAIHarness(repoKey: string, harness: AIHarnessInfo) {
+    const state = $repoStates[repoKey];
+    if (!state?.path) {
+      await bridge.showErrorDialog('Open in ' + harness.name, 'Repo is not cloned locally — click "Bring Local" first.');
+      closeActionMenu();
+      return;
+    }
+    try {
+      await bridge.openInAIHarness(state.path, harness.command, harness.args || []);
+    } catch (e: any) {
+      await bridge.showErrorDialog('Open in ' + harness.name, (e?.message || String(e)));
+    }
+    closeActionMenu();
+  }
+
   async function openRepoInBrowser(sourceKey: string, repoName: string) {
     const source = $sources[sourceKey];
     const acct = source ? $accounts[source.account] : null;
@@ -313,6 +329,15 @@
 
   async function openAccountInTerminal(accountKey: string, terminal: TerminalInfo) {
     try { await bridge.openAccountInTerminal(accountKey, terminal.command, terminal.args || []); } catch (e) { console.error(e); }
+    closeAccountMenu();
+  }
+
+  async function openAccountInAIHarness(accountKey: string, harness: AIHarnessInfo) {
+    try {
+      await bridge.openAccountInAIHarness(accountKey, harness.command, harness.args || []);
+    } catch (e: any) {
+      await bridge.showErrorDialog('Open in ' + harness.name, (e?.message || String(e)));
+    }
     closeAccountMenu();
   }
 
@@ -1692,6 +1717,9 @@
           {#if configTerminals.length > 0}
             <button class="compact-action-btn" on:click|stopPropagation={() => openAccountInTerminal(key, configTerminals[0])} title="Open in {configTerminals[0].name}">&gt;_</button>
           {/if}
+          {#if configAIHarnesses.length > 0}
+            <button class="compact-action-btn" on:click|stopPropagation={() => openAccountInAIHarness(key, configAIHarnesses[0])} title="Open in {configAIHarnesses[0].name}">&#129302;</button>
+          {/if}
         </span>
         <span class="compact-chevron">{compactExpanded[key] ? '▾' : '▸'}</span>
       </button>
@@ -1724,6 +1752,9 @@
                   {/if}
                   {#if configTerminals.length > 0}
                     <button class="compact-action-btn" on:click|stopPropagation={() => openRepoInTerminal(repoKey, configTerminals[0])} title="Open in {configTerminals[0].name}">&gt;_</button>
+                  {/if}
+                  {#if configAIHarnesses.length > 0}
+                    <button class="compact-action-btn" on:click|stopPropagation={() => openRepoInAIHarness(repoKey, configAIHarnesses[0])} title="Open in {configAIHarnesses[0].name}">&#129302;</button>
                   {/if}
                 </span>
               {/if}
@@ -1975,6 +2006,9 @@
                 {#each configTerminals as terminal}
                   <button class="action-item" on:click|stopPropagation={() => openAccountInTerminal(accountKey, terminal)}>Open in {terminal.name}</button>
                 {/each}
+                {#each configAIHarnesses as harness}
+                  <button class="action-item" on:click|stopPropagation={() => openAccountInAIHarness(accountKey, harness)}>Open in {harness.name}</button>
+                {/each}
               </div>
             {/if}
           </div>
@@ -2041,6 +2075,9 @@
                       {/each}
                       {#each configTerminals as terminal}
                         <button class="action-item" on:click|stopPropagation={() => openRepoInTerminal(repoKey, terminal)}>Open in {terminal.name}</button>
+                      {/each}
+                      {#each configAIHarnesses as harness}
+                        <button class="action-item" on:click|stopPropagation={() => openRepoInAIHarness(repoKey, harness)}>Open in {harness.name}</button>
                       {/each}
                     </div>
                   {/if}

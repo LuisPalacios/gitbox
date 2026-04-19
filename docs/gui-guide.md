@@ -260,6 +260,7 @@ Each cloned repo row has a **kebab menu (⋮)** on the right side. Click it to s
 - **Sweep branches** — finds and deletes stale local branches (gone, merged, or squash-merged). Shows a confirmation dialog with the list of branches before deleting anything
 - **Open in \<editor\>** — opens the clone folder in a detected code editor (VS Code, Cursor, Zed, etc.)
 - **Open in \<terminal\>** — opens a new shell window in the clone folder using a detected terminal emulator (Windows Terminal, PowerShell 7/5, Git Bash, WSL, Command Prompt on Windows; Terminal, iTerm, Warp on macOS; gnome-terminal, Konsole, Kitty, Alacritty, Xfce Terminal, Terminator on Linux)
+- **Open in \<AI harness\>** — opens the clone folder inside the first configured terminal and spawns an AI CLI harness (Claude Code, Codex, Gemini, Aider, Cursor Agent, OpenCode) in it. See [AI harness actions](#ai-harness-actions) below
 
 ### Account actions
 
@@ -269,8 +270,9 @@ Each source group in the repo list has a **kebab menu (⋮)** on the right side 
 - **Open folder** — opens the account's parent folder in the OS file manager. The folder is the natural workspace root for cross-repo greps, multi-repo edits, or shell loops. If the folder doesn't exist yet (nothing cloned under that account), the action errors silently — clone at least one repo first.
 - **Open in \<editor\>** — opens the parent folder in each configured editor from `global.editors`
 - **Open in \<terminal\>** — opens a terminal in the parent folder using each configured entry from `global.terminals`
+- **Open in \<AI harness\>** — spawns an AI CLI harness inside the account's parent folder, using `global.terminals[0]` as the host terminal. See [AI harness actions](#ai-harness-actions) below
 
-In compact view, hovering an account pill reveals the same folder / editor / terminal shortcuts as small icons on the right side, matching the compact repo-row behavior.
+In compact view, hovering an account pill reveals the same folder / editor / terminal / AI harness shortcuts as small icons on the right side, matching the compact repo-row behavior.
 
 Editors are auto-detected on startup by scanning PATH. Gitbox writes the detected editors to `global.editors` in your config file with their full paths. You can reorder entries or add custom editors by editing the config — the menu always reflects the config order.
 
@@ -318,7 +320,23 @@ Two equally clean fixes:
 - **Launch `GitboxApp.exe` from Explorer, the Start Menu, or a pinned shortcut** — anywhere Windows originates a clean env. End users never hit this, so production behaviour is unaffected.
 - **Switch the affected terminal entry to the `wt.exe --profile "<name>" -d "{path}"` form** shown above. WT starts the shell from its own profile context, which has clean Windows env regardless of how the GUI was started.
 
-In **compact mode**, the clone actions appear as small icon buttons (browser, folder, editor, and terminal) that show on hover over each repo row. Only the first configured editor and the first configured terminal are shown — switch to full view for the complete list.
+In **compact mode**, the clone actions appear as small icon buttons (browser, folder, editor, terminal, and AI harness) that show on hover over each repo row. Only the first configured editor, terminal, and AI harness are shown — switch to full view for the complete list.
+
+### AI harness actions
+
+AI CLI harnesses (Claude Code, Codex, Gemini, Aider, Cursor Agent, OpenCode, …) are interactive shell processes — they need a terminal to run in. Gitbox adds one **Open in \<harness\>** entry per configured harness to both the repo kebab and the source-header (account) kebab. Clicking an entry launches the first configured terminal in the target folder and spawns the harness inside it.
+
+I tell gitbox which terminal to use by ordering `global.terminals`: the first entry is the host terminal. To switch hosts, move a different entry to the top of the array.
+
+The host terminal must support launching a command. In the args template, this is marked with the literal token `"{command}"` — at launch time, gitbox splices the harness argv in place of that token. Auto-detected templates (Windows Terminal profiles, gnome-terminal, konsole, alacritty, kitty, and similar) include `{command}` by default so harness launches work without config edits. For terminal-only launches the token expands to zero items, so the same entry serves both paths.
+
+If the first terminal can't launch a command (missing `{command}` in args), clicking an AI harness entry shows an actionable error: "*\<name\>* in global.terminals[0] doesn't support launching a command. Add `{command}` to its args, or reorder global.terminals so a compatible entry is first." Shell-only launchers like bare `pwsh.exe`, `cmd.exe`, `wsl.exe`, `git-bash.exe`, and `open -a Terminal.app` fall into this category — route harnesses through a WT profile (Windows), a GUI terminal with a command flag (Linux), or the upcoming macOS follow-up.
+
+Harnesses are auto-detected on PATH at startup. Gitbox writes detected entries to `global.ai_harnesses` with the resolved binary path. Each entry has a `name` (display in the menu), a `command` (binary path or on-PATH name), and an optional `args` array for harness-specific flags (e.g. `["--model", "sonnet-4.6"]`). Most harnesses need no flags — `args` is usually empty.
+
+The set of harnesses gitbox tries to auto-detect is maintained as a markdown table embedded into the binary. The authoritative list lives at [`pkg/harness/tools-directory.md`](../pkg/harness/tools-directory.md) — to add or remove a detected harness, edit that file. A row is auto-detected when its `Category` is `Agentic CLI`, `AI Harness`, `Headless Harness`, `Agentic IDE`, or `Agentic IDE / CLI`, and its `Executable / CLI Command` cell contains a single backticked identifier (e.g. `` `claude` ``, `` `aider` ``, `` `cursor` ``, `` `cursor-agent` ``). Framework, orchestrator, and cloud-platform rows are documented for reference but skipped by the detector — they don't launch from a terminal in a folder. Agentic IDEs (Cursor, Windsurf) are treated as AI tools, not editors: the "Open in Cursor" entry will therefore appear under the AI harness section of the menu, not the editor section.
+
+In the account kebab, the same entries appear with identical ordering — the only runtime difference is that the working directory is `<global.folder>/<account-key>` (the account's parent folder) instead of a single clone. If the parent folder doesn't exist yet (nothing cloned under that account), the action errors with "account folder does not exist" — clone at least one repo first. Compact view exposes the harness as a 🤖 icon on both the repo row and the account pill, calling `global.ai_harnesses[0]`.
 
 ### Update notification
 

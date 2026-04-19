@@ -98,6 +98,10 @@ export function DeleteRepo(arg1, arg2) {
   return window['go']['main']['App']['DeleteRepo'](arg1, arg2);
 }
 
+export function DetectAIHarnesses() {
+  return window['go']['main']['App']['DetectAIHarnesses']();
+}
+
 export function DetectEditors() {
   return window['go']['main']['App']['DetectEditors']();
 }
@@ -198,6 +202,10 @@ export function OpenAccountFolder(arg1) {
   return window['go']['main']['App']['OpenAccountFolder'](arg1);
 }
 
+export function OpenAccountInAIHarness(arg1, arg2, arg3) {
+  return window['go']['main']['App']['OpenAccountInAIHarness'](arg1, arg2, arg3);
+}
+
 export function OpenAccountInApp(arg1, arg2) {
   return window['go']['main']['App']['OpenAccountInApp'](arg1, arg2);
 }
@@ -212,6 +220,10 @@ export function OpenAccountInTerminal(arg1, arg2, arg3) {
 
 export function OpenFileInEditor(arg1) {
   return window['go']['main']['App']['OpenFileInEditor'](arg1);
+}
+
+export function OpenInAIHarness(arg1, arg2, arg3) {
+  return window['go']['main']['App']['OpenInAIHarness'](arg1, arg2, arg3);
 }
 
 export function OpenInApp(arg1, arg2) {
@@ -278,8 +290,16 @@ export function SetupMirrorRepo(arg1, arg2) {
   return window['go']['main']['App']['SetupMirrorRepo'](arg1, arg2);
 }
 
+export function ShowErrorDialog(arg1, arg2) {
+  return window['go']['main']['App']['ShowErrorDialog'](arg1, arg2);
+}
+
 export function ShowWindow() {
   return window['go']['main']['App']['ShowWindow']();
+}
+
+export function SyncAIHarnesses() {
+  return window['go']['main']['App']['SyncAIHarnesses']();
 }
 
 export function SyncEditors() {

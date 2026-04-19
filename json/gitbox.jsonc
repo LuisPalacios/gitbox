@@ -57,10 +57,25 @@
         // Terminal emulators for "Open in ..." actions in the GUI.
         // Auto-detected on first launch per platform and persisted here — edit
         // or reorder freely. Use "{path}" as a placeholder for the repo path;
-        // if absent, the path is appended as the final argument.
+        // if absent, the path is appended as the final argument. Use the
+        // literal "{command}" token to mark where an AI harness argv should be
+        // spliced when launching via "Open in AI harness" (for terminal-only
+        // launches the token expands to zero items, so leave it in place).
         "terminals": [
-            { "name": "Windows Terminal", "command": "wt.exe", "args": ["-d", "{path}"] },
+            { "name": "Windows Terminal", "command": "wt.exe", "args": ["--profile", "PowerShell", "-d", "{path}", "{command}"] },
             { "name": "Git Bash",         "command": "C:/Program Files/Git/git-bash.exe", "args": ["--cd={path}"] }
+        ],
+
+        // AI CLI harnesses for "Open in ..." actions in the GUI. Each harness
+        // launches inside global.terminals[0] — gitbox splices the harness
+        // argv into the "{command}" token of that terminal's args. Auto-
+        // detected on PATH at startup (claude, codex, gemini, aider, cursor-
+        // agent, opencode); edit or reorder freely. Most harnesses need no
+        // args — "args" is usually empty.
+        "ai_harnesses": [
+            { "name": "Claude Code", "command": "claude" },
+            { "name": "Codex",       "command": "codex" },
+            { "name": "Aider",       "command": "aider", "args": ["--model", "sonnet-4.6"] }
         ]
     },
 

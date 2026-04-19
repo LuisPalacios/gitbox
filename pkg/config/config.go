@@ -40,6 +40,7 @@ type GlobalConfig struct {
 	CredentialToken *TokenGlobal   `json:"credential_token,omitempty"`
 	Editors         []EditorEntry  `json:"editors,omitempty"`
 	Terminals       []TerminalEntry `json:"terminals,omitempty"`
+	AIHarnesses     []AIHarnessEntry `json:"ai_harnesses,omitempty"`
 }
 
 // EditorEntry defines a user-configured code editor for opening repositories.
@@ -53,7 +54,27 @@ type EditorEntry struct {
 // placeholder for the repo path; if no token is present, the path is appended
 // as the final argument. Args is required here (unlike EditorEntry) because
 // terminal launchers differ wildly across platforms.
+//
+// The literal token "{command}" is additionally supported to mark where an AI
+// harness's argv should be spliced; see AIHarnessEntry for the launch model.
+// For terminal-only launches the token expands to zero items (safe no-op),
+// and for harness launches the token is replaced by the harness argv.
 type TerminalEntry struct {
+	Name    string   `json:"name"`
+	Command string   `json:"command"`
+	Args    []string `json:"args,omitempty"`
+}
+
+// AIHarnessEntry defines a user-configured AI CLI harness (e.g. claude,
+// codex, gemini, aider, cursor-agent, opencode). AI harnesses are CLI-only
+// and must run inside a terminal — at launch time gitbox picks the first
+// entry in global.terminals and spawns
+//
+//	<terminal> <terminal-args-with-{command}-spliced-to-harness-argv>
+//
+// inside the target folder. Most harnesses need no extra flags; Args is
+// usually empty.
+type AIHarnessEntry struct {
 	Name    string   `json:"name"`
 	Command string   `json:"command"`
 	Args    []string `json:"args,omitempty"`

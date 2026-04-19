@@ -658,7 +658,11 @@ The config lives at `~/.config/gitbox/gitbox.json`. See [gitbox.jsonc](../json/g
 | `terminals`                       | array  | No       | Terminal emulators for the "Open in" menu. Auto-populated on first launch. |
 | `terminals[].name`                | string | Yes      | Display name (e.g. `"Windows Terminal"`).                                 |
 | `terminals[].command`             | string | Yes      | Full path or on-PATH launcher (e.g. `"wt.exe"`, `"gnome-terminal"`).      |
-| `terminals[].args`                | array  | No       | Arguments passed before the path. Use `"{path}"` as the path placeholder; if absent, path is appended. |
+| `terminals[].args`                | array  | No       | Arguments passed before the path. Use `"{path}"` as the path placeholder; if absent, path is appended. Use `"{command}"` to mark where an AI harness argv is spliced (expands to zero items for terminal-only launches). |
+| `ai_harnesses`                    | array  | No       | AI CLI harnesses for the "Open in" menu. Auto-populated on first launch (claude, codex, gemini, aider, cursor-agent, opencode). Launched inside `global.terminals[0]`, which must contain `"{command}"` in its args. |
+| `ai_harnesses[].name`             | string | Yes      | Display name (e.g. `"Claude Code"`). |
+| `ai_harnesses[].command`          | string | Yes      | Absolute path or on-PATH binary (e.g. `"claude"`). |
+| `ai_harnesses[].args`             | array  | No       | Optional extra args for the harness. Usually empty. |
 
 ### Account
 
