@@ -1,5 +1,21 @@
 export namespace config {
 	
+	export class AIHarnessEntry {
+	    name: string;
+	    command: string;
+	    args?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new AIHarnessEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.command = source["command"];
+	        this.args = source["args"];
+	    }
+	}
 	export class GCMConfig {
 	    provider?: string;
 	    useHttpPath: boolean;
@@ -173,6 +189,7 @@ export namespace config {
 	    credential_token?: any;
 	    editors?: EditorEntry[];
 	    terminals?: TerminalEntry[];
+	    ai_harnesses?: AIHarnessEntry[];
 	
 	    static createFrom(source: any = {}) {
 	        return new GlobalConfig(source);
@@ -190,6 +207,7 @@ export namespace config {
 	        this.credential_token = this.convertValues(source["credential_token"], null);
 	        this.editors = this.convertValues(source["editors"], EditorEntry);
 	        this.terminals = this.convertValues(source["terminals"], TerminalEntry);
+	        this.ai_harnesses = this.convertValues(source["ai_harnesses"], AIHarnessEntry);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -300,6 +318,24 @@ export namespace identity {
 
 export namespace main {
 	
+	export class AIHarnessInfo {
+	    id: string;
+	    name: string;
+	    command: string;
+	    args: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new AIHarnessInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.command = source["command"];
+	        this.args = source["args"];
+	    }
+	}
 	export class AddAccountRequest {
 	    key: string;
 	    provider: string;

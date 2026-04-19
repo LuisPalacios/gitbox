@@ -49,6 +49,14 @@ func TestResolveTerminalArgs(t *testing.T) {
 			path: "/a",
 			want: []string{"/a", "--log", "/a.log"},
 		},
+		{
+			// {command} with nil harnessArgv splices 0 items — safe no-op for
+			// terminal-only launches. Path substitution still runs.
+			name: "command token with no harness splices nothing",
+			args: []string{"--profile", "X", "-d", "{path}", "{command}"},
+			path: "/a",
+			want: []string{"--profile", "X", "-d", "/a"},
+		},
 	}
 
 	for _, tc := range tests {
@@ -57,6 +65,76 @@ func TestResolveTerminalArgs(t *testing.T) {
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("resolveTerminalArgs(%v, %q) = %v, want %v",
 					tc.args, tc.path, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolveTerminalArgsWithCommand(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		path        string
+		harnessArgv []string
+		want        []string
+	}{
+		{
+			name:        "single-item harness splices as one argv entry",
+			args:        []string{"-d", "{path}", "{command}"},
+			path:        "/r",
+			harnessArgv: []string{"claude"},
+			want:        []string{"-d", "/r", "claude"},
+		},
+		{
+			name:        "multi-arg harness splices each entry verbatim",
+			args:        []string{"--working-directory", "{path}", "-e", "{command}"},
+			path:        "/r",
+			harnessArgv: []string{"aider", "--model", "claude-sonnet"},
+			want:        []string{"--working-directory", "/r", "-e", "aider", "--model", "claude-sonnet"},
+		},
+		{
+			name:        "command as sole token (no path)",
+			args:        []string{"{command}"},
+			path:        "/ignored",
+			harnessArgv: []string{"codex"},
+			want:        []string{"codex"},
+		},
+		{
+			name:        "missing {command} splices nothing (harness launch with terminal that doesn't support it — validated upstream)",
+			args:        []string{"-d", "{path}"},
+			path:        "/r",
+			harnessArgv: []string{"codex"},
+			want:        []string{"-d", "/r"},
+		},
+		{
+			name:        "multiple {command} tokens splice into each",
+			args:        []string{"{command}", "--", "{command}"},
+			path:        "/r",
+			harnessArgv: []string{"aider", "--yes"},
+			want:        []string{"aider", "--yes", "--", "aider", "--yes"},
+		},
+		{
+			name:        "empty args preserved even with harness argv",
+			args:        nil,
+			path:        "/r",
+			harnessArgv: []string{"claude"},
+			want:        nil,
+		},
+		{
+			name:        "no {path} and harness set: path is NOT appended",
+			args:        []string{"-e", "{command}"},
+			path:        "/r",
+			harnessArgv: []string{"codex"},
+			want:        []string{"-e", "codex"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := resolveTerminalArgsWithCommand(tc.args, tc.path, tc.harnessArgv)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("resolveTerminalArgsWithCommand(%v, %q, %v) = %v, want %v",
+					tc.args, tc.path, tc.harnessArgv, got, tc.want)
 			}
 		})
 	}
@@ -438,7 +516,7 @@ func TestParseWTProfiles(t *testing.T) {
 				if p.Command != wtCmd {
 					t.Errorf("profile[%d].Command = %q, want %q", i, p.Command, wtCmd)
 				}
-				wantArgs := []string{"--profile", tc.wantNames[i], "-d", "{path}"}
+				wantArgs := []string{"--profile", tc.wantNames[i], "-d", "{path}", "{command}"}
 				if !reflect.DeepEqual(p.Args, wantArgs) {
 					t.Errorf("profile[%d].Args = %v, want %v", i, p.Args, wantArgs)
 				}
@@ -479,8 +557,8 @@ func TestParseWTProfilesDisabledSources(t *testing.T) {
 
 func TestMergeWTProfilesPreservesUserCustomization(t *testing.T) {
 	profiles := []config.TerminalEntry{
-		{Name: "PowerShell", Command: "wt.exe", Args: []string{"--profile", "PowerShell", "-d", "{path}"}},
-		{Name: "Ubuntu", Command: "wt.exe", Args: []string{"--profile", "Ubuntu", "-d", "{path}"}},
+		{Name: "PowerShell", Command: "wt.exe", Args: []string{"--profile", "PowerShell", "-d", "{path}", "{command}"}},
+		{Name: "Ubuntu", Command: "wt.exe", Args: []string{"--profile", "Ubuntu", "-d", "{path}", "{command}"}},
 	}
 	cfg := &config.Config{
 		Global: config.GlobalConfig{
@@ -500,13 +578,39 @@ func TestMergeWTProfilesPreservesUserCustomization(t *testing.T) {
 	if got[0].Name != "PowerShell" || got[1].Name != "Ubuntu" {
 		t.Errorf("WT order must be preserved; got %v", []string{got[0].Name, got[1].Name})
 	}
-	// User customization preserved for "PowerShell".
+	// User customization preserved for "PowerShell" (args differ from legacy
+	// template, so the seamless upgrade heuristic does NOT apply).
 	if !reflect.DeepEqual(got[0].Args, []string{"--profile", "PowerShell", "--maximized", "-d", "{path}"}) {
 		t.Errorf("PowerShell user args clobbered; got %v", got[0].Args)
 	}
 	// Default WT entry used for "Ubuntu" (no prior customization).
-	if !reflect.DeepEqual(got[1].Args, []string{"--profile", "Ubuntu", "-d", "{path}"}) {
+	if !reflect.DeepEqual(got[1].Args, []string{"--profile", "Ubuntu", "-d", "{path}", "{command}"}) {
 		t.Errorf("Ubuntu should use default args; got %v", got[1].Args)
+	}
+}
+
+func TestMergeWTProfilesUpgradesLegacyTemplate(t *testing.T) {
+	// Users who had the pre-{command} auto-generated template in their config
+	// should be seamlessly upgraded so harness launches work without manual
+	// edits. Only the exact legacy shape is rewritten; anything custom stays.
+	profiles := []config.TerminalEntry{
+		{Name: "PowerShell", Command: "wt.exe", Args: []string{"--profile", "PowerShell", "-d", "{path}", "{command}"}},
+	}
+	cfg := &config.Config{
+		Global: config.GlobalConfig{
+			Terminals: []config.TerminalEntry{
+				// Exact legacy shape.
+				{Name: "PowerShell", Command: "wt.exe", Args: []string{"--profile", "PowerShell", "-d", "{path}"}},
+			},
+		},
+	}
+	got := mergeWTProfilesWithConfig(profiles, cfg)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 entry; got %d", len(got))
+	}
+	wantArgs := []string{"--profile", "PowerShell", "-d", "{path}", "{command}"}
+	if !reflect.DeepEqual(got[0].Args, wantArgs) {
+		t.Errorf("legacy template should be upgraded; got %v, want %v", got[0].Args, wantArgs)
 	}
 }
 
@@ -562,7 +666,9 @@ func TestSyncTerminalsRebuildsFromWT(t *testing.T) {
 				// Stale entry for a now-hidden profile — must be pruned.
 				{Name: "Hidden Thing", Command: "C:\\old\\wt.exe", Args: []string{"--profile", "Hidden Thing"}},
 				// User-customized entry matching a current visible profile —
-				// command/args must be preserved verbatim.
+				// command/args must be preserved verbatim (differ from the
+				// legacy auto-template in a meaningful way, so the seamless
+				// upgrade heuristic does NOT apply).
 				{Name: "PowerShell 7", Command: wtPath, Args: []string{"--profile", "PowerShell 7", "--maximized", "-d", "{path}"}},
 			},
 		},

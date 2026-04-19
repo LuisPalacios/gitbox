@@ -127,9 +127,10 @@ func (a *App) DomReady(_ context.Context) {
 			wailsrt.WindowCenter(a.ctx)
 		}
 	}
-	// Sync detected editors and terminals into config before frontend reads it.
+	// Sync detected editors, terminals, and AI harnesses into config before frontend reads it.
 	a.SyncEditors()
 	a.SyncTerminals()
+	a.SyncAIHarnesses()
 
 	// Check for updates in background (throttled to once per 24h).
 	a.CheckForUpdate()
@@ -1041,7 +1042,7 @@ func parseWTProfiles(data []byte, wtCmd string) ([]config.TerminalEntry, error) 
 		out = append(out, config.TerminalEntry{
 			Name:    p.Name,
 			Command: wtCmd,
-			Args:    []string{"--profile", p.Name, "-d", "{path}"},
+			Args:    []string{"--profile", p.Name, "-d", "{path}", "{command}"},
 		})
 	}
 	if len(out) == 0 {
@@ -1255,12 +1256,33 @@ func mergeWTProfilesWithConfig(profiles []config.TerminalEntry, cfg *config.Conf
 	out := make([]config.TerminalEntry, 0, len(profiles))
 	for _, p := range profiles {
 		if prior, ok := existing[p.Name]; ok && prior.Command != "" {
+			// Seamless upgrade for entries emitted by the pre-{command} version
+			// of this template: if the user's args are exactly the legacy
+			// shape, rewrite them to the new template so harness launches work
+			// without manual edits. Customizations (different flags, reorder,
+			// extra args) are left untouched.
+			if argsEqual(prior.Args, []string{"--profile", p.Name, "-d", "{path}"}) {
+				prior.Args = []string{"--profile", p.Name, "-d", "{path}", "{command}"}
+			}
 			out = append(out, prior)
 			continue
 		}
 		out = append(out, p)
 	}
 	return out
+}
+
+// argsEqual reports whether two argv slices are element-wise equal.
+func argsEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // terminalsEqual reports whether two terminal slices are byte-identical so
@@ -1369,10 +1391,19 @@ func (a *App) OpenInTerminal(path string, command string, args []string) error {
 // first and delegate here so the Windows console-flash workaround lives in
 // one place.
 func openTerminalAt(path string, command string, args []string) error {
+	return openTerminalWithHarnessAt(path, command, args, nil)
+}
+
+// openTerminalWithHarnessAt launches a terminal in a folder, optionally
+// splicing a harness argv into a "{command}" token in the terminal's args.
+// When harnessArgv is nil it behaves exactly like openTerminalAt. The Windows
+// cmd.exe /C start workaround lives here so both harness and terminal-only
+// launches go through the same path.
+func openTerminalWithHarnessAt(path string, command string, args []string, harnessArgv []string) error {
 	if command == "" {
 		return fmt.Errorf("command is required")
 	}
-	resolved := resolveTerminalArgs(args, path)
+	resolved := resolveTerminalArgsWithCommand(args, path, harnessArgv)
 
 	var cmd *exec.Cmd
 	if isWindows() {
@@ -1447,21 +1478,50 @@ func msysToWindowsPath(p string) string {
 // If no token is found AND args is non-empty, path is appended as a final argv
 // entry (covers patterns like `open -a Terminal <path>`). Empty args is
 // preserved as empty — the caller sets cmd.Dir so shells start in the repo.
+//
+// This is a thin wrapper over resolveTerminalArgsWithCommand that passes a nil
+// harness argv, so every "{command}" token expands to zero items (safe no-op
+// for terminal-only launches).
 func resolveTerminalArgs(args []string, path string) []string {
+	return resolveTerminalArgsWithCommand(args, path, nil)
+}
+
+// resolveTerminalArgsWithCommand substitutes "{path}" in args (string replace)
+// and splices harnessArgv in place of each literal "{command}" entry. The
+// splice is an argv-level insertion, not a string replace — splicing through
+// strings.ReplaceAll would require shell-quoting harnessArgv back to a single
+// string and risks injection.
+//
+// Rules:
+//   - An arg equal to "{command}" is replaced in-place by harnessArgv items
+//     (0..N). Multiple "{command}" tokens each splice the same argv.
+//   - Other occurrences of "{path}" anywhere inside an arg are substituted
+//     as a plain string replace.
+//   - When no "{path}" token is present AND harnessArgv is nil AND args is
+//     non-empty, path is appended as the final argv (legacy behavior for
+//     launchers like `open -a Terminal <path>`). Harness launches never
+//     append the path — the terminal is responsible for opening the folder
+//     via its own working-directory flag.
+//   - Empty args is preserved as empty.
+func resolveTerminalArgsWithCommand(args []string, path string, harnessArgv []string) []string {
 	if len(args) == 0 {
 		return nil
 	}
-	substituted := false
-	out := make([]string, len(args))
-	for i, a := range args {
-		if strings.Contains(a, "{path}") {
-			out[i] = strings.ReplaceAll(a, "{path}", path)
-			substituted = true
-		} else {
-			out[i] = a
+	pathSubstituted := false
+	out := make([]string, 0, len(args)+len(harnessArgv))
+	for _, a := range args {
+		if a == "{command}" {
+			out = append(out, harnessArgv...)
+			continue
 		}
+		if strings.Contains(a, "{path}") {
+			out = append(out, strings.ReplaceAll(a, "{path}", path))
+			pathSubstituted = true
+			continue
+		}
+		out = append(out, a)
 	}
-	if !substituted {
+	if !pathSubstituted && harnessArgv == nil {
 		out = append(out, path)
 	}
 	return out
@@ -1489,6 +1549,207 @@ func terminalID(name string) string {
 	}
 	return strings.TrimRight(b.String(), "-")
 }
+
+// ─── AI Harnesses ──────────────────────────────────────────────────────────
+
+// AIHarnessInfo describes an available AI CLI harness for the frontend.
+type AIHarnessInfo struct {
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+}
+
+// knownHarnessCandidate is an internal record used to seed auto-detection.
+type knownHarnessCandidate struct {
+	Name    string
+	Command string // binary name to look up on PATH (e.g. "claude", "codex")
+}
+
+// knownAIHarnesses lists AI CLI harnesses to auto-detect on PATH. The order
+// here is the order Sync will append missing entries — users reorder
+// global.ai_harnesses freely and their order wins on subsequent syncs.
+var knownAIHarnesses = []knownHarnessCandidate{
+	{Name: "Claude Code", Command: "claude"},
+	{Name: "Codex", Command: "codex"},
+	{Name: "Gemini", Command: "gemini"},
+	{Name: "Aider", Command: "aider"},
+	{Name: "Cursor Agent", Command: "cursor-agent"},
+	{Name: "OpenCode", Command: "opencode"},
+}
+
+// harnessID returns a stable, lowercase slug used as the AIHarnessInfo.ID.
+// Shares the terminalID slugifier — both fields share the same UI contract.
+func harnessID(name string) string {
+	return terminalID(name)
+}
+
+// DetectAIHarnesses returns AI CLI harnesses available on the system.
+// It auto-detects known binaries on PATH (using the Homebrew-augmented PATH
+// so Homebrew-installed harnesses on macOS are visible to the Wails GUI)
+// and merges any user-configured entries from global.ai_harnesses.
+func (a *App) DetectAIHarnesses() []AIHarnessInfo {
+	var out []AIHarnessInfo
+	seen := make(map[string]bool)
+	for _, cand := range knownAIHarnesses {
+		fullPath, err := lookPathWithBrewPATH(cand.Command)
+		if err != nil {
+			continue
+		}
+		id := harnessID(cand.Name)
+		seen[cand.Name] = true
+		out = append(out, AIHarnessInfo{
+			ID:      id,
+			Name:    cand.Name,
+			Command: fullPath,
+		})
+	}
+	if a.cfg != nil {
+		for _, h := range a.cfg.Global.AIHarnesses {
+			if seen[h.Name] {
+				continue
+			}
+			out = append(out, AIHarnessInfo{
+				ID:      harnessID(h.Name),
+				Name:    h.Name,
+				Command: h.Command,
+				Args:    append([]string(nil), h.Args...),
+			})
+			seen[h.Name] = true
+		}
+	}
+	return out
+}
+
+// SyncAIHarnesses reconciles config's global.ai_harnesses array with the
+// platform. Mirrors SyncEditors:
+//   - Deduplicates existing entries by name (keeps the first occurrence).
+//   - Appends any detected harness not already present (matched by name),
+//     writing the full resolved path so users see a concrete example.
+//   - Saves config only if changes were made.
+func (a *App) SyncAIHarnesses() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cfg == nil {
+		return
+	}
+
+	seenName := make(map[string]bool)
+	var deduped []config.AIHarnessEntry
+	for _, h := range a.cfg.Global.AIHarnesses {
+		if seenName[h.Name] {
+			continue
+		}
+		seenName[h.Name] = true
+		deduped = append(deduped, h)
+	}
+
+	changed := len(deduped) != len(a.cfg.Global.AIHarnesses)
+
+	for _, known := range knownAIHarnesses {
+		if seenName[known.Name] {
+			continue
+		}
+		fullPath, err := lookPathWithBrewPATH(known.Command)
+		if err != nil {
+			continue
+		}
+		deduped = append(deduped, config.AIHarnessEntry{
+			Name:    known.Name,
+			Command: fullPath,
+		})
+		seenName[known.Name] = true
+		changed = true
+	}
+
+	if changed {
+		a.cfg.Global.AIHarnesses = deduped
+		_ = config.Save(a.cfg, a.cfgPath)
+	}
+}
+
+// resolveAIHarness returns the configured harness with the given ID, or an
+// error naming the ID if not found. Matches by the slugified ID (so the
+// frontend can pass display-name-derived IDs without knowing the command).
+func (a *App) resolveAIHarness(id string) (config.AIHarnessEntry, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, h := range a.cfg.Global.AIHarnesses {
+		if harnessID(h.Name) == id {
+			return h, nil
+		}
+	}
+	return config.AIHarnessEntry{}, fmt.Errorf("AI harness %q not configured", id)
+}
+
+// resolveFirstHarnessTerminal returns global.terminals[0] and an actionable
+// error when (a) no terminal is configured or (b) the terminal can't accept a
+// harness command (no "{command}" token in args). AI harness launches rely on
+// the terminal having a "{command}" splice slot — see the Open in AI harness
+// documentation for the convention.
+func (a *App) resolveFirstHarnessTerminal() (config.TerminalEntry, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cfg == nil || len(a.cfg.Global.Terminals) == 0 {
+		return config.TerminalEntry{}, fmt.Errorf("Configure a terminal first (global.terminals is empty)")
+	}
+	t := a.cfg.Global.Terminals[0]
+	for _, arg := range t.Args {
+		if arg == "{command}" {
+			return t, nil
+		}
+	}
+	return config.TerminalEntry{}, fmt.Errorf("%s in global.terminals[0] doesn't support launching a command. Add {command} to its args, or reorder global.terminals so a compatible entry is first.", t.Name)
+}
+
+// harnessArgv builds the argv slice used as the spliced "{command}" value.
+// Returns nil when the harness has an empty Command (validated upstream).
+func harnessArgv(h config.AIHarnessEntry) []string {
+	if h.Command == "" {
+		return nil
+	}
+	argv := make([]string, 0, 1+len(h.Args))
+	argv = append(argv, h.Command)
+	argv = append(argv, h.Args...)
+	return argv
+}
+
+// OpenInAIHarness launches the configured AI harness in the given clone
+// folder, using global.terminals[0] as the host terminal. Errors are
+// actionable strings the frontend can surface verbatim.
+func (a *App) OpenInAIHarness(path string, harnessIDArg string) error {
+	harness, err := a.resolveAIHarness(harnessIDArg)
+	if err != nil {
+		return err
+	}
+	term, err := a.resolveFirstHarnessTerminal()
+	if err != nil {
+		return err
+	}
+	return openTerminalWithHarnessAt(path, term.Command, term.Args, harnessArgv(harness))
+}
+
+// OpenAccountInAIHarness launches the configured AI harness in the account's
+// parent folder (<global.folder>/<accountKey>), using global.terminals[0] as
+// the host terminal. Errors out when the account is unknown or the folder is
+// missing, matching the pattern from OpenAccountInTerminal.
+func (a *App) OpenAccountInAIHarness(accountKey string, harnessIDArg string) error {
+	path, err := a.resolveAccountFolder(accountKey)
+	if err != nil {
+		return err
+	}
+	harness, err := a.resolveAIHarness(harnessIDArg)
+	if err != nil {
+		return err
+	}
+	term, err := a.resolveFirstHarnessTerminal()
+	if err != nil {
+		return err
+	}
+	return openTerminalWithHarnessAt(path, term.Command, term.Args, harnessArgv(harness))
+}
+
+// ─── Platform helpers ─────────────────────────────────────────────────────
 
 func isWindows() bool {
 	return os.PathSeparator == '\\' || strings.Contains(strings.ToLower(os.Getenv("OS")), "windows")

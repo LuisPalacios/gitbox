@@ -5,6 +5,7 @@ export interface GlobalConfig {
   periodic_sync?: string;
   editors?: EditorInfo[];
   terminals?: TerminalInfo[];
+  ai_harnesses?: AIHarnessInfo[];
 }
 
 export interface SSHConfig {
@@ -167,6 +168,13 @@ export interface EditorInfo {
 }
 
 export interface TerminalInfo {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+}
+
+export interface AIHarnessInfo {
   id: string;
   name: string;
   command: string;

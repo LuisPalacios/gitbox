@@ -157,7 +157,31 @@
                             "args": {
                                 "type": "array",
                                 "items": { "type": "string" },
-                                "description": "Arguments passed before the path. Use the literal token '{path}' to mark where the repo path is injected; if absent, the path is appended as the final argument."
+                                "description": "Arguments passed before the path. Use the literal token '{path}' to mark where the repo path is injected; if absent, the path is appended as the final argument. Use the literal token '{command}' to mark where an AI harness argv should be spliced when launching via 'Open in AI harness' (the token expands to zero items for terminal-only launches, so it is safe to leave in place)."
+                            }
+                        }
+                    }
+                },
+                "ai_harnesses": {
+                    "type": "array",
+                    "description": "AI CLI harnesses (claude, codex, gemini, aider, cursor-agent, opencode, ...) available in the GUI 'Open in' menus. Auto-detected on PATH at startup; edit or reorder entries freely. Launches run inside global.terminals[0], which must contain the literal '{command}' token in its args for the harness argv to be spliced in.",
+                    "items": {
+                        "type": "object",
+                        "required": ["name", "command"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Display name shown in the menu (e.g. 'Claude Code')."
+                            },
+                            "command": {
+                                "type": "string",
+                                "description": "Absolute path or command on PATH for the harness binary (e.g. 'claude', '/opt/homebrew/bin/aider')."
+                            },
+                            "args": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Optional extra args passed to the harness (e.g. ['--model', 'sonnet-4.6']). Usually empty."
                             }
                         }
                     }
