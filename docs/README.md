@@ -24,6 +24,7 @@ If you're new to the project, read these in order:
 | [Developer Guide](developer-guide.md) | Building from source, git hooks, contributing |
 | [Multiplatform](multiplatform.md) | Cross-platform build, deploy, and test workflow |
 | [Testing](testing.md) | Test levels, fixture setup, pre-PR and release checklists |
+| [Worktree workflow](worktree-workflow.md) | Parallel issue work: one Claude session per worktree, gated push/merge |
 | [Testing Reference](testing-reference.md) | Full test inventory, harness internals |
 | [Architecture](architecture.md) | Technical design, component diagram |
 | [macOS Signing](macos-signing.md) | Code signing and notarization setup for macOS releases |

@@ -291,6 +291,21 @@ A feature is not complete until all affected documents are updated. Review this 
 
 - After corrections from the user: save a `feedback` memory via the memory system
 
+## Worktree-based parallel workflow
+
+For multi-issue work where several Claude sessions run in parallel, use the `/work-issue <N>` skill. It creates a sibling worktree at `../gitbox-<N>-<slug>`, drives the plan → code → auto-test → user-smoke-test → sync → push → PR flow, and stops before merge. `/merge-issue <PR#>` handles rebase check, CI gate, merge, and worktree cleanup as a separate, deliberate action.
+
+If I already have a plan written (in the issue body, a local file, or a URL), I can pass it with `/work-issue <N> <plan-source>`. The skill evaluates completeness: adopts it if it covers files-to-change, verification, and key decisions; extends it via plan mode if partial; falls back to full plan mode if absent.
+
+Cross-cutting rules when a session is running inside a worktree:
+
+- Stay in the worktree directory. Never edit files outside it, never check out a different branch in it.
+- Global state is shared across worktrees: `~/.config/gitbox/gitbox.json`, system git config, GCM, SSH agent. Never run interactive credential or init-wizard flows in two sessions at once.
+- Before any `gh` command, derive the expected user from this clone's `remote.origin.url` (not a hardcoded name) and switch with `gh auth switch` if needed. The skill does this automatically.
+- If the worktree path falls under a gitbox-managed folder, expect `gitbox status` / discovery screens to list it as an orphan. It's not actually orphaned — just unrecognised by the scanner. Safe to ignore.
+
+See [docs/worktree-workflow.md](../docs/worktree-workflow.md) for the full walkthrough.
+
 ## Git commits
 
 - **Never** include `Co-Authored-By: Claude` or any Claude attribution in commit messages
