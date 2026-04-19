@@ -318,11 +318,11 @@ func TestBuildMacAppleScript(t *testing.T) {
 		if !strings.Contains(got, `tell application "iTerm"`) {
 			t.Errorf("missing iTerm tell block: %q", got)
 		}
-		if !strings.Contains(got, "set newWindow to (create window with default profile)") {
-			t.Errorf("missing captured-window assignment: %q", got)
+		if !strings.Contains(got, "tell (create window with default profile)") {
+			t.Errorf("missing nested tell-create-window: %q", got)
 		}
-		if !strings.Contains(got, "tell current session of newWindow") {
-			t.Errorf("missing newWindow-scoped session tell: %q", got)
+		if !strings.Contains(got, "tell current session") {
+			t.Errorf("missing scoped current-session tell: %q", got)
 		}
 		if !strings.Contains(got, `write text "cd '/a' && 'claude'"`) {
 			t.Errorf("missing write-text line: %q", got)
