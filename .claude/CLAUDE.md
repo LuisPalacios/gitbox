@@ -281,6 +281,23 @@ gh auth switch --user LuisPalacios
 
 Do this at the start of any `gh` workflow — do not assume the active account is correct.
 
+## Anonymize before posting to GitHub
+
+Anything I publish to a GitHub-visible surface — issue body, issue comment, PR title/body/comment, release notes, commit messages that get pushed — **must not contain private details from the user's local development setup**. GitHub preserves edit history on public issues and comments; a manual edit after posting does NOT remove the leak. The only way to truly delete a leak is to delete the issue or comment entirely. Prevention is the only reliable strategy.
+
+**Always strip or replace with placeholders:**
+
+- Local filesystem paths: `~/00.git/...`, `C:\Users\<name>\...`, `/Users/<name>/...`, `/home/<name>/...`
+- Account keys as they appear in `gitbox.json`: `github-<realname>`, `gitlab-<company>`, etc. Use `github-MyAccount`, "account A", "account B"
+- Real organization / user / private-repo names the user has in their config (company orgs, client names, private projects)
+- Workstation hostnames, SSH host aliases, IP addresses, email addresses, personal names
+
+**Fine to include** — public references to the `LuisPalacios/gitbox` repo itself: file paths, line numbers, function/type names, commit SHAs, PR/issue numbers, permalinks like `github.com/LuisPalacios/gitbox/blob/main/...`. Those are already on the public web.
+
+**Recipe for bug repros:** when the user describes a problem using real names, rewrite in abstract terms before posting. "Under `~/00.git/github-Acme/Acme/` there are clones `internal-lib` and `secret-service`…" becomes "Two clones live on disk under the folder tree of account A, but their `origin` remotes point to an organization owned by a different account B also configured in gitbox." Technical content preserved; private setup not exposed.
+
+**When in doubt, ask** before posting. The cost of one clarifying question is trivial; the cost of a leaked issue is a deleted issue, a broken `#N` cross-reference chain, and lost trust.
+
 ## Multiplatform testing
 
 The developer workstation can be any OS. Remote machines are available via SSH for cross-platform testing. Every build-and-test cycle MUST cover all three platforms.
