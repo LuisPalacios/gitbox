@@ -1000,15 +1000,20 @@ func stripJSONComments(in []byte) []byte {
 }
 
 // parseWTProfiles reads a JSONC-encoded settings.json blob and returns one
-// TerminalEntry per visible profile (hidden=false or absent). The wtCmd is
-// used as the entry's Command so tests can inject a deterministic path.
+// TerminalEntry per visible profile, in `profiles.list` order. A profile is
+// excluded when `hidden: true` is set, or when its `source` appears in the
+// top-level `disabledProfileSources` array — both criteria match WT's own
+// menu-rendering rules. The wtCmd is used as the entry's Command so tests can
+// inject a deterministic path.
 func parseWTProfiles(data []byte, wtCmd string) ([]config.TerminalEntry, error) {
 	clean := stripJSONComments(data)
 	var doc struct {
-		Profiles struct {
+		DisabledProfileSources []string `json:"disabledProfileSources"`
+		Profiles               struct {
 			List []struct {
 				Name   string `json:"name"`
 				Hidden *bool  `json:"hidden,omitempty"`
+				Source string `json:"source,omitempty"`
 			} `json:"list"`
 		} `json:"profiles"`
 	}
@@ -1018,12 +1023,19 @@ func parseWTProfiles(data []byte, wtCmd string) ([]config.TerminalEntry, error) 
 	if len(doc.Profiles.List) == 0 {
 		return nil, errors.New("no profiles in settings.json")
 	}
+	disabled := make(map[string]bool, len(doc.DisabledProfileSources))
+	for _, s := range doc.DisabledProfileSources {
+		disabled[s] = true
+	}
 	var out []config.TerminalEntry
 	for _, p := range doc.Profiles.List {
 		if p.Name == "" {
 			continue
 		}
 		if p.Hidden != nil && *p.Hidden {
+			continue
+		}
+		if p.Source != "" && disabled[p.Source] {
 			continue
 		}
 		out = append(out, config.TerminalEntry{
@@ -1063,23 +1075,6 @@ func discoverWTProfiles() ([]config.TerminalEntry, error) {
 
 func platformTerminalCandidates() []knownTerminalCandidate {
 	if isWindows() {
-		// Prefer auto-discovered Windows Terminal profiles when settings.json is
-		// parseable: each visible profile becomes its own entry that launches
-		// `wt.exe --profile "<name>" -d "{path}"`, preserving the user's WT
-		// tuning. Fall back to bare-binary candidates only if discovery fails.
-		if profiles, err := discoverWTProfiles(); err == nil && len(profiles) > 0 {
-			out := make([]knownTerminalCandidate, 0, len(profiles))
-			for _, p := range profiles {
-				p := p // capture
-				out = append(out, knownTerminalCandidate{
-					Name: p.Name,
-					Resolve: func() (string, []string, bool) {
-						return p.Command, append([]string(nil), p.Args...), true
-					},
-				})
-			}
-			return out
-		}
 		return []knownTerminalCandidate{
 			{
 				Name: "Windows Terminal",
@@ -1198,8 +1193,27 @@ func platformTerminalCandidates() []knownTerminalCandidate {
 }
 
 // DetectTerminals returns terminal emulators available on the system.
-// Auto-detects platform defaults and merges any user-configured terminals.
+// On Windows, when Windows Terminal's settings.json is parseable, the result
+// is the visible WT profiles in WT order — bare-binary candidates and any
+// non-matching config entries are intentionally excluded so the menu mirrors
+// WT itself. On other platforms, or when WT discovery fails, falls back to
+// the platform's bare-binary candidates merged with user-configured entries.
 func (a *App) DetectTerminals() []TerminalInfo {
+	if isWindows() {
+		if profiles, err := discoverWTProfiles(); err == nil && len(profiles) > 0 {
+			merged := mergeWTProfilesWithConfig(profiles, a.cfg)
+			out := make([]TerminalInfo, 0, len(merged))
+			for _, t := range merged {
+				out = append(out, TerminalInfo{
+					ID:      terminalID(t.Name),
+					Name:    t.Name,
+					Command: t.Command,
+					Args:    append([]string(nil), t.Args...),
+				})
+			}
+			return out
+		}
+	}
 	var terminals []TerminalInfo
 	for _, cand := range knownTerminals {
 		cmd, args, ok := cand.Resolve()
@@ -1226,12 +1240,73 @@ func (a *App) DetectTerminals() []TerminalInfo {
 	return terminals
 }
 
-// SyncTerminals merges detected terminals into config's global.terminals array.
-// Mirrors SyncEditors: dedup by Name, append any newly detected terminal, save
-// if anything changed. User-edited Command/Args are preserved once persisted.
+// mergeWTProfilesWithConfig returns the WT-discovered profiles in WT order,
+// substituting any existing config entry whose Name matches a profile so the
+// user's Command/Args customizations survive sync. Config entries whose Name
+// doesn't match any visible WT profile are dropped — by design — so the menu
+// stays aligned with WT itself.
+func mergeWTProfilesWithConfig(profiles []config.TerminalEntry, cfg *config.Config) []config.TerminalEntry {
+	existing := make(map[string]config.TerminalEntry)
+	if cfg != nil {
+		for _, e := range cfg.Global.Terminals {
+			existing[e.Name] = e
+		}
+	}
+	out := make([]config.TerminalEntry, 0, len(profiles))
+	for _, p := range profiles {
+		if prior, ok := existing[p.Name]; ok && prior.Command != "" {
+			out = append(out, prior)
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// terminalsEqual reports whether two terminal slices are byte-identical so
+// SyncTerminals can skip a config write when nothing actually changed.
+func terminalsEqual(a, b []config.TerminalEntry) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name || a[i].Command != b[i].Command {
+			return false
+		}
+		if len(a[i].Args) != len(b[i].Args) {
+			return false
+		}
+		for j := range a[i].Args {
+			if a[i].Args[j] != b[i].Args[j] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// SyncTerminals reconciles config's global.terminals array with the platform.
+// On Windows, when WT discovery succeeds, the array is rebuilt from scratch
+// using the visible WT profiles in WT order — stale legacy entries (bare
+// pwsh.exe, git-bash.exe, etc.) and entries for profiles that became hidden
+// or had their source disabled are dropped. User-customized Command/Args are
+// preserved when the entry's Name matches a current visible profile.
+// On other platforms (or when WT is absent / unparseable), falls back to the
+// historical dedup-and-append behaviour that mirrors SyncEditors.
 func (a *App) SyncTerminals() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+
+	if isWindows() {
+		if profiles, err := discoverWTProfiles(); err == nil && len(profiles) > 0 {
+			rebuilt := mergeWTProfilesWithConfig(profiles, a.cfg)
+			if !terminalsEqual(a.cfg.Global.Terminals, rebuilt) {
+				a.cfg.Global.Terminals = rebuilt
+				_ = config.Save(a.cfg, a.cfgPath)
+			}
+			return
+		}
+	}
 
 	seenName := make(map[string]bool)
 	var deduped []config.TerminalEntry
