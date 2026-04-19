@@ -142,7 +142,48 @@
 </div>
 
 <style>
-  .launcher-menu { min-width: 210px; }
+  /* Mirror the base dropdown/item styling from App.svelte — Svelte's scoped
+     styles don't cross component boundaries, so without these duplicates the
+     menu renders as flow-layout pill buttons. Keep these values in sync with
+     .action-dropdown / .action-item in App.svelte. */
+  .action-dropdown {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    margin-top: 4px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    min-width: 160px;
+    z-index: 100;
+    overflow: hidden;
+  }
+
+  .action-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 8px 14px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    text-align: left;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.1s;
+    white-space: nowrap;
+  }
+
+  .action-item:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  /* Launcher-specific layout additions. */
+  .launcher-menu {
+    min-width: 220px;
+  }
 
   .lm-sep {
     border: 0;
@@ -154,8 +195,9 @@
     display: inline-block;
     width: 18px;
     text-align: center;
-    margin-right: 8px;
+    margin-right: 10px;
     color: var(--text-dim);
+    flex: 0 0 auto;
   }
 
   .lm-icon-mono {
@@ -165,14 +207,11 @@
   }
 
   .lm-arrow {
-    float: right;
+    margin-left: auto;
+    padding-left: 10px;
     color: var(--text-dim);
     font-size: 10px;
-    line-height: 1.3em;
-  }
-
-  .lm-submenu-trigger {
-    padding-right: 14px;
+    flex: 0 0 auto;
   }
 
   .lm-active {
@@ -180,7 +219,15 @@
     color: var(--text-primary);
   }
 
-  .lm-sub-container { position: relative; }
+  .lm-sub-container {
+    position: relative;
+  }
+
+  /* Overflow has to release for submenus to escape the parent dropdown —
+     action-dropdown above uses overflow: hidden which otherwise clips them. */
+  .launcher-menu {
+    overflow: visible;
+  }
 
   /* Default (repo-row kebab): parent menu is pinned right: 0 so it extends
      to the left of the kebab. Open the submenu further left so it stays on
@@ -190,8 +237,8 @@
     top: -4px;
     right: 100%;
     margin-right: 2px;
-    z-index: 101;
     min-width: 180px;
+    z-index: 101;
   }
 
   /* Account-header kebab: parent menu is pinned left: 0 (see
