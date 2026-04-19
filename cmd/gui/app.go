@@ -499,6 +499,89 @@ func (a *App) OpenInBrowser(url string) error {
 	return git.OpenInBrowser(url)
 }
 
+// resolveAccountFolder returns the absolute path to the account's parent
+// folder: <global.folder>/<accountKey>. Returns an error if the account key
+// is unknown or the folder does not exist on disk.
+func (a *App) resolveAccountFolder(accountKey string) (string, error) {
+	a.mu.Lock()
+	_, ok := a.cfg.Accounts[accountKey]
+	globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
+	a.mu.Unlock()
+	if !ok {
+		return "", fmt.Errorf("account %q not found", accountKey)
+	}
+	path := filepath.Join(globalFolder, accountKey)
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("account folder does not exist: %s", path)
+		}
+		return "", fmt.Errorf("account folder %s: %w", path, err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("account folder is not a directory: %s", path)
+	}
+	return path, nil
+}
+
+// OpenAccountFolder reveals the account's parent folder in the OS file
+// manager. Errors if the folder does not exist yet (no repos cloned).
+func (a *App) OpenAccountFolder(accountKey string) error {
+	path, err := a.resolveAccountFolder(accountKey)
+	if err != nil {
+		return err
+	}
+	var cmd *exec.Cmd
+	switch {
+	case isWindows():
+		native := filepath.FromSlash(path)
+		cmd = exec.Command("explorer", native)
+	case isDarwin():
+		cmd = exec.Command("open", path)
+	default:
+		cmd = exec.Command("xdg-open", path)
+	}
+	return cmd.Start()
+}
+
+// OpenAccountInApp opens the account's parent folder in a specific editor.
+func (a *App) OpenAccountInApp(accountKey string, command string) error {
+	if command == "" {
+		return fmt.Errorf("command is required")
+	}
+	path, err := a.resolveAccountFolder(accountKey)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(command, path)
+	cmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
+	git.HideWindow(cmd)
+	return cmd.Start()
+}
+
+// OpenAccountInTerminal launches a terminal emulator in the account's parent
+// folder. Delegates to openTerminalAt so the Windows cmd.exe wrapper lives
+// in one place.
+func (a *App) OpenAccountInTerminal(accountKey string, command string, args []string) error {
+	path, err := a.resolveAccountFolder(accountKey)
+	if err != nil {
+		return err
+	}
+	return openTerminalAt(path, command, args)
+}
+
+// OpenAccountInBrowser opens the provider profile page for the account.
+func (a *App) OpenAccountInBrowser(accountKey string) error {
+	a.mu.Lock()
+	acct, ok := a.cfg.Accounts[accountKey]
+	a.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("account %q not found", accountKey)
+	}
+	url := git.AccountProfileURL(acct.URL, acct.Username)
+	return git.OpenInBrowser(url)
+}
+
 // SweepPreviewDTO holds the read-only preview of stale branches.
 type SweepPreviewDTO struct {
 	Merged   []string `json:"merged"`
@@ -1029,6 +1112,14 @@ func (a *App) SyncTerminals() {
 // On macOS/Linux we launch directly with cmd.Dir = path — no console
 // plumbing needed since those terminals spawn their own windows.
 func (a *App) OpenInTerminal(path string, command string, args []string) error {
+	return openTerminalAt(path, command, args)
+}
+
+// openTerminalAt is the shared core for launching a terminal emulator in a
+// folder. Callers (OpenInTerminal, OpenAccountInTerminal) resolve the path
+// first and delegate here so the Windows console-flash workaround lives in
+// one place.
+func openTerminalAt(path string, command string, args []string) error {
 	if command == "" {
 		return fmt.Errorf("command is required")
 	}

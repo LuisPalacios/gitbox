@@ -19,6 +19,7 @@
 
   // ── Action menu (kebab) ──
   let actionMenuRepo: string | null = null;
+  let actionMenuAccount: string | null = null;
   $: configEditors = ($configStore?.global?.editors || []) as EditorInfo[];
   $: configTerminals = ($configStore?.global?.terminals || []) as TerminalInfo[];
 
@@ -288,6 +289,36 @@
       await bridge.openInBrowser(webURL);
     }
     closeActionMenu();
+  }
+
+  // ── Account-level actions (kebab on account card) ──
+  function toggleAccountMenu(accountKey: string) {
+    actionMenuAccount = actionMenuAccount === accountKey ? null : accountKey;
+    actionMenuRepo = null;
+  }
+
+  function closeAccountMenu() {
+    actionMenuAccount = null;
+  }
+
+  async function openAccountInExplorer(accountKey: string) {
+    try { await bridge.openAccountFolder(accountKey); } catch (e) { console.error(e); }
+    closeAccountMenu();
+  }
+
+  async function openAccountInApp(accountKey: string, command: string) {
+    try { await bridge.openAccountInApp(accountKey, command); } catch (e) { console.error(e); }
+    closeAccountMenu();
+  }
+
+  async function openAccountInTerminal(accountKey: string, terminal: TerminalInfo) {
+    try { await bridge.openAccountInTerminal(accountKey, terminal.command, terminal.args || []); } catch (e) { console.error(e); }
+    closeAccountMenu();
+  }
+
+  async function openAccountInBrowser(accountKey: string) {
+    try { await bridge.openAccountInBrowser(accountKey); } catch (e) { console.error(e); }
+    closeAccountMenu();
   }
 
   // ── Orphan adoption ──
@@ -1543,7 +1574,11 @@
   $: cc = (s: string) => credColor(s, $themeStore);
 </script>
 
-<svelte:window on:click={(e) => { if (actionMenuRepo && !(e.target instanceof Element && e.target.closest('.action-menu-container'))) closeActionMenu(); }} />
+<svelte:window on:click={(e) => {
+  const inMenu = e.target instanceof Element && e.target.closest('.action-menu-container');
+  if (actionMenuRepo && !inMenu) closeActionMenu();
+  if (actionMenuAccount && !inMenu) closeAccountMenu();
+}} />
 
 <!-- ════════════════════════════════════════════════════════════ -->
 <!--  TEMPLATE                                                   -->
@@ -1649,6 +1684,15 @@
             {/if}
           </span>
         </div>
+        <span class="compact-actions-overlay compact-acct-actions">
+          <button class="compact-action-btn" on:click|stopPropagation={() => openAccountInExplorer(key)} title="Open folder">&#128193;</button>
+          {#if configEditors.length > 0}
+            <button class="compact-action-btn" on:click|stopPropagation={() => openAccountInApp(key, configEditors[0].command)} title="Open in {configEditors[0].name}">&#9998;</button>
+          {/if}
+          {#if configTerminals.length > 0}
+            <button class="compact-action-btn" on:click|stopPropagation={() => openAccountInTerminal(key, configTerminals[0])} title="Open in {configTerminals[0].name}">&gt;_</button>
+          {/if}
+        </span>
         <span class="compact-chevron">{compactExpanded[key] ? '▾' : '▸'}</span>
       </button>
 
@@ -1915,8 +1959,26 @@
   <!-- ── REPO LIST ── -->
   <section class="repo-list">
     {#each Object.entries($sources) as [sourceKey, source] (sourceKey)}
+      {@const accountKey = source.account}
       <div class="source-group">
-        <div class="source-header">{sourceKey}</div>
+        <div class="source-header">
+          <span class="source-header-title">{sourceKey}</span>
+          <div class="action-menu-container source-header-kebab">
+            <button class="btn-kebab" on:click|stopPropagation={() => toggleAccountMenu(accountKey)} title="Account actions">&#8942;</button>
+            {#if actionMenuAccount === accountKey}
+              <div class="action-dropdown" transition:fade={{ duration: 80 }}>
+                <button class="action-item" on:click|stopPropagation={() => openAccountInBrowser(accountKey)}>Open in browser</button>
+                <button class="action-item" on:click|stopPropagation={() => openAccountInExplorer(accountKey)}>Open folder</button>
+                {#each configEditors as editor}
+                  <button class="action-item" on:click|stopPropagation={() => openAccountInApp(accountKey, editor.command)}>Open in {editor.name}</button>
+                {/each}
+                {#each configTerminals as terminal}
+                  <button class="action-item" on:click|stopPropagation={() => openAccountInTerminal(accountKey, terminal)}>Open in {terminal.name}</button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        </div>
         {#each (source.repoOrder && source.repoOrder.length > 0 ? source.repoOrder : Object.keys(source.repos)) as repoName (repoName)}
           {@const repoKey = `${sourceKey}/${repoName}`}
           {@const state = $repoStates[repoKey] || { status: 'error', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
@@ -3262,7 +3324,11 @@
     font-size: 11px; font-weight: 600; color: var(--text-dim);
     text-transform: uppercase; letter-spacing: 0.8px;
     padding: 10px 0 5px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 4px;
   }
+  .source-header-title { flex: 0 0 auto; }
+  .source-header-kebab { font-size: 14px; flex: 0 0 auto; margin-right: auto; }
+  .source-header-kebab .action-dropdown { right: auto; left: 0; }
   .repo-row {
     display: flex; align-items: center; gap: 10px;
     padding: 8px 6px; border-radius: 6px; transition: background 0.1s;
@@ -3697,6 +3763,12 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .compact-acct-stat { font-size: 9px; }
+  .compact-acct-actions {
+    position: static; background: transparent; padding: 0;
+    opacity: 0; transition: opacity 0.1s;
+    display: flex; align-items: center; gap: 2px; flex-shrink: 0;
+  }
+  .compact-acct:hover .compact-acct-actions { opacity: 1; }
   .compact-chevron {
     font-size: 10px;
     color: var(--text-dim);

@@ -261,6 +261,17 @@ Each cloned repo row has a **kebab menu (⋮)** on the right side. Click it to s
 - **Open in \<editor\>** — opens the clone folder in a detected code editor (VS Code, Cursor, Zed, etc.)
 - **Open in \<terminal\>** — opens a new shell window in the clone folder using a detected terminal emulator (Windows Terminal, PowerShell 7/5, Git Bash, WSL, Command Prompt on Windows; Terminal, iTerm, Warp on macOS; gnome-terminal, Konsole, Kitty, Alacritty, Xfce Terminal, Terminator on Linux)
 
+### Account actions
+
+Each source group in the repo list has a **kebab menu (⋮)** on the right side of its header (the account title above the list of clones). The account kebab exposes actions scoped to the account's parent folder (`<global.folder>/<account-key>`) rather than any single clone:
+
+- **Open in browser** — opens the provider profile/org page for the account (e.g. `https://github.com/<username>`, the GitLab group page, the Gitea/Forgejo user page)
+- **Open folder** — opens the account's parent folder in the OS file manager. The folder is the natural workspace root for cross-repo greps, multi-repo edits, or shell loops. If the folder doesn't exist yet (nothing cloned under that account), the action errors silently — clone at least one repo first.
+- **Open in \<editor\>** — opens the parent folder in each configured editor from `global.editors`
+- **Open in \<terminal\>** — opens a terminal in the parent folder using each configured entry from `global.terminals`
+
+In compact view, hovering an account pill reveals the same folder / editor / terminal shortcuts as small icons on the right side, matching the compact repo-row behavior.
+
 Editors are auto-detected on startup by scanning PATH. Gitbox writes the detected editors to `global.editors` in your config file with their full paths. You can reorder entries or add custom editors by editing the config — the menu always reflects the config order.
 
 Terminals follow the same pattern: detected on startup per platform and written to `global.terminals` with their command and argument templates. Each entry has a `name`, a `command` (absolute path or on-PATH launcher) and `args`. Use the literal token `{path}` inside `args` to mark where the repo path is injected; if the token is absent, the path is appended as the final argument. Edit or reorder freely — the order in the menu matches the order in the config.

@@ -152,6 +152,7 @@ type fetchDoneMsg struct {
 }
 type fetchAllDoneMsg struct{ err error }
 type openBrowserDoneMsg struct{ err error }
+type openFolderDoneMsg struct{ err error }
 type sweepDoneMsg struct {
 	sourceKey, repoKey string
 	deleted            []string
