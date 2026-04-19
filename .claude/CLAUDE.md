@@ -188,6 +188,28 @@ Reference the issue in the commit with `Closes #N` — GitHub auto-closes on pus
 
 **External contributions** (anyone who is not me): always come through PRs from forks — I review, CI must pass, then merge.
 
+### Pause for user testing before shipping
+
+After any code change that affects runtime behaviour, STOP before the final publication step (`git push origin main` **or** `gh pr merge`) and hand the user the build to test. Publication makes the change visible to anyone on the internet and — for PRs and issue comments — is locked into GitHub's edit history. The user's hands-on smoke test is the last gate that catches "it compiles, unit tests pass, but the thing I asked for doesn't actually behave right on my machine".
+
+Concrete protocol:
+
+1. Finish the implementation locally: commits on the fix branch (or staged on main), `go vet ./...` clean, focused tests passing, **both binaries built** per the build-both rule.
+2. Stop. Tell the user, in one short message:
+   - Which commit(s) or branch are ready (and which binary paths to launch, e.g. `build/gitbox.exe`, `cmd/gui/build/bin/GitboxApp.exe`).
+   - A concrete check: what to click, what output to expect, what regression to rule out (e.g. "open Preferences → Open In Editor, confirm no cmd.exe flash").
+   - The exact command I intend to run next (`git push origin main` or `gh pr merge <n> --squash`) — not run yet.
+3. Wait for the user to say it works (or equivalent). **Do not push, do not merge, do not `gh pr merge`** in the meantime. If they report a regression, fix it and re-offer the build — never ship over an unresolved test failure from the user.
+4. Only after the user's go-ahead, run the publication step.
+
+Exemptions — no pause needed:
+
+- Doc-only changes (`.md`, `docs/`, comments, `.claude/` metadata).
+- The user has explicitly pre-authorised a ship-on-green flow for this specific task ("just push it when tests pass").
+- The change is literally invisible at runtime — `go.mod` tidy, renaming a test function, adjusting `.gitignore`.
+
+When in doubt, pause anyway. The cost of one extra "ready for you to test" message is zero; the cost of shipping a broken build to the public repo is a force-revert, a retracted PR, or a deleted issue.
+
 ### 1. Plan first
 
 - Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
