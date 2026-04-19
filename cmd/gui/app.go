@@ -685,12 +685,15 @@ func (a *App) AdoptOrphans(repoKeys []string) AdoptResultDTO {
 }
 
 // OpenInApp opens a folder in a specific application (e.g. VS Code).
+// On Windows, editor launchers like code.cmd/cursor.cmd are batch wrappers;
+// HideWindow prevents the hosting cmd.exe from flashing before the GUI spawns.
 func (a *App) OpenInApp(path string, command string) error {
 	if command == "" {
 		return fmt.Errorf("command is required")
 	}
 	cmd := exec.Command(command, path)
 	cmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
+	git.HideWindow(cmd)
 	return cmd.Start()
 }
 
