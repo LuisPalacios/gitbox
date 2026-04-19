@@ -122,7 +122,7 @@
   let onboardError = '';
 
   async function browseFolder(target: 'onboard' | 'settings') {
-    const dir = await bridge.pickFolder('Choose clone folder');
+    const dir = await bridge.pickFolder('Choose root folder');
     if (dir) {
       if (target === 'onboard') onboardFolder = dir;
       else changeFolderPath = dir;
@@ -1793,7 +1793,7 @@
         <button class="settings-btn" on:click={() => bridge.openFileInEditor(configPath)}>Open in Editor</button>
       </div>
       <div class="settings-row">
-        <span class="settings-label">Clone folder</span>
+        <span class="settings-label">Root folder</span>
         <span class="settings-value">{$configStore?.global?.folder || '(not set)'}</span>
         <button class="settings-btn" on:click={openChangeFolder}>Change</button>
       </div>
@@ -2732,11 +2732,11 @@
     <div class="overlay" on:click={() => changeFolderModal = false} transition:fade={{ duration: 120 }}>
       <div class="modal modal-account" on:click|stopPropagation transition:slide={{ duration: 180 }}>
         <div class="modal-head">
-          <h3>Change clone folder</h3>
+          <h3>Change root folder</h3>
           <button class="btn-x" on:click={() => changeFolderModal = false}>&#10005;</button>
         </div>
         <div class="modal-body">
-          <p class="delete-warning delete-danger"><strong>WARNING:</strong> Changing the clone folder will <strong>not</strong> move existing clones. They will show as "Not local" until re-cloned at the new location (or moved manually).</p>
+          <p class="delete-warning delete-danger"><strong>WARNING:</strong> Changing the root folder will <strong>not</strong> move existing clones. They will show as "Not local" until re-cloned at the new location (or moved manually).</p>
           <div class="form-row" style="margin-top: 12px;">
             <label class="form-label">Current</label>
             <span class="settings-value">{$configStore?.global?.folder || '(not set)'}</span>

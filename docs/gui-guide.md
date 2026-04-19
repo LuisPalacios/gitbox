@@ -34,7 +34,7 @@ The GUI requires a desktop environment with a display server (X11 or Wayland).
 
 ## Step 1: First launch
 
-The first time you open Gitbox, it asks you to pick a **clone folder** — this is where all your projects will live on disk. Something like `~/00.git` or `C:\repos` works well.
+The first time you open Gitbox, it asks you to pick a **root folder** — this is where all your projects will live on disk. Something like `~/00.git` or `C:\repos` works well.
 
 Click **Get started** and you're in.
 
@@ -244,7 +244,7 @@ This is useful when you want gitbox visible as a sidebar while working in other 
 Click the **gear icon** to open the settings panel:
 
 - **Config** — shows the path to your config file with an "Open in Editor" button
-- **Clone folder** — where projects are stored, with a "Change" button
+- **Root folder** — where projects are stored, with a "Change" button
 - **Theme** — switch between System, Light, and Dark
 - **Periodic fetch** — automatic fetch interval (off, 5m, 15m, 30m)
 - **Run at startup** — launch Gitbox automatically when you log in (platform dependent)
