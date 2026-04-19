@@ -3324,10 +3324,10 @@
     font-size: 11px; font-weight: 600; color: var(--text-dim);
     text-transform: uppercase; letter-spacing: 0.8px;
     padding: 10px 0 5px; border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: 4px;
   }
-  .source-header-title { flex: 1; }
-  .source-header-kebab { font-size: 14px; }
+  .source-header-title { flex: 0 0 auto; }
+  .source-header-kebab { font-size: 14px; flex: 0 0 auto; margin-right: auto; }
   .repo-row {
     display: flex; align-items: center; gap: 10px;
     padding: 8px 6px; border-radius: 6px; transition: background 0.1s;
