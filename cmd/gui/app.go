@@ -1111,130 +1111,119 @@ func discoverWTProfiles() ([]config.TerminalEntry, error) {
 	return nil, errors.New("settings.json not found")
 }
 
+// platformTerminalCandidates returns the terminal candidates eligible on the
+// current host, in the order declared in pkg/harness/terminal-directory.md.
+// Each candidate's Resolve func delegates to a platform-specific lookup
+// (PATH / Homebrew PATH / Applications bundle / Windows App Alias / Program
+// Files fallback) — the data stays in the markdown, the how-to-find-it stays
+// in Go because it depends on OS APIs.
 func platformTerminalCandidates() []knownTerminalCandidate {
-	if isWindows() {
-		return []knownTerminalCandidate{
-			{
-				Name: "Windows Terminal",
-				Resolve: func() (string, []string, bool) {
-					p, err := exec.LookPath("wt.exe")
-					if err != nil {
-						return "", nil, false
-					}
-					return p, []string{"-d", "{path}"}, true
-				},
-			},
-			{
-				// pwsh (PS 7+) starts interactive with no args and honors cmd.Dir.
-				Name: "PowerShell 7",
-				Resolve: func() (string, []string, bool) {
-					p, err := exec.LookPath("pwsh.exe")
-					if err != nil {
-						return "", nil, false
-					}
-					return p, nil, true
-				},
-			},
-			{
-				// Windows PowerShell 5.1 does NOT support -WorkingDirectory;
-				// rely on cmd.Dir instead. Bare powershell.exe is interactive.
-				Name: "PowerShell 5",
-				Resolve: func() (string, []string, bool) {
-					p, err := exec.LookPath("powershell.exe")
-					if err != nil {
-						return "", nil, false
-					}
-					return p, nil, true
-				},
-			},
-			{
-				Name: "Git Bash",
-				Resolve: func() (string, []string, bool) {
-					// git-bash.exe is usually not on PATH.
-					for _, root := range []string{os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)")} {
-						if root == "" {
-							continue
-						}
-						cand := filepath.Join(root, "Git", "git-bash.exe")
-						if _, err := os.Stat(cand); err == nil {
-							return cand, []string{"--cd={path}"}, true
-						}
-					}
-					return "", nil, false
-				},
-			},
-			{
-				Name: "WSL",
-				Resolve: func() (string, []string, bool) {
-					p, err := exec.LookPath("wsl.exe")
-					if err != nil {
-						return "", nil, false
-					}
-					return p, []string{"--cd", "{path}"}, true
-				},
-			},
-			{
-				// Bare cmd.exe is interactive; cmd.Dir sets the starting directory.
-				Name: "Command Prompt",
-				Resolve: func() (string, []string, bool) {
-					p, err := exec.LookPath("cmd.exe")
-					if err != nil {
-						return "", nil, false
-					}
-					return p, nil, true
-				},
-			},
+	specs := harness.KnownTerminals()
+	var out []knownTerminalCandidate
+	for i := range specs {
+		s := specs[i]
+		if !terminalSpecMatchesCurrentOS(s.OS) {
+			continue
 		}
+		out = append(out, knownTerminalCandidate{
+			Name: s.Name,
+			Resolve: func() (string, []string, bool) {
+				return resolveTerminalSpec(s)
+			},
+		})
+	}
+	return out
+}
+
+// terminalSpecMatchesCurrentOS reports whether a spec's OS column applies to
+// this host. "Linux" matches any non-Windows-non-macOS Unix to keep the
+// detector useful on *BSD hosts (which ship the same terminals).
+func terminalSpecMatchesCurrentOS(os string) bool {
+	switch os {
+	case "Windows":
+		return isWindows()
+	case "macOS":
+		return isDarwin()
+	case "Linux":
+		return !isWindows() && !isDarwin()
+	}
+	return false
+}
+
+// resolveTerminalSpec resolves a TerminalSpec to a (command, args, ok)
+// triple via the platform's detection path. Callers (DetectTerminals /
+// SyncTerminals) treat ok=false as "not installed, skip this candidate".
+func resolveTerminalSpec(s harness.TerminalSpec) (string, []string, bool) {
+	if isWindows() {
+		return resolveWindowsTerminalSpec(s)
 	}
 	if isDarwin() {
-		// macOS terminals launch through `open -a <App>`; path goes last.
-		macApp := func(name, bundle string) knownTerminalCandidate {
-			return knownTerminalCandidate{
-				Name: name,
-				Resolve: func() (string, []string, bool) {
-					for _, root := range []string{"/Applications", "/System/Applications/Utilities", "/Applications/Utilities"} {
-						if _, err := os.Stat(filepath.Join(root, bundle)); err == nil {
-							return "open", []string{"-a", strings.TrimSuffix(bundle, ".app")}, true
-						}
-					}
-					return "", nil, false
-				},
+		return resolveDarwinTerminalSpec(s)
+	}
+	return resolveLinuxTerminalSpec(s)
+}
+
+func resolveWindowsTerminalSpec(s harness.TerminalSpec) (string, []string, bool) {
+	// Try PATH first — covers pwsh.exe, powershell.exe, cmd.exe, wsl.exe, wt.exe.
+	if p, err := exec.LookPath(s.Command); err == nil {
+		return p, appendCopy(s.Args), true
+	}
+	// Per-command fallbacks for launchers that aren't reliably on PATH.
+	switch s.Command {
+	case "wt.exe":
+		if p, ok := wtExePath(); ok {
+			return p, appendCopy(s.Args), true
+		}
+	case "git-bash.exe":
+		for _, root := range []string{os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)")} {
+			if root == "" {
+				continue
+			}
+			cand := filepath.Join(root, "Git", "git-bash.exe")
+			if _, err := os.Stat(cand); err == nil {
+				return cand, appendCopy(s.Args), true
 			}
 		}
-		return []knownTerminalCandidate{
-			macApp("Terminal", "Terminal.app"),
-			macApp("iTerm", "iTerm.app"),
-			macApp("Warp", "Warp.app"),
+	}
+	return "", nil, false
+}
+
+func resolveDarwinTerminalSpec(s harness.TerminalSpec) (string, []string, bool) {
+	// Launching via `open -a <App>` is the mac pattern for Terminal-family
+	// apps — resolve by checking for the app bundle rather than by looking
+	// up "open" on PATH, since PATH always has it.
+	if s.Command == "open" && len(s.Args) >= 2 && s.Args[0] == "-a" {
+		appName := s.Args[1]
+		bundle := appName + ".app"
+		for _, root := range []string{"/Applications", "/System/Applications/Utilities", "/Applications/Utilities"} {
+			if _, err := os.Stat(filepath.Join(root, bundle)); err == nil {
+				return "open", appendCopy(s.Args), true
+			}
 		}
+		return "", nil, false
 	}
-	// Linux and other Unixes.
-	linuxEntry := func(name, cmd string, args []string) knownTerminalCandidate {
-		return knownTerminalCandidate{
-			Name: name,
-			Resolve: func() (string, []string, bool) {
-				p, err := lookPathWithBrewPATH(cmd)
-				if err != nil {
-					return "", nil, false
-				}
-				return p, args, true
-			},
-		}
+	p, err := lookPathWithBrewPATH(s.Command)
+	if err != nil {
+		return "", nil, false
 	}
-	// Linux templates include "{command}" so AI harness launches splice the
-	// harness argv into the right slot for each terminal's CLI convention.
-	// For terminal-only launches the token expands to zero items.
-	// Xfce Terminal and Terminator don't accept a shell command after their
-	// workdir flag without a wrapper, so those entries omit {command} and
-	// remain terminal-only — harness launches will surface the actionable
-	// error until the user reorders global.terminals.
-	return []knownTerminalCandidate{
-		linuxEntry("GNOME Terminal", "gnome-terminal", []string{"--working-directory={path}", "--", "{command}"}),
-		linuxEntry("Konsole", "konsole", []string{"--workdir", "{path}", "-e", "{command}"}),
-		linuxEntry("Kitty", "kitty", []string{"--directory={path}", "{command}"}),
-		linuxEntry("Alacritty", "alacritty", []string{"--working-directory", "{path}", "-e", "{command}"}),
-		linuxEntry("Xfce Terminal", "xfce4-terminal", []string{"--working-directory={path}"}),
-		linuxEntry("Terminator", "terminator", []string{"--working-directory={path}"}),
+	return p, appendCopy(s.Args), true
+}
+
+func resolveLinuxTerminalSpec(s harness.TerminalSpec) (string, []string, bool) {
+	p, err := lookPathWithBrewPATH(s.Command)
+	if err != nil {
+		return "", nil, false
 	}
+	return p, appendCopy(s.Args), true
+}
+
+// appendCopy returns a defensive copy of the slice so resolvers can't
+// accidentally hand out an aliased reference to the spec's underlying args.
+func appendCopy(src []string) []string {
+	if len(src) == 0 {
+		return nil
+	}
+	return append([]string(nil), src...)
 }
 
 // DetectTerminals returns terminal emulators available on the system.
@@ -1374,63 +1363,58 @@ func (a *App) SyncTerminals() {
 		}
 	}
 
+	knownIndex := make(map[string]int, len(knownTerminals))
+	for i, k := range knownTerminals {
+		knownIndex[k.Name] = i
+	}
+
+	// Dedup existing entries by name; bucket known vs. user-custom.
 	seenName := make(map[string]bool)
-	var deduped []config.TerminalEntry
+	existingByName := make(map[string]config.TerminalEntry)
+	var customOrder []config.TerminalEntry // not in knownTerminals
 	for _, t := range a.cfg.Global.Terminals {
 		if seenName[t.Name] {
 			continue
 		}
 		seenName[t.Name] = true
-		deduped = append(deduped, t)
-	}
-
-	changed := len(deduped) != len(a.cfg.Global.Terminals)
-
-	// Upgrade legacy entries in place: if an existing entry's args are the
-	// pre-{command} shape of a matching known candidate (same Name, same
-	// Command), rewrite to the current template so harness launches work
-	// without the user editing the JSON. Customizations (different flags,
-	// reordered args) are left alone — only exact-legacy matches upgrade.
-	for i := range deduped {
-		for _, cand := range knownTerminals {
-			if cand.Name != deduped[i].Name {
-				continue
-			}
-			cmd, candArgs, ok := cand.Resolve()
-			if !ok {
-				continue
-			}
-			if cmd != deduped[i].Command {
-				continue
-			}
-			legacy := stripCommandTokens(candArgs)
-			if argsEqual(deduped[i].Args, legacy) && !argsEqual(deduped[i].Args, candArgs) {
-				deduped[i].Args = append([]string(nil), candArgs...)
-				changed = true
-			}
-			break
+		if _, ok := knownIndex[t.Name]; ok {
+			existingByName[t.Name] = t
+		} else {
+			customOrder = append(customOrder, t)
 		}
 	}
 
+	// Emit the known block in markdown order. For entries the user already
+	// had, upgrade exact-legacy args to the current candidate template so
+	// harness launches work without manual edits; otherwise carry the
+	// user's command/args through unchanged. Missing known terminals that
+	// resolve on PATH are added at their markdown position.
+	var result []config.TerminalEntry
 	for _, cand := range knownTerminals {
-		if seenName[cand.Name] {
+		cmd, candArgs, ok := cand.Resolve()
+		if existing, have := existingByName[cand.Name]; have {
+			if ok && cmd == existing.Command {
+				legacy := stripCommandTokens(candArgs)
+				if argsEqual(existing.Args, legacy) && !argsEqual(existing.Args, candArgs) {
+					existing.Args = append([]string(nil), candArgs...)
+				}
+			}
+			result = append(result, existing)
 			continue
 		}
-		cmd, args, ok := cand.Resolve()
 		if !ok {
 			continue
 		}
-		deduped = append(deduped, config.TerminalEntry{
+		result = append(result, config.TerminalEntry{
 			Name:    cand.Name,
 			Command: cmd,
-			Args:    append([]string(nil), args...),
+			Args:    append([]string(nil), candArgs...),
 		})
-		seenName[cand.Name] = true
-		changed = true
 	}
+	result = append(result, customOrder...)
 
-	if changed {
-		a.cfg.Global.Terminals = deduped
+	if !terminalsEqual(result, a.cfg.Global.Terminals) {
+		a.cfg.Global.Terminals = result
 		_ = config.Save(a.cfg, a.cfgPath)
 	}
 }
