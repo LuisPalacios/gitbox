@@ -71,7 +71,16 @@ If `gh auth switch` fails (the owner is not in `gh auth status`), stop and ask t
   - `chore` otherwise.
 - Propose worktree path `../gitbox-<N>-<slug>` (sibling of main clone).
 
-**Gate:** show the user the branch name, worktree path, and a one-line issue summary. Wait for confirmation before touching the filesystem.
+**Gate:** show the user the following block verbatim so they can confirm I fetched the right issue, then wait for explicit confirmation before touching the filesystem.
+
+```text
+Issue #<N>: <exact title from gh>
+Labels:    <labels>
+Branch:    <type>/<N>-<slug>
+Worktree:  ../gitbox-<N>-<slug>
+```
+
+Ask: "Is this the right issue? Proceed?" Do not create the worktree until the user answers yes.
 
 ## Step 2: Create worktree
 
