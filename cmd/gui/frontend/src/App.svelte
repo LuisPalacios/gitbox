@@ -3328,6 +3328,7 @@
   }
   .source-header-title { flex: 0 0 auto; }
   .source-header-kebab { font-size: 14px; flex: 0 0 auto; margin-right: auto; }
+  .source-header-kebab .action-dropdown { right: auto; left: 0; }
   .repo-row {
     display: flex; align-items: center; gap: 10px;
     padding: 8px 6px; border-radius: 6px; transition: background 0.1s;
