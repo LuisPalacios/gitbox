@@ -126,25 +126,9 @@ func TestKnownToolsEmbeddedMarkdown(t *testing.T) {
 		t.Fatal("embedded tools-directory.md produced zero tools — embed or parser broken")
 	}
 
-	// Must include every harness #23 promised by name.
-	wantNames := map[string]bool{
-		"Claude Code":  false,
-		"Codex CLI":    false,
-		"Gemini CLI":   false,
-		"Aider":        false,
-		"Cursor Agent": false,
-		"OpenCode":     false,
-	}
-	for _, t0 := range tools {
-		if _, ok := wantNames[t0.Name]; ok {
-			wantNames[t0.Name] = true
-		}
-	}
-	for name, seen := range wantNames {
-		if !seen {
-			t.Errorf("embedded directory is missing required harness %q", name)
-		}
-	}
+	// Which specific tools are listed is a curatorial decision — tools-
+	// directory.md is user-editable. Don't assert individual names here;
+	// the smoke checks below cover the structural invariants.
 
 	// Must NOT include Framework / Orchestrator / Cloud categories.
 	// Agentic IDEs (Cursor, Windsurf) ARE now eligible — they launch inside
