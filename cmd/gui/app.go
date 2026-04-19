@@ -22,6 +22,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/update"
 	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/harness"
 	"github.com/LuisPalacios/gitbox/pkg/identity"
 	"github.com/LuisPalacios/gitbox/pkg/mirror"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
@@ -1566,16 +1567,25 @@ type knownHarnessCandidate struct {
 	Command string // binary name to look up on PATH (e.g. "claude", "codex")
 }
 
-// knownAIHarnesses lists AI CLI harnesses to auto-detect on PATH. The order
-// here is the order Sync will append missing entries — users reorder
+// knownAIHarnesses is the auto-detection seed. It's built once at process
+// start from the embedded agentic tools directory in pkg/harness. The order
+// is the order in which Sync appends missing entries — users reorder
 // global.ai_harnesses freely and their order wins on subsequent syncs.
-var knownAIHarnesses = []knownHarnessCandidate{
-	{Name: "Claude Code", Command: "claude"},
-	{Name: "Codex", Command: "codex"},
-	{Name: "Gemini", Command: "gemini"},
-	{Name: "Aider", Command: "aider"},
-	{Name: "Cursor Agent", Command: "cursor-agent"},
-	{Name: "OpenCode", Command: "opencode"},
+//
+// To add or remove an auto-detected harness, edit
+// pkg/harness/tools-directory.md rather than this file.
+var knownAIHarnesses = buildKnownAIHarnesses()
+
+// buildKnownAIHarnesses reads the embedded tool directory and returns the
+// subset whose Executable cell looks like a single PATH binary — i.e. the
+// rows pkg/harness.KnownTools already filtered for us.
+func buildKnownAIHarnesses() []knownHarnessCandidate {
+	tools := harness.KnownTools()
+	out := make([]knownHarnessCandidate, 0, len(tools))
+	for _, t := range tools {
+		out = append(out, knownHarnessCandidate{Name: t.Name, Command: t.Command})
+	}
+	return out
 }
 
 // harnessID returns a stable, lowercase slug used as the AIHarnessInfo.ID.

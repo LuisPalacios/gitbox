@@ -11,6 +11,24 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 )
 
+func TestKnownAIHarnessesWiredFromEmbed(t *testing.T) {
+	// Proves the embed + parser chain produced a non-empty list at package
+	// init. The pkg/harness package has its own parser unit tests; this one
+	// is a smoke check that the cmd/gui side assembled its candidate list.
+	if len(knownAIHarnesses) == 0 {
+		t.Fatal("knownAIHarnesses is empty — embed or parser chain broke")
+	}
+	// Every candidate must have both a display name and an identifier-shaped command.
+	for _, h := range knownAIHarnesses {
+		if h.Name == "" {
+			t.Errorf("candidate has empty Name: %+v", h)
+		}
+		if h.Command == "" {
+			t.Errorf("candidate %q has empty Command", h.Name)
+		}
+	}
+}
+
 func TestHarnessIDSlugification(t *testing.T) {
 	tests := map[string]string{
 		"Claude Code":  "claude-code",
