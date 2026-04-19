@@ -194,6 +194,22 @@ export function ListRemoteRepos(arg1) {
   return window['go']['main']['App']['ListRemoteRepos'](arg1);
 }
 
+export function OpenAccountFolder(arg1) {
+  return window['go']['main']['App']['OpenAccountFolder'](arg1);
+}
+
+export function OpenAccountInApp(arg1, arg2) {
+  return window['go']['main']['App']['OpenAccountInApp'](arg1, arg2);
+}
+
+export function OpenAccountInBrowser(arg1) {
+  return window['go']['main']['App']['OpenAccountInBrowser'](arg1);
+}
+
+export function OpenAccountInTerminal(arg1, arg2, arg3) {
+  return window['go']['main']['App']['OpenAccountInTerminal'](arg1, arg2, arg3);
+}
+
 export function OpenFileInEditor(arg1) {
   return window['go']['main']['App']['OpenFileInEditor'](arg1);
 }

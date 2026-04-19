@@ -99,6 +99,14 @@ export function ListAccountOrgs(arg1:string):Promise<Array<string>>;
 
 export function ListRemoteRepos(arg1:string):Promise<Array<main.DiscoverResult>>;
 
+export function OpenAccountFolder(arg1:string):Promise<void>;
+
+export function OpenAccountInApp(arg1:string,arg2:string):Promise<void>;
+
+export function OpenAccountInBrowser(arg1:string):Promise<void>;
+
+export function OpenAccountInTerminal(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
+
 export function OpenFileInEditor(arg1:string):Promise<void>;
 
 export function OpenInApp(arg1:string,arg2:string):Promise<void>;

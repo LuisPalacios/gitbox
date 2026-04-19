@@ -12,6 +12,13 @@ func RepoWebURL(accountURL, repoKey string) string {
 	return strings.TrimRight(accountURL, "/") + "/" + repoKey
 }
 
+// AccountProfileURL constructs the provider profile/org web URL from an
+// account base URL and a username. Works across GitHub, GitLab, Gitea,
+// Forgejo, and Bitbucket — all use <base>/<username> for user and org pages.
+func AccountProfileURL(accountURL, username string) string {
+	return strings.TrimRight(accountURL, "/") + "/" + username
+}
+
 // OpenInBrowser opens a URL in the default browser.
 // Do NOT use HideWindow here — these launch GUI apps (browser windows).
 func OpenInBrowser(url string) error {

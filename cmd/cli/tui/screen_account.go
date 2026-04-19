@@ -2,11 +2,16 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/cmd/cli/tui/styles"
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
+	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -163,6 +168,20 @@ func (m accountModel) Update(msg tea.Msg) (accountModel, tea.Cmd) {
 			m.view = accountViewRename
 			m.renameForm = m.buildRenameForm()
 			return m, m.renameForm.Init()
+
+		case msg.String() == "b" && m.view == accountViewDetail:
+			acct := m.cfg.Accounts[m.selectedKey]
+			url := git.AccountProfileURL(acct.URL, acct.Username)
+			m.statusMsg = ""
+			m.errMsg = ""
+			return m, openInBrowserCmd(url)
+
+		case msg.String() == "o" && m.view == accountViewDetail:
+			globalFolder := config.ExpandTilde(m.cfg.Global.Folder)
+			path := filepath.Join(globalFolder, m.selectedKey)
+			m.statusMsg = ""
+			m.errMsg = ""
+			return m, openAccountFolderCmd(path)
 		}
 
 	case credStatusUpdatedMsg:
@@ -177,6 +196,22 @@ func (m accountModel) Update(msg tea.Msg) (accountModel, tea.Cmd) {
 		} else {
 			m.statusMsg = "Account updated."
 			m.view = accountViewDetail
+		}
+		return m, nil
+
+	case openBrowserDoneMsg:
+		if msg.err != nil {
+			m.errMsg = msg.err.Error()
+		} else {
+			m.statusMsg = "Opened in browser."
+		}
+		return m, nil
+
+	case openFolderDoneMsg:
+		if msg.err != nil {
+			m.errMsg = msg.err.Error()
+		} else {
+			m.statusMsg = "Opened folder."
 		}
 		return m, nil
 
@@ -219,6 +254,37 @@ func (m accountModel) View() string {
 		return m.renameForm.View()
 	default:
 		return m.viewDetail()
+	}
+}
+
+// openAccountFolderCmd reveals path in the OS file manager, or returns an
+// error if the folder does not exist. Mirrors the backend's
+// resolveAccountFolder behavior for the TUI's `o` binding.
+func openAccountFolderCmd(path string) tea.Cmd {
+	return func() tea.Msg {
+		info, err := os.Stat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return openFolderDoneMsg{err: fmt.Errorf("account folder does not exist: %s", path)}
+			}
+			return openFolderDoneMsg{err: fmt.Errorf("account folder %s: %w", path, err)}
+		}
+		if !info.IsDir() {
+			return openFolderDoneMsg{err: fmt.Errorf("account folder is not a directory: %s", path)}
+		}
+		var cmd *exec.Cmd
+		switch runtime.GOOS {
+		case "windows":
+			cmd = exec.Command("explorer", filepath.FromSlash(path))
+		case "darwin":
+			cmd = exec.Command("open", path)
+		default:
+			cmd = exec.Command("xdg-open", path)
+		}
+		if err := cmd.Start(); err != nil {
+			return openFolderDoneMsg{err: err}
+		}
+		return openFolderDoneMsg{}
 	}
 }
 
@@ -379,7 +445,7 @@ func (m accountModel) viewDetail() string {
 	if (acct.DefaultCredentialType == "ssh" || acct.DefaultCredentialType == "gcm") && credResult.PAT != credential.StatusOK {
 		hints = append(hints, "p PAT")
 	}
-	hints = append(hints, "d discover", "v verify", "D delete", "ESC back")
+	hints = append(hints, "d discover", "v verify", "b browser", "o folder", "D delete", "ESC back")
 	b.WriteString(renderHintsFit(m.theme, m.width, hints...))
 
 	return b.String()

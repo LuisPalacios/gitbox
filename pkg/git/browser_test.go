@@ -27,3 +27,30 @@ func TestRepoWebURL(t *testing.T) {
 		})
 	}
 }
+
+func TestAccountProfileURL(t *testing.T) {
+	tests := []struct {
+		name       string
+		accountURL string
+		username   string
+		want       string
+	}{
+		{"github user", "https://github.com", "LuisPalacios", "https://github.com/LuisPalacios"},
+		{"github org", "https://github.com", "Sumwall", "https://github.com/Sumwall"},
+		{"gitlab user", "https://gitlab.com", "alice", "https://gitlab.com/alice"},
+		{"gitea", "https://gitea.example.com", "bob", "https://gitea.example.com/bob"},
+		{"forgejo", "https://codeberg.org", "team", "https://codeberg.org/team"},
+		{"bitbucket", "https://bitbucket.org", "workspace", "https://bitbucket.org/workspace"},
+		{"self-hosted with port", "https://git.internal:3000", "team", "https://git.internal:3000/team"},
+		{"trailing slash trimmed", "https://github.com/", "user", "https://github.com/user"},
+		{"multiple trailing slashes", "https://github.com///", "user", "https://github.com/user"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := AccountProfileURL(tt.accountURL, tt.username)
+			if got != tt.want {
+				t.Errorf("AccountProfileURL(%q, %q) = %q, want %q", tt.accountURL, tt.username, got, tt.want)
+			}
+		})
+	}
+}
