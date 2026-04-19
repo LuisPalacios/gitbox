@@ -1,16 +1,16 @@
 ---
-name: merge-issue
-description: Merge a PR created by /work-issue, then clean up its worktree and branch. Use when the user says "merge PR #M", "merge the issue-N branch", or invokes /merge-issue. Runs a rebase freshness check and CI gate, waits for explicit go-ahead before merging, then removes the sibling worktree.
+name: merge-pr
+description: Merge a PR (typically one created by /work-issue), then clean up its worktree and branch. Use when the user says "merge PR #M", "merge the branch for issue N", or invokes /merge-pr. Runs a rebase freshness check and CI gate, waits for explicit go-ahead before merging, then removes the sibling worktree.
 ---
 
-# /merge-issue — Merge and clean up
+# /merge-pr — Merge a PR and clean up
 
-**IMPORTANT:** Before starting, tell the user "I'm executing `/merge-issue <PR#>`" and create a todo list with the phases below.
+**IMPORTANT:** Before starting, tell the user "I'm executing `/merge-pr <PR#>`" and create a todo list with the phases below.
 
 ## Usage
 
 ```text
-/merge-issue <PR#>
+/merge-pr <PR#>
 ```
 
 `<PR#>` is the pull request number.
