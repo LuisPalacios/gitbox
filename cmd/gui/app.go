@@ -1870,12 +1870,17 @@ func buildMacAppleScript(appName, path string, harnessArgv []string) string {
     do script "%s"
 end tell`, escaped)
 	case "iTerm":
+		// Capture the new window reference so the write-text call can't race
+		// against `current window` — under cold start or when iTerm's focus
+		// is elsewhere, `current window` resolves to the wrong thing before
+		// the new window is actually ready. Activate last so the freshly
+		// created window is what comes to the front.
 		return fmt.Sprintf(`tell application "iTerm"
-    activate
-    create window with default profile
-    tell current session of current window
+    set newWindow to (create window with default profile)
+    tell current session of newWindow
         write text "%s"
     end tell
+    activate
 end tell`, escaped)
 	}
 	return ""
