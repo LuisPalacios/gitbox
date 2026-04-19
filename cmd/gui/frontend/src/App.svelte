@@ -2397,7 +2397,7 @@
               <span class="adopt-repo-key">{o.repoKey}</span>
               <span class="adopt-target">&rarr; {o.matchedSource}</span>
               <span class="adopt-action">{o.needsRelocate ? 'relocate' : 'in place'}</span>
-              <span class="adopt-path"><span class="adopt-path-root">Root folder/</span>{o.relPath}</span>
+              <span class="adopt-path"><span class="adopt-path-root">ROOT</span> {o.relPath}</span>
             </label>
           {/each}
           {#each orphanModal.orphans.filter(o => !o.matchedAccount && !o.localOnly) as o, i}
@@ -2410,7 +2410,7 @@
               {#if o.ambiguousCandidates && o.ambiguousCandidates.length > 1}
                 <span class="adopt-hint">ambiguous: {o.ambiguousCandidates.join(' | ')}</span>
               {/if}
-              <span class="adopt-path adopt-path-muted"><span class="adopt-path-root">Root folder/</span>{o.relPath}</span>
+              <span class="adopt-path adopt-path-muted"><span class="adopt-path-root">ROOT</span> {o.relPath}</span>
             </div>
           {/each}
           {#each orphanModal.orphans.filter(o => o.localOnly) as o, i}
@@ -3602,7 +3602,19 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .adopt-path-muted { padding-left: 0; }
-  .adopt-path-root { color: var(--text-secondary); font-family: inherit; }
+  .adopt-path-root {
+    display: inline-block;
+    padding: 1px 6px;
+    margin-right: 4px;
+    background: var(--bg-secondary, rgba(128, 128, 128, 0.18));
+    color: var(--text-secondary);
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    vertical-align: 1px;
+  }
 
   .btn-adopt-confirm {
     padding: 6px 12px; background: #22c55e; border: none; color: #000;
