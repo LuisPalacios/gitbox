@@ -129,6 +129,15 @@ Click a repo that shows local changes, conflicts, or other issues. An expandable
 
 This detail view **updates automatically** when Gitbox detects new changes — you don't need to close and reopen it.
 
+### Adopting orphan repos
+
+The orphans modal lists clones under your parent folder that aren't yet in `gitbox.json`, grouped by how Gitbox can handle them:
+
+- **Ready to adopt** — Gitbox matched the clone to an account using its remote URL, the repo's `credential.<url>.username`, or the folder it lives under. Check the box and click **Adopt** to register it (and optionally relocate it to the canonical path).
+- **Unknown account** — no configured account matches the remote host. Add an account first, then re-open the modal.
+- **Unknown account, `ambiguous: a | b`** — two or more accounts on the same host tie on every identity signal Gitbox looks at. The checkbox is disabled so no files are moved. To disambiguate: move the clone under the correct source subtree, edit `gitbox.json` to reflect the intended account, or set `credential.<url>.username` in the clone, then re-open the modal.
+- **Local only** — no `origin` remote, not adoptable.
+
 ### Creating repositories
 
 Click **Create repo** on an account card to create a new repository directly on the provider without leaving Gitbox.
