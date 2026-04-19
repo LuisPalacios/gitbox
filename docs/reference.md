@@ -353,6 +353,25 @@ Unlike `status`, `scan` does not require a gitbox configuration — it works on 
 
 When a gitbox configuration exists and scanning inside the parent folder, repos are annotated as `[tracked]` or `[ORPHAN]` with account-matching hints and a summary count.
 
+Orphan tags:
+
+- `[ORPHAN → <account>]` — scan matched the orphan to a configured account.
+- `[ORPHAN — local only]` — repo has no `origin` remote.
+- `[ORPHAN — unknown account]` — no host-matching account is configured.
+- `[ORPHAN — ambiguous: a | b]` — two or more accounts on the same host tie on every identity signal. Move the folder under the right source subtree, edit `gitbox.json`, or set `credential.<url>.username` in the repo to disambiguate, then re-scan.
+
+To pick an account for an orphan, gitbox scores each host-matching account using the signals below (all values are additive, higher wins):
+
+| Signal | Score | Source |
+| --- | --- | --- |
+| Host match (required baseline) | 1 | account URL hostname or SSH alias vs the parsed remote host |
+| Owner equals `account.username` | +3 | owner segment of the remote URL path |
+| Repo lives under the account's source folder | +5 | first path component of the repo relative to the gitbox parent folder |
+| HTTPS URL embeds `user@` where user equals `account.username` | +10 | `url.User.Username()` of the origin remote |
+| `.git/config` has `credential.<url>.username` equal to `account.username` | +10 | `git config --get-regexp '^credential\..*\.username$'` in the repo |
+
+If the top score is shared by two or more accounts (including a bare host-only tie) the match is marked ambiguous: no account is picked, no files are moved, and the scan and GUI surface the candidate list.
+
 ---
 
 ## Adopting

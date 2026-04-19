@@ -122,7 +122,7 @@
   let onboardError = '';
 
   async function browseFolder(target: 'onboard' | 'settings') {
-    const dir = await bridge.pickFolder('Choose clone folder');
+    const dir = await bridge.pickFolder('Choose root folder');
     if (dir) {
       if (target === 'onboard') onboardFolder = dir;
       else changeFolderPath = dir;
@@ -1793,7 +1793,7 @@
         <button class="settings-btn" on:click={() => bridge.openFileInEditor(configPath)}>Open in Editor</button>
       </div>
       <div class="settings-row">
-        <span class="settings-label">Clone folder</span>
+        <span class="settings-label">Root folder</span>
         <span class="settings-value">{$configStore?.global?.folder || '(not set)'}</span>
         <button class="settings-btn" on:click={openChangeFolder}>Change</button>
       </div>
@@ -2397,6 +2397,7 @@
               <span class="adopt-repo-key">{o.repoKey}</span>
               <span class="adopt-target">&rarr; {o.matchedSource}</span>
               <span class="adopt-action">{o.needsRelocate ? 'relocate' : 'in place'}</span>
+              <span class="adopt-path"><span class="adopt-path-root">Root</span>/{o.relPath}</span>
             </label>
           {/each}
           {#each orphanModal.orphans.filter(o => !o.matchedAccount && !o.localOnly) as o, i}
@@ -2406,6 +2407,10 @@
             <div class="adopt-item adopt-item-muted">
               <span class="adopt-repo-key">{o.repoKey}</span>
               <span class="adopt-remote">{o.remoteURL}</span>
+              {#if o.ambiguousCandidates && o.ambiguousCandidates.length > 1}
+                <span class="adopt-hint">ambiguous: {o.ambiguousCandidates.join(' | ')}</span>
+              {/if}
+              <span class="adopt-path adopt-path-muted"><span class="adopt-path-root">Root</span>/{o.relPath}</span>
             </div>
           {/each}
           {#each orphanModal.orphans.filter(o => o.localOnly) as o, i}
@@ -2727,11 +2732,11 @@
     <div class="overlay" on:click={() => changeFolderModal = false} transition:fade={{ duration: 120 }}>
       <div class="modal modal-account" on:click|stopPropagation transition:slide={{ duration: 180 }}>
         <div class="modal-head">
-          <h3>Change clone folder</h3>
+          <h3>Change root folder</h3>
           <button class="btn-x" on:click={() => changeFolderModal = false}>&#10005;</button>
         </div>
         <div class="modal-body">
-          <p class="delete-warning delete-danger"><strong>WARNING:</strong> Changing the clone folder will <strong>not</strong> move existing clones. They will show as "Not local" until re-cloned at the new location (or moved manually).</p>
+          <p class="delete-warning delete-danger"><strong>WARNING:</strong> Changing the root folder will <strong>not</strong> move existing clones. They will show as "Not local" until re-cloned at the new location (or moved manually).</p>
           <div class="form-row" style="margin-top: 12px;">
             <label class="form-label">Current</label>
             <span class="settings-value">{$configStore?.global?.folder || '(not set)'}</span>
@@ -3581,7 +3586,7 @@
   .adopt-section-local { color: var(--text-muted); }
 
   .adopt-item {
-    display: flex; align-items: center; gap: 8px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
     padding: 3px 0; font-size: 12px; color: var(--text-primary);
   }
   .adopt-item input[type="checkbox"] { margin: 0; accent-color: #22c55e; }
@@ -3590,6 +3595,23 @@
   .adopt-target { color: var(--text-secondary); font-size: 11px; }
   .adopt-action { color: var(--text-muted); font-size: 11px; font-style: italic; margin-left: auto; }
   .adopt-remote { color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
+  .adopt-hint { color: #f59e0b; font-size: 11px; font-style: italic; margin-left: auto; }
+  .adopt-path {
+    flex-basis: 100%; padding-left: 22px;
+    color: var(--text-muted); font-size: 11px; font-family: var(--font-mono, monospace);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .adopt-path-muted { padding-left: 0; }
+  .adopt-path-root {
+    display: inline-block;
+    padding: 0 6px;
+    background: var(--bg-secondary, rgba(128, 128, 128, 0.18));
+    color: var(--text-secondary);
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+  }
 
   .btn-adopt-confirm {
     padding: 6px 12px; background: #22c55e; border: none; color: #000;

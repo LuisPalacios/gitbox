@@ -125,7 +125,7 @@ func (m settingsModel) View() string {
 	b.WriteString(m.theme.TextMuted.Render(strings.Repeat("─", max(m.width, 40))) + "\n\n")
 
 	// Folder field.
-	label := "  Global folder: "
+	label := "  Root folder: "
 	if m.active == settingsFolder {
 		m.folderInput.Focus()
 		label = m.theme.Brand.Render(label)

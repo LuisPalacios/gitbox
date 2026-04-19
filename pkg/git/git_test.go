@@ -188,6 +188,38 @@ func TestConfigGetSet(t *testing.T) {
 	}
 }
 
+func TestCredentialUsernames(t *testing.T) {
+	clonePath, _ := initTestRepo(t)
+
+	// No credential.*.username keys set → expect nil.
+	if names := CredentialUsernames(clonePath); len(names) != 0 {
+		t.Errorf("expected no usernames, got %v", names)
+	}
+
+	// Set one credential.<url>.username and one unrelated credential.<url>.* key.
+	if err := ConfigSet(clonePath, "credential.https://example.com.username", "user-a"); err != nil {
+		t.Fatalf("ConfigSet: %v", err)
+	}
+	if err := ConfigSet(clonePath, "credential.https://example.com.helper", "manager"); err != nil {
+		t.Fatalf("ConfigSet: %v", err)
+	}
+	if err := ConfigSet(clonePath, "credential.https://other.example.com.username", "user-b"); err != nil {
+		t.Fatalf("ConfigSet: %v", err)
+	}
+
+	names := CredentialUsernames(clonePath)
+	if len(names) != 2 {
+		t.Fatalf("expected 2 usernames, got %d: %v", len(names), names)
+	}
+	seen := map[string]bool{}
+	for _, n := range names {
+		seen[n] = true
+	}
+	if !seen["user-a"] || !seen["user-b"] {
+		t.Errorf("expected user-a and user-b, got %v", names)
+	}
+}
+
 func TestCurrentBranch(t *testing.T) {
 	clonePath, _ := initTestRepo(t)
 

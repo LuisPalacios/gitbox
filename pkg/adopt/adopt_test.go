@@ -226,6 +226,181 @@ func TestMatchAccount(t *testing.T) {
 	}
 }
 
+// twoGithubConfig returns a config with two github.com accounts and a
+// Forgejo account — the configuration shape that triggers the #35 bug.
+func twoGithubConfig(parentFolder string) *config.Config {
+	return &config.Config{
+		Version: 2,
+		Global:  config.GlobalConfig{Folder: parentFolder},
+		Accounts: map[string]config.Account{
+			"github-personal": {
+				Provider: "github",
+				URL:      "https://github.com",
+				Username: "user-a",
+				Name:     "User A",
+				Email:    "a@test.com",
+			},
+			"github-work": {
+				Provider: "github",
+				URL:      "https://github.com",
+				Username: "user-b",
+				Name:     "User B",
+				Email:    "b@test.com",
+			},
+			"forgejo-misc": {
+				Provider: "forgejo",
+				URL:      "https://forgejo.example.com",
+				Username: "luis",
+			},
+		},
+		Sources: map[string]config.Source{
+			"github-personal": {Account: "github-personal", Repos: map[string]config.Repo{}},
+			"github-work":     {Account: "github-work", Repos: map[string]config.Repo{}},
+			"forgejo-misc":    {Account: "forgejo-misc", Repos: map[string]config.Repo{}},
+		},
+		SourceOrder: []string{"github-personal", "github-work", "forgejo-misc"},
+	}
+}
+
+func TestMatchAccountEx_EmbeddedURLUser(t *testing.T) {
+	root := t.TempDir()
+	cfg := twoGithubConfig(root)
+
+	// Orphan at ~/root/github-personal/org-a/repo-a with remote embedding user-b
+	// (the Username of github-work). Without the URL-user signal this would
+	// tie on host alone and pick the wrong account.
+	orphanPath := filepath.Join(root, "github-personal", "org-a", "repo-a")
+	if err := os.MkdirAll(orphanPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	acct, _, amb := MatchAccountEx(cfg, MatchContext{
+		Host:         "github.com",
+		Owner:        "org-a",
+		RemoteURL:    "https://user-b@github.com/org-a/repo-a.git",
+		RepoPath:     orphanPath,
+		ParentFolder: root,
+	})
+	if acct != "github-work" {
+		t.Errorf("account = %q, want github-work (URL-user signal should win)", acct)
+	}
+	if len(amb) != 0 {
+		t.Errorf("expected unambiguous match, got candidates %v", amb)
+	}
+}
+
+func TestMatchAccountEx_CredentialUsername(t *testing.T) {
+	root := t.TempDir()
+	cfg := twoGithubConfig(root)
+
+	orphanPath := filepath.Join(root, "misc", "repo")
+	initBareRepo(t, orphanPath, "https://github.com/org-a/repo.git")
+
+	// Set credential.<url>.username in the repo — simulates what `git clone`
+	// with a specific account leaves behind.
+	cmd := exec.Command("git", "config", "credential.https://github.com.username", "user-b")
+	cmd.Dir = orphanPath
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "HOME="+t.TempDir())
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git config: %v\n%s", err, out)
+	}
+
+	acct, _, amb := MatchAccountEx(cfg, MatchContext{
+		Host:         "github.com",
+		Owner:        "org-a",
+		RemoteURL:    "https://github.com/org-a/repo.git",
+		RepoPath:     orphanPath,
+		ParentFolder: root,
+	})
+	if acct != "github-work" {
+		t.Errorf("account = %q, want github-work (credential username signal)", acct)
+	}
+	if len(amb) != 0 {
+		t.Errorf("expected unambiguous match, got candidates %v", amb)
+	}
+}
+
+func TestMatchAccountEx_ParentFolderMatch(t *testing.T) {
+	root := t.TempDir()
+	cfg := twoGithubConfig(root)
+
+	// Orphan sits under the github-work source folder — that alone should
+	// break the tie when no stronger signal fires.
+	orphanPath := filepath.Join(root, "github-work", "org-a", "repo")
+	if err := os.MkdirAll(orphanPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	acct, _, amb := MatchAccountEx(cfg, MatchContext{
+		Host:         "github.com",
+		Owner:        "org-a",
+		RemoteURL:    "https://github.com/org-a/repo.git",
+		RepoPath:     orphanPath,
+		ParentFolder: root,
+	})
+	if acct != "github-work" {
+		t.Errorf("account = %q, want github-work (parent-folder signal)", acct)
+	}
+	if len(amb) != 0 {
+		t.Errorf("expected unambiguous match, got candidates %v", amb)
+	}
+}
+
+func TestMatchAccountEx_Ambiguous(t *testing.T) {
+	root := t.TempDir()
+	cfg := twoGithubConfig(root)
+
+	// Orphan lives off to the side (no parent-folder signal) with a plain
+	// remote URL (no embedded user, no credential helper) and an org owner
+	// that matches neither Username. Both github accounts tie at host=1.
+	orphanPath := filepath.Join(root, "elsewhere", "org-c", "repo")
+	if err := os.MkdirAll(orphanPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	acct, src, amb := MatchAccountEx(cfg, MatchContext{
+		Host:         "github.com",
+		Owner:        "org-c",
+		RemoteURL:    "https://github.com/org-c/repo.git",
+		RepoPath:     orphanPath,
+		ParentFolder: root,
+	})
+	if acct != "" || src != "" {
+		t.Errorf("expected empty acct/src on ambiguous match, got %q/%q", acct, src)
+	}
+	if len(amb) != 2 {
+		t.Fatalf("expected 2 tied candidates, got %d: %v", len(amb), amb)
+	}
+	seen := map[string]bool{}
+	for _, c := range amb {
+		seen[c] = true
+	}
+	if !seen["github-personal"] || !seen["github-work"] {
+		t.Errorf("expected github-personal and github-work in candidates, got %v", amb)
+	}
+}
+
+func TestMatchAccountEx_UnambiguousWhenOnlyOneHostMatches(t *testing.T) {
+	// Regression guard: with exactly one host-matching account, score=1 alone
+	// is enough (no tie possible).
+	root := t.TempDir()
+	cfg := twoGithubConfig(root)
+	orphanPath := filepath.Join(root, "x", "y", "z")
+	acct, _, amb := MatchAccountEx(cfg, MatchContext{
+		Host:         "forgejo.example.com",
+		Owner:        "some-org",
+		RemoteURL:    "https://forgejo.example.com/some-org/repo.git",
+		RepoPath:     orphanPath,
+		ParentFolder: root,
+	})
+	if acct != "forgejo-misc" {
+		t.Errorf("account = %q, want forgejo-misc", acct)
+	}
+	if len(amb) != 0 {
+		t.Errorf("expected no ambiguity, got %v", amb)
+	}
+}
+
 func TestHostnameFromURL(t *testing.T) {
 	tests := []struct {
 		url  string
