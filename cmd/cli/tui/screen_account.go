@@ -40,6 +40,7 @@ type accountModel struct {
 	deleteInput   textinput.Model
 	editForm      formModel
 	renameForm    formModel
+	launcher      launcherOverlay
 }
 
 func newAccountModel(cfg *config.Config, cfgPath string, credMgr *credential.StatusManager, theme styles.Theme, w, h int, selectedKey string) accountModel {
@@ -55,6 +56,7 @@ func newAccountModel(cfg *config.Config, cfgPath string, credMgr *credential.Sta
 		height:      h,
 		selectedKey: selectedKey,
 		deleteInput: ti,
+		launcher:    newLauncherOverlay(cfg),
 	}
 }
 
@@ -66,6 +68,16 @@ func (m accountModel) Init() tea.Cmd {
 }
 
 func (m accountModel) Update(msg tea.Msg) (accountModel, tea.Cmd) {
+	// Launcher overlay intercepts input when active. It's only enabled from
+	// accountViewDetail so form views (edit/rename) keep full keyboard
+	// control over their text inputs.
+	if lo, cmd, handled := m.launcher.update(msg, m.cfg.Global.Terminals); handled {
+		m.launcher = lo
+		m.statusMsg = ""
+		m.errMsg = ""
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		// Delete flow intercepts all keys when active.
@@ -182,6 +194,19 @@ func (m accountModel) Update(msg tea.Msg) (accountModel, tea.Cmd) {
 			m.statusMsg = ""
 			m.errMsg = ""
 			return m, openAccountFolderCmd(path)
+
+		case msg.String() == "t" && m.view == accountViewDetail:
+			return m.launchAccountTerminal()
+
+		case msg.String() == "a" && m.view == accountViewDetail:
+			return m.launchAccountHarness()
+
+		case msg.String() == "O" && m.view == accountViewDetail:
+			// Capital O: full launcher overlay. Lowercase o stays bound to
+			// "open folder" so existing muscle memory isn't broken; the
+			// editor default lives inside the launcher because lowercase e
+			// is taken by the edit form.
+			return m.openAccountLauncher()
 		}
 
 	case credStatusUpdatedMsg:
@@ -212,6 +237,14 @@ func (m accountModel) Update(msg tea.Msg) (accountModel, tea.Cmd) {
 			m.errMsg = msg.err.Error()
 		} else {
 			m.statusMsg = "Opened folder."
+		}
+		return m, nil
+
+	case launchDoneMsg:
+		if msg.err != nil {
+			m.errMsg = msg.err.Error()
+		} else {
+			m.statusMsg = "Opened in " + msg.target + "."
 		}
 		return m, nil
 
@@ -445,9 +478,22 @@ func (m accountModel) viewDetail() string {
 	if (acct.DefaultCredentialType == "ssh" || acct.DefaultCredentialType == "gcm") && credResult.PAT != credential.StatusOK {
 		hints = append(hints, "p PAT")
 	}
-	hints = append(hints, "d discover", "v verify", "b browser", "o folder", "D delete", "ESC back")
+	hints = append(hints, "d discover", "v verify", "b browser", "o folder")
+	if len(m.cfg.Global.Terminals) > 0 {
+		hints = append(hints, "t terminal")
+	}
+	if len(m.cfg.Global.AIHarnesses) > 0 {
+		hints = append(hints, "a AI")
+	}
+	if m.launcher.hasAny() {
+		hints = append(hints, "O open in…")
+	}
+	hints = append(hints, "D delete", "ESC back")
 	b.WriteString(renderHintsFit(m.theme, m.width, hints...))
 
+	if m.launcher.active {
+		return m.launcher.view(m.theme, m.width, m.height)
+	}
 	return b.String()
 }
 
@@ -486,4 +532,70 @@ func (m accountModel) doRename() tea.Cmd {
 		}
 		return accountRenamedMsg{oldKey: oldKey, newKey: newKey}
 	}
+}
+
+// accountFolderPath resolves <global.folder>/<accountKey>. Launch helpers
+// need the folder to exist before shelling out; callers check os.Stat before
+// dispatching.
+func (m accountModel) accountFolderPath() string {
+	globalFolder := config.ExpandTilde(m.cfg.Global.Folder)
+	return filepath.Join(globalFolder, m.selectedKey)
+}
+
+// openAccountLauncher activates the overlay (bound to capital O) scoped to
+// the account's parent folder. No-op with a hint when the folder is missing
+// or the config has nothing to launch.
+func (m accountModel) openAccountLauncher() (accountModel, tea.Cmd) {
+	if !m.launcher.hasAny() {
+		m.errMsg = "No editors, terminals, or AI harnesses are configured."
+		m.statusMsg = ""
+		return m, nil
+	}
+	path := m.accountFolderPath()
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		m.errMsg = "Account folder does not exist: " + path
+		m.statusMsg = ""
+		return m, nil
+	}
+	m.launcher = m.launcher.activate(path)
+	m.statusMsg = ""
+	m.errMsg = ""
+	return m, nil
+}
+
+// launchAccountTerminal / launchAccountHarness wire the t / a keys on the
+// detail screen to the first entry of each category, scoped to the
+// account's parent folder. Editor default is intentionally not bound to a
+// single key here — lowercase e is the existing "edit account" shortcut;
+// users reach editors via the capital-O launcher.
+func (m accountModel) launchAccountTerminal() (accountModel, tea.Cmd) {
+	terms := m.cfg.Global.Terminals
+	if len(terms) == 0 {
+		return m, nil
+	}
+	path := m.accountFolderPath()
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		m.errMsg = "Account folder does not exist: " + path
+		m.statusMsg = ""
+		return m, nil
+	}
+	m.statusMsg = ""
+	m.errMsg = ""
+	return m, launchTerminalCmd(path, terms[0])
+}
+
+func (m accountModel) launchAccountHarness() (accountModel, tea.Cmd) {
+	harnesses := m.cfg.Global.AIHarnesses
+	if len(harnesses) == 0 {
+		return m, nil
+	}
+	path := m.accountFolderPath()
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		m.errMsg = "Account folder does not exist: " + path
+		m.statusMsg = ""
+		return m, nil
+	}
+	m.statusMsg = ""
+	m.errMsg = ""
+	return m, launchAIHarnessCmd(path, harnesses[0], m.cfg.Global.Terminals)
 }

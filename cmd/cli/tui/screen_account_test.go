@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/LuisPalacios/gitbox/pkg/config"
 )
 
 func TestAccount_Render(t *testing.T) {
@@ -106,6 +108,100 @@ func TestAccount_OpenFolder_SuccessSetsStatus(t *testing.T) {
 
 	if strings.Contains(m.account.errMsg, "does not exist") {
 		t.Errorf("folder exists but errMsg says it doesn't: %q", m.account.errMsg)
+	}
+}
+
+func TestAccount_LowercaseO_StillOpensFolder(t *testing.T) {
+	// Regression guard for the `o` / `O` split: lowercase o must remain
+	// bound to "open folder" even after the launcher work, preserving the
+	// existing muscle memory from #39.
+	gitFolder := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(gitFolder, "github-alice"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	cfg := newDummyConfig(t, gitFolder)
+	cfg.Global.Terminals = []config.TerminalEntry{{Name: "Git Bash", Command: "/bin/wt"}}
+	cfg.Global.AIHarnesses = []config.AIHarnessEntry{{Name: "Claude", Command: "/bin/claude"}}
+	env := setupTestEnvWithConfig(t, cfg)
+	m := newTestModel(t, env.CfgPath)
+	m = initModel(t, m)
+
+	m = sendMsg(m, switchScreenMsg{screen: screenAccount, accountKey: "github-alice"})
+	m = sendKey(m, "o")
+
+	if m.account.launcher.active {
+		t.Error("lowercase 'o' activated launcher overlay; it must stay bound to open-folder")
+	}
+}
+
+func TestAccount_CapitalO_OpensLauncher(t *testing.T) {
+	// Capital O is the new launcher key on the account screen. Folder must
+	// exist so the guard doesn't bail before the overlay activates.
+	gitFolder := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(gitFolder, "github-alice"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	cfg := newDummyConfig(t, gitFolder)
+	cfg.Global.Terminals = []config.TerminalEntry{{Name: "Git Bash", Command: "/bin/wt"}}
+	env := setupTestEnvWithConfig(t, cfg)
+	m := newTestModel(t, env.CfgPath)
+	m = initModel(t, m)
+
+	m = sendMsg(m, switchScreenMsg{screen: screenAccount, accountKey: "github-alice"})
+	m = sendKey(m, "O")
+
+	if !m.account.launcher.active {
+		t.Fatal("capital 'O' did not activate launcher overlay")
+	}
+
+	// Overlay path should be <gitFolder>/github-alice.
+	wantPath := filepath.Join(gitFolder, "github-alice")
+	if m.account.launcher.path != wantPath {
+		t.Errorf("launcher path = %q, want %q", m.account.launcher.path, wantPath)
+	}
+
+	// Esc closes without dispatching a command.
+	m = sendKey(m, "esc")
+	if m.account.launcher.active {
+		t.Error("esc did not close the launcher overlay")
+	}
+}
+
+func TestAccount_CapitalO_GuardsMissingFolder(t *testing.T) {
+	// When <global.folder>/<accountKey> doesn't exist, the overlay must
+	// refuse with a clear hint rather than activate and then dispatch
+	// launch commands that would fail against a nonexistent working dir.
+	cfg := newDummyConfig(t, filepath.Join(t.TempDir(), "never-created"))
+	cfg.Global.Terminals = []config.TerminalEntry{{Name: "Git Bash", Command: "/bin/wt"}}
+	env := setupTestEnvWithConfig(t, cfg)
+	m := newTestModel(t, env.CfgPath)
+	m = initModel(t, m)
+
+	m = sendMsg(m, switchScreenMsg{screen: screenAccount, accountKey: "github-alice"})
+	m = sendKey(m, "O")
+
+	if m.account.launcher.active {
+		t.Error("launcher activated despite missing account folder")
+	}
+	if !strings.Contains(m.account.errMsg, "does not exist") {
+		t.Errorf("expected guard errMsg, got %q", m.account.errMsg)
+	}
+}
+
+func TestAccount_Lowercase_e_StillOpensEditForm(t *testing.T) {
+	// Regression guard: adding launcher keys must not steal lowercase `e`
+	// from the existing edit-form shortcut.
+	cfg := newDummyConfig(t, "/tmp/test-git")
+	cfg.Global.Editors = []config.EditorEntry{{Name: "VS Code", Command: "/bin/code"}}
+	env := setupTestEnvWithConfig(t, cfg)
+	m := newTestModel(t, env.CfgPath)
+	m = initModel(t, m)
+
+	m = sendMsg(m, switchScreenMsg{screen: screenAccount, accountKey: "github-alice"})
+	m = sendKey(m, "e")
+
+	if m.account.view != accountViewEdit {
+		t.Errorf("lowercase 'e' did not open edit form; view = %d", m.account.view)
 	}
 }
 
