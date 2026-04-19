@@ -265,13 +265,31 @@ Editors are auto-detected on startup by scanning PATH. Gitbox writes the detecte
 
 Terminals follow the same pattern: detected on startup per platform and written to `global.terminals` with their command and argument templates. Each entry has a `name`, a `command` (absolute path or on-PATH launcher) and `args`. Use the literal token `{path}` inside `args` to mark where the repo path is injected; if the token is absent, the path is appended as the final argument. Edit or reorder freely — the order in the menu matches the order in the config.
 
-On Windows, bare shell entries (`cmd.exe`, `powershell.exe`, `pwsh.exe`, `wsl.exe`) have empty `args` — the launcher wraps them in `cmd.exe /C start "" /D <path>`, which gives each terminal a fresh console and sets the starting directory. If Windows Terminal is your default console host, `wsl.exe` opens inside WT's **default** profile, not your custom WSL profile. To force a specific WT profile (with its colors, font, etc.), replace the default WSL entry in `gitbox.json` with a direct `wt.exe` invocation, for example:
+On Windows, bare shell entries (`cmd.exe`, `powershell.exe`, `pwsh.exe`, `wsl.exe`) have empty `args` — the launcher wraps them in `cmd.exe /C start "" /D <path>`, which gives each terminal a fresh console and sets the starting directory.
+
+#### Opening a specific Windows Terminal profile
+
+If Windows Terminal is your default console host, `wsl.exe` (and bare `pwsh.exe`, `powershell.exe`) open inside WT's **default** profile, not the WT profile you've tuned with colors, font, or a specific distro. To pin a terminal entry to a specific WT profile, invoke `wt.exe` directly and pass `--profile "<name>"` plus `-d "{path}"`. Find the exact profile name in WT → Settings → Profiles.
 
 ```json
-{ "name": "WSL (Ubuntu)", "command": "wt.exe", "args": ["-p", "Ubuntu-22.04", "--cd", "{path}"] }
+{
+    "name": "WSL",
+    "command": "C:\\Users\\<you>\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe",
+    "args": [
+        "--profile",
+        "Ubuntu 24.04.1 LTS",
+        "-d",
+        "{path}"
+    ]
+}
 ```
 
-The same `-p "<profile-name>"` trick works for any WT profile you want to pin to a menu entry.
+Notes:
+
+- `command` here is the absolute path to the `wt.exe` App Execution Alias under `%LOCALAPPDATA%\Microsoft\WindowsApps`. Using the absolute path is more robust than relying on `wt.exe` being on `PATH`.
+- `--profile "<name>"` takes the profile's display name *verbatim*, including version suffixes like `Ubuntu 24.04.1 LTS` or `Windows PowerShell`.
+- `-d "{path}"` sets the starting directory for the shell the profile launches.
+- The same pattern works for pinning a specific `pwsh.exe` or `powershell.exe` profile (e.g. `--profile "PowerShell"`) — just adjust the profile name.
 
 In **compact mode**, the clone actions appear as small icon buttons (browser, folder, editor, and terminal) that show on hover over each repo row. Only the first configured editor and the first configured terminal are shown — switch to full view for the complete list.
 
