@@ -835,23 +835,26 @@ func platformTerminalCandidates() []knownTerminalCandidate {
 				},
 			},
 			{
+				// pwsh (PS 7+) starts interactive with no args and honors cmd.Dir.
 				Name: "PowerShell 7",
 				Resolve: func() (string, []string, bool) {
 					p, err := exec.LookPath("pwsh.exe")
 					if err != nil {
 						return "", nil, false
 					}
-					return p, []string{"-NoExit", "-WorkingDirectory", "{path}"}, true
+					return p, nil, true
 				},
 			},
 			{
+				// Windows PowerShell 5.1 does NOT support -WorkingDirectory;
+				// rely on cmd.Dir instead. Bare powershell.exe is interactive.
 				Name: "PowerShell 5",
 				Resolve: func() (string, []string, bool) {
 					p, err := exec.LookPath("powershell.exe")
 					if err != nil {
 						return "", nil, false
 					}
-					return p, []string{"-NoExit", "-WorkingDirectory", "{path}"}, true
+					return p, nil, true
 				},
 			},
 			{
@@ -881,13 +884,14 @@ func platformTerminalCandidates() []knownTerminalCandidate {
 				},
 			},
 			{
+				// Bare cmd.exe is interactive; cmd.Dir sets the starting directory.
 				Name: "Command Prompt",
 				Resolve: func() (string, []string, bool) {
 					p, err := exec.LookPath("cmd.exe")
 					if err != nil {
 						return "", nil, false
 					}
-					return p, []string{"/K", `cd /d "{path}"`}, true
+					return p, nil, true
 				},
 			},
 		}
@@ -1011,23 +1015,34 @@ func (a *App) SyncTerminals() {
 // Args may contain the token "{path}"; if present it is substituted with
 // path, otherwise path is appended as the final argv.
 //
-// Intentionally does NOT call git.HideWindow: CREATE_NO_WINDOW would suppress
-// the terminal's console itself, not just a transient launcher flash — the
-// terminal would start invisible. Editors use HideWindow because their GUI
-// window is detached; terminals ARE the window we want to show.
+// On Windows we call git.NewConsole (CREATE_NEW_CONSOLE) — NOT HideWindow.
+// Plain console apps like cmd.exe, powershell.exe, pwsh.exe and wsl.exe
+// inherit (broken) stdio from a GUI parent and exit immediately without a
+// fresh console. HideWindow (CREATE_NO_WINDOW) would additionally suppress
+// the visible window, so the terminal would appear to do nothing.
+//
+// cmd.Dir is set to the repo path as a universal fallback for shells that
+// don't have a working-directory flag (e.g. cmd.exe /K, powershell -NoExit).
 func (a *App) OpenInTerminal(path string, command string, args []string) error {
 	if command == "" {
 		return fmt.Errorf("command is required")
 	}
 	resolved := resolveTerminalArgs(args, path)
 	cmd := exec.Command(command, resolved...)
+	cmd.Dir = path
 	cmd.Env = git.Environ()
+	git.NewConsole(cmd)
 	return cmd.Start()
 }
 
 // resolveTerminalArgs substitutes "{path}" tokens in args with the repo path.
-// If no token is found, path is appended as an extra final argv entry.
+// If no token is found AND args is non-empty, path is appended as a final argv
+// entry (covers patterns like `open -a Terminal <path>`). Empty args is
+// preserved as empty — the caller sets cmd.Dir so shells start in the repo.
 func resolveTerminalArgs(args []string, path string) []string {
+	if len(args) == 0 {
+		return nil
+	}
 	substituted := false
 	out := make([]string, len(args))
 	for i, a := range args {

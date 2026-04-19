@@ -35,10 +35,11 @@ func TestResolveTerminalArgs(t *testing.T) {
 			want: []string{"-a", "Terminal", "/Users/me/code"},
 		},
 		{
-			name: "empty args uses path as sole arg",
+			// Empty args must stay empty — caller sets cmd.Dir instead.
+			name: "empty args preserved (cmd.Dir handles path)",
 			args: nil,
 			path: "/tmp/x",
-			want: []string{"/tmp/x"},
+			want: nil,
 		},
 		{
 			name: "multiple placeholders all substituted",
