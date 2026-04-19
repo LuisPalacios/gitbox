@@ -1015,23 +1015,40 @@ func (a *App) SyncTerminals() {
 // Args may contain the token "{path}"; if present it is substituted with
 // path, otherwise path is appended as the final argv.
 //
-// On Windows we call git.NewConsole (CREATE_NEW_CONSOLE) — NOT HideWindow.
-// Plain console apps like cmd.exe, powershell.exe, pwsh.exe and wsl.exe
-// inherit (broken) stdio from a GUI parent and exit immediately without a
-// fresh console. HideWindow (CREATE_NO_WINDOW) would additionally suppress
-// the visible window, so the terminal would appear to do nothing.
+// Windows specifics: the Wails GUI is a /SUBSYSTEM:WINDOWS process with no
+// console. Go's exec always passes the parent's stdio handles to the child
+// with STARTF_USESTDHANDLES set, so plain console apps (cmd.exe, pwsh.exe,
+// powershell.exe, wsl.exe) see closed stdin and exit immediately — even if
+// we set CREATE_NEW_CONSOLE. Wrapping the launch in `cmd.exe /C start ""`
+// is the canonical workaround: `start` creates the terminal as a fresh
+// console process with properly connected console handles. The transient
+// wrapper `cmd.exe` itself is hidden via HideWindow so the user never sees
+// a flash. Editors (OpenInApp) don't need this dance because their GUI
+// window detaches from the launcher's console.
 //
-// cmd.Dir is set to the repo path as a universal fallback for shells that
-// don't have a working-directory flag (e.g. cmd.exe /K, powershell -NoExit).
+// On macOS/Linux we launch directly with cmd.Dir = path — no console
+// plumbing needed since those terminals spawn their own windows.
 func (a *App) OpenInTerminal(path string, command string, args []string) error {
 	if command == "" {
 		return fmt.Errorf("command is required")
 	}
 	resolved := resolveTerminalArgs(args, path)
-	cmd := exec.Command(command, resolved...)
-	cmd.Dir = path
+
+	var cmd *exec.Cmd
+	if isWindows() {
+		// cmd.exe /C start "" /D <path> <command> <args...>
+		// "" = empty title (required placeholder; first quoted arg to `start`
+		// is otherwise interpreted as the window title).
+		startArgs := make([]string, 0, 6+len(resolved))
+		startArgs = append(startArgs, "/C", "start", "", "/D", path, command)
+		startArgs = append(startArgs, resolved...)
+		cmd = exec.Command("cmd.exe", startArgs...)
+		git.HideWindow(cmd) // hide the transient wrapper, not the terminal
+	} else {
+		cmd = exec.Command(command, resolved...)
+		cmd.Dir = path
+	}
 	cmd.Env = git.Environ()
-	git.NewConsole(cmd)
 	return cmd.Start()
 }
 
