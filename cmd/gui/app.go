@@ -1761,6 +1761,21 @@ func (a *App) SyncAIHarnesses() {
 	}
 }
 
+// ShowErrorDialog pops a native error dialog from the frontend. Used for
+// flows where the WebView-level window.alert() isn't reliable (notably
+// macOS WKWebView) — the Wails runtime's MessageDialog routes through the
+// host OS's native dialog APIs, which work everywhere.
+func (a *App) ShowErrorDialog(title, message string) {
+	if a.ctx == nil {
+		return
+	}
+	_, _ = wailsrt.MessageDialog(a.ctx, wailsrt.MessageDialogOptions{
+		Type:    wailsrt.ErrorDialog,
+		Title:   title,
+		Message: message,
+	})
+}
+
 // resolveFirstHarnessTerminal returns global.terminals[0] and an actionable
 // error when (a) no terminal is configured or (b) the terminal can't accept a
 // harness command (no "{command}" token in args). AI harness launches rely on

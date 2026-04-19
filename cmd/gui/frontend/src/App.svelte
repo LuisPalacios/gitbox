@@ -284,12 +284,15 @@
 
   async function openRepoInAIHarness(repoKey: string, harness: AIHarnessInfo) {
     const state = $repoStates[repoKey];
-    if (state?.path) {
-      try {
-        await bridge.openInAIHarness(state.path, harness.command, harness.args || []);
-      } catch (e: any) {
-        alert(e?.message || e);
-      }
+    if (!state?.path) {
+      await bridge.showErrorDialog('Open in ' + harness.name, 'Repo is not cloned locally — click "Bring Local" first.');
+      closeActionMenu();
+      return;
+    }
+    try {
+      await bridge.openInAIHarness(state.path, harness.command, harness.args || []);
+    } catch (e: any) {
+      await bridge.showErrorDialog('Open in ' + harness.name, (e?.message || String(e)));
     }
     closeActionMenu();
   }
@@ -333,7 +336,7 @@
     try {
       await bridge.openAccountInAIHarness(accountKey, harness.command, harness.args || []);
     } catch (e: any) {
-      alert(e?.message || e);
+      await bridge.showErrorDialog('Open in ' + harness.name, (e?.message || String(e)));
     }
     closeAccountMenu();
   }
