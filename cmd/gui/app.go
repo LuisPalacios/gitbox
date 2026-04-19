@@ -460,14 +460,15 @@ func (a *App) GetGlobalFolder() string {
 }
 
 // OpenFileInEditor opens a file with the OS default application.
-// Do NOT use git.HideWindow here — these launch GUI apps (explorer, open,
-// xdg-open). HideWindow sets SW_HIDE in STARTUPINFO, which prevents GUI
-// windows from becoming visible.
+// On Windows we route through `cmd /c start`; HideWindow hides the cmd.exe
+// host without affecting the grandchild GUI (start → ShellExecute spawns
+// the target with its own STARTUPINFO, so SW_HIDE does not cascade).
 func (a *App) OpenFileInEditor(path string) error {
 	var cmd *exec.Cmd
 	switch {
 	case isWindows():
 		cmd = exec.Command("cmd", "/c", "start", "", path)
+		git.HideWindow(cmd)
 	case isDarwin():
 		cmd = exec.Command("open", path)
 	default:
