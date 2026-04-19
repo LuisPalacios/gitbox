@@ -23,7 +23,7 @@ I juggle multiple Git accounts — personal, corporate, open-source, self-hosted
 
 I built gitbox to fix this. One tool to set up my accounts, discover my repos, clone them with the right credentials, and keep everything in sync. It runs on Windows, macOS, and Linux.
 
-Gitbox does not implement any Git protocol or plumbing logic. It acts as an orchestration layer that shells out to tools already on the system: **git** for clone, fetch, pull, status, and credential-manager operations; **ssh** and **ssh-keygen** for SSH key validation and generation; and the OS native file opener (`cmd /c start`, `open`, or `xdg-open`). Provider interactions go through their REST APIs via standard HTTP — no extra CLI tools needed. On macOS, gitbox probes Homebrew paths (`/opt/homebrew/bin`, `/usr/local/bin`) to find a Git binary with Git Credential Manager, since the system `/usr/bin/git` lacks GCM support.
+Gitbox does not implement any Git protocol or plumbing logic. It acts as an orchestration layer that shells out to tools already on the system: **git** for clone, fetch, pull, status, and credential-manager operations; **ssh** and **ssh-keygen** for SSH key validation and generation; and the **OS native file opener** to manage files, folders and launching local applications.
 
 ## What it does
 
