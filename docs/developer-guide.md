@@ -254,16 +254,16 @@ The `pkg/update/` package provides version checking and self-update capabilities
 
 ## Feature lifecycle
 
-I manage the feature backlog with the `/wish` Claude Code skill. The feature radar lives in `.claude/context/feature-radar.md` — a structured file with IDs, priorities, sizes, and codebase notes for each idea.
+I track the backlog on GitHub at [github.com/LuisPalacios/gitbox/issues](https://github.com/LuisPalacios/gitbox/issues). Features use the `enhancement` label (plus `priority:P1` for next-ups); bugs use the `bug` label. Size and severity live in the issue body so the label set stays minimal.
 
 The workflow:
 
-1. **Capture** — `/wish add <title>` records a new idea. Claude asks clarifying questions, explores the codebase for relevant patterns, and drafts a structured entry.
-2. **Plan** — `/wish plan <id>` deep-dives into the codebase, designs the implementation approach, and enters plan mode with a concrete file-by-file plan.
-3. **Build** — I implement the plan, then verify with `/test-plan`.
-4. **Ship** — `/wish done <id>` marks the feature as shipped and moves it to the shipped section.
+1. **Capture** — open an issue with a short title and a body describing the concept and any codebase notes I'd want a future Claude session to have.
+2. **Plan** — discuss in comments, then enter plan mode in Claude Code to design a file-by-file implementation.
+3. **Build** — implement the plan, then verify with `/test-plan`.
+4. **Ship** — reference the issue in the commit message (e.g. `Closes #22`) so it auto-closes on push.
 
-Run `/wish` (no arguments) to see the current radar overview and get a suggestion on what to build next.
+Use `gh issue list --label enhancement` or `gh issue view <n>` to review the radar from the terminal (run `gh auth switch --user LuisPalacios` first).
 
 ---
 

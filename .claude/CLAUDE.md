@@ -66,10 +66,8 @@ scripts/
 .githooks/pre-push        Pre-push hook (go vet + unit tests)
 .claude/
   context/
-    feature-radar.md      Feature backlog (managed by /wish skill)
     testing-patterns.md   Test helpers, naming conventions
   skills/
-    wish/                 Feature lifecycle: view, add, plan, ship
     test-plan/            Pre-PR and release verification
     fixing-markdown/      Markdown lint + format
     screenshot-prototype/ GUI screenshot generation
@@ -169,14 +167,9 @@ Config file: `~/.config/gitbox/gitbox.json` — `accounts` + `sources`, real boo
 
 ### Feature lifecycle
 
-New features follow a structured pipeline managed by the `/wish` skill:
+The backlog lives on GitHub at [github.com/LuisPalacios/gitbox/issues](https://github.com/LuisPalacios/gitbox/issues). Features use the `enhancement` label (plus `priority:P1` when they're up next); bugs use the `bug` label. Size and severity are captured in the issue body.
 
-1. **Capture** — `/wish add <title>` records the idea in `.claude/context/feature-radar.md` with priority, size, and codebase notes
-2. **Plan** — `/wish plan <id>` explores the codebase, designs the approach, and enters plan mode with a concrete implementation plan
-3. **Build** — implement in plan mode, then verify with `/test-plan`
-4. **Ship** — `/wish done <id>` marks the feature as shipped
-
-Run `/wish` (no arguments) to see the current radar and get a suggestion on what to build next.
+Flow: open an issue → discuss/plan in comments → implement with plan mode → reference the issue in the commit message → close on merge. Use `gh issue list --label enhancement` or `gh issue view <n>` from the CLI; remember to `gh auth switch --user LuisPalacios` first.
 
 ### 1. Plan first
 
