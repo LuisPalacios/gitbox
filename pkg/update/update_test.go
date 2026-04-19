@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -62,6 +63,12 @@ func TestIsNewer(t *testing.T) {
 		{"v1.0.1", "v1.0.0", false},
 		{"v1.0.0", "v1.0.0", false},
 		{"v2.0.0", "v1.9.9", false},
+		// Dev builds: ParseVersion strips the "-N-gSHA-dev" suffix, so the
+		// comparison is against the base tag. A dev build ahead of the tag
+		// is NOT newer than the tag; a dev build behind the tag IS.
+		{"v1.3.0-3-gabcdef-dev", "v1.3.0", false},
+		{"v1.2.9-3-gabcdef-dev", "v1.3.0", true},
+		{"v1.3.0-dev", "v1.3.0", false},
 	}
 
 	for _, tt := range tests {
@@ -75,6 +82,35 @@ func TestIsNewer(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestResolveVersion(t *testing.T) {
+	// Production / ldflags-set versions pass through unchanged.
+	passthrough := []string{"v1.2.3", "v1.2.3-dev", "v0.0.1", "custom"}
+	for _, v := range passthrough {
+		t.Run("passthrough/"+v, func(t *testing.T) {
+			if got := ResolveVersion(v); got != v {
+				t.Errorf("ResolveVersion(%q) = %q, want %q", v, got, v)
+			}
+		})
+	}
+
+	// The "dev" placeholder triggers a git describe lookup. When the test
+	// runs from inside the gitbox repo (the normal case), the result must
+	// contain "-dev" and parse to a valid semver. When it can't reach git
+	// (e.g. GIT_DIR pointed at a non-repo), it falls back to "dev".
+	t.Run("dev/git-describe", func(t *testing.T) {
+		got := ResolveVersion("dev")
+		if got == "dev" {
+			t.Skip("git describe unavailable in this environment")
+		}
+		if !strings.HasSuffix(got, "-dev") {
+			t.Errorf("ResolveVersion(\"dev\") = %q, expected a *-dev suffix", got)
+		}
+		if _, err := ParseVersion(got); err != nil {
+			t.Errorf("ResolveVersion(\"dev\") = %q, not a parseable semver: %v", got, err)
+		}
+	})
 }
 
 // ── Check tests ──
