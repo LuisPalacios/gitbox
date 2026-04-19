@@ -265,6 +265,16 @@ The workflow:
 
 Use `gh issue list --label enhancement` or `gh issue view <n>` to review the radar from the terminal (run `gh auth switch --user LuisPalacios` first).
 
+### Push to main vs branch + PR
+
+I pick per task. Default to branch + PR when in doubt — the cost of a PR is trivial, the cost of a bad push to main is a revert.
+
+**Push directly to main** for one-file, mechanically-obvious changes: a typo, a one-line bug fix, a doc tweak. `go vet ./...` and focused tests must pass locally. Reference the issue with `Closes #N` in the commit message so GitHub auto-closes on push.
+
+**Branch + PR** for everything else: multi-file features, `pkg/` public-surface changes, refactors, UI work — anything that benefits from a full diff view or from letting CI gate the merge. Branch names follow `<type>/<issue>-<slug>`, e.g. `fix/31-ide-flash` or `feat/22-open-in-terminal`. The PR body closes the issue with `Closes #N`; I self-approve and merge immediately.
+
+External contributions always come through PRs from forks — I review, CI must pass, then merge.
+
 ---
 
 ## Logo and app icons

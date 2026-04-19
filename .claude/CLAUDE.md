@@ -171,6 +171,23 @@ The backlog lives on GitHub at [github.com/LuisPalacios/gitbox/issues](https://g
 
 Flow: open an issue → discuss/plan in comments → implement with plan mode → reference the issue in the commit message → close on merge. Use `gh issue list --label enhancement` or `gh issue view <n>` from the CLI; remember to `gh auth switch --user LuisPalacios` first.
 
+### Push to main vs branch + PR
+
+Pick per task. Default to branch + PR when in doubt — the cost of a PR for a solo maintainer is trivial, the cost of a bad push to main is a revert.
+
+**Push directly to main** when ALL of these hold:
+
+- The change is one file (or a tightly-coupled 2-file edit like config + its test).
+- The fix or addition is mechanically obvious — a typo, a one-line bug fix, a doc tweak, a `HideWindow` call that was clearly missing.
+- `go vet ./...` and the relevant focused tests pass locally.
+- No new public API, no behavior change that another platform might surface differently, no risky refactor.
+
+Reference the issue in the commit with `Closes #N` — GitHub auto-closes on push.
+
+**Branch + PR to self-merge** for everything else: multi-file features, anything touching `pkg/` public surface, refactors, UI changes (GUI/TUI), anything that benefits from seeing the full diff at once or letting CI gate the merge. The PR body is where I narrate the change (and where CI runs) — I am allowed to self-approve and merge immediately. Branch names follow `<type>/<issue>-<slug>`, e.g. `fix/31-ide-flash` or `feat/22-open-in-terminal`. Always use `gh pr create --body "Closes #N\n\n..."` so the issue closes on merge.
+
+**External contributions** (anyone who is not me): always come through PRs from forks — I review, CI must pass, then merge.
+
 ### 1. Plan first
 
 - Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
