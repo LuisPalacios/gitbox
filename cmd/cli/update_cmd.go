@@ -31,7 +31,7 @@ func init() {
 func updateOpts() update.Options {
 	cacheDir := filepath.Join(config.ConfigRoot(), config.V2ConfigDir)
 	return update.Options{
-		CurrentVersion: version,
+		CurrentVersion: update.ResolveVersion(version),
 		Repo:           "LuisPalacios/gitbox",
 		CacheFile:      filepath.Join(cacheDir, ".update-check"),
 		ThrottleDur:    24 * time.Hour,

@@ -130,15 +130,14 @@ func checkLatestAPI(ctx context.Context, opts Options) (*CheckResult, error) {
 		return nil, fmt.Errorf("parsing release JSON: %w", err)
 	}
 
-	// Parse current version — if it's "dev" or unparseable, treat as "always behind".
+	// Compare versions. If the current version is unparseable (a dev build
+	// where git describe failed, a shallow clone, or any other tagless
+	// state), hide the banner rather than nag with a false positive — the
+	// user can force a check with `gitbox update --check` if they actually
+	// want to know.
 	newer, err := IsNewer(opts.CurrentVersion, release.TagName)
 	if err != nil {
-		// Dev builds can't compare — always report as available.
-		if strings.Contains(opts.CurrentVersion, "dev") {
-			newer = true
-		} else {
-			return nil, fmt.Errorf("comparing versions: %w", err)
-		}
+		newer = false
 	}
 
 	return &CheckResult{
