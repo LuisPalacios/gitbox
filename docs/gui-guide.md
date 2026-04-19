@@ -269,7 +269,9 @@ On Windows, bare shell entries (`cmd.exe`, `powershell.exe`, `pwsh.exe`, `wsl.ex
 
 #### Opening a specific Windows Terminal profile
 
-If Windows Terminal is your default console host, `wsl.exe` (and bare `pwsh.exe`, `powershell.exe`) open inside WT's **default** profile, not the WT profile you've tuned with colors, font, or a specific distro. To pin a terminal entry to a specific WT profile, invoke `wt.exe` directly and pass `--profile "<name>"` plus `-d "{path}"`. Find the exact profile name in WT → Settings → Profiles.
+If Windows Terminal is your default console host, bare launches of `wsl.exe`, `pwsh.exe`, and `powershell.exe` open inside WT's **default** profile — not the WT profile you've tuned with colors, font, or a specific distro. To pin a terminal entry to a specific WT profile, invoke `wt.exe` directly and pass `--profile "<name>"` plus `-d "{path}"`. Find the exact profile name in WT → Settings → Profiles.
+
+Example — WSL with a specific distro profile:
 
 ```json
 {
@@ -284,18 +286,36 @@ If Windows Terminal is your default console host, `wsl.exe` (and bare `pwsh.exe`
 }
 ```
 
+Example — PowerShell 7 with your WT profile:
+
+```json
+{
+    "name": "PowerShell 7",
+    "command": "C:\\Users\\<you>\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe",
+    "args": [
+        "--profile",
+        "PowerShell 7",
+        "-d",
+        "{path}"
+    ]
+}
+```
+
 Notes:
 
-- `command` here is the absolute path to the `wt.exe` App Execution Alias under `%LOCALAPPDATA%\Microsoft\WindowsApps`. Using the absolute path is more robust than relying on `wt.exe` being on `PATH`.
-- `--profile "<name>"` takes the profile's display name *verbatim*, including version suffixes like `Ubuntu 24.04.1 LTS` or `Windows PowerShell`.
+- `command` is the absolute path to the `wt.exe` App Execution Alias under `%LOCALAPPDATA%\Microsoft\WindowsApps`. Using the absolute path is more robust than relying on `wt.exe` being on `PATH`.
+- `--profile "<name>"` takes the profile's display name *verbatim*, including version suffixes like `Ubuntu 24.04.1 LTS` or the exact `PowerShell 7` spelling you configured in WT's settings.
 - `-d "{path}"` sets the starting directory for the shell the profile launches.
-- The same pattern works for pinning a specific `pwsh.exe` or `powershell.exe` profile (e.g. `--profile "PowerShell"`) — just adjust the profile name.
+- Routing through `wt.exe --profile` also sidesteps the Git Bash env-leak quirk described below — WT starts the shell from its own stored profile context, so any MSYS-form env vars inherited by the GUI don't reach the shell.
 
 #### Launching gitbox from Git Bash (developer note)
 
-If you launch `GitboxApp.exe` from a Git Bash / MSYS2 shell, Windows environment variables inherited by the GUI come through in posix form (e.g. `LOCALAPPDATA=/c/Users/you/AppData/Local`). Those values propagate into terminals you open from gitbox, and tools that read them as Windows paths — `oh-my-posh`, some `$PROFILE` helpers — can choke (`& '/c/Users/...' — not recognized as a cmdlet`). Gitbox sanitises these values in the env block it hands to the spawned terminal, but when Windows Terminal is the default console host it uses its own delegation path and sometimes ignores the override, so the leak can still show up in a PS7 window.
+If you launch `GitboxApp.exe` from a Git Bash / MSYS2 shell, Windows environment variables inherited by the GUI come through in posix form (e.g. `LOCALAPPDATA=/c/Users/you/AppData/Local`). Those values propagate into terminals opened from gitbox via the default `cmd.exe /C start …` path, and tools that read them as Windows paths — `oh-my-posh`, some `$PROFILE` helpers — can choke (`& '/c/Users/...' — not recognized as a cmdlet`). Gitbox sanitises the env block it hands to the spawned terminal, but when Windows Terminal is the default console host, WT's delegation path can bypass that block.
 
-Workaround: launch `GitboxApp.exe` from Explorer, the Start Menu, or a pinned shortcut — anywhere Windows originates a clean env. End users never hit this, so production behaviour is unaffected.
+Two equally clean fixes:
+
+- **Launch `GitboxApp.exe` from Explorer, the Start Menu, or a pinned shortcut** — anywhere Windows originates a clean env. End users never hit this, so production behaviour is unaffected.
+- **Switch the affected terminal entry to the `wt.exe --profile "<name>" -d "{path}"` form** shown above. WT starts the shell from its own profile context, which has clean Windows env regardless of how the GUI was started.
 
 In **compact mode**, the clone actions appear as small icon buttons (browser, folder, editor, and terminal) that show on hover over each repo row. Only the first configured editor and the first configured terminal are shown — switch to full view for the complete list.
 
