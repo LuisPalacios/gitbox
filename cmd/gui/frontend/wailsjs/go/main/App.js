@@ -202,8 +202,8 @@ export function OpenAccountFolder(arg1) {
   return window['go']['main']['App']['OpenAccountFolder'](arg1);
 }
 
-export function OpenAccountInAIHarness(arg1, arg2) {
-  return window['go']['main']['App']['OpenAccountInAIHarness'](arg1, arg2);
+export function OpenAccountInAIHarness(arg1, arg2, arg3) {
+  return window['go']['main']['App']['OpenAccountInAIHarness'](arg1, arg2, arg3);
 }
 
 export function OpenAccountInApp(arg1, arg2) {
@@ -222,8 +222,8 @@ export function OpenFileInEditor(arg1) {
   return window['go']['main']['App']['OpenFileInEditor'](arg1);
 }
 
-export function OpenInAIHarness(arg1, arg2) {
-  return window['go']['main']['App']['OpenInAIHarness'](arg1, arg2);
+export function OpenInAIHarness(arg1, arg2, arg3) {
+  return window['go']['main']['App']['OpenInAIHarness'](arg1, arg2, arg3);
 }
 
 export function OpenInApp(arg1, arg2) {

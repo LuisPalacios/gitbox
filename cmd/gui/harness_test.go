@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -99,33 +98,35 @@ func TestHarnessIDSlugification(t *testing.T) {
 	}
 }
 
-func TestHarnessArgv(t *testing.T) {
+func TestBuildHarnessArgv(t *testing.T) {
 	tests := []struct {
-		name string
-		in   config.AIHarnessEntry
-		want []string
+		name    string
+		command string
+		args    []string
+		want    []string
 	}{
 		{
-			name: "command only",
-			in:   config.AIHarnessEntry{Name: "Claude Code", Command: "claude"},
-			want: []string{"claude"},
+			name:    "command only",
+			command: "claude",
+			want:    []string{"claude"},
 		},
 		{
-			name: "command with args",
-			in:   config.AIHarnessEntry{Name: "Aider", Command: "aider", Args: []string{"--yes", "--model", "sonnet"}},
-			want: []string{"aider", "--yes", "--model", "sonnet"},
+			name:    "command with args",
+			command: "aider",
+			args:    []string{"--yes", "--model", "sonnet"},
+			want:    []string{"aider", "--yes", "--model", "sonnet"},
 		},
 		{
-			name: "empty command returns nil",
-			in:   config.AIHarnessEntry{Name: "broken"},
-			want: nil,
+			name:    "empty command returns nil",
+			command: "",
+			want:    nil,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := harnessArgv(tc.in)
+			got := buildHarnessArgv(tc.command, tc.args)
 			if !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("harnessArgv(%+v) = %v, want %v", tc.in, got, tc.want)
+				t.Errorf("buildHarnessArgv(%q, %v) = %v, want %v", tc.command, tc.args, got, tc.want)
 			}
 		})
 	}
@@ -271,19 +272,19 @@ func TestResolveFirstHarnessTerminal(t *testing.T) {
 func TestOpenInAIHarness_ErrorPaths(t *testing.T) {
 	harness := config.AIHarnessEntry{Name: "Claude Code", Command: "claude"}
 
-	t.Run("unknown harness id errors", func(t *testing.T) {
+	t.Run("empty command errors", func(t *testing.T) {
 		a := appWithTerminalsAndHarnesses(t,
 			[]config.TerminalEntry{{Name: "WT", Command: "wt.exe", Args: []string{"-d", "{path}", "{command}"}}},
 			[]config.AIHarnessEntry{harness},
 		)
-		err := a.OpenInAIHarness("/any", "nope-not-here")
-		if err == nil || !strings.Contains(err.Error(), "nope-not-here") {
-			t.Errorf("expected error naming missing harness, got %v", err)
+		err := a.OpenInAIHarness("/any", "", nil)
+		if err == nil || !strings.Contains(err.Error(), "command is required") {
+			t.Errorf("expected 'command is required' error, got %v", err)
 		}
 	})
 	t.Run("no terminal configured errors before exec", func(t *testing.T) {
 		a := appWithTerminalsAndHarnesses(t, nil, []config.AIHarnessEntry{harness})
-		err := a.OpenInAIHarness("/any", "claude-code")
+		err := a.OpenInAIHarness("/any", "claude", nil)
 		if err == nil || !strings.Contains(err.Error(), "Configure a terminal first") {
 			t.Errorf("expected terminal-missing error, got %v", err)
 		}
@@ -293,7 +294,7 @@ func TestOpenInAIHarness_ErrorPaths(t *testing.T) {
 			[]config.TerminalEntry{{Name: "Bare pwsh", Command: "pwsh.exe"}},
 			[]config.AIHarnessEntry{harness},
 		)
-		err := a.OpenInAIHarness("/any", "claude-code")
+		err := a.OpenInAIHarness("/any", "claude", nil)
 		if err == nil || !strings.Contains(err.Error(), "{command}") {
 			t.Errorf("expected {command}-missing error, got %v", err)
 		}
@@ -303,12 +304,22 @@ func TestOpenInAIHarness_ErrorPaths(t *testing.T) {
 func TestOpenAccountInAIHarness_ErrorPaths(t *testing.T) {
 	harness := config.AIHarnessEntry{Name: "Claude Code", Command: "claude"}
 
+	t.Run("empty command errors", func(t *testing.T) {
+		a := appWithTerminalsAndHarnesses(t,
+			[]config.TerminalEntry{{Name: "WT", Command: "wt.exe", Args: []string{"-d", "{path}", "{command}"}}},
+			[]config.AIHarnessEntry{harness},
+		)
+		err := a.OpenAccountInAIHarness("github-alice", "", nil)
+		if err == nil || !strings.Contains(err.Error(), "command is required") {
+			t.Errorf("expected 'command is required' error, got %v", err)
+		}
+	})
 	t.Run("unknown account errors with 'not found'", func(t *testing.T) {
 		a := appWithTerminalsAndHarnesses(t,
 			[]config.TerminalEntry{{Name: "WT", Command: "wt.exe", Args: []string{"-d", "{path}", "{command}"}}},
 			[]config.AIHarnessEntry{harness},
 		)
-		err := a.OpenAccountInAIHarness("nope", "claude-code")
+		err := a.OpenAccountInAIHarness("nope", "claude", nil)
 		if err == nil || !strings.Contains(err.Error(), "not found") {
 			t.Errorf("expected 'not found' error, got %v", err)
 		}
@@ -319,24 +330,9 @@ func TestOpenAccountInAIHarness_ErrorPaths(t *testing.T) {
 			[]config.TerminalEntry{{Name: "WT", Command: "wt.exe", Args: []string{"-d", "{path}", "{command}"}}},
 			[]config.AIHarnessEntry{harness},
 		)
-		err := a.OpenAccountInAIHarness("github-alice", "claude-code")
+		err := a.OpenAccountInAIHarness("github-alice", "claude", nil)
 		if err == nil || !strings.Contains(err.Error(), "does not exist") {
 			t.Errorf("expected 'does not exist' error, got %v", err)
-		}
-	})
-	t.Run("unknown harness id errors after folder resolves", func(t *testing.T) {
-		a := appWithTerminalsAndHarnesses(t,
-			[]config.TerminalEntry{{Name: "WT", Command: "wt.exe", Args: []string{"-d", "{path}", "{command}"}}},
-			[]config.AIHarnessEntry{harness},
-		)
-		// Create the account folder so folder resolution succeeds.
-		folder := filepath.Join(a.cfg.Global.Folder, "github-alice")
-		if err := os.MkdirAll(folder, 0o755); err != nil {
-			t.Fatalf("mkdir: %v", err)
-		}
-		err := a.OpenAccountInAIHarness("github-alice", "nope-not-here")
-		if err == nil || !strings.Contains(err.Error(), "nope-not-here") {
-			t.Errorf("expected error naming missing harness, got %v", err)
 		}
 	})
 }

@@ -286,7 +286,7 @@
     const state = $repoStates[repoKey];
     if (state?.path) {
       try {
-        await bridge.openInAIHarness(state.path, harness.id);
+        await bridge.openInAIHarness(state.path, harness.command, harness.args || []);
       } catch (e: any) {
         alert(e?.message || e);
       }
@@ -331,7 +331,7 @@
 
   async function openAccountInAIHarness(accountKey: string, harness: AIHarnessInfo) {
     try {
-      await bridge.openAccountInAIHarness(accountKey, harness.id);
+      await bridge.openAccountInAIHarness(accountKey, harness.command, harness.args || []);
     } catch (e: any) {
       alert(e?.message || e);
     }

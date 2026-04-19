@@ -1714,20 +1714,6 @@ func (a *App) SyncAIHarnesses() {
 	}
 }
 
-// resolveAIHarness returns the configured harness with the given ID, or an
-// error naming the ID if not found. Matches by the slugified ID (so the
-// frontend can pass display-name-derived IDs without knowing the command).
-func (a *App) resolveAIHarness(id string) (config.AIHarnessEntry, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for _, h := range a.cfg.Global.AIHarnesses {
-		if harnessID(h.Name) == id {
-			return h, nil
-		}
-	}
-	return config.AIHarnessEntry{}, fmt.Errorf("AI harness %q not configured", id)
-}
-
 // resolveFirstHarnessTerminal returns global.terminals[0] and an actionable
 // error when (a) no terminal is configured or (b) the terminal can't accept a
 // harness command (no "{command}" token in args). AI harness launches rely on
@@ -1748,51 +1734,53 @@ func (a *App) resolveFirstHarnessTerminal() (config.TerminalEntry, error) {
 	return config.TerminalEntry{}, fmt.Errorf("%s in global.terminals[0] doesn't support launching a command. Add {command} to its args, or reorder global.terminals so a compatible entry is first.", t.Name)
 }
 
-// harnessArgv builds the argv slice used as the spliced "{command}" value.
-// Returns nil when the harness has an empty Command (validated upstream).
-func harnessArgv(h config.AIHarnessEntry) []string {
-	if h.Command == "" {
+// buildHarnessArgv returns the harness argv to splice into the terminal's
+// "{command}" slot: the harness binary followed by its args. An empty command
+// returns nil so the splice expands to zero items (matches the terminal-only
+// launch contract and prevents silent misfires).
+func buildHarnessArgv(command string, args []string) []string {
+	if command == "" {
 		return nil
 	}
-	argv := make([]string, 0, 1+len(h.Args))
-	argv = append(argv, h.Command)
-	argv = append(argv, h.Args...)
+	argv := make([]string, 0, 1+len(args))
+	argv = append(argv, command)
+	argv = append(argv, args...)
 	return argv
 }
 
-// OpenInAIHarness launches the configured AI harness in the given clone
-// folder, using global.terminals[0] as the host terminal. Errors are
-// actionable strings the frontend can surface verbatim.
-func (a *App) OpenInAIHarness(path string, harnessIDArg string) error {
-	harness, err := a.resolveAIHarness(harnessIDArg)
-	if err != nil {
-		return err
+// OpenInAIHarness launches the given AI harness in the clone folder, using
+// global.terminals[0] as the host terminal. Takes the harness command + args
+// directly (rather than looking up by ID) so both auto-detected and
+// config-stored entries call the same contract — mirrors OpenInTerminal's
+// signature. Errors are actionable strings the frontend can surface verbatim.
+func (a *App) OpenInAIHarness(path string, command string, args []string) error {
+	if command == "" {
+		return fmt.Errorf("AI harness command is required")
 	}
 	term, err := a.resolveFirstHarnessTerminal()
 	if err != nil {
 		return err
 	}
-	return openTerminalWithHarnessAt(path, term.Command, term.Args, harnessArgv(harness))
+	return openTerminalWithHarnessAt(path, term.Command, term.Args, buildHarnessArgv(command, args))
 }
 
-// OpenAccountInAIHarness launches the configured AI harness in the account's
+// OpenAccountInAIHarness launches the given AI harness in the account's
 // parent folder (<global.folder>/<accountKey>), using global.terminals[0] as
 // the host terminal. Errors out when the account is unknown or the folder is
 // missing, matching the pattern from OpenAccountInTerminal.
-func (a *App) OpenAccountInAIHarness(accountKey string, harnessIDArg string) error {
+func (a *App) OpenAccountInAIHarness(accountKey string, command string, args []string) error {
+	if command == "" {
+		return fmt.Errorf("AI harness command is required")
+	}
 	path, err := a.resolveAccountFolder(accountKey)
 	if err != nil {
 		return err
 	}
-	harness, err := a.resolveAIHarness(harnessIDArg)
-	if err != nil {
-		return err
-	}
 	term, err := a.resolveFirstHarnessTerminal()
 	if err != nil {
 		return err
 	}
-	return openTerminalWithHarnessAt(path, term.Command, term.Args, harnessArgv(harness))
+	return openTerminalWithHarnessAt(path, term.Command, term.Args, buildHarnessArgv(command, args))
 }
 
 // ─── Platform helpers ─────────────────────────────────────────────────────
