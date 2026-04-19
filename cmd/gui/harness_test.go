@@ -230,6 +230,183 @@ func appWithTerminalsAndHarnesses(t *testing.T, terms []config.TerminalEntry, ha
 	return &App{cfg: cfg, cfgPath: filepath.Join(dir, "gitbox.json"), mu: sync.Mutex{}}
 }
 
+func TestShellQuotePOSIX(t *testing.T) {
+	tests := map[string]string{
+		"":                            "''",
+		"plain":                       "'plain'",
+		"/a/b c":                      "'/a/b c'",
+		"has'quote":                   `'has'\''quote'`,
+		"multi 'one' 'two'":           `'multi '\''one'\'' '\''two'\'''`,
+		`\\backslashes\\`:             `'\\backslashes\\'`,
+		`mixed "double" 'single'`:     `'mixed "double" '\''single'\'''`,
+	}
+	for in, want := range tests {
+		if got := shellQuotePOSIX(in); got != want {
+			t.Errorf("shellQuotePOSIX(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestAppleScriptEscape(t *testing.T) {
+	tests := map[string]string{
+		"":            "",
+		"plain":       "plain",
+		`say "hi"`:    `say \"hi\"`,
+		`back\slash`:  `back\\slash`,
+		`both "\"`:    `both \"\\\"`,
+	}
+	for in, want := range tests {
+		if got := appleScriptEscape(in); got != want {
+			t.Errorf("appleScriptEscape(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestBuildMacHarnessShellLine(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		argv    []string
+		want    string
+	}{
+		{
+			name: "simple path + single harness arg",
+			path: "/Users/me/code/project",
+			argv: []string{"claude"},
+			want: `cd '/Users/me/code/project' && 'claude'`,
+		},
+		{
+			name: "path with space + multi-arg harness",
+			path: "/a b/c",
+			argv: []string{"aider", "--model", "sonnet-4.6"},
+			want: `cd '/a b/c' && 'aider' '--model' 'sonnet-4.6'`,
+		},
+		{
+			name: "path with single quote",
+			path: "/a/it's here",
+			argv: []string{"claude"},
+			want: `cd '/a/it'\''s here' && 'claude'`,
+		},
+		{
+			name: "empty harness argv still cd's",
+			path: "/a",
+			argv: nil,
+			want: `cd '/a'`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := buildMacHarnessShellLine(tc.path, tc.argv); got != tc.want {
+				t.Errorf("buildMacHarnessShellLine:\n got  %q\n want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBuildMacAppleScript(t *testing.T) {
+	t.Run("Terminal uses do script", func(t *testing.T) {
+		got := buildMacAppleScript("Terminal", "/a", []string{"claude"})
+		if !strings.Contains(got, `tell application "Terminal"`) {
+			t.Errorf("missing Terminal tell block: %q", got)
+		}
+		if !strings.Contains(got, `do script "cd '/a' && 'claude'"`) {
+			t.Errorf("missing do-script line with expected shell command: %q", got)
+		}
+	})
+	t.Run("iTerm creates a new window and writes text", func(t *testing.T) {
+		got := buildMacAppleScript("iTerm", "/a", []string{"claude"})
+		if !strings.Contains(got, `tell application "iTerm"`) {
+			t.Errorf("missing iTerm tell block: %q", got)
+		}
+		if !strings.Contains(got, "create window with default profile") {
+			t.Errorf("missing new-window directive: %q", got)
+		}
+		if !strings.Contains(got, `write text "cd '/a' && 'claude'"`) {
+			t.Errorf("missing write-text line: %q", got)
+		}
+	})
+	t.Run("unsupported app returns empty", func(t *testing.T) {
+		if got := buildMacAppleScript("Warp", "/a", []string{"claude"}); got != "" {
+			t.Errorf("expected empty for unsupported app, got %q", got)
+		}
+	})
+	t.Run("escape round-trip for quotes and backslashes", func(t *testing.T) {
+		// Path with a double quote and a backslash. POSIX single-quote
+		// wrapping handles both at the shell layer (they're literal inside
+		// single quotes), AppleScript escaping handles the outer double
+		// quotes. We just check nothing unescaped leaks through.
+		got := buildMacAppleScript("Terminal", `/a"b\c`, []string{"x"})
+		// The shell line was: cd '/a"b\c' && 'x'. After AppleScript
+		// escaping the outer double quotes in 'cd' aren't double quotes
+		// (POSIX single-quotes are bare "), so only a raw " from the path
+		// survives and gets escaped.
+		if !strings.Contains(got, `cd '/a\"b\\c' && 'x'`) {
+			t.Errorf("escape chain produced unexpected output: %q", got)
+		}
+	})
+}
+
+func TestMacAppleScriptTerminalApp(t *testing.T) {
+	if !isDarwin() {
+		t.Skip("macOS-only detection")
+	}
+	tests := []struct {
+		name    string
+		term    config.TerminalEntry
+		wantApp string
+		wantOK  bool
+	}{
+		{
+			name:    "Terminal.app",
+			term:    config.TerminalEntry{Name: "Terminal", Command: "open", Args: []string{"-a", "Terminal"}},
+			wantApp: "Terminal",
+			wantOK:  true,
+		},
+		{
+			name:    "iTerm",
+			term:    config.TerminalEntry{Name: "iTerm", Command: "open", Args: []string{"-a", "iTerm"}},
+			wantApp: "iTerm",
+			wantOK:  true,
+		},
+		{
+			name:   "Warp falls through",
+			term:   config.TerminalEntry{Name: "Warp", Command: "open", Args: []string{"-a", "Warp"}},
+			wantOK: false,
+		},
+		{
+			name:   "non-open command falls through",
+			term:   config.TerminalEntry{Name: "Alacritty", Command: "alacritty", Args: []string{"-e", "{command}"}},
+			wantOK: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			app, ok := macAppleScriptTerminalApp(tc.term)
+			if ok != tc.wantOK || app != tc.wantApp {
+				t.Errorf("macAppleScriptTerminalApp(%+v) = (%q, %v), want (%q, %v)",
+					tc.term, app, ok, tc.wantApp, tc.wantOK)
+			}
+		})
+	}
+}
+
+func TestResolveFirstHarnessTerminalAcceptsMacAppleScriptEntry(t *testing.T) {
+	if !isDarwin() {
+		t.Skip("macOS-only path")
+	}
+	a := appWithTerminalsAndHarnesses(t,
+		[]config.TerminalEntry{{Name: "Terminal", Command: "open", Args: []string{"-a", "Terminal"}}},
+		[]config.AIHarnessEntry{{Name: "Claude Code", Command: "claude"}},
+	)
+	got, err := a.resolveFirstHarnessTerminal()
+	if err != nil {
+		t.Fatalf("Terminal.app should be accepted as a harness target on mac, got error: %v", err)
+	}
+	if got.Name != "Terminal" {
+		t.Errorf("unexpected terminal returned: %+v", got)
+	}
+}
+
 func TestResolveFirstHarnessTerminal(t *testing.T) {
 	t.Run("no terminals errors", func(t *testing.T) {
 		a := appWithTerminalsAndHarnesses(t, nil, nil)

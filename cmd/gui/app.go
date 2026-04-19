@@ -1778,9 +1778,10 @@ func (a *App) ShowErrorDialog(title, message string) {
 
 // resolveFirstHarnessTerminal returns global.terminals[0] and an actionable
 // error when (a) no terminal is configured or (b) the terminal can't accept a
-// harness command (no "{command}" token in args). AI harness launches rely on
-// the terminal having a "{command}" splice slot — see the Open in AI harness
-// documentation for the convention.
+// harness command. Eligibility: either the args contain the "{command}" token
+// (the generic splice path for WT profiles, gnome-terminal, etc.) OR the
+// entry is a macOS Terminal.app / iTerm `open -a <App>` pair (handled via
+// osascript — see macAppleScriptTerminalApp).
 func (a *App) resolveFirstHarnessTerminal() (config.TerminalEntry, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -1793,7 +1794,115 @@ func (a *App) resolveFirstHarnessTerminal() (config.TerminalEntry, error) {
 			return t, nil
 		}
 	}
+	if _, ok := macAppleScriptTerminalApp(t); ok {
+		return t, nil
+	}
 	return config.TerminalEntry{}, fmt.Errorf("%s in global.terminals[0] doesn't support launching a command. Add {command} to its args, or reorder global.terminals so a compatible entry is first.", t.Name)
+}
+
+// macAppleScriptTerminalApp detects a macOS `open -a Terminal|iTerm` entry
+// and returns the app name to talk to via osascript. Returns ok=false for
+// anything else (including Warp — which has a more complex AppleScript
+// dialect not yet supported). Matching is purely on the entry's shape, so
+// user-renamed entries still work as long as the command/args are intact.
+func macAppleScriptTerminalApp(t config.TerminalEntry) (appName string, ok bool) {
+	if !isDarwin() || t.Command != "open" {
+		return "", false
+	}
+	// Args must contain "-a <App>" with App in the supported set.
+	for i := 0; i < len(t.Args)-1; i++ {
+		if t.Args[i] != "-a" {
+			continue
+		}
+		switch t.Args[i+1] {
+		case "Terminal", "iTerm":
+			return t.Args[i+1], true
+		}
+	}
+	return "", false
+}
+
+// shellQuotePOSIX wraps s in single quotes for POSIX shells, escaping any
+// embedded single quotes. Suitable for building a shell command line that
+// gets passed to `sh -c` or an AppleScript `do script`.
+func shellQuotePOSIX(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// appleScriptEscape escapes a string for embedding in an AppleScript
+// double-quoted string literal. Backslashes and double quotes get prefixed
+// with a backslash.
+func appleScriptEscape(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return s
+}
+
+// buildMacHarnessShellLine returns the shell command line that osascript
+// will `do script` (Terminal.app) or `write text` (iTerm). It cd's into the
+// target path and then execs the harness argv — everything POSIX-quoted so
+// paths with spaces and unicode round-trip safely.
+func buildMacHarnessShellLine(path string, harnessArgv []string) string {
+	parts := make([]string, 0, 1+len(harnessArgv))
+	parts = append(parts, "cd "+shellQuotePOSIX(path))
+	if len(harnessArgv) > 0 {
+		quoted := make([]string, len(harnessArgv))
+		for i, a := range harnessArgv {
+			quoted[i] = shellQuotePOSIX(a)
+		}
+		parts = append(parts, strings.Join(quoted, " "))
+	}
+	return strings.Join(parts, " && ")
+}
+
+// buildMacAppleScript returns the AppleScript source that launches the
+// harness inside the named Terminal-family app. For Terminal.app a plain
+// `do script` (which opens a new window with the command running); for
+// iTerm, create a fresh window with the default profile and write the
+// command to its current session.
+func buildMacAppleScript(appName, path string, harnessArgv []string) string {
+	shell := buildMacHarnessShellLine(path, harnessArgv)
+	escaped := appleScriptEscape(shell)
+	switch appName {
+	case "Terminal":
+		return fmt.Sprintf(`tell application "Terminal"
+    activate
+    do script "%s"
+end tell`, escaped)
+	case "iTerm":
+		return fmt.Sprintf(`tell application "iTerm"
+    activate
+    create window with default profile
+    tell current session of current window
+        write text "%s"
+    end tell
+end tell`, escaped)
+	}
+	return ""
+}
+
+// launchMacHarnessViaAppleScript spawns osascript with the built AppleScript.
+// First invocation may prompt the user for Automation permission (macOS
+// Privacy → Automation) to let gitbox control Terminal.app / iTerm — that's
+// a one-time OS-level consent, not a gitbox prompt.
+func launchMacHarnessViaAppleScript(appName, path string, harnessArgv []string) error {
+	script := buildMacAppleScript(appName, path, harnessArgv)
+	if script == "" {
+		return fmt.Errorf("unsupported macOS terminal app: %q", appName)
+	}
+	cmd := exec.Command("osascript", "-e", script)
+	cmd.Env = git.Environ()
+	return cmd.Start()
+}
+
+// launchHarnessInTerminal dispatches between the generic {command}-splice
+// launcher and the macOS AppleScript launcher based on the terminal entry's
+// shape. Central point for harness-side launch routing.
+func launchHarnessInTerminal(path string, term config.TerminalEntry, harnessArgv []string) error {
+	if appName, ok := macAppleScriptTerminalApp(term); ok {
+		return launchMacHarnessViaAppleScript(appName, path, harnessArgv)
+	}
+	return openTerminalWithHarnessAt(path, term.Command, term.Args, harnessArgv)
 }
 
 // buildHarnessArgv returns the harness argv to splice into the terminal's
@@ -1823,7 +1932,7 @@ func (a *App) OpenInAIHarness(path string, command string, args []string) error 
 	if err != nil {
 		return err
 	}
-	return openTerminalWithHarnessAt(path, term.Command, term.Args, buildHarnessArgv(command, args))
+	return launchHarnessInTerminal(path, term, buildHarnessArgv(command, args))
 }
 
 // OpenAccountInAIHarness launches the given AI harness in the account's
@@ -1842,7 +1951,7 @@ func (a *App) OpenAccountInAIHarness(accountKey string, command string, args []s
 	if err != nil {
 		return err
 	}
-	return openTerminalWithHarnessAt(path, term.Command, term.Args, buildHarnessArgv(command, args))
+	return launchHarnessInTerminal(path, term, buildHarnessArgv(command, args))
 }
 
 // ─── Platform helpers ─────────────────────────────────────────────────────
