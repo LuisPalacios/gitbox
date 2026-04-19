@@ -3,6 +3,7 @@ package main
 import (
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -187,6 +188,73 @@ func TestDetectTerminalsIncludesConfigEntries(t *testing.T) {
 	if !reflect.DeepEqual(match.Args, []string{"-C", "{path}"}) {
 		t.Errorf("args should round-trip verbatim; got %v", match.Args)
 	}
+}
+
+func TestMsysToWindowsPath(t *testing.T) {
+	tests := map[string]string{
+		`/c/Users/luis/AppData/Local`: `C:\Users\luis\AppData\Local`,
+		`/d/code/repo`:                `D:\code\repo`,
+		`/c`:                          `C:`,
+		`C:\already\windows`:          `C:\already\windows`,
+		`/not/a/drive/path`:           `/not/a/drive/path`,
+		``:                            ``,
+		`/`:                           `/`,
+	}
+	for in, want := range tests {
+		if got := msysToWindowsPath(in); got != want {
+			t.Errorf("msysToWindowsPath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSanitizeWindowsTerminalEnv(t *testing.T) {
+	in := []string{
+		"MSYSTEM=MINGW64",
+		"MSYS_NO_PATHCONV=1",
+		"LOCALAPPDATA=/c/Users/luis/AppData/Local",
+		"APPDATA=/c/Users/luis/AppData/Roaming",
+		"USERPROFILE=/c/Users/luis",
+		"TEMP=/c/Users/luis/AppData/Local/Temp",
+		"PATH=/usr/bin:/mingw64/bin",  // not normalised (deliberate)
+		"FOO=/c/not-normalised",       // unknown key kept as-is
+		"PS1=> ",
+	}
+	out := sanitizeWindowsTerminalEnv(in)
+
+	// MSYSTEM / MSYS_NO_PATHCONV must be dropped.
+	for _, e := range out {
+		if strings.HasPrefix(e, "MSYSTEM=") || strings.HasPrefix(e, "MSYS_NO_PATHCONV=") {
+			t.Errorf("MSYS marker should be dropped; still present: %q", e)
+		}
+	}
+	// Known Windows vars should be normalised.
+	wantNormalised := map[string]string{
+		"LOCALAPPDATA": `C:\Users\luis\AppData\Local`,
+		"APPDATA":      `C:\Users\luis\AppData\Roaming`,
+		"USERPROFILE":  `C:\Users\luis`,
+		"TEMP":         `C:\Users\luis\AppData\Local\Temp`,
+	}
+	for k, want := range wantNormalised {
+		found := false
+		for _, e := range out {
+			if strings.HasPrefix(e, k+"=") {
+				found = true
+				if got := strings.TrimPrefix(e, k+"="); got != want {
+					t.Errorf("%s = %q, want %q", k, got, want)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s missing from sanitised env", k)
+		}
+	}
+	// Unknown keys kept verbatim.
+	for _, e := range out {
+		if e == "FOO=/c/not-normalised" {
+			return
+		}
+	}
+	t.Error("unknown key FOO was not preserved verbatim")
 }
 
 func countByName(entries []config.TerminalEntry, name string) int {

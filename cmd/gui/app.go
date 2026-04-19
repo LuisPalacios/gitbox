@@ -1044,12 +1044,63 @@ func (a *App) OpenInTerminal(path string, command string, args []string) error {
 		startArgs = append(startArgs, resolved...)
 		cmd = exec.Command("cmd.exe", startArgs...)
 		git.HideWindow(cmd) // hide the transient wrapper, not the terminal
+		cmd.Env = sanitizeWindowsTerminalEnv(git.Environ())
 	} else {
 		cmd = exec.Command(command, resolved...)
 		cmd.Dir = path
+		cmd.Env = git.Environ()
 	}
-	cmd.Env = git.Environ()
 	return cmd.Start()
+}
+
+// sanitizeWindowsTerminalEnv scrubs MSYS / Git-Bash artefacts from the env
+// before handing it to a child terminal. When the GUI itself is launched
+// from Git Bash (dev workflow), env vars like LOCALAPPDATA, APPDATA, TEMP
+// etc. are inherited in posix form ("/c/Users/..."), which breaks Windows-
+// native tools like oh-my-posh in the spawned shell. Production launches
+// (from Explorer / Start Menu) are unaffected — sanitisation is a no-op on
+// a clean env.
+func sanitizeWindowsTerminalEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		i := strings.IndexByte(e, '=')
+		if i < 0 {
+			out = append(out, e)
+			continue
+		}
+		key, val := e[:i], e[i+1:]
+		switch strings.ToUpper(key) {
+		case "MSYSTEM", "MSYS", "MSYS2_PATH_TYPE", "MSYS_NO_PATHCONV":
+			// Drop — their presence triggers MSYS path translation in children.
+			continue
+		case "LOCALAPPDATA", "APPDATA", "USERPROFILE", "HOMEPATH",
+			"TEMP", "TMP", "HOME", "PROGRAMFILES", "PROGRAMDATA":
+			val = msysToWindowsPath(val)
+		}
+		out = append(out, key+"="+val)
+	}
+	return out
+}
+
+// msysToWindowsPath converts a single MSYS path ("/c/Users/foo") to Windows
+// form ("C:\\Users\\foo"). Values already in Windows form or not matching
+// the /<drive>/... shape are returned unchanged.
+func msysToWindowsPath(p string) string {
+	if len(p) < 2 || p[0] != '/' {
+		return p
+	}
+	c := p[1]
+	if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+		return p
+	}
+	if len(p) > 2 && p[2] != '/' {
+		return p
+	}
+	rest := ""
+	if len(p) > 2 {
+		rest = p[2:]
+	}
+	return strings.ToUpper(string(c)) + ":" + strings.ReplaceAll(rest, "/", `\`)
 }
 
 // resolveTerminalArgs substitutes "{path}" tokens in args with the repo path.

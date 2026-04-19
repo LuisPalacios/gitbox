@@ -265,6 +265,14 @@ Editors are auto-detected on startup by scanning PATH. Gitbox writes the detecte
 
 Terminals follow the same pattern: detected on startup per platform and written to `global.terminals` with their command and argument templates. Each entry has a `name`, a `command` (absolute path or on-PATH launcher) and `args`. Use the literal token `{path}` inside `args` to mark where the repo path is injected; if the token is absent, the path is appended as the final argument. Edit or reorder freely — the order in the menu matches the order in the config.
 
+On Windows, bare shell entries (`cmd.exe`, `powershell.exe`, `pwsh.exe`, `wsl.exe`) have empty `args` — the launcher wraps them in `cmd.exe /C start "" /D <path>`, which gives each terminal a fresh console and sets the starting directory. If Windows Terminal is your default console host, `wsl.exe` opens inside WT's **default** profile, not your custom WSL profile. To force a specific WT profile (with its colors, font, etc.), replace the default WSL entry in `gitbox.json` with a direct `wt.exe` invocation, for example:
+
+```json
+{ "name": "WSL (Ubuntu)", "command": "wt.exe", "args": ["-p", "Ubuntu-22.04", "--cd", "{path}"] }
+```
+
+The same `-p "<profile-name>"` trick works for any WT profile you want to pin to a menu entry.
+
 In **compact mode**, the clone actions appear as small icon buttons (browser, folder, editor, and terminal) that show on hover over each repo row. Only the first configured editor and the first configured terminal are shown — switch to full view for the complete list.
 
 ### Update notification
