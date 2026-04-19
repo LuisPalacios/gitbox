@@ -64,6 +64,30 @@ func TestParseRemoteURL(t *testing.T) {
 	}
 }
 
+func TestRemoteURLUser(t *testing.T) {
+	tests := []struct {
+		url  string
+		want string
+	}{
+		{"https://user@github.com/owner/repo.git", "user"},
+		{"https://user:token@github.com/owner/repo.git", "user"},
+		{"https://github.com/owner/repo.git", ""},
+		{"https://github.com/owner/repo", ""},
+		{"git@github.com:owner/repo.git", ""},
+		{"git@gitbox-github-luis:owner/repo.git", ""},
+		{"", ""},
+		{"not-a-url", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.url, func(t *testing.T) {
+			got := RemoteURLUser(tt.url)
+			if got != tt.want {
+				t.Errorf("RemoteURLUser(%q) = %q, want %q", tt.url, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSplitOwnerRepo(t *testing.T) {
 	tests := []struct {
 		path      string

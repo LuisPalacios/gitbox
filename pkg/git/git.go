@@ -385,6 +385,31 @@ func ConfigGet(repoPath, key string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
+// CredentialUsernames returns every value of repo-local git config keys that
+// match `credential.<url>.username`. Returns nil if none are set. Errors from
+// git (including "no match", which exits 1) are swallowed — a repo without
+// credential usernames is a normal case, not a failure.
+func CredentialUsernames(repoPath string) []string {
+	out, err := output(repoPath, "config", "--get-regexp", `^credential\..*\.username$`)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Lines look like: "credential.https://github.com.username SW-Luis-Palacios"
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		names = append(names, fields[len(fields)-1])
+	}
+	return names
+}
+
 // ConfigSet sets a git config value in the given repo.
 func ConfigSet(repoPath, key, value string) error {
 	return run(repoPath, "config", key, value)

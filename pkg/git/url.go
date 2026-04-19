@@ -60,6 +60,22 @@ func ParseRemoteURL(rawURL string) (host, owner, repo string, err error) {
 	return host, owner, repo, nil
 }
 
+// RemoteURLUser extracts the user part of an HTTPS URL of the form
+// "https://user@host/...". Returns "" for URLs without an embedded user,
+// for SSH URLs (where the user is always "git" and carries no account signal),
+// and for malformed input.
+func RemoteURLUser(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" || !strings.Contains(rawURL, "://") {
+		return ""
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil || u.User == nil {
+		return ""
+	}
+	return u.User.Username()
+}
+
 // splitOwnerRepo splits "owner/repo" or "group/subgroup/repo" into
 // (owner, repo) where owner may contain slashes for nested groups.
 func splitOwnerRepo(path string) (owner, repo string) {
