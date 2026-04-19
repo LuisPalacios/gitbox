@@ -205,6 +205,7 @@ Reference the issue in the commit with `Closes #N` — GitHub auto-closes on pus
 - Never mark a task complete without proving it works
 - Test scripts with `bash -n` (syntax check) and `shellcheck` when available
 - Go: `go vet ./...` + run the relevant test commands (see Testing section below)
+- **Build both binaries** after any code change to `cmd/` or `pkg/` — never just the one I touched. The CLI and GUI share `pkg/` but have divergent build tags, imports, and rules (Wails runtime, the `git.HideWindow` Windows console-flash rule applies only to `cmd/gui/`), so a change that compiles cleanly in one target can break the other. Quick compile-check during iterative edits: `go build -o /dev/null ./cmd/cli ./cmd/gui`. Full build before reporting done or pushing: `go build -o build/gitbox ./cmd/cli` + `cd cmd/gui && wails build` (copy icons first — see Build commands). Doc-only and non-Go changes are exempt.
 - Validate config templates render correctly before committing
 - After any command that writes config files, read the actual file on disk — never trust command output alone
 
