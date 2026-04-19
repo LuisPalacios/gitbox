@@ -16,18 +16,19 @@ import (
 
 // OrphanRepo describes a git repo on disk not tracked in gitbox.json.
 type OrphanRepo struct {
-	Path           string // absolute path on disk
-	RelPath        string // relative to parent folder
-	RemoteURL      string // origin remote URL (empty if local-only)
-	Host           string // extracted hostname from remote
-	Owner          string // extracted owner/org from remote
-	Repo           string // extracted repo name from remote
-	RepoKey        string // "owner/repo" — the key for config.AddRepo
-	MatchedAccount string // account key if matched, empty if unknown
-	MatchedSource  string // source key if matched, empty if needs creation
-	ExpectedPath   string // where gitbox convention says this should live
-	NeedsRelocate  bool   // current path != expected path
-	LocalOnly      bool   // no remote — cannot adopt
+	Path                string   // absolute path on disk
+	RelPath             string   // relative to parent folder
+	RemoteURL           string   // origin remote URL (empty if local-only)
+	Host                string   // extracted hostname from remote
+	Owner               string   // extracted owner/org from remote
+	Repo                string   // extracted repo name from remote
+	RepoKey             string   // "owner/repo" — the key for config.AddRepo
+	MatchedAccount      string   // account key if matched, empty if unknown/ambiguous
+	MatchedSource       string   // source key if matched, empty if needs creation
+	ExpectedPath        string   // where gitbox convention says this should live
+	NeedsRelocate       bool     // current path != expected path
+	LocalOnly           bool     // no remote — cannot adopt
+	AmbiguousCandidates []string // when multiple host-matching accounts tie with no disambiguator
 }
 
 // FindOrphans walks the gitbox parent folder and returns repos not in config.
@@ -81,10 +82,18 @@ func FindOrphans(cfg *config.Config) ([]OrphanRepo, error) {
 		o.Repo = repo
 		o.RepoKey = owner + "/" + repo
 
-		// Match against accounts.
-		acctKey, srcKey := MatchAccount(cfg, host, owner)
+		// Match against accounts using the richer identity signals.
+		mc := MatchContext{
+			Host:         host,
+			Owner:        owner,
+			RemoteURL:    remoteURL,
+			RepoPath:     absPath,
+			ParentFolder: parentFolder,
+		}
+		acctKey, srcKey, ambiguous := MatchAccountEx(cfg, mc)
 		o.MatchedAccount = acctKey
 		o.MatchedSource = srcKey
+		o.AmbiguousCandidates = ambiguous
 
 		// Compute expected path and relocation need.
 		if srcKey != "" {
@@ -140,41 +149,140 @@ func trackedPaths(cfg *config.Config, parentFolder string) map[string]bool {
 	return paths
 }
 
+// MatchContext carries every signal MatchAccountEx uses to pick an account.
+// Host and Owner are always required; the rest are optional and, when absent,
+// simply don't contribute to scoring.
+type MatchContext struct {
+	Host         string // hostname parsed from the remote URL (or SSH alias)
+	Owner        string // owner/org parsed from the remote URL path
+	RemoteURL    string // full remote URL (used to extract an embedded user)
+	RepoPath     string // repo path on disk (used for credential + parent-folder signals)
+	ParentFolder string // gitbox parent folder (used to compute parent-folder source match)
+}
+
+// Score weights for MatchAccountEx. The thresholds are picked so that:
+//   - hostWeight alone never claims a match (ambiguous when ≥2 candidates tie).
+//   - Any non-host signal unambiguously beats host-only.
+//   - credentialWeight and urlUserWeight are the strongest — they directly name
+//     the account's Username in the repo's own state.
+const (
+	hostWeight        = 1
+	ownerWeight       = 3
+	parentFolderScore = 5
+	urlUserWeight     = 10
+	credentialWeight  = 10
+)
+
 // MatchAccount finds the best account + source for a remote host and owner.
-// Returns (accountKey, sourceKey) — both empty if no match.
+// Returns (accountKey, sourceKey) — both empty if no match or the match is
+// ambiguous.
+//
+// Kept for API compatibility; new callers should use MatchAccountEx to get
+// access to the full signal set and ambiguity information.
 func MatchAccount(cfg *config.Config, host, owner string) (string, string) {
+	acct, src, _ := MatchAccountEx(cfg, MatchContext{Host: host, Owner: owner})
+	return acct, src
+}
+
+// MatchAccountEx scores every host-matching account against the signals in mc
+// and returns the best match. Returns empty account/source keys when no
+// account matches the host or when the top score is tied across ≥2 accounts
+// (the tied candidates are returned in ambiguous).
+func MatchAccountEx(cfg *config.Config, mc MatchContext) (accountKey, sourceKey string, ambiguous []string) {
 	type candidate struct {
 		accountKey string
 		sourceKey  string
-		score      int // higher is better
+		score      int
 	}
-	var candidates []candidate
 
-	for acctKey, acct := range cfg.Accounts {
+	// Precompute signals that do not depend on any specific account.
+	embeddedUser := ""
+	if mc.RemoteURL != "" {
+		embeddedUser = git.RemoteURLUser(mc.RemoteURL)
+	}
+	var credUsers []string
+	if mc.RepoPath != "" {
+		credUsers = git.CredentialUsernames(mc.RepoPath)
+	}
+	// First path component of the repo relative to the gitbox parent folder.
+	// For a canonical layout "parent/sourceFolder/owner/repo" this is the
+	// source folder name; for a flat layout "parent/sourceFolder/repo" it is
+	// still the source folder name. That's the signal we want.
+	repoSourceFolder := ""
+	if mc.RepoPath != "" && mc.ParentFolder != "" {
+		if rel, err := filepath.Rel(mc.ParentFolder, mc.RepoPath); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+			parts := strings.Split(filepath.ToSlash(rel), "/")
+			if len(parts) > 0 {
+				repoSourceFolder = parts[0]
+			}
+		}
+	}
+
+	// Iterate accounts deterministically so the scoring itself is stable
+	// even before the tie-breaker decides ambiguity.
+	acctKeys := make([]string, 0, len(cfg.Accounts))
+	for k := range cfg.Accounts {
+		acctKeys = append(acctKeys, k)
+	}
+	sort.Strings(acctKeys)
+
+	var candidates []candidate
+	for _, acctKey := range acctKeys {
+		acct := cfg.Accounts[acctKey]
 		acctHost := HostnameFromURL(acct.URL)
 
-		// Check direct hostname match.
-		hostMatch := strings.EqualFold(host, acctHost)
-
-		// Check SSH host alias match (e.g., host="gitbox-github-luis", alias="gitbox-github-luis").
+		hostMatch := strings.EqualFold(mc.Host, acctHost)
 		if !hostMatch && acct.SSH != nil && acct.SSH.Host != "" {
-			hostMatch = strings.EqualFold(host, acct.SSH.Host)
+			hostMatch = strings.EqualFold(mc.Host, acct.SSH.Host)
 		}
-
 		if !hostMatch {
 			continue
 		}
 
-		// Score: host match = 1, username match = +2
-		score := 1
-		if strings.EqualFold(owner, acct.Username) {
-			score += 2
+		score := hostWeight
+
+		// Owner == account Username.
+		if acct.Username != "" && strings.EqualFold(mc.Owner, acct.Username) {
+			score += ownerWeight
 		}
 
-		// Find a source linked to this account.
+		// Embedded HTTPS user.
+		if embeddedUser != "" && acct.Username != "" && strings.EqualFold(embeddedUser, acct.Username) {
+			score += urlUserWeight
+		}
+
+		// credential.<url>.username in the repo's own config.
+		if acct.Username != "" {
+			for _, cu := range credUsers {
+				if strings.EqualFold(cu, acct.Username) {
+					score += credentialWeight
+					break
+				}
+			}
+		}
+
+		// Repo lives under this account's source folder.
+		if repoSourceFolder != "" {
+			for sk, src := range cfg.Sources {
+				if src.Account != acctKey {
+					continue
+				}
+				if strings.EqualFold(repoSourceFolder, src.EffectiveFolder(sk)) {
+					score += parentFolderScore
+					break
+				}
+			}
+		}
+
+		// Pick a source linked to this account (deterministic iteration).
 		srcKey := ""
-		for sk, src := range cfg.Sources {
-			if src.Account == acctKey {
+		srcKeys := make([]string, 0, len(cfg.Sources))
+		for sk := range cfg.Sources {
+			srcKeys = append(srcKeys, sk)
+		}
+		sort.Strings(srcKeys)
+		for _, sk := range srcKeys {
+			if cfg.Sources[sk].Account == acctKey {
 				srcKey = sk
 				break
 			}
@@ -184,14 +292,28 @@ func MatchAccount(cfg *config.Config, host, owner string) (string, string) {
 	}
 
 	if len(candidates) == 0 {
-		return "", ""
+		return "", "", nil
 	}
 
-	// Pick the best match (highest score).
 	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].score > candidates[j].score
+		if candidates[i].score != candidates[j].score {
+			return candidates[i].score > candidates[j].score
+		}
+		return candidates[i].accountKey < candidates[j].accountKey
 	})
-	return candidates[0].accountKey, candidates[0].sourceKey
+
+	top := candidates[0]
+	// Collect every candidate tied at the top score.
+	tied := []string{top.accountKey}
+	for _, c := range candidates[1:] {
+		if c.score == top.score {
+			tied = append(tied, c.accountKey)
+		}
+	}
+	if len(tied) >= 2 {
+		return "", "", tied
+	}
+	return top.accountKey, top.sourceKey, nil
 }
 
 // PlainRemoteURL builds a remote URL without embedded credentials.
