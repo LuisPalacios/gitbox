@@ -291,6 +291,12 @@ Notes:
 - `-d "{path}"` sets the starting directory for the shell the profile launches.
 - The same pattern works for pinning a specific `pwsh.exe` or `powershell.exe` profile (e.g. `--profile "PowerShell"`) — just adjust the profile name.
 
+#### Launching gitbox from Git Bash (developer note)
+
+If you launch `GitboxApp.exe` from a Git Bash / MSYS2 shell, Windows environment variables inherited by the GUI come through in posix form (e.g. `LOCALAPPDATA=/c/Users/you/AppData/Local`). Those values propagate into terminals you open from gitbox, and tools that read them as Windows paths — `oh-my-posh`, some `$PROFILE` helpers — can choke (`& '/c/Users/...' — not recognized as a cmdlet`). Gitbox sanitises these values in the env block it hands to the spawned terminal, but when Windows Terminal is the default console host it uses its own delegation path and sometimes ignores the override, so the leak can still show up in a PS7 window.
+
+Workaround: launch `GitboxApp.exe` from Explorer, the Start Menu, or a pinned shortcut — anywhere Windows originates a clean env. End users never hit this, so production behaviour is unaffected.
+
 In **compact mode**, the clone actions appear as small icon buttons (browser, folder, editor, and terminal) that show on hover over each repo row. Only the first configured editor and the first configured terminal are shown — switch to full view for the complete list.
 
 ### Update notification

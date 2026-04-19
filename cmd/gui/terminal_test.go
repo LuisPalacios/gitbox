@@ -257,64 +257,6 @@ func TestSanitizeWindowsTerminalEnv(t *testing.T) {
 	t.Error("unknown key FOO was not preserved verbatim")
 }
 
-func TestEnvOverridesForWindowsTerminal(t *testing.T) {
-	in := []string{
-		"MSYSTEM=MINGW64",
-		"MSYS_NO_PATHCONV=1",
-		"LOCALAPPDATA=/c/Users/luis/AppData/Local",
-		"APPDATA=/c/Users/luis/AppData/Roaming",
-		"USERPROFILE=C:\\Users\\luis",       // already clean — must not be output
-		"PATH=/usr/bin:/mingw64/bin",         // PATH is not rewritten
-		"UNRELATED=foo",
-	}
-	got := envOverridesForWindowsTerminal(in)
-	gotMap := map[string]string{}
-	for _, kv := range got {
-		i := strings.IndexByte(kv, '=')
-		gotMap[kv[:i]] = kv[i+1:]
-	}
-
-	// Drops: MSYSTEM and MSYS_NO_PATHCONV become empty-value setters.
-	if v, ok := gotMap["MSYSTEM"]; !ok || v != "" {
-		t.Errorf("MSYSTEM should be emitted with empty value; got %q ok=%v", v, ok)
-	}
-	if v, ok := gotMap["MSYS_NO_PATHCONV"]; !ok || v != "" {
-		t.Errorf("MSYS_NO_PATHCONV should be emitted with empty value; got %q ok=%v", v, ok)
-	}
-	// Normalised.
-	if gotMap["LOCALAPPDATA"] != `C:\Users\luis\AppData\Local` {
-		t.Errorf("LOCALAPPDATA normalise: %q", gotMap["LOCALAPPDATA"])
-	}
-	if gotMap["APPDATA"] != `C:\Users\luis\AppData\Roaming` {
-		t.Errorf("APPDATA normalise: %q", gotMap["APPDATA"])
-	}
-	// Already-clean and unrelated keys must NOT be emitted (empty batch wins).
-	if _, ok := gotMap["USERPROFILE"]; ok {
-		t.Error("USERPROFILE was already clean — should not be re-emitted")
-	}
-	if _, ok := gotMap["UNRELATED"]; ok {
-		t.Error("unrelated keys must not leak into overrides")
-	}
-	if _, ok := gotMap["PATH"]; ok {
-		t.Error("PATH is not in the normalise set — should be skipped")
-	}
-}
-
-func TestCmdQuote(t *testing.T) {
-	tests := map[string]string{
-		`hello`:           `"hello"`,
-		`a b c`:           `"a b c"`,
-		`C:\Users\foo`:    `"C:\Users\foo"`,
-		`he said "hi"`:    `"he said ""hi"""`,
-		``:                `""`,
-	}
-	for in, want := range tests {
-		if got := cmdQuote(in); got != want {
-			t.Errorf("cmdQuote(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
 func countByName(entries []config.TerminalEntry, name string) int {
 	n := 0
 	for _, e := range entries {

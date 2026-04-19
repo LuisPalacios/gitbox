@@ -1036,31 +1036,13 @@ func (a *App) OpenInTerminal(path string, command string, args []string) error {
 
 	var cmd *exec.Cmd
 	if isWindows() {
-		// Build a batch: `set "K=V" && set "K2=" && ... && start "" /D <path> <cmd> <args>`
-		//
-		// Why both cmd.Env AND in-batch `set`: when Windows Terminal is the
-		// default console host, `start pwsh.exe` can delegate through WT,
-		// which may not honour the env block we passed to cmd.exe's own
-		// CreateProcess. The inline `set` commands mutate cmd.exe's own
-		// process env — the env `start` actually reads when spawning the
-		// detached child — so the override sticks either way.
-		var b strings.Builder
-		for _, setter := range envOverridesForWindowsTerminal(git.Environ()) {
-			b.WriteString(`set "`)
-			b.WriteString(setter)
-			b.WriteString(`" && `)
-		}
-		b.WriteString(`start "" /D `)
-		b.WriteString(cmdQuote(path))
-		b.WriteString(` `)
-		b.WriteString(cmdQuote(command))
-		for _, a := range resolved {
-			b.WriteString(` `)
-			b.WriteString(cmdQuote(a))
-		}
-		// /S lets cmd.exe strip the single pair of outer quotes Go adds
-		// around the /C argument, so our inner quoting is preserved verbatim.
-		cmd = exec.Command("cmd.exe", "/S", "/C", b.String())
+		// cmd.exe /C start "" /D <path> <command> <args...>
+		// "" = empty title (required placeholder; first quoted arg to `start`
+		// is otherwise interpreted as the window title).
+		startArgs := make([]string, 0, 6+len(resolved))
+		startArgs = append(startArgs, "/C", "start", "", "/D", path, command)
+		startArgs = append(startArgs, resolved...)
+		cmd = exec.Command("cmd.exe", startArgs...)
 		git.HideWindow(cmd) // hide the transient wrapper, not the terminal
 		cmd.Env = sanitizeWindowsTerminalEnv(git.Environ())
 	} else {
@@ -1069,46 +1051,6 @@ func (a *App) OpenInTerminal(path string, command string, args []string) error {
 		cmd.Env = git.Environ()
 	}
 	return cmd.Start()
-}
-
-// cmdQuote wraps s in double quotes for cmd.exe, escaping inner quotes per
-// CMD's rules (doubled quotes). Used to build `start` command lines safely.
-func cmdQuote(s string) string {
-	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
-}
-
-// envOverridesForWindowsTerminal returns the KEY=VALUE strings we want to
-// apply via `set` inside a cmd.exe batch before spawning a terminal. Drops
-// MSYS markers (`KEY=` = unset) and rewrites posix-form Windows path vars
-// back to native form. Skips keys whose value is already clean — nothing to
-// set, keep the batch short.
-func envOverridesForWindowsTerminal(env []string) []string {
-	drop := map[string]bool{
-		"MSYSTEM": true, "MSYS": true, "MSYS2_PATH_TYPE": true, "MSYS_NO_PATHCONV": true,
-	}
-	normalize := map[string]bool{
-		"LOCALAPPDATA": true, "APPDATA": true, "USERPROFILE": true, "HOMEPATH": true,
-		"TEMP": true, "TMP": true, "HOME": true, "PROGRAMFILES": true, "PROGRAMDATA": true,
-	}
-	var out []string
-	for _, e := range env {
-		i := strings.IndexByte(e, '=')
-		if i < 0 {
-			continue
-		}
-		key, val := e[:i], e[i+1:]
-		up := strings.ToUpper(key)
-		if drop[up] && val != "" {
-			out = append(out, key+"=") // unset
-			continue
-		}
-		if normalize[up] {
-			if nv := msysToWindowsPath(val); nv != val {
-				out = append(out, key+"="+nv)
-			}
-		}
-	}
-	return out
 }
 
 // sanitizeWindowsTerminalEnv scrubs MSYS / Git-Bash artefacts from the env
