@@ -2397,7 +2397,7 @@
               <span class="adopt-repo-key">{o.repoKey}</span>
               <span class="adopt-target">&rarr; {o.matchedSource}</span>
               <span class="adopt-action">{o.needsRelocate ? 'relocate' : 'in place'}</span>
-              <span class="adopt-path">{o.relPath}</span>
+              <span class="adopt-path"><span class="adopt-path-root">Root folder/</span>{o.relPath}</span>
             </label>
           {/each}
           {#each orphanModal.orphans.filter(o => !o.matchedAccount && !o.localOnly) as o, i}
@@ -2410,7 +2410,7 @@
               {#if o.ambiguousCandidates && o.ambiguousCandidates.length > 1}
                 <span class="adopt-hint">ambiguous: {o.ambiguousCandidates.join(' | ')}</span>
               {/if}
-              <span class="adopt-path adopt-path-muted">{o.relPath}</span>
+              <span class="adopt-path adopt-path-muted"><span class="adopt-path-root">Root folder/</span>{o.relPath}</span>
             </div>
           {/each}
           {#each orphanModal.orphans.filter(o => o.localOnly) as o, i}
@@ -3602,6 +3602,7 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .adopt-path-muted { padding-left: 0; }
+  .adopt-path-root { color: var(--text-secondary); font-family: inherit; }
 
   .btn-adopt-confirm {
     padding: 6px 12px; background: #22c55e; border: none; color: #000;
