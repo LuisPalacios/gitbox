@@ -154,6 +154,8 @@ Use --pull to also pull repos that are behind (fast-forward only).`,
 						tag = colorize(" [ORPHAN — local only]", colorYellow)
 					} else if o.MatchedAccount != "" {
 						tag = colorize(fmt.Sprintf(" [ORPHAN → %s]", o.MatchedAccount), colorYellow)
+					} else if len(o.AmbiguousCandidates) > 1 {
+						tag = colorize(fmt.Sprintf(" [ORPHAN — ambiguous: %s]", strings.Join(o.AmbiguousCandidates, " | ")), colorRed)
 					} else {
 						tag = colorize(" [ORPHAN — unknown account]", colorRed)
 					}

@@ -149,6 +149,7 @@ export interface OrphanRepoDTO {
   expectedPath: string;
   needsRelocate: boolean;
   localOnly: boolean;
+  ambiguousCandidates?: string[];
 }
 
 export interface AdoptResultDTO {

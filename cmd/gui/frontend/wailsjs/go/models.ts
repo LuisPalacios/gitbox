@@ -542,6 +542,7 @@ export namespace main {
 	    expectedPath: string;
 	    needsRelocate: boolean;
 	    localOnly: boolean;
+	    ambiguousCandidates?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new OrphanRepoDTO(source);
@@ -558,6 +559,7 @@ export namespace main {
 	        this.expectedPath = source["expectedPath"];
 	        this.needsRelocate = source["needsRelocate"];
 	        this.localOnly = source["localOnly"];
+	        this.ambiguousCandidates = source["ambiguousCandidates"];
 	    }
 	}
 	export class RepoDetail {

@@ -563,15 +563,16 @@ func (a *App) ConfirmSweep(sourceKey, repoKey string) SweepDeleteDTO {
 
 // OrphanRepoDTO describes an orphan repo for the frontend.
 type OrphanRepoDTO struct {
-	Path           string `json:"path"`
-	RelPath        string `json:"relPath"`
-	RemoteURL      string `json:"remoteURL"`
-	RepoKey        string `json:"repoKey"`
-	MatchedAccount string `json:"matchedAccount"`
-	MatchedSource  string `json:"matchedSource"`
-	ExpectedPath   string `json:"expectedPath"`
-	NeedsRelocate  bool   `json:"needsRelocate"`
-	LocalOnly      bool   `json:"localOnly"`
+	Path                string   `json:"path"`
+	RelPath             string   `json:"relPath"`
+	RemoteURL           string   `json:"remoteURL"`
+	RepoKey             string   `json:"repoKey"`
+	MatchedAccount      string   `json:"matchedAccount"`
+	MatchedSource       string   `json:"matchedSource"`
+	ExpectedPath        string   `json:"expectedPath"`
+	NeedsRelocate       bool     `json:"needsRelocate"`
+	LocalOnly           bool     `json:"localOnly"`
+	AmbiguousCandidates []string `json:"ambiguousCandidates,omitempty"`
 }
 
 // AdoptResultDTO holds the result of adopting orphan repos.
@@ -596,15 +597,16 @@ func (a *App) FindOrphans() []OrphanRepoDTO {
 	dtos := make([]OrphanRepoDTO, len(orphans))
 	for i, o := range orphans {
 		dtos[i] = OrphanRepoDTO{
-			Path:           o.Path,
-			RelPath:        o.RelPath,
-			RemoteURL:      o.RemoteURL,
-			RepoKey:        o.RepoKey,
-			MatchedAccount: o.MatchedAccount,
-			MatchedSource:  o.MatchedSource,
-			ExpectedPath:   o.ExpectedPath,
-			NeedsRelocate:  o.NeedsRelocate,
-			LocalOnly:      o.LocalOnly,
+			Path:                o.Path,
+			RelPath:             o.RelPath,
+			RemoteURL:           o.RemoteURL,
+			RepoKey:             o.RepoKey,
+			MatchedAccount:      o.MatchedAccount,
+			MatchedSource:       o.MatchedSource,
+			ExpectedPath:        o.ExpectedPath,
+			NeedsRelocate:       o.NeedsRelocate,
+			LocalOnly:           o.LocalOnly,
+			AmbiguousCandidates: o.AmbiguousCandidates,
 		}
 	}
 	return dtos

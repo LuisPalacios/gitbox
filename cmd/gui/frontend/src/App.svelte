@@ -2406,6 +2406,9 @@
             <div class="adopt-item adopt-item-muted">
               <span class="adopt-repo-key">{o.repoKey}</span>
               <span class="adopt-remote">{o.remoteURL}</span>
+              {#if o.ambiguousCandidates && o.ambiguousCandidates.length > 1}
+                <span class="adopt-hint">ambiguous: {o.ambiguousCandidates.join(' | ')}</span>
+              {/if}
             </div>
           {/each}
           {#each orphanModal.orphans.filter(o => o.localOnly) as o, i}
@@ -3590,6 +3593,7 @@
   .adopt-target { color: var(--text-secondary); font-size: 11px; }
   .adopt-action { color: var(--text-muted); font-size: 11px; font-style: italic; margin-left: auto; }
   .adopt-remote { color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
+  .adopt-hint { color: #f59e0b; font-size: 11px; font-style: italic; margin-left: auto; }
 
   .btn-adopt-confirm {
     padding: 6px 12px; background: #22c55e; border: none; color: #000;
