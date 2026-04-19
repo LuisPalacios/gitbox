@@ -1715,11 +1715,18 @@ func (a *App) DetectAIHarnesses() []AIHarnessInfo {
 }
 
 // SyncAIHarnesses reconciles config's global.ai_harnesses array with the
-// platform. Mirrors SyncEditors:
-//   - Deduplicates existing entries by name (keeps the first occurrence).
-//   - Appends any detected harness not already present (matched by name),
-//     writing the full resolved path so users see a concrete example.
-//   - Saves config only if changes were made.
+// embedded tools-directory. The final order follows
+// pkg/harness/tools-directory.md — users curate the menu order by editing
+// that file, and every sync re-applies it:
+//   - Entries whose Name matches a known harness are ordered by their
+//     position in knownAIHarnesses (= the markdown table order). User-
+//     customized Command/Args on those entries are preserved verbatim.
+//   - User-added entries not in the directory stay after the known block,
+//     in their original relative order.
+//   - Duplicates by Name collapse to the first occurrence.
+//   - Detected known harnesses missing from config are appended (in
+//     directory order), with the resolved binary path.
+//   - Config is saved only when something actually changed.
 func (a *App) SyncAIHarnesses() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -1727,38 +1734,74 @@ func (a *App) SyncAIHarnesses() {
 		return
 	}
 
+	knownIndex := make(map[string]int, len(knownAIHarnesses))
+	for i, k := range knownAIHarnesses {
+		knownIndex[k.Name] = i
+	}
+
+	// Dedup existing entries by name, preserving the first occurrence.
 	seenName := make(map[string]bool)
-	var deduped []config.AIHarnessEntry
+	existingByName := make(map[string]config.AIHarnessEntry)
+	var customOrder []config.AIHarnessEntry // not in knownAIHarnesses
 	for _, h := range a.cfg.Global.AIHarnesses {
 		if seenName[h.Name] {
 			continue
 		}
 		seenName[h.Name] = true
-		deduped = append(deduped, h)
+		if _, known := knownIndex[h.Name]; known {
+			existingByName[h.Name] = h
+		} else {
+			customOrder = append(customOrder, h)
+		}
 	}
 
-	changed := len(deduped) != len(a.cfg.Global.AIHarnesses)
-
-	for _, known := range knownAIHarnesses {
-		if seenName[known.Name] {
+	// Build the known-harness block in directory order. If the user already
+	// had an entry, reuse it (preserving command/args customizations);
+	// otherwise detect on PATH and add with the resolved path.
+	var result []config.AIHarnessEntry
+	for _, k := range knownAIHarnesses {
+		if e, ok := existingByName[k.Name]; ok {
+			result = append(result, e)
 			continue
 		}
-		fullPath, err := lookPathWithBrewPATH(known.Command)
+		fullPath, err := lookPathWithBrewPATH(k.Command)
 		if err != nil {
 			continue
 		}
-		deduped = append(deduped, config.AIHarnessEntry{
-			Name:    known.Name,
+		result = append(result, config.AIHarnessEntry{
+			Name:    k.Name,
 			Command: fullPath,
 		})
-		seenName[known.Name] = true
-		changed = true
 	}
+	result = append(result, customOrder...)
 
-	if changed {
-		a.cfg.Global.AIHarnesses = deduped
+	// Only save if the serialization actually differs.
+	if !aiHarnessesEqual(result, a.cfg.Global.AIHarnesses) {
+		a.cfg.Global.AIHarnesses = result
 		_ = config.Save(a.cfg, a.cfgPath)
 	}
+}
+
+// aiHarnessesEqual compares two harness slices element-wise so
+// SyncAIHarnesses can skip a config write when nothing changed.
+func aiHarnessesEqual(a, b []config.AIHarnessEntry) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name || a[i].Command != b[i].Command {
+			return false
+		}
+		if len(a[i].Args) != len(b[i].Args) {
+			return false
+		}
+		for j := range a[i].Args {
+			if a[i].Args[j] != b[i].Args[j] {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // ShowErrorDialog pops a native error dialog from the frontend. Used for
@@ -1870,19 +1913,19 @@ func buildMacAppleScript(appName, path string, harnessArgv []string) string {
     do script "%s"
 end tell`, escaped)
 	case "iTerm":
-		// Nest the session-scoped tell inside the new window's scope so
-		// `current session` resolves against the just-created window rather
-		// than against whatever window had focus before. `current session of
-		// newWindow` (the obvious form) fires before the window is fully
-		// wired up on some iTerm versions and the write-text never lands;
-		// `tell (create window ...)` followed by `tell current session` is
-		// the robust pattern iTerm's docs recommend.
+		// iTerm's `create window with default profile` returns before the
+		// session is ready to accept `write text` — with no delay the window
+		// opens but the command silently drops. A small delay gives iTerm
+		// time to finish initializing the session; `current session of
+		// current window` then resolves to the just-created session. This
+		// is the pattern that works across iTerm 3.x versions; the
+		// apparently-cleaner "nested tell (create window …)" form races.
 		return fmt.Sprintf(`tell application "iTerm"
     activate
-    tell (create window with default profile)
-        tell current session
-            write text "%s"
-        end tell
+    create window with default profile
+    delay 0.3
+    tell current session of current window
+        write text "%s"
     end tell
 end tell`, escaped)
 	}

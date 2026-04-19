@@ -171,6 +171,68 @@ func TestDetectAIHarnessesIncludesConfigEntries(t *testing.T) {
 	}
 }
 
+func TestSyncAIHarnessesReordersToMatchKnownList(t *testing.T) {
+	// knownAIHarnesses is derived from pkg/harness/tools-directory.md. When
+	// the user reorders that markdown table, the next SyncAIHarnesses pass
+	// should reorder their persisted global.ai_harnesses to match — carrying
+	// their Command/Args customizations along, and leaving any user-added
+	// custom entries (not in the known list) at the end.
+	if len(knownAIHarnesses) < 2 {
+		t.Skip("need at least 2 known harnesses for order test")
+	}
+	first := knownAIHarnesses[0]
+	second := knownAIHarnesses[1]
+
+	dir := t.TempDir()
+	cfg := &config.Config{
+		Version: 2,
+		Global: config.GlobalConfig{
+			Folder: dir,
+			// User has the two harnesses in the REVERSE of the markdown order,
+			// plus a custom entry not in knownAIHarnesses.
+			AIHarnesses: []config.AIHarnessEntry{
+				{Name: second.Name, Command: "/custom/" + second.Command, Args: []string{"--user-flag"}},
+				{Name: first.Name, Command: "/custom/" + first.Command},
+				{Name: "My Private Bot", Command: "/opt/mybot"},
+			},
+		},
+		Accounts: map[string]config.Account{
+			"A": {Provider: "github", URL: "https://github.com",
+				Username: "u", Name: "n", Email: "e@e"},
+		},
+		Sources: map[string]config.Source{},
+	}
+	a := &App{cfg: cfg, cfgPath: filepath.Join(dir, "gitbox.json"), mu: sync.Mutex{}}
+	a.SyncAIHarnesses()
+
+	// Known entries must now be in markdown order, customizations preserved,
+	// custom entries last.
+	if len(cfg.Global.AIHarnesses) < 3 {
+		t.Fatalf("expected at least 3 entries, got %d: %+v", len(cfg.Global.AIHarnesses), cfg.Global.AIHarnesses)
+	}
+	if cfg.Global.AIHarnesses[0].Name != first.Name {
+		t.Errorf("entry[0] should be %q after reorder, got %q", first.Name, cfg.Global.AIHarnesses[0].Name)
+	}
+	if cfg.Global.AIHarnesses[1].Name != second.Name {
+		t.Errorf("entry[1] should be %q after reorder, got %q", second.Name, cfg.Global.AIHarnesses[1].Name)
+	}
+	// Customizations preserved on the reordered entries.
+	if cfg.Global.AIHarnesses[0].Command != "/custom/"+first.Command {
+		t.Errorf("%s command customization lost: %+v", first.Name, cfg.Global.AIHarnesses[0])
+	}
+	if cfg.Global.AIHarnesses[1].Command != "/custom/"+second.Command {
+		t.Errorf("%s command customization lost: %+v", second.Name, cfg.Global.AIHarnesses[1])
+	}
+	if !reflect.DeepEqual(cfg.Global.AIHarnesses[1].Args, []string{"--user-flag"}) {
+		t.Errorf("%s args customization lost: %+v", second.Name, cfg.Global.AIHarnesses[1])
+	}
+	// Custom entry still present at the tail.
+	last := cfg.Global.AIHarnesses[len(cfg.Global.AIHarnesses)-1]
+	if last.Name != "My Private Bot" {
+		t.Errorf("user-added custom entry lost or misplaced: last = %+v", last)
+	}
+}
+
 func TestSyncAIHarnessesDedupByName(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "gitbox.json")
@@ -318,11 +380,14 @@ func TestBuildMacAppleScript(t *testing.T) {
 		if !strings.Contains(got, `tell application "iTerm"`) {
 			t.Errorf("missing iTerm tell block: %q", got)
 		}
-		if !strings.Contains(got, "tell (create window with default profile)") {
-			t.Errorf("missing nested tell-create-window: %q", got)
+		if !strings.Contains(got, "create window with default profile") {
+			t.Errorf("missing create-window directive: %q", got)
 		}
-		if !strings.Contains(got, "tell current session") {
-			t.Errorf("missing scoped current-session tell: %q", got)
+		if !strings.Contains(got, "delay ") {
+			t.Errorf("missing post-create delay (iTerm races without it): %q", got)
+		}
+		if !strings.Contains(got, "tell current session of current window") {
+			t.Errorf("missing current-session-of-current-window tell: %q", got)
 		}
 		if !strings.Contains(got, `write text "cd '/a' && 'claude'"`) {
 			t.Errorf("missing write-text line: %q", got)
