@@ -59,10 +59,16 @@ func TestDashboard_TabSwitch(t *testing.T) {
 		t.Errorf("expected Mirrors tab after Tab, got %d", m.dashboard.activeTab)
 	}
 
-	// Press Tab again → back to Accounts.
+	// Press Tab again → Workspaces tab (third tab added in PR #52).
+	m.dashboard, _ = m.dashboard.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if m.dashboard.activeTab != tabWorkspaces {
+		t.Errorf("expected Workspaces tab after second Tab, got %d", m.dashboard.activeTab)
+	}
+
+	// Press Tab again → rotates back to Accounts.
 	m.dashboard, _ = m.dashboard.Update(tea.KeyMsg{Type: tea.KeyTab})
 	if m.dashboard.activeTab != tabAccounts {
-		t.Errorf("expected Accounts tab after second Tab, got %d", m.dashboard.activeTab)
+		t.Errorf("expected Accounts tab after third Tab, got %d", m.dashboard.activeTab)
 	}
 }
 

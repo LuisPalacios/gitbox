@@ -28,6 +28,7 @@ const (
 	screenIdentity
 	screenRepoCreate
 	screenOrphans
+	screenWorkspaceAdd
 )
 
 // --- Navigation messages ---
@@ -39,6 +40,9 @@ type switchScreenMsg struct {
 	repoKey         string // context for repos screen
 	mirrorKey       string // context for mirrors screen
 	forceTokenSetup bool   // go straight to PAT input in credential screen
+	// workspaceMembers seeds the workspace add flow with pre-selected
+	// members (each entry is "sourceKey/repoKey"). Empty for a blank form.
+	workspaceMembers []string
 }
 
 // --- Config messages ---
@@ -208,18 +212,19 @@ type model struct {
 	credMgr       *credential.StatusManager
 
 	// Screen sub-models.
-	dashboard  dashboardModel
-	onboarding onboardingModel
-	account    accountModel
-	accountAdd accountAddModel
-	credential credentialModel
-	discovery  discoveryModel
-	repos      reposModel
-	mirrors    mirrorsModel
-	settings   settingsModel
-	identity   identityModel
-	repoCreate repoCreateModel
-	orphans    orphansModel
+	dashboard    dashboardModel
+	onboarding   onboardingModel
+	account      accountModel
+	accountAdd   accountAddModel
+	credential   credentialModel
+	discovery    discoveryModel
+	repos        reposModel
+	mirrors      mirrorsModel
+	settings     settingsModel
+	identity     identityModel
+	repoCreate   repoCreateModel
+	orphans      orphansModel
+	workspaceAdd workspaceAddModel
 }
 
 func newModel(cfgPath string) model {
@@ -260,6 +265,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dashboard.theme = m.theme
 			return m, nil
 		}
+		// Global 'w' key: jump to the Workspaces tab from any dashboard
+		// screen. Restricted to the dashboard so it doesn't steal 'w'
+		// presses inside sub-screens that might use it for text input.
+		// If the user has an active repo selection on the Accounts tab,
+		// let the dashboard's own handler take over — that flow opens
+		// the add-workspace screen pre-seeded with the selection.
+		if msg.String() == "w" && m.screen == screenDashboard &&
+			!(m.dashboard.activeTab == tabAccounts && len(m.dashboard.selectedClones) > 0) {
+			m.dashboard.activeTab = tabWorkspaces
+			m.dashboard.cardCursor = 0
+			m.dashboard.listCursor = 0
+			m.dashboard.focus = focusList
+			return m, nil
+		}
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -293,6 +312,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case screenRepoCreate:
 			m.repoCreate.width = msg.Width
 			m.repoCreate.height = msg.Height
+		case screenWorkspaceAdd:
+			m.workspaceAdd.width = msg.Width
+			m.workspaceAdd.height = msg.Height
 		}
 		return m, nil
 
@@ -350,6 +372,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.identity, cmd = m.identity.Update(msg)
 	case screenRepoCreate:
 		m.repoCreate, cmd = m.repoCreate.Update(msg)
+	case screenWorkspaceAdd:
+		m.workspaceAdd, cmd = m.workspaceAdd.Update(msg)
 	}
 	return m, cmd
 }
@@ -423,6 +447,9 @@ func (m model) switchTo(msg switchScreenMsg) (model, tea.Cmd) {
 	case screenOrphans:
 		m.orphans = newOrphansModel(m.cfg, m.cfgPath, m.theme, m.width, m.height)
 		cmd = m.orphans.Init()
+	case screenWorkspaceAdd:
+		m.workspaceAdd = newWorkspaceAddModel(m.cfg, m.cfgPath, m.theme, m.width, m.height, msg.workspaceMembers)
+		cmd = m.workspaceAdd.Init()
 	}
 	return m, cmd
 }
@@ -457,6 +484,8 @@ func (m model) View() string {
 		return m.repoCreate.View()
 	case screenOrphans:
 		return m.orphans.View()
+	case screenWorkspaceAdd:
+		return m.workspaceAdd.View()
 	default:
 		return "Unknown screen"
 	}
