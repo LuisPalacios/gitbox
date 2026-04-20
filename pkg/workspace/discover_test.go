@@ -248,6 +248,29 @@ func TestDiscover_TmuxinatorSplitPanes(t *testing.T) {
 	}
 }
 
+func TestDiscover_DuplicateFolderEntriesDeduped(t *testing.T) {
+	cfg := newTestConfig(t)
+	frontend := makeRepoDir(t, cfg, "github-test", "team/frontend")
+
+	wsFile := filepath.Join(cfg.Global.Folder, "dups.code-workspace")
+	body := `{"folders":[
+		{"path":"` + filepath.ToSlash(frontend) + `"},
+		{"path":"` + filepath.ToSlash(frontend) + `"}
+	]}`
+	writeFile(t, wsFile, body)
+
+	result, err := Discover(cfg)
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	if len(result.New) != 1 {
+		t.Fatalf("New = %d, want 1", len(result.New))
+	}
+	if got := len(result.New[0].Members); got != 1 {
+		t.Errorf("members = %d, want 1 (duplicates should be collapsed)", got)
+	}
+}
+
 func TestDiscover_DuplicateFileSkipped(t *testing.T) {
 	cfg := newTestConfig(t)
 	frontend := makeRepoDir(t, cfg, "github-test", "team/frontend")

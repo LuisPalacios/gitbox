@@ -282,6 +282,7 @@ func parseCodeWorkspace(file string, idx cloneIndex) (Discovered, error) {
 			d.NoMatch = append(d.NoMatch, abs)
 		}
 	}
+	d.Members = dedupMembers(d.Members)
 	return d, nil
 }
 
@@ -391,6 +392,7 @@ func parseTmuxinator(file string, idx cloneIndex, fromWSL bool) (Discovered, err
 			d.NoMatch = append(d.NoMatch, abs)
 		}
 	}
+	d.Members = dedupMembers(d.Members)
 
 	return d, nil
 }
@@ -429,6 +431,25 @@ func bucketDiscovered(cfg *config.Config, d Discovered, into *DiscoverResult) {
 		return
 	}
 	into.New = append(into.New, d)
+}
+
+// dedupMembers preserves member order while collapsing duplicates by
+// (source, repo). Hand-edited workspace files frequently list the same
+// folder twice; without this, adoption would propagate the duplicate.
+func dedupMembers(members []config.WorkspaceMember) []config.WorkspaceMember {
+	if len(members) < 2 {
+		return members
+	}
+	seen := make(map[config.WorkspaceMember]bool, len(members))
+	out := members[:0]
+	for _, m := range members {
+		if seen[m] {
+			continue
+		}
+		seen[m] = true
+		out = append(out, m)
+	}
+	return out
 }
 
 func appendUnique(out []string, seen map[string]bool, s string) []string {
