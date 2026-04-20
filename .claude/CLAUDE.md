@@ -40,10 +40,10 @@ cmd/
 pkg/                      Shared Go library
   config/                 Config v2 model, load/save, v1→v2 migration
   credential/             Credential verification (GCM, SSH, token)
-  git/                    Git subprocess operations (os/exec)
+  git/                    Git subprocess operations (os/exec); IsWSLAvailable / WSLPath helpers on Windows
   provider/               Provider API clients + mirror interfaces (GitHub, GitLab, Gitea, Forgejo)
   mirror/                 Push/pull mirror setup, status, guides
-  workspace/              Multi-repo workspaces: .code-workspace + tmuxinator generators
+  workspace/              Multi-repo workspaces: generators, on-disk discovery + auto-adoption, WSL-backed tmuxinator on Windows
   adopt/                  Orphan repo discovery and adoption
   status/                 Clone status checking
   update/                 Auto-update: version check, download, self-replace

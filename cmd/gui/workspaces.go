@@ -12,6 +12,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/workspace"
+	wailsrt "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // WorkspaceDTO exposes a workspace to the frontend. It mirrors
@@ -237,6 +238,100 @@ func (a *App) GenerateWorkspace(key string) (WorkspaceGenerateResult, error) {
 		}
 	}
 	return WorkspaceGenerateResult{File: res.File, Size: len(res.Content)}, nil
+}
+
+// ─── Discovery ──────────────────────────────────────────────────────────
+
+// DiscoveredPathDTO mirrors workspace.DiscoveredPath for the frontend.
+type DiscoveredPathDTO struct {
+	Path       string               `json:"path"`
+	Candidates []WorkspaceMemberDTO `json:"candidates"`
+}
+
+// DiscoveredWorkspaceDTO is one parsed workspace artifact found on disk.
+type DiscoveredWorkspaceDTO struct {
+	Key     string                `json:"key"`
+	Type    string                `json:"type"`
+	Layout  string                `json:"layout,omitempty"`
+	File    string                `json:"file"`
+	Members []WorkspaceMemberDTO  `json:"members,omitempty"`
+	Ambig   []DiscoveredPathDTO   `json:"ambig,omitempty"`
+	NoMatch []string              `json:"noMatch,omitempty"`
+	Skipped string                `json:"skipped,omitempty"`
+}
+
+// DiscoverWorkspacesResult is what the binding returns to the frontend.
+// Counts let the toast / status bar render without iterating slices.
+type DiscoverWorkspacesResult struct {
+	Adopted      []string                 `json:"adopted"`
+	NewCount     int                      `json:"newCount"`
+	AmbigCount   int                      `json:"ambigCount"`
+	SkippedCount int                      `json:"skippedCount"`
+	Ambiguous    []DiscoveredWorkspaceDTO `json:"ambiguous,omitempty"`
+}
+
+// DiscoverWorkspaces scans for workspace artifacts on disk, adopts every
+// unambiguous new entry into config, persists, and emits
+// `workspaces:discovered` with the same payload it returns. Safe to call
+// repeatedly; idempotent when nothing on disk has changed.
+func (a *App) DiscoverWorkspaces() (DiscoverWorkspacesResult, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	out := DiscoverWorkspacesResult{Adopted: []string{}}
+	res, err := workspace.Discover(a.cfg)
+	if err != nil {
+		return out, err
+	}
+	out.NewCount = len(res.New)
+	out.AmbigCount = len(res.Ambiguous)
+	out.SkippedCount = len(res.Skipped)
+	out.Ambiguous = toDiscoveredDTOs(res.Ambiguous)
+
+	adopted := workspace.AdoptDiscovered(a.cfg, res)
+	if len(adopted) > 0 {
+		if err := config.Save(a.cfg, a.cfgPath); err != nil {
+			return out, fmt.Errorf("saving adopted workspaces: %w", err)
+		}
+		out.Adopted = adopted
+	}
+
+	if a.ctx != nil {
+		wailsrt.EventsEmit(a.ctx, "workspaces:discovered", out)
+	}
+	return out, nil
+}
+
+func toDiscoveredDTOs(in []workspace.Discovered) []DiscoveredWorkspaceDTO {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]DiscoveredWorkspaceDTO, 0, len(in))
+	for _, d := range in {
+		members := make([]WorkspaceMemberDTO, 0, len(d.Members))
+		for _, m := range d.Members {
+			members = append(members, WorkspaceMemberDTO{Source: m.Source, Repo: m.Repo})
+		}
+		ambig := make([]DiscoveredPathDTO, 0, len(d.Ambig))
+		for _, a := range d.Ambig {
+			cands := make([]WorkspaceMemberDTO, 0, len(a.Candidates))
+			for _, c := range a.Candidates {
+				cands = append(cands, WorkspaceMemberDTO{Source: c.Source, Repo: c.Repo})
+			}
+			ambig = append(ambig, DiscoveredPathDTO{Path: a.Path, Candidates: cands})
+		}
+		out = append(out, DiscoveredWorkspaceDTO{
+			Key:     d.Key,
+			Type:    d.Type,
+			Layout:  d.Layout,
+			File:    d.File,
+			Members: members,
+			Ambig:   ambig,
+			NoMatch: d.NoMatch,
+			Skipped: d.Skipped,
+		})
+	}
+	return out
 }
 
 // OpenWorkspace generates (so the artifact is current) then launches the

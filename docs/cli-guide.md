@@ -373,7 +373,22 @@ Layouts:
 - `windowsPerRepo` (default) — one tmuxinator window per member, each rooted at the member's clone folder
 - `splitPanes` — a single window with one pane per member, tiled
 
-Windows support for tmuxinator (via WSL) is not included in this release — a future update will add WSL detection and wire tmuxinator through `wsl.exe`.
+### Tmuxinator on Windows (via WSL)
+
+When WSL is installed, gitbox writes the YAML to the WSL-side `~/.tmuxinator/<key>.yml` (reached through its `\\wsl.localhost\<distro>\…` UNC path) and rewrites the per-window `root:` and per-pane `cd` paths into their Linux-side equivalents (`/mnt/c/…` for paths on the Windows drive). `gitbox workspace open <key>` runs the configured terminal with `wsl.exe -- tmuxinator start <key>` as the child command, so tmuxinator runs inside WSL regardless of which terminal profile I picked. If `wsl.exe --status` does not succeed, tmuxinator workspaces still error cleanly with the platform-unsupported message.
+
+### Discover workspaces dropped on disk
+
+Workspace files I create by hand — or that travel with me from another machine — are picked up automatically. On every CLI invocation I can also run:
+
+```bash
+gitbox workspace discover           # preview only, three buckets (adoptable, ambiguous, skipped)
+gitbox workspace discover --apply   # adopt every adoptable entry into gitbox.json
+```
+
+The scanner walks `global.folder` for `*.code-workspace` files and `~/.tmuxinator/*.yml` (plus the WSL-side `~/.tmuxinator/` on Windows). Each parsed folder path is matched back to a known clone by the deepest path-prefix match against the resolved repo paths. A workspace is auto-adopted when every member resolves to exactly one clone; ambiguous matches (a path that ties between two clones) are surfaced as a separate bucket and never adopted automatically.
+
+The GUI runs the same discovery automatically on startup; the TUI runs it on launch and on every periodic-sync tick. Adopted entries are tagged `discovered: true` in `gitbox.json` so the UI can show where they came from.
 
 ### Day-to-day
 
@@ -383,6 +398,7 @@ gitbox workspace show feat-x
 gitbox workspace add-member feat-x gitea-work/team/ops
 gitbox workspace delete-member feat-x gitea-work/team/backend
 gitbox workspace delete feat-x
+gitbox workspace discover --apply
 ```
 
 `delete` removes the workspace from `gitbox.json` but does NOT delete the generated file on disk — I remove that by hand if I want to.

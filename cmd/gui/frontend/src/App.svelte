@@ -1734,6 +1734,12 @@
       checkAllMirrorStatus();
     });
 
+    // Discovery emitted on startup and on every manual rescan. Refresh
+    // the config store so the new entries appear in the Workspaces tab.
+    events.on('workspaces:discovered', async (_data: any) => {
+      $configStore = await bridge.reloadConfig();
+    });
+
     events.on('update:available', (info: any) => {
       updateInfo = info;
     });
@@ -2133,6 +2139,7 @@
     {#if cardsTab === 'workspaces'}
       <div class="tab-bar-actions">
         <button class="btn-tab-action" on:click={openWorkspaceModalFromTab}>+ New workspace</button>
+        <button class="btn-tab-action" title="Scan disk for new workspace files" on:click={async () => { await bridge.discoverWorkspaces(); }}>Discover</button>
       </div>
     {/if}
   </div>

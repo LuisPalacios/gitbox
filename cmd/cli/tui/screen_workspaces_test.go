@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -168,5 +170,59 @@ func TestDashboard_MultiSelectAndWorkspaceShortcut(t *testing.T) {
 	}
 	if len(m.dashboard.selectedClones) != 0 {
 		t.Errorf("selection should be cleared after w, got %d entries", len(m.dashboard.selectedClones))
+	}
+}
+
+func TestDashboard_DiscoverDoneUpdatesAmbigCount(t *testing.T) {
+	cfg := newDummyConfig(t, "/tmp/test-git")
+	env := setupTestEnvWithConfig(t, cfg)
+	m := newTestModel(t, env.CfgPath)
+	m = initModel(t, m)
+
+	m = sendMsg(m, workspaceDiscoverDoneMsg{ambigCount: 3})
+	if m.dashboard.workspaceAmbigCount != 3 {
+		t.Errorf("workspaceAmbigCount = %d, want 3", m.dashboard.workspaceAmbigCount)
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "3 ambiguous workspace") {
+		t.Errorf("status bar missing ambiguous hint:\n%s", view)
+	}
+}
+
+func TestDiscoverWorkspacesCmd_AdoptsAndPersists(t *testing.T) {
+	env := setupTestEnv(t)
+	cfg := newDummyConfig(t, env.GitFolder)
+	if err := config.Save(cfg, env.CfgPath); err != nil {
+		t.Fatalf("save cfg: %v", err)
+	}
+
+	// Stage a clone path that resolves to (alice-repos, alice/hello-world)
+	// under the test's git folder, then drop a *.code-workspace next to it.
+	cloneDir := filepath.Join(env.GitFolder, "alice-repos", "alice", "hello-world")
+	if err := os.MkdirAll(cloneDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	wsFile := filepath.Join(env.GitFolder, "disc.code-workspace")
+	if err := os.WriteFile(wsFile, []byte(`{"folders":[{"path":"`+filepath.ToSlash(cloneDir)+`"}]}`), 0o644); err != nil {
+		t.Fatalf("write workspace file: %v", err)
+	}
+
+	cmd := discoverWorkspacesCmd(cfg, env.CfgPath)
+	msg := cmd()
+	done, ok := msg.(workspaceDiscoverDoneMsg)
+	if !ok {
+		t.Fatalf("got %T, want workspaceDiscoverDoneMsg", msg)
+	}
+	if done.adoptedCount != 1 {
+		t.Fatalf("adoptedCount = %d, want 1 (ambig=%d skipped=%d err=%v)",
+			done.adoptedCount, done.ambigCount, done.skippedCount, done.err)
+	}
+	reloaded, err := config.Load(env.CfgPath)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if _, ok := reloaded.Workspaces["disc"]; !ok {
+		t.Error("workspace 'disc' not persisted")
 	}
 }

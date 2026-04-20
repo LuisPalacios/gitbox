@@ -448,6 +448,36 @@ func TestTerminalsOmitEmpty(t *testing.T) {
 	}
 }
 
+// Configs persisted by an older buggy code path (or hand-edited) may carry
+// the same workspace member twice. Load must collapse those silently so the
+// UI never renders a duplicate.
+func TestParseV2_DedupesWorkspaceMembers(t *testing.T) {
+	in := `{
+  "version": 2,
+  "global": {"folder": "/tmp"},
+  "accounts": {"a": {"provider": "github", "url": "https://github.com", "username": "u", "name": "n", "email": "e@e"}},
+  "sources": {"a": {"account": "a", "repos": {"o/r": {}}}},
+  "workspaces": {
+    "dup": {
+      "type": "codeWorkspace",
+      "members": [
+        {"source": "a", "repo": "o/r"},
+        {"source": "a", "repo": "o/r"},
+        {"source": "a", "repo": "o/r"}
+      ]
+    }
+  }
+}`
+	cfg, err := Parse([]byte(in))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	w := cfg.Workspaces["dup"]
+	if got := len(w.Members); got != 1 {
+		t.Errorf("members after Load = %d, want 1 (deduped)", got)
+	}
+}
+
 // Unset PR badge flags must default to "on" so installs created before
 // issue #29 get the feature enabled automatically.
 func TestPRBadgesDefaultOn(t *testing.T) {

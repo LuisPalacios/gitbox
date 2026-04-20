@@ -284,6 +284,71 @@ func TestCLI_WorkspaceGenerateWritesFile(t *testing.T) {
 	}
 }
 
+func TestCLI_WorkspaceDiscoverPreview(t *testing.T) {
+	gitDir := filepath.Join(t.TempDir(), "git")
+	cfg := newCLIWorkspaceConfig(gitDir)
+	env := setupCLIEnvWithConfig(t, cfg)
+
+	// Stage a real clone path on disk so the discovery scanner can match it
+	// back to (github-test, team/frontend).
+	frontend := filepath.Join(gitDir, "github-test", "team", "frontend")
+	if err := os.MkdirAll(frontend, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	wsFile := filepath.Join(gitDir, "feat-discover.code-workspace")
+	if err := os.WriteFile(wsFile, []byte(`{"folders":[{"path":"`+filepath.ToSlash(frontend)+`"}]}`), 0o644); err != nil {
+		t.Fatalf("write workspace file: %v", err)
+	}
+
+	r := env.run(t, "workspace", "discover")
+	if r.ExitCode != 0 {
+		t.Fatalf("discover failed: %s", r.Stderr)
+	}
+	if !strings.Contains(r.Stdout, "feat-discover") {
+		t.Errorf("stdout missing discovered workspace key:\n%s", r.Stdout)
+	}
+	// Preview must NOT mutate the config.
+	cliAssertConfigNoWorkspace(t, env.CfgPath, "feat-discover")
+}
+
+func TestCLI_WorkspaceDiscoverApply(t *testing.T) {
+	gitDir := filepath.Join(t.TempDir(), "git")
+	cfg := newCLIWorkspaceConfig(gitDir)
+	env := setupCLIEnvWithConfig(t, cfg)
+
+	frontend := filepath.Join(gitDir, "github-test", "team", "frontend")
+	if err := os.MkdirAll(frontend, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	wsFile := filepath.Join(gitDir, "feat-apply.code-workspace")
+	if err := os.WriteFile(wsFile, []byte(`{"folders":[{"path":"`+filepath.ToSlash(frontend)+`"}]}`), 0o644); err != nil {
+		t.Fatalf("write workspace file: %v", err)
+	}
+
+	r := env.run(t, "workspace", "discover", "--apply")
+	if r.ExitCode != 0 {
+		t.Fatalf("discover --apply failed: %s", r.Stderr)
+	}
+	if !strings.Contains(r.Stdout, "Adopted") {
+		t.Errorf("stdout missing adoption summary:\n%s", r.Stdout)
+	}
+
+	cfg2, err := config.Load(env.CfgPath)
+	if err != nil {
+		t.Fatalf("loading config: %v", err)
+	}
+	ws, ok := cfg2.Workspaces["feat-apply"]
+	if !ok {
+		t.Fatal("workspace feat-apply not adopted")
+	}
+	if !ws.Discovered {
+		t.Error("adopted workspace should have Discovered=true")
+	}
+	if len(ws.Members) != 1 {
+		t.Errorf("members = %d, want 1", len(ws.Members))
+	}
+}
+
 func TestCLI_WorkspaceOpenWithoutEditor(t *testing.T) {
 	cfg := newCLIWorkspaceConfig(filepath.Join(t.TempDir(), "git"))
 	cfg.Workspaces = map[string]config.Workspace{

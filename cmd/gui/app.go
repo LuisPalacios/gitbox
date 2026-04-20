@@ -133,6 +133,15 @@ func (a *App) DomReady(_ context.Context) {
 	a.SyncTerminals()
 	a.SyncAIHarnesses()
 
+	// Discover and auto-adopt workspace artifacts dropped on disk outside
+	// gitbox. Runs off the UI thread so startup paints immediately; the
+	// frontend listens for the `workspaces:discovered` event to refresh.
+	go func() {
+		if _, err := a.DiscoverWorkspaces(); err != nil {
+			fmt.Fprintf(os.Stderr, "workspace discovery: %v\n", err)
+		}
+	}()
+
 	// Check for updates in background (throttled to once per 24h).
 	a.CheckForUpdate()
 

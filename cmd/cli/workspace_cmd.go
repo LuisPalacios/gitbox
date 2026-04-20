@@ -325,6 +325,101 @@ If the file hasn't been generated yet, this command generates it first.`,
 	},
 }
 
+// --- workspace discover ---
+
+var workspaceDiscoverApply bool
+
+var workspaceDiscoverCmd = &cobra.Command{
+	Use:   "discover",
+	Short: "Discover workspace files on disk and optionally adopt them",
+	Long: `Walks the gitbox-managed folder for *.code-workspace files and
+~/.tmuxinator/*.yml (plus the WSL-side equivalent on Windows), inferring
+member clones by matching folder paths against known sources/repos.
+
+Without --apply this is a read-only preview that prints three buckets:
+new (would be adopted), ambiguous (member matched ≥2 clones; needs human
+input), and skipped (key clash or no resolvable members).
+
+With --apply, every entry in the "new" bucket is added to gitbox.json
+with discovered: true.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := loadConfig()
+		if err != nil {
+			return err
+		}
+		result, err := workspace.Discover(cfg)
+		if err != nil {
+			return err
+		}
+
+		if jsonOutput {
+			payload := map[string]any{
+				"new":       result.New,
+				"ambiguous": result.Ambiguous,
+				"skipped":   result.Skipped,
+			}
+			if workspaceDiscoverApply {
+				payload["adopted"] = AdoptDiscoveredAndSave(cfg, result)
+			}
+			data, _ := json.MarshalIndent(payload, "", "    ")
+			fmt.Fprintln(os.Stdout, string(data))
+			return nil
+		}
+
+		printDiscoverBucket("Adoptable", result.New)
+		printDiscoverBucket("Ambiguous", result.Ambiguous)
+		printDiscoverBucket("Skipped", result.Skipped)
+
+		if workspaceDiscoverApply {
+			adopted := workspace.AdoptDiscovered(cfg, result)
+			if len(adopted) > 0 {
+				if err := saveConfig(cfg); err != nil {
+					return fmt.Errorf("saving config: %w", err)
+				}
+				fmt.Printf("\nAdopted %d workspace(s): %s\n", len(adopted), strings.Join(adopted, ", "))
+			} else {
+				fmt.Println("\nNothing to adopt.")
+			}
+		}
+		return nil
+	},
+}
+
+// AdoptDiscoveredAndSave runs AdoptDiscovered and persists. JSON-output
+// callers use it so the response includes the adopted list.
+func AdoptDiscoveredAndSave(cfg *config.Config, result workspace.DiscoverResult) []string {
+	adopted := workspace.AdoptDiscovered(cfg, result)
+	if len(adopted) > 0 {
+		_ = saveConfig(cfg)
+	}
+	return adopted
+}
+
+func printDiscoverBucket(title string, entries []workspace.Discovered) {
+	if len(entries) == 0 {
+		return
+	}
+	fmt.Printf("\n%s (%d):\n", title, len(entries))
+	for _, d := range entries {
+		fmt.Printf("  %s  [%s]  %s\n", d.Key, d.Type, d.File)
+		for _, m := range d.Members {
+			fmt.Printf("      member %s/%s\n", m.Source, m.Repo)
+		}
+		for _, a := range d.Ambig {
+			fmt.Printf("      ambig  %s\n", a.Path)
+			for _, c := range a.Candidates {
+				fmt.Printf("              candidate %s/%s\n", c.Source, c.Repo)
+			}
+		}
+		for _, n := range d.NoMatch {
+			fmt.Printf("      no-match %s\n", n)
+		}
+		if d.Skipped != "" {
+			fmt.Printf("      reason %s\n", d.Skipped)
+		}
+	}
+}
+
 func parseMemberSpec(spec string) (config.WorkspaceMember, error) {
 	i := strings.IndexByte(spec, '/')
 	if i <= 0 || i == len(spec)-1 {
@@ -356,6 +451,8 @@ func init() {
 
 	workspaceGenerateCmd.Flags().BoolVar(&workspaceGenerateDryRun, "dry-run", false, "print the generated content without writing it")
 
+	workspaceDiscoverCmd.Flags().BoolVar(&workspaceDiscoverApply, "apply", false, "adopt the discovered workspaces into gitbox.json")
+
 	workspaceCmd.AddCommand(
 		workspaceListCmd,
 		workspaceShowCmd,
@@ -365,5 +462,6 @@ func init() {
 		workspaceDeleteMemberCmd,
 		workspaceGenerateCmd,
 		workspaceOpenCmd,
+		workspaceDiscoverCmd,
 	)
 }

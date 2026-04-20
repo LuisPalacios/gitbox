@@ -141,6 +141,30 @@ export interface WorkspaceListResult {
   order: string[];
 }
 
+export interface DiscoveredPathDTO {
+  path: string;
+  candidates: WorkspaceMemberDTO[];
+}
+
+export interface DiscoveredWorkspaceDTO {
+  key: string;
+  type: 'codeWorkspace' | 'tmuxinator';
+  layout?: 'windowsPerRepo' | 'splitPanes';
+  file: string;
+  members?: WorkspaceMemberDTO[];
+  ambig?: DiscoveredPathDTO[];
+  noMatch?: string[];
+  skipped?: string;
+}
+
+export interface DiscoverWorkspacesResult {
+  adopted: string[];
+  newCount: number;
+  ambigCount: number;
+  skippedCount: number;
+  ambiguous?: DiscoveredWorkspaceDTO[];
+}
+
 export interface StatusResult {
   source: string;
   repo: string;

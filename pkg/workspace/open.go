@@ -3,6 +3,7 @@ package workspace
 import (
 	"fmt"
 	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -61,11 +62,19 @@ func buildOpenTmuxinator(cfg *config.Config, key string, w config.Workspace) (Op
 		return OpenCommand{}, err
 	}
 	// tmuxinator is invoked by profile name (bare key), not by file path.
-	args := expandTerminalArgs(term.Args, []string{"tmuxinator", "start", key})
+	// On Windows the binary lives inside WSL — wrap with `wsl.exe -- …` so the
+	// child runs in WSL regardless of which terminal profile is configured.
+	child := []string{"tmuxinator", "start", key}
+	desc := fmt.Sprintf("%s → tmuxinator start %s", term.Name, key)
+	if runtime.GOOS == "windows" {
+		child = append([]string{"wsl.exe", "--"}, child...)
+		desc = fmt.Sprintf("%s → wsl.exe -- tmuxinator start %s", term.Name, key)
+	}
+	args := expandTerminalArgs(term.Args, child)
 	cmd := exec.Command(term.Command, args...)
 	return OpenCommand{
 		Cmd:         cmd,
-		Description: fmt.Sprintf("%s → tmuxinator start %s", term.Name, key),
+		Description: desc,
 	}, nil
 }
 

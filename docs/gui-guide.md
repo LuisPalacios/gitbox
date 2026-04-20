@@ -220,6 +220,20 @@ Below the mirror cards, each group expands into a detail list showing individual
 - **Setup** button for pending repos that haven't been configured yet via API
 - **+ Repo** button to add new repos to the group
 
+## Step 6: Workspaces (optional)
+
+The **Workspaces** tab next to Accounts and Mirrors groups N clones into a single artifact (`.code-workspace` file or tmuxinator YAML) that opens them together. Create one from the tab's `+ New workspace` button or by ticking clones on the Accounts tab and using `Create workspace from selected`. See the [CLI guide](cli-guide.md#step-8-dynamic-workspaces-optional) for the backend model — the GUI uses the same config format.
+
+### Auto-discovery on startup
+
+Whenever I drop a `*.code-workspace` file under the gitbox-managed folder by hand — or carry one over from another machine — the GUI picks it up on the next launch and adopts it into `gitbox.json` with `discovered: true`. Same for `~/.tmuxinator/*.yml` files. The Workspaces tab shows the new entry with no extra action from me.
+
+The tab also has a **Discover** button that re-runs the scan on demand. The scan resolves each parsed folder path back to a known clone using a deepest-prefix match. Workspaces with at least one ambiguous member (a path that ties between two clones) are flagged separately and never auto-adopted — open the tab and pick the right candidate by hand.
+
+### Tmuxinator on Windows
+
+Windows users with WSL installed get the same tmuxinator support as macOS / Linux: gitbox writes the YAML to the WSL-side `~/.tmuxinator/<key>.yml` (through its `\\wsl.localhost\…` UNC path) and `Open` launches the configured terminal running `wsl.exe -- tmuxinator start <key>`. Without WSL, tmuxinator workspaces remain unsupported and surface a clear error.
+
 ## Dashboard views
 
 ### Full view

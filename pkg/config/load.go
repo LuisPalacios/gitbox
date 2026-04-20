@@ -36,7 +36,36 @@ func parseV2(data []byte) (*Config, error) {
 	// Extract JSON key order for sources and repos.
 	extractKeyOrder(data, &cfg)
 
+	// Defensive: collapse any duplicate workspace members that may have been
+	// hand-edited into the JSON or persisted by an older buggy code path.
+	// In-memory only — the next save will write back the deduped form.
+	for key, w := range cfg.Workspaces {
+		if deduped := dedupWorkspaceMembers(w.Members); len(deduped) != len(w.Members) {
+			w.Members = deduped
+			cfg.Workspaces[key] = w
+		}
+	}
+
 	return &cfg, nil
+}
+
+// dedupWorkspaceMembers preserves member order while collapsing duplicates by
+// (source, repo). Defensive: hand-edited or legacy workspace entries can carry
+// the same clone twice.
+func dedupWorkspaceMembers(members []WorkspaceMember) []WorkspaceMember {
+	if len(members) < 2 {
+		return members
+	}
+	seen := make(map[WorkspaceMember]bool, len(members))
+	out := members[:0]
+	for _, m := range members {
+		if seen[m] {
+			continue
+		}
+		seen[m] = true
+		out = append(out, m)
+	}
+	return out
 }
 
 // extractKeyOrder parses the raw JSON to capture the insertion order of
