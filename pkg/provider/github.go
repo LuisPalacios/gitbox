@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -139,6 +140,113 @@ func (g *GitHub) ListUserOrgs(ctx context.Context, baseURL, token, _ string) ([]
 		result[i] = o.Login
 	}
 	return result, nil
+}
+
+// --- PRLister ---
+
+// githubSearchItem is the shape returned by /search/issues for PRs.
+type githubSearchItem struct {
+	Number      int    `json:"number"`
+	Title       string `json:"title"`
+	HTMLURL     string `json:"html_url"`
+	RepoURL     string `json:"repository_url"` // "<api>/repos/owner/repo"
+	UpdatedAt   string `json:"updated_at"`
+	Draft       bool   `json:"draft"`
+	User        struct {
+		Login string `json:"login"`
+	} `json:"user"`
+	PullRequest *struct{} `json:"pull_request"` // present only for PRs
+}
+
+type githubSearchResponse struct {
+	IncompleteResults bool               `json:"incomplete_results"`
+	Items             []githubSearchItem `json:"items"`
+}
+
+// ListAccountPRs finds open PRs authored by the user and PRs where the user
+// is a requested reviewer. Uses GitHub's search API; two requests total.
+// Results are grouped by repo full name ("owner/repo").
+func (g *GitHub) ListAccountPRs(ctx context.Context, baseURL, token, username string, includeDrafts bool) (AccountPRs, error) {
+	if username == "" {
+		return AccountPRs{}, fmt.Errorf("github list prs: empty username")
+	}
+	apiBase := g.apiBase(baseURL)
+	headers := g.authHeaders(token)
+	headers["Accept"] = "application/vnd.github+json"
+
+	result := AccountPRs{ByRepo: map[string]PRSummary{}}
+
+	authoredQ := fmt.Sprintf("is:open is:pr author:%s archived:false", username)
+	if !includeDrafts {
+		authoredQ += " draft:false"
+	}
+	authored, err := g.searchPRs(ctx, apiBase, headers, authoredQ)
+	if err != nil {
+		return AccountPRs{}, fmt.Errorf("github authored PRs: %w", err)
+	}
+	for _, pr := range authored {
+		sum := result.ByRepo[pr.RepoFull]
+		sum.Authored = append(sum.Authored, pr)
+		result.ByRepo[pr.RepoFull] = sum
+	}
+
+	reviewQ := fmt.Sprintf("is:open is:pr review-requested:%s archived:false draft:false", username)
+	reviewRequested, err := g.searchPRs(ctx, apiBase, headers, reviewQ)
+	if err != nil {
+		return AccountPRs{}, fmt.Errorf("github review-requested PRs: %w", err)
+	}
+	for _, pr := range reviewRequested {
+		sum := result.ByRepo[pr.RepoFull]
+		sum.ReviewRequested = append(sum.ReviewRequested, pr)
+		result.ByRepo[pr.RepoFull] = sum
+	}
+
+	return result, nil
+}
+
+// searchPRs runs /search/issues with pagination (up to 300 results) and
+// returns normalized PullRequest values.
+func (g *GitHub) searchPRs(ctx context.Context, apiBase string, headers map[string]string, query string) ([]PullRequest, error) {
+	var out []PullRequest
+	for page := 1; page <= 3; page++ {
+		reqURL := fmt.Sprintf("%s/search/issues?q=%s&per_page=100&page=%d", apiBase, url.QueryEscape(query), page)
+		var resp githubSearchResponse
+		if _, err := doGet(ctx, reqURL, headers, &resp); err != nil {
+			return nil, err
+		}
+		for _, it := range resp.Items {
+			if it.PullRequest == nil {
+				continue
+			}
+			repoFull := repoFullFromAPI(it.RepoURL)
+			pr := PullRequest{
+				Number:   it.Number,
+				Title:    it.Title,
+				URL:      it.HTMLURL,
+				Author:   it.User.Login,
+				IsDraft:  it.Draft,
+				RepoFull: repoFull,
+			}
+			if t, err := time.Parse(time.RFC3339, it.UpdatedAt); err == nil {
+				pr.Updated = t
+			}
+			out = append(out, pr)
+		}
+		if len(resp.Items) < 100 {
+			break
+		}
+	}
+	return out, nil
+}
+
+// repoFullFromAPI extracts "owner/repo" from a repository_url like
+// "https://api.github.com/repos/owner/repo".
+func repoFullFromAPI(repoURL string) string {
+	idx := strings.Index(repoURL, "/repos/")
+	if idx < 0 {
+		return ""
+	}
+	return strings.TrimSpace(repoURL[idx+len("/repos/"):])
 }
 
 func (g *GitHub) RepoExists(ctx context.Context, baseURL, token, _, owner, repoName string) (bool, error) {

@@ -597,6 +597,159 @@ func TestGitLabImplementsMirrorInterfaces(t *testing.T) {
 	var _ PushMirrorProvider = (*GitLab)(nil)
 }
 
+// --- PRLister tests ---
+
+func TestGitHubListAccountPRs(t *testing.T) {
+	// Two search queries expected: authored + review-requested. Mux on q= contents.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v3/search/issues" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		q := r.URL.Query().Get("q")
+		w.Header().Set("Content-Type", "application/json")
+		if containsSub(q, "author:me") {
+			w.Write([]byte(`{"items":[
+				{"number":11,"title":"Feature A","html_url":"https://github.com/me/repo/pull/11","repository_url":"https://api.github.com/repos/me/repo","updated_at":"2026-04-19T10:00:00Z","draft":false,"user":{"login":"me"},"pull_request":{}},
+				{"number":12,"title":"Draft WIP","html_url":"https://github.com/me/repo/pull/12","repository_url":"https://api.github.com/repos/me/repo","updated_at":"2026-04-20T10:00:00Z","draft":true,"user":{"login":"me"},"pull_request":{}}
+			]}`))
+			return
+		}
+		if containsSub(q, "review-requested:me") {
+			w.Write([]byte(`{"items":[
+				{"number":44,"title":"Please review","html_url":"https://github.com/org/api/pull/44","repository_url":"https://api.github.com/repos/org/api","updated_at":"2026-04-18T10:00:00Z","draft":false,"user":{"login":"teammate"},"pull_request":{}}
+			]}`))
+			return
+		}
+		t.Errorf("unexpected query: %s", q)
+		http.Error(w, "unexpected", http.StatusBadRequest)
+	}))
+	defer srv.Close()
+
+	gh := &GitHub{}
+	res, err := gh.ListAccountPRs(context.Background(), srv.URL, "tok", "me", true)
+	if err != nil {
+		t.Fatalf("ListAccountPRs: %v", err)
+	}
+
+	mine := res.ByRepo["me/repo"]
+	if got := len(mine.Authored); got != 2 {
+		t.Errorf("authored in me/repo: got %d, want 2", got)
+	}
+	if !mine.Authored[1].IsDraft {
+		t.Error("expected PR #12 to be marked draft")
+	}
+	other := res.ByRepo["org/api"]
+	if got := len(other.ReviewRequested); got != 1 {
+		t.Errorf("review-requested in org/api: got %d, want 1", got)
+	}
+	if other.ReviewRequested[0].Number != 44 {
+		t.Errorf("review PR number: got %d", other.ReviewRequested[0].Number)
+	}
+
+	// includeDrafts=false should strip the draft: clause into the query.
+	var caughtQ string
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("q")
+		if containsSub(q, "author:me") {
+			caughtQ = q
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"items":[]}`))
+	}))
+	defer srv2.Close()
+	if _, err := gh.ListAccountPRs(context.Background(), srv2.URL, "tok", "me", false); err != nil {
+		t.Fatalf("ListAccountPRs (no drafts): %v", err)
+	}
+	if !containsSub(caughtQ, "draft:false") {
+		t.Errorf("expected draft:false in query, got %q", caughtQ)
+	}
+}
+
+func TestGitLabListAccountPRs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v4/merge_requests" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		scope := r.URL.Query().Get("scope")
+		reviewer := r.URL.Query().Get("reviewer_username")
+		switch {
+		case scope == "created_by_me":
+			w.Write([]byte(`[
+				{"iid":7,"title":"MR seven","web_url":"https://gitlab.com/group/proj/-/merge_requests/7","updated_at":"2026-04-20T09:00:00Z","draft":false,"author":{"username":"me"},"references":{"full":"group/proj!7"}}
+			]`))
+		case reviewer == "me":
+			w.Write([]byte(`[
+				{"iid":8,"title":"Review me","web_url":"https://gitlab.com/other/thing/-/merge_requests/8","updated_at":"2026-04-20T10:00:00Z","draft":false,"author":{"username":"teammate"},"references":{"full":"other/thing!8"}}
+			]`))
+		default:
+			w.Write([]byte(`[]`))
+		}
+	}))
+	defer srv.Close()
+
+	gl := &GitLab{}
+	res, err := gl.ListAccountPRs(context.Background(), srv.URL, "tok", "me", true)
+	if err != nil {
+		t.Fatalf("GitLab ListAccountPRs: %v", err)
+	}
+	if got := len(res.ByRepo["group/proj"].Authored); got != 1 {
+		t.Errorf("authored group/proj: got %d, want 1", got)
+	}
+	if got := len(res.ByRepo["other/thing"].ReviewRequested); got != 1 {
+		t.Errorf("review-requested other/thing: got %d, want 1", got)
+	}
+}
+
+func TestGiteaListAccountPRs(t *testing.T) {
+	srv := httptest.NewServer(giteaTestHandler(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/repos/issues/search" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("created_by") == "me" {
+			w.Write([]byte(`[
+				{"number":3,"title":"Mine","html_url":"https://git.example.com/me/project/pulls/3","updated_at":"2026-04-20T09:00:00Z","draft":false,"user":{"login":"me"},"repository":{"full_name":"me/project"},"pull_request":{}}
+			]`))
+			return
+		}
+		if r.URL.Query().Get("review_requested") == "true" {
+			w.Write([]byte(`[
+				{"number":4,"title":"Review","html_url":"https://git.example.com/other/lib/pulls/4","updated_at":"2026-04-20T10:00:00Z","draft":false,"user":{"login":"teammate"},"repository":{"full_name":"other/lib"},"pull_request":{}}
+			]`))
+			return
+		}
+		w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	gt := &Gitea{}
+	res, err := gt.ListAccountPRs(context.Background(), srv.URL, "tok", "me", true)
+	if err != nil {
+		t.Fatalf("Gitea ListAccountPRs: %v", err)
+	}
+	if len(res.ByRepo["me/project"].Authored) != 1 {
+		t.Errorf("authored me/project: %d", len(res.ByRepo["me/project"].Authored))
+	}
+	if len(res.ByRepo["other/lib"].ReviewRequested) != 1 {
+		t.Errorf("review other/lib: %d", len(res.ByRepo["other/lib"].ReviewRequested))
+	}
+}
+
+func TestPRListerInterface(t *testing.T) {
+	var _ PRLister = (*GitHub)(nil)
+	var _ PRLister = (*GitLab)(nil)
+	var _ PRLister = (*Gitea)(nil)
+}
+
+func containsSub(s, sub string) bool { return contains(s, sub) }
+
 // --- ByName factory tests ---
 
 func TestByName(t *testing.T) {

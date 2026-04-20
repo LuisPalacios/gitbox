@@ -83,6 +83,10 @@ export function GetGlobalFolder():Promise<string>;
 
 export function GetMirrorStatus(arg1:string):Promise<void>;
 
+export function GetPRSettings():Promise<main.PRSettingsDTO>;
+
+export function GetPRsForRepo(arg1:string,arg2:string):Promise<main.PRSummaryDTO>;
+
 export function GetPeriodicSync():Promise<string>;
 
 export function GetRepoDetail(arg1:string,arg2:string):Promise<main.RepoDetail>;
@@ -129,6 +133,8 @@ export function PreviewSweep(arg1:string,arg2:string):Promise<main.SweepPreviewD
 
 export function PullRepo(arg1:string,arg2:string):Promise<void>;
 
+export function RefreshAllPRs():Promise<void>;
+
 export function RefreshStatus():Promise<void>;
 
 export function ReloadConfig():Promise<main.ConfigDTO>;
@@ -140,6 +146,10 @@ export function RenameAccount(arg1:string,arg2:string):Promise<void>;
 export function SetAutostart(arg1:boolean):Promise<void>;
 
 export function SetGlobalFolder(arg1:string):Promise<void>;
+
+export function SetPRBadgesEnabled(arg1:boolean):Promise<void>;
+
+export function SetPRIncludeDrafts(arg1:boolean):Promise<void>;
 
 export function SetPeriodicSync(arg1:string):Promise<void>;
 

@@ -1,5 +1,5 @@
 import { writable, derived } from 'svelte/store';
-import type { ConfigDTO, Account, SourceDTO, MirrorDTO, MirrorStatusResult, RepoState, StatusResult } from './types';
+import type { ConfigDTO, Account, SourceDTO, MirrorDTO, MirrorStatusResult, RepoState, StatusResult, PRSummaryDTO, PRAccountUpdateDTO } from './types';
 
 // ── Config store — loaded once from Go backend ──
 export const configStore = writable<ConfigDTO | null>(null);
@@ -129,6 +129,39 @@ export const mirrorSummary = derived([mirrors, mirrorStates], ([$m, $ms]) => {
   }
   return { active, unchecked, error, total };
 });
+
+// ── PR indicators (issue #29) ──
+// Keyed by accountKey → (repoFull lowercase → PRSummaryDTO).
+// A nested map avoids collisions when two accounts share the same owner/repo
+// path (rare but possible across providers) and makes per-account clearing cheap.
+export const prsByAccount = writable<Record<string, Record<string, PRSummaryDTO>>>({});
+
+// PR feature settings mirrored from the Go side.
+export const prSettings = writable<{ enabled: boolean; includeDrafts: boolean }>(
+  { enabled: true, includeDrafts: true }
+);
+
+// Merge one account's worth of PR data into the store.
+export function applyPRUpdate(upd: PRAccountUpdateDTO) {
+  if (!upd || !upd.accountKey) return;
+  prsByAccount.update((cur) => {
+    const next = { ...cur };
+    next[upd.accountKey] = upd.byRepo ?? {};
+    return next;
+  });
+}
+
+// Lookup summary for one clone. Returns an empty summary when absent.
+export function lookupPRSummary(
+  byAccount: Record<string, Record<string, PRSummaryDTO>>,
+  accountKey: string,
+  repoKey: string
+): PRSummaryDTO {
+  const empty: PRSummaryDTO = { authored: [], reviewRequested: [] };
+  const acct = byAccount[accountKey];
+  if (!acct) return empty;
+  return acct[repoKey.toLowerCase()] ?? empty;
+}
 
 // ── Theme store ──
 export const themeStore = writable<'light' | 'dark'>('dark');

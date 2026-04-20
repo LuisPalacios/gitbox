@@ -162,6 +162,14 @@ export function GetMirrorStatus(arg1) {
   return window['go']['main']['App']['GetMirrorStatus'](arg1);
 }
 
+export function GetPRSettings() {
+  return window['go']['main']['App']['GetPRSettings']();
+}
+
+export function GetPRsForRepo(arg1, arg2) {
+  return window['go']['main']['App']['GetPRsForRepo'](arg1, arg2);
+}
+
 export function GetPeriodicSync() {
   return window['go']['main']['App']['GetPeriodicSync']();
 }
@@ -254,6 +262,10 @@ export function PullRepo(arg1, arg2) {
   return window['go']['main']['App']['PullRepo'](arg1, arg2);
 }
 
+export function RefreshAllPRs() {
+  return window['go']['main']['App']['RefreshAllPRs']();
+}
+
 export function RefreshStatus() {
   return window['go']['main']['App']['RefreshStatus']();
 }
@@ -276,6 +288,14 @@ export function SetAutostart(arg1) {
 
 export function SetGlobalFolder(arg1) {
   return window['go']['main']['App']['SetGlobalFolder'](arg1);
+}
+
+export function SetPRBadgesEnabled(arg1) {
+  return window['go']['main']['App']['SetPRBadgesEnabled'](arg1);
+}
+
+export function SetPRIncludeDrafts(arg1) {
+  return window['go']['main']['App']['SetPRIncludeDrafts'](arg1);
 }
 
 export function SetPeriodicSync(arg1) {
