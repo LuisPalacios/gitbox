@@ -339,5 +339,47 @@
                 }
             }
         }
+    },
+
+    // ═════════════════════════════════════════════════════════════════════════
+    //   WORKSPACES — bundles of clones opened together (optional)
+    // ═════════════════════════════════════════════════════════════════════════
+    //
+    // A workspace groups N clones that belong together for a task. Two backends:
+    //
+    //   - "codeWorkspace" — generates a VS Code .code-workspace file with one
+    //     folders[] entry per member. Opens with the first editor in
+    //     global.editors.
+    //   - "tmuxinator" — generates a YAML profile under ~/.tmuxinator/<key>.yml
+    //     and launches it through the first terminal in global.terminals
+    //     (macOS / Linux only in this release).
+    //
+    // Manage workspaces with:
+    //   gitbox workspace add <key> --type codeWorkspace --member <src>/<repo>
+    //   gitbox workspace generate <key>
+    //   gitbox workspace open <key>
+    "workspaces": {
+        "feat-x": {
+            "type": "codeWorkspace",
+            "name": "Feature X",
+            // Populated automatically by `gitbox workspace generate`.
+            "file": "/home/me/00.git/feat-x.code-workspace",
+            "members": [
+                { "source": "github-myuser", "repo": "myuser/frontend" },
+                { "source": "gitea-ci",      "repo": "deploy/infra-scripts" }
+            ]
+        },
+
+        "pair-session": {
+            "type": "tmuxinator",
+            // "windowsPerRepo" (default) = one tmuxinator window per member.
+            // "splitPanes"              = single window with tiled panes.
+            "layout": "windowsPerRepo",
+            "file": "/home/me/.tmuxinator/pair-session.yml",
+            "members": [
+                { "source": "github-myuser", "repo": "myuser/frontend" },
+                { "source": "github-myuser", "repo": "myuser/backend"  }
+            ]
+        }
     }
 }

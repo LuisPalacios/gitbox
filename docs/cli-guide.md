@@ -327,6 +327,66 @@ gitbox account credential setup github-personal --token
 
 Token and SSH accounts already have a portable PAT — no extra setup needed. See [credentials.md](credentials.md) for details.
 
+## Step 8: Dynamic workspaces (optional)
+
+A **workspace** bundles several clones that I open together for a task — e.g. a frontend repo and its backend in one VS Code multi-root session, or a tmuxinator layout with each repo in its own pane.
+
+Workspaces are first-class in gitbox: stored in `gitbox.json`, managed with `gitbox workspace …`, and generated to disk on demand as `.code-workspace` JSON files or tmuxinator YAML profiles.
+
+### Create a VS Code multi-root workspace
+
+```bash
+gitbox workspace add feat-x \
+  --type codeWorkspace \
+  --name "Feature X" \
+  --member github-personal/myorg/frontend \
+  --member gitea-work/team/backend
+
+gitbox workspace generate feat-x
+```
+
+`generate` picks the file path automatically (the nearest common ancestor of the member folders, e.g. `~/00.git/feat-x.code-workspace`) unless I pass `--file`. It writes a `.code-workspace` with a `folders[]` entry per member and a small `settings` block that lets VS Code detect nested repos under the shared root.
+
+### Open a workspace
+
+```bash
+gitbox workspace open feat-x
+```
+
+This regenerates the file and launches the first editor in `global.editors` (for `codeWorkspace`) or the first terminal running `tmuxinator start <key>` (for `tmuxinator`).
+
+### Tmuxinator workspaces (macOS / Linux)
+
+```bash
+gitbox workspace add pair-session \
+  --type tmuxinator \
+  --layout windowsPerRepo \
+  --member github-personal/myorg/frontend \
+  --member github-personal/myorg/backend
+
+gitbox workspace generate pair-session   # writes ~/.tmuxinator/pair-session.yml
+gitbox workspace open pair-session
+```
+
+Layouts:
+
+- `windowsPerRepo` (default) — one tmuxinator window per member, each rooted at the member's clone folder
+- `splitPanes` — a single window with one pane per member, tiled
+
+Windows support for tmuxinator (via WSL) is not included in this release — a future update will add WSL detection and wire tmuxinator through `wsl.exe`.
+
+### Day-to-day
+
+```bash
+gitbox workspace list
+gitbox workspace show feat-x
+gitbox workspace add-member feat-x gitea-work/team/ops
+gitbox workspace delete-member feat-x gitea-work/team/backend
+gitbox workspace delete feat-x
+```
+
+`delete` removes the workspace from `gitbox.json` but does NOT delete the generated file on disk — I remove that by hand if I want to.
+
 ## Updating gitbox
 
 Gitbox checks for updates automatically (once per day in the GUI). From the CLI:

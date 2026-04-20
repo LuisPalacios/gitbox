@@ -415,3 +415,162 @@ func validateMirrorRepo(mirrorKey, repoKey string, repo MirrorRepo) error {
 	}
 	return nil
 }
+
+// --- Workspace CRUD ---
+
+// AddWorkspace adds a new workspace. Returns error if key exists or members are invalid.
+func (c *Config) AddWorkspace(key string, w Workspace) error {
+	if key == "" {
+		return fmt.Errorf("workspace key cannot be empty")
+	}
+	if _, exists := c.Workspaces[key]; exists {
+		return fmt.Errorf("workspace %q already exists", key)
+	}
+	if err := c.validateWorkspace(key, w); err != nil {
+		return err
+	}
+	if c.Workspaces == nil {
+		c.Workspaces = make(map[string]Workspace)
+	}
+	if w.Members == nil {
+		w.Members = []WorkspaceMember{}
+	}
+	c.Workspaces[key] = w
+	return nil
+}
+
+// UpdateWorkspace updates an existing workspace. Returns error if not found.
+func (c *Config) UpdateWorkspace(key string, w Workspace) error {
+	if _, exists := c.Workspaces[key]; !exists {
+		return fmt.Errorf("workspace %q not found", key)
+	}
+	if err := c.validateWorkspace(key, w); err != nil {
+		return err
+	}
+	c.Workspaces[key] = w
+	return nil
+}
+
+// DeleteWorkspace removes a workspace from the config.
+// Note: does not delete the on-disk file — callers handle that.
+func (c *Config) DeleteWorkspace(key string) error {
+	if _, exists := c.Workspaces[key]; !exists {
+		return fmt.Errorf("workspace %q not found", key)
+	}
+	delete(c.Workspaces, key)
+	return nil
+}
+
+// RenameWorkspace moves a workspace from oldKey to newKey.
+func (c *Config) RenameWorkspace(oldKey, newKey string) error {
+	if newKey == "" {
+		return fmt.Errorf("new workspace key cannot be empty")
+	}
+	if _, exists := c.Workspaces[oldKey]; !exists {
+		return fmt.Errorf("workspace %q not found", oldKey)
+	}
+	if _, exists := c.Workspaces[newKey]; exists {
+		return fmt.Errorf("workspace %q already exists", newKey)
+	}
+	c.Workspaces[newKey] = c.Workspaces[oldKey]
+	delete(c.Workspaces, oldKey)
+	return nil
+}
+
+// ListWorkspaces returns all workspaces.
+func (c *Config) ListWorkspaces() map[string]Workspace {
+	return c.Workspaces
+}
+
+// AddWorkspaceMember appends a member to a workspace. Returns error if duplicate
+// or if the referenced source/repo does not exist in config.
+func (c *Config) AddWorkspaceMember(key string, member WorkspaceMember) error {
+	w, ok := c.Workspaces[key]
+	if !ok {
+		return fmt.Errorf("workspace %q not found", key)
+	}
+	if err := c.validateWorkspaceMember(key, member); err != nil {
+		return err
+	}
+	for _, existing := range w.Members {
+		if existing.Source == member.Source && existing.Repo == member.Repo {
+			return fmt.Errorf("workspace %q: member %s/%s already present", key, member.Source, member.Repo)
+		}
+	}
+	w.Members = append(w.Members, member)
+	c.Workspaces[key] = w
+	return nil
+}
+
+// DeleteWorkspaceMember removes a member from a workspace by source+repo.
+func (c *Config) DeleteWorkspaceMember(key, source, repo string) error {
+	w, ok := c.Workspaces[key]
+	if !ok {
+		return fmt.Errorf("workspace %q not found", key)
+	}
+	out := make([]WorkspaceMember, 0, len(w.Members))
+	removed := false
+	for _, m := range w.Members {
+		if m.Source == source && m.Repo == repo {
+			removed = true
+			continue
+		}
+		out = append(out, m)
+	}
+	if !removed {
+		return fmt.Errorf("workspace %q: member %s/%s not found", key, source, repo)
+	}
+	w.Members = out
+	c.Workspaces[key] = w
+	return nil
+}
+
+// ListWorkspaceMembers returns the members of a workspace.
+func (c *Config) ListWorkspaceMembers(key string) ([]WorkspaceMember, error) {
+	w, ok := c.Workspaces[key]
+	if !ok {
+		return nil, fmt.Errorf("workspace %q not found", key)
+	}
+	return w.Members, nil
+}
+
+func (c *Config) validateWorkspace(key string, w Workspace) error {
+	switch w.Type {
+	case WorkspaceTypeCode, WorkspaceTypeTmuxinator:
+	default:
+		return fmt.Errorf("workspace %q: type must be %q or %q", key, WorkspaceTypeCode, WorkspaceTypeTmuxinator)
+	}
+	if w.Layout != "" {
+		if w.Type != WorkspaceTypeTmuxinator {
+			return fmt.Errorf("workspace %q: layout is only valid for tmuxinator workspaces", key)
+		}
+		switch w.Layout {
+		case WorkspaceLayoutWindows, WorkspaceLayoutSplit:
+		default:
+			return fmt.Errorf("workspace %q: layout must be %q or %q", key, WorkspaceLayoutWindows, WorkspaceLayoutSplit)
+		}
+	}
+	for _, m := range w.Members {
+		if err := c.validateWorkspaceMember(key, m); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Config) validateWorkspaceMember(key string, m WorkspaceMember) error {
+	if m.Source == "" {
+		return fmt.Errorf("workspace %q: member source is required", key)
+	}
+	if m.Repo == "" {
+		return fmt.Errorf("workspace %q: member repo is required", key)
+	}
+	src, ok := c.Sources[m.Source]
+	if !ok {
+		return fmt.Errorf("workspace %q: member references unknown source %q", key, m.Source)
+	}
+	if _, ok := src.Repos[m.Repo]; !ok {
+		return fmt.Errorf("workspace %q: member references unknown repo %q in source %q", key, m.Repo, m.Source)
+	}
+	return nil
+}

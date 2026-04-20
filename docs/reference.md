@@ -598,6 +598,104 @@ Remote servers need portable PATs (not machine-local GCM tokens). See [credentia
 
 ---
 
+## Workspaces
+
+Workspaces bundle N clones into a single artifact (VS Code `.code-workspace` or tmuxinator YAML) that opens them together.
+
+### Commands
+
+```bash
+gitbox workspace list                                       # summary table
+gitbox workspace list --json                                # machine-readable
+gitbox workspace show <key>                                 # full detail
+gitbox workspace add <key> --type <type> [flags]            # create
+gitbox workspace delete <key>                               # remove from config (keeps file)
+gitbox workspace add-member <key> <source>/<repo-key>       # add clone to workspace
+gitbox workspace delete-member <key> <source>/<repo-key>    # remove clone
+gitbox workspace generate <key> [--dry-run]                 # (re)write the file on disk
+gitbox workspace open <key>                                 # regenerate + launch
+```
+
+### `add` flags
+
+| Flag | Required | Description |
+| ---- | -------- | ----------- |
+| `--type` | Yes | `codeWorkspace` or `tmuxinator` |
+| `--name` | No | Display name shown in `show` and UI (defaults to the key) |
+| `--file` | No | Override the generated file path (default: nearest common ancestor for `codeWorkspace`, `~/.tmuxinator/<key>.yml` for `tmuxinator`) |
+| `--layout` | No | Tmuxinator only: `windowsPerRepo` (default) or `splitPanes` |
+| `--member` | No, repeatable | `<source-key>/<repo-key>` |
+
+### Default file path
+
+- `codeWorkspace` — `<common-ancestor>/<key>.code-workspace`. The common ancestor is the longest shared directory prefix of all member clone paths. If no sensible ancestor is found (cross-filesystem), gitbox falls back to the parent of the first member.
+- `tmuxinator` — `~/.tmuxinator/<key>.yml` (fixed by the tool). On Windows this returns an error; WSL-based tmuxinator support is tracked for a future release.
+
+### Open behavior
+
+`open` always regenerates the file first so the artifact is current, then launches:
+
+- `codeWorkspace` → first entry in `global.editors` invoked as `<editor.command> <workspace-file>`. Add an editor with `gitbox global editor add` or by editing the config directly.
+- `tmuxinator` → first entry in `global.terminals` invoked as `<term.command> <term.args...> tmuxinator start <key>`. The `{command}` token in the terminal args is replaced by `tmuxinator start <key>`; the `{path}` token is dropped (workspaces don't have a single path).
+
+### Workspace config format
+
+```json
+{
+  "workspaces": {
+    "feat-x": {
+      "type": "codeWorkspace",
+      "name": "Feature X",
+      "file": "/home/me/00.git/feat-x.code-workspace",
+      "members": [
+        { "source": "github-personal", "repo": "myorg/frontend" },
+        { "source": "gitea-work", "repo": "team/backend" }
+      ]
+    },
+    "pair-session": {
+      "type": "tmuxinator",
+      "layout": "windowsPerRepo",
+      "file": "/home/me/.tmuxinator/pair-session.yml",
+      "members": [
+        { "source": "github-personal", "repo": "myorg/frontend" },
+        { "source": "github-personal", "repo": "myorg/backend" }
+      ]
+    }
+  }
+}
+```
+
+| Field | Type | Required | Description |
+| ----- | ---- | -------- | ----------- |
+| `type` | string | Yes | `"codeWorkspace"` or `"tmuxinator"` |
+| `name` | string | No | Display name; defaults to the key |
+| `file` | string | No | Absolute path of the generated artifact; populated automatically by `generate` |
+| `layout` | string | No | Tmuxinator only: `"windowsPerRepo"` or `"splitPanes"` |
+| `members` | array | Yes | Member list, each with `source` and `repo` |
+| `members[].source` | string | Yes | Source key (must exist in `sources`) |
+| `members[].repo` | string | Yes | Repo key within that source |
+| `discovered` | bool | No | `true` for workspaces adopted from disk by a future discovery pass |
+
+### Generated `.code-workspace` contents
+
+```json
+{
+    "folders": [
+        { "path": "github-personal/myorg/frontend", "name": "frontend" },
+        { "path": "gitea-work/team/backend",        "name": "backend" }
+    ],
+    "settings": {
+        "git.autoRepositoryDetection": true,
+        "git.repositoryScanMaxDepth": 2,
+        "git.openRepositoryInParentFolders": "always"
+    }
+}
+```
+
+`folders[].path` is relative when every member lives under the workspace file's directory, absolute otherwise. The `settings` block is kept minimal on purpose — three keys that make VS Code actually detect nested repos under a shared root. Edit the generated file by hand if I need more; gitbox will overwrite it only when I run `generate`/`open`.
+
+---
+
 ## Shell completion
 
 Generate tab-completion scripts for your shell:
