@@ -180,3 +180,31 @@ export interface AIHarnessInfo {
   command: string;
   args: string[];
 }
+
+// ── PR / review indicators (issue #29) ──
+
+export interface PullRequestDTO {
+  number: number;
+  title: string;
+  url: string;
+  author: string;
+  updated: string;    // RFC3339, empty when unknown
+  isDraft: boolean;
+  repoFull: string;
+}
+
+export interface PRSummaryDTO {
+  authored: PullRequestDTO[];
+  reviewRequested: PullRequestDTO[];
+}
+
+export interface PRSettingsDTO {
+  enabled: boolean;
+  includeDrafts: boolean;
+}
+
+export interface PRAccountUpdateDTO {
+  accountKey: string;
+  byRepo: Record<string, PRSummaryDTO>; // repoFull (lowercase) -> summary
+  error?: string;
+}

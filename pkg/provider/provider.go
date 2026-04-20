@@ -4,6 +4,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // RemoteRepo is the normalized representation of a repository returned by any provider.
@@ -73,6 +74,35 @@ type RepoInfo struct {
 // RepoInfoProvider can fetch basic repo metadata. Used for mirror sync checks.
 type RepoInfoProvider interface {
 	GetRepoInfo(ctx context.Context, baseURL, token, username, owner, repo string) (RepoInfo, error)
+}
+
+// PullRequest is a normalized representation of an open PR / merge request.
+type PullRequest struct {
+	Number   int       `json:"number"`
+	Title    string    `json:"title"`
+	URL      string    `json:"url"`
+	Author   string    `json:"author"`
+	Updated  time.Time `json:"updated"`
+	IsDraft  bool      `json:"isDraft"`
+	RepoFull string    `json:"repoFull"` // "owner/repo"
+}
+
+// PRSummary partitions PRs by the authenticated user's role.
+type PRSummary struct {
+	Authored        []PullRequest `json:"authored"`
+	ReviewRequested []PullRequest `json:"reviewRequested"`
+}
+
+// AccountPRs is the full PR picture for one authenticated account,
+// keyed by repo full name ("owner/repo", case as reported by the API).
+type AccountPRs struct {
+	ByRepo map[string]PRSummary `json:"byRepo"`
+}
+
+// PRLister can list open PRs authored by, or requesting review from,
+// the authenticated user. Implemented opt-in per provider.
+type PRLister interface {
+	ListAccountPRs(ctx context.Context, baseURL, token, username string, includeDrafts bool) (AccountPRs, error)
 }
 
 // TestAuth makes a minimal API call to verify credentials work.

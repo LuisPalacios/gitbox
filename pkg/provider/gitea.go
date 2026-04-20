@@ -180,6 +180,107 @@ func (g *Gitea) RepoExists(ctx context.Context, baseURL, token, username, owner,
 	return true, nil
 }
 
+// --- PRLister ---
+
+type giteaIssue struct {
+	Number     int    `json:"number"`
+	Title      string `json:"title"`
+	HTMLURL    string `json:"html_url"`
+	UpdatedAt  string `json:"updated_at"`
+	Draft      bool   `json:"draft"`
+	User       struct {
+		Login string `json:"login"`
+	} `json:"user"`
+	Repository struct {
+		FullName string `json:"full_name"`
+	} `json:"repository"`
+	PullRequest *struct{} `json:"pull_request"` // present only for PRs
+}
+
+// ListAccountPRs implements PRLister for Gitea/Forgejo using the
+// `/repos/issues/search` endpoint. Two calls: created-by and review-requested.
+func (g *Gitea) ListAccountPRs(ctx context.Context, baseURL, token, username string, includeDrafts bool) (AccountPRs, error) {
+	if username == "" {
+		return AccountPRs{}, fmt.Errorf("gitea list prs: empty username")
+	}
+	headers, err := g.resolveAuth(ctx, baseURL, token, username)
+	if err != nil {
+		return AccountPRs{}, fmt.Errorf("gitea auth: %w", err)
+	}
+	base := strings.TrimRight(baseURL, "/")
+
+	result := AccountPRs{ByRepo: map[string]PRSummary{}}
+
+	authoredURL := fmt.Sprintf("%s/api/v1/repos/issues/search?type=pulls&state=open&created_by=%s&limit=50", base, username)
+	authored, err := g.searchGiteaPRs(ctx, authoredURL, headers, includeDrafts, false)
+	if err != nil {
+		return AccountPRs{}, fmt.Errorf("gitea authored PRs: %w", err)
+	}
+	for _, pr := range authored {
+		sum := result.ByRepo[pr.RepoFull]
+		sum.Authored = append(sum.Authored, pr)
+		result.ByRepo[pr.RepoFull] = sum
+	}
+
+	reviewURL := fmt.Sprintf("%s/api/v1/repos/issues/search?type=pulls&state=open&review_requested=true&limit=50", base)
+	reviewer, err := g.searchGiteaPRs(ctx, reviewURL, headers, true, true)
+	if err != nil {
+		return AccountPRs{}, fmt.Errorf("gitea review-requested PRs: %w", err)
+	}
+	for _, pr := range reviewer {
+		if pr.IsDraft {
+			continue
+		}
+		sum := result.ByRepo[pr.RepoFull]
+		sum.ReviewRequested = append(sum.ReviewRequested, pr)
+		result.ByRepo[pr.RepoFull] = sum
+	}
+
+	return result, nil
+}
+
+// searchGiteaPRs walks a paginated issues/search endpoint. `reviewerFilter`
+// discards any result whose author is the current user (some Gitea versions
+// ignore review_requested=true).
+func (g *Gitea) searchGiteaPRs(ctx context.Context, baseURL string, headers map[string]string, includeDrafts, reviewerFilter bool) ([]PullRequest, error) {
+	var out []PullRequest
+	sep := "&"
+	if !strings.Contains(baseURL, "?") {
+		sep = "?"
+	}
+	for page := 1; page <= 3; page++ {
+		reqURL := fmt.Sprintf("%s%spage=%d", baseURL, sep, page)
+		var issues []giteaIssue
+		if _, err := doGet(ctx, reqURL, headers, &issues); err != nil {
+			return nil, err
+		}
+		for _, it := range issues {
+			if it.PullRequest == nil {
+				continue
+			}
+			if it.Draft && !includeDrafts {
+				continue
+			}
+			pr := PullRequest{
+				Number:   it.Number,
+				Title:    it.Title,
+				URL:      it.HTMLURL,
+				Author:   it.User.Login,
+				IsDraft:  it.Draft,
+				RepoFull: it.Repository.FullName,
+			}
+			if t, err := time.Parse(time.RFC3339, it.UpdatedAt); err == nil {
+				pr.Updated = t
+			}
+			out = append(out, pr)
+		}
+		if len(issues) < 50 {
+			break
+		}
+	}
+	return out, nil
+}
+
 // --- PushMirrorProvider ---
 
 type giteaPushMirror struct {

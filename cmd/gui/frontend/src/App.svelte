@@ -4,12 +4,14 @@
   import { bridge, events } from './lib/bridge';
   import {
     configStore, accounts, sources, mirrors, repoStates, mirrorStates, mirrorSummary,
-    summary, accountStats, themeStore, applyStatusResults, applyMirrorStatusResults
+    summary, accountStats, themeStore, applyStatusResults, applyMirrorStatusResults,
+    prsByAccount, prSettings, applyPRUpdate, lookupPRSummary
   } from './lib/stores';
   import { statusColor, credColor, statusLabel, providerLabel, statusSymbol } from './lib/theme';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit } from '../wailsjs/runtime/runtime';
-  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo } from './lib/types';
+  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo, PRAccountUpdateDTO } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
+  import PRPopover from './lib/PRPopover.svelte';
 
   // ── View mode ──
   let viewMode: 'full' | 'compact' = 'full';
@@ -1325,8 +1327,65 @@
     if (fetchTimerId) { clearInterval(fetchTimerId); fetchTimerId = null; }
     const minutes = val === '5m' ? 5 : val === '15m' ? 15 : val === '30m' ? 30 : 0;
     if (minutes > 0) {
-      fetchTimerId = setInterval(() => { runFetchAll(); verifyAllCredentials(); checkAllMirrorStatus(); }, minutes * 60 * 1000);
+      fetchTimerId = setInterval(() => { runFetchAll(); verifyAllCredentials(); checkAllMirrorStatus(); refreshAllPRs(); }, minutes * 60 * 1000);
     }
+  }
+
+  // ── PR badges (issue #29) ──
+  async function loadPRSettings() {
+    try {
+      const s = await bridge.getPRSettings();
+      prSettings.set({ enabled: !!s.enabled, includeDrafts: !!s.includeDrafts });
+    } catch (e) { console.error(e); }
+  }
+
+  function refreshAllPRs() {
+    let enabled = false;
+    prSettings.subscribe((v) => { enabled = v.enabled; })();
+    if (!enabled) return;
+    bridge.refreshAllPRs().catch((e) => console.error(e));
+  }
+
+  async function setPRBadgesEnabled(enabled: boolean) {
+    try {
+      await bridge.setPRBadgesEnabled(enabled);
+      prSettings.update((v) => ({ ...v, enabled }));
+      if (enabled) refreshAllPRs();
+      else prsByAccount.set({});
+    } catch (e) { console.error(e); }
+  }
+
+  async function setPRIncludeDrafts(include: boolean) {
+    try {
+      await bridge.setPRIncludeDrafts(include);
+      prSettings.update((v) => ({ ...v, includeDrafts: include }));
+      refreshAllPRs();
+    } catch (e) { console.error(e); }
+  }
+
+  // Which PR popover is open: key is `${sourceKey}/${repoName}|${kind}` or null.
+  let openPRPopover: string | null = null;
+  function togglePRPopover(key: string) {
+    openPRPopover = openPRPopover === key ? null : key;
+  }
+
+  // Build the provider-native "all PRs" URL for a given repo full name.
+  function providerPRsURL(providerName: string, baseURL: string, repoFull: string): string {
+    const base = (baseURL || '').replace(/\/+$/, '') || defaultProviderBase(providerName);
+    if (!base || !repoFull) return '';
+    switch (providerName) {
+      case 'github':   return `${base}/${repoFull}/pulls`;
+      case 'gitlab':   return `${base}/${repoFull}/-/merge_requests`;
+      case 'gitea':
+      case 'forgejo':  return `${base}/${repoFull}/pulls`;
+      default:         return '';
+    }
+  }
+
+  function defaultProviderBase(providerName: string): string {
+    if (providerName === 'github') return 'https://github.com';
+    if (providerName === 'gitlab') return 'https://gitlab.com';
+    return '';
   }
 
   function setFetchInterval(val: string) {
@@ -1387,6 +1446,10 @@
 
     // Start periodic status check if previously configured.
     if (fetchInterval !== 'off') applyFetchInterval(fetchInterval);
+
+    // Load PR badge feature flags and kick off initial PR fetch.
+    await loadPRSettings();
+    refreshAllPRs();
   }
 
   function verifyAllCredentials() {
@@ -1565,6 +1628,10 @@
       updateDone = true;
       // Auto-quit after a brief moment so the user sees the message.
       setTimeout(() => Quit(), 1500);
+    });
+
+    events.on('pr:refreshed', (upd: any) => {
+      applyPRUpdate(upd as PRAccountUpdateDTO);
     });
 
     // Check if config failed to parse (file exists but is broken/unsupported).
@@ -1885,6 +1952,22 @@
         </div>
       {/if}
       <div class="settings-row">
+        <span class="settings-label">PR / review badges</span>
+        <div class="theme-toggle">
+          <button class="theme-btn" class:theme-active={!$prSettings.enabled} on:click={() => { if ($prSettings.enabled) setPRBadgesEnabled(false); }}>Off</button>
+          <button class="theme-btn" class:theme-active={$prSettings.enabled} on:click={() => { if (!$prSettings.enabled) setPRBadgesEnabled(true); }}>On</button>
+        </div>
+      </div>
+      {#if $prSettings.enabled}
+        <div class="settings-row">
+          <span class="settings-label">Include drafts in &#128221;</span>
+          <div class="theme-toggle">
+            <button class="theme-btn" class:theme-active={!$prSettings.includeDrafts} on:click={() => { if ($prSettings.includeDrafts) setPRIncludeDrafts(false); }}>Off</button>
+            <button class="theme-btn" class:theme-active={$prSettings.includeDrafts} on:click={() => { if (!$prSettings.includeDrafts) setPRIncludeDrafts(true); }}>On</button>
+          </div>
+        </div>
+      {/if}
+      <div class="settings-row">
         <span class="settings-label">Version</span>
         <span class="settings-value">{appVersion}</span>
       </div>
@@ -2033,6 +2116,48 @@
                 <button class="btn-action" on:click|stopPropagation={() => syncRepo(sourceKey, repoName)}>Pull</button>
               {:else if state.status === 'not cloned'}
                 <button class="btn-action" on:click|stopPropagation={() => cloneRepo(sourceKey, repoName)}>Bring Local</button>
+              {/if}
+              {#if !deleteMode && $prSettings.enabled}
+                {@const prSummary = lookupPRSummary($prsByAccount, accountKey, repoName)}
+                {@const acctForPRs = $accounts[accountKey]}
+                {#if prSummary.authored.length > 0}
+                  <div class="action-menu-container pr-badge-wrap">
+                    <button class="pr-badge pr-badge-authored" on:click|stopPropagation={() => togglePRPopover(`${repoKey}|authored`)} title="{prSummary.authored.length} open PR{prSummary.authored.length === 1 ? '' : 's'} I authored">
+                      &#128221; {prSummary.authored.length}
+                    </button>
+                    {#if openPRPopover === `${repoKey}|authored`}
+                      <div transition:fade={{ duration: 80 }}>
+                        <PRPopover
+                          kind="authored"
+                          prs={prSummary.authored}
+                          providerName={acctForPRs?.provider || ''}
+                          providerAllURL={providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName)}
+                          onOpenPR={(url) => { bridge.openInBrowser(url); openPRPopover = null; }}
+                          onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); openPRPopover = null; }}
+                        />
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
+                {#if prSummary.reviewRequested.length > 0}
+                  <div class="action-menu-container pr-badge-wrap">
+                    <button class="pr-badge pr-badge-review" on:click|stopPropagation={() => togglePRPopover(`${repoKey}|review`)} title="{prSummary.reviewRequested.length} PR{prSummary.reviewRequested.length === 1 ? '' : 's'} awaiting my review">
+                      &#128064; {prSummary.reviewRequested.length}
+                    </button>
+                    {#if openPRPopover === `${repoKey}|review`}
+                      <div transition:fade={{ duration: 80 }}>
+                        <PRPopover
+                          kind="review"
+                          prs={prSummary.reviewRequested}
+                          providerName={acctForPRs?.provider || ''}
+                          providerAllURL={providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName)}
+                          onOpenPR={(url) => { bridge.openInBrowser(url); openPRPopover = null; }}
+                          onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); openPRPopover = null; }}
+                        />
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
               {/if}
               {#if !deleteMode && state.status !== 'not cloned'}
                 <button class="btn-fetch" class:spinning={fetchingRepos[repoKey]} on:click|stopPropagation={() => fetchRepo(sourceKey, repoName)} title="Fetch origin" disabled={!!fetchingRepos[repoKey]}>&#8635;</button>
@@ -3394,6 +3519,35 @@
   .status-pending { font-size: 12px; font-weight: 600; color: var(--text-dim); }
   .branch-badge { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: var(--bg-hover); color: var(--text-dim); white-space: nowrap; }
   .branch-badge.detached { color: var(--status-error, #D81E5B); }
+
+  /* PR indicators (issue #29) */
+  .pr-badge-wrap { position: relative; display: inline-flex; }
+  .pr-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.1s, border-color 0.1s, color 0.1s;
+  }
+  .pr-badge:hover { background: var(--bg-row-hover); color: var(--text-primary); }
+  .pr-badge-authored { color: var(--text-secondary); }
+  .pr-badge-review {
+    color: var(--status-error, #D81E5B);
+    border-color: color-mix(in srgb, var(--status-error, #D81E5B) 40%, transparent);
+    background: color-mix(in srgb, var(--status-error, #D81E5B) 12%, var(--bg-hover));
+  }
+  .pr-badge-review:hover {
+    background: color-mix(in srgb, var(--status-error, #D81E5B) 22%, var(--bg-hover));
+    color: var(--status-error, #D81E5B);
+  }
 
   /* ── Repo detail panel ── */
   .repo-row-clickable { cursor: pointer; }

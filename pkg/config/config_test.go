@@ -447,3 +447,21 @@ func TestTerminalsOmitEmpty(t *testing.T) {
 		t.Errorf("marshalled JSON should not include empty terminals array:\n%s", s)
 	}
 }
+
+// Unset PR badge flags must default to "on" so installs created before
+// issue #29 get the feature enabled automatically.
+func TestPRBadgesDefaultOn(t *testing.T) {
+	var g GlobalConfig
+	if !g.PRBadgesOn() {
+		t.Error("PRBadgesOn should default to true when field is nil")
+	}
+	if !g.PRDraftsIncluded() {
+		t.Error("PRDraftsIncluded should default to true when field is nil")
+	}
+	f := false
+	g.PRBadgesEnabled = &f
+	g.PRIncludeDrafts = &f
+	if g.PRBadgesOn() || g.PRDraftsIncluded() {
+		t.Error("pointer-to-false must disable the feature")
+	}
+}

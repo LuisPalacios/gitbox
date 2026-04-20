@@ -168,6 +168,92 @@ func (g *GitLab) RepoExists(ctx context.Context, baseURL, token, _, owner, repoN
 	return true, nil
 }
 
+// --- PRLister ---
+
+type gitlabMR struct {
+	IID       int    `json:"iid"`
+	Title     string `json:"title"`
+	WebURL    string `json:"web_url"`
+	UpdatedAt string `json:"updated_at"`
+	Draft     bool   `json:"draft"`
+	Author    struct {
+		Username string `json:"username"`
+	} `json:"author"`
+	References struct {
+		Full string `json:"full"` // "group/proj!123"
+	} `json:"references"`
+}
+
+// ListAccountPRs implements PRLister for GitLab using the `merge_requests` API.
+// Two scoped calls: authored (`scope=created_by_me`) and reviewer-requested.
+func (g *GitLab) ListAccountPRs(ctx context.Context, baseURL, token, username string, includeDrafts bool) (AccountPRs, error) {
+	if username == "" {
+		return AccountPRs{}, fmt.Errorf("gitlab list prs: empty username")
+	}
+	base := strings.TrimRight(baseURL, "/")
+	headers := g.authHeaders(token)
+
+	result := AccountPRs{ByRepo: map[string]PRSummary{}}
+
+	authoredURL := fmt.Sprintf("%s/api/v4/merge_requests?scope=created_by_me&state=opened&per_page=100", base)
+	authored, err := g.listMRs(ctx, authoredURL, headers, includeDrafts)
+	if err != nil {
+		return AccountPRs{}, fmt.Errorf("gitlab authored MRs: %w", err)
+	}
+	for _, pr := range authored {
+		sum := result.ByRepo[pr.RepoFull]
+		sum.Authored = append(sum.Authored, pr)
+		result.ByRepo[pr.RepoFull] = sum
+	}
+
+	reviewerURL := fmt.Sprintf("%s/api/v4/merge_requests?scope=all&state=opened&reviewer_username=%s&per_page=100",
+		base, url.QueryEscape(username))
+	reviewer, err := g.listMRs(ctx, reviewerURL, headers, true) // reviewer list ignores draft filter
+	if err != nil {
+		return AccountPRs{}, fmt.Errorf("gitlab reviewer MRs: %w", err)
+	}
+	for _, pr := range reviewer {
+		if pr.IsDraft {
+			continue
+		}
+		sum := result.ByRepo[pr.RepoFull]
+		sum.ReviewRequested = append(sum.ReviewRequested, pr)
+		result.ByRepo[pr.RepoFull] = sum
+	}
+
+	return result, nil
+}
+
+func (g *GitLab) listMRs(ctx context.Context, reqURL string, headers map[string]string, includeDrafts bool) ([]PullRequest, error) {
+	var mrs []gitlabMR
+	if _, err := doGet(ctx, reqURL, headers, &mrs); err != nil {
+		return nil, err
+	}
+	out := make([]PullRequest, 0, len(mrs))
+	for _, mr := range mrs {
+		if mr.Draft && !includeDrafts {
+			continue
+		}
+		full := mr.References.Full
+		if idx := strings.Index(full, "!"); idx > 0 {
+			full = full[:idx]
+		}
+		pr := PullRequest{
+			Number:   mr.IID,
+			Title:    mr.Title,
+			URL:      mr.WebURL,
+			Author:   mr.Author.Username,
+			IsDraft:  mr.Draft,
+			RepoFull: full,
+		}
+		if t, err := time.Parse(time.RFC3339, mr.UpdatedAt); err == nil {
+			pr.Updated = t
+		}
+		out = append(out, pr)
+	}
+	return out, nil
+}
+
 // --- PushMirrorProvider ---
 
 type gitlabRemoteMirror struct {

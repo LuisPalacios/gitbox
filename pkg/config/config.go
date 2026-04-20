@@ -41,6 +41,29 @@ type GlobalConfig struct {
 	Editors         []EditorEntry  `json:"editors,omitempty"`
 	Terminals       []TerminalEntry `json:"terminals,omitempty"`
 	AIHarnesses     []AIHarnessEntry `json:"ai_harnesses,omitempty"`
+
+	// PRBadges controls whether PR / review indicators are fetched and shown
+	// on clone rows. Pointer semantics so an absent field defaults to true.
+	PRBadgesEnabled *bool `json:"pr_badges_enabled,omitempty"`
+	// PRIncludeDrafts controls whether draft PRs count in the "my PRs" badge.
+	// Pointer semantics so an absent field defaults to true.
+	PRIncludeDrafts *bool `json:"pr_include_drafts,omitempty"`
+}
+
+// PRBadgesOn reports whether PR badges are enabled, defaulting to true when unset.
+func (g GlobalConfig) PRBadgesOn() bool {
+	if g.PRBadgesEnabled == nil {
+		return true
+	}
+	return *g.PRBadgesEnabled
+}
+
+// PRDraftsIncluded reports whether draft PRs should be counted, defaulting to true when unset.
+func (g GlobalConfig) PRDraftsIncluded() bool {
+	if g.PRIncludeDrafts == nil {
+		return true
+	}
+	return *g.PRIncludeDrafts
 }
 
 // EditorEntry defines a user-configured code editor for opening repositories.
