@@ -614,6 +614,7 @@ gitbox workspace add-member <key> <source>/<repo-key>       # add clone to works
 gitbox workspace delete-member <key> <source>/<repo-key>    # remove clone
 gitbox workspace generate <key> [--dry-run]                 # (re)write the file on disk
 gitbox workspace open <key>                                 # regenerate + launch
+gitbox workspace discover [--apply]                         # scan disk, optionally adopt
 ```
 
 ### `add` flags
@@ -629,14 +630,24 @@ gitbox workspace open <key>                                 # regenerate + launc
 ### Default file path
 
 - `codeWorkspace` — `<common-ancestor>/<key>.code-workspace`. The common ancestor is the longest shared directory prefix of all member clone paths. If no sensible ancestor is found (cross-filesystem), gitbox falls back to the parent of the first member.
-- `tmuxinator` — `~/.tmuxinator/<key>.yml` (fixed by the tool). On Windows this returns an error; WSL-based tmuxinator support is tracked for a future release.
+- `tmuxinator` — `~/.tmuxinator/<key>.yml` (fixed by the tool). On Windows the path resolves to the WSL-side `~/.tmuxinator/<key>.yml` accessed through its `\\wsl.localhost\<distro>\…` UNC equivalent, so `Generate` writes through the Windows view of the WSL filesystem. WSL must be installed (`wsl.exe --status` succeeds); otherwise tmuxinator workspaces error with `ErrTmuxinatorUnsupported`.
 
 ### Open behavior
 
 `open` always regenerates the file first so the artifact is current, then launches:
 
 - `codeWorkspace` → first entry in `global.editors` invoked as `<editor.command> <workspace-file>`. Add an editor with `gitbox global editor add` or by editing the config directly.
-- `tmuxinator` → first entry in `global.terminals` invoked as `<term.command> <term.args...> tmuxinator start <key>`. The `{command}` token in the terminal args is replaced by `tmuxinator start <key>`; the `{path}` token is dropped (workspaces don't have a single path).
+- `tmuxinator` → first entry in `global.terminals` invoked as `<term.command> <term.args...> tmuxinator start <key>`. The `{command}` token in the terminal args is replaced by `tmuxinator start <key>`; the `{path}` token is dropped (workspaces don't have a single path). On Windows the child argv becomes `wsl.exe -- tmuxinator start <key>` so tmuxinator runs inside WSL regardless of which terminal profile is selected.
+
+### Discover behaviour
+
+`discover` walks the gitbox-managed folder for `*.code-workspace` files and `~/.tmuxinator/*.yml` (plus the WSL-side `~/.tmuxinator/` on Windows when WSL is available). Each parsed folder path is matched back to a known clone using a deepest-prefix match against the resolved repo paths:
+
+- **Adoptable** — every member resolved to exactly one clone. Persisted by `--apply` with `discovered: true`.
+- **Ambiguous** — at least one member tied between two or more clones. Surfaced for human review; never auto-adopted.
+- **Skipped** — workspace key already exists in `gitbox.json`, or no member resolved.
+
+Discovery is read-only without `--apply`. The GUI calls it on app startup (in a goroutine); the TUI calls it on launch and on every periodic-sync tick. The status bar surfaces an `! N ambiguous workspace(s)` hint when ambiguous matches are present.
 
 ### Workspace config format
 
@@ -674,7 +685,7 @@ gitbox workspace open <key>                                 # regenerate + launc
 | `members` | array | Yes | Member list, each with `source` and `repo` |
 | `members[].source` | string | Yes | Source key (must exist in `sources`) |
 | `members[].repo` | string | Yes | Repo key within that source |
-| `discovered` | bool | No | `true` for workspaces adopted from disk by a future discovery pass |
+| `discovered` | bool | No | `true` for workspaces adopted from disk by `gitbox workspace discover --apply` (or the GUI/TUI auto-adopt) |
 
 ### Generated `.code-workspace` contents
 

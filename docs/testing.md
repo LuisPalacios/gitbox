@@ -114,6 +114,8 @@ Confirms the code compiles and basic logic works. No network, no providers, no `
 go test -short ./...
 ```
 
+The WSL probing tests in `pkg/git` are skipped by default on Windows. To exercise them, set `GITBOX_TEST_WSL=1` and re-run `go test ./pkg/git/`. The probe runs `wsl.exe --status` and skips cleanly if WSL is not installed; on non-Windows the tests assert the helpers return false / error.
+
 ### Step 2: Credential verification
 
 Checks that provider tokens in `test-gitbox.json` actually work — connects to each provider's API and confirms authentication succeeds.
