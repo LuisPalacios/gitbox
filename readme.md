@@ -34,7 +34,9 @@ Gitbox does not implement any Git protocol or plumbing logic. It acts as an orch
 - **Safe pulling** — fast-forward-only pulls; dirty or conflicted repos are never touched
 - **Cross-provider mirroring** — push or pull mirrors between providers for backups (e.g., Forgejo → GitHub)
 - **Credential switching** — change auth types (GCM ↔ SSH ↔ Token) with automatic cleanup
-- **One-click actions** — every clone row (and every account header) has a kebab menu to open the clone in a browser, file manager, terminal, editor, or AI CLI harness (Claude Code, Codex, Gemini, …). Each category collapses to a single default entry plus a submenu when you have more than one configured.
+- **One-click actions** — every clone row (and every account header) has a kebab menu to open the clone in a browser, file manager, terminal, editor, or AI CLI harness (Claude Code, Codex, Gemini, …)
+- **PR & review indicators** — each clone row surfaces its open pull requests and pending review requests, pulled from the provider API
+- **Task-based workspaces** — bundle clones from different accounts into a VS Code multi-root workspace or a tmuxinator layout; launch from a clone's kebab or from a dedicated Workspaces tab (GUI + TUI + CLI). Support for auto-discovery and full WSL-backed tmuxinator support on Windows.
 
 It support four providers. GitHub, GitLab, Gitea/Forgejo, and Bitbucket, all work for discovery, cloning, and repo creation. Push mirrors work natively on Gitea/Forgejo and GitLab; pull mirrors work on Gitea/Forgejo. For GitHub and Bitbucket mirror setup, gitbox generates step-by-step guides.
 
@@ -70,12 +72,22 @@ Gitbox ships as two binaries built from the same Go library (`pkg/`). The CLI an
 
 ## Getting started
 
+### Install with bootstrap script
+
+For macOS, Linux, or Windows (Git Bash) — a single command that downloads, extracts, and sets up PATH:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
+```
+
+This installs to `~/bin/` (macOS GUI goes to `/Applications/`). Run with `--help` for options. Useful for headless servers or CI environments where the native installer is not practical.
+
 > [!WARNING]
 > **Gitbox is not signed or notarized.** The binaries are not code-signed, so macOS Gatekeeper, Windows SmartScreen, and similar OS protections will flag them. The bootstrap installer removes these flags automatically (`xattr -cr` on macOS, `Unblock-File` on Windows) so the binaries can run. **You are explicitly trusting unsigned code when you do this.** I recommend you audit the [source code](https://github.com/LuisPalacios/gitbox) and the [bootstrap script](scripts/bootstrap.sh) before running anything. This project is MIT-licensed open source — inspect it, build it yourself, or don't use it at all.
 
 ### Install with native installer
 
-Download the installer for your platform from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page:
+Notice that this installation method complains about apps not signed nor notarized. Download the installer for your platform from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page:
 
 | Platform | Installer | What it does |
 | --- | --- | --- |
@@ -87,19 +99,9 @@ Each release also includes a `checksums.sha256` file for verifying downloads.
 
 Once installed, gitbox checks for updates automatically (once per day). Run `gitbox update` from the CLI or click "Update" in the GUI banner when a new version is available.
 
-### Alternative: bootstrap script
-
-For macOS, Linux, or Windows (Git Bash) — a single command that downloads, extracts, and sets up PATH:
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
-```
-
-This installs to `~/bin/` (macOS GUI goes to `/Applications/`). Run with `--help` for options. Useful for headless servers or CI environments where the native installer is not practical.
-
 ### Manual install (zip)
 
-The [Releases](https://github.com/LuisPalacios/gitbox/releases) page also has platform zips (`gitbox-<platform>-<arch>.zip`) containing the raw binaries. Extract and place them wherever you like. The app is not signed, so the OS will complain the first time.
+Notice that this installation method complains about apps not signed nor notarized. The [Releases](https://github.com/LuisPalacios/gitbox/releases) page also has platform zips (`gitbox-<platform>-<arch>.zip`) containing the raw binaries. Extract and place them wherever you like. The app is not signed, so the OS will complain the first time.
 
 On macOS: `xattr -cr GitboxApp.app && xattr -cr gitbox && chmod +x gitbox`. On Windows: SmartScreen shows "Windows protected your PC" — click **More info** → **Run anyway**. On Linux: `chmod +x gitbox GitboxApp`.
 
