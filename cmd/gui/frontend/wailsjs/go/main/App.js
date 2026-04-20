@@ -130,6 +130,10 @@ export function DiscoverMirrors() {
   return window['go']['main']['App']['DiscoverMirrors']();
 }
 
+export function DiscoverWorkspaces() {
+  return window['go']['main']['App']['DiscoverWorkspaces']();
+}
+
 export function FetchAllRepos() {
   return window['go']['main']['App']['FetchAllRepos']();
 }

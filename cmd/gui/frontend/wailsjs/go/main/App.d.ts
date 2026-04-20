@@ -67,6 +67,8 @@ export function Discover(arg1:string):Promise<void>;
 
 export function DiscoverMirrors():Promise<void>;
 
+export function DiscoverWorkspaces():Promise<main.DiscoverWorkspacesResult>;
+
 export function FetchAllRepos():Promise<void>;
 
 export function FetchRepo(arg1:string,arg2:string):Promise<void>;

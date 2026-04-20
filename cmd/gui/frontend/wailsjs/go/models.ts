@@ -614,6 +614,122 @@ export namespace main {
 	        this.archived = source["archived"];
 	    }
 	}
+	export class DiscoveredPathDTO {
+	    path: string;
+	    candidates: WorkspaceMemberDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DiscoveredPathDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.candidates = this.convertValues(source["candidates"], WorkspaceMemberDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DiscoveredWorkspaceDTO {
+	    key: string;
+	    type: string;
+	    layout?: string;
+	    file: string;
+	    members?: WorkspaceMemberDTO[];
+	    ambig?: DiscoveredPathDTO[];
+	    noMatch?: string[];
+	    skipped?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DiscoveredWorkspaceDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.type = source["type"];
+	        this.layout = source["layout"];
+	        this.file = source["file"];
+	        this.members = this.convertValues(source["members"], WorkspaceMemberDTO);
+	        this.ambig = this.convertValues(source["ambig"], DiscoveredPathDTO);
+	        this.noMatch = source["noMatch"];
+	        this.skipped = source["skipped"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DiscoverWorkspacesResult {
+	    adopted: string[];
+	    newCount: number;
+	    ambigCount: number;
+	    skippedCount: number;
+	    ambiguous?: DiscoveredWorkspaceDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DiscoverWorkspacesResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.adopted = source["adopted"];
+	        this.newCount = source["newCount"];
+	        this.ambigCount = source["ambigCount"];
+	        this.skippedCount = source["skippedCount"];
+	        this.ambiguous = this.convertValues(source["ambiguous"], DiscoveredWorkspaceDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
 	export class EditorInfo {
 	    id: string;
 	    name: string;

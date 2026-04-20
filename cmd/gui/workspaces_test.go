@@ -245,6 +245,74 @@ func TestGenerateWorkspace_WritesFileAndPersistsPath(t *testing.T) {
 	}
 }
 
+func TestDiscoverWorkspaces_AdoptsAndPersists(t *testing.T) {
+	a, cfgPath := newWorkspaceTestApp(t)
+
+	// Stage a clone path that resolves to (github-alice, team/frontend) under
+	// the test's global folder, then drop a *.code-workspace next to it.
+	frontend := filepath.Join(a.cfg.Global.Folder, "github-alice", "team", "frontend")
+	if err := os.MkdirAll(frontend, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	wsFile := filepath.Join(a.cfg.Global.Folder, "feat-discover.code-workspace")
+	if err := os.WriteFile(wsFile, []byte(`{"folders":[{"path":"`+filepath.ToSlash(frontend)+`"}]}`), 0o644); err != nil {
+		t.Fatalf("write workspace file: %v", err)
+	}
+
+	res, err := a.DiscoverWorkspaces()
+	if err != nil {
+		t.Fatalf("DiscoverWorkspaces: %v", err)
+	}
+	if res.NewCount != 1 {
+		t.Errorf("NewCount = %d, want 1", res.NewCount)
+	}
+	if len(res.Adopted) != 1 || res.Adopted[0] != "feat-discover" {
+		t.Errorf("Adopted = %v, want [feat-discover]", res.Adopted)
+	}
+
+	reloaded, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	ws, ok := reloaded.Workspaces["feat-discover"]
+	if !ok {
+		t.Fatal("workspace not persisted")
+	}
+	if !ws.Discovered {
+		t.Error("Discovered should be true on adopted workspace")
+	}
+	if len(ws.Members) != 1 {
+		t.Errorf("members = %d, want 1", len(ws.Members))
+	}
+}
+
+func TestDiscoverWorkspaces_Idempotent(t *testing.T) {
+	a, _ := newWorkspaceTestApp(t)
+
+	frontend := filepath.Join(a.cfg.Global.Folder, "github-alice", "team", "frontend")
+	if err := os.MkdirAll(frontend, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	wsFile := filepath.Join(a.cfg.Global.Folder, "feat-once.code-workspace")
+	if err := os.WriteFile(wsFile, []byte(`{"folders":[{"path":"`+filepath.ToSlash(frontend)+`"}]}`), 0o644); err != nil {
+		t.Fatalf("write workspace file: %v", err)
+	}
+
+	if _, err := a.DiscoverWorkspaces(); err != nil {
+		t.Fatalf("first DiscoverWorkspaces: %v", err)
+	}
+	res, err := a.DiscoverWorkspaces()
+	if err != nil {
+		t.Fatalf("second DiscoverWorkspaces: %v", err)
+	}
+	if len(res.Adopted) != 0 {
+		t.Errorf("second pass adopted %v, want []", res.Adopted)
+	}
+	if res.NewCount != 0 {
+		t.Errorf("second pass NewCount = %d, want 0", res.NewCount)
+	}
+}
+
 func TestOpenWorkspace_NoEditorConfigured(t *testing.T) {
 	a, _ := newWorkspaceTestApp(t)
 	a.CreateWorkspace(WorkspaceCreateRequest{
