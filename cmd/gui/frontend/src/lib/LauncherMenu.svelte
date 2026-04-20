@@ -19,6 +19,7 @@
   //   ─ separator ─ (repo kebab only, when onSweep is provided)
   //   Sweep branches                      (repo kebab only)
 
+  import { onMount, tick } from 'svelte';
   import type { EditorInfo, TerminalInfo, AIHarnessInfo } from './types';
 
   export let kind: 'repo' | 'account' = 'repo';
@@ -36,8 +37,139 @@
   type Sub = 'terminals' | 'editors' | 'ai' | null;
   let openSubmenu: Sub = null;
 
-  function toggleSub(name: Exclude<Sub, null>) {
+  // Root element of the dropdown, used to measure and flip/shift into view.
+  let rootEl: HTMLDivElement | undefined;
+  // Submenu element (only one is open at a time).
+  let subEl: HTMLDivElement | undefined;
+
+  const VIEWPORT_PADDING = 8;
+
+  function positionMenu(el: HTMLElement | undefined) {
+    if (!el) return;
+    // Reset any prior inline overrides so measurement reflects default CSS.
+    el.style.top = '';
+    el.style.bottom = '';
+    el.style.left = '';
+    el.style.right = '';
+    el.style.marginTop = '';
+    el.style.marginBottom = '';
+    el.style.transform = '';
+
+    const trigger = el.parentElement?.parentElement;
+    if (!trigger) return;
+    const triggerRect = trigger.getBoundingClientRect();
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+
+    // Repo kebab rows share a vertical column of kebabs — one per row in
+    // the same group and the next. Slide the menu sideways off that column
+    // (always, whether we open below or flip up) so the user can click
+    // neighbouring kebabs without dismissing this menu first. Account-
+    // header kebabs stand alone and don't need the shift.
+    if (kind === 'repo') {
+      el.style.right = `${Math.round(triggerRect.width)}px`;
+    }
+
+    // Vertical flip: if the menu overflows the viewport below the trigger
+    // and more space exists above, anchor to the top edge of the trigger.
+    const rect = el.getBoundingClientRect();
+    const overflowsBelow = rect.bottom > vh - VIEWPORT_PADDING;
+    const spaceAbove = triggerRect.top;
+    const spaceBelow = vh - triggerRect.bottom;
+    const flipUp = overflowsBelow && spaceAbove > spaceBelow;
+    if (flipUp) {
+      el.style.top = 'auto';
+      el.style.bottom = '100%';
+      el.style.marginTop = '0';
+      el.style.marginBottom = '4px';
+    }
+
+    // Horizontal clamp: keep the menu inside the viewport with a transform.
+    const post = el.getBoundingClientRect();
+    let dx = 0;
+    if (post.right > vw - VIEWPORT_PADDING) {
+      dx = vw - VIEWPORT_PADDING - post.right;
+    } else if (post.left < VIEWPORT_PADDING) {
+      dx = VIEWPORT_PADDING - post.left;
+    }
+    if (dx !== 0) {
+      el.style.transform = `translateX(${Math.round(dx)}px)`;
+    }
+  }
+
+  function positionSubmenu(el: HTMLElement | undefined) {
+    if (!el) return;
+    el.style.top = '';
+    el.style.bottom = '';
+    el.style.left = '';
+    el.style.right = '';
+    el.style.marginLeft = '';
+    el.style.marginRight = '';
+    el.style.transform = '';
+
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+
+    // The submenu is anchored to its own lm-sub-container (the parent
+    // menu item). Use the container's position to decide which side has
+    // more room. This is more reliable than "flip only if the default
+    // side overflows" because on narrow viewports both sides can overflow
+    // and we need to pick the larger one up front.
+    const container = el.parentElement;
+    const anchorRect = container ? container.getBoundingClientRect() : el.getBoundingClientRect();
+    const submenuWidth = el.offsetWidth;
+    const spaceLeft = anchorRect.left;
+    const spaceRight = vw - anchorRect.right;
+    const preferRight = spaceRight >= submenuWidth + VIEWPORT_PADDING
+      || (spaceRight > spaceLeft && spaceLeft < submenuWidth + VIEWPORT_PADDING);
+
+    if (preferRight) {
+      el.style.right = 'auto';
+      el.style.left = '100%';
+      el.style.marginRight = '0';
+      el.style.marginLeft = '2px';
+    } else {
+      el.style.left = 'auto';
+      el.style.right = '100%';
+      el.style.marginLeft = '0';
+      el.style.marginRight = '2px';
+    }
+
+    // Horizontal clamp: if neither side has full room, shift with a
+    // transform so the whole submenu stays on screen. May overlap the
+    // parent menu, but that's preferable to being clipped off-screen.
+    const rect = el.getBoundingClientRect();
+    let dx = 0;
+    if (rect.right > vw - VIEWPORT_PADDING) {
+      dx = vw - VIEWPORT_PADDING - rect.right;
+    } else if (rect.left < VIEWPORT_PADDING) {
+      dx = VIEWPORT_PADDING - rect.left;
+    }
+
+    // Vertical clamp: keep the submenu inside the viewport top and bottom.
+    let dy = 0;
+    if (rect.bottom > vh - VIEWPORT_PADDING) {
+      dy = vh - VIEWPORT_PADDING - rect.bottom;
+    } else if (rect.top < VIEWPORT_PADDING) {
+      dy = VIEWPORT_PADDING - rect.top;
+    }
+
+    if (dx !== 0 || dy !== 0) {
+      el.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px)`;
+    }
+  }
+
+  onMount(async () => {
+    await tick();
+    positionMenu(rootEl);
+  });
+
+  async function toggleSub(name: Exclude<Sub, null>) {
     openSubmenu = openSubmenu === name ? null : name;
+    if (openSubmenu) {
+      await tick();
+      positionSubmenu(subEl);
+    }
   }
 
   $: showTerminalDefault = terminals.length >= 1;
@@ -51,7 +183,7 @@
   $: hasSweepSection = kind === 'repo' && !!onSweep;
 </script>
 
-<div class="action-dropdown launcher-menu">
+<div class="action-dropdown launcher-menu" bind:this={rootEl}>
   <button class="action-item" on:click|stopPropagation={onOpenBrowser}>
     <span class="lm-icon">&#127760;</span> Open in browser
   </button>
@@ -87,7 +219,7 @@
           <span class="lm-arrow">&#9654;</span>
         </button>
         {#if openSubmenu === 'terminals'}
-          <div class="action-dropdown launcher-submenu">
+          <div class="action-dropdown launcher-submenu" bind:this={subEl}>
             {#each terminals as terminal}
               <button class="action-item" on:click|stopPropagation={() => onOpenTerminal(terminal)}>
                 <span class="lm-icon lm-icon-mono">&gt;_</span> {terminal.name}
@@ -104,7 +236,7 @@
           <span class="lm-arrow">&#9654;</span>
         </button>
         {#if openSubmenu === 'editors'}
-          <div class="action-dropdown launcher-submenu">
+          <div class="action-dropdown launcher-submenu" bind:this={subEl}>
             {#each editors as editor}
               <button class="action-item" on:click|stopPropagation={() => onOpenApp(editor.command)}>
                 <span class="lm-icon">&#9998;</span> {editor.name}
@@ -121,7 +253,7 @@
           <span class="lm-arrow">&#9654;</span>
         </button>
         {#if openSubmenu === 'ai'}
-          <div class="action-dropdown launcher-submenu">
+          <div class="action-dropdown launcher-submenu" bind:this={subEl}>
             {#each aiHarnesses as harness}
               <button class="action-item" on:click|stopPropagation={() => onOpenAIHarness(harness)}>
                 <span class="lm-icon">&#129302;</span> {harness.name}
@@ -158,6 +290,11 @@
     min-width: 160px;
     z-index: 100;
     overflow: hidden;
+    /* Safety net: on very small viewports, scroll inside the menu instead
+       of clipping below the fold. The flip/shift logic above handles the
+       normal case; this only kicks in when no side has enough space. */
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
   }
 
   .action-item {
