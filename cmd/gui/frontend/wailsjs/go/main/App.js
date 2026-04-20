@@ -18,6 +18,10 @@ export function AddMirrorRepo(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddMirrorRepo'](arg1, arg2, arg3, arg4);
 }
 
+export function AddWorkspaceMember(arg1, arg2) {
+  return window['go']['main']['App']['AddWorkspaceMember'](arg1, arg2);
+}
+
 export function AdoptOrphans(arg1) {
   return window['go']['main']['App']['AdoptOrphans'](arg1);
 }
@@ -56,6 +60,10 @@ export function ConfirmSweep(arg1, arg2) {
 
 export function CreateNewRepo(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['CreateNewRepo'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function CreateWorkspace(arg1) {
+  return window['go']['main']['App']['CreateWorkspace'](arg1);
 }
 
 export function CredentialDelete(arg1) {
@@ -98,6 +106,10 @@ export function DeleteRepo(arg1, arg2) {
   return window['go']['main']['App']['DeleteRepo'](arg1, arg2);
 }
 
+export function DeleteWorkspace(arg1) {
+  return window['go']['main']['App']['DeleteWorkspace'](arg1);
+}
+
 export function DetectAIHarnesses() {
   return window['go']['main']['App']['DetectAIHarnesses']();
 }
@@ -128,6 +140,10 @@ export function FetchRepo(arg1, arg2) {
 
 export function FindOrphans() {
   return window['go']['main']['App']['FindOrphans']();
+}
+
+export function GenerateWorkspace(arg1) {
+  return window['go']['main']['App']['GenerateWorkspace'](arg1);
 }
 
 export function GetAllStatus() {
@@ -186,6 +202,10 @@ export function GetViewMode() {
   return window['go']['main']['App']['GetViewMode']();
 }
 
+export function GetWorkspace(arg1) {
+  return window['go']['main']['App']['GetWorkspace'](arg1);
+}
+
 export function IsFirstRun() {
   return window['go']['main']['App']['IsFirstRun']();
 }
@@ -204,6 +224,10 @@ export function ListAccountOrgs(arg1) {
 
 export function ListRemoteRepos(arg1) {
   return window['go']['main']['App']['ListRemoteRepos'](arg1);
+}
+
+export function ListWorkspaces() {
+  return window['go']['main']['App']['ListWorkspaces']();
 }
 
 export function OpenAccountFolder(arg1) {
@@ -250,6 +274,10 @@ export function OpenInTerminal(arg1, arg2, arg3) {
   return window['go']['main']['App']['OpenInTerminal'](arg1, arg2, arg3);
 }
 
+export function OpenWorkspace(arg1) {
+  return window['go']['main']['App']['OpenWorkspace'](arg1);
+}
+
 export function PickFolder(arg1) {
   return window['go']['main']['App']['PickFolder'](arg1);
 }
@@ -276,6 +304,10 @@ export function ReloadConfig() {
 
 export function RemoveGlobalIdentity() {
   return window['go']['main']['App']['RemoveGlobalIdentity']();
+}
+
+export function RemoveWorkspaceMember(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RemoveWorkspaceMember'](arg1, arg2, arg3);
 }
 
 export function RenameAccount(arg1, arg2) {
@@ -332,4 +364,8 @@ export function SyncTerminals() {
 
 export function UpdateAccount(arg1) {
   return window['go']['main']['App']['UpdateAccount'](arg1);
+}
+
+export function UpdateWorkspace(arg1, arg2) {
+  return window['go']['main']['App']['UpdateWorkspace'](arg1, arg2);
 }

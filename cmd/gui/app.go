@@ -331,11 +331,13 @@ func minInt(a, b int) int {
 
 // ConfigDTO is the JSON-friendly config sent to the frontend.
 type ConfigDTO struct {
-	Version  int                        `json:"version"`
-	Global   config.GlobalConfig        `json:"global"`
-	Accounts map[string]config.Account  `json:"accounts"`
-	Sources  map[string]SourceDTO       `json:"sources"`
-	Mirrors  map[string]MirrorDTO       `json:"mirrors"`
+	Version        int                         `json:"version"`
+	Global         config.GlobalConfig         `json:"global"`
+	Accounts       map[string]config.Account   `json:"accounts"`
+	Sources        map[string]SourceDTO        `json:"sources"`
+	Mirrors        map[string]MirrorDTO        `json:"mirrors"`
+	Workspaces     map[string]WorkspaceDTO     `json:"workspaces"`
+	WorkspaceOrder []string                    `json:"workspaceOrder"`
 }
 
 // SourceDTO mirrors config.Source but exposes repos as a map.
@@ -402,11 +404,13 @@ func (a *App) GetConfig() ConfigDTO {
 		}
 	}
 	return ConfigDTO{
-		Version:  a.cfg.Version,
-		Global:   a.cfg.Global,
-		Accounts: a.cfg.Accounts,
-		Sources:  sources,
-		Mirrors:  buildMirrorsDTO(a.cfg),
+		Version:        a.cfg.Version,
+		Global:         a.cfg.Global,
+		Accounts:       a.cfg.Accounts,
+		Sources:        sources,
+		Mirrors:        buildMirrorsDTO(a.cfg),
+		Workspaces:     buildWorkspacesDTO(a.cfg),
+		WorkspaceOrder: a.cfg.OrderedWorkspaceKeys(),
 	}
 }
 
@@ -432,11 +436,13 @@ func (a *App) ReloadConfig() (ConfigDTO, error) {
 		}
 	}
 	return ConfigDTO{
-		Version:  a.cfg.Version,
-		Global:   a.cfg.Global,
-		Accounts: a.cfg.Accounts,
-		Sources:  sources,
-		Mirrors:  buildMirrorsDTO(a.cfg),
+		Version:        a.cfg.Version,
+		Global:         a.cfg.Global,
+		Accounts:       a.cfg.Accounts,
+		Sources:        sources,
+		Mirrors:        buildMirrorsDTO(a.cfg),
+		Workspaces:     buildWorkspacesDTO(a.cfg),
+		WorkspaceOrder: a.cfg.OrderedWorkspaceKeys(),
 	}, nil
 }
 

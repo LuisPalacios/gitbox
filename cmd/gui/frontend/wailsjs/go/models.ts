@@ -382,6 +382,60 @@ export namespace main {
 	        this.error = source["error"];
 	    }
 	}
+	export class WorkspaceMemberDTO {
+	    source: string;
+	    repo: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceMemberDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.repo = source["repo"];
+	    }
+	}
+	export class WorkspaceDTO {
+	    type: string;
+	    name?: string;
+	    file?: string;
+	    layout?: string;
+	    members: WorkspaceMemberDTO[];
+	    discovered?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.name = source["name"];
+	        this.file = source["file"];
+	        this.layout = source["layout"];
+	        this.members = this.convertValues(source["members"], WorkspaceMemberDTO);
+	        this.discovered = source["discovered"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class MirrorDTO {
 	    account_src: string;
 	    account_dst: string;
@@ -460,6 +514,8 @@ export namespace main {
 	    accounts: Record<string, config.Account>;
 	    sources: Record<string, SourceDTO>;
 	    mirrors: Record<string, MirrorDTO>;
+	    workspaces: Record<string, WorkspaceDTO>;
+	    workspaceOrder: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ConfigDTO(source);
@@ -472,6 +528,8 @@ export namespace main {
 	        this.accounts = this.convertValues(source["accounts"], config.Account, true);
 	        this.sources = this.convertValues(source["sources"], SourceDTO, true);
 	        this.mirrors = this.convertValues(source["mirrors"], MirrorDTO, true);
+	        this.workspaces = this.convertValues(source["workspaces"], WorkspaceDTO, true);
+	        this.workspaceOrder = source["workspaceOrder"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -874,6 +932,128 @@ export namespace main {
 	        this.width = source["width"];
 	        this.height = source["height"];
 	    }
+	}
+	export class WorkspaceCreateRequest {
+	    key: string;
+	    type: string;
+	    name?: string;
+	    file?: string;
+	    layout?: string;
+	    members?: WorkspaceMemberDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceCreateRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.type = source["type"];
+	        this.name = source["name"];
+	        this.file = source["file"];
+	        this.layout = source["layout"];
+	        this.members = this.convertValues(source["members"], WorkspaceMemberDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class WorkspaceGenerateResult {
+	    file: string;
+	    size: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceGenerateResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.file = source["file"];
+	        this.size = source["size"];
+	    }
+	}
+	export class WorkspaceListResult {
+	    workspaces: Record<string, WorkspaceDTO>;
+	    order: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceListResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaces = this.convertValues(source["workspaces"], WorkspaceDTO, true);
+	        this.order = source["order"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class WorkspaceUpdateRequest {
+	    name: string;
+	    layout: string;
+	    members: WorkspaceMemberDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceUpdateRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.layout = source["layout"];
+	        this.members = this.convertValues(source["members"], WorkspaceMemberDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

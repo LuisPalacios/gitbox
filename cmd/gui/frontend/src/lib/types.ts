@@ -96,6 +96,49 @@ export interface ConfigDTO {
   accounts: Record<string, Account>;
   sources: Record<string, SourceDTO>;
   mirrors: Record<string, MirrorDTO>;
+  workspaces: Record<string, WorkspaceDTO>;
+  workspaceOrder: string[];
+}
+
+// ── Dynamic workspaces (issue #27, GUI slice #49) ──
+
+export interface WorkspaceMemberDTO {
+  source: string;
+  repo: string;
+}
+
+export interface WorkspaceDTO {
+  type: 'codeWorkspace' | 'tmuxinator';
+  name?: string;
+  file?: string;
+  layout?: 'windowsPerRepo' | 'splitPanes';
+  members: WorkspaceMemberDTO[];
+  discovered?: boolean;
+}
+
+export interface WorkspaceCreateRequest {
+  key: string;
+  type: 'codeWorkspace' | 'tmuxinator';
+  name?: string;
+  file?: string;
+  layout?: 'windowsPerRepo' | 'splitPanes';
+  members?: WorkspaceMemberDTO[];
+}
+
+export interface WorkspaceUpdateRequest {
+  name: string;
+  layout: string;
+  members: WorkspaceMemberDTO[] | null;
+}
+
+export interface WorkspaceGenerateResult {
+  file: string;
+  size: number;
+}
+
+export interface WorkspaceListResult {
+  workspaces: Record<string, WorkspaceDTO>;
+  order: string[];
 }
 
 export interface StatusResult {
