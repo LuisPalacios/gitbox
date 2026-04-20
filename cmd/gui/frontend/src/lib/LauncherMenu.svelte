@@ -26,15 +26,20 @@
   export let editors: EditorInfo[] = [];
   export let terminals: TerminalInfo[] = [];
   export let aiHarnesses: AIHarnessInfo[] = [];
+  // Ordered list of workspace keys this clone belongs to. Empty (default)
+  // hides the "Open workspace" section entirely. Only meaningful for the
+  // repo-row kebab.
+  export let workspaceKeys: string[] = [];
 
   export let onOpenBrowser: () => void;
   export let onOpenFolder: () => void;
   export let onOpenApp: (command: string) => void;
   export let onOpenTerminal: (terminal: TerminalInfo) => void;
   export let onOpenAIHarness: (harness: AIHarnessInfo) => void;
+  export let onOpenWorkspace: ((workspaceKey: string) => void) | null = null;
   export let onSweep: (() => void) | null = null;
 
-  type Sub = 'terminals' | 'editors' | 'ai' | null;
+  type Sub = 'terminals' | 'editors' | 'ai' | 'workspaces' | null;
   let openSubmenu: Sub = null;
 
   // Root element of the dropdown, used to measure and flip/shift into view.
@@ -181,6 +186,7 @@
   $: hasDefaultsSection = showTerminalDefault || showEditorDefault || showHarnessDefault;
   $: hasSubsSection = showTerminalsSub || showEditorsSub || showHarnessSub;
   $: hasSweepSection = kind === 'repo' && !!onSweep;
+  $: hasWorkspacesSection = kind === 'repo' && !!onOpenWorkspace && workspaceKeys.length > 0;
 </script>
 
 <div class="action-dropdown launcher-menu" bind:this={rootEl}>
@@ -263,6 +269,25 @@
         {/if}
       </div>
     {/if}
+  {/if}
+
+  {#if hasWorkspacesSection}
+    <hr class="lm-sep" />
+    <div class="lm-sub-container">
+      <button class="action-item lm-submenu-trigger" class:lm-active={openSubmenu === 'workspaces'} on:click|stopPropagation={() => toggleSub('workspaces')}>
+        <span class="lm-icon">&#128230;</span> Open workspace
+        <span class="lm-arrow">&#9654;</span>
+      </button>
+      {#if openSubmenu === 'workspaces'}
+        <div class="action-dropdown launcher-submenu" bind:this={subEl}>
+          {#each workspaceKeys as wsKey}
+            <button class="action-item" on:click|stopPropagation={() => onOpenWorkspace && onOpenWorkspace(wsKey)}>
+              <span class="lm-icon">&#128230;</span> {wsKey}
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </div>
   {/if}
 
   {#if hasSweepSection}
