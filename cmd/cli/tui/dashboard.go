@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	neturl "net/url"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/identity"
 	"github.com/LuisPalacios/gitbox/pkg/mirror"
 	"github.com/LuisPalacios/gitbox/pkg/status"
+	"github.com/LuisPalacios/gitbox/pkg/workspace"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -26,6 +29,7 @@ type tabID int
 const (
 	tabAccounts tabID = iota
 	tabMirrors
+	tabWorkspaces
 	tabCount // sentinel
 )
 
@@ -72,21 +76,36 @@ type dashboardModel struct {
 
 	orphanCount int // number of orphan repos found on last scan
 
+	// Workspaces tab state. `workspaceKeys` is the sorted-by-JSON-order
+	// list for deterministic rendering. `workspaceMsg` surfaces the
+	// result of the last inline action (open / delete / regenerate).
+	// `workspaceDeleteConfirm` holds the key awaiting y/n confirmation.
+	workspaceKeys          []string
+	workspaceMsg           string
+	workspaceErr           string
+	workspaceDeleteConfirm string
+
+	// Multi-select on the accounts-tab repo list for the "build a
+	// workspace from selected" entry point. Keys are "sourceKey/repoKey".
+	selectedClones map[string]bool
+
 	showHelp bool
 	version  string
 }
 
 func newDashboardModel(cfg *config.Config, cfgPath string, credMgr *credential.StatusManager, theme styles.Theme, w, h int) dashboardModel {
 	m := dashboardModel{
-		cfg:     cfg,
-		cfgPath: cfgPath,
-		credMgr: credMgr,
-		theme:   theme,
-		width:   w,
-		height:  h,
-		loading: true,
+		cfg:            cfg,
+		cfgPath:        cfgPath,
+		credMgr:        credMgr,
+		theme:          theme,
+		width:          w,
+		height:         h,
+		loading:        true,
+		selectedClones: make(map[string]bool),
 	}
 	m.refreshAccountKeys()
+	m.refreshWorkspaceKeys()
 	// Invalidate all credential statuses so the first render shows "checking",
 	// not a stale result from a previous dashboard instance.
 	for _, k := range m.accountKeys {
@@ -101,6 +120,10 @@ func (m *dashboardModel) refreshAccountKeys() {
 		m.accountKeys = append(m.accountKeys, k)
 	}
 	sort.Strings(m.accountKeys)
+}
+
+func (m *dashboardModel) refreshWorkspaceKeys() {
+	m.workspaceKeys = m.cfg.OrderedWorkspaceKeys()
 }
 
 func (m dashboardModel) Init() tea.Cmd {
@@ -492,6 +515,74 @@ func (m dashboardModel) Update(msg tea.Msg) (dashboardModel, tea.Cmd) {
 
 		case msg.String() == "a" && m.activeTab == tabAccounts:
 			return m, func() tea.Msg { return switchScreenMsg{screen: screenAccountAdd} }
+
+		// ─── Workspaces tab actions ──────────────────────────────────
+		case m.activeTab == tabWorkspaces && m.workspaceDeleteConfirm != "":
+			// Confirmation intercept: y/n answer the pending delete.
+			switch strings.ToLower(msg.String()) {
+			case "y":
+				key := m.workspaceDeleteConfirm
+				m.workspaceDeleteConfirm = ""
+				return m, workspaceDeleteCmd(m.cfg, m.cfgPath, key)
+			case "n", "esc":
+				m.workspaceDeleteConfirm = ""
+				return m, nil
+			}
+			// Swallow any other key while the confirm is pending.
+			return m, nil
+		case msg.String() == "n" && m.activeTab == tabWorkspaces:
+			return m, func() tea.Msg { return switchScreenMsg{screen: screenWorkspaceAdd} }
+		case msg.String() == "d" && m.activeTab == tabWorkspaces:
+			if i, ok := m.workspaceAtListCursor(); ok {
+				m.workspaceDeleteConfirm = m.workspaceKeys[i]
+				m.workspaceMsg = ""
+				m.workspaceErr = ""
+			}
+			return m, nil
+		case msg.String() == "g" && m.activeTab == tabWorkspaces:
+			if i, ok := m.workspaceAtListCursor(); ok {
+				m.workspaceMsg = ""
+				m.workspaceErr = ""
+				return m, workspaceRegenerateCmd(m.cfg, m.cfgPath, m.workspaceKeys[i])
+			}
+			return m, nil
+		case msg.String() == "o" && m.activeTab == tabWorkspaces:
+			if i, ok := m.workspaceAtListCursor(); ok {
+				m.workspaceMsg = ""
+				m.workspaceErr = ""
+				return m, workspaceOpenCmd(m.cfg, m.cfgPath, m.workspaceKeys[i])
+			}
+			return m, nil
+		// ─── Accounts-tab multi-select ───────────────────────────────
+		case msg.String() == " " && m.activeTab == tabAccounts && m.focus == focusList:
+			// Space toggles selection of the repo under the list cursor.
+			if rk, ok := m.repoKeyAtListCursor(); ok {
+				if m.selectedClones[rk] {
+					delete(m.selectedClones, rk)
+				} else {
+					m.selectedClones[rk] = true
+				}
+			}
+			return m, nil
+		case msg.String() == "A" && m.activeTab == tabAccounts && m.focus == focusList:
+			for _, st := range m.statuses {
+				m.selectedClones[st.Source+"/"+st.Repo] = true
+			}
+			return m, nil
+		case msg.String() == "w" && m.activeTab == tabAccounts && len(m.selectedClones) > 0:
+			// Jump into the add-workspace flow seeded with the current
+			// clone-list selection. The caller converts the set to the
+			// deterministic [source/repo] list carried on the switch.
+			preselect := make([]string, 0, len(m.selectedClones))
+			for k := range m.selectedClones {
+				preselect = append(preselect, k)
+			}
+			sort.Strings(preselect)
+			m.selectedClones = make(map[string]bool)
+			return m, func() tea.Msg {
+				return switchScreenMsg{screen: screenWorkspaceAdd, workspaceMembers: preselect}
+			}
+
 		case msg.String() == "d" && m.activeTab == tabAccounts:
 			// Discovery shortcut for selected account card.
 			if m.focus == focusCards && len(m.accountKeys) > 0 && m.cardCursor < len(m.accountKeys) {
@@ -515,6 +606,25 @@ func (m dashboardModel) Update(msg tea.Msg) (dashboardModel, tea.Cmd) {
 	case orphansScanDoneMsg:
 		if msg.err == nil {
 			m.orphanCount = len(msg.orphans)
+		}
+		return m, nil
+
+	case workspaceActionResultMsg:
+		if msg.errMsg != "" {
+			m.workspaceErr = msg.errMsg
+			m.workspaceMsg = ""
+		} else {
+			m.workspaceMsg = msg.okMsg
+			m.workspaceErr = ""
+		}
+		if msg.reloadConfig {
+			if fresh, err := config.Load(m.cfgPath); err == nil {
+				m.cfg = fresh
+				m.refreshWorkspaceKeys()
+				if m.listCursor >= len(m.workspaceKeys) && m.listCursor > 0 {
+					m.listCursor = len(m.workspaceKeys) - 1
+				}
+			}
 		}
 		return m, nil
 
@@ -640,6 +750,9 @@ func (m dashboardModel) maxCardIndex() int {
 		return max(0, len(m.accountKeys)-1)
 	case tabMirrors:
 		return max(0, len(m.mirrorSummaries)-1)
+	case tabWorkspaces:
+		// Workspaces tab has no card row today; cursor lives on the list.
+		return 0
 	}
 	return 0
 }
@@ -655,6 +768,8 @@ func (m dashboardModel) listItemCount() int {
 			count += s.Total
 		}
 		return count
+	case tabWorkspaces:
+		return len(m.cfg.Workspaces)
 	}
 	return 0
 }
@@ -690,7 +805,7 @@ func (m dashboardModel) View() string {
 	b.WriteString(m.theme.TextMuted.Render(strings.Repeat("─", max(m.width, 40))) + "\n")
 
 	// Tabs.
-	tabs := []string{"Accounts", "Mirrors"}
+	tabs := []string{"Accounts", "Mirrors", "Workspaces"}
 	var tabLine []string
 	for i, t := range tabs {
 		if tabID(i) == m.activeTab {
@@ -707,6 +822,8 @@ func (m dashboardModel) View() string {
 		b.WriteString(m.viewAccountsTab())
 	case tabMirrors:
 		b.WriteString(m.viewMirrorsTab())
+	case tabWorkspaces:
+		b.WriteString(m.viewWorkspacesTab())
 	}
 
 	// Status bar.
@@ -894,7 +1011,19 @@ func (m dashboardModel) viewRepoList() string {
 		}
 
 		symStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
-		line := fmt.Sprintf("    %s %-10s  %-25s%s  %s%s",
+
+		// Selection marker — only rendered when at least one clone is
+		// selected anywhere. Keeps normal alignment when nothing is.
+		prefix := "    "
+		if len(m.selectedClones) > 0 {
+			if m.selectedClones[r.Source+"/"+r.Repo] {
+				prefix = "  [x] "
+			} else {
+				prefix = "  [ ] "
+			}
+		}
+		line := fmt.Sprintf("%s%s %-10s  %-25s%s  %s%s",
+			prefix,
 			symStyle.Render(sym),
 			symStyle.Render(stateLabel),
 			r.Repo,
@@ -1287,6 +1416,9 @@ func (m dashboardModel) viewStatusBar() string {
 		if errorMirrors > 0 {
 			summary += fmt.Sprintf(", %d error", errorMirrors)
 		}
+	} else if m.activeTab == tabWorkspaces {
+		// Workspace summary.
+		summary = fmt.Sprintf("%d workspace%s", len(m.workspaceKeys), plural(len(m.workspaceKeys)))
 	} else {
 		// Accounts summary.
 		total := len(m.statuses)
@@ -1309,6 +1441,9 @@ func (m dashboardModel) viewStatusBar() string {
 				parts = append(parts, fmt.Sprintf("%d other", other))
 			}
 			summary += ": " + strings.Join(parts, ", ")
+		}
+		if n := len(m.selectedClones); n > 0 {
+			summary += fmt.Sprintf("  |  %d selected (w → workspace)", n)
 		}
 	}
 
@@ -1407,4 +1542,193 @@ func formatStatusDetail(r status.RepoStatus) string {
 	default:
 		return ""
 	}
+}
+
+// ─── Workspaces tab ────────────────────────────────────────────────────────
+
+// workspaceActionResultMsg carries the outcome of an inline workspace
+// action (open / regenerate / delete) back to the dashboard Update loop.
+type workspaceActionResultMsg struct {
+	kind   string // "open" | "regenerate" | "delete"
+	key    string
+	okMsg  string
+	errMsg string
+	// After a successful delete we need the dashboard to reload the
+	// config (so the workspace list re-renders without it).
+	reloadConfig bool
+}
+
+// workspaceOpenCmd generates the workspace artifact (so it's current)
+// and then kicks off BuildOpenCommand. Applies git.HideWindow on
+// Windows to avoid a console flash when we spawn a subprocess.
+func workspaceOpenCmd(cfg *config.Config, cfgPath, wsKey string) tea.Cmd {
+	return func() tea.Msg {
+		res, err := workspace.Generate(cfg, wsKey)
+		if err != nil {
+			return workspaceActionResultMsg{kind: "open", key: wsKey, errMsg: err.Error()}
+		}
+		if err := os.MkdirAll(filepath.Dir(res.File), 0o755); err != nil {
+			return workspaceActionResultMsg{kind: "open", key: wsKey, errMsg: err.Error()}
+		}
+		if err := os.WriteFile(res.File, res.Content, 0o644); err != nil {
+			return workspaceActionResultMsg{kind: "open", key: wsKey, errMsg: err.Error()}
+		}
+		// Persist the file path so Open can find it on the next cycle.
+		ws := cfg.Workspaces[wsKey]
+		if ws.File != res.File {
+			ws.File = res.File
+			if err := cfg.UpdateWorkspace(wsKey, ws); err != nil {
+				return workspaceActionResultMsg{kind: "open", key: wsKey, errMsg: err.Error()}
+			}
+			if err := config.Save(cfg, cfgPath); err != nil {
+				return workspaceActionResultMsg{kind: "open", key: wsKey, errMsg: err.Error()}
+			}
+		}
+		oc, err := workspace.BuildOpenCommand(cfg, wsKey)
+		if err != nil {
+			return workspaceActionResultMsg{kind: "open", key: wsKey, errMsg: err.Error()}
+		}
+		git.HideWindow(oc.Cmd)
+		if err := oc.Cmd.Start(); err != nil {
+			return workspaceActionResultMsg{kind: "open", key: wsKey, errMsg: err.Error()}
+		}
+		return workspaceActionResultMsg{kind: "open", key: wsKey, okMsg: "Launched: " + oc.Description}
+	}
+}
+
+func workspaceRegenerateCmd(cfg *config.Config, cfgPath, wsKey string) tea.Cmd {
+	return func() tea.Msg {
+		res, err := workspace.Generate(cfg, wsKey)
+		if err != nil {
+			return workspaceActionResultMsg{kind: "regenerate", key: wsKey, errMsg: err.Error()}
+		}
+		if err := os.MkdirAll(filepath.Dir(res.File), 0o755); err != nil {
+			return workspaceActionResultMsg{kind: "regenerate", key: wsKey, errMsg: err.Error()}
+		}
+		if err := os.WriteFile(res.File, res.Content, 0o644); err != nil {
+			return workspaceActionResultMsg{kind: "regenerate", key: wsKey, errMsg: err.Error()}
+		}
+		ws := cfg.Workspaces[wsKey]
+		if ws.File != res.File {
+			ws.File = res.File
+			if err := cfg.UpdateWorkspace(wsKey, ws); err != nil {
+				return workspaceActionResultMsg{kind: "regenerate", key: wsKey, errMsg: err.Error()}
+			}
+			if err := config.Save(cfg, cfgPath); err != nil {
+				return workspaceActionResultMsg{kind: "regenerate", key: wsKey, errMsg: err.Error()}
+			}
+		}
+		return workspaceActionResultMsg{kind: "regenerate", key: wsKey, okMsg: fmt.Sprintf("Wrote %s (%d bytes)", res.File, len(res.Content)), reloadConfig: true}
+	}
+}
+
+func workspaceDeleteCmd(cfg *config.Config, cfgPath, wsKey string) tea.Cmd {
+	return func() tea.Msg {
+		if err := cfg.DeleteWorkspace(wsKey); err != nil {
+			return workspaceActionResultMsg{kind: "delete", key: wsKey, errMsg: err.Error()}
+		}
+		if err := config.Save(cfg, cfgPath); err != nil {
+			return workspaceActionResultMsg{kind: "delete", key: wsKey, errMsg: err.Error()}
+		}
+		return workspaceActionResultMsg{kind: "delete", key: wsKey, okMsg: fmt.Sprintf("Deleted workspace %q", wsKey), reloadConfig: true}
+	}
+}
+
+// viewWorkspacesTab renders the inline workspaces list. No card row —
+// workspaces are simple enough that a detail-style list gives us all
+// the information without visual noise.
+func (m dashboardModel) viewWorkspacesTab() string {
+	var b strings.Builder
+
+	if len(m.workspaceKeys) == 0 {
+		b.WriteString("  " + m.theme.TextMuted.Render("No workspaces configured.") + "\n\n")
+		b.WriteString("  " + m.theme.TextMuted.Render("Press n to create one. Select clones on the Accounts tab (space / A) and press w to create a workspace from them.") + "\n")
+	} else {
+		for i, key := range m.workspaceKeys {
+			ws := m.cfg.Workspaces[key]
+			cursor := "  "
+			if m.focus == focusList && i == m.listCursor {
+				cursor = "> "
+			}
+			name := ws.EffectiveName(key)
+			typeTag := ws.Type
+			if typeTag == config.WorkspaceTypeCode {
+				typeTag = "code"
+			} else if typeTag == config.WorkspaceTypeTmuxinator {
+				typeTag = "tmux"
+			}
+			memberCount := len(ws.Members)
+			line := fmt.Sprintf("%s%s  %s  %d member%s",
+				cursor,
+				m.theme.TextBold.Render(fmt.Sprintf("%-20s", name)),
+				m.theme.TextMuted.Render(fmt.Sprintf("[%s]", typeTag)),
+				memberCount,
+				plural(memberCount),
+			)
+			if m.focus == focusList && i == m.listCursor {
+				line = m.theme.Brand.Render(line)
+			}
+			b.WriteString(line + "\n")
+			if ws.File != "" {
+				b.WriteString("    " + m.theme.TextMuted.Render(ws.File) + "\n")
+			} else {
+				b.WriteString("    " + m.theme.TextMuted.Render("(not generated yet)") + "\n")
+			}
+		}
+	}
+
+	if m.workspaceDeleteConfirm != "" {
+		b.WriteString("\n  " + lipgloss.NewStyle().
+			Foreground(lipgloss.Color(m.theme.Palette.Syncing)).
+			Render(fmt.Sprintf("Delete %q? (y/n)  Generated file is kept on disk.",
+				m.workspaceDeleteConfirm)) + "\n")
+	}
+	if m.workspaceErr != "" {
+		b.WriteString("\n  " + lipgloss.NewStyle().
+			Foreground(lipgloss.Color(m.theme.Palette.StatusError)).
+			Render("Error: "+m.workspaceErr) + "\n")
+	} else if m.workspaceMsg != "" {
+		b.WriteString("\n  " + lipgloss.NewStyle().
+			Foreground(lipgloss.Color(m.theme.Palette.Clean)).
+			Render(m.workspaceMsg) + "\n")
+	}
+
+	return b.String()
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
+// workspaceAtListCursor returns the index into m.workspaceKeys of the
+// workspace under the current list cursor, or false when the cursor is
+// outside the workspaces list (wrong tab, empty list, or out of range).
+func (m dashboardModel) workspaceAtListCursor() (int, bool) {
+	if m.activeTab != tabWorkspaces {
+		return 0, false
+	}
+	if len(m.workspaceKeys) == 0 {
+		return 0, false
+	}
+	if m.listCursor < 0 || m.listCursor >= len(m.workspaceKeys) {
+		return 0, false
+	}
+	return m.listCursor, true
+}
+
+// repoKeyAtListCursor returns the "sourceKey/repoKey" of the repo at
+// the current accounts-tab list cursor, or false when that's not
+// meaningful (wrong tab, list empty, etc.).
+func (m dashboardModel) repoKeyAtListCursor() (string, bool) {
+	if m.activeTab != tabAccounts {
+		return "", false
+	}
+	if m.listCursor < 0 || m.listCursor >= len(m.statuses) {
+		return "", false
+	}
+	st := m.statuses[m.listCursor]
+	return st.Source + "/" + st.Repo, true
 }

@@ -56,8 +56,26 @@ func newReposModel(cfg *config.Config, cfgPath, sourceKey, repoKey string, theme
 		sourceKey:   sourceKey,
 		repoKey:     repoKey,
 		deleteInput: ti,
-		launcher:    newLauncherOverlay(cfg),
+		launcher:    newLauncherOverlay(cfg).withCfgPath(cfgPath),
 	}
+}
+
+// repoWorkspaceKeys returns the ordered list of workspace keys this
+// clone is a member of. Used to splice a "Workspaces" section into the
+// launcher overlay only when meaningful.
+func (m reposModel) repoWorkspaceKeys() []string {
+	target := m.sourceKey + "/" + m.repoKey
+	var keys []string
+	for _, wsKey := range m.cfg.OrderedWorkspaceKeys() {
+		ws := m.cfg.Workspaces[wsKey]
+		for _, mem := range ws.Members {
+			if mem.Source+"/"+mem.Repo == target {
+				keys = append(keys, wsKey)
+				break
+			}
+		}
+	}
+	return keys
 }
 
 func (m reposModel) repoPath() string {
@@ -565,7 +583,9 @@ func (m reposModel) openLauncher() (reposModel, tea.Cmd) {
 		m.resultMsg = ""
 		return m, nil
 	}
-	m.launcher = m.launcher.activate(path)
+	// Thread workspace memberships into the overlay so the Workspaces
+	// section only appears when this clone belongs to one.
+	m.launcher = m.launcher.activateWithWorkspaces(path, m.repoWorkspaceKeys())
 	m.resultMsg = ""
 	m.errMsg = ""
 	return m, nil

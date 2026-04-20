@@ -22,6 +22,14 @@ type launcherOverlay struct {
 	path   string // working directory to launch in
 	items  []launcherItem
 	cursor int // index into items; always lands on a selectable entry
+
+	// cfg + cfgPath are kept so launchCurrent can resolve workspace
+	// entries without callers having to thread config through every
+	// launch call. They are only needed for launcherRowWorkspace rows;
+	// all other launchers are self-contained via their editor/term/harness
+	// pointers captured at overlay-build time.
+	cfg     *config.Config
+	cfgPath string
 }
 
 // launcherItemKind tags the row in the flat overlay list.
@@ -32,25 +40,27 @@ const (
 	launcherRowEditor
 	launcherRowTerminal
 	launcherRowHarness
+	launcherRowWorkspace
 )
 
 // launcherItem is one row in the overlay list. Headers use kind
 // launcherRowHeader and an empty payload; selectable rows have exactly one
-// of editor/term/harness set.
+// of editor/term/harness/workspaceKey set.
 type launcherItem struct {
 	kind  launcherItemKind
 	label string
 
-	editor  *config.EditorEntry
-	term    *config.TerminalEntry
-	harness *config.AIHarnessEntry
+	editor       *config.EditorEntry
+	term         *config.TerminalEntry
+	harness      *config.AIHarnessEntry
+	workspaceKey string // only set on launcherRowWorkspace
 }
 
 // newLauncherOverlay builds the overlay items from the current config.
 // Groups appear in the fixed order Terminals / Editors / AI Harnesses;
 // empty groups are omitted entirely (no header for zero entries).
 func newLauncherOverlay(cfg *config.Config) launcherOverlay {
-	lo := launcherOverlay{}
+	lo := launcherOverlay{cfg: cfg}
 	if cfg == nil {
 		return lo
 	}
@@ -83,6 +93,15 @@ func newLauncherOverlay(cfg *config.Config) launcherOverlay {
 	return lo
 }
 
+// withCfgPath records the on-disk config path so workspace launches can
+// persist generated file paths. Returns the updated overlay (the struct
+// is passed by value everywhere else, so this keeps the chained-builder
+// style consistent).
+func (lo launcherOverlay) withCfgPath(p string) launcherOverlay {
+	lo.cfgPath = p
+	return lo
+}
+
 // hasAny reports whether the overlay has any selectable rows.
 func (lo launcherOverlay) hasAny() bool {
 	for _, it := range lo.items {
@@ -96,6 +115,38 @@ func (lo launcherOverlay) hasAny() bool {
 // activate turns the overlay on and sets the working directory launches will
 // target. Callers invoke this on the "open launcher" keypress (o / O).
 func (lo launcherOverlay) activate(path string) launcherOverlay {
+	lo.active = true
+	lo.path = path
+	if lo.cursor < 0 || lo.cursor >= len(lo.items) || lo.items[lo.cursor].kind == launcherRowHeader {
+		lo.cursor = lo.firstSelectable()
+	}
+	return lo
+}
+
+// activateWithWorkspaces is like activate but also splices in a
+// "Workspaces" section at the bottom of the overlay for the given list
+// of workspace keys. Pass an empty slice (or call activate) when the
+// clone has no memberships — no section is rendered in that case.
+// A copy of the base items is kept so subsequent activations rebuild
+// cleanly without duplicating workspace rows.
+func (lo launcherOverlay) activateWithWorkspaces(path string, workspaceKeys []string) launcherOverlay {
+	if len(workspaceKeys) == 0 {
+		return lo.activate(path)
+	}
+	// Separate the base (non-workspace) items from any lingering workspace
+	// rows from a previous activation. This keeps the method idempotent.
+	base := lo.items[:0:0]
+	for _, it := range lo.items {
+		if it.kind != launcherRowWorkspace && !(it.kind == launcherRowHeader && it.label == "Workspaces") {
+			base = append(base, it)
+		}
+	}
+	items := append([]launcherItem{}, base...)
+	items = append(items, launcherItem{kind: launcherRowHeader, label: "Workspaces"})
+	for _, k := range workspaceKeys {
+		items = append(items, launcherItem{kind: launcherRowWorkspace, label: k, workspaceKey: k})
+	}
+	lo.items = items
 	lo.active = true
 	lo.path = path
 	if lo.cursor < 0 || lo.cursor >= len(lo.items) || lo.items[lo.cursor].kind == launcherRowHeader {
@@ -202,6 +253,11 @@ func (lo launcherOverlay) launchCurrent(terminals []config.TerminalEntry) tea.Cm
 			return nil
 		}
 		return launchAIHarnessCmd(lo.path, *it.harness, terminals)
+	case launcherRowWorkspace:
+		if it.workspaceKey == "" || lo.cfg == nil || lo.cfgPath == "" {
+			return nil
+		}
+		return workspaceOpenCmd(lo.cfg, lo.cfgPath, it.workspaceKey)
 	}
 	return nil
 }
@@ -265,6 +321,8 @@ func iconFor(k launcherItemKind) string {
 		return ">_"
 	case launcherRowHarness:
 		return "🤖"
+	case launcherRowWorkspace:
+		return "📦"
 	}
 	return " "
 }
