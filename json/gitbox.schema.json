@@ -371,6 +371,60 @@
                     }
                 }
             }
+        },
+        "workspaces": {
+            "type": "object",
+            "description": "Map of workspace identifiers to workspace configurations. Each workspace bundles N clones that are opened together, either as a VS Code multi-root workspace (.code-workspace file) or a tmuxinator profile (YAML).",
+            "additionalProperties": {
+                "type": "object",
+                "description": "A workspace — groups a set of member clones under a single launch artifact.",
+                "required": ["type", "members"],
+                "additionalProperties": false,
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": ["codeWorkspace", "tmuxinator"],
+                        "description": "Workspace backend. 'codeWorkspace' generates a VS Code .code-workspace JSON file; 'tmuxinator' generates a tmuxinator YAML profile."
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Human-friendly display name. Defaults to the workspace key."
+                    },
+                    "file": {
+                        "type": "string",
+                        "description": "Absolute path to the generated artifact on disk. Populated automatically by 'gitbox workspace generate' (nearest common ancestor for codeWorkspace, ~/.tmuxinator/<key>.yml for tmuxinator)."
+                    },
+                    "layout": {
+                        "type": "string",
+                        "enum": ["windowsPerRepo", "splitPanes"],
+                        "description": "Tmuxinator-only: 'windowsPerRepo' (one window per member) or 'splitPanes' (single window, tiled panes). Defaults to windowsPerRepo."
+                    },
+                    "members": {
+                        "type": "array",
+                        "description": "Ordered list of member clones. Order is preserved in the generated artifact.",
+                        "items": {
+                            "type": "object",
+                            "description": "A member clone identified by its source and repo keys in this config.",
+                            "required": ["source", "repo"],
+                            "additionalProperties": false,
+                            "properties": {
+                                "source": {
+                                    "type": "string",
+                                    "description": "Source key from the 'sources' section."
+                                },
+                                "repo": {
+                                    "type": "string",
+                                    "description": "Repo key within that source (e.g. 'org/repo')."
+                                }
+                            }
+                        }
+                    },
+                    "discovered": {
+                        "type": "boolean",
+                        "description": "True if this workspace was auto-adopted from disk by a discovery pass. Informational."
+                    }
+                }
+            }
         }
     }
 }

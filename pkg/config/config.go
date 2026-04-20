@@ -3,17 +3,20 @@ package config
 
 // Config represents the top-level gitbox configuration (v2 format).
 type Config struct {
-	Schema   string              `json:"$schema,omitempty"`
-	Version  int                 `json:"version"`
-	Global   GlobalConfig        `json:"global"`
-	Accounts map[string]Account  `json:"accounts"`
-	Sources  map[string]Source   `json:"sources"`
-	Mirrors  map[string]Mirror   `json:"mirrors,omitempty"`
+	Schema     string                `json:"$schema,omitempty"`
+	Version    int                   `json:"version"`
+	Global     GlobalConfig          `json:"global"`
+	Accounts   map[string]Account    `json:"accounts"`
+	Sources    map[string]Source     `json:"sources"`
+	Mirrors    map[string]Mirror     `json:"mirrors,omitempty"`
+	Workspaces map[string]Workspace  `json:"workspaces,omitempty"`
 
 	// SourceOrder preserves the JSON key order for deterministic iteration.
 	SourceOrder []string `json:"-"`
 	// MirrorOrder preserves the JSON key order for deterministic iteration.
 	MirrorOrder []string `json:"-"`
+	// WorkspaceOrder preserves the JSON key order for deterministic iteration.
+	WorkspaceOrder []string `json:"-"`
 }
 
 // OrderedSourceKeys returns source keys in JSON order (falling back to map order).
@@ -251,6 +254,51 @@ type MirrorRepo struct {
 	TargetRepo string `json:"target_repo,omitempty"`  // target full name; defaults to same as key
 	LastSync   string `json:"last_sync,omitempty"`     // RFC3339 from last known sync
 	Error      string `json:"error,omitempty"`
+}
+
+// Workspace types.
+const (
+	WorkspaceTypeCode        = "codeWorkspace"
+	WorkspaceTypeTmuxinator  = "tmuxinator"
+	WorkspaceLayoutWindows   = "windowsPerRepo"
+	WorkspaceLayoutSplit     = "splitPanes"
+)
+
+// Workspace bundles a set of clones that belong together for a task.
+// The map key in Config.Workspaces is the human-friendly workspace ID.
+type Workspace struct {
+	Type       string            `json:"type"`                  // "codeWorkspace" | "tmuxinator"
+	Name       string            `json:"name,omitempty"`        // human-friendly display name
+	File       string            `json:"file,omitempty"`        // absolute path to generated file on disk
+	Layout     string            `json:"layout,omitempty"`      // tmuxinator only: "windowsPerRepo" | "splitPanes"
+	Members    []WorkspaceMember `json:"members"`               // ordered list of member clones
+	Discovered bool              `json:"discovered,omitempty"`  // true if adopted from disk
+}
+
+// WorkspaceMember references a single clone (by source + repo) inside a workspace.
+type WorkspaceMember struct {
+	Source string `json:"source"`
+	Repo   string `json:"repo"`
+}
+
+// OrderedWorkspaceKeys returns workspace keys in JSON order (falling back to map order).
+func (c *Config) OrderedWorkspaceKeys() []string {
+	if len(c.WorkspaceOrder) > 0 {
+		return c.WorkspaceOrder
+	}
+	keys := make([]string, 0, len(c.Workspaces))
+	for k := range c.Workspaces {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// EffectiveName returns Name if set, otherwise the workspace key.
+func (w *Workspace) EffectiveName(key string) string {
+	if w.Name != "" {
+		return w.Name
+	}
+	return key
 }
 
 // GetAccount resolves the account for a source. Returns nil if not found.

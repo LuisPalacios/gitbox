@@ -75,6 +75,10 @@ func extractKeyOrder(data []byte, cfg *Config) {
 			cfg.Mirrors[mirrorName] = m
 		}
 	}
+
+	// Extract workspace key order by tokenizing. Members inside each workspace
+	// are an ordered array, so no per-workspace order extraction is needed.
+	cfg.WorkspaceOrder = extractMapKeyOrder(data, "workspaces")
 }
 
 // extractMapKeyOrder extracts the ordered keys of a named object field from JSON.
@@ -223,6 +227,23 @@ func validate(cfg *Config) error {
 			case "src", "dst":
 			default:
 				return fmt.Errorf("mirror %q repo %q: origin must be \"src\" or \"dst\"", name, repoName)
+			}
+		}
+	}
+	for name, w := range cfg.Workspaces {
+		switch w.Type {
+		case WorkspaceTypeCode, WorkspaceTypeTmuxinator:
+		default:
+			return fmt.Errorf("workspace %q: type must be %q or %q", name, WorkspaceTypeCode, WorkspaceTypeTmuxinator)
+		}
+		if w.Layout != "" {
+			if w.Type != WorkspaceTypeTmuxinator {
+				return fmt.Errorf("workspace %q: layout is only valid for tmuxinator workspaces", name)
+			}
+			switch w.Layout {
+			case WorkspaceLayoutWindows, WorkspaceLayoutSplit:
+			default:
+				return fmt.Errorf("workspace %q: layout must be %q or %q", name, WorkspaceLayoutWindows, WorkspaceLayoutSplit)
 			}
 		}
 	}
