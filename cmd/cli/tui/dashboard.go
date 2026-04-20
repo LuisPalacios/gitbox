@@ -84,6 +84,7 @@ type dashboardModel struct {
 	workspaceMsg           string
 	workspaceErr           string
 	workspaceDeleteConfirm string
+	workspaceAmbigCount    int // ambiguous matches from the most recent discovery pass
 
 	// Multi-select on the accounts-tab repo list for the "build a
 	// workspace from selected" entry point. Keys are "sourceKey/repoKey".
@@ -132,6 +133,7 @@ func (m dashboardModel) Init() tea.Cmd {
 		periodicRefreshCmd(),
 		checkAllMirrorStatusCmd(m.cfg),
 		scanOrphansCmd(m.cfg),
+		discoverWorkspacesCmd(m.cfg, m.cfgPath),
 	}
 	// Start periodic sync if configured.
 	if cmd := periodicSyncCmd(m.cfg); cmd != nil {
@@ -721,11 +723,21 @@ func (m dashboardModel) Update(msg tea.Msg) (dashboardModel, tea.Cmd) {
 		cCh, dCh := cloneAllCmd(m.cfg)
 		m.cloneAllProgressCh = cCh
 		m.cloneAllDoneCh = dCh
-		cmds := []tea.Cmd{fetchCmd, listenPullAllProgress(fCh), listenCloneAllCmd(cCh, dCh), checkAllMirrorStatusCmd(m.cfg)}
+		cmds := []tea.Cmd{fetchCmd, listenPullAllProgress(fCh), listenCloneAllCmd(cCh, dCh), checkAllMirrorStatusCmd(m.cfg), discoverWorkspacesCmd(m.cfg, m.cfgPath)}
 		if rearm != nil {
 			cmds = append(cmds, rearm)
 		}
 		return m, tea.Batch(cmds...)
+
+	case workspaceDiscoverDoneMsg:
+		m.workspaceAmbigCount = msg.ambigCount
+		if msg.adoptedCount > 0 {
+			if fresh, err := config.Load(m.cfgPath); err == nil {
+				m.cfg = fresh
+				m.refreshWorkspaceKeys()
+			}
+		}
+		return m, nil
 
 	case statusRefreshTickMsg:
 		// Debounce: skip if last refresh was < 5s ago.
@@ -1451,6 +1463,10 @@ func (m dashboardModel) viewStatusBar() string {
 		summary += fmt.Sprintf("  %d orphan(s)", m.orphanCount)
 	}
 
+	if m.workspaceAmbigCount > 0 {
+		summary += fmt.Sprintf("  ! %d ambiguous workspace(s)", m.workspaceAmbigCount)
+	}
+
 	if m.pullAllLabel != "" {
 		summary += "  " + styles.SymSyncing + " " + m.pullAllLabel
 	} else if m.loading {
@@ -1556,6 +1572,43 @@ type workspaceActionResultMsg struct {
 	// After a successful delete we need the dashboard to reload the
 	// config (so the workspace list re-renders without it).
 	reloadConfig bool
+}
+
+// workspaceDiscoverDoneMsg is delivered once a discovery + auto-adopt pass
+// finishes (Init or periodic sync). Counts feed the status-bar hint.
+type workspaceDiscoverDoneMsg struct {
+	adoptedCount int
+	ambigCount   int
+	skippedCount int
+	err          error
+}
+
+// discoverWorkspacesCmd scans for workspace artifacts on disk, auto-adopts
+// every unambiguous new entry into config, and persists. Runs off the UI
+// thread; the result is delivered as a workspaceDiscoverDoneMsg.
+func discoverWorkspacesCmd(cfg *config.Config, cfgPath string) tea.Cmd {
+	return func() tea.Msg {
+		res, err := workspace.Discover(cfg)
+		if err != nil {
+			return workspaceDiscoverDoneMsg{err: err}
+		}
+		adopted := workspace.AdoptDiscovered(cfg, res)
+		if len(adopted) > 0 {
+			if err := config.Save(cfg, cfgPath); err != nil {
+				return workspaceDiscoverDoneMsg{
+					adoptedCount: len(adopted),
+					ambigCount:   len(res.Ambiguous),
+					skippedCount: len(res.Skipped),
+					err:          err,
+				}
+			}
+		}
+		return workspaceDiscoverDoneMsg{
+			adoptedCount: len(adopted),
+			ambigCount:   len(res.Ambiguous),
+			skippedCount: len(res.Skipped),
+		}
+	}
 }
 
 // workspaceOpenCmd generates the workspace artifact (so it's current)
