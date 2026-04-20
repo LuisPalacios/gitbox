@@ -5,17 +5,38 @@
   import {
     configStore, accounts, sources, mirrors, repoStates, mirrorStates, mirrorSummary,
     summary, accountStats, themeStore, applyStatusResults, applyMirrorStatusResults,
-    prsByAccount, prSettings, applyPRUpdate, lookupPRSummary
+    prsByAccount, prSettings, applyPRUpdate, lookupPRSummary,
+    workspaces, workspaceOrder, workspaceMemberships, selectedClones,
+    toggleCloneSelection, clearCloneSelection
   } from './lib/stores';
   import { statusColor, credColor, statusLabel, providerLabel, statusSymbol } from './lib/theme';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit } from '../wailsjs/runtime/runtime';
-  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo, PRAccountUpdateDTO } from './lib/types';
+  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo, PRAccountUpdateDTO, WorkspaceDTO, WorkspaceMemberDTO, WorkspaceCreateRequest } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
   import PRPopover from './lib/PRPopover.svelte';
 
   // ── View mode ──
   let viewMode: 'full' | 'compact' = 'full';
-  let cardsTab: 'accounts' | 'mirrors' = 'accounts';
+  let cardsTab: 'accounts' | 'mirrors' | 'workspaces' = 'accounts';
+
+  // ── Workspaces (issue #27 / #49) ──
+  // UI state for the Workspaces tab and the clone-list multi-select flow.
+  let addWorkspaceModal = false;
+  let newWorkspaceKey = '';
+  let newWorkspaceType: 'codeWorkspace' | 'tmuxinator' = 'codeWorkspace';
+  let newWorkspaceName = '';
+  let newWorkspaceLayout: 'windowsPerRepo' | 'splitPanes' = 'windowsPerRepo';
+  // Members picked inside the create modal: Set of "sourceKey/repoKey".
+  let newWorkspaceMembers: Set<string> = new Set();
+  // Pre-selection handed in when the modal is opened from the action bar
+  // (vs from the tab's "+ Add" card). Seeds newWorkspaceMembers.
+  let workspaceModalSource: 'tab' | 'selection' = 'tab';
+  let deleteWorkspaceConfirm: string | null = null;
+  let workspaceBusy = false;
+
+  // Selection mode toggle for the clone list. Distinct from deleteMode
+  // because the two flows serve different goals and should not share state.
+  let selectionMode = false;
   let compactExpanded: Record<string, boolean> = {};
   let savedFullSize: { w: number; h: number } | null = null;
   let savedFullPos: { x: number; y: number } | null = null;
@@ -1229,6 +1250,112 @@
     }
   }
 
+  // ── Workspace actions ─────────────────────────────────────────────
+
+  function openWorkspaceModalFromTab() {
+    workspaceModalSource = 'tab';
+    newWorkspaceKey = '';
+    newWorkspaceType = 'codeWorkspace';
+    newWorkspaceName = '';
+    newWorkspaceLayout = 'windowsPerRepo';
+    newWorkspaceMembers = new Set();
+    addWorkspaceModal = true;
+  }
+
+  function openWorkspaceModalFromSelection() {
+    workspaceModalSource = 'selection';
+    newWorkspaceKey = '';
+    newWorkspaceType = 'codeWorkspace';
+    newWorkspaceName = '';
+    newWorkspaceLayout = 'windowsPerRepo';
+    newWorkspaceMembers = new Set($selectedClones);
+    addWorkspaceModal = true;
+  }
+
+  function closeWorkspaceModal() {
+    addWorkspaceModal = false;
+  }
+
+  function toggleWorkspaceMemberInModal(repoKey: string) {
+    if (newWorkspaceMembers.has(repoKey)) newWorkspaceMembers.delete(repoKey);
+    else newWorkspaceMembers.add(repoKey);
+    newWorkspaceMembers = newWorkspaceMembers;
+  }
+
+  async function submitCreateWorkspace() {
+    if (!newWorkspaceKey || newWorkspaceMembers.size === 0) return;
+    workspaceBusy = true;
+    const req: WorkspaceCreateRequest = {
+      key: newWorkspaceKey,
+      type: newWorkspaceType,
+      name: newWorkspaceName || newWorkspaceKey,
+      members: Array.from(newWorkspaceMembers).map(rk => {
+        const i = rk.indexOf('/');
+        return { source: rk.slice(0, i), repo: rk.slice(i + 1) } as WorkspaceMemberDTO;
+      }),
+    };
+    if (newWorkspaceType === 'tmuxinator') req.layout = newWorkspaceLayout;
+    try {
+      await bridge.createWorkspace(req);
+      $configStore = await bridge.reloadConfig();
+      addWorkspaceModal = false;
+      if (workspaceModalSource === 'selection') {
+        clearCloneSelection();
+        selectionMode = false;
+      }
+      cardsTab = 'workspaces';
+    } catch (e: any) {
+      alert(e?.message || e);
+    } finally {
+      workspaceBusy = false;
+    }
+  }
+
+  async function deleteWorkspace(key: string) {
+    workspaceBusy = true;
+    try {
+      await bridge.deleteWorkspace(key);
+      $configStore = await bridge.reloadConfig();
+      deleteWorkspaceConfirm = null;
+    } catch (e: any) {
+      alert(e?.message || e);
+    } finally {
+      workspaceBusy = false;
+    }
+  }
+
+  async function regenerateWorkspace(key: string) {
+    workspaceBusy = true;
+    try {
+      await bridge.generateWorkspace(key);
+      $configStore = await bridge.reloadConfig();
+    } catch (e: any) {
+      alert(e?.message || e);
+    } finally {
+      workspaceBusy = false;
+    }
+  }
+
+  async function openWorkspace(key: string) {
+    try {
+      await bridge.openWorkspace(key);
+    } catch (e: any) {
+      alert(e?.message || e);
+    }
+  }
+
+  function toggleSelectionMode() {
+    selectionMode = !selectionMode;
+    if (!selectionMode) clearCloneSelection();
+  }
+
+  // Lookup the ordered list of workspaces a given clone belongs to.
+  // Returns an empty array when the clone has no memberships, so the
+  // caller can cheaply check `.length > 0` to hide/show UI.
+  function membershipsFor(repoKey: string): string[] {
+    return $workspaceMemberships[repoKey] || [];
+  }
+
   async function loadMirrorRepoList() {
     if (!addMirrorRepoModal) return;
     const mir = $mirrors[addMirrorRepoModal];
@@ -1984,6 +2111,8 @@
       on:click={() => cardsTab = 'accounts'}>Accounts</button>
     <button class="cards-tab" class:cards-tab-active={cardsTab === 'mirrors'}
       on:click={() => cardsTab = 'mirrors'}>Mirrors</button>
+    <button class="cards-tab" class:cards-tab-active={cardsTab === 'workspaces'}
+      on:click={() => cardsTab = 'workspaces'}>Workspaces</button>
     {#if orphanCount > 0}
       <button class="orphan-pill" on:click={showOrphanModal}>{orphanCount} orphan{orphanCount > 1 ? 's' : ''}</button>
     {/if}
@@ -1993,7 +2122,30 @@
         <button class="btn-tab-action" on:click={checkAllMirrorStatus}>Check all</button>
       </div>
     {/if}
+    {#if cardsTab === 'accounts'}
+      <div class="tab-bar-actions">
+        <button class="btn-tab-action" class:tab-action-active={selectionMode} on:click={toggleSelectionMode}
+          title={selectionMode ? 'Exit selection mode' : 'Select clones to build a workspace'}>
+          {selectionMode ? 'Exit select' : 'Select clones'}
+        </button>
+      </div>
+    {/if}
+    {#if cardsTab === 'workspaces'}
+      <div class="tab-bar-actions">
+        <button class="btn-tab-action" on:click={openWorkspaceModalFromTab}>+ New workspace</button>
+      </div>
+    {/if}
   </div>
+
+  {#if cardsTab === 'accounts' && selectionMode && $selectedClones.size > 0}
+    <div class="selection-bar">
+      <span class="selection-count">{$selectedClones.size} clone{$selectedClones.size === 1 ? '' : 's'} selected</span>
+      <div class="selection-actions">
+        <button class="btn-tab-action" on:click={openWorkspaceModalFromSelection}>Create workspace from selected</button>
+        <button class="btn-tab-action" on:click={() => clearCloneSelection()}>Clear</button>
+      </div>
+    </div>
+  {/if}
 
   {#if cardsTab === 'accounts'}
   <!-- ── ACCOUNT CARDS ── -->
@@ -2073,8 +2225,12 @@
           {@const repoKey = `${sourceKey}/${repoName}`}
           {@const state = $repoStates[repoKey] || { status: 'error', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
           <div class="repo-row" class:repo-row-clickable={state.status !== 'clean' && state.status !== 'behind' && state.status !== 'not cloned' && state.status !== 'cloning' && state.status !== 'syncing'}
-            on:click={() => toggleRepoDetail(sourceKey, repoName, state.status)}>
-            {#if deleteMode}
+            on:click={() => { if (selectionMode) { toggleCloneSelection(repoKey); } else { toggleRepoDetail(sourceKey, repoName, state.status); } }}>
+            {#if selectionMode}
+              <input type="checkbox" class="clone-select-box" checked={$selectedClones.has(repoKey)}
+                on:click|stopPropagation
+                on:change={() => toggleCloneSelection(repoKey)} title="Select {repoName} for a workspace" />
+            {:else if deleteMode}
               <button class="btn-delete-x" on:click|stopPropagation={() => askDelete(sourceKey, repoName, state.status)} title="Delete {repoName}">&#10005;</button>
             {/if}
             <span class="dot" style="color: {sc(state.status)}">{statusSymbol(state.status)}</span>
@@ -2083,6 +2239,9 @@
               <span class="branch-badge detached">detached</span>
             {:else if state.branch && !state.isDefault}
               <span class="branch-badge">{state.branch}</span>
+            {/if}
+            {#if membershipsFor(repoKey).length > 0}
+              <span class="ws-badge" title="Member of: {membershipsFor(repoKey).join(', ')}">📦 {membershipsFor(repoKey).length}</span>
             {/if}
 
             {#if state.status === 'syncing' || state.status === 'cloning'}
@@ -2170,11 +2329,13 @@
                         editors={configEditors}
                         terminals={configTerminals}
                         aiHarnesses={configAIHarnesses}
+                        workspaceKeys={membershipsFor(repoKey)}
                         onOpenBrowser={() => openRepoInBrowser(sourceKey, repoName)}
                         onOpenFolder={() => openRepoInExplorer(repoKey)}
                         onOpenApp={(cmd) => openRepoInApp(repoKey, cmd)}
                         onOpenTerminal={(t) => openRepoInTerminal(repoKey, t)}
                         onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
+                        onOpenWorkspace={(k) => openWorkspace(k)}
                         onSweep={() => sweepBranches(sourceKey, repoName)}
                       />
                     </div>
@@ -2229,7 +2390,7 @@
 
   </section>
 
-  {:else}
+  {:else if cardsTab === 'mirrors'}
   <!-- ── MIRROR CARDS ── -->
   {#if mirrorDiscoverLoading && mirrorDiscoverProgress}
   <div class="discover-progress">
@@ -2343,6 +2504,90 @@
         {/if}
       </div>
     {/each}
+    </div>
+  </section>
+  {/if}
+
+  {:else}
+  <!-- ── WORKSPACE CARDS ── -->
+  <section class="cards-row">
+    {#each $workspaceOrder.length > 0 ? $workspaceOrder : Object.keys($workspaces) as wsKey}
+      {@const ws = $workspaces[wsKey]}
+      {#if ws}
+        <div class="card card-workspace" class:card-delete-mode={deleteMode}>
+          <div class="card-top">
+            {#if deleteMode}
+              <button class="btn-delete-x card-delete-btn" on:click={() => deleteWorkspaceConfirm = wsKey} title="Delete workspace {wsKey}">&#10005;</button>
+            {:else}
+              <span class="card-dot" style="background: {ws.file ? sc('clean') : sc('behind')}"></span>
+            {/if}
+            <span class="card-provider">{ws.type === 'codeWorkspace' ? 'CODE' : 'TMUX'}</span>
+          </div>
+          <div class="card-name">{ws.name || wsKey}</div>
+          <div class="card-ring-row">
+            <span class="card-stat">{ws.members?.length ?? 0}</span>
+            <span class="card-ok" style="color: {sc('clean')}">member{(ws.members?.length ?? 0) === 1 ? '' : 's'}</span>
+          </div>
+          <div class="card-btn-row">
+            <button class="card-btn" on:click={() => openWorkspace(wsKey)} disabled={workspaceBusy}>Open</button>
+            <button class="card-btn" on:click={() => regenerateWorkspace(wsKey)} disabled={workspaceBusy} title="Regenerate the workspace file on disk">Regenerate</button>
+          </div>
+        </div>
+      {/if}
+    {/each}
+    <button class="card card-add" on:click={openWorkspaceModalFromTab} title="Add workspace">
+      <span class="card-add-icon">+</span>
+    </button>
+  </section>
+
+  <!-- ── WORKSPACE DETAIL LIST ── -->
+  {#if Object.keys($workspaces).length > 0}
+  <section class="repo-list">
+    <div class="mirror-list">
+      <div class="mirror-section-header">
+        <h3>Workspaces</h3>
+      </div>
+      {#each $workspaceOrder.length > 0 ? $workspaceOrder : Object.keys($workspaces) as wsKey}
+        {@const ws = $workspaces[wsKey]}
+        {#if ws}
+          <div class="mirror-group">
+            <div class="mirror-group-header">
+              <span class="mirror-accounts">{ws.name || wsKey} <span class="workspace-type">· {ws.type === 'codeWorkspace' ? '.code-workspace' : 'tmuxinator'}</span></span>
+              <div class="mirror-group-actions">
+                <button class="btn-tab-action" on:click={() => openWorkspace(wsKey)} disabled={workspaceBusy}>Open</button>
+                <button class="btn-tab-action" on:click={() => regenerateWorkspace(wsKey)} disabled={workspaceBusy}>Regenerate</button>
+                {#if deleteMode}
+                  <button class="btn-sm btn-danger" on:click={() => deleteWorkspaceConfirm = wsKey}>✕</button>
+                {/if}
+              </div>
+            </div>
+            {#if ws.file}
+              <div class="workspace-file-row">
+                <span class="workspace-file-label">File:</span>
+                <span class="workspace-file-path" title={ws.file}>{ws.file}</span>
+              </div>
+            {:else}
+              <div class="workspace-file-row workspace-file-empty">Not generated yet — open or regenerate to create the file on disk.</div>
+            {/if}
+            {#if (ws.members?.length ?? 0) === 0}
+              <div class="mirror-empty">No members. Delete and recreate, or add clones from the Accounts tab.</div>
+            {:else}
+              {#each ws.members as m}
+                <div class="mirror-row">
+                  <span class="mirror-dot" style="color: {sc('clean')}">●</span>
+                  <span class="mirror-repo-name">{m.source}/{m.repo}</span>
+                </div>
+              {/each}
+            {/if}
+          </div>
+        {/if}
+      {/each}
+    </div>
+  </section>
+  {:else}
+  <section class="repo-list">
+    <div class="workspace-empty-hint">
+      No workspaces yet. Click <strong>+ New workspace</strong> above or select clones on the Accounts tab and group them from the selection bar.
     </div>
   </section>
   {/if}
@@ -2969,6 +3214,91 @@
   {/if}
 
   <!-- ── ADD MIRROR GROUP MODAL ── -->
+  <!-- ── ADD WORKSPACE MODAL ── -->
+  {#if addWorkspaceModal}
+    <div class="overlay" on:click={closeWorkspaceModal} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-mirror-repo" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+        <div class="modal-head">
+          <h3>Create workspace</h3>
+          <button class="btn-x" on:click={closeWorkspaceModal}>&#10005;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-row">
+            <label class="form-label">Workspace key</label>
+            <input class="form-input" bind:value={newWorkspaceKey} placeholder="e.g. feat-x (used in filenames)" />
+          </div>
+          <div class="form-row">
+            <label class="form-label">Display name (optional)</label>
+            <input class="form-input" bind:value={newWorkspaceName} placeholder="Defaults to the key" />
+          </div>
+          <div class="form-row">
+            <label class="form-label">Type</label>
+            <div class="radio-group">
+              <label><input type="radio" bind:group={newWorkspaceType} value="codeWorkspace" /> VS Code multi-root (.code-workspace)</label>
+              <label><input type="radio" bind:group={newWorkspaceType} value="tmuxinator" /> Tmuxinator YAML (macOS / Linux)</label>
+            </div>
+          </div>
+          {#if newWorkspaceType === 'tmuxinator'}
+            <div class="form-row">
+              <label class="form-label">Layout</label>
+              <div class="radio-group">
+                <label><input type="radio" bind:group={newWorkspaceLayout} value="windowsPerRepo" /> One window per repo</label>
+                <label><input type="radio" bind:group={newWorkspaceLayout} value="splitPanes" /> Single window, tiled panes</label>
+              </div>
+            </div>
+          {/if}
+          <div class="form-row">
+            <label class="form-label">Members</label>
+            <div class="workspace-member-picker">
+              {#if Object.keys($sources).length === 0}
+                <div class="workspace-empty-hint">No sources configured yet.</div>
+              {:else}
+                {#each Object.entries($sources) as [sourceKey, source]}
+                  <div class="workspace-member-source">
+                    <div class="workspace-member-source-label">{sourceKey}</div>
+                    {#each (source.repoOrder && source.repoOrder.length > 0 ? source.repoOrder : Object.keys(source.repos)) as repoName}
+                      {@const rk = `${sourceKey}/${repoName}`}
+                      <label class="workspace-member-row">
+                        <input type="checkbox" checked={newWorkspaceMembers.has(rk)} on:change={() => toggleWorkspaceMemberInModal(rk)} />
+                        <span>{repoName}</span>
+                      </label>
+                    {/each}
+                  </div>
+                {/each}
+              {/if}
+            </div>
+            <div class="workspace-member-count">{newWorkspaceMembers.size} selected</div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn-cancel" on:click={closeWorkspaceModal}>Cancel</button>
+          <button class="btn-add" on:click={submitCreateWorkspace}
+            disabled={!newWorkspaceKey || newWorkspaceMembers.size === 0 || workspaceBusy}>
+            {workspaceBusy ? 'Creating…' : 'Create'}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ── DELETE WORKSPACE CONFIRM ── -->
+  {#if deleteWorkspaceConfirm}
+    <div class="overlay" on:click={() => deleteWorkspaceConfirm = null} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-confirm" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+        <div class="modal-head"><h3>Delete workspace?</h3></div>
+        <div class="modal-body">
+          <p>Remove <strong>{deleteWorkspaceConfirm}</strong> from the config. The generated file on disk is kept — delete it by hand if you want it gone.</p>
+        </div>
+        <div class="modal-foot">
+          <button class="btn-cancel" on:click={() => deleteWorkspaceConfirm = null}>Cancel</button>
+          <button class="btn-danger" on:click={() => deleteWorkspaceConfirm && deleteWorkspace(deleteWorkspaceConfirm)} disabled={workspaceBusy}>
+            {workspaceBusy ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
   {#if addMirrorGroupModal}
     <div class="overlay" on:click={() => addMirrorGroupModal = false} transition:fade={{ duration: 120 }}>
       <div class="modal modal-account" on:click|stopPropagation transition:slide={{ duration: 180 }}>
@@ -4066,4 +4396,127 @@
   }
   .compact-mirror-dot { font-size: 10px; }
   .compact-mirror-label { font-weight: 500; }
+
+  /* ── Workspaces (issue #27 / #49) ────────────────────────────────── */
+
+  /* Active state for the tab-bar "Select clones" toggle. */
+  .tab-action-active {
+    background: var(--bg-hover) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-hover) !important;
+  }
+
+  /* Floating bar at the top of the accounts tab when clones are selected. */
+  .selection-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+    margin: 0 24px 8px;
+    padding: 10px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-hover);
+    border-radius: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 40;
+  }
+  .selection-count { font-size: 12px; color: var(--text-primary); font-weight: 600; }
+  .selection-actions { display: flex; gap: 6px; }
+
+  /* Per-row checkbox shown in selection mode. Sized to match the delete-X
+     button it visually replaces so the row layout stays stable. */
+  .clone-select-box {
+    width: 14px; height: 14px;
+    margin: 0 6px 0 0;
+    accent-color: var(--text-primary);
+    cursor: pointer;
+    flex: 0 0 auto;
+  }
+
+  /* Small membership count chip on clone rows. Sits beside the branch
+     badge and stays subtle — presence of the chip at all is already the
+     signal the clone is in a workspace. */
+  .ws-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    margin-left: 4px;
+    border-radius: 10px;
+    background: var(--bg-raised);
+    color: var(--text-muted);
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+
+  /* Workspace card styling: reuse the mirror card structure but with its
+     own dot colour derived inline. */
+  .card-workspace .card-provider { letter-spacing: 0.5px; }
+
+  /* Workspace type sub-label in the detail list header. */
+  .workspace-type { color: var(--text-muted); font-size: 11px; font-weight: 400; margin-left: 8px; }
+
+  /* File path row inside a workspace group card. */
+  .workspace-file-row {
+    padding: 6px 12px;
+    font-size: 11px;
+    color: var(--text-muted);
+    display: flex; gap: 6px;
+    overflow: hidden;
+  }
+  .workspace-file-label { color: var(--text-dim); flex: 0 0 auto; }
+  .workspace-file-path {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  }
+  .workspace-file-empty { font-style: italic; color: var(--text-dim); }
+
+  .workspace-empty-hint {
+    padding: 24px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  /* Member picker inside the Create workspace modal. Scrolls when the
+     user has many clones so the modal height stays bounded. */
+  .workspace-member-picker {
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px;
+    background: var(--bg-card);
+  }
+  .workspace-member-source { margin-bottom: 8px; }
+  .workspace-member-source:last-child { margin-bottom: 0; }
+  .workspace-member-source-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px;
+    color: var(--text-dim); padding: 4px 2px;
+  }
+  .workspace-member-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 2px;
+    font-size: 12px;
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+  .workspace-member-row:hover { background: var(--bg-hover); border-radius: 4px; }
+  .workspace-member-count {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: right;
+  }
+
+  /* Danger button shared with the delete-workspace confirm modal. */
+  .btn-danger {
+    background: #dc2626;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-danger:hover { background: #b91c1c; }
+  .btn-danger:disabled { opacity: 0.6; cursor: default; }
 </style>
