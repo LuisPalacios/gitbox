@@ -11,6 +11,8 @@ export function AddMirrorGroup(arg1:string,arg2:string,arg3:string):Promise<void
 
 export function AddMirrorRepo(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
+export function AddWorkspaceMember(arg1:string,arg2:main.WorkspaceMemberDTO):Promise<void>;
+
 export function AdoptOrphans(arg1:Array<string>):Promise<main.AdoptResultDTO>;
 
 export function ApplyDiscoveredMirrors():Promise<void>;
@@ -30,6 +32,8 @@ export function CloneRepo(arg1:string,arg2:string):Promise<void>;
 export function ConfirmSweep(arg1:string,arg2:string):Promise<main.SweepDeleteDTO>;
 
 export function CreateNewRepo(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean,arg6:boolean):Promise<void>;
+
+export function CreateWorkspace(arg1:main.WorkspaceCreateRequest):Promise<void>;
 
 export function CredentialDelete(arg1:string):Promise<main.CredentialSetupResult>;
 
@@ -51,6 +55,8 @@ export function DeleteMirrorRepo(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteRepo(arg1:string,arg2:string):Promise<void>;
 
+export function DeleteWorkspace(arg1:string):Promise<void>;
+
 export function DetectAIHarnesses():Promise<Array<main.AIHarnessInfo>>;
 
 export function DetectEditors():Promise<Array<main.EditorInfo>>;
@@ -66,6 +72,8 @@ export function FetchAllRepos():Promise<void>;
 export function FetchRepo(arg1:string,arg2:string):Promise<void>;
 
 export function FindOrphans():Promise<Array<main.OrphanRepoDTO>>;
+
+export function GenerateWorkspace(arg1:string):Promise<main.WorkspaceGenerateResult>;
 
 export function GetAllStatus():Promise<Array<main.StatusResult>>;
 
@@ -95,6 +103,8 @@ export function GetTokenGuide(arg1:string):Promise<main.TokenGuideInfo>;
 
 export function GetViewMode():Promise<string>;
 
+export function GetWorkspace(arg1:string):Promise<main.WorkspaceDTO>;
+
 export function IsFirstRun():Promise<boolean>;
 
 export function IsPositionOnScreen(arg1:number,arg2:number,arg3:number,arg4:number):Promise<boolean>;
@@ -104,6 +114,8 @@ export function IsTestMode():Promise<boolean>;
 export function ListAccountOrgs(arg1:string):Promise<Array<string>>;
 
 export function ListRemoteRepos(arg1:string):Promise<Array<main.DiscoverResult>>;
+
+export function ListWorkspaces():Promise<main.WorkspaceListResult>;
 
 export function OpenAccountFolder(arg1:string):Promise<void>;
 
@@ -127,6 +139,8 @@ export function OpenInExplorer(arg1:string):Promise<void>;
 
 export function OpenInTerminal(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 
+export function OpenWorkspace(arg1:string):Promise<void>;
+
 export function PickFolder(arg1:string):Promise<string>;
 
 export function PreviewSweep(arg1:string,arg2:string):Promise<main.SweepPreviewDTO>;
@@ -140,6 +154,8 @@ export function RefreshStatus():Promise<void>;
 export function ReloadConfig():Promise<main.ConfigDTO>;
 
 export function RemoveGlobalIdentity():Promise<void>;
+
+export function RemoveWorkspaceMember(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function RenameAccount(arg1:string,arg2:string):Promise<void>;
 
@@ -168,3 +184,5 @@ export function SyncEditors():Promise<void>;
 export function SyncTerminals():Promise<void>;
 
 export function UpdateAccount(arg1:main.UpdateAccountRequest):Promise<void>;
+
+export function UpdateWorkspace(arg1:string,arg2:main.WorkspaceUpdateRequest):Promise<void>;
