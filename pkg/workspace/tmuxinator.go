@@ -3,31 +3,54 @@ package workspace
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/git"
 )
 
-// tmuxinatorSupported reports whether the current host can launch tmuxinator
-// directly. PR1 ships macOS and Linux only; Windows (via WSL) lands later.
+// tmuxinatorSupported reports whether the current host can launch tmuxinator.
+// macOS and Linux run it natively. Windows runs it via WSL when the wsl.exe
+// probe succeeds; this lets Windows users get real tmuxinator support instead
+// of the previous platform-unsupported stub.
 func tmuxinatorSupported() bool {
 	switch runtime.GOOS {
 	case "darwin", "linux":
 		return true
+	case "windows":
+		return git.IsWSLAvailable()
 	default:
 		return false
 	}
 }
 
 // ErrTmuxinatorUnsupported is returned when a tmuxinator workspace is
-// generated or opened on a platform we don't yet support.
-var ErrTmuxinatorUnsupported = fmt.Errorf("tmuxinator workspaces are not supported on this platform yet")
+// generated or opened on a platform that cannot launch tmuxinator (Windows
+// without WSL, or any other unsupported OS).
+var ErrTmuxinatorUnsupported = fmt.Errorf("tmuxinator workspaces are not supported on this host (Windows requires WSL)")
 
+// defaultTmuxinatorFile returns the absolute on-disk path where the
+// generated YAML for a workspace key should land. On Windows this is the
+// Windows-accessible UNC path of the WSL-side ~/.tmuxinator/<key>.yml so
+// Generate can write through the Windows filesystem view of WSL.
 func defaultTmuxinatorFile(key string) (string, error) {
 	if !tmuxinatorSupported() {
 		return "", ErrTmuxinatorUnsupported
+	}
+	if runtime.GOOS == "windows" {
+		home, err := git.WSLHome()
+		if err != nil {
+			return "", fmt.Errorf("resolving WSL home: %w", err)
+		}
+		linuxPath := path.Join(home, ".tmuxinator", key+".yml")
+		winPath, err := git.WSLPath(linuxPath)
+		if err != nil {
+			return "", fmt.Errorf("translating %q to a Windows path: %w", linuxPath, err)
+		}
+		return winPath, nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -55,12 +78,28 @@ func generateTmuxinator(key string, w config.Workspace, memberPaths []string) (G
 
 	name := w.EffectiveName(key)
 
+	// On Windows, tmuxinator runs inside WSL — translate every member's
+	// Windows path into its Linux-side equivalent so `root:` and `cd` work
+	// inside the WSL shell.
+	yamlPaths := memberPaths
+	if runtime.GOOS == "windows" {
+		converted := make([]string, len(memberPaths))
+		for i, p := range memberPaths {
+			lp, err := git.WSLLinuxPath(p)
+			if err != nil {
+				return GenerateResult{}, fmt.Errorf("workspace %q: translating %q to WSL: %w", key, p, err)
+			}
+			converted[i] = lp
+		}
+		yamlPaths = converted
+	}
+
 	var body string
 	switch layout {
 	case config.WorkspaceLayoutWindows:
-		body = renderWindowsPerRepo(name, w.Members, memberPaths)
+		body = renderWindowsPerRepo(name, w.Members, yamlPaths)
 	case config.WorkspaceLayoutSplit:
-		body = renderSplitPanes(name, w.Members, memberPaths)
+		body = renderSplitPanes(name, w.Members, yamlPaths)
 	default:
 		return GenerateResult{}, fmt.Errorf("workspace %q: unknown tmuxinator layout %q", key, layout)
 	}
