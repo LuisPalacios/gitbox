@@ -1710,18 +1710,6 @@
             {/if}
           </span>
         </div>
-        <span class="compact-actions-overlay compact-acct-actions">
-          <button class="compact-action-btn" on:click|stopPropagation={() => openAccountInExplorer(key)} title="Open folder">&#128193;</button>
-          {#if configEditors.length > 0}
-            <button class="compact-action-btn" on:click|stopPropagation={() => openAccountInApp(key, configEditors[0].command)} title="Open in {configEditors[0].name}">&#9998;</button>
-          {/if}
-          {#if configTerminals.length > 0}
-            <button class="compact-action-btn" on:click|stopPropagation={() => openAccountInTerminal(key, configTerminals[0])} title="Open in {configTerminals[0].name}">&gt;_</button>
-          {/if}
-          {#if configAIHarnesses.length > 0}
-            <button class="compact-action-btn" on:click|stopPropagation={() => openAccountInAIHarness(key, configAIHarnesses[0])} title="Open in {configAIHarnesses[0].name}">&#129302;</button>
-          {/if}
-        </span>
         <span class="compact-chevron">{compactExpanded[key] ? '▾' : '▸'}</span>
       </button>
 
@@ -1735,8 +1723,6 @@
               <span class="compact-repo-name">{repoName.includes('/') ? repoName.split('/').pop() : repoName}</span>
               {#if state.branch === '(detached)'}
                 <span class="compact-badge" style="color: {sc('error')}">detached</span>
-              {:else if state.branch && !state.isDefault}
-                <span class="compact-badge branch-badge">{state.branch}</span>
               {/if}
               {#if state.status === 'behind'}
                 <span class="compact-badge" style="color: {sc('behind')}">{state.behind} behind</span>
@@ -1744,20 +1730,6 @@
                 <span class="compact-badge" style="color: {sc('dirty')}">{state.modified} changed</span>
               {:else if state.status === 'ahead'}
                 <span class="compact-badge" style="color: {sc('ahead')}">{state.ahead} ahead</span>
-              {/if}
-              {#if state.status !== 'not cloned'}
-                <span class="compact-actions-overlay">
-                  <button class="compact-action-btn" on:click|stopPropagation={() => openRepoInBrowser(key, repoName)} title="Open in browser">&#8599;</button>
-                  {#if configEditors.length > 0}
-                    <button class="compact-action-btn" on:click|stopPropagation={() => openRepoInApp(repoKey, configEditors[0].command)} title="Open in {configEditors[0].name}">&#9998;</button>
-                  {/if}
-                  {#if configTerminals.length > 0}
-                    <button class="compact-action-btn" on:click|stopPropagation={() => openRepoInTerminal(repoKey, configTerminals[0])} title="Open in {configTerminals[0].name}">&gt;_</button>
-                  {/if}
-                  {#if configAIHarnesses.length > 0}
-                    <button class="compact-action-btn" on:click|stopPropagation={() => openRepoInAIHarness(repoKey, configAIHarnesses[0])} title="Open in {configAIHarnesses[0].name}">&#129302;</button>
-                  {/if}
-                </span>
               {/if}
             </div>
           {/each}
@@ -3195,6 +3167,7 @@
 
   :global([data-theme="dark"]) {
     --bg-base: #09090b; --bg-card: #18181b; --bg-hover: #27272a;
+    --bg-row-hover: #3f3f46;
     --border: #27272a; --border-hover: #3f3f46;
     --text-primary: #fafafa; --text-secondary: #b4b4bd; --text-muted: #8e8e99; --text-dim: #71717a;
     --text-repo: #e4e4e7;
@@ -3205,6 +3178,7 @@
   }
   :global([data-theme="light"]) {
     --bg-base: #fafafa; --bg-card: #ffffff; --bg-hover: #f4f4f5;
+    --bg-row-hover: #d4d4d8;
     --border: #e4e4e7; --border-hover: #d4d4d8;
     --text-primary: #18181b; --text-secondary: #52525b; --text-muted: #71717a; --text-dim: #a1a1aa;
     --text-repo: #27272a;
@@ -3371,7 +3345,7 @@
     display: flex; align-items: center; gap: 10px;
     padding: 8px 6px; border-radius: 6px; transition: background 0.1s;
   }
-  .repo-row:hover { background: var(--bg-card); }
+  .repo-row:hover { background: var(--bg-row-hover); }
 
   .dot { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; }
   .repo-name { font-size: 13px; color: var(--text-repo); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3423,7 +3397,7 @@
 
   /* ── Repo detail panel ── */
   .repo-row-clickable { cursor: pointer; }
-  .repo-row-clickable:hover { background: var(--bg-card); }
+  .repo-row-clickable:hover { background: var(--bg-row-hover); }
   .repo-detail {
     margin: 0 0 2px 0; padding: 8px 16px 10px 30px;
     background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
@@ -3801,12 +3775,6 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .compact-acct-stat { font-size: 9px; }
-  .compact-acct-actions {
-    position: static; background: transparent; padding: 0;
-    opacity: 0; transition: opacity 0.1s;
-    display: flex; align-items: center; gap: 2px; flex-shrink: 0;
-  }
-  .compact-acct:hover .compact-acct-actions { opacity: 1; }
   .compact-chevron {
     font-size: 10px;
     color: var(--text-dim);
@@ -3830,23 +3798,8 @@
     border-radius: 4px;
     transition: background 0.1s;
   }
-  .compact-row { position: relative; }
   .compact-row:hover { background: var(--bg-hover); }
   .compact-row-ok { opacity: 0.5; }
-  .compact-actions-overlay {
-    position: absolute; right: 2px; top: 0; bottom: 0;
-    display: flex; align-items: center; gap: 2px;
-    background: var(--bg-card); padding: 0 2px;
-    opacity: 0; transition: opacity 0.1s;
-  }
-  .compact-row:hover .compact-actions-overlay { opacity: 1; }
-  .compact-row:hover.compact-row-ok .compact-actions-overlay { opacity: 1; }
-  .compact-action-btn {
-    background: transparent; border: none; cursor: pointer;
-    font-size: 11px; padding: 1px 3px; border-radius: 3px;
-    color: var(--text-dim); line-height: 1; transition: color 0.1s;
-  }
-  .compact-action-btn:hover { color: var(--text-primary); }
   .compact-dot { font-size: 9px; flex-shrink: 0; width: 10px; text-align: center; }
   .compact-repo-name {
     flex: 1;
