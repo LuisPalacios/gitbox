@@ -12,14 +12,24 @@ var (
 	wslAvailable bool
 )
 
-// IsWSLAvailable reports whether `wsl.exe --status` returns successfully on
-// this Windows host. Cached after the first probe so repeated calls are free.
-// The probe always uses HideWindow so no console flashes from a GUI parent.
+// IsWSLAvailable reports whether this Windows host has a usable WSL
+// distribution. `wsl.exe --status` alone is not enough — on the GitHub
+// Windows runner (and on bare Windows installs that ship `wsl.exe` without a
+// distro) it exits 0 yet every actual `wsl.exe -- …` invocation then fails
+// with an inscrutable status. We follow up with a no-op exec inside WSL to
+// confirm a distro is reachable. Cached after the first probe so repeated
+// calls are free; HideWindow keeps the GUI parent flash-free.
 func IsWSLAvailable() bool {
 	wslOnce.Do(func() {
-		cmd := exec.Command("wsl.exe", "--status")
-		HideWindow(cmd)
-		wslAvailable = cmd.Run() == nil
+		status := exec.Command("wsl.exe", "--status")
+		HideWindow(status)
+		if status.Run() != nil {
+			wslAvailable = false
+			return
+		}
+		probe := exec.Command("wsl.exe", "--", "true")
+		HideWindow(probe)
+		wslAvailable = probe.Run() == nil
 	})
 	return wslAvailable
 }
