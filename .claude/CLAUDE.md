@@ -370,6 +370,49 @@ Scripts in `scripts/` automate the full cycle:
 
 The scripts auto-detect the local OS. Local commands run directly, remote commands use SSH. See each script's header for usage.
 
+### Cross-compiling the GUI
+
+`scripts/deploy.sh` only ships the **CLI** — `wails build` refuses to cross-compile the GUI because each target needs the host's native webview (WebView2 on Windows, WebKit on macOS, WebKitGTK on Linux). For GUI smoke tests on a remote platform, build the GUI **on that remote** over SSH. The recipe below uses `tar | ssh` (rsync isn't available in Git Bash on Windows by default).
+
+```bash
+# Build GUI for mac from a Windows or Linux host
+host="luis@mac-host"       # from $SSH_MAC_HOST
+target="darwin/arm64"      # or darwin/amd64 / darwin/universal
+
+# 1. Wipe and prepare the remote scratch dir.
+ssh "$host" 'rm -rf ~/gitbox-remote-build && mkdir -p ~/gitbox-remote-build'
+
+# 2. Ship source (exclude artefacts, node_modules, .git, .env).
+tar \
+  --exclude='./.git' \
+  --exclude='./build' \
+  --exclude='./cmd/gui/build/bin' \
+  --exclude='./cmd/gui/frontend/node_modules' \
+  --exclude='./cmd/gui/frontend/dist' \
+  --exclude='./.env' \
+  -cf - . | ssh "$host" 'cd ~/gitbox-remote-build && tar -xf -'
+
+# 3. Build on the remote. PATH needs Homebrew / $HOME/go/bin for non-login SSH shells.
+ssh "$host" 'export PATH=/opt/homebrew/bin:$HOME/go/bin:$PATH && \
+  cd ~/gitbox-remote-build && \
+  cp assets/appicon.png cmd/gui/build/appicon.png 2>/dev/null; \
+  cd cmd/gui && wails build -platform '"$target"
+
+# 4. Stage somewhere the user can double-click from Finder / open.
+ssh "$host" 'rm -rf /tmp/GitboxApp.app && \
+  cp -R ~/gitbox-remote-build/cmd/gui/build/bin/GitboxApp.app /tmp/GitboxApp.app'
+```
+
+Notes:
+
+- **Non-login SSH shells** don't source `.zshrc` / `.bash_profile`, so `go` and `wails` are usually off `$PATH`. Prefix every remote command with `export PATH=/opt/homebrew/bin:$HOME/go/bin:$PATH`.
+- **Tar from the repo root.** If the shell cwd is wrong, tar will happily ship a partial tree. Anchor with `cd "$(git rev-parse --show-toplevel)"` first.
+- **`.env` is gitignored** — if the worktree doesn't have one yet, copy it in from the main clone (`cp ../gitbox/.env .`) before running `scripts/deploy.sh`.
+- Linux builds the same way — swap `$host` to `$SSH_LINUX_HOST`, `$target` to `linux/amd64`, adjust PATH (e.g. `/usr/local/go/bin`). The artifact lands at `cmd/gui/build/bin/GitboxApp`.
+- macOS signing/notarization is a separate concern — see `docs/macos-signing.md`. A `wails build` unsigned binary launches fine locally but gets the Gatekeeper quarantine on first download; for smoke tests that's fine.
+
+For a read-only smoke check (no GUI, just CLI + `pkg/` compile coverage), `scripts/deploy.sh` is still the fast path — it cross-compiles the CLI for all three platforms.
+
 ### Non-interactive vs interactive tests
 
 - **Non-interactive** (version, status, config show, JSON output): Claude runs via `./scripts/smoke.sh` or directly via SSH.

@@ -344,6 +344,8 @@ export namespace main {
 	    account: string;
 	    sources: string[];
 	    mirrors: string[];
+	    workspaces: string[];
+	    workspace_members: number;
 	    repo_count: number;
 	    clone_count: number;
 	
@@ -356,6 +358,8 @@ export namespace main {
 	        this.account = source["account"];
 	        this.sources = source["sources"];
 	        this.mirrors = source["mirrors"];
+	        this.workspaces = source["workspaces"];
+	        this.workspace_members = source["workspace_members"];
 	        this.repo_count = source["repo_count"];
 	        this.clone_count = source["clone_count"];
 	    }

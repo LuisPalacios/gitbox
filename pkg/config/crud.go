@@ -58,58 +58,114 @@ func (c *Config) DeleteAccount(key string) error {
 	return nil
 }
 
-// CascadeDeleteAccount removes an account along with every source and mirror
-// that references it. Returns the keys of everything that was removed so the
-// caller can report the cascade to the user. Keys are returned sorted.
-//
-// Unlike DeleteAccount (strict), this variant never refuses the delete for
-// reference reasons — it's the only safe path for the GUI, which cannot
-// leave the config in a half-deleted state with a dangling mirror ref.
-func (c *Config) CascadeDeleteAccount(key string) (removedSources, removedMirrors []string, err error) {
-	if _, exists := c.Accounts[key]; !exists {
-		return nil, nil, fmt.Errorf("account %q not found", key)
-	}
-	for srcName, src := range c.Sources {
-		if src.Account == key {
-			removedSources = append(removedSources, srcName)
-		}
-	}
-	for mirrorName, m := range c.Mirrors {
-		if m.AccountSrc == key || m.AccountDst == key {
-			removedMirrors = append(removedMirrors, mirrorName)
-		}
-	}
-	sort.Strings(removedSources)
-	sort.Strings(removedMirrors)
-	for _, s := range removedSources {
-		delete(c.Sources, s)
-	}
-	for _, m := range removedMirrors {
-		delete(c.Mirrors, m)
-	}
-	delete(c.Accounts, key)
-	return removedSources, removedMirrors, nil
+// AccountDeletionReport describes what CascadeDeleteAccount removed (or what
+// AccountDeletionImpact would remove). All slices are sorted for stable
+// rendering in the UI.
+type AccountDeletionReport struct {
+	// Sources keys removed.
+	Sources []string
+	// Mirrors keys removed.
+	Mirrors []string
+	// Workspaces keys that had at least one member pruned. Workspace entries
+	// themselves are never deleted — the user may want to keep them, rename
+	// them, or add new members. The on-disk .code-workspace / tmuxinator
+	// files are left alone.
+	Workspaces []string
+	// WorkspaceMembers is the total count of member references dropped across
+	// all workspaces. A single workspace may contribute more than one.
+	WorkspaceMembers int
+	// RepoCount is the number of repos in the removed sources. Informational;
+	// the clone-on-disk count is computed separately by the GUI.
+	RepoCount int
 }
 
-// AccountDeletionImpact reports what a CascadeDeleteAccount on the given key
-// would remove. Read-only — does not mutate the config. Returns sorted slices
-// plus the total repo count across affected sources so the GUI can render a
-// single confirmation summary.
-func (c *Config) AccountDeletionImpact(key string) (sources, mirrors []string, repoCount int) {
+// CascadeDeleteAccount removes an account, every source and mirror that
+// references it, and every workspace-member entry whose source is among the
+// removed sources. Workspaces themselves are never deleted (even if emptied)
+// and their on-disk files are left untouched — those are the user's content.
+//
+// Unlike the strict DeleteAccount (used by CLI/TUI), cascade semantics are
+// the only safe path for the GUI: leaving a dangling mirror or workspace-
+// member reference behind would trip the on-load validator and, prior to
+// issue #60's other fixes, cause total config loss on the next launch.
+func (c *Config) CascadeDeleteAccount(key string) (*AccountDeletionReport, error) {
+	if _, exists := c.Accounts[key]; !exists {
+		return nil, fmt.Errorf("account %q not found", key)
+	}
+
+	report := accountDeletionReport(c, key)
+
+	removedSourceSet := make(map[string]struct{}, len(report.Sources))
+	for _, s := range report.Sources {
+		removedSourceSet[s] = struct{}{}
+	}
+
+	for _, s := range report.Sources {
+		delete(c.Sources, s)
+	}
+	for _, m := range report.Mirrors {
+		delete(c.Mirrors, m)
+	}
+	for _, wkey := range report.Workspaces {
+		w := c.Workspaces[wkey]
+		kept := make([]WorkspaceMember, 0, len(w.Members))
+		for _, m := range w.Members {
+			if _, drop := removedSourceSet[m.Source]; drop {
+				continue
+			}
+			kept = append(kept, m)
+		}
+		w.Members = kept
+		c.Workspaces[wkey] = w
+	}
+	delete(c.Accounts, key)
+	return report, nil
+}
+
+// AccountDeletionImpact reports what CascadeDeleteAccount would remove for
+// the given key. Read-only — does not mutate the config.
+func (c *Config) AccountDeletionImpact(key string) *AccountDeletionReport {
+	return accountDeletionReport(c, key)
+}
+
+// accountDeletionReport computes the cascade report without mutating the
+// config. Returns sorted slices and counts.
+func accountDeletionReport(c *Config, key string) *AccountDeletionReport {
+	r := &AccountDeletionReport{}
+
 	for srcName, src := range c.Sources {
 		if src.Account == key {
-			sources = append(sources, srcName)
-			repoCount += len(src.Repos)
+			r.Sources = append(r.Sources, srcName)
+			r.RepoCount += len(src.Repos)
 		}
 	}
 	for mirrorName, m := range c.Mirrors {
 		if m.AccountSrc == key || m.AccountDst == key {
-			mirrors = append(mirrors, mirrorName)
+			r.Mirrors = append(r.Mirrors, mirrorName)
 		}
 	}
-	sort.Strings(sources)
-	sort.Strings(mirrors)
-	return sources, mirrors, repoCount
+
+	removedSourceSet := make(map[string]struct{}, len(r.Sources))
+	for _, s := range r.Sources {
+		removedSourceSet[s] = struct{}{}
+	}
+	for wkey, w := range c.Workspaces {
+		affectedMembers := 0
+		for _, m := range w.Members {
+			if _, drop := removedSourceSet[m.Source]; drop {
+				affectedMembers++
+			}
+		}
+		if affectedMembers > 0 {
+			r.Workspaces = append(r.Workspaces, wkey)
+			r.WorkspaceMembers += affectedMembers
+		}
+	}
+
+	sort.Strings(r.Sources)
+	sort.Strings(r.Mirrors)
+	sort.Strings(r.Workspaces)
+	return r
 }
 
 // RenameAccount moves an account from oldKey to newKey and updates all

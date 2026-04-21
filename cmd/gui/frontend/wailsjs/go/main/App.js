@@ -6,6 +6,10 @@ export function AccountDeletionImpact(arg1) {
   return window['go']['main']['App']['AccountDeletionImpact'](arg1);
 }
 
+export function AcknowledgeConfigError() {
+  return window['go']['main']['App']['AcknowledgeConfigError']();
+}
+
 export function AddAccount(arg1) {
   return window['go']['main']['App']['AddAccount'](arg1);
 }

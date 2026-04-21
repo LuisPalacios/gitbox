@@ -2054,6 +2054,16 @@ func (a *App) GetConfigLoadError() string {
 	return a.cfgLoadError
 }
 
+// AcknowledgeConfigError clears the pending cfgLoadError so the user can
+// proceed through onboarding and overwrite the broken file. Called when the
+// user chooses "Start fresh" from the corruption modal — the backup taken
+// on the next Save preserves the pre-overwrite copy.
+func (a *App) AcknowledgeConfigError() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cfgLoadError = ""
+}
+
 // ConfigRepairResult is the frontend-friendly outcome of a RepairConfig call.
 // On success, the in-memory config has been replaced with the repaired copy
 // and saved back to disk (the existing Save() path writes a dated backup
@@ -3183,35 +3193,46 @@ func (a *App) DeleteRepo(sourceKey, repoKey string) error {
 }
 
 // AccountDeletionImpactDTO describes what a DeleteAccount call would remove.
-// Sources and Mirrors are sorted for stable rendering.
+// Lists are sorted for stable rendering. WorkspaceMembers counts member
+// references that would be pruned across all affected workspaces — the
+// workspace entries themselves are kept even if emptied.
 type AccountDeletionImpactDTO struct {
-	Account    string   `json:"account"`
-	Sources    []string `json:"sources"`
-	Mirrors    []string `json:"mirrors"`
-	RepoCount  int      `json:"repo_count"`
-	CloneCount int      `json:"clone_count"`
+	Account          string   `json:"account"`
+	Sources          []string `json:"sources"`
+	Mirrors          []string `json:"mirrors"`
+	Workspaces       []string `json:"workspaces"`
+	WorkspaceMembers int      `json:"workspace_members"`
+	RepoCount        int      `json:"repo_count"`
+	CloneCount       int      `json:"clone_count"`
 }
 
 // AccountDeletionImpact reports the cascade effect of deleting the given
-// account — every source and mirror that references it, plus the total repo
-// count and how many are currently cloned on disk. Read-only.
+// account — every source, mirror, and workspace-member that references it,
+// plus the total repo count and how many are currently cloned on disk.
+// Read-only.
 func (a *App) AccountDeletionImpact(accountKey string) AccountDeletionImpactDTO {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	sources, mirrors, repoCount := a.cfg.AccountDeletionImpact(accountKey)
-	if sources == nil {
-		sources = []string{}
+	r := a.cfg.AccountDeletionImpact(accountKey)
+	dto := AccountDeletionImpactDTO{
+		Account:          accountKey,
+		Sources:          r.Sources,
+		Mirrors:          r.Mirrors,
+		Workspaces:       r.Workspaces,
+		WorkspaceMembers: r.WorkspaceMembers,
+		RepoCount:        r.RepoCount,
+		CloneCount:       a.countClonedRepos(accountKey),
 	}
-	if mirrors == nil {
-		mirrors = []string{}
+	if dto.Sources == nil {
+		dto.Sources = []string{}
 	}
-	return AccountDeletionImpactDTO{
-		Account:    accountKey,
-		Sources:    sources,
-		Mirrors:    mirrors,
-		RepoCount:  repoCount,
-		CloneCount: a.countClonedRepos(accountKey),
+	if dto.Mirrors == nil {
+		dto.Mirrors = []string{}
 	}
+	if dto.Workspaces == nil {
+		dto.Workspaces = []string{}
+	}
+	return dto
 }
 
 // DeleteAccount removes an account, every source that references it, every
@@ -3246,7 +3267,7 @@ func (a *App) DeleteAccount(accountKey string) error {
 		_ = os.RemoveAll(sourcePath)
 	}
 
-	if _, _, err := a.cfg.CascadeDeleteAccount(accountKey); err != nil {
+	if _, err := a.cfg.CascadeDeleteAccount(accountKey); err != nil {
 		return err
 	}
 

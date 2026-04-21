@@ -375,15 +375,18 @@ func TestDeleteAccountBlockedByMirror(t *testing.T) {
 
 func TestCascadeDeleteAccount_SourcesOnly(t *testing.T) {
 	cfg := newTestConfig()
-	srcs, mirrors, err := cfg.CascadeDeleteAccount("github-test")
+	r, err := cfg.CascadeDeleteAccount("github-test")
 	if err != nil {
 		t.Fatalf("CascadeDeleteAccount: %v", err)
 	}
-	if len(srcs) != 1 || srcs[0] != "github-test" {
-		t.Errorf("sources = %v, want [github-test]", srcs)
+	if len(r.Sources) != 1 || r.Sources[0] != "github-test" {
+		t.Errorf("sources = %v, want [github-test]", r.Sources)
 	}
-	if len(mirrors) != 0 {
-		t.Errorf("mirrors = %v, want none", mirrors)
+	if len(r.Mirrors) != 0 {
+		t.Errorf("mirrors = %v, want none", r.Mirrors)
+	}
+	if r.RepoCount != 1 {
+		t.Errorf("repoCount = %d, want 1", r.RepoCount)
 	}
 	if _, ok := cfg.Accounts["github-test"]; ok {
 		t.Error("account still present after cascade delete")
@@ -400,12 +403,12 @@ func TestCascadeDeleteAccount_MirrorSrc(t *testing.T) {
 		t.Fatalf("AddMirror: %v", err)
 	}
 
-	_, mirrors, err := cfg.CascadeDeleteAccount("forgejo-test")
+	r, err := cfg.CascadeDeleteAccount("forgejo-test")
 	if err != nil {
 		t.Fatalf("CascadeDeleteAccount: %v", err)
 	}
-	if len(mirrors) != 1 || mirrors[0] != "m1" {
-		t.Errorf("mirrors = %v, want [m1]", mirrors)
+	if len(r.Mirrors) != 1 || r.Mirrors[0] != "m1" {
+		t.Errorf("mirrors = %v, want [m1]", r.Mirrors)
 	}
 	if _, ok := cfg.Mirrors["m1"]; ok {
 		t.Error("mirror still present after cascade delete (was account_src)")
@@ -419,12 +422,12 @@ func TestCascadeDeleteAccount_MirrorDst(t *testing.T) {
 		t.Fatalf("AddMirror: %v", err)
 	}
 
-	_, mirrors, err := cfg.CascadeDeleteAccount("github-test")
+	r, err := cfg.CascadeDeleteAccount("github-test")
 	if err != nil {
 		t.Fatalf("CascadeDeleteAccount: %v", err)
 	}
-	if len(mirrors) != 1 || mirrors[0] != "m1" {
-		t.Errorf("mirrors = %v, want [m1]", mirrors)
+	if len(r.Mirrors) != 1 || r.Mirrors[0] != "m1" {
+		t.Errorf("mirrors = %v, want [m1]", r.Mirrors)
 	}
 	if _, ok := cfg.Mirrors["m1"]; ok {
 		t.Error("mirror still present after cascade delete (was account_dst)")
@@ -443,15 +446,15 @@ func TestCascadeDeleteAccount_SourcesAndMirrors(t *testing.T) {
 		t.Fatalf("AddMirror: %v", err)
 	}
 
-	srcs, mirrors, err := cfg.CascadeDeleteAccount("github-test")
+	r, err := cfg.CascadeDeleteAccount("github-test")
 	if err != nil {
 		t.Fatalf("CascadeDeleteAccount: %v", err)
 	}
-	if len(srcs) != 1 || srcs[0] != "github-test" {
-		t.Errorf("sources = %v, want [github-test]", srcs)
+	if len(r.Sources) != 1 || r.Sources[0] != "github-test" {
+		t.Errorf("sources = %v, want [github-test]", r.Sources)
 	}
-	if len(mirrors) != 1 || mirrors[0] != "m1" {
-		t.Errorf("mirrors = %v, want [m1]", mirrors)
+	if len(r.Mirrors) != 1 || r.Mirrors[0] != "m1" {
+		t.Errorf("mirrors = %v, want [m1]", r.Mirrors)
 	}
 	if _, ok := cfg.Accounts["github-test"]; ok {
 		t.Error("account remains")
@@ -471,9 +474,88 @@ func TestCascadeDeleteAccount_SourcesAndMirrors(t *testing.T) {
 	}
 }
 
+func TestCascadeDeleteAccount_PrunesWorkspaceMembers(t *testing.T) {
+	cfg := newTestConfig()
+	// Add a second source tied to the forgejo account, plus a workspace that
+	// mixes members from BOTH sources. Cascading the github account must
+	// drop only the github member; the forgejo member, the workspace entry
+	// itself, and its File field all survive.
+	if err := cfg.AddSource("forgejo-test", Source{
+		Account: "forgejo-test",
+		Repos: map[string]Repo{
+			"user/theme": {},
+		},
+	}); err != nil {
+		t.Fatalf("AddSource forgejo-test: %v", err)
+	}
+	if err := cfg.AddWorkspace("mixed", Workspace{
+		Type: WorkspaceTypeCode,
+		Name: "Mixed",
+		File: "/tmp/mixed.code-workspace",
+		Members: []WorkspaceMember{
+			{Source: "github-test", Repo: "testuser/repo-a"},
+			{Source: "forgejo-test", Repo: "user/theme"},
+		},
+	}); err != nil {
+		t.Fatalf("AddWorkspace: %v", err)
+	}
+
+	r, err := cfg.CascadeDeleteAccount("github-test")
+	if err != nil {
+		t.Fatalf("CascadeDeleteAccount: %v", err)
+	}
+	if len(r.Workspaces) != 1 || r.Workspaces[0] != "mixed" {
+		t.Errorf("affected workspaces = %v, want [mixed]", r.Workspaces)
+	}
+	if r.WorkspaceMembers != 1 {
+		t.Errorf("WorkspaceMembers = %d, want 1", r.WorkspaceMembers)
+	}
+
+	w, ok := cfg.Workspaces["mixed"]
+	if !ok {
+		t.Fatal("workspace entry should survive the cascade (only members are pruned)")
+	}
+	if w.File != "/tmp/mixed.code-workspace" {
+		t.Errorf("workspace File lost: %q", w.File)
+	}
+	if len(w.Members) != 1 {
+		t.Fatalf("members = %d, want 1", len(w.Members))
+	}
+	if w.Members[0].Source != "forgejo-test" || w.Members[0].Repo != "user/theme" {
+		t.Errorf("remaining member = %+v, want forgejo-test/user/theme", w.Members[0])
+	}
+}
+
+func TestCascadeDeleteAccount_EmptiedWorkspaceSurvives(t *testing.T) {
+	// A workspace every member of which belongs to the cascaded account must
+	// end up with an empty Members slice, NOT be deleted — the user may want
+	// to rename/repopulate it rather than lose the entry.
+	cfg := newTestConfig()
+	if err := cfg.AddWorkspace("only-github", Workspace{
+		Type: WorkspaceTypeCode,
+		Members: []WorkspaceMember{
+			{Source: "github-test", Repo: "testuser/repo-a"},
+		},
+	}); err != nil {
+		t.Fatalf("AddWorkspace: %v", err)
+	}
+
+	if _, err := cfg.CascadeDeleteAccount("github-test"); err != nil {
+		t.Fatalf("CascadeDeleteAccount: %v", err)
+	}
+
+	w, ok := cfg.Workspaces["only-github"]
+	if !ok {
+		t.Fatal("workspace entry should survive even when emptied")
+	}
+	if len(w.Members) != 0 {
+		t.Errorf("members = %d, want 0", len(w.Members))
+	}
+}
+
 func TestCascadeDeleteAccount_NotFound(t *testing.T) {
 	cfg := newTestConfig()
-	if _, _, err := cfg.CascadeDeleteAccount("nope"); err == nil {
+	if _, err := cfg.CascadeDeleteAccount("nope"); err == nil {
 		t.Error("expected error for unknown account")
 	}
 }
@@ -489,16 +571,30 @@ func TestAccountDeletionImpact(t *testing.T) {
 	if err := cfg.AddMirror("m1", Mirror{AccountSrc: "github-test", AccountDst: "gitea-extra"}); err != nil {
 		t.Fatalf("AddMirror: %v", err)
 	}
+	if err := cfg.AddWorkspace("ws1", Workspace{
+		Type: WorkspaceTypeCode,
+		Members: []WorkspaceMember{
+			{Source: "github-test", Repo: "testuser/repo-a"},
+		},
+	}); err != nil {
+		t.Fatalf("AddWorkspace: %v", err)
+	}
 
-	srcs, mirrors, repos := cfg.AccountDeletionImpact("github-test")
-	if len(srcs) != 1 || srcs[0] != "github-test" {
-		t.Errorf("sources = %v", srcs)
+	r := cfg.AccountDeletionImpact("github-test")
+	if len(r.Sources) != 1 || r.Sources[0] != "github-test" {
+		t.Errorf("sources = %v", r.Sources)
 	}
-	if len(mirrors) != 1 || mirrors[0] != "m1" {
-		t.Errorf("mirrors = %v", mirrors)
+	if len(r.Mirrors) != 1 || r.Mirrors[0] != "m1" {
+		t.Errorf("mirrors = %v", r.Mirrors)
 	}
-	if repos != 1 {
-		t.Errorf("repoCount = %d, want 1", repos)
+	if len(r.Workspaces) != 1 || r.Workspaces[0] != "ws1" {
+		t.Errorf("workspaces = %v", r.Workspaces)
+	}
+	if r.WorkspaceMembers != 1 {
+		t.Errorf("WorkspaceMembers = %d, want 1", r.WorkspaceMembers)
+	}
+	if r.RepoCount != 1 {
+		t.Errorf("repoCount = %d, want 1", r.RepoCount)
 	}
 	// Impact must not mutate.
 	if _, ok := cfg.Accounts["github-test"]; !ok {
@@ -506,6 +602,9 @@ func TestAccountDeletionImpact(t *testing.T) {
 	}
 	if _, ok := cfg.Mirrors["m1"]; !ok {
 		t.Error("impact mutated mirrors map")
+	}
+	if w, ok := cfg.Workspaces["ws1"]; !ok || len(w.Members) != 1 {
+		t.Error("impact mutated workspace members")
 	}
 }
 

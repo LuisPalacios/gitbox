@@ -149,6 +149,60 @@
   let onboardFolder = '~/00.git';
   let onboardError = '';
 
+  // ── Config-load-error modal (issue #60, smoke-test feedback) ──
+  // Rendered when Startup detected a config file that existed but failed to
+  // parse. Three-way choice — Repair, Start fresh, Exit — via an in-app
+  // Svelte modal so macOS WebKit can't auto-dismiss it like window.confirm.
+  let cfgLoadErrorModal = false;
+  let cfgLoadErrorMsg = '';
+  let cfgLoadErrorBusy = false;
+  let cfgRepairDetails: string[] = [];
+  let cfgRepairFailure = '';
+
+  async function cfgDoRepair() {
+    cfgLoadErrorBusy = true;
+    cfgRepairFailure = '';
+    try {
+      const res = await bridge.repairConfig();
+      if (!res.success) {
+        cfgRepairFailure = res.error || 'unknown error';
+        return;
+      }
+      cfgRepairDetails = res.repairs || [];
+      cfgLoadErrorModal = false;
+      cfgLoadErrorMsg = '';
+      // Resume the normal boot sequence.
+      firstRun = await bridge.isFirstRun();
+      if (firstRun) return;
+      await initDashboard();
+    } catch (err: any) {
+      cfgRepairFailure = err?.message || String(err);
+    } finally {
+      cfgLoadErrorBusy = false;
+    }
+  }
+
+  async function cfgStartFresh() {
+    // Acknowledge the corruption so SetGlobalFolder no longer refuses the
+    // first save. The dated backup in ~/.config/gitbox/ preserves the
+    // pre-overwrite copy, so the user can recover manually if needed.
+    cfgLoadErrorBusy = true;
+    try {
+      await bridge.acknowledgeConfigError();
+    } finally {
+      cfgLoadErrorBusy = false;
+    }
+    cfgLoadErrorModal = false;
+    cfgLoadErrorMsg = '';
+    cfgRepairFailure = '';
+    // Flip to onboarding.
+    firstRun = true;
+  }
+
+  function cfgExit() {
+    Quit();
+  }
+
   async function browseFolder(target: 'onboard' | 'settings') {
     const dir = await bridge.pickFolder('Choose root folder');
     if (dir) {
@@ -1027,8 +1081,16 @@
   let deleteAcctInput = '';
   let deleteAcctError = '';
   // Cascade impact from the backend — populated on modal open so the warning
-  // step lists every mirror that will be dropped along with the account.
-  let deleteAcctImpact: { sources: string[]; mirrors: string[]; repoCount: number; cloneCount: number } | null = null;
+  // step lists every mirror and workspace-member that will be pruned along
+  // with the account. Workspace entries themselves survive even if emptied.
+  let deleteAcctImpact: {
+    sources: string[];
+    mirrors: string[];
+    workspaces: string[];
+    workspaceMembers: number;
+    repoCount: number;
+    cloneCount: number;
+  } | null = null;
 
   async function askDeleteAccount(accountKey: string) {
     deleteAcctConfirm = accountKey;
@@ -1041,6 +1103,8 @@
       deleteAcctImpact = {
         sources: dto.sources || [],
         mirrors: dto.mirrors || [],
+        workspaces: dto.workspaces || [],
+        workspaceMembers: dto.workspace_members || 0,
         repoCount: dto.repo_count || 0,
         cloneCount: dto.clone_count || 0,
       };
@@ -1921,54 +1985,16 @@
     });
 
     // Check if config failed to parse (file exists but is broken/unsupported).
-    // Offer Repair as the default — drops dangling references (issue #60) and
-    // keeps the rest of the config intact. Only fall back to "start fresh"
-    // if repair can't handle it and the user explicitly opts in.
+    // Render an in-app modal rather than window.confirm — macOS WebKit has
+    // been observed to auto-dismiss confirm() without showing a dialog,
+    // which caused GitboxApp to "flash and exit" on mac with a malformed
+    // config. The modal stays mounted until the user clicks a button.
     const loadError = await bridge.getConfigLoadError();
     if (loadError) {
-      const tryRepair = confirm(
-        `Config file could not be loaded:\n\n${loadError}\n\nAttempt automatic repair?\n\n` +
-          `Repair drops dangling references (e.g. a mirror that points to a deleted account) ` +
-          `and keeps accounts, sources, credentials, workspaces and window state intact. ` +
-          `The current file is backed up to ~/.config/gitbox/ before the repair is written.\n\n` +
-          `Click OK to repair, or Cancel for other recovery options.`
-      );
-      if (tryRepair) {
-        try {
-          const res = await bridge.repairConfig();
-          if (!res.success) {
-            const msg = res.error || 'unknown error';
-            const fresh = confirm(
-              `Repair failed:\n\n${msg}\n\nStart fresh with a new configuration? ` +
-                `(Your current file will be overwritten — the dated backup is preserved.)\n\n` +
-                `Click OK to start fresh, or Cancel to exit and fix the file manually.`
-            );
-            if (!fresh) {
-              Quit();
-              return;
-            }
-          }
-          // Repair succeeded — onboarding is unnecessary; the repaired config
-          // is live in memory and on disk. Continue to dashboard below.
-        } catch (err: any) {
-          reloadError = `Repair threw an exception: ${err?.message || String(err)}`;
-          const fresh = confirm(`Repair crashed:\n\n${reloadError}\n\nStart fresh?`);
-          if (!fresh) {
-            Quit();
-            return;
-          }
-        }
-      } else {
-        const fresh = confirm(
-          `Start fresh with a new configuration?\n\n` +
-            `Click OK to reinitialize (current file will be overwritten — ` +
-            `the dated backup in ~/.config/gitbox/ is preserved), or Cancel to exit.`
-        );
-        if (!fresh) {
-          Quit();
-          return;
-        }
-      }
+      cfgLoadErrorMsg = loadError;
+      cfgLoadErrorModal = true;
+      return; // onMount stops here; dashboard init resumes after the user
+              // picks Repair / Start fresh / Exit.
     }
 
     // Check first run — show onboarding if no folder configured.
@@ -2055,6 +2081,36 @@
 {:else}
 
 <div class="app">
+
+  {#if cfgLoadErrorModal}
+    <div class="overlay cfg-error-overlay" transition:fade={{ duration: 120 }}>
+      <div class="modal modal-delete cfg-error-modal" transition:slide={{ duration: 180 }}>
+        <div class="modal-head modal-head-delete">
+          <h3>Config file could not be loaded</h3>
+        </div>
+        <div class="modal-body">
+          <p>The on-disk config failed to parse or validate:</p>
+          <pre class="cfg-error-detail">{cfgLoadErrorMsg}</pre>
+          <p style="margin-top: 10px;">Choose one:</p>
+          <ul style="margin: 4px 0 0 18px;">
+            <li><strong>Repair</strong> — drop dangling references (mirrors or workspace members pointing at deleted accounts) and keep everything else. A dated backup is written first.</li>
+            <li><strong>Start fresh</strong> — keep the current file as a backup and walk through onboarding. The first save overwrites the broken file.</li>
+            <li><strong>Exit</strong> — close GitboxApp so you can fix the file manually. Your configs are preserved untouched.</li>
+          </ul>
+          {#if cfgRepairFailure}
+            <p class="delete-danger" style="margin-top: 8px;">Repair failed: {cfgRepairFailure}. Try Start fresh or Exit.</p>
+          {/if}
+        </div>
+        <div class="modal-foot">
+          <button class="btn-cancel" on:click={cfgExit} disabled={cfgLoadErrorBusy}>Exit</button>
+          <button class="btn-delete" on:click={cfgStartFresh} disabled={cfgLoadErrorBusy}>Start fresh</button>
+          <button class="btn-add" on:click={cfgDoRepair} disabled={cfgLoadErrorBusy}>
+            {cfgLoadErrorBusy ? 'Repairing...' : 'Repair (recommended)'}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
 
   {#if reloadError}
     <div class="reload-error-banner" role="alert">
@@ -3523,6 +3579,16 @@
                 <ul style="margin: 4px 0 0 18px;">
                   {#each deleteAcctImpact.mirrors as m}
                     <li><code>{m}</code></li>
+                  {/each}
+                </ul>
+              {/if}
+              {#if deleteAcctImpact.workspaces.length > 0}
+                <p class="delete-warning" style="margin-top: 8px;">
+                  {deleteAcctImpact.workspaceMembers} workspace member{deleteAcctImpact.workspaceMembers !== 1 ? 's' : ''} will be pruned from the following workspace{deleteAcctImpact.workspaces.length !== 1 ? 's' : ''} (the workspace entry and its on-disk file are kept):
+                </p>
+                <ul style="margin: 4px 0 0 18px;">
+                  {#each deleteAcctImpact.workspaces as w}
+                    <li><code>{w}</code></li>
                   {/each}
                 </ul>
               {/if}
@@ -5088,4 +5154,20 @@
     padding: 0 4px;
   }
   .reload-error-dismiss:hover { color: #fff; }
+
+  .cfg-error-overlay { z-index: 9999; }
+  .cfg-error-modal { max-width: 640px; }
+  .cfg-error-detail {
+    background: var(--muted, #1a1a1a);
+    border: 1px solid var(--border, #333);
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin: 8px 0;
+    font-size: 11.5px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 160px;
+    overflow: auto;
+  }
 </style>

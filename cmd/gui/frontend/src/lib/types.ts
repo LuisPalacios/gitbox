@@ -232,6 +232,8 @@ export interface AccountDeletionImpactDTO {
   account: string;
   sources: string[];
   mirrors: string[];
+  workspaces: string[];
+  workspace_members: number;
   repo_count: number;
   clone_count: number;
 }

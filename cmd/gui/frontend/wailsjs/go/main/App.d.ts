@@ -5,6 +5,8 @@ import {identity} from '../models';
 
 export function AccountDeletionImpact(arg1:string):Promise<main.AccountDeletionImpactDTO>;
 
+export function AcknowledgeConfigError():Promise<void>;
+
 export function AddAccount(arg1:main.AddAccountRequest):Promise<void>;
 
 export function AddDiscoveredRepos(arg1:string,arg2:Array<string>):Promise<void>;
