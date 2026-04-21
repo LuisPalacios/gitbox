@@ -2281,12 +2281,8 @@
                 <div class="progress-fill" style="width:{state.progress}%; background:{sc(state.status)}"></div>
               </div>
               <span class="progress-pct" style="color:{sc(state.status)}">{state.progress}%</span>
-            {:else if state.status === 'unknown'}
-              <!-- First scan hasn't completed yet — render no status text,
-                   no pull/PR badges, no sync icon, no kebab. The row stays
-                   visually empty on the right rather than lying with an
-                   "Error" / red ✕ until the scan resolves. -->
             {:else}
+              {#if state.status !== 'unknown'}
               {#if !deleteMode && $prSettings.enabled}
                 {@const prSummary = lookupPRSummary($prsByAccount, accountKey, repoName)}
                 {@const acctForPRs = $accounts[accountKey]}
@@ -2355,8 +2351,9 @@
               {:else if state.status === 'not cloned'}
                 <button class="btn-action" on:click|stopPropagation={() => cloneRepo(sourceKey, repoName)}>Bring Local</button>
               {/if}
+              {/if}
               {#if !deleteMode && state.status !== 'not cloned'}
-                <button class="btn-fetch" class:spinning={fetchingRepos[repoKey]} on:click|stopPropagation={() => fetchRepo(sourceKey, repoName)} title="Fetch origin" disabled={!!fetchingRepos[repoKey]}>&#8635;</button>
+                <button class="btn-fetch" class:spinning={fetchingRepos[repoKey] || state.status === 'unknown'} on:click|stopPropagation={() => fetchRepo(sourceKey, repoName)} title="Fetch origin" disabled={!!fetchingRepos[repoKey]}>&#8635;</button>
                 <div class="action-menu-container">
                   <button class="btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title="Actions">&#8942;</button>
                   {#if actionMenuRepo === repoKey}
