@@ -406,6 +406,24 @@ export namespace main {
 	        this.error = source["error"];
 	    }
 	}
+	export class ConfigBackupInfo {
+	    path: string;
+	    filename: string;
+	    timestamp: string;
+	    size_bytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConfigBackupInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.filename = source["filename"];
+	        this.timestamp = source["timestamp"];
+	        this.size_bytes = source["size_bytes"];
+	    }
+	}
 	export class WorkspaceMemberDTO {
 	    source: string;
 	    repo: string;

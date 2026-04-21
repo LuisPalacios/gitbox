@@ -244,6 +244,13 @@ export interface ConfigRepairResult {
   repairs?: string[];
 }
 
+export interface ConfigBackupInfo {
+  path: string;
+  filename: string;
+  timestamp: string;
+  size_bytes: number;
+}
+
 export interface EditorInfo {
   id: string;
   name: string;

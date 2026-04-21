@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 
@@ -2076,7 +2077,10 @@ type ConfigRepairResult struct {
 
 // RepairConfig runs LoadWithRepair against the on-disk config, adopts the
 // repaired copy into the live App state, and saves it back. Intended as the
-// user-confirmed "Repair" action when Startup detected cfgLoadError.
+// user-confirmed "Auto-repair" action when Startup detected cfgLoadError —
+// drops dangling references and keeps the rest of the file intact. Use
+// RestoreFromBackup instead when the file is unrecoverable and a pre-
+// corruption backup is available.
 //
 // The normal Save() backup sweep covers the pre-repair file, so users who
 // regret the repair can roll back manually from ~/.config/gitbox/gitbox-*.json.
@@ -2101,6 +2105,104 @@ func (a *App) RepairConfig() ConfigRepairResult {
 		details = append(details, r.Detail)
 	}
 	return ConfigRepairResult{Success: true, Repairs: details}
+}
+
+// ConfigBackupInfo describes one dated backup beside the active gitbox.json.
+// Timestamp is RFC3339 parsed from the filename (empty if the filename
+// doesn't match the Save() naming pattern).
+type ConfigBackupInfo struct {
+	Path      string `json:"path"`
+	Filename  string `json:"filename"`
+	Timestamp string `json:"timestamp"`
+	SizeBytes int64  `json:"size_bytes"`
+}
+
+// ListConfigBackups returns the dated backup files beside gitbox.json,
+// newest first. Matches files of the form gitbox-YYYYMMDD-HHMMSS.json
+// (the naming pattern produced by Save). Safe to call while the config
+// is unloaded — reads only filesystem state.
+func (a *App) ListConfigBackups() []ConfigBackupInfo {
+	a.mu.Lock()
+	cfgPath := a.cfgPath
+	a.mu.Unlock()
+
+	dir := filepath.Dir(cfgPath)
+	base := strings.TrimSuffix(filepath.Base(cfgPath), ".json")
+	pattern := filepath.Join(dir, base+"-????????-??????.json")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return []ConfigBackupInfo{}
+	}
+	// Filenames embed YYYYMMDD-HHMMSS so lexicographic order == chronological.
+	sort.Sort(sort.Reverse(sort.StringSlice(matches)))
+
+	infos := make([]ConfigBackupInfo, 0, len(matches))
+	for _, p := range matches {
+		fi, err := os.Stat(p)
+		if err != nil || fi.IsDir() {
+			continue
+		}
+		fn := filepath.Base(p)
+		ts := ""
+		mid := strings.TrimPrefix(fn, base+"-")
+		mid = strings.TrimSuffix(mid, ".json")
+		if t, perr := time.Parse("20060102-150405", mid); perr == nil {
+			ts = t.Format(time.RFC3339)
+		}
+		infos = append(infos, ConfigBackupInfo{
+			Path:      p,
+			Filename:  fn,
+			Timestamp: ts,
+			SizeBytes: fi.Size(),
+		})
+	}
+	return infos
+}
+
+// RestoreFromBackup replaces the active gitbox.json with the selected
+// backup. Validates the backup loads cleanly first so we never overwrite
+// with another broken file. The current (broken) file is snapshot-backed
+// up by config.Save's backupBeforeSave pass, so the user can still roll
+// back a wrong restore manually.
+//
+// The backup path must live in the same directory as gitbox.json; any
+// other path is rejected to prevent a rogue frontend from pointing at an
+// arbitrary file.
+func (a *App) RestoreFromBackup(backupPath string) ConfigRepairResult {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	cfgDir := filepath.Dir(a.cfgPath)
+	absBackup, err := filepath.Abs(backupPath)
+	if err != nil {
+		return ConfigRepairResult{Success: false, Error: fmt.Sprintf("resolving backup path: %v", err)}
+	}
+	if filepath.Dir(absBackup) != cfgDir {
+		return ConfigRepairResult{Success: false, Error: fmt.Sprintf("backup must live under %s", cfgDir)}
+	}
+	if absBackup == a.cfgPath {
+		return ConfigRepairResult{Success: false, Error: "cannot restore the active config onto itself"}
+	}
+
+	// Strict-validate the backup. Refuse to adopt another broken file.
+	cfg, err := config.Load(absBackup)
+	if err != nil {
+		return ConfigRepairResult{Success: false, Error: fmt.Sprintf("backup %s is also invalid: %v", filepath.Base(absBackup), err)}
+	}
+
+	// Adopt + save. config.Save's internal backupBeforeSave() snapshots
+	// the current (broken) gitbox.json to gitbox-<now>.json before the
+	// overwrite.
+	a.cfg = cfg
+	a.cfgLoaded = true
+	a.cfgLoadError = ""
+	if err := config.Save(a.cfg, a.cfgPath); err != nil {
+		return ConfigRepairResult{Success: false, Error: fmt.Sprintf("saving restored config: %v", err)}
+	}
+	return ConfigRepairResult{
+		Success: true,
+		Repairs: []string{fmt.Sprintf("Restored from %s", filepath.Base(absBackup))},
+	}
 }
 
 // PickFolder opens the native OS directory picker and returns the selected path.

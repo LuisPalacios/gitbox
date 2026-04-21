@@ -242,6 +242,10 @@ export function ListAccountOrgs(arg1) {
   return window['go']['main']['App']['ListAccountOrgs'](arg1);
 }
 
+export function ListConfigBackups() {
+  return window['go']['main']['App']['ListConfigBackups']();
+}
+
 export function ListRemoteRepos(arg1) {
   return window['go']['main']['App']['ListRemoteRepos'](arg1);
 }
@@ -336,6 +340,10 @@ export function RenameAccount(arg1, arg2) {
 
 export function RepairConfig() {
   return window['go']['main']['App']['RepairConfig']();
+}
+
+export function RestoreFromBackup(arg1) {
+  return window['go']['main']['App']['RestoreFromBackup'](arg1);
 }
 
 export function SetAutostart(arg1) {

@@ -123,6 +123,8 @@ export function IsTestMode():Promise<boolean>;
 
 export function ListAccountOrgs(arg1:string):Promise<Array<string>>;
 
+export function ListConfigBackups():Promise<Array<main.ConfigBackupInfo>>;
+
 export function ListRemoteRepos(arg1:string):Promise<Array<main.DiscoverResult>>;
 
 export function ListWorkspaces():Promise<main.WorkspaceListResult>;
@@ -170,6 +172,8 @@ export function RemoveWorkspaceMember(arg1:string,arg2:string,arg3:string):Promi
 export function RenameAccount(arg1:string,arg2:string):Promise<void>;
 
 export function RepairConfig():Promise<main.ConfigRepairResult>;
+
+export function RestoreFromBackup(arg1:string):Promise<main.ConfigRepairResult>;
 
 export function SetAutostart(arg1:boolean):Promise<void>;
 
