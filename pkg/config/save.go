@@ -11,12 +11,15 @@ import (
 	"time"
 )
 
-// maxBackups is the number of dated backup files to keep.
-const maxBackups = 5
+// maxBackups is the number of dated backup files to keep. A rolling 10-slot
+// window strikes a balance between recovery headroom (so the last few saves
+// before a corruption are still on disk even after several "noisy" launches
+// that each take a new snapshot) and leaving the config directory tidy.
+const maxBackups = 10
 
 // Save writes the configuration to the given file path as indented JSON.
 // It creates the parent directory if it doesn't exist.
-// Before overwriting, it creates a dated backup (best-effort, rolling last 5 days).
+// Before overwriting, it creates a dated backup (best-effort, rolling last 10 saves).
 func Save(cfg *Config, path string) error {
 	if err := EnsureDir(path); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
