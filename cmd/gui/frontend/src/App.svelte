@@ -121,6 +121,22 @@
   // ── Global identity warning ──
   let globalIdentityWarn: { hasName: boolean; hasEmail: boolean; name: string; email: string } | null = null;
 
+  // ── Global GCM credential-helper warning ──
+  // Surfaces when a GCM account exists but ~/.gitconfig has no (or wrong)
+  // global `credential.helper` / `credential.credentialStore`. Without those,
+  // GCM fills fall through to a TTY prompt and fail with the cryptic
+  // "Device not configured" error inside the GUI.
+  type GCMWarn = {
+    hasHelper: boolean;
+    helperValue: string;
+    expectedHelper: string;
+    hasCredentialStore: boolean;
+    credentialStoreValue: string;
+    expectedCredentialStore: string;
+  };
+  let globalGCMWarn: GCMWarn | null = null;
+  let globalGCMFixing = false;
+
   // ── Update state ──
   let updateInfo: { available: boolean; current: string; latest: string; url: string } | null = null;
   let updateApplying = false;
@@ -141,6 +157,28 @@
       globalIdentityWarn = null;
     } catch (e: any) {
       console.error('Failed to remove global identity:', e);
+    }
+  }
+
+  async function checkGlobalGCM() {
+    try {
+      const needed = await bridge.isGlobalGCMConfigNeeded();
+      if (!needed) { globalGCMWarn = null; return; }
+      const s = await bridge.checkGlobalGCMConfig();
+      globalGCMWarn = s.needsFix ? s as GCMWarn : null;
+    } catch { globalGCMWarn = null; }
+  }
+
+  async function fixGlobalGCM() {
+    if (globalGCMFixing) return;
+    globalGCMFixing = true;
+    try {
+      await bridge.fixGlobalGCMConfig();
+      globalGCMWarn = null;
+    } catch (e: any) {
+      console.error('Failed to fix global GCM config:', e);
+    } finally {
+      globalGCMFixing = false;
     }
   }
 
@@ -1840,6 +1878,12 @@
     // Check for global ~/.gitconfig identity (warns user if set).
     checkGlobalIdentity();
 
+    // Check that ~/.gitconfig has the GCM credential.helper set globally
+    // when at least one account uses GCM. Without this, GCM setup fails
+    // with "Device not configured" on hosts that don't have a per-host
+    // helper override.
+    checkGlobalGCM();
+
     // Load autostart state.
     loadAutostart();
 
@@ -2401,6 +2445,32 @@
     </span>
     <button class="identity-warn-fix" on:click={fixGlobalIdentity}>Remove</button>
     <button class="identity-warn-dismiss" on:click={() => globalIdentityWarn = null}>&#10005;</button>
+  </div>
+  {/if}
+
+  <!-- ── GLOBAL GCM CREDENTIAL-HELPER WARNING ── -->
+  {#if globalGCMWarn}
+  <div class="identity-warn">
+    <span class="identity-warn-icon">&#9888;</span>
+    <span class="identity-warn-text">
+      Global <code>~/.gitconfig</code> is missing GCM settings &mdash;
+      {#if !globalGCMWarn.hasHelper}
+        <code>credential.helper</code> is not set
+      {:else if globalGCMWarn.helperValue !== globalGCMWarn.expectedHelper}
+        <code>credential.helper</code> is <code>{globalGCMWarn.helperValue}</code>, expected <code>{globalGCMWarn.expectedHelper}</code>
+      {/if}
+      {#if (!globalGCMWarn.hasHelper || globalGCMWarn.helperValue !== globalGCMWarn.expectedHelper) && (!globalGCMWarn.hasCredentialStore || globalGCMWarn.credentialStoreValue !== globalGCMWarn.expectedCredentialStore)}
+        and
+      {/if}
+      {#if !globalGCMWarn.hasCredentialStore}
+        <code>credential.credentialStore</code> is not set
+      {:else if globalGCMWarn.credentialStoreValue !== globalGCMWarn.expectedCredentialStore}
+        <code>credential.credentialStore</code> is <code>{globalGCMWarn.credentialStoreValue}</code>, expected <code>{globalGCMWarn.expectedCredentialStore}</code>
+      {/if}
+      &mdash; GCM setup will fail with "Device not configured" until this is fixed.
+    </span>
+    <button class="identity-warn-fix" on:click={fixGlobalGCM} disabled={globalGCMFixing}>{globalGCMFixing ? 'Fixing…' : 'Configure'}</button>
+    <button class="identity-warn-dismiss" on:click={() => globalGCMWarn = null}>&#10005;</button>
   </div>
   {/if}
 

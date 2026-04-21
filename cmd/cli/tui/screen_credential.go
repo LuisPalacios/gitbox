@@ -171,8 +171,14 @@ func gcmSetupCmd(cfg *config.Config, cfgPath string, credMgr *credential.StatusM
 		acct := cfg.Accounts[accountKey]
 		host := hostnameFromURL(acct.URL)
 
-		// Ensure global git config has GCM helper/store settings.
-		credential.EnsureGlobalGCMConfig(cfg.Global)
+		// Ensure global git config has GCM helper/store settings. Fix also
+		// backfills OS defaults into gitbox.json when the config predates
+		// onboarding's platform defaults — belt-and-braces so GCM setup
+		// never fails with "Device not configured" because no helper was
+		// registered globally.
+		if err := credential.FixGlobalGCMConfig(cfg, cfgPath); err != nil {
+			return credSetupDoneMsg{accountKey: accountKey, err: fmt.Errorf("repairing global gitconfig: %w", err)}
+		}
 
 		// Check if GCM already has a stored credential.
 		_, _, err := credential.ResolveGCMToken(acct.URL, acct.Username)

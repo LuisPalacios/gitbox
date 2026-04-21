@@ -5,6 +5,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/cmd/cli/tui/styles"
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -54,17 +55,10 @@ func (m onboardingModel) Update(msg tea.Msg) (onboardingModel, tea.Cmd) {
 			}
 			m.cfg.Global.Folder = folder
 
-			// Detect platform credential store.
-			credStore := "secretservice"
-			if strings.Contains(strings.ToLower(config.ExpandTilde("~")), "windows") ||
-				strings.Contains(strings.ToLower(config.ExpandTilde("~")), "users") {
-				credStore = "wincredman"
-			}
-
 			m.cfg.Global.CredentialSSH = &config.SSHGlobal{SSHFolder: "~/.ssh"}
 			m.cfg.Global.CredentialGCM = &config.GCMGlobal{
-				Helper:          "manager",
-				CredentialStore: credStore,
+				Helper:          credential.DefaultCredentialHelper(),
+				CredentialStore: credential.DefaultCredentialStore(),
 			}
 			m.cfg.Global.CredentialToken = &config.TokenGlobal{}
 

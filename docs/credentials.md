@@ -59,6 +59,17 @@ GCM handles everything through a single login. One credential is stored by GCM i
 
 **Storage:** GCM manages its own credential storage (OS keyring). gitbox extracts the OAuth token via `git credential fill` for API calls.
 
+### Global gitconfig requirements
+
+GCM dispatches per-host through the global `credential.helper` key in `~/.gitconfig`. Without a top-level `credential.helper = manager` and `credential.credentialStore = <keychain|wincredman|secretservice>`, `git credential fill` falls through to a TTY prompt — and in a GUI process that surfaces as the cryptic `fatal: could not read Password ... Device not configured` (errno ENXIO on `/dev/tty`).
+
+gitbox detects this at startup whenever at least one account uses GCM. When the global `~/.gitconfig` is missing or wrong, a second orange warning banner appears in the GUI (and a second section on the TUI "Global Gitconfig" screen) with a **Configure** button that:
+
+1. Writes `credential.helper = manager` + `credential.credentialStore = <os default>` to `~/.gitconfig`.
+2. Backfills the same OS defaults into `gitbox.json` so the check stays green even if `~/.gitconfig` is edited later.
+
+The OS defaults come from `pkg/credential.DefaultCredentialHelper()` and `pkg/credential.DefaultCredentialStore()`. Per-host overrides elsewhere in `~/.gitconfig` (for example `[credential "https://github.com"]` pinning `gh auth git-credential`) still take precedence over the global helper, so fixing the global entry is always safe.
+
 ### Browser detection
 
 When you set up GCM credentials, gitbox needs to open a browser for OAuth authentication (GitHub, GitLab). Whether a browser can open depends on your environment:

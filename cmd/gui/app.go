@@ -2913,6 +2913,35 @@ func (a *App) RemoveGlobalIdentity() error {
 	return identity.RemoveGlobalIdentity()
 }
 
+// IsGlobalGCMConfigNeeded reports whether the "Global gitconfig" warning
+// should be evaluated at all — true when at least one account uses GCM.
+// Frontends gate the banner render on this so pure SSH/token users never
+// see it.
+func (a *App) IsGlobalGCMConfigNeeded() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return credential.IsGlobalGCMConfigNeeded(a.cfg)
+}
+
+// CheckGlobalGCMConfig returns the current state of ~/.gitconfig vs. what
+// gitbox expects for GCM-backed fills (credential.helper,
+// credential.credentialStore). The frontend surfaces a yellow warning
+// banner whenever NeedsFix is true AND IsGlobalGCMConfigNeeded() is true.
+func (a *App) CheckGlobalGCMConfig() credential.GlobalGCMConfigStatus {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return credential.CheckGlobalGCMConfig(a.cfg)
+}
+
+// FixGlobalGCMConfig writes the expected credential.helper and
+// credential.credentialStore to ~/.gitconfig and backfills OS defaults
+// into gitbox.json when the persisted config predates them.
+func (a *App) FixGlobalGCMConfig() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return credential.FixGlobalGCMConfig(a.cfg, a.cfgPath)
+}
+
 // ─── Autostart ───────────────────────────────────────────────
 
 // GetAutostart returns whether the app is set to run at OS login.
@@ -2949,9 +2978,15 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 
 	// Ensure global git config has the GCM credential sections BEFORE
 	// any fill/approve — git needs to know the credential helper to store it.
+	// FixGlobalGCMConfig also backfills OS defaults into gitbox.json when the
+	// config predates onboarding — belt-and-braces for users who dismissed
+	// the top-level "Global gitconfig needs fixing" banner.
 	a.mu.Lock()
-	credential.EnsureGlobalGCMConfig(a.cfg.Global)
+	fixErr := credential.FixGlobalGCMConfig(a.cfg, a.cfgPath)
 	a.mu.Unlock()
+	if fixErr != nil {
+		return CredentialSetupResult{OK: false, Message: fmt.Sprintf("Failed to repair global gitconfig: %v", fixErr)}
+	}
 
 	host := hostnameFromURL(acct.URL)
 

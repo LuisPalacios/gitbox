@@ -278,6 +278,35 @@ export namespace config {
 
 }
 
+export namespace credential {
+	
+	export class GlobalGCMConfigStatus {
+	    hasHelper: boolean;
+	    helperValue: string;
+	    expectedHelper: string;
+	    hasCredentialStore: boolean;
+	    credentialStoreValue: string;
+	    expectedCredentialStore: string;
+	    needsFix: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new GlobalGCMConfigStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hasHelper = source["hasHelper"];
+	        this.helperValue = source["helperValue"];
+	        this.expectedHelper = source["expectedHelper"];
+	        this.hasCredentialStore = source["hasCredentialStore"];
+	        this.credentialStoreValue = source["credentialStoreValue"];
+	        this.expectedCredentialStore = source["expectedCredentialStore"];
+	        this.needsFix = source["needsFix"];
+	    }
+	}
+
+}
+
 export namespace git {
 	
 	export class FileChange {

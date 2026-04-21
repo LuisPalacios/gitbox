@@ -98,7 +98,11 @@ func runCredentialAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Ensure global .gitconfig has credential sections for all GCM accounts.
-	credential.EnsureGlobalGCMConfig(cfg.Global)
+	// FixGlobalGCMConfig also backfills OS defaults into gitbox.json when the
+	// user's config predates onboarding's platform defaults.
+	if err := credential.FixGlobalGCMConfig(cfg, configFilePath()); err != nil {
+		return fmt.Errorf("repairing global gitconfig: %w", err)
+	}
 
 	switch credType {
 	case "token":
