@@ -674,7 +674,13 @@
   // Re-read config from disk and refresh all repo statuses. Throws on
   // failure; callers catch and populate reloadError so the UI does not
   // silently swallow integrity issues.
+  //
+  // No-op while the config-load-error modal is up — the on-disk file is
+  // known-broken and reloading it would just re-surface the same error
+  // as a banner on top of the modal. The user's choice (Repair / Start
+  // fresh / Exit) is what drives recovery, not ambient focus events.
   async function reloadFromDisk() {
+    if (cfgLoadErrorModal) return;
     try {
       const cfg = await bridge.reloadConfig();
       configStore.set(cfg);
@@ -1992,6 +1998,12 @@
     const loadError = await bridge.getConfigLoadError();
     if (loadError) {
       cfgLoadErrorMsg = loadError;
+      // Populate configPath so the modal can show WHICH file is broken.
+      // initDashboard would usually set this, but we short-circuit to the
+      // modal without running it.
+      try {
+        configPath = await bridge.getConfigPath();
+      } catch { /* fall back to the template's default placeholder */ }
       cfgLoadErrorModal = true;
       return; // onMount stops here; dashboard init resumes after the user
               // picks Repair / Start fresh / Exit.
@@ -2032,8 +2044,48 @@
 <!--  TEMPLATE                                                   -->
 <!-- ════════════════════════════════════════════════════════════ -->
 
+<!-- ── CONFIG LOAD ERROR ── -->
+{#if cfgLoadErrorModal}
+<div class="cfg-error-screen">
+  <div class="cfg-error-card">
+    <h2 class="cfg-error-title">Config file could not be loaded</h2>
+    <p class="cfg-error-path">{configPath || '~/.config/gitbox/gitbox.json'}</p>
+    <pre class="cfg-error-detail">{cfgLoadErrorMsg}</pre>
+
+    {#if cfgRepairFailure}
+      <div class="cfg-error-failure" role="alert">
+        <strong>Repair failed:</strong> {cfgRepairFailure}
+        <div class="cfg-error-failure-hint">Try Start fresh or Exit and fix the file manually.</div>
+      </div>
+    {/if}
+
+    <div class="cfg-error-choices">
+      <div class="cfg-error-choice">
+        <div class="cfg-error-choice-label">Repair</div>
+        <div class="cfg-error-choice-desc">Drops dangling references (mirrors or workspace members pointing at removed accounts) and keeps everything else. A dated backup is written first.</div>
+      </div>
+      <div class="cfg-error-choice">
+        <div class="cfg-error-choice-label">Start fresh</div>
+        <div class="cfg-error-choice-desc">Keep the current file as a dated backup and walk through onboarding. The first save overwrites the broken file.</div>
+      </div>
+      <div class="cfg-error-choice">
+        <div class="cfg-error-choice-label">Exit</div>
+        <div class="cfg-error-choice-desc">Close GitboxApp so you can fix the file manually. Your on-disk config is untouched.</div>
+      </div>
+    </div>
+
+    <div class="cfg-error-actions">
+      <button class="cfg-error-btn cfg-error-btn-ghost" on:click={cfgExit} disabled={cfgLoadErrorBusy}>Exit</button>
+      <button class="cfg-error-btn cfg-error-btn-secondary" on:click={cfgStartFresh} disabled={cfgLoadErrorBusy}>Start fresh</button>
+      <button class="cfg-error-btn cfg-error-btn-primary" on:click={cfgDoRepair} disabled={cfgLoadErrorBusy}>
+        {cfgLoadErrorBusy ? 'Repairing…' : 'Repair (recommended)'}
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ── ONBOARDING ── -->
-{#if firstRun}
+{:else if firstRun}
 <div class="onboarding">
   <div class="onboard-card">
     <svg class="onboard-logo" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
@@ -2081,36 +2133,6 @@
 {:else}
 
 <div class="app">
-
-  {#if cfgLoadErrorModal}
-    <div class="overlay cfg-error-overlay" transition:fade={{ duration: 120 }}>
-      <div class="modal modal-delete cfg-error-modal" transition:slide={{ duration: 180 }}>
-        <div class="modal-head modal-head-delete">
-          <h3>Config file could not be loaded</h3>
-        </div>
-        <div class="modal-body">
-          <p>The on-disk config failed to parse or validate:</p>
-          <pre class="cfg-error-detail">{cfgLoadErrorMsg}</pre>
-          <p style="margin-top: 10px;">Choose one:</p>
-          <ul style="margin: 4px 0 0 18px;">
-            <li><strong>Repair</strong> — drop dangling references (mirrors or workspace members pointing at deleted accounts) and keep everything else. A dated backup is written first.</li>
-            <li><strong>Start fresh</strong> — keep the current file as a backup and walk through onboarding. The first save overwrites the broken file.</li>
-            <li><strong>Exit</strong> — close GitboxApp so you can fix the file manually. Your configs are preserved untouched.</li>
-          </ul>
-          {#if cfgRepairFailure}
-            <p class="delete-danger" style="margin-top: 8px;">Repair failed: {cfgRepairFailure}. Try Start fresh or Exit.</p>
-          {/if}
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={cfgExit} disabled={cfgLoadErrorBusy}>Exit</button>
-          <button class="btn-delete" on:click={cfgStartFresh} disabled={cfgLoadErrorBusy}>Start fresh</button>
-          <button class="btn-add" on:click={cfgDoRepair} disabled={cfgLoadErrorBusy}>
-            {cfgLoadErrorBusy ? 'Repairing...' : 'Repair (recommended)'}
-          </button>
-        </div>
-      </div>
-    </div>
-  {/if}
 
   {#if reloadError}
     <div class="reload-error-banner" role="alert">
@@ -5155,19 +5177,128 @@
   }
   .reload-error-dismiss:hover { color: #fff; }
 
-  .cfg-error-overlay { z-index: 9999; }
-  .cfg-error-modal { max-width: 640px; }
-  .cfg-error-detail {
-    background: var(--muted, #1a1a1a);
-    border: 1px solid var(--border, #333);
-    border-radius: 4px;
-    padding: 8px 10px;
-    margin: 8px 0;
-    font-size: 11.5px;
-    line-height: 1.4;
-    white-space: pre-wrap;
-    word-break: break-all;
-    max-height: 160px;
+  .cfg-error-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg-app, #0e1016);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
     overflow: auto;
+    z-index: 10000;
+  }
+  .cfg-error-card {
+    max-width: 560px;
+    width: 100%;
+    background: var(--bg-card, #181b24);
+    color: var(--text-primary, #e7e9ee);
+    border: 1px solid var(--border, #2a2e3a);
+    border-radius: 12px;
+    padding: 24px 26px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  }
+  .cfg-error-title {
+    margin: 0 0 4px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary, #e7e9ee);
+  }
+  .cfg-error-path {
+    margin: 0 0 12px;
+    font-size: 11.5px;
+    color: var(--text-muted, #8a90a2);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .cfg-error-detail {
+    background: rgba(216, 30, 91, 0.08);
+    border: 1px solid rgba(216, 30, 91, 0.35);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 0 0 14px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 180px;
+    overflow: auto;
+    color: var(--text-primary, #e7e9ee);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .cfg-error-failure {
+    background: rgba(216, 30, 91, 0.18);
+    border: 1px solid #D81E5B;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 0 0 14px;
+    font-size: 12px;
+    color: #fecaca;
+  }
+  .cfg-error-failure-hint {
+    margin-top: 4px;
+    font-size: 11.5px;
+    opacity: 0.85;
+  }
+  .cfg-error-choices {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0 0 18px;
+  }
+  .cfg-error-choice {
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border, #2a2e3a);
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .cfg-error-choice-label {
+    font-weight: 600;
+    color: var(--text-primary, #e7e9ee);
+    margin-bottom: 2px;
+  }
+  .cfg-error-choice-desc {
+    color: var(--text-muted, #8a90a2);
+  }
+  .cfg-error-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .cfg-error-btn {
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s, opacity 0.12s, border-color 0.12s;
+    border: 1px solid transparent;
+  }
+  .cfg-error-btn:disabled { opacity: 0.55; cursor: default; }
+  .cfg-error-btn-ghost {
+    background: transparent;
+    color: var(--text-muted, #8a90a2);
+    border-color: var(--border, #2a2e3a);
+  }
+  .cfg-error-btn-ghost:hover:not(:disabled) {
+    color: var(--text-primary, #e7e9ee);
+    border-color: var(--text-muted, #8a90a2);
+  }
+  .cfg-error-btn-secondary {
+    background: rgba(216, 30, 91, 0.14);
+    color: #fecaca;
+    border-color: rgba(216, 30, 91, 0.6);
+  }
+  .cfg-error-btn-secondary:hover:not(:disabled) {
+    background: rgba(216, 30, 91, 0.24);
+  }
+  .cfg-error-btn-primary {
+    background: var(--accent, #4f8cff);
+    color: #fff;
+    border-color: var(--accent, #4f8cff);
+  }
+  .cfg-error-btn-primary:hover:not(:disabled) {
+    filter: brightness(1.1);
   }
 </style>
