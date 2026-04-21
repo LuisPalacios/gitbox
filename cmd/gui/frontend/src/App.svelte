@@ -2153,17 +2153,13 @@
         <button class="btn-tab-action" title="Scan disk for new workspace files" on:click={async () => { await bridge.discoverWorkspaces(); }}>Discover</button>
       </div>
     {/if}
-  </div>
-
-  {#if cardsTab === 'accounts' && selectionMode && $selectedClones.size > 0}
-    <div class="selection-bar">
-      <span class="selection-count">{$selectedClones.size} clone{$selectedClones.size === 1 ? '' : 's'} selected</span>
-      <div class="selection-actions">
-        <button class="btn-tab-action" on:click={openWorkspaceModalFromSelection}>Create workspace from selected</button>
-        <button class="btn-tab-action" on:click={() => clearCloneSelection()}>Clear</button>
+    {#if cardsTab === 'accounts' && selectionMode && $selectedClones.size > 0}
+      <div class="tab-bar-actions">
+        <button class="btn-tab-action" on:click={openWorkspaceModalFromSelection} title="Create a workspace from the selected clones">+ Workspace</button>
+        <button class="btn-tab-action" on:click={() => clearCloneSelection()} title="Clear selection">Clear</button>
       </div>
-    </div>
-  {/if}
+    {/if}
+  </div>
 
   {#if cardsTab === 'accounts'}
   <!-- ── ACCOUNT CARDS ── -->
@@ -4458,22 +4454,6 @@
     color: var(--text-primary) !important;
     border-color: var(--border-hover) !important;
   }
-
-  /* Floating bar at the top of the accounts tab when clones are selected. */
-  .selection-bar {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 12px;
-    margin: 0 24px 8px;
-    padding: 10px 14px;
-    background: var(--bg-card);
-    border: 1px solid var(--border-hover);
-    border-radius: 8px;
-    position: sticky;
-    top: 0;
-    z-index: 40;
-  }
-  .selection-count { font-size: 12px; color: var(--text-primary); font-weight: 600; }
-  .selection-actions { display: flex; gap: 6px; }
 
   /* Per-row checkbox shown in selection mode. Sized to match the delete-X
      button it visually replaces so the row layout stays stable. */
