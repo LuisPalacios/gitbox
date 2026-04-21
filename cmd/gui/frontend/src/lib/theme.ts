@@ -60,6 +60,9 @@ export function statusSymbol(status: string): string {
     clean: '●', behind: '◗', dirty: '◆', ahead: '▲',
     syncing: '◔', cloning: '◔', fetching: '◔', 'not cloned': '○',
     'no upstream': '~', diverged: '⚠', conflict: '⚡', error: '✕',
+    // 'unknown' = first scan hasn't completed yet. Render no glyph so the
+    // row doesn't lie about state during the startup window.
+    unknown: '',
   };
   return map[status] || '?';
 }

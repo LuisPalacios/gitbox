@@ -1938,7 +1938,7 @@
         <div class="compact-repo-list" transition:slide={{ duration: 120 }}>
           {#each ($sources[key].repoOrder || Object.keys($sources[key].repos)) as repoName}
             {@const repoKey = `${key}/${repoName}`}
-            {@const state = $repoStates[repoKey] || { status: 'error', behind: 0, modified: 0, ahead: 0 }}
+            {@const state = $repoStates[repoKey] || { status: 'unknown', behind: 0, modified: 0, ahead: 0 }}
             <div class="compact-row" class:compact-row-ok={state.status === 'clean'}>
               <span class="compact-dot" style="color: {sc(state.status)}">{statusSymbol(state.status)}</span>
               <span class="compact-repo-name">{repoName.includes('/') ? repoName.split('/').pop() : repoName}</span>
@@ -2237,9 +2237,9 @@
         </div>
         {#each (source.repoOrder && source.repoOrder.length > 0 ? source.repoOrder : Object.keys(source.repos)) as repoName (repoName)}
           {@const repoKey = `${sourceKey}/${repoName}`}
-          {@const state = $repoStates[repoKey] || { status: 'error', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
-          <div class="repo-row" class:repo-row-clickable={state.status !== 'clean' && state.status !== 'behind' && state.status !== 'not cloned' && state.status !== 'cloning' && state.status !== 'syncing'}
-            on:click={() => { if (selectionMode) { toggleCloneSelection(repoKey); } else { toggleRepoDetail(sourceKey, repoName, state.status); } }}>
+          {@const state = $repoStates[repoKey] || { status: 'unknown', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
+          <div class="repo-row" class:repo-row-clickable={state.status !== 'unknown' && state.status !== 'clean' && state.status !== 'behind' && state.status !== 'not cloned' && state.status !== 'cloning' && state.status !== 'syncing'}
+            on:click={() => { if (selectionMode) { toggleCloneSelection(repoKey); } else if (state.status !== 'unknown') { toggleRepoDetail(sourceKey, repoName, state.status); } }}>
             {#if selectionMode}
               <input type="checkbox" class="clone-select-box" checked={$selectedClones.has(repoKey)}
                 on:click|stopPropagation
@@ -2281,6 +2281,11 @@
                 <div class="progress-fill" style="width:{state.progress}%; background:{sc(state.status)}"></div>
               </div>
               <span class="progress-pct" style="color:{sc(state.status)}">{state.progress}%</span>
+            {:else if state.status === 'unknown'}
+              <!-- First scan hasn't completed yet — render no status text,
+                   no pull/PR badges, no sync icon, no kebab. The row stays
+                   visually empty on the right rather than lying with an
+                   "Error" / red ✕ until the scan resolves. -->
             {:else}
               {#if !deleteMode && $prSettings.enabled}
                 {@const prSummary = lookupPRSummary($prsByAccount, accountKey, repoName)}
