@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { fade, slide } from 'svelte/transition';
   import { bridge, events } from './lib/bridge';
+  import type { DoctorReport, DoctorPrecheckDTO } from './lib/bridge';
   import {
     configStore, accounts, sources, mirrors, repoStates, mirrorStates, mirrorSummary,
     summary, accountStats, themeStore, applyStatusResults, applyMirrorStatusResults,
@@ -759,6 +760,7 @@
     sshDiscoveryGuide = '';
     sshDiscoveryScopes = '';
     sshDiscoveryBusy = false;
+    credPrecheck = null;
   }
 
   function resetAddAccount() {
@@ -768,6 +770,21 @@
     addAccountModal = false;
     resetCredState();
     verifyAllCredentials();
+  }
+
+  // Precheck result for the credential type being set up. When non-OK, the
+  // credential step renders a banner with install hints and skips the
+  // automatic setup run — the user sees what's missing before they hit a
+  // cryptic TTY / not-found error at auth time.
+  let credPrecheck: DoctorPrecheckDTO | null = null;
+
+  async function runCredentialPrecheck(credType: string) {
+    credPrecheck = null;
+    try {
+      credPrecheck = await bridge.doctorPrecheck(credType);
+    } catch {
+      credPrecheck = null;
+    }
   }
 
   async function submitAddAccount() {
@@ -781,6 +798,11 @@
       await reloadFromDisk();
       addAccountStep = 'credential';
       credResult = null;
+      await runCredentialPrecheck(addAcct.credentialType);
+      if (credPrecheck && !credPrecheck.ok) {
+        // Don't auto-run setup — let the user install the missing tools first.
+        return;
+      }
       if (addAcct.credentialType === 'gcm' || addAcct.credentialType === 'ssh') {
         runCredSetup(addAcct.key, addAcct.credentialType);
       } else if (addAcct.credentialType === 'token') {
@@ -955,6 +977,14 @@
 
   async function applyCredChange() {
     if (!credChangeModal) return;
+    // Precheck: ensure the tools for the selected credential type are
+    // installed before we remove the old credential. Bails out early with
+    // the banner visible when something is missing, so the user can install
+    // first without losing their existing setup.
+    await runCredentialPrecheck(credChangeType);
+    if (credPrecheck && !credPrecheck.ok) {
+      return;
+    }
     credSetupStarted = true;
     credBusy = true;
     credResult = null;
@@ -1471,6 +1501,26 @@
   let appVersion = '';
   let autostartOn = false;
   let autostartSupported = true;
+
+  // ── Doctor (System check) ──
+  let showDoctorModal = false;
+  let doctorReport: DoctorReport | null = null;
+  let doctorLoading = false;
+  let doctorSummary = '';
+
+  async function openDoctorModal() {
+    showDoctorModal = true;
+    doctorLoading = true;
+    doctorReport = null;
+    try {
+      doctorReport = await bridge.doctorRun();
+      doctorSummary = doctorReport.allOk
+        ? 'All tools present'
+        : `${doctorReport.missingReq} required missing`;
+    } finally {
+      doctorLoading = false;
+    }
+  }
 
   async function loadAutostart() {
     try {
@@ -2173,6 +2223,13 @@
         {/if}
       </div>
       <div class="settings-row">
+        <span class="settings-label">System check</span>
+        <button class="settings-action" on:click={openDoctorModal} title="Probe external tools (git, GCM, ssh, tmux, ...)">Run</button>
+        {#if doctorSummary}
+          <span class="settings-sublabel settings-doctor-summary">{doctorSummary}</span>
+        {/if}
+      </div>
+      <div class="settings-row">
         <span class="settings-label">Version</span>
         <span class="settings-value">{appVersion}</span>
       </div>
@@ -2803,6 +2860,68 @@
     </div>
   {/if}
 
+  <!-- ── DOCTOR (SYSTEM CHECK) MODAL ── -->
+  {#if showDoctorModal}
+    <div class="overlay" on:click={() => showDoctorModal = false} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-doctor" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+        <div class="modal-head">
+          <h3>System check</h3>
+          <button class="btn-x" on:click={() => showDoctorModal = false}>&#10005;</button>
+        </div>
+        <div class="modal-body">
+          {#if doctorLoading}
+            <div class="loading"><div class="spinner"></div><span>Probing tools...</span></div>
+          {:else if doctorReport}
+            <p class="doctor-summary">
+              {#if doctorReport.allOk}
+                <span class="doctor-ok">✓ Everything gitbox needs is installed.</span>
+              {:else}
+                <span class="doctor-err">✕ {doctorReport.missingReq} required tool{doctorReport.missingReq === 1 ? '' : 's'} missing.</span>
+              {/if}
+              {#if doctorReport.missingOpt > 0}
+                <span class="doctor-opt"> {doctorReport.missingOpt} optional tool{doctorReport.missingOpt === 1 ? '' : 's'} not installed.</span>
+              {/if}
+            </p>
+            <div class="doctor-list">
+              {#each doctorReport.tools as t}
+                <div class="doctor-row" class:doctor-row-missing-req={!t.found && t.required}>
+                  <span class="doctor-state"
+                        class:doctor-state-ok={t.found}
+                        class:doctor-state-err={!t.found && t.required}
+                        class:doctor-state-opt={!t.found && !t.required}>
+                    {t.found ? '✓' : (t.required ? '✕' : '·')}
+                  </span>
+                  <div class="doctor-main">
+                    <div class="doctor-head">
+                      <span class="doctor-name">{t.displayName}</span>
+                      {#if t.required}<span class="doctor-tag">required</span>{/if}
+                      {#if t.found && t.version}<span class="doctor-version">{t.version}</span>{/if}
+                    </div>
+                    {#if t.found}
+                      <div class="doctor-path">{t.path}</div>
+                    {:else}
+                      <div class="doctor-purpose">{t.purpose}</div>
+                      {#if t.required && t.requiredFor}
+                        <div class="doctor-reason">needed: {t.requiredFor}</div>
+                      {/if}
+                      {#if t.installHint}
+                        <div class="doctor-install"><span class="doctor-install-label">install:</span> <code>{t.installHint}</code></div>
+                      {/if}
+                    {/if}
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+        <div class="modal-foot">
+          <button class="btn-cancel" on:click={() => showDoctorModal = false}>Close</button>
+          <button class="btn-add" on:click={openDoctorModal} disabled={doctorLoading}>Re-check</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
   <!-- ── SSH DISCOVERY TOKEN MODAL ── -->
   {#if sshDiscoverTokenModal}
     <div class="overlay" transition:fade={{ duration: 120 }}>
@@ -3072,6 +3191,19 @@
             <!-- ── Step 2: Credential setup ── -->
             <p class="cred-step-intro">Account <strong>{addAcct.key}</strong> created. Set up credentials:</p>
 
+            {#if credPrecheck && !credPrecheck.ok}
+              <div class="cred-precheck">
+                <p class="cred-precheck-title">⚠ {credPrecheck.summary}</p>
+                {#if credPrecheck.missing}
+                  {#each credPrecheck.missing as m}
+                    <p class="cred-precheck-hint"><strong>{m.displayName}</strong>: <code>{m.installHint}</code></p>
+                  {/each}
+                {/if}
+                <p class="cred-precheck-note">Install the missing tool(s) and click <em>Re-check</em>, or proceed anyway to retry manually.</p>
+                <button class="btn-cancel cred-action-btn" on:click={() => runCredentialPrecheck(addAcct.credentialType)}>Re-check</button>
+              </div>
+            {/if}
+
             {#if addAcct.credentialType === 'gcm'}
               <p class="cred-step-desc">Click below to authenticate via browser (Git Credential Manager).</p>
               <button class="btn-add cred-action-btn" on:click={() => runCredSetup(addAcct.key, addAcct.credentialType)} disabled={credBusy || credResult?.ok}>
@@ -3182,6 +3314,19 @@
 
           {#if !credResult && credChangeType !== (currentAcct?.default_credential_type || '') && currentAcct?.default_credential_type}
             <p class="cred-change-warning">Setting up {credChangeType.toUpperCase()} will remove the current {(currentAcct?.default_credential_type || '').toUpperCase()} credential and its artifacts{currentAcct?.default_credential_type === 'ssh' ? ' (SSH key, ~/.ssh/config entry)' : currentAcct?.default_credential_type === 'token' ? ' (token from OS keyring)' : currentAcct?.default_credential_type === 'gcm' ? ' (cached GCM credential)' : ''}.</p>
+          {/if}
+
+          {#if credPrecheck && !credPrecheck.ok}
+            <div class="cred-precheck">
+              <p class="cred-precheck-title">⚠ {credPrecheck.summary}</p>
+              {#if credPrecheck.missing}
+                {#each credPrecheck.missing as m}
+                  <p class="cred-precheck-hint"><strong>{m.displayName}</strong>: <code>{m.installHint}</code></p>
+                {/each}
+              {/if}
+              <p class="cred-precheck-note">Install the missing tool(s) and click <em>Re-check</em> before applying.</p>
+              <button class="btn-cancel cred-action-btn" on:click={() => runCredentialPrecheck(credChangeType)}>Re-check</button>
+            </div>
           {/if}
           {/if}
 
@@ -4191,6 +4336,43 @@
   /* ── Add account form ── */
   .modal-account { width: 580px; }
   .modal-discover { width: 650px; }
+  .modal-doctor { width: 680px; max-height: 80vh; display: flex; flex-direction: column; }
+  .modal-doctor .modal-body { overflow-y: auto; }
+  .doctor-summary { margin: 0 0 12px; font-size: 12px; }
+  .doctor-ok { color: #86efac; font-weight: 600; }
+  .doctor-err { color: #fca5a5; font-weight: 600; }
+  .doctor-opt { color: var(--text-muted); }
+  :global([data-theme="light"]) .doctor-ok { color: #166534; }
+  :global([data-theme="light"]) .doctor-err { color: #b91c1c; }
+  .doctor-list { display: flex; flex-direction: column; gap: 8px; }
+  .doctor-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); }
+  .doctor-row-missing-req { border-color: #be123c; background: rgba(190, 18, 60, 0.06); }
+  :global([data-theme="light"]) .doctor-row-missing-req { background: rgba(190, 18, 60, 0.04); }
+  .doctor-state { font-size: 14px; font-weight: 800; flex-shrink: 0; width: 14px; line-height: 1.3; }
+  .doctor-state-ok { color: #86efac; }
+  :global([data-theme="light"]) .doctor-state-ok { color: #166534; }
+  .doctor-state-err { color: #fca5a5; }
+  :global([data-theme="light"]) .doctor-state-err { color: #b91c1c; }
+  .doctor-state-opt { color: var(--text-muted); }
+  .doctor-main { flex: 1; min-width: 0; }
+  .doctor-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .doctor-name { font-weight: 600; color: var(--text-primary); font-size: 13px; }
+  .doctor-tag { font-size: 9px; padding: 1px 5px; background: var(--bg-hover); color: var(--text-muted); border-radius: 3px; text-transform: uppercase; letter-spacing: 0.3px; }
+  .doctor-version { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .doctor-path { color: var(--text-dim); font-size: 11px; font-family: ui-monospace, Menlo, Consolas, monospace; margin-top: 2px; word-break: break-all; }
+  .doctor-purpose { color: var(--text-muted); font-size: 11px; margin-top: 2px; }
+  .doctor-reason { color: var(--text-dim); font-size: 11px; margin-top: 4px; }
+  .doctor-install { font-size: 11px; margin-top: 4px; color: var(--text-primary); }
+  .doctor-install code { background: var(--bg-hover); padding: 1px 5px; border-radius: 3px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .doctor-install-label { color: var(--text-muted); margin-right: 4px; }
+  .settings-action {
+    padding: 3px 12px; font-size: 11px; font-weight: 500;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--text-primary); border-radius: 5px;
+    cursor: pointer; transition: background 0.12s, border-color 0.12s;
+  }
+  .settings-action:hover { background: var(--bg-hover); border-color: var(--border-hover); }
+  .settings-doctor-summary { margin-left: 8px; }
   .discover-filter { width: 100%; margin-bottom: 8px; font-size: 13px; }
   .discover-orgs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
   .org-badge {
@@ -4258,6 +4440,17 @@
   .cred-doc-link a { color: #4B95E9; text-decoration: underline; }
   .cred-doc-link a:hover { color: #6db0f7; }
   .cred-action-btn { margin-top: 4px; margin-bottom: 10px; }
+  .cred-precheck {
+    margin: 10px 0; padding: 10px 12px; border-radius: 6px; font-size: 12px;
+    background: rgba(245, 158, 11, 0.10);
+    border: 1px solid #f59e0b88;
+  }
+  :global([data-theme="light"]) .cred-precheck { background: rgba(245, 158, 11, 0.08); border-color: #b45309; }
+  .cred-precheck-title { margin: 0 0 6px; font-weight: 600; color: #f59e0b; }
+  :global([data-theme="light"]) .cred-precheck-title { color: #b45309; }
+  .cred-precheck-hint { margin: 4px 0; color: var(--text-primary); }
+  .cred-precheck-hint code { background: var(--bg-hover); padding: 1px 5px; border-radius: 3px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; }
+  .cred-precheck-note { margin: 6px 0 8px; color: var(--text-muted); font-size: 11px; }
   .cred-result { margin-top: 10px; padding: 8px 10px; border-radius: 6px; font-size: 12px; }
   .cred-result-ok { background: #16653412; border: 1px solid #166534; color: var(--text-primary); }
   .cred-result-err { background: #D81E5B12; border: 1px solid #D81E5B; color: #D81E5B; }

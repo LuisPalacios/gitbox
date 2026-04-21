@@ -172,3 +172,17 @@ You can verify that credentials are working at any time:
 - **GUI:** The credential badge on each account card shows green (working), orange (limited), or red (broken).
 - **TUI:** Same badge colors on dashboard cards; account detail shows status with a message.
 - **CLI:** `gitbox account credential verify <account-key>`
+
+## Missing tools on the host
+
+Credential types rely on external binaries that may not be installed on the current machine: GCM needs `git-credential-manager`, SSH needs `ssh` / `ssh-keygen` / `ssh-add`. Gitbox detects these before it starts a setup:
+
+- **GUI** — opening the add-account or change-credential modal runs a pre-flight check. If a required tool is missing, you see a yellow banner naming it and the exact install command for your OS. The setup will not auto-run until you address it (you can still click through manually if you know what you're doing).
+- **TUI** — `Credential → change type → <new type>` refuses to proceed when a tool is missing and prints the install hint as an error message.
+- **CLI** — run `gitbox doctor` for a full inventory at any time (see [reference.md](reference.md#system-check-doctor)). Exit code is `1` when any tool required for your current config is missing, making it scriptable.
+
+Typical fix on each OS:
+
+- macOS: `brew install --cask git-credential-manager` (ssh/ssh-keygen are preinstalled).
+- Linux: install your distro's GCM package (see the [GCM install docs](https://github.com/git-ecosystem/git-credential-manager/blob/main/docs/install.md)); `sudo apt install openssh-client` for SSH.
+- Windows: GCM is bundled with Git for Windows; OpenSSH client is a built-in optional feature.

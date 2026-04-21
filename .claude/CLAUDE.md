@@ -47,6 +47,7 @@ pkg/                      Shared Go library
   adopt/                  Orphan repo discovery and adoption
   status/                 Clone status checking
   update/                 Auto-update: version check, download, self-replace
+  doctor/                 External-tool detection (git, GCM, ssh, tmux, …): point-of-use precheck + `gitbox doctor` command
 docs/
   cli-guide.md            CLI quick start
   gui-guide.md            GUI guide
@@ -100,8 +101,8 @@ The CLI/TUI binary is `gitbox`, the GUI binary is `GitboxApp`. This avoids a Win
 ### Build commands
 
 ```bash
-# Build CLI/TUI
-go build -o build/gitbox ./cmd/cli
+# Build CLI/TUI (portable — produces build/gitbox.exe on Windows, build/gitbox elsewhere)
+go build -o "build/gitbox$(go env GOEXE)" ./cmd/cli
 
 # Build GUI (requires Wails CLI)
 # ALWAYS copy icons before building — they are not checked in under cmd/gui/build/
@@ -252,6 +253,7 @@ The project has a comprehensive test suite. Read `.claude/context/testing-patter
 | Credential logic (`pkg/credential/`) | `go test ./pkg/credential/ ./cmd/cli/tui/ ./cmd/cli/` |
 | Config logic (`pkg/config/`) | `go test ./pkg/config/ ./cmd/cli/tui/ ./cmd/cli/` |
 | Update logic (`pkg/update/`) | `go test ./pkg/update/` |
+| Doctor / tool detection (`pkg/doctor/`) | `go test ./pkg/doctor/` |
 | Unsure what's affected | `go test ./...` |
 
 **Test levels:**

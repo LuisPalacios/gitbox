@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"os/exec"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/adopt"
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
+	"github.com/LuisPalacios/gitbox/pkg/doctor"
 	"github.com/LuisPalacios/gitbox/pkg/update"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/harness"
@@ -3867,4 +3869,141 @@ func (a *App) CheckMirrorCredentials(accountKey string) MirrorCredentialCheck {
 		HasMirrorToken: true,
 		Message:        "Mirror token available.",
 	}
+}
+
+// ── Doctor: external-tool detection ────────────────────────────────────────
+
+// DoctorToolDTO mirrors one doctor.Result in a JSON-friendly shape for the
+// Svelte frontend. Includes a "required" flag derived from the current
+// config so the UI can highlight missing required tools.
+type DoctorToolDTO struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	Purpose     string `json:"purpose"`
+	Found       bool   `json:"found"`
+	Path        string `json:"path,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Required    bool   `json:"required"`
+	RequiredFor string `json:"requiredFor,omitempty"`
+	InstallHint string `json:"installHint,omitempty"`
+}
+
+// DoctorReport is the full "System check" result: the tool list plus a
+// rolled-up boolean saying "any required tool missing?".
+type DoctorReport struct {
+	Tools       []DoctorToolDTO `json:"tools"`
+	AllOK       bool            `json:"allOk"`        // true when nothing required is missing
+	MissingReq  int             `json:"missingReq"`   // count of required tools that are missing
+	MissingOpt  int             `json:"missingOpt"`   // count of optional tools that are missing
+}
+
+// DoctorPrecheckDTO is the point-of-use answer for "is credential type X
+// installable on this host?".
+type DoctorPrecheckDTO struct {
+	OK      bool            `json:"ok"`
+	Summary string          `json:"summary,omitempty"`
+	Hint    string          `json:"hint,omitempty"`
+	Missing []DoctorToolDTO `json:"missing,omitempty"`
+}
+
+// DoctorRun probes every tool gitbox knows about and annotates each with
+// whether it's required for the current config. Used by the GUI Settings
+// "System check" row.
+func (a *App) DoctorRun() DoctorReport {
+	a.mu.Lock()
+	cfg := a.cfg
+	a.mu.Unlock()
+
+	results := doctor.Check(doctor.StandardTools())
+	required := gatherRequiredTools(cfg)
+
+	report := DoctorReport{Tools: make([]DoctorToolDTO, 0, len(results)), AllOK: true}
+	for _, r := range results {
+		reason, isRequired := required[r.Tool.Name]
+		dto := DoctorToolDTO{
+			Name:        r.Tool.Name,
+			DisplayName: r.Tool.DisplayName,
+			Purpose:     r.Tool.Purpose,
+			Found:       r.Found,
+			Path:        r.Path,
+			Version:     r.Version,
+			Required:    isRequired,
+			RequiredFor: reason,
+			InstallHint: r.InstallHint(),
+		}
+		report.Tools = append(report.Tools, dto)
+		if !r.Found {
+			if isRequired {
+				report.AllOK = false
+				report.MissingReq++
+			} else {
+				report.MissingOpt++
+			}
+		}
+	}
+	return report
+}
+
+// DoctorPrecheck runs a point-of-use check for a single credential type.
+// Called by the GUI add-account / change-credential-type flows BEFORE the
+// user commits, so they learn about a missing dependency with an install
+// command instead of hitting a cryptic error at auth time.
+func (a *App) DoctorPrecheck(credentialType string) DoctorPrecheckDTO {
+	pc := doctor.PrecheckForCredentialType(credentialType)
+	out := DoctorPrecheckDTO{OK: pc.OK, Summary: pc.Summary, Hint: pc.Hint}
+	for _, m := range pc.Missing {
+		out.Missing = append(out.Missing, DoctorToolDTO{
+			Name:        m.Tool.Name,
+			DisplayName: m.Tool.DisplayName,
+			Purpose:     m.Tool.Purpose,
+			Found:       false,
+			InstallHint: m.InstallHint(),
+		})
+	}
+	return out
+}
+
+// gatherRequiredTools reads the config and returns, for each tool name,
+// the reason it is required (or not in the map at all if purely optional).
+func gatherRequiredTools(cfg *config.Config) map[string]string {
+	required := map[string]string{
+		"git": "always — core dependency",
+	}
+	if cfg == nil {
+		return required
+	}
+	var anyGCM, anySSH, anyToken bool
+	for _, acct := range cfg.Accounts {
+		switch acct.DefaultCredentialType {
+		case "gcm":
+			anyGCM = true
+		case "ssh":
+			anySSH = true
+		case "token":
+			anyToken = true
+		}
+	}
+	if anyGCM || anyToken {
+		required["git-credential-manager"] = "you have accounts using the gcm/token credential type"
+	}
+	if anySSH {
+		required["ssh"] = "you have accounts using the ssh credential type"
+		required["ssh-keygen"] = "you have accounts using the ssh credential type"
+		required["ssh-add"] = "you have accounts using the ssh credential type"
+	}
+	var anyTmuxinator bool
+	for _, ws := range cfg.Workspaces {
+		if ws.Type == "tmuxinator" {
+			anyTmuxinator = true
+			break
+		}
+	}
+	if anyTmuxinator {
+		required["tmux"] = "you have tmuxinator workspaces"
+		required["tmuxinator"] = "you have tmuxinator workspaces"
+		if runtime.GOOS == "windows" {
+			required["wsl"] = "tmuxinator runs inside WSL on Windows"
+		}
+	}
+	return required
 }

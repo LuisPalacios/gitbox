@@ -730,6 +730,107 @@ export namespace main {
 	}
 	
 	
+	export class DoctorToolDTO {
+	    name: string;
+	    displayName: string;
+	    purpose: string;
+	    found: boolean;
+	    path?: string;
+	    version?: string;
+	    required: boolean;
+	    requiredFor?: string;
+	    installHint?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DoctorToolDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.displayName = source["displayName"];
+	        this.purpose = source["purpose"];
+	        this.found = source["found"];
+	        this.path = source["path"];
+	        this.version = source["version"];
+	        this.required = source["required"];
+	        this.requiredFor = source["requiredFor"];
+	        this.installHint = source["installHint"];
+	    }
+	}
+	export class DoctorPrecheckDTO {
+	    ok: boolean;
+	    summary?: string;
+	    hint?: string;
+	    missing?: DoctorToolDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DoctorPrecheckDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ok = source["ok"];
+	        this.summary = source["summary"];
+	        this.hint = source["hint"];
+	        this.missing = this.convertValues(source["missing"], DoctorToolDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DoctorReport {
+	    tools: DoctorToolDTO[];
+	    allOk: boolean;
+	    missingReq: number;
+	    missingOpt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DoctorReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tools = this.convertValues(source["tools"], DoctorToolDTO);
+	        this.allOk = source["allOk"];
+	        this.missingReq = source["missingReq"];
+	        this.missingOpt = source["missingOpt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class EditorInfo {
 	    id: string;
 	    name: string;

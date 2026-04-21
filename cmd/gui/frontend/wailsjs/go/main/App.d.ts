@@ -69,6 +69,10 @@ export function DiscoverMirrors():Promise<void>;
 
 export function DiscoverWorkspaces():Promise<main.DiscoverWorkspacesResult>;
 
+export function DoctorPrecheck(arg1:string):Promise<main.DoctorPrecheckDTO>;
+
+export function DoctorRun():Promise<main.DoctorReport>;
+
 export function FetchAllRepos():Promise<void>;
 
 export function FetchRepo(arg1:string,arg2:string):Promise<void>;

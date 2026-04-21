@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 	"github.com/LuisPalacios/gitbox/cmd/cli/tui/styles"
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
+	"github.com/LuisPalacios/gitbox/pkg/doctor"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
 	"github.com/charmbracelet/bubbles/key"
@@ -643,6 +645,13 @@ func (m credentialModel) doChangeType() tea.Cmd {
 	cfg := m.cfg
 	cfgPath := m.cfgPath
 	return func() tea.Msg {
+		// Point-of-use precheck: surface missing external tools (GCM, ssh,
+		// ssh-keygen, ...) BEFORE we mutate config or touch credentials, so
+		// the user learns what to install instead of hitting a cryptic
+		// "Device not configured" / "command not found" error at auth time.
+		if pc := doctor.PrecheckForCredentialType(newType); !pc.OK {
+			return credChangedMsg{err: errors.New(pc.Summary + "\n" + pc.Hint)}
+		}
 		acct := cfg.Accounts[accountKey]
 		if acct.DefaultCredentialType == "" {
 			// First-time setup: just set the type, no cleanup needed.

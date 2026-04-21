@@ -459,6 +459,28 @@ gitbox account credential del <account-key>
 
 ---
 
+## System check (doctor)
+
+Probe the host for every external tool gitbox may call and report what is installed, where, and which version.
+
+```bash
+# Human-readable table
+gitbox doctor
+
+# Machine-readable JSON (for scripts, bug reports)
+gitbox doctor --json
+```
+
+Each row is marked `ok`, `missing` (required for your config), or `optional` (not needed by any account/workspace you have). When a tool is missing, doctor prints an install command for the current OS.
+
+**Tools probed:** `git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, `tmux`, `tmuxinator`, `wsl` (on Windows).
+
+**Exit codes:** `0` when every required tool is present, `1` when at least one required tool is missing.
+
+The GUI exposes the same report via **Settings → System check → Run**. Both the GUI add-account flow and the TUI credential-type change refuse to start a credential setup if a required tool is missing — you see the install command first, instead of hitting a cryptic runtime error.
+
+---
+
 ## Mirroring
 
 Mirrors keep backup copies of repos on another provider. Repos are mirrored server-side via provider APIs — they are NOT cloned locally.

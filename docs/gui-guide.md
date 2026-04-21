@@ -262,8 +262,11 @@ Click the **gear icon** to open the settings panel:
 - **Theme** — switch between System, Light, and Dark
 - **Periodic fetch** — automatic fetch interval (off, 5m, 15m, 30m)
 - **Run at startup** — launch Gitbox automatically when you log in (platform dependent)
+- **System check** — **Run** opens a report of every external tool gitbox uses (git, Git Credential Manager, ssh, tmux, …), where it's installed, its version, and — for anything missing that your config needs — an install command. Same data as `gitbox doctor` on the CLI.
 - **Version** — current app version
 - **Author** — project author and link to the GitHub repository
+
+The add-account and change-credential flows run the same check automatically: if you pick the `gcm` credential type on a machine that doesn't have Git Credential Manager installed, you get a yellow banner with the install command instead of a cryptic authentication failure later on.
 
 ### Clone actions
 

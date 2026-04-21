@@ -17,6 +17,8 @@ This guide walks you through the complete workflow — from a fresh install to a
 - **gitbox** binary — install with the one-liner or [download manually](https://github.com/LuisPalacios/gitbox/releases) or [build from source](developer-guide.md)
 - For GCM accounts: [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager) installed. On Linux, GCM browser-based OAuth also needs a display server (X11 or Wayland) — see [credentials.md](credentials.md) for headless alternatives.
 
+Run `gitbox doctor` at any time for a checklist of every external tool gitbox needs and install commands for the ones you're missing. It also powers the preflight check in the GUI add-account flow, so you learn about a missing dependency before it fails at auth time. Details in [reference.md](reference.md#system-check-doctor).
+
 ### Installing
 
 Download the native installer for your platform from [Releases](https://github.com/LuisPalacios/gitbox/releases): `.exe` setup for Windows, `.dmg` for macOS, `.AppImage` for Linux. See the [README](../README.md) for details.

@@ -134,6 +134,14 @@ export function DiscoverWorkspaces() {
   return window['go']['main']['App']['DiscoverWorkspaces']();
 }
 
+export function DoctorPrecheck(arg1) {
+  return window['go']['main']['App']['DoctorPrecheck'](arg1);
+}
+
+export function DoctorRun() {
+  return window['go']['main']['App']['DoctorRun']();
+}
+
 export function FetchAllRepos() {
   return window['go']['main']['App']['FetchAllRepos']();
 }
