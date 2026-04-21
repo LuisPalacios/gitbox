@@ -38,11 +38,15 @@ Gitbox does not implement any Git protocol or plumbing logic. It acts as an orch
 - **PR & review indicators** — each clone row surfaces its open pull requests and pending review requests, pulled from the provider API
 - **Task-based workspaces** — bundle clones from different accounts into a VS Code multi-root workspace or a tmuxinator layout; launch from a clone's kebab or from a dedicated Workspaces tab (GUI + TUI + CLI). Support for auto-discovery and full WSL-backed tmuxinator support on Windows.
 
-It support four providers. GitHub, GitLab, Gitea/Forgejo, and Bitbucket, all work for discovery, cloning, and repo creation. Push mirrors work natively on Gitea/Forgejo and GitLab; pull mirrors work on Gitea/Forgejo. For GitHub and Bitbucket mirror setup, gitbox generates step-by-step guides.
+It support four providers. GitHub, GitLab, Gitea/Forgejo, and Bitbucket, all work for discovery, cloning, and repo creation. Push/Pull for backups still preliminary version, eead the docs.
 
 ## Three interfaces
 
-Gitbox ships as two binaries built from the same Go library (`pkg/`). The CLI and TUI live in a single binary — if you run `gitbox` with no arguments in a terminal, the TUI launches; if you pass any command, the CLI executes. The GUI is a separate binary built with **[Wails](https://wails.io/)** + Svelte.
+Gitbox ships as two binaries built from the same Go library (`pkg/`). 
+
+The CLI and TUI live in a single binary — if you run `gitbox` with no arguments in a terminal, the TUI launches; if you pass any command, the CLI executes. I use them in linux headless mainly.
+
+The GUI is a separate binary built with **[Wails](https://wails.io/)** + Svelte.
 
 | Platform | CLI / TUI | GUI |
 | --- | --- | --- |
