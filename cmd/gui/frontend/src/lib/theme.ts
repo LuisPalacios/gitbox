@@ -60,6 +60,12 @@ export function statusSymbol(status: string): string {
     clean: '●', behind: '◗', dirty: '◆', ahead: '▲',
     syncing: '◔', cloning: '◔', fetching: '◔', 'not cloned': '○',
     'no upstream': '~', diverged: '⚠', conflict: '⚡', error: '✕',
+    // 'unknown' = first scan hasn't completed yet. Render the same shape as
+    // 'clean' but in the muted grey returned by statusColor() so the row
+    // says "I don't know yet" instead of lying with a red ✕.
+    unknown: '●',
   };
-  return map[status] || '?';
+  // Hasownproperty test rather than `||` so a deliberately-empty mapping
+  // value would be respected (none today, but defensive against future use).
+  return Object.prototype.hasOwnProperty.call(map, status) ? map[status] : '?';
 }

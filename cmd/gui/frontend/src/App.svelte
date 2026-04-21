@@ -1496,6 +1496,23 @@
     openPRPopover = openPRPopover === key ? null : key;
   }
 
+  // Which workspace popover is open: keyed by `${sourceKey}/${repoName}` or null.
+  // Driven by the workspace badge on each clone row; lists every workspace the
+  // clone belongs to, opens one on click and dismisses itself.
+  let openWsPopover: string | null = null;
+  function toggleWsPopover(key: string) {
+    openWsPopover = openWsPopover === key ? null : key;
+  }
+  async function openWorkspaceFromBadge(wsKey: string) {
+    openWsPopover = null;
+    await openWorkspace(wsKey);
+  }
+  function workspaceLabel(wsKey: string): string {
+    const ws = $workspaces[wsKey];
+    if (!ws) return wsKey;
+    return ws.name && ws.name !== wsKey ? `${ws.name} (${wsKey})` : wsKey;
+  }
+
   // Build the provider-native "all PRs" URL for a given repo full name.
   function providerPRsURL(providerName: string, baseURL: string, repoFull: string): string {
     const base = (baseURL || '').replace(/\/+$/, '') || defaultProviderBase(providerName);
@@ -1522,7 +1539,12 @@
 
   async function runFetchAll() {
     fetchingAll = true;
-    bridge.fetchAllRepos();
+    try {
+      await bridge.fetchAllRepos();
+    } catch (e) {
+      fetchingAll = false;
+      lastFetchTime = 'fetch-all error: ' + (e instanceof Error ? e.message : String(e));
+    }
   }
 
   // ── Credential status cache ──
@@ -1676,7 +1698,7 @@
       fetchingAll = false;
       fetchingRepos = {};
       const now = new Date();
-      lastFetchTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      lastFetchTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       verifyAllCredentials();
     });
 
@@ -1802,8 +1824,12 @@
 
 <svelte:window on:click={(e) => {
   const inMenu = e.target instanceof Element && e.target.closest('.action-menu-container');
+  const inWsPopover = e.target instanceof Element && e.target.closest('.ws-popover, .ws-badge');
   if (actionMenuRepo && !inMenu) closeActionMenu();
   if (actionMenuAccount && !inMenu) closeAccountMenu();
+  if (openWsPopover && !inWsPopover) openWsPopover = null;
+}} on:keydown={(e) => {
+  if (e.key === 'Escape' && openWsPopover) openWsPopover = null;
 }} />
 
 <!-- ════════════════════════════════════════════════════════════ -->
@@ -1917,7 +1943,7 @@
         <div class="compact-repo-list" transition:slide={{ duration: 120 }}>
           {#each ($sources[key].repoOrder || Object.keys($sources[key].repos)) as repoName}
             {@const repoKey = `${key}/${repoName}`}
-            {@const state = $repoStates[repoKey] || { status: 'error', behind: 0, modified: 0, ahead: 0 }}
+            {@const state = $repoStates[repoKey] || { status: 'unknown', behind: 0, modified: 0, ahead: 0 }}
             <div class="compact-row" class:compact-row-ok={state.status === 'clean'}>
               <span class="compact-dot" style="color: {sc(state.status)}">{statusSymbol(state.status)}</span>
               <span class="compact-repo-name">{repoName.includes('/') ? repoName.split('/').pop() : repoName}</span>
@@ -1991,7 +2017,6 @@
         </g>
       </svg>
       <span class="title">gitbox</span>
-      <span class="tagline">accounts & clones</span>
     </div>
     <div class="health">
       <span class="health-ring" style="--pct: {$summary.total ? ($summary.clean / $summary.total) * 100 : 0}">
@@ -2020,6 +2045,7 @@
         <span class="sync-icon" class:spinning={fetchingAll}>&#8635;</span>
       </button>
       <button class="btn-gear btn-trash" class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title="{deleteMode ? 'Exit delete mode' : 'Delete mode'}">&#128465;</button>
+      <button class="btn-gear btn-select" class:select-active={selectionMode} on:click={toggleSelectionMode} disabled={cardsTab !== 'accounts' || Object.keys($accounts).length === 0} title="{selectionMode ? 'Exit selection mode' : 'Toggle clone selection mode'}">{selectionMode ? '☑' : '☐'}</button>
       <button class="btn-gear" on:click={toggleViewMode} title="Compact view">◧</button>
       <button class="btn-gear" on:click={cycleTheme} title="Theme: {themeChoice}">{themeIcon(themeChoice)}</button>
       <button class="btn-gear" on:click={() => showSettings = !showSettings} title="Settings" class:active-gear={showSettings}>&#9881;</button>
@@ -2085,21 +2111,19 @@
         </div>
       {/if}
       <div class="settings-row">
-        <span class="settings-label">PR / review badges</span>
+        <span class="settings-label">PR / reviews</span>
         <div class="theme-toggle">
           <button class="theme-btn" class:theme-active={!$prSettings.enabled} on:click={() => { if ($prSettings.enabled) setPRBadgesEnabled(false); }}>Off</button>
           <button class="theme-btn" class:theme-active={$prSettings.enabled} on:click={() => { if (!$prSettings.enabled) setPRBadgesEnabled(true); }}>On</button>
         </div>
-      </div>
-      {#if $prSettings.enabled}
-        <div class="settings-row">
-          <span class="settings-label">Include drafts in &#128221;</span>
+        {#if $prSettings.enabled}
+          <span class="settings-sublabel">Include drafts</span>
           <div class="theme-toggle">
             <button class="theme-btn" class:theme-active={!$prSettings.includeDrafts} on:click={() => { if ($prSettings.includeDrafts) setPRIncludeDrafts(false); }}>Off</button>
             <button class="theme-btn" class:theme-active={$prSettings.includeDrafts} on:click={() => { if (!$prSettings.includeDrafts) setPRIncludeDrafts(true); }}>On</button>
           </div>
-        </div>
-      {/if}
+        {/if}
+      </div>
       <div class="settings-row">
         <span class="settings-label">Version</span>
         <span class="settings-value">{appVersion}</span>
@@ -2116,9 +2140,9 @@
     <button class="cards-tab" class:cards-tab-active={cardsTab === 'accounts'}
       on:click={() => cardsTab = 'accounts'}>Accounts</button>
     <button class="cards-tab" class:cards-tab-active={cardsTab === 'mirrors'}
-      on:click={() => cardsTab = 'mirrors'}>Mirrors</button>
+      on:click={() => { cardsTab = 'mirrors'; if (selectionMode) toggleSelectionMode(); }}>Mirrors</button>
     <button class="cards-tab" class:cards-tab-active={cardsTab === 'workspaces'}
-      on:click={() => cardsTab = 'workspaces'}>Workspaces</button>
+      on:click={() => { cardsTab = 'workspaces'; if (selectionMode) toggleSelectionMode(); }}>Workspaces</button>
     {#if orphanCount > 0}
       <button class="orphan-pill" on:click={showOrphanModal}>{orphanCount} orphan{orphanCount > 1 ? 's' : ''}</button>
     {/if}
@@ -2128,31 +2152,19 @@
         <button class="btn-tab-action" on:click={checkAllMirrorStatus}>Check all</button>
       </div>
     {/if}
-    {#if cardsTab === 'accounts'}
-      <div class="tab-bar-actions">
-        <button class="btn-tab-action" class:tab-action-active={selectionMode} on:click={toggleSelectionMode}
-          title={selectionMode ? 'Exit selection mode' : 'Select clones to build a workspace'}>
-          {selectionMode ? 'Exit select' : 'Select clones'}
-        </button>
-      </div>
-    {/if}
     {#if cardsTab === 'workspaces'}
       <div class="tab-bar-actions">
         <button class="btn-tab-action" on:click={openWorkspaceModalFromTab}>+ New workspace</button>
         <button class="btn-tab-action" title="Scan disk for new workspace files" on:click={async () => { await bridge.discoverWorkspaces(); }}>Discover</button>
       </div>
     {/if}
-  </div>
-
-  {#if cardsTab === 'accounts' && selectionMode && $selectedClones.size > 0}
-    <div class="selection-bar">
-      <span class="selection-count">{$selectedClones.size} clone{$selectedClones.size === 1 ? '' : 's'} selected</span>
-      <div class="selection-actions">
-        <button class="btn-tab-action" on:click={openWorkspaceModalFromSelection}>Create workspace from selected</button>
-        <button class="btn-tab-action" on:click={() => clearCloneSelection()}>Clear</button>
+    {#if cardsTab === 'accounts' && selectionMode && $selectedClones.size > 0}
+      <div class="tab-bar-actions">
+        <button class="btn-tab-action" on:click={openWorkspaceModalFromSelection} title="Create a workspace from the selected clones">+ Workspace</button>
+        <button class="btn-tab-action" on:click={() => clearCloneSelection()} title="Clear selection">Clear</button>
       </div>
-    </div>
-  {/if}
+    {/if}
+  </div>
 
   {#if cardsTab === 'accounts'}
   <!-- ── ACCOUNT CARDS ── -->
@@ -2230,9 +2242,9 @@
         </div>
         {#each (source.repoOrder && source.repoOrder.length > 0 ? source.repoOrder : Object.keys(source.repos)) as repoName (repoName)}
           {@const repoKey = `${sourceKey}/${repoName}`}
-          {@const state = $repoStates[repoKey] || { status: 'error', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
-          <div class="repo-row" class:repo-row-clickable={state.status !== 'clean' && state.status !== 'behind' && state.status !== 'not cloned' && state.status !== 'cloning' && state.status !== 'syncing'}
-            on:click={() => { if (selectionMode) { toggleCloneSelection(repoKey); } else { toggleRepoDetail(sourceKey, repoName, state.status); } }}>
+          {@const state = $repoStates[repoKey] || { status: 'unknown', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
+          <div class="repo-row" class:repo-row-clickable={state.status !== 'unknown' && state.status !== 'clean' && state.status !== 'behind' && state.status !== 'not cloned' && state.status !== 'cloning' && state.status !== 'syncing'}
+            on:click={() => { if (selectionMode) { toggleCloneSelection(repoKey); } else if (state.status !== 'unknown') { toggleRepoDetail(sourceKey, repoName, state.status); } }}>
             {#if selectionMode}
               <input type="checkbox" class="clone-select-box" checked={$selectedClones.has(repoKey)}
                 on:click|stopPropagation
@@ -2241,14 +2253,32 @@
               <button class="btn-delete-x" on:click|stopPropagation={() => askDelete(sourceKey, repoName, state.status)} title="Delete {repoName}">&#10005;</button>
             {/if}
             <span class="dot" style="color: {sc(state.status)}">{statusSymbol(state.status)}</span>
+            {#if membershipsFor(repoKey).length > 0}
+              <div class="ws-badge-wrap">
+                <button class="ws-badge"
+                        title="Member of: {membershipsFor(repoKey).map(workspaceLabel).join(', ')}"
+                        on:click|stopPropagation={() => toggleWsPopover(repoKey)}>
+                  📦
+                </button>
+                {#if openWsPopover === repoKey}
+                  <div class="ws-popover" transition:fade={{ duration: 80 }} on:click|stopPropagation>
+                    <div class="ws-popover-title">Open workspace</div>
+                    {#each membershipsFor(repoKey) as wsKey}
+                      <button class="ws-popover-item"
+                              on:click={() => openWorkspaceFromBadge(wsKey)}
+                              disabled={workspaceBusy}>
+                        📦 {workspaceLabel(wsKey)}
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {/if}
             <span class="repo-name">{repoName}</span>
             {#if state.branch === '(detached)'}
               <span class="branch-badge detached">detached</span>
             {:else if state.branch && !state.isDefault}
               <span class="branch-badge">{state.branch}</span>
-            {/if}
-            {#if membershipsFor(repoKey).length > 0}
-              <span class="ws-badge" title="Member of: {membershipsFor(repoKey).join(', ')}">📦 {membershipsFor(repoKey).length}</span>
             {/if}
 
             {#if state.status === 'syncing' || state.status === 'cloning'}
@@ -2257,32 +2287,7 @@
               </div>
               <span class="progress-pct" style="color:{sc(state.status)}">{state.progress}%</span>
             {:else}
-              <span class="status-badges">
-                {#if state.status === 'clean'}
-                  <span class="status-text" style="color:{sc('clean')}">Synced</span>
-                {:else if state.status === 'not cloned'}
-                  <span class="status-text" style="color:{sc('not cloned')}">Not local</span>
-                {:else if state.status === 'no upstream'}
-                  {#if state.isDefault}
-                    <span class="status-text" style="color:{sc('no upstream')}">No upstream</span>
-                  {:else}
-                    <span class="status-text" style="color:{sc('clean')}">Local branch</span>
-                  {/if}
-                {:else if state.status === 'error'}
-                  <span class="status-text" style="color:{sc('error')}">Error</span>
-                {:else}
-                  <span class="status-pending">Pending</span>
-                  {#if state.behind > 0}<span class="sbadge" style="color:{sc('behind')}" title="{state.behind} behind">↓{state.behind}</span>{/if}
-                  {#if state.ahead > 0}<span class="sbadge" style="color:{sc('ahead')}" title="{state.ahead} ahead">↑{state.ahead}</span>{/if}
-                  {#if state.modified > 0}<span class="sbadge" style="color:{sc('dirty')}" title="{state.modified} changed">✎{state.modified}</span>{/if}
-                  {#if state.untracked > 0}<span class="sbadge" style="color:{sc('not cloned')}" title="{state.untracked} untracked">?{state.untracked}</span>{/if}
-                {/if}
-              </span>
-              {#if state.status === 'behind'}
-                <button class="btn-action" on:click|stopPropagation={() => syncRepo(sourceKey, repoName)}>Pull</button>
-              {:else if state.status === 'not cloned'}
-                <button class="btn-action" on:click|stopPropagation={() => cloneRepo(sourceKey, repoName)}>Bring Local</button>
-              {/if}
+              {#if state.status !== 'unknown'}
               {#if !deleteMode && $prSettings.enabled}
                 {@const prSummary = lookupPRSummary($prsByAccount, accountKey, repoName)}
                 {@const acctForPRs = $accounts[accountKey]}
@@ -2325,8 +2330,35 @@
                   </div>
                 {/if}
               {/if}
+              <span class="status-badges">
+                {#if state.status === 'clean'}
+                  <span class="status-text" style="color:{sc('clean')}">Synced</span>
+                {:else if state.status === 'not cloned'}
+                  <span class="status-text" style="color:{sc('not cloned')}">Not local</span>
+                {:else if state.status === 'no upstream'}
+                  {#if state.isDefault}
+                    <span class="status-text" style="color:{sc('no upstream')}">No upstream</span>
+                  {:else}
+                    <span class="status-text" style="color:{sc('clean')}">Local branch</span>
+                  {/if}
+                {:else if state.status === 'error'}
+                  <span class="status-text" style="color:{sc('error')}">Error</span>
+                {:else}
+                  <span class="status-pending">Pending</span>
+                  {#if state.behind > 0}<span class="sbadge" style="color:{sc('behind')}" title="{state.behind} behind">↓{state.behind}</span>{/if}
+                  {#if state.ahead > 0}<span class="sbadge" style="color:{sc('ahead')}" title="{state.ahead} ahead">↑{state.ahead}</span>{/if}
+                  {#if state.modified > 0}<span class="sbadge" style="color:{sc('dirty')}" title="{state.modified} changed">✎{state.modified}</span>{/if}
+                  {#if state.untracked > 0}<span class="sbadge" style="color:{sc('not cloned')}" title="{state.untracked} untracked">?{state.untracked}</span>{/if}
+                {/if}
+              </span>
+              {#if state.status === 'behind'}
+                <button class="btn-action" on:click|stopPropagation={() => syncRepo(sourceKey, repoName)}>Pull</button>
+              {:else if state.status === 'not cloned'}
+                <button class="btn-action" on:click|stopPropagation={() => cloneRepo(sourceKey, repoName)}>Bring Local</button>
+              {/if}
+              {/if}
               {#if !deleteMode && state.status !== 'not cloned'}
-                <button class="btn-fetch" class:spinning={fetchingRepos[repoKey]} on:click|stopPropagation={() => fetchRepo(sourceKey, repoName)} title="Fetch origin" disabled={!!fetchingRepos[repoKey]}>&#8635;</button>
+                <button class="btn-fetch" class:spinning={fetchingRepos[repoKey] || state.status === 'unknown'} on:click|stopPropagation={() => fetchRepo(sourceKey, repoName)} title="Fetch origin" disabled={!!fetchingRepos[repoKey]}>&#8635;</button>
                 <div class="action-menu-container">
                   <button class="btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title="Actions">&#8942;</button>
                   {#if actionMenuRepo === repoKey}
@@ -2336,13 +2368,11 @@
                         editors={configEditors}
                         terminals={configTerminals}
                         aiHarnesses={configAIHarnesses}
-                        workspaceKeys={membershipsFor(repoKey)}
                         onOpenBrowser={() => openRepoInBrowser(sourceKey, repoName)}
                         onOpenFolder={() => openRepoInExplorer(repoKey)}
                         onOpenApp={(cmd) => openRepoInApp(repoKey, cmd)}
                         onOpenTerminal={(t) => openRepoInTerminal(repoKey, t)}
                         onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
-                        onOpenWorkspace={(k) => openWorkspace(k)}
                         onSweep={() => sweepBranches(sourceKey, repoName)}
                       />
                     </div>
@@ -3655,6 +3685,23 @@
     font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
     color: var(--text-primary); -webkit-font-smoothing: antialiased;
     transition: background 0.2s, color 0.2s;
+    /* GUI chrome is not for copy-paste — drag-select on cards / labels /
+       repo rows is noise, and Ctrl-A nukes the whole window. Inputs and
+       editable surfaces opt back in below. Add `.selectable` on any
+       element that genuinely needs copyable text. */
+    user-select: none;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+  }
+  :global(input),
+  :global(textarea),
+  :global([contenteditable="true"]),
+  :global(pre),
+  :global(code),
+  :global(.selectable) {
+    user-select: text;
+    -webkit-user-select: text;
+    -ms-user-select: text;
   }
 
   .app { max-width: 860px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -3682,7 +3729,6 @@
   .brand { display: flex; align-items: center; gap: 8px; }
   .logo-svg { width: 26px; height: 26px; }
   .title { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
-  .tagline { font-size: 11px; font-weight: 400; color: var(--text-muted); letter-spacing: 0.3px; margin-left: 6px; white-space: nowrap; }
 
   .health { display: flex; align-items: center; gap: 8px; margin-left: auto; }
   .health-ring {
@@ -3708,6 +3754,8 @@
   .btn-gear:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-hover); }
   .btn-gear:disabled { opacity: 0.3; cursor: default; }
   .btn-trash { font-size: 15px; }
+  .btn-select { font-size: 15px; }
+  .select-active { color: var(--text-primary) !important; background: var(--bg-hover) !important; }
 
   .cards-tab-bar { display: flex; gap: 4px; padding: 12px 24px 0; align-items: center; }
   .tab-bar-actions { margin-left: auto; display: flex; gap: 6px; }
@@ -3940,6 +3988,7 @@
   }
   .settings-row { display: flex; align-items: center; gap: 12px; }
   .settings-label { font-size: 11px; font-weight: 600; color: var(--text-muted); width: 80px; flex-shrink: 0; }
+  .settings-sublabel { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-left: 12px; flex-shrink: 0; }
   .settings-value { font-size: 12px; color: var(--text-secondary); font-family: monospace; flex: 1; }
   .settings-btn {
     padding: 2px 8px; font-size: 10px; font-weight: 500;
@@ -4413,22 +4462,6 @@
     border-color: var(--border-hover) !important;
   }
 
-  /* Floating bar at the top of the accounts tab when clones are selected. */
-  .selection-bar {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 12px;
-    margin: 0 24px 8px;
-    padding: 10px 14px;
-    background: var(--bg-card);
-    border: 1px solid var(--border-hover);
-    border-radius: 8px;
-    position: sticky;
-    top: 0;
-    z-index: 40;
-  }
-  .selection-count { font-size: 12px; color: var(--text-primary); font-weight: 600; }
-  .selection-actions { display: flex; gap: 6px; }
-
   /* Per-row checkbox shown in selection mode. Sized to match the delete-X
      button it visually replaces so the row layout stays stable. */
   .clone-select-box {
@@ -4442,16 +4475,77 @@
   /* Small membership count chip on clone rows. Sits beside the branch
      badge and stays subtle — presence of the chip at all is already the
      signal the clone is in a workspace. */
-  .ws-badge {
-    font-size: 10px;
-    padding: 1px 6px;
-    margin-left: 4px;
-    border-radius: 10px;
-    background: var(--bg-raised);
-    color: var(--text-muted);
-    white-space: nowrap;
+  /* Negative margins claw back the .repo-row `gap: 10px` on each side so
+     the badge sits visually flush against the status dot and the repo
+     name, instead of looking like a 50px-wide gutter. */
+  .ws-badge-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
     flex: 0 0 auto;
+    margin-left: -6px;
+    margin-right: -4px;
   }
+  /* Now an action button: clicking it opens the workspace popover. The icon
+     alone signals membership; the count is gone (the popover lists the
+     workspaces by name). Compact footprint — one emoji glyph, tight padding,
+     no border. */
+  .ws-badge {
+    font-size: 13px;
+    line-height: 1;
+    padding: 2px 3px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background 0.12s;
+  }
+  .ws-badge:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .ws-badge:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 1px; }
+  /* Anchor ABOVE the badge — bottom rows would otherwise spawn the popover
+     beneath the visible viewport and need scrolling to reveal it. The
+     popover is at most 3-5 entries tall so opening upward fits comfortably
+     even for rows near the very top of the cards area. */
+  .ws-popover {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    z-index: 30;
+    min-width: 200px;
+    max-width: 320px;
+    padding: 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .ws-popover-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-muted);
+    padding: 4px 8px 2px;
+  }
+  .ws-popover-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 12px;
+    text-align: left;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .ws-popover-item:hover:not(:disabled) { background: var(--bg-hover); }
+  .ws-popover-item:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* Workspace card styling: reuse the mirror card structure but with its
      own dot colour derived inline. */
