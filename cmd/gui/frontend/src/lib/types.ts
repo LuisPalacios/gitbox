@@ -228,6 +228,20 @@ export interface AdoptResultDTO {
   error?: string;
 }
 
+export interface AccountDeletionImpactDTO {
+  account: string;
+  sources: string[];
+  mirrors: string[];
+  repo_count: number;
+  clone_count: number;
+}
+
+export interface ConfigRepairResult {
+  success: boolean;
+  error?: string;
+  repairs?: string[];
+}
+
 export interface EditorInfo {
   id: string;
   name: string;

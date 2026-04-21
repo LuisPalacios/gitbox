@@ -373,6 +373,142 @@ func TestDeleteAccountBlockedByMirror(t *testing.T) {
 	}
 }
 
+func TestCascadeDeleteAccount_SourcesOnly(t *testing.T) {
+	cfg := newTestConfig()
+	srcs, mirrors, err := cfg.CascadeDeleteAccount("github-test")
+	if err != nil {
+		t.Fatalf("CascadeDeleteAccount: %v", err)
+	}
+	if len(srcs) != 1 || srcs[0] != "github-test" {
+		t.Errorf("sources = %v, want [github-test]", srcs)
+	}
+	if len(mirrors) != 0 {
+		t.Errorf("mirrors = %v, want none", mirrors)
+	}
+	if _, ok := cfg.Accounts["github-test"]; ok {
+		t.Error("account still present after cascade delete")
+	}
+	if _, ok := cfg.Sources["github-test"]; ok {
+		t.Error("source still present after cascade delete")
+	}
+}
+
+func TestCascadeDeleteAccount_MirrorSrc(t *testing.T) {
+	cfg := newTestConfig()
+	cfg.DeleteSource("github-test")
+	if err := cfg.AddMirror("m1", Mirror{AccountSrc: "forgejo-test", AccountDst: "github-test"}); err != nil {
+		t.Fatalf("AddMirror: %v", err)
+	}
+
+	_, mirrors, err := cfg.CascadeDeleteAccount("forgejo-test")
+	if err != nil {
+		t.Fatalf("CascadeDeleteAccount: %v", err)
+	}
+	if len(mirrors) != 1 || mirrors[0] != "m1" {
+		t.Errorf("mirrors = %v, want [m1]", mirrors)
+	}
+	if _, ok := cfg.Mirrors["m1"]; ok {
+		t.Error("mirror still present after cascade delete (was account_src)")
+	}
+}
+
+func TestCascadeDeleteAccount_MirrorDst(t *testing.T) {
+	cfg := newTestConfig()
+	cfg.DeleteSource("github-test")
+	if err := cfg.AddMirror("m1", Mirror{AccountSrc: "forgejo-test", AccountDst: "github-test"}); err != nil {
+		t.Fatalf("AddMirror: %v", err)
+	}
+
+	_, mirrors, err := cfg.CascadeDeleteAccount("github-test")
+	if err != nil {
+		t.Fatalf("CascadeDeleteAccount: %v", err)
+	}
+	if len(mirrors) != 1 || mirrors[0] != "m1" {
+		t.Errorf("mirrors = %v, want [m1]", mirrors)
+	}
+	if _, ok := cfg.Mirrors["m1"]; ok {
+		t.Error("mirror still present after cascade delete (was account_dst)")
+	}
+}
+
+func TestCascadeDeleteAccount_SourcesAndMirrors(t *testing.T) {
+	cfg := newTestConfig()
+	if err := cfg.AddAccount("gitea-extra", Account{
+		Provider: "gitea", URL: "https://gitea.example.com",
+		Username: "u", Name: "N", Email: "e@e",
+	}); err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	if err := cfg.AddMirror("m1", Mirror{AccountSrc: "github-test", AccountDst: "gitea-extra"}); err != nil {
+		t.Fatalf("AddMirror: %v", err)
+	}
+
+	srcs, mirrors, err := cfg.CascadeDeleteAccount("github-test")
+	if err != nil {
+		t.Fatalf("CascadeDeleteAccount: %v", err)
+	}
+	if len(srcs) != 1 || srcs[0] != "github-test" {
+		t.Errorf("sources = %v, want [github-test]", srcs)
+	}
+	if len(mirrors) != 1 || mirrors[0] != "m1" {
+		t.Errorf("mirrors = %v, want [m1]", mirrors)
+	}
+	if _, ok := cfg.Accounts["github-test"]; ok {
+		t.Error("account remains")
+	}
+	if _, ok := cfg.Sources["github-test"]; ok {
+		t.Error("source remains")
+	}
+	if _, ok := cfg.Mirrors["m1"]; ok {
+		t.Error("mirror remains")
+	}
+	// Unrelated accounts/sources untouched.
+	if _, ok := cfg.Accounts["forgejo-test"]; !ok {
+		t.Error("unrelated account forgejo-test dropped")
+	}
+	if _, ok := cfg.Accounts["gitea-extra"]; !ok {
+		t.Error("unrelated account gitea-extra dropped")
+	}
+}
+
+func TestCascadeDeleteAccount_NotFound(t *testing.T) {
+	cfg := newTestConfig()
+	if _, _, err := cfg.CascadeDeleteAccount("nope"); err == nil {
+		t.Error("expected error for unknown account")
+	}
+}
+
+func TestAccountDeletionImpact(t *testing.T) {
+	cfg := newTestConfig()
+	if err := cfg.AddAccount("gitea-extra", Account{
+		Provider: "gitea", URL: "https://gitea.example.com",
+		Username: "u", Name: "N", Email: "e@e",
+	}); err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	if err := cfg.AddMirror("m1", Mirror{AccountSrc: "github-test", AccountDst: "gitea-extra"}); err != nil {
+		t.Fatalf("AddMirror: %v", err)
+	}
+
+	srcs, mirrors, repos := cfg.AccountDeletionImpact("github-test")
+	if len(srcs) != 1 || srcs[0] != "github-test" {
+		t.Errorf("sources = %v", srcs)
+	}
+	if len(mirrors) != 1 || mirrors[0] != "m1" {
+		t.Errorf("mirrors = %v", mirrors)
+	}
+	if repos != 1 {
+		t.Errorf("repoCount = %d, want 1", repos)
+	}
+	// Impact must not mutate.
+	if _, ok := cfg.Accounts["github-test"]; !ok {
+		t.Error("impact mutated accounts map")
+	}
+	if _, ok := cfg.Mirrors["m1"]; !ok {
+		t.Error("impact mutated mirrors map")
+	}
+}
+
 func TestRenameAccountUpdatesMirrors(t *testing.T) {
 	cfg := newTestConfig()
 	cfg.AddMirror("m1", Mirror{AccountSrc: "forgejo-test", AccountDst: "github-test"})

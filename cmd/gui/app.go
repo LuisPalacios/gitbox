@@ -88,6 +88,22 @@ func (a *App) Shutdown(_ context.Context) {
 	}
 }
 
+// saveConfig persists the in-memory config to disk. It refuses to save when
+// the config was not successfully loaded — the guard prevents the empty
+// default fabricated in Startup() from being written over a real file we
+// failed to parse, which would destroy the user's data (see issue #60).
+//
+// Caller must hold a.mu.
+func (a *App) saveConfig() error {
+	if !a.cfgLoaded {
+		if a.cfgLoadError != "" {
+			return fmt.Errorf("refusing to save: config not loaded (%s)", a.cfgLoadError)
+		}
+		return fmt.Errorf("refusing to save: config not loaded")
+	}
+	return config.Save(a.cfg, a.cfgPath)
+}
+
 // IsTestMode returns true when the app was launched with --test-mode.
 // Exposed to the frontend for UI indicator.
 func (a *App) IsTestMode() bool {
@@ -110,7 +126,7 @@ func (a *App) BeforeClose(_ context.Context) bool {
 	} else {
 		a.cfg.Global.Window = ws
 	}
-	_ = config.Save(a.cfg, a.cfgPath)
+	_ = a.saveConfig()
 	return false // don't prevent closing
 }
 
@@ -780,8 +796,7 @@ func (a *App) AdoptOrphans(repoKeys []string) AdoptResultDTO {
 
 	if adopted > 0 {
 		a.mu.Lock()
-		cfgPath := filepath.Join(config.ConfigRoot(), config.V2ConfigDir, config.V2ConfigFile)
-		saveErr := config.Save(cfg, cfgPath)
+		saveErr := a.saveConfig()
 		a.mu.Unlock()
 		if saveErr != nil {
 			return AdoptResultDTO{Adopted: adopted, Relocated: relocated, Skipped: skipped, Error: saveErr.Error()}
@@ -936,7 +951,7 @@ func (a *App) SyncEditors() {
 
 	if changed {
 		a.cfg.Global.Editors = deduped
-		_ = config.Save(a.cfg, a.cfgPath)
+		_ = a.saveConfig()
 	}
 }
 
@@ -1374,7 +1389,7 @@ func (a *App) SyncTerminals() {
 			rebuilt := mergeWTProfilesWithConfig(profiles, a.cfg)
 			if !terminalsEqual(a.cfg.Global.Terminals, rebuilt) {
 				a.cfg.Global.Terminals = rebuilt
-				_ = config.Save(a.cfg, a.cfgPath)
+				_ = a.saveConfig()
 			}
 			return
 		}
@@ -1432,7 +1447,7 @@ func (a *App) SyncTerminals() {
 
 	if !terminalsEqual(result, a.cfg.Global.Terminals) {
 		a.cfg.Global.Terminals = result
-		_ = config.Save(a.cfg, a.cfgPath)
+		_ = a.saveConfig()
 	}
 }
 
@@ -1779,7 +1794,7 @@ func (a *App) SyncAIHarnesses() {
 	// Only save if the serialization actually differs.
 	if !aiHarnessesEqual(result, a.cfg.Global.AIHarnesses) {
 		a.cfg.Global.AIHarnesses = result
-		_ = config.Save(a.cfg, a.cfgPath)
+		_ = a.saveConfig()
 	}
 }
 
@@ -2032,10 +2047,50 @@ func (a *App) IsFirstRun() bool {
 }
 
 // GetConfigLoadError returns a non-empty string if the config file existed but
-// failed to parse. The frontend should show this to the user and ask whether
-// to reinitialize. Returns "" if config loaded successfully or didn't exist.
+// failed to parse. The frontend should show this to the user and offer
+// Repair / Start fresh / Exit. Returns "" if config loaded successfully or
+// didn't exist.
 func (a *App) GetConfigLoadError() string {
 	return a.cfgLoadError
+}
+
+// ConfigRepairResult is the frontend-friendly outcome of a RepairConfig call.
+// On success, the in-memory config has been replaced with the repaired copy
+// and saved back to disk (the existing Save() path writes a dated backup
+// first, so the pre-repair file is preserved).
+type ConfigRepairResult struct {
+	Success bool     `json:"success"`
+	Error   string   `json:"error,omitempty"`
+	Repairs []string `json:"repairs,omitempty"`
+}
+
+// RepairConfig runs LoadWithRepair against the on-disk config, adopts the
+// repaired copy into the live App state, and saves it back. Intended as the
+// user-confirmed "Repair" action when Startup detected cfgLoadError.
+//
+// The normal Save() backup sweep covers the pre-repair file, so users who
+// regret the repair can roll back manually from ~/.config/gitbox/gitbox-*.json.
+func (a *App) RepairConfig() ConfigRepairResult {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	cfg, repairs, err := config.LoadWithRepair(a.cfgPath)
+	if err != nil {
+		return ConfigRepairResult{Success: false, Error: err.Error()}
+	}
+	a.cfg = cfg
+	a.cfgLoaded = true
+	a.cfgLoadError = ""
+
+	if err := config.Save(a.cfg, a.cfgPath); err != nil {
+		return ConfigRepairResult{Success: false, Error: fmt.Sprintf("saving repaired config: %v", err)}
+	}
+
+	details := make([]string, 0, len(repairs))
+	for _, r := range repairs {
+		details = append(details, r.Detail)
+	}
+	return ConfigRepairResult{Success: true, Repairs: details}
 }
 
 // PickFolder opens the native OS directory picker and returns the selected path.
@@ -2078,10 +2133,19 @@ func (a *App) SetGlobalFolder(folder string) error {
 	defer a.mu.Unlock()
 
 	a.cfg.Global.Folder = folder
-	if err := config.Save(a.cfg, a.cfgPath); err != nil {
+	// Onboarding completes here: promote the in-memory config to "loaded"
+	// before the first save so saveConfig() accepts it. Only reachable on
+	// the os.ErrNotExist branch of Startup — if the config file existed but
+	// failed to parse, cfgLoadError is non-empty and onboarding is blocked
+	// by the frontend until the user repairs or replaces it.
+	if a.cfgLoadError != "" {
+		return fmt.Errorf("cannot complete onboarding while a config load error is pending: %s", a.cfgLoadError)
+	}
+	a.cfgLoaded = true
+	if err := a.saveConfig(); err != nil {
+		a.cfgLoaded = false
 		return err
 	}
-	a.cfgLoaded = true // onboarding complete — safe to save on close
 	return nil
 }
 
@@ -2109,7 +2173,7 @@ func (a *App) SetPeriodicSync(interval string) error {
 	} else {
 		a.cfg.Global.PeriodicSync = interval
 	}
-	return config.Save(a.cfg, a.cfgPath)
+	return a.saveConfig()
 }
 
 // GetViewMode returns the persisted view mode ("full" or "compact").
@@ -2153,7 +2217,7 @@ func (a *App) SetViewMode(mode string) *WindowStateDTO {
 	} else {
 		a.cfg.Global.ViewMode = ""
 	}
-	_ = config.Save(a.cfg, a.cfgPath)
+	_ = a.saveConfig()
 
 	// Return the target mode's saved window state.
 	var target *config.WindowState
@@ -2561,7 +2625,7 @@ func (a *App) AddAccount(req AddAccountRequest) error {
 		return err
 	}
 
-	return config.Save(a.cfg, a.cfgPath)
+	return a.saveConfig()
 }
 
 // UpdateAccountRequest is the frontend payload for editing an account.
@@ -2595,7 +2659,7 @@ func (a *App) UpdateAccount(req UpdateAccountRequest) error {
 	if err := a.cfg.UpdateAccount(req.Key, acct); err != nil {
 		return err
 	}
-	if err := config.Save(a.cfg, a.cfgPath); err != nil {
+	if err := a.saveConfig(); err != nil {
 		return err
 	}
 
@@ -2708,9 +2772,9 @@ func (a *App) RenameAccount(oldKey, newKey string) error {
 		a.mu.Unlock()
 		return err
 	}
+	saveErr := a.saveConfig()
 	a.mu.Unlock()
-
-	return config.Save(cfg, a.cfgPath)
+	return saveErr
 }
 
 // migrateKeyringToken moves a token from oldKey to newKey in the credential file.
@@ -2834,7 +2898,7 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 		a.mu.Lock()
 		acct.Username = realUsername
 		_ = a.cfg.UpdateAccount(accountKey, acct)
-		_ = config.Save(a.cfg, a.cfgPath)
+		_ = a.saveConfig()
 		a.mu.Unlock()
 	}
 
@@ -2981,7 +3045,7 @@ func (a *App) CredentialSetupSSH(accountKey string) CredentialSetupResult {
 		acct.SSH.Hostname = hostname
 		acct.SSH.KeyType = keyType
 		_ = a.cfg.UpdateAccount(accountKey, acct)
-		_ = config.Save(a.cfg, a.cfgPath)
+		_ = a.saveConfig()
 	}
 	a.mu.Unlock()
 
@@ -3115,10 +3179,45 @@ func (a *App) DeleteRepo(sourceKey, repoKey string) error {
 	if err := a.cfg.DeleteRepo(sourceKey, repoKey); err != nil {
 		return err
 	}
-	return config.Save(a.cfg, a.cfgPath)
+	return a.saveConfig()
 }
 
-// DeleteAccount removes an account, all its sources, and all local clone folders.
+// AccountDeletionImpactDTO describes what a DeleteAccount call would remove.
+// Sources and Mirrors are sorted for stable rendering.
+type AccountDeletionImpactDTO struct {
+	Account    string   `json:"account"`
+	Sources    []string `json:"sources"`
+	Mirrors    []string `json:"mirrors"`
+	RepoCount  int      `json:"repo_count"`
+	CloneCount int      `json:"clone_count"`
+}
+
+// AccountDeletionImpact reports the cascade effect of deleting the given
+// account — every source and mirror that references it, plus the total repo
+// count and how many are currently cloned on disk. Read-only.
+func (a *App) AccountDeletionImpact(accountKey string) AccountDeletionImpactDTO {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	sources, mirrors, repoCount := a.cfg.AccountDeletionImpact(accountKey)
+	if sources == nil {
+		sources = []string{}
+	}
+	if mirrors == nil {
+		mirrors = []string{}
+	}
+	return AccountDeletionImpactDTO{
+		Account:    accountKey,
+		Sources:    sources,
+		Mirrors:    mirrors,
+		RepoCount:  repoCount,
+		CloneCount: a.countClonedRepos(accountKey),
+	}
+}
+
+// DeleteAccount removes an account, every source that references it, every
+// mirror that references it, and all local clone folders. Cascade semantics:
+// leaving a dangling mirror reference behind would corrupt the config and
+// cause data loss on the next launch (see issue #60).
 func (a *App) DeleteAccount(accountKey string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -3129,7 +3228,8 @@ func (a *App) DeleteAccount(accountKey string) error {
 
 	globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
 
-	// Delete all clone folders and source directories for this account.
+	// Delete all clone folders and source directories for this account. We
+	// walk the sources map before CascadeDeleteAccount mutates it.
 	for sourceKey, src := range a.cfg.Sources {
 		if src.Account != accountKey {
 			continue
@@ -3141,16 +3241,16 @@ func (a *App) DeleteAccount(accountKey string) error {
 				_ = os.RemoveAll(path)
 			}
 		}
-		// Remove the entire source directory (e.g. ~/00.git/github-Jacopalas/).
+		// Remove the entire source directory (e.g. ~/00.git/github-acme/).
 		sourcePath := filepath.Join(globalFolder, sourceFolder)
 		_ = os.RemoveAll(sourcePath)
-		delete(a.cfg.Sources, sourceKey)
 	}
 
-	// Delete the account.
-	delete(a.cfg.Accounts, accountKey)
+	if _, _, err := a.cfg.CascadeDeleteAccount(accountKey); err != nil {
+		return err
+	}
 
-	return config.Save(a.cfg, a.cfgPath)
+	return a.saveConfig()
 }
 
 // reconfigureClones updates the remote URL and credential config of every
@@ -3326,7 +3426,7 @@ func (a *App) ChangeCredentialType(accountKey, newType string) error {
 	if err := a.cfg.UpdateAccount(accountKey, acct); err != nil {
 		return err
 	}
-	if err := config.Save(a.cfg, a.cfgPath); err != nil {
+	if err := a.saveConfig(); err != nil {
 		return err
 	}
 
@@ -3369,7 +3469,7 @@ func (a *App) CredentialDelete(accountKey string) CredentialSetupResult {
 	}
 	a.mu.Unlock()
 
-	if err := config.Save(a.cfg, a.cfgPath); err != nil {
+	if err := a.saveConfig(); err != nil {
 		return CredentialSetupResult{OK: false, Message: err.Error()}
 	}
 
@@ -3479,7 +3579,7 @@ func (a *App) AddDiscoveredRepos(key string, repoNames []string) error {
 			return err
 		}
 	}
-	return config.Save(a.cfg, a.cfgPath)
+	return a.saveConfig()
 }
 
 // ─── Credential Verification ──────────────────────────────────
@@ -3606,7 +3706,7 @@ func (a *App) AddMirrorGroup(key, accountSrc, accountDst string) error {
 	if err := a.cfg.AddMirror(key, m); err != nil {
 		return err
 	}
-	return config.Save(a.cfg, a.cfgPath)
+	return a.saveConfig()
 }
 
 // DeleteMirrorGroup removes a mirror group and all its repos.
@@ -3617,7 +3717,7 @@ func (a *App) DeleteMirrorGroup(key string) error {
 	if err := a.cfg.DeleteMirror(key); err != nil {
 		return err
 	}
-	return config.Save(a.cfg, a.cfgPath)
+	return a.saveConfig()
 }
 
 // AddMirrorRepo adds a repo to a mirror group.
@@ -3632,7 +3732,7 @@ func (a *App) AddMirrorRepo(mirrorKey, repoKey, direction, origin string) error 
 	if err := a.cfg.AddMirrorRepo(mirrorKey, repoKey, repo); err != nil {
 		return err
 	}
-	return config.Save(a.cfg, a.cfgPath)
+	return a.saveConfig()
 }
 
 // DeleteMirrorRepo removes a repo from a mirror group.
@@ -3643,7 +3743,7 @@ func (a *App) DeleteMirrorRepo(mirrorKey, repoKey string) error {
 	if err := a.cfg.DeleteMirrorRepo(mirrorKey, repoKey); err != nil {
 		return err
 	}
-	return config.Save(a.cfg, a.cfgPath)
+	return a.saveConfig()
 }
 
 // ListRemoteRepos returns the repo list for an account, for use in mirror repo pickers.
@@ -3776,7 +3876,7 @@ func (a *App) CreateNewRepo(accountKey, owner, repoName, description string, pri
 		}
 		src.Repos[repoKey] = config.Repo{}
 		a.cfg.Sources[sourceKey] = src
-		saveErr := config.Save(a.cfg, a.cfgPath)
+		saveErr := a.saveConfig()
 		a.mu.Unlock()
 		if saveErr != nil {
 			return fmt.Errorf("saving config: %w", saveErr)
@@ -3834,7 +3934,7 @@ func (a *App) ApplyDiscoveredMirrors() error {
 	}
 	added, _ := mirror.ApplyDiscovery(a.cfg, results)
 	if added > 0 {
-		return config.Save(a.cfg, a.cfgPath)
+		return a.saveConfig()
 	}
 	return nil
 }

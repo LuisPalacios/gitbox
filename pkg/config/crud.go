@@ -1,6 +1,9 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 // --- Account CRUD ---
 
@@ -35,6 +38,8 @@ func (c *Config) UpdateAccount(key string, acct Account) error {
 }
 
 // DeleteAccount removes an account. Returns error if sources or mirrors still reference it.
+// This is the strict contract used by CLI/TUI. GUI callers that want cascade
+// semantics should use CascadeDeleteAccount instead.
 func (c *Config) DeleteAccount(key string) error {
 	if _, exists := c.Accounts[key]; !exists {
 		return fmt.Errorf("account %q not found", key)
@@ -51,6 +56,60 @@ func (c *Config) DeleteAccount(key string) error {
 	}
 	delete(c.Accounts, key)
 	return nil
+}
+
+// CascadeDeleteAccount removes an account along with every source and mirror
+// that references it. Returns the keys of everything that was removed so the
+// caller can report the cascade to the user. Keys are returned sorted.
+//
+// Unlike DeleteAccount (strict), this variant never refuses the delete for
+// reference reasons — it's the only safe path for the GUI, which cannot
+// leave the config in a half-deleted state with a dangling mirror ref.
+func (c *Config) CascadeDeleteAccount(key string) (removedSources, removedMirrors []string, err error) {
+	if _, exists := c.Accounts[key]; !exists {
+		return nil, nil, fmt.Errorf("account %q not found", key)
+	}
+	for srcName, src := range c.Sources {
+		if src.Account == key {
+			removedSources = append(removedSources, srcName)
+		}
+	}
+	for mirrorName, m := range c.Mirrors {
+		if m.AccountSrc == key || m.AccountDst == key {
+			removedMirrors = append(removedMirrors, mirrorName)
+		}
+	}
+	sort.Strings(removedSources)
+	sort.Strings(removedMirrors)
+	for _, s := range removedSources {
+		delete(c.Sources, s)
+	}
+	for _, m := range removedMirrors {
+		delete(c.Mirrors, m)
+	}
+	delete(c.Accounts, key)
+	return removedSources, removedMirrors, nil
+}
+
+// AccountDeletionImpact reports what a CascadeDeleteAccount on the given key
+// would remove. Read-only — does not mutate the config. Returns sorted slices
+// plus the total repo count across affected sources so the GUI can render a
+// single confirmation summary.
+func (c *Config) AccountDeletionImpact(key string) (sources, mirrors []string, repoCount int) {
+	for srcName, src := range c.Sources {
+		if src.Account == key {
+			sources = append(sources, srcName)
+			repoCount += len(src.Repos)
+		}
+	}
+	for mirrorName, m := range c.Mirrors {
+		if m.AccountSrc == key || m.AccountDst == key {
+			mirrors = append(mirrors, mirrorName)
+		}
+	}
+	sort.Strings(sources)
+	sort.Strings(mirrors)
+	return sources, mirrors, repoCount
 }
 
 // RenameAccount moves an account from oldKey to newKey and updates all

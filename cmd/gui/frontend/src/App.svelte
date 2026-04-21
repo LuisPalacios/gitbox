@@ -612,16 +612,29 @@
     discoverModal = null;
   }
 
-  // Re-read config from disk and refresh all repo statuses.
+  // Banner surfaced when reloadFromDisk() or a mutation fails — usually a
+  // symptom of on-disk config drift (e.g. a dangling reference left by a
+  // prior bug). Cleared the next time reload succeeds.
+  let reloadError = '';
+
+  // Re-read config from disk and refresh all repo statuses. Throws on
+  // failure; callers catch and populate reloadError so the UI does not
+  // silently swallow integrity issues.
   async function reloadFromDisk() {
-    const cfg = await bridge.reloadConfig();
-    configStore.set(cfg);
-    configPath = await bridge.getConfigPath();
-    const saved = await bridge.getPeriodicSync();
-    if (saved !== fetchInterval) applyFetchInterval(saved);
-    const statuses = await bridge.getAllStatus();
-    applyStatusResults(statuses);
-    verifyAllCredentials();
+    try {
+      const cfg = await bridge.reloadConfig();
+      configStore.set(cfg);
+      configPath = await bridge.getConfigPath();
+      const saved = await bridge.getPeriodicSync();
+      if (saved !== fetchInterval) applyFetchInterval(saved);
+      const statuses = await bridge.getAllStatus();
+      applyStatusResults(statuses);
+      verifyAllCredentials();
+      reloadError = '';
+    } catch (err: any) {
+      reloadError = err?.message || String(err);
+      throw err;
+    }
   }
 
   // ── Delete mode ──
@@ -1013,12 +1026,28 @@
   let deleteAcctBusy = false;
   let deleteAcctInput = '';
   let deleteAcctError = '';
+  // Cascade impact from the backend — populated on modal open so the warning
+  // step lists every mirror that will be dropped along with the account.
+  let deleteAcctImpact: { sources: string[]; mirrors: string[]; repoCount: number; cloneCount: number } | null = null;
 
-  function askDeleteAccount(accountKey: string) {
+  async function askDeleteAccount(accountKey: string) {
     deleteAcctConfirm = accountKey;
     deleteAcctStep = 1;
     deleteAcctInput = '';
     deleteAcctError = '';
+    deleteAcctImpact = null;
+    try {
+      const dto = await bridge.accountDeletionImpact(accountKey);
+      deleteAcctImpact = {
+        sources: dto.sources || [],
+        mirrors: dto.mirrors || [],
+        repoCount: dto.repo_count || 0,
+        cloneCount: dto.clone_count || 0,
+      };
+    } catch (err) {
+      // Non-fatal — fall back to the generic source/repo-count text.
+      console.error('accountDeletionImpact failed', err);
+    }
   }
 
   function cancelDeleteAccount() {
@@ -1026,6 +1055,7 @@
     deleteAcctStep = 0;
     deleteAcctInput = '';
     deleteAcctError = '';
+    deleteAcctImpact = null;
   }
 
   function deleteAcctCheckName() {
@@ -1044,11 +1074,14 @@
     try {
       await bridge.deleteAccount(deleteAcctConfirm);
       await reloadFromDisk();
+    } catch (err: any) {
+      reloadError = err?.message || String(err);
     } finally {
       deleteAcctBusy = false;
       deleteAcctConfirm = null;
       deleteAcctStep = 0;
       deleteAcctInput = '';
+      deleteAcctImpact = null;
       deleteMode = false;
     }
   }
@@ -1888,14 +1921,53 @@
     });
 
     // Check if config failed to parse (file exists but is broken/unsupported).
+    // Offer Repair as the default — drops dangling references (issue #60) and
+    // keeps the rest of the config intact. Only fall back to "start fresh"
+    // if repair can't handle it and the user explicitly opts in.
     const loadError = await bridge.getConfigLoadError();
     if (loadError) {
-      const proceed = confirm(
-        `Config file could not be loaded:\n\n${loadError}\n\nDo you want to reinitialize the configuration?\n\nClick OK to start fresh, or Cancel to exit and fix the file manually.`
+      const tryRepair = confirm(
+        `Config file could not be loaded:\n\n${loadError}\n\nAttempt automatic repair?\n\n` +
+          `Repair drops dangling references (e.g. a mirror that points to a deleted account) ` +
+          `and keeps accounts, sources, credentials, workspaces and window state intact. ` +
+          `The current file is backed up to ~/.config/gitbox/ before the repair is written.\n\n` +
+          `Click OK to repair, or Cancel for other recovery options.`
       );
-      if (!proceed) {
-        Quit();
-        return;
+      if (tryRepair) {
+        try {
+          const res = await bridge.repairConfig();
+          if (!res.success) {
+            const msg = res.error || 'unknown error';
+            const fresh = confirm(
+              `Repair failed:\n\n${msg}\n\nStart fresh with a new configuration? ` +
+                `(Your current file will be overwritten — the dated backup is preserved.)\n\n` +
+                `Click OK to start fresh, or Cancel to exit and fix the file manually.`
+            );
+            if (!fresh) {
+              Quit();
+              return;
+            }
+          }
+          // Repair succeeded — onboarding is unnecessary; the repaired config
+          // is live in memory and on disk. Continue to dashboard below.
+        } catch (err: any) {
+          reloadError = `Repair threw an exception: ${err?.message || String(err)}`;
+          const fresh = confirm(`Repair crashed:\n\n${reloadError}\n\nStart fresh?`);
+          if (!fresh) {
+            Quit();
+            return;
+          }
+        }
+      } else {
+        const fresh = confirm(
+          `Start fresh with a new configuration?\n\n` +
+            `Click OK to reinitialize (current file will be overwritten — ` +
+            `the dated backup in ~/.config/gitbox/ is preserved), or Cancel to exit.`
+        );
+        if (!fresh) {
+          Quit();
+          return;
+        }
       }
     }
 
@@ -1983,6 +2055,15 @@
 {:else}
 
 <div class="app">
+
+  {#if reloadError}
+    <div class="reload-error-banner" role="alert">
+      <span class="reload-error-label">Config sync issue:</span>
+      <span class="reload-error-msg">{reloadError}</span>
+      <span class="reload-error-hint">Please relaunch GitboxApp.</span>
+      <button class="reload-error-dismiss" on:click={() => reloadError = ''} title="Dismiss">&#10005;</button>
+    </div>
+  {/if}
 
   {#if viewMode === 'compact'}
   <!-- ══════ COMPACT STATUS VIEW ══════ -->
@@ -3431,9 +3512,25 @@
             {/if}
           {:else if deleteAcctStep === 2}
             <p class="delete-repo-name">{deleteAcctConfirm}</p>
-            <p class="delete-warning delete-danger">
-              This will permanently delete the account, {acctSources.length} source{acctSources.length !== 1 ? 's' : ''}, {repoCount} repo{repoCount !== 1 ? 's' : ''}, and all their local clone folders.
-            </p>
+            {#if deleteAcctImpact}
+              <p class="delete-warning delete-danger">
+                This will permanently delete the account, {deleteAcctImpact.sources.length} source{deleteAcctImpact.sources.length !== 1 ? 's' : ''}, {deleteAcctImpact.repoCount} repo{deleteAcctImpact.repoCount !== 1 ? 's' : ''} ({deleteAcctImpact.cloneCount} cloned), and all their local folders.
+              </p>
+              {#if deleteAcctImpact.mirrors.length > 0}
+                <p class="delete-warning delete-danger" style="margin-top: 8px;">
+                  The following mirror group{deleteAcctImpact.mirrors.length !== 1 ? 's' : ''} will also be removed because {deleteAcctImpact.mirrors.length !== 1 ? 'they reference' : 'it references'} this account:
+                </p>
+                <ul style="margin: 4px 0 0 18px;">
+                  {#each deleteAcctImpact.mirrors as m}
+                    <li><code>{m}</code></li>
+                  {/each}
+                </ul>
+              {/if}
+            {:else}
+              <p class="delete-warning delete-danger">
+                This will permanently delete the account, {acctSources.length} source{acctSources.length !== 1 ? 's' : ''}, {repoCount} repo{repoCount !== 1 ? 's' : ''}, and all their local clone folders.
+              </p>
+            {/if}
           {:else}
             <p class="delete-repo-name">{deleteAcctConfirm}</p>
             <p class="delete-final">This action <strong>cannot be undone</strong>. Are you absolutely sure?</p>
@@ -4953,4 +5050,42 @@
   }
   .btn-danger:hover { background: #b91c1c; }
   .btn-danger:disabled { opacity: 0.6; cursor: default; }
+
+  .reload-error-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #3a1515;
+    border-bottom: 1px solid #7f1d1d;
+    color: #fecaca;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .reload-error-label {
+    font-weight: 700;
+    color: #fca5a5;
+    white-space: nowrap;
+  }
+  .reload-error-msg {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .reload-error-hint {
+    font-style: italic;
+    opacity: 0.8;
+    white-space: nowrap;
+  }
+  .reload-error-dismiss {
+    background: transparent;
+    border: none;
+    color: #fca5a5;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 4px;
+  }
+  .reload-error-dismiss:hover { color: #fff; }
 </style>

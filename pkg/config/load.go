@@ -16,6 +16,83 @@ func Load(path string) (*Config, error) {
 	return Parse(data)
 }
 
+// Repair describes a single recoverable fix that LoadWithRepair applied to the
+// parsed config. Kind is a short machine-readable tag; Detail is the
+// user-facing explanation the GUI renders in the repair confirmation.
+type Repair struct {
+	Kind    string `json:"kind"`
+	Subject string `json:"subject"`
+	Detail  string `json:"detail"`
+}
+
+// LoadWithRepair is Load plus a recovery pass for well-understood integrity
+// failures. Today it drops mirror entries whose account_src or account_dst
+// references an account that no longer exists — the dangling reference that
+// turns the GUI's delete-account bug into total config loss (see issue #60).
+//
+// Contract:
+//   - Unrecoverable errors (I/O, malformed JSON, schema mismatch, missing
+//     global.folder, missing account required fields, dangling source
+//     account ref, invalid workspace type) still surface as an error.
+//   - Recoverable repairs are returned alongside the repaired config so the
+//     GUI can show the user what was dropped before saving back.
+//   - Strict Load remains unchanged and is still what the CLI / tests use.
+func LoadWithRepair(path string) (*Config, []Repair, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading config: %w", err)
+	}
+
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, nil, fmt.Errorf("parsing v2 config: %w", err)
+	}
+	if cfg.Version != 2 {
+		return nil, nil, fmt.Errorf("expected version 2, got %d", cfg.Version)
+	}
+
+	var repairs []Repair
+
+	// Repair pass: drop mirror entries whose account refs are dangling.
+	for name, m := range cfg.Mirrors {
+		_, srcOk := cfg.Accounts[m.AccountSrc]
+		_, dstOk := cfg.Accounts[m.AccountDst]
+		if srcOk && dstOk {
+			continue
+		}
+		var missing []string
+		if !srcOk {
+			missing = append(missing, fmt.Sprintf("account_src=%q", m.AccountSrc))
+		}
+		if !dstOk {
+			missing = append(missing, fmt.Sprintf("account_dst=%q", m.AccountDst))
+		}
+		repairs = append(repairs, Repair{
+			Kind:    "dangling_mirror",
+			Subject: name,
+			Detail:  fmt.Sprintf("mirror %q referenced missing %s; dropped", name, strings.Join(missing, ", ")),
+		})
+		delete(cfg.Mirrors, name)
+	}
+
+	// After repairs, run the strict validator — anything still broken is out
+	// of scope for auto-repair and the caller must surface it.
+	if err := validate(&cfg); err != nil {
+		return nil, repairs, err
+	}
+
+	extractKeyOrder(data, &cfg)
+
+	for key, w := range cfg.Workspaces {
+		if deduped := dedupWorkspaceMembers(w.Members); len(deduped) != len(w.Members) {
+			w.Members = deduped
+			cfg.Workspaces[key] = w
+		}
+	}
+
+	return &cfg, repairs, nil
+}
+
 // Parse parses JSON configuration data in v2 format.
 func Parse(data []byte) (*Config, error) {
 	return parseV2(data)

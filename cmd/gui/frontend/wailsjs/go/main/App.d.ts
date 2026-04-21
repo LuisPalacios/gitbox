@@ -3,6 +3,8 @@
 import {main} from '../models';
 import {identity} from '../models';
 
+export function AccountDeletionImpact(arg1:string):Promise<main.AccountDeletionImpactDTO>;
+
 export function AddAccount(arg1:main.AddAccountRequest):Promise<void>;
 
 export function AddDiscoveredRepos(arg1:string,arg2:Array<string>):Promise<void>;
@@ -164,6 +166,8 @@ export function RemoveGlobalIdentity():Promise<void>;
 export function RemoveWorkspaceMember(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function RenameAccount(arg1:string,arg2:string):Promise<void>;
+
+export function RepairConfig():Promise<main.ConfigRepairResult>;
 
 export function SetAutostart(arg1:boolean):Promise<void>;
 

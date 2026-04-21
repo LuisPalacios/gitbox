@@ -75,7 +75,7 @@ func (a *App) SetPRBadgesEnabled(enabled bool) error {
 	defer a.mu.Unlock()
 	v := enabled
 	a.cfg.Global.PRBadgesEnabled = &v
-	return config.Save(a.cfg, a.cfgPath)
+	return a.saveConfig()
 }
 
 // SetPRIncludeDrafts toggles counting draft PRs as "authored" and persists.
@@ -84,7 +84,7 @@ func (a *App) SetPRIncludeDrafts(enabled bool) error {
 	defer a.mu.Unlock()
 	v := enabled
 	a.cfg.Global.PRIncludeDrafts = &v
-	return config.Save(a.cfg, a.cfgPath)
+	return a.saveConfig()
 }
 
 // GetPRsForRepo returns the cached PR summary for a specific clone.

@@ -340,6 +340,26 @@ export namespace main {
 	        this.args = source["args"];
 	    }
 	}
+	export class AccountDeletionImpactDTO {
+	    account: string;
+	    sources: string[];
+	    mirrors: string[];
+	    repo_count: number;
+	    clone_count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccountDeletionImpactDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.account = source["account"];
+	        this.sources = source["sources"];
+	        this.mirrors = source["mirrors"];
+	        this.repo_count = source["repo_count"];
+	        this.clone_count = source["clone_count"];
+	    }
+	}
 	export class AddAccountRequest {
 	    key: string;
 	    provider: string;
@@ -549,6 +569,22 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class ConfigRepairResult {
+	    success: boolean;
+	    error?: string;
+	    repairs?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ConfigRepairResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.success = source["success"];
+	        this.error = source["error"];
+	        this.repairs = source["repairs"];
+	    }
 	}
 	export class CredentialSetupResult {
 	    ok: boolean;
