@@ -501,6 +501,7 @@
   let discoverRepos: DiscoverResult[] = [];
   let discoverSelected: Record<string, boolean> = {};
   let discoverFilter = '';
+  let orgVisible: Record<string, boolean> = {};
 
   // SSH discovery token modal state.
   let sshDiscoverTokenModal: string | null = null; // account key needing a PAT for discovery
@@ -521,12 +522,23 @@
     discoverRepos = [];
     discoverSelected = {};
     discoverFilter = '';
+    orgVisible = {};
     bridge.discover(accountKey);
   }
 
+  function ownerOf(fullName: string): string { return fullName.split('/', 2)[0]; }
+
+  $: owners = [...new Set(discoverRepos.map((r) => ownerOf(r.fullName)))].sort();
+  $: ownerCounts = discoverRepos.reduce<Record<string, number>>((acc, r) => {
+    const o = ownerOf(r.fullName);
+    acc[o] = (acc[o] || 0) + 1;
+    return acc;
+  }, {});
+  $: showOwnerSection = owners.length > 1;
+  $: filteredByOwner = discoverRepos.filter((r) => orgVisible[ownerOf(r.fullName)] !== false);
   $: filteredDiscoverRepos = discoverFilter.trim()
-    ? discoverRepos.filter((r) => r.fullName.toLowerCase().includes(discoverFilter.trim().toLowerCase()))
-    : discoverRepos;
+    ? filteredByOwner.filter((r) => r.fullName.toLowerCase().includes(discoverFilter.trim().toLowerCase()))
+    : filteredByOwner;
   $: existingRepos = discoverModal ? ($sources[discoverModal]?.repos || {}) : {};
   $: selectableRepos = filteredDiscoverRepos.filter((r) => !existingRepos[r.fullName]);
   $: selectedCount = Object.values(discoverSelected).filter(Boolean).length;
@@ -539,6 +551,42 @@
     } else {
       for (const r of selectableRepos) discoverSelected[r.fullName] = true;
       discoverSelected = discoverSelected;
+    }
+  }
+
+  function toggleOwnerVisibility(owner: string) {
+    const nextOn = orgVisible[owner] === false;
+    orgVisible = { ...orgVisible, [owner]: nextOn };
+    if (!nextOn) {
+      const next = { ...discoverSelected };
+      for (const key of Object.keys(next)) {
+        if (ownerOf(key) === owner) delete next[key];
+      }
+      discoverSelected = next;
+    }
+  }
+
+  function toggleOwnerAll(owner: string) {
+    if (orgVisible[owner] === false) {
+      orgVisible = { ...orgVisible, [owner]: true };
+    }
+    const existing = discoverModal ? ($sources[discoverModal]?.repos || {}) : {};
+    const eligible = discoverRepos.filter((r) => ownerOf(r.fullName) === owner && !existing[r.fullName]);
+    const allOn = eligible.length > 0 && eligible.every((r) => discoverSelected[r.fullName]);
+    const next = { ...discoverSelected };
+    for (const r of eligible) next[r.fullName] = !allOn;
+    discoverSelected = next;
+  }
+
+  function toggleAllOwners() {
+    const anyOn = owners.some((o) => orgVisible[o] !== false);
+    if (anyOn) {
+      const next: Record<string, boolean> = {};
+      for (const o of owners) next[o] = false;
+      orgVisible = next;
+      discoverSelected = {};
+    } else {
+      orgVisible = {};
     }
   }
 
@@ -2258,7 +2306,11 @@
                 <button class="ws-badge"
                         title="Member of: {membershipsFor(repoKey).map(workspaceLabel).join(', ')}"
                         on:click|stopPropagation={() => toggleWsPopover(repoKey)}>
-                  📦
+                  <svg class="ws-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+                    <path d="M2 5.5 L8 2.5 L14 5.5 L8 8.5 Z"/>
+                    <path d="M2 8.5 L8 11.5 L14 8.5"/>
+                    <path d="M2 11.5 L8 14.5 L14 11.5"/>
+                  </svg>
                 </button>
                 {#if openWsPopover === repoKey}
                   <div class="ws-popover" transition:fade={{ duration: 80 }} on:click|stopPropagation>
@@ -2267,7 +2319,12 @@
                       <button class="ws-popover-item"
                               on:click={() => openWorkspaceFromBadge(wsKey)}
                               disabled={workspaceBusy}>
-                        📦 {workspaceLabel(wsKey)}
+                        <svg class="ws-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+                          <path d="M2 5.5 L8 2.5 L14 5.5 L8 8.5 Z"/>
+                          <path d="M2 8.5 L8 11.5 L14 8.5"/>
+                          <path d="M2 11.5 L8 14.5 L14 11.5"/>
+                        </svg>
+                        {workspaceLabel(wsKey)}
                       </button>
                     {/each}
                   </div>
@@ -2683,7 +2740,41 @@
           {:else if discoverRepos.length === 0}
             <p class="found">No new projects found.</p>
           {:else}
-            <p class="found">Found {discoverRepos.length} projects{discoverFilter ? ` (showing ${filteredDiscoverRepos.length})` : ''}:</p>
+            <div class="found-row">
+              <p class="found">Found {discoverRepos.length} projects{filteredDiscoverRepos.length !== discoverRepos.length ? ` (showing ${filteredDiscoverRepos.length})` : ''}:</p>
+              {#if showOwnerSection}
+                {@const anyOn = owners.some((o) => orgVisible[o] !== false)}
+                <button
+                  class="org-switch"
+                  class:is-on={anyOn}
+                  on:click={toggleAllOwners}
+                  title={anyOn ? 'Hide all owners' : 'Show all owners'}
+                >
+                  <span class="org-switch-thumb">{anyOn ? '✓' : '✕'}</span>
+                </button>
+              {/if}
+            </div>
+            {#if showOwnerSection}
+              <div class="discover-orgs">
+                {#each owners as owner}
+                  {@const on = orgVisible[owner] !== false}
+                  {@const eligible = discoverRepos.filter((r) => ownerOf(r.fullName) === owner && !($sources[discoverModal]?.repos?.[r.fullName]))}
+                  {@const allSel = eligible.length > 0 && eligible.every((r) => discoverSelected[r.fullName])}
+                  {@const someSel = eligible.some((r) => discoverSelected[r.fullName])}
+                  <span class="org-badge" class:is-on={on}>
+                    <input
+                      type="checkbox"
+                      checked={allSel}
+                      indeterminate={someSel && !allSel}
+                      on:click|stopPropagation={() => toggleOwnerAll(owner)}
+                    />
+                    <span class="org-badge-body" on:click={() => toggleOwnerVisibility(owner)}>
+                      {owner} <span class="org-badge-count">({ownerCounts[owner]})</span>
+                    </span>
+                  </span>
+                {/each}
+              </div>
+            {/if}
             <input class="form-input discover-filter" type="text" placeholder="Filter projects..." bind:value={discoverFilter} />
             <label class="dr dr-all">
               <input type="checkbox" checked={allSelected} on:change={toggleAll} />
@@ -3757,8 +3848,12 @@
   .btn-select { font-size: 15px; }
   .select-active { color: var(--text-primary) !important; background: var(--bg-hover) !important; }
 
-  .cards-tab-bar { display: flex; gap: 4px; padding: 12px 24px 0; align-items: center; }
-  .tab-bar-actions { margin-left: auto; display: flex; gap: 6px; }
+  .cards-tab-bar {
+    display: flex; gap: 4px; padding: 12px 24px 0;
+    align-items: flex-end;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab-bar-actions { margin-left: auto; display: flex; gap: 6px; padding-bottom: 6px; }
   .btn-tab-action {
     padding: 3px 10px; font-size: 11px; font-weight: 500;
     border: 1px solid #1e3a5f; background: rgba(37, 99, 235, 0.1);
@@ -3770,13 +3865,21 @@
   :global([data-theme="light"]) .btn-tab-action { border-color: #93c5fd; background: rgba(37, 99, 235, 0.06); color: #2563eb; }
   :global([data-theme="light"]) .btn-tab-action:hover:not(:disabled) { background: rgba(37, 99, 235, 0.12); }
   .cards-tab {
-    padding: 4px 14px; font-size: 12px; font-weight: 600;
-    border: 1px solid var(--border); background: transparent;
-    color: var(--text-secondary); border-radius: 6px;
-    cursor: pointer; transition: all 0.12s;
+    padding: 5px 14px; font-size: 12px; font-weight: 600;
+    border: 1px solid var(--border);
+    border-radius: 6px 6px 0 0;
+    background: transparent; color: var(--text-secondary);
+    cursor: pointer; transition: background 0.12s, color 0.12s;
+    margin-bottom: -1px;
+    position: relative;
   }
-  .cards-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
-  .cards-tab-active { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
+  .cards-tab:hover:not(.cards-tab-active) { background: var(--bg-hover); color: var(--text-primary); }
+  .cards-tab-active {
+    background: var(--bg-base); color: var(--text-primary);
+    border-color: var(--border-hover);
+    border-bottom-color: var(--bg-base);
+    z-index: 1;
+  }
 
   .cards-row { display: flex; gap: 10px; padding: 18px 24px; overflow-x: auto; flex-shrink: 0; }
   .card {
@@ -4089,6 +4192,40 @@
   .modal-account { width: 580px; }
   .modal-discover { width: 650px; }
   .discover-filter { width: 100%; margin-bottom: 8px; font-size: 13px; }
+  .discover-orgs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+  .org-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 2px 8px; border-radius: 12px; font-size: 11px;
+    background: transparent; border: 1px solid var(--border);
+    color: var(--text-muted); user-select: none;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+  }
+  .org-badge.is-on { background: #14532d; border-color: #166534; color: #86efac; }
+  .org-badge input[type="checkbox"] { margin: 0; cursor: pointer; accent-color: #4B95E9; }
+  .org-badge-body { cursor: pointer; }
+  .org-badge-count { opacity: 0.75; font-variant-numeric: tabular-nums; }
+  :global([data-theme="light"]) .org-badge.is-on { background: #dcfce7; border-color: #86efac; color: #166534; }
+  .found-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .found-row .found { margin: 0 0 10px; }
+  .org-switch {
+    flex-shrink: 0;
+    width: 28px; height: 14px; border-radius: 7px;
+    background: var(--text-muted); border: none; padding: 0;
+    cursor: pointer; position: relative;
+    transition: background 0.18s;
+    margin-bottom: 10px;
+  }
+  .org-switch.is-on { background: #6ee09c; }
+  .org-switch-thumb {
+    position: absolute; top: 2px; left: 2px;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 7px; font-weight: 800; color: var(--text-muted);
+    transition: transform 0.18s, color 0.18s;
+    line-height: 1;
+  }
+  .org-switch.is-on .org-switch-thumb { transform: translateX(14px); color: #14532d; }
   .form-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
   .form-label { font-size: 11px; font-weight: 600; color: var(--text-muted); width: 95px; flex-shrink: 0; }
   .form-input {
@@ -4197,7 +4334,7 @@
 
   /* ── Orphan adoption ── */
   .orphan-pill {
-    margin-left: auto; padding: 2px 10px; border: 1px solid #f59e0b88;
+    margin-left: auto; margin-bottom: 6px; padding: 2px 10px; border: 1px solid #f59e0b88;
     background: #f59e0b22; color: #f59e0b; border-radius: 12px;
     font-size: 11px; font-weight: 600; cursor: pointer;
   }
@@ -4491,7 +4628,6 @@
      workspaces by name). Compact footprint — one emoji glyph, tight padding,
      no border. */
   .ws-badge {
-    font-size: 13px;
     line-height: 1;
     padding: 2px 3px;
     border: none;
@@ -4499,9 +4635,13 @@
     color: var(--text-muted);
     cursor: pointer;
     border-radius: 4px;
-    transition: background 0.12s;
+    transition: background 0.12s, color 0.12s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   .ws-badge:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .ws-icon { display: block; vertical-align: middle; }
   .ws-badge:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 1px; }
   /* Anchor ABOVE the badge — bottom rows would otherwise spawn the popover
      beneath the visible viewport and need scrolling to reveal it. The
