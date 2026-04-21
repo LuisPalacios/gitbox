@@ -373,6 +373,241 @@ func TestDeleteAccountBlockedByMirror(t *testing.T) {
 	}
 }
 
+func TestCascadeDeleteAccount_SourcesOnly(t *testing.T) {
+	cfg := newTestConfig()
+	r, err := cfg.CascadeDeleteAccount("github-test")
+	if err != nil {
+		t.Fatalf("CascadeDeleteAccount: %v", err)
+	}
+	if len(r.Sources) != 1 || r.Sources[0] != "github-test" {
+		t.Errorf("sources = %v, want [github-test]", r.Sources)
+	}
+	if len(r.Mirrors) != 0 {
+		t.Errorf("mirrors = %v, want none", r.Mirrors)
+	}
+	if r.RepoCount != 1 {
+		t.Errorf("repoCount = %d, want 1", r.RepoCount)
+	}
+	if _, ok := cfg.Accounts["github-test"]; ok {
+		t.Error("account still present after cascade delete")
+	}
+	if _, ok := cfg.Sources["github-test"]; ok {
+		t.Error("source still present after cascade delete")
+	}
+}
+
+func TestCascadeDeleteAccount_MirrorSrc(t *testing.T) {
+	cfg := newTestConfig()
+	cfg.DeleteSource("github-test")
+	if err := cfg.AddMirror("m1", Mirror{AccountSrc: "forgejo-test", AccountDst: "github-test"}); err != nil {
+		t.Fatalf("AddMirror: %v", err)
+	}
+
+	r, err := cfg.CascadeDeleteAccount("forgejo-test")
+	if err != nil {
+		t.Fatalf("CascadeDeleteAccount: %v", err)
+	}
+	if len(r.Mirrors) != 1 || r.Mirrors[0] != "m1" {
+		t.Errorf("mirrors = %v, want [m1]", r.Mirrors)
+	}
+	if _, ok := cfg.Mirrors["m1"]; ok {
+		t.Error("mirror still present after cascade delete (was account_src)")
+	}
+}
+
+func TestCascadeDeleteAccount_MirrorDst(t *testing.T) {
+	cfg := newTestConfig()
+	cfg.DeleteSource("github-test")
+	if err := cfg.AddMirror("m1", Mirror{AccountSrc: "forgejo-test", AccountDst: "github-test"}); err != nil {
+		t.Fatalf("AddMirror: %v", err)
+	}
+
+	r, err := cfg.CascadeDeleteAccount("github-test")
+	if err != nil {
+		t.Fatalf("CascadeDeleteAccount: %v", err)
+	}
+	if len(r.Mirrors) != 1 || r.Mirrors[0] != "m1" {
+		t.Errorf("mirrors = %v, want [m1]", r.Mirrors)
+	}
+	if _, ok := cfg.Mirrors["m1"]; ok {
+		t.Error("mirror still present after cascade delete (was account_dst)")
+	}
+}
+
+func TestCascadeDeleteAccount_SourcesAndMirrors(t *testing.T) {
+	cfg := newTestConfig()
+	if err := cfg.AddAccount("gitea-extra", Account{
+		Provider: "gitea", URL: "https://gitea.example.com",
+		Username: "u", Name: "N", Email: "e@e",
+	}); err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	if err := cfg.AddMirror("m1", Mirror{AccountSrc: "github-test", AccountDst: "gitea-extra"}); err != nil {
+		t.Fatalf("AddMirror: %v", err)
+	}
+
+	r, err := cfg.CascadeDeleteAccount("github-test")
+	if err != nil {
+		t.Fatalf("CascadeDeleteAccount: %v", err)
+	}
+	if len(r.Sources) != 1 || r.Sources[0] != "github-test" {
+		t.Errorf("sources = %v, want [github-test]", r.Sources)
+	}
+	if len(r.Mirrors) != 1 || r.Mirrors[0] != "m1" {
+		t.Errorf("mirrors = %v, want [m1]", r.Mirrors)
+	}
+	if _, ok := cfg.Accounts["github-test"]; ok {
+		t.Error("account remains")
+	}
+	if _, ok := cfg.Sources["github-test"]; ok {
+		t.Error("source remains")
+	}
+	if _, ok := cfg.Mirrors["m1"]; ok {
+		t.Error("mirror remains")
+	}
+	// Unrelated accounts/sources untouched.
+	if _, ok := cfg.Accounts["forgejo-test"]; !ok {
+		t.Error("unrelated account forgejo-test dropped")
+	}
+	if _, ok := cfg.Accounts["gitea-extra"]; !ok {
+		t.Error("unrelated account gitea-extra dropped")
+	}
+}
+
+func TestCascadeDeleteAccount_PrunesWorkspaceMembers(t *testing.T) {
+	cfg := newTestConfig()
+	// Add a second source tied to the forgejo account, plus a workspace that
+	// mixes members from BOTH sources. Cascading the github account must
+	// drop only the github member; the forgejo member, the workspace entry
+	// itself, and its File field all survive.
+	if err := cfg.AddSource("forgejo-test", Source{
+		Account: "forgejo-test",
+		Repos: map[string]Repo{
+			"user/theme": {},
+		},
+	}); err != nil {
+		t.Fatalf("AddSource forgejo-test: %v", err)
+	}
+	if err := cfg.AddWorkspace("mixed", Workspace{
+		Type: WorkspaceTypeCode,
+		Name: "Mixed",
+		File: "/tmp/mixed.code-workspace",
+		Members: []WorkspaceMember{
+			{Source: "github-test", Repo: "testuser/repo-a"},
+			{Source: "forgejo-test", Repo: "user/theme"},
+		},
+	}); err != nil {
+		t.Fatalf("AddWorkspace: %v", err)
+	}
+
+	r, err := cfg.CascadeDeleteAccount("github-test")
+	if err != nil {
+		t.Fatalf("CascadeDeleteAccount: %v", err)
+	}
+	if len(r.Workspaces) != 1 || r.Workspaces[0] != "mixed" {
+		t.Errorf("affected workspaces = %v, want [mixed]", r.Workspaces)
+	}
+	if r.WorkspaceMembers != 1 {
+		t.Errorf("WorkspaceMembers = %d, want 1", r.WorkspaceMembers)
+	}
+
+	w, ok := cfg.Workspaces["mixed"]
+	if !ok {
+		t.Fatal("workspace entry should survive the cascade (only members are pruned)")
+	}
+	if w.File != "/tmp/mixed.code-workspace" {
+		t.Errorf("workspace File lost: %q", w.File)
+	}
+	if len(w.Members) != 1 {
+		t.Fatalf("members = %d, want 1", len(w.Members))
+	}
+	if w.Members[0].Source != "forgejo-test" || w.Members[0].Repo != "user/theme" {
+		t.Errorf("remaining member = %+v, want forgejo-test/user/theme", w.Members[0])
+	}
+}
+
+func TestCascadeDeleteAccount_EmptiedWorkspaceSurvives(t *testing.T) {
+	// A workspace every member of which belongs to the cascaded account must
+	// end up with an empty Members slice, NOT be deleted — the user may want
+	// to rename/repopulate it rather than lose the entry.
+	cfg := newTestConfig()
+	if err := cfg.AddWorkspace("only-github", Workspace{
+		Type: WorkspaceTypeCode,
+		Members: []WorkspaceMember{
+			{Source: "github-test", Repo: "testuser/repo-a"},
+		},
+	}); err != nil {
+		t.Fatalf("AddWorkspace: %v", err)
+	}
+
+	if _, err := cfg.CascadeDeleteAccount("github-test"); err != nil {
+		t.Fatalf("CascadeDeleteAccount: %v", err)
+	}
+
+	w, ok := cfg.Workspaces["only-github"]
+	if !ok {
+		t.Fatal("workspace entry should survive even when emptied")
+	}
+	if len(w.Members) != 0 {
+		t.Errorf("members = %d, want 0", len(w.Members))
+	}
+}
+
+func TestCascadeDeleteAccount_NotFound(t *testing.T) {
+	cfg := newTestConfig()
+	if _, err := cfg.CascadeDeleteAccount("nope"); err == nil {
+		t.Error("expected error for unknown account")
+	}
+}
+
+func TestAccountDeletionImpact(t *testing.T) {
+	cfg := newTestConfig()
+	if err := cfg.AddAccount("gitea-extra", Account{
+		Provider: "gitea", URL: "https://gitea.example.com",
+		Username: "u", Name: "N", Email: "e@e",
+	}); err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	if err := cfg.AddMirror("m1", Mirror{AccountSrc: "github-test", AccountDst: "gitea-extra"}); err != nil {
+		t.Fatalf("AddMirror: %v", err)
+	}
+	if err := cfg.AddWorkspace("ws1", Workspace{
+		Type: WorkspaceTypeCode,
+		Members: []WorkspaceMember{
+			{Source: "github-test", Repo: "testuser/repo-a"},
+		},
+	}); err != nil {
+		t.Fatalf("AddWorkspace: %v", err)
+	}
+
+	r := cfg.AccountDeletionImpact("github-test")
+	if len(r.Sources) != 1 || r.Sources[0] != "github-test" {
+		t.Errorf("sources = %v", r.Sources)
+	}
+	if len(r.Mirrors) != 1 || r.Mirrors[0] != "m1" {
+		t.Errorf("mirrors = %v", r.Mirrors)
+	}
+	if len(r.Workspaces) != 1 || r.Workspaces[0] != "ws1" {
+		t.Errorf("workspaces = %v", r.Workspaces)
+	}
+	if r.WorkspaceMembers != 1 {
+		t.Errorf("WorkspaceMembers = %d, want 1", r.WorkspaceMembers)
+	}
+	if r.RepoCount != 1 {
+		t.Errorf("repoCount = %d, want 1", r.RepoCount)
+	}
+	// Impact must not mutate.
+	if _, ok := cfg.Accounts["github-test"]; !ok {
+		t.Error("impact mutated accounts map")
+	}
+	if _, ok := cfg.Mirrors["m1"]; !ok {
+		t.Error("impact mutated mirrors map")
+	}
+	if w, ok := cfg.Workspaces["ws1"]; !ok || len(w.Members) != 1 {
+		t.Error("impact mutated workspace members")
+	}
+}
+
 func TestRenameAccountUpdatesMirrors(t *testing.T) {
 	cfg := newTestConfig()
 	cfg.AddMirror("m1", Mirror{AccountSrc: "forgejo-test", AccountDst: "github-test"})

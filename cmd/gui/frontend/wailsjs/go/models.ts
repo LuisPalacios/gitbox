@@ -340,6 +340,30 @@ export namespace main {
 	        this.args = source["args"];
 	    }
 	}
+	export class AccountDeletionImpactDTO {
+	    account: string;
+	    sources: string[];
+	    mirrors: string[];
+	    workspaces: string[];
+	    workspace_members: number;
+	    repo_count: number;
+	    clone_count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccountDeletionImpactDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.account = source["account"];
+	        this.sources = source["sources"];
+	        this.mirrors = source["mirrors"];
+	        this.workspaces = source["workspaces"];
+	        this.workspace_members = source["workspace_members"];
+	        this.repo_count = source["repo_count"];
+	        this.clone_count = source["clone_count"];
+	    }
+	}
 	export class AddAccountRequest {
 	    key: string;
 	    provider: string;
@@ -380,6 +404,24 @@ export namespace main {
 	        this.relocated = source["relocated"];
 	        this.skipped = source["skipped"];
 	        this.error = source["error"];
+	    }
+	}
+	export class ConfigBackupInfo {
+	    path: string;
+	    filename: string;
+	    timestamp: string;
+	    size_bytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConfigBackupInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.filename = source["filename"];
+	        this.timestamp = source["timestamp"];
+	        this.size_bytes = source["size_bytes"];
 	    }
 	}
 	export class WorkspaceMemberDTO {
@@ -549,6 +591,22 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class ConfigRepairResult {
+	    success: boolean;
+	    error?: string;
+	    repairs?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ConfigRepairResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.success = source["success"];
+	        this.error = source["error"];
+	        this.repairs = source["repairs"];
+	    }
 	}
 	export class CredentialSetupResult {
 	    ok: boolean;

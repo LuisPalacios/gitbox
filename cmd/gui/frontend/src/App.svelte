@@ -149,6 +149,112 @@
   let onboardFolder = '~/00.git';
   let onboardError = '';
 
+  // ── Config-load-error screen (issue #60, smoke-test feedback) ──
+  // Rendered when Startup detected a config file that existed but failed to
+  // parse. Four recovery actions:
+  //   • Restore from a dated backup under ~/.config/gitbox/ (primary path)
+  //   • Auto-repair — drop dangling mirror/workspace references in place
+  //   • Start fresh — walk through onboarding, overwriting the broken file
+  //   • Exit — close GitboxApp so the user can fix the file manually
+  //
+  // Rendered as a full-screen Svelte view (NOT a window.confirm) because
+  // macOS WebKit was observed to auto-dismiss confirm() without showing a
+  // dialog, causing the app to flash and exit on corrupted configs.
+  let cfgLoadErrorModal = false;
+  let cfgLoadErrorMsg = '';
+  let cfgLoadErrorBusy = false;
+  let cfgRepairFailure = '';
+  let cfgBackups: { path: string; filename: string; timestamp: string; size_bytes: number }[] = [];
+
+  async function cfgLoadBackups() {
+    try {
+      cfgBackups = await bridge.listConfigBackups();
+    } catch (err) {
+      console.error('listConfigBackups failed', err);
+      cfgBackups = [];
+    }
+  }
+
+  function cfgFormatBackupTime(ts: string): string {
+    if (!ts) return '';
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return ts;
+    return d.toLocaleString(undefined, {
+      year: 'numeric', month: 'short', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
+  }
+
+  function cfgFormatBackupSize(n: number): string {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  async function cfgRestoreBackup(path: string) {
+    cfgLoadErrorBusy = true;
+    cfgRepairFailure = '';
+    try {
+      const res = await bridge.restoreFromBackup(path);
+      if (!res.success) {
+        cfgRepairFailure = res.error || 'unknown error';
+        await cfgLoadBackups(); // the failed restore may have altered backup count
+        return;
+      }
+      cfgLoadErrorModal = false;
+      cfgLoadErrorMsg = '';
+      firstRun = await bridge.isFirstRun();
+      if (firstRun) return;
+      await initDashboard();
+    } catch (err: any) {
+      cfgRepairFailure = err?.message || String(err);
+    } finally {
+      cfgLoadErrorBusy = false;
+    }
+  }
+
+  async function cfgDoRepair() {
+    cfgLoadErrorBusy = true;
+    cfgRepairFailure = '';
+    try {
+      const res = await bridge.repairConfig();
+      if (!res.success) {
+        cfgRepairFailure = res.error || 'unknown error';
+        await cfgLoadBackups();
+        return;
+      }
+      cfgLoadErrorModal = false;
+      cfgLoadErrorMsg = '';
+      firstRun = await bridge.isFirstRun();
+      if (firstRun) return;
+      await initDashboard();
+    } catch (err: any) {
+      cfgRepairFailure = err?.message || String(err);
+    } finally {
+      cfgLoadErrorBusy = false;
+    }
+  }
+
+  async function cfgStartFresh() {
+    // Acknowledge the corruption so SetGlobalFolder no longer refuses the
+    // first save. The dated backup in ~/.config/gitbox/ preserves the
+    // pre-overwrite copy, so the user can recover manually if needed.
+    cfgLoadErrorBusy = true;
+    try {
+      await bridge.acknowledgeConfigError();
+    } finally {
+      cfgLoadErrorBusy = false;
+    }
+    cfgLoadErrorModal = false;
+    cfgLoadErrorMsg = '';
+    cfgRepairFailure = '';
+    firstRun = true;
+  }
+
+  function cfgExit() {
+    Quit();
+  }
+
   async function browseFolder(target: 'onboard' | 'settings') {
     const dir = await bridge.pickFolder('Choose root folder');
     if (dir) {
@@ -612,16 +718,35 @@
     discoverModal = null;
   }
 
-  // Re-read config from disk and refresh all repo statuses.
+  // Banner surfaced when reloadFromDisk() or a mutation fails — usually a
+  // symptom of on-disk config drift (e.g. a dangling reference left by a
+  // prior bug). Cleared the next time reload succeeds.
+  let reloadError = '';
+
+  // Re-read config from disk and refresh all repo statuses. Throws on
+  // failure; callers catch and populate reloadError so the UI does not
+  // silently swallow integrity issues.
+  //
+  // No-op while the config-load-error modal is up — the on-disk file is
+  // known-broken and reloading it would just re-surface the same error
+  // as a banner on top of the modal. The user's choice (Repair / Start
+  // fresh / Exit) is what drives recovery, not ambient focus events.
   async function reloadFromDisk() {
-    const cfg = await bridge.reloadConfig();
-    configStore.set(cfg);
-    configPath = await bridge.getConfigPath();
-    const saved = await bridge.getPeriodicSync();
-    if (saved !== fetchInterval) applyFetchInterval(saved);
-    const statuses = await bridge.getAllStatus();
-    applyStatusResults(statuses);
-    verifyAllCredentials();
+    if (cfgLoadErrorModal) return;
+    try {
+      const cfg = await bridge.reloadConfig();
+      configStore.set(cfg);
+      configPath = await bridge.getConfigPath();
+      const saved = await bridge.getPeriodicSync();
+      if (saved !== fetchInterval) applyFetchInterval(saved);
+      const statuses = await bridge.getAllStatus();
+      applyStatusResults(statuses);
+      verifyAllCredentials();
+      reloadError = '';
+    } catch (err: any) {
+      reloadError = err?.message || String(err);
+      throw err;
+    }
   }
 
   // ── Delete mode ──
@@ -1013,12 +1138,38 @@
   let deleteAcctBusy = false;
   let deleteAcctInput = '';
   let deleteAcctError = '';
+  // Cascade impact from the backend — populated on modal open so the warning
+  // step lists every mirror and workspace-member that will be pruned along
+  // with the account. Workspace entries themselves survive even if emptied.
+  let deleteAcctImpact: {
+    sources: string[];
+    mirrors: string[];
+    workspaces: string[];
+    workspaceMembers: number;
+    repoCount: number;
+    cloneCount: number;
+  } | null = null;
 
-  function askDeleteAccount(accountKey: string) {
+  async function askDeleteAccount(accountKey: string) {
     deleteAcctConfirm = accountKey;
     deleteAcctStep = 1;
     deleteAcctInput = '';
     deleteAcctError = '';
+    deleteAcctImpact = null;
+    try {
+      const dto = await bridge.accountDeletionImpact(accountKey);
+      deleteAcctImpact = {
+        sources: dto.sources || [],
+        mirrors: dto.mirrors || [],
+        workspaces: dto.workspaces || [],
+        workspaceMembers: dto.workspace_members || 0,
+        repoCount: dto.repo_count || 0,
+        cloneCount: dto.clone_count || 0,
+      };
+    } catch (err) {
+      // Non-fatal — fall back to the generic source/repo-count text.
+      console.error('accountDeletionImpact failed', err);
+    }
   }
 
   function cancelDeleteAccount() {
@@ -1026,6 +1177,7 @@
     deleteAcctStep = 0;
     deleteAcctInput = '';
     deleteAcctError = '';
+    deleteAcctImpact = null;
   }
 
   function deleteAcctCheckName() {
@@ -1044,11 +1196,14 @@
     try {
       await bridge.deleteAccount(deleteAcctConfirm);
       await reloadFromDisk();
+    } catch (err: any) {
+      reloadError = err?.message || String(err);
     } finally {
       deleteAcctBusy = false;
       deleteAcctConfirm = null;
       deleteAcctStep = 0;
       deleteAcctInput = '';
+      deleteAcctImpact = null;
       deleteMode = false;
     }
   }
@@ -1888,15 +2043,22 @@
     });
 
     // Check if config failed to parse (file exists but is broken/unsupported).
+    // Render an in-app modal rather than window.confirm — macOS WebKit has
+    // been observed to auto-dismiss confirm() without showing a dialog,
+    // which caused GitboxApp to "flash and exit" on mac with a malformed
+    // config. The modal stays mounted until the user clicks a button.
     const loadError = await bridge.getConfigLoadError();
     if (loadError) {
-      const proceed = confirm(
-        `Config file could not be loaded:\n\n${loadError}\n\nDo you want to reinitialize the configuration?\n\nClick OK to start fresh, or Cancel to exit and fix the file manually.`
-      );
-      if (!proceed) {
-        Quit();
-        return;
-      }
+      cfgLoadErrorMsg = loadError;
+      // Populate configPath and the backup list before showing the screen
+      // so everything renders in one pass — no flash of empty state.
+      try {
+        configPath = await bridge.getConfigPath();
+      } catch { /* fall back to the template's default placeholder */ }
+      await cfgLoadBackups();
+      cfgLoadErrorModal = true;
+      return; // onMount stops here; dashboard init resumes after the user
+              // picks Restore / Auto-repair / Start fresh / Exit.
     }
 
     // Check first run — show onboarding if no folder configured.
@@ -1934,8 +2096,75 @@
 <!--  TEMPLATE                                                   -->
 <!-- ════════════════════════════════════════════════════════════ -->
 
+<!-- ── CONFIG LOAD ERROR ── -->
+{#if cfgLoadErrorModal}
+<div class="cfg-error-screen">
+  <div class="cfg-error-card">
+    <h2 class="cfg-error-title">Config file could not be loaded</h2>
+    <p class="cfg-error-path">{configPath || '~/.config/gitbox/gitbox.json'}</p>
+    <pre class="cfg-error-detail">{cfgLoadErrorMsg}</pre>
+
+    {#if cfgRepairFailure}
+      <div class="cfg-error-failure" role="alert">
+        <strong>Action failed:</strong> {cfgRepairFailure}
+      </div>
+    {/if}
+
+    <!-- Primary recovery: pick a dated backup and restore it. -->
+    <section class="cfg-error-section">
+      <h3 class="cfg-error-section-title">Restore from a previous backup</h3>
+      <p class="cfg-error-section-desc">
+        GitboxApp writes a dated copy of <code>gitbox.json</code> before every save
+        (keeping the 5 most recent). Pick the most recent one you trust — the
+        currently-broken file becomes another backup before the restore so
+        nothing is permanently lost.
+      </p>
+      {#if cfgBackups.length === 0}
+        <p class="cfg-error-empty">No backups found in this config directory.</p>
+      {:else}
+        <ul class="cfg-error-backup-list">
+          {#each cfgBackups as b}
+            <li class="cfg-error-backup-row">
+              <div class="cfg-error-backup-meta">
+                <div class="cfg-error-backup-time">{cfgFormatBackupTime(b.timestamp) || b.filename}</div>
+                <div class="cfg-error-backup-sub">{b.filename} · {cfgFormatBackupSize(b.size_bytes)}</div>
+              </div>
+              <button class="cfg-error-btn cfg-error-btn-primary cfg-error-btn-small"
+                      on:click={() => cfgRestoreBackup(b.path)}
+                      disabled={cfgLoadErrorBusy}>Restore</button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
+
+    <!-- Secondary: in-place auto-repair (drops dangling refs only). -->
+    <section class="cfg-error-section">
+      <h3 class="cfg-error-section-title">Or try auto-repair</h3>
+      <p class="cfg-error-section-desc">
+        Drops dangling mirror or workspace-member references and keeps
+        everything else. Works only when the file parses and the only
+        problem is references pointing at deleted accounts.
+      </p>
+      <div class="cfg-error-section-actions">
+        <button class="cfg-error-btn cfg-error-btn-secondary"
+                on:click={cfgDoRepair}
+                disabled={cfgLoadErrorBusy}>
+          {cfgLoadErrorBusy ? 'Working…' : 'Auto-repair in place'}
+        </button>
+      </div>
+    </section>
+
+    <!-- Footer: start fresh or exit. -->
+    <div class="cfg-error-actions">
+      <button class="cfg-error-btn cfg-error-btn-ghost" on:click={cfgExit} disabled={cfgLoadErrorBusy}>Exit</button>
+      <button class="cfg-error-btn cfg-error-btn-ghost" on:click={cfgStartFresh} disabled={cfgLoadErrorBusy}>Start fresh (new config)</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── ONBOARDING ── -->
-{#if firstRun}
+{:else if firstRun}
 <div class="onboarding">
   <div class="onboard-card">
     <svg class="onboard-logo" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
@@ -1983,6 +2212,15 @@
 {:else}
 
 <div class="app">
+
+  {#if reloadError}
+    <div class="reload-error-banner" role="alert">
+      <span class="reload-error-label">Config sync issue:</span>
+      <span class="reload-error-msg">{reloadError}</span>
+      <span class="reload-error-hint">Please relaunch GitboxApp.</span>
+      <button class="reload-error-dismiss" on:click={() => reloadError = ''} title="Dismiss">&#10005;</button>
+    </div>
+  {/if}
 
   {#if viewMode === 'compact'}
   <!-- ══════ COMPACT STATUS VIEW ══════ -->
@@ -3431,9 +3669,35 @@
             {/if}
           {:else if deleteAcctStep === 2}
             <p class="delete-repo-name">{deleteAcctConfirm}</p>
-            <p class="delete-warning delete-danger">
-              This will permanently delete the account, {acctSources.length} source{acctSources.length !== 1 ? 's' : ''}, {repoCount} repo{repoCount !== 1 ? 's' : ''}, and all their local clone folders.
-            </p>
+            {#if deleteAcctImpact}
+              <p class="delete-warning delete-danger">
+                This will permanently delete the account, {deleteAcctImpact.sources.length} source{deleteAcctImpact.sources.length !== 1 ? 's' : ''}, {deleteAcctImpact.repoCount} repo{deleteAcctImpact.repoCount !== 1 ? 's' : ''} ({deleteAcctImpact.cloneCount} cloned), and all their local folders.
+              </p>
+              {#if deleteAcctImpact.mirrors.length > 0}
+                <p class="delete-warning delete-danger" style="margin-top: 8px;">
+                  The following mirror group{deleteAcctImpact.mirrors.length !== 1 ? 's' : ''} will also be removed because {deleteAcctImpact.mirrors.length !== 1 ? 'they reference' : 'it references'} this account:
+                </p>
+                <ul style="margin: 4px 0 0 18px;">
+                  {#each deleteAcctImpact.mirrors as m}
+                    <li><code>{m}</code></li>
+                  {/each}
+                </ul>
+              {/if}
+              {#if deleteAcctImpact.workspaces.length > 0}
+                <p class="delete-warning" style="margin-top: 8px;">
+                  {deleteAcctImpact.workspaceMembers} workspace member{deleteAcctImpact.workspaceMembers !== 1 ? 's' : ''} will be pruned from the following workspace{deleteAcctImpact.workspaces.length !== 1 ? 's' : ''} (the workspace entry and its on-disk file are kept):
+                </p>
+                <ul style="margin: 4px 0 0 18px;">
+                  {#each deleteAcctImpact.workspaces as w}
+                    <li><code>{w}</code></li>
+                  {/each}
+                </ul>
+              {/if}
+            {:else}
+              <p class="delete-warning delete-danger">
+                This will permanently delete the account, {acctSources.length} source{acctSources.length !== 1 ? 's' : ''}, {repoCount} repo{repoCount !== 1 ? 's' : ''}, and all their local clone folders.
+              </p>
+            {/if}
           {:else}
             <p class="delete-repo-name">{deleteAcctConfirm}</p>
             <p class="delete-final">This action <strong>cannot be undone</strong>. Are you absolutely sure?</p>
@@ -4953,4 +5217,211 @@
   }
   .btn-danger:hover { background: #b91c1c; }
   .btn-danger:disabled { opacity: 0.6; cursor: default; }
+
+  .reload-error-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #3a1515;
+    border-bottom: 1px solid #7f1d1d;
+    color: #fecaca;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .reload-error-label {
+    font-weight: 700;
+    color: #fca5a5;
+    white-space: nowrap;
+  }
+  .reload-error-msg {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .reload-error-hint {
+    font-style: italic;
+    opacity: 0.8;
+    white-space: nowrap;
+  }
+  .reload-error-dismiss {
+    background: transparent;
+    border: none;
+    color: #fca5a5;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 4px;
+  }
+  .reload-error-dismiss:hover { color: #fff; }
+
+  .cfg-error-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg-base);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    overflow: auto;
+    z-index: 10000;
+  }
+  .cfg-error-card {
+    max-width: 620px;
+    width: 100%;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px 24px;
+    box-shadow: var(--card-shadow);
+  }
+  .cfg-error-title {
+    margin: 0 0 4px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .cfg-error-path {
+    margin: 0 0 12px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    word-break: break-all;
+  }
+  .cfg-error-detail {
+    background: rgba(216, 30, 91, 0.10);
+    border: 1px solid rgba(216, 30, 91, 0.45);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 0 0 14px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 140px;
+    overflow: auto;
+    color: var(--text-primary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .cfg-error-failure {
+    background: #D81E5B;
+    border: 1px solid #D81E5B;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 0 0 14px;
+    font-size: 12px;
+    color: #ffffff;
+  }
+  .cfg-error-failure strong { color: #ffffff; }
+
+  .cfg-error-section {
+    margin: 0 0 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-base);
+  }
+  .cfg-error-section-title {
+    margin: 0 0 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .cfg-error-section-desc {
+    margin: 0 0 10px;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: var(--text-secondary);
+  }
+  .cfg-error-section-actions {
+    display: flex;
+    justify-content: flex-start;
+  }
+  .cfg-error-empty {
+    margin: 0;
+    padding: 8px 10px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+  .cfg-error-backup-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .cfg-error-backup-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .cfg-error-backup-meta { flex: 1 1 auto; min-width: 0; }
+  .cfg-error-backup-time {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .cfg-error-backup-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cfg-error-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .cfg-error-btn {
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s, opacity 0.12s, border-color 0.12s;
+    border: 1px solid transparent;
+  }
+  .cfg-error-btn:disabled { opacity: 0.55; cursor: default; }
+  .cfg-error-btn-small { padding: 5px 10px; font-size: 11.5px; }
+  .cfg-error-btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border-color: var(--border);
+  }
+  .cfg-error-btn-ghost:hover:not(:disabled) {
+    color: var(--text-primary);
+    border-color: var(--border-hover);
+    background: var(--bg-hover);
+  }
+  .cfg-error-btn-secondary {
+    background: transparent;
+    color: #D81E5B;
+    border-color: #D81E5B;
+  }
+  .cfg-error-btn-secondary:hover:not(:disabled) {
+    background: rgba(216, 30, 91, 0.10);
+  }
+  .cfg-error-btn-primary {
+    background: #D81E5B;
+    color: #ffffff;
+    border-color: #D81E5B;
+  }
+  .cfg-error-btn-primary:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
 </style>

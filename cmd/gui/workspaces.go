@@ -150,7 +150,7 @@ func (a *App) CreateWorkspace(req WorkspaceCreateRequest) error {
 	if err := a.cfg.AddWorkspace(req.Key, ws); err != nil {
 		return err
 	}
-	return config.Save(a.cfg, a.cfgPath)
+	return a.saveConfig()
 }
 
 // UpdateWorkspace replaces the editable fields (name, layout, members)
@@ -172,7 +172,7 @@ func (a *App) UpdateWorkspace(key string, req WorkspaceUpdateRequest) error {
 	if err := a.cfg.UpdateWorkspace(key, existing); err != nil {
 		return err
 	}
-	return config.Save(a.cfg, a.cfgPath)
+	return a.saveConfig()
 }
 
 // DeleteWorkspace removes the workspace from the config. The generated
@@ -184,7 +184,7 @@ func (a *App) DeleteWorkspace(key string) error {
 	if err := a.cfg.DeleteWorkspace(key); err != nil {
 		return err
 	}
-	return config.Save(a.cfg, a.cfgPath)
+	return a.saveConfig()
 }
 
 // AddWorkspaceMember appends a member and persists the config.
@@ -195,7 +195,7 @@ func (a *App) AddWorkspaceMember(key string, member WorkspaceMemberDTO) error {
 	if err := a.cfg.AddWorkspaceMember(key, fromMemberDTO(member)); err != nil {
 		return err
 	}
-	return config.Save(a.cfg, a.cfgPath)
+	return a.saveConfig()
 }
 
 // RemoveWorkspaceMember drops a member identified by source+repo.
@@ -206,7 +206,7 @@ func (a *App) RemoveWorkspaceMember(key, source, repo string) error {
 	if err := a.cfg.DeleteWorkspaceMember(key, source, repo); err != nil {
 		return err
 	}
-	return config.Save(a.cfg, a.cfgPath)
+	return a.saveConfig()
 }
 
 // GenerateWorkspace writes the .code-workspace or tmuxinator YAML to
@@ -233,7 +233,7 @@ func (a *App) GenerateWorkspace(key string) (WorkspaceGenerateResult, error) {
 		if err := a.cfg.UpdateWorkspace(key, ws); err != nil {
 			return WorkspaceGenerateResult{}, err
 		}
-		if err := config.Save(a.cfg, a.cfgPath); err != nil {
+		if err := a.saveConfig(); err != nil {
 			return WorkspaceGenerateResult{}, err
 		}
 	}
@@ -290,7 +290,7 @@ func (a *App) DiscoverWorkspaces() (DiscoverWorkspacesResult, error) {
 
 	adopted := workspace.AdoptDiscovered(a.cfg, res)
 	if len(adopted) > 0 {
-		if err := config.Save(a.cfg, a.cfgPath); err != nil {
+		if err := a.saveConfig(); err != nil {
 			return out, fmt.Errorf("saving adopted workspaces: %w", err)
 		}
 		out.Adopted = adopted
@@ -359,7 +359,7 @@ func (a *App) OpenWorkspace(key string) error {
 		if err := a.cfg.UpdateWorkspace(key, ws); err != nil {
 			return err
 		}
-		if err := config.Save(a.cfg, a.cfgPath); err != nil {
+		if err := a.saveConfig(); err != nil {
 			return err
 		}
 	}
