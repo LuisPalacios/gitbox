@@ -1539,7 +1539,12 @@
 
   async function runFetchAll() {
     fetchingAll = true;
-    bridge.fetchAllRepos();
+    try {
+      await bridge.fetchAllRepos();
+    } catch (e) {
+      fetchingAll = false;
+      lastFetchTime = 'fetch-all error: ' + (e instanceof Error ? e.message : String(e));
+    }
   }
 
   // ── Credential status cache ──
@@ -1693,7 +1698,7 @@
       fetchingAll = false;
       fetchingRepos = {};
       const now = new Date();
-      lastFetchTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      lastFetchTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       verifyAllCredentials();
     });
 
