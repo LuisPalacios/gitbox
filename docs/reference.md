@@ -770,7 +770,7 @@ The GUI checks for updates automatically once per 24 hours and shows a banner wh
 
 The config lives at `~/.config/gitbox/gitbox.json`. See [gitbox.jsonc](../json/gitbox.jsonc) for a fully annotated example.
 
-**Automatic backups:** Every time the config is saved, a dated backup is created in the same directory (e.g., `gitbox-20260401-143025.json`). The 10 most recent backups are kept — older ones are pruned automatically. The GUI's corruption-recovery screen can restore from any of them in one click.
+**Automatic backups:** Every meaningful save creates a dated backup in the same directory (e.g., `gitbox-20260401-143025.json`). The 10 most recent are kept — older ones are pruned automatically. The GUI's corruption-recovery screen can restore from any of them in one click. Window-position-only saves (moving or resizing the GUI) skip the backup step, so real pre-corruption copies are not rotated out by cosmetic churn.
 
 ### Global
 

@@ -332,7 +332,7 @@ Long-running operations (clone, status refresh, pull, mirror discovery) run in g
 
 **Additional features:**
 
-- **Config auto-backup:** Every save creates a dated backup (rolling window of the 10 most recent saves) before overwriting.
+- **Config auto-backup:** Meaningful saves create a dated backup (rolling window of the 10 most recent) before overwriting. Window-position-only saves skip the backup — cosmetic churn would otherwise rotate real pre-corruption copies out of the ring.
 - **Window state persistence:** Position and size are saved per view mode (`window` and `compact_window` in config), restored on launch.
 - **Autostart:** Platform-specific autostart registration (macOS launch agent, Windows registry). Configurable from the GUI.
 - **Create repo:** Repos can be created directly on providers (under user namespace or org) from the Accounts tab, with owner dropdown populated via `OrgLister`.

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,14 +20,17 @@ const maxBackups = 10
 
 // Save writes the configuration to the given file path as indented JSON.
 // It creates the parent directory if it doesn't exist.
-// Before overwriting, it creates a dated backup (best-effort, rolling last 10 saves).
+// Before overwriting, it creates a dated backup (best-effort, rolling last 10
+// saves) — unless the only difference between on-disk and in-memory is
+// window-position state, which happens on every GUI close and would rotate
+// meaningful backups out of the ring otherwise.
 func Save(cfg *Config, path string) error {
 	if err := EnsureDir(path); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
 
 	// Best-effort backup — errors logged to stderr, never block saving.
-	backupBeforeSave(path)
+	backupBeforeSave(path, cfg)
 
 	data, err := Marshal(cfg)
 	if err != nil {
@@ -42,10 +46,28 @@ func Save(cfg *Config, path string) error {
 // backupBeforeSave copies the existing config file to a timestamped backup
 // (e.g., gitbox-20260401-143025.json) and prunes old backups beyond maxBackups.
 // If the file doesn't exist yet, no backup is created.
-func backupBeforeSave(path string) {
+//
+// Skips the backup when the only difference between the on-disk file and the
+// next cfg is window-position state (global.window / global.compact_window).
+// Every GUI session writes fresh window coordinates on close, and without
+// this filter a few unrelated launches would roll out the genuine
+// pre-corruption copies before the user ever notices anything is wrong. If
+// the on-disk file is unparseable (really stale or bug-mangled), the snapshot
+// is taken regardless — we want a copy of the broken state.
+func backupBeforeSave(path string, next *Config) {
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
 		return // file doesn't exist or is a directory — nothing to back up
+	}
+
+	// If we can parse the on-disk config and the in-memory one is identical
+	// modulo window state, there's nothing worth preserving.
+	if next != nil {
+		if current, err := Load(path); err == nil {
+			if configsEqualIgnoringWindow(current, next) {
+				return
+			}
+		}
 	}
 
 	dir := filepath.Dir(path)
@@ -61,6 +83,31 @@ func backupBeforeSave(path string) {
 	}
 
 	pruneBackups(dir, name)
+}
+
+// configsEqualIgnoringWindow reports whether two configs are content-equal
+// ignoring window-position state. Compares via canonical JSON so nested
+// maps/slices are handled correctly (Go map iteration order doesn't matter
+// because json.Marshal sorts map keys).
+func configsEqualIgnoringWindow(a, b *Config) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	ac := *a
+	bc := *b
+	ac.Global.Window = nil
+	ac.Global.CompactWindow = nil
+	bc.Global.Window = nil
+	bc.Global.CompactWindow = nil
+	da, err := json.Marshal(&ac)
+	if err != nil {
+		return false
+	}
+	db, err := json.Marshal(&bc)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(da, db)
 }
 
 // copyFile copies src to dst, overwriting dst if it exists.

@@ -379,7 +379,7 @@ Click **Remove** to clear the global identity entries, or dismiss the banner wit
 - **Window position** — Gitbox remembers your window size and position. If you disconnect a secondary monitor and the window would open off-screen, it automatically centers on your main display.
 - **External edits** — if you edit `gitbox.json` by hand (or via the CLI), the GUI picks up changes automatically when the window regains focus.
 - **Same config** — the desktop app and the CLI tool (`gitbox`) share the same config file. Changes in one are visible in the other.
-- **Automatic backups** — every time the config is saved, Gitbox creates a dated backup (e.g., `gitbox-20260401-143025.json`) in the same directory. The 10 most recent backups are kept automatically; older ones are pruned. The GUI's corruption-recovery screen can restore from any of them in one click.
+- **Automatic backups** — every time a meaningful change is saved, Gitbox creates a dated backup (e.g., `gitbox-20260401-143025.json`) in the same directory. The 10 most recent backups are kept automatically; older ones are pruned. The GUI's corruption-recovery screen can restore from any of them in one click. Window-position-only saves (moving or resizing the app) do not create a backup — they are cosmetic churn and would rotate real pre-corruption copies out of the ring.
 
 ## See also
 
