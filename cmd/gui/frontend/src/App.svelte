@@ -4488,32 +4488,41 @@
   /* Small membership count chip on clone rows. Sits beside the branch
      badge and stays subtle — presence of the chip at all is already the
      signal the clone is in a workspace. */
+  /* Negative margins claw back the .repo-row `gap: 10px` on each side so
+     the badge sits visually flush against the status dot and the repo
+     name, instead of looking like a 50px-wide gutter. */
   .ws-badge-wrap {
     position: relative;
     display: inline-flex;
     align-items: center;
     flex: 0 0 auto;
+    margin-left: -6px;
+    margin-right: -4px;
   }
   /* Now an action button: clicking it opens the workspace popover. The icon
      alone signals membership; the count is gone (the popover lists the
-     workspaces by name). */
+     workspaces by name). Compact footprint — one emoji glyph, tight padding,
+     no border. */
   .ws-badge {
     font-size: 13px;
     line-height: 1;
-    padding: 2px 4px;
-    margin-right: 4px;
+    padding: 2px 3px;
     border: none;
     background: transparent;
     color: var(--text-muted);
     cursor: pointer;
-    border-radius: 6px;
+    border-radius: 4px;
     transition: background 0.12s;
   }
   .ws-badge:hover { background: var(--bg-hover); color: var(--text-primary); }
   .ws-badge:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 1px; }
+  /* Anchor ABOVE the badge — bottom rows would otherwise spawn the popover
+     beneath the visible viewport and need scrolling to reveal it. The
+     popover is at most 3-5 entries tall so opening upward fits comfortably
+     even for rows near the very top of the cards area. */
   .ws-popover {
     position: absolute;
-    top: calc(100% + 4px);
+    bottom: calc(100% + 4px);
     left: 0;
     z-index: 30;
     min-width: 200px;
