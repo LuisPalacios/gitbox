@@ -31,6 +31,11 @@
                     "enum": ["off", "5m", "15m", "30m"],
                     "description": "Automatic periodic fetch interval. When set, the GUI will run 'git fetch' on all repos at this interval."
                 },
+                "check_global_gitignore": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Gates the automatic startup check for the recommended ~/.gitignore_global heal. Explicit user actions (CLI 'gitbox gitignore', TUI 'G' shortcut, GUI Install button) always run regardless. Defaults to true when missing."
+                },
                 "window": {
                     "type": "object",
                     "description": "GUI window position and size. Saved automatically when the GUI is closed, restored on next launch.",

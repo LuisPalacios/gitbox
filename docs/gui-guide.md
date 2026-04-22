@@ -382,6 +382,12 @@ Without those globals, GCM falls through to a TTY prompt during authentication a
 
 Click **Configure** to fix both entries in one step. Gitbox also backfills the same defaults into your `gitbox.json` so the check passes permanently, even if `~/.gitconfig` is edited later. Dismiss the banner with the **✕** button if you prefer to handle it manually.
 
+### Global gitignore warning
+
+Gitbox notices when `~/.gitignore_global` is missing, has an out-of-date recommended block, has managed patterns duplicated outside the sentinel markers, or when `core.excludesfile` is unset. In any of those states a banner appears with an **Install** button that does all of: writes a curated block of OS-junk patterns (`.DS_Store`, `Thumbs.db`, `*~`, …), points `core.excludesfile` at it, and saves a timestamped `.bak-YYYYMMDD-HHMMSS` backup of any existing file. Only the last 3 backups are kept.
+
+The automatic startup check can be toggled via **Settings → Global gitignore → On/Off**. Explicit actions always run — the gear toggle, the Install button, and the CLI `gitbox gitignore check|install` are never silenced by the preference. See [Global gitignore in the reference](reference.md#global-gitignore) for the managed-block format and the TUI `G` shortcut.
+
 ## Tips
 
 - **Window position** — Gitbox remembers your window size and position. If you disconnect a secondary monitor and the window would open off-screen, it automatically centers on your main display.

@@ -29,6 +29,7 @@ const (
 	screenRepoCreate
 	screenOrphans
 	screenWorkspaceAdd
+	screenGitignore
 )
 
 // --- Navigation messages ---
@@ -198,6 +199,37 @@ type globalGCMMsg struct {
 }
 type gcmFixedMsg struct{ err error }
 
+// --- Gitignore messages ---
+
+// gitignoreStatusMsg is sent when the dashboard's startup check finishes
+// (or after the gitignore screen reloads). Carries a narrow view of the
+// package Status and any error encountered during the check.
+type gitignoreStatusMsg struct {
+	status gitignoreStatusInfo
+	err    error
+}
+
+// gitignoreStatusInfo mirrors gitignore.Status without forcing this file
+// to import the gitignore package — kept narrow to avoid coupling.
+type gitignoreStatusInfo struct {
+	Path          string
+	NeedsAction   bool
+	BlockPresent  bool
+	BlockUpToDate bool
+	Excludesfile  string
+	Set           bool
+	FileExists    bool
+}
+
+type gitignoreInstalledMsg struct {
+	updated         bool
+	alreadyUpToDate bool
+	backupPath      string
+	setExcludes     bool
+	path            string
+	err             error
+}
+
 // --- Generic ---
 
 type errMsg struct{ err error }
@@ -233,6 +265,12 @@ type model struct {
 	repoCreate   repoCreateModel
 	orphans      orphansModel
 	workspaceAdd workspaceAddModel
+	gitignore    gitignoreModel
+
+	// gitignoreNeedsAction mirrors the latest async global-gitignore check
+	// so the dashboard footer can render the urgent "G gitignore!" prefix
+	// without re-running the check on every repaint.
+	gitignoreNeedsAction bool
 }
 
 func newModel(cfgPath string) model {
@@ -350,7 +388,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.dashboard.Init()
 
 	case switchScreenMsg:
+		// Hitting the gitignore screen from the dashboard implicitly clears
+		// the urgent footer hint — the user is already acting on it. The
+		// screen's own re-check will decide whether to set it again.
+		if msg.screen == screenGitignore {
+			m.gitignoreNeedsAction = false
+			m.dashboard.gitignoreNeedsAction = false
+		}
 		return m.switchTo(msg)
+
+	case gitignoreStatusMsg:
+		// Async startup check or screen re-check finished. Persist the
+		// result at the root so the dashboard footer can render the
+		// urgent "G gitignore!" prefix without re-running the check.
+		if msg.err == nil {
+			m.gitignoreNeedsAction = msg.status.NeedsAction
+			m.dashboard.gitignoreNeedsAction = msg.status.NeedsAction
+		}
+		// Fall through so the active screen (likely the gitignore screen)
+		// can also consume the message.
 	}
 
 	// Delegate to active screen.
@@ -382,6 +438,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.repoCreate, cmd = m.repoCreate.Update(msg)
 	case screenWorkspaceAdd:
 		m.workspaceAdd, cmd = m.workspaceAdd.Update(msg)
+	case screenGitignore:
+		m.gitignore, cmd = m.gitignore.Update(msg)
 	}
 	return m, cmd
 }
@@ -458,6 +516,9 @@ func (m model) switchTo(msg switchScreenMsg) (model, tea.Cmd) {
 	case screenWorkspaceAdd:
 		m.workspaceAdd = newWorkspaceAddModel(m.cfg, m.cfgPath, m.theme, m.width, m.height, msg.workspaceMembers)
 		cmd = m.workspaceAdd.Init()
+	case screenGitignore:
+		m.gitignore = newGitignoreModel(m.theme, m.width, m.height)
+		cmd = m.gitignore.Init()
 	}
 	return m, cmd
 }
@@ -494,6 +555,8 @@ func (m model) View() string {
 		return m.orphans.View()
 	case screenWorkspaceAdd:
 		return m.workspaceAdd.View()
+	case screenGitignore:
+		return m.gitignore.View()
 	default:
 		return "Unknown screen"
 	}

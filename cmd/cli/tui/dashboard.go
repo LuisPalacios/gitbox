@@ -49,6 +49,12 @@ type dashboardModel struct {
 	theme         styles.Theme
 	width, height int
 
+	// gitignoreNeedsAction reflects the latest async global-gitignore
+	// startup check. When true, the footer renders a bold red "G gitignore!"
+	// urgent-prefix hint. Mirrored from the root model; the root receives
+	// the async result and pushes it down here.
+	gitignoreNeedsAction bool
+
 	// Navigation.
 	activeTab  tabID
 	focus      focusArea
@@ -138,6 +144,12 @@ func (m dashboardModel) Init() tea.Cmd {
 	// Start periodic sync if configured.
 	if cmd := periodicSyncCmd(m.cfg); cmd != nil {
 		cmds = append(cmds, cmd)
+	}
+	// Honour the user's preference: when the automatic global-gitignore
+	// check is disabled, don't fire it on startup. The user can still
+	// open the screen with `G` and run an explicit check from there.
+	if m.cfg.Global.ShouldCheckGlobalGitignore() {
+		cmds = append(cmds, checkGitignoreCmd())
 	}
 	// Fire credential checks for all accounts in parallel.
 	for _, k := range m.accountKeys {
@@ -600,6 +612,8 @@ func (m dashboardModel) Update(msg tea.Msg) (dashboardModel, tea.Cmd) {
 			return m, func() tea.Msg { return switchScreenMsg{screen: screenIdentity} }
 		case msg.String() == "O":
 			return m, func() tea.Msg { return switchScreenMsg{screen: screenOrphans} }
+		case msg.String() == "G":
+			return m, func() tea.Msg { return switchScreenMsg{screen: screenGitignore} }
 		case key.Matches(msg, Keys.Help):
 			m.showHelp = true
 			return m, nil
@@ -1476,6 +1490,19 @@ func (m dashboardModel) viewStatusBar() string {
 	left := m.theme.StatusBar.Render(summary)
 	hintsWidth := m.width - lipgloss.Width(left) - 2
 
+	// The gitignore warning is rendered as a separate red prefix so
+	// the user can't miss it on a busy screen — and so it never gets
+	// dropped by renderHintsFit's right-to-left truncation on narrow
+	// terminals. Front-load it AND reserve its width from the hints.
+	var urgentPrefix string
+	if m.gitignoreNeedsAction {
+		urgentStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(m.theme.Palette.StatusError)).
+			Bold(true)
+		urgentPrefix = "  " + urgentStyle.Render("G gitignore!")
+		hintsWidth -= lipgloss.Width(urgentPrefix)
+	}
+
 	var right string
 	switch m.activeTab {
 	case tabMirrors:
@@ -1487,6 +1514,9 @@ func (m dashboardModel) viewStatusBar() string {
 		}
 		hints = append(hints, "? help", "ESC quit")
 		right = renderHintsFit(m.theme, hintsWidth, hints...)
+	}
+	if urgentPrefix != "" {
+		right = urgentPrefix + right
 	}
 
 	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)

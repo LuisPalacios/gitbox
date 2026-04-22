@@ -267,6 +267,15 @@ gitbox adopt --all        # Adopt all matched orphans without prompting
 
 For each orphan with a matching account, `adopt` adds it to the config, sets up credential isolation, configures identity, and rewrites the remote URL. If the repo isn't in the standard folder, I'm asked whether to relocate it.
 
+### Install a recommended global gitignore
+
+```bash
+gitbox gitignore check     # Status of ~/.gitignore_global and core.excludesfile
+gitbox gitignore install   # Idempotent install / refresh, backed up to .bak-YYYYMMDD-HHMMSS
+```
+
+A curated block of OS-junk patterns (`.DS_Store`, `Thumbs.db`, `*~`, …) is wrapped in sentinel markers inside `~/.gitignore_global` so gitbox can update it without disturbing user-added entries. See [Global gitignore in reference.md](reference.md#global-gitignore) for the full flow, opt-out preference, and GUI/TUI hooks.
+
 ## Step 7: Set up mirrors (optional)
 
 Mirrors let you keep backup copies of repos on another provider — for example, pushing from a homelab Forgejo to GitHub, or pulling GitHub repos into Forgejo.
