@@ -67,11 +67,15 @@ type Progress struct {
 
 // Result summarizes the move outcome. Err is set only when a fatal
 // phase (1-5) failed. Best-effort failures populate Warnings.
+// DestSourceKey + NewRepoKey identify where the config entry now
+// lives so callers can re-clone or navigate to it.
 type Result struct {
 	NewOrigin           string
 	DestRepoCreated     bool
 	SourceRemoteDeleted bool
 	LocalCloneDeleted   bool
+	DestSourceKey       string
+	NewRepoKey          string
 	Warnings            []string
 	Err                 error
 }
@@ -151,6 +155,8 @@ func Move(ctx context.Context, cfg *config.Config, cfgPath string, req Request, 
 	if cfgErr != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("update config: %v", cfgErr))
 	} else {
+		result.DestSourceKey = destSourceKey
+		result.NewRepoKey = newRepoKey
 		// Reconcile the local clone's .git/config to match the dest
 		// account's spec (credential helper for the new host, identity,
 		// canonical origin URL). Skip if the user opted to delete the

@@ -4606,11 +4606,16 @@ type MoveProgressEventDTO struct {
 
 // MoveResultDTO is emitted on "move:done". Err is empty on fatal
 // success; Warnings may be non-empty for best-effort failures.
+// DestSourceKey + NewRepoKey identify where the config entry now
+// lives; the frontend uses them to auto-re-clone when the user
+// opted to delete the source local clone.
 type MoveResultDTO struct {
 	NewOrigin           string   `json:"newOrigin"`
 	DestRepoCreated     bool     `json:"destRepoCreated"`
 	SourceRemoteDeleted bool     `json:"sourceRemoteDeleted"`
 	LocalCloneDeleted   bool     `json:"localCloneDeleted"`
+	DestSourceKey       string   `json:"destSourceKey,omitempty"`
+	NewRepoKey          string   `json:"newRepoKey,omitempty"`
 	Warnings            []string `json:"warnings,omitempty"`
 	Error               string   `json:"error,omitempty"`
 }
@@ -4787,6 +4792,8 @@ func (a *App) MoveRepo(req MoveRequestDTO) {
 			DestRepoCreated:     result.DestRepoCreated,
 			SourceRemoteDeleted: result.SourceRemoteDeleted,
 			LocalCloneDeleted:   result.LocalCloneDeleted,
+			DestSourceKey:       result.DestSourceKey,
+			NewRepoKey:          result.NewRepoKey,
 			Warnings:            result.Warnings,
 		}
 		if result.Err != nil {
@@ -4798,5 +4805,17 @@ func (a *App) MoveRepo(req MoveRequestDTO) {
 		// doesn't lose state.
 		_ = a.saveConfig()
 		wailsrt.EventsEmit(a.ctx, "move:done", dto)
+
+		// Auto-clone the destination when the user opted to delete
+		// the local source. The repo now lives only on the
+		// destination provider + in gitbox config as "not cloned";
+		// start a clone into the destination account's folder so
+		// "move" feels like a relocation, not a removal. Runs after
+		// the move:done event so the UI closes the progress modal
+		// and the frontend can watch the new clone via its normal
+		// clone:progress / clone:done channel.
+		if result.Err == nil && result.LocalCloneDeleted && result.DestSourceKey != "" && result.NewRepoKey != "" {
+			a.CloneRepo(result.DestSourceKey, result.NewRepoKey)
+		}
 	}()
 }

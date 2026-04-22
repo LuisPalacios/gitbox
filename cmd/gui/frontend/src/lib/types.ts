@@ -343,6 +343,8 @@ export interface MoveResultDTO {
   destRepoCreated: boolean;
   sourceRemoteDeleted: boolean;
   localCloneDeleted: boolean;
+  destSourceKey?: string;
+  newRepoKey?: string;
   warnings?: string[];
   error?: string;
 }

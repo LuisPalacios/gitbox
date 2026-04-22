@@ -2416,6 +2416,19 @@
     events.on('move:done', (r: any) => {
       moveResult = r as MoveResultDTO;
       moveModalStep = 'result';
+      // If the user opted to delete the local source clone, the
+      // backend auto-triggers a fresh clone of the destination.
+      // Paint the new card as "cloning" up front so the repo
+      // doesn't flash through an "error/not cloned" state before
+      // clone:progress starts flowing.
+      if (moveResult && !moveResult.error && moveResult.localCloneDeleted && moveResult.destSourceKey && moveResult.newRepoKey) {
+        repoStates.update((s) => ({
+          ...s,
+          [`${moveResult!.destSourceKey}/${moveResult!.newRepoKey}`]: {
+            status: 'cloning', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0,
+          },
+        }));
+      }
     });
 
     // Check if config failed to parse (file exists but is broken/unsupported).
@@ -4765,6 +4778,9 @@
               <p class="form-error">{moveResult.error}</p>
             {:else}
               <p class="move-done-ok">✓ Move complete.</p>
+              {#if moveResult.localCloneDeleted && moveResult.destSourceKey && moveResult.newRepoKey}
+                <p class="move-info">Cloning the destination into <code>{moveResult.destSourceKey}/{moveResult.newRepoKey}</code> — watch the card on the dashboard.</p>
+              {/if}
               {#if moveResult.warnings && moveResult.warnings.length > 0}
                 <ul class="move-warnings">
                   {#each moveResult.warnings as w}
@@ -6315,6 +6331,8 @@
   .move-phase-msg { flex: 1; }
   .move-phase-errmsg { color: #D81E5B; font-size: 12px; }
   .move-done-ok { color: #22c55e; font-size: 14px; margin: 8px 0; }
+  .move-info { color: var(--text-secondary); font-size: 13px; margin: 4px 0 8px; }
+  .move-info code { background: var(--bg-card); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
   .move-warnings { list-style: none; padding: 0; margin: 8px 0; color: #f59e0b; font-size: 13px; }
   .move-warnings li { padding: 2px 0; }
 </style>

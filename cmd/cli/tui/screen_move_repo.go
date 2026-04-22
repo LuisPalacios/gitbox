@@ -3,14 +3,18 @@ package tui
 import (
 	"context"
 	"fmt"
+	neturl "net/url"
 	"strings"
 	"time"
 
 	"github.com/LuisPalacios/gitbox/cmd/cli/tui/styles"
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
+	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/heal"
 	"github.com/LuisPalacios/gitbox/pkg/move"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
+	"github.com/LuisPalacios/gitbox/pkg/status"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -202,6 +206,9 @@ func (m moveRepoModel) Update(msg tea.Msg) (moveRepoModel, tea.Cmd) {
 			m.errMsg = msg.result.Err.Error()
 		} else {
 			m.resultMsg = "Move complete."
+			if msg.result.LocalCloneDeleted && msg.result.DestSourceKey != "" && msg.result.NewRepoKey != "" {
+				m.resultMsg = fmt.Sprintf("Move complete. Cloning destination into %s/%s in the background.", msg.result.DestSourceKey, msg.result.NewRepoKey)
+			}
 			m.warnings = msg.result.Warnings
 		}
 		return m, nil
@@ -286,12 +293,57 @@ func (m moveRepoModel) startMoveCmd() tea.Cmd {
 		moveProgressCh <- moveProgressMsg{phase: move.PhaseDone, msg: "__done__", err: nil}
 		// Stash the result for the waiter to pick up.
 		moveResultCh <- result
+
+		// Auto-clone after a full-move-with-delete-local. Matches
+		// the GUI behaviour. Runs in the background after the
+		// modal has rendered "Done" so the user can ESC back to
+		// the dashboard and watch the new repo pick up a clone.
+		if result.Err == nil && req.DeleteLocalClone && result.DestSourceKey != "" && result.NewRepoKey != "" {
+			go autoCloneAfterMove(cfg, result.DestSourceKey, result.NewRepoKey)
+		}
 	}()
 	return waitForMoveProgress()
 }
 
 // moveResultCh carries the final result once the goroutine exits.
 var moveResultCh = make(chan move.Result, 1)
+
+// autoCloneAfterMove clones the destination repository once a move
+// has finished with DeleteLocalClone set. Mirrors the auth-URL
+// construction in startCloneCmd — cloneURL builds the plain form,
+// then token accounts embed the PAT and pass `credential.helper=`.
+// heal.Repo runs on success to seat per-repo identity + credential
+// helpers. Errors are intentionally swallowed: the move itself
+// already succeeded, and the dashboard shows the repo as "not
+// cloned" for the user to retry manually if this auto-clone fails.
+func autoCloneAfterMove(cfg *config.Config, sourceKey, repoKey string) {
+	src, ok := cfg.Sources[sourceKey]
+	if !ok {
+		return
+	}
+	repo := src.Repos[repoKey]
+	acct := cfg.Accounts[src.Account]
+	globalFolder := config.ExpandTilde(cfg.Global.Folder)
+	sourceFolder := src.EffectiveFolder(sourceKey)
+	dest := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
+	credType := repo.EffectiveCredentialType(&acct)
+
+	plainURL := cloneURL(acct, repoKey, credType)
+	cloneURLStr := plainURL
+	cloneOpts := git.CloneOpts{Quiet: true}
+	if credType == "token" {
+		if tok, _, err := credential.ResolveToken(acct, src.Account); err == nil && tok != "" {
+			if u, err := neturl.Parse(plainURL); err == nil {
+				u.User = neturl.UserPassword(acct.Username, tok)
+				cloneURLStr = u.String()
+			}
+		}
+		cloneOpts.ConfigArgs = []string{"credential.helper="}
+	}
+	if err := git.CloneWithProgress(cloneURLStr, dest, cloneOpts, func(git.CloneProgress) {}); err == nil {
+		_ = heal.Repo(cfg, sourceKey, repoKey)
+	}
+}
 
 // waitForMoveProgress returns a Cmd that blocks on the next progress
 // event and relays it back into Update. The sentinel "__done__" message
