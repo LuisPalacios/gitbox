@@ -115,7 +115,7 @@ func Move(ctx context.Context, cfg *config.Config, cfgPath string, req Request, 
 	// --- Phase 4: push --mirror to dest ----------------------------
 	report(PhasePushMirror, "Pushing every ref and tag to the destination...", nil)
 	destPlainURL := buildHTTPSCloneURL(plan.destAcct, req.DestOwner, req.DestRepoName)
-	destAuthURL, pushExtraConfig, err := buildDestPushURL(plan.destAcct, req.DestAccountKey, req.DestOwner, req.DestRepoName, destPlainURL)
+	destAuthURL, pushExtraConfig, err := buildDestPushURL(plan.destAcct, req.DestOwner, req.DestRepoName, destPlainURL, plan.destAPIToken)
 	if err != nil {
 		result.Err = fmt.Errorf("build destination push URL: %w", err)
 		return result
@@ -206,27 +206,27 @@ func buildHTTPSCloneURL(acct config.Account, owner, repoName string) string {
 
 // buildDestPushURL builds the URL passed to `git push --mirror` for
 // the destination, plus any `-c key=value` config args git should be
-// invoked with. The shape depends on the destination account's
-// credential type:
+// invoked with.
 //
-//   - ssh:   "git@<host>:<owner>/<name>.git" (no embedded creds; SSH
-//            agent / ssh config handles auth). No extraConfig.
-//   - token: "https://<username>:<PAT>@<host>/<owner>/<name>.git" with
-//            extraConfig = ["credential.helper="] so a GCM helper
-//            configured for the same host doesn't override the
-//            embedded credential.
-//   - gcm:   "https://<username>@<host>/<owner>/<name>.git" with no
-//            embedded PAT — GCM must have valid cached creds for the
-//            host/username (the GUI has GCM_INTERACTIVE=never so there's
-//            no prompt fallback).
+//   - ssh:  "git@<host>:<owner>/<name>.git" — no embedded creds; SSH
+//           agent / ssh config handles auth. No extraConfig.
+//   - other: "https://<username>:<apiToken>@<host>/<owner>/<name>.git"
+//           with extraConfig = ["credential.helper="] so a GCM helper
+//           configured for the same host doesn't override the
+//           embedded credential.
 //
-// For Forgejo/Gitea, using the account's actual username (not the
-// literal "token") matters: some Forgejo versions reject Basic auth
-// when the username is "token" even with a valid PAT.
-func buildDestPushURL(acct config.Account, accountKey, owner, repoName, plainHTTPSURL string) (string, []string, error) {
-	credType := acct.DefaultCredentialType
-	switch credType {
-	case "ssh":
+// apiToken must be the token already resolved by the preflight
+// (plan.destAPIToken). For GCM-only destinations, that token is what
+// `git credential fill` returned during the RepoExists / CreateRepo
+// API calls — embedding it side-steps the "GCM must be cached at
+// push time" problem, because we captured the cred once and reuse
+// it inline for the push URL.
+//
+// Username is acct.Username (not the literal "token"). Some Forgejo
+// versions reject Basic auth when the username is "token" even with a
+// valid PAT.
+func buildDestPushURL(acct config.Account, owner, repoName, plainHTTPSURL, apiToken string) (string, []string, error) {
+	if acct.DefaultCredentialType == "ssh" {
 		host := acct.URL
 		if acct.SSH != nil && acct.SSH.Host != "" {
 			host = acct.SSH.Host
@@ -234,32 +234,17 @@ func buildDestPushURL(acct config.Account, accountKey, owner, repoName, plainHTT
 			host = stripScheme(host)
 		}
 		return fmt.Sprintf("git@%s:%s/%s.git", host, owner, repoName), nil, nil
-	case "token":
-		tok, _, err := credential.ResolveToken(acct, accountKey)
-		if err != nil {
-			return "", nil, fmt.Errorf("resolving destination token: %w", err)
-		}
-		u, err := url.Parse(plainHTTPSURL)
-		if err != nil {
-			return "", nil, fmt.Errorf("parsing destination URL: %w", err)
-		}
-		username := acct.Username
-		if username == "" {
-			username = "token"
-		}
-		u.User = url.UserPassword(username, tok)
-		return u.String(), []string{"credential.helper="}, nil
-	default:
-		// GCM (or unset — treat as GCM).
-		u, err := url.Parse(plainHTTPSURL)
-		if err != nil {
-			return "", nil, fmt.Errorf("parsing destination URL: %w", err)
-		}
-		if acct.Username != "" {
-			u.User = url.User(acct.Username)
-		}
-		return u.String(), nil, nil
 	}
+	u, err := url.Parse(plainHTTPSURL)
+	if err != nil {
+		return "", nil, fmt.Errorf("parsing destination URL: %w", err)
+	}
+	username := acct.Username
+	if username == "" {
+		username = "token"
+	}
+	u.User = url.UserPassword(username, apiToken)
+	return u.String(), []string{"credential.helper="}, nil
 }
 
 // stripScheme removes "https://" or "http://" from a URL so the host
