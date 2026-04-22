@@ -115,6 +115,15 @@ func (b *Bitbucket) DeleteRepo(ctx context.Context, _, token, username, owner, r
 	}
 	apiURL := fmt.Sprintf("https://api.bitbucket.org/2.0/repositories/%s/%s", workspace, repoName)
 	if err := doDelete(ctx, apiURL, b.authHeaders(token, username)); err != nil {
+		if IsForbiddenError(err) {
+			return &InsufficientScopesError{
+				Provider:       "bitbucket",
+				Action:         ActionDeleteRepo,
+				RequiredScopes: ScopesForAction("bitbucket", ActionDeleteRepo),
+				BaseURL:        "https://bitbucket.org",
+				cause:          err,
+			}
+		}
 		return fmt.Errorf("bitbucket delete repo: %w", err)
 	}
 	return nil

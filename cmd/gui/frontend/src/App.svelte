@@ -4771,13 +4771,10 @@
         </div>
         <div class="modal-body">
           {#each moveProgress as p}
-            <div class="move-phase">
+            <div class="move-phase" class:move-phase-has-error={!!p.error}>
               <span class="move-phase-dot" class:move-phase-err={!!p.error}></span>
               <span class="move-phase-label">{p.phase.replace(/_/g, ' ')}</span>
               <span class="move-phase-msg">{p.message}</span>
-              {#if p.error}
-                <span class="move-phase-errmsg">({p.error})</span>
-              {/if}
             </div>
           {/each}
           {#if moveModalStep === 'result' && moveResult}

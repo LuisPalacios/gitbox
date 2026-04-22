@@ -163,6 +163,15 @@ func (g *GitLab) DeleteRepo(ctx context.Context, baseURL, token, _, owner, repoN
 	encoded := url.PathEscape(owner + "/" + repoName)
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%s", base, encoded)
 	if err := doDelete(ctx, apiURL, g.authHeaders(token)); err != nil {
+		if IsForbiddenError(err) {
+			return &InsufficientScopesError{
+				Provider:       "gitlab",
+				Action:         ActionDeleteRepo,
+				RequiredScopes: ScopesForAction("gitlab", ActionDeleteRepo),
+				BaseURL:        baseURL,
+				cause:          err,
+			}
+		}
 		return fmt.Errorf("gitlab delete repo: %w", err)
 	}
 	return nil

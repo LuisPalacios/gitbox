@@ -257,6 +257,15 @@ func (g *GitHub) DeleteRepo(ctx context.Context, baseURL, token, _, owner, repoN
 	}
 	url := fmt.Sprintf("%s/repos/%s/%s", g.apiBase(baseURL), owner, repoName)
 	if err := doDelete(ctx, url, g.authHeaders(token)); err != nil {
+		if IsForbiddenError(err) {
+			return &InsufficientScopesError{
+				Provider:       "github",
+				Action:         ActionDeleteRepo,
+				RequiredScopes: ScopesForAction("github", ActionDeleteRepo),
+				BaseURL:        baseURL,
+				cause:          err,
+			}
+		}
 		return fmt.Errorf("github delete repo: %w", err)
 	}
 	return nil

@@ -10,6 +10,7 @@ package move
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -174,15 +175,15 @@ func Move(ctx context.Context, cfg *config.Config, cfgPath string, req Request, 
 	if req.DeleteSourceRemote {
 		report(PhaseDeleteSource, "Deleting source remote repository...", nil)
 		if plan.sourceDeleter == nil {
-			warn := fmt.Sprintf("source provider %s does not support repository deletion via API — delete it manually", plan.sourceAcct.Provider)
+			warn := fmt.Sprintf("Source provider %q doesn't expose a repo-delete API — delete %s manually.", plan.sourceAcct.Provider, req.SourceRepoKey)
 			result.Warnings = append(result.Warnings, warn)
 			report(PhaseDeleteSource, warn, fmt.Errorf("not supported"))
 		} else {
 			srcOwner, srcName := splitRepoKey(req.SourceRepoKey)
 			if err := plan.sourceDeleter.DeleteRepo(ctx, plan.sourceAcct.URL, plan.sourceAPIToken, plan.sourceAcct.Username, srcOwner, srcName); err != nil {
-				warn := fmt.Sprintf("delete source remote: %v", err)
-				result.Warnings = append(result.Warnings, warn)
-				report(PhaseDeleteSource, warn, err)
+				shortMsg, fullMsg := humaniseSourceDeleteError(err, plan.sourceAcct.Provider, req.SourceAccountKey)
+				result.Warnings = append(result.Warnings, fullMsg)
+				report(PhaseDeleteSource, shortMsg, err)
 			} else {
 				result.SourceRemoteDeleted = true
 			}
@@ -282,6 +283,49 @@ func splitRepoKey(key string) (owner, name string) {
 		return key[:i], key[i+1:]
 	}
 	return "", key
+}
+
+// humaniseSourceDeleteError turns a DeleteRepo failure into two
+// user-facing strings: a short line for the phase progress list and
+// a longer, action-oriented warning with remediation details for
+// the warnings section at the bottom of the modal. Splitting the
+// two avoids duplicating a long paragraph inside the phase row.
+func humaniseSourceDeleteError(err error, providerName, accountKey string) (short, full string) {
+	var scopeErr *provider.InsufficientScopesError
+	if errors.As(err, &scopeErr) {
+		scopes := strings.Join(scopeErr.RequiredScopes, ", ")
+		short = fmt.Sprintf("Source repo not deleted — %s PAT needs %q scope (see warnings).", providerName, scopes)
+		regenURL := scopeErr.RemediationURL()
+		if regenURL != "" {
+			full = fmt.Sprintf(
+				"Source repo delete refused: your %s PAT is missing the %q scope. Regenerate it at %s (keep existing scopes, add %q), then re-run `gitbox account credential setup %s`.",
+				providerName, scopes, regenURL, scopes, accountKey,
+			)
+			return short, full
+		}
+		full = fmt.Sprintf(
+			"Source repo delete refused: your %s PAT needs the %q scope. Regenerate the PAT (keep existing scopes, add %q) and store it again.",
+			providerName, scopes, scopes,
+		)
+		return short, full
+	}
+	// Fall-through for non-scope failures: strip the redundant
+	// "provider delete repo: " prefix that http.go helpers add, so
+	// the surfaced string is compact and readable.
+	msg := err.Error()
+	for _, prefix := range []string{
+		providerName + " delete repo: ",
+		"github delete repo: ",
+		"gitlab delete repo: ",
+		"gitea delete repo: ",
+		"forgejo delete repo: ",
+		"bitbucket delete repo: ",
+	} {
+		msg = strings.TrimPrefix(msg, prefix)
+	}
+	short = "Source repo not deleted (see warnings)."
+	full = "Source repo delete failed: " + msg
+	return short, full
 }
 
 // updateConfig moves the repo entry from the source-account source to

@@ -325,18 +325,20 @@ Re-run the verification in the GUI once the rule is live.
 
 **Fix.** Add the internal CA certificate to your OS trust store (macOS Keychain, Windows cert store, or Linux `/usr/local/share/ca-certificates/` + `update-ca-certificates`). Gitbox uses the system trust store via `net/http`; it has no per-app bypass and intentionally won't offer one.
 
-## Token scopes for destructive actions
+## Token scopes by capability
 
-The **Move repository** action (GUI kebab → *Move repository…*, TUI `M`) creates the destination repo on the target account and — when you opt in — deletes the source repo. Each side needs a different scope on top of the usual read scope:
+Different gitbox operations need different PAT scopes. The baseline (list + clone + fetch + pull) is the minimum every account needs; create, delete, and mirror each add one or more scopes on top. Give each account only the scopes it needs — add the destructive ones (delete) only when you plan to use them.
 
-| Provider         | Create destination scope       | Delete source scope            |
-| ---------------- | ------------------------------ | ------------------------------ |
-| GitHub           | `repo`                         | `delete_repo`                  |
-| GitLab           | `api`                          | `api`                          |
-| Gitea / Forgejo  | `write:repository`             | `write:repository` (or admin)  |
-| Bitbucket Cloud  | `repository:admin`             | `repository:delete`            |
+| Provider         | Discovery + clone + fetch         | Create repo (GUI "Create repo" / move dest) | Delete repo (move with "delete source")  | Mirror (push/pull between accounts)      |
+| ---------------- | --------------------------------- | ------------------------------------------- | ---------------------------------------- | ---------------------------------------- |
+| GitHub           | `repo`, `read:org`                | `repo`                                      | `delete_repo` (sensitive — add only if needed) | `repo` plus the destination's scopes |
+| GitLab           | `api`                             | `api`                                       | `api`                                    | `api`                                    |
+| Gitea / Forgejo  | `read:repository`, `read:organization` | `write:repository`                     | `write:repository` (or admin on target)  | `write:repository` on destination        |
+| Bitbucket Cloud  | `repository`                      | `repository:admin`                          | `repository:delete`                      | `repository:admin` on destination        |
 
-If the source provider's token doesn't carry a delete scope, the preflight modal refuses the move before you type the confirmation — either lower the scope by unchecking **Delete source repository**, or mint a new PAT with the scope included.
+When a scope is missing, gitbox surfaces a warning naming the exact scope required plus the provider URL to regenerate the PAT — e.g. _"Source repo delete refused: your github PAT is missing the `delete_repo` scope. Regenerate it at https://github.com/settings/tokens (keep existing scopes, add `delete_repo`), then re-run `gitbox account credential setup <account>`."_
+
+The TUI + GUI account setup wizard shows the same per-capability table when you store a PAT, so you can decide which scopes to include up front.
 
 ### When the error says something unusual
 
