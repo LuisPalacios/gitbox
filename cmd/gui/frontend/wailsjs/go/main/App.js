@@ -206,6 +206,10 @@ export function GetMirrorStatus(arg1) {
   return window['go']['main']['App']['GetMirrorStatus'](arg1);
 }
 
+export function GetOS() {
+  return window['go']['main']['App']['GetOS']();
+}
+
 export function GetPRSettings() {
   return window['go']['main']['App']['GetPRSettings']();
 }

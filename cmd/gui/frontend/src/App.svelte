@@ -2397,7 +2397,7 @@
     <!-- Account pills -->
     {#each Object.entries($accounts) as [key, acct]}
       {@const stats = $accountStats[key] || { total: 0, synced: 0, issues: 0 }}
-      {@const compactCred = (credStatuses[key] || {primary: 'unknown'}).primary}
+      {@const compactCred = (credStatuses[key] || {status: 'unknown'}).status}
       <button class="compact-acct" class:compact-acct-expanded={compactExpanded[key]}
         class:compact-acct-cred-err={compactCred === 'none' || compactCred === 'error'}
         class:compact-acct-cred-warn={compactCred === 'warning'}
@@ -2695,17 +2695,17 @@
       {@const canDiscover = credOverall !== 'none' && credOverall !== 'error' && credOverall !== 'offline' && credOverall !== 'unknown'}
       {@const canCreate = credOverall === 'ok'}
       <div class="card" class:card-delete-mode={deleteMode}
-        style={credPrimary === 'none' || credPrimary === 'error' ? `background: ${resolvedTheme === 'light' ? '#fef2f2' : '#2a1215'}` : ''}>
+        style={credOverall === 'none' || credOverall === 'error' ? `background: ${resolvedTheme === 'light' ? '#fef2f2' : '#2a1215'}` : ''}>
         <div class="card-top">
           {#if deleteMode}
             <button class="btn-delete-x card-delete-btn" on:click={() => askDeleteAccount(key)} title="Delete account {key}">&#10005;</button>
           {:else}
-            <span class="card-dot" style="background: {cc(credPrimary)}"></span>
+            <span class="card-dot" style="background: {cc(credOverall)}"></span>
           {/if}
           <span class="card-provider">{providerLabel(acct.provider)}</span>
-          <button class="cred-badge cred-badge-{credPrimary === 'ok' ? 'ok' : credPrimary === 'error' ? 'err' : credPrimary === 'warning' ? 'warn' : credPrimary === 'offline' ? 'offline' : credPrimary === 'none' ? 'none' : credPrimary === 'unknown' ? 'pending' : ''}"
+          <button class="cred-badge cred-badge-{credOverall === 'ok' ? 'ok' : credOverall === 'error' ? 'err' : credOverall === 'warning' ? 'warn' : credOverall === 'offline' ? 'offline' : credOverall === 'none' ? 'none' : credOverall === 'unknown' ? 'pending' : ''}"
             on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')}
-            title="Credential: {acct.default_credential_type || 'none'}">{credPrimary === 'unknown' ? '···' : credPrimary === 'none' ? 'config' : credPrimary === 'offline' ? 'offline' : acct.default_credential_type || 'gcm'}</button>
+            title="Credential: {acct.default_credential_type || 'none'} — {credOverall}">{credOverall === 'unknown' ? '···' : credOverall === 'none' ? 'config' : credOverall === 'offline' ? 'offline' : acct.default_credential_type || 'gcm'}</button>
         </div>
         <div class="card-name card-name-edit" on:click={() => openEditAccount(key)} title="Edit account">{key}</div>
         <div class="card-ring-row">
@@ -3414,17 +3414,22 @@
             <input class="form-input" id="ea-url" bind:value={editAcct.url} />
           </div>
           <div class="form-row">
-            <label class="form-label" for="ea-user">Username</label>
+            <label class="form-label" for="ea-user">Git username</label>
             <input class="form-input" id="ea-user" bind:value={editAcct.username} />
+            <p class="form-hint">The username you use to log in to the provider (for git and API operations).</p>
           </div>
-          <div class="form-row">
-            <label class="form-label" for="ea-name">Name</label>
-            <input class="form-input" id="ea-name" bind:value={editAcct.name} />
-          </div>
-          <div class="form-row">
-            <label class="form-label" for="ea-email">Email</label>
-            <input class="form-input" id="ea-email" bind:value={editAcct.email} />
-          </div>
+          <fieldset class="form-fieldset">
+            <legend class="form-fieldset-legend">Git commit author identity</legend>
+            <p class="form-fieldset-hint">Used only as the author of commits you make under this account (<code>git config user.name</code> / <code>user.email</code>). Not used for authentication.</p>
+            <div class="form-row">
+              <label class="form-label" for="ea-name">Name</label>
+              <input class="form-input" id="ea-name" bind:value={editAcct.name} />
+            </div>
+            <div class="form-row">
+              <label class="form-label" for="ea-email">Email</label>
+              <input class="form-input" id="ea-email" bind:value={editAcct.email} />
+            </div>
+          </fieldset>
         </div>
         <div class="modal-foot">
           <button class="btn-cancel" on:click={() => editAccountModal = null}>Cancel</button>
@@ -3597,17 +3602,22 @@
               <input class="form-input" id="aa-url" bind:value={addAcct.url} placeholder="https://github.com" />
             </div>
             <div class="form-row">
-              <label class="form-label" for="aa-user">Username</label>
+              <label class="form-label" for="aa-user">Git username</label>
               <input class="form-input" id="aa-user" bind:value={addAcct.username} placeholder="MyUser" />
+              <p class="form-hint">The username you use to log in to the provider (for git and API operations).</p>
             </div>
-            <div class="form-row">
-              <label class="form-label" for="aa-name">Name</label>
-              <input class="form-input" id="aa-name" bind:value={addAcct.name} placeholder="Full Name" />
-            </div>
-            <div class="form-row">
-              <label class="form-label" for="aa-email">Email</label>
-              <input class="form-input" id="aa-email" bind:value={addAcct.email} placeholder="user@example.com" />
-            </div>
+            <fieldset class="form-fieldset">
+              <legend class="form-fieldset-legend">Git commit author identity</legend>
+              <p class="form-fieldset-hint">Used only as the author of commits you make under this account. Not used for authentication.</p>
+              <div class="form-row">
+                <label class="form-label" for="aa-name">Name</label>
+                <input class="form-input" id="aa-name" bind:value={addAcct.name} placeholder="Full Name" />
+              </div>
+              <div class="form-row">
+                <label class="form-label" for="aa-email">Email</label>
+                <input class="form-input" id="aa-email" bind:value={addAcct.email} placeholder="user@example.com" />
+              </div>
+            </fieldset>
             <div class="form-row">
               <label class="form-label" for="aa-cred">Credential type</label>
               <select class="form-input" id="aa-cred" bind:value={addAcct.credentialType}>
@@ -3731,9 +3741,10 @@
             {@const cs = credStatuses[credChangeModal] || {}}
             {@const primary = cs.primary || 'unknown'}
             {@const pat = cs.pat || 'unknown'}
+            {@const overall = cs.status || 'unknown'}
             {@const primaryType = currentAcct?.default_credential_type || ''}
             {@const lanHint = detectLANPermissionHint(cs.primaryMsg) || detectLANPermissionHint(cs.patMsg)}
-            <div class="cred-status-panel cred-status-panel-{primary}">
+            <div class="cred-status-panel cred-status-panel-{overall}">
               <div class="cred-status-head">
                 <span class="cred-status-title">Current status</span>
                 <button class="cred-status-recheck" title="Re-verify credential" on:click={() => verifyCredentialForModal(credChangeModal)} disabled={primary === 'checking'}>
@@ -3749,10 +3760,11 @@
                 <p class="cred-status-detail">{cs.primaryMsg}</p>
               {/if}
               {#if primaryType === 'gcm' || primaryType === 'ssh'}
+                {@const patCoveredByGCM = pat === 'ok' && (cs.patMsg || '').startsWith('API via GCM')}
                 <div class="cred-status-row">
                   <span class="cred-status-dot cred-status-dot-{pat === 'none' ? 'none' : pat}"></span>
                   <span class="cred-status-label">API token (PAT):</span>
-                  <span class="cred-status-value">{credStatusLabel(pat)}</span>
+                  <span class="cred-status-value">{patCoveredByGCM ? 'Not created' : credStatusLabel(pat)}</span>
                   {#if pat === 'none' || pat === 'warning'}
                     <button class="cred-status-pat-btn" on:click={() => credChangeModal && openTokenSetup(credChangeModal)} title="Store a Personal Access Token for API access">
                       {pat === 'warning' ? 'Replace API token' : 'Setup API token'}
@@ -3760,7 +3772,12 @@
                   {/if}
                 </div>
                 {#if cs.patMsg}
-                  <p class="cred-status-detail">{cs.patMsg}</p>
+                  {#if cs.patMsg.startsWith('WARNING:')}
+                    <hr class="cred-status-divider" />
+                    <p class="cred-status-warning">{cs.patMsg}</p>
+                  {:else}
+                    <p class="cred-status-detail">{cs.patMsg}</p>
+                  {/if}
                 {/if}
               {/if}
               {#if lanHint}
@@ -4918,6 +4935,50 @@
   select.form-input { cursor: pointer; }
   .form-static { font-size: 13px; color: var(--text-muted); padding: 6px 0; }
   .form-error { font-size: 12px; color: #D81E5B; margin: 0 0 10px; font-weight: 600; }
+  /* Small explanatory hint rendered below an input. Spans full row width
+     (no left indent) so the text gets enough horizontal space to fit in
+     one or two lines instead of wrapping heavily under a narrow column. */
+  .form-hint {
+    font-size: 11px; color: var(--text-muted);
+    margin: 2px 0 10px; line-height: 1.4;
+  }
+  .form-hint code {
+    background: var(--bg-hover); padding: 0 4px; border-radius: 3px;
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
+  }
+  /* Fieldset used to visually group a subset of form fields (e.g., the
+     commit-author identity) and explain what they are used for, so users
+     don't confuse them with authentication fields. */
+  .form-fieldset {
+    border: 1px solid var(--border, #27272a);
+    border-radius: 6px;
+    padding: 10px 12px 4px;
+    margin: 4px 0 10px;
+    background: rgba(75, 149, 233, 0.05);
+  }
+  :global([data-theme="light"]) .form-fieldset {
+    background: rgba(75, 149, 233, 0.06);
+    border-color: rgba(75, 149, 233, 0.35);
+  }
+  .form-fieldset-legend {
+    padding: 0 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: 0.02em;
+  }
+  .form-fieldset-hint {
+    margin: 2px 0 10px;
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.45;
+  }
+  .form-fieldset-hint code {
+    background: var(--bg-hover); padding: 0 4px; border-radius: 3px;
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
+  }
+  .form-fieldset .form-row { margin-bottom: 6px; }
+  .form-fieldset .form-row:last-child { margin-bottom: 4px; }
   .create-repo-warning {
     font-size: 12px; color: #F07623; background: rgba(240, 118, 35, 0.1);
     border: 1px solid rgba(240, 118, 35, 0.3); border-radius: 4px;
@@ -4980,6 +5041,29 @@
     margin: 2px 0 6px 16px; font-size: 11px; color: var(--text-muted);
     word-break: break-word; line-height: 1.4;
     font-family: ui-monospace, Menlo, Consolas, monospace;
+  }
+  /* Visual separator + distinct styling for messages that open with WARNING:
+     so they don't read as a continuation of the row above. */
+  .cred-status-divider {
+    border: none;
+    border-top: 1px dashed rgba(245, 158, 11, 0.45);
+    margin: 10px 0 8px;
+  }
+  :global([data-theme="light"]) .cred-status-divider { border-top-color: rgba(180, 83, 9, 0.6); }
+  .cred-status-warning {
+    margin: 6px 0 4px;
+    padding: 8px 10px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    background: rgba(245, 158, 11, 0.10);
+    border-left: 3px solid #f59e0b;
+    border-radius: 0 4px 4px 0;
+    word-break: break-word;
+  }
+  :global([data-theme="light"]) .cred-status-warning {
+    background: rgba(245, 158, 11, 0.12);
+    border-left-color: #b45309;
   }
   .cred-status-pat-btn {
     margin-left: auto;

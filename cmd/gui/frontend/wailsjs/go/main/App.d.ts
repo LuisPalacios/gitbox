@@ -106,6 +106,8 @@ export function GetGlobalFolder():Promise<string>;
 
 export function GetMirrorStatus(arg1:string):Promise<void>;
 
+export function GetOS():Promise<string>;
+
 export function GetPRSettings():Promise<main.PRSettingsDTO>;
 
 export function GetPRsForRepo(arg1:string,arg2:string):Promise<main.PRSummaryDTO>;

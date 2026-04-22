@@ -237,72 +237,93 @@ func checkSSH(acct config.Account, accountKey string, cfg *config.Config) Status
 	return r
 }
 
-// checkGCM verifies GCM OAuth + optional companion PAT.
+// checkGCM verifies a GCM-backed account by splitting two concerns:
+//
+//  1. Primary = "does GCM have a credential cached for this host?"
+//     That is the thing GCM is responsible for (git push/pull auth).
+//     We don't treat API-layer failures as a Primary problem, because the
+//     REST API is a separate capability that can be covered by a
+//     companion PAT — or by GCM's own token, depending on the provider.
+//
+//  2. PAT row = "can gitbox reach the API for discovery / repo creation?"
+//     We try GCM's cached token first (works for GitHub / GitLab OAuth
+//     tokens, works when the user pasted a PAT into GCM's prompt). If
+//     that fails, we fall back to a PAT stored in the gitbox keyring.
+//     Either success path marks the PAT row as OK with an explanatory
+//     detail. Only when neither covers the API do we downgrade.
+//
+// Before this split, a working "GCM for git + PAT for API" setup rendered
+// as "Warning" on the Primary row because the GCM-cached password (which
+// Forgejo/Gitea refuse at their REST API) was being counted against GCM.
+// That's wrong: GCM did its job.
 func checkGCM(acct config.Account, accountKey string, cfg *config.Config) StatusResult {
 	r := StatusResult{PrimaryType: "gcm"}
 
-	// Primary: GCM OAuth via git credential fill.
 	token, _, err := ResolveGCMToken(acct.URL, acct.Username)
 	if err != nil {
+		// No credential means git operations don't work either. This IS
+		// a Primary failure.
 		r.Primary = StatusError
-		r.PrimaryDetail = "GCM credential not found"
-	} else {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		if err := provider.TestAuth(ctx, acct.Provider, acct.URL, token, acct.Username); err != nil {
-			if provider.IsNetworkError(err) {
-				r.Primary = StatusOffline
-				r.PrimaryDetail = fmt.Sprintf("server unreachable: %v", err)
-			} else {
-				r.Primary = StatusWarning
-				// Forgejo/Gitea refuse account passwords at the REST API.
-				// When GCM cached a password (the common case when a PAT
-				// wasn't pasted into GCM's prompt), the 401 is expected and
-				// the "token is invalid" phrasing from the HTTP layer is
-				// misleading — the credential is fine for git push/pull,
-				// it's just not a valid API credential. Rewrite the detail
-				// so the user knows git still works and how to fix API.
-				if isAPIAuthRejection(err) && providerNeedsPATForAPI(acct.Provider) {
-					r.PrimaryDetail = fmt.Sprintf(
-						"GCM credential works for git push/pull, but %s/Forgejo API refuses account passwords. Paste a PAT into GCM's prompt or store a companion PAT for API access.",
-						acct.Provider,
-					)
-				} else {
-					r.PrimaryDetail = fmt.Sprintf("GCM credential found but API check failed: %v", err)
-				}
-			}
-		} else {
-			r.Primary = StatusOK
-			r.PrimaryDetail = "GCM verified"
-		}
+		r.PrimaryDetail = "GCM has no cached credential — run credential setup"
+		r.PAT = StatusNone
+		r.PATDetail = "not available until GCM has a credential"
+		r.Overall = StatusError
+		return r
 	}
 
-	// PAT: optional companion token.
-	// When the primary GCM credential already authenticates against the API
-	// (GitHub OAuth token, or a Forgejo PAT pasted into GCM's password
-	// prompt), a separate keyring PAT is not needed for discovery or repo
-	// creation — GCM already covers both. A keyring PAT is only required
-	// when the provider's API refuses what GCM cached (Forgejo + password)
-	// or when a portable PAT is needed for push/pull mirrors to a server
-	// that can't use machine-local GCM tokens.
-	r.PAT, r.PATDetail = checkPATStatus(acct, accountKey, cfg)
-	if r.PATDetail == "" {
-		switch r.PAT {
-		case StatusOK:
-			r.PATDetail = "PAT verified"
-		case StatusWarning:
-			r.PATDetail = "PAT stored but API check failed"
-		default: // StatusNone
-			if r.Primary == StatusOK {
-				r.PATDetail = "not needed — GCM covers the API (PAT only required for mirrors)"
-			} else {
-				r.PATDetail = "needed for discovery and repo creation — GCM credential was rejected by the API"
-			}
-		}
-	}
+	r.Primary = StatusOK
+	r.PrimaryDetail = "GCM credential present — git push/pull works"
 
+	// API reachability: try GCM's cached token, then the keyring PAT.
+	r.PAT, r.PATDetail = checkAPIReachabilityForGCM(acct, accountKey, token)
 	r.Overall = combineStatus(r.Primary, r.PAT)
 	return r
+}
+
+// checkAPIReachabilityForGCM produces the PAT-row status for a GCM-backed
+// account by trying two paths in order: the GCM-cached token, then any
+// companion PAT in env vars / keyring. The first success wins; details
+// reflect which path worked (or what failed if neither did).
+func checkAPIReachabilityForGCM(acct config.Account, accountKey string, gcmToken string) (Status, string) {
+	// 1. GCM-token path.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	gcmErr := provider.TestAuth(ctx, acct.Provider, acct.URL, gcmToken, acct.Username)
+	if gcmErr == nil {
+		return StatusOK, "API via GCM (no separate PAT needed; only required for mirrors)"
+	}
+	if provider.IsNetworkError(gcmErr) {
+		return StatusOffline, fmt.Sprintf("server unreachable: %v", gcmErr)
+	}
+
+	// 2. Keyring / env-var PAT fallback.
+	patToken, _, patErr := ResolveToken(acct, accountKey)
+	if patErr != nil {
+		// No PAT configured. The 401 we got could be either a wrong
+		// credential or a provider-API policy restriction — gitbox can't
+		// tell them apart from a single response. Spell out both paths so
+		// the user isn't misled into blaming the server for a typo.
+		if isAPIAuthRejection(gcmErr) {
+			if providerNeedsPATForAPI(acct.Provider) {
+				return StatusNone, fmt.Sprintf(
+					"WARNING: API rejected the GCM credential (HTTP 401). Either the user or the password are wrong (most probably), or your %s installation is configured to require a Personal Access Token at its REST API (passwords are not always accepted). Delete and re-setup the credential with the right value, or click 'Setup API token' to store a companion PAT.",
+					providerDisplayName(acct.Provider),
+				)
+			}
+			return StatusNone, "WARNING: API rejected the GCM credential (HTTP 401). The user or password are most likely wrong or expired — delete and re-setup the credential with the correct value, or click 'Setup API token' to store a companion PAT."
+		}
+		return StatusNone, fmt.Sprintf("WARNING: API via GCM failed (%v) and no companion PAT is configured", gcmErr)
+	}
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel2()
+	if err := provider.TestAuth(ctx2, acct.Provider, acct.URL, patToken, acct.Username); err != nil {
+		if provider.IsNetworkError(err) {
+			return StatusOffline, fmt.Sprintf("WARNING: server unreachable: %v", err)
+		}
+		return StatusWarning, fmt.Sprintf("WARNING: companion PAT stored but API check failed: %v", err)
+	}
+	return StatusOK, "API via companion PAT (GCM handles git operations)"
 }
 
 // checkToken verifies the PAT used for everything.
@@ -367,13 +388,18 @@ func checkPATStatus(acct config.Account, accountKey string, cfg *config.Config) 
 
 // combineStatus derives the overall status from primary + PAT.
 //
-// The rule is "is API access reachable via at least one credential?" — not
-// "are both credentials present". For providers where the primary credential
-// (e.g. GitHub GCM OAuth token) already authenticates against the API, a
-// companion PAT is redundant and its absence must not degrade the overall
-// state. For providers where the primary credential cannot talk to the API
-// (e.g. Forgejo/Gitea GCM — the stored password is rejected by the REST API),
-// the PAT is the fallback and must be OK for the overall state to be OK.
+// After the GCM refactor, Primary carries credential-presence information
+// (is the credential artefact there at all?) and PAT carries API-reach
+// information (is the REST API actually reachable with something?). That
+// makes the merge straightforward: primary-level failures dominate; when
+// primary is OK or Warning, the PAT row decides.
+//
+//	primary=Error     → Error      (no credential → nothing works)
+//	primary=Offline   → Offline    (only token/ssh can surface this)
+//	pat=OK            → OK         (API reachable, primary at worst Warning)
+//	pat=Offline       → Offline    (we can't reach the server)
+//	pat=Error         → Error      (rare; reserved for future use)
+//	pat=None/Warning  → Warning    (API unavailable; user can still git)
 func combineStatus(primary, pat Status) Status {
 	if primary == StatusError {
 		return StatusError
@@ -381,17 +407,17 @@ func combineStatus(primary, pat Status) Status {
 	if primary == StatusOffline {
 		return StatusOffline
 	}
-	// API is reachable if either the primary credential succeeded against
-	// the API, or the companion PAT did.
-	if primary == StatusOK || pat == StatusOK {
+	switch pat {
+	case StatusOK:
 		return StatusOK
-	}
-	// Neither the primary nor the PAT can reach the API; pick the most
-	// actionable state for the user.
-	if pat == StatusOffline {
+	case StatusOffline:
 		return StatusOffline
+	case StatusError:
+		return StatusError
+	default:
+		// pat is None (no PAT configured) or Warning (stored but broken).
+		return StatusWarning
 	}
-	return StatusWarning
 }
 
 // isAPIAuthRejection reports whether an error from provider.TestAuth looks
@@ -422,6 +448,26 @@ func providerNeedsPATForAPI(p string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// providerDisplayName returns a human-facing capitalization of the
+// provider identifier for use in user-visible status messages. Provider
+// IDs are lowercase in config; messages look wrong when rendered raw.
+func providerDisplayName(p string) string {
+	switch p {
+	case "github":
+		return "GitHub"
+	case "gitlab":
+		return "GitLab"
+	case "gitea":
+		return "Gitea"
+	case "forgejo":
+		return "Forgejo"
+	case "bitbucket":
+		return "Bitbucket"
+	default:
+		return p
 	}
 }
 
