@@ -142,6 +142,30 @@ Parallel to the identity check, `pkg/credential` exposes `IsGlobalGCMConfigNeede
 
 Provides version checking and self-update via GitHub Releases. `CheckLatest()` queries the GitHub API (throttled to once per 24h). `DownloadRelease()` fetches the platform-specific artifact and verifies its SHA256 checksum. `Apply()` extracts the zip and replaces binaries in place — on Unix via atomic rename, on Windows by renaming the running binary to `.old` first (`CleanupOldBinary()` removes stale `.old` files on the next startup).
 
+### pkg/doctor — External-tool Detection
+
+Probes the host for every external binary gitbox may call — `git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, `tmux`, `tmuxinator`, `wsl` (Windows only) — and reports path, version, and per-OS install hints for anything missing. `PrecheckForCredentialType()` powers the GUI and TUI setup flows so a missing tool surfaces as a yellow banner with the install command instead of a cryptic runtime error. Output is also available as `gitbox doctor` (human or `--json`) with exit code `1` when any required tool is missing.
+
+### pkg/heal — Repo .git/config Self-heal
+
+`heal.Repo(cfg, sourceKey, repoKey)` idempotently reconciles a clone's `.git/config` against the account spec: `user.name`, `user.email`, the canonical `origin` URL (credential-type specific, no embedded secrets), and the credential helper. Wired into every trigger point — CLI / TUI / GUI clone, fetch, pull, and the GUI's periodic sync — so that clones drifting out of spec are silently repaired. Introduced alongside the GUI Windows-stdio fix in `pkg/git.run()` to stop GUI-side `.git/config` writes from silently failing.
+
+### pkg/move — Cross-account / Cross-provider Repo Move
+
+Relocates a clone from one configured account to another, including across providers (GitHub → GitLab, Gitea → Forgejo). Orchestrates a phased flow — preflight (credential-readiness probe) → fetch → create destination → `git push --mirror` → rewire `origin` → update `gitbox.json` → optional source-remote delete → optional local-clone delete → auto-clone destination when the local was deleted. Phase callbacks stream progress to the GUI and TUI. Phases 1–6 are fatal on failure; optional deletes are best-effort and surface as warnings with `provider.InsufficientScopesError` humanised into remediation text (e.g. "add `delete_repo` scope to your GitHub PAT").
+
+### pkg/gitignore — Global Gitignore Self-heal
+
+Installs a curated managed block of OS-junk patterns (`.DS_Store`, `Thumbs.db`, `*~`, …) into `~/.gitignore_global` and points `core.excludesfile` at it. Block is wrapped in sentinel markers so re-installs rewrite only the managed region; user-added entries and negation patterns outside the sentinels are preserved. Atomic tmp+rename write with a rolling 3-backup cap (`.bak-YYYYMMDD-HHMMSS`). Opt-out via `global.check_global_gitignore` in `gitbox.json` gates only the automatic startup check; explicit actions always run. Exposed as `gitbox gitignore check|install`, the TUI `G` shortcut, and a GUI banner with an **Install** button.
+
+### pkg/workspace — Task-based Multi-repo Workspaces
+
+Generates VS Code multi-root `.code-workspace` files (with nearest-common-ancestor file placement and a minimal settings block that lets VS Code detect nested repos) and tmuxinator YAML profiles (`windowsPerRepo` default, `splitPanes` alternate). `BuildOpenCommand()` returns the invocation for the first editor in `global.editors` or the first terminal running `tmuxinator start <key>`. On Windows, tmuxinator is routed through WSL: YAML is written to the WSL-side `~/.tmuxinator/<key>.yml` via its `\\wsl.localhost\…` UNC path, and launches run `wsl.exe -- tmuxinator start <key>` regardless of the host terminal. `pkg/workspace/discover.go` walks the gitbox-managed folder and `~/.tmuxinator/` (plus the WSL side on Windows), matches parsed folder paths back to known clones via deepest-prefix match, and auto-adopts unambiguous matches with `discovered: true`; ambiguous matches are surfaced for human review and never auto-adopted.
+
+### pkg/adopt — Orphan Repo Discovery
+
+Scans the gitbox-managed folder for clones not in `gitbox.json` and scores each against every host-matching account. Scoring signals (additive): owner equals `account.username` (+3), repo lives under the account's source folder (+5), HTTPS URL embeds `user@` matching the username (+10), `.git/config` has `credential.<url>.username` equal to the username (+10). Ties surface as ambiguous and are never auto-adopted; adopted orphans get credential isolation, identity, and an optional relocation to the standard folder structure.
+
 ### pkg/mirror — Repository Mirroring
 
 Handles push and pull mirror setup, status checking, and manual setup guides. Mirrors keep backup copies of repos on another provider without cloning locally.
@@ -246,8 +270,8 @@ gitbox
 |  |- orgs <key>                     List provider organizations
 |  |- credential
 |  |  |- setup <key>                 Set up credentials (idempotent)
-|  |  |- verify <key>               Verify credentials work
-|  |  +- del <key>                  Remove credentials
+|  |  |- verify <key>                Verify credentials work
+|  |  +- del <key>                   Remove credentials
 |  +- discover <key>                 Discover repos from provider API
 |- source
 |  |- list                           List all sources
@@ -265,6 +289,8 @@ gitbox
 |- pull [--source] [--repo]          Pull repos that are behind
 |- fetch [--source] [--repo]         Fetch without pulling
 |- status [--source] [--repo]        Show sync status of all repos
+|- browse --repo <repo>              Open a repo's web page in the browser
+|- sweep [--dry-run] [--source]      Remove stale local branches
 |- mirror
 |  |- list                           List all mirror groups
 |  |- show <key>                     Show mirror details as JSON
@@ -274,10 +300,26 @@ gitbox
 |  |- delete-repo <key> <repo>       Remove a repo from a mirror
 |  |- setup [<key>] [--repo]         Run API setup for pending mirrors
 |  |- status [<key>]                 Check live mirror sync status
-|  +- discover [<key>]              Discover mirrorable repos across accounts
+|  +- discover [<key>]               Discover mirrorable repos across accounts
+|- workspace
+|  |- list                           List configured workspaces
+|  |- show <key>                     Show workspace details
+|  |- add <key> --type ...           Create a workspace (codeWorkspace / tmuxinator)
+|  |- delete <key>                   Remove workspace from config
+|  |- add-member <key> <src>/<repo>  Add a clone to a workspace
+|  |- delete-member <key> <src>/<repo>  Remove a clone from a workspace
+|  |- generate <key>                 (Re)write the workspace file on disk
+|  |- open <key>                     Regenerate + launch the workspace
+|  +- discover [--apply]             Scan disk, optionally adopt
 |- identity [--remove]               Check/remove global git identity
+|- gitignore
+|  |- check                          Status of ~/.gitignore_global + core.excludesfile
+|  +- install                        Install / refresh the managed block
 |- reconfigure [--account]           Update per-repo credential isolation
 |- scan [--dir] [--pull]             Filesystem walk for repo status
+|- adopt [--all] [--dry-run]         Adopt orphan repos into gitbox.json
+|- doctor [--json]                   Probe external tools; exit 1 when any required is missing
+|- update [--check]                  Check and install updates from GitHub releases
 |- completion <shell>                Generate shell completion
 +- version                           Show version info
 ```

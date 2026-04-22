@@ -30,21 +30,25 @@ Gitbox does not implement any Git protocol or plumbing logic. It acts as an orch
 - **Multi-account management** — define identities per provider with isolated credentials (GCM, SSH, or Token)
 - **Automatic discovery** — find all my repos via provider APIs instead of listing them by hand
 - **Smart cloning** — each repo gets cloned with the correct identity and folder structure, self-contained in its own `.git/config`
-- **Sync status** — see which repos are clean, behind, dirty, or diverged at a glance
+- **Sync status** — see which repos are clean, behind, dirty, diverged, or whose remote has been deleted, at a glance
 - **Safe pulling** — fast-forward-only pulls; dirty or conflicted repos are never touched
 - **Cross-provider mirroring** — push or pull mirrors between providers for backups (e.g., Forgejo → GitHub)
+- **Move a repository** — relocate a clone from one account to another — including cross-provider (GitHub ↔ GitLab ↔ Forgejo) — with a guided preflight, credential-scope check, mirror push, origin rewire, optional source-remote delete, and optional local-clone delete. The local folder ends up pointing at the new account with no further steps
 - **Credential switching** — change auth types (GCM ↔ SSH ↔ Token) with automatic cleanup
+- **Self-healing host setup** — gitbox watches the pieces of your global git setup that tend to cause cryptic failures and offers a one-click fix from CLI, TUI, or GUI: a lingering global `user.name` / `user.email`, a missing GCM credential helper in `~/.gitconfig`, and a missing `~/.gitignore_global` with a curated block of OS-junk patterns (`.DS_Store`, `Thumbs.db`, `*~`, …)
+- **System check (doctor)** — `gitbox doctor` (and the GUI/TUI equivalent) probes the host for every external tool gitbox relies on (git, Git Credential Manager, ssh, tmux, wsl) and prints the OS-specific install command for anything missing — so you learn about a broken dependency before it fails at auth time
+- **Safe account deletion + recovery** — deleting an account cascades through every mirror and workspace that references it so nothing is left dangling; every meaningful save keeps a rolling window of 10 dated backups, and the GUI's corruption-recovery screen can restore any of them in one click
 - **One-click actions** — every clone row (and every account header) has a kebab menu to open the clone in a browser, file manager, terminal, editor, or AI CLI harness (Claude Code, Codex, Gemini, …)
 - **PR & review indicators** — each clone row surfaces its open pull requests and pending review requests, pulled from the provider API
-- **Task-based workspaces** — bundle clones from different accounts into a VS Code multi-root workspace or a tmuxinator layout; launch from a clone's kebab or from a dedicated Workspaces tab (GUI + TUI + CLI). Support for auto-discovery and full WSL-backed tmuxinator support on Windows.
+- **Task-based workspaces** — bundle clones from different accounts into a VS Code multi-root workspace or a tmuxinator layout; launch from a clone's kebab or from a dedicated Workspaces tab (GUI + TUI + CLI). Auto-discovery adopts `.code-workspace` and `.tmuxinator` files dropped on disk, and full WSL-backed tmuxinator support lights up automatically on Windows.
 
-It support four providers. GitHub, GitLab, Gitea/Forgejo, and Bitbucket, all work for discovery, cloning, and repo creation. Push/Pull for backups still preliminary version, eead the docs.
+Five providers are supported — GitHub, GitLab, Gitea, Forgejo, and Bitbucket — and all of them work for discovery, cloning, and repo creation. Cross-provider mirroring is fully automated on Gitea, Forgejo, and GitLab; for GitHub and Bitbucket gitbox prints the manual setup steps instead of driving the UI. Read the docs for details.
 
 ## Three interfaces
 
-Gitbox ships as two binaries built from the same Go library (`pkg/`). 
+Gitbox ships as two binaries built from the same Go library (`pkg/`).
 
-The CLI and TUI live in a single binary — if you run `gitbox` with no arguments in a terminal, the TUI launches; if you pass any command, the CLI executes. I use them in linux headless mainly.
+The CLI and TUI live in a single binary — if you run `gitbox` with no arguments in a terminal, the TUI launches; if you pass any command, the CLI executes. I use them on Linux headless hosts mainly.
 
 The GUI is a separate binary built with **[Wails](https://wails.io/)** + Svelte.
 
