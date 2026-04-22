@@ -2429,6 +2429,13 @@
           },
         }));
       }
+      // Reload config so the dashboard reflects the repo's new
+      // home immediately — otherwise the user reads "Move complete"
+      // while still seeing the source-account card list with the
+      // repo in its OLD slot, which looks like the move didn't work.
+      if (moveResult && !moveResult.error) {
+        reloadFromDisk().catch(() => { /* surfaced as reloadError */ });
+      }
     });
 
     // Check if config failed to parse (file exists but is broken/unsupported).
