@@ -298,6 +298,37 @@ func Pull(repoPath string) error {
 	return run(repoPath, "pull", "--ff-only")
 }
 
+// PushMirror runs `git push --mirror <url>` from repoPath, pushing every
+// ref and tag to the target URL. Used by the move flow to replicate a
+// repository onto its new home before the local origin is rewired.
+// Output is captured so the caller can surface provider-side errors
+// (e.g. "remote: Repository is empty" vs. permission issues).
+func PushMirror(repoPath, url string) (string, error) {
+	cmd := exec.Command(GitBin(), "push", "--mirror", url)
+	cmd.Dir = repoPath
+	cmd.Env = nonInteractiveEnv()
+	HideWindow(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out), fmt.Errorf("git push --mirror: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return string(out), nil
+}
+
+// FetchTagsAndPrune runs `git fetch --prune --tags` in repoPath. Used as
+// the first move-flow step so the upcoming push --mirror carries every
+// ref (tags included) and stale remote branches are dropped.
+func FetchTagsAndPrune(repoPath string) error {
+	return run(repoPath, "fetch", "--prune", "--tags")
+}
+
+// SetUpstream configures the given local branch to track
+// <remote>/<branch>. The remote must already have the branch fetched.
+// Used after a move to re-bind the current branch to the new origin.
+func SetUpstream(repoPath, branch, remote string) error {
+	return run(repoPath, "branch", fmt.Sprintf("--set-upstream-to=%s/%s", remote, branch), branch)
+}
+
 // PullQuiet runs git pull --ff-only, capturing output instead of forwarding it.
 func PullQuiet(repoPath string) error {
 	_, err := output(repoPath, "pull", "--ff-only")

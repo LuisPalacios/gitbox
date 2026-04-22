@@ -570,13 +570,76 @@ func TestGitLabDeletePushMirror(t *testing.T) {
 	}
 }
 
-// --- injectTokenInURL test ---
+// --- InjectTokenInURL test ---
 
 func TestInjectTokenInURL(t *testing.T) {
-	result := injectTokenInURL("https://github.com/user/repo.git", "my-token")
+	result := InjectTokenInURL("https://github.com/user/repo.git", "my-token")
 	expected := "https://token:my-token@github.com/user/repo.git"
 	if result != expected {
 		t.Errorf("got %q, want %q", result, expected)
+	}
+}
+
+// --- RepoDeleter tests ---
+
+func TestGitHubDeleteRepo(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "DELETE" || r.URL.Path != "/api/v3/repos/user/goner" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer tok" {
+			t.Error("missing auth")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	gh := &GitHub{}
+	if err := gh.DeleteRepo(context.Background(), srv.URL, "tok", "", "user", "goner"); err != nil {
+		t.Fatalf("DeleteRepo: %v", err)
+	}
+}
+
+func TestGitHubDeleteRepoValidatesArgs(t *testing.T) {
+	gh := &GitHub{}
+	if err := gh.DeleteRepo(context.Background(), "https://github.com", "tok", "", "", "goner"); err == nil {
+		t.Error("expected error when owner empty")
+	}
+	if err := gh.DeleteRepo(context.Background(), "https://github.com", "tok", "", "user", ""); err == nil {
+		t.Error("expected error when repo name empty")
+	}
+}
+
+func TestGitLabDeleteRepo(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "DELETE" || r.URL.EscapedPath() != "/api/v4/projects/group%2Fgoner" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.EscapedPath())
+		}
+		if r.Header.Get("PRIVATE-TOKEN") != "tok" {
+			t.Error("missing auth")
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	gl := &GitLab{}
+	if err := gl.DeleteRepo(context.Background(), srv.URL, "tok", "", "group", "goner"); err != nil {
+		t.Fatalf("DeleteRepo: %v", err)
+	}
+}
+
+func TestGiteaDeleteRepo(t *testing.T) {
+	srv := httptest.NewServer(giteaTestHandler(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "DELETE" || r.URL.Path != "/api/v1/repos/luis/goner" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	gt := &Gitea{}
+	if err := gt.DeleteRepo(context.Background(), srv.URL, "tok", "luis", "luis", "goner"); err != nil {
+		t.Fatalf("DeleteRepo: %v", err)
 	}
 }
 
@@ -584,17 +647,24 @@ func TestInjectTokenInURL(t *testing.T) {
 
 func TestGiteaImplementsMirrorInterfaces(t *testing.T) {
 	var _ RepoCreator = (*Gitea)(nil)
+	var _ RepoDeleter = (*Gitea)(nil)
 	var _ PushMirrorProvider = (*Gitea)(nil)
 	var _ PullMirrorProvider = (*Gitea)(nil)
 }
 
 func TestGitHubImplementsRepoCreator(t *testing.T) {
 	var _ RepoCreator = (*GitHub)(nil)
+	var _ RepoDeleter = (*GitHub)(nil)
 }
 
 func TestGitLabImplementsMirrorInterfaces(t *testing.T) {
 	var _ RepoCreator = (*GitLab)(nil)
+	var _ RepoDeleter = (*GitLab)(nil)
 	var _ PushMirrorProvider = (*GitLab)(nil)
+}
+
+func TestBitbucketImplementsRepoDeleter(t *testing.T) {
+	var _ RepoDeleter = (*Bitbucket)(nil)
 }
 
 // --- PRLister tests ---

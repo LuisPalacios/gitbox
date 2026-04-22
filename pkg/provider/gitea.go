@@ -170,6 +170,24 @@ func (g *Gitea) ListUserOrgs(ctx context.Context, baseURL, token, username strin
 	return result, nil
 }
 
+// --- RepoDeleter ---
+
+func (g *Gitea) DeleteRepo(ctx context.Context, baseURL, token, username, owner, repoName string) error {
+	if owner == "" || repoName == "" {
+		return fmt.Errorf("gitea delete repo: owner and repo name required")
+	}
+	headers, err := g.resolveAuth(ctx, baseURL, token, username)
+	if err != nil {
+		return fmt.Errorf("gitea auth: %w", err)
+	}
+	base := strings.TrimRight(baseURL, "/")
+	apiURL := fmt.Sprintf("%s/api/v1/repos/%s/%s", base, owner, repoName)
+	if err := doDelete(ctx, apiURL, headers); err != nil {
+		return fmt.Errorf("gitea delete repo: %w", err)
+	}
+	return nil
+}
+
 func (g *Gitea) RepoExists(ctx context.Context, baseURL, token, username, owner, repoName string) (bool, error) {
 	headers, err := g.resolveAuth(ctx, baseURL, token, username)
 	if err != nil {

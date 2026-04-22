@@ -88,7 +88,8 @@ func doPost(ctx context.Context, url string, headers map[string]string, body io.
 }
 
 // doDelete performs an authenticated DELETE request.
-// Accepts 200 and 204 as success status codes.
+// Accepts 200, 202, and 204 as success status codes. GitLab returns 202
+// Accepted when a project delete is queued; GitHub/Gitea return 204.
 func doDelete(ctx context.Context, url string, headers map[string]string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
 	if err != nil {
@@ -112,7 +113,7 @@ func doDelete(ctx context.Context, url string, headers map[string]string) error 
 	if resp.StatusCode == http.StatusForbidden {
 		return fmt.Errorf("insufficient permissions (HTTP 403) — token needs broader scopes")
 	}
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return fmt.Errorf("HTTP %d from %s: %s", resp.StatusCode, url, string(body))
 	}

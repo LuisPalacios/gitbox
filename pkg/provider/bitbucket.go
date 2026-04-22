@@ -103,6 +103,23 @@ func (b *Bitbucket) RepoExists(ctx context.Context, _, token, username, owner, r
 	return true, nil
 }
 
+// --- RepoDeleter ---
+
+func (b *Bitbucket) DeleteRepo(ctx context.Context, _, token, username, owner, repoName string) error {
+	if repoName == "" {
+		return fmt.Errorf("bitbucket delete repo: repo name required")
+	}
+	workspace := owner
+	if workspace == "" {
+		workspace = username
+	}
+	apiURL := fmt.Sprintf("https://api.bitbucket.org/2.0/repositories/%s/%s", workspace, repoName)
+	if err := doDelete(ctx, apiURL, b.authHeaders(token, username)); err != nil {
+		return fmt.Errorf("bitbucket delete repo: %w", err)
+	}
+	return nil
+}
+
 // --- OrgLister ---
 
 func (b *Bitbucket) ListUserOrgs(ctx context.Context, _, token, username string) ([]string, error) {

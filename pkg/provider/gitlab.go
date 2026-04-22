@@ -153,6 +153,21 @@ func (g *GitLab) ListUserOrgs(ctx context.Context, baseURL, token, _ string) ([]
 	return result, nil
 }
 
+// --- RepoDeleter ---
+
+func (g *GitLab) DeleteRepo(ctx context.Context, baseURL, token, _, owner, repoName string) error {
+	if owner == "" || repoName == "" {
+		return fmt.Errorf("gitlab delete repo: owner and repo name required")
+	}
+	base := strings.TrimRight(baseURL, "/")
+	encoded := url.PathEscape(owner + "/" + repoName)
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%s", base, encoded)
+	if err := doDelete(ctx, apiURL, g.authHeaders(token)); err != nil {
+		return fmt.Errorf("gitlab delete repo: %w", err)
+	}
+	return nil
+}
+
 func (g *GitLab) RepoExists(ctx context.Context, baseURL, token, _, owner, repoName string) (bool, error) {
 	base := strings.TrimRight(baseURL, "/")
 	// GitLab uses URL-encoded "owner/repo" as the project ID.
@@ -284,7 +299,7 @@ func (g *GitLab) CreatePushMirror(ctx context.Context, baseURL, token, _, owner,
 	base := strings.TrimRight(baseURL, "/")
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/remote_mirrors", base, projectID)
 	body := fmt.Sprintf(`{"url":%q,"enabled":true,"only_protected_branches":false}`,
-		injectTokenInURL(targetURL, targetToken))
+		InjectTokenInURL(targetURL, targetToken))
 	_, err = doPost(ctx, apiURL, g.authHeaders(token), strings.NewReader(body), nil)
 	if err != nil {
 		return fmt.Errorf("gitlab create push mirror: %w", err)
@@ -326,13 +341,3 @@ func (g *GitLab) DeletePushMirror(ctx context.Context, baseURL, token, _, owner,
 	return nil
 }
 
-// injectTokenInURL embeds a token into a clone URL for authenticated push.
-// "https://github.com/user/repo.git" → "https://token:<token>@github.com/user/repo.git"
-func injectTokenInURL(cloneURL, token string) string {
-	u, err := url.Parse(cloneURL)
-	if err != nil {
-		return cloneURL
-	}
-	u.User = url.UserPassword("token", token)
-	return u.String()
-}

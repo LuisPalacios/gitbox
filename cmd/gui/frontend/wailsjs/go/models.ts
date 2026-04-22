@@ -1010,6 +1010,72 @@ export namespace main {
 	    }
 	}
 	
+	export class MoveOwnerOption {
+	    account: string;
+	    provider: string;
+	    owner: string;
+	    isOrg: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new MoveOwnerOption(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.account = source["account"];
+	        this.provider = source["provider"];
+	        this.owner = source["owner"];
+	        this.isOrg = source["isOrg"];
+	    }
+	}
+	export class MovePreflightDTO {
+	    ok: boolean;
+	    error?: string;
+	    sourceRepoPath: string;
+	    destCloneUrl: string;
+	    sourceDeletable: boolean;
+	    warnings?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new MovePreflightDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ok = source["ok"];
+	        this.error = source["error"];
+	        this.sourceRepoPath = source["sourceRepoPath"];
+	        this.destCloneUrl = source["destCloneUrl"];
+	        this.sourceDeletable = source["sourceDeletable"];
+	        this.warnings = source["warnings"];
+	    }
+	}
+	export class MoveRequestDTO {
+	    sourceSourceKey: string;
+	    sourceRepoKey: string;
+	    destAccountKey: string;
+	    destOwner: string;
+	    destRepoName: string;
+	    destPrivate: boolean;
+	    deleteSourceRemote: boolean;
+	    deleteLocalClone: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new MoveRequestDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceSourceKey = source["sourceSourceKey"];
+	        this.sourceRepoKey = source["sourceRepoKey"];
+	        this.destAccountKey = source["destAccountKey"];
+	        this.destOwner = source["destOwner"];
+	        this.destRepoName = source["destRepoName"];
+	        this.destPrivate = source["destPrivate"];
+	        this.deleteSourceRemote = source["deleteSourceRemote"];
+	        this.deleteLocalClone = source["deleteLocalClone"];
+	    }
+	}
 	export class OrphanRepoDTO {
 	    path: string;
 	    relPath: string;

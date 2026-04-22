@@ -368,6 +368,18 @@ Click the **trash icon** in the top bar to enter delete mode. Red X buttons appe
 
 Exit delete mode by clicking the trash icon again.
 
+### Move a repository across accounts / providers
+
+Open the kebab (⋮) on any repo row and pick **Move repository…**. The entry is disabled when the clone isn't clean and in sync — the tooltip explains why. The modal:
+
+1. **Form** — pick the destination account + owner (personal or org, loaded asynchronously), confirm the new repo name, set visibility, and optionally opt in to deleting the source repo and/or the local clone after a successful move. Both delete toggles are unchecked by default.
+2. **Confirm** — a red-bordered summary listing every destructive side effect. Type the source repo key (e.g. `acme/widget`) to unlock the **Move** button.
+3. **Progress** — each phase (preflight → fetch → create destination → push mirror → rewire origin → optional deletes → update config) lands as its own line with a live status.
+
+The move preserves every ref and tag via `git push --mirror`, rewires `origin` on the local clone to the new URL, and updates the gitbox config so the repo now lives under the destination account's source. A failed source-delete or local-clone-delete (phases 6–7) is captured as a warning — the move itself is already complete by that point.
+
+Required token scopes on both sides are listed in [Token scopes for destructive actions](credentials.md#token-scopes-for-destructive-actions).
+
 ### Global identity warning
 
 If your `~/.gitconfig` has a global `user.name` or `user.email`, Gitbox shows an **orange warning banner** at the top of the dashboard. A global identity can override the per-repo identities that gitbox sets up for each account.

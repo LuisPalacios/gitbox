@@ -29,6 +29,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/harness"
 	"github.com/LuisPalacios/gitbox/pkg/identity"
 	"github.com/LuisPalacios/gitbox/pkg/mirror"
+	"github.com/LuisPalacios/gitbox/pkg/move"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 	wailsrt "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -4548,4 +4549,246 @@ func gatherRequiredTools(cfg *config.Config) map[string]string {
 		}
 	}
 	return required
+}
+
+// ── Move repository (issue #64) ────────────────────────────────────────────
+
+// MoveOwnerOption is a (account, owner) pair the user can move INTO.
+// Returned to the frontend so the destination picker can list every
+// valid target across every configured account.
+type MoveOwnerOption struct {
+	Account  string `json:"account"`
+	Provider string `json:"provider"` // github / gitlab / gitea / forgejo / bitbucket
+	Owner    string `json:"owner"`    // username or org slug
+	IsOrg    bool   `json:"isOrg"`
+}
+
+// MoveRequestDTO is the frontend → backend request shape for a move.
+// Mirrors pkg/move.Request but with JSON field tags.
+type MoveRequestDTO struct {
+	SourceSourceKey    string `json:"sourceSourceKey"`
+	SourceRepoKey      string `json:"sourceRepoKey"`
+	DestAccountKey     string `json:"destAccountKey"`
+	DestOwner          string `json:"destOwner"`
+	DestRepoName       string `json:"destRepoName"`
+	DestPrivate        bool   `json:"destPrivate"`
+	DeleteSourceRemote bool   `json:"deleteSourceRemote"`
+	DeleteLocalClone   bool   `json:"deleteLocalClone"`
+}
+
+// MovePreflightDTO is the read-only result of running just the
+// preflight step. Lets the frontend surface errors (e.g. dest exists,
+// source not clean) BEFORE the user types the repo name to confirm.
+type MovePreflightDTO struct {
+	OK              bool     `json:"ok"`
+	Error           string   `json:"error,omitempty"`
+	SourceRepoPath  string   `json:"sourceRepoPath"`
+	DestCloneURL    string   `json:"destCloneUrl"`
+	SourceDeletable bool     `json:"sourceDeletable"`
+	Warnings        []string `json:"warnings,omitempty"`
+}
+
+// MoveProgressEventDTO is emitted on the "move:progress" event bus per
+// phase transition. Consumed by the Svelte progress overlay.
+type MoveProgressEventDTO struct {
+	Phase   string `json:"phase"`
+	Message string `json:"message"`
+	Error   string `json:"error,omitempty"`
+}
+
+// MoveResultDTO is emitted on "move:done". Err is empty on fatal
+// success; Warnings may be non-empty for best-effort failures.
+type MoveResultDTO struct {
+	NewOrigin           string   `json:"newOrigin"`
+	DestRepoCreated     bool     `json:"destRepoCreated"`
+	SourceRemoteDeleted bool     `json:"sourceRemoteDeleted"`
+	LocalCloneDeleted   bool     `json:"localCloneDeleted"`
+	Warnings            []string `json:"warnings,omitempty"`
+	Error               string   `json:"error,omitempty"`
+}
+
+// ListMoveDestinationOwners returns every (account, owner) pair the
+// user could move a repo into. The source account is excluded — a
+// same-account move is a rename, handled by a different flow. Org
+// listing is best-effort per account; failures fall back to just the
+// account's personal username.
+func (a *App) ListMoveDestinationOwners(sourceKey string) []MoveOwnerOption {
+	a.mu.Lock()
+	cfg := a.cfg
+	a.mu.Unlock()
+	if cfg == nil {
+		return []MoveOwnerOption{}
+	}
+	src, ok := cfg.Sources[sourceKey]
+	if !ok {
+		return []MoveOwnerOption{}
+	}
+	sourceAccount := src.Account
+
+	result := []MoveOwnerOption{}
+	for accountKey, acct := range cfg.Accounts {
+		if accountKey == sourceAccount {
+			continue
+		}
+		// Personal owner always available.
+		result = append(result, MoveOwnerOption{
+			Account:  accountKey,
+			Provider: acct.Provider,
+			Owner:    acct.Username,
+			IsOrg:    false,
+		})
+		// Orgs are best-effort; skip on any resolution failure.
+		token, _, err := credential.ResolveAPIToken(acct, accountKey)
+		if err != nil {
+			continue
+		}
+		prov, err := provider.ByName(acct.Provider)
+		if err != nil {
+			continue
+		}
+		ol, ok := prov.(provider.OrgLister)
+		if !ok {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		orgs, err := ol.ListUserOrgs(ctx, acct.URL, token, acct.Username)
+		cancel()
+		if err != nil {
+			continue
+		}
+		for _, org := range orgs {
+			result = append(result, MoveOwnerOption{
+				Account:  accountKey,
+				Provider: acct.Provider,
+				Owner:    org,
+				IsOrg:    true,
+			})
+		}
+	}
+	// Stable sort for deterministic UI order.
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Account != result[j].Account {
+			return result[i].Account < result[j].Account
+		}
+		return result[i].Owner < result[j].Owner
+	})
+	return result
+}
+
+// PreflightMove runs the move preflight and returns the result without
+// executing anything. Callers should invoke this before showing the
+// red type-to-confirm modal.
+func (a *App) PreflightMove(req MoveRequestDTO) MovePreflightDTO {
+	a.mu.Lock()
+	cfg := a.cfg
+	a.mu.Unlock()
+	out := MovePreflightDTO{}
+	src, ok := cfg.Sources[req.SourceSourceKey]
+	if !ok {
+		out.Error = fmt.Sprintf("source %q not found", req.SourceSourceKey)
+		return out
+	}
+	repo, ok := src.Repos[req.SourceRepoKey]
+	if !ok {
+		out.Error = fmt.Sprintf("repo %q not found in source %q", req.SourceRepoKey, req.SourceSourceKey)
+		return out
+	}
+	globalFolder := config.ExpandTilde(cfg.Global.Folder)
+	sourceFolder := src.EffectiveFolder(req.SourceSourceKey)
+	repoPath := status.ResolveRepoPath(globalFolder, sourceFolder, req.SourceRepoKey, repo)
+	out.SourceRepoPath = repoPath
+
+	moveReq := move.Request{
+		SourceAccountKey:   src.Account,
+		SourceSourceKey:    req.SourceSourceKey,
+		SourceRepoKey:      req.SourceRepoKey,
+		SourceRepoPath:     repoPath,
+		DestAccountKey:     req.DestAccountKey,
+		DestOwner:          req.DestOwner,
+		DestRepoName:       req.DestRepoName,
+		DestPrivate:        req.DestPrivate,
+		DeleteSourceRemote: req.DeleteSourceRemote,
+		DeleteLocalClone:   req.DeleteLocalClone,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if _, err := move.Preflight(ctx, cfg, moveReq); err != nil {
+		out.Error = err.Error()
+		return out
+	}
+
+	// Extra info: destination clone URL + whether source supports delete.
+	destAcct := cfg.Accounts[req.DestAccountKey]
+	base := strings.TrimRight(destAcct.URL, "/")
+	out.DestCloneURL = fmt.Sprintf("%s/%s/%s.git", base, req.DestOwner, req.DestRepoName)
+	if srcAcct, ok := cfg.Accounts[src.Account]; ok {
+		if srcProv, err := provider.ByName(srcAcct.Provider); err == nil {
+			if _, ok := srcProv.(provider.RepoDeleter); ok {
+				out.SourceDeletable = true
+			}
+		}
+	}
+	out.OK = true
+	return out
+}
+
+// MoveRepo runs the full move flow asynchronously. Progress is emitted
+// on the "move:progress" event; the final result lands on "move:done".
+// The frontend is expected to have already surfaced PreflightMove
+// errors — a failing preflight here re-emits on "move:done" so the
+// progress overlay can unwind cleanly.
+func (a *App) MoveRepo(req MoveRequestDTO) {
+	a.mu.Lock()
+	cfg := a.cfg
+	cfgPath := a.cfgPath
+	src, ok := cfg.Sources[req.SourceSourceKey]
+	a.mu.Unlock()
+	if !ok {
+		wailsrt.EventsEmit(a.ctx, "move:done", MoveResultDTO{Error: fmt.Sprintf("source %q not found", req.SourceSourceKey)})
+		return
+	}
+	repo := src.Repos[req.SourceRepoKey]
+	globalFolder := config.ExpandTilde(cfg.Global.Folder)
+	sourceFolder := src.EffectiveFolder(req.SourceSourceKey)
+	repoPath := status.ResolveRepoPath(globalFolder, sourceFolder, req.SourceRepoKey, repo)
+
+	moveReq := move.Request{
+		SourceAccountKey:   src.Account,
+		SourceSourceKey:    req.SourceSourceKey,
+		SourceRepoKey:      req.SourceRepoKey,
+		SourceRepoPath:     repoPath,
+		DestAccountKey:     req.DestAccountKey,
+		DestOwner:          req.DestOwner,
+		DestRepoName:       req.DestRepoName,
+		DestPrivate:        req.DestPrivate,
+		DeleteSourceRemote: req.DeleteSourceRemote,
+		DeleteLocalClone:   req.DeleteLocalClone,
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		result := move.Move(ctx, cfg, cfgPath, moveReq, func(p move.Progress) {
+			event := MoveProgressEventDTO{Phase: string(p.Phase), Message: p.Message}
+			if p.Err != nil {
+				event.Error = p.Err.Error()
+			}
+			wailsrt.EventsEmit(a.ctx, "move:progress", event)
+		})
+		dto := MoveResultDTO{
+			NewOrigin:           result.NewOrigin,
+			DestRepoCreated:     result.DestRepoCreated,
+			SourceRemoteDeleted: result.SourceRemoteDeleted,
+			LocalCloneDeleted:   result.LocalCloneDeleted,
+			Warnings:            result.Warnings,
+		}
+		if result.Err != nil {
+			dto.Error = result.Err.Error()
+		}
+		// Re-save config here as a belt-and-suspenders — the move
+		// package saved when updating the entry, but re-persist so a
+		// GUI-side mutation scheduled between now and the refresh
+		// doesn't lose state.
+		_ = a.saveConfig()
+		wailsrt.EventsEmit(a.ctx, "move:done", dto)
+	}()
 }

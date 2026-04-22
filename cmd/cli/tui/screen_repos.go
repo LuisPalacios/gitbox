@@ -296,6 +296,28 @@ func (m reposModel) Update(msg tea.Msg) (reposModel, tea.Cmd) {
 			m.errMsg = ""
 			return m, textinput.Blink
 
+		case msg.String() == "M":
+			// Move requires a cloned, clean, in-sync repo. Guard
+			// mirrors the GUI kebab's disabled-tooltip copy.
+			if !git.IsRepo(m.repoPath()) {
+				m.errMsg = "Clone the repo first (c) before moving."
+				m.resultMsg = ""
+				return m, nil
+			}
+			if m.repoStatus.State != status.Clean || m.ahead > 0 || m.behind > 0 {
+				m.errMsg = "Move requires a clean, in-sync clone. Commit/push/fetch first."
+				m.resultMsg = ""
+				return m, nil
+			}
+			return m, func() tea.Msg {
+				return switchScreenMsg{
+					screen:    screenMoveRepo,
+					sourceKey: m.sourceKey,
+					repoKey:   m.repoKey,
+					repoPath:  m.repoPath(),
+				}
+			}
+
 		case msg.String() == "c":
 			if m.repoStatus.State == status.NotCloned {
 				m.busy = true
@@ -559,7 +581,11 @@ func (m reposModel) View() string {
 			actions = append(actions, "o open in…")
 		}
 	}
-	actions = append(actions, "b open browser", "D remove clone", "ESC back")
+	actions = append(actions, "b open browser")
+	if m.repoStatus.State == status.Clean && m.ahead == 0 && m.behind == 0 {
+		actions = append(actions, "M move")
+	}
+	actions = append(actions, "D remove clone", "ESC back")
 	b.WriteString(renderHints(m.theme, actions...))
 
 	if m.launcher.active {

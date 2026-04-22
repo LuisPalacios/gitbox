@@ -325,6 +325,19 @@ Re-run the verification in the GUI once the rule is live.
 
 **Fix.** Add the internal CA certificate to your OS trust store (macOS Keychain, Windows cert store, or Linux `/usr/local/share/ca-certificates/` + `update-ca-certificates`). Gitbox uses the system trust store via `net/http`; it has no per-app bypass and intentionally won't offer one.
 
+## Token scopes for destructive actions
+
+The **Move repository** action (GUI kebab → *Move repository…*, TUI `M`) creates the destination repo on the target account and — when you opt in — deletes the source repo. Each side needs a different scope on top of the usual read scope:
+
+| Provider         | Create destination scope       | Delete source scope            |
+| ---------------- | ------------------------------ | ------------------------------ |
+| GitHub           | `repo`                         | `delete_repo`                  |
+| GitLab           | `api`                          | `api`                          |
+| Gitea / Forgejo  | `write:repository`             | `write:repository` (or admin)  |
+| Bitbucket Cloud  | `repository:admin`             | `repository:delete`            |
+
+If the source provider's token doesn't carry a delete scope, the preflight modal refuses the move before you type the confirmation — either lower the scope by unchecking **Delete source repository**, or mint a new PAT with the scope included.
+
 ### When the error says something unusual
 
 Gitbox surfaces the Go-level error verbatim — it does not translate or summarise it. Copy the exact string into an issue at [github.com/LuisPalacios/gitbox/issues](https://github.com/LuisPalacios/gitbox/issues) along with:
