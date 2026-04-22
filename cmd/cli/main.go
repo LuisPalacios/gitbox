@@ -71,12 +71,13 @@ func init() {
 	// Additional commands.
 	reconfigureCmd.GroupID = "additional"
 	identityCmd.GroupID = "additional"
+	gitignoreCmd.GroupID = "additional"
 	scanCmd.GroupID = "additional"
 	adoptCmd.GroupID = "additional"
 	updateCmd.GroupID = "additional"
 	versionCmd.GroupID = "additional"
 	doctorCmd.GroupID = "additional"
-	rootCmd.AddCommand(reconfigureCmd, identityCmd, scanCmd, adoptCmd, updateCmd, versionCmd, doctorCmd, tokenDeprecatedCmd)
+	rootCmd.AddCommand(reconfigureCmd, identityCmd, gitignoreCmd, scanCmd, adoptCmd, updateCmd, versionCmd, doctorCmd, tokenDeprecatedCmd)
 
 	// Assign the auto-generated help command to the additional group.
 	rootCmd.SetHelpCommandGroupID("additional")

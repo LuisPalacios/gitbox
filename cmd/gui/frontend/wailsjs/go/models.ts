@@ -192,6 +192,7 @@ export namespace config {
 	    ai_harnesses?: AIHarnessEntry[];
 	    pr_badges_enabled?: boolean;
 	    pr_include_drafts?: boolean;
+	    check_global_gitignore?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new GlobalConfig(source);
@@ -212,6 +213,7 @@ export namespace config {
 	        this.ai_harnesses = this.convertValues(source["ai_harnesses"], AIHarnessEntry);
 	        this.pr_badges_enabled = source["pr_badges_enabled"];
 	        this.pr_include_drafts = source["pr_include_drafts"];
+	        this.check_global_gitignore = source["check_global_gitignore"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -321,6 +323,61 @@ export namespace git {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.kind = source["kind"];
 	        this.path = source["path"];
+	    }
+	}
+
+}
+
+export namespace gitignore {
+	
+	export class InstallResult {
+	    path: string;
+	    backupPath: string;
+	    setExcludesfile: boolean;
+	    updated: boolean;
+	    alreadyUpToDate: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new InstallResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.backupPath = source["backupPath"];
+	        this.setExcludesfile = source["setExcludesfile"];
+	        this.updated = source["updated"];
+	        this.alreadyUpToDate = source["alreadyUpToDate"];
+	    }
+	}
+	export class Status {
+	    path: string;
+	    defaultPath: string;
+	    excludesfile: string;
+	    excludesfileSet: boolean;
+	    fileExists: boolean;
+	    blockPresent: boolean;
+	    blockUpToDate: boolean;
+	    hasDuplicates: boolean;
+	    duplicates?: string[];
+	    needsAction: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Status(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.defaultPath = source["defaultPath"];
+	        this.excludesfile = source["excludesfile"];
+	        this.excludesfileSet = source["excludesfileSet"];
+	        this.fileExists = source["fileExists"];
+	        this.blockPresent = source["blockPresent"];
+	        this.blockUpToDate = source["blockUpToDate"];
+	        this.hasDuplicates = source["hasDuplicates"];
+	        this.duplicates = source["duplicates"];
+	        this.needsAction = source["needsAction"];
 	    }
 	}
 
@@ -1061,6 +1118,8 @@ export namespace main {
 	    changed: git.FileChange[];
 	    untracked: string[];
 	    error?: string;
+	    upstreamGone?: boolean;
+	    upstreamError?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new RepoDetail(source);
@@ -1074,6 +1133,8 @@ export namespace main {
 	        this.changed = this.convertValues(source["changed"], git.FileChange);
 	        this.untracked = source["untracked"];
 	        this.error = source["error"];
+	        this.upstreamGone = source["upstreamGone"];
+	        this.upstreamError = source["upstreamError"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

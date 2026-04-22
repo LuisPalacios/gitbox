@@ -481,6 +481,35 @@ The GUI exposes the same report via **Settings → System check → Run**. Both 
 
 ---
 
+## Global gitignore
+
+Install a curated set of OS-junk patterns (`.DS_Store`, `Thumbs.db`, `*~`, …) into `~/.gitignore_global` and point `core.excludesfile` at it, so per-project `.gitignore` files don't have to repeat them.
+
+```bash
+# Show whether the recommended block is installed and core.excludesfile is set.
+gitbox gitignore check
+
+# Install or refresh the recommended block (idempotent; backs up any existing
+# file to ~/.gitignore_global.bak-YYYYMMDD-HHMMSS, rolling window of 3).
+gitbox gitignore install
+
+# Machine-readable output for both subcommands
+gitbox gitignore check --json
+gitbox gitignore install --json
+
+# Verbose check: list every managed pattern that also lives outside the
+# sentinel markers (duplicates that `install` will sanitise away).
+gitbox gitignore check --verbose
+```
+
+The installed block is wrapped in sentinels (`# >>> gitbox:global-gitignore >>>` / `# <<< gitbox:global-gitignore <<<`); user-added patterns and comments outside the sentinels are preserved across re-runs. Negation patterns (`!.DS_Store`) survive sanitisation.
+
+**Opt-out:** the automatic startup check is gated by `global.check_global_gitignore` in `gitbox.json` (defaults to `true`). Toggle from the GUI gear panel or the TUI settings screen. Explicit commands — `gitbox gitignore check|install`, pressing `G` in the TUI dashboard, clicking **Install** on the GUI banner — always run regardless of the preference.
+
+The GUI shows a yellow banner whenever the file is missing, the block is stale, patterns are duplicated outside the sentinels, or `core.excludesfile` is unset. The TUI dashboard footer gets a bold red `G gitignore!` hint in the same states.
+
+---
+
 ## Mirroring
 
 Mirrors keep backup copies of repos on another provider. Repos are mirrored server-side via provider APIs — they are NOT cloned locally.

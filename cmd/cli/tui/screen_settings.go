@@ -16,21 +16,23 @@ type settingsField int
 const (
 	settingsFolder settingsField = iota
 	settingsSync
+	settingsGitignoreCheck
 	settingsFieldCount
 )
 
 var syncOptions = []string{"off", "5m", "15m", "30m"}
 
 type settingsModel struct {
-	cfg           *config.Config
-	cfgPath       string
-	theme         styles.Theme
-	width, height int
-	active        settingsField
-	folderInput   textinput.Model
-	syncIndex     int
-	saved         bool
-	errMsg        string
+	cfg            *config.Config
+	cfgPath        string
+	theme          styles.Theme
+	width, height  int
+	active         settingsField
+	folderInput    textinput.Model
+	syncIndex      int
+	gitignoreCheck bool
+	saved          bool
+	errMsg         string
 }
 
 func newSettingsModel(cfg *config.Config, cfgPath string, theme styles.Theme, w, h int) settingsModel {
@@ -49,13 +51,14 @@ func newSettingsModel(cfg *config.Config, cfgPath string, theme styles.Theme, w,
 	}
 
 	return settingsModel{
-		cfg:         cfg,
-		cfgPath:     cfgPath,
-		theme:       theme,
-		width:       w,
-		height:      h,
-		folderInput: ti,
-		syncIndex:   syncIdx,
+		cfg:            cfg,
+		cfgPath:        cfgPath,
+		theme:          theme,
+		width:          w,
+		height:         h,
+		folderInput:    ti,
+		syncIndex:      syncIdx,
+		gitignoreCheck: cfg.Global.ShouldCheckGlobalGitignore(),
 	}
 }
 
@@ -86,11 +89,23 @@ func (m settingsModel) Update(msg tea.Msg) (settingsModel, tea.Cmd) {
 			if m.active == settingsSync && m.syncIndex > 0 {
 				m.syncIndex--
 			}
+			if m.active == settingsGitignoreCheck {
+				m.gitignoreCheck = !m.gitignoreCheck
+			}
 			return m, nil
 
 		case msg.String() == "right" || msg.String() == "l":
 			if m.active == settingsSync && m.syncIndex < len(syncOptions)-1 {
 				m.syncIndex++
+			}
+			if m.active == settingsGitignoreCheck {
+				m.gitignoreCheck = !m.gitignoreCheck
+			}
+			return m, nil
+
+		case msg.String() == " ":
+			if m.active == settingsGitignoreCheck {
+				m.gitignoreCheck = !m.gitignoreCheck
 			}
 			return m, nil
 
@@ -98,6 +113,8 @@ func (m settingsModel) Update(msg tea.Msg) (settingsModel, tea.Cmd) {
 			// Save settings.
 			m.cfg.Global.Folder = m.folderInput.Value()
 			m.cfg.Global.PeriodicSync = syncOptions[m.syncIndex]
+			gpref := m.gitignoreCheck
+			m.cfg.Global.CheckGlobalGitignore = &gpref
 			if err := config.Save(m.cfg, m.cfgPath); err != nil {
 				m.errMsg = err.Error()
 			} else {
@@ -154,6 +171,22 @@ func (m settingsModel) View() string {
 		}
 	}
 	b.WriteString(syncLabel + strings.Join(opts, " ") + "\n\n")
+
+	// Global-gitignore automatic-check toggle. Explicit actions
+	// (`G` on the dashboard, `gitbox gitignore check|install` on the
+	// CLI, the GUI install button) always run — this only gates the
+	// startup auto-check that produces the red footer hint.
+	checkbox := "[ ]"
+	if m.gitignoreCheck {
+		checkbox = "[x]"
+	}
+	gLabel := "  "
+	if m.active == settingsGitignoreCheck {
+		gLabel += m.theme.Brand.Render(checkbox + " Check recommended global gitignore")
+	} else {
+		gLabel += m.theme.Text.Render(checkbox + " Check recommended global gitignore")
+	}
+	b.WriteString(gLabel + "\n\n")
 
 	// Status message.
 	if m.saved {

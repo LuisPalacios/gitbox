@@ -495,3 +495,81 @@ func TestPRBadgesDefaultOn(t *testing.T) {
 		t.Error("pointer-to-false must disable the feature")
 	}
 }
+
+func TestCheckGlobalGitignore_DefaultEnabledOnFreshConfig(t *testing.T) {
+	var g GlobalConfig
+	if !g.ShouldCheckGlobalGitignore() {
+		t.Error("ShouldCheckGlobalGitignore must default to true when field is nil")
+	}
+	if g.CheckGlobalGitignore != nil {
+		t.Errorf("raw field must remain nil, got %v", g.CheckGlobalGitignore)
+	}
+}
+
+func TestCheckGlobalGitignore_ExplicitFalseHonored(t *testing.T) {
+	f := false
+	g := GlobalConfig{CheckGlobalGitignore: &f}
+	if g.ShouldCheckGlobalGitignore() {
+		t.Error("pointer-to-false must disable the automatic check")
+	}
+}
+
+func TestCheckGlobalGitignore_RoundTripExplicitFalse(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "gitbox.json")
+
+	f := false
+	cfg := &Config{
+		Schema:   "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/json/gitbox.schema.json",
+		Version:  2,
+		Global:   GlobalConfig{Folder: "~/git", CheckGlobalGitignore: &f},
+		Accounts: map[string]Account{},
+		Sources:  map[string]Source{},
+	}
+	if err := Save(cfg, path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Global.CheckGlobalGitignore == nil {
+		t.Fatal("round-tripped field unexpectedly nil")
+	}
+	if *loaded.Global.CheckGlobalGitignore != false {
+		t.Errorf("round-trip lost explicit false, got %v", *loaded.Global.CheckGlobalGitignore)
+	}
+	if loaded.Global.ShouldCheckGlobalGitignore() {
+		t.Error("ShouldCheckGlobalGitignore must return false after round-trip")
+	}
+}
+
+func TestCheckGlobalGitignore_RoundTripExplicitTrue(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "gitbox.json")
+
+	tru := true
+	cfg := &Config{
+		Schema:   "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/json/gitbox.schema.json",
+		Version:  2,
+		Global:   GlobalConfig{Folder: "~/git", CheckGlobalGitignore: &tru},
+		Accounts: map[string]Account{},
+		Sources:  map[string]Source{},
+	}
+	if err := Save(cfg, path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Global.CheckGlobalGitignore == nil {
+		t.Fatal("round-tripped field unexpectedly nil")
+	}
+	if *loaded.Global.CheckGlobalGitignore != true {
+		t.Errorf("round-trip lost explicit true, got %v", *loaded.Global.CheckGlobalGitignore)
+	}
+	if !loaded.Global.ShouldCheckGlobalGitignore() {
+		t.Error("ShouldCheckGlobalGitignore must return true after round-trip")
+	}
+}

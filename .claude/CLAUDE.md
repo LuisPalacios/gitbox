@@ -48,6 +48,8 @@ pkg/                      Shared Go library
   status/                 Clone status checking
   update/                 Auto-update: version check, download, self-replace
   doctor/                 External-tool detection (git, GCM, ssh, tmux, …): point-of-use precheck + `gitbox doctor` command
+  identity/               Global `~/.gitconfig` user.name/user.email detection + removal
+  gitignore/              Global `~/.gitignore_global` managed-block install with sentinel dedup + timestamped backups
 docs/
   cli-guide.md            CLI quick start
   gui-guide.md            GUI guide

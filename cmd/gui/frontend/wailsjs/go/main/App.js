@@ -54,6 +54,10 @@ export function CheckGlobalGCMConfig() {
   return window['go']['main']['App']['CheckGlobalGCMConfig']();
 }
 
+export function CheckGlobalGitignore() {
+  return window['go']['main']['App']['CheckGlobalGitignore']();
+}
+
 export function CheckGlobalIdentity() {
   return window['go']['main']['App']['CheckGlobalIdentity']();
 }
@@ -186,6 +190,10 @@ export function GetAutostart() {
   return window['go']['main']['App']['GetAutostart']();
 }
 
+export function GetCheckGlobalGitignore() {
+  return window['go']['main']['App']['GetCheckGlobalGitignore']();
+}
+
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
@@ -236,6 +244,10 @@ export function GetViewMode() {
 
 export function GetWorkspace(arg1) {
   return window['go']['main']['App']['GetWorkspace'](arg1);
+}
+
+export function InstallGlobalGitignore() {
+  return window['go']['main']['App']['InstallGlobalGitignore']();
 }
 
 export function IsFirstRun() {
@@ -330,6 +342,10 @@ export function PullRepo(arg1, arg2) {
   return window['go']['main']['App']['PullRepo'](arg1, arg2);
 }
 
+export function RecommendedGlobalGitignoreBody() {
+  return window['go']['main']['App']['RecommendedGlobalGitignoreBody']();
+}
+
 export function RefreshAllPRs() {
   return window['go']['main']['App']['RefreshAllPRs']();
 }
@@ -364,6 +380,10 @@ export function RestoreFromBackup(arg1) {
 
 export function SetAutostart(arg1) {
   return window['go']['main']['App']['SetAutostart'](arg1);
+}
+
+export function SetCheckGlobalGitignore(arg1) {
+  return window['go']['main']['App']['SetCheckGlobalGitignore'](arg1);
 }
 
 export function SetGlobalFolder(arg1) {

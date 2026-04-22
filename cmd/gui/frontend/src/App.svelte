@@ -137,6 +137,18 @@
   let globalGCMWarn: GCMWarn | null = null;
   let globalGCMFixing = false;
 
+  // ── Global gitignore warning ──
+  // Banner shown when ~/.gitignore_global is missing the recommended block
+  // (or core.excludesfile is unset, or duplicates live outside the sentinels).
+  // The user can install in one click; gitbox creates a timestamped .bak-…
+  // backup of any existing file. Gated by the check_global_gitignore
+  // preference — the gear-panel toggle binds to `checkGitignorePref`.
+  let gitignoreWarn: { path: string; defaultPath: string; needsAction: boolean; blockPresent: boolean; blockUpToDate: boolean; excludesfileSet: boolean; fileExists: boolean; hasDuplicates: boolean; duplicates: string[] } | null = null;
+  let gitignoreInstalling = false;
+  let gitignoreInstalled: { backupPath: string; setExcludesfile: boolean; alreadyUpToDate: boolean } | null = null;
+  let gitignoreError = '';
+  let checkGitignorePref = true;
+
   // ── Update state ──
   let updateInfo: { available: boolean; current: string; latest: string; url: string } | null = null;
   let updateApplying = false;
@@ -179,6 +191,59 @@
       console.error('Failed to fix global GCM config:', e);
     } finally {
       globalGCMFixing = false;
+    }
+  }
+
+  async function loadCheckGitignorePref() {
+    try {
+      checkGitignorePref = await bridge.getCheckGlobalGitignore();
+    } catch { checkGitignorePref = true; }
+  }
+
+  async function setCheckGitignorePref(enabled: boolean) {
+    try {
+      await bridge.setCheckGlobalGitignore(enabled);
+      checkGitignorePref = enabled;
+      if (enabled) {
+        // Re-run the check immediately so the user sees the result without
+        // having to restart the app.
+        checkGlobalGitignore();
+      } else {
+        // Dismiss any currently-shown banner when opting out.
+        gitignoreWarn = null;
+      }
+    } catch (e: any) {
+      console.error('Failed to save check_global_gitignore preference:', e);
+    }
+  }
+
+  async function checkGlobalGitignore() {
+    try {
+      const s = await bridge.checkGlobalGitignore();
+      gitignoreWarn = s.needsAction ? s : null;
+    } catch (e: any) {
+      console.error('Failed to check global gitignore:', e);
+      gitignoreWarn = null;
+    }
+  }
+
+  async function installGlobalGitignore() {
+    gitignoreInstalling = true;
+    gitignoreError = '';
+    try {
+      const res = await bridge.installGlobalGitignore();
+      gitignoreInstalled = {
+        backupPath: res.backupPath,
+        setExcludesfile: res.setExcludesfile,
+        alreadyUpToDate: res.alreadyUpToDate,
+      };
+      // Re-check so the banner reflects the post-install state.
+      await checkGlobalGitignore();
+    } catch (e: any) {
+      console.error('Failed to install global gitignore:', e);
+      gitignoreError = String(e);
+    } finally {
+      gitignoreInstalling = false;
     }
   }
 
@@ -1985,6 +2050,15 @@
     // helper override.
     checkGlobalGCM();
 
+    // Load the check-global-gitignore preference and, if enabled, run
+    // the startup check so the banner surfaces immediately. Explicit
+    // user actions (the gear toggle, the Install button) bypass the
+    // preference and always run.
+    await loadCheckGitignorePref();
+    if (checkGitignorePref) {
+      checkGlobalGitignore();
+    }
+
     // Load autostart state.
     loadAutostart();
 
@@ -2580,6 +2654,64 @@
   </div>
   {/if}
 
+  <!-- ── GLOBAL GITIGNORE WARNING ── -->
+  {#if gitignoreWarn}
+  <div class="identity-warn">
+    <span class="identity-warn-icon">&#9888;</span>
+    <span class="identity-warn-text">
+      {#if !gitignoreWarn.fileExists}
+        Global gitignore <code>{gitignoreWarn.path}</code> is missing &mdash;
+        install OS-junk patterns (.DS_Store, Thumbs.db, *~, …) so per-project <code>.gitignore</code> files don't have to repeat them.
+      {:else if !gitignoreWarn.blockPresent}
+        <code>{gitignoreWarn.path}</code> is missing the recommended block &mdash;
+        install OS-junk patterns (.DS_Store, Thumbs.db, *~, …) so per-project <code>.gitignore</code> files don't have to repeat them.
+      {:else if !gitignoreWarn.blockUpToDate}
+        <code>{gitignoreWarn.path}</code> has an out-of-date recommended block &mdash;
+        install will refresh it.
+      {:else if gitignoreWarn.hasDuplicates}
+        <code>{gitignoreWarn.path}</code> has {gitignoreWarn.duplicates.length} managed pattern{gitignoreWarn.duplicates.length === 1 ? '' : 's'} duplicated outside the block:
+        <code>{gitignoreWarn.duplicates.slice(0, 5).join(', ')}{gitignoreWarn.duplicates.length > 5 ? ', …' : ''}</code> &mdash;
+        install will sanitize them.
+      {:else if !gitignoreWarn.excludesfileSet}
+        <code>core.excludesfile</code> is not set in your global git config &mdash;
+        install will point it at <code>{gitignoreWarn.path}</code>.
+      {/if}
+    </span>
+    <button class="identity-warn-fix" on:click={installGlobalGitignore} disabled={gitignoreInstalling}>
+      {gitignoreInstalling ? 'Installing…' : 'Install'}
+    </button>
+    <button class="identity-warn-dismiss" on:click={() => gitignoreWarn = null}>&#10005;</button>
+  </div>
+  {/if}
+
+  {#if gitignoreInstalled && !gitignoreWarn}
+  <div class="identity-warn identity-warn-ok">
+    <span class="identity-warn-icon">&#10003;</span>
+    <span class="identity-warn-text">
+      {#if gitignoreInstalled.alreadyUpToDate && !gitignoreInstalled.setExcludesfile}
+        Global gitignore is already up to date.
+      {:else}
+        Global gitignore installed.
+        {#if gitignoreInstalled.backupPath}
+          Backup saved at <code>{gitignoreInstalled.backupPath}</code>.
+        {/if}
+        {#if gitignoreInstalled.setExcludesfile}
+          <code>core.excludesfile</code> set.
+        {/if}
+      {/if}
+    </span>
+    <button class="identity-warn-dismiss" on:click={() => gitignoreInstalled = null}>&#10005;</button>
+  </div>
+  {/if}
+
+  {#if gitignoreError}
+  <div class="identity-warn">
+    <span class="identity-warn-icon">&#9888;</span>
+    <span class="identity-warn-text">Could not install global gitignore: {gitignoreError}</span>
+    <button class="identity-warn-dismiss" on:click={() => gitignoreError = ''}>&#10005;</button>
+  </div>
+  {/if}
+
   <!-- ── SETTINGS PANEL ── -->
   {#if showSettings}
     <div class="settings" transition:slide={{ duration: 150 }}>
@@ -2635,6 +2767,13 @@
             <button class="theme-btn" class:theme-active={$prSettings.includeDrafts} on:click={() => { if (!$prSettings.includeDrafts) setPRIncludeDrafts(true); }}>On</button>
           </div>
         {/if}
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">Global gitignore</span>
+        <div class="theme-toggle" title="Check ~/.gitignore_global on startup and offer to install OS-junk patterns if missing">
+          <button class="theme-btn" class:theme-active={!checkGitignorePref} on:click={() => { if (checkGitignorePref) setCheckGitignorePref(false); }}>Off</button>
+          <button class="theme-btn" class:theme-active={checkGitignorePref} on:click={() => { if (!checkGitignorePref) setCheckGitignorePref(true); }}>On</button>
+        </div>
       </div>
       <div class="settings-row">
         <span class="settings-label">System check</span>
@@ -4817,6 +4956,15 @@
   }
   :global([data-theme="light"]) .identity-warn-dismiss { color: #7c2d12; }
   .identity-warn-dismiss:hover { opacity: 0.7; }
+  .identity-warn-fix:disabled { opacity: 0.6; cursor: progress; }
+
+  /* Success variant of the warning banner — used for the gitignore install confirmation. */
+  .identity-warn.identity-warn-ok {
+    background: #052e1a; border-color: #15803d; color: #86efac;
+  }
+  :global([data-theme="light"]) .identity-warn.identity-warn-ok {
+    background: #f0fdf4; border-color: #15803d; color: #14532d;
+  }
 
   .theme-toggle { display: flex; gap: 4px; }
   .theme-btn {

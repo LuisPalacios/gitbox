@@ -25,6 +25,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/doctor"
 	"github.com/LuisPalacios/gitbox/pkg/update"
 	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/gitignore"
 	"github.com/LuisPalacios/gitbox/pkg/harness"
 	"github.com/LuisPalacios/gitbox/pkg/identity"
 	"github.com/LuisPalacios/gitbox/pkg/mirror"
@@ -3176,6 +3177,53 @@ func (a *App) FixGlobalGCMConfig() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return credential.FixGlobalGCMConfig(a.cfg, a.cfgPath)
+}
+
+// ─── Global Gitignore ────────────────────────────────────────
+
+// CheckGlobalGitignore reports whether the recommended global gitignore
+// block is installed and core.excludesfile is set. The frontend calls
+// this on startup so it can surface a notification when
+// status.NeedsAction is true.
+func (a *App) CheckGlobalGitignore() (gitignore.Status, error) {
+	return gitignore.Check()
+}
+
+// InstallGlobalGitignore installs or refreshes the recommended block in
+// ~/.gitignore_global, creating a timestamped backup of any existing
+// file and pointing core.excludesfile at it. Idempotent: when the block
+// is already up to date and the config key is already set, this is a
+// no-op (no rewrite, no backup).
+func (a *App) InstallGlobalGitignore() (gitignore.InstallResult, error) {
+	return gitignore.Install()
+}
+
+// RecommendedGlobalGitignoreBody returns the canonical body of the
+// managed block (without sentinel markers) so the GUI can render a
+// preview to the user before they install it.
+func (a *App) RecommendedGlobalGitignoreBody() string {
+	return gitignore.RecommendedBody()
+}
+
+// GetCheckGlobalGitignore returns the user's preference for whether
+// the GUI runs an automatic startup check of ~/.gitignore_global.
+// Defaults to true when the field is missing from gitbox.json.
+func (a *App) GetCheckGlobalGitignore() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.cfg.Global.ShouldCheckGlobalGitignore()
+}
+
+// SetCheckGlobalGitignore persists the user's preference into the
+// global section of gitbox.json. The setting only gates the automatic
+// startup check; explicit user actions (the GUI Install button, the
+// TUI screen via `G`, `gitbox gitignore install`) always run.
+func (a *App) SetCheckGlobalGitignore(enabled bool) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	v := enabled
+	a.cfg.Global.CheckGlobalGitignore = &v
+	return a.saveConfig()
 }
 
 // ─── Autostart ───────────────────────────────────────────────

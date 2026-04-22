@@ -51,6 +51,12 @@ type GlobalConfig struct {
 	// PRIncludeDrafts controls whether draft PRs count in the "my PRs" badge.
 	// Pointer semantics so an absent field defaults to true.
 	PRIncludeDrafts *bool `json:"pr_include_drafts,omitempty"`
+	// CheckGlobalGitignore gates the automatic startup check for the
+	// recommended ~/.gitignore_global heal. Explicit actions (CLI commands,
+	// TUI screen via G, GUI install button) always run regardless.
+	// Pointer semantics so an absent field defaults to true — existing
+	// configs and fresh installs both opt in by default.
+	CheckGlobalGitignore *bool `json:"check_global_gitignore,omitempty"`
 }
 
 // PRBadgesOn reports whether PR badges are enabled, defaulting to true when unset.
@@ -67,6 +73,17 @@ func (g GlobalConfig) PRDraftsIncluded() bool {
 		return true
 	}
 	return *g.PRIncludeDrafts
+}
+
+// ShouldCheckGlobalGitignore reports whether the automatic startup check
+// of ~/.gitignore_global is enabled. Returns true when unset so existing
+// configs and fresh installs both opt in by default. Use this accessor
+// instead of dereferencing the pointer directly.
+func (g GlobalConfig) ShouldCheckGlobalGitignore() bool {
+	if g.CheckGlobalGitignore == nil {
+		return true
+	}
+	return *g.CheckGlobalGitignore
 }
 
 // EditorEntry defines a user-configured code editor for opening repositories.
