@@ -6,8 +6,10 @@
 # Shows a diff and requires confirmation before proceeding.
 #
 # Usage:
-#   ./scripts/send-my-production-config.sh mac       # send to macOS
-#   ./scripts/send-my-production-config.sh linux     # send to Linux
+#   ./scripts/send-my-production-config.sh mac-arm    # send to macOS Apple Silicon
+#   ./scripts/send-my-production-config.sh mac-intel  # send to macOS Intel
+#   ./scripts/send-my-production-config.sh linux      # send to Linux
+#   ./scripts/send-my-production-config.sh win        # send to Windows
 
 # shellcheck source=_common.sh
 source "$(dirname "$0")/_common.sh"
@@ -20,7 +22,7 @@ target="${1:-}"
 if [[ -z "$target" ]] || [[ "$target" == "-h" ]] || [[ "$target" == "--help" ]]; then
     echo "Usage: $(basename "$0") <target>"
     echo ""
-    echo "Targets: win, mac, linux (one at a time, no 'all')"
+    echo "Targets: win, mac-arm, mac-intel, linux (one at a time, no 'all')"
     echo ""
     echo "Copies your local ~/.config/gitbox/gitbox.json to the remote machine."
     echo "Shows a diff and asks for confirmation before overwriting."

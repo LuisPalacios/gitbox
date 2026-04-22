@@ -35,11 +35,18 @@ func (g *Gitea) resolveAuth(ctx context.Context, baseURL, token, username string
 	testURL := fmt.Sprintf("%s/api/v1/user/repos?limit=1&page=1", base)
 	var testBatch []giteaRepo
 	if _, err := doGet(ctx, testURL, headers, &testBatch); err != nil {
+		// If the first failure is a real network error, don't bother
+		// retrying with Basic — the outcome will be the same and retrying
+		// loses the original network-error type (wrapping may prefer the
+		// second call's error, which is the last in the chain).
+		if IsNetworkError(err) {
+			return nil, fmt.Errorf("gitea: %w", err)
+		}
 		basic := base64.StdEncoding.EncodeToString([]byte(username + ":" + token))
 		headers["Authorization"] = "Basic " + basic
 		testBatch = nil
 		if _, err2 := doGet(ctx, testURL, headers, &testBatch); err2 != nil {
-			return nil, fmt.Errorf("gitea: %w", err)
+			return nil, fmt.Errorf("gitea: %w", err2)
 		}
 	}
 	return headers, nil

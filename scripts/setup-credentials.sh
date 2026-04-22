@@ -6,8 +6,11 @@
 # then runs it. For the local machine, runs directly.
 #
 # Usage:
-#   ./scripts/setup-credentials.sh          # all configured platforms (default)
-#   ./scripts/setup-credentials.sh mac      # macOS only
+#   ./scripts/setup-credentials.sh              # all configured platforms (default)
+#   ./scripts/setup-credentials.sh mac-arm      # macOS Apple Silicon only
+#   ./scripts/setup-credentials.sh mac-intel    # macOS Intel only
+#   ./scripts/setup-credentials.sh win          # Windows only
+#   ./scripts/setup-credentials.sh linux        # Linux only
 
 # shellcheck source=_common.sh
 source "$(dirname "$0")/_common.sh"

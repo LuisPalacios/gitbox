@@ -247,6 +247,52 @@ func FetchQuiet(repoPath string) error {
 	return err
 }
 
+// FetchCaptured runs git fetch --all --prune and returns the combined
+// stdout+stderr along with any error. GUI callers need this because
+// git writes actionable diagnostics like "remote: Repository not found."
+// to stderr, and plain Fetch/FetchQuiet either forward them to the
+// terminal (run) or drop them after wrapping in a generic exec error
+// (output). The captured text is what downstream classifiers match on
+// (see IsUpstreamGoneError).
+func FetchCaptured(repoPath string) (string, error) {
+	cmd := exec.Command(GitBin(), "fetch", "--all", "--prune")
+	cmd.Dir = repoPath
+	cmd.Env = nonInteractiveEnv()
+	HideWindow(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out), fmt.Errorf("git fetch: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return string(out), nil
+}
+
+// IsUpstreamGoneError reports whether a git fetch/pull/ls-remote error
+// indicates that the upstream repository no longer exists (was deleted,
+// renamed without a redirect, archived privately, or credentials lost the
+// permission to see it). These all surface as "repository not found" or
+// equivalent strings from the git client, so we match on the common
+// substrings rather than on error types (each provider phrases it
+// slightly differently but all converge on one of these).
+func IsUpstreamGoneError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	// GitHub / generic: "remote: Repository not found." / "fatal:
+	//   repository '...' not found"
+	// GitLab: "fatal: repository '...' not found" / "HTTP 404"
+	// Gitea / Forgejo: "fatal: repository '...' not found" / HTTP 404
+	// Bitbucket: "fatal: repository access denied" once deleted, plus 404
+	// Any provider over HTTPS with hard 404: "the requested URL returned
+	//   error: 404"
+	return strings.Contains(msg, "repository not found") ||
+		strings.Contains(msg, "repository '") && strings.Contains(msg, "' not found") ||
+		strings.Contains(msg, "error: 404") ||
+		strings.Contains(msg, "returned error: 404") ||
+		strings.Contains(msg, "http 404") ||
+		strings.Contains(msg, "repository access denied")
+}
+
 // Pull runs git pull --ff-only in the given repo.
 func Pull(repoPath string) error {
 	return run(repoPath, "pull", "--ff-only")

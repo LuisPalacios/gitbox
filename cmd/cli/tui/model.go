@@ -190,6 +190,14 @@ type mirrorCredCheckMsg struct {
 type globalIdentityMsg struct{ hasName, hasEmail bool }
 type identityRemovedMsg struct{ err error }
 
+// --- Global gitconfig GCM messages ---
+
+type globalGCMMsg struct {
+	needed bool
+	status credential.GlobalGCMConfigStatus
+}
+type gcmFixedMsg struct{ err error }
+
 // --- Generic ---
 
 type errMsg struct{ err error }
@@ -439,7 +447,7 @@ func (m model) switchTo(msg switchScreenMsg) (model, tea.Cmd) {
 		m.settings = newSettingsModel(m.cfg, m.cfgPath, m.theme, m.width, m.height)
 		cmd = m.settings.Init()
 	case screenIdentity:
-		m.identity = newIdentityModel(m.theme, m.width, m.height)
+		m.identity = newIdentityModel(m.cfg, m.cfgPath, m.theme, m.width, m.height)
 		cmd = m.identity.Init()
 	case screenRepoCreate:
 		m.repoCreate = newRepoCreateModel(m.cfg, m.cfgPath, m.theme, m.width, m.height, msg.accountKey)

@@ -237,46 +237,93 @@ func checkSSH(acct config.Account, accountKey string, cfg *config.Config) Status
 	return r
 }
 
-// checkGCM verifies GCM OAuth + optional companion PAT.
+// checkGCM verifies a GCM-backed account by splitting two concerns:
+//
+//  1. Primary = "does GCM have a credential cached for this host?"
+//     That is the thing GCM is responsible for (git push/pull auth).
+//     We don't treat API-layer failures as a Primary problem, because the
+//     REST API is a separate capability that can be covered by a
+//     companion PAT — or by GCM's own token, depending on the provider.
+//
+//  2. PAT row = "can gitbox reach the API for discovery / repo creation?"
+//     We try GCM's cached token first (works for GitHub / GitLab OAuth
+//     tokens, works when the user pasted a PAT into GCM's prompt). If
+//     that fails, we fall back to a PAT stored in the gitbox keyring.
+//     Either success path marks the PAT row as OK with an explanatory
+//     detail. Only when neither covers the API do we downgrade.
+//
+// Before this split, a working "GCM for git + PAT for API" setup rendered
+// as "Warning" on the Primary row because the GCM-cached password (which
+// Forgejo/Gitea refuse at their REST API) was being counted against GCM.
+// That's wrong: GCM did its job.
 func checkGCM(acct config.Account, accountKey string, cfg *config.Config) StatusResult {
 	r := StatusResult{PrimaryType: "gcm"}
 
-	// Primary: GCM OAuth via git credential fill.
 	token, _, err := ResolveGCMToken(acct.URL, acct.Username)
 	if err != nil {
+		// No credential means git operations don't work either. This IS
+		// a Primary failure.
 		r.Primary = StatusError
-		r.PrimaryDetail = "GCM credential not found"
-	} else {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		if err := provider.TestAuth(ctx, acct.Provider, acct.URL, token, acct.Username); err != nil {
-			if provider.IsNetworkError(err) {
-				r.Primary = StatusOffline
-				r.PrimaryDetail = "server unreachable"
-			} else {
-				r.Primary = StatusWarning
-				r.PrimaryDetail = fmt.Sprintf("GCM token found but API check failed: %v", err)
-			}
-		} else {
-			r.Primary = StatusOK
-			r.PrimaryDetail = "GCM verified"
-		}
+		r.PrimaryDetail = "GCM has no cached credential — run credential setup"
+		r.PAT = StatusNone
+		r.PATDetail = "not available until GCM has a credential"
+		r.Overall = StatusError
+		return r
 	}
 
-	// PAT: optional companion token for repo creation/mirrors.
-	r.PAT, r.PATDetail = checkPATStatus(acct, accountKey, cfg)
-	if r.PATDetail == "" {
-		if r.PAT == StatusOK {
-			r.PATDetail = "PAT verified"
-		} else if r.PAT == StatusWarning {
-			r.PATDetail = "PAT stored but API check failed"
-		} else {
-			r.PATDetail = "no PAT (repo creation unavailable)"
-		}
-	}
+	r.Primary = StatusOK
+	r.PrimaryDetail = "GCM credential present — git push/pull works"
 
+	// API reachability: try GCM's cached token, then the keyring PAT.
+	r.PAT, r.PATDetail = checkAPIReachabilityForGCM(acct, accountKey, token)
 	r.Overall = combineStatus(r.Primary, r.PAT)
 	return r
+}
+
+// checkAPIReachabilityForGCM produces the PAT-row status for a GCM-backed
+// account by trying two paths in order: the GCM-cached token, then any
+// companion PAT in env vars / keyring. The first success wins; details
+// reflect which path worked (or what failed if neither did).
+func checkAPIReachabilityForGCM(acct config.Account, accountKey string, gcmToken string) (Status, string) {
+	// 1. GCM-token path.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	gcmErr := provider.TestAuth(ctx, acct.Provider, acct.URL, gcmToken, acct.Username)
+	if gcmErr == nil {
+		return StatusOK, "API via GCM (no separate PAT needed; only required for mirrors)"
+	}
+	if provider.IsNetworkError(gcmErr) {
+		return StatusOffline, fmt.Sprintf("server unreachable: %v", gcmErr)
+	}
+
+	// 2. Keyring / env-var PAT fallback.
+	patToken, _, patErr := ResolveToken(acct, accountKey)
+	if patErr != nil {
+		// No PAT configured. The 401 we got could be either a wrong
+		// credential or a provider-API policy restriction — gitbox can't
+		// tell them apart from a single response. Spell out both paths so
+		// the user isn't misled into blaming the server for a typo.
+		if isAPIAuthRejection(gcmErr) {
+			if providerNeedsPATForAPI(acct.Provider) {
+				return StatusNone, fmt.Sprintf(
+					"WARNING: API rejected the GCM credential (HTTP 401). Either the user or the password are wrong (most probably), or your %s installation is configured to require a Personal Access Token at its REST API (passwords are not always accepted). Delete and re-setup the credential with the right value, or click 'Setup API token' to store a companion PAT.",
+					providerDisplayName(acct.Provider),
+				)
+			}
+			return StatusNone, "WARNING: API rejected the GCM credential (HTTP 401). The user or password are most likely wrong or expired — delete and re-setup the credential with the correct value, or click 'Setup API token' to store a companion PAT."
+		}
+		return StatusNone, fmt.Sprintf("WARNING: API via GCM failed (%v) and no companion PAT is configured", gcmErr)
+	}
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel2()
+	if err := provider.TestAuth(ctx2, acct.Provider, acct.URL, patToken, acct.Username); err != nil {
+		if provider.IsNetworkError(err) {
+			return StatusOffline, fmt.Sprintf("WARNING: server unreachable: %v", err)
+		}
+		return StatusWarning, fmt.Sprintf("WARNING: companion PAT stored but API check failed: %v", err)
+	}
+	return StatusOK, "API via companion PAT (GCM handles git operations)"
 }
 
 // checkToken verifies the PAT used for everything.
@@ -298,7 +345,7 @@ func checkToken(acct config.Account, accountKey string, cfg *config.Config) Stat
 	if err := provider.TestAuth(ctx, acct.Provider, acct.URL, token, acct.Username); err != nil {
 		if provider.IsNetworkError(err) {
 			r.Primary = StatusOffline
-			r.PrimaryDetail = "server unreachable"
+			r.PrimaryDetail = fmt.Sprintf("server unreachable: %v", err)
 			r.PAT = StatusOffline
 			r.PATDetail = r.PrimaryDetail
 			r.Overall = StatusOffline
@@ -332,7 +379,7 @@ func checkPATStatus(acct config.Account, accountKey string, cfg *config.Config) 
 	defer cancel()
 	if err := provider.TestAuth(ctx, acct.Provider, acct.URL, token, acct.Username); err != nil {
 		if provider.IsNetworkError(err) {
-			return StatusOffline, "server unreachable"
+			return StatusOffline, fmt.Sprintf("server unreachable: %v", err)
 		}
 		return StatusWarning, "" // stored but broken
 	}
@@ -340,7 +387,19 @@ func checkPATStatus(acct config.Account, accountKey string, cfg *config.Config) 
 }
 
 // combineStatus derives the overall status from primary + PAT.
-// Primary errors/offline dominate. PAT=None (optional, not configured) shows as warning.
+//
+// After the GCM refactor, Primary carries credential-presence information
+// (is the credential artefact there at all?) and PAT carries API-reach
+// information (is the REST API actually reachable with something?). That
+// makes the merge straightforward: primary-level failures dominate; when
+// primary is OK or Warning, the PAT row decides.
+//
+//	primary=Error     → Error      (no credential → nothing works)
+//	primary=Offline   → Offline    (only token/ssh can surface this)
+//	pat=OK            → OK         (API reachable, primary at worst Warning)
+//	pat=Offline       → Offline    (we can't reach the server)
+//	pat=Error         → Error      (rare; reserved for future use)
+//	pat=None/Warning  → Warning    (API unavailable; user can still git)
 func combineStatus(primary, pat Status) Status {
 	if primary == StatusError {
 		return StatusError
@@ -348,18 +407,68 @@ func combineStatus(primary, pat Status) Status {
 	if primary == StatusOffline {
 		return StatusOffline
 	}
-	if primary == StatusWarning {
+	switch pat {
+	case StatusOK:
+		return StatusOK
+	case StatusOffline:
+		return StatusOffline
+	case StatusError:
+		return StatusError
+	default:
+		// pat is None (no PAT configured) or Warning (stored but broken).
 		return StatusWarning
 	}
-	// Primary is OK.
-	if pat == StatusOK {
-		return StatusOK
+}
+
+// isAPIAuthRejection reports whether an error from provider.TestAuth looks
+// like the server rejecting the credential (HTTP 401 or text that names an
+// authentication failure), as opposed to a network error, a TLS error, or
+// some other HTTP failure mode. It's intentionally conservative — the only
+// place that wraps 401 as a human string is pkg/provider/http.go, so we
+// match on those signatures rather than on a numeric status.
+func isAPIAuthRejection(err error) bool {
+	if err == nil {
+		return false
 	}
-	if pat == StatusOffline {
-		return StatusOffline
+	msg := err.Error()
+	return strings.Contains(msg, "HTTP 401") ||
+		strings.Contains(msg, "authentication failed") ||
+		strings.Contains(msg, "token is invalid")
+}
+
+// providerNeedsPATForAPI reports whether the provider's REST API refuses
+// account passwords at the auth layer (so a GCM-cached password won't work
+// for discovery / repo creation even though it works for `git push`/`pull`).
+// Forgejo and Gitea share that constraint; Bitbucket Cloud also requires
+// app passwords / PATs. GitHub and GitLab GCM entries are OAuth tokens and
+// do not fall into this bucket.
+func providerNeedsPATForAPI(p string) bool {
+	switch p {
+	case "forgejo", "gitea", "bitbucket":
+		return true
+	default:
+		return false
 	}
-	// PAT is None (not configured) or Warning (broken) — show as warning.
-	return StatusWarning
+}
+
+// providerDisplayName returns a human-facing capitalization of the
+// provider identifier for use in user-visible status messages. Provider
+// IDs are lowercase in config; messages look wrong when rendered raw.
+func providerDisplayName(p string) string {
+	switch p {
+	case "github":
+		return "GitHub"
+	case "gitlab":
+		return "GitLab"
+	case "gitea":
+		return "Gitea"
+	case "forgejo":
+		return "Forgejo"
+	case "bitbucket":
+		return "Bitbucket"
+	default:
+		return p
+	}
 }
 
 // isSSHNetworkError checks if an SSH connection error indicates a network

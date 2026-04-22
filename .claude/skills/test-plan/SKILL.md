@@ -55,20 +55,23 @@ Source `.env` for SSH host variables, then deploy and test:
 
 ```bash
 source .env
-scp build/gitbox-darwin-arm64 "$SSH_MAC_HOST":/tmp/gitbox && ssh "$SSH_MAC_HOST" "chmod +x /tmp/gitbox"
-scp build/gitbox-linux-amd64  "$SSH_LINUX_HOST":/tmp/gitbox && ssh "$SSH_LINUX_HOST" "chmod +x /tmp/gitbox"
+[[ -n "$SSH_MAC_ARM_HOST"   ]] && scp build/gitbox-darwin-arm64 "$SSH_MAC_ARM_HOST":/tmp/gitbox   && ssh "$SSH_MAC_ARM_HOST"   "chmod +x /tmp/gitbox"
+[[ -n "$SSH_MAC_INTEL_HOST" ]] && scp build/gitbox-darwin-amd64 "$SSH_MAC_INTEL_HOST":/tmp/gitbox && ssh "$SSH_MAC_INTEL_HOST" "chmod +x /tmp/gitbox"
+[[ -n "$SSH_LINUX_HOST"     ]] && scp build/gitbox-linux-amd64  "$SSH_LINUX_HOST":/tmp/gitbox     && ssh "$SSH_LINUX_HOST"     "chmod +x /tmp/gitbox"
 ```
 
-Run smoke tests on all 3 platforms in parallel:
+Run smoke tests on all configured platforms in parallel:
 
 ```bash
 # Windows
 build/gitbox.exe version
 build/gitbox.exe help
-# macOS
-ssh "$SSH_MAC_HOST" "/tmp/gitbox version && /tmp/gitbox help"
+# macOS Apple Silicon
+[[ -n "$SSH_MAC_ARM_HOST"   ]] && ssh "$SSH_MAC_ARM_HOST"   "/tmp/gitbox version && /tmp/gitbox help"
+# macOS Intel
+[[ -n "$SSH_MAC_INTEL_HOST" ]] && ssh "$SSH_MAC_INTEL_HOST" "/tmp/gitbox version && /tmp/gitbox help"
 # Linux
-ssh "$SSH_LINUX_HOST" "/tmp/gitbox version && /tmp/gitbox help"
+[[ -n "$SSH_LINUX_HOST"     ]] && ssh "$SSH_LINUX_HOST"     "/tmp/gitbox version && /tmp/gitbox help"
 ```
 
 ### Step 5: Report

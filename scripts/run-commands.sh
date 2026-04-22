@@ -7,8 +7,10 @@
 #
 # Usage:
 #   ./scripts/run-commands.sh               # all configured platforms (default)
-#   ./scripts/run-commands.sh mac           # macOS only
+#   ./scripts/run-commands.sh mac-arm       # macOS Apple Silicon only
+#   ./scripts/run-commands.sh mac-intel     # macOS Intel only
 #   ./scripts/run-commands.sh win           # Windows only
+#   ./scripts/run-commands.sh linux         # Linux only
 
 # shellcheck source=_common.sh
 source "$(dirname "$0")/_common.sh"

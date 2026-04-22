@@ -121,22 +121,4 @@ func TestCanOpenBrowser_SSHNoDisplay(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// EnsureGlobalGCMConfig
-// ---------------------------------------------------------------------------
-
-func TestEnsureGlobalGCMConfig_NilGCM(t *testing.T) {
-	// Should not panic with nil CredentialGCM.
-	EnsureGlobalGCMConfig(config.GlobalConfig{CredentialGCM: nil})
-}
-
-func TestEnsureGlobalGCMConfig_EmptyStrings(t *testing.T) {
-	// Should not panic with empty strings (no-op).
-	EnsureGlobalGCMConfig(config.GlobalConfig{
-		CredentialGCM: &config.GCMGlobal{
-			Helper:          "",
-			CredentialStore: "",
-		},
-	})
-}
 

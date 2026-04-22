@@ -374,6 +374,14 @@ If your `~/.gitconfig` has a global `user.name` or `user.email`, Gitbox shows an
 
 Click **Remove** to clear the global identity entries, or dismiss the banner with the **✕** button.
 
+### Global credential helper warning
+
+When at least one account uses **GCM** (Git Credential Manager), Gitbox verifies that your global `~/.gitconfig` has `credential.helper = manager` and `credential.credentialStore` set to the OS-appropriate value (`keychain` on macOS, `wincredman` on Windows, `secretservice` on Linux). If either is missing or wrong, a second orange banner appears.
+
+Without those globals, GCM falls through to a TTY prompt during authentication and fails with `fatal: could not read Password ... Device not configured` in the GUI — see the banner text for the specific mismatch (missing, or unexpected value).
+
+Click **Configure** to fix both entries in one step. Gitbox also backfills the same defaults into your `gitbox.json` so the check passes permanently, even if `~/.gitconfig` is edited later. Dismiss the banner with the **✕** button if you prefer to handle it manually.
+
 ## Tips
 
 - **Window position** — Gitbox remembers your window size and position. If you disconnect a secondary monitor and the window would open off-screen, it automatically centers on your main display.

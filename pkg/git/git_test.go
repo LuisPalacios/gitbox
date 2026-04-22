@@ -485,3 +485,38 @@ u UU N... 100644 100644 100644 100644 abc def ghi conflict.go
 		t.Errorf("conflicts = %d, want 1", s.Conflicts)
 	}
 }
+
+func TestIsUpstreamGoneError(t *testing.T) {
+	cases := []struct {
+		name string
+		msg  string
+		want bool
+	}{
+		{"nil", "", false},
+		{"generic auth 401", "authentication failed (HTTP 401) — token is invalid or expired", false},
+		{"no route", "dial tcp 192.168.1.1:443: connect: no route to host", false},
+		{"network timeout", "context deadline exceeded", false},
+		{"GitHub-style remote not found", "remote: Repository not found.\nfatal: repository 'https://github.com/foo/bar.git/' not found", true},
+		{"git single-line not found", "fatal: repository 'https://git.example.com/foo/bar.git/' not found", true},
+		{"HTTP 404 over https", "fatal: unable to access 'https://example.com/foo.git/': The requested URL returned error: 404", true},
+		{"bare HTTP 404 substring", "server said: HTTP 404", true},
+		{"bitbucket repo access denied", "fatal: repository access denied.", true},
+		{"not a match — generic fatal", "fatal: unable to access 'https://example.com': Could not resolve host", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var err error
+			if tc.msg != "" {
+				err = &testErr{tc.msg}
+			}
+			got := IsUpstreamGoneError(err)
+			if got != tc.want {
+				t.Fatalf("IsUpstreamGoneError(%q) = %v, want %v", tc.msg, got, tc.want)
+			}
+		})
+	}
+}
+
+type testErr struct{ msg string }
+
+func (e *testErr) Error() string { return e.msg }

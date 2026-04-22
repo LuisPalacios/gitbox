@@ -98,7 +98,11 @@ func runCredentialAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Ensure global .gitconfig has credential sections for all GCM accounts.
-	credential.EnsureGlobalGCMConfig(cfg.Global)
+	// FixGlobalGCMConfig also backfills OS defaults into gitbox.json when the
+	// user's config predates onboarding's platform defaults.
+	if err := credential.FixGlobalGCMConfig(cfg, configFilePath()); err != nil {
+		return fmt.Errorf("repairing global gitconfig: %w", err)
+	}
 
 	switch credType {
 	case "token":
@@ -424,9 +428,15 @@ func credentialVerifyGCM(acct config.Account, accountKey string) error {
 	// Test API access — try GCM token first, then keyring PAT.
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	if err := provider.TestAuth(ctx, acct.Provider, acct.URL, gcmToken, acct.Username); err == nil {
+	gcmAuthErr := provider.TestAuth(ctx, acct.Provider, acct.URL, gcmToken, acct.Username)
+	if gcmAuthErr == nil {
 		fmt.Printf("+ API access: OK (GCM)\n")
 		return nil
+	}
+	if provider.IsNetworkError(gcmAuthErr) {
+		fmt.Printf("x API access (GCM): classified as network error — %v\n", gcmAuthErr)
+	} else {
+		fmt.Printf("x API access (GCM): %v\n", gcmAuthErr)
 	}
 
 	// GCM token doesn't work for API (common with Forgejo/Gitea) — try keyring PAT.
@@ -437,8 +447,9 @@ func credentialVerifyGCM(acct config.Account, accountKey string) error {
 		if err := provider.TestAuth(ctx2, acct.Provider, acct.URL, patToken, acct.Username); err == nil {
 			fmt.Printf("+ API access: OK (PAT)\n")
 			return nil
+		} else {
+			fmt.Printf("x API access (PAT): %v\n", err)
 		}
-		fmt.Printf("x API access: PAT is invalid or expired\n")
 	} else {
 		fmt.Printf("~ API access: not available (run 'credential setup' to store a PAT for discovery)\n")
 	}

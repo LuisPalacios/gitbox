@@ -190,8 +190,12 @@ export interface DiscoverResult {
 }
 
 export interface CredentialStatus {
-  status: string;
+  status: string;      // overall: ok, warning, offline, error, none, unknown, checking
   message: string;
+  primary: string;     // primary credential status (same states as overall)
+  primaryMsg: string;  // human-readable detail for primary (may include raw error)
+  pat: string;         // companion PAT status
+  patMsg: string;      // human-readable detail for PAT
 }
 
 // Frontend-only UI state for a single repo row

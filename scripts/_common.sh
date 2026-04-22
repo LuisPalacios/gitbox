@@ -36,14 +36,23 @@ FIXTURE_EXAMPLE="$REPO_ROOT/json/test-gitbox.json.example"
 # ---------------------------------------------------------------------------
 
 detect_local_os() {
+    # macOS splits into mac-arm (Apple Silicon) and mac-intel (x86_64). The
+    # kernel name is "Darwin" in both cases — we key off uname -m for arch.
+    _detect_mac_arch() {
+        case "$(uname -m 2>/dev/null)" in
+            arm64) echo "mac-arm" ;;
+            x86_64) echo "mac-intel" ;;
+            *) echo "mac-arm" ;;
+        esac
+    }
     case "${OSTYPE:-}" in
         msys*|mingw*|cygwin*) echo "win" ;;
-        darwin*)              echo "mac" ;;
+        darwin*)              _detect_mac_arch ;;
         linux*)               echo "linux" ;;
         *)
             case "$(uname -s 2>/dev/null)" in
                 MINGW*|MSYS*) echo "win" ;;
-                Darwin)       echo "mac" ;;
+                Darwin)       _detect_mac_arch ;;
                 Linux)        echo "linux" ;;
                 *)            die "unsupported OS: ${OSTYPE:-$(uname -s)}" ;;
             esac ;;
@@ -73,21 +82,29 @@ load_env
 # Platform mapping
 # ---------------------------------------------------------------------------
 
+# Platform tokens:
+#   win        → windows/amd64
+#   mac-arm    → darwin/arm64  (Apple Silicon)
+#   mac-intel  → darwin/amd64  (Intel Mac)
+#   linux      → linux/amd64
+#   mac        → alias for mac-arm (back-compat)
+
 platform_goos() {
     case "$1" in
-        win)   echo "windows" ;;
-        mac)   echo "darwin" ;;
-        linux) echo "linux" ;;
-        *)     die "unknown platform: $1" ;;
+        win)                     echo "windows" ;;
+        mac|mac-arm|mac-intel)   echo "darwin" ;;
+        linux)                   echo "linux" ;;
+        *)                       die "unknown platform: $1" ;;
     esac
 }
 
 platform_goarch() {
     case "$1" in
-        win)   echo "amd64" ;;
-        mac)   echo "arm64" ;;
-        linux) echo "amd64" ;;
-        *)     die "unknown platform: $1" ;;
+        win)           echo "amd64" ;;
+        mac|mac-arm)   echo "arm64" ;;
+        mac-intel)     echo "amd64" ;;
+        linux)         echo "amd64" ;;
+        *)             die "unknown platform: $1" ;;
     esac
 }
 
@@ -100,18 +117,20 @@ platform_bin() {
 
 platform_label() {
     case "$1" in
-        win)   echo "Windows" ;;
-        mac)   echo "macOS" ;;
-        linux) echo "Linux" ;;
+        win)           echo "Windows" ;;
+        mac|mac-arm)   echo "macOS (arm64)" ;;
+        mac-intel)     echo "macOS (Intel)" ;;
+        linux)         echo "Linux" ;;
     esac
 }
 
 # Cross-compile output path
 build_artifact() {
     case "$1" in
-        win)   echo "$BUILD_DIR/gitbox.exe" ;;
-        mac)   echo "$BUILD_DIR/gitbox-darwin-arm64" ;;
-        linux) echo "$BUILD_DIR/gitbox-linux-amd64" ;;
+        win)           echo "$BUILD_DIR/gitbox.exe" ;;
+        mac|mac-arm)   echo "$BUILD_DIR/gitbox-darwin-arm64" ;;
+        mac-intel)     echo "$BUILD_DIR/gitbox-darwin-amd64" ;;
+        linux)         echo "$BUILD_DIR/gitbox-linux-amd64" ;;
     esac
 }
 
@@ -151,9 +170,10 @@ SCOOPFIX
 # SSH host env var name for a platform
 _ssh_var() {
     case "$1" in
-        win)   echo "SSH_WIN_HOST" ;;
-        mac)   echo "SSH_MAC_HOST" ;;
-        linux) echo "SSH_LINUX_HOST" ;;
+        win)           echo "SSH_WIN_HOST" ;;
+        mac|mac-arm)   echo "SSH_MAC_ARM_HOST" ;;
+        mac-intel)     echo "SSH_MAC_INTEL_HOST" ;;
+        linux)         echo "SSH_LINUX_HOST" ;;
     esac
 }
 
@@ -225,15 +245,17 @@ copy_to() {
 # Target resolution
 # ---------------------------------------------------------------------------
 
-ALL_PLATFORMS="win mac linux"
+ALL_PLATFORMS="win mac-arm mac-intel linux"
 
-# Resolve user target into platform list
+# Resolve user target into platform list. `mac` is accepted as a back-compat
+# alias for `mac-arm` (Apple Silicon) — the historical single-Mac default.
 resolve_targets() {
     local target="${1:-all}"
     case "$target" in
-        all)           echo "$ALL_PLATFORMS" ;;
-        win|mac|linux) echo "$target" ;;
-        *)             die "invalid target: $target (use win, mac, linux, or all)" ;;
+        all)                              echo "$ALL_PLATFORMS" ;;
+        mac)                              echo "mac-arm" ;;
+        win|mac-arm|mac-intel|linux)      echo "$target" ;;
+        *)                                die "invalid target: $target (use win, mac-arm, mac-intel, linux, or all)" ;;
     esac
 }
 
@@ -263,11 +285,13 @@ require_target_arg() {
         echo "Usage: $script_name [target]"
         echo ""
         echo "Targets:"
-        echo "  win      Windows"
-        echo "  mac      macOS"
-        echo "  linux    Linux"
-        echo "  all      All configured platforms"
-        echo "  (empty)  Local machine ($LOCAL_OS)"
+        echo "  win         Windows"
+        echo "  mac-arm     macOS Apple Silicon (arm64)"
+        echo "  mac-intel   macOS Intel (amd64)"
+        echo "  mac         alias for mac-arm"
+        echo "  linux       Linux"
+        echo "  all         All configured platforms"
+        echo "  (empty)     Local machine ($LOCAL_OS)"
         exit 0
     fi
 }

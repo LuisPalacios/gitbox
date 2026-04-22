@@ -50,6 +50,10 @@ export function CheckForUpdate() {
   return window['go']['main']['App']['CheckForUpdate']();
 }
 
+export function CheckGlobalGCMConfig() {
+  return window['go']['main']['App']['CheckGlobalGCMConfig']();
+}
+
 export function CheckGlobalIdentity() {
   return window['go']['main']['App']['CheckGlobalIdentity']();
 }
@@ -162,6 +166,10 @@ export function FindOrphans() {
   return window['go']['main']['App']['FindOrphans']();
 }
 
+export function FixGlobalGCMConfig() {
+  return window['go']['main']['App']['FixGlobalGCMConfig']();
+}
+
 export function GenerateWorkspace(arg1) {
   return window['go']['main']['App']['GenerateWorkspace'](arg1);
 }
@@ -198,6 +206,10 @@ export function GetMirrorStatus(arg1) {
   return window['go']['main']['App']['GetMirrorStatus'](arg1);
 }
 
+export function GetOS() {
+  return window['go']['main']['App']['GetOS']();
+}
+
 export function GetPRSettings() {
   return window['go']['main']['App']['GetPRSettings']();
 }
@@ -228,6 +240,10 @@ export function GetWorkspace(arg1) {
 
 export function IsFirstRun() {
   return window['go']['main']['App']['IsFirstRun']();
+}
+
+export function IsGlobalGCMConfigNeeded() {
+  return window['go']['main']['App']['IsGlobalGCMConfigNeeded']();
 }
 
 export function IsPositionOnScreen(arg1, arg2, arg3, arg4) {

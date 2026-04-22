@@ -105,7 +105,7 @@ Real provider API calls and git operations via subprocess:
 ### Package tests — 138 tests (`pkg/`)
 
 - `pkg/config/` — 58 tests: config parsing, CRUD operations, save/load
-- `pkg/credential/` — 13 tests: token resolution, validation, CanOpenBrowser, EnsureGlobalGCMConfig
+- `pkg/credential/` — tests: token resolution, validation, `CanOpenBrowser`, OS-default helpers, `Check`/`FixGlobalGCMConfig` (global gitconfig health for GCM)
 - `pkg/git/` — 9 tests: git subprocess operations
 - `pkg/identity/` — 7 tests: ResolveIdentity, EnsureRepoIdentity, CheckGlobalIdentity
 - `pkg/mirror/` — 5 tests: mirror discovery

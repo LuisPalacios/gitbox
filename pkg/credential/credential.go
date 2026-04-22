@@ -226,16 +226,3 @@ func CanOpenBrowser() bool {
 	return true
 }
 
-// EnsureGlobalGCMConfig sets ~/.gitconfig global GCM credential settings
-// (helper, credentialStore) needed before interactive git credential fill/approve.
-// Per-host settings (provider, useHttpPath, username) are per-repo, not global.
-func EnsureGlobalGCMConfig(global config.GlobalConfig) {
-	if global.CredentialGCM != nil {
-		if global.CredentialGCM.Helper != "" {
-			_ = git.GlobalConfigSet("credential.helper", global.CredentialGCM.Helper)
-		}
-		if global.CredentialGCM.CredentialStore != "" {
-			_ = git.GlobalConfigSet("credential.credentialStore", global.CredentialGCM.CredentialStore)
-		}
-	}
-}

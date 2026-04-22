@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/spf13/cobra"
 )
 
@@ -39,7 +40,7 @@ your accounts and repositories.`,
 		}
 
 		// Credential store detection.
-		credStore := detectCredentialStore()
+		credStore := credential.DefaultCredentialStore()
 		fmt.Printf("Credential store detected: %s\n", credStore)
 
 		// Build config with platform defaults for all credential types.
@@ -58,7 +59,7 @@ your accounts and repositories.`,
 					SSHFolder: "~/.ssh",
 				},
 				CredentialGCM: &config.GCMGlobal{
-					Helper:          "manager",
+					Helper:          credential.DefaultCredentialHelper(),
 					CredentialStore: credStore,
 				},
 				CredentialToken: &config.TokenGlobal{},
@@ -105,24 +106,3 @@ func init() {
 	initCmd.Flags().BoolVar(&initForce, "force", false, "overwrite existing config")
 }
 
-// detectCredentialStore returns the OS-appropriate credential store.
-func detectCredentialStore() string {
-	switch {
-	case isWindows():
-		return "wincredman"
-	case isDarwin():
-		return "keychain"
-	default:
-		return "secretservice"
-	}
-}
-
-func isWindows() bool {
-	return os.PathSeparator == '\\' || strings.Contains(strings.ToLower(os.Getenv("OS")), "windows")
-}
-
-func isDarwin() bool {
-	// Check for macOS-specific paths.
-	_, err := os.Stat("/System/Library")
-	return err == nil
-}
