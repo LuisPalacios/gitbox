@@ -19,6 +19,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/heal"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 )
@@ -132,19 +133,38 @@ func Move(ctx context.Context, cfg *config.Config, cfgPath string, req Request, 
 		result.Err = fmt.Errorf("rewire origin: %w", err)
 		return result
 	}
-	// Refresh remote refs + set upstream for the current branch so the
-	// next `git status` reflects the new origin. Both failures are
-	// non-fatal — the repo is already on the new origin, user can fix
-	// upstream tracking manually if needed.
-	if err := git.FetchTagsAndPrune(req.SourceRepoPath); err != nil {
-		result.Warnings = append(result.Warnings, fmt.Sprintf("fetch after rewire: %v", err))
-	} else if branch, err := git.CurrentBranch(req.SourceRepoPath); err == nil && branch != "" && branch != "(detached)" {
-		if err := git.SetUpstream(req.SourceRepoPath, branch, "origin"); err != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("set upstream for %s: %v", branch, err))
+	// Note: intentionally no post-rewire `git fetch` here. The push
+	// --mirror above already synchronized every ref to the new origin,
+	// so the remote-tracking refs will self-correct on the user's next
+	// fetch. Running fetch here would fail against the destination
+	// host because the repo-local .git/config still carries the source
+	// account's credential helpers — those get reconciled by heal.Repo
+	// below, which runs after the config is updated.
+
+	// --- Phase 6: update config ------------------------------------
+	// Update before the destructive phases so that even if delete-source
+	// or delete-local fail, the gitbox config already reflects the new
+	// home of the repo. After this, heal.Repo can apply the destination
+	// account's credential/identity spec to the local clone.
+	report(PhaseUpdateConfig, "Updating gitbox config...", nil)
+	destSourceKey, newRepoKey, cfgErr := updateConfig(cfg, cfgPath, req)
+	if cfgErr != nil {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("update config: %v", cfgErr))
+	} else {
+		// Reconcile the local clone's .git/config to match the dest
+		// account's spec (credential helper for the new host, identity,
+		// canonical origin URL). Skip if the user opted to delete the
+		// local clone — heal can't do anything useful on a soon-to-be-
+		// removed folder.
+		if !req.DeleteLocalClone {
+			healReport := heal.Repo(cfg, destSourceKey, newRepoKey)
+			for _, w := range healReport.Warnings {
+				result.Warnings = append(result.Warnings, "post-move heal: "+w)
+			}
 		}
 	}
 
-	// --- Phase 6: delete source remote (best-effort) ---------------
+	// --- Phase 7: delete source remote (best-effort) ---------------
 	if req.DeleteSourceRemote {
 		report(PhaseDeleteSource, "Deleting source remote repository...", nil)
 		if plan.sourceDeleter == nil {
@@ -163,7 +183,7 @@ func Move(ctx context.Context, cfg *config.Config, cfgPath string, req Request, 
 		}
 	}
 
-	// --- Phase 7: delete local clone (best-effort) -----------------
+	// --- Phase 8: delete local clone (best-effort) -----------------
 	if req.DeleteLocalClone {
 		report(PhaseDeleteLocal, "Removing local clone folder...", nil)
 		if err := os.RemoveAll(req.SourceRepoPath); err != nil {
@@ -173,15 +193,6 @@ func Move(ctx context.Context, cfg *config.Config, cfgPath string, req Request, 
 		} else {
 			result.LocalCloneDeleted = true
 		}
-	}
-
-	// --- Phase 8: update config ------------------------------------
-	report(PhaseUpdateConfig, "Updating gitbox config...", nil)
-	if err := updateConfig(cfg, cfgPath, req, result.LocalCloneDeleted); err != nil {
-		// Rare. Config integrity error AFTER a successful move is a
-		// warning, not a fatal — the filesystem/remote state is
-		// already correct, the user can repair via the GUI.
-		result.Warnings = append(result.Warnings, fmt.Sprintf("update config: %v", err))
 	}
 
 	report(PhaseDone, "Move complete.", nil)
@@ -267,38 +278,40 @@ func splitRepoKey(key string) (owner, name string) {
 	return "", key
 }
 
-// updateConfig moves the repo entry from the source-account source to a
-// destination-account source, creating the latter if needed. When the
-// local clone was already deleted in phase 7, just remove the entry.
-// The destination source's key defaults to the destination account key.
-func updateConfig(cfg *config.Config, cfgPath string, req Request, localCloneDeleted bool) error {
-	// Step 7 already moved the physical files off-disk AND the user
-	// opted out of keeping local state; just drop the source config
-	// entry.
-	if localCloneDeleted {
-		_ = cfg.DeleteRepo(req.SourceSourceKey, req.SourceRepoKey)
-		return config.Save(cfg, cfgPath)
-	}
-
+// updateConfig moves the repo entry from the source-account source to
+// the destination-account source, creating the latter if needed.
+// Always moves the entry — even when the caller will subsequently
+// delete the local clone. The destination repo exists on the provider
+// regardless, and the user should see it under the destination account
+// so they can re-clone it locally when they want.
+//
+// Returns the (destSourceKey, newRepoKey) that the entry now lives
+// under so the caller can run heal.Repo against the fresh spec.
+func updateConfig(cfg *config.Config, cfgPath string, req Request) (destSourceKey, newRepoKey string, err error) {
 	srcBlock, ok := cfg.Sources[req.SourceSourceKey]
 	if !ok {
-		return fmt.Errorf("source %q missing", req.SourceSourceKey)
+		return "", "", fmt.Errorf("source %q missing", req.SourceSourceKey)
 	}
 	repoEntry, ok := srcBlock.Repos[req.SourceRepoKey]
 	if !ok {
-		return fmt.Errorf("repo %q missing in source %q", req.SourceRepoKey, req.SourceSourceKey)
+		return "", "", fmt.Errorf("repo %q missing in source %q", req.SourceRepoKey, req.SourceSourceKey)
 	}
 
-	// Preserve per-repo overrides (credential_type, identity, folders).
-	newRepoKey := req.DestOwner + "/" + req.DestRepoName
+	newRepoKey = req.DestOwner + "/" + req.DestRepoName
 
-	// If the same account owns both old and new sources, it's a
-	// rename within the same block — avoid creating a duplicate
-	// source entry.
-	destSourceKey := req.DestAccountKey
+	// Pick a source key owned by the destination account. Prefer
+	// one that already exists; otherwise create a new source keyed
+	// by the destination account name. On the unlikely collision
+	// (source keyed by the dest account name but owned by a
+	// different account), fall back to a `-moved` suffix.
+	destSourceKey = req.DestAccountKey
+	for sk, s := range cfg.Sources {
+		if s.Account == req.DestAccountKey {
+			destSourceKey = sk
+			break
+		}
+	}
 	if existing, ok := cfg.Sources[destSourceKey]; ok && existing.Account != req.DestAccountKey {
-		// Very unlikely: a source keyed by the destination account
-		// name but owned by a different account. Pick a fresh key.
 		destSourceKey = req.DestAccountKey + "-moved"
 	}
 	dstBlock, ok := cfg.Sources[destSourceKey]
@@ -312,24 +325,22 @@ func updateConfig(cfg *config.Config, cfgPath string, req Request, localCloneDel
 		dstBlock.Repos = make(map[string]config.Repo)
 	}
 
-	// Refuse to overwrite an existing dest entry. Preflight should
-	// have caught this, but double-check to avoid data loss if the
-	// config was edited between steps.
-	if _, dup := dstBlock.Repos[newRepoKey]; dup && destSourceKey == req.SourceSourceKey && newRepoKey == req.SourceRepoKey {
-		// same entry — fine
-	} else if _, dup := dstBlock.Repos[newRepoKey]; dup {
-		return fmt.Errorf("destination config already has repo %q under source %q", newRepoKey, destSourceKey)
+	// Refuse to overwrite an existing dest entry unless it's the
+	// same slot the source currently lives in (no-op rename).
+	if _, dup := dstBlock.Repos[newRepoKey]; dup && !(destSourceKey == req.SourceSourceKey && newRepoKey == req.SourceRepoKey) {
+		return "", "", fmt.Errorf("destination config already has repo %q under source %q", newRepoKey, destSourceKey)
 	}
 
-	// Remove source entry (if we're moving across sources, or if the
-	// repo key changed inside the same source).
 	if destSourceKey != req.SourceSourceKey || newRepoKey != req.SourceRepoKey {
 		delete(srcBlock.Repos, req.SourceRepoKey)
 		cfg.Sources[req.SourceSourceKey] = srcBlock
 	}
 	dstBlock.Repos[newRepoKey] = repoEntry
 	cfg.Sources[destSourceKey] = dstBlock
-	return config.Save(cfg, cfgPath)
+	if err := config.Save(cfg, cfgPath); err != nil {
+		return "", "", err
+	}
+	return destSourceKey, newRepoKey, nil
 }
 
 // resolvedPlan holds everything Move() computes once up front so each

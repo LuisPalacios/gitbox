@@ -331,13 +331,6 @@ func FetchTagsAndPrune(repoPath string) error {
 	return run(repoPath, "fetch", "--prune", "--tags")
 }
 
-// SetUpstream configures the given local branch to track
-// <remote>/<branch>. The remote must already have the branch fetched.
-// Used after a move to re-bind the current branch to the new origin.
-func SetUpstream(repoPath, branch, remote string) error {
-	return run(repoPath, "branch", fmt.Sprintf("--set-upstream-to=%s/%s", remote, branch), branch)
-}
-
 // PullQuiet runs git pull --ff-only, capturing output instead of forwarding it.
 func PullQuiet(repoPath string) error {
 	_, err := output(repoPath, "pull", "--ff-only")
