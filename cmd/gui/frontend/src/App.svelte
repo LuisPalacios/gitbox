@@ -12,7 +12,7 @@
   } from './lib/stores';
   import { statusColor, credColor, statusLabel, providerLabel, statusSymbol } from './lib/theme';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit } from '../wailsjs/runtime/runtime';
-  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo, PRAccountUpdateDTO, WorkspaceDTO, WorkspaceMemberDTO, WorkspaceCreateRequest, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO } from './lib/types';
+  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo, PRAccountUpdateDTO, WorkspaceDTO, WorkspaceMemberDTO, WorkspaceCreateRequest, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
   import PRPopover from './lib/PRPopover.svelte';
 
@@ -1587,6 +1587,52 @@
   let movePreflight: MovePreflightDTO | null = null;
   let moveProgress: MoveProgressEventDTO[] = [];
   let moveResult: MoveResultDTO | null = null;
+  // Readiness panel — per-side credential status + scope hint.
+  // Refreshed when the modal opens, when the destination changes,
+  // and when the "Delete source" toggle flips (since delete adds
+  // a required scope to the source side).
+  let moveReadiness: MoveReadinessDTO | null = null;
+  let moveReadinessLoading = false;
+
+  async function refreshMoveReadiness() {
+    if (!moveSourceSourceKey) return;
+    moveReadinessLoading = true;
+    try {
+      moveReadiness = await bridge.checkMoveReadiness(
+        moveSourceSourceKey,
+        moveDestAccountKey || '',
+        moveDeleteSource,
+      );
+    } catch {
+      moveReadiness = null;
+    } finally {
+      moveReadinessLoading = false;
+    }
+  }
+
+  // Jump from the Move modal into the credential setup modal for
+  // the given account, so the user can paste a fresh PAT with the
+  // right scopes. The Move modal stays mounted so the user can
+  // return to it by re-clicking "Move repository…" after closing
+  // the credential modal; we preserve their form inputs by NOT
+  // resetting moveModalStep until they dismiss Move explicitly.
+  function openCredentialsFromMove(accountKey: string) {
+    if (!accountKey) return;
+    const acct = $accounts[accountKey];
+    if (!acct) return;
+    // Use openTokenSetup when the account is token-type so the
+    // PAT paste field is focused immediately; otherwise fall back
+    // to openCredChange which lets the user switch type or refresh
+    // GCM creds.
+    if (acct.default_credential_type === 'token') {
+      void openTokenSetup(accountKey);
+    } else {
+      openCredChange(accountKey, acct.default_credential_type || 'gcm');
+    }
+    // Close the move form — the credential modal opens over the
+    // same dashboard surface and the user restarts Move after.
+    moveModalStep = null;
+  }
 
   // repoCanMove is the kebab-enable predicate. Mirrors the TUI guard:
   // only a cloned, clean, in-sync repo can be moved. Returns a string
@@ -1630,12 +1676,18 @@
     } finally {
       moveLoadingOwners = false;
     }
+    // Kick off the readiness probe once we know both sides so the
+    // credentials panel populates without the user having to change
+    // anything.
+    void refreshMoveReadiness();
   }
 
   function syncMoveSelection() {
     const [acct, owner] = moveOwnerSelected.split('::');
     moveDestAccountKey = acct || '';
     moveDestOwner = owner || '';
+    // Destination account changed → re-probe readiness.
+    void refreshMoveReadiness();
   }
 
   function cancelMoveRepo() {
@@ -4699,10 +4751,43 @@
               <label><input type="checkbox" bind:checked={moveIsPrivate} /> Private repository</label>
             </div>
             <div class="form-row form-row-check">
-              <label><input type="checkbox" bind:checked={moveDeleteSource} /> Delete source repository after successful move</label>
+              <label><input type="checkbox" bind:checked={moveDeleteSource} on:change={refreshMoveReadiness} /> Delete source repository after successful move</label>
             </div>
             <div class="form-row form-row-check">
               <label><input type="checkbox" bind:checked={moveDeleteLocal} /> Delete local clone after successful move</label>
+            </div>
+
+            <!-- Credential readiness panel (issue #64, UX polish) -->
+            <div class="move-readiness">
+              <div class="move-readiness-title">Credential readiness</div>
+              {#if moveReadinessLoading && !moveReadiness}
+                <div class="move-readiness-loading">Checking credentials…</div>
+              {:else if moveReadiness}
+                {#each ['source', 'dest'] as side}
+                  {@const r = side === 'source' ? moveReadiness.source : moveReadiness.dest}
+                  {#if r.accountKey}
+                    <div class="move-readiness-card move-readiness-{r.status || 'unknown'}">
+                      <div class="move-readiness-head">
+                        <span class="move-readiness-role">{side === 'source' ? 'Source' : 'Destination'}</span>
+                        <span class="move-readiness-acct">{r.accountKey}</span>
+                        <span class="move-readiness-type">{r.credentialType || '—'}</span>
+                        <span class="move-readiness-dot move-readiness-dot-{r.status || 'unknown'}" title={r.status}></span>
+                      </div>
+                      {#if r.message}
+                        <div class="move-readiness-msg">{r.message}</div>
+                      {/if}
+                      {#if r.scopesHint}
+                        <div class="move-readiness-scopes">{r.scopesHint}</div>
+                      {/if}
+                      <div class="move-readiness-actions">
+                        <button type="button" class="btn-link" on:click={() => openCredentialsFromMove(r.accountKey)}>Fix credentials…</button>
+                        <button type="button" class="btn-link-subtle" on:click={refreshMoveReadiness} disabled={moveReadinessLoading}>Re-check</button>
+                      </div>
+                    </div>
+                  {/if}
+                {/each}
+                <p class="move-readiness-hint">Scope hints show what each side needs in total for the options you've selected. gitbox only probes auth reachability here — the actual scope check happens when the move runs, with a warning naming the missing scope if it fails.</p>
+              {/if}
             </div>
           {/if}
         </div>
@@ -6339,4 +6424,36 @@
   .move-info code { background: var(--bg-card); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
   .move-warnings { list-style: none; padding: 0; margin: 8px 0; color: #f59e0b; font-size: 13px; }
   .move-warnings li { padding: 2px 0; }
+
+  /* Credential readiness panel in the Move form. */
+  .move-readiness { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+  .move-readiness-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+  .move-readiness-loading { font-size: 13px; color: var(--text-secondary); padding: 6px 0; }
+  .move-readiness-hint { font-size: 11px; color: var(--text-dim); margin-top: 6px; }
+  .move-readiness-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin: 6px 0;
+    font-size: 13px;
+  }
+  .move-readiness-head { display: flex; align-items: center; gap: 8px; }
+  .move-readiness-role { font-weight: 600; min-width: 84px; color: var(--text-primary); }
+  .move-readiness-acct { flex: 1; color: var(--text-secondary); font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace; font-size: 12px; }
+  .move-readiness-type { text-transform: uppercase; font-size: 10px; font-weight: 700; color: var(--text-dim); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; }
+  .move-readiness-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; background: #6b7280; }
+  .move-readiness-dot-ok { background: #22c55e; }
+  .move-readiness-dot-warning { background: #f59e0b; }
+  .move-readiness-dot-error, .move-readiness-dot-none { background: #ef4444; }
+  .move-readiness-dot-offline { background: #64748b; }
+  .move-readiness-dot-checking, .move-readiness-dot-unknown { background: #6b7280; }
+  .move-readiness-msg { margin-top: 4px; color: var(--text-secondary); font-size: 12px; }
+  .move-readiness-scopes { margin-top: 4px; color: var(--text-dim); font-size: 12px; }
+  .move-readiness-actions { margin-top: 6px; display: flex; gap: 12px; }
+  .btn-link { background: none; border: none; color: var(--accent); padding: 0; font-size: 12px; cursor: pointer; text-decoration: underline; }
+  .btn-link:hover { color: var(--text-primary); }
+  .btn-link-subtle { background: none; border: none; color: var(--text-dim); padding: 0; font-size: 12px; cursor: pointer; }
+  .btn-link-subtle:hover { color: var(--text-secondary); }
+  .btn-link-subtle:disabled { opacity: 0.5; cursor: default; }
 </style>

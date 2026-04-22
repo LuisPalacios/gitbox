@@ -338,6 +338,21 @@ export interface MoveProgressEventDTO {
   error?: string;
 }
 
+export interface MoveReadinessSideDTO {
+  accountKey: string;
+  provider: string;
+  credentialType: string;
+  status: string;
+  message: string;
+  requiredScopes?: string[];
+  scopesHint: string;
+}
+
+export interface MoveReadinessDTO {
+  source: MoveReadinessSideDTO;
+  dest: MoveReadinessSideDTO;
+}
+
 export interface MoveResultDTO {
   newOrigin: string;
   destRepoCreated: boolean;

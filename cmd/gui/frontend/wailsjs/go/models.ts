@@ -1050,6 +1050,63 @@ export namespace main {
 	        this.warnings = source["warnings"];
 	    }
 	}
+	export class MoveReadinessSideDTO {
+	    accountKey: string;
+	    provider: string;
+	    credentialType: string;
+	    status: string;
+	    message: string;
+	    requiredScopes?: string[];
+	    scopesHint: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MoveReadinessSideDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.accountKey = source["accountKey"];
+	        this.provider = source["provider"];
+	        this.credentialType = source["credentialType"];
+	        this.status = source["status"];
+	        this.message = source["message"];
+	        this.requiredScopes = source["requiredScopes"];
+	        this.scopesHint = source["scopesHint"];
+	    }
+	}
+	export class MoveReadinessDTO {
+	    source: MoveReadinessSideDTO;
+	    dest: MoveReadinessSideDTO;
+	
+	    static createFrom(source: any = {}) {
+	        return new MoveReadinessDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = this.convertValues(source["source"], MoveReadinessSideDTO);
+	        this.dest = this.convertValues(source["dest"], MoveReadinessSideDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class MoveRequestDTO {
 	    sourceSourceKey: string;
 	    sourceRepoKey: string;

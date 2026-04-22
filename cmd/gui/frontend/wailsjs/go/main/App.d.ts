@@ -37,6 +37,8 @@ export function CheckGlobalIdentity():Promise<identity.GlobalIdentityStatus>;
 
 export function CheckMirrorCredentials(arg1:string):Promise<main.MirrorCredentialCheck>;
 
+export function CheckMoveReadiness(arg1:string,arg2:string,arg3:boolean):Promise<main.MoveReadinessDTO>;
+
 export function CloneRepo(arg1:string,arg2:string):Promise<void>;
 
 export function ConfirmSweep(arg1:string,arg2:string):Promise<main.SweepDeleteDTO>;

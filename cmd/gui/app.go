@@ -4604,6 +4604,102 @@ type MoveProgressEventDTO struct {
 	Error   string `json:"error,omitempty"`
 }
 
+// MoveReadinessSideDTO reports the credential health of one side
+// (source or destination) of a proposed move, plus the scope names
+// the operation needs on that side. The frontend uses this in the
+// Move form to preview whether the move is likely to succeed and
+// to offer a shortcut to fix the credentials in-place.
+type MoveReadinessSideDTO struct {
+	AccountKey     string   `json:"accountKey"`
+	Provider       string   `json:"provider"`
+	CredentialType string   `json:"credentialType"` // "token" / "gcm" / "ssh"
+	Status         string   `json:"status"`         // credential.Status.String()
+	Message        string   `json:"message"`
+	RequiredScopes []string `json:"requiredScopes,omitempty"`
+	ScopesHint     string   `json:"scopesHint"`
+}
+
+// MoveReadinessDTO wraps both sides in a single payload so the
+// frontend only makes one call.
+type MoveReadinessDTO struct {
+	Source MoveReadinessSideDTO `json:"source"`
+	Dest   MoveReadinessSideDTO `json:"dest"`
+}
+
+// CheckMoveReadiness returns credential status + scope requirements
+// for both the source and destination of a pending move. Re-called
+// whenever the user changes the destination account or toggles the
+// "Delete source" opt-in, so the readiness panel stays live.
+func (a *App) CheckMoveReadiness(sourceSourceKey, destAccountKey string, deleteSource bool) MoveReadinessDTO {
+	a.mu.Lock()
+	cfg := a.cfg
+	src, srcOK := cfg.Sources[sourceSourceKey]
+	a.mu.Unlock()
+
+	out := MoveReadinessDTO{}
+	if !srcOK {
+		out.Source.Message = fmt.Sprintf("source %q not found", sourceSourceKey)
+		return out
+	}
+	sourceAccountKey := src.Account
+
+	sourceActions := []provider.ActionScope{provider.ActionListRepos}
+	if deleteSource {
+		sourceActions = append(sourceActions, provider.ActionDeleteRepo)
+	}
+	destActions := []provider.ActionScope{provider.ActionCreateRepo}
+
+	out.Source = a.moveReadinessSide(sourceAccountKey, sourceActions, "source")
+	if destAccountKey != "" {
+		out.Dest = a.moveReadinessSide(destAccountKey, destActions, "destination")
+	}
+	return out
+}
+
+// moveReadinessSide builds one side's readiness: credential status
+// from credential.Check plus a human-readable scope hint aggregated
+// across every action the move will perform on that side.
+func (a *App) moveReadinessSide(accountKey string, actions []provider.ActionScope, role string) MoveReadinessSideDTO {
+	dto := MoveReadinessSideDTO{AccountKey: accountKey}
+	a.mu.Lock()
+	acct, ok := a.cfg.Accounts[accountKey]
+	cfg := a.cfg
+	a.mu.Unlock()
+	if !ok {
+		dto.Message = fmt.Sprintf("%s account %q not found", role, accountKey)
+		dto.Status = "error"
+		return dto
+	}
+	dto.Provider = acct.Provider
+	dto.CredentialType = acct.DefaultCredentialType
+
+	result := credential.Check(acct, accountKey, cfg)
+	dto.Status = result.Overall.String()
+	dto.Message = result.PrimaryDetail
+
+	// Deduplicate scope names across actions so ["repo", "repo",
+	// "delete_repo"] renders as "repo, delete_repo".
+	seen := map[string]bool{}
+	var scopes []string
+	for _, act := range actions {
+		for _, s := range provider.ScopesForAction(acct.Provider, act) {
+			if !seen[s] {
+				seen[s] = true
+				scopes = append(scopes, s)
+			}
+		}
+	}
+	dto.RequiredScopes = scopes
+	if len(scopes) == 0 {
+		dto.ScopesHint = ""
+	} else if len(scopes) == 1 {
+		dto.ScopesHint = fmt.Sprintf("Needs %s scope on %s.", scopes[0], acct.Provider)
+	} else {
+		dto.ScopesHint = fmt.Sprintf("Needs scopes on %s: %s.", acct.Provider, strings.Join(scopes, ", "))
+	}
+	return dto
+}
+
 // MoveResultDTO is emitted on "move:done". Err is empty on fatal
 // success; Warnings may be non-empty for best-effort failures.
 // DestSourceKey + NewRepoKey identify where the config entry now
