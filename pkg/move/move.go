@@ -124,7 +124,7 @@ func Move(ctx context.Context, cfg *config.Config, cfgPath string, req Request, 
 	// --- Phase 5: rewire origin ------------------------------------
 	report(PhaseRewireOrigin, "Rewiring local origin to the destination...", nil)
 	result.NewOrigin = destPlainURL
-	if err := git.SetRemoteURL(req.SourceRepoPath, "origin", destPlainURL); err != nil {
+	if err := git.SetRemoteURLCaptured(req.SourceRepoPath, "origin", destPlainURL); err != nil {
 		result.Err = fmt.Errorf("rewire origin: %w", err)
 		return result
 	}

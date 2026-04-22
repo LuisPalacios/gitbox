@@ -317,16 +317,49 @@ func PushMirror(repoPath, url string) (string, error) {
 
 // FetchTagsAndPrune runs `git fetch --prune --tags` in repoPath. Used as
 // the first move-flow step so the upcoming push --mirror carries every
-// ref (tags included) and stale remote branches are dropped.
+// ref (tags included) and stale remote branches are dropped. Output is
+// captured (not forwarded) so the call is safe from a GUI process with
+// no attached console — setting Stdout = os.Stdout fails with
+// "The request is not supported" on Windows GUI subsystems.
 func FetchTagsAndPrune(repoPath string) error {
-	return run(repoPath, "fetch", "--prune", "--tags")
+	cmd := exec.Command(GitBin(), "fetch", "--prune", "--tags")
+	cmd.Dir = repoPath
+	cmd.Env = nonInteractiveEnv()
+	HideWindow(cmd)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git fetch --prune --tags: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 // SetUpstream configures the given local branch to track
 // <remote>/<branch>. The remote must already have the branch fetched.
 // Used after a move to re-bind the current branch to the new origin.
+// Captures output for the same GUI-safety reason as FetchTagsAndPrune.
 func SetUpstream(repoPath, branch, remote string) error {
-	return run(repoPath, "branch", fmt.Sprintf("--set-upstream-to=%s/%s", remote, branch), branch)
+	cmd := exec.Command(GitBin(), "branch", fmt.Sprintf("--set-upstream-to=%s/%s", remote, branch), branch)
+	cmd.Dir = repoPath
+	cmd.Env = nonInteractiveEnv()
+	HideWindow(cmd)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git branch --set-upstream-to=%s/%s %s: %w: %s", remote, branch, branch, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// SetRemoteURLCaptured is a GUI-safe variant of SetRemoteURL that
+// captures stdout/stderr instead of inheriting them. Use this from
+// code paths that can run under a Wails process (see FetchTagsAndPrune
+// comment).
+func SetRemoteURLCaptured(repoPath, remote, url string) error {
+	cmd := exec.Command(GitBin(), "remote", "set-url", remote, url)
+	cmd.Dir = repoPath
+	cmd.Env = nonInteractiveEnv()
+	HideWindow(cmd)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git remote set-url %s: %w: %s", remote, err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 // PullQuiet runs git pull --ff-only, capturing output instead of forwarding it.
