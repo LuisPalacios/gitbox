@@ -596,7 +596,7 @@
 
   // ── Repo detail panel ──
   let expandedRepo: string | null = null;
-  let repoDetail: { branch: string; ahead: number; behind: number; changed: { kind: string; path: string }[]; untracked: string[]; error?: string } | null = null;
+  let repoDetail: { branch: string; ahead: number; behind: number; changed: { kind: string; path: string }[]; untracked: string[]; error?: string; upstreamGone?: boolean; upstreamError?: string } | null = null;
   let detailLoading = false;
 
   // Auto-collapse expanded detail when the repo no longer needs attention.
@@ -831,11 +831,12 @@
   }
 
   function isDangerous(status: string): boolean {
-    return ['dirty', 'ahead', 'diverged', 'conflict'].includes(status);
+    return ['dirty', 'ahead', 'diverged', 'conflict', 'upstream gone'].includes(status);
   }
 
   function deleteWarning(status: string): string {
     if (status === 'not cloned') return 'This will remove the config entry. No local folder exists.';
+    if (status === 'upstream gone') return 'The remote repository no longer exists. This local clone may be your ONLY copy — deleting it is unrecoverable.';
     if (isDangerous(status)) return 'This repo has unpushed commits or local changes that will be permanently lost!';
     return 'The local folder and config entry will be permanently deleted.';
   }
@@ -2873,6 +2874,8 @@
                   {/if}
                 {:else if state.status === 'error'}
                   <span class="status-text" style="color:{sc('error')}">Error</span>
+                {:else if state.status === 'upstream gone'}
+                  <span class="status-text" style="color:{sc('upstream gone')}">Upstream gone</span>
                 {:else}
                   <span class="status-pending">Pending</span>
                   {#if state.behind > 0}<span class="sbadge" style="color:{sc('behind')}" title="{state.behind} behind">↓{state.behind}</span>{/if}
@@ -2913,7 +2916,23 @@
           </div>
           {#if expandedRepo === repoKey}
             <div class="repo-detail" transition:slide={{ duration: 150 }}>
-              {#if detailLoading}
+              {#if state.status === 'upstream gone' || repoDetail?.upstreamGone}
+                <div class="detail-gone">
+                  <div class="detail-gone-title" style="color:{sc('upstream gone')}">&#9888; WARNING: The origin repository is gone</div>
+                  <p class="detail-gone-body">
+                    The remote repository for this clone was not found on the provider. It was
+                    either deleted, made private without re-granting access, renamed without a
+                    redirect, or the credential lost permission to see it.
+                  </p>
+                  <p class="detail-gone-body">
+                    <strong>Your local clone is intact.</strong> You have two options:
+                  </p>
+                  <ul class="detail-gone-list">
+                    <li><strong>Keep it as a local-only clone.</strong> Do nothing — the folder stays on disk with its full git history. Gitbox will keep flagging it as "Upstream gone" until you remove the remote or the entry.</li>
+                    <li><strong>Delete it</strong> (trash icon in the top bar) if you no longer need the code. Since the upstream is gone, this local copy may be the only remaining one — make sure before confirming.</li>
+                  </ul>
+                </div>
+              {:else if detailLoading}
                 <span class="detail-loading">Loading...</span>
               {:else if repoDetail?.error}
                 <span class="detail-error">{repoDetail.error}</span>
@@ -4710,6 +4729,17 @@
     color: var(--text-muted); font-style: italic;
   }
   .detail-error { color: var(--text-primary); }
+  .detail-gone {
+    display: flex; flex-direction: column; gap: 6px;
+    font-size: 12px; line-height: 1.45;
+  }
+  .detail-gone-title { font-weight: 600; font-size: 12.5px; }
+  .detail-gone-body { margin: 0; color: var(--text-secondary); }
+  .detail-gone-list {
+    margin: 2px 0 0 0; padding-left: 18px;
+    color: var(--text-secondary);
+  }
+  .detail-gone-list li + li { margin-top: 4px; }
   .detail-header {
     display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
     font-size: 11px; color: var(--text-secondary);

@@ -13,15 +13,16 @@ import (
 type State int
 
 const (
-	Clean     State = iota // Up to date, no changes
-	Dirty                  // Has modified/untracked files
-	Behind                 // Behind upstream (needs pull)
-	Ahead                  // Ahead of upstream (needs push)
-	Diverged               // Both ahead and behind
-	Conflict               // Has merge conflicts
-	NotCloned              // Directory does not exist
-	NoUpstream             // No upstream tracking branch
-	Error                  // Could not determine status
+	Clean      State = iota // Up to date, no changes
+	Dirty                   // Has modified/untracked files
+	Behind                  // Behind upstream (needs pull)
+	Ahead                   // Ahead of upstream (needs push)
+	Diverged                // Both ahead and behind
+	Conflict                // Has merge conflicts
+	NotCloned               // Directory does not exist
+	NoUpstream              // No upstream tracking branch
+	Error                   // Could not determine status
+	UpstreamGone            // Remote repo no longer exists (404 / deleted / lost access)
 )
 
 // String returns a human-readable label for the state.
@@ -45,6 +46,8 @@ func (s State) String() string {
 		return "no upstream"
 	case Error:
 		return "error"
+	case UpstreamGone:
+		return "upstream gone"
 	default:
 		return "unknown"
 	}
@@ -71,6 +74,8 @@ func (s State) Symbol() string {
 		return "~"
 	case Error:
 		return "!"
+	case UpstreamGone:
+		return "⊗"
 	default:
 		return "?"
 	}

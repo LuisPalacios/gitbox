@@ -5,6 +5,7 @@ const darkPalette: Record<string, string> = {
   ahead: '#4B95E9', syncing: '#4B95E9', cloning: '#4B95E9', fetching: '#4B95E9',
   'not cloned': '#71717a', 'no upstream': '#71717a',
   diverged: '#D81E5B', conflict: '#D81E5B', error: '#D81E5B',
+  'upstream gone': '#D81E5B',
 };
 
 const lightPalette: Record<string, string> = {
@@ -12,6 +13,7 @@ const lightPalette: Record<string, string> = {
   ahead: '#2563eb', syncing: '#2563eb', cloning: '#2563eb', fetching: '#2563eb',
   'not cloned': '#52525b', 'no upstream': '#52525b',
   diverged: '#be123c', conflict: '#be123c', error: '#be123c',
+  'upstream gone': '#be123c',
 };
 
 export function statusColor(status: string, theme: string): string {
@@ -43,6 +45,7 @@ export function statusLabel(status: string, behind: number, modified: number): s
     diverged: 'Diverged',
     conflict: 'Conflict',
     error: 'Error',
+    'upstream gone': 'Upstream gone',
   };
   return map[status] || status;
 }
@@ -60,6 +63,7 @@ export function statusSymbol(status: string): string {
     clean: '●', behind: '◗', dirty: '◆', ahead: '▲',
     syncing: '◔', cloning: '◔', fetching: '◔', 'not cloned': '○',
     'no upstream': '~', diverged: '⚠', conflict: '⚡', error: '✕',
+    'upstream gone': '⊗',
     // 'unknown' = first scan hasn't completed yet. Render the same shape as
     // 'clean' but in the muted grey returned by statusColor() so the row
     // says "I don't know yet" instead of lying with a red ✕.
