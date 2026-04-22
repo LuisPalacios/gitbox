@@ -115,8 +115,12 @@ func Move(ctx context.Context, cfg *config.Config, cfgPath string, req Request, 
 	// --- Phase 4: push --mirror to dest ----------------------------
 	report(PhasePushMirror, "Pushing every ref and tag to the destination...", nil)
 	destPlainURL := buildHTTPSCloneURL(plan.destAcct, req.DestOwner, req.DestRepoName)
-	destAuthURL := provider.InjectTokenInURL(destPlainURL, plan.destAPIToken)
-	if _, err := git.PushMirror(req.SourceRepoPath, destAuthURL); err != nil {
+	destAuthURL, pushExtraConfig, err := buildDestPushURL(plan.destAcct, req.DestAccountKey, req.DestOwner, req.DestRepoName, destPlainURL)
+	if err != nil {
+		result.Err = fmt.Errorf("build destination push URL: %w", err)
+		return result
+	}
+	if _, err := git.PushMirror(req.SourceRepoPath, destAuthURL, pushExtraConfig); err != nil {
 		result.Err = fmt.Errorf("push --mirror: %w", err)
 		return result
 	}
@@ -185,8 +189,8 @@ func Move(ctx context.Context, cfg *config.Config, cfgPath string, req Request, 
 }
 
 // buildHTTPSCloneURL returns the public HTTPS clone URL for a repo on
-// an account. It is independent of credential type — token injection
-// is applied separately by the caller via InjectTokenInURL.
+// an account. It is independent of credential type — embedded-auth
+// handling lives in buildDestPushURL.
 func buildHTTPSCloneURL(acct config.Account, owner, repoName string) string {
 	base := strings.TrimRight(acct.URL, "/")
 	full := owner + "/" + repoName
@@ -198,6 +202,75 @@ func buildHTTPSCloneURL(acct config.Account, owner, repoName string) string {
 		return fmt.Sprintf("%s/%s.git", base, full)
 	}
 	return fmt.Sprintf("https://%s/%s.git", base, full)
+}
+
+// buildDestPushURL builds the URL passed to `git push --mirror` for
+// the destination, plus any `-c key=value` config args git should be
+// invoked with. The shape depends on the destination account's
+// credential type:
+//
+//   - ssh:   "git@<host>:<owner>/<name>.git" (no embedded creds; SSH
+//            agent / ssh config handles auth). No extraConfig.
+//   - token: "https://<username>:<PAT>@<host>/<owner>/<name>.git" with
+//            extraConfig = ["credential.helper="] so a GCM helper
+//            configured for the same host doesn't override the
+//            embedded credential.
+//   - gcm:   "https://<username>@<host>/<owner>/<name>.git" with no
+//            embedded PAT — GCM must have valid cached creds for the
+//            host/username (the GUI has GCM_INTERACTIVE=never so there's
+//            no prompt fallback).
+//
+// For Forgejo/Gitea, using the account's actual username (not the
+// literal "token") matters: some Forgejo versions reject Basic auth
+// when the username is "token" even with a valid PAT.
+func buildDestPushURL(acct config.Account, accountKey, owner, repoName, plainHTTPSURL string) (string, []string, error) {
+	credType := acct.DefaultCredentialType
+	switch credType {
+	case "ssh":
+		host := acct.URL
+		if acct.SSH != nil && acct.SSH.Host != "" {
+			host = acct.SSH.Host
+		} else {
+			host = stripScheme(host)
+		}
+		return fmt.Sprintf("git@%s:%s/%s.git", host, owner, repoName), nil, nil
+	case "token":
+		tok, _, err := credential.ResolveToken(acct, accountKey)
+		if err != nil {
+			return "", nil, fmt.Errorf("resolving destination token: %w", err)
+		}
+		u, err := url.Parse(plainHTTPSURL)
+		if err != nil {
+			return "", nil, fmt.Errorf("parsing destination URL: %w", err)
+		}
+		username := acct.Username
+		if username == "" {
+			username = "token"
+		}
+		u.User = url.UserPassword(username, tok)
+		return u.String(), []string{"credential.helper="}, nil
+	default:
+		// GCM (or unset — treat as GCM).
+		u, err := url.Parse(plainHTTPSURL)
+		if err != nil {
+			return "", nil, fmt.Errorf("parsing destination URL: %w", err)
+		}
+		if acct.Username != "" {
+			u.User = url.User(acct.Username)
+		}
+		return u.String(), nil, nil
+	}
+}
+
+// stripScheme removes "https://" or "http://" from a URL so the host
+// can be used in an SSH-form remote. Mirrors the helper in cmd/cli/tui.
+func stripScheme(raw string) string {
+	for _, p := range []string{"https://", "http://"} {
+		if strings.HasPrefix(raw, p) {
+			return raw[len(p):]
+		}
+	}
+	return raw
 }
 
 // splitRepoKey splits "owner/repo" → ("owner", "repo").

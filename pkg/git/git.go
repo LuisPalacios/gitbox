@@ -299,12 +299,21 @@ func Pull(repoPath string) error {
 }
 
 // PushMirror runs `git push --mirror <url>` from repoPath, pushing every
-// ref and tag to the target URL. Used by the move flow to replicate a
-// repository onto its new home before the local origin is rewired.
+// ref and tag to the target URL. extraConfig, if non-nil, is passed as
+// `-c <key=value>` args before the push subcommand — used to inject
+// `credential.helper=` so an embedded user:PAT in the URL isn't
+// overridden by a GCM-managed credential for the same host.
+//
 // Output is captured so the caller can surface provider-side errors
 // (e.g. "remote: Repository is empty" vs. permission issues).
-func PushMirror(repoPath, url string) (string, error) {
-	cmd := exec.Command(GitBin(), "push", "--mirror", url)
+func PushMirror(repoPath, url string, extraConfig []string) (string, error) {
+	args := make([]string, 0, len(extraConfig)*2+3)
+	for _, kv := range extraConfig {
+		args = append(args, "-c", kv)
+	}
+	args = append(args, "push", "--mirror", url)
+
+	cmd := exec.Command(GitBin(), args...)
 	cmd.Dir = repoPath
 	cmd.Env = nonInteractiveEnv()
 	HideWindow(cmd)
