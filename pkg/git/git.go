@@ -298,6 +298,39 @@ func Pull(repoPath string) error {
 	return run(repoPath, "pull", "--ff-only")
 }
 
+// PushMirror runs `git push --mirror <url>` from repoPath, pushing every
+// ref and tag to the target URL. extraConfig, if non-nil, is passed as
+// `-c <key=value>` args before the push subcommand — used to inject
+// `credential.helper=` so an embedded user:PAT in the URL isn't
+// overridden by a GCM-managed credential for the same host.
+//
+// Output is captured so the caller can surface provider-side errors
+// (e.g. "remote: Repository is empty" vs. permission issues).
+func PushMirror(repoPath, url string, extraConfig []string) (string, error) {
+	args := make([]string, 0, len(extraConfig)*2+3)
+	for _, kv := range extraConfig {
+		args = append(args, "-c", kv)
+	}
+	args = append(args, "push", "--mirror", url)
+
+	cmd := exec.Command(GitBin(), args...)
+	cmd.Dir = repoPath
+	cmd.Env = nonInteractiveEnv()
+	HideWindow(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out), fmt.Errorf("git push --mirror: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return string(out), nil
+}
+
+// FetchTagsAndPrune runs `git fetch --prune --tags` in repoPath. Used
+// as the first move-flow step so the upcoming push --mirror carries
+// every ref (tags included) and stale remote branches are dropped.
+func FetchTagsAndPrune(repoPath string) error {
+	return run(repoPath, "fetch", "--prune", "--tags")
+}
+
 // PullQuiet runs git pull --ff-only, capturing output instead of forwarding it.
 func PullQuiet(repoPath string) error {
 	_, err := output(repoPath, "pull", "--ff-only")
@@ -824,16 +857,25 @@ func nonInteractiveEnv() []string {
 	)
 }
 
-// run executes a git command in the given directory.
+// run executes a git command in the given directory. Output is
+// captured (not forwarded to os.Stdout/os.Stderr) so the helper is
+// safe to call from a GUI subsystem process on Windows — setting
+// Stdout = os.Stdout there fails CreateProcess with "The request is
+// not supported." because the GUI has no valid stdio handles.
+// Captured stderr is appended to the error so operators still see the
+// reason a git command failed.
 func run(dir string, args ...string) error {
 	cmd := exec.Command(GitBin(), args...)
 	cmd.Dir = dir
 	cmd.Env = nonInteractiveEnv()
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 	HideWindow(cmd)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		trimmed := strings.TrimSpace(string(out))
+		if trimmed == "" {
+			return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+		}
+		return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, trimmed)
 	}
 	return nil
 }

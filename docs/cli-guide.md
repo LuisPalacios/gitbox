@@ -267,6 +267,10 @@ gitbox adopt --all        # Adopt all matched orphans without prompting
 
 For each orphan with a matching account, `adopt` adds it to the config, sets up credential isolation, configures identity, and rewrites the remote URL. If the repo isn't in the standard folder, I'm asked whether to relocate it.
 
+### Move a repository across accounts / providers
+
+The TUI's repo detail screen exposes an `M` shortcut that opens a **Move repository** flow — pick a destination account and owner, optionally toggle *Delete source repo* and *Delete local clone*, type the source repo key to confirm, then watch the phased progress (preflight → fetch → create destination → push --mirror → rewire origin → optional deletes → update config). The shortcut is inactive until the clone is clean and fully in sync with its upstream. Required token scopes per provider are listed in [Token scopes for destructive actions](credentials.md#token-scopes-for-destructive-actions). There is no dedicated `gitbox move` cobra command yet; everything happens through the TUI.
+
 ### Install a recommended global gitignore
 
 ```bash

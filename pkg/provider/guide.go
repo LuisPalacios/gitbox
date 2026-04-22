@@ -18,30 +18,41 @@ func TokenSetupGuide(providerName, baseURL, accountKey string) string {
 	case "github":
 		sb.WriteString(fmt.Sprintf("  1. Visit: %s/settings/tokens/new\n", base))
 		sb.WriteString(fmt.Sprintf("  2. Name:  gitbox-%s\n", accountKey))
-		sb.WriteString("  3. Scopes:\n")
-		sb.WriteString("     - repo (full control of private repositories)\n")
-		sb.WriteString("     - read:user\n")
+		sb.WriteString("  3. Scopes, grouped by what you plan to do:\n")
+		sb.WriteString("     - repo            — discovery, clone/fetch, create repos (required)\n")
+		sb.WriteString("     - read:org        — list your orgs for dest-owner pickers\n")
+		sb.WriteString("     - delete_repo     — needed ONLY if you want gitbox to delete\n")
+		sb.WriteString("                         repos (move with \"delete source\" opt-in).\n")
+		sb.WriteString("                         Sensitive — add it only if you need it.\n")
+		sb.WriteString("     - workflow        — optional, if you want gitbox to touch GH Actions\n")
 		sb.WriteString("  4. Generate and copy the token\n")
 
 	case "gitlab":
 		sb.WriteString(fmt.Sprintf("  1. Visit: %s/-/user_settings/personal_access_tokens\n", base))
 		sb.WriteString(fmt.Sprintf("  2. Name:  gitbox-%s\n", accountKey))
-		sb.WriteString("  3. Scopes: api (full API access, read+write repos)\n")
+		sb.WriteString("  3. Scopes — GitLab uses one coarse scope for everything:\n")
+		sb.WriteString("     - api             — discovery, clone/fetch, create, delete,\n")
+		sb.WriteString("                         and mirror remotes. Required.\n")
 		sb.WriteString("  4. Create and copy the token\n")
 
 	case "gitea", "forgejo":
 		sb.WriteString(fmt.Sprintf("  1. Visit: %s/user/settings/applications\n", base))
 		sb.WriteString(fmt.Sprintf("  2. Name:  gitbox-%s\n", accountKey))
-		sb.WriteString("  3. Permissions:\n")
-		sb.WriteString("     - repository: Read and Write\n")
-		sb.WriteString("     - user: Read\n")
-		sb.WriteString("     - organization: Read\n")
+		sb.WriteString("  3. Permissions, grouped by use case:\n")
+		sb.WriteString("     - repository:     Read+Write — discovery, clone/fetch, create,\n")
+		sb.WriteString("                       delete, mirror. Required.\n")
+		sb.WriteString("     - user:           Read — resolves your username / org list.\n")
+		sb.WriteString("     - organization:   Read — for dest-owner pickers targeting orgs.\n")
 		sb.WriteString("  4. Generate and copy the token\n")
 
 	case "bitbucket":
 		sb.WriteString(fmt.Sprintf("  1. Visit: %s/account/settings/app-passwords/new\n", base))
 		sb.WriteString(fmt.Sprintf("  2. Label: gitbox-%s\n", accountKey))
-		sb.WriteString("  3. Permissions: Repositories — Read, Write\n")
+		sb.WriteString("  3. Permissions:\n")
+		sb.WriteString("     - Repositories: Read, Write   — discovery, clone/fetch\n")
+		sb.WriteString("     - Repositories: Admin         — required to create repos\n")
+		sb.WriteString("     - Repositories: Delete        — required only for \"delete source\"\n")
+		sb.WriteString("                                    in a move. Sensitive.\n")
 		sb.WriteString("  4. Create and copy the app password\n")
 
 	default:

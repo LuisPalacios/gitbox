@@ -10,7 +10,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/git"
-	"github.com/LuisPalacios/gitbox/pkg/identity"
+	"github.com/LuisPalacios/gitbox/pkg/heal"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -140,13 +140,13 @@ func startCloneCmd(cfg *config.Config, sourceKey, repoKey string) (<-chan git.Cl
 		close(progressCh)
 
 		if err == nil {
-			if credType == "token" {
-				_ = git.SetRemoteURL(dest, "origin", plainURL)
-			}
-			_ = credential.ConfigureRepoCredential(dest, acct, accountKey, credType, cfg.Global)
-			wantName, wantEmail := identity.ResolveIdentity(repo, acct)
-			if _, _, idErr := identity.EnsureRepoIdentity(dest, wantName, wantEmail); idErr != nil {
-				err = fmt.Errorf("clone ok but identity failed: %w", idErr)
+			// heal.Repo covers identity + origin-URL sanitization +
+			// credential-helper config in one call. Warnings are
+			// treated as clone-failure signals so the TUI surfaces
+			// the problem instead of silently succeeding.
+			report := heal.Repo(cfg, sourceKey, repoKey)
+			if len(report.Warnings) > 0 {
+				err = fmt.Errorf("clone ok but heal reported: %s", strings.Join(report.Warnings, "; "))
 			}
 		}
 		doneCh <- err
@@ -171,15 +171,20 @@ func listenCloneCmd(progressCh <-chan git.CloneProgress, doneCh <-chan error, so
 	}
 }
 
-func pullRepoCmd(path, sourceKey, repoKey string) tea.Cmd {
+func pullRepoCmd(cfg *config.Config, path, sourceKey, repoKey string) tea.Cmd {
 	return func() tea.Msg {
+		// Pre-pull self-heal: silently reconcile .git/config with spec
+		// so a hand-edited repo still authenticates correctly. Warnings
+		// are ignored — the pull error (if any) is more actionable.
+		_ = heal.Repo(cfg, sourceKey, repoKey)
 		err := git.Pull(path)
 		return pullDoneMsg{sourceKey: sourceKey, repoKey: repoKey, err: err}
 	}
 }
 
-func fetchRepoCmd(path, sourceKey, repoKey string) tea.Cmd {
+func fetchRepoCmd(cfg *config.Config, path, sourceKey, repoKey string) tea.Cmd {
 	return func() tea.Msg {
+		_ = heal.Repo(cfg, sourceKey, repoKey)
 		err := git.Fetch(path)
 		return fetchDoneMsg{sourceKey: sourceKey, repoKey: repoKey, err: err}
 	}
@@ -296,6 +301,28 @@ func (m reposModel) Update(msg tea.Msg) (reposModel, tea.Cmd) {
 			m.errMsg = ""
 			return m, textinput.Blink
 
+		case msg.String() == "M":
+			// Move requires a cloned, clean, in-sync repo. Guard
+			// mirrors the GUI kebab's disabled-tooltip copy.
+			if !git.IsRepo(m.repoPath()) {
+				m.errMsg = "Clone the repo first (c) before moving."
+				m.resultMsg = ""
+				return m, nil
+			}
+			if m.repoStatus.State != status.Clean || m.ahead > 0 || m.behind > 0 {
+				m.errMsg = "Move requires a clean, in-sync clone. Commit/push/fetch first."
+				m.resultMsg = ""
+				return m, nil
+			}
+			return m, func() tea.Msg {
+				return switchScreenMsg{
+					screen:    screenMoveRepo,
+					sourceKey: m.sourceKey,
+					repoKey:   m.repoKey,
+					repoPath:  m.repoPath(),
+				}
+			}
+
 		case msg.String() == "c":
 			if m.repoStatus.State == status.NotCloned {
 				m.busy = true
@@ -317,7 +344,7 @@ func (m reposModel) Update(msg tea.Msg) (reposModel, tea.Cmd) {
 				m.busyLabel = "Pulling..."
 				m.resultMsg = ""
 				m.errMsg = ""
-				return m, pullRepoCmd(path, m.sourceKey, m.repoKey)
+				return m, pullRepoCmd(m.cfg, path, m.sourceKey, m.repoKey)
 			}
 
 		case msg.String() == "f":
@@ -327,7 +354,7 @@ func (m reposModel) Update(msg tea.Msg) (reposModel, tea.Cmd) {
 				m.busyLabel = "Fetching..."
 				m.resultMsg = ""
 				m.errMsg = ""
-				return m, fetchRepoCmd(path, m.sourceKey, m.repoKey)
+				return m, fetchRepoCmd(m.cfg, path, m.sourceKey, m.repoKey)
 			}
 
 		case msg.String() == "b":
@@ -559,7 +586,11 @@ func (m reposModel) View() string {
 			actions = append(actions, "o open in…")
 		}
 	}
-	actions = append(actions, "b open browser", "D remove clone", "ESC back")
+	actions = append(actions, "b open browser")
+	if m.repoStatus.State == status.Clean && m.ahead == 0 && m.behind == 0 {
+		actions = append(actions, "M move")
+	}
+	actions = append(actions, "D remove clone", "ESC back")
 	b.WriteString(renderHints(m.theme, actions...))
 
 	if m.launcher.active {

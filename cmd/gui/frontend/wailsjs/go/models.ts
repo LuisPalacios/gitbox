@@ -1010,6 +1010,129 @@ export namespace main {
 	    }
 	}
 	
+	export class MoveOwnerOption {
+	    account: string;
+	    provider: string;
+	    owner: string;
+	    isOrg: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new MoveOwnerOption(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.account = source["account"];
+	        this.provider = source["provider"];
+	        this.owner = source["owner"];
+	        this.isOrg = source["isOrg"];
+	    }
+	}
+	export class MovePreflightDTO {
+	    ok: boolean;
+	    error?: string;
+	    sourceRepoPath: string;
+	    destCloneUrl: string;
+	    sourceDeletable: boolean;
+	    warnings?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new MovePreflightDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ok = source["ok"];
+	        this.error = source["error"];
+	        this.sourceRepoPath = source["sourceRepoPath"];
+	        this.destCloneUrl = source["destCloneUrl"];
+	        this.sourceDeletable = source["sourceDeletable"];
+	        this.warnings = source["warnings"];
+	    }
+	}
+	export class MoveReadinessSideDTO {
+	    accountKey: string;
+	    provider: string;
+	    credentialType: string;
+	    status: string;
+	    message: string;
+	    requiredScopes?: string[];
+	    scopesHint: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MoveReadinessSideDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.accountKey = source["accountKey"];
+	        this.provider = source["provider"];
+	        this.credentialType = source["credentialType"];
+	        this.status = source["status"];
+	        this.message = source["message"];
+	        this.requiredScopes = source["requiredScopes"];
+	        this.scopesHint = source["scopesHint"];
+	    }
+	}
+	export class MoveReadinessDTO {
+	    source: MoveReadinessSideDTO;
+	    dest: MoveReadinessSideDTO;
+	
+	    static createFrom(source: any = {}) {
+	        return new MoveReadinessDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = this.convertValues(source["source"], MoveReadinessSideDTO);
+	        this.dest = this.convertValues(source["dest"], MoveReadinessSideDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class MoveRequestDTO {
+	    sourceSourceKey: string;
+	    sourceRepoKey: string;
+	    destAccountKey: string;
+	    destOwner: string;
+	    destRepoName: string;
+	    destPrivate: boolean;
+	    deleteSourceRemote: boolean;
+	    deleteLocalClone: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new MoveRequestDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceSourceKey = source["sourceSourceKey"];
+	        this.sourceRepoKey = source["sourceRepoKey"];
+	        this.destAccountKey = source["destAccountKey"];
+	        this.destOwner = source["destOwner"];
+	        this.destRepoName = source["destRepoName"];
+	        this.destPrivate = source["destPrivate"];
+	        this.deleteSourceRemote = source["deleteSourceRemote"];
+	        this.deleteLocalClone = source["deleteLocalClone"];
+	    }
+	}
 	export class OrphanRepoDTO {
 	    path: string;
 	    relPath: string;

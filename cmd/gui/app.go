@@ -27,8 +27,10 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/gitignore"
 	"github.com/LuisPalacios/gitbox/pkg/harness"
+	"github.com/LuisPalacios/gitbox/pkg/heal"
 	"github.com/LuisPalacios/gitbox/pkg/identity"
 	"github.com/LuisPalacios/gitbox/pkg/mirror"
+	"github.com/LuisPalacios/gitbox/pkg/move"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 	wailsrt "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -2654,18 +2656,18 @@ func (a *App) CloneRepo(sourceKey, repoKey string) {
 		if err != nil {
 			result["error"] = err.Error()
 		} else {
-			// For token clones, sanitize the remote URL to remove the embedded token.
-			if credType == "token" {
-				_ = git.SetRemoteURL(dest, "origin", plainURL)
+			// heal.Repo sets user.name/user.email, normalizes the origin
+			// URL (stripping any embedded token from the clone URL), and
+			// configures per-repo credential isolation. Warnings are
+			// returned instead of panicking so a partial heal (e.g. token
+			// file missing) still reports clone success.
+			report := heal.Repo(a.cfg, sourceKey, repoKey)
+			if len(report.Warnings) > 0 {
+				result["warnings"] = report.Warnings
 			}
-
-			// Set per-repo identity (user.name, user.email).
-			wantName, wantEmail := identity.ResolveIdentity(repo, acct)
-			identity.EnsureRepoIdentity(dest, wantName, wantEmail)
-
-			// Configure per-repo credential isolation (cancels global helper,
-			// sets type-specific helper: store for token, manager for GCM, empty for SSH).
-			_ = credential.ConfigureRepoCredential(dest, acct, accountKey, credType, a.cfg.Global)
+			if len(report.Fixed) > 0 {
+				result["fixes"] = report.Fixed
+			}
 		}
 		wailsrt.EventsEmit(a.ctx, "clone:done", result)
 	}()
@@ -2700,6 +2702,11 @@ func (a *App) PullRepo(sourceKey, repoKey string) {
 		a.mu.Unlock()
 
 		path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
+		// Pre-pull self-heal: if .git/config drifted from spec (e.g. a
+		// manual edit, an older gitbox that didn't run the heal), fix
+		// it before the network op so auth uses the right credentials.
+		// Failures are non-fatal — the pull itself runs either way.
+		_ = heal.Repo(a.cfg, sourceKey, repoKey)
 		err := git.PullQuiet(path)
 
 		result := map[string]interface{}{"source": sourceKey, "repo": repoKey}
@@ -2821,8 +2828,12 @@ func (a *App) FetchRepo(sourceKey, repoKey string) {
 		sourceFolder := src.EffectiveFolder(sourceKey)
 		a.mu.Unlock()
 
-		acct := a.cfg.Accounts[src.Account]
 		path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
+		// Pre-fetch self-heal: ensure .git/config matches spec before
+		// the network op runs, so credentials, identity, and origin
+		// URL are right. Drift is silently fixed; warnings are ignored
+		// here because the fetch error (if any) is more actionable.
+		_ = heal.Repo(a.cfg, sourceKey, repoKey)
 		_, err := git.FetchCaptured(path)
 
 		result := map[string]interface{}{"source": sourceKey, "repo": repoKey}
@@ -2835,10 +2846,8 @@ func (a *App) FetchRepo(sourceKey, repoKey string) {
 		} else {
 			// Clear any previous "upstream gone" mark — the fact that fetch
 			// succeeded is the most direct evidence we have that the repo
-			// is reachable again. Verify per-repo identity after fetch.
+			// is reachable again.
 			a.markUpstreamGone(sourceKey, repoKey, false)
-			wantName, wantEmail := identity.ResolveIdentity(repo, acct)
-			identity.EnsureRepoIdentity(path, wantName, wantEmail)
 		}
 		wailsrt.EventsEmit(a.ctx, "fetch:done", result)
 
@@ -2854,19 +2863,16 @@ func (a *App) FetchAllRepos() {
 		globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
 		type repoRef struct {
 			sourceKey, repoKey, path string
-			wantName, wantEmail      string
 		}
 		var repos []repoRef
 		for _, srcKey := range a.cfg.OrderedSourceKeys() {
 			src := a.cfg.Sources[srcKey]
-			acct := a.cfg.Accounts[src.Account]
 			sourceFolder := src.EffectiveFolder(srcKey)
 			for _, rKey := range src.OrderedRepoKeys() {
 				repo := src.Repos[rKey]
 				p := status.ResolveRepoPath(globalFolder, sourceFolder, rKey, repo)
 				if git.IsRepo(p) {
-					wn, we := identity.ResolveIdentity(repo, acct)
-					repos = append(repos, repoRef{srcKey, rKey, p, wn, we})
+					repos = append(repos, repoRef{srcKey, rKey, p})
 				}
 			}
 		}
@@ -2876,12 +2882,15 @@ func (a *App) FetchAllRepos() {
 			wailsrt.EventsEmit(a.ctx, "fetch:start", map[string]string{
 				"source": r.sourceKey, "repo": r.repoKey,
 			})
+			// Periodic self-heal: fix .git/config drift (identity,
+			// origin URL, credential helpers) before each fetch so
+			// repos stay within spec between sessions.
+			_ = heal.Repo(a.cfg, r.sourceKey, r.repoKey)
 			_, err := git.FetchCaptured(r.path)
 			payload := map[string]interface{}{
 				"source": r.sourceKey, "repo": r.repoKey,
 			}
 			if err == nil {
-				identity.EnsureRepoIdentity(r.path, r.wantName, r.wantEmail)
 				a.markUpstreamGone(r.sourceKey, r.repoKey, false)
 			} else {
 				// Previously the error was swallowed here and the UI never
@@ -4548,4 +4557,361 @@ func gatherRequiredTools(cfg *config.Config) map[string]string {
 		}
 	}
 	return required
+}
+
+// ── Move repository (issue #64) ────────────────────────────────────────────
+
+// MoveOwnerOption is a (account, owner) pair the user can move INTO.
+// Returned to the frontend so the destination picker can list every
+// valid target across every configured account.
+type MoveOwnerOption struct {
+	Account  string `json:"account"`
+	Provider string `json:"provider"` // github / gitlab / gitea / forgejo / bitbucket
+	Owner    string `json:"owner"`    // username or org slug
+	IsOrg    bool   `json:"isOrg"`
+}
+
+// MoveRequestDTO is the frontend → backend request shape for a move.
+// Mirrors pkg/move.Request but with JSON field tags.
+type MoveRequestDTO struct {
+	SourceSourceKey    string `json:"sourceSourceKey"`
+	SourceRepoKey      string `json:"sourceRepoKey"`
+	DestAccountKey     string `json:"destAccountKey"`
+	DestOwner          string `json:"destOwner"`
+	DestRepoName       string `json:"destRepoName"`
+	DestPrivate        bool   `json:"destPrivate"`
+	DeleteSourceRemote bool   `json:"deleteSourceRemote"`
+	DeleteLocalClone   bool   `json:"deleteLocalClone"`
+}
+
+// MovePreflightDTO is the read-only result of running just the
+// preflight step. Lets the frontend surface errors (e.g. dest exists,
+// source not clean) BEFORE the user types the repo name to confirm.
+type MovePreflightDTO struct {
+	OK              bool     `json:"ok"`
+	Error           string   `json:"error,omitempty"`
+	SourceRepoPath  string   `json:"sourceRepoPath"`
+	DestCloneURL    string   `json:"destCloneUrl"`
+	SourceDeletable bool     `json:"sourceDeletable"`
+	Warnings        []string `json:"warnings,omitempty"`
+}
+
+// MoveProgressEventDTO is emitted on the "move:progress" event bus per
+// phase transition. Consumed by the Svelte progress overlay.
+type MoveProgressEventDTO struct {
+	Phase   string `json:"phase"`
+	Message string `json:"message"`
+	Error   string `json:"error,omitempty"`
+}
+
+// MoveReadinessSideDTO reports the credential health of one side
+// (source or destination) of a proposed move, plus the scope names
+// the operation needs on that side. The frontend uses this in the
+// Move form to preview whether the move is likely to succeed and
+// to offer a shortcut to fix the credentials in-place.
+type MoveReadinessSideDTO struct {
+	AccountKey     string   `json:"accountKey"`
+	Provider       string   `json:"provider"`
+	CredentialType string   `json:"credentialType"` // "token" / "gcm" / "ssh"
+	Status         string   `json:"status"`         // credential.Status.String()
+	Message        string   `json:"message"`
+	RequiredScopes []string `json:"requiredScopes,omitempty"`
+	ScopesHint     string   `json:"scopesHint"`
+}
+
+// MoveReadinessDTO wraps both sides in a single payload so the
+// frontend only makes one call.
+type MoveReadinessDTO struct {
+	Source MoveReadinessSideDTO `json:"source"`
+	Dest   MoveReadinessSideDTO `json:"dest"`
+}
+
+// CheckMoveReadiness returns credential status + scope requirements
+// for both the source and destination of a pending move. Re-called
+// whenever the user changes the destination account or toggles the
+// "Delete source" opt-in, so the readiness panel stays live.
+func (a *App) CheckMoveReadiness(sourceSourceKey, destAccountKey string, deleteSource bool) MoveReadinessDTO {
+	a.mu.Lock()
+	cfg := a.cfg
+	src, srcOK := cfg.Sources[sourceSourceKey]
+	a.mu.Unlock()
+
+	out := MoveReadinessDTO{}
+	if !srcOK {
+		out.Source.Message = fmt.Sprintf("source %q not found", sourceSourceKey)
+		return out
+	}
+	sourceAccountKey := src.Account
+
+	sourceActions := []provider.ActionScope{provider.ActionListRepos}
+	if deleteSource {
+		sourceActions = append(sourceActions, provider.ActionDeleteRepo)
+	}
+	destActions := []provider.ActionScope{provider.ActionCreateRepo}
+
+	out.Source = a.moveReadinessSide(sourceAccountKey, sourceActions, "source")
+	if destAccountKey != "" {
+		out.Dest = a.moveReadinessSide(destAccountKey, destActions, "destination")
+	}
+	return out
+}
+
+// moveReadinessSide builds one side's readiness: credential status
+// from credential.Check plus a human-readable scope hint aggregated
+// across every action the move will perform on that side.
+func (a *App) moveReadinessSide(accountKey string, actions []provider.ActionScope, role string) MoveReadinessSideDTO {
+	dto := MoveReadinessSideDTO{AccountKey: accountKey}
+	a.mu.Lock()
+	acct, ok := a.cfg.Accounts[accountKey]
+	cfg := a.cfg
+	a.mu.Unlock()
+	if !ok {
+		dto.Message = fmt.Sprintf("%s account %q not found", role, accountKey)
+		dto.Status = "error"
+		return dto
+	}
+	dto.Provider = acct.Provider
+	dto.CredentialType = acct.DefaultCredentialType
+
+	result := credential.Check(acct, accountKey, cfg)
+	dto.Status = result.Overall.String()
+	dto.Message = result.PrimaryDetail
+
+	// Deduplicate scope names across actions so ["repo", "repo",
+	// "delete_repo"] renders as "repo, delete_repo".
+	seen := map[string]bool{}
+	var scopes []string
+	for _, act := range actions {
+		for _, s := range provider.ScopesForAction(acct.Provider, act) {
+			if !seen[s] {
+				seen[s] = true
+				scopes = append(scopes, s)
+			}
+		}
+	}
+	dto.RequiredScopes = scopes
+	if len(scopes) == 0 {
+		dto.ScopesHint = ""
+	} else if len(scopes) == 1 {
+		dto.ScopesHint = fmt.Sprintf("Needs %s scope on %s.", scopes[0], acct.Provider)
+	} else {
+		dto.ScopesHint = fmt.Sprintf("Needs scopes on %s: %s.", acct.Provider, strings.Join(scopes, ", "))
+	}
+	return dto
+}
+
+// MoveResultDTO is emitted on "move:done". Err is empty on fatal
+// success; Warnings may be non-empty for best-effort failures.
+// DestSourceKey + NewRepoKey identify where the config entry now
+// lives; the frontend uses them to auto-re-clone when the user
+// opted to delete the source local clone.
+type MoveResultDTO struct {
+	NewOrigin           string   `json:"newOrigin"`
+	DestRepoCreated     bool     `json:"destRepoCreated"`
+	SourceRemoteDeleted bool     `json:"sourceRemoteDeleted"`
+	LocalCloneDeleted   bool     `json:"localCloneDeleted"`
+	DestSourceKey       string   `json:"destSourceKey,omitempty"`
+	NewRepoKey          string   `json:"newRepoKey,omitempty"`
+	Warnings            []string `json:"warnings,omitempty"`
+	Error               string   `json:"error,omitempty"`
+}
+
+// ListMoveDestinationOwners returns every (account, owner) pair the
+// user could move a repo into. The source account is excluded — a
+// same-account move is a rename, handled by a different flow. Org
+// listing is best-effort per account; failures fall back to just the
+// account's personal username.
+func (a *App) ListMoveDestinationOwners(sourceKey string) []MoveOwnerOption {
+	a.mu.Lock()
+	cfg := a.cfg
+	a.mu.Unlock()
+	if cfg == nil {
+		return []MoveOwnerOption{}
+	}
+	src, ok := cfg.Sources[sourceKey]
+	if !ok {
+		return []MoveOwnerOption{}
+	}
+	sourceAccount := src.Account
+
+	result := []MoveOwnerOption{}
+	for accountKey, acct := range cfg.Accounts {
+		if accountKey == sourceAccount {
+			continue
+		}
+		// Personal owner always available.
+		result = append(result, MoveOwnerOption{
+			Account:  accountKey,
+			Provider: acct.Provider,
+			Owner:    acct.Username,
+			IsOrg:    false,
+		})
+		// Orgs are best-effort; skip on any resolution failure.
+		token, _, err := credential.ResolveAPIToken(acct, accountKey)
+		if err != nil {
+			continue
+		}
+		prov, err := provider.ByName(acct.Provider)
+		if err != nil {
+			continue
+		}
+		ol, ok := prov.(provider.OrgLister)
+		if !ok {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		orgs, err := ol.ListUserOrgs(ctx, acct.URL, token, acct.Username)
+		cancel()
+		if err != nil {
+			continue
+		}
+		for _, org := range orgs {
+			result = append(result, MoveOwnerOption{
+				Account:  accountKey,
+				Provider: acct.Provider,
+				Owner:    org,
+				IsOrg:    true,
+			})
+		}
+	}
+	// Stable sort for deterministic UI order.
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Account != result[j].Account {
+			return result[i].Account < result[j].Account
+		}
+		return result[i].Owner < result[j].Owner
+	})
+	return result
+}
+
+// PreflightMove runs the move preflight and returns the result without
+// executing anything. Callers should invoke this before showing the
+// red type-to-confirm modal.
+func (a *App) PreflightMove(req MoveRequestDTO) MovePreflightDTO {
+	a.mu.Lock()
+	cfg := a.cfg
+	a.mu.Unlock()
+	out := MovePreflightDTO{}
+	src, ok := cfg.Sources[req.SourceSourceKey]
+	if !ok {
+		out.Error = fmt.Sprintf("source %q not found", req.SourceSourceKey)
+		return out
+	}
+	repo, ok := src.Repos[req.SourceRepoKey]
+	if !ok {
+		out.Error = fmt.Sprintf("repo %q not found in source %q", req.SourceRepoKey, req.SourceSourceKey)
+		return out
+	}
+	globalFolder := config.ExpandTilde(cfg.Global.Folder)
+	sourceFolder := src.EffectiveFolder(req.SourceSourceKey)
+	repoPath := status.ResolveRepoPath(globalFolder, sourceFolder, req.SourceRepoKey, repo)
+	out.SourceRepoPath = repoPath
+
+	moveReq := move.Request{
+		SourceAccountKey:   src.Account,
+		SourceSourceKey:    req.SourceSourceKey,
+		SourceRepoKey:      req.SourceRepoKey,
+		SourceRepoPath:     repoPath,
+		DestAccountKey:     req.DestAccountKey,
+		DestOwner:          req.DestOwner,
+		DestRepoName:       req.DestRepoName,
+		DestPrivate:        req.DestPrivate,
+		DeleteSourceRemote: req.DeleteSourceRemote,
+		DeleteLocalClone:   req.DeleteLocalClone,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if _, err := move.Preflight(ctx, cfg, moveReq); err != nil {
+		out.Error = err.Error()
+		return out
+	}
+
+	// Extra info: destination clone URL + whether source supports delete.
+	destAcct := cfg.Accounts[req.DestAccountKey]
+	base := strings.TrimRight(destAcct.URL, "/")
+	out.DestCloneURL = fmt.Sprintf("%s/%s/%s.git", base, req.DestOwner, req.DestRepoName)
+	if srcAcct, ok := cfg.Accounts[src.Account]; ok {
+		if srcProv, err := provider.ByName(srcAcct.Provider); err == nil {
+			if _, ok := srcProv.(provider.RepoDeleter); ok {
+				out.SourceDeletable = true
+			}
+		}
+	}
+	out.OK = true
+	return out
+}
+
+// MoveRepo runs the full move flow asynchronously. Progress is emitted
+// on the "move:progress" event; the final result lands on "move:done".
+// The frontend is expected to have already surfaced PreflightMove
+// errors — a failing preflight here re-emits on "move:done" so the
+// progress overlay can unwind cleanly.
+func (a *App) MoveRepo(req MoveRequestDTO) {
+	a.mu.Lock()
+	cfg := a.cfg
+	cfgPath := a.cfgPath
+	src, ok := cfg.Sources[req.SourceSourceKey]
+	a.mu.Unlock()
+	if !ok {
+		wailsrt.EventsEmit(a.ctx, "move:done", MoveResultDTO{Error: fmt.Sprintf("source %q not found", req.SourceSourceKey)})
+		return
+	}
+	repo := src.Repos[req.SourceRepoKey]
+	globalFolder := config.ExpandTilde(cfg.Global.Folder)
+	sourceFolder := src.EffectiveFolder(req.SourceSourceKey)
+	repoPath := status.ResolveRepoPath(globalFolder, sourceFolder, req.SourceRepoKey, repo)
+
+	moveReq := move.Request{
+		SourceAccountKey:   src.Account,
+		SourceSourceKey:    req.SourceSourceKey,
+		SourceRepoKey:      req.SourceRepoKey,
+		SourceRepoPath:     repoPath,
+		DestAccountKey:     req.DestAccountKey,
+		DestOwner:          req.DestOwner,
+		DestRepoName:       req.DestRepoName,
+		DestPrivate:        req.DestPrivate,
+		DeleteSourceRemote: req.DeleteSourceRemote,
+		DeleteLocalClone:   req.DeleteLocalClone,
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		result := move.Move(ctx, cfg, cfgPath, moveReq, func(p move.Progress) {
+			event := MoveProgressEventDTO{Phase: string(p.Phase), Message: p.Message}
+			if p.Err != nil {
+				event.Error = p.Err.Error()
+			}
+			wailsrt.EventsEmit(a.ctx, "move:progress", event)
+		})
+		dto := MoveResultDTO{
+			NewOrigin:           result.NewOrigin,
+			DestRepoCreated:     result.DestRepoCreated,
+			SourceRemoteDeleted: result.SourceRemoteDeleted,
+			LocalCloneDeleted:   result.LocalCloneDeleted,
+			DestSourceKey:       result.DestSourceKey,
+			NewRepoKey:          result.NewRepoKey,
+			Warnings:            result.Warnings,
+		}
+		if result.Err != nil {
+			dto.Error = result.Err.Error()
+		}
+		// Re-save config here as a belt-and-suspenders — the move
+		// package saved when updating the entry, but re-persist so a
+		// GUI-side mutation scheduled between now and the refresh
+		// doesn't lose state.
+		_ = a.saveConfig()
+		wailsrt.EventsEmit(a.ctx, "move:done", dto)
+
+		// Auto-clone the destination when the user opted to delete
+		// the local source. The repo now lives only on the
+		// destination provider + in gitbox config as "not cloned";
+		// start a clone into the destination account's folder so
+		// "move" feels like a relocation, not a removal. Runs after
+		// the move:done event so the UI closes the progress modal
+		// and the frontend can watch the new clone via its normal
+		// clone:progress / clone:done channel.
+		if result.Err == nil && result.LocalCloneDeleted && result.DestSourceKey != "" && result.NewRepoKey != "" {
+			a.CloneRepo(result.DestSourceKey, result.NewRepoKey)
+		}
+	}()
 }

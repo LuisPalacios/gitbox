@@ -37,6 +37,8 @@ export function CheckGlobalIdentity():Promise<identity.GlobalIdentityStatus>;
 
 export function CheckMirrorCredentials(arg1:string):Promise<main.MirrorCredentialCheck>;
 
+export function CheckMoveReadiness(arg1:string,arg2:string,arg3:boolean):Promise<main.MoveReadinessDTO>;
+
 export function CloneRepo(arg1:string,arg2:string):Promise<void>;
 
 export function ConfirmSweep(arg1:string,arg2:string):Promise<main.SweepDeleteDTO>;
@@ -141,9 +143,13 @@ export function ListAccountOrgs(arg1:string):Promise<Array<string>>;
 
 export function ListConfigBackups():Promise<Array<main.ConfigBackupInfo>>;
 
+export function ListMoveDestinationOwners(arg1:string):Promise<Array<main.MoveOwnerOption>>;
+
 export function ListRemoteRepos(arg1:string):Promise<Array<main.DiscoverResult>>;
 
 export function ListWorkspaces():Promise<main.WorkspaceListResult>;
+
+export function MoveRepo(arg1:main.MoveRequestDTO):Promise<void>;
 
 export function OpenAccountFolder(arg1:string):Promise<void>;
 
@@ -170,6 +176,8 @@ export function OpenInTerminal(arg1:string,arg2:string,arg3:Array<string>):Promi
 export function OpenWorkspace(arg1:string):Promise<void>;
 
 export function PickFolder(arg1:string):Promise<string>;
+
+export function PreflightMove(arg1:main.MoveRequestDTO):Promise<main.MovePreflightDTO>;
 
 export function PreviewSweep(arg1:string,arg2:string):Promise<main.SweepPreviewDTO>;
 

@@ -30,6 +30,7 @@ const (
 	screenOrphans
 	screenWorkspaceAdd
 	screenGitignore
+	screenMoveRepo
 )
 
 // --- Navigation messages ---
@@ -44,6 +45,10 @@ type switchScreenMsg struct {
 	// workspaceMembers seeds the workspace add flow with pre-selected
 	// members (each entry is "sourceKey/repoKey"). Empty for a blank form.
 	workspaceMembers []string
+	// repoPath is the resolved local path of the source clone. Populated
+	// when opening the move-repo screen so the target model doesn't need
+	// to recompute path resolution.
+	repoPath string
 }
 
 // --- Config messages ---
@@ -266,6 +271,7 @@ type model struct {
 	orphans      orphansModel
 	workspaceAdd workspaceAddModel
 	gitignore    gitignoreModel
+	moveRepo     moveRepoModel
 
 	// gitignoreNeedsAction mirrors the latest async global-gitignore check
 	// so the dashboard footer can render the urgent "G gitignore!" prefix
@@ -440,6 +446,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.workspaceAdd, cmd = m.workspaceAdd.Update(msg)
 	case screenGitignore:
 		m.gitignore, cmd = m.gitignore.Update(msg)
+	case screenMoveRepo:
+		m.moveRepo, cmd = m.moveRepo.Update(msg)
 	}
 	return m, cmd
 }
@@ -519,6 +527,11 @@ func (m model) switchTo(msg switchScreenMsg) (model, tea.Cmd) {
 	case screenGitignore:
 		m.gitignore = newGitignoreModel(m.theme, m.width, m.height)
 		cmd = m.gitignore.Init()
+	case screenMoveRepo:
+		src := m.cfg.Sources[msg.sourceKey]
+		accountKey := src.Account
+		m.moveRepo = newMoveRepoModel(m.cfg, m.cfgPath, m.theme, m.width, m.height, accountKey, msg.sourceKey, msg.repoKey, msg.repoPath)
+		cmd = m.moveRepo.Init()
 	}
 	return m, cmd
 }
@@ -557,6 +570,8 @@ func (m model) View() string {
 		return m.workspaceAdd.View()
 	case screenGitignore:
 		return m.gitignore.View()
+	case screenMoveRepo:
+		return m.moveRepo.View()
 	default:
 		return "Unknown screen"
 	}

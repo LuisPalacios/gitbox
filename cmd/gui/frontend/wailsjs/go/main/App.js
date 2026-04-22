@@ -66,6 +66,10 @@ export function CheckMirrorCredentials(arg1) {
   return window['go']['main']['App']['CheckMirrorCredentials'](arg1);
 }
 
+export function CheckMoveReadiness(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CheckMoveReadiness'](arg1, arg2, arg3);
+}
+
 export function CloneRepo(arg1, arg2) {
   return window['go']['main']['App']['CloneRepo'](arg1, arg2);
 }
@@ -274,12 +278,20 @@ export function ListConfigBackups() {
   return window['go']['main']['App']['ListConfigBackups']();
 }
 
+export function ListMoveDestinationOwners(arg1) {
+  return window['go']['main']['App']['ListMoveDestinationOwners'](arg1);
+}
+
 export function ListRemoteRepos(arg1) {
   return window['go']['main']['App']['ListRemoteRepos'](arg1);
 }
 
 export function ListWorkspaces() {
   return window['go']['main']['App']['ListWorkspaces']();
+}
+
+export function MoveRepo(arg1) {
+  return window['go']['main']['App']['MoveRepo'](arg1);
 }
 
 export function OpenAccountFolder(arg1) {
@@ -332,6 +344,10 @@ export function OpenWorkspace(arg1) {
 
 export function PickFolder(arg1) {
   return window['go']['main']['App']['PickFolder'](arg1);
+}
+
+export function PreflightMove(arg1) {
+  return window['go']['main']['App']['PreflightMove'](arg1);
 }
 
 export function PreviewSweep(arg1, arg2) {

@@ -33,6 +33,13 @@
   export let onOpenTerminal: (terminal: TerminalInfo) => void;
   export let onOpenAIHarness: (harness: AIHarnessInfo) => void;
   export let onSweep: (() => void) | null = null;
+  // onMove is the "Move repository…" action (issue #64). Shown only on
+  // the repo kebab. moveEnabled gates the click; when false the entry is
+  // rendered disabled with moveDisabledReason as the tooltip so users
+  // learn WHY the action isn't available.
+  export let onMove: (() => void) | null = null;
+  export let moveEnabled: boolean = true;
+  export let moveDisabledReason: string = '';
 
   type Sub = 'terminals' | 'editors' | 'ai' | 'workspaces' | null;
   let openSubmenu: Sub = null;
@@ -181,6 +188,7 @@
   $: hasDefaultsSection = showTerminalDefault || showEditorDefault || showHarnessDefault;
   $: hasSubsSection = showTerminalsSub || showEditorsSub || showHarnessSub;
   $: hasSweepSection = kind === 'repo' && !!onSweep;
+  $: hasMoveSection = kind === 'repo' && !!onMove;
 </script>
 
 <div class="action-dropdown launcher-menu" bind:this={rootEl}>
@@ -271,6 +279,19 @@
       <span class="lm-icon">&#129529;</span> Sweep branches
     </button>
   {/if}
+
+  {#if hasMoveSection}
+    <hr class="lm-sep" />
+    {#if moveEnabled}
+      <button class="action-item" on:click|stopPropagation={onMove} title="Move this repo to another account or provider">
+        <span class="lm-icon">&#8644;</span> Move repository…
+      </button>
+    {:else}
+      <button class="action-item lm-disabled" disabled title={moveDisabledReason || 'Move requires a clean, in-sync clone'}>
+        <span class="lm-icon">&#8644;</span> Move repository…
+      </button>
+    {/if}
+  {/if}
 </div>
 
 <style>
@@ -354,6 +375,14 @@
   .lm-active {
     background: var(--bg-hover);
     color: var(--text-primary);
+  }
+
+  .lm-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .lm-disabled:hover {
+    background: transparent;
   }
 
   .lm-sub-container {
