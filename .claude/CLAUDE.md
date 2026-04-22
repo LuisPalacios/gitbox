@@ -350,11 +350,12 @@ The developer workstation can be any OS. Remote machines are available via SSH f
 
 Connection details are in `.env` (gitignored). Copy `docs/.env.example` to `.env` and fill in your SSH hosts. See `docs/multiplatform.md` for the full setup guide.
 
-| Platform | Env var | Arch | GOOS/GOARCH |
-| --- | --- | --- | --- |
-| Windows | `SSH_WIN_HOST` | amd64 | `windows/amd64` |
-| macOS | `SSH_MAC_HOST` | arm64 | `darwin/arm64` |
-| Linux | `SSH_LINUX_HOST` | amd64 | `linux/amd64` |
+| Platform | Env var | Arch | GOOS/GOARCH | Script token |
+| --- | --- | --- | --- | --- |
+| Windows | `SSH_WIN_HOST` | amd64 | `windows/amd64` | `win` |
+| macOS Apple Silicon | `SSH_MAC_ARM_HOST` | arm64 | `darwin/arm64` | `mac-arm` (alias `mac`) |
+| macOS Intel | `SSH_MAC_INTEL_HOST` | amd64 | `darwin/amd64` | `mac-intel` |
+| Linux | `SSH_LINUX_HOST` | amd64 | `linux/amd64` | `linux` |
 
 ### Build-test-deploy cycle
 
@@ -375,8 +376,10 @@ The scripts auto-detect the local OS. Local commands run directly, remote comman
 `scripts/deploy.sh` only ships the **CLI** — `wails build` refuses to cross-compile the GUI because each target needs the host's native webview (WebView2 on Windows, WebKit on macOS, WebKitGTK on Linux). For GUI smoke tests on a remote platform, build the GUI **on that remote** over SSH. The recipe below uses `tar | ssh` (rsync isn't available in Git Bash on Windows by default).
 
 ```bash
-# Build GUI for mac from a Windows or Linux host
-host="luis@mac-host"       # from $SSH_MAC_HOST
+# Build GUI for mac from a Windows or Linux host.
+# For Apple Silicon: host=$SSH_MAC_ARM_HOST,   target=darwin/arm64
+# For Intel Mac:     host=$SSH_MAC_INTEL_HOST, target=darwin/amd64
+host="luis@mac-host"       # from $SSH_MAC_ARM_HOST or $SSH_MAC_INTEL_HOST
 target="darwin/arm64"      # or darwin/amd64 / darwin/universal
 
 # 1. Wipe and prepare the remote scratch dir.
@@ -393,7 +396,9 @@ tar \
   -cf - . | ssh "$host" 'cd ~/gitbox-remote-build && tar -xf -'
 
 # 3. Build on the remote. PATH needs Homebrew / $HOME/go/bin for non-login SSH shells.
-ssh "$host" 'export PATH=/opt/homebrew/bin:$HOME/go/bin:$PATH && \
+#    Include both Homebrew prefixes so the recipe works on arm64 (/opt/homebrew)
+#    and Intel (/usr/local) without tweaks.
+ssh "$host" 'export PATH=/opt/homebrew/bin:/usr/local/bin:$HOME/go/bin:$PATH && \
   cd ~/gitbox-remote-build && \
   cp assets/appicon.png cmd/gui/build/appicon.png 2>/dev/null; \
   cd cmd/gui && wails build -platform '"$target"
@@ -405,7 +410,7 @@ ssh "$host" 'rm -rf /tmp/GitboxApp.app && \
 
 Notes:
 
-- **Non-login SSH shells** don't source `.zshrc` / `.bash_profile`, so `go` and `wails` are usually off `$PATH`. Prefix every remote command with `export PATH=/opt/homebrew/bin:$HOME/go/bin:$PATH`.
+- **Non-login SSH shells** don't source `.zshrc` / `.bash_profile`, so `go` and `wails` are usually off `$PATH`. Prefix every remote command with `export PATH=/opt/homebrew/bin:/usr/local/bin:$HOME/go/bin:$PATH` — Apple Silicon Homebrew uses `/opt/homebrew/bin`, Intel Homebrew uses `/usr/local/bin`; including both keeps the same recipe working for `mac-arm` and `mac-intel`.
 - **Tar from the repo root.** If the shell cwd is wrong, tar will happily ship a partial tree. Anchor with `cd "$(git rev-parse --show-toplevel)"` first.
 - **`.env` is gitignored** — if the worktree doesn't have one yet, copy it in from the main clone (`cp ../gitbox/.env .`) before running `scripts/deploy.sh`.
 - Linux builds the same way — swap `$host` to `$SSH_LINUX_HOST`, `$target` to `linux/amd64`, adjust PATH (e.g. `/usr/local/go/bin`). The artifact lands at `cmd/gui/build/bin/GitboxApp`.

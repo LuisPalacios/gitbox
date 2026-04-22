@@ -252,10 +252,24 @@ func checkGCM(acct config.Account, accountKey string, cfg *config.Config) Status
 		if err := provider.TestAuth(ctx, acct.Provider, acct.URL, token, acct.Username); err != nil {
 			if provider.IsNetworkError(err) {
 				r.Primary = StatusOffline
-				r.PrimaryDetail = "server unreachable"
+				r.PrimaryDetail = fmt.Sprintf("server unreachable: %v", err)
 			} else {
 				r.Primary = StatusWarning
-				r.PrimaryDetail = fmt.Sprintf("GCM token found but API check failed: %v", err)
+				// Forgejo/Gitea refuse account passwords at the REST API.
+				// When GCM cached a password (the common case when a PAT
+				// wasn't pasted into GCM's prompt), the 401 is expected and
+				// the "token is invalid" phrasing from the HTTP layer is
+				// misleading — the credential is fine for git push/pull,
+				// it's just not a valid API credential. Rewrite the detail
+				// so the user knows git still works and how to fix API.
+				if isAPIAuthRejection(err) && providerNeedsPATForAPI(acct.Provider) {
+					r.PrimaryDetail = fmt.Sprintf(
+						"GCM credential works for git push/pull, but %s/Forgejo API refuses account passwords. Paste a PAT into GCM's prompt or store a companion PAT for API access.",
+						acct.Provider,
+					)
+				} else {
+					r.PrimaryDetail = fmt.Sprintf("GCM credential found but API check failed: %v", err)
+				}
 			}
 		} else {
 			r.Primary = StatusOK
@@ -263,15 +277,27 @@ func checkGCM(acct config.Account, accountKey string, cfg *config.Config) Status
 		}
 	}
 
-	// PAT: optional companion token for repo creation/mirrors.
+	// PAT: optional companion token.
+	// When the primary GCM credential already authenticates against the API
+	// (GitHub OAuth token, or a Forgejo PAT pasted into GCM's password
+	// prompt), a separate keyring PAT is not needed for discovery or repo
+	// creation — GCM already covers both. A keyring PAT is only required
+	// when the provider's API refuses what GCM cached (Forgejo + password)
+	// or when a portable PAT is needed for push/pull mirrors to a server
+	// that can't use machine-local GCM tokens.
 	r.PAT, r.PATDetail = checkPATStatus(acct, accountKey, cfg)
 	if r.PATDetail == "" {
-		if r.PAT == StatusOK {
+		switch r.PAT {
+		case StatusOK:
 			r.PATDetail = "PAT verified"
-		} else if r.PAT == StatusWarning {
+		case StatusWarning:
 			r.PATDetail = "PAT stored but API check failed"
-		} else {
-			r.PATDetail = "no PAT (repo creation unavailable)"
+		default: // StatusNone
+			if r.Primary == StatusOK {
+				r.PATDetail = "not needed — GCM covers the API (PAT only required for mirrors)"
+			} else {
+				r.PATDetail = "needed for discovery and repo creation — GCM credential was rejected by the API"
+			}
 		}
 	}
 
@@ -298,7 +324,7 @@ func checkToken(acct config.Account, accountKey string, cfg *config.Config) Stat
 	if err := provider.TestAuth(ctx, acct.Provider, acct.URL, token, acct.Username); err != nil {
 		if provider.IsNetworkError(err) {
 			r.Primary = StatusOffline
-			r.PrimaryDetail = "server unreachable"
+			r.PrimaryDetail = fmt.Sprintf("server unreachable: %v", err)
 			r.PAT = StatusOffline
 			r.PATDetail = r.PrimaryDetail
 			r.Overall = StatusOffline
@@ -332,7 +358,7 @@ func checkPATStatus(acct config.Account, accountKey string, cfg *config.Config) 
 	defer cancel()
 	if err := provider.TestAuth(ctx, acct.Provider, acct.URL, token, acct.Username); err != nil {
 		if provider.IsNetworkError(err) {
-			return StatusOffline, "server unreachable"
+			return StatusOffline, fmt.Sprintf("server unreachable: %v", err)
 		}
 		return StatusWarning, "" // stored but broken
 	}
@@ -340,7 +366,14 @@ func checkPATStatus(acct config.Account, accountKey string, cfg *config.Config) 
 }
 
 // combineStatus derives the overall status from primary + PAT.
-// Primary errors/offline dominate. PAT=None (optional, not configured) shows as warning.
+//
+// The rule is "is API access reachable via at least one credential?" — not
+// "are both credentials present". For providers where the primary credential
+// (e.g. GitHub GCM OAuth token) already authenticates against the API, a
+// companion PAT is redundant and its absence must not degrade the overall
+// state. For providers where the primary credential cannot talk to the API
+// (e.g. Forgejo/Gitea GCM — the stored password is rejected by the REST API),
+// the PAT is the fallback and must be OK for the overall state to be OK.
 func combineStatus(primary, pat Status) Status {
 	if primary == StatusError {
 		return StatusError
@@ -348,18 +381,48 @@ func combineStatus(primary, pat Status) Status {
 	if primary == StatusOffline {
 		return StatusOffline
 	}
-	if primary == StatusWarning {
-		return StatusWarning
-	}
-	// Primary is OK.
-	if pat == StatusOK {
+	// API is reachable if either the primary credential succeeded against
+	// the API, or the companion PAT did.
+	if primary == StatusOK || pat == StatusOK {
 		return StatusOK
 	}
+	// Neither the primary nor the PAT can reach the API; pick the most
+	// actionable state for the user.
 	if pat == StatusOffline {
 		return StatusOffline
 	}
-	// PAT is None (not configured) or Warning (broken) — show as warning.
 	return StatusWarning
+}
+
+// isAPIAuthRejection reports whether an error from provider.TestAuth looks
+// like the server rejecting the credential (HTTP 401 or text that names an
+// authentication failure), as opposed to a network error, a TLS error, or
+// some other HTTP failure mode. It's intentionally conservative — the only
+// place that wraps 401 as a human string is pkg/provider/http.go, so we
+// match on those signatures rather than on a numeric status.
+func isAPIAuthRejection(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "HTTP 401") ||
+		strings.Contains(msg, "authentication failed") ||
+		strings.Contains(msg, "token is invalid")
+}
+
+// providerNeedsPATForAPI reports whether the provider's REST API refuses
+// account passwords at the auth layer (so a GCM-cached password won't work
+// for discovery / repo creation even though it works for `git push`/`pull`).
+// Forgejo and Gitea share that constraint; Bitbucket Cloud also requires
+// app passwords / PATs. GitHub and GitLab GCM entries are OAuth tokens and
+// do not fall into this bucket.
+func providerNeedsPATForAPI(p string) bool {
+	switch p {
+	case "forgejo", "gitea", "bitbucket":
+		return true
+	default:
+		return false
+	}
 }
 
 // isSSHNetworkError checks if an SSH connection error indicates a network

@@ -7,8 +7,10 @@
 #
 # Usage:
 #   ./scripts/smoke.sh              # all configured platforms (default)
-#   ./scripts/smoke.sh mac          # macOS only
+#   ./scripts/smoke.sh mac-arm      # macOS Apple Silicon only
+#   ./scripts/smoke.sh mac-intel    # macOS Intel only
 #   ./scripts/smoke.sh linux        # Linux only
+#   ./scripts/smoke.sh win          # Windows only
 
 # shellcheck source=_common.sh
 source "$(dirname "$0")/_common.sh"

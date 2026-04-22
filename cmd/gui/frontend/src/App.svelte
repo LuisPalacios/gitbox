@@ -643,6 +643,7 @@
   // ── Discovery ──
   let discoverModal: string | null = null;
   let discoverLoading = false;
+  let discoverError = ''; // last error from Discover, shown inside the Find-projects modal
   let discoverRepos: DiscoverResult[] = [];
   let discoverSelected: Record<string, boolean> = {};
   let discoverFilter = '';
@@ -664,6 +665,7 @@
     }
     discoverModal = accountKey;
     discoverLoading = true;
+    discoverError = '';
     discoverRepos = [];
     discoverSelected = {};
     discoverFilter = '';
@@ -1002,10 +1004,10 @@
   async function credPostSetup(accountKey: string) {
     if (!credResult?.ok) return;
     bridge.credentialVerify(accountKey).then((cs) => {
-      credStatuses[accountKey] = {status: cs.status, primary: cs.primary, pat: cs.pat};
+      credStatuses[accountKey] = {status: cs.status, primary: cs.primary, pat: cs.pat, primaryMsg: cs.primaryMsg, patMsg: cs.patMsg};
       credStatuses = credStatuses;
     }).catch(() => {
-      credStatuses[accountKey] = {status: 'ok', primary: 'ok', pat: 'ok'};
+      credStatuses[accountKey] = {status: 'ok', primary: 'ok', pat: 'ok', primaryMsg: '', patMsg: ''};
       credStatuses = credStatuses;
     });
   }
@@ -1120,7 +1122,7 @@
     try {
       await bridge.credentialDelete(key);
       await reloadFromDisk();
-      credStatuses[key] = {status: 'none', primary: 'none', pat: 'none'};
+      credStatuses[key] = {status: 'none', primary: 'none', pat: 'none', primaryMsg: '', patMsg: ''};
       credStatuses = credStatuses;
     } catch (err: any) {
       credResult = { ok: false, message: err?.message || String(err) };
@@ -1136,6 +1138,102 @@
     resetCredState();
     credDeleteBusy = false;
     verifyAllCredentials();
+  }
+
+  // Detect the specific pattern of "OS-level network-permission denial"
+  // inside a credential-status error message and return a friendly hint
+  // with the right platform-specific advice. Returns null when the error
+  // doesn't match the pattern.
+  //
+  // Why this exists: the raw Go error says "dial tcp 192.168.x.x:443: connect:
+  // no route to host". On macOS that's almost always TCC blocking Local
+  // Network access for an unsigned / untracked app bundle — not an actual
+  // routing problem — and the user-facing recovery is entirely different
+  // from a real network outage. This helper makes that distinction visible.
+  function detectLANPermissionHint(msg: string | undefined): { summary: string; link: string } | null {
+    if (!msg) return null;
+    const m = msg.toLowerCase();
+    const looksLikeLAN = m.includes('192.168.') || m.includes('10.0.') || m.includes('.local');
+    const isConnectRefused = m.includes('no route to host') || m.includes('host is unreachable') || m.includes('wsaehostunreach') || m.includes('host is down');
+    if (!isConnectRefused) return null;
+    const docBase = 'https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md';
+    if (hostOS === 'darwin') {
+      return {
+        summary: 'macOS is blocking this app from reaching devices on your local network. Grant access in System Settings → Privacy & Security → Local Network (enable GitboxApp).',
+        link: docBase + '#macos-local-network-permission',
+      };
+    }
+    if (hostOS === 'windows') {
+      return {
+        summary: 'Windows Defender Firewall may be blocking this app from reaching hosts on your LAN. Allow GitboxApp in Windows Security → Firewall & network protection → Allow an app through firewall.',
+        link: docBase + '#windows-firewall',
+      };
+    }
+    if (looksLikeLAN) {
+      return {
+        summary: 'The server is on your LAN but this app cannot reach it. Check that your network interface is up and any host-level firewall (ufw, firewalld) allows outbound connections.',
+        link: docBase + '#linux-network-troubleshooting',
+      };
+    }
+    return null;
+  }
+
+  // Return a short, user-facing hint explaining a specific discovery
+  // failure mode (auth vs. network vs. permission). The raw Go error is
+  // already shown to the user; this just adds a one-line "what to do"
+  // above the action buttons.
+  function detectDiscoveryHint(msg: string, acctKey: string | null): string {
+    if (!msg) return '';
+    const m = msg.toLowerCase();
+    const acct = acctKey ? $accounts[acctKey] : null;
+    const credType = acct?.default_credential_type || '';
+    const provider = acct?.provider || '';
+    if (m.includes('401') || m.includes('authentication failed') || m.includes('token is invalid')) {
+      if (credType === 'gcm' && (provider === 'gitea' || provider === 'forgejo')) {
+        return 'Forgejo/Gitea refuses account passwords at the REST API. Either paste a PAT into GCM’s password prompt, or click “Open credential settings” and use “Setup API token” to store a companion PAT.';
+      }
+      return 'The stored credential was rejected by the API. Open credential settings and replace it, or store a companion API token.';
+    }
+    if (m.includes('no route to host') || m.includes('host is unreachable') || m.includes('wsaehostunreach')) {
+      return 'The OS blocked or could not reach the server. On macOS check Privacy & Security → Local Network; on Windows check the firewall; on Linux check routes and host firewalls.';
+    }
+    if (m.includes('no such host') || m.includes('dns')) {
+      return 'The server hostname can’t be resolved from this machine. Check VPN / DNS before retrying.';
+    }
+    if (m.includes('x509') || m.includes('certificate')) {
+      return 'TLS certificate validation failed. Install the server’s CA into your OS trust store before retrying.';
+    }
+    return '';
+  }
+
+  // Map a credential status string to a short human label shown in the
+  // status panel of the Change Credential modal.
+  function credStatusLabel(state: string): string {
+    switch (state) {
+      case 'ok':       return 'OK';
+      case 'warning':  return 'Warning';
+      case 'offline':  return 'Offline';
+      case 'error':    return 'Error';
+      case 'none':     return 'Not configured';
+      case 'checking': return 'Checking…';
+      default:         return '—';
+    }
+  }
+
+  // Re-verify credential for the account shown in the Change Credential modal.
+  // Shows a "Checking…" state while the RPC runs.
+  function verifyCredentialForModal(accountKey: string | null) {
+    if (!accountKey) return;
+    const prev = credStatuses[accountKey] || {};
+    credStatuses[accountKey] = {...prev, primary: 'checking', pat: 'checking', status: 'checking'};
+    credStatuses = credStatuses;
+    bridge.credentialVerify(accountKey).then((cs) => {
+      credStatuses[accountKey] = {status: cs.status, primary: cs.primary, pat: cs.pat, primaryMsg: cs.primaryMsg, patMsg: cs.patMsg};
+      credStatuses = credStatuses;
+    }).catch((err: any) => {
+      credStatuses[accountKey] = {status: 'error', primary: 'error', pat: 'error', primaryMsg: String(err?.message || err), patMsg: ''};
+      credStatuses = credStatuses;
+    });
   }
 
   async function applyCredChange() {
@@ -1692,6 +1790,7 @@
   let showSettings = false;
   let configPath = '';
   let appVersion = '';
+  let hostOS = ''; // "darwin" | "windows" | "linux" — loaded on init
   let autostartOn = false;
   let autostartSupported = true;
 
@@ -1847,6 +1946,7 @@
     configStore.set(cfg);
     configPath = await bridge.getConfigPath();
     appVersion = await bridge.getAppVersion();
+    hostOS = await bridge.getOS();
     fetchInterval = await bridge.getPeriodicSync();
 
     // Restore view mode.
@@ -1901,7 +2001,7 @@
   function verifyAllCredentials() {
     for (const key of Object.keys($accounts)) {
       bridge.credentialVerify(key).then((cs) => {
-        credStatuses[key] = {status: cs.status, primary: cs.primary, pat: cs.pat};
+        credStatuses[key] = {status: cs.status, primary: cs.primary, pat: cs.pat, primaryMsg: cs.primaryMsg, patMsg: cs.patMsg};
         credStatuses = credStatuses;
       });
     }
@@ -2015,9 +2115,14 @@
           });
           return;
         }
+        // Surface the real error in the modal — silently clearing the list
+        // hid auth failures (e.g. Forgejo refusing GCM-cached passwords) and
+        // made discovery look broken when it was really credential-broken.
+        discoverError = String(data.error);
         discoverRepos = [];
         return;
       }
+      discoverError = '';
       discoverRepos = (data.repos || []).sort((a: DiscoverResult, b: DiscoverResult) => a.fullName.localeCompare(b.fullName));
       discoverSelected = {};
     });
@@ -2586,6 +2691,9 @@
       {@const stats = $accountStats[key] || { total: 0, synced: 0, issues: 0 }}
       {@const credObj = credStatuses[key] || {status: 'unknown', primary: 'unknown', pat: 'unknown'}}
       {@const credPrimary = credObj.primary}
+      {@const credOverall = credObj.status}
+      {@const canDiscover = credOverall !== 'none' && credOverall !== 'error' && credOverall !== 'offline' && credOverall !== 'unknown'}
+      {@const canCreate = credOverall === 'ok'}
       <div class="card" class:card-delete-mode={deleteMode}
         style={credPrimary === 'none' || credPrimary === 'error' ? `background: ${resolvedTheme === 'light' ? '#fef2f2' : '#2a1215'}` : ''}>
         <div class="card-top">
@@ -2617,8 +2725,8 @@
           {/if}
         </div>
         <div class="card-btn-row">
-          <button class="card-btn" on:click={() => openDiscover(key)} disabled={credPrimary === 'none' || credPrimary === 'error' || credPrimary === 'offline'}>Find projects</button>
-          <button class="card-btn" on:click={() => openCreateRepo(key)} disabled={credPrimary === 'none' || credPrimary === 'error' || credPrimary === 'offline'}>Create repo</button>
+          <button class="card-btn" on:click={() => openDiscover(key)} disabled={!canDiscover} title={canDiscover ? 'Discover repos from provider API' : 'No working credential for this account'}>Find projects</button>
+          <button class="card-btn" on:click={() => openCreateRepo(key)} disabled={!canCreate} title={canCreate ? 'Create a new repo on the provider' : 'Needs a working API credential (GCM that accepts the API, or a companion PAT)'}>Create repo</button>
         </div>
       </div>
     {/each}
@@ -3102,6 +3210,19 @@
         <div class="modal-body">
           {#if discoverLoading}
             <div class="loading"><div class="spinner"></div><span>Checking your account...</span></div>
+          {:else if discoverError}
+            {@const hint = detectDiscoveryHint(discoverError, discoverModal)}
+            <div class="discover-error">
+              <p class="discover-error-title">Discovery failed</p>
+              <p class="discover-error-detail">{discoverError}</p>
+              {#if hint}
+                <p class="discover-error-hint">{hint}</p>
+              {/if}
+              <div class="discover-error-actions">
+                <button class="btn-cancel" on:click={() => { if (discoverModal) { discoverLoading = true; discoverError = ''; bridge.discover(discoverModal); } }}>Retry</button>
+                <button class="btn-add" on:click={() => { const k = discoverModal; discoverModal = null; if (k) openCredChange(k, $accounts[k]?.default_credential_type || ''); }}>Open credential settings</button>
+              </div>
+            </div>
           {:else if discoverRepos.length === 0}
             <p class="found">No new projects found.</p>
           {:else}
@@ -3606,6 +3727,50 @@
           <button class="btn-x" on:click={closeCredChange}>&#10005;</button>
         </div>
         <div class="modal-body">
+          {#if !credResult && !credBusy}
+            {@const cs = credStatuses[credChangeModal] || {}}
+            {@const primary = cs.primary || 'unknown'}
+            {@const pat = cs.pat || 'unknown'}
+            {@const primaryType = currentAcct?.default_credential_type || ''}
+            {@const lanHint = detectLANPermissionHint(cs.primaryMsg) || detectLANPermissionHint(cs.patMsg)}
+            <div class="cred-status-panel cred-status-panel-{primary}">
+              <div class="cred-status-head">
+                <span class="cred-status-title">Current status</span>
+                <button class="cred-status-recheck" title="Re-verify credential" on:click={() => verifyCredentialForModal(credChangeModal)} disabled={primary === 'checking'}>
+                  {primary === 'checking' ? 'Checking…' : 'Re-check'}
+                </button>
+              </div>
+              <div class="cred-status-row">
+                <span class="cred-status-dot cred-status-dot-{primary}"></span>
+                <span class="cred-status-label">Primary{primaryType ? ` (${primaryType.toUpperCase()})` : ''}:</span>
+                <span class="cred-status-value">{credStatusLabel(primary)}</span>
+              </div>
+              {#if cs.primaryMsg}
+                <p class="cred-status-detail">{cs.primaryMsg}</p>
+              {/if}
+              {#if primaryType === 'gcm' || primaryType === 'ssh'}
+                <div class="cred-status-row">
+                  <span class="cred-status-dot cred-status-dot-{pat === 'none' ? 'none' : pat}"></span>
+                  <span class="cred-status-label">API token (PAT):</span>
+                  <span class="cred-status-value">{credStatusLabel(pat)}</span>
+                  {#if pat === 'none' || pat === 'warning'}
+                    <button class="cred-status-pat-btn" on:click={() => credChangeModal && openTokenSetup(credChangeModal)} title="Store a Personal Access Token for API access">
+                      {pat === 'warning' ? 'Replace API token' : 'Setup API token'}
+                    </button>
+                  {/if}
+                </div>
+                {#if cs.patMsg}
+                  <p class="cred-status-detail">{cs.patMsg}</p>
+                {/if}
+              {/if}
+              {#if lanHint}
+                <div class="cred-status-lanhint">
+                  <p class="cred-status-lanhint-title">⚠ Looks like the OS blocked this connection</p>
+                  <p>{lanHint.summary} <a href={lanHint.link} on:click|preventDefault={() => BrowserOpenURL(lanHint.link)}>Troubleshooting guide</a>.</p>
+                </div>
+              {/if}
+            </div>
+          {/if}
           {#if credForceToken}
           <!-- Simplified PAT-only flow for mirror fix -->
           <p class="cred-step-desc">Mirrors require an API token (PAT) for status checks. Primary credential: <strong>{currentAcct?.default_credential_type || 'none'}</strong>.</p>
@@ -4773,6 +4938,88 @@
   .cred-doc-link { font-size: 11px; margin: 0 0 12px; }
   .cred-doc-link a { color: #4B95E9; text-decoration: underline; }
   .cred-doc-link a:hover { color: #6db0f7; }
+  /* Credential-status panel inside the Change Credential modal */
+  .cred-status-panel {
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border-subtle, #27272a);
+    background: var(--bg-panel, rgba(255,255,255,0.03));
+    font-size: 12px;
+  }
+  .cred-status-panel-ok      { border-color: #16a34a66; background: rgba(22,163,74,0.08); }
+  .cred-status-panel-warning { border-color: #f59e0b66; background: rgba(245,158,11,0.08); }
+  .cred-status-panel-offline { border-color: #D81E5B66; background: rgba(216,30,91,0.10); }
+  .cred-status-panel-error   { border-color: #D81E5B66; background: rgba(216,30,91,0.10); }
+  .cred-status-panel-none    { border-color: #3f3f46; background: rgba(113,113,122,0.08); }
+  :global([data-theme="light"]) .cred-status-panel-ok      { background: rgba(22,163,74,0.10); border-color: #16a34a88; }
+  :global([data-theme="light"]) .cred-status-panel-warning { background: rgba(245,158,11,0.12); border-color: #b45309; }
+  :global([data-theme="light"]) .cred-status-panel-offline { background: rgba(216,30,91,0.12); border-color: #be123c; }
+  :global([data-theme="light"]) .cred-status-panel-error   { background: rgba(216,30,91,0.12); border-color: #be123c; }
+  :global([data-theme="light"]) .cred-status-panel-none    { background: rgba(113,113,122,0.10); border-color: #a1a1aa; }
+  .cred-status-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .cred-status-title { font-weight: 600; color: var(--text-primary); }
+  .cred-status-recheck {
+    background: transparent; color: var(--text-muted); border: 1px solid var(--border-subtle, #3f3f46);
+    padding: 2px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
+  }
+  .cred-status-recheck:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+  .cred-status-recheck:disabled { opacity: 0.6; cursor: default; }
+  .cred-status-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+  .cred-status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+  .cred-status-dot-ok       { background: #16a34a; }
+  .cred-status-dot-warning  { background: #f59e0b; }
+  .cred-status-dot-offline  { background: #D81E5B; }
+  .cred-status-dot-error    { background: #D81E5B; }
+  .cred-status-dot-none     { background: #71717a; }
+  .cred-status-dot-checking { background: #4B95E9; }
+  .cred-status-dot-unknown  { background: #52525b; }
+  .cred-status-label { color: var(--text-muted); }
+  .cred-status-value { color: var(--text-primary); font-weight: 500; }
+  .cred-status-detail {
+    margin: 2px 0 6px 16px; font-size: 11px; color: var(--text-muted);
+    word-break: break-word; line-height: 1.4;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+  }
+  .cred-status-pat-btn {
+    margin-left: auto;
+    background: var(--accent, #4B95E9); color: #fff; border: 0;
+    padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
+    font-weight: 500; white-space: nowrap;
+  }
+  .cred-status-pat-btn:hover { background: #6db0f7; }
+  .cred-status-lanhint {
+    margin-top: 10px; padding: 10px 12px; border-radius: 6px;
+    background: rgba(59, 130, 246, 0.10);
+    border: 1px solid rgba(59, 130, 246, 0.40);
+    font-size: 12px; line-height: 1.5;
+  }
+  :global([data-theme="light"]) .cred-status-lanhint {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.55);
+  }
+  .cred-status-lanhint-title { margin: 0 0 4px; font-weight: 600; color: #3b82f6; }
+  :global([data-theme="light"]) .cred-status-lanhint-title { color: #1d4ed8; }
+  .cred-status-lanhint p { margin: 4px 0; color: var(--text-primary); }
+  .cred-status-lanhint a { color: #3b82f6; text-decoration: underline; }
+  .cred-status-lanhint a:hover { color: #60a5fa; }
+  /* Discovery-modal error block */
+  .discover-error {
+    margin: 4px 0 12px; padding: 12px 14px; border-radius: 6px;
+    background: rgba(216, 30, 91, 0.10); border: 1px solid rgba(216, 30, 91, 0.45);
+  }
+  :global([data-theme="light"]) .discover-error {
+    background: rgba(216, 30, 91, 0.08); border-color: #be123c;
+  }
+  .discover-error-title { margin: 0 0 6px; font-weight: 600; color: #D81E5B; }
+  :global([data-theme="light"]) .discover-error-title { color: #be123c; }
+  .discover-error-detail {
+    margin: 4px 0; color: var(--text-primary); font-size: 12px; line-height: 1.4;
+    word-break: break-word;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+  }
+  .discover-error-hint { margin: 8px 0 0; color: var(--text-primary); font-size: 12px; line-height: 1.5; }
+  .discover-error-actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
   .cred-action-btn { margin-top: 4px; margin-bottom: 10px; }
   .cred-precheck {
     margin: 10px 0; padding: 10px 12px; border-radius: 6px; font-size: 12px;

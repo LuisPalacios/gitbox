@@ -314,6 +314,13 @@ func (a *App) IsPositionOnScreen(x, y, w, h int) bool {
 	return a.isPositionOnScreen(x, y, w, h)
 }
 
+// GetOS returns the Go runtime GOOS value so the frontend can render
+// platform-specific hints (e.g. macOS Local Network permission guidance).
+// Values: "darwin", "windows", "linux".
+func (a *App) GetOS() string {
+	return runtime.GOOS
+}
+
 // GetAppVersion returns the application version string for the frontend.
 // CI builds:    "v1.0.6 (abc1234)" — version and commit set via ldflags
 // Local builds: "v1.0.5-3-ga99cf17-dev (a99cf17)" — auto-detected from git

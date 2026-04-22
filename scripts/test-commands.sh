@@ -7,8 +7,10 @@
 #
 # Usage:
 #   ./scripts/test-commands.sh              # all configured platforms (default)
-#   ./scripts/test-commands.sh mac          # macOS only
+#   ./scripts/test-commands.sh mac-arm      # macOS Apple Silicon only
+#   ./scripts/test-commands.sh mac-intel    # macOS Intel only
 #   ./scripts/test-commands.sh win          # Windows only
+#   ./scripts/test-commands.sh linux        # Linux only
 
 # shellcheck source=_common.sh
 source "$(dirname "$0")/_common.sh"
