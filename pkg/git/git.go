@@ -324,51 +324,18 @@ func PushMirror(repoPath, url string, extraConfig []string) (string, error) {
 	return string(out), nil
 }
 
-// FetchTagsAndPrune runs `git fetch --prune --tags` in repoPath. Used as
-// the first move-flow step so the upcoming push --mirror carries every
-// ref (tags included) and stale remote branches are dropped. Output is
-// captured (not forwarded) so the call is safe from a GUI process with
-// no attached console — setting Stdout = os.Stdout fails with
-// "The request is not supported" on Windows GUI subsystems.
+// FetchTagsAndPrune runs `git fetch --prune --tags` in repoPath. Used
+// as the first move-flow step so the upcoming push --mirror carries
+// every ref (tags included) and stale remote branches are dropped.
 func FetchTagsAndPrune(repoPath string) error {
-	cmd := exec.Command(GitBin(), "fetch", "--prune", "--tags")
-	cmd.Dir = repoPath
-	cmd.Env = nonInteractiveEnv()
-	HideWindow(cmd)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git fetch --prune --tags: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-	return nil
+	return run(repoPath, "fetch", "--prune", "--tags")
 }
 
 // SetUpstream configures the given local branch to track
 // <remote>/<branch>. The remote must already have the branch fetched.
 // Used after a move to re-bind the current branch to the new origin.
-// Captures output for the same GUI-safety reason as FetchTagsAndPrune.
 func SetUpstream(repoPath, branch, remote string) error {
-	cmd := exec.Command(GitBin(), "branch", fmt.Sprintf("--set-upstream-to=%s/%s", remote, branch), branch)
-	cmd.Dir = repoPath
-	cmd.Env = nonInteractiveEnv()
-	HideWindow(cmd)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git branch --set-upstream-to=%s/%s %s: %w: %s", remote, branch, branch, err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-// SetRemoteURLCaptured is a GUI-safe variant of SetRemoteURL that
-// captures stdout/stderr instead of inheriting them. Use this from
-// code paths that can run under a Wails process (see FetchTagsAndPrune
-// comment).
-func SetRemoteURLCaptured(repoPath, remote, url string) error {
-	cmd := exec.Command(GitBin(), "remote", "set-url", remote, url)
-	cmd.Dir = repoPath
-	cmd.Env = nonInteractiveEnv()
-	HideWindow(cmd)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git remote set-url %s: %w: %s", remote, err, strings.TrimSpace(string(out)))
-	}
-	return nil
+	return run(repoPath, "branch", fmt.Sprintf("--set-upstream-to=%s/%s", remote, branch), branch)
 }
 
 // PullQuiet runs git pull --ff-only, capturing output instead of forwarding it.
@@ -897,16 +864,25 @@ func nonInteractiveEnv() []string {
 	)
 }
 
-// run executes a git command in the given directory.
+// run executes a git command in the given directory. Output is
+// captured (not forwarded to os.Stdout/os.Stderr) so the helper is
+// safe to call from a GUI subsystem process on Windows — setting
+// Stdout = os.Stdout there fails CreateProcess with "The request is
+// not supported." because the GUI has no valid stdio handles.
+// Captured stderr is appended to the error so operators still see the
+// reason a git command failed.
 func run(dir string, args ...string) error {
 	cmd := exec.Command(GitBin(), args...)
 	cmd.Dir = dir
 	cmd.Env = nonInteractiveEnv()
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 	HideWindow(cmd)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		trimmed := strings.TrimSpace(string(out))
+		if trimmed == "" {
+			return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+		}
+		return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, trimmed)
 	}
 	return nil
 }

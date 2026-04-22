@@ -27,6 +27,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/gitignore"
 	"github.com/LuisPalacios/gitbox/pkg/harness"
+	"github.com/LuisPalacios/gitbox/pkg/heal"
 	"github.com/LuisPalacios/gitbox/pkg/identity"
 	"github.com/LuisPalacios/gitbox/pkg/mirror"
 	"github.com/LuisPalacios/gitbox/pkg/move"
@@ -2655,18 +2656,18 @@ func (a *App) CloneRepo(sourceKey, repoKey string) {
 		if err != nil {
 			result["error"] = err.Error()
 		} else {
-			// For token clones, sanitize the remote URL to remove the embedded token.
-			if credType == "token" {
-				_ = git.SetRemoteURL(dest, "origin", plainURL)
+			// heal.Repo sets user.name/user.email, normalizes the origin
+			// URL (stripping any embedded token from the clone URL), and
+			// configures per-repo credential isolation. Warnings are
+			// returned instead of panicking so a partial heal (e.g. token
+			// file missing) still reports clone success.
+			report := heal.Repo(a.cfg, sourceKey, repoKey)
+			if len(report.Warnings) > 0 {
+				result["warnings"] = report.Warnings
 			}
-
-			// Set per-repo identity (user.name, user.email).
-			wantName, wantEmail := identity.ResolveIdentity(repo, acct)
-			identity.EnsureRepoIdentity(dest, wantName, wantEmail)
-
-			// Configure per-repo credential isolation (cancels global helper,
-			// sets type-specific helper: store for token, manager for GCM, empty for SSH).
-			_ = credential.ConfigureRepoCredential(dest, acct, accountKey, credType, a.cfg.Global)
+			if len(report.Fixed) > 0 {
+				result["fixes"] = report.Fixed
+			}
 		}
 		wailsrt.EventsEmit(a.ctx, "clone:done", result)
 	}()
@@ -2701,6 +2702,11 @@ func (a *App) PullRepo(sourceKey, repoKey string) {
 		a.mu.Unlock()
 
 		path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
+		// Pre-pull self-heal: if .git/config drifted from spec (e.g. a
+		// manual edit, an older gitbox that didn't run the heal), fix
+		// it before the network op so auth uses the right credentials.
+		// Failures are non-fatal — the pull itself runs either way.
+		_ = heal.Repo(a.cfg, sourceKey, repoKey)
 		err := git.PullQuiet(path)
 
 		result := map[string]interface{}{"source": sourceKey, "repo": repoKey}
@@ -2822,8 +2828,12 @@ func (a *App) FetchRepo(sourceKey, repoKey string) {
 		sourceFolder := src.EffectiveFolder(sourceKey)
 		a.mu.Unlock()
 
-		acct := a.cfg.Accounts[src.Account]
 		path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
+		// Pre-fetch self-heal: ensure .git/config matches spec before
+		// the network op runs, so credentials, identity, and origin
+		// URL are right. Drift is silently fixed; warnings are ignored
+		// here because the fetch error (if any) is more actionable.
+		_ = heal.Repo(a.cfg, sourceKey, repoKey)
 		_, err := git.FetchCaptured(path)
 
 		result := map[string]interface{}{"source": sourceKey, "repo": repoKey}
@@ -2836,10 +2846,8 @@ func (a *App) FetchRepo(sourceKey, repoKey string) {
 		} else {
 			// Clear any previous "upstream gone" mark — the fact that fetch
 			// succeeded is the most direct evidence we have that the repo
-			// is reachable again. Verify per-repo identity after fetch.
+			// is reachable again.
 			a.markUpstreamGone(sourceKey, repoKey, false)
-			wantName, wantEmail := identity.ResolveIdentity(repo, acct)
-			identity.EnsureRepoIdentity(path, wantName, wantEmail)
 		}
 		wailsrt.EventsEmit(a.ctx, "fetch:done", result)
 
@@ -2855,19 +2863,16 @@ func (a *App) FetchAllRepos() {
 		globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
 		type repoRef struct {
 			sourceKey, repoKey, path string
-			wantName, wantEmail      string
 		}
 		var repos []repoRef
 		for _, srcKey := range a.cfg.OrderedSourceKeys() {
 			src := a.cfg.Sources[srcKey]
-			acct := a.cfg.Accounts[src.Account]
 			sourceFolder := src.EffectiveFolder(srcKey)
 			for _, rKey := range src.OrderedRepoKeys() {
 				repo := src.Repos[rKey]
 				p := status.ResolveRepoPath(globalFolder, sourceFolder, rKey, repo)
 				if git.IsRepo(p) {
-					wn, we := identity.ResolveIdentity(repo, acct)
-					repos = append(repos, repoRef{srcKey, rKey, p, wn, we})
+					repos = append(repos, repoRef{srcKey, rKey, p})
 				}
 			}
 		}
@@ -2877,12 +2882,15 @@ func (a *App) FetchAllRepos() {
 			wailsrt.EventsEmit(a.ctx, "fetch:start", map[string]string{
 				"source": r.sourceKey, "repo": r.repoKey,
 			})
+			// Periodic self-heal: fix .git/config drift (identity,
+			// origin URL, credential helpers) before each fetch so
+			// repos stay within spec between sessions.
+			_ = heal.Repo(a.cfg, r.sourceKey, r.repoKey)
 			_, err := git.FetchCaptured(r.path)
 			payload := map[string]interface{}{
 				"source": r.sourceKey, "repo": r.repoKey,
 			}
 			if err == nil {
-				identity.EnsureRepoIdentity(r.path, r.wantName, r.wantEmail)
 				a.markUpstreamGone(r.sourceKey, r.repoKey, false)
 			} else {
 				// Previously the error was swallowed here and the UI never
