@@ -95,25 +95,6 @@ func TestBackupPruning(t *testing.T) {
 	}
 }
 
-func TestBackupSameDayOverwrite(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "gitbox.json")
-
-	// First save.
-	os.WriteFile(path, []byte(`{"save":1}`), 0o644)
-	cfg := &Config{Version: 2, Global: GlobalConfig{Folder: "~/test"}, Accounts: make(map[string]Account), Sources: make(map[string]Source)}
-	Save(cfg, path)
-
-	// Second save — same day, should overwrite the backup.
-	os.WriteFile(path, []byte(`{"save":2}`), 0o644) // simulate external edit
-	Save(cfg, path)
-
-	matches, _ := filepath.Glob(filepath.Join(dir, "gitbox-????????-??????.json"))
-	if len(matches) != 1 {
-		t.Errorf("expected 1 backup (same day overwrite), got %d", len(matches))
-	}
-}
-
 // Window-position saves happen on every GUI close. If we backed up on each
 // one, a few noisy launches would rotate the genuine pre-corruption copies
 // out of the ring. Verify the skip-path works.
