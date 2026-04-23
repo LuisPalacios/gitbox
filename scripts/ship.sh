@@ -49,6 +49,19 @@ platform_from_shortname() {
 }
 
 # ---------------------------------------------------------------------------
+# Version stamping via -ldflags
+# ---------------------------------------------------------------------------
+# Remote hosts tar the source without `.git`, so the runtime `git describe`
+# fallback in fullVersion() / GetAppVersion() returns empty and the binary
+# reports "dev-none". Compute the version/commit once on the local side and
+# pass them through -ldflags to both `go build` (CLI cross-compile) and the
+# remote `wails build` (GUI). Matches the idiom used by CI.
+_desc="$(git describe --tags --always 2>/dev/null || echo dev)"
+_sha="$(git rev-parse --short HEAD 2>/dev/null || echo none)"
+LDFLAGS="-X main.version=${_desc}-dev -X main.commit=${_sha}"
+unset _desc _sha
+
+# ---------------------------------------------------------------------------
 # Remote paths per platform
 # ---------------------------------------------------------------------------
 
@@ -97,7 +110,7 @@ build_and_ship_cli() {
 
     mkdir -p "$BUILD_DIR"
     echo ">> go build $goos/$goarch → $out"
-    GOOS="$goos" GOARCH="$goarch" go build -o "$out" ./cmd/cli || return 1
+    GOOS="$goos" GOARCH="$goarch" go build -ldflags "$LDFLAGS" -o "$out" ./cmd/cli || return 1
 
     echo ">> scp $out $host:$remote"
     scp -q "$out" "$host:$remote" || return 1
@@ -139,11 +152,30 @@ build_and_ship_gui() {
     # (/usr/local/go/bin), per-user Go bin ($HOME/go/bin). Windows gets the
     # Scoop shim PATH fix as well.
     local path_prefix='/opt/homebrew/bin:/usr/local/bin:/usr/local/go/bin:$HOME/go/bin:$PATH'
+
+    # Always pre-build the frontend directly via bash and pass -s to wails.
+    # Motivation is Windows-specific — on hosts with a Scoop-installed Clink
+    # AutoRun hook, wails's `npm install` (wrapped in cmd.exe /c by Go 1.22+
+    # per CVE-2024-24576) hits "untrusted mount point" on scoop/apps/*/current
+    # junctions and fails — but the same pre-build + -s flow works identically
+    # on mac/linux, so we keep a single path across platforms.
+    local pre_build="(cd cmd/gui/frontend && npm install && npm run build) && "
+    # Single-quote the ldflags value so the remote shell groups it as one arg
+    # after bash expands $LDFLAGS into the outer double-quoted command string.
+    local wails_flags="-s -ldflags '$LDFLAGS' -platform $target"
+
+    # Linux: Wails v2.9+ uses WebKitGTK 4.1 via the webkit2_41 build tag.
+    # Ubuntu 24.04+ ships libwebkit2gtk-4.1-dev; without the tag, the Go
+    # build fails with "Package webkit2gtk-4.0 not found".
+    if [[ "$p" == "linux" ]]; then
+        wails_flags="$wails_flags -tags webkit2_41"
+    fi
+
     local build_cmd="export PATH=$path_prefix && cd ~/$remote_dir && \
         mkdir -p cmd/gui/build && \
         { [ -f assets/appicon.png ] && cp assets/appicon.png cmd/gui/build/appicon.png || true; } && \
         { [ -f assets/icon.ico ] && mkdir -p cmd/gui/build/windows && cp assets/icon.ico cmd/gui/build/windows/icon.ico || true; } && \
-        cd cmd/gui && wails build -platform $target"
+        ${pre_build}cd cmd/gui && wails build $wails_flags"
     if [[ "$p" == "win" ]]; then
         build_cmd="$(_win_scoop_path_prefix) $build_cmd"
     fi

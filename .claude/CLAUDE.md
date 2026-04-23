@@ -103,14 +103,19 @@ The CLI/TUI binary is `gitbox`, the GUI binary is `GitboxApp`. This avoids a Win
 ### Build commands
 
 ```bash
+# Build-time version stamp. Without -ldflags the GUI launched from Finder
+# shows "dev-none" (runtime git fallback can't find .git when the app's CWD
+# is outside the repo). Matches the values CI and scripts/ship.sh inject.
+LDFLAGS="-X main.version=$(git describe --tags --always)-dev -X main.commit=$(git rev-parse --short HEAD)"
+
 # Build CLI/TUI (portable — produces build/gitbox.exe on Windows, build/gitbox elsewhere)
-go build -o "build/gitbox$(go env GOEXE)" ./cmd/cli
+go build -ldflags "$LDFLAGS" -o "build/gitbox$(go env GOEXE)" ./cmd/cli
 
 # Build GUI (requires Wails CLI)
 # ALWAYS copy icons before building — they are not checked in under cmd/gui/build/
 cp assets/appicon.png cmd/gui/build/appicon.png
 cp assets/icon.ico    cmd/gui/build/windows/icon.ico
-cd cmd/gui && wails build
+cd cmd/gui && wails build -ldflags "$LDFLAGS"
 # Output: cmd/gui/build/bin/GitboxApp[.exe]
 
 # Run tests
@@ -349,6 +354,8 @@ Anything I publish to a GitHub-visible surface — issue body, issue comment, PR
 ## Multiplatform testing
 
 The developer workstation can be any OS. Remote machines are available via SSH for cross-platform testing. Every build-and-test cycle MUST cover all three platforms.
+
+**Local first, then ship remotes.** The default test flow for any change is: (1) build both binaries locally per the build-both rule, (2) smoke-test them on the local host, (3) `./scripts/ship.sh` to fan out to the remotes configured in `.env` (or `./scripts/ship.sh <short-name>` for one). Never skip step 1 — the local host is part of the cycle, and jumping straight to ship reports "green" without verifying on the machine you actually iterated on. If `.env` is absent or empty, the local build + smoke is the entire cycle.
 
 Connection details are in `.env` (gitignored). Copy `docs/.env.example` to `.env` and fill in your SSH hosts. See `docs/multiplatform.md` for the full setup guide.
 
