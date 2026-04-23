@@ -9,7 +9,8 @@
 #   ./scripts/test-commands.sh              # all configured platforms (default)
 #   ./scripts/test-commands.sh mac-arm      # macOS Apple Silicon only
 #   ./scripts/test-commands.sh mac-intel    # macOS Intel only
-#   ./scripts/test-commands.sh win          # Windows only
+#   ./scripts/test-commands.sh win-intel    # Windows amd64 only
+#   ./scripts/test-commands.sh win-arm      # Windows arm64 only
 #   ./scripts/test-commands.sh linux        # Linux only
 
 # shellcheck source=_common.sh
@@ -44,7 +45,7 @@ for platform in $targets; do
         if ! ssh "$host" "test -f ~/test-gitbox.json" 2>/dev/null; then
             warn "$label — test-gitbox.json not found on remote. Run: ./scripts/deploy.sh"
         fi
-        if [[ "$platform" == "win" ]]; then
+        if is_win_platform "$platform"; then
             # Windows: TUI needs a real interactive shell, ssh -t "cmd" exits immediately
             printf '  %b%s%b:  ssh %s  →  %s --test-mode\n' "$B" "$label" "$N" "$host" "$bin"
         else

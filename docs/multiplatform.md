@@ -21,27 +21,33 @@ All three developer workstation perspectives have been validated: Windows (v1.0.
 cp docs/.env.example .env
 ```
 
-Edit `.env` with your remote SSH hosts. The scripts auto-detect your local OS, so leave that platform's variable empty. Set the others to `user@hostname`. macOS splits into two targets — `SSH_MAC_ARM_HOST` for Apple Silicon and `SSH_MAC_INTEL_HOST` for Intel — so both Macs can coexist in one `.env`:
+Edit `.env` with your remote SSH hosts. The scripts auto-detect your local OS, so leave that platform's variable empty. Set the others to `user@hostname`. Windows and macOS each split into two targets by arch — `SSH_WIN_INTEL_HOST` / `SSH_WIN_ARM_HOST` and `SSH_MAC_ARM_HOST` / `SSH_MAC_INTEL_HOST` — so amd64 and arm64 machines can coexist in one `.env`:
 
 ```bash
-# Developing on Windows, remotes are both Macs and Linux:
-SSH_WIN_HOST=""
+# Developing on Windows amd64, remotes are both Macs and Linux:
+SSH_WIN_INTEL_HOST=""
+SSH_WIN_ARM_HOST=""
 SSH_MAC_ARM_HOST="user@mac-arm-host"
 SSH_MAC_INTEL_HOST="user@mac-intel-host"
 SSH_LINUX_HOST="user@linux-host"
 
-# Developing on Apple Silicon Mac, remotes are Windows, Intel Mac, and Linux:
-SSH_WIN_HOST="user@win-host"
+# Developing on Apple Silicon, remotes include an amd64 Windows box, a
+# Windows-on-ARM VM (Parallels/VMware Fusion), Intel Mac, and Linux:
+SSH_WIN_INTEL_HOST="user@win-amd64-host"
+SSH_WIN_ARM_HOST="user@win-arm-vm"
 SSH_MAC_ARM_HOST=""
 SSH_MAC_INTEL_HOST="user@mac-intel-host"
 SSH_LINUX_HOST="user@linux-host"
 
 # Developing on Linux, remote is a single Mac:
-SSH_WIN_HOST=""
+SSH_WIN_INTEL_HOST=""
+SSH_WIN_ARM_HOST=""
 SSH_MAC_ARM_HOST="user@mac-host"
 SSH_MAC_INTEL_HOST=""
 SSH_LINUX_HOST=""
 ```
+
+Older `.env` files with a single `SSH_WIN_HOST` keep working — the scripts fall back to it when `SSH_WIN_INTEL_HOST` is unset.
 
 Leave a variable empty or omit it to skip that platform. Verify SSH works before continuing:
 
@@ -160,7 +166,7 @@ Copies your local `gitbox.json` to the remote. Shows a diff and asks for confirm
 | `send-my-production-config.sh <target>`   | Copy local production config to a remote                 |
 | `test-setup-credentials.sh [path]`        | Low-level credential setup (called by setup-credentials) |
 
-**Targets:** `win`, `mac-arm`, `mac-intel`, `linux`, or `all`. `mac` is accepted as a back-compat alias for `mac-arm` (Apple Silicon, the historical single-Mac default). Most scripts default to `all` available platforms when no target is given.
+**Targets:** `win-intel`, `win-arm`, `mac-arm`, `mac-intel`, `linux`, or `all`. Back-compat aliases: `win` → `win-intel` and `mac` → `mac-arm` (the historical single-box defaults). Most scripts default to `all` available platforms when no target is given.
 
 ## How it works
 
@@ -191,7 +197,7 @@ Check that your SSH key is in `~/.ssh/authorized_keys` on the remote. The script
 Install jq on the remote machine (`apt install jq` on Debian/Ubuntu, `brew install jq` on macOS).
 
 **Binary crashes on remote:**
-The deploy script handles GOOS/GOARCH automatically. If you built manually, verify: Windows = `windows/amd64`, macOS Apple Silicon = `darwin/arm64`, macOS Intel = `darwin/amd64`, Linux = `linux/amd64`.
+The deploy script handles GOOS/GOARCH automatically. If you built manually, verify: Windows amd64 = `windows/amd64`, Windows arm64 = `windows/arm64`, macOS Apple Silicon = `darwin/arm64`, macOS Intel = `darwin/amd64`, Linux = `linux/amd64`.
 
 **test-mode can't find test-gitbox.json:**
 Run `./scripts/deploy.sh` — it copies the fixture to `~/test-gitbox.json` on remotes. Or run `./scripts/setup-credentials.sh <target>` which also copies it.

@@ -4,6 +4,7 @@ package status
 import (
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
@@ -149,25 +150,60 @@ func Check(repoPath string) RepoStatus {
 	return rs
 }
 
+// checkAllConcurrency bounds the number of in-flight Check calls in CheckAll.
+// Each Check shells out to git, so on Windows (where subprocess spawn is
+// expensive) a cap of 8 keeps a useful amount of work in flight without
+// overwhelming the OS. A tight serial loop also starves Wails' IPC layer
+// on WebView2 and prevents the GUI from rendering intermediate status
+// updates — see issue #57.
+const checkAllConcurrency = 8
+
 // CheckAll checks the status of all repos in the configuration.
+// Up to checkAllConcurrency repos are checked in parallel; the returned
+// slice is ordered as cfg.OrderedSourceKeys() × Source.OrderedRepoKeys().
 func CheckAll(cfg *config.Config) []RepoStatus {
-	var results []RepoStatus
 	globalFolder := config.ExpandTilde(cfg.Global.Folder)
 
+	type job struct {
+		index        int
+		sourceName   string
+		sourceAcct   string
+		repoName     string
+		path         string
+	}
+	var jobs []job
 	for _, sourceName := range cfg.OrderedSourceKeys() {
 		source := cfg.Sources[sourceName]
 		sourceFolder := source.EffectiveFolder(sourceName)
 		for _, repoName := range source.OrderedRepoKeys() {
 			repo := source.Repos[repoName]
-			path := ResolveRepoPath(globalFolder, sourceFolder, repoName, repo)
-			rs := Check(path)
-			rs.Source = sourceName
-			rs.Repo = repoName
-			rs.Account = source.Account
-			results = append(results, rs)
+			jobs = append(jobs, job{
+				index:      len(jobs),
+				sourceName: sourceName,
+				sourceAcct: source.Account,
+				repoName:   repoName,
+				path:       ResolveRepoPath(globalFolder, sourceFolder, repoName, repo),
+			})
 		}
 	}
 
+	results := make([]RepoStatus, len(jobs))
+	sem := make(chan struct{}, checkAllConcurrency)
+	var wg sync.WaitGroup
+	for _, j := range jobs {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(j job) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			rs := Check(j.path)
+			rs.Source = j.sourceName
+			rs.Repo = j.repoName
+			rs.Account = j.sourceAcct
+			results[j.index] = rs
+		}(j)
+	}
+	wg.Wait()
 	return results
 }
 

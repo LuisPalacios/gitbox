@@ -9,7 +9,8 @@
 #   ./scripts/setup-credentials.sh              # all configured platforms (default)
 #   ./scripts/setup-credentials.sh mac-arm      # macOS Apple Silicon only
 #   ./scripts/setup-credentials.sh mac-intel    # macOS Intel only
-#   ./scripts/setup-credentials.sh win          # Windows only
+#   ./scripts/setup-credentials.sh win-intel    # Windows amd64 only
+#   ./scripts/setup-credentials.sh win-arm      # Windows arm64 only
 #   ./scripts/setup-credentials.sh linux        # Linux only
 
 # shellcheck source=_common.sh
@@ -44,7 +45,7 @@ for platform in $targets; do
     else
         # Remote — copy files and run
         # Windows: use ~/ because SCP and Git Bash disagree on /tmp
-        if [[ "$platform" == "win" ]]; then
+        if is_win_platform "$platform"; then
             remote_script="~/test-setup-credentials.sh"
         else
             remote_script="/tmp/test-setup-credentials.sh"
@@ -56,13 +57,13 @@ for platform in $targets; do
 
         printf '  copying test-setup-credentials.sh... '
         scp "$SETUP_SCRIPT" "${host}:${remote_script}" 2>/dev/null
-        [[ "$platform" != "win" ]] && ssh "$host" "chmod +x $remote_script" 2>/dev/null
+        is_win_platform "$platform" || ssh "$host" "chmod +x $remote_script" 2>/dev/null
         printf '%bok%b\n' "$G" "$N"
 
         printf '  running credential setup...\n'
         cmd="$remote_script ~/test-gitbox.json"
         # Fix Scoop shim PATH for non-interactive Windows SSH
-        [[ "$platform" == "win" ]] && cmd="$(_win_scoop_path_prefix) $cmd"
+        is_win_platform "$platform" && cmd="$(_win_scoop_path_prefix) $cmd"
         # shellcheck disable=SC2029
         ssh "$host" "$cmd"
     fi

@@ -45,13 +45,23 @@ detect_local_os() {
             *) echo "mac-arm" ;;
         esac
     }
+    # Windows splits the same way now that Windows-on-ARM is a first-class
+    # dev target — Git Bash / MSYS2 report `aarch64` on ARM64, `x86_64` on
+    # AMD64 (both native and under the WOW64 layer, which we treat as amd64
+    # since the toolchain is amd64 in that case).
+    _detect_win_arch() {
+        case "$(uname -m 2>/dev/null)" in
+            aarch64|arm64) echo "win-arm" ;;
+            *)             echo "win-intel" ;;
+        esac
+    }
     case "${OSTYPE:-}" in
-        msys*|mingw*|cygwin*) echo "win" ;;
+        msys*|mingw*|cygwin*) _detect_win_arch ;;
         darwin*)              _detect_mac_arch ;;
         linux*)               echo "linux" ;;
         *)
             case "$(uname -s 2>/dev/null)" in
-                MINGW*|MSYS*) echo "win" ;;
+                MINGW*|MSYS*) _detect_win_arch ;;
                 Darwin)       _detect_mac_arch ;;
                 Linux)        echo "linux" ;;
                 *)            die "unsupported OS: ${OSTYPE:-$(uname -s)}" ;;
@@ -83,15 +93,25 @@ load_env
 # ---------------------------------------------------------------------------
 
 # Platform tokens:
-#   win        → windows/amd64
-#   mac-arm    → darwin/arm64  (Apple Silicon)
-#   mac-intel  → darwin/amd64  (Intel Mac)
+#   win-intel  → windows/amd64
+#   win-arm    → windows/arm64  (Windows on ARM, e.g. Parallels/VMware Fusion on Apple Silicon)
+#   mac-arm    → darwin/arm64   (Apple Silicon)
+#   mac-intel  → darwin/amd64   (Intel Mac)
 #   linux      → linux/amd64
-#   mac        → alias for mac-arm (back-compat)
+#   win        → alias for win-intel (back-compat)
+#   mac        → alias for mac-arm   (back-compat)
+
+# Returns 0 if the platform is any Windows variant (win, win-intel, win-arm).
+is_win_platform() {
+    case "$1" in
+        win|win-intel|win-arm) return 0 ;;
+        *)                     return 1 ;;
+    esac
+}
 
 platform_goos() {
     case "$1" in
-        win)                     echo "windows" ;;
+        win|win-intel|win-arm)   echo "windows" ;;
         mac|mac-arm|mac-intel)   echo "darwin" ;;
         linux)                   echo "linux" ;;
         *)                       die "unknown platform: $1" ;;
@@ -100,7 +120,8 @@ platform_goos() {
 
 platform_goarch() {
     case "$1" in
-        win)           echo "amd64" ;;
+        win|win-intel) echo "amd64" ;;
+        win-arm)       echo "arm64" ;;
         mac|mac-arm)   echo "arm64" ;;
         mac-intel)     echo "amd64" ;;
         linux)         echo "amd64" ;;
@@ -109,15 +130,17 @@ platform_goarch() {
 }
 
 platform_bin() {
-    case "$1" in
-        win) echo "gitbox.exe" ;;
-        *)   echo "gitbox" ;;
-    esac
+    if is_win_platform "$1"; then
+        echo "gitbox.exe"
+    else
+        echo "gitbox"
+    fi
 }
 
 platform_label() {
     case "$1" in
-        win)           echo "Windows" ;;
+        win|win-intel) echo "Windows (amd64)" ;;
+        win-arm)       echo "Windows (arm64)" ;;
         mac|mac-arm)   echo "macOS (arm64)" ;;
         mac-intel)     echo "macOS (Intel)" ;;
         linux)         echo "Linux" ;;
@@ -127,7 +150,8 @@ platform_label() {
 # Cross-compile output path
 build_artifact() {
     case "$1" in
-        win)           echo "$BUILD_DIR/gitbox.exe" ;;
+        win|win-intel) echo "$BUILD_DIR/gitbox-windows-amd64.exe" ;;
+        win-arm)       echo "$BUILD_DIR/gitbox-windows-arm64.exe" ;;
         mac|mac-arm)   echo "$BUILD_DIR/gitbox-darwin-arm64" ;;
         mac-intel)     echo "$BUILD_DIR/gitbox-darwin-amd64" ;;
         linux)         echo "$BUILD_DIR/gitbox-linux-amd64" ;;
@@ -135,13 +159,15 @@ build_artifact() {
 }
 
 # Remote binary path (platform-aware)
-# Windows: use home dir because SCP and Git Bash disagree on /tmp mapping
-# Unix: /tmp is consistent across SCP and shell
+# Windows: use home dir because SCP and Git Bash disagree on /tmp mapping.
+#          Same path for amd64 and arm64 — the host runs whichever was shipped.
+# Unix:    /tmp is consistent across SCP and shell.
 remote_bin_for() {
-    case "$1" in
-        win) echo "~/gitbox.exe" ;;
-        *)   echo "/tmp/gitbox" ;;
-    esac
+    if is_win_platform "$1"; then
+        echo "~/gitbox.exe"
+    else
+        echo "/tmp/gitbox"
+    fi
 }
 
 # Where the binary lives on a given platform
@@ -167,26 +193,37 @@ for _sa in "$HOME/scoop/apps"/*/; do _sv="$(command ls "$_sa" 2>/dev/null | grep
 SCOOPFIX
 }
 
-# SSH host env var name for a platform
+# SSH host env var name for a platform.
+# `win` is a back-compat alias for `win-intel` — both map to the canonical
+# SSH_WIN_INTEL_HOST. Legacy SSH_WIN_HOST is honored as a fallback inside
+# ssh_host_for(), not here, so the var-name interface stays single-valued.
 _ssh_var() {
     case "$1" in
-        win)           echo "SSH_WIN_HOST" ;;
+        win|win-intel) echo "SSH_WIN_INTEL_HOST" ;;
+        win-arm)       echo "SSH_WIN_ARM_HOST" ;;
         mac|mac-arm)   echo "SSH_MAC_ARM_HOST" ;;
         mac-intel)     echo "SSH_MAC_INTEL_HOST" ;;
         linux)         echo "SSH_LINUX_HOST" ;;
     esac
 }
 
-# Get the SSH host for a platform (empty if local or not configured)
+# Get the SSH host for a platform (empty if local or not configured).
+# Back-compat: if SSH_WIN_INTEL_HOST is unset but the legacy SSH_WIN_HOST is
+# set, use the legacy value so existing .env files keep working without
+# forcing a rename.
 ssh_host_for() {
     local platform="$1"
     if [[ "$platform" == "$LOCAL_OS" ]]; then
         echo ""
         return
     fi
-    local var_name
+    local var_name value
     var_name="$(_ssh_var "$platform")"
-    echo "${!var_name:-}"
+    value="${!var_name:-}"
+    if [[ -z "$value" && "$var_name" == "SSH_WIN_INTEL_HOST" ]]; then
+        value="${SSH_WIN_HOST:-}"
+    fi
+    echo "$value"
 }
 
 # Check if a platform is available (local or has SSH host)
@@ -205,7 +242,7 @@ run_on() {
     else
         local cmd="$*"
         # Fix Scoop shim PATH for non-interactive Windows SSH
-        if [[ "$platform" == "win" ]]; then
+        if is_win_platform "$platform"; then
             cmd="$(_win_scoop_path_prefix) $cmd"
         fi
         # shellcheck disable=SC2029
@@ -245,17 +282,20 @@ copy_to() {
 # Target resolution
 # ---------------------------------------------------------------------------
 
-ALL_PLATFORMS="win mac-arm mac-intel linux"
+ALL_PLATFORMS="win-intel win-arm mac-arm mac-intel linux"
 
-# Resolve user target into platform list. `mac` is accepted as a back-compat
-# alias for `mac-arm` (Apple Silicon) — the historical single-Mac default.
+# Resolve user target into platform list.
+# Back-compat aliases:
+#   win → win-intel  (historical single-Windows default, amd64)
+#   mac → mac-arm    (historical single-Mac default, Apple Silicon)
 resolve_targets() {
     local target="${1:-all}"
     case "$target" in
-        all)                              echo "$ALL_PLATFORMS" ;;
-        mac)                              echo "mac-arm" ;;
-        win|mac-arm|mac-intel|linux)      echo "$target" ;;
-        *)                                die "invalid target: $target (use win, mac-arm, mac-intel, linux, or all)" ;;
+        all)                                              echo "$ALL_PLATFORMS" ;;
+        mac)                                              echo "mac-arm" ;;
+        win)                                              echo "win-intel" ;;
+        win-intel|win-arm|mac-arm|mac-intel|linux)        echo "$target" ;;
+        *)                                                die "invalid target: $target (use win-intel, win-arm, mac-arm, mac-intel, linux, or all)" ;;
     esac
 }
 
@@ -285,7 +325,9 @@ require_target_arg() {
         echo "Usage: $script_name [target]"
         echo ""
         echo "Targets:"
-        echo "  win         Windows"
+        echo "  win-intel   Windows amd64 (Intel/AMD x64)"
+        echo "  win-arm     Windows arm64 (Windows-on-ARM)"
+        echo "  win         alias for win-intel"
         echo "  mac-arm     macOS Apple Silicon (arm64)"
         echo "  mac-intel   macOS Intel (amd64)"
         echo "  mac         alias for mac-arm"
