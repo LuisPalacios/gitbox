@@ -230,8 +230,6 @@ The same information is available from the shell with `gitbox account credential
 
 ```bash
 # Close the running GitboxApp first (⌘Q), then as the user who'll run it:
-rm -rf /Applications/GitboxApp.app
-cp -R /path/to/GitboxApp.app /Applications/GitboxApp.app
 xattr -dr com.apple.quarantine /Applications/GitboxApp.app
 codesign --force --deep --sign - /Applications/GitboxApp.app   # ad-hoc signature
 tccutil reset LocalNetwork                                     # forget existing decisions
