@@ -31,6 +31,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scr
 
 Use `--cli-only` to skip the GUI, `--version <tag>` for a specific release, or `--prefix <dir>` to change the install directory (default `~/bin`).
 
+On Linux the bootstrap script also registers the GUI in the Activities menu so I can search for "Gitbox" or drag it to the dock. Skip with `--no-desktop`; run it later on its own with `bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/register-gitbox.sh)`. Pass `--uninstall` to the same script to remove the menu entry. The `.desktop` file points at an absolute path, so `gitbox update` and subsequent bootstrap runs don't need a re-register.
+
 ## Step 1: Initialize
 
 Create your configuration file:

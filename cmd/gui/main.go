@@ -10,6 +10,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	wailsrt "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // Build-time variables (set via -ldflags).
@@ -83,6 +84,15 @@ func main() {
 		windowTitle = "gitbox [test]"
 	}
 
+	// Single-instance lock: a second launch (e.g. another dock click while
+	// the app is already running) exits immediately and focuses the first
+	// window instead of spawning a duplicate process. Test mode uses a
+	// distinct lock id so it can coexist with a production instance.
+	lockID := "com.luispalacios.gitbox"
+	if app.testMode {
+		lockID = "com.luispalacios.gitbox.test"
+	}
+
 	err := wails.Run(&options.App{
 		Title:     windowTitle,
 		Width:     width,
@@ -94,6 +104,16 @@ func main() {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 9, G: 9, B: 11, A: 255},
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: lockID,
+			OnSecondInstanceLaunch: func(_ options.SecondInstanceData) {
+				if app.ctx == nil {
+					return
+				}
+				wailsrt.WindowUnminimise(app.ctx)
+				wailsrt.WindowShow(app.ctx)
+			},
+		},
 		OnStartup:     app.Startup,
 		OnShutdown:    app.Shutdown,
 		OnBeforeClose: app.BeforeClose,

@@ -64,6 +64,8 @@ docs/
   diagrams/               Architecture diagrams
 assets/                   Icons, logo, screenshot, VHS tape files
 scripts/
+  bootstrap.sh             Cross-platform installer (downloads a release, places binaries, wires PATH, registers Linux menu entry)
+  register-gitbox.sh       Linux-only desktop registrar (.desktop + icon in ~/.local/share, idempotent, supports --uninstall)
   installer.iss            Windows Inno Setup installer script
   appimage/                Linux AppImage support files (desktop, AppRun)
   dmg/                     macOS DMG installer script + README
