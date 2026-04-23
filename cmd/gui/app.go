@@ -2858,7 +2858,17 @@ func (a *App) FetchRepo(sourceKey, repoKey string) {
 	}()
 }
 
+// fetchAllConcurrency caps the number of concurrent fetches inside
+// FetchAllRepos. A tight serial loop on Windows/WebView2 coalesces the
+// per-repo Wails events so the top-bar and per-row spinners never
+// animate (issue #57); running fetches in a worker pool yields to the
+// Wails IPC layer between events and also cuts wall-clock fetch time.
+const fetchAllConcurrency = 8
+
 // FetchAllRepos runs git fetch on every cloned repo and emits fetch:alldone when finished.
+// Fetches run up to fetchAllConcurrency at a time. Each worker emits
+// fetch:start before its fetch and fetch:done after; fetch:alldone is
+// emitted once, after all workers finish.
 func (a *App) FetchAllRepos() {
 	go func() {
 		a.mu.Lock()
@@ -2880,34 +2890,43 @@ func (a *App) FetchAllRepos() {
 		}
 		a.mu.Unlock()
 
+		sem := make(chan struct{}, fetchAllConcurrency)
+		var wg sync.WaitGroup
 		for _, r := range repos {
-			wailsrt.EventsEmit(a.ctx, "fetch:start", map[string]string{
-				"source": r.sourceKey, "repo": r.repoKey,
-			})
-			// Periodic self-heal: fix .git/config drift (identity,
-			// origin URL, credential helpers) before each fetch so
-			// repos stay within spec between sessions.
-			_ = heal.Repo(a.cfg, r.sourceKey, r.repoKey)
-			_, err := git.FetchCaptured(r.path)
-			payload := map[string]interface{}{
-				"source": r.sourceKey, "repo": r.repoKey,
-			}
-			if err == nil {
-				a.markUpstreamGone(r.sourceKey, r.repoKey, false)
-			} else {
-				// Previously the error was swallowed here and the UI never
-				// learned the fetch had failed — e.g. when the repo was
-				// deleted upstream, the card kept showing "synced". Surface
-				// the raw error AND a structured upstreamGone flag so the
-				// frontend can paint a distinct state.
-				payload["error"] = err.Error()
-				if git.IsUpstreamGoneError(err) {
-					payload["upstreamGone"] = true
-					a.markUpstreamGone(r.sourceKey, r.repoKey, true)
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(r repoRef) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				wailsrt.EventsEmit(a.ctx, "fetch:start", map[string]string{
+					"source": r.sourceKey, "repo": r.repoKey,
+				})
+				// Periodic self-heal: fix .git/config drift (identity,
+				// origin URL, credential helpers) before each fetch so
+				// repos stay within spec between sessions.
+				_ = heal.Repo(a.cfg, r.sourceKey, r.repoKey)
+				_, err := git.FetchCaptured(r.path)
+				payload := map[string]interface{}{
+					"source": r.sourceKey, "repo": r.repoKey,
 				}
-			}
-			wailsrt.EventsEmit(a.ctx, "fetch:done", payload)
+				if err == nil {
+					a.markUpstreamGone(r.sourceKey, r.repoKey, false)
+				} else {
+					// Previously the error was swallowed here and the UI never
+					// learned the fetch had failed — e.g. when the repo was
+					// deleted upstream, the card kept showing "synced". Surface
+					// the raw error AND a structured upstreamGone flag so the
+					// frontend can paint a distinct state.
+					payload["error"] = err.Error()
+					if git.IsUpstreamGoneError(err) {
+						payload["upstreamGone"] = true
+						a.markUpstreamGone(r.sourceKey, r.repoKey, true)
+					}
+				}
+				wailsrt.EventsEmit(a.ctx, "fetch:done", payload)
+			}(r)
 		}
+		wg.Wait()
 
 		wailsrt.EventsEmit(a.ctx, "fetch:alldone", nil)
 		// A fetch that silently succeeds against an archived-but-public

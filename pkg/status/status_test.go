@@ -1,6 +1,7 @@
 package status
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -207,6 +208,70 @@ func TestCheckAll(t *testing.T) {
 	}
 	if states["nonexistent"] != NotCloned {
 		t.Errorf("nonexistent state = %v, want NotCloned", states["nonexistent"])
+	}
+}
+
+// TestCheckAll_Ordered verifies that CheckAll's parallel worker pool
+// preserves the iteration order of OrderedSourceKeys × OrderedRepoKeys.
+// Regression guard for the parallelization introduced in issue #57.
+func TestCheckAll_Ordered(t *testing.T) {
+	dir := t.TempDir()
+
+	// Build a config with multiple sources, each with multiple repos.
+	// None of the repos exist on disk — Check returns NotCloned quickly,
+	// which is enough to test ordering without spawning real git processes.
+	sourceOrder := []string{"src-a", "src-b", "src-c"}
+	var repoOrder []string
+	for i := 0; i < 10; i++ {
+		repoOrder = append(repoOrder, fmt.Sprintf("org/repo-%02d", i))
+	}
+
+	cfg := &config.Config{
+		Version:     2,
+		Global:      config.GlobalConfig{Folder: dir},
+		SourceOrder: sourceOrder,
+		Accounts: map[string]config.Account{
+			"acctA": {Provider: "github", URL: "https://example.com", Username: "a"},
+		},
+		Sources: map[string]config.Source{},
+	}
+	for _, s := range sourceOrder {
+		repos := map[string]config.Repo{}
+		for _, r := range repoOrder {
+			repos[r] = config.Repo{CredentialType: "gcm"}
+		}
+		// Copy repoOrder so every source has an independent slice.
+		ro := append([]string(nil), repoOrder...)
+		cfg.Sources[s] = config.Source{
+			Account:   "acctA",
+			Folder:    s,
+			Repos:     repos,
+			RepoOrder: ro,
+		}
+	}
+
+	results := CheckAll(cfg)
+	if got, want := len(results), len(sourceOrder)*len(repoOrder); got != want {
+		t.Fatalf("results count = %d, want %d", got, want)
+	}
+
+	var expected []string
+	for _, s := range sourceOrder {
+		for _, r := range repoOrder {
+			expected = append(expected, s+"|"+r)
+		}
+	}
+	for i, r := range results {
+		got := r.Source + "|" + r.Repo
+		if got != expected[i] {
+			t.Errorf("results[%d] = %q, want %q", i, got, expected[i])
+		}
+		if r.State != NotCloned {
+			t.Errorf("results[%d] state = %v, want NotCloned", i, r.State)
+		}
+		if r.Account != "acctA" {
+			t.Errorf("results[%d] account = %q, want %q", i, r.Account, "acctA")
+		}
 	}
 }
 
