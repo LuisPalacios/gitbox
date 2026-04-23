@@ -24,5 +24,6 @@ type StatusResult struct {
 	OriginHead string // short SHA of origin when behind
 	BackupHead string // short SHA of backup when behind
 	Warning    string // non-empty for warnings (e.g., repo is public)
+	NeedsSetup bool   // target 404 on a row that has never been set up yet — render as neutral "needs setup", not a red error
 	Error      string // non-empty on failure
 }

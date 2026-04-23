@@ -71,10 +71,12 @@ export interface MirrorStatusResult {
   originHead: string;
   backupHead: string;
   warning: string;
+  needsSetup: boolean;
   error: string;
 }
 
 export interface MirrorSetupResult {
+  mirrorKey: string;
   repoKey: string;
   created: boolean;
   mirrored: boolean;
