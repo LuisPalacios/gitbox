@@ -427,11 +427,13 @@ type MirrorStatusResult struct {
 	OriginHead string `json:"originHead"`
 	BackupHead string `json:"backupHead"`
 	Warning    string `json:"warning"`
+	NeedsSetup bool   `json:"needsSetup"`
 	Error      string `json:"error"`
 }
 
 // MirrorSetupResult is sent to the frontend after a mirror setup attempt.
 type MirrorSetupResult struct {
+	MirrorKey    string `json:"mirrorKey"`
 	RepoKey      string `json:"repoKey"`
 	Created      bool   `json:"created"`
 	Mirrored     bool   `json:"mirrored"`
@@ -4111,6 +4113,7 @@ func (a *App) GetMirrorStatus(mirrorKey string) {
 				OriginHead: r.OriginHead,
 				BackupHead: r.BackupHead,
 				Warning:    r.Warning,
+				NeedsSetup: r.NeedsSetup,
 				Error:      r.Error,
 			})
 		}
@@ -4120,6 +4123,8 @@ func (a *App) GetMirrorStatus(mirrorKey string) {
 
 // SetupMirrorRepo runs API setup for a single mirror repo.
 // Runs async; emits "mirror:setup:done" event with MirrorSetupResult.
+// On success, stamps MirrorRepo.LastSync so CheckStatus can tell "never set up"
+// from "set up and target is genuinely missing" (issue #59).
 func (a *App) SetupMirrorRepo(mirrorKey, repoKey string) {
 	go func() {
 		a.mu.Lock()
@@ -4131,6 +4136,7 @@ func (a *App) SetupMirrorRepo(mirrorKey, repoKey string) {
 
 		r := mirror.SetupMirror(ctx, cfg, mirrorKey, repoKey)
 		result := MirrorSetupResult{
+			MirrorKey:    mirrorKey,
 			RepoKey:      r.RepoKey,
 			Created:      r.Created,
 			Mirrored:     r.Mirrored,
@@ -4139,7 +4145,18 @@ func (a *App) SetupMirrorRepo(mirrorKey, repoKey string) {
 			Error:        r.Error,
 		}
 
-		_ = r.Error // result is emitted via event below
+		if r.Error == "" {
+			a.mu.Lock()
+			if m, ok := a.cfg.Mirrors[mirrorKey]; ok {
+				if mr, ok := m.Repos[repoKey]; ok {
+					mr.LastSync = time.Now().UTC().Format(time.RFC3339)
+					m.Repos[repoKey] = mr
+					a.cfg.Mirrors[mirrorKey] = m
+					_ = a.saveConfig()
+				}
+			}
+			a.mu.Unlock()
+		}
 
 		wailsrt.EventsEmit(a.ctx, "mirror:setup:done", result)
 	}()

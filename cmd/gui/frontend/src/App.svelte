@@ -1412,6 +1412,9 @@
 
   // ── Mirrors ──
   let mirrorChecking: Record<string, boolean> = {};
+  // Per-row "setup in progress" flag, keyed by `${mirrorKey}/${repoKey}`.
+  // Set before calling bridge.setupMirrorRepo, cleared on the mirror:setup:done event.
+  let mirrorSettingUp: Record<string, boolean> = {};
   let addMirrorGroupModal = false;
   let addMirrorRepoModal: string | null = null; // holds mirrorKey
   let deleteMirrorGroupConfirm: string | null = null;
@@ -1789,6 +1792,7 @@
   }
 
   function mirrorStatusColor(repo: MirrorRepo, live: MirrorStatusResult | undefined, theme: string): string {
+    if (live?.needsSetup) return statusColor('not cloned', theme); // neutral — row has never been set up
     if (live?.error) return statusColor('error', theme);
     if (live?.syncStatus === 'synced') return statusColor('clean', theme);
     if (live?.syncStatus === 'behind') return statusColor('behind', theme);
@@ -1798,6 +1802,7 @@
   }
 
   function mirrorStatusSymbol(repo: MirrorRepo, live: MirrorStatusResult | undefined): string {
+    if (live?.needsSetup) return '○';
     if (live?.error) return '✕';
     if (live?.syncStatus === 'synced') return '●';
     if (live?.syncStatus === 'behind') return '↓';
@@ -1808,6 +1813,7 @@
 
   /** Summarize live mirror status in a short, user-friendly string. */
   function mirrorStatusText(repo: MirrorRepo, live: MirrorStatusResult | undefined): string {
+    if (live?.needsSetup) return 'needs setup';
     if (live?.error) return friendlyMirrorError(live.error);
     if (live?.syncStatus === 'synced') return 'Synced OK';
     if (live?.syncStatus === 'behind') return 'Backup is behind origin';
@@ -1831,6 +1837,7 @@
         total++;
         const live = $mirrorStates[`${key}/${repoKey}`];
         if (!live) unchecked++;
+        else if (live.needsSetup) unchecked++;
         else if (live.error) error++;
         else active++;
       }
@@ -1865,6 +1872,10 @@
       mirrorCredWarning = credCheck;
       return;
     }
+    // Flip the per-row spinner on before firing the async bridge call. Cleared
+    // in the mirror:setup:done handler below.
+    const key = `${mirrorKey}/${repoKey}`;
+    mirrorSettingUp = { ...mirrorSettingUp, [key]: true };
     await bridge.setupMirrorRepo(mirrorKey, repoKey);
   }
 
@@ -2424,6 +2435,13 @@
 
     events.on('mirror:setup:done', async (data: any) => {
       mirrorSetupResultModal = data;
+      // Clear the per-row spinner. The Go side now emits the mirrorKey too
+      // (issue #59) so we can key off ${mirrorKey}/${repoKey} directly.
+      if (data?.mirrorKey && data?.repoKey) {
+        const key = `${data.mirrorKey}/${data.repoKey}`;
+        const { [key]: _removed, ...rest } = mirrorSettingUp;
+        mirrorSettingUp = rest;
+      }
       $configStore = await bridge.reloadConfig();
       checkAllMirrorStatus();
     });
@@ -3431,11 +3449,20 @@
         {#each (mir.repoOrder && mir.repoOrder.length > 0 ? mir.repoOrder : Object.keys(mir.repos)) as repoName}
           {@const repo = mir.repos[repoName]}
           {@const live = $mirrorStates[`${mirrorKey}/${repoName}`]}
+          {@const settingUp = !!mirrorSettingUp[`${mirrorKey}/${repoName}`]}
           <div class="mirror-row">
-            <span class="mirror-dot" style="color:{mirrorStatusColor(repo, live, $themeStore)}">{mirrorStatusSymbol(repo, live)}</span>
+            {#if settingUp}
+              <span class="mirror-dot"><div class="spinner-sm"></div></span>
+            {:else}
+              <span class="mirror-dot" style="color:{mirrorStatusColor(repo, live, $themeStore)}">{mirrorStatusSymbol(repo, live)}</span>
+            {/if}
             <span class="mirror-repo-name">{repoName}</span>
             <span class="mirror-direction">{@html mirrorDirLabelHtml(repo, mir)}</span>
-            <span class="mirror-status-text" style="color:{mirrorStatusColor(repo, live, $themeStore)}">{mirrorStatusText(repo, live)}</span>
+            {#if settingUp}
+              <span class="mirror-status-text">setting up…</span>
+            {:else}
+              <span class="mirror-status-text" style="color:{mirrorStatusColor(repo, live, $themeStore)}">{mirrorStatusText(repo, live)}</span>
+            {/if}
             {#if live?.warning}
               <span class="mirror-warning" title={live.warning}>⚠</span>
             {/if}
@@ -3443,7 +3470,7 @@
               {@const errAcct = live.error.replace('missing API token in ', '')}
               <button class="btn-sm btn-fix" on:click={() => openTokenSetup(errAcct)} title="Set up API token for {errAcct}">Fix credentials</button>
             {:else if !deleteMode}
-              <button class="btn-sm btn-setup" on:click={() => setupMirrorRepo(mirrorKey, repoName)}>Setup</button>
+              <button class="btn-sm btn-setup" on:click={() => setupMirrorRepo(mirrorKey, repoName)} disabled={settingUp}>Setup</button>
             {/if}
             {#if deleteMode}
               <button class="btn-sm btn-danger" on:click={() => deleteMirrorRepoConfirm = { mirrorKey, repoKey: repoName }}>✕</button>

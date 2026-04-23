@@ -95,6 +95,22 @@ func CheckStatus(ctx context.Context, cfg *config.Config, mirrorKey, repoKey str
 	dstInfo, err := backupInfo.GetRepoInfo(ctx, backupAcct.URL, backupToken, backupAcct.Username, backupOwner, backupName)
 	if err != nil {
 		if strings.Contains(err.Error(), "404") {
+			// A 404 on the backup side means one of two things:
+			//   1. The user has never completed setup for this row yet — the
+			//      target is supposed to be missing. Render as neutral
+			//      "needs setup", not a red error.
+			//   2. Setup was done previously and the target was since deleted
+			//      on the provider — a genuine error the user should see.
+			//
+			// mr.LastSync is populated on successful setup (see cmd/gui/app.go
+			// SetupMirrorRepo); an empty value means branch 1. Legacy configs
+			// created before LastSync was written will land in branch 1 as
+			// well — the false-neutral state self-heals on the first click of
+			// Setup, which is acceptable for that rare case.
+			if mr.LastSync == "" {
+				base.NeedsSetup = true
+				return base
+			}
 			base.Error = "target repo does not exist on " + backupKey
 			return base
 		}
