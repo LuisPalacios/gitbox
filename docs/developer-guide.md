@@ -21,9 +21,11 @@ For multiplatform testing via SSH, see [multiplatform.md](multiplatform.md).
 go build -o build/gitbox ./cmd/cli
 
 # Cross-compile for other platforms
-GOOS=linux  GOARCH=amd64 go build -o build/gitbox-linux-amd64  ./cmd/cli
-GOOS=darwin GOARCH=arm64 go build -o build/gitbox-darwin-arm64 ./cmd/cli
-GOOS=windows GOARCH=amd64 go build -o build/gitbox.exe         ./cmd/cli
+GOOS=linux   GOARCH=amd64 go build -o build/gitbox-linux-amd64         ./cmd/cli
+GOOS=darwin  GOARCH=arm64 go build -o build/gitbox-darwin-arm64        ./cmd/cli
+GOOS=darwin  GOARCH=amd64 go build -o build/gitbox-darwin-amd64        ./cmd/cli
+GOOS=windows GOARCH=amd64 go build -o build/gitbox-windows-amd64.exe   ./cmd/cli
+GOOS=windows GOARCH=arm64 go build -o build/gitbox-windows-arm64.exe   ./cmd/cli
 ```
 
 ### GUI (Wails)
@@ -231,6 +233,7 @@ Each release produces the following artifacts:
 | Asset | Contents |
 | --- | --- |
 | `gitbox-win-amd64.zip` | `gitbox.exe` + `GitboxApp.exe` |
+| `gitbox-win-arm64.zip` | `gitbox.exe` (CLI only — GUI ARM64 build pending a native ARM runner) |
 | `gitbox-win-amd64-setup.exe` | Windows Inno Setup installer (PATH, Start Menu) |
 | `gitbox-macos-arm64.zip` | `gitbox` + `GitboxApp.app` |
 | `gitbox-macos-arm64.dmg` | macOS disk image with bundled installer |

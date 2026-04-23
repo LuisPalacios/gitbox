@@ -153,10 +153,19 @@ func ArtifactName() string {
 	if os.Getenv("APPIMAGE") != "" {
 		return "gitbox-linux-amd64.AppImage"
 	}
+	return artifactNameFor(runtime.GOOS, runtime.GOARCH)
+}
 
-	switch runtime.GOOS + "/" + runtime.GOARCH {
+// artifactNameFor returns the release artifact name for a given GOOS/GOARCH
+// pair, or "" when no release asset exists for that combination. Exported via
+// ArtifactName() but separated so tests can cover every supported platform
+// without runtime.GOOS/GOARCH.
+func artifactNameFor(goos, goarch string) string {
+	switch goos + "/" + goarch {
 	case "windows/amd64":
 		return "gitbox-win-amd64.zip"
+	case "windows/arm64":
+		return "gitbox-win-arm64.zip"
 	case "darwin/arm64":
 		return "gitbox-macos-arm64.zip"
 	case "darwin/amd64":

@@ -113,6 +113,32 @@ func TestResolveVersion(t *testing.T) {
 	})
 }
 
+// ── Artifact name tests ──
+
+func TestArtifactNameFor(t *testing.T) {
+	tests := []struct {
+		goos, goarch string
+		want         string
+	}{
+		{"windows", "amd64", "gitbox-win-amd64.zip"},
+		{"windows", "arm64", "gitbox-win-arm64.zip"},
+		{"darwin", "arm64", "gitbox-macos-arm64.zip"},
+		{"darwin", "amd64", "gitbox-macos-amd64.zip"},
+		{"linux", "amd64", "gitbox-linux-amd64.zip"},
+		// No release asset yet for these combinations; artifactNameFor must
+		// return empty so the auto-updater falls through to "no update".
+		{"linux", "arm64", ""},
+		{"freebsd", "amd64", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.goos+"/"+tt.goarch, func(t *testing.T) {
+			if got := artifactNameFor(tt.goos, tt.goarch); got != tt.want {
+				t.Errorf("artifactNameFor(%q, %q) = %q, want %q", tt.goos, tt.goarch, got, tt.want)
+			}
+		})
+	}
+}
+
 // ── Check tests ──
 
 func TestCheckLatest_UpdateAvailable(t *testing.T) {
