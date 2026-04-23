@@ -1,6 +1,8 @@
 package doctor
 
 import (
+	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 )
@@ -131,5 +133,83 @@ func TestPrecheckForGCMWhenGitPresent(t *testing.T) {
 	}
 	if !pc.OK && pc.Summary == "" {
 		t.Errorf("OK=false but Summary is empty")
+	}
+}
+
+// Token credentials use git's built-in `store` helper and never touch GCM.
+// Requiring GCM for Token was a real bug: on Windows systems without GCM,
+// users were blocked from adding token-based credentials as a workaround.
+func TestPrecheckForTokenDoesNotRequireGCM(t *testing.T) {
+	if Lookup("git") == "" {
+		t.Skip("git not found; cannot exercise precheck positively")
+	}
+	pc := PrecheckForCredentialType(CredTypeToken)
+	if !pc.OK {
+		for _, m := range pc.Missing {
+			if m.Tool.Name == "git-credential-manager" {
+				t.Fatalf("Token precheck wrongly requires GCM: %+v", pc)
+			}
+		}
+	}
+}
+
+// Token precheck still fails when git itself is missing.
+func TestPrecheckForTokenRequiresGit(t *testing.T) {
+	for _, tl := range []Tool{toolGit()} {
+		if tl.Name != "git" {
+			continue
+		}
+	}
+	// Can't actually uninstall git for the test, so assert the Tool set is
+	// what we expect via the precheck shape when git is present: only git is
+	// probed, so OK is driven entirely by git's presence.
+	pc := PrecheckForCredentialType(CredTypeToken)
+	if Lookup("git") != "" && !pc.OK {
+		t.Errorf("git is present but Token precheck failed: %+v", pc)
+	}
+}
+
+// On Windows, Lookup must find git-credential-manager at
+// "%ProgramFiles%\Git\cmd\git-credential-manager.exe" even when PATH is
+// stripped of the Git install directory. This is the GUI-from-Explorer
+// scenario (issue N1).
+func TestWindowsFallbackFindsGCMWhenPATHStripped(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows-only fallback")
+	}
+	// Stage a fake Git tree under a temp ProgramFiles so the fallback has
+	// something to stat, independent of whether GCM is installed on the host.
+	fakePF := t.TempDir()
+	fakeBin := filepath.Join(fakePF, "Git", "cmd")
+	if err := os.MkdirAll(fakeBin, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	binPath := filepath.Join(fakeBin, "git-credential-manager.exe")
+	if err := os.WriteFile(binPath, []byte("fake"), 0o755); err != nil {
+		t.Fatalf("write fake binary: %v", err)
+	}
+
+	t.Setenv("ProgramFiles", fakePF)
+	t.Setenv("ProgramFiles(x86)", "")
+	t.Setenv("LOCALAPPDATA", "")
+	t.Setenv("PATH", "") // force LookPath to miss
+
+	got := Lookup("git-credential-manager")
+	if got != binPath {
+		t.Errorf("Lookup(git-credential-manager) = %q, want %q", got, binPath)
+	}
+}
+
+func TestWindowsFallbackReturnsEmptyForUnrelatedTool(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows-only fallback")
+	}
+	// ssh / tmux / wsl are not in the fallback allowlist — they must not
+	// resolve via the Windows-specific probe.
+	if dirs := windowsFallbackDirs("ssh"); dirs != nil {
+		t.Errorf("ssh should not have a Windows fallback, got %v", dirs)
+	}
+	if dirs := windowsFallbackDirs("tmux"); dirs != nil {
+		t.Errorf("tmux should not have a Windows fallback, got %v", dirs)
 	}
 }

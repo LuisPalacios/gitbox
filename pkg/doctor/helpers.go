@@ -35,8 +35,11 @@ func PrecheckForCredentialType(credType string) CredentialPrecheck {
 	case CredTypeSSH:
 		return precheck([]Tool{toolGit(), toolSSH(), toolSSHKeygen(), toolSSHAdd()}, "OpenSSH tools are required for SSH credentials.")
 	case CredTypeToken:
-		// Token storage uses GCM under the hood on every supported platform.
-		return precheck([]Tool{toolGit(), toolGCM()}, "A working git + Git Credential Manager is required to store the token.")
+		// Token credentials use git's built-in `store` credential helper
+		// (see pkg/credential/repoconfig.go: configureToken) writing a
+		// credential-store format file under ~/.config/gitbox/credentials/.
+		// No GCM is involved — only git itself.
+		return precheck([]Tool{toolGit()}, "Git is required to store tokens via the built-in credential-store helper.")
 	default:
 		return CredentialPrecheck{OK: true}
 	}

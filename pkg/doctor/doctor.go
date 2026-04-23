@@ -47,21 +47,88 @@ func (r Result) InstallHint() string {
 var darwinExtraDirs = []string{"/opt/homebrew/bin", "/usr/local/bin"}
 
 // Lookup returns the absolute path for name, or "" if the binary is not
-// found. On macOS it probes Homebrew prefixes before PATH, matching the
-// behavior of pkg/git.GitBin().
+// found. Strategy:
+//
+//  1. macOS: probe Homebrew prefixes before PATH. GUI apps launched from
+//     Finder have a minimal PATH that excludes Homebrew directories.
+//  2. Try exec.LookPath. Honors the user's PATH customization.
+//  3. Windows: fall back to well-known Git-for-Windows / GCM install dirs.
+//     GUI apps occasionally inherit an environment where `C:\Program Files\Git\cmd`
+//     is missing from PATH, which made gitbox wrongly report GCM as not
+//     installed.
 func Lookup(name string) string {
 	if runtime.GOOS == "darwin" {
 		for _, dir := range darwinExtraDirs {
-			candidate := filepath.Join(dir, name)
-			if fi, err := os.Stat(candidate); err == nil && !fi.IsDir() {
-				return candidate
+			if p := statExecutable(dir, name); p != "" {
+				return p
 			}
 		}
 	}
 	if p, err := exec.LookPath(name); err == nil {
 		return p
 	}
+	if runtime.GOOS == "windows" {
+		for _, dir := range windowsFallbackDirs(name) {
+			if p := statExecutable(dir, name); p != "" {
+				return p
+			}
+		}
+	}
 	return ""
+}
+
+// statExecutable returns filepath.Join(dir, name) if the file exists and is
+// not a directory, appending ".exe" on Windows when name lacks an extension.
+// Returns "" when nothing matches.
+func statExecutable(dir, name string) string {
+	candidates := []string{filepath.Join(dir, name)}
+	if runtime.GOOS == "windows" && !strings.EqualFold(filepath.Ext(name), ".exe") {
+		candidates = append(candidates, filepath.Join(dir, name+".exe"))
+	}
+	for _, c := range candidates {
+		if fi, err := os.Stat(c); err == nil && !fi.IsDir() {
+			return c
+		}
+	}
+	return ""
+}
+
+// windowsFallbackDirs returns well-known install directories to probe for the
+// given tool when exec.LookPath misses it. Only Git-family tools get
+// fallbacks: SSH ships in %SystemRoot%\System32\OpenSSH (always on PATH on
+// Windows 10+); tmux/tmuxinator run inside WSL so an OS-level fallback would
+// be misleading.
+func windowsFallbackDirs(name string) []string {
+	base := strings.TrimSuffix(strings.ToLower(name), ".exe")
+	if base != "git" && base != "git-credential-manager" {
+		return nil
+	}
+	pf := os.Getenv("ProgramFiles")
+	pf86 := os.Getenv("ProgramFiles(x86)")
+	localAppData := os.Getenv("LOCALAPPDATA")
+
+	dirs := make([]string, 0, 6)
+	if pf != "" {
+		dirs = append(dirs,
+			filepath.Join(pf, "Git", "cmd"),
+			filepath.Join(pf, "Git", "mingw64", "bin"),
+		)
+	}
+	if pf86 != "" {
+		dirs = append(dirs,
+			filepath.Join(pf86, "Git", "cmd"),
+			filepath.Join(pf86, "Git", "mingw32", "bin"),
+		)
+	}
+	if localAppData != "" {
+		// Git-for-Windows user-scope install.
+		dirs = append(dirs, filepath.Join(localAppData, "Programs", "Git", "cmd"))
+	}
+	if base == "git-credential-manager" && pf != "" {
+		// Standalone GCM installer drops the binary outside of Git's tree.
+		dirs = append(dirs, filepath.Join(pf, "Git Credential Manager"))
+	}
+	return dirs
 }
 
 // CheckOne probes a single Tool.

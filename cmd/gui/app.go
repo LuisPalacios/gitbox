@@ -4559,19 +4559,17 @@ func gatherRequiredTools(cfg *config.Config) map[string]string {
 	if cfg == nil {
 		return required
 	}
-	var anyGCM, anySSH, anyToken bool
+	var anyGCM, anySSH bool
 	for _, acct := range cfg.Accounts {
 		switch acct.DefaultCredentialType {
 		case "gcm":
 			anyGCM = true
 		case "ssh":
 			anySSH = true
-		case "token":
-			anyToken = true
 		}
 	}
-	if anyGCM || anyToken {
-		required["git-credential-manager"] = "you have accounts using the gcm/token credential type"
+	if anyGCM {
+		required["git-credential-manager"] = "you have accounts using the gcm credential type"
 	}
 	if anySSH {
 		required["ssh"] = "you have accounts using the ssh credential type"
