@@ -40,6 +40,8 @@ jobs:
         run: GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" -o build/gitbox-darwin-amd64 ./cmd/cli
       - name: Build CLI (windows/amd64)
         run: GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o build/gitbox.exe ./cmd/cli
+      - name: Build CLI (windows/arm64)
+        run: GOOS=windows GOARCH=arm64 go build -ldflags "$LDFLAGS" -o build/gitbox-arm64.exe ./cmd/cli
       - uses: actions/upload-artifact@v4
         with:
           name: cli-binaries
@@ -419,6 +421,11 @@ jobs:
           cp artifacts/cli-binaries/gitbox.exe  tmp-win/gitbox.exe
           cp artifacts/gui-windows/GitboxApp.exe      tmp-win/GitboxApp.exe
           (cd tmp-win && zip ../release/gitbox-win-amd64.zip *)
+
+          # Windows (arm64): CLI only (no GUI ARM64 build aún) → gitbox-win-arm64.zip
+          mkdir -p tmp-win-arm64
+          cp artifacts/cli-binaries/gitbox-arm64.exe tmp-win-arm64/gitbox.exe
+          (cd tmp-win-arm64 && zip ../release/gitbox-win-arm64.zip *)
 
           # macOS (arm64): gitbox + GitboxApp.app → gitbox-macos-arm64.zip
           cp artifacts/cli-binaries/gitbox-darwin-arm64 tmp-mac-arm64/gitbox
