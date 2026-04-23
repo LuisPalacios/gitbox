@@ -63,7 +63,7 @@ for platform in $ALL_PLATFORMS; do
     # Deploy binary
     printf '  deploying to %s (%s)... ' "$label" "$host"
     if scp "$artifact" "${host}:${remote_bin}" 2>/dev/null && \
-       { [[ "$platform" == "win" ]] || ssh "$host" "chmod +x $remote_bin" 2>/dev/null; }; then
+       { is_win_platform "$platform" || ssh "$host" "chmod +x $remote_bin" 2>/dev/null; }; then
         printf '%bok%b\n' "$G" "$N"
         deployed=$((deployed + 1))
     else

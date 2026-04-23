@@ -9,7 +9,8 @@
 #   ./scripts/run-commands.sh               # all configured platforms (default)
 #   ./scripts/run-commands.sh mac-arm       # macOS Apple Silicon only
 #   ./scripts/run-commands.sh mac-intel     # macOS Intel only
-#   ./scripts/run-commands.sh win           # Windows only
+#   ./scripts/run-commands.sh win-intel     # Windows amd64 only
+#   ./scripts/run-commands.sh win-arm       # Windows arm64 only
 #   ./scripts/run-commands.sh linux         # Linux only
 
 # shellcheck source=_common.sh
@@ -33,7 +34,7 @@ for platform in $targets; do
     if [[ -z "$host" ]]; then
         printf '  %b%s%b:  %s\n' "$B" "$label" "$N" "$bin"
     else
-        if [[ "$platform" == "win" ]]; then
+        if is_win_platform "$platform"; then
             # Windows: TUI needs a real interactive shell, ssh -t "cmd" exits immediately
             printf '  %b%s%b:  ssh %s  →  %s\n' "$B" "$label" "$N" "$host" "$bin"
         else

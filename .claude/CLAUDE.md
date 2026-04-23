@@ -361,10 +361,13 @@ Connection details are in `.env` (gitignored). Copy `docs/.env.example` to `.env
 
 | Platform | Env var | Arch | GOOS/GOARCH | Script token |
 | --- | --- | --- | --- | --- |
-| Windows | `SSH_WIN_HOST` | amd64 | `windows/amd64` | `win` |
+| Windows amd64 | `SSH_WIN_INTEL_HOST` | amd64 | `windows/amd64` | `win-intel` (alias `win`) |
+| Windows arm64 | `SSH_WIN_ARM_HOST` | arm64 | `windows/arm64` | `win-arm` |
 | macOS Apple Silicon | `SSH_MAC_ARM_HOST` | arm64 | `darwin/arm64` | `mac-arm` (alias `mac`) |
 | macOS Intel | `SSH_MAC_INTEL_HOST` | amd64 | `darwin/amd64` | `mac-intel` |
 | Linux | `SSH_LINUX_HOST` | amd64 | `linux/amd64` | `linux` |
+
+Legacy `SSH_WIN_HOST` is still honored as a fallback for `SSH_WIN_INTEL_HOST` — older `.env` files keep working without a rename.
 
 ### Build-test-deploy cycle
 

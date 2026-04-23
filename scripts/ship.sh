@@ -70,7 +70,7 @@ remote_gui_for() {
     case "$1" in
         mac|mac-arm|mac-intel)  echo "/tmp/GitboxApp.app" ;;
         linux)                  echo "/tmp/GitboxApp" ;;
-        win)                    echo "~/GitboxApp.exe" ;;
+        win|win-intel|win-arm)  echo "~/GitboxApp.exe" ;;
     esac
 }
 
@@ -79,17 +79,18 @@ wails_artifact_for() {
     case "$1" in
         mac|mac-arm|mac-intel)  echo "build/bin/GitboxApp.app" ;;
         linux)                  echo "build/bin/GitboxApp" ;;
-        win)                    echo "build/bin/GitboxApp.exe" ;;
+        win|win-intel|win-arm)  echo "build/bin/GitboxApp.exe" ;;
     esac
 }
 
 # Wails -platform value for a platform token.
 wails_target_for() {
     case "$1" in
-        mac|mac-arm)   echo "darwin/arm64" ;;
-        mac-intel)     echo "darwin/amd64" ;;
-        linux)         echo "linux/amd64" ;;
-        win)           echo "windows/amd64" ;;
+        mac|mac-arm)     echo "darwin/arm64" ;;
+        mac-intel)       echo "darwin/amd64" ;;
+        linux)           echo "linux/amd64" ;;
+        win|win-intel)   echo "windows/amd64" ;;
+        win-arm)         echo "windows/arm64" ;;
     esac
 }
 
@@ -114,7 +115,7 @@ build_and_ship_cli() {
 
     echo ">> scp $out $host:$remote"
     scp -q "$out" "$host:$remote" || return 1
-    if [[ "$p" != "win" ]]; then
+    if ! is_win_platform "$p"; then
         ssh "$host" "chmod +x $remote" || return 1
     fi
     echo "CLI: $host:$remote"
@@ -176,7 +177,7 @@ build_and_ship_gui() {
         { [ -f assets/appicon.png ] && cp assets/appicon.png cmd/gui/build/appicon.png || true; } && \
         { [ -f assets/icon.ico ] && mkdir -p cmd/gui/build/windows && cp assets/icon.ico cmd/gui/build/windows/icon.ico || true; } && \
         ${pre_build}cd cmd/gui && wails build $wails_flags"
-    if [[ "$p" == "win" ]]; then
+    if is_win_platform "$p"; then
         build_cmd="$(_win_scoop_path_prefix) $build_cmd"
     fi
 
@@ -188,7 +189,7 @@ build_and_ship_gui() {
 
     # Stage at the conventional /tmp (Unix) or ~ (Windows) location.
     echo ">> stage → $host:$staged"
-    if [[ "$p" == "win" ]]; then
+    if is_win_platform "$p"; then
         ssh "$host" "cp ~/$remote_dir/cmd/gui/$artifact $staged" || return 1
     elif [[ "$artifact" == *".app" ]]; then
         ssh "$host" "rm -rf $staged && cp -R ~/$remote_dir/cmd/gui/$artifact $staged && \
