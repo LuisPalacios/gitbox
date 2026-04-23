@@ -88,7 +88,7 @@ For macOS, Linux, or Windows (Git Bash) — a single command that downloads, ext
 bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
 ```
 
-This installs to `~/bin/` (macOS GUI goes to `/Applications/`). Run with `--help` for options. Useful for headless servers or CI environments where the native installer is not practical.
+This installs to `~/bin/` (macOS GUI goes to `/Applications/`). On Linux it also registers the GUI in the Activities menu so I can search for it or pin it to the dock (skip with `--no-desktop`). Run with `--help` for options. Useful for headless servers or CI environments where the native installer is not practical.
 
 > [!WARNING]
 > **Gitbox is not signed or notarized.** The binaries are not code-signed, so macOS Gatekeeper, Windows SmartScreen, and similar OS protections will flag them. The bootstrap installer removes these flags automatically (`xattr -cr` on macOS, `Unblock-File` on Windows) so the binaries can run. **You are explicitly trusting unsigned code when you do this.** I recommend you audit the [source code](https://github.com/LuisPalacios/gitbox) and the [bootstrap script](scripts/bootstrap.sh) before running anything. This project is MIT-licensed open source — inspect it, build it yourself, or don't use it at all.

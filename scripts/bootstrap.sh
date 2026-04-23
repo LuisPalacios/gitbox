@@ -8,6 +8,7 @@ GITHUB_API="https://api.github.com"
 VERSION_TAG=""
 INSTALL_DIR="$HOME/bin"
 CLI_ONLY=false
+NO_DESKTOP=false
 PLATFORM=""
 ARCH=""
 ARTIFACT_NAME=""
@@ -40,6 +41,9 @@ Options:
   --version <tag>   Install a specific release (e.g. v1.2.18). Default: latest.
   --prefix <dir>    CLI install directory. Default: ~/bin.
   --cli-only        Skip GUI installation.
+  --no-desktop      Linux only: skip registering the GUI in the Activities
+                    menu. The binary is still installed; you can register
+                    it later with scripts/register-gitbox.sh.
   -h, --help        Show this help.
 
 Examples:
@@ -63,6 +67,7 @@ parse_args() {
       --version)  VERSION_TAG="${2:?'--version requires a tag (e.g. v1.2.18)'}"; shift 2 ;;
       --prefix)   INSTALL_DIR="${2:?'--prefix requires a directory'}"; shift 2 ;;
       --cli-only) CLI_ONLY=true; shift ;;
+      --no-desktop) NO_DESKTOP=true; shift ;;
       -h|--help)  show_help ;;
       *)          die "Unknown option: $1 (try --help)" ;;
     esac
@@ -305,6 +310,19 @@ install_macos() {
 
 # ── Linux install ───────────────────────────────────────────────────
 
+register_linux_desktop() {
+  local script_url="https://raw.githubusercontent.com/${REPO}/main/scripts/register-gitbox.sh"
+  local script_path="$TMP_DIR/register-gitbox.sh"
+  if ! curl -fsSL -o "$script_path" "$script_url"; then
+    warn "Could not download register-gitbox.sh — skipping menu entry."
+    warn "Register later with: bash <(curl -fsSL $script_url)"
+    return
+  fi
+  if ! GITBOX_GUI_BIN="$INSTALL_DIR/GitboxApp" bash "$script_path"; then
+    warn "Desktop registration failed — run manually: bash <(curl -fsSL $script_url)"
+  fi
+}
+
 install_linux() {
   mkdir -p "$INSTALL_DIR"
 
@@ -318,6 +336,9 @@ install_linux() {
     cp "$TMP_DIR/extracted/GitboxApp" "$INSTALL_DIR/GitboxApp"
     chmod +x "$INSTALL_DIR/GitboxApp"
     log "GUI installed: $INSTALL_DIR/GitboxApp"
+    if [[ "$NO_DESKTOP" == false ]]; then
+      register_linux_desktop
+    fi
   fi
 
   ensure_path "$INSTALL_DIR"
@@ -362,7 +383,12 @@ print_summary() {
   if [[ "$CLI_ONLY" == false ]]; then
     case "$PLATFORM" in
       macos)   echo "  GUI:      /Applications/GitboxApp.app" ;;
-      linux)   echo "  GUI:      $INSTALL_DIR/GitboxApp" ;;
+      linux)
+        echo "  GUI:      $INSTALL_DIR/GitboxApp"
+        if [[ "$NO_DESKTOP" == false ]]; then
+          echo "  Menu:     registered in Activities — search 'Gitbox' or drag to dock"
+        fi
+        ;;
       windows) echo "  GUI:      $INSTALL_DIR/GitboxApp.exe" ;;
     esac
   fi
