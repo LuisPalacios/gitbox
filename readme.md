@@ -44,6 +44,21 @@ Gitbox does not implement any Git protocol or plumbing logic. It acts as an orch
 
 Five providers are supported — GitHub, GitLab, Gitea, Forgejo, and Bitbucket — and all of them work for discovery, cloning, and repo creation. Cross-provider mirroring is fully automated on Gitea, Forgejo, and GitLab; for GitHub and Bitbucket gitbox prints the manual setup steps instead of driving the UI. Read the docs for details.
 
+## Getting started
+
+### Install with bootstrap script
+
+For macOS, Linux, or Windows (Git Bash) — a single command that downloads, extracts, and sets up PATH:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
+```
+
+This installs to `~/bin/` (macOS GUI goes to `/Applications/`). On Linux it also registers the GUI in the Activities menu so I can search for it or pin it to the dock (skip with `--no-desktop`). Run with `--help` for options. Useful for headless servers or CI environments where the native installer is not practical.
+
+> [!WARNING]
+> **Gitbox is not signed or notarized.** The binaries are not code-signed, so macOS Gatekeeper, Windows SmartScreen, and similar OS protections will flag them. The bootstrap installer removes these flags automatically (`xattr -cr` on macOS, `Unblock-File` on Windows) so the binaries can run. **You are explicitly trusting unsigned code when you do this.** I recommend you audit the [source code](https://github.com/LuisPalacios/gitbox) and the [bootstrap script](scripts/bootstrap.sh) before running anything. This project is MIT-licensed open source — inspect it, build it yourself, or don't use it at all.
+
 ## Three interfaces
 
 Gitbox ships as two binaries built from the same Go library (`pkg/`).
@@ -78,20 +93,7 @@ The GUI is a separate binary built with **[Wails](https://wails.io/)** + Svelte.
 
 <!-- TUI demo GIF recorded with VHS (https://github.com/charmbracelet/vhs) goes here -->
 
-## Getting started
-
-### Install with bootstrap script
-
-For macOS, Linux, or Windows (Git Bash) — a single command that downloads, extracts, and sets up PATH:
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
-```
-
-This installs to `~/bin/` (macOS GUI goes to `/Applications/`). On Linux it also registers the GUI in the Activities menu so I can search for it or pin it to the dock (skip with `--no-desktop`). Run with `--help` for options. Useful for headless servers or CI environments where the native installer is not practical.
-
-> [!WARNING]
-> **Gitbox is not signed or notarized.** The binaries are not code-signed, so macOS Gatekeeper, Windows SmartScreen, and similar OS protections will flag them. The bootstrap installer removes these flags automatically (`xattr -cr` on macOS, `Unblock-File` on Windows) so the binaries can run. **You are explicitly trusting unsigned code when you do this.** I recommend you audit the [source code](https://github.com/LuisPalacios/gitbox) and the [bootstrap script](scripts/bootstrap.sh) before running anything. This project is MIT-licensed open source — inspect it, build it yourself, or don't use it at all.
+## Other install methods
 
 ### Install with native installer
 
