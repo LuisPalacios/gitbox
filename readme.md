@@ -25,6 +25,19 @@ I built gitbox to fix this. One tool to set up my accounts, discover my repos, c
 
 Gitbox does not implement any Git protocol or plumbing logic. It acts as an orchestration layer that shells out to tools already on the system: **git** for clone, fetch, pull, status, and credential-manager operations; **ssh** and **ssh-keygen** for SSH key validation and generation; and the **OS native file opener** to manage files, folders and launching local applications.
 
+## Install with bootstrap script
+
+For macOS, Linux, or Windows (Git Bash) — a single command that downloads, extracts, and sets up PATH:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
+```
+
+This installs to `~/bin/` (macOS GUI goes to `/Applications/`). On Linux it also registers the GUI in the Activities menu so I can search for it or pin it to the dock (skip with `--no-desktop`). Run with `--help` for options. Useful for headless servers or CI environments where the native installer is not practical.
+
+> [!WARNING]
+> **Gitbox is not signed or notarized.** The binaries are not code-signed, so macOS Gatekeeper, Windows SmartScreen, and similar OS protections will flag them. The bootstrap installer removes these flags automatically (`xattr -cr` on macOS, `Unblock-File` on Windows) so the binaries can run. **You are explicitly trusting unsigned code when you do this.** I recommend you audit the [source code](https://github.com/LuisPalacios/gitbox) and the [bootstrap script](scripts/bootstrap.sh) before running anything. This project is MIT-licensed open source — inspect it, build it yourself, or don't use it at all.
+
 ## What it does
 
 - **Multi-account management** — define identities per provider with isolated credentials (GCM, SSH, or Token)
@@ -43,21 +56,6 @@ Gitbox does not implement any Git protocol or plumbing logic. It acts as an orch
 - **Task-based workspaces** — bundle clones from different accounts into a VS Code multi-root workspace or a tmuxinator layout; launch from a clone's kebab or from a dedicated Workspaces tab (GUI + TUI + CLI). Auto-discovery adopts `.code-workspace` and `.tmuxinator` files dropped on disk, and full WSL-backed tmuxinator support lights up automatically on Windows.
 
 Five providers are supported — GitHub, GitLab, Gitea, Forgejo, and Bitbucket — and all of them work for discovery, cloning, and repo creation. Cross-provider mirroring is fully automated on Gitea, Forgejo, and GitLab; for GitHub and Bitbucket gitbox prints the manual setup steps instead of driving the UI. Read the docs for details.
-
-## Getting started
-
-### Install with bootstrap script
-
-For macOS, Linux, or Windows (Git Bash) — a single command that downloads, extracts, and sets up PATH:
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
-```
-
-This installs to `~/bin/` (macOS GUI goes to `/Applications/`). On Linux it also registers the GUI in the Activities menu so I can search for it or pin it to the dock (skip with `--no-desktop`). Run with `--help` for options. Useful for headless servers or CI environments where the native installer is not practical.
-
-> [!WARNING]
-> **Gitbox is not signed or notarized.** The binaries are not code-signed, so macOS Gatekeeper, Windows SmartScreen, and similar OS protections will flag them. The bootstrap installer removes these flags automatically (`xattr -cr` on macOS, `Unblock-File` on Windows) so the binaries can run. **You are explicitly trusting unsigned code when you do this.** I recommend you audit the [source code](https://github.com/LuisPalacios/gitbox) and the [bootstrap script](scripts/bootstrap.sh) before running anything. This project is MIT-licensed open source — inspect it, build it yourself, or don't use it at all.
 
 ## Three interfaces
 
