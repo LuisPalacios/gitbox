@@ -13,7 +13,7 @@ Esta guía recorre el flujo completo: desde una instalación limpia hasta un ent
 ## Requisitos previos
 
 - **Git** instalado y en tu PATH
-- Binario **gitbox** — instala con el one-liner, [descarga manualmente](https://github.com/LuisPalacios/gitbox/releases) o [compila desde el código fuente](../developer-guide.md)
+- Binario **gitbox** — instala con el one-liner, [descarga manualmente](https://github.com/LuisPalacios/gitbox/releases) o [compila desde el código fuente](developer-guide.md)
 - Para cuentas GCM: [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager) instalado. En Linux, el OAuth basado en navegador de GCM también necesita un servidor de pantalla (X11 o Wayland). Consulta [credentials.md](credentials.md) para alternativas headless.
 
 Ejecuta `gitbox doctor` en cualquier momento para ver una checklist de cada herramienta externa que gitbox necesita y comandos de instalación para las que falten. También alimenta la comprobación previa del flujo de añadir cuenta en la GUI, para que sepas que falta una dependencia antes de fallar durante la autenticación. Detalles en [reference.md](reference.md#comprobación-del-sistema-doctor).
@@ -279,7 +279,7 @@ gitbox gitignore check     # Estado de ~/.gitignore_global y core.excludesfile
 gitbox gitignore install   # Instalar / refrescar de forma idempotente, backup en .bak-YYYYMMDD-HHMMSS
 ```
 
-Un bloque curado de patrones de basura del sistema operativo (`.DS_Store`, `Thumbs.db`, `*~`, …) se envuelve con marcadores sentinel dentro de `~/.gitignore_global` para que gitbox pueda actualizarlo sin tocar entradas añadidas por el usuario. Consulta [Global gitignore en reference.md](reference.md#global-gitignore) para el flujo completo, preferencia de opt-out y hooks de GUI/TUI.
+Un bloque curado de patrones de basura del sistema operativo (`.DS_Store`, `Thumbs.db`, `*~`, …) se envuelve con marcadores sentinel dentro de `~/.gitignore_global` para que gitbox pueda actualizarlo sin tocar entradas añadidas por el usuario. Consulta [Gitignore global en reference.md](reference.md#gitignore-global) para el flujo completo, preferencia de opt-out y hooks de GUI/TUI.
 
 ## Paso 7: configurar mirrors (opcional)
 
@@ -434,4 +434,4 @@ El updater descarga la release desde GitHub, verifica el checksum SHA256 y reemp
 
 - Consulta la [Guía de referencia](reference.md) para todos los comandos, formato de configuración y troubleshooting
 - Consulta [Credenciales](credentials.md) para instrucciones detalladas de creación de PAT por proveedor
-- Consulta [Arquitectura](../architecture.md) para diseño técnico y detalles de componentes
+- Consulta [Arquitectura](architecture.md) para diseño técnico y detalles de componentes

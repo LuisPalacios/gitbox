@@ -392,7 +392,7 @@ Haz clic en **Configure** para corregir ambas entradas en un paso. Gitbox tambi�
 
 Gitbox detecta cuando falta `~/.gitignore_global`, cuando tiene un bloque recomendado desactualizado, cuando hay patrones gestionados duplicados fuera de los marcadores sentinel o cuando `core.excludesfile` no está configurado. En cualquiera de esos estados aparece un banner con un botón **Install** que hace todo esto: escribe un bloque curado de patrones de basura del SO (`.DS_Store`, `Thumbs.db`, `*~`, …), apunta `core.excludesfile` a él y guarda un backup con timestamp `.bak-YYYYMMDD-HHMMSS` de cualquier archivo existente. Solo se conservan los últimos 3 backups.
 
-La comprobación automática al arrancar se puede cambiar mediante **Settings → Global gitignore → On/Off**. Las acciones explícitas siempre se ejecutan: el toggle del engranaje, el botón Install y la CLI `gitbox gitignore check|install` nunca se silencian por la preferencia. Consulta [Global gitignore en la referencia](reference.md#global-gitignore) para el formato del bloque gestionado y el atajo `G` de la TUI.
+La comprobación automática al arrancar se puede cambiar mediante **Settings → Global gitignore → On/Off**. Las acciones explícitas siempre se ejecutan: el toggle del engranaje, el botón Install y la CLI `gitbox gitignore check|install` nunca se silencian por la preferencia. Consulta [Gitignore global en la referencia](reference.md#gitignore-global) para el formato del bloque gestionado y el atajo `G` de la TUI.
 
 ## Consejos
 
@@ -405,4 +405,4 @@ La comprobación automática al arrancar se puede cambiar mediante **Settings �
 
 - [Inicio rápido de CLI](cli-guide.md) — para usuarios de terminal
 - [Referencia de configuración](reference.md) — formato detallado de config y comandos
-- [Arquitectura](../architecture.md) — diseño técnico
+- [Arquitectura](architecture.md) — diseño técnico

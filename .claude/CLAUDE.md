@@ -36,6 +36,7 @@ English is the main documentation language and the source of truth for this proj
 When translating documentation into any supported language, preserve the English source's content and structure:
 
 - Treat root-level translations such as `README.es.md` as full counterparts of the root `README.md`, not as language-specific summaries.
+- Every canonical English Markdown document in the root or under `docs/` must have a counterpart in each supported language, such as `README.es.md` or `docs/es/<name>.md`, unless the document is explicitly marked private or noncanonical.
 - Translate the same headings, paragraphs, lists, examples, warnings, and links in the same order.
 - Keep commands, flags, config keys, provider names, status values, file paths, and JSON fields unchanged unless the English source itself changes them.
 - Do not create lower-quality summaries, shorter rewrites, expanded rewrites, or improved variants in translated docs. Translation quality must match the English source, neither worse nor better.
