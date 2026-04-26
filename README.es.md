@@ -39,6 +39,26 @@ El instalador coloca los binarios en `~/bin/`. En Linux tambien registra la GUI 
 - Configura mirrors entre proveedores cuando la API lo permite.
 - Abre clones en navegador, explorador, terminal, editor o harness de IA.
 
+## Capturas
+
+Las capturas mantienen la interfaz original en ingles mientras avanzo la traduccion.
+
+<p align="center">
+  <img src="assets/screenshot-gui.png" alt="Interfaz de escritorio de Gitbox" width="800" />
+</p>
+
+<p align="center">
+  <img src="assets/screenshot-tui.png" alt="Dashboard TUI de Gitbox" width="600" />
+</p>
+
+<p align="center">
+  <img src="assets/screenshot-cli.png" alt="CLI de Gitbox con estado de sincronizacion" width="600" />
+</p>
+
+<p align="center">
+  <img src="assets/screenshot-mac.png" alt="Gitbox en macOS" width="800" />
+</p>
+
 ## Guias
 
 - [Guia CLI](docs/es/cli-guide.md)

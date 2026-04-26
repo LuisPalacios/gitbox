@@ -2,6 +2,10 @@
 
 [Read in English](../gui-guide.md)
 
+<p align="center">
+  <img src="../../assets/screenshot-gui.png" alt="Gitbox GUI" width="800" />
+</p>
+
 ## Primer uso
 
 Abro GitboxApp, elijo la carpeta raiz y anado mis cuentas. La GUI usa la misma configuracion que la CLI.

@@ -14,6 +14,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/i18n"
 	"github.com/LuisPalacios/gitbox/pkg/identity"
 	"github.com/LuisPalacios/gitbox/pkg/mirror"
 	"github.com/LuisPalacios/gitbox/pkg/status"
@@ -47,6 +48,7 @@ type dashboardModel struct {
 	credMgr       *credential.StatusManager
 	testMode      bool
 	theme         styles.Theme
+	tr            i18n.Translator
 	width, height int
 
 	// gitignoreNeedsAction reflects the latest async global-gitignore
@@ -74,8 +76,8 @@ type dashboardModel struct {
 	pullAllActive      map[string]string // repoKey -> "fetching"/"cloning" (for inline indicators)
 
 	// Mirrors tab data.
-	mirrorSummaries    []mirror.MirrorSummary
-	mirrorLiveResults  map[string][]mirror.StatusResult
+	mirrorSummaries   []mirror.MirrorSummary
+	mirrorLiveResults map[string][]mirror.StatusResult
 
 	// Debounce: skip refresh if last check was recent.
 	lastRefresh time.Time
@@ -100,12 +102,13 @@ type dashboardModel struct {
 	version  string
 }
 
-func newDashboardModel(cfg *config.Config, cfgPath string, credMgr *credential.StatusManager, theme styles.Theme, w, h int) dashboardModel {
+func newDashboardModel(cfg *config.Config, cfgPath string, credMgr *credential.StatusManager, theme styles.Theme, tr i18n.Translator, w, h int) dashboardModel {
 	m := dashboardModel{
 		cfg:            cfg,
 		cfgPath:        cfgPath,
 		credMgr:        credMgr,
 		theme:          theme,
+		tr:             tr,
 		width:          w,
 		height:         h,
 		loading:        true,
@@ -831,7 +834,7 @@ func (m dashboardModel) View() string {
 	b.WriteString(m.theme.TextMuted.Render(strings.Repeat("─", max(m.width, 40))) + "\n")
 
 	// Tabs.
-	tabs := []string{"Accounts", "Mirrors", "Workspaces"}
+	tabs := []string{m.tr.T("tui.tab.accounts"), m.tr.T("tui.tab.mirrors"), m.tr.T("tui.tab.workspaces")}
 	var tabLine []string
 	for i, t := range tabs {
 		if tabID(i) == m.activeTab {
@@ -866,7 +869,7 @@ func (m dashboardModel) viewAccountsTab() string {
 
 	// Account cards row.
 	if len(m.accountKeys) == 0 {
-		b.WriteString(m.theme.TextMuted.Render("  No accounts configured.") + "\n")
+		b.WriteString(m.theme.TextMuted.Render(m.tr.T("tui.dashboard.no_accounts")) + "\n")
 	} else {
 		acctStats := computeAccountStats(m.statuses, m.cfg)
 		cards := make([]string, 0, len(m.accountKeys))
@@ -880,9 +883,9 @@ func (m dashboardModel) viewAccountsTab() string {
 
 	// Repo list grouped by source.
 	if m.loading && len(m.statuses) == 0 {
-		b.WriteString(m.theme.TextMuted.Render("  Loading...") + "\n")
+		b.WriteString(m.theme.TextMuted.Render(m.tr.T("tui.dashboard.loading")) + "\n")
 	} else if len(m.statuses) == 0 {
-		b.WriteString(m.theme.TextMuted.Render("  No accounts configured.") + "\n")
+		b.WriteString(m.theme.TextMuted.Render(m.tr.T("tui.dashboard.no_accounts")) + "\n")
 	} else {
 		b.WriteString(m.viewRepoList())
 	}
@@ -935,7 +938,7 @@ func (m dashboardModel) renderAccountCard(accountKey string, stats accountStats,
 func (m dashboardModel) formatCardStats(stats accountStats) string {
 	cloned := stats.total - stats.notCloned
 	if stats.total == 0 {
-		return m.theme.TextMuted.Render("no repos")
+		return m.theme.TextMuted.Render(m.tr.T("tui.dashboard.no_repos"))
 	}
 
 	ratio := fmt.Sprintf("%d/%d", cloned, stats.total)
@@ -946,7 +949,7 @@ func (m dashboardModel) formatCardStats(stats accountStats) string {
 	}
 	if issues > 0 {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Palette.Behind)).
-			Render(fmt.Sprintf("%s %d attention", ratio, issues))
+			Render(fmt.Sprintf("%s %d %s", ratio, issues, m.tr.T("tui.dashboard.attention")))
 	}
 	return m.theme.TextMuted.Render(ratio)
 }
@@ -1073,7 +1076,7 @@ func (m dashboardModel) viewMirrorsTab() string {
 
 	// Mirror group cards row.
 	if len(m.mirrorSummaries) == 0 {
-		b.WriteString(m.theme.TextMuted.Render("  No mirrors configured.") + "\n")
+		b.WriteString(m.theme.TextMuted.Render(m.tr.T("tui.dashboard.no_mirrors")) + "\n")
 	} else {
 		cards := make([]string, 0, len(m.mirrorSummaries))
 		for i, s := range m.mirrorSummaries {
@@ -1116,19 +1119,19 @@ func (m dashboardModel) renderMirrorCard(s mirror.MirrorSummary, selected bool) 
 		statsLine = fmt.Sprintf(" %s  %s",
 			m.theme.TextBold.Render(ratio),
 			lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Palette.StatusError)).
-				Render(fmt.Sprintf("%d errors", s.Error)))
+				Render(fmt.Sprintf("%d %s", s.Error, m.tr.T("tui.dashboard.errors"))))
 	} else if s.Unchecked > 0 {
 		statsLine = fmt.Sprintf(" %s  %s",
 			m.theme.TextBold.Render(ratio),
 			lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Palette.Syncing)).
-				Render(fmt.Sprintf("%d unchecked", s.Unchecked)))
+				Render(fmt.Sprintf("%d %s", s.Unchecked, m.tr.T("tui.dashboard.unchecked"))))
 	} else if s.Total > 0 {
 		statsLine = fmt.Sprintf(" %s  %s",
 			m.theme.TextBold.Render(ratio),
 			lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Palette.Clean)).
-				Render("All synced"))
+				Render(m.tr.T("tui.dashboard.all_synced")))
 	} else {
-		statsLine = " " + m.theme.TextMuted.Render("No repos")
+		statsLine = " " + m.theme.TextMuted.Render(m.tr.T("tui.dashboard.no_repos"))
 	}
 
 	content := fmt.Sprintf(" %s %s\n %s\n%s",
@@ -1292,7 +1295,7 @@ func (m dashboardModel) handleEnter() tea.Cmd {
 		if m.focus == focusCards && len(m.mirrorSummaries) > 0 && m.cardCursor < len(m.mirrorSummaries) {
 			return func() tea.Msg {
 				return switchScreenMsg{
-					screen:   screenMirrors,
+					screen:    screenMirrors,
 					mirrorKey: m.mirrorSummaries[m.cardCursor].MirrorKey,
 				}
 			}
@@ -1343,7 +1346,7 @@ func (m dashboardModel) mirrorListErrorAcct() string {
 
 func (m dashboardModel) viewHelp() string {
 	var b strings.Builder
-	b.WriteString(m.theme.Title.Render("Keyboard Shortcuts") + "\n")
+	b.WriteString(m.theme.Title.Render(m.tr.T("tui.dashboard.keyboard")) + "\n")
 	b.WriteString(m.theme.TextMuted.Render(strings.Repeat("─", max(m.width, 40))) + "\n\n")
 
 	help := []struct{ key, desc string }{
@@ -1371,7 +1374,7 @@ func (m dashboardModel) viewHelp() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(m.theme.Title.Render("Status Symbols") + "\n\n")
+	b.WriteString(m.theme.Title.Render(m.tr.T("tui.dashboard.status_symbols")) + "\n\n")
 
 	syms := []struct{ sym, color, desc string }{
 		{styles.SymClean, m.theme.Palette.Clean, "Clean — up to date"},
@@ -1391,7 +1394,7 @@ func (m dashboardModel) viewHelp() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(m.theme.Title.Render("Tips") + "\n\n")
+	b.WriteString(m.theme.Title.Render(m.tr.T("tui.dashboard.tips")) + "\n\n")
 	tips := []string{
 		"PAT (Personal Access Token) are optional for SSH accounts when you",
 		"need repo discovery, repo creation, and mirrors. Also optional for",
@@ -1484,7 +1487,7 @@ func (m dashboardModel) viewStatusBar() string {
 	if m.pullAllLabel != "" {
 		summary += "  " + styles.SymSyncing + " " + m.pullAllLabel
 	} else if m.loading {
-		summary += "  " + styles.SymSyncing + " refreshing..."
+		summary += "  " + styles.SymSyncing + " " + m.tr.T("tui.status.refreshing")
 	}
 
 	left := m.theme.StatusBar.Render(summary)
@@ -1724,8 +1727,8 @@ func (m dashboardModel) viewWorkspacesTab() string {
 	var b strings.Builder
 
 	if len(m.workspaceKeys) == 0 {
-		b.WriteString("  " + m.theme.TextMuted.Render("No workspaces configured.") + "\n\n")
-		b.WriteString("  " + m.theme.TextMuted.Render("Press n to create one. Select clones on the Accounts tab (space / A) and press w to create a workspace from them.") + "\n")
+		b.WriteString("  " + m.theme.TextMuted.Render(m.tr.T("tui.dashboard.no_workspaces")) + "\n\n")
+		b.WriteString("  " + m.theme.TextMuted.Render(m.tr.T("tui.dashboard.create_ws_hint")) + "\n")
 	} else {
 		for i, key := range m.workspaceKeys {
 			ws := m.cfg.Workspaces[key]
@@ -1755,7 +1758,7 @@ func (m dashboardModel) viewWorkspacesTab() string {
 			if ws.File != "" {
 				b.WriteString("    " + m.theme.TextMuted.Render(ws.File) + "\n")
 			} else {
-				b.WriteString("    " + m.theme.TextMuted.Render("(not generated yet)") + "\n")
+				b.WriteString("    " + m.theme.TextMuted.Render(m.tr.T("tui.dashboard.not_generated")) + "\n")
 			}
 		}
 	}
@@ -1763,8 +1766,7 @@ func (m dashboardModel) viewWorkspacesTab() string {
 	if m.workspaceDeleteConfirm != "" {
 		b.WriteString("\n  " + lipgloss.NewStyle().
 			Foreground(lipgloss.Color(m.theme.Palette.Syncing)).
-			Render(fmt.Sprintf("Delete %q? (y/n)  Generated file is kept on disk.",
-				m.workspaceDeleteConfirm)) + "\n")
+			Render(m.tr.F("tui.dashboard.delete_ws", m.workspaceDeleteConfirm)) + "\n")
 	}
 	if m.workspaceErr != "" {
 		b.WriteString("\n  " + lipgloss.NewStyle().

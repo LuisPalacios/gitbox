@@ -394,7 +394,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.onboarding = newOnboardingModel(m.cfg, m.cfgPath, m.theme, m.width, m.height)
 			return m, m.onboarding.Init()
 		}
-		m.dashboard = newDashboardModel(m.cfg, m.cfgPath, m.credMgr, m.theme, m.width, m.height)
+		m.dashboard = newDashboardModel(m.cfg, m.cfgPath, m.credMgr, m.theme, m.tr, m.width, m.height)
 		m.dashboard.testMode = m.testMode
 		return m, m.dashboard.Init()
 

@@ -2,6 +2,14 @@
 
 [Read in English](../cli-guide.md)
 
+<p align="center">
+  <img src="../../assets/screenshot-cli.png" alt="Gitbox CLI" width="800" />
+</p>
+
+<p align="center">
+  <img src="../diagrams/cli-workflow.png" alt="Flujo CLI" width="700" />
+</p>
+
 ## Configuracion inicial
 
 Inicio la configuracion con:

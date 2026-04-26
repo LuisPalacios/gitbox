@@ -521,7 +521,7 @@
   async function openRepoInAIHarness(repoKey: string, harness: AIHarnessInfo) {
     const state = $repoStates[repoKey];
     if (!state?.path) {
-      await bridge.showErrorDialog('Open in ' + harness.name, 'Repo is not cloned locally — click "Bring Local" first.');
+      await bridge.showErrorDialog('Open in ' + harness.name, $t('launcher.cloneFirst'));
       closeActionMenu();
       return;
     }
@@ -3058,30 +3058,30 @@
   <!-- ── TAB BAR ── -->
   <div class="cards-tab-bar">
     <button class="cards-tab" class:cards-tab-active={cardsTab === 'accounts'}
-      on:click={() => cardsTab = 'accounts'}>Accounts</button>
+      on:click={() => cardsTab = 'accounts'}>{$t('tab.accounts')}</button>
     <button class="cards-tab" class:cards-tab-active={cardsTab === 'mirrors'}
-      on:click={() => { cardsTab = 'mirrors'; if (selectionMode) toggleSelectionMode(); }}>Mirrors</button>
+      on:click={() => { cardsTab = 'mirrors'; if (selectionMode) toggleSelectionMode(); }}>{$t('tab.mirrors')}</button>
     <button class="cards-tab" class:cards-tab-active={cardsTab === 'workspaces'}
-      on:click={() => { cardsTab = 'workspaces'; if (selectionMode) toggleSelectionMode(); }}>Workspaces</button>
+      on:click={() => { cardsTab = 'workspaces'; if (selectionMode) toggleSelectionMode(); }}>{$t('tab.workspaces')}</button>
     {#if orphanCount > 0}
       <button class="orphan-pill" on:click={showOrphanModal}>{orphanCount} orphan{orphanCount > 1 ? 's' : ''}</button>
     {/if}
     {#if cardsTab === 'mirrors'}
       <div class="tab-bar-actions">
-        <button class="btn-tab-action" on:click={runMirrorDiscover} disabled={mirrorDiscoverLoading}>{mirrorDiscoverLoading ? 'Scanning...' : 'Discover'}</button>
-        <button class="btn-tab-action" on:click={checkAllMirrorStatus}>Check all</button>
+        <button class="btn-tab-action" on:click={runMirrorDiscover} disabled={mirrorDiscoverLoading}>{mirrorDiscoverLoading ? $t('tab.scanning') : $t('tab.discover')}</button>
+        <button class="btn-tab-action" on:click={checkAllMirrorStatus}>{$t('tab.checkAll')}</button>
       </div>
     {/if}
     {#if cardsTab === 'workspaces'}
       <div class="tab-bar-actions">
-        <button class="btn-tab-action" on:click={openWorkspaceModalFromTab}>+ New workspace</button>
-        <button class="btn-tab-action" title="Scan disk for new workspace files" on:click={async () => { await bridge.discoverWorkspaces(); }}>Discover</button>
+        <button class="btn-tab-action" on:click={openWorkspaceModalFromTab}>{$t('tab.newWorkspace')}</button>
+        <button class="btn-tab-action" title="Scan disk for new workspace files" on:click={async () => { await bridge.discoverWorkspaces(); }}>{$t('tab.discover')}</button>
       </div>
     {/if}
     {#if cardsTab === 'accounts' && selectionMode && $selectedClones.size > 0}
       <div class="tab-bar-actions">
-        <button class="btn-tab-action" on:click={openWorkspaceModalFromSelection} title="Create a workspace from the selected clones">+ Workspace</button>
-        <button class="btn-tab-action" on:click={() => clearCloneSelection()} title="Clear selection">Clear</button>
+        <button class="btn-tab-action" on:click={openWorkspaceModalFromSelection} title="Create a workspace from the selected clones">{$t('tab.workspace')}</button>
+        <button class="btn-tab-action" on:click={() => clearCloneSelection()} title="Clear selection">{$t('tab.clear')}</button>
       </div>
     {/if}
   </div>
@@ -3100,7 +3100,7 @@
         style={credOverall === 'none' || credOverall === 'error' ? `background: ${resolvedTheme === 'light' ? '#fef2f2' : '#2a1215'}` : ''}>
         <div class="card-top">
           {#if deleteMode}
-            <button class="btn-delete-x card-delete-btn" on:click={() => askDeleteAccount(key)} title="Delete account {key}">&#10005;</button>
+            <button class="btn-delete-x card-delete-btn" on:click={() => askDeleteAccount(key)} title="{$t('account.delete')} {key}">&#10005;</button>
           {:else}
             <span class="card-dot" style="background: {cc(credOverall)}"></span>
           {/if}
@@ -3109,7 +3109,7 @@
             on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')}
             title="Credential: {acct.default_credential_type || 'none'} — {credOverall}">{credOverall === 'unknown' ? '···' : credOverall === 'none' ? 'config' : credOverall === 'offline' ? 'offline' : acct.default_credential_type || 'gcm'}</button>
         </div>
-        <div class="card-name card-name-edit" on:click={() => openEditAccount(key)} title="Edit account">{key}</div>
+        <div class="card-name card-name-edit" on:click={() => openEditAccount(key)} title="{$t('account.edit')}">{key}</div>
         <div class="card-ring-row">
           <svg class="mini-ring" viewBox="0 0 36 36">
             <circle cx="18" cy="18" r="15" fill="none" stroke="#27272a" stroke-width="3"/>
@@ -3121,18 +3121,18 @@
           </svg>
           <span class="card-stat">{stats.synced}/{stats.total}</span>
           {#if stats.issues > 0}
-            <span class="card-issues" style="color: {sc('behind')}">{stats.issues} need{stats.issues > 1 ? '' : 's'} attention</span>
+            <span class="card-issues" style="color: {sc('behind')}">{stats.issues} {stats.issues === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}</span>
           {:else}
-            <span class="card-ok" style="color: {sc('clean')}">All good</span>
+            <span class="card-ok" style="color: {sc('clean')}">{$t('account.allGood')}</span>
           {/if}
         </div>
         <div class="card-btn-row">
-          <button class="card-btn" on:click={() => openDiscover(key)} disabled={!canDiscover} title={canDiscover ? 'Discover repos from provider API' : 'No working credential for this account'}>Find projects</button>
-          <button class="card-btn" on:click={() => openCreateRepo(key)} disabled={!canCreate} title={canCreate ? 'Create a new repo on the provider' : 'Needs a working API credential (GCM that accepts the API, or a companion PAT)'}>Create repo</button>
+          <button class="card-btn" on:click={() => openDiscover(key)} disabled={!canDiscover} title={canDiscover ? 'Discover repos from provider API' : 'No working credential for this account'}>{$t('account.findProjects')}</button>
+          <button class="card-btn" on:click={() => openCreateRepo(key)} disabled={!canCreate} title={canCreate ? 'Create a new repo on the provider' : 'Needs a working API credential (GCM that accepts the API, or a companion PAT)'}>{$t('account.createRepo')}</button>
         </div>
       </div>
     {/each}
-    <button class="card card-add" on:click={() => addAccountModal = true} title="Add account">
+    <button class="card card-add" on:click={() => addAccountModal = true} title={$t('account.add')}>
       <span class="card-add-icon">+</span>
     </button>
   </section>
@@ -3145,7 +3145,7 @@
         <div class="source-header">
           <span class="source-header-title">{sourceKey}</span>
           <div class="action-menu-container source-header-kebab">
-            <button class="btn-kebab" on:click|stopPropagation={() => toggleAccountMenu(accountKey)} title="Account actions">&#8942;</button>
+            <button class="btn-kebab" on:click|stopPropagation={() => toggleAccountMenu(accountKey)} title={$t('account.actions')}>&#8942;</button>
             {#if actionMenuAccount === accountKey}
               <div transition:fade={{ duration: 80 }}>
                 <LauncherMenu
@@ -3171,7 +3171,7 @@
             {#if selectionMode}
               <input type="checkbox" class="clone-select-box" checked={$selectedClones.has(repoKey)}
                 on:click|stopPropagation
-                on:change={() => toggleCloneSelection(repoKey)} title="Select {repoName} for a workspace" />
+                on:change={() => toggleCloneSelection(repoKey)} title="{repoName}: {$t('repo.selectForWorkspace')}" />
             {:else if deleteMode}
               <button class="btn-delete-x" on:click|stopPropagation={() => askDelete(sourceKey, repoName, state.status)} title="Delete {repoName}">&#10005;</button>
             {/if}
@@ -3189,7 +3189,7 @@
                 </button>
                 {#if openWsPopover === repoKey}
                   <div class="ws-popover" transition:fade={{ duration: 80 }} on:click|stopPropagation>
-                    <div class="ws-popover-title">Open workspace</div>
+                    <div class="ws-popover-title">{$t('workspace.openWorkspace')}</div>
                     {#each membershipsFor(repoKey) as wsKey}
                       <button class="ws-popover-item"
                               on:click={() => openWorkspaceFromBadge(wsKey)}
@@ -3264,21 +3264,21 @@
               {/if}
               <span class="status-badges">
                 {#if state.status === 'clean'}
-                  <span class="status-text" style="color:{sc('clean')}">Synced</span>
+                  <span class="status-text" style="color:{sc('clean')}">{$t('repo.synced')}</span>
                 {:else if state.status === 'not cloned'}
-                  <span class="status-text" style="color:{sc('not cloned')}">Not local</span>
+                  <span class="status-text" style="color:{sc('not cloned')}">{$t('repo.notLocal')}</span>
                 {:else if state.status === 'no upstream'}
                   {#if state.isDefault}
-                    <span class="status-text" style="color:{sc('no upstream')}">No upstream</span>
+                    <span class="status-text" style="color:{sc('no upstream')}">{$t('repo.noUpstream')}</span>
                   {:else}
-                    <span class="status-text" style="color:{sc('clean')}">Local branch</span>
+                    <span class="status-text" style="color:{sc('clean')}">{$t('repo.localBranch')}</span>
                   {/if}
                 {:else if state.status === 'error'}
-                  <span class="status-text" style="color:{sc('error')}">Error</span>
+                  <span class="status-text" style="color:{sc('error')}">{$t('repo.error')}</span>
                 {:else if state.status === 'upstream gone'}
-                  <span class="status-text" style="color:{sc('upstream gone')}">Upstream gone</span>
+                  <span class="status-text" style="color:{sc('upstream gone')}">{$t('repo.upstreamGone')}</span>
                 {:else}
-                  <span class="status-pending">Pending</span>
+                  <span class="status-pending">{$t('repo.pending')}</span>
                   {#if state.behind > 0}<span class="sbadge" style="color:{sc('behind')}" title="{state.behind} behind">↓{state.behind}</span>{/if}
                   {#if state.ahead > 0}<span class="sbadge" style="color:{sc('ahead')}" title="{state.ahead} ahead">↑{state.ahead}</span>{/if}
                   {#if state.modified > 0}<span class="sbadge" style="color:{sc('dirty')}" title="{state.modified} changed">✎{state.modified}</span>{/if}
@@ -3286,15 +3286,15 @@
                 {/if}
               </span>
               {#if state.status === 'behind'}
-                <button class="btn-action" on:click|stopPropagation={() => syncRepo(sourceKey, repoName)}>Pull</button>
+                <button class="btn-action" on:click|stopPropagation={() => syncRepo(sourceKey, repoName)}>{$t('repo.pull')}</button>
               {:else if state.status === 'not cloned'}
-                <button class="btn-action" on:click|stopPropagation={() => cloneRepo(sourceKey, repoName)}>Bring Local</button>
+                <button class="btn-action" on:click|stopPropagation={() => cloneRepo(sourceKey, repoName)}>{$t('repo.bringLocal')}</button>
               {/if}
               {/if}
               {#if !deleteMode && state.status !== 'not cloned'}
-                <button class="btn-fetch" class:spinning={fetchingRepos[repoKey] || state.status === 'unknown'} on:click|stopPropagation={() => fetchRepo(sourceKey, repoName)} title="Fetch origin" disabled={!!fetchingRepos[repoKey]}>&#8635;</button>
+                <button class="btn-fetch" class:spinning={fetchingRepos[repoKey] || state.status === 'unknown'} on:click|stopPropagation={() => fetchRepo(sourceKey, repoName)} title={$t('repo.fetchOrigin')} disabled={!!fetchingRepos[repoKey]}>&#8635;</button>
                 <div class="action-menu-container">
-                  <button class="btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title="Actions">&#8942;</button>
+                  <button class="btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title={$t('repo.actions')}>&#8942;</button>
                   {#if actionMenuRepo === repoKey}
                     <div transition:fade={{ duration: 80 }}>
                       <LauncherMenu
@@ -3428,17 +3428,17 @@
           {#if mstats.error > 0}
             <span class="card-issues" style="color: {sc('error')}">{mstats.error} error{mstats.error > 1 ? 's' : ''}</span>
           {:else if mstats.unchecked > 0}
-            <span class="card-issues" style="color: {sc('behind')}">{mstats.unchecked} unchecked</span>
+            <span class="card-issues" style="color: {sc('behind')}">{mstats.unchecked} {$t('mirror.unchecked')}</span>
           {:else if mstats.total > 0}
-            <span class="card-ok" style="color: {sc('clean')}">All synced</span>
+            <span class="card-ok" style="color: {sc('clean')}">{$t('mirror.allSynced')}</span>
           {:else}
-            <span class="card-ok" style="color: {sc('behind')}">No clones</span>
+            <span class="card-ok" style="color: {sc('behind')}">{$t('mirror.noClones')}</span>
           {/if}
         </div>
-        <button class="card-btn" on:click={() => checkMirrorStatus(mirrorKey)}>Check status</button>
+        <button class="card-btn" on:click={() => checkMirrorStatus(mirrorKey)}>{$t('mirror.checkStatus')}</button>
       </div>
     {/each}
-    <button class="card card-add" on:click={() => { addMirrorGroupModal = true; newMirrorKey = ''; newMirrorSrc = ''; newMirrorDst = ''; }} title="Add mirror group">
+    <button class="card card-add" on:click={() => { addMirrorGroupModal = true; newMirrorKey = ''; newMirrorSrc = ''; newMirrorDst = ''; }} title={$t('mirror.addGroup')}>
       <span class="card-add-icon">+</span>
     </button>
   </section>
@@ -3448,7 +3448,7 @@
   <section class="repo-list">
     <div class="mirror-list">
     <div class="mirror-section-header">
-      <h3>Mirrors</h3>
+      <h3>{$t('tab.mirrors')}</h3>
     </div>
 
     {#each Object.entries($mirrors) as [mirrorKey, mir]}
@@ -3459,7 +3459,7 @@
             {#if mirrorChecking[mirrorKey]}
               <span class="mirror-checking"><div class="spinner-sm"></div></span>
             {/if}
-            <button class="btn-tab-action" on:click={() => { addMirrorRepoModal = mirrorKey; newMirrorRepoKey = ''; newMirrorRepoDirection = 'push'; newMirrorRepoOrigin = 'src'; newMirrorRepoAutoSetup = false; mirrorRepoPickerRepos = []; mirrorRepoPickerLoaded = false; mirrorRepoPickerFilter = ''; }}>+ Repo</button>
+            <button class="btn-tab-action" on:click={() => { addMirrorRepoModal = mirrorKey; newMirrorRepoKey = ''; newMirrorRepoDirection = 'push'; newMirrorRepoOrigin = 'src'; newMirrorRepoAutoSetup = false; mirrorRepoPickerRepos = []; mirrorRepoPickerLoaded = false; mirrorRepoPickerFilter = ''; }}>{$t('mirror.addRepo')}</button>
             {#if deleteMode}
               <button class="btn-sm btn-danger" on:click={() => deleteMirrorGroupConfirm = mirrorKey}>✕</button>
             {/if}
@@ -3479,7 +3479,7 @@
             <span class="mirror-repo-name">{repoName}</span>
             <span class="mirror-direction">{@html mirrorDirLabelHtml(repo, mir)}</span>
             {#if settingUp}
-              <span class="mirror-status-text">setting up…</span>
+              <span class="mirror-status-text">{$t('mirror.settingUp')}</span>
             {:else}
               <span class="mirror-status-text" style="color:{mirrorStatusColor(repo, live, $themeStore)}">{mirrorStatusText(repo, live)}</span>
             {/if}
@@ -3488,9 +3488,9 @@
             {/if}
             {#if live?.error && live.error.startsWith('missing API token in ') && !deleteMode}
               {@const errAcct = live.error.replace('missing API token in ', '')}
-              <button class="btn-sm btn-fix" on:click={() => openTokenSetup(errAcct)} title="Set up API token for {errAcct}">Fix credentials</button>
+              <button class="btn-sm btn-fix" on:click={() => openTokenSetup(errAcct)} title="Set up API token for {errAcct}">{$t('mirror.fixCredentials')}</button>
             {:else if !deleteMode}
-              <button class="btn-sm btn-setup" on:click={() => setupMirrorRepo(mirrorKey, repoName)} disabled={settingUp}>Setup</button>
+              <button class="btn-sm btn-setup" on:click={() => setupMirrorRepo(mirrorKey, repoName)} disabled={settingUp}>{$t('mirror.setup')}</button>
             {/if}
             {#if deleteMode}
               <button class="btn-sm btn-danger" on:click={() => deleteMirrorRepoConfirm = { mirrorKey, repoKey: repoName }}>✕</button>
@@ -3499,7 +3499,7 @@
         {/each}
 
         {#if Object.keys(mir.repos).length === 0}
-          <div class="mirror-empty">No repos in this mirror group.</div>
+          <div class="mirror-empty">{$t('mirror.empty')}</div>
         {/if}
       </div>
     {/each}
@@ -3528,13 +3528,13 @@
             <span class="card-ok" style="color: {sc('clean')}">member{(ws.members?.length ?? 0) === 1 ? '' : 's'}</span>
           </div>
           <div class="card-btn-row">
-            <button class="card-btn" on:click={() => openWorkspace(wsKey)} disabled={workspaceBusy}>Open</button>
-            <button class="card-btn" on:click={() => regenerateWorkspace(wsKey)} disabled={workspaceBusy} title="Regenerate the workspace file on disk">Regenerate</button>
+            <button class="card-btn" on:click={() => openWorkspace(wsKey)} disabled={workspaceBusy}>{$t('workspace.open')}</button>
+            <button class="card-btn" on:click={() => regenerateWorkspace(wsKey)} disabled={workspaceBusy} title="Regenerate the workspace file on disk">{$t('workspace.regenerate')}</button>
           </div>
         </div>
       {/if}
     {/each}
-    <button class="card card-add" on:click={openWorkspaceModalFromTab} title="Add workspace">
+    <button class="card card-add" on:click={openWorkspaceModalFromTab} title={$t('tab.newWorkspace')}>
       <span class="card-add-icon">+</span>
     </button>
   </section>
@@ -3544,7 +3544,7 @@
   <section class="repo-list">
     <div class="mirror-list">
       <div class="mirror-section-header">
-        <h3>Workspaces</h3>
+        <h3>{$t('tab.workspaces')}</h3>
       </div>
       {#each $workspaceOrder.length > 0 ? $workspaceOrder : Object.keys($workspaces) as wsKey}
         {@const ws = $workspaces[wsKey]}
@@ -3553,8 +3553,8 @@
             <div class="mirror-group-header">
               <span class="mirror-accounts">{ws.name || wsKey} <span class="workspace-type">· {ws.type === 'codeWorkspace' ? '.code-workspace' : 'tmuxinator'}</span></span>
               <div class="mirror-group-actions">
-                <button class="btn-tab-action" on:click={() => openWorkspace(wsKey)} disabled={workspaceBusy}>Open</button>
-                <button class="btn-tab-action" on:click={() => regenerateWorkspace(wsKey)} disabled={workspaceBusy}>Regenerate</button>
+                <button class="btn-tab-action" on:click={() => openWorkspace(wsKey)} disabled={workspaceBusy}>{$t('workspace.open')}</button>
+                <button class="btn-tab-action" on:click={() => regenerateWorkspace(wsKey)} disabled={workspaceBusy}>{$t('workspace.regenerate')}</button>
                 {#if deleteMode}
                   <button class="btn-sm btn-danger" on:click={() => deleteWorkspaceConfirm = wsKey}>✕</button>
                 {/if}
@@ -3562,14 +3562,14 @@
             </div>
             {#if ws.file}
               <div class="workspace-file-row">
-                <span class="workspace-file-label">File:</span>
+                <span class="workspace-file-label">{$t('workspace.file')}</span>
                 <span class="workspace-file-path" title={ws.file}>{ws.file}</span>
               </div>
             {:else}
-              <div class="workspace-file-row workspace-file-empty">Not generated yet — open or regenerate to create the file on disk.</div>
+              <div class="workspace-file-row workspace-file-empty">{$t('workspace.notGenerated')}</div>
             {/if}
             {#if (ws.members?.length ?? 0) === 0}
-              <div class="mirror-empty">No members. Delete and recreate, or add clones from the Accounts tab.</div>
+              <div class="mirror-empty">{$t('workspace.noMembers')}</div>
             {:else}
               {#each ws.members as m}
                 <div class="mirror-row">
@@ -3586,7 +3586,7 @@
   {:else}
   <section class="repo-list">
     <div class="workspace-empty-hint">
-      No workspaces yet. Click <strong>+ New workspace</strong> above or select clones on the Accounts tab and group them from the selection bar.
+      {$t('workspace.empty')}
     </div>
   </section>
   {/if}
@@ -3636,30 +3636,30 @@
     <div class="overlay" on:click={() => discoverModal = null} transition:fade={{ duration: 120 }}>
       <div class="modal modal-discover" on:click|stopPropagation transition:slide={{ duration: 180 }}>
         <div class="modal-head">
-          <h3>Find projects &mdash; {discoverModal}</h3>
+          <h3>{$t('discover.title')} &mdash; {discoverModal}</h3>
           <button class="btn-x" on:click={() => discoverModal = null}>&#10005;</button>
         </div>
         <div class="modal-body">
           {#if discoverLoading}
-            <div class="loading"><div class="spinner"></div><span>Checking your account...</span></div>
+            <div class="loading"><div class="spinner"></div><span>{$t('discover.checking')}</span></div>
           {:else if discoverError}
             {@const hint = detectDiscoveryHint(discoverError, discoverModal)}
             <div class="discover-error">
-              <p class="discover-error-title">Discovery failed</p>
+              <p class="discover-error-title">{$t('discover.failed')}</p>
               <p class="discover-error-detail">{discoverError}</p>
               {#if hint}
                 <p class="discover-error-hint">{hint}</p>
               {/if}
               <div class="discover-error-actions">
-                <button class="btn-cancel" on:click={() => { if (discoverModal) { discoverLoading = true; discoverError = ''; bridge.discover(discoverModal); } }}>Retry</button>
-                <button class="btn-add" on:click={() => { const k = discoverModal; discoverModal = null; if (k) openCredChange(k, $accounts[k]?.default_credential_type || ''); }}>Open credential settings</button>
+                <button class="btn-cancel" on:click={() => { if (discoverModal) { discoverLoading = true; discoverError = ''; bridge.discover(discoverModal); } }}>{$t('discover.retry')}</button>
+                <button class="btn-add" on:click={() => { const k = discoverModal; discoverModal = null; if (k) openCredChange(k, $accounts[k]?.default_credential_type || ''); }}>{$t('discover.openCredentials')}</button>
               </div>
             </div>
           {:else if discoverRepos.length === 0}
-            <p class="found">No new projects found.</p>
+            <p class="found">{$t('discover.none')}</p>
           {:else}
             <div class="found-row">
-              <p class="found">Found {discoverRepos.length} projects{filteredDiscoverRepos.length !== discoverRepos.length ? ` (showing ${filteredDiscoverRepos.length})` : ''}:</p>
+              <p class="found">{$t('discover.found', { count: discoverRepos.length })}{filteredDiscoverRepos.length !== discoverRepos.length ? ` (${$t('discover.showing', { count: filteredDiscoverRepos.length })})` : ''}:</p>
               {#if showOwnerSection}
                 {@const anyOn = owners.some((o) => orgVisible[o] !== false)}
                 <button
@@ -3693,10 +3693,10 @@
                 {/each}
               </div>
             {/if}
-            <input class="form-input discover-filter" type="text" placeholder="Filter projects..." bind:value={discoverFilter} />
+            <input class="form-input discover-filter" type="text" placeholder={$t('discover.filter')} bind:value={discoverFilter} />
             <label class="dr dr-all">
               <input type="checkbox" checked={allSelected} on:change={toggleAll} />
-              <span class="dr-name">Select all{discoverFilter ? ' (filtered)' : ''}</span>
+              <span class="dr-name">{$t('discover.selectAll')}{discoverFilter ? ` (${$t('discover.filtered')})` : ''}</span>
             </label>
             {#each filteredDiscoverRepos as repo}
               {@const alreadyAdded = !!($sources[discoverModal]?.repos?.[repo.fullName])}
@@ -3713,8 +3713,8 @@
         </div>
         {#if !discoverLoading && discoverRepos.length > 0}
           <div class="modal-foot">
-            <button class="btn-cancel" on:click={() => discoverModal = null}>Cancel</button>
-            <button class="btn-add" on:click={addDiscovered} disabled={selectedCount === 0}>Add &amp; Pull ({selectedCount})</button>
+            <button class="btn-cancel" on:click={() => discoverModal = null}>{$t('common.cancel')}</button>
+            <button class="btn-add" on:click={addDiscovered} disabled={selectedCount === 0}>{$t('discover.addPull')} ({selectedCount})</button>
           </div>
         {/if}
       </div>
@@ -3792,7 +3792,7 @@
           <button class="btn-x" on:click={() => { sshDiscoverTokenModal = null; sshDiscoveryTokenInput = ''; }}>&#10005;</button>
         </div>
         <div class="modal-body">
-          <p class="cred-step-desc">SSH credentials cannot access provider APIs.<br/>To use 'Find projects', store a Personal Access Token for API access.</p>
+          <p class="cred-step-desc">{$t('discover.sshNeedsToken')}<br/>{$t('discover.sshNeedsTokenAction')}</p>
           <p class="cred-step-desc">Otherwise you can configure your sources manually in the JSON config file.</p>
           {#if sshDiscoveryScopes}
             <p class="cred-step-desc" style="margin-top: 6px;"><strong>Required scopes:</strong> {sshDiscoveryScopes}</p>

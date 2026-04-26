@@ -2,6 +2,10 @@
 
 [Read in English](../credentials.md)
 
+<p align="center">
+  <img src="../diagrams/credential-types.png" alt="Tipos de credenciales" width="850" />
+</p>
+
 ## Tipos
 
 gitbox soporta tres tipos de credencial:
