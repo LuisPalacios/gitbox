@@ -71,15 +71,25 @@ scripts/
   dmg/                     macOS DMG installer script + README
 .githooks/pre-push        Pre-push hook (go vet + unit tests)
 .claude/
+  CLAUDE.md               Canonical agent guidance (this file)
   context/
+    guideline_codex.md    Dual Claude/Codex wiring (AGENTS.md + .agents/skills symlinks)
+    guideline_js.md       JS/TS script conventions
+    guideline_python.md   Python script conventions
+    guideline_skills.md   Skill-authoring quick reference
     testing-patterns.md   Test helpers, naming conventions
   skills/
-    test-plan/            Pre-PR and release verification
     fixing-markdown/      Markdown lint + format
-    screenshot-prototype/ GUI screenshot generation
+    merge-pr/             Merge a PR (post-/work-issue), clean up worktree + branch
     preview-prototype/    Local Svelte preview server
+    screenshot-prototype/ GUI screenshot generation
+    ship-builds/          Cross-compile + ship CLI/GUI to remote hosts in .env
+    test-plan/            Pre-PR and release verification
+    work-issue/           Worktree → plan → code → push → PR (stops before merge)
   rules/
     skills-authoring.md   Skill creation guidelines
+AGENTS.md                 → .claude/CLAUDE.md (symlink — Codex reads project guidance here)
+.agents/skills            → ../.claude/skills (symlink — Codex sees skills here)
 .github/workflows/ci.yml  CI: build, test, release (+ installers, DMGs, AppImage)
 json/
   gitbox.schema.json      v2 JSON Schema
@@ -87,6 +97,12 @@ json/
 go.mod / go.sum           Go module
 README.md                 Project overview
 ```
+
+## Dual Claude / Codex setup
+
+This repo is wired so Claude Code and Codex share one source of truth without duplication. `.claude/CLAUDE.md` is the canonical guidance file — Claude Code reads it directly, and Codex reads `AGENTS.md` at the repo root, which is a symlink back to it. Skills live under `.claude/skills/` and are exposed to Codex through `.agents/skills` (symlink to `../.claude/skills`).
+
+If the symlinks ever go missing or get checked out as plain files, follow the repair procedure in [`.claude/context/guideline_codex.md`](context/guideline_codex.md). On Windows, create them with `mklink` from cmd.exe — Git Bash's `ln -s` produces file copies, not symlinks.
 
 ## Go app
 
