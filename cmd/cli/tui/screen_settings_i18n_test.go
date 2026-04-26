@@ -21,4 +21,10 @@ func TestSettingsSpanishText(t *testing.T) {
 	if !strings.Contains(view, "Idioma") {
 		t.Fatalf("settings view missing language field:\n%s", view)
 	}
+	if !strings.Contains(view, "Carpeta raíz") {
+		t.Fatalf("settings view missing accented root folder field:\n%s", view)
+	}
+	if !strings.Contains(view, "Sincronización periódica") {
+		t.Fatalf("settings view missing accented periodic sync field:\n%s", view)
+	}
 }

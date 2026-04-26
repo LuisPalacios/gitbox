@@ -1,6 +1,6 @@
 # Documentation
 
-[Leer la documentacion en espanol](es/README.md)
+[Leer la documentación en español](es/README.md)
 
 ## First-time contributors
 

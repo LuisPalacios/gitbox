@@ -114,7 +114,7 @@ Haz clic en el botón **Pull All** (icono de flecha hacia abajo) en la barra sup
 
 Haz clic en el botón **Fetch All** (icono ↻) para consultar todos los remotos por commits nuevos sin hacer pull. Esto actualiza los indicadores de estado para que veas qué cambió antes de decidir si quieres hacer pull.
 
-#### Periodic Fetch
+#### Fetch periódico
 
 En Settings puedes activar fetch automático cada 5, 15 o 30 minutos. Gitbox comprueba todos los remotos y re-verifica salud de credenciales en segundo plano.
 
@@ -259,10 +259,10 @@ Haz clic en el **icono de engranaje** para abrir el panel de ajustes:
 - **Config** — muestra la ruta a tu archivo de config con un botón "Open in Editor"
 - **Root folder** — dónde se guardan los proyectos, con un botón "Change"
 - **Theme** — cambia entre System, Light y Dark
-- **Periodic fetch** — intervalo de fetch automático (off, 5m, 15m, 30m)
+- **Fetch periódico** — intervalo de fetch automático (off, 5m, 15m, 30m)
 - **Run at startup** — lanzar Gitbox automáticamente al iniciar sesión (dependiente de plataforma)
 - **System check** — **Run** abre un informe de cada herramienta externa que usa gitbox (git, Git Credential Manager, ssh, tmux, …), dónde está instalada, su versión y, para cualquier cosa ausente que tu config necesite, un comando de instalación. Mismos datos que `gitbox doctor` en la CLI.
-- **Version** — versión actual de la app
+- **Versión** — versión actual de la app
 - **Author** — autor del proyecto y enlace al repositorio de GitHub
 
 Los flujos add-account y change-credential ejecutan la misma comprobación automáticamente: si eliges el tipo de credencial `gcm` en una máquina sin Git Credential Manager instalado, recibes un banner amarillo con el comando de instalación en lugar de un fallo críptico de autenticación más tarde.
@@ -273,9 +273,9 @@ Cada fila de repo clonado tiene un **menú kebab (⋮)** en el lado derecho. El 
 
 1. **Siempre visible** — `🌐 Open in browser` y `📁 Open folder`.
 2. **Defaults** — una entrada por categoría, usando la primera entrada de config como valor por defecto: `>_ Open in <terminals[0]>`, `✎ Open in <editors[0]>`, `🤖 Open in <ai_harnesses[0]>`. Una entrada se oculta cuando esa categoría tiene cero elementos configurados.
-3. **Submenus** — `Terminals ▸`, `Editors ▸`, `AI Harnesses ▸`. Cada submenu aparece solo cuando la categoría tiene **dos o más** entradas: con una sola, el default ya la cubre. Haz clic en el submenu para expandirlo (no hover), haz clic en otro submenu para cambiar, haz clic fuera o elige un elemento para cerrarlo todo.
+3. **Submenús** — `Terminals ▸`, `Editors ▸`, `AI Harnesses ▸`. Cada submenú aparece solo cuando la categoría tiene **dos o más** entradas: con una sola, el default ya la cubre. Haz clic en el submenú para expandirlo (no hover), haz clic en otro submenú para cambiar, haz clic fuera o elige un elemento para cerrarlo todo.
 
-Bajo los submenus:
+Bajo los submenús:
 
 - **🧹 Sweep branches** — encuentra y elimina ramas locales obsoletas (gone, merged o squash-merged). Muestra un diálogo de confirmación con la lista de ramas antes de eliminar nada.
 
@@ -285,11 +285,11 @@ La lista de terminales detectadas cubre Windows Terminal, PowerShell 7/5, Git Ba
 
 ### Acciones de cuenta
 
-Cada grupo de source en la lista de repos tiene un **menú kebab (⋮)** en el lado derecho de su cabecera (el título de cuenta sobre la lista de clones). El kebab de cuenta usa la **misma estructura e iconos** que el kebab de fila de repo: defaults de nivel superior, submenus por categoría, mismas reglas de ocultación, pero aplicado a la carpeta padre de la cuenta (`<global.folder>/<account-key>`) en lugar de a un clon concreto:
+Cada grupo de source en la lista de repos tiene un **menú kebab (⋮)** en el lado derecho de su cabecera (el título de cuenta sobre la lista de clones). El kebab de cuenta usa la **misma estructura e iconos** que el kebab de fila de repo: defaults de nivel superior, submenús por categoría, mismas reglas de ocultación, pero aplicado a la carpeta padre de la cuenta (`<global.folder>/<account-key>`) en lugar de a un clon concreto:
 
 - **🌐 Open in browser** — abre la página de perfil/org del proveedor para la cuenta (por ejemplo, `https://github.com/<username>`, la página de grupo de GitLab, la página de usuario de Gitea/Forgejo).
 - **📁 Open folder** — abre la carpeta padre de la cuenta en el gestor de archivos del SO. La carpeta es la raíz natural de workspace para greps multi-repo, ediciones multi-repo o loops de shell. Si la carpeta todavía no existe (nada clonado bajo esa cuenta), la acción falla silenciosamente: clona al menos un repo primero.
-- **>\_ Open in \<terminal\>**, **✎ Open in \<editor\>**, **🤖 Open in \<AI harness\>** — las mismas entradas default-first que el kebab de repo, más submenus de categoría cuando tienes varias opciones configuradas. Sweep branches no aparece aquí: solo tiene sentido en un clon concreto.
+- **>\_ Open in \<terminal\>**, **✎ Open in \<editor\>**, **🤖 Open in \<AI harness\>** — las mismas entradas default-first que el kebab de repo, más submenús de categoría cuando tienes varias opciones configuradas. Sweep branches no aparece aquí: solo tiene sentido en un clon concreto.
 
 En vista compacta, al pasar por encima de una account pill aparecen los mismos accesos de folder / editor / terminal / AI harness como iconos pequeños a la derecha, igual que en filas compactas de repo.
 

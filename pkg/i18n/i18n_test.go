@@ -1,6 +1,7 @@
 package i18n
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -17,6 +18,32 @@ func TestNormalize(t *testing.T) {
 	for in, want := range tests {
 		if got := Normalize(in); got != want {
 			t.Errorf("Normalize(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSpanishCatalogUsesAccents(t *testing.T) {
+	badWords := []string{
+		"configuracion",
+		"sincronizacion",
+		"periodica",
+		"informacion",
+		"atencion",
+		"todavia",
+		"pestana",
+		"Simbolos",
+		"huerfanos",
+		"version",
+		"esten",
+		"raiz",
+		"almacen",
+	}
+	for key, value := range catalogs[Spanish] {
+		lower := strings.ToLower(value)
+		for _, bad := range badWords {
+			if strings.Contains(lower, strings.ToLower(bad)) {
+				t.Errorf("Spanish catalog key %q contains unaccented %q in %q", key, bad, value)
+			}
 		}
 	}
 }
