@@ -1,88 +1,59 @@
 # Completado de shell
 
-[Read in English](../completion.md)
+`gitbox` puede generar scripts de autocompletado para tu shell, así tienes completado con Tab para comandos, subcomandos y flags.
 
-`gitbox completion` genera scripts de autocompletado para los shells compatibles con Cobra. El autocompletado cubre comandos, subcomandos y flags, pero no inventa valores de configuración como nombres de cuentas o repositorios.
+Shells soportados: **Bash**, **Zsh**, **Fish**, **PowerShell**.
 
-## Bash
+## Configuración
 
-Para probarlo en la sesión actual:
+### Bash
 
 ```bash
+# Solo la sesión actual
 source <(gitbox completion bash)
+
+# Permanente — añadir al perfil
+echo 'source <(gitbox completion bash)' >> ~/.bashrc
 ```
 
-Para instalarlo de forma permanente en Linux:
+### Zsh
 
-```bash
-mkdir -p ~/.local/share/bash-completion/completions
-gitbox completion bash > ~/.local/share/bash-completion/completions/gitbox
-```
-
-En macOS con Homebrew:
-
-```bash
-gitbox completion bash > "$(brew --prefix)/etc/bash_completion.d/gitbox"
-```
-
-Abre una terminal nueva después de instalarlo.
-
-## Zsh
-
-Para probarlo en la sesión actual:
-
-```bash
+```zsh
+# Solo la sesión actual
 source <(gitbox completion zsh)
+
+# Permanente — añadir al perfil
+echo 'source <(gitbox completion zsh)' >> ~/.zshrc
 ```
 
-Para instalarlo de forma permanente en un directorio propio:
+> Si recibes `command not found: compdef`, añade `autoload -Uz compinit && compinit` antes de la línea `source`.
 
-```bash
-mkdir -p ~/.zsh/completions
-gitbox completion zsh > ~/.zsh/completions/_gitbox
-```
-
-Asegúrate de que tu `.zshrc` carga ese directorio:
-
-```bash
-fpath=(~/.zsh/completions $fpath)
-autoload -Uz compinit
-compinit
-```
-
-## Fish
-
-Para probarlo en la sesión actual:
+### Fish
 
 ```fish
 gitbox completion fish | source
-```
 
-Para instalarlo de forma permanente:
-
-```fish
-mkdir -p ~/.config/fish/completions
+# Permanente
 gitbox completion fish > ~/.config/fish/completions/gitbox.fish
 ```
 
-## PowerShell
-
-Para probarlo en la sesión actual:
+### PowerShell
 
 ```powershell
+# Solo la sesión actual
 gitbox completion powershell | Out-String | Invoke-Expression
+
+# Permanente — añadir al perfil
+Add-Content $PROFILE 'gitbox completion powershell | Out-String | Invoke-Expression'
 ```
 
-Para hacerlo permanente, añade el comando al perfil de PowerShell:
+## Uso
 
-```powershell
-notepad $PROFILE
+Una vez instalado, pulsa `Tab` para completar:
+
+```text
+gitbox st<Tab>       →  gitbox status
+gitbox account --<Tab>  →  muestra los flags disponibles
 ```
 
-Luego añade:
-
-```powershell
-gitbox completion powershell | Out-String | Invoke-Expression
-```
-
-Abre una terminal nueva para comprobarlo. Si PowerShell bloquea el perfil por la política de ejecución, revisa la política antes de cambiarla; no hace falta bajar la seguridad global del sistema para usar `gitbox`.
+Ejecuta `gitbox completion <shell> --help` para ver los detalles específicos de cada shell.

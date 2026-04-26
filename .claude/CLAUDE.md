@@ -29,6 +29,18 @@ When writing docs, READMEs, or code comments, follow these rules:
 - **Prose over tables** for concepts; tables only for CLI references or pure data
 - No passive voice, no long paragraphs, no placeholder TODOs
 
+## Documentation language and translations
+
+English is the main documentation language and the source of truth for this project. Files under `docs/` in English define the canonical structure, paragraphs, examples, warnings, and level of detail.
+
+When translating documentation into any supported language, preserve the English source's content and structure:
+
+- Translate the same headings, paragraphs, lists, examples, warnings, and links in the same order.
+- Keep commands, flags, config keys, provider names, status values, file paths, and JSON fields unchanged unless the English source itself changes them.
+- Do not create lower-quality summaries, shorter rewrites, expanded rewrites, or improved variants in translated docs. Translation quality must match the English source, neither worse nor better.
+- If the English source changes, update each translated counterpart from that English source instead of inventing a separate structure.
+- If a translated doc cannot stay in parity during a change, leave a clear note in the work summary and do not present it as complete.
+
 ## Repository layout
 
 ```text

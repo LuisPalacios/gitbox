@@ -1,29 +1,40 @@
 # Documentación
 
-[Read in English](../README.md)
+[Read the documentation in English](../README.md)
 
-Esta carpeta contiene la documentación de usuario en español. Mantengo los nombres de comandos, flags, claves JSON, proveedores y valores internos en inglés para que puedas copiar los ejemplos directamente en la terminal y compararlos con la salida real de `gitbox`.
+## Primeros colaboradores
+
+Si eres nuevo en el proyecto, lee estos documentos en orden:
+
+1. [Guía de desarrollo](../developer-guide.md) — requisitos previos y compilación desde el código fuente
+2. [Pruebas](../testing.md) — ejecución de pruebas, preparación del fixture de pruebas, checklists pre-PR y de release
+3. [Multiplataforma](../multiplatform.md) — flujo de build, despliegue y prueba multiplataforma (opcional pero recomendado)
 
 ## Guías de usuario
 
-- [Guía de la GUI](gui-guide.md): instala y usa `GitboxApp`, añade cuentas, gestiona repositorios, mirrors, workspaces y acciones de mantenimiento desde la interfaz gráfica.
-- [Guía de la CLI](cli-guide.md): empieza desde cero con `gitbox init`, añade cuentas, descubre repos, clona, sincroniza y automatiza tareas desde la terminal.
-- [Credenciales](credentials.md): elige entre GCM, SSH y tokens, configura cada tipo y resuelve problemas habituales de autenticación.
-- [Completado de shell](completion.md): instala autocompletado para Bash, Zsh, Fish o PowerShell.
+| Doc                                  | Qué contiene                                                       |
+| ------------------------------------ | ------------------------------------------------------------------ |
+| [Guía GUI](gui-guide.md)             | App de escritorio: cuentas, mirrors, creación de repos, discovery  |
+| [Guía CLI](cli-guide.md)             | Paso a paso: init, cuentas, credenciales, discover, mirrors        |
+| [Credenciales](credentials.md)       | Configuración detallada de Token, GCM y SSH                        |
+| [Completado de shell](completion.md) | Autocompletado de la CLI con Tab para Bash, Zsh, Fish y PowerShell |
+
+## Guías de desarrollo
+
+| Doc                                              | Qué contiene                                                                          |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| [Guía de desarrollo](../developer-guide.md)      | Compilar desde el código fuente, hooks de git, contribución                           |
+| [Multiplataforma](../multiplatform.md)           | Flujo de build, despliegue y prueba multiplataforma                                   |
+| [Pruebas](../testing.md)                         | Niveles de prueba, configuración de fixtures, checklists pre-PR y de release          |
+| [Flujo de worktrees](../worktree-workflow.md)    | Trabajo paralelo por issue: una sesión de Claude por worktree, push/merge con puertas |
+| [Referencia de pruebas](../testing-reference.md) | Inventario completo de pruebas, detalles internos del harness                         |
+| [Arquitectura](../architecture.md)               | Diseño técnico, diagrama de componentes                                               |
+| [Firma en macOS](../macos-signing.md)            | Configuración de firma y notarización para releases de macOS                          |
 
 ## Referencia
 
-- [Referencia de comandos y configuración](reference.md): lista de comandos, flags, formato de configuración y casos de resolución de problemas.
-- [Ejemplo JSON anotado](../../json/gitbox.jsonc): archivo `gitbox.json` de ejemplo con comentarios.
-- [JSON Schema](../../json/gitbox.schema.json): esquema para editores y validación.
-
-## Documentos técnicos en inglés
-
-Algunos documentos de mantenimiento todavía viven solo en inglés porque están dirigidos a desarrollo, empaquetado o pruebas:
-
-- [Arquitectura](../architecture.md)
-- [Guía de desarrollo](../developer-guide.md)
-- [Pruebas](../testing.md)
-- [Pruebas, referencia interna](../testing-reference.md)
-- [Multiplataforma](../multiplatform.md)
-- [Firma en macOS](../macos-signing.md)
+| Doc                                             | Qué contiene                                                         |
+| ----------------------------------------------- | -------------------------------------------------------------------- |
+| [Referencia](reference.md)                      | Todos los comandos, formato de configuración, estructura de carpetas |
+| [Ejemplo JSON anotado](../../json/gitbox.jsonc) | Ejemplo del archivo `gitbox.json`                                    |
+| [JSON Schema](../../json/gitbox.schema.json)    | El schema usado en el archivo `gitbox.json`                          |

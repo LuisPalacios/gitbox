@@ -1,263 +1,350 @@
 # Configuración de credenciales
 
-[Read in English](../credentials.md)
+Cada cuenta de gitbox necesita credenciales para hacer dos cosas (y opcionalmente una tercera):
+
+- **Operaciones** — operaciones git como clone, fetch y pull.
+- **Discovery** — llamar a la API REST de tu proveedor para listar tus repositorios, crear nuevos y comprobar su estado de sync.
+- **Mirrors** (opcional) — un PAT portable que los servidores remotos usan para hacer push/pull en tu nombre.
+
+Eliges un tipo de credencial por cuenta. Según el tipo, y el proveedor, gitbox puede necesitar uno o dos secretos para cubrir las tres cosas.
 
 <p align="center">
   <img src="../diagrams/credential-types.png" alt="Tipos de credenciales" width="850" />
 </p>
 
-`gitbox` admite tres tipos de credencial: `gcm`, `ssh` y `token`. Cada cuenta define un `default_credential_type`, y cada repo puede sobrescribirlo con `credential_type`. Esos valores no se traducen porque forman parte de la configuración y de la lógica de ejecución.
-
 ## Qué tipo debo usar
 
-Uso `gcm` cuando trabajo en una máquina con navegador y quiero el flujo normal de Git Credential Manager. Encaja bien con GitHub, GitLab y algunos entornos self-hosted.
+| Tipo      | Secretos                                                            | Operaciones | Discovery / API                           | Mirrors         | Mejor para                                             |
+| --------- | ------------------------------------------------------------------- | ----------- | ----------------------------------------- | --------------- | ------------------------------------------------------ |
+| **GCM**   | 1 (credencial gestionada por GCM, cacheada en el keyring del SO)    | Sí          | Depende del proveedor — ver nota de abajo | Necesita un PAT | Usuarios de escritorio (Windows, macOS, Linux con GUI) |
+| **Token** | 1 (PAT en `~/.config/gitbox/credentials/`)                          | Sí          | Sí                                        | Mismo PAT       | Todas las plataformas, CI/CD, Gitea/Forgejo            |
+| **SSH**   | 2 (clave SSH en `~/.ssh/` + PAT en `~/.config/gitbox/credentials/`) | Sí          | Necesita el PAT complementario            | Mismo PAT       | Usuarios que prefieren claves SSH                      |
 
-Uso `ssh` cuando ya gestiono claves por proveedor, trabajo en servidores, uso terminales remotas o quiero separar identidades mediante `IdentityFile` y host aliases.
+### Cuándo necesito un PAT junto a GCM
 
-Uso `token` cuando necesito automatización, una máquina sin navegador, o proveedores Gitea y Forgejo donde un PAT es el camino más directo para API y Git HTTP.
+La respuesta honesta es "depende del proveedor":
 
-## Cuándo necesito un PAT junto a GCM o SSH
+- **GitHub, GitLab:** GCM guarda un **token OAuth** que también sirve como bearer válido para la API. GCM basta para todo: discovery, creación de repos, todo. Solo necesitas un PAT si quieres mirrors push/pull, donde el token debe salir de tu máquina.
+- **Gitea, Forgejo, Bitbucket (basic auth):** GCM te pide **usuario y contraseña** y guarda lo que pegues. Esos proveedores rechazan contraseñas en su API REST: allí solo funcionan PATs. Hay dos caminos de recuperación, elige uno:
+  1. **Pega un PAT en el prompt de contraseña de GCM** durante el setup. GCM lo cachea y tanto git como la API funcionan con una sola credencial. Es lo más sencillo.
+  2. **Mantén tu contraseña en GCM** (funciona para `git push`/`pull`) y guarda un **PAT separado** en el keyring de gitbox para operaciones API. El panel de estado de credenciales de la GUI tiene un botón _Setup API token_ exactamente para este caso.
 
-Git puede clonar con GCM o SSH, pero algunas acciones de `gitbox` hablan con la API del proveedor: descubrir repos, crear mirrors, consultar estado remoto o preparar integraciones. Si el proveedor no entrega esa capacidad mediante la credencial principal, configura un PAT complementario.
-
-El PAT debe tener permisos suficientes para la acción:
-
-- Lectura de repos para `discover` y estado.
-- Escritura o administración de repos para crear mirrors o configurar repos remotos.
-- Permisos de organización cuando el repo vive bajo una org y no bajo el usuario.
+La verificación de credenciales de gitbox te dirá en cuál de las dos situaciones estás. Si la insignia de la tarjeta es verde, ya está. Si está en "Warning" y el panel Current-status dice _"GCM token found but API check failed"_, tu credencial guardada en GCM es una contraseña que la API rechaza: usa uno de los dos caminos anteriores.
 
 ## Almacenamiento de PAT
 
-`gitbox` busca tokens de forma explícita y predecible. La convención recomendada para variables de entorno es:
+Todos los Personal Access Tokens (PATs) se guardan en un archivo por cuenta en `~/.config/gitbox/credentials/<accountKey>` (modo de archivo `0600`, legible solo por el propietario).
 
-```bash
-GITBOX_TOKEN_<ACCOUNT_KEY>
-```
+El formato del archivo depende de quién necesita leerlo:
 
-Convierte el `account key` a mayúsculas y cambia guiones por guiones bajos. Para `github-personal`, la variable queda:
+- Las **cuentas Token** usan **formato git-credential-store** (`https://user:token@host`). Motivo: la CLI de git lee este archivo directamente mediante `credential.helper = store --file <path>`, y ese es el formato que git espera. gitbox también lo lee para llamadas API: el mismo archivo, dos consumidores.
+- Las **cuentas SSH y GCM** guardan el **token crudo** (solo el string del PAT, una línea). La CLI de Git nunca toca este archivo: SSH autentica con claves en `~/.ssh/`, y GCM gestiona sus propios tokens OAuth en el keyring del SO. Solo gitbox lo lee, para llamadas API (discovery, creación de repos) y operaciones de mirror.
 
-```bash
-GITBOX_TOKEN_GITHUB_PERSONAL
-```
+gitbox lee tokens de ambos formatos de forma transparente: primero intenta parsear como URL y después cae al token crudo. Nunca necesitas preocuparte por qué formato usa un archivo.
 
-En PowerShell:
+La cadena de resolución cuando gitbox necesita un token:
 
-```powershell
-$env:GITBOX_TOKEN_GITHUB_PERSONAL = "ghp_example"
-```
+1. Variable de entorno específica de la cuenta (`GITBOX_TOKEN_<ACCOUNT_KEY>`)
+2. Variable de entorno genérica `GIT_TOKEN` (fallback de CI)
+3. Archivo de credencial (`~/.config/gitbox/credentials/<accountKey>`)
 
-En Bash o Zsh:
+## GCM (Git Credential Manager)
 
-```bash
-export GITBOX_TOKEN_GITHUB_PERSONAL="ghp_example"
-```
-
-No guardes tokens reales en documentación, issues, commits o archivos de ejemplo.
-
-## GCM
-
-Git Credential Manager delega el login en el navegador y guarda la credencial en el almacén seguro del sistema operativo.
+GCM gestiona todo mediante un único login. GCM guarda una credencial y la usa para operaciones git; que también funcione para la API depende de lo que GCM haya cacheado (ver la nota anterior).
 
 ### Requisitos previos
 
-Comprueba que GCM está instalado:
+- **Windows:** ya instalado con Git for Windows.
+- **macOS:** `brew install git-credential-manager`
+- **Linux:** consulta la [documentación de instalación de GCM](https://github.com/git-ecosystem/git-credential-manager/blob/release/docs/install.md)
 
-```bash
-git credential-manager --version
-gitbox doctor
-```
+### Cómo funciona
 
-En Windows normalmente llega con Git for Windows. En macOS y Linux puede requerir instalación separada.
+1. gitbox dispara el flujo de login de GCM.
+2. Para GitHub y GitLab, GCM abre tu navegador para autenticación OAuth.
+3. Para Gitea y Forgejo, GCM pide usuario y contraseña. Si quieres _una sola credencial_ para cubrir git y la API, pega un PAT en el campo de contraseña: GCM lo cacheará como contraseña.
+4. GCM guarda automáticamente la credencial en su propio almacenamiento.
+5. Todas las operaciones de discovery y git usan esa credencial guardada.
 
-### Funcionamiento
-
-Configura la cuenta con `gcm`:
-
-```bash
-gitbox account add github-personal \
-  --provider github \
-  --user alice \
-  --default-credential-type gcm
-```
-
-Luego prepara y verifica:
-
-```bash
-gitbox credential setup github-personal
-gitbox credential verify github-personal
-```
-
-Si el navegador abre una cuenta equivocada, cierra sesión en el proveedor o fuerza una nueva autorización desde GCM antes de repetir `credential setup`.
+**Almacenamiento:** GCM gestiona su propio almacenamiento de credenciales (keyring del SO). gitbox extrae el secreto cacheado mediante `git credential fill` para llamadas API.
 
 ### Requisitos de gitconfig global
 
-GCM suele requerir `credential.helper` en la configuración global de Git. `gitbox doctor` avisa cuando falta o parece inconsistente. Si tienes varios helpers antiguos, revisa `~/.gitconfig` antes de cambiarlo para no romper otros flujos.
+GCM enruta por host mediante la clave global `credential.helper` en `~/.gitconfig`. Sin un `credential.helper = manager` de nivel superior y `credential.credentialStore = <keychain|wincredman|secretservice>`, `git credential fill` cae a un prompt TTY, y en un proceso GUI eso aparece como el críptico `fatal: could not read Password ... Device not configured` (errno ENXIO en `/dev/tty`).
+
+gitbox lo detecta al arrancar cuando al menos una cuenta usa GCM. Cuando el `~/.gitconfig` global falta o está mal, aparece un banner naranja en la GUI (y una sección en la pantalla "Global Gitconfig" de la TUI) con un botón **Configure** que:
+
+1. Escribe `credential.helper = manager` + `credential.credentialStore = <os default>` en `~/.gitconfig`.
+2. Rellena los mismos valores por defecto del SO en `gitbox.json` para que la comprobación siga verde incluso si `~/.gitconfig` se edita más tarde.
+
+Los valores por defecto del SO vienen de `pkg/credential.DefaultCredentialHelper()` y `pkg/credential.DefaultCredentialStore()`. Los overrides por host en otras partes de `~/.gitconfig` (por ejemplo `[credential "https://github.com"]` fijando `gh auth git-credential`) siguen teniendo precedencia sobre el helper global, así que corregir la entrada global siempre es seguro.
 
 ### Detección de navegador
 
-GCM necesita abrir un navegador para completar OAuth. En servidores, SSH remotos o contenedores, ese paso puede fallar. En esos entornos, usa `ssh` o `token` salvo que tengas un flujo de navegador remoto ya configurado.
+Cuando configuras credenciales GCM, gitbox necesita abrir un navegador para autenticación OAuth (GitHub, GitLab). Que un navegador pueda abrirse depende de tu entorno:
+
+- **Windows:** siempre funciona: el navegador del sistema se abre directamente.
+- **macOS:** siempre funciona, incluso vía SSH: el comando `open` de macOS reenvía a la sesión de escritorio.
+- **Linux desktop:** funciona cuando hay un servidor de pantalla disponible (X11 o Wayland).
+- **Linux SSH / headless:** no hay navegador disponible. La TUI muestra "GCM browser authentication requires a desktop session" y sugiere ejecutar el setup de credenciales desde una terminal de escritorio. GCM seguirá preguntando interactivamente en el siguiente `git clone` o `git fetch` si continúas sin autenticación de navegador.
+
+Esta detección la maneja `credential.CanOpenBrowser()` en `pkg/credential/credential.go`. Comprueba las variables de entorno `SSH_CLIENT`, `SSH_TTY`, `DISPLAY` y `WAYLAND_DISPLAY`.
 
 ### GCM en la TUI
 
-La TUI puede iniciar el flujo de setup, pero la autenticación se completa fuera de la pantalla cuando GCM abre el navegador. Vuelve a `gitbox` después del login y ejecuta la verificación si la pantalla no se actualiza sola.
+La pantalla de credenciales de la TUI soporta autenticación GCM interactiva con navegador en sesiones de escritorio:
+
+1. Navega a una cuenta → credential setup → GCM seleccionado.
+2. En escritorio: pulsa Enter → el navegador se abre para OAuth → vuelve a la TUI cuando termines.
+3. gitbox verifica que la credencial se guardó y prueba el acceso API.
+4. Si la credencial guardada por GCM no tiene scope API (común con Forgejo/Gitea cuando se cacheó una contraseña), gitbox pide un PAT separado.
+
+En sesiones SSH o headless, la TUI omite la autenticación de navegador y muestra guía: ejecutar desde una terminal de escritorio o dejar que GCM lo gestione en la siguiente operación git.
 
 ### Mirrors con GCM
 
-Un mirror puede clonar con GCM, pero configurar el mirror mediante API puede exigir un PAT. Si `mirror setup` falla con 401 o permisos insuficientes, añade el PAT complementario para esa cuenta.
-
-## Token
-
-Un Personal Access Token permite autenticar Git HTTP y llamadas API sin navegador.
-
-### Crear un PAT
-
-En GitHub, crea un token con permisos sobre los repos que quieras gestionar. En GitLab, Gitea o Forgejo, crea un token equivalente con lectura de repos y permisos de escritura si vas a crear mirrors o repos.
-
-Después, configura la cuenta:
+Los tokens OAuth de GCM son locales de la máquina y no pueden usarse por servidores remotos para mirroring. Si necesitas mirrors, guarda un PAT separado:
 
 ```bash
-gitbox account add github-token \
-  --provider github \
-  --user alice \
-  --default-credential-type token
+gitbox account credential setup github-personal --token
 ```
 
-Define la variable:
+Esto guarda el PAT en `~/.config/gitbox/credentials/` junto a la credencial GCM. El PAT se usa para operaciones de mirror; GCM sigue gestionando las operaciones git normales.
 
-```bash
-export GITBOX_TOKEN_GITHUB_TOKEN="ghp_example"
-```
+## Token (Personal Access Token)
 
-Y verifica:
+Un PAT es un string parecido a una contraseña que generas en el sitio web de tu proveedor. Un token gestiona tanto discovery como operaciones git.
 
-```bash
-gitbox credential verify github-token
-```
+### Cómo crear un PAT
 
-Si prefieres no usar variables de entorno permanentes, ejecuta el setup interactivo y deja que `gitbox` use el mecanismo seguro disponible.
+Cuando configuras una credencial Token (en la GUI o CLI), gitbox te muestra la URL exacta que debes visitar y los permisos que debes seleccionar. Los pasos son:
+
+1. Haz clic en el enlace que te da gitbox (abre la página de tokens de tu proveedor).
+2. Nombra el token con algo como `gitbox-<your-account>`.
+3. Selecciona los permisos recomendados por gitbox.
+4. Copia el token generado.
+5. Pégalo en gitbox.
+
+Esto es lo que necesita cada proveedor:
+
+| Proveedor           | Permisos requeridos                                    |
+| ------------------- | ------------------------------------------------------ |
+| **GitHub**          | `repo` (full), `read:user`                             |
+| **GitLab**          | `api`                                                  |
+| **Gitea / Forgejo** | Repository: Read+Write, User: Read, Organization: Read |
+| **Bitbucket**       | Repositories: Read+Write                               |
+
+**Almacenamiento:** 1 secreto → `~/.config/gitbox/credentials/<account>` (formato git-credential-store, usado por gitbox y por la CLI de git).
 
 ## SSH
 
-SSH usa claves locales y configuración de host para separar identidades.
+SSH usa un par de claves criptográficas para operaciones git. gitbox genera el par de claves y configura todo por ti.
+
+Sin embargo, las claves SSH **no pueden** llamar a la API de tu proveedor, así que discovery y creación de repos necesitan un PAT separado. Esto convierte SSH en una configuración de dos secretos.
 
 ### Flujo de setup
 
-Configura la cuenta:
+1. gitbox crea un par de claves ed25519 en `~/.ssh/`.
+2. Escribe la entrada necesaria en `~/.ssh/config`.
+3. Te muestra la clave pública y un enlace directo a la página de claves SSH del proveedor.
+4. Pegas allí la clave pública y haces clic en guardar.
+5. gitbox verifica que la conexión SSH funciona.
+6. Guardas un PAT para acceso API (discovery, creación de repos, mirrors).
 
-```bash
-gitbox account add github-ssh \
-  --provider github \
-  --user alice \
-  --default-credential-type ssh \
-  --ssh-host github.com \
-  --ssh-user git \
-  --ssh-key-path ~/.ssh/id_ed25519
-```
+### PAT complementario de SSH
 
-Comprueba que la clave existe y está cargada:
+El PAT guardado para cuentas SSH se usa para:
 
-```bash
-ssh-add -l
-ssh -T git@github.com
-gitbox credential verify github-ssh
-```
+- **Discovery** — listar repos desde la API del proveedor.
+- **Creación de repos** — crear repos nuevos mediante la API del proveedor.
+- **Mirrors** — servidores remotos haciendo push/pull en tu nombre.
 
-Para varias cuentas del mismo proveedor, usa host aliases en `~/.ssh/config` y apunta cada cuenta a su alias.
+Necesita permisos más amplios que un token de solo lectura:
 
-### PAT complementario para SSH
+| Proveedor           | Permisos requeridos                                    |
+| ------------------- | ------------------------------------------------------ |
+| **GitHub**          | `repo` (read/write), `read:user`, `read:org`           |
+| **GitLab**          | `api` (full API access)                                |
+| **Gitea / Forgejo** | Repository: Read+Write, User: Read, Organization: Read |
+| **Bitbucket**       | Repositories: Read+Write, Account: Read                |
 
-SSH autentica Git, pero no siempre cubre API. Para `discover`, mirrors o consultas avanzadas, puede hacer falta un PAT complementario siguiendo la convención `GITBOX_TOKEN_<ACCOUNT_KEY>`.
+**Almacenamiento:** 2 secretos:
+
+- **Operaciones** → par de claves SSH en `~/.ssh/` (clave privada + clave pública + entrada de config).
+- **Acceso API** → PAT en `~/.config/gitbox/credentials/<account>` (token crudo).
+
+Sin el PAT, la cuenta funciona para operaciones git, pero no puede descubrir repos, crear repos ni configurar mirrors.
 
 ## Cambiar credenciales
 
-Actualizo el tipo por defecto de una cuenta:
+Puedes cambiar el tipo de credencial de una cuenta en cualquier momento. Cuando cambias el tipo:
 
-```bash
-gitbox account update github-personal --default-credential-type ssh
-```
+- gitbox elimina la credencial antigua y sus artefactos (tokens, claves, entradas de config).
+- Configura el nuevo tipo de credencial.
+- Todos los clones existentes se reconfiguran automáticamente para usar la nueva credencial.
 
-También puedo cambiar un repo concreto para que use otro tipo:
-
-```bash
-gitbox repo update github-personal cli --credential-type token
-```
-
-Después de cambiar credenciales, revisa los clones existentes. Si el remoto todavía apunta al protocolo anterior, actualiza el remoto o deja que el flujo de reconfiguración de la TUI lo haga cuando esté disponible.
+No hace falta volver a clonar nada.
 
 ## Verificar credenciales
 
-```bash
-gitbox credential verify github-personal
-gitbox doctor
-```
+Puedes verificar que las credenciales funcionan en cualquier momento:
 
-`credential verify` prueba una cuenta concreta. `doctor` revisa herramientas externas como `git`, GCM, `ssh`, `tmux` y `wsl`.
+- **GUI:** la insignia de credencial en cada tarjeta de cuenta aparece verde (funciona), naranja (limitada) o roja (rota). Haz clic en la insignia para abrir el modal Change Credential: el panel Current-status de arriba muestra el estado real con el mensaje de error subyacente (si lo hay).
+- **TUI:** mismas insignias de color en las tarjetas del dashboard; el detalle de cuenta muestra estado con un mensaje.
+- **CLI:** `gitbox account credential verify <account-key>` imprime el estado de la credencial primaria y el estado de acceso API, incluido el error crudo cuando alguna falla.
 
 ## Herramientas ausentes en el host
 
-Si falta una herramienta, `gitbox` debe fallar en el punto de uso con un mensaje claro. Por ejemplo, un flujo SSH no debe exigir GCM, y un flujo GCM no debe exigir `ssh-agent`. Usa `doctor` para ver qué funciones quedan limitadas.
+Los tipos de credencial dependen de binarios externos que podrían no estar instalados en la máquina actual: GCM necesita `git-credential-manager`; SSH necesita `ssh` / `ssh-keygen` / `ssh-add`. Gitbox los detecta antes de iniciar un setup:
 
-## Resolución de problemas
+- **GUI** — abrir el modal add-account o change-credential ejecuta una comprobación previa. Si falta una herramienta requerida, ves un banner amarillo que la nombra y muestra el comando exacto de instalación para tu SO. El setup no se ejecuta automáticamente hasta que lo arregles (puedes avanzar manualmente si sabes lo que haces).
+- **TUI** — `Credential → change type → <new type>` se niega a continuar cuando falta una herramienta y muestra la pista de instalación como mensaje de error.
+- **CLI** — ejecuta `gitbox doctor` para un inventario completo en cualquier momento (consulta [reference.md](reference.md#comprobación-del-sistema-doctor)). El código de salida es `1` cuando falta alguna herramienta requerida por tu config actual, lo que permite usarlo en scripts.
 
-### Panel de estado actual en la GUI
+Arreglo típico en cada SO:
 
-El panel muestra el tipo de credencial configurado, si el token complementario está disponible y qué chequeos fallan. Lee primero ese panel antes de cambiar configuración; normalmente señala el requisito exacto que falta.
+- macOS: `brew install --cask git-credential-manager` (ssh/ssh-keygen vienen preinstalados).
+- Linux: instala el paquete GCM de tu distro (consulta la [documentación de instalación de GCM](https://github.com/git-ecosystem/git-credential-manager/blob/main/docs/install.md)); `sudo apt install openssh-client` para SSH.
+- Windows: GCM viene incluido con Git for Windows; el cliente OpenSSH es una característica opcional integrada.
+
+## Troubleshooting
+
+### Leer el panel Current-status de la GUI
+
+Haz clic en la insignia de credencial de cualquier tarjeta de cuenta. El panel Current-status dentro del modal Change Credential muestra:
+
+- **Primary (GCM/SSH/TOKEN):** el estado real de la credencial primaria (OK / Warning / Offline / Error / Not configured) y, debajo de la fila, el error subyacente tal como lo reporta la capa network/HTTP de gitbox. Ese texto de error es el primer sitio donde mirar cuando algo va mal: nombra la URL que falla, el código HTTP y lo que reportó el kernel / stack TLS.
+- **API token (PAT):** estado del PAT complementario (solo relevante para GCM y SSH). Cuando la credencial primaria ya cubre la API, el mensaje del PAT dice _"not needed — GCM covers the API"_. Cuando la API rechazó la primaria, el mensaje del PAT dice _"needed for discovery and repo creation"_ y aparece un botón **Setup API token** junto a él.
+- Un botón **Re-check** vuelve a ejecutar la verificación sin salir del modal.
+- Un banner informativo azul aparece bajo el panel cuando gitbox detecta que el error parece una denegación de permiso de red a nivel de SO (ver secciones macOS / Windows / Linux más abajo).
+
+La misma información está disponible desde la shell con `gitbox account credential verify <account>`: útil cuando quieres copiar y pegar un error en un bug report.
 
 ### macOS: permiso de red local
 
-macOS puede bloquear conexiones locales usadas por algunos flujos de autenticación. Cierra `GitboxApp`, restablece el permiso si procede y abre la app de nuevo. Si `tccutil reset` falla, revisa que lo ejecutas con el usuario que lanza la app y que el identificador de la aplicación coincide.
+**Síntoma.** La GUI muestra _Offline_ para una cuenta cuyo servidor está en tu LAN (`192.168.x.x`, `10.x.x.x` o un hostname `.local`). La línea de detalle contiene `dial tcp <ip>:<port>: connect: no route to host`. La CLI al mismo tiempo, ejecutada desde Terminal, llega al mismo servidor sin problema.
 
-### macOS: "Device not configured" durante GCM
+**Causa raíz.** macOS Sonoma y posteriores protegen las conexiones salientes a IPs de red local detrás del permiso de privacidad **Local Network** de TCC. Cada app GUI se registra por identidad de firma de código + ruta del bundle. Terminal recibió acceso la primera vez que lo usaste. Tu bundle de gitbox quizá todavía no fue aprobado, fue denegado silenciosamente (común en binarios ad-hoc), o se movió/renombró y TCC ya no lo reconoce.
 
-Ese error suele venir del entorno de GCM o del acceso al almacén seguro. Verifica que GCM funciona fuera de `gitbox` con un comando Git normal, luego repite `credential setup`.
+**Arreglo — mover la app a `/Applications/` y volver a pedir permiso.**
+
+```bash
+# Cierra primero GitboxApp en ejecución (⌘Q), luego como el usuario que la ejecutará:
+xattr -dr com.apple.quarantine /Applications/GitboxApp.app
+codesign --force --deep --sign - /Applications/GitboxApp.app   # firma ad-hoc
+tccutil reset LocalNetwork                                     # olvidar decisiones existentes
+open /Applications/GitboxApp.app
+```
+
+El `codesign --sign -` ad-hoc no requiere una cuenta Apple Developer. Lo que aporta es un **requisito designado de código estable**: un hash que TCC puede seguir entre lanzamientos, para que el permiso permanezca después de concederlo.
+
+En el primer acceso LAN, el SO debería mostrar _"GitboxApp would like to find and connect to devices on your local network"_. Haz clic en **Allow**. Después, `GitboxApp` aparece en _System Settings → Privacy & Security → Local Network_ con un toggle verde.
+
+#### Cuando `tccutil reset` falla
+
+La llamada `tccutil` es best-effort, y en versiones recientes de macOS a menudo imprime `tccutil: Failed to reset LocalNetwork`, a veces incluso con `sudo` y aunque Terminal tenga Full Disk Access. Esto ocurre por debajo:
+
+- `tccutil` modifica registros TCC por usuario. `sudo tccutil` edita la base de datos TCC de **root**, que no es la que lee tu sesión GUI, así que el error en parte indica que lo ejecutaste con la identidad equivocada. Ejecútalo como tu usuario normal, no con `sudo`.
+- La base de datos TCC por usuario vive bajo `~/Library/Application Support/com.apple.TCC/TCC.db`. SIP bloquea escrituras directas y enruta todo mediante `tccutil`; si Terminal (o tu emulador de shell) no tiene **Full Disk Access** concedido en _System Settings → Privacy & Security → Full Disk Access_, la llamada falla.
+- Aunque `tccutil` devuelva `Failed`, el SO puede volver a pedir permiso en la siguiente conexión LAN, porque la cache interna de decisiones es distinta de la DB en disco en releases nuevas. Ya viste esto: el reset reportó fallo, pero GitboxApp aun así mostró el diálogo "Allow Local Network" al alcanzar el servidor.
+
+Pasar un bundle identifier (`tccutil reset LocalNetwork com.wails.GitboxApp`) acota el reset a una app, pero devuelve el mismo error cuando el reset amplio ya no puede escribir. El bundle identifier de un build gitbox estándar es `com.wails.GitboxApp`: `wails build` lo hereda de su plantilla `Info.plist` predeterminada porque el repo no lo sobrescribe. Después de un `codesign --sign -` ad-hoc, el identificador se conserva (puedes confirmarlo con `defaults read /Applications/GitboxApp.app/Contents/Info.plist CFBundleIdentifier`).
+
+**Si `tccutil` falla y tampoco aparece el prompt**: omítelo. Abre directamente _System Settings → Privacy & Security → Local Network_ y activa el toggle de GitboxApp si aparece en la lista. Si no aparece, la app realmente no intentó todavía una conexión LAN (o TCC la registró con otra identidad de un ship anterior); relanza, dispara una verificación de credenciales en una cuenta LAN y el SO la añadirá.
+
+### macOS: "Device not configured" durante setup de GCM
+
+**Síntoma.** Configurar una credencial GCM en la GUI devuelve `fatal: could not read Password ... Device not configured`.
+
+**Causa raíz.** `git credential fill` intentó abrir `/dev/tty` para un prompt interactivo de contraseña porque `credential.helper` y `credential.credentialStore` faltaban o estaban mal en `~/.gitconfig`. Los procesos GUI no tienen tty de control; `open()` devuelve `ENXIO` y git muestra el mensaje críptico.
+
+**Arreglo.** Haz clic en el banner **Configure global gitconfig** de la GUI (o el elemento equivalente en la pantalla Global Gitconfig de la TUI). Gitbox escribe las entradas correctas y verifica. Repite el setup de credenciales.
 
 ### Windows: firewall
 
-Si el navegador abre pero el flujo no vuelve a la app, revisa que el firewall no bloquee el callback local de GCM o del proveedor. Prueba también desde una terminal normal para separar problema de GUI y problema del sistema.
+**Síntoma.** La GUI muestra _Offline_ para una cuenta en tu LAN. La línea de detalle contiene `A connection attempt failed` o `No route to host` (Windows traduce `WSAEHOSTUNREACH`).
 
-### Linux: diagnóstico de red
+**Causa raíz.** Windows Defender Firewall, o un producto endpoint de terceros, bloquea conexiones salientes desde `GitboxApp.exe` hacia la subred LAN. El bloqueo es por ejecutable, así que que Chrome / Edge / git.exe estén permitidos no dice nada sobre la app Wails.
 
-Comprueba DNS, proxy, certificados del sistema y conectividad al host:
+**Arreglo.**
 
-```bash
-git ls-remote https://github.com/owner/repo.git
-curl -I https://github.com
-```
+1. Abre _Windows Security → Firewall & network protection → Allow an app through firewall_.
+2. Haz clic en _Change settings_ → _Allow another app_ → navega hasta el `GitboxApp.exe` instalado.
+3. Marca las columnas **Private** y **Public** para la red que uses realmente.
+4. Si hay software endpoint corporativo, normalmente necesita una regla del lado admin: escala a IT con la ruta del ejecutable y el servidor destino.
 
-### HTTP 401 en Forgejo o Gitea
+Vuelve a ejecutar la verificación en la GUI cuando la regla esté activa.
 
-Un 401 casi siempre significa token ausente, token sin scope suficiente, host equivocado o cuenta equivocada. Confirma `--host`, usuario, proveedor y variable `GITBOX_TOKEN_<ACCOUNT_KEY>`.
+### Linux: troubleshooting de red
 
-### Connection refused
+**Síntoma.** La GUI muestra _Offline_ para una cuenta en tu LAN o una IP privada. La línea de detalle contiene `connect: no route to host`, `connect: network is unreachable` o `connect: connection refused`.
 
-Comprueba que el host y puerto existen desde la máquina actual. En redes privadas, VPNs y homelabs, el error puede venir de estar fuera de la red correcta.
+**Causa raíz.** Los escritorios Linux normalmente no tienen un mecanismo de permiso de red a nivel de SO. O la red está caída (VPN apagada, interfaz equivocada, subred equivocada) o un firewall local (`ufw`, `firewalld`, nftables) bloquea la conexión saliente.
+
+**Arreglo.**
+
+1. Prueba la misma petición desde una shell: `curl -sSI https://<host>/`; si eso también falla, el problema es la red, no la app.
+2. Confirma que la VPN está activa (si hace falta) y que existen las rutas correctas: `ip route get <server-ip>`.
+3. Inspecciona tu firewall: `sudo ufw status verbose`, `sudo firewall-cmd --list-all` o `sudo nft list ruleset`. Permite TCP saliente al servidor destino.
+4. Si llegas al servidor desde shell pero no desde la GUI, el binario Wails puede haberse iniciado dentro de un namespace restringido; es raro, normalmente solo en sandboxes Flatpak/Snap. Lanza desde una Terminal normal para confirmarlo.
+
+### HTTP 401 desde Forgejo o Gitea
+
+**Síntoma.** El panel Current-status muestra _Primary (GCM): Warning_ con `gitea: authentication failed (HTTP 401) — token is invalid or expired`.
+
+**Causa raíz.** Forgejo y Gitea rechazan autenticación usuario/contraseña en la API REST. Tu credencial guardada en GCM probablemente es una contraseña real: funciona para `git push` / `pull`, pero no para `/api/v1/*`.
+
+**Arreglo.** Uno de:
+
+- Elimina la entrada GCM actual y repite el setup de credenciales pegando un **PAT** en el prompt de contraseña de GCM. El PAT se cachea igual, pero también funciona para la API.
+- Deja GCM como está y haz clic en **Setup API token** dentro del panel Current-status para guardar un PAT complementario en el keyring de gitbox. La API usará el PAT, las operaciones git seguirán usando GCM.
+
+### "Connection refused" (cualquier SO)
+
+**Síntoma.** La línea de detalle contiene `connect: connection refused`.
+
+**Causa raíz.** El servidor es alcanzable pero no hay nada escuchando en el puerto destino: el servicio está caído o estás usando host/puerto equivocado.
+
+**Arreglo.** Confirma la URL del servidor en la config de cuenta (`gitbox account list --json`), luego comprueba el estado del servicio en el servidor. Esto nunca es un problema del lado de la app.
 
 ### Errores DNS
 
-Verifica que el nombre resuelve:
+**Síntoma.** La línea de detalle contiene `no such host`, `server misbehaving` o `i/o timeout` durante la resolución DNS.
 
-```bash
-nslookup git.example.test
-```
+**Causa raíz.** El hostname de la URL de cuenta no puede resolverse desde esta máquina. Posibles razones: typo en la URL de cuenta, VPN / DNS split-horizon requerido pero no activo, resolver DNS privado no configurado.
 
-Si solo resuelve dentro de VPN o WSL, ejecuta `gitbox` en el entorno que tenga esa resolución.
+**Arreglo.** Prueba `dig +short <host>` o `nslookup <host>` desde una shell. Corrige tu DNS antes de volver a verificar en gitbox.
 
-### TLS o certificados
+### Errores TLS / certificado
 
-Instala el certificado raíz correcto en el sistema operativo o en el entorno Git que uses. Evita desactivar verificación TLS salvo para una prueba local controlada; no lo conviertas en configuración permanente.
+**Síntoma.** La línea de detalle contiene `x509:`, `certificate signed by unknown authority` o `tls: failed to verify certificate`.
+
+**Causa raíz.** El servidor presenta un certificado que el cliente HTTP de Go no puede validar: normalmente un certificado self-signed, un cert firmado por una CA interna que no está en el trust store del sistema, o un hostname que no coincide.
+
+**Arreglo.** Añade el certificado de la CA interna al trust store de tu SO (macOS Keychain, almacén de certificados Windows o Linux `/usr/local/share/ca-certificates/` + `update-ca-certificates`). Gitbox usa el trust store del sistema mediante `net/http`; no tiene bypass por app y deliberadamente no ofrecerá uno.
 
 ## Scopes de token por capacidad
 
-Para lectura y descubrimiento, concede lectura de repos. Para crear repos o mirrors, concede escritura o administración según el proveedor. Para organizaciones, confirma que el token tiene acceso a la org y que las políticas de SSO o aprobación de tokens permiten usarlo.
+Diferentes operaciones de gitbox necesitan diferentes scopes de PAT. La base (listar + clonar + fetch + pull) es el mínimo que necesita cada cuenta; create, delete y mirror añaden uno o más scopes encima. Da a cada cuenta solo los scopes que necesita: añade los destructivos (delete) solo cuando planees usarlos.
 
-## Cuando el error dice algo inusual
+| Proveedor       | Discovery + clone + fetch              | Crear repo (GUI "Create repo" / move dest) | Eliminar repo (move con "delete source")             | Mirror (push/pull entre cuentas)  |
+| --------------- | -------------------------------------- | ------------------------------------------ | ---------------------------------------------------- | --------------------------------- |
+| GitHub          | `repo`, `read:org`                     | `repo`                                     | `delete_repo` (sensible — añadir solo si hace falta) | `repo` más los scopes del destino |
+| GitLab          | `api`                                  | `api`                                      | `api`                                                | `api`                             |
+| Gitea / Forgejo | `read:repository`, `read:organization` | `write:repository`                         | `write:repository` (o admin en destino)              | `write:repository` en destino     |
+| Bitbucket Cloud | `repository`                           | `repository:admin`                         | `repository:delete`                                  | `repository:admin` en destino     |
 
-Ejecuta el comando con la cuenta mínima que falla, copia el mensaje exacto y compara con:
+Cuando falta un scope, gitbox muestra un aviso que nombra el scope exacto requerido y la URL del proveedor para regenerar el PAT; por ejemplo: _"Source repo delete refused: your github PAT is missing the `delete_repo` scope. Regenerate it at <https://github.com/settings/tokens> (keep existing scopes, add `delete_repo`), then re-run `gitbox account credential setup <account>`."_
 
-```bash
-gitbox doctor
-gitbox credential verify <account>
-git ls-remote <remote-url>
-```
+El wizard de setup de cuenta de la TUI + GUI muestra la misma tabla por capacidad cuando guardas un PAT, para que decidas qué scopes incluir desde el principio.
 
-Si Git falla fuera de `gitbox`, corrige primero la credencial o red del sistema. Si Git funciona fuera pero `gitbox` falla, revisa proveedor, host, tipo de credencial y token complementario.
+### Cuando el error dice algo inusual
+
+Gitbox muestra el error de nivel Go literalmente: no lo traduce ni resume. Copia el string exacto en un issue en [github.com/LuisPalacios/gitbox/issues](https://github.com/LuisPalacios/gitbox/issues) junto con:
+
+- El SO y versión (por ejemplo "macOS 14.5 Sonoma").
+- El tipo de credencial en uso (GCM / SSH / Token) y el proveedor (GitHub / Forgejo / ...).
+- La salida de `gitbox account credential verify <account-key>`.
+- Si la misma petición funciona desde `curl` en una shell de la misma máquina.
+
+Normalmente eso basta para distinguir problemas de red de problemas de la app en una sola ida y vuelta.

@@ -1,381 +1,437 @@
+<p align="center">
+  <img src="../../assets/screenshot-cli.png" alt="Gitbox" width="800" />
+</p>
+
 # Primeros pasos con la CLI de gitbox
 
-[Read in English](../cli-guide.md)
-
-<p align="center">
-  <img src="../../assets/screenshot-cli.png" alt="Gitbox CLI" width="800" />
-</p>
+Esta guía recorre el flujo completo: desde una instalación limpia hasta un entorno Git multi-cuenta completamente gestionado.
 
 <p align="center">
   <img src="../diagrams/cli-workflow.png" alt="Flujo CLI" width="700" />
 </p>
 
-Esta guía recorre el flujo completo de la CLI: inicializar la configuración, añadir cuentas, preparar credenciales, descubrir repositorios, clonar y mantenerlos al día. Los comandos y valores internos aparecen en inglés porque forman parte de la interfaz estable de `gitbox`.
-
 ## Requisitos previos
 
-Necesitas `git` instalado y accesible desde `PATH`. Según el tipo de credencial que uses, también puedes necesitar Git Credential Manager, `ssh`, `ssh-agent`, `tmux`, WSL o un navegador disponible en la máquina.
+- **Git** instalado y en tu PATH
+- Binario **gitbox** — instala con el one-liner, [descarga manualmente](https://github.com/LuisPalacios/gitbox/releases) o [compila desde el código fuente](../developer-guide.md)
+- Para cuentas GCM: [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager) instalado. En Linux, el OAuth basado en navegador de GCM también necesita un servidor de pantalla (X11 o Wayland). Consulta [credentials.md](credentials.md) para alternativas headless.
 
-Comprueba el entorno con:
+Ejecuta `gitbox doctor` en cualquier momento para ver una checklist de cada herramienta externa que gitbox necesita y comandos de instalación para las que falten. También alimenta la comprobación previa del flujo de añadir cuenta en la GUI, para que sepas que falta una dependencia antes de fallar durante la autenticación. Detalles en [reference.md](reference.md#comprobación-del-sistema-doctor).
 
-```bash
-gitbox doctor
-```
+### Instalación
 
-`doctor` muestra las herramientas que faltan y explica qué funciones quedan afectadas.
+Descarga el instalador nativo para tu plataforma desde [Releases](https://github.com/LuisPalacios/gitbox/releases): setup `.exe` para Windows, `.dmg` para macOS, `.AppImage` para Linux. Consulta el [README](../../README.md) para más detalles.
 
-## Instalación
-
-Descarga una release o construye desde el repositorio. El binario de la CLI se llama `gitbox` en macOS y Linux, y `gitbox.exe` en Windows.
-
-Después de instalar, confirma que el binario responde:
+También puedes usar el script bootstrap (macOS, Linux, Git Bash):
 
 ```bash
-gitbox --version
-gitbox --help
+bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
 ```
+
+Usa `--cli-only` para omitir la GUI, `--version <tag>` para instalar una release concreta, o `--prefix <dir>` para cambiar el directorio de instalación (por defecto `~/bin`).
+
+En Linux, el script bootstrap también registra la GUI en el menú Activities para que pueda buscar "Gitbox" o arrastrarlo al dock. Omítelo con `--no-desktop`; ejecútalo más tarde por separado con `bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/register-gitbox.sh)`. Pasa `--uninstall` al mismo script para quitar la entrada del menú. El archivo `.desktop` apunta a una ruta absoluta, así que `gitbox update` y las siguientes ejecuciones de bootstrap no necesitan registrar de nuevo.
 
 ## Paso 1: inicializar
 
-Inicio la configuración con:
+Crea tu archivo de configuración:
 
 ```bash
 gitbox init
 ```
 
-El asistente crea el archivo `~/.config/gitbox/gitbox.json` y pregunta por la carpeta raíz donde `gitbox` colocará los clones. La estructura normal queda así:
+Esto crea `~/.config/gitbox/gitbox.json` con valores por defecto razonables para tu plataforma. Detecta automáticamente tu almacén de credenciales (Windows Credential Manager, macOS Keychain, etc.).
 
-```text
-<root>/
-  github-personal/
-    LuisPalacios/
-      repo-a/
-      repo-b/
-```
-
-Puedo seleccionar español para la salida humana con `--lang es`, `GITBOX_LANG=es` o guardando `global.language` en la configuración:
-
-```bash
-gitbox --lang es --help
-gitbox global update --language es
-```
+Para autocompletado de comandos y flags, consulta [Completado de shell](completion.md).
 
 ## Paso 2: añadir cuentas
 
-Una cuenta representa una identidad de acceso a un proveedor. El `account key` debe ser estable, legible y único, por ejemplo `github-personal`, `github-work` o `forgejo-home`.
+Una **cuenta** define QUIÉN eres en un proveedor Git: tu identidad, no tus repos.
 
-### Forgejo o Gitea con GCM
+### Forgejo / Gitea (self-hosted, autenticación GCM)
 
 ```bash
-gitbox account add forgejo-home \
+gitbox account add my-forgejo \
   --provider forgejo \
-  --host git.example.test \
-  --user alice \
-  --default-credential-type gcm
+  --url https://git.example.org \
+  --username myuser \
+  --name "My Name" \
+  --email "me@example.com" \
+  --default-credential-type gcm \
+  --gcm-provider generic
 ```
 
-Uso `--host` para instancias self-hosted. No incluyo `https://`; `gitbox` construye las URLs a partir del proveedor, host y cuenta.
-
-### GitHub con GCM
+### GitHub (autenticación GCM)
 
 ```bash
 gitbox account add github-personal \
   --provider github \
-  --user alice \
+  --url https://github.com \
+  --username MyGitHubUser \
+  --name "My Name" \
+  --email "me@example.com" \
   --default-credential-type gcm
 ```
 
-GCM funciona bien en máquinas con navegador porque delega el login interactivo al proveedor.
-
-### GitHub con SSH
+### GitHub (autenticación SSH)
 
 ```bash
 gitbox account add github-ssh \
   --provider github \
-  --user alice \
-  --default-credential-type ssh \
-  --ssh-host github.com \
-  --ssh-user git \
-  --ssh-key-path ~/.ssh/id_ed25519
+  --url https://github.com \
+  --username SSHUser \
+  --name "SSH User" \
+  --email "sshuser@example.com" \
+  --default-credential-type ssh
 ```
 
-SSH encaja mejor en servidores, entornos sin navegador y cuentas que ya usan claves por proveedor.
-
-### GitHub con token
+### GitHub (autenticación Token)
 
 ```bash
 gitbox account add github-token \
   --provider github \
-  --user alice \
+  --url https://github.com \
+  --username TokenUser \
+  --name "Token User" \
+  --email "tokenuser@example.com" \
   --default-credential-type token
 ```
 
-Los tokens son útiles para automatización y para proveedores self-hosted donde GCM no encaja.
-
-### Ver cuentas
+### Verificar tus cuentas
 
 ```bash
 gitbox account list
-gitbox account show github-personal
 ```
 
 ## Paso 3: configurar credenciales
 
-Después de crear la cuenta, preparo la credencial:
+Ejecuta `credential setup` para cada cuenta. Detecta el tipo de credencial y hace lo correcto:
 
 ```bash
-gitbox credential setup github-personal
+gitbox account credential setup my-forgejo
+gitbox account credential setup github-personal
+gitbox account credential setup github-ssh
 ```
 
-El comando detecta el tipo configurado en la cuenta y guía el proceso:
+El comando es **idempotente**: ejecútalo de nuevo cuando quieras comprobar o corregir tu configuración.
 
-- `gcm`: abre el flujo de Git Credential Manager.
-- `ssh`: comprueba host, usuario, clave y agente SSH.
-- `token`: pide o localiza un PAT y lo guarda usando el mecanismo disponible.
+Para cuentas GCM, el setup abre tu navegador para autenticación OAuth (GitHub, GitLab) o pide usuario/contraseña (Gitea, Forgejo). En sesiones headless o por SSH donde no hay navegador disponible, gitbox te lo indica y sugiere ejecutar desde una terminal de escritorio. Consulta [credentials.md](credentials.md) para detalles de cada tipo de credencial, detección de navegador y permisos que debes seleccionar.
 
-Verifico que la credencial funciona:
+### Verificar credenciales
 
 ```bash
-gitbox credential verify github-personal
+gitbox account credential verify my-forgejo
+gitbox account credential verify github-personal
+gitbox account credential verify github-ssh
 ```
 
-Si el proveedor necesita un PAT para llamadas API aunque clones con GCM o SSH, revisa [Credenciales](credentials.md).
+## Paso 4: descubrir repos
 
-## Paso 4: descubrir repositorios
-
-`discover` consulta el proveedor y añade repositorios a la configuración.
+Discover obtiene todos los repos visibles para tu cuenta desde la API del proveedor y te permite elegir cuáles gestionar:
 
 ```bash
-gitbox discover github-personal
+gitbox account discover my-forgejo
 ```
 
-El modo interactivo muestra una lista numerada para elegir qué repos guardar. Para añadir todo sin preguntar:
+Verás una lista numerada:
+
+```text
+Discovered 12 repos:
+
+  #     REPO                                                STATUS
+  1     personal/my-project                                 (new)
+  2     infra/homelab                                       (new)
+  -     training/old-course                                 (already in source "my-forgejo")
+
+Enter repos to add (e.g. 1,3,5-10 or "all", empty to cancel):
+```
+
+Escribe `all` para añadir todo o elige números concretos.
+
+### Opciones de discover
 
 ```bash
-gitbox discover github-personal --all
+gitbox account discover my-forgejo --all            # Añadir todo sin preguntar
+gitbox account discover my-forgejo --skip-forks     # Excluir forks
+gitbox account discover my-forgejo --skip-archived  # Excluir repos archivados
+gitbox account discover my-forgejo --json           # Salida JSON (para scripting)
 ```
 
-También puedo excluir forks o repos archivados:
+### Descubrir todas las cuentas
 
 ```bash
-gitbox discover github-personal --all --exclude-forks --exclude-archived
+gitbox account discover github-personal
+gitbox account discover github-ssh
 ```
 
-Para scripting, uso JSON:
-
-```bash
-gitbox discover github-personal --json
-```
-
-Para recorrer todas las cuentas configuradas:
-
-```bash
-gitbox discover --all-accounts
-```
-
-## Paso 5: clonar
-
-Clono todos los repos configurados:
+## Paso 5: clonar todo
 
 ```bash
 gitbox clone
 ```
 
-Clono una fuente concreta:
+Verás salida coloreada, una línea por repo, con una barra de progreso para cada clon:
 
-```bash
-gitbox clone --source github-personal
+```text
+Cloning into ~/00.git
++ cloned    my-forgejo/personal/my-project
++ cloned    my-forgejo/infra/homelab
+~ exists    github-personal/MyOrg/project-a
+~ exists    github-personal/MyOrg/project-b
+
+Cloned: 2, Skipped: 2, Errors: 0
 ```
 
-Clono un repositorio concreto:
+### Opciones de clone
 
 ```bash
-gitbox clone --repo cli
+gitbox clone --source my-forgejo    # Clonar solo desde una source
+gitbox clone --repo MyOrg/tools     # Clonar solo un repo concreto
+gitbox clone --verbose              # Mostrar todos los repos, incluidos los omitidos
 ```
 
-`gitbox` crea carpetas siguiendo la configuración y aplica la URL remota adecuada para el tipo de credencial. Si un repo ya existe, lo omite en lugar de reemplazarlo.
+## Paso 6: día a día
 
-## Paso 6: trabajo diario
-
-### Revisar estado
+### Comprobar estado
 
 ```bash
 gitbox status
-gitbox status --source github-personal
-gitbox status --json
 ```
 
-El estado muestra clones ausentes, repos adelantados o atrasados, ramas divergentes y errores de acceso. Los valores como `synced`, `behind` o `missing` permanecen en inglés porque se usan también en JSON y scripts.
+Muestra información de config, salud de credenciales de cuenta y estado de sync por repo agrupado por source. Los repos en una rama no predeterminada muestran una insignia `[branch-name]`. Las ramas feature sin upstream muestran "local branch" en lugar del genérico "no upstream".
 
-### Traer cambios
+### Traer actualizaciones
 
 ```bash
 gitbox pull
-gitbox pull --source github-personal
 ```
 
-`pull` solo avanza ramas con fast-forward. Si un repo tiene cambios locales, ramas divergentes o conflictos, `gitbox` lo informa y no fuerza nada.
-
-### Abrir en el navegador
+Hace pull de repos que están behind (solo fast-forward). Los repos dirty o con conflictos se omiten con un aviso. Los repos en ramas locales sin upstream se omiten: usa `--verbose` para ver qué repos se omitieron y por qué.
 
 ```bash
-gitbox browse cli
-gitbox browse cli --source github-personal
-gitbox browse cli --json
+gitbox pull --verbose    # Mostrar todos los repos, incluidos los limpios
+gitbox pull --source my-forgejo  # Pull desde una sola source
 ```
 
-`browse --json` imprime la URL sin abrir el navegador, útil para scripts o terminales remotas.
+### Abrir en navegador
+
+```bash
+gitbox browse --repo alice/hello-world
+```
+
+Abre la página web remota del repositorio en el navegador predeterminado. Usa `--source` para acotar la búsqueda si el mismo nombre de repo aparece en varias sources.
 
 ### Limpiar ramas obsoletas
 
 ```bash
-gitbox sweep --dry-run
 gitbox sweep
-gitbox sweep --source github-personal
-gitbox sweep --repo cli
 ```
 
-Primero ejecuto `--dry-run` para ver qué ramas locales se eliminarían. `sweep` no elimina ramas con trabajo local sin fusionar.
+Encuentra y elimina ramas locales que ya no hacen falta en todos los repos. Detecta tres tipos de ramas obsoletas:
+
+- **Gone** — la rama remota de seguimiento fue eliminada (por ejemplo, PR fusionado y rama eliminada en el servidor)
+- **Merged** — la rama está completamente fusionada en la rama predeterminada localmente
+- **Squashed** — el PR fue squash-merged o rebase-merged en el servidor (commits distintos pero los mismos cambios)
+
+La rama actual y la rama predeterminada nunca se tocan.
+
+```bash
+gitbox sweep --dry-run              # Vista previa sin eliminar
+gitbox sweep --source my-github     # Limpiar una sola source
+gitbox sweep --repo alice/my-repo   # Limpiar un solo repo
+```
 
 ### Escanear cualquier directorio
 
 ```bash
-gitbox scan .
-gitbox scan C:\src
-gitbox scan ~/src --pull
+gitbox scan
 ```
 
-`scan` busca repos Git bajo una carpeta aunque no formen parte de la configuración. Con `--pull`, trae cambios donde sea seguro hacer fast-forward.
+Recorre el sistema de archivos desde el directorio actual, encuentra todos los repos Git y muestra su estado de sync. A diferencia de `status`, no necesita una config de gitbox: funciona en cualquier directorio.
+
+```bash
+gitbox scan --dir ~/projects    # Escanear un directorio concreto
+gitbox scan --pull              # También hacer pull de repos behind
+```
+
+Cuando existe una config de gitbox y escaneo dentro de la carpeta padre, cada repo se anota como `[tracked]` u `[ORPHAN]` con pistas de coincidencia de cuenta.
 
 ### Adoptar repos huérfanos
 
+Si hay repos bajo la carpeta padre de gitbox que no están en `gitbox.json` (clonados manualmente, heredados de una configuración previa), los adopto:
+
 ```bash
-gitbox adopt
-gitbox adopt --dry-run
-gitbox adopt --all
+gitbox adopt              # Adopción interactiva de huérfanos coincidentes
+gitbox adopt --dry-run    # Vista previa de lo que ocurriría
+gitbox adopt --all        # Adoptar todos los huérfanos coincidentes sin preguntar
 ```
 
-`adopt` compara repos encontrados en disco con la configuración y propone añadir los que reconoce por sus remotos. Si necesita mover carpetas, usa modo interactivo para evitar cambios inesperados.
+Por cada huérfano con una cuenta coincidente, `adopt` lo añade a la config, configura aislamiento de credenciales, configura identidad y reescribe la URL remota. Si el repo no está en la carpeta estándar, se me pregunta si quiero reubicarlo.
 
-### Mover un repo entre cuentas o proveedores
+### Mover un repositorio entre cuentas / proveedores
 
-Cuando cambio un repo de organización, cuenta o proveedor, actualizo la configuración con `repo update` y luego reviso el remoto. Si el repo físico necesita moverse de carpeta, uso el flujo interactivo de adopción o muevo manualmente después de confirmar rutas.
+La pantalla de detalle de repo de la TUI expone el atajo `M`, que abre un flujo **Move repository**: elige una cuenta y owner de destino, opcionalmente activa _Delete source repo_ y _Delete local clone_, escribe la clave del repo origen para confirmar y observa el progreso por fases (preflight → fetch → create destination → push --mirror → rewire origin → optional deletes → update config). El atajo está inactivo hasta que el clon esté limpio y completamente sincronizado con su upstream. Los scopes de token requeridos por proveedor están en [Token scopes for destructive actions](credentials.md#scopes-de-token-por-capacidad). Todavía no existe un comando cobra dedicado `gitbox move`; todo ocurre mediante la TUI.
 
 ### Instalar un gitignore global recomendado
 
 ```bash
-gitbox gitignore status
-gitbox gitignore install
+gitbox gitignore check     # Estado de ~/.gitignore_global y core.excludesfile
+gitbox gitignore install   # Instalar / refrescar de forma idempotente, backup en .bak-YYYYMMDD-HHMMSS
 ```
 
-`install` añade un bloque gestionado a `~/.gitignore_global`, crea backups con timestamp y evita duplicados dentro de los marcadores de `gitbox`.
+Un bloque curado de patrones de basura del sistema operativo (`.DS_Store`, `Thumbs.db`, `*~`, …) se envuelve con marcadores sentinel dentro de `~/.gitignore_global` para que gitbox pueda actualizarlo sin tocar entradas añadidas por el usuario. Consulta [Global gitignore en reference.md](reference.md#global-gitignore) para el flujo completo, preferencia de opt-out y hooks de GUI/TUI.
 
-## Paso 7: configurar mirrors opcionales
+## Paso 7: configurar mirrors (opcional)
 
-Un mirror sincroniza repos entre proveedores, por ejemplo Forgejo como origen privado y GitHub como destino público.
+Los mirrors permiten mantener copias de backup de repos en otro proveedor: por ejemplo, push desde un Forgejo de homelab a GitHub, o pull de repos de GitHub hacia Forgejo.
 
-### Crear un grupo de mirror
+### Crear un grupo mirror
+
+Un grupo mirror empareja dos cuentas:
 
 ```bash
-gitbox mirror group add public-sync \
-  --source-account forgejo-home \
-  --destination-account github-personal
+gitbox mirror add forgejo-github \
+  --account-src my-forgejo \
+  --account-dst github-personal
 ```
 
 ### Añadir repos al mirror
 
-Push desde Forgejo hacia GitHub:
+Cada repo especifica qué cuenta es la fuente de verdad (`--origin`) y la dirección (`--direction`):
 
 ```bash
-gitbox mirror repo add public-sync cli \
-  --source-repo cli \
-  --destination-repo cli \
-  --direction push
+# Push desde Forgejo a GitHub (Forgejo es la fuente)
+gitbox mirror add-repo forgejo-github infra/homelab \
+  --origin src --direction push --setup
+
+# Pull desde GitHub hacia Forgejo (GitHub es la fuente)
+gitbox mirror add-repo forgejo-github MyUser/dotfiles \
+  --origin dst --direction pull --setup
 ```
 
-Pull desde GitHub hacia Forgejo:
-
-```bash
-gitbox mirror repo add public-sync cli \
-  --source-repo cli \
-  --destination-repo cli \
-  --direction pull
-```
+El flag `--setup` crea inmediatamente el repo destino y configura el mirror mediante API.
 
 ### Descubrir mirrors existentes
 
+Si ya tienes relaciones de mirror configuradas en tus servidores, gitbox puede detectarlas:
+
 ```bash
-gitbox mirror discover public-sync
-gitbox mirror discover public-sync --apply
+# Mostrar mirrors descubiertos
+gitbox mirror discover
+
+# Descubrir y aplicar a la config
+gitbox mirror discover --apply
 ```
 
-### Revisar estado
+La detección usa tres métodos con confianza decreciente: consultas API de push mirror (confirmed), flags de pull mirror (likely) y coincidencia por nombre de repo (possible).
+
+### Comprobar estado de mirror
 
 ```bash
 gitbox mirror status
-gitbox mirror status public-sync
-gitbox mirror status --json
 ```
+
+Muestra estado de sync (comparando commits HEAD en ambos lados) y avisa si los repos de backup no son privados.
 
 ### Credenciales de mirror
 
-Cada lado del mirror usa la credencial de su cuenta. Si un proveedor exige permisos API para crear o consultar mirrors, configura el PAT correspondiente aunque el clon normal use SSH o GCM.
-
-## Paso 8: workspaces dinámicos opcionales
-
-Los workspaces agrupan repos para abrirlos juntos en VS Code o tmuxinator.
-
-### Crear un workspace de VS Code
+Si tu cuenta usa GCM, los mirrors necesitan un PAT separado (los tokens OAuth de GCM son locales de la máquina). Guarda uno con:
 
 ```bash
-gitbox workspace add platform \
-  --repo api \
-  --repo web \
-  --repo cli \
-  --type vscode
+gitbox account credential setup github-personal --token
 ```
 
-Abro el workspace:
+Las cuentas Token y SSH ya tienen un PAT portable: no necesitan setup adicional. Consulta [credentials.md](credentials.md) para más detalles.
+
+## Paso 8: workspaces dinámicos (opcional)
+
+Un **workspace** agrupa varios clones que abro juntos para una tarea: por ejemplo, un repo frontend y su backend en una sesión multi-root de VS Code, o un layout de tmuxinator con cada repo en su propio panel.
+
+Los workspaces son ciudadanos de primera clase en gitbox: se guardan en `gitbox.json`, se gestionan con `gitbox workspace …` y se generan a disco bajo demanda como archivos JSON `.code-workspace` o perfiles YAML de tmuxinator.
+
+### Crear un workspace multi-root de VS Code
 
 ```bash
-gitbox workspace open platform
+gitbox workspace add feat-x \
+  --type codeWorkspace \
+  --name "Feature X" \
+  --member github-personal/myorg/frontend \
+  --member gitea-work/team/backend
+
+gitbox workspace generate feat-x
 ```
 
-### Tmuxinator en macOS o Linux
+`generate` elige automáticamente la ruta del archivo (el ancestro común más cercano de las carpetas miembro, por ejemplo `~/00.git/feat-x.code-workspace`) salvo que pase `--file`. Escribe un `.code-workspace` con una entrada `folders[]` por miembro y un bloque pequeño `settings` que permite a VS Code detectar repos anidados bajo la raíz compartida.
+
+### Abrir un workspace
 
 ```bash
-gitbox workspace add platform \
-  --repo api \
-  --repo worker \
-  --type tmuxinator
+gitbox workspace open feat-x
 ```
 
-`gitbox` genera el archivo de tmuxinator y abre sesiones con los repos seleccionados.
+Esto regenera el archivo y lanza el primer editor en `global.editors` (para `codeWorkspace`) o la primera terminal ejecutando `tmuxinator start <key>` (para `tmuxinator`).
 
-### Tmuxinator en Windows mediante WSL
-
-En Windows, `gitbox` usa WSL para abrir tmuxinator cuando está disponible. Las rutas se convierten con los helpers internos de WSL para que los paneles apunten a la carpeta correcta.
-
-### Descubrir workspaces en disco
+### Workspaces tmuxinator (macOS / Linux)
 
 ```bash
-gitbox workspace discover
+gitbox workspace add pair-session \
+  --type tmuxinator \
+  --layout windowsPerRepo \
+  --member github-personal/myorg/frontend \
+  --member github-personal/myorg/backend
+
+gitbox workspace generate pair-session   # escribe ~/.tmuxinator/pair-session.yml
+gitbox workspace open pair-session
+```
+
+Layouts:
+
+- `windowsPerRepo` (por defecto) — una ventana tmuxinator por miembro, cada una enraizada en la carpeta del clon miembro
+- `splitPanes` — una sola ventana con un panel por miembro, en mosaico
+
+### Tmuxinator en Windows (mediante WSL)
+
+Cuando WSL está instalado, gitbox escribe el YAML en el lado WSL `~/.tmuxinator/<key>.yml` (alcanzado mediante su ruta UNC `\\wsl.localhost\<distro>\…`) y reescribe las rutas `root:` por ventana y `cd` por panel a sus equivalentes del lado Linux (`/mnt/c/…` para rutas en la unidad Windows). `gitbox workspace open <key>` ejecuta la terminal configurada con `wsl.exe -- tmuxinator start <key>` como comando hijo, así tmuxinator se ejecuta dentro de WSL independientemente del perfil de terminal que haya elegido. Si `wsl.exe --status` no tiene éxito, los workspaces tmuxinator siguen fallando limpiamente con el mensaje de plataforma no soportada.
+
+### Descubrir workspaces dejados en disco
+
+Los archivos de workspace que creo a mano, o que llevo conmigo desde otra máquina, se detectan automáticamente. En cualquier invocación de la CLI también puedo ejecutar:
+
+```bash
+gitbox workspace discover           # solo vista previa, tres grupos (adoptable, ambiguous, skipped)
+gitbox workspace discover --apply   # adoptar cada entrada adoptable en gitbox.json
+```
+
+El scanner recorre `global.folder` en busca de archivos `*.code-workspace` y `~/.tmuxinator/*.yml` (más el `~/.tmuxinator/` del lado WSL en Windows). Cada ruta de carpeta parseada se asocia de vuelta a un clon conocido mediante la coincidencia de prefijo de ruta más profunda contra las rutas resueltas de repos. Un workspace se auto-adopta cuando cada miembro resuelve exactamente a un clon; coincidencias ambiguas (una ruta que empata entre dos clones) se muestran como un grupo separado y nunca se adoptan automáticamente.
+
+La GUI ejecuta el mismo discovery automáticamente al arrancar; la TUI lo ejecuta al lanzarse y en cada tick de periodic-sync. Las entradas adoptadas se etiquetan con `discovered: true` en `gitbox.json` para que la UI pueda mostrar de dónde vienen.
+
+### Día a día
+
+```bash
+gitbox workspace list
+gitbox workspace show feat-x
+gitbox workspace add-member feat-x gitea-work/team/ops
+gitbox workspace delete-member feat-x gitea-work/team/backend
+gitbox workspace delete feat-x
 gitbox workspace discover --apply
 ```
 
-Esto detecta archivos `.code-workspace` o configuraciones compatibles que existan en la carpeta raíz.
+`delete` elimina el workspace de `gitbox.json`, pero NO elimina el archivo generado en disco: lo quito a mano si quiero.
 
 ## Actualizar gitbox
 
+Gitbox comprueba actualizaciones automáticamente (una vez al día en la GUI). Desde la CLI:
+
 ```bash
-gitbox update check
-gitbox update install
+gitbox update --check   # solo comprobar, sin instalar
+gitbox update           # comprobar e instalar interactivamente
 ```
 
-`check` consulta la última versión disponible. `install` descarga y reemplaza el binario cuando el entorno lo permite.
+El updater descarga la release desde GitHub, verifica el checksum SHA256 y reemplaza los binarios in-place. En Windows, hace falta reiniciar después de la actualización.
 
-## Qué hacer después
+## Qué sigue
 
-- Consulta [Credenciales](credentials.md) si el login falla o necesitas elegir entre GCM, SSH y token.
-- Usa [Referencia](reference.md) cuando necesites un comando o flag concreto.
-- Abre [Guía de la GUI](gui-guide.md) si prefieres gestionar cuentas, repos y mirrors desde `GitboxApp`.
+- Consulta la [Guía de referencia](reference.md) para todos los comandos, formato de configuración y troubleshooting
+- Consulta [Credenciales](credentials.md) para instrucciones detalladas de creación de PAT por proveedor
+- Consulta [Arquitectura](../architecture.md) para diseño técnico y detalles de componentes
