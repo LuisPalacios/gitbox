@@ -31,10 +31,11 @@ When writing docs, READMEs, or code comments, follow these rules:
 
 ## Documentation language and translations
 
-English is the main documentation language and the source of truth for this project. Files under `docs/` in English define the canonical structure, paragraphs, examples, warnings, and level of detail.
+English is the main documentation language and the source of truth for this project. The root `README.md` and files under `docs/` in English define the canonical structure, paragraphs, examples, warnings, and level of detail.
 
 When translating documentation into any supported language, preserve the English source's content and structure:
 
+- Treat root-level translations such as `README.es.md` as full counterparts of the root `README.md`, not as language-specific summaries.
 - Translate the same headings, paragraphs, lists, examples, warnings, and links in the same order.
 - Keep commands, flags, config keys, provider names, status values, file paths, and JSON fields unchanged unless the English source itself changes them.
 - Do not create lower-quality summaries, shorter rewrites, expanded rewrites, or improved variants in translated docs. Translation quality must match the English source, neither worse nor better.
