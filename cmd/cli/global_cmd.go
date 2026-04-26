@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/i18n"
 	"github.com/spf13/cobra"
 )
 
@@ -34,6 +35,7 @@ var globalShowCmd = &cobra.Command{
 
 var (
 	globalFolder    string
+	globalLanguage  string
 	globalGCMHelper string
 	globalGCMStore  string
 	globalSSHFolder string
@@ -50,6 +52,9 @@ var globalUpdateCmd = &cobra.Command{
 
 		if cmd.Flags().Changed("folder") {
 			cfg.Global.Folder = globalFolder
+		}
+		if cmd.Flags().Changed("language") {
+			cfg.Global.Language = i18n.Normalize(globalLanguage)
 		}
 
 		// GCM settings.
@@ -118,7 +123,7 @@ var globalConfigPathCmd = &cobra.Command{
 		}
 		fmt.Println(cfgPath)
 		if _, err := os.Stat(cfgPath); err != nil {
-			fmt.Fprintln(os.Stderr, "(file does not exist — run 'gitbox init' to create it)")
+			fmt.Fprintln(os.Stderr, tr.T("msg.file_missing_init"))
 		}
 	},
 }
@@ -131,8 +136,34 @@ func init() {
 	globalConfigCmd.AddCommand(globalConfigShowCmd)
 	globalConfigCmd.AddCommand(globalConfigPathCmd)
 
-	globalUpdateCmd.Flags().StringVar(&globalFolder, "folder", "", "root folder for all git clones")
-	globalUpdateCmd.Flags().StringVar(&globalGCMHelper, "gcm-helper", "", "GCM credential helper (typically 'manager')")
-	globalUpdateCmd.Flags().StringVar(&globalGCMStore, "gcm-credential-store", "", "GCM credential store (wincredman|keychain|secretservice)")
-	globalUpdateCmd.Flags().StringVar(&globalSSHFolder, "ssh-folder", "", "SSH config directory (default: ~/.ssh)")
+	globalUpdateCmd.Flags().StringVar(&globalFolder, "folder", "", tr.T("flag.global.folder"))
+	globalUpdateCmd.Flags().StringVar(&globalLanguage, "language", "", tr.T("flag.global.language"))
+	globalUpdateCmd.Flags().StringVar(&globalGCMHelper, "gcm-helper", "", tr.T("flag.global.gcm_helper"))
+	globalUpdateCmd.Flags().StringVar(&globalGCMStore, "gcm-credential-store", "", tr.T("flag.global.gcm_store"))
+	globalUpdateCmd.Flags().StringVar(&globalSSHFolder, "ssh-folder", "", tr.T("flag.global.ssh_folder"))
+	translateGlobalCommand(tr)
+}
+
+func translateGlobalCommand(t i18n.Translator) {
+	globalCmd.Short = t.T("cmd.global.short")
+	globalShowCmd.Short = t.T("cmd.global.show.short")
+	globalUpdateCmd.Short = t.T("cmd.global.update.short")
+	globalConfigCmd.Short = t.T("cmd.global.config.short")
+	globalConfigShowCmd.Short = t.T("cmd.global.config.show.short")
+	globalConfigPathCmd.Short = t.T("cmd.global.config.path.short")
+	if f := globalUpdateCmd.Flags().Lookup("folder"); f != nil {
+		f.Usage = t.T("flag.global.folder")
+	}
+	if f := globalUpdateCmd.Flags().Lookup("language"); f != nil {
+		f.Usage = t.T("flag.global.language")
+	}
+	if f := globalUpdateCmd.Flags().Lookup("gcm-helper"); f != nil {
+		f.Usage = t.T("flag.global.gcm_helper")
+	}
+	if f := globalUpdateCmd.Flags().Lookup("gcm-credential-store"); f != nil {
+		f.Usage = t.T("flag.global.gcm_store")
+	}
+	if f := globalUpdateCmd.Flags().Lookup("ssh-folder"); f != nil {
+		f.Usage = t.T("flag.global.ssh_folder")
+	}
 }

@@ -2,6 +2,7 @@
 
 export interface GlobalConfig {
   folder: string;
+  language?: string;
   periodic_sync?: string;
   editors?: EditorInfo[];
   terminals?: TerminalInfo[];
@@ -202,7 +203,7 @@ export interface CredentialStatus {
 
 // Frontend-only UI state for a single repo row
 export interface RepoState {
-  status: 'clean' | 'dirty' | 'behind' | 'ahead' | 'diverged' | 'conflict' | 'not cloned' | 'no upstream' | 'error' | 'syncing' | 'cloning';
+  status: 'clean' | 'dirty' | 'behind' | 'ahead' | 'diverged' | 'conflict' | 'not cloned' | 'no upstream' | 'upstream gone' | 'error' | 'syncing' | 'cloning' | 'unknown';
   path?: string;
   progress: number;
   behind: number;

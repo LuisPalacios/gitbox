@@ -32,6 +32,10 @@
         //   "C:/Users/user/00.git"     →  absolute path on Windows (Git Bash)
         "folder": "~/00.git",
 
+        // Language for human-facing program output. Use "en" or "es".
+        // Machine-readable fields, command names and config keys stay English.
+        "language": "en",
+
         // SSH credentials
         // Recommended for headless servers (SSH access, no browser).
         "credential_ssh": {

@@ -14,6 +14,7 @@ const v2JSON = `{
     "version": 2,
     "global": {
         "folder": "~/00.git",
+        "language": "es",
         "credential_ssh": { "ssh_folder": "~/.ssh" },
         "credential_gcm": { "helper": "manager", "credential_store": "wincredman" }
     },
@@ -114,6 +115,9 @@ func TestParseV2(t *testing.T) {
 	if cfg.Global.CredentialGCM.CredentialStore != "wincredman" {
 		t.Error("credential_store should be wincredman")
 	}
+	if cfg.Global.Language != "es" {
+		t.Errorf("language = %q, want es", cfg.Global.Language)
+	}
 
 	// Accounts.
 	if len(cfg.Accounts) != 2 {
@@ -165,6 +169,7 @@ func TestParseV2MissingRequired(t *testing.T) {
 		json string
 	}{
 		{"missing global.folder", `{"version":2,"global":{},"accounts":{},"sources":{}}`},
+		{"invalid global.language", `{"version":2,"global":{"folder":"~/x","language":"fr"},"accounts":{},"sources":{}}`},
 		{"missing account.provider", `{"version":2,"global":{"folder":"~/x"},"accounts":{"A":{"url":"u","username":"u","name":"n","email":"e@e"}},"sources":{}}`},
 		{"unknown account ref", `{"version":2,"global":{"folder":"~/x"},"accounts":{},"sources":{"S":{"account":"nope","repos":{}}}}`},
 	}

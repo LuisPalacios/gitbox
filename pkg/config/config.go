@@ -3,13 +3,13 @@ package config
 
 // Config represents the top-level gitbox configuration (v2 format).
 type Config struct {
-	Schema     string                `json:"$schema,omitempty"`
-	Version    int                   `json:"version"`
-	Global     GlobalConfig          `json:"global"`
-	Accounts   map[string]Account    `json:"accounts"`
-	Sources    map[string]Source     `json:"sources"`
-	Mirrors    map[string]Mirror     `json:"mirrors,omitempty"`
-	Workspaces map[string]Workspace  `json:"workspaces,omitempty"`
+	Schema     string               `json:"$schema,omitempty"`
+	Version    int                  `json:"version"`
+	Global     GlobalConfig         `json:"global"`
+	Accounts   map[string]Account   `json:"accounts"`
+	Sources    map[string]Source    `json:"sources"`
+	Mirrors    map[string]Mirror    `json:"mirrors,omitempty"`
+	Workspaces map[string]Workspace `json:"workspaces,omitempty"`
 
 	// SourceOrder preserves the JSON key order for deterministic iteration.
 	SourceOrder []string `json:"-"`
@@ -33,16 +33,17 @@ func (c *Config) OrderedSourceKeys() []string {
 
 // GlobalConfig holds global settings.
 type GlobalConfig struct {
-	Folder          string         `json:"folder"`
-	PeriodicSync    string         `json:"periodic_sync,omitempty"`
-	Window          *WindowState   `json:"window,omitempty"`
-	CompactWindow   *WindowState   `json:"compact_window,omitempty"`
-	ViewMode        string         `json:"view_mode,omitempty"` // "full" or "compact"
-	CredentialSSH   *SSHGlobal     `json:"credential_ssh,omitempty"`
-	CredentialGCM   *GCMGlobal     `json:"credential_gcm,omitempty"`
-	CredentialToken *TokenGlobal   `json:"credential_token,omitempty"`
-	Editors         []EditorEntry  `json:"editors,omitempty"`
-	Terminals       []TerminalEntry `json:"terminals,omitempty"`
+	Folder          string           `json:"folder"`
+	Language        string           `json:"language,omitempty"`
+	PeriodicSync    string           `json:"periodic_sync,omitempty"`
+	Window          *WindowState     `json:"window,omitempty"`
+	CompactWindow   *WindowState     `json:"compact_window,omitempty"`
+	ViewMode        string           `json:"view_mode,omitempty"` // "full" or "compact"
+	CredentialSSH   *SSHGlobal       `json:"credential_ssh,omitempty"`
+	CredentialGCM   *GCMGlobal       `json:"credential_gcm,omitempty"`
+	CredentialToken *TokenGlobal     `json:"credential_token,omitempty"`
+	Editors         []EditorEntry    `json:"editors,omitempty"`
+	Terminals       []TerminalEntry  `json:"terminals,omitempty"`
 	AIHarnesses     []AIHarnessEntry `json:"ai_harnesses,omitempty"`
 
 	// PRBadges controls whether PR / review indicators are fetched and shown
@@ -156,8 +157,8 @@ type Account struct {
 	Name                  string     `json:"name"`
 	Email                 string     `json:"email"`
 	DefaultCredentialType string     `json:"default_credential_type,omitempty"`
-	SSH *SSHConfig `json:"ssh,omitempty"`
-	GCM *GCMConfig `json:"gcm,omitempty"`
+	SSH                   *SSHConfig `json:"ssh,omitempty"`
+	GCM                   *GCMConfig `json:"gcm,omitempty"`
 }
 
 // SSHConfig holds SSH authentication settings for an account.
@@ -245,7 +246,7 @@ func (c *Config) OrderedMirrorKeys() []string {
 type Mirror struct {
 	AccountSrc string                `json:"account_src"`
 	AccountDst string                `json:"account_dst"`
-	Repos    map[string]MirrorRepo `json:"repos"`
+	Repos      map[string]MirrorRepo `json:"repos"`
 
 	// RepoOrder preserves the JSON key order for deterministic iteration.
 	RepoOrder []string `json:"-"`
@@ -266,30 +267,30 @@ func (m *Mirror) OrderedRepoKeys() []string {
 // MirrorRepo tracks a single repo mirror relationship.
 // The map key is the repo full name on its origin account (e.g., "org/repo").
 type MirrorRepo struct {
-	Direction  string `json:"direction"`              // "push" or "pull"
-	Origin     string `json:"origin"`                 // "src" or "dst" — which account owns the source of truth
-	TargetRepo string `json:"target_repo,omitempty"`  // target full name; defaults to same as key
-	LastSync   string `json:"last_sync,omitempty"`     // RFC3339 from last known sync
+	Direction  string `json:"direction"`             // "push" or "pull"
+	Origin     string `json:"origin"`                // "src" or "dst" — which account owns the source of truth
+	TargetRepo string `json:"target_repo,omitempty"` // target full name; defaults to same as key
+	LastSync   string `json:"last_sync,omitempty"`   // RFC3339 from last known sync
 	Error      string `json:"error,omitempty"`
 }
 
 // Workspace types.
 const (
-	WorkspaceTypeCode        = "codeWorkspace"
-	WorkspaceTypeTmuxinator  = "tmuxinator"
-	WorkspaceLayoutWindows   = "windowsPerRepo"
-	WorkspaceLayoutSplit     = "splitPanes"
+	WorkspaceTypeCode       = "codeWorkspace"
+	WorkspaceTypeTmuxinator = "tmuxinator"
+	WorkspaceLayoutWindows  = "windowsPerRepo"
+	WorkspaceLayoutSplit    = "splitPanes"
 )
 
 // Workspace bundles a set of clones that belong together for a task.
 // The map key in Config.Workspaces is the human-friendly workspace ID.
 type Workspace struct {
-	Type       string            `json:"type"`                  // "codeWorkspace" | "tmuxinator"
-	Name       string            `json:"name,omitempty"`        // human-friendly display name
-	File       string            `json:"file,omitempty"`        // absolute path to generated file on disk
-	Layout     string            `json:"layout,omitempty"`      // tmuxinator only: "windowsPerRepo" | "splitPanes"
-	Members    []WorkspaceMember `json:"members"`               // ordered list of member clones
-	Discovered bool              `json:"discovered,omitempty"`  // true if adopted from disk
+	Type       string            `json:"type"`                 // "codeWorkspace" | "tmuxinator"
+	Name       string            `json:"name,omitempty"`       // human-friendly display name
+	File       string            `json:"file,omitempty"`       // absolute path to generated file on disk
+	Layout     string            `json:"layout,omitempty"`     // tmuxinator only: "windowsPerRepo" | "splitPanes"
+	Members    []WorkspaceMember `json:"members"`              // ordered list of member clones
+	Discovered bool              `json:"discovered,omitempty"` // true if adopted from disk
 }
 
 // WorkspaceMember references a single clone (by source + repo) inside a workspace.

@@ -1,5 +1,7 @@
 # Documentation
 
+[Leer la documentacion en espanol](es/README.md)
+
 ## First-time contributors
 
 If you're new to the project, read these in order:

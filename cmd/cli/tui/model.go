@@ -6,6 +6,7 @@ import (
 	"github.com/LuisPalacios/gitbox/cmd/cli/tui/styles"
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
+	"github.com/LuisPalacios/gitbox/pkg/i18n"
 	"github.com/LuisPalacios/gitbox/pkg/mirror"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
 	"github.com/LuisPalacios/gitbox/pkg/status"
@@ -78,7 +79,7 @@ type accountAddedMsg struct {
 type accountUpdatedMsg struct{ err error }
 type accountRenamedMsg struct {
 	oldKey, newKey string
-	err           error
+	err            error
 }
 type credChangedMsg struct {
 	msgs []string
@@ -173,7 +174,9 @@ type syncTickMsg struct{}
 // --- Mirror messages ---
 
 type mirrorStatusMsg struct{ results []mirror.StatusResult }
-type mirrorAllStatusMsg struct{ results map[string][]mirror.StatusResult }
+type mirrorAllStatusMsg struct {
+	results map[string][]mirror.StatusResult
+}
 type mirrorSetupDoneMsg struct{ result mirror.SetupResult }
 type mirrorDiscoverProgressMsg struct{ progress mirror.DiscoverProgress }
 type mirrorDiscoverDoneMsg struct {
@@ -253,6 +256,7 @@ type model struct {
 	width, height int
 	darkTheme     bool
 	theme         styles.Theme
+	tr            i18n.Translator
 	quitting      bool
 	credMgr       *credential.StatusManager
 
@@ -279,13 +283,14 @@ type model struct {
 	gitignoreNeedsAction bool
 }
 
-func newModel(cfgPath string) model {
+func newModel(cfgPath string, tr i18n.Translator) model {
 	t := styles.NewTheme(true)
 	return model{
 		screen:    screenDashboard,
 		cfgPath:   cfgPath,
 		darkTheme: true,
 		theme:     t,
+		tr:        tr,
 		credMgr:   credential.NewStatusManager(),
 	}
 }
@@ -510,7 +515,7 @@ func (m model) switchTo(msg switchScreenMsg) (model, tea.Cmd) {
 		m.mirrors = newMirrorsModel(m.cfg, m.cfgPath, m.theme, m.width, m.height, msg.mirrorKey)
 		cmd = m.mirrors.Init()
 	case screenSettings:
-		m.settings = newSettingsModel(m.cfg, m.cfgPath, m.theme, m.width, m.height)
+		m.settings = newSettingsModel(m.cfg, m.cfgPath, m.theme, m.tr, m.width, m.height)
 		cmd = m.settings.Init()
 	case screenIdentity:
 		m.identity = newIdentityModel(m.cfg, m.cfgPath, m.theme, m.width, m.height)

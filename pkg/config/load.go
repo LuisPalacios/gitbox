@@ -282,6 +282,11 @@ func validate(cfg *Config) error {
 	if cfg.Global.Folder == "" {
 		return fmt.Errorf("global.folder is required")
 	}
+	switch cfg.Global.Language {
+	case "", "en", "es":
+	default:
+		return fmt.Errorf("global.language must be \"en\" or \"es\"")
+	}
 	for name, acct := range cfg.Accounts {
 		if acct.Provider == "" {
 			return fmt.Errorf("account %q: provider is required", name)

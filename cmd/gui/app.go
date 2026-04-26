@@ -9,8 +9,8 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"path/filepath"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
@@ -23,33 +23,34 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/doctor"
-	"github.com/LuisPalacios/gitbox/pkg/update"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/gitignore"
 	"github.com/LuisPalacios/gitbox/pkg/harness"
 	"github.com/LuisPalacios/gitbox/pkg/heal"
+	"github.com/LuisPalacios/gitbox/pkg/i18n"
 	"github.com/LuisPalacios/gitbox/pkg/identity"
 	"github.com/LuisPalacios/gitbox/pkg/mirror"
 	"github.com/LuisPalacios/gitbox/pkg/move"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
 	"github.com/LuisPalacios/gitbox/pkg/status"
+	"github.com/LuisPalacios/gitbox/pkg/update"
 	wailsrt "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App is the Wails application struct. All exported methods become
 // frontend bindings via window.go.main.App.<Method>().
 type App struct {
-	ctx               context.Context
-	cfg               *config.Config
-	cfgPath           string
-	cfgLoaded         bool                // true if config was loaded from disk (safe to save back)
-	cfgLoadError      string              // non-empty if config exists but failed to parse
-	testMode          bool                // true when launched with --test-mode
-	testCleanup       func()              // cleanup function for test-mode temp dir
-	mu                sync.Mutex
-	savedWindowPos    *config.WindowState // full-mode window state pre-loaded from config
-	savedCompactPos   *config.WindowState // compact-mode window state pre-loaded from config
-	savedViewMode     string              // "full" or "compact" pre-loaded from config
+	ctx             context.Context
+	cfg             *config.Config
+	cfgPath         string
+	cfgLoaded       bool   // true if config was loaded from disk (safe to save back)
+	cfgLoadError    string // non-empty if config exists but failed to parse
+	testMode        bool   // true when launched with --test-mode
+	testCleanup     func() // cleanup function for test-mode temp dir
+	mu              sync.Mutex
+	savedWindowPos  *config.WindowState // full-mode window state pre-loaded from config
+	savedCompactPos *config.WindowState // compact-mode window state pre-loaded from config
+	savedViewMode   string              // "full" or "compact" pre-loaded from config
 
 	// upstreamGone tracks repos discovered to be missing from the provider
 	// (deleted, archived private, lost access). Populated by fetch errors
@@ -390,13 +391,13 @@ func minInt(a, b int) int {
 
 // ConfigDTO is the JSON-friendly config sent to the frontend.
 type ConfigDTO struct {
-	Version        int                         `json:"version"`
-	Global         config.GlobalConfig         `json:"global"`
-	Accounts       map[string]config.Account   `json:"accounts"`
-	Sources        map[string]SourceDTO        `json:"sources"`
-	Mirrors        map[string]MirrorDTO        `json:"mirrors"`
-	Workspaces     map[string]WorkspaceDTO     `json:"workspaces"`
-	WorkspaceOrder []string                    `json:"workspaceOrder"`
+	Version        int                       `json:"version"`
+	Global         config.GlobalConfig       `json:"global"`
+	Accounts       map[string]config.Account `json:"accounts"`
+	Sources        map[string]SourceDTO      `json:"sources"`
+	Mirrors        map[string]MirrorDTO      `json:"mirrors"`
+	Workspaces     map[string]WorkspaceDTO   `json:"workspaces"`
+	WorkspaceOrder []string                  `json:"workspaceOrder"`
 }
 
 // SourceDTO mirrors config.Source but exposes repos as a map.
@@ -409,10 +410,10 @@ type SourceDTO struct {
 
 // MirrorDTO exposes a mirror group to the frontend.
 type MirrorDTO struct {
-	AccountSrc string                        `json:"account_src"`
-	AccountDst string                        `json:"account_dst"`
-	Repos      map[string]config.MirrorRepo  `json:"repos"`
-	RepoOrder  []string                      `json:"repoOrder"`
+	AccountSrc string                       `json:"account_src"`
+	AccountDst string                       `json:"account_dst"`
+	Repos      map[string]config.MirrorRepo `json:"repos"`
+	RepoOrder  []string                     `json:"repoOrder"`
 }
 
 // MirrorStatusResult is the per-repo live mirror status sent to the frontend.
@@ -2304,6 +2305,22 @@ func (a *App) GetPeriodicSync() string {
 	return a.cfg.Global.PeriodicSync
 }
 
+// GetLanguage returns the configured human-facing UI language.
+func (a *App) GetLanguage() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return i18n.Normalize(a.cfg.Global.Language)
+}
+
+// SetLanguage saves the human-facing UI language to config.
+func (a *App) SetLanguage(lang string) error {
+	lang = i18n.Normalize(lang)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cfg.Global.Language = lang
+	return a.saveConfig()
+}
+
 // SetPeriodicSync saves the periodic sync interval to config.
 func (a *App) SetPeriodicSync(interval string) error {
 	switch interval {
@@ -2382,16 +2399,16 @@ func (a *App) SetViewMode(mode string) *WindowStateDTO {
 // StatusResult is the frontend-friendly repo status.
 type StatusResult struct {
 	Source    string `json:"source"`
-	Repo     string `json:"repo"`
-	Account  string `json:"account"`
-	Path     string `json:"path"`
-	State    string `json:"state"`
-	Ahead    int    `json:"ahead"`
-	Behind   int    `json:"behind"`
-	Modified int    `json:"modified"`
-	Untracked int  `json:"untracked"`
-	Conflicts int  `json:"conflicts"`
-	Error    string `json:"error,omitempty"`
+	Repo      string `json:"repo"`
+	Account   string `json:"account"`
+	Path      string `json:"path"`
+	State     string `json:"state"`
+	Ahead     int    `json:"ahead"`
+	Behind    int    `json:"behind"`
+	Modified  int    `json:"modified"`
+	Untracked int    `json:"untracked"`
+	Conflicts int    `json:"conflicts"`
+	Error     string `json:"error,omitempty"`
 	Branch    string `json:"branch,omitempty"`
 	IsDefault bool   `json:"isDefault,omitempty"`
 }
@@ -2399,17 +2416,17 @@ type StatusResult struct {
 func toStatusResult(rs status.RepoStatus) StatusResult {
 	return StatusResult{
 		Source:    rs.Source,
-		Repo:     rs.Repo,
-		Account:  rs.Account,
-		Path:     rs.Path,
-		State:    rs.State.String(),
-		Ahead:    rs.Ahead,
-		Behind:   rs.Behind,
-		Modified: rs.Modified,
+		Repo:      rs.Repo,
+		Account:   rs.Account,
+		Path:      rs.Path,
+		State:     rs.State.String(),
+		Ahead:     rs.Ahead,
+		Behind:    rs.Behind,
+		Modified:  rs.Modified,
 		Untracked: rs.Untracked,
 		Conflicts: rs.Conflicts,
-		Error:    rs.ErrorMsg,
-		Branch:   rs.Branch,
+		Error:     rs.ErrorMsg,
+		Branch:    rs.Branch,
 		IsDefault: rs.IsDefault,
 	}
 }
@@ -3275,9 +3292,9 @@ type CredentialSetupResult struct {
 	OK           bool   `json:"ok"`
 	Message      string `json:"message"`
 	NeedsPAT     bool   `json:"needsPAT,omitempty"`     // true when SSH works but discovery needs a PAT
-	SSHPublicKey string `json:"sshPublicKey,omitempty"`  // public key to copy (SSH setup)
-	SSHAddURL    string `json:"sshAddURL,omitempty"`     // provider URL to add key (SSH setup)
-	SSHVerified  bool   `json:"sshVerified,omitempty"`   // true when SSH connection test passed
+	SSHPublicKey string `json:"sshPublicKey,omitempty"` // public key to copy (SSH setup)
+	SSHAddURL    string `json:"sshAddURL,omitempty"`    // provider URL to add key (SSH setup)
+	SSHVerified  bool   `json:"sshVerified,omitempty"`  // true when SSH connection test passed
 }
 
 // CredentialSetupGCM triggers GCM browser authentication for an account.
@@ -3606,7 +3623,6 @@ func hostnameFromURL(rawURL string) string {
 	}
 	return u.Hostname()
 }
-
 
 // ─── Delete ───────────────────────────────────────────────────
 
@@ -4058,11 +4074,11 @@ func (a *App) AddDiscoveredRepos(key string, repoNames []string) error {
 
 // CredentialStatus is the result of verifying an account's credentials.
 type CredentialStatus struct {
-	Status     string `json:"status"`     // overall: "ok", "warning", "error", "none"
+	Status     string `json:"status"` // overall: "ok", "warning", "error", "none"
 	Message    string `json:"message"`
-	Primary    string `json:"primary"`    // primary credential status
+	Primary    string `json:"primary"` // primary credential status
 	PrimaryMsg string `json:"primaryMsg"`
-	PAT        string `json:"pat"`        // companion PAT status (for SSH/GCM)
+	PAT        string `json:"pat"` // companion PAT status (for SSH/GCM)
 	PATMsg     string `json:"patMsg"`
 }
 
@@ -4478,10 +4494,10 @@ type DoctorToolDTO struct {
 // DoctorReport is the full "System check" result: the tool list plus a
 // rolled-up boolean saying "any required tool missing?".
 type DoctorReport struct {
-	Tools       []DoctorToolDTO `json:"tools"`
-	AllOK       bool            `json:"allOk"`        // true when nothing required is missing
-	MissingReq  int             `json:"missingReq"`   // count of required tools that are missing
-	MissingOpt  int             `json:"missingOpt"`   // count of optional tools that are missing
+	Tools      []DoctorToolDTO `json:"tools"`
+	AllOK      bool            `json:"allOk"`      // true when nothing required is missing
+	MissingReq int             `json:"missingReq"` // count of required tools that are missing
+	MissingOpt int             `json:"missingOpt"` // count of optional tools that are missing
 }
 
 // DoctorPrecheckDTO is the point-of-use answer for "is credential type X

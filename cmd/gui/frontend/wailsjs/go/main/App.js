@@ -214,6 +214,10 @@ export function GetGlobalFolder() {
   return window['go']['main']['App']['GetGlobalFolder']();
 }
 
+export function GetLanguage() {
+  return window['go']['main']['App']['GetLanguage']();
+}
+
 export function GetMirrorStatus(arg1) {
   return window['go']['main']['App']['GetMirrorStatus'](arg1);
 }
@@ -404,6 +408,10 @@ export function SetCheckGlobalGitignore(arg1) {
 
 export function SetGlobalFolder(arg1) {
   return window['go']['main']['App']['SetGlobalFolder'](arg1);
+}
+
+export function SetLanguage(arg1) {
+  return window['go']['main']['App']['SetLanguage'](arg1);
 }
 
 export function SetPRBadgesEnabled(arg1) {

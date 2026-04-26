@@ -10,6 +10,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/cmd/cli/tui"
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/i18n"
 	"github.com/LuisPalacios/gitbox/pkg/update"
 	"github.com/spf13/cobra"
 )
@@ -17,39 +18,42 @@ import (
 // Build-time variables (set via -ldflags).
 // CI sets these; local builds get defaults with -dev- tag.
 var (
-	version = "dev"    // git tag (e.g., "v0.1.0") or "dev"
-	commit  = "none"   // git short SHA (e.g., "a99cf17")
+	version = "dev"  // git tag (e.g., "v0.1.0") or "dev"
+	commit  = "none" // git short SHA (e.g., "a99cf17")
 )
 
 // Global flags.
 var (
 	configPath string
 	jsonOutput bool
+	langFlag   string
 	verbose    bool
 	testMode   bool
+	tr         = i18n.New(i18n.English)
 )
 
 var rootCmd = &cobra.Command{
 	Use:          "gitbox",
-	Short:        "Unified tool for managing Git repositories across multiple accounts and providers",
+	Short:        tr.T("app.description"),
 	SilenceUsage: true,
 }
 
 func init() {
-	rootCmd.Long = fmt.Sprintf("gitbox %s by Luis Palacios Derqui\nUnified tool for managing Git repositories across multiple accounts and providers.\nhttps://github.com/LuisPalacios/gitbox", fullVersion())
+	applyCLITranslations(tr)
 
-	rootCmd.PersistentFlags().StringVar(&configPath, "config", "", "path to config file (default: ~/.config/gitbox/gitbox.json)")
-	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "output in JSON format")
-	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "verbose output")
-	rootCmd.PersistentFlags().BoolVar(&testMode, "test-mode", false, "run with isolated test config from test-gitbox.json")
+	rootCmd.PersistentFlags().StringVar(&configPath, "config", "", tr.T("flag.config"))
+	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, tr.T("flag.json"))
+	rootCmd.PersistentFlags().StringVar(&langFlag, "lang", "", tr.T("flag.lang"))
+	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, tr.T("flag.verbose"))
+	rootCmd.PersistentFlags().BoolVar(&testMode, "test-mode", false, tr.T("flag.test_mode"))
 
 	// Preserve registration order (natural user workflow) instead of alphabetical.
 	cobra.EnableCommandSorting = false
 
 	// Command groups.
 	rootCmd.AddGroup(
-		&cobra.Group{ID: "main", Title: "Main Commands:"},
-		&cobra.Group{ID: "additional", Title: "Additional Commands:"},
+		&cobra.Group{ID: "main", Title: tr.T("help.main_commands")},
+		&cobra.Group{ID: "additional", Title: tr.T("help.additional_commands")},
 	)
 
 	// Main commands — natural user order: setup → configure → operate.
@@ -86,38 +90,7 @@ func init() {
 	// it is shown in a custom section in the help template instead.
 	rootCmd.CompletionOptions.HiddenDefaultCmd = true
 
-	// Custom help template with grouped commands and "Shell completion" section.
-	rootCmd.SetHelpTemplate(`{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}
-
-{{end}}Usage:{{if not .HasParent}}
-  {{.CommandPath}}                          Start the interactive TUI
-  {{.CommandPath}} [command] [flags]        Run in CLI mode{{else}}{{if .Runnable}}
-  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
-  {{.CommandPath}} [command]{{end}}{{end}}{{if gt (len .Aliases) 0}}
-
-Aliases:
-  {{.NameAndAliases}}{{end}}{{if .HasAvailableSubCommands}}{{$cmds := .Commands}}{{if eq (len .Groups) 0}}
-
-Available Commands:{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
-  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{else}}{{range $group := .Groups}}
-
-{{.Title}}{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
-  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
-
-Additional Commands:{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
-  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}
-{{if not .HasParent}}
-Shell completion:
-  completion  Generate autocompletion for your shell (see docs/completion.md){{end}}{{if .HasAvailableLocalFlags}}
-
-Flags:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
-
-Global Flags:
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableSubCommands}}
-
-Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}
-`)
+	setHelpTemplate(tr)
 }
 
 func main() {
@@ -138,10 +111,13 @@ func main() {
 		configPath = testCfgPath // so configFilePath() returns it for CLI commands
 	}
 
+	tr = i18n.New(i18n.Resolve(peekFlagValue("--lang"), loadConfigForLanguage()))
+	applyCLITranslations(tr)
+
 	// Determine if we should launch TUI: no subcommand + terminal.
 	// Allow --test-mode as the only flag (still TUI mode).
 	if isTerminal() && isTUILaunch() {
-		if err := tui.Run(configFilePath(), testMode); err != nil {
+		if err := tui.Run(configFilePath(), testMode, tr); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
@@ -244,7 +220,7 @@ func saveConfig(cfg *config.Config) error {
 		return fmt.Errorf("saving config: %w", err)
 	}
 	if verbose {
-		fmt.Fprintf(os.Stderr, "Config saved to %s\n", path)
+		fmt.Fprintf(os.Stderr, tr.T("msg.config_saved"), path)
 	}
 	return nil
 }
@@ -252,6 +228,135 @@ func saveConfig(cfg *config.Config) error {
 // printError prints an error message to stderr.
 func printError(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "error: "+format+"\n", args...)
+}
+
+func loadConfigForLanguage() *config.Config {
+	path := peekFlagValue("--config")
+	if path == "" {
+		path = configFilePath()
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		return nil
+	}
+	return cfg
+}
+
+func peekFlagValue(name string) string {
+	args := os.Args[1:]
+	prefix := name + "="
+	for i, arg := range args {
+		if arg == name && i+1 < len(args) {
+			return args[i+1]
+		}
+		if strings.HasPrefix(arg, prefix) {
+			return strings.TrimPrefix(arg, prefix)
+		}
+	}
+	return ""
+}
+
+func applyCLITranslations(t i18n.Translator) {
+	rootCmd.Short = t.T("app.description")
+	rootCmd.Long = t.F("app.long", fullVersion())
+	if groups := rootCmd.Groups(); len(groups) >= 2 {
+		groups[0].Title = t.T("help.main_commands")
+		groups[1].Title = t.T("help.additional_commands")
+	}
+	setHelpTemplate(t)
+	translateGlobalCommand(t)
+	translateCommandShorts(t)
+	if f := rootCmd.PersistentFlags().Lookup("config"); f != nil {
+		f.Usage = t.T("flag.config")
+	}
+	if f := rootCmd.PersistentFlags().Lookup("json"); f != nil {
+		f.Usage = t.T("flag.json")
+	}
+	if f := rootCmd.PersistentFlags().Lookup("lang"); f != nil {
+		f.Usage = t.T("flag.lang")
+	}
+	if f := rootCmd.PersistentFlags().Lookup("verbose"); f != nil {
+		f.Usage = t.T("flag.verbose")
+	}
+	if f := rootCmd.PersistentFlags().Lookup("test-mode"); f != nil {
+		f.Usage = t.T("flag.test_mode")
+	}
+}
+
+func translateCommandShorts(t i18n.Translator) {
+	keys := map[string]string{
+		"init":        "cmd.init.short",
+		"account":     "cmd.account.short",
+		"source":      "cmd.source.short",
+		"repo":        "cmd.repo.short",
+		"clone":       "cmd.clone.short",
+		"status":      "cmd.status.short",
+		"pull":        "cmd.pull.short",
+		"fetch":       "cmd.fetch.short",
+		"sweep":       "cmd.sweep.short",
+		"browse":      "cmd.browse.short",
+		"mirror":      "cmd.mirror.short",
+		"workspace":   "cmd.workspace.short",
+		"reconfigure": "cmd.reconfigure.short",
+		"identity":    "cmd.identity.short",
+		"gitignore":   "cmd.gitignore.short",
+		"scan":        "cmd.scan.short",
+		"adopt":       "cmd.adopt.short",
+		"update":      "cmd.update.short",
+		"version":     "cmd.version.short",
+		"doctor":      "cmd.doctor.short",
+	}
+	for _, cmd := range rootCmd.Commands() {
+		if key, ok := keys[cmd.Name()]; ok {
+			cmd.Short = t.T(key)
+		}
+	}
+}
+
+func setHelpTemplate(t i18n.Translator) {
+	rootCmd.SetHelpTemplate(fmt.Sprintf(`{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}
+
+{{end}}%s{{if not .HasParent}}
+  {{.CommandPath}}                          %s
+  {{.CommandPath}} [command] [flags]        %s{{else}}{{if .Runnable}}
+  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
+  {{.CommandPath}} [command]{{end}}{{end}}{{if gt (len .Aliases) 0}}
+
+%s
+  {{.NameAndAliases}}{{end}}{{if .HasAvailableSubCommands}}{{$cmds := .Commands}}{{if eq (len .Groups) 0}}
+
+%s{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{else}}{{range $group := .Groups}}
+
+{{.Title}}{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
+
+%s{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}
+{{if not .HasParent}}
+%s
+  completion  %s{{end}}{{if .HasAvailableLocalFlags}}
+
+%s
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+
+%s
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableSubCommands}}
+
+%s{{end}}
+`,
+		t.T("help.usage"),
+		t.T("help.start_tui"),
+		t.T("help.cli_mode"),
+		t.T("help.aliases"),
+		t.T("help.available_commands"),
+		t.T("help.additional_commands"),
+		t.T("help.shell_completion"),
+		t.T("help.completion_desc"),
+		t.T("help.flags"),
+		t.T("help.global_flags"),
+		t.F("help.more", "{{.CommandPath}}"),
+	))
 }
 
 // printStatusLine prints a colored one-liner: "symbol state  label  details".

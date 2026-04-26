@@ -15,6 +15,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
+	"github.com/LuisPalacios/gitbox/pkg/i18n"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
 )
@@ -341,7 +342,7 @@ func sendWindowSize(m model, w, h int) model {
 // pre-sized to 80x24 for deterministic rendering.
 func newTestModel(t *testing.T, cfgPath string) model {
 	t.Helper()
-	m := newModel(cfgPath)
+	m := newModel(cfgPath, i18n.New("en"))
 	m = sendWindowSize(m, 80, 24)
 	return m
 }
@@ -569,7 +570,7 @@ func newIntegrationTestModel(t *testing.T, fixture TestFixture, opts ...teatest.
 		t.Fatalf("saving integration config: %v", err)
 	}
 
-	m := newModel(env.CfgPath)
+	m := newModel(env.CfgPath, i18n.New(fixture.Config.Global.Language))
 
 	defaults := []teatest.TestOption{teatest.WithInitialTermSize(80, 24)}
 	defaults = append(defaults, opts...)

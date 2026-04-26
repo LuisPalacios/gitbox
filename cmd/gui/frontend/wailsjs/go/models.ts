@@ -179,6 +179,7 @@ export namespace config {
 	}
 	export class GlobalConfig {
 	    folder: string;
+	    language?: string;
 	    periodic_sync?: string;
 	    window?: WindowState;
 	    compact_window?: WindowState;
@@ -201,6 +202,7 @@ export namespace config {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.folder = source["folder"];
+	        this.language = source["language"];
 	        this.periodic_sync = source["periodic_sync"];
 	        this.window = this.convertValues(source["window"], WindowState);
 	        this.compact_window = this.convertValues(source["compact_window"], WindowState);

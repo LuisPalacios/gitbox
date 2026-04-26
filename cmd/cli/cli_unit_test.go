@@ -34,6 +34,34 @@ func TestCLI_Help(t *testing.T) {
 	}
 }
 
+func TestCLI_HelpSpanish(t *testing.T) {
+	env := setupCLIEnv(t)
+	result := env.run(t, "--lang", "es", "--help")
+	if result.ExitCode != 0 {
+		t.Fatalf("help failed: %s", result.Stderr)
+	}
+	if !strings.Contains(result.Stdout, "Uso:") {
+		t.Errorf("Spanish help missing Uso heading: %s", result.Stdout)
+	}
+	if !strings.Contains(result.Stdout, "Comandos principales:") {
+		t.Errorf("Spanish help missing command group: %s", result.Stdout)
+	}
+}
+
+func TestCLI_GlobalUpdateLanguage(t *testing.T) {
+	cfg := newCLITestConfig("/tmp/test-git")
+	env := setupCLIEnvWithConfig(t, cfg)
+
+	result := env.run(t, "global", "update", "--language", "es")
+	if result.ExitCode != 0 {
+		t.Fatalf("global update failed: %s", result.Stderr)
+	}
+	loaded, _ := config.Load(env.CfgPath)
+	if loaded.Global.Language != "es" {
+		t.Errorf("expected language=es, got %q", loaded.Global.Language)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Global settings
 // ---------------------------------------------------------------------------

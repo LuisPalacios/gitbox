@@ -111,6 +111,8 @@ export function GetConfigPath():Promise<string>;
 
 export function GetGlobalFolder():Promise<string>;
 
+export function GetLanguage():Promise<string>;
+
 export function GetMirrorStatus(arg1:string):Promise<void>;
 
 export function GetOS():Promise<string>;
@@ -206,6 +208,8 @@ export function SetAutostart(arg1:boolean):Promise<void>;
 export function SetCheckGlobalGitignore(arg1:boolean):Promise<void>;
 
 export function SetGlobalFolder(arg1:string):Promise<void>;
+
+export function SetLanguage(arg1:string):Promise<void>;
 
 export function SetPRBadgesEnabled(arg1:boolean):Promise<void>;
 

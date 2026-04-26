@@ -11,6 +11,7 @@
     toggleCloneSelection, clearCloneSelection
   } from './lib/stores';
   import { statusColor, credColor, statusLabel, providerLabel, statusSymbol } from './lib/theme';
+  import { languageStore, normalizeLanguage, t } from './lib/i18n';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit } from '../wailsjs/runtime/runtime';
   import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo, PRAccountUpdateDTO, WorkspaceDTO, WorkspaceMemberDTO, WorkspaceCreateRequest, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
@@ -19,6 +20,7 @@
   // ── View mode ──
   let viewMode: 'full' | 'compact' = 'full';
   let cardsTab: 'accounts' | 'mirrors' | 'workspaces' = 'accounts';
+  let languageChoice: 'en' | 'es' = 'en';
 
   // ── Workspaces (issue #27 / #49) ──
   // UI state for the Workspaces tab and the clone-list multi-select flow.
@@ -656,7 +658,7 @@
     } else if (result.deleted?.length > 0) {
       alert(`Swept ${result.deleted.length} branch(es): ${result.deleted.join(', ')}`);
     }
-    bridge.getAllStatus().then(results => { repoStates.set(statusArrayToMap(results)); });
+    bridge.getAllStatus().then(results => { applyStatusResults(results); });
   }
 
   // ── Repo detail panel ──
@@ -953,7 +955,7 @@
   let addAccountModal = false;
   let addAccountError = '';
   let addAccountStep: 'form' | 'credential' = 'form';
-  let addAcct = { key: '', provider: 'github', url: 'https://github.com', username: '', name: '', email: '', credentialType: 'gcm' };
+  let addAcct = { key: '', provider: 'github', url: 'https://github.com', username: '', name: '', email: '', defaultBranch: 'main', credentialType: 'gcm' };
 
   // Shared credential operation state — used by BOTH add-account and change-credential flows.
   // Only one modal can be active at a time, so sharing is safe.
@@ -2216,6 +2218,8 @@
   async function initDashboard() {
     const cfg = await bridge.getConfig();
     configStore.set(cfg);
+    languageChoice = normalizeLanguage(cfg.global?.language);
+    languageStore.set(languageChoice);
     configPath = await bridge.getConfigPath();
     appVersion = await bridge.getAppVersion();
     hostOS = await bridge.getOS();
@@ -2277,6 +2281,15 @@
     // Load PR badge feature flags and kick off initial PR fetch.
     await loadPRSettings();
     refreshAllPRs();
+  }
+
+  async function setLanguage(lang: 'en' | 'es') {
+    if (languageChoice === lang) return;
+    languageChoice = lang;
+    languageStore.set(lang);
+    await bridge.setLanguage(lang);
+    const cfg = await bridge.getConfig();
+    configStore.set(cfg);
   }
 
   function verifyAllCredentials() {
@@ -2745,7 +2758,7 @@
         <div class="compact-repo-list" transition:slide={{ duration: 120 }}>
           {#each ($sources[key].repoOrder || Object.keys($sources[key].repos)) as repoName}
             {@const repoKey = `${key}/${repoName}`}
-            {@const state = $repoStates[repoKey] || { status: 'unknown', behind: 0, modified: 0, ahead: 0 }}
+            {@const state = $repoStates[repoKey] || { status: 'unknown', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0, branch: '', isDefault: false }}
             <div class="compact-row" class:compact-row-ok={state.status === 'clean'}>
               <span class="compact-dot" style="color: {sc(state.status)}">{statusSymbol(state.status)}</span>
               <span class="compact-repo-name">{repoName.includes('/') ? repoName.split('/').pop() : repoName}</span>
@@ -2958,17 +2971,24 @@
   {#if showSettings}
     <div class="settings" transition:slide={{ duration: 150 }}>
       <div class="settings-row">
-        <span class="settings-label">Config</span>
+        <span class="settings-label">{$t('settings.config')}</span>
         <span class="settings-value">{configPath}</span>
-        <button class="settings-btn" on:click={() => bridge.openFileInEditor(configPath)}>Open in Editor</button>
+        <button class="settings-btn" on:click={() => bridge.openFileInEditor(configPath)}>{$t('settings.openInEditor')}</button>
       </div>
       <div class="settings-row">
-        <span class="settings-label">Root folder</span>
+        <span class="settings-label">{$t('settings.rootFolder')}</span>
         <span class="settings-value">{$configStore?.global?.folder || '(not set)'}</span>
-        <button class="settings-btn" on:click={openChangeFolder}>Change</button>
+        <button class="settings-btn" on:click={openChangeFolder}>{$t('settings.change')}</button>
       </div>
       <div class="settings-row">
-        <span class="settings-label">Theme</span>
+        <span class="settings-label">{$t('settings.language')}</span>
+        <div class="theme-toggle">
+          <button class="theme-btn" class:theme-active={languageChoice === 'en'} on:click={() => setLanguage('en')}>English</button>
+          <button class="theme-btn" class:theme-active={languageChoice === 'es'} on:click={() => setLanguage('es')}>Espanol</button>
+        </div>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">{$t('settings.theme')}</span>
         <div class="theme-toggle">
           <button class="theme-btn" class:theme-active={themeChoice === 'system'} on:click={() => { themeChoice = 'system'; applyTheme(); }}>System</button>
           <button class="theme-btn" class:theme-active={themeChoice === 'light'} on:click={() => { themeChoice = 'light'; applyTheme(); }}>Light</button>
@@ -2976,9 +2996,9 @@
         </div>
       </div>
       <div class="settings-row">
-        <span class="settings-label">Periodic status check</span>
+        <span class="settings-label">{$t('settings.periodicStatus')}</span>
         <div class="theme-toggle">
-          <button class="theme-btn" class:theme-active={fetchInterval === 'off'} on:click={() => setFetchInterval('off')}>Off</button>
+          <button class="theme-btn" class:theme-active={fetchInterval === 'off'} on:click={() => setFetchInterval('off')}>{$t('common.off')}</button>
           <button class="theme-btn" class:theme-active={fetchInterval === '5m'} on:click={() => setFetchInterval('5m')}>5m</button>
           <button class="theme-btn" class:theme-active={fetchInterval === '15m'} on:click={() => setFetchInterval('15m')}>15m</button>
           <button class="theme-btn" class:theme-active={fetchInterval === '30m'} on:click={() => setFetchInterval('30m')}>30m</button>
@@ -2989,47 +3009,47 @@
       </div>
       {#if autostartSupported}
         <div class="settings-row">
-          <span class="settings-label">Run at startup</span>
+          <span class="settings-label">{$t('settings.runAtStartup')}</span>
           <div class="theme-toggle">
-            <button class="theme-btn" class:theme-active={!autostartOn} on:click={() => { if (autostartOn) toggleAutostart(); }}>Off</button>
-            <button class="theme-btn" class:theme-active={autostartOn} on:click={() => { if (!autostartOn) toggleAutostart(); }}>On</button>
+            <button class="theme-btn" class:theme-active={!autostartOn} on:click={() => { if (autostartOn) toggleAutostart(); }}>{$t('common.off')}</button>
+            <button class="theme-btn" class:theme-active={autostartOn} on:click={() => { if (!autostartOn) toggleAutostart(); }}>{$t('common.on')}</button>
           </div>
         </div>
       {/if}
       <div class="settings-row">
-        <span class="settings-label">PR / reviews</span>
+        <span class="settings-label">{$t('settings.prReviews')}</span>
         <div class="theme-toggle">
-          <button class="theme-btn" class:theme-active={!$prSettings.enabled} on:click={() => { if ($prSettings.enabled) setPRBadgesEnabled(false); }}>Off</button>
-          <button class="theme-btn" class:theme-active={$prSettings.enabled} on:click={() => { if (!$prSettings.enabled) setPRBadgesEnabled(true); }}>On</button>
+          <button class="theme-btn" class:theme-active={!$prSettings.enabled} on:click={() => { if ($prSettings.enabled) setPRBadgesEnabled(false); }}>{$t('common.off')}</button>
+          <button class="theme-btn" class:theme-active={$prSettings.enabled} on:click={() => { if (!$prSettings.enabled) setPRBadgesEnabled(true); }}>{$t('common.on')}</button>
         </div>
         {#if $prSettings.enabled}
-          <span class="settings-sublabel">Include drafts</span>
+          <span class="settings-sublabel">{$t('settings.includeDrafts')}</span>
           <div class="theme-toggle">
-            <button class="theme-btn" class:theme-active={!$prSettings.includeDrafts} on:click={() => { if ($prSettings.includeDrafts) setPRIncludeDrafts(false); }}>Off</button>
-            <button class="theme-btn" class:theme-active={$prSettings.includeDrafts} on:click={() => { if (!$prSettings.includeDrafts) setPRIncludeDrafts(true); }}>On</button>
+            <button class="theme-btn" class:theme-active={!$prSettings.includeDrafts} on:click={() => { if ($prSettings.includeDrafts) setPRIncludeDrafts(false); }}>{$t('common.off')}</button>
+            <button class="theme-btn" class:theme-active={$prSettings.includeDrafts} on:click={() => { if (!$prSettings.includeDrafts) setPRIncludeDrafts(true); }}>{$t('common.on')}</button>
           </div>
         {/if}
       </div>
       <div class="settings-row">
-        <span class="settings-label">Global gitignore</span>
+        <span class="settings-label">{$t('settings.globalGitignore')}</span>
         <div class="theme-toggle" title="Check ~/.gitignore_global on startup and offer to install OS-junk patterns if missing">
-          <button class="theme-btn" class:theme-active={!checkGitignorePref} on:click={() => { if (checkGitignorePref) setCheckGitignorePref(false); }}>Off</button>
-          <button class="theme-btn" class:theme-active={checkGitignorePref} on:click={() => { if (!checkGitignorePref) setCheckGitignorePref(true); }}>On</button>
+          <button class="theme-btn" class:theme-active={!checkGitignorePref} on:click={() => { if (checkGitignorePref) setCheckGitignorePref(false); }}>{$t('common.off')}</button>
+          <button class="theme-btn" class:theme-active={checkGitignorePref} on:click={() => { if (!checkGitignorePref) setCheckGitignorePref(true); }}>{$t('common.on')}</button>
         </div>
       </div>
       <div class="settings-row">
-        <span class="settings-label">System check</span>
-        <button class="settings-action" on:click={openDoctorModal} title="Probe external tools (git, GCM, ssh, tmux, ...)">Run</button>
+        <span class="settings-label">{$t('settings.systemCheck')}</span>
+        <button class="settings-action" on:click={openDoctorModal} title="Probe external tools (git, GCM, ssh, tmux, ...)">{$t('settings.run')}</button>
         {#if doctorSummary}
           <span class="settings-sublabel settings-doctor-summary">{doctorSummary}</span>
         {/if}
       </div>
       <div class="settings-row">
-        <span class="settings-label">Version</span>
+        <span class="settings-label">{$t('settings.version')}</span>
         <span class="settings-value">{appVersion}</span>
       </div>
       <div class="settings-row">
-        <span class="settings-label">Author</span>
+        <span class="settings-label">{$t('settings.author')}</span>
         <span class="settings-value">Luis Palacios Derqui &mdash; <a href="https://github.com/LuisPalacios/gitbox" on:click|preventDefault={() => BrowserOpenURL('https://github.com/LuisPalacios/gitbox')}>github.com/LuisPalacios/gitbox</a></span>
       </div>
     </div>

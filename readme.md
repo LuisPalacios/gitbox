@@ -15,6 +15,8 @@
   <em>gitbox never adds, commits, pushes, or modifies your working trees.</em>
 </p>
 
+[Leer en espanol](README.es.md)
+
 ---
 
 ## Why gitbox?

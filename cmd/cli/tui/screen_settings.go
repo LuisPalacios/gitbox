@@ -5,6 +5,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/cmd/cli/tui/styles"
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/i18n"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -15,27 +16,31 @@ type settingsField int
 
 const (
 	settingsFolder settingsField = iota
+	settingsLanguage
 	settingsSync
 	settingsGitignoreCheck
 	settingsFieldCount
 )
 
 var syncOptions = []string{"off", "5m", "15m", "30m"}
+var languageOptions = []string{"en", "es"}
 
 type settingsModel struct {
 	cfg            *config.Config
 	cfgPath        string
 	theme          styles.Theme
+	tr             i18n.Translator
 	width, height  int
 	active         settingsField
 	folderInput    textinput.Model
 	syncIndex      int
+	languageIndex  int
 	gitignoreCheck bool
 	saved          bool
 	errMsg         string
 }
 
-func newSettingsModel(cfg *config.Config, cfgPath string, theme styles.Theme, w, h int) settingsModel {
+func newSettingsModel(cfg *config.Config, cfgPath string, theme styles.Theme, tr i18n.Translator, w, h int) settingsModel {
 	ti := textinput.New()
 	ti.Placeholder = "~/00.git"
 	ti.SetValue(cfg.Global.Folder)
@@ -49,15 +54,24 @@ func newSettingsModel(cfg *config.Config, cfgPath string, theme styles.Theme, w,
 			break
 		}
 	}
+	langIdx := 0
+	for i, opt := range languageOptions {
+		if opt == i18n.Normalize(cfg.Global.Language) {
+			langIdx = i
+			break
+		}
+	}
 
 	return settingsModel{
 		cfg:            cfg,
 		cfgPath:        cfgPath,
 		theme:          theme,
+		tr:             tr,
 		width:          w,
 		height:         h,
 		folderInput:    ti,
 		syncIndex:      syncIdx,
+		languageIndex:  langIdx,
 		gitignoreCheck: cfg.Global.ShouldCheckGlobalGitignore(),
 	}
 }
@@ -86,6 +100,9 @@ func (m settingsModel) Update(msg tea.Msg) (settingsModel, tea.Cmd) {
 			return m, nil
 
 		case msg.String() == "left" || msg.String() == "h":
+			if m.active == settingsLanguage && m.languageIndex > 0 {
+				m.languageIndex--
+			}
 			if m.active == settingsSync && m.syncIndex > 0 {
 				m.syncIndex--
 			}
@@ -95,6 +112,9 @@ func (m settingsModel) Update(msg tea.Msg) (settingsModel, tea.Cmd) {
 			return m, nil
 
 		case msg.String() == "right" || msg.String() == "l":
+			if m.active == settingsLanguage && m.languageIndex < len(languageOptions)-1 {
+				m.languageIndex++
+			}
 			if m.active == settingsSync && m.syncIndex < len(syncOptions)-1 {
 				m.syncIndex++
 			}
@@ -112,6 +132,7 @@ func (m settingsModel) Update(msg tea.Msg) (settingsModel, tea.Cmd) {
 		case key.Matches(msg, Keys.Enter):
 			// Save settings.
 			m.cfg.Global.Folder = m.folderInput.Value()
+			m.cfg.Global.Language = languageOptions[m.languageIndex]
 			m.cfg.Global.PeriodicSync = syncOptions[m.syncIndex]
 			gpref := m.gitignoreCheck
 			m.cfg.Global.CheckGlobalGitignore = &gpref
@@ -138,11 +159,11 @@ func (m settingsModel) Update(msg tea.Msg) (settingsModel, tea.Cmd) {
 func (m settingsModel) View() string {
 	var b strings.Builder
 
-	b.WriteString(m.theme.Title.Render("Settings") + "\n")
+	b.WriteString(m.theme.Title.Render(m.tr.T("tui.settings.title")) + "\n")
 	b.WriteString(m.theme.TextMuted.Render(strings.Repeat("─", max(m.width, 40))) + "\n\n")
 
 	// Folder field.
-	label := "  Root folder: "
+	label := m.tr.T("tui.settings.root_folder")
 	if m.active == settingsFolder {
 		m.folderInput.Focus()
 		label = m.theme.Brand.Render(label)
@@ -152,8 +173,27 @@ func (m settingsModel) View() string {
 	}
 	b.WriteString(label + m.folderInput.View() + "\n\n")
 
+	langLabel := m.tr.T("tui.settings.language")
+	if m.active == settingsLanguage {
+		langLabel = m.theme.Brand.Render(langLabel)
+	} else {
+		langLabel = m.theme.Text.Render(langLabel)
+	}
+	var langs []string
+	for i, opt := range languageOptions {
+		if i == m.languageIndex {
+			langs = append(langs, lipgloss.NewStyle().
+				Foreground(lipgloss.Color(m.theme.Palette.Brand)).
+				Bold(true).
+				Render("["+opt+"]"))
+		} else {
+			langs = append(langs, m.theme.TextMuted.Render(" "+opt+" "))
+		}
+	}
+	b.WriteString(langLabel + strings.Join(langs, " ") + "\n\n")
+
 	// Sync interval.
-	syncLabel := "  Periodic sync: "
+	syncLabel := m.tr.T("tui.settings.periodic_sync")
 	if m.active == settingsSync {
 		syncLabel = m.theme.Brand.Render(syncLabel)
 	} else {
@@ -182,9 +222,9 @@ func (m settingsModel) View() string {
 	}
 	gLabel := "  "
 	if m.active == settingsGitignoreCheck {
-		gLabel += m.theme.Brand.Render(checkbox + " Check recommended global gitignore")
+		gLabel += m.theme.Brand.Render(checkbox + " " + m.tr.T("tui.settings.gitignore"))
 	} else {
-		gLabel += m.theme.Text.Render(checkbox + " Check recommended global gitignore")
+		gLabel += m.theme.Text.Render(checkbox + " " + m.tr.T("tui.settings.gitignore"))
 	}
 	b.WriteString(gLabel + "\n\n")
 
@@ -192,16 +232,16 @@ func (m settingsModel) View() string {
 	if m.saved {
 		b.WriteString("  " + lipgloss.NewStyle().
 			Foreground(lipgloss.Color(m.theme.Palette.Clean)).
-			Render("Settings saved.") + "\n")
+			Render(m.tr.T("tui.settings.saved")) + "\n")
 	}
 	if m.errMsg != "" {
 		b.WriteString("  " + lipgloss.NewStyle().
 			Foreground(lipgloss.Color(m.theme.Palette.StatusError)).
-			Render("Error: "+m.errMsg) + "\n")
+			Render(m.tr.F("tui.settings.error", m.errMsg)) + "\n")
 	}
 
 	b.WriteString("\n")
-	b.WriteString(renderHints(m.theme, "↑↓ navigate", "←→ change", "enter save", "ESC back"))
+	b.WriteString(renderHints(m.theme, m.tr.T("tui.hint.navigate"), m.tr.T("tui.hint.change"), m.tr.T("tui.hint.save"), m.tr.T("tui.hint.back")))
 
 	return b.String()
 }

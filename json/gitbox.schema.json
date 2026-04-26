@@ -26,6 +26,11 @@
                     "type": "string",
                     "description": "Root directory for all git repositories. Supports ~ prefix for home directory or absolute paths."
                 },
+                "language": {
+                    "type": "string",
+                    "enum": ["en", "es"],
+                    "description": "Default language for human-facing program output. English remains the fallback when missing."
+                },
                 "periodic_sync": {
                     "type": "string",
                     "enum": ["off", "5m", "15m", "30m"],
