@@ -150,24 +150,119 @@
                 },
                 "terminals": {
                     "type": "array",
-                    "description": "Terminal emulators for opening a shell in a repo folder. Auto-detected per platform (Windows: Windows Terminal, PowerShell 7/5, Git Bash, WSL, Command Prompt; macOS: Terminal, iTerm, Warp; Linux: gnome-terminal, konsole, kitty, alacritty, xfce4-terminal, terminator). Edit or reorder entries freely; the order here is the order they appear in the context menu.",
+                    "description": "DEPRECATED legacy v2.0 flat list of (terminal-app + shell) entries. Auto-migrated into terminal_apps + shells + terminal_profiles on first load and emptied. Hand-edits here are accepted for one release cycle then dropped.",
                     "items": {
                         "type": "object",
                         "required": ["name", "command"],
                         "additionalProperties": false,
                         "properties": {
+                            "name": { "type": "string" },
+                            "command": { "type": "string" },
+                            "args": { "type": "array", "items": { "type": "string" } }
+                        }
+                    }
+                },
+                "terminal_apps": {
+                    "type": "array",
+                    "description": "Terminal emulator applications detected on the host (Windows Terminal, WezTerm, iTerm, gnome-terminal, kitty, alacritty, …) — apps only, independent of the shell. Auto-populated by detection on first run and on every Re-detect; user edits are preserved by id.",
+                    "items": {
+                        "type": "object",
+                        "required": ["id", "name", "command"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Stable identifier (e.g. 'wt', 'wezterm', 'iterm', 'gnome-terminal'). Used to link from terminal_profiles."
+                            },
                             "name": {
                                 "type": "string",
-                                "description": "Display name shown in the menu (e.g. 'Windows Terminal')."
+                                "description": "Display name shown in the Profiles UI (e.g. 'Windows Terminal')."
                             },
                             "command": {
                                 "type": "string",
-                                "description": "Absolute path or command on PATH for the terminal launcher."
+                                "description": "Resolved absolute path or PATH-relative binary name for the terminal launcher."
+                            },
+                            "args_template": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Per-app argv template into which a shell + repo path are spliced at launch time. Tokens: {path} = repo path; {shell_command} = the linked Shell.command (omitted when empty); {shell_args} = the linked Shell.args (expands to zero items when empty); {command} = AI-harness argv (legacy)."
+                            }
+                        }
+                    }
+                },
+                "shells": {
+                    "type": "array",
+                    "description": "Command-line interpreters available on the host (cmd, powershell, pwsh, git-bash, per-distro WSL, bash, zsh, fish). Detected automatically and merged with user edits.",
+                    "items": {
+                        "type": "object",
+                        "required": ["id", "name", "command"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Stable identifier (e.g. 'pwsh', 'cmd', 'git-bash', 'wsl-Ubuntu-24-04', 'zsh'). Used to link from terminal_profiles."
+                            },
+                            "name": {
+                                "type": "string",
+                                "description": "Display name (e.g. 'PowerShell 7', 'WSL — Ubuntu 24.04')."
+                            },
+                            "command": {
+                                "type": "string",
+                                "description": "Resolved absolute path or PATH-relative binary for the shell."
                             },
                             "args": {
                                 "type": "array",
                                 "items": { "type": "string" },
-                                "description": "Arguments passed before the path. Use the literal token '{path}' to mark where the repo path is injected; if absent, the path is appended as the final argument. Use the literal token '{command}' to mark where an AI harness argv should be spliced when launching via 'Open in AI harness' (the token expands to zero items for terminal-only launches, so it is safe to leave in place)."
+                                "description": "Optional flags passed to the shell (e.g. ['-l'] for login, ['-d', 'Ubuntu-24.04'] for WSL)."
+                            }
+                        }
+                    }
+                },
+                "terminal_profiles": {
+                    "type": "array",
+                    "description": "Launchable (terminal × shell) profiles. The profile marked default is the primary action of the per-row 'Open in <terminal>' menu; profiles marked preferred populate the 'Profiles ▸' submenu.",
+                    "items": {
+                        "type": "object",
+                        "required": ["id", "name", "terminal"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Stable identifier for this profile (e.g. 'wt-pwsh', 'wezterm-bash', 'wt-Ubuntu-24-04')."
+                            },
+                            "name": {
+                                "type": "string",
+                                "description": "Display name shown in the menu (e.g. 'Windows Terminal — PowerShell 7')."
+                            },
+                            "terminal": {
+                                "type": "string",
+                                "description": "Foreign key into terminal_apps[].id."
+                            },
+                            "shell": {
+                                "type": "string",
+                                "description": "Foreign key into shells[].id. Empty when the terminal handles its own profile selection (e.g. WT --profile)."
+                            },
+                            "args": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Optional explicit argv that REPLACES the linked TerminalApp's args_template at launch time. Used for native-profile terminals (Windows Terminal --profile, iTerm --profile) and for migrated v2.0 entries that carry their own argv."
+                            },
+                            "default": {
+                                "type": "boolean",
+                                "description": "Marks this profile as the primary 'Open in <terminal>' action. Exactly one profile should be default; the UI enforces mutex."
+                            },
+                            "preferred": {
+                                "type": "boolean",
+                                "description": "Show this profile in the 'Profiles ▸' submenu next to the default action. Hidden when not set."
+                            },
+                            "hidden": {
+                                "type": "boolean",
+                                "description": "Suppress this profile from menus. Used to stash auto-detected profiles the user does not want without deleting them (a re-sync would just bring them back)."
+                            },
+                            "source": {
+                                "type": "string",
+                                "enum": ["detected", "wt-profile", "wezterm-launchmenu", "migrated", "user"],
+                                "description": "Where this profile came from. 'user' profiles can be deleted; auto-detected profiles can only be hidden."
                             }
                         }
                     }

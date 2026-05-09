@@ -123,6 +123,12 @@ func parseV2(data []byte) (*Config, error) {
 		}
 	}
 
+	// Auto-migrate legacy v2.0 flat global.terminals[] into the v2.1
+	// three-array shape (terminal_apps + shells + terminal_profiles). Runs
+	// in-memory; the next save will persist the new shape and drop the
+	// legacy block.
+	MigrateLegacyTerminals(&cfg.Global)
+
 	return &cfg, nil
 }
 
