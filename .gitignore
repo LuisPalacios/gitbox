@@ -60,3 +60,6 @@ tmpclaude-*-cwd
 
 # Local Svelte preview (screenshot prototypes)
 preview/
+
+# Tmp folder
+tmp/
