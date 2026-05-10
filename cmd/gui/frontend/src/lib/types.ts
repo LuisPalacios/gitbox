@@ -6,6 +6,13 @@ export interface GlobalConfig {
   periodic_sync?: string;
   editors?: EditorInfo[];
   terminals?: TerminalInfo[];
+  // v2.1 Terminal Profile model (issue #69). Coexists with the legacy
+  // `terminals` field during the v2.0 → v2.1 transition; the migrator
+  // populates these arrays on first load and the Gear-panel UI edits them
+  // directly. Legacy `terminals` is dropped in the v2.1 cleanup commit.
+  terminal_apps?: TerminalAppInfo[];
+  shells?: ShellInfo[];
+  terminal_profiles?: TerminalProfileInfo[];
   ai_harnesses?: AIHarnessInfo[];
 }
 
@@ -269,6 +276,40 @@ export interface TerminalInfo {
   name: string;
   command: string;
   args: string[];
+}
+
+// ── v2.1 Terminal Profile model (issue #69) ──
+//
+// A Profile pairs a TerminalApp (Windows Terminal, WezTerm, gnome-terminal,
+// Terminal.app, …) with a Shell (cmd, pwsh, git-bash, per-distro WSL, bash,
+// zsh, fish, …). The Gear-panel "Terminals & Shells" section edits these
+// arrays; the per-row launcher renders the Default profile as its primary
+// action and the Preferred profiles in a "Profiles ▸" submenu.
+
+export interface TerminalAppInfo {
+  id: string;
+  name: string;
+  command: string;
+  args_template: string[];
+}
+
+export interface ShellInfo {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+}
+
+export interface TerminalProfileInfo {
+  id: string;
+  name: string;
+  terminal: string;        // → TerminalAppInfo.id
+  shell: string;           // → ShellInfo.id; "" means the terminal default
+  args: string[];          // optional override of TerminalApp.args_template
+  default: boolean;
+  preferred: boolean;
+  hidden: boolean;
+  source: string;          // "detected" | "wt-profile" | "wezterm-launchmenu" | "migrated" | "user"
 }
 
 export interface AIHarnessInfo {

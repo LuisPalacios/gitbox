@@ -170,6 +170,11 @@ func (a *App) DomReady(_ context.Context) {
 	a.SyncEditors()
 	a.SyncTerminals()
 	a.SyncAIHarnesses()
+	// SyncProfiles populates the v2.1 TerminalApps + Shells + TerminalProfiles
+	// arrays so the Gear-panel "Terminals & Shells" section and the
+	// per-row launcher have data to render on first run. Idempotent — does
+	// nothing when the on-disk arrays already match what's installed.
+	a.SyncProfiles()
 
 	// Discover and auto-adopt workspace artifacts dropped on disk outside
 	// gitbox. Runs off the UI thread so startup paints immediately; the
@@ -1879,10 +1884,18 @@ func (a *App) ShowErrorDialog(title, message string) {
 func (a *App) resolveFirstHarnessTerminal() (config.TerminalEntry, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.cfg == nil || len(a.cfg.Global.Terminals) == 0 {
+	if a.cfg == nil {
 		return config.TerminalEntry{}, fmt.Errorf("Configure a terminal first (global.terminals is empty)")
 	}
-	t := a.cfg.Global.Terminals[0]
+	// Source through EffectiveTerminals so post-migration configs (legacy
+	// Terminals[] cleared, TerminalProfiles[] populated) still let AI
+	// harnesses launch into a terminal. Removed in the v2.1 cleanup commit
+	// when the harness path moves to OpenProfile.
+	terms := a.cfg.Global.EffectiveTerminals()
+	if len(terms) == 0 {
+		return config.TerminalEntry{}, fmt.Errorf("Configure a terminal first (global.terminals is empty)")
+	}
+	t := terms[0]
 	for _, arg := range t.Args {
 		if arg == "{command}" {
 			return t, nil

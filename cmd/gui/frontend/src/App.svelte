@@ -13,9 +13,10 @@
   import { statusColor, credColor, statusLabel, providerLabel, statusSymbol } from './lib/theme';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit } from '../wailsjs/runtime/runtime';
-  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo, PRAccountUpdateDTO, WorkspaceDTO, WorkspaceMemberDTO, WorkspaceCreateRequest, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
+  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, WorkspaceDTO, WorkspaceMemberDTO, WorkspaceCreateRequest, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
   import PRPopover from './lib/PRPopover.svelte';
+  import TerminalsSection from './lib/TerminalsSection.svelte';
 
   // ── View mode ──
   let viewMode: 'full' | 'compact' = 'full';
@@ -50,6 +51,12 @@
   $: configEditors = ($configStore?.global?.editors || []) as EditorInfo[];
   $: configTerminals = ($configStore?.global?.terminals || []) as TerminalInfo[];
   $: configAIHarnesses = ($configStore?.global?.ai_harnesses || []) as AIHarnessInfo[];
+  // v2.1 Terminal Profile model (issue #69). configProfiles drives the
+  // per-row launcher's terminal section; configApps + configShells are
+  // referenced by the Gear-panel TerminalsSection for editing.
+  $: configApps = ($configStore?.global?.terminal_apps || []) as TerminalAppInfo[];
+  $: configShells = ($configStore?.global?.shells || []) as ShellInfo[];
+  $: configProfiles = ($configStore?.global?.terminal_profiles || []) as TerminalProfileInfo[];
 
   async function toggleViewMode() {
     // SetViewMode saves current position to the slot we're leaving,
@@ -518,6 +525,18 @@
     closeActionMenu();
   }
 
+  // openRepoProfile is the v2.1 launcher entry point — resolves the repo's
+  // working directory then asks the Go side to expand the profile's
+  // template via pkg/launch.ResolveArgs and spawn the terminal.
+  async function openRepoProfile(repoKey: string, profileID: string) {
+    const state = $repoStates[repoKey];
+    if (state?.path) {
+      try { await bridge.openProfile(state.path, profileID); }
+      catch (e: any) { await bridge.showErrorDialog('Open profile', (e?.message || String(e))); }
+    }
+    closeActionMenu();
+  }
+
   async function openRepoInAIHarness(repoKey: string, harness: AIHarnessInfo) {
     const state = $repoStates[repoKey];
     if (!state?.path) {
@@ -566,6 +585,35 @@
   async function openAccountInTerminal(accountKey: string, terminal: TerminalInfo) {
     try { await bridge.openAccountInTerminal(accountKey, terminal.command, terminal.args || []); } catch (e) { console.error(e); }
     closeAccountMenu();
+  }
+
+  async function openAccountProfile(accountKey: string, profileID: string) {
+    try { await bridge.openAccountProfile(accountKey, profileID); }
+    catch (e: any) { await bridge.showErrorDialog('Open profile', (e?.message || String(e))); }
+    closeAccountMenu();
+  }
+
+  // saveTerminalProfilesAndReload pipes the TerminalsSection draft back to
+  // disk and reloads the in-memory config so every consumer (kebab menus,
+  // detail views) sees the new flags on the next tick.
+  async function saveTerminalProfilesAndReload(apps: TerminalAppInfo[], shells: ShellInfo[], profiles: TerminalProfileInfo[]) {
+    await bridge.saveTerminalProfiles(apps, shells, profiles);
+    const fresh = await bridge.reloadConfig();
+    configStore.set(fresh);
+  }
+
+  async function reloadConfigFromDisk() {
+    const fresh = await bridge.reloadConfig();
+    configStore.set(fresh);
+  }
+
+  // openManageProfiles is the LauncherMenu footer hook — flips the Gear
+  // panel open and lets the user curate Default/Preferred/Hidden flags
+  // without having to hunt through settings.
+  function openManageProfiles() {
+    showSettings = true;
+    closeAccountMenu();
+    closeActionMenu();
   }
 
   async function openAccountInAIHarness(accountKey: string, harness: AIHarnessInfo) {
@@ -3044,6 +3092,13 @@
           <span class="settings-sublabel settings-doctor-summary">{doctorSummary}</span>
         {/if}
       </div>
+      <TerminalsSection
+        apps={configApps}
+        shells={configShells}
+        profiles={configProfiles}
+        onSave={saveTerminalProfilesAndReload}
+        onConfigReloaded={reloadConfigFromDisk}
+      />
       <div class="settings-row">
         <span class="settings-label">{$t('settings.version')}</span>
         <span class="settings-value">{appVersion}</span>
@@ -3152,12 +3207,15 @@
                   kind="account"
                   editors={configEditors}
                   terminals={configTerminals}
+                  profiles={configProfiles}
                   aiHarnesses={configAIHarnesses}
                   onOpenBrowser={() => openAccountInBrowser(accountKey)}
                   onOpenFolder={() => openAccountInExplorer(accountKey)}
                   onOpenApp={(cmd) => openAccountInApp(accountKey, cmd)}
                   onOpenTerminal={(t) => openAccountInTerminal(accountKey, t)}
+                  onOpenProfile={(id) => openAccountProfile(accountKey, id)}
                   onOpenAIHarness={(h) => openAccountInAIHarness(accountKey, h)}
+                  onManageProfiles={openManageProfiles}
                 />
               </div>
             {/if}
@@ -3301,12 +3359,15 @@
                         kind="repo"
                         editors={configEditors}
                         terminals={configTerminals}
+                        profiles={configProfiles}
                         aiHarnesses={configAIHarnesses}
                         onOpenBrowser={() => openRepoInBrowser(sourceKey, repoName)}
                         onOpenFolder={() => openRepoInExplorer(repoKey)}
                         onOpenApp={(cmd) => openRepoInApp(repoKey, cmd)}
                         onOpenTerminal={(t) => openRepoInTerminal(repoKey, t)}
+                        onOpenProfile={(id) => openRepoProfile(repoKey, id)}
                         onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
+                        onManageProfiles={openManageProfiles}
                         onSweep={() => sweepBranches(sourceKey, repoName)}
                         onMove={() => { actionMenuRepo = null; openMoveRepo(sourceKey, repoName); }}
                         moveEnabled={repoMoveDisabledReason(state) === ''}

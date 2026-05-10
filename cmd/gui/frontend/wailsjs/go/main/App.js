@@ -290,6 +290,18 @@ export function ListRemoteRepos(arg1) {
   return window['go']['main']['App']['ListRemoteRepos'](arg1);
 }
 
+export function ListShells() {
+  return window['go']['main']['App']['ListShells']();
+}
+
+export function ListTerminalApps() {
+  return window['go']['main']['App']['ListTerminalApps']();
+}
+
+export function ListTerminalProfiles() {
+  return window['go']['main']['App']['ListTerminalProfiles']();
+}
+
 export function ListWorkspaces() {
   return window['go']['main']['App']['ListWorkspaces']();
 }
@@ -318,6 +330,10 @@ export function OpenAccountInTerminal(arg1, arg2, arg3) {
   return window['go']['main']['App']['OpenAccountInTerminal'](arg1, arg2, arg3);
 }
 
+export function OpenAccountProfile(arg1, arg2) {
+  return window['go']['main']['App']['OpenAccountProfile'](arg1, arg2);
+}
+
 export function OpenFileInEditor(arg1) {
   return window['go']['main']['App']['OpenFileInEditor'](arg1);
 }
@@ -342,6 +358,10 @@ export function OpenInTerminal(arg1, arg2, arg3) {
   return window['go']['main']['App']['OpenInTerminal'](arg1, arg2, arg3);
 }
 
+export function OpenProfile(arg1, arg2) {
+  return window['go']['main']['App']['OpenProfile'](arg1, arg2);
+}
+
 export function OpenWorkspace(arg1) {
   return window['go']['main']['App']['OpenWorkspace'](arg1);
 }
@@ -364,6 +384,10 @@ export function PullRepo(arg1, arg2) {
 
 export function RecommendedGlobalGitignoreBody() {
   return window['go']['main']['App']['RecommendedGlobalGitignoreBody']();
+}
+
+export function RedetectProfiles() {
+  return window['go']['main']['App']['RedetectProfiles']();
 }
 
 export function RefreshAllPRs() {
@@ -396,6 +420,14 @@ export function RepairConfig() {
 
 export function RestoreFromBackup(arg1) {
   return window['go']['main']['App']['RestoreFromBackup'](arg1);
+}
+
+export function SaveTerminalProfiles(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SaveTerminalProfiles'](arg1, arg2, arg3);
+}
+
+export function SaveTerminalProfilesDTO(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SaveTerminalProfilesDTO'](arg1, arg2, arg3);
 }
 
 export function SetAutostart(arg1) {
@@ -448,6 +480,10 @@ export function SyncAIHarnesses() {
 
 export function SyncEditors() {
   return window['go']['main']['App']['SyncEditors']();
+}
+
+export function SyncProfiles() {
+  return window['go']['main']['App']['SyncProfiles']();
 }
 
 export function SyncTerminals() {

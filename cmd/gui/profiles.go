@@ -946,6 +946,142 @@ func profilesEqual(a, b config.TerminalProfile) bool {
 		a.Hidden == b.Hidden && a.Source == b.Source && argsEqualSlices(a.Args, b.Args)
 }
 
+// ─── DTOs (mirrored in cmd/gui/frontend/src/lib/types.ts) ─────────────────
+
+// TerminalAppInfo is the wire shape for a TerminalApp shipped to the Svelte
+// frontend. Mirrors config.TerminalApp byte-for-byte but uses JSON-friendly
+// field names and explicit slice copying so frontend mutations can't leak
+// back into shared config state.
+type TerminalAppInfo struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Command      string   `json:"command"`
+	ArgsTemplate []string `json:"args_template"`
+}
+
+// ShellInfo is the wire shape for a Shell shipped to the Svelte frontend.
+type ShellInfo struct {
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+}
+
+// TerminalProfileInfo is the wire shape for a TerminalProfile shipped to the
+// Svelte frontend. Carries every flag the Gear-panel UI needs to render the
+// table (Default radio, Preferred star, Hidden eye, Source provenance) and
+// the per-profile Args override that WT-profile and migrated rows depend on.
+type TerminalProfileInfo struct {
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	TerminalID string   `json:"terminal"`
+	ShellID    string   `json:"shell"`
+	Args       []string `json:"args"`
+	Default    bool     `json:"default"`
+	Preferred  bool     `json:"preferred"`
+	Hidden     bool     `json:"hidden"`
+	Source     string   `json:"source"`
+}
+
+// ListTerminalApps returns the persisted TerminalApp list as a DTO slice for
+// the Svelte frontend. Snapshot-style — no mutation channel back; the
+// frontend persists edits via SaveTerminalProfilesDTO.
+func (a *App) ListTerminalApps() []TerminalAppInfo {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := make([]TerminalAppInfo, 0, len(a.cfg.Global.TerminalApps))
+	for _, app := range a.cfg.Global.TerminalApps {
+		out = append(out, TerminalAppInfo{
+			ID:           app.ID,
+			Name:         app.Name,
+			Command:      app.Command,
+			ArgsTemplate: append([]string(nil), app.ArgsTemplate...),
+		})
+	}
+	return out
+}
+
+// ListShells returns the persisted Shell list as a DTO slice.
+func (a *App) ListShells() []ShellInfo {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := make([]ShellInfo, 0, len(a.cfg.Global.Shells))
+	for _, s := range a.cfg.Global.Shells {
+		out = append(out, ShellInfo{
+			ID:      s.ID,
+			Name:    s.Name,
+			Command: s.Command,
+			Args:    append([]string(nil), s.Args...),
+		})
+	}
+	return out
+}
+
+// ListTerminalProfiles returns the persisted TerminalProfile list as a DTO
+// slice in on-disk order. The frontend renders this as the Gear-panel
+// profile table and (filtered to Preferred/Default) as the per-row
+// LauncherMenu submenu.
+func (a *App) ListTerminalProfiles() []TerminalProfileInfo {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := make([]TerminalProfileInfo, 0, len(a.cfg.Global.TerminalProfiles))
+	for _, p := range a.cfg.Global.TerminalProfiles {
+		out = append(out, TerminalProfileInfo{
+			ID:         p.ID,
+			Name:       p.Name,
+			TerminalID: p.TerminalID,
+			ShellID:    p.ShellID,
+			Args:       append([]string(nil), p.Args...),
+			Default:    p.Default,
+			Preferred:  p.Preferred,
+			Hidden:     p.Hidden,
+			Source:     p.Source,
+		})
+	}
+	return out
+}
+
+// SaveTerminalProfilesDTO is the bridge-friendly counterpart to
+// SaveTerminalProfiles — accepts the DTO shape the frontend already speaks
+// (JSON-tagged structs, no nil slices) and converts to config types before
+// persisting. The two-form split exists so direct Go callers (tests, other
+// packages) keep using the typed config slices.
+func (a *App) SaveTerminalProfilesDTO(apps []TerminalAppInfo, shells []ShellInfo, profiles []TerminalProfileInfo) error {
+	cfgApps := make([]config.TerminalApp, 0, len(apps))
+	for _, app := range apps {
+		cfgApps = append(cfgApps, config.TerminalApp{
+			ID:           app.ID,
+			Name:         app.Name,
+			Command:      app.Command,
+			ArgsTemplate: append([]string(nil), app.ArgsTemplate...),
+		})
+	}
+	cfgShells := make([]config.ShellEntry, 0, len(shells))
+	for _, s := range shells {
+		cfgShells = append(cfgShells, config.ShellEntry{
+			ID:      s.ID,
+			Name:    s.Name,
+			Command: s.Command,
+			Args:    append([]string(nil), s.Args...),
+		})
+	}
+	cfgProfiles := make([]config.TerminalProfile, 0, len(profiles))
+	for _, p := range profiles {
+		cfgProfiles = append(cfgProfiles, config.TerminalProfile{
+			ID:         p.ID,
+			Name:       p.Name,
+			TerminalID: p.TerminalID,
+			ShellID:    p.ShellID,
+			Args:       append([]string(nil), p.Args...),
+			Default:    p.Default,
+			Preferred:  p.Preferred,
+			Hidden:     p.Hidden,
+			Source:     p.Source,
+		})
+	}
+	return a.SaveTerminalProfiles(cfgApps, cfgShells, cfgProfiles)
+}
+
 // ─── Bridge methods ───────────────────────────────────────────────────────
 
 // OpenProfile launches the given profile in the given folder. Resolves the
@@ -974,6 +1110,17 @@ func (a *App) OpenProfile(path, profileID string) error {
 		ShellArgs:    shell.Args,
 	})
 	return openTerminalRawAt(path, app.Command, args)
+}
+
+// OpenAccountProfile launches the given profile in the account's parent
+// folder. Mirror of OpenAccountInTerminal for the v2.1 Profile model — the
+// frontend's account-kebab calls this directly with the resolved profile id.
+func (a *App) OpenAccountProfile(accountKey, profileID string) error {
+	path, err := a.resolveAccountFolder(accountKey)
+	if err != nil {
+		return err
+	}
+	return a.OpenProfile(path, profileID)
 }
 
 // lookupProfileLocked resolves a profile id into its (profile, app, shell)
