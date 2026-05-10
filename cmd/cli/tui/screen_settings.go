@@ -19,6 +19,7 @@ const (
 	settingsLanguage
 	settingsSync
 	settingsGitignoreCheck
+	settingsTerminals
 	settingsFieldCount
 )
 
@@ -130,6 +131,19 @@ func (m settingsModel) Update(msg tea.Msg) (settingsModel, tea.Cmd) {
 			return m, nil
 
 		case key.Matches(msg, Keys.Enter):
+			// "Terminal profiles…" is a navigation row, not a value to
+			// save. Persist any pending edits to the regular fields
+			// first so navigating away doesn't drop the user's work,
+			// then route to the dedicated screen.
+			if m.active == settingsTerminals {
+				m.cfg.Global.Folder = m.folderInput.Value()
+				m.cfg.Global.Language = languageOptions[m.languageIndex]
+				m.cfg.Global.PeriodicSync = syncOptions[m.syncIndex]
+				gpref := m.gitignoreCheck
+				m.cfg.Global.CheckGlobalGitignore = &gpref
+				_ = config.Save(m.cfg, m.cfgPath)
+				return m, func() tea.Msg { return switchScreenMsg{screen: screenTerminals} }
+			}
 			// Save settings.
 			m.cfg.Global.Folder = m.folderInput.Value()
 			m.cfg.Global.Language = languageOptions[m.languageIndex]
@@ -227,6 +241,18 @@ func (m settingsModel) View() string {
 		gLabel += m.theme.Text.Render(checkbox + " " + m.tr.T("tui.settings.gitignore"))
 	}
 	b.WriteString(gLabel + "\n\n")
+
+	// "Terminal profiles…" navigation row — pressing Enter opens the
+	// dedicated TerminalProfile editor (parity with the GUI's Manager
+	// button). Rendered like a button rather than a stateful selector
+	// so the user doesn't try to edit it inline.
+	tLabel := "  "
+	if m.active == settingsTerminals {
+		tLabel += m.theme.Brand.Render("→ " + m.tr.T("tui.settings.terminals"))
+	} else {
+		tLabel += m.theme.Text.Render("  " + m.tr.T("tui.settings.terminals"))
+	}
+	b.WriteString(tLabel + "\n\n")
 
 	// Status message.
 	if m.saved {
