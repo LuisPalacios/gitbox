@@ -164,6 +164,11 @@ func runTerminalsWindow(app *App) {
 		Height:    h,
 		MinWidth:  minW,
 		MinHeight: minH,
+		// StartHidden prevents the dark-empty-webview flash users see before
+		// Svelte mounts and paints the editor (issue #69 user feedback).
+		// DomReady reveals the window once SyncProfiles has populated the
+		// detected lists and the DOM is ready to render.
+		StartHidden: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

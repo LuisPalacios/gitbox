@@ -194,16 +194,18 @@
           <button class="btn-x" on:click={close} aria-label="Close">&#10005;</button>
         </div>
       {/if}
+      <!-- Toolbar lives outside .tp-body so the scrollable area cannot
+           render under it (issue #69 user feedback — sticky-inside-scroller
+           let rows bleed behind the buttons). -->
+      <div class="tp-toolbar">
+        <button class="tp-btn" type="button" on:click={redetect} disabled={busy}>Re-detect</button>
+        <button class="tp-btn" type="button" on:click={startAdd} disabled={busy || !!addDraft}>+ Add profile</button>
+        {#if statusMsg}
+          <span class="tp-status">{statusMsg}</span>
+        {/if}
+      </div>
       <div class="modal-body tp-body">
-        <div class="tp-toolbar">
-          <button class="tp-btn" type="button" on:click={redetect} disabled={busy}>Re-detect</button>
-          <button class="tp-btn" type="button" on:click={startAdd} disabled={busy || !!addDraft}>+ Add profile</button>
-          {#if statusMsg}
-            <span class="tp-status">{statusMsg}</span>
-          {/if}
-        </div>
-
-        <h4 class="tp-h4">Detected terminals</h4>
+        <h4 class="tp-h4 tp-h4-first">Detected terminals</h4>
         {#if draftApps.length === 0}
           <p class="tp-empty">No terminal apps detected. Click <em>Re-detect</em> after installing one.</p>
         {:else}
@@ -392,16 +394,13 @@
   }
 
   .tp-toolbar {
+    flex: 0 0 auto;          /* never shrink — sits above the scroll area */
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 4px;
     flex-wrap: wrap;
-    position: sticky;
-    top: 0;
     background: var(--bg-card);
-    padding: 8px 0;
-    z-index: 1;
+    padding: 10px 16px;
     border-bottom: 1px solid var(--border);
   }
   .tp-status { font-size: 11px; color: var(--text-dim); margin-left: 4px; }
@@ -414,6 +413,11 @@
     margin: 16px 0 4px;
     font-weight: 600;
   }
+  /* The first H4 used to live below the in-body toolbar, which gave it
+     enough top padding from the toolbar's own margin. Now the toolbar sits
+     outside, so trim the leading space so the body doesn't open with a
+     ~28px gap. */
+  .tp-h4-first { margin-top: 4px; }
 
   .tp-empty { font-size: 12px; color: var(--text-dim); margin: 4px 0 8px; }
 
