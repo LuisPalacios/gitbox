@@ -16,13 +16,17 @@
   //     that haven't been migrated yet (old wired-up callers, hot-reloads
   //     mid-rollout). When `profiles` is non-empty it wins.
   //
+  // Labels are intentionally terse — every row leads with an icon, so the
+  // verb (Open / Open in / Open with) is redundant noise. Issue #69 user
+  // feedback: drop the prefix everywhere.
+  //
   // Visual layout (both repo and account kebabs):
-  //   browser
-  //   folder
+  //   "Navigate to <repo|account>"        (icon: globe)
+  //   "Reveal in <Explorer|Finder|files>" (icon: folder; OS-aware via revealLabel)
   //   ─ separator ─ (only if any default is shown)
-  //   default profile                     (hidden if no profile + no legacy term)
-  //   editors[0]                          (hidden if editors empty)
-  //   ai_harnesses[0]                     (hidden if harnesses empty)
+  //   "<defaultProfile.name>"             (no prefix; hidden if no profile + no legacy term)
+  //   "Open with <editors[0].name>"       (hidden if editors empty)
+  //   "Open with <aiHarnesses[0].name>"   (hidden if harnesses empty)
   //   ─ separator ─ (only if any submenu is shown)
   //   Profiles ▸                          (hidden if <2 visible profiles)
   //   Editors ▸                           (hidden if <2 editors)
@@ -41,6 +45,11 @@
   // (vanishing) case where a config hasn't been migrated yet.
   export let profiles: TerminalProfileInfo[] = [];
   export let aiHarnesses: AIHarnessInfo[] = [];
+  // revealLabel is the OS-aware string for the folder action: "Reveal in
+  // Explorer" on Windows, "Reveal in Finder" on macOS, "Reveal in files"
+  // on Linux. Defaulted to a generic phrasing so missing wiring still
+  // renders something coherent.
+  export let revealLabel: string = 'Reveal in file manager';
 
   export let onOpenBrowser: () => void;
   export let onOpenFolder: () => void;
@@ -52,10 +61,6 @@
   // terminals are configured.
   export let onOpenProfile: (profileID: string) => void = () => {};
   export let onOpenAIHarness: (harness: AIHarnessInfo) => void;
-  // onManageProfiles opens the Gear panel scrolled to the Terminals &
-  // Shells section. Surfaced as the menu footer when profiles exist so the
-  // user has a one-click escape to curate the list.
-  export let onManageProfiles: (() => void) | null = null;
   export let onSweep: (() => void) | null = null;
   // onMove is the "Move repository…" action (issue #64). Shown only on
   // the repo kebab. moveEnabled gates the click; when false the entry is
@@ -224,38 +229,41 @@
 
   $: hasDefaultsSection = showProfileDefault || showLegacyTerminalDefault || showEditorDefault || showHarnessDefault;
   $: hasSubsSection = showProfilesSub || showLegacyTerminalsSub || showEditorsSub || showHarnessSub;
-  $: hasManageFooter = !!onManageProfiles && (showProfileDefault || showProfilesSub);
   $: hasSweepSection = kind === 'repo' && !!onSweep;
   $: hasMoveSection = kind === 'repo' && !!onMove;
+
+  // Browser action label is kind-aware: repo kebab navigates to the repo
+  // page on the provider; account kebab navigates to the account profile.
+  $: browserLabel = kind === 'account' ? 'Navigate to account' : 'Navigate to repo';
 </script>
 
 <div class="action-dropdown launcher-menu" bind:this={rootEl}>
-  <button class="action-item" on:click|stopPropagation={onOpenBrowser}>
-    <span class="lm-icon">&#127760;</span> Open in browser
+  <button class="action-item" on:click|stopPropagation={onOpenBrowser} title={browserLabel}>
+    <span class="lm-icon">&#127760;</span> {browserLabel}
   </button>
-  <button class="action-item" on:click|stopPropagation={onOpenFolder}>
-    <span class="lm-icon">&#128193;</span> Open folder
+  <button class="action-item" on:click|stopPropagation={onOpenFolder} title={revealLabel}>
+    <span class="lm-icon">&#128193;</span> {revealLabel}
   </button>
 
   {#if hasDefaultsSection}
     <hr class="lm-sep" />
     {#if showProfileDefault && defaultProfile}
-      <button class="action-item" on:click|stopPropagation={() => onOpenProfile(defaultProfile.id)} title="Open in {defaultProfile.name}">
-        <span class="lm-icon lm-icon-mono">&gt;_</span> Open in {defaultProfile.name}
+      <button class="action-item" on:click|stopPropagation={() => onOpenProfile(defaultProfile.id)} title={defaultProfile.name}>
+        <span class="lm-icon lm-icon-mono">&gt;_</span> {defaultProfile.name}
       </button>
     {:else if showLegacyTerminalDefault}
-      <button class="action-item" on:click|stopPropagation={() => onOpenTerminal(terminals[0])} title="Open in {terminals[0].name}">
-        <span class="lm-icon lm-icon-mono">&gt;_</span> Open in {terminals[0].name}
+      <button class="action-item" on:click|stopPropagation={() => onOpenTerminal(terminals[0])} title={terminals[0].name}>
+        <span class="lm-icon lm-icon-mono">&gt;_</span> {terminals[0].name}
       </button>
     {/if}
     {#if showEditorDefault}
-      <button class="action-item" on:click|stopPropagation={() => onOpenApp(editors[0].command)} title="Open in {editors[0].name}">
-        <span class="lm-icon">&#9998;</span> Open in {editors[0].name}
+      <button class="action-item" on:click|stopPropagation={() => onOpenApp(editors[0].command)} title="Open with {editors[0].name}">
+        <span class="lm-icon">&#9998;</span> Open with {editors[0].name}
       </button>
     {/if}
     {#if showHarnessDefault}
-      <button class="action-item" on:click|stopPropagation={() => onOpenAIHarness(aiHarnesses[0])} title="Open in {aiHarnesses[0].name}">
-        <span class="lm-icon">&#129302;</span> Open in {aiHarnesses[0].name}
+      <button class="action-item" on:click|stopPropagation={() => onOpenAIHarness(aiHarnesses[0])} title="Open with {aiHarnesses[0].name}">
+        <span class="lm-icon">&#129302;</span> Open with {aiHarnesses[0].name}
       </button>
     {/if}
   {/if}
@@ -329,13 +337,6 @@
         {/if}
       </div>
     {/if}
-  {/if}
-
-  {#if hasManageFooter}
-    <hr class="lm-sep" />
-    <button class="action-item lm-manage" on:click|stopPropagation={onManageProfiles}>
-      <span class="lm-icon">&#9881;</span> Manage profiles…
-    </button>
   {/if}
 
   {#if hasSweepSection}
@@ -441,12 +442,6 @@
     background: var(--bg-hover);
     color: var(--text-primary);
   }
-
-  .lm-manage {
-    color: var(--text-dim);
-    font-style: italic;
-  }
-  .lm-manage:hover { color: var(--text-primary); }
 
   .lm-disabled {
     opacity: 0.5;

@@ -17,6 +17,8 @@
   import LauncherMenu from './lib/LauncherMenu.svelte';
   import PRPopover from './lib/PRPopover.svelte';
   import TerminalsSection from './lib/TerminalsSection.svelte';
+  import TerminalsModal from './lib/TerminalsModal.svelte';
+  import { tooltip } from './lib/tooltip';
 
   // ── View mode ──
   let viewMode: 'full' | 'compact' = 'full';
@@ -607,14 +609,18 @@
     configStore.set(fresh);
   }
 
-  // openManageProfiles is the LauncherMenu footer hook — flips the Gear
-  // panel open and lets the user curate Default/Preferred/Hidden flags
-  // without having to hunt through settings.
-  function openManageProfiles() {
-    showSettings = true;
-    closeAccountMenu();
-    closeActionMenu();
-  }
+  // showTerminalsModal toggles the v2.1 Terminal Profile editor (issue #69)
+  // mounted at the bottom of the Gear panel via TerminalsSection's button.
+  // Held at App.svelte scope so the modal's overlay clicks through to the
+  // body without fighting the Gear panel's own slide transition.
+  let showTerminalsModal = false;
+
+  // revealLabel is the OS-aware "Reveal in <file manager>" string passed to
+  // every LauncherMenu instance. Computed once from hostOS so the kebabs
+  // don't each re-derive it.
+  $: revealLabel = hostOS === 'windows' ? 'Reveal in Explorer'
+    : hostOS === 'darwin' ? 'Reveal in Finder'
+    : 'Reveal in files';
 
   async function openAccountInAIHarness(accountKey: string, harness: AIHarnessInfo) {
     try {
@@ -3019,24 +3025,24 @@
   {#if showSettings}
     <div class="settings" transition:slide={{ duration: 150 }}>
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.config')}</span>
+        <span class="settings-label" use:tooltip={"Absolute path to the gitbox.json file currently in use. Click ‘Open in editor’ to inspect or hand-edit it."}>{$t('settings.config')}</span>
         <span class="settings-value">{configPath}</span>
         <button class="settings-btn" on:click={() => bridge.openFileInEditor(configPath)}>{$t('settings.openInEditor')}</button>
       </div>
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.rootFolder')}</span>
+        <span class="settings-label" use:tooltip={"Top-level folder where gitbox keeps every cloned repo. Each account gets a sub-folder under it."}>{$t('settings.rootFolder')}</span>
         <span class="settings-value">{$configStore?.global?.folder || '(not set)'}</span>
         <button class="settings-btn" on:click={openChangeFolder}>{$t('settings.change')}</button>
       </div>
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.language')}</span>
+        <span class="settings-label" use:tooltip={"Language used by the gitbox UI. Switching takes effect immediately."}>{$t('settings.language')}</span>
         <div class="theme-toggle">
           <button class="theme-btn" class:theme-active={languageChoice === 'en'} on:click={() => setLanguage('en')}>English</button>
           <button class="theme-btn" class:theme-active={languageChoice === 'es'} on:click={() => setLanguage('es')}>Espanol</button>
         </div>
       </div>
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.theme')}</span>
+        <span class="settings-label" use:tooltip={"Color scheme. ‘System’ tracks your OS preference; ‘Light’ and ‘Dark’ pin gitbox to that mode."}>{$t('settings.theme')}</span>
         <div class="theme-toggle">
           <button class="theme-btn" class:theme-active={themeChoice === 'system'} on:click={() => { themeChoice = 'system'; applyTheme(); }}>System</button>
           <button class="theme-btn" class:theme-active={themeChoice === 'light'} on:click={() => { themeChoice = 'light'; applyTheme(); }}>Light</button>
@@ -3044,7 +3050,7 @@
         </div>
       </div>
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.periodicStatus')}</span>
+        <span class="settings-label" use:tooltip={"How often gitbox auto-fetches every repo to refresh its ahead/behind counters. ‘Off’ pauses the timer; you can still fetch manually."}>{$t('settings.periodicStatus')}</span>
         <div class="theme-toggle">
           <button class="theme-btn" class:theme-active={fetchInterval === 'off'} on:click={() => setFetchInterval('off')}>{$t('common.off')}</button>
           <button class="theme-btn" class:theme-active={fetchInterval === '5m'} on:click={() => setFetchInterval('5m')}>5m</button>
@@ -3057,7 +3063,7 @@
       </div>
       {#if autostartSupported}
         <div class="settings-row">
-          <span class="settings-label">{$t('settings.runAtStartup')}</span>
+          <span class="settings-label" use:tooltip={"Launch GitboxApp automatically when you log in. Toggling writes the OS autostart entry."}>{$t('settings.runAtStartup')}</span>
           <div class="theme-toggle">
             <button class="theme-btn" class:theme-active={!autostartOn} on:click={() => { if (autostartOn) toggleAutostart(); }}>{$t('common.off')}</button>
             <button class="theme-btn" class:theme-active={autostartOn} on:click={() => { if (!autostartOn) toggleAutostart(); }}>{$t('common.on')}</button>
@@ -3065,13 +3071,13 @@
         </div>
       {/if}
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.prReviews')}</span>
+        <span class="settings-label" use:tooltip={"Show pull-request indicators on repo rows: badges for PRs you authored and PRs that requested your review."}>{$t('settings.prReviews')}</span>
         <div class="theme-toggle">
           <button class="theme-btn" class:theme-active={!$prSettings.enabled} on:click={() => { if ($prSettings.enabled) setPRBadgesEnabled(false); }}>{$t('common.off')}</button>
           <button class="theme-btn" class:theme-active={$prSettings.enabled} on:click={() => { if (!$prSettings.enabled) setPRBadgesEnabled(true); }}>{$t('common.on')}</button>
         </div>
         {#if $prSettings.enabled}
-          <span class="settings-sublabel">{$t('settings.includeDrafts')}</span>
+          <span class="settings-sublabel" use:tooltip={"Count draft PRs in the ‘my PRs’ badge. Off restricts the count to ready-for-review PRs."}>{$t('settings.includeDrafts')}</span>
           <div class="theme-toggle">
             <button class="theme-btn" class:theme-active={!$prSettings.includeDrafts} on:click={() => { if ($prSettings.includeDrafts) setPRIncludeDrafts(false); }}>{$t('common.off')}</button>
             <button class="theme-btn" class:theme-active={$prSettings.includeDrafts} on:click={() => { if (!$prSettings.includeDrafts) setPRIncludeDrafts(true); }}>{$t('common.on')}</button>
@@ -3079,15 +3085,15 @@
         {/if}
       </div>
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.globalGitignore')}</span>
-        <div class="theme-toggle" title="Check ~/.gitignore_global on startup and offer to install OS-junk patterns if missing">
+        <span class="settings-label" use:tooltip={"Check ~/.gitignore_global on startup and offer to install gitbox’s recommended OS-junk patterns (.DS_Store, Thumbs.db, etc.) if missing."}>{$t('settings.globalGitignore')}</span>
+        <div class="theme-toggle">
           <button class="theme-btn" class:theme-active={!checkGitignorePref} on:click={() => { if (checkGitignorePref) setCheckGitignorePref(false); }}>{$t('common.off')}</button>
           <button class="theme-btn" class:theme-active={checkGitignorePref} on:click={() => { if (!checkGitignorePref) setCheckGitignorePref(true); }}>{$t('common.on')}</button>
         </div>
       </div>
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.systemCheck')}</span>
-        <button class="settings-action" on:click={openDoctorModal} title="Probe external tools (git, GCM, ssh, tmux, ...)">{$t('settings.run')}</button>
+        <span class="settings-label" use:tooltip={"Probe external tools gitbox uses (git, Git Credential Manager, ssh, tmux, …) and flag missing ones."}>{$t('settings.systemCheck')}</span>
+        <button class="settings-action" on:click={openDoctorModal}>{$t('settings.run')}</button>
         {#if doctorSummary}
           <span class="settings-sublabel settings-doctor-summary">{doctorSummary}</span>
         {/if}
@@ -3096,15 +3102,14 @@
         apps={configApps}
         shells={configShells}
         profiles={configProfiles}
-        onSave={saveTerminalProfilesAndReload}
-        onConfigReloaded={reloadConfigFromDisk}
+        onOpen={() => showTerminalsModal = true}
       />
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.version')}</span>
+        <span class="settings-label" use:tooltip={"Currently running gitbox version (git tag + commit hash baked in at build time)."}>{$t('settings.version')}</span>
         <span class="settings-value">{appVersion}</span>
       </div>
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.author')}</span>
+        <span class="settings-label" use:tooltip={"Project author and source repository. Click the link to open the project on GitHub."}>{$t('settings.author')}</span>
         <span class="settings-value">Luis Palacios Derqui &mdash; <a href="https://github.com/LuisPalacios/gitbox" on:click|preventDefault={() => BrowserOpenURL('https://github.com/LuisPalacios/gitbox')}>github.com/LuisPalacios/gitbox</a></span>
       </div>
     </div>
@@ -3209,13 +3214,13 @@
                   terminals={configTerminals}
                   profiles={configProfiles}
                   aiHarnesses={configAIHarnesses}
+                  {revealLabel}
                   onOpenBrowser={() => openAccountInBrowser(accountKey)}
                   onOpenFolder={() => openAccountInExplorer(accountKey)}
                   onOpenApp={(cmd) => openAccountInApp(accountKey, cmd)}
                   onOpenTerminal={(t) => openAccountInTerminal(accountKey, t)}
                   onOpenProfile={(id) => openAccountProfile(accountKey, id)}
                   onOpenAIHarness={(h) => openAccountInAIHarness(accountKey, h)}
-                  onManageProfiles={openManageProfiles}
                 />
               </div>
             {/if}
@@ -3361,13 +3366,13 @@
                         terminals={configTerminals}
                         profiles={configProfiles}
                         aiHarnesses={configAIHarnesses}
+                        {revealLabel}
                         onOpenBrowser={() => openRepoInBrowser(sourceKey, repoName)}
                         onOpenFolder={() => openRepoInExplorer(repoKey)}
                         onOpenApp={(cmd) => openRepoInApp(repoKey, cmd)}
                         onOpenTerminal={(t) => openRepoInTerminal(repoKey, t)}
                         onOpenProfile={(id) => openRepoProfile(repoKey, id)}
                         onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
-                        onManageProfiles={openManageProfiles}
                         onSweep={() => sweepBranches(sourceKey, repoName)}
                         onMove={() => { actionMenuRepo = null; openMoveRepo(sourceKey, repoName); }}
                         moveEnabled={repoMoveDisabledReason(state) === ''}
@@ -3781,6 +3786,17 @@
       </div>
     </div>
   {/if}
+
+  <!-- ── TERMINALS & SHELLS MODAL (issue #69) ── -->
+  <TerminalsModal
+    open={showTerminalsModal}
+    apps={configApps}
+    shells={configShells}
+    profiles={configProfiles}
+    onSave={saveTerminalProfilesAndReload}
+    onConfigReloaded={reloadConfigFromDisk}
+    onClose={() => showTerminalsModal = false}
+  />
 
   <!-- ── DOCTOR (SYSTEM CHECK) MODAL ── -->
   {#if showDoctorModal}
@@ -5057,6 +5073,29 @@
 <!-- ════════════════════════════════════════════════════════════ -->
 
 <style>
+  /* ── Tooltip popup (lib/tooltip.ts) ──
+     The popup is appended to document.body so Svelte's scoped styles
+     don't reach it. :global() opts the rule out of scoping. Kept inside
+     App.svelte (rather than a separate CSS file) to avoid an extra
+     import in main.ts; the rule is small and self-contained. */
+  :global(.gitbox-tooltip) {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 11px;
+    line-height: 1.4;
+    pointer-events: none;
+    opacity: 0;
+    animation: gitbox-tooltip-in 100ms ease-out forwards;
+  }
+  @keyframes gitbox-tooltip-in {
+    from { opacity: 0; transform: translateY(-2px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
   /* ── Onboarding ── */
   .onboarding {
     position: fixed; inset: 0; background: var(--bg-base);

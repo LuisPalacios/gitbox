@@ -643,20 +643,17 @@ func (a *App) SyncProfiles() {
 	}
 }
 
-// composeProfiles produces one TerminalProfile per (terminal × applicable
-// shell) pair. Terminals whose ArgsTemplate has no shell tokens (`open -a`,
-// `git-bash --cd`) get a single shell-less profile — they handle their own
-// shell selection.
+// composeProfiles produces one TerminalProfile per (terminal × shell) pair.
+// Terminals whose ArgsTemplate has no shell tokens (`open -a`, `git-bash
+// --cd`) are skipped entirely — they handle their own shell selection
+// internally and pairing them with a Shell entry produces double-launches
+// (issue #69 user feedback). They stay in TerminalApps so WT-profile and
+// migrated entries can still reference them, but the auto-detected Profile
+// list only contains rows where Terminal AND Shell are both meaningful.
 func composeProfiles(apps []config.TerminalApp, shells []config.ShellEntry) []config.TerminalProfile {
 	var out []config.TerminalProfile
 	for _, app := range apps {
 		if !templateAcceptsShell(app.ArgsTemplate) {
-			out = append(out, config.TerminalProfile{
-				ID:         app.ID,
-				Name:       app.Name,
-				TerminalID: app.ID,
-				Source:     "detected",
-			})
 			continue
 		}
 		for _, sh := range shells {
