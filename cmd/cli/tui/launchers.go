@@ -8,6 +8,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/launch"
+	"github.com/LuisPalacios/gitbox/pkg/terminals"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -52,6 +53,17 @@ func launchProfileCmd(path string, profile config.TerminalProfile, app config.Te
 		if len(template) == 0 {
 			template = app.ArgsTemplate
 		}
+		// EXECUTION pillar (#72): consult the user's terminal config so
+		// "WezTerm + PowerShell 7" picks up wezterm.lua launch_menu env
+		// and "Windows Terminal + <Shell>" hands off to wt.exe via
+		// --profile so WT applies the user's profile-tuned font/colors.
+		var extraEnv map[string]string
+		if profile.TerminalID != "" && profile.ShellID != "" {
+			if ov, hit := terminals.LookupForLaunch(profile.TerminalID, profile.ShellID, shell.Name); hit {
+				template = ov.Argv
+				extraEnv = ov.Env
+			}
+		}
 		args := launch.ResolveArgs(launch.ProfileArgs{
 			Template:     template,
 			Path:         path,
@@ -59,12 +71,41 @@ func launchProfileCmd(path string, profile config.TerminalProfile, app config.Te
 			ShellArgs:    shell.Args,
 		})
 		cmd := exec.Command(app.Command, args...)
-		cmd.Env = git.Environ()
+		cmd.Env = appendEnvOverlay(git.Environ(), extraEnv)
 		if err := cmd.Start(); err != nil {
 			return launchDoneMsg{target: profile.Name, err: err}
 		}
 		return launchDoneMsg{target: profile.Name}
 	}
+}
+
+// appendEnvOverlay layers `overlay` on top of `base`, returning a new slice
+// of "KEY=VAL" entries where overlay keys override any pre-existing
+// definition. Returns base unchanged when overlay is empty. Mirrors the
+// helper in cmd/gui/profiles.go — duplicated here to keep the launcher
+// import surface tight (no shared launcher-helpers package today).
+func appendEnvOverlay(base []string, overlay map[string]string) []string {
+	if len(overlay) == 0 {
+		return base
+	}
+	idx := make(map[string]int, len(base))
+	for i, kv := range base {
+		eq := strings.IndexByte(kv, '=')
+		if eq <= 0 {
+			continue
+		}
+		idx[kv[:eq]] = i
+	}
+	out := append([]string(nil), base...)
+	for k, v := range overlay {
+		entry := k + "=" + v
+		if i, ok := idx[k]; ok {
+			out[i] = entry
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 // launchTerminalCmd spawns a terminal emulator in the given folder. The

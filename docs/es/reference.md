@@ -864,6 +864,24 @@ El conjunto de Perfiles auto-derivados sigue reglas distintas por plataforma:
 
 El formulario Add-Profile refleja estas reglas: en macOS / Linux el selector de shell incluye una entrada virtual `(login shell)` por defecto; en Windows la elección de shell es obligatoria.
 
+#### Cómo funciona el emparejamiento de lanzamiento
+
+Cuando hago clic en un Perfil `WezTerm — PowerShell 7` o `Windows Terminal — PowerShell 7`, gitbox NO ejecuta sin más la plantilla genérica del Terminal. Primero consulta mi propia configuración del terminal para buscar una entrada coincidente, y solo cae en la plantilla genérica cuando no encuentra ninguna.
+
+La búsqueda se ejecuta en cada lanzamiento (con caché en proceso invalidada por mtime, así que las re-ediciones de `wezterm.lua` / `settings.json` se recogen sin reiniciar):
+
+- **WezTerm** — gitbox parsea `wezterm.lua` (`$WEZTERM_CONFIG_FILE`, luego `$XDG_CONFIG_HOME/wezterm/wezterm.lua`, luego `~/.config/wezterm/wezterm.lua`, luego `~/.wezterm.lua`) y busca una entrada de `config.launch_menu` cuyo label encaje con el shell de gitbox. En caso de coincidencia, gitbox lanza `wezterm-gui.exe start --cwd <path> -- <args de la entrada>` y empalma el `set_environment_variables` de la entrada sobre el entorno padre. Así el font/colors/entorno-amistoso-con-oh-my-posh ajustados de la entrada llegan al shell lanzado exactamente como si lo hubiera elegido desde el menú de WezTerm.
+- **Windows Terminal** — gitbox parsea `settings.json` (instalación Store, instalación Preview, luego instalación unpackaged bajo `%LOCALAPPDATA%`) y busca un perfil en `profiles.list` cuyo `name` encaje con el shell de gitbox. En caso de coincidencia, gitbox ejecuta `wt.exe --profile "<name>" -d <path>` — `wt.exe` lee por sí mismo `commandline`, font, colors y starting flags del perfil desde `settings.json`.
+- **Sin coincidencia / sin config / terminal no instalado** — gitbox cae en la plantilla genérica de argv (`wezterm-gui.exe start --cwd <path> -- <shell> <args>`, `wt.exe -d <path> <shell> <args>`, etc.). Ese es el comportamiento correcto para shells que no tengo cableados en mi configuración del terminal.
+
+Los Perfiles bare-shell DIRECT (los cuatro accesos directos `pwsh / powershell / cmd / wsl` ocultos por defecto en Windows) saltan la búsqueda — no tienen configuración de terminal que consultar, así que la plantilla genérica "ejecuta el shell directamente" es la correcta.
+
+El comparador de nombres de shell es tolerante:
+
+- Coincidencia directa — el nombre normalizado de la entrada equivale al nombre mostrado del shell de gitbox (`"PowerShell 7"` ≡ `"PowerShell 7"`, `"WSL — Ubuntu-24.04"` ≡ `"WSL — Ubuntu-24.04"`).
+- Sufijo tras em-dash — para nombres de gitbox como `"WSL — Ubuntu-24.04"`, una entrada etiquetada solo como `"Ubuntu-24.04"` también encaja.
+- Patrón de respaldo — `pwsh` encaja con entradas que contengan `"powershell 7"`, `"powershell core"` o `"pwsh"`; `powershell` encaja con `"powershell 5"` o `"windows powershell"`; `cmd` encaja con `"command prompt"` o `"cmd exe"`; `git-bash` encaja con `"git bash"`; `wsl-<distro>` encaja con el slug pelado de la distro (`"ubuntu 24 04"`).
+
 ### Account
 
 | Campo                     | Tipo    | Requerido   | Descripción                                                                              |

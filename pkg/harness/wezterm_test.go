@@ -172,6 +172,72 @@ func TestParseWeztermLaunchMenu_UnterminatedBlock(t *testing.T) {
 	}
 }
 
+func TestParseWeztermLaunchMenu_ExtractsSetEnvironmentVariables(t *testing.T) {
+	// EXECUTION pillar (#72): set_environment_variables is the user's
+	// per-entry env splice. The parser must surface it so the launch
+	// pipeline can reproduce the WezTerm-tuned shell environment outside
+	// WezTerm's own menu invocation.
+	src := []byte(`
+config.launch_menu = {
+  {
+    label = "Bash with env",
+    args = { "bash", "-l" },
+    set_environment_variables = {
+      MY_VAR = "hello",
+      PATH = "/opt/bin:/usr/bin",
+      ["WITH-DASH"] = "ok",
+    },
+  },
+  {
+    label = "No env entry",
+    args = { "pwsh" },
+  },
+}
+`)
+	got, err := ParseWeztermLaunchMenu(src)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 entries; got %d", len(got))
+	}
+	wantEnv := map[string]string{
+		"MY_VAR":    "hello",
+		"PATH":      "/opt/bin:/usr/bin",
+		"WITH-DASH": "ok",
+	}
+	if !reflect.DeepEqual(got[0].Env, wantEnv) {
+		t.Errorf("entry[0].Env = %v, want %v", got[0].Env, wantEnv)
+	}
+	if got[1].Env != nil {
+		t.Errorf("entry[1].Env = %v, want nil (no set_environment_variables block)", got[1].Env)
+	}
+}
+
+func TestParseWeztermLaunchMenu_EnvWithSingleQuoteValues(t *testing.T) {
+	// Single-quoted values are valid Lua. Mirror argTokenRe's tolerance
+	// for the env pair regex.
+	src := []byte(`
+config.launch_menu = {
+  {
+    label = "Single-quote env",
+    args = { "bash" },
+    set_environment_variables = { FOO = 'bar', BAZ = 'qux' },
+  },
+}
+`)
+	got, err := ParseWeztermLaunchMenu(src)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 entry; got %d", len(got))
+	}
+	if got[0].Env["FOO"] != "bar" || got[0].Env["BAZ"] != "qux" {
+		t.Errorf("Env = %v, want FOO=bar BAZ=qux", got[0].Env)
+	}
+}
+
 func TestParseWeztermLaunchMenu_DropsEmptyEntries(t *testing.T) {
 	// A `{}` placeholder entry without label or args is a no-op for the
 	// menu — drop it so callers don't get a junk Profile.
