@@ -2692,11 +2692,14 @@
 <svelte:window on:click={(e) => {
   const inMenu = e.target instanceof Element && e.target.closest('.action-menu-container');
   const inWsPopover = e.target instanceof Element && e.target.closest('.ws-popover, .ws-badge');
+  const inPRPopover = e.target instanceof Element && e.target.closest('.pr-badge-wrap');
   if (actionMenuRepo && !inMenu) closeActionMenu();
   if (actionMenuAccount && !inMenu) closeAccountMenu();
   if (openWsPopover && !inWsPopover) openWsPopover = null;
+  if (openPRPopover && !inPRPopover) openPRPopover = null;
 }} on:keydown={(e) => {
   if (e.key === 'Escape' && openWsPopover) openWsPopover = null;
+  if (e.key === 'Escape' && openPRPopover) openPRPopover = null;
 }} />
 
 <!-- ════════════════════════════════════════════════════════════ -->
