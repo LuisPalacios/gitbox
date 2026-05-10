@@ -7,6 +7,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/launch"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -33,6 +34,36 @@ func launchEditorCmd(path, command, name string) tea.Cmd {
 			return launchDoneMsg{target: name, err: err}
 		}
 		return launchDoneMsg{target: name}
+	}
+}
+
+// launchProfileCmd spawns a TerminalProfile in the given folder, expanding
+// the profile's args via pkg/launch.ResolveArgs so the GUI bridge
+// (cmd/gui/profiles.go::OpenProfile) and the TUI agree byte-for-byte on the
+// final argv. Used by the v2.1 launcher overlay; the legacy
+// launchTerminalCmd below stays until cmd/cli/tui/screen_launcher.go is
+// reshaped in the next commit so the branch keeps bisecting cleanly.
+func launchProfileCmd(path string, profile config.TerminalProfile, app config.TerminalApp, shell config.ShellEntry) tea.Cmd {
+	return func() tea.Msg {
+		if app.Command == "" {
+			return launchDoneMsg{target: profile.Name, err: fmt.Errorf("terminal command for profile %q is empty", profile.ID)}
+		}
+		template := profile.Args
+		if len(template) == 0 {
+			template = app.ArgsTemplate
+		}
+		args := launch.ResolveArgs(launch.ProfileArgs{
+			Template:     template,
+			Path:         path,
+			ShellCommand: shell.Command,
+			ShellArgs:    shell.Args,
+		})
+		cmd := exec.Command(app.Command, args...)
+		cmd.Env = git.Environ()
+		if err := cmd.Start(); err != nil {
+			return launchDoneMsg{target: profile.Name, err: err}
+		}
+		return launchDoneMsg{target: profile.Name}
 	}
 }
 

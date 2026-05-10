@@ -81,6 +81,45 @@ type GlobalConfig struct {
 	CheckGlobalGitignore *bool `json:"check_global_gitignore,omitempty"`
 }
 
+// EffectiveTerminals returns the user-facing terminal list for legacy
+// consumers (TUI launcher, AI-harness terminal-fallback) during the v2.0 →
+// v2.1 transition. It prefers the legacy Terminals field when populated and
+// synthesises a flat TerminalEntry list from TerminalProfiles otherwise so
+// code that hasn't been ported to the Profile model still finds something to
+// launch. Hidden profiles are skipped; the per-profile Args override (when
+// present) is preserved verbatim — that matches the migrator, which copies
+// legacy argv into Profile.Args.
+//
+// Removed in the final v2.1 cleanup commit alongside the legacy Terminals
+// field and the screens that read it.
+func (g GlobalConfig) EffectiveTerminals() []TerminalEntry {
+	if len(g.Terminals) > 0 {
+		return g.Terminals
+	}
+	if len(g.TerminalProfiles) == 0 {
+		return nil
+	}
+	apps := make(map[string]TerminalApp, len(g.TerminalApps))
+	for _, a := range g.TerminalApps {
+		apps[a.ID] = a
+	}
+	out := make([]TerminalEntry, 0, len(g.TerminalProfiles))
+	for _, p := range g.TerminalProfiles {
+		if p.Hidden {
+			continue
+		}
+		entry := TerminalEntry{Name: p.Name}
+		if app, ok := apps[p.TerminalID]; ok {
+			entry.Command = app.Command
+		}
+		if len(p.Args) > 0 {
+			entry.Args = append([]string(nil), p.Args...)
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
 // PRBadgesOn reports whether PR badges are enabled, defaulting to true when unset.
 func (g GlobalConfig) PRBadgesOn() bool {
 	if g.PRBadgesEnabled == nil {

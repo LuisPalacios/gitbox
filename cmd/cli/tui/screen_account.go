@@ -71,7 +71,7 @@ func (m accountModel) Update(msg tea.Msg) (accountModel, tea.Cmd) {
 	// Launcher overlay intercepts input when active. It's only enabled from
 	// accountViewDetail so form views (edit/rename) keep full keyboard
 	// control over their text inputs.
-	if lo, cmd, handled := m.launcher.update(msg, m.cfg.Global.Terminals); handled {
+	if lo, cmd, handled := m.launcher.update(msg, m.cfg.Global.EffectiveTerminals()); handled {
 		m.launcher = lo
 		m.statusMsg = ""
 		m.errMsg = ""
@@ -479,7 +479,7 @@ func (m accountModel) viewDetail() string {
 		hints = append(hints, "p PAT")
 	}
 	hints = append(hints, "d discover", "v verify", "b browser", "o folder")
-	if len(m.cfg.Global.Terminals) > 0 {
+	if len(m.cfg.Global.EffectiveTerminals()) > 0 {
 		hints = append(hints, "t terminal")
 	}
 	if len(m.cfg.Global.AIHarnesses) > 0 {
@@ -569,7 +569,7 @@ func (m accountModel) openAccountLauncher() (accountModel, tea.Cmd) {
 // single key here — lowercase e is the existing "edit account" shortcut;
 // users reach editors via the capital-O launcher.
 func (m accountModel) launchAccountTerminal() (accountModel, tea.Cmd) {
-	terms := m.cfg.Global.Terminals
+	terms := m.cfg.Global.EffectiveTerminals()
 	if len(terms) == 0 {
 		return m, nil
 	}
@@ -597,5 +597,5 @@ func (m accountModel) launchAccountHarness() (accountModel, tea.Cmd) {
 	}
 	m.statusMsg = ""
 	m.errMsg = ""
-	return m, launchAIHarnessCmd(path, harnesses[0], m.cfg.Global.Terminals)
+	return m, launchAIHarnessCmd(path, harnesses[0], m.cfg.Global.EffectiveTerminals())
 }
