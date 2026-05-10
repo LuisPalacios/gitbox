@@ -4,6 +4,8 @@ import (
 	"embed"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/update"
@@ -34,6 +36,7 @@ func main() {
 	//                         (issue #69 — opens the Profile manager in its
 	//                         own OS window so the editor can scroll on its
 	//                         own and the parent window stays interactive).
+	parentPID := 0
 	for _, arg := range os.Args[1:] {
 		if arg == "--test-mode" {
 			cfgPath, cleanup, err := config.SetupTestMode()
@@ -48,9 +51,23 @@ func main() {
 		if arg == "--terminals-window" {
 			app.windowMode = "terminals"
 		}
+		// --parent-pid=<PID> tells the Manager subprocess which gitbox.exe
+		// to watch. When that PID disappears, the watcher self-terminates
+		// — the safety net so the Manager can never outlive its parent
+		// regardless of how the parent died (issue #69).
+		if strings.HasPrefix(arg, "--parent-pid=") {
+			if v, err := strconv.Atoi(strings.TrimPrefix(arg, "--parent-pid=")); err == nil {
+				parentPID = v
+			}
+		}
 	}
 
 	if app.windowMode == "terminals" {
+		// Watcher fires within ms of parent death on Windows
+		// (WaitForSingleObject) and within ~1s on macOS (signal-0 poll).
+		// Linux relies on PR_SET_PDEATHSIG set by the parent when it
+		// spawned us; this watcher is a no-op there.
+		go watchParent(parentPID)
 		runTerminalsWindow(app)
 		return
 	}

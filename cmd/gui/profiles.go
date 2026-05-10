@@ -1191,7 +1191,13 @@ func (a *App) OpenTerminalsManagerWindow() error {
 	if err != nil {
 		return fmt.Errorf("locate gitbox binary: %w", err)
 	}
-	args := []string{"--terminals-window"}
+	args := []string{
+		"--terminals-window",
+		// Subprocess opens this PID and dies the instant we do — the
+		// kernel-level safety net that catches every "parent vanished"
+		// case the in-band Shutdown Kill misses. See watch_parent_*.go.
+		fmt.Sprintf("--parent-pid=%d", os.Getpid()),
+	}
 	if a.testMode {
 		// Carry test-mode through so the sub-process points at the same
 		// fixture-backed gitbox.json the parent is editing.
