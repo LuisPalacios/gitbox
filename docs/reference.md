@@ -819,30 +819,50 @@ The config lives at `~/.config/gitbox/gitbox.json`. See [gitbox.jsonc](../json/g
 | `terminals[].name`                | string | Yes      | Display name (e.g. `"Windows Terminal"`).                                 |
 | `terminals[].command`             | string | Yes      | Full path or on-PATH launcher (e.g. `"wt.exe"`, `"gnome-terminal"`).      |
 | `terminals[].args`                | array  | No       | Arguments passed before the path. Use `"{path}"` as the path placeholder; if absent, path is appended. Use `"{command}"` to mark where an AI harness argv is spliced (expands to zero items for terminal-only launches). |
-| `terminal_apps`                   | array  | No       | v2.1 detected terminal emulators (Windows Terminal, WezTerm, GNOME Terminal, Konsole, Kitty, Alacritty, Terminator, macOS apps via `open -a`). Auto-populated by the GUI's detect probe; the TUI's `Settings → Terminal profiles…` screen reads this list. |
-| `terminal_apps[].id`              | string | Yes      | Stable id (`"wt"`, `"wezterm"`, `"gnome-terminal"`, `"macapp-iterm"`, …). Used as the cross-reference target from `terminal_profiles[].terminal`. |
+| `terminal_apps`                   | array  | No       | v2.1 detected terminal emulators. Populated by the catalog probe in `pkg/terminals` (Windows: Windows Terminal, WezTerm, Alacritty, Tabby, ConEmu, Hyper, Mintty, ZOC. macOS: iTerm2, Terminal.app, Warp, Kitty, Ghostty, WezTerm, Alacritty. Linux: GNOME Terminal, Konsole, Terminator, Foot, Alacritty, Kitty, Tilda, Guake, xterm). Both the GUI Manager and the TUI's `Settings → Terminal profiles…` probe directly. |
+| `terminal_apps[].id`              | string | Yes      | Stable id (`"wt"`, `"wezterm"`, `"gnome-terminal"`, `"iterm"`, …). Used as the cross-reference target from `terminal_profiles[].terminal`. |
 | `terminal_apps[].name`            | string | Yes      | Display name shown in the Manager and the per-row launcher. |
 | `terminal_apps[].command`         | string | Yes      | Resolved absolute path (filled in at detect time). |
 | `terminal_apps[].args_template`   | array  | No       | Argv template with `{path}`, `{shell_command}`, `{shell_args}`, `{command}` tokens. The launcher expands these per Profile via `pkg/launch.ResolveArgs`. Same token rules as `terminals[].args` above, plus `{shell_command}` (the resolved shell binary) and `{shell_args}` (a splice point for the shell's default args). |
-| `shells`                          | array  | No       | v2.1 detected shells (`cmd`, `powershell`, `pwsh`, `git-bash`, `bash`, `zsh`, `fish`, plus per-distro `wsl-<name>` rows on Windows hosts with WSL). Auto-populated by the GUI's detect probe. |
+| `shells`                          | array  | No       | v2.1 detected shells. Catalog scope per OS — Windows: PowerShell 7, PowerShell 5, CMD, Git Bash, plus per-distro `wsl-<name>` rows when WSL is installed. macOS: Zsh, Bash, Fish, Dash. Linux: Bash, Zsh, Fish, Ksh, Dash. |
 | `shells[].id`                     | string | Yes      | Stable id (`"cmd"`, `"pwsh"`, `"git-bash"`, `"wsl-ubuntu"`, …). Cross-referenced by `terminal_profiles[].shell`. |
 | `shells[].name`                   | string | Yes      | Display name. |
 | `shells[].command`                | string | Yes      | Resolved absolute path. |
 | `shells[].args`                   | array  | No       | Default args spliced where the terminal's `args_template` references `{shell_args}`. |
-| `terminal_profiles`               | array  | No       | v2.1 launchable Profiles — each pairs a Terminal with a Shell (or imports a Windows Terminal `settings.json` profile / WezTerm `launch_menu` entry as a single self-contained row). The per-row launcher and the `Open in…` menu read this list when populated. |
+| `terminal_profiles`               | array  | No       | v2.1 launchable Profiles. The per-row launcher and the `Open in…` menu read this list when populated. **OS-aware composition** (issue #71): on Windows each auto-derived Profile pairs a Terminal × Shell; on macOS / Linux each is Terminal-only with the host's login shell as the implicit shell. |
 | `terminal_profiles[].id`          | string | Yes      | Stable id (`"wt+pwsh"`, `"wezterm+launchmenu-mybash"`, `"user-1"`, …). |
 | `terminal_profiles[].name`        | string | Yes      | Display name (e.g. `"Windows Terminal — pwsh"`). |
-| `terminal_profiles[].terminal`    | string | Yes      | `terminal_apps[].id` to launch. |
-| `terminal_profiles[].shell`       | string | No       | `shells[].id` to run inside the terminal. Empty for self-contained Profiles (WezTerm `launch_menu`, etc.) where the terminal owns its own shell selection. |
+| `terminal_profiles[].terminal`    | string | Yes      | `terminal_apps[].id` to launch. Empty only for the bare-shell fallback Profiles emitted on Windows when no modern Terminal is installed. |
+| `terminal_profiles[].shell`       | string | No       | `shells[].id` to run inside the terminal. Empty means "use the terminal's default" — on macOS / Linux that is the host's login shell, displayed in the Manager as a dim badge next to the Terminal name. |
 | `terminal_profiles[].args`        | array  | No       | Override argv. When empty the launcher uses `terminal_apps[].args_template`. WezTerm `launch_menu` rows store the full `start --cwd {path} -- <argv>` shape here. |
 | `terminal_profiles[].default`     | bool   | No       | Marks the Profile invoked by the per-row launcher's primary action. Mutually exclusive across the list. |
 | `terminal_profiles[].preferred`   | bool   | No       | Promotes the Profile to the kebab menu's quick list. |
 | `terminal_profiles[].hidden`      | bool   | No       | Suppresses the Profile from menus without deleting it. The only way to suppress an auto-detected / WT-imported / WezTerm-imported / migrated Profile (those reappear on the next detect cycle if removed). |
-| `terminal_profiles[].source`      | string | No       | Origin tag — `"detected"`, `"wt-profile"`, `"wezterm-launchmenu"`, `"migrated"`, `"user"`. Only `"user"` Profiles can be deleted; the others can only be Hidden. |
+| `terminal_profiles[].source`      | string | No       | **Internal field** — never displayed in the Manager. Origin tag used by the engine to gate delete-vs-hide: only `"user"` Profiles are deletable; `"detected"` / `"wt-profile"` / `"wezterm-launchmenu"` / `"migrated"` rows can only be Hidden. |
 | `ai_harnesses`                    | array  | No       | AI CLI harnesses for the "Open in" menu. Auto-populated on first launch (claude, codex, gemini, aider, cursor-agent, opencode). Launched inside `global.terminals[0]`, which must contain `"{command}"` in its args. |
 | `ai_harnesses[].name`             | string | Yes      | Display name (e.g. `"Claude Code"`). |
 | `ai_harnesses[].command`          | string | Yes      | Absolute path or on-PATH binary (e.g. `"claude"`). |
 | `ai_harnesses[].args`             | array  | No       | Optional extra args for the harness. Usually empty. |
+
+### Terminal Profiles
+
+The v2.1 `terminal_apps[]` + `shells[]` + `terminal_profiles[]` trio is owned by `pkg/terminals`. The package ships a compiled-in catalog of supported Terminals + Shells per OS — that's the vocabulary gitbox knows how to detect and launch. Adding a new terminal-emulator entry is a code change in `pkg/terminals/catalog.go`.
+
+On every launch the catalog probes the host and reconciles the result with what's already in `gitbox.json`:
+
+- Catalog entries the host has installed are added to `terminal_apps[]` / `shells[]` (only if missing — existing rows survive across re-detect).
+- Hidden flags survive across re-detect — hiding Mintty in this session keeps it hidden after upgrades that grow the catalog.
+- User-added Profiles (`source: "user"`) and migrated v2.0 Profiles (`source: "migrated"`) are preserved verbatim, even when not in the freshly-detected set.
+- Catalog-but-not-installed entries are skipped silently — they reappear automatically once the user installs the binary.
+
+#### OS-aware composition
+
+The auto-derived Profile set follows different rules per platform:
+
+- **Windows** — Each Profile pairs a Terminal × Shell. Bare-shell auto-Profiles (a row whose Terminal is itself the shell) are not emitted when at least one modern Terminal is installed. When no modern Terminal is installed, gitbox falls back to one bare-shell Profile per shell so the user isn't stranded — and surfaces a banner in the Manager: "Install Windows Terminal for the best experience."
+- **macOS / Linux** — Each Profile is Terminal-only (`terminal_profiles[].shell == ""`). The host's login shell is implicit — `pkg/launch.ResolveArgs` collapses the empty shell tokens to zero items, and the Manager renders the login shell as a dim metadata badge next to the Terminal name. Power users can still pair a Terminal with a non-login Shell via the Manager's `+ Add profile` form; the resulting row is stamped `source: "user"`.
+
+The Add-Profile form mirrors these rules: on macOS / Linux the shell selector includes a `(login shell)` virtual entry as the default; on Windows the shell pick is mandatory.
 
 ### Account
 

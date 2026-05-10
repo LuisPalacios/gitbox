@@ -819,30 +819,50 @@ La config vive en `~/.config/gitbox/gitbox.json`. Consulta [gitbox.jsonc](../../
 | `terminals[].name`                | string | Sí        | Nombre visible (por ejemplo `"Windows Terminal"`).                                                                                                                                                                                                           |
 | `terminals[].command`             | string | Sí        | Ruta completa o launcher en PATH (por ejemplo `"wt.exe"`, `"gnome-terminal"`).                                                                                                                                                                               |
 | `terminals[].args`                | array  | No        | Argumentos pasados antes de la ruta. Usa `"{path}"` como placeholder de ruta; si falta, la ruta se añade al final. Usa `"{command}"` para marcar dónde se inserta el argv de un AI harness (se expande a cero elementos para lanzamientos solo de terminal). |
-| `terminal_apps`                   | array  | No        | Emuladores de terminal detectados v2.1 (Windows Terminal, WezTerm, GNOME Terminal, Konsole, Kitty, Alacritty, Terminator, apps de macOS vía `open -a`). Auto-poblado por el sondeo de detección de la GUI; la pantalla `Settings → Perfiles de terminal…` de la TUI lee esta lista. |
-| `terminal_apps[].id`              | string | Sí        | Id estable (`"wt"`, `"wezterm"`, `"gnome-terminal"`, `"macapp-iterm"`, …). Se usa como destino de la referencia cruzada desde `terminal_profiles[].terminal`. |
+| `terminal_apps`                   | array  | No        | Emuladores de terminal detectados v2.1. Poblado por el sondeo del catálogo en `pkg/terminals` (Windows: Windows Terminal, WezTerm, Alacritty, Tabby, ConEmu, Hyper, Mintty, ZOC. macOS: iTerm2, Terminal.app, Warp, Kitty, Ghostty, WezTerm, Alacritty. Linux: GNOME Terminal, Konsole, Terminator, Foot, Alacritty, Kitty, Tilda, Guake, xterm). Tanto el Manager de la GUI como la pantalla `Settings → Perfiles de terminal…` de la TUI sondean el host directamente. |
+| `terminal_apps[].id`              | string | Sí        | Id estable (`"wt"`, `"wezterm"`, `"gnome-terminal"`, `"iterm"`, …). Se usa como destino de la referencia cruzada desde `terminal_profiles[].terminal`. |
 | `terminal_apps[].name`            | string | Sí        | Nombre visible mostrado en el Manager y el launcher por fila. |
 | `terminal_apps[].command`         | string | Sí        | Ruta absoluta resuelta (rellenada en tiempo de detección). |
 | `terminal_apps[].args_template`   | array  | No        | Plantilla de argv con tokens `{path}`, `{shell_command}`, `{shell_args}`, `{command}`. El launcher las expande por Perfil vía `pkg/launch.ResolveArgs`. Mismas reglas de tokens que `terminals[].args` arriba, más `{shell_command}` (el binario shell resuelto) y `{shell_args}` (un punto de inserción para los args por defecto del shell). |
-| `shells`                          | array  | No        | Shells detectados v2.1 (`cmd`, `powershell`, `pwsh`, `git-bash`, `bash`, `zsh`, `fish`, más filas `wsl-<nombre>` por distro en hosts Windows con WSL). Auto-poblado por el sondeo de detección de la GUI. |
+| `shells`                          | array  | No        | Shells detectados v2.1. Alcance del catálogo por OS — Windows: PowerShell 7, PowerShell 5, CMD, Git Bash, más filas `wsl-<nombre>` por distro cuando WSL está instalado. macOS: Zsh, Bash, Fish, Dash. Linux: Bash, Zsh, Fish, Ksh, Dash. |
 | `shells[].id`                     | string | Sí        | Id estable (`"cmd"`, `"pwsh"`, `"git-bash"`, `"wsl-ubuntu"`, …). Referenciado por `terminal_profiles[].shell`. |
 | `shells[].name`                   | string | Sí        | Nombre visible. |
 | `shells[].command`                | string | Sí        | Ruta absoluta resuelta. |
 | `shells[].args`                   | array  | No        | Args por defecto insertados donde el `args_template` del terminal referencie `{shell_args}`. |
-| `terminal_profiles`               | array  | No        | Perfiles lanzables v2.1 — cada uno empareja un Terminal con un Shell (o importa un perfil de `settings.json` de Windows Terminal / una entrada `launch_menu` de WezTerm como una fila autocontenida). El launcher por fila y el menú `Open in…` leen esta lista cuando está poblada. |
+| `terminal_profiles`               | array  | No        | Perfiles lanzables v2.1. El launcher por fila y el menú `Open in…` leen esta lista cuando está poblada. **Composición consciente del SO** (issue #71): en Windows cada Perfil auto-derivado empareja un Terminal × Shell; en macOS / Linux cada Perfil es solo-Terminal con el login shell del host como shell implícito. |
 | `terminal_profiles[].id`          | string | Sí        | Id estable (`"wt+pwsh"`, `"wezterm+launchmenu-mybash"`, `"user-1"`, …). |
 | `terminal_profiles[].name`        | string | Sí        | Nombre visible (por ejemplo `"Windows Terminal — pwsh"`). |
-| `terminal_profiles[].terminal`    | string | Sí        | `terminal_apps[].id` a lanzar. |
-| `terminal_profiles[].shell`       | string | No        | `shells[].id` a ejecutar dentro del terminal. Vacío para Perfiles autocontenidos (WezTerm `launch_menu`, etc.) donde el terminal es dueño de su propia selección de shell. |
+| `terminal_profiles[].terminal`    | string | Sí        | `terminal_apps[].id` a lanzar. Vacío solo para los Perfiles de respaldo bare-shell que se emiten en Windows cuando no hay un Terminal moderno instalado. |
+| `terminal_profiles[].shell`       | string | No        | `shells[].id` a ejecutar dentro del terminal. Vacío significa "usar el shell por defecto del terminal" — en macOS / Linux ese es el login shell del host, que el Manager muestra como una etiqueta atenuada junto al nombre del Terminal. |
 | `terminal_profiles[].args`        | array  | No        | Sobreescribe el argv. Cuando está vacío el launcher usa `terminal_apps[].args_template`. Las filas `launch_menu` de WezTerm guardan aquí la forma completa `start --cwd {path} -- <argv>`. |
 | `terminal_profiles[].default`     | bool   | No        | Marca el Perfil invocado por la acción primaria del launcher por fila. Mutuamente exclusivo en la lista. |
 | `terminal_profiles[].preferred`   | bool   | No        | Promociona el Perfil a la lista rápida del menú kebab. |
 | `terminal_profiles[].hidden`      | bool   | No        | Suprime el Perfil de los menús sin eliminarlo. La única forma de suprimir un Perfil auto-detectado / importado de WT / importado de WezTerm / migrado (esos reaparecen en el siguiente ciclo de detección si se eliminan). |
-| `terminal_profiles[].source`      | string | No        | Etiqueta de origen — `"detected"`, `"wt-profile"`, `"wezterm-launchmenu"`, `"migrated"`, `"user"`. Solo los Perfiles `"user"` se pueden eliminar; los demás solo se pueden ocultar. |
+| `terminal_profiles[].source`      | string | No        | **Campo interno** — nunca se muestra en el Manager. Etiqueta de origen usada por el motor para regular eliminar-vs-ocultar: solo los Perfiles `"user"` se pueden eliminar; las filas `"detected"` / `"wt-profile"` / `"wezterm-launchmenu"` / `"migrated"` solo se pueden ocultar. |
 | `ai_harnesses`                    | array  | No        | AI CLI harnesses para el menú "Open in". Auto-poblado en el primer launch (claude, codex, gemini, aider, cursor-agent, opencode). Lanzado dentro de `global.terminals[0]`, que debe contener `"{command}"` en sus args.                                      |
 | `ai_harnesses[].name`             | string | Sí        | Nombre visible (por ejemplo `"Claude Code"`).                                                                                                                                                                                                                |
 | `ai_harnesses[].command`          | string | Sí        | Ruta absoluta o binario en PATH (por ejemplo `"claude"`).                                                                                                                                                                                                    |
 | `ai_harnesses[].args`             | array  | No        | Args opcionales para el harness. Normalmente vacío.                                                                                                                                                                                                          |
+
+### Perfiles de Terminal
+
+El trío v2.1 `terminal_apps[]` + `shells[]` + `terminal_profiles[]` está gobernado por `pkg/terminals`. El paquete embebe un catálogo compilado de Terminales + Shells soportados por SO — ese es el vocabulario que gitbox sabe detectar y lanzar. Añadir un nuevo emulador de terminal es un cambio de código en `pkg/terminals/catalog.go`.
+
+En cada arranque el catálogo sondea el host y reconcilia el resultado con lo que ya hay en `gitbox.json`:
+
+- Las entradas del catálogo que el host tenga instaladas se añaden a `terminal_apps[]` / `shells[]` (solo si faltan — las filas existentes sobreviven a la re-detección).
+- Las marcas Hidden sobreviven a la re-detección — ocultar Mintty en esta sesión lo mantiene oculto tras actualizaciones que amplíen el catálogo.
+- Los Perfiles añadidos por el usuario (`source: "user"`) y los Perfiles migrados de v2.0 (`source: "migrated"`) se preservan tal cual, incluso cuando no están en el conjunto recién detectado.
+- Las entradas del catálogo que no estén instaladas se omiten silenciosamente — reaparecen automáticamente cuando el usuario instala el binario.
+
+#### Composición consciente del SO
+
+El conjunto de Perfiles auto-derivados sigue reglas distintas por plataforma:
+
+- **Windows** — Cada Perfil empareja un Terminal × Shell. Los Perfiles bare-shell auto (una fila cuyo Terminal sea el propio shell) no se emiten cuando hay al menos un Terminal moderno instalado. Cuando no hay ningún Terminal moderno instalado, gitbox cae en un Perfil bare-shell por shell para que el usuario no se quede sin opciones — y muestra un aviso en el Manager: "Install Windows Terminal for the best experience."
+- **macOS / Linux** — Cada Perfil es solo-Terminal (`terminal_profiles[].shell == ""`). El login shell del host es implícito — `pkg/launch.ResolveArgs` colapsa los tokens de shell vacíos a cero elementos, y el Manager muestra el login shell como una etiqueta atenuada junto al nombre del Terminal. Los usuarios avanzados pueden emparejar un Terminal con un Shell distinto al login mediante el formulario `+ Add profile` del Manager; la fila resultante queda marcada como `source: "user"`.
+
+El formulario Add-Profile refleja estas reglas: en macOS / Linux el selector de shell incluye una entrada virtual `(login shell)` por defecto; en Windows la elección de shell es obligatoria.
 
 ### Account
 

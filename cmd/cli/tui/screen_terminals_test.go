@@ -10,6 +10,16 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// noopTerminalsSync replaces the real catalog probe in unit tests so the
+// fixture cfg isn't mutated by whatever host the test happens to run on
+// (issue #71 — newTerminalsScreen Syncs by default to populate the lists
+// without the GUI; tests bypass that to keep their assertions stable).
+func noopTerminalsSync() func() {
+	orig := terminalsSyncFn
+	terminalsSyncFn = func(*config.Config, string) bool { return false }
+	return func() { terminalsSyncFn = orig }
+}
+
 // terminalsTestConfig builds a minimal but realistic v2.1 config — two
 // detected terminal apps, two shells, a couple of profiles spanning two
 // source kinds, plus a pre-existing user profile so delete is testable.
@@ -43,6 +53,8 @@ func terminalsTestConfig(t *testing.T) (*config.Config, string) {
 
 func newTestTerminalsScreen(t *testing.T, cfg *config.Config, cfgPath string) terminalsScreen {
 	t.Helper()
+	restore := noopTerminalsSync()
+	t.Cleanup(restore)
 	return newTerminalsScreen(cfg, cfgPath, styles.NewTheme(true), i18n.New("en"), 100, 30)
 }
 
@@ -268,6 +280,93 @@ func TestTerminalsScreen_BackGoesToSettings(t *testing.T) {
 	}
 	if switchMsg.screen != screenSettings {
 		t.Errorf("expected screenSettings, got %v", switchMsg.screen)
+	}
+}
+
+// TestTerminalsScreen_NoSourceColumn — issue #71 acceptance criteria. The
+// rendered Profile rows must not contain the source field text. We assert
+// none of the source values bleed into the View output.
+func TestTerminalsScreen_NoSourceColumn(t *testing.T) {
+	cfg, cfgPath := terminalsTestConfig(t)
+	s := newTestTerminalsScreen(t, cfg, cfgPath)
+	view := s.View()
+	// Rendered rows must not show the source-bracket suffix (e.g. "[detected]").
+	for _, src := range []string{"[detected]", "[user]", "[wt-profile]", "[wezterm-launchmenu]", "[migrated]"} {
+		if strings.Contains(view, src) {
+			t.Errorf("rendered view leaks source field %q (must be internal)", src)
+		}
+	}
+}
+
+// TestTerminalsScreen_MissingModernBannerWindowsOnly — fires only on Windows
+// hosts with no modern Terminal in cfg. We exercise the banner by forcing
+// the goos and missingModern fields directly.
+func TestTerminalsScreen_MissingModernBannerWindowsOnly(t *testing.T) {
+	cfg, cfgPath := terminalsTestConfig(t)
+	s := newTestTerminalsScreen(t, cfg, cfgPath)
+
+	// Simulate a Windows host where no modern terminal is installed.
+	s.goos = "windows"
+	s.missingModern = true
+	if !strings.Contains(s.View(), "Install Windows Terminal") {
+		t.Error("expected missing-modern banner when missingModern=true")
+	}
+
+	// And not on macOS / Linux — the banner is suppressed on those OS by
+	// MissingModernTerminal directly, but the screen also passes the flag
+	// through, so when missingModern=false the banner is gone.
+	s.missingModern = false
+	if strings.Contains(s.View(), "Install Windows Terminal") {
+		t.Error("expected no banner when missingModern=false")
+	}
+}
+
+// TestTerminalsScreen_AddFormShellOptionalOnUnix — on macOS / Linux the
+// Add form's shell selector includes a "(login shell)" virtual entry at
+// index -1, and submitting with that selection produces a Profile with
+// ShellID="" (the implicit login-shell sentinel).
+func TestTerminalsScreen_AddFormShellOptionalOnUnix(t *testing.T) {
+	cfg, cfgPath := terminalsTestConfig(t)
+	s := newTestTerminalsScreen(t, cfg, cfgPath)
+	s.goos = "darwin"
+	originalCount := len(s.cfg.Global.TerminalProfiles)
+
+	updated, _ := s.Update(keyMsg("a"))
+	s = updated
+	if s.view != terminalsViewAdd {
+		t.Fatalf("expected viewAdd, got %v", s.view)
+	}
+	if s.formSelSh != -1 {
+		t.Errorf("expected default shell index -1 (login shell) on macOS, got %d", s.formSelSh)
+	}
+	updated, _ = s.Update(keyMsg("MacProfile"))
+	s = updated
+	updated, _ = s.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	s = updated
+
+	if len(s.cfg.Global.TerminalProfiles) != originalCount+1 {
+		t.Fatalf("expected new profile to be added")
+	}
+	added := s.cfg.Global.TerminalProfiles[len(s.cfg.Global.TerminalProfiles)-1]
+	if added.ShellID != "" {
+		t.Errorf("expected ShellID=\"\" (login shell) on macOS, got %q", added.ShellID)
+	}
+	if added.Source != "user" {
+		t.Errorf("expected Source=user for added profile, got %q", added.Source)
+	}
+}
+
+// TestTerminalsScreen_AddFormShellMandatoryOnWindows — on Windows the
+// shell selector starts at index 0 and ShellID must be non-empty.
+func TestTerminalsScreen_AddFormShellMandatoryOnWindows(t *testing.T) {
+	cfg, cfgPath := terminalsTestConfig(t)
+	s := newTestTerminalsScreen(t, cfg, cfgPath)
+	s.goos = "windows"
+
+	updated, _ := s.Update(keyMsg("a"))
+	s = updated
+	if s.formSelSh != 0 {
+		t.Errorf("expected default shell index 0 on Windows, got %d", s.formSelSh)
 	}
 }
 

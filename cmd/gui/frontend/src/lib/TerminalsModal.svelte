@@ -27,6 +27,22 @@
 
   let busy = false;
   let statusMsg = '';
+  let missingModern = false;
+  let isWindows = false;
+
+  // Detect host OS once on mount so the Add form can choose between the
+  // OS-aware shapes (Windows = mandatory shell selector, mac/Linux = optional
+  // shell, blank means "login shell"). Issue #71.
+  import { onMount } from 'svelte';
+  onMount(async () => {
+    try {
+      const goos = await bridge.getOS();
+      isWindows = goos === 'windows';
+      missingModern = await bridge.missingModernTerminal();
+    } catch {
+      // Best-effort — banner stays hidden, Add form falls back to mandatory shell.
+    }
+  });
 
   // Local working draft, refreshed reactively on prop change so a
   // Re-detect / external save updates the table on the next tick.
@@ -43,8 +59,10 @@
   let editTerminal = '';
   let editShell = '';
 
-  // Add-form state. The shell field is required (no "(default)" option) so
-  // every Profile pairs a clear Terminal with a clear Shell.
+  // Add-form state. On Windows the shell field is required (Profiles pair a
+  // Terminal with a Shell). On macOS/Linux the shell defaults to "" — the
+  // login shell — so the Add row matches the Terminal-only auto-Profiles;
+  // power users can still override with an explicit shell pick.
   type Draft = { name: string; terminal: string; shell: string };
   let addDraft: Draft | null = null;
 
@@ -52,7 +70,10 @@
     return draftApps.find(a => a.id === id)?.name ?? id ?? '—';
   }
   function shellName(id: string): string {
-    if (!id) return '—';
+    // Empty shell on Profile rows means "login shell" on macOS/Linux —
+    // render that as a hint so the dim cell tells the user what'll launch
+    // instead of an opaque em-dash.
+    if (!id) return isWindows ? '—' : 'login shell';
     return draftShells.find(s => s.id === id)?.name ?? id;
   }
 
@@ -92,7 +113,9 @@
   }
 
   function startAdd() {
-    addDraft = { name: '', terminal: draftApps[0]?.id ?? '', shell: draftShells[0]?.id ?? '' };
+    // macOS/Linux: shell defaults to "" (login shell); Windows: first shell.
+    const defaultShell = isWindows ? (draftShells[0]?.id ?? '') : '';
+    addDraft = { name: '', terminal: draftApps[0]?.id ?? '', shell: defaultShell };
   }
 
   function cancelAdd() {
@@ -102,7 +125,10 @@
   async function saveAdd() {
     if (!addDraft) return;
     const name = addDraft.name.trim();
-    if (!name || !addDraft.terminal || !addDraft.shell) return;
+    // Windows requires both Terminal AND Shell; mac/Linux requires only
+    // Terminal (Shell="" means login shell).
+    if (!name || !addDraft.terminal) return;
+    if (isWindows && !addDraft.shell) return;
     const id = nextProfileID(addDraft.terminal, addDraft.shell, name);
     const fresh: TerminalProfileInfo = {
       id,
@@ -205,6 +231,14 @@
         {/if}
       </div>
       <div class="modal-body tp-body">
+        {#if missingModern}
+          <div class="tp-banner" role="status">
+            <strong>Install Windows Terminal for the best experience.</strong>
+            gitbox is using bare-shell launches as a fallback. A modern terminal
+            (Windows Terminal, WezTerm, Alacritty, …) hosts shells better and
+            unlocks the per-Profile launch flow.
+          </div>
+        {/if}
         <h4 class="tp-h4 tp-h4-first">Detected terminals</h4>
         {#if draftApps.length === 0}
           <p class="tp-empty">No terminal apps detected. Click <em>Re-detect</em> after installing one.</p>
@@ -276,6 +310,9 @@
                     </td>
                     <td>
                       <select class="tp-input" bind:value={editShell}>
+                        {#if !isWindows}
+                          <option value="">(login shell)</option>
+                        {/if}
                         {#each draftShells as s (s.id)}
                           <option value={s.id}>{s.name}</option>
                         {/each}
@@ -299,8 +336,6 @@
                       <button class="tp-icon-btn" type="button" disabled={busy} on:click={() => startEdit(p)} title="Edit">✎</button>
                       {#if p.source === 'user'}
                         <button class="tp-icon-btn tp-icon-danger" type="button" disabled={busy} on:click={() => deleteProfile(p)} title="Delete">🗑</button>
-                      {:else}
-                        <span class="tp-source-tag" title={sourceTooltip(p.source)}>{p.source}</span>
                       {/if}
                     </td>
                   {/if}
@@ -320,6 +355,9 @@
                   </td>
                   <td>
                     <select class="tp-input" bind:value={addDraft.shell}>
+                      {#if !isWindows}
+                        <option value="">(login shell)</option>
+                      {/if}
                       {#each draftShells as s (s.id)}
                         <option value={s.id}>{s.name}</option>
                       {/each}
@@ -327,7 +365,7 @@
                   </td>
                   <td>—</td>
                   <td class="tp-actions">
-                    <button class="tp-btn tp-btn-small" type="button" disabled={busy || !addDraft.name.trim() || !addDraft.terminal || !addDraft.shell} on:click={saveAdd}>Add</button>
+                    <button class="tp-btn tp-btn-small" type="button" disabled={busy || !addDraft.name.trim() || !addDraft.terminal || (isWindows && !addDraft.shell)} on:click={saveAdd}>Add</button>
                     <button class="tp-btn tp-btn-small tp-btn-ghost" type="button" disabled={busy} on:click={cancelAdd}>Cancel</button>
                   </td>
                 </tr>
@@ -340,16 +378,6 @@
   </div>
 {/if}
 
-<script lang="ts" context="module">
-  function sourceTooltip(source: string): string {
-    switch (source) {
-      case 'wt-profile': return 'Imported from Windows Terminal settings.json. Toggle Hidden to remove from the launcher.';
-      case 'wezterm-launchmenu': return 'Imported from your wezterm.lua launch_menu. Toggle Hidden to remove from the launcher.';
-      case 'migrated': return 'Migrated from a v2.0 terminals[] entry. Toggle Hidden to remove from the launcher.';
-      default: return 'Auto-detected; toggle Hidden if you want it out of the menu.';
-    }
-  }
-</script>
 
 <style>
   /* Modal scaffolding mirrors .overlay / .modal / .modal-head / .modal-body
@@ -490,12 +518,21 @@
   }
   .tp-input:focus { outline: 1px solid var(--accent); }
 
-  .tp-source-tag {
-    font-size: 10px;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 2px 4px;
-    border-radius: 2px;
+  .tp-banner {
+    background: var(--bg-card);
+    border: 1px solid var(--accent, #f5b400);
+    border-left-width: 3px;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin: 0 0 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+  .tp-banner strong {
+    display: block;
+    color: var(--text-primary);
+    font-weight: 600;
+    margin-bottom: 2px;
   }
 </style>

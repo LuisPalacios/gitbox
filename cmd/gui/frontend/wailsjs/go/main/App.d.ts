@@ -160,6 +160,8 @@ export function ListTerminalProfiles():Promise<Array<main.TerminalProfileInfo>>;
 
 export function ListWorkspaces():Promise<main.WorkspaceListResult>;
 
+export function MissingModernTerminal():Promise<boolean>;
+
 export function MoveRepo(arg1:main.MoveRequestDTO):Promise<void>;
 
 export function OpenAccountFolder(arg1:string):Promise<void>;

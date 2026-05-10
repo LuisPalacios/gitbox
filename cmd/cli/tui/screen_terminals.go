@@ -2,12 +2,14 @@ package tui
 
 import (
 	"fmt"
+	"runtime"
 	"sort"
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/cmd/cli/tui/styles"
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/i18n"
+	"github.com/LuisPalacios/gitbox/pkg/terminals"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -15,21 +17,19 @@ import (
 )
 
 // terminalsScreen owns the v2.1 TerminalApps + Shells + TerminalProfiles
-// editor (issue #69 — TUI parity with the GUI's TerminalsModal).
+// editor (issue #69; simplified by issue #71).
 //
-// Apps + shells are read-only here: they're populated by the GUI's
-// SyncProfiles probe and persisted to gitbox.json. The TUI doesn't run
-// the probe itself yet — if the lists are empty the UI tells the user
-// to launch the GUI once. (TUI-side detection is deferred to keep this
-// commit focused; tracked in the issue.)
+// The screen probes the host directly via pkg/terminals.Sync on first
+// render so the CLI works without ever launching the GUI — the previous
+// "GUI must run first" coupling is gone.
 //
 // Profiles are fully editable: the user can toggle Default / Preferred
-// / Hidden, rename + reassign existing entries, add new (Terminal +
-// Shell) Profiles, and delete user-added Profiles. Deletion is
-// restricted to entries with source="user" — auto-detected, WT-imported,
-// WezTerm-imported, and migrated Profiles can only be hidden, never
-// removed (their source pipeline would just re-create them on the next
-// detect cycle anyway).
+// / Hidden, rename + reassign existing entries, add new Profiles, and
+// delete user-added Profiles. Deletion is restricted to entries with
+// source="user" (the source field is internal — never displayed). On
+// macOS / Linux the shell selector is optional ("" = login shell);
+// on Windows it's mandatory. A banner above the list warns when no
+// modern Terminal is installed on Windows.
 type terminalsScreen struct {
 	cfg     *config.Config
 	cfgPath string
@@ -37,6 +37,14 @@ type terminalsScreen struct {
 	tr      i18n.Translator
 	width   int
 	height  int
+
+	// goos is the host OS — captured once so the Add form can pick the
+	// right shape (Windows = mandatory shell, mac/Linux = optional).
+	goos string
+
+	// missingModern is true when the host should display the
+	// "install Windows Terminal" banner (Windows-only).
+	missingModern bool
 
 	// view drives the keyboard model. listView is the default browse
 	// surface; addView and editView swap in a small inline form.
@@ -98,6 +106,11 @@ type profileDraft struct {
 	shellID    string
 }
 
+// terminalsSyncFn is the Sync entry point used by the TUI screen. It's a
+// package-level variable so unit tests can swap in a no-op when their
+// fixture should not be mutated by host detection.
+var terminalsSyncFn = terminals.Sync
+
 func newTerminalsScreen(cfg *config.Config, cfgPath string, theme styles.Theme, tr i18n.Translator, w, h int) terminalsScreen {
 	ti := textinput.New()
 	ti.CharLimit = 80
@@ -110,8 +123,16 @@ func newTerminalsScreen(cfg *config.Config, cfgPath string, theme styles.Theme, 
 		tr:        tr,
 		width:     w,
 		height:    h,
+		goos:      runtime.GOOS,
 		nameInput: ti,
 	}
+	// Probe the host so the TUI populates apps/shells/profiles without
+	// depending on the GUI to have run first. Idempotent — only persists
+	// when the resulting payload differs.
+	if terminalsSyncFn(s.cfg, s.goos) {
+		_ = config.Save(s.cfg, s.cfgPath)
+	}
+	s.missingModern = terminals.MissingModernTerminal(s.cfg, s.goos)
 	s.refreshProfiles()
 	return s
 }
@@ -121,18 +142,16 @@ func (s terminalsScreen) Init() tea.Cmd { return nil }
 // refreshProfiles re-pulls the Profile slice from cfg, sorted in stable
 // presentation order. Called after every save so the table reflects what
 // the user just persisted without needing a separate "reload" step.
+//
+// Issue #71: source-based priority is gone (the source field is no longer
+// shown). The new order is: visible rows first, then alphabetical by Name.
+// Hidden rows trail at the bottom — same anchoring behaviour as before
+// without the internal-bookkeeping slice.
 func (s *terminalsScreen) refreshProfiles() {
 	src := append([]config.TerminalProfile(nil), s.cfg.Global.TerminalProfiles...)
-	// Sort: visible first, then by source priority (user → wt-profile →
-	// wezterm-launchmenu → migrated → detected → other), then by Name.
-	// Keeps the cursor anchored even after the user toggles Hidden.
 	sort.SliceStable(src, func(i, j int) bool {
 		if src[i].Hidden != src[j].Hidden {
 			return !src[i].Hidden
-		}
-		pi, pj := sourcePriority(src[i].Source), sourcePriority(src[j].Source)
-		if pi != pj {
-			return pi < pj
 		}
 		return strings.ToLower(src[i].Name) < strings.ToLower(src[j].Name)
 	})
@@ -142,22 +161,6 @@ func (s *terminalsScreen) refreshProfiles() {
 	} else if s.cursor < 0 || s.cursor >= len(s.profiles) {
 		s.cursor = 0
 	}
-}
-
-func sourcePriority(src string) int {
-	switch src {
-	case "user":
-		return 0
-	case "wt-profile":
-		return 1
-	case "wezterm-launchmenu":
-		return 2
-	case "migrated":
-		return 3
-	case "detected":
-		return 4
-	}
-	return 5
 }
 
 // ─── Update ───────────────────────────────────────────────────────────────
@@ -264,26 +267,40 @@ func (s terminalsScreen) updateList(msg tea.Msg) (terminalsScreen, tea.Cmd) {
 		s.view = terminalsViewEdit
 		s.formField = profileFieldName
 		s.formSelTerm = indexOfApp(s.cfg.Global.TerminalApps, p.TerminalID)
-		s.formSelSh = indexOfShell(s.cfg.Global.Shells, p.ShellID)
+		// Empty ShellID → -1 ("login shell" virtual entry on mac/Linux);
+		// fall back to 0 on Windows where ShellID must always be set.
+		if p.ShellID == "" && s.goos != "windows" {
+			s.formSelSh = -1
+		} else {
+			s.formSelSh = indexOfShell(s.cfg.Global.Shells, p.ShellID)
+		}
 		s.nameInput.SetValue(p.Name)
 		s.nameInput.Focus()
 		s.status, s.errMsg = "", ""
 		return s, textinput.Blink
 
 	case km.String() == "a":
-		if len(s.cfg.Global.TerminalApps) == 0 || len(s.cfg.Global.Shells) == 0 {
+		// On Windows the user must pick a shell; on mac/Linux a Profile can
+		// be Terminal-only (login shell implicit).
+		if len(s.cfg.Global.TerminalApps) == 0 ||
+			(s.goos == "windows" && len(s.cfg.Global.Shells) == 0) {
 			s.errMsg = s.tr.T("tui.terminals.no_apps_add")
 			s.status = ""
 			return s, nil
 		}
 		s.addDraft = &profileDraft{
 			terminalID: s.cfg.Global.TerminalApps[0].ID,
-			shellID:    s.cfg.Global.Shells[0].ID,
 		}
 		s.view = terminalsViewAdd
 		s.formField = profileFieldName
 		s.formSelTerm = 0
-		s.formSelSh = 0
+		// Default shell index: 0 on Windows, -1 ("login shell") on mac/Linux.
+		if s.goos == "windows" {
+			s.formSelSh = 0
+			s.addDraft.shellID = s.cfg.Global.Shells[0].ID
+		} else {
+			s.formSelSh = -1
+		}
 		s.nameInput.SetValue("")
 		s.nameInput.Focus()
 		s.status, s.errMsg = "", ""
@@ -345,7 +362,13 @@ func (s terminalsScreen) updateForm(msg tea.Msg) (terminalsScreen, tea.Cmd) {
 				s.formSelTerm--
 			}
 		case profileFieldShell:
-			if s.formSelSh > 0 {
+			// On mac/Linux index -1 is the "(login shell)" virtual entry,
+			// so the lower bound is -1 there; on Windows it stays at 0.
+			min := 0
+			if s.goos != "windows" {
+				min = -1
+			}
+			if s.formSelSh > min {
 				s.formSelSh--
 			}
 		}
@@ -387,13 +410,24 @@ func (s terminalsScreen) commitForm() (terminalsScreen, tea.Cmd) {
 	}
 	apps := s.cfg.Global.TerminalApps
 	shells := s.cfg.Global.Shells
-	if s.formSelTerm < 0 || s.formSelTerm >= len(apps) ||
-		s.formSelSh < 0 || s.formSelSh >= len(shells) {
-		s.errMsg = s.tr.F("tui.terminals.error", "select a terminal and a shell")
+	if s.formSelTerm < 0 || s.formSelTerm >= len(apps) {
+		s.errMsg = s.tr.F("tui.terminals.error", "select a terminal")
 		return s, nil
 	}
+	// Windows requires a Shell pick (Profiles are Terminal × Shell pairs).
+	// macOS / Linux allow an empty Shell — the special index -1 maps to the
+	// "login shell" virtual entry rendered first in the selector.
 	termID := apps[s.formSelTerm].ID
-	shID := shells[s.formSelSh].ID
+	var shID string
+	if s.goos == "windows" {
+		if s.formSelSh < 0 || s.formSelSh >= len(shells) {
+			s.errMsg = s.tr.F("tui.terminals.error", "select a shell")
+			return s, nil
+		}
+		shID = shells[s.formSelSh].ID
+	} else if s.formSelSh >= 0 && s.formSelSh < len(shells) {
+		shID = shells[s.formSelSh].ID
+	}
 
 	profs := append([]config.TerminalProfile(nil), s.cfg.Global.TerminalProfiles...)
 	switch s.view {
@@ -510,6 +544,16 @@ func (s terminalsScreen) viewList() string {
 	b.WriteString(s.theme.Title.Render(s.tr.T("tui.terminals.title")) + "\n")
 	b.WriteString(s.theme.TextMuted.Render(strings.Repeat("─", max(s.width, 60))) + "\n\n")
 
+	// Issue #71: Windows hosts with no modern Terminal installed get a banner
+	// at the top of the screen, mirroring the GUI Manager.
+	if s.missingModern {
+		warn := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(s.theme.Palette.AccentWarning)).
+			Bold(true)
+		b.WriteString("  " + warn.Render("⚠ Install Windows Terminal for the best experience.") + "\n")
+		b.WriteString("  " + s.theme.TextMuted.Render("gitbox is using bare-shell launches as a fallback. A modern terminal hosts shells better.") + "\n\n")
+	}
+
 	// Detected terminals.
 	b.WriteString(s.theme.Heading.Render(s.tr.T("tui.terminals.detected_apps")) + "\n")
 	if len(s.cfg.Global.TerminalApps) == 0 {
@@ -580,7 +624,7 @@ func (s terminalsScreen) viewList() string {
 
 // renderProfileRow lays out a single Profile line. The flag glyphs are
 // kept ASCII-friendly so dumb terminals don't render boxes; the GUI uses
-// a richer Unicode set in its table.
+// a richer Unicode set in its table. Issue #71: source column dropped.
 func (s terminalsScreen) renderProfileRow(p config.TerminalProfile) string {
 	def := " "
 	if p.Default {
@@ -596,12 +640,8 @@ func (s terminalsScreen) renderProfileRow(p config.TerminalProfile) string {
 	}
 	termName := s.appName(p.TerminalID)
 	shName := s.shellName(p.ShellID)
-	src := p.Source
-	if src == "" {
-		src = "—"
-	}
-	return fmt.Sprintf("  %s %s %s %-30s %-18s × %-18s [%s]",
-		def, pref, hid, p.Name, termName, shName, src)
+	return fmt.Sprintf("  %s %s %s %-30s %-18s × %-18s",
+		def, pref, hid, p.Name, termName, shName)
 }
 
 func (s terminalsScreen) appName(id string) string {
@@ -623,7 +663,13 @@ func (s terminalsScreen) shellName(id string) string {
 		}
 	}
 	if id == "" {
-		return "—"
+		// On macOS / Linux a Profile with empty ShellID launches the host's
+		// login shell — surface that explicitly so the row reads "iTerm2 ×
+		// login shell" instead of an opaque em-dash.
+		if s.goos == "windows" {
+			return "—"
+		}
+		return "login shell"
 	}
 	return id
 }
@@ -651,9 +697,18 @@ func (s terminalsScreen) viewForm() string {
 		appNames(s.cfg.Global.TerminalApps), s.formSelTerm,
 		s.formField == profileFieldTerminal) + "\n\n")
 
-	// Shell selector.
+	// Shell selector. On macOS / Linux the catalog Profiles are Terminal-
+	// only — the "(login shell)" virtual entry lives at index -1 of the
+	// selector and produces ShellID="" when picked. On Windows the shell
+	// pick is mandatory; the virtual entry is suppressed.
+	shellOpts := shellNames(s.cfg.Global.Shells)
+	shellCursor := s.formSelSh
+	if s.goos != "windows" {
+		shellOpts = append([]string{"(login shell)"}, shellOpts...)
+		shellCursor = s.formSelSh + 1
+	}
 	b.WriteString(s.renderSelector(s.tr.T("tui.terminals.field_shell"),
-		shellNames(s.cfg.Global.Shells), s.formSelSh,
+		shellOpts, shellCursor,
 		s.formField == profileFieldShell) + "\n\n")
 
 	if s.errMsg != "" {
