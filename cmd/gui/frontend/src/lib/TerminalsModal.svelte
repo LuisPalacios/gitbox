@@ -281,22 +281,22 @@
           <table class="tp-table">
             <thead>
               <tr>
-                <th title="Default — primary action of the per-row launcher">●</th>
-                <th title="Preferred — shown in the launcher submenu">★</th>
+                <th class="tp-th-icon" title="Default — primary action of the per-row launcher">●</th>
+                <th class="tp-th-icon" title="Preferred — shown in the launcher submenu">★</th>
                 <th>Name</th>
                 <th>Terminal</th>
                 <th>Shell</th>
-                <th title="Hidden — kept in config but not shown in the launcher">👁</th>
+                <th class="tp-th-icon" title="Hidden — kept in config but not shown in the launcher">👁</th>
                 <th class="tp-th-actions">Actions</th>
               </tr>
             </thead>
             <tbody>
               {#each draftProfiles as p (p.id)}
                 <tr class:tp-row-hidden={p.hidden}>
-                  <td>
+                  <td class="tp-td-icon">
                     <input type="radio" name="tp-default" checked={p.default} disabled={busy} on:change={() => setDefault(p.id)} />
                   </td>
-                  <td>
+                  <td class="tp-td-icon">
                     <button class="tp-icon-btn" class:tp-on={p.preferred} type="button" disabled={busy} on:click={() => togglePreferred(p.id)} title="Toggle preferred">★</button>
                   </td>
                   {#if editingId === p.id}
@@ -318,7 +318,7 @@
                         {/each}
                       </select>
                     </td>
-                    <td>
+                    <td class="tp-td-icon">
                       <button class="tp-icon-btn" type="button" disabled={busy} on:click={() => toggleHidden(p.id)} title="Toggle hidden">{p.hidden ? '🙈' : '👁'}</button>
                     </td>
                     <td class="tp-actions">
@@ -329,7 +329,7 @@
                     <td>{p.name}</td>
                     <td class="tp-cell-dim">{appName(p.terminal)}</td>
                     <td class="tp-cell-dim">{shellName(p.shell)}</td>
-                    <td>
+                    <td class="tp-td-icon">
                       <button class="tp-icon-btn" type="button" disabled={busy} on:click={() => toggleHidden(p.id)} title="Toggle hidden">{p.hidden ? '🙈' : '👁'}</button>
                     </td>
                     <td class="tp-actions">
@@ -343,8 +343,8 @@
               {/each}
               {#if addDraft}
                 <tr class="tp-row-add">
-                  <td>—</td>
-                  <td>—</td>
+                  <td class="tp-td-icon">—</td>
+                  <td class="tp-td-icon">—</td>
                   <td><input class="tp-input" bind:value={addDraft.name} placeholder="Display name" autofocus /></td>
                   <td>
                     <select class="tp-input" bind:value={addDraft.terminal}>
@@ -363,7 +363,7 @@
                       {/each}
                     </select>
                   </td>
-                  <td>—</td>
+                  <td class="tp-td-icon">—</td>
                   <td class="tp-actions">
                     <button class="tp-btn tp-btn-small" type="button" disabled={busy || !addDraft.name.trim() || !addDraft.terminal || (isWindows && !addDraft.shell)} on:click={saveAdd}>Add</button>
                     <button class="tp-btn tp-btn-small tp-btn-ghost" type="button" disabled={busy} on:click={cancelAdd}>Cancel</button>
@@ -475,6 +475,36 @@
   .tp-row-add td { background: var(--bg-card); }
 
   .tp-th-actions { width: 1%; white-space: nowrap; }
+  /* Icon-only columns (default radio, preferred star, hidden eye).
+     Three rules at play to make the header glyph line up exactly under
+     the body control:
+       1. text-align:center on both header AND body cells.
+       2. width:1% collapses the column to its content's intrinsic
+          width so they share the same tight box.
+       3. matching font-size (14px) on both — emojis like 👁 have
+          asymmetric side bearings that shift the visual midpoint
+          differently at different font-sizes, so a 12px header glyph
+          centers at a slightly different X than a 14px body glyph.
+     The .tp-icon-btn padding is also zeroed inside icon cells so the
+     button's content sits at the same offset as the header glyph (cell
+     padding only); native radio margin is reset for the same reason. */
+  .tp-th-icon, .tp-td-icon {
+    text-align: center;
+    width: 1%;
+    white-space: nowrap;
+    padding-left: 4px;
+    padding-right: 4px;
+    font-size: 14px;
+  }
+  .tp-td-icon input[type="radio"],
+  .tp-td-icon .tp-icon-btn {
+    margin: 0;
+    vertical-align: middle;
+  }
+  .tp-td-icon .tp-icon-btn {
+    padding-left: 0;
+    padding-right: 0;
+  }
   .tp-actions { white-space: nowrap; display: flex; gap: 4px; }
 
   .tp-btn {
