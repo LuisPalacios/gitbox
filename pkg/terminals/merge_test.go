@@ -63,18 +63,44 @@ func TestMergeCarriesUserAddedProfiles(t *testing.T) {
 // TestMergeCarriesMigratedProfiles guards the v2.0-migration safety net:
 // when the migrator stamps a legacy bare-shell-on-Windows entry as
 // Source="migrated", it must survive even if the new composition rules
-// (which suppress bare-shell auto-Profiles) don't re-emit it.
+// (which suppress bare-shell auto-Profiles) don't re-emit it. The
+// terminal_app it points to must still be reachable in the merged set
+// (prevApps carry-forward covers user-added pseudo-apps like "legacy-pwsh").
 func TestMergeCarriesMigratedProfiles(t *testing.T) {
 	det := []config.TerminalProfile{} // composition emits nothing for this case
+	prevApps := []config.TerminalApp{
+		{ID: "legacy-pwsh", Name: "PowerShell", Command: "pwsh.exe"},
+	}
 	prev := []config.TerminalProfile{
 		{ID: "legacy-pwsh", Name: "PowerShell", TerminalID: "legacy-pwsh", Source: "migrated"},
 	}
-	got := MergeWithExisting(nil, nil, det, nil, nil, prev)
+	got := MergeWithExisting(nil, nil, det, prevApps, nil, prev)
 	if len(got.Profiles) != 1 {
 		t.Fatalf("expected 1 carried-forward migrated profile, got %d", len(got.Profiles))
 	}
 	if got.Profiles[0].ID != "legacy-pwsh" {
 		t.Errorf("wrong carry-forward: %+v", got.Profiles[0])
+	}
+}
+
+// TestMergeDropsBrokenMigratedProfiles — issue #71: a migrated Profile that
+// references a terminal_app no longer in the merged set is unlaunchable
+// (the launcher can't reach the terminal). Drop it instead of carrying
+// forward a ghost row. Reproduces the user-reported "wt" rows surviving
+// after Windows Terminal was uninstalled.
+func TestMergeDropsBrokenMigratedProfiles(t *testing.T) {
+	// Detected: only wezterm — no "wt" any more.
+	detApps := []config.TerminalApp{
+		{ID: "wezterm", Name: "WezTerm", Command: "wezterm.exe"},
+	}
+	prev := []config.TerminalProfile{
+		{ID: "powershell-7", Name: "PowerShell 7", TerminalID: "wt", Source: "migrated"},
+	}
+	got := MergeWithExisting(detApps, nil, nil, nil, nil, prev)
+	for _, p := range got.Profiles {
+		if p.ID == "powershell-7" {
+			t.Errorf("expected broken migrated profile to be dropped, but it survived: %+v", p)
+		}
 	}
 }
 

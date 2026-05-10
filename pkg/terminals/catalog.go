@@ -102,7 +102,7 @@ var windowsTerminals = []CatalogTerminal{
 	},
 	{
 		ID: "mintty", Name: "Mintty", OS: "windows",
-		Probe:        probeBinary("mintty.exe"),
+		Probe:        probeMintty,
 		ArgsTemplate: []string{"-w", "max", "-d", launch.TokenPath, "--", launch.TokenShellCommand, launch.TokenShellArgs},
 	},
 	{

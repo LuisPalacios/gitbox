@@ -105,6 +105,25 @@ func probeGitBash() (string, bool) {
 	return "", false
 }
 
+// probeMintty resolves mintty.exe. Git for Windows ships its own copy under
+// `C:\Program Files\Git\usr\bin\mintty.exe` that PATH usually misses, so we
+// fall back to the well-known Git install paths after a generic LookPath.
+func probeMintty() (string, bool) {
+	if p, err := exec.LookPath("mintty.exe"); err == nil {
+		return p, true
+	}
+	for _, root := range []string{os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)")} {
+		if root == "" {
+			continue
+		}
+		cand := filepath.Join(root, "Git", "usr", "bin", "mintty.exe")
+		if _, err := os.Stat(cand); err == nil {
+			return cand, true
+		}
+	}
+	return "", false
+}
+
 // probePwsh resolves pwsh.exe — PowerShell 7 ships under Program Files\
 // PowerShell\7 and is sometimes missing from PATH on minimal installs.
 func probePwsh() (string, bool) {

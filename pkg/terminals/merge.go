@@ -39,26 +39,17 @@ func MergeWithExisting(detApps []config.TerminalApp, detShells []config.ShellEnt
 	mergedShells, seenShell := mergeShells(detShells, prevShells)
 	mergedProfiles, seenProfile := mergeProfiles(detProfiles, prevProfiles)
 
-	// Carry-forward: user-added + migrated profiles whose ID isn't in the
-	// detected set this round. Hidden / renamed / arg-overrides came along
-	// with the standard merge above already.
-	for _, p := range prevProfiles {
-		if seenProfile[p.ID] {
-			continue
-		}
-		if p.Source == "user" || p.Source == "migrated" {
-			mergedProfiles = append(mergedProfiles, p)
-		}
-	}
-
 	// Carry-forward: user-added apps + shells whose ID isn't in the detected
-	// set this round, so their dependent Profiles still launch.
+	// set this round, so their dependent Profiles still launch. Catalog ids
+	// that the user no longer has installed (or that the catalog deprecated —
+	// see deprecatedTerminalIDs) get dropped here.
 	for _, a := range prevApps {
 		if seenApp[a.ID] {
 			continue
 		}
 		if !inCatalogTerminalIDs(a.ID) {
 			mergedApps = append(mergedApps, a)
+			seenApp[a.ID] = true
 		}
 	}
 	for _, s := range prevShells {
@@ -67,6 +58,28 @@ func MergeWithExisting(detApps []config.TerminalApp, detShells []config.ShellEnt
 		}
 		if !inCatalogShellIDs(s.ID) {
 			mergedShells = append(mergedShells, s)
+			seenShell[s.ID] = true
+		}
+	}
+
+	// Carry-forward: user-added + migrated profiles whose ID isn't in the
+	// detected set this round. A `migrated` Profile whose TerminalID no
+	// longer resolves to a current terminal_app is broken (the launcher
+	// can't reach its terminal) — issue #71 surfaced these as ghost rows
+	// referencing terminals like "wt" after the user uninstalled them. Drop
+	// those, but keep `user`-added Profiles unconditionally (the user knows
+	// what they want even if the row is currently unlaunchable).
+	for _, p := range prevProfiles {
+		if seenProfile[p.ID] {
+			continue
+		}
+		switch p.Source {
+		case "user":
+			mergedProfiles = append(mergedProfiles, p)
+		case "migrated":
+			if p.TerminalID == "" || seenApp[p.TerminalID] {
+				mergedProfiles = append(mergedProfiles, p)
+			}
 		}
 	}
 
@@ -182,6 +195,12 @@ func enforceSingleDefault(profiles []config.TerminalProfile) {
 // the per-OS terminal catalogs. User-added apps with custom ids fall outside
 // this set and survive the merge as carry-forward entries. Stays in sync
 // with the catalog tables in catalog.go.
+//
+// The deprecatedTerminalIDs set extends the check with ids that the legacy
+// (pre-issue-#71) code emitted as Terminals but the new catalog reclassifies
+// (e.g. "git-bash" — Git Bash is a Shell now, not a Terminal). Treating them
+// as catalog-owned makes the merge drop them from prevApps when they're not
+// re-detected, instead of carrying them forward as if user-added.
 func inCatalogTerminalIDs(id string) bool {
 	for _, list := range [][]CatalogTerminal{windowsTerminals, darwinTerminals, linuxTerminals} {
 		for _, c := range list {
@@ -190,7 +209,18 @@ func inCatalogTerminalIDs(id string) bool {
 			}
 		}
 	}
-	return false
+	return deprecatedTerminalIDs[id]
+}
+
+// deprecatedTerminalIDs lists Terminal IDs the legacy code emitted but that
+// the new catalog has reclassified. Anything in here gets dropped from the
+// terminal_apps[] list on first Sync after upgrade so legacy entries do not
+// pollute the Manager.
+var deprecatedTerminalIDs = map[string]bool{
+	// Issue #71: Git Bash is a Shell, not a Terminal. The integrated mintty
+	// terminal that ships with Git for Windows is detected separately under
+	// the "mintty" catalog id.
+	"git-bash": true,
 }
 
 // inCatalogShellIDs reports whether `id` is a catalog shell id. Per-distro
