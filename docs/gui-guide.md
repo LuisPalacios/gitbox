@@ -263,6 +263,7 @@ Click the **gear icon** to open the settings panel:
 - **Periodic fetch** — automatic fetch interval (off, 5m, 15m, 30m)
 - **Run at startup** — launch Gitbox automatically when you log in (platform dependent)
 - **System check** — **Run** opens a report of every external tool gitbox uses (git, Git Credential Manager, ssh, tmux, …), where it's installed, its version, and — for anything missing that your config needs — an install command. Same data as `gitbox doctor` on the CLI.
+- **Terminals** — **Manager** opens the Terminal Profile editor in its own OS window. Three sections: detected Terminal apps (read-only), detected Shells (read-only), and Profiles (the launchable Terminal × Shell pairs the kebab menu offers). Toggle Default / Preferred / Hidden per row, edit a Profile's name + Terminal + Shell binding, add user-defined Profiles, or delete those you added. Re-detect re-runs the host probe to pick up new shells, fresh WezTerm `launch_menu` entries, or freshly installed terminals without restarting the GUI. The window is owned by the main app — closing the main window closes the Manager too.
 - **Version** — current app version
 - **Author** — project author and link to the GitHub repository
 

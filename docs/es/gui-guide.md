@@ -262,6 +262,7 @@ Haz clic en el **icono de engranaje** para abrir el panel de ajustes:
 - **Fetch periódico** — intervalo de fetch automático (off, 5m, 15m, 30m)
 - **Run at startup** — lanzar Gitbox automáticamente al iniciar sesión (dependiente de plataforma)
 - **System check** — **Run** abre un informe de cada herramienta externa que usa gitbox (git, Git Credential Manager, ssh, tmux, …), dónde está instalada, su versión y, para cualquier cosa ausente que tu config necesite, un comando de instalación. Mismos datos que `gitbox doctor` en la CLI.
+- **Terminals** — **Manager** abre el editor de Perfiles de terminal en su propia ventana del SO. Tres secciones: aplicaciones de terminal detectadas (solo lectura), shells detectados (solo lectura) y Perfiles (las parejas Terminal × Shell que el menú kebab puede lanzar). Alterna Default / Preferred / Hidden por fila, edita el nombre + Terminal + Shell de un Perfil, añade Perfiles definidos por el usuario o elimina los que tú añadiste. Re-detect vuelve a sondear el host para captar nuevos shells, entradas frescas de `launch_menu` de WezTerm o terminales recién instaladas sin reiniciar la GUI. La ventana es propiedad de la app principal — al cerrar la ventana principal también se cierra el Manager.
 - **Versión** — versión actual de la app
 - **Author** — autor del proyecto y enlace al repositorio de GitHub
 
