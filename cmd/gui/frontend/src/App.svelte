@@ -3831,16 +3831,10 @@
     </div>
   {/if}
 
-  <!-- ── TERMINALS & SHELLS MODAL (issue #69) ── -->
-  <TerminalsModal
-    open={showTerminalsModal}
-    apps={configApps}
-    shells={configShells}
-    profiles={configProfiles}
-    onSave={saveTerminalProfilesAndReload}
-    onConfigReloaded={reloadConfigFromDisk}
-    onClose={() => showTerminalsModal = false}
-  />
+  <!-- ── TERMINALS & SHELLS (issue #69) ──
+       The Manager opens in its own OS window via openTerminalsManagerWindow
+       (subprocess spawn), so no in-app modal is mounted here. -->
+
 
   <!-- ── DOCTOR (SYSTEM CHECK) MODAL ── -->
   {#if showDoctorModal}
