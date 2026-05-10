@@ -2383,6 +2383,21 @@
         hostOS = await bridge.getOS();
       } catch (e) { console.error(e); }
       applyTheme();
+      // The Wails subprocess starts hidden so the user never sees a
+      // dark-empty-webview flash before Svelte mounts. Reveal the
+      // window only after Svelte has flushed the DOM AND the browser
+      // has rasterised the first frame — the canonical "after paint"
+      // point is tick() + two requestAnimationFrames (the first RAF
+      // runs before paint, the second runs after). Without this the
+      // window appears black for a few frames on Windows + Linux.
+      // (Issue #69 user feedback. macOS WebKit happens to paint
+      // synchronously so it never showed the flash there.)
+      await tick();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          bridge.showWindow();
+        });
+      });
       return;
     }
 

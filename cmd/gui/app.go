@@ -194,10 +194,26 @@ func (a *App) DomReady(_ context.Context) {
 		// Refresh the detected terminal/shell list before painting so the
 		// editor opens with a real table on first show.
 		a.SyncProfiles()
-		// The runTerminalsWindow uses StartHidden so the user doesn't see a
-		// black flash of the empty webview before Svelte renders. Reveal
-		// the window now that the DOM is mounted and the data is ready.
-		wailsrt.WindowShow(a.ctx)
+		// runTerminalsWindow sets StartHidden so the user doesn't see a
+		// dark-empty-webview flash before Svelte paints. We *don't*
+		// reveal the window here — DomReady fires before the browser
+		// has actually rasterised the first frame, so calling
+		// WindowShow here still leaks a flash on Windows + Linux (the
+		// macOS WebKit happens to paint synchronously and so it's fine
+		// there). Instead, App.svelte calls bridge.showWindow() from
+		// onMount after tick() + two requestAnimationFrames, which is
+		// the canonical "after paint" point.
+		//
+		// Safety net: if the frontend bundle ever fails to load (JS
+		// error, hung script), the user would be stranded with an
+		// invisible window and no way to dismiss it. After 1.5s we
+		// reveal anyway — by then either the frontend has already
+		// shown it (no-op) or we accept a brief flash to recover from
+		// a broken state.
+		go func(ctx context.Context) {
+			time.Sleep(1500 * time.Millisecond)
+			wailsrt.WindowShow(ctx)
+		}(a.ctx)
 		return
 	}
 

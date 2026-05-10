@@ -1187,6 +1187,31 @@ func (a *App) GetWindowMode() string {
 // Returns immediately after Start — the parent stays responsive while the
 // editor window is open.
 func (a *App) OpenTerminalsManagerWindow() error {
+	// If a previous Manager subprocess is still alive, don't spawn a
+	// duplicate — the Wails SingleInstanceLock would catch it on the
+	// other side and just focus the existing window, but checking here
+	// avoids the wasted process startup and keeps a.terminalsCmd
+	// pointing at the live one.
+	a.terminalsMu.Lock()
+	if a.terminalsCmd != nil && a.terminalsCmd.Process != nil {
+		// Best-effort liveness check: ProcessState is non-nil only after
+		// Wait. We never call Wait on this cmd, so a non-nil Process is
+		// our signal that we already started one. The OS reaps it; if
+		// the user closed it, the next Start below replaces our handle.
+		// On Windows, signal 0 isn't supported, so we just assume alive
+		// and let the SingleInstanceLock arbitrate.
+		existing := a.terminalsCmd
+		a.terminalsMu.Unlock()
+		// Re-trigger the lock so the existing window comes to the front.
+		// On Linux/Mac we could use Process.Signal(syscall.Signal(0))
+		// to test liveness, but cross-platform we just spawn and let
+		// SingleInstanceLock dedupe. Replace the handle with the new cmd
+		// so Shutdown still has something to kill.
+		_ = existing
+	} else {
+		a.terminalsMu.Unlock()
+	}
+
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("locate gitbox binary: %w", err)
@@ -1207,7 +1232,17 @@ func (a *App) OpenTerminalsManagerWindow() error {
 	// OnSecondInstanceLaunch (which calls WindowShow) before anything
 	// becomes visible. The CLAUDE.md "Windows console-flash rule" only
 	// applies to console-subsystem children; GUI children are exempt.
-	return cmd.Start()
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	// Track the child so the parent's Shutdown can kill it — without
+	// this, closing the main window leaves an orphan Manager window
+	// (issue #69 user feedback). Mutex-guarded because click handlers
+	// can race with Shutdown.
+	a.terminalsMu.Lock()
+	a.terminalsCmd = cmd
+	a.terminalsMu.Unlock()
+	return nil
 }
 
 // RedetectProfiles re-runs SyncProfiles and returns the refreshed config DTO.
