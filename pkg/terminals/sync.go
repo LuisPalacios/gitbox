@@ -12,14 +12,20 @@ import (
 // Pipeline:
 //
 //  1. Detect installed apps + shells from the catalog.
-//  2. Compose auto-derived Profiles per OS rules (Windows: T×S, mac/Linux:
-//     T-only, Windows fallback: bare-shells when no modern Terminal).
-//  3. Discover Windows Terminal settings.json profiles (Windows).
-//  4. Discover WezTerm launch_menu entries (any OS).
-//  5. Merge with the existing config — preserves user toggles, hand-edits,
+//  2. Compose auto-derived Profiles per OS rules (Windows: T×S +
+//     hidden bare-shell DIRECT shortcuts, mac/Linux: T-only).
+//  3. Discover WezTerm launch_menu entries (any OS) and layer them on top.
+//  4. Merge with the existing config — preserves user toggles, hand-edits,
 //     user-added entries, migrated v2.0 entries.
-//  6. Mark a sensible Default if none survives the merge.
-//  7. Diff the result against cfg; only mutate when changed.
+//  5. Mark a sensible Default if none survives the merge.
+//  6. Diff the result against cfg; only mutate when changed.
+//
+// Issue #71 follow-up: Windows Terminal `settings.json` is intentionally
+// NOT a Visibility-pillar source any more — it does not produce its own
+// Profiles. The parser in discover.go::DiscoverWTProfiles is preserved for
+// the EXECUTION pillar (a follow-up will look up a matching WT profile at
+// launch time so `Windows Terminal + <Shell>` uses the user's WT-tuned
+// font/colors).
 //
 // `goos` is taken as a parameter so tests can exercise all three OS branches
 // from any host (matches the same pattern in compose.go).
@@ -32,11 +38,6 @@ func Sync(cfg *config.Config, goos string) bool {
 	composed := ComposeProfiles(apps, shells, goos)
 
 	profiles := composed
-	if goos == "windows" {
-		if wt := DiscoverWTProfiles(); len(wt) > 0 {
-			profiles = mergeProfilesByID(wt, profiles)
-		}
-	}
 	if wez := DiscoverWeztermProfiles(); len(wez) > 0 {
 		profiles = mergeProfilesByID(wez, profiles)
 	}

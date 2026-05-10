@@ -16,12 +16,14 @@ import (
 //
 // Real probe behaviour is exercised in detect_test.go (where present).
 func TestSyncIdempotent(t *testing.T) {
-	// Build a cfg that already matches what a hypothetical Sync would emit.
+	// Build a cfg that already matches what a hypothetical Sync would emit:
+	// 1 T×S pair + 1 hidden DIRECT bare-pwsh Profile (issue #71).
 	cfg := &config.Config{}
 	cfg.Global.TerminalApps = []config.TerminalApp{fakeWTApp}
 	cfg.Global.Shells = []config.ShellEntry{fakePwshShell}
 	cfg.Global.TerminalProfiles = []config.TerminalProfile{
 		{ID: "wt+pwsh", Name: "Windows Terminal — PowerShell 7", TerminalID: "wt", ShellID: "pwsh", Source: "detected", Default: true},
+		{ID: "bare-pwsh", Name: "PowerShell 7 (direct)", TerminalID: "", ShellID: "pwsh", Source: "detected", Hidden: true},
 	}
 
 	merged := MergeWithExisting(
@@ -35,7 +37,7 @@ func TestSyncIdempotent(t *testing.T) {
 
 	if !profilesPayloadEqual(merged.Apps, merged.Shells, merged.Profiles,
 		cfg.Global.TerminalApps, cfg.Global.Shells, cfg.Global.TerminalProfiles) {
-		t.Errorf("expected merged payload to be byte-identical to existing cfg")
+		t.Errorf("expected merged payload to be byte-identical to existing cfg, got %+v", merged.Profiles)
 	}
 }
 
@@ -113,7 +115,8 @@ func TestSyncAddsToEmptyConfig(t *testing.T) {
 		cfg.Global.TerminalApps, cfg.Global.Shells, cfg.Global.TerminalProfiles) {
 		t.Error("expected merged payload to differ from empty cfg")
 	}
-	if len(merged.Apps) != 1 || len(merged.Shells) != 1 || len(merged.Profiles) != 1 {
+	// 1 T×S pair (wt+pwsh) + 1 hidden DIRECT bare-pwsh (issue #71).
+	if len(merged.Apps) != 1 || len(merged.Shells) != 1 || len(merged.Profiles) != 2 {
 		t.Errorf("unexpected counts: apps=%d shells=%d profiles=%d", len(merged.Apps), len(merged.Shells), len(merged.Profiles))
 	}
 }

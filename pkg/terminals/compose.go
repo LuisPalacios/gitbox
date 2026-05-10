@@ -31,8 +31,20 @@ func ComposeProfiles(apps []config.TerminalApp, shells []config.ShellEntry, goos
 	return composeUnix(apps)
 }
 
-// composeWindows produces Terminal × Shell pairs. Returns bare-shell Profiles
-// only when no modern Terminal is installed.
+// composeWindows produces Terminal × Shell pairs plus Hidden bare-shell
+// "DIRECT" Profiles (issue #71).
+//
+// Visible auto-Profiles: every modern Terminal × every Shell.
+// Hidden DIRECT Profiles: one per shell that Windows can launch without a
+// terminal wrapper (pwsh, powershell, cmd, wsl). They're in the config so
+// the user can un-hide them from the Manager when they want a quick "open
+// the shell directly" shortcut, but stay out of the launcher menu by
+// default since the modern Terminal × Shell rows cover the same shells in
+// a richer wrapper.
+//
+// When no modern Terminal is installed the bare-shell Profiles become
+// VISIBLE for every shell — that's the "no-modern-Terminal" fallback so
+// the user isn't stranded.
 func composeWindows(apps []config.TerminalApp, shells []config.ShellEntry) []config.TerminalProfile {
 	var modern []config.TerminalApp
 	for _, a := range apps {
@@ -41,22 +53,21 @@ func composeWindows(apps []config.TerminalApp, shells []config.ShellEntry) []con
 		}
 	}
 	if len(modern) == 0 {
-		// Fallback: produce one bare-shell Profile per shell so the user has
-		// something to launch. The Profile uses the shell's Command directly
-		// and skips the terminal app indirection.
+		// Fallback: visible bare-shell Profile per shell so the user has
+		// something to launch.
 		out := make([]config.TerminalProfile, 0, len(shells))
 		for _, sh := range shells {
 			out = append(out, config.TerminalProfile{
 				ID:         "bare-" + sh.ID,
 				Name:       sh.Name,
-				TerminalID: "", // no terminal app — launch the shell directly
+				TerminalID: "",
 				ShellID:    sh.ID,
 				Source:     "detected",
 			})
 		}
 		return out
 	}
-	out := make([]config.TerminalProfile, 0, len(modern)*len(shells))
+	out := make([]config.TerminalProfile, 0, len(modern)*len(shells)+len(windowsDirectShellIDs))
 	for _, app := range modern {
 		for _, sh := range shells {
 			out = append(out, config.TerminalProfile{
@@ -67,6 +78,40 @@ func composeWindows(apps []config.TerminalApp, shells []config.ShellEntry) []con
 				Source:     "detected",
 			})
 		}
+	}
+	out = append(out, composeWindowsDirectShells(shells)...)
+	return out
+}
+
+// windowsDirectShellIDs lists the shell ids that Windows can launch as a
+// standalone process — they ship their own console host so they don't need
+// a terminal wrapper. Order matches the issue #71 spec.
+var windowsDirectShellIDs = []string{"pwsh", "powershell", "cmd", "wsl"}
+
+// composeWindowsDirectShells returns the Hidden-by-default bare-shell
+// Profiles for the 4 directly-launchable Windows shells. Each Profile has
+// no Terminal — the launcher takes the shell's Command verbatim. The user
+// un-hides via the Manager's eye toggle when they want the shortcut to
+// surface in the launcher menu.
+func composeWindowsDirectShells(shells []config.ShellEntry) []config.TerminalProfile {
+	byID := make(map[string]config.ShellEntry, len(shells))
+	for _, s := range shells {
+		byID[s.ID] = s
+	}
+	out := make([]config.TerminalProfile, 0, len(windowsDirectShellIDs))
+	for _, id := range windowsDirectShellIDs {
+		sh, ok := byID[id]
+		if !ok {
+			continue
+		}
+		out = append(out, config.TerminalProfile{
+			ID:         "bare-" + sh.ID,
+			Name:       sh.Name + " (direct)",
+			TerminalID: "",
+			ShellID:    sh.ID,
+			Source:     "detected",
+			Hidden:     true,
+		})
 	}
 	return out
 }

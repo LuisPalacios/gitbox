@@ -193,10 +193,10 @@ func DetectTerminals(goos string) []config.TerminalApp {
 }
 
 // DetectShells walks the shell catalog for `goos` and returns one ShellEntry
-// per installed entry, in catalog order. On Windows, when wsl.exe resolves
-// AND `wsl --list --quiet` returns at least one distro, the bare "wsl" entry
-// is replaced by one entry per distro — keeping the bare entry as a fallback
-// would be confusing because it points at the default distro implicitly.
+// per installed entry, in catalog order. On Windows, when wsl.exe resolves,
+// per-distro entries are appended after the bare "wsl" entry — the bare
+// entry is kept (issue #71) so it can back the standalone "DIRECT" wsl
+// Profile that ComposeProfiles emits as a hidden-by-default shortcut.
 func DetectShells(goos string) []config.ShellEntry {
 	cat := catalogShellsFor(goos)
 	if len(cat) == 0 {
@@ -210,12 +210,6 @@ func DetectShells(goos string) []config.ShellEntry {
 		if !ok {
 			continue
 		}
-		if c.ID == "wsl" {
-			wslCmd = cmd
-			// Skip the bare wsl entry here; we re-emit it below either as a
-			// fallback (no distros) or as per-distro entries.
-			continue
-		}
 		if seen[c.ID] {
 			continue
 		}
@@ -226,25 +220,19 @@ func DetectShells(goos string) []config.ShellEntry {
 			Command: cmd,
 			Args:    append([]string(nil), c.Args...),
 		})
+		if c.ID == "wsl" {
+			wslCmd = cmd
+		}
 	}
-	// Per-distro WSL entries (Windows only).
+	// Per-distro WSL entries (Windows only) — appended after the bare wsl
+	// row so the catalog-vs-runtime split is preserved.
 	if goos == "windows" && wslCmd != "" {
-		distros := DiscoverWSLDistros()
-		if len(distros) > 0 {
-			for _, d := range distros {
-				out = append(out, config.ShellEntry{
-					ID:      "wsl-" + slugifyASCII(d),
-					Name:    "WSL — " + d,
-					Command: wslCmd,
-					Args:    []string{"-d", d},
-				})
-			}
-		} else {
-			// Fallback bare WSL entry when no distros are reachable.
+		for _, d := range DiscoverWSLDistros() {
 			out = append(out, config.ShellEntry{
-				ID:      "wsl",
-				Name:    "WSL (default distro)",
+				ID:      "wsl-" + slugifyASCII(d),
+				Name:    "WSL — " + d,
 				Command: wslCmd,
+				Args:    []string{"-d", d},
 			})
 		}
 	}
