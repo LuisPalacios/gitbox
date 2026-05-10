@@ -4,6 +4,17 @@ on:
   push:
     tags: ['v*']
 
+# Force every JavaScript action to run under Node.js 24, regardless of what
+# the action declares in its action.yml. GitHub deprecated the Node 20
+# runtime that actions/checkout@v4, actions/setup-go@v5, etc. still ship
+# (those are the latest major versions but their bundled runtime is Node
+# 20). After 2026-06-02 Node 24 becomes the default and after 2026-09-16
+# Node 20 is removed from the runner — opting in here makes the migration
+# a no-op when those dates land. Once the upstream actions ship Node 24
+# natively this env var becomes harmless.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   # ── Go unit tests (fast, runs on all platforms) ──
   test:
