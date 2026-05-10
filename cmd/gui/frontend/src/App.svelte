@@ -16,7 +16,6 @@
   import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, WorkspaceDTO, WorkspaceMemberDTO, WorkspaceCreateRequest, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
   import PRPopover from './lib/PRPopover.svelte';
-  import TerminalsSection from './lib/TerminalsSection.svelte';
   import TerminalsModal from './lib/TerminalsModal.svelte';
   import { tooltip } from './lib/tooltip';
 
@@ -3147,7 +3146,10 @@
           <span class="settings-sublabel settings-doctor-summary">{doctorSummary}</span>
         {/if}
       </div>
-      <TerminalsSection onOpen={openTerminalsManagerWindow} />
+      <div class="settings-row">
+        <span class="settings-label" use:tooltip={"Manage terminal apps, shells, and the launch profiles that pair them. Click ‘Manager’ to open the editor in its own window."}>Terminals</span>
+        <button class="settings-action-btn" on:click={openTerminalsManagerWindow}>Manager</button>
+      </div>
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Currently running gitbox version (git tag + commit hash baked in at build time)."}>{$t('settings.version')}</span>
         <span class="settings-value">{appVersion}</span>

@@ -1198,12 +1198,15 @@ func (a *App) OpenTerminalsManagerWindow() error {
 		args = append(args, "--test-mode")
 	}
 	cmd := exec.Command(exe, args...)
-	// Don't inherit the parent's console handles — the sub-process is a
-	// GUI app and handing it our stdio just wastes file descriptors. Hide
-	// the transient process-create window on Windows (per CLAUDE.md
-	// "Windows console flash rule"); the actual GUI window pops up
-	// independently and stays visible.
-	git.HideWindow(cmd)
+	// Do NOT call git.HideWindow here — the sub-process is a /SUBSYSTEM:
+	// WINDOWS Wails GUI, not a console app. HideWindow sets
+	// SysProcAttr.HideWindow=true which translates to STARTF_USESHOWWINDOW
+	// + SW_HIDE in STARTUPINFO; Wails honours that hint and the GUI
+	// window starts hidden. The user then has to click the parent's
+	// Manager button a second time to trigger the SingleInstanceLock's
+	// OnSecondInstanceLaunch (which calls WindowShow) before anything
+	// becomes visible. The CLAUDE.md "Windows console-flash rule" only
+	// applies to console-subsystem children; GUI children are exempt.
 	return cmd.Start()
 }
 
