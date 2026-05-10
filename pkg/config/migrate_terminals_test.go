@@ -202,6 +202,32 @@ func TestMigrateLegacyTerminals_UnknownTerminalFallback(t *testing.T) {
 	}
 }
 
+// TestCrossPlatformBase locks the helper that fixes the Linux/macOS CI
+// regression where filepath.Base(`C:\path\wt.exe`) returned the whole
+// string and the migrator's switch on `wt.exe` never matched. The helper
+// must accept both separators on every host.
+func TestCrossPlatformBase(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{`C:\path\wt.exe`, "wt.exe"},
+		{`C:\Program Files\WezTerm\wezterm-gui.exe`, "wezterm-gui.exe"},
+		{"/usr/bin/gnome-terminal", "gnome-terminal"},
+		{"/Applications/iTerm.app/Contents/MacOS/iTerm2", "iTerm2"},
+		{"open", "open"},
+		{"wt.exe", "wt.exe"},
+		{"", ""},
+		// Mixed separators — Windows config sync'd to Unix sometimes ends
+		// up with both. Still resolves to the last segment.
+		{`/mnt/c\Windows\wt.exe`, "wt.exe"},
+	}
+	for _, c := range cases {
+		if got := crossPlatformBase(c.in); got != c.want {
+			t.Errorf("crossPlatformBase(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 func TestSlugify(t *testing.T) {
 	cases := []struct {
 		in, want string

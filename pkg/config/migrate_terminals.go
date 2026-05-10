@@ -80,7 +80,7 @@ func MigrateLegacyTerminals(g *GlobalConfig) bool {
 // returned id is stable: the same legacy command always yields the same app id
 // across re-migrations and across hosts.
 func inferTerminalApp(t TerminalEntry) (string, TerminalApp) {
-	base := strings.ToLower(filepath.Base(t.Command))
+	base := strings.ToLower(crossPlatformBase(t.Command))
 	switch base {
 	case "wt.exe":
 		return "wt", TerminalApp{
@@ -168,7 +168,7 @@ func inferTerminalApp(t TerminalEntry) (string, TerminalApp) {
 // a shell). WT-profile-derived entries return ("", zero) — they keep their
 // argv verbatim via TerminalProfile.Args and do not need a Shell.
 func inferShellFromLegacy(t TerminalEntry) (string, ShellEntry) {
-	base := strings.ToLower(filepath.Base(t.Command))
+	base := strings.ToLower(crossPlatformBase(t.Command))
 	switch base {
 	case "cmd.exe":
 		return "cmd", ShellEntry{ID: "cmd", Name: "Command Prompt", Command: t.Command}
@@ -230,6 +230,21 @@ func profileID(appID, shellID, name string, fallbackIdx int) string {
 		base = "profile-" + intToString(fallbackIdx)
 	}
 	return base
+}
+
+// crossPlatformBase returns the basename of a path-like string treating
+// both `/` and `\` as separators, regardless of the host OS. The migrator
+// runs on Linux and macOS too (CI test matrix, configs sync'd via cloud
+// storage) and Go's filepath.Base is OS-specific: on Linux it considers
+// `\` a regular character, so filepath.Base(`C:\path\wt.exe`) returns
+// the whole string and the switch on `wt.exe` never matches. We use this
+// helper anywhere we inspect a Windows-style command stored in the
+// config from a non-Windows runtime.
+func crossPlatformBase(p string) string {
+	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
+		return p[i+1:]
+	}
+	return p
 }
 
 // slugify lower-cases a string and replaces every non-[a-z0-9] run with a
