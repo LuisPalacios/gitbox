@@ -370,8 +370,10 @@ func TestEnsureDir(t *testing.T) {
 	}
 }
 
-// Ensure global.terminals parses and round-trips through Save, and that the
-// EditorEntry schema is preserved alongside it — the two share a GlobalConfig.
+// Ensure a legacy v2.0 global.terminals[] block parses, gets auto-migrated
+// into the v2.1 three-array shape (terminal_apps + shells + terminal_profiles),
+// and round-trips cleanly through Save → Load. EditorEntry is preserved
+// alongside it — the two share GlobalConfig.
 func TestParseV2WithTerminals(t *testing.T) {
 	js := `{
         "version": 2,
@@ -396,22 +398,30 @@ func TestParseV2WithTerminals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if got := len(cfg.Global.Terminals); got != 3 {
-		t.Fatalf("terminals count = %d, want 3", got)
+	// Legacy field is cleared after migration.
+	if got := len(cfg.Global.Terminals); got != 0 {
+		t.Fatalf("legacy terminals not cleared after migration; got %d", got)
 	}
-	wt := cfg.Global.Terminals[0]
-	if wt.Name != "Windows Terminal" || wt.Command != "wt.exe" {
-		t.Errorf("first terminal = %+v", wt)
+	// Three Profiles emitted, first marked as default.
+	if got := len(cfg.Global.TerminalProfiles); got != 3 {
+		t.Fatalf("profiles count = %d, want 3", got)
 	}
-	if len(wt.Args) != 2 || wt.Args[0] != "-d" || wt.Args[1] != "{path}" {
-		t.Errorf("first terminal args = %v", wt.Args)
+	if !cfg.Global.TerminalProfiles[0].Default {
+		t.Error("first migrated profile should be default")
+	}
+	if cfg.Global.TerminalProfiles[0].Name != "Windows Terminal" {
+		t.Errorf("first profile name = %q", cfg.Global.TerminalProfiles[0].Name)
+	}
+	if cfg.Global.TerminalProfiles[0].TerminalID != "wt" {
+		t.Errorf("first profile TerminalID = %q, want wt", cfg.Global.TerminalProfiles[0].TerminalID)
 	}
 	// Editors alongside terminals still parses.
 	if len(cfg.Global.Editors) != 1 || cfg.Global.Editors[0].Name != "VS Code" {
 		t.Error("editors should coexist with terminals")
 	}
 
-	// Round-trip through Save/Load.
+	// Round-trip through Save/Load — the new shape persists, no second
+	// migration runs (idempotent).
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gitbox.json")
 	if err := Save(cfg, path); err != nil {
@@ -421,12 +431,15 @@ func TestParseV2WithTerminals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if len(reloaded.Global.Terminals) != 3 {
-		t.Fatalf("reloaded terminals = %d, want 3", len(reloaded.Global.Terminals))
+	if len(reloaded.Global.Terminals) != 0 {
+		t.Errorf("reloaded legacy terminals should stay empty; got %d", len(reloaded.Global.Terminals))
 	}
-	plain := reloaded.Global.Terminals[2]
-	if plain.Name != "Plain" || plain.Command != "/usr/bin/plainterm" || len(plain.Args) != 0 {
-		t.Errorf("plain terminal round-trip = %+v", plain)
+	if len(reloaded.Global.TerminalProfiles) != 3 {
+		t.Fatalf("reloaded profiles = %d, want 3", len(reloaded.Global.TerminalProfiles))
+	}
+	plain := reloaded.Global.TerminalProfiles[2]
+	if plain.Name != "Plain" || plain.TerminalID != "legacy-plainterm" {
+		t.Errorf("plain profile round-trip = %+v", plain)
 	}
 }
 

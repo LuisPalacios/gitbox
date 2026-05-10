@@ -8,9 +8,14 @@ The order in this table is the order in which `SyncTerminals` seeds `global.term
 
 **Windows Terminal profiles.** The `wt.exe` row is the bare-binary fallback. On Windows hosts where `settings.json` is parseable, gitbox discovers each visible WT profile at runtime and emits a per-profile entry (same `wt.exe` command, `--profile "<name>" -d "{path}" "{command}"` args) that supersedes this bare entry — that dynamic discovery is not driven by this table.
 
+**WezTerm `launch_menu`.** The `wezterm-gui.exe` (Windows), `wezterm-gui` (Linux), and `open -a WezTerm` (macOS) rows are the bare anchors. When `wezterm.lua` is found and its `config.launch_menu` table is parseable (best-effort regex parser; see `pkg/harness/wezterm.go`), gitbox emits one Profile per `launch_menu` entry whose `args` overrides the row's default-args template — same dynamic-discovery pattern as Windows Terminal.
+
+**Terminals vs shells.** Rows whose `Command` is itself a shell (`cmd.exe`, `pwsh.exe`, `powershell.exe`, `git-bash.exe`, `wsl.exe`) are listed here for backward compatibility with the legacy v2.0 `global.terminals[]` flat model. The v2.1 Profile model treats them as Shells — see [`shell-directory.md`](shell-directory.md) — and pairs them with a real terminal app (Windows Terminal, WezTerm) at launch time. New entries go into the appropriate directory.
+
 | Name | OS | Command | Default Args |
 | :--- | :--- | :--- | :--- |
 | **Windows Terminal** | Windows | `wt.exe` | `-d` `{path}` `{command}` |
+| **WezTerm** | Windows | `wezterm-gui.exe` | `start` `--cwd` `{path}` `--` `{command}` |
 | **Git Bash** | Windows | `git-bash.exe` | `--cd={path}` |
 | **PowerShell 7** | Windows | `pwsh.exe` | |
 | **WSL** | Windows | `wsl.exe` | `--cd` `{path}` |
@@ -19,9 +24,11 @@ The order in this table is the order in which `SyncTerminals` seeds `global.term
 | **iTerm** | macOS | `open` | `-a` `iTerm` |
 | **Terminal** | macOS | `open` | `-a` `Terminal` |
 | **Warp** | macOS | `open` | `-a` `Warp` |
+| **WezTerm** | macOS | `open` | `-a` `WezTerm` |
 | **GNOME Terminal** | Linux | `gnome-terminal` | `--working-directory={path}` `--` `{command}` |
 | **Konsole** | Linux | `konsole` | `--workdir` `{path}` `-e` `{command}` |
 | **Kitty** | Linux | `kitty` | `--directory={path}` `{command}` |
 | **Alacritty** | Linux | `alacritty` | `--working-directory` `{path}` `-e` `{command}` |
 | **Xfce Terminal** | Linux | `xfce4-terminal` | `--working-directory={path}` |
 | **Terminator** | Linux | `terminator` | `--working-directory={path}` |
+| **WezTerm** | Linux | `wezterm-gui` | `start` `--cwd` `{path}` `--` `{command}` |

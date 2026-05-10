@@ -815,10 +815,30 @@ The config lives at `~/.config/gitbox/gitbox.json`. See [gitbox.jsonc](../json/g
 | `editors`                         | array  | No       | Code editors for the "Open in" menu. Auto-populated on first launch.     |
 | `editors[].name`                  | string | Yes      | Display name (e.g. `"VS Code"`).                                         |
 | `editors[].command`               | string | Yes      | Full path or command name (e.g. `"C:\\...\\code.cmd"`).                   |
-| `terminals`                       | array  | No       | Terminal emulators for the "Open in" menu. Auto-populated on first launch. |
+| `terminals`                       | array  | No       | Legacy v2.0 terminal-emulator list. Still read by the launcher when `terminal_profiles` is empty (v2.0→v2.1 transition). New configs prefer the trio below. |
 | `terminals[].name`                | string | Yes      | Display name (e.g. `"Windows Terminal"`).                                 |
 | `terminals[].command`             | string | Yes      | Full path or on-PATH launcher (e.g. `"wt.exe"`, `"gnome-terminal"`).      |
 | `terminals[].args`                | array  | No       | Arguments passed before the path. Use `"{path}"` as the path placeholder; if absent, path is appended. Use `"{command}"` to mark where an AI harness argv is spliced (expands to zero items for terminal-only launches). |
+| `terminal_apps`                   | array  | No       | v2.1 detected terminal emulators (Windows Terminal, WezTerm, GNOME Terminal, Konsole, Kitty, Alacritty, Terminator, macOS apps via `open -a`). Auto-populated by the GUI's detect probe; the TUI's `Settings → Terminal profiles…` screen reads this list. |
+| `terminal_apps[].id`              | string | Yes      | Stable id (`"wt"`, `"wezterm"`, `"gnome-terminal"`, `"macapp-iterm"`, …). Used as the cross-reference target from `terminal_profiles[].terminal`. |
+| `terminal_apps[].name`            | string | Yes      | Display name shown in the Manager and the per-row launcher. |
+| `terminal_apps[].command`         | string | Yes      | Resolved absolute path (filled in at detect time). |
+| `terminal_apps[].args_template`   | array  | No       | Argv template with `{path}`, `{shell_command}`, `{shell_args}`, `{command}` tokens. The launcher expands these per Profile via `pkg/launch.ResolveArgs`. Same token rules as `terminals[].args` above, plus `{shell_command}` (the resolved shell binary) and `{shell_args}` (a splice point for the shell's default args). |
+| `shells`                          | array  | No       | v2.1 detected shells (`cmd`, `powershell`, `pwsh`, `git-bash`, `bash`, `zsh`, `fish`, plus per-distro `wsl-<name>` rows on Windows hosts with WSL). Auto-populated by the GUI's detect probe. |
+| `shells[].id`                     | string | Yes      | Stable id (`"cmd"`, `"pwsh"`, `"git-bash"`, `"wsl-ubuntu"`, …). Cross-referenced by `terminal_profiles[].shell`. |
+| `shells[].name`                   | string | Yes      | Display name. |
+| `shells[].command`                | string | Yes      | Resolved absolute path. |
+| `shells[].args`                   | array  | No       | Default args spliced where the terminal's `args_template` references `{shell_args}`. |
+| `terminal_profiles`               | array  | No       | v2.1 launchable Profiles — each pairs a Terminal with a Shell (or imports a Windows Terminal `settings.json` profile / WezTerm `launch_menu` entry as a single self-contained row). The per-row launcher and the `Open in…` menu read this list when populated. |
+| `terminal_profiles[].id`          | string | Yes      | Stable id (`"wt+pwsh"`, `"wezterm+launchmenu-mybash"`, `"user-1"`, …). |
+| `terminal_profiles[].name`        | string | Yes      | Display name (e.g. `"Windows Terminal — pwsh"`). |
+| `terminal_profiles[].terminal`    | string | Yes      | `terminal_apps[].id` to launch. |
+| `terminal_profiles[].shell`       | string | No       | `shells[].id` to run inside the terminal. Empty for self-contained Profiles (WezTerm `launch_menu`, etc.) where the terminal owns its own shell selection. |
+| `terminal_profiles[].args`        | array  | No       | Override argv. When empty the launcher uses `terminal_apps[].args_template`. WezTerm `launch_menu` rows store the full `start --cwd {path} -- <argv>` shape here. |
+| `terminal_profiles[].default`     | bool   | No       | Marks the Profile invoked by the per-row launcher's primary action. Mutually exclusive across the list. |
+| `terminal_profiles[].preferred`   | bool   | No       | Promotes the Profile to the kebab menu's quick list. |
+| `terminal_profiles[].hidden`      | bool   | No       | Suppresses the Profile from menus without deleting it. The only way to suppress an auto-detected / WT-imported / WezTerm-imported / migrated Profile (those reappear on the next detect cycle if removed). |
+| `terminal_profiles[].source`      | string | No       | Origin tag — `"detected"`, `"wt-profile"`, `"wezterm-launchmenu"`, `"migrated"`, `"user"`. Only `"user"` Profiles can be deleted; the others can only be Hidden. |
 | `ai_harnesses`                    | array  | No       | AI CLI harnesses for the "Open in" menu. Auto-populated on first launch (claude, codex, gemini, aider, cursor-agent, opencode). Launched inside `global.terminals[0]`, which must contain `"{command}"` in its args. |
 | `ai_harnesses[].name`             | string | Yes      | Display name (e.g. `"Claude Code"`). |
 | `ai_harnesses[].command`          | string | Yes      | Absolute path or on-PATH binary (e.g. `"claude"`). |

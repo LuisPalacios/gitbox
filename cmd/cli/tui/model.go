@@ -32,6 +32,7 @@ const (
 	screenWorkspaceAdd
 	screenGitignore
 	screenMoveRepo
+	screenTerminals
 )
 
 // --- Navigation messages ---
@@ -276,6 +277,7 @@ type model struct {
 	workspaceAdd workspaceAddModel
 	gitignore    gitignoreModel
 	moveRepo     moveRepoModel
+	terminals    terminalsScreen
 
 	// gitignoreNeedsAction mirrors the latest async global-gitignore check
 	// so the dashboard footer can render the urgent "G gitignore!" prefix
@@ -372,6 +374,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case screenWorkspaceAdd:
 			m.workspaceAdd.width = msg.Width
 			m.workspaceAdd.height = msg.Height
+		case screenTerminals:
+			m.terminals.width = msg.Width
+			m.terminals.height = msg.Height
 		}
 		return m, nil
 
@@ -453,6 +458,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.gitignore, cmd = m.gitignore.Update(msg)
 	case screenMoveRepo:
 		m.moveRepo, cmd = m.moveRepo.Update(msg)
+	case screenTerminals:
+		m.terminals, cmd = m.terminals.Update(msg)
 	}
 	return m, cmd
 }
@@ -537,6 +544,9 @@ func (m model) switchTo(msg switchScreenMsg) (model, tea.Cmd) {
 		accountKey := src.Account
 		m.moveRepo = newMoveRepoModel(m.cfg, m.cfgPath, m.theme, m.width, m.height, accountKey, msg.sourceKey, msg.repoKey, msg.repoPath)
 		cmd = m.moveRepo.Init()
+	case screenTerminals:
+		m.terminals = newTerminalsScreen(m.cfg, m.cfgPath, m.theme, m.tr, m.width, m.height)
+		cmd = m.terminals.Init()
 	}
 	return m, cmd
 }
@@ -577,6 +587,8 @@ func (m model) View() string {
 		return m.gitignore.View()
 	case screenMoveRepo:
 		return m.moveRepo.View()
+	case screenTerminals:
+		return m.terminals.View()
 	default:
 		return "Unknown screen"
 	}

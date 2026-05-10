@@ -66,10 +66,16 @@ func newLauncherOverlay(cfg *config.Config) launcherOverlay {
 	}
 	g := cfg.Global
 
-	if len(g.Terminals) > 0 {
+	// Source the terminal list through EffectiveTerminals so post-migration
+	// configs (Terminals[] cleared, TerminalProfiles[] populated) still
+	// surface launchable rows here. The full Profile-aware launcher reshape
+	// arrives in Commit 5 of #69; until then this adapter keeps the UI
+	// usable without the full v2.1 rewrite.
+	terms := g.EffectiveTerminals()
+	if len(terms) > 0 {
 		lo.items = append(lo.items, launcherItem{kind: launcherRowHeader, label: "Terminals"})
-		for i := range g.Terminals {
-			t := g.Terminals[i]
+		for i := range terms {
+			t := terms[i]
 			lo.items = append(lo.items, launcherItem{kind: launcherRowTerminal, label: t.Name, term: &t})
 		}
 	}

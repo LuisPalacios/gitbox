@@ -119,6 +119,70 @@ export namespace config {
 	        this.credential_store = source["credential_store"];
 	    }
 	}
+	export class TerminalProfile {
+	    id: string;
+	    name: string;
+	    terminal: string;
+	    shell?: string;
+	    args?: string[];
+	    default?: boolean;
+	    preferred?: boolean;
+	    hidden?: boolean;
+	    source?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalProfile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.terminal = source["terminal"];
+	        this.shell = source["shell"];
+	        this.args = source["args"];
+	        this.default = source["default"];
+	        this.preferred = source["preferred"];
+	        this.hidden = source["hidden"];
+	        this.source = source["source"];
+	    }
+	}
+	export class ShellEntry {
+	    id: string;
+	    name: string;
+	    command: string;
+	    args?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ShellEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.command = source["command"];
+	        this.args = source["args"];
+	    }
+	}
+	export class TerminalApp {
+	    id: string;
+	    name: string;
+	    command: string;
+	    args_template?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalApp(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.command = source["command"];
+	        this.args_template = source["args_template"];
+	    }
+	}
 	export class TerminalEntry {
 	    name: string;
 	    command: string;
@@ -189,8 +253,11 @@ export namespace config {
 	    // Go type: TokenGlobal
 	    credential_token?: any;
 	    editors?: EditorEntry[];
-	    terminals?: TerminalEntry[];
 	    ai_harnesses?: AIHarnessEntry[];
+	    terminals?: TerminalEntry[];
+	    terminal_apps?: TerminalApp[];
+	    shells?: ShellEntry[];
+	    terminal_profiles?: TerminalProfile[];
 	    pr_badges_enabled?: boolean;
 	    pr_include_drafts?: boolean;
 	    check_global_gitignore?: boolean;
@@ -211,8 +278,11 @@ export namespace config {
 	        this.credential_gcm = this.convertValues(source["credential_gcm"], GCMGlobal);
 	        this.credential_token = this.convertValues(source["credential_token"], null);
 	        this.editors = this.convertValues(source["editors"], EditorEntry);
-	        this.terminals = this.convertValues(source["terminals"], TerminalEntry);
 	        this.ai_harnesses = this.convertValues(source["ai_harnesses"], AIHarnessEntry);
+	        this.terminals = this.convertValues(source["terminals"], TerminalEntry);
+	        this.terminal_apps = this.convertValues(source["terminal_apps"], TerminalApp);
+	        this.shells = this.convertValues(source["shells"], ShellEntry);
+	        this.terminal_profiles = this.convertValues(source["terminal_profiles"], TerminalProfile);
 	        this.pr_badges_enabled = source["pr_badges_enabled"];
 	        this.pr_include_drafts = source["pr_include_drafts"];
 	        this.check_global_gitignore = source["check_global_gitignore"];
@@ -276,6 +346,9 @@ export namespace config {
 	        this.clone_folder = source["clone_folder"];
 	    }
 	}
+	
+	
+	
 	
 	
 	
@@ -1280,6 +1353,24 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class ShellInfo {
+	    id: string;
+	    name: string;
+	    command: string;
+	    args: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ShellInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.command = source["command"];
+	        this.args = source["args"];
+	    }
+	}
 	
 	export class StatusResult {
 	    source: string;
@@ -1349,6 +1440,24 @@ export namespace main {
 	        this.error = source["error"];
 	    }
 	}
+	export class TerminalAppInfo {
+	    id: string;
+	    name: string;
+	    command: string;
+	    args_template: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalAppInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.command = source["command"];
+	        this.args_template = source["args_template"];
+	    }
+	}
 	export class TerminalInfo {
 	    id: string;
 	    name: string;
@@ -1365,6 +1474,34 @@ export namespace main {
 	        this.name = source["name"];
 	        this.command = source["command"];
 	        this.args = source["args"];
+	    }
+	}
+	export class TerminalProfileInfo {
+	    id: string;
+	    name: string;
+	    terminal: string;
+	    shell: string;
+	    args: string[];
+	    default: boolean;
+	    preferred: boolean;
+	    hidden: boolean;
+	    source: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalProfileInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.terminal = source["terminal"];
+	        this.shell = source["shell"];
+	        this.args = source["args"];
+	        this.default = source["default"];
+	        this.preferred = source["preferred"];
+	        this.hidden = source["hidden"];
+	        this.source = source["source"];
 	    }
 	}
 	export class TokenGuideInfo {

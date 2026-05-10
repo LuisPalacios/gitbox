@@ -4,6 +4,7 @@ import {main} from '../models';
 import {credential} from '../models';
 import {gitignore} from '../models';
 import {identity} from '../models';
+import {config} from '../models';
 
 export function AccountDeletionImpact(arg1:string):Promise<main.AccountDeletionImpactDTO>;
 
@@ -129,6 +130,8 @@ export function GetTokenGuide(arg1:string):Promise<main.TokenGuideInfo>;
 
 export function GetViewMode():Promise<string>;
 
+export function GetWindowMode():Promise<string>;
+
 export function GetWorkspace(arg1:string):Promise<main.WorkspaceDTO>;
 
 export function InstallGlobalGitignore():Promise<gitignore.InstallResult>;
@@ -149,6 +152,12 @@ export function ListMoveDestinationOwners(arg1:string):Promise<Array<main.MoveOw
 
 export function ListRemoteRepos(arg1:string):Promise<Array<main.DiscoverResult>>;
 
+export function ListShells():Promise<Array<main.ShellInfo>>;
+
+export function ListTerminalApps():Promise<Array<main.TerminalAppInfo>>;
+
+export function ListTerminalProfiles():Promise<Array<main.TerminalProfileInfo>>;
+
 export function ListWorkspaces():Promise<main.WorkspaceListResult>;
 
 export function MoveRepo(arg1:main.MoveRequestDTO):Promise<void>;
@@ -163,6 +172,8 @@ export function OpenAccountInBrowser(arg1:string):Promise<void>;
 
 export function OpenAccountInTerminal(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 
+export function OpenAccountProfile(arg1:string,arg2:string):Promise<void>;
+
 export function OpenFileInEditor(arg1:string):Promise<void>;
 
 export function OpenInAIHarness(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
@@ -175,6 +186,10 @@ export function OpenInExplorer(arg1:string):Promise<void>;
 
 export function OpenInTerminal(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 
+export function OpenProfile(arg1:string,arg2:string):Promise<void>;
+
+export function OpenTerminalsManagerWindow():Promise<void>;
+
 export function OpenWorkspace(arg1:string):Promise<void>;
 
 export function PickFolder(arg1:string):Promise<string>;
@@ -186,6 +201,8 @@ export function PreviewSweep(arg1:string,arg2:string):Promise<main.SweepPreviewD
 export function PullRepo(arg1:string,arg2:string):Promise<void>;
 
 export function RecommendedGlobalGitignoreBody():Promise<string>;
+
+export function RedetectProfiles():Promise<main.ConfigDTO>;
 
 export function RefreshAllPRs():Promise<void>;
 
@@ -202,6 +219,10 @@ export function RenameAccount(arg1:string,arg2:string):Promise<void>;
 export function RepairConfig():Promise<main.ConfigRepairResult>;
 
 export function RestoreFromBackup(arg1:string):Promise<main.ConfigRepairResult>;
+
+export function SaveTerminalProfiles(arg1:Array<config.TerminalApp>,arg2:Array<config.ShellEntry>,arg3:Array<config.TerminalProfile>):Promise<void>;
+
+export function SaveTerminalProfilesDTO(arg1:Array<main.TerminalAppInfo>,arg2:Array<main.ShellInfo>,arg3:Array<main.TerminalProfileInfo>):Promise<void>;
 
 export function SetAutostart(arg1:boolean):Promise<void>;
 
@@ -228,6 +249,8 @@ export function ShowWindow():Promise<void>;
 export function SyncAIHarnesses():Promise<void>;
 
 export function SyncEditors():Promise<void>;
+
+export function SyncProfiles():Promise<void>;
 
 export function SyncTerminals():Promise<void>;
 

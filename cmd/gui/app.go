@@ -47,6 +47,23 @@ type App struct {
 	cfgLoadError    string // non-empty if config exists but failed to parse
 	testMode        bool   // true when launched with --test-mode
 	testCleanup     func() // cleanup function for test-mode temp dir
+	// windowMode selects which UI the frontend should render. Empty (or
+	// "main") = the full gitbox app. "terminals" = the standalone Profile
+	// editor sub-process spawned by OpenTerminalsManagerWindow (issue #69
+	// — keeps the editor in its own OS window so the parent stays
+	// interactive and the editor scrolls on its own).
+	windowMode string
+
+	// terminalsCmd tracks the Profile-editor subprocess spawned by
+	// OpenTerminalsManagerWindow (issue #69). Captured so the parent's
+	// Shutdown can tear it down — otherwise the editor window survives the
+	// main app and an orphaned binary keeps holding the
+	// com.luispalacios.gitbox.terminals SingleInstanceLock, which would
+	// confuse a fresh launch. Guarded by terminalsMu to keep concurrent
+	// click handlers safe.
+	terminalsMu  sync.Mutex
+	terminalsCmd *exec.Cmd
+
 	mu              sync.Mutex
 	savedWindowPos  *config.WindowState // full-mode window state pre-loaded from config
 	savedCompactPos *config.WindowState // compact-mode window state pre-loaded from config
@@ -103,6 +120,20 @@ func (a *App) Startup(ctx context.Context) {
 
 // Shutdown is called by Wails when the app is closing.
 func (a *App) Shutdown(_ context.Context) {
+	// Tear down the Profile-editor subprocess (issue #69) so the user can't
+	// end up with an orphaned terminals window after closing the main app.
+	// Only fires in the parent process — the subprocess never spawns its
+	// own subprocess, so terminalsCmd stays nil there.
+	a.terminalsMu.Lock()
+	cmd := a.terminalsCmd
+	a.terminalsCmd = nil
+	a.terminalsMu.Unlock()
+	if cmd != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
+		// Reap to release the OS handle; ignore the error from a process we
+		// just killed.
+		_, _ = cmd.Process.Wait()
+	}
 	if a.testCleanup != nil {
 		a.testCleanup()
 	}
@@ -154,6 +185,38 @@ func (a *App) BeforeClose(_ context.Context) bool {
 // We start hidden, restore saved position, then show the window to prevent flickering.
 // If the saved position is off-screen (e.g. monitor disconnected), we center instead.
 func (a *App) DomReady(_ context.Context) {
+	// Terminals subprocess (issue #69 — see runTerminalsWindow in main.go)
+	// only renders the Profile editor and shouldn't spin up the full app's
+	// background workers. SyncProfiles still runs so the editor sees a
+	// fresh terminal/shell list, but workspace discovery, upstream probing,
+	// update checks and editor/terminal sync are skipped.
+	if a.windowMode == "terminals" {
+		// Refresh the detected terminal/shell list before painting so the
+		// editor opens with a real table on first show.
+		a.SyncProfiles()
+		// runTerminalsWindow sets StartHidden so the user doesn't see a
+		// dark-empty-webview flash before Svelte paints. We *don't*
+		// reveal the window here — DomReady fires before the browser
+		// has actually rasterised the first frame, so calling
+		// WindowShow here still leaks a flash on Windows + Linux (the
+		// macOS WebKit happens to paint synchronously and so it's fine
+		// there). Instead, App.svelte calls bridge.showWindow() from
+		// onMount after tick() + two requestAnimationFrames, which is
+		// the canonical "after paint" point.
+		//
+		// Safety net: if the frontend bundle ever fails to load (JS
+		// error, hung script), the user would be stranded with an
+		// invisible window and no way to dismiss it. After 1.5s we
+		// reveal anyway — by then either the frontend has already
+		// shown it (no-op) or we accept a brief flash to recover from
+		// a broken state.
+		go func(ctx context.Context) {
+			time.Sleep(1500 * time.Millisecond)
+			wailsrt.WindowShow(ctx)
+		}(a.ctx)
+		return
+	}
+
 	// Pick the right saved position based on view mode.
 	w := a.savedWindowPos
 	if a.savedViewMode == "compact" && a.savedCompactPos != nil {
@@ -170,6 +233,11 @@ func (a *App) DomReady(_ context.Context) {
 	a.SyncEditors()
 	a.SyncTerminals()
 	a.SyncAIHarnesses()
+	// SyncProfiles populates the v2.1 TerminalApps + Shells + TerminalProfiles
+	// arrays so the Gear-panel "Terminals & Shells" section and the
+	// per-row launcher have data to render on first run. Idempotent — does
+	// nothing when the on-disk arrays already match what's installed.
+	a.SyncProfiles()
 
 	// Discover and auto-adopt workspace artifacts dropped on disk outside
 	// gitbox. Runs off the UI thread so startup paints immediately; the
@@ -1879,10 +1947,18 @@ func (a *App) ShowErrorDialog(title, message string) {
 func (a *App) resolveFirstHarnessTerminal() (config.TerminalEntry, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.cfg == nil || len(a.cfg.Global.Terminals) == 0 {
+	if a.cfg == nil {
 		return config.TerminalEntry{}, fmt.Errorf("Configure a terminal first (global.terminals is empty)")
 	}
-	t := a.cfg.Global.Terminals[0]
+	// Source through EffectiveTerminals so post-migration configs (legacy
+	// Terminals[] cleared, TerminalProfiles[] populated) still let AI
+	// harnesses launch into a terminal. Removed in the v2.1 cleanup commit
+	// when the harness path moves to OpenProfile.
+	terms := a.cfg.Global.EffectiveTerminals()
+	if len(terms) == 0 {
+		return config.TerminalEntry{}, fmt.Errorf("Configure a terminal first (global.terminals is empty)")
+	}
+	t := terms[0]
 	for _, arg := range t.Args {
 		if arg == "{command}" {
 			return t, nil

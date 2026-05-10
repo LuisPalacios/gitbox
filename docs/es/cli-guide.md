@@ -281,6 +281,14 @@ gitbox gitignore install   # Instalar / refrescar de forma idempotente, backup e
 
 Un bloque curado de patrones de basura del sistema operativo (`.DS_Store`, `Thumbs.db`, `*~`, …) se envuelve con marcadores sentinel dentro de `~/.gitignore_global` para que gitbox pueda actualizarlo sin tocar entradas añadidas por el usuario. Consulta [Gitignore global en reference.md](reference.md#gitignore-global) para el flujo completo, preferencia de opt-out y hooks de GUI/TUI.
 
+### Gestionar perfiles de terminal
+
+La pantalla de ajustes de la TUI tiene una entrada **Perfiles de terminal…** debajo del checkbox de gitignore. Al pulsar **Enter** se abre un editor a pantalla completa con tres secciones: aplicaciones de Terminal y Shells detectados (solo lectura — poblados por el sondeo del host de la GUI) y Perfiles (las parejas Terminal × Shell que el menú kebab puede lanzar).
+
+En la sección de Perfiles: **d** marca la fila como Default, **p** alterna Preferred, **h** alterna Hidden, **e** abre el formulario de edición en línea, **a** añade un Perfil de usuario nuevo, **x** elimina un Perfil añadido por el usuario (las filas auto-detectadas / importadas de WT / importadas de WezTerm / migradas solo se pueden ocultar, no eliminar — reaparecerían en el siguiente ciclo de detección de todos modos). **ESC** vuelve a ajustes.
+
+La TUI todavía no ejecuta el sondeo del host por sí misma — si las listas de Terminales o Shells están vacías, lanza la GUI una vez en la misma máquina para poblarlas. Las listas viven en `gitbox.json` para que ambos frontends vean los mismos datos a partir de ese momento.
+
 ## Paso 7: configurar mirrors (opcional)
 
 Los mirrors permiten mantener copias de backup de repos en otro proveedor: por ejemplo, push desde un Forgejo de homelab a GitHub, o pull de repos de GitHub hacia Forgejo.

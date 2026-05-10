@@ -1,36 +1,65 @@
 <script lang="ts">
   // LauncherMenu — shared action menu used by the repo-row kebab and the
   // account-header kebab in full view. Renders a top section with the most-
-  // used launchers (editors[0], terminals[0], ai_harnesses[0]) and a submenu
-  // section for the rest of each category. Handlers are passed in as props so
-  // this component stays dumb and has no bridge dependency.
+  // used launchers (default Profile, editors[0], ai_harnesses[0]) and a
+  // submenu section for the rest of each category. Handlers are passed in
+  // as props so this component stays dumb and has no bridge dependency.
+  //
+  // Profile model (issue #69, v2.1):
+  //   - The terminal entry shows "Open in <default profile name>" — the
+  //     profile flagged Default in the Gear-panel "Terminals & shells"
+  //     section.
+  //   - The Profiles submenu lists every Preferred profile (excluding the
+  //     default to avoid duplication). Hidden when no preferred profiles
+  //     exist.
+  //   - Legacy `terminals` prop is still accepted as a fallback for configs
+  //     that haven't been migrated yet (old wired-up callers, hot-reloads
+  //     mid-rollout). When `profiles` is non-empty it wins.
+  //
+  // Labels are intentionally terse — every row leads with an icon, so the
+  // verb (Open / Open in / Open with) is redundant noise. Issue #69 user
+  // feedback: drop the prefix everywhere.
   //
   // Visual layout (both repo and account kebabs):
-  //   browser
-  //   folder
+  //   "Navigate to <repo|account>"        (icon: globe)
+  //   "Reveal in <Explorer|Finder|files>" (icon: folder; OS-aware via revealLabel)
   //   ─ separator ─ (only if any default is shown)
-  //   terminals[0]                        (hidden if terminals empty)
-  //   editors[0]                          (hidden if editors empty)
-  //   ai_harnesses[0]                     (hidden if harnesses empty)
+  //   "<defaultProfile.name>"             (no prefix; hidden if no profile + no legacy term)
+  //   "Open with <editors[0].name>"       (hidden if editors empty)
+  //   "Open with <aiHarnesses[0].name>"   (hidden if harnesses empty)
   //   ─ separator ─ (only if any submenu is shown)
-  //   Terminals ▸                         (hidden if <2 terminals)
+  //   Profiles ▸                          (hidden if <2 visible profiles)
   //   Editors ▸                           (hidden if <2 editors)
   //   AI Harnesses ▸                      (hidden if <2 harnesses)
   //   ─ separator ─ (repo kebab only, when onSweep is provided)
   //   Sweep branches                      (repo kebab only)
 
   import { onMount, tick } from 'svelte';
-  import type { EditorInfo, TerminalInfo, AIHarnessInfo } from './types';
+  import type { EditorInfo, TerminalInfo, AIHarnessInfo, TerminalProfileInfo } from './types';
 
   export let kind: 'repo' | 'account' = 'repo';
   export let editors: EditorInfo[] = [];
   export let terminals: TerminalInfo[] = [];
+  // profiles is the v2.1 Profile list; the menu's terminal section reads
+  // from this when non-empty. The legacy `terminals` prop covers the
+  // (vanishing) case where a config hasn't been migrated yet.
+  export let profiles: TerminalProfileInfo[] = [];
   export let aiHarnesses: AIHarnessInfo[] = [];
+  // revealLabel is the OS-aware string for the folder action: "Reveal in
+  // Explorer" on Windows, "Reveal in Finder" on macOS, "Reveal in files"
+  // on Linux. Defaulted to a generic phrasing so missing wiring still
+  // renders something coherent.
+  export let revealLabel: string = 'Reveal in file manager';
 
   export let onOpenBrowser: () => void;
   export let onOpenFolder: () => void;
   export let onOpenApp: (command: string) => void;
   export let onOpenTerminal: (terminal: TerminalInfo) => void;
+  // onOpenProfile is the v2.1 launch handler — receives the Profile id and
+  // routes through bridge.openProfile / bridge.openAccountProfile in the
+  // App.svelte glue. Falls back to onOpenTerminal when only legacy
+  // terminals are configured.
+  export let onOpenProfile: (profileID: string) => void = () => {};
   export let onOpenAIHarness: (harness: AIHarnessInfo) => void;
   export let onSweep: (() => void) | null = null;
   // onMove is the "Move repository…" action (issue #64). Shown only on
@@ -179,48 +208,85 @@
     }
   }
 
-  $: showTerminalDefault = terminals.length >= 1;
+  // Profile-driven terminal section. visibleProfiles excludes Hidden ones
+  // (the Gear panel keeps them in config but they're not surfaced here).
+  $: visibleProfiles = (profiles || []).filter(p => !p.hidden);
+  $: defaultProfile = visibleProfiles.find(p => p.default) || visibleProfiles[0] || null;
+  $: preferredProfiles = visibleProfiles.filter(p => p.preferred && (!defaultProfile || p.id !== defaultProfile.id));
+
+  $: showProfileDefault = !!defaultProfile;
+  // Legacy fallback when the config has no profiles yet (untouched by any
+  // sync) but does carry a flat terminals[] list. Gives the user something
+  // to click while they migrate.
+  $: showLegacyTerminalDefault = !showProfileDefault && terminals.length >= 1;
   $: showEditorDefault = editors.length >= 1;
   $: showHarnessDefault = aiHarnesses.length >= 1;
-  $: showTerminalsSub = terminals.length >= 2;
+
+  $: showProfilesSub = preferredProfiles.length >= 1;
+  $: showLegacyTerminalsSub = !showProfileDefault && terminals.length >= 2;
   $: showEditorsSub = editors.length >= 2;
   $: showHarnessSub = aiHarnesses.length >= 2;
-  $: hasDefaultsSection = showTerminalDefault || showEditorDefault || showHarnessDefault;
-  $: hasSubsSection = showTerminalsSub || showEditorsSub || showHarnessSub;
+
+  $: hasDefaultsSection = showProfileDefault || showLegacyTerminalDefault || showEditorDefault || showHarnessDefault;
+  $: hasSubsSection = showProfilesSub || showLegacyTerminalsSub || showEditorsSub || showHarnessSub;
   $: hasSweepSection = kind === 'repo' && !!onSweep;
   $: hasMoveSection = kind === 'repo' && !!onMove;
+
+  // Browser action label is kind-aware: repo kebab navigates to the repo
+  // page on the provider; account kebab navigates to the account profile.
+  $: browserLabel = kind === 'account' ? 'Navigate to account' : 'Navigate to repo';
 </script>
 
 <div class="action-dropdown launcher-menu" bind:this={rootEl}>
-  <button class="action-item" on:click|stopPropagation={onOpenBrowser}>
-    <span class="lm-icon">&#127760;</span> Open in browser
+  <button class="action-item" on:click|stopPropagation={onOpenBrowser} title={browserLabel}>
+    <span class="lm-icon">&#127760;</span> {browserLabel}
   </button>
-  <button class="action-item" on:click|stopPropagation={onOpenFolder}>
-    <span class="lm-icon">&#128193;</span> Open folder
+  <button class="action-item" on:click|stopPropagation={onOpenFolder} title={revealLabel}>
+    <span class="lm-icon">&#128193;</span> {revealLabel}
   </button>
 
   {#if hasDefaultsSection}
     <hr class="lm-sep" />
-    {#if showTerminalDefault}
-      <button class="action-item" on:click|stopPropagation={() => onOpenTerminal(terminals[0])} title="Open in {terminals[0].name}">
-        <span class="lm-icon lm-icon-mono">&gt;_</span> Open in {terminals[0].name}
+    {#if showProfileDefault && defaultProfile}
+      <button class="action-item" on:click|stopPropagation={() => onOpenProfile(defaultProfile.id)} title={defaultProfile.name}>
+        <span class="lm-icon lm-icon-mono">&gt;_</span> {defaultProfile.name}
+      </button>
+    {:else if showLegacyTerminalDefault}
+      <button class="action-item" on:click|stopPropagation={() => onOpenTerminal(terminals[0])} title={terminals[0].name}>
+        <span class="lm-icon lm-icon-mono">&gt;_</span> {terminals[0].name}
       </button>
     {/if}
     {#if showEditorDefault}
-      <button class="action-item" on:click|stopPropagation={() => onOpenApp(editors[0].command)} title="Open in {editors[0].name}">
-        <span class="lm-icon">&#9998;</span> Open in {editors[0].name}
+      <button class="action-item" on:click|stopPropagation={() => onOpenApp(editors[0].command)} title="Open with {editors[0].name}">
+        <span class="lm-icon">&#9998;</span> Open with {editors[0].name}
       </button>
     {/if}
     {#if showHarnessDefault}
-      <button class="action-item" on:click|stopPropagation={() => onOpenAIHarness(aiHarnesses[0])} title="Open in {aiHarnesses[0].name}">
-        <span class="lm-icon">&#129302;</span> Open in {aiHarnesses[0].name}
+      <button class="action-item" on:click|stopPropagation={() => onOpenAIHarness(aiHarnesses[0])} title="Open with {aiHarnesses[0].name}">
+        <span class="lm-icon">&#129302;</span> Open with {aiHarnesses[0].name}
       </button>
     {/if}
   {/if}
 
   {#if hasSubsSection}
     <hr class="lm-sep" />
-    {#if showTerminalsSub}
+    {#if showProfilesSub}
+      <div class="lm-sub-container">
+        <button class="action-item lm-submenu-trigger" class:lm-active={openSubmenu === 'terminals'} on:click|stopPropagation={() => toggleSub('terminals')}>
+          <span class="lm-icon lm-icon-mono">&gt;_</span> Profiles
+          <span class="lm-arrow">&#9654;</span>
+        </button>
+        {#if openSubmenu === 'terminals'}
+          <div class="action-dropdown launcher-submenu" bind:this={subEl}>
+            {#each preferredProfiles as profile}
+              <button class="action-item" on:click|stopPropagation={() => onOpenProfile(profile.id)}>
+                <span class="lm-icon lm-icon-mono">&gt;_</span> {profile.name}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {:else if showLegacyTerminalsSub}
       <div class="lm-sub-container">
         <button class="action-item lm-submenu-trigger" class:lm-active={openSubmenu === 'terminals'} on:click|stopPropagation={() => toggleSub('terminals')}>
           <span class="lm-icon lm-icon-mono">&gt;_</span> Terminals

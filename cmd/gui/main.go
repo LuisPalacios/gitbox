@@ -4,6 +4,8 @@ import (
 	"embed"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/update"
@@ -27,7 +29,14 @@ func main() {
 
 	app := NewApp()
 
-	// Check for --test-mode before Wails starts (Wails has no CLI arg support).
+	// Check CLI flags before Wails starts (Wails has no CLI arg support of
+	// its own). We support two side-modes:
+	//   --test-mode         : route config through a temp dir for the test fixture.
+	//   --terminals-window  : run as the dedicated Terminals editor sub-process
+	//                         (issue #69 — opens the Profile manager in its
+	//                         own OS window so the editor can scroll on its
+	//                         own and the parent window stays interactive).
+	parentPID := 0
 	for _, arg := range os.Args[1:] {
 		if arg == "--test-mode" {
 			cfgPath, cleanup, err := config.SetupTestMode()
@@ -38,8 +47,29 @@ func main() {
 			app.cfgPath = cfgPath
 			app.testMode = true
 			app.testCleanup = cleanup
-			break
 		}
+		if arg == "--terminals-window" {
+			app.windowMode = "terminals"
+		}
+		// --parent-pid=<PID> tells the Manager subprocess which gitbox.exe
+		// to watch. When that PID disappears, the watcher self-terminates
+		// — the safety net so the Manager can never outlive its parent
+		// regardless of how the parent died (issue #69).
+		if strings.HasPrefix(arg, "--parent-pid=") {
+			if v, err := strconv.Atoi(strings.TrimPrefix(arg, "--parent-pid=")); err == nil {
+				parentPID = v
+			}
+		}
+	}
+
+	if app.windowMode == "terminals" {
+		// Watcher fires within ms of parent death on Windows
+		// (WaitForSingleObject) and within ~1s on macOS (signal-0 poll).
+		// Linux relies on PR_SET_PDEATHSIG set by the parent when it
+		// spawned us; this watcher is a no-op there.
+		go watchParent(parentPID)
+		runTerminalsWindow(app)
+		return
 	}
 
 	// Pre-load config to restore saved window dimensions and view mode.
@@ -124,5 +154,77 @@ func main() {
 	})
 	if err != nil {
 		println("Error:", err.Error())
+	}
+}
+
+// runTerminalsWindow runs the dedicated Terminals manager subprocess
+// (issue #69). It reuses the same App struct + frontend bundle as the main
+// window, but:
+//   - Uses a distinct SingleInstanceLock id so it can coexist with the main
+//     gitbox process (and so launching a second Manager focuses the first
+//     instead of opening a duplicate).
+//   - Skips the default-window bootstrapping in DomReady (no editor sync,
+//     no workspace discovery, no probe loops) — App.DomReady checks
+//     a.windowMode and short-circuits when set to "terminals".
+//   - Opens a smaller window sized for the editor.
+//
+// The frontend reads a.GetWindowMode() on mount and renders only the
+// TerminalsModal contents in this mode (everything else is gated off).
+func runTerminalsWindow(app *App) {
+	const (
+		w, h       = 980, 720
+		minW, minH = 700, 480
+	)
+	err := wails.Run(&options.App{
+		Title:     "gitbox · Terminals",
+		Width:     w,
+		Height:    h,
+		MinWidth:  minW,
+		MinHeight: minH,
+		// StartHidden prevents the dark-empty-webview flash users see before
+		// Svelte mounts and paints the editor (issue #69 user feedback).
+		// DomReady reveals the window once SyncProfiles has populated the
+		// detected lists and the DOM is ready to render.
+		StartHidden: true,
+		// HideWindowOnClose makes the X button hide the editor instead of
+		// quitting the subprocess. Re-opening the Manager from the parent
+		// then takes the SingleInstanceLock fast-path
+		// (OnSecondInstanceLaunch → WindowShow) and appears instantly,
+		// instead of paying the full Wails+webview cold-start every time
+		// (issue #69 user feedback — close-then-reopen on Win/Linux
+		// flashed an init window before the real window finally arrived
+		// 1-2s later). The parent's Shutdown still kills the subprocess
+		// so the user can't end up with an orphan when they quit gitbox.
+		HideWindowOnClose: true,
+		AssetServer: &assetserver.Options{
+			Assets: assets,
+		},
+		BackgroundColour: &options.RGBA{R: 9, G: 9, B: 11, A: 255},
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: "com.luispalacios.gitbox.terminals",
+			OnSecondInstanceLaunch: func(_ options.SecondInstanceData) {
+				if app.ctx == nil {
+					return
+				}
+				// Re-detect before showing so a Manager window that
+				// was hidden 10 minutes ago doesn't show stale data
+				// after the user installed a new shell or edited
+				// wezterm.lua. Then nudge the frontend to reload from
+				// disk and reveal the window.
+				app.SyncProfiles()
+				wailsrt.EventsEmit(app.ctx, "profiles:reloaded")
+				wailsrt.WindowUnminimise(app.ctx)
+				wailsrt.WindowShow(app.ctx)
+			},
+		},
+		OnStartup:  app.Startup,
+		OnShutdown: app.Shutdown,
+		OnDomReady: app.DomReady,
+		Bind: []interface{}{
+			app,
+		},
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "terminals window: %v\n", err)
 	}
 }

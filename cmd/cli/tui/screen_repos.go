@@ -241,7 +241,7 @@ func (m reposModel) Init() tea.Cmd {
 func (m reposModel) Update(msg tea.Msg) (reposModel, tea.Cmd) {
 	// Launcher overlay intercepts input when active; must run before the
 	// KeyMsg switch so t/e/a/o and other letters don't double-fire.
-	if lo, cmd, handled := m.launcher.update(msg, m.cfg.Global.Terminals); handled {
+	if lo, cmd, handled := m.launcher.update(msg, m.cfg.Global.EffectiveTerminals()); handled {
 		m.launcher = lo
 		m.resultMsg = ""
 		m.errMsg = ""
@@ -573,7 +573,7 @@ func (m reposModel) View() string {
 		actions = append(actions, "c clone")
 	} else {
 		actions = append(actions, "f fetch", "p pull", "s sweep")
-		if len(m.cfg.Global.Terminals) > 0 {
+		if len(m.cfg.Global.EffectiveTerminals()) > 0 {
 			actions = append(actions, "t terminal")
 		}
 		if len(m.cfg.Global.Editors) > 0 {
@@ -628,7 +628,7 @@ func (m reposModel) openLauncher() (reposModel, tea.Cmd) {
 // silently no-ops when the category is empty and surfaces a guard message
 // when the repo isn't on disk.
 func (m reposModel) launchDefaultTerminal() (reposModel, tea.Cmd) {
-	terms := m.cfg.Global.Terminals
+	terms := m.cfg.Global.EffectiveTerminals()
 	if len(terms) == 0 {
 		return m, nil
 	}
@@ -672,7 +672,7 @@ func (m reposModel) launchDefaultHarness() (reposModel, tea.Cmd) {
 	}
 	m.resultMsg = ""
 	m.errMsg = ""
-	return m, launchAIHarnessCmd(path, harnesses[0], m.cfg.Global.Terminals)
+	return m, launchAIHarnessCmd(path, harnesses[0], m.cfg.Global.EffectiveTerminals())
 }
 
 // pathIsDir reports whether path refers to an existing directory. Small

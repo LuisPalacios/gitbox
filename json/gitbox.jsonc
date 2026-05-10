@@ -58,16 +58,41 @@
         // Tokens are stored in the OS credential store, not here.
         "credential_token": {},
 
-        // Terminal emulators for "Open in ..." actions in the GUI.
-        // Auto-detected on first launch per platform and persisted here — edit
-        // or reorder freely. Use "{path}" as a placeholder for the repo path;
-        // if absent, the path is appended as the final argument. Use the
-        // literal "{command}" token to mark where an AI harness argv should be
-        // spliced when launching via "Open in AI harness" (for terminal-only
-        // launches the token expands to zero items, so leave it in place).
-        "terminals": [
-            { "name": "Windows Terminal", "command": "wt.exe", "args": ["--profile", "PowerShell", "-d", "{path}", "{command}"] },
-            { "name": "Git Bash",         "command": "C:/Program Files/Git/git-bash.exe", "args": ["--cd={path}"] }
+        // Terminal "Profiles" model — three arrays:
+        //   • terminal_apps    : the launcher binaries (wt, wezterm, iterm, …)
+        //   • shells           : the command-line interpreters (pwsh, bash, …)
+        //   • terminal_profiles: (terminal × shell) pairs the menu actually shows.
+        //
+        // Auto-detected on first launch per platform and merged with user edits
+        // by id on every Re-detect. The legacy "terminals": [...] block from
+        // v2.0 is auto-migrated into this shape on first load and dropped.
+        //
+        // ArgsTemplate token semantics:
+        //   {path}          — repo working directory
+        //   {shell_command} — the linked Shell.command (omitted when empty)
+        //   {shell_args}    — the linked Shell.args  (zero items when empty)
+        //   {command}       — AI-harness argv splice point (legacy semantics)
+        "terminal_apps": [
+            { "id": "wt",      "name": "Windows Terminal", "command": "wt.exe",
+              "args_template": ["-d", "{path}", "{shell_command}", "{shell_args}"] },
+            { "id": "wezterm", "name": "WezTerm", "command": "wezterm-gui.exe",
+              "args_template": ["start", "--cwd", "{path}", "--", "{shell_command}", "{shell_args}"] }
+        ],
+        "shells": [
+            { "id": "pwsh",     "name": "PowerShell 7",  "command": "pwsh.exe" },
+            { "id": "git-bash", "name": "Git Bash",      "command": "C:/Program Files/Git/bin/bash.exe", "args": ["-l"] },
+            { "id": "wsl-Ubuntu-24-04", "name": "WSL — Ubuntu 24.04", "command": "wsl.exe", "args": ["-d", "Ubuntu-24.04"] }
+        ],
+        "terminal_profiles": [
+            // The default profile is the primary "Open in <terminal>" action.
+            { "id": "wt-pwsh",     "name": "Windows Terminal — PowerShell 7", "terminal": "wt",
+              "shell": "pwsh", "default": true,  "preferred": true,  "source": "detected" },
+            // Preferred profiles populate the "Profiles ▸" submenu.
+            { "id": "wt-Ubuntu",   "name": "Windows Terminal — Ubuntu",        "terminal": "wt",
+              "shell": "wsl-Ubuntu-24-04", "preferred": true, "source": "wt-profile" },
+            // Native-profile terminals carry an explicit Args that overrides args_template.
+            { "id": "wt-gitbash",  "name": "Windows Terminal — Git Bash",      "terminal": "wt",
+              "args": ["--profile", "Git Bash", "-d", "{path}"], "source": "wt-profile" }
         ],
 
         // AI CLI harnesses for "Open in ..." actions in the GUI. Each harness

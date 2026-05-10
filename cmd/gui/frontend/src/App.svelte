@@ -12,10 +12,12 @@
   } from './lib/stores';
   import { statusColor, credColor, statusLabel, providerLabel, statusSymbol } from './lib/theme';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
-  import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit } from '../wailsjs/runtime/runtime';
-  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo, PRAccountUpdateDTO, WorkspaceDTO, WorkspaceMemberDTO, WorkspaceCreateRequest, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
+  import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit, EventsOn } from '../wailsjs/runtime/runtime';
+  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, WorkspaceDTO, WorkspaceMemberDTO, WorkspaceCreateRequest, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
   import PRPopover from './lib/PRPopover.svelte';
+  import TerminalsModal from './lib/TerminalsModal.svelte';
+  import { tooltip } from './lib/tooltip';
 
   // ── View mode ──
   let viewMode: 'full' | 'compact' = 'full';
@@ -50,6 +52,12 @@
   $: configEditors = ($configStore?.global?.editors || []) as EditorInfo[];
   $: configTerminals = ($configStore?.global?.terminals || []) as TerminalInfo[];
   $: configAIHarnesses = ($configStore?.global?.ai_harnesses || []) as AIHarnessInfo[];
+  // v2.1 Terminal Profile model (issue #69). configProfiles drives the
+  // per-row launcher's terminal section; configApps + configShells are
+  // referenced by the Gear-panel TerminalsSection for editing.
+  $: configApps = ($configStore?.global?.terminal_apps || []) as TerminalAppInfo[];
+  $: configShells = ($configStore?.global?.shells || []) as ShellInfo[];
+  $: configProfiles = ($configStore?.global?.terminal_profiles || []) as TerminalProfileInfo[];
 
   async function toggleViewMode() {
     // SetViewMode saves current position to the slot we're leaving,
@@ -518,6 +526,18 @@
     closeActionMenu();
   }
 
+  // openRepoProfile is the v2.1 launcher entry point — resolves the repo's
+  // working directory then asks the Go side to expand the profile's
+  // template via pkg/launch.ResolveArgs and spawn the terminal.
+  async function openRepoProfile(repoKey: string, profileID: string) {
+    const state = $repoStates[repoKey];
+    if (state?.path) {
+      try { await bridge.openProfile(state.path, profileID); }
+      catch (e: any) { await bridge.showErrorDialog('Open profile', (e?.message || String(e))); }
+    }
+    closeActionMenu();
+  }
+
   async function openRepoInAIHarness(repoKey: string, harness: AIHarnessInfo) {
     const state = $repoStates[repoKey];
     if (!state?.path) {
@@ -567,6 +587,59 @@
     try { await bridge.openAccountInTerminal(accountKey, terminal.command, terminal.args || []); } catch (e) { console.error(e); }
     closeAccountMenu();
   }
+
+  async function openAccountProfile(accountKey: string, profileID: string) {
+    try { await bridge.openAccountProfile(accountKey, profileID); }
+    catch (e: any) { await bridge.showErrorDialog('Open profile', (e?.message || String(e))); }
+    closeAccountMenu();
+  }
+
+  // saveTerminalProfilesAndReload pipes the TerminalsSection draft back to
+  // disk and reloads the in-memory config so every consumer (kebab menus,
+  // detail views) sees the new flags on the next tick.
+  async function saveTerminalProfilesAndReload(apps: TerminalAppInfo[], shells: ShellInfo[], profiles: TerminalProfileInfo[]) {
+    await bridge.saveTerminalProfiles(apps, shells, profiles);
+    const fresh = await bridge.reloadConfig();
+    configStore.set(fresh);
+  }
+
+  async function reloadConfigFromDisk() {
+    const fresh = await bridge.reloadConfig();
+    configStore.set(fresh);
+  }
+
+  // openTerminalsManagerWindow asks the Go side to spawn a sub-process of
+  // gitbox.exe with --terminals-window, which renders the standalone
+  // Profile editor in its own OS window. Fire-and-forget; the parent
+  // window stays interactive and refreshes config on focus when the user
+  // clicks back here.
+  let terminalsManagerOpening = false;
+  let terminalsManagerHasOpened = false;
+  async function openTerminalsManagerWindow() {
+    if (terminalsManagerOpening) return;
+    terminalsManagerOpening = true;
+    // Cold-start of a Wails subprocess + WebView2/WebKitGTK + first paint
+    // takes ~1.5s on Win/Linux. Subsequent re-opens go through
+    // HideWindowOnClose + SingleInstanceLock and appear instantly, so
+    // we cap the "Opening…" affordance shorter once we know the
+    // subprocess is already alive (issue #69 user feedback).
+    const cooldown = terminalsManagerHasOpened ? 250 : 1500;
+    try {
+      await bridge.openTerminalsManagerWindow();
+      terminalsManagerHasOpened = true;
+    } catch (e: any) {
+      await bridge.showErrorDialog('Open Terminals Manager', (e?.message || String(e)));
+    } finally {
+      setTimeout(() => { terminalsManagerOpening = false; }, cooldown);
+    }
+  }
+
+  // revealLabel is the OS-aware "Reveal in <file manager>" string passed to
+  // every LauncherMenu instance. Computed once from hostOS so the kebabs
+  // don't each re-derive it.
+  $: revealLabel = hostOS === 'windows' ? 'Reveal in Explorer'
+    : hostOS === 'darwin' ? 'Reveal in Finder'
+    : 'Reveal in files';
 
   async function openAccountInAIHarness(accountKey: string, harness: AIHarnessInfo) {
     try {
@@ -2065,6 +2138,12 @@
   let configPath = '';
   let appVersion = '';
   let hostOS = ''; // "darwin" | "windows" | "linux" — loaded on init
+  // windowMode tells the frontend which UI to render. The default "main"
+  // shows the full gitbox app; "terminals" hides everything except the
+  // standalone Profile editor window spawned by openTerminalsManagerWindow
+  // (issue #69 — keeps the editor in its own OS window so the parent
+  // stays interactive).
+  let windowMode: 'main' | 'terminals' = 'main';
   let autostartOn = false;
   let autostartSupported = true;
 
@@ -2302,6 +2381,55 @@
   }
 
   onMount(async () => {
+    // Load the window mode before anything else — the terminals sub-process
+    // skips most of the heavy init below and renders only the Profile
+    // editor.
+    try {
+      const mode = await bridge.getWindowMode();
+      if (mode === 'terminals') {
+        windowMode = 'terminals';
+      }
+    } catch { /* fall back to main mode */ }
+
+    if (windowMode === 'terminals') {
+      // Terminals sub-process: just hydrate the bits the editor needs.
+      const hydrate = async () => {
+        try {
+          const cfg = await bridge.getConfig();
+          configStore.set(cfg);
+        } catch (e) { console.error(e); }
+      };
+      try { hostOS = await bridge.getOS(); } catch (e) { console.error(e); }
+      await hydrate();
+      applyTheme();
+      // The parent uses HideWindowOnClose, so a "second open" of the
+      // Manager just re-shows this same hidden window. Re-hydrate the
+      // config on focus so the table reflects any wezterm.lua /
+      // installed-shell changes the user made between visits. The Go
+      // side also emits 'profiles:reloaded' from the
+      // OnSecondInstanceLaunch hook after running SyncProfiles —
+      // listen for that explicitly so we pick the refresh up even if
+      // the focus event timing is flaky on Linux/Windows.
+      window.addEventListener('focus', () => { hydrate(); });
+      EventsOn('profiles:reloaded', () => { hydrate(); });
+      // The Wails subprocess starts hidden so the user never sees a
+      // dark-empty-webview flash before Svelte mounts. Reveal the
+      // window only after Svelte has flushed the DOM AND the browser
+      // has rasterised the first frame — the canonical "after paint"
+      // point is tick() + two requestAnimationFrames (the first RAF
+      // runs before paint, the second runs after). Without this the
+      // window appears black for a few frames on Windows + Linux.
+      // (Issue #69 user feedback. macOS WebKit happens to paint
+      // synchronously so it never showed the flash there.)
+      await tick();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          bridge.showWindow();
+        });
+      });
+      return;
+    }
+
     applyTheme();
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (themeChoice === 'system') applyTheme();
@@ -2564,16 +2692,37 @@
 <svelte:window on:click={(e) => {
   const inMenu = e.target instanceof Element && e.target.closest('.action-menu-container');
   const inWsPopover = e.target instanceof Element && e.target.closest('.ws-popover, .ws-badge');
+  const inPRPopover = e.target instanceof Element && e.target.closest('.pr-badge-wrap');
   if (actionMenuRepo && !inMenu) closeActionMenu();
   if (actionMenuAccount && !inMenu) closeAccountMenu();
   if (openWsPopover && !inWsPopover) openWsPopover = null;
+  if (openPRPopover && !inPRPopover) openPRPopover = null;
 }} on:keydown={(e) => {
   if (e.key === 'Escape' && openWsPopover) openWsPopover = null;
+  if (e.key === 'Escape' && openPRPopover) openPRPopover = null;
 }} />
 
 <!-- ════════════════════════════════════════════════════════════ -->
 <!--  TEMPLATE                                                   -->
 <!-- ════════════════════════════════════════════════════════════ -->
+
+<!-- ── TERMINALS SUB-PROCESS WINDOW (issue #69) ── -->
+{#if windowMode === 'terminals'}
+  <div class="terminals-window-host">
+    <TerminalsModal
+      open={true}
+      mode="window"
+      apps={configApps}
+      shells={configShells}
+      profiles={configProfiles}
+      onSave={saveTerminalProfilesAndReload}
+      onConfigReloaded={reloadConfigFromDisk}
+      onClose={() => { /* no-op — closing happens via the OS window chrome */ }}
+    />
+  </div>
+{/if}
+
+{#if windowMode === 'main'}
 
 <!-- ── CONFIG LOAD ERROR ── -->
 {#if cfgLoadErrorModal}
@@ -2971,24 +3120,24 @@
   {#if showSettings}
     <div class="settings" transition:slide={{ duration: 150 }}>
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.config')}</span>
+        <span class="settings-label" use:tooltip={"Absolute path to the gitbox.json file currently in use. Click ‘Open in editor’ to inspect or hand-edit it."}>{$t('settings.config')}</span>
+        <button class="settings-action-btn" on:click={() => bridge.openFileInEditor(configPath)}>{$t('settings.openInEditor')}</button>
         <span class="settings-value">{configPath}</span>
-        <button class="settings-btn" on:click={() => bridge.openFileInEditor(configPath)}>{$t('settings.openInEditor')}</button>
       </div>
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.rootFolder')}</span>
+        <span class="settings-label" use:tooltip={"Top-level folder where gitbox keeps every cloned repo. Each account gets a sub-folder under it."}>{$t('settings.rootFolder')}</span>
+        <button class="settings-action-btn" on:click={openChangeFolder}>{$t('settings.change')}</button>
         <span class="settings-value">{$configStore?.global?.folder || '(not set)'}</span>
-        <button class="settings-btn" on:click={openChangeFolder}>{$t('settings.change')}</button>
       </div>
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.language')}</span>
+        <span class="settings-label" use:tooltip={"Language used by the gitbox UI. Switching takes effect immediately."}>{$t('settings.language')}</span>
         <div class="theme-toggle">
           <button class="theme-btn" class:theme-active={languageChoice === 'en'} on:click={() => setLanguage('en')}>English</button>
-          <button class="theme-btn" class:theme-active={languageChoice === 'es'} on:click={() => setLanguage('es')}>Espanol</button>
+          <button class="theme-btn" class:theme-active={languageChoice === 'es'} on:click={() => setLanguage('es')}>Español</button>
         </div>
       </div>
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.theme')}</span>
+        <span class="settings-label" use:tooltip={"Color scheme. ‘System’ tracks your OS preference; ‘Light’ and ‘Dark’ pin gitbox to that mode."}>{$t('settings.theme')}</span>
         <div class="theme-toggle">
           <button class="theme-btn" class:theme-active={themeChoice === 'system'} on:click={() => { themeChoice = 'system'; applyTheme(); }}>System</button>
           <button class="theme-btn" class:theme-active={themeChoice === 'light'} on:click={() => { themeChoice = 'light'; applyTheme(); }}>Light</button>
@@ -2996,7 +3145,7 @@
         </div>
       </div>
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.periodicStatus')}</span>
+        <span class="settings-label" use:tooltip={"How often gitbox auto-fetches every repo to refresh its ahead/behind counters. ‘Off’ pauses the timer; you can still fetch manually."}>{$t('settings.periodicStatus')}</span>
         <div class="theme-toggle">
           <button class="theme-btn" class:theme-active={fetchInterval === 'off'} on:click={() => setFetchInterval('off')}>{$t('common.off')}</button>
           <button class="theme-btn" class:theme-active={fetchInterval === '5m'} on:click={() => setFetchInterval('5m')}>5m</button>
@@ -3009,7 +3158,7 @@
       </div>
       {#if autostartSupported}
         <div class="settings-row">
-          <span class="settings-label">{$t('settings.runAtStartup')}</span>
+          <span class="settings-label" use:tooltip={"Launch GitboxApp automatically when you log in. Toggling writes the OS autostart entry."}>{$t('settings.runAtStartup')}</span>
           <div class="theme-toggle">
             <button class="theme-btn" class:theme-active={!autostartOn} on:click={() => { if (autostartOn) toggleAutostart(); }}>{$t('common.off')}</button>
             <button class="theme-btn" class:theme-active={autostartOn} on:click={() => { if (!autostartOn) toggleAutostart(); }}>{$t('common.on')}</button>
@@ -3017,13 +3166,13 @@
         </div>
       {/if}
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.prReviews')}</span>
+        <span class="settings-label" use:tooltip={"Show pull-request indicators on repo rows: badges for PRs you authored and PRs that requested your review."}>{$t('settings.prReviews')}</span>
         <div class="theme-toggle">
           <button class="theme-btn" class:theme-active={!$prSettings.enabled} on:click={() => { if ($prSettings.enabled) setPRBadgesEnabled(false); }}>{$t('common.off')}</button>
           <button class="theme-btn" class:theme-active={$prSettings.enabled} on:click={() => { if (!$prSettings.enabled) setPRBadgesEnabled(true); }}>{$t('common.on')}</button>
         </div>
         {#if $prSettings.enabled}
-          <span class="settings-sublabel">{$t('settings.includeDrafts')}</span>
+          <span class="settings-sublabel" use:tooltip={"Count draft PRs in the ‘my PRs’ badge. Off restricts the count to ready-for-review PRs."}>{$t('settings.includeDrafts')}</span>
           <div class="theme-toggle">
             <button class="theme-btn" class:theme-active={!$prSettings.includeDrafts} on:click={() => { if ($prSettings.includeDrafts) setPRIncludeDrafts(false); }}>{$t('common.off')}</button>
             <button class="theme-btn" class:theme-active={$prSettings.includeDrafts} on:click={() => { if (!$prSettings.includeDrafts) setPRIncludeDrafts(true); }}>{$t('common.on')}</button>
@@ -3031,25 +3180,36 @@
         {/if}
       </div>
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.globalGitignore')}</span>
-        <div class="theme-toggle" title="Check ~/.gitignore_global on startup and offer to install OS-junk patterns if missing">
+        <span class="settings-label" use:tooltip={"Check ~/.gitignore_global on startup and offer to install gitbox’s recommended OS-junk patterns (.DS_Store, Thumbs.db, etc.) if missing."}>{$t('settings.globalGitignore')}</span>
+        <div class="theme-toggle">
           <button class="theme-btn" class:theme-active={!checkGitignorePref} on:click={() => { if (checkGitignorePref) setCheckGitignorePref(false); }}>{$t('common.off')}</button>
           <button class="theme-btn" class:theme-active={checkGitignorePref} on:click={() => { if (!checkGitignorePref) setCheckGitignorePref(true); }}>{$t('common.on')}</button>
         </div>
       </div>
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.systemCheck')}</span>
-        <button class="settings-action" on:click={openDoctorModal} title="Probe external tools (git, GCM, ssh, tmux, ...)">{$t('settings.run')}</button>
+        <span class="settings-label" use:tooltip={"Probe external tools gitbox uses (git, Git Credential Manager, ssh, tmux, …) and flag missing ones."}>{$t('settings.systemCheck')}</span>
+        <button class="settings-action-btn" on:click={openDoctorModal}>{$t('settings.run')}</button>
         {#if doctorSummary}
           <span class="settings-sublabel settings-doctor-summary">{doctorSummary}</span>
         {/if}
       </div>
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.version')}</span>
+        <span class="settings-label" use:tooltip={"Manage terminal apps, shells, and the launch profiles that pair them. Click ‘Manager’ to open the editor in its own window."}>Terminals</span>
+        <button class="settings-action-btn" on:click={openTerminalsManagerWindow} disabled={terminalsManagerOpening}>
+          {#if terminalsManagerOpening}
+            <span class="settings-action-spinner" aria-hidden="true"></span>
+            Opening…
+          {:else}
+            Manager
+          {/if}
+        </button>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label" use:tooltip={"Currently running gitbox version (git tag + commit hash baked in at build time)."}>{$t('settings.version')}</span>
         <span class="settings-value">{appVersion}</span>
       </div>
       <div class="settings-row">
-        <span class="settings-label">{$t('settings.author')}</span>
+        <span class="settings-label" use:tooltip={"Project author and source repository. Click the link to open the project on GitHub."}>{$t('settings.author')}</span>
         <span class="settings-value">Luis Palacios Derqui &mdash; <a href="https://github.com/LuisPalacios/gitbox" on:click|preventDefault={() => BrowserOpenURL('https://github.com/LuisPalacios/gitbox')}>github.com/LuisPalacios/gitbox</a></span>
       </div>
     </div>
@@ -3152,11 +3312,14 @@
                   kind="account"
                   editors={configEditors}
                   terminals={configTerminals}
+                  profiles={configProfiles}
                   aiHarnesses={configAIHarnesses}
+                  {revealLabel}
                   onOpenBrowser={() => openAccountInBrowser(accountKey)}
                   onOpenFolder={() => openAccountInExplorer(accountKey)}
                   onOpenApp={(cmd) => openAccountInApp(accountKey, cmd)}
                   onOpenTerminal={(t) => openAccountInTerminal(accountKey, t)}
+                  onOpenProfile={(id) => openAccountProfile(accountKey, id)}
                   onOpenAIHarness={(h) => openAccountInAIHarness(accountKey, h)}
                 />
               </div>
@@ -3301,11 +3464,14 @@
                         kind="repo"
                         editors={configEditors}
                         terminals={configTerminals}
+                        profiles={configProfiles}
                         aiHarnesses={configAIHarnesses}
+                        {revealLabel}
                         onOpenBrowser={() => openRepoInBrowser(sourceKey, repoName)}
                         onOpenFolder={() => openRepoInExplorer(repoKey)}
                         onOpenApp={(cmd) => openRepoInApp(repoKey, cmd)}
                         onOpenTerminal={(t) => openRepoInTerminal(repoKey, t)}
+                        onOpenProfile={(id) => openRepoProfile(repoKey, id)}
                         onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
                         onSweep={() => sweepBranches(sourceKey, repoName)}
                         onMove={() => { actionMenuRepo = null; openMoveRepo(sourceKey, repoName); }}
@@ -3720,6 +3886,11 @@
       </div>
     </div>
   {/if}
+
+  <!-- ── TERMINALS & SHELLS (issue #69) ──
+       The Manager opens in its own OS window via openTerminalsManagerWindow
+       (subprocess spawn), so no in-app modal is mounted here. -->
+
 
   <!-- ── DOCTOR (SYSTEM CHECK) MODAL ── -->
   {#if showDoctorModal}
@@ -4991,11 +5162,37 @@
 </div>
 {/if}
 
+{/if}
+<!-- /windowMode === 'main' -->
+
 <!-- ════════════════════════════════════════════════════════════ -->
 <!--  STYLES                                                     -->
 <!-- ════════════════════════════════════════════════════════════ -->
 
 <style>
+  /* ── Tooltip popup (lib/tooltip.ts) ──
+     The popup is appended to document.body so Svelte's scoped styles
+     don't reach it. :global() opts the rule out of scoping. Kept inside
+     App.svelte (rather than a separate CSS file) to avoid an extra
+     import in main.ts; the rule is small and self-contained. */
+  :global(.gitbox-tooltip) {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 11px;
+    line-height: 1.4;
+    pointer-events: none;
+    opacity: 0;
+    animation: gitbox-tooltip-in 100ms ease-out forwards;
+  }
+  @keyframes gitbox-tooltip-in {
+    from { opacity: 0; transform: translateY(-2px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
   /* ── Onboarding ── */
   .onboarding {
     position: fixed; inset: 0; background: var(--bg-base);
@@ -5369,12 +5566,95 @@
   .settings-label { font-size: 11px; font-weight: 600; color: var(--text-muted); width: 80px; flex-shrink: 0; }
   .settings-sublabel { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-left: 12px; flex-shrink: 0; }
   .settings-value { font-size: 12px; color: var(--text-secondary); font-family: monospace; flex: 1; }
-  .settings-btn {
-    padding: 2px 8px; font-size: 10px; font-weight: 500;
-    background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
-    border-radius: 4px; cursor: pointer; transition: all 0.12s; white-space: nowrap;
+
+  /* Action buttons (Open in editor / Change / Run / Manager) — same shape
+     across every Gear row, sitting immediately right of the label so the
+     eye doesn't have to hunt. The subtle blue tint distinguishes them
+     from the option toggles (English/Español/System/Light/Dark) which are
+     stateful selectors, not actions. */
+  .settings-action-btn {
+    padding: 3px 12px;
+    font-size: 11px;
+    font-weight: 500;
+    background: rgba(59, 130, 246, 0.10);  /* blue-500 @ 10% — soft tint */
+    border: 1px solid rgba(59, 130, 246, 0.28);
+    color: var(--text-primary);
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
-  .settings-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
+  .settings-action-btn:hover {
+    background: rgba(59, 130, 246, 0.18);
+    border-color: rgba(59, 130, 246, 0.44);
+  }
+  /* Light theme reads better with a touch more saturation. */
+  :global([data-theme="light"]) .settings-action-btn {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.32);
+  }
+  :global([data-theme="light"]) .settings-action-btn:hover {
+    background: rgba(59, 130, 246, 0.14);
+    border-color: rgba(59, 130, 246, 0.50);
+  }
+  .settings-action-btn:disabled {
+    opacity: 0.7;
+    cursor: progress;
+  }
+  .settings-action-btn:disabled:hover {
+    background: rgba(59, 130, 246, 0.10);
+    border-color: rgba(59, 130, 246, 0.28);
+  }
+  /* Tiny inline spinner shown next to "Opening…" while a Manager
+     subprocess cold-start is in flight. Borderless ring driven by a
+     1s rotate. */
+  .settings-action-spinner {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    margin-right: 6px;
+    vertical-align: -1px;
+    border: 1.5px solid rgba(59, 130, 246, 0.30);
+    border-top-color: rgb(59, 130, 246);
+    border-radius: 50%;
+    animation: gb-spin 0.85s linear infinite;
+  }
+  @keyframes gb-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Legacy aliases — keep .settings-btn / .settings-action working until
+     every call site is moved over. Both now route to the unified style. */
+  .settings-btn,
+  .settings-action {
+    padding: 3px 12px;
+    font-size: 11px;
+    font-weight: 500;
+    background: rgba(59, 130, 246, 0.10);
+    border: 1px solid rgba(59, 130, 246, 0.28);
+    color: var(--text-primary);
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .settings-btn:hover,
+  .settings-action:hover {
+    background: rgba(59, 130, 246, 0.18);
+    border-color: rgba(59, 130, 246, 0.44);
+  }
+  :global([data-theme="light"]) .settings-btn,
+  :global([data-theme="light"]) .settings-action {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.32);
+  }
+  :global([data-theme="light"]) .settings-btn:hover,
+  :global([data-theme="light"]) .settings-action:hover {
+    background: rgba(59, 130, 246, 0.14);
+    border-color: rgba(59, 130, 246, 0.50);
+  }
 
   /* ── Global identity warning banner ── */
   .identity-warn {
@@ -5505,13 +5785,8 @@
   .doctor-install { font-size: 11px; margin-top: 4px; color: var(--text-primary); }
   .doctor-install code { background: var(--bg-hover); padding: 1px 5px; border-radius: 3px; font-family: ui-monospace, Menlo, Consolas, monospace; }
   .doctor-install-label { color: var(--text-muted); margin-right: 4px; }
-  .settings-action {
-    padding: 3px 12px; font-size: 11px; font-weight: 500;
-    border: 1px solid var(--border); background: transparent;
-    color: var(--text-primary); border-radius: 5px;
-    cursor: pointer; transition: background 0.12s, border-color 0.12s;
-  }
-  .settings-action:hover { background: var(--bg-hover); border-color: var(--border-hover); }
+  /* .settings-action shared with .settings-btn / .settings-action-btn —
+     unified rule lives near .settings-row above. */
   .settings-doctor-summary { margin-left: 8px; }
   .discover-filter { width: 100%; margin-bottom: 8px; font-size: 13px; }
   .discover-orgs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }

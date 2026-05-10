@@ -282,6 +282,14 @@ gitbox gitignore install   # Idempotent install / refresh, backed up to .bak-YYY
 
 A curated block of OS-junk patterns (`.DS_Store`, `Thumbs.db`, `*~`, …) is wrapped in sentinel markers inside `~/.gitignore_global` so gitbox can update it without disturbing user-added entries. See [Global gitignore in reference.md](reference.md#global-gitignore) for the full flow, opt-out preference, and GUI/TUI hooks.
 
+### Manage terminal profiles
+
+The TUI's settings screen has a **Terminal profiles…** entry under the gitignore checkbox. Pressing **Enter** opens a dedicated full-screen editor with three sections: detected Terminal apps and Shells (read-only — populated by the GUI's host probe), and Profiles (the launchable Terminal × Shell pairs the kebab menu offers).
+
+In the Profiles section: **d** marks the row as Default, **p** toggles Preferred, **h** toggles Hidden, **e** opens the inline edit form, **a** adds a new user Profile, **x** deletes a user-added Profile (auto-detected / WT-imported / WezTerm-imported / migrated rows can only be Hidden, not deleted — they would re-appear on the next detect cycle anyway). **ESC** returns to settings.
+
+The TUI doesn't run the host probe itself yet — if the Terminals or Shells lists are empty, launch the GUI once on the same machine to populate them. The lists live in `gitbox.json` so both frontends see the same data after that.
+
 ## Step 7: Set up mirrors (optional)
 
 Mirrors let you keep backup copies of repos on another provider — for example, pushing from a homelab Forgejo to GitHub, or pulling GitHub repos into Forgejo.

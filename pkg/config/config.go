@@ -42,9 +42,30 @@ type GlobalConfig struct {
 	CredentialSSH   *SSHGlobal       `json:"credential_ssh,omitempty"`
 	CredentialGCM   *GCMGlobal       `json:"credential_gcm,omitempty"`
 	CredentialToken *TokenGlobal     `json:"credential_token,omitempty"`
-	Editors         []EditorEntry    `json:"editors,omitempty"`
-	Terminals       []TerminalEntry  `json:"terminals,omitempty"`
-	AIHarnesses     []AIHarnessEntry `json:"ai_harnesses,omitempty"`
+	Editors     []EditorEntry    `json:"editors,omitempty"`
+	AIHarnesses []AIHarnessEntry `json:"ai_harnesses,omitempty"`
+
+	// Terminals (legacy v2.0) is the flat (terminal-app + shell) list. It is
+	// auto-migrated into TerminalApps + Shells + TerminalProfiles on first
+	// load and emptied; the JSON key remains accepted for backward
+	// compatibility with existing user configs but new writes use the
+	// three-array model below. Will be removed once the migrator has been in
+	// the wild for one release cycle.
+	Terminals []TerminalEntry `json:"terminals,omitempty"`
+
+	// TerminalApps is the list of terminal applications detected on the host
+	// (Windows Terminal, WezTerm, iTerm, gnome-terminal, …) — apps only, no
+	// shell coupling. See pkg/harness/terminal-directory.md for the seed
+	// table; entries are merged with detection on each SyncProfiles run.
+	TerminalApps []TerminalApp `json:"terminal_apps,omitempty"`
+	// Shells is the list of command-line interpreters available on the host
+	// (cmd, pwsh, git-bash, per-distro WSL, bash, zsh, fish, …). See
+	// pkg/harness/shell-directory.md for the seed table.
+	Shells []ShellEntry `json:"shells,omitempty"`
+	// TerminalProfiles pairs a TerminalApp with a Shell into a launchable
+	// "Open in <terminal> + <shell>" entry. Profiles are what the GUI
+	// LauncherMenu and the TUI launcher overlay render.
+	TerminalProfiles []TerminalProfile `json:"terminal_profiles,omitempty"`
 
 	// PRBadges controls whether PR / review indicators are fetched and shown
 	// on clone rows. Pointer semantics so an absent field defaults to true.
@@ -58,6 +79,45 @@ type GlobalConfig struct {
 	// Pointer semantics so an absent field defaults to true — existing
 	// configs and fresh installs both opt in by default.
 	CheckGlobalGitignore *bool `json:"check_global_gitignore,omitempty"`
+}
+
+// EffectiveTerminals returns the user-facing terminal list for legacy
+// consumers (TUI launcher, AI-harness terminal-fallback) during the v2.0 →
+// v2.1 transition. It prefers the legacy Terminals field when populated and
+// synthesises a flat TerminalEntry list from TerminalProfiles otherwise so
+// code that hasn't been ported to the Profile model still finds something to
+// launch. Hidden profiles are skipped; the per-profile Args override (when
+// present) is preserved verbatim — that matches the migrator, which copies
+// legacy argv into Profile.Args.
+//
+// Removed in the final v2.1 cleanup commit alongside the legacy Terminals
+// field and the screens that read it.
+func (g GlobalConfig) EffectiveTerminals() []TerminalEntry {
+	if len(g.Terminals) > 0 {
+		return g.Terminals
+	}
+	if len(g.TerminalProfiles) == 0 {
+		return nil
+	}
+	apps := make(map[string]TerminalApp, len(g.TerminalApps))
+	for _, a := range g.TerminalApps {
+		apps[a.ID] = a
+	}
+	out := make([]TerminalEntry, 0, len(g.TerminalProfiles))
+	for _, p := range g.TerminalProfiles {
+		if p.Hidden {
+			continue
+		}
+		entry := TerminalEntry{Name: p.Name}
+		if app, ok := apps[p.TerminalID]; ok {
+			entry.Command = app.Command
+		}
+		if len(p.Args) > 0 {
+			entry.Args = append([]string(nil), p.Args...)
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 // PRBadgesOn reports whether PR badges are enabled, defaulting to true when unset.
@@ -107,6 +167,74 @@ type TerminalEntry struct {
 	Name    string   `json:"name"`
 	Command string   `json:"command"`
 	Args    []string `json:"args,omitempty"`
+}
+
+// TerminalApp defines a terminal emulator application — Windows Terminal,
+// WezTerm, iTerm, gnome-terminal, … — independent of the shell it hosts.
+// ArgsTemplate is the per-app argv template into which a shell command and
+// the repo path are spliced at launch time. Supported tokens:
+//
+//	{path}          — repo working directory
+//	{shell_command} — the shell binary path (omitted from argv when empty)
+//	{shell_args}    — the shell's flag list (expands to zero items when empty)
+//	{command}       — kept for AI-harness integration (legacy semantics)
+//
+// Examples:
+//
+//	wt:        ["-d", "{path}", "{shell_command}", "{shell_args}"]
+//	wezterm:   ["start", "--cwd", "{path}", "--", "{shell_command}", "{shell_args}"]
+//	gnome-t:   ["--working-directory={path}", "--", "{shell_command}", "{shell_args}"]
+//	open -a:   ["-a", "Terminal"]   // shell tokens absent → terminal default shell
+type TerminalApp struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Command      string   `json:"command"`
+	ArgsTemplate []string `json:"args_template,omitempty"`
+}
+
+// ShellEntry defines a command-line interpreter the host can launch — cmd,
+// pwsh, git-bash, per-distro WSL (`wsl.exe -d <name>`), bash, zsh, fish.
+// Args holds optional flags (e.g. ["-l"] for login shells, ["-d", "Ubuntu-24.04"]
+// for WSL). Standalone shell launches (no terminal app) use this entry's
+// Command + Args directly.
+type ShellEntry struct {
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Command string   `json:"command"`
+	Args    []string `json:"args,omitempty"`
+}
+
+// TerminalProfile pairs a TerminalApp with a Shell into a single launchable
+// menu entry — "Open in Windows Terminal + PowerShell 7", "Open in WezTerm
+// + Ubuntu 24.04", etc. The default Profile is the primary action of the
+// per-row launcher; preferred Profiles populate the "Profiles ▸" submenu.
+//
+// Source records where the Profile came from:
+//
+//	"detected"          — auto-composed (terminal × shell)
+//	"wt-profile"        — discovered from Windows Terminal settings.json
+//	"wezterm-launchmenu"— discovered from wezterm.lua launch_menu
+//	"migrated"          — converted from a legacy v2.0 TerminalEntry
+//	"user"              — created or edited by the user
+//
+// User-created profiles can be deleted; detected profiles can be hidden but
+// not deleted (a re-sync would just bring them back).
+type TerminalProfile struct {
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	TerminalID string   `json:"terminal"`
+	ShellID    string   `json:"shell,omitempty"`
+	// Args, when non-empty, replaces the TerminalApp's ArgsTemplate at launch
+	// time. Used for "native-profile" terminals (Windows Terminal --profile,
+	// iTerm --profile) where the terminal handles shell selection itself, and
+	// for legacy v2.0 entries that carry their own argv. The {path} token is
+	// still resolved; {shell_command} / {shell_args} expand to zero items
+	// when ShellID is empty.
+	Args      []string `json:"args,omitempty"`
+	Default   bool     `json:"default,omitempty"`
+	Preferred bool     `json:"preferred,omitempty"`
+	Hidden    bool     `json:"hidden,omitempty"`
+	Source    string   `json:"source,omitempty"`
 }
 
 // AIHarnessEntry defines a user-configured AI CLI harness (e.g. claude,

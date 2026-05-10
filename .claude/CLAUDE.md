@@ -180,6 +180,7 @@ model (root router)
 ├── reposModel              Single repo detail + clone/pull/fetch/delete
 ├── mirrorsModel            Mirror detail + setup/discover/CRUD
 ├── settingsModel           Global folder, periodic sync, open in editor
+├── terminalsScreen         v2.1 TerminalProfile editor (parity with GUI's Manager window)
 └── identityModel           Global git identity check/removal
 ```
 
