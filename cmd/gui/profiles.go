@@ -223,7 +223,12 @@ func (a *App) OpenProfile(path, profileID string) error {
 		ShellCommand: shell.Command,
 		ShellArgs:    shell.Args,
 	})
-	return openTerminalRawAt(path, app.Command, args)
+	// A bare-shell DIRECT Profile (TerminalID=="") points at a console-
+	// subsystem .exe (pwsh, cmd, bash, …) that needs the cmd.exe-start
+	// wrapper to get a fresh console. Modern terminal apps are GUI-
+	// subsystem and launch directly (no wrapper, no console flash).
+	isConsole := profile.TerminalID == ""
+	return openTerminalRawAt(path, app.Command, args, isConsole)
 }
 
 // OpenAccountProfile launches the given profile in the account's parent
@@ -349,20 +354,37 @@ func (a *App) OpenTerminalsManagerWindow() error {
 // ─── Plain-launch helper (no harness splice) ──────────────────────────────
 
 // openTerminalRawAt launches a terminal command + args in a folder without
-// any token expansion — args are passed straight through. The Windows
-// `cmd.exe /C start "" /D <path>` wrapper and HideWindow rule still apply.
-func openTerminalRawAt(path, command string, args []string) error {
+// any token expansion — args are passed straight through.
+//
+// Windows callers must pass `isConsole` correctly:
+//
+//   - true  — `command` is a console-subsystem .exe (pwsh, cmd, bash,
+//     wsl, …). Wrap in `cmd.exe /C start "" /D <path>` so it gets a
+//     fresh console; without the wrapper, console apps inherit the
+//     /SUBSYSTEM:WINDOWS parent's null stdio and exit immediately.
+//   - false — `command` is a GUI-subsystem terminal app (wezterm-gui.exe,
+//     mintty.exe, alacritty.exe, …). Launch directly. The cmd.exe
+//     wrapper is harmful here: it flashes a brief cmd.exe console
+//     window before the terminal appears (issue #71 follow-up — the
+//     "quick window that flashes and disappears").
+func openTerminalRawAt(path, command string, args []string, isConsole bool) error {
 	if command == "" {
 		return fmt.Errorf("command is required")
 	}
 	var cmd *exec.Cmd
 	if isWindows() {
-		startArgs := make([]string, 0, 6+len(args))
-		startArgs = append(startArgs, "/C", "start", "", "/D", path, command)
-		startArgs = append(startArgs, args...)
-		cmd = exec.Command("cmd.exe", startArgs...)
-		git.HideWindow(cmd)
-		cmd.Env = sanitizeWindowsTerminalEnv(git.Environ())
+		if isConsole {
+			startArgs := make([]string, 0, 6+len(args))
+			startArgs = append(startArgs, "/C", "start", "", "/D", path, command)
+			startArgs = append(startArgs, args...)
+			cmd = exec.Command("cmd.exe", startArgs...)
+			git.HideWindow(cmd)
+			cmd.Env = sanitizeWindowsTerminalEnv(git.Environ())
+		} else {
+			cmd = exec.Command(command, args...)
+			cmd.Dir = path
+			cmd.Env = sanitizeWindowsTerminalEnv(git.Environ())
+		}
 	} else {
 		cmd = exec.Command(command, args...)
 		cmd.Dir = path
