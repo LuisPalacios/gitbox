@@ -27,7 +27,13 @@ func main() {
 
 	app := NewApp()
 
-	// Check for --test-mode before Wails starts (Wails has no CLI arg support).
+	// Check CLI flags before Wails starts (Wails has no CLI arg support of
+	// its own). We support two side-modes:
+	//   --test-mode         : route config through a temp dir for the test fixture.
+	//   --terminals-window  : run as the dedicated Terminals editor sub-process
+	//                         (issue #69 — opens the Profile manager in its
+	//                         own OS window so the editor can scroll on its
+	//                         own and the parent window stays interactive).
 	for _, arg := range os.Args[1:] {
 		if arg == "--test-mode" {
 			cfgPath, cleanup, err := config.SetupTestMode()
@@ -38,8 +44,15 @@ func main() {
 			app.cfgPath = cfgPath
 			app.testMode = true
 			app.testCleanup = cleanup
-			break
 		}
+		if arg == "--terminals-window" {
+			app.windowMode = "terminals"
+		}
+	}
+
+	if app.windowMode == "terminals" {
+		runTerminalsWindow(app)
+		return
 	}
 
 	// Pre-load config to restore saved window dimensions and view mode.
@@ -124,5 +137,55 @@ func main() {
 	})
 	if err != nil {
 		println("Error:", err.Error())
+	}
+}
+
+// runTerminalsWindow runs the dedicated Terminals manager subprocess
+// (issue #69). It reuses the same App struct + frontend bundle as the main
+// window, but:
+//   - Uses a distinct SingleInstanceLock id so it can coexist with the main
+//     gitbox process (and so launching a second Manager focuses the first
+//     instead of opening a duplicate).
+//   - Skips the default-window bootstrapping in DomReady (no editor sync,
+//     no workspace discovery, no probe loops) — App.DomReady checks
+//     a.windowMode and short-circuits when set to "terminals".
+//   - Opens a smaller window sized for the editor.
+//
+// The frontend reads a.GetWindowMode() on mount and renders only the
+// TerminalsModal contents in this mode (everything else is gated off).
+func runTerminalsWindow(app *App) {
+	const (
+		w, h       = 980, 720
+		minW, minH = 700, 480
+	)
+	err := wails.Run(&options.App{
+		Title:     "gitbox · Terminals",
+		Width:     w,
+		Height:    h,
+		MinWidth:  minW,
+		MinHeight: minH,
+		AssetServer: &assetserver.Options{
+			Assets: assets,
+		},
+		BackgroundColour: &options.RGBA{R: 9, G: 9, B: 11, A: 255},
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: "com.luispalacios.gitbox.terminals",
+			OnSecondInstanceLaunch: func(_ options.SecondInstanceData) {
+				if app.ctx == nil {
+					return
+				}
+				wailsrt.WindowUnminimise(app.ctx)
+				wailsrt.WindowShow(app.ctx)
+			},
+		},
+		OnStartup:  app.Startup,
+		OnShutdown: app.Shutdown,
+		OnDomReady: app.DomReady,
+		Bind: []interface{}{
+			app,
+		},
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "terminals window: %v\n", err)
 	}
 }

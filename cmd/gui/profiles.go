@@ -1165,6 +1165,48 @@ func (a *App) SaveTerminalProfiles(apps []config.TerminalApp, shells []config.Sh
 	return a.saveConfig()
 }
 
+// GetWindowMode reports which UI the current process should render.
+// Returns "terminals" for the dedicated Profile-editor sub-process spawned
+// by OpenTerminalsManagerWindow (issue #69), and "main" (or "") for the
+// normal full-app window. Read by App.svelte on mount to decide between
+// the standalone editor view and the regular gitbox UI.
+func (a *App) GetWindowMode() string {
+	if a.windowMode == "" {
+		return "main"
+	}
+	return a.windowMode
+}
+
+// OpenTerminalsManagerWindow spawns the current binary as a sub-process
+// with --terminals-window so the Profile editor lives in its own OS window
+// (issue #69 user feedback — the in-app modal was unscrollable on
+// developer hosts with many WT profiles + composed Profiles). The sub-
+// process shares the same gitbox.json, so saves there are picked up by
+// the parent on its next reload (App.svelte refreshes on window focus).
+//
+// Returns immediately after Start — the parent stays responsive while the
+// editor window is open.
+func (a *App) OpenTerminalsManagerWindow() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("locate gitbox binary: %w", err)
+	}
+	args := []string{"--terminals-window"}
+	if a.testMode {
+		// Carry test-mode through so the sub-process points at the same
+		// fixture-backed gitbox.json the parent is editing.
+		args = append(args, "--test-mode")
+	}
+	cmd := exec.Command(exe, args...)
+	// Don't inherit the parent's console handles — the sub-process is a
+	// GUI app and handing it our stdio just wastes file descriptors. Hide
+	// the transient process-create window on Windows (per CLAUDE.md
+	// "Windows console flash rule"); the actual GUI window pops up
+	// independently and stays visible.
+	git.HideWindow(cmd)
+	return cmd.Start()
+}
+
 // RedetectProfiles re-runs SyncProfiles and returns the refreshed config DTO.
 // The Gear-panel "Re-detect" button binds to this so the user can reflect
 // host changes (installed a new terminal, added a WSL distro, edited

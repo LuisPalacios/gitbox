@@ -12,6 +12,12 @@
   import { fade, slide } from 'svelte/transition';
 
   export let open = false;
+  // mode='overlay' renders the editor as an in-app modal with a scrim
+  // (the original behaviour). mode='window' assumes the host is a
+  // dedicated OS window (the gitbox.exe --terminals-window sub-process)
+  // and skips the overlay/close-button — the OS window chrome already
+  // provides the close affordance.
+  export let mode: 'overlay' | 'window' = 'overlay';
   export let apps: TerminalAppInfo[] = [];
   export let shells: ShellInfo[] = [];
   export let profiles: TerminalProfileInfo[] = [];
@@ -170,12 +176,24 @@
 </script>
 
 {#if open}
-  <div class="overlay" on:click={close} transition:fade={{ duration: 120 }}>
-    <div class="modal modal-tprofiles" on:click|stopPropagation transition:slide={{ duration: 180 }}>
-      <div class="modal-head">
-        <h3>Terminals &amp; shells</h3>
-        <button class="btn-x" on:click={close} aria-label="Close">&#10005;</button>
-      </div>
+  <div
+    class:overlay={mode === 'overlay'}
+    class:tp-window-host={mode === 'window'}
+    on:click={mode === 'overlay' ? close : undefined}
+    transition:fade={{ duration: 120 }}
+  >
+    <div
+      class="modal modal-tprofiles"
+      class:tp-modal-window={mode === 'window'}
+      on:click|stopPropagation
+      transition:slide={{ duration: 180 }}
+    >
+      {#if mode === 'overlay'}
+        <div class="modal-head">
+          <h3>Terminals &amp; shells</h3>
+          <button class="btn-x" on:click={close} aria-label="Close">&#10005;</button>
+        </div>
+      {/if}
       <div class="modal-body tp-body">
         <div class="tp-toolbar">
           <button class="tp-btn" type="button" on:click={redetect} disabled={busy}>Re-detect</button>
@@ -340,11 +358,37 @@
     max-height: 88vh;
     display: flex;
     flex-direction: column;
+    min-height: 0;          /* allow inner flex child to shrink + scroll */
+  }
+  .modal-tprofiles :global(.modal-head) {
+    flex: 0 0 auto;
+  }
+
+  /* Window mode: the host is an OS-native window already, so let the
+     editor fill the whole viewport. Removes the modal "card" framing
+     since there's no scrim to contrast against. */
+  .tp-window-host {
+    position: fixed;
+    inset: 0;
+    background: var(--bg-base);
+    overflow: hidden;
+    z-index: 1;
+  }
+  .tp-modal-window {
+    width: 100% !important;
+    max-width: none !important;
+    height: 100% !important;
+    max-height: none !important;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
   }
 
   .tp-body {
     overflow-y: auto;
     padding: 12px 16px 16px;
+    flex: 1 1 auto;
+    min-height: 0;          /* mandatory for the auto-overflow child to scroll */
   }
 
   .tp-toolbar {

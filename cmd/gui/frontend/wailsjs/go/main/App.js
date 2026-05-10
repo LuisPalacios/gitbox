@@ -250,6 +250,10 @@ export function GetViewMode() {
   return window['go']['main']['App']['GetViewMode']();
 }
 
+export function GetWindowMode() {
+  return window['go']['main']['App']['GetWindowMode']();
+}
+
 export function GetWorkspace(arg1) {
   return window['go']['main']['App']['GetWorkspace'](arg1);
 }
@@ -360,6 +364,10 @@ export function OpenInTerminal(arg1, arg2, arg3) {
 
 export function OpenProfile(arg1, arg2) {
   return window['go']['main']['App']['OpenProfile'](arg1, arg2);
+}
+
+export function OpenTerminalsManagerWindow() {
+  return window['go']['main']['App']['OpenTerminalsManagerWindow']();
 }
 
 export function OpenWorkspace(arg1) {

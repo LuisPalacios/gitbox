@@ -130,6 +130,8 @@ export function GetTokenGuide(arg1:string):Promise<main.TokenGuideInfo>;
 
 export function GetViewMode():Promise<string>;
 
+export function GetWindowMode():Promise<string>;
+
 export function GetWorkspace(arg1:string):Promise<main.WorkspaceDTO>;
 
 export function InstallGlobalGitignore():Promise<gitignore.InstallResult>;
@@ -185,6 +187,8 @@ export function OpenInExplorer(arg1:string):Promise<void>;
 export function OpenInTerminal(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 
 export function OpenProfile(arg1:string,arg2:string):Promise<void>;
+
+export function OpenTerminalsManagerWindow():Promise<void>;
 
 export function OpenWorkspace(arg1:string):Promise<void>;
 

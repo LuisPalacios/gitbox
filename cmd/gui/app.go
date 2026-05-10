@@ -47,6 +47,12 @@ type App struct {
 	cfgLoadError    string // non-empty if config exists but failed to parse
 	testMode        bool   // true when launched with --test-mode
 	testCleanup     func() // cleanup function for test-mode temp dir
+	// windowMode selects which UI the frontend should render. Empty (or
+	// "main") = the full gitbox app. "terminals" = the standalone Profile
+	// editor sub-process spawned by OpenTerminalsManagerWindow (issue #69
+	// — keeps the editor in its own OS window so the parent stays
+	// interactive and the editor scrolls on its own).
+	windowMode string
 	mu              sync.Mutex
 	savedWindowPos  *config.WindowState // full-mode window state pre-loaded from config
 	savedCompactPos *config.WindowState // compact-mode window state pre-loaded from config
@@ -154,6 +160,16 @@ func (a *App) BeforeClose(_ context.Context) bool {
 // We start hidden, restore saved position, then show the window to prevent flickering.
 // If the saved position is off-screen (e.g. monitor disconnected), we center instead.
 func (a *App) DomReady(_ context.Context) {
+	// Terminals subprocess (issue #69 — see runTerminalsWindow in main.go)
+	// only renders the Profile editor and shouldn't spin up the full app's
+	// background workers. SyncProfiles still runs so the editor sees a
+	// fresh terminal/shell list, but workspace discovery, upstream probing,
+	// update checks and editor/terminal sync are skipped.
+	if a.windowMode == "terminals" {
+		a.SyncProfiles()
+		return
+	}
+
 	// Pick the right saved position based on view mode.
 	w := a.savedWindowPos
 	if a.savedViewMode == "compact" && a.savedCompactPos != nil {

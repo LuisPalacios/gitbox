@@ -609,11 +609,15 @@
     configStore.set(fresh);
   }
 
-  // showTerminalsModal toggles the v2.1 Terminal Profile editor (issue #69)
-  // mounted at the bottom of the Gear panel via TerminalsSection's button.
-  // Held at App.svelte scope so the modal's overlay clicks through to the
-  // body without fighting the Gear panel's own slide transition.
-  let showTerminalsModal = false;
+  // openTerminalsManagerWindow asks the Go side to spawn a sub-process of
+  // gitbox.exe with --terminals-window, which renders the standalone
+  // Profile editor in its own OS window. Fire-and-forget; the parent
+  // window stays interactive and refreshes config on focus when the user
+  // clicks back here.
+  async function openTerminalsManagerWindow() {
+    try { await bridge.openTerminalsManagerWindow(); }
+    catch (e: any) { await bridge.showErrorDialog('Open Terminals Manager', (e?.message || String(e))); }
+  }
 
   // revealLabel is the OS-aware "Reveal in <file manager>" string passed to
   // every LauncherMenu instance. Computed once from hostOS so the kebabs
@@ -2119,6 +2123,12 @@
   let configPath = '';
   let appVersion = '';
   let hostOS = ''; // "darwin" | "windows" | "linux" — loaded on init
+  // windowMode tells the frontend which UI to render. The default "main"
+  // shows the full gitbox app; "terminals" hides everything except the
+  // standalone Profile editor window spawned by openTerminalsManagerWindow
+  // (issue #69 — keeps the editor in its own OS window so the parent
+  // stays interactive).
+  let windowMode: 'main' | 'terminals' = 'main';
   let autostartOn = false;
   let autostartSupported = true;
 
@@ -2356,6 +2366,27 @@
   }
 
   onMount(async () => {
+    // Load the window mode before anything else — the terminals sub-process
+    // skips most of the heavy init below and renders only the Profile
+    // editor.
+    try {
+      const mode = await bridge.getWindowMode();
+      if (mode === 'terminals') {
+        windowMode = 'terminals';
+      }
+    } catch { /* fall back to main mode */ }
+
+    if (windowMode === 'terminals') {
+      // Terminals sub-process: just hydrate the bits the editor needs.
+      try {
+        const cfg = await bridge.getConfig();
+        configStore.set(cfg);
+        hostOS = await bridge.getOS();
+      } catch (e) { console.error(e); }
+      applyTheme();
+      return;
+    }
+
     applyTheme();
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (themeChoice === 'system') applyTheme();
@@ -2628,6 +2659,24 @@
 <!-- ════════════════════════════════════════════════════════════ -->
 <!--  TEMPLATE                                                   -->
 <!-- ════════════════════════════════════════════════════════════ -->
+
+<!-- ── TERMINALS SUB-PROCESS WINDOW (issue #69) ── -->
+{#if windowMode === 'terminals'}
+  <div class="terminals-window-host">
+    <TerminalsModal
+      open={true}
+      mode="window"
+      apps={configApps}
+      shells={configShells}
+      profiles={configProfiles}
+      onSave={saveTerminalProfilesAndReload}
+      onConfigReloaded={reloadConfigFromDisk}
+      onClose={() => { /* no-op — closing happens via the OS window chrome */ }}
+    />
+  </div>
+{/if}
+
+{#if windowMode === 'main'}
 
 <!-- ── CONFIG LOAD ERROR ── -->
 {#if cfgLoadErrorModal}
@@ -3026,19 +3075,19 @@
     <div class="settings" transition:slide={{ duration: 150 }}>
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Absolute path to the gitbox.json file currently in use. Click ‘Open in editor’ to inspect or hand-edit it."}>{$t('settings.config')}</span>
+        <button class="settings-action-btn" on:click={() => bridge.openFileInEditor(configPath)}>{$t('settings.openInEditor')}</button>
         <span class="settings-value">{configPath}</span>
-        <button class="settings-btn" on:click={() => bridge.openFileInEditor(configPath)}>{$t('settings.openInEditor')}</button>
       </div>
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Top-level folder where gitbox keeps every cloned repo. Each account gets a sub-folder under it."}>{$t('settings.rootFolder')}</span>
+        <button class="settings-action-btn" on:click={openChangeFolder}>{$t('settings.change')}</button>
         <span class="settings-value">{$configStore?.global?.folder || '(not set)'}</span>
-        <button class="settings-btn" on:click={openChangeFolder}>{$t('settings.change')}</button>
       </div>
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Language used by the gitbox UI. Switching takes effect immediately."}>{$t('settings.language')}</span>
         <div class="theme-toggle">
           <button class="theme-btn" class:theme-active={languageChoice === 'en'} on:click={() => setLanguage('en')}>English</button>
-          <button class="theme-btn" class:theme-active={languageChoice === 'es'} on:click={() => setLanguage('es')}>Espanol</button>
+          <button class="theme-btn" class:theme-active={languageChoice === 'es'} on:click={() => setLanguage('es')}>Español</button>
         </div>
       </div>
       <div class="settings-row">
@@ -3093,17 +3142,12 @@
       </div>
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Probe external tools gitbox uses (git, Git Credential Manager, ssh, tmux, …) and flag missing ones."}>{$t('settings.systemCheck')}</span>
-        <button class="settings-action" on:click={openDoctorModal}>{$t('settings.run')}</button>
+        <button class="settings-action-btn" on:click={openDoctorModal}>{$t('settings.run')}</button>
         {#if doctorSummary}
           <span class="settings-sublabel settings-doctor-summary">{doctorSummary}</span>
         {/if}
       </div>
-      <TerminalsSection
-        apps={configApps}
-        shells={configShells}
-        profiles={configProfiles}
-        onOpen={() => showTerminalsModal = true}
-      />
+      <TerminalsSection onOpen={openTerminalsManagerWindow} />
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Currently running gitbox version (git tag + commit hash baked in at build time)."}>{$t('settings.version')}</span>
         <span class="settings-value">{appVersion}</span>
@@ -5068,6 +5112,9 @@
 </div>
 {/if}
 
+{/if}
+<!-- /windowMode === 'main' -->
+
 <!-- ════════════════════════════════════════════════════════════ -->
 <!--  STYLES                                                     -->
 <!-- ════════════════════════════════════════════════════════════ -->
@@ -5469,12 +5516,70 @@
   .settings-label { font-size: 11px; font-weight: 600; color: var(--text-muted); width: 80px; flex-shrink: 0; }
   .settings-sublabel { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-left: 12px; flex-shrink: 0; }
   .settings-value { font-size: 12px; color: var(--text-secondary); font-family: monospace; flex: 1; }
-  .settings-btn {
-    padding: 2px 8px; font-size: 10px; font-weight: 500;
-    background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
-    border-radius: 4px; cursor: pointer; transition: all 0.12s; white-space: nowrap;
+
+  /* Action buttons (Open in editor / Change / Run / Manager) — same shape
+     across every Gear row, sitting immediately right of the label so the
+     eye doesn't have to hunt. The subtle blue tint distinguishes them
+     from the option toggles (English/Español/System/Light/Dark) which are
+     stateful selectors, not actions. */
+  .settings-action-btn {
+    padding: 3px 12px;
+    font-size: 11px;
+    font-weight: 500;
+    background: rgba(59, 130, 246, 0.10);  /* blue-500 @ 10% — soft tint */
+    border: 1px solid rgba(59, 130, 246, 0.28);
+    color: var(--text-primary);
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
-  .settings-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
+  .settings-action-btn:hover {
+    background: rgba(59, 130, 246, 0.18);
+    border-color: rgba(59, 130, 246, 0.44);
+  }
+  /* Light theme reads better with a touch more saturation. */
+  :global([data-theme="light"]) .settings-action-btn {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.32);
+  }
+  :global([data-theme="light"]) .settings-action-btn:hover {
+    background: rgba(59, 130, 246, 0.14);
+    border-color: rgba(59, 130, 246, 0.50);
+  }
+
+  /* Legacy aliases — keep .settings-btn / .settings-action working until
+     every call site is moved over. Both now route to the unified style. */
+  .settings-btn,
+  .settings-action {
+    padding: 3px 12px;
+    font-size: 11px;
+    font-weight: 500;
+    background: rgba(59, 130, 246, 0.10);
+    border: 1px solid rgba(59, 130, 246, 0.28);
+    color: var(--text-primary);
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .settings-btn:hover,
+  .settings-action:hover {
+    background: rgba(59, 130, 246, 0.18);
+    border-color: rgba(59, 130, 246, 0.44);
+  }
+  :global([data-theme="light"]) .settings-btn,
+  :global([data-theme="light"]) .settings-action {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.32);
+  }
+  :global([data-theme="light"]) .settings-btn:hover,
+  :global([data-theme="light"]) .settings-action:hover {
+    background: rgba(59, 130, 246, 0.14);
+    border-color: rgba(59, 130, 246, 0.50);
+  }
 
   /* ── Global identity warning banner ── */
   .identity-warn {
@@ -5605,13 +5710,8 @@
   .doctor-install { font-size: 11px; margin-top: 4px; color: var(--text-primary); }
   .doctor-install code { background: var(--bg-hover); padding: 1px 5px; border-radius: 3px; font-family: ui-monospace, Menlo, Consolas, monospace; }
   .doctor-install-label { color: var(--text-muted); margin-right: 4px; }
-  .settings-action {
-    padding: 3px 12px; font-size: 11px; font-weight: 500;
-    border: 1px solid var(--border); background: transparent;
-    color: var(--text-primary); border-radius: 5px;
-    cursor: pointer; transition: background 0.12s, border-color 0.12s;
-  }
-  .settings-action:hover { background: var(--bg-hover); border-color: var(--border-hover); }
+  /* .settings-action shared with .settings-btn / .settings-action-btn —
+     unified rule lives near .settings-row above. */
   .settings-doctor-summary { margin-left: 8px; }
   .discover-filter { width: 100%; margin-bottom: 8px; font-size: 13px; }
   .discover-orgs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
