@@ -1215,9 +1215,21 @@ func (a *App) OpenTerminalsManagerWindow() error {
 	// OnSecondInstanceLaunch (which calls WindowShow) before anything
 	// becomes visible. The CLAUDE.md "Windows console-flash rule" only
 	// applies to console-subsystem children; GUI children are exempt.
+	//
+	// configureChildLifetime is Linux-only — sets PR_SET_PDEATHSIG so
+	// the kernel SIGKILLs the subprocess the moment the parent dies,
+	// regardless of whether the parent's Shutdown ran. Must run BEFORE
+	// cmd.Start (it sets SysProcAttr that the syscall reads at fork).
+	configureChildLifetime(cmd)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+	// linkChildLifetimeToParent is Windows-only — assigns the freshly
+	// started subprocess to a Job Object configured with
+	// JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE. When the parent gitbox.exe
+	// exits (graceful, crash, taskkill), Windows closes the job and
+	// every member dies. Must run AFTER cmd.Start so we have a PID.
+	linkChildLifetimeToParent(cmd.Process)
 
 	if havePrevious {
 		// The subprocess is already alive (HideWindowOnClose kept it
