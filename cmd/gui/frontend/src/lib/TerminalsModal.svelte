@@ -27,6 +27,22 @@
 
   let busy = false;
   let statusMsg = '';
+  let missingModern = false;
+  let isWindows = false;
+
+  // Detect host OS once on mount so the Add form can choose between the
+  // OS-aware shapes (Windows = mandatory shell selector, mac/Linux = optional
+  // shell, blank means "login shell"). Issue #71.
+  import { onMount } from 'svelte';
+  onMount(async () => {
+    try {
+      const goos = await bridge.getOS();
+      isWindows = goos === 'windows';
+      missingModern = await bridge.missingModernTerminal();
+    } catch {
+      // Best-effort — banner stays hidden, Add form falls back to mandatory shell.
+    }
+  });
 
   // Local working draft, refreshed reactively on prop change so a
   // Re-detect / external save updates the table on the next tick.
@@ -43,8 +59,10 @@
   let editTerminal = '';
   let editShell = '';
 
-  // Add-form state. The shell field is required (no "(default)" option) so
-  // every Profile pairs a clear Terminal with a clear Shell.
+  // Add-form state. On Windows the shell field is required (Profiles pair a
+  // Terminal with a Shell). On macOS/Linux the shell defaults to "" — the
+  // login shell — so the Add row matches the Terminal-only auto-Profiles;
+  // power users can still override with an explicit shell pick.
   type Draft = { name: string; terminal: string; shell: string };
   let addDraft: Draft | null = null;
 
@@ -52,7 +70,10 @@
     return draftApps.find(a => a.id === id)?.name ?? id ?? '—';
   }
   function shellName(id: string): string {
-    if (!id) return '—';
+    // Empty shell on Profile rows means "login shell" on macOS/Linux —
+    // render that as a hint so the dim cell tells the user what'll launch
+    // instead of an opaque em-dash.
+    if (!id) return isWindows ? '—' : 'login shell';
     return draftShells.find(s => s.id === id)?.name ?? id;
   }
 
@@ -92,7 +113,9 @@
   }
 
   function startAdd() {
-    addDraft = { name: '', terminal: draftApps[0]?.id ?? '', shell: draftShells[0]?.id ?? '' };
+    // macOS/Linux: shell defaults to "" (login shell); Windows: first shell.
+    const defaultShell = isWindows ? (draftShells[0]?.id ?? '') : '';
+    addDraft = { name: '', terminal: draftApps[0]?.id ?? '', shell: defaultShell };
   }
 
   function cancelAdd() {
@@ -102,7 +125,10 @@
   async function saveAdd() {
     if (!addDraft) return;
     const name = addDraft.name.trim();
-    if (!name || !addDraft.terminal || !addDraft.shell) return;
+    // Windows requires both Terminal AND Shell; mac/Linux requires only
+    // Terminal (Shell="" means login shell).
+    if (!name || !addDraft.terminal) return;
+    if (isWindows && !addDraft.shell) return;
     const id = nextProfileID(addDraft.terminal, addDraft.shell, name);
     const fresh: TerminalProfileInfo = {
       id,
@@ -205,6 +231,14 @@
         {/if}
       </div>
       <div class="modal-body tp-body">
+        {#if missingModern}
+          <div class="tp-banner" role="status">
+            <strong>Install Windows Terminal for the best experience.</strong>
+            gitbox is using bare-shell launches as a fallback. A modern terminal
+            (Windows Terminal, WezTerm, Alacritty, …) hosts shells better and
+            unlocks the per-Profile launch flow.
+          </div>
+        {/if}
         <h4 class="tp-h4 tp-h4-first">Detected terminals</h4>
         {#if draftApps.length === 0}
           <p class="tp-empty">No terminal apps detected. Click <em>Re-detect</em> after installing one.</p>
@@ -247,22 +281,22 @@
           <table class="tp-table">
             <thead>
               <tr>
-                <th title="Default — primary action of the per-row launcher">●</th>
-                <th title="Preferred — shown in the launcher submenu">★</th>
+                <th class="tp-th-icon" title="Default — primary action of the per-row launcher">●</th>
+                <th class="tp-th-icon" title="Preferred — shown in the launcher submenu">★</th>
                 <th>Name</th>
                 <th>Terminal</th>
                 <th>Shell</th>
-                <th title="Hidden — kept in config but not shown in the launcher">👁</th>
+                <th class="tp-th-icon" title="Hidden — kept in config but not shown in the launcher">👁</th>
                 <th class="tp-th-actions">Actions</th>
               </tr>
             </thead>
             <tbody>
               {#each draftProfiles as p (p.id)}
                 <tr class:tp-row-hidden={p.hidden}>
-                  <td>
+                  <td class="tp-td-icon">
                     <input type="radio" name="tp-default" checked={p.default} disabled={busy} on:change={() => setDefault(p.id)} />
                   </td>
-                  <td>
+                  <td class="tp-td-icon">
                     <button class="tp-icon-btn" class:tp-on={p.preferred} type="button" disabled={busy} on:click={() => togglePreferred(p.id)} title="Toggle preferred">★</button>
                   </td>
                   {#if editingId === p.id}
@@ -276,12 +310,15 @@
                     </td>
                     <td>
                       <select class="tp-input" bind:value={editShell}>
+                        {#if !isWindows}
+                          <option value="">(login shell)</option>
+                        {/if}
                         {#each draftShells as s (s.id)}
                           <option value={s.id}>{s.name}</option>
                         {/each}
                       </select>
                     </td>
-                    <td>
+                    <td class="tp-td-icon">
                       <button class="tp-icon-btn" type="button" disabled={busy} on:click={() => toggleHidden(p.id)} title="Toggle hidden">{p.hidden ? '🙈' : '👁'}</button>
                     </td>
                     <td class="tp-actions">
@@ -292,15 +329,13 @@
                     <td>{p.name}</td>
                     <td class="tp-cell-dim">{appName(p.terminal)}</td>
                     <td class="tp-cell-dim">{shellName(p.shell)}</td>
-                    <td>
+                    <td class="tp-td-icon">
                       <button class="tp-icon-btn" type="button" disabled={busy} on:click={() => toggleHidden(p.id)} title="Toggle hidden">{p.hidden ? '🙈' : '👁'}</button>
                     </td>
                     <td class="tp-actions">
                       <button class="tp-icon-btn" type="button" disabled={busy} on:click={() => startEdit(p)} title="Edit">✎</button>
                       {#if p.source === 'user'}
                         <button class="tp-icon-btn tp-icon-danger" type="button" disabled={busy} on:click={() => deleteProfile(p)} title="Delete">🗑</button>
-                      {:else}
-                        <span class="tp-source-tag" title={sourceTooltip(p.source)}>{p.source}</span>
                       {/if}
                     </td>
                   {/if}
@@ -308,8 +343,8 @@
               {/each}
               {#if addDraft}
                 <tr class="tp-row-add">
-                  <td>—</td>
-                  <td>—</td>
+                  <td class="tp-td-icon">—</td>
+                  <td class="tp-td-icon">—</td>
                   <td><input class="tp-input" bind:value={addDraft.name} placeholder="Display name" autofocus /></td>
                   <td>
                     <select class="tp-input" bind:value={addDraft.terminal}>
@@ -320,14 +355,17 @@
                   </td>
                   <td>
                     <select class="tp-input" bind:value={addDraft.shell}>
+                      {#if !isWindows}
+                        <option value="">(login shell)</option>
+                      {/if}
                       {#each draftShells as s (s.id)}
                         <option value={s.id}>{s.name}</option>
                       {/each}
                     </select>
                   </td>
-                  <td>—</td>
+                  <td class="tp-td-icon">—</td>
                   <td class="tp-actions">
-                    <button class="tp-btn tp-btn-small" type="button" disabled={busy || !addDraft.name.trim() || !addDraft.terminal || !addDraft.shell} on:click={saveAdd}>Add</button>
+                    <button class="tp-btn tp-btn-small" type="button" disabled={busy || !addDraft.name.trim() || !addDraft.terminal || (isWindows && !addDraft.shell)} on:click={saveAdd}>Add</button>
                     <button class="tp-btn tp-btn-small tp-btn-ghost" type="button" disabled={busy} on:click={cancelAdd}>Cancel</button>
                   </td>
                 </tr>
@@ -340,16 +378,6 @@
   </div>
 {/if}
 
-<script lang="ts" context="module">
-  function sourceTooltip(source: string): string {
-    switch (source) {
-      case 'wt-profile': return 'Imported from Windows Terminal settings.json. Toggle Hidden to remove from the launcher.';
-      case 'wezterm-launchmenu': return 'Imported from your wezterm.lua launch_menu. Toggle Hidden to remove from the launcher.';
-      case 'migrated': return 'Migrated from a v2.0 terminals[] entry. Toggle Hidden to remove from the launcher.';
-      default: return 'Auto-detected; toggle Hidden if you want it out of the menu.';
-    }
-  }
-</script>
 
 <style>
   /* Modal scaffolding mirrors .overlay / .modal / .modal-head / .modal-body
@@ -447,6 +475,36 @@
   .tp-row-add td { background: var(--bg-card); }
 
   .tp-th-actions { width: 1%; white-space: nowrap; }
+  /* Icon-only columns (default radio, preferred star, hidden eye).
+     Three rules at play to make the header glyph line up exactly under
+     the body control:
+       1. text-align:center on both header AND body cells.
+       2. width:1% collapses the column to its content's intrinsic
+          width so they share the same tight box.
+       3. matching font-size (14px) on both — emojis like 👁 have
+          asymmetric side bearings that shift the visual midpoint
+          differently at different font-sizes, so a 12px header glyph
+          centers at a slightly different X than a 14px body glyph.
+     The .tp-icon-btn padding is also zeroed inside icon cells so the
+     button's content sits at the same offset as the header glyph (cell
+     padding only); native radio margin is reset for the same reason. */
+  .tp-th-icon, .tp-td-icon {
+    text-align: center;
+    width: 1%;
+    white-space: nowrap;
+    padding-left: 4px;
+    padding-right: 4px;
+    font-size: 14px;
+  }
+  .tp-td-icon input[type="radio"],
+  .tp-td-icon .tp-icon-btn {
+    margin: 0;
+    vertical-align: middle;
+  }
+  .tp-td-icon .tp-icon-btn {
+    padding-left: 0;
+    padding-right: 0;
+  }
   .tp-actions { white-space: nowrap; display: flex; gap: 4px; }
 
   .tp-btn {
@@ -490,12 +548,21 @@
   }
   .tp-input:focus { outline: 1px solid var(--accent); }
 
-  .tp-source-tag {
-    font-size: 10px;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 2px 4px;
-    border-radius: 2px;
+  .tp-banner {
+    background: var(--bg-card);
+    border: 1px solid var(--accent, #f5b400);
+    border-left-width: 3px;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin: 0 0 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+  .tp-banner strong {
+    display: block;
+    color: var(--text-primary);
+    font-weight: 600;
+    margin-bottom: 2px;
   }
 </style>

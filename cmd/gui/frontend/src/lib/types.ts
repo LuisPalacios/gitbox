@@ -303,13 +303,16 @@ export interface ShellInfo {
 export interface TerminalProfileInfo {
   id: string;
   name: string;
-  terminal: string;        // → TerminalAppInfo.id
-  shell: string;           // → ShellInfo.id; "" means the terminal default
+  terminal: string;        // → TerminalAppInfo.id; "" for bare-shell fallback Profiles
+  shell: string;           // → ShellInfo.id; "" means the terminal default (login shell on mac/Linux)
   args: string[];          // optional override of TerminalApp.args_template
   default: boolean;
   preferred: boolean;
   hidden: boolean;
-  source: string;          // "detected" | "wt-profile" | "wezterm-launchmenu" | "migrated" | "user"
+  // source is internal — gates the delete-vs-hide UX rule (only "user" is
+  // deletable) but is NEVER displayed in the Manager. Values:
+  // "detected" | "wt-profile" | "wezterm-launchmenu" | "migrated" | "user".
+  source: string;
 }
 
 export interface AIHarnessInfo {

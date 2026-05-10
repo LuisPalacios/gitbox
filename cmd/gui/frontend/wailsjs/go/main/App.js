@@ -310,6 +310,10 @@ export function ListWorkspaces() {
   return window['go']['main']['App']['ListWorkspaces']();
 }
 
+export function MissingModernTerminal() {
+  return window['go']['main']['App']['MissingModernTerminal']();
+}
+
 export function MoveRepo(arg1) {
   return window['go']['main']['App']['MoveRepo'](arg1);
 }
