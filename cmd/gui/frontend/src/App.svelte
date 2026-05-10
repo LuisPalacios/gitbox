@@ -12,7 +12,7 @@
   } from './lib/stores';
   import { statusColor, credColor, statusLabel, providerLabel, statusSymbol } from './lib/theme';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
-  import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit } from '../wailsjs/runtime/runtime';
+  import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit, EventsOn } from '../wailsjs/runtime/runtime';
   import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, WorkspaceDTO, WorkspaceMemberDTO, WorkspaceCreateRequest, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
   import PRPopover from './lib/PRPopover.svelte';
@@ -613,9 +613,25 @@
   // Profile editor in its own OS window. Fire-and-forget; the parent
   // window stays interactive and refreshes config on focus when the user
   // clicks back here.
+  let terminalsManagerOpening = false;
+  let terminalsManagerHasOpened = false;
   async function openTerminalsManagerWindow() {
-    try { await bridge.openTerminalsManagerWindow(); }
-    catch (e: any) { await bridge.showErrorDialog('Open Terminals Manager', (e?.message || String(e))); }
+    if (terminalsManagerOpening) return;
+    terminalsManagerOpening = true;
+    // Cold-start of a Wails subprocess + WebView2/WebKitGTK + first paint
+    // takes ~1.5s on Win/Linux. Subsequent re-opens go through
+    // HideWindowOnClose + SingleInstanceLock and appear instantly, so
+    // we cap the "Opening…" affordance shorter once we know the
+    // subprocess is already alive (issue #69 user feedback).
+    const cooldown = terminalsManagerHasOpened ? 250 : 1500;
+    try {
+      await bridge.openTerminalsManagerWindow();
+      terminalsManagerHasOpened = true;
+    } catch (e: any) {
+      await bridge.showErrorDialog('Open Terminals Manager', (e?.message || String(e)));
+    } finally {
+      setTimeout(() => { terminalsManagerOpening = false; }, cooldown);
+    }
   }
 
   // revealLabel is the OS-aware "Reveal in <file manager>" string passed to
@@ -2377,12 +2393,25 @@
 
     if (windowMode === 'terminals') {
       // Terminals sub-process: just hydrate the bits the editor needs.
-      try {
-        const cfg = await bridge.getConfig();
-        configStore.set(cfg);
-        hostOS = await bridge.getOS();
-      } catch (e) { console.error(e); }
+      const hydrate = async () => {
+        try {
+          const cfg = await bridge.getConfig();
+          configStore.set(cfg);
+        } catch (e) { console.error(e); }
+      };
+      try { hostOS = await bridge.getOS(); } catch (e) { console.error(e); }
+      await hydrate();
       applyTheme();
+      // The parent uses HideWindowOnClose, so a "second open" of the
+      // Manager just re-shows this same hidden window. Re-hydrate the
+      // config on focus so the table reflects any wezterm.lua /
+      // installed-shell changes the user made between visits. The Go
+      // side also emits 'profiles:reloaded' from the
+      // OnSecondInstanceLaunch hook after running SyncProfiles —
+      // listen for that explicitly so we pick the refresh up even if
+      // the focus event timing is flaky on Linux/Windows.
+      window.addEventListener('focus', () => { hydrate(); });
+      EventsOn('profiles:reloaded', () => { hydrate(); });
       // The Wails subprocess starts hidden so the user never sees a
       // dark-empty-webview flash before Svelte mounts. Reveal the
       // window only after Svelte has flushed the DOM AND the browser
@@ -3163,7 +3192,14 @@
       </div>
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Manage terminal apps, shells, and the launch profiles that pair them. Click ‘Manager’ to open the editor in its own window."}>Terminals</span>
-        <button class="settings-action-btn" on:click={openTerminalsManagerWindow}>Manager</button>
+        <button class="settings-action-btn" on:click={openTerminalsManagerWindow} disabled={terminalsManagerOpening}>
+          {#if terminalsManagerOpening}
+            <span class="settings-action-spinner" aria-hidden="true"></span>
+            Opening…
+          {:else}
+            Manager
+          {/if}
+        </button>
       </div>
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Currently running gitbox version (git tag + commit hash baked in at build time)."}>{$t('settings.version')}</span>
@@ -5558,6 +5594,31 @@
   :global([data-theme="light"]) .settings-action-btn:hover {
     background: rgba(59, 130, 246, 0.14);
     border-color: rgba(59, 130, 246, 0.50);
+  }
+  .settings-action-btn:disabled {
+    opacity: 0.7;
+    cursor: progress;
+  }
+  .settings-action-btn:disabled:hover {
+    background: rgba(59, 130, 246, 0.10);
+    border-color: rgba(59, 130, 246, 0.28);
+  }
+  /* Tiny inline spinner shown next to "Opening…" while a Manager
+     subprocess cold-start is in flight. Borderless ring driven by a
+     1s rotate. */
+  .settings-action-spinner {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    margin-right: 6px;
+    vertical-align: -1px;
+    border: 1.5px solid rgba(59, 130, 246, 0.30);
+    border-top-color: rgb(59, 130, 246);
+    border-radius: 50%;
+    animation: gb-spin 0.85s linear infinite;
+  }
+  @keyframes gb-spin {
+    to { transform: rotate(360deg); }
   }
 
   /* Legacy aliases — keep .settings-btn / .settings-action working until

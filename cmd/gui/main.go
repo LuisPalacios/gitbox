@@ -169,6 +169,16 @@ func runTerminalsWindow(app *App) {
 		// DomReady reveals the window once SyncProfiles has populated the
 		// detected lists and the DOM is ready to render.
 		StartHidden: true,
+		// HideWindowOnClose makes the X button hide the editor instead of
+		// quitting the subprocess. Re-opening the Manager from the parent
+		// then takes the SingleInstanceLock fast-path
+		// (OnSecondInstanceLaunch → WindowShow) and appears instantly,
+		// instead of paying the full Wails+webview cold-start every time
+		// (issue #69 user feedback — close-then-reopen on Win/Linux
+		// flashed an init window before the real window finally arrived
+		// 1-2s later). The parent's Shutdown still kills the subprocess
+		// so the user can't end up with an orphan when they quit gitbox.
+		HideWindowOnClose: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -179,6 +189,13 @@ func runTerminalsWindow(app *App) {
 				if app.ctx == nil {
 					return
 				}
+				// Re-detect before showing so a Manager window that
+				// was hidden 10 minutes ago doesn't show stale data
+				// after the user installed a new shell or edited
+				// wezterm.lua. Then nudge the frontend to reload from
+				// disk and reveal the window.
+				app.SyncProfiles()
+				wailsrt.EventsEmit(app.ctx, "profiles:reloaded")
 				wailsrt.WindowUnminimise(app.ctx)
 				wailsrt.WindowShow(app.ctx)
 			},
