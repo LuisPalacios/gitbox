@@ -102,8 +102,13 @@ var windowsTerminals = []CatalogTerminal{
 	},
 	{
 		ID: "mintty", Name: "Mintty", OS: "windows",
-		Probe:        probeMintty,
-		ArgsTemplate: []string{"-w", "max", "-d", launch.TokenPath, "--", launch.TokenShellCommand, launch.TokenShellArgs},
+		Probe: probeMintty,
+		// mintty's `-d` is `--daemon`, not a directory flag (mintty exposes
+		// working-directory only as the long-form `--dir=…` and not all
+		// builds support it). The CWD is set by the openTerminalRawAt
+		// `cmd.exe /C start /D <path>` wrapper, so we don't need to pass
+		// it to mintty. -w max keeps the maximize-on-launch behaviour.
+		ArgsTemplate: []string{"-w", "max", "--", launch.TokenShellCommand, launch.TokenShellArgs},
 	},
 	{
 		ID: "zoc", Name: "ZOC", OS: "windows",
@@ -182,7 +187,15 @@ var windowsShells = []CatalogShell{
 	{ID: "pwsh", Name: "PowerShell 7", OS: "windows", Probe: probePwsh, Args: nil},
 	{ID: "powershell", Name: "PowerShell 5", OS: "windows", Probe: probeBinary("powershell.exe"), Args: nil},
 	{ID: "cmd", Name: "Command Prompt", OS: "windows", Probe: probeBinary("cmd.exe"), Args: nil},
-	{ID: "git-bash", Name: "Git Bash", OS: "windows", Probe: probeGitBash, Args: nil},
+	// "Git Bash" as a SHELL points at the real bash.exe binary, not at
+	// git-bash.exe. The .exe with the same name is a launcher that spawns
+	// its own mintty+bash window — useless when WezTerm or Mintty hosts it
+	// because the launcher fires, opens its own window, and exits, leaving
+	// the host terminal empty. Pointing at bash.exe + login flags gives
+	// the host a real long-running shell. See probeGitBashShell for the
+	// path search (Git for Windows install paths only — System32\bash.exe
+	// is the WSL launcher and would be wrong here).
+	{ID: "git-bash", Name: "Git Bash", OS: "windows", Probe: probeGitBashShell, Args: []string{"--login", "-i"}},
 	// WSL is special — the bare wsl.exe row is the fallback; per-distro entries
 	// are emitted at runtime via DiscoverWSLDistros.
 	{ID: "wsl", Name: "WSL (default distro)", OS: "windows", Probe: probeBinary("wsl.exe"), Args: nil},

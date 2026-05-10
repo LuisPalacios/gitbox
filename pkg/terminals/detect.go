@@ -88,7 +88,9 @@ func probeWT() (string, bool) {
 }
 
 // probeGitBash resolves git-bash.exe — Git for Windows installs it under
-// Program Files but does not always wire it into PATH.
+// Program Files but does not always wire it into PATH. (Used by the
+// terminal-side probes when applicable; the Git Bash SHELL entry uses
+// probeGitBashShell instead so it points at the real bash binary.)
 func probeGitBash() (string, bool) {
 	if p, err := exec.LookPath("git-bash.exe"); err == nil {
 		return p, true
@@ -100,6 +102,31 @@ func probeGitBash() (string, bool) {
 		cand := filepath.Join(root, "Git", "git-bash.exe")
 		if _, err := os.Stat(cand); err == nil {
 			return cand, true
+		}
+	}
+	return "", false
+}
+
+// probeGitBashShell resolves the real Git for Windows bash.exe (the actual
+// shell binary, not the git-bash.exe launcher). Tries the Git install
+// paths under Program Files first; deliberately does NOT fall back to
+// LookPath("bash.exe") because on Windows that returns
+// C:\Windows\System32\bash.exe, which is the WSL launcher — the wrong
+// shell for "Git Bash". Returns ("", false) when Git for Windows isn't
+// installed.
+func probeGitBashShell() (string, bool) {
+	for _, root := range []string{os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)")} {
+		if root == "" {
+			continue
+		}
+		// `Git\bin\bash.exe` is the Git wrapper bash that sets up the
+		// expected env; `Git\usr\bin\bash.exe` is the bare MSYS2 bash.
+		// Prefer the wrapper.
+		for _, sub := range []string{filepath.Join("Git", "bin", "bash.exe"), filepath.Join("Git", "usr", "bin", "bash.exe")} {
+			cand := filepath.Join(root, sub)
+			if _, err := os.Stat(cand); err == nil {
+				return cand, true
+			}
 		}
 	}
 	return "", false
