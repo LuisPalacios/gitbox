@@ -1187,31 +1187,6 @@ func (a *App) GetWindowMode() string {
 // Returns immediately after Start — the parent stays responsive while the
 // editor window is open.
 func (a *App) OpenTerminalsManagerWindow() error {
-	// If a previous Manager subprocess is still alive, don't spawn a
-	// duplicate — the Wails SingleInstanceLock would catch it on the
-	// other side and just focus the existing window, but checking here
-	// avoids the wasted process startup and keeps a.terminalsCmd
-	// pointing at the live one.
-	a.terminalsMu.Lock()
-	if a.terminalsCmd != nil && a.terminalsCmd.Process != nil {
-		// Best-effort liveness check: ProcessState is non-nil only after
-		// Wait. We never call Wait on this cmd, so a non-nil Process is
-		// our signal that we already started one. The OS reaps it; if
-		// the user closed it, the next Start below replaces our handle.
-		// On Windows, signal 0 isn't supported, so we just assume alive
-		// and let the SingleInstanceLock arbitrate.
-		existing := a.terminalsCmd
-		a.terminalsMu.Unlock()
-		// Re-trigger the lock so the existing window comes to the front.
-		// On Linux/Mac we could use Process.Signal(syscall.Signal(0))
-		// to test liveness, but cross-platform we just spawn and let
-		// SingleInstanceLock dedupe. Replace the handle with the new cmd
-		// so Shutdown still has something to kill.
-		_ = existing
-	} else {
-		a.terminalsMu.Unlock()
-	}
-
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("locate gitbox binary: %w", err)
@@ -1222,6 +1197,14 @@ func (a *App) OpenTerminalsManagerWindow() error {
 		// fixture-backed gitbox.json the parent is editing.
 		args = append(args, "--test-mode")
 	}
+
+	// Hold the lock across spawn + bookkeeping so two near-simultaneous
+	// clicks can't both observe terminalsCmd==nil and double-spawn.
+	a.terminalsMu.Lock()
+	defer a.terminalsMu.Unlock()
+
+	havePrevious := a.terminalsCmd != nil
+
 	cmd := exec.Command(exe, args...)
 	// Do NOT call git.HideWindow here — the sub-process is a /SUBSYSTEM:
 	// WINDOWS Wails GUI, not a console app. HideWindow sets
@@ -1235,13 +1218,41 @@ func (a *App) OpenTerminalsManagerWindow() error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	// Track the child so the parent's Shutdown can kill it — without
-	// this, closing the main window leaves an orphan Manager window
-	// (issue #69 user feedback). Mutex-guarded because click handlers
-	// can race with Shutdown.
-	a.terminalsMu.Lock()
+
+	if havePrevious {
+		// The subprocess is already alive (HideWindowOnClose kept it
+		// running after the user X'd its window). This new process is
+		// just a dedupe-trigger: it will hit the
+		// com.luispalacios.gitbox.terminals SingleInstanceLock, fire
+		// OnSecondInstanceLaunch in the alive subprocess (showing
+		// its window), and exit immediately. We must NOT overwrite
+		// a.terminalsCmd — doing so would replace our handle on the
+		// alive subprocess with this short-lived dedupe handle, and
+		// the parent's Shutdown would then "kill" a dead PID instead
+		// of the live one (issue #69 user-reported regression). Reap
+		// the dedupe-trigger in the background so it doesn't linger
+		// as a zombie.
+		go func(c *exec.Cmd) { _, _ = c.Process.Wait() }(cmd)
+		return nil
+	}
+
+	// First spawn — track this one so Shutdown can tear it down.
 	a.terminalsCmd = cmd
-	a.terminalsMu.Unlock()
+
+	// Watch for the subprocess actually exiting (user explicitly
+	// Cmd-Q'd it on macOS, the subprocess crashed, or the parent
+	// killed it). Clear terminalsCmd so the next Manager click takes
+	// the fresh-spawn fast path. Use cmd-equality so a Shutdown that
+	// already nilled the field doesn't get clobbered.
+	go func(c *exec.Cmd) {
+		_, _ = c.Process.Wait()
+		a.terminalsMu.Lock()
+		if a.terminalsCmd == c {
+			a.terminalsCmd = nil
+		}
+		a.terminalsMu.Unlock()
+	}(cmd)
+
 	return nil
 }
 
