@@ -78,7 +78,7 @@ func WSLLinuxPath(winPath string) (string, error) {
 }
 
 // WSLHome returns the Linux-side home directory of the default WSL distro
-// (e.g. "/home/luis"). Returns an error if WSL is not available.
+// (e.g. "/home/me"). Returns an error if WSL is not available.
 func WSLHome() (string, error) {
 	if !IsWSLAvailable() {
 		return "", fmt.Errorf("WSL is not available on this host")

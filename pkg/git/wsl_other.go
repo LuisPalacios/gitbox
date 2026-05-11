@@ -21,7 +21,7 @@ func WSLLinuxPath(_ string) (string, error) {
 }
 
 // WSLHome returns the Linux-side home directory of the default WSL distro
-// (e.g. "/home/luis"). Always returns an error on non-Windows platforms.
+// (e.g. "/home/me"). Always returns an error on non-Windows platforms.
 func WSLHome() (string, error) {
 	return "", errors.New("WSL is only available on Windows")
 }

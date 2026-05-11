@@ -368,8 +368,8 @@ var mirrorStatusCmd = &cobra.Command{
 }
 
 // formatDirectionLabel returns a direction indicator like:
-//   "git-parchis-luis --> github-LuisPalacios (mirror)"   (push)
-//   "git-parchis-luis (mirror) <-- github-LuisPalacios"   (pull)
+//   "git-parchis-me --> github-LuisPalacios (mirror)"   (push)
+//   "git-parchis-me (mirror) <-- github-LuisPalacios"   (pull)
 func formatDirectionLabel(r mirror.StatusResult) string {
 	if r.Direction == "" || r.OriginAcct == "" || r.BackupAcct == "" {
 		return ""

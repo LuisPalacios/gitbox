@@ -129,9 +129,9 @@ Ejecuta `version`, `help` y comandos de salida JSON en todas las plataformas. No
 Imprime los comandos exactos que ejecutar en cada plataforma. Cópialos y pégalos en tu terminal. La salida se adapta a tu `.env` — las plataformas locales se ejecutan directamente, los remotos usan SSH:
 
 ```text
-  Windows:  ssh luis@kymera  →  ~/gitbox.exe --test-mode
+  Windows:  ssh me@kymera  →  ~/gitbox.exe --test-mode
   macOS:    build/gitbox-darwin-arm64 --test-mode
-  Linux:    ssh -t luis@luix "/tmp/gitbox --test-mode"
+  Linux:    ssh -t me@luix "/tmp/gitbox --test-mode"
 ```
 
 **Nota SSH en Windows:** la TUI no funciona con `ssh -t host "command"` en Git Bash de Windows — sale inmediatamente. Entra por SSH a la máquina primero, luego ejecuta el comando (el enfoque de dos pasos mostrado arriba con `→`).

@@ -129,9 +129,9 @@ Runs `version`, `help`, and JSON output commands on all platforms. Non-interacti
 Prints the exact commands to run on each platform. Copy and paste them into your terminal. The output adapts to your `.env` — local platforms run directly, remotes use SSH:
 
 ```text
-  Windows:  ssh luis@kymera  →  ~/gitbox.exe --test-mode
+  Windows:  ssh me@kymera  →  ~/gitbox.exe --test-mode
   macOS:    build/gitbox-darwin-arm64 --test-mode
-  Linux:    ssh -t luis@luix "/tmp/gitbox --test-mode"
+  Linux:    ssh -t me@luix "/tmp/gitbox --test-mode"
 ```
 
 **Windows SSH note:** the TUI doesn't work with `ssh -t host "command"` on Windows Git Bash — it exits immediately. SSH into the machine first, then run the command (the two-step approach shown above with `→`).
