@@ -1634,6 +1634,15 @@ func openTerminalWithHarnessAt(path string, command string, args []string, harne
 // native tools like oh-my-posh in the spawned shell. Production launches
 // (from Explorer / Start Menu) are unaffected — sanitisation is a no-op on
 // a clean env.
+//
+// HOME is dropped entirely (alongside MSYSTEM etc.) rather than converted
+// to Windows form. HOME is a Unix-convention env var: native Windows shells
+// never set it, but oh-my-posh treats its mere presence as a "Unix-ish
+// environment" signal and switches into a code path that invokes `cygpath`
+// to canonicalize paths. Since `cygpath` lives in Git's `usr\bin` (not on
+// the standard Windows PATH), oh-my-posh then fails with
+// "Failed to convert Cygwin path due to exec: cygpath: executable file not
+// found in %PATH%". Dropping HOME restores Windows-native behaviour.
 func sanitizeWindowsTerminalEnv(env []string) []string {
 	out := make([]string, 0, len(env))
 	for _, e := range env {
@@ -1644,11 +1653,12 @@ func sanitizeWindowsTerminalEnv(env []string) []string {
 		}
 		key, val := e[:i], e[i+1:]
 		switch strings.ToUpper(key) {
-		case "MSYSTEM", "MSYS", "MSYS2_PATH_TYPE", "MSYS_NO_PATHCONV":
-			// Drop — their presence triggers MSYS path translation in children.
+		case "MSYSTEM", "MSYS", "MSYS2_PATH_TYPE", "MSYS_NO_PATHCONV", "HOME":
+			// Drop — their presence triggers MSYS path translation / Unix-
+			// shell-detection heuristics in children (oh-my-posh cygpath).
 			continue
 		case "LOCALAPPDATA", "APPDATA", "USERPROFILE", "HOMEPATH",
-			"TEMP", "TMP", "HOME", "PROGRAMFILES", "PROGRAMDATA":
+			"TEMP", "TMP", "PROGRAMFILES", "PROGRAMDATA":
 			val = msysToWindowsPath(val)
 		}
 		out = append(out, key+"="+val)

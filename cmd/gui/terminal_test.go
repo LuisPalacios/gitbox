@@ -387,6 +387,7 @@ func TestSanitizeWindowsTerminalEnv(t *testing.T) {
 	in := []string{
 		"MSYSTEM=MINGW64",
 		"MSYS_NO_PATHCONV=1",
+		"HOME=/c/Users/luis",
 		"LOCALAPPDATA=/c/Users/luis/AppData/Local",
 		"APPDATA=/c/Users/luis/AppData/Roaming",
 		"USERPROFILE=/c/Users/luis",
@@ -397,10 +398,13 @@ func TestSanitizeWindowsTerminalEnv(t *testing.T) {
 	}
 	out := sanitizeWindowsTerminalEnv(in)
 
-	// MSYSTEM / MSYS_NO_PATHCONV must be dropped.
+	// MSYSTEM / MSYS_NO_PATHCONV / HOME must be dropped. HOME's presence
+	// (even in Windows form) trips oh-my-posh's Unix-shell-detection
+	// heuristic, which then invokes cygpath and fails when cygpath isn't
+	// on PATH — see #72 follow-up.
 	for _, e := range out {
-		if strings.HasPrefix(e, "MSYSTEM=") || strings.HasPrefix(e, "MSYS_NO_PATHCONV=") {
-			t.Errorf("MSYS marker should be dropped; still present: %q", e)
+		if strings.HasPrefix(e, "MSYSTEM=") || strings.HasPrefix(e, "MSYS_NO_PATHCONV=") || strings.HasPrefix(e, "HOME=") {
+			t.Errorf("MSYS / HOME marker should be dropped; still present: %q", e)
 		}
 	}
 	// Known Windows vars should be normalised.
