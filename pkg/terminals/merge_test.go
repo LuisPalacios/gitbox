@@ -140,6 +140,60 @@ func TestMergeUserAddedAppSurvives(t *testing.T) {
 	}
 }
 
+// TestMergeRefreshesKnownStaleArgsTemplate guards the #72 follow-up: a
+// persisted ArgsTemplate that matches a known-broken catalog revision must
+// be refreshed from the current catalog instead of carried forward as if it
+// were a user customisation. Concrete case: mintty `-d {path}` (pre-#71)
+// makes mintty interpret -d as --daemon and exec the repo path, which fails
+// with exit 126.
+func TestMergeRefreshesKnownStaleArgsTemplate(t *testing.T) {
+	det := []config.TerminalApp{
+		{
+			ID: "mintty", Name: "Mintty", Command: "mintty.exe",
+			ArgsTemplate: []string{"-w", "max", "--", "{shell_command}", "{shell_args}"},
+		},
+	}
+	prev := []config.TerminalApp{
+		{
+			ID: "mintty", Name: "Mintty", Command: "mintty.exe",
+			ArgsTemplate: []string{"-w", "max", "-d", "{path}", "--", "{shell_command}", "{shell_args}"},
+		},
+	}
+	got := MergeWithExisting(det, nil, nil, prev, nil, nil)
+	if len(got.Apps) != 1 {
+		t.Fatalf("expected 1 app, got %d", len(got.Apps))
+	}
+	wantArgs := []string{"-w", "max", "--", "{shell_command}", "{shell_args}"}
+	if !argsEqual(got.Apps[0].ArgsTemplate, wantArgs) {
+		t.Errorf("stale args_template was not refreshed:\n  got  %v\n  want %v", got.Apps[0].ArgsTemplate, wantArgs)
+	}
+}
+
+// TestMergePreservesUserEditedArgsTemplate is the safety-net counterpart:
+// a persisted ArgsTemplate that does NOT match a known-stale shape must
+// still be carried forward, so a user who added their own flag keeps it.
+func TestMergePreservesUserEditedArgsTemplate(t *testing.T) {
+	det := []config.TerminalApp{
+		{
+			ID: "mintty", Name: "Mintty", Command: "mintty.exe",
+			ArgsTemplate: []string{"-w", "max", "--", "{shell_command}", "{shell_args}"},
+		},
+	}
+	// Add a `--hold` flag — neither the catalog nor the known-stale list
+	// has this shape, so it's treated as authored.
+	userEdit := []string{"-w", "max", "--hold", "--", "{shell_command}", "{shell_args}"}
+	prev := []config.TerminalApp{
+		{
+			ID: "mintty", Name: "Mintty", Command: "mintty.exe",
+			ArgsTemplate: userEdit,
+		},
+	}
+	got := MergeWithExisting(det, nil, nil, prev, nil, nil)
+	if !argsEqual(got.Apps[0].ArgsTemplate, userEdit) {
+		t.Errorf("user-edited args_template was overwritten:\n  got  %v\n  want %v", got.Apps[0].ArgsTemplate, userEdit)
+	}
+}
+
 // TestEnforceSingleDefault keeps exactly one Default in the resulting slice.
 func TestEnforceSingleDefault(t *testing.T) {
 	profiles := []config.TerminalProfile{
