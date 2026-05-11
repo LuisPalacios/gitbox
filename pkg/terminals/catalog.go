@@ -120,16 +120,29 @@ var windowsTerminals = []CatalogTerminal{
 }
 
 // darwinTerminals is the supported macOS terminal-emulator catalog.
-// macOS entries always launch via `open -a <App>` — Probe checks for the
-// .app bundle in the conventional locations.
+//
+// Most entries launch via `open -a <App> <path>` — the .app bundle's Info.plist
+// registers a folder-as-document handler so the path is interpreted as the
+// terminal's starting directory. iTerm, Terminal, Warp, Kitty, and Ghostty
+// all do this correctly.
+//
+// WezTerm and Alacritty do NOT. Their .app bundles don't register as
+// folder-openers, so `open -a WezTerm <path>` either silently spawns the
+// path as a positional command (WezTerm interprets the folder as a SpawnCommand
+// argv, producing "<path> ; exit" in the shell) or fails with a Finder
+// "cannot open in 'folder' format" dialog (Alacritty). For these two we
+// invoke the bundle's internal CLI binary directly with the app's own
+// working-directory flag.
 var darwinTerminals = []CatalogTerminal{
 	macAppTerminal("iterm", "iTerm2", "iTerm"),
 	macAppTerminal("terminal", "Terminal", "Terminal"),
 	macAppTerminal("warp", "Warp", "Warp"),
 	macAppTerminal("kitty", "Kitty", "kitty"),
 	macAppTerminal("ghostty", "Ghostty", "Ghostty"),
-	macAppTerminal("wezterm", "WezTerm", "WezTerm"),
-	macAppTerminal("alacritty", "Alacritty", "Alacritty"),
+	macBundleCLITerminal("wezterm", "WezTerm", "WezTerm", "wezterm",
+		[]string{"start", "--cwd", launch.TokenPath}),
+	macBundleCLITerminal("alacritty", "Alacritty", "Alacritty", "alacritty",
+		[]string{"--working-directory", launch.TokenPath}),
 }
 
 // linuxTerminals is the supported Linux terminal-emulator catalog. PATH

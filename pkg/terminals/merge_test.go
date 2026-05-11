@@ -169,6 +169,45 @@ func TestMergeRefreshesKnownStaleArgsTemplate(t *testing.T) {
 	}
 }
 
+// TestMergeRefreshesMacOpenAFolderTemplates guards the #72 follow-up for
+// macOS: the legacy `["-a", "WezTerm"]` / `["-a", "Alacritty"]` templates
+// produced `open -a WezTerm <folder>` and `open -a Alacritty <folder>` —
+// neither honours the folder argument as a cwd. The catalog now invokes
+// the bundle's internal CLI binary with the app's own working-directory
+// flag, so the stale templates must be refreshed on Sync.
+func TestMergeRefreshesMacOpenAFolderTemplates(t *testing.T) {
+	cases := []struct {
+		id   string
+		prev []string
+		want []string
+	}{
+		{
+			id:   "wezterm",
+			prev: []string{"-a", "WezTerm"},
+			want: []string{"start", "--cwd", "{path}"},
+		},
+		{
+			id:   "alacritty",
+			prev: []string{"-a", "Alacritty"},
+			want: []string{"--working-directory", "{path}"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.id, func(t *testing.T) {
+			det := []config.TerminalApp{
+				{ID: c.id, Name: c.id, Command: "/Applications/x.app/Contents/MacOS/x", ArgsTemplate: c.want},
+			}
+			prev := []config.TerminalApp{
+				{ID: c.id, Name: c.id, Command: "open", ArgsTemplate: c.prev},
+			}
+			got := MergeWithExisting(det, nil, nil, prev, nil, nil)
+			if !argsEqual(got.Apps[0].ArgsTemplate, c.want) {
+				t.Errorf("stale mac %s args_template not refreshed:\n  got  %v\n  want %v", c.id, got.Apps[0].ArgsTemplate, c.want)
+			}
+		})
+	}
+}
+
 // TestMergePreservesUserEditedArgsTemplate is the safety-net counterpart:
 // a persisted ArgsTemplate that does NOT match a known-stale shape must
 // still be carried forward, so a user who added their own flag keeps it.

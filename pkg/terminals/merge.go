@@ -137,6 +137,19 @@ var knownStaleArgsTemplates = map[string][][]string{
 	"mintty": {
 		{"-w", "max", "-d", "{path}", "--", "{shell_command}", "{shell_args}"},
 	},
+	// wezterm + alacritty on macOS: pre-#72-follow-up the catalog used
+	// `open -a <App>` for every mac terminal. WezTerm and Alacritty don't
+	// register as folder-openers in their Info.plist, so `open -a WezTerm
+	// <folder>` either spawns the path as a positional command (WezTerm)
+	// or surfaces "cannot open in 'folder' format" (Alacritty). The new
+	// catalog probes the bundle's internal CLI binary and uses the app's
+	// own working-directory flag instead.
+	"wezterm": {
+		{"-a", "WezTerm"},
+	},
+	"alacritty": {
+		{"-a", "Alacritty"},
+	},
 }
 
 // isKnownStaleArgsTemplate reports whether `args` exactly matches one of
