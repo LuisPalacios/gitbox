@@ -140,6 +140,122 @@ func TestMergeUserAddedAppSurvives(t *testing.T) {
 	}
 }
 
+// TestMergeRefreshesKnownStaleArgsTemplate guards the #72 follow-up: a
+// persisted ArgsTemplate that matches a known-broken catalog revision must
+// be refreshed from the current catalog instead of carried forward as if it
+// were a user customisation. Concrete case: mintty `-d {path}` (pre-#71)
+// makes mintty interpret -d as --daemon and exec the repo path, which fails
+// with exit 126.
+func TestMergeRefreshesKnownStaleArgsTemplate(t *testing.T) {
+	det := []config.TerminalApp{
+		{
+			ID: "mintty", Name: "Mintty", Command: "mintty.exe",
+			ArgsTemplate: []string{"-w", "max", "--", "{shell_command}", "{shell_args}"},
+		},
+	}
+	prev := []config.TerminalApp{
+		{
+			ID: "mintty", Name: "Mintty", Command: "mintty.exe",
+			ArgsTemplate: []string{"-w", "max", "-d", "{path}", "--", "{shell_command}", "{shell_args}"},
+		},
+	}
+	got := MergeWithExisting(det, nil, nil, prev, nil, nil)
+	if len(got.Apps) != 1 {
+		t.Fatalf("expected 1 app, got %d", len(got.Apps))
+	}
+	wantArgs := []string{"-w", "max", "--", "{shell_command}", "{shell_args}"}
+	if !argsEqual(got.Apps[0].ArgsTemplate, wantArgs) {
+		t.Errorf("stale args_template was not refreshed:\n  got  %v\n  want %v", got.Apps[0].ArgsTemplate, wantArgs)
+	}
+}
+
+// TestMergeRefreshesMacOpenAFolderTemplates guards the #72 follow-up for
+// macOS: the legacy `["-a", "WezTerm"]` / `["-a", "Alacritty"]` templates
+// produced `open -a WezTerm <folder>` and `open -a Alacritty <folder>` —
+// neither honours the folder argument as a cwd. The catalog now invokes
+// the bundle's internal CLI binary with the app's own working-directory
+// flag, so the stale templates must be refreshed on Sync.
+func TestMergeRefreshesMacOpenAFolderTemplates(t *testing.T) {
+	cases := []struct {
+		id   string
+		prev []string
+		want []string
+	}{
+		{
+			id:   "wezterm",
+			prev: []string{"-a", "WezTerm"},
+			want: []string{"start", "--cwd", "{path}"},
+		},
+		{
+			id:   "alacritty",
+			prev: []string{"-a", "Alacritty"},
+			want: []string{"--working-directory", "{path}"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.id, func(t *testing.T) {
+			det := []config.TerminalApp{
+				{ID: c.id, Name: c.id, Command: "/Applications/x.app/Contents/MacOS/x", ArgsTemplate: c.want},
+			}
+			prev := []config.TerminalApp{
+				{ID: c.id, Name: c.id, Command: "open", ArgsTemplate: c.prev},
+			}
+			got := MergeWithExisting(det, nil, nil, prev, nil, nil)
+			if !argsEqual(got.Apps[0].ArgsTemplate, c.want) {
+				t.Errorf("stale mac %s args_template not refreshed:\n  got  %v\n  want %v", c.id, got.Apps[0].ArgsTemplate, c.want)
+			}
+		})
+	}
+}
+
+// TestMergeRefreshesKnownStaleProfileArgs guards the #72 follow-up fix
+// for profile-level args overrides: a TerminalProfile's prior.Args wins
+// over app.ArgsTemplate at OpenProfile time, so a stale shape on a
+// profile silently shadows the app-template refresh. mergeProfiles must
+// apply the same known-stale gate.
+func TestMergeRefreshesKnownStaleProfileArgs(t *testing.T) {
+	det := []config.TerminalProfile{
+		{ID: "wezterm", Name: "WezTerm", TerminalID: "wezterm", Source: "detected"},
+	}
+	prev := []config.TerminalProfile{
+		{ID: "wezterm", Name: "WezTerm", TerminalID: "wezterm",
+			Args: []string{"-a", "wezterm"}, // known-stale (lowercase)
+			Source: "detected"},
+	}
+	got := MergeWithExisting(nil, nil, det, nil, nil, prev)
+	if len(got.Profiles) != 1 {
+		t.Fatalf("expected 1 profile, got %d", len(got.Profiles))
+	}
+	if len(got.Profiles[0].Args) != 0 {
+		t.Errorf("stale profile.Args was not cleared: %v", got.Profiles[0].Args)
+	}
+}
+
+// TestMergePreservesUserEditedArgsTemplate is the safety-net counterpart:
+// a persisted ArgsTemplate that does NOT match a known-stale shape must
+// still be carried forward, so a user who added their own flag keeps it.
+func TestMergePreservesUserEditedArgsTemplate(t *testing.T) {
+	det := []config.TerminalApp{
+		{
+			ID: "mintty", Name: "Mintty", Command: "mintty.exe",
+			ArgsTemplate: []string{"-w", "max", "--", "{shell_command}", "{shell_args}"},
+		},
+	}
+	// Add a `--hold` flag — neither the catalog nor the known-stale list
+	// has this shape, so it's treated as authored.
+	userEdit := []string{"-w", "max", "--hold", "--", "{shell_command}", "{shell_args}"}
+	prev := []config.TerminalApp{
+		{
+			ID: "mintty", Name: "Mintty", Command: "mintty.exe",
+			ArgsTemplate: userEdit,
+		},
+	}
+	got := MergeWithExisting(det, nil, nil, prev, nil, nil)
+	if !argsEqual(got.Apps[0].ArgsTemplate, userEdit) {
+		t.Errorf("user-edited args_template was overwritten:\n  got  %v\n  want %v", got.Apps[0].ArgsTemplate, userEdit)
+	}
+}
+
 // TestEnforceSingleDefault keeps exactly one Default in the resulting slice.
 func TestEnforceSingleDefault(t *testing.T) {
 	profiles := []config.TerminalProfile{

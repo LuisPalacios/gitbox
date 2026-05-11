@@ -864,6 +864,24 @@ El conjunto de Perfiles auto-derivados sigue reglas distintas por plataforma:
 
 El formulario Add-Profile refleja estas reglas: en macOS / Linux el selector de shell incluye una entrada virtual `(login shell)` por defecto; en Windows la elección de shell es obligatoria.
 
+#### Cómo funciona el emparejamiento de lanzamiento
+
+Cuando hago clic en un Perfil `WezTerm — PowerShell 7` o `Windows Terminal — PowerShell 7`, gitbox NO ejecuta sin más la plantilla genérica del Terminal. Primero consulta mi propia configuración del terminal para buscar una entrada coincidente, y solo cae en la plantilla genérica cuando no encuentra ninguna.
+
+La búsqueda se ejecuta en cada lanzamiento (con caché en proceso invalidada por mtime, así que las re-ediciones de `wezterm.lua` / `settings.json` se recogen sin reiniciar):
+
+- **WezTerm** — gitbox parsea `wezterm.lua` (`$WEZTERM_CONFIG_FILE`, luego `$XDG_CONFIG_HOME/wezterm/wezterm.lua`, luego `~/.config/wezterm/wezterm.lua`, luego `~/.wezterm.lua`) y busca una entrada de `config.launch_menu` cuyo label encaje con el shell de gitbox. En caso de coincidencia, gitbox lanza `wezterm-gui.exe start --cwd <path> -- <args de la entrada>` y empalma el `set_environment_variables` de la entrada sobre el entorno padre. El parser se ata específicamente a la tabla documentada `config.launch_menu` — si mi config guarda las entradas en una variable propia `local profiles = { … }` que alimenta un picker custom por keybinding, gitbox no puede descubrirlas y cae en la plantilla genérica. Para hacer visibles esas entradas a gitbox, asígnalas con `config.launch_menu = profiles` al final de `wezterm.lua` (una línea, sin impacto en el keybinding existente). Lo que gitbox NO reproduce es cualquier callback Lua de picker cableado en `wezterm.lua` (`color_scheme` por entrada, overrides de `mux.spawn_window`, handlers `window-focus-changed`, etc.) — esos solo se disparan cuando una entrada se elige desde el propio launcher menu de WezTerm, nunca cuando un pane se spawnea externamente.
+- **Windows Terminal** — gitbox parsea `settings.json` (instalación Store, instalación Preview, luego instalación unpackaged bajo `%LOCALAPPDATA%`) y busca un perfil en `profiles.list` cuyo `name` encaje con el shell de gitbox. En caso de coincidencia, gitbox ejecuta `wt.exe -w 0 nt --profile "<name>" -d <path>` — `wt.exe` lee por sí mismo `commandline`, font, colors y starting flags del perfil desde `settings.json`. El prefijo `-w 0 nt` ancla la nueva pestaña a la ventana WT más reciente existente (o crea una si no hay ninguna) para que un ajuste `firstWindowPreference: persistedWindowLayout` en `settings.json` no spawnée una segunda ventana junto a la nuestra cuando WT se cerró con pestañas guardadas.
+- **Sin coincidencia / sin config / terminal no instalado** — gitbox cae en la plantilla genérica de argv (`wezterm-gui.exe start --cwd <path> -- <shell> <args>`, `wt.exe -d <path> <shell> <args>`, etc.). Ese es el comportamiento correcto para shells que no tengo cableados en mi configuración del terminal.
+
+Los Perfiles bare-shell DIRECT (los cuatro accesos directos `pwsh / powershell / cmd / wsl` ocultos por defecto en Windows) saltan la búsqueda — no tienen configuración de terminal que consultar, así que la plantilla genérica "ejecuta el shell directamente" es la correcta.
+
+El comparador de nombres de shell es tolerante:
+
+- Coincidencia directa — el nombre normalizado de la entrada equivale al nombre mostrado del shell de gitbox (`"PowerShell 7"` ≡ `"PowerShell 7"`, `"WSL — Ubuntu-24.04"` ≡ `"WSL — Ubuntu-24.04"`).
+- Sufijo tras em-dash — para nombres de gitbox como `"WSL — Ubuntu-24.04"`, una entrada etiquetada solo como `"Ubuntu-24.04"` también encaja.
+- Patrón de respaldo — `pwsh` encaja con entradas que contengan `"powershell 7"`, `"powershell core"` o `"pwsh"`; `powershell` encaja con `"powershell 5"` o `"windows powershell"`; `cmd` encaja con `"command prompt"` o `"cmd exe"`; `git-bash` encaja con `"git bash"`; `wsl-<distro>` encaja con el slug pelado de la distro (`"ubuntu 24 04"`).
+
 ### Account
 
 | Campo                     | Tipo    | Requerido   | Descripción                                                                              |

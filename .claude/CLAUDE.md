@@ -424,7 +424,7 @@ The scripts auto-detect the local OS. Local commands run directly, remote comman
 # Build GUI for mac from a Windows or Linux host.
 # For Apple Silicon: host=$SSH_MAC_ARM_HOST,   target=darwin/arm64
 # For Intel Mac:     host=$SSH_MAC_INTEL_HOST, target=darwin/amd64
-host="luis@mac-host"       # from $SSH_MAC_ARM_HOST or $SSH_MAC_INTEL_HOST
+host="me@mac-host"       # from $SSH_MAC_ARM_HOST or $SSH_MAC_INTEL_HOST
 target="darwin/arm64"      # or darwin/amd64 / darwin/universal
 
 # 1. Wipe and prepare the remote scratch dir.

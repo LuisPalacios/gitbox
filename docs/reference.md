@@ -864,6 +864,24 @@ The auto-derived Profile set follows different rules per platform:
 
 The Add-Profile form mirrors these rules: on macOS / Linux the shell selector includes a `(login shell)` virtual entry as the default; on Windows the shell pick is mandatory.
 
+#### How launch matching works
+
+When I click a `WezTerm — PowerShell 7` or `Windows Terminal — PowerShell 7` Profile, gitbox does NOT just run the generic per-Terminal template. It first consults my own terminal config for a matching entry, and only falls back to the generic template when none is found.
+
+The lookup runs at every launch (with an mtime-invalidated in-process cache, so re-edits to `wezterm.lua` / `settings.json` are picked up without restart):
+
+- **WezTerm** — gitbox parses `wezterm.lua` (`$WEZTERM_CONFIG_FILE`, then `$XDG_CONFIG_HOME/wezterm/wezterm.lua`, then `~/.config/wezterm/wezterm.lua`, then `~/.wezterm.lua`) and looks up an entry of `config.launch_menu` whose label matches the gitbox shell. On hit, gitbox launches `wezterm-gui.exe start --cwd <path> -- <entry args>` and splices the entry's `set_environment_variables` on top of the parent env. The parser binds specifically to the documented `config.launch_menu` table — if my config stores entries in a custom `local profiles = { … }` variable driving a custom keybinding picker, gitbox cannot discover them and falls back to the generic template. To make custom-picker entries visible to gitbox, alias them with `config.launch_menu = profiles` at the end of `wezterm.lua` (one line, no behavioural impact on the existing keybinding). What gitbox does NOT reproduce is any Lua picker callback wired in `wezterm.lua` (per-entry `color_scheme`, `mux.spawn_window` overrides, `window-focus-changed` handlers, etc.) — those only fire when an entry is picked from WezTerm's own launcher menu, never when a pane is spawned externally.
+- **Windows Terminal** — gitbox parses `settings.json` (Store install, Preview install, then unpackaged install under `%LOCALAPPDATA%`) and looks up a profile in `profiles.list` whose `name` matches the gitbox shell. On hit, gitbox runs `wt.exe -w 0 nt --profile "<name>" -d <path>` — `wt.exe` itself reads the profile's `commandline`, font, colors, and starting flags from `settings.json`. The `-w 0 nt` prefix pins the new tab to the most-recent existing WT window (or creates one if none exists) so a `firstWindowPreference: persistedWindowLayout` setting in `settings.json` doesn't spawn a second window beside ours when WT was closed with saved tabs.
+- **No match / no config / terminal not installed** — gitbox falls back to the generic argv template (`wezterm-gui.exe start --cwd <path> -- <shell> <args>`, `wt.exe -d <path> <shell> <args>`, etc.). That's the right behaviour for shells I haven't wired into my terminal config.
+
+Bare-shell DIRECT Profiles (the four hidden-by-default `pwsh / powershell / cmd / wsl` shortcuts on Windows) skip the lookup — they have no terminal config to consult, so the generic "run the shell directly" template is correct.
+
+The shell-name matcher is forgiving:
+
+- Direct match — the entry's normalised name equals the gitbox shell's display name (`"PowerShell 7"` ≡ `"PowerShell 7"`, `"WSL — Ubuntu-24.04"` ≡ `"WSL — Ubuntu-24.04"`).
+- Em-dash suffix — for gitbox names like `"WSL — Ubuntu-24.04"`, an entry labelled just `"Ubuntu-24.04"` matches too.
+- Pattern fallback — `pwsh` matches entries containing `"powershell 7"`, `"powershell core"`, or `"pwsh"`; `powershell` matches `"powershell 5"` or `"windows powershell"`; `cmd` matches `"command prompt"` or `"cmd exe"`; `git-bash` matches `"git bash"`; `wsl-<distro>` matches the bare distro slug (`"ubuntu 24 04"`).
+
 ### Account
 
 | Field                     | Type    | Required    | Description                                                                 |

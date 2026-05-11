@@ -28,7 +28,7 @@ func TestParseRemoteURL(t *testing.T) {
 		{"git@git.parchis.org:infra/homelab.git", "git.parchis.org", "infra", "homelab", false},
 
 		// SSH — custom host alias (gitbox convention)
-		{"git@gitbox-github-luis:LuisPalacios/gitbox.git", "gitbox-github-luis", "LuisPalacios", "gitbox", false},
+		{"git@gitbox-github-me:LuisPalacios/gitbox.git", "gitbox-github-me", "LuisPalacios", "gitbox", false},
 
 		// Errors
 		{"https://example.com/noslash", "", "", "", true},
@@ -74,7 +74,7 @@ func TestRemoteURLUser(t *testing.T) {
 		{"https://github.com/owner/repo.git", ""},
 		{"https://github.com/owner/repo", ""},
 		{"git@github.com:owner/repo.git", ""},
-		{"git@gitbox-github-luis:owner/repo.git", ""},
+		{"git@gitbox-github-me:owner/repo.git", ""},
 		{"", ""},
 		{"not-a-url", ""},
 	}

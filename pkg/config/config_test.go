@@ -65,34 +65,34 @@ const v2MirrorsJSON = `{
     "version": 2,
     "global": { "folder": "~/00.git" },
     "accounts": {
-        "forgejo-luis": {
+        "forgejo-me": {
             "provider": "forgejo",
             "url": "https://forge.home.lan",
-            "username": "luis",
-            "name": "Luis",
-            "email": "luis@home.lan",
+            "username": "me",
+            "name": "Me",
+            "email": "me@home.lan",
             "default_credential_type": "token"
         },
-        "github-luis": {
+        "github-me": {
             "provider": "github",
             "url": "https://github.com",
-            "username": "LuisUser",
-            "name": "Luis",
-            "email": "luis@example.com",
+            "username": "MyUser",
+            "name": "Me",
+            "email": "me@example.com",
             "default_credential_type": "token"
         }
     },
     "sources": {},
     "mirrors": {
         "forgejo-github": {
-            "account_src": "forgejo-luis",
-            "account_dst": "github-luis",
+            "account_src": "forgejo-me",
+            "account_dst": "github-me",
             "repos": {
                 "personal/my-project": {
                     "direction": "push",
                     "origin": "src"
                 },
-                "LuisUser/dotfiles": {
+                "MyUser/dotfiles": {
                     "direction": "pull",
                     "origin": "dst"
                 }
@@ -246,10 +246,10 @@ func TestParseV2WithMirrors(t *testing.T) {
 	}
 
 	m := cfg.Mirrors["forgejo-github"]
-	if m.AccountSrc != "forgejo-luis" {
+	if m.AccountSrc != "forgejo-me" {
 		t.Errorf("account_a = %q", m.AccountSrc)
 	}
-	if m.AccountDst != "github-luis" {
+	if m.AccountDst != "github-me" {
 		t.Errorf("account_b = %q", m.AccountDst)
 	}
 	if len(m.Repos) != 2 {
@@ -262,7 +262,7 @@ func TestParseV2WithMirrors(t *testing.T) {
 	}
 	// Method and Status fields were removed — mirror status is derived from live checks.
 
-	pullRepo := m.Repos["LuisUser/dotfiles"]
+	pullRepo := m.Repos["MyUser/dotfiles"]
 	if pullRepo.Direction != "pull" || pullRepo.Origin != "dst" {
 		t.Errorf("pull repo: direction=%q origin=%q", pullRepo.Direction, pullRepo.Origin)
 	}
@@ -284,7 +284,7 @@ func TestParseV2MirrorKeyOrder(t *testing.T) {
 	if len(m.RepoOrder) != 2 {
 		t.Fatalf("RepoOrder len = %d, want 2", len(m.RepoOrder))
 	}
-	if m.RepoOrder[0] != "personal/my-project" || m.RepoOrder[1] != "LuisUser/dotfiles" {
+	if m.RepoOrder[0] != "personal/my-project" || m.RepoOrder[1] != "MyUser/dotfiles" {
 		t.Errorf("RepoOrder = %v", m.RepoOrder)
 	}
 }

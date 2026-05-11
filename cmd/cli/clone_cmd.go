@@ -190,7 +190,7 @@ func extractHostname(rawURL string) string {
 }
 
 // printCloneProgress renders an in-place progress bar for a clone operation.
-// Example: + cloning  git-parchis-luis/familia/ines-denia  ████████░░░░░░░░  52% Receiving
+// Example: + cloning  git-parchis-me/familia/ines-denia  ████████░░░░░░░░  52% Receiving
 func printCloneProgress(label string, pct int, phase string) {
 	const barWidth = 20
 	filled := barWidth * pct / 100

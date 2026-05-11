@@ -120,16 +120,38 @@ var windowsTerminals = []CatalogTerminal{
 }
 
 // darwinTerminals is the supported macOS terminal-emulator catalog.
-// macOS entries always launch via `open -a <App>` — Probe checks for the
-// .app bundle in the conventional locations.
+//
+// Most entries launch via `open -a <App> <path>` — the .app bundle's Info.plist
+// registers a folder-as-document handler so the path is interpreted as the
+// terminal's starting directory. iTerm, Terminal, Warp, Kitty, and Ghostty
+// all do this correctly.
+//
+// WezTerm and Alacritty do NOT. Their .app bundles don't register as
+// folder-openers, so `open -a WezTerm <path>` either silently spawns the
+// path as a positional command (WezTerm interprets the folder as a SpawnCommand
+// argv, producing "<path> ; exit" in the shell) or fails with a Finder
+// "cannot open in 'folder' format" dialog (Alacritty).
+//
+//   - WezTerm: stay on `open` (so macOS Launch Services starts the bundle
+//     properly and the GUI registers with the window server) but pass
+//     `--args --cwd <path>` so wezterm-gui receives the cwd in its argv.
+//     Directly exec'ing /Applications/WezTerm.app/Contents/MacOS/wezterm
+//     from a Cocoa app silently fails: that binary is the CLI multi-tool
+//     and can't bootstrap a GUI process without going through Launch
+//     Services.
+//   - Alacritty: invoke the bundle's internal `alacritty` binary directly
+//     with `--working-directory <path>`. Unlike WezTerm, Alacritty's CLI
+//     binary IS a self-contained GUI launcher, so direct exec works.
 var darwinTerminals = []CatalogTerminal{
 	macAppTerminal("iterm", "iTerm2", "iTerm"),
 	macAppTerminal("terminal", "Terminal", "Terminal"),
 	macAppTerminal("warp", "Warp", "Warp"),
 	macAppTerminal("kitty", "Kitty", "kitty"),
 	macAppTerminal("ghostty", "Ghostty", "Ghostty"),
-	macAppTerminal("wezterm", "WezTerm", "WezTerm"),
-	macAppTerminal("alacritty", "Alacritty", "Alacritty"),
+	macAppTerminalWithArgs("wezterm", "WezTerm", "WezTerm",
+		[]string{"-n", "-a", "WezTerm", "--args", "start", "--cwd", launch.TokenPath}),
+	macBundleCLITerminal("alacritty", "Alacritty", "Alacritty", "alacritty",
+		[]string{"--working-directory", launch.TokenPath}),
 }
 
 // linuxTerminals is the supported Linux terminal-emulator catalog. PATH
@@ -177,8 +199,16 @@ var linuxTerminals = []CatalogTerminal{
 	},
 	{
 		ID: "xterm", Name: "xterm", OS: "linux",
-		Probe:        probeBinary("xterm"),
-		ArgsTemplate: []string{"-e", launch.TokenShellCommand, launch.TokenShellArgs},
+		Probe: probeBinary("xterm"),
+		// xterm has no `--working-directory` flag. The previous template
+		// `["-e", "{shell_command}", "{shell_args}"]` assumed an explicit
+		// shell, but Unix profiles in the v2.1 model carry an implicit
+		// (empty) shell — composeUnix sets ShellID="" — so both tokens
+		// collapse to zero items and xterm errors out with "-e: option
+		// requires argument". Empty template means xterm launches with
+		// its default $SHELL; openTerminalRawAt's cmd.Dir = path ensures
+		// that shell starts in the repo cwd.
+		ArgsTemplate: nil,
 	},
 }
 

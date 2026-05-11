@@ -71,6 +71,63 @@ func probeMacAppBundle(name string) func() bool {
 	}
 }
 
+// macAppTerminalWithArgs is the same as macAppTerminal but with caller-
+// supplied ArgsTemplate. Used by mac entries that need the `open` Launch-
+// Services entry point (so the bundle registers with the window server)
+// but pass extra argv to the app via `open --args …` (e.g. WezTerm's
+// `--cwd <path>` flag). Probe still looks for the .app bundle in the
+// conventional locations; only the launch argv differs.
+func macAppTerminalWithArgs(id, displayName, bundleBaseName string, argsTemplate []string) CatalogTerminal {
+	probe := probeMacAppBundle(bundleBaseName)
+	return CatalogTerminal{
+		ID:   id,
+		Name: displayName,
+		OS:   "darwin",
+		Probe: func() (string, bool) {
+			if !probe() {
+				return "", false
+			}
+			return "open", true
+		},
+		ProbeArgs:    func() []string { return nil },
+		ArgsTemplate: append([]string(nil), argsTemplate...),
+	}
+}
+
+// macBundleCLITerminal builds a CatalogTerminal entry for a macOS app whose
+// `open -a <App> <folder>` doesn't honour the folder argument as a cwd
+// (the app either silently drops it — WezTerm — or surfaces a Finder
+// "cannot open in 'folder' format" error — Alacritty). Instead, gitbox
+// invokes the app's own CLI binary inside the bundle directly, which DOES
+// accept a working-directory flag.
+//
+// Probe walks the conventional .app install locations and stats
+// <bundle>/Contents/MacOS/<binaryName>. ArgsTemplate is the caller-supplied
+// argv with the {path} token; the launch path expands it via
+// pkg/launch.ResolveArgs the same way it does for Windows/Linux entries.
+func macBundleCLITerminal(id, displayName, bundleBaseName, binaryName string, argsTemplate []string) CatalogTerminal {
+	bundle := bundleBaseName + ".app"
+	return CatalogTerminal{
+		ID:   id,
+		Name: displayName,
+		OS:   "darwin",
+		Probe: func() (string, bool) {
+			roots := []string{"/Applications", "/System/Applications", "/System/Applications/Utilities", "/Applications/Utilities"}
+			if home, err := os.UserHomeDir(); err == nil && home != "" {
+				roots = append(roots, filepath.Join(home, "Applications"))
+			}
+			for _, root := range roots {
+				bin := filepath.Join(root, bundle, "Contents", "MacOS", binaryName)
+				if _, err := os.Stat(bin); err == nil {
+					return bin, true
+				}
+			}
+			return "", false
+		},
+		ArgsTemplate: append([]string(nil), argsTemplate...),
+	}
+}
+
 // probeWT resolves wt.exe — App Execution Alias under
 // %LOCALAPPDATA%\Microsoft\WindowsApps takes precedence over PATH so the
 // config doesn't depend on PATH.

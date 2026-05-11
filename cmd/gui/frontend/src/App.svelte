@@ -1899,7 +1899,7 @@
 
   /** Turn raw Go error strings into concise, user-friendly messages. */
   function friendlyMirrorError(raw: string): string {
-    // Errors from CheckStatus are already user-friendly (e.g. "missing API token in git-parchis-luis").
+    // Errors from CheckStatus are already user-friendly (e.g. "missing API token in git-parchis-me").
     if (raw.length > 60) return raw.slice(0, 57) + '...';
     return raw;
   }

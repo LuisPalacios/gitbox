@@ -9,10 +9,13 @@ import (
 // WeztermLaunchMenuEntry represents one entry of the user's `config.launch_menu`
 // table from `wezterm.lua`. WezTerm itself defines this as a SpawnCommand
 // object (see https://wezfurlong.org/wezterm/config/lua/SpawnCommand.html);
-// the fields gitbox cares about for Profile generation are Label and Args.
+// the fields gitbox cares about are Label, Args, and Env (the env-var splice
+// the EXECUTION pillar in #72 needs to reproduce the user's WezTerm-tuned
+// shell environment when launching outside WezTerm's own menu).
 type WeztermLaunchMenuEntry struct {
-	Label string   // display name (may be empty — WezTerm derives one from Args)
-	Args  []string // argv to spawn (e.g. ["bash", "-l"])
+	Label string            // display name (may be empty — WezTerm derives one from Args)
+	Args  []string          // argv to spawn (e.g. ["bash", "-l"])
+	Env   map[string]string // set_environment_variables — nil when absent
 }
 
 // ParseWeztermLaunchMenu extracts every entry of `config.launch_menu` from
@@ -145,6 +148,19 @@ var argsBlockRe = regexp.MustCompile(`args\s*=\s*\{([^}]*)\}`)
 // are kept intact (we don't unescape — WezTerm doesn't either).
 var argTokenRe = regexp.MustCompile(`"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'`)
 
+// envBlockRe captures the contents between the braces of
+// `set_environment_variables = { ... }`. Same simplifying assumption as
+// argsBlockRe — entries inside set_environment_variables are flat KEY = "value"
+// pairs, no nested tables.
+var envBlockRe = regexp.MustCompile(`set_environment_variables\s*=\s*\{([^}]*)\}`)
+
+// envPairRe captures a single `KEY = "value"` (or single-quoted) pair inside
+// the set_environment_variables block. Keys are bareword identifiers in the
+// canonical WezTerm form; the bracketed-string form (`["KEY"] = ...`) is also
+// accepted via the second alternative because it shows up in some user
+// configs.
+var envPairRe = regexp.MustCompile(`(?:([A-Za-z_][A-Za-z0-9_]*)|\[\s*"([^"]*)"\s*\])\s*=\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')`)
+
 // parseWeztermLaunchMenuEntries scans the body of the launch_menu table
 // (the source between the outer braces) and emits one entry per top-level
 // `{ ... }` block. Entries with neither a `label` nor an `args` block are
@@ -178,6 +194,26 @@ func parseWeztermLaunchMenuEntries(block string) []WeztermLaunchMenuEntry {
 				} else {
 					entry.Args = append(entry.Args, tok[2])
 				}
+			}
+		}
+		if m := envBlockRe.FindStringSubmatch(body); m != nil {
+			pairs := envPairRe.FindAllStringSubmatch(m[1], -1)
+			for _, p := range pairs {
+				key := p[1]
+				if key == "" {
+					key = p[2]
+				}
+				val := p[3]
+				if val == "" {
+					val = p[4]
+				}
+				if key == "" {
+					continue
+				}
+				if entry.Env == nil {
+					entry.Env = make(map[string]string, len(pairs))
+				}
+				entry.Env[key] = val
 			}
 		}
 		if entry.Label == "" && len(entry.Args) == 0 {

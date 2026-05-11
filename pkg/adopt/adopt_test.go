@@ -36,35 +36,35 @@ func testConfig(parentFolder string) *config.Config {
 		Version: 2,
 		Global:  config.GlobalConfig{Folder: parentFolder},
 		Accounts: map[string]config.Account{
-			"github-luis": {
+			"github-me": {
 				Provider: "github",
 				URL:      "https://github.com",
 				Username: "LuisPalacios",
-				Name:     "Luis",
-				Email:    "luis@test.com",
+				Name:     "Me",
+				Email:    "me@test.com",
 			},
-			"gitea-luis": {
+			"gitea-me": {
 				Provider: "gitea",
 				URL:      "https://git.parchis.org",
-				Username: "luis",
-				Name:     "Luis",
-				Email:    "luis@test.com",
-				SSH:      &config.SSHConfig{Host: "gitbox-gitea-luis"},
+				Username: "me",
+				Name:     "Me",
+				Email:    "me@test.com",
+				SSH:      &config.SSHConfig{Host: "gitbox-gitea-me"},
 			},
 		},
 		Sources: map[string]config.Source{
-			"github-luis": {
-				Account: "github-luis",
+			"github-me": {
+				Account: "github-me",
 				Repos: map[string]config.Repo{
 					"LuisPalacios/tracked-repo": {},
 				},
 			},
-			"gitea-luis": {
-				Account: "gitea-luis",
+			"gitea-me": {
+				Account: "gitea-me",
 				Repos:   map[string]config.Repo{},
 			},
 		},
-		SourceOrder: []string{"github-luis", "gitea-luis"},
+		SourceOrder: []string{"github-me", "gitea-me"},
 	}
 }
 
@@ -73,7 +73,7 @@ func TestFindOrphans_Basic(t *testing.T) {
 	cfg := testConfig(root)
 
 	// Create a tracked repo (should NOT appear as orphan).
-	tracked := filepath.Join(root, "github-luis", "LuisPalacios", "tracked-repo")
+	tracked := filepath.Join(root, "github-me", "LuisPalacios", "tracked-repo")
 	initBareRepo(t, tracked, "https://github.com/LuisPalacios/tracked-repo.git")
 
 	// Create an orphan repo with a matching account.
@@ -103,13 +103,13 @@ func TestFindOrphans_Basic(t *testing.T) {
 		byRelPath[o.RelPath] = o
 	}
 
-	// Orphan 1: matched to github-luis.
+	// Orphan 1: matched to github-me.
 	o1 := byRelPath["random/orphan-repo"]
-	if o1.MatchedAccount != "github-luis" {
-		t.Errorf("orphan1: matched account = %q, want github-luis", o1.MatchedAccount)
+	if o1.MatchedAccount != "github-me" {
+		t.Errorf("orphan1: matched account = %q, want github-me", o1.MatchedAccount)
 	}
-	if o1.MatchedSource != "github-luis" {
-		t.Errorf("orphan1: matched source = %q, want github-luis", o1.MatchedSource)
+	if o1.MatchedSource != "github-me" {
+		t.Errorf("orphan1: matched source = %q, want github-me", o1.MatchedSource)
 	}
 	if o1.RepoKey != "LuisPalacios/orphan-repo" {
 		t.Errorf("orphan1: repo key = %q, want LuisPalacios/orphan-repo", o1.RepoKey)
@@ -141,9 +141,9 @@ func TestFindOrphans_SSHHostAlias(t *testing.T) {
 	root := t.TempDir()
 	cfg := testConfig(root)
 
-	// Create orphan with SSH alias remote matching gitea-luis.
+	// Create orphan with SSH alias remote matching gitea-me.
 	orphan := filepath.Join(root, "some", "homelab")
-	initBareRepo(t, orphan, "git@gitbox-gitea-luis:luis/homelab.git")
+	initBareRepo(t, orphan, "git@gitbox-gitea-me:me/homelab.git")
 
 	orphans, err := FindOrphans(cfg)
 	if err != nil {
@@ -153,8 +153,8 @@ func TestFindOrphans_SSHHostAlias(t *testing.T) {
 	if len(orphans) != 1 {
 		t.Fatalf("expected 1 orphan, got %d", len(orphans))
 	}
-	if orphans[0].MatchedAccount != "gitea-luis" {
-		t.Errorf("matched account = %q, want gitea-luis", orphans[0].MatchedAccount)
+	if orphans[0].MatchedAccount != "gitea-me" {
+		t.Errorf("matched account = %q, want gitea-me", orphans[0].MatchedAccount)
 	}
 }
 
@@ -163,7 +163,7 @@ func TestFindOrphans_InPlace(t *testing.T) {
 	cfg := testConfig(root)
 
 	// Create orphan at the exact expected path (no relocation needed).
-	orphan := filepath.Join(root, "github-luis", "LuisPalacios", "new-repo")
+	orphan := filepath.Join(root, "github-me", "LuisPalacios", "new-repo")
 	initBareRepo(t, orphan, "https://github.com/LuisPalacios/new-repo.git")
 
 	orphans, err := FindOrphans(cfg)
@@ -184,7 +184,7 @@ func TestFindOrphans_Empty(t *testing.T) {
 	cfg := testConfig(root)
 
 	// Create only tracked repos.
-	tracked := filepath.Join(root, "github-luis", "LuisPalacios", "tracked-repo")
+	tracked := filepath.Join(root, "github-me", "LuisPalacios", "tracked-repo")
 	initBareRepo(t, tracked, "https://github.com/LuisPalacios/tracked-repo.git")
 
 	orphans, err := FindOrphans(cfg)
@@ -206,10 +206,10 @@ func TestMatchAccount(t *testing.T) {
 		wantAcct  string
 		wantSrc   string
 	}{
-		{"github direct match", "github.com", "LuisPalacios", "github-luis", "github-luis"},
-		{"github owner mismatch (still matches host)", "github.com", "other-user", "github-luis", "github-luis"},
-		{"gitea via hostname", "git.parchis.org", "luis", "gitea-luis", "gitea-luis"},
-		{"gitea via SSH alias", "gitbox-gitea-luis", "luis", "gitea-luis", "gitea-luis"},
+		{"github direct match", "github.com", "LuisPalacios", "github-me", "github-me"},
+		{"github owner mismatch (still matches host)", "github.com", "other-user", "github-me", "github-me"},
+		{"gitea via hostname", "git.parchis.org", "me", "gitea-me", "gitea-me"},
+		{"gitea via SSH alias", "gitbox-gitea-me", "me", "gitea-me", "gitea-me"},
 		{"no match", "bitbucket.org", "someone", "", ""},
 	}
 
@@ -250,7 +250,7 @@ func twoGithubConfig(parentFolder string) *config.Config {
 			"forgejo-misc": {
 				Provider: "forgejo",
 				URL:      "https://forgejo.example.com",
-				Username: "luis",
+				Username: "me",
 			},
 		},
 		Sources: map[string]config.Source{

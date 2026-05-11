@@ -97,7 +97,7 @@ func TestGitHubAuthError(t *testing.T) {
 
 func TestGiteaListRepos(t *testing.T) {
 	repos := []giteaRepo{
-		{FullName: "luis/project1", Desc: "Project", CloneURL: "https://git.example.com/luis/project1.git", SSHURL: "git@git.example.com:luis/project1.git"},
+		{FullName: "me/project1", Desc: "Project", CloneURL: "https://git.example.com/me/project1.git", SSHURL: "git@git.example.com:me/project1.git"},
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -118,8 +118,8 @@ func TestGiteaListRepos(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 repo, got %d", len(result))
 	}
-	if result[0].FullName != "luis/project1" {
-		t.Errorf("expected luis/project1, got %s", result[0].FullName)
+	if result[0].FullName != "me/project1" {
+		t.Errorf("expected me/project1, got %s", result[0].FullName)
 	}
 }
 
@@ -374,10 +374,10 @@ func TestGiteaRepoExists(t *testing.T) {
 func TestGiteaCreatePushMirror(t *testing.T) {
 	srv := httptest.NewServer(giteaTestHandler(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "POST" && r.URL.Path == "/api/v1/repos/luis/project/push_mirrors":
+		case r.Method == "POST" && r.URL.Path == "/api/v1/repos/me/project/push_mirrors":
 			w.WriteHeader(http.StatusCreated)
 			w.Write([]byte(`{"id":1}`))
-		case r.Method == "POST" && r.URL.Path == "/api/v1/repos/luis/project/push_mirrors-sync":
+		case r.Method == "POST" && r.URL.Path == "/api/v1/repos/me/project/push_mirrors-sync":
 			w.WriteHeader(http.StatusOK) // sync trigger — best effort
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
@@ -386,15 +386,15 @@ func TestGiteaCreatePushMirror(t *testing.T) {
 	defer srv.Close()
 
 	gt := &Gitea{}
-	if err := gt.CreatePushMirror(context.Background(), srv.URL, "tok", "luis", "luis", "project", "https://github.com/luis/project.git", "gh-tok"); err != nil {
+	if err := gt.CreatePushMirror(context.Background(), srv.URL, "tok", "me", "me", "project", "https://github.com/me/project.git", "gh-tok"); err != nil {
 		t.Fatalf("CreatePushMirror: %v", err)
 	}
 }
 
 func TestGiteaListPushMirrors(t *testing.T) {
 	mirrors := []giteaPushMirror{
-		{ID: 1, RemoteAddr: "https://github.com/luis/project.git", Interval: "8h", SyncOnCommit: true},
-		{ID: 2, RemoteAddr: "https://gitlab.com/luis/project.git", Interval: "12h"},
+		{ID: 1, RemoteAddr: "https://github.com/me/project.git", Interval: "8h", SyncOnCommit: true},
+		{ID: 2, RemoteAddr: "https://gitlab.com/me/project.git", Interval: "12h"},
 	}
 	srv := httptest.NewServer(giteaTestHandler(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -403,7 +403,7 @@ func TestGiteaListPushMirrors(t *testing.T) {
 	defer srv.Close()
 
 	gt := &Gitea{}
-	result, err := gt.ListPushMirrors(context.Background(), srv.URL, "tok", "luis", "luis", "project")
+	result, err := gt.ListPushMirrors(context.Background(), srv.URL, "tok", "me", "me", "project")
 	if err != nil {
 		t.Fatalf("ListPushMirrors: %v", err)
 	}
@@ -417,7 +417,7 @@ func TestGiteaListPushMirrors(t *testing.T) {
 
 func TestGiteaDeletePushMirror(t *testing.T) {
 	srv := httptest.NewServer(giteaTestHandler(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "DELETE" || r.URL.Path != "/api/v1/repos/luis/project/push_mirrors/42" {
+		if r.Method != "DELETE" || r.URL.Path != "/api/v1/repos/me/project/push_mirrors/42" {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -425,7 +425,7 @@ func TestGiteaDeletePushMirror(t *testing.T) {
 	defer srv.Close()
 
 	gt := &Gitea{}
-	if err := gt.DeletePushMirror(context.Background(), srv.URL, "tok", "luis", "luis", "project", 42); err != nil {
+	if err := gt.DeletePushMirror(context.Background(), srv.URL, "tok", "me", "me", "project", 42); err != nil {
 		t.Fatalf("DeletePushMirror: %v", err)
 	}
 }
@@ -438,12 +438,12 @@ func TestGiteaCreatePullMirror(t *testing.T) {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(`{"full_name":"luis/dotfiles"}`))
+		w.Write([]byte(`{"full_name":"me/dotfiles"}`))
 	}))
 	defer srv.Close()
 
 	gt := &Gitea{}
-	if err := gt.CreatePullMirror(context.Background(), srv.URL, "tok", "luis", "dotfiles", "https://github.com/user/dotfiles.git", "src-tok", true); err != nil {
+	if err := gt.CreatePullMirror(context.Background(), srv.URL, "tok", "me", "dotfiles", "https://github.com/user/dotfiles.git", "src-tok", true); err != nil {
 		t.Fatalf("CreatePullMirror: %v", err)
 	}
 }
@@ -630,7 +630,7 @@ func TestGitLabDeleteRepo(t *testing.T) {
 
 func TestGiteaDeleteRepo(t *testing.T) {
 	srv := httptest.NewServer(giteaTestHandler(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "DELETE" || r.URL.Path != "/api/v1/repos/luis/goner" {
+		if r.Method != "DELETE" || r.URL.Path != "/api/v1/repos/me/goner" {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -638,7 +638,7 @@ func TestGiteaDeleteRepo(t *testing.T) {
 	defer srv.Close()
 
 	gt := &Gitea{}
-	if err := gt.DeleteRepo(context.Background(), srv.URL, "tok", "luis", "luis", "goner"); err != nil {
+	if err := gt.DeleteRepo(context.Background(), srv.URL, "tok", "me", "me", "goner"); err != nil {
 		t.Fatalf("DeleteRepo: %v", err)
 	}
 }

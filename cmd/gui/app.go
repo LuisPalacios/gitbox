@@ -1634,6 +1634,23 @@ func openTerminalWithHarnessAt(path string, command string, args []string, harne
 // native tools like oh-my-posh in the spawned shell. Production launches
 // (from Explorer / Start Menu) are unaffected — sanitisation is a no-op on
 // a clean env.
+//
+// The drop list also covers Unix-convention env vars that native Windows
+// shells never set (HOME, SHELL, OSTYPE, HOSTNAME, LOGNAME) plus MinGW /
+// Git-Bash-specific scaffolding (MINGW_CHOST, MINGW_PACKAGE_PREFIX,
+// MINGW_PREFIX, EXEPATH, MSYSCON). Their mere presence is what oh-my-posh
+// uses to detect "I'm running in a Unix-ish shell" and switch into the
+// code path that invokes `cygpath` to canonicalize paths. Since `cygpath`
+// lives in Git's `usr\bin` (not on the standard Windows PATH), every such
+// detection then fails with
+//
+//	Failed to convert Cygwin path due to exec:
+//	cygpath: executable file not found in %PATH%
+//
+// at $PROFILE time. Dropping those vars restores Windows-native behaviour
+// regardless of how gitbox itself was started. TERM / TERM_PROGRAM are
+// intentionally NOT dropped — host terminals (WezTerm, WT, …) set them on
+// the spawned pane after creation, and that's legitimate.
 func sanitizeWindowsTerminalEnv(env []string) []string {
 	out := make([]string, 0, len(env))
 	for _, e := range env {
@@ -1644,11 +1661,18 @@ func sanitizeWindowsTerminalEnv(env []string) []string {
 		}
 		key, val := e[:i], e[i+1:]
 		switch strings.ToUpper(key) {
-		case "MSYSTEM", "MSYS", "MSYS2_PATH_TYPE", "MSYS_NO_PATHCONV":
-			// Drop — their presence triggers MSYS path translation in children.
+		case
+			// MSYS / MSYS2 markers.
+			"MSYSTEM", "MSYS", "MSYS2_PATH_TYPE", "MSYS_NO_PATHCONV",
+			"MSYSCON",
+			// Unix-convention env vars Windows-native shells never set.
+			"HOME", "SHELL", "OSTYPE", "HOSTNAME", "LOGNAME",
+			// MinGW / Git-Bash scaffolding.
+			"MINGW_CHOST", "MINGW_PACKAGE_PREFIX", "MINGW_PREFIX",
+			"EXEPATH":
 			continue
 		case "LOCALAPPDATA", "APPDATA", "USERPROFILE", "HOMEPATH",
-			"TEMP", "TMP", "HOME", "PROGRAMFILES", "PROGRAMDATA":
+			"TEMP", "TMP", "PROGRAMFILES", "PROGRAMDATA":
 			val = msysToWindowsPath(val)
 		}
 		out = append(out, key+"="+val)

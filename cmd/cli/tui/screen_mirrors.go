@@ -847,7 +847,7 @@ func sortedAccountKeys(cfg *config.Config) []string {
 
 // friendlyMirrorError maps raw Go error strings to concise, user-friendly messages.
 func friendlyMirrorError(raw string) string {
-	// Errors from CheckStatus are already user-friendly (e.g. "missing API token in git-parchis-luis").
+	// Errors from CheckStatus are already user-friendly (e.g. "missing API token in git-parchis-me").
 	// Just truncate if too long for display.
 	if len(raw) > 60 {
 		return raw[:57] + "..."

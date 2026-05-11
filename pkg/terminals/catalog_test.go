@@ -43,9 +43,9 @@ func assertUniqueTermIDs(t *testing.T, list []CatalogTerminal) {
 		if c.Probe == nil {
 			t.Errorf("terminal entry id=%q has nil Probe", c.ID)
 		}
-		if len(c.ArgsTemplate) == 0 {
-			t.Errorf("terminal entry id=%q has empty ArgsTemplate", c.ID)
-		}
+		// Empty ArgsTemplate is legitimate for terminals whose CLI has no
+		// working-directory flag (e.g. xterm on Linux) — cmd.Dir handles
+		// cwd, $SHELL handles the shell. Don't fail those rows.
 	}
 }
 
@@ -64,18 +64,29 @@ func assertUniqueShellIDs(t *testing.T, list []CatalogShell) {
 }
 
 // TestModernTerminalCoverage confirms the IsModern derivation
-// (templateAcceptsShell) classifies catalog entries correctly per OS. Most
-// Windows + Linux Terminals are modern; bare-shell-as-terminal entries
-// (only present in legacy code, not the new catalog) are NOT modern. macOS
-// `open -a` entries are NOT modern in this sense — they delegate shell
-// selection to the App.
+// (templateAcceptsShell) classifies catalog entries correctly per OS. All
+// Windows Terminals must be modern (shell-token bearing); Linux Terminals
+// are generally modern, with the exception of legacy emulators (xterm)
+// whose CLI takes no working-directory flag and relies on cmd.Dir + $SHELL
+// — those carry an empty argv template. macOS `open -a` entries are NOT
+// modern in this sense — they delegate shell selection to the App.
 func TestModernTerminalCoverage(t *testing.T) {
 	for _, c := range windowsTerminals {
 		if !modernTerminal(c) {
 			t.Errorf("expected Windows catalog entry %q to be modern (have shell tokens)", c.ID)
 		}
 	}
+	// Linux exception list: emulators whose CLI has no `--working-directory`
+	// flag and no `-e <cmd>` slot we can populate with the implicit Unix
+	// login-shell. They launch with cmd.Dir + $SHELL fallback instead.
+	linuxNonModern := map[string]bool{"xterm": true}
 	for _, c := range linuxTerminals {
+		if linuxNonModern[c.ID] {
+			if modernTerminal(c) {
+				t.Errorf("Linux catalog entry %q is on the non-modern exception list but carries shell tokens", c.ID)
+			}
+			continue
+		}
 		if !modernTerminal(c) {
 			t.Errorf("expected Linux catalog entry %q to be modern (have shell tokens)", c.ID)
 		}

@@ -479,7 +479,7 @@ func CredentialUsernames(repoPath string) []string {
 		if line == "" {
 			continue
 		}
-		// Lines look like: "credential.https://github.com.username SW-Luis-Palacios"
+		// Lines look like: "credential.https://github.com.username SW-First-Last"
 		fields := strings.Fields(line)
 		if len(fields) < 2 {
 			continue

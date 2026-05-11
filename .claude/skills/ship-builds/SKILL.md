@@ -14,7 +14,7 @@ Delegates to [scripts/ship.sh](../../../scripts/ship.sh). That script does the e
 ```
 
 - Empty arg → every non-empty `SSH_*_HOST` in `.env`, shipped in parallel.
-- One arg → host short name matched against `.env` (e.g. `obelix` matches `SSH_MAC_INTEL_HOST="luis@obelix"`).
+- One arg → host short name matched against `.env` (e.g. `obelix` matches `SSH_MAC_INTEL_HOST="me@obelix"`).
 
 ## What it produces
 

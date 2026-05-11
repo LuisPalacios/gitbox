@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
@@ -217,6 +218,19 @@ func (a *App) OpenProfile(path, profileID string) error {
 	if len(template) == 0 {
 		template = app.ArgsTemplate
 	}
+	// EXECUTION pillar (#72): consult the user's terminal config first.
+	// When the host has a wezterm.lua launch_menu / WT settings.json
+	// profile that matches this gitbox shell, swap the generic argv
+	// template for the user-tuned one (and splice WezTerm env vars).
+	// Bare-shell DIRECT profiles skip this — they have no terminal config
+	// to consult.
+	var extraEnv map[string]string
+	if profile.TerminalID != "" && profile.ShellID != "" {
+		if ov, hit := terminals.LookupForLaunch(profile.TerminalID, profile.ShellID, shell.Name); hit {
+			template = ov.Argv
+			extraEnv = ov.Env
+		}
+	}
 	args := launch.ResolveArgs(launch.ProfileArgs{
 		Template:     template,
 		Path:         path,
@@ -228,7 +242,7 @@ func (a *App) OpenProfile(path, profileID string) error {
 	// wrapper to get a fresh console. Modern terminal apps are GUI-
 	// subsystem and launch directly (no wrapper, no console flash).
 	isConsole := profile.TerminalID == ""
-	return openTerminalRawAt(path, app.Command, args, isConsole)
+	return openTerminalRawAt(path, app.Command, args, isConsole, extraEnv)
 }
 
 // OpenAccountProfile launches the given profile in the account's parent
@@ -367,7 +381,12 @@ func (a *App) OpenTerminalsManagerWindow() error {
 //     wrapper is harmful here: it flashes a brief cmd.exe console
 //     window before the terminal appears (issue #71 follow-up — the
 //     "quick window that flashes and disappears").
-func openTerminalRawAt(path, command string, args []string, isConsole bool) error {
+//
+// `extraEnv` is the user-config-derived env splice from the EXECUTION
+// pillar lookup (#72). When non-nil, each KEY=VAL is appended on top of
+// the base env so it overrides any pre-existing definition. nil means
+// "no override".
+func openTerminalRawAt(path, command string, args []string, isConsole bool, extraEnv map[string]string) error {
 	if command == "" {
 		return fmt.Errorf("command is required")
 	}
@@ -390,5 +409,33 @@ func openTerminalRawAt(path, command string, args []string, isConsole bool) erro
 		cmd.Dir = path
 		cmd.Env = git.Environ()
 	}
+	cmd.Env = appendEnvOverlay(cmd.Env, extraEnv)
 	return cmd.Start()
+}
+
+// appendEnvOverlay layers `overlay` on top of `base`, returning a new slice
+// of "KEY=VAL" entries where overlay keys override any pre-existing
+// definition. Returns base unchanged when overlay is empty.
+func appendEnvOverlay(base []string, overlay map[string]string) []string {
+	if len(overlay) == 0 {
+		return base
+	}
+	idx := make(map[string]int, len(base))
+	for i, kv := range base {
+		eq := strings.IndexByte(kv, '=')
+		if eq <= 0 {
+			continue
+		}
+		idx[kv[:eq]] = i
+	}
+	out := append([]string(nil), base...)
+	for k, v := range overlay {
+		entry := k + "=" + v
+		if i, ok := idx[k]; ok {
+			out[i] = entry
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
 }

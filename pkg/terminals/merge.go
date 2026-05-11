@@ -100,14 +100,95 @@ func mergeApps(det, prev []config.TerminalApp) ([]config.TerminalApp, map[string
 			if prior.Name != "" {
 				a.Name = prior.Name
 			}
+			// Preserve hand-edited args_template UNLESS the persisted form
+			// matches a known-broken template from a previous catalog
+			// revision. Older gitbox versions seeded entries that the
+			// catalog now corrects (e.g. mintty's `-d {path}` interpreted
+			// by mintty as --daemon followed by an unparseable positional)
+			// and the user has no way to tell whether their args were
+			// authored or just inherited. When a match is found, fall
+			// through to the catalog template; otherwise honour what's
+			// already on disk.
 			if len(prior.ArgsTemplate) > 0 && !argsEqual(prior.ArgsTemplate, a.ArgsTemplate) {
-				a.ArgsTemplate = append([]string(nil), prior.ArgsTemplate...)
+				if !isKnownStaleArgsTemplate(a.ID, prior.ArgsTemplate) {
+					a.ArgsTemplate = append([]string(nil), prior.ArgsTemplate...)
+				}
 			}
 		}
 		out = append(out, a)
 		seen[a.ID] = true
 	}
 	return out, seen
+}
+
+// knownStaleArgsTemplates maps a terminal app id to the set of args_template
+// shapes that gitbox itself seeded in earlier versions and now considers
+// broken. On Sync, a persisted entry whose ArgsTemplate exactly matches one
+// of these is refreshed from the current catalog instead of being preserved
+// as a "user customisation". The exact-equality check is deliberate — a
+// user who edited the template even slightly should still keep their edit.
+var knownStaleArgsTemplates = map[string][][]string{
+	// mintty: pre-issue-#71 the catalog included `-d {path}`. mintty's
+	// `-d` is `--daemon`, not a directory flag, so the substituted repo
+	// path falls through to the positional command-to-exec slot and
+	// mintty exits with "No such file or directory" (exit 126). The new
+	// catalog drops `-d {path}` and lets openTerminalRawAt set the
+	// working directory via cmd.Dir on the non-console launch branch.
+	"mintty": {
+		{"-w", "max", "-d", "{path}", "--", "{shell_command}", "{shell_args}"},
+	},
+	// wezterm + alacritty on macOS: pre-#72-follow-up the catalog used
+	// `open -a <App>` for every mac terminal. WezTerm and Alacritty don't
+	// register as folder-openers in their Info.plist, so `open -a WezTerm
+	// <folder>` either spawns the path as a positional command (WezTerm)
+	// or surfaces "cannot open in 'folder' format" (Alacritty). The new
+	// catalog probes the bundle's internal CLI binary (Alacritty) or
+	// uses `open --args --cwd …` (WezTerm; direct exec of the CLI binary
+	// doesn't bootstrap a GUI through macOS Launch Services).
+	//
+	// The second stale shape for wezterm — `["start", "--cwd", "{path}"]`
+	// against a Command pointing at <bundle>/Contents/MacOS/wezterm — was
+	// the first attempt at fixing it (74efc42). It looked plausible but
+	// silently no-ops on macOS because that binary is the CLI multi-tool,
+	// not a GUI launcher: invoked from a Cocoa app it can't register the
+	// spawned wezterm-gui with the window server.
+	"wezterm": {
+		{"-a", "WezTerm"},
+		// Lowercase variant emitted by an older buggy macAppTerminal that
+		// passed bundleBaseName="wezterm" instead of "WezTerm". Different
+		// bytes from the capitalised form so it needs its own entry.
+		{"-a", "wezterm"},
+		{"start", "--cwd", "{path}"},
+		// Third attempt (481ce67) — same `open --args` entry point as the
+		// final shape but missing the `start` subcommand, so wezterm-gui
+		// treats `--cwd` as positional and exits without showing a window.
+		// Correct invocation is `open -a WezTerm --args start --cwd <path>`.
+		{"-n", "-a", "WezTerm", "--args", "--cwd", "{path}"},
+	},
+	"alacritty": {
+		{"-a", "Alacritty"},
+	},
+	// xterm on Linux: the previous template `-e {shell_command}
+	// {shell_args}` assumed an explicit shell, but Unix profiles in the
+	// v2.1 model carry implicit shell (composeUnix sets ShellID=""), so
+	// both tokens collapse to zero items and xterm errors with "-e:
+	// option requires argument". The catalog now ships an empty argv
+	// for xterm; cmd.Dir = path handles cwd, $SHELL handles the shell.
+	"xterm": {
+		{"-e", "{shell_command}", "{shell_args}"},
+	},
+}
+
+// isKnownStaleArgsTemplate reports whether `args` exactly matches one of
+// the catalog's previous-revision templates for `id`. Used by mergeApps to
+// gate args_template carry-forward.
+func isKnownStaleArgsTemplate(id string, args []string) bool {
+	for _, stale := range knownStaleArgsTemplates[id] {
+		if argsEqual(stale, args) {
+			return true
+		}
+	}
+	return false
 }
 
 func mergeShells(det, prev []config.ShellEntry) ([]config.ShellEntry, map[string]bool) {
@@ -148,7 +229,15 @@ func mergeProfiles(det, prev []config.TerminalProfile) ([]config.TerminalProfile
 			p.Preferred = prior.Preferred
 			p.Hidden = prior.Hidden
 			if len(prior.Args) > 0 {
-				p.Args = append([]string(nil), prior.Args...)
+				// Same known-stale gate as mergeApps: profile-level Args
+				// override anything app.ArgsTemplate would have provided,
+				// so a stale shape here silently shadows the fix in
+				// terminal_apps[]. When it matches a known-stale entry
+				// for this profile's terminal, drop it and let
+				// app.ArgsTemplate prevail at OpenProfile time.
+				if !isKnownStaleArgsTemplate(prior.TerminalID, prior.Args) {
+					p.Args = append([]string(nil), prior.Args...)
+				}
 			}
 		}
 		out = append(out, p)
