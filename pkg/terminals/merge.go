@@ -154,6 +154,10 @@ var knownStaleArgsTemplates = map[string][][]string{
 	// spawned wezterm-gui with the window server.
 	"wezterm": {
 		{"-a", "WezTerm"},
+		// Lowercase variant emitted by an older buggy macAppTerminal that
+		// passed bundleBaseName="wezterm" instead of "WezTerm". Different
+		// bytes from the capitalised form so it needs its own entry.
+		{"-a", "wezterm"},
 		{"start", "--cwd", "{path}"},
 		// Third attempt (481ce67) — same `open --args` entry point as the
 		// final shape but missing the `start` subcommand, so wezterm-gui
@@ -225,7 +229,15 @@ func mergeProfiles(det, prev []config.TerminalProfile) ([]config.TerminalProfile
 			p.Preferred = prior.Preferred
 			p.Hidden = prior.Hidden
 			if len(prior.Args) > 0 {
-				p.Args = append([]string(nil), prior.Args...)
+				// Same known-stale gate as mergeApps: profile-level Args
+				// override anything app.ArgsTemplate would have provided,
+				// so a stale shape here silently shadows the fix in
+				// terminal_apps[]. When it matches a known-stale entry
+				// for this profile's terminal, drop it and let
+				// app.ArgsTemplate prevail at OpenProfile time.
+				if !isKnownStaleArgsTemplate(prior.TerminalID, prior.Args) {
+					p.Args = append([]string(nil), prior.Args...)
+				}
 			}
 		}
 		out = append(out, p)

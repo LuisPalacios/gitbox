@@ -208,6 +208,29 @@ func TestMergeRefreshesMacOpenAFolderTemplates(t *testing.T) {
 	}
 }
 
+// TestMergeRefreshesKnownStaleProfileArgs guards the #72 follow-up fix
+// for profile-level args overrides: a TerminalProfile's prior.Args wins
+// over app.ArgsTemplate at OpenProfile time, so a stale shape on a
+// profile silently shadows the app-template refresh. mergeProfiles must
+// apply the same known-stale gate.
+func TestMergeRefreshesKnownStaleProfileArgs(t *testing.T) {
+	det := []config.TerminalProfile{
+		{ID: "wezterm", Name: "WezTerm", TerminalID: "wezterm", Source: "detected"},
+	}
+	prev := []config.TerminalProfile{
+		{ID: "wezterm", Name: "WezTerm", TerminalID: "wezterm",
+			Args: []string{"-a", "wezterm"}, // known-stale (lowercase)
+			Source: "detected"},
+	}
+	got := MergeWithExisting(nil, nil, det, nil, nil, prev)
+	if len(got.Profiles) != 1 {
+		t.Fatalf("expected 1 profile, got %d", len(got.Profiles))
+	}
+	if len(got.Profiles[0].Args) != 0 {
+		t.Errorf("stale profile.Args was not cleared: %v", got.Profiles[0].Args)
+	}
+}
+
 // TestMergePreservesUserEditedArgsTemplate is the safety-net counterpart:
 // a persisted ArgsTemplate that does NOT match a known-stale shape must
 // still be carried forward, so a user who added their own flag keeps it.
