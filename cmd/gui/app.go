@@ -1635,14 +1635,22 @@ func openTerminalWithHarnessAt(path string, command string, args []string, harne
 // (from Explorer / Start Menu) are unaffected — sanitisation is a no-op on
 // a clean env.
 //
-// HOME is dropped entirely (alongside MSYSTEM etc.) rather than converted
-// to Windows form. HOME is a Unix-convention env var: native Windows shells
-// never set it, but oh-my-posh treats its mere presence as a "Unix-ish
-// environment" signal and switches into a code path that invokes `cygpath`
-// to canonicalize paths. Since `cygpath` lives in Git's `usr\bin` (not on
-// the standard Windows PATH), oh-my-posh then fails with
-// "Failed to convert Cygwin path due to exec: cygpath: executable file not
-// found in %PATH%". Dropping HOME restores Windows-native behaviour.
+// The drop list also covers Unix-convention env vars that native Windows
+// shells never set (HOME, SHELL, OSTYPE, HOSTNAME, LOGNAME) plus MinGW /
+// Git-Bash-specific scaffolding (MINGW_CHOST, MINGW_PACKAGE_PREFIX,
+// MINGW_PREFIX, EXEPATH, MSYSCON). Their mere presence is what oh-my-posh
+// uses to detect "I'm running in a Unix-ish shell" and switch into the
+// code path that invokes `cygpath` to canonicalize paths. Since `cygpath`
+// lives in Git's `usr\bin` (not on the standard Windows PATH), every such
+// detection then fails with
+//
+//	Failed to convert Cygwin path due to exec:
+//	cygpath: executable file not found in %PATH%
+//
+// at $PROFILE time. Dropping those vars restores Windows-native behaviour
+// regardless of how gitbox itself was started. TERM / TERM_PROGRAM are
+// intentionally NOT dropped — host terminals (WezTerm, WT, …) set them on
+// the spawned pane after creation, and that's legitimate.
 func sanitizeWindowsTerminalEnv(env []string) []string {
 	out := make([]string, 0, len(env))
 	for _, e := range env {
@@ -1653,9 +1661,15 @@ func sanitizeWindowsTerminalEnv(env []string) []string {
 		}
 		key, val := e[:i], e[i+1:]
 		switch strings.ToUpper(key) {
-		case "MSYSTEM", "MSYS", "MSYS2_PATH_TYPE", "MSYS_NO_PATHCONV", "HOME":
-			// Drop — their presence triggers MSYS path translation / Unix-
-			// shell-detection heuristics in children (oh-my-posh cygpath).
+		case
+			// MSYS / MSYS2 markers.
+			"MSYSTEM", "MSYS", "MSYS2_PATH_TYPE", "MSYS_NO_PATHCONV",
+			"MSYSCON",
+			// Unix-convention env vars Windows-native shells never set.
+			"HOME", "SHELL", "OSTYPE", "HOSTNAME", "LOGNAME",
+			// MinGW / Git-Bash scaffolding.
+			"MINGW_CHOST", "MINGW_PACKAGE_PREFIX", "MINGW_PREFIX",
+			"EXEPATH":
 			continue
 		case "LOCALAPPDATA", "APPDATA", "USERPROFILE", "HOMEPATH",
 			"TEMP", "TMP", "PROGRAMFILES", "PROGRAMDATA":

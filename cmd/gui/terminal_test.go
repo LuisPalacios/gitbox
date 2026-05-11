@@ -388,6 +388,15 @@ func TestSanitizeWindowsTerminalEnv(t *testing.T) {
 		"MSYSTEM=MINGW64",
 		"MSYS_NO_PATHCONV=1",
 		"HOME=/c/Users/luis",
+		"SHELL=/usr/bin/bash",
+		"OSTYPE=msys",
+		"HOSTNAME=devbox",
+		"LOGNAME=luis",
+		"MINGW_CHOST=x86_64-w64-mingw32",
+		"MINGW_PACKAGE_PREFIX=mingw-w64-x86_64",
+		"MINGW_PREFIX=/mingw64",
+		"EXEPATH=C:\\Program Files\\Git\\bin",
+		"MSYSCON=mintty.exe",
 		"LOCALAPPDATA=/c/Users/luis/AppData/Local",
 		"APPDATA=/c/Users/luis/AppData/Roaming",
 		"USERPROFILE=/c/Users/luis",
@@ -398,13 +407,20 @@ func TestSanitizeWindowsTerminalEnv(t *testing.T) {
 	}
 	out := sanitizeWindowsTerminalEnv(in)
 
-	// MSYSTEM / MSYS_NO_PATHCONV / HOME must be dropped. HOME's presence
-	// (even in Windows form) trips oh-my-posh's Unix-shell-detection
-	// heuristic, which then invokes cygpath and fails when cygpath isn't
-	// on PATH — see #72 follow-up.
+	// Unix-signal env vars must be dropped — oh-my-posh keys off these to
+	// decide whether to invoke cygpath. See #72 follow-up: the user's
+	// observed cygpath error was driven by OSTYPE=msys leaking into the
+	// spawned pwsh, not by MSYSTEM (which is already dropped) or HOME.
+	dropPrefixes := []string{
+		"MSYSTEM=", "MSYS=", "MSYS2_PATH_TYPE=", "MSYS_NO_PATHCONV=",
+		"MSYSCON=", "HOME=", "SHELL=", "OSTYPE=", "HOSTNAME=", "LOGNAME=",
+		"MINGW_CHOST=", "MINGW_PACKAGE_PREFIX=", "MINGW_PREFIX=", "EXEPATH=",
+	}
 	for _, e := range out {
-		if strings.HasPrefix(e, "MSYSTEM=") || strings.HasPrefix(e, "MSYS_NO_PATHCONV=") || strings.HasPrefix(e, "HOME=") {
-			t.Errorf("MSYS / HOME marker should be dropped; still present: %q", e)
+		for _, p := range dropPrefixes {
+			if strings.HasPrefix(e, p) {
+				t.Errorf("Unix-signal var %q should be dropped; still present in output: %q", strings.TrimSuffix(p, "="), e)
+			}
 		}
 	}
 	// Known Windows vars should be normalised.
