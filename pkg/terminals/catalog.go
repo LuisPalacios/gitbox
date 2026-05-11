@@ -149,7 +149,7 @@ var darwinTerminals = []CatalogTerminal{
 	macAppTerminal("kitty", "Kitty", "kitty"),
 	macAppTerminal("ghostty", "Ghostty", "Ghostty"),
 	macAppTerminalWithArgs("wezterm", "WezTerm", "WezTerm",
-		[]string{"-n", "-a", "WezTerm", "--args", "--cwd", launch.TokenPath}),
+		[]string{"-n", "-a", "WezTerm", "--args", "start", "--cwd", launch.TokenPath}),
 	macBundleCLITerminal("alacritty", "Alacritty", "Alacritty", "alacritty",
 		[]string{"--working-directory", launch.TokenPath}),
 }

@@ -155,6 +155,11 @@ var knownStaleArgsTemplates = map[string][][]string{
 	"wezterm": {
 		{"-a", "WezTerm"},
 		{"start", "--cwd", "{path}"},
+		// Third attempt (481ce67) — same `open --args` entry point as the
+		// final shape but missing the `start` subcommand, so wezterm-gui
+		// treats `--cwd` as positional and exits without showing a window.
+		// Correct invocation is `open -a WezTerm --args start --cwd <path>`.
+		{"-n", "-a", "WezTerm", "--args", "--cwd", "{path}"},
 	},
 	"alacritty": {
 		{"-a", "Alacritty"},
