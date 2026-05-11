@@ -142,13 +142,31 @@ var knownStaleArgsTemplates = map[string][][]string{
 	// register as folder-openers in their Info.plist, so `open -a WezTerm
 	// <folder>` either spawns the path as a positional command (WezTerm)
 	// or surfaces "cannot open in 'folder' format" (Alacritty). The new
-	// catalog probes the bundle's internal CLI binary and uses the app's
-	// own working-directory flag instead.
+	// catalog probes the bundle's internal CLI binary (Alacritty) or
+	// uses `open --args --cwd …` (WezTerm; direct exec of the CLI binary
+	// doesn't bootstrap a GUI through macOS Launch Services).
+	//
+	// The second stale shape for wezterm — `["start", "--cwd", "{path}"]`
+	// against a Command pointing at <bundle>/Contents/MacOS/wezterm — was
+	// the first attempt at fixing it (74efc42). It looked plausible but
+	// silently no-ops on macOS because that binary is the CLI multi-tool,
+	// not a GUI launcher: invoked from a Cocoa app it can't register the
+	// spawned wezterm-gui with the window server.
 	"wezterm": {
 		{"-a", "WezTerm"},
+		{"start", "--cwd", "{path}"},
 	},
 	"alacritty": {
 		{"-a", "Alacritty"},
+	},
+	// xterm on Linux: the previous template `-e {shell_command}
+	// {shell_args}` assumed an explicit shell, but Unix profiles in the
+	// v2.1 model carry implicit shell (composeUnix sets ShellID=""), so
+	// both tokens collapse to zero items and xterm errors with "-e:
+	// option requires argument". The catalog now ships an empty argv
+	// for xterm; cmd.Dir = path handles cwd, $SHELL handles the shell.
+	"xterm": {
+		{"-e", "{shell_command}", "{shell_args}"},
 	},
 }
 

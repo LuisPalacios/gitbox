@@ -71,6 +71,29 @@ func probeMacAppBundle(name string) func() bool {
 	}
 }
 
+// macAppTerminalWithArgs is the same as macAppTerminal but with caller-
+// supplied ArgsTemplate. Used by mac entries that need the `open` Launch-
+// Services entry point (so the bundle registers with the window server)
+// but pass extra argv to the app via `open --args …` (e.g. WezTerm's
+// `--cwd <path>` flag). Probe still looks for the .app bundle in the
+// conventional locations; only the launch argv differs.
+func macAppTerminalWithArgs(id, displayName, bundleBaseName string, argsTemplate []string) CatalogTerminal {
+	probe := probeMacAppBundle(bundleBaseName)
+	return CatalogTerminal{
+		ID:   id,
+		Name: displayName,
+		OS:   "darwin",
+		Probe: func() (string, bool) {
+			if !probe() {
+				return "", false
+			}
+			return "open", true
+		},
+		ProbeArgs:    func() []string { return nil },
+		ArgsTemplate: append([]string(nil), argsTemplate...),
+	}
+}
+
 // macBundleCLITerminal builds a CatalogTerminal entry for a macOS app whose
 // `open -a <App> <folder>` doesn't honour the folder argument as a cwd
 // (the app either silently drops it — WezTerm — or surfaces a Finder
