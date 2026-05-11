@@ -368,13 +368,13 @@ func TestDetectTerminalsIncludesConfigEntries(t *testing.T) {
 
 func TestMsysToWindowsPath(t *testing.T) {
 	tests := map[string]string{
-		`/c/Users/luis/AppData/Local`: `C:\Users\luis\AppData\Local`,
-		`/d/code/repo`:                `D:\code\repo`,
-		`/c`:                          `C:`,
-		`C:\already\windows`:          `C:\already\windows`,
-		`/not/a/drive/path`:           `/not/a/drive/path`,
-		``:                            ``,
-		`/`:                           `/`,
+		`/c/Users/me/AppData/Local`: `C:\Users\me\AppData\Local`,
+		`/d/code/repo`:              `D:\code\repo`,
+		`/c`:                        `C:`,
+		`C:\already\windows`:        `C:\already\windows`,
+		`/not/a/drive/path`:         `/not/a/drive/path`,
+		``:                          ``,
+		`/`:                         `/`,
 	}
 	for in, want := range tests {
 		if got := msysToWindowsPath(in); got != want {
@@ -387,20 +387,20 @@ func TestSanitizeWindowsTerminalEnv(t *testing.T) {
 	in := []string{
 		"MSYSTEM=MINGW64",
 		"MSYS_NO_PATHCONV=1",
-		"HOME=/c/Users/luis",
+		"HOME=/c/Users/me",
 		"SHELL=/usr/bin/bash",
 		"OSTYPE=msys",
 		"HOSTNAME=devbox",
-		"LOGNAME=luis",
+		"LOGNAME=me",
 		"MINGW_CHOST=x86_64-w64-mingw32",
 		"MINGW_PACKAGE_PREFIX=mingw-w64-x86_64",
 		"MINGW_PREFIX=/mingw64",
 		"EXEPATH=C:\\Program Files\\Git\\bin",
 		"MSYSCON=mintty.exe",
-		"LOCALAPPDATA=/c/Users/luis/AppData/Local",
-		"APPDATA=/c/Users/luis/AppData/Roaming",
-		"USERPROFILE=/c/Users/luis",
-		"TEMP=/c/Users/luis/AppData/Local/Temp",
+		"LOCALAPPDATA=/c/Users/me/AppData/Local",
+		"APPDATA=/c/Users/me/AppData/Roaming",
+		"USERPROFILE=/c/Users/me",
+		"TEMP=/c/Users/me/AppData/Local/Temp",
 		"PATH=/usr/bin:/mingw64/bin",  // not normalised (deliberate)
 		"FOO=/c/not-normalised",       // unknown key kept as-is
 		"PS1=> ",
@@ -425,10 +425,10 @@ func TestSanitizeWindowsTerminalEnv(t *testing.T) {
 	}
 	// Known Windows vars should be normalised.
 	wantNormalised := map[string]string{
-		"LOCALAPPDATA": `C:\Users\luis\AppData\Local`,
-		"APPDATA":      `C:\Users\luis\AppData\Roaming`,
-		"USERPROFILE":  `C:\Users\luis`,
-		"TEMP":         `C:\Users\luis\AppData\Local\Temp`,
+		"LOCALAPPDATA": `C:\Users\me\AppData\Local`,
+		"APPDATA":      `C:\Users\me\AppData\Roaming`,
+		"USERPROFILE":  `C:\Users\me`,
+		"TEMP":         `C:\Users\me\AppData\Local\Temp`,
 	}
 	for k, want := range wantNormalised {
 		found := false
