@@ -94,9 +94,19 @@ type wtProfileLite struct {
 	Source      string
 }
 
-// lookupWTProfile returns a `--profile "<name>" -d {path}` argv when the
-// settings.json carries a profile whose Name matches the gitbox shell.
-// Disabled-source / hidden profiles are skipped (matches WT's own menu).
+// lookupWTProfile returns a `-w 0 nt --profile "<name>" -d {path}` argv
+// when the settings.json carries a profile whose Name matches the gitbox
+// shell. Disabled-source / hidden profiles are skipped (matches WT's own
+// menu).
+//
+// The `-w 0 nt` prefix pins the launch to the most recent existing WT
+// window (creating one if none exists) and uses the explicit `new-tab`
+// subcommand. Without it, `wt.exe --profile X -d <path>` always allocates
+// a fresh window — and when the user has `firstWindowPreference:
+// persistedWindowLayout` set in settings.json, WT then fires the saved-
+// layout restore in PARALLEL with our launch, ending up with two windows
+// (one with our requested tab in the repo dir, one restoring the previous
+// session). `-w 0 nt` keeps the launch inside a single window.
 //
 // We pass argv through as-is — WT itself reads the rest of the profile's
 // fields (font, colors, commandline, …) from settings.json when it sees
@@ -111,7 +121,7 @@ func lookupWTProfile(shellID, shellName string, paths []string) (LaunchOverride,
 			if !matchesShell(prof.Name, shellID, shellName) {
 				continue
 			}
-			argv := []string{"--profile", prof.Name, "-d", launch.TokenPath}
+			argv := []string{"-w", "0", "nt", "--profile", prof.Name, "-d", launch.TokenPath}
 			return LaunchOverride{Argv: argv}, true
 		}
 		return LaunchOverride{}, false

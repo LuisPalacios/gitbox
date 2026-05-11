@@ -160,7 +160,10 @@ func TestLookupWTProfile_Hit(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected WT hit on PowerShell 7")
 	}
-	wantArgv := []string{"--profile", "PowerShell 7", "-d", "{path}"}
+	// `-w 0 nt` pins the launch to the most-recent existing WT window
+	// (or a new one when none exists) so `firstWindowPreference:
+	// persistedWindowLayout` doesn't spawn a second window beside ours.
+	wantArgv := []string{"-w", "0", "nt", "--profile", "PowerShell 7", "-d", "{path}"}
 	if !reflect.DeepEqual(got.Argv, wantArgv) {
 		t.Errorf("Argv = %v, want %v", got.Argv, wantArgv)
 	}
