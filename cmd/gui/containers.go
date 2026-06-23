@@ -15,11 +15,15 @@ import (
 
 // ─── Extra scan folders + nested depth ─────────────────────────────────────
 
-// ListExtraFolders returns the configured extra scan-root folders.
+// ListExtraFolders returns the configured extra scan-root folders. Always a
+// non-nil slice so it serializes to a JSON array (not null), which the frontend
+// iterates safely.
 func (a *App) ListExtraFolders() []string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return append([]string(nil), a.cfg.Global.ExtraFolders...)
+	out := make([]string, 0, len(a.cfg.Global.ExtraFolders))
+	out = append(out, a.cfg.Global.ExtraFolders...)
+	return out
 }
 
 // AddExtraFolder appends a scan-root folder (deduped) and persists.

@@ -388,9 +388,9 @@
 
   async function loadScanSettings() {
     try {
-      extraFolders = await bridge.listExtraFolders();
-      nestedScanDepth = await bridge.getNestedScanDepth();
-    } catch { /* defaults stay */ }
+      extraFolders = (await bridge.listExtraFolders()) || [];
+      nestedScanDepth = (await bridge.getNestedScanDepth()) || 1;
+    } catch { extraFolders = []; }
   }
 
   async function addExtraFolder() {
@@ -398,7 +398,7 @@
     if (!dir) return;
     try {
       await bridge.addExtraFolder(dir);
-      extraFolders = await bridge.listExtraFolders();
+      extraFolders = (await bridge.listExtraFolders()) || [];
       $configStore = await bridge.reloadConfig();
     } catch (err: any) { alert(err?.message || err); }
   }
@@ -406,7 +406,7 @@
   async function removeExtraFolder(path: string) {
     try {
       await bridge.removeExtraFolder(path);
-      extraFolders = await bridge.listExtraFolders();
+      extraFolders = (await bridge.listExtraFolders()) || [];
       $configStore = await bridge.reloadConfig();
     } catch (err: any) { alert(err?.message || err); }
   }
@@ -4633,7 +4633,7 @@
           <div class="form-row" style="flex-direction:column; align-items:stretch; gap:6px;">
             <label class="form-label">Extra scan folders</label>
             <p class="settings-value" style="margin:0 0 4px 0;">Additional roots scanned for clones and <code>.code-workspace</code> files, beyond the root folder.</p>
-            {#each extraFolders as ef}
+            {#each extraFolders || [] as ef}
               <div class="repo-row" style="justify-content:space-between;">
                 <span class="workspace-file-path" title={ef}>{ef}</span>
                 <button class="btn-sm btn-danger" on:click={() => removeExtraFolder(ef)} title="Remove">✕</button>
