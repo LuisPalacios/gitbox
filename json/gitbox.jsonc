@@ -18,8 +18,8 @@
     // JSON Schema reference for editor validation and autocompletion
     "$schema": "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/json/gitbox.schema.json",
 
-    // Format version. Always 2.
-    "version": 2,
+    // Format version. Always 3. (v2 files are migrated to v3 automatically on load.)
+    "version": 3,
 
     // ──────────────────────────────────────────────────────────────────────────────
     // GLOBAL SECTION
@@ -31,6 +31,16 @@
         //   "/home/user/00.git"        →  absolute path on Linux/macOS
         //   "C:/Users/user/00.git"     →  absolute path on Windows (Git Bash)
         "folder": "~/00.git",
+
+        // Additional root directories scanned for clones AND .code-workspace
+        // files, on top of "folder". Use them to onboard repos that live
+        // outside the standard folder/account/org/repo tree.
+        // "extra_folders": ["~/work/clients", "/opt/repos"],
+
+        // How many directory levels gitbox descends below a "container" repo
+        // (see repo.container) when discovering nested clones. Default 1
+        // (the container's immediate children).
+        // "nested_scan_depth": 1,
 
         // Language for human-facing program output. Use "en" or "es".
         // Machine-readable fields, command names and config keys stay English.
@@ -322,6 +332,16 @@
                 "MyOrg/myorg.web.legacy": {
                     "id_folder": "myorg-legacy",
                     "clone_folder": "web-old"
+                },
+
+                // Multi-repo CONTAINER: a main repo into which you clone a
+                // dynamic set of sibling repos (with your own script, not
+                // submodules). With "container": true, gitbox descends into this
+                // clone's working tree (up to global.nested_scan_depth) during
+                // `gitbox adopt` and onboards each nested clone under its real
+                // account/org with an absolute clone_folder inside this folder.
+                "MyOrg/myorg.project": {
+                    "container": true
                 }
             }
         },
@@ -371,44 +391,27 @@
     },
 
     // ═════════════════════════════════════════════════════════════════════════
-    //   WORKSPACES — bundles of clones opened together (optional)
+    //   WORKSPACES — read-only cache of discovered VS Code workspaces (optional)
     // ═════════════════════════════════════════════════════════════════════════
     //
-    // A workspace groups N clones that belong together for a task. Two backends:
+    // Workspaces are READ-ONLY. gitbox discovers existing *.code-workspace files
+    // under "folder" and "extra_folders", caches them here, lists them, and opens
+    // them in the first editor in global.editors. It never creates, edits,
+    // generates, or deletes them — you own the files. This whole section is a
+    // regenerable cache: delete it and `gitbox workspace discover` rebuilds it.
     //
-    //   - "codeWorkspace" — generates a VS Code .code-workspace file with one
-    //     folders[] entry per member. Opens with the first editor in
-    //     global.editors.
-    //   - "tmuxinator" — generates a YAML profile under ~/.tmuxinator/<key>.yml
-    //     and launches it through the first terminal in global.terminals
-    //     (macOS / Linux only in this release).
-    //
-    // Manage workspaces with:
-    //   gitbox workspace add <key> --type codeWorkspace --member <src>/<repo>
-    //   gitbox workspace generate <key>
-    //   gitbox workspace open <key>
+    //   gitbox workspace list / show <key> / open <key> / discover
     "workspaces": {
-        "feat-x": {
-            "type": "codeWorkspace",
-            "name": "Feature X",
-            // Populated automatically by `gitbox workspace generate`.
-            "file": "/home/me/00.git/feat-x.code-workspace",
+        "sumwall": {
+            "name": "sumwall",
+            // Absolute path to the discovered .code-workspace file on disk.
+            "file": "/home/me/00.git/github-org/Org/sumwall.project/sumwall.code-workspace",
+            // Member clones resolved from the file's folders[] to known repos.
             "members": [
                 { "source": "github-myuser", "repo": "myuser/frontend" },
                 { "source": "gitea-ci",      "repo": "deploy/infra-scripts" }
-            ]
-        },
-
-        "pair-session": {
-            "type": "tmuxinator",
-            // "windowsPerRepo" (default) = one tmuxinator window per member.
-            // "splitPanes"              = single window with tiled panes.
-            "layout": "windowsPerRepo",
-            "file": "/home/me/.tmuxinator/pair-session.yml",
-            "members": [
-                { "source": "github-myuser", "repo": "myuser/frontend" },
-                { "source": "github-myuser", "repo": "myuser/backend"  }
-            ]
+            ],
+            "discovered": true
         }
     }
 }

@@ -57,8 +57,8 @@ pkg/                      Shared Go library
   git/                    Git subprocess operations (os/exec); IsWSLAvailable / WSLPath helpers on Windows
   provider/               Provider API clients + mirror interfaces (GitHub, GitLab, Gitea, Forgejo)
   mirror/                 Push/pull mirror setup, status, guides
-  workspace/              Multi-repo workspaces: generators, on-disk discovery + auto-adoption, WSL-backed tmuxinator on Windows
-  adopt/                  Orphan repo discovery and adoption
+  workspace/              Read-only VS Code .code-workspace discovery + cache (RefreshCache); no generation, no tmuxinator
+  adopt/                  Orphan repo discovery + adoption (multi-root scan, container nested-clone discovery, in-place absolute clone_folder)
   status/                 Clone status checking
   update/                 Auto-update: version check, download, self-replace
   doctor/                 External-tool detection (git, GCM, ssh, tmux, …): point-of-use precheck + `gitbox doctor` command
@@ -107,7 +107,7 @@ AGENTS.md                 → .claude/CLAUDE.md (symlink — Codex reads project
 .github/workflows/ci.yml  CI: build, test, release (+ installers, DMGs, AppImage)
 json/
   gitbox.schema.json      v2 JSON Schema
-  gitbox.jsonc            v2 annotated example (Spanish comments)
+  gitbox.jsonc            v3 annotated example (Spanish comments)
 go.mod / go.sum           Go module
 README.md                 Project overview
 ```
@@ -126,11 +126,11 @@ If the symlinks ever go missing or get checked out as plain files, follow the re
 
 The CLI/TUI binary is `gitbox`, the GUI binary is `GitboxApp`. This avoids a Windows NTFS collision (case-insensitive filesystem).
 
-| Platform | CLI/TUI | GUI |
-| --- | --- | --- |
-| Windows | `gitbox.exe` | `GitboxApp.exe` |
-| macOS | `gitbox` | `GitboxApp.app` |
-| Linux | `gitbox` | `GitboxApp` |
+| Platform | CLI/TUI      | GUI             |
+| -------- | ------------ | --------------- |
+| Windows  | `gitbox.exe` | `GitboxApp.exe` |
+| macOS    | `gitbox`     | `GitboxApp.app` |
+| Linux    | `gitbox`     | `GitboxApp`     |
 
 ### Build commands
 
@@ -203,7 +203,18 @@ Use VHS (`charmbracelet/vhs`) to record terminal demo GIFs. Tape files live in `
 
 ## Config format
 
-Config file: `~/.config/gitbox/gitbox.json` — `accounts` + `sources`, real booleans, `gcm`/`ssh`/`token` credential types, nested SSH/GCM objects, `provider` field, `version: 2`. Optional `mirrors` section for push/pull mirror configuration between providers.
+Config file: `~/.config/gitbox/gitbox.json` — `accounts` + `sources`, real booleans, `gcm`/`ssh`/`token` credential types, nested SSH/GCM objects, `provider` field, `version: 3`. Optional `mirrors` section for push/pull mirror configuration between providers.
+
+**Versioning & migration:** `config.CurrentVersion` is 3. `config.Parse` loads v3 strictly and migrates v2 transparently on load (in-memory; persisted on next save). The v2→v3 migration bumps the version and **discards the `workspaces` section wholesale** (it is now a regenerable discovered cache); accounts, sources, mirrors, and global settings are preserved; legacy `global.terminals` is converted by the existing terminal migrator. Any other version is an error.
+
+**v3 keys:**
+
+- `global.extra_folders` (`[]string`) — additional root directories scanned for clones and `.code-workspace` files, on top of `global.folder`. Onboard repos outside the standard `folder/account/org/repo` tree.
+- `global.nested_scan_depth` (`int`, default 1 via `NestedScanDepthOrDefault`) — how many levels gitbox descends below a container repo to find nested clones.
+- `repo.container` (`bool`) — marks a clone as a multi-repo parent; gitbox descends into its working tree to discover and onboard nested clones the user provisioned there. Nested clones onboard as plain repos under their real account/org with an absolute `clone_folder`, never relocated. Parent→child nesting is derived from paths by `status.ComputeNesting`.
+- `repo.clone_folder` (existing) — an absolute value (`/`, `~`, `../`) places a clone anywhere on disk; this is how non-standard and nested clones are stored.
+
+**Workspaces are read-only** (`version: 3`): gitbox discovers existing VS Code `.code-workspace` files, caches them under `workspaces` (all `discovered: true`, no `type`/`layout`), lists them, and opens them. It never creates, edits, generates, or deletes them, and tmuxinator support is removed. `pkg/workspace.RefreshCache` rebuilds the cache; `Discover` is pure.
 
 ## Workflow orchestration
 
@@ -285,16 +296,16 @@ The project has a comprehensive test suite. Read `.claude/context/testing-patter
 
 **After any code change, always run the relevant tests:**
 
-| What changed | Command |
-| --- | --- |
-| `pkg/` (shared library) | `go test ./pkg/...` |
-| `cmd/cli/tui/` (TUI screens, components) | `go test ./cmd/cli/tui/` |
-| `cmd/cli/` (CLI commands) | `go test ./cmd/cli/` |
-| Credential logic (`pkg/credential/`) | `go test ./pkg/credential/ ./cmd/cli/tui/ ./cmd/cli/` |
-| Config logic (`pkg/config/`) | `go test ./pkg/config/ ./cmd/cli/tui/ ./cmd/cli/` |
-| Update logic (`pkg/update/`) | `go test ./pkg/update/` |
-| Doctor / tool detection (`pkg/doctor/`) | `go test ./pkg/doctor/` |
-| Unsure what's affected | `go test ./...` |
+| What changed                             | Command                                               |
+| ---------------------------------------- | ----------------------------------------------------- |
+| `pkg/` (shared library)                  | `go test ./pkg/...`                                   |
+| `cmd/cli/tui/` (TUI screens, components) | `go test ./cmd/cli/tui/`                              |
+| `cmd/cli/` (CLI commands)                | `go test ./cmd/cli/`                                  |
+| Credential logic (`pkg/credential/`)     | `go test ./pkg/credential/ ./cmd/cli/tui/ ./cmd/cli/` |
+| Config logic (`pkg/config/`)             | `go test ./pkg/config/ ./cmd/cli/tui/ ./cmd/cli/`     |
+| Update logic (`pkg/update/`)             | `go test ./pkg/update/`                               |
+| Doctor / tool detection (`pkg/doctor/`)  | `go test ./pkg/doctor/`                               |
+| Unsure what's affected                   | `go test ./...`                                       |
 
 **Test levels:**
 
@@ -319,13 +330,13 @@ The project has a comprehensive test suite. Read `.claude/context/testing-patter
 
 A feature is not complete until all affected documents are updated. Review this table after every change:
 
-| Change type | Documents to review |
-| --- | --- |
-| New feature / behavior change | `docs/credentials.md`, `docs/cli-guide.md`, `docs/reference.md`, `docs/gui-guide.md` |
-| New/changed tests | `docs/testing.md`, `.claude/context/testing-patterns.md` |
-| New tooling (skill, hook, script) | `docs/developer-guide.md` |
-| Repo structure change | `.claude/CLAUDE.md` (repository layout), `docs/README.md` (index) |
-| All of the above | `.claude/CLAUDE.md` (relevant sections) |
+| Change type                       | Documents to review                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------------------ |
+| New feature / behavior change     | `docs/credentials.md`, `docs/cli-guide.md`, `docs/reference.md`, `docs/gui-guide.md` |
+| New/changed tests                 | `docs/testing.md`, `.claude/context/testing-patterns.md`                             |
+| New tooling (skill, hook, script) | `docs/developer-guide.md`                                                            |
+| Repo structure change             | `.claude/CLAUDE.md` (repository layout), `docs/README.md` (index)                    |
+| All of the above                  | `.claude/CLAUDE.md` (relevant sections)                                              |
 
 ### 4. Autonomous bug fixing
 
@@ -392,13 +403,13 @@ The developer workstation can be any OS. Remote machines are available via SSH f
 
 Connection details are in `.env` (gitignored). Copy `docs/.env.example` to `.env` and fill in your SSH hosts. See `docs/multiplatform.md` for the full setup guide.
 
-| Platform | Env var | Arch | GOOS/GOARCH | Script token |
-| --- | --- | --- | --- | --- |
-| Windows amd64 | `SSH_WIN_INTEL_HOST` | amd64 | `windows/amd64` | `win-intel` (alias `win`) |
-| Windows arm64 | `SSH_WIN_ARM_HOST` | arm64 | `windows/arm64` | `win-arm` |
-| macOS Apple Silicon | `SSH_MAC_ARM_HOST` | arm64 | `darwin/arm64` | `mac-arm` (alias `mac`) |
-| macOS Intel | `SSH_MAC_INTEL_HOST` | amd64 | `darwin/amd64` | `mac-intel` |
-| Linux | `SSH_LINUX_HOST` | amd64 | `linux/amd64` | `linux` |
+| Platform            | Env var              | Arch  | GOOS/GOARCH     | Script token              |
+| ------------------- | -------------------- | ----- | --------------- | ------------------------- |
+| Windows amd64       | `SSH_WIN_INTEL_HOST` | amd64 | `windows/amd64` | `win-intel` (alias `win`) |
+| Windows arm64       | `SSH_WIN_ARM_HOST`   | arm64 | `windows/arm64` | `win-arm`                 |
+| macOS Apple Silicon | `SSH_MAC_ARM_HOST`   | arm64 | `darwin/arm64`  | `mac-arm` (alias `mac`)   |
+| macOS Intel         | `SSH_MAC_INTEL_HOST` | amd64 | `darwin/amd64`  | `mac-intel`               |
+| Linux               | `SSH_LINUX_HOST`     | amd64 | `linux/amd64`   | `linux`                   |
 
 Legacy `SSH_WIN_HOST` is still honored as a fallback for `SSH_WIN_INTEL_HOST` — older `.env` files keep working without a rename.
 
