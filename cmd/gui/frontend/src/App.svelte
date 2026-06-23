@@ -3465,6 +3465,8 @@
                         onMove={() => { actionMenuRepo = null; openMoveRepo(sourceKey, repoName); }}
                         moveEnabled={repoMoveDisabledReason(state) === ''}
                         moveDisabledReason={repoMoveDisabledReason(state)}
+                        isContainer={isContainerRepo(sourceKey, repoName)}
+                        onToggleContainer={() => { actionMenuRepo = null; toggleContainer(sourceKey, repoName); }}
                       />
                     </div>
                   {/if}
@@ -3526,14 +3528,6 @@
                   <span class="detail-clean">Everything is up to date.</span>
                 {/if}
               {/if}
-              <div class="detail-section-title" style="margin-top:10px; display:flex; align-items:center; gap:8px;">
-                <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:normal;">
-                  <input type="checkbox" checked={isContainerRepo(sourceKey, repoName)}
-                    on:change={() => toggleContainer(sourceKey, repoName)} />
-                  Multi-repo container
-                </label>
-                <span class="settings-value" title="gitbox scans inside this clone for nested clones to onboard">(scan inside for nested clones)</span>
-              </div>
             </div>
           {/if}
         {/each}
