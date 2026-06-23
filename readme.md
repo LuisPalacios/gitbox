@@ -55,7 +55,8 @@ This installs to `~/bin/` (macOS GUI goes to `/Applications/`). On Linux it also
 - **Safe account deletion + recovery** — deleting an account cascades through every mirror and workspace that references it so nothing is left dangling; every meaningful save keeps a rolling window of 10 dated backups, and the GUI's corruption-recovery screen can restore any of them in one click
 - **One-click actions** — every clone row (and every account header) has a kebab menu to open the clone in a browser, file manager, terminal, editor, or AI CLI harness (Claude Code, Codex, Gemini, …)
 - **PR & review indicators** — each clone row surfaces its open pull requests and pending review requests, pulled from the provider API
-- **Task-based workspaces** — bundle clones from different accounts into a VS Code multi-root workspace or a tmuxinator layout; launch from a clone's kebab or from a dedicated Workspaces tab (GUI + TUI + CLI). Auto-discovery adopts `.code-workspace` and `.tmuxinator` files dropped on disk, and full WSL-backed tmuxinator support lights up automatically on Windows.
+- **Read-only workspaces** — gitbox discovers existing VS Code `.code-workspace` files under the managed folders, lists them in a dedicated Workspaces tab (GUI + TUI + CLI), and opens one in my editor. It never creates or edits them — I own the files.
+- **Non-standard clones & multi-repo containers** — onboard clones that live outside the standard folder tree (configurable extra scan roots), and flag a "container" repo so gitbox discovers and adopts the sibling repos cloned inside its working tree (matched to their real account, stored in place).
 
 Five providers are supported — GitHub, GitLab, Gitea, Forgejo, and Bitbucket — and all of them work for discovery, cloning, and repo creation. Cross-provider mirroring is fully automated on Gitea, Forgejo, and GitLab; for GitHub and Bitbucket gitbox prints the manual setup steps instead of driving the UI. Read the docs for details.
 
@@ -67,11 +68,11 @@ The CLI and TUI live in a single binary — if you run `gitbox` with no argument
 
 The GUI is a separate binary built with **[Wails](https://wails.io/)** + Svelte.
 
-| Platform | CLI / TUI | GUI |
-| --- | --- | --- |
-| Windows | `gitbox.exe` | `GitboxApp.exe` |
-| macOS | `gitbox` | `GitboxApp.app` |
-| Linux | `gitbox` | `GitboxApp` |
+| Platform | CLI / TUI    | GUI             |
+| -------- | ------------ | --------------- |
+| Windows  | `gitbox.exe` | `GitboxApp.exe` |
+| macOS    | `gitbox`     | `GitboxApp.app` |
+| Linux    | `gitbox`     | `GitboxApp`     |
 
 **Desktop (GUI)**:
 
@@ -99,11 +100,11 @@ The GUI is a separate binary built with **[Wails](https://wails.io/)** + Svelte.
 
 Notice that this installation method complains about apps not signed nor notarized. Download the installer for your platform from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page:
 
-| Platform | Installer | What it does |
-| --- | --- | --- |
-| Windows | `gitbox-win-amd64-setup.exe` | Installs to Program Files, adds to PATH, creates Start Menu shortcuts |
-| macOS | `gitbox-macos-arm64.dmg` / `gitbox-macos-amd64.dmg` | Open DMG, run `bash "/Volumes/gitbox/Install Gitbox.command"` from Terminal — installs GUI + CLI, clears quarantine flags |
-| Linux | `gitbox-linux-amd64.AppImage` | Self-contained, runs directly — no installation needed |
+| Platform | Installer                                           | What it does                                                                                                              |
+| -------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Windows  | `gitbox-win-amd64-setup.exe`                        | Installs to Program Files, adds to PATH, creates Start Menu shortcuts                                                     |
+| macOS    | `gitbox-macos-arm64.dmg` / `gitbox-macos-amd64.dmg` | Open DMG, run `bash "/Volumes/gitbox/Install Gitbox.command"` from Terminal — installs GUI + CLI, clears quarantine flags |
+| Linux    | `gitbox-linux-amd64.AppImage`                       | Self-contained, runs directly — no installation needed                                                                    |
 
 Each release also includes a `checksums.sha256` file for verifying downloads.
 

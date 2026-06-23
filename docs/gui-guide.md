@@ -1,4 +1,3 @@
-
 <p align="center">
   <img src="../assets/screenshot-gui.png" alt="Gitbox" width="800" />
 </p>
@@ -220,19 +219,17 @@ Below the mirror cards, each group expands into a detail list showing individual
 - **Setup** button for pending repos that haven't been configured yet via API
 - **+ Repo** button to add new repos to the group
 
-## Step 6: Workspaces (optional)
+## Step 6: Workspaces (read-only)
 
-The **Workspaces** tab next to Accounts and Mirrors groups N clones into a single artifact (`.code-workspace` file or tmuxinator YAML) that opens them together. Create one from the tab's `+ New workspace` button or by ticking clones on the Accounts tab and using `Create workspace from selected`. See the [CLI guide](cli-guide.md#step-8-dynamic-workspaces-optional) for the backend model — the GUI uses the same config format.
+The **Workspaces** tab next to Accounts and Mirrors lists discovered VS Code `.code-workspace` files. Workspaces are read-only: the GUI discovers existing files, lists them with their resolved member clones, and opens one in my editor. It never creates, edits, generates, or deletes them — I own those files. Each entry has an **Open** button; the tab's **Discover** button rescans on demand. See the [CLI guide](cli-guide.md#step-8-workspaces-read-only) for the model.
 
 ### Auto-discovery on startup
 
-Whenever I drop a `*.code-workspace` file under the gitbox-managed folder by hand — or carry one over from another machine — the GUI picks it up on the next launch and adopts it into `gitbox.json` with `discovered: true`. Same for `~/.tmuxinator/*.yml` files. The Workspaces tab shows the new entry with no extra action from me.
+Whenever I drop a `*.code-workspace` file under the gitbox-managed folder (or a configured extra folder) — or carry one over from another machine — the GUI picks it up: the cached list shows instantly at launch, then a background pass refreshes it and the tab updates if anything changed. Each file's folder references are resolved back to known clones by a deepest-prefix path match.
 
-The tab also has a **Discover** button that re-runs the scan on demand. The scan resolves each parsed folder path back to a known clone using a deepest-prefix match. Workspaces with at least one ambiguous member (a path that ties between two clones) are flagged separately and never auto-adopted — open the tab and pick the right candidate by hand.
+### Non-standard clones & multi-repo containers
 
-### Tmuxinator on Windows
-
-Windows users with WSL installed get the same tmuxinator support as macOS / Linux: gitbox writes the YAML to the WSL-side `~/.tmuxinator/<key>.yml` (through its `\\wsl.localhost\…` UNC path) and `Open` launches the configured terminal running `wsl.exe -- tmuxinator start <key>`. Without WSL, tmuxinator workspaces remain unsupported and surface a clear error.
+The repo detail panel (click a repo row) has a **Multi-repo container** checkbox: tick it to mark a clone as a container, and the GUI offers to scan inside it for nested clones to onboard. The **Change root folder** dialog also manages **extra scan folders** (additional roots scanned for clones and `.code-workspace` files) and the **nested scan depth**. See the [CLI guide](cli-guide.md#step-9-non-standard-clone-locations--multi-repo-containers-optional) for the full model.
 
 ## Dashboard views
 
@@ -266,6 +263,7 @@ Click the **gear icon** to open the settings panel:
 - **Terminals** — **Manager** opens the Terminal Profile editor in its own OS window. Three sections: detected Terminal apps (read-only), detected Shells (read-only), and Profiles (the launchable Terminal × Shell pairs the kebab menu offers). Toggle Default / Preferred / Hidden per row, edit a Profile's name + Terminal + Shell binding, add user-defined Profiles, or delete those you added. Re-detect re-runs the host probe to pick up new shells, fresh WezTerm `launch_menu` entries, or freshly installed terminals without restarting the GUI. The window is owned by the main app — closing the main window closes the Manager too.
 
   When I click a `WezTerm + <Shell>` or `Windows Terminal + <Shell>` Profile, gitbox first looks up a matching entry in my own terminal config (`wezterm.lua` `launch_menu` for WezTerm, `settings.json` `profiles.list` for Windows Terminal). On a hit, gitbox launches that entry — for WezTerm it builds `wezterm-gui.exe start --cwd <path> -- <entry argv>` and splices the entry's `set_environment_variables` on top of the parent env; for Windows Terminal it runs `wt.exe -w 0 nt --profile "<name>" -d <path>` so WT applies my profile's font, colors, and `commandline` without spawning a second window when `firstWindowPreference: persistedWindowLayout` is set. With no match (or no config / terminal not installed), gitbox falls back to its generic argv template. Note: WezTerm picker-callback logic in `wezterm.lua` (per-entry `color_scheme`, custom `mux.spawn_window` hooks, etc.) only fires when the entry is chosen from WezTerm's own launcher menu — gitbox spawning the pane externally bypasses those callbacks. See [reference.md › How launch matching works](reference.md#how-launch-matching-works) for the matcher rules (em-dash suffix, pattern fallback for `pwsh` / `cmd` / WSL distros, etc.).
+
 - **Version** — current app version
 - **Author** — project author and link to the GitHub repository
 
@@ -293,7 +291,7 @@ Each source group in the repo list has a **kebab menu (⋮)** on the right side 
 
 - **🌐 Open in browser** — opens the provider profile/org page for the account (e.g. `https://github.com/<username>`, the GitLab group page, the Gitea/Forgejo user page).
 - **📁 Open folder** — opens the account's parent folder in the OS file manager. The folder is the natural workspace root for cross-repo greps, multi-repo edits, or shell loops. If the folder doesn't exist yet (nothing cloned under that account), the action errors silently — clone at least one repo first.
-- **>_ Open in \<terminal\>**, **✎ Open in \<editor\>**, **🤖 Open in \<AI harness\>** — same default-first entries as the repo kebab, plus the category submenus when you have multiple options configured. Sweep branches is dropped here — it's meaningful only on a specific clone.
+- **>\_ Open in \<terminal\>**, **✎ Open in \<editor\>**, **🤖 Open in \<AI harness\>** — same default-first entries as the repo kebab, plus the category submenus when you have multiple options configured. Sweep branches is dropped here — it's meaningful only on a specific clone.
 
 In compact view, hovering an account pill reveals the same folder / editor / terminal / AI harness shortcuts as small icons on the right side, matching the compact repo-row behavior.
 
@@ -305,7 +303,7 @@ On Windows, bare shell entries (`cmd.exe`, `powershell.exe`, `pwsh.exe`, `wsl.ex
 
 #### Opening a specific Windows Terminal profile
 
-When Windows Terminal is installed, gitbox auto-discovers your WT profiles and rewrites `global.terminals` to mirror the WT menu: one entry per visible profile, in the same order as `profiles.list`, each launching `wt.exe --profile "<name>" -d "{path}"`. The shell opens with the exact profile you tuned in WT (colors, font, starting directory, oh-my-posh, specific WSL distro) — bare-binary launches (`pwsh.exe`, `powershell.exe`, `wsl.exe`, `cmd.exe`, `git-bash.exe`) always fall back to WT's *default* profile and miss that tuning, so they're dropped from `global.terminals` whenever WT discovery succeeds.
+When Windows Terminal is installed, gitbox auto-discovers your WT profiles and rewrites `global.terminals` to mirror the WT menu: one entry per visible profile, in the same order as `profiles.list`, each launching `wt.exe --profile "<name>" -d "{path}"`. The shell opens with the exact profile you tuned in WT (colors, font, starting directory, oh-my-posh, specific WSL distro) — bare-binary launches (`pwsh.exe`, `powershell.exe`, `wsl.exe`, `cmd.exe`, `git-bash.exe`) always fall back to WT's _default_ profile and miss that tuning, so they're dropped from `global.terminals` whenever WT discovery succeeds.
 
 Discovery runs at startup and on every config sync. Renaming, adding, hiding, or disabling a profile in WT is picked up on the next launch — stale entries are pruned so the menu never drifts from WT itself. A profile is excluded when its `hidden` flag is `true` or when its `source` appears in WT's top-level `disabledProfileSources` (e.g. Visual Studio dynamic profiles disabled wholesale).
 
@@ -317,20 +315,15 @@ If you want to override an auto-discovered entry (rename it, point at a differen
 
 ```json
 {
-    "name": "WSL — Ubuntu",
-    "command": "C:\\Users\\<you>\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe",
-    "args": [
-        "--profile",
-        "Ubuntu 24.04.1 LTS",
-        "-d",
-        "{path}"
-    ]
+  "name": "WSL — Ubuntu",
+  "command": "C:\\Users\\<you>\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe",
+  "args": ["--profile", "Ubuntu 24.04.1 LTS", "-d", "{path}"]
 }
 ```
 
 Notes:
 
-- `--profile "<name>"` takes the profile's display name *verbatim*, including version suffixes like `Ubuntu 24.04.1 LTS` or the exact `PowerShell 7` spelling configured in WT's settings.
+- `--profile "<name>"` takes the profile's display name _verbatim_, including version suffixes like `Ubuntu 24.04.1 LTS` or the exact `PowerShell 7` spelling configured in WT's settings.
 - `-d "{path}"` sets the starting directory.
 - Routing through `wt.exe --profile` also sidesteps the Git Bash env-leak quirk described below — WT starts the shell from its own stored profile context, so any MSYS-form env vars inherited by the GUI don't reach the shell.
 
@@ -353,7 +346,7 @@ I tell gitbox which terminal to use by ordering `global.terminals`: the first en
 
 The host terminal must support launching a command. In the args template, this is marked with the literal token `"{command}"` — at launch time, gitbox splices the harness argv in place of that token. Auto-detected templates (Windows Terminal profiles, gnome-terminal, konsole, alacritty, kitty, and similar) include `{command}` by default so harness launches work without config edits. For terminal-only launches the token expands to zero items, so the same entry serves both paths.
 
-If the first terminal can't launch a command (missing `{command}` in args), clicking an AI harness entry shows an actionable error: "*\<name\>* in global.terminals[0] doesn't support launching a command. Add `{command}` to its args, or reorder global.terminals so a compatible entry is first." Shell-only launchers like bare `pwsh.exe`, `cmd.exe`, `wsl.exe`, `git-bash.exe`, and `open -a Terminal.app` fall into this category — route harnesses through a WT profile (Windows), a GUI terminal with a command flag (Linux), or the upcoming macOS follow-up.
+If the first terminal can't launch a command (missing `{command}` in args), clicking an AI harness entry shows an actionable error: "_\<name\>_ in global.terminals[0] doesn't support launching a command. Add `{command}` to its args, or reorder global.terminals so a compatible entry is first." Shell-only launchers like bare `pwsh.exe`, `cmd.exe`, `wsl.exe`, `git-bash.exe`, and `open -a Terminal.app` fall into this category — route harnesses through a WT profile (Windows), a GUI terminal with a command flag (Linux), or the upcoming macOS follow-up.
 
 Harnesses are auto-detected on PATH at startup. Gitbox writes detected entries to `global.ai_harnesses` with the resolved binary path. Each entry has a `name` (display in the menu), a `command` (binary path or on-PATH name), and an optional `args` array for harness-specific flags (e.g. `["--model", "sonnet-4.6"]`). Most harnesses need no flags — `args` is usually empty.
 
