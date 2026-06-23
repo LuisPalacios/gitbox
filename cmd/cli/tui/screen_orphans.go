@@ -68,8 +68,9 @@ func adoptOrphansCmd(cfg *config.Config, cfgPath string, orphans []adopt.OrphanR
 
 			repoPath := o.Path
 
-			// Relocate if needed.
-			if o.NeedsRelocate && o.ExpectedPath != "" {
+			// Relocate if needed — but never for nested clones, which must stay
+			// inside their container; they adopt in place with an absolute clone_folder.
+			if o.NeedsRelocate && !o.Nested && o.ExpectedPath != "" {
 				if _, err := os.Stat(o.ExpectedPath); err != nil {
 					// Destination doesn't exist — safe to move.
 					if err := os.MkdirAll(filepath.Dir(o.ExpectedPath), 0o755); err == nil {
