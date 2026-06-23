@@ -377,7 +377,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cfgErr = msg.err.Error()
 			m.firstRun = true
 			m.cfg = &config.Config{
-				Version:  2,
+				Version:  config.CurrentVersion,
 				Global:   config.GlobalConfig{},
 				Accounts: make(map[string]config.Account),
 				Sources:  make(map[string]config.Source),

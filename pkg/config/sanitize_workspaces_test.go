@@ -7,7 +7,7 @@ import "testing"
 // user-created (non-discovered) entries are dropped on load.
 func TestParseV2_SanitizesWorkspaceCache(t *testing.T) {
 	in := `{
-  "version": 2,
+  "version": 3,
   "global": {"folder": "/tmp"},
   "accounts": {"a": {"provider": "github", "url": "https://github.com", "username": "u", "name": "n", "email": "e@e"}},
   "sources": {"a": {"account": "a", "repos": {"o/r": {}}}},

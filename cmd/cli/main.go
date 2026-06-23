@@ -205,7 +205,7 @@ func loadOrCreateConfig() (*config.Config, error) {
 		}
 		// File doesn't exist — create empty config.
 		cfg = &config.Config{
-			Version:  2,
+			Version:  config.CurrentVersion,
 			Global:   config.GlobalConfig{Folder: "~/00.git"},
 			Accounts: make(map[string]config.Account),
 			Sources:  make(map[string]config.Source),

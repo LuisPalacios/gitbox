@@ -109,8 +109,9 @@ func TestParseV2(t *testing.T) {
 		t.Fatalf("Parse v2: %v", err)
 	}
 
-	if cfg.Version != 2 {
-		t.Errorf("version = %d, want 2", cfg.Version)
+	// A v2 file is transparently migrated to the current version on load.
+	if cfg.Version != CurrentVersion {
+		t.Errorf("version = %d, want %d (migrated)", cfg.Version, CurrentVersion)
 	}
 	if cfg.Global.CredentialGCM.CredentialStore != "wincredman" {
 		t.Error("credential_store should be wincredman")
@@ -471,13 +472,12 @@ func TestTerminalsOmitEmpty(t *testing.T) {
 // UI never renders a duplicate.
 func TestParseV2_DedupesWorkspaceMembers(t *testing.T) {
 	in := `{
-  "version": 2,
+  "version": 3,
   "global": {"folder": "/tmp"},
   "accounts": {"a": {"provider": "github", "url": "https://github.com", "username": "u", "name": "n", "email": "e@e"}},
   "sources": {"a": {"account": "a", "repos": {"o/r": {}}}},
   "workspaces": {
     "dup": {
-      "type": "codeWorkspace",
       "discovered": true,
       "members": [
         {"source": "a", "repo": "o/r"},

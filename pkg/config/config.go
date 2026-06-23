@@ -6,7 +6,13 @@ import (
 	"strings"
 )
 
-// Config represents the top-level gitbox configuration (v2 format).
+// CurrentVersion is the config schema version this build reads and writes.
+// v3 introduced read-only workspaces (no type/layout, discovered cache only),
+// extra scan-root folders, nested-scan depth, and the repo container flag.
+// v2 files are migrated to v3 transparently on load (see migrateV2toV3).
+const CurrentVersion = 3
+
+// Config represents the top-level gitbox configuration (v3 format).
 type Config struct {
 	Schema     string               `json:"$schema,omitempty"`
 	Version    int                  `json:"version"`

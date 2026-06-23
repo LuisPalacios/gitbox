@@ -104,7 +104,7 @@ func TestBackupSkippedForWindowOnlyChanges(t *testing.T) {
 
 	// Seed a valid, loadable config to disk.
 	cfg := &Config{
-		Version: 2,
+		Version: CurrentVersion,
 		Global: GlobalConfig{
 			Folder: "~/00.git",
 			Window: &WindowState{X: 10, Y: 10, Width: 800, Height: 600},

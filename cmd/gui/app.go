@@ -108,7 +108,7 @@ func (a *App) Startup(ctx context.Context) {
 		// Config doesn't exist or is unreadable — start with empty config for onboarding.
 		cfg = &config.Config{
 			Schema:   "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/json/gitbox.schema.json",
-			Version:  2,
+			Version:  config.CurrentVersion,
 			Accounts: make(map[string]config.Account),
 			Sources:  make(map[string]config.Source),
 		}
