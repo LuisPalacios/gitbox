@@ -382,9 +382,48 @@
   let changeFolderPath = '';
   let changeFolderError = '';
 
+  // Extra scan-root folders + nested-clone scan depth (non-standard clones).
+  let extraFolders: string[] = [];
+  let nestedScanDepth = 1;
+
+  async function loadScanSettings() {
+    try {
+      extraFolders = await bridge.listExtraFolders();
+      nestedScanDepth = await bridge.getNestedScanDepth();
+    } catch { /* defaults stay */ }
+  }
+
+  async function addExtraFolder() {
+    const dir = await bridge.pickFolder('Choose an extra scan folder');
+    if (!dir) return;
+    try {
+      await bridge.addExtraFolder(dir);
+      extraFolders = await bridge.listExtraFolders();
+      $configStore = await bridge.reloadConfig();
+    } catch (err: any) { alert(err?.message || err); }
+  }
+
+  async function removeExtraFolder(path: string) {
+    try {
+      await bridge.removeExtraFolder(path);
+      extraFolders = await bridge.listExtraFolders();
+      $configStore = await bridge.reloadConfig();
+    } catch (err: any) { alert(err?.message || err); }
+  }
+
+  async function saveNestedScanDepth() {
+    const d = Math.max(1, Math.floor(nestedScanDepth || 1));
+    nestedScanDepth = d;
+    try {
+      await bridge.setNestedScanDepth(d);
+      $configStore = await bridge.reloadConfig();
+    } catch (err: any) { alert(err?.message || err); }
+  }
+
   function openChangeFolder() {
     changeFolderPath = '';
     changeFolderError = '';
+    loadScanSettings();
     changeFolderModal = true;
   }
 
@@ -1977,6 +2016,40 @@
     }
   }
 
+  // ── Multi-repo container toggle ────────────────────────────────────
+
+  function isContainerRepo(sourceKey: string, repoName: string): boolean {
+    return !!$configStore?.sources?.[sourceKey]?.repos?.[repoName]?.container;
+  }
+
+  async function toggleContainer(sourceKey: string, repoName: string) {
+    const next = !isContainerRepo(sourceKey, repoName);
+    try {
+      await bridge.setRepoContainer(sourceKey, repoName, next);
+      $configStore = await bridge.reloadConfig();
+      if (next) {
+        // Newly a container — scan its working tree for nested clones to adopt.
+        await refreshStatusAfterContainer();
+      }
+    } catch (e: any) {
+      alert(e?.message || e);
+    }
+  }
+
+  async function refreshStatusAfterContainer() {
+    try {
+      const orphans = await bridge.scanFolderForClones('');
+      const nested = orphans.filter(o => o.matchedAccount && !o.localOnly);
+      if (nested.length === 0) return;
+      const names = nested.map(o => `${o.matchedSource}/${o.repoKey}`).join('\n  ');
+      if (confirm(`Found ${nested.length} nested clone(s) to onboard:\n  ${names}\n\nOnboard them now?`)) {
+        await bridge.adoptOrphans(nested.map(o => o.repoKey));
+        $configStore = await bridge.reloadConfig();
+        await initDashboard();
+      }
+    } catch { /* best-effort */ }
+  }
+
   function toggleSelectionMode() {
     selectionMode = !selectionMode;
     if (!selectionMode) clearCloneSelection();
@@ -3453,6 +3526,14 @@
                   <span class="detail-clean">Everything is up to date.</span>
                 {/if}
               {/if}
+              <div class="detail-section-title" style="margin-top:10px; display:flex; align-items:center; gap:8px;">
+                <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:normal;">
+                  <input type="checkbox" checked={isContainerRepo(sourceKey, repoName)}
+                    on:change={() => toggleContainer(sourceKey, repoName)} />
+                  Multi-repo container
+                </label>
+                <span class="settings-value" title="gitbox scans inside this clone for nested clones to onboard">(scan inside for nested clones)</span>
+              </div>
             </div>
           {/if}
         {/each}
@@ -4497,9 +4578,30 @@
             <input class="form-input" bind:value={changeFolderPath} placeholder="~/new-folder" />
             <button class="settings-btn" on:click={() => browseFolder('settings')}>Browse</button>
           </div>
+
+          <hr style="border:none;border-top:1px solid var(--border); margin:16px 0;" />
+
+          <div class="form-row" style="flex-direction:column; align-items:stretch; gap:6px;">
+            <label class="form-label">Extra scan folders</label>
+            <p class="settings-value" style="margin:0 0 4px 0;">Additional roots scanned for clones and <code>.code-workspace</code> files, beyond the root folder.</p>
+            {#each extraFolders as ef}
+              <div class="repo-row" style="justify-content:space-between;">
+                <span class="workspace-file-path" title={ef}>{ef}</span>
+                <button class="btn-sm btn-danger" on:click={() => removeExtraFolder(ef)} title="Remove">✕</button>
+              </div>
+            {/each}
+            <button class="settings-btn" on:click={addExtraFolder} style="align-self:flex-start;">+ Add folder…</button>
+          </div>
+
+          <div class="form-row" style="margin-top:10px;">
+            <label class="form-label">Nested scan depth</label>
+            <input class="form-input" type="number" min="1" style="max-width:90px;"
+              bind:value={nestedScanDepth} on:change={saveNestedScanDepth} />
+            <span class="settings-value">levels below a container repo (default 1)</span>
+          </div>
         </div>
         <div class="modal-foot">
-          <button class="btn-cancel" on:click={() => changeFolderModal = false}>Cancel</button>
+          <button class="btn-cancel" on:click={() => changeFolderModal = false}>Close</button>
           <button class="btn-add" on:click={confirmChangeFolder} disabled={!changeFolderPath.trim()}>Change folder</button>
         </div>
       </div>

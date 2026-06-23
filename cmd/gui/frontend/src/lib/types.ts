@@ -44,6 +44,7 @@ export interface Repo {
   email?: string;
   id_folder?: string;
   clone_folder?: string;
+  container?: boolean;
 }
 
 export interface SourceDTO {
