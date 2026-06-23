@@ -18,16 +18,20 @@ export function AddDiscoveredRepos(arg1, arg2) {
   return window['go']['main']['App']['AddDiscoveredRepos'](arg1, arg2);
 }
 
+export function AddDiscoveredReposToFolder(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AddDiscoveredReposToFolder'](arg1, arg2, arg3);
+}
+
+export function AddExtraFolder(arg1) {
+  return window['go']['main']['App']['AddExtraFolder'](arg1);
+}
+
 export function AddMirrorGroup(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddMirrorGroup'](arg1, arg2, arg3);
 }
 
 export function AddMirrorRepo(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddMirrorRepo'](arg1, arg2, arg3, arg4);
-}
-
-export function AddWorkspaceMember(arg1, arg2) {
-  return window['go']['main']['App']['AddWorkspaceMember'](arg1, arg2);
 }
 
 export function AdoptOrphans(arg1) {
@@ -82,10 +86,6 @@ export function CreateNewRepo(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['CreateNewRepo'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
-export function CreateWorkspace(arg1) {
-  return window['go']['main']['App']['CreateWorkspace'](arg1);
-}
-
 export function CredentialDelete(arg1) {
   return window['go']['main']['App']['CredentialDelete'](arg1);
 }
@@ -124,10 +124,6 @@ export function DeleteMirrorRepo(arg1, arg2) {
 
 export function DeleteRepo(arg1, arg2) {
   return window['go']['main']['App']['DeleteRepo'](arg1, arg2);
-}
-
-export function DeleteWorkspace(arg1) {
-  return window['go']['main']['App']['DeleteWorkspace'](arg1);
 }
 
 export function DetectAIHarnesses() {
@@ -178,10 +174,6 @@ export function FixGlobalGCMConfig() {
   return window['go']['main']['App']['FixGlobalGCMConfig']();
 }
 
-export function GenerateWorkspace(arg1) {
-  return window['go']['main']['App']['GenerateWorkspace'](arg1);
-}
-
 export function GetAllStatus() {
   return window['go']['main']['App']['GetAllStatus']();
 }
@@ -220,6 +212,10 @@ export function GetLanguage() {
 
 export function GetMirrorStatus(arg1) {
   return window['go']['main']['App']['GetMirrorStatus'](arg1);
+}
+
+export function GetNestedScanDepth() {
+  return window['go']['main']['App']['GetNestedScanDepth']();
 }
 
 export function GetOS() {
@@ -284,6 +280,10 @@ export function ListAccountOrgs(arg1) {
 
 export function ListConfigBackups() {
   return window['go']['main']['App']['ListConfigBackups']();
+}
+
+export function ListExtraFolders() {
+  return window['go']['main']['App']['ListExtraFolders']();
 }
 
 export function ListMoveDestinationOwners(arg1) {
@@ -414,12 +414,12 @@ export function ReloadConfig() {
   return window['go']['main']['App']['ReloadConfig']();
 }
 
-export function RemoveGlobalIdentity() {
-  return window['go']['main']['App']['RemoveGlobalIdentity']();
+export function RemoveExtraFolder(arg1) {
+  return window['go']['main']['App']['RemoveExtraFolder'](arg1);
 }
 
-export function RemoveWorkspaceMember(arg1, arg2, arg3) {
-  return window['go']['main']['App']['RemoveWorkspaceMember'](arg1, arg2, arg3);
+export function RemoveGlobalIdentity() {
+  return window['go']['main']['App']['RemoveGlobalIdentity']();
 }
 
 export function RenameAccount(arg1, arg2) {
@@ -442,6 +442,10 @@ export function SaveTerminalProfilesDTO(arg1, arg2, arg3) {
   return window['go']['main']['App']['SaveTerminalProfilesDTO'](arg1, arg2, arg3);
 }
 
+export function ScanFolderForClones(arg1) {
+  return window['go']['main']['App']['ScanFolderForClones'](arg1);
+}
+
 export function SetAutostart(arg1) {
   return window['go']['main']['App']['SetAutostart'](arg1);
 }
@@ -458,6 +462,10 @@ export function SetLanguage(arg1) {
   return window['go']['main']['App']['SetLanguage'](arg1);
 }
 
+export function SetNestedScanDepth(arg1) {
+  return window['go']['main']['App']['SetNestedScanDepth'](arg1);
+}
+
 export function SetPRBadgesEnabled(arg1) {
   return window['go']['main']['App']['SetPRBadgesEnabled'](arg1);
 }
@@ -468,6 +476,10 @@ export function SetPRIncludeDrafts(arg1) {
 
 export function SetPeriodicSync(arg1) {
   return window['go']['main']['App']['SetPeriodicSync'](arg1);
+}
+
+export function SetRepoContainer(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetRepoContainer'](arg1, arg2, arg3);
 }
 
 export function SetViewMode(arg1) {
@@ -502,10 +514,10 @@ export function SyncTerminals() {
   return window['go']['main']['App']['SyncTerminals']();
 }
 
-export function UpdateAccount(arg1) {
-  return window['go']['main']['App']['UpdateAccount'](arg1);
+export function TentativeContainers() {
+  return window['go']['main']['App']['TentativeContainers']();
 }
 
-export function UpdateWorkspace(arg1, arg2) {
-  return window['go']['main']['App']['UpdateWorkspace'](arg1, arg2);
+export function UpdateAccount(arg1) {
+  return window['go']['main']['App']['UpdateAccount'](arg1);
 }
