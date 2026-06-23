@@ -200,6 +200,7 @@ export interface OrphanRepoDTO {
   needsRelocate: boolean;
   localOnly: boolean;
   ambiguousCandidates?: string[];
+  nested: boolean;
 }
 
 export interface AdoptResultDTO {

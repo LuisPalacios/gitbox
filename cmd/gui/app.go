@@ -796,6 +796,7 @@ type OrphanRepoDTO struct {
 	NeedsRelocate       bool     `json:"needsRelocate"`
 	LocalOnly           bool     `json:"localOnly"`
 	AmbiguousCandidates []string `json:"ambiguousCandidates,omitempty"`
+	Nested              bool     `json:"nested"`
 }
 
 // AdoptResultDTO holds the result of adopting orphan repos.
@@ -830,6 +831,7 @@ func (a *App) FindOrphans() []OrphanRepoDTO {
 			NeedsRelocate:       o.NeedsRelocate,
 			LocalOnly:           o.LocalOnly,
 			AmbiguousCandidates: o.AmbiguousCandidates,
+			Nested:              o.Nested,
 		}
 	}
 	return dtos

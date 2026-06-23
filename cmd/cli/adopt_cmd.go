@@ -86,7 +86,9 @@ func runAdopt(cmd *cobra.Command, args []string) error {
 		fmt.Printf("\n%s\n", colorize("Ready to adopt (account matched):", colorCyan))
 		for _, o := range matched {
 			action := "in place"
-			if o.NeedsRelocate {
+			if o.Nested {
+				action = "in place (nested)"
+			} else if o.NeedsRelocate {
 				action = "will relocate"
 			}
 			fmt.Printf("  %-50s → %s / %s  [%s]\n",

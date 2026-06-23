@@ -2028,26 +2028,17 @@
       await bridge.setRepoContainer(sourceKey, repoName, next);
       $configStore = await bridge.reloadConfig();
       if (next) {
-        // Newly a container — scan its working tree for nested clones to adopt.
-        await refreshStatusAfterContainer();
+        // Newly a container — rescan and open the orphans modal so the user
+        // reviews and adopts the nested clones via the tested flow. They adopt
+        // in place (an absolute clone_folder inside the container).
+        await loadOrphans();
+        if (orphanList.some(o => o.nested && o.matchedAccount && !o.localOnly)) {
+          showOrphanModal();
+        }
       }
     } catch (e: any) {
       alert(e?.message || e);
     }
-  }
-
-  async function refreshStatusAfterContainer() {
-    try {
-      const orphans = await bridge.scanFolderForClones('');
-      const nested = orphans.filter(o => o.matchedAccount && !o.localOnly);
-      if (nested.length === 0) return;
-      const names = nested.map(o => `${o.matchedSource}/${o.repoKey}`).join('\n  ');
-      if (confirm(`Found ${nested.length} nested clone(s) to onboard:\n  ${names}\n\nOnboard them now?`)) {
-        await bridge.adoptOrphans(nested.map(o => o.repoKey));
-        $configStore = await bridge.reloadConfig();
-        await initDashboard();
-      }
-    } catch { /* best-effort */ }
   }
 
   function toggleSelectionMode() {
@@ -4111,7 +4102,7 @@
               <input type="checkbox" checked={orphanModal.selected.has(o.repoKey)} on:change={() => toggleOrphan(o.repoKey)} />
               <span class="adopt-repo-key">{o.repoKey}</span>
               <span class="adopt-target">&rarr; {o.matchedSource}</span>
-              <span class="adopt-action">{o.needsRelocate ? 'relocate' : 'in place'}</span>
+              <span class="adopt-action">{o.nested ? 'nested (in place)' : o.needsRelocate ? 'relocate' : 'in place'}</span>
               <span class="adopt-path"><span class="adopt-path-root">Root</span>/{o.relPath}</span>
             </label>
           {/each}

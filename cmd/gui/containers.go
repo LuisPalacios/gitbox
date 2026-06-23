@@ -134,6 +134,7 @@ func (a *App) ScanFolderForClones(path string) []OrphanRepoDTO {
 			NeedsRelocate:       o.NeedsRelocate,
 			LocalOnly:           o.LocalOnly,
 			AmbiguousCandidates: o.AmbiguousCandidates,
+			Nested:              o.Nested,
 		}
 	}
 	return dtos

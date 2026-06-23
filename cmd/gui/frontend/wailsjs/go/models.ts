@@ -1119,6 +1119,7 @@ export namespace main {
 	    needsRelocate: boolean;
 	    localOnly: boolean;
 	    ambiguousCandidates?: string[];
+	    nested: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new OrphanRepoDTO(source);
@@ -1136,6 +1137,7 @@ export namespace main {
 	        this.needsRelocate = source["needsRelocate"];
 	        this.localOnly = source["localOnly"];
 	        this.ambiguousCandidates = source["ambiguousCandidates"];
+	        this.nested = source["nested"];
 	    }
 	}
 	export class PRSettingsDTO {
