@@ -52,7 +52,7 @@ your accounts and repositories.`,
 
 		cfg := &config.Config{
 			Schema:  "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/json/gitbox.schema.json",
-			Version: 2,
+			Version: config.CurrentVersion,
 			Global: config.GlobalConfig{
 				Folder: folder,
 				CredentialSSH: &config.SSHGlobal{

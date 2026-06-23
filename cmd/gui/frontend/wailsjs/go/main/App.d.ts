@@ -14,11 +14,13 @@ export function AddAccount(arg1:main.AddAccountRequest):Promise<void>;
 
 export function AddDiscoveredRepos(arg1:string,arg2:Array<string>):Promise<void>;
 
+export function AddDiscoveredReposToFolder(arg1:string,arg2:Array<string>,arg3:string):Promise<void>;
+
+export function AddExtraFolder(arg1:string):Promise<void>;
+
 export function AddMirrorGroup(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function AddMirrorRepo(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
-
-export function AddWorkspaceMember(arg1:string,arg2:main.WorkspaceMemberDTO):Promise<void>;
 
 export function AdoptOrphans(arg1:Array<string>):Promise<main.AdoptResultDTO>;
 
@@ -46,8 +48,6 @@ export function ConfirmSweep(arg1:string,arg2:string):Promise<main.SweepDeleteDT
 
 export function CreateNewRepo(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean,arg6:boolean):Promise<void>;
 
-export function CreateWorkspace(arg1:main.WorkspaceCreateRequest):Promise<void>;
-
 export function CredentialDelete(arg1:string):Promise<main.CredentialSetupResult>;
 
 export function CredentialRegenerateSSH(arg1:string):Promise<main.CredentialSetupResult>;
@@ -67,8 +67,6 @@ export function DeleteMirrorGroup(arg1:string):Promise<void>;
 export function DeleteMirrorRepo(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteRepo(arg1:string,arg2:string):Promise<void>;
-
-export function DeleteWorkspace(arg1:string):Promise<void>;
 
 export function DetectAIHarnesses():Promise<Array<main.AIHarnessInfo>>;
 
@@ -94,8 +92,6 @@ export function FindOrphans():Promise<Array<main.OrphanRepoDTO>>;
 
 export function FixGlobalGCMConfig():Promise<void>;
 
-export function GenerateWorkspace(arg1:string):Promise<main.WorkspaceGenerateResult>;
-
 export function GetAllStatus():Promise<Array<main.StatusResult>>;
 
 export function GetAppVersion():Promise<string>;
@@ -115,6 +111,8 @@ export function GetGlobalFolder():Promise<string>;
 export function GetLanguage():Promise<string>;
 
 export function GetMirrorStatus(arg1:string):Promise<void>;
+
+export function GetNestedScanDepth():Promise<number>;
 
 export function GetOS():Promise<string>;
 
@@ -147,6 +145,8 @@ export function IsTestMode():Promise<boolean>;
 export function ListAccountOrgs(arg1:string):Promise<Array<string>>;
 
 export function ListConfigBackups():Promise<Array<main.ConfigBackupInfo>>;
+
+export function ListExtraFolders():Promise<Array<string>>;
 
 export function ListMoveDestinationOwners(arg1:string):Promise<Array<main.MoveOwnerOption>>;
 
@@ -212,19 +212,23 @@ export function RefreshStatus():Promise<void>;
 
 export function ReloadConfig():Promise<main.ConfigDTO>;
 
-export function RemoveGlobalIdentity():Promise<void>;
+export function RemoveExtraFolder(arg1:string):Promise<void>;
 
-export function RemoveWorkspaceMember(arg1:string,arg2:string,arg3:string):Promise<void>;
+export function RemoveGlobalIdentity():Promise<void>;
 
 export function RenameAccount(arg1:string,arg2:string):Promise<void>;
 
 export function RepairConfig():Promise<main.ConfigRepairResult>;
+
+export function RepoNesting():Promise<Record<string, string>>;
 
 export function RestoreFromBackup(arg1:string):Promise<main.ConfigRepairResult>;
 
 export function SaveTerminalProfiles(arg1:Array<config.TerminalApp>,arg2:Array<config.ShellEntry>,arg3:Array<config.TerminalProfile>):Promise<void>;
 
 export function SaveTerminalProfilesDTO(arg1:Array<main.TerminalAppInfo>,arg2:Array<main.ShellInfo>,arg3:Array<main.TerminalProfileInfo>):Promise<void>;
+
+export function ScanFolderForClones(arg1:string):Promise<Array<main.OrphanRepoDTO>>;
 
 export function SetAutostart(arg1:boolean):Promise<void>;
 
@@ -234,11 +238,15 @@ export function SetGlobalFolder(arg1:string):Promise<void>;
 
 export function SetLanguage(arg1:string):Promise<void>;
 
+export function SetNestedScanDepth(arg1:number):Promise<void>;
+
 export function SetPRBadgesEnabled(arg1:boolean):Promise<void>;
 
 export function SetPRIncludeDrafts(arg1:boolean):Promise<void>;
 
 export function SetPeriodicSync(arg1:string):Promise<void>;
+
+export function SetRepoContainer(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
 export function SetViewMode(arg1:string):Promise<main.WindowStateDTO>;
 
@@ -256,6 +264,6 @@ export function SyncProfiles():Promise<void>;
 
 export function SyncTerminals():Promise<void>;
 
-export function UpdateAccount(arg1:main.UpdateAccountRequest):Promise<void>;
+export function TentativeContainers():Promise<Array<main.TentativeContainerDTO>>;
 
-export function UpdateWorkspace(arg1:string,arg2:main.WorkspaceUpdateRequest):Promise<void>;
+export function UpdateAccount(arg1:main.UpdateAccountRequest):Promise<void>;

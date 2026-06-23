@@ -34,11 +34,14 @@ var globalShowCmd = &cobra.Command{
 // --- global update ---
 
 var (
-	globalFolder    string
-	globalLanguage  string
-	globalGCMHelper string
-	globalGCMStore  string
-	globalSSHFolder string
+	globalFolder      string
+	globalLanguage    string
+	globalGCMHelper   string
+	globalGCMStore    string
+	globalSSHFolder   string
+	globalAddFolder   string
+	globalRemoveFold  string
+	globalNestedDepth int
 )
 
 var globalUpdateCmd = &cobra.Command{
@@ -55,6 +58,21 @@ var globalUpdateCmd = &cobra.Command{
 		}
 		if cmd.Flags().Changed("language") {
 			cfg.Global.Language = i18n.Normalize(globalLanguage)
+		}
+
+		// Extra scan folders (additional roots scanned for clones and
+		// .code-workspace files).
+		if cmd.Flags().Changed("add-folder") {
+			cfg.Global.AddExtraFolder(globalAddFolder)
+		}
+		if cmd.Flags().Changed("remove-folder") {
+			cfg.Global.RemoveExtraFolder(globalRemoveFold)
+		}
+		if cmd.Flags().Changed("nested-depth") {
+			if globalNestedDepth < 1 {
+				return fmt.Errorf("--nested-depth must be >= 1")
+			}
+			cfg.Global.NestedScanDepth = globalNestedDepth
 		}
 
 		// GCM settings.
@@ -141,6 +159,9 @@ func init() {
 	globalUpdateCmd.Flags().StringVar(&globalGCMHelper, "gcm-helper", "", tr.T("flag.global.gcm_helper"))
 	globalUpdateCmd.Flags().StringVar(&globalGCMStore, "gcm-credential-store", "", tr.T("flag.global.gcm_store"))
 	globalUpdateCmd.Flags().StringVar(&globalSSHFolder, "ssh-folder", "", tr.T("flag.global.ssh_folder"))
+	globalUpdateCmd.Flags().StringVar(&globalAddFolder, "add-folder", "", "add an extra scan-root folder (scanned for clones and .code-workspace files)")
+	globalUpdateCmd.Flags().StringVar(&globalRemoveFold, "remove-folder", "", "remove an extra scan-root folder")
+	globalUpdateCmd.Flags().IntVar(&globalNestedDepth, "nested-depth", 0, "depth to descend below container repos when discovering nested clones (>=1)")
 	translateGlobalCommand(tr)
 }
 

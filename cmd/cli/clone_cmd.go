@@ -16,6 +16,7 @@ var (
 	cloneSource string
 	cloneRepo   string
 	cloneAll    bool
+	cloneFolder string
 )
 
 var cloneCmd = &cobra.Command{
@@ -35,6 +36,29 @@ var cloneCmd = &cobra.Command{
 
 		// Note: per-repo credential isolation replaces global credential config.
 		// Each clone gets its own credential.helper in .git/config.
+
+		// A custom destination targets exactly one repo: store it as the repo's
+		// clone_folder before cloning so the clone lands there and gitbox
+		// remembers the location. An absolute path replaces the standard layout.
+		if cloneFolder != "" {
+			if cloneSource == "" || cloneRepo == "" {
+				return fmt.Errorf("--clone-folder requires --source and --repo to target a single repository")
+			}
+			src, ok := cfg.Sources[cloneSource]
+			if !ok {
+				return fmt.Errorf("unknown source %q", cloneSource)
+			}
+			repo, ok := src.Repos[cloneRepo]
+			if !ok {
+				return fmt.Errorf("unknown repo %q in source %q", cloneRepo, cloneSource)
+			}
+			repo.CloneFolder = cloneFolder
+			src.Repos[cloneRepo] = repo
+			cfg.Sources[cloneSource] = src
+			if err := config.Save(cfg, cfgPath); err != nil {
+				return fmt.Errorf("saving clone_folder: %w", err)
+			}
+		}
 
 		globalFolder := config.ExpandTilde(cfg.Global.Folder)
 		fmt.Printf("Cloning into %s\n", globalFolder)
@@ -139,6 +163,7 @@ func init() {
 	cloneCmd.Flags().StringVar(&cloneSource, "source", "", "clone repos from a specific source only")
 	cloneCmd.Flags().StringVar(&cloneRepo, "repo", "", "clone a specific repo only")
 	cloneCmd.Flags().BoolVar(&cloneAll, "all", false, "clone all configured repos")
+	cloneCmd.Flags().StringVar(&cloneFolder, "clone-folder", "", "custom destination for the targeted --source/--repo (stored as clone_folder; an absolute path replaces the standard location)")
 }
 
 // buildCloneURL constructs the clone URL from account + repo info.

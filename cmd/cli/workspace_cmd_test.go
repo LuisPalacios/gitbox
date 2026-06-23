@@ -11,7 +11,7 @@ import (
 )
 
 // newCLIWorkspaceConfig seeds a config with one account, one source, and two
-// repos — enough for workspace CLI tests to exercise add / add-member / generate.
+// repos under a real on-disk git folder so discovery can resolve members.
 func newCLIWorkspaceConfig(gitFolder string) *config.Config {
 	cfg := newCLITestConfig(gitFolder)
 	cfg.Accounts["github-test"] = config.Account{
@@ -31,340 +31,74 @@ func newCLIWorkspaceConfig(gitFolder string) *config.Config {
 	return cfg
 }
 
-func cliAssertConfigHasWorkspace(t *testing.T, cfgPath, key string) {
+// seedCodeWorkspace writes a .code-workspace under the git folder referencing
+// the given on-disk folders, and creates those folders so member resolution
+// can map them back to configured repos.
+func seedCodeWorkspace(t *testing.T, gitFolder, name string, repoDirs ...string) string {
 	t.Helper()
-	cfg, err := config.Load(cfgPath)
-	if err != nil {
-		t.Fatalf("loading config: %v", err)
-	}
-	if _, ok := cfg.Workspaces[key]; !ok {
-		t.Errorf("expected workspace %q in config", key)
-	}
-}
-
-func cliAssertConfigNoWorkspace(t *testing.T, cfgPath, key string) {
-	t.Helper()
-	cfg, err := config.Load(cfgPath)
-	if err != nil {
-		t.Fatalf("loading config: %v", err)
-	}
-	if _, ok := cfg.Workspaces[key]; ok {
-		t.Errorf("expected workspace %q to be absent", key)
-	}
-}
-
-func TestCLI_WorkspaceAdd(t *testing.T) {
-	env := setupCLIEnvWithConfig(t, newCLIWorkspaceConfig(filepath.Join(t.TempDir(), "git")))
-
-	r := env.run(t, "workspace", "add", "feat-x",
-		"--type", "codeWorkspace",
-		"--member", "github-test/team/frontend",
-	)
-	if r.ExitCode != 0 {
-		t.Fatalf("workspace add failed: %s", r.Stderr)
-	}
-	cliAssertConfigHasWorkspace(t, env.CfgPath, "feat-x")
-
-	cfg, _ := config.Load(env.CfgPath)
-	ws := cfg.Workspaces["feat-x"]
-	if ws.Type != config.WorkspaceTypeCode {
-		t.Errorf("type = %q, want codeWorkspace", ws.Type)
-	}
-	if len(ws.Members) != 1 || ws.Members[0].Repo != "team/frontend" {
-		t.Errorf("members = %+v, want one team/frontend member", ws.Members)
-	}
-}
-
-func TestCLI_WorkspaceAddInvalidType(t *testing.T) {
-	env := setupCLIEnvWithConfig(t, newCLIWorkspaceConfig(filepath.Join(t.TempDir(), "git")))
-
-	r := env.run(t, "workspace", "add", "feat-x", "--type", "bogus")
-	if r.ExitCode == 0 {
-		t.Error("expected non-zero exit for invalid type")
-	}
-}
-
-func TestCLI_WorkspaceAddUnknownSource(t *testing.T) {
-	env := setupCLIEnvWithConfig(t, newCLIWorkspaceConfig(filepath.Join(t.TempDir(), "git")))
-
-	r := env.run(t, "workspace", "add", "feat-x",
-		"--type", "codeWorkspace",
-		"--member", "nope/team/frontend",
-	)
-	if r.ExitCode == 0 {
-		t.Error("expected non-zero exit for unknown source")
-	}
-}
-
-func TestCLI_WorkspaceList(t *testing.T) {
-	cfg := newCLIWorkspaceConfig(filepath.Join(t.TempDir(), "git"))
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {Type: config.WorkspaceTypeCode, Members: []config.WorkspaceMember{
-			{Source: "github-test", Repo: "team/frontend"},
-		}},
-	}
-	env := setupCLIEnvWithConfig(t, cfg)
-
-	r := env.run(t, "workspace", "list")
-	if r.ExitCode != 0 {
-		t.Fatalf("list failed: %s", r.Stderr)
-	}
-	if !strings.Contains(r.Stdout, "feat-x") {
-		t.Errorf("stdout missing workspace key:\n%s", r.Stdout)
-	}
-}
-
-func TestCLI_WorkspaceListEmpty(t *testing.T) {
-	env := setupCLIEnvWithConfig(t, newCLIWorkspaceConfig(filepath.Join(t.TempDir(), "git")))
-
-	r := env.run(t, "workspace", "list")
-	if r.ExitCode != 0 {
-		t.Fatalf("list failed: %s", r.Stderr)
-	}
-	if !strings.Contains(r.Stdout, "No workspaces") {
-		t.Errorf("stdout = %q, want empty-state message", r.Stdout)
-	}
-}
-
-func TestCLI_WorkspaceListJSON(t *testing.T) {
-	cfg := newCLIWorkspaceConfig(filepath.Join(t.TempDir(), "git"))
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {Type: config.WorkspaceTypeCode, Members: []config.WorkspaceMember{
-			{Source: "github-test", Repo: "team/frontend"},
-		}},
-	}
-	env := setupCLIEnvWithConfig(t, cfg)
-
-	var out map[string]any
-	r := env.runJSON(t, &out, "workspace", "list")
-	if r.ExitCode != 0 {
-		t.Fatalf("list --json failed: %s", r.Stderr)
-	}
-	if _, ok := out["feat-x"]; !ok {
-		t.Errorf("json output missing feat-x: %v", out)
-	}
-}
-
-func TestCLI_WorkspaceShow(t *testing.T) {
-	cfg := newCLIWorkspaceConfig(filepath.Join(t.TempDir(), "git"))
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {Type: config.WorkspaceTypeCode, Name: "Feature X", Members: []config.WorkspaceMember{
-			{Source: "github-test", Repo: "team/frontend"},
-		}},
-	}
-	env := setupCLIEnvWithConfig(t, cfg)
-
-	r := env.run(t, "workspace", "show", "feat-x")
-	if r.ExitCode != 0 {
-		t.Fatalf("show failed: %s", r.Stderr)
-	}
-	if !strings.Contains(r.Stdout, "Feature X") || !strings.Contains(r.Stdout, "team/frontend") {
-		t.Errorf("show output missing expected content:\n%s", r.Stdout)
-	}
-}
-
-func TestCLI_WorkspaceShowMissing(t *testing.T) {
-	env := setupCLIEnvWithConfig(t, newCLIWorkspaceConfig(filepath.Join(t.TempDir(), "git")))
-
-	r := env.run(t, "workspace", "show", "nope")
-	if r.ExitCode == 0 {
-		t.Error("expected non-zero exit for missing workspace")
-	}
-}
-
-func TestCLI_WorkspaceDelete(t *testing.T) {
-	cfg := newCLIWorkspaceConfig(filepath.Join(t.TempDir(), "git"))
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {Type: config.WorkspaceTypeCode, Members: []config.WorkspaceMember{
-			{Source: "github-test", Repo: "team/frontend"},
-		}},
-	}
-	env := setupCLIEnvWithConfig(t, cfg)
-
-	r := env.run(t, "workspace", "delete", "feat-x")
-	if r.ExitCode != 0 {
-		t.Fatalf("delete failed: %s", r.Stderr)
-	}
-	cliAssertConfigNoWorkspace(t, env.CfgPath, "feat-x")
-}
-
-func TestCLI_WorkspaceAddMember(t *testing.T) {
-	cfg := newCLIWorkspaceConfig(filepath.Join(t.TempDir(), "git"))
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {Type: config.WorkspaceTypeCode, Members: []config.WorkspaceMember{
-			{Source: "github-test", Repo: "team/frontend"},
-		}},
-	}
-	env := setupCLIEnvWithConfig(t, cfg)
-
-	r := env.run(t, "workspace", "add-member", "feat-x", "github-test/team/backend")
-	if r.ExitCode != 0 {
-		t.Fatalf("add-member failed: %s", r.Stderr)
-	}
-	cfg2, _ := config.Load(env.CfgPath)
-	if len(cfg2.Workspaces["feat-x"].Members) != 2 {
-		t.Errorf("members = %d, want 2", len(cfg2.Workspaces["feat-x"].Members))
-	}
-}
-
-func TestCLI_WorkspaceDeleteMember(t *testing.T) {
-	cfg := newCLIWorkspaceConfig(filepath.Join(t.TempDir(), "git"))
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {Type: config.WorkspaceTypeCode, Members: []config.WorkspaceMember{
-			{Source: "github-test", Repo: "team/frontend"},
-			{Source: "github-test", Repo: "team/backend"},
-		}},
-	}
-	env := setupCLIEnvWithConfig(t, cfg)
-
-	r := env.run(t, "workspace", "delete-member", "feat-x", "github-test/team/frontend")
-	if r.ExitCode != 0 {
-		t.Fatalf("delete-member failed: %s", r.Stderr)
-	}
-	cfg2, _ := config.Load(env.CfgPath)
-	if len(cfg2.Workspaces["feat-x"].Members) != 1 {
-		t.Errorf("members = %d, want 1", len(cfg2.Workspaces["feat-x"].Members))
-	}
-}
-
-func TestCLI_WorkspaceGenerateDryRun(t *testing.T) {
-	cfg := newCLIWorkspaceConfig(filepath.Join(t.TempDir(), "git"))
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {Type: config.WorkspaceTypeCode, Members: []config.WorkspaceMember{
-			{Source: "github-test", Repo: "team/frontend"},
-		}},
-	}
-	env := setupCLIEnvWithConfig(t, cfg)
-
-	r := env.run(t, "workspace", "generate", "feat-x", "--dry-run")
-	if r.ExitCode != 0 {
-		t.Fatalf("generate --dry-run failed: %s", r.Stderr)
-	}
-	if !strings.Contains(r.Stdout, "\"folders\"") {
-		t.Errorf("dry-run output missing JSON body:\n%s", r.Stdout)
-	}
-	// The on-disk file MUST NOT be written on dry-run.
-	cfg2, _ := config.Load(env.CfgPath)
-	if ws := cfg2.Workspaces["feat-x"]; ws.File != "" {
-		if _, err := os.Stat(ws.File); err == nil {
-			t.Errorf("dry-run should not create %s", ws.File)
+	body := struct {
+		Folders []map[string]string `json:"folders"`
+	}{}
+	for _, d := range repoDirs {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
 		}
+		body.Folders = append(body.Folders, map[string]string{"path": d})
 	}
+	buf, _ := json.MarshalIndent(body, "", "  ")
+	file := filepath.Join(gitFolder, name+".code-workspace")
+	if err := os.MkdirAll(gitFolder, 0o755); err != nil {
+		t.Fatalf("mkdir git folder: %v", err)
+	}
+	if err := os.WriteFile(file, buf, 0o644); err != nil {
+		t.Fatalf("write workspace: %v", err)
+	}
+	return file
 }
 
-func TestCLI_WorkspaceGenerateWritesFile(t *testing.T) {
-	cfg := newCLIWorkspaceConfig(filepath.Join(t.TempDir(), "git"))
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {Type: config.WorkspaceTypeCode, Members: []config.WorkspaceMember{
-			{Source: "github-test", Repo: "team/frontend"},
-		}},
-	}
+func TestCLI_WorkspaceDiscoverPopulatesCache(t *testing.T) {
+	gitFolder := filepath.Join(t.TempDir(), "git")
+	cfg := newCLIWorkspaceConfig(gitFolder)
 	env := setupCLIEnvWithConfig(t, cfg)
 
-	r := env.run(t, "workspace", "generate", "feat-x")
-	if r.ExitCode != 0 {
-		t.Fatalf("generate failed: %s", r.Stderr)
-	}
-
-	cfg2, _ := config.Load(env.CfgPath)
-	ws := cfg2.Workspaces["feat-x"]
-	if ws.File == "" {
-		t.Fatal("workspace.File not persisted after generate")
-	}
-	data, err := os.ReadFile(ws.File)
-	if err != nil {
-		t.Fatalf("reading generated file: %v", err)
-	}
-	var parsed map[string]any
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("generated file is not valid JSON: %v", err)
-	}
-	if _, ok := parsed["folders"]; !ok {
-		t.Error("generated file missing folders array")
-	}
-}
-
-func TestCLI_WorkspaceDiscoverPreview(t *testing.T) {
-	gitDir := filepath.Join(t.TempDir(), "git")
-	cfg := newCLIWorkspaceConfig(gitDir)
-	env := setupCLIEnvWithConfig(t, cfg)
-
-	// Stage a real clone path on disk so the discovery scanner can match it
-	// back to (github-test, team/frontend).
-	frontend := filepath.Join(gitDir, "github-test", "team", "frontend")
-	if err := os.MkdirAll(frontend, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	wsFile := filepath.Join(gitDir, "feat-discover.code-workspace")
-	if err := os.WriteFile(wsFile, []byte(`{"folders":[{"path":"`+filepath.ToSlash(frontend)+`"}]}`), 0o644); err != nil {
-		t.Fatalf("write workspace file: %v", err)
-	}
+	frontend := filepath.Join(gitFolder, "github-test", "team", "frontend")
+	seedCodeWorkspace(t, gitFolder, "feature-x", frontend)
 
 	r := env.run(t, "workspace", "discover")
 	if r.ExitCode != 0 {
-		t.Fatalf("discover failed: %s", r.Stderr)
-	}
-	if !strings.Contains(r.Stdout, "feat-discover") {
-		t.Errorf("stdout missing discovered workspace key:\n%s", r.Stdout)
-	}
-	// Preview must NOT mutate the config.
-	cliAssertConfigNoWorkspace(t, env.CfgPath, "feat-discover")
-}
-
-func TestCLI_WorkspaceDiscoverApply(t *testing.T) {
-	gitDir := filepath.Join(t.TempDir(), "git")
-	cfg := newCLIWorkspaceConfig(gitDir)
-	env := setupCLIEnvWithConfig(t, cfg)
-
-	frontend := filepath.Join(gitDir, "github-test", "team", "frontend")
-	if err := os.MkdirAll(frontend, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	wsFile := filepath.Join(gitDir, "feat-apply.code-workspace")
-	if err := os.WriteFile(wsFile, []byte(`{"folders":[{"path":"`+filepath.ToSlash(frontend)+`"}]}`), 0o644); err != nil {
-		t.Fatalf("write workspace file: %v", err)
-	}
-
-	r := env.run(t, "workspace", "discover", "--apply")
-	if r.ExitCode != 0 {
-		t.Fatalf("discover --apply failed: %s", r.Stderr)
-	}
-	if !strings.Contains(r.Stdout, "Adopted") {
-		t.Errorf("stdout missing adoption summary:\n%s", r.Stdout)
+		t.Fatalf("workspace discover failed: %s", r.Stderr)
 	}
 
 	cfg2, err := config.Load(env.CfgPath)
 	if err != nil {
 		t.Fatalf("loading config: %v", err)
 	}
-	ws, ok := cfg2.Workspaces["feat-apply"]
+	ws, ok := cfg2.Workspaces["feature-x"]
 	if !ok {
-		t.Fatal("workspace feat-apply not adopted")
+		t.Fatalf("expected feature-x in cache, got %v", cfg2.Workspaces)
 	}
 	if !ws.Discovered {
-		t.Error("adopted workspace should have Discovered=true")
+		t.Error("discovered workspace should be marked Discovered")
 	}
-	if len(ws.Members) != 1 {
-		t.Errorf("members = %d, want 1", len(ws.Members))
+	if len(ws.Members) != 1 || ws.Members[0].Repo != "team/frontend" {
+		t.Errorf("members = %+v, want one team/frontend", ws.Members)
 	}
 }
 
-func TestCLI_WorkspaceOpenWithoutEditor(t *testing.T) {
-	cfg := newCLIWorkspaceConfig(filepath.Join(t.TempDir(), "git"))
+func TestCLI_WorkspaceListShowsCache(t *testing.T) {
+	gitFolder := filepath.Join(t.TempDir(), "git")
+	cfg := newCLIWorkspaceConfig(gitFolder)
 	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {Type: config.WorkspaceTypeCode, Members: []config.WorkspaceMember{
-			{Source: "github-test", Repo: "team/frontend"},
-		}},
+		"feat": {Name: "feat", File: filepath.Join(gitFolder, "feat.code-workspace"), Discovered: true},
 	}
+	cfg.WorkspaceOrder = []string{"feat"}
 	env := setupCLIEnvWithConfig(t, cfg)
 
-	// No editors configured — open should fail with a clear error AFTER the
-	// file has been generated (generate runs first in the open flow).
-	r := env.run(t, "workspace", "open", "feat-x")
-	if r.ExitCode == 0 {
-		t.Error("expected non-zero exit when no editors are configured")
+	r := env.run(t, "workspace", "list")
+	if r.ExitCode != 0 {
+		t.Fatalf("workspace list failed: %s", r.Stderr)
 	}
-	if !strings.Contains(r.Stderr, "editor") {
-		t.Errorf("stderr should mention editor configuration; got: %s", r.Stderr)
+	if !strings.Contains(r.Stdout, "feat") {
+		t.Errorf("list output missing feat: %s", r.Stdout)
 	}
 }

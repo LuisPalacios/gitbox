@@ -488,17 +488,15 @@ func TestCascadeDeleteAccount_PrunesWorkspaceMembers(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddSource forgejo-test: %v", err)
 	}
-	if err := cfg.AddWorkspace("mixed", Workspace{
-		Type: WorkspaceTypeCode,
-		Name: "Mixed",
-		File: "/tmp/mixed.code-workspace",
+	setTestWorkspace(cfg, "mixed", Workspace{
+		Name:       "Mixed",
+		File:       "/tmp/mixed.code-workspace",
+		Discovered: true,
 		Members: []WorkspaceMember{
 			{Source: "github-test", Repo: "testuser/repo-a"},
 			{Source: "forgejo-test", Repo: "user/theme"},
 		},
-	}); err != nil {
-		t.Fatalf("AddWorkspace: %v", err)
-	}
+	})
 
 	r, err := cfg.CascadeDeleteAccount("github-test")
 	if err != nil {
@@ -531,14 +529,12 @@ func TestCascadeDeleteAccount_EmptiedWorkspaceSurvives(t *testing.T) {
 	// end up with an empty Members slice, NOT be deleted — the user may want
 	// to rename/repopulate it rather than lose the entry.
 	cfg := newTestConfig()
-	if err := cfg.AddWorkspace("only-github", Workspace{
-		Type: WorkspaceTypeCode,
+	setTestWorkspace(cfg, "only-github", Workspace{
+		Discovered: true,
 		Members: []WorkspaceMember{
 			{Source: "github-test", Repo: "testuser/repo-a"},
 		},
-	}); err != nil {
-		t.Fatalf("AddWorkspace: %v", err)
-	}
+	})
 
 	if _, err := cfg.CascadeDeleteAccount("github-test"); err != nil {
 		t.Fatalf("CascadeDeleteAccount: %v", err)
@@ -571,14 +567,12 @@ func TestAccountDeletionImpact(t *testing.T) {
 	if err := cfg.AddMirror("m1", Mirror{AccountSrc: "github-test", AccountDst: "gitea-extra"}); err != nil {
 		t.Fatalf("AddMirror: %v", err)
 	}
-	if err := cfg.AddWorkspace("ws1", Workspace{
-		Type: WorkspaceTypeCode,
+	setTestWorkspace(cfg, "ws1", Workspace{
+		Discovered: true,
 		Members: []WorkspaceMember{
 			{Source: "github-test", Repo: "testuser/repo-a"},
 		},
-	}); err != nil {
-		t.Fatalf("AddWorkspace: %v", err)
-	}
+	})
 
 	r := cfg.AccountDeletionImpact("github-test")
 	if len(r.Sources) != 1 || r.Sources[0] != "github-test" {
@@ -724,257 +718,24 @@ func TestListMirrorReposBadMirror(t *testing.T) {
 	}
 }
 
-// --- Workspace CRUD tests ---
+// --- Workspaces (read-only cache) ---
 
-// workspaceTestConfig extends newTestConfig with a second source+repo so
-// workspace tests can mix members from multiple sources.
-func workspaceTestConfig() *Config {
-	cfg := newTestConfig()
-	cfg.Sources["forgejo-test"] = Source{
-		Account: "forgejo-test",
-		Repos: map[string]Repo{
-			"team/backend": {},
-		},
+// setTestWorkspace installs a discovered workspace directly into the cache,
+// mirroring how discovery populates it (there is no AddWorkspace anymore).
+func setTestWorkspace(cfg *Config, key string, w Workspace) {
+	if cfg.Workspaces == nil {
+		cfg.Workspaces = make(map[string]Workspace)
 	}
-	// Add a second repo to the github source for same-source tests.
-	src := cfg.Sources["github-test"]
-	src.Repos["testuser/repo-b"] = Repo{}
-	cfg.Sources["github-test"] = src
-	return cfg
-}
-
-func TestAddWorkspace(t *testing.T) {
-	cfg := workspaceTestConfig()
-	w := Workspace{
-		Type: WorkspaceTypeCode,
-		Name: "My Feature",
-		Members: []WorkspaceMember{
-			{Source: "github-test", Repo: "testuser/repo-a"},
-			{Source: "forgejo-test", Repo: "team/backend"},
-		},
+	if _, exists := cfg.Workspaces[key]; !exists {
+		cfg.WorkspaceOrder = append(cfg.WorkspaceOrder, key)
 	}
-	if err := cfg.AddWorkspace("feat-x", w); err != nil {
-		t.Fatalf("AddWorkspace: %v", err)
-	}
-	if len(cfg.Workspaces) != 1 {
-		t.Errorf("workspaces = %d, want 1", len(cfg.Workspaces))
-	}
-	if got := cfg.Workspaces["feat-x"].Name; got != "My Feature" {
-		t.Errorf("name = %q, want %q", got, "My Feature")
-	}
-}
-
-func TestAddWorkspaceDuplicate(t *testing.T) {
-	cfg := workspaceTestConfig()
-	cfg.AddWorkspace("feat-x", Workspace{Type: WorkspaceTypeCode})
-
-	if err := cfg.AddWorkspace("feat-x", Workspace{Type: WorkspaceTypeCode}); err == nil {
-		t.Error("expected error for duplicate key")
-	}
-}
-
-func TestAddWorkspaceEmptyKey(t *testing.T) {
-	cfg := workspaceTestConfig()
-	if err := cfg.AddWorkspace("", Workspace{Type: WorkspaceTypeCode}); err == nil {
-		t.Error("expected error for empty key")
-	}
-}
-
-func TestAddWorkspaceInvalidType(t *testing.T) {
-	cfg := workspaceTestConfig()
-	if err := cfg.AddWorkspace("feat-x", Workspace{Type: "nonsense"}); err == nil {
-		t.Error("expected error for unknown type")
-	}
-	if err := cfg.AddWorkspace("feat-x", Workspace{Type: ""}); err == nil {
-		t.Error("expected error for empty type")
-	}
-}
-
-func TestAddWorkspaceLayoutOnCodeWorkspaceFails(t *testing.T) {
-	cfg := workspaceTestConfig()
-	err := cfg.AddWorkspace("feat-x", Workspace{
-		Type:   WorkspaceTypeCode,
-		Layout: WorkspaceLayoutWindows,
-	})
-	if err == nil {
-		t.Error("expected error: layout not valid on codeWorkspace")
-	}
-}
-
-func TestAddWorkspaceInvalidLayout(t *testing.T) {
-	cfg := workspaceTestConfig()
-	err := cfg.AddWorkspace("feat-x", Workspace{
-		Type:   WorkspaceTypeTmuxinator,
-		Layout: "grid",
-	})
-	if err == nil {
-		t.Error("expected error for unknown layout")
-	}
-}
-
-func TestAddWorkspaceTmuxinatorBothLayouts(t *testing.T) {
-	for _, layout := range []string{WorkspaceLayoutWindows, WorkspaceLayoutSplit} {
-		cfg := workspaceTestConfig()
-		if err := cfg.AddWorkspace("feat-x", Workspace{
-			Type:   WorkspaceTypeTmuxinator,
-			Layout: layout,
-		}); err != nil {
-			t.Errorf("layout %q rejected: %v", layout, err)
-		}
-	}
-}
-
-func TestAddWorkspaceUnknownSourceMember(t *testing.T) {
-	cfg := workspaceTestConfig()
-	err := cfg.AddWorkspace("feat-x", Workspace{
-		Type:    WorkspaceTypeCode,
-		Members: []WorkspaceMember{{Source: "nope", Repo: "x/y"}},
-	})
-	if err == nil {
-		t.Error("expected error for unknown source")
-	}
-}
-
-func TestAddWorkspaceUnknownRepoMember(t *testing.T) {
-	cfg := workspaceTestConfig()
-	err := cfg.AddWorkspace("feat-x", Workspace{
-		Type:    WorkspaceTypeCode,
-		Members: []WorkspaceMember{{Source: "github-test", Repo: "bogus"}},
-	})
-	if err == nil {
-		t.Error("expected error for unknown repo")
-	}
-}
-
-func TestUpdateWorkspaceNotFound(t *testing.T) {
-	cfg := workspaceTestConfig()
-	if err := cfg.UpdateWorkspace("nope", Workspace{Type: WorkspaceTypeCode}); err == nil {
-		t.Error("expected error for missing workspace")
-	}
-}
-
-func TestDeleteWorkspace(t *testing.T) {
-	cfg := workspaceTestConfig()
-	cfg.AddWorkspace("feat-x", Workspace{Type: WorkspaceTypeCode})
-
-	if err := cfg.DeleteWorkspace("feat-x"); err != nil {
-		t.Fatalf("DeleteWorkspace: %v", err)
-	}
-	if _, ok := cfg.Workspaces["feat-x"]; ok {
-		t.Error("workspace should be gone after delete")
-	}
-}
-
-func TestDeleteWorkspaceNotFound(t *testing.T) {
-	cfg := workspaceTestConfig()
-	if err := cfg.DeleteWorkspace("nope"); err == nil {
-		t.Error("expected error")
-	}
-}
-
-func TestRenameWorkspace(t *testing.T) {
-	cfg := workspaceTestConfig()
-	cfg.AddWorkspace("feat-x", Workspace{Type: WorkspaceTypeCode, Name: "Feature X"})
-
-	if err := cfg.RenameWorkspace("feat-x", "feat-y"); err != nil {
-		t.Fatalf("RenameWorkspace: %v", err)
-	}
-	if _, ok := cfg.Workspaces["feat-x"]; ok {
-		t.Error("old key should be gone")
-	}
-	if got := cfg.Workspaces["feat-y"].Name; got != "Feature X" {
-		t.Errorf("name after rename = %q", got)
-	}
-}
-
-func TestRenameWorkspaceCollision(t *testing.T) {
-	cfg := workspaceTestConfig()
-	cfg.AddWorkspace("feat-x", Workspace{Type: WorkspaceTypeCode})
-	cfg.AddWorkspace("feat-y", Workspace{Type: WorkspaceTypeCode})
-
-	if err := cfg.RenameWorkspace("feat-x", "feat-y"); err == nil {
-		t.Error("expected error: target key exists")
-	}
-}
-
-// --- Workspace member CRUD ---
-
-func TestAddWorkspaceMember(t *testing.T) {
-	cfg := workspaceTestConfig()
-	cfg.AddWorkspace("feat-x", Workspace{Type: WorkspaceTypeCode})
-
-	m := WorkspaceMember{Source: "github-test", Repo: "testuser/repo-a"}
-	if err := cfg.AddWorkspaceMember("feat-x", m); err != nil {
-		t.Fatalf("AddWorkspaceMember: %v", err)
-	}
-	members, _ := cfg.ListWorkspaceMembers("feat-x")
-	if len(members) != 1 {
-		t.Errorf("members = %d, want 1", len(members))
-	}
-}
-
-func TestAddWorkspaceMemberDuplicate(t *testing.T) {
-	cfg := workspaceTestConfig()
-	cfg.AddWorkspace("feat-x", Workspace{Type: WorkspaceTypeCode})
-	m := WorkspaceMember{Source: "github-test", Repo: "testuser/repo-a"}
-	cfg.AddWorkspaceMember("feat-x", m)
-
-	if err := cfg.AddWorkspaceMember("feat-x", m); err == nil {
-		t.Error("expected duplicate error")
-	}
-}
-
-func TestAddWorkspaceMemberUnknownWorkspace(t *testing.T) {
-	cfg := workspaceTestConfig()
-	err := cfg.AddWorkspaceMember("nope", WorkspaceMember{
-		Source: "github-test", Repo: "testuser/repo-a",
-	})
-	if err == nil {
-		t.Error("expected error for unknown workspace")
-	}
-}
-
-func TestAddWorkspaceMemberUnknownSource(t *testing.T) {
-	cfg := workspaceTestConfig()
-	cfg.AddWorkspace("feat-x", Workspace{Type: WorkspaceTypeCode})
-
-	err := cfg.AddWorkspaceMember("feat-x", WorkspaceMember{Source: "nope", Repo: "x/y"})
-	if err == nil {
-		t.Error("expected error for unknown source")
-	}
-}
-
-func TestDeleteWorkspaceMember(t *testing.T) {
-	cfg := workspaceTestConfig()
-	cfg.AddWorkspace("feat-x", Workspace{Type: WorkspaceTypeCode})
-	cfg.AddWorkspaceMember("feat-x", WorkspaceMember{Source: "github-test", Repo: "testuser/repo-a"})
-	cfg.AddWorkspaceMember("feat-x", WorkspaceMember{Source: "github-test", Repo: "testuser/repo-b"})
-
-	if err := cfg.DeleteWorkspaceMember("feat-x", "github-test", "testuser/repo-a"); err != nil {
-		t.Fatalf("DeleteWorkspaceMember: %v", err)
-	}
-	members, _ := cfg.ListWorkspaceMembers("feat-x")
-	if len(members) != 1 {
-		t.Errorf("members = %d, want 1", len(members))
-	}
-	if members[0].Repo != "testuser/repo-b" {
-		t.Errorf("wrong member left = %q", members[0].Repo)
-	}
-}
-
-func TestDeleteWorkspaceMemberNotFound(t *testing.T) {
-	cfg := workspaceTestConfig()
-	cfg.AddWorkspace("feat-x", Workspace{Type: WorkspaceTypeCode})
-
-	if err := cfg.DeleteWorkspaceMember("feat-x", "github-test", "nope"); err == nil {
-		t.Error("expected error")
-	}
+	cfg.Workspaces[key] = w
 }
 
 func TestOrderedWorkspaceKeys(t *testing.T) {
-	cfg := workspaceTestConfig()
-	cfg.AddWorkspace("bravo", Workspace{Type: WorkspaceTypeCode})
-	cfg.AddWorkspace("alpha", Workspace{Type: WorkspaceTypeCode})
+	cfg := newTestConfig()
+	setTestWorkspace(cfg, "bravo", Workspace{Discovered: true})
+	setTestWorkspace(cfg, "alpha", Workspace{Discovered: true})
 	cfg.WorkspaceOrder = []string{"bravo", "alpha"}
 
 	keys := cfg.OrderedWorkspaceKeys()
@@ -984,8 +745,8 @@ func TestOrderedWorkspaceKeys(t *testing.T) {
 }
 
 func TestOrderedWorkspaceKeysFallback(t *testing.T) {
-	cfg := workspaceTestConfig()
-	cfg.AddWorkspace("only", Workspace{Type: WorkspaceTypeCode})
+	cfg := newTestConfig()
+	cfg.Workspaces = map[string]Workspace{"only": {Discovered: true}}
 	// No WorkspaceOrder set — fall back to map iteration.
 	keys := cfg.OrderedWorkspaceKeys()
 	if len(keys) != 1 || keys[0] != "only" {

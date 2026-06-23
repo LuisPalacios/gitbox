@@ -69,6 +69,13 @@
   export let onMove: (() => void) | null = null;
   export let moveEnabled: boolean = true;
   export let moveDisabledReason: string = '';
+  // onToggleContainer marks/unmarks a repo as a multi-repo container. Shown
+  // only on the repo kebab when provided; isContainer drives the label.
+  export let onToggleContainer: (() => void) | null = null;
+  export let isContainer: boolean = false;
+  // onRescanContainer re-runs the nested-clone scan for a container repo. Shown
+  // only when the repo is already a container.
+  export let onRescanContainer: (() => void) | null = null;
 
   type Sub = 'terminals' | 'editors' | 'ai' | 'workspaces' | null;
   let openSubmenu: Sub = null;
@@ -231,6 +238,7 @@
   $: hasSubsSection = showProfilesSub || showLegacyTerminalsSub || showEditorsSub || showHarnessSub;
   $: hasSweepSection = kind === 'repo' && !!onSweep;
   $: hasMoveSection = kind === 'repo' && !!onMove;
+  $: hasContainerSection = kind === 'repo' && !!onToggleContainer;
 
   // Browser action label is kind-aware: repo kebab navigates to the repo
   // page on the provider; account kebab navigates to the account profile.
@@ -357,6 +365,21 @@
         <span class="lm-icon">&#8644;</span> Move repository…
       </button>
     {/if}
+  {/if}
+
+  {#if hasContainerSection}
+    <hr class="lm-sep" />
+    {#if isContainer && onRescanContainer}
+      <button class="action-item" on:click|stopPropagation={onRescanContainer}
+        title="Re-scan this container for nested clones to onboard">
+        <span class="lm-icon">&#8635;</span> Re-scan for nested clones
+      </button>
+    {/if}
+    <button class="action-item" on:click|stopPropagation={onToggleContainer}
+      title="A container repo holds nested clones in its working tree; gitbox discovers and onboards them">
+      <span class="lm-icon">&#128193;</span>
+      {isContainer ? 'Unmark as multi-repo container' : 'Mark as multi-repo container'}
+    </button>
   {/if}
 </div>
 

@@ -219,19 +219,17 @@ Bajo las tarjetas de mirror, cada grupo se expande en una lista de detalle con r
 - Botón **Setup** para repos pendientes que todavía no se han configurado mediante API
 - Botón **+ Repo** para añadir repos nuevos al grupo
 
-## Paso 6: workspaces (opcional)
+## Paso 6: workspaces (solo lectura)
 
-La pestaña **Workspaces**, junto a Accounts y Mirrors, agrupa N clones en un único artefacto (archivo `.code-workspace` o YAML de tmuxinator) que los abre juntos. Crea uno desde el botón `+ New workspace` de la pestaña o marcando clones en la pestaña Accounts y usando `Create workspace from selected`. Consulta la [guía CLI](cli-guide.md#paso-8-workspaces-dinámicos-opcional) para el modelo backend: la GUI usa el mismo formato de config.
+La pestaña **Workspaces**, junto a Accounts y Mirrors, lista los archivos `.code-workspace` de VS Code descubiertos. Los workspaces son de solo lectura: la GUI descubre los archivos existentes, los lista con sus clones miembro resueltos y abre uno en mi editor. Nunca los crea, edita, genera ni borra: los archivos son míos. Cada entrada tiene un botón **Open**; el botón **Discover** de la pestaña reescanea bajo demanda. Consulta la [guía CLI](cli-guide.md#paso-8-workspaces-solo-lectura) para el modelo.
 
-### Auto-discovery al arrancar
+### Auto-descubrimiento al arrancar
 
-Cuando dejo a mano un archivo `*.code-workspace` bajo la carpeta gestionada por gitbox, o traigo uno desde otra máquina, la GUI lo recoge en el siguiente arranque y lo adopta en `gitbox.json` con `discovered: true`. Lo mismo ocurre con archivos `~/.tmuxinator/*.yml`. La pestaña Workspaces muestra la nueva entrada sin que yo haga nada más.
+Cuando dejo un archivo `*.code-workspace` bajo la carpeta gestionada por gitbox (o una carpeta extra configurada), o traigo uno desde otra máquina, la GUI lo recoge: la lista en caché aparece al instante al arrancar y luego una pasada en segundo plano la refresca, actualizando la pestaña si algo cambió. Las carpetas de cada archivo se resuelven de vuelta a clones conocidos por coincidencia deepest-prefix.
 
-La pestaña también tiene un botón **Discover** que vuelve a ejecutar el escaneo bajo demanda. El escaneo resuelve cada ruta de carpeta parseada de vuelta a un clon conocido usando una coincidencia deepest-prefix. Los workspaces con al menos un miembro ambiguo (una ruta que empata entre dos clones) se marcan por separado y nunca se auto-adoptan: abre la pestaña y elige a mano el candidato correcto.
+### Clones no estándar y contenedores multi-repo
 
-### Tmuxinator en Windows
-
-Los usuarios de Windows con WSL instalado tienen el mismo soporte de tmuxinator que macOS / Linux: gitbox escribe el YAML en el lado WSL `~/.tmuxinator/<key>.yml` (mediante su ruta UNC `\\wsl.localhost\…`) y `Open` lanza la terminal configurada ejecutando `wsl.exe -- tmuxinator start <key>`. Sin WSL, los workspaces tmuxinator siguen sin estar soportados y muestran un error claro.
+El panel de detalle del repo (clic en una fila de repo) tiene una casilla **Multi-repo container**: márcala para designar un clon como contenedor, y la GUI ofrece escanear su interior en busca de clones anidados que incorporar. El diálogo **Change root folder** también gestiona las **carpetas de escaneo extra** (raíces adicionales escaneadas en busca de clones y archivos `.code-workspace`) y la **profundidad de escaneo anidado**. Consulta la [guía CLI](cli-guide.md#paso-9-ubicaciones-de-clon-no-estándar-y-contenedores-multi-repo-opcional) para el modelo completo.
 
 ## Vistas del dashboard
 
@@ -265,6 +263,7 @@ Haz clic en el **icono de engranaje** para abrir el panel de ajustes:
 - **Terminals** — **Manager** abre el editor de Perfiles de terminal en su propia ventana del SO. Tres secciones: aplicaciones de terminal detectadas (solo lectura), shells detectados (solo lectura) y Perfiles (las parejas Terminal × Shell que el menú kebab puede lanzar). Alterna Default / Preferred / Hidden por fila, edita el nombre + Terminal + Shell de un Perfil, añade Perfiles definidos por el usuario o elimina los que tú añadiste. Re-detect vuelve a sondear el host para captar nuevos shells, entradas frescas de `launch_menu` de WezTerm o terminales recién instaladas sin reiniciar la GUI. La ventana es propiedad de la app principal — al cerrar la ventana principal también se cierra el Manager.
 
   Cuando hago clic en un Perfil `WezTerm + <Shell>` o `Windows Terminal + <Shell>`, gitbox primero busca una entrada coincidente en mi propia configuración del terminal (`launch_menu` de `wezterm.lua` para WezTerm, `profiles.list` de `settings.json` para Windows Terminal). Si encuentra una, gitbox la lanza — para WezTerm construye `wezterm-gui.exe start --cwd <path> -- <argv de la entrada>` y empalma el `set_environment_variables` de la entrada sobre el entorno padre; para Windows Terminal ejecuta `wt.exe -w 0 nt --profile "<name>" -d <path>` para que WT aplique el font, los colors y el `commandline` de mi perfil sin spawneár una segunda ventana cuando está activo `firstWindowPreference: persistedWindowLayout`. Sin coincidencia (o sin config / terminal no instalado), gitbox cae en su plantilla genérica de argv. Nota: la lógica de picker-callback de WezTerm en `wezterm.lua` (`color_scheme` por entrada, hooks personalizados de `mux.spawn_window`, etc.) solo se dispara cuando la entrada se elige desde el propio launcher menu de WezTerm — gitbox spawneando el pane externamente salta esos callbacks. Ver [reference.md › Cómo funciona el emparejamiento de lanzamiento](reference.md#cómo-funciona-el-emparejamiento-de-lanzamiento) para las reglas del comparador (sufijo tras em-dash, patrón de respaldo para `pwsh` / `cmd` / distros WSL, etc.).
+
 - **Versión** — versión actual de la app
 - **Author** — autor del proyecto y enlace al repositorio de GitHub
 

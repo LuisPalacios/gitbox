@@ -14,7 +14,7 @@ import (
 // paths without reaching for a fixture file.
 func fixtureConfigWithLaunchers() *config.Config {
 	return &config.Config{
-		Version: 2,
+		Version: config.CurrentVersion,
 		Global: config.GlobalConfig{
 			Folder: "/tmp/test-git",
 			Terminals: []config.TerminalEntry{
@@ -90,7 +90,7 @@ func TestLauncher_OmitsEmptyGroups(t *testing.T) {
 }
 
 func TestLauncher_NoLaunchers_NoSelectable(t *testing.T) {
-	cfg := &config.Config{Version: 2, Global: config.GlobalConfig{Folder: "/tmp"}}
+	cfg := &config.Config{Version: config.CurrentVersion, Global: config.GlobalConfig{Folder: "/tmp"}}
 	lo := newLauncherOverlay(cfg)
 	if lo.hasAny() {
 		t.Error("hasAny() = true on empty config, want false")

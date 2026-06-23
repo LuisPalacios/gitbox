@@ -293,9 +293,9 @@ gitbox browse --source github-personal --repo alice/hello-world
 gitbox browse --repo alice/hello-world --json
 ```
 
-| Flag | Description |
-| --- | --- |
-| `--repo` | Repository to open (required) |
+| Flag       | Description                          |
+| ---------- | ------------------------------------ |
+| `--repo`   | Repository to open (required)        |
 | `--source` | Restrict search to a specific source |
 
 ---
@@ -318,17 +318,17 @@ gitbox sweep --repo alice/hello-world
 
 Three types of stale branches are detected:
 
-| Type | Meaning | Delete mode |
-| --- | --- | --- |
-| Gone | Remote tracking branch was deleted | `git branch -D` (force) |
-| Merged | Fully merged into the default branch | `git branch -d` (safe) |
+| Type     | Meaning                                      | Delete mode             |
+| -------- | -------------------------------------------- | ----------------------- |
+| Gone     | Remote tracking branch was deleted           | `git branch -D` (force) |
+| Merged   | Fully merged into the default branch         | `git branch -d` (safe)  |
 | Squashed | Squash-merged or rebase-merged on the server | `git branch -D` (force) |
 
-| Flag | Description |
-| --- | --- |
+| Flag        | Description                          |
+| ----------- | ------------------------------------ |
 | `--dry-run` | List stale branches without deleting |
-| `--source` | Restrict to a specific source |
-| `--repo` | Restrict to a specific repo |
+| `--source`  | Restrict to a specific source        |
+| `--repo`    | Restrict to a specific repo          |
 
 ---
 
@@ -362,13 +362,13 @@ Orphan tags:
 
 To pick an account for an orphan, gitbox scores each host-matching account using the signals below (all values are additive, higher wins):
 
-| Signal | Score | Source |
-| --- | --- | --- |
-| Host match (required baseline) | 1 | account URL hostname or SSH alias vs the parsed remote host |
-| Owner equals `account.username` | +3 | owner segment of the remote URL path |
-| Repo lives under the account's source folder | +5 | first path component of the repo relative to the gitbox parent folder |
-| HTTPS URL embeds `user@` where user equals `account.username` | +10 | `url.User.Username()` of the origin remote |
-| `.git/config` has `credential.<url>.username` equal to `account.username` | +10 | `git config --get-regexp '^credential\..*\.username$'` in the repo |
+| Signal                                                                    | Score | Source                                                                |
+| ------------------------------------------------------------------------- | ----- | --------------------------------------------------------------------- |
+| Host match (required baseline)                                            | 1     | account URL hostname or SSH alias vs the parsed remote host           |
+| Owner equals `account.username`                                           | +3    | owner segment of the remote URL path                                  |
+| Repo lives under the account's source folder                              | +5    | first path component of the repo relative to the gitbox parent folder |
+| HTTPS URL embeds `user@` where user equals `account.username`             | +10   | `url.User.Username()` of the origin remote                            |
+| `.git/config` has `credential.<url>.username` equal to `account.username` | +10   | `git config --get-regexp '^credential\..*\.username$'` in the repo    |
 
 If the top score is shared by two or more accounts (including a bare host-only tie) the match is marked ambiguous: no account is picked, no files are moved, and the scan and GUI surface the candidate list.
 
@@ -389,10 +389,10 @@ gitbox adopt --dry-run
 gitbox adopt --all
 ```
 
-| Flag | Description |
-| --- | --- |
-| `--dry-run` | Show the adoption plan without making changes |
-| `--all` | Adopt all matched orphans without prompting (adopts in place, does not auto-relocate) |
+| Flag        | Description                                                                           |
+| ----------- | ------------------------------------------------------------------------------------- |
+| `--dry-run` | Show the adoption plan without making changes                                         |
+| `--all`     | Adopt all matched orphans without prompting (adopts in place, does not auto-relocate) |
 
 For each adopted repo, gitbox:
 
@@ -585,12 +585,12 @@ gitbox mirror status --json
 
 Status indicators:
 
-| Symbol | Color  | State  | Meaning                           |
-| ------ | ------ | ------ | --------------------------------- |
-| `+`    | Green  | synced | HEAD commits match on both sides  |
-| `<`    | Purple | behind | Backup is behind origin           |
-| `+`    | Green  | active | Mirror exists but can't compare   |
-| `x`    | Red    | error  | API error or missing repo         |
+| Symbol | Color  | State  | Meaning                          |
+| ------ | ------ | ------ | -------------------------------- |
+| `+`    | Green  | synced | HEAD commits match on both sides |
+| `<`    | Purple | behind | Backup is behind origin          |
+| `+`    | Green  | active | Mirror exists but can't compare  |
+| `x`    | Red    | error  | API error or missing repo        |
 
 A `⚠ backup repo is PUBLIC` warning appears if the backup repo is not private.
 
@@ -600,13 +600,13 @@ Remote servers need portable PATs (not machine-local GCM tokens). See [credentia
 
 ### Automation matrix
 
-| Scenario | Automatable | Configured on |
-| -------- | ----------- | ------------- |
-| Forgejo/Gitea push → any | Yes (push mirror API) | Forgejo/Gitea |
-| Forgejo/Gitea pull ← any | Yes (migrate API) | Forgejo/Gitea |
-| GitLab push → any | Yes (remote mirror API) | GitLab |
-| GitHub push → any | No (guide only) | N/A |
-| Bitbucket push → any | No (guide only) | N/A |
+| Scenario                 | Automatable             | Configured on |
+| ------------------------ | ----------------------- | ------------- |
+| Forgejo/Gitea push → any | Yes (push mirror API)   | Forgejo/Gitea |
+| Forgejo/Gitea pull ← any | Yes (migrate API)       | Forgejo/Gitea |
+| GitLab push → any        | Yes (remote mirror API) | GitLab        |
+| GitHub push → any        | No (guide only)         | N/A           |
+| Bitbucket push → any     | No (guide only)         | N/A           |
 
 ### Mirror config format
 
@@ -635,126 +635,101 @@ Remote servers need portable PATs (not machine-local GCM tokens). See [credentia
 }
 ```
 
-| Field | Type | Required | Description |
-| ----- | ---- | -------- | ----------- |
-| `account_src` | string | Yes | Source account key |
-| `account_dst` | string | Yes | Destination account key (must differ from src) |
-| `repos.<key>.direction` | string | Yes | `"push"` or `"pull"` |
-| `repos.<key>.origin` | string | Yes | `"src"` or `"dst"` — which account is the source of truth |
-| `repos.<key>.target_repo` | string | No | Override target repo name (default: same as key) |
-| `repos.<key>.method` | string | No | `"api"` or `"manual"` |
-| `repos.<key>.status` | string | No | `"active"`, `"pending"`, `"error"`, `"paused"` |
-| `repos.<key>.last_sync` | string | No | RFC3339 timestamp of last known sync |
-| `repos.<key>.error` | string | No | Last error message |
+| Field                     | Type   | Required | Description                                               |
+| ------------------------- | ------ | -------- | --------------------------------------------------------- |
+| `account_src`             | string | Yes      | Source account key                                        |
+| `account_dst`             | string | Yes      | Destination account key (must differ from src)            |
+| `repos.<key>.direction`   | string | Yes      | `"push"` or `"pull"`                                      |
+| `repos.<key>.origin`      | string | Yes      | `"src"` or `"dst"` — which account is the source of truth |
+| `repos.<key>.target_repo` | string | No       | Override target repo name (default: same as key)          |
+| `repos.<key>.method`      | string | No       | `"api"` or `"manual"`                                     |
+| `repos.<key>.status`      | string | No       | `"active"`, `"pending"`, `"error"`, `"paused"`            |
+| `repos.<key>.last_sync`   | string | No       | RFC3339 timestamp of last known sync                      |
+| `repos.<key>.error`       | string | No       | Last error message                                        |
 
 ---
 
-## Workspaces
+## Workspaces (read-only)
 
-Workspaces bundle N clones into a single artifact (VS Code `.code-workspace` or tmuxinator YAML) that opens them together.
+Workspaces are **read-only** in gitbox. It discovers existing VS Code `.code-workspace` files under the configured folders, caches them, lists them, and opens one in your editor. gitbox never creates, edits, generates, or deletes workspace files — you own them. (Tmuxinator support and all CRUD/generation were removed in v3.)
 
 ### Commands
 
 ```bash
-gitbox workspace list                                       # summary table
-gitbox workspace list --json                                # machine-readable
-gitbox workspace show <key>                                 # full detail
-gitbox workspace add <key> --type <type> [flags]            # create
-gitbox workspace delete <key>                               # remove from config (keeps file)
-gitbox workspace add-member <key> <source>/<repo-key>       # add clone to workspace
-gitbox workspace delete-member <key> <source>/<repo-key>    # remove clone
-gitbox workspace generate <key> [--dry-run]                 # (re)write the file on disk
-gitbox workspace open <key>                                 # regenerate + launch
-gitbox workspace discover [--apply]                         # scan disk, optionally adopt
+gitbox workspace list                 # discovered workspaces (summary table)
+gitbox workspace list --json          # machine-readable
+gitbox workspace show <key>           # detail: file path + resolved members
+gitbox workspace open <key>           # open the .code-workspace in the first global.editors entry
+gitbox workspace discover             # rescan disk and refresh the cache
 ```
-
-### `add` flags
-
-| Flag | Required | Description |
-| ---- | -------- | ----------- |
-| `--type` | Yes | `codeWorkspace` or `tmuxinator` |
-| `--name` | No | Display name shown in `show` and UI (defaults to the key) |
-| `--file` | No | Override the generated file path (default: nearest common ancestor for `codeWorkspace`, `~/.tmuxinator/<key>.yml` for `tmuxinator`) |
-| `--layout` | No | Tmuxinator only: `windowsPerRepo` (default) or `splitPanes` |
-| `--member` | No, repeatable | `<source-key>/<repo-key>` |
-
-### Default file path
-
-- `codeWorkspace` — `<common-ancestor>/<key>.code-workspace`. The common ancestor is the longest shared directory prefix of all member clone paths. If no sensible ancestor is found (cross-filesystem), gitbox falls back to the parent of the first member.
-- `tmuxinator` — `~/.tmuxinator/<key>.yml` (fixed by the tool). On Windows the path resolves to the WSL-side `~/.tmuxinator/<key>.yml` accessed through its `\\wsl.localhost\<distro>\…` UNC equivalent, so `Generate` writes through the Windows view of the WSL filesystem. WSL must be installed (`wsl.exe --status` succeeds); otherwise tmuxinator workspaces error with `ErrTmuxinatorUnsupported`.
-
-### Open behavior
-
-`open` always regenerates the file first so the artifact is current, then launches:
-
-- `codeWorkspace` → first entry in `global.editors` invoked as `<editor.command> <workspace-file>`. Add an editor with `gitbox global editor add` or by editing the config directly.
-- `tmuxinator` → first entry in `global.terminals` invoked as `<term.command> <term.args...> tmuxinator start <key>`. The `{command}` token in the terminal args is replaced by `tmuxinator start <key>`; the `{path}` token is dropped (workspaces don't have a single path). On Windows the child argv becomes `wsl.exe -- tmuxinator start <key>` so tmuxinator runs inside WSL regardless of which terminal profile is selected.
 
 ### Discover behaviour
 
-`discover` walks the gitbox-managed folder for `*.code-workspace` files and `~/.tmuxinator/*.yml` (plus the WSL-side `~/.tmuxinator/` on Windows when WSL is available). Each parsed folder path is matched back to a known clone using a deepest-prefix match against the resolved repo paths:
+`discover` walks `global.folder` and every `global.extra_folders` root for `*.code-workspace` files, resolves each file's folder references back to known clones (deepest-prefix match against resolved repo paths), and refreshes the cache in `gitbox.json`. It persists only when the set changed. The GUI runs it in a background goroutine at startup (the cached list shows instantly, then updates if anything changed); the TUI runs it on launch and on each periodic-sync tick.
 
-- **Adoptable** — every member resolved to exactly one clone. Persisted by `--apply` with `discovered: true`.
-- **Ambiguous** — at least one member tied between two or more clones. Surfaced for human review; never auto-adopted.
-- **Skipped** — workspace key already exists in `gitbox.json`, or no member resolved.
+### Workspace cache format
 
-Discovery is read-only without `--apply`. The GUI calls it on app startup (in a goroutine); the TUI calls it on launch and on every periodic-sync tick. The status bar surfaces an `! N ambiguous workspace(s)` hint when ambiguous matches are present.
-
-### Workspace config format
+The `workspaces` section is a regenerable cache — it can be deleted safely and rediscovered. Entries are always discovered VS Code workspaces (no `type`/`layout`).
 
 ```json
 {
   "workspaces": {
-    "feat-x": {
-      "type": "codeWorkspace",
-      "name": "Feature X",
-      "file": "/home/me/00.git/feat-x.code-workspace",
+    "sumwall": {
+      "name": "sumwall",
+      "file": "/home/me/00.git/.../sumwall.project/sumwall.code-workspace",
       "members": [
-        { "source": "github-personal", "repo": "myorg/frontend" },
-        { "source": "gitea-work", "repo": "team/backend" }
-      ]
-    },
-    "pair-session": {
-      "type": "tmuxinator",
-      "layout": "windowsPerRepo",
-      "file": "/home/me/.tmuxinator/pair-session.yml",
-      "members": [
-        { "source": "github-personal", "repo": "myorg/frontend" },
-        { "source": "github-personal", "repo": "myorg/backend" }
-      ]
+        { "source": "github-org", "repo": "Org/browser" },
+        { "source": "github-org", "repo": "Org/services" }
+      ],
+      "discovered": true
     }
   }
 }
 ```
 
-| Field | Type | Required | Description |
-| ----- | ---- | -------- | ----------- |
-| `type` | string | Yes | `"codeWorkspace"` or `"tmuxinator"` |
-| `name` | string | No | Display name; defaults to the key |
-| `file` | string | No | Absolute path of the generated artifact; populated automatically by `generate` |
-| `layout` | string | No | Tmuxinator only: `"windowsPerRepo"` or `"splitPanes"` |
-| `members` | array | Yes | Member list, each with `source` and `repo` |
-| `members[].source` | string | Yes | Source key (must exist in `sources`) |
-| `members[].repo` | string | Yes | Repo key within that source |
-| `discovered` | bool | No | `true` for workspaces adopted from disk by `gitbox workspace discover --apply` (or the GUI/TUI auto-adopt) |
+| Field        | Type   | Description                                                        |
+| ------------ | ------ | ------------------------------------------------------------------ |
+| `name`       | string | Display name (the `.code-workspace` filename stem)                 |
+| `file`       | string | Absolute path to the discovered `.code-workspace` file             |
+| `members`    | array  | Member clones resolved from the file's folders (`source` + `repo`) |
+| `discovered` | bool   | Always `true` — entries are discovered, never authored             |
 
-### Generated `.code-workspace` contents
+---
 
-```json
-{
-    "folders": [
-        { "path": "github-personal/myorg/frontend", "name": "frontend" },
-        { "path": "gitea-work/team/backend",        "name": "backend" }
-    ],
-    "settings": {
-        "git.autoRepositoryDetection": true,
-        "git.repositoryScanMaxDepth": 2,
-        "git.openRepositoryInParentFolders": "always"
-    }
-}
+## Non-standard clone locations & multi-repo containers
+
+The standard clone layout is `global.folder / <account> / <org|user> / repo`. gitbox also supports clones that live elsewhere and a "container" pattern where a main repo holds a dynamic set of nested clones inside its own working tree.
+
+### Extra scan folders
+
+`global.extra_folders` is a list of additional root directories scanned for clones and `.code-workspace` files. Use them to onboard repos outside the standard tree.
+
+```bash
+gitbox global update --add-folder ~/work/clients
+gitbox global update --remove-folder ~/work/clients
+gitbox adopt --path ~/some/other/tree     # one-off scan of an arbitrary folder
 ```
 
-`folders[].path` is relative when every member lives under the workspace file's directory, absolute otherwise. The `settings` block is kept minimal on purpose — three keys that make VS Code actually detect nested repos under a shared root. Edit the generated file by hand if I need more; gitbox will overwrite it only when I run `generate`/`open`.
+Clones found outside the standard layout are onboarded **in place** with an absolute `clone_folder` (gitbox never moves them).
+
+### Multi-repo containers
+
+A managed clone can be flagged a **container** — gitbox then descends into its working tree to discover and onboard nested clones you provisioned there with your own tooling (a clone-script, not submodules).
+
+```bash
+gitbox container <source-key> <repo-key>          # flag as container
+gitbox container <source-key> <repo-key> --off    # clear the flag
+gitbox global update --nested-depth 2             # how deep to descend (default 1)
+gitbox adopt                                       # discover + onboard nested clones
+```
+
+Nested clones onboard as plain repos under their **real** account/org (matched by remote URL), each with an absolute `clone_folder` pointing inside the container — they are never relocated out of it. `nested_scan_depth` defaults to 1 (the container's immediate children); raise it to reach clones nested one or more levels deeper.
+
+In the GUI, the same controls live in the repo detail panel (a "Multi-repo container" checkbox) and the change-root-folder dialog (extra folders + nested depth).
+
+### Cloning into a custom folder
+
+`gitbox clone --source <s> --repo <r> --clone-folder <dir>` stores an absolute `clone_folder` on that repo and clones it there. (Editing a repo's `clone_folder` directly, or `gitbox repo add --clone-folder`, achieves the same.)
 
 ---
 
@@ -803,46 +778,48 @@ The config lives at `~/.config/gitbox/gitbox.json`. See [gitbox.jsonc](../json/g
 
 ### Global
 
-| Field                             | Type   | Required | Description                                                              |
-| --------------------------------- | ------ | -------- | ------------------------------------------------------------------------ |
-| `folder`                          | string | Yes      | Root directory for all clones. Supports `~`.                             |
-| `credential_ssh`                  | object | No       | SSH platform defaults. Presence indicates SSH is available.              |
-| `credential_ssh.ssh_folder`       | string | No       | SSH config directory. Default `~/.ssh`.                                  |
-| `credential_gcm`                  | object | No       | GCM platform defaults. Presence indicates GCM is available.              |
-| `credential_gcm.helper`           | string | No       | Credential helper. Typically `"manager"`.                                |
-| `credential_gcm.credential_store` | string | No       | `"wincredman"`, `"keychain"`, or `"secretservice"`.                      |
-| `credential_token`                | object | No       | Token/PAT platform defaults. Presence indicates token auth is available. |
-| `editors`                         | array  | No       | Code editors for the "Open in" menu. Auto-populated on first launch.     |
-| `editors[].name`                  | string | Yes      | Display name (e.g. `"VS Code"`).                                         |
-| `editors[].command`               | string | Yes      | Full path or command name (e.g. `"C:\\...\\code.cmd"`).                   |
-| `terminals`                       | array  | No       | Legacy v2.0 terminal-emulator list. Still read by the launcher when `terminal_profiles` is empty (v2.0→v2.1 transition). New configs prefer the trio below. |
-| `terminals[].name`                | string | Yes      | Display name (e.g. `"Windows Terminal"`).                                 |
-| `terminals[].command`             | string | Yes      | Full path or on-PATH launcher (e.g. `"wt.exe"`, `"gnome-terminal"`).      |
-| `terminals[].args`                | array  | No       | Arguments passed before the path. Use `"{path}"` as the path placeholder; if absent, path is appended. Use `"{command}"` to mark where an AI harness argv is spliced (expands to zero items for terminal-only launches). |
+| Field                             | Type   | Required | Description                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------------- | ------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `folder`                          | string | Yes      | Root directory for all clones. Supports `~`.                                                                                                                                                                                                                                                                                                                                                                               |
+| `extra_folders`                   | array  | No       | Additional root directories scanned for clones and `.code-workspace` files, on top of `folder`.                                                                                                                                                                                                                                                                                                                            |
+| `nested_scan_depth`               | int    | No       | Levels gitbox descends below a container repo to find nested clones. Default `1` (immediate children).                                                                                                                                                                                                                                                                                                                     |
+| `credential_ssh`                  | object | No       | SSH platform defaults. Presence indicates SSH is available.                                                                                                                                                                                                                                                                                                                                                                |
+| `credential_ssh.ssh_folder`       | string | No       | SSH config directory. Default `~/.ssh`.                                                                                                                                                                                                                                                                                                                                                                                    |
+| `credential_gcm`                  | object | No       | GCM platform defaults. Presence indicates GCM is available.                                                                                                                                                                                                                                                                                                                                                                |
+| `credential_gcm.helper`           | string | No       | Credential helper. Typically `"manager"`.                                                                                                                                                                                                                                                                                                                                                                                  |
+| `credential_gcm.credential_store` | string | No       | `"wincredman"`, `"keychain"`, or `"secretservice"`.                                                                                                                                                                                                                                                                                                                                                                        |
+| `credential_token`                | object | No       | Token/PAT platform defaults. Presence indicates token auth is available.                                                                                                                                                                                                                                                                                                                                                   |
+| `editors`                         | array  | No       | Code editors for the "Open in" menu. Auto-populated on first launch.                                                                                                                                                                                                                                                                                                                                                       |
+| `editors[].name`                  | string | Yes      | Display name (e.g. `"VS Code"`).                                                                                                                                                                                                                                                                                                                                                                                           |
+| `editors[].command`               | string | Yes      | Full path or command name (e.g. `"C:\\...\\code.cmd"`).                                                                                                                                                                                                                                                                                                                                                                    |
+| `terminals`                       | array  | No       | Legacy v2.0 terminal-emulator list. Still read by the launcher when `terminal_profiles` is empty (v2.0→v2.1 transition). New configs prefer the trio below.                                                                                                                                                                                                                                                                |
+| `terminals[].name`                | string | Yes      | Display name (e.g. `"Windows Terminal"`).                                                                                                                                                                                                                                                                                                                                                                                  |
+| `terminals[].command`             | string | Yes      | Full path or on-PATH launcher (e.g. `"wt.exe"`, `"gnome-terminal"`).                                                                                                                                                                                                                                                                                                                                                       |
+| `terminals[].args`                | array  | No       | Arguments passed before the path. Use `"{path}"` as the path placeholder; if absent, path is appended. Use `"{command}"` to mark where an AI harness argv is spliced (expands to zero items for terminal-only launches).                                                                                                                                                                                                   |
 | `terminal_apps`                   | array  | No       | v2.1 detected terminal emulators. Populated by the catalog probe in `pkg/terminals` (Windows: Windows Terminal, WezTerm, Alacritty, Tabby, ConEmu, Hyper, Mintty, ZOC. macOS: iTerm2, Terminal.app, Warp, Kitty, Ghostty, WezTerm, Alacritty. Linux: GNOME Terminal, Konsole, Terminator, Foot, Alacritty, Kitty, Tilda, Guake, xterm). Both the GUI Manager and the TUI's `Settings → Terminal profiles…` probe directly. |
-| `terminal_apps[].id`              | string | Yes      | Stable id (`"wt"`, `"wezterm"`, `"gnome-terminal"`, `"iterm"`, …). Used as the cross-reference target from `terminal_profiles[].terminal`. |
-| `terminal_apps[].name`            | string | Yes      | Display name shown in the Manager and the per-row launcher. |
-| `terminal_apps[].command`         | string | Yes      | Resolved absolute path (filled in at detect time). |
-| `terminal_apps[].args_template`   | array  | No       | Argv template with `{path}`, `{shell_command}`, `{shell_args}`, `{command}` tokens. The launcher expands these per Profile via `pkg/launch.ResolveArgs`. Same token rules as `terminals[].args` above, plus `{shell_command}` (the resolved shell binary) and `{shell_args}` (a splice point for the shell's default args). |
-| `shells`                          | array  | No       | v2.1 detected shells. Catalog scope per OS — Windows: PowerShell 7, PowerShell 5, CMD, Git Bash, plus per-distro `wsl-<name>` rows when WSL is installed. macOS: Zsh, Bash, Fish, Dash. Linux: Bash, Zsh, Fish, Ksh, Dash. |
-| `shells[].id`                     | string | Yes      | Stable id (`"cmd"`, `"pwsh"`, `"git-bash"`, `"wsl-ubuntu"`, …). Cross-referenced by `terminal_profiles[].shell`. |
-| `shells[].name`                   | string | Yes      | Display name. |
-| `shells[].command`                | string | Yes      | Resolved absolute path. |
-| `shells[].args`                   | array  | No       | Default args spliced where the terminal's `args_template` references `{shell_args}`. |
-| `terminal_profiles`               | array  | No       | v2.1 launchable Profiles. The per-row launcher and the `Open in…` menu read this list when populated. **OS-aware composition** (issue #71): on Windows each auto-derived Profile pairs a Terminal × Shell; on macOS / Linux each is Terminal-only with the host's login shell as the implicit shell. |
-| `terminal_profiles[].id`          | string | Yes      | Stable id (`"wt+pwsh"`, `"wezterm+launchmenu-mybash"`, `"user-1"`, …). |
-| `terminal_profiles[].name`        | string | Yes      | Display name (e.g. `"Windows Terminal — pwsh"`). |
-| `terminal_profiles[].terminal`    | string | Yes      | `terminal_apps[].id` to launch. Empty only for the bare-shell fallback Profiles emitted on Windows when no modern Terminal is installed. |
-| `terminal_profiles[].shell`       | string | No       | `shells[].id` to run inside the terminal. Empty means "use the terminal's default" — on macOS / Linux that is the host's login shell, displayed in the Manager as a dim badge next to the Terminal name. |
-| `terminal_profiles[].args`        | array  | No       | Override argv. When empty the launcher uses `terminal_apps[].args_template`. WezTerm `launch_menu` rows store the full `start --cwd {path} -- <argv>` shape here. |
-| `terminal_profiles[].default`     | bool   | No       | Marks the Profile invoked by the per-row launcher's primary action. Mutually exclusive across the list. |
-| `terminal_profiles[].preferred`   | bool   | No       | Promotes the Profile to the kebab menu's quick list. |
-| `terminal_profiles[].hidden`      | bool   | No       | Suppresses the Profile from menus without deleting it. The only way to suppress an auto-detected / WT-imported / WezTerm-imported / migrated Profile (those reappear on the next detect cycle if removed). |
-| `terminal_profiles[].source`      | string | No       | **Internal field** — never displayed in the Manager. Origin tag used by the engine to gate delete-vs-hide: only `"user"` Profiles are deletable; `"detected"` / `"wt-profile"` / `"wezterm-launchmenu"` / `"migrated"` rows can only be Hidden. |
-| `ai_harnesses`                    | array  | No       | AI CLI harnesses for the "Open in" menu. Auto-populated on first launch (claude, codex, gemini, aider, cursor-agent, opencode). Launched inside `global.terminals[0]`, which must contain `"{command}"` in its args. |
-| `ai_harnesses[].name`             | string | Yes      | Display name (e.g. `"Claude Code"`). |
-| `ai_harnesses[].command`          | string | Yes      | Absolute path or on-PATH binary (e.g. `"claude"`). |
-| `ai_harnesses[].args`             | array  | No       | Optional extra args for the harness. Usually empty. |
+| `terminal_apps[].id`              | string | Yes      | Stable id (`"wt"`, `"wezterm"`, `"gnome-terminal"`, `"iterm"`, …). Used as the cross-reference target from `terminal_profiles[].terminal`.                                                                                                                                                                                                                                                                                 |
+| `terminal_apps[].name`            | string | Yes      | Display name shown in the Manager and the per-row launcher.                                                                                                                                                                                                                                                                                                                                                                |
+| `terminal_apps[].command`         | string | Yes      | Resolved absolute path (filled in at detect time).                                                                                                                                                                                                                                                                                                                                                                         |
+| `terminal_apps[].args_template`   | array  | No       | Argv template with `{path}`, `{shell_command}`, `{shell_args}`, `{command}` tokens. The launcher expands these per Profile via `pkg/launch.ResolveArgs`. Same token rules as `terminals[].args` above, plus `{shell_command}` (the resolved shell binary) and `{shell_args}` (a splice point for the shell's default args).                                                                                                |
+| `shells`                          | array  | No       | v2.1 detected shells. Catalog scope per OS — Windows: PowerShell 7, PowerShell 5, CMD, Git Bash, plus per-distro `wsl-<name>` rows when WSL is installed. macOS: Zsh, Bash, Fish, Dash. Linux: Bash, Zsh, Fish, Ksh, Dash.                                                                                                                                                                                                 |
+| `shells[].id`                     | string | Yes      | Stable id (`"cmd"`, `"pwsh"`, `"git-bash"`, `"wsl-ubuntu"`, …). Cross-referenced by `terminal_profiles[].shell`.                                                                                                                                                                                                                                                                                                           |
+| `shells[].name`                   | string | Yes      | Display name.                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `shells[].command`                | string | Yes      | Resolved absolute path.                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `shells[].args`                   | array  | No       | Default args spliced where the terminal's `args_template` references `{shell_args}`.                                                                                                                                                                                                                                                                                                                                       |
+| `terminal_profiles`               | array  | No       | v2.1 launchable Profiles. The per-row launcher and the `Open in…` menu read this list when populated. **OS-aware composition** (issue #71): on Windows each auto-derived Profile pairs a Terminal × Shell; on macOS / Linux each is Terminal-only with the host's login shell as the implicit shell.                                                                                                                       |
+| `terminal_profiles[].id`          | string | Yes      | Stable id (`"wt+pwsh"`, `"wezterm+launchmenu-mybash"`, `"user-1"`, …).                                                                                                                                                                                                                                                                                                                                                     |
+| `terminal_profiles[].name`        | string | Yes      | Display name (e.g. `"Windows Terminal — pwsh"`).                                                                                                                                                                                                                                                                                                                                                                           |
+| `terminal_profiles[].terminal`    | string | Yes      | `terminal_apps[].id` to launch. Empty only for the bare-shell fallback Profiles emitted on Windows when no modern Terminal is installed.                                                                                                                                                                                                                                                                                   |
+| `terminal_profiles[].shell`       | string | No       | `shells[].id` to run inside the terminal. Empty means "use the terminal's default" — on macOS / Linux that is the host's login shell, displayed in the Manager as a dim badge next to the Terminal name.                                                                                                                                                                                                                   |
+| `terminal_profiles[].args`        | array  | No       | Override argv. When empty the launcher uses `terminal_apps[].args_template`. WezTerm `launch_menu` rows store the full `start --cwd {path} -- <argv>` shape here.                                                                                                                                                                                                                                                          |
+| `terminal_profiles[].default`     | bool   | No       | Marks the Profile invoked by the per-row launcher's primary action. Mutually exclusive across the list.                                                                                                                                                                                                                                                                                                                    |
+| `terminal_profiles[].preferred`   | bool   | No       | Promotes the Profile to the kebab menu's quick list.                                                                                                                                                                                                                                                                                                                                                                       |
+| `terminal_profiles[].hidden`      | bool   | No       | Suppresses the Profile from menus without deleting it. The only way to suppress an auto-detected / WT-imported / WezTerm-imported / migrated Profile (those reappear on the next detect cycle if removed).                                                                                                                                                                                                                 |
+| `terminal_profiles[].source`      | string | No       | **Internal field** — never displayed in the Manager. Origin tag used by the engine to gate delete-vs-hide: only `"user"` Profiles are deletable; `"detected"` / `"wt-profile"` / `"wezterm-launchmenu"` / `"migrated"` rows can only be Hidden.                                                                                                                                                                            |
+| `ai_harnesses`                    | array  | No       | AI CLI harnesses for the "Open in" menu. Auto-populated on first launch (claude, codex, gemini, aider, cursor-agent, opencode). Launched inside `global.terminals[0]`, which must contain `"{command}"` in its args.                                                                                                                                                                                                       |
+| `ai_harnesses[].name`             | string | Yes      | Display name (e.g. `"Claude Code"`).                                                                                                                                                                                                                                                                                                                                                                                       |
+| `ai_harnesses[].command`          | string | Yes      | Absolute path or on-PATH binary (e.g. `"claude"`).                                                                                                                                                                                                                                                                                                                                                                         |
+| `ai_harnesses[].args`             | array  | No       | Optional extra args for the harness. Usually empty.                                                                                                                                                                                                                                                                                                                                                                        |
 
 ### Terminal Profiles
 
@@ -907,13 +884,14 @@ The shell-name matcher is forgiving:
 
 ### Repo (within source.repos)
 
-| Field             | Type   | Required | Description                                                |
-| ----------------- | ------ | -------- | ---------------------------------------------------------- |
-| `credential_type` | string | No       | Override auth method. Inherits from account.               |
-| `name`            | string | No       | Override `git user.name`.                                  |
-| `email`           | string | No       | Override `git user.email`.                                 |
-| `id_folder`       | string | No       | Override 2nd level dir (org folder).                       |
-| `clone_folder`    | string | No       | Override 3rd level dir. If absolute, replaces entire path. |
+| Field             | Type   | Required | Description                                                               |
+| ----------------- | ------ | -------- | ------------------------------------------------------------------------- |
+| `credential_type` | string | No       | Override auth method. Inherits from account.                              |
+| `name`            | string | No       | Override `git user.name`.                                                 |
+| `email`           | string | No       | Override `git user.email`.                                                |
+| `id_folder`       | string | No       | Override 2nd level dir (org folder).                                      |
+| `clone_folder`    | string | No       | Override 3rd level dir. If absolute, replaces entire path.                |
+| `container`       | bool   | No       | Mark as a multi-repo container; gitbox scans inside it for nested clones. |
 
 ---
 

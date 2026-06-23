@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"runtime"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/doctor"
@@ -91,21 +90,6 @@ func requiredToolsFor(cfg *config.Config) map[string]string {
 		required["ssh-add"] = "you have accounts using the ssh credential type"
 	}
 
-	// Walk workspaces to see if tmuxinator is in use.
-	var anyTmuxinator bool
-	for _, ws := range cfg.Workspaces {
-		if ws.Type == "tmuxinator" {
-			anyTmuxinator = true
-			break
-		}
-	}
-	if anyTmuxinator {
-		required["tmux"] = "you have tmuxinator workspaces"
-		required["tmuxinator"] = "you have tmuxinator workspaces"
-		if runtime.GOOS == "windows" {
-			required["wsl"] = "tmuxinator runs inside WSL on Windows"
-		}
-	}
 	return required
 }
 

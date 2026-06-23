@@ -243,6 +243,8 @@ export namespace config {
 	}
 	export class GlobalConfig {
 	    folder: string;
+	    extra_folders?: string[];
+	    nested_scan_depth?: number;
 	    language?: string;
 	    periodic_sync?: string;
 	    window?: WindowState;
@@ -269,6 +271,8 @@ export namespace config {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.folder = source["folder"];
+	        this.extra_folders = source["extra_folders"];
+	        this.nested_scan_depth = source["nested_scan_depth"];
 	        this.language = source["language"];
 	        this.periodic_sync = source["periodic_sync"];
 	        this.window = this.convertValues(source["window"], WindowState);
@@ -332,6 +336,7 @@ export namespace config {
 	    email?: string;
 	    id_folder?: string;
 	    clone_folder?: string;
+	    container?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Repo(source);
@@ -344,6 +349,7 @@ export namespace config {
 	        this.email = source["email"];
 	        this.id_folder = source["id_folder"];
 	        this.clone_folder = source["clone_folder"];
+	        this.container = source["container"];
 	    }
 	}
 	
@@ -600,10 +606,8 @@ export namespace main {
 	    }
 	}
 	export class WorkspaceDTO {
-	    type: string;
 	    name?: string;
 	    file?: string;
-	    layout?: string;
 	    members: WorkspaceMemberDTO[];
 	    discovered?: boolean;
 	
@@ -613,10 +617,8 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.type = source["type"];
 	        this.name = source["name"];
 	        this.file = source["file"];
-	        this.layout = source["layout"];
 	        this.members = this.convertValues(source["members"], WorkspaceMemberDTO);
 	        this.discovered = source["discovered"];
 	    }
@@ -833,88 +835,9 @@ export namespace main {
 	        this.archived = source["archived"];
 	    }
 	}
-	export class DiscoveredPathDTO {
-	    path: string;
-	    candidates: WorkspaceMemberDTO[];
-	
-	    static createFrom(source: any = {}) {
-	        return new DiscoveredPathDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.path = source["path"];
-	        this.candidates = this.convertValues(source["candidates"], WorkspaceMemberDTO);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class DiscoveredWorkspaceDTO {
-	    key: string;
-	    type: string;
-	    layout?: string;
-	    file: string;
-	    members?: WorkspaceMemberDTO[];
-	    ambig?: DiscoveredPathDTO[];
-	    noMatch?: string[];
-	    skipped?: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new DiscoveredWorkspaceDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.key = source["key"];
-	        this.type = source["type"];
-	        this.layout = source["layout"];
-	        this.file = source["file"];
-	        this.members = this.convertValues(source["members"], WorkspaceMemberDTO);
-	        this.ambig = this.convertValues(source["ambig"], DiscoveredPathDTO);
-	        this.noMatch = source["noMatch"];
-	        this.skipped = source["skipped"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 	export class DiscoverWorkspacesResult {
-	    adopted: string[];
-	    newCount: number;
-	    ambigCount: number;
-	    skippedCount: number;
-	    ambiguous?: DiscoveredWorkspaceDTO[];
+	    changed: boolean;
+	    count: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new DiscoverWorkspacesResult(source);
@@ -922,33 +845,10 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.adopted = source["adopted"];
-	        this.newCount = source["newCount"];
-	        this.ambigCount = source["ambigCount"];
-	        this.skippedCount = source["skippedCount"];
-	        this.ambiguous = this.convertValues(source["ambiguous"], DiscoveredWorkspaceDTO);
+	        this.changed = source["changed"];
+	        this.count = source["count"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
-	
-	
 	export class DoctorToolDTO {
 	    name: string;
 	    displayName: string;
@@ -1219,6 +1119,7 @@ export namespace main {
 	    needsRelocate: boolean;
 	    localOnly: boolean;
 	    ambiguousCandidates?: string[];
+	    nested: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new OrphanRepoDTO(source);
@@ -1236,6 +1137,7 @@ export namespace main {
 	        this.needsRelocate = source["needsRelocate"];
 	        this.localOnly = source["localOnly"];
 	        this.ambiguousCandidates = source["ambiguousCandidates"];
+	        this.nested = source["nested"];
 	    }
 	}
 	export class PRSettingsDTO {
@@ -1440,6 +1342,20 @@ export namespace main {
 	        this.error = source["error"];
 	    }
 	}
+	export class TentativeContainerDTO {
+	    source: string;
+	    repo: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TentativeContainerDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.repo = source["repo"];
+	    }
+	}
 	export class TerminalAppInfo {
 	    id: string;
 	    name: string;
@@ -1560,61 +1476,7 @@ export namespace main {
 	        this.height = source["height"];
 	    }
 	}
-	export class WorkspaceCreateRequest {
-	    key: string;
-	    type: string;
-	    name?: string;
-	    file?: string;
-	    layout?: string;
-	    members?: WorkspaceMemberDTO[];
 	
-	    static createFrom(source: any = {}) {
-	        return new WorkspaceCreateRequest(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.key = source["key"];
-	        this.type = source["type"];
-	        this.name = source["name"];
-	        this.file = source["file"];
-	        this.layout = source["layout"];
-	        this.members = this.convertValues(source["members"], WorkspaceMemberDTO);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	
-	export class WorkspaceGenerateResult {
-	    file: string;
-	    size: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new WorkspaceGenerateResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.file = source["file"];
-	        this.size = source["size"];
-	    }
-	}
 	export class WorkspaceListResult {
 	    workspaces: Record<string, WorkspaceDTO>;
 	    order: string[];
@@ -1627,41 +1489,6 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.workspaces = this.convertValues(source["workspaces"], WorkspaceDTO, true);
 	        this.order = source["order"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	
-	export class WorkspaceUpdateRequest {
-	    name: string;
-	    layout: string;
-	    members: WorkspaceMemberDTO[];
-	
-	    static createFrom(source: any = {}) {
-	        return new WorkspaceUpdateRequest(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.layout = source["layout"];
-	        this.members = this.convertValues(source["members"], WorkspaceMemberDTO);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

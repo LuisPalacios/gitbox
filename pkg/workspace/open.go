@@ -3,8 +3,6 @@ package workspace
 import (
 	"fmt"
 	"os/exec"
-	"runtime"
-	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 )
@@ -18,30 +16,17 @@ type OpenCommand struct {
 	Description string
 }
 
-// BuildOpenCommand returns the command that opens the workspace with its
-// configured launcher. It does NOT execute the command. File must already
-// exist on disk — callers are responsible for calling Generate+write first
-// (or passing a workspace whose File was produced by a previous generate).
+// BuildOpenCommand returns the command that opens a discovered .code-workspace
+// file in the user's configured editor. It does NOT execute the command. The
+// workspace File must exist on disk (it was discovered there).
 func BuildOpenCommand(cfg *config.Config, key string) (OpenCommand, error) {
 	w, ok := cfg.Workspaces[key]
 	if !ok {
 		return OpenCommand{}, fmt.Errorf("workspace %q not found", key)
 	}
 	if w.File == "" {
-		return OpenCommand{}, fmt.Errorf("workspace %q: no file recorded; run 'gitbox workspace generate %s' first", key, key)
+		return OpenCommand{}, fmt.Errorf("workspace %q: no file recorded", key)
 	}
-
-	switch w.Type {
-	case config.WorkspaceTypeCode:
-		return buildOpenCodeWorkspace(cfg, w)
-	case config.WorkspaceTypeTmuxinator:
-		return buildOpenTmuxinator(cfg, key, w)
-	default:
-		return OpenCommand{}, fmt.Errorf("workspace %q: unsupported type %q", key, w.Type)
-	}
-}
-
-func buildOpenCodeWorkspace(cfg *config.Config, w config.Workspace) (OpenCommand, error) {
 	editor, err := pickEditor(cfg)
 	if err != nil {
 		return OpenCommand{}, err
@@ -53,77 +38,10 @@ func buildOpenCodeWorkspace(cfg *config.Config, w config.Workspace) (OpenCommand
 	}, nil
 }
 
-func buildOpenTmuxinator(cfg *config.Config, key string, w config.Workspace) (OpenCommand, error) {
-	if !tmuxinatorSupported() {
-		return OpenCommand{}, ErrTmuxinatorUnsupported
-	}
-	term, err := pickTerminal(cfg)
-	if err != nil {
-		return OpenCommand{}, err
-	}
-	// tmuxinator is invoked by profile name (bare key), not by file path.
-	// On Windows the binary lives inside WSL — wrap with `wsl.exe -- …` so the
-	// child runs in WSL regardless of which terminal profile is configured.
-	child := []string{"tmuxinator", "start", key}
-	desc := fmt.Sprintf("%s → tmuxinator start %s", term.Name, key)
-	if runtime.GOOS == "windows" {
-		child = append([]string{"wsl.exe", "--"}, child...)
-		desc = fmt.Sprintf("%s → wsl.exe -- tmuxinator start %s", term.Name, key)
-	}
-	args := expandTerminalArgs(term.Args, child)
-	cmd := exec.Command(term.Command, args...)
-	return OpenCommand{
-		Cmd:         cmd,
-		Description: desc,
-	}, nil
-}
-
-// pickEditor selects an editor from the global config. v1 uses the first
-// configured entry; a future iteration can surface a picker.
+// pickEditor selects an editor from the global config (first configured entry).
 func pickEditor(cfg *config.Config) (config.EditorEntry, error) {
 	if len(cfg.Global.Editors) == 0 {
 		return config.EditorEntry{}, fmt.Errorf("no editors configured; add one to global.editors in gitbox.json")
 	}
 	return cfg.Global.Editors[0], nil
-}
-
-func pickTerminal(cfg *config.Config) (config.TerminalEntry, error) {
-	if len(cfg.Global.Terminals) == 0 {
-		return config.TerminalEntry{}, fmt.Errorf("no terminals configured; add one to global.terminals in gitbox.json")
-	}
-	return cfg.Global.Terminals[0], nil
-}
-
-// expandTerminalArgs substitutes the "{command}" token in a terminal's
-// arg template with the child argv (splicing in order). If the token is
-// absent, the child argv is appended at the end. "{path}" is intentionally
-// NOT substituted here — workspaces don't have a single path.
-func expandTerminalArgs(template []string, child []string) []string {
-	out := make([]string, 0, len(template)+len(child))
-	replaced := false
-	for _, a := range template {
-		if a == "{command}" {
-			out = append(out, child...)
-			replaced = true
-			continue
-		}
-		// Skip {path} — not meaningful for workspace launches. Keep other
-		// args untouched.
-		if a == "{path}" {
-			continue
-		}
-		out = append(out, a)
-	}
-	if !replaced {
-		out = append(out, child...)
-	}
-	// Drop empty args that might slip through string templates.
-	cleaned := out[:0]
-	for _, a := range out {
-		if strings.TrimSpace(a) == "" {
-			continue
-		}
-		cleaned = append(cleaned, a)
-	}
-	return cleaned
 }

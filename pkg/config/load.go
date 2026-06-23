@@ -45,11 +45,12 @@ func LoadWithRepair(path string) (*Config, []Repair, error) {
 
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, nil, fmt.Errorf("parsing v2 config: %w", err)
+		return nil, nil, fmt.Errorf("parsing config: %w", err)
 	}
-	if cfg.Version != 2 {
-		return nil, nil, fmt.Errorf("expected version 2, got %d", cfg.Version)
+	if cfg.Version != 2 && cfg.Version != CurrentVersion {
+		return nil, nil, fmt.Errorf("unsupported config version %d (expected 2 or %d)", cfg.Version, CurrentVersion)
 	}
+	migrated := cfg.Version == 2
 
 	var repairs []Repair
 
@@ -83,53 +84,131 @@ func LoadWithRepair(path string) (*Config, []Repair, error) {
 
 	extractKeyOrder(data, &cfg)
 
-	for key, w := range cfg.Workspaces {
-		if deduped := dedupWorkspaceMembers(w.Members); len(deduped) != len(w.Members) {
-			w.Members = deduped
-			cfg.Workspaces[key] = w
+	if migrated {
+		// v2→v3: bump version and discard the regenerable workspace cache.
+		// Silent (no Repair entry) so it doesn't trigger the repair dialog;
+		// it persists on the next save.
+		cfg.Version = CurrentVersion
+		cfg.Workspaces = nil
+		cfg.WorkspaceOrder = nil
+	} else {
+		sanitizeWorkspaces(&cfg, data)
+		for key, w := range cfg.Workspaces {
+			if deduped := dedupWorkspaceMembers(w.Members); len(deduped) != len(w.Members) {
+				w.Members = deduped
+				cfg.Workspaces[key] = w
+			}
 		}
 	}
+
+	MigrateLegacyTerminals(&cfg.Global)
 
 	return &cfg, repairs, nil
 }
 
-// Parse parses JSON configuration data in v2 format.
+// Parse parses JSON configuration data. It accepts the current v3 format and
+// transparently migrates v2 files (see migrateV2toV3). Any other version is an
+// error. The migration is in-memory only — the next Save persists the v3 shape.
 func Parse(data []byte) (*Config, error) {
-	return parseV2(data)
+	var probe struct {
+		Version int `json:"version"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return nil, fmt.Errorf("parsing config: %w", err)
+	}
+	switch probe.Version {
+	case CurrentVersion:
+		return parseConfig(data, false)
+	case 2:
+		return parseConfig(data, true)
+	default:
+		return nil, fmt.Errorf("unsupported config version %d (expected 2 or %d)", probe.Version, CurrentVersion)
+	}
 }
 
-func parseV2(data []byte) (*Config, error) {
+// parseConfig unmarshals, optionally migrates v2→v3, validates, and finalizes
+// the config. When migrate is true the workspaces section is discarded wholesale
+// (it is a regenerable discovered cache) and the version is bumped to v3.
+func parseConfig(data []byte, migrate bool) (*Config, error) {
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parsing v2 config: %w", err)
+		return nil, fmt.Errorf("parsing config: %w", err)
 	}
-	if cfg.Version != 2 {
-		return nil, fmt.Errorf("expected version 2, got %d", cfg.Version)
+	if migrate {
+		cfg.Version = CurrentVersion
+	}
+	if cfg.Version != CurrentVersion {
+		return nil, fmt.Errorf("expected version %d, got %d", CurrentVersion, cfg.Version)
 	}
 	if err := validate(&cfg); err != nil {
 		return nil, err
 	}
 
-	// Extract JSON key order for sources and repos.
+	// Extract JSON key order for sources and repos (and, for v3 files, workspaces).
 	extractKeyOrder(data, &cfg)
 
-	// Defensive: collapse any duplicate workspace members that may have been
-	// hand-edited into the JSON or persisted by an older buggy code path.
-	// In-memory only — the next save will write back the deduped form.
-	for key, w := range cfg.Workspaces {
-		if deduped := dedupWorkspaceMembers(w.Members); len(deduped) != len(w.Members) {
-			w.Members = deduped
-			cfg.Workspaces[key] = w
+	if migrate {
+		// v2→v3: workspaces are now a read-only discovered cache. Drop any v2
+		// entries (user-created or tmuxinator) wholesale; discovery rebuilds the
+		// cache on next launch. New v3 keys (extra_folders, nested_scan_depth,
+		// repo.container) are absent in v2 and default cleanly.
+		cfg.Workspaces = nil
+		cfg.WorkspaceOrder = nil
+	} else {
+		// v3 strict load: defend against hand-edited entries — keep only
+		// discovered codeWorkspace entries.
+		sanitizeWorkspaces(&cfg, data)
+		// Collapse duplicate members that may have been hand-edited in.
+		for key, w := range cfg.Workspaces {
+			if deduped := dedupWorkspaceMembers(w.Members); len(deduped) != len(w.Members) {
+				w.Members = deduped
+				cfg.Workspaces[key] = w
+			}
 		}
 	}
 
-	// Auto-migrate legacy v2.0 flat global.terminals[] into the v2.1
-	// three-array shape (terminal_apps + shells + terminal_profiles). Runs
-	// in-memory; the next save will persist the new shape and drop the
-	// legacy block.
+	// Auto-migrate legacy v2.0 flat global.terminals[] into the three-array
+	// shape (terminal_apps + shells + terminal_profiles). In-memory; the next
+	// save persists the new shape and drops the legacy block.
 	MigrateLegacyTerminals(&cfg.Global)
 
 	return &cfg, nil
+}
+
+// sanitizeWorkspaces enforces the read-only-cache invariant on the workspaces
+// section: only discovered VSCode .code-workspace entries survive. Legacy
+// tmuxinator workspaces and user-created (non-discovered) entries are dropped.
+// The pre-slim "type"/"discovered" fields are read from the raw JSON because
+// the Workspace struct no longer carries "type". In-memory only.
+func sanitizeWorkspaces(cfg *Config, data []byte) {
+	if len(cfg.Workspaces) == 0 {
+		return
+	}
+	var raw struct {
+		Workspaces map[string]struct {
+			Type       string `json:"type"`
+			Discovered bool   `json:"discovered"`
+		} `json:"workspaces"`
+	}
+	_ = json.Unmarshal(data, &raw)
+	for key := range cfg.Workspaces {
+		meta, ok := raw.Workspaces[key]
+		// Drop tmuxinator entries and anything not marked discovered. Entries
+		// with no recorded type but discovered==true are kept (the new shape).
+		if !ok || !meta.Discovered || (meta.Type != "" && meta.Type != "codeWorkspace") {
+			delete(cfg.Workspaces, key)
+		}
+	}
+	// Drop removed keys from the order slice, preserving the rest.
+	if len(cfg.WorkspaceOrder) > 0 {
+		kept := cfg.WorkspaceOrder[:0]
+		for _, k := range cfg.WorkspaceOrder {
+			if _, ok := cfg.Workspaces[k]; ok {
+				kept = append(kept, k)
+			}
+		}
+		cfg.WorkspaceOrder = kept
+	}
 }
 
 // dedupWorkspaceMembers preserves member order while collapsing duplicates by
@@ -347,22 +426,7 @@ func validate(cfg *Config) error {
 			}
 		}
 	}
-	for name, w := range cfg.Workspaces {
-		switch w.Type {
-		case WorkspaceTypeCode, WorkspaceTypeTmuxinator:
-		default:
-			return fmt.Errorf("workspace %q: type must be %q or %q", name, WorkspaceTypeCode, WorkspaceTypeTmuxinator)
-		}
-		if w.Layout != "" {
-			if w.Type != WorkspaceTypeTmuxinator {
-				return fmt.Errorf("workspace %q: layout is only valid for tmuxinator workspaces", name)
-			}
-			switch w.Layout {
-			case WorkspaceLayoutWindows, WorkspaceLayoutSplit:
-			default:
-				return fmt.Errorf("workspace %q: layout must be %q or %q", name, WorkspaceLayoutWindows, WorkspaceLayoutSplit)
-			}
-		}
-	}
+	// Workspaces are a read-only discovered cache (VSCode .code-workspace only).
+	// No structural validation: any legacy shape is sanitized in parseV2.
 	return nil
 }

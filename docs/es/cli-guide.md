@@ -351,81 +351,49 @@ gitbox account credential setup github-personal --token
 
 Las cuentas Token y SSH ya tienen un PAT portable: no necesitan setup adicional. Consulta [credentials.md](credentials.md) para más detalles.
 
-## Paso 8: workspaces dinámicos (opcional)
+## Paso 8: workspaces (solo lectura)
 
-Un **workspace** agrupa varios clones que abro juntos para una tarea: por ejemplo, un repo frontend y su backend en una sesión multi-root de VS Code, o un layout de tmuxinator con cada repo en su propio panel.
-
-Los workspaces son ciudadanos de primera clase en gitbox: se guardan en `gitbox.json`, se gestionan con `gitbox workspace …` y se generan a disco bajo demanda como archivos JSON `.code-workspace` o perfiles YAML de tmuxinator.
-
-### Crear un workspace multi-root de VS Code
+Los workspaces son de **solo lectura** en gitbox. Descubre los archivos `.code-workspace` de VS Code existentes bajo mis carpetas configuradas, los lista y abre uno en mi editor. Nunca los crea, edita, genera ni borra: los archivos son míos (los escribo a mano, o una herramienta los escribe).
 
 ```bash
-gitbox workspace add feat-x \
-  --type codeWorkspace \
-  --name "Feature X" \
-  --member github-personal/myorg/frontend \
-  --member gitea-work/team/backend
-
-gitbox workspace generate feat-x
+gitbox workspace discover         # reescanea el disco y refresca la caché
+gitbox workspace list             # workspaces descubiertos
+gitbox workspace show <key>       # ruta del archivo + miembros resueltos
+gitbox workspace open <key>       # abre el .code-workspace en el primer editor de global.editors
 ```
 
-`generate` elige automáticamente la ruta del archivo (el ancestro común más cercano de las carpetas miembro, por ejemplo `~/00.git/feat-x.code-workspace`) salvo que pase `--file`. Escribe un `.code-workspace` con una entrada `folders[]` por miembro y un bloque pequeño `settings` que permite a VS Code detectar repos anidados bajo la raíz compartida.
+`discover` recorre `global.folder` y cada raíz de `global.extra_folders` en busca de archivos `*.code-workspace`, resuelve las carpetas de cada archivo de vuelta a clones conocidos y refresca la caché en `gitbox.json` (escribiendo solo cuando algo cambió). La GUI lo ejecuta en segundo plano al arrancar; la TUI al lanzarse y en cada tick de periodic-sync.
 
-### Abrir un workspace
+## Paso 9: ubicaciones de clon no estándar y contenedores multi-repo (opcional)
+
+El layout estándar es `global.folder / <cuenta> / <org|usuario> / repo`. Dos funciones permiten trabajar fuera de él.
+
+### Carpetas de escaneo extra
+
+Apunta gitbox a raíces adicionales; los clones encontrados allí se incorporan **en su sitio** con un `clone_folder` absoluto (nunca se mueven):
 
 ```bash
-gitbox workspace open feat-x
+gitbox global update --add-folder ~/work/clients
+gitbox adopt --path ~/some/other/tree     # escaneo puntual de una carpeta arbitraria
 ```
 
-Esto regenera el archivo y lanza el primer editor en `global.editors` (para `codeWorkspace`) o la primera terminal ejecutando `tmuxinator start <key>` (para `tmuxinator`).
+### Contenedores multi-repo
 
-### Workspaces tmuxinator (macOS / Linux)
+Trabajo con un **repo principal** (p. ej. `sumwall.project`) dentro del cual mi propio script clona un conjunto dinámico de repos hermanos, en su árbol de trabajo. Marco el repo principal como contenedor y gitbox descubre e incorpora esos clones anidados:
 
 ```bash
-gitbox workspace add pair-session \
-  --type tmuxinator \
-  --layout windowsPerRepo \
-  --member github-personal/myorg/frontend \
-  --member github-personal/myorg/backend
-
-gitbox workspace generate pair-session   # escribe ~/.tmuxinator/pair-session.yml
-gitbox workspace open pair-session
+gitbox container github-sumwall "Sumwall/sumwall.project"   # marcar como contenedor
+gitbox global update --nested-depth 2                        # baja más niveles si los clones anidan por debajo de los hijos directos
+gitbox adopt                                                  # descubre + incorpora los clones anidados
 ```
 
-Layouts:
+Cada clon anidado se incorpora bajo su cuenta/org **real** (asociado por su URL remota), con un `clone_folder` absoluto dentro del contenedor: nunca se reubican. `nested_scan_depth` por defecto es `1` (los hijos directos del contenedor).
 
-- `windowsPerRepo` (por defecto) — una ventana tmuxinator por miembro, cada una enraizada en la carpeta del clon miembro
-- `splitPanes` — una sola ventana con un panel por miembro, en mosaico
-
-### Tmuxinator en Windows (mediante WSL)
-
-Cuando WSL está instalado, gitbox escribe el YAML en el lado WSL `~/.tmuxinator/<key>.yml` (alcanzado mediante su ruta UNC `\\wsl.localhost\<distro>\…`) y reescribe las rutas `root:` por ventana y `cd` por panel a sus equivalentes del lado Linux (`/mnt/c/…` para rutas en la unidad Windows). `gitbox workspace open <key>` ejecuta la terminal configurada con `wsl.exe -- tmuxinator start <key>` como comando hijo, así tmuxinator se ejecuta dentro de WSL independientemente del perfil de terminal que haya elegido. Si `wsl.exe --status` no tiene éxito, los workspaces tmuxinator siguen fallando limpiamente con el mensaje de plataforma no soportada.
-
-### Descubrir workspaces dejados en disco
-
-Los archivos de workspace que creo a mano, o que llevo conmigo desde otra máquina, se detectan automáticamente. En cualquier invocación de la CLI también puedo ejecutar:
+### Clonar en una carpeta personalizada
 
 ```bash
-gitbox workspace discover           # solo vista previa, tres grupos (adoptable, ambiguous, skipped)
-gitbox workspace discover --apply   # adoptar cada entrada adoptable en gitbox.json
+gitbox clone --source github-personal --repo "MyUser/special" --clone-folder ~/elsewhere/special
 ```
-
-El scanner recorre `global.folder` en busca de archivos `*.code-workspace` y `~/.tmuxinator/*.yml` (más el `~/.tmuxinator/` del lado WSL en Windows). Cada ruta de carpeta parseada se asocia de vuelta a un clon conocido mediante la coincidencia de prefijo de ruta más profunda contra las rutas resueltas de repos. Un workspace se auto-adopta cuando cada miembro resuelve exactamente a un clon; coincidencias ambiguas (una ruta que empata entre dos clones) se muestran como un grupo separado y nunca se adoptan automáticamente.
-
-La GUI ejecuta el mismo discovery automáticamente al arrancar; la TUI lo ejecuta al lanzarse y en cada tick de periodic-sync. Las entradas adoptadas se etiquetan con `discovered: true` en `gitbox.json` para que la UI pueda mostrar de dónde vienen.
-
-### Día a día
-
-```bash
-gitbox workspace list
-gitbox workspace show feat-x
-gitbox workspace add-member feat-x gitea-work/team/ops
-gitbox workspace delete-member feat-x gitea-work/team/backend
-gitbox workspace delete feat-x
-gitbox workspace discover --apply
-```
-
-`delete` elimina el workspace de `gitbox.json`, pero NO elimina el archivo generado en disco: lo quito a mano si quiero.
 
 ## Actualizar gitbox
 

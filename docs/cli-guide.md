@@ -1,4 +1,3 @@
-
 <p align="center">
   <img src="../assets/screenshot-cli.png" alt="Gitbox" width="800" />
 </p>
@@ -271,7 +270,7 @@ For each orphan with a matching account, `adopt` adds it to the config, sets up 
 
 ### Move a repository across accounts / providers
 
-The TUI's repo detail screen exposes an `M` shortcut that opens a **Move repository** flow — pick a destination account and owner, optionally toggle *Delete source repo* and *Delete local clone*, type the source repo key to confirm, then watch the phased progress (preflight → fetch → create destination → push --mirror → rewire origin → optional deletes → update config). The shortcut is inactive until the clone is clean and fully in sync with its upstream. Required token scopes per provider are listed in [Token scopes for destructive actions](credentials.md#token-scopes-for-destructive-actions). There is no dedicated `gitbox move` cobra command yet; everything happens through the TUI.
+The TUI's repo detail screen exposes an `M` shortcut that opens a **Move repository** flow — pick a destination account and owner, optionally toggle _Delete source repo_ and _Delete local clone_, type the source repo key to confirm, then watch the phased progress (preflight → fetch → create destination → push --mirror → rewire origin → optional deletes → update config). The shortcut is inactive until the clone is clean and fully in sync with its upstream. Required token scopes per provider are listed in [Token scopes for destructive actions](credentials.md#token-scopes-for-destructive-actions). There is no dedicated `gitbox move` cobra command yet; everything happens through the TUI.
 
 ### Install a recommended global gitignore
 
@@ -352,81 +351,49 @@ gitbox account credential setup github-personal --token
 
 Token and SSH accounts already have a portable PAT — no extra setup needed. See [credentials.md](credentials.md) for details.
 
-## Step 8: Dynamic workspaces (optional)
+## Step 8: Workspaces (read-only)
 
-A **workspace** bundles several clones that I open together for a task — e.g. a frontend repo and its backend in one VS Code multi-root session, or a tmuxinator layout with each repo in its own pane.
-
-Workspaces are first-class in gitbox: stored in `gitbox.json`, managed with `gitbox workspace …`, and generated to disk on demand as `.code-workspace` JSON files or tmuxinator YAML profiles.
-
-### Create a VS Code multi-root workspace
+Workspaces are **read-only** in gitbox. It discovers existing VS Code `.code-workspace` files under my configured folders, lists them, and opens one in my editor. It never creates, edits, generates, or deletes them — I own those files (I write them by hand, or a tool writes them).
 
 ```bash
-gitbox workspace add feat-x \
-  --type codeWorkspace \
-  --name "Feature X" \
-  --member github-personal/myorg/frontend \
-  --member gitea-work/team/backend
-
-gitbox workspace generate feat-x
+gitbox workspace discover         # rescan disk and refresh the cache
+gitbox workspace list             # discovered workspaces
+gitbox workspace show <key>       # file path + resolved members
+gitbox workspace open <key>       # open the .code-workspace in the first global.editors entry
 ```
 
-`generate` picks the file path automatically (the nearest common ancestor of the member folders, e.g. `~/00.git/feat-x.code-workspace`) unless I pass `--file`. It writes a `.code-workspace` with a `folders[]` entry per member and a small `settings` block that lets VS Code detect nested repos under the shared root.
+`discover` walks `global.folder` and every `global.extra_folders` root for `*.code-workspace` files, resolves each file's folders back to known clones, and refreshes the cache in `gitbox.json` (only writing when something changed). The GUI runs it in the background at startup; the TUI runs it on launch and on each periodic-sync tick.
 
-### Open a workspace
+## Step 9: Non-standard clone locations & multi-repo containers (optional)
+
+The standard layout is `global.folder / <account> / <org|user> / repo`. Two features support working outside it.
+
+### Extra scan folders
+
+Point gitbox at additional roots; clones found there are onboarded **in place** with an absolute `clone_folder` (never moved):
 
 ```bash
-gitbox workspace open feat-x
+gitbox global update --add-folder ~/work/clients
+gitbox adopt --path ~/some/other/tree     # one-off scan of an arbitrary folder
 ```
 
-This regenerates the file and launches the first editor in `global.editors` (for `codeWorkspace`) or the first terminal running `tmuxinator start <key>` (for `tmuxinator`).
+### Multi-repo containers
 
-### Tmuxinator workspaces (macOS / Linux)
+I work with a **main repo** (e.g. `sumwall.project`) into which my own script clones a dynamic set of sibling repos, inside its working tree. I flag the main repo as a container and gitbox discovers and onboards those nested clones:
 
 ```bash
-gitbox workspace add pair-session \
-  --type tmuxinator \
-  --layout windowsPerRepo \
-  --member github-personal/myorg/frontend \
-  --member github-personal/myorg/backend
-
-gitbox workspace generate pair-session   # writes ~/.tmuxinator/pair-session.yml
-gitbox workspace open pair-session
+gitbox container github-sumwall "Sumwall/sumwall.project"   # flag as container
+gitbox global update --nested-depth 2                        # descend deeper if clones nest below direct children
+gitbox adopt                                                  # discover + onboard the nested clones
 ```
 
-Layouts:
+Each nested clone is onboarded under its **real** account/org (matched by its remote URL), with an absolute `clone_folder` pointing inside the container — they are never relocated. `nested_scan_depth` defaults to `1` (the container's immediate children).
 
-- `windowsPerRepo` (default) — one tmuxinator window per member, each rooted at the member's clone folder
-- `splitPanes` — a single window with one pane per member, tiled
-
-### Tmuxinator on Windows (via WSL)
-
-When WSL is installed, gitbox writes the YAML to the WSL-side `~/.tmuxinator/<key>.yml` (reached through its `\\wsl.localhost\<distro>\…` UNC path) and rewrites the per-window `root:` and per-pane `cd` paths into their Linux-side equivalents (`/mnt/c/…` for paths on the Windows drive). `gitbox workspace open <key>` runs the configured terminal with `wsl.exe -- tmuxinator start <key>` as the child command, so tmuxinator runs inside WSL regardless of which terminal profile I picked. If `wsl.exe --status` does not succeed, tmuxinator workspaces still error cleanly with the platform-unsupported message.
-
-### Discover workspaces dropped on disk
-
-Workspace files I create by hand — or that travel with me from another machine — are picked up automatically. On every CLI invocation I can also run:
+### Cloning into a custom folder
 
 ```bash
-gitbox workspace discover           # preview only, three buckets (adoptable, ambiguous, skipped)
-gitbox workspace discover --apply   # adopt every adoptable entry into gitbox.json
+gitbox clone --source github-personal --repo "MyUser/special" --clone-folder ~/elsewhere/special
 ```
-
-The scanner walks `global.folder` for `*.code-workspace` files and `~/.tmuxinator/*.yml` (plus the WSL-side `~/.tmuxinator/` on Windows). Each parsed folder path is matched back to a known clone by the deepest path-prefix match against the resolved repo paths. A workspace is auto-adopted when every member resolves to exactly one clone; ambiguous matches (a path that ties between two clones) are surfaced as a separate bucket and never adopted automatically.
-
-The GUI runs the same discovery automatically on startup; the TUI runs it on launch and on every periodic-sync tick. Adopted entries are tagged `discovered: true` in `gitbox.json` so the UI can show where they came from.
-
-### Day-to-day
-
-```bash
-gitbox workspace list
-gitbox workspace show feat-x
-gitbox workspace add-member feat-x gitea-work/team/ops
-gitbox workspace delete-member feat-x gitea-work/team/backend
-gitbox workspace delete feat-x
-gitbox workspace discover --apply
-```
-
-`delete` removes the workspace from `gitbox.json` but does NOT delete the generated file on disk — I remove that by hand if I want to.
 
 ## Updating gitbox
 

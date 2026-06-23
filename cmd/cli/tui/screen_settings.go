@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/cmd/cli/tui/styles"
@@ -19,6 +20,7 @@ const (
 	settingsLanguage
 	settingsSync
 	settingsGitignoreCheck
+	settingsNestedDepth
 	settingsTerminals
 	settingsFieldCount
 )
@@ -37,6 +39,7 @@ type settingsModel struct {
 	syncIndex      int
 	languageIndex  int
 	gitignoreCheck bool
+	nestedDepth    int
 	saved          bool
 	errMsg         string
 }
@@ -74,6 +77,7 @@ func newSettingsModel(cfg *config.Config, cfgPath string, theme styles.Theme, tr
 		syncIndex:      syncIdx,
 		languageIndex:  langIdx,
 		gitignoreCheck: cfg.Global.ShouldCheckGlobalGitignore(),
+		nestedDepth:    cfg.Global.NestedScanDepthOrDefault(),
 	}
 }
 
@@ -110,6 +114,9 @@ func (m settingsModel) Update(msg tea.Msg) (settingsModel, tea.Cmd) {
 			if m.active == settingsGitignoreCheck {
 				m.gitignoreCheck = !m.gitignoreCheck
 			}
+			if m.active == settingsNestedDepth && m.nestedDepth > 1 {
+				m.nestedDepth--
+			}
 			return m, nil
 
 		case msg.String() == "right" || msg.String() == "l":
@@ -121,6 +128,9 @@ func (m settingsModel) Update(msg tea.Msg) (settingsModel, tea.Cmd) {
 			}
 			if m.active == settingsGitignoreCheck {
 				m.gitignoreCheck = !m.gitignoreCheck
+			}
+			if m.active == settingsNestedDepth && m.nestedDepth < 9 {
+				m.nestedDepth++
 			}
 			return m, nil
 
@@ -141,6 +151,7 @@ func (m settingsModel) Update(msg tea.Msg) (settingsModel, tea.Cmd) {
 				m.cfg.Global.PeriodicSync = syncOptions[m.syncIndex]
 				gpref := m.gitignoreCheck
 				m.cfg.Global.CheckGlobalGitignore = &gpref
+				m.cfg.Global.NestedScanDepth = m.nestedDepth
 				_ = config.Save(m.cfg, m.cfgPath)
 				return m, func() tea.Msg { return switchScreenMsg{screen: screenTerminals} }
 			}
@@ -150,6 +161,7 @@ func (m settingsModel) Update(msg tea.Msg) (settingsModel, tea.Cmd) {
 			m.cfg.Global.PeriodicSync = syncOptions[m.syncIndex]
 			gpref := m.gitignoreCheck
 			m.cfg.Global.CheckGlobalGitignore = &gpref
+			m.cfg.Global.NestedScanDepth = m.nestedDepth
 			if err := config.Save(m.cfg, m.cfgPath); err != nil {
 				m.errMsg = err.Error()
 			} else {
@@ -241,6 +253,28 @@ func (m settingsModel) View() string {
 		gLabel += m.theme.Text.Render(checkbox + " " + m.tr.T("tui.settings.gitignore"))
 	}
 	b.WriteString(gLabel + "\n\n")
+
+	// Nested scan depth — how many levels gitbox descends below a container
+	// repo when discovering nested clones. Adjust with ←/→.
+	ndLabel := m.tr.T("tui.settings.nested_depth")
+	if ndLabel == "tui.settings.nested_depth" {
+		ndLabel = "Nested scan depth"
+	}
+	if m.active == settingsNestedDepth {
+		ndLabel = m.theme.Brand.Render(ndLabel)
+	} else {
+		ndLabel = m.theme.Text.Render(ndLabel)
+	}
+	depthVal := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Palette.Brand)).Bold(true).
+		Render(fmt.Sprintf("< %d >", m.nestedDepth))
+	b.WriteString(ndLabel + " " + depthVal + "\n")
+	// Extra scan folders (read-only here; manage with the GUI or
+	// `gitbox global update --add-folder`).
+	if len(m.cfg.Global.ExtraFolders) == 0 {
+		b.WriteString("  " + m.theme.TextMuted.Render("Extra scan folders: none (add with the GUI or `gitbox global update --add-folder`)") + "\n\n")
+	} else {
+		b.WriteString("  " + m.theme.TextMuted.Render("Extra scan folders: "+strings.Join(m.cfg.Global.ExtraFolders, ", ")) + "\n\n")
+	}
 
 	// "Terminal profiles…" navigation row — pressing Enter opens the
 	// dedicated TerminalProfile editor (parity with the GUI's Manager

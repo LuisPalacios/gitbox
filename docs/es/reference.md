@@ -649,112 +649,87 @@ Los servidores remotos necesitan PATs portables (no tokens GCM locales de máqui
 
 ---
 
-## Workspaces
+## Workspaces (solo lectura)
 
-Los workspaces agrupan N clones en un único artefacto (VS Code `.code-workspace` o YAML de tmuxinator) que los abre juntos.
+Los workspaces son de **solo lectura** en gitbox. Descubre los archivos `.code-workspace` de VS Code existentes bajo las carpetas configuradas, los cachea, los lista y abre uno en tu editor. gitbox nunca crea, edita, genera ni borra archivos de workspace: son tuyos. (El soporte de tmuxinator y todo el CRUD/generación se eliminaron en v3.)
 
 ### Comandos
 
 ```bash
-gitbox workspace list                                       # tabla resumen
-gitbox workspace list --json                                # legible por máquinas
-gitbox workspace show <key>                                 # detalle completo
-gitbox workspace add <key> --type <type> [flags]            # crear
-gitbox workspace delete <key>                               # quitar de config (conserva archivo)
-gitbox workspace add-member <key> <source>/<repo-key>       # añadir clon al workspace
-gitbox workspace delete-member <key> <source>/<repo-key>    # quitar clon
-gitbox workspace generate <key> [--dry-run]                 # (re)escribir archivo en disco
-gitbox workspace open <key>                                 # regenerar + lanzar
-gitbox workspace discover [--apply]                         # escanear disco, opcionalmente adoptar
+gitbox workspace list                 # workspaces descubiertos (tabla resumen)
+gitbox workspace list --json          # legible por máquinas
+gitbox workspace show <key>           # detalle: ruta del archivo + miembros resueltos
+gitbox workspace open <key>           # abre el .code-workspace en el primer editor de global.editors
+gitbox workspace discover             # reescanea el disco y refresca la caché
 ```
-
-### Flags de `add`
-
-| Flag       | Requerido     | Descripción                                                                                                                            |
-| ---------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `--type`   | Sí            | `codeWorkspace` o `tmuxinator`                                                                                                         |
-| `--name`   | No            | Nombre visible en `show` y UI (por defecto la key)                                                                                     |
-| `--file`   | No            | Sobrescribir ruta generada (por defecto: ancestro común más cercano para `codeWorkspace`, `~/.tmuxinator/<key>.yml` para `tmuxinator`) |
-| `--layout` | No            | Solo tmuxinator: `windowsPerRepo` (default) o `splitPanes`                                                                             |
-| `--member` | No, repetible | `<source-key>/<repo-key>`                                                                                                              |
-
-### Ruta de archivo por defecto
-
-- `codeWorkspace` — `<common-ancestor>/<key>.code-workspace`. El ancestro común es el prefijo de directorio compartido más largo de todas las rutas de clones miembros. Si no se encuentra un ancestro razonable (cross-filesystem), gitbox cae al padre del primer miembro.
-- `tmuxinator` — `~/.tmuxinator/<key>.yml` (fijado por la herramienta). En Windows la ruta resuelve al `~/.tmuxinator/<key>.yml` del lado WSL accedido mediante su equivalente UNC `\\wsl.localhost\<distro>\…`, así que `Generate` escribe a través de la vista Windows del filesystem WSL. WSL debe estar instalado (`wsl.exe --status` tiene éxito); si no, los workspaces tmuxinator fallan con `ErrTmuxinatorUnsupported`.
-
-### Comportamiento de open
-
-`open` siempre regenera primero el archivo para que el artefacto esté actualizado, y luego lanza:
-
-- `codeWorkspace` → primera entrada en `global.editors` invocada como `<editor.command> <workspace-file>`. Añade un editor con `gitbox global editor add` o editando la config directamente.
-- `tmuxinator` → primera entrada en `global.terminals` invocada como `<term.command> <term.args...> tmuxinator start <key>`. El token `{command}` en los args de terminal se reemplaza por `tmuxinator start <key>`; el token `{path}` se descarta (los workspaces no tienen una ruta única). En Windows el argv hijo se convierte en `wsl.exe -- tmuxinator start <key>`, así tmuxinator se ejecuta dentro de WSL independientemente de qué perfil de terminal esté seleccionado.
 
 ### Comportamiento de discover
 
-`discover` recorre la carpeta gestionada por gitbox en busca de archivos `*.code-workspace` y `~/.tmuxinator/*.yml` (más el `~/.tmuxinator/` del lado WSL en Windows cuando WSL está disponible). Cada ruta de carpeta parseada se asocia de vuelta a un clon conocido usando una coincidencia deepest-prefix contra las rutas de repo resueltas:
+`discover` recorre `global.folder` y cada raíz de `global.extra_folders` en busca de archivos `*.code-workspace`, resuelve las carpetas de cada archivo de vuelta a clones conocidos (coincidencia deepest-prefix contra las rutas de repo resueltas) y refresca la caché en `gitbox.json`. Solo persiste cuando el conjunto cambió. La GUI lo ejecuta en una goroutine en segundo plano al arrancar (la lista en caché aparece al instante y luego se actualiza si algo cambió); la TUI al lanzarse y en cada tick de periodic-sync.
 
-- **Adoptable** — cada miembro resolvió exactamente a un clon. Persistido por `--apply` con `discovered: true`.
-- **Ambiguous** — al menos un miembro empató entre dos o más clones. Se muestra para revisión humana; nunca se auto-adopta.
-- **Skipped** — la key de workspace ya existe en `gitbox.json`, o ningún miembro resolvió.
+### Formato de la caché de workspaces
 
-Discovery es read-only sin `--apply`. La GUI lo llama al arrancar la app (en una goroutine); la TUI lo llama al lanzarse y en cada tick de periodic-sync. La barra de estado muestra una pista `! N ambiguous workspace(s)` cuando existen coincidencias ambiguas.
-
-### Formato de config de workspace
+La sección `workspaces` es una caché regenerable: puede borrarse con seguridad y se vuelve a descubrir. Las entradas son siempre workspaces de VS Code descubiertos (sin `type`/`layout`).
 
 ```json
 {
   "workspaces": {
-    "feat-x": {
-      "type": "codeWorkspace",
-      "name": "Feature X",
-      "file": "/home/me/00.git/feat-x.code-workspace",
+    "sumwall": {
+      "name": "sumwall",
+      "file": "/home/me/00.git/.../sumwall.project/sumwall.code-workspace",
       "members": [
-        { "source": "github-personal", "repo": "myorg/frontend" },
-        { "source": "gitea-work", "repo": "team/backend" }
-      ]
-    },
-    "pair-session": {
-      "type": "tmuxinator",
-      "layout": "windowsPerRepo",
-      "file": "/home/me/.tmuxinator/pair-session.yml",
-      "members": [
-        { "source": "github-personal", "repo": "myorg/frontend" },
-        { "source": "github-personal", "repo": "myorg/backend" }
-      ]
+        { "source": "github-org", "repo": "Org/browser" },
+        { "source": "github-org", "repo": "Org/services" }
+      ],
+      "discovered": true
     }
   }
 }
 ```
 
-| Campo              | Tipo   | Requerido | Descripción                                                                                                    |
-| ------------------ | ------ | --------- | -------------------------------------------------------------------------------------------------------------- |
-| `type`             | string | Sí        | `"codeWorkspace"` o `"tmuxinator"`                                                                             |
-| `name`             | string | No        | Nombre visible; por defecto la key                                                                             |
-| `file`             | string | No        | Ruta absoluta del artefacto generado; se rellena automáticamente con `generate`                                |
-| `layout`           | string | No        | Solo tmuxinator: `"windowsPerRepo"` o `"splitPanes"`                                                           |
-| `members`          | array  | Sí        | Lista de miembros, cada uno con `source` y `repo`                                                              |
-| `members[].source` | string | Sí        | Source key (debe existir en `sources`)                                                                         |
-| `members[].repo`   | string | Sí        | Repo key dentro de esa source                                                                                  |
-| `discovered`       | bool   | No        | `true` para workspaces adoptados desde disco por `gitbox workspace discover --apply` (o auto-adopción GUI/TUI) |
+| Campo        | Tipo   | Descripción                                                                 |
+| ------------ | ------ | --------------------------------------------------------------------------- |
+| `name`       | string | Nombre visible (el stem del nombre de archivo `.code-workspace`)            |
+| `file`       | string | Ruta absoluta al archivo `.code-workspace` descubierto                      |
+| `members`    | array  | Clones miembro resueltos desde las carpetas del archivo (`source` + `repo`) |
+| `discovered` | bool   | Siempre `true`: las entradas se descubren, nunca se crean a mano            |
 
-### Contenido generado de `.code-workspace`
+---
 
-```json
-{
-  "folders": [
-    { "path": "github-personal/myorg/frontend", "name": "frontend" },
-    { "path": "gitea-work/team/backend", "name": "backend" }
-  ],
-  "settings": {
-    "git.autoRepositoryDetection": true,
-    "git.repositoryScanMaxDepth": 2,
-    "git.openRepositoryInParentFolders": "always"
-  }
-}
+## Ubicaciones de clon no estándar y contenedores multi-repo
+
+El layout estándar de clon es `global.folder / <cuenta> / <org|usuario> / repo`. gitbox también soporta clones que viven en otro sitio y un patrón "contenedor" donde un repo principal aloja un conjunto dinámico de clones anidados dentro de su propio árbol de trabajo.
+
+### Carpetas de escaneo extra
+
+`global.extra_folders` es una lista de directorios raíz adicionales escaneados en busca de clones y archivos `.code-workspace`. Úsalos para incorporar repos fuera del árbol estándar.
+
+```bash
+gitbox global update --add-folder ~/work/clients
+gitbox global update --remove-folder ~/work/clients
+gitbox adopt --path ~/some/other/tree     # escaneo puntual de una carpeta arbitraria
 ```
 
-`folders[].path` es relativo cuando cada miembro vive bajo el directorio del archivo de workspace, absoluto en caso contrario. El bloque `settings` se mantiene mínimo a propósito: tres claves que hacen que VS Code detecte realmente repos anidados bajo una raíz compartida. Edito el archivo generado a mano si necesito más; gitbox solo lo sobrescribirá cuando ejecute `generate`/`open`.
+Los clones encontrados fuera del layout estándar se incorporan **en su sitio** con un `clone_folder` absoluto (gitbox nunca los mueve).
+
+### Contenedores multi-repo
+
+Un clon gestionado puede marcarse como **contenedor**: gitbox baja entonces a su árbol de trabajo para descubrir e incorporar los clones anidados que has provisionado allí con tu propia herramienta (un script de clonado, no submódulos).
+
+```bash
+gitbox container <source-key> <repo-key>          # marcar como contenedor
+gitbox container <source-key> <repo-key> --off    # quitar la marca
+gitbox global update --nested-depth 2             # cuánto bajar (por defecto 1)
+gitbox adopt                                       # descubrir + incorporar los clones anidados
+```
+
+Los clones anidados se incorporan como repos normales bajo su cuenta/org **real** (asociados por su URL remota), cada uno con un `clone_folder` absoluto que apunta dentro del contenedor: nunca se reubican fuera de él. `nested_scan_depth` por defecto es 1 (los hijos directos del contenedor); súbelo para alcanzar clones anidados uno o más niveles más abajo.
+
+En la GUI, los mismos controles están en el panel de detalle del repo (una casilla "Multi-repo container") y en el diálogo de cambio de carpeta raíz (carpetas extra + profundidad de anidamiento).
+
+### Clonar en una carpeta personalizada
+
+`gitbox clone --source <s> --repo <r> --clone-folder <dir>` almacena un `clone_folder` absoluto en ese repo y lo clona allí. (Editar el `clone_folder` de un repo directamente, o `gitbox repo add --clone-folder`, logra lo mismo.)
 
 ---
 
@@ -803,46 +778,48 @@ La config vive en `~/.config/gitbox/gitbox.json`. Consulta [gitbox.jsonc](../../
 
 ### Global
 
-| Campo                             | Tipo   | Requerido | Descripción                                                                                                                                                                                                                                                  |
-| --------------------------------- | ------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `folder`                          | string | Sí        | Directorio raíz para todos los clones. Soporta `~`.                                                                                                                                                                                                          |
-| `credential_ssh`                  | object | No        | Defaults SSH de plataforma. Su presencia indica que SSH está disponible.                                                                                                                                                                                     |
-| `credential_ssh.ssh_folder`       | string | No        | Directorio de config SSH. Default `~/.ssh`.                                                                                                                                                                                                                  |
-| `credential_gcm`                  | object | No        | Defaults GCM de plataforma. Su presencia indica que GCM está disponible.                                                                                                                                                                                     |
-| `credential_gcm.helper`           | string | No        | Helper de credenciales. Normalmente `"manager"`.                                                                                                                                                                                                             |
-| `credential_gcm.credential_store` | string | No        | `"wincredman"`, `"keychain"` o `"secretservice"`.                                                                                                                                                                                                            |
-| `credential_token`                | object | No        | Defaults de Token/PAT de plataforma. Su presencia indica que token auth está disponible.                                                                                                                                                                     |
-| `editors`                         | array  | No        | Editores de código para el menú "Open in". Auto-poblado en el primer launch.                                                                                                                                                                                 |
-| `editors[].name`                  | string | Sí        | Nombre visible (por ejemplo `"VS Code"`).                                                                                                                                                                                                                    |
-| `editors[].command`               | string | Sí        | Ruta completa o nombre de comando (por ejemplo `"C:\\...\\code.cmd"`).                                                                                                                                                                                       |
-| `terminals`                       | array  | No        | Lista heredada v2.0 de emuladores de terminal. Aún la lee el launcher cuando `terminal_profiles` está vacío (transición v2.0→v2.1). Las configs nuevas prefieren el trío de abajo. |
-| `terminals[].name`                | string | Sí        | Nombre visible (por ejemplo `"Windows Terminal"`).                                                                                                                                                                                                           |
-| `terminals[].command`             | string | Sí        | Ruta completa o launcher en PATH (por ejemplo `"wt.exe"`, `"gnome-terminal"`).                                                                                                                                                                               |
-| `terminals[].args`                | array  | No        | Argumentos pasados antes de la ruta. Usa `"{path}"` como placeholder de ruta; si falta, la ruta se añade al final. Usa `"{command}"` para marcar dónde se inserta el argv de un AI harness (se expande a cero elementos para lanzamientos solo de terminal). |
+| Campo                             | Tipo   | Requerido | Descripción                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------------- | ------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `folder`                          | string | Sí        | Directorio raíz para todos los clones. Soporta `~`.                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `extra_folders`                   | array  | No        | Directorios raíz adicionales escaneados en busca de clones y archivos `.code-workspace`, además de `folder`.                                                                                                                                                                                                                                                                                                                                                             |
+| `nested_scan_depth`               | int    | No        | Niveles que gitbox baja por debajo de un repo contenedor para encontrar clones anidados. Por defecto `1` (hijos directos).                                                                                                                                                                                                                                                                                                                                               |
+| `credential_ssh`                  | object | No        | Defaults SSH de plataforma. Su presencia indica que SSH está disponible.                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `credential_ssh.ssh_folder`       | string | No        | Directorio de config SSH. Default `~/.ssh`.                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `credential_gcm`                  | object | No        | Defaults GCM de plataforma. Su presencia indica que GCM está disponible.                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `credential_gcm.helper`           | string | No        | Helper de credenciales. Normalmente `"manager"`.                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `credential_gcm.credential_store` | string | No        | `"wincredman"`, `"keychain"` o `"secretservice"`.                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `credential_token`                | object | No        | Defaults de Token/PAT de plataforma. Su presencia indica que token auth está disponible.                                                                                                                                                                                                                                                                                                                                                                                 |
+| `editors`                         | array  | No        | Editores de código para el menú "Open in". Auto-poblado en el primer launch.                                                                                                                                                                                                                                                                                                                                                                                             |
+| `editors[].name`                  | string | Sí        | Nombre visible (por ejemplo `"VS Code"`).                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `editors[].command`               | string | Sí        | Ruta completa o nombre de comando (por ejemplo `"C:\\...\\code.cmd"`).                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `terminals`                       | array  | No        | Lista heredada v2.0 de emuladores de terminal. Aún la lee el launcher cuando `terminal_profiles` está vacío (transición v2.0→v2.1). Las configs nuevas prefieren el trío de abajo.                                                                                                                                                                                                                                                                                       |
+| `terminals[].name`                | string | Sí        | Nombre visible (por ejemplo `"Windows Terminal"`).                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `terminals[].command`             | string | Sí        | Ruta completa o launcher en PATH (por ejemplo `"wt.exe"`, `"gnome-terminal"`).                                                                                                                                                                                                                                                                                                                                                                                           |
+| `terminals[].args`                | array  | No        | Argumentos pasados antes de la ruta. Usa `"{path}"` como placeholder de ruta; si falta, la ruta se añade al final. Usa `"{command}"` para marcar dónde se inserta el argv de un AI harness (se expande a cero elementos para lanzamientos solo de terminal).                                                                                                                                                                                                             |
 | `terminal_apps`                   | array  | No        | Emuladores de terminal detectados v2.1. Poblado por el sondeo del catálogo en `pkg/terminals` (Windows: Windows Terminal, WezTerm, Alacritty, Tabby, ConEmu, Hyper, Mintty, ZOC. macOS: iTerm2, Terminal.app, Warp, Kitty, Ghostty, WezTerm, Alacritty. Linux: GNOME Terminal, Konsole, Terminator, Foot, Alacritty, Kitty, Tilda, Guake, xterm). Tanto el Manager de la GUI como la pantalla `Settings → Perfiles de terminal…` de la TUI sondean el host directamente. |
-| `terminal_apps[].id`              | string | Sí        | Id estable (`"wt"`, `"wezterm"`, `"gnome-terminal"`, `"iterm"`, …). Se usa como destino de la referencia cruzada desde `terminal_profiles[].terminal`. |
-| `terminal_apps[].name`            | string | Sí        | Nombre visible mostrado en el Manager y el launcher por fila. |
-| `terminal_apps[].command`         | string | Sí        | Ruta absoluta resuelta (rellenada en tiempo de detección). |
-| `terminal_apps[].args_template`   | array  | No        | Plantilla de argv con tokens `{path}`, `{shell_command}`, `{shell_args}`, `{command}`. El launcher las expande por Perfil vía `pkg/launch.ResolveArgs`. Mismas reglas de tokens que `terminals[].args` arriba, más `{shell_command}` (el binario shell resuelto) y `{shell_args}` (un punto de inserción para los args por defecto del shell). |
-| `shells`                          | array  | No        | Shells detectados v2.1. Alcance del catálogo por OS — Windows: PowerShell 7, PowerShell 5, CMD, Git Bash, más filas `wsl-<nombre>` por distro cuando WSL está instalado. macOS: Zsh, Bash, Fish, Dash. Linux: Bash, Zsh, Fish, Ksh, Dash. |
-| `shells[].id`                     | string | Sí        | Id estable (`"cmd"`, `"pwsh"`, `"git-bash"`, `"wsl-ubuntu"`, …). Referenciado por `terminal_profiles[].shell`. |
-| `shells[].name`                   | string | Sí        | Nombre visible. |
-| `shells[].command`                | string | Sí        | Ruta absoluta resuelta. |
-| `shells[].args`                   | array  | No        | Args por defecto insertados donde el `args_template` del terminal referencie `{shell_args}`. |
-| `terminal_profiles`               | array  | No        | Perfiles lanzables v2.1. El launcher por fila y el menú `Open in…` leen esta lista cuando está poblada. **Composición consciente del SO** (issue #71): en Windows cada Perfil auto-derivado empareja un Terminal × Shell; en macOS / Linux cada Perfil es solo-Terminal con el login shell del host como shell implícito. |
-| `terminal_profiles[].id`          | string | Sí        | Id estable (`"wt+pwsh"`, `"wezterm+launchmenu-mybash"`, `"user-1"`, …). |
-| `terminal_profiles[].name`        | string | Sí        | Nombre visible (por ejemplo `"Windows Terminal — pwsh"`). |
-| `terminal_profiles[].terminal`    | string | Sí        | `terminal_apps[].id` a lanzar. Vacío solo para los Perfiles de respaldo bare-shell que se emiten en Windows cuando no hay un Terminal moderno instalado. |
-| `terminal_profiles[].shell`       | string | No        | `shells[].id` a ejecutar dentro del terminal. Vacío significa "usar el shell por defecto del terminal" — en macOS / Linux ese es el login shell del host, que el Manager muestra como una etiqueta atenuada junto al nombre del Terminal. |
-| `terminal_profiles[].args`        | array  | No        | Sobreescribe el argv. Cuando está vacío el launcher usa `terminal_apps[].args_template`. Las filas `launch_menu` de WezTerm guardan aquí la forma completa `start --cwd {path} -- <argv>`. |
-| `terminal_profiles[].default`     | bool   | No        | Marca el Perfil invocado por la acción primaria del launcher por fila. Mutuamente exclusivo en la lista. |
-| `terminal_profiles[].preferred`   | bool   | No        | Promociona el Perfil a la lista rápida del menú kebab. |
-| `terminal_profiles[].hidden`      | bool   | No        | Suprime el Perfil de los menús sin eliminarlo. La única forma de suprimir un Perfil auto-detectado / importado de WT / importado de WezTerm / migrado (esos reaparecen en el siguiente ciclo de detección si se eliminan). |
-| `terminal_profiles[].source`      | string | No        | **Campo interno** — nunca se muestra en el Manager. Etiqueta de origen usada por el motor para regular eliminar-vs-ocultar: solo los Perfiles `"user"` se pueden eliminar; las filas `"detected"` / `"wt-profile"` / `"wezterm-launchmenu"` / `"migrated"` solo se pueden ocultar. |
-| `ai_harnesses`                    | array  | No        | AI CLI harnesses para el menú "Open in". Auto-poblado en el primer launch (claude, codex, gemini, aider, cursor-agent, opencode). Lanzado dentro de `global.terminals[0]`, que debe contener `"{command}"` en sus args.                                      |
-| `ai_harnesses[].name`             | string | Sí        | Nombre visible (por ejemplo `"Claude Code"`).                                                                                                                                                                                                                |
-| `ai_harnesses[].command`          | string | Sí        | Ruta absoluta o binario en PATH (por ejemplo `"claude"`).                                                                                                                                                                                                    |
-| `ai_harnesses[].args`             | array  | No        | Args opcionales para el harness. Normalmente vacío.                                                                                                                                                                                                          |
+| `terminal_apps[].id`              | string | Sí        | Id estable (`"wt"`, `"wezterm"`, `"gnome-terminal"`, `"iterm"`, …). Se usa como destino de la referencia cruzada desde `terminal_profiles[].terminal`.                                                                                                                                                                                                                                                                                                                   |
+| `terminal_apps[].name`            | string | Sí        | Nombre visible mostrado en el Manager y el launcher por fila.                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `terminal_apps[].command`         | string | Sí        | Ruta absoluta resuelta (rellenada en tiempo de detección).                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `terminal_apps[].args_template`   | array  | No        | Plantilla de argv con tokens `{path}`, `{shell_command}`, `{shell_args}`, `{command}`. El launcher las expande por Perfil vía `pkg/launch.ResolveArgs`. Mismas reglas de tokens que `terminals[].args` arriba, más `{shell_command}` (el binario shell resuelto) y `{shell_args}` (un punto de inserción para los args por defecto del shell).                                                                                                                           |
+| `shells`                          | array  | No        | Shells detectados v2.1. Alcance del catálogo por OS — Windows: PowerShell 7, PowerShell 5, CMD, Git Bash, más filas `wsl-<nombre>` por distro cuando WSL está instalado. macOS: Zsh, Bash, Fish, Dash. Linux: Bash, Zsh, Fish, Ksh, Dash.                                                                                                                                                                                                                                |
+| `shells[].id`                     | string | Sí        | Id estable (`"cmd"`, `"pwsh"`, `"git-bash"`, `"wsl-ubuntu"`, …). Referenciado por `terminal_profiles[].shell`.                                                                                                                                                                                                                                                                                                                                                           |
+| `shells[].name`                   | string | Sí        | Nombre visible.                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `shells[].command`                | string | Sí        | Ruta absoluta resuelta.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `shells[].args`                   | array  | No        | Args por defecto insertados donde el `args_template` del terminal referencie `{shell_args}`.                                                                                                                                                                                                                                                                                                                                                                             |
+| `terminal_profiles`               | array  | No        | Perfiles lanzables v2.1. El launcher por fila y el menú `Open in…` leen esta lista cuando está poblada. **Composición consciente del SO** (issue #71): en Windows cada Perfil auto-derivado empareja un Terminal × Shell; en macOS / Linux cada Perfil es solo-Terminal con el login shell del host como shell implícito.                                                                                                                                                |
+| `terminal_profiles[].id`          | string | Sí        | Id estable (`"wt+pwsh"`, `"wezterm+launchmenu-mybash"`, `"user-1"`, …).                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `terminal_profiles[].name`        | string | Sí        | Nombre visible (por ejemplo `"Windows Terminal — pwsh"`).                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `terminal_profiles[].terminal`    | string | Sí        | `terminal_apps[].id` a lanzar. Vacío solo para los Perfiles de respaldo bare-shell que se emiten en Windows cuando no hay un Terminal moderno instalado.                                                                                                                                                                                                                                                                                                                 |
+| `terminal_profiles[].shell`       | string | No        | `shells[].id` a ejecutar dentro del terminal. Vacío significa "usar el shell por defecto del terminal" — en macOS / Linux ese es el login shell del host, que el Manager muestra como una etiqueta atenuada junto al nombre del Terminal.                                                                                                                                                                                                                                |
+| `terminal_profiles[].args`        | array  | No        | Sobreescribe el argv. Cuando está vacío el launcher usa `terminal_apps[].args_template`. Las filas `launch_menu` de WezTerm guardan aquí la forma completa `start --cwd {path} -- <argv>`.                                                                                                                                                                                                                                                                               |
+| `terminal_profiles[].default`     | bool   | No        | Marca el Perfil invocado por la acción primaria del launcher por fila. Mutuamente exclusivo en la lista.                                                                                                                                                                                                                                                                                                                                                                 |
+| `terminal_profiles[].preferred`   | bool   | No        | Promociona el Perfil a la lista rápida del menú kebab.                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `terminal_profiles[].hidden`      | bool   | No        | Suprime el Perfil de los menús sin eliminarlo. La única forma de suprimir un Perfil auto-detectado / importado de WT / importado de WezTerm / migrado (esos reaparecen en el siguiente ciclo de detección si se eliminan).                                                                                                                                                                                                                                               |
+| `terminal_profiles[].source`      | string | No        | **Campo interno** — nunca se muestra en el Manager. Etiqueta de origen usada por el motor para regular eliminar-vs-ocultar: solo los Perfiles `"user"` se pueden eliminar; las filas `"detected"` / `"wt-profile"` / `"wezterm-launchmenu"` / `"migrated"` solo se pueden ocultar.                                                                                                                                                                                       |
+| `ai_harnesses`                    | array  | No        | AI CLI harnesses para el menú "Open in". Auto-poblado en el primer launch (claude, codex, gemini, aider, cursor-agent, opencode). Lanzado dentro de `global.terminals[0]`, que debe contener `"{command}"` en sus args.                                                                                                                                                                                                                                                  |
+| `ai_harnesses[].name`             | string | Sí        | Nombre visible (por ejemplo `"Claude Code"`).                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `ai_harnesses[].command`          | string | Sí        | Ruta absoluta o binario en PATH (por ejemplo `"claude"`).                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `ai_harnesses[].args`             | array  | No        | Args opcionales para el harness. Normalmente vacío.                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 ### Perfiles de Terminal
 
@@ -907,13 +884,14 @@ El comparador de nombres de shell es tolerante:
 
 ### Repo (dentro de source.repos)
 
-| Campo             | Tipo   | Requerido | Descripción                                                                      |
-| ----------------- | ------ | --------- | -------------------------------------------------------------------------------- |
-| `credential_type` | string | No        | Sobrescribe método de auth. Hereda de la cuenta.                                 |
-| `name`            | string | No        | Sobrescribe `git user.name`.                                                     |
-| `email`           | string | No        | Sobrescribe `git user.email`.                                                    |
-| `id_folder`       | string | No        | Sobrescribe directorio de 2º nivel (carpeta org).                                |
-| `clone_folder`    | string | No        | Sobrescribe directorio de 3er nivel. Si es absoluto, reemplaza la ruta completa. |
+| Campo             | Tipo   | Requerido | Descripción                                                                               |
+| ----------------- | ------ | --------- | ----------------------------------------------------------------------------------------- |
+| `credential_type` | string | No        | Sobrescribe método de auth. Hereda de la cuenta.                                          |
+| `name`            | string | No        | Sobrescribe `git user.name`.                                                              |
+| `email`           | string | No        | Sobrescribe `git user.email`.                                                             |
+| `id_folder`       | string | No        | Sobrescribe directorio de 2º nivel (carpeta org).                                         |
+| `clone_folder`    | string | No        | Sobrescribe directorio de 3er nivel. Si es absoluto, reemplaza la ruta completa.          |
+| `container`       | bool   | No        | Marca como contenedor multi-repo; gitbox escanea su interior en busca de clones anidados. |
 
 ---
 

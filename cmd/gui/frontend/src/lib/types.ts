@@ -44,6 +44,7 @@ export interface Repo {
   email?: string;
   id_folder?: string;
   clone_folder?: string;
+  container?: boolean;
 }
 
 export interface SourceDTO {
@@ -110,7 +111,7 @@ export interface ConfigDTO {
   workspaceOrder: string[];
 }
 
-// ── Dynamic workspaces (issue #27, GUI slice #49) ──
+// ── Workspaces (read-only discovered cache) ──
 
 export interface WorkspaceMemberDTO {
   source: string;
@@ -118,32 +119,10 @@ export interface WorkspaceMemberDTO {
 }
 
 export interface WorkspaceDTO {
-  type: 'codeWorkspace' | 'tmuxinator';
   name?: string;
   file?: string;
-  layout?: 'windowsPerRepo' | 'splitPanes';
   members: WorkspaceMemberDTO[];
   discovered?: boolean;
-}
-
-export interface WorkspaceCreateRequest {
-  key: string;
-  type: 'codeWorkspace' | 'tmuxinator';
-  name?: string;
-  file?: string;
-  layout?: 'windowsPerRepo' | 'splitPanes';
-  members?: WorkspaceMemberDTO[];
-}
-
-export interface WorkspaceUpdateRequest {
-  name: string;
-  layout: string;
-  members: WorkspaceMemberDTO[] | null;
-}
-
-export interface WorkspaceGenerateResult {
-  file: string;
-  size: number;
 }
 
 export interface WorkspaceListResult {
@@ -151,28 +130,16 @@ export interface WorkspaceListResult {
   order: string[];
 }
 
-export interface DiscoveredPathDTO {
-  path: string;
-  candidates: WorkspaceMemberDTO[];
-}
-
-export interface DiscoveredWorkspaceDTO {
-  key: string;
-  type: 'codeWorkspace' | 'tmuxinator';
-  layout?: 'windowsPerRepo' | 'splitPanes';
-  file: string;
-  members?: WorkspaceMemberDTO[];
-  ambig?: DiscoveredPathDTO[];
-  noMatch?: string[];
-  skipped?: string;
-}
-
 export interface DiscoverWorkspacesResult {
-  adopted: string[];
-  newCount: number;
-  ambigCount: number;
-  skippedCount: number;
-  ambiguous?: DiscoveredWorkspaceDTO[];
+  changed: boolean;
+  count: number;
+}
+
+// ── Multi-repo containers ──
+
+export interface TentativeContainerDTO {
+  source: string;
+  repo: string;
 }
 
 export interface StatusResult {
@@ -233,6 +200,7 @@ export interface OrphanRepoDTO {
   needsRelocate: boolean;
   localOnly: boolean;
   ambiguousCandidates?: string[];
+  nested: boolean;
 }
 
 export interface AdoptResultDTO {

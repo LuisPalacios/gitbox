@@ -29,7 +29,6 @@ const (
 	screenIdentity
 	screenRepoCreate
 	screenOrphans
-	screenWorkspaceAdd
 	screenGitignore
 	screenMoveRepo
 	screenTerminals
@@ -44,9 +43,6 @@ type switchScreenMsg struct {
 	repoKey         string // context for repos screen
 	mirrorKey       string // context for mirrors screen
 	forceTokenSetup bool   // go straight to PAT input in credential screen
-	// workspaceMembers seeds the workspace add flow with pre-selected
-	// members (each entry is "sourceKey/repoKey"). Empty for a blank form.
-	workspaceMembers []string
 	// repoPath is the resolved local path of the source clone. Populated
 	// when opening the move-repo screen so the target model doesn't need
 	// to recompute path resolution.
@@ -274,7 +270,6 @@ type model struct {
 	identity     identityModel
 	repoCreate   repoCreateModel
 	orphans      orphansModel
-	workspaceAdd workspaceAddModel
 	gitignore    gitignoreModel
 	moveRepo     moveRepoModel
 	terminals    terminalsScreen
@@ -371,9 +366,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case screenRepoCreate:
 			m.repoCreate.width = msg.Width
 			m.repoCreate.height = msg.Height
-		case screenWorkspaceAdd:
-			m.workspaceAdd.width = msg.Width
-			m.workspaceAdd.height = msg.Height
 		case screenTerminals:
 			m.terminals.width = msg.Width
 			m.terminals.height = msg.Height
@@ -385,7 +377,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cfgErr = msg.err.Error()
 			m.firstRun = true
 			m.cfg = &config.Config{
-				Version:  2,
+				Version:  config.CurrentVersion,
 				Global:   config.GlobalConfig{},
 				Accounts: make(map[string]config.Account),
 				Sources:  make(map[string]config.Source),
@@ -452,8 +444,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.identity, cmd = m.identity.Update(msg)
 	case screenRepoCreate:
 		m.repoCreate, cmd = m.repoCreate.Update(msg)
-	case screenWorkspaceAdd:
-		m.workspaceAdd, cmd = m.workspaceAdd.Update(msg)
 	case screenGitignore:
 		m.gitignore, cmd = m.gitignore.Update(msg)
 	case screenMoveRepo:
@@ -533,9 +523,6 @@ func (m model) switchTo(msg switchScreenMsg) (model, tea.Cmd) {
 	case screenOrphans:
 		m.orphans = newOrphansModel(m.cfg, m.cfgPath, m.theme, m.width, m.height)
 		cmd = m.orphans.Init()
-	case screenWorkspaceAdd:
-		m.workspaceAdd = newWorkspaceAddModel(m.cfg, m.cfgPath, m.theme, m.width, m.height, msg.workspaceMembers)
-		cmd = m.workspaceAdd.Init()
 	case screenGitignore:
 		m.gitignore = newGitignoreModel(m.theme, m.width, m.height)
 		cmd = m.gitignore.Init()
@@ -581,8 +568,6 @@ func (m model) View() string {
 		return m.repoCreate.View()
 	case screenOrphans:
 		return m.orphans.View()
-	case screenWorkspaceAdd:
-		return m.workspaceAdd.View()
 	case screenGitignore:
 		return m.gitignore.View()
 	case screenMoveRepo:
