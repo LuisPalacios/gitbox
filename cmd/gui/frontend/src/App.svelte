@@ -411,15 +411,19 @@
     } catch (err: any) { alert(err?.message || err); }
   }
 
+  let nestedDepthError = '';
   async function saveNestedScanDepth() {
     const d = Math.max(1, Math.floor(nestedScanDepth || 1));
     nestedScanDepth = d;
+    nestedDepthError = '';
+    // Persist only. Deliberately no config reload, dashboard re-render, or disk
+    // re-scan here — those would block this dialog. Re-scan explicitly afterward
+    // via a container repo's ⋮ → "Re-scan for nested clones".
     try {
       await bridge.setNestedScanDepth(d);
-      $configStore = await bridge.reloadConfig();
-      // A deeper scan may surface new nested clones — refresh the orphan count.
-      await loadOrphans();
-    } catch (err: any) { alert(err?.message || err); }
+    } catch (err: any) {
+      nestedDepthError = err?.message || String(err);
+    }
   }
 
   // Re-run the nested-clone scan for a container and open the orphans modal so
@@ -4642,8 +4646,9 @@
             <label class="form-label">Nested scan depth</label>
             <input class="form-input" type="number" min="1" style="max-width:90px;"
               bind:value={nestedScanDepth} on:change={saveNestedScanDepth} />
-            <span class="settings-value">levels below a container repo (default 1)</span>
+            <span class="settings-value">levels below a container repo (default 1). Re-scan via a repo's ⋮ menu.</span>
           </div>
+          {#if nestedDepthError}<p class="form-error">{nestedDepthError}</p>{/if}
         </div>
         <div class="modal-foot">
           <button class="btn-cancel" on:click={() => changeFolderModal = false}>Close</button>
