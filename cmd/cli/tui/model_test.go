@@ -49,7 +49,7 @@ func TestInit_ExistingConfig(t *testing.T) {
 func TestInit_ExistingConfig_NoFolder(t *testing.T) {
 	// Config exists but global.folder is empty → treated as first run.
 	cfg := &config.Config{
-		Version:  2,
+		Version:  config.CurrentVersion,
 		Global:   config.GlobalConfig{}, // no folder set
 		Accounts: map[string]config.Account{},
 		Sources:  map[string]config.Source{},

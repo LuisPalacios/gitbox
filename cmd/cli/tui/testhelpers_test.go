@@ -77,7 +77,7 @@ func newTestConfig(t *testing.T, gitFolder string) *config.Config {
 	sshFolder := filepath.Join(filepath.Dir(gitFolder), "ssh")
 	os.MkdirAll(sshFolder, 0o755)
 	return &config.Config{
-		Version: 2,
+		Version: config.CurrentVersion,
 		Global: config.GlobalConfig{
 			Folder:        gitFolder,
 			CredentialSSH: &config.SSHGlobal{SSHFolder: sshFolder},
@@ -555,7 +555,7 @@ func newIntegrationTestModel(t *testing.T, fixture TestFixture, opts ...teatest.
 		t.Fatalf("creating ssh folder: %v", err)
 	}
 	cfg := &config.Config{
-		Version:  2,
+		Version:  config.CurrentVersion,
 		Global:   fixture.Config.Global,
 		Accounts: fixture.Config.Accounts,
 		Sources:  fixture.Config.Sources,

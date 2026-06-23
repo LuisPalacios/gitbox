@@ -106,7 +106,7 @@ func newCLITestConfig(gitFolder string) *config.Config {
 	sshFolder := filepath.Join(filepath.Dir(gitFolder), "ssh")
 	os.MkdirAll(sshFolder, 0o755)
 	return &config.Config{
-		Version: 2,
+		Version: config.CurrentVersion,
 		Global: config.GlobalConfig{
 			Folder:        gitFolder,
 			CredentialSSH: &config.SSHGlobal{SSHFolder: sshFolder},

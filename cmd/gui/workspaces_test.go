@@ -17,7 +17,7 @@ func newWorkspaceTestApp(t *testing.T) (*App, string) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "gitbox.json")
 	cfg := &config.Config{
-		Version: 2,
+		Version: config.CurrentVersion,
 		Global:  config.GlobalConfig{Folder: dir},
 		Accounts: map[string]config.Account{
 			"github-alice": {Provider: "github", URL: "https://github.com",
