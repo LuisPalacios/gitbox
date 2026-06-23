@@ -863,8 +863,9 @@ func (a *App) AdoptOrphans(repoKeys []string) AdoptResultDTO {
 
 		repoPath := o.Path
 
-		// Relocate if needed.
-		if o.NeedsRelocate && o.ExpectedPath != "" {
+		// Relocate if needed — but never for nested clones, which must stay
+		// inside their container; they adopt in place with an absolute clone_folder.
+		if o.NeedsRelocate && !o.Nested && o.ExpectedPath != "" {
 			if _, statErr := os.Stat(o.ExpectedPath); statErr != nil {
 				if mkErr := os.MkdirAll(filepath.Dir(o.ExpectedPath), 0o755); mkErr == nil {
 					if mvErr := os.Rename(o.Path, o.ExpectedPath); mvErr == nil {
@@ -4691,20 +4692,6 @@ func gatherRequiredTools(cfg *config.Config) map[string]string {
 		required["ssh"] = "you have accounts using the ssh credential type"
 		required["ssh-keygen"] = "you have accounts using the ssh credential type"
 		required["ssh-add"] = "you have accounts using the ssh credential type"
-	}
-	var anyTmuxinator bool
-	for _, ws := range cfg.Workspaces {
-		if ws.Type == "tmuxinator" {
-			anyTmuxinator = true
-			break
-		}
-	}
-	if anyTmuxinator {
-		required["tmux"] = "you have tmuxinator workspaces"
-		required["tmuxinator"] = "you have tmuxinator workspaces"
-		if runtime.GOOS == "windows" {
-			required["wsl"] = "tmuxinator runs inside WSL on Windows"
-		}
 	}
 	return required
 }

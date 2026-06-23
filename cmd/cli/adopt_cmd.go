@@ -17,6 +17,7 @@ import (
 var (
 	adoptDryRun bool
 	adoptAll    bool
+	adoptPath   string
 )
 
 var adoptCmd = &cobra.Command{
@@ -39,6 +40,7 @@ Use --dry-run to preview without making changes.`,
 func init() {
 	adoptCmd.Flags().BoolVar(&adoptDryRun, "dry-run", false, "show what would happen without making changes")
 	adoptCmd.Flags().BoolVar(&adoptAll, "all", false, "adopt all matched orphans without prompting")
+	adoptCmd.Flags().StringVar(&adoptPath, "path", "", "additionally scan this folder for clones to adopt (stored with an absolute clone_folder)")
 }
 
 func runAdopt(cmd *cobra.Command, args []string) error {
@@ -47,7 +49,11 @@ func runAdopt(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	orphans, err := adopt.FindOrphans(cfg)
+	var extraRoots []string
+	if adoptPath != "" {
+		extraRoots = append(extraRoots, config.ExpandTilde(adoptPath))
+	}
+	orphans, err := adopt.FindOrphansIn(cfg, extraRoots)
 	if err != nil {
 		return fmt.Errorf("scanning for orphans: %w", err)
 	}
@@ -132,8 +138,9 @@ func runAdopt(cmd *cobra.Command, args []string) error {
 
 		repoPath := o.Path
 
-		// Relocate if needed.
-		if o.NeedsRelocate {
+		// Relocate if needed — but never for nested clones inside a container,
+		// which must stay put and adopt in place with an absolute clone_folder.
+		if o.NeedsRelocate && !o.Nested {
 			if !adoptAll {
 				fmt.Printf("  Move from %s\n    to %s? [Y/n] ",
 					tildePrefix(o.Path, home), tildePrefix(o.ExpectedPath, home))

@@ -1,6 +1,11 @@
 // Package config handles loading, saving, and migrating gitbox configuration files.
 package config
 
+import (
+	"path/filepath"
+	"strings"
+)
+
 // Config represents the top-level gitbox configuration (v2 format).
 type Config struct {
 	Schema     string               `json:"$schema,omitempty"`
@@ -33,7 +38,17 @@ func (c *Config) OrderedSourceKeys() []string {
 
 // GlobalConfig holds global settings.
 type GlobalConfig struct {
-	Folder          string           `json:"folder"`
+	Folder string `json:"folder"`
+
+	// ExtraFolders are additional root directories scanned for clones and
+	// VSCode .code-workspace files, on top of Folder. They let gitbox onboard
+	// repositories that live outside the standard folder/account/org/repo tree.
+	ExtraFolders []string `json:"extra_folders,omitempty"`
+	// NestedScanDepth is how many directory levels gitbox descends below a
+	// container repo (Repo.Container) when discovering nested clones. Zero/unset
+	// means the default — see NestedScanDepthOrDefault. 1 = immediate children.
+	NestedScanDepth int `json:"nested_scan_depth,omitempty"`
+
 	Language        string           `json:"language,omitempty"`
 	PeriodicSync    string           `json:"periodic_sync,omitempty"`
 	Window          *WindowState     `json:"window,omitempty"`
@@ -79,6 +94,61 @@ type GlobalConfig struct {
 	// Pointer semantics so an absent field defaults to true — existing
 	// configs and fresh installs both opt in by default.
 	CheckGlobalGitignore *bool `json:"check_global_gitignore,omitempty"`
+}
+
+// DefaultNestedScanDepth is the depth gitbox descends below a container repo
+// when NestedScanDepth is unset. 1 means only the container's immediate child
+// directories are inspected for nested clones.
+const DefaultNestedScanDepth = 1
+
+// NestedScanDepthOrDefault returns the configured nested-scan depth, or
+// DefaultNestedScanDepth when unset (zero) or negative. It never mutates the
+// config so an unset value stays omitted from the persisted JSON.
+func (g GlobalConfig) NestedScanDepthOrDefault() int {
+	if g.NestedScanDepth <= 0 {
+		return DefaultNestedScanDepth
+	}
+	return g.NestedScanDepth
+}
+
+// AddExtraFolder appends path to ExtraFolders unless an equivalent root is
+// already present (compared after tilde-expansion + clean). Empty input is a
+// no-op. Returns true when the list changed.
+func (g *GlobalConfig) AddExtraFolder(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	want := extraFolderKey(path)
+	for _, p := range g.ExtraFolders {
+		if extraFolderKey(p) == want {
+			return false
+		}
+	}
+	g.ExtraFolders = append(g.ExtraFolders, path)
+	return true
+}
+
+// RemoveExtraFolder drops the entry matching path (compared after
+// tilde-expansion + clean). Returns true when the list changed.
+func (g *GlobalConfig) RemoveExtraFolder(path string) bool {
+	want := extraFolderKey(strings.TrimSpace(path))
+	out := g.ExtraFolders[:0]
+	changed := false
+	for _, p := range g.ExtraFolders {
+		if extraFolderKey(p) == want {
+			changed = true
+			continue
+		}
+		out = append(out, p)
+	}
+	g.ExtraFolders = out
+	return changed
+}
+
+// extraFolderKey normalizes a scan-root path for equality comparison.
+func extraFolderKey(p string) string {
+	return strings.ToLower(filepath.ToSlash(filepath.Clean(ExpandTilde(p))))
 }
 
 // EffectiveTerminals returns the user-facing terminal list for legacy
@@ -343,6 +413,10 @@ type Repo struct {
 	Email          string `json:"email,omitempty"`
 	IdFolder       string `json:"id_folder,omitempty"`    // overrides 2nd level dir (org). Default: part before / in repo key.
 	CloneFolder    string `json:"clone_folder,omitempty"` // overrides 3rd level dir (clone name). If absolute (/ ~ ../), replaces entire path.
+	// Container marks this clone as a multi-repo parent: gitbox descends into
+	// its working tree (up to Global.NestedScanDepth) to discover and onboard
+	// nested clones cloned there by the user's own tooling.
+	Container bool `json:"container,omitempty"`
 }
 
 // EffectiveCredentialType returns the credential type for this repo.
@@ -402,23 +476,14 @@ type MirrorRepo struct {
 	Error      string `json:"error,omitempty"`
 }
 
-// Workspace types.
-const (
-	WorkspaceTypeCode       = "codeWorkspace"
-	WorkspaceTypeTmuxinator = "tmuxinator"
-	WorkspaceLayoutWindows  = "windowsPerRepo"
-	WorkspaceLayoutSplit    = "splitPanes"
-)
-
-// Workspace bundles a set of clones that belong together for a task.
-// The map key in Config.Workspaces is the human-friendly workspace ID.
+// Workspace is a discovered VSCode .code-workspace file. Workspaces are
+// read-only in gitbox: they are discovered on disk and cached here, never
+// created or generated. The map key in Config.Workspaces is the workspace ID.
 type Workspace struct {
-	Type       string            `json:"type"`                 // "codeWorkspace" | "tmuxinator"
 	Name       string            `json:"name,omitempty"`       // human-friendly display name
-	File       string            `json:"file,omitempty"`       // absolute path to generated file on disk
-	Layout     string            `json:"layout,omitempty"`     // tmuxinator only: "windowsPerRepo" | "splitPanes"
-	Members    []WorkspaceMember `json:"members"`              // ordered list of member clones
-	Discovered bool              `json:"discovered,omitempty"` // true if adopted from disk
+	File       string            `json:"file,omitempty"`       // absolute path to the .code-workspace file on disk
+	Members    []WorkspaceMember `json:"members"`              // ordered list of member clones resolved from the file
+	Discovered bool              `json:"discovered,omitempty"` // always true — kept for forward/back compat of the cache
 }
 
 // WorkspaceMember references a single clone (by source + repo) inside a workspace.

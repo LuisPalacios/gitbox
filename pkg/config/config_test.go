@@ -478,6 +478,7 @@ func TestParseV2_DedupesWorkspaceMembers(t *testing.T) {
   "workspaces": {
     "dup": {
       "type": "codeWorkspace",
+      "discovered": true,
       "members": [
         {"source": "a", "repo": "o/r"},
         {"source": "a", "repo": "o/r"},

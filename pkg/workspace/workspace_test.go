@@ -2,16 +2,15 @@ package workspace
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 )
 
-// newTestConfig builds a minimal config with two sources under a known
-// global folder, so path resolution is deterministic.
+// newTestConfig builds a minimal config with two sources under a known global
+// folder, so path resolution is deterministic.
 func newTestConfig(t *testing.T) *config.Config {
 	t.Helper()
 	root := t.TempDir()
@@ -19,7 +18,7 @@ func newTestConfig(t *testing.T) *config.Config {
 		Version: 2,
 		Global:  config.GlobalConfig{Folder: root},
 		Accounts: map[string]config.Account{
-			"github-test": {Provider: "github", URL: "https://github.com", Username: "u", Name: "N", Email: "e@e"},
+			"github-test":  {Provider: "github", URL: "https://github.com", Username: "u", Name: "N", Email: "e@e"},
 			"forgejo-test": {Provider: "forgejo", URL: "https://f.local", Username: "u", Name: "N", Email: "e@e"},
 		},
 		Sources: map[string]config.Source{
@@ -41,317 +40,168 @@ func newTestConfig(t *testing.T) *config.Config {
 	}
 }
 
-func TestGenerate_UnknownWorkspace(t *testing.T) {
-	cfg := newTestConfig(t)
-	if _, err := Generate(cfg, "nope"); err == nil {
-		t.Error("expected error for unknown workspace")
+func writeFile(t *testing.T, p, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatalf("write %s: %v", p, err)
 	}
 }
 
-func TestGenerate_EmptyMembers(t *testing.T) {
-	cfg := newTestConfig(t)
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {Type: config.WorkspaceTypeCode, Members: nil},
-	}
-	if _, err := Generate(cfg, "feat-x"); err == nil {
-		t.Error("expected error for empty members")
-	}
-}
-
-func TestGenerate_CodeWorkspaceBasic(t *testing.T) {
-	cfg := newTestConfig(t)
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {
-			Type: config.WorkspaceTypeCode,
-			Name: "Feature X",
-			Members: []config.WorkspaceMember{
-				{Source: "github-test", Repo: "team/frontend"},
-				{Source: "github-test", Repo: "team/backend"},
-			},
-		},
-	}
-
-	res, err := Generate(cfg, "feat-x")
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
-
-	if !strings.HasSuffix(res.File, "feat-x.code-workspace") {
-		t.Errorf("file = %q, want suffix feat-x.code-workspace", res.File)
-	}
-
-	var parsed struct {
-		Folders []struct {
-			Path string `json:"path"`
-			Name string `json:"name"`
-		} `json:"folders"`
-		Settings map[string]any `json:"settings"`
-	}
-	if err := json.Unmarshal(res.Content, &parsed); err != nil {
-		t.Fatalf("parse generated JSON: %v", err)
-	}
-	if len(parsed.Folders) != 2 {
-		t.Fatalf("folders = %d, want 2", len(parsed.Folders))
-	}
-	if parsed.Folders[0].Name != "frontend" {
-		t.Errorf("folder[0].name = %q, want frontend", parsed.Folders[0].Name)
-	}
-	if parsed.Folders[1].Name != "backend" {
-		t.Errorf("folder[1].name = %q, want backend", parsed.Folders[1].Name)
-	}
-
-	// Paths should be relative (members share a common ancestor with the file).
-	for _, f := range parsed.Folders {
-		if filepath.IsAbs(f.Path) {
-			t.Errorf("path %q should be relative to the workspace file", f.Path)
+// makeRepoDir creates the on-disk directory ResolveRepoPath would compute.
+func makeRepoDir(t *testing.T, cfg *config.Config, srcKey, repoKey string) string {
+	t.Helper()
+	src := cfg.Sources[srcKey]
+	folder := src.EffectiveFolder(srcKey)
+	parts := []string{cfg.Global.Folder, folder}
+	if i := filepath.ToSlash(repoKey); len(i) > 0 {
+		if j := indexByte(repoKey, '/'); j >= 0 {
+			parts = append(parts, repoKey[:j], repoKey[j+1:])
+		} else {
+			parts = append(parts, repoKey)
 		}
 	}
-
-	// Default settings block must contain the multi-repo git detection keys.
-	wantKeys := []string{
-		"git.autoRepositoryDetection",
-		"git.repositoryScanMaxDepth",
-		"git.openRepositoryInParentFolders",
+	dir := filepath.Join(parts...)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir repo dir: %v", err)
 	}
-	for _, k := range wantKeys {
-		if _, ok := parsed.Settings[k]; !ok {
-			t.Errorf("settings missing key %q", k)
+	return dir
+}
+
+func indexByte(s string, c byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == c {
+			return i
 		}
 	}
+	return -1
 }
 
-func TestGenerate_CodeWorkspaceCrossSourceAbsolutePath(t *testing.T) {
-	cfg := newTestConfig(t)
-	// Cross-source members should still share the global folder as common
-	// ancestor, so paths can remain relative. Confirm we resolve to an
-	// existing shared prefix and the generated file lives there.
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {
-			Type: config.WorkspaceTypeCode,
-			Members: []config.WorkspaceMember{
-				{Source: "github-test", Repo: "team/frontend"},
-				{Source: "forgejo-test", Repo: "team/infra"},
-			},
-		},
+func writeCodeWorkspace(t *testing.T, file string, folders ...string) {
+	t.Helper()
+	body := struct {
+		Folders []map[string]string `json:"folders"`
+	}{}
+	for _, f := range folders {
+		body.Folders = append(body.Folders, map[string]string{"path": f})
 	}
+	buf, _ := json.MarshalIndent(body, "", "  ")
+	writeFile(t, file, string(buf))
+}
 
-	res, err := Generate(cfg, "feat-x")
+func TestDiscover_CodeWorkspaceResolvesMembers(t *testing.T) {
+	cfg := newTestConfig(t)
+	frontend := makeRepoDir(t, cfg, "github-test", "team/frontend")
+	backend := makeRepoDir(t, cfg, "github-test", "team/backend")
+
+	wsFile := filepath.Join(cfg.Global.Folder, "feature-x.code-workspace")
+	writeCodeWorkspace(t, wsFile, frontend, backend)
+
+	found, err := Discover(cfg)
 	if err != nil {
-		t.Fatalf("Generate: %v", err)
+		t.Fatalf("Discover: %v", err)
 	}
-	if filepath.Dir(res.File) != cfg.Global.Folder {
-		t.Errorf("file %q should live at common ancestor %q", res.File, cfg.Global.Folder)
+	if len(found) != 1 {
+		t.Fatalf("found = %d, want 1", len(found))
+	}
+	if found[0].Key != "feature-x" {
+		t.Errorf("key = %q, want feature-x", found[0].Key)
+	}
+	if len(found[0].Members) != 2 {
+		t.Errorf("members = %d, want 2", len(found[0].Members))
 	}
 }
 
-func TestGenerate_CodeWorkspaceExplicitFile(t *testing.T) {
+func TestRefreshCache_PopulatesAndDetectsChange(t *testing.T) {
 	cfg := newTestConfig(t)
-	explicit := filepath.Join(t.TempDir(), "custom.code-workspace")
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {
-			Type: config.WorkspaceTypeCode,
-			File: explicit,
-			Members: []config.WorkspaceMember{
-				{Source: "github-test", Repo: "team/frontend"},
-			},
-		},
-	}
-	res, err := Generate(cfg, "feat-x")
+	frontend := makeRepoDir(t, cfg, "github-test", "team/frontend")
+	wsFile := filepath.Join(cfg.Global.Folder, "feat.code-workspace")
+	writeCodeWorkspace(t, wsFile, frontend)
+
+	changed, err := RefreshCache(cfg)
 	if err != nil {
-		t.Fatalf("Generate: %v", err)
+		t.Fatalf("RefreshCache: %v", err)
 	}
-	if res.File != explicit {
-		t.Errorf("file = %q, want %q (explicit override)", res.File, explicit)
+	if !changed {
+		t.Fatal("first refresh should report changed")
 	}
-}
+	w, ok := cfg.Workspaces["feat"]
+	if !ok {
+		t.Fatal("cache missing feat workspace")
+	}
+	if !w.Discovered || w.File != wsFile {
+		t.Errorf("workspace = %+v, want Discovered + File=%s", w, wsFile)
+	}
 
-func TestGenerate_TmuxinatorWindowsPerRepo(t *testing.T) {
-	if !tmuxinatorSupported() {
-		t.Skipf("tmuxinator not supported on %s", runtime.GOOS)
-	}
-	cfg := newTestConfig(t)
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {
-			Type: config.WorkspaceTypeTmuxinator,
-			Name: "Feature X",
-			Members: []config.WorkspaceMember{
-				{Source: "github-test", Repo: "team/frontend"},
-				{Source: "github-test", Repo: "team/backend"},
-			},
-		},
-	}
-	res, err := Generate(cfg, "feat-x")
+	// Second refresh with nothing changed must report no change.
+	changed, err = RefreshCache(cfg)
 	if err != nil {
-		t.Fatalf("Generate: %v", err)
+		t.Fatalf("RefreshCache 2: %v", err)
 	}
-	body := string(res.Content)
-	if !strings.Contains(body, "name: Feature X") {
-		t.Errorf("body missing name line; got:\n%s", body)
+	if changed {
+		t.Error("second refresh should report no change")
 	}
-	if !strings.Contains(body, "frontend") || !strings.Contains(body, "backend") {
-		t.Errorf("body missing window names; got:\n%s", body)
+
+	// Removing the file on disk should drop it from the cache (changed=true).
+	if err := os.Remove(wsFile); err != nil {
+		t.Fatalf("remove: %v", err)
 	}
-	if !strings.Contains(body, "root:") {
-		t.Errorf("body missing root directives; got:\n%s", body)
+	changed, _ = RefreshCache(cfg)
+	if !changed || len(cfg.Workspaces) != 0 {
+		t.Errorf("after delete: changed=%v workspaces=%d, want true/0", changed, len(cfg.Workspaces))
 	}
 }
 
-func TestGenerate_TmuxinatorSplitPanes(t *testing.T) {
-	if !tmuxinatorSupported() {
-		t.Skipf("tmuxinator not supported on %s", runtime.GOOS)
-	}
+func TestDiscover_ScansExtraFolders(t *testing.T) {
 	cfg := newTestConfig(t)
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {
-			Type:   config.WorkspaceTypeTmuxinator,
-			Layout: config.WorkspaceLayoutSplit,
-			Members: []config.WorkspaceMember{
-				{Source: "github-test", Repo: "team/frontend"},
-				{Source: "github-test", Repo: "team/backend"},
-			},
-		},
-	}
-	res, err := Generate(cfg, "feat-x")
+	extra := t.TempDir()
+	cfg.Global.ExtraFolders = []string{extra}
+	wsFile := filepath.Join(extra, "side.code-workspace")
+	writeCodeWorkspace(t, wsFile) // no resolvable members, still discovered
+
+	found, err := Discover(cfg)
 	if err != nil {
-		t.Fatalf("Generate: %v", err)
+		t.Fatalf("Discover: %v", err)
 	}
-	body := string(res.Content)
-	if !strings.Contains(body, "layout: tiled") {
-		t.Errorf("split-panes output missing layout: tiled; got:\n%s", body)
-	}
-	if !strings.Contains(body, "panes:") {
-		t.Errorf("body missing panes directive")
+	if len(found) != 1 || found[0].Key != "side" {
+		t.Fatalf("found = %+v, want one 'side' from the extra folder", found)
 	}
 }
 
-func TestGenerate_TmuxinatorUnsupportedPlatform(t *testing.T) {
-	if tmuxinatorSupported() {
-		t.Skipf("platform %s supports tmuxinator; this negative test is moot", runtime.GOOS)
-	}
+func TestTentativeContainers_FlagsManagedCloneWithWorkspaceFile(t *testing.T) {
 	cfg := newTestConfig(t)
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {
-			Type: config.WorkspaceTypeTmuxinator,
-			Members: []config.WorkspaceMember{
-				{Source: "github-test", Repo: "team/frontend"},
-			},
-		},
+	// Make the frontend clone a container candidate by dropping a
+	// .code-workspace at its root.
+	frontend := makeRepoDir(t, cfg, "github-test", "team/frontend")
+	writeCodeWorkspace(t, filepath.Join(frontend, "team.code-workspace"))
+
+	got := TentativeContainers(cfg)
+	if len(got) != 1 || got[0].Source != "github-test" || got[0].Repo != "team/frontend" {
+		t.Fatalf("tentative = %+v, want github-test/team/frontend", got)
 	}
-	if _, err := Generate(cfg, "feat-x"); err == nil {
-		t.Error("expected error for unsupported platform")
+
+	// Once flagged a container, it's no longer tentative.
+	src := cfg.Sources["github-test"]
+	repo := src.Repos["team/frontend"]
+	repo.Container = true
+	src.Repos["team/frontend"] = repo
+	cfg.Sources["github-test"] = src
+	if got := TentativeContainers(cfg); len(got) != 0 {
+		t.Errorf("after flagging: tentative = %+v, want none", got)
 	}
 }
 
-func TestBuildOpenCommand_CodeWorkspace(t *testing.T) {
-	cfg := newTestConfig(t)
-	cfg.Global.Editors = []config.EditorEntry{{Name: "VS Code", Command: "code"}}
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {
-			Type: config.WorkspaceTypeCode,
-			File: "/tmp/feat-x.code-workspace",
-			Members: []config.WorkspaceMember{
-				{Source: "github-test", Repo: "team/frontend"},
-			},
-		},
+func TestUniqueKey_DisambiguatesCollisions(t *testing.T) {
+	used := map[string]bool{}
+	if k := uniqueKey("proj", used); k != "proj" {
+		t.Errorf("first = %q, want proj", k)
 	}
-	oc, err := BuildOpenCommand(cfg, "feat-x")
-	if err != nil {
-		t.Fatalf("BuildOpenCommand: %v", err)
+	if k := uniqueKey("proj", used); k != "proj-2" {
+		t.Errorf("second = %q, want proj-2", k)
 	}
-	if oc.Cmd.Path == "" && oc.Cmd.Args[0] != "code" {
-		t.Errorf("unexpected cmd: %v", oc.Cmd.Args)
+	if k := uniqueKey("proj", used); k != "proj-3" {
+		t.Errorf("third = %q, want proj-3", k)
 	}
-	if len(oc.Cmd.Args) < 2 || !strings.HasSuffix(oc.Cmd.Args[1], "feat-x.code-workspace") {
-		t.Errorf("cmd args = %v, want [code .../feat-x.code-workspace]", oc.Cmd.Args)
-	}
-}
-
-func TestBuildOpenCommand_NoEditor(t *testing.T) {
-	cfg := newTestConfig(t)
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {
-			Type: config.WorkspaceTypeCode,
-			File: "/tmp/feat-x.code-workspace",
-			Members: []config.WorkspaceMember{
-				{Source: "github-test", Repo: "team/frontend"},
-			},
-		},
-	}
-	if _, err := BuildOpenCommand(cfg, "feat-x"); err == nil {
-		t.Error("expected error when no editors configured")
-	}
-}
-
-func TestBuildOpenCommand_NoFileRecorded(t *testing.T) {
-	cfg := newTestConfig(t)
-	cfg.Global.Editors = []config.EditorEntry{{Name: "VS Code", Command: "code"}}
-	cfg.Workspaces = map[string]config.Workspace{
-		"feat-x": {
-			Type: config.WorkspaceTypeCode,
-			Members: []config.WorkspaceMember{
-				{Source: "github-test", Repo: "team/frontend"},
-			},
-		},
-	}
-	if _, err := BuildOpenCommand(cfg, "feat-x"); err == nil {
-		t.Error("expected error when file is not yet generated")
-	}
-}
-
-func TestCommonAncestor(t *testing.T) {
-	// Build absolute paths in a platform-neutral way.
-	base := filepath.Join(string(filepath.Separator)+"a", "b")
-	p1 := filepath.Join(base, "c", "d")
-	p2 := filepath.Join(base, "c", "e")
-	p3 := filepath.Join(base, "f")
-
-	got := commonAncestor([]string{p1, p2})
-	want := filepath.Join(base, "c")
-	if got != want {
-		t.Errorf("commonAncestor(%q, %q) = %q, want %q", p1, p2, got, want)
-	}
-
-	got = commonAncestor([]string{p1, p2, p3})
-	if got != base {
-		t.Errorf("three-way ancestor = %q, want %q", got, base)
-	}
-
-	got = commonAncestor([]string{p1})
-	if got != filepath.Join(base, "c") {
-		t.Errorf("single-path ancestor = %q, want %q", got, filepath.Join(base, "c"))
-	}
-}
-
-func TestExpandTerminalArgs(t *testing.T) {
-	got := expandTerminalArgs([]string{"--title", "ws", "{command}"}, []string{"tmuxinator", "start", "feat-x"})
-	want := []string{"--title", "ws", "tmuxinator", "start", "feat-x"}
-	if !equalSlices(got, want) {
-		t.Errorf("got %v, want %v", got, want)
-	}
-
-	// Trailing template with no {command} should append.
-	got = expandTerminalArgs([]string{"--new-tab"}, []string{"tmuxinator", "start", "feat-x"})
-	want = []string{"--new-tab", "tmuxinator", "start", "feat-x"}
-	if !equalSlices(got, want) {
-		t.Errorf("got %v, want %v", got, want)
-	}
-
-	// {path} is dropped for workspace launches.
-	got = expandTerminalArgs([]string{"--cwd", "{path}", "{command}"}, []string{"tmuxinator", "start", "feat-x"})
-	want = []string{"--cwd", "tmuxinator", "start", "feat-x"}
-	if !equalSlices(got, want) {
-		t.Errorf("got %v, want %v", got, want)
-	}
-}
-
-func equalSlices(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }

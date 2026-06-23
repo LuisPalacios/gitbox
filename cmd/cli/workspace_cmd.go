@@ -4,25 +4,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
-	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/workspace"
 	"github.com/spf13/cobra"
 )
 
 var workspaceCmd = &cobra.Command{
 	Use:   "workspace",
-	Short: "Manage multi-repo workspaces (VS Code, tmuxinator)",
+	Short: "List and open discovered VS Code workspaces (read-only)",
+	Long: `Workspaces are read-only in gitbox. gitbox discovers existing
+*.code-workspace files under the configured folders and lists them so I can
+open one in VS Code. It never creates, edits, generates, or deletes them.`,
 }
 
 // --- workspace list ---
 
 var workspaceListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List all workspaces",
+	Short: "List discovered workspaces",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := loadConfig()
 		if err != nil {
@@ -36,20 +37,16 @@ var workspaceListCmd = &cobra.Command{
 		}
 
 		if len(cfg.Workspaces) == 0 {
-			fmt.Println("No workspaces configured.")
+			fmt.Println("No workspaces discovered. Run 'gitbox workspace discover' to refresh.")
 			return nil
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintf(w, "KEY\tTYPE\tMEMBERS\tFILE\n")
-		fmt.Fprintf(w, "───\t────\t───────\t────\n")
+		fmt.Fprintf(w, "KEY\tMEMBERS\tFILE\n")
+		fmt.Fprintf(w, "───\t───────\t────\n")
 		for _, key := range cfg.OrderedWorkspaceKeys() {
 			ws := cfg.Workspaces[key]
-			file := ws.File
-			if file == "" {
-				file = "(not generated)"
-			}
-			fmt.Fprintf(w, "%s\t%s\t%d\t%s\n", key, ws.Type, len(ws.Members), file)
+			fmt.Fprintf(w, "%s\t%d\t%s\n", key, len(ws.Members), ws.File)
 		}
 		w.Flush()
 		return nil
@@ -78,18 +75,7 @@ var workspaceShowCmd = &cobra.Command{
 		}
 
 		fmt.Printf("%s  %s\n", colorize(args[0], colorWhite), ws.EffectiveName(args[0]))
-		fmt.Printf("  type:    %s\n", ws.Type)
-		if ws.Layout != "" {
-			fmt.Printf("  layout:  %s\n", ws.Layout)
-		}
-		if ws.File != "" {
-			fmt.Printf("  file:    %s\n", ws.File)
-		} else {
-			fmt.Printf("  file:    (not generated)\n")
-		}
-		if ws.Discovered {
-			fmt.Printf("  discovered: true\n")
-		}
+		fmt.Printf("  file:    %s\n", ws.File)
 		fmt.Printf("  members: %d\n", len(ws.Members))
 		for _, m := range ws.Members {
 			fmt.Printf("    - %s/%s\n", m.Source, m.Repo)
@@ -98,221 +84,23 @@ var workspaceShowCmd = &cobra.Command{
 	},
 }
 
-// --- workspace add ---
-
-var (
-	workspaceAddType    string
-	workspaceAddName    string
-	workspaceAddFile    string
-	workspaceAddLayout  string
-	workspaceAddMembers []string
-)
-
-var workspaceAddCmd = &cobra.Command{
-	Use:   "add <workspace-key>",
-	Short: "Create a new workspace",
-	Long: `Creates a workspace entry in gitbox.json. Does NOT write the generated
-file to disk — use 'gitbox workspace generate' afterward (or 'open' to
-generate-and-launch in one step).
-
-Members are given as repeated --member source/repo-key flags:
-
-  gitbox workspace add my-feature \
-    --type codeWorkspace \
-    --member github-me/me/frontend \
-    --member gitea-work/team/backend`,
-	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig()
-		if err != nil {
-			return err
-		}
-		ws := config.Workspace{
-			Type:   workspaceAddType,
-			Name:   workspaceAddName,
-			File:   workspaceAddFile,
-			Layout: workspaceAddLayout,
-		}
-		for _, spec := range workspaceAddMembers {
-			m, err := parseMemberSpec(spec)
-			if err != nil {
-				return err
-			}
-			ws.Members = append(ws.Members, m)
-		}
-		if err := cfg.AddWorkspace(args[0], ws); err != nil {
-			return err
-		}
-		if err := saveConfig(cfg); err != nil {
-			return err
-		}
-		fmt.Printf("Workspace %q created (%s, %d member(s))\n", args[0], ws.Type, len(ws.Members))
-		return nil
-	},
-}
-
-// --- workspace delete ---
-
-var workspaceDeleteCmd = &cobra.Command{
-	Use:   "delete <workspace-key>",
-	Short: "Delete a workspace (does not remove the generated file)",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig()
-		if err != nil {
-			return err
-		}
-		if err := cfg.DeleteWorkspace(args[0]); err != nil {
-			return err
-		}
-		if err := saveConfig(cfg); err != nil {
-			return err
-		}
-		fmt.Printf("Workspace %q deleted from config\n", args[0])
-		return nil
-	},
-}
-
-// --- workspace add-member / delete-member ---
-
-var workspaceAddMemberCmd = &cobra.Command{
-	Use:   "add-member <workspace-key> <source/repo-key>",
-	Short: "Add a member clone to a workspace",
-	Args:  cobra.ExactArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig()
-		if err != nil {
-			return err
-		}
-		m, err := parseMemberSpec(args[1])
-		if err != nil {
-			return err
-		}
-		if err := cfg.AddWorkspaceMember(args[0], m); err != nil {
-			return err
-		}
-		if err := saveConfig(cfg); err != nil {
-			return err
-		}
-		fmt.Printf("Added %s/%s to workspace %q\n", m.Source, m.Repo, args[0])
-		return nil
-	},
-}
-
-var workspaceDeleteMemberCmd = &cobra.Command{
-	Use:   "delete-member <workspace-key> <source/repo-key>",
-	Short: "Remove a member clone from a workspace",
-	Args:  cobra.ExactArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig()
-		if err != nil {
-			return err
-		}
-		m, err := parseMemberSpec(args[1])
-		if err != nil {
-			return err
-		}
-		if err := cfg.DeleteWorkspaceMember(args[0], m.Source, m.Repo); err != nil {
-			return err
-		}
-		if err := saveConfig(cfg); err != nil {
-			return err
-		}
-		fmt.Printf("Removed %s/%s from workspace %q\n", m.Source, m.Repo, args[0])
-		return nil
-	},
-}
-
-// --- workspace generate ---
-
-var workspaceGenerateDryRun bool
-
-var workspaceGenerateCmd = &cobra.Command{
-	Use:   "generate <workspace-key>",
-	Short: "Generate (or regenerate) the workspace file on disk",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig()
-		if err != nil {
-			return err
-		}
-		result, err := workspace.Generate(cfg, args[0])
-		if err != nil {
-			return err
-		}
-		if workspaceGenerateDryRun {
-			fmt.Printf("Would write %s (%d bytes)\n", result.File, len(result.Content))
-			fmt.Println("--- content ---")
-			fmt.Print(string(result.Content))
-			return nil
-		}
-		if err := writeWorkspaceFile(result); err != nil {
-			return err
-		}
-		// Persist the chosen file path back to config so subsequent 'open'
-		// calls know where it lives.
-		ws := cfg.Workspaces[args[0]]
-		if ws.File != result.File {
-			ws.File = result.File
-			if err := cfg.UpdateWorkspace(args[0], ws); err != nil {
-				return err
-			}
-			if err := saveConfig(cfg); err != nil {
-				return err
-			}
-		}
-		fmt.Printf("Generated %s (%d bytes)\n", result.File, len(result.Content))
-		return nil
-	},
-}
-
 // --- workspace open ---
 
 var workspaceOpenCmd = &cobra.Command{
 	Use:   "open <workspace-key>",
-	Short: "Open a workspace with its configured launcher",
-	Long: `Opens the workspace file with the first editor (for code workspaces) or
-the first terminal running tmuxinator (for tmuxinator workspaces) from
-global.editors / global.terminals in gitbox.json.
-
-If the file hasn't been generated yet, this command generates it first.`,
+	Short: "Open a discovered workspace in the configured editor",
+	Long: `Opens the discovered *.code-workspace file with the first editor from
+global.editors in gitbox.json.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := loadConfig()
 		if err != nil {
 			return err
 		}
-
-		ws, ok := cfg.Workspaces[args[0]]
-		if !ok {
+		if _, ok := cfg.Workspaces[args[0]]; !ok {
 			return fmt.Errorf("workspace %q not found", args[0])
 		}
-
-		// Generate (or regenerate) the file so it is always current before
-		// we hand it off to the launcher.
-		result, err := workspace.Generate(cfg, args[0])
-		if err != nil {
-			return err
-		}
-		if err := writeWorkspaceFile(result); err != nil {
-			return err
-		}
-		if ws.File != result.File {
-			ws.File = result.File
-			if err := cfg.UpdateWorkspace(args[0], ws); err != nil {
-				return err
-			}
-			if err := saveConfig(cfg); err != nil {
-				return err
-			}
-		}
-
-		// Rebuild the open command against the updated config.
-		cfg2, err := loadConfig()
-		if err != nil {
-			return err
-		}
-		oc, err := workspace.BuildOpenCommand(cfg2, args[0])
+		oc, err := workspace.BuildOpenCommand(cfg, args[0])
 		if err != nil {
 			return err
 		}
@@ -327,140 +115,69 @@ If the file hasn't been generated yet, this command generates it first.`,
 
 // --- workspace discover ---
 
-var workspaceDiscoverApply bool
-
 var workspaceDiscoverCmd = &cobra.Command{
 	Use:   "discover",
-	Short: "Discover workspace files on disk and optionally adopt them",
-	Long: `Walks the gitbox-managed folder for *.code-workspace files and
-~/.tmuxinator/*.yml (plus the WSL-side equivalent on Windows), inferring
-member clones by matching folder paths against known sources/repos.
-
-Without --apply this is a read-only preview that prints three buckets:
-new (would be adopted), ambiguous (member matched ≥2 clones; needs human
-input), and skipped (key clash or no resolvable members).
-
-With --apply, every entry in the "new" bucket is added to gitbox.json
-with discovered: true.`,
+	Short: "Rescan for *.code-workspace files and refresh the cache",
+	Long: `Walks the standard folder and configured extra folders for
+*.code-workspace files, resolves their member clones, and refreshes the
+read-only workspace cache in gitbox.json.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := loadConfig()
 		if err != nil {
 			return err
 		}
-		result, err := workspace.Discover(cfg)
+		found, err := workspace.Discover(cfg)
 		if err != nil {
 			return err
 		}
 
+		changed, err := workspace.RefreshCache(cfg)
+		if err != nil {
+			return err
+		}
+		if changed {
+			if err := saveConfig(cfg); err != nil {
+				return fmt.Errorf("saving config: %w", err)
+			}
+		}
+
 		if jsonOutput {
-			payload := map[string]any{
-				"new":       result.New,
-				"ambiguous": result.Ambiguous,
-				"skipped":   result.Skipped,
-			}
-			if workspaceDiscoverApply {
-				payload["adopted"] = AdoptDiscoveredAndSave(cfg, result)
-			}
-			data, _ := json.MarshalIndent(payload, "", "    ")
+			data, _ := json.MarshalIndent(map[string]any{
+				"found":   found,
+				"changed": changed,
+			}, "", "    ")
 			fmt.Fprintln(os.Stdout, string(data))
 			return nil
 		}
 
-		printDiscoverBucket("Adoptable", result.New)
-		printDiscoverBucket("Ambiguous", result.Ambiguous)
-		printDiscoverBucket("Skipped", result.Skipped)
-
-		if workspaceDiscoverApply {
-			adopted := workspace.AdoptDiscovered(cfg, result)
-			if len(adopted) > 0 {
-				if err := saveConfig(cfg); err != nil {
-					return fmt.Errorf("saving config: %w", err)
-				}
-				fmt.Printf("\nAdopted %d workspace(s): %s\n", len(adopted), strings.Join(adopted, ", "))
-			} else {
-				fmt.Println("\nNothing to adopt.")
+		if len(found) == 0 {
+			fmt.Println("No *.code-workspace files found.")
+			return nil
+		}
+		fmt.Printf("Discovered %d workspace(s):\n", len(found))
+		for _, f := range found {
+			members := make([]string, 0, len(f.Members))
+			for _, m := range f.Members {
+				members = append(members, m.Source+"/"+m.Repo)
 			}
+			fmt.Printf("  %s  %s\n", f.Key, f.File)
+			if len(members) > 0 {
+				fmt.Printf("      members: %s\n", strings.Join(members, ", "))
+			}
+		}
+		if changed {
+			fmt.Println("\nCache updated.")
+		} else {
+			fmt.Println("\nCache already up to date.")
 		}
 		return nil
 	},
 }
 
-// AdoptDiscoveredAndSave runs AdoptDiscovered and persists. JSON-output
-// callers use it so the response includes the adopted list.
-func AdoptDiscoveredAndSave(cfg *config.Config, result workspace.DiscoverResult) []string {
-	adopted := workspace.AdoptDiscovered(cfg, result)
-	if len(adopted) > 0 {
-		_ = saveConfig(cfg)
-	}
-	return adopted
-}
-
-func printDiscoverBucket(title string, entries []workspace.Discovered) {
-	if len(entries) == 0 {
-		return
-	}
-	fmt.Printf("\n%s (%d):\n", title, len(entries))
-	for _, d := range entries {
-		fmt.Printf("  %s  [%s]  %s\n", d.Key, d.Type, d.File)
-		for _, m := range d.Members {
-			fmt.Printf("      member %s/%s\n", m.Source, m.Repo)
-		}
-		for _, a := range d.Ambig {
-			fmt.Printf("      ambig  %s\n", a.Path)
-			for _, c := range a.Candidates {
-				fmt.Printf("              candidate %s/%s\n", c.Source, c.Repo)
-			}
-		}
-		for _, n := range d.NoMatch {
-			fmt.Printf("      no-match %s\n", n)
-		}
-		if d.Skipped != "" {
-			fmt.Printf("      reason %s\n", d.Skipped)
-		}
-	}
-}
-
-func parseMemberSpec(spec string) (config.WorkspaceMember, error) {
-	i := strings.IndexByte(spec, '/')
-	if i <= 0 || i == len(spec)-1 {
-		return config.WorkspaceMember{}, fmt.Errorf("invalid member spec %q: expected <source-key>/<repo-key>", spec)
-	}
-	return config.WorkspaceMember{
-		Source: spec[:i],
-		Repo:   spec[i+1:],
-	}, nil
-}
-
-func writeWorkspaceFile(result workspace.GenerateResult) error {
-	if err := os.MkdirAll(filepath.Dir(result.File), 0o755); err != nil {
-		return fmt.Errorf("creating parent dir for %s: %w", result.File, err)
-	}
-	if err := os.WriteFile(result.File, result.Content, 0o644); err != nil {
-		return fmt.Errorf("writing %s: %w", result.File, err)
-	}
-	return nil
-}
-
 func init() {
-	workspaceAddCmd.Flags().StringVar(&workspaceAddType, "type", "", "workspace type: codeWorkspace | tmuxinator")
-	workspaceAddCmd.Flags().StringVar(&workspaceAddName, "name", "", "human-friendly display name (defaults to key)")
-	workspaceAddCmd.Flags().StringVar(&workspaceAddFile, "file", "", "override the file path (else nearest common ancestor for codeWorkspace, ~/.tmuxinator/<key>.yml for tmuxinator)")
-	workspaceAddCmd.Flags().StringVar(&workspaceAddLayout, "layout", "", "tmuxinator layout: windowsPerRepo | splitPanes")
-	workspaceAddCmd.Flags().StringArrayVar(&workspaceAddMembers, "member", nil, "member clone as <source-key>/<repo-key>; repeatable")
-	workspaceAddCmd.MarkFlagRequired("type")
-
-	workspaceGenerateCmd.Flags().BoolVar(&workspaceGenerateDryRun, "dry-run", false, "print the generated content without writing it")
-
-	workspaceDiscoverCmd.Flags().BoolVar(&workspaceDiscoverApply, "apply", false, "adopt the discovered workspaces into gitbox.json")
-
 	workspaceCmd.AddCommand(
 		workspaceListCmd,
 		workspaceShowCmd,
-		workspaceAddCmd,
-		workspaceDeleteCmd,
-		workspaceAddMemberCmd,
-		workspaceDeleteMemberCmd,
-		workspaceGenerateCmd,
 		workspaceOpenCmd,
 		workspaceDiscoverCmd,
 	)

@@ -5,6 +5,7 @@ package adopt
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -29,37 +30,68 @@ type OrphanRepo struct {
 	NeedsRelocate       bool     // current path != expected path
 	LocalOnly           bool     // no remote — cannot adopt
 	AmbiguousCandidates []string // when multiple host-matching accounts tie with no disambiguator
+	Nested              bool     // found inside a container repo's working tree — adopt in place, never relocate
 }
 
-// FindOrphans walks the gitbox parent folder and returns repos not in config.
+// FindOrphans walks the gitbox parent folder, configured extra folders, and
+// container repos' working trees, returning repos not tracked in config.
 func FindOrphans(cfg *config.Config) ([]OrphanRepo, error) {
-	parentFolder := config.ExpandTilde(cfg.Global.Folder)
+	return FindOrphansIn(cfg, nil)
+}
 
-	// Find all repos on disk.
-	allPaths, err := git.FindRepos(parentFolder)
-	if err != nil {
-		return nil, err
-	}
-	sort.Strings(allPaths)
+// FindOrphansIn is FindOrphans with additional caller-supplied scan roots — used
+// by the on-demand "scan this folder" picker. Each root is scanned for top-level
+// clones; container repos (Repo.Container) are additionally scanned for nested
+// clones up to Global.NestedScanDepth. Clones found outside the standard layout
+// are reported with NeedsRelocate set, so adoption stores an absolute clone_folder.
+func FindOrphansIn(cfg *config.Config, extraRoots []string) ([]OrphanRepo, error) {
+	parentFolder := config.ExpandTilde(cfg.Global.Folder)
 
 	// Build set of tracked repo paths from config.
 	tracked := trackedPaths(cfg, parentFolder)
 
-	// Filter out submodules: any repo nested inside another repo is a submodule.
-	// Since paths are sorted, a nested repo always comes after its parent.
-	topLevel := filterSubmodules(allPaths)
+	// Pass 1 — flat scan of every root: the standard folder, configured extra
+	// folders, and any caller-supplied roots. FindRepos stops at each .git
+	// boundary, so this yields top-level clones only.
+	roots := gatherRoots(parentFolder, cfg.Global.ExtraFolders, extraRoots)
+	var flat []string
+	for _, root := range roots {
+		paths, err := git.FindRepos(root)
+		if err != nil {
+			continue // best-effort per root
+		}
+		flat = append(flat, paths...)
+	}
+	sort.Strings(flat)
+	flat = dedupPaths(flat)
+	candidates := filterSubmodules(flat)
+
+	// Pass 2 — nested clones inside container repos. These live inside another
+	// clone's working tree, so they must bypass the submodule filter. Container
+	// paths are also added to the root set so RelPath is computed against them.
+	depth := cfg.Global.NestedScanDepthOrDefault()
+	containerPaths := containerRepoPaths(cfg, parentFolder)
+	nestedSet := make(map[string]bool)
+	for _, cp := range containerPaths {
+		for _, np := range git.FindNestedRepos(cp, depth) {
+			candidates = append(candidates, np)
+			nestedSet[normPath(np)] = true
+		}
+	}
+	relRoots := append(append([]string{}, roots...), containerPaths...)
+
+	// Dedupe by normalized path across both passes.
+	candidates = dedupPaths(candidates)
 
 	var orphans []OrphanRepo
-	for _, repoPath := range topLevel {
+	for _, repoPath := range candidates {
 		absPath, _ := filepath.Abs(repoPath)
 		if tracked[normPath(absPath)] {
 			continue
 		}
 
-		o := OrphanRepo{Path: absPath}
-		if rel, err := filepath.Rel(parentFolder, absPath); err == nil {
-			o.RelPath = filepath.ToSlash(rel)
-		}
+		o := OrphanRepo{Path: absPath, Nested: nestedSet[normPath(absPath)]}
+		o.RelPath = relToRoots(relRoots, absPath)
 
 		// Read origin remote URL.
 		remoteURL, err := git.RemoteURL(absPath)
@@ -132,6 +164,103 @@ func filterSubmodules(sorted []string) []string {
 		}
 	}
 	return result
+}
+
+// gatherRoots returns the de-duplicated, tilde-expanded list of directories to
+// scan for top-level clones: the primary (standard) folder first, then the
+// configured extra folders, then any caller-supplied roots. Empty entries are
+// dropped; order is preserved with the primary folder first.
+func gatherRoots(primary string, configExtra, callerExtra []string) []string {
+	var roots []string
+	seen := make(map[string]bool)
+	add := func(p string) {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return
+		}
+		abs := filepath.Clean(config.ExpandTilde(p))
+		key := normPath(abs)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		roots = append(roots, abs)
+	}
+	add(primary)
+	for _, p := range configExtra {
+		add(p)
+	}
+	for _, p := range callerExtra {
+		add(p)
+	}
+	return roots
+}
+
+// containerRepoPaths resolves the on-disk path of every config repo flagged as a
+// container, keeping only those that currently exist on disk.
+func containerRepoPaths(cfg *config.Config, parentFolder string) []string {
+	var paths []string
+	for _, srcKey := range cfg.OrderedSourceKeys() {
+		src := cfg.Sources[srcKey]
+		sourceFolder := src.EffectiveFolder(srcKey)
+		for _, repoKey := range src.OrderedRepoKeys() {
+			repo := src.Repos[repoKey]
+			if !repo.Container {
+				continue
+			}
+			p := status.ResolveRepoPath(parentFolder, sourceFolder, repoKey, repo)
+			if info, err := os.Stat(p); err == nil && info.IsDir() {
+				paths = append(paths, p)
+			}
+		}
+	}
+	return paths
+}
+
+// dedupPaths removes duplicate paths by normalized form, preserving order.
+func dedupPaths(paths []string) []string {
+	seen := make(map[string]bool, len(paths))
+	out := paths[:0]
+	for _, p := range paths {
+		k := normPath(p)
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, p)
+	}
+	return out
+}
+
+// relToRoots returns absPath relative to the deepest root that contains it
+// (so nested clones display relative to their container), or the absolute path
+// when no root contains it.
+func relToRoots(roots []string, absPath string) string {
+	bestRoot := ""
+	for _, r := range roots {
+		if r == "" {
+			continue
+		}
+		if (normPath(absPath) == normPath(r) || isPathUnder(absPath, r)) && len(r) > len(bestRoot) {
+			bestRoot = r
+		}
+	}
+	if bestRoot != "" {
+		if rel, err := filepath.Rel(bestRoot, absPath); err == nil {
+			return filepath.ToSlash(rel)
+		}
+	}
+	return filepath.ToSlash(absPath)
+}
+
+// isPathUnder reports whether child is strictly inside parent.
+func isPathUnder(child, parent string) bool {
+	c := normPath(child)
+	p := normPath(parent)
+	if c == p {
+		return false
+	}
+	return strings.HasPrefix(c, p+"/")
 }
 
 // trackedPaths builds a set of normalized absolute paths for all configured repos.

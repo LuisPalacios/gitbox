@@ -113,6 +113,13 @@ func parseV2(data []byte) (*Config, error) {
 	// Extract JSON key order for sources and repos.
 	extractKeyOrder(data, &cfg)
 
+	// Workspaces are now a read-only discovered cache of VSCode .code-workspace
+	// files. Sanitize any legacy shape: drop tmuxinator entries and any
+	// user-created (non-discovered) workspace. The raw JSON is consulted for the
+	// pre-slim "type"/"discovered" fields since the struct no longer carries
+	// "type". In-memory only — the next save persists the cleaned shape.
+	sanitizeWorkspaces(&cfg, data)
+
 	// Defensive: collapse any duplicate workspace members that may have been
 	// hand-edited into the JSON or persisted by an older buggy code path.
 	// In-memory only — the next save will write back the deduped form.
@@ -130,6 +137,42 @@ func parseV2(data []byte) (*Config, error) {
 	MigrateLegacyTerminals(&cfg.Global)
 
 	return &cfg, nil
+}
+
+// sanitizeWorkspaces enforces the read-only-cache invariant on the workspaces
+// section: only discovered VSCode .code-workspace entries survive. Legacy
+// tmuxinator workspaces and user-created (non-discovered) entries are dropped.
+// The pre-slim "type"/"discovered" fields are read from the raw JSON because
+// the Workspace struct no longer carries "type". In-memory only.
+func sanitizeWorkspaces(cfg *Config, data []byte) {
+	if len(cfg.Workspaces) == 0 {
+		return
+	}
+	var raw struct {
+		Workspaces map[string]struct {
+			Type       string `json:"type"`
+			Discovered bool   `json:"discovered"`
+		} `json:"workspaces"`
+	}
+	_ = json.Unmarshal(data, &raw)
+	for key := range cfg.Workspaces {
+		meta, ok := raw.Workspaces[key]
+		// Drop tmuxinator entries and anything not marked discovered. Entries
+		// with no recorded type but discovered==true are kept (the new shape).
+		if !ok || !meta.Discovered || (meta.Type != "" && meta.Type != "codeWorkspace") {
+			delete(cfg.Workspaces, key)
+		}
+	}
+	// Drop removed keys from the order slice, preserving the rest.
+	if len(cfg.WorkspaceOrder) > 0 {
+		kept := cfg.WorkspaceOrder[:0]
+		for _, k := range cfg.WorkspaceOrder {
+			if _, ok := cfg.Workspaces[k]; ok {
+				kept = append(kept, k)
+			}
+		}
+		cfg.WorkspaceOrder = kept
+	}
 }
 
 // dedupWorkspaceMembers preserves member order while collapsing duplicates by
@@ -347,22 +390,7 @@ func validate(cfg *Config) error {
 			}
 		}
 	}
-	for name, w := range cfg.Workspaces {
-		switch w.Type {
-		case WorkspaceTypeCode, WorkspaceTypeTmuxinator:
-		default:
-			return fmt.Errorf("workspace %q: type must be %q or %q", name, WorkspaceTypeCode, WorkspaceTypeTmuxinator)
-		}
-		if w.Layout != "" {
-			if w.Type != WorkspaceTypeTmuxinator {
-				return fmt.Errorf("workspace %q: layout is only valid for tmuxinator workspaces", name)
-			}
-			switch w.Layout {
-			case WorkspaceLayoutWindows, WorkspaceLayoutSplit:
-			default:
-				return fmt.Errorf("workspace %q: layout must be %q or %q", name, WorkspaceLayoutWindows, WorkspaceLayoutSplit)
-			}
-		}
-	}
+	// Workspaces are a read-only discovered cache (VSCode .code-workspace only).
+	// No structural validation: any legacy shape is sanitized in parseV2.
 	return nil
 }
