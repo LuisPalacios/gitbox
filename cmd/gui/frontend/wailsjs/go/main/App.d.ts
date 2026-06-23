@@ -220,6 +220,8 @@ export function RenameAccount(arg1:string,arg2:string):Promise<void>;
 
 export function RepairConfig():Promise<main.ConfigRepairResult>;
 
+export function RepoNesting():Promise<Record<string, string>>;
+
 export function RestoreFromBackup(arg1:string):Promise<main.ConfigRepairResult>;
 
 export function SaveTerminalProfiles(arg1:Array<config.TerminalApp>,arg2:Array<config.ShellEntry>,arg3:Array<config.TerminalProfile>):Promise<void>;

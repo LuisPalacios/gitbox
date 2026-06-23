@@ -430,6 +430,10 @@ export function RepairConfig() {
   return window['go']['main']['App']['RepairConfig']();
 }
 
+export function RepoNesting() {
+  return window['go']['main']['App']['RepoNesting']();
+}
+
 export function RestoreFromBackup(arg1) {
   return window['go']['main']['App']['RestoreFromBackup'](arg1);
 }

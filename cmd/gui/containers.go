@@ -9,6 +9,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/adopt"
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/status"
 	"github.com/LuisPalacios/gitbox/pkg/workspace"
 )
 
@@ -80,6 +81,23 @@ func (a *App) SetRepoContainer(sourceKey, repoKey string, container bool) error 
 	src.Repos[repoKey] = repo
 	a.cfg.Sources[sourceKey] = src
 	return a.saveConfig()
+}
+
+// RepoNesting returns child→parent links (keys are "source/repo") derived from
+// resolved clone paths, so the GUI can render nested clones indented under their
+// container parent. A repo appears as a key only when it lives inside a
+// container repo's working tree.
+func (a *App) RepoNesting() map[string]string {
+	a.mu.Lock()
+	cfg := a.cfg
+	a.mu.Unlock()
+
+	n := status.ComputeNesting(cfg)
+	out := make(map[string]string, len(n.ParentOf))
+	for child, parent := range n.ParentOf {
+		out[child.Source+"/"+child.Repo] = parent.Source + "/" + parent.Repo
+	}
+	return out
 }
 
 // TentativeContainerDTO names a managed repo that has a .code-workspace at its

@@ -13,7 +13,7 @@
   import { statusColor, credColor, statusLabel, providerLabel, statusSymbol } from './lib/theme';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit, EventsOn } from '../wailsjs/runtime/runtime';
-  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, WorkspaceDTO, WorkspaceMemberDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
+  import type { RepoState, SourceDTO, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, WorkspaceDTO, WorkspaceMemberDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
   import PRPopover from './lib/PRPopover.svelte';
   import TerminalsModal from './lib/TerminalsModal.svelte';
@@ -417,7 +417,20 @@
     try {
       await bridge.setNestedScanDepth(d);
       $configStore = await bridge.reloadConfig();
+      // A deeper scan may surface new nested clones — refresh the orphan count.
+      await loadOrphans();
     } catch (err: any) { alert(err?.message || err); }
+  }
+
+  // Re-run the nested-clone scan for a container and open the orphans modal so
+  // newly cloned siblings (or ones surfaced by a deeper scan) can be adopted.
+  async function rescanContainer() {
+    await loadOrphans();
+    if (orphanList.some(o => o.matchedAccount && !o.localOnly)) {
+      showOrphanModal();
+    } else {
+      alert('No new nested clones found to onboard.');
+    }
   }
 
   function openChangeFolder() {
@@ -695,6 +708,46 @@
       orphanList = result || [];
       orphanCount = orphanList.filter(o => o.matchedAccount && !o.localOnly).length;
     } catch { orphanCount = 0; }
+    await loadNesting();
+  }
+
+  // ── Nested-clone display (container repos) ──
+  // child "source/repo" → parent "source/repo", derived from resolved paths.
+  let repoNesting: Record<string, string> = {};
+
+  async function loadNesting() {
+    try {
+      repoNesting = await bridge.repoNesting();
+    } catch { repoNesting = {}; }
+  }
+
+  // nestedRepoRows reorders a source's repos so each container parent is
+  // immediately followed by its nested children (indented). Children are emitted
+  // only under their parent; cross-source children fall back to flat rows.
+  function nestedRepoRows(sourceKey: string, source: SourceDTO, nesting: Record<string, string>): { repoName: string; indent: number }[] {
+    const order = source.repoOrder && source.repoOrder.length > 0 ? source.repoOrder : Object.keys(source.repos);
+    const inThisSource = new Set(order);
+    const childrenByParent: Record<string, string[]> = {};
+    const isChild = new Set<string>();
+    for (const repoName of order) {
+      const parentKey = nesting[`${sourceKey}/${repoName}`];
+      if (parentKey && parentKey.startsWith(`${sourceKey}/`)) {
+        const parentRepo = parentKey.slice(sourceKey.length + 1);
+        if (inThisSource.has(parentRepo)) {
+          (childrenByParent[parentRepo] ||= []).push(repoName);
+          isChild.add(repoName);
+        }
+      }
+    }
+    const rows: { repoName: string; indent: number }[] = [];
+    for (const repoName of order) {
+      if (isChild.has(repoName)) continue; // emitted under its parent
+      rows.push({ repoName, indent: 0 });
+      for (const child of childrenByParent[repoName] || []) {
+        rows.push({ repoName: child, indent: 1 });
+      }
+    }
+    return rows;
   }
 
   function showOrphanModal() {
@@ -3305,10 +3358,13 @@
             {/if}
           </div>
         </div>
-        {#each (source.repoOrder && source.repoOrder.length > 0 ? source.repoOrder : Object.keys(source.repos)) as repoName (repoName)}
+        {#each nestedRepoRows(sourceKey, source, repoNesting) as { repoName, indent } (repoName)}
           {@const repoKey = `${sourceKey}/${repoName}`}
+          {@const isContainer = !!source.repos[repoName]?.container}
           {@const state = $repoStates[repoKey] || { status: 'unknown', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
           <div class="repo-row" class:repo-row-clickable={state.status !== 'unknown' && state.status !== 'clean' && state.status !== 'behind' && state.status !== 'not cloned' && state.status !== 'cloning' && state.status !== 'syncing'}
+            class:repo-row-nested={indent > 0}
+            style={indent > 0 ? `padding-left: ${10 + indent * 22}px` : ''}
             on:click={() => { if (selectionMode) { toggleCloneSelection(repoKey); } else if (state.status !== 'unknown') { toggleRepoDetail(sourceKey, repoName, state.status); } }}>
             {#if selectionMode}
               <input type="checkbox" class="clone-select-box" checked={$selectedClones.has(repoKey)}
@@ -3349,6 +3405,9 @@
               </div>
             {/if}
             <span class="repo-name">{repoName}</span>
+            {#if isContainer}
+              <span class="container-badge" title="Multi-repo container — holds nested clones">&#128193; container</span>
+            {/if}
             {#if state.branch === '(detached)'}
               <span class="branch-badge detached">detached</span>
             {:else if state.branch && !state.isDefault}
@@ -3458,6 +3517,7 @@
                         moveDisabledReason={repoMoveDisabledReason(state)}
                         isContainer={isContainerRepo(sourceKey, repoName)}
                         onToggleContainer={() => { actionMenuRepo = null; toggleContainer(sourceKey, repoName); }}
+                        onRescanContainer={() => { actionMenuRepo = null; rescanContainer(); }}
                       />
                     </div>
                   {/if}
@@ -5280,6 +5340,16 @@
   :global([data-theme="light"]) .cred-badge-warn { background: #ffedd5; border-color: #c2410c; color: #c2410c; }
   :global([data-theme="light"]) .cred-badge-none { background: #dbeafe; border-color: #2563eb; color: #2563eb; }
   .card-delete-btn { flex-shrink: 0; }
+  .repo-row-nested { position: relative; }
+  .repo-row-nested::before {
+    content: ''; position: absolute; left: 18px; top: 0; bottom: 0;
+    border-left: 2px solid var(--border); opacity: 0.6;
+  }
+  .container-badge {
+    font-size: 10px; color: var(--text-secondary); border: 1px solid var(--border);
+    border-radius: 4px; padding: 0 5px; margin-left: 6px; white-space: nowrap;
+    flex: 0 0 auto;
+  }
   .card-name { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   .card-mirror-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .mirror-tab-actions { display: flex; gap: 6px; padding: 8px 24px 0; }

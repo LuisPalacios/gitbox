@@ -73,6 +73,9 @@
   // only on the repo kebab when provided; isContainer drives the label.
   export let onToggleContainer: (() => void) | null = null;
   export let isContainer: boolean = false;
+  // onRescanContainer re-runs the nested-clone scan for a container repo. Shown
+  // only when the repo is already a container.
+  export let onRescanContainer: (() => void) | null = null;
 
   type Sub = 'terminals' | 'editors' | 'ai' | 'workspaces' | null;
   let openSubmenu: Sub = null;
@@ -366,6 +369,12 @@
 
   {#if hasContainerSection}
     <hr class="lm-sep" />
+    {#if isContainer && onRescanContainer}
+      <button class="action-item" on:click|stopPropagation={onRescanContainer}
+        title="Re-scan this container for nested clones to onboard">
+        <span class="lm-icon">&#8635;</span> Re-scan for nested clones
+      </button>
+    {/if}
     <button class="action-item" on:click|stopPropagation={onToggleContainer}
       title="A container repo holds nested clones in its working tree; gitbox discovers and onboards them">
       <span class="lm-icon">&#128193;</span>
