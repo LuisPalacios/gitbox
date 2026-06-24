@@ -473,7 +473,7 @@ gitbox doctor --json
 
 Cada fila se marca `ok`, `missing` (requerida por tu config) u `optional` (no requerida por ninguna cuenta/workspace que tengas). Cuando falta una herramienta, doctor imprime un comando de instalación para el SO actual.
 
-**Herramientas sondeadas:** `git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, `tmux`, `tmuxinator`, `wsl` (en Windows).
+**Herramientas sondeadas:** `git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, `wsl` (en Windows).
 
 **Códigos de salida:** `0` cuando todas las herramientas requeridas están presentes, `1` cuando falta al menos una requerida.
 

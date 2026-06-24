@@ -1,5 +1,5 @@
 // Package doctor probes the host for the external command-line tools gitbox
-// relies on (git, GCM, ssh, tmux, ...) and reports whether each is installed,
+// relies on (git, GCM, ssh, wsl, ...) and reports whether each is installed,
 // where it lives, and what version it is. The results feed both the
 // `gitbox doctor` CLI command and point-of-use checks in the GUI/TUI so the
 // user learns about a missing dependency before it fails at runtime.
@@ -96,8 +96,8 @@ func statExecutable(dir, name string) string {
 // windowsFallbackDirs returns well-known install directories to probe for the
 // given tool when exec.LookPath misses it. Only Git-family tools get
 // fallbacks: SSH ships in %SystemRoot%\System32\OpenSSH (always on PATH on
-// Windows 10+); tmux/tmuxinator run inside WSL so an OS-level fallback would
-// be misleading.
+// Windows 10+); wsl.exe lives in System32 (also always on PATH), so an
+// OS-level fallback for those would be misleading.
 func windowsFallbackDirs(name string) []string {
 	base := strings.TrimSuffix(strings.ToLower(name), ".exe")
 	if base != "git" && base != "git-credential-manager" {
@@ -235,8 +235,6 @@ func StandardTools() []Tool {
 		toolSSH(),
 		toolSSHKeygen(),
 		toolSSHAdd(),
-		toolTmux(),
-		toolTmuxinator(),
 		toolWSL(),
 	}
 }
@@ -310,39 +308,11 @@ func toolSSHAdd() Tool {
 	}
 }
 
-func toolTmux() Tool {
-	return Tool{
-		Name:        "tmux",
-		DisplayName: "tmux",
-		Purpose:     "Terminal multiplexer. Used by the tmuxinator workspace feature.",
-		InstallHints: map[string]string{
-			"darwin":  "brew install tmux",
-			"linux":   "sudo apt install tmux",
-			"windows": "inside WSL: sudo apt install tmux",
-		},
-		VersionArgs: []string{"-V"},
-	}
-}
-
-func toolTmuxinator() Tool {
-	return Tool{
-		Name:        "tmuxinator",
-		DisplayName: "tmuxinator",
-		Purpose:     "tmux session manager. Used by the tmuxinator workspace feature.",
-		InstallHints: map[string]string{
-			"darwin":  "gem install tmuxinator",
-			"linux":   "gem install tmuxinator",
-			"windows": "inside WSL: gem install tmuxinator",
-		},
-		VersionArgs: []string{"version"},
-	}
-}
-
 func toolWSL() Tool {
 	return Tool{
 		Name:        "wsl",
 		DisplayName: "Windows Subsystem for Linux",
-		Purpose:     "WSL shell bridge. Required on Windows for the tmuxinator workspace feature.",
+		Purpose:     "WSL shell bridge. Used on Windows to launch WSL-based terminal profiles and convert paths.",
 		InstallHints: map[string]string{
 			"windows": "wsl --install   (https://learn.microsoft.com/windows/wsl/install)",
 		},

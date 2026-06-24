@@ -16,7 +16,7 @@ var doctorCmd = &cobra.Command{
 	Use:   "doctor",
 	Short: "Check that every external tool gitbox relies on is installed",
 	Long: `Probe the host for the command-line tools gitbox uses (git, Git Credential
-Manager, OpenSSH, tmux, ...) and report whether each is installed, where it
+Manager, OpenSSH, WSL, ...) and report whether each is installed, where it
 lives on disk, and its version.
 
 When a tool is missing, doctor prints an install command for the current OS.

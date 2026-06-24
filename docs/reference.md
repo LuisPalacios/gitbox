@@ -473,7 +473,7 @@ gitbox doctor --json
 
 Each row is marked `ok`, `missing` (required for your config), or `optional` (not needed by any account/workspace you have). When a tool is missing, doctor prints an install command for the current OS.
 
-**Tools probed:** `git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, `tmux`, `tmuxinator`, `wsl` (on Windows).
+**Tools probed:** `git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, `wsl` (on Windows).
 
 **Exit codes:** `0` when every required tool is present, `1` when at least one required tool is missing.
 
