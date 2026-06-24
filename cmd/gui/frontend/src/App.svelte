@@ -713,6 +713,7 @@
       orphanCount = orphanList.filter(o => o.matchedAccount && !o.localOnly).length;
     } catch { orphanCount = 0; }
     await loadNesting();
+    await loadTentativeContainers();
   }
 
   // ── Nested-clone display (container repos) ──
@@ -723,6 +724,29 @@
     try {
       repoNesting = await bridge.repoNesting();
     } catch { repoNesting = {}; }
+  }
+
+  // ── Tentative containers ──
+  // Managed repos that hold a .code-workspace at their root but are not yet
+  // flagged as containers. We surface an inline "onboard nested clones" hint on
+  // their row so the user can flag them (which then scans + opens the adopt
+  // modal). Keyed by "source/repo" for O(1) lookup during row rendering.
+  let tentativeContainers: Set<string> = new Set();
+
+  async function loadTentativeContainers() {
+    try {
+      const refs = await bridge.tentativeContainers();
+      tentativeContainers = new Set((refs || []).map(r => `${r.source}/${r.repo}`));
+    } catch { tentativeContainers = new Set(); }
+  }
+
+  // isTentativeContainer reports whether the backend suggested this repo as a
+  // container. The set is passed in (not read off the closure) so Svelte tracks
+  // it as a reactive dependency of the row markup. Callers gate this behind the
+  // reactive `isContainer` check, so an already-flagged container never shows
+  // the hint.
+  function isTentativeContainer(sourceKey: string, repoName: string, tc: Set<string>): boolean {
+    return tc.has(`${sourceKey}/${repoName}`);
   }
 
   // nestedRepoRows reorders a source's repos so each container parent is
@@ -3411,6 +3435,10 @@
             <span class="repo-name">{repoName}</span>
             {#if isContainer}
               <span class="container-badge" title="Multi-repo container — holds nested clones">&#128193; container</span>
+            {:else if isTentativeContainer(sourceKey, repoName, tentativeContainers)}
+              <button class="tentative-container-badge"
+                      on:click|stopPropagation={() => toggleContainer(sourceKey, repoName)}
+                      title="This repo holds nested clones — mark it as a container to onboard them">&#128193; onboard nested clones</button>
             {/if}
             {#if state.branch === '(detached)'}
               <span class="branch-badge detached">detached</span>
@@ -5354,6 +5382,17 @@
     font-size: 10px; color: var(--text-secondary); border: 1px solid var(--border);
     border-radius: 4px; padding: 0 5px; margin-left: 6px; white-space: nowrap;
     flex: 0 0 auto;
+  }
+  /* Actionable hint on a repo that looks like a container but isn't flagged.
+     Clicking it flags the container (which scans + opens the adopt modal). */
+  .tentative-container-badge {
+    font-size: 10px; color: var(--accent, #4B95E9);
+    border: 1px solid var(--accent, #4B95E9); background: transparent;
+    border-radius: 4px; padding: 0 5px; margin-left: 6px; white-space: nowrap;
+    flex: 0 0 auto; cursor: pointer; line-height: 1.6;
+  }
+  .tentative-container-badge:hover {
+    background: var(--accent, #4B95E9); color: #fff;
   }
   .card-name { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   .card-mirror-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
