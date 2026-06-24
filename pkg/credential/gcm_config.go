@@ -2,6 +2,8 @@ package credential
 
 import (
 	"fmt"
+	"path"
+	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
@@ -71,22 +73,87 @@ func CheckGlobalGCMConfig(cfg *config.Config) GlobalGCMConfigStatus {
 	s := GlobalGCMConfigStatus{}
 	s.ExpectedHelper, s.ExpectedCredentialStore = expectedGCMDefaults(cfg)
 
-	if v, err := git.GlobalConfigGet("credential.helper"); err == nil && v != "" {
+	// credential.helper is a multi-value key. Apply git's reset semantics (an
+	// empty value clears everything listed before it) to get the effective
+	// helper chain. The macOS Homebrew GCM cask's `git-credential-manager
+	// configure` appends an absolute path after a reset, leaving a chain like
+	// ["manager", "", "/usr/local/share/gcm-core/git-credential-manager"].
+	values, _ := git.GlobalConfigGetAll("credential.helper")
+	eff := effectiveHelpers(values)
+	if len(eff) > 0 {
 		s.HasHelper = true
-		s.HelperValue = v
+		s.HelperValue = eff[len(eff)-1]
 	}
 	if v, err := git.GlobalConfigGet("credential.credentialStore"); err == nil && v != "" {
 		s.HasCredentialStore = true
 		s.CredentialStoreValue = v
 	}
 
-	if !s.HasHelper || s.HelperValue != s.ExpectedHelper {
+	if !s.HasHelper || !helperSatisfies(eff, s.ExpectedHelper) {
 		s.NeedsFix = true
 	}
 	if !s.HasCredentialStore || s.CredentialStoreValue != s.ExpectedCredentialStore {
 		s.NeedsFix = true
 	}
 	return s
+}
+
+// effectiveHelpers reduces a multi-value credential.helper list to the helpers
+// git actually uses, honoring its reset rule: an empty value discards every
+// helper listed before it; non-empty values are appended.
+func effectiveHelpers(values []string) []string {
+	var eff []string
+	for _, v := range values {
+		if strings.TrimSpace(v) == "" {
+			eff = nil
+			continue
+		}
+		eff = append(eff, v)
+	}
+	return eff
+}
+
+// helperSatisfies reports whether the effective helper chain meets expectations.
+// When the expected helper is Git Credential Manager (the default), any helper
+// that resolves to GCM counts — including an absolute path to the binary, the
+// form `git-credential-manager configure` writes on macOS. When the expected
+// helper is something else (a cfg override like "store"), an exact match is
+// required.
+func helperSatisfies(eff []string, expected string) bool {
+	expectGCM := isGCMHelper(expected)
+	for _, h := range eff {
+		if expectGCM {
+			if isGCMHelper(h) {
+				return true
+			}
+		} else if strings.TrimSpace(h) == strings.TrimSpace(expected) {
+			return true
+		}
+	}
+	return false
+}
+
+// isGCMHelper reports whether a credential.helper value refers to Git Credential
+// Manager, whether written as the short name git resolves on PATH ("manager",
+// legacy "manager-core") or as an absolute/relative path to the binary (e.g.
+// /usr/local/share/gcm-core/git-credential-manager, as the macOS Homebrew cask's
+// `git-credential-manager configure` writes).
+func isGCMHelper(value string) bool {
+	v := strings.TrimSpace(value)
+	if v == "" {
+		return false
+	}
+	// Normalize Windows separators so a path written with backslashes is
+	// recognized even when checked on a non-Windows host (and in tests).
+	v = strings.ReplaceAll(v, "\\", "/")
+	base := strings.ToLower(path.Base(v))
+	base = strings.TrimSuffix(base, ".exe")
+	switch base {
+	case "manager", "manager-core", "git-credential-manager":
+		return true
+	default:
+		return false
+	}
 }
 
 // FixGlobalGCMConfig repairs the global gitconfig so GCM-backed fills work:

@@ -530,6 +530,12 @@ func GlobalConfigSet(key, value string) error {
 	return run(".", "config", "--global", key, value)
 }
 
+// GlobalConfigAdd appends a value to a (possibly multi-valued) global git config
+// key without overwriting existing values.
+func GlobalConfigAdd(key, value string) error {
+	return run(".", "config", "--global", "--add", key, value)
+}
+
 // GlobalConfigGet reads a global git config value.
 func GlobalConfigGet(key string) (string, error) {
 	out, err := output(".", "config", "--global", "--get", key)
@@ -537,6 +543,26 @@ func GlobalConfigGet(key string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(out), nil
+}
+
+// GlobalConfigGetAll reads every value of a (possibly multi-valued) global git
+// config key, in the order git stores them. Empty values are preserved — they
+// matter for credential.helper, where an empty entry resets the helper chain.
+// Returns an empty slice (nil error) when the key is absent.
+func GlobalConfigGetAll(key string) ([]string, error) {
+	out, err := output(".", "config", "--global", "--get-all", key)
+	if err != nil {
+		// git config --get-all exits with code 1 when the key does not exist.
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return nil, nil
+		}
+		return nil, err
+	}
+	// git prints each value followed by a newline; strip the single trailing
+	// newline, then split. An all-empty result means one empty-string value.
+	out = strings.TrimSuffix(out, "\n")
+	return strings.Split(out, "\n"), nil
 }
 
 // GlobalConfigUnset removes a key from global git config.
