@@ -229,7 +229,9 @@ Cuando dejo un archivo `*.code-workspace` bajo la carpeta gestionada por gitbox 
 
 ### Clones no estándar y contenedores multi-repo
 
-El panel de detalle del repo (clic en una fila de repo) tiene una casilla **Multi-repo container**: márcala para designar un clon como contenedor, y la GUI ofrece escanear su interior en busca de clones anidados que incorporar. El diálogo **Change root folder** también gestiona las **carpetas de escaneo extra** (raíces adicionales escaneadas en busca de clones y archivos `.code-workspace`) y la **profundidad de escaneo anidado**. Consulta la [guía CLI](cli-guide.md#paso-9-ubicaciones-de-clon-no-estándar-y-contenedores-multi-repo-opcional) para el modelo completo.
+Un **contenedor multi-repo** es un clon gestionado que mantiene otros clones anidados en su árbol de trabajo (por ejemplo, un repo de proyecto cuyo `.code-workspace` agrupa varios clones hermanos). Cuando un clon parece serlo — tiene un `.code-workspace` en su raíz pero aún no está marcado — su fila muestra un aviso inline **onboard nested clones**. Al hacer clic, marca el clon como contenedor, escanea su árbol de trabajo y abre el modal de adopción con los clones anidados que encuentra; tú confirmas cuáles incorporar. Los clones anidados se adoptan en el lugar bajo su cuenta/org real (se guardan con una `clone_folder` absoluta dentro del contenedor, nunca se reubican), y el aviso se reemplaza por un badge **container**.
+
+También puedes gestionarlo desde el menú kebab (⋮) de la fila del repo — **Mark as multi-repo container**, **Unmark as multi-repo container** y **Re-scan for nested clones** (visible una vez que el clon es contenedor) — o con la casilla **Multi-repo container** del panel de detalle del repo. El diálogo **Change root folder** gestiona las **carpetas de escaneo extra** (raíces adicionales escaneadas en busca de clones y archivos `.code-workspace`) y la **profundidad de escaneo anidado** (cuántos niveles desciende Gitbox por debajo de un contenedor, por defecto 1). Consulta la [guía CLI](cli-guide.md#paso-9-ubicaciones-de-clon-no-estándar-y-contenedores-multi-repo-opcional) para el modelo completo.
 
 ## Vistas del dashboard
 
@@ -384,9 +386,9 @@ Haz clic en **Remove** para limpiar las entradas de identidad global, o descarta
 
 ### Aviso de credential helper global
 
-Cuando al menos una cuenta usa **GCM** (Git Credential Manager), Gitbox verifica que tu `~/.gitconfig` global tiene `credential.helper = manager` y `credential.credentialStore` fijado al valor apropiado del SO (`keychain` en macOS, `wincredman` en Windows, `secretservice` en Linux). Si falta alguno o está mal, aparece un segundo banner naranja.
+Cuando al menos una cuenta usa **GCM** (Git Credential Manager), Gitbox verifica que tu `~/.gitconfig` global tiene un `credential.helper` que resuelve a Git Credential Manager — el nombre corto `manager`, el heredado `manager-core`, o una ruta absoluta al binario `git-credential-manager` (la forma que escribe `git-credential-manager configure` en macOS) — y `credential.credentialStore` fijado al valor apropiado del SO (`keychain` en macOS, `wincredman` en Windows, `secretservice` en Linux). Si ningún helper resuelve a GCM o el store está mal, aparece un segundo banner naranja.
 
-Sin esos globales, GCM cae a un prompt TTY durante la autenticación y falla con `fatal: could not read Password ... Device not configured` en la GUI: mira el texto del banner para el desajuste concreto (ausente o valor inesperado).
+Sin un helper GCM configurado, GCM cae a un prompt TTY durante la autenticación y falla con `fatal: could not read Password ... Device not configured` en la GUI: mira el texto del banner para el problema concreto (sin helper GCM, o el credential store incorrecto).
 
 Haz clic en **Configure** para corregir ambas entradas en un paso. Gitbox también rellena los mismos defaults en tu `gitbox.json` para que la comprobación pase permanentemente, incluso si `~/.gitconfig` se edita después. Descarta el banner con el botón **✕** si prefieres gestionarlo manualmente.
 

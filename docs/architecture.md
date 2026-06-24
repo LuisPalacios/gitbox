@@ -79,7 +79,7 @@ Each level can be overridden:
 
 ### pkg/config — Configuration Management
 
-Handles the v2 configuration file. Core types: `Config`, `Account`, `Source`, `Repo`. See `pkg/config/config.go` for struct definitions.
+Handles the v3 configuration file (v1 and v2 files are migrated transparently on load). Core types: `Config`, `Account`, `Source`, `Repo`. v3 adds multi-repo containers (`Repo.Container`), extra scan roots (`Global.ExtraFolders`), nested-clone discovery depth (`Global.NestedScanDepth`), absolute `clone_folder` overrides, and read-only discovered workspaces. See `pkg/config/config.go` for struct definitions.
 
 **Key design decisions:**
 

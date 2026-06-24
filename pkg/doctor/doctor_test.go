@@ -204,12 +204,12 @@ func TestWindowsFallbackReturnsEmptyForUnrelatedTool(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows-only fallback")
 	}
-	// ssh / tmux / wsl are not in the fallback allowlist — they must not
-	// resolve via the Windows-specific probe.
+	// ssh / wsl are not in the fallback allowlist — they must not resolve
+	// via the Windows-specific probe.
 	if dirs := windowsFallbackDirs("ssh"); dirs != nil {
 		t.Errorf("ssh should not have a Windows fallback, got %v", dirs)
 	}
-	if dirs := windowsFallbackDirs("tmux"); dirs != nil {
-		t.Errorf("tmux should not have a Windows fallback, got %v", dirs)
+	if dirs := windowsFallbackDirs("wsl"); dirs != nil {
+		t.Errorf("wsl should not have a Windows fallback, got %v", dirs)
 	}
 }

@@ -70,9 +70,11 @@ GCM gestiona todo mediante un único login. GCM guarda una credencial y la usa p
 
 ### Requisitos de gitconfig global
 
-GCM enruta por host mediante la clave global `credential.helper` en `~/.gitconfig`. Sin un `credential.helper = manager` de nivel superior y `credential.credentialStore = <keychain|wincredman|secretservice>`, `git credential fill` cae a un prompt TTY, y en un proceso GUI eso aparece como el críptico `fatal: could not read Password ... Device not configured` (errno ENXIO en `/dev/tty`).
+GCM enruta por host mediante la clave global `credential.helper` en `~/.gitconfig`. Sin un `credential.helper` efectivo que resuelva a Git Credential Manager y `credential.credentialStore = <keychain|wincredman|secretservice>`, `git credential fill` cae a un prompt TTY, y en un proceso GUI eso aparece como el críptico `fatal: could not read Password ... Device not configured` (errno ENXIO en `/dev/tty`).
 
-gitbox lo detecta al arrancar cuando al menos una cuenta usa GCM. Cuando el `~/.gitconfig` global falta o está mal, aparece un banner naranja en la GUI (y una sección en la pantalla "Global Gitconfig" de la TUI) con un botón **Configure** que:
+Un helper "resuelve a GCM" cuando es el nombre corto `manager`, el heredado `manager-core`, o una ruta absoluta cuyo binario es `git-credential-manager` (la forma que escribe `git-credential-manager configure` en macOS, p. ej. `/usr/local/share/gcm-core/git-credential-manager`). gitbox lee la lista completa de valores del helper y respeta la regla de reset de git (un valor vacío descarta los helpers anteriores), de modo que un `git-credential-manager configure` estándar — que añade una ruta absoluta tras un reset — mantiene la comprobación en verde sin necesidad de re-aplicar el arreglo.
+
+gitbox lo detecta al arrancar cuando al menos una cuenta usa GCM. Cuando el `~/.gitconfig` global no tiene un helper que resuelva a GCM (o un `credentialStore` incorrecto), aparece un banner naranja en la GUI (y una sección en la pantalla "Global Gitconfig" de la TUI) con un botón **Configure** que:
 
 1. Escribe `credential.helper = manager` + `credential.credentialStore = <os default>` en `~/.gitconfig`.
 2. Rellena los mismos valores por defecto del SO en `gitbox.json` para que la comprobación siga verde incluso si `~/.gitconfig` se edita más tarde.

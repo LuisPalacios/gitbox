@@ -126,7 +126,7 @@ El [índice de documentación](docs/es/README.md) lo tiene todo: guías de usuar
 
 ## Contribuir
 
-Para compilar desde código fuente, ejecutar pruebas y probar en varias plataformas, empieza con la [Guía de desarrollo](docs/developer-guide.md). El [índice de docs](docs/es/README.md) tiene un orden de lectura sugerido para nuevos colaboradores.
+Para compilar desde código fuente, ejecutar pruebas y probar en varias plataformas, empieza con la [Guía de desarrollo](docs/es/developer-guide.md). El [índice de docs](docs/es/README.md) tiene un orden de lectura sugerido para nuevos colaboradores.
 
 ## Disclaimer
 
