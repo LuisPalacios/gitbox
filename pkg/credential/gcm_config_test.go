@@ -109,6 +109,79 @@ func TestCheckGlobalGCMConfig_OK(t *testing.T) {
 	}
 }
 
+// On macOS, the Homebrew GCM cask's `git-credential-manager configure` appends
+// an absolute path to the binary after an empty reset entry, leaving a chain
+// like ["manager", "", "/usr/local/share/gcm-core/git-credential-manager"].
+// That is a valid GCM wiring and must NOT be flagged for fixing.
+func TestCheckGlobalGCMConfig_AbsolutePathHelperIsOK(t *testing.T) {
+	isolateGlobalGitconfig(t)
+	// Reproduce the real-world multi-value chain via --add.
+	if err := git.GlobalConfigSet("credential.helper", "manager"); err != nil {
+		t.Fatalf("seeding helper: %v", err)
+	}
+	if err := git.GlobalConfigAdd("credential.helper", ""); err != nil {
+		t.Fatalf("seeding reset: %v", err)
+	}
+	const absPath = "/usr/local/share/gcm-core/git-credential-manager"
+	if err := git.GlobalConfigAdd("credential.helper", absPath); err != nil {
+		t.Fatalf("seeding abs helper: %v", err)
+	}
+	if err := git.GlobalConfigSet("credential.credentialStore", DefaultCredentialStore()); err != nil {
+		t.Fatalf("seeding store: %v", err)
+	}
+
+	s := CheckGlobalGCMConfig(&config.Config{})
+	if !s.HasHelper || s.HelperValue != absPath {
+		t.Errorf("helper state = (%v,%q), want (true,%q)", s.HasHelper, s.HelperValue, absPath)
+	}
+	if s.NeedsFix {
+		t.Errorf("NeedsFix = true, want false (absolute GCM path is a valid helper)")
+	}
+}
+
+// A reset entry that clears the only helper leaves no effective helper — that
+// must be flagged.
+func TestCheckGlobalGCMConfig_ResetClearsHelper(t *testing.T) {
+	isolateGlobalGitconfig(t)
+	if err := git.GlobalConfigSet("credential.helper", "manager"); err != nil {
+		t.Fatalf("seeding helper: %v", err)
+	}
+	if err := git.GlobalConfigAdd("credential.helper", ""); err != nil {
+		t.Fatalf("seeding reset: %v", err)
+	}
+
+	s := CheckGlobalGCMConfig(&config.Config{})
+	if s.HasHelper {
+		t.Errorf("HasHelper = true, want false (reset cleared the only helper)")
+	}
+	if !s.NeedsFix {
+		t.Errorf("NeedsFix = false, want true (no effective helper)")
+	}
+}
+
+func TestIsGCMHelper(t *testing.T) {
+	cases := []struct {
+		value string
+		want  bool
+	}{
+		{"manager", true},
+		{"manager-core", true},
+		{"git-credential-manager", true},
+		{"/usr/local/share/gcm-core/git-credential-manager", true},
+		{"C:\\Program Files\\Git\\mingw64\\bin\\git-credential-manager.exe", true},
+		{"  manager  ", true},
+		{"", false},
+		{"store", false},
+		{"cache", false},
+		{"/usr/bin/git-credential-store", false},
+	}
+	for _, tc := range cases {
+		if got := isGCMHelper(tc.value); got != tc.want {
+			t.Errorf("isGCMHelper(%q) = %v, want %v", tc.value, got, tc.want)
+		}
+	}
+}
+
 func TestCheckGlobalGCMConfig_RespectsCfgOverrides(t *testing.T) {
 	isolateGlobalGitconfig(t)
 	// Cfg overrides the default helper to "store" — "store" should then be
