@@ -52,9 +52,9 @@ cmd/
       styles/             Theme, colors, symbols
   gui/                    Wails v2 + Svelte GUI (GitboxApp)
 pkg/                      Shared Go library
-  config/                 Config v2 model, load/save, v1→v2 migration
-  credential/             Credential verification (GCM, SSH, token)
-  git/                    Git subprocess operations (os/exec); IsWSLAvailable / WSLPath helpers on Windows
+  config/                 Config v3 model, load/save, v1→v2→v3 migration
+  credential/             Credential verification (GCM, SSH, token); global GCM helper check accepts any helper resolving to git-credential-manager (short name or absolute path)
+  git/                    Git subprocess operations (os/exec); global config get/get-all/add/unset; IsWSLAvailable / WSLPath helpers on Windows
   provider/               Provider API clients + mirror interfaces (GitHub, GitLab, Gitea, Forgejo)
   mirror/                 Push/pull mirror setup, status, guides
   workspace/              Read-only VS Code .code-workspace discovery + cache (RefreshCache); no generation, no tmuxinator
@@ -106,7 +106,7 @@ AGENTS.md                 → .claude/CLAUDE.md (symlink — Codex reads project
 .agents/skills            → ../.claude/skills (symlink — Codex sees skills here)
 .github/workflows/ci.yml  CI: build, test, release (+ installers, DMGs, AppImage)
 json/
-  gitbox.schema.json      v2 JSON Schema
+  gitbox.schema.json      v3 JSON Schema
   gitbox.jsonc            v3 annotated example (Spanish comments)
 go.mod / go.sum           Go module
 README.md                 Project overview

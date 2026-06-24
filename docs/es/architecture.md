@@ -79,7 +79,7 @@ Cada nivel puede sobrescribirse:
 
 ### pkg/config — gestión de configuración
 
-Gestiona el archivo de configuración v2. Tipos core: `Config`, `Account`, `Source`, `Repo`. Consulta `pkg/config/config.go` para las definiciones de structs.
+Gestiona el archivo de configuración v3 (los archivos v1 y v2 se migran de forma transparente al cargar). Tipos core: `Config`, `Account`, `Source`, `Repo`. v3 añade contenedores multi-repo (`Repo.Container`), raíces de escaneo extra (`Global.ExtraFolders`), profundidad de descubrimiento de clones anidados (`Global.NestedScanDepth`), sobrescrituras de `clone_folder` absolutas y workspaces descubiertos de solo lectura. Consulta `pkg/config/config.go` para las definiciones de structs.
 
 **Decisiones clave de diseño:**
 

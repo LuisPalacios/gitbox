@@ -229,7 +229,9 @@ Whenever I drop a `*.code-workspace` file under the gitbox-managed folder (or a 
 
 ### Non-standard clones & multi-repo containers
 
-The repo detail panel (click a repo row) has a **Multi-repo container** checkbox: tick it to mark a clone as a container, and the GUI offers to scan inside it for nested clones to onboard. The **Change root folder** dialog also manages **extra scan folders** (additional roots scanned for clones and `.code-workspace` files) and the **nested scan depth**. See the [CLI guide](cli-guide.md#step-9-non-standard-clone-locations--multi-repo-containers-optional) for the full model.
+A **multi-repo container** is a managed clone that holds other clones nested in its working tree (for example, a project repo whose `.code-workspace` ties together several sibling clones). When a clone looks like one — it has a `.code-workspace` at its root but isn't flagged yet — its row shows an inline **onboard nested clones** hint. Clicking it flags the clone as a container, scans its working tree, and opens the adopt modal with the nested clones it finds; you confirm which to onboard. Nested clones are adopted in place under their real account/org (stored with an absolute `clone_folder` inside the container, never relocated), and the hint is replaced by a **container** badge.
+
+You can also manage this from the repo row's kebab menu (⋮) — **Mark as multi-repo container**, **Unmark as multi-repo container**, and **Re-scan for nested clones** (shown once a clone is a container) — or with the **Multi-repo container** checkbox in the repo detail panel. The **Change root folder** dialog manages **extra scan folders** (additional roots scanned for clones and `.code-workspace` files) and the **nested scan depth** (how many levels below a container Gitbox descends, default 1). See the [CLI guide](cli-guide.md#step-9-non-standard-clone-locations--multi-repo-containers-optional) for the full model.
 
 ## Dashboard views
 
@@ -384,9 +386,9 @@ Click **Remove** to clear the global identity entries, or dismiss the banner wit
 
 ### Global credential helper warning
 
-When at least one account uses **GCM** (Git Credential Manager), Gitbox verifies that your global `~/.gitconfig` has `credential.helper = manager` and `credential.credentialStore` set to the OS-appropriate value (`keychain` on macOS, `wincredman` on Windows, `secretservice` on Linux). If either is missing or wrong, a second orange banner appears.
+When at least one account uses **GCM** (Git Credential Manager), Gitbox verifies that your global `~/.gitconfig` has a `credential.helper` that resolves to Git Credential Manager — the short name `manager`, the legacy `manager-core`, or an absolute path to the `git-credential-manager` binary (the form `git-credential-manager configure` writes on macOS) — and `credential.credentialStore` set to the OS-appropriate value (`keychain` on macOS, `wincredman` on Windows, `secretservice` on Linux). If no helper resolves to GCM or the store is wrong, a second orange banner appears.
 
-Without those globals, GCM falls through to a TTY prompt during authentication and fails with `fatal: could not read Password ... Device not configured` in the GUI — see the banner text for the specific mismatch (missing, or unexpected value).
+Without a GCM helper configured, GCM falls through to a TTY prompt during authentication and fails with `fatal: could not read Password ... Device not configured` in the GUI — see the banner text for the specific issue (no GCM helper, or the wrong credential store).
 
 Click **Configure** to fix both entries in one step. Gitbox also backfills the same defaults into your `gitbox.json` so the check passes permanently, even if `~/.gitconfig` is edited later. Dismiss the banner with the **✕** button if you prefer to handle it manually.
 
