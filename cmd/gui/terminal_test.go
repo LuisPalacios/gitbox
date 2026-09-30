@@ -70,71 +70,41 @@ func TestResolveTerminalArgs(t *testing.T) {
 	}
 }
 
-func TestResolveTerminalArgsWithCommand(t *testing.T) {
+func TestResolveTerminalArgs_LegacyCommandToken(t *testing.T) {
+	// The pre-#80 {command} slot in legacy terminal args expands to zero
+	// items: harness launches route through pkg/terminals.ResolveLaunch now.
 	tests := []struct {
-		name        string
-		args        []string
-		path        string
-		harnessArgv []string
-		want        []string
+		name string
+		args []string
+		path string
+		want []string
 	}{
 		{
-			name:        "single-item harness splices as one argv entry",
-			args:        []string{"-d", "{path}", "{command}"},
-			path:        "/r",
-			harnessArgv: []string{"claude"},
-			want:        []string{"-d", "/r", "claude"},
+			name: "{command} after {path} is dropped",
+			args: []string{"-d", "{path}", "{command}"},
+			path: "/r",
+			want: []string{"-d", "/r"},
 		},
 		{
-			name:        "multi-arg harness splices each entry verbatim",
-			args:        []string{"--working-directory", "{path}", "-e", "{command}"},
-			path:        "/r",
-			harnessArgv: []string{"aider", "--model", "claude-sonnet"},
-			want:        []string{"--working-directory", "/r", "-e", "aider", "--model", "claude-sonnet"},
+			name: "{command} as sole token collapses to just the path",
+			args: []string{"{command}"},
+			path: "/r",
+			want: []string{"/r"},
 		},
 		{
-			name:        "command as sole token (no path)",
-			args:        []string{"{command}"},
-			path:        "/ignored",
-			harnessArgv: []string{"codex"},
-			want:        []string{"codex"},
-		},
-		{
-			name:        "missing {command} splices nothing (harness launch with terminal that doesn't support it — validated upstream)",
-			args:        []string{"-d", "{path}"},
-			path:        "/r",
-			harnessArgv: []string{"codex"},
-			want:        []string{"-d", "/r"},
-		},
-		{
-			name:        "multiple {command} tokens splice into each",
-			args:        []string{"{command}", "--", "{command}"},
-			path:        "/r",
-			harnessArgv: []string{"aider", "--yes"},
-			want:        []string{"aider", "--yes", "--", "aider", "--yes"},
-		},
-		{
-			name:        "empty args preserved even with harness argv",
-			args:        nil,
-			path:        "/r",
-			harnessArgv: []string{"claude"},
-			want:        nil,
-		},
-		{
-			name:        "no {path} and harness set: path is NOT appended",
-			args:        []string{"-e", "{command}"},
-			path:        "/r",
-			harnessArgv: []string{"codex"},
-			want:        []string{"-e", "codex"},
+			name: "multiple {command} tokens all drop",
+			args: []string{"{command}", "--", "{command}", "{path}"},
+			path: "/r",
+			want: []string{"--", "/r"},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := resolveTerminalArgsWithCommand(tc.args, tc.path, tc.harnessArgv)
+			got := resolveTerminalArgs(tc.args, tc.path)
 			if !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("resolveTerminalArgsWithCommand(%v, %q, %v) = %v, want %v",
-					tc.args, tc.path, tc.harnessArgv, got, tc.want)
+				t.Errorf("resolveTerminalArgs(%v, %q) = %v, want %v",
+					tc.args, tc.path, got, tc.want)
 			}
 		})
 	}

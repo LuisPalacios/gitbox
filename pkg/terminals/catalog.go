@@ -148,8 +148,11 @@ var darwinTerminals = []CatalogTerminal{
 	macAppTerminal("warp", "Warp", "Warp"),
 	macAppTerminal("kitty", "Kitty", "kitty"),
 	macAppTerminal("ghostty", "Ghostty", "Ghostty"),
+	// Trailing {command}: wezterm accepts the program positionally after
+	// --cwd, so a harness launch can pass the wrapped shell; it expands to
+	// zero items on plain launches.
 	macAppTerminalWithArgs("wezterm", "WezTerm", "WezTerm",
-		[]string{"-n", "-a", "WezTerm", "--args", "start", "--cwd", launch.TokenPath}),
+		[]string{"-n", "-a", "WezTerm", "--args", "start", "--cwd", launch.TokenPath, launch.TokenCommand}),
 	macBundleCLITerminal("alacritty", "Alacritty", "Alacritty", "alacritty",
 		[]string{"--working-directory", launch.TokenPath}),
 }

@@ -241,7 +241,7 @@ func (m reposModel) Init() tea.Cmd {
 func (m reposModel) Update(msg tea.Msg) (reposModel, tea.Cmd) {
 	// Launcher overlay intercepts input when active; must run before the
 	// KeyMsg switch so t/e/a/o and other letters don't double-fire.
-	if lo, cmd, handled := m.launcher.update(msg, m.cfg.Global.EffectiveTerminals()); handled {
+	if lo, cmd, handled := m.launcher.update(msg, m.cfg.Global); handled {
 		m.launcher = lo
 		m.resultMsg = ""
 		m.errMsg = ""
@@ -672,7 +672,7 @@ func (m reposModel) launchDefaultHarness() (reposModel, tea.Cmd) {
 	}
 	m.resultMsg = ""
 	m.errMsg = ""
-	return m, launchAIHarnessCmd(path, harnesses[0], m.cfg.Global.EffectiveTerminals())
+	return m, launchAIHarnessCmd(path, harnesses[0], m.cfg.Global)
 }
 
 // pathIsDir reports whether path refers to an existing directory. Small

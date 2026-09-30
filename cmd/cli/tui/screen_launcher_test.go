@@ -103,7 +103,7 @@ func TestLauncher_NavigationSkipsHeaders(t *testing.T) {
 
 	// Starting at index 1 (Git Bash). Press down → PowerShell (index 2).
 	// Press down again → should skip "Editors" header and land on VS Code (index 4).
-	lo2, _, handled := lo.update(tea.KeyMsg{Type: tea.KeyDown}, cfg.Global.Terminals)
+	lo2, _, handled := lo.update(tea.KeyMsg{Type: tea.KeyDown}, cfg.Global)
 	if !handled {
 		t.Fatal("KeyDown not handled")
 	}
@@ -111,13 +111,13 @@ func TestLauncher_NavigationSkipsHeaders(t *testing.T) {
 		t.Errorf("after 1st down, cursor = %d, want 2", lo2.cursor)
 	}
 
-	lo3, _, _ := lo2.update(tea.KeyMsg{Type: tea.KeyDown}, cfg.Global.Terminals)
+	lo3, _, _ := lo2.update(tea.KeyMsg{Type: tea.KeyDown}, cfg.Global)
 	if lo3.cursor != 4 {
 		t.Errorf("after 2nd down (across header), cursor = %d, want 4", lo3.cursor)
 	}
 
 	// Up from VS Code: skip "Editors" header back to PowerShell (index 2).
-	lo4, _, _ := lo3.update(tea.KeyMsg{Type: tea.KeyUp}, cfg.Global.Terminals)
+	lo4, _, _ := lo3.update(tea.KeyMsg{Type: tea.KeyUp}, cfg.Global)
 	if lo4.cursor != 2 {
 		t.Errorf("after up (across header), cursor = %d, want 2", lo4.cursor)
 	}
@@ -130,7 +130,7 @@ func TestLauncher_EnterDispatchesLaunchCmd(t *testing.T) {
 	// Cursor starts at Git Bash. Enter should return a non-nil tea.Cmd and
 	// close the overlay. We don't execute the cmd — that would fork a
 	// process — just verify the wiring.
-	lo2, cmd, handled := lo.update(tea.KeyMsg{Type: tea.KeyEnter}, cfg.Global.Terminals)
+	lo2, cmd, handled := lo.update(tea.KeyMsg{Type: tea.KeyEnter}, cfg.Global)
 	if !handled {
 		t.Fatal("Enter not handled")
 	}
@@ -146,7 +146,7 @@ func TestLauncher_EscClosesWithoutLaunch(t *testing.T) {
 	cfg := fixtureConfigWithLaunchers()
 	lo := newLauncherOverlay(cfg).activate("/tmp/test-git")
 
-	lo2, cmd, handled := lo.update(tea.KeyMsg{Type: tea.KeyEsc}, cfg.Global.Terminals)
+	lo2, cmd, handled := lo.update(tea.KeyMsg{Type: tea.KeyEsc}, cfg.Global)
 	if !handled {
 		t.Fatal("Esc not handled")
 	}
@@ -162,7 +162,7 @@ func TestLauncher_InactiveOverlayIgnoresKeys(t *testing.T) {
 	cfg := fixtureConfigWithLaunchers()
 	lo := newLauncherOverlay(cfg) // not activated
 
-	_, _, handled := lo.update(tea.KeyMsg{Type: tea.KeyEnter}, cfg.Global.Terminals)
+	_, _, handled := lo.update(tea.KeyMsg{Type: tea.KeyEnter}, cfg.Global)
 	if handled {
 		t.Error("inactive overlay consumed Enter; it should delegate to origin screen")
 	}
@@ -186,45 +186,77 @@ func TestLauncher_LaunchCurrentByKind(t *testing.T) {
 	lo := newLauncherOverlay(cfg).activate("/tmp")
 
 	// Cursor on Git Bash (terminal). launchCurrent should return a non-nil cmd.
-	if lo.launchCurrent(cfg.Global.Terminals) == nil {
+	if lo.launchCurrent(cfg.Global) == nil {
 		t.Error("launchCurrent returned nil for a terminal row")
 	}
 
 	// Move to VS Code (editor at index 4).
 	lo.cursor = 4
-	if lo.launchCurrent(cfg.Global.Terminals) == nil {
+	if lo.launchCurrent(cfg.Global) == nil {
 		t.Error("launchCurrent returned nil for an editor row")
 	}
 
 	// Move to Claude Code (harness at index 7).
 	lo.cursor = 7
-	if lo.launchCurrent(cfg.Global.Terminals) == nil {
+	if lo.launchCurrent(cfg.Global) == nil {
 		t.Error("launchCurrent returned nil for a harness row")
 	}
 
-	// Harness without any configured terminal should still return a cmd,
-	// but running it would produce an actionable error. The cmd factory is
-	// responsible for the error, not launchCurrent; verify cmd != nil.
+	// Harness without any configured terminal profile should still return a
+	// cmd, and running it must surface an actionable error rather than
+	// panic or silently no-op. The cmd factory owns the error, not
+	// launchCurrent.
 	lo.cursor = 7
-	if lo.launchCurrent(nil) == nil {
-		t.Error("launchCurrent returned nil for a harness row with no terminals; expected cmd that surfaces the error")
+	cmd := lo.launchCurrent(config.GlobalConfig{})
+	if cmd == nil {
+		t.Fatal("launchCurrent returned nil for a harness row with no profiles; expected cmd that surfaces the error")
+	}
+	msg, ok := cmd().(launchDoneMsg)
+	if !ok || msg.err == nil || !strings.Contains(msg.err.Error(), "terminal profile") {
+		t.Errorf("expected launchDoneMsg with a 'terminal profile' error, got %+v", msg)
+	}
+}
+
+func TestLaunchAIHarnessCmd_NoProfileErrors(t *testing.T) {
+	h := config.AIHarnessEntry{Name: "Claude Code", Command: "/bin/claude"}
+	msg := launchAIHarnessCmd("/repo", h, config.GlobalConfig{})().(launchDoneMsg)
+	if msg.err == nil || !strings.Contains(msg.err.Error(), "terminal profile") {
+		t.Errorf("want 'configure a terminal profile' error, got %v", msg.err)
+	}
+	if msg.target != "Claude Code" {
+		t.Errorf("target = %q", msg.target)
+	}
+}
+
+func TestLaunchAIHarnessCmd_ProfileCannotHostCommand(t *testing.T) {
+	// A default profile whose terminal has no shell / {command} slot (macOS
+	// `open -a Warp`) must fail before exec with the resolver's error.
+	g := config.GlobalConfig{
+		TerminalApps:     []config.TerminalApp{{ID: "warp", Name: "Warp", Command: "open", ArgsTemplate: []string{"-a", "Warp"}}},
+		TerminalProfiles: []config.TerminalProfile{{ID: "warp", Name: "Warp", TerminalID: "warp", Default: true}},
+	}
+	h := config.AIHarnessEntry{Name: "Claude Code", Command: "/bin/claude"}
+	msg := launchAIHarnessCmd("/repo", h, g)().(launchDoneMsg)
+	if msg.err == nil || !strings.Contains(msg.err.Error(), "cannot run a command") {
+		t.Errorf("want 'cannot run a command' error, got %v", msg.err)
 	}
 }
 
 func TestResolveTerminalArgs_PathSubstitution(t *testing.T) {
 	args := []string{"--profile", "Git Bash", "-d", "{path}"}
-	got := resolveTerminalArgs(args, "/repo", nil)
+	got := resolveTerminalArgs(args, "/repo")
 	want := []string{"--profile", "Git Bash", "-d", "/repo"}
 	if !slicesEqual(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
 
-func TestResolveTerminalArgs_CommandSplice(t *testing.T) {
+func TestResolveTerminalArgs_LegacyCommandTokenDropped(t *testing.T) {
+	// The pre-#80 {command} slot in legacy terminal args expands to nothing:
+	// harness launches no longer come through this path.
 	args := []string{"--profile", "X", "-d", "{path}", "{command}"}
-	harness := []string{"/bin/claude", "--flag"}
-	got := resolveTerminalArgs(args, "/repo", harness)
-	want := []string{"--profile", "X", "-d", "/repo", "/bin/claude", "--flag"}
+	got := resolveTerminalArgs(args, "/repo")
+	want := []string{"--profile", "X", "-d", "/repo"}
 	if !slicesEqual(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
@@ -234,7 +266,7 @@ func TestResolveTerminalArgs_AppendPathWhenNoToken(t *testing.T) {
 	// Legacy launcher patterns like `open -a Terminal <path>` have no {path}
 	// token; the resolver appends path as the last argv.
 	args := []string{"-a", "Terminal"}
-	got := resolveTerminalArgs(args, "/repo", nil)
+	got := resolveTerminalArgs(args, "/repo")
 	want := []string{"-a", "Terminal", "/repo"}
 	if !slicesEqual(got, want) {
 		t.Errorf("got %v, want %v", got, want)
@@ -242,7 +274,7 @@ func TestResolveTerminalArgs_AppendPathWhenNoToken(t *testing.T) {
 }
 
 func TestResolveTerminalArgs_EmptyArgsReturnsNil(t *testing.T) {
-	if resolveTerminalArgs(nil, "/repo", nil) != nil {
+	if resolveTerminalArgs(nil, "/repo") != nil {
 		t.Error("empty args should return nil (terminal cmd.Dir covers it)")
 	}
 }

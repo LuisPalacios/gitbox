@@ -279,7 +279,7 @@
                 },
                 "ai_harnesses": {
                     "type": "array",
-                    "description": "AI CLI harnesses (claude, codex, gemini, aider, cursor-agent, opencode, ...) available in the GUI 'Open in' menus. Auto-detected on PATH at startup; edit or reorder entries freely. Launches run inside global.terminals[0], which must contain the literal '{command}' token in its args for the harness argv to be spliced in.",
+                    "description": "AI CLI harnesses (claude, codex, gemini, aider, cursor-agent, opencode, ...) available in the GUI 'Open in' menus. Auto-detected on PATH at startup; edit or reorder entries freely. Launches run inside the default Terminal Profile's shell (terminal_profiles[].default).",
                     "items": {
                         "type": "object",
                         "required": ["name", "command"],
