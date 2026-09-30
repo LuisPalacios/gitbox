@@ -193,6 +193,9 @@ CI (GitHub Actions) prueba las 3 plataformas en cada push, así que las regresio
 **"Permission denied" en SSH:**
 Comprueba que tu clave SSH está en `~/.ssh/authorized_keys` en el remoto. Los scripts requieren autenticación basada en clave (sin passwords). Verifica con: `ssh -o ConnectTimeout=5 user@host 'echo ok'`
 
+**"error in libcrypto" seguido de "Permission denied" desde Git Bash en Windows:**
+Tus claves viven en un agente SSH (1Password o el servicio ssh-agent de Windows) y en disco solo existen ficheros `.pub`. El `ssh` MSYS propio de Git Bash no puede alcanzar el agente de named pipe de Windows, así que intenta cargar el `.pub` como clave privada y falla. Los scripts ahora prefieren automáticamente el OpenSSH nativo de Windows en `C:\Windows\System32\OpenSSH` cuando existe. Si ejecutas `ssh` a mano desde Git Bash, antepón el PATH de la misma forma: `PATH="/c/Windows/System32/OpenSSH:$PATH" ssh host`.
+
 **"command not found: jq" en remoto:**
 Instala jq en la máquina remota (`apt install jq` en Debian/Ubuntu, `brew install jq` en macOS).
 
