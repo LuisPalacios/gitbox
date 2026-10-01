@@ -83,6 +83,15 @@ type App struct {
 	// would block every other state read.
 	probeMu     sync.Mutex
 	lastProbeAt time.Time
+
+	// harnessMu serializes AI harness detection passes (background
+	// ticker, window-focus refresh) the same way probeMu does for upstream
+	// probes. harnessQuit stops the background watcher on Shutdown — Wails
+	// never cancels a.ctx, so the watcher can't select on ctx.Done().
+	harnessMu         sync.Mutex
+	lastHarnessSyncAt time.Time
+	harnessQuit       chan struct{}
+	harnessQuitOnce   sync.Once
 }
 
 // NewApp creates a new App instance.
@@ -134,6 +143,9 @@ func (a *App) Shutdown(_ context.Context) {
 		// just killed.
 		_, _ = cmd.Process.Wait()
 	}
+	// Stop the AI harness watcher before test cleanup removes the temp
+	// config dir, so a late pass can't recreate it via config.Save.
+	a.stopHarnessWatcher()
 	if a.testCleanup != nil {
 		a.testCleanup()
 	}
@@ -229,10 +241,13 @@ func (a *App) DomReady(_ context.Context) {
 			wailsrt.WindowCenter(a.ctx)
 		}
 	}
-	// Sync detected editors, terminals, and AI harnesses into config before frontend reads it.
+	// Sync detected editors and terminals into config before frontend reads it.
 	a.SyncEditors()
 	a.SyncTerminals()
-	a.SyncAIHarnesses()
+	// AI harnesses are detected off the startup path: startHarnessWatcher
+	// runs a first pass ~2s after launch and then re-probes periodically,
+	// emitting harnesses:updated so the menu refreshes without a reload.
+	a.startHarnessWatcher()
 	// SyncProfiles populates the v2.1 TerminalApps + Shells + TerminalProfiles
 	// arrays so the Gear-panel "Terminals & Shells" section and the
 	// per-row launcher have data to render on first run. Idempotent — does
@@ -1824,48 +1839,28 @@ type AIHarnessInfo struct {
 	Args    []string `json:"args"`
 }
 
-// knownHarnessCandidate is an internal record used to seed auto-detection.
-type knownHarnessCandidate struct {
-	Name    string
-	Command string // binary name to look up on PATH (e.g. "claude", "codex")
-}
-
-// knownAIHarnesses is the auto-detection seed. It's built once at process
-// start from the embedded agentic tools directory in pkg/harness. The order
-// is the order in which Sync appends missing entries — users reorder
-// global.ai_harnesses freely and their order wins on subsequent syncs.
+// knownAIHarnesses is the embedded catalog of auto-detectable harnesses,
+// read once at process start from pkg/harness/tools-directory.md. The
+// GUI only needs the names here (SyncEditors / DetectEditors use them to
+// keep Cursor out of the editor list); detection itself lives in
+// harness.Sync.
 //
 // To add or remove an auto-detected harness, edit
 // pkg/harness/tools-directory.md rather than this file.
-var knownAIHarnesses = buildKnownAIHarnesses()
+var knownAIHarnesses = harness.KnownTools()
 
-// retiredAIHarnessNames lists display names of harnesses the directory marks
-// as retired (Category "Retired CLI"). SyncAIHarnesses drops config entries
-// with these names so a discontinued binary stops showing up in the menu.
-var retiredAIHarnessNames = buildRetiredAIHarnessNames()
+// harnessLookupFn resolves a harness command to a path. Package-level so
+// tests can swap in a deterministic fake instead of probing the real host.
+var harnessLookupFn harness.LookupFunc = harness.DefaultLookup
 
-// buildRetiredAIHarnessNames reads the retired rows from the embedded tool
-// directory into a name set.
-func buildRetiredAIHarnessNames() map[string]bool {
-	tools := harness.RetiredTools()
-	out := make(map[string]bool, len(tools))
-	for _, t := range tools {
-		out[t.Name] = true
-	}
-	return out
-}
-
-// buildKnownAIHarnesses reads the embedded tool directory and returns the
-// subset whose Executable cell looks like a single PATH binary — i.e. the
-// rows pkg/harness.KnownTools already filtered for us.
-func buildKnownAIHarnesses() []knownHarnessCandidate {
-	tools := harness.KnownTools()
-	out := make([]knownHarnessCandidate, 0, len(tools))
-	for _, t := range tools {
-		out = append(out, knownHarnessCandidate{Name: t.Name, Command: t.Command})
-	}
-	return out
-}
+// Background detection cadence. The first pass runs shortly after launch
+// so the menu fills without blocking first paint; later passes catch
+// installs and uninstalls while the app stays open.
+const (
+	harnessInitialDelay = 2 * time.Second
+	harnessSyncInterval = 10 * time.Minute
+	harnessMinInterval  = 60 * time.Second // throttle for focus-triggered refreshes
+)
 
 // harnessID returns a stable, lowercase slug used as the AIHarnessInfo.ID.
 // Shares the terminalID slugifier — both fields share the same UI contract.
@@ -1873,132 +1868,138 @@ func harnessID(name string) string {
 	return terminalID(name)
 }
 
-// DetectAIHarnesses returns AI CLI harnesses available on the system.
-// It auto-detects known binaries on PATH (using the Homebrew-augmented PATH
-// so Homebrew-installed harnesses on macOS are visible to the Wails GUI)
-// and merges any user-configured entries from global.ai_harnesses.
-func (a *App) DetectAIHarnesses() []AIHarnessInfo {
-	var out []AIHarnessInfo
-	seen := make(map[string]bool)
-	for _, cand := range knownAIHarnesses {
-		fullPath, err := lookPathWithBrewPATH(cand.Command)
-		if err != nil {
-			continue
-		}
-		id := harnessID(cand.Name)
-		seen[cand.Name] = true
-		out = append(out, AIHarnessInfo{
-			ID:      id,
-			Name:    cand.Name,
-			Command: fullPath,
-		})
+// SyncAIHarnesses reconciles config's global.ai_harnesses with the embedded
+// catalog and the host (see pkg/harness.Sync for the rules: catalog order,
+// missing flag instead of deletion, user entries untouched). The host probe
+// runs outside a.mu on a snapshot so PATH lookups never block other state
+// reads; the result is applied only if nobody replaced the list meanwhile
+// (ReloadConfig / RepairConfig / RestoreFromBackup swap a.cfg wholesale —
+// in that case the next pass simply re-syncs the new config). Returns
+// whether config changed and was saved.
+func (a *App) SyncAIHarnesses() bool {
+	a.mu.Lock()
+	if a.cfg == nil {
+		a.mu.Unlock()
+		return false
 	}
-	if a.cfg != nil {
-		for _, h := range a.cfg.Global.AIHarnesses {
-			if seen[h.Name] {
-				continue
-			}
-			out = append(out, AIHarnessInfo{
-				ID:      harnessID(h.Name),
-				Name:    h.Name,
-				Command: h.Command,
-				Args:    append([]string(nil), h.Args...),
-			})
-			seen[h.Name] = true
+	snapshot := cloneHarnesses(a.cfg.Global.AIHarnesses)
+	a.mu.Unlock()
+
+	result, changed := harness.Sync(snapshot, harnessLookupFn)
+	if !changed {
+		return false
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cfg == nil {
+		return false
+	}
+	if !harness.Equal(a.cfg.Global.AIHarnesses, snapshot) {
+		return false // config replaced while probing; retry next pass
+	}
+	a.cfg.Global.AIHarnesses = result
+	_ = a.saveConfig()
+	return true
+}
+
+// cloneHarnesses deep-copies a harness list (Args included) so the probe
+// can run on it without holding a.mu.
+func cloneHarnesses(in []config.AIHarnessEntry) []config.AIHarnessEntry {
+	if in == nil {
+		return nil
+	}
+	out := make([]config.AIHarnessEntry, len(in))
+	for i, h := range in {
+		out[i] = h
+		if len(h.Args) > 0 {
+			out[i].Args = append([]string(nil), h.Args...)
 		}
 	}
 	return out
 }
 
-// SyncAIHarnesses reconciles config's global.ai_harnesses array with the
-// embedded tools-directory. The final order follows
-// pkg/harness/tools-directory.md — users curate the menu order by editing
-// that file, and every sync re-applies it:
-//   - Entries whose Name matches a known harness are ordered by their
-//     position in knownAIHarnesses (= the markdown table order). User-
-//     customized Command/Args on those entries are preserved verbatim.
-//   - User-added entries not in the directory stay after the known block,
-//     in their original relative order.
-//   - Duplicates by Name collapse to the first occurrence.
-//   - Entries whose Name matches a retired directory row are dropped.
-//   - Detected known harnesses missing from config are appended (in
-//     directory order), with the resolved binary path.
-//   - Config is saved only when something actually changed.
-func (a *App) SyncAIHarnesses() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.cfg == nil {
-		return
+// syncAIHarnessesAsync runs one detection pass in a goroutine, throttled
+// to once per harnessMinInterval unless force is set. Emits
+// harnesses:updated with the new list when something changed so the
+// frontend menu refreshes without re-reading config. Safe to call
+// repeatedly; overlapping calls are dropped.
+func (a *App) syncAIHarnessesAsync(force bool) {
+	if !a.harnessMu.TryLock() {
+		return // a pass is already running
 	}
-
-	knownIndex := make(map[string]int, len(knownAIHarnesses))
-	for i, k := range knownAIHarnesses {
-		knownIndex[k.Name] = i
-	}
-
-	// Dedup existing entries by name, preserving the first occurrence.
-	seenName := make(map[string]bool)
-	existingByName := make(map[string]config.AIHarnessEntry)
-	var customOrder []config.AIHarnessEntry // not in knownAIHarnesses
-	for _, h := range a.cfg.Global.AIHarnesses {
-		if seenName[h.Name] || retiredAIHarnessNames[h.Name] {
-			continue
+	go func() {
+		defer a.harnessMu.Unlock()
+		a.mu.Lock()
+		since := time.Since(a.lastHarnessSyncAt)
+		a.mu.Unlock()
+		if !force && since < harnessMinInterval {
+			return
 		}
-		seenName[h.Name] = true
-		if _, known := knownIndex[h.Name]; known {
-			existingByName[h.Name] = h
-		} else {
-			customOrder = append(customOrder, h)
+		changed := a.SyncAIHarnesses()
+		a.mu.Lock()
+		a.lastHarnessSyncAt = time.Now()
+		var list []config.AIHarnessEntry
+		if a.cfg != nil {
+			list = cloneHarnesses(a.cfg.Global.AIHarnesses)
 		}
-	}
-
-	// Build the known-harness block in directory order. If the user already
-	// had an entry, reuse it (preserving command/args customizations);
-	// otherwise detect on PATH and add with the resolved path.
-	var result []config.AIHarnessEntry
-	for _, k := range knownAIHarnesses {
-		if e, ok := existingByName[k.Name]; ok {
-			result = append(result, e)
-			continue
+		a.mu.Unlock()
+		if changed && a.ctx != nil {
+			wailsrt.EventsEmit(a.ctx, "harnesses:updated", list)
 		}
-		fullPath, err := lookPathWithBrewPATH(k.Command)
-		if err != nil {
-			continue
-		}
-		result = append(result, config.AIHarnessEntry{
-			Name:    k.Name,
-			Command: fullPath,
-		})
-	}
-	result = append(result, customOrder...)
-
-	// Only save if the serialization actually differs.
-	if !aiHarnessesEqual(result, a.cfg.Global.AIHarnesses) {
-		a.cfg.Global.AIHarnesses = result
-		_ = a.saveConfig()
-	}
+	}()
 }
 
-// aiHarnessesEqual compares two harness slices element-wise so
-// SyncAIHarnesses can skip a config write when nothing changed.
-func aiHarnessesEqual(a, b []config.AIHarnessEntry) bool {
-	if len(a) != len(b) {
-		return false
+// RefreshAIHarnesses is the frontend hook for window focus: re-probe the
+// host (throttled) so a harness installed or removed while the app was in
+// the background shows up without a restart.
+func (a *App) RefreshAIHarnesses() {
+	a.syncAIHarnessesAsync(false)
+}
+
+// startHarnessWatcher launches the background detection loop: one pass
+// after harnessInitialDelay, then every harnessSyncInterval until
+// stopHarnessWatcher closes harnessQuit. Idempotent.
+func (a *App) startHarnessWatcher() {
+	a.mu.Lock()
+	if a.harnessQuit != nil {
+		a.mu.Unlock()
+		return
 	}
-	for i := range a {
-		if a[i].Name != b[i].Name || a[i].Command != b[i].Command {
-			return false
+	quit := make(chan struct{})
+	a.harnessQuit = quit
+	a.mu.Unlock()
+
+	go func() {
+		select {
+		case <-time.After(harnessInitialDelay):
+			a.syncAIHarnessesAsync(true)
+		case <-quit:
+			return
 		}
-		if len(a[i].Args) != len(b[i].Args) {
-			return false
-		}
-		for j := range a[i].Args {
-			if a[i].Args[j] != b[i].Args[j] {
-				return false
+		ticker := time.NewTicker(harnessSyncInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				a.syncAIHarnessesAsync(true)
+			case <-quit:
+				return
 			}
 		}
+	}()
+}
+
+// stopHarnessWatcher ends the background loop. Safe when the watcher was
+// never started (terminals-window subprocess) and when called twice.
+func (a *App) stopHarnessWatcher() {
+	a.mu.Lock()
+	quit := a.harnessQuit
+	a.mu.Unlock()
+	if quit == nil {
+		return
 	}
-	return true
+	a.harnessQuitOnce.Do(func() { close(quit) })
 }
 
 // ShowErrorDialog pops a native error dialog from the frontend. Used for

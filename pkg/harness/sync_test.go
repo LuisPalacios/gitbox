@@ -267,12 +267,12 @@ func TestEqualSensitiveToSourceAndMissing(t *testing.T) {
 
 func TestCommandBase(t *testing.T) {
 	cases := map[string]string{
-		"claude":                           "claude",
-		"/opt/homebrew/bin/claude":         "claude",
+		"claude":                             "claude",
+		"/opt/homebrew/bin/claude":           "claude",
 		`C:\Users\me\AppData\npm\claude.cmd`: "claude",
-		`C:\x\agy.EXE`:                      "agy",
-		"/home/me/.local/bin/tool.bat":     "tool",
-		"/x/script.py":                     "script.py",
+		`C:\x\agy.EXE`:                       "agy",
+		"/home/me/.local/bin/tool.bat":       "tool",
+		"/x/script.py":                       "script.py",
 	}
 	for in, want := range cases {
 		if got := commandBase(in); got != want {

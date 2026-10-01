@@ -4,6 +4,8 @@ export namespace config {
 	    name: string;
 	    command: string;
 	    args?: string[];
+	    source?: string;
+	    missing?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new AIHarnessEntry(source);
@@ -14,6 +16,8 @@ export namespace config {
 	        this.name = source["name"];
 	        this.command = source["command"];
 	        this.args = source["args"];
+	        this.source = source["source"];
+	        this.missing = source["missing"];
 	    }
 	}
 	export class GCMConfig {
@@ -489,24 +493,6 @@ export namespace identity {
 
 export namespace main {
 	
-	export class AIHarnessInfo {
-	    id: string;
-	    name: string;
-	    command: string;
-	    args: string[];
-	
-	    static createFrom(source: any = {}) {
-	        return new AIHarnessInfo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.name = source["name"];
-	        this.command = source["command"];
-	        this.args = source["args"];
-	    }
-	}
 	export class AccountDeletionImpactDTO {
 	    account: string;
 	    sources: string[];

@@ -126,10 +126,6 @@ export function DeleteRepo(arg1, arg2) {
   return window['go']['main']['App']['DeleteRepo'](arg1, arg2);
 }
 
-export function DetectAIHarnesses() {
-  return window['go']['main']['App']['DetectAIHarnesses']();
-}
-
 export function DetectEditors() {
   return window['go']['main']['App']['DetectEditors']();
 }
@@ -404,6 +400,10 @@ export function RecommendedGlobalGitignoreBody() {
 
 export function RedetectProfiles() {
   return window['go']['main']['App']['RedetectProfiles']();
+}
+
+export function RefreshAIHarnesses() {
+  return window['go']['main']['App']['RefreshAIHarnesses']();
 }
 
 export function RefreshAllPRs() {

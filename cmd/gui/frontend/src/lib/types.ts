@@ -288,6 +288,10 @@ export interface AIHarnessInfo {
   name: string;
   command: string;
   args: string[];
+  // Written by the Go-side harness sync (issue #81). `missing` entries are
+  // kept in config but must not be offered in menus.
+  source?: 'detected' | 'user' | '';
+  missing?: boolean;
 }
 
 // ── PR / review indicators (issue #29) ──
