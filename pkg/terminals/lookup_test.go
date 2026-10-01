@@ -48,12 +48,38 @@ config.launch_menu = {
 	if !ok {
 		t.Fatalf("expected hit for pwsh")
 	}
-	wantArgv := []string{"start", "--cwd", "{path}", "--", "pwsh.exe", "-NoLogo"}
+	// The entry's args become the shell tokens + ShellCommand/ShellArgs so
+	// harness launches can wrap the same shell; ResolveArgs expands this
+	// to the same `-- pwsh.exe -NoLogo` as before on plain launches.
+	wantArgv := []string{"start", "--cwd", "{path}", "--", "{shell_command}", "{shell_args}"}
 	if !reflect.DeepEqual(got.Argv, wantArgv) {
 		t.Errorf("Argv = %v, want %v", got.Argv, wantArgv)
 	}
+	if got.ShellCommand != "pwsh.exe" || !reflect.DeepEqual(got.ShellArgs, []string{"-NoLogo"}) {
+		t.Errorf("shell = %q %v, want pwsh.exe [-NoLogo]", got.ShellCommand, got.ShellArgs)
+	}
 	if got.Env["OMP"] != "/etc/omp" {
 		t.Errorf("Env[OMP] = %q, want /etc/omp", got.Env["OMP"])
+	}
+}
+
+func TestLookupWeztermEntry_EmptyArgsKeepsBareSeparator(t *testing.T) {
+	resetLookupCachesForTest()
+	path := writeWeztermLua(t, `
+config.launch_menu = {
+  { label = "PowerShell 7" },
+}
+`)
+	got, ok := lookupWeztermEntry("pwsh", "PowerShell 7", []string{path})
+	if !ok {
+		t.Fatalf("expected hit")
+	}
+	wantArgv := []string{"start", "--cwd", "{path}", "--"}
+	if !reflect.DeepEqual(got.Argv, wantArgv) {
+		t.Errorf("Argv = %v, want %v", got.Argv, wantArgv)
+	}
+	if got.ShellCommand != "" {
+		t.Errorf("ShellCommand should stay empty for an entry without args, got %q", got.ShellCommand)
 	}
 }
 
@@ -163,7 +189,8 @@ func TestLookupWTProfile_Hit(t *testing.T) {
 	// `-w 0 nt` pins the launch to the most-recent existing WT window
 	// (or a new one when none exists) so `firstWindowPreference:
 	// persistedWindowLayout` doesn't spawn a second window beside ours.
-	wantArgv := []string{"-w", "0", "nt", "--profile", "PowerShell 7", "-d", "{path}"}
+	// Trailing {command} is the harness slot (zero items on plain launches).
+	wantArgv := []string{"-w", "0", "nt", "--profile", "PowerShell 7", "-d", "{path}", "{command}"}
 	if !reflect.DeepEqual(got.Argv, wantArgv) {
 		t.Errorf("Argv = %v, want %v", got.Argv, wantArgv)
 	}

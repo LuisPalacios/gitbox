@@ -71,7 +71,7 @@ func (m accountModel) Update(msg tea.Msg) (accountModel, tea.Cmd) {
 	// Launcher overlay intercepts input when active. It's only enabled from
 	// accountViewDetail so form views (edit/rename) keep full keyboard
 	// control over their text inputs.
-	if lo, cmd, handled := m.launcher.update(msg, m.cfg.Global.EffectiveTerminals()); handled {
+	if lo, cmd, handled := m.launcher.update(msg, m.cfg.Global); handled {
 		m.launcher = lo
 		m.statusMsg = ""
 		m.errMsg = ""
@@ -597,5 +597,5 @@ func (m accountModel) launchAccountHarness() (accountModel, tea.Cmd) {
 	}
 	m.statusMsg = ""
 	m.errMsg = ""
-	return m, launchAIHarnessCmd(path, harnesses[0], m.cfg.Global.EffectiveTerminals())
+	return m, launchAIHarnessCmd(path, harnesses[0], m.cfg.Global)
 }

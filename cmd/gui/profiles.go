@@ -20,7 +20,6 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
-	"github.com/LuisPalacios/gitbox/pkg/launch"
 	"github.com/LuisPalacios/gitbox/pkg/terminals"
 )
 
@@ -205,44 +204,7 @@ func (a *App) MissingModernTerminal() bool {
 
 // OpenProfile launches the given profile in the given folder.
 func (a *App) OpenProfile(path, profileID string) error {
-	if profileID == "" {
-		return fmt.Errorf("profile id is required")
-	}
-	a.mu.Lock()
-	profile, app, shell, err := a.lookupProfileLocked(profileID)
-	a.mu.Unlock()
-	if err != nil {
-		return err
-	}
-	template := profile.Args
-	if len(template) == 0 {
-		template = app.ArgsTemplate
-	}
-	// EXECUTION pillar (#72): consult the user's terminal config first.
-	// When the host has a wezterm.lua launch_menu / WT settings.json
-	// profile that matches this gitbox shell, swap the generic argv
-	// template for the user-tuned one (and splice WezTerm env vars).
-	// Bare-shell DIRECT profiles skip this — they have no terminal config
-	// to consult.
-	var extraEnv map[string]string
-	if profile.TerminalID != "" && profile.ShellID != "" {
-		if ov, hit := terminals.LookupForLaunch(profile.TerminalID, profile.ShellID, shell.Name); hit {
-			template = ov.Argv
-			extraEnv = ov.Env
-		}
-	}
-	args := launch.ResolveArgs(launch.ProfileArgs{
-		Template:     template,
-		Path:         path,
-		ShellCommand: shell.Command,
-		ShellArgs:    shell.Args,
-	})
-	// A bare-shell DIRECT Profile (TerminalID=="") points at a console-
-	// subsystem .exe (pwsh, cmd, bash, …) that needs the cmd.exe-start
-	// wrapper to get a fresh console. Modern terminal apps are GUI-
-	// subsystem and launch directly (no wrapper, no console flash).
-	isConsole := profile.TerminalID == ""
-	return openTerminalRawAt(path, app.Command, args, isConsole, extraEnv)
+	return a.launchProfile(path, profileID, nil)
 }
 
 // OpenAccountProfile launches the given profile in the account's parent
@@ -255,51 +217,44 @@ func (a *App) OpenAccountProfile(accountKey, profileID string) error {
 	return a.OpenProfile(path, profileID)
 }
 
-// lookupProfileLocked resolves a profile id into its (profile, app, shell)
-// triple under the App mutex. Caller is responsible for holding a.mu.
-func (a *App) lookupProfileLocked(profileID string) (config.TerminalProfile, config.TerminalApp, config.ShellEntry, error) {
-	for _, p := range a.cfg.Global.TerminalProfiles {
-		if p.ID != profileID {
-			continue
-		}
-		var app config.TerminalApp
-		// A bare-shell fallback Profile has TerminalID == "" — synthesize a
-		// pseudo-app whose Command is the shell binary directly so the
-		// launcher path can call exec.Start without an indirection.
-		if p.TerminalID == "" && p.ShellID != "" {
-			for _, s := range a.cfg.Global.Shells {
-				if s.ID == p.ShellID {
-					app = config.TerminalApp{
-						ID:      "bare-" + s.ID,
-						Name:    s.Name,
-						Command: s.Command,
-					}
-					break
-				}
-			}
-		} else {
-			for _, t := range a.cfg.Global.TerminalApps {
-				if t.ID == p.TerminalID {
-					app = t
-					break
-				}
-			}
-		}
-		if app.ID == "" {
-			return p, app, config.ShellEntry{}, fmt.Errorf("terminal %q for profile %q not found", p.TerminalID, p.ID)
-		}
-		var shell config.ShellEntry
-		if p.ShellID != "" {
-			for _, s := range a.cfg.Global.Shells {
-				if s.ID == p.ShellID {
-					shell = s
-					break
-				}
-			}
-		}
-		return p, app, shell, nil
+// launchProfile resolves a profile (plain, or hosting an AI harness when
+// harnessArgv is non-empty) through the shared pkg/terminals resolver and
+// executes it. The resolver is what the TUI uses too, so both frontends
+// agree byte-for-byte on the argv; this method only owns the exec side.
+func (a *App) launchProfile(path, profileID string, harnessArgv []string) error {
+	if profileID == "" {
+		return fmt.Errorf("profile id is required")
 	}
-	return config.TerminalProfile{}, config.TerminalApp{}, config.ShellEntry{}, fmt.Errorf("profile %q not found", profileID)
+	a.mu.Lock()
+	global := a.cfg.Global
+	a.mu.Unlock()
+	l, err := terminals.ResolveLaunch(terminals.LaunchRequest{
+		Global:       global,
+		ProfileID:    profileID,
+		Path:         path,
+		HarnessArgv:  harnessArgv,
+		DefaultShell: os.Getenv("SHELL"),
+	})
+	if err != nil {
+		return err
+	}
+	return runLaunch(path, l)
+}
+
+// runLaunch executes a resolved Launch. AppleScript launches go through
+// osascript (macOS Terminal.app / iTerm harness path); everything else
+// through openTerminalRawAt, which owns the Windows console-flash rules.
+// First osascript run may prompt the user for Automation permission
+// (macOS Privacy → Automation) — a one-time OS-level consent, not a gitbox
+// prompt.
+func runLaunch(path string, l terminals.Launch) error {
+	if l.AppleScript != "" {
+		cmd := exec.Command("osascript", "-e", l.AppleScript)
+		cmd.Env = git.Environ()
+		git.HideWindow(cmd)
+		return cmd.Start()
+	}
+	return openTerminalRawAt(path, l.Command, l.Args, l.IsConsole, l.Env)
 }
 
 // ─── Window-mode + sub-process Manager window ─────────────────────────────

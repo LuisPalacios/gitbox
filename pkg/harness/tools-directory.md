@@ -4,11 +4,14 @@ This document is the **authoritative list of known AI harnesses, orchestrators, 
 
 To add a new harness that gitbox should auto-detect, insert a new row with a single-identifier executable and one of the three eligible categories.
 
+When a vendor retires a CLI, keep its row but set `Category` to `Retired CLI`. Retired rows are never auto-detected, and any `global.ai_harnesses` entry whose `name` matches a retired row is removed on the next sync so dead binaries disappear from the menu.
+
 | Tool Name | Company Behind / Creator | Category | OS Compatibility | Executable / CLI Command | Primary Use Case | URL (Official website or Repo) |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Claude Code** | Anthropic | Agentic CLI | macOS, Linux, Windows (WSL) | `claude` | Anthropic's terminal-native tool for autonomous code generation, file manipulation, and Git operations. | `https://docs.anthropic.com/claude/docs/claude-code` |
 | **Codex CLI** | OpenAI | Agentic CLI | Windows, macOS, Linux | `codex` | OpenAI's terminal-native coding agent; plans, edits, and commits across a repository from the shell. | `https://github.com/openai/codex` |
-| **Gemini CLI** | Google | Agentic CLI | Windows, macOS, Linux | `gemini` | Terminal-native autonomous agent using a ReAct loop to execute shell commands, edit files, and utilize MCP extensions. | `https://github.com/google-gemini/gemini-cli` |
+| **Antigravity CLI** | Google | Agentic CLI | Windows, macOS, Linux | `agy` | Successor to Gemini CLI: Go-based terminal agent for the Antigravity platform. Installs to `~/.local/bin/agy` on macOS/Linux and `%LOCALAPPDATA%\agy\bin\agy.exe` on Windows. | `https://antigravity.google` |
+| **Gemini CLI** | Google | Retired CLI | Windows, macOS, Linux | `gemini` | Retired 2026-06-18 in favour of Antigravity CLI. Stale `global.ai_harnesses` entries with this name are pruned on sync. | `https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/` |
 | **Google Agent Dev Kit (ADK)** | Google | Agentic Framework | Windows, macOS, Linux | *N/A (Library)* | Modular framework for building hierarchical agents natively integrated with Gemini and Google Cloud tools. | `https://github.com/google/agent-development-kit` |
 | **Google Antigravity** | Google | Orchestrator / Platform | Cloud / Local Sync | *N/A (Cloud Platform)* | Agent-first development platform orchestrating multiple autonomous agents with verifiable artifacts and dual-view control. | *(Google Cloud Platform)* |
 | **Vertex AI Agent Builder**| Google | Framework / Orchestrator | Web / Cloud-connected | *N/A (Cloud Platform)* | Enterprise-grade console and framework for designing custom, stateful agents grounded in private data. | *(Google Cloud Platform)* |

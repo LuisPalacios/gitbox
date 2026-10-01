@@ -212,7 +212,9 @@ func (lo launcherOverlay) moveDown() launcherOverlay {
 // overlay state, an optional tea.Cmd (a launch command when Enter is
 // pressed), and a bool indicating whether the key was consumed. Origin
 // screens should delegate to this before their own key handlers.
-func (lo launcherOverlay) update(msg tea.Msg, terminals []config.TerminalEntry) (launcherOverlay, tea.Cmd, bool) {
+// `global` is the live global config: harness rows resolve their host
+// Terminal Profile from it at launch time.
+func (lo launcherOverlay) update(msg tea.Msg, global config.GlobalConfig) (launcherOverlay, tea.Cmd, bool) {
 	if !lo.active {
 		return lo, nil, false
 	}
@@ -228,7 +230,7 @@ func (lo launcherOverlay) update(msg tea.Msg, terminals []config.TerminalEntry) 
 	case key.Matches(km, Keys.Down):
 		return lo.moveDown(), nil, true
 	case key.Matches(km, Keys.Enter):
-		cmd := lo.launchCurrent(terminals)
+		cmd := lo.launchCurrent(global)
 		return lo.close(), cmd, true
 	}
 	// Any other key is consumed so it doesn't leak to the origin screen
@@ -238,7 +240,7 @@ func (lo launcherOverlay) update(msg tea.Msg, terminals []config.TerminalEntry) 
 
 // launchCurrent returns the tea.Cmd that fires the selected launcher, or nil
 // if the cursor is on a non-selectable row (shouldn't happen in practice).
-func (lo launcherOverlay) launchCurrent(terminals []config.TerminalEntry) tea.Cmd {
+func (lo launcherOverlay) launchCurrent(global config.GlobalConfig) tea.Cmd {
 	if lo.cursor < 0 || lo.cursor >= len(lo.items) {
 		return nil
 	}
@@ -258,7 +260,7 @@ func (lo launcherOverlay) launchCurrent(terminals []config.TerminalEntry) tea.Cm
 		if it.harness == nil {
 			return nil
 		}
-		return launchAIHarnessCmd(lo.path, *it.harness, terminals)
+		return launchAIHarnessCmd(lo.path, *it.harness, global)
 	case launcherRowWorkspace:
 		if it.workspaceKey == "" || lo.cfg == nil || lo.cfgPath == "" {
 			return nil

@@ -191,6 +191,14 @@ func TestMergeRefreshesMacOpenAFolderTemplates(t *testing.T) {
 			prev: []string{"-a", "Alacritty"},
 			want: []string{"--working-directory", "{path}"},
 		},
+		{
+			// Pre-#80 shape: fine for plain launches but has no {command}
+			// slot, so harness launches were refused. Must pick up the
+			// catalog's trailing {command} on Sync.
+			id:   "wezterm",
+			prev: []string{"-n", "-a", "WezTerm", "--args", "start", "--cwd", "{path}"},
+			want: []string{"-n", "-a", "WezTerm", "--args", "start", "--cwd", "{path}", "{command}"},
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.id, func(t *testing.T) {

@@ -33,6 +33,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/move"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
 	"github.com/LuisPalacios/gitbox/pkg/status"
+	"github.com/LuisPalacios/gitbox/pkg/terminals"
 	"github.com/LuisPalacios/gitbox/pkg/update"
 	wailsrt "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -930,6 +931,12 @@ func (a *App) OpenInApp(path string, command string) error {
 // and /usr/local/bin, so editors installed via Homebrew (code, cursor, zed)
 // are invisible to exec.LookPath. This helper sets the augmented env for the
 // lookup, falling back to the standard LookPath on non-macOS platforms.
+//
+// When PATH still misses, macOS and Linux also probe ~/.local/bin: the
+// native Claude Code and Antigravity CLI installers drop their binaries
+// there, and a GUI launched from the Dock or a desktop menu doesn't inherit
+// the shell rc that adds it to PATH. Windows installers register their
+// directories in the user PATH, so no fallback is needed there.
 func lookPathWithBrewPATH(command string) (string, error) {
 	env := git.Environ() // no-op on non-macOS
 	for _, e := range env {
@@ -938,10 +945,36 @@ func lookPathWithBrewPATH(command string) (string, error) {
 			os.Setenv("PATH", strings.TrimPrefix(e, "PATH="))
 			fullPath, err := exec.LookPath(command)
 			os.Setenv("PATH", origPath)
-			return fullPath, err
+			if err == nil {
+				return fullPath, nil
+			}
+			return lookPathUserLocalBin(command, err)
 		}
 	}
-	return exec.LookPath(command)
+	fullPath, err := exec.LookPath(command)
+	if err == nil {
+		return fullPath, nil
+	}
+	return lookPathUserLocalBin(command, err)
+}
+
+// lookPathUserLocalBin is the ~/.local/bin fallback for lookPathWithBrewPATH.
+// It returns the original lookup error when the fallback doesn't apply or
+// the file isn't an executable regular file.
+func lookPathUserLocalBin(command string, lookErr error) (string, error) {
+	if runtime.GOOS == "windows" {
+		return "", lookErr
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", lookErr
+	}
+	candidate := filepath.Join(home, ".local", "bin", command)
+	info, err := os.Stat(candidate)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
+		return "", lookErr
+	}
+	return candidate, nil
 }
 
 // EditorInfo describes an available code editor.
@@ -1597,19 +1630,10 @@ func (a *App) OpenInTerminal(path string, command string, args []string) error {
 // first and delegate here so the Windows console-flash workaround lives in
 // one place.
 func openTerminalAt(path string, command string, args []string) error {
-	return openTerminalWithHarnessAt(path, command, args, nil)
-}
-
-// openTerminalWithHarnessAt launches a terminal in a folder, optionally
-// splicing a harness argv into a "{command}" token in the terminal's args.
-// When harnessArgv is nil it behaves exactly like openTerminalAt. The Windows
-// cmd.exe /C start workaround lives here so both harness and terminal-only
-// launches go through the same path.
-func openTerminalWithHarnessAt(path string, command string, args []string, harnessArgv []string) error {
 	if command == "" {
 		return fmt.Errorf("command is required")
 	}
-	resolved := resolveTerminalArgsWithCommand(args, path, harnessArgv)
+	resolved := resolveTerminalArgs(args, path)
 
 	var cmd *exec.Cmd
 	if isWindows() {
@@ -1704,44 +1728,23 @@ func msysToWindowsPath(p string) string {
 	return strings.ToUpper(string(c)) + ":" + strings.ReplaceAll(rest, "/", `\`)
 }
 
-// resolveTerminalArgs substitutes "{path}" tokens in args with the repo path.
-// If no token is found AND args is non-empty, path is appended as a final argv
-// entry (covers patterns like `open -a Terminal <path>`). Empty args is
-// preserved as empty — the caller sets cmd.Dir so shells start in the repo.
+// resolveTerminalArgs substitutes "{path}" tokens in legacy terminal args
+// with the repo path. A literal "{command}" entry (legacy harness slot)
+// expands to zero items. If no "{path}" token is found AND args is non-empty,
+// path is appended as a final argv entry (covers patterns like `open -a
+// Terminal <path>`). Empty args is preserved as empty — the caller sets
+// cmd.Dir so shells start in the repo.
 //
-// This is a thin wrapper over resolveTerminalArgsWithCommand that passes a nil
-// harness argv, so every "{command}" token expands to zero items (safe no-op
-// for terminal-only launches).
+// AI harness launches no longer come through here — they route via the
+// Terminal Profile resolver (pkg/terminals.ResolveLaunch, issue #80).
 func resolveTerminalArgs(args []string, path string) []string {
-	return resolveTerminalArgsWithCommand(args, path, nil)
-}
-
-// resolveTerminalArgsWithCommand substitutes "{path}" in args (string replace)
-// and splices harnessArgv in place of each literal "{command}" entry. The
-// splice is an argv-level insertion, not a string replace — splicing through
-// strings.ReplaceAll would require shell-quoting harnessArgv back to a single
-// string and risks injection.
-//
-// Rules:
-//   - An arg equal to "{command}" is replaced in-place by harnessArgv items
-//     (0..N). Multiple "{command}" tokens each splice the same argv.
-//   - Other occurrences of "{path}" anywhere inside an arg are substituted
-//     as a plain string replace.
-//   - When no "{path}" token is present AND harnessArgv is nil AND args is
-//     non-empty, path is appended as the final argv (legacy behavior for
-//     launchers like `open -a Terminal <path>`). Harness launches never
-//     append the path — the terminal is responsible for opening the folder
-//     via its own working-directory flag.
-//   - Empty args is preserved as empty.
-func resolveTerminalArgsWithCommand(args []string, path string, harnessArgv []string) []string {
 	if len(args) == 0 {
 		return nil
 	}
 	pathSubstituted := false
-	out := make([]string, 0, len(args)+len(harnessArgv))
+	out := make([]string, 0, len(args))
 	for _, a := range args {
 		if a == "{command}" {
-			out = append(out, harnessArgv...)
 			continue
 		}
 		if strings.Contains(a, "{path}") {
@@ -1751,7 +1754,7 @@ func resolveTerminalArgsWithCommand(args []string, path string, harnessArgv []st
 		}
 		out = append(out, a)
 	}
-	if !pathSubstituted && harnessArgv == nil {
+	if !pathSubstituted {
 		out = append(out, path)
 	}
 	return out
@@ -1804,6 +1807,22 @@ type knownHarnessCandidate struct {
 // To add or remove an auto-detected harness, edit
 // pkg/harness/tools-directory.md rather than this file.
 var knownAIHarnesses = buildKnownAIHarnesses()
+
+// retiredAIHarnessNames lists display names of harnesses the directory marks
+// as retired (Category "Retired CLI"). SyncAIHarnesses drops config entries
+// with these names so a discontinued binary stops showing up in the menu.
+var retiredAIHarnessNames = buildRetiredAIHarnessNames()
+
+// buildRetiredAIHarnessNames reads the retired rows from the embedded tool
+// directory into a name set.
+func buildRetiredAIHarnessNames() map[string]bool {
+	tools := harness.RetiredTools()
+	out := make(map[string]bool, len(tools))
+	for _, t := range tools {
+		out[t.Name] = true
+	}
+	return out
+}
 
 // buildKnownAIHarnesses reads the embedded tool directory and returns the
 // subset whose Executable cell looks like a single PATH binary — i.e. the
@@ -1870,6 +1889,7 @@ func (a *App) DetectAIHarnesses() []AIHarnessInfo {
 //   - User-added entries not in the directory stay after the known block,
 //     in their original relative order.
 //   - Duplicates by Name collapse to the first occurrence.
+//   - Entries whose Name matches a retired directory row are dropped.
 //   - Detected known harnesses missing from config are appended (in
 //     directory order), with the resolved binary path.
 //   - Config is saved only when something actually changed.
@@ -1890,7 +1910,7 @@ func (a *App) SyncAIHarnesses() {
 	existingByName := make(map[string]config.AIHarnessEntry)
 	var customOrder []config.AIHarnessEntry // not in knownAIHarnesses
 	for _, h := range a.cfg.Global.AIHarnesses {
-		if seenName[h.Name] {
+		if seenName[h.Name] || retiredAIHarnessNames[h.Name] {
 			continue
 		}
 		seenName[h.Name] = true
@@ -1965,155 +1985,9 @@ func (a *App) ShowErrorDialog(title, message string) {
 	})
 }
 
-// resolveFirstHarnessTerminal returns global.terminals[0] and an actionable
-// error when (a) no terminal is configured or (b) the terminal can't accept a
-// harness command. Eligibility: either the args contain the "{command}" token
-// (the generic splice path for WT profiles, gnome-terminal, etc.) OR the
-// entry is a macOS Terminal.app / iTerm `open -a <App>` pair (handled via
-// osascript — see macAppleScriptTerminalApp).
-func (a *App) resolveFirstHarnessTerminal() (config.TerminalEntry, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.cfg == nil {
-		return config.TerminalEntry{}, fmt.Errorf("Configure a terminal first (global.terminals is empty)")
-	}
-	// Source through EffectiveTerminals so post-migration configs (legacy
-	// Terminals[] cleared, TerminalProfiles[] populated) still let AI
-	// harnesses launch into a terminal. Removed in the v2.1 cleanup commit
-	// when the harness path moves to OpenProfile.
-	terms := a.cfg.Global.EffectiveTerminals()
-	if len(terms) == 0 {
-		return config.TerminalEntry{}, fmt.Errorf("Configure a terminal first (global.terminals is empty)")
-	}
-	t := terms[0]
-	for _, arg := range t.Args {
-		if arg == "{command}" {
-			return t, nil
-		}
-	}
-	if _, ok := macAppleScriptTerminalApp(t); ok {
-		return t, nil
-	}
-	return config.TerminalEntry{}, fmt.Errorf("%s in global.terminals[0] doesn't support launching a command. Add {command} to its args, or reorder global.terminals so a compatible entry is first.", t.Name)
-}
-
-// macAppleScriptTerminalApp detects a macOS `open -a Terminal|iTerm` entry
-// and returns the app name to talk to via osascript. Returns ok=false for
-// anything else (including Warp — which has a more complex AppleScript
-// dialect not yet supported). Matching is purely on the entry's shape, so
-// user-renamed entries still work as long as the command/args are intact.
-func macAppleScriptTerminalApp(t config.TerminalEntry) (appName string, ok bool) {
-	if !isDarwin() || t.Command != "open" {
-		return "", false
-	}
-	// Args must contain "-a <App>" with App in the supported set.
-	for i := 0; i < len(t.Args)-1; i++ {
-		if t.Args[i] != "-a" {
-			continue
-		}
-		switch t.Args[i+1] {
-		case "Terminal", "iTerm":
-			return t.Args[i+1], true
-		}
-	}
-	return "", false
-}
-
-// shellQuotePOSIX wraps s in single quotes for POSIX shells, escaping any
-// embedded single quotes. Suitable for building a shell command line that
-// gets passed to `sh -c` or an AppleScript `do script`.
-func shellQuotePOSIX(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
-// appleScriptEscape escapes a string for embedding in an AppleScript
-// double-quoted string literal. Backslashes and double quotes get prefixed
-// with a backslash.
-func appleScriptEscape(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `"`, `\"`)
-	return s
-}
-
-// buildMacHarnessShellLine returns the shell command line that osascript
-// will `do script` (Terminal.app) or `write text` (iTerm). It cd's into the
-// target path and then execs the harness argv — everything POSIX-quoted so
-// paths with spaces and unicode round-trip safely.
-func buildMacHarnessShellLine(path string, harnessArgv []string) string {
-	parts := make([]string, 0, 1+len(harnessArgv))
-	parts = append(parts, "cd "+shellQuotePOSIX(path))
-	if len(harnessArgv) > 0 {
-		quoted := make([]string, len(harnessArgv))
-		for i, a := range harnessArgv {
-			quoted[i] = shellQuotePOSIX(a)
-		}
-		parts = append(parts, strings.Join(quoted, " "))
-	}
-	return strings.Join(parts, " && ")
-}
-
-// buildMacAppleScript returns the AppleScript source that launches the
-// harness inside the named Terminal-family app. For Terminal.app a plain
-// `do script` (which opens a new window with the command running); for
-// iTerm, create a fresh window with the default profile and write the
-// command to its current session.
-func buildMacAppleScript(appName, path string, harnessArgv []string) string {
-	shell := buildMacHarnessShellLine(path, harnessArgv)
-	escaped := appleScriptEscape(shell)
-	switch appName {
-	case "Terminal":
-		return fmt.Sprintf(`tell application "Terminal"
-    activate
-    do script "%s"
-end tell`, escaped)
-	case "iTerm":
-		// iTerm's `create window with default profile` returns before the
-		// session is ready to accept `write text` — with no delay the window
-		// opens but the command silently drops. A small delay gives iTerm
-		// time to finish initializing the session; `current session of
-		// current window` then resolves to the just-created session. This
-		// is the pattern that works across iTerm 3.x versions; the
-		// apparently-cleaner "nested tell (create window …)" form races.
-		return fmt.Sprintf(`tell application "iTerm"
-    activate
-    create window with default profile
-    delay 0.3
-    tell current session of current window
-        write text "%s"
-    end tell
-end tell`, escaped)
-	}
-	return ""
-}
-
-// launchMacHarnessViaAppleScript spawns osascript with the built AppleScript.
-// First invocation may prompt the user for Automation permission (macOS
-// Privacy → Automation) to let gitbox control Terminal.app / iTerm — that's
-// a one-time OS-level consent, not a gitbox prompt.
-func launchMacHarnessViaAppleScript(appName, path string, harnessArgv []string) error {
-	script := buildMacAppleScript(appName, path, harnessArgv)
-	if script == "" {
-		return fmt.Errorf("unsupported macOS terminal app: %q", appName)
-	}
-	cmd := exec.Command("osascript", "-e", script)
-	cmd.Env = git.Environ()
-	return cmd.Start()
-}
-
-// launchHarnessInTerminal dispatches between the generic {command}-splice
-// launcher and the macOS AppleScript launcher based on the terminal entry's
-// shape. Central point for harness-side launch routing.
-func launchHarnessInTerminal(path string, term config.TerminalEntry, harnessArgv []string) error {
-	if appName, ok := macAppleScriptTerminalApp(term); ok {
-		return launchMacHarnessViaAppleScript(appName, path, harnessArgv)
-	}
-	return openTerminalWithHarnessAt(path, term.Command, term.Args, harnessArgv)
-}
-
-// buildHarnessArgv returns the harness argv to splice into the terminal's
-// "{command}" slot: the harness binary followed by its args. An empty command
-// returns nil so the splice expands to zero items (matches the terminal-only
-// launch contract and prevents silent misfires).
+// buildHarnessArgv returns the harness argv: the harness binary followed by
+// its args. An empty command returns nil so the profile resolver treats the
+// request as a plain launch instead of silently misfiring.
 func buildHarnessArgv(command string, args []string) []string {
 	if command == "" {
 		return nil
@@ -2124,25 +1998,42 @@ func buildHarnessArgv(command string, args []string) []string {
 	return argv
 }
 
-// OpenInAIHarness launches the given AI harness in the clone folder, using
-// global.terminals[0] as the host terminal. Takes the harness command + args
-// directly (rather than looking up by ID) so both auto-detected and
-// config-stored entries call the same contract — mirrors OpenInTerminal's
-// signature. Errors are actionable strings the frontend can surface verbatim.
+// harnessProfileID picks the Terminal Profile that hosts AI harness launches:
+// the launcher's default profile (first visible Default, else first visible),
+// so "Open with <harness>" opens in the same terminal as ">_ Open in
+// <default profile>". Errors when no profile exists at all.
+func (a *App) harnessProfileID() (string, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cfg == nil {
+		return "", fmt.Errorf("Configure a terminal profile first (Gear → Terminals & Shells)")
+	}
+	p, ok := terminals.DefaultLaunchProfile(a.cfg.Global)
+	if !ok {
+		return "", fmt.Errorf("Configure a terminal profile first (Gear → Terminals & Shells)")
+	}
+	return p.ID, nil
+}
+
+// OpenInAIHarness launches the given AI harness in the clone folder inside
+// the default Terminal Profile's shell (issue #80). Takes the harness
+// command + args directly (rather than looking up by ID) so both
+// auto-detected and config-stored entries call the same contract. Errors are
+// actionable strings the frontend can surface verbatim.
 func (a *App) OpenInAIHarness(path string, command string, args []string) error {
 	if command == "" {
 		return fmt.Errorf("AI harness command is required")
 	}
-	term, err := a.resolveFirstHarnessTerminal()
+	profileID, err := a.harnessProfileID()
 	if err != nil {
 		return err
 	}
-	return launchHarnessInTerminal(path, term, buildHarnessArgv(command, args))
+	return a.launchProfile(path, profileID, buildHarnessArgv(command, args))
 }
 
 // OpenAccountInAIHarness launches the given AI harness in the account's
-// parent folder (<global.folder>/<accountKey>), using global.terminals[0] as
-// the host terminal. Errors out when the account is unknown or the folder is
+// parent folder (<global.folder>/<accountKey>) inside the default Terminal
+// Profile's shell. Errors out when the account is unknown or the folder is
 // missing, matching the pattern from OpenAccountInTerminal.
 func (a *App) OpenAccountInAIHarness(accountKey string, command string, args []string) error {
 	if command == "" {
@@ -2152,11 +2043,11 @@ func (a *App) OpenAccountInAIHarness(accountKey string, command string, args []s
 	if err != nil {
 		return err
 	}
-	term, err := a.resolveFirstHarnessTerminal()
+	profileID, err := a.harnessProfileID()
 	if err != nil {
 		return err
 	}
-	return launchHarnessInTerminal(path, term, buildHarnessArgv(command, args))
+	return a.launchProfile(path, profileID, buildHarnessArgv(command, args))
 }
 
 // ─── Platform helpers ─────────────────────────────────────────────────────

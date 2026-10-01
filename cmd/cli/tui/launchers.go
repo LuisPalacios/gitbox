@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -116,7 +117,7 @@ func launchTerminalCmd(path string, term config.TerminalEntry) tea.Cmd {
 		if term.Command == "" {
 			return launchDoneMsg{target: term.Name, err: fmt.Errorf("terminal command is empty")}
 		}
-		args := resolveTerminalArgs(term.Args, path, nil)
+		args := resolveTerminalArgs(term.Args, path)
 		cmd := exec.Command(term.Command, args...)
 		cmd.Env = git.Environ()
 		if err := cmd.Start(); err != nil {
@@ -126,22 +127,40 @@ func launchTerminalCmd(path string, term config.TerminalEntry) tea.Cmd {
 	}
 }
 
-// launchAIHarnessCmd spawns the given AI harness inside the first configured
-// terminal (mirrors the GUI contract: harnesses are CLI-only and must run in
-// a terminal). Returns an actionable error if no terminal is configured.
-func launchAIHarnessCmd(path string, h config.AIHarnessEntry, terminals []config.TerminalEntry) tea.Cmd {
+// launchAIHarnessCmd spawns the given AI harness inside the default Terminal
+// Profile's shell (issue #80), through the same pkg/terminals resolver the
+// GUI uses so both frontends agree byte-for-byte on the argv. Returns an
+// actionable error when no profile is configured or the default profile's
+// terminal cannot host a command.
+func launchAIHarnessCmd(path string, h config.AIHarnessEntry, g config.GlobalConfig) tea.Cmd {
 	return func() tea.Msg {
 		if h.Command == "" {
 			return launchDoneMsg{target: h.Name, err: fmt.Errorf("harness command is empty")}
 		}
-		if len(terminals) == 0 {
-			return launchDoneMsg{target: h.Name, err: fmt.Errorf("configure at least one terminal in global.terminals to launch AI harnesses")}
+		profile, ok := terminals.DefaultLaunchProfile(g)
+		if !ok {
+			return launchDoneMsg{target: h.Name, err: fmt.Errorf("configure a terminal profile first (settings → terminals) to launch AI harnesses")}
 		}
-		term := terminals[0]
-		harnessArgv := append([]string{h.Command}, h.Args...)
-		args := resolveTerminalArgs(term.Args, path, harnessArgv)
-		cmd := exec.Command(term.Command, args...)
-		cmd.Env = git.Environ()
+		l, err := terminals.ResolveLaunch(terminals.LaunchRequest{
+			Global:       g,
+			ProfileID:    profile.ID,
+			Path:         path,
+			HarnessArgv:  append([]string{h.Command}, h.Args...),
+			DefaultShell: os.Getenv("SHELL"),
+		})
+		if err != nil {
+			return launchDoneMsg{target: h.Name, err: err}
+		}
+		var cmd *exec.Cmd
+		if l.AppleScript != "" {
+			// macOS Terminal.app / iTerm: first run may prompt for Automation
+			// permission (Privacy → Automation) — a one-time OS consent.
+			cmd = exec.Command("osascript", "-e", l.AppleScript)
+		} else {
+			cmd = exec.Command(l.Command, l.Args...)
+			cmd.Dir = path
+		}
+		cmd.Env = appendEnvOverlay(git.Environ(), l.Env)
 		if err := cmd.Start(); err != nil {
 			return launchDoneMsg{target: h.Name, err: err}
 		}
@@ -149,19 +168,18 @@ func launchAIHarnessCmd(path string, h config.AIHarnessEntry, terminals []config
 	}
 }
 
-// resolveTerminalArgs substitutes {path} and splices {command} in terminal
-// args. Mirrors the GUI's resolveTerminalArgsWithCommand (cmd/gui/app.go) so
-// both frontends interpret config the same way. Kept local to the TUI to
-// avoid introducing a public pkg surface just for two call sites.
-func resolveTerminalArgs(args []string, path string, harnessArgv []string) []string {
+// resolveTerminalArgs substitutes {path} in legacy terminal args; a literal
+// {command} entry (the pre-#80 harness slot) expands to zero items. Mirrors
+// the GUI's resolveTerminalArgs (cmd/gui/app.go) so both frontends interpret
+// legacy config the same way.
+func resolveTerminalArgs(args []string, path string) []string {
 	if len(args) == 0 {
 		return nil
 	}
 	pathSubstituted := false
-	out := make([]string, 0, len(args)+len(harnessArgv))
+	out := make([]string, 0, len(args))
 	for _, a := range args {
 		if a == "{command}" {
-			out = append(out, harnessArgv...)
 			continue
 		}
 		if strings.Contains(a, "{path}") {
@@ -171,7 +189,7 @@ func resolveTerminalArgs(args []string, path string, harnessArgv []string) []str
 		}
 		out = append(out, a)
 	}
-	if !pathSubstituted && harnessArgv == nil {
+	if !pathSubstituted {
 		out = append(out, path)
 	}
 	return out

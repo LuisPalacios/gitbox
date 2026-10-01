@@ -106,11 +106,10 @@
         ],
 
         // AI CLI harnesses for "Open in ..." actions in the GUI. Each harness
-        // launches inside global.terminals[0] — gitbox splices the harness
-        // argv into the "{command}" token of that terminal's args. Auto-
-        // detected on PATH at startup (claude, codex, gemini, aider, cursor-
-        // agent, opencode); edit or reorder freely. Most harnesses need no
-        // args — "args" is usually empty.
+        // launches inside the default Terminal Profile's shell (the profile
+        // flagged "default" above). Auto-detected on PATH at startup (claude,
+        // codex, agy, aider, cursor-agent, opencode); edit or reorder
+        // freely. Most harnesses need no args — "args" is usually empty.
         "ai_harnesses": [
             { "name": "Claude Code", "command": "claude" },
             { "name": "Codex",       "command": "codex" },

@@ -27,6 +27,12 @@ import (
 type LaunchOverride struct {
 	Argv []string
 	Env  map[string]string
+	// ShellCommand / ShellArgs, when set, replace the gitbox profile's shell
+	// for both plain and harness launches. Populated by the WezTerm
+	// launch_menu lookup (the entry's own args ARE the shell invocation);
+	// the WT lookup leaves them empty because settings.json owns the shell.
+	ShellCommand string
+	ShellArgs    []string
 }
 
 // LookupForLaunch finds a user-config entry that matches the given gitbox
@@ -71,8 +77,20 @@ func lookupWeztermEntry(shellID, shellName string, paths []string) (LaunchOverri
 				continue
 			}
 			argv := []string{"start", "--cwd", launch.TokenPath, "--"}
-			argv = append(argv, e.Args...)
-			return LaunchOverride{Argv: argv, Env: e.Env}, true
+			if len(e.Args) == 0 {
+				return LaunchOverride{Argv: argv, Env: e.Env}, true
+			}
+			// The launch_menu args are the shell invocation. Expose them
+			// through the shell tokens so a harness launch can wrap that
+			// same shell (launch.HarnessInShell) instead of bypassing it;
+			// plain launches expand to the identical argv as before.
+			argv = append(argv, launch.TokenShellCommand, launch.TokenShellArgs)
+			return LaunchOverride{
+				Argv:         argv,
+				Env:          e.Env,
+				ShellCommand: e.Args[0],
+				ShellArgs:    append([]string(nil), e.Args[1:]...),
+			}, true
 		}
 		// Found a config file but no matching entry → stop scanning further
 		// candidates. Falling through would let a stale fallback config win
@@ -121,7 +139,10 @@ func lookupWTProfile(shellID, shellName string, paths []string) (LaunchOverride,
 			if !matchesShell(prof.Name, shellID, shellName) {
 				continue
 			}
-			argv := []string{"-w", "0", "nt", "--profile", prof.Name, "-d", launch.TokenPath}
+			// Trailing {command}: WT accepts a commandline after -d, which
+			// is how a harness launch hands WT the wrapped shell. It expands
+			// to zero items on plain launches.
+			argv := []string{"-w", "0", "nt", "--profile", prof.Name, "-d", launch.TokenPath, launch.TokenCommand}
 			return LaunchOverride{Argv: argv}, true
 		}
 		return LaunchOverride{}, false
