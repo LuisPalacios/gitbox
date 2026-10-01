@@ -275,7 +275,7 @@ Los flujos add-account y change-credential ejecutan la misma comprobación autom
 
 Cada fila de repo clonado tiene un **menú kebab (⋮)** en el lado derecho. El menú se divide en tres secciones para que los elementos que más usas no queden enterrados detrás de scroll:
 
-1. **Siempre visible** — `🌐 Open in browser` y `📁 Open folder`.
+1. **Siempre visible** — `🌐 Open in browser` y `📁 Open folder`. La entrada de navegador abre `<account url>/<owner>/<name>`, resuelto en el lado Go a partir de la config guardada, y muestra un diálogo de error si la fila no se encuentra ahí. Toda entrada basada en ruta (carpeta, editor, terminal, profile, AI harness) muestra un diálogo de "clona primero" en lugar de no hacer nada cuando el clon no ha terminado o su estado todavía no se ha cargado.
 2. **Defaults** — una entrada por categoría, usando la primera entrada de config como valor por defecto: `>_ Open in <terminals[0]>`, `✎ Open in <editors[0]>`, `🤖 Open in <ai_harnesses[0]>`. Una entrada se oculta cuando esa categoría tiene cero elementos configurados.
 3. **Submenús** — `Terminals ▸`, `Editors ▸`, `AI Harnesses ▸`. Cada submenú aparece solo cuando la categoría tiene **dos o más** entradas: con una sola, el default ya la cubre. Haz clic en el submenú para expandirlo (no hover), haz clic en otro submenú para cambiar, haz clic fuera o elige un elemento para cerrarlo todo.
 

@@ -190,6 +190,8 @@ export function OpenInTerminal(arg1:string,arg2:string,arg3:Array<string>):Promi
 
 export function OpenProfile(arg1:string,arg2:string):Promise<void>;
 
+export function OpenRepoInBrowser(arg1:string,arg2:string):Promise<void>;
+
 export function OpenTerminalsManagerWindow():Promise<void>;
 
 export function OpenWorkspace(arg1:string):Promise<void>;

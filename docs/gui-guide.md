@@ -275,7 +275,7 @@ The add-account and change-credential flows run the same check automatically: if
 
 Each cloned repo row has a **kebab menu (⋮)** on the right side. The menu is split into three sections so the items you use most aren't buried behind scrolling:
 
-1. **Always visible** — `🌐 Open in browser` and `📁 Open folder`.
+1. **Always visible** — `🌐 Open in browser` and `📁 Open folder`. The browser entry opens `<account url>/<owner>/<name>`, resolved on the Go side from the saved config, and shows an error dialog if the row can't be found there. Every path-based entry (folder, editor, terminal, profile, AI harness) shows a "clone first" dialog instead of doing nothing when the clone hasn't finished or its status hasn't loaded yet.
 2. **Defaults** — one entry per category, using the first config entry as the default: `>_ Open in <terminals[0]>`, `✎ Open in <editors[0]>`, `🤖 Open in <ai_harnesses[0]>`. An entry is hidden when that category has zero configured items.
 3. **Submenus** — `Terminals ▸`, `Editors ▸`, `AI Harnesses ▸`. Each submenu only appears when the category has **two or more** entries — with just one, the default already covers it. Click the submenu to expand (not hover), click another submenu to switch, click outside or pick an item to close everything.
 
