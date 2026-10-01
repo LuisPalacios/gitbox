@@ -150,8 +150,9 @@ func checkLatestAPI(ctx context.Context, opts Options) (*CheckResult, error) {
 
 // ArtifactName returns the expected zip/artifact name for the current platform.
 func ArtifactName() string {
+	// Set by the AppImage runtime to the path of the running AppImage.
 	if os.Getenv("APPIMAGE") != "" {
-		return "gitbox-linux-amd64.AppImage"
+		return "gitbox-x86_64.AppImage"
 	}
 	return artifactNameFor(runtime.GOOS, runtime.GOARCH)
 }

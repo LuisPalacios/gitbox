@@ -172,8 +172,12 @@ jobs:
           name: gui-macos-amd64
           path: cmd/gui/build/bin/gitbox-macos-amd64.zip
 
+  # Oldest supported Ubuntu on purpose: the AppImage bundles this runner's
+  # GTK/WebKitGTK libraries, and libraries from a newer base need a newer
+  # glibc than the systems the AppImage should run on (24.04 libs want
+  # glibc 2.38; the AppImage catalog tests on 22.04 with glibc 2.35).
   gui-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: test
     env:
       LDFLAGS: >-
@@ -384,33 +388,30 @@ jobs:
 
   # ── Linux AppImage ──
   appimage-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04 # same base as gui-linux, see the note there
     needs: [cli, gui-linux]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-      - name: Download appimagetool
+      # The GUI's GTK 3 + WebKitGTK stack gets bundled into the AppImage, so
+      # the build host needs the same libraries gui-linux compiled against.
+      - name: Install AppImage build dependencies
         run: |
-          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
-          chmod +x appimagetool
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libgles2 gobject-introspection libgirepository1.0-dev appstream desktop-file-utils file
       - name: Build AppImage
         run: |
-          mkdir -p AppDir/usr/bin AppDir/usr/share/icons/hicolor/256x256/apps release
-          cp artifacts/cli-binaries/gitbox-linux-amd64 AppDir/usr/bin/gitbox
-          cp artifacts/gui-linux/GitboxApp AppDir/usr/bin/GitboxApp
-          chmod +x AppDir/usr/bin/gitbox AppDir/usr/bin/GitboxApp
-          cp assets/appicon.png AppDir/usr/share/icons/hicolor/256x256/apps/gitbox.png
-          cp assets/appicon.png AppDir/gitbox.png
-          cp scripts/appimage/gitbox.desktop AppDir/gitbox.desktop
-          cp scripts/appimage/AppRun AppDir/AppRun
-          chmod +x AppDir/AppRun
-          ARCH=x86_64 ./appimagetool AppDir release/gitbox-linux-amd64.AppImage
+          scripts/appimage/build-appimage.sh \
+            artifacts/cli-binaries/gitbox-linux-amd64 \
+            artifacts/gui-linux/GitboxApp \
+            "${{ github.ref_name }}" \
+            release/gitbox-x86_64.AppImage
       - uses: actions/upload-artifact@v4
         with:
           name: appimage-linux
-          path: release/gitbox-linux-amd64.AppImage
+          path: release/gitbox-x86_64.AppImage
 
   # ── GitHub Release with all binaries ──
   release:
@@ -460,7 +461,11 @@ jobs:
           cp artifacts/installer-windows/gitbox-win-amd64-setup.exe release/ 2>/dev/null || true
           cp artifacts/dmg-macos-arm64/gitbox-macos-arm64.dmg release/ 2>/dev/null || true
           cp artifacts/dmg-macos-amd64/gitbox-macos-amd64.dmg release/ 2>/dev/null || true
-          cp artifacts/appimage-linux/gitbox-linux-amd64.AppImage release/ 2>/dev/null || true
+          cp artifacts/appimage-linux/gitbox-x86_64.AppImage release/ 2>/dev/null || true
+          # Transitional alias: AppImages up to v1.6.2 self-update by looking
+          # for the old asset name. Remove once those installs have had a
+          # release or two to move over.
+          cp artifacts/appimage-linux/gitbox-x86_64.AppImage release/gitbox-linux-amd64.AppImage 2>/dev/null || true
 
       - name: Generate checksums
         run: cd release && sha256sum * > checksums.sha256

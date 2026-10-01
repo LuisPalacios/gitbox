@@ -104,7 +104,7 @@ Ten en cuenta que este método de instalación se queja de apps no firmadas ni n
 | ---------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | Windows    | `gitbox-win-amd64-setup.exe`                        | Instala en Program Files, añade a PATH, crea accesos del menú Start                                                                 |
 | macOS      | `gitbox-macos-arm64.dmg` / `gitbox-macos-amd64.dmg` | Abre el DMG, ejecuta `bash "/Volumes/gitbox/Install Gitbox.command"` desde Terminal — instala GUI + CLI, limpia flags de cuarentena |
-| Linux      | `gitbox-linux-amd64.AppImage`                       | Autocontenido, se ejecuta directamente — no necesita instalación                                                                    |
+| Linux      | `gitbox-x86_64.AppImage`                            | Autocontenido, se ejecuta directamente — no necesita instalación                                                                    |
 
 Cada release incluye también un archivo `checksums.sha256` para verificar descargas.
 
