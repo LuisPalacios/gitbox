@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 
@@ -47,16 +48,54 @@ func (r Result) InstallHint() string {
 var darwinExtraDirs = []string{"/opt/homebrew/bin", "/usr/local/bin"}
 
 // Lookup returns the absolute path for name, or "" if the binary is not
-// found. Strategy:
+// found. It is LookupIn with no extra directories; see there for the
+// probe order.
+func Lookup(name string) string {
+	return LookupIn(name, nil)
+}
+
+// LookupIn returns the absolute path for name, or "" if the binary is not
+// found. extraDirs are tool-specific well-known install directories probed
+// first; each may start with `~`, and may reference environment variables
+// as $VAR, ${VAR} or %VAR% (entries that expand to nothing are skipped).
 //
-//  1. macOS: probe Homebrew prefixes before PATH. GUI apps launched from
-//     Finder have a minimal PATH that excludes Homebrew directories.
-//  2. Try exec.LookPath. Honors the user's PATH customization.
-//  3. Windows: fall back to well-known Git-for-Windows / GCM install dirs.
-//     GUI apps occasionally inherit an environment where `C:\Program Files\Git\cmd`
+// Strategy:
+//
+//  0. name carries a path separator: it is a stored path (absolute, or
+//     `~`-prefixed). Stat it directly and never consult PATH — the caller
+//     asked for that exact file.
+//  1. extraDirs, in order.
+//  2. macOS: Homebrew prefixes before PATH. GUI apps launched from Finder
+//     have a minimal PATH that excludes Homebrew directories.
+//  3. exec.LookPath. Honors the user's PATH customization (and PATHEXT on
+//     Windows, so npm `.cmd` shims resolve).
+//  4. ~/.local/bin on every OS. The native Claude Code, Antigravity, Codex,
+//     Goose and uv-managed installers drop binaries there, and a GUI
+//     launched from the Dock or a desktop menu doesn't inherit the shell
+//     rc that adds it to PATH.
+//  5. Windows: well-known Git-for-Windows / GCM install dirs. GUI apps
+//     occasionally inherit an environment where `C:\Program Files\Git\cmd`
 //     is missing from PATH, which made gitbox wrongly report GCM as not
 //     installed.
-func Lookup(name string) string {
+//
+// LookupIn never mutates the process environment, so it is safe to call
+// from background goroutines while other code spawns subprocesses.
+func LookupIn(name string, extraDirs []string) string {
+	if name == "" {
+		return ""
+	}
+	if strings.ContainsAny(name, `/\`) {
+		return statExecutable(filepath.Dir(expandDir(name)), filepath.Base(name))
+	}
+	for _, raw := range extraDirs {
+		dir := expandDir(raw)
+		if dir == "" {
+			continue
+		}
+		if p := statExecutable(dir, name); p != "" {
+			return p
+		}
+	}
 	if runtime.GOOS == "darwin" {
 		for _, dir := range darwinExtraDirs {
 			if p := statExecutable(dir, name); p != "" {
@@ -66,6 +105,11 @@ func Lookup(name string) string {
 	}
 	if p, err := exec.LookPath(name); err == nil {
 		return p
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if p := statExecutable(filepath.Join(home, ".local", "bin"), name); p != "" {
+			return p
+		}
 	}
 	if runtime.GOOS == "windows" {
 		for _, dir := range windowsFallbackDirs(name) {
@@ -77,18 +121,70 @@ func Lookup(name string) string {
 	return ""
 }
 
-// statExecutable returns filepath.Join(dir, name) if the file exists and is
-// not a directory, appending ".exe" on Windows when name lacks an extension.
-// Returns "" when nothing matches.
+// winVarRE matches %VAR% references in Windows-style paths.
+var winVarRE = regexp.MustCompile(`%([A-Za-z_][A-Za-z0-9_()]*)%`)
+
+// expandDir resolves a leading `~` to the user's home and expands $VAR,
+// ${VAR} and %VAR% references from the environment. A reference whose
+// variable is unset yields an empty string, and a path that becomes empty
+// (or is left with an unexpanded `~`) returns "" so callers skip it.
+func expandDir(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return ""
+	}
+	if s == "~" || strings.HasPrefix(s, "~/") || strings.HasPrefix(s, `~\`) {
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			return ""
+		}
+		s = home + s[1:]
+	}
+	unset := false
+	s = winVarRE.ReplaceAllStringFunc(s, func(m string) string {
+		v := os.Getenv(m[1 : len(m)-1])
+		if v == "" {
+			unset = true
+		}
+		return v
+	})
+	s = os.Expand(s, func(k string) string {
+		v := os.Getenv(k)
+		if v == "" {
+			unset = true
+		}
+		return v
+	})
+	if unset || strings.TrimSpace(s) == "" {
+		return ""
+	}
+	return s
+}
+
+// statExecutable returns filepath.Join(dir, name) if the file exists, is
+// not a directory and (outside Windows) carries an execute bit. On Windows,
+// when name lacks an extension, ".exe", ".cmd" and ".bat" are also tried so
+// native binaries and npm shims both resolve. Returns "" when nothing
+// matches.
 func statExecutable(dir, name string) string {
+	if dir == "" || name == "" {
+		return ""
+	}
 	candidates := []string{filepath.Join(dir, name)}
-	if runtime.GOOS == "windows" && !strings.EqualFold(filepath.Ext(name), ".exe") {
-		candidates = append(candidates, filepath.Join(dir, name+".exe"))
+	if runtime.GOOS == "windows" && filepath.Ext(name) == "" {
+		for _, ext := range []string{".exe", ".cmd", ".bat"} {
+			candidates = append(candidates, filepath.Join(dir, name+ext))
+		}
 	}
 	for _, c := range candidates {
-		if fi, err := os.Stat(c); err == nil && !fi.IsDir() {
-			return c
+		fi, err := os.Stat(c)
+		if err != nil || fi.IsDir() {
+			continue
 		}
+		if runtime.GOOS != "windows" && fi.Mode()&0o111 == 0 {
+			continue
+		}
+		return c
 	}
 	return ""
 }
