@@ -164,6 +164,11 @@ var knownStaleArgsTemplates = map[string][][]string{
 		// treats `--cwd` as positional and exits without showing a window.
 		// Correct invocation is `open -a WezTerm --args start --cwd <path>`.
 		{"-n", "-a", "WezTerm", "--args", "--cwd", "{path}"},
+		// Pre-#80 final shape: correct for plain launches but lacking the
+		// trailing {command} slot, so ResolveLaunch refuses AI harness
+		// launches with "cannot run a command". The catalog now appends
+		// {command}; it expands to zero items on plain launches.
+		{"-n", "-a", "WezTerm", "--args", "start", "--cwd", "{path}"},
 	},
 	"alacritty": {
 		{"-a", "Alacritty"},
