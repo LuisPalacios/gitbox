@@ -8,6 +8,13 @@
 
 set -e
 
+# Git exports GIT_DIR (absolute when pushing from a linked worktree),
+# GIT_WORK_TREE and friends to hooks. Every git call the test suite makes
+# would then target THIS repository instead of the tests' temp repos — a
+# single `git init --bare` in a test is enough to flip the main clone to
+# core.bare=true. Scrub them so tests run against a clean environment.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
+
 # Git passes the remote ref info via stdin. If every ref being pushed
 # is a tag (refs/tags/...), skip the checks — no code changed.
 all_tags=true
