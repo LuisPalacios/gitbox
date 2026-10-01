@@ -553,21 +553,31 @@
     actionMenuRepo = null;
   }
 
+  // requireRepoPath returns the row's local clone path, or shows the
+  // "clone first" dialog and returns null. Path-based kebab actions used
+  // to return silently when the path was missing (#79); a row cloned
+  // in-session has none until clone:done or the next status refresh.
+  function requireRepoPath(repoKey: string, title: string): string | null {
+    const p = $repoStates[repoKey]?.path;
+    if (!p) { void bridge.showErrorDialog(title, $t('launcher.cloneFirst')); }
+    return p ?? null;
+  }
+
   async function openRepoInExplorer(repoKey: string) {
-    const state = $repoStates[repoKey];
-    if (state?.path) await bridge.openInExplorer(state.path);
+    const path = requireRepoPath(repoKey, revealLabel);
+    if (path) await bridge.openInExplorer(path);
     closeActionMenu();
   }
 
   async function openRepoInApp(repoKey: string, command: string) {
-    const state = $repoStates[repoKey];
-    if (state?.path) await bridge.openInApp(state.path, command);
+    const path = requireRepoPath(repoKey, 'Open in editor');
+    if (path) await bridge.openInApp(path, command);
     closeActionMenu();
   }
 
   async function openRepoInTerminal(repoKey: string, terminal: TerminalInfo) {
-    const state = $repoStates[repoKey];
-    if (state?.path) await bridge.openInTerminal(state.path, terminal.command, terminal.args || []);
+    const path = requireRepoPath(repoKey, 'Open in ' + terminal.name);
+    if (path) await bridge.openInTerminal(path, terminal.command, terminal.args || []);
     closeActionMenu();
   }
 
@@ -575,9 +585,9 @@
   // working directory then asks the Go side to expand the profile's
   // template via pkg/launch.ResolveArgs and spawn the terminal.
   async function openRepoProfile(repoKey: string, profileID: string) {
-    const state = $repoStates[repoKey];
-    if (state?.path) {
-      try { await bridge.openProfile(state.path, profileID); }
+    const path = requireRepoPath(repoKey, 'Open profile');
+    if (path) {
+      try { await bridge.openProfile(path, profileID); }
       catch (e: any) { await bridge.showErrorDialog('Open profile', (e?.message || String(e))); }
     }
     closeActionMenu();
@@ -598,12 +608,14 @@
     closeActionMenu();
   }
 
+  // The URL is resolved on the Go side from the authoritative config
+  // (git.RepoWebURL), so a stale frontend store can't turn this into a
+  // silent no-op; lookup failures surface in a dialog (#79).
   async function openRepoInBrowser(sourceKey: string, repoName: string) {
-    const source = $sources[sourceKey];
-    const acct = source ? $accounts[source.account] : null;
-    if (acct?.url) {
-      const webURL = acct.url.replace(/\/+$/, '') + '/' + repoName;
-      await bridge.openInBrowser(webURL);
+    try {
+      await bridge.openRepoInBrowser(sourceKey, repoName);
+    } catch (e: any) {
+      await bridge.showErrorDialog('Navigate to repo', (e?.message || String(e)));
     }
     closeActionMenu();
   }
@@ -2537,6 +2549,10 @@
           s[key] = {
             ...s[key],
             status: data.error ? 'error' : 'clean',
+            // Rows seeded in-session (create-repo, Bring Local) have no path
+            // until the next full status refresh; take it from the event so
+            // path-based kebab actions work right away (#79).
+            path: data.path || s[key].path,
             progress: 0,
             error: data.error,
           };

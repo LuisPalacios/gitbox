@@ -722,6 +722,39 @@ func (a *App) OpenAccountInBrowser(accountKey string) error {
 	return git.OpenInBrowser(url)
 }
 
+// repoWebURL resolves the provider web page for a configured repo from the
+// authoritative in-memory config: <account url>/<owner>/<name>. It is the
+// GUI counterpart of the CLI/TUI call sites of git.RepoWebURL, so the three
+// front-ends agree on the URL shape (#79).
+func (a *App) repoWebURL(sourceKey, repoKey string) (string, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	src, ok := a.cfg.Sources[sourceKey]
+	if !ok {
+		return "", fmt.Errorf("source %q not found", sourceKey)
+	}
+	if _, ok := src.Repos[repoKey]; !ok {
+		return "", fmt.Errorf("repo %q not found in source %q", repoKey, sourceKey)
+	}
+	acct, ok := a.cfg.Accounts[src.Account]
+	if !ok {
+		return "", fmt.Errorf("account %q not found", src.Account)
+	}
+	return git.RepoWebURL(acct.URL, repoKey), nil
+}
+
+// OpenRepoInBrowser opens the provider page for a configured repo. The URL
+// is resolved on the Go side so a stale frontend store can never turn the
+// action into a silent no-op; lookup failures come back as errors the UI
+// shows in a dialog. No HideWindow: this launches the user's browser.
+func (a *App) OpenRepoInBrowser(sourceKey, repoKey string) error {
+	url, err := a.repoWebURL(sourceKey, repoKey)
+	if err != nil {
+		return err
+	}
+	return git.OpenInBrowser(url)
+}
+
 // SweepPreviewDTO holds the read-only preview of stale branches.
 type SweepPreviewDTO struct {
 	Merged   []string `json:"merged"`
@@ -2665,7 +2698,11 @@ func (a *App) CloneRepo(sourceKey, repoKey string) {
 				})
 			})
 
-		result := map[string]interface{}{"source": sourceKey, "repo": repoKey}
+		// "path" lets the frontend fill repoStates[key].path for rows cloned
+		// in-session (create-repo, Bring Local). Until the next full status
+		// refresh the row otherwise has no path and every path-based kebab
+		// action silently no-ops (#79).
+		result := map[string]interface{}{"source": sourceKey, "repo": repoKey, "path": dest}
 		if err != nil {
 			result["error"] = err.Error()
 		} else {
