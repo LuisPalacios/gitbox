@@ -288,10 +288,12 @@ The config lives at `~/.config/gitbox/gitbox.json`. See the [JSON annotated exam
 | `terminal_profiles[].preferred`   | bool   | No       | Promotes the Profile to the kebab menu's quick list. |
 | `terminal_profiles[].hidden`      | bool   | No       | Suppresses the Profile from menus without deleting it. The only way to suppress an auto-detected / WT-imported / WezTerm-imported / migrated Profile (those reappear on the next detect cycle if removed). |
 | `terminal_profiles[].source`      | string | No       | **Internal field** — never displayed in the Manager. Origin tag used by the engine to gate delete-vs-hide: only `"user"` Profiles are deletable; `"detected"` / `"wt-profile"` / `"wezterm-launchmenu"` / `"migrated"` rows can only be Hidden. |
-| `ai_harnesses`                    | array  | No       | AI CLI harnesses for the "Open in" menu. Auto-populated on first launch (claude, codex, agy, aider, cursor-agent, opencode). Launched inside the default Terminal Profile's shell (see `terminal_profiles[].default`). |
+| `ai_harnesses`                    | array  | No       | AI CLI harnesses for the "Open in" menu. Detected in the background (shortly after launch, every 10 minutes, on window focus) from the embedded catalog plus `~/.local/bin`, Homebrew prefixes and per-tool well-known directories. Launched inside the default Terminal Profile's shell (see `terminal_profiles[].default`). |
 | `ai_harnesses[].name`             | string | Yes      | Display name (e.g. `"Claude Code"`). |
 | `ai_harnesses[].command`          | string | Yes      | Absolute path or on-PATH binary (e.g. `"claude"`). |
 | `ai_harnesses[].args`             | array  | No       | Optional extra args for the harness. Usually empty. |
+| `ai_harnesses[].source`           | string | No       | **Internal field.** `"detected"` entries were added by the harness sync and may have their `command` re-resolved after a reinstall; `"user"` entries are never altered beyond `missing`. Empty on pre-existing entries until the first sync classifies them. |
+| `ai_harnesses[].missing`          | bool   | No       | Set by the harness sync when the binary can no longer be found; the entry is hidden from menus but kept so a reinstall restores it with its `args` intact. Cleared automatically when the binary reappears. |
 
 ### Account
 

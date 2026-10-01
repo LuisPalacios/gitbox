@@ -288,10 +288,12 @@ La config vive en `~/.config/gitbox/gitbox.json`. Consulta el [ejemplo JSON anot
 | `terminal_profiles[].preferred`   | bool   | No          | Promociona el Profile a la lista rápida del menú kebab. |
 | `terminal_profiles[].hidden`      | bool   | No          | Oculta el Profile de los menús sin borrarlo. Es la única forma de ocultar un Profile autodetectado / importado de WT / importado de WezTerm / migrado (esos reaparecen en el siguiente ciclo de detección si se eliminan). |
 | `terminal_profiles[].source`      | string | No          | **Campo interno** — nunca se muestra en el Manager. Etiqueta de origen que usa el motor para decidir entre borrar u ocultar: solo los Profiles `"user"` se pueden borrar; las filas `"detected"` / `"wt-profile"` / `"wezterm-launchmenu"` / `"migrated"` solo se pueden ocultar. |
-| `ai_harnesses`                    | array  | No          | AI CLI harnesses para el menú "Open in". Se rellena automáticamente en el primer arranque (claude, codex, agy, aider, cursor-agent, opencode). Se lanzan dentro del shell del Terminal Profile por defecto (consulta `terminal_profiles[].default`). |
+| `ai_harnesses`                    | array  | No          | AI CLI harnesses para el menú "Open in". Se detectan en segundo plano (poco después del arranque, cada 10 minutos, al recuperar el foco) a partir del catálogo embebido más `~/.local/bin`, los prefijos de Homebrew y los directorios conocidos por herramienta. Se lanzan dentro del shell del Terminal Profile por defecto (consulta `terminal_profiles[].default`). |
 | `ai_harnesses[].name`             | string | Sí          | Nombre visible (por ejemplo `"Claude Code"`). |
 | `ai_harnesses[].command`          | string | Sí          | Ruta absoluta o binario en PATH (por ejemplo `"claude"`). |
 | `ai_harnesses[].args`             | array  | No          | Args extra opcionales para el harness. Normalmente vacío. |
+| `ai_harnesses[].source`           | string | No          | **Campo interno.** Las entradas `"detected"` las añadió el sync de harnesses y pueden ver su `command` re-resuelto tras una reinstalación; las entradas `"user"` nunca se alteran más allá de `missing`. Vacío en entradas preexistentes hasta que el primer sync las clasifica. |
+| `ai_harnesses[].missing`          | bool   | No          | Lo pone el sync de harnesses cuando el binario ya no se encuentra; la entrada se oculta de los menús pero se conserva para que una reinstalación la restaure con sus `args` intactos. Se limpia automáticamente cuando el binario reaparece. |
 
 ### Account
 
