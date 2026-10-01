@@ -279,7 +279,7 @@
                 },
                 "ai_harnesses": {
                     "type": "array",
-                    "description": "AI CLI harnesses (claude, codex, agy, aider, cursor-agent, opencode, ...) available in the GUI 'Open in' menus. Auto-detected on PATH at startup; edit or reorder entries freely. Launches run inside the default Terminal Profile's shell (terminal_profiles[].default).",
+                    "description": "AI CLI harnesses (claude, codex, agy, aider, agent, opencode, ...) available in the GUI and TUI 'Open in' menus. Detected in the background (shortly after launch, every 10 minutes, and when the GUI window regains focus; once per TUI launch); edit or reorder entries freely. Launches run inside the default Terminal Profile's shell (terminal_profiles[].default).",
                     "items": {
                         "type": "object",
                         "required": ["name", "command"],
@@ -297,6 +297,15 @@
                                 "type": "array",
                                 "items": { "type": "string" },
                                 "description": "Optional extra args passed to the harness (e.g. ['--model', 'sonnet-4.6']). Usually empty."
+                            },
+                            "source": {
+                                "type": "string",
+                                "enum": ["detected", "user"],
+                                "description": "Where this entry came from. 'detected' entries were added by the harness sync from the embedded catalog and may have their command re-resolved after a reinstall; 'user' entries are never altered beyond the missing flag. Empty on pre-existing entries until the next sync classifies them."
+                            },
+                            "missing": {
+                                "type": "boolean",
+                                "description": "Set by the harness sync when the binary can no longer be found. Missing entries are hidden from menus but kept so a reinstall restores them with their args intact. Cleared automatically when the binary reappears."
                             }
                         }
                     }

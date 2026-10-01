@@ -105,15 +105,20 @@
               "args": ["--profile", "Git Bash", "-d", "{path}"], "source": "wt-profile" }
         ],
 
-        // AI CLI harnesses for "Open in ..." actions in the GUI. Each harness
-        // launches inside the default Terminal Profile's shell (the profile
-        // flagged "default" above). Auto-detected on PATH at startup (claude,
-        // codex, agy, aider, cursor-agent, opencode); edit or reorder
-        // freely. Most harnesses need no args — "args" is usually empty.
+        // AI CLI harnesses for "Open in ..." actions in the GUI and TUI. Each
+        // harness launches inside the default Terminal Profile's shell (the
+        // profile flagged "default" above). Detected in the background
+        // (shortly after launch, every 10 minutes, on window focus; once per
+        // TUI launch); edit or reorder freely. Most harnesses need no args —
+        // "args" is usually empty.
+        //   "source":  "detected" = added by the sync from the embedded
+        //              catalog; "user" = hand-written, never altered.
+        //   "missing": set by the sync when the binary is gone; the entry is
+        //              hidden from menus but kept so a reinstall restores it.
         "ai_harnesses": [
-            { "name": "Claude Code", "command": "claude" },
-            { "name": "Codex",       "command": "codex" },
-            { "name": "Aider",       "command": "aider", "args": ["--model", "sonnet-4.6"] }
+            { "name": "Claude Code", "command": "claude", "source": "detected" },
+            { "name": "Codex CLI",   "command": "codex",  "source": "detected", "missing": true },
+            { "name": "Aider",       "command": "aider",  "source": "user", "args": ["--model", "sonnet-4.6"] }
         ]
     },
 

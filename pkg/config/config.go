@@ -196,6 +196,24 @@ func (g GlobalConfig) EffectiveTerminals() []TerminalEntry {
 	return out
 }
 
+// VisibleAIHarnesses returns the AI harness entries that menus should
+// offer: every entry not flagged Missing, in config order. The GUI
+// launcher and the TUI screens both read this instead of AIHarnesses so an
+// uninstalled harness disappears from both at once.
+func (g GlobalConfig) VisibleAIHarnesses() []AIHarnessEntry {
+	if len(g.AIHarnesses) == 0 {
+		return nil
+	}
+	out := make([]AIHarnessEntry, 0, len(g.AIHarnesses))
+	for _, h := range g.AIHarnesses {
+		if h.Missing {
+			continue
+		}
+		out = append(out, h)
+	}
+	return out
+}
+
 // PRBadgesOn reports whether PR badges are enabled, defaulting to true when unset.
 func (g GlobalConfig) PRBadgesOn() bool {
 	if g.PRBadgesEnabled == nil {
@@ -319,10 +337,25 @@ type TerminalProfile struct {
 // Terminal Profile in the target folder and runs the harness inside that
 // profile's shell (pkg/terminals.ResolveLaunch). Most harnesses need no
 // extra flags; Args is usually empty.
+//
+// Source records where the entry came from, mirroring TerminalProfile:
+//
+//	"detected" — auto-added by the harness sync from the embedded catalog
+//	"user"     — hand-written by the user (not a catalog row, or a catalog
+//	             row whose command the user pointed somewhere else)
+//
+// An empty Source is a pre-#81 entry; the next sync classifies it.
+//
+// Missing is set by the sync when the entry's binary can no longer be
+// found on the host. Missing entries are hidden from menus but kept in
+// config so a reinstall restores the user's Args without editing anything.
+// The sync is the only writer of Missing; it never deletes entries.
 type AIHarnessEntry struct {
 	Name    string   `json:"name"`
 	Command string   `json:"command"`
 	Args    []string `json:"args,omitempty"`
+	Source  string   `json:"source,omitempty"`
+	Missing bool     `json:"missing,omitempty"`
 }
 
 // WindowState stores the GUI window position and size for session persistence.
