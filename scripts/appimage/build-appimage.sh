@@ -87,6 +87,10 @@ gles_lib="$(ldconfig -p | awk '/libGLESv2\.so\.2 / {print $NF; exit}')"
 [ -n "$gles_lib" ] || { echo "error: libGLESv2.so.2 not found; install libgles2" >&2; exit 1; }
 
 # --- static inputs ---------------------------------------------------------
+# linuxdeploy keeps source file names, and CI hands the CLI over as
+# gitbox-linux-amd64; install it under its real name and let linuxdeploy
+# only resolve its dependencies.
+install -m 755 "$cli" "$appdir/usr/bin/gitbox"
 sed -e "s/@VERSION@/$version/" -e "s/@DATE@/$(date -u +%F)/" "$metainfo" \
   > "$appdir/usr/share/metainfo/$(basename "$metainfo")"
 
@@ -98,7 +102,7 @@ export DEPLOY_GTK_VERSION=3
   cd "$work"
   linuxdeploy-x86_64.AppImage --appdir "$appdir" \
     --executable "$gui" \
-    --executable "$cli" \
+    --deploy-deps-only "$appdir/usr/bin/gitbox" \
     --deploy-deps-only "$webkit_dst" \
     --deploy-deps-only "$webkit_dst/injected-bundle" \
     --library "$gles_lib" \
@@ -111,7 +115,7 @@ export DEPLOY_GTK_VERSION=3
 sed -i -e 's|/usr|././|g' "$appdir/usr/lib/libwebkit2gtk-4.1.so.0"
 install -m 755 "$here/AppRun" "$appdir/AppRun"
 # Artifacts downloaded in CI lose their execute bit.
-chmod 755 "$appdir/usr/bin/GitboxApp" "$appdir/usr/bin/gitbox"
+chmod 755 "$appdir/usr/bin/GitboxApp"
 
 # --- verify -----------------------------------------------------------------
 # Fail here rather than at a user's first launch.
