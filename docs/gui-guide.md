@@ -14,7 +14,7 @@ Download the installer for your platform from the [Releases](https://github.com/
 
 - **Windows** — `gitbox-win-amd64-setup.exe` (installer with PATH setup and Start Menu shortcuts)
 - **macOS** — `gitbox-macos-arm64.dmg` or `gitbox-macos-amd64.dmg` (open DMG, run the install script from Terminal)
-- **Linux** — `gitbox-linux-amd64.AppImage` (self-contained, just download and run)
+- **Linux** — `gitbox-x86_64.AppImage` (self-contained, just download and run)
 
 Alternatively, download the ZIP archives (`gitbox-<platform>-<arch>.zip`) and extract manually.
 
@@ -25,8 +25,8 @@ Alternatively, download the ZIP archives (`gitbox-<platform>-<arch>.zip`) and ex
 Download the AppImage, make it executable, and run:
 
 ```bash
-chmod +x gitbox-linux-amd64.AppImage
-./gitbox-linux-amd64.AppImage
+chmod +x gitbox-x86_64.AppImage
+./gitbox-x86_64.AppImage
 ```
 
 The GUI requires a desktop environment with a display server (X11 or Wayland).

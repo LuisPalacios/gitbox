@@ -113,7 +113,7 @@ func NewFromConfig(acct *config.Account) (Provider, error) {
 
 1. Add `"newprovider"` to the `provider` enum in `json/gitbox.schema.json`.
 
-1. Write tests in `pkg/provider/newprovider_test.go`.
+2. Write tests in `pkg/provider/newprovider_test.go`.
 
 ---
 
@@ -230,20 +230,20 @@ CI injects `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into both CLI
 
 Each release produces the following artifacts:
 
-| Asset | Contents |
-| --- | --- |
-| `gitbox-win-amd64.zip` | `gitbox.exe` + `GitboxApp.exe` |
-| `gitbox-win-arm64.zip` | `gitbox.exe` (CLI only — GUI ARM64 build pending a native ARM runner) |
-| `gitbox-win-amd64-setup.exe` | Windows Inno Setup installer (PATH, Start Menu) |
-| `gitbox-macos-arm64.zip` | `gitbox` + `GitboxApp.app` |
-| `gitbox-macos-arm64.dmg` | macOS disk image with bundled installer |
-| `gitbox-macos-amd64.zip` | `gitbox` + `GitboxApp.app` |
-| `gitbox-macos-amd64.dmg` | macOS disk image with bundled installer |
-| `gitbox-linux-amd64.zip` | `gitbox` + `GitboxApp` |
-| `gitbox-linux-amd64.AppImage` | Self-contained Linux app (CLI + GUI) |
-| `checksums.sha256` | SHA256 hashes for all artifacts |
+| Asset                        | Contents                                                              |
+| ---------------------------- | --------------------------------------------------------------------- |
+| `gitbox-win-amd64.zip`       | `gitbox.exe` + `GitboxApp.exe`                                        |
+| `gitbox-win-arm64.zip`       | `gitbox.exe` (CLI only — GUI ARM64 build pending a native ARM runner) |
+| `gitbox-win-amd64-setup.exe` | Windows Inno Setup installer (PATH, Start Menu)                       |
+| `gitbox-macos-arm64.zip`     | `gitbox` + `GitboxApp.app`                                            |
+| `gitbox-macos-arm64.dmg`     | macOS disk image with bundled installer                               |
+| `gitbox-macos-amd64.zip`     | `gitbox` + `GitboxApp.app`                                            |
+| `gitbox-macos-amd64.dmg`     | macOS disk image with bundled installer                               |
+| `gitbox-linux-amd64.zip`     | `gitbox` + `GitboxApp`                                                |
+| `gitbox-x86_64.AppImage`     | Self-contained Linux app (CLI + GUI, bundles GTK 3 and WebKitGTK)     |
+| `checksums.sha256`           | SHA256 hashes for all artifacts                                       |
 
-The Windows installer is built with Inno Setup (`scripts/installer.iss`). macOS DMGs are built with `create-dmg` and include a bundled `Install Gitbox.command` script (`scripts/dmg/`) that copies binaries and removes quarantine flags. The Linux AppImage is built with `appimagetool` using the support files in `scripts/appimage/`.
+The Windows installer is built with Inno Setup (`scripts/installer.iss`). macOS DMGs are built with `create-dmg` and include a bundled `Install Gitbox.command` script (`scripts/dmg/`) that copies binaries and removes quarantine flags. The Linux AppImage is built by `scripts/appimage/build-appimage.sh`, which uses linuxdeploy and its GTK plugin to bundle GTK 3, WebKitGTK and the WebKit helper processes, so the AppImage runs on systems without those libraries installed. The Linux GUI and the AppImage build on the `ubuntu-22.04` runner on purpose: the bundled libraries then need no newer glibc than 2.35, which keeps the AppImage working on older distributions.
 
 ### macOS code signing
 
@@ -284,11 +284,11 @@ External contributions always come through PRs from forks — I review, CI must 
 
 The source of truth for the logo is `assets/logo.svg`. The derived icon files used by the Wails build live alongside it:
 
-| File                 | Format                    | Purpose                                                                          |
-| -------------------- | ------------------------- | -------------------------------------------------------------------------------- |
-| `assets/logo.svg`    | SVG                       | Source file, editable in [Boxy SVG](https://boxy-svg.com/) (Windows/macOS app)   |
-| `assets/appicon.png` | 1024x1024 PNG             | macOS `.app` bundle icon, Linux desktop icon                                     |
-| `assets/icon.ico`    | ICO (256/128/64/48/32/16) | Windows executable icon                                                          |
+| File                 | Format                    | Purpose                                                                        |
+| -------------------- | ------------------------- | ------------------------------------------------------------------------------ |
+| `assets/logo.svg`    | SVG                       | Source file, editable in [Boxy SVG](https://boxy-svg.com/) (Windows/macOS app) |
+| `assets/appicon.png` | 1024x1024 PNG             | macOS `.app` bundle icon, Linux desktop icon                                   |
+| `assets/icon.ico`    | ICO (256/128/64/48/32/16) | Windows executable icon                                                        |
 
 ### Editing the logo
 

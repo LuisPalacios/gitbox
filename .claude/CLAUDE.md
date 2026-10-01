@@ -81,7 +81,7 @@ scripts/
   bootstrap.sh             Cross-platform installer (downloads a release, places binaries, wires PATH, registers Linux menu entry)
   register-gitbox.sh       Linux-only desktop registrar (.desktop + icon in ~/.local/share, idempotent, supports --uninstall)
   installer.iss            Windows Inno Setup installer script
-  appimage/                Linux AppImage support files (desktop, AppRun)
+  appimage/                Linux AppImage build (build-appimage.sh + linuxdeploy, AppRun, desktop, AppStream metainfo, icon)
   dmg/                     macOS DMG installer script + README
 .githooks/pre-push        Pre-push hook (go vet + unit tests)
 .claude/

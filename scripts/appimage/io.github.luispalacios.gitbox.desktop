@@ -6,3 +6,4 @@ Icon=gitbox
 Type=Application
 Categories=Development;
 Terminal=false
+StartupWMClass=GitboxApp

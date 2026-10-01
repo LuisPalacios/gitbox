@@ -139,6 +139,16 @@ func TestArtifactNameFor(t *testing.T) {
 	}
 }
 
+// Inside an AppImage the runtime exports $APPIMAGE; the updater must then
+// fetch the AppImage asset (named per the AppImage catalog rules: no
+// "linux", arch as x86_64) instead of the platform zip.
+func TestArtifactName_AppImage(t *testing.T) {
+	t.Setenv("APPIMAGE", "/home/me/Applications/gitbox-x86_64.AppImage")
+	if got := ArtifactName(); got != "gitbox-x86_64.AppImage" {
+		t.Errorf("ArtifactName() inside AppImage = %q, want %q", got, "gitbox-x86_64.AppImage")
+	}
+}
+
 // ── Check tests ──
 
 func TestCheckLatest_UpdateAvailable(t *testing.T) {

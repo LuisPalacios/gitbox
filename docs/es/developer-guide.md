@@ -230,20 +230,20 @@ CI inyecta `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` en los builds
 
 Cada release produce estos artefactos:
 
-| Asset                         | Contenido                                                                |
-| ----------------------------- | ------------------------------------------------------------------------ |
-| `gitbox-win-amd64.zip`        | `gitbox.exe` + `GitboxApp.exe`                                           |
-| `gitbox-win-arm64.zip`        | `gitbox.exe` (solo CLI — build GUI ARM64 pendiente de runner ARM nativo) |
-| `gitbox-win-amd64-setup.exe`  | Instalador Windows Inno Setup (PATH, Start Menu)                         |
-| `gitbox-macos-arm64.zip`      | `gitbox` + `GitboxApp.app`                                               |
-| `gitbox-macos-arm64.dmg`      | Imagen de disco macOS con instalador incluido                            |
-| `gitbox-macos-amd64.zip`      | `gitbox` + `GitboxApp.app`                                               |
-| `gitbox-macos-amd64.dmg`      | Imagen de disco macOS con instalador incluido                            |
-| `gitbox-linux-amd64.zip`      | `gitbox` + `GitboxApp`                                                   |
-| `gitbox-linux-amd64.AppImage` | App Linux autocontenida (CLI + GUI)                                      |
-| `checksums.sha256`            | Hashes SHA256 de todos los artefactos                                    |
+| Asset                        | Contenido                                                                |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `gitbox-win-amd64.zip`       | `gitbox.exe` + `GitboxApp.exe`                                           |
+| `gitbox-win-arm64.zip`       | `gitbox.exe` (solo CLI — build GUI ARM64 pendiente de runner ARM nativo) |
+| `gitbox-win-amd64-setup.exe` | Instalador Windows Inno Setup (PATH, Start Menu)                         |
+| `gitbox-macos-arm64.zip`     | `gitbox` + `GitboxApp.app`                                               |
+| `gitbox-macos-arm64.dmg`     | Imagen de disco macOS con instalador incluido                            |
+| `gitbox-macos-amd64.zip`     | `gitbox` + `GitboxApp.app`                                               |
+| `gitbox-macos-amd64.dmg`     | Imagen de disco macOS con instalador incluido                            |
+| `gitbox-linux-amd64.zip`     | `gitbox` + `GitboxApp`                                                   |
+| `gitbox-x86_64.AppImage`     | App Linux autocontenida (CLI + GUI, incluye GTK 3 y WebKitGTK)           |
+| `checksums.sha256`           | Hashes SHA256 de todos los artefactos                                    |
 
-El instalador de Windows se construye con Inno Setup (`scripts/installer.iss`). Los DMGs de macOS se construyen con `create-dmg` e incluyen un script `Install Gitbox.command` incluido (`scripts/dmg/`) que copia binarios y elimina flags de cuarentena. El AppImage de Linux se construye con `appimagetool` usando los archivos de soporte en `scripts/appimage/`.
+El instalador de Windows se construye con Inno Setup (`scripts/installer.iss`). Los DMGs de macOS se construyen con `create-dmg` e incluyen un script `Install Gitbox.command` incluido (`scripts/dmg/`) que copia binarios y elimina flags de cuarentena. El AppImage de Linux lo construye `scripts/appimage/build-appimage.sh`, que usa linuxdeploy y su plugin GTK para incluir GTK 3, WebKitGTK y los procesos auxiliares de WebKit, de modo que el AppImage funciona en sistemas sin esas bibliotecas instaladas. La GUI de Linux y el AppImage se construyen a propósito en el runner `ubuntu-22.04`: así las bibliotecas incluidas no necesitan una glibc más nueva que la 2.35, lo que mantiene el AppImage funcionando en distribuciones más antiguas.
 
 ### Firma de código en macOS
 
