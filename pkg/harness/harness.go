@@ -22,6 +22,11 @@ type Tool struct {
 	Command  string // PATH binary name (e.g. "claude")
 }
 
+// retiredCategory marks rows whose CLI has been discontinued by its vendor.
+// They are never auto-detected, and config entries carrying their name are
+// pruned on sync (see cmd/gui SyncAIHarnesses).
+const retiredCategory = "Retired CLI"
+
 // eligibleCategories enumerates the categories gitbox treats as AI harnesses
 // for auto-detection. Frameworks, orchestrators, and cloud platforms live
 // in the directory for reference but don't get menu entries. Agentic IDEs
@@ -49,9 +54,26 @@ func KnownTools() []Tool {
 	return parseDirectory(directoryMarkdown)
 }
 
+// RetiredTools returns the rows marked with the retired category, in
+// markdown order. Callers use the names to prune stale config entries.
+func RetiredTools() []Tool {
+	return parseRetired(directoryMarkdown)
+}
+
 // parseDirectory is the testable core of KnownTools. Exported via KnownTools
 // for production and called directly by tests with synthetic markdown.
 func parseDirectory(md string) []Tool {
+	return filterRows(md, func(category string) bool { return eligibleCategories[category] })
+}
+
+// parseRetired is the testable core of RetiredTools.
+func parseRetired(md string) []Tool {
+	return filterRows(md, func(category string) bool { return category == retiredCategory })
+}
+
+// filterRows walks every table row with a single-identifier command and
+// keeps those whose category satisfies keep.
+func filterRows(md string, keep func(category string) bool) []Tool {
 	var tools []Tool
 	for _, line := range strings.Split(md, "\n") {
 		line = strings.TrimSpace(line)
@@ -76,7 +98,7 @@ func parseDirectory(md string) []Tool {
 		if name == "" || cmd == "" {
 			continue
 		}
-		if !eligibleCategories[category] {
+		if !keep(category) {
 			continue
 		}
 		tools = append(tools, Tool{Name: name, Category: category, Command: cmd})

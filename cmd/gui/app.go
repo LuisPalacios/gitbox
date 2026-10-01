@@ -931,6 +931,12 @@ func (a *App) OpenInApp(path string, command string) error {
 // and /usr/local/bin, so editors installed via Homebrew (code, cursor, zed)
 // are invisible to exec.LookPath. This helper sets the augmented env for the
 // lookup, falling back to the standard LookPath on non-macOS platforms.
+//
+// When PATH still misses, macOS and Linux also probe ~/.local/bin: the
+// native Claude Code and Antigravity CLI installers drop their binaries
+// there, and a GUI launched from the Dock or a desktop menu doesn't inherit
+// the shell rc that adds it to PATH. Windows installers register their
+// directories in the user PATH, so no fallback is needed there.
 func lookPathWithBrewPATH(command string) (string, error) {
 	env := git.Environ() // no-op on non-macOS
 	for _, e := range env {
@@ -939,10 +945,36 @@ func lookPathWithBrewPATH(command string) (string, error) {
 			os.Setenv("PATH", strings.TrimPrefix(e, "PATH="))
 			fullPath, err := exec.LookPath(command)
 			os.Setenv("PATH", origPath)
-			return fullPath, err
+			if err == nil {
+				return fullPath, nil
+			}
+			return lookPathUserLocalBin(command, err)
 		}
 	}
-	return exec.LookPath(command)
+	fullPath, err := exec.LookPath(command)
+	if err == nil {
+		return fullPath, nil
+	}
+	return lookPathUserLocalBin(command, err)
+}
+
+// lookPathUserLocalBin is the ~/.local/bin fallback for lookPathWithBrewPATH.
+// It returns the original lookup error when the fallback doesn't apply or
+// the file isn't an executable regular file.
+func lookPathUserLocalBin(command string, lookErr error) (string, error) {
+	if runtime.GOOS == "windows" {
+		return "", lookErr
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", lookErr
+	}
+	candidate := filepath.Join(home, ".local", "bin", command)
+	info, err := os.Stat(candidate)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
+		return "", lookErr
+	}
+	return candidate, nil
 }
 
 // EditorInfo describes an available code editor.
@@ -1776,6 +1808,22 @@ type knownHarnessCandidate struct {
 // pkg/harness/tools-directory.md rather than this file.
 var knownAIHarnesses = buildKnownAIHarnesses()
 
+// retiredAIHarnessNames lists display names of harnesses the directory marks
+// as retired (Category "Retired CLI"). SyncAIHarnesses drops config entries
+// with these names so a discontinued binary stops showing up in the menu.
+var retiredAIHarnessNames = buildRetiredAIHarnessNames()
+
+// buildRetiredAIHarnessNames reads the retired rows from the embedded tool
+// directory into a name set.
+func buildRetiredAIHarnessNames() map[string]bool {
+	tools := harness.RetiredTools()
+	out := make(map[string]bool, len(tools))
+	for _, t := range tools {
+		out[t.Name] = true
+	}
+	return out
+}
+
 // buildKnownAIHarnesses reads the embedded tool directory and returns the
 // subset whose Executable cell looks like a single PATH binary — i.e. the
 // rows pkg/harness.KnownTools already filtered for us.
@@ -1841,6 +1889,7 @@ func (a *App) DetectAIHarnesses() []AIHarnessInfo {
 //   - User-added entries not in the directory stay after the known block,
 //     in their original relative order.
 //   - Duplicates by Name collapse to the first occurrence.
+//   - Entries whose Name matches a retired directory row are dropped.
 //   - Detected known harnesses missing from config are appended (in
 //     directory order), with the resolved binary path.
 //   - Config is saved only when something actually changed.
@@ -1861,7 +1910,7 @@ func (a *App) SyncAIHarnesses() {
 	existingByName := make(map[string]config.AIHarnessEntry)
 	var customOrder []config.AIHarnessEntry // not in knownAIHarnesses
 	for _, h := range a.cfg.Global.AIHarnesses {
-		if seenName[h.Name] {
+		if seenName[h.Name] || retiredAIHarnessNames[h.Name] {
 			continue
 		}
 		seenName[h.Name] = true

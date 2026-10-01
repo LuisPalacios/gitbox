@@ -89,8 +89,8 @@ func TestHarnessInShell_POSIXFamilies(t *testing.T) {
 		{
 			name:  "fish uses -C and stays interactive by itself",
 			shell: "/opt/homebrew/bin/fish", shellArgs: []string{"-l"},
-			harness: []string{"gemini"}, goos: "darwin",
-			wantArgs: []string{"-l", "-C", `'gemini'`},
+			harness: []string{"agy"}, goos: "darwin",
+			wantArgs: []string{"-l", "-C", `'agy'`},
 		},
 		{
 			name:  "wsl runs inside the distro via sh -lc with bare harness name",

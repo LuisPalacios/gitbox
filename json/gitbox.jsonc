@@ -108,7 +108,7 @@
         // AI CLI harnesses for "Open in ..." actions in the GUI. Each harness
         // launches inside the default Terminal Profile's shell (the profile
         // flagged "default" above). Auto-detected on PATH at startup (claude,
-        // codex, gemini, aider, cursor-agent, opencode); edit or reorder
+        // codex, agy, aider, cursor-agent, opencode); edit or reorder
         // freely. Most harnesses need no args — "args" is usually empty.
         "ai_harnesses": [
             { "name": "Claude Code", "command": "claude" },

@@ -1,8 +1,11 @@
 package main
 
 import (
+	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -268,6 +271,82 @@ func TestSyncAIHarnessesDedupByName(t *testing.T) {
 		if h.Name == "Duplicated" && h.Command != "/bin/first" {
 			t.Errorf("first duplicate should be kept; got command %q", h.Command)
 		}
+	}
+}
+
+func TestSyncAIHarnessesPrunesRetired(t *testing.T) {
+	// A harness the directory marks "Retired CLI" (e.g. Gemini CLI after the
+	// Antigravity transition) must vanish from global.ai_harnesses on sync,
+	// even when the user still has a resolved path for it. Entries not in
+	// the directory at all are user-curated and stay.
+	if len(retiredAIHarnessNames) == 0 {
+		t.Skip("tools-directory.md has no Retired CLI rows")
+	}
+	var retiredName string
+	for name := range retiredAIHarnessNames {
+		retiredName = name
+		break
+	}
+	dir := t.TempDir()
+	cfg := &config.Config{
+		Version: 2,
+		Global: config.GlobalConfig{
+			Folder: dir,
+			AIHarnesses: []config.AIHarnessEntry{
+				{Name: retiredName, Command: "/usr/local/bin/retired"},
+				{Name: "My Private Bot", Command: "/opt/mybot"},
+			},
+		},
+		Accounts: map[string]config.Account{
+			"A": {Provider: "github", URL: "https://github.com",
+				Username: "u", Name: "n", Email: "e@e"},
+		},
+		Sources: map[string]config.Source{},
+	}
+	a := &App{cfg: cfg, cfgPath: filepath.Join(dir, "gitbox.json"), mu: sync.Mutex{}}
+	a.SyncAIHarnesses()
+
+	for _, h := range cfg.Global.AIHarnesses {
+		if h.Name == retiredName {
+			t.Fatalf("retired harness %q survived sync: %+v", retiredName, cfg.Global.AIHarnesses)
+		}
+	}
+	if last := cfg.Global.AIHarnesses[len(cfg.Global.AIHarnesses)-1]; last.Name != "My Private Bot" {
+		t.Errorf("user-added custom entry lost or misplaced: last = %+v", last)
+	}
+}
+
+func TestLookPathUserLocalBinFallback(t *testing.T) {
+	// GUI apps on macOS/Linux don't inherit the shell PATH, and the native
+	// Claude Code / Antigravity installers live in ~/.local/bin. A command
+	// missing from PATH but present there must resolve to its absolute path.
+	if runtime.GOOS == "windows" {
+		t.Skip("~/.local/bin fallback is a macOS/Linux concern")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	bin := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	exe := filepath.Join(bin, "gitbox-fake-harness")
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exec.LookPath("gitbox-fake-harness"); err == nil {
+		t.Skip("gitbox-fake-harness unexpectedly on PATH")
+	}
+
+	got, err := lookPathWithBrewPATH("gitbox-fake-harness")
+	if err != nil || got != exe {
+		t.Fatalf("lookPathWithBrewPATH = %q, %v; want %q", got, err, exe)
+	}
+	// A non-executable file in ~/.local/bin must not resolve.
+	if err := os.Chmod(exe, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lookPathWithBrewPATH("gitbox-fake-harness"); err == nil {
+		t.Error("non-executable ~/.local/bin file should not resolve")
 	}
 }
 

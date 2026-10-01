@@ -314,7 +314,7 @@ type TerminalProfile struct {
 }
 
 // AIHarnessEntry defines a user-configured AI CLI harness (e.g. claude,
-// codex, gemini, aider, cursor-agent, opencode). AI harnesses are CLI-only
+// codex, agy, aider, cursor-agent, opencode). AI harnesses are CLI-only
 // and must run inside a terminal — at launch time gitbox opens the default
 // Terminal Profile in the target folder and runs the harness inside that
 // profile's shell (pkg/terminals.ResolveLaunch). Most harnesses need no

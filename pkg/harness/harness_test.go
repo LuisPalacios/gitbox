@@ -90,6 +90,7 @@ Some prose.
 | **Cursor Agent** | Anysphere | Agentic CLI | Any | ` + "`cursor-agent`" + ` | CLI | x |
 | **Devika** | Stition | Headless Harness | Any | ` + "`python devika.py`" + ` | script | x |
 | **Dify** | LangGenius | Orchestrator | Any | ` + "`docker-compose`" + ` | orch | x |
+| **Old CLI** | Gone Inc. | Retired CLI | Any | ` + "`oldcli`" + ` | discontinued | x |
 `
 
 	got := parseDirectory(md)
@@ -103,11 +104,17 @@ Some prose.
 		}
 	}
 	// Agentic IDEs are now included (Cursor passes the filter). Only
-	// Frameworks / Orchestrators / library rows are dropped.
+	// Frameworks / Orchestrators / library rows and retired CLIs are dropped.
 	for _, t0 := range got {
-		if t0.Category == "Agentic Framework" || t0.Category == "Orchestrator" {
-			t.Errorf("framework/orchestrator row should not appear: %+v", t0)
+		if t0.Category == "Agentic Framework" || t0.Category == "Orchestrator" || t0.Category == retiredCategory {
+			t.Errorf("framework/orchestrator/retired row should not appear: %+v", t0)
 		}
+	}
+	// The retired row surfaces only through parseRetired, with its command
+	// intact so callers can match stale config entries by name.
+	retired := parseRetired(md)
+	if len(retired) != 1 || retired[0].Name != "Old CLI" || retired[0].Command != "oldcli" {
+		t.Errorf("parseRetired = %+v, want exactly [{Old CLI Retired CLI oldcli}]", retired)
 	}
 	// Command extraction survived annotations.
 	for _, t0 := range got {
@@ -140,6 +147,7 @@ func TestKnownToolsEmbeddedMarkdown(t *testing.T) {
 		"Framework / Orchestrator":   true,
 		"Harness Builder":            true,
 		"Harness / Orchestrator":     true,
+		retiredCategory:              true,
 	}
 	for _, t0 := range tools {
 		if forbiddenCategories[t0.Category] {
@@ -151,6 +159,26 @@ func TestKnownToolsEmbeddedMarkdown(t *testing.T) {
 	for _, t0 := range tools {
 		if !cmdTokenRE.MatchString(t0.Command) {
 			t.Errorf("tool %q has non-identifier command %q", t0.Name, t0.Command)
+		}
+	}
+}
+
+func TestRetiredToolsEmbeddedMarkdown(t *testing.T) {
+	// Retired rows must never overlap with the auto-detected set: a name in
+	// both lists would be appended by Sync and pruned by Sync at once.
+	known := make(map[string]bool)
+	for _, t0 := range KnownTools() {
+		known[t0.Name] = true
+	}
+	for _, t0 := range RetiredTools() {
+		if t0.Category != retiredCategory {
+			t.Errorf("RetiredTools returned non-retired row: %+v", t0)
+		}
+		if t0.Name == "" || !cmdTokenRE.MatchString(t0.Command) {
+			t.Errorf("retired row needs a name and identifier command: %+v", t0)
+		}
+		if known[t0.Name] {
+			t.Errorf("%q is both known and retired — pick one category", t0.Name)
 		}
 	}
 }
