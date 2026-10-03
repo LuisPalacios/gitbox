@@ -202,17 +202,17 @@ Two GitHub Actions workflows run:
 
 Each release produces the following artifacts:
 
-| Asset                        | Contents                                                                                         |
-| ---------------------------- | ------------------------------------------------------------------------------------------------ |
-| `gitbox-win-amd64.zip`       | `GitboxApp.exe`                                                                                  |
-| `gitbox-win-amd64-setup.exe` | Windows Inno Setup installer (`GitboxApp.exe`, Start Menu, no PATH; removes a v1 `gitbox.exe`)   |
-| `gitbox-macos-arm64.zip`     | `GitboxApp.app`                                                                                  |
-| `gitbox-macos-arm64.dmg`     | macOS disk image with bundled installer                                                          |
-| `gitbox-macos-amd64.zip`     | `GitboxApp.app`                                                                                  |
-| `gitbox-macos-amd64.dmg`     | macOS disk image with bundled installer                                                          |
-| `gitbox-linux-amd64.zip`     | `GitboxApp`                                                                                      |
-| `gitbox-x86_64.AppImage`     | Self-contained Linux app (bundles GTK 3 and WebKitGTK)                                           |
-| `checksums.sha256`           | SHA256 hashes for all artifacts                                                                  |
+| Asset                        | Contents                                                                                       |
+| ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| `gitbox-win-amd64.zip`       | `GitboxApp.exe`                                                                                |
+| `gitbox-win-amd64-setup.exe` | Windows Inno Setup installer (`GitboxApp.exe`, Start Menu, no PATH; removes a v1 `gitbox.exe`) |
+| `gitbox-macos-arm64.zip`     | `GitboxApp.app`                                                                                |
+| `gitbox-macos-arm64.dmg`     | macOS disk image with bundled installer                                                        |
+| `gitbox-macos-amd64.zip`     | `GitboxApp.app`                                                                                |
+| `gitbox-macos-amd64.dmg`     | macOS disk image with bundled installer                                                        |
+| `gitbox-linux-amd64.zip`     | `GitboxApp`                                                                                    |
+| `gitbox-x86_64.AppImage`     | Self-contained Linux app (bundles GTK 3 and WebKitGTK)                                         |
+| `checksums.sha256`           | SHA256 hashes for all artifacts                                                                |
 
 The asset names match v1, so the updater and the bootstrap script find them the same way. v2 drops `gitbox-win-arm64.zip`, which only carried the CLI.
 
@@ -292,6 +292,25 @@ The Wails build reads icons from `cmd/gui/build/`:
 - `cmd/gui/build/windows/icon.ico` — embedded in the Windows `.exe`
 
 These are **not checked in** (gitignored under `cmd/gui/build/`). Instead, the CI workflow and local builds copy them from `assets/` before running `wails build`.
+
+---
+
+## README screenshots
+
+I take the README screenshots from the real app running on a fake fleet, so they never show my own accounts or paths. The kit lives in `scripts/demo-fleet/`:
+
+- `build.sh` creates three demo accounts (Forgejo, personal GitHub, corporate GitHub) with real local clones in chosen states (synced, behind, ahead, dirty, not cloned), a `gitbox.json`, token files, and an isolated global git config under `$TEMP/gbdemo`.
+- `mock.py` fakes the provider APIs on `127.0.0.1:3001-3003`, so credentials verify, PR and review badges appear, and fetches work against the demo upstreams. It needs [uv](https://docs.astral.sh/uv/).
+- `run.sh` starts the mock and launches `GitboxApp` with `XDG_CONFIG_HOME` and `GIT_CONFIG_GLOBAL` pointing at the demo, so my real config, `~/.gitconfig`, and credential store stay untouched. Close any running GitboxApp first.
+- `shot.ps1` (Windows) resizes the window, clicks points inside it, and captures it to a PNG.
+
+```bash
+./scripts/demo-fleet/build.sh
+./scripts/demo-fleet/run.sh &
+pwsh scripts/demo-fleet/shot.ps1 -Out assets/screenshot-gui.png -Width 1360 -Height 1300
+```
+
+The README uses `assets/screenshot-gui.png` (light), `assets/screenshot-dark.png`, `assets/screenshot-menu.png`, and `assets/screenshot-compact.png`. `screenshot-gui.png` is also the AppStream screenshot for the Linux AppImage. Settings → Terminals lists the host's real terminals and paths, so keep that screen out of shots.
 
 ---
 

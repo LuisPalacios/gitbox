@@ -7,6 +7,8 @@ description: Generate anonymized, self-contained Svelte prototypes of the gitbox
 
 **IMPORTANT:** Before starting, inform the user: "I'm executing `/screenshot-prototype`"
 
+> README screenshots (`assets/screenshot-*.png`) now come from the real app on a fake fleet: see `scripts/demo-fleet/` and the "README screenshots" section of `docs/developer-guide.md`. Use this skill only when a hand-tuned Svelte mock-up is explicitly wanted.
+
 Generate two self-contained Svelte files that visually replicate the gitbox GUI with anonymized demo data. The output is designed to be pasted into [SvelteLab](https://sveltelab.dev/) for taking README screenshots.
 
 ## Output files
