@@ -17,7 +17,7 @@ const (
 // LookupFunc resolves a command to an absolute path, or "" when the host
 // doesn't have it. command is either a bare binary name or a stored path;
 // extraDirs are the catalog row's well-known install directories. The GUI
-// and TUI pass DefaultLookup; tests pass a map-backed fake.
+// passes DefaultLookup; tests pass a map-backed fake.
 type LookupFunc func(command string, extraDirs []string) string
 
 // DefaultLookup is the production LookupFunc: pkg/doctor's Setenv-free

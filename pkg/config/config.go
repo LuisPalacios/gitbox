@@ -196,24 +196,6 @@ func (g GlobalConfig) EffectiveTerminals() []TerminalEntry {
 	return out
 }
 
-// VisibleAIHarnesses returns the AI harness entries that menus should
-// offer: every entry not flagged Missing, in config order. The GUI
-// launcher and the TUI screens both read this instead of AIHarnesses so an
-// uninstalled harness disappears from both at once.
-func (g GlobalConfig) VisibleAIHarnesses() []AIHarnessEntry {
-	if len(g.AIHarnesses) == 0 {
-		return nil
-	}
-	out := make([]AIHarnessEntry, 0, len(g.AIHarnesses))
-	for _, h := range g.AIHarnesses {
-		if h.Missing {
-			continue
-		}
-		out = append(out, h)
-	}
-	return out
-}
-
 // PRBadgesOn reports whether PR badges are enabled, defaulting to true when unset.
 func (g GlobalConfig) PRBadgesOn() bool {
 	if g.PRBadgesEnabled == nil {

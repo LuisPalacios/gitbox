@@ -44,28 +44,3 @@ func TestAIHarnessEntryOmitsZeroSourceAndMissing(t *testing.T) {
 		}
 	}
 }
-
-func TestVisibleAIHarnessesFiltersMissingAndKeepsOrder(t *testing.T) {
-	g := GlobalConfig{AIHarnesses: []AIHarnessEntry{
-		{Name: "A", Command: "a", Source: "detected"},
-		{Name: "B", Command: "b", Source: "detected", Missing: true},
-		{Name: "C", Command: "c", Source: "user", Args: []string{"-x"}},
-		{Name: "D", Command: "d", Source: "user", Missing: true},
-	}}
-	got := g.VisibleAIHarnesses()
-	if len(got) != 2 {
-		t.Fatalf("expected 2 visible entries, got %d: %+v", len(got), got)
-	}
-	if got[0].Name != "A" || got[1].Name != "C" {
-		t.Errorf("order/filter wrong: %+v", got)
-	}
-	if !reflect.DeepEqual(got[1].Args, []string{"-x"}) {
-		t.Errorf("args not carried through: %+v", got[1])
-	}
-}
-
-func TestVisibleAIHarnessesEmpty(t *testing.T) {
-	if got := (GlobalConfig{}).VisibleAIHarnesses(); got != nil {
-		t.Errorf("expected nil for no harnesses, got %+v", got)
-	}
-}

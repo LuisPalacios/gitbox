@@ -305,15 +305,12 @@ func TestSyncAIHarnessesFlagsMissingAndRestoresOnReinstall(t *testing.T) {
 		{Name: tool.Name, Command: "/old/" + tool.Command, Args: []string{"--keep"}, Source: harness.SourceDetected},
 	})
 
-	// Uninstalled: flagged, kept, hidden from VisibleAIHarnesses.
+	// Uninstalled: flagged and kept (the menu hides Missing entries).
 	if !a.SyncAIHarnesses() {
 		t.Fatal("flagging missing must report a change")
 	}
 	if got := a.cfg.Global.AIHarnesses; len(got) != 1 || !got[0].Missing {
 		t.Fatalf("expected the entry kept and flagged missing: %+v", got)
-	}
-	if vis := a.cfg.Global.VisibleAIHarnesses(); len(vis) != 0 {
-		t.Errorf("missing entry must not be visible: %+v", vis)
 	}
 	// Nothing changed on the host → no-op pass, no save.
 	if a.SyncAIHarnesses() {
