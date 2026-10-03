@@ -1,17 +1,18 @@
 # Multiplatform development
 
-I test gitbox on three platforms: Windows, macOS, and Linux. The scripts in `scripts/` automate the build-deploy-test cycle so I can work from any OS and run gitbox on the other two via SSH.
+I test gitbox on three platforms: Windows, macOS, and Linux. The scripts in `scripts/` automate the build-ship-test cycle so I can work from any OS and run `GitboxApp` on the other two via SSH.
 
-To test all 3 platforms, you need SSH access to machines running the other two OSs (physical machines, VMs, or cloud instances). If you only have one machine, you can still run unit and integration tests locally — CI covers the other platforms on push.
+To test all 3 platforms, you need SSH access to machines running the other two OSs (physical machines, VMs, or cloud instances). If you only have one machine, you can still run unit tests and the scenario test locally — CI covers the other platforms.
 
-All three developer workstation perspectives have been validated: Windows (v1.0.4), macOS (v1.0.5), and Linux (v1.0.6). Each validation runs the full cycle — credential setup, cross-compile, deploy, smoke tests, unit tests, integration tests, and interactive TUI verification on all 3 platforms.
+The GUI can't be cross-compiled: each platform needs its own native webview (WebView2 on Windows, WebKit on macOS, WebKitGTK on Linux). The scripts therefore ship the source to each remote and run `wails build` there.
 
 ## What you need
 
-- **Go 1.26+** on your development machine (cross-compiles for all platforms)
+- **Go 1.26+**, **Node.js 20+**, and the **Wails CLI v2** on your development machine and on every remote that builds the GUI (see [developer-guide.md](developer-guide.md) for the per-OS libraries)
 - **SSH key-based auth** to your remote machines (no passwords)
 - **Git Bash** on Windows (comes with Git for Windows)
 - **jq** and **curl** on all machines (for credential setup)
+- **A desktop session** on each machine where you launch the GUI interactively
 
 ## First-time setup
 
@@ -104,13 +105,18 @@ After registering all keys, re-run `./scripts/setup-credentials.sh all` to verif
 
 ## Daily workflow
 
-### Build and deploy
+### Build locally
+
+I always start on the machine I work on: build the GUI with `wails build` (see [developer-guide.md](developer-guide.md)) and launch it there first. The output lands in `cmd/gui/build/bin/`.
+
+### Ship to remotes
 
 ```bash
-./scripts/deploy.sh
+./scripts/ship.sh            # every configured remote, in parallel
+./scripts/ship.sh myhost     # only the host whose short name matches
 ```
 
-Cross-compiles for all 3 platforms and SCPs binaries to every configured remote. Also copies `test-gitbox.json` if it exists. Takes about 10 seconds.
+Ships the source to each remote with `tar | ssh`, runs `wails build` there, and stages the result: `/tmp/GitboxApp.app` on macOS, `/tmp/GitboxApp` on Linux, and `~/GitboxApp.exe` on Windows. When `test-gitbox.json` exists at the repo root, it is copied to `~/test-gitbox.json` on each remote. Per-host logs go to `/tmp/gitbox-ship-<platform>.log`.
 
 ### Smoke test
 
@@ -118,7 +124,7 @@ Cross-compiles for all 3 platforms and SCPs binaries to every configured remote.
 ./scripts/smoke.sh all
 ```
 
-Runs `version`, `help`, and JSON output commands on all platforms. Non-interactive — the script runs everything and reports pass/fail.
+Runs `GitboxApp --version` on every platform — the local `wails build` output and the copies `ship.sh` staged on the remotes. The flag prints the version and exits without opening a window, so it works over plain SSH. Non-interactive — the script runs everything and reports pass/fail.
 
 ### Interactive testing (test-mode)
 
@@ -126,17 +132,15 @@ Runs `version`, `help`, and JSON output commands on all platforms. Non-interacti
 ./scripts/test-commands.sh
 ```
 
-Prints the exact commands to run on each platform. Copy and paste them into your terminal. The output adapts to your `.env` — local platforms run directly, remotes use SSH:
+Prints the exact command to launch `GitboxApp --test-mode` on each platform. The GUI needs the target's desktop session, so the commands are printed, not executed — run each one in a terminal on that host:
 
 ```text
-  Windows:  ssh me@kymera  →  ~/gitbox.exe --test-mode
-  macOS:    build/gitbox-darwin-arm64 --test-mode
-  Linux:    ssh -t me@luix "/tmp/gitbox --test-mode"
+  Windows (me@win-host):  cd ~ && ~/GitboxApp.exe --test-mode
+  macOS:  cd "/path/to/gitbox" && "/path/to/gitbox/cmd/gui/build/bin/GitboxApp.app/Contents/MacOS/GitboxApp" --test-mode
+  Linux (me@linux-host):  cd ~ && /tmp/GitboxApp --test-mode
 ```
 
-**Windows SSH note:** the TUI doesn't work with `ssh -t host "command"` on Windows Git Bash — it exits immediately. SSH into the machine first, then run the command (the two-step approach shown above with `→`).
-
-**What is test-mode?** The `--test-mode` flag runs gitbox in an isolated temporary directory. It reads `test-gitbox.json` instead of your real config, creates all clones in a throwaway temp folder, and injects test tokens as environment variables. Nothing touches your real `~/.config/gitbox/` or existing clones. The temp directory is deleted automatically when gitbox exits.
+**What is test-mode?** The `--test-mode` flag runs GitboxApp in an isolated temporary directory. It reads `test-gitbox.json` (walking up from the current directory) instead of your real config, creates all clones in a throwaway temp folder, and injects test tokens as environment variables. Nothing touches your real `~/.config/gitbox/` or existing clones. The temp directory is deleted automatically when the app exits.
 
 ### Interactive testing (production)
 
@@ -144,7 +148,7 @@ Prints the exact commands to run on each platform. Copy and paste them into your
 ./scripts/run-commands.sh
 ```
 
-Same idea, but uses the real `~/.config/gitbox/gitbox.json` on the target machine.
+Same idea, but the printed commands launch GitboxApp against the real `~/.config/gitbox/gitbox.json` on the target machine.
 
 ### Sync production config to a remote
 
@@ -156,37 +160,37 @@ Copies your local `gitbox.json` to the remote. Shows a diff and asks for confirm
 
 ## Script reference
 
-| Script                                    | What it does                                             |
-| ----------------------------------------- | -------------------------------------------------------- |
-| `deploy.sh`                               | Build all 3 binaries + deploy to remotes                 |
-| `smoke.sh [target]`                       | Non-interactive smoke tests                              |
-| `test-commands.sh [target]`               | Print test-mode commands for the user to run             |
-| `run-commands.sh [target]`                | Print production-mode commands for the user to run       |
-| `setup-credentials.sh [target]`           | Set up SSH keys and verify tokens on target              |
-| `send-my-production-config.sh <target>`   | Copy local production config to a remote                 |
-| `test-setup-credentials.sh [path]`        | Low-level credential setup (called by setup-credentials) |
+| Script                                    | What it does                                                      |
+| ----------------------------------------- | ----------------------------------------------------------------- |
+| `ship.sh [short-name]`                    | Build the GUI on each remote and stage it for testing             |
+| `smoke.sh [target]`                       | Non-interactive smoke test (`GitboxApp --version`)                |
+| `test-commands.sh [target]`               | Print test-mode launch commands for the user to run               |
+| `run-commands.sh [target]`                | Print production-mode launch commands for the user to run         |
+| `setup-credentials.sh [target]`           | Set up SSH keys and verify tokens on target                       |
+| `send-my-production-config.sh <target>`   | Copy local production config to a remote                          |
+| `test-setup-credentials.sh [path]`        | Low-level credential setup (called by setup-credentials)          |
 
-**Targets:** `win-intel`, `win-arm`, `mac-arm`, `mac-intel`, `linux`, or `all`. Back-compat aliases: `win` → `win-intel` and `mac` → `mac-arm` (the historical single-box defaults). Most scripts default to `all` available platforms when no target is given.
+**Targets:** `win-intel`, `win-arm`, `mac-arm`, `mac-intel`, `linux`, or `all`. Back-compat aliases: `win` → `win-intel` and `mac` → `mac-arm` (the historical single-box defaults). Most scripts default to `all` available platforms when no target is given. `ship.sh` takes a host short name instead (e.g. `myhost` for `user@myhost`).
 
 ## How it works
 
 The scripts auto-detect your local OS. For local operations, commands run directly. For remote operations, they use SSH with the hosts from `.env`.
 
-- **Binaries** go to `build/` locally, `/tmp/gitbox` on Unix remotes, and `~/gitbox.exe` on Windows remotes
-- **test-gitbox.json** goes to `~/test-gitbox.json` on remotes (gitbox walks up from cwd to find it)
+- **The GUI** builds locally into `cmd/gui/build/bin/`, and on remotes into a scratch directory before it is staged at `/tmp/GitboxApp[.app]` on Unix and `~/GitboxApp.exe` on Windows
+- **test-gitbox.json** goes to `~/test-gitbox.json` on remotes (GitboxApp walks up from the current directory to find it)
 - **SSH keys** are named `test-<hostname>-<account>-sshkey` so each OS has unique keys
-- **Cross-compilation** happens on your dev machine — Go handles this natively
+- **Non-login SSH shells** don't load your shell profile, so the scripts extend `PATH` with the usual Go, Wails, and Homebrew locations before building on a remote
 
 ## Local-only testing
 
 If you don't have SSH access to other machines, you can still:
 
 - Run unit tests: `go test -short ./...`
-- Run integration tests: `go test ./...` (requires `test-gitbox.json`)
-- Build for your local OS: `go build -o build/gitbox ./cmd/cli`
+- Run the scenario test: `go test ./...` (requires `test-gitbox.json`)
+- Build for your local OS: `cd cmd/gui && wails build`
 - Set up local credentials: `./scripts/setup-credentials.sh`
 
-CI (GitHub Actions) tests all 3 platforms on every push, so cross-platform regressions are caught automatically even without remotes.
+CI (GitHub Actions) runs vet, unit tests, the frontend check, and a Linux GUI build on every pull request, and builds every platform on each release tag, so cross-platform regressions are caught even without remotes.
 
 ## Troubleshooting
 
@@ -199,11 +203,11 @@ Your keys live in an SSH agent (1Password or the Windows ssh-agent service) and 
 **"command not found: jq" on remote:**
 Install jq on the remote machine (`apt install jq` on Debian/Ubuntu, `brew install jq` on macOS).
 
-**Binary crashes on remote:**
-The deploy script handles GOOS/GOARCH automatically. If you built manually, verify: Windows amd64 = `windows/amd64`, Windows arm64 = `windows/arm64`, macOS Apple Silicon = `darwin/arm64`, macOS Intel = `darwin/amd64`, Linux = `linux/amd64`.
+**"wails: command not found" during ship:**
+The remote build runs in a non-login shell. Install the Wails CLI on the remote with `go install github.com/wailsapp/wails/v2/cmd/wails@latest` and check that `$HOME/go/bin` exists. Read the per-host log in `/tmp/gitbox-ship-<platform>.log` for the exact error.
 
 **test-mode can't find test-gitbox.json:**
-Run `./scripts/deploy.sh` — it copies the fixture to `~/test-gitbox.json` on remotes. Or run `./scripts/setup-credentials.sh <target>` which also copies it.
+Run `./scripts/ship.sh` — it copies the fixture to `~/test-gitbox.json` on remotes. Or run `./scripts/setup-credentials.sh <target>` which also copies it. Launch the app from the home directory (`cd ~`) so the upward search finds the file.
 
 **SSH timeout:**
 Add `ConnectTimeout 10` to your `~/.ssh/config` for that host.

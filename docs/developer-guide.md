@@ -5,7 +5,7 @@
 - **Go** 1.26+ — [install](https://go.dev/doc/install)
 - **Node.js** 20+ — [install](https://nodejs.org/) (for Svelte frontend)
 - **Git** 2.39+
-- **Wails CLI** v2 — `go install github.com/wailsapp/wails/v2/cmd/wails@latest` (GUI builds only)
+- **Wails CLI** v2 — `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
 - **Platform-specific:** Windows needs Git for Windows; macOS needs Xcode CLI Tools (`xcode-select --install`); Linux needs `libwebkit2gtk-4.1-dev` and `libgtk-3-dev`
 
 For multiplatform testing via SSH, see [multiplatform.md](multiplatform.md).
@@ -14,24 +14,13 @@ For multiplatform testing via SSH, see [multiplatform.md](multiplatform.md).
 
 ## Building from source
 
-### CLI only
+gitbox v2 builds one binary, the `GitboxApp` desktop app. The CLI and TUI live only on the `release/v1` branch.
 
 ```bash
-# From the repository root
-go build -o build/gitbox ./cmd/cli
+# Build-time version stamp. Without it the app falls back to `git describe` at runtime.
+LDFLAGS="-X main.version=$(git describe --tags --always)-dev -X main.commit=$(git rev-parse --short HEAD)"
 
-# Cross-compile for other platforms
-GOOS=linux   GOARCH=amd64 go build -o build/gitbox-linux-amd64         ./cmd/cli
-GOOS=darwin  GOARCH=arm64 go build -o build/gitbox-darwin-arm64        ./cmd/cli
-GOOS=darwin  GOARCH=amd64 go build -o build/gitbox-darwin-amd64        ./cmd/cli
-GOOS=windows GOARCH=amd64 go build -o build/gitbox-windows-amd64.exe   ./cmd/cli
-GOOS=windows GOARCH=arm64 go build -o build/gitbox-windows-arm64.exe   ./cmd/cli
-```
-
-### GUI (Wails)
-
-```bash
-# Copy app icons from assets/ into the Wails build directory
+# Copy app icons from assets/ into the Wails build directory (they are not checked in there)
 cp assets/appicon.png cmd/gui/build/appicon.png
 cp assets/icon.ico    cmd/gui/build/windows/icon.ico   # Windows only
 
@@ -40,22 +29,34 @@ cd cmd/gui
 wails dev
 
 # Production build
-wails build
+wails build -ldflags "$LDFLAGS"
 # Output: cmd/gui/build/bin/GitboxApp[.exe]
 ```
 
+`wails build` cannot cross-compile the GUI: each target needs its host's native webview (WebView2 on Windows, WebKit on macOS, WebKitGTK on Linux). To build for another platform, build on that platform — [multiplatform.md](multiplatform.md) shows how `scripts/ship.sh` does it over SSH.
+
+The Go code embeds the compiled frontend from `cmd/gui/frontend/dist`. Plain Go commands such as `go vet ./...`, `go test ./...`, or a quick compile check (`go build -o /dev/null ./cmd/gui`) need that folder to exist. `wails build` creates it; to create it without a full build:
+
+```bash
+cd cmd/gui/frontend
+npm ci
+npm run build
+```
+
+Once the app is built, `GitboxApp --version` prints the version and exits.
+
 ### Key design decisions
 
-- **`pkg/` is the heart** — both CLI and GUI import from here. All business logic lives in `pkg/`.
-- **CLI is a thin wrapper** — `cmd/cli/main.go` wires subcommands to `pkg/` functions.
-- **GUI calls Go directly** — Wails bindings expose `pkg/` functions to Svelte. No subprocess spawning.
+- **`pkg/` is the heart** — all business logic lives in `pkg/`. `cmd/gui` only holds Wails bindings, locking, events, and GUI-only concerns.
+- **`pkg/ops` is the service layer** — operations that span several packages (account lifecycle, credential switching, clone planning, discovery) live there, so the GUI bindings stay thin and the logic stays testable without Wails.
+- **GUI calls Go directly** — Wails bindings expose Go methods to Svelte. No subprocess spawning of gitbox itself.
 - **Git operations use `os/exec`** — we shell out to the system `git` binary, not libgit2.
 - **Provider APIs use `net/http`** — standard Go, no external HTTP client dependencies.
 - **Accounts (WHO) + Sources (WHAT)** — accounts define identity on a server (hostname, username, credentials); sources reference an account and contain the list of repos to manage. This separation allows multiple sources to share the same account.
 - **Account uniqueness** — an account is unique by `(hostname, username)`.
 - **Repo keys use `org/repo` format** — this produces a 3-level folder structure: `<source>/<org>/<repo>`. The `id_folder` field overrides the 2nd level (org), and `clone_folder` overrides the 3rd level (or replaces the entire path when absolute).
 - **Credential inheritance** — accounts have a `default_credential_type`; repos inherit it unless they set their own `credential_type`.
-- **CLI uses Cobra** — each subcommand lives in its own `*_cmd.go` file, registered in `main.go`'s `init()`.
+- **No console flash on Windows** — every `exec.Command` in `cmd/gui/` calls `git.HideWindow(cmd)` before it runs.
 - **Version auto-detection** — local builds run `git describe --tags --always` at runtime; CI builds inject version and commit via ldflags.
 
 ---
@@ -78,7 +79,7 @@ func (p *NewProvider) ListRepos(ctx context.Context, baseURL, token, username st
     // Implement paginated API call to list repositories
 }
 
-// Optional: RepoCreator interface — enables repo creation from GUI/CLI
+// Optional: RepoCreator interface — enables repo creation from the GUI
 func (p *NewProvider) CreateRepo(ctx context.Context, baseURL, token, username, owner, repoName, description string, private bool) error {
     // If owner is empty, create under the user's personal namespace.
     // If owner is non-empty, create under that organization.
@@ -117,51 +118,15 @@ func NewFromConfig(acct *config.Account) (Provider, error) {
 
 ---
 
-## Adding a new CLI subcommand
+## Adding an operation to pkg/ops
 
-Each command lives in its own file following the `*_cmd.go` naming convention. Here's the pattern used throughout the codebase:
+When a new GUI action touches more than one package — config plus clones on disk, credentials plus every clone of an account — I put the logic in `pkg/ops` and keep the Wails binding thin:
 
-1. Create `cmd/cli/newcommand_cmd.go`:
-
-```go
-package main
-
-import (
-    "fmt"
-
-    "github.com/LuisPalacios/gitbox/pkg/config"
-    "github.com/spf13/cobra"
-)
-
-var newcommandCmd = &cobra.Command{
-    Use:   "newcommand",
-    Short: "Description of the new command",
-}
-
-var newcommandListCmd = &cobra.Command{
-    Use:   "list",
-    Short: "List something",
-    RunE: func(cmd *cobra.Command, args []string) error {
-        cfg, err := loadConfig()
-        if err != nil {
-            return err
-        }
-        // Call pkg/ functions using cfg
-        fmt.Println("done")
-        return nil
-    },
-}
-
-func init() {
-    newcommandCmd.AddCommand(newcommandListCmd)
-}
-```
-
-1. Register the parent command in `main.go`'s `init()`:
-
-```go
-rootCmd.AddCommand(newcommandCmd)
-```
+1. Add the function to the matching file in `pkg/ops/` (`account.go`, `credential.go`, `clone.go`, or `discover.go`). It takes a `*config.Config` and works on the files it owns on disk.
+2. Don't save or lock inside `pkg/ops`. The caller (`cmd/gui/app.go`) takes the config lock, calls the operation, saves the config, and emits events.
+3. Keep slow per-clone work (like `ReconfigureClones`) in a separate function, so the caller can run it after a successful save.
+4. Add a unit test in `pkg/ops/ops_test.go`. The tests isolate everything: a temp `XDG_CONFIG_HOME`, a temp `GIT_CONFIG_GLOBAL`, and a temp SSH folder.
+5. Add the Wails binding in `cmd/gui/app.go` and call it from the frontend through `cmd/gui/frontend/src/lib/bridge.ts`.
 
 ---
 
@@ -170,8 +135,8 @@ rootCmd.AddCommand(newcommandCmd)
 Quick start:
 
 ```bash
-go test -short ./...    # unit tests (no setup needed)
-go test ./...           # everything (needs test-gitbox.json for integration tests)
+go test -short ./...    # unit tests (no setup needed beyond the frontend dist folder)
+go test ./...           # everything (needs test-gitbox.json for the pkg/ops scenario)
 ```
 
 Activate the pre-push hook once per clone: `git config core.hooksPath .githooks` — it runs `go vet` + unit tests before every push.
@@ -189,10 +154,10 @@ When adding new fields to the configuration:
 3. Update `json/gitbox.jsonc` with an example
 4. If the field belongs to an account vs a source, ensure it's in the right struct (`Account` for identity/credentials, `Source` for what to clone, `Repo` for per-repo overrides)
 5. If there are CRUD implications, update `pkg/config/crud.go`
-6. Update `docs/reference.md` config reference table
+6. Update the config reference tables in `docs/architecture.md` and `docs/es/architecture.md`
 7. Add tests for the new field in `pkg/config/config_test.go`
 
-**Never bump the version number for additive changes.** Version 2 can grow with optional fields. Only bump to version 3 if breaking changes are needed (renames, removals, type changes).
+**Never bump the version number for additive changes.** Version 3 can grow with optional fields. Only bump to version 4 if breaking changes are needed (renames, removals, type changes).
 
 ---
 
@@ -204,46 +169,54 @@ Version is **auto-detected from git tags** at runtime for local builds. CI build
 
 ```bash
 # CI build with explicit version (full SHA is truncated to 7 chars at runtime)
-go build -ldflags "-X main.version=v0.2.0 -X main.commit=$(git rev-parse HEAD)" -o build/gitbox ./cmd/cli
+cd cmd/gui && wails build -ldflags "-X main.version=v2.0.0 -X main.commit=$(git rev-parse HEAD)"
 
 # Local builds auto-detect by running:
 #   git describe --tags --always   → version (e.g., "v1.2.11")
 #   git rev-parse --short HEAD     → commit SHA (e.g., "a99cf17")
 # Display format:
-#   CI:    "v0.2.0 (abc1234)"
+#   CI:    "v2.0.0 (abc1234)"
 #   Local: "v1.2.11-dev (a99cf17)"
 #   No tags: "dev-a99cf17"
 ```
 
 ### Creating a release
 
-Releases are fully automated via CI. Push a version tag and GitHub Actions builds all binaries, creates a GitHub Release, and attaches the assets:
+Releases are fully automated via CI. Push a version tag and GitHub Actions builds the app for every platform, creates a GitHub Release, and attaches the assets:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v2.0.0
+git push origin v2.0.0
 ```
 
-CI injects `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into both CLI and GUI builds.
+CI injects `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into the GUI build.
+
+### Continuous integration
+
+Two GitHub Actions workflows run:
+
+- `.github/workflows/pr.yml` runs on pull requests: `go vet`, `go test -short`, `svelte-check` on the frontend, and a Linux `wails build`.
+- `.github/workflows/ci.yml` runs on version tags: it builds the app on each platform, packages the installers, and publishes the GitHub Release.
 
 ### Release assets
 
 Each release produces the following artifacts:
 
-| Asset                        | Contents                                                              |
-| ---------------------------- | --------------------------------------------------------------------- |
-| `gitbox-win-amd64.zip`       | `gitbox.exe` + `GitboxApp.exe`                                        |
-| `gitbox-win-arm64.zip`       | `gitbox.exe` (CLI only — GUI ARM64 build pending a native ARM runner) |
-| `gitbox-win-amd64-setup.exe` | Windows Inno Setup installer (PATH, Start Menu)                       |
-| `gitbox-macos-arm64.zip`     | `gitbox` + `GitboxApp.app`                                            |
-| `gitbox-macos-arm64.dmg`     | macOS disk image with bundled installer                               |
-| `gitbox-macos-amd64.zip`     | `gitbox` + `GitboxApp.app`                                            |
-| `gitbox-macos-amd64.dmg`     | macOS disk image with bundled installer                               |
-| `gitbox-linux-amd64.zip`     | `gitbox` + `GitboxApp`                                                |
-| `gitbox-x86_64.AppImage`     | Self-contained Linux app (CLI + GUI, bundles GTK 3 and WebKitGTK)     |
-| `checksums.sha256`           | SHA256 hashes for all artifacts                                       |
+| Asset                        | Contents                                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------------------------ |
+| `gitbox-win-amd64.zip`       | `GitboxApp.exe`                                                                                  |
+| `gitbox-win-amd64-setup.exe` | Windows Inno Setup installer (`GitboxApp.exe`, Start Menu, no PATH; removes a v1 `gitbox.exe`)   |
+| `gitbox-macos-arm64.zip`     | `GitboxApp.app`                                                                                  |
+| `gitbox-macos-arm64.dmg`     | macOS disk image with bundled installer                                                          |
+| `gitbox-macos-amd64.zip`     | `GitboxApp.app`                                                                                  |
+| `gitbox-macos-amd64.dmg`     | macOS disk image with bundled installer                                                          |
+| `gitbox-linux-amd64.zip`     | `GitboxApp`                                                                                      |
+| `gitbox-x86_64.AppImage`     | Self-contained Linux app (bundles GTK 3 and WebKitGTK)                                           |
+| `checksums.sha256`           | SHA256 hashes for all artifacts                                                                  |
 
-The Windows installer is built with Inno Setup (`scripts/installer.iss`). macOS DMGs are built with `create-dmg` and include a bundled `Install Gitbox.command` script (`scripts/dmg/`) that copies binaries and removes quarantine flags. The Linux AppImage is built by `scripts/appimage/build-appimage.sh`, which uses linuxdeploy and its GTK plugin to bundle GTK 3, WebKitGTK and the WebKit helper processes, so the AppImage runs on systems without those libraries installed. The Linux GUI and the AppImage build on the `ubuntu-22.04` runner on purpose: the bundled libraries then need no newer glibc than 2.35, which keeps the AppImage working on older distributions.
+The asset names match v1, so the updater and the bootstrap script find them the same way. v2 drops `gitbox-win-arm64.zip`, which only carried the CLI.
+
+The Windows installer is built with Inno Setup (`scripts/installer.iss`). It installs only `GitboxApp.exe` and adds nothing to PATH; when it upgrades a v1 install, it removes the old `gitbox.exe` and its PATH entry. macOS DMGs are built with `create-dmg` and include a bundled `Install Gitbox.command` script (`scripts/dmg/`) that copies `GitboxApp.app` to `/Applications/` and removes quarantine flags. The Linux AppImage is built by `scripts/appimage/build-appimage.sh`, which uses linuxdeploy and its GTK plugin to bundle GTK 3, WebKitGTK and the WebKit helper processes, so the AppImage runs on systems without those libraries installed. The Linux GUI and the AppImage build on the `ubuntu-22.04` runner on purpose: the bundled libraries then need no newer glibc than 2.35, which keeps the AppImage working on older distributions.
 
 ### macOS code signing
 
@@ -251,12 +224,12 @@ macOS DMGs are currently **unsigned**. Code signing and notarization steps are p
 
 ### Auto-update
 
-The `pkg/update/` package provides version checking and self-update capabilities. Both the CLI (`gitbox update`) and GUI (background check + banner) use it. The updater downloads the platform-specific artifact from GitHub Releases, verifies the SHA256 checksum, and replaces the binaries in place.
+The `pkg/update/` package provides version checking and self-update capabilities. The GUI runs a background check once per day and shows an update pill in the footer. The updater downloads the platform-specific artifact from GitHub Releases, verifies the SHA256 checksum, and replaces the app in place.
 
-The two binaries update differently:
+The GUI and the v1 CLI update differently:
 
 - The GUI follows the release GitHub marks as latest, including the jump from 1.x to 2.x. It replaces only what is already installed next to it; on macOS it replaces the whole `GitboxApp.app` bundle in the folder that holds it.
-- The CLI stays on the 1.x line (`MaxMajor: 1`) and replaces only its own binary, so it never downgrades a v2 GUI installed next to it. It keeps its own throttle file (`.update-check-cli`).
+- The v1 CLI, maintained on `release/v1`, stays on the 1.x line (`MaxMajor: 1`) and replaces only its own binary, so it never downgrades a v2 GUI installed next to it. It keeps its own throttle file (`.update-check-cli`).
 
 ### Release lines
 
@@ -319,67 +292,6 @@ The Wails build reads icons from `cmd/gui/build/`:
 - `cmd/gui/build/windows/icon.ico` — embedded in the Windows `.exe`
 
 These are **not checked in** (gitignored under `cmd/gui/build/`). Instead, the CI workflow and local builds copy them from `assets/` before running `wails build`.
-
----
-
-## TUI demo recordings (VHS)
-
-Use [VHS](https://github.com/charmbracelet/vhs) (by the Charm team) to record terminal demo GIFs for the README and docs. VHS reads declarative `.tape` files and renders GIF/MP4/WebM output.
-
-### Install VHS
-
-```bash
-# macOS
-brew install charmbracelet/tap/vhs
-
-# Windows (scoop)
-scoop install charmbracelet/vhs/vhs
-
-# Go install
-go install github.com/charmbracelet/vhs@latest
-```
-
-VHS requires `ffmpeg` and `ttyd`. On first run it will prompt to install them.
-
-### Recording a demo
-
-1. Create a `.tape` file under `assets/` (e.g., `assets/demo-tui.tape`):
-
-   ```text
-   Output assets/demo-tui.gif
-
-   Set Shell "bash"
-   Set FontSize 14
-   Set Width 1200
-   Set Height 600
-   Set Theme "Catppuccin Mocha"
-
-   Type "gitbox"
-   Enter
-   Sleep 2s
-   Type "j"
-   Sleep 0.5s
-   Type "j"
-   Sleep 0.5s
-   Enter
-   Sleep 2s
-   ```
-
-2. Run it:
-
-   ```bash
-   vhs assets/demo-tui.tape
-   ```
-
-3. The output GIF is written to the path specified in the `Output` directive.
-
-### Conventions
-
-- Tape files live in `assets/` alongside the GUI prototypes
-- Output GIFs also go in `assets/` (e.g., `assets/demo-tui.gif`)
-- Use `Catppuccin Mocha` theme to match the TUI dark theme
-- Keep recordings under 15 seconds for README embeds
-- Add tape files to git, but `.gif`/`.mp4` outputs should be gitignored (regenerate on demand)
 
 ---
 

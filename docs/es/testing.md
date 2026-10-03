@@ -1,10 +1,10 @@
 # Pruebas
 
-Esta guía cubre cómo ejecutar y escribir pruebas para gitbox. Para el inventario completo de pruebas (cada nombre de prueba y qué cubre), consulta [testing-reference.md](testing-reference.md). Recuento actual: 208 pruebas en todos los paquetes.
+Esta guía cubre cómo ejecutar y escribir pruebas para gitbox. Para el inventario de pruebas (qué cubre cada paquete) y los detalles internos del harness, consulta [testing-reference.md](testing-reference.md). Recuento actual: 453 funciones de prueba de primer nivel — 414 en `pkg/` y 39 en `cmd/gui/`.
 
 ## Pre-push hook
 
-El repo incluye una red de seguridad: un pre-push hook que ejecuta análisis estático y todas las pruebas unitarias antes de cada `git push`.
+El repo incluye una red de seguridad: un pre-push hook que ejecuta análisis estático y todas las pruebas unitarias antes de cada `git push`. Primero construye el frontend de la GUI cuando falta `cmd/gui/frontend/dist`.
 
 Git no recoge hooks personalizados automáticamente, así que después de clonar el repo ejecuto esto una vez:
 
@@ -18,15 +18,27 @@ A partir de ahora cada `git push` ejecuta los checks. Para saltarlo temporalment
 
 Hay tres niveles de pruebas, cada uno con algo más de preparación que el anterior:
 
-- **Pruebas unitarias** — se ejecutan al instante, no necesitan setup. Prueban lógica en aislamiento sin tocar la red ni ningún proveedor.
-- **Pruebas de integración** — conectan con proveedores reales (GitHub, GitLab, Gitea, etc.) usando credenciales reales. Necesitan un pequeño archivo de configuración que preparo una vez.
-- **Pruebas de escenario** — ejecutan el ciclo completo de gitbox end-to-end: crear cuentas, clonar repos, comprobar status, configurar mirrors y desmontarlo todo. Mismo archivo de configuración que las pruebas de integración.
+- **Pruebas unitarias de paquete** — las pruebas bajo `pkg/`. Se ejecutan al instante, no necesitan setup y prueban lógica en aislamiento sin tocar la red ni ningún proveedor. `pkg/ops/ops_test.go` cubre las operaciones de la aplicación contra un `XDG_CONFIG_HOME` temporal, un `GIT_CONFIG_GLOBAL` temporal y una carpeta SSH temporal, así que nada cambia en el host real.
+- **Pruebas de GUI** — las pruebas Go bajo `cmd/gui/`. Cubren la lógica del lado de Wails que no necesita ventana: lanzamiento de terminales y de AI harness, acciones de navegador y de carpeta, workspaces y contenedores multi-repo. Necesitan el frontend compilado en `cmd/gui/frontend/dist`, porque el paquete lo embebe.
+- **Prueba de escenario** — `TestScenario_FullLifecycle` en `pkg/ops/scenario_test.go` recorre el ciclo de vida completo contra un proveedor real: añadir cuenta → comprobar credenciales → discover → clone → status → pull y fetch → editar cuenta + reconfigurar clone → CRUD de mirror → reclonar → renombrar → borrar. Necesita el fixture de pruebas descrito más abajo.
+
+## Antes de empezar: el build del frontend
+
+`cmd/gui` embebe `cmd/gui/frontend/dist`, así que `go vet ./...` y `go test ./...` no consiguen compilar ese paquete hasta que la carpeta existe. Un `wails build` la crea. Para crearla sin un build completo:
+
+```bash
+cd cmd/gui/frontend
+npm ci
+npm run build
+```
+
+Las pruebas de paquete por sí solas (`go test ./pkg/...`) no la necesitan.
 
 ## Antes de empezar: el fixture de pruebas
 
-Las pruebas de integración y escenario necesitan hablar con proveedores Git reales. El proyecto usa un archivo llamado `test-gitbox.json` en la raíz del repo — una configuración normal de gitbox con un campo extra por cuenta: una clave `_test` que guarda el token de ese proveedor. El test runner lo lee, inyecta los tokens como variables de entorno y ejecuta todo en directorios temporales descartables para no tocar nunca la máquina real.
+La prueba de escenario necesita hablar con un proveedor Git real. El proyecto usa un archivo llamado `test-gitbox.json` en la raíz del repo — una configuración normal de gitbox con un campo extra por cuenta: una clave `_test` que guarda el token de ese proveedor. El test runner lo lee, inyecta los tokens como variables de entorno y ejecuta todo en directorios temporales descartables para no tocar nunca la máquina real.
 
-**Las pruebas unitarias funcionan sin este archivo.** Si intentas ejecutar pruebas de integración sin él, fallan con un mensaje claro que te dice que lo crees (o que uses `go test -short` para ejecutar solo unit tests).
+**Las pruebas unitarias funcionan sin este archivo.** Si ejecutas la prueba de escenario sin él, falla con un mensaje claro que te dice que lo crees (o que uses `go test -short` para saltarla).
 
 ### Prepararlo
 
@@ -64,23 +76,23 @@ Creas tokens en la web de tu proveedor, igual que harías para gitbox:
 
 ### Verificar tu setup
 
-Antes de ejecutar pruebas de integración, **ejecuta el script de setup al menos una vez** para verificar tokens y generar claves SSH:
+Antes de ejecutar la prueba de escenario, **ejecuta el script de setup al menos una vez** para verificar tokens y generar claves SSH:
 
 ```bash
 ./scripts/setup-credentials.sh
 ```
 
-Esto verifica tokens API, genera pares de claves SSH por host y prueba conexiones SSH. Si un token está mal o expirado, lo verás aquí — mucho más rápido que depurar una prueba fallida. El script es idempotente y seguro de ejecutar varias veces. Cuando todo muestre `ok` verde, estás listo para pruebas de integración.
+Esto verifica tokens API, genera pares de claves SSH por host y prueba conexiones SSH. Si un token está mal o expirado, lo verás aquí — mucho más rápido que depurar una prueba fallida. El script es idempotente y seguro de ejecutar varias veces. Cuando todo muestre `ok` verde, estás listo para la prueba de escenario.
 
 Para ejecutar credential setup también en máquinas remotas: `./scripts/setup-credentials.sh all`. Consulta [multiplatform.md](multiplatform.md) para el workflow cross-platform completo.
 
 ### Cuentas GCM
 
-Las credenciales GCM viven en el keyring del OS y salen de un login interactivo en navegador — no hay token que poner en un archivo. El test runner comprueba en runtime si `git credential fill` funciona y salta pruebas si no. No añadas una clave `_test` a cuentas GCM — solo asegúrate de que GCM está configurado en la máquina.
+Las credenciales GCM viven en el keyring del OS y salen de un login interactivo en navegador — no hay token que poner en un archivo. No añadas una clave `_test` a cuentas GCM — la prueba de escenario solo elige cuentas con token, y las cuentas GCM siguen disponibles para comprobaciones manuales en `--test-mode`.
 
 ### Pruebas de mirrors (opcional)
 
-Para probar operaciones de mirror, añade una sección `mirrors` con un par de cuentas real:
+Para comprobar a mano operaciones de mirror en `--test-mode`, añade una sección `mirrors` con un par de cuentas real:
 
 ```json
 "mirrors": {
@@ -92,13 +104,13 @@ Para probar operaciones de mirror, añade una sección `mirrors` con un par de c
 }
 ```
 
-Ambas cuentas necesitan tokens en sus claves `_test`. El token de destino necesita acceso de escritura porque las pruebas de mirror crean repos ahí.
+Ambas cuentas necesitan tokens en sus claves `_test`. El token de destino necesita acceso de escritura porque configurar un mirror crea ahí el repo de destino. La prueba de escenario no necesita esta sección — su paso de mirror solo crea y borra un grupo de mirror en la config.
 
 ### Seguridad
 
 El test runner **siempre sobrescribe** `global.folder` con un directorio temporal descartable — todos los clones y archivos de config van ahí y se borran después de cada prueba.
 
-Para `credential_ssh.ssh_folder`, las pruebas de integración leen la ruta desde `test-gitbox.json` para poder encontrar claves SSH reales. Esta ruta **no debe ser `~/.ssh`** — apúntala a una ubicación aislada como `~/.gitbox-test/ssh`.
+Para `credential_ssh.ssh_folder`, la prueba de escenario lee la ruta desde `test-gitbox.json` para poder encontrar claves SSH reales. Esta ruta **no debe ser `~/.ssh`** — apúntala a una ubicación aislada como `~/.gitbox-test/ssh`.
 
 El test runner lo exige: si el fixture apunta `ssh_folder` a `~/.ssh` o `global.folder` a `~/.config/gitbox`, las pruebas fallan inmediatamente.
 
@@ -116,53 +128,24 @@ go test -short ./...
 
 Las pruebas de probing WSL en `pkg/git` se saltan por defecto en Windows. Para ejercitarlas, define `GITBOX_TEST_WSL=1` y vuelve a ejecutar `go test ./pkg/git/`. El probe ejecuta `wsl.exe --status` y salta limpiamente si WSL no está instalado; en sistemas no Windows las pruebas afirman que los helpers devuelven false / error.
 
-### Paso 2: verificación de credenciales
+### Paso 2: comprobación de tipos del frontend
 
-Comprueba que los tokens de proveedor en `test-gitbox.json` funcionan realmente — conecta a la API de cada proveedor y confirma que la autenticación tiene éxito.
-
-```bash
-go test -v -run TestIntegration_CLI_CredentialVerify ./cmd/cli/
-```
-
-### Paso 3: discovery
-
-Usa cuentas y tokens de `test-gitbox.json` para llamar a la API de cada proveedor y listar repositorios.
+Comprueba el frontend Svelte con `svelte-check`, la misma comprobación que ejecuta el workflow de PR.
 
 ```bash
-go test -v -run TestIntegration_CLI_Discover ./cmd/cli/
+cd cmd/gui/frontend
+npm run check
 ```
 
-### Paso 4: clone, status, pull, fetch
+### Paso 3: escenario de ciclo completo
 
-Elige la primera cuenta con sources y repos, clona uno en una carpeta temporal, comprueba estado de sync, hace pull y fetch. El clone se borra automáticamente.
+La grande. Ejecuta el ciclo de vida completo de una cuenta a través de `pkg/ops` contra la primera cuenta del fixture con token: crea la cuenta, comprueba credenciales, descubre repos, clona uno, comprueba status, hace pull, hace fetch, edita la cuenta y reconfigura el clone, crea y borra un grupo de mirror, reclona, renombra la cuenta y lo borra todo. Cada paso guarda y recarga la config, igual que la GUI persiste después de cada acción.
 
 ```bash
-go test -v -run "TestIntegration_CLI_(Clone|Status|Pull|Fetch)" ./cmd/cli/
+go test -v -run TestScenario ./pkg/ops/
 ```
 
-### Paso 5: pruebas de integración TUI
-
-Ejecuta la TUI programáticamente (sin UI visible). Carga cuentas desde `test-gitbox.json`, simula el event loop de Bubble Tea, envía pulsaciones y comprueba la salida renderizada.
-
-```bash
-go test -v -run TestIntegration_TUI ./cmd/cli/tui/
-```
-
-### Paso 6: escenario de ciclo completo
-
-La grande. Ejecuta todo el workflow CLI de gitbox: crea cuentas, añade sources y repos, clona, comprueba status, hace pull, configura mirrors, borra un clone, reclona y luego desmonta todo en orden inverso.
-
-```bash
-go test -v -run TestScenario ./cmd/cli/
-```
-
-### Paso 7: todas las pruebas de integración juntas
-
-```bash
-go test -v -run Integration ./cmd/cli/... ./cmd/cli/tui/
-```
-
-### Paso 8: todo
+### Paso 4: todo
 
 Ejecuta en verbose, ignora caché:
 
@@ -170,25 +153,35 @@ Ejecuta en verbose, ignora caché:
 go test -v -p 1 -count=1 ./...
 ```
 
+### Paso 5: modo de prueba interactivo
+
+Ejecuta la app contra el fixture en lugar de mi config real:
+
+```bash
+GitboxApp --test-mode
+```
+
+El flag `--test-mode` lee `test-gitbox.json` (buscando hacia arriba desde el directorio actual), construye una config descartable en un directorio temporal, sobrescribe `global.folder` e inyecta los tokens del fixture como variables de entorno. Nada toca mi `~/.config/gitbox/` real ni los clones existentes, y el directorio temporal se borra cuando la app sale.
+
 ## Checklist pre-PR
 
-Ejecuta esto antes de cada push o PR. Todo automatizado — o deja que el pre-push hook se encargue de vet + unit tests.
+Ejecuta esto antes de cada push o PR. El pre-push hook se encarga de vet + unit tests, y el workflow de PR los repite en CI.
 
 ```text
 - [ ] go vet ./...
 - [ ] go test -short ./...
-- [ ] ./scripts/deploy.sh                  (cross-compile; despliega a remotos si están configurados)
-- [ ] ./scripts/smoke.sh                  (smoke tests en todas las plataformas configuradas)
+- [ ] cd cmd/gui/frontend && npm run check
+- [ ] cd cmd/gui && wails build             (build local de la GUI)
+- [ ] ./scripts/smoke.sh                   (GitboxApp --version en todas las plataformas configuradas)
 ```
 
 Si el cambio toca un área específica, verifica al menos en la máquina dev:
 
 ```text
-- [ ] Cambios de config → gitbox global show --json parsea correctamente
-- [ ] Cambios de comando CLI → ejecutar con --help y una invocación real
-- [ ] Cambios TUI → lanzar gitbox (sin args), navegar a la pantalla cambiada
-- [ ] Cambios de credenciales → verificar badges de estado de credenciales en dashboard
+- [ ] Cambios de config → lanzar GitboxApp, confirmar que la config carga y que el cambio persiste tras reiniciar
+- [ ] Cambios de credenciales → verificar badges de estado de credenciales en las tarjetas de cuenta
 - [ ] Cambios GUI → lanzar GitboxApp, verificar que la pantalla cambiada renderiza
+- [ ] Windows → no aparece ninguna ventana de consola al ejecutar la acción cambiada
 ```
 
 ## Checklist completa de release
@@ -200,62 +193,43 @@ Ejecuta antes de crear un tag de release. Combina pasos automatizados + interact
 ```text
 - [ ] go vet ./...
 - [ ] go test -short ./...              (pruebas unitarias)
-- [ ] go test ./...                     (integración + escenario, requiere test-gitbox.json)
-- [ ] ./scripts/deploy.sh                  (cross-compile + deploy a remotos)
+- [ ] go test ./...                     (prueba de escenario, requiere test-gitbox.json)
+- [ ] cd cmd/gui/frontend && npm run check
+- [ ] ./scripts/ship.sh                 (construye y prepara la GUI en cada remoto)
+- [ ] ./scripts/smoke.sh all            (GitboxApp --version en todas las plataformas)
 ```
 
-### Smoke CLI (todas las plataformas)
+### Verificación GUI (interactiva, todas las plataformas)
 
-Ejecuta `./scripts/smoke.sh all` o manualmente en cada plataforma:
+Lanza `GitboxApp` en cada plataforma (`./scripts/run-commands.sh` imprime los comandos):
 
 ```text
-- [ ] gitbox version
-- [ ] gitbox help
-- [ ] gitbox global show --json
-- [ ] gitbox account list --json
-- [ ] gitbox status --json
+- [ ] La app abre; en Windows sin console flash
+- [ ] Dashboard muestra tarjetas de cuenta, badges de credenciales y repos
+- [ ] Cambio de tab (Accounts ↔ Mirrors ↔ Workspaces) funciona
+- [ ] Editar y renombrar cuenta
+- [ ] Credential setup para cada tipo (token/gcm/ssh)
+- [ ] Discovery: Find projects → seleccionar → Add & Pull
+- [ ] Clone, Pull All, Fetch All actualizan los indicadores de status
+- [ ] Panel de detalle de repo muestra rama, ahead/behind, archivos cambiados
+- [ ] Tab Mirrors muestra grupos y status
+- [ ] Settings: cambiar carpeta raíz, System check, Terminals Manager
+- [ ] Vista compacta y vuelta a la vista completa
 ```
 
-### Verificación TUI (interactiva, todas las plataformas)
-
-Lanza `gitbox` (sin args) en cada plataforma:
-
-```text
-- [ ] Dashboard carga con tarjetas de cuenta y badges de credenciales
-- [ ] Cambio de tab (Accounts ↔ Mirrors) funciona
-- [ ] Detalle de cuenta vía Enter en tarjeta
-- [ ] Pantalla de credenciales para cada tipo (token/gcm/ssh)
-- [ ] Discovery: cuenta → discover → multi-select → save
-- [ ] Detalle de repo: status, ruta de clone
-- [ ] Settings: cambiar carpeta, verificar persistencia
-- [ ] Hints de teclado renderizan, Esc navega atrás, Ctrl+C sale
-```
-
-### Flujos de credenciales CLI (interactivos, por plataforma)
+### Flujos de credenciales (interactivos, por plataforma)
 
 ```text
 - [ ] Windows: token, gcm (navegador), ssh (key gen)
-- [ ] macOS: token, gcm (navegador vía `open`), ssh
-- [ ] Linux: token, ssh, gcm-over-SSH (mensaje "desktop session")
+- [ ] macOS: token, gcm (navegador), ssh
+- [ ] Linux: token, gcm (navegador en una sesión de escritorio), ssh
 ```
 
-### Clone y sync (al menos 1 plataforma)
+### Actualización y upgrade (al menos 1 plataforma)
 
 ```text
-- [ ] gitbox clone → clona repos faltantes
-- [ ] gitbox status → muestra clean/dirty/ahead/behind
-- [ ] gitbox pull → hace pull de repos que están behind
-- [ ] gitbox fetch → hace fetch sin merge
-```
-
-### Verificación GUI (al menos Windows)
-
-```text
-- [ ] App abre sin console flash
-- [ ] Dashboard muestra cuentas y repos
-- [ ] Credential setup funciona
-- [ ] Flujos discovery y clone/pull/fetch funcionan
-- [ ] Tab mirror muestra grupos y status
+- [ ] La píldora de actualización aparece cuando existe un release más nuevo, y la actualización se aplica tras reiniciar
+- [ ] Una instalación v1 se actualiza a v2 y conserva el gitbox.json existente
 ```
 
 ### Notas específicas por plataforma
@@ -273,8 +247,8 @@ Lanza `gitbox` (sin args) en cada plataforma:
 
 Cuando añado una feature nueva, actualizo este archivo:
 
-1. Añadir la prueba automatizada relevante al [inventario de pruebas](testing-reference.md)
-2. Añadir un paso de verificación manual a la sección adecuada anterior (TUI, CLI, GUI)
+1. Añadir la prueba automatizada relevante y actualizar el [inventario de pruebas](testing-reference.md)
+2. Añadir un paso de verificación manual a la sección GUI adecuada anterior
 3. Si la feature es sensible a plataforma, añadir una nota a la tabla específica por plataforma
 
 Si usas Claude Code, el skill `/test-plan` automatiza los checks pre-PR y guía los pasos interactivos.

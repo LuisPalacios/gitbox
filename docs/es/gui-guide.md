@@ -2,7 +2,7 @@
   <img src="../../assets/screenshot-gui.png" alt="Gitbox" width="800" />
 </p>
 
-# Gitbox Desktop — Guía de usuario
+# Gitbox desktop — guía de usuario
 
 Gitbox es una app de escritorio que te ayuda a mantener todos tus proyectos Git organizados y actualizados, incluso cuando trabajas con varias cuentas en GitHub, GitLab, Forgejo y otros proveedores.
 
@@ -12,13 +12,29 @@ Esta guía recorre todo, desde el primer arranque hasta el uso diario.
 
 Descarga el instalador para tu plataforma desde la página de [Releases](https://github.com/LuisPalacios/gitbox/releases):
 
-- **Windows** — `gitbox-win-amd64-setup.exe` (instalador con configuración de PATH y accesos del menú Start)
+- **Windows** — `gitbox-win-amd64-setup.exe` (instala `GitboxApp.exe` en Program Files con accesos del menú Start)
 - **macOS** — `gitbox-macos-arm64.dmg` o `gitbox-macos-amd64.dmg` (abre el DMG, ejecuta el script de instalación desde Terminal)
 - **Linux** — `gitbox-x86_64.AppImage` (autocontenido, solo descarga y ejecuta)
 
-También puedes descargar los archivos ZIP (`gitbox-<platform>-<arch>.zip`) y extraerlos manualmente.
+También puedes descargar los archivos ZIP (`gitbox-<platform>-<arch>.zip`) y extraerlos manualmente. Cada uno contiene solo la app: `GitboxApp.exe`, `GitboxApp.app` o `GitboxApp`.
 
-> **Nota macOS:** La app no está firmada por Apple. El DMG incluye un script "Install Gitbox" que copia los binarios y elimina automáticamente los flags de cuarentena. Ejecuta `bash "/Volumes/gitbox/Install Gitbox.command"` desde Terminal. Para instalación manual, usa `xattr -cr /path/to/GitboxApp.app` y `xattr -cr /path/to/gitbox`.
+> **Nota macOS:** La app no está firmada por Apple. El DMG incluye un script "Install Gitbox" que copia `GitboxApp.app` a `/Applications/` y elimina automáticamente los flags de cuarentena. Ejecuta `bash "/Volumes/gitbox/Install Gitbox.command"` desde Terminal. Para instalación manual, usa `xattr -cr /path/to/GitboxApp.app`.
+
+Gitbox llama a herramientas que ya están en el sistema: **Git** en tu PATH y [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager) para las cuentas GCM. **Settings → System check** lista lo que falte con el comando de instalación para tu SO: consulta [Panel de ajustes](#panel-de-ajustes).
+
+### Script de bootstrap
+
+En macOS, Linux o Windows (Git Bash), el script de bootstrap descarga la última release e instala la app:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
+```
+
+Usa `--version <tag>` para una release concreta o `--prefix <dir>` para cambiar el directorio de instalación (por defecto `~/bin`; macOS instala `GitboxApp.app` en `/Applications/`).
+
+En Linux el script de bootstrap también registra la app en el menú Activities para que pueda buscar "Gitbox" o arrastrarla al dock. Omítelo con `--no-desktop`; ejecútalo más tarde por separado con `bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/register-gitbox.sh)`. Pasa `--uninstall` al mismo script para eliminar la entrada del menú. El archivo `.desktop` apunta a una ruta absoluta, así que las actualizaciones desde la app y las ejecuciones posteriores del bootstrap no necesitan volver a registrarla.
+
+Los hosts headless no pueden ejecutar la app. Ahí, `--cli-only` instala la última CLI `gitbox` 1.x de la línea de mantenimiento v1, y el script la elige automáticamente en Linux cuando no está definida ni `DISPLAY` ni `WAYLAND_DISPLAY`.
 
 ### Linux AppImage
 
@@ -72,6 +88,8 @@ La ventana de discovery incluye:
 - **Already added** — los repos ya añadidos aparecen atenuados y no se pueden seleccionar de nuevo
 
 Elige los que quieras y haz clic en **Add & Pull**. Gitbox los guarda en tu config y empieza a clonarlos en tu carpeta.
+
+Discovery es **solo de adición**: añade repos a tu config pero nunca los elimina.
 
 ## Paso 4: día a día
 
@@ -136,6 +154,8 @@ El modal de orphans lista clones bajo tu carpeta padre que todavía no están en
 - **Unknown account** — ninguna cuenta configurada coincide con el host remoto. Añade una cuenta primero y vuelve a abrir el modal.
 - **Unknown account, `ambiguous: a | b`** — dos o más cuentas en el mismo host empatan en cada señal de identidad que Gitbox mira. La casilla está deshabilitada para que no se muevan archivos. Para desambiguar: mueve el clon bajo el subtree de source correcto, edita `gitbox.json` para reflejar la cuenta deseada, o establece `credential.<url>.username` en el clon; luego vuelve a abrir el modal.
 - **Local only** — sin remoto `origin`, no adoptable.
+
+Para cada clon adoptado, Gitbox lo añade a `gitbox.json` bajo la source emparejada, configura el aislamiento de credenciales por repo, fija `user.name` y `user.email` a partir de la cuenta y reescribe la URL remota para que coincida con el tipo de credencial. Las reglas de puntuación detrás del emparejamiento de cuenta están en [Arquitectura › pkg/adopt](architecture.md#pkgadopt--discovery-de-repos-huérfanos).
 
 ### Crear repositorios
 
@@ -206,7 +226,7 @@ Cuando hay mirrors configurados, aparece un segundo **health ring** en la barra 
 
 La pestaña Mirrors ofrece dos botones de sección:
 
-- **Discover** — escanea todos los pares de cuentas para detectar relaciones de mirror existentes. Durante el escaneo, una barra de progreso muestra avance por cuenta (indeterminado durante el listado de repos, determinado durante el análisis). Cuando aparecen resultados, los repos ya presentes en tu config se marcan como **"configured"** y aparecen atenuados. Cada resultado no configurado tiene un botón individual **+ Add** para añadirlo a tu config uno a uno, o puedes usar **Apply to config** para añadir todos a la vez.
+- **Discover** — escanea todos los pares de cuentas para detectar relaciones de mirror existentes, con confianza decreciente: API de push mirror (confirmed), flag de pull mirror (likely) y coincidencia de nombre (possible). Durante el escaneo, una barra de progreso muestra avance por cuenta (indeterminado durante el listado de repos, determinado durante el análisis). Cuando aparecen resultados, los repos ya presentes en tu config se marcan como **"configured"** y aparecen atenuados. Cada resultado no configurado tiene un botón individual **+ Add** para añadirlo a tu config uno a uno, o puedes usar **Apply to config** para añadir todos a la vez.
 - **Check all** — comprueba el estado de sync de cada grupo mirror.
 
 ### Lista de detalle de mirror
@@ -221,17 +241,19 @@ Bajo las tarjetas de mirror, cada grupo se expande en una lista de detalle con r
 
 ## Paso 6: workspaces (solo lectura)
 
-La pestaña **Workspaces**, junto a Accounts y Mirrors, lista los archivos `.code-workspace` de VS Code descubiertos. Los workspaces son de solo lectura: la GUI descubre los archivos existentes, los lista con sus clones miembro resueltos y abre uno en mi editor. Nunca los crea, edita, genera ni borra: los archivos son míos. Cada entrada tiene un botón **Open**; el botón **Discover** de la pestaña reescanea bajo demanda. Consulta la [guía CLI](cli-guide.md#paso-8-workspaces-solo-lectura) para el modelo.
+La pestaña **Workspaces**, junto a Accounts y Mirrors, lista los archivos `.code-workspace` de VS Code descubiertos. Los workspaces son de solo lectura: la GUI descubre los archivos existentes, los lista con sus clones miembro resueltos y abre uno en mi editor. Nunca los crea, edita, genera ni borra: los archivos son míos. Cada entrada tiene un botón **Open** que abre el `.code-workspace` en el primer editor de `global.editors`; el botón **Discover** de la pestaña reescanea bajo demanda.
 
 ### Auto-descubrimiento al arrancar
 
-Cuando dejo un archivo `*.code-workspace` bajo la carpeta gestionada por gitbox (o una carpeta extra configurada), o traigo uno desde otra máquina, la GUI lo recoge: la lista en caché aparece al instante al arrancar y luego una pasada en segundo plano la refresca, actualizando la pestaña si algo cambió. Las carpetas de cada archivo se resuelven de vuelta a clones conocidos por coincidencia deepest-prefix.
+Cuando dejo un archivo `*.code-workspace` bajo la carpeta gestionada por gitbox (o una carpeta extra configurada), o traigo uno desde otra máquina, la GUI lo recoge: la lista en caché aparece al instante al arrancar y luego una pasada en segundo plano la refresca, actualizando la pestaña si algo cambió. Discovery recorre `global.folder` y cada raíz de `global.extra_folders` en busca de archivos `*.code-workspace`. Las carpetas de cada archivo se resuelven de vuelta a clones conocidos por coincidencia deepest-prefix, y la caché de `gitbox.json` solo se reescribe cuando algo cambió.
 
 ### Clones no estándar y contenedores multi-repo
 
 Un **contenedor multi-repo** es un clon gestionado que mantiene otros clones anidados en su árbol de trabajo (por ejemplo, un repo de proyecto cuyo `.code-workspace` agrupa varios clones hermanos). Cuando un clon parece serlo — tiene un `.code-workspace` en su raíz pero aún no está marcado — su fila muestra un aviso inline **onboard nested clones**. Al hacer clic, marca el clon como contenedor, escanea su árbol de trabajo y abre el modal de adopción con los clones anidados que encuentra; tú confirmas cuáles incorporar. Los clones anidados se adoptan en el lugar bajo su cuenta/org real (se guardan con una `clone_folder` absoluta dentro del contenedor, nunca se reubican), y el aviso se reemplaza por un badge **container**.
 
-También puedes gestionarlo desde el menú kebab (⋮) de la fila del repo — **Mark as multi-repo container**, **Unmark as multi-repo container** y **Re-scan for nested clones** (visible una vez que el clon es contenedor) — o con la casilla **Multi-repo container** del panel de detalle del repo. El diálogo **Change root folder** gestiona las **carpetas de escaneo extra** (raíces adicionales escaneadas en busca de clones y archivos `.code-workspace`) y la **profundidad de escaneo anidado** (cuántos niveles desciende Gitbox por debajo de un contenedor, por defecto 1). Consulta la [guía CLI](cli-guide.md#paso-9-ubicaciones-de-clon-no-estándar-y-contenedores-multi-repo-opcional) para el modelo completo.
+También puedes gestionarlo desde el menú kebab (⋮) de la fila del repo — **Mark as multi-repo container**, **Unmark as multi-repo container** y **Re-scan for nested clones** (visible una vez que el clon es contenedor) — o con la casilla **Multi-repo container** del panel de detalle del repo. El diálogo **Change root folder** gestiona las **carpetas de escaneo extra** (raíces adicionales escaneadas en busca de clones y archivos `.code-workspace`) y la **profundidad de escaneo anidado** (cuántos niveles desciende Gitbox por debajo de un contenedor, por defecto 1: los hijos inmediatos del contenedor; súbela para alcanzar clones anidados más profundos).
+
+El layout estándar es `global.folder / <account> / <org|user> / repo`. Los clones encontrados en una carpeta de escaneo extra aparecen en el modal de orphans y se incorporan **en el lugar** con una `clone_folder` absoluta: Gitbox nunca los mueve.
 
 ## Vistas del dashboard
 
@@ -261,10 +283,10 @@ Haz clic en el **icono de engranaje** para abrir el panel de ajustes:
 - **Theme** — cambia entre System, Light y Dark
 - **Fetch periódico** — intervalo de fetch automático (off, 5m, 15m, 30m)
 - **Run at startup** — lanzar Gitbox automáticamente al iniciar sesión (dependiente de plataforma)
-- **System check** — **Run** abre un informe de cada herramienta externa que usa gitbox (git, Git Credential Manager, ssh, tmux, …), dónde está instalada, su versión y, para cualquier cosa ausente que tu config necesite, un comando de instalación. Mismos datos que `gitbox doctor` en la CLI.
+- **System check** — **Run** abre un informe de cada herramienta externa que usa gitbox (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add` y `wsl` en Windows), dónde está instalada, su versión y, para cualquier cosa ausente que tu config necesite, un comando de instalación. Cada herramienta se marca como ok, missing (requerida por tu config) u optional.
 - **Terminals** — **Manager** abre el editor de Perfiles de terminal en su propia ventana del SO. Tres secciones: aplicaciones de terminal detectadas (solo lectura), shells detectados (solo lectura) y Perfiles (las parejas Terminal × Shell que el menú kebab puede lanzar). Alterna Default / Preferred / Hidden por fila, edita el nombre + Terminal + Shell de un Perfil, añade Perfiles definidos por el usuario o elimina los que tú añadiste. Re-detect vuelve a sondear el host para captar nuevos shells, entradas frescas de `launch_menu` de WezTerm o terminales recién instaladas sin reiniciar la GUI. La ventana es propiedad de la app principal — al cerrar la ventana principal también se cierra el Manager.
 
-  Cuando hago clic en un Perfil `WezTerm + <Shell>` o `Windows Terminal + <Shell>`, gitbox primero busca una entrada coincidente en mi propia configuración del terminal (`launch_menu` de `wezterm.lua` para WezTerm, `profiles.list` de `settings.json` para Windows Terminal). Si encuentra una, gitbox la lanza — para WezTerm construye `wezterm-gui.exe start --cwd <path> -- <argv de la entrada>` y empalma el `set_environment_variables` de la entrada sobre el entorno padre; para Windows Terminal ejecuta `wt.exe -w 0 nt --profile "<name>" -d <path>` para que WT aplique el font, los colors y el `commandline` de mi perfil sin spawneár una segunda ventana cuando está activo `firstWindowPreference: persistedWindowLayout`. Sin coincidencia (o sin config / terminal no instalado), gitbox cae en su plantilla genérica de argv. Nota: la lógica de picker-callback de WezTerm en `wezterm.lua` (`color_scheme` por entrada, hooks personalizados de `mux.spawn_window`, etc.) solo se dispara cuando la entrada se elige desde el propio launcher menu de WezTerm — gitbox spawneando el pane externamente salta esos callbacks. Ver [reference.md › Cómo funciona el emparejamiento de lanzamiento](reference.md#cómo-funciona-el-emparejamiento-de-lanzamiento) para las reglas del comparador (sufijo tras em-dash, patrón de respaldo para `pwsh` / `cmd` / distros WSL, etc.).
+  Cuando hago clic en un Perfil `WezTerm + <Shell>` o `Windows Terminal + <Shell>`, gitbox primero busca una entrada coincidente en mi propia configuración del terminal (`launch_menu` de `wezterm.lua` para WezTerm, `profiles.list` de `settings.json` para Windows Terminal). Si encuentra una, gitbox la lanza — para WezTerm construye `wezterm-gui.exe start --cwd <path> -- <argv de la entrada>` y empalma el `set_environment_variables` de la entrada sobre el entorno padre; para Windows Terminal ejecuta `wt.exe -w 0 nt --profile "<name>" -d <path>` para que WT aplique el font, los colors y el `commandline` de mi perfil sin spawnear una segunda ventana cuando está activo `firstWindowPreference: persistedWindowLayout`. Sin coincidencia (o sin config / terminal no instalado), gitbox cae en su plantilla genérica de argv. Nota: la lógica de picker-callback de WezTerm en `wezterm.lua` (`color_scheme` por entrada, hooks personalizados de `mux.spawn_window`, etc.) solo se dispara cuando la entrada se elige desde el propio launcher menu de WezTerm — gitbox spawneando el pane externamente salta esos callbacks. Ver [Arquitectura › Cómo funciona el emparejamiento de lanzamiento](architecture.md#cómo-funciona-el-emparejamiento-de-lanzamiento) para las reglas del comparador (sufijo tras em-dash, patrón de respaldo para `pwsh` / `cmd` / distros WSL, etc.).
 
 - **Versión** — versión actual de la app
 - **Author** — autor del proyecto y enlace al repositorio de GitHub
@@ -281,7 +303,10 @@ Cada fila de repo clonado tiene un **menú kebab (⋮)** en el lado derecho. El 
 
 Bajo los submenús:
 
-- **🧹 Sweep branches** — encuentra y elimina ramas locales obsoletas (gone, merged o squash-merged). Muestra un diálogo de confirmación con la lista de ramas antes de eliminar nada.
+- **🧹 Sweep branches** — encuentra y elimina ramas locales obsoletas. Muestra un diálogo de confirmación con la lista de ramas antes de eliminar nada. La rama actual y la rama predeterminada nunca se tocan. Detecta tres tipos de rama obsoleta:
+  - **Gone** — la rama de remote tracking se eliminó (por ejemplo, se mergeó una PR y su rama se borró en el servidor); se elimina con `git branch -D`.
+  - **Merged** — totalmente mergeada en la rama predeterminada; se elimina con `git branch -d`.
+  - **Squashed** — squash-merged o rebase-merged en el servidor (commits distintos, mismos cambios); se elimina con `git branch -D`.
 
 Para cambiar qué terminal/editor/harness aparece como default de nivel superior, reordena el array en `gitbox.json`: la primera entrada siempre es el default. No hace falta un flag separado.
 
@@ -358,7 +383,9 @@ En el kebab de cuenta, las mismas entradas aparecen con orden idéntico: la úni
 
 ### Notificación de actualización
 
-Gitbox comprueba actualizaciones una vez al día en segundo plano. Cuando hay una versión más nueva, aparece una píldora ámbar en el lado derecho de la barra de estado del footer mostrando la nueva versión. Haz clic para descargar y aplicar la actualización in-place. Cuando termina, haz clic en **Quit** y reinicia la app para usar la nueva versión.
+Gitbox comprueba actualizaciones una vez al día en segundo plano. Cuando hay una versión más nueva, aparece una píldora ámbar en el lado derecho de la barra de estado del footer mostrando la nueva versión. Haz clic para descargar y aplicar la actualización in-place. Gitbox verifica el checksum SHA256 de la release y reemplaza solo lo que ya está instalado junto a la app: en macOS, el bundle `GitboxApp.app` completo. Cuando termina, haz clic en **Quit** y reinicia la app para usar la nueva versión.
+
+El actualizador sigue la release que GitHub marca como latest, así que una GUI v1 pasa a v2 de la misma forma.
 
 ### Eliminar repos y cuentas
 
@@ -376,7 +403,7 @@ Abre el kebab (⋮) en cualquier fila de repo y elige **Move repository…**. La
 
 El move preserva cada ref y tag mediante `git push --mirror`, reconfigura `origin` en el clon local hacia la URL nueva y actualiza la config de gitbox para que el repo viva ahora bajo la source de la cuenta destino. Un fallo de source-delete o local-clone-delete (fases 6–7) se captura como warning: el move ya está completo en ese punto.
 
-Los scopes de token requeridos en ambos lados están listados en [Token scopes for destructive actions](credentials.md#scopes-de-token-por-capacidad).
+Los scopes de token requeridos en ambos lados están listados en [Scopes de token por capacidad](credentials.md#scopes-de-token-por-capacidad).
 
 ### Aviso de identidad global
 
@@ -396,17 +423,17 @@ Haz clic en **Configure** para corregir ambas entradas en un paso. Gitbox tambi�
 
 Gitbox detecta cuando falta `~/.gitignore_global`, cuando tiene un bloque recomendado desactualizado, cuando hay patrones gestionados duplicados fuera de los marcadores sentinel o cuando `core.excludesfile` no está configurado. En cualquiera de esos estados aparece un banner con un botón **Install** que hace todo esto: escribe un bloque curado de patrones de basura del SO (`.DS_Store`, `Thumbs.db`, `*~`, …), apunta `core.excludesfile` a él y guarda un backup con timestamp `.bak-YYYYMMDD-HHMMSS` de cualquier archivo existente. Solo se conservan los últimos 3 backups.
 
-La comprobación automática al arrancar se puede cambiar mediante **Settings → Global gitignore → On/Off**. Las acciones explícitas siempre se ejecutan: el toggle del engranaje, el botón Install y la CLI `gitbox gitignore check|install` nunca se silencian por la preferencia. Consulta [Gitignore global en la referencia](reference.md#gitignore-global) para el formato del bloque gestionado y el atajo `G` de la TUI.
+La comprobación automática al arrancar se puede cambiar mediante **Settings → Global gitignore → On/Off**, guardada como `global.check_global_gitignore`. Las acciones explícitas siempre se ejecutan: el toggle del engranaje y el botón Install nunca se silencian por la preferencia. El bloque gestionado va entre marcadores sentinel, así que los patrones y comentarios que añado fuera de ellos sobreviven a cada reinstalación. Consulta [Arquitectura › pkg/gitignore](architecture.md#pkggitignore--autorreparación-del-gitignore-global) para el formato del bloque gestionado.
 
 ## Consejos
 
 - **Window position** — Gitbox recuerda tamaño y posición de ventana. Si desconectas un monitor secundario y la ventana se abriría fuera de pantalla, se centra automáticamente en tu pantalla principal.
-- **External edits** — si editas `gitbox.json` a mano (o mediante la CLI), la GUI recoge los cambios automáticamente cuando la ventana recupera foco.
-- **Same config** — la app de escritorio y la CLI (`gitbox`) comparten el mismo archivo de config. Los cambios en una son visibles en la otra.
+- **External edits** — si editas `gitbox.json` a mano, la GUI recoge los cambios automáticamente cuando la ventana recupera foco.
+- **Same config as v1** — la app lee `~/.config/gitbox/gitbox.json`, el mismo archivo que usaba v1. El formato sigue en la versión 3, así que actualizar desde v1 no necesita migración.
 - **Automatic backups** — cada vez que se guarda un cambio significativo, Gitbox crea un backup fechado (por ejemplo, `gitbox-20260401-143025.json`) en el mismo directorio. Los 10 backups más recientes se conservan automáticamente; los más antiguos se podan. La pantalla de recuperación de corrupción de la GUI puede restaurar cualquiera de ellos con un clic. Los guardados solo de posición de ventana (mover o redimensionar la app) no crean backup: son churn cosmético y rotarían copias reales pre-corrupción fuera del anillo.
 
 ## Ver también
 
-- [Inicio rápido de CLI](cli-guide.md) — para usuarios de terminal
-- [Referencia de configuración](reference.md) — formato detallado de config y comandos
+- [Credenciales](credentials.md) — tipos de credencial, permisos y resolución de problemas
+- [Referencia del archivo de config](architecture.md#4-formato-de-config-v3) — cada clave de `gitbox.json`
 - [Arquitectura](architecture.md) — diseño técnico

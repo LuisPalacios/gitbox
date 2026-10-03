@@ -75,7 +75,7 @@
         //
         // Auto-detected on first launch per platform and merged with user edits
         // by id on every Re-detect. The legacy "terminals": [...] block from
-        // v2.0 is auto-migrated into this shape on first load and dropped.
+        // older configs is auto-migrated into this shape on first load and dropped.
         //
         // ArgsTemplate token semantics:
         //   {path}          — repo working directory
@@ -203,8 +203,8 @@
         },
 
         // ── Gitea/Forgejo with token (PAT) authentication ─────────────────────
-        // To store: gitbox account credential setup gitea-ci
-        // For CI/CD: export GITBOX_TOKEN_GITEA_CI="ghp_xxxx"
+        // To store: open the account's credential settings in GitboxApp and paste the token.
+        // Env override (takes precedence over the stored token): GITBOX_TOKEN_GITEA_CI="ghp_xxxx"
         "gitea-ci": {
             "provider": "gitea",
             "url": "https://gitea.example.org",
@@ -337,7 +337,7 @@
                 // dynamic set of sibling repos (with your own script, not
                 // submodules). With "container": true, gitbox descends into this
                 // clone's working tree (up to global.nested_scan_depth) during
-                // `gitbox adopt` and onboards each nested clone under its real
+                // orphan discovery (the GUI's orphans modal) and onboards each nested clone under its real
                 // account/org with an absolute clone_folder inside this folder.
                 "MyOrg/myorg.project": {
                     "container": true
@@ -397,9 +397,10 @@
     // under "folder" and "extra_folders", caches them here, lists them, and opens
     // them in the first editor in global.editors. It never creates, edits,
     // generates, or deletes them — you own the files. This whole section is a
-    // regenerable cache: delete it and `gitbox workspace discover` rebuilds it.
+    // regenerable cache: delete it and the next workspace discovery rebuilds it.
     //
-    //   gitbox workspace list / show <key> / open <key> / discover
+    // In GitboxApp, the Workspaces tab lists them; Open launches one and
+    // Discover rescans the disk.
     "workspaces": {
         "sumwall": {
             "name": "sumwall",

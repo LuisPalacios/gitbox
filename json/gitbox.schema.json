@@ -49,7 +49,7 @@
                 "check_global_gitignore": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Gates the automatic startup check for the recommended ~/.gitignore_global heal. Explicit user actions (CLI 'gitbox gitignore', TUI 'G' shortcut, GUI Install button) always run regardless. Defaults to true when missing."
+                    "description": "Gates the automatic startup check for the recommended ~/.gitignore_global heal. An explicit click on the GUI Install button always runs regardless. Defaults to true when missing."
                 },
                 "window": {
                     "type": "object",

@@ -24,7 +24,7 @@ Add these secrets to the repository settings (Settings > Secrets and variables >
 When `APPLE_CERTIFICATE` is present in the CI environment:
 
 1. The certificate is imported into an ephemeral macOS keychain
-2. `codesign` signs `GitboxApp.app` and the `gitbox` CLI binary with the Developer ID
+2. `codesign` signs `GitboxApp.app` with the Developer ID
 3. `create-dmg` builds the DMG
 4. `xcrun notarytool submit` uploads the DMG to Apple for notarization
 5. `xcrun stapler staple` attaches the notarization ticket to the DMG
@@ -57,7 +57,7 @@ xcrun stapler staple gitbox-macos-arm64.dmg
 
 Until signing is configured, macOS users will see a Gatekeeper warning when opening the app. They can:
 
-- Run `bash "/Volumes/gitbox/Install Gitbox.command"` from Terminal — the bundled install script copies binaries and removes quarantine flags automatically
-- Use `xattr -cr GitboxApp.app` and `xattr -cr gitbox` to remove the quarantine attribute manually
+- Run `bash "/Volumes/gitbox/Install Gitbox.command"` from Terminal — the bundled install script copies `GitboxApp.app` to `/Applications/` and removes quarantine flags automatically
+- Use `xattr -cr GitboxApp.app` to remove the quarantine attribute manually
 - Use the `bootstrap.sh` script which handles this automatically
-- Use the in-app update (GUI banner) or `gitbox update` (CLI), which replace their own binary without Gatekeeper checks
+- Use the in-app update (the update pill in the footer), which replaces the app bundle without Gatekeeper checks
