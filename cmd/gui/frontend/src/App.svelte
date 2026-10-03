@@ -40,7 +40,9 @@
   let actionMenuAccount: string | null = null;
   $: configEditors = ($configStore?.global?.editors || []) as EditorInfo[];
   $: configTerminals = ($configStore?.global?.terminals || []) as TerminalInfo[];
-  $: configAIHarnesses = ($configStore?.global?.ai_harnesses || []) as AIHarnessInfo[];
+  // Harnesses the Go-side sync flagged `missing` (binary uninstalled) stay
+  // in config but never reach the launcher menus (issue #81).
+  $: configAIHarnesses = (($configStore?.global?.ai_harnesses || []) as AIHarnessInfo[]).filter(h => !h.missing);
   // v2.1 Terminal Profile model (issue #69). configProfiles drives the
   // per-row launcher's terminal section; configApps + configShells are
   // referenced by the Gear-panel TerminalsSection for editing.
@@ -2509,14 +2511,23 @@
       if (themeChoice === 'system') applyTheme();
     });
 
-    // Re-read config when the window regains focus (picks up external edits).
+    // Re-read config when the window regains focus (picks up external edits),
+    // and ask the Go side to re-probe AI harnesses (throttled there) so a
+    // tool installed or removed while we were in the background shows up.
     let focusTimer: ReturnType<typeof setTimeout> | null = null;
     window.addEventListener('focus', () => {
       if (focusTimer) clearTimeout(focusTimer);
       focusTimer = setTimeout(() => reloadFromDisk(), 300);
+      bridge.refreshAIHarnesses().catch(() => {});
     });
 
     // ── Event listeners (always registered) ──
+    // Background harness detection changed global.ai_harnesses and saved
+    // it; swap the list in the store without a full config reload.
+    events.on('harnesses:updated', (list: AIHarnessInfo[] | null) => {
+      configStore.update((c) => c ? { ...c, global: { ...c.global, ai_harnesses: list || [] } } : c);
+    });
+
     events.on('status:updated', (results: any) => {
       applyStatusResults(results);
       // Refresh expanded detail if a repo is still open (reactive $: handles auto-collapse).

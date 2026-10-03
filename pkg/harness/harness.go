@@ -19,7 +19,15 @@ var directoryMarkdown string
 type Tool struct {
 	Name     string // display name (e.g. "Claude Code") — markdown bold stripped
 	Category string // e.g. "Agentic CLI"
-	Command  string // PATH binary name (e.g. "claude")
+	Command  string // primary PATH binary name (e.g. "claude") — Commands[0]
+	// Commands lists every binary name the Executable cell offers, in cell
+	// order. Most rows have one; a renamed CLI keeps its old name as an
+	// alternate ("`agent` or `cursor-agent`") so either install resolves.
+	Commands []string
+	// ExtraDirs are tool-specific well-known install directories from the
+	// "Well-known locations" column, probed before PATH. Entries may use
+	// `~`, $VAR or %VAR%; expansion happens at probe time (pkg/doctor).
+	ExtraDirs []string
 }
 
 // retiredCategory marks rows whose CLI has been discontinued by its vendor.
@@ -94,16 +102,69 @@ func filterRows(md string, keep func(category string) bool) []Tool {
 		}
 		name := cleanName(cells[0])
 		category := cleanPlainCell(cells[2])
-		cmd := extractCommand(cells[4])
-		if name == "" || cmd == "" {
+		cmds := extractCommands(cells[4])
+		if name == "" || len(cmds) == 0 {
 			continue
 		}
 		if !keep(category) {
 			continue
 		}
-		tools = append(tools, Tool{Name: name, Category: category, Command: cmd})
+		var dirs []string
+		if len(cells) >= 8 {
+			dirs = extractDirs(cells[7])
+		}
+		tools = append(tools, Tool{
+			Name:      name,
+			Category:  category,
+			Command:   cmds[0],
+			Commands:  cmds,
+			ExtraDirs: dirs,
+		})
 	}
 	return tools
+}
+
+// backtickTokens returns the trimmed content of every `...` run in cell,
+// in order, skipping empty runs.
+func backtickTokens(cell string) []string {
+	var out []string
+	s := cell
+	for {
+		i := strings.IndexByte(s, '`')
+		if i < 0 {
+			return out
+		}
+		j := strings.IndexByte(s[i+1:], '`')
+		if j < 0 {
+			return out
+		}
+		if tok := strings.TrimSpace(s[i+1 : i+1+j]); tok != "" {
+			out = append(out, tok)
+		}
+		s = s[i+1+j+1:]
+	}
+}
+
+// extractCommands returns every backticked token in the Executable column
+// that has the strict identifier shape, in cell order. Tokens with paths,
+// spaces or helper words are dropped, so a cell like "`python devika.py`"
+// yields nothing and the row is skipped. The first token is the primary
+// command; the rest are alternates (older or platform-specific names).
+func extractCommands(cell string) []string {
+	var out []string
+	for _, tok := range backtickTokens(cell) {
+		if cmdTokenRE.MatchString(tok) {
+			out = append(out, tok)
+		}
+	}
+	return out
+}
+
+// extractDirs returns every backticked token in the Well-known locations
+// column. Each location must be its own backticked run; a cell that is
+// blank or an italic placeholder like *N/A* yields nil.
+func extractDirs(cell string) []string {
+	return backtickTokens(cell)
 }
 
 // splitRow splits a pipe-delimited markdown row into cell slices. Leading and
@@ -177,22 +238,9 @@ func cleanPlainCell(cell string) string {
 // identifier shape. Cells whose backticked content contains a path, spaces,
 // or is literally "N/A" return an empty string so the row is skipped.
 func extractCommand(cell string) string {
-	s := strings.TrimSpace(cell)
-	// Find the first backticked run.
-	i := strings.IndexByte(s, '`')
-	if i < 0 {
+	toks := backtickTokens(cell)
+	if len(toks) == 0 || !cmdTokenRE.MatchString(toks[0]) {
 		return ""
 	}
-	j := strings.IndexByte(s[i+1:], '`')
-	if j < 0 {
-		return ""
-	}
-	candidate := strings.TrimSpace(s[i+1 : i+1+j])
-	if candidate == "" {
-		return ""
-	}
-	if !cmdTokenRE.MatchString(candidate) {
-		return ""
-	}
-	return candidate
+	return toks[0]
 }

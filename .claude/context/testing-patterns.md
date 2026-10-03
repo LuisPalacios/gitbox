@@ -103,6 +103,7 @@ Add a new lifecycle step as another numbered `t.Run("NN_name", ...)` in order, n
 - Config → `<tmpDir>/gitbox/gitbox.json`; credentials → `<tmpDir>/gitbox/credentials/<accountKey>`
 - Never fall through to the real `~/.config/gitbox/gitbox.json` or `~/.ssh`
 - The pre-push hook scrubs `GIT_DIR` and friends before running tests; tests that shell out to git must not depend on them either
+- AI harness detection is stubbed: `cmd/gui` tests swap `harnessLookupFn` via `stubHarnessLookup(t, map)` and `pkg/harness.Sync` tests use a map-backed `fakeLookup` — never let a test probe the real host for harness binaries.
 
 ## Naming conventions
 

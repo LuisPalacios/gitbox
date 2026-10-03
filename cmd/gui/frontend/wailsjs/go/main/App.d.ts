@@ -68,8 +68,6 @@ export function DeleteMirrorRepo(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteRepo(arg1:string,arg2:string):Promise<void>;
 
-export function DetectAIHarnesses():Promise<Array<main.AIHarnessInfo>>;
-
 export function DetectEditors():Promise<Array<main.EditorInfo>>;
 
 export function DetectTerminals():Promise<Array<main.TerminalInfo>>;
@@ -208,6 +206,8 @@ export function RecommendedGlobalGitignoreBody():Promise<string>;
 
 export function RedetectProfiles():Promise<main.ConfigDTO>;
 
+export function RefreshAIHarnesses():Promise<void>;
+
 export function RefreshAllPRs():Promise<void>;
 
 export function RefreshStatus():Promise<void>;
@@ -258,7 +258,7 @@ export function ShowErrorDialog(arg1:string,arg2:string):Promise<void>;
 
 export function ShowWindow():Promise<void>;
 
-export function SyncAIHarnesses():Promise<void>;
+export function SyncAIHarnesses():Promise<boolean>;
 
 export function SyncEditors():Promise<void>;
 

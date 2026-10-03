@@ -319,10 +319,25 @@ type TerminalProfile struct {
 // Terminal Profile in the target folder and runs the harness inside that
 // profile's shell (pkg/terminals.ResolveLaunch). Most harnesses need no
 // extra flags; Args is usually empty.
+//
+// Source records where the entry came from, mirroring TerminalProfile:
+//
+//	"detected" — auto-added by the harness sync from the embedded catalog
+//	"user"     — hand-written by the user (not a catalog row, or a catalog
+//	             row whose command the user pointed somewhere else)
+//
+// An empty Source is a pre-#81 entry; the next sync classifies it.
+//
+// Missing is set by the sync when the entry's binary can no longer be
+// found on the host. Missing entries are hidden from menus but kept in
+// config so a reinstall restores the user's Args without editing anything.
+// The sync is the only writer of Missing; it never deletes entries.
 type AIHarnessEntry struct {
 	Name    string   `json:"name"`
 	Command string   `json:"command"`
 	Args    []string `json:"args,omitempty"`
+	Source  string   `json:"source,omitempty"`
+	Missing bool     `json:"missing,omitempty"`
 }
 
 // WindowState stores the GUI window position and size for session persistence.

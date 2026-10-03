@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/harness"
 )
 
 func TestSyncEditorsPrunesHarnessClaimedNames(t *testing.T) {
@@ -135,17 +136,29 @@ func TestBuildHarnessArgv(t *testing.T) {
 	}
 }
 
-func TestDetectAIHarnessesIncludesConfigEntries(t *testing.T) {
-	// A config-defined harness must appear in DetectAIHarnesses output so the
-	// GUI can render custom entries users added by hand (harnesses not in
-	// knownAIHarnesses or not installed on PATH at the moment).
+// stubHarnessLookup swaps harnessLookupFn for a map-backed fake for the
+// duration of the test. Keys are bare commands or stored paths; anything
+// absent from the map is "not installed". Returns the probe log.
+func stubHarnessLookup(t *testing.T, have map[string]string) *[]string {
+	t.Helper()
+	prev := harnessLookupFn
+	var probes []string
+	harnessLookupFn = func(command string, extraDirs []string) string {
+		probes = append(probes, command)
+		return have[command]
+	}
+	t.Cleanup(func() { harnessLookupFn = prev })
+	return &probes
+}
+
+func harnessTestApp(t *testing.T, entries []config.AIHarnessEntry) *App {
+	t.Helper()
+	dir := t.TempDir()
 	cfg := &config.Config{
 		Version: 2,
 		Global: config.GlobalConfig{
-			Folder: "~/x",
-			AIHarnesses: []config.AIHarnessEntry{
-				{Name: "MyCustomBot", Command: "/opt/bots/mybot", Args: []string{"--chatty"}},
-			},
+			Folder:      dir,
+			AIHarnesses: entries,
 		},
 		Accounts: map[string]config.Account{
 			"A": {Provider: "github", URL: "https://github.com",
@@ -153,25 +166,7 @@ func TestDetectAIHarnessesIncludesConfigEntries(t *testing.T) {
 		},
 		Sources: map[string]config.Source{},
 	}
-	a := &App{cfg: cfg}
-	found := a.DetectAIHarnesses()
-
-	var match *AIHarnessInfo
-	for i := range found {
-		if found[i].Name == "MyCustomBot" {
-			match = &found[i]
-			break
-		}
-	}
-	if match == nil {
-		t.Fatalf("config-defined harness should appear in DetectAIHarnesses output; got %+v", found)
-	}
-	if match.ID != "mycustombot" || match.Command != "/opt/bots/mybot" {
-		t.Errorf("unexpected DTO: %+v", match)
-	}
-	if !reflect.DeepEqual(match.Args, []string{"--chatty"}) {
-		t.Errorf("args should round-trip verbatim; got %v", match.Args)
-	}
+	return &App{cfg: cfg, cfgPath: filepath.Join(dir, "gitbox.json"), mu: sync.Mutex{}}
 }
 
 func TestSyncAIHarnessesReordersToMatchKnownList(t *testing.T) {
@@ -186,32 +181,28 @@ func TestSyncAIHarnessesReordersToMatchKnownList(t *testing.T) {
 	first := knownAIHarnesses[0]
 	second := knownAIHarnesses[1]
 
-	dir := t.TempDir()
-	cfg := &config.Config{
-		Version: 2,
-		Global: config.GlobalConfig{
-			Folder: dir,
-			// User has the two harnesses in the REVERSE of the markdown order,
-			// plus a custom entry not in knownAIHarnesses.
-			AIHarnesses: []config.AIHarnessEntry{
-				{Name: second.Name, Command: "/custom/" + second.Command, Args: []string{"--user-flag"}},
-				{Name: first.Name, Command: "/custom/" + first.Command},
-				{Name: "My Private Bot", Command: "/opt/mybot"},
-			},
-		},
-		Accounts: map[string]config.Account{
-			"A": {Provider: "github", URL: "https://github.com",
-				Username: "u", Name: "n", Email: "e@e"},
-		},
-		Sources: map[string]config.Source{},
+	// The stored paths resolve; nothing else is installed on this fake host.
+	stubHarnessLookup(t, map[string]string{
+		"/custom/" + second.Command: "/custom/" + second.Command,
+		"/custom/" + first.Command:  "/custom/" + first.Command,
+		"/opt/mybot":                "/opt/mybot",
+	})
+	a := harnessTestApp(t, []config.AIHarnessEntry{
+		// User has the two harnesses in the REVERSE of the markdown order,
+		// plus a custom entry not in knownAIHarnesses.
+		{Name: second.Name, Command: "/custom/" + second.Command, Args: []string{"--user-flag"}},
+		{Name: first.Name, Command: "/custom/" + first.Command},
+		{Name: "My Private Bot", Command: "/opt/mybot"},
+	})
+	if !a.SyncAIHarnesses() {
+		t.Fatal("reorder + classification must report a change")
 	}
-	a := &App{cfg: cfg, cfgPath: filepath.Join(dir, "gitbox.json"), mu: sync.Mutex{}}
-	a.SyncAIHarnesses()
+	cfg := a.cfg
 
 	// Known entries must now be in markdown order, customizations preserved,
 	// custom entries last.
-	if len(cfg.Global.AIHarnesses) < 3 {
-		t.Fatalf("expected at least 3 entries, got %d: %+v", len(cfg.Global.AIHarnesses), cfg.Global.AIHarnesses)
+	if len(cfg.Global.AIHarnesses) != 3 {
+		t.Fatalf("expected 3 entries, got %d: %+v", len(cfg.Global.AIHarnesses), cfg.Global.AIHarnesses)
 	}
 	if cfg.Global.AIHarnesses[0].Name != first.Name {
 		t.Errorf("entry[0] should be %q after reorder, got %q", first.Name, cfg.Global.AIHarnesses[0].Name)
@@ -229,6 +220,16 @@ func TestSyncAIHarnessesReordersToMatchKnownList(t *testing.T) {
 	if !reflect.DeepEqual(cfg.Global.AIHarnesses[1].Args, []string{"--user-flag"}) {
 		t.Errorf("%s args customization lost: %+v", second.Name, cfg.Global.AIHarnesses[1])
 	}
+	// Legacy entries get classified: a catalog binary basename is "detected",
+	// an unknown name is "user". None is missing on this fake host.
+	for i, want := range []string{harness.SourceDetected, harness.SourceDetected, harness.SourceUser} {
+		if got := cfg.Global.AIHarnesses[i].Source; got != want {
+			t.Errorf("entry[%d] source = %q, want %q", i, got, want)
+		}
+		if cfg.Global.AIHarnesses[i].Missing {
+			t.Errorf("entry[%d] wrongly flagged missing: %+v", i, cfg.Global.AIHarnesses[i])
+		}
+	}
 	// Custom entry still present at the tail.
 	last := cfg.Global.AIHarnesses[len(cfg.Global.AIHarnesses)-1]
 	if last.Name != "My Private Bot" {
@@ -237,25 +238,13 @@ func TestSyncAIHarnessesReordersToMatchKnownList(t *testing.T) {
 }
 
 func TestSyncAIHarnessesDedupByName(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "gitbox.json")
-	cfg := &config.Config{
-		Version: 2,
-		Global: config.GlobalConfig{
-			Folder: "~/x",
-			AIHarnesses: []config.AIHarnessEntry{
-				{Name: "Duplicated", Command: "/bin/first"},
-				{Name: "Duplicated", Command: "/bin/second"},
-			},
-		},
-		Accounts: map[string]config.Account{
-			"A": {Provider: "github", URL: "https://github.com",
-				Username: "u", Name: "n", Email: "e@e"},
-		},
-		Sources: map[string]config.Source{},
-	}
-	a := &App{cfg: cfg, cfgPath: cfgPath, mu: sync.Mutex{}}
+	stubHarnessLookup(t, map[string]string{"/bin/first": "/bin/first", "/bin/second": "/bin/second"})
+	a := harnessTestApp(t, []config.AIHarnessEntry{
+		{Name: "Duplicated", Command: "/bin/first"},
+		{Name: "Duplicated", Command: "/bin/second"},
+	})
 	a.SyncAIHarnesses()
+	cfg := a.cfg
 
 	n := 0
 	for _, h := range cfg.Global.AIHarnesses {
@@ -279,32 +268,21 @@ func TestSyncAIHarnessesPrunesRetired(t *testing.T) {
 	// Antigravity transition) must vanish from global.ai_harnesses on sync,
 	// even when the user still has a resolved path for it. Entries not in
 	// the directory at all are user-curated and stay.
-	if len(retiredAIHarnessNames) == 0 {
+	retired := harness.RetiredTools()
+	if len(retired) == 0 {
 		t.Skip("tools-directory.md has no Retired CLI rows")
 	}
-	var retiredName string
-	for name := range retiredAIHarnessNames {
-		retiredName = name
-		break
-	}
-	dir := t.TempDir()
-	cfg := &config.Config{
-		Version: 2,
-		Global: config.GlobalConfig{
-			Folder: dir,
-			AIHarnesses: []config.AIHarnessEntry{
-				{Name: retiredName, Command: "/usr/local/bin/retired"},
-				{Name: "My Private Bot", Command: "/opt/mybot"},
-			},
-		},
-		Accounts: map[string]config.Account{
-			"A": {Provider: "github", URL: "https://github.com",
-				Username: "u", Name: "n", Email: "e@e"},
-		},
-		Sources: map[string]config.Source{},
-	}
-	a := &App{cfg: cfg, cfgPath: filepath.Join(dir, "gitbox.json"), mu: sync.Mutex{}}
+	retiredName := retired[0].Name
+	stubHarnessLookup(t, map[string]string{
+		"/usr/local/bin/retired": "/usr/local/bin/retired",
+		"/opt/mybot":             "/opt/mybot",
+	})
+	a := harnessTestApp(t, []config.AIHarnessEntry{
+		{Name: retiredName, Command: "/usr/local/bin/retired"},
+		{Name: "My Private Bot", Command: "/opt/mybot"},
+	})
 	a.SyncAIHarnesses()
+	cfg := a.cfg
 
 	for _, h := range cfg.Global.AIHarnesses {
 		if h.Name == retiredName {
@@ -313,6 +291,100 @@ func TestSyncAIHarnessesPrunesRetired(t *testing.T) {
 	}
 	if last := cfg.Global.AIHarnesses[len(cfg.Global.AIHarnesses)-1]; last.Name != "My Private Bot" {
 		t.Errorf("user-added custom entry lost or misplaced: last = %+v", last)
+	}
+}
+
+func TestSyncAIHarnessesFlagsMissingAndRestoresOnReinstall(t *testing.T) {
+	if len(knownAIHarnesses) == 0 {
+		t.Skip("no known harnesses")
+	}
+	tool := knownAIHarnesses[0]
+	have := map[string]string{}
+	stubHarnessLookup(t, have)
+	a := harnessTestApp(t, []config.AIHarnessEntry{
+		{Name: tool.Name, Command: "/old/" + tool.Command, Args: []string{"--keep"}, Source: harness.SourceDetected},
+	})
+
+	// Uninstalled: flagged and kept (the menu hides Missing entries).
+	if !a.SyncAIHarnesses() {
+		t.Fatal("flagging missing must report a change")
+	}
+	if got := a.cfg.Global.AIHarnesses; len(got) != 1 || !got[0].Missing {
+		t.Fatalf("expected the entry kept and flagged missing: %+v", got)
+	}
+	// Nothing changed on the host → no-op pass, no save.
+	if a.SyncAIHarnesses() {
+		t.Error("idempotent pass reported a change")
+	}
+
+	// Reinstall somewhere else: flag cleared, path updated, args intact.
+	have[tool.Command] = "/new/" + tool.Command
+	if !a.SyncAIHarnesses() {
+		t.Fatal("reinstall must report a change")
+	}
+	got := a.cfg.Global.AIHarnesses[0]
+	if got.Missing || got.Command != "/new/"+tool.Command || !reflect.DeepEqual(got.Args, []string{"--keep"}) {
+		t.Errorf("reinstall not reflected: %+v", got)
+	}
+}
+
+func TestSyncAIHarnessesSkipsApplyWhenConfigReplacedDuringProbe(t *testing.T) {
+	if len(knownAIHarnesses) == 0 {
+		t.Skip("no known harnesses")
+	}
+	tool := knownAIHarnesses[0]
+	a := harnessTestApp(t, nil)
+	replacement := &config.Config{
+		Version:  2,
+		Global:   config.GlobalConfig{Folder: a.cfg.Global.Folder, AIHarnesses: []config.AIHarnessEntry{{Name: "Hand Made", Command: "/opt/hand", Source: harness.SourceUser}}},
+		Accounts: a.cfg.Accounts,
+		Sources:  a.cfg.Sources,
+	}
+	prev := harnessLookupFn
+	t.Cleanup(func() { harnessLookupFn = prev })
+	harnessLookupFn = func(command string, _ []string) string {
+		// Simulate ReloadConfig swapping a.cfg while the probe is running
+		// outside a.mu.
+		a.mu.Lock()
+		a.cfg = replacement
+		a.mu.Unlock()
+		if command == tool.Command {
+			return "/usr/bin/" + tool.Command
+		}
+		return ""
+	}
+	if a.SyncAIHarnesses() {
+		t.Fatal("sync must not apply a result computed from a stale snapshot")
+	}
+	if got := a.cfg.Global.AIHarnesses; len(got) != 1 || got[0].Name != "Hand Made" {
+		t.Errorf("replacement config was clobbered: %+v", got)
+	}
+}
+
+func TestRefreshAIHarnessesWithoutContextDoesNotPanic(t *testing.T) {
+	stubHarnessLookup(t, map[string]string{})
+	a := harnessTestApp(t, nil)
+	a.RefreshAIHarnesses() // ctx == nil → EventsEmit must be skipped
+	// Wait for the goroutine to release harnessMu before the temp dir goes.
+	a.harnessMu.Lock()
+	a.harnessMu.Unlock()
+}
+
+func TestHarnessWatcherStartStopIdempotent(t *testing.T) {
+	a := harnessTestApp(t, nil)
+	a.stopHarnessWatcher() // never started: no-op
+	a.startHarnessWatcher()
+	first := a.harnessQuit
+	a.startHarnessWatcher() // second start must not replace the channel
+	if a.harnessQuit != first {
+		t.Fatal("startHarnessWatcher replaced the quit channel")
+	}
+	a.stopHarnessWatcher()
+	a.stopHarnessWatcher() // double close must be safe
+	select {
+	case <-first:
+	default:
+		t.Fatal("quit channel not closed")
 	}
 }
 
