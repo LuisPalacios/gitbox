@@ -5,133 +5,98 @@
 <h1 align="center">Gitbox</h1>
 
 <p align="center">
-  <a href="https://github.com/LuisPalacios/gitbox/actions/workflows/ci.yml">
-    <img src="https://github.com/LuisPalacios/gitbox/actions/workflows/ci.yml/badge.svg" alt="CI" />
-  </a>
+  <strong>One desktop app for every Git account you own.</strong><br>
+  <em>Accounts and clones, nothing else. Gitbox never commits, pushes, or touches your working trees.</em>
 </p>
 
 <p align="center">
-  <strong>Accounts & clones — nothing else.</strong><br>
-  <em>gitbox never adds, commits, pushes, or modifies your working trees.</em>
+  <a href="https://github.com/LuisPalacios/gitbox/actions/workflows/ci.yml"><img src="https://github.com/LuisPalacios/gitbox/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/LuisPalacios/gitbox/releases/latest"><img src="https://img.shields.io/github/v/release/LuisPalacios/gitbox" alt="Latest release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/LuisPalacios/gitbox" alt="MIT license" /></a>
 </p>
 
-[Leer en espanol](README.es.md)
+<p align="center">
+  <a href="README.es.md">Leer en español</a>
+</p>
 
-> [!NOTE]
-> **gitbox v2 is GUI-only.** I work almost entirely from the desktop app, so v2 drops the CLI and TUI to keep one interface well maintained. If you come from v1, read [Upgrading from v1](#upgrading-from-v1).
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/screenshot-dark.png">
+    <img src="assets/screenshot-gui.png" alt="Gitbox showing three accounts with their sync rings, and clones that are synced, behind, ahead, or carry local changes" width="820">
+  </picture>
+</p>
 
----
+## What it is
 
-## Why gitbox?
+I juggle a personal GitHub, a corporate GitHub, and a self-hosted Forgejo, and every machine I set up used to end the same way: tangled credentials, clones committing under the wrong identity, and an afternoon of re-cloning by hand.
 
-I juggle multiple Git accounts — personal, corporate, open-source, self-hosted — across GitHub, GitLab, Gitea, Forgejo, and Bitbucket. The pain is always the same: credentials get tangled, clones end up with the wrong identity, and every new machine means starting from scratch.
+Gitbox fixes that. I add each account once, with its own credential (GCM, SSH, or token). Gitbox discovers my repos through the provider APIs, clones each one with the right identity into a predictable folder tree, and shows the health of the whole fleet at a glance. It runs on Windows, macOS, and Linux, and works with GitHub, GitLab, Gitea, Forgejo, and Bitbucket.
 
-I built gitbox to fix this. One desktop app to set up my accounts, discover my repos, clone them with the right credentials, and keep everything in sync. It runs on Windows, macOS, and Linux.
+It's for anyone who works across more than one Git account or provider and wants every clone set up correctly without thinking about it. Gitbox doesn't reimplement Git: it drives the `git`, `ssh`, and Git Credential Manager already on your system.
 
-Gitbox does not implement any Git protocol or plumbing logic. It acts as an orchestration layer that shells out to tools already on the system: **git** for clone, fetch, pull, status, and credential-manager operations; **ssh** and **ssh-keygen** for SSH key validation and generation; and the **OS native file opener** to manage files, folders and launching local applications.
+## Install
 
-## Install with bootstrap script
+Download the installer for your platform from the [latest release](https://github.com/LuisPalacios/gitbox/releases/latest):
 
-For macOS, Linux, or Windows (Git Bash) — a single command that downloads the latest release, extracts it, and installs the desktop app:
+| Platform | Download                                            | How to install                                                                     |
+| -------- | --------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Windows  | `gitbox-win-amd64-setup.exe`                        | Run it. Installs `GitboxApp.exe` to Program Files with Start Menu shortcuts        |
+| macOS    | `gitbox-macos-arm64.dmg` / `gitbox-macos-amd64.dmg` | Open the DMG and run `bash "/Volumes/gitbox/Install Gitbox.command"` from Terminal |
+| Linux    | `gitbox-x86_64.AppImage`                            | `chmod +x` and run it. Self-contained, bundles GTK 3 and WebKitGTK                 |
+
+Prefer the terminal? The bootstrap script downloads the latest release and installs it in one go on macOS, Linux, or Windows (Git Bash). On Linux it also adds gitbox to the applications menu:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
 ```
 
-This installs `GitboxApp` to `~/bin/` (macOS installs `GitboxApp.app` to `/Applications/`). On Linux it also registers the app in the Activities menu so I can search for it or pin it to the dock (skip with `--no-desktop`). Run with `--help` for options.
-
-Headless hosts get the 1.x CLI instead: `--cli-only` installs the latest 1.x `gitbox` CLI, and the script picks it automatically on Linux without a display (`DISPLAY` and `WAYLAND_DISPLAY` unset).
+Run it with `--help` for options. If you'd rather place the app yourself, each release also ships plain zips (`gitbox-<platform>-<arch>.zip`) and a `checksums.sha256` file.
 
 > [!WARNING]
-> **Gitbox is not signed or notarized.** The binaries are not code-signed, so macOS Gatekeeper, Windows SmartScreen, and similar OS protections will flag them. The bootstrap installer removes these flags automatically (`xattr -cr` on macOS, `Unblock-File` on Windows) so the binaries can run. **You are explicitly trusting unsigned code when you do this.** I recommend you audit the [source code](https://github.com/LuisPalacios/gitbox) and the [bootstrap script](scripts/bootstrap.sh) before running anything. This project is MIT-licensed open source — inspect it, build it yourself, or don't use it at all.
+> **The binaries are not signed or notarized**, so macOS Gatekeeper and Windows SmartScreen will flag them. The DMG installer and the bootstrap script clear those flags for you (`xattr -cr` on macOS, `Unblock-File` on Windows). From a zip, run `xattr -cr GitboxApp.app` on macOS, or pick **More info → Run anyway** in SmartScreen. Either way you're trusting unsigned code, so audit the [source](https://github.com/LuisPalacios/gitbox) and the [bootstrap script](scripts/bootstrap.sh) first, or build it yourself.
 
-## What it does
+## Features
 
-- **Multi-account management** — define identities per provider with isolated credentials (GCM, SSH, or Token)
-- **Automatic discovery** — find all my repos via provider APIs instead of listing them by hand
-- **Smart cloning** — each repo gets cloned with the correct identity and folder structure, self-contained in its own `.git/config`
-- **Sync status** — see which repos are clean, behind, dirty, diverged, or whose remote has been deleted, at a glance
-- **Safe pulling** — fast-forward-only pulls; dirty or conflicted repos are never touched
-- **Cross-provider mirroring** — push or pull mirrors between providers for backups (e.g., Forgejo → GitHub)
-- **Move a repository** — relocate a clone from one account to another — including cross-provider (GitHub ↔ GitLab ↔ Forgejo) — with a guided preflight, credential-scope check, mirror push, origin rewire, optional source-remote delete, and optional local-clone delete. The local folder ends up pointing at the new account with no further steps
-- **Credential switching** — change auth types (GCM ↔ SSH ↔ Token) with automatic cleanup
-- **Self-healing host setup** — gitbox watches the pieces of your global git setup that tend to cause cryptic failures and offers a one-click fix: a lingering global `user.name` / `user.email`, a missing GCM credential helper in `~/.gitconfig`, and a missing `~/.gitignore_global` with a curated block of OS-junk patterns (`.DS_Store`, `Thumbs.db`, `*~`, …)
-- **System check** — **Settings → System check** probes the host for every external tool gitbox relies on (git, Git Credential Manager, ssh, ssh-keygen, ssh-add, wsl) and shows the OS-specific install command for anything missing — so you learn about a broken dependency before it fails at auth time
-- **Safe account deletion + recovery** — deleting an account cascades through every mirror and workspace that references it so nothing is left dangling; every meaningful save keeps a rolling window of 10 dated backups, and the corruption-recovery screen can restore any of them in one click
-- **One-click actions** — every clone row (and every account header) has a kebab menu to open the clone in a browser, file manager, terminal, editor, or AI CLI harness (Claude Code, Codex, Antigravity, …)
-- **PR & review indicators** — each clone row surfaces its open pull requests and pending review requests, pulled from the provider API
-- **Read-only workspaces** — gitbox discovers existing VS Code `.code-workspace` files under the managed folders, lists them in a dedicated Workspaces tab, and opens one in my editor. It never creates or edits them — I own the files.
-- **Non-standard clones & multi-repo containers** — onboard clones that live outside the standard folder tree (configurable extra scan roots), and flag a "container" repo so gitbox discovers and adopts the sibling repos cloned inside its working tree (matched to their real account, stored in place).
+- **Accounts and credentials.** Isolated identities per account with GCM, SSH, or token auth, and a one-click switch between them.
+- **Discover and clone.** Find every repo through the provider API and clone it with the right identity, configured in its own `.git/config`.
+- **Fleet health.** See which clones are synced, behind, ahead, dirty, or diverged, plus their open pull requests and pending reviews.
+- **Safe sync.** Fetch everything and pull fast-forward only. Dirty or conflicted clones are never touched.
+- **Mirrors and moves.** Set up push or pull mirrors between providers for backups, and move a repo to another account or provider with a guided flow.
+- **Workspaces and launchers.** Open any clone in your terminal, editor, file manager, or AI harness (Claude Code, Codex, …), and open existing VS Code workspaces.
+- **Clones anywhere.** Adopt clones that live outside the standard folder tree, including repos nested inside a multi-repo container.
+- **Self-healing setup.** A system check for the tools gitbox needs, one-click fixes for global git settings that cause cryptic failures, and dated config backups you can restore.
 
-Five providers are supported — GitHub, GitLab, Gitea, Forgejo, and Bitbucket — and all of them work for discovery, cloning, and repo creation. Cross-provider mirroring is fully automated on Gitea, Forgejo, and GitLab; for GitHub and Bitbucket gitbox shows the manual setup steps instead of driving the UI. Read the docs for details.
-
-## The desktop app
-
-Gitbox ships as a single desktop app, `GitboxApp`, built with **[Wails](https://wails.io/)** + Svelte on top of a shared Go library (`pkg/`). It only needs tools that are already on the system: git, Git Credential Manager, ssh, and your terminals and editors.
-
-| Platform | Binary          |
-| -------- | --------------- |
-| Windows  | `GitboxApp.exe` |
-| macOS    | `GitboxApp.app` |
-| Linux    | `GitboxApp`     |
-
-`GitboxApp --version` prints the version and exits.
+Discovery, cloning, and repo creation work on all five providers. Mirroring is fully automated on Gitea, Forgejo, and GitLab; for GitHub and Bitbucket gitbox shows the manual steps.
 
 <p align="center">
-  <img src="assets/screenshot-gui.png" alt="Gitbox desktop interface showing account cards, repo health, and mirror status" width="800" />
-</p>
-
-## Other install methods
-
-### Install with native installer
-
-Notice that this installation method complains about apps not signed nor notarized. Download the installer for your platform from the [Releases](https://github.com/LuisPalacios/gitbox/releases) page:
-
-| Platform | Installer                                           | What it does                                                                                                     |
-| -------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Windows  | `gitbox-win-amd64-setup.exe`                        | Installs `GitboxApp.exe` to Program Files and creates Start Menu shortcuts                                       |
-| macOS    | `gitbox-macos-arm64.dmg` / `gitbox-macos-amd64.dmg` | Open DMG, run `bash "/Volumes/gitbox/Install Gitbox.command"` from Terminal — copies the app to `/Applications/` and clears quarantine flags |
-| Linux    | `gitbox-x86_64.AppImage`                            | Self-contained, runs directly — no installation needed (bundles GTK 3 and WebKitGTK)                            |
-
-Each release also includes a `checksums.sha256` file for verifying downloads.
-
-### Manual install (zip)
-
-Notice that this installation method complains about apps not signed nor notarized. The [Releases](https://github.com/LuisPalacios/gitbox/releases) page also has platform zips (`gitbox-<platform>-<arch>.zip`) containing the raw app. Extract it and place it wherever you like. The app is not signed, so the OS will complain the first time.
-
-On macOS: `xattr -cr GitboxApp.app`. On Windows: SmartScreen shows "Windows protected your PC" — click **More info** → **Run anyway**. On Linux: `chmod +x GitboxApp`.
-
-<p align="center">
-  <img src="assets/screenshot-mac.png" alt="Gitbox desktop app running on macOS" width="800" />
+  <img src="assets/screenshot-menu.png" alt="A clone's action menu with browser, file manager, terminal profile, editor and AI harness entries" width="560">
+  &nbsp;
+  <img src="assets/screenshot-compact.png" alt="Compact view: overall sync ring and per-account repo lists" width="220">
 </p>
 
 ## Updating
 
-Gitbox checks for updates in the background once per day. When a newer release is available, an update pill appears in the footer of the app. Click it to download the release, verify its checksum, and replace the app in place, then restart the app.
+Gitbox checks for a new release once a day. When one is out, an update pill appears in the app's footer: click it to download, verify, and install the new version, then restart.
 
 ## Upgrading from v1
 
-v2 removes the `gitbox` CLI and its TUI. `GitboxApp` is now the only interface, and it covers what I used the CLI for day to day: accounts, credentials, discovery, clone, pull, fetch, status, mirrors, workspaces, orphan adoption, branch sweeping, repo moves, and the system check.
+v2 is a desktop app only: the `gitbox` CLI and its TUI are gone.
 
-What stays the same and what to expect:
-
-- **Your config works unchanged.** v2 reads the same `~/.config/gitbox/gitbox.json`. The config format stays at version 3, so nothing gets migrated.
-- **The v1 GUI updates itself to v2.** The in-app update banner offers v2 like any other release. It replaces only what is already installed next to it; a v1 CLI sitting beside the app stays in place and keeps updating within 1.x.
-- **The Windows installer cleans up the old CLI.** Running `gitbox-win-amd64-setup.exe` over a v1 install removes the old `gitbox.exe` and its PATH entry.
-- **The CLI and TUI live on in v1.** The [`release/v1`](https://github.com/LuisPalacios/gitbox/tree/release/v1) branch keeps v1 (CLI + TUI + GUI) and receives critical and security fixes as `v1.7.x` releases.
-- **Headless hosts keep the CLI.** Run the bootstrap script with `--cli-only` to install the latest 1.x CLI.
+- **Your config keeps working.** v2 reads the same `~/.config/gitbox/gitbox.json` without migrating anything.
+- **The app updates itself.** The v1 desktop app offers v2 like any other update, and the Windows installer removes the old CLI and its PATH entry.
+- **The CLI lives on in v1.** The [`release/v1`](https://github.com/LuisPalacios/gitbox/tree/release/v1) branch gets critical fixes as `v1.7.x`. On a headless host, run the bootstrap script with `--cli-only` to install it.
 
 ## Documentation
 
-The [documentation index](docs/README.md) has everything — user guides (GUI, credentials), developer guides (building, testing, architecture), and reference material (config format, JSON schema).
+Start with the [GUI guide](docs/gui-guide.md) and [credential setup](docs/credentials.md). The [documentation index](docs/README.md) covers everything else, from architecture to the config format.
 
 ## Contributing
 
-To build from source, run tests, and test across platforms, start with the [Developer Guide](docs/developer-guide.md). The [docs index](docs/README.md) has a suggested reading order for first-time contributors.
+The [developer guide](docs/developer-guide.md) covers building from source, testing, and cross-platform checks.
 
 ## Disclaimer
 
-This software is provided **"as is"**, without warranty of any kind. I am not responsible for any damage, data loss, or security issues arising from the use of gitbox or its installer. The binaries are unsigned — the bootstrap script and manual instructions remove OS security flags so they can execute. By installing and running gitbox you accept this risk. The entire source code is available in this repository under the MIT license; audit it before use.
+Gitbox is provided **"as is"**, without warranty of any kind. I'm not responsible for damage, data loss, or security issues from using gitbox or its installers. The binaries are unsigned, and installing them means accepting that risk. The full source is here under the MIT license; audit it before you use it.
 
 ## License
 

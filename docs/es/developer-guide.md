@@ -295,6 +295,25 @@ Estos **no se versionan** (gitignored bajo `cmd/gui/build/`). En su lugar, el wo
 
 ---
 
+## Capturas del README
+
+Hago las capturas del README con la app real ejecutándose sobre una flota falsa, así nunca muestran mis cuentas ni mis rutas. El kit vive en `scripts/demo-fleet/`:
+
+- `build.sh` crea tres cuentas demo (Forgejo, GitHub personal, GitHub corporativo) con clones locales reales en estados elegidos (sincronizado, por detrás, por delante, con cambios, sin clonar), un `gitbox.json`, archivos de token y una config global de git aislada bajo `$TEMP/gbdemo`.
+- `mock.py` simula las APIs de los proveedores en `127.0.0.1:3001-3003`, así las credenciales se verifican, aparecen los indicadores de PR y review, y los fetch funcionan contra los upstreams demo. Necesita [uv](https://docs.astral.sh/uv/).
+- `run.sh` arranca el mock y lanza `GitboxApp` con `XDG_CONFIG_HOME` y `GIT_CONFIG_GLOBAL` apuntando a la demo, así mi config real, `~/.gitconfig` y el almacén de credenciales no se tocan. Cierra antes cualquier GitboxApp en ejecución.
+- `shot.ps1` (Windows) redimensiona la ventana, hace clic en puntos dentro de ella y la captura a un PNG.
+
+```bash
+./scripts/demo-fleet/build.sh
+./scripts/demo-fleet/run.sh &
+pwsh scripts/demo-fleet/shot.ps1 -Out assets/screenshot-gui.png -Width 1360 -Height 1300
+```
+
+El README usa `assets/screenshot-gui.png` (claro), `assets/screenshot-dark.png`, `assets/screenshot-menu.png` y `assets/screenshot-compact.png`. `screenshot-gui.png` es también la captura AppStream del AppImage de Linux. Settings → Terminals lista los terminales y rutas reales del host, así que deja esa pantalla fuera de las capturas.
+
+---
+
 ## Estilo de código
 
 - Sigue convenciones Go estándar (`gofmt`, `go vet`)

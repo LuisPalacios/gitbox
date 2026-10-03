@@ -77,7 +77,7 @@ docs/
   agentic-tools-directory.md  AI harness / agentic tools directory
   es/                     Spanish counterparts of every doc above
   diagrams/               Architecture diagrams
-assets/                   Icons, logo, screenshots
+assets/                   Icons, logo, README screenshots (captured with scripts/demo-fleet)
 scripts/
   bootstrap.sh             Cross-platform installer (downloads a release, places GitboxApp, registers Linux menu entry; --cli-only installs the latest 1.x CLI)
   register-gitbox.sh       Linux-only desktop registrar (.desktop + icon in ~/.local/share, idempotent, supports --uninstall)
@@ -92,6 +92,7 @@ scripts/
   setup-credentials.sh     Run test-setup-credentials.sh locally or on remotes
   test-setup-credentials.sh  Provision test credentials from test-gitbox.json
   send-my-production-config.sh  Copy the local gitbox.json to one remote (with diff + confirm)
+  demo-fleet/              Fake fleet + mock provider API + window capture for README screenshots (build.sh, run.sh, mock.py, shot.ps1)
 .githooks/pre-push        Pre-push hook (go vet + unit tests; builds the frontend if dist is missing)
 .claude/
   CLAUDE.md               Canonical agent guidance (this file)
