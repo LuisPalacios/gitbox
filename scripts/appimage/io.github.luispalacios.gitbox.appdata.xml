@@ -17,10 +17,6 @@
       token) per account, discovers repositories you already have on disk,
       and sets up push and pull mirrors between providers.
     </p>
-    <p>
-      The AppImage bundles the graphical app together with the gitbox
-      command-line tool and terminal UI.
-    </p>
   </description>
   <launchable type="desktop-id">io.github.luispalacios.gitbox.desktop</launchable>
   <url type="homepage">https://github.com/LuisPalacios/gitbox</url>
@@ -35,7 +31,6 @@
     <category>Development</category>
   </categories>
   <provides>
-    <binary>gitbox</binary>
     <binary>GitboxApp</binary>
   </provides>
   <content_rating type="oars-1.1" />

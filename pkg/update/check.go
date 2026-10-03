@@ -119,9 +119,7 @@ func checkLatestAPI(ctx context.Context, opts Options) (*CheckResult, error) {
 
 	// Compare versions. If the current version is unparseable (a dev build
 	// where git describe failed, a shallow clone, or any other tagless
-	// state), hide the banner rather than nag with a false positive — the
-	// user can force a check with `gitbox update --check` if they actually
-	// want to know.
+	// state), hide the banner rather than nag with a false positive.
 	newer, err := IsNewer(opts.CurrentVersion, release.TagName)
 	if err != nil {
 		newer = false

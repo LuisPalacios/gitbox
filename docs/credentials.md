@@ -74,7 +74,7 @@ GCM dispatches per-host through the global `credential.helper` key in `~/.gitcon
 
 A helper "resolves to GCM" when it is the short name `manager`, the legacy `manager-core`, or an absolute path whose binary is `git-credential-manager` (the form `git-credential-manager configure` writes on macOS, e.g. `/usr/local/share/gcm-core/git-credential-manager`). gitbox reads the full multi-value helper list and honors git's reset rule (an empty value clears the helpers before it), so a stock `git-credential-manager configure` — which appends an absolute path after a reset — keeps the check green without a re-fix.
 
-gitbox detects this at startup whenever at least one account uses GCM. When the global `~/.gitconfig` has no helper resolving to GCM (or the wrong `credentialStore`), an orange warning banner appears in the GUI (and a section on the TUI "Global Gitconfig" screen) with a **Configure** button that:
+gitbox detects this at startup whenever at least one account uses GCM. When the global `~/.gitconfig` has no helper resolving to GCM (or the wrong `credentialStore`), an orange warning banner appears in the GUI with a **Configure** button that:
 
 1. Writes `credential.helper = manager` + `credential.credentialStore = <os default>` to `~/.gitconfig`.
 2. Backfills the same OS defaults into `gitbox.json` so the check stays green even if `~/.gitconfig` is edited later.
@@ -88,28 +88,13 @@ When you set up GCM credentials, gitbox needs to open a browser for OAuth authen
 - **Windows:** always works — the system browser opens directly.
 - **macOS:** always works, even via SSH — macOS's `open` command forwards to the desktop session.
 - **Linux desktop:** works when a display server is available (X11 or Wayland).
-- **Linux SSH / headless:** no browser available. The TUI shows "GCM browser authentication requires a desktop session" and suggests running the credential setup from a desktop terminal instead. GCM will still prompt interactively on the next `git clone` or `git fetch` if you proceed without browser auth.
+- **Linux SSH / headless:** no browser available. GitboxApp itself needs a desktop session, so this only matters for a host you reach over SSH. GCM will still prompt interactively on the next `git clone` or `git fetch` from a terminal there. When browser auth isn't practical, switch the account to the Token credential type instead.
 
 This detection is handled by `credential.CanOpenBrowser()` in `pkg/credential/credential.go`. It checks `SSH_CLIENT`, `SSH_TTY`, `DISPLAY`, and `WAYLAND_DISPLAY` environment variables.
 
-### GCM in the TUI
-
-The TUI credential screen supports interactive GCM browser authentication on desktop sessions:
-
-1. Navigate to an account → credential setup → GCM is selected.
-2. On desktop: press Enter → the browser opens for OAuth → return to the TUI when done.
-3. gitbox verifies the credential was stored and tests API access.
-4. If the GCM-stored credential doesn't have API scope (common with Forgejo/Gitea when a password was cached), gitbox prompts for a separate PAT.
-
-On SSH or headless sessions, the TUI skips browser auth and shows guidance instead — either run from a desktop terminal or let GCM handle it on the next git operation.
-
 ### Mirrors with GCM
 
-GCM OAuth tokens are machine-local and cannot be used by remote servers for mirroring. If you need mirrors, store a separate PAT:
-
-```bash
-gitbox account credential setup github-personal --token
-```
+GCM OAuth tokens are machine-local and cannot be used by remote servers for mirroring. If you need mirrors, store a separate PAT. When a mirror needs one, its row on the Mirrors tab shows a **Fix credentials** button that opens the API token setup for that account. When the GCM credential doesn't cover the API, the Current-status panel in the account's credential settings also offers **Setup API token**.
 
 This stores the PAT in `~/.config/gitbox/credentials/` alongside the GCM credential. The PAT is used for mirror operations; GCM continues to handle normal git operations.
 
@@ -119,7 +104,7 @@ A PAT is a password-like string you generate on your provider's website. One tok
 
 ### How to create a PAT
 
-When you set up a Token credential (in the GUI or CLI), gitbox shows you the exact URL to visit and which permissions to select. The steps are:
+When you set up a Token credential, gitbox shows you the exact URL to visit and which permissions to select. The steps are:
 
 1. Click the link gitbox gives you (it opens your provider's token page).
 2. Name the token something like `gitbox-<your-account>`.
@@ -191,17 +176,16 @@ No need to re-clone anything.
 
 You can verify that credentials are working at any time:
 
-- **GUI:** the credential badge on each account card shows green (working), orange (limited), or red (broken). Click the badge to open the Change Credential modal — the Current-status panel at the top shows the real status with the underlying error message (if any).
-- **TUI:** same badge colours on dashboard cards; account detail shows status with a message.
-- **CLI:** `gitbox account credential verify <account-key>` prints the primary credential state and the API-access state, including the raw error when either fails.
+- The credential badge on each account card shows green (working), orange (limited), or red (broken).
+- Click the badge to open the Change Credential modal — the Current-status panel at the top shows the real status of the primary credential and of the API token, with the underlying error message (if any).
+- Click **Re-check** in that panel to run the verification again.
 
 ## Missing tools on the host
 
 Credential types rely on external binaries that may not be installed on the current machine: GCM needs `git-credential-manager`, SSH needs `ssh` / `ssh-keygen` / `ssh-add`. Gitbox detects these before it starts a setup:
 
-- **GUI** — opening the add-account or change-credential modal runs a pre-flight check. If a required tool is missing, you see a yellow banner naming it and the exact install command for your OS. The setup will not auto-run until you address it (you can still click through manually if you know what you're doing).
-- **TUI** — `Credential → change type → <new type>` refuses to proceed when a tool is missing and prints the install hint as an error message.
-- **CLI** — run `gitbox doctor` for a full inventory at any time (see [reference.md](reference.md#system-check-doctor)). Exit code is `1` when any tool required for your current config is missing, making it scriptable.
+- **Setup flows** — opening the add-account or change-credential modal runs a pre-flight check. If a required tool is missing, you see a yellow banner naming it and the exact install command for your OS. The setup will not auto-run until you address it (you can still click through manually if you know what you're doing).
+- **System check** — open **Settings → System check → Run** for a full inventory at any time: every tool gitbox may call (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, and `wsl` on Windows), where it's installed, its version, and whether your current config needs it.
 
 Typical fix on each OS:
 
@@ -220,11 +204,11 @@ Click the credential badge on any account card. The Current-status panel inside 
 - A **Re-check** button re-runs the verification without leaving the modal.
 - A blue advisory banner appears under the panel when gitbox detects the error looks like an OS-level network-permission denial (see macOS / Windows / Linux sections below).
 
-The same information is available from the shell with `gitbox account credential verify <account>` — useful when you want to copy-paste an error into a bug report.
+Copy that error text as-is when you file a bug report.
 
 ### macOS: local network permission
 
-**Symptom.** The GUI shows *Offline* for an account whose server lives on your LAN (`192.168.x.x`, `10.x.x.x`, or a `.local` hostname). The detail line contains `dial tcp <ip>:<port>: connect: no route to host`. The CLI at the same moment — run from Terminal — reaches the same server without any trouble.
+**Symptom.** The GUI shows *Offline* for an account whose server lives on your LAN (`192.168.x.x`, `10.x.x.x`, or a `.local` hostname). The detail line contains `dial tcp <ip>:<port>: connect: no route to host`. `curl` or `git` at the same moment — run from Terminal — reach the same server without any trouble.
 
 **Root cause.** macOS Sonoma and later gate outbound connections to local-network IPs behind the **Local Network** TCC privacy permission. Each GUI app is tracked separately by code-signing identity + bundle path. Terminal was granted access the first time you used it. Your gitbox bundle has either not been approved yet, was silently denied (common for ad-hoc built binaries), or has been moved/renamed so that TCC no longer recognises it.
 
@@ -260,7 +244,7 @@ Passing a bundle identifier (`tccutil reset LocalNetwork com.wails.GitboxApp`) n
 
 **Root cause.** `git credential fill` tried to open `/dev/tty` for an interactive password prompt because `credential.helper` and `credential.credentialStore` were missing or wrong in `~/.gitconfig`. GUI processes have no controlling tty; the `open()` returns `ENXIO` and git surfaces the cryptic message.
 
-**Fix.** Click the **Configure global gitconfig** banner in the GUI (or the equivalent item on the TUI Global Gitconfig screen). Gitbox writes the right entries and verifies. Redo the credential setup.
+**Fix.** Click **Configure** on the global credential helper banner in the GUI. Gitbox writes the right entries and verifies. Redo the credential setup.
 
 ### Windows: firewall
 
@@ -307,7 +291,7 @@ Re-run the verification in the GUI once the rule is live.
 
 **Root cause.** The server is reachable but nothing is listening on the target port — either the service is down, or you're hitting the wrong host/port.
 
-**Fix.** Confirm the server URL in the account config (`gitbox account list --json`), then check service status on the server side. This is never an app-side problem.
+**Fix.** Confirm the server URL in the account settings (click the account name on its card), then check service status on the server side. This is never an app-side problem.
 
 ### DNS errors
 
@@ -325,6 +309,34 @@ Re-run the verification in the GUI once the rule is live.
 
 **Fix.** Add the internal CA certificate to your OS trust store (macOS Keychain, Windows cert store, or Linux `/usr/local/share/ca-certificates/` + `update-ca-certificates`). Gitbox uses the system trust store via `net/http`; it has no per-app bypass and intentionally won't offer one.
 
+### GCM opens the wrong browser account
+
+**Symptom.** GCM setup signs in with a different account than the one configured in gitbox, usually because the browser already holds a session for another login.
+
+**Fix.** Clear the cached credentials for that host, sign out of the other account in the browser, and redo the credential setup:
+
+- **Windows:** Control Panel > Credential Manager > remove `git:https://github.com` entries
+- **macOS:** Keychain Access > search `github.com` > delete
+- **Linux:** `secret-tool clear protocol https host github.com`
+
+### SSH connection refused
+
+**Symptom.** SSH verification fails for an SSH account.
+
+**Fix.** Test the connection from a shell with the account's host alias (`ssh.host` in the account, `gitbox-<account-key>` by default) and read the verbose output:
+
+```bash
+ssh -T git@gitbox-<account-key> -v
+```
+
+Check that the public key is registered at the provider, that the `IdentityFile` in `~/.ssh/config` points at the right key, and that `ssh-agent` is running.
+
+### "Repository not found" on clone
+
+- Verify the `org/repo` name matches the actual repo.
+- Verify your credentials from a shell: `git ls-remote <url>`.
+- For cross-org repos, make sure your account has access.
+
 ## Token scopes by capability
 
 Different gitbox operations need different PAT scopes. The baseline (list + clone + fetch + pull) is the minimum every account needs; create, delete, and mirror each add one or more scopes on top. Give each account only the scopes it needs — add the destructive ones (delete) only when you plan to use them.
@@ -336,9 +348,9 @@ Different gitbox operations need different PAT scopes. The baseline (list + clon
 | Gitea / Forgejo  | `read:repository`, `read:organization` | `write:repository`                     | `write:repository` (or admin on target)  | `write:repository` on destination        |
 | Bitbucket Cloud  | `repository`                      | `repository:admin`                          | `repository:delete`                      | `repository:admin` on destination        |
 
-When a scope is missing, gitbox surfaces a warning naming the exact scope required plus the provider URL to regenerate the PAT — e.g. _"Source repo delete refused: your github PAT is missing the `delete_repo` scope. Regenerate it at https://github.com/settings/tokens (keep existing scopes, add `delete_repo`), then re-run `gitbox account credential setup <account>`."_
+When a scope is missing, gitbox surfaces a warning naming the exact scope required plus the provider URL to regenerate the PAT — e.g. _"Source repo delete refused: your github PAT is missing the `delete_repo` scope. Regenerate it at https://github.com/settings/tokens (keep existing scopes, add `delete_repo`), then store the new token in the account's credential settings."_
 
-The TUI + GUI account setup wizard shows the same per-capability table when you store a PAT, so you can decide which scopes to include up front.
+The account setup wizard shows the same per-capability table when you store a PAT, so you can decide which scopes to include up front.
 
 ### When the error says something unusual
 
@@ -346,7 +358,7 @@ Gitbox surfaces the Go-level error verbatim — it does not translate or summari
 
 - The OS and version (e.g. "macOS 14.5 Sonoma").
 - The credential type in use (GCM / SSH / Token) and the provider (GitHub / Forgejo / ...).
-- The output of `gitbox account credential verify <account-key>`.
+- The error text from the Current-status panel in the account's credential settings.
 - Whether the same request works from `curl` in a shell on the same machine.
 
 That's usually enough to tell network issues apart from app-level issues in a single round-trip.

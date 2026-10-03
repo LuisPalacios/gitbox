@@ -8,9 +8,8 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/launch"
 )
 
-// Launch is the fully resolved "what to exec" for a Terminal Profile, shared
-// by the GUI bridge (cmd/gui/profiles.go) and the TUI launcher
-// (cmd/cli/tui/launchers.go) so both frontends produce byte-identical argv.
+// Launch is the fully resolved "what to exec" for a Terminal Profile, used
+// by the GUI bridge (cmd/gui/profiles.go).
 //
 // Exactly one of two shapes is populated:
 //

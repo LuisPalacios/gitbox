@@ -2,239 +2,110 @@
 
 How to write new tests for gitbox. Reference this when adding or modifying tests.
 
+All logic lives in `pkg/`, so tests live there too: plain `go test` packages with no UI driver. `cmd/gui` keeps a few tests for the Wails-bound `App` methods.
+
 ## Test infrastructure files
 
-- `cmd/cli/tui/testhelpers_test.go` — TUI helpers: `TestEnv`, config builders, assertions, TUI message helpers
-- `cmd/cli/cli_test.go` — CLI helpers: `cliTestEnv`, binary build cache, subprocess runner, assertions
+- `pkg/ops/ops_test.go` — isolation and git helpers for the account, credential, clone and discovery service layer
+- `pkg/ops/fixture_test.go` — `test-gitbox.json` loader and fixture helpers for integration tests
+- `pkg/ops/scenario_test.go` — `TestScenario_FullLifecycle`, the end-to-end run against real providers
 
-## TUI tests (`cmd/cli/tui/`)
+## Package unit tests (`pkg/...`)
+
+Unit tests never touch the real home directory, git config, or network. Use `t.TempDir()` for every path and `t.Setenv()` for every environment override, so cleanup is automatic.
+
+```go
+func TestRenameAccount_Something(t *testing.T) {
+    _, cfg := isolate(t)                            // temp XDG_CONFIG_HOME, git global config, ssh folder
+    if err := AddAccount(cfg, "old", testAccount("token")); err != nil {
+        t.Fatal(err)
+    }
+    if err := cfg.AddRepo("old", "alice/repo", config.Repo{}); err != nil {
+        t.Fatal(err)
+    }
+    makeClone(t, cfg, "old", "alice/repo", "https://github.com/alice/repo.git")
+
+    if err := RenameAccount(cfg, "old", "new"); err != nil {
+        t.Fatal(err)
+    }
+
+    // Assert on the config struct, then on disk: the clone moved with the
+    // account, so look it up again with PlanClone and inspect it with gitRun.
+    if _, ok := cfg.Accounts["new"]; !ok { t.Error(...) }
+}
+```
+
+### `pkg/ops` helpers
+
+- `isolate(t) (root string, cfg *config.Config)` — points `XDG_CONFIG_HOME`, `GIT_CONFIG_GLOBAL` and the SSH folder at a temp dir, sets `GIT_CONFIG_NOSYSTEM=1`, returns an empty v3 config whose `global.folder` is `<root>/git`
+- `testAccount(credType) config.Account` — a GitHub account (`alice`) with the given default credential type
+- `gitRun(t, dir, args...) string` — runs git in `dir` with `git.Environ()`, fails the test on error, returns trimmed output
+- `makeClone(t, cfg, sourceKey, repoKey, origin) string` — `git init` at the planned clone path with the given `origin`, returns the path
+
+Other packages follow the same idea with their own local helpers. Prefer table-driven tests for parsers, URL handling and status logic.
+
+## GUI binding tests (`cmd/gui/`)
+
+Build the `App` struct directly and call the bound method. No Wails runtime, no window:
 
 ```go
 func TestSomething(t *testing.T) {
-    cfg := newDummyConfig(t, "/tmp/test-git")  // 2 dummy accounts + sources
-    env := setupTestEnvWithConfig(t, cfg)       // XDG_CONFIG_HOME → temp, writes config
-    m := newTestModel(t, env.CfgPath)           // model at 80x24
-    m = initModel(t, m)                         // run Init + dispatch configLoadedMsg
+    dir := t.TempDir()
+    cfg := &config.Config{Version: config.CurrentVersion, Global: config.GlobalConfig{Folder: dir}, ...}
+    a := &App{cfg: cfg, cfgPath: filepath.Join(dir, "gitbox.json"), mu: sync.Mutex{}}
 
-    // Navigate
-    m = sendMsg(m, switchScreenMsg{screen: screenAccountAdd})
-    m = sendKey(m, "a")                         // single key press
-    m = sendSpecialKey(m, tea.KeyEnter)          // special keys
-    m = sendWindowSize(m, 120, 40)              // resize
+    a.SyncEditors()
 
-    // Assert screen state
-    if m.screen != screenAccountAdd { t.Error(...) }
-
-    // Assert rendered output
-    view := m.View()
-    if !strings.Contains(view, "expected text") { t.Error(...) }
-
-    // Assert config file on disk (external verification)
-    assertConfigHasAccount(t, env.CfgPath, "key")
-    assertConfigGlobalFolder(t, env.CfgPath, "/expected/path")
+    // Assert on a.cfg and on the config file at a.cfgPath.
 }
 ```
 
-### Config builders
+Keep business logic out of `cmd/gui`: if a test needs more than the `App` glue, the logic belongs in `pkg/` and the test goes with it.
 
-- `newTestConfig(t, gitFolder)` — minimal v2 config, empty accounts/sources/mirrors, ssh_folder in temp
-- `newDummyConfig(t, gitFolder)` — 2 dummy accounts (github-alice, forgejo-bob) + sources with repos
+## Integration tests and the fixture gate
 
-### TUI message helpers
+Integration tests run real provider operations with credentials from `test-gitbox.json` at the repo root (copy `json/test-gitbox.json.example` and fill it in). The gate is `requireIntegration(t)`:
 
-- `sendMsg(m, msg) model` — dispatch any tea.Msg through Update
-- `sendKey(m, "a") model` — send a rune key press
-- `sendSpecialKey(m, tea.KeyEnter) model` — send Enter, Tab, Escape, etc.
-- `sendWindowSize(m, w, h) model` — send WindowSizeMsg
-- `initModel(t, m) model` — run Init() command and dispatch the result
-
-## CLI tests (`cmd/cli/`)
-
-```go
-func TestCLI_Something(t *testing.T) {
-    cfg := newCLITestConfig("/tmp/test-git")
-    cfg.Accounts["test-acct"] = config.Account{...}
-    env := setupCLIEnvWithConfig(t, cfg)        // XDG_CONFIG_HOME → temp, writes config, builds binary
-
-    // Run a command
-    result := env.run(t, "account", "list", "--json")
-    if result.ExitCode != 0 { t.Fatal(result.Stderr) }
-
-    // Parse JSON output
-    var out map[string]any
-    result := env.runJSON(t, &out, "account", "show", "test-acct")
-
-    // Assert config on disk
-    cliAssertConfigHasAccount(t, env.CfgPath, "test-acct")
-    cliAssertConfigNoAccount(t, env.CfgPath, "deleted-acct")
-    cliAssertConfigHasSource(t, env.CfgPath, "src-key")
-    cliAssertConfigHasRepo(t, env.CfgPath, "src-key", "org/repo")
-    cliAssertConfigHasMirror(t, env.CfgPath, "mirror-key")
-    cliAssertConfigHasMirrorRepo(t, env.CfgPath, "mirror-key", "org/repo")
-}
-```
-
-### CLI runner
-
-- `env.run(t, args...) cliResult` — runs `gitbox --config <cfgPath> <args>` with NO_COLOR=1
-- `env.runJSON(t, &target, args...) cliResult` — same + appends `--json`, unmarshals stdout
-- `cliResult` has `.Stdout`, `.Stderr`, `.ExitCode`
-- Binary is compiled once per test run (cached via `sync.Once`)
-
-## Integration tests
+- `go test -short` — skips every integration test
+- full run without the file — fails with instructions, so a full run never passes silently without coverage
+- with the file — exports each account's `_test.token` as `GITBOX_TOKEN_<KEY>`, points `GIT_SSH_COMMAND` at the fixture's isolated SSH folder, and rejects fixtures whose `ssh_folder` is `~/.ssh` or whose `global.folder` is the real gitbox config dir
 
 ```go
 func TestIntegration_Something(t *testing.T) {
-    fixture := requireCLIIntegration(t)  // loads test-gitbox.json, sets GITBOX_TOKEN_* env vars, skips if missing
+    fixture := requireIntegration(t)
+    acctKey, srcKey, repoKey, ok := fixture.firstAccountWithRepos()
+    if !ok { t.Skip("no account with repos and token in test fixture") }
+    acct := fixture.Config.Accounts[acctKey]
 
-    // Find an account with repos
-    ghKey, srcKey, repo, ok := fixture.firstAccountWithRepos()
-    if !ok { t.Skip("no account with repos and token") }
-    acct := fixture.Config.Accounts[ghKey]
-
-    // Build throwaway config with real account
-    env := setupCLIEnv(t)
-    cfg := newCLITestConfig(env.GitFolder)
-    cfg.Accounts[ghKey] = acct
-    cfg.Sources[srcKey] = config.Source{Account: ghKey, Repos: map[string]config.Repo{repo: {}}}
-    config.Save(cfg, env.CfgPath)
-
-    // Test real operations
-    env.run(t, "clone")
-    // ... verify on disk
+    // Build a throwaway config in t.TempDir() with the real account,
+    // then exercise pkg/ops against it.
 }
 ```
 
 ### Fixture helpers
 
-- `fixture.FirstAccountWithRepos() (accountKey, sourceKey, repoKey string, ok bool)` — first account with sources+repos+token
-- `fixture.HasToken(accountKey) bool` — check if account has a test token
-- `fixture.FirstSourceForAccount(accountKey) (string, bool)` — first source key for account
-- `fixture.FirstRepoForSource(sourceKey) (string, bool)` — first repo key from source
-- `fixture.Config` — the parsed gitbox config from test-gitbox.json
-- `fixture.Secrets` — map of account_key → `{Token, SSHKey}`
-- `firstTokenAccount(fixture) (string, bool)` — first account with `default_credential_type: "token"` and a test token
-- `accountCardIndex(fixture, accountKey) int` — sorted index for card navigation
+- `fixture.Config` — the parsed gitbox config from `test-gitbox.json`
+- `fixture.Tokens` — map of account key → test token
+- `fixture.firstAccountWithRepos() (accountKey, sourceKey, repoKey string, ok bool)` — first source (sorted) with repos whose account has a token
 
-## Credential screen tests (`cmd/cli/tui/screen_credential_test.go`)
+## Scenario test (`TestScenario_FullLifecycle`)
 
-Tests for the GCM browser auth flow use a dedicated config builder and navigation helper:
+`pkg/ops/scenario_test.go` drives the library through the whole lifecycle as ordered subtests: add accounts → credential check → discover → add repo → clone → status → pull and fetch → update account (reconfigures clones) → mirror CRUD → re-clone → rename account → delete everything. A `persist(t)` closure saves and reloads the config after each step, the same way the GUI persists after every action, so each step also proves the config round-trips through disk.
 
-```go
-func TestCredential_GCM_Something(t *testing.T) {
-    cfg := newGCMConfig(t, "/tmp/test-git")           // 1 GCM account (github-gcmuser)
-    env := setupTestEnvWithConfig(t, cfg)
-    m := navigateToCredentialScreen(t, env.CfgPath, "github-gcmuser")
-
-    // Manipulate view state directly for unit tests.
-    m.credential.view = credViewSetup
-    m.credential.busy = true
-
-    // Send completion message to simulate async GCM auth.
-    m = sendMsg(m, credSetupDoneMsg{accountKey: "github-gcmuser", gcmUsername: "gcmuser"})
-
-    // Assert state.
-    if !m.credential.resultOK { t.Error("expected success") }
-
-    // Assert rendered output.
-    view := m.View()
-    if !strings.Contains(view, "expected text") { t.Error(...) }
-}
-```
-
-### Credential screen helpers
-
-- `newGCMConfig(t, gitFolder) *config.Config` — config with 1 GCM account (`github-gcmuser`)
-- `navigateToCredentialScreen(t, cfgPath, accountKey) model` — creates model, inits, navigates to credential screen
-
-### credSetupDoneMsg fields
-
-- `err` — auth failure (displayed as error)
-- `needsPAT: true` — GCM auth succeeded but API needs a separate PAT (transitions to token input)
-- `gcmUsername` — actual username from GCM (may differ in casing from config)
-- `sshPendingKey` — SSH key generated but connection failed (user needs to add pubkey)
-- `pubKey`, `pubKeyURL` — public key content and provider URL for SSH flows
-
-### Browser detection in tests
-
-`credential.CanOpenBrowser()` returns a real result based on the test machine's environment. Tests that assert browser-specific UI use conditional expectations:
-
-```go
-if credential.CanOpenBrowser() {
-    // Desktop: expect browser auth prompt.
-} else {
-    // Headless: expect "desktop session" message.
-}
-```
-
-## TUI integration tests (teatest)
-
-```go
-func TestIntegration_TUI_Something(t *testing.T) {
-    fixture := requireIntegration(t)  // loads test-gitbox.json, skips if missing
-
-    tm, env := newIntegrationTestModel(t, fixture)  // teatest model with isolated env
-
-    // Wait for text in rendered output (strips ANSI, polls every 100ms).
-    waitForText(t, tm, "expected text", 5*time.Second)
-
-    // Send keys.
-    tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
-    tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
-
-    // Wait for next screen.
-    waitForText(t, tm, "next screen text", 10*time.Second)
-}
-```
-
-### Teatest gotchas
-
-- **ANSI compressor**: teatest uses `tea.WithANSICompressor()` which only sends changed cells on re-renders. Card titles in multi-card rows may not appear in subsequent frames. Assert on repo list headings or hint bar text instead.
-- **Output pipe**: `tm.Output()` returns the same reader. `WaitFor` consumes bytes — data from before a WaitFor call is available, but between calls the position advances. For checking multiple strings, use a single `teatest.WaitFor` call.
-- **ANSI stripping**: Use `stripANSI(bts)` before `bytes.Contains`. The regex handles CSI, OSC, and private-mode sequences (`\x1b[?25l`, etc.).
-- **NO_COLOR**: `newIntegrationTestModel` sets `NO_COLOR=1` but lipgloss still emits cursor movement codes (not colors). Always use `stripANSI`.
-- **Credential types**: For tests that verify credential status, use `firstTokenAccount(fixture)` to get a token-based account where env var resolution works directly.
-
-## TUI assertion helpers (`testhelpers_test.go`)
-
-- `assertConfigHasAccount(t, cfgPath, key)` — account exists in config file
-- `assertConfigNoAccount(t, cfgPath, key)` — account absent
-- `assertConfigHasSource(t, cfgPath, key)` — source exists
-- `assertConfigHasRepo(t, cfgPath, srcKey, repoKey)` — repo in source
-- `assertConfigHasMirror(t, cfgPath, key)` — mirror group exists
-- `assertConfigHasMirrorRepo(t, cfgPath, mirrorKey, repoKey)` — mirror repo exists
-- `assertConfigGlobalFolder(t, cfgPath, expected)` — global.folder matches
-- `assertCloneExists(t, gitFolder, srcKey, repoKey)` — .git dir exists on disk
-- `assertCloneNotExists(t, gitFolder, srcKey, repoKey)` — dir doesn't exist
-- `assertGitRemote(t, repoPath, expectedURL)` — git remote get-url origin
-- `assertGitIdentity(t, repoPath, name, email)` — git config user.name/email
-- `assertFileNotExists(t, path)` — file/dir doesn't exist
-- `assertCredentialWorks(t, cfg, accountKey)` — credential.ResolveToken succeeds
+Add a new lifecycle step as another numbered `t.Run("NN_name", ...)` in order, not as a separate scenario.
 
 ## Test isolation
 
-- `XDG_CONFIG_HOME` → temp dir (set by `setupTestEnv` / `setupCLIEnv`)
+- `XDG_CONFIG_HOME` → temp dir (`isolate`, or `t.Setenv` in the scenario)
+- `GIT_CONFIG_GLOBAL` → temp file, `GIT_CONFIG_NOSYSTEM=1`
 - `global.folder` → `<tmpDir>/git`
-- `credential_ssh.ssh_folder` → `<tmpDir>/ssh`
-- Config → `<tmpDir>/gitbox/gitbox.json`
-- Credentials → `<tmpDir>/gitbox/credentials/<accountKey>`
-- All cleaned by `t.TempDir()` after each test
-- CLI uses `--config <path>` flag — never falls through to DefaultV2Path
-- TUI tests call `newModel(cfgPath)` directly — never call `tui.Run()`
-
-## JSON output format
-
-CLI `--json` output is maps, not arrays:
-- `account list --json` → `map[string]any` (key → account object)
-- `source list --json` → `map[string]any` (key → source object)
-- `repo list --json` → `map[string]any` (key → source with repos)
-- `mirror list --json` → `map[string]any` (key → mirror object)
-- `status --json` → `[]map[string]any` (array of repo statuses)
-- `account show <key> --json` → `map[string]any` (single account)
+- `credential_ssh.ssh_folder` → `<tmpDir>/ssh` (fixture: its own isolated folder)
+- Config → `<tmpDir>/gitbox/gitbox.json`; credentials → `<tmpDir>/gitbox/credentials/<accountKey>`
+- Never fall through to the real `~/.config/gitbox/gitbox.json` or `~/.ssh`
+- The pre-push hook scrubs `GIT_DIR` and friends before running tests; tests that shell out to git must not depend on them either
 
 ## Naming conventions
 
-- Unit tests: `TestXxx_Yyy` (e.g., `TestDashboard_TabSwitch`)
-- CLI tests: `TestCLI_Xxx` (e.g., `TestCLI_AccountAdd`)
-- Integration: `TestIntegration_CLI_Xxx` or `TestIntegration_TUI_Xxx`
-- Scenario: `TestScenario_CLI_FullLifecycle`
+- Unit tests: `TestXxx_Yyy` (e.g., `TestRenameAccount_MigratesEverything`)
+- Integration: `TestIntegration_Xxx`
+- Scenario: `TestScenario_FullLifecycle`

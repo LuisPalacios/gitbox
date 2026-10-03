@@ -31,8 +31,8 @@ The skill pauses at each gate and waits for me. I don't have to memorise them �
 - **Understand** — it re-reads the issue and summarises in five lines. I say "ready" before planning.
 - **Plan (or adopt an existing plan)** — if I pass a plan source, it reads and evaluates it. Otherwise it enters plan mode fresh. See [Providing my own plan](#providing-my-own-plan) below.
 - **Implement** — edit and commit cycles. Everything stays local.
-- **Auto-verify** — `go vet`, focused tests, both binaries built.
-- **Smoke-test gate** — the skill hands me the binary paths and a concrete check. I test. If something's wrong I say so and it fixes. If it's good I say "push it".
+- **Auto-verify** — `go vet`, focused tests, the GUI built.
+- **Smoke-test gate** — the skill hands me the app path and a concrete check. I test. If something's wrong I say so and it fixes. If it's good I say "push it".
 - **Sync with main** — it checks whether `origin/main` moved and offers to rebase.
 - **Push gate** — I approve, it pushes the branch.
 - **PR gate** — it drafts title and body (anonymised), I approve, it runs `gh pr create`.
@@ -62,15 +62,15 @@ If the plan covers all three, the skill adopts it verbatim and skips plan mode. 
 
 A few things are shared across worktrees even though the source trees are isolated. I keep these in mind:
 
-- `~/.config/gitbox/gitbox.json` is one file. I never run two interactive TUI credential or init-wizard flows simultaneously — they fight over the same file.
+- `~/.config/gitbox/gitbox.json` is one file. I never run two GUI credential setup or first-run flows simultaneously — they fight over the same file.
 - The SSH agent and Git Credential Manager are global. Not a problem for pushes, but I don't run two credential-setup flows at once.
-- `go test -short ./...` in parallel is fine. `go test ./...` (full integration tests) reads shared fixtures and can collide — I run those serially.
+- `go test -short ./...` in parallel is fine. `go test ./...` (the scenario test) reads shared fixtures and can collide — I run those serially.
 - Two worktrees can't have the same branch checked out. Git refuses. The error message is obvious.
 - I don't push to the same remote branch from two worktrees. If I ever need to, one of them must force-push with lease after the other lands.
 
 ## Worktrees and gitbox's own orphan detection
 
-If my gitbox-managed folder root is `~/00.git/github-<me>/<me>/`, then a sibling worktree at `~/00.git/github-<me>/<me>/gitbox-42-my-slug` sits *inside* that managed tree. When I run `gitbox status`, the adopt flow, or the GUI/TUI discovery screens, they list the worktree as an orphan repo — it doesn't match any account's expected layout.
+If my gitbox-managed folder root is `~/00.git/github-<me>/<me>/`, then a sibling worktree at `~/00.git/github-<me>/<me>/gitbox-42-my-slug` sits *inside* that managed tree. When I open the GUI's orphans modal, it lists the worktree as an orphan repo — it doesn't match any account's expected layout.
 
 It isn't actually orphaned. The worktree has a valid `.git` pointer file and git sees it correctly. gitbox scans by directory structure, not by reading `.git` contents, so it can't tell a worktree from an unregistered clone.
 
@@ -78,7 +78,7 @@ Three ways to live with it:
 
 1. Ignore the noise. The worktree disappears when `/merge-pr` cleans up after the merge.
 2. Place worktrees outside any gitbox-managed folder. This is not the skill's default today — it uses the sibling path because editors and file managers behave best there — but I can `git worktree add` manually to a different location if the noise bothers me on a particular branch.
-3. Track it as a follow-up issue if it starts biting. There's no CLI flag for excluding worktree patterns from discovery yet.
+3. Track it as a follow-up issue if it starts biting. There's no setting for excluding worktree patterns from discovery yet.
 
 ## When main advances under me
 

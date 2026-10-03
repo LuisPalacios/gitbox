@@ -23,7 +23,7 @@ description: Drive an issue from worktree creation through push and PR, with exp
 - **Never hardcode a GitHub username.** Derive the expected owner from this clone's `remote.origin.url` — the skill must work on any fork.
 - **Stay in the worktree** after Phase 2. Never edit files outside it, never check out a different branch in it.
 - **Anonymise anything that lands on GitHub** (PR title/body, commit messages that will be pushed). No local paths, no private account keys, no org names unrelated to this repository. See "Anonymize before posting to GitHub" in `.claude/CLAUDE.md`.
-- **Build both binaries** after any change under `cmd/` or `pkg/` — the CLI and GUI share `pkg/` but diverge on build tags and the `git.HideWindow` Windows rule.
+- **Build the GUI** after any change under `cmd/` or `pkg/` — `go build ./...` alone does not exercise the Wails build tags, the embedded frontend, or the `git.HideWindow` Windows rule.
 
 ## Resumability
 
@@ -84,7 +84,7 @@ Ask: "Is this the right issue? Proceed?" Do not create the worktree until the us
 
 ## Step 2: Create worktree
 
-- **Orphan heads-up:** if `~/.config/gitbox/gitbox.json` exists, read it and check whether the proposed worktree absolute path falls under `folder` (top-level) or any account's `folder`. If it does, warn once: "Heads-up — this worktree will sit inside a gitbox-managed folder, so `gitbox status` and discovery will list it as an orphan. Not actually orphaned — just unrecognised by the scanner. Safe to ignore." Proceed unless the user says otherwise.
+- **Orphan heads-up:** if `~/.config/gitbox/gitbox.json` exists, read it and check whether the proposed worktree absolute path falls under `folder` (top-level) or any account's `folder`. If it does, warn once: "Heads-up — this worktree will sit inside a gitbox-managed folder, so GitboxApp's status and discovery will list it as an orphan. Not actually orphaned — just unrecognised by the scanner. Safe to ignore." Proceed unless the user says otherwise.
 - Create: `git worktree add ../gitbox-<N>-<slug> -b <branch> origin/main`.
 - `cd` into the worktree for all subsequent steps.
 - Tell the user: "Worktree ready at `<path>` on branch `<branch>`. You can open a separate Claude session in that directory and continue there — I'll resume from Step 3 either way."
@@ -126,18 +126,19 @@ Resolve the plan source:
 Run in this order, stop on first failure and fix before continuing:
 
 1. `go vet ./...`
-2. The focused test command from the table in `.claude/CLAUDE.md` under "Testing" (match what changed: `pkg/`, `cmd/cli/tui/`, `cmd/cli/`, etc.). When unsure, run `go test ./...`.
-3. Build both binaries (quick compile-check during iteration, full build before reporting done):
+2. The focused test command from the table in `.claude/CLAUDE.md` under "Testing" (match what changed: `pkg/`, `pkg/ops/`, `cmd/gui/`, etc.). When unsure, run `go test ./...`.
+3. Build the GUI (quick compile-check during iteration, full build before reporting done). `cmd/gui` embeds `frontend/dist`, so build the frontend once if it is missing (`cd cmd/gui/frontend && npm ci && npm run build`):
    ```bash
    # Quick iterative check
-   go build -o /dev/null ./cmd/cli ./cmd/gui
+   go build ./...      # several packages: compiles and discards the output
 
    # Full build (needed before push)
-   go build -o build/gitbox ./cmd/cli
    cp assets/appicon.png cmd/gui/build/appicon.png
    cp assets/icon.ico    cmd/gui/build/windows/icon.ico
-   cd cmd/gui && wails build
-   cd ..
+   (cd cmd/gui && wails build)
+
+   # Smoke: prints "GitboxApp <version> (<sha>)" and exits
+   cmd/gui/build/bin/GitboxApp --version   # GitboxApp.exe on Windows, GitboxApp.app/Contents/MacOS/GitboxApp on macOS
    ```
 
 Doc-only changes (`.md`, `docs/`, comments, `.claude/`, `.gitignore`, `go.mod` tidy) skip the builds but still run `go vet` and relevant tests.
@@ -149,9 +150,10 @@ This is a hard pause. Follow the "Never push without asking first" protocol from
 **Runtime-affecting changes** (anything under `cmd/` or `pkg/`, build config, UI behaviour):
 
 1. State the commit SHA(s) on the branch.
-2. List the binary paths the user should launch:
-   - Windows: `build/gitbox.exe`, `cmd/gui/build/bin/GitboxApp.exe`
-   - macOS / Linux: equivalent paths.
+2. List the binary path the user should launch:
+   - Windows: `cmd/gui/build/bin/GitboxApp.exe`
+   - macOS: `cmd/gui/build/bin/GitboxApp.app`
+   - Linux: `cmd/gui/build/bin/GitboxApp`
 3. Name a concrete check: what to click/type, expected output, regression to rule out. Be specific — "open Preferences → Open In Editor, confirm no cmd.exe flash" is good; "test it" is not.
 4. Show the exact push command you intend to run next (`git push -u origin <branch>`). Describe it, do not execute it.
 

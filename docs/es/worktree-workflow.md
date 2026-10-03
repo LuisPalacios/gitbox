@@ -31,8 +31,8 @@ El skill pausa en cada puerta y me espera. No tengo que memorizarlas — me dice
 - **Entender** — relee el issue y lo resume en cinco líneas. Yo digo "ready" antes de planificar.
 - **Plan (o adoptar un plan existente)** — si paso una fuente de plan, la lee y la evalúa. Si no, entra en plan mode desde cero. Consulta [Proporcionar mi propio plan](#proporcionar-mi-propio-plan) más abajo.
 - **Implementar** — ciclos de edición y commit. Todo se queda local.
-- **Auto-verificar** — `go vet`, pruebas enfocadas, ambos binarios compilados.
-- **Puerta de smoke-test** — el skill me entrega las rutas de los binarios y una comprobación concreta. Yo pruebo. Si algo falla, se lo digo y lo arregla. Si está bien digo "push it".
+- **Auto-verificar** — `go vet`, pruebas enfocadas, la GUI compilada.
+- **Puerta de smoke-test** — el skill me entrega la ruta de la app y una comprobación concreta. Yo pruebo. Si algo falla, se lo digo y lo arregla. Si está bien digo "push it".
 - **Sincronizar con main** — comprueba si `origin/main` se movió y ofrece rebase.
 - **Puerta de push** — apruebo, hace push de la rama.
 - **Puerta de PR** — redacta título y cuerpo (anonimizados), apruebo, ejecuta `gh pr create`.
@@ -62,15 +62,15 @@ Si el plan cubre las tres, el skill lo adopta literalmente y se salta plan mode.
 
 Algunas cosas se comparten entre worktrees aunque los árboles de código estén aislados. Tengo esto presente:
 
-- `~/.config/gitbox/gitbox.json` es un solo archivo. Nunca ejecuto dos flujos interactivos TUI de credenciales o init-wizard al mismo tiempo — pelean por el mismo archivo.
+- `~/.config/gitbox/gitbox.json` es un solo archivo. Nunca ejecuto dos flujos de configuración de credenciales o de primer arranque de la GUI al mismo tiempo — pelean por el mismo archivo.
 - El SSH agent y Git Credential Manager son globales. No es un problema para pushes, pero no ejecuto dos flujos de configuración de credenciales a la vez.
-- `go test -short ./...` en paralelo va bien. `go test ./...` (pruebas de integración completas) lee fixtures compartidos y puede colisionar — las ejecuto en serie.
+- `go test -short ./...` en paralelo va bien. `go test ./...` (el test de escenario) lee fixtures compartidos y puede colisionar — las ejecuto en serie.
 - Dos worktrees no pueden tener la misma rama checked out. Git lo rechaza. El mensaje de error es obvio.
 - No hago push a la misma rama remota desde dos worktrees. Si alguna vez lo necesito, uno de ellos debe hacer force-push with lease después de que el otro aterrice.
 
 ## Worktrees y la detección de orphans propia de gitbox
 
-Si mi folder root gestionado por gitbox es `~/00.git/github-<me>/<me>/`, entonces un worktree hermano en `~/00.git/github-<me>/<me>/gitbox-42-my-slug` queda _dentro_ de ese árbol gestionado. Cuando ejecuto `gitbox status`, el flujo adopt o las pantallas discovery de GUI/TUI, listan el worktree como un repo orphan — no encaja con el layout esperado de ninguna cuenta.
+Si mi folder root gestionado por gitbox es `~/00.git/github-<me>/<me>/`, entonces un worktree hermano en `~/00.git/github-<me>/<me>/gitbox-42-my-slug` queda _dentro_ de ese árbol gestionado. Cuando abro el modal de huérfanos de la GUI, lista el worktree como un repo orphan — no encaja con el layout esperado de ninguna cuenta.
 
 No está realmente orphaned. El worktree tiene un archivo puntero `.git` válido y git lo ve correctamente. gitbox escanea por estructura de directorios, no leyendo el contenido de `.git`, así que no puede distinguir un worktree de un clone no registrado.
 
@@ -78,7 +78,7 @@ Tres formas de convivir con ello:
 
 1. Ignorar el ruido. El worktree desaparece cuando `/merge-pr` limpia después del merge.
 2. Colocar worktrees fuera de cualquier carpeta gestionada por gitbox. Hoy no es el default del skill — usa la ruta hermana porque editores y gestores de archivos se comportan mejor ahí — pero puedo usar `git worktree add` manualmente a otra ubicación si el ruido me molesta en una rama concreta.
-3. Abrir un issue de seguimiento si empieza a molestar. Aún no hay flag CLI para excluir patrones de worktree del discovery.
+3. Abrir un issue de seguimiento si empieza a molestar. Aún no hay ningún ajuste para excluir patrones de worktree del discovery.
 
 ## Cuando main avanza debajo de mí
 

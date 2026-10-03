@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# bootstrap.sh — cross-platform installer for gitbox
+# bootstrap.sh — cross-platform installer for gitbox (the GitboxApp GUI, or
+# the 1.x CLI/TUI with --cli-only)
 # Usage: bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
 set -euo pipefail
 
@@ -16,6 +17,9 @@ DOWNLOAD_URL=""
 RELEASE_TAG=""
 TMP_DIR=""
 USE_GH=false
+CLI_INSTALLED=false
+GUI_PATH=""
+DESKTOP_REGISTERED=false
 
 # ── Output helpers ──────────────────────────────────────────────────
 
@@ -32,28 +36,37 @@ die()  { red    "[gitbox] $*"; exit 1; }
 
 show_help() {
   cat <<'HELP'
-gitbox installer — download and install gitbox CLI/TUI and GUI
+gitbox installer — download and install the GitboxApp GUI (or, with
+--cli-only, the gitbox CLI/TUI from the 1.x line)
 
 Usage:
   bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh) [OPTIONS]
 
 Options:
-  --version <tag>   Install a specific release (e.g. v1.2.18). Default: latest
-                    (with --cli-only: the latest 1.x release).
-  --prefix <dir>    CLI install directory. Default: ~/bin.
-  --cli-only        Skip GUI installation. The CLI/TUI ships in 1.x releases
-                    only (v2 is GUI-only), so this installs the latest 1.x.
+  --version <tag>   Install a specific release (e.g. v2.0.0). Default: latest
+                    (with --cli-only: the latest 1.x release). A 1.x tag
+                    without --cli-only installs both the GUI and the CLI.
+  --prefix <dir>    Install directory for the CLI and, on Linux and Windows,
+                    the GUI. Default: ~/bin. On macOS the GUI always goes to
+                    /Applications.
+  --cli-only        Install only the gitbox CLI/TUI. It ships in 1.x
+                    releases only (v2 is GUI-only), so this installs the
+                    latest 1.x. Linux hosts without a display pick this
+                    automatically.
   --no-desktop      Linux only: skip registering the GUI in the Activities
                     menu. The binary is still installed; you can register
                     it later with scripts/register-gitbox.sh.
   -h, --help        Show this help.
 
 Examples:
-  # Install latest
+  # Install the latest GUI
   bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
 
-  # Install specific version, CLI only
-  bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh) --version v1.2.18 --cli-only
+  # Install the latest 1.x CLI/TUI only
+  bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh) --cli-only
+
+  # Install a specific version
+  bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh) --version v2.0.0
 
   # Custom install directory
   bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh) --prefix ~/.local/bin
@@ -66,7 +79,7 @@ HELP
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --version)  VERSION_TAG="${2:?'--version requires a tag (e.g. v1.2.18)'}"; shift 2 ;;
+      --version)  VERSION_TAG="${2:?'--version requires a tag (e.g. v2.0.0)'}"; shift 2 ;;
       --prefix)   INSTALL_DIR="${2:?'--prefix requires a directory'}"; shift 2 ;;
       --cli-only) CLI_ONLY=true; shift ;;
       --no-desktop) NO_DESKTOP=true; shift ;;
@@ -153,7 +166,7 @@ check_dependencies() {
 detect_headless() {
   if [[ "$PLATFORM" == "linux" && "$CLI_ONLY" == false ]]; then
     if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
-      warn "No display detected — installing CLI only (use --cli-only to silence this)."
+      warn "No display detected — installing the 1.x CLI only (use --cli-only to silence this)."
       CLI_ONLY=true
     fi
   fi
@@ -275,18 +288,59 @@ extract_archive() {
   else
     die "unzip is required but not found."
   fi
+
+  # 1.x archives carry the CLI next to the GUI; 2.x archives carry the GUI
+  # only. Fail before touching anything when the requested part is missing.
+  if [[ "$CLI_ONLY" == true && ! -f "$TMP_DIR/extracted/$(cli_bin_name)" ]]; then
+    die "$ARTIFACT_NAME ($RELEASE_TAG) has no CLI. The CLI/TUI ships in 1.x releases only."
+  fi
+  if [[ "$CLI_ONLY" == false && ! -e "$TMP_DIR/extracted/$(gui_bin_name)" ]]; then
+    die "$ARTIFACT_NAME ($RELEASE_TAG) has no $(gui_bin_name)."
+  fi
+}
+
+# ── Binary names ────────────────────────────────────────────────────
+
+cli_bin_name() {
+  if [[ "$PLATFORM" == "windows" ]]; then echo "gitbox.exe"; else echo "gitbox"; fi
+}
+
+gui_bin_name() {
+  case "$PLATFORM" in
+    macos)   echo "GitboxApp.app" ;;
+    windows) echo "GitboxApp.exe" ;;
+    *)       echo "GitboxApp" ;;
+  esac
+}
+
+# Where the GUI lives once installed: /Applications on macOS, the install
+# directory elsewhere.
+gui_install_path() {
+  if [[ "$PLATFORM" == "macos" ]]; then
+    echo "/Applications/GitboxApp.app"
+  else
+    echo "$INSTALL_DIR/$(gui_bin_name)"
+  fi
 }
 
 # ── Existing install detection ──────────────────────────────────────
 
 detect_existing_install() {
-  local cli_bin="gitbox"
-  [[ "$PLATFORM" == "windows" ]] && cli_bin="gitbox.exe"
+  local found="" cli gui
+  cli="$INSTALL_DIR/$(cli_bin_name)"
+  gui="$(gui_install_path)"
 
-  if [[ -x "$INSTALL_DIR/$cli_bin" ]]; then
-    local old_version
-    old_version="$("$INSTALL_DIR/$cli_bin" version 2>/dev/null || echo "unknown")"
-    warn "Existing installation found ($old_version) — upgrading to $RELEASE_TAG."
+  if [[ -x "$cli" ]]; then
+    found="CLI $("$cli" version 2>/dev/null || echo "unknown version")"
+  fi
+  # Only check that an existing GitboxApp is there, never run it: v1 builds
+  # have no --version flag and would open their window instead of exiting.
+  if [[ -e "$gui" ]]; then
+    found="${found:+$found, }GUI at $gui"
+  fi
+
+  if [[ -n "$found" ]]; then
+    warn "Existing installation found ($found) — upgrading to $RELEASE_TAG."
   fi
 }
 
@@ -331,13 +385,13 @@ ensure_path() {
 # ── macOS install ───────────────────────────────────────────────────
 
 install_macos() {
-  mkdir -p "$INSTALL_DIR"
-
   # CLI (1.x archives only)
   if [[ -f "$TMP_DIR/extracted/gitbox" ]]; then
+    mkdir -p "$INSTALL_DIR"
     cp "$TMP_DIR/extracted/gitbox" "$INSTALL_DIR/gitbox"
     chmod +x "$INSTALL_DIR/gitbox"
     xattr -cr "$INSTALL_DIR/gitbox" 2>/dev/null || true
+    CLI_INSTALLED=true
     log "CLI installed: $INSTALL_DIR/gitbox"
   fi
 
@@ -346,10 +400,14 @@ install_macos() {
     rm -rf /Applications/GitboxApp.app
     cp -R "$TMP_DIR/extracted/GitboxApp.app" /Applications/GitboxApp.app
     xattr -cr /Applications/GitboxApp.app 2>/dev/null || true
-    log "GUI installed: /Applications/GitboxApp.app"
+    GUI_PATH="/Applications/GitboxApp.app"
+    log "GUI installed: $GUI_PATH"
   fi
 
-  ensure_path "$INSTALL_DIR"
+  # The GUI lives in /Applications, so only the CLI needs the PATH entry.
+  if [[ "$CLI_INSTALLED" == true ]]; then
+    ensure_path "$INSTALL_DIR"
+  fi
 }
 
 # ── Linux install ───────────────────────────────────────────────────
@@ -362,7 +420,9 @@ register_linux_desktop() {
     warn "Register later with: bash <(curl -fsSL $script_url)"
     return
   fi
-  if ! GITBOX_GUI_BIN="$INSTALL_DIR/GitboxApp" bash "$script_path"; then
+  if GITBOX_GUI_BIN="$INSTALL_DIR/GitboxApp" bash "$script_path"; then
+    DESKTOP_REGISTERED=true
+  else
     warn "Desktop registration failed — run manually: bash <(curl -fsSL $script_url)"
   fi
 }
@@ -374,6 +434,7 @@ install_linux() {
   if [[ -f "$TMP_DIR/extracted/gitbox" ]]; then
     cp "$TMP_DIR/extracted/gitbox" "$INSTALL_DIR/gitbox"
     chmod +x "$INSTALL_DIR/gitbox"
+    CLI_INSTALLED=true
     log "CLI installed: $INSTALL_DIR/gitbox"
   fi
 
@@ -381,7 +442,8 @@ install_linux() {
   if [[ "$CLI_ONLY" == false ]]; then
     cp "$TMP_DIR/extracted/GitboxApp" "$INSTALL_DIR/GitboxApp"
     chmod +x "$INSTALL_DIR/GitboxApp"
-    log "GUI installed: $INSTALL_DIR/GitboxApp"
+    GUI_PATH="$INSTALL_DIR/GitboxApp"
+    log "GUI installed: $GUI_PATH"
     if [[ "$NO_DESKTOP" == false ]]; then
       register_linux_desktop
     fi
@@ -403,6 +465,7 @@ install_windows() {
     cp "$TMP_DIR/extracted/gitbox.exe" "$INSTALL_DIR/gitbox.exe"
     # Remove "downloaded from internet" mark so SmartScreen doesn't block it
     powershell -Command "Unblock-File -Path '${win_path}\\gitbox.exe'" 2>/dev/null || true
+    CLI_INSTALLED=true
     log "CLI installed: $INSTALL_DIR/gitbox.exe"
   fi
 
@@ -410,7 +473,8 @@ install_windows() {
   if [[ "$CLI_ONLY" == false ]]; then
     cp "$TMP_DIR/extracted/GitboxApp.exe" "$INSTALL_DIR/GitboxApp.exe"
     powershell -Command "Unblock-File -Path '${win_path}\\GitboxApp.exe'" 2>/dev/null || true
-    log "GUI installed: $INSTALL_DIR/GitboxApp.exe"
+    GUI_PATH="$INSTALL_DIR/GitboxApp.exe"
+    log "GUI installed: $GUI_PATH"
     log "Windows path: $win_path"
   fi
 
@@ -424,27 +488,25 @@ print_summary() {
   bold "── gitbox $RELEASE_TAG installed ──"
   echo ""
 
-  local cli_bin="gitbox"
-  [[ "$PLATFORM" == "windows" ]] && cli_bin="gitbox.exe"
-  echo "  CLI/TUI:  $INSTALL_DIR/$cli_bin"
-
-  if [[ "$CLI_ONLY" == false ]]; then
-    case "$PLATFORM" in
-      macos)   echo "  GUI:      /Applications/GitboxApp.app" ;;
-      linux)
-        echo "  GUI:      $INSTALL_DIR/GitboxApp"
-        if [[ "$NO_DESKTOP" == false ]]; then
-          echo "  Menu:     registered in Activities — search 'Gitbox' or drag to dock"
-        fi
-        ;;
-      windows) echo "  GUI:      $INSTALL_DIR/GitboxApp.exe" ;;
-    esac
+  if [[ -n "$GUI_PATH" ]]; then
+    echo "  GUI:      $GUI_PATH"
+    if [[ "$DESKTOP_REGISTERED" == true ]]; then
+      echo "  Menu:     registered in Activities — search 'Gitbox' or drag to dock"
+    fi
+  fi
+  if [[ "$CLI_INSTALLED" == true ]]; then
+    echo "  CLI/TUI:  $INSTALL_DIR/$(cli_bin_name)"
   fi
 
   echo ""
 
-  # Check if user needs to reload shell
-  if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
+  # Reload hint only when something landed in the install directory, which
+  # on macOS means the CLI (the GUI goes to /Applications).
+  local uses_dir=false
+  if [[ "$CLI_INSTALLED" == true ]] || { [[ -n "$GUI_PATH" ]] && [[ "$PLATFORM" != "macos" ]]; }; then
+    uses_dir=true
+  fi
+  if [[ "$uses_dir" == true ]] && ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
     local rc_file=""
     case "$PLATFORM" in
       macos) rc_file="~/.zshrc" ;;
@@ -465,7 +527,15 @@ print_summary() {
   fi
 
   bold "  Get started:"
-  echo "    gitbox help"
+  if [[ -n "$GUI_PATH" ]]; then
+    case "$PLATFORM" in
+      macos) echo "    open $GUI_PATH" ;;
+      *)     echo "    $GUI_PATH" ;;
+    esac
+  fi
+  if [[ "$CLI_INSTALLED" == true ]]; then
+    echo "    gitbox help"
+  fi
   echo ""
 }
 

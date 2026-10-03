@@ -10,9 +10,7 @@ Open Terminal and run:
 
 The script will:
   - Copy GitboxApp.app to /Applications/
-  - Copy the gitbox CLI to ~/bin/
-  - Remove quarantine attributes so macOS allows them to run
-  - Add ~/bin to your PATH if needed
+  - Remove quarantine attributes so macOS allows it to run
 
 It asks for confirmation first. No sudo required, no network access.
 
@@ -30,13 +28,6 @@ If you prefer not to use the script:
   2. Open Terminal and run:
 
        xattr -cr /Applications/GitboxApp.app
-
-  3. Copy the CLI binary to a directory in your PATH:
-
-       mkdir -p ~/bin
-       cp /Volumes/gitbox/gitbox ~/bin/
-       chmod +x ~/bin/gitbox
-       xattr -cr ~/bin/gitbox
 
 The xattr command removes the quarantine flag that macOS sets on
 files downloaded from the internet.
@@ -58,8 +49,11 @@ See the LICENSE file in the repository for full terms.
 AFTER INSTALLATION
 ------------------
 
-  gitbox help               Launch the CLI
-  gitbox                    Launch the TUI (interactive terminal UI)
-  open /Applications/GitboxApp.app   Launch the GUI
+  open /Applications/GitboxApp.app   Launch gitbox
+
+The gitbox command-line tool and terminal UI ship only in 1.x
+releases. To install the latest 1.x CLI:
+
+  bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh) --cli-only
 
 Full documentation: https://github.com/LuisPalacios/gitbox#readme

@@ -189,7 +189,7 @@ func (a *App) RedetectProfiles() ConfigDTO {
 	return a.GetConfig()
 }
 
-// MissingModernTerminal reports whether the GUI/TUI banner ("install Windows
+// MissingModernTerminal reports whether the GUI banner ("install Windows
 // Terminal for the best experience") should fire. True only on Windows when
 // no shell-token-aware Terminal is installed.
 func (a *App) MissingModernTerminal() bool {
@@ -219,8 +219,8 @@ func (a *App) OpenAccountProfile(accountKey, profileID string) error {
 
 // launchProfile resolves a profile (plain, or hosting an AI harness when
 // harnessArgv is non-empty) through the shared pkg/terminals resolver and
-// executes it. The resolver is what the TUI uses too, so both frontends
-// agree byte-for-byte on the argv; this method only owns the exec side.
+// executes it. The resolver owns the argv rules; this method only owns the
+// exec side.
 func (a *App) launchProfile(path, profileID string, harnessArgv []string) error {
 	if profileID == "" {
 		return fmt.Errorf("profile id is required")

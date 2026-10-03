@@ -2,7 +2,7 @@
 # register-gitbox.sh — register GitboxApp with the Linux desktop (menu + icon).
 #
 # This script does NOT install binaries. It assumes GitboxApp is already on
-# disk (placed there by scripts/bootstrap.sh, a manual copy, or `gitbox update`)
+# disk (placed there by scripts/bootstrap.sh, a manual copy, or the GUI updater)
 # and only registers the XDG `.desktop` entry and icon so the app appears in
 # the Activities menu and can be pinned to the dock.
 #
@@ -56,7 +56,7 @@ Options:
 
 The script is idempotent: re-running it overwrites the same two files and
 re-runs the desktop/icon caches. No need to run it again after a
-`gitbox update` or a re-run of bootstrap.sh — the .desktop Exec= path is
+GUI self-update or a re-run of bootstrap.sh — the .desktop Exec= path is
 absolute and stable.
 HELP
   exit 0

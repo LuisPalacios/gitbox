@@ -1833,7 +1833,7 @@
     moveModalStep = null;
   }
 
-  // repoCanMove is the kebab-enable predicate. Mirrors the TUI guard:
+  // repoCanMove is the kebab-enable predicate:
   // only a cloned, clean, in-sync repo can be moved. Returns a string
   // tooltip when disabled, or '' when enabled.
   function repoMoveDisabledReason(state: RepoState | undefined): string {

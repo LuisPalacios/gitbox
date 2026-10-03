@@ -1,128 +1,59 @@
 # Testing reference
 
-Detailed test inventory and harness internals. For running tests, checklists, and fixture setup, see [testing.md](testing.md).
+Test inventory and harness internals. For running tests, checklists, and fixture setup, see [testing.md](testing.md).
 
 ## Test inventory
 
-### TUI unit tests — 31 tests (`cmd/cli/tui/`)
+Counts are top-level `func Test…` functions per package, from `grep -rc "^func Test" --include=*_test.go pkg cmd`. Subtests (`t.Run`) are not counted.
 
-Model lifecycle and routing:
+### Package tests — 414 tests (`pkg/`)
 
-- `TestInit_FirstRun` — no config → onboarding screen
-- `TestInit_ExistingConfig` — config exists → dashboard
-- `TestInit_ExistingConfig_NoFolder` — config without folder → onboarding
-- `TestInit_InvalidConfig` — bad JSON → error, onboarding
-- `TestQuit_CtrlC` — Ctrl+C quits
-- `TestQuit_Esc` — Esc quits from dashboard
-- `TestWindowResize` — resize propagates to sub-models
-- `TestNavigation_SwitchScreens` — 5 subtests: screen routing via messages
-- `TestView_NotEmpty` — View() returns non-empty string
+- `pkg/adopt/` — 13 tests: orphan discovery, account scoring (embedded URL user, credential username, parent folder, ambiguous ties), nested clones under containers
+- `pkg/config/` — 96 tests: config parsing, v1/v2 → v3 migration, CRUD operations, save/load, backups, test-mode setup
+- `pkg/credential/` — 25 tests: token resolution, validation, `CanOpenBrowser`, OS-default helpers, `Check`/`FixGlobalGCMConfig` (global gitconfig health for GCM)
+- `pkg/doctor/` — 14 tests: tool table shape, install hints, lookups, per-credential-type prechecks, tool output decoding
+- `pkg/git/` — 33 tests: git subprocess operations, repo and profile URLs, nested repo discovery, WSL helpers
+- `pkg/gitignore/` — 23 tests: managed block round-trip, merge with user content, idempotent install, backups, duplicate sanitising
+- `pkg/harness/` — 23 tests: embedded tools directory parsing, retired tools, WezTerm `launch_menu` parsing
+- `pkg/heal/` — 7 tests: expected origin URL per credential type, identity repair, stripping embedded tokens
+- `pkg/i18n/` — 3 tests: language normalisation, supported languages, resolution precedence
+- `pkg/identity/` — 7 tests: `ResolveIdentity`, `EnsureRepoIdentity`, `CheckGlobalIdentity`
+- `pkg/launch/` — 13 tests: argv expansion, shell quoting, AI harness wrapping per shell, macOS AppleScript
+- `pkg/mirror/` — 6 tests: remote URL parsing, mirror discovery, status error classification
+- `pkg/move/` — 5 tests: repo key parsing, clone URLs, preflight validation
+- `pkg/ops/` — 13 tests: 12 isolated unit tests (add, rename, delete account; credential type change and delete; delete repo; clone planning; reconfigure clones; add discovered repos) plus the `TestScenario_FullLifecycle` scenario
+- `pkg/provider/` — 43 tests: HTTP client, provider API parsing
+- `pkg/status/` — 15 tests: clone status checking, branch detection, nesting computation
+- `pkg/terminals/` — 51 tests: catalog shape, OS-aware Profile composition, WezTerm and Windows Terminal lookups, merge rules
+- `pkg/update/` — 19 tests: semver parsing, version comparison, update check (mock API), major-version cap, artifact names, install targets, checksum verification
+- `pkg/workspace/` — 5 tests: workspace discovery, cache refresh, extra folders, tentative containers
 
-Dashboard:
+### GUI tests — 39 tests (`cmd/gui/`)
 
-- `TestDashboard_Empty` — no accounts renders empty state
-- `TestDashboard_WithAccounts` — accounts appear in cards
-- `TestDashboard_TabSwitch` — Tab toggles Accounts/Mirrors
-- `TestDashboard_CardNavigation` — arrow keys move card cursor
-- `TestDashboard_AddAccountShortcut` — 'a' key triggers add account
-- `TestDashboard_SettingsShortcut` — 's' key triggers settings
+Go-side logic of the Wails app that runs without a window:
 
-Account screens:
+- Account and browser actions — account folder resolution, provider URLs, error paths for unknown accounts and repos
+- AI harness actions — detection, ordering, dedup, retired-harness pruning, `~/.local/bin` fallback, launcher default Profile
+- Terminals — argv resolution, legacy entry upgrades, Windows Terminal profile parsing and merge, MSYS path and env sanitising
+- Workspaces and containers — cache refresh, container flag persistence, extra folders, nested scan depth, absolute `clone_folder` for onboarded clones
 
-- `TestAccount_Render` — detail view shows account fields
-- `TestAccount_BackToDashboard` — Esc returns to dashboard
-- `TestAccountAdd_Render` — form shows all fields
-- `TestAccountAdd_SaveAccount` — fill form → save → verify config on disk
-- `TestAccountAdd_DuplicateKey` — rejects duplicate account key
-- `TestAccountAdd_InvalidKey` — rejects invalid key format
+### Scenario test — 1 test, 12 steps (`pkg/ops/`)
 
-Credential screens:
+- `TestScenario_FullLifecycle` — end-to-end through `pkg/ops`: add account → credential check → discover → add repo → clone → status → pull and fetch → account edit + reconfigure clones → mirror CRUD → re-clone → rename account → delete everything
 
-- `TestCredential_GCM_MenuRender` — menu shows account key, type, browser auth hint
-- `TestCredential_GCM_SetupView` — desktop shows "authenticate", headless shows "desktop session"
-- `TestCredential_GCM_SetupViewBusy` — shows "Opening browser" while waiting
-- `TestCredential_GCM_SetupDoneSuccess` — successful auth sets resultOK
-- `TestCredential_GCM_SetupDoneNeedsPAT` — transitions to PAT input when API needs separate token
-- `TestCredential_GCM_SetupDoneError` — displays error message
-- `TestCredential_GCM_TypeSelectTriggersSetup` — selecting GCM type starts browser auth on desktop
-- `TestCredential_GCM_BackFromSetup` — navigation back works
-
-Onboarding:
-
-- `TestOnboarding_Render` — first-run screen renders
-- `TestOnboarding_SubmitFolder` — enter folder path → saves to config
-
-### TUI helper unit tests — 7 tests (`cmd/cli/tui/`)
-
-- `TestCloneURL_Token` — HTTPS URL with username
-- `TestCloneURL_SSH_WithHost` — SSH URL with custom host alias
-- `TestCloneURL_SSH_NoHost` — SSH URL with hostname from URL
-- `TestCloneURL_GCM` — HTTPS URL (same as token)
-- `TestStripScheme` — removes https://, http://, passes through bare hostnames
-- `TestReconfigureClones` — updates remote URL on a real git clone
-- `TestCountClonedRepos` — counts only repos that exist on disk
-
-### TUI integration tests — 7 tests (`cmd/cli/tui/`)
-
-These drive the real Bubble Tea event loop via **teatest** with credentials from `test-gitbox.json`:
-
-- `TestIntegration_TUI_DashboardLoadsAccounts` — async config load → dashboard renders all account section headings
-- `TestIntegration_TUI_CredentialStatus` — async credential check updates badge from "···" to credential type label
-- `TestIntegration_TUI_NavigateToAccount` — Enter → account detail → Esc → back to dashboard
-- `TestIntegration_TUI_AccountCredentialVerified` — token credential check completes with OK status
-- `TestIntegration_TUI_Discovery` — navigate to account → 'd' → provider API returns repo list
-- `TestIntegration_TUI_Settings` — 's' → settings screen renders → Esc → back to dashboard
-- `TestIntegration_TUI_MirrorsTab` — Tab → mirrors tab renders → Tab → back to accounts
-
-### CLI unit tests — 24 tests (`cmd/cli/`)
-
-CRUD commands via subprocess execution against isolated config:
-
-- `TestCLI_Version`, `TestCLI_Help` — basic binary invocation
-- `TestCLI_GlobalShow`, `TestCLI_GlobalUpdate` — global config operations
-- `TestCLI_AccountAdd`, `TestCLI_AccountList`, `TestCLI_AccountShow`, `TestCLI_AccountUpdate`, `TestCLI_AccountDelete` — account CRUD
-- `TestCLI_SourceAdd`, `TestCLI_SourceList`, `TestCLI_SourceDelete` — source CRUD
-- `TestCLI_RepoAdd`, `TestCLI_RepoList`, `TestCLI_RepoDelete` — repo CRUD
-- `TestCLI_MirrorAdd`, `TestCLI_MirrorAddRepo`, `TestCLI_MirrorDeleteRepo`, `TestCLI_MirrorDelete`, `TestCLI_MirrorList` — mirror CRUD
-- `TestCLI_Status` — status command output
-- `TestCLI_AccountAdd_MissingFlags`, `TestCLI_AccountShow_NotFound`, `TestCLI_SourceAdd_NoAccount` — error cases
-
-### CLI integration tests — 6 tests (`cmd/cli/`)
-
-Real provider API calls and git operations via subprocess:
-
-- `TestIntegration_CLI_CredentialVerify` — token resolves and API responds
-- `TestIntegration_CLI_Discover` — lists repos from provider
-- `TestIntegration_CLI_Clone` — clones repo to temp dir, verifies .git and git identity
-- `TestIntegration_CLI_Status` — checks sync status of cloned repo
-- `TestIntegration_CLI_Pull` — pulls from remote
-- `TestIntegration_CLI_Fetch` — fetches from remote
-
-### CLI scenario test — 1 test, 22 steps (`cmd/cli/`)
-
-- `TestScenario_CLI_FullLifecycle` — end-to-end: add accounts → add sources → add repos → clone → status → pull → mirror setup → delete clone → re-clone → teardown in reverse
-
-### Package tests — 138 tests (`pkg/`)
-
-- `pkg/config/` — 58 tests: config parsing, CRUD operations, save/load
-- `pkg/credential/` — tests: token resolution, validation, `CanOpenBrowser`, OS-default helpers, `Check`/`FixGlobalGCMConfig` (global gitconfig health for GCM)
-- `pkg/git/` — 9 tests: git subprocess operations
-- `pkg/identity/` — 7 tests: ResolveIdentity, EnsureRepoIdentity, CheckGlobalIdentity
-- `pkg/mirror/` — 5 tests: mirror discovery
-- `pkg/provider/` — 35 tests: HTTP client, provider API parsing
-- `pkg/status/` — 8 tests: clone status checking
-- `pkg/update/` — 6 tests: semver parsing, version comparison, update check (mock API), throttle, checksum verification
-
-### Total: ~214 tests
+### Total: 453 tests
 
 ## How the test harness works
 
-The `_test` key inside each account is silently ignored by `config.Parse()` — Go's JSON unmarshaler skips unknown struct fields. The test harness:
+The `_test` key inside each account is silently ignored by `config.Parse()` — Go's JSON unmarshaler skips unknown struct fields. The scenario harness (`requireIntegration` in `pkg/ops/fixture_test.go`):
 
-1. Parses the file as a standard gitbox config (accounts, sources, mirrors)
-2. Extracts `_test` from each account via a separate raw JSON pass
-3. Sets `GITBOX_TOKEN_<KEY>` env vars for accounts that have a `_test.token`
-4. Overrides `global.folder` and `credential_ssh.ssh_folder` with throwaway temp directories
-5. Writes the config to the throwaway path and runs CLI commands with `--config <throwaway-path>`
+1. Skips in `-short` mode, and fails with setup instructions when `test-gitbox.json` is missing
+2. Parses the file as a standard gitbox config (accounts, sources, mirrors)
+3. Extracts `_test` from each account via a separate raw JSON pass
+4. Sets `GITBOX_TOKEN_<KEY>` env vars for accounts that have a `_test.token`
+5. Refuses fixtures whose `credential_ssh.ssh_folder` is `~/.ssh` or whose `global.folder` is the real gitbox config directory
+6. Points git's SSH at the fixture's isolated SSH config through `GIT_SSH_COMMAND`
 
-Clone directories are auto-cleaned by Go's `t.TempDir()` after each test. Integration tests use the `ssh_folder` from your `test-gitbox.json` so they can find real SSH keys. The test runner validates that this path is not `~/.ssh` and that `global.folder` is not `~/.config/gitbox` — if either points at a real user directory, the tests fail immediately.
+The scenario itself then sets a temp `XDG_CONFIG_HOME`, builds a fresh config with `global.folder` in a temp directory, and saves and reloads that config after every step, the same way the GUI persists after each action. Clone directories are auto-cleaned by Go's `t.TempDir()` after the test.
+
+`GitboxApp --test-mode` uses the same fixture through `config.SetupTestMode()`: it finds `test-gitbox.json` by walking up from the current directory, writes a throwaway config with `global.folder` overridden, applies the same path safety checks, and injects the fixture tokens as environment variables.

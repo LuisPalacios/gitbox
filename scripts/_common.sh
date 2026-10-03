@@ -27,7 +27,6 @@ die()    { printf '%berror:%b %s\n' "$R" "$N" "$*" >&2; exit 1; }
 # ---------------------------------------------------------------------------
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="$REPO_ROOT/build"
 FIXTURE="$REPO_ROOT/test-gitbox.json"
 FIXTURE_EXAMPLE="$REPO_ROOT/json/test-gitbox.json.example"
 
@@ -133,34 +132,6 @@ is_win_platform() {
     esac
 }
 
-platform_goos() {
-    case "$1" in
-        win|win-intel|win-arm)   echo "windows" ;;
-        mac|mac-arm|mac-intel)   echo "darwin" ;;
-        linux)                   echo "linux" ;;
-        *)                       die "unknown platform: $1" ;;
-    esac
-}
-
-platform_goarch() {
-    case "$1" in
-        win|win-intel) echo "amd64" ;;
-        win-arm)       echo "arm64" ;;
-        mac|mac-arm)   echo "arm64" ;;
-        mac-intel)     echo "amd64" ;;
-        linux)         echo "amd64" ;;
-        *)             die "unknown platform: $1" ;;
-    esac
-}
-
-platform_bin() {
-    if is_win_platform "$1"; then
-        echo "gitbox.exe"
-    else
-        echo "gitbox"
-    fi
-}
-
 platform_label() {
     case "$1" in
         win|win-intel) echo "Windows (amd64)" ;;
@@ -171,37 +142,48 @@ platform_label() {
     esac
 }
 
-# Cross-compile output path
-build_artifact() {
+# ---------------------------------------------------------------------------
+# GitboxApp locations
+# ---------------------------------------------------------------------------
+
+# Local `wails build` output for a platform.
+local_gui_for() {
     case "$1" in
-        win|win-intel) echo "$BUILD_DIR/gitbox-windows-amd64.exe" ;;
-        win-arm)       echo "$BUILD_DIR/gitbox-windows-arm64.exe" ;;
-        mac|mac-arm)   echo "$BUILD_DIR/gitbox-darwin-arm64" ;;
-        mac-intel)     echo "$BUILD_DIR/gitbox-darwin-amd64" ;;
-        linux)         echo "$BUILD_DIR/gitbox-linux-amd64" ;;
+        mac|mac-arm|mac-intel)  echo "$REPO_ROOT/cmd/gui/build/bin/GitboxApp.app" ;;
+        linux)                  echo "$REPO_ROOT/cmd/gui/build/bin/GitboxApp" ;;
+        win|win-intel|win-arm)  echo "$REPO_ROOT/cmd/gui/build/bin/GitboxApp.exe" ;;
     esac
 }
 
-# Remote binary path (platform-aware)
-# Windows: use home dir because SCP and Git Bash disagree on /tmp mapping.
-#          Same path for amd64 and arm64 — the host runs whichever was shipped.
+# Where ship.sh stages the GUI on a remote host.
+# Windows: home dir, because SCP and Git Bash disagree on /tmp mapping.
 # Unix:    /tmp is consistent across SCP and shell.
-remote_bin_for() {
-    if is_win_platform "$1"; then
-        echo "~/gitbox.exe"
+remote_gui_for() {
+    case "$1" in
+        mac|mac-arm|mac-intel)  echo "/tmp/GitboxApp.app" ;;
+        linux)                  echo "/tmp/GitboxApp" ;;
+        win|win-intel|win-arm)  echo "~/GitboxApp.exe" ;;
+    esac
+}
+
+# GUI bundle or binary for a platform: the local build on this host, the
+# staged copy on remotes.
+gui_path() {
+    if [[ "$1" == "$LOCAL_OS" ]]; then
+        local_gui_for "$1"
     else
-        echo "/tmp/gitbox"
+        remote_gui_for "$1"
     fi
 }
 
-# Where the binary lives on a given platform
-binary_path() {
-    local platform="$1"
-    if [[ "$platform" == "$LOCAL_OS" ]]; then
-        build_artifact "$platform"
-    else
-        remote_bin_for "$platform"
-    fi
+# The executable itself. On macOS it sits inside the .app bundle.
+gui_exe() {
+    local path
+    path="$(gui_path "$1")"
+    case "$1" in
+        mac|mac-arm|mac-intel)  echo "$path/Contents/MacOS/GitboxApp" ;;
+        *)                      echo "$path" ;;
+    esac
 }
 
 # ---------------------------------------------------------------------------
@@ -274,19 +256,6 @@ run_on() {
     fi
 }
 
-# Run with TTY allocation (for interactive commands)
-run_on_tty() {
-    local platform="$1"; shift
-    local host
-    host="$(ssh_host_for "$platform")"
-    if [[ -z "$host" ]]; then
-        "$@"
-    else
-        # shellcheck disable=SC2029
-        ssh -t "$host" "$*"
-    fi
-}
-
 # Copy a file to a target platform
 copy_to() {
     local platform="$1" local_path="$2" remote_path="$3"
@@ -332,7 +301,8 @@ available_targets() {
         if is_available "$t"; then
             available="$available $t"
         else
-            warn "$(platform_label "$t") — no SSH host configured, skipping"
+            # stderr: callers capture stdout as the target list
+            warn "$(platform_label "$t") — no SSH host configured, skipping" >&2
         fi
     done
     echo "$available"

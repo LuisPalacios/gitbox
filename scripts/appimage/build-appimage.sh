@@ -4,13 +4,13 @@
 # linuxdeploy copies GitboxApp and every shared library it links (GTK 3,
 # WebKitGTK 4.1, JavaScriptCore, libsoup, ...) into the AppDir and its GTK
 # plugin adds GLib schemas, pixbuf loaders, GIO modules and typelibs. This
-# script adds the gitbox CLI, the WebKitGTK helper processes, the AppStream
-# metainfo and our own AppRun, then packs the AppDir with appimagetool. The
-# result runs on a system that has none of those libraries installed, which
-# is what the AppImage catalog (appimage.github.io) tests for.
+# script adds the WebKitGTK helper processes, the AppStream metainfo and our
+# own AppRun, then packs the AppDir with appimagetool. The result runs on a
+# system that has none of those libraries installed, which is what the
+# AppImage catalog (appimage.github.io) tests for.
 #
 # Usage:
-#   scripts/appimage/build-appimage.sh <gitbox-cli> <GitboxApp> <version> <out.AppImage>
+#   scripts/appimage/build-appimage.sh <GitboxApp> <version> <out.AppImage>
 #
 # Needs an x86_64 Linux host with the GUI's runtime and dev libraries
 # installed (libgtk-3-dev, libwebkit2gtk-4.1-dev, libgles2,
@@ -26,12 +26,11 @@ usage() {
   sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
   exit 1
 }
-[ $# -eq 4 ] || usage
+[ $# -eq 3 ] || usage
 
-cli="$(realpath "$1")"
-gui="$(realpath "$2")"
-version="${3#v}"
-out="$4"
+gui="$(realpath "$1")"
+version="${2#v}"
+out="$3"
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 desktop="$here/io.github.luispalacios.gitbox.desktop"
@@ -87,10 +86,6 @@ gles_lib="$(ldconfig -p | awk '/libGLESv2\.so\.2 / {print $NF; exit}')"
 [ -n "$gles_lib" ] || { echo "error: libGLESv2.so.2 not found; install libgles2" >&2; exit 1; }
 
 # --- static inputs ---------------------------------------------------------
-# linuxdeploy keeps source file names, and CI hands the CLI over as
-# gitbox-linux-amd64; install it under its real name and let linuxdeploy
-# only resolve its dependencies.
-install -m 755 "$cli" "$appdir/usr/bin/gitbox"
 sed -e "s/@VERSION@/$version/" -e "s/@DATE@/$(date -u +%F)/" "$metainfo" \
   > "$appdir/usr/share/metainfo/$(basename "$metainfo")"
 
@@ -102,7 +97,7 @@ export DEPLOY_GTK_VERSION=3
   cd "$work"
   linuxdeploy-x86_64.AppImage --appdir "$appdir" \
     --executable "$gui" \
-    --deploy-deps-only "$appdir/usr/bin/gitbox" \
+\
     --deploy-deps-only "$webkit_dst" \
     --deploy-deps-only "$webkit_dst/injected-bundle" \
     --library "$gles_lib" \
@@ -119,7 +114,7 @@ chmod 755 "$appdir/usr/bin/GitboxApp"
 
 # --- verify -----------------------------------------------------------------
 # Fail here rather than at a user's first launch.
-for f in usr/bin/GitboxApp usr/bin/gitbox usr/lib/libwebkit2gtk-4.1.so.0 usr/lib/libgtk-3.so.0 \
+for f in usr/bin/GitboxApp usr/lib/libwebkit2gtk-4.1.so.0 usr/lib/libgtk-3.so.0 \
          usr/lib/libGLESv2.so.2 "${webkit_dst#"$appdir/"}/WebKitWebProcess" \
          apprun-hooks/linuxdeploy-plugin-gtk.sh usr/share/glib-2.0/schemas/gschemas.compiled; do
   [ -e "$appdir/$f" ] || { echo "error: $f missing from AppDir" >&2; exit 1; }

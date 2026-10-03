@@ -1,8 +1,8 @@
 // Package doctor probes the host for the external command-line tools gitbox
 // relies on (git, GCM, ssh, wsl, ...) and reports whether each is installed,
-// where it lives, and what version it is. The results feed both the
-// `gitbox doctor` CLI command and point-of-use checks in the GUI/TUI so the
-// user learns about a missing dependency before it fails at runtime.
+// where it lives, and what version it is. The results feed the GUI's
+// system check and its point-of-use checks, so the user learns about a
+// missing dependency before it fails at runtime.
 package doctor
 
 import (

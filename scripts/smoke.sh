@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 #
-# smoke.sh — Run non-interactive smoke tests on one or all platforms.
+# smoke.sh — Run a non-interactive GitboxApp smoke test on one or all platforms.
 #
-# Runs gitbox version, help, and JSON output commands to verify the binary
-# works on each target platform.
+# Runs `GitboxApp --version`, which prints the build version and exits
+# without opening a window, so it works over plain SSH. The local host uses
+# the local `wails build` output (cmd/gui/build/bin/); remotes use the copy
+# ./scripts/ship.sh staged (/tmp/GitboxApp[.app] or ~/GitboxApp.exe). On
+# macOS the binary inside the .app bundle runs.
 #
 # Usage:
 #   ./scripts/smoke.sh              # all configured platforms (default)
@@ -22,41 +25,31 @@ if [[ -z "$targets" ]]; then
     die "no platforms available"
 fi
 
-COMMANDS=(
-    "version"
-    "help"
-    "global show --json"
-    "account list --json"
-    "status --json"
-)
-
 total_pass=0
 total_fail=0
 
 for platform in $targets; do
     label="$(platform_label "$platform")"
-    bin="$(binary_path "$platform")"
+    exe="$(gui_exe "$platform")"
 
-    printf '%b%s%b\n' "$B" "$label" "$N"
-
-    for cmd in "${COMMANDS[@]}"; do
-        printf '  %-25s ' "$cmd"
-        # shellcheck disable=SC2086
-        if output="$(run_on "$platform" "$bin" $cmd 2>&1)"; then
-            printf '%bok%b\n' "$G" "$N"
-            total_pass=$((total_pass + 1))
-        else
-            printf '%bFAIL%b\n' "$R" "$N"
-            total_fail=$((total_fail + 1))
-            # Show first line of error for debugging
-            first_line="$(echo "$output" | head -1)"
-            if [[ -n "$first_line" ]]; then
-                info "$first_line"
-            fi
+    printf '  %-18s ' "$label"
+    # Expected output: "GitboxApp <version> (<sha>)".
+    if output="$(run_on "$platform" "$exe" --version 2>&1)" && [[ "$output" == GitboxApp* ]]; then
+        printf '%bok%b    %s\n' "$G" "$N" "$(echo "$output" | head -1)"
+        total_pass=$((total_pass + 1))
+    else
+        printf '%bFAIL%b\n' "$R" "$N"
+        total_fail=$((total_fail + 1))
+        info "$exe"
+        # Show first line of error for debugging
+        first_line="$(echo "$output" | head -1)"
+        if [[ -n "$first_line" ]]; then
+            info "$first_line"
         fi
-    done
-    echo ""
+    fi
 done
+
+echo ""
 
 # ---------------------------------------------------------------------------
 # Summary

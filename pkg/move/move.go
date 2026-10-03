@@ -266,7 +266,7 @@ func buildDestPushURL(acct config.Account, owner, repoName, plainHTTPSURL, apiTo
 }
 
 // stripScheme removes "https://" or "http://" from a URL so the host
-// can be used in an SSH-form remote. Mirrors the helper in cmd/cli/tui.
+// can be used in an SSH-form remote.
 func stripScheme(raw string) string {
 	for _, p := range []string{"https://", "http://"} {
 		if strings.HasPrefix(raw, p) {
@@ -298,8 +298,8 @@ func humaniseSourceDeleteError(err error, providerName, accountKey string) (shor
 		regenURL := scopeErr.RemediationURL()
 		if regenURL != "" {
 			full = fmt.Sprintf(
-				"Source repo delete refused: your %s PAT is missing the %q scope. Regenerate it at %s (keep existing scopes, add %q), then re-run `gitbox account credential setup %s`.",
-				providerName, scopes, regenURL, scopes, accountKey,
+				"Source repo delete refused: your %s PAT is missing the %q scope. Regenerate it at %s (keep existing scopes, add %q), then store the new token in the account's credential settings.",
+				providerName, scopes, regenURL, scopes,
 			)
 			return short, full
 		}

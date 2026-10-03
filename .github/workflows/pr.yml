@@ -1,0 +1,73 @@
+name: PR checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Same Node 24 opt-in as ci.yml (see the note there).
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+permissions:
+  contents: read
+
+# A new push to the same PR or branch cancels the run it supersedes.
+concurrency:
+  group: pr-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Frontend build, go vet, unit tests and a Linux GUI build smoke ──
+  # Same base image and WebKitGTK packages as the gui-linux release job, so
+  # a green PR means the release build compiles too.
+  check:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history with tags: update.ResolveVersion (and its test)
+          # derive dev versions from `git describe --tags`.
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: cmd/gui/frontend/package-lock.json
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      # cmd/gui embeds frontend/dist (go:embed), so go vet and go test need
+      # the frontend built first.
+      - name: Install frontend dependencies
+        working-directory: cmd/gui/frontend
+        run: npm ci
+      - name: Build frontend
+        working-directory: cmd/gui/frontend
+        run: npm run build
+      - name: Svelte check
+        working-directory: cmd/gui/frontend
+        run: npm run check
+
+      - name: Go vet
+        run: go vet ./...
+      - name: Run tests
+        run: go test -short ./...
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+      - name: Copy app icons
+        run: |
+          mkdir -p cmd/gui/build
+          cp assets/appicon.png cmd/gui/build/appicon.png
+      # -s skips the frontend build that already ran above.
+      - name: Build GUI
+        working-directory: cmd/gui
+        run: wails build -s -tags webkit2_41
+      - name: Smoke test
+        run: cmd/gui/build/bin/GitboxApp --version

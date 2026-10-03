@@ -6,7 +6,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 A multi-component project for managing Git multi-account environments across providers (GitHub, GitLab, Gitea, Forgejo, Bitbucket).
 
-**Go app** (`cmd/cli/`, `cmd/gui/`, `pkg/`) — CLI + TUI + Wails GUI sharing a Go library.
+**Go app** (`cmd/gui/`, `pkg/`) — the Wails GUI `GitboxApp` on top of a shared Go library. Since v2 the GUI is the only interface; the v1 CLI + TUI live on the `release/v1` branch (1.x tags).
 
 ## Core Principles
 
@@ -47,11 +47,9 @@ When translating documentation into any supported language, preserve the English
 
 ```text
 cmd/
-  cli/                    Go CLI + TUI binary (gitbox)
-    tui/                  Bubble Tea TUI (launched when no args + terminal)
-      styles/             Theme, colors, symbols
-  gui/                    Wails v2 + Svelte GUI (GitboxApp)
+  gui/                    Wails v2 + Svelte GUI (GitboxApp), the only binary
 pkg/                      Shared Go library
+  ops/                    Account, credential, clone and discovery service layer the GUI calls (+ TestScenario_FullLifecycle)
   config/                 Config v3 model, load/save, v1→v2→v3 migration
   credential/             Credential verification (GCM, SSH, token); global GCM helper check accepts any helper resolving to git-credential-manager (short name or absolute path)
   git/                    Git subprocess operations (os/exec); global config get/get-all/add/unset; IsWSLAvailable / WSLPath helpers on Windows
@@ -61,29 +59,39 @@ pkg/                      Shared Go library
   adopt/                  Orphan repo discovery + adoption (multi-root scan, container nested-clone discovery, in-place absolute clone_folder)
   status/                 Clone status checking
   update/                 Auto-update: version check, download, self-replace
-  doctor/                 External-tool detection (git, GCM, ssh, tmux, …): point-of-use precheck + `gitbox doctor` command
+  doctor/                 External-tool detection (git, GCM, ssh, tmux, …): point-of-use precheck + the GUI's tool check
   identity/               Global `~/.gitconfig` user.name/user.email detection + removal
   gitignore/              Global `~/.gitignore_global` managed-block install with sentinel dedup + timestamped backups
 docs/
-  cli-guide.md            CLI quick start
+  README.md               Documentation index
   gui-guide.md            GUI guide
-  reference.md            Detailed command & config reference
   developer-guide.md      Build instructions, contributing
   architecture.md         Technical design
-  macos-signing.md        macOS code signing setup
   credentials.md          Credential setup guide
   testing.md              Test levels, fixture format, pre-PR and release checklists
   testing-reference.md    Test inventory, harness internals
-  completion.md           Shell completion docs
+  multiplatform.md        Remote hosts (.env) for cross-platform testing
+  macos-signing.md        macOS code signing setup
+  worktree-workflow.md    Parallel worktree sessions (/work-issue, /merge-pr)
+  agentic-tools-directory.md  AI harness / agentic tools directory
+  es/                     Spanish counterparts of every doc above
   diagrams/               Architecture diagrams
-assets/                   Icons, logo, screenshot, VHS tape files
+assets/                   Icons, logo, screenshots
 scripts/
-  bootstrap.sh             Cross-platform installer (downloads a release, places binaries, wires PATH, registers Linux menu entry)
+  bootstrap.sh             Cross-platform installer (downloads a release, places GitboxApp, registers Linux menu entry; --cli-only installs the latest 1.x CLI)
   register-gitbox.sh       Linux-only desktop registrar (.desktop + icon in ~/.local/share, idempotent, supports --uninstall)
-  installer.iss            Windows Inno Setup installer script
+  installer.iss            Windows Inno Setup installer script (GUI only; cleans up v1's CLI and PATH entry on upgrade)
   appimage/                Linux AppImage build (build-appimage.sh + linuxdeploy, AppRun, desktop, AppStream metainfo, icon)
   dmg/                     macOS DMG installer script + README
-.githooks/pre-push        Pre-push hook (go vet + unit tests)
+  _common.sh               Shared helpers for the dev scripts (.env, SSH, GitboxApp paths)
+  ship.sh                  Build GitboxApp on each remote host in .env and stage it
+  smoke.sh                 Run `GitboxApp --version` locally and on staged remotes
+  test-commands.sh         Print GitboxApp --test-mode launch commands per platform
+  run-commands.sh          Print GitboxApp launch commands per platform
+  setup-credentials.sh     Run test-setup-credentials.sh locally or on remotes
+  test-setup-credentials.sh  Provision test credentials from test-gitbox.json
+  send-my-production-config.sh  Copy the local gitbox.json to one remote (with diff + confirm)
+.githooks/pre-push        Pre-push hook (go vet + unit tests; builds the frontend if dist is missing)
 .claude/
   CLAUDE.md               Canonical agent guidance (this file)
   context/
@@ -97,14 +105,15 @@ scripts/
     merge-pr/             Merge a PR (post-/work-issue), clean up worktree + branch
     preview-prototype/    Local Svelte preview server
     screenshot-prototype/ GUI screenshot generation
-    ship-builds/          Cross-compile + ship CLI/GUI to remote hosts in .env
+    ship-builds/          Build + stage GitboxApp on remote hosts in .env
     test-plan/            Pre-PR and release verification
     work-issue/           Worktree → plan → code → push → PR (stops before merge)
   rules/
     skills-authoring.md   Skill creation guidelines
 AGENTS.md                 → .claude/CLAUDE.md (symlink — Codex reads project guidance here)
 .agents/skills            → ../.claude/skills (symlink — Codex sees skills here)
-.github/workflows/ci.yml  CI: build, test, release (+ installers, DMGs, AppImage)
+.github/workflows/ci.yml  Release CI on v* tags: test, build, release (+ installers, DMGs, AppImage)
+.github/workflows/pr.yml  PR + main CI: frontend build, svelte-check, go vet, unit tests, Linux GUI build smoke
 json/
   gitbox.schema.json      v3 JSON Schema
   gitbox.jsonc            v3 annotated example (Spanish comments)
@@ -120,17 +129,19 @@ If the symlinks ever go missing or get checked out as plain files, follow the re
 
 ## Go app
 
-**Language:** Go. **GUI:** Wails v2 + Svelte. **TUI:** Charm stack (Bubble Tea, Lip Gloss, Bubbles). **Three modes** from shared `pkg/`.
+**Language:** Go. **GUI:** Wails v2 + Svelte. One binary, `GitboxApp`, on top of the shared `pkg/` library. Business logic lives in `pkg/` (account, credential, clone and discovery flows in `pkg/ops`); `cmd/gui` is Wails glue.
 
 ### Binary naming
 
-The CLI/TUI binary is `gitbox`, the GUI binary is `GitboxApp`. This avoids a Windows NTFS collision (case-insensitive filesystem).
+The GUI binary is `GitboxApp`. The v1 CLI/TUI binary was `gitbox` — a different name, so the two never collided on the case-insensitive NTFS filesystem when shipped side by side. The CLI/TUI is maintained on the `release/v1` branch and installed with `scripts/bootstrap.sh --cli-only` (latest 1.x).
 
-| Platform | CLI/TUI      | GUI             |
-| -------- | ------------ | --------------- |
-| Windows  | `gitbox.exe` | `GitboxApp.exe` |
-| macOS    | `gitbox`     | `GitboxApp.app` |
-| Linux    | `gitbox`     | `GitboxApp`     |
+| Platform | GUI             |
+| -------- | --------------- |
+| Windows  | `GitboxApp.exe` |
+| macOS    | `GitboxApp.app` |
+| Linux    | `GitboxApp`     |
+
+`GitboxApp --version` prints `GitboxApp <version> (<sha>)` and exits without opening a window, so scripts and CI use it as a smoke check.
 
 ### Build commands
 
@@ -140,66 +151,33 @@ The CLI/TUI binary is `gitbox`, the GUI binary is `GitboxApp`. This avoids a Win
 # is outside the repo). Matches the values CI and scripts/ship.sh inject.
 LDFLAGS="-X main.version=$(git describe --tags --always)-dev -X main.commit=$(git rev-parse --short HEAD)"
 
-# Build CLI/TUI (portable — produces build/gitbox.exe on Windows, build/gitbox elsewhere)
-go build -ldflags "$LDFLAGS" -o "build/gitbox$(go env GOEXE)" ./cmd/cli
+# cmd/gui embeds frontend/dist (go:embed), so `go build ./...`, `go vet ./...`
+# and `go test ./...` need the frontend built once (wails build also does it).
+(cd cmd/gui/frontend && npm ci && npm run build)
 
 # Build GUI (requires Wails CLI)
 # ALWAYS copy icons before building — they are not checked in under cmd/gui/build/
 cp assets/appicon.png cmd/gui/build/appicon.png
 cp assets/icon.ico    cmd/gui/build/windows/icon.ico
-cd cmd/gui && wails build -ldflags "$LDFLAGS"
-# Output: cmd/gui/build/bin/GitboxApp[.exe]
+(cd cmd/gui && wails build -ldflags "$LDFLAGS")   # Linux: add -tags webkit2_41
+# Output: cmd/gui/build/bin/GitboxApp[.exe] (GitboxApp.app on macOS)
+
+# Smoke check
+cmd/gui/build/bin/GitboxApp --version        # macOS: GitboxApp.app/Contents/MacOS/GitboxApp
 
 # Run tests
-go test ./pkg/...              # shared library
-go test ./cmd/cli/tui/         # TUI unit + integration (teatest)
-go test ./cmd/cli/             # CLI unit + integration + scenario
+go test ./pkg/...              # shared library (pkg/ops holds the lifecycle scenario)
+go test ./cmd/gui/             # Wails-bound App methods
 go test ./...                  # everything
 ```
 
 Git operations shell out to system `git` via `os/exec`. Provider APIs use `net/http`.
 
-### TUI architecture
-
-The TUI is embedded in the CLI binary (`cmd/cli/tui/`). It launches automatically when `gitbox` is run with no arguments and stdin is a terminal. Otherwise, Cobra CLI commands execute.
-
-**Stack:** Bubble Tea (MVU framework), Lip Gloss (styling), Bubbles (text inputs, keys).
-
-**Layout (mirrors GUI):** Two tabs — Accounts and Mirrors. Each tab shows cards at the top (account/mirror group summaries) with a detail list below (repos grouped by source, or mirror repos grouped by group). This matches the GUI's visual hierarchy.
-
-**Screen structure:**
-
-```text
-model (root router)
-├── dashboardModel          2 tabs: Accounts (cards + repo list), Mirrors (cards + mirror list)
-├── onboardingModel         First-run setup
-├── accountModel            Account detail/edit/rename (direct from dashboard card)
-├── accountAddModel         Add new account form
-├── credentialModel         Unified credential management (menu/type-select/setup)
-├── discoveryModel          Repo discovery with multi-select
-├── reposModel              Single repo detail + clone/pull/fetch/delete
-├── mirrorsModel            Mirror detail + setup/discover/CRUD
-├── settingsModel           Global folder, periodic sync, open in editor
-├── terminalsScreen         v2.1 TerminalProfile editor (parity with GUI's Manager window)
-└── identityModel           Global git identity check/removal
-```
-
-Helper files:
-
-- `components.go` — reusable form/select components (formModel, selectField)
-- `helpers.go` — shared credential/clone business logic (renameAccount, changeCredentialType, deleteCredential, reconfigureClones, etc.)
-
-**Key pattern:** Every screen is a Bubble Tea `Model` with `Init()`, `Update(msg)`, `View()`. The root model routes between screens via `switchScreenMsg`. All business logic calls `pkg/` — never duplicate logic in the TUI.
-
 ### Windows console flash rule
 
-Every `exec.Command` in the GUI binary (`cmd/gui/`) **MUST** call `git.HideWindow(cmd)` before `.Run()`, `.Output()`, or `.Start()`. This sets `SysProcAttr.HideWindow = true` on Windows, preventing a console window from flashing. The CLI binary does not need this. Always check for bare `exec.Command` calls in `cmd/gui/` after any change.
+Every `exec.Command` in the GUI binary (`cmd/gui/`) **MUST** call `git.HideWindow(cmd)` before `.Run()`, `.Output()`, or `.Start()`. This sets `SysProcAttr.HideWindow = true` on Windows, preventing a console window from flashing. Always check for bare `exec.Command` calls in `cmd/gui/` after any change.
 
 **Launching a visible terminal** (e.g. `OpenInTerminal`) is a special case: a GUI parent has no console, and Go's exec inherits null stdio to the child with `STARTF_USESTDHANDLES` set, so plain console apps (`cmd.exe`, `pwsh.exe`, etc.) see closed stdin and exit. Solution: wrap the launch in `cmd.exe /C start "" /D <path> <command> <args...>`. `start` creates a fresh console for the terminal; `HideWindow` hides the intermediate `cmd.exe` wrapper so the rule above still holds.
-
-### TUI demo recordings
-
-Use VHS (`charmbracelet/vhs`) to record terminal demo GIFs. Tape files live in `assets/`. See [developer-guide.md](docs/developer-guide.md) for details.
 
 ## Config format
 
@@ -239,7 +217,7 @@ Pick per task. Default to branch + PR when in doubt — the cost of a PR for a s
 
 Reference the issue in the commit with `Closes #N` — GitHub auto-closes on push.
 
-**Branch + PR to self-merge** for everything else: multi-file features, anything touching `pkg/` public surface, refactors, UI changes (GUI/TUI), anything that benefits from seeing the full diff at once or letting CI gate the merge. The PR body is where I narrate the change (and where CI runs) — I am allowed to self-approve and merge immediately. Branch names follow `<type>/<issue>-<slug>`, e.g. `fix/31-ide-flash` or `feat/22-open-in-terminal`. Always use `gh pr create --body "Closes #N\n\n..."` so the issue closes on merge.
+**Branch + PR to self-merge** for everything else: multi-file features, anything touching `pkg/` public surface, refactors, UI changes, anything that benefits from seeing the full diff at once or letting CI gate the merge. The PR body is where I narrate the change (and where CI runs) — I am allowed to self-approve and merge immediately. Branch names follow `<type>/<issue>-<slug>`, e.g. `fix/31-ide-flash` or `feat/22-open-in-terminal`. Always use `gh pr create --body "Closes #N\n\n..."` so the issue closes on merge.
 
 **External contributions** (anyone who is not me): always come through PRs from forks — I review, CI must pass, then merge.
 
@@ -251,9 +229,9 @@ The protocol has two shapes depending on what was changed:
 
 **Runtime-affecting changes** (code under `cmd/` or `pkg/`, build config, UI behaviour):
 
-1. Finish the implementation locally: commits on the fix branch (or staged on main), `go vet ./...` clean, focused tests passing, **both binaries built** per the build-both rule.
+1. Finish the implementation locally: commits on the fix branch (or staged on main), `go vet ./...` clean, focused tests passing, **the GUI built** per the build rule.
 2. Stop and send one short message with:
-   - Which commit(s) or branch are ready and the binary paths to launch (e.g. `build/gitbox.exe`, `cmd/gui/build/bin/GitboxApp.exe`).
+   - Which commit(s) or branch are ready and the binary path to launch (e.g. `cmd/gui/build/bin/GitboxApp.exe`).
    - A concrete check: what to click, what output to expect, what regression to rule out ("open Preferences → Open In Editor, confirm no cmd.exe flash").
    - The exact publish command I intend to run next (`git push origin main` or `gh pr merge <n> --squash`) — described, not executed.
 3. Wait. Do not push, do not merge, do not `gh pr create` with auto-merge. If the user reports a regression, fix it and re-offer the build — never ship over an unresolved user-reported failure.
@@ -286,7 +264,7 @@ When in doubt, ask. It is never wrong to pause; it is sometimes wrong to push.
 - Never mark a task complete without proving it works
 - Test scripts with `bash -n` (syntax check) and `shellcheck` when available
 - Go: `go vet ./...` + run the relevant test commands (see Testing section below)
-- **Build both binaries** after any code change to `cmd/` or `pkg/` — never just the one I touched. The CLI and GUI share `pkg/` but have divergent build tags, imports, and rules (Wails runtime, the `git.HideWindow` Windows console-flash rule applies only to `cmd/gui/`), so a change that compiles cleanly in one target can break the other. Quick compile-check during iterative edits: `go build -o /dev/null ./cmd/cli ./cmd/gui`. Full build before reporting done or pushing: `go build -o build/gitbox ./cmd/cli` + `cd cmd/gui && wails build` (copy icons first — see Build commands). Doc-only and non-Go changes are exempt.
+- **Build the GUI** after any code change to `cmd/` or `pkg/`. `go build ./...` alone skips the Wails build tags and the frontend build, so a change that compiles there can still break `wails build`. Quick compile-check during iterative edits: `go build ./...` (needs `cmd/gui/frontend/dist`, see Build commands). Full build before reporting done or pushing: `cd cmd/gui && wails build` (copy icons first — see Build commands), then `GitboxApp --version` on the result. Doc-only and non-Go changes are exempt.
 - Validate config templates render correctly before committing
 - After any command that writes config files, read the actual file on disk — never trust command output alone
 
@@ -296,33 +274,35 @@ The project has a comprehensive test suite. Read `.claude/context/testing-patter
 
 **After any code change, always run the relevant tests:**
 
-| What changed                             | Command                                               |
-| ---------------------------------------- | ----------------------------------------------------- |
-| `pkg/` (shared library)                  | `go test ./pkg/...`                                   |
-| `cmd/cli/tui/` (TUI screens, components) | `go test ./cmd/cli/tui/`                              |
-| `cmd/cli/` (CLI commands)                | `go test ./cmd/cli/`                                  |
-| Credential logic (`pkg/credential/`)     | `go test ./pkg/credential/ ./cmd/cli/tui/ ./cmd/cli/` |
-| Config logic (`pkg/config/`)             | `go test ./pkg/config/ ./cmd/cli/tui/ ./cmd/cli/`     |
-| Update logic (`pkg/update/`)             | `go test ./pkg/update/`                               |
-| Doctor / tool detection (`pkg/doctor/`)  | `go test ./pkg/doctor/`                               |
-| Unsure what's affected                   | `go test ./...`                                       |
+| What changed                                | Command                                           |
+| ------------------------------------------- | ------------------------------------------------- |
+| `pkg/` (shared library)                     | `go test ./pkg/...`                               |
+| Account/credential/clone flows (`pkg/ops/`) | `go test ./pkg/ops/`                              |
+| Credential logic (`pkg/credential/`)        | `go test ./pkg/credential/ ./pkg/ops/ ./cmd/gui/` |
+| Config logic (`pkg/config/`)                | `go test ./pkg/config/ ./pkg/ops/ ./cmd/gui/`     |
+| GUI bindings (`cmd/gui/`)                   | `go test ./cmd/gui/`                              |
+| Update logic (`pkg/update/`)                | `go test ./pkg/update/`                           |
+| Doctor / tool detection (`pkg/doctor/`)     | `go test ./pkg/doctor/`                           |
+| Unsure what's affected                      | `go test ./...`                                   |
+
+`cmd/gui` tests (and `./...`) need `cmd/gui/frontend/dist` — build the frontend once if it is missing.
 
 **Test levels:**
 
-- **Unit tests** — always run, no credentials needed. TUI unit tests use manual message dispatch (`sendMsg`, `sendKey`).
-- **Integration tests** (`TestIntegration_*`) — require `test-gitbox.json` at repo root with real provider credentials. Fail with a clear message when missing; skip with `-short`. TUI integration tests use teatest (real Bubble Tea event loop).
-- **Scenario tests** (`TestScenario_*`) — full CLI lifecycle, also require fixture.
+- **Unit tests** — always run, no credentials needed. Package-level tests in `pkg/`, isolated with `t.TempDir()` and `t.Setenv()`; `cmd/gui` tests call `App` methods directly, without the Wails runtime.
+- **Integration tests** (`TestIntegration_*`) — require `test-gitbox.json` at repo root with real provider credentials. Fail with a clear message when missing; skip with `-short`.
+- **Scenario test** (`TestScenario_FullLifecycle` in `pkg/ops`) — the full account → clone → mirror → rename → delete lifecycle against a real provider, also gated by the fixture.
 
 **When adding new features or fixing bugs:**
 
 - Add or update tests that cover the change. Check `.claude/context/testing-patterns.md` for existing helpers before writing new ones.
-- TUI screen changes: add unit tests using `newTestModel`/`initModel`/`sendMsg` helpers. For flows involving real credentials or API calls, add teatest integration tests.
-- CLI command changes: add subprocess tests using `env.run()`/`env.runJSON()`.
-- `pkg/` changes: add package-level tests.
+- `pkg/` changes: add package-level tests. Account, credential, clone and discovery flows go in `pkg/ops` (helpers: `isolate`, `makeClone`, `gitRun`).
+- Flows that need real credentials or API calls: gate them with `requireIntegration(t)`, or extend `TestScenario_FullLifecycle` with a new step.
+- GUI binding changes: add `cmd/gui` tests that build an `App` and call the method.
 
 **Run `go vet ./...` before committing** — it catches issues the test suite doesn't.
 
-**Pre-push hook:** The repo includes `.githooks/pre-push` which runs `go vet` + `go test -short` before every push. Activate with `git config core.hooksPath .githooks`.
+**Pre-push hook:** The repo includes `.githooks/pre-push` which runs `go vet` + `go test -short` before every push, building the frontend first when `cmd/gui/frontend/dist` is missing. Activate with `git config core.hooksPath .githooks`.
 
 **Test plan:** The full pre-PR and release verification workflow is documented in `docs/testing.md`. If using Claude Code, the `/test-plan` skill automates the automated steps and guides through interactive ones.
 
@@ -330,13 +310,15 @@ The project has a comprehensive test suite. Read `.claude/context/testing-patter
 
 A feature is not complete until all affected documents are updated. Review this table after every change:
 
-| Change type                       | Documents to review                                                                  |
-| --------------------------------- | ------------------------------------------------------------------------------------ |
-| New feature / behavior change     | `docs/credentials.md`, `docs/cli-guide.md`, `docs/reference.md`, `docs/gui-guide.md` |
-| New/changed tests                 | `docs/testing.md`, `.claude/context/testing-patterns.md`                             |
-| New tooling (skill, hook, script) | `docs/developer-guide.md`                                                            |
-| Repo structure change             | `.claude/CLAUDE.md` (repository layout), `docs/README.md` (index)                    |
-| All of the above                  | `.claude/CLAUDE.md` (relevant sections)                                              |
+| Change type                       | Documents to review                                                                   |
+| --------------------------------- | ------------------------------------------------------------------------------------- |
+| New feature / behavior change     | `docs/gui-guide.md`, `docs/credentials.md`, `docs/architecture.md`                    |
+| New/changed tests                 | `docs/testing.md`, `docs/testing-reference.md`, `.claude/context/testing-patterns.md` |
+| New tooling (skill, hook, script) | `docs/developer-guide.md`, `docs/multiplatform.md` (dev scripts)                      |
+| Repo structure change             | `.claude/CLAUDE.md` (repository layout), `docs/README.md` (index)                     |
+| All of the above                  | `.claude/CLAUDE.md` (relevant sections)                                               |
+
+Every English doc under `docs/` has a counterpart under `docs/es/`; update both (see "Documentation language and translations").
 
 ### 4. Autonomous bug fixing
 
@@ -358,7 +340,7 @@ Cross-cutting rules when a session is running inside a worktree:
 - Stay in the worktree directory. Never edit files outside it, never check out a different branch in it.
 - Global state is shared across worktrees: `~/.config/gitbox/gitbox.json`, system git config, GCM, SSH agent. Never run interactive credential or init-wizard flows in two sessions at once.
 - Before any `gh` command, derive the expected user from this clone's `remote.origin.url` (not a hardcoded name) and switch with `gh auth switch` if needed. The skill does this automatically.
-- If the worktree path falls under a gitbox-managed folder, expect `gitbox status` / discovery screens to list it as an orphan. It's not actually orphaned — just unrecognised by the scanner. Safe to ignore.
+- If the worktree path falls under a gitbox-managed folder, expect GitboxApp's status and discovery views to list it as an orphan. It's not actually orphaned — just unrecognised by the scanner. Safe to ignore.
 
 See [docs/worktree-workflow.md](../docs/worktree-workflow.md) for the full walkthrough.
 
@@ -399,11 +381,11 @@ Anything I publish to a GitHub-visible surface — issue body, issue comment, PR
 
 The developer workstation can be any OS. Remote machines are available via SSH for cross-platform testing. Every build-and-test cycle MUST cover all three platforms.
 
-**Local first, then ship remotes.** The default test flow for any change is: (1) build both binaries locally per the build-both rule, (2) smoke-test them on the local host, (3) `./scripts/ship.sh` to fan out to the remotes configured in `.env` (or `./scripts/ship.sh <short-name>` for one). Never skip step 1 — the local host is part of the cycle, and jumping straight to ship reports "green" without verifying on the machine you actually iterated on. If `.env` is absent or empty, the local build + smoke is the entire cycle.
+**Local first, then ship remotes.** The default test flow for any change is: (1) build the GUI locally per the build rule, (2) smoke-test it on the local host, (3) `./scripts/ship.sh` to fan out to the remotes configured in `.env` (or `./scripts/ship.sh <short-name>` for one). Never skip step 1 — the local host is part of the cycle, and jumping straight to ship reports "green" without verifying on the machine you actually iterated on. If `.env` is absent or empty, the local build + smoke is the entire cycle.
 
 Connection details are in `.env` (gitignored). Copy `docs/.env.example` to `.env` and fill in your SSH hosts. See `docs/multiplatform.md` for the full setup guide.
 
-| Platform            | Env var              | Arch  | GOOS/GOARCH     | Script token              |
+| Platform            | Env var              | Arch  | Wails target    | Script token              |
 | ------------------- | -------------------- | ----- | --------------- | ------------------------- |
 | Windows amd64       | `SSH_WIN_INTEL_HOST` | amd64 | `windows/amd64` | `win-intel` (alias `win`) |
 | Windows arm64       | `SSH_WIN_ARM_HOST`   | arm64 | `windows/arm64` | `win-arm`                 |
@@ -413,23 +395,23 @@ Connection details are in `.env` (gitignored). Copy `docs/.env.example` to `.env
 
 Legacy `SSH_WIN_HOST` is still honored as a fallback for `SSH_WIN_INTEL_HOST` — older `.env` files keep working without a rename.
 
-### Build-test-deploy cycle
+### Build-test-ship cycle
 
 Scripts in `scripts/` automate the full cycle:
 
 ```bash
-./scripts/deploy.sh          # cross-compile all 3 + deploy to remotes
-./scripts/smoke.sh all       # non-interactive smoke tests on all platforms
-./scripts/test-commands.sh   # print interactive test-mode commands
-./scripts/run-commands.sh    # print interactive production-mode commands
+./scripts/ship.sh            # build GitboxApp on every remote in .env and stage it (+ test-gitbox.json)
+./scripts/smoke.sh all       # GitboxApp --version on the local build and every staged remote
+./scripts/test-commands.sh   # print GitboxApp --test-mode launch commands
+./scripts/run-commands.sh    # print GitboxApp launch commands (real config)
 ./scripts/setup-credentials.sh all  # set up SSH keys + tokens on all platforms
 ```
 
 The scripts auto-detect the local OS. Local commands run directly, remote commands use SSH. See each script's header for usage.
 
-### Cross-compiling the GUI
+### Building the GUI on a remote host
 
-`scripts/deploy.sh` only ships the **CLI** — `wails build` refuses to cross-compile the GUI because each target needs the host's native webview (WebView2 on Windows, WebKit on macOS, WebKitGTK on Linux). For GUI smoke tests on a remote platform, build the GUI **on that remote** over SSH. The recipe below uses `tar | ssh` (rsync isn't available in Git Bash on Windows by default).
+`wails build` cannot cross-compile because each target needs the host's native webview (WebView2 on Windows, WebKit on macOS, WebKitGTK on Linux), so `scripts/ship.sh` builds the GUI **on each remote** over SSH. The manual recipe below is what it does under the hood; it uses `tar | ssh` (rsync isn't available in Git Bash on Windows by default).
 
 ```bash
 # Build GUI for mac from a Windows or Linux host.
@@ -468,16 +450,14 @@ Notes:
 
 - **Non-login SSH shells** don't source `.zshrc` / `.bash_profile`, so `go` and `wails` are usually off `$PATH`. Prefix every remote command with `export PATH=/opt/homebrew/bin:/usr/local/bin:$HOME/go/bin:$PATH` — Apple Silicon Homebrew uses `/opt/homebrew/bin`, Intel Homebrew uses `/usr/local/bin`; including both keeps the same recipe working for `mac-arm` and `mac-intel`.
 - **Tar from the repo root.** If the shell cwd is wrong, tar will happily ship a partial tree. Anchor with `cd "$(git rev-parse --show-toplevel)"` first.
-- **`.env` is gitignored** — if the worktree doesn't have one yet, copy it in from the main clone (`cp ../gitbox/.env .`) before running `scripts/deploy.sh`.
+- **`.env` is gitignored** — if the worktree doesn't have one yet, copy it in from the main clone (`cp ../gitbox/.env .`) before running `scripts/ship.sh` or `scripts/smoke.sh`.
 - Linux builds the same way — swap `$host` to `$SSH_LINUX_HOST`, `$target` to `linux/amd64`, adjust PATH (e.g. `/usr/local/go/bin`). The artifact lands at `cmd/gui/build/bin/GitboxApp`.
 - macOS signing/notarization is a separate concern — see `docs/macos-signing.md`. A `wails build` unsigned binary launches fine locally but gets the Gatekeeper quarantine on first download; for smoke tests that's fine.
 
-For a read-only smoke check (no GUI, just CLI + `pkg/` compile coverage), `scripts/deploy.sh` is still the fast path — it cross-compiles the CLI for all three platforms.
-
 ### Non-interactive vs interactive tests
 
-- **Non-interactive** (version, status, config show, JSON output): Claude runs via `./scripts/smoke.sh` or directly via SSH.
-- **Interactive** (TUI, credential prompts, init wizard): Claude uses `./scripts/test-commands.sh` or `./scripts/run-commands.sh` to print the exact commands. The user runs them in their own terminal.
+- **Non-interactive** (`GitboxApp --version`, unit tests): Claude runs via `./scripts/smoke.sh` or directly via SSH.
+- **Interactive** (anything in the GUI window: onboarding, credential setup, clone, mirrors): Claude uses `./scripts/test-commands.sh` or `./scripts/run-commands.sh` to print the exact launch commands. The user runs them in a terminal inside each host's desktop session.
 
 ## Screenshots for debugging
 
@@ -495,4 +475,4 @@ ls -t "$HOME/Pictures/Screenshots/"*.png | head -1
 ls -t ~/Desktop/*.png | head -1
 ```
 
-Read the file with the Read tool (it supports images). Then analyze the TUI output and report what you see.
+Read the file with the Read tool (it supports images). Then analyze what the GUI shows and report what you see.
