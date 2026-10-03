@@ -9,9 +9,12 @@ import (
 	"strings"
 )
 
-// Apply extracts the downloaded artifact and replaces the running binaries.
-// For zip files: extracts and replaces CLI + GUI binaries next to the running binary.
-// For AppImage files: replaces the AppImage file directly.
+// Apply extracts the downloaded artifact and replaces the running binary.
+// It installs only the running executable's own entry from the zip, never
+// its siblings: the CLI stays on the v1 line while the GUI may already be on
+// v2, so letting a CLI update rewrite GitboxApp would downgrade it. The GUI
+// updates itself through ExtractUpdate + InstallExtracted.
+// For AppImage artifacts it replaces the AppImage file directly.
 func Apply(artifactPath string) error {
 	if strings.HasSuffix(artifactPath, ".AppImage") {
 		return applyAppImage(artifactPath)
@@ -21,21 +24,25 @@ func Apply(artifactPath string) error {
 		return err
 	}
 	defer os.RemoveAll(extractDir)
-	return InstallExtracted(extractDir, installDir)
+
+	self, err := selfPath()
+	if err != nil {
+		return err
+	}
+	own := filepath.Base(self)
+	return installEntries(extractDir, installDir, func(name string) bool {
+		return name == own
+	})
 }
 
 // ExtractUpdate extracts a zip artifact and resolves the install directory.
 // Returns (extractDir, installDir, error). The caller owns extractDir cleanup.
 func ExtractUpdate(zipPath string) (string, string, error) {
-	selfPath, err := os.Executable()
+	self, err := selfPath()
 	if err != nil {
-		return "", "", fmt.Errorf("finding current executable: %w", err)
+		return "", "", err
 	}
-	selfPath, err = filepath.EvalSymlinks(selfPath)
-	if err != nil {
-		return "", "", fmt.Errorf("resolving symlinks: %w", err)
-	}
-	installDir := filepath.Dir(selfPath)
+	installDir := installTarget(self)
 
 	extractDir, err := extractZip(zipPath)
 	if err != nil {
@@ -45,42 +52,120 @@ func ExtractUpdate(zipPath string) (string, string, error) {
 }
 
 // InstallExtracted replaces binaries from extractDir into installDir.
+// It only replaces entries that already exist in installDir: an update
+// refreshes what is installed and never adds components. That keeps a macOS
+// GUI update from dropping the CLI into /Applications, and a CLI update from
+// creating a GitboxApp.app next to ~/bin/gitbox.
 func InstallExtracted(extractDir, installDir string) error {
+	return installEntries(extractDir, installDir, func(name string) bool {
+		_, err := os.Lstat(filepath.Join(installDir, name))
+		return err == nil
+	})
+}
+
+// installEntries copies the zip entries accepted by keep into installDir.
+// Files replace executables in place; .app directories (macOS bundles)
+// replace the whole bundle.
+func installEntries(extractDir, installDir string, keep func(name string) bool) error {
 	entries, err := os.ReadDir(extractDir)
 	if err != nil {
 		return fmt.Errorf("reading extracted files: %w", err)
 	}
 
+	installed := 0
 	for _, entry := range entries {
-		if entry.IsDir() {
-			// Handle .app bundles (macOS) — copy the entire directory.
-			if strings.HasSuffix(entry.Name(), ".app") {
-				dst := filepath.Join(installDir, entry.Name())
-				os.RemoveAll(dst)
-				if err := copyDir(filepath.Join(extractDir, entry.Name()), dst); err != nil {
-					return fmt.Errorf("replacing %s: %w", entry.Name(), err)
-				}
-			}
+		if !keep(entry.Name()) {
 			continue
 		}
-
 		src := filepath.Join(extractDir, entry.Name())
 		dst := filepath.Join(installDir, entry.Name())
+
+		if entry.IsDir() {
+			if !strings.HasSuffix(entry.Name(), ".app") {
+				continue
+			}
+			if err := replaceBundle(src, dst); err != nil {
+				return fmt.Errorf("replacing %s: %w", entry.Name(), err)
+			}
+			installed++
+			continue
+		}
 
 		if err := replaceExecutable(src, dst); err != nil {
 			return fmt.Errorf("replacing %s: %w", entry.Name(), err)
 		}
+		installed++
 	}
 
+	if installed == 0 {
+		return fmt.Errorf("update contains nothing to install in %s", installDir)
+	}
+	return nil
+}
+
+// selfPath returns the running executable with symlinks resolved.
+func selfPath() (string, error) {
+	p, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("finding current executable: %w", err)
+	}
+	p, err = filepath.EvalSymlinks(p)
+	if err != nil {
+		return "", fmt.Errorf("resolving symlinks: %w", err)
+	}
+	return p, nil
+}
+
+// installTarget returns the directory an update for exePath installs into.
+// For an executable inside a macOS bundle (…/X.app/Contents/MacOS/exe) that
+// is the directory holding the bundle, so the whole .app is replaced.
+// Otherwise it is the executable's own directory.
+func installTarget(exePath string) string {
+	macOSDir := filepath.Dir(exePath)
+	contents := filepath.Dir(macOSDir)
+	bundle := filepath.Dir(contents)
+	if filepath.Base(macOSDir) == "MacOS" &&
+		filepath.Base(contents) == "Contents" &&
+		strings.HasSuffix(filepath.Base(bundle), ".app") {
+		return filepath.Dir(bundle)
+	}
+	return macOSDir
+}
+
+// replaceBundle swaps the bundle at dst for src. The new bundle is staged
+// next to dst and renamed into place, so a failed copy never leaves a
+// half-written app behind.
+func replaceBundle(src, dst string) error {
+	staged := dst + ".new"
+	old := dst + ".old"
+	os.RemoveAll(staged)
+	os.RemoveAll(old)
+
+	if err := copyDir(src, staged); err != nil {
+		os.RemoveAll(staged)
+		return err
+	}
+	if _, err := os.Lstat(dst); err == nil {
+		if err := os.Rename(dst, old); err != nil {
+			os.RemoveAll(staged)
+			return err
+		}
+	}
+	if err := os.Rename(staged, dst); err != nil {
+		// Put the previous bundle back.
+		os.Rename(old, dst)
+		return err
+	}
+	os.RemoveAll(old)
 	return nil
 }
 
 func applyAppImage(newAppImage string) error {
 	// The current AppImage path is in $APPIMAGE env var.
-	currentPath := os.Getenv("APPIMAGE")
-	if currentPath == "" {
-		return fmt.Errorf("$APPIMAGE not set — cannot determine current AppImage path")
+	if !runningFromAppImage() {
+		return fmt.Errorf("not running from an AppImage — cannot determine current AppImage path")
 	}
+	currentPath := os.Getenv("APPIMAGE")
 
 	return replaceExecutable(newAppImage, currentPath)
 }
@@ -167,4 +252,32 @@ func copyDir(src, dst string) error {
 		_, err = io.Copy(dstFile, srcFile)
 		return err
 	})
+}
+
+// runningFromAppImage reports whether this executable runs from inside an
+// AppImage. $APPIMAGE alone isn't enough: terminals opened from the GUI
+// inherit it, and a separately installed CLI started there must not replace
+// the GUI's AppImage. When $APPDIR is set, the executable must live under it.
+func runningFromAppImage() bool {
+	if os.Getenv("APPIMAGE") == "" {
+		return false
+	}
+	appDir := os.Getenv("APPDIR")
+	if appDir == "" {
+		return true
+	}
+	self, err := selfPath()
+	if err != nil {
+		return false
+	}
+	return isWithin(self, appDir)
+}
+
+// isWithin reports whether path is dir or lies below it.
+func isWithin(path, dir string) bool {
+	rel, err := filepath.Rel(filepath.Clean(dir), filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)))
 }
