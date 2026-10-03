@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
 #
-# ship.sh — Ship gitbox CLI + GitboxApp GUI to remote hosts for smoke testing.
+# ship.sh — Ship the GitboxApp GUI to remote hosts for smoke testing.
 #
 # Ships to every configured remote in .env (skipping the local machine) when
 # called with no argument. With a single argument, matches it against the host
 # short-name of one of the SSH_* vars (e.g. `ship.sh obelix` → SSH_MAC_INTEL_HOST).
 #
 # Artifacts staged at:
-#   Unix remotes: /tmp/gitbox         /tmp/GitboxApp[.app]
-#   Windows:      ~/gitbox.exe        ~/GitboxApp.exe
+#   macOS remotes: /tmp/GitboxApp.app
+#   Linux remotes: /tmp/GitboxApp
+#   Windows:       ~/GitboxApp.exe
+# When test-gitbox.json exists at the repo root it is copied to
+# ~/test-gitbox.json on each remote, for `GitboxApp --test-mode` launched
+# from the home directory.
 #
-# CLI is cross-compiled locally (GOOS/GOARCH). GUI is built on the remote via
-# tar | ssh | wails (no cross-compile path exists — each platform needs its
-# own native webview). Per-host logs at /tmp/gitbox-ship-<platform>.log.
+# The GUI is built on the remote via tar | ssh | wails (no cross-compile path
+# exists — each platform needs its own native webview). Per-host logs at
+# /tmp/gitbox-ship-<platform>.log. Smoke-test the result with
+# ./scripts/smoke.sh.
 #
 # Usage:
 #   ./scripts/ship.sh              # all configured remotes, parallel
@@ -54,8 +59,8 @@ platform_from_shortname() {
 # Remote hosts tar the source without `.git`, so the runtime `git describe`
 # fallback in fullVersion() / GetAppVersion() returns empty and the binary
 # reports "dev-none". Compute the version/commit once on the local side and
-# pass them through -ldflags to both `go build` (CLI cross-compile) and the
-# remote `wails build` (GUI). Matches the idiom used by CI.
+# pass them through -ldflags to the remote `wails build`. Matches the idiom
+# used by CI.
 _desc="$(git describe --tags --always 2>/dev/null || echo dev)"
 _sha="$(git rev-parse --short HEAD 2>/dev/null || echo none)"
 LDFLAGS="-X main.version=${_desc}-dev -X main.commit=${_sha}"
@@ -64,15 +69,6 @@ unset _desc _sha
 # ---------------------------------------------------------------------------
 # Remote paths per platform
 # ---------------------------------------------------------------------------
-
-# Remote staged GUI bundle path.
-remote_gui_for() {
-    case "$1" in
-        mac|mac-arm|mac-intel)  echo "/tmp/GitboxApp.app" ;;
-        linux)                  echo "/tmp/GitboxApp" ;;
-        win|win-intel|win-arm)  echo "~/GitboxApp.exe" ;;
-    esac
-}
 
 # Where wails drops the GUI artifact on the remote, relative to cmd/gui.
 wails_artifact_for() {
@@ -97,29 +93,6 @@ wails_target_for() {
 # ---------------------------------------------------------------------------
 # Build + ship helpers (always run on one platform at a time)
 # ---------------------------------------------------------------------------
-
-# 1. Cross-compile CLI locally for $platform.
-# 2. SCP to remote.
-build_and_ship_cli() {
-    local p="$1"
-    local goos goarch out remote host
-    goos="$(platform_goos "$p")"
-    goarch="$(platform_goarch "$p")"
-    out="$(build_artifact "$p")"
-    host="$(ssh_host_for "$p")"
-    remote="$(remote_bin_for "$p")"
-
-    mkdir -p "$BUILD_DIR"
-    echo ">> go build $goos/$goarch → $out"
-    GOOS="$goos" GOARCH="$goarch" go build -ldflags "$LDFLAGS" -o "$out" ./cmd/cli || return 1
-
-    echo ">> scp $out $host:$remote"
-    scp -q "$out" "$host:$remote" || return 1
-    if ! is_win_platform "$p"; then
-        ssh "$host" "chmod +x $remote" || return 1
-    fi
-    echo "CLI: $host:$remote"
-}
 
 # Ship source tar, run wails build on remote, stage artifact.
 #
@@ -200,8 +173,23 @@ build_and_ship_gui() {
     echo "GUI: $host:$staged"
 }
 
-# Do one complete ship (CLI + GUI) for a single platform; capture stdout+stderr
-# to a per-host log and record a status file for the summary phase.
+# Copy the test fixture next to the remote home so `GitboxApp --test-mode`,
+# which walks up from its working directory, finds it. Optional: a missing
+# local fixture or a failed copy only warns.
+ship_fixture() {
+    local p="$1"
+    local host; host="$(ssh_host_for "$p")"
+    [[ -f "$FIXTURE" ]] || return 0
+    echo ">> scp test-gitbox.json → $host:~/test-gitbox.json"
+    if scp -q "$FIXTURE" "$host:~/test-gitbox.json"; then
+        echo "Fixture: $host:~/test-gitbox.json"
+    else
+        echo "!! could not copy test-gitbox.json to $host (continuing)" >&2
+    fi
+}
+
+# Do one complete ship for a single platform; capture stdout+stderr to a
+# per-host log and record a status file for the summary phase.
 ship_one() {
     local p="$1"
     local log="/tmp/gitbox-ship-$p.log"
@@ -209,8 +197,8 @@ ship_one() {
     : > "$log"
     rm -f "$status_file"
 
-    if { build_and_ship_cli "$p" && build_and_ship_gui "$p"; } >> "$log" 2>&1; then
-        grep -E '^(CLI|GUI): ' "$log" > "$status_file.ok" || true
+    if { build_and_ship_gui "$p" && ship_fixture "$p"; } >> "$log" 2>&1; then
+        grep -E '^(GUI|Fixture): ' "$log" > "$status_file.ok" || true
         echo "ok" > "$status_file"
     else
         echo "fail" > "$status_file"

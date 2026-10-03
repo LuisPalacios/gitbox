@@ -2,7 +2,8 @@
 build/
 dist/
 
-# Go binaries (CLI + GUI share the name)
+# Stray Go binaries from `go build` at the repo root (gui.exe), plus v1
+# CLI leftovers (gitbox, gitbox.exe, cli.exe) that may linger in old clones
 gitbox
 gitbox.exe
 cli.exe

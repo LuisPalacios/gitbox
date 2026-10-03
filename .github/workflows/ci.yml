@@ -16,7 +16,10 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
-  # ── Go unit tests (fast, runs on all platforms) ──
+  # ── Go vet + unit tests (all platforms) ──
+  # cmd/gui embeds frontend/dist (go:embed), so the frontend is built first.
+  # Without Wails' desktop/production build tags the GUI package compiles
+  # against Wails' stub app, so no WebKitGTK is needed on Linux here.
   test:
     strategy:
       matrix:
@@ -27,36 +30,17 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: 'stable'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build frontend
+        shell: bash
+        working-directory: cmd/gui/frontend
+        run: npm ci && npm run build
+      - name: Go vet
+        run: go vet ./...
       - name: Run tests
-        run: go test -short ./pkg/... ./cmd/cli/...
-
-  # ── CLI cross-compile (from ubuntu, fast) ──
-  cli:
-    runs-on: ubuntu-latest
-    needs: test
-    env:
-      LDFLAGS: >-
-        -X main.version=${{ github.ref_name }}
-        -X main.commit=${{ github.sha }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: 'stable'
-      - name: Build CLI (linux/amd64)
-        run: GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o build/gitbox-linux-amd64 ./cmd/cli
-      - name: Build CLI (darwin/arm64)
-        run: GOOS=darwin GOARCH=arm64 go build -ldflags "$LDFLAGS" -o build/gitbox-darwin-arm64 ./cmd/cli
-      - name: Build CLI (darwin/amd64)
-        run: GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" -o build/gitbox-darwin-amd64 ./cmd/cli
-      - name: Build CLI (windows/amd64)
-        run: GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o build/gitbox-windows-amd64.exe ./cmd/cli
-      - name: Build CLI (windows/arm64)
-        run: GOOS=windows GOARCH=arm64 go build -ldflags "$LDFLAGS" -o build/gitbox-windows-arm64.exe ./cmd/cli
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cli-binaries
-          path: build/gitbox*
+        run: go test -short ./...
 
   # ── GUI build (native per platform, needs webview libs) ──
   gui-windows:
@@ -217,7 +201,7 @@ jobs:
   # ── Windows Inno Setup installer ──
   installer-windows:
     runs-on: windows-latest
-    needs: [cli, gui-windows]
+    needs: gui-windows
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -227,7 +211,6 @@ jobs:
         shell: bash
         run: |
           mkdir -p tmp-win release
-          cp artifacts/cli-binaries/gitbox-windows-amd64.exe tmp-win/gitbox.exe
           cp artifacts/gui-windows/GitboxApp.exe tmp-win/GitboxApp.exe
       - name: Build installer
         shell: cmd
@@ -243,7 +226,7 @@ jobs:
   # ── macOS DMG (arm64) ──
   dmg-macos-arm64:
     runs-on: macos-latest
-    needs: [cli, gui-macos-arm64]
+    needs: gui-macos-arm64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -254,8 +237,6 @@ jobs:
       - name: Stage DMG contents
         run: |
           mkdir -p staging release
-          cp artifacts/cli-binaries/gitbox-darwin-arm64 staging/gitbox
-          chmod +x staging/gitbox
           cd staging && unzip ../artifacts/gui-macos-arm64/gitbox-macos-arm64.zip
           cd ..
           cp 'scripts/dmg/Install Gitbox.command' staging/
@@ -281,7 +262,6 @@ jobs:
           APPLE_IDENTITY: ${{ secrets.APPLE_IDENTITY }}
         run: |
           codesign --force --deep --sign "$APPLE_IDENTITY" --options runtime staging/GitboxApp.app
-          codesign --force --sign "$APPLE_IDENTITY" --options runtime staging/gitbox
       - name: Build DMG
         run: |
           create-dmg \
@@ -294,7 +274,6 @@ jobs:
             --icon "Install Gitbox.command" 150 370 \
             --hide-extension "Install Gitbox.command" \
             --icon "README.txt" 450 370 \
-            --icon "gitbox" 900 900 \
             release/gitbox-macos-arm64.dmg staging/ || test $? -eq 2
       - name: Notarize DMG
         if: env.APPLE_CERTIFICATE != ''
@@ -316,7 +295,7 @@ jobs:
   # ── macOS DMG (amd64) ──
   dmg-macos-amd64:
     runs-on: macos-latest
-    needs: [cli, gui-macos-amd64]
+    needs: gui-macos-amd64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -327,8 +306,6 @@ jobs:
       - name: Stage DMG contents
         run: |
           mkdir -p staging release
-          cp artifacts/cli-binaries/gitbox-darwin-amd64 staging/gitbox
-          chmod +x staging/gitbox
           cd staging && unzip ../artifacts/gui-macos-amd64/gitbox-macos-amd64.zip
           cd ..
           cp 'scripts/dmg/Install Gitbox.command' staging/
@@ -354,7 +331,6 @@ jobs:
           APPLE_IDENTITY: ${{ secrets.APPLE_IDENTITY }}
         run: |
           codesign --force --deep --sign "$APPLE_IDENTITY" --options runtime staging/GitboxApp.app
-          codesign --force --sign "$APPLE_IDENTITY" --options runtime staging/gitbox
       - name: Build DMG
         run: |
           create-dmg \
@@ -367,7 +343,6 @@ jobs:
             --icon "Install Gitbox.command" 150 370 \
             --hide-extension "Install Gitbox.command" \
             --icon "README.txt" 450 370 \
-            --icon "gitbox" 900 900 \
             release/gitbox-macos-amd64.dmg staging/ || test $? -eq 2
       - name: Notarize DMG
         if: env.APPLE_CERTIFICATE != ''
@@ -389,7 +364,7 @@ jobs:
   # ── Linux AppImage ──
   appimage-linux:
     runs-on: ubuntu-22.04 # same base as gui-linux, see the note there
-    needs: [cli, gui-linux]
+    needs: gui-linux
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -404,7 +379,6 @@ jobs:
       - name: Build AppImage
         run: |
           scripts/appimage/build-appimage.sh \
-            artifacts/cli-binaries/gitbox-linux-amd64 \
             artifacts/gui-linux/GitboxApp \
             "${{ github.ref_name }}" \
             release/gitbox-x86_64.AppImage
@@ -416,8 +390,8 @@ jobs:
   # ── GitHub Release with all binaries ──
   release:
     runs-on: ubuntu-latest
-    needs: [cli, gui-windows, gui-macos-arm64, gui-macos-amd64, gui-linux, installer-windows, dmg-macos-arm64, dmg-macos-amd64, appimage-linux]
-    if: always() && needs.cli.result == 'success' && needs.gui-windows.result == 'success' && needs.gui-macos-arm64.result == 'success' && needs.gui-macos-amd64.result == 'success' && needs.gui-linux.result == 'success'
+    needs: [gui-windows, gui-macos-arm64, gui-macos-amd64, gui-linux, installer-windows, dmg-macos-arm64, dmg-macos-amd64, appimage-linux]
+    if: always() && needs.gui-windows.result == 'success' && needs.gui-macos-arm64.result == 'success' && needs.gui-macos-amd64.result == 'success' && needs.gui-linux.result == 'success'
     permissions:
       contents: write
     steps:
@@ -425,36 +399,27 @@ jobs:
         with:
           path: artifacts
 
+      # Asset names stay the same as in v1 so v1 GUI installs find them and
+      # auto-update to v2. v2 archives carry only GitboxApp; the CLI/TUI
+      # lives on in the 1.x releases.
       - name: Prepare release assets
         run: |
-          mkdir -p release tmp-win tmp-mac-arm64 tmp-mac-amd64 tmp-linux
+          mkdir -p release tmp-win tmp-linux
 
-          # Windows (amd64): gitbox.exe + GitboxApp.exe → gitbox-win-amd64.zip
-          cp artifacts/cli-binaries/gitbox-windows-amd64.exe tmp-win/gitbox.exe
-          cp artifacts/gui-windows/GitboxApp.exe             tmp-win/GitboxApp.exe
-          (cd tmp-win && zip ../release/gitbox-win-amd64.zip *)
+          # Windows (amd64): GitboxApp.exe → gitbox-win-amd64.zip
+          cp artifacts/gui-windows/GitboxApp.exe tmp-win/GitboxApp.exe
+          (cd tmp-win && zip ../release/gitbox-win-amd64.zip GitboxApp.exe)
 
-          # Windows (arm64): CLI only (no GUI ARM64 build yet — windows-latest
-          # runners are x64 and Wails' webview binding needs a native arm64
-          # environment). → gitbox-win-arm64.zip
-          mkdir -p tmp-win-arm64
-          cp artifacts/cli-binaries/gitbox-windows-arm64.exe tmp-win-arm64/gitbox.exe
-          (cd tmp-win-arm64 && zip ../release/gitbox-win-arm64.zip *)
+          # macOS: the gui-macos-* jobs already zip GitboxApp.app under the
+          # release asset name.
+          cp artifacts/gui-macos-arm64/gitbox-macos-arm64.zip release/
+          cp artifacts/gui-macos-amd64/gitbox-macos-amd64.zip release/
 
-          # macOS (arm64): gitbox + GitboxApp.app → gitbox-macos-arm64.zip
-          cp artifacts/cli-binaries/gitbox-darwin-arm64 tmp-mac-arm64/gitbox
-          (cd tmp-mac-arm64 && unzip ../artifacts/gui-macos-arm64/gitbox-macos-arm64.zip)
-          (cd tmp-mac-arm64 && zip -r ../release/gitbox-macos-arm64.zip gitbox GitboxApp.app)
-
-          # macOS (amd64): gitbox + GitboxApp.app → gitbox-macos-amd64.zip
-          cp artifacts/cli-binaries/gitbox-darwin-amd64 tmp-mac-amd64/gitbox
-          (cd tmp-mac-amd64 && unzip ../artifacts/gui-macos-amd64/gitbox-macos-amd64.zip)
-          (cd tmp-mac-amd64 && zip -r ../release/gitbox-macos-amd64.zip gitbox GitboxApp.app)
-
-          # Linux (amd64): gitbox + GitboxApp → gitbox-linux-amd64.zip
-          cp artifacts/cli-binaries/gitbox-linux-amd64 tmp-linux/gitbox
-          cp artifacts/gui-linux/GitboxApp                tmp-linux/GitboxApp
-          (cd tmp-linux && zip ../release/gitbox-linux-amd64.zip *)
+          # Linux (amd64): GitboxApp → gitbox-linux-amd64.zip. Artifacts lose
+          # their execute bit on download, so restore it before zipping.
+          cp artifacts/gui-linux/GitboxApp tmp-linux/GitboxApp
+          chmod +x tmp-linux/GitboxApp
+          (cd tmp-linux && zip ../release/gitbox-linux-amd64.zip GitboxApp)
 
       - name: Collect installer artifacts
         run: |

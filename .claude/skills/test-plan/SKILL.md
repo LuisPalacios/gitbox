@@ -25,7 +25,10 @@ Run all automated checks. Track progress with the todo list.
 
 ### Step 1: Static analysis
 
+`cmd/gui` embeds `cmd/gui/frontend/dist`, so build the frontend first when `dist` is missing:
+
 ```bash
+[ -d cmd/gui/frontend/dist ] || (cd cmd/gui/frontend && npm ci && npm run build)
 go vet ./...
 ```
 
@@ -39,54 +42,41 @@ go test -short ./...
 
 All tests must pass. If any fail, report and stop.
 
-### Step 3: Cross-compile
-
-Build all 3 platform binaries in parallel:
+### Step 3: Build the GUI locally
 
 ```bash
-go build -o build/gitbox.exe ./cmd/cli
-GOOS=darwin GOARCH=arm64 go build -o build/gitbox-darwin-arm64 ./cmd/cli
-GOOS=linux  GOARCH=amd64 go build -o build/gitbox-linux-amd64  ./cmd/cli
+LDFLAGS="-X main.version=$(git describe --tags --always)-dev -X main.commit=$(git rev-parse --short HEAD)"
+cp assets/appicon.png cmd/gui/build/appicon.png
+cp assets/icon.ico    cmd/gui/build/windows/icon.ico
+(cd cmd/gui && wails build -ldflags "$LDFLAGS")
 ```
 
-### Step 4: Deploy and smoke test
+On Linux add `-tags webkit2_41`. Output: `cmd/gui/build/bin/GitboxApp[.exe]` (`GitboxApp.app` on macOS).
 
-Source `.env` for SSH host variables, then deploy and test:
+### Step 4: Ship and smoke test
+
+Build the GUI on every remote configured in `.env` (wails cannot cross-compile), then run `GitboxApp --version` on the local build and on every staged remote copy:
 
 ```bash
-source .env
-[[ -n "$SSH_MAC_ARM_HOST"   ]] && scp build/gitbox-darwin-arm64 "$SSH_MAC_ARM_HOST":/tmp/gitbox   && ssh "$SSH_MAC_ARM_HOST"   "chmod +x /tmp/gitbox"
-[[ -n "$SSH_MAC_INTEL_HOST" ]] && scp build/gitbox-darwin-amd64 "$SSH_MAC_INTEL_HOST":/tmp/gitbox && ssh "$SSH_MAC_INTEL_HOST" "chmod +x /tmp/gitbox"
-[[ -n "$SSH_LINUX_HOST"     ]] && scp build/gitbox-linux-amd64  "$SSH_LINUX_HOST":/tmp/gitbox     && ssh "$SSH_LINUX_HOST"     "chmod +x /tmp/gitbox"
+./scripts/ship.sh          # skip when .env has no remote hosts
+./scripts/smoke.sh all
 ```
 
-Run smoke tests on all configured platforms in parallel:
-
-```bash
-# Windows
-build/gitbox.exe version
-build/gitbox.exe help
-# macOS Apple Silicon
-[[ -n "$SSH_MAC_ARM_HOST"   ]] && ssh "$SSH_MAC_ARM_HOST"   "/tmp/gitbox version && /tmp/gitbox help"
-# macOS Intel
-[[ -n "$SSH_MAC_INTEL_HOST" ]] && ssh "$SSH_MAC_INTEL_HOST" "/tmp/gitbox version && /tmp/gitbox help"
-# Linux
-[[ -n "$SSH_LINUX_HOST"     ]] && ssh "$SSH_LINUX_HOST"     "/tmp/gitbox version && /tmp/gitbox help"
-```
+`smoke.sh` prints one line per platform with the version string, and fails if any binary does not answer `--version`.
 
 ### Step 5: Report
 
-Present results from all 3 platforms side by side. Format:
+Present results from all platforms side by side. Format:
 
 ```text
-Platform    | version        | help   | tests
-------------|----------------|--------|------
-Windows     | v1.x.x (hash) | OK     | 182 passed
-macOS       | v1.x.x (hash) | OK     | (binary only)
-Linux       | v1.x.x (hash) | OK     | (binary only)
+Platform    | GitboxApp --version      | tests
+------------|--------------------------|-----------
+Windows     | GitboxApp v2.x.x (hash)  | all passed
+macOS       | GitboxApp v2.x.x (hash)  | (binary only)
+Linux       | GitboxApp v2.x.x (hash)  | (binary only)
 ```
 
-If the change touches a specific area, remind the user about the relevant manual check from the checklist (e.g., "You changed the credential screen — launch the TUI and verify GCM browser auth renders correctly").
+If the change touches a specific area, remind the user about the relevant manual check from the checklist (e.g., "You changed the credential flow — launch GitboxApp and verify GCM browser auth completes").
 
 ## Full mode
 
@@ -98,35 +88,25 @@ Run everything from pre-PR mode, plus:
 go test -v ./...
 ```
 
-This requires `test-gitbox.json` at repo root. If missing, warn and skip.
+This requires `test-gitbox.json` at repo root (it drives `TestScenario_FullLifecycle` in `pkg/ops` against real providers). If missing, warn and skip.
 
-### Step 7: Extended CLI smoke (all platforms)
-
-Run on all 3 platforms via SSH:
-
-```bash
-gitbox global show --json
-gitbox account list --json
-gitbox status --json
-```
-
-### Step 8: Interactive verification
+### Step 7: Interactive verification
 
 Read the "Full release checklist" sections from `docs/testing.md` and present them as interactive instructions. For each section:
 
-1. Show the exact commands to run on each platform
+1. Print the exact launch commands with `./scripts/test-commands.sh` (test mode) or `./scripts/run-commands.sh` (real config). The GUI needs each host's desktop session, so the user runs them there.
 2. Use this format for interactive steps:
 
 ```text
-Please run on each platform:
-  Windows:  build\gitbox.exe <command>
-  macOS:    ssh <mac-host> "/tmp/gitbox <command>"
-  Linux:    ssh <linux-host> "/tmp/gitbox <command>"
+Please launch on each platform and check <section>:
+  Windows:  cmd/gui/build/bin/GitboxApp.exe --test-mode
+  macOS:    cd ~ && /tmp/GitboxApp.app/Contents/MacOS/GitboxApp --test-mode
+  Linux:    cd ~ && /tmp/GitboxApp --test-mode
 ```
 
 3. Ask the user to confirm each section passes before moving to the next
 
-### Step 9: Final report
+### Step 8: Final report
 
 Summarize all results: automated test counts, platform smoke results, and which interactive sections the user confirmed.
 
@@ -134,6 +114,6 @@ Summarize all results: automated test counts, platform smoke results, and which 
 
 - Always use the todo list to track progress through the steps
 - If any automated step fails, stop and report — do not continue blindly
-- For SSH commands, always `source .env` first to get host variables
-- Run independent commands in parallel where possible (cross-compile, deploy, smoke tests)
+- The scripts load `.env` themselves; for ad-hoc SSH commands, `source .env` first to get host variables
+- Run independent commands in parallel where possible
 - The checklist file may have been updated since the last run — always re-read it

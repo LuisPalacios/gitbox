@@ -1,9 +1,8 @@
 #!/bin/bash
 # AppRun for the gitbox AppImage. build-appimage.sh installs it in place of
 # the one linuxdeploy generates, so it has to do what that one did (source the
-# GTK plugin hook) plus two gitbox-specific things:
+# GTK plugin hook) plus one gitbox-specific thing:
 #
-# - put the bundled gitbox CLI/TUI on PATH, because the GUI launches it
 # - run from AppDir/usr: build-appimage.sh patches the bundled WebKitGTK so
 #   its compiled-in "/usr/..." paths become "././..." and it finds its
 #   helper processes (WebKitWebProcess, WebKitNetworkProcess,
@@ -15,6 +14,5 @@ for hook in "$this_dir"/apprun-hooks/*; do
   # shellcheck disable=SC1090
   source "$hook"
 done
-export PATH="$this_dir/usr/bin:$PATH"
 cd "$this_dir/usr"
 exec "$this_dir/usr/bin/GitboxApp" "$@"

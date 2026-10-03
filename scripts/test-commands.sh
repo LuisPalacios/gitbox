@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 #
-# test-commands.sh — Print commands to launch gitbox in test-mode on any platform.
+# test-commands.sh — Print commands to launch GitboxApp in test mode on any platform.
 #
-# Test-mode uses test-gitbox.json with an isolated temp directory.
-# Commands are printed (not executed) because the TUI needs a real terminal.
+# Test mode loads test-gitbox.json into an isolated temp directory. GitboxApp
+# finds the fixture by walking up from its working directory: the repo root
+# on this host, the home directory on remotes (./scripts/ship.sh copies it to
+# ~/test-gitbox.json). Commands are printed (not executed) because the GUI
+# needs the target's desktop session — run them in a terminal on that host.
 #
 # Usage:
 #   ./scripts/test-commands.sh              # all configured platforms (default)
@@ -24,35 +27,27 @@ if [[ -z "$targets" ]]; then
 fi
 
 if [[ ! -f "$FIXTURE" ]]; then
-    warn "test-gitbox.json not found — test-mode will fail on targets"
+    warn "test-gitbox.json not found — test mode will fail on targets"
     warn "run: cp json/test-gitbox.json.example test-gitbox.json"
     echo ""
 fi
 
-echo "Run these commands in your terminal (interactive, needs a real TTY):"
+echo "Run these commands in a terminal inside each host's desktop session:"
 echo ""
 
 for platform in $targets; do
     label="$(platform_label "$platform")"
     host="$(ssh_host_for "$platform")"
-    bin="$(binary_path "$platform")"
+    exe="$(gui_exe "$platform")"
 
     if [[ -z "$host" ]]; then
-        # Local
-        printf '  %b%s%b:  %s --test-mode\n' "$B" "$label" "$N" "$bin"
+        # Local — run from the repo root, where test-gitbox.json lives.
+        printf '  %b%s%b:  cd "%s" && "%s" --test-mode\n' "$B" "$label" "$N" "$REPO_ROOT" "$exe"
     else
-        # Remote — check fixture exists
+        # Remote — check the fixture ship.sh copies to the home directory.
         if ! ssh "$host" "test -f ~/test-gitbox.json" 2>/dev/null; then
-            warn "$label — test-gitbox.json not found on remote. Run: ./scripts/deploy.sh"
+            warn "$label — test-gitbox.json not found on remote. Run: ./scripts/ship.sh"
         fi
-        if is_win_platform "$platform"; then
-            # Windows: TUI needs a real interactive shell, ssh -t "cmd" exits immediately
-            printf '  %b%s%b:  ssh %s  →  %s --test-mode\n' "$B" "$label" "$N" "$host" "$bin"
-        else
-            printf '  %b%s%b:  ssh -t %s "%s --test-mode"\n' "$B" "$label" "$N" "$host" "$bin"
-        fi
+        printf '  %b%s%b (%s):  cd ~ && %s --test-mode\n' "$B" "$label" "$N" "$host" "$exe"
     fi
 done
-
-echo ""
-info "pass additional CLI args after --test-mode (e.g., --test-mode account list --json)"
