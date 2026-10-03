@@ -7,11 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -31,6 +29,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/identity"
 	"github.com/LuisPalacios/gitbox/pkg/mirror"
 	"github.com/LuisPalacios/gitbox/pkg/move"
+	"github.com/LuisPalacios/gitbox/pkg/ops"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 	"github.com/LuisPalacios/gitbox/pkg/terminals"
@@ -2615,94 +2614,32 @@ func (a *App) RefreshStatus() {
 
 // ─── Clone ────────────────────────────────────────────────────
 
-// cloneURL builds the clone URL for a repo based on credential type.
-func (a *App) cloneURL(acct config.Account, repoKey string, credType string) string {
-	switch credType {
-	case "ssh":
-		host := acct.URL
-		if acct.SSH != nil && acct.SSH.Host != "" {
-			host = acct.SSH.Host
-		} else {
-			// Strip scheme for SSH.
-			host = stripScheme(acct.URL)
-		}
-		return fmt.Sprintf("git@%s:%s.git", host, repoKey)
-	default:
-		// Embed username in HTTPS URL so GCM matches the stored credential
-		// (e.g. https://User@github.com/User/repo.git).
-		u, err := url.Parse(acct.URL)
-		if err == nil && acct.Username != "" {
-			u.User = url.User(acct.Username)
-			return fmt.Sprintf("%s/%s.git", u.String(), repoKey)
-		}
-		return fmt.Sprintf("%s/%s.git", acct.URL, repoKey)
-	}
-}
-
 // CloneRepo clones a single repo. Emits clone:progress and clone:done events.
 func (a *App) CloneRepo(sourceKey, repoKey string) {
 	go func() {
 		a.mu.Lock()
-		src, ok := a.cfg.Sources[sourceKey]
-		if !ok {
-			a.mu.Unlock()
-			wailsrt.EventsEmit(a.ctx, "clone:done", map[string]string{
-				"source": sourceKey, "repo": repoKey,
-				"error": fmt.Sprintf("source %q not found", sourceKey),
-			})
-			return
-		}
-		repo, ok := src.Repos[repoKey]
-		if !ok {
-			a.mu.Unlock()
-			wailsrt.EventsEmit(a.ctx, "clone:done", map[string]string{
-				"source": sourceKey, "repo": repoKey,
-				"error": fmt.Sprintf("repo %q not found in source %q", repoKey, sourceKey),
-			})
-			return
-		}
-		acct := a.cfg.Accounts[src.Account]
-		globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
-		sourceFolder := src.EffectiveFolder(sourceKey)
+		plan, err := ops.PlanClone(a.cfg, sourceKey, repoKey)
 		a.mu.Unlock()
-
-		dest := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
-		credType := repo.EffectiveCredentialType(&acct)
-		accountKey := src.Account
-		plainURL := a.cloneURL(acct, repoKey, credType)
-
-		// For token clones, embed the token in the URL so git can authenticate.
-		// After cloning, we sanitize back to the plain URL (no secret in config).
-		cloneURLStr := plainURL
-		if credType == "token" {
-			if tok, _, err := credential.ResolveToken(acct, accountKey); err == nil && tok != "" {
-				if u, err := url.Parse(plainURL); err == nil {
-					u.User = url.UserPassword(acct.Username, tok)
-					cloneURLStr = u.String()
-				}
-			}
-		}
-
-		// For token clones, cancel the global credential helper during clone
-		// to prevent GCM from storing a ghost credential via "credential approve".
-		cloneOpts := git.CloneOpts{Quiet: true}
-		if credType == "token" {
-			cloneOpts.ConfigArgs = []string{"credential.helper="}
-		}
-
-		err := git.CloneWithProgress(cloneURLStr, dest, cloneOpts,
-			func(p git.CloneProgress) {
-				wailsrt.EventsEmit(a.ctx, "clone:progress", map[string]interface{}{
-					"source": sourceKey, "repo": repoKey,
-					"phase": p.Phase, "percent": p.Percent,
-				})
+		if err != nil {
+			wailsrt.EventsEmit(a.ctx, "clone:done", map[string]string{
+				"source": sourceKey, "repo": repoKey, "error": err.Error(),
 			})
+			return
+		}
+
+		// The git transfer runs without the config lock.
+		err = plan.Run(func(p git.CloneProgress) {
+			wailsrt.EventsEmit(a.ctx, "clone:progress", map[string]interface{}{
+				"source": sourceKey, "repo": repoKey,
+				"phase": p.Phase, "percent": p.Percent,
+			})
+		})
 
 		// "path" lets the frontend fill repoStates[key].path for rows cloned
 		// in-session (create-repo, Bring Local). Until the next full status
 		// refresh the row otherwise has no path and every path-based kebab
 		// action silently no-ops (#79).
-		result := map[string]interface{}{"source": sourceKey, "repo": repoKey, "path": dest}
+		result := map[string]interface{}{"source": sourceKey, "repo": repoKey, "path": plan.Dest}
 		if err != nil {
 			result["error"] = err.Error()
 		} else {
@@ -2711,7 +2648,9 @@ func (a *App) CloneRepo(sourceKey, repoKey string) {
 			// configures per-repo credential isolation. Warnings are
 			// returned instead of panicking so a partial heal (e.g. token
 			// file missing) still reports clone success.
+			a.mu.Lock()
 			report := heal.Repo(a.cfg, sourceKey, repoKey)
+			a.mu.Unlock()
 			if len(report.Warnings) > 0 {
 				result["warnings"] = report.Warnings
 			}
@@ -3018,40 +2957,9 @@ func (a *App) AddAccount(req AddAccountRequest) error {
 		Email:                 req.Email,
 		DefaultCredentialType: req.CredentialType,
 	}
-	if acct.DefaultCredentialType == "" {
-		acct.DefaultCredentialType = "gcm"
-	}
-
-	// Populate credential sub-objects.
-	switch acct.DefaultCredentialType {
-	case "gcm":
-		acct.GCM = &config.GCMConfig{
-			Provider:    inferGCMProvider(acct.Provider),
-			UseHTTPPath: false,
-		}
-	case "ssh":
-		hostname := hostnameFromURL(acct.URL)
-		acct.SSH = &config.SSHConfig{
-			Host:     credential.SSHHostAlias(req.Key),
-			Hostname: hostname,
-			KeyType:  "ed25519",
-		}
-	}
-
-	if err := a.cfg.AddAccount(req.Key, acct); err != nil {
+	if err := ops.AddAccount(a.cfg, req.Key, acct); err != nil {
 		return err
 	}
-
-	// Create a matching source so repos can be added immediately.
-	src := config.Source{
-		Account: req.Key,
-		Repos:   make(map[string]config.Repo),
-	}
-	if err := a.cfg.AddSource(req.Key, src); err != nil {
-		_ = a.cfg.DeleteAccount(req.Key)
-		return err
-	}
-
 	return a.saveConfig()
 }
 
@@ -3090,130 +2998,29 @@ func (a *App) UpdateAccount(req UpdateAccountRequest) error {
 		return err
 	}
 
-	// Update user.name and user.email in all cloned repos for this account.
-	a.updateCloneIdentity(req.Key)
+	// Bring existing clones in line: identity, origin URL, credential config.
+	ops.ReconfigureClones(a.cfg, req.Key)
 	return nil
 }
 
-// validAccountKey matches lowercase alphanumeric keys with hyphens.
-var validAccountKey = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]*$`)
-
 // RenameAccount renames an account key and migrates all related artifacts:
-// config references, source key + folder, credential file tokens, SSH keys/config.
+// config references, source key + folder, stored tokens, SSH keys/config.
+// Existing clones are then reconfigured for the new key.
 func (a *App) RenameAccount(oldKey, newKey string) error {
-	if newKey == "" {
-		return fmt.Errorf("new key cannot be empty")
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if err := ops.RenameAccount(a.cfg, oldKey, newKey); err != nil {
+		return err
 	}
 	if oldKey == newKey {
 		return nil
 	}
-	if !validAccountKey.MatchString(newKey) {
-		return fmt.Errorf("invalid key %q: use lowercase letters, numbers, and hyphens", newKey)
-	}
-
-	a.mu.Lock()
-	acct, ok := a.cfg.Accounts[oldKey]
-	if !ok {
-		a.mu.Unlock()
-		return fmt.Errorf("account %q not found", oldKey)
-	}
-	if _, exists := a.cfg.Accounts[newKey]; exists {
-		a.mu.Unlock()
-		return fmt.Errorf("account %q already exists", newKey)
-	}
-	cfg := a.cfg
-	a.mu.Unlock()
-
-	// ── Credential migration ──
-
-	switch acct.DefaultCredentialType {
-	case "token":
-		a.migrateKeyringToken(oldKey, newKey)
-
-	case "ssh":
-		sshFolder := credential.SSHFolder(cfg)
-
-		oldAlias := credential.SSHHostAlias(oldKey)
-		newAlias := credential.SSHHostAlias(newKey)
-		oldKeyPath := credential.SSHKeyPath(sshFolder, oldKey)
-		newKeyPath := credential.SSHKeyPath(sshFolder, newKey)
-
-		// Rename key files (ignore not-found).
-		_ = os.Rename(oldKeyPath, newKeyPath)
-		_ = os.Rename(oldKeyPath+".pub", newKeyPath+".pub")
-
-		// Update SSH config: remove old, write new.
-		_ = credential.RemoveSSHConfigEntry(sshFolder, oldAlias)
-		hostname := hostnameFromURL(acct.URL)
-		if acct.SSH != nil && acct.SSH.Hostname != "" {
-			hostname = acct.SSH.Hostname
-		}
-		_ = credential.WriteSSHConfigEntry(sshFolder, credential.SSHConfigEntryOpts{
-			Host:     newAlias,
-			Hostname: hostname,
-			KeyFile:  newKeyPath,
-			Username: acct.Username,
-			Name:     acct.Name,
-			Email:    acct.Email,
-			URL:      acct.URL,
-		})
-
-		// Update account SSH config.
-		if acct.SSH != nil {
-			acct.SSH.Host = newAlias
-		}
-
-		// Also migrate keyring token (SSH accounts may store a PAT).
-		a.migrateKeyringToken(oldKey, newKey)
-
-	case "gcm":
-		// GCM credentials are keyed by hostname+username, not account key.
-		// Still migrate keyring token in case one was stored.
-		a.migrateKeyringToken(oldKey, newKey)
-	}
-
-	// ── Source key + folder rename ──
-
-	a.mu.Lock()
-	if _, srcExists := cfg.Sources[oldKey]; srcExists {
-		if _, conflict := cfg.Sources[newKey]; !conflict {
-			// Rename on-disk folder if source uses default folder (source key).
-			src := cfg.Sources[oldKey]
-			if src.Folder == "" {
-				globalFolder := config.ExpandTilde(cfg.Global.Folder)
-				oldPath := filepath.Join(globalFolder, oldKey)
-				newPath := filepath.Join(globalFolder, newKey)
-				_ = os.Rename(oldPath, newPath)
-			}
-			_ = cfg.RenameSource(oldKey, newKey)
-		}
-	}
-
-	// ── Config mutation ──
-
-	// Update SSH host in the account before renaming.
-	if acct.SSH != nil {
-		cfg.Accounts[oldKey] = acct
-	}
-	if err := cfg.RenameAccount(oldKey, newKey); err != nil {
-		a.mu.Unlock()
+	if err := a.saveConfig(); err != nil {
 		return err
 	}
-	saveErr := a.saveConfig()
-	a.mu.Unlock()
-	return saveErr
-}
-
-// migrateKeyringToken moves a token from oldKey to newKey in the credential file.
-func (a *App) migrateKeyringToken(oldKey, newKey string) {
-	tok, err := credential.GetToken(oldKey)
-	if err != nil || tok == "" {
-		return
-	}
-	if err := credential.StoreToken(newKey, tok); err != nil {
-		return
-	}
-	_ = credential.DeleteToken(oldKey)
+	ops.ReconfigureClones(a.cfg, newKey)
+	return nil
 }
 
 // ─── Identity ────────────────────────────────────────────────
@@ -3350,7 +3157,7 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 		return CredentialSetupResult{OK: false, Message: fmt.Sprintf("Failed to repair global gitconfig: %v", fixErr)}
 	}
 
-	host := hostnameFromURL(acct.URL)
+	host := ops.HostnameFromURL(acct.URL)
 
 	// Check if GCM already has a stored credential.
 	_, _, err := credential.ResolveGCMToken(acct.URL, acct.Username)
@@ -3427,7 +3234,7 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 
 	// Reconfigure existing clones to use the current credential type.
 	a.mu.Lock()
-	n := a.reconfigureClones(accountKey)
+	n := len(ops.ReconfigureClones(a.cfg, accountKey))
 	a.mu.Unlock()
 	msg := fmt.Sprintf("GCM credential stored for %s@%s", realUsername, host)
 	if n > 0 {
@@ -3455,7 +3262,7 @@ func (a *App) CredentialStoreToken(accountKey, token string) CredentialSetupResu
 
 	// Reconfigure existing clones to use the current credential type.
 	a.mu.Lock()
-	n := a.reconfigureClones(accountKey)
+	n := len(ops.ReconfigureClones(a.cfg, accountKey))
 	a.mu.Unlock()
 	msg := "Token stored in credential file"
 	if n > 0 {
@@ -3507,7 +3314,7 @@ func (a *App) CredentialSetupSSH(accountKey string) CredentialSetupResult {
 	if acct.SSH != nil && acct.SSH.KeyType != "" {
 		keyType = acct.SSH.KeyType
 	}
-	hostname := hostnameFromURL(acct.URL)
+	hostname := ops.HostnameFromURL(acct.URL)
 	if acct.SSH != nil && acct.SSH.Hostname != "" {
 		hostname = acct.SSH.Hostname
 	}
@@ -3570,7 +3377,7 @@ func (a *App) CredentialSetupSSH(accountKey string) CredentialSetupResult {
 
 	// Reconfigure existing clones to use the current credential type.
 	a.mu.Lock()
-	n := a.reconfigureClones(accountKey)
+	n := len(ops.ReconfigureClones(a.cfg, accountKey))
 	a.mu.Unlock()
 
 	keyName := fmt.Sprintf("gitbox-%s-sshkey", accountKey)
@@ -3627,64 +3434,14 @@ func (a *App) CredentialRegenerateSSH(accountKey string) CredentialSetupResult {
 	return a.CredentialSetupSSH(accountKey)
 }
 
-// inferGCMProvider maps a gitbox provider name to the GCM provider hint.
-func inferGCMProvider(prov string) string {
-	switch prov {
-	case "github":
-		return "github"
-	case "gitlab":
-		return "gitlab"
-	case "bitbucket":
-		return "bitbucket"
-	default:
-		return "generic"
-	}
-}
-
-// hostnameFromURL extracts the hostname from a URL.
-func hostnameFromURL(rawURL string) string {
-	u, err := url.Parse(rawURL)
-	if err != nil || u.Hostname() == "" {
-		for _, prefix := range []string{"https://", "http://"} {
-			if strings.HasPrefix(rawURL, prefix) {
-				return strings.TrimPrefix(rawURL, prefix)
-			}
-		}
-		return rawURL
-	}
-	return u.Hostname()
-}
-
 // ─── Delete ───────────────────────────────────────────────────
 
 // DeleteRepo removes a repo from the config and deletes its local folder.
-// Returns an error message or empty string on success.
 func (a *App) DeleteRepo(sourceKey, repoKey string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	src, ok := a.cfg.Sources[sourceKey]
-	if !ok {
-		return fmt.Errorf("source %q not found", sourceKey)
-	}
-	repo, ok := src.Repos[repoKey]
-	if !ok {
-		return fmt.Errorf("repo %q not found in source %q", repoKey, sourceKey)
-	}
-
-	// Resolve the local path and remove the folder if it exists.
-	globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
-	sourceFolder := src.EffectiveFolder(sourceKey)
-	path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
-
-	if git.IsRepo(path) {
-		if err := os.RemoveAll(path); err != nil {
-			return fmt.Errorf("deleting folder %s: %w", path, err)
-		}
-	}
-
-	// Remove from config and save.
-	if err := a.cfg.DeleteRepo(sourceKey, repoKey); err != nil {
+	if err := ops.DeleteRepo(a.cfg, sourceKey, repoKey); err != nil {
 		return err
 	}
 	return a.saveConfig()
@@ -3719,7 +3476,7 @@ func (a *App) AccountDeletionImpact(accountKey string) AccountDeletionImpactDTO 
 		Workspaces:       r.Workspaces,
 		WorkspaceMembers: r.WorkspaceMembers,
 		RepoCount:        r.RepoCount,
-		CloneCount:       a.countClonedRepos(accountKey),
+		CloneCount:       ops.CountClonedRepos(a.cfg, accountKey),
 	}
 	if dto.Sources == nil {
 		dto.Sources = []string{}
@@ -3733,224 +3490,31 @@ func (a *App) AccountDeletionImpact(accountKey string) AccountDeletionImpactDTO 
 	return dto
 }
 
-// DeleteAccount removes an account, every source that references it, every
-// mirror that references it, and all local clone folders. Cascade semantics:
-// leaving a dangling mirror reference behind would corrupt the config and
-// cause data loss on the next launch (see issue #60).
+// DeleteAccount removes an account, every source and mirror that references
+// it, and all its local clone folders (see ops.DeleteAccount).
 func (a *App) DeleteAccount(accountKey string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	if _, ok := a.cfg.Accounts[accountKey]; !ok {
-		return fmt.Errorf("account %q not found", accountKey)
-	}
-
-	globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
-
-	// Delete all clone folders and source directories for this account. We
-	// walk the sources map before CascadeDeleteAccount mutates it.
-	for sourceKey, src := range a.cfg.Sources {
-		if src.Account != accountKey {
-			continue
-		}
-		sourceFolder := src.EffectiveFolder(sourceKey)
-		for repoKey, repo := range src.Repos {
-			path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
-			if git.IsRepo(path) {
-				_ = os.RemoveAll(path)
-			}
-		}
-		// Remove the entire source directory (e.g. ~/00.git/github-acme/).
-		sourcePath := filepath.Join(globalFolder, sourceFolder)
-		_ = os.RemoveAll(sourcePath)
-	}
-
-	if _, err := a.cfg.CascadeDeleteAccount(accountKey); err != nil {
+	if err := ops.DeleteAccount(a.cfg, accountKey); err != nil {
 		return err
 	}
-
 	return a.saveConfig()
 }
 
-// reconfigureClones updates the remote URL and credential config of every
-// cloned repo belonging to the given account so they match the current
-// credential type. Returns the number of repos updated.
-// Caller MUST hold a.mu.
-func (a *App) reconfigureClones(accountKey string) int {
-	acct, ok := a.cfg.Accounts[accountKey]
-	if !ok {
-		return 0
-	}
-	globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
-	count := 0
-	for sourceKey, src := range a.cfg.Sources {
-		if src.Account != accountKey {
-			continue
-		}
-		sourceFolder := src.EffectiveFolder(sourceKey)
-		for repoKey, repo := range src.Repos {
-			path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
-			if !git.IsRepo(path) {
-				continue
-			}
-			credType := repo.EffectiveCredentialType(&acct)
-			newURL := a.cloneURL(acct, repoKey, credType)
-			_ = git.SetRemoteURL(path, "origin", newURL)
-
-			// Configure per-repo credential isolation.
-			_ = credential.ConfigureRepoCredential(path, acct, accountKey, credType, a.cfg.Global)
-			count++
-		}
-	}
-	return count
-}
-
-// updateCloneIdentity sets user.name and user.email in all cloned repos
-// belonging to the given account. Caller MUST hold a.mu.
-func (a *App) updateCloneIdentity(accountKey string) {
-	acct, ok := a.cfg.Accounts[accountKey]
-	if !ok {
-		return
-	}
-	globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
-	for sourceKey, src := range a.cfg.Sources {
-		if src.Account != accountKey {
-			continue
-		}
-		sourceFolder := src.EffectiveFolder(sourceKey)
-		for repoKey, repo := range src.Repos {
-			path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
-			if !git.IsRepo(path) {
-				continue
-			}
-			name := repo.Name
-			if name == "" {
-				name = acct.Name
-			}
-			email := repo.Email
-			if email == "" {
-				email = acct.Email
-			}
-			_ = git.ConfigSet(path, "user.name", name)
-			_ = git.ConfigSet(path, "user.email", email)
-		}
-	}
-}
-
-// countClonedRepos returns the number of cloned repos for the given account.
-// Caller MUST hold a.mu.
-func (a *App) countClonedRepos(accountKey string) int {
-	globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
-	count := 0
-	for sourceKey, src := range a.cfg.Sources {
-		if src.Account != accountKey {
-			continue
-		}
-		sourceFolder := src.EffectiveFolder(sourceKey)
-		for repoKey, repo := range src.Repos {
-			path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
-			if git.IsRepo(path) {
-				count++
-			}
-		}
-	}
-	return count
-}
-
-// ChangeCredentialType changes an account's credential type and populates the
-// appropriate sub-object. Returns the updated account key for re-rendering.
-// removeCredentialArtifacts cleans up the OS-level artifacts (keyring entries,
-// SSH keys, GCM cached credentials) for the account's current credential type.
-// Does NOT modify the config — caller handles that.
-// Caller must NOT hold a.mu (this function does its own locking for reads).
-func (a *App) removeCredentialArtifacts(accountKey string) []string {
-	a.mu.Lock()
-	acct := a.cfg.Accounts[accountKey]
-	cfg := a.cfg
-	a.mu.Unlock()
-
-	var msgs []string
-	switch acct.DefaultCredentialType {
-	case "token":
-		if err := credential.DeleteToken(accountKey); err == nil {
-			msgs = append(msgs, "Token removed from credential file")
-		}
-		if err := credential.RemoveCredentialFile(accountKey); err == nil {
-			msgs = append(msgs, "Credential store file removed")
-		}
-	case "gcm":
-		host := hostnameFromURL(acct.URL)
-		input := fmt.Sprintf("protocol=https\nhost=%s\nusername=%s\n", host, acct.Username)
-		homeDir, _ := os.UserHomeDir()
-		cmd := exec.Command(git.GitBin(), "credential", "reject")
-		cmd.Dir = homeDir // Avoid repo-local .git/config credential overrides.
-		cmd.Env = git.Environ()
-		git.HideWindow(cmd)
-		cmd.Stdin = strings.NewReader(input)
-		if err := cmd.Run(); err == nil {
-			msgs = append(msgs, fmt.Sprintf("GCM credential removed for %s@%s", acct.Username, host))
-		}
-	case "ssh":
-		sshFolder := credential.SSHFolder(cfg)
-		hostAlias := credential.SSHHostAlias(accountKey)
-		keyPath := credential.SSHKeyPath(sshFolder, accountKey)
-		if err := os.Remove(keyPath); err == nil {
-			msgs = append(msgs, fmt.Sprintf("Removed SSH key: %s", keyPath))
-		}
-		if err := os.Remove(keyPath + ".pub"); err == nil {
-			msgs = append(msgs, fmt.Sprintf("Removed SSH public key: %s.pub", keyPath))
-		}
-		if err := credential.RemoveSSHConfigEntry(sshFolder, hostAlias); err == nil {
-			msgs = append(msgs, fmt.Sprintf("Removed Host %s from ~/.ssh/config", hostAlias))
-		}
-		if err := credential.DeleteToken(accountKey); err == nil {
-			msgs = append(msgs, "Removed discovery PAT from credential file")
-		}
-	}
-	return msgs
-}
-
+// ChangeCredentialType removes the account's current credential artifacts,
+// switches it to newType, and reconfigures existing clones.
 func (a *App) ChangeCredentialType(accountKey, newType string) error {
-	// Clean up old credential artifacts before switching.
-	a.removeCredentialArtifacts(accountKey)
-
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	acct, ok := a.cfg.Accounts[accountKey]
-	if !ok {
-		return fmt.Errorf("account %q not found", accountKey)
-	}
-
-	acct.DefaultCredentialType = newType
-
-	// Clear old credential sub-objects and populate the new one.
-	acct.GCM = nil
-	acct.SSH = nil
-
-	switch newType {
-	case "gcm":
-		acct.GCM = &config.GCMConfig{
-			Provider:    inferGCMProvider(acct.Provider),
-			UseHTTPPath: false,
-		}
-	case "ssh":
-		acct.SSH = &config.SSHConfig{
-			Host:     credential.SSHHostAlias(accountKey),
-			Hostname: hostnameFromURL(acct.URL),
-			KeyType:  "ed25519",
-		}
-	}
-
-	if err := a.cfg.UpdateAccount(accountKey, acct); err != nil {
+	if err := ops.ChangeCredentialType(a.cfg, accountKey, newType); err != nil {
 		return err
 	}
 	if err := a.saveConfig(); err != nil {
 		return err
 	}
-
-	// Update all existing clones to match the new credential type.
-	a.reconfigureClones(accountKey)
+	ops.ReconfigureClones(a.cfg, accountKey)
 	return nil
 }
 
@@ -3958,44 +3522,15 @@ func (a *App) ChangeCredentialType(accountKey, newType string) error {
 // its credential configuration so it can be set up from scratch.
 func (a *App) CredentialDelete(accountKey string) CredentialSetupResult {
 	a.mu.Lock()
-	acct, ok := a.cfg.Accounts[accountKey]
-	a.mu.Unlock()
+	defer a.mu.Unlock()
 
-	if !ok {
-		return CredentialSetupResult{OK: false, Message: "Account not found"}
-	}
-
-	if acct.DefaultCredentialType == "" {
-		return CredentialSetupResult{OK: true, Message: "No credential configured"}
-	}
-
-	msgs := a.removeCredentialArtifacts(accountKey)
-
-	// For SSH, remind the user to remove the public key from the provider.
-	if acct.DefaultCredentialType == "ssh" {
-		msgs = append(msgs, fmt.Sprintf("Remember to remove the SSH public key from your provider:\n  %s", credential.SSHPublicKeyURL(acct.Provider, acct.URL)))
-	}
-
-	// Clear credential config.
-	a.mu.Lock()
-	nClones := a.countClonedRepos(accountKey)
-	acct.DefaultCredentialType = ""
-	acct.GCM = nil
-	acct.SSH = nil
-	if err := a.cfg.UpdateAccount(accountKey, acct); err != nil {
-		a.mu.Unlock()
+	msgs, err := ops.DeleteCredential(a.cfg, accountKey)
+	if err != nil {
 		return CredentialSetupResult{OK: false, Message: err.Error()}
 	}
-	a.mu.Unlock()
-
 	if err := a.saveConfig(); err != nil {
 		return CredentialSetupResult{OK: false, Message: err.Error()}
 	}
-
-	if nClones > 0 {
-		msgs = append(msgs, fmt.Sprintf("%d clone(s) will be reconfigured when a new credential is set up", nClones))
-	}
-
 	return CredentialSetupResult{OK: true, Message: strings.Join(msgs, "\n")}
 }
 
@@ -4025,25 +3560,7 @@ func (a *App) Discover(accountKey string) {
 			return
 		}
 
-		token, _, err := credential.ResolveAPIToken(acct, accountKey)
-		if err != nil {
-			wailsrt.EventsEmit(a.ctx, "discover:done", map[string]interface{}{
-				"accountKey": accountKey,
-				"error":      fmt.Sprintf("no API token available: %v", err),
-			})
-			return
-		}
-
-		prov, err := provider.ByName(acct.Provider)
-		if err != nil {
-			wailsrt.EventsEmit(a.ctx, "discover:done", map[string]interface{}{
-				"accountKey": accountKey,
-				"error":      err.Error(),
-			})
-			return
-		}
-
-		repos, err := prov.ListRepos(context.Background(), acct.URL, token, acct.Username)
+		repos, err := ops.ListRemoteRepos(context.Background(), acct, accountKey)
 		if err != nil {
 			wailsrt.EventsEmit(a.ctx, "discover:done", map[string]interface{}{
 				"accountKey": accountKey,
@@ -4077,26 +3594,8 @@ func (a *App) AddDiscoveredRepos(key string, repoNames []string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	sourceKey := key
-	if _, ok := a.cfg.Sources[sourceKey]; !ok {
-		// Not a direct source key — find source by account key.
-		found := false
-		for sk, src := range a.cfg.Sources {
-			if src.Account == key {
-				sourceKey = sk
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("no source found for key %q", key)
-		}
-	}
-
-	for _, name := range repoNames {
-		if err := a.cfg.AddRepo(sourceKey, name, config.Repo{}); err != nil {
-			return err
-		}
+	if err := ops.AddDiscoveredRepos(a.cfg, key, repoNames); err != nil {
+		return err
 	}
 	return a.saveConfig()
 }
@@ -4137,15 +3636,6 @@ func (a *App) CredentialVerify(accountKey string) CredentialStatus {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────
-
-func stripScheme(rawURL string) string {
-	for _, prefix := range []string{"https://", "http://"} {
-		if len(rawURL) > len(prefix) && rawURL[:len(prefix)] == prefix {
-			return rawURL[len(prefix):]
-		}
-	}
-	return rawURL
-}
 
 // ─── Mirror methods ──────────────────────────────────────────
 
@@ -4289,20 +3779,10 @@ func (a *App) ListRemoteRepos(accountKey string) []DiscoverResult {
 		return nil
 	}
 
-	token, _, err := credential.ResolveAPIToken(acct, accountKey)
-	if err != nil {
-		return nil
-	}
-
-	prov, err := provider.ByName(acct.Provider)
-	if err != nil {
-		return nil
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	repos, err := prov.ListRepos(ctx, acct.URL, token, acct.Username)
+	repos, err := ops.ListRemoteRepos(ctx, acct, accountKey)
 	if err != nil {
 		return nil
 	}
@@ -4330,30 +3810,9 @@ func (a *App) ListAccountOrgs(accountKey string) ([]string, error) {
 		return nil, fmt.Errorf("account %q not found", accountKey)
 	}
 
-	token, _, err := credential.ResolveAPIToken(acct, accountKey)
-	if err != nil {
-		return nil, fmt.Errorf("resolving credentials: %w", err)
-	}
-
-	prov, err := provider.ByName(acct.Provider)
-	if err != nil {
-		return nil, err
-	}
-
-	// Start with the personal username.
-	result := []string{acct.Username}
-
-	// Try to list orgs if the provider supports it.
-	if ol, ok := prov.(provider.OrgLister); ok {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		orgs, err := ol.ListUserOrgs(ctx, acct.URL, token, acct.Username)
-		if err == nil {
-			result = append(result, orgs...)
-		}
-	}
-
-	return result, nil
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return ops.ListAccountOrgs(ctx, acct, accountKey)
 }
 
 // CreateNewRepo creates a repository on the provider and optionally adds it
@@ -4366,31 +3825,10 @@ func (a *App) CreateNewRepo(accountKey, owner, repoName, description string, pri
 		return fmt.Errorf("account %q not found", accountKey)
 	}
 
-	token, _, err := credential.ResolveAPIToken(acct, accountKey)
-	if err != nil {
-		return fmt.Errorf("resolving credentials: %w", err)
-	}
-
-	prov, err := provider.ByName(acct.Provider)
-	if err != nil {
-		return err
-	}
-
-	rc, ok := prov.(provider.RepoCreator)
-	if !ok {
-		return fmt.Errorf("provider %q does not support repo creation", acct.Provider)
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// If owner matches the username, create under personal namespace (empty owner).
-	apiOwner := owner
-	if apiOwner == acct.Username {
-		apiOwner = ""
-	}
-
-	if err := rc.CreateRepo(ctx, acct.URL, token, acct.Username, apiOwner, repoName, description, private); err != nil {
+	if err := ops.CreateRemoteRepo(ctx, acct, accountKey, owner, repoName, description, private); err != nil {
 		return err
 	}
 
@@ -4814,11 +4252,7 @@ func (a *App) ListMoveDestinationOwners(sourceKey string) []MoveOwnerOption {
 			IsOrg:    false,
 		})
 		// Orgs are best-effort; skip on any resolution failure.
-		token, _, err := credential.ResolveAPIToken(acct, accountKey)
-		if err != nil {
-			continue
-		}
-		prov, err := provider.ByName(acct.Provider)
+		prov, token, err := ops.ProviderClient(acct, accountKey)
 		if err != nil {
 			continue
 		}
