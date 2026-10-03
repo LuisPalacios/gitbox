@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -417,5 +418,78 @@ func TestGCMProviderFor(t *testing.T) {
 		if got := GCMProviderFor(in); got != want {
 			t.Errorf("GCMProviderFor(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// A failed folder move must abort the rename before anything else changes,
+// so config, credentials and disk stay consistent.
+func TestRenameAccount_FolderMoveFailureChangesNothing(t *testing.T) {
+	setup := func(t *testing.T) *config.Config {
+		t.Helper()
+		_, cfg := isolate(t)
+		if err := AddAccount(cfg, "old", testAccount("token")); err != nil {
+			t.Fatal(err)
+		}
+		if err := cfg.AddRepo("old", "alice/repo", config.Repo{}); err != nil {
+			t.Fatal(err)
+		}
+		if err := credential.StoreToken("old", "pat-123"); err != nil {
+			t.Fatal(err)
+		}
+		makeClone(t, cfg, "old", "alice/repo", "https://alice@github.com/alice/repo.git")
+		return cfg
+	}
+	assertUnchanged := func(t *testing.T, cfg *config.Config) {
+		t.Helper()
+		if _, ok := cfg.Accounts["old"]; !ok {
+			t.Error("account was renamed despite the failed folder move")
+		}
+		if _, ok := cfg.Sources["old"]; !ok {
+			t.Error("source was renamed despite the failed folder move")
+		}
+		if tok, err := credential.GetToken("old"); err != nil || tok != "pat-123" {
+			t.Errorf("token moved despite the failed folder move: %q, %v", tok, err)
+		}
+	}
+
+	t.Run("destination exists", func(t *testing.T) {
+		cfg := setup(t)
+		if err := os.MkdirAll(filepath.Join(cfg.Global.Folder, "new"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		err := RenameAccount(cfg, "old", "new")
+		if err == nil || !strings.Contains(err.Error(), "already exists") {
+			t.Fatalf("err = %v, want an 'already exists' error", err)
+		}
+		assertUnchanged(t, cfg)
+	})
+
+	t.Run("folder in use", func(t *testing.T) {
+		if runtime.GOOS != "windows" {
+			t.Skip("only Windows blocks renaming a folder with open handles inside")
+		}
+		cfg := setup(t)
+		f, err := os.Open(filepath.Join(cfg.Global.Folder, "old", "alice", "repo", ".git", "HEAD"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		if err := RenameAccount(cfg, "old", "new"); err == nil {
+			t.Fatal("expected an error while a file inside the folder is open")
+		}
+		assertUnchanged(t, cfg)
+	})
+}
+
+func TestRenameAccount_NoFolderYet(t *testing.T) {
+	_, cfg := isolate(t)
+	if err := AddAccount(cfg, "old", testAccount("gcm")); err != nil {
+		t.Fatal(err)
+	}
+	if err := RenameAccount(cfg, "old", "new"); err != nil {
+		t.Fatalf("rename without a folder on disk: %v", err)
+	}
+	if _, ok := cfg.Sources["new"]; !ok {
+		t.Error("source not renamed")
 	}
 }

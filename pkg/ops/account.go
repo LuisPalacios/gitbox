@@ -78,6 +78,22 @@ func RenameAccount(cfg *config.Config, oldKey, newKey string) error {
 		return fmt.Errorf("account %q already exists", newKey)
 	}
 
+	// Move the folder first: it is the step most likely to fail (on Windows
+	// any process working inside it blocks the rename), and nothing else
+	// has changed yet, so a failure leaves config, credentials and disk
+	// consistent.
+	renameSource := false
+	if src, srcExists := cfg.Sources[oldKey]; srcExists {
+		if _, conflict := cfg.Sources[newKey]; !conflict {
+			renameSource = true
+			if src.Folder == "" {
+				if err := moveSourceFolder(cfg, oldKey, newKey); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
 	// Any credential type may carry a stored token (token accounts as the
 	// primary credential, SSH/GCM accounts as the companion API PAT).
 	migrateStoredToken(oldKey, newKey)
@@ -113,19 +129,34 @@ func RenameAccount(cfg *config.Config, oldKey, newKey string) error {
 		}
 	}
 
-	// Rename the same-key source and, when it uses the default folder (the
-	// source key), its directory on disk.
-	if src, srcExists := cfg.Sources[oldKey]; srcExists {
-		if _, conflict := cfg.Sources[newKey]; !conflict {
-			if src.Folder == "" {
-				globalFolder := config.ExpandTilde(cfg.Global.Folder)
-				_ = os.Rename(filepath.Join(globalFolder, oldKey), filepath.Join(globalFolder, newKey))
-			}
-			_ = cfg.RenameSource(oldKey, newKey)
+	if renameSource {
+		_ = cfg.RenameSource(oldKey, newKey)
+	}
+	return cfg.RenameAccount(oldKey, newKey)
+}
+
+// moveSourceFolder renames <global folder>/<oldKey> to <global folder>/<newKey>,
+// the default on-disk folder of a source. A missing old folder (nothing cloned
+// yet) is fine; an existing new folder or a failed rename is an error.
+func moveSourceFolder(cfg *config.Config, oldKey, newKey string) error {
+	globalFolder := config.ExpandTilde(cfg.Global.Folder)
+	oldPath := filepath.Join(globalFolder, oldKey)
+	newPath := filepath.Join(globalFolder, newKey)
+
+	if _, err := os.Stat(oldPath); os.IsNotExist(err) {
+		return nil
+	}
+	// Windows and default macOS filesystems are case-insensitive: a
+	// case-only rename makes newPath "exist" as the old folder itself.
+	if !strings.EqualFold(oldPath, newPath) {
+		if _, err := os.Stat(newPath); err == nil {
+			return fmt.Errorf("cannot rename folder %s: %s already exists", oldPath, newPath)
 		}
 	}
-
-	return cfg.RenameAccount(oldKey, newKey)
+	if err := os.Rename(oldPath, newPath); err != nil {
+		return fmt.Errorf("cannot rename folder %s to %s: %w (close any terminal, editor or program working inside it and try again)", oldPath, newPath, err)
+	}
+	return nil
 }
 
 // DeleteAccount removes an account together with every clone folder and
