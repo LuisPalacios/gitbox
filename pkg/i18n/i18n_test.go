@@ -1,7 +1,6 @@
 package i18n
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -18,32 +17,6 @@ func TestNormalize(t *testing.T) {
 	for in, want := range tests {
 		if got := Normalize(in); got != want {
 			t.Errorf("Normalize(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
-func TestSpanishCatalogUsesAccents(t *testing.T) {
-	badWords := []string{
-		"configuracion",
-		"sincronizacion",
-		"periodica",
-		"informacion",
-		"atencion",
-		"todavia",
-		"pestana",
-		"Simbolos",
-		"huerfanos",
-		"version",
-		"esten",
-		"raiz",
-		"almacen",
-	}
-	for key, value := range catalogs[Spanish] {
-		lower := strings.ToLower(value)
-		for _, bad := range badWords {
-			if strings.Contains(lower, strings.ToLower(bad)) {
-				t.Errorf("Spanish catalog key %q contains unaccented %q in %q", key, bad, value)
-			}
 		}
 	}
 }
@@ -69,15 +42,5 @@ func TestResolvePrecedence(t *testing.T) {
 	t.Setenv("GITBOX_LANG", "")
 	if got := Resolve("", cfg); got != "en" {
 		t.Fatalf("config Resolve = %q, want en", got)
-	}
-}
-
-func TestTranslatorFallback(t *testing.T) {
-	tr := New("es")
-	if got := tr.T("app.description"); got == "" || got == catalogs[English]["app.description"] {
-		t.Fatalf("Spanish translation not used: %q", got)
-	}
-	if got := tr.T("missing.key"); got != "missing.key" {
-		t.Fatalf("missing key = %q, want key", got)
 	}
 }

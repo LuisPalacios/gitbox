@@ -130,7 +130,7 @@ func shellExecuteRunas(script string) error {
 
 	// ShellExecuteW returns >32 on success.
 	if ret <= 32 {
-		return fmt.Errorf("ShellExecuteW failed (code %d) — try running gitbox update from an admin terminal", ret)
+		return fmt.Errorf("ShellExecuteW failed (code %d) — try running the update again as Administrator", ret)
 	}
 	return nil
 }

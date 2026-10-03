@@ -1,9 +1,7 @@
 // Package launch builds the argv that opens a TerminalProfile in a folder.
 //
-// The expansion logic is shared between the GUI bridge (cmd/gui) and the TUI
-// launcher (cmd/cli/tui) so both frontends interpret a Profile's tokens the
-// same way byte-for-byte. Splitting it out also lets us unit-test the rules
-// without dragging in either the Wails runtime or the Bubble Tea event loop.
+// The expansion logic lives here, outside the GUI bridge (cmd/gui), so the
+// rules for a Profile's tokens can be unit-tested without the Wails runtime.
 //
 // The only public entry point is ResolveArgs. Everything else is an
 // implementation detail.

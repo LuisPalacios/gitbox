@@ -60,7 +60,7 @@ func TokenSetupGuide(providerName, baseURL, accountKey string) string {
 		sb.WriteString("  Create a token with full repository permissions and store it.\n")
 	}
 
-	sb.WriteString(fmt.Sprintf("\nThen store it:\n  gitbox account credential setup %s\n", accountKey))
+	sb.WriteString("\nThen paste it into the account's credential settings in gitbox.\n")
 	return sb.String()
 }
 

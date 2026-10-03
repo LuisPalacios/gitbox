@@ -238,8 +238,8 @@ func TestTokenSetupGuide(t *testing.T) {
 			if !contains(guide, tt.contains) {
 				t.Errorf("guide for %s should contain %q:\n%s", tt.name, tt.contains, guide)
 			}
-			if !contains(guide, "gitbox account credential setup test-account") {
-				t.Errorf("guide should contain store command:\n%s", guide)
+			if !contains(guide, "credential settings") {
+				t.Errorf("guide should say where to store the token:\n%s", guide)
 			}
 		})
 	}

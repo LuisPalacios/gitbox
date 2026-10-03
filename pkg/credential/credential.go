@@ -166,13 +166,13 @@ func ResolveGCMToken(accountURL, username string) (token, source string, err err
 // servers.
 //
 // For all credential types, it checks env vars and OS keyring only (ResolveToken).
-// GCM accounts must have a separate PAT stored via "gitbox account credential setup".
+// GCM accounts must have a separate PAT stored in the account's credential settings.
 func ResolveMirrorToken(acct config.Account, accountKey string) (token, source string, err error) {
 	tok, src, err := ResolveToken(acct, accountKey)
 	if err != nil {
 		if acct.DefaultCredentialType == "gcm" {
-			return "", "", fmt.Errorf("mirror token not found for GCM account %q: mirrors require a PAT stored via 'gitbox account credential setup %s' (GCM OAuth tokens are machine-local and can't be used by remote servers)",
-				accountKey, accountKey)
+			return "", "", fmt.Errorf("mirror token not found for GCM account %q: mirrors require a PAT stored in the account's credential settings (GCM OAuth tokens are machine-local and can't be used by remote servers)",
+				accountKey)
 		}
 		return "", "", err
 	}

@@ -38,6 +38,12 @@ func main() {
 	//                         own and the parent window stays interactive).
 	parentPID := 0
 	for _, arg := range os.Args[1:] {
+		// --version prints the build version and exits without opening a
+		// window, so scripts can smoke-test an installed GitboxApp.
+		if arg == "--version" {
+			fmt.Printf("GitboxApp %s\n", app.GetAppVersion())
+			return
+		}
 		if arg == "--test-mode" {
 			cfgPath, cleanup, err := config.SetupTestMode()
 			if err != nil {
