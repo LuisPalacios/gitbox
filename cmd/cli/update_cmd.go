@@ -33,8 +33,11 @@ func updateOpts() update.Options {
 	return update.Options{
 		CurrentVersion: update.ResolveVersion(version),
 		Repo:           "LuisPalacios/gitbox",
-		CacheFile:      filepath.Join(cacheDir, ".update-check"),
-		ThrottleDur:    24 * time.Hour,
+		// Own cache file so a CLI check never throttles the GUI's banner.
+		CacheFile:   filepath.Join(cacheDir, ".update-check-cli"),
+		ThrottleDur: 24 * time.Hour,
+		// The CLI lives on the v1 line only; v2 releases ship the GUI alone.
+		MaxMajor: 1,
 	}
 }
 

@@ -474,8 +474,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ github.ref_name }}" \
+          # Only the highest major line may become "latest": a v1.7.z
+          # maintenance tag pushed after v2.0.0 must not hijack
+          # releases/latest, which every v2 GUI's updater follows.
+          tag="${{ github.ref_name }}"
+          major="${tag#v}"; major="${major%%.*}"
+          top="$(gh release list --repo "${{ github.repository }}" --limit 100 \
+                   --json tagName -q '.[].tagName' \
+                 | sed -E 's/^v([0-9]+)\..*/\1/' | grep -E '^[0-9]+$' | sort -n | tail -1)"
+          latest=true
+          if [ -n "$top" ] && [ "$major" -lt "$top" ]; then latest=false; fi
+          echo "Publishing $tag with --latest=$latest (highest existing major: ${top:-none})"
+
+          gh release create "$tag" \
             --repo "${{ github.repository }}" \
-            --title "gitbox ${{ github.ref_name }}" \
+            --title "gitbox $tag" \
             --generate-notes \
+            --latest="$latest" \
             release/*

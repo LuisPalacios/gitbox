@@ -60,4 +60,4 @@ Until signing is configured, macOS users will see a Gatekeeper warning when open
 - Run `bash "/Volumes/gitbox/Install Gitbox.command"` from Terminal — the bundled install script copies binaries and removes quarantine flags automatically
 - Use `xattr -cr GitboxApp.app` and `xattr -cr gitbox` to remove the quarantine attribute manually
 - Use the `bootstrap.sh` script which handles this automatically
-- Use `gitbox update` from the CLI which replaces binaries without Gatekeeper checks
+- Use the in-app update (GUI banner) or `gitbox update` (CLI), which replace their own binary without Gatekeeper checks

@@ -351,3 +351,82 @@ func (t rewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req.URL.Host = t.target[len("http://"):]
 	return t.base.RoundTrip(req)
 }
+
+// ── Major-version pinning tests ──
+
+func TestNewestWithinMajor(t *testing.T) {
+	releases := []ReleaseInfo{
+		{TagName: "v2.0.0"},
+		{TagName: "v1.7.1"},
+		{TagName: "v1.8.0", Prerelease: true},
+		{TagName: "v1.9.0", Draft: true},
+		{TagName: "v1.7.0"},
+		{TagName: "nightly"},
+	}
+	if got := newestWithinMajor(releases, 1); got == nil || got.TagName != "v1.7.1" {
+		t.Errorf("maxMajor=1: got %v, want v1.7.1", got)
+	}
+	if got := newestWithinMajor(releases, 2); got == nil || got.TagName != "v2.0.0" {
+		t.Errorf("maxMajor=2: got %v, want v2.0.0", got)
+	}
+	if got := newestWithinMajor(releases, 0); got != nil {
+		t.Errorf("maxMajor=0: got %v, want nil", got)
+	}
+}
+
+func TestCheckLatest_MaxMajor_IgnoresNextMajor(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[
+			{"tag_name": "v2.0.0", "assets": []},
+			{"tag_name": "v1.7.1", "assets": []},
+			{"tag_name": "v1.7.0", "assets": []}
+		]`)
+	}))
+	defer srv.Close()
+
+	opts := Options{
+		CurrentVersion: "v1.7.0",
+		Repo:           "test/test",
+		HTTPClient:     srv.Client(),
+		MaxMajor:       1,
+	}
+	opts.HTTPClient.Transport = rewriteTransport{base: http.DefaultTransport, target: srv.URL}
+
+	result, err := CheckLatestForce(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("CheckLatestForce error: %v", err)
+	}
+	if !strings.HasSuffix(gotPath, "/releases") {
+		t.Errorf("pinned check queried %q, want the releases list", gotPath)
+	}
+	if !result.Available || result.Latest != "v1.7.1" {
+		t.Errorf("got available=%v latest=%q, want true v1.7.1", result.Available, result.Latest)
+	}
+}
+
+func TestCheckLatest_MaxMajor_NoCandidate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"tag_name": "v2.0.0", "assets": []}]`)
+	}))
+	defer srv.Close()
+
+	opts := Options{
+		CurrentVersion: "v1.7.0",
+		Repo:           "test/test",
+		HTTPClient:     srv.Client(),
+		MaxMajor:       1,
+	}
+	opts.HTTPClient.Transport = rewriteTransport{base: http.DefaultTransport, target: srv.URL}
+
+	result, err := CheckLatestForce(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("CheckLatestForce error: %v", err)
+	}
+	if result.Available {
+		t.Errorf("expected no update, got %q", result.Latest)
+	}
+}

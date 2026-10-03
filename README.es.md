@@ -17,6 +17,9 @@
 
 [Read in English](README.md)
 
+> [!NOTE]
+> **gitbox v2 será solo GUI.** Trabajo casi siempre desde la app de escritorio, así que v2 elimina la CLI y la TUI para mantener bien una sola interfaz. v1 (CLI + TUI + GUI) sigue disponible en la rama [`release/v1`](https://github.com/LuisPalacios/gitbox/tree/release/v1) y recibe fixes críticos como releases `v1.7.x`. Las instalaciones headless (`--cli-only`) siguen recibiendo la última CLI 1.x.
+
 ---
 
 ## Por qué uso gitbox

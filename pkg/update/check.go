@@ -15,10 +15,12 @@ import (
 
 // ReleaseInfo holds metadata about a GitHub release.
 type ReleaseInfo struct {
-	TagName   string `json:"tag_name"`
-	HTMLURL   string `json:"html_url"`
-	Published string `json:"published_at"`
-	Assets    []struct {
+	TagName    string `json:"tag_name"`
+	HTMLURL    string `json:"html_url"`
+	Published  string `json:"published_at"`
+	Draft      bool   `json:"draft"`
+	Prerelease bool   `json:"prerelease"`
+	Assets     []struct {
 		Name               string `json:"name"`
 		BrowserDownloadURL string `json:"browser_download_url"`
 	} `json:"assets"`
@@ -39,6 +41,11 @@ type Options struct {
 	HTTPClient     *http.Client  // nil = default with 10s timeout
 	CacheFile      string        // path to throttle timestamp file
 	ThrottleDur    time.Duration // default 24h
+	// MaxMajor caps the major version this binary may update to (0 = no
+	// cap). The v1 CLI sets 1 so it never "updates" to a v2 release, which
+	// ships the GUI only. With a cap, the release list is scanned instead
+	// of trusting releases/latest.
+	MaxMajor int
 }
 
 func (o *Options) defaults() {
@@ -93,41 +100,21 @@ func CheckLatestForce(ctx context.Context, opts Options) (*CheckResult, error) {
 }
 
 func checkLatestAPI(ctx context.Context, opts Options) (*CheckResult, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", opts.Repo)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	var (
+		release *ReleaseInfo
+		err     error
+	)
+	if opts.MaxMajor > 0 {
+		release, err = fetchNewestWithinMajor(ctx, opts)
+	} else {
+		release, err = fetchLatest(ctx, opts)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+		return nil, err
 	}
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("User-Agent", "gitbox-updater")
-
-	// Use GITHUB_TOKEN if available for higher rate limits.
-	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
-		req.Header.Set("Authorization", "token "+token)
-	}
-
-	resp, err := opts.HTTPClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetching latest release: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusForbidden {
-		return nil, fmt.Errorf("GitHub API rate limit exceeded (HTTP 403)")
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API returned HTTP %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading response: %w", err)
-	}
-
-	var release ReleaseInfo
-	if err := json.Unmarshal(body, &release); err != nil {
-		return nil, fmt.Errorf("parsing release JSON: %w", err)
+	if release == nil {
+		// No release within the allowed major line: nothing to offer.
+		return &CheckResult{Current: opts.CurrentVersion}, nil
 	}
 
 	// Compare versions. If the current version is unparseable (a dev build
@@ -144,14 +131,96 @@ func checkLatestAPI(ctx context.Context, opts Options) (*CheckResult, error) {
 		Available: newer,
 		Current:   opts.CurrentVersion,
 		Latest:    release.TagName,
-		Release:   &release,
+		Release:   release,
 	}, nil
+}
+
+// fetchLatest returns the release GitHub marks as latest.
+func fetchLatest(ctx context.Context, opts Options) (*ReleaseInfo, error) {
+	var release ReleaseInfo
+	if err := getJSON(ctx, opts, "releases/latest", &release); err != nil {
+		return nil, err
+	}
+	return &release, nil
+}
+
+// fetchNewestWithinMajor returns the highest published, non-prerelease
+// release whose major version is <= opts.MaxMajor, or nil if none exists.
+func fetchNewestWithinMajor(ctx context.Context, opts Options) (*ReleaseInfo, error) {
+	var releases []ReleaseInfo
+	if err := getJSON(ctx, opts, "releases?per_page=100", &releases); err != nil {
+		return nil, err
+	}
+	return newestWithinMajor(releases, opts.MaxMajor), nil
+}
+
+// newestWithinMajor picks the highest stable release with major <= maxMajor.
+// Tags that don't parse as semver are ignored.
+func newestWithinMajor(releases []ReleaseInfo, maxMajor int) *ReleaseInfo {
+	var best *ReleaseInfo
+	for i := range releases {
+		r := &releases[i]
+		if r.Draft || r.Prerelease {
+			continue
+		}
+		v, err := ParseVersion(r.TagName)
+		if err != nil || v.Major > maxMajor {
+			continue
+		}
+		if best == nil {
+			best = r
+			continue
+		}
+		if newer, err := IsNewer(best.TagName, r.TagName); err == nil && newer {
+			best = r
+		}
+	}
+	return best
+}
+
+// getJSON GETs https://api.github.com/repos/<repo>/<path> and decodes it.
+func getJSON(ctx context.Context, opts Options, path string, out any) error {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s", opts.Repo, path)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("creating request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("User-Agent", "gitbox-updater")
+
+	// Use GITHUB_TOKEN if available for higher rate limits.
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "token "+token)
+	}
+
+	resp, err := opts.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("fetching releases: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("GitHub API rate limit exceeded (HTTP 403)")
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GitHub API returned HTTP %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("reading response: %w", err)
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("parsing release JSON: %w", err)
+	}
+	return nil
 }
 
 // ArtifactName returns the expected zip/artifact name for the current platform.
 func ArtifactName() string {
 	// Set by the AppImage runtime to the path of the running AppImage.
-	if os.Getenv("APPIMAGE") != "" {
+	if runningFromAppImage() {
 		return "gitbox-x86_64.AppImage"
 	}
 	return artifactNameFor(runtime.GOOS, runtime.GOARCH)

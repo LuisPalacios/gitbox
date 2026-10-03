@@ -253,6 +253,19 @@ macOS DMGs are currently **unsigned**. Code signing and notarization steps are p
 
 The `pkg/update/` package provides version checking and self-update capabilities. Both the CLI (`gitbox update`) and GUI (background check + banner) use it. The updater downloads the platform-specific artifact from GitHub Releases, verifies the SHA256 checksum, and replaces the binaries in place.
 
+The two binaries update differently:
+
+- The GUI follows the release GitHub marks as latest, including the jump from 1.x to 2.x. It replaces only what is already installed next to it; on macOS it replaces the whole `GitboxApp.app` bundle in the folder that holds it.
+- The CLI stays on the 1.x line (`MaxMajor: 1`) and replaces only its own binary, so it never downgrades a v2 GUI installed next to it. It keeps its own throttle file (`.update-check-cli`).
+
+### Release lines
+
+v2 is GUI-only. The CLI and TUI live on in 1.x, on the `release/v1` branch:
+
+- `main` carries v2 and later. Tags look like `v2.y.z`.
+- `release/v1` carries v1 maintenance. It takes critical and security fixes only, tagged `v1.7.z`.
+- CI publishes a release as GitHub's "latest" only when no release with a higher major version exists. A `v1.7.z` tag pushed after `v2.0.0` is therefore published with `--latest=false`, and v2 GUIs never see it as an update.
+
 ---
 
 ## Feature lifecycle

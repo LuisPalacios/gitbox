@@ -253,6 +253,19 @@ Los DMGs de macOS están actualmente **sin firmar**. Los pasos de firma de códi
 
 El paquete `pkg/update/` proporciona comprobación de versión y capacidades de self-update. Tanto la CLI (`gitbox update`) como la GUI (comprobación en background + banner) lo usan. El updater descarga el artefacto específico de la plataforma desde GitHub Releases, verifica el checksum SHA256 y reemplaza los binarios in place.
 
+Los dos binarios se actualizan de forma distinta:
+
+- La GUI sigue el release que GitHub marca como latest, incluido el salto de 1.x a 2.x. Solo reemplaza lo que ya está instalado junto a ella; en macOS reemplaza el bundle `GitboxApp.app` completo en la carpeta que lo contiene.
+- La CLI se queda en la línea 1.x (`MaxMajor: 1`) y solo reemplaza su propio binario, así nunca degrada una GUI v2 instalada junto a ella. Usa su propio fichero de throttle (`.update-check-cli`).
+
+### Líneas de release
+
+v2 es solo GUI. La CLI y la TUI siguen vivas en 1.x, en la rama `release/v1`:
+
+- `main` lleva v2 y posteriores. Los tags son del tipo `v2.y.z`.
+- `release/v1` lleva el mantenimiento de v1. Solo recibe fixes críticos y de seguridad, con tags `v1.7.z`.
+- CI publica un release como "latest" de GitHub solo cuando no existe ningún release con una versión major superior. Un tag `v1.7.z` publicado después de `v2.0.0` se publica por tanto con `--latest=false`, y las GUIs v2 nunca lo ven como actualización.
+
 ---
 
 ## Ciclo de vida de features
