@@ -38,9 +38,11 @@ Usage:
   bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh) [OPTIONS]
 
 Options:
-  --version <tag>   Install a specific release (e.g. v1.2.18). Default: latest.
+  --version <tag>   Install a specific release (e.g. v1.2.18). Default: latest
+                    (with --cli-only: the latest 1.x release).
   --prefix <dir>    CLI install directory. Default: ~/bin.
-  --cli-only        Skip GUI installation.
+  --cli-only        Skip GUI installation. The CLI/TUI ships in 1.x releases
+                    only (v2 is GUI-only), so this installs the latest 1.x.
   --no-desktop      Linux only: skip registering the GUI in the Activities
                     menu. The binary is still installed; you can register
                     it later with scripts/register-gitbox.sh.
@@ -155,6 +157,46 @@ detect_headless() {
       CLI_ONLY=true
     fi
   fi
+}
+
+# ── CLI release line ────────────────────────────────────────────────
+
+# The CLI/TUI ships only in 1.x releases; v2 and later are GUI-only. For a
+# CLI-only install, pin to the newest stable 1.x release unless the user
+# asked for a specific tag, and refuse tags that carry no CLI.
+resolve_cli_version() {
+  [[ "$CLI_ONLY" == true ]] || return 0
+
+  if [[ -n "$VERSION_TAG" ]]; then
+    local major="${VERSION_TAG#v}"
+    major="${major%%.*}"
+    if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 2 )); then
+      die "Release $VERSION_TAG is GUI-only. The CLI/TUI ships in 1.x releases — omit --version to get the latest 1.x."
+    fi
+    return 0
+  fi
+
+  local list
+  if [[ "$USE_GH" == true ]]; then
+    list="$(gh api "repos/${REPO}/releases?per_page=100" 2>/dev/null || true)"
+  else
+    local auth=()
+    [[ -n "${GITHUB_TOKEN:-}" ]] && auth=(-H "Authorization: token $GITHUB_TOKEN")
+    list="$(curl -fsSL ${auth[@]+"${auth[@]}"} "${GITHUB_API}/repos/${REPO}/releases?per_page=100" 2>/dev/null || true)"
+  fi
+  [[ -n "$list" ]] || die "Failed to list releases. Set GITHUB_TOKEN or pass --version v1.x.y."
+
+  # Releases come newest first; pick the first stable v1.* one. Each release
+  # object lists tag_name before draft and prerelease.
+  VERSION_TAG="$(printf '%s' "$list" \
+    | grep -oE '"(tag_name|draft|prerelease)": *("[^"]*"|true|false)' \
+    | awk -F': *' '
+        /"tag_name"/   { tag = $2; gsub(/"/, "", tag); draft = ""; next }
+        /"draft"/      { draft = $2; next }
+        /"prerelease"/ { if (tag ~ /^v1\./ && draft == "false" && $2 == "false") { print tag; exit } }')"
+
+  [[ -n "$VERSION_TAG" ]] || die "No 1.x release found for the CLI."
+  log "CLI-only install: using $VERSION_TAG (latest 1.x release)."
 }
 
 # ── Download release ────────────────────────────────────────────────
@@ -291,11 +333,13 @@ ensure_path() {
 install_macos() {
   mkdir -p "$INSTALL_DIR"
 
-  # CLI
-  cp "$TMP_DIR/extracted/gitbox" "$INSTALL_DIR/gitbox"
-  chmod +x "$INSTALL_DIR/gitbox"
-  xattr -cr "$INSTALL_DIR/gitbox" 2>/dev/null || true
-  log "CLI installed: $INSTALL_DIR/gitbox"
+  # CLI (1.x archives only)
+  if [[ -f "$TMP_DIR/extracted/gitbox" ]]; then
+    cp "$TMP_DIR/extracted/gitbox" "$INSTALL_DIR/gitbox"
+    chmod +x "$INSTALL_DIR/gitbox"
+    xattr -cr "$INSTALL_DIR/gitbox" 2>/dev/null || true
+    log "CLI installed: $INSTALL_DIR/gitbox"
+  fi
 
   # GUI
   if [[ "$CLI_ONLY" == false ]]; then
@@ -326,10 +370,12 @@ register_linux_desktop() {
 install_linux() {
   mkdir -p "$INSTALL_DIR"
 
-  # CLI
-  cp "$TMP_DIR/extracted/gitbox" "$INSTALL_DIR/gitbox"
-  chmod +x "$INSTALL_DIR/gitbox"
-  log "CLI installed: $INSTALL_DIR/gitbox"
+  # CLI (1.x archives only)
+  if [[ -f "$TMP_DIR/extracted/gitbox" ]]; then
+    cp "$TMP_DIR/extracted/gitbox" "$INSTALL_DIR/gitbox"
+    chmod +x "$INSTALL_DIR/gitbox"
+    log "CLI installed: $INSTALL_DIR/gitbox"
+  fi
 
   # GUI
   if [[ "$CLI_ONLY" == false ]]; then
@@ -352,11 +398,13 @@ install_windows() {
   local win_path
   win_path="$(cygpath -w "$INSTALL_DIR" 2>/dev/null || echo "$INSTALL_DIR")"
 
-  # CLI
-  cp "$TMP_DIR/extracted/gitbox.exe" "$INSTALL_DIR/gitbox.exe"
-  # Remove "downloaded from internet" mark so SmartScreen doesn't block it
-  powershell -Command "Unblock-File -Path '${win_path}\\gitbox.exe'" 2>/dev/null || true
-  log "CLI installed: $INSTALL_DIR/gitbox.exe"
+  # CLI (1.x archives only)
+  if [[ -f "$TMP_DIR/extracted/gitbox.exe" ]]; then
+    cp "$TMP_DIR/extracted/gitbox.exe" "$INSTALL_DIR/gitbox.exe"
+    # Remove "downloaded from internet" mark so SmartScreen doesn't block it
+    powershell -Command "Unblock-File -Path '${win_path}\\gitbox.exe'" 2>/dev/null || true
+    log "CLI installed: $INSTALL_DIR/gitbox.exe"
+  fi
 
   # GUI
   if [[ "$CLI_ONLY" == false ]]; then
@@ -428,6 +476,7 @@ main() {
   detect_platform
   check_dependencies
   detect_headless
+  resolve_cli_version
   get_release_info
   extract_archive
   detect_existing_install
