@@ -404,7 +404,7 @@ gitbox update --check   # solo comprobar, sin instalar
 gitbox update           # comprobar e instalar interactivamente
 ```
 
-El updater descarga la release desde GitHub, verifica el checksum SHA256 y reemplaza los binarios in-place. En Windows, hace falta reiniciar después de la actualización.
+El updater descarga la release desde GitHub, verifica el checksum SHA256 y reemplaza el binario `gitbox` in-place. La CLI se queda en la línea 1.x y solo se reemplaza a sí misma; la GUI se actualiza por su cuenta. En Windows, hace falta reiniciar después de la actualización.
 
 ## Qué sigue
 

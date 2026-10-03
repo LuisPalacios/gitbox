@@ -764,7 +764,7 @@ gitbox update           # check and install interactively
 gitbox update --check   # just check, no install (exit code 0 = up to date)
 ```
 
-The updater downloads the platform-specific artifact, verifies the SHA256 checksum (if `checksums.sha256` is present in the release), and replaces the binaries in place. On Windows, the running binary is renamed to `.old` and cleaned up on the next startup.
+The updater downloads the platform-specific artifact, verifies the SHA256 checksum (if `checksums.sha256` is present in the release), and replaces the `gitbox` binary in place. The CLI only offers 1.x releases (v2 is GUI-only) and never touches a `GitboxApp` installed next to it. On Windows, the running binary is renamed to `.old` and cleaned up on the next startup.
 
 The GUI checks for updates automatically once per 24 hours and shows a banner when a newer version is available.
 

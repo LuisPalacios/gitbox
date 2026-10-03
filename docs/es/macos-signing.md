@@ -60,4 +60,4 @@ Hasta que la firma esté configurada, los usuarios de macOS verán una advertenc
 - Ejecutar `bash "/Volumes/gitbox/Install Gitbox.command"` desde Terminal — el script de instalación incluido copia los binarios y elimina automáticamente los flags de cuarentena
 - Usar `xattr -cr GitboxApp.app` y `xattr -cr gitbox` para eliminar manualmente el atributo de cuarentena
 - Usar el script `bootstrap.sh`, que gestiona esto automáticamente
-- Usar `gitbox update` desde la CLI, que reemplaza binarios sin comprobaciones de Gatekeeper
+- Usar la actualización integrada (banner de la GUI) o `gitbox update` (CLI), que reemplazan su propio binario sin comprobaciones de Gatekeeper
