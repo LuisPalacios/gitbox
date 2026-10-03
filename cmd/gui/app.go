@@ -722,9 +722,8 @@ func (a *App) OpenAccountInBrowser(accountKey string) error {
 }
 
 // repoWebURL resolves the provider web page for a configured repo from the
-// authoritative in-memory config: <account url>/<owner>/<name>. It is the
-// GUI counterpart of the CLI/TUI call sites of git.RepoWebURL, so the three
-// front-ends agree on the URL shape (#79).
+// authoritative in-memory config: <account url>/<owner>/<name>, the same
+// shape git.RepoWebURL produces (#79).
 func (a *App) repoWebURL(sourceKey, repoKey string) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -3101,8 +3100,7 @@ func (a *App) GetCheckGlobalGitignore() bool {
 
 // SetCheckGlobalGitignore persists the user's preference into the
 // global section of gitbox.json. The setting only gates the automatic
-// startup check; explicit user actions (the GUI Install button, the
-// TUI screen via `G`, `gitbox gitignore install`) always run.
+// startup check; an explicit Install click always runs.
 func (a *App) SetCheckGlobalGitignore(enabled bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
