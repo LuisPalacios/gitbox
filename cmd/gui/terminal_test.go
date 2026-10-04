@@ -127,6 +127,57 @@ func TestTerminalIDSlugification(t *testing.T) {
 	}
 }
 
+// With terminal profiles in place, global.terminals is legacy. SyncTerminals
+// must leave it alone and must not save: a save there wrote a backup on
+// every launch and rotated real backups out of the 10-slot window.
+func TestSyncTerminalsSkipsWhenProfilesExist(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "gitbox.json")
+
+	cfg := &config.Config{
+		Version: config.CurrentVersion,
+		Global: config.GlobalConfig{
+			Folder: "~/x",
+			TerminalProfiles: []config.TerminalProfile{
+				{ID: "wt+pwsh", Name: "Windows Terminal + PowerShell 7", TerminalID: "wt", ShellID: "pwsh", Default: true},
+			},
+		},
+		Accounts: map[string]config.Account{},
+		Sources:  map[string]config.Source{},
+	}
+	if err := config.Save(cfg, cfgPath); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a := &App{cfg: cfg, cfgPath: cfgPath, mu: sync.Mutex{}}
+	a.SyncTerminals()
+
+	if len(cfg.Global.Terminals) != 0 {
+		t.Errorf("legacy terminals rebuilt despite profiles: %+v", cfg.Global.Terminals)
+	}
+	after, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Error("SyncTerminals rewrote the config although profiles exist")
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() != "gitbox.json" {
+			t.Errorf("SyncTerminals left %s next to the config (a backup per launch)", e.Name())
+		}
+	}
+}
+
 func TestSyncTerminalsDedupByName(t *testing.T) {
 	// Force the WT-discovery path to fail so the legacy dedup-and-append
 	// branch runs and the seeded "Custom" duplicates are exercised. On

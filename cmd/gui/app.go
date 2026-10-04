@@ -1568,9 +1568,18 @@ func terminalsEqual(a, b []config.TerminalEntry) bool {
 // preserved when the entry's Name matches a current visible profile.
 // On other platforms (or when WT is absent / unparseable), falls back to the
 // historical dedup-and-append behaviour that mirrors SyncEditors.
+//
+// Once the config uses terminal profiles, global.terminals is legacy: the
+// load-time migration drops it and the launcher reads profiles instead.
+// Rebuilding it then only forced a save (and a backup) on every launch, so
+// the sync is skipped.
 func (a *App) SyncTerminals() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+
+	if len(a.cfg.Global.TerminalProfiles) > 0 {
+		return
+	}
 
 	if isWindows() {
 		if profiles, err := discoverWTProfiles(); err == nil && len(profiles) > 0 {

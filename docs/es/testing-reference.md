@@ -28,21 +28,21 @@ Los recuentos son funciones `func Test…` de nivel superior por paquete, obteni
 - `pkg/update/` — 23 pruebas: parseo semver, comparación de versiones, comprobación de actualización (API mock), límite de versión mayor, nombres de artefactos, detección del AppImage solo-aviso, destinos de instalación, verificación de checksum, descarga que falla cerrada (sin checksums o ilegibles se rechaza la actualización)
 - `pkg/workspace/` — 5 pruebas: descubrimiento de workspaces, refresco de caché, carpetas extra, contenedores tentativos
 
-### Pruebas de la GUI — 42 pruebas (`cmd/gui/`)
+### Pruebas de la GUI — 43 pruebas (`cmd/gui/`)
 
 Lógica del lado Go de la app Wails que se ejecuta sin ventana:
 
 - Acciones de cuenta y navegador — resolución de la carpeta de cuenta, URLs de proveedor, rutas de error para cuentas y repos desconocidos
 - Acciones de AI harness — detección, orden, deduplicación, poda de harnesses retirados, fallback a `~/.local/bin`, Profile por defecto del lanzador
 - Auto-actualización — el build AppImage rechaza `ApplyUpdate` antes de cualquier descarga
-- Terminales — resolución de argv, actualización de entradas legacy, parseo y fusión de perfiles de Windows Terminal, saneado de rutas MSYS y del entorno
+- Terminales — resolución de argv, actualización de entradas legacy (omitida cuando ya hay perfiles de terminal), parseo y fusión de perfiles de Windows Terminal, saneado de rutas MSYS y del entorno
 - Workspaces y contenedores — refresco de caché, persistencia del flag de contenedor, carpetas extra, profundidad de escaneo anidado, `clone_folder` absoluto para clones incorporados
 
 ### Prueba de escenario — 1 prueba, 12 pasos (`pkg/ops/`)
 
 - `TestScenario_FullLifecycle` — end-to-end a través de `pkg/ops`: añadir cuenta → comprobar credencial → descubrir → añadir repo → clone → status → pull y fetch → editar cuenta + reconfigurar clones → CRUD de mirrors → reclonar → renombrar cuenta → borrarlo todo
 
-### Total: 475 pruebas
+### Total: 476 pruebas
 
 ## Cómo funciona el harness de pruebas
 
