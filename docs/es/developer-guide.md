@@ -3,7 +3,7 @@
 ## Requisitos previos
 
 - **Go** 1.26+ — [instalar](https://go.dev/doc/install)
-- **Node.js** 20+ — [instalar](https://nodejs.org/) (para el frontend Svelte)
+- **Node.js** 20+ — [instalar](https://nodejs.org/) (para el frontend Svelte; CI compila con Node 24)
 - **Git** 2.39+
 - **Wails CLI** v2 — `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
 - **Específico por plataforma:** Windows necesita Git for Windows; macOS necesita Xcode CLI Tools (`xcode-select --install`); Linux necesita `libwebkit2gtk-4.1-dev` y `libgtk-3-dev`
@@ -140,6 +140,25 @@ go test ./...           # todo (necesita test-gitbox.json para el escenario de p
 ```
 
 Activa el pre-push hook una vez por clone: `git config core.hooksPath .githooks` — ejecuta una comprobación `gofmt -s`, `go vet` y pruebas unitarias antes de cada push.
+
+### Comprobación de salud
+
+Antes de abrir un PR ejecuto todos los comprobadores de código de una pasada:
+
+```bash
+./scripts/health.sh              # todas las comprobaciones, una línea de resumen cada una
+./scripts/health.sh go svelte    # solo algunas comprobaciones ("go" = todas las de Go)
+./scripts/health.sh -v           # todos los hallazgos en lugar de los 15 primeros
+```
+
+Es de solo lectura y termina con error cuando alguna comprobación encuentra algo. Comprobaciones de Go: `gofmt -s`, `go vet`, staticcheck, modernize, govulncheck, deadcode (con una lista de funciones que se mantienen a propósito) y `go test -short`. Comprobaciones del frontend: `svelte-check` incluidas las pistas, y `npm audit`. Comprobaciones del repo: shellcheck en los scripts de shell, actionlint en los workflows y markdownlint con la config del skill `fixing-markdown` forzada a solo lectura.
+
+Los analizadores de Go se ejecutan con `go run` en versiones fijadas al principio del script, así que no necesitan instalación. Las otras tres herramientas deben estar en el `PATH`:
+
+```bash
+scoop install shellcheck actionlint     # Windows (brew install … en macOS, apt/dnf en Linux)
+npm install -g markdownlint-cli2
+```
 
 Para el workflow completo de pruebas (preparación de fixture, pruebas de integración, checklists pre-PR y de release), consulta [testing.md](testing.md). Para pruebas multiplataforma vía SSH, consulta [multiplatform.md](multiplatform.md). Si usas Claude Code, `/test-plan` automatiza las comprobaciones pre-PR.
 

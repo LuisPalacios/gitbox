@@ -87,6 +87,7 @@ scripts/
   _common.sh               Shared helpers for the dev scripts (.env, SSH, GitboxApp paths)
   ship.sh                  Build GitboxApp on each remote host in .env and stage it
   smoke.sh                 Run `GitboxApp --version` locally and on staged remotes
+  health.sh                Read-only run of every checker (gofmt, vet, staticcheck, modernize, govulncheck, deadcode, tests, svelte-check, npm audit, shellcheck, actionlint, markdownlint)
   test-commands.sh         Print GitboxApp --test-mode launch commands per platform
   run-commands.sh          Print GitboxApp launch commands per platform
   setup-credentials.sh     Run test-setup-credentials.sh locally or on remotes
@@ -303,6 +304,8 @@ The project has a comprehensive test suite. Read `.claude/context/testing-patter
 - GUI binding changes: add `cmd/gui` tests that build an `App` and call the method.
 
 **Run `go vet ./...` before committing** — it catches issues the test suite doesn't.
+
+**Health check:** `./scripts/health.sh` runs every checker read-only (Go analyzers at pinned versions, svelte-check with hints, npm audit, shellcheck, actionlint, markdownlint). Run it before every PR; new code must not add findings. Never run the `fixing-markdown` markdownlint config directly for a check — it has `"fix": true` and rewrites files.
 
 **Pre-push hook:** The repo includes `.githooks/pre-push` which runs a `gofmt -s -l` check, `go vet` and `go test -short` before every push, building the frontend first when `cmd/gui/frontend/dist` is missing. Run `gofmt -s -w` on changed Go files before committing. Activate with `git config core.hooksPath .githooks`.
 
