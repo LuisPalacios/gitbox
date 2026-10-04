@@ -1158,7 +1158,7 @@
       if (keyChanged) {
         await bridge.renameAccount(oldKey, newKey);
       }
-      await bridge.updateAccount({ key: newKey, ...editAcct });
+      await bridge.updateAccount({ ...editAcct, key: newKey });
       await reloadFromDisk();
       verifyAllCredentials();
       editAccountModal = null;
@@ -3458,7 +3458,7 @@
                   </svg>
                 </button>
                 {#if openWsPopover === repoKey}
-                  <div class="ws-popover" transition:fade={{ duration: 80 }} on:click|stopPropagation on:keydown|stopPropagation>
+                  <div class="ws-popover" role="presentation" transition:fade={{ duration: 80 }} on:click|stopPropagation on:keydown|stopPropagation>
                     <div class="ws-popover-title">{$t('workspace.openWorkspace')}</div>
                     {#each membershipsFor(repoKey) as wsKey}
                       <button class="ws-popover-item"
@@ -3880,7 +3880,7 @@
       <div class="update-pill update-error">
         <span>&#9888; {updateError}</span>
         {#if updateInfo?.url}
-          <button class="update-pill-btn" on:click={() => BrowserOpenURL(updateInfo.url)}>Release page</button>
+          <button class="update-pill-btn" on:click={() => updateInfo && BrowserOpenURL(updateInfo.url)}>Release page</button>
         {/if}
         <button class="update-pill-dismiss" on:click={() => updateError = ''} title="Dismiss">&#10005;</button>
       </div>
@@ -3893,7 +3893,7 @@
           {#if updateInfo.selfUpdate}
             <button class="update-pill-btn" on:click={() => { updateApplying = true; updateError = ''; bridge.applyUpdate().catch((e) => { updateApplying = false; updateError = typeof e === 'string' ? e : (e?.message || 'Update failed'); }); }}>{updateInfo.latest} available</button>
           {:else}
-            <button class="update-pill-btn" title="Open the release page" on:click={() => BrowserOpenURL(updateInfo.url)}>{updateInfo.latest} available</button>
+            <button class="update-pill-btn" title="Open the release page" on:click={() => updateInfo && BrowserOpenURL(updateInfo.url)}>{updateInfo.latest} available</button>
           {/if}
           <button class="update-pill-dismiss" on:click={() => updateInfo = null} title="Dismiss">&#10005;</button>
         {/if}
@@ -3949,7 +3949,7 @@
               <div class="discover-orgs">
                 {#each owners as owner}
                   {@const on = orgVisible[owner] !== false}
-                  {@const eligible = discoverRepos.filter((r) => ownerOf(r.fullName) === owner && !($sources[discoverModal]?.repos?.[r.fullName]))}
+                  {@const eligible = discoverRepos.filter((r) => ownerOf(r.fullName) === owner && !(discoverModal && $sources[discoverModal]?.repos?.[r.fullName]))}
                   {@const allSel = eligible.length > 0 && eligible.every((r) => discoverSelected[r.fullName])}
                   {@const someSel = eligible.some((r) => discoverSelected[r.fullName])}
                   <span class="org-badge" class:is-on={on}>
@@ -4393,10 +4393,10 @@
                   <p class="cred-step-desc" style="margin-top: 8px;">Copy the public SSH key and add it to your provider:</p>
                   <div class="ssh-key-box">
                     <code class="ssh-key-text">{credResult.sshPublicKey}</code>
-                    <button class="ssh-key-copy" on:click={() => copySSHKey(credResult.sshPublicKey)} title="Copy to clipboard">{@html sshKeyCopied ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'}</button>
+                    <button class="ssh-key-copy" on:click={() => credResult?.sshPublicKey && copySSHKey(credResult.sshPublicKey)} title="Copy to clipboard">{@html sshKeyCopied ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'}</button>
                   </div>
                   {#if credResult.sshAddURL}
-                    <p class="cred-step-link"><a href={credResult.sshAddURL} on:click|preventDefault={() => BrowserOpenURL(credResult.sshAddURL)}>{credResult.sshAddURL}</a></p>
+                    <p class="cred-step-link"><a href={credResult.sshAddURL} on:click|preventDefault={() => credResult?.sshAddURL && BrowserOpenURL(credResult.sshAddURL)}>{credResult.sshAddURL}</a></p>
                   {/if}
                 {/if}
                 <div style="display: flex; gap: 8px; margin-top: 8px;">
@@ -4559,10 +4559,10 @@
                 <p class="cred-step-desc" style="margin-top: 8px;">Copy the public SSH key and add it to your provider:</p>
                 <div class="ssh-key-box">
                   <code class="ssh-key-text">{credResult.sshPublicKey}</code>
-                  <button class="ssh-key-copy" on:click={() => copySSHKey(credResult.sshPublicKey)} title="Copy to clipboard">{@html sshKeyCopied ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'}</button>
+                  <button class="ssh-key-copy" on:click={() => credResult?.sshPublicKey && copySSHKey(credResult.sshPublicKey)} title="Copy to clipboard">{@html sshKeyCopied ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'}</button>
                 </div>
                 {#if credResult.sshAddURL}
-                  <p class="cred-step-link"><a href={credResult.sshAddURL} on:click|preventDefault={() => BrowserOpenURL(credResult.sshAddURL)}>{credResult.sshAddURL}</a></p>
+                  <p class="cred-step-link"><a href={credResult.sshAddURL} on:click|preventDefault={() => credResult?.sshAddURL && BrowserOpenURL(credResult.sshAddURL)}>{credResult.sshAddURL}</a></p>
                 {/if}
               {/if}
               <div style="display: flex; gap: 8px; margin-top: 8px;">
