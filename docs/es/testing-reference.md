@@ -6,7 +6,7 @@ Inventario de pruebas y detalles internos del harness. Para ejecutar pruebas, ve
 
 Los recuentos son funciones `func Test…` de nivel superior por paquete, obtenidas con `grep -rc "^func Test" --include=*_test.go pkg cmd`. Los subtests (`t.Run`) no se cuentan.
 
-### Pruebas de paquetes — 431 pruebas (`pkg/`)
+### Pruebas de paquetes — 433 pruebas (`pkg/`)
 
 - `pkg/adopt/` — 13 pruebas: descubrimiento de huérfanos, puntuación de cuentas (usuario embebido en la URL, username de la credencial, carpeta padre, empates ambiguos), clones anidados bajo contenedores
 - `pkg/config/` — 98 pruebas: parseo de config, migración v1/v2 → v3, operaciones CRUD, save/load, backups, preparación de test-mode
@@ -25,7 +25,7 @@ Los recuentos son funciones `func Test…` de nivel superior por paquete, obteni
 - `pkg/provider/` — 43 pruebas: cliente HTTP, parseo de APIs de proveedor
 - `pkg/status/` — 15 pruebas: comprobación de estado de clones, detección de rama, cálculo de anidamiento
 - `pkg/terminals/` — 51 pruebas: forma del catálogo, composición de Profile según el OS, búsquedas de WezTerm y Windows Terminal, reglas de fusión
-- `pkg/update/` — 21 pruebas: parseo semver, comparación de versiones, comprobación de actualización (API mock), límite de versión mayor, nombres de artefactos, detección del AppImage solo-aviso, destinos de instalación, verificación de checksum
+- `pkg/update/` — 23 pruebas: parseo semver, comparación de versiones, comprobación de actualización (API mock), límite de versión mayor, nombres de artefactos, detección del AppImage solo-aviso, destinos de instalación, verificación de checksum, descarga que falla cerrada (sin checksums o ilegibles se rechaza la actualización)
 - `pkg/workspace/` — 5 pruebas: descubrimiento de workspaces, refresco de caché, carpetas extra, contenedores tentativos
 
 ### Pruebas de la GUI — 42 pruebas (`cmd/gui/`)
@@ -42,7 +42,7 @@ Lógica del lado Go de la app Wails que se ejecuta sin ventana:
 
 - `TestScenario_FullLifecycle` — end-to-end a través de `pkg/ops`: añadir cuenta → comprobar credencial → descubrir → añadir repo → clone → status → pull y fetch → editar cuenta + reconfigurar clones → CRUD de mirrors → reclonar → renombrar cuenta → borrarlo todo
 
-### Total: 473 pruebas
+### Total: 475 pruebas
 
 ## Cómo funciona el harness de pruebas
 

@@ -369,7 +369,7 @@ En el kebab de cuenta, las mismas entradas aparecen con orden idéntico: la úni
 
 ### Notificación de actualización
 
-Gitbox comprueba actualizaciones una vez al día en segundo plano. Cuando hay una versión más nueva, aparece una píldora ámbar en el lado derecho de la barra de estado del footer mostrando la nueva versión. Haz clic para descargar y aplicar la actualización in-place. Gitbox verifica el checksum SHA256 de la release y reemplaza solo lo que ya está instalado junto a la app: en macOS, el bundle `GitboxApp.app` completo. Cuando termina, haz clic en **Quit** y reinicia la app para usar la nueva versión.
+Gitbox comprueba actualizaciones una vez al día en segundo plano. Cuando hay una versión más nueva, aparece una píldora ámbar en el lado derecho de la barra de estado del footer mostrando la nueva versión. Haz clic para descargar y aplicar la actualización in-place. Gitbox verifica el checksum SHA256 de la release, y rechaza la actualización si la release no tiene checksum para ella o no se pueden descargar los checksums; después reemplaza solo lo que ya está instalado junto a la app: en macOS, el bundle `GitboxApp.app` completo. Cuando termina, haz clic en **Quit** y reinicia la app para usar la nueva versión.
 
 El AppImage de Linux solo avisa: al hacer clic en la píldora se abre la página de la release, y descargo el nuevo AppImage y sustituyo el archivo antiguo yo mismo. Gitbox nunca reescribe el AppImage, y no incrusta información de actualización para actualizadores externos de AppImage.
 

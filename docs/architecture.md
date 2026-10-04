@@ -154,7 +154,7 @@ Parallel to the identity check, `pkg/credential` exposes `IsGlobalGCMConfigNeede
 
 ### pkg/update — Auto-update
 
-Provides version checking and self-update via GitHub Releases. `CheckLatest()` queries the GitHub API (throttled to once per 24h). `DownloadRelease()` fetches the platform-specific artifact and verifies its SHA256 checksum. `Apply()` extracts the zip and replaces what is already installed next to the running app — on macOS the whole `GitboxApp.app` bundle, on Unix via atomic rename, on Windows by renaming the running binary to `.old` first (`CleanupOldBinary()` removes stale `.old` files on the next startup). The GUI follows the release GitHub marks as latest; a `MaxMajor` option caps the major version, which the v1 CLI on `release/v1` uses to stay on 1.x.
+Provides version checking and self-update via GitHub Releases. `CheckLatest()` queries the GitHub API (throttled to once per 24h). `DownloadRelease()` fetches the platform-specific artifact and verifies its SHA256 checksum, failing closed when the release's `checksums.sha256` is missing, unreadable or doesn't list the artifact. `ExtractUpdate()` and `InstallExtracted()` unpack the zip and replace what is already installed next to the running app — on macOS the whole `GitboxApp.app` bundle, on Unix via atomic rename, on Windows by renaming the running binary to `.old` first (`CleanupOldBinary()` removes stale `.old` files on the next startup). The GUI follows the release GitHub marks as latest; a `MaxMajor` option caps the major version, which the v1 CLI on `release/v1` uses to stay on 1.x.
 
 ### pkg/doctor — External-tool detection
 
