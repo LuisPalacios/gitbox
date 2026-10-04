@@ -6,7 +6,7 @@ Test inventory and harness internals. For running tests, checklists, and fixture
 
 Counts are top-level `func Test…` functions per package, from `grep -rc "^func Test" --include=*_test.go pkg cmd`. Subtests (`t.Run`) are not counted.
 
-### Package tests — 431 tests (`pkg/`)
+### Package tests — 433 tests (`pkg/`)
 
 - `pkg/adopt/` — 13 tests: orphan discovery, account scoring (embedded URL user, credential username, parent folder, ambiguous ties), nested clones under containers
 - `pkg/config/` — 98 tests: config parsing, v1/v2 → v3 migration, CRUD operations, save/load, backups, test-mode setup
@@ -25,7 +25,7 @@ Counts are top-level `func Test…` functions per package, from `grep -rc "^func
 - `pkg/provider/` — 43 tests: HTTP client, provider API parsing
 - `pkg/status/` — 15 tests: clone status checking, branch detection, nesting computation
 - `pkg/terminals/` — 51 tests: catalog shape, OS-aware Profile composition, WezTerm and Windows Terminal lookups, merge rules
-- `pkg/update/` — 21 tests: semver parsing, version comparison, update check (mock API), major-version cap, artifact names, AppImage notify-only detection, install targets, checksum verification
+- `pkg/update/` — 23 tests: semver parsing, version comparison, update check (mock API), major-version cap, artifact names, AppImage notify-only detection, install targets, checksum verification, fail-closed download (missing or unreadable checksums refuse the update)
 - `pkg/workspace/` — 5 tests: workspace discovery, cache refresh, extra folders, tentative containers
 
 ### GUI tests — 42 tests (`cmd/gui/`)
@@ -42,7 +42,7 @@ Go-side logic of the Wails app that runs without a window:
 
 - `TestScenario_FullLifecycle` — end-to-end through `pkg/ops`: add account → credential check → discover → add repo → clone → status → pull and fetch → account edit + reconfigure clones → mirror CRUD → re-clone → rename account → delete everything
 
-### Total: 473 tests
+### Total: 475 tests
 
 ## How the test harness works
 

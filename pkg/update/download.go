@@ -9,7 +9,12 @@ import (
 	"path/filepath"
 )
 
-// DownloadRelease downloads the platform artifact to a temp directory.
+// checksumsAsset is the release asset listing the SHA256 of every artifact.
+const checksumsAsset = "checksums.sha256"
+
+// DownloadRelease downloads the platform artifact to a temp directory and
+// verifies it against the release's checksums file. Any problem with that
+// file (missing, unreadable, artifact not listed, mismatch) is an error.
 // Returns the path to the downloaded file.
 func DownloadRelease(ctx context.Context, release *ReleaseInfo, opts Options) (string, error) {
 	opts.defaults()
@@ -22,6 +27,14 @@ func DownloadRelease(ctx context.Context, release *ReleaseInfo, opts Options) (s
 	downloadURL := FindAssetURL(release, artifact)
 	if downloadURL == "" {
 		return "", fmt.Errorf("artifact %s not found in release %s", artifact, release.TagName)
+	}
+
+	// Fail closed: an update is only installed after its SHA256 matches the
+	// release's checksums file, so a release without one is refused before
+	// the artifact is even downloaded.
+	checksumURL := FindAssetURL(release, checksumsAsset)
+	if checksumURL == "" {
+		return "", fmt.Errorf("release %s has no %s; refusing to install an unverified update", release.TagName, checksumsAsset)
 	}
 
 	// Create temp directory for download.
@@ -37,17 +50,14 @@ func DownloadRelease(ctx context.Context, release *ReleaseInfo, opts Options) (s
 		return "", fmt.Errorf("downloading %s: %w", artifact, err)
 	}
 
-	// Verify checksum if available.
-	checksumURL := FindAssetURL(release, "checksums.sha256")
-	if checksumURL != "" {
-		checksumPath := filepath.Join(tmpDir, "checksums.sha256")
-		if err := downloadFile(ctx, opts.HTTPClient, checksumURL, checksumPath); err == nil {
-			if err := VerifyChecksum(destPath, checksumPath, artifact); err != nil {
-				os.RemoveAll(tmpDir)
-				return "", fmt.Errorf("checksum verification failed: %w", err)
-			}
-		}
-		// If checksum download fails, continue without verification.
+	checksumPath := filepath.Join(tmpDir, checksumsAsset)
+	if err := downloadFile(ctx, opts.HTTPClient, checksumURL, checksumPath); err != nil {
+		os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("downloading %s: %w; refusing to install an unverified update", checksumsAsset, err)
+	}
+	if err := VerifyChecksum(destPath, checksumPath, artifact); err != nil {
+		os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("checksum verification failed: %w", err)
 	}
 
 	return destPath, nil
