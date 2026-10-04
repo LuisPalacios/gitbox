@@ -153,12 +153,14 @@ Before opening a PR I run every code checker in one pass:
 
 It is read-only and exits non-zero when any check reports a finding. Go checks: `gofmt -s`, `go vet`, staticcheck, modernize, govulncheck, deadcode (with an allowlist for functions kept on purpose) and `go test -short`. Frontend checks: `svelte-check` (unused locals and parameters fail through `noUnusedLocals`/`noUnusedParameters`), warnings printed by `npm run build` (the same Svelte diagnostics CI shows in its build step), install warnings from a clean `npm ci` in a scratch copy (deprecated packages, install scripts not covered by `allowScripts`), and `npm audit`. The `npm ci` check needs npm 11.19 or newer. Repo checks: shellcheck on the shell scripts, actionlint on the workflows, and markdownlint with the `fixing-markdown` skill config forced read-only.
 
-The Go analyzers run through `go run` at versions pinned at the top of the script, so they need no install. The other three tools must be on `PATH`:
+The Go analyzers are installed into a temporary folder at versions pinned at the top of the script, so they need no install; vet, staticcheck and modernize analyze linux, darwin and windows on every run, so platform-specific files are checked from any host. The other three tools must be on `PATH`:
 
 ```bash
 scoop install shellcheck actionlint     # Windows (brew install … on macOS, apt/dnf on Linux)
 npm install -g markdownlint-cli2
 ```
+
+The PR workflow runs the same script as its gate: any finding fails the job, including a new advisory reported by govulncheck or `npm audit`. CI pins shellcheck 0.11.0, actionlint 1.7.12 and markdownlint-cli2 0.23.3; use those versions locally so both runs agree.
 
 For the full testing workflow (fixture setup, integration tests, pre-PR and release checklists), see [testing.md](testing.md). For multiplatform testing via SSH, see [multiplatform.md](multiplatform.md). If you use Claude Code, `/test-plan` automates the pre-PR checks.
 
@@ -214,7 +216,7 @@ CI injects `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into the GUI 
 
 Two GitHub Actions workflows run:
 
-- `.github/workflows/pr.yml` runs on pull requests: `go vet`, `go test -short`, `svelte-check` on the frontend, and a Linux `wails build`.
+- `.github/workflows/pr.yml` runs on pull requests and on pushes to `main`: `scripts/health.sh` as the gate (every checker; any finding fails the job), then a Linux `wails build` and a `--version` smoke test.
 - `.github/workflows/ci.yml` runs on version tags: it builds the app on each platform, packages the installers, and publishes the GitHub Release.
 
 ### Release assets

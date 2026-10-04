@@ -153,12 +153,14 @@ Antes de abrir un PR ejecuto todos los comprobadores de código de una pasada:
 
 Es de solo lectura y termina con error cuando alguna comprobación encuentra algo. Comprobaciones de Go: `gofmt -s`, `go vet`, staticcheck, modernize, govulncheck, deadcode (con una lista de funciones que se mantienen a propósito) y `go test -short`. Comprobaciones del frontend: `svelte-check` (las variables y parámetros sin usar fallan mediante `noUnusedLocals`/`noUnusedParameters`), los warnings que imprime `npm run build` (los mismos diagnósticos de Svelte que CI muestra en su paso de build), los warnings de instalación de un `npm ci` limpio en una copia temporal (paquetes obsoletos, scripts de instalación no cubiertos por `allowScripts`) y `npm audit`. La comprobación de `npm ci` necesita npm 11.19 o posterior. Comprobaciones del repo: shellcheck en los scripts de shell, actionlint en los workflows y markdownlint con la config del skill `fixing-markdown` forzada a solo lectura.
 
-Los analizadores de Go se ejecutan con `go run` en versiones fijadas al principio del script, así que no necesitan instalación. Las otras tres herramientas deben estar en el `PATH`:
+Los analizadores de Go se instalan en una carpeta temporal en versiones fijadas al principio del script, así que no necesitan instalación; vet, staticcheck y modernize analizan linux, darwin y windows en cada ejecución, así que los archivos específicos de cada plataforma se comprueban desde cualquier host. Las otras tres herramientas deben estar en el `PATH`:
 
 ```bash
 scoop install shellcheck actionlint     # Windows (brew install … en macOS, apt/dnf en Linux)
 npm install -g markdownlint-cli2
 ```
+
+El workflow de PR ejecuta el mismo script como barrera: cualquier hallazgo hace fallar el job, incluido un aviso nuevo de govulncheck o de `npm audit`. CI fija shellcheck 0.11.0, actionlint 1.7.12 y markdownlint-cli2 0.23.3; usa esas versiones en local para que ambas ejecuciones coincidan.
 
 Para el workflow completo de pruebas (preparación de fixture, pruebas de integración, checklists pre-PR y de release), consulta [testing.md](testing.md). Para pruebas multiplataforma vía SSH, consulta [multiplatform.md](multiplatform.md). Si usas Claude Code, `/test-plan` automatiza las comprobaciones pre-PR.
 
@@ -214,7 +216,7 @@ CI inyecta `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` en el build d
 
 Se ejecutan dos workflows de GitHub Actions:
 
-- `.github/workflows/pr.yml` se ejecuta en los pull requests: `go vet`, `go test -short`, `svelte-check` en el frontend y un `wails build` de Linux.
+- `.github/workflows/pr.yml` se ejecuta en los pull requests y en los push a `main`: `scripts/health.sh` como barrera (todos los comprobadores; cualquier hallazgo hace fallar el job), y después un `wails build` de Linux y un smoke test con `--version`.
 - `.github/workflows/ci.yml` se ejecuta en los tags de versión: construye la app en cada plataforma, empaqueta los instaladores y publica el GitHub Release.
 
 ### Assets de release
