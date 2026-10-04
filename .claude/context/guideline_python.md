@@ -65,12 +65,12 @@ Document in the skill's SKILL.md:
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| `uv: command not found` | Install uv: `powershell -c "irm https://astral.sh/uv/install.ps1 \| iex"` (Windows) or `curl -LsSf https://astral.sh/uv/install.sh \| sh` (Unix) |
-| First run is slow | Expected. uv downloads and caches deps on first execution. Subsequent runs are instant. |
-| `ImportError` at runtime | Check PEP 723 metadata: `# /// script` and `# ///` delimiters must be exact, all packages listed in `dependencies` |
-| Script fails silently | Ensure `encoding='utf-8'` on all file operations |
+| Issue                    | Solution                                                                                                                                         |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `uv: command not found`  | Install uv: `powershell -c "irm https://astral.sh/uv/install.ps1 \| iex"` (Windows) or `curl -LsSf https://astral.sh/uv/install.sh \| sh` (Unix) |
+| First run is slow        | Expected. uv downloads and caches deps on first execution. Subsequent runs are instant.                                                          |
+| `ImportError` at runtime | Check PEP 723 metadata: `# /// script` and `# ///` delimiters must be exact, all packages listed in `dependencies`                               |
+| Script fails silently    | Ensure `encoding='utf-8'` on all file operations                                                                                                 |
 
 **Cache location:** `~/.cache/uv/` — shared across all projects, no per-repo footprint.
 

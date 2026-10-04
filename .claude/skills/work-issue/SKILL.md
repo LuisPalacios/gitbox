@@ -128,6 +128,7 @@ Run in this order, stop on first failure and fix before continuing:
 1. `go vet ./...`
 2. The focused test command from the table in `.claude/CLAUDE.md` under "Testing" (match what changed: `pkg/`, `pkg/ops/`, `cmd/gui/`, etc.). When unsure, run `go test ./...`.
 3. Build the GUI (quick compile-check during iteration, full build before reporting done). `cmd/gui` embeds `frontend/dist`, so build the frontend once if it is missing (`cd cmd/gui/frontend && npm ci && npm run build`):
+
    ```bash
    # Quick iterative check
    go build ./...      # several packages: compiles and discards the output
@@ -195,9 +196,11 @@ PR body template:
 Closes #<N>
 
 ## What changed
+
 <2-4 bullets, anonymised>
 
 ## Test plan
+
 - [ ] <concrete check 1>
 - [ ] <concrete check 2>
 ```

@@ -12,28 +12,28 @@ Si eres nuevo en el proyecto, lee estos documentos en orden:
 
 ## Guías de usuario
 
-| Doc                            | Qué contiene                                                                   |
-| ------------------------------ | ------------------------------------------------------------------------------ |
+| Doc                            | Qué contiene                                                                     |
+| ------------------------------ | -------------------------------------------------------------------------------- |
 | [Guía GUI](gui-guide.md)       | App de escritorio: instalación, cuentas, discovery, mirrors, workspaces, ajustes |
-| [Credenciales](credentials.md) | Configuración detallada de Token, GCM y SSH, resolución de problemas           |
+| [Credenciales](credentials.md) | Configuración detallada de Token, GCM y SSH, resolución de problemas             |
 
 ## Guías de desarrollo
 
-| Doc                                                         | Qué contiene                                                                          |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| [Guía de desarrollo](developer-guide.md)                    | Compilar desde el código fuente, hooks de git, releases, contribución                 |
-| [Multiplataforma](multiplatform.md)                         | Flujo de build, envío y prueba multiplataforma                                        |
-| [Pruebas](testing.md)                                       | Niveles de prueba, configuración de fixtures, checklists pre-PR y de release          |
-| [Flujo de worktrees](worktree-workflow.md)                  | Trabajo paralelo por issue: una sesión de Claude por worktree, push/merge con puertas |
-| [Referencia de pruebas](testing-reference.md)               | Inventario de pruebas, detalles internos del harness                                  |
-| [Arquitectura](architecture.md)                             | Diseño técnico, diagrama de componentes, referencia del archivo de config             |
-| [Firma en macOS](macos-signing.md)                          | Configuración de firma y notarización para releases de macOS                          |
-| [Directorio del ecosistema agentic](agentic-tools-directory.md) | Dónde vive la lista de AI harnesses detectados automáticamente |
+| Doc                                                             | Qué contiene                                                                          |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| [Guía de desarrollo](developer-guide.md)                        | Compilar desde el código fuente, hooks de git, releases, contribución                 |
+| [Multiplataforma](multiplatform.md)                             | Flujo de build, envío y prueba multiplataforma                                        |
+| [Pruebas](testing.md)                                           | Niveles de prueba, configuración de fixtures, checklists pre-PR y de release          |
+| [Flujo de worktrees](worktree-workflow.md)                      | Trabajo paralelo por issue: una sesión de Claude por worktree, push/merge con puertas |
+| [Referencia de pruebas](testing-reference.md)                   | Inventario de pruebas, detalles internos del harness                                  |
+| [Arquitectura](architecture.md)                                 | Diseño técnico, diagrama de componentes, referencia del archivo de config             |
+| [Firma en macOS](macos-signing.md)                              | Configuración de firma y notarización para releases de macOS                          |
+| [Directorio del ecosistema agentic](agentic-tools-directory.md) | Dónde vive la lista de AI harnesses detectados automáticamente                        |
 
 ## Referencia
 
-| Doc                                                         | Qué contiene                                                         |
-| ----------------------------------------------------------- | -------------------------------------------------------------------- |
+| Doc                                                                        | Qué contiene                                                       |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | [Referencia del archivo de config](architecture.md#4-formato-de-config-v3) | Todas las claves de `gitbox.json`, estructura de carpetas, backups |
-| [Ejemplo JSON anotado](../../json/gitbox.jsonc)             | Ejemplo del archivo `gitbox.json`                                    |
-| [JSON Schema](../../json/gitbox.schema.json)                | El schema usado en el archivo `gitbox.json`                          |
+| [Ejemplo JSON anotado](../../json/gitbox.jsonc)                            | Ejemplo del archivo `gitbox.json`                                  |
+| [JSON Schema](../../json/gitbox.schema.json)                               | El schema usado en el archivo `gitbox.json`                        |

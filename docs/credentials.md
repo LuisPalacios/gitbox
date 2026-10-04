@@ -27,9 +27,9 @@ The honest answer is "it depends on the provider":
 - **GitHub, GitLab:** GCM stores an **OAuth token** that doubles as a valid API bearer. GCM alone is enough for everything — discovery, repo creation, the lot. A PAT is only needed if you want push/pull mirrors, where the token has to leave your machine.
 - **Gitea, Forgejo, Bitbucket (basic auth):** GCM prompts you for a **username and password** and stores whatever you paste. Those providers refuse passwords at their REST API — only PATs work there. Two recovery paths, pick one:
   1. **Paste a PAT into GCM's password prompt** during setup. GCM will cache it and git + API both work with a single credential. Easiest.
-  2. **Keep your password in GCM** (works for `git push`/`pull`) and store a **separate PAT** in the gitbox keyring for API operations. The credential status panel in the GUI has a *Setup API token* button exactly for this case.
+  2. **Keep your password in GCM** (works for `git push`/`pull`) and store a **separate PAT** in the gitbox keyring for API operations. The credential status panel in the GUI has a _Setup API token_ button exactly for this case.
 
-Gitbox's credential verification will tell you which of the two situations you're in. If the card badge is green, you're done. If it's "Warning" and the Current-status panel says *"GCM token found but API check failed"*, your GCM credential is a password that the API refuses — use one of the two recovery paths above.
+Gitbox's credential verification will tell you which of the two situations you're in. If the card badge is green, you're done. If it's "Warning" and the Current-status panel says _"GCM token found but API check failed"_, your GCM credential is a password that the API refuses — use one of the two recovery paths above.
 
 ## PAT storage
 
@@ -62,7 +62,7 @@ GCM handles everything through a single login. One credential is stored by GCM i
 
 1. gitbox triggers the GCM login flow.
 2. For GitHub and GitLab, GCM opens your browser for OAuth authentication.
-3. For Gitea and Forgejo, GCM prompts for a username and password. If you want *just one credential* to cover git and the API, paste a PAT into the password field — GCM will cache it as the password.
+3. For Gitea and Forgejo, GCM prompts for a username and password. If you want _just one credential_ to cover git and the API, paste a PAT into the password field — GCM will cache it as the password.
 4. GCM stores the credential automatically in its own storage.
 5. All discovery and git operations use that stored credential.
 
@@ -198,7 +198,7 @@ Typical fix on each OS:
 Click the credential badge on any account card. The Current-status panel inside the Change Credential modal shows:
 
 - **Primary (GCM/SSH/TOKEN):** the real status of the primary credential (OK / Warning / Offline / Error / Not configured) and, below the row, the underlying error as reported by gitbox's network/HTTP layer. That error text is the first place to look when something is wrong — it names the failing URL, the HTTP code, and whatever the kernel / TLS stack reported.
-- **API token (PAT):** status of the companion PAT (only relevant for GCM and SSH). When the primary credential already covers the API, the PAT message says *"not needed — GCM covers the API"*. When the primary was rejected by the API, the PAT message says *"needed for discovery and repo creation"* and a **Setup API token** button appears next to it.
+- **API token (PAT):** status of the companion PAT (only relevant for GCM and SSH). When the primary credential already covers the API, the PAT message says _"not needed — GCM covers the API"_. When the primary was rejected by the API, the PAT message says _"needed for discovery and repo creation"_ and a **Setup API token** button appears next to it.
 - A **Re-check** button re-runs the verification without leaving the modal.
 - A blue advisory banner appears under the panel when gitbox detects the error looks like an OS-level network-permission denial (see macOS / Windows / Linux sections below).
 
@@ -206,7 +206,7 @@ Copy that error text as-is when you file a bug report.
 
 ### macOS: local network permission
 
-**Symptom.** The GUI shows *Offline* for an account whose server lives on your LAN (`192.168.x.x`, `10.x.x.x`, or a `.local` hostname). The detail line contains `dial tcp <ip>:<port>: connect: no route to host`. `curl` or `git` at the same moment — run from Terminal — reach the same server without any trouble.
+**Symptom.** The GUI shows _Offline_ for an account whose server lives on your LAN (`192.168.x.x`, `10.x.x.x`, or a `.local` hostname). The detail line contains `dial tcp <ip>:<port>: connect: no route to host`. `curl` or `git` at the same moment — run from Terminal — reach the same server without any trouble.
 
 **Root cause.** macOS Sonoma and later gate outbound connections to local-network IPs behind the **Local Network** TCC privacy permission. Each GUI app is tracked separately by code-signing identity + bundle path. Terminal was granted access the first time you used it. Your gitbox bundle has either not been approved yet, was silently denied (common for ad-hoc built binaries), or has been moved/renamed so that TCC no longer recognises it.
 
@@ -222,19 +222,19 @@ open /Applications/GitboxApp.app
 
 The ad-hoc `codesign --sign -` does not require an Apple Developer account. What it buys you is a **stable code-designated requirement** — a hash that TCC can track across launches — so the permission sticks after you grant it.
 
-On first LAN access the OS should pop *"GitboxApp would like to find and connect to devices on your local network"*. Click **Allow**. After that, `GitboxApp` appears in *System Settings → Privacy & Security → Local Network* with a green toggle.
+On first LAN access the OS should pop _"GitboxApp would like to find and connect to devices on your local network"_. Click **Allow**. After that, `GitboxApp` appears in _System Settings → Privacy & Security → Local Network_ with a green toggle.
 
 #### When `tccutil reset` fails
 
 The `tccutil` call is best-effort, and in recent macOS versions it often prints `tccutil: Failed to reset LocalNetwork` — sometimes even with `sudo` and even when Terminal has Full Disk Access. What's happening under the hood:
 
 - `tccutil` modifies per-user TCC records. `sudo tccutil` edits **root's** TCC database, which is not the one your GUI session reads — so the error is partly a sign you ran it with the wrong identity. Run it as your normal user, not with `sudo`.
-- The per-user TCC database lives under `~/Library/Application Support/com.apple.TCC/TCC.db`. SIP blocks direct writes and routes everything through `tccutil`; if Terminal (or your shell emulator) does not have **Full Disk Access** granted in *System Settings → Privacy & Security → Full Disk Access*, the call fails.
+- The per-user TCC database lives under `~/Library/Application Support/com.apple.TCC/TCC.db`. SIP blocks direct writes and routes everything through `tccutil`; if Terminal (or your shell emulator) does not have **Full Disk Access** granted in _System Settings → Privacy & Security → Full Disk Access_, the call fails.
 - Even when `tccutil` returns `Failed`, the OS may still re-prompt on the next LAN connect, because the internal decision cache is separate from the on-disk DB on newer releases. You saw this: the reset reported a failure, but GitboxApp still popped the "Allow Local Network" dialog when it reached the server.
 
 Passing a bundle identifier (`tccutil reset LocalNetwork com.wails.GitboxApp`) narrows the reset to one app, but returns the same error whenever the broader reset already can't write. The bundle identifier for a stock gitbox build is `com.wails.GitboxApp` — `wails build` inherits that from its default `Info.plist` template since the repo does not override it. After an ad-hoc `codesign --sign -`, the identifier is preserved (you can confirm with `defaults read /Applications/GitboxApp.app/Contents/Info.plist CFBundleIdentifier`).
 
-**If `tccutil` fails but the prompt never appears either** — skip it. Open *System Settings → Privacy & Security → Local Network* directly and flip the GitboxApp toggle on if it's listed. If it isn't listed at all, the app truly never tried a LAN connect yet (or TCC recorded it under a different identity from an earlier ship); relaunch, trigger a credential verification on a LAN account, and the OS will add it.
+**If `tccutil` fails but the prompt never appears either** — skip it. Open _System Settings → Privacy & Security → Local Network_ directly and flip the GitboxApp toggle on if it's listed. If it isn't listed at all, the app truly never tried a LAN connect yet (or TCC recorded it under a different identity from an earlier ship); relaunch, trigger a credential verification on a LAN account, and the OS will add it.
 
 ### macOS: "Device not configured" during GCM setup
 
@@ -246,14 +246,14 @@ Passing a bundle identifier (`tccutil reset LocalNetwork com.wails.GitboxApp`) n
 
 ### Windows: firewall
 
-**Symptom.** GUI shows *Offline* for an account on your LAN. Detail line contains `A connection attempt failed` or `No route to host` (Windows translates `WSAEHOSTUNREACH`).
+**Symptom.** GUI shows _Offline_ for an account on your LAN. Detail line contains `A connection attempt failed` or `No route to host` (Windows translates `WSAEHOSTUNREACH`).
 
 **Root cause.** Windows Defender Firewall — or a third-party endpoint product — is blocking outbound connections from `GitboxApp.exe` to the LAN subnet. The block is per executable, so Chrome / Edge / git.exe being allowed says nothing about the Wails app.
 
 **Fix.**
 
-1. Open *Windows Security → Firewall & network protection → Allow an app through firewall*.
-2. Click *Change settings* → *Allow another app* → browse to the installed `GitboxApp.exe`.
+1. Open _Windows Security → Firewall & network protection → Allow an app through firewall_.
+2. Click _Change settings_ → _Allow another app_ → browse to the installed `GitboxApp.exe`.
 3. Check both the **Private** and **Public** columns for the network you actually use.
 4. If corporate endpoint software is in place, it usually needs an admin-side rule — escalate to IT with the executable path and the target server.
 
@@ -261,7 +261,7 @@ Re-run the verification in the GUI once the rule is live.
 
 ### Linux: network troubleshooting
 
-**Symptom.** GUI shows *Offline* for an account on your LAN or a private IP. Detail line contains `connect: no route to host`, `connect: network is unreachable`, or `connect: connection refused`.
+**Symptom.** GUI shows _Offline_ for an account on your LAN or a private IP. Detail line contains `connect: no route to host`, `connect: network is unreachable`, or `connect: connection refused`.
 
 **Root cause.** Linux desktops usually don't have an OS-level network-permission mechanism. Either the network itself is down (VPN off, wrong interface, wrong subnet) or a host-level firewall (`ufw`, `firewalld`, nftables) is blocking the outbound connection.
 
@@ -274,7 +274,7 @@ Re-run the verification in the GUI once the rule is live.
 
 ### HTTP 401 from Forgejo or Gitea
 
-**Symptom.** The Current-status panel shows *Primary (GCM): Warning* with `gitea: authentication failed (HTTP 401) — token is invalid or expired`.
+**Symptom.** The Current-status panel shows _Primary (GCM): Warning_ with `gitea: authentication failed (HTTP 401) — token is invalid or expired`.
 
 **Root cause.** Forgejo and Gitea refuse username/password authentication at the REST API. Your GCM-stored credential is probably a real account password — it works for `git push` / `pull` but not for `/api/v1/*`.
 
@@ -339,14 +339,14 @@ Check that the public key is registered at the provider, that the `IdentityFile`
 
 Different gitbox operations need different PAT scopes. The baseline (list + clone + fetch + pull) is the minimum every account needs; create, delete, and mirror each add one or more scopes on top. Give each account only the scopes it needs — add the destructive ones (delete) only when you plan to use them.
 
-| Provider         | Discovery + clone + fetch         | Create repo (GUI "Create repo" / move dest) | Delete repo (move with "delete source")  | Mirror (push/pull between accounts)      |
-| ---------------- | --------------------------------- | ------------------------------------------- | ---------------------------------------- | ---------------------------------------- |
-| GitHub           | `repo`, `read:org`                | `repo`                                      | `delete_repo` (sensitive — add only if needed) | `repo` plus the destination's scopes |
-| GitLab           | `api`                             | `api`                                       | `api`                                    | `api`                                    |
-| Gitea / Forgejo  | `read:repository`, `read:organization` | `write:repository`                     | `write:repository` (or admin on target)  | `write:repository` on destination        |
-| Bitbucket Cloud  | `repository`                      | `repository:admin`                          | `repository:delete`                      | `repository:admin` on destination        |
+| Provider        | Discovery + clone + fetch              | Create repo (GUI "Create repo" / move dest) | Delete repo (move with "delete source")        | Mirror (push/pull between accounts)  |
+| --------------- | -------------------------------------- | ------------------------------------------- | ---------------------------------------------- | ------------------------------------ |
+| GitHub          | `repo`, `read:org`                     | `repo`                                      | `delete_repo` (sensitive — add only if needed) | `repo` plus the destination's scopes |
+| GitLab          | `api`                                  | `api`                                       | `api`                                          | `api`                                |
+| Gitea / Forgejo | `read:repository`, `read:organization` | `write:repository`                          | `write:repository` (or admin on target)        | `write:repository` on destination    |
+| Bitbucket Cloud | `repository`                           | `repository:admin`                          | `repository:delete`                            | `repository:admin` on destination    |
 
-When a scope is missing, gitbox surfaces a warning naming the exact scope required plus the provider URL to regenerate the PAT — e.g. _"Source repo delete refused: your github PAT is missing the `delete_repo` scope. Regenerate it at https://github.com/settings/tokens (keep existing scopes, add `delete_repo`), then store the new token in the account's credential settings."_
+When a scope is missing, gitbox surfaces a warning naming the exact scope required plus the provider URL to regenerate the PAT — e.g. _"Source repo delete refused: your github PAT is missing the `delete_repo` scope. Regenerate it at <https://github.com/settings/tokens> (keep existing scopes, add `delete_repo`), then store the new token in the account's credential settings."_
 
 The account setup wizard shows the same per-capability table when you store a PAT, so you can decide which scopes to include up front.
 

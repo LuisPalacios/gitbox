@@ -44,21 +44,21 @@ pnpm dlx tsx <plugin-path>/skills/skill-name/scripts/script.ts [args]
  * Dependencies: none (or list external packages)
  */
 
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { exit } from 'node:process';
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { exit } from "node:process";
 
 async function main() {
   const args = process.argv.slice(2);
   if (args.length === 0) {
-    console.log('Usage: ...');
+    console.log("Usage: ...");
     exit(1);
   }
   // Implementation
 }
 
 main().catch((error) => {
-  console.error('Error:', error.message);
+  console.error("Error:", error.message);
   exit(1);
 });
 ```
@@ -109,12 +109,12 @@ Document in the skill's SKILL.md:
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
+| Issue                     | Solution                                                                                                               |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `pnpm: command not found` | Install pnpm: `winget install -e --id pnpm.pnpm` (Windows) or `curl -fsSL https://get.pnpm.io/install.sh \| sh` (Unix) |
-| First run is slow | Expected. pnpm downloads tools to global store on first execution. Subsequent runs are instant. |
-| Config file not found | Ensure `--config` flag points to correct skill path: `.claude/skills/skill-name/.configfile` |
-| TypeScript errors | Use `pnpm dlx tsx` (not `node`) — tsx handles TypeScript transpilation |
+| First run is slow         | Expected. pnpm downloads tools to global store on first execution. Subsequent runs are instant.                        |
+| Config file not found     | Ensure `--config` flag points to correct skill path: `.claude/skills/skill-name/.configfile`                           |
+| TypeScript errors         | Use `pnpm dlx tsx` (not `node`) — tsx handles TypeScript transpilation                                                 |
 
 **Cache location:** pnpm global content-addressable store — shared across all projects, no per-repo footprint.
 
