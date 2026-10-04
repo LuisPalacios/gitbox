@@ -168,6 +168,7 @@ The `--test-mode` flag reads `test-gitbox.json` (searching upwards from the curr
 Run these before every push or PR. The pre-push hook handles gofmt + vet + unit tests, and the PR workflow repeats them in CI.
 
 ```text
+- [ ] ./scripts/health.sh                  (every checker: Go, frontend, scripts, workflows, docs)
 - [ ] go vet ./...
 - [ ] go test -short ./...
 - [ ] cd cmd/gui/frontend && npm run check
