@@ -65,7 +65,8 @@
 
         // Token/PAT credentials
         // For Gitea/Forgejo servers, CI/CD and automation.
-        // Tokens are stored in the OS credential store, not here.
+        // Tokens are stored in per-account files under
+        // ~/.config/gitbox/credentials/ (mode 0600), not here.
         "credential_token": {},
 
         // Terminal "Profiles" model — three arrays:
@@ -105,11 +106,11 @@
               "args": ["--profile", "Git Bash", "-d", "{path}"], "source": "wt-profile" }
         ],
 
-        // AI CLI harnesses for "Open in ..." actions in the GUI and TUI. Each
+        // AI CLI harnesses for "Open in ..." actions in the GUI. Each
         // harness launches inside the default Terminal Profile's shell (the
         // profile flagged "default" above). Detected in the background
-        // (shortly after launch, every 10 minutes, on window focus; once per
-        // TUI launch); edit or reorder freely. Most harnesses need no args —
+        // (shortly after launch, every 10 minutes, on window focus); edit or
+        // reorder freely. Most harnesses need no args —
         // "args" is usually empty.
         //   "source":  "detected" = added by the sync from the embedded
         //              catalog; "user" = hand-written, never altered.
@@ -363,7 +364,7 @@
 
         // ── Gitea with token — CI/CD repos ────────────────────────────────────
         // All repos inherit credential_type "token" from the account.
-        // The token is retrieved from the environment variable or credential store.
+        // The token is read from the environment variable or the per-account credential file.
         "gitea-ci": {
             "account": "gitea-ci",
             "repos": {
