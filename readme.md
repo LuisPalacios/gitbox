@@ -38,11 +38,11 @@ It's for anyone who works across more than one Git account or provider and wants
 
 Download the installer for your platform from the [latest release](https://github.com/LuisPalacios/gitbox/releases/latest):
 
-| Platform | Download                                            | How to install                                                                     |
-| -------- | --------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Windows  | `gitbox-win-amd64-setup.exe`                        | Run it. Installs `GitboxApp.exe` to Program Files with Start Menu shortcuts        |
-| macOS    | `gitbox-macos-arm64.dmg` / `gitbox-macos-amd64.dmg` | Open the DMG and run `bash "/Volumes/gitbox/Install Gitbox.command"` from Terminal |
-| Linux    | `gitbox-x86_64.AppImage`                            | `chmod +x` and run it. Self-contained, bundles GTK 3 and WebKitGTK                 |
+| Platform | Download                                            | How to install                                                                                        |
+| -------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Windows  | `gitbox-win-amd64-setup.exe`                        | Run it. Installs `GitboxApp.exe` to Program Files with Start Menu shortcuts                           |
+| macOS    | `gitbox-macos-arm64.dmg` / `gitbox-macos-amd64.dmg` | macOS 13 or later. Open the DMG and run `bash "/Volumes/gitbox/Install Gitbox.command"` from Terminal |
+| Linux    | `gitbox-x86_64.AppImage`                            | `chmod +x` and run it. Self-contained, bundles GTK 3 and WebKitGTK                                    |
 
 Prefer the terminal? The bootstrap script downloads the latest release and installs it in one go on macOS, Linux, or Windows (Git Bash). On Linux it also adds gitbox to the applications menu:
 

@@ -38,11 +38,11 @@ Es para cualquiera que trabaje con más de una cuenta o proveedor Git y quiera c
 
 Descarga el instalador para tu plataforma desde la [última release](https://github.com/LuisPalacios/gitbox/releases/latest):
 
-| Plataforma | Descarga                                            | Cómo instalar                                                                        |
-| ---------- | --------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Windows    | `gitbox-win-amd64-setup.exe`                        | Ejecútalo. Instala `GitboxApp.exe` en Program Files con accesos en el menú Start     |
-| macOS      | `gitbox-macos-arm64.dmg` / `gitbox-macos-amd64.dmg` | Abre el DMG y ejecuta `bash "/Volumes/gitbox/Install Gitbox.command"` desde Terminal |
-| Linux      | `gitbox-x86_64.AppImage`                            | `chmod +x` y ejecútalo. Autocontenido, incluye GTK 3 y WebKitGTK                     |
+| Plataforma | Descarga                                            | Cómo instalar                                                                                              |
+| ---------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Windows    | `gitbox-win-amd64-setup.exe`                        | Ejecútalo. Instala `GitboxApp.exe` en Program Files con accesos en el menú Start                           |
+| macOS      | `gitbox-macos-arm64.dmg` / `gitbox-macos-amd64.dmg` | macOS 13 o posterior. Abre el DMG y ejecuta `bash "/Volumes/gitbox/Install Gitbox.command"` desde Terminal |
+| Linux      | `gitbox-x86_64.AppImage`                            | `chmod +x` y ejecútalo. Autocontenido, incluye GTK 3 y WebKitGTK                                           |
 
 ¿Prefieres la terminal? El script bootstrap descarga la última release y la instala de una vez en macOS, Linux o Windows (Git Bash). En Linux también añade gitbox al menú de aplicaciones:
 

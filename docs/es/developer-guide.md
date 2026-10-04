@@ -29,6 +29,8 @@ cd cmd/gui
 wails dev
 
 # Build de producción
+# Solo macOS: apunta a macOS 13, el mínimo del runtime de Go (Wails usa 10.13 por defecto)
+export CGO_CFLAGS=-mmacosx-version-min=13.0 CGO_LDFLAGS=-mmacosx-version-min=13.0
 wails build -ldflags "$LDFLAGS"
 # Salida: cmd/gui/build/bin/GitboxApp[.exe]
 ```

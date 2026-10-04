@@ -88,6 +88,11 @@ jobs:
     runs-on: macos-latest
     needs: test
     env:
+      # Go's runtime targets macOS 13; give cgo and the linker the same
+      # minimum (Wails adds 10.13 only when none is set). Info.plist in
+      # cmd/gui/build/darwin declares it to the OS.
+      CGO_CFLAGS: -mmacosx-version-min=13.0
+      CGO_LDFLAGS: -mmacosx-version-min=13.0
       LDFLAGS: >-
         -X main.version=${{ inputs.version || github.ref_name }}
         -X main.commit=${{ github.sha }}
@@ -124,6 +129,11 @@ jobs:
     runs-on: macos-latest
     needs: test
     env:
+      # Go's runtime targets macOS 13; give cgo and the linker the same
+      # minimum (Wails adds 10.13 only when none is set). Info.plist in
+      # cmd/gui/build/darwin declares it to the OS.
+      CGO_CFLAGS: -mmacosx-version-min=13.0
+      CGO_LDFLAGS: -mmacosx-version-min=13.0
       GOARCH: amd64
       LDFLAGS: >-
         -X main.version=${{ inputs.version || github.ref_name }}

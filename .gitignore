@@ -10,6 +10,13 @@ cli.exe
 gui.exe
 
 # Wails — track template files, ignore build output and copied icons
+# build/ above ignores every build dir; re-include cmd/gui/build only for the
+# macOS Info.plist template, which sets the minimum macOS version.
+!cmd/gui/build/
+cmd/gui/build/*
+!cmd/gui/build/darwin/
+cmd/gui/build/darwin/*
+!cmd/gui/build/darwin/Info.plist
 cmd/gui/build/bin/
 cmd/gui/build/appicon.png
 cmd/gui/build/windows/icon.ico
