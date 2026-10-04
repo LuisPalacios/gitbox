@@ -12,7 +12,7 @@
 #   ./scripts/health.sh -v              # print every finding, not just the first 15
 #
 # Checks: gofmt vet staticcheck modernize govulncheck deadcode test
-#         svelte npm-audit shellcheck actionlint markdown
+#         svelte build npm-install npm-audit shellcheck actionlint markdown
 #
 # Go analyzers run through `go run` at pinned versions, so they need no
 # install and give the same results everywhere. shellcheck, actionlint and
@@ -135,6 +135,24 @@ run_svelte() {
     grep -q ' COMPLETED .* 0 ERRORS 0 WARNINGS 0 HINTS' <<<"$out" || return 1
 }
 
+run_build() {
+    # Rebuilds the gitignored dist/ (the only write); fails on any compiler
+    # or bundler warning, e.g. the A11y diagnostics vite-plugin-svelte prints.
+    (cd "$FRONTEND" && npm run build 2>&1) | sed 's/\x1b\[[0-9;]*m//g' \
+        | grep -E '\[vite-plugin-svelte\] .*(A11y|Unused|[Ww]arn)|\(!\)|^npm warn'
+    return 0
+}
+
+run_npm_install() {
+    # Clean install in a scratch copy: surfaces npm's install-time warnings
+    # (deprecated packages, install scripts not covered by allowScripts)
+    # without touching the repo's node_modules.
+    mkdir -p "$tmp/npm-install"
+    cp "$FRONTEND/package.json" "$FRONTEND/package-lock.json" "$tmp/npm-install/"
+    (cd "$tmp/npm-install" && npm ci --no-audit --no-fund 2>&1) | grep -E '^npm (warn|error)'
+    return 0
+}
+
 run_npm_audit() {
     (cd "$FRONTEND" && npm audit --audit-level=low >"$tmp/npm-audit.full" 2>&1) && return 0
     grep -E '^[a-z@].*  |^Severity|vulnerabilit' "$tmp/npm-audit.full"
@@ -176,6 +194,8 @@ want govulncheck go && check govulncheck run_govulncheck
 want deadcode go    && check deadcode    run_deadcode
 want test go        && check test        run_test
 want svelte fe      && check svelte      run_svelte
+want build fe       && check build       run_build
+want npm-install fe && check npm-install run_npm_install
 want npm-audit fe   && check npm-audit   run_npm_audit
 want shellcheck x   && need shellcheck shellcheck        && check shellcheck run_shellcheck
 want actionlint x   && need actionlint actionlint        && check actionlint run_actionlint
