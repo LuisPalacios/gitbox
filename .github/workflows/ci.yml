@@ -25,6 +25,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history with tags: update.ResolveVersion (and its test)
+          # derive dev versions from `git describe --tags`. A tag push carries
+          # its own tag; a dry run from a branch does not.
+          fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
           go-version: 'stable'
