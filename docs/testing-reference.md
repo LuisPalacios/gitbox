@@ -28,21 +28,21 @@ Counts are top-level `func Test…` functions per package, from `grep -rc "^func
 - `pkg/update/` — 23 tests: semver parsing, version comparison, update check (mock API), major-version cap, artifact names, AppImage notify-only detection, install targets, checksum verification, fail-closed download (missing or unreadable checksums refuse the update)
 - `pkg/workspace/` — 5 tests: workspace discovery, cache refresh, extra folders, tentative containers
 
-### GUI tests — 42 tests (`cmd/gui/`)
+### GUI tests — 43 tests (`cmd/gui/`)
 
 Go-side logic of the Wails app that runs without a window:
 
 - Account and browser actions — account folder resolution, provider URLs, error paths for unknown accounts and repos
 - AI harness actions — detection, ordering, dedup, retired-harness pruning, `~/.local/bin` fallback, launcher default Profile
 - Self-update — the AppImage build refuses `ApplyUpdate` before any download
-- Terminals — argv resolution, legacy entry upgrades, Windows Terminal profile parsing and merge, MSYS path and env sanitising
+- Terminals — argv resolution, legacy entry upgrades (skipped once terminal profiles exist), Windows Terminal profile parsing and merge, MSYS path and env sanitising
 - Workspaces and containers — cache refresh, container flag persistence, extra folders, nested scan depth, absolute `clone_folder` for onboarded clones
 
 ### Scenario test — 1 test, 12 steps (`pkg/ops/`)
 
 - `TestScenario_FullLifecycle` — end-to-end through `pkg/ops`: add account → credential check → discover → add repo → clone → status → pull and fetch → account edit + reconfigure clones → mirror CRUD → re-clone → rename account → delete everything
 
-### Total: 475 tests
+### Total: 476 tests
 
 ## How the test harness works
 
