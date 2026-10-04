@@ -13,7 +13,7 @@ Esta guía recorre todo, desde el primer arranque hasta el uso diario.
 Descarga el instalador para tu plataforma desde la página de [Releases](https://github.com/LuisPalacios/gitbox/releases):
 
 - **Windows** — `gitbox-win-amd64-setup.exe` (instala `GitboxApp.exe` en Program Files con accesos del menú Start)
-- **macOS** — `gitbox-macos-arm64.dmg` o `gitbox-macos-amd64.dmg` (abre el DMG, ejecuta el script de instalación desde Terminal)
+- **macOS** — `gitbox-macos-arm64.dmg` o `gitbox-macos-amd64.dmg` (macOS 13 Ventura o posterior; abre el DMG, ejecuta el script de instalación desde Terminal)
 - **Linux** — `gitbox-x86_64.AppImage` (autocontenido, solo descarga y ejecuta)
 
 También puedes descargar los archivos ZIP (`gitbox-<platform>-<arch>.zip`) y extraerlos manualmente. Cada uno contiene solo la app: `GitboxApp.exe`, `GitboxApp.app` o `GitboxApp`.

@@ -163,6 +163,8 @@ LDFLAGS="-X main.version=$(git describe --tags --always)-dev -X main.commit=$(gi
 cp assets/appicon.png cmd/gui/build/appicon.png
 cp assets/icon.ico    cmd/gui/build/windows/icon.ico
 (cd cmd/gui && wails build -ldflags "$LDFLAGS")   # Linux: add -tags webkit2_41
+# macOS: export CGO_CFLAGS=-mmacosx-version-min=13.0 CGO_LDFLAGS=-mmacosx-version-min=13.0
+# first (Go's runtime minimum; cmd/gui/build/darwin/Info.plist declares the same 13.0)
 # Output: cmd/gui/build/bin/GitboxApp[.exe] (GitboxApp.app on macOS)
 
 # Smoke check
@@ -442,6 +444,7 @@ tar \
 #    Include both Homebrew prefixes so the recipe works on arm64 (/opt/homebrew)
 #    and Intel (/usr/local) without tweaks.
 ssh "$host" 'export PATH=/opt/homebrew/bin:/usr/local/bin:$HOME/go/bin:$PATH && \
+  export CGO_CFLAGS=-mmacosx-version-min=13.0 CGO_LDFLAGS=-mmacosx-version-min=13.0 && \
   cd ~/gitbox-remote-build && \
   cp assets/appicon.png cmd/gui/build/appicon.png 2>/dev/null; \
   cd cmd/gui && wails build -platform '"$target"

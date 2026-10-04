@@ -151,7 +151,14 @@ build_and_ship_gui() {
         wails_flags="$wails_flags -tags webkit2_41"
     fi
 
-    local build_cmd="export PATH=$path_prefix && cd ~/$remote_dir && \
+    # macOS: Go's runtime targets macOS 13, so cgo and the linker get the same
+    # minimum (Wails adds 10.13 only when none is set). Same as ci.yml.
+    local mac_env=""
+    if [[ "$p" == mac* ]]; then
+        mac_env="export CGO_CFLAGS=-mmacosx-version-min=13.0 CGO_LDFLAGS=-mmacosx-version-min=13.0 && "
+    fi
+
+    local build_cmd="${mac_env}export PATH=$path_prefix && cd ~/$remote_dir && \
         mkdir -p cmd/gui/build && \
         { [ -f assets/appicon.png ] && cp assets/appicon.png cmd/gui/build/appicon.png || true; } && \
         { [ -f assets/icon.ico ] && mkdir -p cmd/gui/build/windows && cp assets/icon.ico cmd/gui/build/windows/icon.ico || true; } && \
