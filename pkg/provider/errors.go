@@ -22,18 +22,13 @@ func IsNetworkError(err error) bool {
 	}
 
 	// DNS resolution failure.
-	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) {
+	if _, ok := errors.AsType[*net.DNSError](err); ok {
 		return true
 	}
 
 	// Low-level network operation error (connection refused, network unreachable, etc.).
-	var opErr *net.OpError
-	if errors.As(err, &opErr) {
-		return true
-	}
-
-	return false
+	_, ok := errors.AsType[*net.OpError](err)
+	return ok
 }
 
 // IsForbiddenError reports whether err came from an HTTP 403 response.

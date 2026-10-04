@@ -1,6 +1,7 @@
 package move
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -47,7 +48,7 @@ func TestPreflightRejectsIdenticalDestination(t *testing.T) {
 		DestOwner:        "acme",
 		DestRepoName:     "widget",
 	}
-	if _, err := Preflight(nil, cfg, req); err == nil || !strings.Contains(err.Error(), "identical") {
+	if _, err := Preflight(context.Background(), cfg, req); err == nil || !strings.Contains(err.Error(), "identical") {
 		t.Errorf("expected 'identical' error, got %v", err)
 	}
 }
@@ -69,7 +70,7 @@ func TestPreflightRejectsUnknownAccounts(t *testing.T) {
 		DestOwner:        "u",
 		DestRepoName:     "r",
 	}
-	_, err := Preflight(nil, cfg, req)
+	_, err := Preflight(context.Background(), cfg, req)
 	if err == nil || !strings.Contains(err.Error(), "destination account") {
 		t.Errorf("expected destination-account error, got %v", err)
 	}
@@ -86,7 +87,7 @@ func TestPreflightRejectsMissingFields(t *testing.T) {
 		{SourceAccountKey: "a", DestAccountKey: "b", SourceSourceKey: "a", SourceRepoKey: "x/y", DestOwner: "b", DestRepoName: "y"},
 	}
 	for i, req := range cases {
-		if _, err := Preflight(nil, cfg, req); err == nil {
+		if _, err := Preflight(context.Background(), cfg, req); err == nil {
 			t.Errorf("case %d: expected error on missing fields", i)
 		}
 	}

@@ -208,8 +208,8 @@ func wslDistroFromArgs(args []string) string {
 		if (a == "-d" || a == "--distribution") && i+1 < len(args) {
 			return args[i+1]
 		}
-		if strings.HasPrefix(a, "--distribution=") {
-			return strings.TrimPrefix(a, "--distribution=")
+		if after, ok := strings.CutPrefix(a, "--distribution="); ok {
+			return after
 		}
 	}
 	return ""

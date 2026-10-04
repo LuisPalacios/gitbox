@@ -83,7 +83,7 @@ func parseRetired(md string) []Tool {
 // keeps those whose category satisfies keep.
 func filterRows(md string, keep func(category string) bool) []Tool {
 	var tools []Tool
-	for _, line := range strings.Split(md, "\n") {
+	for line := range strings.SplitSeq(md, "\n") {
 		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, "|") {
 			continue

@@ -439,11 +439,9 @@ func MatchAccountEx(cfg *config.Config, mc MatchContext) (accountKey, sourceKey 
 func PlainRemoteURL(acct config.Account, repoKey, credType string) string {
 	switch credType {
 	case "ssh":
-		host := acct.URL
+		host := HostnameFromURL(acct.URL)
 		if acct.SSH != nil && acct.SSH.Host != "" {
 			host = acct.SSH.Host
-		} else {
-			host = HostnameFromURL(acct.URL)
 		}
 		return fmt.Sprintf("git@%s:%s.git", host, repoKey)
 	default:

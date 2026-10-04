@@ -29,7 +29,7 @@ func KnownTerminals() []TerminalSpec {
 // parseTerminalDirectory is the testable core of KnownTerminals.
 func parseTerminalDirectory(md string) []TerminalSpec {
 	var specs []TerminalSpec
-	for _, line := range strings.Split(md, "\n") {
+	for line := range strings.SplitSeq(md, "\n") {
 		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, "|") {
 			continue

@@ -331,8 +331,7 @@ func matchesShell(entryName, shellID, shellName string) bool {
 	}
 	// wsl-<distro> ids like "wsl-ubuntu-24-04" let us derive a distro slug
 	// from the id itself when the display Name doesn't carry an em-dash.
-	if strings.HasPrefix(shellID, "wsl-") {
-		distro := strings.TrimPrefix(shellID, "wsl-")
+	if distro, ok := strings.CutPrefix(shellID, "wsl-"); ok {
 		distro = strings.ReplaceAll(distro, "-", " ")
 		distro = strings.TrimSpace(distro)
 		if distro != "" && strings.Contains(eNorm, distro) {
@@ -370,11 +369,11 @@ func normalizeName(s string) string {
 // `s`, or "" when there is none. Mirrors the gitbox display convention of
 // "<family> — <variant>" (e.g. "WSL — Ubuntu-24.04").
 func nameAfterEmDash(s string) string {
-	idx := strings.Index(s, "— ")
-	if idx < 0 {
+	_, after, ok := strings.Cut(s, "— ")
+	if !ok {
 		return ""
 	}
-	return strings.TrimSpace(s[idx+len("— "):])
+	return strings.TrimSpace(after)
 }
 
 // shellMatchPatterns lists fallback substring patterns checked against the
