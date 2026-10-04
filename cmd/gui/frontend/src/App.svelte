@@ -10,14 +10,15 @@
     workspaces, workspaceOrder, workspaceMemberships, selectedClones,
     toggleCloneSelection, clearCloneSelection
   } from './lib/stores';
-  import { statusColor, credColor, statusLabel, providerLabel, statusSymbol } from './lib/theme';
+  import { statusColor, credColor, providerLabel, statusSymbol } from './lib/theme';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit, EventsOn } from '../wailsjs/runtime/runtime';
-  import type { RepoState, SourceDTO, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, WorkspaceDTO, WorkspaceMemberDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
+  import type { RepoState, SourceDTO, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
   import PRPopover from './lib/PRPopover.svelte';
   import TerminalsModal from './lib/TerminalsModal.svelte';
   import { tooltip } from './lib/tooltip';
+  import { dismiss } from './lib/dismiss';
 
   // ── View mode ──
   let viewMode: 'full' | 'compact' = 'full';
@@ -34,6 +35,25 @@
   let compactExpanded: Record<string, boolean> = {};
   let savedFullSize: { w: number; h: number } | null = null;
   let savedFullPos: { x: number; y: number } | null = null;
+
+  // ── Keyboard activation ──
+  // Enter/Space handler for clickable elements that aren't buttons
+  // (role="button"). Ignores keys bubbling up from controls inside them.
+  function onActivateKey(fn: () => void) {
+    return (e: KeyboardEvent) => {
+      if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+        e.preventDefault();
+        fn();
+      }
+    };
+  }
+
+  // A repo row toggles clone selection in workspace-selection mode and
+  // its detail panel otherwise.
+  function activateRepoRow(sourceKey: string, repoName: string, repoKey: string, status: string) {
+    if (selectionMode) toggleCloneSelection(repoKey);
+    else if (status !== 'unknown') toggleRepoDetail(sourceKey, repoName, status);
+  }
 
   // ── Action menu (kebab) ──
   let actionMenuRepo: string | null = null;
@@ -1973,13 +1993,6 @@
   let mirrorRepoPickerFilter = '';
   let mirrorRepoPickerLoaded = false;
 
-  function mirrorDirLabel(repo: MirrorRepo, m: MirrorDTO): string {
-    const origin = repo.origin === 'src' ? m.account_src : m.account_dst;
-    const backup = repo.origin === 'src' ? m.account_dst : m.account_src;
-    if (repo.direction === 'push') return `${origin} → ${backup} (mirror)`;
-    return `${backup} (mirror) ← ${origin}`;
-  }
-
   function mirrorDirLabelHtml(repo: MirrorRepo, m: MirrorDTO): string {
     const origin = repo.origin === 'src' ? m.account_src : m.account_dst;
     const backup = repo.origin === 'src' ? m.account_dst : m.account_src;
@@ -1989,7 +2002,7 @@
     return `${dst} <span class="mir-arrow">⟵</span> ${src}`;
   }
 
-  function mirrorStatusColor(repo: MirrorRepo, live: MirrorStatusResult | undefined, theme: string): string {
+  function mirrorStatusColor(_repo: MirrorRepo, live: MirrorStatusResult | undefined, theme: string): string {
     if (live?.needsSetup) return statusColor('not cloned', theme); // neutral — row has never been set up
     if (live?.error) return statusColor('error', theme);
     if (live?.syncStatus === 'synced') return statusColor('clean', theme);
@@ -1999,7 +2012,7 @@
     return statusColor('clean', theme);
   }
 
-  function mirrorStatusSymbol(repo: MirrorRepo, live: MirrorStatusResult | undefined): string {
+  function mirrorStatusSymbol(_repo: MirrorRepo, live: MirrorStatusResult | undefined): string {
     if (live?.needsSetup) return '○';
     if (live?.error) return '✕';
     if (live?.syncStatus === 'synced') return '●';
@@ -2010,7 +2023,7 @@
   }
 
   /** Summarize live mirror status in a short, user-friendly string. */
-  function mirrorStatusText(repo: MirrorRepo, live: MirrorStatusResult | undefined): string {
+  function mirrorStatusText(_repo: MirrorRepo, live: MirrorStatusResult | undefined): string {
     if (live?.needsSetup) return 'needs setup';
     if (live?.error) return friendlyMirrorError(live.error);
     if (live?.syncStatus === 'synced') return 'Synced OK';
@@ -2690,13 +2703,13 @@
       updateProgress = msg;
     });
 
-    events.on('update:done', (ver: string) => {
+    events.on('update:done', () => {
       updateApplying = false;
       updateProgress = '';
       updateDone = true;
     });
 
-    events.on('update:quit', (ver: string) => {
+    events.on('update:quit', () => {
       // Elevated update script is running — quit so it can overwrite binaries.
       updateApplying = false;
       updateProgress = '';
@@ -2963,7 +2976,7 @@
     <div class="compact-sep"></div>
 
     <!-- Account pills -->
-    {#each Object.entries($accounts) as [key, acct]}
+    {#each Object.keys($accounts) as key}
       {@const stats = $accountStats[key] || { total: 0, synced: 0, issues: 0 }}
       {@const compactCred = (credStatuses[key] || {status: 'unknown'}).status}
       <button class="compact-acct" class:compact-acct-expanded={compactExpanded[key]}
@@ -3339,7 +3352,6 @@
     {#each Object.entries($accounts) as [key, acct]}
       {@const stats = $accountStats[key] || { total: 0, synced: 0, issues: 0 }}
       {@const credObj = credStatuses[key] || {status: 'unknown', primary: 'unknown', pat: 'unknown'}}
-      {@const credPrimary = credObj.primary}
       {@const credOverall = credObj.status}
       {@const canDiscover = credOverall !== 'none' && credOverall !== 'error' && credOverall !== 'offline' && credOverall !== 'unknown'}
       {@const canCreate = credOverall === 'ok'}
@@ -3356,7 +3368,7 @@
             on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')}
             title="Credential: {acct.default_credential_type || 'none'} — {credOverall}">{credOverall === 'unknown' ? '···' : credOverall === 'none' ? 'config' : credOverall === 'offline' ? 'offline' : acct.default_credential_type || 'gcm'}</button>
         </div>
-        <div class="card-name card-name-edit" on:click={() => openEditAccount(key)} title="{$t('account.edit')}">{key}</div>
+        <div class="card-name card-name-edit" role="button" tabindex="0" on:click={() => openEditAccount(key)} on:keydown={onActivateKey(() => openEditAccount(key))} title="{$t('account.edit')}">{key}</div>
         <div class="card-ring-row">
           <svg class="mini-ring" viewBox="0 0 36 36">
             <circle cx="18" cy="18" r="15" fill="none" stroke="#27272a" stroke-width="3"/>
@@ -3417,10 +3429,15 @@
           {@const repoKey = `${sourceKey}/${repoName}`}
           {@const isContainer = !!source.repos[repoName]?.container}
           {@const state = $repoStates[repoKey] || { status: 'unknown', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
-          <div class="repo-row" class:repo-row-clickable={state.status !== 'unknown' && state.status !== 'clean' && state.status !== 'behind' && state.status !== 'not cloned' && state.status !== 'cloning' && state.status !== 'syncing'}
+          {@const rowOpensDetail = state.status !== 'unknown' && state.status !== 'clean' && state.status !== 'behind' && state.status !== 'not cloned' && state.status !== 'cloning' && state.status !== 'syncing'}
+          <div class="repo-row" class:repo-row-clickable={rowOpensDetail}
             class:repo-row-nested={indent > 0}
             style={indent > 0 ? `padding-left: ${10 + indent * 22}px` : ''}
-            on:click={() => { if (selectionMode) { toggleCloneSelection(repoKey); } else if (state.status !== 'unknown') { toggleRepoDetail(sourceKey, repoName, state.status); } }}>
+            role="button"
+            tabindex={rowOpensDetail || selectionMode ? 0 : -1}
+            aria-disabled={!rowOpensDetail && !selectionMode}
+            on:click={() => activateRepoRow(sourceKey, repoName, repoKey, state.status)}
+            on:keydown={onActivateKey(() => activateRepoRow(sourceKey, repoName, repoKey, state.status))}>
             {#if selectionMode}
               <input type="checkbox" class="clone-select-box" checked={$selectedClones.has(repoKey)}
                 on:click|stopPropagation
@@ -3441,7 +3458,7 @@
                   </svg>
                 </button>
                 {#if openWsPopover === repoKey}
-                  <div class="ws-popover" transition:fade={{ duration: 80 }} on:click|stopPropagation>
+                  <div class="ws-popover" transition:fade={{ duration: 80 }} on:click|stopPropagation on:keydown|stopPropagation>
                     <div class="ws-popover-title">{$t('workspace.openWorkspace')}</div>
                     {#each membershipsFor(repoKey) as wsKey}
                       <button class="ws-popover-item"
@@ -3889,8 +3906,8 @@
 
   <!-- ── DISCOVER MODAL ── -->
   {#if discoverModal}
-    <div class="overlay" on:click={() => discoverModal = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-discover" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={() => discoverModal = null} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-discover" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head">
           <h3>{$t('discover.title')} &mdash; {discoverModal}</h3>
           <button class="btn-x" on:click={() => discoverModal = null}>&#10005;</button>
@@ -3942,7 +3959,7 @@
                       indeterminate={someSel && !allSel}
                       on:click|stopPropagation={() => toggleOwnerAll(owner)}
                     />
-                    <span class="org-badge-body" on:click={() => toggleOwnerVisibility(owner)}>
+                    <span class="org-badge-body" role="button" tabindex="0" on:click={() => toggleOwnerVisibility(owner)} on:keydown={onActivateKey(() => toggleOwnerVisibility(owner))}>
                       {owner} <span class="org-badge-count">({ownerCounts[owner]})</span>
                     </span>
                   </span>
@@ -3984,8 +4001,8 @@
 
   <!-- ── DOCTOR (SYSTEM CHECK) MODAL ── -->
   {#if showDoctorModal}
-    <div class="overlay" on:click={() => showDoctorModal = false} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-doctor" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={() => showDoctorModal = false} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-doctor" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head">
           <h3>System check</h3>
           <button class="btn-x" on:click={() => showDoctorModal = false}>&#10005;</button>
@@ -4047,7 +4064,7 @@
   <!-- ── SSH DISCOVERY TOKEN MODAL ── -->
   {#if sshDiscoverTokenModal}
     <div class="overlay" transition:fade={{ duration: 120 }}>
-      <div class="modal modal-account" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+      <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head">
           <h3>Discovery token &mdash; {sshDiscoverTokenModal}</h3>
           <button class="btn-x" on:click={() => { sshDiscoverTokenModal = null; sshDiscoveryTokenInput = ''; }}>&#10005;</button>
@@ -4078,8 +4095,8 @@
 
   <!-- ── EDIT ACCOUNT MODAL ── -->
   {#if editAccountModal}
-    <div class="overlay" on:click={() => editAccountModal = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-account" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={() => editAccountModal = null} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head">
           <h3>Edit account</h3>
           <button class="btn-x" on:click={() => editAccountModal = null}>&#10005;</button>
@@ -4134,8 +4151,8 @@
 
   <!-- ── DELETE CONFIRMATION MODAL ── -->
   {#if deleteConfirm}
-    <div class="overlay" on:click={cancelDelete} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-delete" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={cancelDelete} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-delete" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head modal-head-delete">
           <h3>Delete local clone</h3>
           <button class="btn-x" on:click={cancelDelete}>&#10005;</button>
@@ -4167,8 +4184,8 @@
 
   <!-- ── SWEEP CONFIRM MODAL ── -->
   {#if sweepModal}
-    <div class="overlay" on:click={() => sweepModal = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-sweep" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={() => sweepModal = null} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-sweep" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head modal-head-sweep">
           <h3>Sweep branches</h3>
           <button class="btn-x" on:click={() => sweepModal = null}>&#10005;</button>
@@ -4210,8 +4227,8 @@
 
   <!-- ── ORPHAN ADOPTION MODAL ── -->
   {#if orphanModal}
-    <div class="overlay" on:click={() => orphanModal = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-adopt" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={() => orphanModal = null} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-adopt" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head modal-head-adopt">
           <h3>Adopt orphan repos</h3>
           <button class="btn-x" on:click={() => orphanModal = null}>&#10005;</button>
@@ -4264,8 +4281,8 @@
 
   <!-- ── ADD ACCOUNT MODAL ── -->
   {#if addAccountModal}
-    <div class="overlay" on:click={() => { if (addAccountStep === 'form') resetAddAccount(); }} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-account" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={() => { if (addAccountStep === 'form') resetAddAccount(); }} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head">
           <h3>{addAccountStep === 'form' ? 'Add account' : 'Credential setup'}</h3>
           <button class="btn-x" on:click={resetAddAccount}>&#10005;</button>
@@ -4423,8 +4440,8 @@
   <!-- ── CHANGE CREDENTIAL MODAL ── -->
   {#if credChangeModal}
     {@const currentAcct = $accounts[credChangeModal]}
-    <div class="overlay" on:click={() => { if (!credBusy && !credDeleteBusy) closeCredChange(); }} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-account" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={() => { if (!credBusy && !credDeleteBusy) closeCredChange(); }} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head">
           <h3>{credForceToken ? 'API token' : 'Change credential'} &mdash; {credChangeModal}</h3>
           <button class="btn-x" on:click={closeCredChange}>&#10005;</button>
@@ -4597,8 +4614,8 @@
   {#if deleteAcctConfirm}
     {@const acctSources = Object.entries($sources).filter(([_, s]) => s.account === deleteAcctConfirm)}
     {@const repoCount = acctSources.reduce((n, [_, s]) => n + Object.keys(s.repos).length, 0)}
-    <div class="overlay" on:click={cancelDeleteAccount} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-delete" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={cancelDeleteAccount} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-delete" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head modal-head-delete">
           <h3>Delete account</h3>
           <button class="btn-x" on:click={cancelDeleteAccount}>&#10005;</button>
@@ -4666,8 +4683,8 @@
 
   <!-- ── CHANGE FOLDER MODAL ── -->
   {#if changeFolderModal}
-    <div class="overlay" on:click={() => changeFolderModal = false} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-account" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={() => changeFolderModal = false} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head">
           <h3>Change root folder</h3>
           <button class="btn-x" on:click={() => changeFolderModal = false}>&#10005;</button>
@@ -4675,22 +4692,22 @@
         <div class="modal-body">
           <p class="delete-warning delete-danger"><strong>WARNING:</strong> Changing the root folder will <strong>not</strong> move existing clones. They will show as "Not local" until re-cloned at the new location (or moved manually).</p>
           <div class="form-row" style="margin-top: 12px;">
-            <label class="form-label">Current</label>
+            <span class="form-label">Current</span>
             <span class="settings-value">{$configStore?.global?.folder || '(not set)'}</span>
           </div>
           {#if changeFolderError}
             <p class="form-error">{changeFolderError}</p>
           {/if}
           <div class="form-row">
-            <label class="form-label">New path</label>
-            <input class="form-input" bind:value={changeFolderPath} placeholder="~/new-folder" />
+            <label class="form-label" for="change-folder-path">New path</label>
+            <input id="change-folder-path" class="form-input" bind:value={changeFolderPath} placeholder="~/new-folder" />
             <button class="settings-btn" on:click={() => browseFolder('settings')}>Browse</button>
           </div>
 
           <hr style="border:none;border-top:1px solid var(--border); margin:16px 0;" />
 
           <div class="form-row" style="flex-direction:column; align-items:stretch; gap:6px;">
-            <label class="form-label">Extra scan folders</label>
+            <span class="form-label">Extra scan folders</span>
             <p class="settings-value" style="margin:0 0 4px 0;">Additional roots scanned for clones and <code>.code-workspace</code> files, beyond the root folder.</p>
             {#each extraFolders || [] as ef}
               <div class="repo-row" style="justify-content:space-between;">
@@ -4702,8 +4719,8 @@
           </div>
 
           <div class="form-row" style="margin-top:10px;">
-            <label class="form-label">Nested scan depth</label>
-            <input class="form-input" type="number" min="1" style="max-width:90px;"
+            <label class="form-label" for="nested-scan-depth">Nested scan depth</label>
+            <input id="nested-scan-depth" class="form-input" type="number" min="1" style="max-width:90px;"
               bind:value={nestedScanDepth} on:change={saveNestedScanDepth} />
             <span class="settings-value">levels below a container repo (default 1). Re-scan via a repo's ⋮ menu.</span>
           </div>
@@ -4722,16 +4739,16 @@
 
 
   {#if addMirrorGroupModal}
-    <div class="overlay" on:click={() => addMirrorGroupModal = false} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-account" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={() => addMirrorGroupModal = false} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head">
           <h3>Add mirror group</h3>
           <button class="btn-x" on:click={() => addMirrorGroupModal = false}>&#10005;</button>
         </div>
         <div class="modal-body">
           <div class="form-row">
-            <label class="form-label">Source account</label>
-            <select class="form-input" bind:value={newMirrorSrc} on:change={() => { if (newMirrorSrc && newMirrorDst) newMirrorKey = newMirrorSrc + '-' + newMirrorDst; }}>
+            <label class="form-label" for="mirror-group-src">Source account</label>
+            <select id="mirror-group-src" class="form-input" bind:value={newMirrorSrc} on:change={() => { if (newMirrorSrc && newMirrorDst) newMirrorKey = newMirrorSrc + '-' + newMirrorDst; }}>
               <option value="">Select...</option>
               {#each Object.keys($accounts) as acctKey}
                 <option value={acctKey}>{acctKey}</option>
@@ -4739,8 +4756,8 @@
             </select>
           </div>
           <div class="form-row">
-            <label class="form-label">Destination account</label>
-            <select class="form-input" bind:value={newMirrorDst} on:change={() => { if (newMirrorSrc && newMirrorDst) newMirrorKey = newMirrorSrc + '-' + newMirrorDst; }}>
+            <label class="form-label" for="mirror-group-dst">Destination account</label>
+            <select id="mirror-group-dst" class="form-input" bind:value={newMirrorDst} on:change={() => { if (newMirrorSrc && newMirrorDst) newMirrorKey = newMirrorSrc + '-' + newMirrorDst; }}>
               <option value="">Select...</option>
               {#each Object.keys($accounts).filter(k => k !== newMirrorSrc) as acctKey}
                 <option value={acctKey}>{acctKey}</option>
@@ -4748,8 +4765,8 @@
             </select>
           </div>
           <div class="form-row">
-            <label class="form-label">Mirror key</label>
-            <input class="form-input" bind:value={newMirrorKey} placeholder="e.g. forgejo-github" />
+            <label class="form-label" for="mirror-group-key">Mirror key</label>
+            <input id="mirror-group-key" class="form-input" bind:value={newMirrorKey} placeholder="e.g. forgejo-github" />
           </div>
         </div>
         <div class="modal-foot">
@@ -4764,27 +4781,27 @@
   {#if addMirrorRepoModal}
     {@const mir = $mirrors[addMirrorRepoModal]}
     {@const filteredPickerRepos = mirrorRepoPickerRepos.filter(r => !mirrorRepoPickerFilter || r.fullName.toLowerCase().includes(mirrorRepoPickerFilter.toLowerCase()))}
-    <div class="overlay" on:click={() => addMirrorRepoModal = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-mirror-repo" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={() => addMirrorRepoModal = null} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-mirror-repo" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head">
           <h3>Add mirror repo &mdash; {addMirrorRepoModal}</h3>
           <button class="btn-x" on:click={() => addMirrorRepoModal = null}>&#10005;</button>
         </div>
         <div class="modal-body">
           <div class="mirror-form-grid">
-            <label class="mirror-form-label">Direction</label>
+            <span class="mirror-form-label">Direction</span>
             <div class="radio-group">
               <label><input type="radio" bind:group={newMirrorRepoDirection} value="push" /> Push (origin pushes to backup)</label>
               <label><input type="radio" bind:group={newMirrorRepoDirection} value="pull" /> Pull (backup pulls from origin)</label>
             </div>
 
-            <label class="mirror-form-label">Origin (source of truth)</label>
+            <span class="mirror-form-label">Origin (source of truth)</span>
             <div class="radio-group">
               <label><input type="radio" bind:group={newMirrorRepoOrigin} value="src" on:change={loadMirrorRepoList} /> {mir?.account_src || 'src'}</label>
               <label><input type="radio" bind:group={newMirrorRepoOrigin} value="dst" on:change={loadMirrorRepoList} /> {mir?.account_dst || 'dst'}</label>
             </div>
 
-            <label class="mirror-form-label">Repository</label>
+            <span class="mirror-form-label">Repository</span>
             <div>
               {#if mirrorRepoPickerLoading}
                 <div class="loading"><div class="spinner"></div><span>Loading repos...</span></div>
@@ -4813,7 +4830,7 @@
               {/if}
             </div>
 
-            <label class="mirror-form-label">Options</label>
+            <span class="mirror-form-label">Options</span>
             <label style="font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 4px;"><input type="checkbox" bind:checked={newMirrorRepoAutoSetup} /> Set up immediately via API</label>
           </div>
         </div>
@@ -4828,8 +4845,8 @@
   <!-- ── DELETE MIRROR GROUP CONFIRM ── -->
   {#if deleteMirrorGroupConfirm}
     {@const delMir = $mirrors[deleteMirrorGroupConfirm]}
-    <div class="overlay" on:click={() => deleteMirrorGroupConfirm = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-confirm" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={() => deleteMirrorGroupConfirm = null} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-confirm" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head"><h3>Delete mirror group</h3></div>
         <div class="modal-body">
           <p class="delete-warning">Remove mirror group <strong>{deleteMirrorGroupConfirm}</strong> ({delMir ? Object.keys(delMir.repos).length : 0} repos)?</p>
@@ -4845,8 +4862,8 @@
 
   <!-- ── DELETE MIRROR REPO CONFIRM ── -->
   {#if deleteMirrorRepoConfirm}
-    <div class="overlay" on:click={() => deleteMirrorRepoConfirm = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-confirm" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={() => deleteMirrorRepoConfirm = null} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-confirm" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head"><h3>Remove mirrored repo</h3></div>
         <div class="modal-body">
           <p class="delete-warning">Remove <strong>{deleteMirrorRepoConfirm.repoKey}</strong> from mirror <strong>{deleteMirrorRepoConfirm.mirrorKey}</strong>?</p>
@@ -4861,8 +4878,8 @@
 
   <!-- ── MIRROR SETUP RESULT MODAL ── -->
   {#if mirrorSetupResultModal}
-    <div class="overlay" on:click={() => mirrorSetupResultModal = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-confirm" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={() => mirrorSetupResultModal = null} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-confirm" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head">
           <h3>Mirror setup {mirrorSetupResultModal.error ? 'failed' : 'complete'}</h3>
           <button class="btn-x" on:click={() => mirrorSetupResultModal = null}>&#10005;</button>
@@ -4891,8 +4908,8 @@
 
   <!-- ── MIRROR DISCOVER RESULTS MODAL ── -->
   {#if mirrorDiscoverResults !== null}
-    <div class="overlay" on:click={() => mirrorDiscoverResults = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-discover" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={() => mirrorDiscoverResults = null} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-discover" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head">
           <h3>Mirror Discovery</h3>
           <button class="btn-x" on:click={() => mirrorDiscoverResults = null}>&#10005;</button>
@@ -4939,8 +4956,8 @@
 
   <!-- ── MIRROR CREDENTIAL WARNING MODAL ── -->
   {#if mirrorCredWarning}
-    <div class="overlay" on:click={() => mirrorCredWarning = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-confirm" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={() => mirrorCredWarning = null} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-confirm" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head">
           <h3>Mirror token needed</h3>
           <button class="btn-x" on:click={() => mirrorCredWarning = null}>&#10005;</button>
@@ -4967,8 +4984,8 @@
 
   <!-- ── MOVE REPO MODAL (issue #64) ── -->
   {#if moveModalStep === 'form'}
-    <div class="overlay" on:click={cancelMoveRepo} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-account" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={cancelMoveRepo} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head">
           <h3>Move repository &mdash; {moveSourceRepoKey}</h3>
           <button class="btn-x" on:click={cancelMoveRepo}>&#10005;</button>
@@ -4984,16 +5001,16 @@
               <p class="form-error">{moveError}</p>
             {/if}
             <div class="form-row">
-              <label class="form-label">Destination</label>
-              <select class="form-input" bind:value={moveOwnerSelected} on:change={syncMoveSelection}>
+              <label class="form-label" for="move-repo-dest">Destination</label>
+              <select id="move-repo-dest" class="form-input" bind:value={moveOwnerSelected} on:change={syncMoveSelection}>
                 {#each moveOwnerOptions as opt}
                   <option value="{opt.account}::{opt.owner}">{opt.account} &rarr; {opt.owner}{opt.isOrg ? ' (org)' : ''}</option>
                 {/each}
               </select>
             </div>
             <div class="form-row">
-              <label class="form-label">New name</label>
-              <input class="form-input" bind:value={moveNewName} placeholder="{moveNewName}" />
+              <label class="form-label" for="move-repo-name">New name</label>
+              <input id="move-repo-name" class="form-input" bind:value={moveNewName} placeholder="{moveNewName}" />
             </div>
             <div class="form-row form-row-check">
               <label><input type="checkbox" bind:checked={moveIsPrivate} /> Private repository</label>
@@ -5051,7 +5068,7 @@
 
   {#if moveModalStep === 'confirm'}
     <div class="overlay" transition:fade={{ duration: 120 }}>
-      <div class="modal modal-confirm modal-danger" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+      <div class="modal modal-confirm modal-danger" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head modal-head-danger">
           <h3>Confirm move — destructive</h3>
           <button class="btn-x" on:click={cancelMoveRepo}>&#10005;</button>
@@ -5090,7 +5107,7 @@
 
   {#if moveModalStep === 'progress' || moveModalStep === 'result'}
     <div class="overlay" transition:fade={{ duration: 120 }}>
-      <div class="modal modal-confirm" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+      <div class="modal modal-confirm" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head">
           <h3>
             {#if moveModalStep === 'progress'}Moving {moveSourceRepoKey}…
@@ -5139,8 +5156,8 @@
 
   <!-- ── CREATE REPO MODAL ── -->
   {#if createRepoModal}
-    <div class="overlay" on:click={() => { if (!createRepoBusy) createRepoModal = null; }} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-account" on:click|stopPropagation transition:slide={{ duration: 180 }}>
+    <div class="overlay" use:dismiss={() => { if (!createRepoBusy) createRepoModal = null; }} transition:fade={{ duration: 120 }}>
+      <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
         <div class="modal-head">
           <h3>Create repository &mdash; {createRepoModal}</h3>
           <button class="btn-x" on:click={() => { if (!createRepoBusy) createRepoModal = null; }}>&#10005;</button>
@@ -5151,23 +5168,23 @@
             <p class="form-error">{createRepoError}</p>
           {/if}
           <div class="form-row">
-            <label class="form-label">Owner</label>
-            <select class="form-input" bind:value={createRepoOwner} disabled={createRepoBusy}>
+            <label class="form-label" for="create-repo-owner">Owner</label>
+            <select id="create-repo-owner" class="form-input" bind:value={createRepoOwner} disabled={createRepoBusy}>
               {#each createRepoOrgs as org}
                 <option value={org}>{org}</option>
               {/each}
             </select>
           </div>
           <div class="form-row">
-            <label class="form-label">Name</label>
-            <input class="form-input" bind:value={createRepoName} on:input={onCreateRepoNameInput} placeholder="my-new-repo" disabled={createRepoBusy} />
+            <label class="form-label" for="create-repo-name">Name</label>
+            <input id="create-repo-name" class="form-input" bind:value={createRepoName} on:input={onCreateRepoNameInput} placeholder="my-new-repo" disabled={createRepoBusy} />
             {#if createRepoNameError}
               <span class="form-error" style="margin: 2px 0 0; font-size: 10px;">{createRepoNameError}</span>
             {/if}
           </div>
           <div class="form-row">
-            <label class="form-label">Description</label>
-            <input class="form-input" bind:value={createRepoDesc} placeholder="Short description (optional)" disabled={createRepoBusy} />
+            <label class="form-label" for="create-repo-desc">Description</label>
+            <input id="create-repo-desc" class="form-input" bind:value={createRepoDesc} placeholder="Short description (optional)" disabled={createRepoBusy} />
           </div>
           <div class="form-row" style="gap: 12px;">
             <label style="font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 4px;">
@@ -5892,10 +5909,6 @@
     font-size: 11px; color: var(--text-muted);
     margin: 2px 0 10px; line-height: 1.4;
   }
-  .form-hint code {
-    background: var(--bg-hover); padding: 0 4px; border-radius: 3px;
-    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
-  }
   /* Fieldset used to visually group a subset of form fields (e.g., the
      commit-author identity) and explain what they are used for, so users
      don't confuse them with authentication fields. */
@@ -6449,7 +6462,7 @@
     justify-content: center;
   }
   .ws-badge:hover { background: var(--bg-hover); color: var(--text-primary); }
-  .ws-icon { display: block; vertical-align: middle; }
+  .ws-icon { display: block; }
   .ws-badge:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 1px; }
   /* Anchor ABOVE the badge — bottom rows would otherwise spawn the popover
      beneath the visible viewport and need scrolling to reveal it. The

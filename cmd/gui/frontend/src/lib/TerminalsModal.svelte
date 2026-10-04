@@ -10,6 +10,7 @@
   import type { TerminalAppInfo, ShellInfo, TerminalProfileInfo } from './types';
   import { bridge } from './bridge';
   import { fade, slide } from 'svelte/transition';
+  import { dismiss } from './dismiss';
 
   export let open = false;
   // mode='overlay' renders the editor as an in-app modal with a scrim
@@ -194,6 +195,11 @@
     }
   }
 
+  // Focus a field as soon as it appears (the add-profile row).
+  function focusOnMount(node: HTMLElement) {
+    node.focus();
+  }
+
   function close() {
     if (addDraft) addDraft = null;
     if (editingId) editingId = null;
@@ -205,13 +211,14 @@
   <div
     class:overlay={mode === 'overlay'}
     class:tp-window-host={mode === 'window'}
-    on:click={mode === 'overlay' ? close : undefined}
+    use:dismiss={mode === 'overlay' ? close : undefined}
     transition:fade={{ duration: 120 }}
   >
     <div
       class="modal modal-tprofiles"
       class:tp-modal-window={mode === 'window'}
-      on:click|stopPropagation
+      role="dialog"
+      aria-modal="true"
       transition:slide={{ duration: 180 }}
     >
       {#if mode === 'overlay'}
@@ -345,7 +352,7 @@
                 <tr class="tp-row-add">
                   <td class="tp-td-icon">—</td>
                   <td class="tp-td-icon">—</td>
-                  <td><input class="tp-input" bind:value={addDraft.name} placeholder="Display name" autofocus /></td>
+                  <td><input class="tp-input" bind:value={addDraft.name} placeholder="Display name" use:focusOnMount /></td>
                   <td>
                     <select class="tp-input" bind:value={addDraft.terminal}>
                       {#each draftApps as a (a.id)}

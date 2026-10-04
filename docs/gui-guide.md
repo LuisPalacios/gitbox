@@ -93,6 +93,8 @@ Discovery is **add-only** — it adds repos to your config but never removes the
 
 ## Step 4: Day-to-day
 
+I close any dialog with **Escape** or by clicking outside it. Dialogs that are busy or that need an explicit choice (a running clone, a confirmation in progress) stay open until they finish. Account names, repo rows and organization badges also respond to **Enter** and **Space** when focused with **Tab**.
+
 ### Understanding account cards
 
 Each account appears as a card on the **Accounts** tab. Here's what the elements mean:
