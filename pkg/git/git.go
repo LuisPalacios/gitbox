@@ -471,12 +471,6 @@ func GlobalConfigSet(key, value string) error {
 	return run(".", "config", "--global", key, value)
 }
 
-// GlobalConfigAdd appends a value to a (possibly multi-valued) global git config
-// key without overwriting existing values.
-func GlobalConfigAdd(key, value string) error {
-	return run(".", "config", "--global", "--add", key, value)
-}
-
 // GlobalConfigGet reads a global git config value.
 func GlobalConfigGet(key string) (string, error) {
 	out, err := output(".", "config", "--global", "--get", key)
@@ -538,11 +532,6 @@ func IsRepo(path string) bool {
 // SetRemoteURL sets the URL of a remote (typically "origin").
 func SetRemoteURL(repoPath, remote, url string) error {
 	return run(repoPath, "remote", "set-url", remote, url)
-}
-
-// Run executes a git command in the given directory (public wrapper).
-func Run(dir string, args ...string) error {
-	return run(dir, args...)
 }
 
 // CurrentBranch returns the current branch name.

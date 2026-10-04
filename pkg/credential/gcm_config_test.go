@@ -1,7 +1,9 @@
 package credential
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -21,6 +23,15 @@ func isolateGlobalGitconfig(t *testing.T) string {
 	}
 	t.Setenv("GIT_CONFIG_GLOBAL", path)
 	return path
+}
+
+// globalConfigAdd appends a value to a multi-valued global git config key.
+func globalConfigAdd(key, value string) error {
+	cmd := exec.Command(git.GitBin(), "config", "--global", "--add", key, value)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git config --add %s: %w: %s", key, err, out)
+	}
+	return nil
 }
 
 func TestIsGlobalGCMConfigNeeded(t *testing.T) {
@@ -119,11 +130,11 @@ func TestCheckGlobalGCMConfig_AbsolutePathHelperIsOK(t *testing.T) {
 	if err := git.GlobalConfigSet("credential.helper", "manager"); err != nil {
 		t.Fatalf("seeding helper: %v", err)
 	}
-	if err := git.GlobalConfigAdd("credential.helper", ""); err != nil {
+	if err := globalConfigAdd("credential.helper", ""); err != nil {
 		t.Fatalf("seeding reset: %v", err)
 	}
 	const absPath = "/usr/local/share/gcm-core/git-credential-manager"
-	if err := git.GlobalConfigAdd("credential.helper", absPath); err != nil {
+	if err := globalConfigAdd("credential.helper", absPath); err != nil {
 		t.Fatalf("seeding abs helper: %v", err)
 	}
 	if err := git.GlobalConfigSet("credential.credentialStore", DefaultCredentialStore()); err != nil {
@@ -146,7 +157,7 @@ func TestCheckGlobalGCMConfig_ResetClearsHelper(t *testing.T) {
 	if err := git.GlobalConfigSet("credential.helper", "manager"); err != nil {
 		t.Fatalf("seeding helper: %v", err)
 	}
-	if err := git.GlobalConfigAdd("credential.helper", ""); err != nil {
+	if err := globalConfigAdd("credential.helper", ""); err != nil {
 		t.Fatalf("seeding reset: %v", err)
 	}
 

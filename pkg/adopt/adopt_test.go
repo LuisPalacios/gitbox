@@ -215,7 +215,7 @@ func TestMatchAccount(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			acct, src := MatchAccount(cfg, tt.host, tt.owner)
+			acct, src, _ := MatchAccountEx(cfg, MatchContext{Host: tt.host, Owner: tt.owner})
 			if acct != tt.wantAcct {
 				t.Errorf("account = %q, want %q", acct, tt.wantAcct)
 			}

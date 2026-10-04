@@ -52,7 +52,7 @@ pkg/                      Shared Go library
   ops/                    Account, credential, clone and discovery service layer the GUI calls (+ TestScenario_FullLifecycle)
   config/                 Config v3 model, load/save, v1→v2→v3 migration
   credential/             Credential verification (GCM, SSH, token); global GCM helper check accepts any helper resolving to git-credential-manager (short name or absolute path)
-  git/                    Git subprocess operations (os/exec); global config get/get-all/add/unset
+  git/                    Git subprocess operations (os/exec); global config get/get-all/set/unset
   provider/               Provider API clients + mirror interfaces (GitHub, GitLab, Gitea, Forgejo)
   mirror/                 Push/pull mirror setup, status, guides
   workspace/              Read-only VS Code .code-workspace discovery + cache (RefreshCache); no generation, no tmuxinator

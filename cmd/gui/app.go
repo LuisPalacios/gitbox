@@ -1856,12 +1856,6 @@ const (
 	harnessMinInterval  = 60 * time.Second // throttle for focus-triggered refreshes
 )
 
-// harnessID returns a stable, lowercase slug used as the AIHarnessInfo.ID.
-// Shares the terminalID slugifier — both fields share the same UI contract.
-func harnessID(name string) string {
-	return terminalID(name)
-}
-
 // SyncAIHarnesses reconciles config's global.ai_harnesses with the embedded
 // catalog and the host (see pkg/harness.Sync for the rules: catalog order,
 // missing flag instead of deletion, user entries untouched). The host probe

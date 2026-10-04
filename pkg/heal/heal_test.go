@@ -1,7 +1,9 @@
 package heal
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -9,6 +11,16 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 )
+
+// gitRun runs a git command in dir, returning git's output on failure.
+func gitRun(dir string, args ...string) error {
+	cmd := exec.Command(git.GitBin(), args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git %v: %w: %s", args, err, out)
+	}
+	return nil
+}
 
 // TestExpectedOriginURL_SSH verifies the SSH-form URL uses the SSH
 // host override when present and falls back to the account URL otherwise.
@@ -100,10 +112,10 @@ func TestRepo_FixesMissingIdentity(t *testing.T) {
 	if err := os.MkdirAll(repoDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := git.Run(repoDir, "init"); err != nil {
+	if err := gitRun(repoDir, "init"); err != nil {
 		t.Fatalf("git init: %v", err)
 	}
-	if err := git.Run(repoDir, "remote", "add", "origin", "https://alice@github.com/alice/hello.git"); err != nil {
+	if err := gitRun(repoDir, "remote", "add", "origin", "https://alice@github.com/alice/hello.git"); err != nil {
 		t.Fatalf("git remote add: %v", err)
 	}
 
@@ -159,11 +171,11 @@ func TestRepo_StripsEmbeddedTokenFromOrigin(t *testing.T) {
 	if err := os.MkdirAll(repoDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := git.Run(repoDir, "init"); err != nil {
+	if err := gitRun(repoDir, "init"); err != nil {
 		t.Fatalf("git init: %v", err)
 	}
 	leakyURL := "https://alice:secret-token@github.com/alice/hello.git"
-	if err := git.Run(repoDir, "remote", "add", "origin", leakyURL); err != nil {
+	if err := gitRun(repoDir, "remote", "add", "origin", leakyURL); err != nil {
 		t.Fatalf("git remote add: %v", err)
 	}
 
