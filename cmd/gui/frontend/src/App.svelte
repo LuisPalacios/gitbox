@@ -6843,5 +6843,3 @@
   .btn-link-subtle:hover { color: var(--text-secondary); }
   .btn-link-subtle:disabled { opacity: 0.5; cursor: default; }
 </style>
-
-<div on:click={() => {}}>gate probe</div>
