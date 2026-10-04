@@ -302,17 +302,6 @@ const (
 	credentialWeight  = 10
 )
 
-// MatchAccount finds the best account + source for a remote host and owner.
-// Returns (accountKey, sourceKey) — both empty if no match or the match is
-// ambiguous.
-//
-// Kept for API compatibility; new callers should use MatchAccountEx to get
-// access to the full signal set and ambiguity information.
-func MatchAccount(cfg *config.Config, host, owner string) (string, string) {
-	acct, src, _ := MatchAccountEx(cfg, MatchContext{Host: host, Owner: owner})
-	return acct, src
-}
-
 // MatchAccountEx scores every host-matching account against the signals in mc
 // and returns the best match. Returns empty account/source keys when no
 // account matches the host or when the top score is tied across ≥2 accounts

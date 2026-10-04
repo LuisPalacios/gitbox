@@ -173,19 +173,6 @@ func setupPullMirror(ctx context.Context, originProv, backupProv provider.Provid
 	return result
 }
 
-// SetupAll runs setup for all repos in a mirror group.
-func SetupAll(ctx context.Context, cfg *config.Config, mirrorKey string) []SetupResult {
-	m, ok := cfg.Mirrors[mirrorKey]
-	if !ok {
-		return nil
-	}
-	var results []SetupResult
-	for repoKey := range m.Repos {
-		results = append(results, SetupMirror(ctx, cfg, mirrorKey, repoKey))
-	}
-	return results
-}
-
 // repoOwner extracts "org" from "org/repo".
 func repoOwner(fullName string) string {
 	parts := strings.SplitN(fullName, "/", 2)
@@ -203,4 +190,3 @@ func repoNameOnly(fullName string) string {
 	}
 	return fullName
 }
-

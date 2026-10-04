@@ -10,7 +10,7 @@ The order in this table is the order in which `SyncTerminals` seeds `global.term
 
 **WezTerm `launch_menu`.** The `wezterm-gui.exe` (Windows), `wezterm-gui` (Linux), and `open -a WezTerm` (macOS) rows are the bare anchors. When `wezterm.lua` is found and its `config.launch_menu` table is parseable (best-effort regex parser; see `pkg/harness/wezterm.go`), gitbox emits one Profile per `launch_menu` entry whose `args` overrides the row's default-args template — same dynamic-discovery pattern as Windows Terminal.
 
-**Terminals vs shells.** Rows whose `Command` is itself a shell (`cmd.exe`, `pwsh.exe`, `powershell.exe`, `git-bash.exe`, `wsl.exe`) are listed here for backward compatibility with the legacy v2.0 `global.terminals[]` flat model. The v2.1 Profile model treats them as Shells — see [`shell-directory.md`](shell-directory.md) — and pairs them with a real terminal app (Windows Terminal, WezTerm) at launch time. New entries go into the appropriate directory.
+**Terminals vs shells.** Rows whose `Command` is itself a shell (`cmd.exe`, `pwsh.exe`, `powershell.exe`, `git-bash.exe`, `wsl.exe`) are listed here for backward compatibility with the legacy v2.0 `global.terminals[]` flat model. The v2.1 Profile model treats them as Shells — see the typed catalog in `pkg/terminals/catalog.go` — and pairs them with a real terminal app (Windows Terminal, WezTerm) at launch time. New entries go into the appropriate directory.
 
 | Name | OS | Command | Default Args |
 | :--- | :--- | :--- | :--- |

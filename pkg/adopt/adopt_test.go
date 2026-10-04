@@ -200,11 +200,11 @@ func TestMatchAccount(t *testing.T) {
 	cfg := testConfig(t.TempDir())
 
 	tests := []struct {
-		name      string
-		host      string
-		owner     string
-		wantAcct  string
-		wantSrc   string
+		name     string
+		host     string
+		owner    string
+		wantAcct string
+		wantSrc  string
 	}{
 		{"github direct match", "github.com", "LuisPalacios", "github-me", "github-me"},
 		{"github owner mismatch (still matches host)", "github.com", "other-user", "github-me", "github-me"},
@@ -215,7 +215,7 @@ func TestMatchAccount(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			acct, src := MatchAccount(cfg, tt.host, tt.owner)
+			acct, src, _ := MatchAccountEx(cfg, MatchContext{Host: tt.host, Owner: tt.owner})
 			if acct != tt.wantAcct {
 				t.Errorf("account = %q, want %q", acct, tt.wantAcct)
 			}

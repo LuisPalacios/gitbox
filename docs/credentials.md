@@ -90,8 +90,6 @@ When you set up GCM credentials, gitbox needs to open a browser for OAuth authen
 - **Linux desktop:** works when a display server is available (X11 or Wayland).
 - **Linux SSH / headless:** no browser available. GitboxApp itself needs a desktop session, so this only matters for a host you reach over SSH. GCM will still prompt interactively on the next `git clone` or `git fetch` from a terminal there. When browser auth isn't practical, switch the account to the Token credential type instead.
 
-This detection is handled by `credential.CanOpenBrowser()` in `pkg/credential/credential.go`. It checks `SSH_CLIENT`, `SSH_TTY`, `DISPLAY`, and `WAYLAND_DISPLAY` environment variables.
-
 ### Mirrors with GCM
 
 GCM OAuth tokens are machine-local and cannot be used by remote servers for mirroring. If you need mirrors, store a separate PAT. When a mirror needs one, its row on the Mirrors tab shows a **Fix credentials** button that opens the API token setup for that account. When the GCM credential doesn't cover the API, the Current-status panel in the account's credential settings also offers **Setup API token**.

@@ -139,7 +139,7 @@ go test -short ./...    # unit tests (no setup needed beyond the frontend dist f
 go test ./...           # everything (needs test-gitbox.json for the pkg/ops scenario)
 ```
 
-Activate the pre-push hook once per clone: `git config core.hooksPath .githooks` — it runs `go vet` + unit tests before every push.
+Activate the pre-push hook once per clone: `git config core.hooksPath .githooks` — it runs a `gofmt -s` check, `go vet` and unit tests before every push.
 
 For the full testing workflow (fixture setup, integration tests, pre-PR and release checklists), see [testing.md](testing.md). For multiplatform testing via SSH, see [multiplatform.md](multiplatform.md). If you use Claude Code, `/test-plan` automates the pre-PR checks.
 

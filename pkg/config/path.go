@@ -3,7 +3,6 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 )
 
@@ -12,23 +11,12 @@ const (
 	V2ConfigDir = "gitbox"
 	// V2ConfigFile is the configuration file name.
 	V2ConfigFile = "gitbox.json"
-
-	// V1ConfigDir is the v1 config directory name.
-	V1ConfigDir = "git-config-repos"
-	// V1ConfigFile is the v1 config file name.
-	V1ConfigFile = "git-config-repos.json"
 )
 
 // DefaultV2Path returns the default path to the v2 configuration file.
 // On all platforms: ~/.config/gitbox/gitbox.json
 func DefaultV2Path() string {
 	return filepath.Join(ConfigRoot(), V2ConfigDir, V2ConfigFile)
-}
-
-// DefaultV1Path returns the default path to the v1 configuration file.
-// On all platforms: ~/.config/git-config-repos/git-config-repos.json
-func DefaultV1Path() string {
-	return filepath.Join(ConfigRoot(), V1ConfigDir, V1ConfigFile)
 }
 
 // ConfigRoot returns the base config directory.
@@ -60,15 +48,4 @@ func ExpandTilde(path string) string {
 func EnsureDir(filePath string) error {
 	dir := filepath.Dir(filePath)
 	return os.MkdirAll(dir, 0o755)
-}
-
-// NormalizePath cleans a path and converts to forward slashes on Windows
-// for consistent cross-platform handling.
-func NormalizePath(path string) string {
-	path = filepath.Clean(path)
-	if runtime.GOOS == "windows" {
-		// Keep forward slashes for consistency with git
-		path = filepath.ToSlash(path)
-	}
-	return path
 }

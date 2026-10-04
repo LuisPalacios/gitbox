@@ -52,7 +52,7 @@ pkg/                      Shared Go library
   ops/                    Account, credential, clone and discovery service layer the GUI calls (+ TestScenario_FullLifecycle)
   config/                 Config v3 model, load/save, v1→v2→v3 migration
   credential/             Credential verification (GCM, SSH, token); global GCM helper check accepts any helper resolving to git-credential-manager (short name or absolute path)
-  git/                    Git subprocess operations (os/exec); global config get/get-all/add/unset; IsWSLAvailable / WSLPath helpers on Windows
+  git/                    Git subprocess operations (os/exec); global config get/get-all/set/unset
   provider/               Provider API clients + mirror interfaces (GitHub, GitLab, Gitea, Forgejo)
   mirror/                 Push/pull mirror setup, status, guides
   workspace/              Read-only VS Code .code-workspace discovery + cache (RefreshCache); no generation, no tmuxinator
@@ -93,7 +93,7 @@ scripts/
   test-setup-credentials.sh  Provision test credentials from test-gitbox.json
   send-my-production-config.sh  Copy the local gitbox.json to one remote (with diff + confirm)
   demo-fleet/              Fake fleet + mock provider API + window capture for README screenshots (build.sh, run.sh, mock.py, shot.ps1)
-.githooks/pre-push        Pre-push hook (go vet + unit tests; builds the frontend if dist is missing)
+.githooks/pre-push        Pre-push hook (gofmt -s check + go vet + unit tests; builds the frontend if dist is missing)
 .claude/
   CLAUDE.md               Canonical agent guidance (this file)
   context/
@@ -304,7 +304,7 @@ The project has a comprehensive test suite. Read `.claude/context/testing-patter
 
 **Run `go vet ./...` before committing** — it catches issues the test suite doesn't.
 
-**Pre-push hook:** The repo includes `.githooks/pre-push` which runs `go vet` + `go test -short` before every push, building the frontend first when `cmd/gui/frontend/dist` is missing. Activate with `git config core.hooksPath .githooks`.
+**Pre-push hook:** The repo includes `.githooks/pre-push` which runs a `gofmt -s -l` check, `go vet` and `go test -short` before every push, building the frontend first when `cmd/gui/frontend/dist` is missing. Run `gofmt -s -w` on changed Go files before committing. Activate with `git config core.hooksPath .githooks`.
 
 **Test plan:** The full pre-PR and release verification workflow is documented in `docs/testing.md`. If using Claude Code, the `/test-plan` skill automates the automated steps and guides through interactive ones.
 

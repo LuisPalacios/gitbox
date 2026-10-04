@@ -141,12 +141,6 @@ func WriteCredentialFile(filePath string, acct config.Account, accountKey string
 	return nil
 }
 
-// RemoveCredentialFile removes the credential file for an account.
-// Same as DeleteToken — both operate on the same file.
-func RemoveCredentialFile(accountKey string) error {
-	return DeleteToken(accountKey)
-}
-
 // extractHostname extracts the hostname from a URL string, stripping scheme and path.
 func extractHostname(rawURL string) string {
 	s := rawURL

@@ -250,7 +250,7 @@ export interface TerminalInfo {
 //
 // A Profile pairs a TerminalApp (Windows Terminal, WezTerm, gnome-terminal,
 // Terminal.app, …) with a Shell (cmd, pwsh, git-bash, per-distro WSL, bash,
-// zsh, fish, …). The Gear-panel "Terminals & Shells" section edits these
+// zsh, fish, …). The Settings → Terminals Manager edits these
 // arrays; the per-row launcher renders the Default profile as its primary
 // action and the Preferred profiles in a "Profiles ▸" submenu.
 

@@ -40,13 +40,13 @@ import (
 // App is the Wails application struct. All exported methods become
 // frontend bindings via window.go.main.App.<Method>().
 type App struct {
-	ctx             context.Context
-	cfg             *config.Config
-	cfgPath         string
-	cfgLoaded       bool   // true if config was loaded from disk (safe to save back)
-	cfgLoadError    string // non-empty if config exists but failed to parse
-	testMode        bool   // true when launched with --test-mode
-	testCleanup     func() // cleanup function for test-mode temp dir
+	ctx          context.Context
+	cfg          *config.Config
+	cfgPath      string
+	cfgLoaded    bool   // true if config was loaded from disk (safe to save back)
+	cfgLoadError string // non-empty if config exists but failed to parse
+	testMode     bool   // true when launched with --test-mode
+	testCleanup  func() // cleanup function for test-mode temp dir
 	// windowMode selects which UI the frontend should render. Empty (or
 	// "main") = the full gitbox app. "terminals" = the standalone Profile
 	// editor sub-process spawned by OpenTerminalsManagerWindow (issue #69
@@ -167,12 +167,6 @@ func (a *App) saveConfig() error {
 	return config.Save(a.cfg, a.cfgPath)
 }
 
-// IsTestMode returns true when the app was launched with --test-mode.
-// Exposed to the frontend for UI indicator.
-func (a *App) IsTestMode() bool {
-	return a.testMode
-}
-
 // BeforeClose is called while the window is still alive, before it is destroyed.
 // We capture and persist the window position and size to the active view mode slot.
 func (a *App) BeforeClose(_ context.Context) bool {
@@ -249,7 +243,7 @@ func (a *App) DomReady(_ context.Context) {
 	// emitting harnesses:updated so the menu refreshes without a reload.
 	a.startHarnessWatcher()
 	// SyncProfiles populates the v2.1 TerminalApps + Shells + TerminalProfiles
-	// arrays so the Gear-panel "Terminals & Shells" section and the
+	// arrays so the Settings → Terminals Manager and the
 	// per-row launcher have data to render on first run. Idempotent — does
 	// nothing when the on-disk arrays already match what's installed.
 	a.SyncProfiles()
@@ -1862,12 +1856,6 @@ const (
 	harnessMinInterval  = 60 * time.Second // throttle for focus-triggered refreshes
 )
 
-// harnessID returns a stable, lowercase slug used as the AIHarnessInfo.ID.
-// Shares the terminalID slugifier — both fields share the same UI contract.
-func harnessID(name string) string {
-	return terminalID(name)
-}
-
 // SyncAIHarnesses reconciles config's global.ai_harnesses with the embedded
 // catalog and the host (see pkg/harness.Sync for the rules: catalog order,
 // missing flag instead of deletion, user entries untouched). The host probe
@@ -2038,11 +2026,11 @@ func (a *App) harnessProfileID() (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.cfg == nil {
-		return "", fmt.Errorf("Configure a terminal profile first (Gear → Terminals & Shells)")
+		return "", fmt.Errorf("Configure a terminal profile first (Settings → Terminals → Manager)")
 	}
 	p, ok := terminals.DefaultLaunchProfile(a.cfg.Global)
 	if !ok {
-		return "", fmt.Errorf("Configure a terminal profile first (Gear → Terminals & Shells)")
+		return "", fmt.Errorf("Configure a terminal profile first (Settings → Terminals → Manager)")
 	}
 	return p.ID, nil
 }

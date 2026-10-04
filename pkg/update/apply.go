@@ -9,32 +9,6 @@ import (
 	"strings"
 )
 
-// Apply extracts the downloaded artifact and replaces the running binary.
-// It installs only the running executable's own entry from the zip, never
-// its siblings: the CLI stays on the v1 line while the GUI may already be on
-// v2, so letting a CLI update rewrite GitboxApp would downgrade it. The GUI
-// updates itself through ExtractUpdate + InstallExtracted.
-// For AppImage artifacts it replaces the AppImage file directly.
-func Apply(artifactPath string) error {
-	if strings.HasSuffix(artifactPath, ".AppImage") {
-		return applyAppImage(artifactPath)
-	}
-	extractDir, installDir, err := ExtractUpdate(artifactPath)
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(extractDir)
-
-	self, err := selfPath()
-	if err != nil {
-		return err
-	}
-	own := filepath.Base(self)
-	return installEntries(extractDir, installDir, func(name string) bool {
-		return name == own
-	})
-}
-
 // ExtractUpdate extracts a zip artifact and resolves the install directory.
 // Returns (extractDir, installDir, error). The caller owns extractDir cleanup.
 func ExtractUpdate(zipPath string) (string, string, error) {

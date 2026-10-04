@@ -27,31 +27,21 @@ import (
 type CatalogTerminal struct {
 	ID           string
 	Name         string
-	OS           string                  // "windows" | "darwin" | "linux"
-	Probe        func() (string, bool)   // resolved command path + installed?
-	ProbeArgs    func() []string         // optional resolved args (mac `open -a <name>`); nil for plain binaries
-	ArgsTemplate []string                // launch template — see pkg/launch tokens
+	OS           string                // "windows" | "darwin" | "linux"
+	Probe        func() (string, bool) // resolved command path + installed?
+	ProbeArgs    func() []string       // optional resolved args (mac `open -a <name>`); nil for plain binaries
+	ArgsTemplate []string              // launch template — see pkg/launch tokens
 }
 
 // CatalogShell describes one command-line interpreter gitbox knows how to
 // detect and launch. Args is the default flag list (e.g. ["-l"] for login
 // shells); per-distro WSL discovery emits its own entries at runtime.
 type CatalogShell struct {
-	ID      string
-	Name    string
-	OS      string
-	Probe   func() (string, bool) // resolved binary path + installed?
-	Args    []string              // default flags
-}
-
-// modernTerminal reports whether a terminal entry is "modern" — i.e. it can
-// host an arbitrary shell, identified by the presence of a shell token in
-// its launch template. Bare-shell-as-terminal rows (Git Bash, PowerShell-as-
-// terminal) have no shell tokens and are not modern.
-//
-// This avoids an explicit IsModern flag that would drift from the templates.
-func modernTerminal(t CatalogTerminal) bool {
-	return templateAcceptsShell(t.ArgsTemplate)
+	ID    string
+	Name  string
+	OS    string
+	Probe func() (string, bool) // resolved binary path + installed?
+	Args  []string              // default flags
 }
 
 // templateAcceptsShell reports whether the args template references either

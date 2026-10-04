@@ -63,8 +63,8 @@ type GlobalConfig struct {
 	CredentialSSH   *SSHGlobal       `json:"credential_ssh,omitempty"`
 	CredentialGCM   *GCMGlobal       `json:"credential_gcm,omitempty"`
 	CredentialToken *TokenGlobal     `json:"credential_token,omitempty"`
-	Editors     []EditorEntry    `json:"editors,omitempty"`
-	AIHarnesses []AIHarnessEntry `json:"ai_harnesses,omitempty"`
+	Editors         []EditorEntry    `json:"editors,omitempty"`
+	AIHarnesses     []AIHarnessEntry `json:"ai_harnesses,omitempty"`
 
 	// Terminals (legacy v2.0) is the flat (terminal-app + shell) list. It is
 	// auto-migrated into TerminalApps + Shells + TerminalProfiles on first
@@ -81,7 +81,7 @@ type GlobalConfig struct {
 	TerminalApps []TerminalApp `json:"terminal_apps,omitempty"`
 	// Shells is the list of command-line interpreters available on the host
 	// (cmd, pwsh, git-bash, per-distro WSL, bash, zsh, fish, …). See
-	// pkg/harness/shell-directory.md for the seed table.
+	// pkg/terminals/catalog.go for the seed table.
 	Shells []ShellEntry `json:"shells,omitempty"`
 	// TerminalProfiles pairs a TerminalApp with a Shell into a launchable
 	// "Open in <terminal> + <shell>" entry. Profiles are what the GUI
@@ -296,10 +296,10 @@ type ShellEntry struct {
 // User-created profiles can be deleted; detected profiles can be hidden but
 // not deleted (a re-sync would just bring them back).
 type TerminalProfile struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	TerminalID string   `json:"terminal"`
-	ShellID    string   `json:"shell,omitempty"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	TerminalID string `json:"terminal"`
+	ShellID    string `json:"shell,omitempty"`
 	// Args, when non-empty, replaces the TerminalApp's ArgsTemplate at launch
 	// time. Used for "native-profile" terminals (Windows Terminal --profile,
 	// iTerm --profile) where the terminal handles shell selection itself, and

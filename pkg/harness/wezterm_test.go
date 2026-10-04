@@ -256,32 +256,3 @@ config.launch_menu = {
 		t.Errorf("expected 2 non-empty entries; got %d (%+v)", len(got), got)
 	}
 }
-
-func TestKnownShells(t *testing.T) {
-	// Smoke test the embedded shell directory: must yield at least one entry
-	// per supported OS, with a non-empty Name and Command on every row.
-	specs := KnownShells()
-	if len(specs) == 0 {
-		t.Fatal("KnownShells returned no entries — check shell-directory.md is embedded")
-	}
-	seen := map[string]bool{}
-	for i, s := range specs {
-		if s.Name == "" {
-			t.Errorf("shell[%d] has empty Name", i)
-		}
-		if s.Command == "" {
-			t.Errorf("shell[%d] (%s) has empty Command", i, s.Name)
-		}
-		switch s.OS {
-		case "Windows", "macOS", "Linux":
-			seen[s.OS] = true
-		default:
-			t.Errorf("shell[%d] (%s) has unexpected OS %q", i, s.Name, s.OS)
-		}
-	}
-	for _, want := range []string{"Windows", "macOS", "Linux"} {
-		if !seen[want] {
-			t.Errorf("no shells declared for %s — every supported platform should seed at least one shell", want)
-		}
-	}
-}

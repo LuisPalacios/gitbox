@@ -138,8 +138,6 @@ export function IsGlobalGCMConfigNeeded():Promise<boolean>;
 
 export function IsPositionOnScreen(arg1:number,arg2:number,arg3:number,arg4:number):Promise<boolean>;
 
-export function IsTestMode():Promise<boolean>;
-
 export function ListAccountOrgs(arg1:string):Promise<Array<string>>;
 
 export function ListConfigBackups():Promise<Array<main.ConfigBackupInfo>>;

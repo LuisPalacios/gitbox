@@ -227,11 +227,11 @@ func buildHTTPSCloneURL(acct config.Account, owner, repoName string) string {
 // invoked with.
 //
 //   - ssh:  "git@<host>:<owner>/<name>.git" — no embedded creds; SSH
-//           agent / ssh config handles auth. No extraConfig.
+//     agent / ssh config handles auth. No extraConfig.
 //   - other: "https://<username>:<apiToken>@<host>/<owner>/<name>.git"
-//           with extraConfig = ["credential.helper="] so a GCM helper
-//           configured for the same host doesn't override the
-//           embedded credential.
+//     with extraConfig = ["credential.helper="] so a GCM helper
+//     configured for the same host doesn't override the
+//     embedded credential.
 //
 // apiToken must be the token already resolved by the preflight
 // (plan.destAPIToken). For GCM-only destinations, that token is what

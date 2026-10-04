@@ -9,7 +9,7 @@ import (
 
 // RemoteRepo is the normalized representation of a repository returned by any provider.
 type RemoteRepo struct {
-	FullName    string `json:"full_name"`    // "org/repo" format
+	FullName    string `json:"full_name"` // "org/repo" format
 	Description string `json:"description"`
 	CloneHTTPS  string `json:"clone_https"`
 	CloneSSH    string `json:"clone_ssh"`
@@ -43,10 +43,10 @@ type OrgLister interface {
 
 // PushMirrorInfo describes a server-side push mirror on a repository.
 type PushMirrorInfo struct {
-	ID         int64  `json:"id"`
-	RemoteURL  string `json:"remote_url"`
-	Interval   string `json:"interval"`
-	SyncOnCommit bool `json:"sync_on_commit"`
+	ID           int64  `json:"id"`
+	RemoteURL    string `json:"remote_url"`
+	Interval     string `json:"interval"`
+	SyncOnCommit bool   `json:"sync_on_commit"`
 }
 
 // PushMirrorProvider can set up server-side push mirrors.
@@ -66,8 +66,8 @@ type PullMirrorProvider interface {
 // RepoInfo contains basic repository metadata for sync comparison.
 type RepoInfo struct {
 	DefaultBranch string `json:"default_branch"`
-	HeadCommit    string `json:"head_commit"`      // SHA of latest commit on default branch
-	CommitTime    int64  `json:"commit_time"`       // Unix timestamp of HEAD commit (0 if unknown)
+	HeadCommit    string `json:"head_commit"` // SHA of latest commit on default branch
+	CommitTime    int64  `json:"commit_time"` // Unix timestamp of HEAD commit (0 if unknown)
 	Private       bool   `json:"private"`
 }
 

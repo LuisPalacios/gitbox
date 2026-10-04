@@ -130,11 +130,11 @@ func main() {
 	}
 
 	err := wails.Run(&options.App{
-		Title:     windowTitle,
-		Width:     width,
-		Height:    height,
-		MinWidth:  minWidth,
-		MinHeight: minHeight,
+		Title:       windowTitle,
+		Width:       width,
+		Height:      height,
+		MinWidth:    minWidth,
+		MinHeight:   minHeight,
 		StartHidden: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,

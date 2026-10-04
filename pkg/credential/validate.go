@@ -220,17 +220,6 @@ func TestSSHConnection(sshFolder, host string) (string, error) {
 	return output, nil
 }
 
-// SSHConfigGuide returns a suggested ~/.ssh/config entry for the account.
-func SSHConfigGuide(host, hostname, keyFile string) string {
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("  Host %s\n", host))
-	sb.WriteString(fmt.Sprintf("      HostName %s\n", hostname))
-	sb.WriteString("      User git\n")
-	sb.WriteString(fmt.Sprintf("      IdentityFile %s\n", keyFile))
-	sb.WriteString("      IdentitiesOnly yes\n")
-	return sb.String()
-}
-
 // SSHConfigEntryOpts holds the parameters for writing an SSH config entry.
 type SSHConfigEntryOpts struct {
 	Host     string // Host alias (e.g., gitbox-github-AgorastisMesaio)

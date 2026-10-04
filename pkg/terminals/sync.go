@@ -22,10 +22,9 @@ import (
 //
 // Issue #71 follow-up: Windows Terminal `settings.json` is intentionally
 // NOT a Visibility-pillar source any more — it does not produce its own
-// Profiles. The parser in discover.go::DiscoverWTProfiles is preserved for
-// the EXECUTION pillar (a follow-up will look up a matching WT profile at
-// launch time so `Windows Terminal + <Shell>` uses the user's WT-tuned
-// font/colors).
+// Profiles. It only feeds the EXECUTION pillar: lookup.go::lookupWTProfile
+// finds a matching WT profile at launch time so `Windows Terminal + <Shell>`
+// uses the user's WT-tuned font/colors.
 //
 // `goos` is taken as a parameter so tests can exercise all three OS branches
 // from any host (matches the same pattern in compose.go).

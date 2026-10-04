@@ -227,7 +227,7 @@ func TestMergeRefreshesKnownStaleProfileArgs(t *testing.T) {
 	}
 	prev := []config.TerminalProfile{
 		{ID: "wezterm", Name: "WezTerm", TerminalID: "wezterm",
-			Args: []string{"-a", "wezterm"}, // known-stale (lowercase)
+			Args:   []string{"-a", "wezterm"}, // known-stale (lowercase)
 			Source: "detected"},
 	}
 	got := MergeWithExisting(nil, nil, det, nil, nil, prev)

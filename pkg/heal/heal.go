@@ -25,11 +25,11 @@ import (
 // Report summarizes what a single Repo heal did. Zero-value means
 // either the repo wasn't cloned or nothing drifted.
 type Report struct {
-	RepoKey   string
-	Path      string
-	Fixed     []string // human-readable descriptions of each fix applied
-	Warnings  []string // soft failures (e.g. token resolve failed)
-	Skipped   string   // non-empty when the repo was intentionally not healed
+	RepoKey  string
+	Path     string
+	Fixed    []string // human-readable descriptions of each fix applied
+	Warnings []string // soft failures (e.g. token resolve failed)
+	Skipped  string   // non-empty when the repo was intentionally not healed
 }
 
 // HasWork reports whether the heal touched anything — either a fix or
@@ -164,23 +164,6 @@ func ExpectedOriginURL(acct config.Account, repoKey, credType string) string {
 		u.User = url.User(acct.Username)
 		return fmt.Sprintf("%s/%s.git", strings.TrimRight(u.String(), "/"), repoKey)
 	}
-}
-
-// All heals every cloned repo in the config. Returns a list of reports
-// filtered to those that actually did work (HasWork) — callers that
-// want to see skipped entries should use Repo() per key.
-func All(cfg *config.Config) []Report {
-	var reports []Report
-	for _, sourceKey := range cfg.OrderedSourceKeys() {
-		src := cfg.Sources[sourceKey]
-		for _, repoKey := range src.OrderedRepoKeys() {
-			r := Repo(cfg, sourceKey, repoKey)
-			if r.HasWork() {
-				reports = append(reports, r)
-			}
-		}
-	}
-	return reports
 }
 
 // --- Helpers ------------------------------------------------------

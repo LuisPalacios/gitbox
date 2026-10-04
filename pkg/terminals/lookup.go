@@ -103,8 +103,6 @@ func lookupWeztermEntry(shellID, shellName string, paths []string) (LaunchOverri
 // ─── Windows Terminal settings.json lookup ────────────────────────────────
 
 // wtProfileLite is the slice of a WT profile gitbox needs at launch time.
-// Pulled out into its own type so the cache can store it independent of the
-// pkg/config.TerminalProfile shape that DiscoverWTProfiles emits.
 type wtProfileLite struct {
 	Name        string
 	CommandLine string
@@ -234,9 +232,8 @@ func cachedWTProfiles(path string) ([]wtProfileLite, bool) {
 	return profiles, true
 }
 
-// parseWTProfilesLite is a slimmed-down counterpart to parseWTProfiles that
-// returns the raw fields needed at launch time without going through the
-// pkg/config.TerminalProfile shape.
+// parseWTProfilesLite parses a JSONC settings.json blob and returns the raw
+// profile fields needed at launch time.
 func parseWTProfilesLite(data []byte) ([]wtProfileLite, error) {
 	clean := stripJSONComments(data)
 	var doc struct {

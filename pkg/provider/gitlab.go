@@ -86,7 +86,7 @@ func (g *GitLab) GetRepoInfo(ctx context.Context, baseURL, token, _, owner, repo
 	branchURL := fmt.Sprintf("%s/api/v4/projects/%s/repository/branches/%s", base, encoded, proj.DefaultBranch)
 	var branch struct {
 		Commit struct {
-			ID          string `json:"id"`
+			ID           string `json:"id"`
 			AuthoredDate string `json:"authored_date"` // ISO8601
 		} `json:"commit"`
 	}
@@ -349,4 +349,3 @@ func (g *GitLab) DeletePushMirror(ctx context.Context, baseURL, token, _, owner,
 	}
 	return nil
 }
-

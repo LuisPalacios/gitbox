@@ -7,8 +7,7 @@
   //
   // Profile model (issue #69, v2.1):
   //   - The terminal entry shows "Open in <default profile name>" — the
-  //     profile flagged Default in the Gear-panel "Terminals & shells"
-  //     section.
+  //     profile flagged Default in Settings → Terminals → Manager.
   //   - The Profiles submenu lists every Preferred profile (excluding the
   //     default to avoid duplication). Hidden when no preferred profiles
   //     exist.

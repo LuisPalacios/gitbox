@@ -125,32 +125,6 @@ type RepoStatus struct {
 	Conflicts int    // Conflicted files count
 }
 
-// Clone runs git clone with the given options.
-// When opts.Quiet is true, stdout/stderr are captured instead of forwarded.
-func Clone(url, dest string, opts CloneOpts) error {
-	args := []string{"clone"}
-	for _, c := range opts.ConfigArgs {
-		args = append(args, "-c", c)
-	}
-	if opts.Mirror {
-		args = append(args, "--mirror")
-	} else if opts.Bare {
-		args = append(args, "--bare")
-	}
-	if opts.Depth > 0 {
-		args = append(args, "--depth", strconv.Itoa(opts.Depth))
-	}
-	if opts.Branch != "" {
-		args = append(args, "--branch", opts.Branch)
-	}
-	args = append(args, url, dest)
-	if opts.Quiet {
-		_, err := output(".", args...)
-		return err
-	}
-	return run(".", args...)
-}
-
 // CloneProgress holds a progress update from git clone.
 type CloneProgress struct {
 	Phase   string // e.g. "Receiving objects", "Resolving deltas"
@@ -236,24 +210,13 @@ func parseProgress(r io.Reader, onProgress func(CloneProgress)) {
 	}
 }
 
-// Fetch runs git fetch --all in the given repo.
-func Fetch(repoPath string) error {
-	return run(repoPath, "fetch", "--all", "--prune")
-}
-
-// FetchQuiet runs git fetch --all --prune, capturing output instead of forwarding it.
-func FetchQuiet(repoPath string) error {
-	_, err := output(repoPath, "fetch", "--all", "--prune")
-	return err
-}
-
 // FetchCaptured runs git fetch --all --prune and returns the combined
 // stdout+stderr along with any error. GUI callers need this because
 // git writes actionable diagnostics like "remote: Repository not found."
-// to stderr, and plain Fetch/FetchQuiet either forward them to the
-// terminal (run) or drop them after wrapping in a generic exec error
-// (output). The captured text is what downstream classifiers match on
-// (see IsUpstreamGoneError).
+// to stderr, and the plain run/output helpers either forward them to the
+// terminal or drop them after wrapping in a generic exec error. The
+// captured text is what downstream classifiers match on (see
+// IsUpstreamGoneError).
 func FetchCaptured(repoPath string) (string, error) {
 	cmd := exec.Command(GitBin(), "fetch", "--all", "--prune")
 	cmd.Dir = repoPath
@@ -291,11 +254,6 @@ func IsUpstreamGoneError(err error) bool {
 		strings.Contains(msg, "returned error: 404") ||
 		strings.Contains(msg, "http 404") ||
 		strings.Contains(msg, "repository access denied")
-}
-
-// Pull runs git pull --ff-only in the given repo.
-func Pull(repoPath string) error {
-	return run(repoPath, "pull", "--ff-only")
 }
 
 // PushMirror runs `git push --mirror <url>` from repoPath, pushing every
@@ -429,23 +387,6 @@ func classifyXY(xy string) string {
 	return "modified"
 }
 
-// RevCount returns the number of commits ahead/behind the upstream.
-// Returns (0, 0, nil) if there's no upstream.
-func RevCount(repoPath string) (ahead, behind int, err error) {
-	out, err := output(repoPath, "rev-list", "--count", "--left-right", "HEAD...@{upstream}")
-	if err != nil {
-		// No upstream configured — not an error, just 0/0.
-		return 0, 0, nil
-	}
-	parts := strings.Fields(strings.TrimSpace(out))
-	if len(parts) != 2 {
-		return 0, 0, nil
-	}
-	ahead, _ = strconv.Atoi(parts[0])
-	behind, _ = strconv.Atoi(parts[1])
-	return ahead, behind, nil
-}
-
 // RemoteURL returns the URL of the 'origin' remote.
 func RemoteURL(repoPath string) (string, error) {
 	out, err := output(repoPath, "remote", "get-url", "origin")
@@ -530,12 +471,6 @@ func GlobalConfigSet(key, value string) error {
 	return run(".", "config", "--global", key, value)
 }
 
-// GlobalConfigAdd appends a value to a (possibly multi-valued) global git config
-// key without overwriting existing values.
-func GlobalConfigAdd(key, value string) error {
-	return run(".", "config", "--global", "--add", key, value)
-}
-
 // GlobalConfigGet reads a global git config value.
 func GlobalConfigGet(key string) (string, error) {
 	out, err := output(".", "config", "--global", "--get", key)
@@ -597,25 +532,6 @@ func IsRepo(path string) bool {
 // SetRemoteURL sets the URL of a remote (typically "origin").
 func SetRemoteURL(repoPath, remote, url string) error {
 	return run(repoPath, "remote", "set-url", remote, url)
-}
-
-// Run executes a git command in the given directory (public wrapper).
-func Run(dir string, args ...string) error {
-	return run(dir, args...)
-}
-
-// RunWithInput executes a git command with data piped to stdin.
-func RunWithInput(dir string, input string, args ...string) (string, error) {
-	cmd := exec.Command(GitBin(), args...)
-	cmd.Dir = dir
-	cmd.Env = Environ() // Homebrew PATH for macOS — do not remove.
-	cmd.Stdin = strings.NewReader(input)
-	HideWindow(cmd)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
-	}
-	return string(out), nil
 }
 
 // CurrentBranch returns the current branch name.
@@ -830,11 +746,11 @@ func listLocalBranches(repoPath string) ([]string, error) {
 // the base branch. The commits differ but the changes are identical.
 //
 // Two-step check:
-// 1. Tree comparison: if the branch tip's tree equals the base branch's tree,
-//    the branch content is fully in the base (covers identical-state squash merges).
-// 2. Synthetic ancestor: create a dangling commit with the branch's tree on the
-//    merge base and check if it's an ancestor of the base branch (covers squash
-//    merges where more commits landed on base after the squash).
+//  1. Tree comparison: if the branch tip's tree equals the base branch's tree,
+//     the branch content is fully in the base (covers identical-state squash merges).
+//  2. Synthetic ancestor: create a dangling commit with the branch's tree on the
+//     merge base and check if it's an ancestor of the base branch (covers squash
+//     merges where more commits landed on base after the squash).
 func isSquashMerged(repoPath, baseBranch, branch string) bool {
 	// Fast path: if both trees are identical, branch is fully incorporated.
 	baseTree, err := output(repoPath, "rev-parse", baseBranch+"^{tree}")

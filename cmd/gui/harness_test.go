@@ -87,21 +87,6 @@ func TestKnownAIHarnessesWiredFromEmbed(t *testing.T) {
 	}
 }
 
-func TestHarnessIDSlugification(t *testing.T) {
-	tests := map[string]string{
-		"Claude Code":  "claude-code",
-		"Codex":        "codex",
-		"Cursor Agent": "cursor-agent",
-		"OpenCode":     "opencode",
-		"":             "",
-	}
-	for in, want := range tests {
-		if got := harnessID(in); got != want {
-			t.Errorf("harnessID(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
 func TestBuildHarnessArgv(t *testing.T) {
 	tests := []struct {
 		name    string

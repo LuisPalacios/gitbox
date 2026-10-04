@@ -105,16 +105,16 @@ func DefaultPath() (string, error) {
 
 // Status reports the current state of the global gitignore.
 type Status struct {
-	Path            string   `json:"path"`            // resolved path of the file we'd act on
-	DefaultPath     string   `json:"defaultPath"`     // ~/.gitignore_global
-	Excludesfile    string   `json:"excludesfile"`    // raw value of git config --global core.excludesfile (empty if unset)
-	ExcludesfileSet bool     `json:"excludesfileSet"` // core.excludesfile is set in global git config
-	FileExists      bool     `json:"fileExists"`      // a file exists at Path
-	BlockPresent    bool     `json:"blockPresent"`    // sentinel-wrapped managed block was found
-	BlockUpToDate   bool     `json:"blockUpToDate"`   // managed block matches recommendedBody exactly
-	HasDuplicates   bool     `json:"hasDuplicates"`   // a managed-block pattern also appears outside the block
+	Path            string   `json:"path"`                 // resolved path of the file we'd act on
+	DefaultPath     string   `json:"defaultPath"`          // ~/.gitignore_global
+	Excludesfile    string   `json:"excludesfile"`         // raw value of git config --global core.excludesfile (empty if unset)
+	ExcludesfileSet bool     `json:"excludesfileSet"`      // core.excludesfile is set in global git config
+	FileExists      bool     `json:"fileExists"`           // a file exists at Path
+	BlockPresent    bool     `json:"blockPresent"`         // sentinel-wrapped managed block was found
+	BlockUpToDate   bool     `json:"blockUpToDate"`        // managed block matches recommendedBody exactly
+	HasDuplicates   bool     `json:"hasDuplicates"`        // a managed-block pattern also appears outside the block
 	Duplicates      []string `json:"duplicates,omitempty"` // distinct duplicated patterns (trimmed)
-	NeedsAction     bool     `json:"needsAction"`     // true when Install() would change something
+	NeedsAction     bool     `json:"needsAction"`          // true when Install() would change something
 }
 
 // Check inspects git config and the global gitignore file and returns

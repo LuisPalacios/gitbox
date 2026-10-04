@@ -72,7 +72,7 @@ func assertUniqueShellIDs(t *testing.T, list []CatalogShell) {
 // modern in this sense — they delegate shell selection to the App.
 func TestModernTerminalCoverage(t *testing.T) {
 	for _, c := range windowsTerminals {
-		if !modernTerminal(c) {
+		if !templateAcceptsShell(c.ArgsTemplate) {
 			t.Errorf("expected Windows catalog entry %q to be modern (have shell tokens)", c.ID)
 		}
 	}
@@ -82,18 +82,18 @@ func TestModernTerminalCoverage(t *testing.T) {
 	linuxNonModern := map[string]bool{"xterm": true}
 	for _, c := range linuxTerminals {
 		if linuxNonModern[c.ID] {
-			if modernTerminal(c) {
+			if templateAcceptsShell(c.ArgsTemplate) {
 				t.Errorf("Linux catalog entry %q is on the non-modern exception list but carries shell tokens", c.ID)
 			}
 			continue
 		}
-		if !modernTerminal(c) {
+		if !templateAcceptsShell(c.ArgsTemplate) {
 			t.Errorf("expected Linux catalog entry %q to be modern (have shell tokens)", c.ID)
 		}
 	}
 	for _, c := range darwinTerminals {
 		// macOS `open -a` rows have no shell tokens — they delegate to the App.
-		if modernTerminal(c) {
+		if templateAcceptsShell(c.ArgsTemplate) {
 			t.Errorf("expected macOS catalog entry %q to be NOT-modern (open -a)", c.ID)
 		}
 	}

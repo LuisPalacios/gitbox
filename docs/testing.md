@@ -4,7 +4,7 @@ This guide covers running and writing tests for gitbox. For the test inventory (
 
 ## Pre-push hook
 
-The repo includes a safety net: a pre-push hook that runs static analysis and all unit tests before every `git push`. It builds the GUI frontend first when `cmd/gui/frontend/dist` is missing.
+The repo includes a safety net: a pre-push hook that runs a `gofmt -s` check, static analysis and all unit tests before every `git push`. It builds the GUI frontend first when `cmd/gui/frontend/dist` is missing.
 
 Git does not pick up custom hooks automatically, so after cloning the repo I run this once:
 
@@ -165,7 +165,7 @@ The `--test-mode` flag reads `test-gitbox.json` (searching upwards from the curr
 
 ## Pre-PR checklist
 
-Run these before every push or PR. The pre-push hook handles vet + unit tests, and the PR workflow repeats them in CI.
+Run these before every push or PR. The pre-push hook handles gofmt + vet + unit tests, and the PR workflow repeats them in CI.
 
 ```text
 - [ ] go vet ./...

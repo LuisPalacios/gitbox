@@ -34,9 +34,9 @@ func TestParseRemoteURL(t *testing.T) {
 		{"https://example.com/noslash", "", "", "", true},
 		{"not-a-url", "", "", "", true},
 		{"", "", "", "", true},
-		{"git@github.com:", "", "", "", true},             // SSH missing path
-		{"git@host:repoonly", "", "", "", true},            // SSH no owner
-		{"https://github.com/", "", "", "", true},          // HTTPS empty path
+		{"git@github.com:", "", "", "", true},     // SSH missing path
+		{"git@host:repoonly", "", "", "", true},   // SSH no owner
+		{"https://github.com/", "", "", "", true}, // HTTPS empty path
 	}
 
 	for _, tt := range tests {

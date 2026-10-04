@@ -147,13 +147,13 @@ func TestStatusAheadBehind(t *testing.T) {
 	}
 }
 
-func TestClone(t *testing.T) {
+func TestCloneWithProgress(t *testing.T) {
 	_, barePath := initTestRepo(t)
 
 	dest := filepath.Join(t.TempDir(), "new-clone")
-	err := Clone(barePath, dest, CloneOpts{})
+	err := CloneWithProgress(barePath, dest, CloneOpts{}, func(CloneProgress) {})
 	if err != nil {
-		t.Fatalf("Clone: %v", err)
+		t.Fatalf("CloneWithProgress: %v", err)
 	}
 	if !IsRepo(dest) {
 		t.Error("cloned path should be a repo")

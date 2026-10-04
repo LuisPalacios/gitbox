@@ -144,26 +144,6 @@ func probeWT() (string, bool) {
 	return "", false
 }
 
-// probeGitBash resolves git-bash.exe — Git for Windows installs it under
-// Program Files but does not always wire it into PATH. (Used by the
-// terminal-side probes when applicable; the Git Bash SHELL entry uses
-// probeGitBashShell instead so it points at the real bash binary.)
-func probeGitBash() (string, bool) {
-	if p, err := exec.LookPath("git-bash.exe"); err == nil {
-		return p, true
-	}
-	for _, root := range []string{os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)")} {
-		if root == "" {
-			continue
-		}
-		cand := filepath.Join(root, "Git", "git-bash.exe")
-		if _, err := os.Stat(cand); err == nil {
-			return cand, true
-		}
-	}
-	return "", false
-}
-
 // probeGitBashShell resolves the real Git for Windows bash.exe (the actual
 // shell binary, not the git-bash.exe launcher). Tries the Git install
 // paths under Program Files first; deliberately does NOT fall back to

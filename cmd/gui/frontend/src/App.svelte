@@ -3276,7 +3276,7 @@
         </div>
       </div>
       <div class="settings-row">
-        <span class="settings-label" use:tooltip={"Probe external tools gitbox uses (git, Git Credential Manager, ssh, tmux, …) and flag missing ones."}>{$t('settings.systemCheck')}</span>
+        <span class="settings-label" use:tooltip={"Probe external tools gitbox uses (git, Git Credential Manager, ssh, …) and flag missing ones."}>{$t('settings.systemCheck')}</span>
         <button class="settings-action-btn" on:click={openDoctorModal}>{$t('settings.run')}</button>
         {#if doctorSummary}
           <span class="settings-sublabel settings-doctor-summary">{doctorSummary}</span>

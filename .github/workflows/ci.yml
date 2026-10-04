@@ -427,10 +427,6 @@ jobs:
           cp artifacts/dmg-macos-arm64/gitbox-macos-arm64.dmg release/ 2>/dev/null || true
           cp artifacts/dmg-macos-amd64/gitbox-macos-amd64.dmg release/ 2>/dev/null || true
           cp artifacts/appimage-linux/gitbox-x86_64.AppImage release/ 2>/dev/null || true
-          # Transitional alias: AppImages up to v1.6.2 self-update by looking
-          # for the old asset name. Remove once those installs have had a
-          # release or two to move over.
-          cp artifacts/appimage-linux/gitbox-x86_64.AppImage release/gitbox-linux-amd64.AppImage 2>/dev/null || true
 
       - name: Generate checksums
         run: cd release && sha256sum * > checksums.sha256
