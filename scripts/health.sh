@@ -14,8 +14,10 @@
 # Checks: gofmt vet staticcheck modernize govulncheck deadcode test
 #         svelte build npm-install npm-audit shellcheck actionlint markdown
 #
-# Go analyzers run through `go run` at pinned versions, so they need no
-# install and give the same results everywhere. shellcheck, actionlint and
+# Go analyzers are fetched at pinned versions (go run / go install into the
+# run's temp dir), so they need no install and give the same results
+# everywhere; vet, staticcheck and modernize analyze linux, darwin and
+# windows on every run. shellcheck, actionlint and
 # markdownlint-cli2 must be on PATH (see docs/developer-guide.md).
 
 set -uo pipefail
@@ -107,9 +109,35 @@ run_gofmt() {
     gofmt -s -l "${files[@]}"
 }
 
-run_vet()         { go vet ./...; }
-run_staticcheck() { go run "$STATICCHECK" ./...; }
-run_modernize()   { go run "$MODERNIZE" ./...; }
+# Platform-specific files (wsl_*, platform_unix.go, …) only show their
+# findings when analyzed for that OS, so vet, staticcheck and modernize run
+# once per target and tag each finding with it.
+TARGET_OSES=(linux darwin windows)
+
+# tool PKG@VERSION — installs a pinned analyzer once per run (for the host,
+# so it can run under any GOOS) and prints its path.
+tool() {
+    local name
+    name="$(basename "${1%@*}")"
+    if [[ ! -e "$tmp/bin/$name" && ! -e "$tmp/bin/$name.exe" ]]; then
+        GOBIN="$tmp/bin" go install "$1" >/dev/null 2>&1 || { echo "cannot install $1"; return 1; }
+    fi
+    echo "$tmp/bin/$name"
+}
+
+# per_os CMD... — runs CMD for every target OS; findings are prefixed [os].
+per_os() {
+    local os rc=0
+    for os in "${TARGET_OSES[@]}"; do
+        CGO_ENABLED=0 GOOS="$os" "$@" >"$tmp/per_os.out" 2>&1 || rc=1
+        sed "s/^/[$os] /" "$tmp/per_os.out"
+    done
+    return $rc
+}
+
+run_vet()         { per_os go vet ./...; }
+run_staticcheck() { local bin; bin="$(tool "$STATICCHECK")" || return 1; per_os "$bin" ./...; }
+run_modernize()   { local bin; bin="$(tool "$MODERNIZE")" || return 1; per_os "$bin" ./...; }
 run_test() {
     go test -short ./... >"$tmp/test.full" 2>&1 && return 0
     grep -Ev '^(ok |\?) ' "$tmp/test.full"

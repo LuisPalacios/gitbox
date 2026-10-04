@@ -11,13 +11,18 @@ import (
 )
 
 // ErrNeedElevation signals that the operation failed due to insufficient
-// privileges. On Unix this is defined for API compatibility but Apply
-// does not attempt automatic elevation.
+// privileges. On Unix this is defined for API compatibility; the updater
+// does not attempt automatic elevation there.
 var ErrNeedElevation = errors.New("administrator privileges required")
+
+// errElevationUnsupported is what ApplyElevated returns on Unix. A package
+// variable rather than an inline error keeps the caller's shared
+// `if err != nil` from reading as always-true to static analysis.
+var errElevationUnsupported = errors.New("elevated update not supported on this platform — run with sudo")
 
 // ApplyElevated is not supported on Unix — return a clear message.
 func ApplyElevated(extractDir, installDir string) error {
-	return fmt.Errorf("elevated update not supported on this platform — run with sudo")
+	return errElevationUnsupported
 }
 
 // replaceExecutable atomically replaces the binary at dst with src.
