@@ -180,13 +180,13 @@ Descubre archivos `.code-workspace` de VS Code existentes y los expone en solo l
 
 Escanea `global.folder`, cada raíz de `global.extra_folders` y los árboles de trabajo de los repos contenedor buscando clones que no están en `gitbox.json`, y luego puntúa cada uno contra cada cuenta cuyo host coincide. Todas las señales son aditivas, y gana la puntuación más alta:
 
-| Señal                                                                         | Puntuación | Origen                                                                                 |
-| ----------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------- |
-| Coincidencia de host (base obligatoria)                                       | 1          | hostname de la URL de la cuenta o alias SSH frente al host remoto parseado             |
-| Owner igual a `account.username`                                              | +3         | segmento owner de la ruta de la URL remota                                             |
-| El repo vive bajo la carpeta source de la cuenta                              | +5         | primer componente de la ruta del repo relativa a la carpeta padre de gitbox            |
-| La URL HTTPS embebe `user@` donde user es igual a `account.username`          | +10        | `url.User.Username()` del remoto origin                                                |
-| `.git/config` tiene `credential.<url>.username` igual a `account.username`    | +10        | `git config --get-regexp '^credential\..*\.username$'` en el repo                      |
+| Señal                                                                      | Puntuación | Origen                                                                      |
+| -------------------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------- |
+| Coincidencia de host (base obligatoria)                                    | 1          | hostname de la URL de la cuenta o alias SSH frente al host remoto parseado  |
+| Owner igual a `account.username`                                           | +3         | segmento owner de la ruta de la URL remota                                  |
+| El repo vive bajo la carpeta source de la cuenta                           | +5         | primer componente de la ruta del repo relativa a la carpeta padre de gitbox |
+| La URL HTTPS embebe `user@` donde user es igual a `account.username`       | +10        | `url.User.Username()` del remoto origin                                     |
+| `.git/config` tiene `credential.<url>.username` igual a `account.username` | +10        | `git config --get-regexp '^credential\..*\.username$'` en el repo           |
 
 Si la puntuación máxima la comparten dos o más cuentas (incluido un empate solo por host) el match se marca como ambiguo: no se elige cuenta, no se mueven archivos y la GUI muestra la lista de candidatas. Los huérfanos adoptados reciben aislamiento de credenciales, identidad y una URL remota reescrita para coincidir con el tipo de credencial. Los huérfanos bajo el árbol estándar pueden reubicarse opcionalmente a su ruta canónica; los clones fuera de él y los clones anidados se incorporan en su sitio con un `clone_folder` absoluto.
 
@@ -243,94 +243,94 @@ La config vive en `~/.config/gitbox/gitbox.json`. Consulta el [ejemplo JSON anot
 
 ### Global
 
-| Campo                             | Tipo   | Obligatorio | Descripción |
-| --------------------------------- | ------ | ----------- | ----------- |
-| `folder`                          | string | Sí          | Directorio raíz para todos los clones. Soporta `~`. |
-| `extra_folders`                   | array  | No          | Directorios raíz adicionales escaneados en busca de clones y archivos `.code-workspace`, además de `folder`. |
-| `nested_scan_depth`               | int    | No          | Niveles que gitbox desciende bajo un repo contenedor para encontrar clones anidados. Por defecto `1` (hijos inmediatos). |
-| `language`                        | string | No          | Idioma de la UI. Vacío significa el locale del OS (inglés como fallback). |
-| `periodic_sync`                   | string | No          | Intervalo de fetch en segundo plano: off, `5m`, `15m` o `30m`. |
-| `view_mode`                       | string | No          | `"full"` o `"compact"`. |
-| `window` / `compact_window`       | object | No          | Posición y tamaño guardados (`x`, `y`, `width`, `height`) por modo de vista. |
-| `check_global_gitignore`          | bool   | No          | Ejecuta el check automático de `~/.gitignore_global` al arrancar. Por defecto `true`. |
-| `pr_badges_enabled`               | bool   | No          | Obtiene y muestra indicadores de PR / review en las filas de clon. Por defecto `true`. |
-| `pr_include_drafts`               | bool   | No          | Cuenta los PRs draft en el badge "my PRs". Por defecto `true`. |
-| `credential_ssh`                  | object | No          | Defaults de plataforma SSH. Su presencia indica que SSH está disponible. |
-| `credential_ssh.ssh_folder`       | string | No          | Directorio de config SSH. Por defecto `~/.ssh`. |
-| `credential_gcm`                  | object | No          | Defaults de plataforma GCM. Su presencia indica que GCM está disponible. |
-| `credential_gcm.helper`           | string | No          | Helper de credenciales. Normalmente `"manager"`. |
-| `credential_gcm.credential_store` | string | No          | `"wincredman"`, `"keychain"` o `"secretservice"`. |
-| `credential_token`                | object | No          | Defaults de plataforma Token/PAT. Su presencia indica que la auth por token está disponible. |
-| `editors`                         | array  | No          | Editores de código para el menú "Open in". Se rellena automáticamente en el primer arranque. |
-| `editors[].name`                  | string | Sí          | Nombre visible (por ejemplo `"VS Code"`). |
-| `editors[].command`               | string | Sí          | Ruta completa o nombre de comando (por ejemplo `"C:\\...\\code.cmd"`). |
-| `terminals`                       | array  | No          | Lista plana de terminales legacy de antes de Terminal Profiles. Se migra a los tres arrays de abajo en la primera carga. |
-| `terminals[].name`                | string | Sí          | Nombre visible (por ejemplo `"Windows Terminal"`). |
-| `terminals[].command`             | string | Sí          | Ruta completa o launcher en PATH (por ejemplo `"wt.exe"`, `"gnome-terminal"`). |
-| `terminals[].args`                | array  | No          | Argumentos pasados antes de la ruta. Usa `"{path}"` como placeholder de la ruta; si falta, la ruta se añade al final. Usa `"{command}"` para marcar dónde se inserta el argv de un AI harness (se expande a cero elementos en lanzamientos solo de terminal). |
+| Campo                             | Tipo   | Obligatorio | Descripción                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------------------------- | ------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `folder`                          | string | Sí          | Directorio raíz para todos los clones. Soporta `~`.                                                                                                                                                                                                                                                                                                                                                    |
+| `extra_folders`                   | array  | No          | Directorios raíz adicionales escaneados en busca de clones y archivos `.code-workspace`, además de `folder`.                                                                                                                                                                                                                                                                                           |
+| `nested_scan_depth`               | int    | No          | Niveles que gitbox desciende bajo un repo contenedor para encontrar clones anidados. Por defecto `1` (hijos inmediatos).                                                                                                                                                                                                                                                                               |
+| `language`                        | string | No          | Idioma de la UI. Vacío significa el locale del OS (inglés como fallback).                                                                                                                                                                                                                                                                                                                              |
+| `periodic_sync`                   | string | No          | Intervalo de fetch en segundo plano: off, `5m`, `15m` o `30m`.                                                                                                                                                                                                                                                                                                                                         |
+| `view_mode`                       | string | No          | `"full"` o `"compact"`.                                                                                                                                                                                                                                                                                                                                                                                |
+| `window` / `compact_window`       | object | No          | Posición y tamaño guardados (`x`, `y`, `width`, `height`) por modo de vista.                                                                                                                                                                                                                                                                                                                           |
+| `check_global_gitignore`          | bool   | No          | Ejecuta el check automático de `~/.gitignore_global` al arrancar. Por defecto `true`.                                                                                                                                                                                                                                                                                                                  |
+| `pr_badges_enabled`               | bool   | No          | Obtiene y muestra indicadores de PR / review en las filas de clon. Por defecto `true`.                                                                                                                                                                                                                                                                                                                 |
+| `pr_include_drafts`               | bool   | No          | Cuenta los PRs draft en el badge "my PRs". Por defecto `true`.                                                                                                                                                                                                                                                                                                                                         |
+| `credential_ssh`                  | object | No          | Defaults de plataforma SSH. Su presencia indica que SSH está disponible.                                                                                                                                                                                                                                                                                                                               |
+| `credential_ssh.ssh_folder`       | string | No          | Directorio de config SSH. Por defecto `~/.ssh`.                                                                                                                                                                                                                                                                                                                                                        |
+| `credential_gcm`                  | object | No          | Defaults de plataforma GCM. Su presencia indica que GCM está disponible.                                                                                                                                                                                                                                                                                                                               |
+| `credential_gcm.helper`           | string | No          | Helper de credenciales. Normalmente `"manager"`.                                                                                                                                                                                                                                                                                                                                                       |
+| `credential_gcm.credential_store` | string | No          | `"wincredman"`, `"keychain"` o `"secretservice"`.                                                                                                                                                                                                                                                                                                                                                      |
+| `credential_token`                | object | No          | Defaults de plataforma Token/PAT. Su presencia indica que la auth por token está disponible.                                                                                                                                                                                                                                                                                                           |
+| `editors`                         | array  | No          | Editores de código para el menú "Open in". Se rellena automáticamente en el primer arranque.                                                                                                                                                                                                                                                                                                           |
+| `editors[].name`                  | string | Sí          | Nombre visible (por ejemplo `"VS Code"`).                                                                                                                                                                                                                                                                                                                                                              |
+| `editors[].command`               | string | Sí          | Ruta completa o nombre de comando (por ejemplo `"C:\\...\\code.cmd"`).                                                                                                                                                                                                                                                                                                                                 |
+| `terminals`                       | array  | No          | Lista plana de terminales legacy de antes de Terminal Profiles. Se migra a los tres arrays de abajo en la primera carga.                                                                                                                                                                                                                                                                               |
+| `terminals[].name`                | string | Sí          | Nombre visible (por ejemplo `"Windows Terminal"`).                                                                                                                                                                                                                                                                                                                                                     |
+| `terminals[].command`             | string | Sí          | Ruta completa o launcher en PATH (por ejemplo `"wt.exe"`, `"gnome-terminal"`).                                                                                                                                                                                                                                                                                                                         |
+| `terminals[].args`                | array  | No          | Argumentos pasados antes de la ruta. Usa `"{path}"` como placeholder de la ruta; si falta, la ruta se añade al final. Usa `"{command}"` para marcar dónde se inserta el argv de un AI harness (se expande a cero elementos en lanzamientos solo de terminal).                                                                                                                                          |
 | `terminal_apps`                   | array  | No          | Emuladores de terminal detectados. Los rellena el probe del catálogo en `pkg/terminals` (Windows: Windows Terminal, WezTerm, Alacritty, Tabby, ConEmu, Hyper, Mintty, ZOC. macOS: iTerm2, Terminal.app, Warp, Kitty, Ghostty, WezTerm, Alacritty. Linux: GNOME Terminal, Konsole, Terminator, Foot, Alacritty, Kitty, Tilda, Guake, xterm). El Terminals Manager de la GUI hace el probe directamente. |
-| `terminal_apps[].id`              | string | Sí          | Id estable (`"wt"`, `"wezterm"`, `"gnome-terminal"`, `"iterm"`, …). Se usa como destino de referencia cruzada desde `terminal_profiles[].terminal`. |
-| `terminal_apps[].name`            | string | Sí          | Nombre visible que se muestra en el Manager y en el launcher por fila. |
-| `terminal_apps[].command`         | string | Sí          | Ruta absoluta resuelta (se rellena en tiempo de detección). |
-| `terminal_apps[].args_template`   | array  | No          | Plantilla argv con tokens `{path}`, `{shell_command}`, `{shell_args}`, `{command}`. El launcher los expande por Profile mediante `pkg/launch.ResolveArgs`. Mismas reglas de tokens que `terminals[].args` arriba, más `{shell_command}` (el binario de shell resuelto) y `{shell_args}` (un punto de inserción para los args por defecto del shell). |
-| `shells`                          | array  | No          | Shells detectados. Alcance del catálogo por OS — Windows: PowerShell 7, PowerShell 5, CMD, Git Bash, más filas `wsl-<name>` por distro cuando WSL está instalado. macOS: Zsh, Bash, Fish, Dash. Linux: Bash, Zsh, Fish, Ksh, Dash. |
-| `shells[].id`                     | string | Sí          | Id estable (`"cmd"`, `"pwsh"`, `"git-bash"`, `"wsl-ubuntu"`, …). Referenciado desde `terminal_profiles[].shell`. |
-| `shells[].name`                   | string | Sí          | Nombre visible. |
-| `shells[].command`                | string | Sí          | Ruta absoluta resuelta. |
-| `shells[].args`                   | array  | No          | Args por defecto insertados donde el `args_template` del terminal referencia `{shell_args}`. |
-| `terminal_profiles`               | array  | No          | Profiles lanzables. El launcher por fila y el menú `Open in…` leen esta lista cuando está rellena. **Composición según el OS** (issue #71): en Windows cada Profile autoderivado empareja un Terminal × Shell; en macOS / Linux cada uno es solo Terminal, con el login shell del host como shell implícito. |
-| `terminal_profiles[].id`          | string | Sí          | Id estable (`"wt+pwsh"`, `"wezterm+launchmenu-mybash"`, `"user-1"`, …). |
-| `terminal_profiles[].name`        | string | Sí          | Nombre visible (por ejemplo `"Windows Terminal — pwsh"`). |
-| `terminal_profiles[].terminal`    | string | Sí          | `terminal_apps[].id` que se lanza. Vacío solo para los Profiles de fallback de shell directo que se emiten en Windows cuando no hay ningún Terminal moderno instalado. |
-| `terminal_profiles[].shell`       | string | No          | `shells[].id` que se ejecuta dentro del terminal. Vacío significa "usar el default del terminal" — en macOS / Linux es el login shell del host, que el Manager muestra como un badge atenuado junto al nombre del Terminal. |
-| `terminal_profiles[].args`        | array  | No          | Argv de override. Cuando está vacío, el launcher usa `terminal_apps[].args_template`. Las filas `launch_menu` de WezTerm guardan aquí la forma completa `start --cwd {path} -- <argv>`. |
-| `terminal_profiles[].default`     | bool   | No          | Marca el Profile que invoca la acción principal del launcher por fila. Mutuamente exclusivo en toda la lista. |
-| `terminal_profiles[].preferred`   | bool   | No          | Promociona el Profile a la lista rápida del menú kebab. |
-| `terminal_profiles[].hidden`      | bool   | No          | Oculta el Profile de los menús sin borrarlo. Es la única forma de ocultar un Profile autodetectado / importado de WT / importado de WezTerm / migrado (esos reaparecen en el siguiente ciclo de detección si se eliminan). |
-| `terminal_profiles[].source`      | string | No          | **Campo interno** — nunca se muestra en el Manager. Etiqueta de origen que usa el motor para decidir entre borrar u ocultar: solo los Profiles `"user"` se pueden borrar; las filas `"detected"` / `"wt-profile"` / `"wezterm-launchmenu"` / `"migrated"` solo se pueden ocultar. |
-| `ai_harnesses`                    | array  | No          | AI CLI harnesses para el menú "Open in". Se detectan en segundo plano (poco después del arranque, cada 10 minutos, al recuperar el foco) a partir del catálogo embebido más `~/.local/bin`, los prefijos de Homebrew y los directorios conocidos por herramienta. Se lanzan dentro del shell del Terminal Profile por defecto (consulta `terminal_profiles[].default`). |
-| `ai_harnesses[].name`             | string | Sí          | Nombre visible (por ejemplo `"Claude Code"`). |
-| `ai_harnesses[].command`          | string | Sí          | Ruta absoluta o binario en PATH (por ejemplo `"claude"`). |
-| `ai_harnesses[].args`             | array  | No          | Args extra opcionales para el harness. Normalmente vacío. |
-| `ai_harnesses[].source`           | string | No          | **Campo interno.** Las entradas `"detected"` las añadió el sync de harnesses y pueden ver su `command` re-resuelto tras una reinstalación; las entradas `"user"` nunca se alteran más allá de `missing`. Vacío en entradas preexistentes hasta que el primer sync las clasifica. |
-| `ai_harnesses[].missing`          | bool   | No          | Lo pone el sync de harnesses cuando el binario ya no se encuentra; la entrada se oculta de los menús pero se conserva para que una reinstalación la restaure con sus `args` intactos. Se limpia automáticamente cuando el binario reaparece. |
+| `terminal_apps[].id`              | string | Sí          | Id estable (`"wt"`, `"wezterm"`, `"gnome-terminal"`, `"iterm"`, …). Se usa como destino de referencia cruzada desde `terminal_profiles[].terminal`.                                                                                                                                                                                                                                                    |
+| `terminal_apps[].name`            | string | Sí          | Nombre visible que se muestra en el Manager y en el launcher por fila.                                                                                                                                                                                                                                                                                                                                 |
+| `terminal_apps[].command`         | string | Sí          | Ruta absoluta resuelta (se rellena en tiempo de detección).                                                                                                                                                                                                                                                                                                                                            |
+| `terminal_apps[].args_template`   | array  | No          | Plantilla argv con tokens `{path}`, `{shell_command}`, `{shell_args}`, `{command}`. El launcher los expande por Profile mediante `pkg/launch.ResolveArgs`. Mismas reglas de tokens que `terminals[].args` arriba, más `{shell_command}` (el binario de shell resuelto) y `{shell_args}` (un punto de inserción para los args por defecto del shell).                                                   |
+| `shells`                          | array  | No          | Shells detectados. Alcance del catálogo por OS — Windows: PowerShell 7, PowerShell 5, CMD, Git Bash, más filas `wsl-<name>` por distro cuando WSL está instalado. macOS: Zsh, Bash, Fish, Dash. Linux: Bash, Zsh, Fish, Ksh, Dash.                                                                                                                                                                     |
+| `shells[].id`                     | string | Sí          | Id estable (`"cmd"`, `"pwsh"`, `"git-bash"`, `"wsl-ubuntu"`, …). Referenciado desde `terminal_profiles[].shell`.                                                                                                                                                                                                                                                                                       |
+| `shells[].name`                   | string | Sí          | Nombre visible.                                                                                                                                                                                                                                                                                                                                                                                        |
+| `shells[].command`                | string | Sí          | Ruta absoluta resuelta.                                                                                                                                                                                                                                                                                                                                                                                |
+| `shells[].args`                   | array  | No          | Args por defecto insertados donde el `args_template` del terminal referencia `{shell_args}`.                                                                                                                                                                                                                                                                                                           |
+| `terminal_profiles`               | array  | No          | Profiles lanzables. El launcher por fila y el menú `Open in…` leen esta lista cuando está rellena. **Composición según el OS** (issue #71): en Windows cada Profile autoderivado empareja un Terminal × Shell; en macOS / Linux cada uno es solo Terminal, con el login shell del host como shell implícito.                                                                                           |
+| `terminal_profiles[].id`          | string | Sí          | Id estable (`"wt+pwsh"`, `"wezterm+launchmenu-mybash"`, `"user-1"`, …).                                                                                                                                                                                                                                                                                                                                |
+| `terminal_profiles[].name`        | string | Sí          | Nombre visible (por ejemplo `"Windows Terminal — pwsh"`).                                                                                                                                                                                                                                                                                                                                              |
+| `terminal_profiles[].terminal`    | string | Sí          | `terminal_apps[].id` que se lanza. Vacío solo para los Profiles de fallback de shell directo que se emiten en Windows cuando no hay ningún Terminal moderno instalado.                                                                                                                                                                                                                                 |
+| `terminal_profiles[].shell`       | string | No          | `shells[].id` que se ejecuta dentro del terminal. Vacío significa "usar el default del terminal" — en macOS / Linux es el login shell del host, que el Manager muestra como un badge atenuado junto al nombre del Terminal.                                                                                                                                                                            |
+| `terminal_profiles[].args`        | array  | No          | Argv de override. Cuando está vacío, el launcher usa `terminal_apps[].args_template`. Las filas `launch_menu` de WezTerm guardan aquí la forma completa `start --cwd {path} -- <argv>`.                                                                                                                                                                                                                |
+| `terminal_profiles[].default`     | bool   | No          | Marca el Profile que invoca la acción principal del launcher por fila. Mutuamente exclusivo en toda la lista.                                                                                                                                                                                                                                                                                          |
+| `terminal_profiles[].preferred`   | bool   | No          | Promociona el Profile a la lista rápida del menú kebab.                                                                                                                                                                                                                                                                                                                                                |
+| `terminal_profiles[].hidden`      | bool   | No          | Oculta el Profile de los menús sin borrarlo. Es la única forma de ocultar un Profile autodetectado / importado de WT / importado de WezTerm / migrado (esos reaparecen en el siguiente ciclo de detección si se eliminan).                                                                                                                                                                             |
+| `terminal_profiles[].source`      | string | No          | **Campo interno** — nunca se muestra en el Manager. Etiqueta de origen que usa el motor para decidir entre borrar u ocultar: solo los Profiles `"user"` se pueden borrar; las filas `"detected"` / `"wt-profile"` / `"wezterm-launchmenu"` / `"migrated"` solo se pueden ocultar.                                                                                                                      |
+| `ai_harnesses`                    | array  | No          | AI CLI harnesses para el menú "Open in". Se detectan en segundo plano (poco después del arranque, cada 10 minutos, al recuperar el foco) a partir del catálogo embebido más `~/.local/bin`, los prefijos de Homebrew y los directorios conocidos por herramienta. Se lanzan dentro del shell del Terminal Profile por defecto (consulta `terminal_profiles[].default`).                                |
+| `ai_harnesses[].name`             | string | Sí          | Nombre visible (por ejemplo `"Claude Code"`).                                                                                                                                                                                                                                                                                                                                                          |
+| `ai_harnesses[].command`          | string | Sí          | Ruta absoluta o binario en PATH (por ejemplo `"claude"`).                                                                                                                                                                                                                                                                                                                                              |
+| `ai_harnesses[].args`             | array  | No          | Args extra opcionales para el harness. Normalmente vacío.                                                                                                                                                                                                                                                                                                                                              |
+| `ai_harnesses[].source`           | string | No          | **Campo interno.** Las entradas `"detected"` las añadió el sync de harnesses y pueden ver su `command` re-resuelto tras una reinstalación; las entradas `"user"` nunca se alteran más allá de `missing`. Vacío en entradas preexistentes hasta que el primer sync las clasifica.                                                                                                                       |
+| `ai_harnesses[].missing`          | bool   | No          | Lo pone el sync de harnesses cuando el binario ya no se encuentra; la entrada se oculta de los menús pero se conserva para que una reinstalación la restaure con sus `args` intactos. Se limpia automáticamente cuando el binario reaparece.                                                                                                                                                           |
 
 ### Account
 
-| Campo                     | Tipo    | Obligatorio  | Descripción                                                                          |
-| ------------------------- | ------- | ------------ | ------------------------------------------------------------------------------------ |
-| `provider`                | string  | Sí           | `"github"`, `"gitlab"`, `"gitea"`, `"forgejo"`, `"bitbucket"`, `"generic"`           |
-| `url`                     | string  | Sí           | URL del servidor (scheme+host, sin ruta).                                            |
-| `username`                | string  | Sí           | Username de la cuenta.                                                               |
-| `name`                    | string  | Sí           | `git user.name` por defecto.                                                         |
-| `email`                   | string  | Sí           | `git user.email` por defecto.                                                        |
-| `default_credential_type` | string  | No           | Auth por defecto: `"gcm"`, `"ssh"` o `"token"`.                                      |
-| `ssh.host`                | string  | Condicional  | Alias SSH Host (por ejemplo, `"gt-myuser"`). **Obligatorio** cuando SSH está configurado. |
-| `ssh.hostname`            | string  | No           | Hostname SSH real. Se deriva automáticamente de la URL si se omite.                  |
-| `ssh.key_type`            | string  | Condicional  | `"ed25519"` o `"rsa"`. **Obligatorio** cuando SSH está configurado.                  |
-| `gcm.provider`            | string  | No           | Pista de proveedor para GCM.                                                         |
-| `gcm.useHttpPath`         | boolean | No           | Acota las credenciales por ruta HTTP.                                                |
+| Campo                     | Tipo    | Obligatorio | Descripción                                                                               |
+| ------------------------- | ------- | ----------- | ----------------------------------------------------------------------------------------- |
+| `provider`                | string  | Sí          | `"github"`, `"gitlab"`, `"gitea"`, `"forgejo"`, `"bitbucket"`, `"generic"`                |
+| `url`                     | string  | Sí          | URL del servidor (scheme+host, sin ruta).                                                 |
+| `username`                | string  | Sí          | Username de la cuenta.                                                                    |
+| `name`                    | string  | Sí          | `git user.name` por defecto.                                                              |
+| `email`                   | string  | Sí          | `git user.email` por defecto.                                                             |
+| `default_credential_type` | string  | No          | Auth por defecto: `"gcm"`, `"ssh"` o `"token"`.                                           |
+| `ssh.host`                | string  | Condicional | Alias SSH Host (por ejemplo, `"gt-myuser"`). **Obligatorio** cuando SSH está configurado. |
+| `ssh.hostname`            | string  | No          | Hostname SSH real. Se deriva automáticamente de la URL si se omite.                       |
+| `ssh.key_type`            | string  | Condicional | `"ed25519"` o `"rsa"`. **Obligatorio** cuando SSH está configurado.                       |
+| `gcm.provider`            | string  | No          | Pista de proveedor para GCM.                                                              |
+| `gcm.useHttpPath`         | boolean | No          | Acota las credenciales por ruta HTTP.                                                     |
 
 Una cuenta es única por `(hostname, username)`. Borrar una cuenta recorre en cascada cada source, mirror y workspace que la referencia.
 
 ### Source
 
-| Campo     | Tipo   | Obligatorio | Descripción                                                              |
-| --------- | ------ | ----------- | ------------------------------------------------------------------------ |
-| `account` | string | Sí          | Referencia una clave de cuenta.                                          |
+| Campo     | Tipo   | Obligatorio | Descripción                                                                 |
+| --------- | ------ | ----------- | --------------------------------------------------------------------------- |
+| `account` | string | Sí          | Referencia una clave de cuenta.                                             |
 | `folder`  | string | No          | Sobrescribe la carpeta de clone de primer nivel. Por defecto: clave source. |
-| `repos`   | object | Sí          | Repos con clave `org/repo`.                                              |
+| `repos`   | object | Sí          | Repos con clave `org/repo`.                                                 |
 
 ### Repo (dentro de source.repos)
 
-| Campo             | Tipo   | Obligatorio | Descripción                                                                            |
-| ----------------- | ------ | ----------- | -------------------------------------------------------------------------------------- |
-| `credential_type` | string | No          | Sobrescribe el método de auth. Se hereda de la cuenta.                                 |
-| `name`            | string | No          | Sobrescribe `git user.name`.                                                           |
-| `email`           | string | No          | Sobrescribe `git user.email`.                                                          |
-| `id_folder`       | string | No          | Sobrescribe el directorio de 2º nivel (carpeta org).                                   |
-| `clone_folder`    | string | No          | Sobrescribe el directorio de 3er nivel. Si es absoluto, reemplaza toda la ruta.        |
-| `container`       | bool   | No          | Lo marca como contenedor multi-repo; gitbox escanea dentro buscando clones anidados.   |
+| Campo             | Tipo   | Obligatorio | Descripción                                                                          |
+| ----------------- | ------ | ----------- | ------------------------------------------------------------------------------------ |
+| `credential_type` | string | No          | Sobrescribe el método de auth. Se hereda de la cuenta.                               |
+| `name`            | string | No          | Sobrescribe `git user.name`.                                                         |
+| `email`           | string | No          | Sobrescribe `git user.email`.                                                        |
+| `id_folder`       | string | No          | Sobrescribe el directorio de 2º nivel (carpeta org).                                 |
+| `clone_folder`    | string | No          | Sobrescribe el directorio de 3er nivel. Si es absoluto, reemplaza toda la ruta.      |
+| `container`       | bool   | No          | Lo marca como contenedor multi-repo; gitbox escanea dentro buscando clones anidados. |
 
 ### Mirrors
 
@@ -359,17 +359,17 @@ Una cuenta es única por `(hostname, username)`. Borrar una cuenta recorre en ca
 }
 ```
 
-| Campo                     | Tipo   | Obligatorio | Descripción                                                     |
-| ------------------------- | ------ | ----------- | --------------------------------------------------------------- |
-| `account_src`             | string | Sí          | Clave de la cuenta origen                                       |
-| `account_dst`             | string | Sí          | Clave de la cuenta destino (debe ser distinta de src)           |
-| `repos.<key>.direction`   | string | Sí          | `"push"` o `"pull"`                                             |
-| `repos.<key>.origin`      | string | Sí          | `"src"` o `"dst"` — qué cuenta es la fuente de verdad           |
+| Campo                     | Tipo   | Obligatorio | Descripción                                                              |
+| ------------------------- | ------ | ----------- | ------------------------------------------------------------------------ |
+| `account_src`             | string | Sí          | Clave de la cuenta origen                                                |
+| `account_dst`             | string | Sí          | Clave de la cuenta destino (debe ser distinta de src)                    |
+| `repos.<key>.direction`   | string | Sí          | `"push"` o `"pull"`                                                      |
+| `repos.<key>.origin`      | string | Sí          | `"src"` o `"dst"` — qué cuenta es la fuente de verdad                    |
 | `repos.<key>.target_repo` | string | No          | Sobrescribe el nombre del repo destino (por defecto: igual que la clave) |
-| `repos.<key>.method`      | string | No          | `"api"` o `"manual"`                                            |
-| `repos.<key>.status`      | string | No          | `"active"`, `"pending"`, `"error"`, `"paused"`                  |
-| `repos.<key>.last_sync`   | string | No          | Timestamp RFC3339 del último sync conocido                      |
-| `repos.<key>.error`       | string | No          | Último mensaje de error                                         |
+| `repos.<key>.method`      | string | No          | `"api"` o `"manual"`                                                     |
+| `repos.<key>.status`      | string | No          | `"active"`, `"pending"`, `"error"`, `"paused"`                           |
+| `repos.<key>.last_sync`   | string | No          | Timestamp RFC3339 del último sync conocido                               |
+| `repos.<key>.error`       | string | No          | Último mensaje de error                                                  |
 
 ### Caché de workspaces
 
@@ -391,12 +391,12 @@ La sección `workspaces` es una caché regenerable — se puede borrar sin riesg
 }
 ```
 
-| Campo        | Tipo   | Descripción                                                                      |
-| ------------ | ------ | -------------------------------------------------------------------------------- |
-| `name`       | string | Nombre visible (el nombre del archivo `.code-workspace` sin extensión)           |
-| `file`       | string | Ruta absoluta al archivo `.code-workspace` descubierto                           |
-| `members`    | array  | Clones miembro resueltos desde las carpetas del archivo (`source` + `repo`)      |
-| `discovered` | bool   | Siempre `true` — las entradas se descubren, nunca se escriben a mano             |
+| Campo        | Tipo   | Descripción                                                                 |
+| ------------ | ------ | --------------------------------------------------------------------------- |
+| `name`       | string | Nombre visible (el nombre del archivo `.code-workspace` sin extensión)      |
+| `file`       | string | Ruta absoluta al archivo `.code-workspace` descubierto                      |
+| `members`    | array  | Clones miembro resueltos desde las carpetas del archivo (`source` + `repo`) |
+| `discovered` | bool   | Siempre `true` — las entradas se descubren, nunca se escriben a mano        |
 
 ### Perfiles de terminal
 

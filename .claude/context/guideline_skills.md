@@ -25,11 +25,11 @@ Context window is shared. Only add what Claude doesn't already know.
 
 ### 2. Degrees of Freedom
 
-| Freedom | When | Example |
-|---------|------|---------|
-| **High** (text instructions) | Multiple approaches valid | Code review guidelines |
-| **Medium** (pseudocode/params) | Preferred pattern exists | Report template with options |
-| **Low** (exact script) | Operations are fragile | Database migrations |
+| Freedom                        | When                      | Example                      |
+| ------------------------------ | ------------------------- | ---------------------------- |
+| **High** (text instructions)   | Multiple approaches valid | Code review guidelines       |
+| **Medium** (pseudocode/params) | Preferred pattern exists  | Report template with options |
+| **Low** (exact script)         | Operations are fragile    | Database migrations          |
 
 ### 3. Test With All Models
 
@@ -50,21 +50,24 @@ description: What it does and WHEN to use it. Third person only.
 # Skill Title
 
 ## Quick start
+
 [Minimal working example]
 
 ## Detailed instructions
+
 [Step-by-step workflow]
 
 ## References
+
 See [REFERENCE.md](REFERENCE.md) for details
 ```
 
 ### Frontmatter Rules
 
-| Field | Rules |
-|-------|-------|
-| `name` | Max 64 chars, lowercase + numbers + hyphens only |
-| `description` | Max 1024 chars, non-empty, third person |
+| Field         | Rules                                            |
+| ------------- | ------------------------------------------------ |
+| `name`        | Max 64 chars, lowercase + numbers + hyphens only |
+| `description` | Max 1024 chars, non-empty, third person          |
 
 **Reserved words (avoid):** anthropic, claude
 
@@ -132,7 +135,6 @@ Both methods work. Use `disable-model-invocation: true` in frontmatter to allow 
 ## Workflow
 
 Copy this checklist:
-
 ```
 
 - [ ] Step 1: Configure
@@ -140,7 +142,7 @@ Copy this checklist:
 - [ ] Step 3: Test
 - [ ] Step 4: Verify
 
-```
+```text
 
 **Step 1: Configure**
 [Instructions...]
@@ -165,13 +167,17 @@ Run validator -> fix errors -> repeat
 
 ```markdown
 # BAD
+
 If doing this before August 2025, use old API.
 
 # GOOD
+
 ## Current method
+
 Use v2 API...
 
 ## Old patterns (deprecated)
+
 <details>Legacy v1 API...</details>
 ```
 
@@ -188,35 +194,37 @@ Pick ONE term and use it everywhere:
 
 ### Template Pattern
 
-```markdown
+````markdown
 ## Output format
 
 ALWAYS use this structure:
 
 ```markdown
 # [Title]
+
 ## Summary
+
 [Overview]
+
 ## Findings
+
 - Finding 1
 - Finding 2
 ```
-
-```
+````
 
 ### Examples Pattern
 
-```markdown
+````markdown
 ## Examples
 
 **Input:** Added user authentication
 **Output:**
-```
 
+```text
 feat(auth): implement JWT-based authentication
-
 ```
-```
+````
 
 ### Conditional Workflow
 
@@ -260,9 +268,11 @@ TIMEOUT = 47  # Magic number, no explanation
 
 ```markdown
 # Execute the script
+
 Run `python scripts/build.py` to compile.
 
 # Read as reference
+
 See `scripts/build.py` for the build algorithm.
 ```
 
@@ -270,14 +280,14 @@ See `scripts/build.py` for the build algorithm.
 
 ## Anti-Patterns
 
-| Don't | Do Instead |
-|-------|-----------|
-| Windows paths `scripts\helper.py` | Unix paths `scripts/helper.py` |
-| Multiple options without default | One recommended approach + alternatives |
-| Deeply nested references | One level deep from SKILL.md |
-| Time-sensitive dates | "Old patterns" section |
-| Assuming packages installed | Explicit `pip install` or `npm install` |
-| Magic numbers | Document all constants |
+| Don't                             | Do Instead                              |
+| --------------------------------- | --------------------------------------- |
+| Windows paths `scripts\helper.py` | Unix paths `scripts/helper.py`          |
+| Multiple options without default  | One recommended approach + alternatives |
+| Deeply nested references          | One level deep from SKILL.md            |
+| Time-sensitive dates              | "Old patterns" section                  |
+| Assuming packages installed       | Explicit `pip install` or `npm install` |
+| Magic numbers                     | Document all constants                  |
 
 ---
 
@@ -306,11 +316,11 @@ See `scripts/build.py` for the build algorithm.
 
 ## Quick Reference
 
-| Element | Limit |
-|---------|-------|
-| `name` | 64 chars, lowercase/numbers/hyphens |
-| `description` | 1024 chars, third person |
-| SKILL.md body | < 500 lines |
-| References | 1 level deep |
-| Token cost at scan | ~100 tokens (metadata only) |
-| Token cost when active | < 5k tokens |
+| Element                | Limit                               |
+| ---------------------- | ----------------------------------- |
+| `name`                 | 64 chars, lowercase/numbers/hyphens |
+| `description`          | 1024 chars, third person            |
+| SKILL.md body          | < 500 lines                         |
+| References             | 1 level deep                        |
+| Token cost at scan     | ~100 tokens (metadata only)         |
+| Token cost when active | < 5k tokens                         |

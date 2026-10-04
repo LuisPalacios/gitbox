@@ -4,20 +4,20 @@ The CI workflow includes code signing and notarization steps for macOS DMGs. The
 
 ## Prerequisites
 
-An Apple Developer account ($99/year) is required. Sign up at https://developer.apple.com.
+An Apple Developer account ($99/year) is required. Sign up at <https://developer.apple.com>.
 
 ## Required GitHub secrets
 
 Add these secrets to the repository settings (Settings > Secrets and variables > Actions):
 
-| Secret | Description |
-| --- | --- |
-| `APPLE_CERTIFICATE` | Base64-encoded `.p12` Developer ID certificate. Export from Keychain Access, then run `base64 -i cert.p12 \| pbcopy`. |
-| `APPLE_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12` file. |
-| `APPLE_IDENTITY` | Signing identity string, e.g. `Developer ID Application: Your Name (TEAMID)`. Find with `security find-identity -v -p codesigning`. |
-| `APPLE_ID` | Apple ID email address used for notarization. |
-| `APPLE_TEAM_ID` | 10-character Team ID from the Apple Developer portal (Membership section). |
-| `APPLE_APP_PASSWORD` | App-specific password for notarization. Generate at https://appleid.apple.com under Sign-In and Security > App-Specific Passwords. |
+| Secret                       | Description                                                                                                                          |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `APPLE_CERTIFICATE`          | Base64-encoded `.p12` Developer ID certificate. Export from Keychain Access, then run `base64 -i cert.p12 \| pbcopy`.                |
+| `APPLE_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12` file.                                                                                        |
+| `APPLE_IDENTITY`             | Signing identity string, e.g. `Developer ID Application: Your Name (TEAMID)`. Find with `security find-identity -v -p codesigning`.  |
+| `APPLE_ID`                   | Apple ID email address used for notarization.                                                                                        |
+| `APPLE_TEAM_ID`              | 10-character Team ID from the Apple Developer portal (Membership section).                                                           |
+| `APPLE_APP_PASSWORD`         | App-specific password for notarization. Generate at <https://appleid.apple.com> under Sign-In and Security > App-Specific Passwords. |
 
 ## How it works
 

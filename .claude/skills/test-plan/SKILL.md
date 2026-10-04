@@ -97,12 +97,12 @@ Read the "Full release checklist" sections from `docs/testing.md` and present th
 1. Print the exact launch commands with `./scripts/test-commands.sh` (test mode) or `./scripts/run-commands.sh` (real config). The GUI needs each host's desktop session, so the user runs them there.
 2. Use this format for interactive steps:
 
-```text
-Please launch on each platform and check <section>:
-  Windows:  cmd/gui/build/bin/GitboxApp.exe --test-mode
-  macOS:    cd ~ && /tmp/GitboxApp.app/Contents/MacOS/GitboxApp --test-mode
-  Linux:    cd ~ && /tmp/GitboxApp --test-mode
-```
+   ```text
+   Please launch on each platform and check <section>:
+     Windows:  cmd/gui/build/bin/GitboxApp.exe --test-mode
+     macOS:    cd ~ && /tmp/GitboxApp.app/Contents/MacOS/GitboxApp --test-mode
+     Linux:    cd ~ && /tmp/GitboxApp --test-mode
+   ```
 
 3. Ask the user to confirm each section passes before moving to the next
 
