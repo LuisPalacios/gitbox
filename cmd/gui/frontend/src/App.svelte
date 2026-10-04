@@ -151,7 +151,7 @@
   let checkGitignorePref = true;
 
   // ── Update state ──
-  let updateInfo: { available: boolean; current: string; latest: string; url: string } | null = null;
+  let updateInfo: { available: boolean; current: string; latest: string; url: string; selfUpdate: boolean } | null = null;
   let updateApplying = false;
   let updateProgress = '';
   let updateDone = false;
@@ -3873,7 +3873,11 @@
           <span class="update-pill-spin">&#8635;</span> <span>{updateProgress || 'Updating…'}</span>
         {:else}
           <span>&#9650;</span>
-          <button class="update-pill-btn" on:click={() => { updateApplying = true; updateError = ''; bridge.applyUpdate().catch((e) => { updateApplying = false; updateError = typeof e === 'string' ? e : (e?.message || 'Update failed'); }); }}>{updateInfo.latest} available</button>
+          {#if updateInfo.selfUpdate}
+            <button class="update-pill-btn" on:click={() => { updateApplying = true; updateError = ''; bridge.applyUpdate().catch((e) => { updateApplying = false; updateError = typeof e === 'string' ? e : (e?.message || 'Update failed'); }); }}>{updateInfo.latest} available</button>
+          {:else}
+            <button class="update-pill-btn" title="Open the release page" on:click={() => BrowserOpenURL(updateInfo.url)}>{updateInfo.latest} available</button>
+          {/if}
           <button class="update-pill-dismiss" on:click={() => updateInfo = null} title="Dismiss">&#10005;</button>
         {/if}
       </div>

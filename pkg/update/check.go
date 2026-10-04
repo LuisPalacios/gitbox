@@ -217,11 +217,14 @@ func getJSON(ctx context.Context, opts Options, path string, out any) error {
 
 // ArtifactName returns the expected zip/artifact name for the current platform.
 func ArtifactName() string {
-	// Set by the AppImage runtime to the path of the running AppImage.
-	if runningFromAppImage() {
-		return "gitbox-x86_64.AppImage"
-	}
 	return artifactNameFor(runtime.GOOS, runtime.GOARCH)
+}
+
+// SelfUpdateSupported reports whether this build can download and install
+// updates in place. The AppImage build only notifies: its users manage the
+// AppImage file themselves, so the GUI sends them to the release page.
+func SelfUpdateSupported() bool {
+	return !runningFromAppImage() && ArtifactName() != ""
 }
 
 // artifactNameFor returns the release artifact name for a given GOOS/GOARCH

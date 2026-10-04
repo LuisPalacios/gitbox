@@ -6,7 +6,7 @@ Test inventory and harness internals. For running tests, checklists, and fixture
 
 Counts are top-level `func Test…` functions per package, from `grep -rc "^func Test" --include=*_test.go pkg cmd`. Subtests (`t.Run`) are not counted.
 
-### Package tests — 429 tests (`pkg/`)
+### Package tests — 431 tests (`pkg/`)
 
 - `pkg/adopt/` — 13 tests: orphan discovery, account scoring (embedded URL user, credential username, parent folder, ambiguous ties), nested clones under containers
 - `pkg/config/` — 98 tests: config parsing, v1/v2 → v3 migration, CRUD operations, save/load, backups, test-mode setup
@@ -25,15 +25,16 @@ Counts are top-level `func Test…` functions per package, from `grep -rc "^func
 - `pkg/provider/` — 43 tests: HTTP client, provider API parsing
 - `pkg/status/` — 15 tests: clone status checking, branch detection, nesting computation
 - `pkg/terminals/` — 51 tests: catalog shape, OS-aware Profile composition, WezTerm and Windows Terminal lookups, merge rules
-- `pkg/update/` — 19 tests: semver parsing, version comparison, update check (mock API), major-version cap, artifact names, install targets, checksum verification
+- `pkg/update/` — 21 tests: semver parsing, version comparison, update check (mock API), major-version cap, artifact names, AppImage notify-only detection, install targets, checksum verification
 - `pkg/workspace/` — 5 tests: workspace discovery, cache refresh, extra folders, tentative containers
 
-### GUI tests — 41 tests (`cmd/gui/`)
+### GUI tests — 42 tests (`cmd/gui/`)
 
 Go-side logic of the Wails app that runs without a window:
 
 - Account and browser actions — account folder resolution, provider URLs, error paths for unknown accounts and repos
 - AI harness actions — detection, ordering, dedup, retired-harness pruning, `~/.local/bin` fallback, launcher default Profile
+- Self-update — the AppImage build refuses `ApplyUpdate` before any download
 - Terminals — argv resolution, legacy entry upgrades, Windows Terminal profile parsing and merge, MSYS path and env sanitising
 - Workspaces and containers — cache refresh, container flag persistence, extra folders, nested scan depth, absolute `clone_folder` for onboarded clones
 
@@ -41,7 +42,7 @@ Go-side logic of the Wails app that runs without a window:
 
 - `TestScenario_FullLifecycle` — end-to-end through `pkg/ops`: add account → credential check → discover → add repo → clone → status → pull and fetch → account edit + reconfigure clones → mirror CRUD → re-clone → rename account → delete everything
 
-### Total: 470 tests
+### Total: 473 tests
 
 ## How the test harness works
 
