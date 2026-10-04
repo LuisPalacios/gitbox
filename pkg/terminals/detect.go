@@ -317,7 +317,7 @@ func DiscoverWSLDistros() []string {
 	}
 	text := decodeWSLBytes(out)
 	var distros []string
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		name := strings.TrimSpace(line)
 		// `wsl --list --quiet` prints a trailing empty line; some builds also
 		// emit a "(Default)" suffix that --quiet was supposed to suppress.
@@ -396,7 +396,7 @@ func readLoginShellFromPasswd() string {
 		return ""
 	}
 	uidStr := intToString(uid)
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		fields := strings.Split(line, ":")
 		if len(fields) >= 7 && fields[2] == uidStr {
 			return strings.TrimSpace(fields[6])

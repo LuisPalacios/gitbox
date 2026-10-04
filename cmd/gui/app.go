@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1729,12 +1730,11 @@ func openTerminalAt(path string, command string, args []string) error {
 func sanitizeWindowsTerminalEnv(env []string) []string {
 	out := make([]string, 0, len(env))
 	for _, e := range env {
-		i := strings.IndexByte(e, '=')
-		if i < 0 {
+		key, val, ok := strings.Cut(e, "=")
+		if !ok {
 			out = append(out, e)
 			continue
 		}
-		key, val := e[:i], e[i+1:]
 		switch strings.ToUpper(key) {
 		case
 			// MSYS / MSYS2 markers.
@@ -2034,11 +2034,11 @@ func (a *App) harnessProfileID() (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.cfg == nil {
-		return "", fmt.Errorf("Configure a terminal profile first (Settings → Terminals → Manager)")
+		return "", errors.New("configure a terminal profile first (Settings → Terminals → Manager)")
 	}
 	p, ok := terminals.DefaultLaunchProfile(a.cfg.Global)
 	if !ok {
-		return "", fmt.Errorf("Configure a terminal profile first (Settings → Terminals → Manager)")
+		return "", errors.New("configure a terminal profile first (Settings → Terminals → Manager)")
 	}
 	return p.ID, nil
 }
@@ -2462,9 +2462,7 @@ func (a *App) GetAllStatus() []StatusResult {
 	a.mu.Lock()
 	cfg := a.cfg
 	gone := make(map[string]bool, len(a.upstreamGone))
-	for k, v := range a.upstreamGone {
-		gone[k] = v
-	}
+	maps.Copy(gone, a.upstreamGone)
 	a.mu.Unlock()
 
 	raw := status.CheckAll(cfg)
@@ -2589,8 +2587,8 @@ func (a *App) probeUpstreamExistenceAsync() {
 // Empty owner means the repo key wasn't in org/name form — provider
 // clients handle that case by falling back to the authenticated user.
 func splitRepoKeyForProbe(repoKey string) (string, string) {
-	if i := strings.IndexByte(repoKey, '/'); i >= 0 {
-		return repoKey[:i], repoKey[i+1:]
+	if before, after, ok := strings.Cut(repoKey, "/"); ok {
+		return before, after
 	}
 	return "", repoKey
 }
@@ -2625,7 +2623,7 @@ func (a *App) CloneRepo(sourceKey, repoKey string) {
 
 		// The git transfer runs without the config lock.
 		err = plan.Run(func(p git.CloneProgress) {
-			wailsrt.EventsEmit(a.ctx, "clone:progress", map[string]interface{}{
+			wailsrt.EventsEmit(a.ctx, "clone:progress", map[string]any{
 				"source": sourceKey, "repo": repoKey,
 				"phase": p.Phase, "percent": p.Percent,
 			})
@@ -2635,7 +2633,7 @@ func (a *App) CloneRepo(sourceKey, repoKey string) {
 		// in-session (create-repo, Bring Local). Until the next full status
 		// refresh the row otherwise has no path and every path-based kebab
 		// action silently no-ops (#79).
-		result := map[string]interface{}{"source": sourceKey, "repo": repoKey, "path": plan.Dest}
+		result := map[string]any{"source": sourceKey, "repo": repoKey, "path": plan.Dest}
 		if err != nil {
 			result["error"] = err.Error()
 		} else {
@@ -2694,7 +2692,7 @@ func (a *App) PullRepo(sourceKey, repoKey string) {
 		_ = heal.Repo(a.cfg, sourceKey, repoKey)
 		err := git.PullQuiet(path)
 
-		result := map[string]interface{}{"source": sourceKey, "repo": repoKey}
+		result := map[string]any{"source": sourceKey, "repo": repoKey}
 		if err != nil {
 			result["error"] = err.Error()
 		}
@@ -2821,7 +2819,7 @@ func (a *App) FetchRepo(sourceKey, repoKey string) {
 		_ = heal.Repo(a.cfg, sourceKey, repoKey)
 		_, err := git.FetchCaptured(path)
 
-		result := map[string]interface{}{"source": sourceKey, "repo": repoKey}
+		result := map[string]any{"source": sourceKey, "repo": repoKey}
 		if err != nil {
 			result["error"] = err.Error()
 			if git.IsUpstreamGoneError(err) {
@@ -2889,7 +2887,7 @@ func (a *App) FetchAllRepos() {
 				// repos stay within spec between sessions.
 				_ = heal.Repo(a.cfg, r.sourceKey, r.repoKey)
 				_, err := git.FetchCaptured(r.path)
-				payload := map[string]interface{}{
+				payload := map[string]any{
 					"source": r.sourceKey, "repo": r.repoKey,
 				}
 				if err == nil {
@@ -3186,17 +3184,13 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 	// Parse the fill output — extract password and the actual username GCM used.
 	gotPassword := false
 	realUsername := acct.Username
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "password=") {
-			if strings.TrimPrefix(line, "password=") != "" {
-				gotPassword = true
-			}
+		if pw, ok := strings.CutPrefix(line, "password="); ok && pw != "" {
+			gotPassword = true
 		}
-		if strings.HasPrefix(line, "username=") {
-			if u := strings.TrimPrefix(line, "username="); u != "" {
-				realUsername = u
-			}
+		if u, ok := strings.CutPrefix(line, "username="); ok && u != "" {
+			realUsername = u
 		}
 	}
 	if !gotPassword {
@@ -3548,7 +3542,7 @@ func (a *App) Discover(accountKey string) {
 		a.mu.Unlock()
 
 		if !ok {
-			wailsrt.EventsEmit(a.ctx, "discover:done", map[string]interface{}{
+			wailsrt.EventsEmit(a.ctx, "discover:done", map[string]any{
 				"accountKey": accountKey,
 				"error":      fmt.Sprintf("account %q not found", accountKey),
 			})
@@ -3557,7 +3551,7 @@ func (a *App) Discover(accountKey string) {
 
 		repos, err := ops.ListRemoteRepos(context.Background(), acct, accountKey)
 		if err != nil {
-			wailsrt.EventsEmit(a.ctx, "discover:done", map[string]interface{}{
+			wailsrt.EventsEmit(a.ctx, "discover:done", map[string]any{
 				"accountKey": accountKey,
 				"error":      err.Error(),
 			})
@@ -3575,7 +3569,7 @@ func (a *App) Discover(accountKey string) {
 			}
 		}
 
-		wailsrt.EventsEmit(a.ctx, "discover:done", map[string]interface{}{
+		wailsrt.EventsEmit(a.ctx, "discover:done", map[string]any{
 			"accountKey": accountKey,
 			"repos":      results,
 		})
@@ -3868,7 +3862,7 @@ func (a *App) DiscoverMirrors() {
 		defer cancel()
 
 		results, err := mirror.DiscoverMirrors(ctx, cfg, func(p mirror.DiscoverProgress) {
-			wailsrt.EventsEmit(a.ctx, "mirror:discover:progress", map[string]interface{}{
+			wailsrt.EventsEmit(a.ctx, "mirror:discover:progress", map[string]any{
 				"phase":   p.Phase,
 				"account": p.Account,
 				"current": p.Current,
@@ -3876,12 +3870,12 @@ func (a *App) DiscoverMirrors() {
 			})
 		})
 		if err != nil {
-			wailsrt.EventsEmit(a.ctx, "mirror:discover:done", map[string]interface{}{
+			wailsrt.EventsEmit(a.ctx, "mirror:discover:done", map[string]any{
 				"error": err.Error(),
 			})
 			return
 		}
-		wailsrt.EventsEmit(a.ctx, "mirror:discover:done", map[string]interface{}{
+		wailsrt.EventsEmit(a.ctx, "mirror:discover:done", map[string]any{
 			"results": results,
 		})
 	}()

@@ -352,7 +352,7 @@ func TestRefreshAIHarnessesWithoutContextDoesNotPanic(t *testing.T) {
 	a.RefreshAIHarnesses() // ctx == nil → EventsEmit must be skipped
 	// Wait for the goroutine to release harnessMu before the temp dir goes.
 	a.harnessMu.Lock()
-	a.harnessMu.Unlock()
+	defer a.harnessMu.Unlock()
 }
 
 func TestHarnessWatcherStartStopIdempotent(t *testing.T) {
@@ -454,7 +454,7 @@ func TestHarnessProfileID_PicksLauncherDefault(t *testing.T) {
 		t.Errorf("want visible Default profile, got %q err=%v", id, err)
 	}
 	a = appWithProfilesAndHarnesses(t, apps, nil, nil, nil)
-	if _, err := a.harnessProfileID(); err == nil || !strings.Contains(err.Error(), "Configure a terminal profile") {
+	if _, err := a.harnessProfileID(); err == nil || !strings.Contains(err.Error(), "configure a terminal profile") {
 		t.Errorf("no profiles must error with an actionable message, got %v", err)
 	}
 }
@@ -473,7 +473,7 @@ func TestOpenInAIHarness_ErrorPaths(t *testing.T) {
 	t.Run("no profile configured errors before exec", func(t *testing.T) {
 		a := appWithProfilesAndHarnesses(t, nil, nil, nil, []config.AIHarnessEntry{harness})
 		err := a.OpenInAIHarness("/any", "claude", nil)
-		if err == nil || !strings.Contains(err.Error(), "Configure a terminal profile") {
+		if err == nil || !strings.Contains(err.Error(), "configure a terminal profile") {
 			t.Errorf("expected profile-missing error, got %v", err)
 		}
 	})

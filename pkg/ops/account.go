@@ -272,8 +272,8 @@ func HostnameFromURL(rawURL string) string {
 		return u.Hostname()
 	}
 	for _, prefix := range []string{"https://", "http://"} {
-		if strings.HasPrefix(rawURL, prefix) {
-			return strings.TrimPrefix(rawURL, prefix)
+		if after, ok := strings.CutPrefix(rawURL, prefix); ok {
+			return after
 		}
 	}
 	return rawURL

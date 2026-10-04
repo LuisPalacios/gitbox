@@ -19,7 +19,7 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR GIT_OBJECT_
 # Git passes the remote ref info via stdin. If every ref being pushed
 # is a tag (refs/tags/...), skip the checks — no code changed.
 all_tags=true
-while read local_ref local_sha remote_ref remote_sha; do
+while read -r local_ref _; do
     case "$local_ref" in
         refs/tags/*) ;;
         *) all_tags=false; break ;;
@@ -47,7 +47,8 @@ if [ ! -d "$dist" ]; then
 fi
 
 echo "pre-push: checking gofmt..."
-unformatted=$(gofmt -s -l $(git ls-files '*.go'))
+mapfile -t go_files < <(git ls-files "*.go")
+unformatted=$(gofmt -s -l "${go_files[@]}")
 if [ -n "$unformatted" ]; then
     echo "pre-push: these files need gofmt -s -w:"
     echo "$unformatted"

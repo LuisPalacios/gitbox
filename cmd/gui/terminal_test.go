@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -415,10 +416,8 @@ func TestSanitizeWindowsTerminalEnv(t *testing.T) {
 		}
 	}
 	// Unknown keys kept verbatim.
-	for _, e := range out {
-		if e == "FOO=/c/not-normalised" {
-			return
-		}
+	if slices.Contains(out, "FOO=/c/not-normalised") {
+		return
 	}
 	t.Error("unknown key FOO was not preserved verbatim")
 }

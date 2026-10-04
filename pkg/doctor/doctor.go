@@ -262,7 +262,7 @@ func probeVersion(path string, args []string) string {
 	cmd.Stderr = &buf
 	_ = cmd.Run()
 	text := decodeToolOutput(buf.Bytes())
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		if s := strings.TrimSpace(line); s != "" {
 			return s
 		}

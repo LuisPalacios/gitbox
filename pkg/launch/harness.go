@@ -2,6 +2,7 @@ package launch
 
 import (
 	"encoding/base64"
+	"slices"
 	"strings"
 	"unicode/utf16"
 )
@@ -23,12 +24,7 @@ func TemplateAcceptsCommand(tmpl []string) bool {
 
 // TemplateHasToken reports whether tmpl contains the whole-arg token.
 func TemplateHasToken(tmpl []string, token string) bool {
-	for _, a := range tmpl {
-		if a == token {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(tmpl, token)
 }
 
 // shellFamily classifies a shell binary by its basename so HarnessInShell

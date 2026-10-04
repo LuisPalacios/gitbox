@@ -242,11 +242,11 @@ func (g *GitHub) searchPRs(ctx context.Context, apiBase string, headers map[stri
 // repoFullFromAPI extracts "owner/repo" from a repository_url like
 // "https://api.github.com/repos/owner/repo".
 func repoFullFromAPI(repoURL string) string {
-	idx := strings.Index(repoURL, "/repos/")
-	if idx < 0 {
+	_, after, ok := strings.Cut(repoURL, "/repos/")
+	if !ok {
 		return ""
 	}
-	return strings.TrimSpace(repoURL[idx+len("/repos/"):])
+	return strings.TrimSpace(after)
 }
 
 // --- RepoDeleter ---

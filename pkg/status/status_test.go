@@ -222,7 +222,7 @@ func TestCheckAll_Ordered(t *testing.T) {
 	// which is enough to test ordering without spawning real git processes.
 	sourceOrder := []string{"src-a", "src-b", "src-c"}
 	var repoOrder []string
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		repoOrder = append(repoOrder, fmt.Sprintf("org/repo-%02d", i))
 	}
 

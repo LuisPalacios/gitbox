@@ -61,8 +61,8 @@ func main() {
 		// to watch. When that PID disappears, the watcher self-terminates
 		// — the safety net so the Manager can never outlive its parent
 		// regardless of how the parent died (issue #69).
-		if strings.HasPrefix(arg, "--parent-pid=") {
-			if v, err := strconv.Atoi(strings.TrimPrefix(arg, "--parent-pid=")); err == nil {
+		if after, ok := strings.CutPrefix(arg, "--parent-pid="); ok {
+			if v, err := strconv.Atoi(after); err == nil {
 				parentPID = v
 			}
 		}
@@ -154,7 +154,7 @@ func main() {
 		OnShutdown:    app.Shutdown,
 		OnBeforeClose: app.BeforeClose,
 		OnDomReady:    app.DomReady,
-		Bind: []interface{}{
+		Bind: []any{
 			app,
 		},
 	})
@@ -226,7 +226,7 @@ func runTerminalsWindow(app *App) {
 		OnStartup:  app.Startup,
 		OnShutdown: app.Shutdown,
 		OnDomReady: app.DomReady,
-		Bind: []interface{}{
+		Bind: []any{
 			app,
 		},
 	})

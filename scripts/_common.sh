@@ -13,6 +13,8 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 
 G='\033[0;32m'  R='\033[0;31m'  Y='\033[0;33m'
+# B is used by the scripts that source this file, not here.
+# shellcheck disable=SC2034
 C='\033[0;36m'  D='\033[0;90m'  B='\033[1m'  N='\033[0m'
 
 header() { printf '\n%b━━ %s ━━%b\n\n' "$C" "$*" "$N"; }
@@ -27,8 +29,9 @@ die()    { printf '%berror:%b %s\n' "$R" "$N" "$*" >&2; exit 1; }
 # ---------------------------------------------------------------------------
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Used by the scripts that source this file, not here.
+# shellcheck disable=SC2034
 FIXTURE="$REPO_ROOT/test-gitbox.json"
-FIXTURE_EXAMPLE="$REPO_ROOT/json/test-gitbox.json.example"
 
 # ---------------------------------------------------------------------------
 # OS detection
@@ -159,6 +162,8 @@ local_gui_for() {
 # Windows: home dir, because SCP and Git Bash disagree on /tmp mapping.
 # Unix:    /tmp is consistent across SCP and shell.
 remote_gui_for() {
+    # The Windows path keeps a literal ~ on purpose: it expands remotely.
+    # shellcheck disable=SC2088
     case "$1" in
         mac|mac-arm|mac-intel)  echo "/tmp/GitboxApp.app" ;;
         linux)                  echo "/tmp/GitboxApp" ;;

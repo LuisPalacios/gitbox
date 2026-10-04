@@ -162,7 +162,7 @@ run_npm_audit() {
 run_shellcheck() {
     local files
     mapfile -t files < <(git ls-files '*.sh' .githooks/pre-push scripts/appimage/AppRun)
-    shellcheck -f gcc -x "${files[@]}"
+    shellcheck -f gcc -x -P SCRIPTDIR "${files[@]}"
 }
 
 run_actionlint() { actionlint; }

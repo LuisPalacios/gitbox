@@ -109,7 +109,8 @@ func (g *GitLab) CreateRepo(ctx context.Context, baseURL, token, _, owner, repoN
 	if !private {
 		visibility = "public"
 	}
-	body := fmt.Sprintf(`{"name":%q,"description":%q,"visibility":%q`, repoName, description, visibility)
+	var body strings.Builder
+	body.WriteString(fmt.Sprintf(`{"name":%q,"description":%q,"visibility":%q`, repoName, description, visibility))
 	if owner != "" {
 		// Resolve namespace ID for the group.
 		nsURL := fmt.Sprintf("%s/api/v4/namespaces?search=%s", base, url.QueryEscape(owner))
@@ -120,14 +121,14 @@ func (g *GitLab) CreateRepo(ctx context.Context, baseURL, token, _, owner, repoN
 		if _, err := doGet(ctx, nsURL, g.authHeaders(token), &namespaces); err == nil {
 			for _, ns := range namespaces {
 				if strings.EqualFold(ns.FullPath, owner) {
-					body += fmt.Sprintf(`,"namespace_id":%d`, ns.ID)
+					body.WriteString(fmt.Sprintf(`,"namespace_id":%d`, ns.ID))
 					break
 				}
 			}
 		}
 	}
-	body += "}"
-	_, err := doPost(ctx, apiURL, g.authHeaders(token), strings.NewReader(body), nil)
+	body.WriteString("}")
+	_, err := doPost(ctx, apiURL, g.authHeaders(token), strings.NewReader(body.String()), nil)
 	if err != nil {
 		return fmt.Errorf("gitlab create repo: %w", err)
 	}

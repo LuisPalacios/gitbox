@@ -379,6 +379,8 @@ ensure_path() {
   fi
 
   log "Adding $dir to PATH in $rc_file"
+  # The literal $PATH is written to the rc file and expands when it is sourced.
+  # shellcheck disable=SC2016
   printf '\n%s\nexport PATH="%s:$PATH"\n' "$marker" "$dir" >> "$rc_file"
 }
 
@@ -509,19 +511,19 @@ print_summary() {
   if [[ "$uses_dir" == true ]] && ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
     local rc_file=""
     case "$PLATFORM" in
-      macos) rc_file="~/.zshrc" ;;
+      macos) rc_file=".zshrc" ;;
       linux)
         if [[ "$(basename "${SHELL:-/bin/bash}")" == "zsh" ]]; then
-          rc_file="~/.zshrc"
+          rc_file=".zshrc"
         else
-          rc_file="~/.bashrc"
+          rc_file=".bashrc"
         fi
         ;;
-      windows) rc_file="~/.bashrc" ;;
+      windows) rc_file=".bashrc" ;;
     esac
     if [[ -n "$rc_file" ]]; then
       bold "  Reload your shell to pick up PATH changes:"
-      echo "    source $rc_file"
+      echo "    source ~/$rc_file"
       echo ""
     fi
   fi

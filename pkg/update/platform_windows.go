@@ -89,20 +89,21 @@ func ApplyElevated(extractDir, installDir string) error {
 
 	// Write the helper batch script.
 	scriptPath := filepath.Join(extractDir, "gitbox-update.cmd")
-	script := "@echo off\r\n"
-	script += "title gitbox update\r\n"
-	script += "echo Waiting for gitbox to exit...\r\n"
-	script += "timeout /t 2 /nobreak >nul\r\n"
+	var script strings.Builder
+	script.WriteString("@echo off\r\n")
+	script.WriteString("title gitbox update\r\n")
+	script.WriteString("echo Waiting for gitbox to exit...\r\n")
+	script.WriteString("timeout /t 2 /nobreak >nul\r\n")
 	for _, line := range copyLines {
-		script += line + "\r\n"
+		script.WriteString(line + "\r\n")
 	}
-	script += "echo.\r\n"
-	script += "echo Update complete. You can restart gitbox now.\r\n"
-	script += "timeout /t 3\r\n"
+	script.WriteString("echo.\r\n")
+	script.WriteString("echo Update complete. You can restart gitbox now.\r\n")
+	script.WriteString("timeout /t 3\r\n")
 	// Clean up the temp extraction directory (including this script).
-	script += fmt.Sprintf("(rd /s /q \"%s\") 2>nul\r\n", extractDir)
+	script.WriteString(fmt.Sprintf("(rd /s /q \"%s\") 2>nul\r\n", extractDir))
 
-	if err := os.WriteFile(scriptPath, []byte(script), 0o644); err != nil {
+	if err := os.WriteFile(scriptPath, []byte(script.String()), 0o644); err != nil {
 		return fmt.Errorf("writing update script: %w", err)
 	}
 

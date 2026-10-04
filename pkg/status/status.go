@@ -248,8 +248,8 @@ func ResolveRepoPath(globalFolder, sourceFolder, repoName string, repo config.Re
 // splitRepoKey splits "org/repo" into ("org", "repo").
 // If no slash, returns ("", repoName).
 func splitRepoKey(repoName string) (string, string) {
-	if i := strings.IndexByte(repoName, '/'); i >= 0 {
-		return repoName[:i], repoName[i+1:]
+	if before, after, ok := strings.Cut(repoName, "/"); ok {
+		return before, after
 	}
 	return "", repoName
 }

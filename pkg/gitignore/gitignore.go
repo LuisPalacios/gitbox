@@ -227,16 +227,14 @@ func Install() (InstallResult, error) {
 // strictly between SentinelBegin and SentinelEnd), and a boolean
 // indicating whether the block was found.
 func extractManagedBody(content string) (string, bool) {
-	begin := strings.Index(content, SentinelBegin)
-	if begin < 0 {
+	_, rest, ok := strings.Cut(content, SentinelBegin)
+	if !ok {
 		return "", false
 	}
-	rest := content[begin+len(SentinelBegin):]
-	end := strings.Index(rest, SentinelEnd)
-	if end < 0 {
+	body, _, ok := strings.Cut(rest, SentinelEnd)
+	if !ok {
 		return "", false
 	}
-	body := rest[:end]
 	body = strings.TrimPrefix(body, "\n")
 	body = strings.TrimSuffix(body, "\n")
 	return body, true
@@ -274,7 +272,7 @@ func mergeBlock(existing string) string {
 // excluded so users can keep their own comments outside the block.
 func managedPatternSet() map[string]struct{} {
 	set := make(map[string]struct{})
-	for _, line := range strings.Split(recommendedBody, "\n") {
+	for line := range strings.SplitSeq(recommendedBody, "\n") {
 		t := strings.TrimSpace(line)
 		if t == "" || strings.HasPrefix(t, "#") {
 			continue
@@ -322,7 +320,7 @@ func findDuplicatePatterns(content string) []string {
 	outside := stripManagedBlock(content)
 	var dups []string
 	seen := make(map[string]bool)
-	for _, line := range strings.Split(outside, "\n") {
+	for line := range strings.SplitSeq(outside, "\n") {
 		t := strings.TrimSpace(line)
 		if t == "" {
 			continue
@@ -341,19 +339,16 @@ func findDuplicatePatterns(content string) []string {
 // the end marker) from content. If no block is present, content is
 // returned unchanged.
 func stripManagedBlock(content string) string {
-	begin := strings.Index(content, SentinelBegin)
-	if begin < 0 {
+	head, rest, ok := strings.Cut(content, SentinelBegin)
+	if !ok {
 		return content
 	}
-	rest := content[begin+len(SentinelBegin):]
-	end := strings.Index(rest, SentinelEnd)
-	if end < 0 {
+	_, tail, ok := strings.Cut(rest, SentinelEnd)
+	if !ok {
 		return content
 	}
-	tail := rest[end+len(SentinelEnd):]
 	tail = strings.TrimPrefix(tail, "\n")
 
-	head := content[:begin]
 	head = strings.TrimRight(head, "\n")
 	if head == "" {
 		return tail
@@ -446,9 +441,9 @@ func expandPath(p string) string {
 	if p == "" {
 		return p
 	}
-	if strings.HasPrefix(p, "~") {
+	if after, ok := strings.CutPrefix(p, "~"); ok {
 		if home, err := os.UserHomeDir(); err == nil {
-			p = filepath.Join(home, strings.TrimPrefix(p, "~"))
+			p = filepath.Join(home, after)
 		}
 	}
 	return filepath.FromSlash(p)

@@ -84,8 +84,7 @@ func Environ() []string {
 // ensureHomebrewPATH prepends Homebrew bin dirs to PATH if not already present.
 func ensureHomebrewPATH(env []string) []string {
 	for i, e := range env {
-		if strings.HasPrefix(e, "PATH=") {
-			currentPath := strings.TrimPrefix(e, "PATH=")
+		if currentPath, ok := strings.CutPrefix(e, "PATH="); ok {
 			var missing []string
 			for _, dir := range homebrewDirs {
 				if !strings.Contains(currentPath, dir) {
@@ -317,16 +316,16 @@ func DetailedStatus(repoPath string) (branch string, ahead, behind int, changed 
 		return "", 0, 0, nil, nil, err
 	}
 
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
 
-		if strings.HasPrefix(line, "# branch.head ") {
-			branch = strings.TrimPrefix(line, "# branch.head ")
-		} else if strings.HasPrefix(line, "# branch.ab ") {
-			parts := strings.Fields(strings.TrimPrefix(line, "# branch.ab "))
+		if after, ok := strings.CutPrefix(line, "# branch.head "); ok {
+			branch = after
+		} else if after, ok := strings.CutPrefix(line, "# branch.ab "); ok {
+			parts := strings.Fields(after)
 			if len(parts) == 2 {
 				ahead, _ = strconv.Atoi(strings.TrimPrefix(parts[0], "+"))
 				behind, _ = strconv.Atoi(strings.TrimPrefix(parts[1], "-"))
@@ -357,8 +356,8 @@ func DetailedStatus(repoPath string) (branch string, ahead, behind int, changed 
 			if len(parts) >= 11 {
 				changed = append(changed, FileChange{Kind: "conflict", Path: parts[10]})
 			}
-		} else if strings.HasPrefix(line, "? ") {
-			untracked = append(untracked, strings.TrimPrefix(line, "? "))
+		} else if after, ok := strings.CutPrefix(line, "? "); ok {
+			untracked = append(untracked, after)
 		}
 	}
 	// Ensure non-nil slices so JSON serialization produces [] instead of null.
@@ -415,7 +414,7 @@ func CredentialUsernames(repoPath string) []string {
 		return nil
 	}
 	var names []string
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -684,7 +683,7 @@ func mergedBranches(repoPath, base string) ([]string, error) {
 		return nil, err
 	}
 	var branches []string
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		b := strings.TrimSpace(line)
 		if b != "" {
 			branches = append(branches, b)
@@ -702,7 +701,7 @@ func goneBranches(repoPath string) ([]string, error) {
 		return nil, err
 	}
 	var branches []string
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -733,7 +732,7 @@ func listLocalBranches(repoPath string) ([]string, error) {
 		return nil, err
 	}
 	var branches []string
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		b := strings.TrimSpace(line)
 		if b != "" {
 			branches = append(branches, b)
@@ -838,19 +837,19 @@ func output(dir string, args ...string) (string, error) {
 // parseStatus parses git status --porcelain=v2 --branch output.
 func parseStatus(out string) RepoStatus {
 	var s RepoStatus
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
 
 		// Branch headers: # branch.oid, # branch.head, # branch.upstream, # branch.ab
-		if strings.HasPrefix(line, "# branch.head ") {
-			s.Branch = strings.TrimPrefix(line, "# branch.head ")
-		} else if strings.HasPrefix(line, "# branch.upstream ") {
-			s.Upstream = strings.TrimPrefix(line, "# branch.upstream ")
-		} else if strings.HasPrefix(line, "# branch.ab ") {
-			parts := strings.Fields(strings.TrimPrefix(line, "# branch.ab "))
+		if after, ok := strings.CutPrefix(line, "# branch.head "); ok {
+			s.Branch = after
+		} else if after, ok := strings.CutPrefix(line, "# branch.upstream "); ok {
+			s.Upstream = after
+		} else if after, ok := strings.CutPrefix(line, "# branch.ab "); ok {
+			parts := strings.Fields(after)
 			if len(parts) == 2 {
 				s.Ahead, _ = strconv.Atoi(strings.TrimPrefix(parts[0], "+"))
 				s.Behind, _ = strconv.Atoi(strings.TrimPrefix(parts[1], "-"))

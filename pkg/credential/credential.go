@@ -146,10 +146,9 @@ func ResolveGCMToken(accountURL, username string) (token, source string, err err
 	}
 
 	// Parse output for password=<token>.
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "password=") {
-			tok := strings.TrimPrefix(line, "password=")
+		if tok, ok := strings.CutPrefix(line, "password="); ok {
 			if tok != "" {
 				return tok, "GCM (git credential fill)", nil
 			}

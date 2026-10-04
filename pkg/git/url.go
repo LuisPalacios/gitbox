@@ -27,12 +27,11 @@ func ParseRemoteURL(rawURL string) (host, owner, repo string, err error) {
 	if i := strings.Index(rawURL, "@"); i >= 0 && !strings.Contains(rawURL, "://") {
 		// Everything after @ up to : is the host.
 		rest := rawURL[i+1:]
-		colonIdx := strings.Index(rest, ":")
-		if colonIdx < 0 {
+		h, path, ok := strings.Cut(rest, ":")
+		if !ok {
 			return "", "", "", fmt.Errorf("SSH URL %q missing colon after host", rawURL)
 		}
-		host = rest[:colonIdx]
-		path := rest[colonIdx+1:]
+		host = h
 		path = strings.TrimSuffix(path, ".git")
 		path = strings.Trim(path, "/")
 		owner, repo = splitOwnerRepo(path)

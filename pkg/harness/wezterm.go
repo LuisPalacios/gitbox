@@ -57,7 +57,7 @@ func ParseWeztermLaunchMenu(data []byte) ([]WeztermLaunchMenuEntry, error) {
 // best-effort parser.
 func stripWeztermLineComments(src string) string {
 	var out strings.Builder
-	for _, line := range strings.Split(src, "\n") {
+	for line := range strings.SplitSeq(src, "\n") {
 		stripped := stripLuaLineComment(line)
 		out.WriteString(stripped)
 		out.WriteByte('\n')

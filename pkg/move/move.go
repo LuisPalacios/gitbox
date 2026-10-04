@@ -279,8 +279,8 @@ func stripScheme(raw string) string {
 // splitRepoKey splits "owner/repo" → ("owner", "repo").
 // Returns ("", key) if no slash is present.
 func splitRepoKey(key string) (owner, name string) {
-	if i := strings.IndexByte(key, '/'); i >= 0 {
-		return key[:i], key[i+1:]
+	if before, after, ok := strings.Cut(key, "/"); ok {
+		return before, after
 	}
 	return "", key
 }
@@ -291,8 +291,7 @@ func splitRepoKey(key string) (owner, name string) {
 // the warnings section at the bottom of the modal. Splitting the
 // two avoids duplicating a long paragraph inside the phase row.
 func humaniseSourceDeleteError(err error, providerName, accountKey string) (short, full string) {
-	var scopeErr *provider.InsufficientScopesError
-	if errors.As(err, &scopeErr) {
+	if scopeErr, ok := errors.AsType[*provider.InsufficientScopesError](err); ok {
 		scopes := strings.Join(scopeErr.RequiredScopes, ", ")
 		short = fmt.Sprintf("Source repo not deleted — %s PAT needs %q scope (see warnings).", providerName, scopes)
 		regenURL := scopeErr.RemediationURL()
