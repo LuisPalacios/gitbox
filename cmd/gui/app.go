@@ -2032,11 +2032,11 @@ func (a *App) harnessProfileID() (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.cfg == nil {
-		return "", fmt.Errorf("Configure a terminal profile first (Gear → Terminals & Shells)")
+		return "", fmt.Errorf("Configure a terminal profile first (Settings → Terminals → Manager)")
 	}
 	p, ok := terminals.DefaultLaunchProfile(a.cfg.Global)
 	if !ok {
-		return "", fmt.Errorf("Configure a terminal profile first (Gear → Terminals & Shells)")
+		return "", fmt.Errorf("Configure a terminal profile first (Settings → Terminals → Manager)")
 	}
 	return p.ID, nil
 }
