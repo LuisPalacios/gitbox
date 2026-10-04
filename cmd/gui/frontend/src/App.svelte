@@ -3429,10 +3429,13 @@
           {@const repoKey = `${sourceKey}/${repoName}`}
           {@const isContainer = !!source.repos[repoName]?.container}
           {@const state = $repoStates[repoKey] || { status: 'unknown', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
-          <div class="repo-row" class:repo-row-clickable={state.status !== 'unknown' && state.status !== 'clean' && state.status !== 'behind' && state.status !== 'not cloned' && state.status !== 'cloning' && state.status !== 'syncing'}
+          {@const rowOpensDetail = state.status !== 'unknown' && state.status !== 'clean' && state.status !== 'behind' && state.status !== 'not cloned' && state.status !== 'cloning' && state.status !== 'syncing'}
+          <div class="repo-row" class:repo-row-clickable={rowOpensDetail}
             class:repo-row-nested={indent > 0}
             style={indent > 0 ? `padding-left: ${10 + indent * 22}px` : ''}
-            role="button" tabindex="0"
+            role="button"
+            tabindex={rowOpensDetail || selectionMode ? 0 : -1}
+            aria-disabled={!rowOpensDetail && !selectionMode}
             on:click={() => activateRepoRow(sourceKey, repoName, repoKey, state.status)}
             on:keydown={onActivateKey(() => activateRepoRow(sourceKey, repoName, repoKey, state.status))}>
             {#if selectionMode}
