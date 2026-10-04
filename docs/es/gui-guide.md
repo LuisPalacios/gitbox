@@ -298,8 +298,8 @@ Los flujos add-account y change-credential ejecutan la misma comprobación autom
 Cada fila de repo clonado tiene un **menú kebab (⋮)** en el lado derecho. El menú se divide en tres secciones para que los elementos que más usas no queden enterrados detrás de scroll:
 
 1. **Siempre visible** — `🌐 Open in browser` y `📁 Open folder`. La entrada de navegador abre `<account url>/<owner>/<name>`, resuelto en el lado Go a partir de la config guardada, y muestra un diálogo de error si la fila no se encuentra ahí. Toda entrada basada en ruta (carpeta, editor, terminal, profile, AI harness) muestra un diálogo de "clona primero" en lugar de no hacer nada cuando el clon no ha terminado o su estado todavía no se ha cargado.
-2. **Defaults** — una entrada por categoría, usando la primera entrada de config como valor por defecto: `>_ Open in <terminals[0]>`, `✎ Open in <editors[0]>`, `🤖 Open in <ai_harnesses[0]>`. Una entrada se oculta cuando esa categoría tiene cero elementos configurados.
-3. **Submenús** — `Terminals ▸`, `Editors ▸`, `AI Harnesses ▸`. Cada submenú aparece solo cuando la categoría tiene **dos o más** entradas: con una sola, el default ya la cubre. Haz clic en el submenú para expandirlo (no hover), haz clic en otro submenú para cambiar, haz clic fuera o elige un elemento para cerrarlo todo.
+2. **Defaults** — una entrada por categoría: `>_ <default profile>` (el Terminal Profile marcado como Default, mostrado por su nombre), `✎ Open with <editors[0]>` y `🤖 Open with <ai_harnesses[0]>`. Una entrada se oculta cuando esa categoría no tiene nada configurado.
+3. **Submenús** — `Profiles ▸`, `Editors ▸`, `AI Harnesses ▸`. `Profiles ▸` lista los profiles marcados como Preferred, aparte del default, y aparece cuando hay al menos uno. `Editors ▸` y `AI Harnesses ▸` solo aparecen cuando la categoría tiene **dos o más** entradas: con una sola, el default ya la cubre. Haz clic en el submenú para expandirlo (no hover), haz clic en otro submenú para cambiar, haz clic fuera o elige un elemento para cerrarlo todo.
 
 Bajo los submenús:
 
@@ -308,9 +308,9 @@ Bajo los submenús:
   - **Merged** — totalmente mergeada en la rama predeterminada; se elimina con `git branch -d`.
   - **Squashed** — squash-merged o rebase-merged en el servidor (commits distintos, mismos cambios); se elimina con `git branch -D`.
 
-Para cambiar qué terminal/editor/harness aparece como default de nivel superior, reordena el array en `gitbox.json`: la primera entrada siempre es el default. No hace falta un flag separado.
+Para cambiar qué editor o AI harness aparece como default de nivel superior, reordena el array en `gitbox.json`: la primera entrada siempre es el default. El default de terminal es el profile marcado como Default en **Settings → Terminals → Manager**.
 
-La lista de terminales detectadas cubre Windows Terminal, PowerShell 7/5, Git Bash, WSL y Command Prompt en Windows; Terminal, iTerm y Warp en macOS; gnome-terminal, Konsole, Kitty, Alacritty, Xfce Terminal y Terminator en Linux. Los editores cubren VS Code, Cursor, Zed y cualquier otro detectable en `PATH`. Los AI harnesses (Claude Code, Codex, Antigravity, Aider, Cursor Agent, OpenCode) se ejecutan dentro del shell del Terminal Profile por defecto: consulta [AI harness actions](#acciones-de-ai-harness) más abajo.
+La detección de terminales cubre Windows Terminal, WezTerm, Alacritty, Tabby, ConEmu, Hyper, Mintty y ZOC en Windows; iTerm2, Terminal, Warp, Kitty, Ghostty, WezTerm y Alacritty en macOS; GNOME Terminal, Konsole, Terminator, Foot, Alacritty, Kitty, Tilda, Guake y xterm en Linux. La detección de shells cubre PowerShell 7/5, Command Prompt, Git Bash y WSL en Windows; Zsh, Bash, Fish y Dash en macOS; Bash, Zsh, Fish, Ksh y Dash en Linux. Los editores cubren VS Code, Cursor, Zed y cualquier otro detectable en `PATH`. Los AI harnesses (Claude Code, Codex, Antigravity, Aider, Cursor Agent, OpenCode) se ejecutan dentro del shell del Terminal Profile por defecto: consulta [AI harness actions](#acciones-de-ai-harness) más abajo.
 
 ### Acciones de cuenta
 
@@ -320,39 +320,21 @@ Cada grupo de source en la lista de repos tiene un **menú kebab (⋮)** en el l
 - **📁 Open folder** — abre la carpeta padre de la cuenta en el gestor de archivos del SO. La carpeta es la raíz natural de workspace para greps multi-repo, ediciones multi-repo o loops de shell. Si la carpeta todavía no existe (nada clonado bajo esa cuenta), la acción falla silenciosamente: clona al menos un repo primero.
 - **>\_ Open in \<terminal\>**, **✎ Open in \<editor\>**, **🤖 Open in \<AI harness\>** — las mismas entradas default-first que el kebab de repo, más submenús de categoría cuando tienes varias opciones configuradas. Sweep branches no aparece aquí: solo tiene sentido en un clon concreto.
 
-En vista compacta, al pasar por encima de una account pill aparecen los mismos accesos de folder / editor / terminal / AI harness como iconos pequeños a la derecha, igual que en filas compactas de repo.
-
 Los editores se auto-detectan al arrancar escaneando PATH. Gitbox escribe los editores detectados en `global.editors` en tu archivo de config con sus rutas completas. Puedes reordenar entradas o añadir editores custom editando la config: el menú siempre refleja el orden de la config.
 
-Las terminales siguen el mismo patrón: se detectan al arrancar por plataforma y se escriben en `global.terminals` con sus comandos y plantillas de argumentos. Cada entrada tiene `name`, `command` (ruta absoluta o launcher en PATH) y `args`. Usa el token literal `{path}` dentro de `args` para marcar dónde se inyecta la ruta del repo; si falta el token, la ruta se añade como argumento final. Edita o reordena libremente: el orden del menú coincide con el orden de la config.
+Las terminales usan profiles en su lugar. Al arrancar, gitbox detecta las apps de terminal y los shells instalados, los escribe en `global.terminal_apps` y `global.shells`, y los combina en entradas lanzables en `global.terminal_profiles`. En Windows un profile empareja una terminal con un shell, por ejemplo Windows Terminal + PowerShell 7. En macOS y Linux un profile es solo la terminal y ejecuta tu login shell. Los gestiono en **Settings → Terminals → Manager**: marco un profile como Default (la entrada de terminal de nivel superior del kebab), marco otros como Preferred (el submenú `Profiles ▸`), oculto los que nunca uso o añado los míos. La re-detección conserva mis flags, renombrados, args editados a mano y los profiles que añadí.
 
-En Windows, las entradas shell desnudas (`cmd.exe`, `powershell.exe`, `pwsh.exe`, `wsl.exe`) tienen `args` vacío: el launcher las envuelve en `cmd.exe /C start "" /D <path>`, lo que da a cada terminal una consola nueva y fija el directorio inicial.
+En Windows, los profiles de shell desnudo que abren un shell sin app de terminal (`pwsh.exe`, `powershell.exe`, `cmd.exe`, `wsl.exe`) están ocultos por defecto, y solo aparecen por sí mismos cuando no hay ninguna terminal moderna instalada. Muestra uno en el Manager para tener un acceso directo. El launcher los envuelve en `cmd.exe /C start "" /D <path>`, lo que da a cada shell una consola nueva y fija el directorio inicial.
 
-#### Abrir un perfil concreto de Windows Terminal
+#### Perfiles de Windows Terminal y WezTerm
 
-Cuando Windows Terminal está instalado, gitbox auto-descubre tus perfiles WT y reescribe `global.terminals` para reflejar el menú WT: una entrada por perfil visible, en el mismo orden que `profiles.list`, cada una lanzando `wt.exe --profile "<name>" -d "{path}"`. La shell se abre con el perfil exacto que ajustaste en WT (colores, fuente, directorio inicial, oh-my-posh, distro WSL concreta). Los lanzamientos de binario desnudo (`pwsh.exe`, `powershell.exe`, `wsl.exe`, `cmd.exe`, `git-bash.exe`) siempre caen al perfil _default_ de WT y pierden ese ajuste, así que se eliminan de `global.terminals` cuando WT discovery tiene éxito.
+Cuando un profile usa Windows Terminal, gitbox busca un perfil WT que coincida en `settings.json` en el momento del lanzamiento. `Windows Terminal + PowerShell 7` coincide con el perfil WT llamado `PowerShell 7`, y un shell WSL por distro coincide con el perfil WT de esa distro. Si hay coincidencia, gitbox ejecuta `wt.exe -w 0 nt --profile "<name>" -d <path>`, así que el shell se abre como pestaña nueva en tu ventana WT más reciente con la fuente, los colores y los ajustes de arranque que configuraste en WT. Los perfiles ocultos y los perfiles cuyo `source` aparece en el `disabledProfileSources` de nivel superior de WT nunca coinciden. Sin coincidencia, gitbox usa los argumentos genéricos de Windows Terminal.
 
-Discovery se ejecuta al arrancar y en cada sync de config. Renombrar, añadir, ocultar o deshabilitar un perfil en WT se recoge en el siguiente launch: las entradas obsoletas se podan para que el menú nunca derive de WT. Un perfil se excluye cuando su flag `hidden` es `true` o cuando su `source` aparece en el `disabledProfileSources` de nivel superior de WT (por ejemplo, perfiles dinámicos de Visual Studio deshabilitados en bloque).
+Ubicaciones comprobadas, en orden: `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json` (Store), `…\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\…` (Preview), `%LOCALAPPDATA%\Microsoft\Windows Terminal\settings.json` (sin empaquetar). Gitbox vuelve a leer el archivo cada vez que cambia, así que renombrar o añadir un perfil WT se aplica en el siguiente lanzamiento.
 
-Las customizaciones existentes se conservan cuando el `name` de la entrada coincide con un perfil visible actual: si antes añadiste `--maximized` u otro flag a una entrada de perfil, gitbox conserva tu `command` y `args` intactos y solo restaura entradas que eliminó. Las entradas cuyo nombre no coincide con ningún perfil visible se eliminan, por diseño: así se limpian automáticamente las entradas legacy `Windows Terminal` / `PowerShell 7` / `WSL` / `Command Prompt` en el primer sync tras actualizar.
+WezTerm funciona en todos los OS: cuando `wezterm.lua` define un `config.launch_menu`, cada sync añade un profile por entrada, y al lanzarlo se ejecutan los `args` propios de esa entrada.
 
-Ubicaciones comprobadas, en orden: `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json` (Store), `…\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\…` (Preview), `%LOCALAPPDATA%\Microsoft\Windows Terminal\settings.json` (sin empaquetar). Si ninguna parsea, porque falta el archivo, JSON mal formado o no hay `profiles.list`, gitbox vuelve a las entradas de binario desnudo para que algo siempre funcione.
-
-Si quieres sobrescribir una entrada auto-descubierta (renombrarla, apuntarla a otro perfil, añadir `--maximized`), edita `gitbox.json` directamente. Formato:
-
-```json
-{
-  "name": "WSL — Ubuntu",
-  "command": "C:\\Users\\<you>\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe",
-  "args": ["--profile", "Ubuntu 24.04.1 LTS", "-d", "{path}"]
-}
-```
-
-Notas:
-
-- `--profile "<name>"` toma el display name del perfil _literalmente_, incluidos sufijos de versión como `Ubuntu 24.04.1 LTS` o la ortografía exacta `PowerShell 7` configurada en los ajustes de WT.
-- `-d "{path}"` establece el directorio inicial.
-- Enrutar mediante `wt.exe --profile` también evita la peculiaridad de fuga de env de Git Bash descrita abajo: WT inicia la shell desde su propio contexto de perfil guardado, así que las variables de entorno con forma MSYS heredadas por la GUI no llegan a la shell.
+Para renombrar un profile o cambiar su terminal o shell, edítalo en el Manager. Para pasar flags extra, edita sus `args` en `gitbox.json`: la re-detección conserva los args editados a mano.
 
 #### Lanzar gitbox desde Git Bash (nota de desarrollo)
 
@@ -361,15 +343,15 @@ Si lanzas `GitboxApp.exe` desde una shell Git Bash / MSYS2, las variables de ent
 Dos arreglos igual de limpios:
 
 - **Lanza `GitboxApp.exe` desde Explorer, el menú Start o un acceso anclado**: cualquier lugar donde Windows origine un env limpio. Los usuarios finales nunca ven esto, así que el comportamiento de producción no se afecta.
-- **Cambia la entrada de terminal afectada a la forma `wt.exe --profile "<name>" -d "{path}"`** mostrada arriba. WT inicia la shell desde su propio contexto de perfil, que tiene env Windows limpio independientemente de cómo se haya lanzado la GUI.
+- **Usa un perfil de Windows Terminal** que coincida con el shell, como se describe arriba. Gitbox lanza entonces mediante `wt.exe --profile`, y WT inicia el shell desde su propio contexto de perfil, que tiene env Windows limpio independientemente de cómo se haya lanzado la GUI.
 
-En **modo compacto**, las acciones de clone aparecen como botones de icono pequeños (navegador, carpeta, editor, terminal y AI harness) que se muestran al hacer hover sobre cada fila de repo. Solo se muestran el primer editor, terminal y AI harness configurados: cambia a vista completa para ver la lista completa.
+El **modo compacto** solo muestra el estado. Cambia a vista completa para acceder a las acciones de clone y de cuenta.
 
 ### Acciones de AI harness
 
-Los AI CLI harnesses (Claude Code, Codex, Antigravity, Aider, Cursor Agent, OpenCode, …) son procesos shell interactivos: necesitan una terminal para ejecutarse. Gitbox añade una entrada **Open in \<harness\>** por harness configurado tanto al kebab de repo como al kebab de cabecera de source (cuenta). Hacer clic abre el **Terminal Profile por defecto** en la carpeta objetivo y ejecuta el harness dentro del shell de ese profile, así la misma terminal y shell que obtienes con `>_ Open in <profile>` aloja el harness.
+Los AI CLI harnesses (Claude Code, Codex, Antigravity, Aider, Cursor Agent, OpenCode, …) son procesos shell interactivos: necesitan una terminal para ejecutarse. Gitbox añade una entrada **Open in \<harness\>** por harness configurado tanto al kebab de repo como al kebab de cabecera de source (cuenta). Hacer clic abre el **Terminal Profile por defecto** en la carpeta objetivo y ejecuta el harness dentro del shell de ese profile, así la misma terminal y shell que obtienes con `>_ <profile>` aloja el harness.
 
-Elijo el host escogiendo el profile por defecto en **Gear → Terminals & Shells** (el mismo default que usa el launcher). Para cambiar de host, marca otro profile como default.
+Elijo el host escogiendo el profile por defecto en **Settings → Terminals → Manager** (el mismo default que usa el launcher). Para cambiar de host, marca otro profile como default.
 
 El harness se ejecuta a través del shell del profile en lugar de como comando desnudo de la terminal. Así los ficheros rc de tu shell siguen aplicando (el PATH de `nvm`/`npm` en macOS y Linux, el PATH de Git Bash en Windows), que es donde viven la mayoría de los CLIs de harness, y te deja en un prompt interactivo cuando el harness termina. PowerShell recibe `-NoExit -EncodedCommand`, `cmd` recibe `/K`, `fish` recibe `-C`, cualquier otro shell POSIX recibe `-i -c '<harness>; exec <shell>'`. En Windows, Git Bash recibe los shims `.cmd` de npm por nombre desnudo (`claude`, resuelto en su propio PATH) y los binarios nativos por su ruta con barras normales; WSL siempre recibe el nombre desnudo. Los profiles sin shell explícito (macOS, Linux) usan `$SHELL`.
 
@@ -381,7 +363,7 @@ Cuando un harness detectado se desinstala, la siguiente pasada marca su entrada 
 
 El conjunto de harnesses que gitbox intenta auto-detectar se mantiene como una tabla markdown embebida en el binario. La lista autoritativa vive en [`pkg/harness/tools-directory.md`](../../pkg/harness/tools-directory.md): para añadir o quitar un harness detectado, edita ese archivo. Una fila se auto-detecta cuando su `Category` es `Agentic CLI`, `AI Harness`, `Headless Harness`, `Agentic IDE` o `Agentic IDE / CLI`, y su celda `Executable / CLI Command` contiene uno o más identificadores entre backticks (por ejemplo `` `claude` ``, `` `aider` ``, `` `cursor` ``). Una celda con varios nombres, como "`` `agent` `` or `` `cursor-agent` ``" para la Cursor CLI renombrada, los sondea en orden para que cualquiera de las dos instalaciones resuelva. La columna final `Well-known locations` lista directorios de instalación por herramienta fuera de PATH, cada uno como su propio token entre backticks, con `~`, `$VAR` y `%VAR%` expandidos en el momento del sondeo. Las filas de framework, orchestrator y cloud-platform se documentan como referencia pero el detector las omite: no se lanzan desde una terminal en una carpeta. Las filas cuya `Category` es `Retired CLI` (Gemini CLI, retirado en favor de Antigravity CLI) también se omiten, y cualquier entrada de `global.ai_harnesses` con un nombre retirado se elimina en el siguiente sync para que un binario muerto deje de aparecer en el menú. Los Agentic IDEs (Cursor, Devin Desktop) se tratan como herramientas AI, no como editores: por tanto, la entrada "Open in Cursor" aparecerá en la sección AI harness del menú, no en la sección editor.
 
-En el kebab de cuenta, las mismas entradas aparecen con orden idéntico: la única diferencia en runtime es que el directorio de trabajo es `<global.folder>/<account-key>` (la carpeta padre de la cuenta) en lugar de un clon concreto. Si la carpeta padre no existe todavía (nada clonado bajo esa cuenta), la acción falla con "account folder does not exist": clona al menos un repo primero. La vista compacta expone el harness como icono 🤖 tanto en la fila de repo como en la account pill, llamando a `global.ai_harnesses[0]`.
+En el kebab de cuenta, las mismas entradas aparecen con orden idéntico: la única diferencia en runtime es que el directorio de trabajo es `<global.folder>/<account-key>` (la carpeta padre de la cuenta) en lugar de un clon concreto. Si la carpeta padre no existe todavía (nada clonado bajo esa cuenta), la acción falla con "account folder does not exist": clona al menos un repo primero.
 
 ### Notificación de actualización
 

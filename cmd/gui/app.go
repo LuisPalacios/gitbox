@@ -243,7 +243,7 @@ func (a *App) DomReady(_ context.Context) {
 	// emitting harnesses:updated so the menu refreshes without a reload.
 	a.startHarnessWatcher()
 	// SyncProfiles populates the v2.1 TerminalApps + Shells + TerminalProfiles
-	// arrays so the Gear-panel "Terminals & Shells" section and the
+	// arrays so the Settings → Terminals Manager and the
 	// per-row launcher have data to render on first run. Idempotent — does
 	// nothing when the on-disk arrays already match what's installed.
 	a.SyncProfiles()

@@ -298,8 +298,8 @@ The add-account and change-credential flows run the same check automatically: if
 Each cloned repo row has a **kebab menu (⋮)** on the right side. The menu is split into three sections so the items you use most aren't buried behind scrolling:
 
 1. **Always visible** — `🌐 Open in browser` and `📁 Open folder`. The browser entry opens `<account url>/<owner>/<name>`, resolved on the Go side from the saved config, and shows an error dialog if the row can't be found there. Every path-based entry (folder, editor, terminal, profile, AI harness) shows a "clone first" dialog instead of doing nothing when the clone hasn't finished or its status hasn't loaded yet.
-2. **Defaults** — one entry per category, using the first config entry as the default: `>_ Open in <terminals[0]>`, `✎ Open in <editors[0]>`, `🤖 Open in <ai_harnesses[0]>`. An entry is hidden when that category has zero configured items.
-3. **Submenus** — `Terminals ▸`, `Editors ▸`, `AI Harnesses ▸`. Each submenu only appears when the category has **two or more** entries — with just one, the default already covers it. Click the submenu to expand (not hover), click another submenu to switch, click outside or pick an item to close everything.
+2. **Defaults** — one entry per category: `>_ <default profile>` (the Terminal Profile marked Default, shown by its name), `✎ Open with <editors[0]>`, and `🤖 Open with <ai_harnesses[0]>`. An entry is hidden when that category has nothing configured.
+3. **Submenus** — `Profiles ▸`, `Editors ▸`, `AI Harnesses ▸`. `Profiles ▸` lists the profiles marked Preferred, other than the default, and appears when there is at least one. `Editors ▸` and `AI Harnesses ▸` only appear when the category has **two or more** entries — with just one, the default already covers it. Click the submenu to expand (not hover), click another submenu to switch, click outside or pick an item to close everything.
 
 Below the submenus:
 
@@ -308,9 +308,9 @@ Below the submenus:
   - **Merged** — fully merged into the default branch; deleted with `git branch -d`.
   - **Squashed** — squash-merged or rebase-merged on the server (different commits, same changes); deleted with `git branch -D`.
 
-To change which terminal/editor/harness appears as the top-level default, reorder the array in `gitbox.json` — the first entry is always the default. No separate flag required.
+To change which editor or AI harness appears as the top-level default, reorder the array in `gitbox.json` — the first entry is always the default. The terminal default is the profile marked Default in **Settings → Terminals → Manager**.
 
-The list of detected terminals covers Windows Terminal, PowerShell 7/5, Git Bash, WSL, and Command Prompt on Windows; Terminal, iTerm, and Warp on macOS; gnome-terminal, Konsole, Kitty, Alacritty, Xfce Terminal, and Terminator on Linux. Editors cover VS Code, Cursor, Zed, and anything else discoverable on `PATH`. AI harnesses (Claude Code, Codex, Antigravity, Aider, Cursor Agent, OpenCode) run inside the default Terminal Profile's shell — see [AI harness actions](#ai-harness-actions) below.
+Terminal detection covers Windows Terminal, WezTerm, Alacritty, Tabby, ConEmu, Hyper, Mintty, and ZOC on Windows; iTerm2, Terminal, Warp, Kitty, Ghostty, WezTerm, and Alacritty on macOS; GNOME Terminal, Konsole, Terminator, Foot, Alacritty, Kitty, Tilda, Guake, and xterm on Linux. Shell detection covers PowerShell 7/5, Command Prompt, Git Bash, and WSL on Windows; Zsh, Bash, Fish, and Dash on macOS; Bash, Zsh, Fish, Ksh, and Dash on Linux. Editors cover VS Code, Cursor, Zed, and anything else discoverable on `PATH`. AI harnesses (Claude Code, Codex, Antigravity, Aider, Cursor Agent, OpenCode) run inside the default Terminal Profile's shell — see [AI harness actions](#ai-harness-actions) below.
 
 ### Account actions
 
@@ -320,39 +320,21 @@ Each source group in the repo list has a **kebab menu (⋮)** on the right side 
 - **📁 Open folder** — opens the account's parent folder in the OS file manager. The folder is the natural workspace root for cross-repo greps, multi-repo edits, or shell loops. If the folder doesn't exist yet (nothing cloned under that account), the action errors silently — clone at least one repo first.
 - **>\_ Open in \<terminal\>**, **✎ Open in \<editor\>**, **🤖 Open in \<AI harness\>** — same default-first entries as the repo kebab, plus the category submenus when you have multiple options configured. Sweep branches is dropped here — it's meaningful only on a specific clone.
 
-In compact view, hovering an account pill reveals the same folder / editor / terminal / AI harness shortcuts as small icons on the right side, matching the compact repo-row behavior.
-
 Editors are auto-detected on startup by scanning PATH. Gitbox writes the detected editors to `global.editors` in your config file with their full paths. You can reorder entries or add custom editors by editing the config — the menu always reflects the config order.
 
-Terminals follow the same pattern: detected on startup per platform and written to `global.terminals` with their command and argument templates. Each entry has a `name`, a `command` (absolute path or on-PATH launcher) and `args`. Use the literal token `{path}` inside `args` to mark where the repo path is injected; if the token is absent, the path is appended as the final argument. Edit or reorder freely — the order in the menu matches the order in the config.
+Terminals use profiles instead. On startup gitbox detects the installed terminal apps and shells, writes them to `global.terminal_apps` and `global.shells`, and pairs them into launchable entries in `global.terminal_profiles`. On Windows a profile pairs a terminal with a shell, for example Windows Terminal + PowerShell 7. On macOS and Linux a profile is the terminal alone and runs your login shell. I manage them in **Settings → Terminals → Manager**: mark one profile Default (the kebab's top-level terminal entry), mark others Preferred (the `Profiles ▸` submenu), hide the ones I never use, or add my own. Re-detection keeps my flags, renames, hand-edited args, and the profiles I added.
 
-On Windows, bare shell entries (`cmd.exe`, `powershell.exe`, `pwsh.exe`, `wsl.exe`) have empty `args` — the launcher wraps them in `cmd.exe /C start "" /D <path>`, which gives each terminal a fresh console and sets the starting directory.
+On Windows, bare-shell profiles that open a shell without a terminal app (`pwsh.exe`, `powershell.exe`, `cmd.exe`, `wsl.exe`) are hidden by default, and only show up on their own when no modern terminal is installed. Un-hide one in the Manager for a direct shortcut. The launcher wraps them in `cmd.exe /C start "" /D <path>`, which gives each shell a fresh console and sets the starting directory.
 
-#### Opening a specific Windows Terminal profile
+#### Windows Terminal and WezTerm profiles
 
-When Windows Terminal is installed, gitbox auto-discovers your WT profiles and rewrites `global.terminals` to mirror the WT menu: one entry per visible profile, in the same order as `profiles.list`, each launching `wt.exe --profile "<name>" -d "{path}"`. The shell opens with the exact profile you tuned in WT (colors, font, starting directory, oh-my-posh, specific WSL distro) — bare-binary launches (`pwsh.exe`, `powershell.exe`, `wsl.exe`, `cmd.exe`, `git-bash.exe`) always fall back to WT's _default_ profile and miss that tuning, so they're dropped from `global.terminals` whenever WT discovery succeeds.
+When a profile uses Windows Terminal, gitbox looks for a matching WT profile in `settings.json` at launch time. `Windows Terminal + PowerShell 7` matches the WT profile named `PowerShell 7`, and a per-distro WSL shell matches the WT profile for that distro. On a match gitbox runs `wt.exe -w 0 nt --profile "<name>" -d <path>`, so the shell opens as a new tab in your most recent WT window with the font, colors, and startup tweaks you tuned in WT. Hidden profiles and profiles whose `source` appears in WT's top-level `disabledProfileSources` never match. Without a match, gitbox uses the generic Windows Terminal arguments.
 
-Discovery runs at startup and on every config sync. Renaming, adding, hiding, or disabling a profile in WT is picked up on the next launch — stale entries are pruned so the menu never drifts from WT itself. A profile is excluded when its `hidden` flag is `true` or when its `source` appears in WT's top-level `disabledProfileSources` (e.g. Visual Studio dynamic profiles disabled wholesale).
+Locations checked, in order: `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json` (Store), `…\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\…` (Preview), `%LOCALAPPDATA%\Microsoft\Windows Terminal\settings.json` (unpackaged). Gitbox re-reads the file whenever it changes, so renaming or adding a WT profile is picked up on the next launch.
 
-Existing customizations are preserved when the entry's `name` matches a current visible profile: if you previously added `--maximized` or another flag to a profile entry, gitbox keeps your `command` and `args` intact and only restores entries it removed. Entries whose name doesn't match any visible profile are dropped, by design — that's how the legacy `Windows Terminal` / `PowerShell 7` / `WSL` / `Command Prompt` entries get cleaned up automatically on the first sync after upgrading.
+WezTerm works on every OS: when `wezterm.lua` defines a `config.launch_menu`, each sync adds one profile per entry, and launching it runs that entry's own `args`.
 
-Locations checked, in order: `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json` (Store), `…\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\…` (Preview), `%LOCALAPPDATA%\Microsoft\Windows Terminal\settings.json` (unpackaged). If none parse — file missing, malformed JSON, no `profiles.list` — gitbox falls back to the bare-binary entries so something always works.
-
-If you want to override an auto-discovered entry (rename it, point at a different profile, add `--maximized`), edit `gitbox.json` directly. Format:
-
-```json
-{
-  "name": "WSL — Ubuntu",
-  "command": "C:\\Users\\<you>\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe",
-  "args": ["--profile", "Ubuntu 24.04.1 LTS", "-d", "{path}"]
-}
-```
-
-Notes:
-
-- `--profile "<name>"` takes the profile's display name _verbatim_, including version suffixes like `Ubuntu 24.04.1 LTS` or the exact `PowerShell 7` spelling configured in WT's settings.
-- `-d "{path}"` sets the starting directory.
-- Routing through `wt.exe --profile` also sidesteps the Git Bash env-leak quirk described below — WT starts the shell from its own stored profile context, so any MSYS-form env vars inherited by the GUI don't reach the shell.
+To rename a profile or change its terminal or shell, edit it in the Manager. To pass extra flags, edit its `args` in `gitbox.json` — re-detection keeps hand-edited args.
 
 #### Launching gitbox from Git Bash (developer note)
 
@@ -361,15 +343,15 @@ If you launch `GitboxApp.exe` from a Git Bash / MSYS2 shell, Windows environment
 Two equally clean fixes:
 
 - **Launch `GitboxApp.exe` from Explorer, the Start Menu, or a pinned shortcut** — anywhere Windows originates a clean env. End users never hit this, so production behaviour is unaffected.
-- **Switch the affected terminal entry to the `wt.exe --profile "<name>" -d "{path}"` form** shown above. WT starts the shell from its own profile context, which has clean Windows env regardless of how the GUI was started.
+- **Use a Windows Terminal profile** that matches the shell, as described above. Gitbox then launches through `wt.exe --profile`, and WT starts the shell from its own profile context, which has a clean Windows env regardless of how the GUI was started.
 
-In **compact mode**, the clone actions appear as small icon buttons (browser, folder, editor, terminal, and AI harness) that show on hover over each repo row. Only the first configured editor, terminal, and AI harness are shown — switch to full view for the complete list.
+**Compact mode** shows status only. Switch to full view to reach the clone and account actions.
 
 ### AI harness actions
 
-AI CLI harnesses (Claude Code, Codex, Antigravity, Aider, Cursor Agent, OpenCode, …) are interactive shell processes — they need a terminal to run in. Gitbox adds one **Open in \<harness\>** entry per configured harness to both the repo kebab and the source-header (account) kebab. Clicking an entry opens the **default Terminal Profile** in the target folder and runs the harness inside that profile's shell, so the same terminal and shell you get from `>_ Open in <profile>` hosts the harness.
+AI CLI harnesses (Claude Code, Codex, Antigravity, Aider, Cursor Agent, OpenCode, …) are interactive shell processes — they need a terminal to run in. Gitbox adds one **Open in \<harness\>** entry per configured harness to both the repo kebab and the source-header (account) kebab. Clicking an entry opens the **default Terminal Profile** in the target folder and runs the harness inside that profile's shell, so the same terminal and shell you get from `>_ <profile>` hosts the harness.
 
-I pick the host by choosing the default profile in **Gear → Terminals & Shells** (the same default the launcher uses). To switch hosts, mark a different profile as default.
+I pick the host by choosing the default profile in **Settings → Terminals → Manager** (the same default the launcher uses). To switch hosts, mark a different profile as default.
 
 The harness runs through the profile's shell rather than as a bare terminal command. That keeps your shell's rc files in play — `nvm`/`npm` PATH on macOS and Linux, Git Bash PATH on Windows — which is where most harness CLIs live, and leaves you at an interactive prompt when the harness exits. PowerShell gets `-NoExit -EncodedCommand`, `cmd` gets `/K`, `fish` gets `-C`, every other POSIX shell gets `-i -c '<harness>; exec <shell>'`. On Windows, Git Bash receives npm `.cmd` shims by bare name (`claude`, resolved on its own PATH) and native binaries by their path with forward slashes; WSL always receives the bare name. Profiles without an explicit shell (macOS, Linux) use `$SHELL`.
 
@@ -381,7 +363,7 @@ When a detected harness is uninstalled, the next pass flags its entry `missing: 
 
 The set of harnesses gitbox tries to auto-detect is maintained as a markdown table embedded into the binary. The authoritative list lives at [`pkg/harness/tools-directory.md`](../pkg/harness/tools-directory.md) — to add or remove a detected harness, edit that file. A row is auto-detected when its `Category` is `Agentic CLI`, `AI Harness`, `Headless Harness`, `Agentic IDE`, or `Agentic IDE / CLI`, and its `Executable / CLI Command` cell contains one or more backticked identifiers (e.g. `` `claude` ``, `` `aider` ``, `` `cursor` ``). A cell with several names, such as "`` `agent` `` or `` `cursor-agent` ``" for the renamed Cursor CLI, probes them in order so either install resolves. The trailing `Well-known locations` column lists per-tool install directories outside PATH, each as its own backticked token with `~`, `$VAR` and `%VAR%` expanded at probe time. Framework, orchestrator, and cloud-platform rows are documented for reference but skipped by the detector — they don't launch from a terminal in a folder. Rows whose `Category` is `Retired CLI` (Gemini CLI, retired in favour of Antigravity CLI) are skipped too, and any `global.ai_harnesses` entry carrying a retired name is removed on the next sync so a dead binary stops showing up in the menu. Agentic IDEs (Cursor, Devin Desktop) are treated as AI tools, not editors: the "Open in Cursor" entry will therefore appear under the AI harness section of the menu, not the editor section.
 
-In the account kebab, the same entries appear with identical ordering — the only runtime difference is that the working directory is `<global.folder>/<account-key>` (the account's parent folder) instead of a single clone. If the parent folder doesn't exist yet (nothing cloned under that account), the action errors with "account folder does not exist" — clone at least one repo first. Compact view exposes the harness as a 🤖 icon on both the repo row and the account pill, calling `global.ai_harnesses[0]`.
+In the account kebab, the same entries appear with identical ordering — the only runtime difference is that the working directory is `<global.folder>/<account-key>` (the account's parent folder) instead of a single clone. If the parent folder doesn't exist yet (nothing cloned under that account), the action errors with "account folder does not exist" — clone at least one repo first.
 
 ### Update notification
 
