@@ -3,6 +3,15 @@ name: CI
 on:
   push:
     tags: ['v*']
+  # Dry run: builds every platform and every installer without publishing,
+  # so release-only changes can be checked before a tag. The version must
+  # be numeric (it lands in the Windows file metadata).
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to stamp into the dry-run build
+        default: v0.0.0
+# Builds use inputs.version on a dry run and the tag otherwise.
 
 jobs:
   # ── Go vet + unit tests (all platforms) ──
@@ -37,7 +46,7 @@ jobs:
     needs: test
     env:
       LDFLAGS: >-
-        -X main.version=${{ github.ref_name }}
+        -X main.version=${{ inputs.version || github.ref_name }}
         -X main.commit=${{ github.sha }}
     steps:
       - uses: actions/checkout@v7
@@ -58,7 +67,7 @@ jobs:
       - name: Set version in wails.json
         shell: bash
         run: |
-          VER="${{ github.ref_name }}"
+          VER="${{ inputs.version || github.ref_name }}"
           VER="${VER#v}"
           sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
       - name: Build GUI
@@ -75,7 +84,7 @@ jobs:
     needs: test
     env:
       LDFLAGS: >-
-        -X main.version=${{ github.ref_name }}
+        -X main.version=${{ inputs.version || github.ref_name }}
         -X main.commit=${{ github.sha }}
     steps:
       - uses: actions/checkout@v7
@@ -93,7 +102,7 @@ jobs:
           cp assets/appicon.png cmd/gui/build/appicon.png
       - name: Set version in wails.json
         run: |
-          VER="${{ github.ref_name }}"
+          VER="${{ inputs.version || github.ref_name }}"
           VER="${VER#v}"
           sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
       - name: Build GUI
@@ -112,7 +121,7 @@ jobs:
     env:
       GOARCH: amd64
       LDFLAGS: >-
-        -X main.version=${{ github.ref_name }}
+        -X main.version=${{ inputs.version || github.ref_name }}
         -X main.commit=${{ github.sha }}
     steps:
       - uses: actions/checkout@v7
@@ -132,7 +141,7 @@ jobs:
           cp assets/appicon.png cmd/gui/build/appicon.png
       - name: Set version in wails.json
         run: |
-          VER="${{ github.ref_name }}"
+          VER="${{ inputs.version || github.ref_name }}"
           VER="${VER#v}"
           sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
       - name: Build GUI
@@ -154,7 +163,7 @@ jobs:
     needs: test
     env:
       LDFLAGS: >-
-        -X main.version=${{ github.ref_name }}
+        -X main.version=${{ inputs.version || github.ref_name }}
         -X main.commit=${{ github.sha }}
     steps:
       - uses: actions/checkout@v7
@@ -176,7 +185,7 @@ jobs:
           cp assets/appicon.png cmd/gui/build/appicon.png
       - name: Set version in wails.json
         run: |
-          VER="${{ github.ref_name }}"
+          VER="${{ inputs.version || github.ref_name }}"
           VER="${VER#v}"
           sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
       - name: Build GUI
@@ -193,9 +202,13 @@ jobs:
     needs: gui-windows
     steps:
       - uses: actions/checkout@v7
+      # Download by name into its own folder: without a name, a run that
+      # has only one artifact uploaded so far extracts it straight into
+      # artifacts/ (no subfolder), which is what broke the v2.1.0 AppImage.
       - uses: actions/download-artifact@v8
         with:
-          path: artifacts
+          name: gui-windows
+          path: artifacts/gui-windows
       - name: Prepare installer files
         shell: bash
         run: |
@@ -204,7 +217,7 @@ jobs:
       - name: Build installer
         shell: cmd
         env:
-          GITBOX_VERSION: ${{ github.ref_name }}
+          GITBOX_VERSION: ${{ inputs.version || github.ref_name }}
         run: |
           "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" scripts\installer.iss
       - uses: actions/upload-artifact@v7
@@ -218,9 +231,11 @@ jobs:
     needs: gui-macos-arm64
     steps:
       - uses: actions/checkout@v7
+      # By name, see the note in installer-windows.
       - uses: actions/download-artifact@v8
         with:
-          path: artifacts
+          name: gui-macos-arm64
+          path: artifacts/gui-macos-arm64
       - name: Install create-dmg
         run: brew install create-dmg
       - name: Stage DMG contents
@@ -287,9 +302,11 @@ jobs:
     needs: gui-macos-amd64
     steps:
       - uses: actions/checkout@v7
+      # By name, see the note in installer-windows.
       - uses: actions/download-artifact@v8
         with:
-          path: artifacts
+          name: gui-macos-amd64
+          path: artifacts/gui-macos-amd64
       - name: Install create-dmg
         run: brew install create-dmg
       - name: Stage DMG contents
@@ -356,9 +373,11 @@ jobs:
     needs: gui-linux
     steps:
       - uses: actions/checkout@v7
+      # By name, see the note in installer-windows.
       - uses: actions/download-artifact@v8
         with:
-          path: artifacts
+          name: gui-linux
+          path: artifacts/gui-linux
       # The GUI's GTK 3 + WebKitGTK stack gets bundled into the AppImage, so
       # the build host needs the same libraries gui-linux compiled against.
       - name: Install AppImage build dependencies
@@ -369,7 +388,7 @@ jobs:
         run: |
           scripts/appimage/build-appimage.sh \
             artifacts/gui-linux/GitboxApp \
-            "${{ github.ref_name }}" \
+            "${{ inputs.version || github.ref_name }}" \
             release/gitbox-x86_64.AppImage
       - uses: actions/upload-artifact@v7
         with:
@@ -380,7 +399,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     needs: [gui-windows, gui-macos-arm64, gui-macos-amd64, gui-linux, installer-windows, dmg-macos-arm64, dmg-macos-amd64, appimage-linux]
-    if: always() && needs.gui-windows.result == 'success' && needs.gui-macos-arm64.result == 'success' && needs.gui-macos-amd64.result == 'success' && needs.gui-linux.result == 'success'
+    if: always() && github.event_name == 'push' && needs.gui-windows.result == 'success' && needs.gui-macos-arm64.result == 'success' && needs.gui-macos-amd64.result == 'success' && needs.gui-linux.result == 'success'
     permissions:
       contents: write
     steps:
@@ -427,7 +446,7 @@ jobs:
           # Only the highest major line may become "latest": a v1.7.z
           # maintenance tag pushed after v2.0.0 must not hijack
           # releases/latest, which every v2 GUI's updater follows.
-          tag="${{ github.ref_name }}"
+          tag="${{ inputs.version || github.ref_name }}"
           major="${tag#v}"; major="${major%%.*}"
           top="$(gh release list --repo "${{ github.repository }}" --limit 100 \
                    --json tagName -q '.[].tagName' \
