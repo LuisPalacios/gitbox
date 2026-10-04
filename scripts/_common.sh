@@ -28,7 +28,6 @@ die()    { printf '%berror:%b %s\n' "$R" "$N" "$*" >&2; exit 1; }
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FIXTURE="$REPO_ROOT/test-gitbox.json"
-FIXTURE_EXAMPLE="$REPO_ROOT/json/test-gitbox.json.example"
 
 # ---------------------------------------------------------------------------
 # OS detection

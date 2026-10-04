@@ -76,7 +76,7 @@ ERRORS=0
 # ---------------------------------------------------------------------------
 
 echo -e "${C}Tokens${N}"
-while IFS='|' read -r ACCT PROVIDER URL USERNAME TOKEN SSH_HOST SSH_HOSTNAME KEY_TYPE; do
+while IFS='|' read -r ACCT PROVIDER URL _ TOKEN SSH_HOST SSH_HOSTNAME KEY_TYPE; do
     URL="${URL%/}"
 
     if [[ -z "$TOKEN" || "$TOKEN" == *"xxxx"* ]]; then
@@ -151,7 +151,7 @@ done <<< "$ACCOUNTS"
 echo -e "${C}SSH keys${N} ${D}($SSH_FOLDER)${N}"
 mkdir -p "$SSH_FOLDER" && chmod 700 "$SSH_FOLDER"
 
-while IFS='|' read -r ACCT PROVIDER URL USERNAME TOKEN SSH_HOST SSH_HOSTNAME KEY_TYPE; do
+while IFS='|' read -r ACCT PROVIDER URL _ TOKEN SSH_HOST SSH_HOSTNAME KEY_TYPE; do
     SSH_KEY_NAME="test-${HNAME}-${ACCT}-sshkey"
     KEY_PATH="$SSH_FOLDER/$SSH_KEY_NAME"
     if [[ -f "$KEY_PATH" ]]; then
@@ -171,7 +171,7 @@ SSH_CONFIG="$SSH_FOLDER/config"
 touch "$SSH_CONFIG" && chmod 600 "$SSH_CONFIG"
 
 echo -e "${C}SSH config${N} ${D}($SSH_CONFIG)${N}"
-while IFS='|' read -r ACCT PROVIDER URL USERNAME TOKEN SSH_HOST SSH_HOSTNAME KEY_TYPE; do
+while IFS='|' read -r ACCT PROVIDER URL _ TOKEN SSH_HOST SSH_HOSTNAME KEY_TYPE; do
     SSH_KEY_NAME="test-${HNAME}-${ACCT}-sshkey"
     KEY_PATH="$SSH_FOLDER/$SSH_KEY_NAME"
     # Convert MSYS2 path (/c/Users/...) to Windows-native (C:/Users/...) so both
@@ -211,7 +211,7 @@ done <<< "$ACCOUNTS"
 # ---------------------------------------------------------------------------
 
 echo -e "${C}SSH verify${N}"
-while IFS='|' read -r ACCT PROVIDER URL USERNAME TOKEN SSH_HOST SSH_HOSTNAME KEY_TYPE; do
+while IFS='|' read -r ACCT PROVIDER URL _ TOKEN SSH_HOST SSH_HOSTNAME KEY_TYPE; do
     SSH_KEY_NAME="test-${HNAME}-${ACCT}-sshkey"
     KEY_PATH="$SSH_FOLDER/$SSH_KEY_NAME"
     OUTPUT=$(ssh -T -F "$SSH_CONFIG" -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "git@$SSH_HOST" </dev/null 2>&1 || true)
