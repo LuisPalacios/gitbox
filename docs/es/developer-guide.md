@@ -217,7 +217,7 @@ CI inyecta `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` en el build d
 Se ejecutan dos workflows de GitHub Actions:
 
 - `.github/workflows/pr.yml` se ejecuta en los pull requests y en los push a `main`: `scripts/health.sh` como barrera (todos los comprobadores; cualquier hallazgo hace fallar el job), y después un `wails build` de Linux y un smoke test con `--version`.
-- `.github/workflows/ci.yml` se ejecuta en los tags de versión: construye la app en cada plataforma, empaqueta los instaladores y publica el GitHub Release.
+- `.github/workflows/ci.yml` se ejecuta en los tags de versión: construye la app en cada plataforma, empaqueta los instaladores y publica el GitHub Release. Antes de etiquetar un cambio que solo ejercita el camino de release, lo ejecuto en seco con `gh workflow run ci.yml -f version=v0.0.0`: se ejecutan todos los jobs de build e instaladores, y el job de release se omite.
 
 ### Assets de release
 

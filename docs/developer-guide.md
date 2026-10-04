@@ -217,7 +217,7 @@ CI injects `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into the GUI 
 Two GitHub Actions workflows run:
 
 - `.github/workflows/pr.yml` runs on pull requests and on pushes to `main`: `scripts/health.sh` as the gate (every checker; any finding fails the job), then a Linux `wails build` and a `--version` smoke test.
-- `.github/workflows/ci.yml` runs on version tags: it builds the app on each platform, packages the installers, and publishes the GitHub Release.
+- `.github/workflows/ci.yml` runs on version tags: it builds the app on each platform, packages the installers, and publishes the GitHub Release. Before tagging a change that only the release path exercises, I run it as a dry run with `gh workflow run ci.yml -f version=v0.0.0`: every build and installer job runs, and the release job is skipped.
 
 ### Release assets
 

@@ -115,7 +115,7 @@ scripts/
     skills-authoring.md   Skill creation guidelines
 AGENTS.md                 → .claude/CLAUDE.md (symlink — Codex reads project guidance here)
 .agents/skills            → ../.claude/skills (symlink — Codex sees skills here)
-.github/workflows/ci.yml  Release CI on v* tags: test, build, release (+ installers, DMGs, AppImage)
+.github/workflows/ci.yml  Release CI on v* tags: test, build, release (+ installers, DMGs, AppImage); workflow_dispatch = dry run without publishing
 .github/workflows/pr.yml  PR + main CI: frontend build, scripts/health.sh gate (every checker, fails on any finding), Linux GUI build smoke
 json/
   gitbox.schema.json      v3 JSON Schema
