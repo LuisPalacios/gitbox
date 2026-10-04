@@ -165,7 +165,7 @@ The `--test-mode` flag reads `test-gitbox.json` (searching upwards from the curr
 
 ## Pre-PR checklist
 
-Run these before every push or PR. The pre-push hook handles gofmt + vet + unit tests, and the PR workflow repeats them in CI.
+Run these before every push or PR. The pre-push hook handles gofmt + vet + unit tests, and the PR workflow runs `scripts/health.sh` as its gate.
 
 ```text
 - [ ] ./scripts/health.sh                  (every checker: Go, frontend, scripts, workflows, docs)

@@ -116,7 +116,7 @@ scripts/
 AGENTS.md                 → .claude/CLAUDE.md (symlink — Codex reads project guidance here)
 .agents/skills            → ../.claude/skills (symlink — Codex sees skills here)
 .github/workflows/ci.yml  Release CI on v* tags: test, build, release (+ installers, DMGs, AppImage)
-.github/workflows/pr.yml  PR + main CI: frontend build, svelte-check, go vet, unit tests, Linux GUI build smoke
+.github/workflows/pr.yml  PR + main CI: frontend build, scripts/health.sh gate (every checker, fails on any finding), Linux GUI build smoke
 json/
   gitbox.schema.json      v3 JSON Schema
   gitbox.jsonc            v3 annotated example (Spanish comments)
@@ -305,7 +305,7 @@ The project has a comprehensive test suite. Read `.claude/context/testing-patter
 
 **Run `go vet ./...` before committing** — it catches issues the test suite doesn't.
 
-**Health check:** `./scripts/health.sh` runs every checker read-only (Go analyzers at pinned versions, svelte-check with unused-code errors, frontend build and npm ci warnings, npm audit, shellcheck, actionlint, markdownlint). Run it before every PR; new code must not add findings. Never run the `fixing-markdown` markdownlint config directly for a check — it has `"fix": true` and rewrites files.
+**Health check:** `./scripts/health.sh` runs every checker read-only (Go analyzers at pinned versions, svelte-check with unused-code errors, frontend build and npm ci warnings, npm audit, shellcheck, actionlint, markdownlint). Run it before every PR; `pr.yml` runs it as the CI gate and fails on any finding (including new govulncheck / npm audit advisories). Never run the `fixing-markdown` markdownlint config directly for a check — it has `"fix": true` and rewrites files.
 
 **Pre-push hook:** The repo includes `.githooks/pre-push` which runs a `gofmt -s -l` check, `go vet` and `go test -short` before every push, building the frontend first when `cmd/gui/frontend/dist` is missing. Run `gofmt -s -w` on changed Go files before committing. Activate with `git config core.hooksPath .githooks`.
 

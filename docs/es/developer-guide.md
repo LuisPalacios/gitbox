@@ -160,6 +160,8 @@ scoop install shellcheck actionlint     # Windows (brew install … en macOS, ap
 npm install -g markdownlint-cli2
 ```
 
+El workflow de PR ejecuta el mismo script como barrera: cualquier hallazgo hace fallar el job, incluido un aviso nuevo de govulncheck o de `npm audit`. CI fija shellcheck 0.11.0, actionlint 1.7.12 y markdownlint-cli2 0.23.3; usa esas versiones en local para que ambas ejecuciones coincidan.
+
 Para el workflow completo de pruebas (preparación de fixture, pruebas de integración, checklists pre-PR y de release), consulta [testing.md](testing.md). Para pruebas multiplataforma vía SSH, consulta [multiplatform.md](multiplatform.md). Si usas Claude Code, `/test-plan` automatiza las comprobaciones pre-PR.
 
 ---

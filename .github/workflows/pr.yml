@@ -46,14 +46,22 @@ jobs:
       - name: Build frontend
         working-directory: cmd/gui/frontend
         run: npm run build
-      - name: Svelte check
-        working-directory: cmd/gui/frontend
-        run: npm run check
 
-      - name: Go vet
-        run: go vet ./...
-      - name: Run tests
-        run: go test -short ./...
+      # scripts/health.sh is the gate: gofmt, vet, staticcheck, modernize,
+      # govulncheck, deadcode, unit tests, svelte-check, frontend build and
+      # npm ci warnings, npm audit, shellcheck, actionlint and markdownlint.
+      # Any finding fails the job. Tools are pinned to the versions the
+      # developer guide lists, so CI and local runs agree.
+      - name: Install health check tools
+        run: |
+          curl -fsSL https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz \
+            | tar -xJ -C /tmp
+          sudo install /tmp/shellcheck-v0.11.0/shellcheck /usr/local/bin/shellcheck
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          npm install -g markdownlint-cli2@0.23.3
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Health check
+        run: ./scripts/health.sh
 
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
