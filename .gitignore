@@ -64,3 +64,6 @@ preview/
 
 # Tmp folder
 tmp/
+
+# Wails caches a hash of package.json here on every build
+cmd/gui/frontend/package.json.md5
