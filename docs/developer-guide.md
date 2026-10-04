@@ -216,7 +216,7 @@ CI injects `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into the GUI 
 
 Two GitHub Actions workflows run:
 
-- `.github/workflows/pr.yml` runs on pull requests: `go vet`, `go test -short`, `svelte-check` on the frontend, and a Linux `wails build`.
+- `.github/workflows/pr.yml` runs on pull requests and on pushes to `main`: `scripts/health.sh` as the gate (every checker; any finding fails the job), then a Linux `wails build` and a `--version` smoke test.
 - `.github/workflows/ci.yml` runs on version tags: it builds the app on each platform, packages the installers, and publishes the GitHub Release.
 
 ### Release assets
