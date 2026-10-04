@@ -93,6 +93,8 @@ Discovery es **solo de adición**: añade repos a tu config pero nunca los elimi
 
 ## Paso 4: día a día
 
+Cierro cualquier diálogo con **Escape** o haciendo clic fuera de él. Los diálogos ocupados o que necesitan una decisión explícita (un clon en curso, una confirmación en marcha) siguen abiertos hasta que terminan. Los nombres de cuenta, las filas de repo y las insignias de organización también responden a **Enter** y **Espacio** cuando tienen el foco con **Tab**.
+
 ### Entender las tarjetas de cuenta
 
 Cada cuenta aparece como una tarjeta en la pestaña **Accounts**. Esto significa cada elemento:
