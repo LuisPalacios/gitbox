@@ -1,7 +1,6 @@
 // Package mirror handles repository mirror setup, status checking, and manual setup guides.
 package mirror
 
-
 // SetupResult describes what happened when setting up a mirror.
 type SetupResult struct {
 	RepoKey      string // "org/repo"

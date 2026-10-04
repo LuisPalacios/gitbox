@@ -9,11 +9,11 @@ import (
 
 func TestParseRemoteURL(t *testing.T) {
 	tests := []struct {
-		url          string
-		wantHost     string
-		wantOwner    string
-		wantRepo     string
-		wantErr      bool
+		url       string
+		wantHost  string
+		wantOwner string
+		wantRepo  string
+		wantErr   bool
 	}{
 		{"https://github.com/LuisPalacios/migra-forgejo.git", "github.com", "LuisPalacios", "migra-forgejo", false},
 		{"https://github.com/LuisPalacios/migra-forgejo", "github.com", "LuisPalacios", "migra-forgejo", false},
@@ -59,8 +59,8 @@ func TestExtractHost(t *testing.T) {
 
 func TestApplyDiscovery(t *testing.T) {
 	cfg := &config.Config{
-		Version:  2,
-		Global:   config.GlobalConfig{Folder: "~/test"},
+		Version: 2,
+		Global:  config.GlobalConfig{Folder: "~/test"},
 		Accounts: map[string]config.Account{
 			"forgejo": {Provider: "forgejo", URL: "https://git.example.com", Username: "user", Name: "U", Email: "u@e"},
 			"github":  {Provider: "github", URL: "https://github.com", Username: "user", Name: "U", Email: "u@e"},
@@ -105,8 +105,8 @@ func TestApplyDiscovery(t *testing.T) {
 
 func TestApplyIdempotent(t *testing.T) {
 	cfg := &config.Config{
-		Version:  2,
-		Global:   config.GlobalConfig{Folder: "~/test"},
+		Version: 2,
+		Global:  config.GlobalConfig{Folder: "~/test"},
 		Accounts: map[string]config.Account{
 			"forgejo": {Provider: "forgejo", URL: "https://git.example.com", Username: "user", Name: "U", Email: "u@e"},
 			"github":  {Provider: "github", URL: "https://github.com", Username: "user", Name: "U", Email: "u@e"},

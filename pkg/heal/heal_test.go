@@ -111,10 +111,10 @@ func TestRepo_FixesMissingIdentity(t *testing.T) {
 		Global: config.GlobalConfig{Folder: tmp},
 		Accounts: map[string]config.Account{
 			"alice": {
-				URL:      "https://github.com",
-				Username: "alice",
-				Name:     "Alice Example",
-				Email:    "alice@example.com",
+				URL:                   "https://github.com",
+				Username:              "alice",
+				Name:                  "Alice Example",
+				Email:                 "alice@example.com",
 				DefaultCredentialType: "gcm",
 			},
 		},

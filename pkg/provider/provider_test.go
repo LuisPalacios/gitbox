@@ -128,7 +128,9 @@ func TestGiteaListRepos(t *testing.T) {
 func TestGitLabListRepos(t *testing.T) {
 	projects := []gitlabProject{
 		{PathWithNS: "group/project1", Desc: "Proj", HTTPURL: "https://gitlab.com/group/project1.git", SSHURL: "git@gitlab.com:group/project1.git", Visibility: "private"},
-		{PathWithNS: "group/project2", Desc: "Fork", HTTPURL: "https://gitlab.com/group/project2.git", Visibility: "public", ForkedFrom: &struct{ ID int `json:"id"` }{ID: 42}},
+		{PathWithNS: "group/project2", Desc: "Fork", HTTPURL: "https://gitlab.com/group/project2.git", Visibility: "public", ForkedFrom: &struct {
+			ID int `json:"id"`
+		}{ID: 42}},
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

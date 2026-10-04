@@ -25,11 +25,11 @@ import (
 // Report summarizes what a single Repo heal did. Zero-value means
 // either the repo wasn't cloned or nothing drifted.
 type Report struct {
-	RepoKey   string
-	Path      string
-	Fixed     []string // human-readable descriptions of each fix applied
-	Warnings  []string // soft failures (e.g. token resolve failed)
-	Skipped   string   // non-empty when the repo was intentionally not healed
+	RepoKey  string
+	Path     string
+	Fixed    []string // human-readable descriptions of each fix applied
+	Warnings []string // soft failures (e.g. token resolve failed)
+	Skipped  string   // non-empty when the repo was intentionally not healed
 }
 
 // HasWork reports whether the heal touched anything — either a fix or

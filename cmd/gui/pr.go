@@ -35,8 +35,8 @@ type PRSummaryDTO struct {
 
 // PRSettingsDTO exposes the user-controlled PR badge toggles.
 type PRSettingsDTO struct {
-	Enabled        bool `json:"enabled"`
-	IncludeDrafts  bool `json:"includeDrafts"`
+	Enabled       bool `json:"enabled"`
+	IncludeDrafts bool `json:"includeDrafts"`
 }
 
 // PRAccountUpdateDTO is emitted per account on the "pr:refreshed" event so

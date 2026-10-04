@@ -44,7 +44,7 @@ func TestFindNestedRepos_SkipsVendorAndHiddenDirs(t *testing.T) {
 	parent := t.TempDir()
 	mkGitClone(t, filepath.Join(parent, "node_modules", "pkg")) // vendor — skipped
 	mkGitClone(t, filepath.Join(parent, ".cache", "thing"))     // hidden — skipped
-	mkGitClone(t, filepath.Join(parent, "real"))               // kept
+	mkGitClone(t, filepath.Join(parent, "real"))                // kept
 
 	got := FindNestedRepos(parent, 3)
 	if len(got) != 1 || filepath.Base(got[0]) != "real" {

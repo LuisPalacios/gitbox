@@ -757,11 +757,11 @@ func listLocalBranches(repoPath string) ([]string, error) {
 // the base branch. The commits differ but the changes are identical.
 //
 // Two-step check:
-// 1. Tree comparison: if the branch tip's tree equals the base branch's tree,
-//    the branch content is fully in the base (covers identical-state squash merges).
-// 2. Synthetic ancestor: create a dangling commit with the branch's tree on the
-//    merge base and check if it's an ancestor of the base branch (covers squash
-//    merges where more commits landed on base after the squash).
+//  1. Tree comparison: if the branch tip's tree equals the base branch's tree,
+//     the branch content is fully in the base (covers identical-state squash merges).
+//  2. Synthetic ancestor: create a dangling commit with the branch's tree on the
+//     merge base and check if it's an ancestor of the base branch (covers squash
+//     merges where more commits landed on base after the squash).
 func isSquashMerged(repoPath, baseBranch, branch string) bool {
 	// Fast path: if both trees are identical, branch is fully incorporated.
 	baseTree, err := output(repoPath, "rev-parse", baseBranch+"^{tree}")

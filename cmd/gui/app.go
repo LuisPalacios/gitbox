@@ -40,13 +40,13 @@ import (
 // App is the Wails application struct. All exported methods become
 // frontend bindings via window.go.main.App.<Method>().
 type App struct {
-	ctx             context.Context
-	cfg             *config.Config
-	cfgPath         string
-	cfgLoaded       bool   // true if config was loaded from disk (safe to save back)
-	cfgLoadError    string // non-empty if config exists but failed to parse
-	testMode        bool   // true when launched with --test-mode
-	testCleanup     func() // cleanup function for test-mode temp dir
+	ctx          context.Context
+	cfg          *config.Config
+	cfgPath      string
+	cfgLoaded    bool   // true if config was loaded from disk (safe to save back)
+	cfgLoadError string // non-empty if config exists but failed to parse
+	testMode     bool   // true when launched with --test-mode
+	testCleanup  func() // cleanup function for test-mode temp dir
 	// windowMode selects which UI the frontend should render. Empty (or
 	// "main") = the full gitbox app. "terminals" = the standalone Profile
 	// editor sub-process spawned by OpenTerminalsManagerWindow (issue #69

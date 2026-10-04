@@ -7,20 +7,20 @@ import (
 
 func TestExtractCommand(t *testing.T) {
 	tests := map[string]string{
-		"`claude`":                       "claude",
-		"`Claude` *(App Executable)*":    "Claude",
-		"`openhands` *(or Docker)*":      "openhands",
-		"`cursor-agent`":                 "cursor-agent",
-		"`langgraph` *(CLI/Studio)*":     "langgraph",
-		"*N/A (Library)*":                "",
-		"`python devika.py`":             "",
-		"`docker-compose`":               "docker-compose",
-		"`node --inspect foo.js`":        "",
-		"":                               "",
-		" ` ` ":                          "",
-		"plain text with no backticks":   "",
-		"`weird/slash`":                  "",
-		"` leading-space-inside `":       "leading-space-inside",
+		"`claude`":                     "claude",
+		"`Claude` *(App Executable)*":  "Claude",
+		"`openhands` *(or Docker)*":    "openhands",
+		"`cursor-agent`":               "cursor-agent",
+		"`langgraph` *(CLI/Studio)*":   "langgraph",
+		"*N/A (Library)*":              "",
+		"`python devika.py`":           "",
+		"`docker-compose`":             "docker-compose",
+		"`node --inspect foo.js`":      "",
+		"":                             "",
+		" ` ` ":                        "",
+		"plain text with no backticks": "",
+		"`weird/slash`":                "",
+		"` leading-space-inside `":     "leading-space-inside",
 	}
 	for in, want := range tests {
 		if got := extractCommand(in); got != want {
@@ -141,13 +141,13 @@ func TestKnownToolsEmbeddedMarkdown(t *testing.T) {
 	// Agentic IDEs (Cursor, Windsurf) ARE now eligible — they launch inside
 	// a terminal in a folder, which fits the menu contract.
 	forbiddenCategories := map[string]bool{
-		"Agentic Framework":          true,
-		"Orchestrator":               true,
-		"Orchestrator / Platform":    true,
-		"Framework / Orchestrator":   true,
-		"Harness Builder":            true,
-		"Harness / Orchestrator":     true,
-		retiredCategory:              true,
+		"Agentic Framework":        true,
+		"Orchestrator":             true,
+		"Orchestrator / Platform":  true,
+		"Framework / Orchestrator": true,
+		"Harness Builder":          true,
+		"Harness / Orchestrator":   true,
+		retiredCategory:            true,
 	}
 	for _, t0 := range tools {
 		if forbiddenCategories[t0.Category] {

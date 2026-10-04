@@ -146,13 +146,13 @@ func (g *GitHub) ListUserOrgs(ctx context.Context, baseURL, token, _ string) ([]
 
 // githubSearchItem is the shape returned by /search/issues for PRs.
 type githubSearchItem struct {
-	Number      int    `json:"number"`
-	Title       string `json:"title"`
-	HTMLURL     string `json:"html_url"`
-	RepoURL     string `json:"repository_url"` // "<api>/repos/owner/repo"
-	UpdatedAt   string `json:"updated_at"`
-	Draft       bool   `json:"draft"`
-	User        struct {
+	Number    int    `json:"number"`
+	Title     string `json:"title"`
+	HTMLURL   string `json:"html_url"`
+	RepoURL   string `json:"repository_url"` // "<api>/repos/owner/repo"
+	UpdatedAt string `json:"updated_at"`
+	Draft     bool   `json:"draft"`
+	User      struct {
 		Login string `json:"login"`
 	} `json:"user"`
 	PullRequest *struct{} `json:"pull_request"` // present only for PRs

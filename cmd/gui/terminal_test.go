@@ -371,8 +371,8 @@ func TestSanitizeWindowsTerminalEnv(t *testing.T) {
 		"APPDATA=/c/Users/me/AppData/Roaming",
 		"USERPROFILE=/c/Users/me",
 		"TEMP=/c/Users/me/AppData/Local/Temp",
-		"PATH=/usr/bin:/mingw64/bin",  // not normalised (deliberate)
-		"FOO=/c/not-normalised",       // unknown key kept as-is
+		"PATH=/usr/bin:/mingw64/bin", // not normalised (deliberate)
+		"FOO=/c/not-normalised",      // unknown key kept as-is
 		"PS1=> ",
 	}
 	out := sanitizeWindowsTerminalEnv(in)
@@ -563,8 +563,8 @@ func TestParseWTProfiles(t *testing.T) {
 			wantErr:  true,
 		},
 		{
-			name:     "empty name skipped",
-			settings: `{"profiles": {"list": [{"name": ""}, {"name": "Real"}]}}`,
+			name:      "empty name skipped",
+			settings:  `{"profiles": {"list": [{"name": ""}, {"name": "Real"}]}}`,
 			wantNames: []string{"Real"},
 		},
 	}

@@ -221,12 +221,12 @@ func (g *Gitea) RepoExists(ctx context.Context, baseURL, token, username, owner,
 // --- PRLister ---
 
 type giteaIssue struct {
-	Number     int    `json:"number"`
-	Title      string `json:"title"`
-	HTMLURL    string `json:"html_url"`
-	UpdatedAt  string `json:"updated_at"`
-	Draft      bool   `json:"draft"`
-	User       struct {
+	Number    int    `json:"number"`
+	Title     string `json:"title"`
+	HTMLURL   string `json:"html_url"`
+	UpdatedAt string `json:"updated_at"`
+	Draft     bool   `json:"draft"`
+	User      struct {
 		Login string `json:"login"`
 	} `json:"user"`
 	Repository struct {

@@ -200,11 +200,11 @@ func TestMatchAccount(t *testing.T) {
 	cfg := testConfig(t.TempDir())
 
 	tests := []struct {
-		name      string
-		host      string
-		owner     string
-		wantAcct  string
-		wantSrc   string
+		name     string
+		host     string
+		owner    string
+		wantAcct string
+		wantSrc  string
 	}{
 		{"github direct match", "github.com", "LuisPalacios", "github-me", "github-me"},
 		{"github owner mismatch (still matches host)", "github.com", "other-user", "github-me", "github-me"},

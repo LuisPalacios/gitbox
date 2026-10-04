@@ -205,4 +205,3 @@ func ResolveAPIToken(acct config.Account, accountKey string) (token, source stri
 		return ResolveToken(acct, accountKey)
 	}
 }
-

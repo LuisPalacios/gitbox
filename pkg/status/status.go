@@ -14,16 +14,16 @@ import (
 type State int
 
 const (
-	Clean      State = iota // Up to date, no changes
-	Dirty                   // Has modified/untracked files
-	Behind                  // Behind upstream (needs pull)
-	Ahead                   // Ahead of upstream (needs push)
-	Diverged                // Both ahead and behind
-	Conflict                // Has merge conflicts
-	NotCloned               // Directory does not exist
-	NoUpstream              // No upstream tracking branch
-	Error                   // Could not determine status
-	UpstreamGone            // Remote repo no longer exists (404 / deleted / lost access)
+	Clean        State = iota // Up to date, no changes
+	Dirty                     // Has modified/untracked files
+	Behind                    // Behind upstream (needs pull)
+	Ahead                     // Ahead of upstream (needs push)
+	Diverged                  // Both ahead and behind
+	Conflict                  // Has merge conflicts
+	NotCloned                 // Directory does not exist
+	NoUpstream                // No upstream tracking branch
+	Error                     // Could not determine status
+	UpstreamGone              // Remote repo no longer exists (404 / deleted / lost access)
 )
 
 // String returns a human-readable label for the state.
@@ -86,15 +86,15 @@ func (s State) Symbol() string {
 type RepoStatus struct {
 	Account   string `json:"account"`
 	Source    string `json:"source"`
-	Repo     string `json:"repo"`
-	Path     string `json:"path"`
-	State    State  `json:"state"`
-	Ahead    int    `json:"ahead,omitempty"`
-	Behind   int    `json:"behind,omitempty"`
-	Modified int    `json:"modified,omitempty"`
-	Untracked int  `json:"untracked,omitempty"`
-	Conflicts int  `json:"conflicts,omitempty"`
-	ErrorMsg string `json:"error,omitempty"`
+	Repo      string `json:"repo"`
+	Path      string `json:"path"`
+	State     State  `json:"state"`
+	Ahead     int    `json:"ahead,omitempty"`
+	Behind    int    `json:"behind,omitempty"`
+	Modified  int    `json:"modified,omitempty"`
+	Untracked int    `json:"untracked,omitempty"`
+	Conflicts int    `json:"conflicts,omitempty"`
+	ErrorMsg  string `json:"error,omitempty"`
 	Branch    string `json:"branch,omitempty"`     // Current branch name (or "(detached)")
 	IsDefault bool   `json:"is_default,omitempty"` // True when current branch is the repo's default branch
 }
@@ -165,11 +165,11 @@ func CheckAll(cfg *config.Config) []RepoStatus {
 	globalFolder := config.ExpandTilde(cfg.Global.Folder)
 
 	type job struct {
-		index        int
-		sourceName   string
-		sourceAcct   string
-		repoName     string
-		path         string
+		index      int
+		sourceName string
+		sourceAcct string
+		repoName   string
+		path       string
 	}
 	var jobs []job
 	for _, sourceName := range cfg.OrderedSourceKeys() {

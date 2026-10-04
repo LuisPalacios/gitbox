@@ -4,7 +4,7 @@ Esta guía cubre cómo ejecutar y escribir pruebas para gitbox. Para el inventar
 
 ## Pre-push hook
 
-El repo incluye una red de seguridad: un pre-push hook que ejecuta análisis estático y todas las pruebas unitarias antes de cada `git push`. Primero construye el frontend de la GUI cuando falta `cmd/gui/frontend/dist`.
+El repo incluye una red de seguridad: un pre-push hook que ejecuta una comprobación `gofmt -s`, análisis estático y todas las pruebas unitarias antes de cada `git push`. Primero construye el frontend de la GUI cuando falta `cmd/gui/frontend/dist`.
 
 Git no recoge hooks personalizados automáticamente, así que después de clonar el repo ejecuto esto una vez:
 
@@ -165,7 +165,7 @@ El flag `--test-mode` lee `test-gitbox.json` (buscando hacia arriba desde el dir
 
 ## Checklist pre-PR
 
-Ejecuta esto antes de cada push o PR. El pre-push hook se encarga de vet + unit tests, y el workflow de PR los repite en CI.
+Ejecuta esto antes de cada push o PR. El pre-push hook se encarga de gofmt + vet + unit tests, y el workflow de PR los repite en CI.
 
 ```text
 - [ ] go vet ./...
