@@ -46,6 +46,8 @@ for platform in $targets; do
         # Remote — copy files and run
         # Windows: use ~/ because SCP and Git Bash disagree on /tmp
         if is_win_platform "$platform"; then
+            # A literal ~ on purpose: scp and ssh expand it on the remote host.
+            # shellcheck disable=SC2088
             remote_script="~/test-setup-credentials.sh"
         else
             remote_script="/tmp/test-setup-credentials.sh"
@@ -57,6 +59,8 @@ for platform in $targets; do
 
         printf '  copying test-setup-credentials.sh... '
         scp "$SETUP_SCRIPT" "${host}:${remote_script}" 2>/dev/null
+        # $remote_script expands locally on purpose.
+        # shellcheck disable=SC2029
         is_win_platform "$platform" || ssh "$host" "chmod +x $remote_script" 2>/dev/null
         printf '%bok%b\n' "$G" "$N"
 

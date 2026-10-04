@@ -100,6 +100,10 @@ wails_target_for() {
 # contexts, so we check every step's exit status explicitly. Silent
 # continuation past a failed wails build produced success-looking ship
 # runs with a missing /tmp/GitboxApp.app — not acceptable.
+#
+# Every ssh command here is built locally on purpose: $remote_dir, $staged
+# and friends must expand on this side before the remote shell runs it.
+# shellcheck disable=SC2029
 build_and_ship_gui() {
     local p="$1"
     local host; host="$(ssh_host_for "$p")"
@@ -125,6 +129,8 @@ build_and_ship_gui() {
     # and Linux common prefix (/usr/local/bin), Linux Go default
     # (/usr/local/go/bin), per-user Go bin ($HOME/go/bin). Windows gets the
     # Scoop shim PATH fix as well.
+    # Single quotes on purpose: $HOME and $PATH expand on the remote host.
+    # shellcheck disable=SC2016
     local path_prefix='/opt/homebrew/bin:/usr/local/bin:/usr/local/go/bin:$HOME/go/bin:$PATH'
 
     # Always pre-build the frontend directly via bash and pass -s to wails.

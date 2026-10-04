@@ -379,6 +379,8 @@ ensure_path() {
   fi
 
   log "Adding $dir to PATH in $rc_file"
+  # The literal $PATH is written to the rc file and expands when it is sourced.
+  # shellcheck disable=SC2016
   printf '\n%s\nexport PATH="%s:$PATH"\n' "$marker" "$dir" >> "$rc_file"
 }
 

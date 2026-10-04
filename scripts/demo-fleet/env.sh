@@ -8,6 +8,8 @@
 # exported in native form so GitboxApp.exe and Python see the same thing.
 
 KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Used by build.sh and run.sh, which source this file.
+# shellcheck disable=SC2034
 REPO_ROOT="$(cd "$KIT_DIR/../.." && pwd)"
 
 native() { # native <path> — Windows-style path under Git Bash, unchanged elsewhere
