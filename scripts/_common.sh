@@ -251,8 +251,10 @@ run_on() {
         if is_win_platform "$platform"; then
             cmd="$(_win_scoop_path_prefix) $cmd"
         fi
+        # MSYS_NO_PATHCONV: Git Bash would rewrite a remote path such as
+        # /tmp/GitboxApp into a local Windows path before ssh.exe sees it.
         # shellcheck disable=SC2029
-        ssh "$host" "$cmd"
+        MSYS_NO_PATHCONV=1 ssh "$host" "$cmd"
     fi
 }
 
