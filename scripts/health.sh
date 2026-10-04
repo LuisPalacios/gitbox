@@ -129,17 +129,21 @@ run_deadcode() {
 
 run_svelte() {
     local out
+    # svelte-check 4 has no hint level; unused locals and parameters are
+    # reported as errors through noUnusedLocals/noUnusedParameters instead.
     out="$(cd "$FRONTEND" && npx svelte-check --tsconfig ./tsconfig.json \
-        --output machine --threshold hint 2>&1)"
-    grep -E ' (ERROR|WARNING|HINT) ' <<<"$out"
-    grep -q ' COMPLETED .* 0 ERRORS 0 WARNINGS 0 HINTS' <<<"$out" || return 1
+        --output machine 2>&1)"
+    grep -E ' (ERROR|WARNING) ' <<<"$out"
+    grep -q ' COMPLETED .* 0 ERRORS 0 WARNINGS' <<<"$out" || return 1
 }
 
 run_build() {
     # Rebuilds the gitignored dist/ (the only write); fails on any compiler
-    # or bundler warning, e.g. the A11y diagnostics vite-plugin-svelte prints.
+    # or bundler warning: any vite-plugin-svelte diagnostic that points at a
+    # file:line:col (the Svelte compiler's warnings), rollup "(!)" notices,
+    # and npm warnings.
     (cd "$FRONTEND" && npm run build 2>&1) | sed 's/\x1b\[[0-9;]*m//g' \
-        | grep -E '\[vite-plugin-svelte\] .*(A11y|Unused|[Ww]arn)|\(!\)|^npm warn'
+        | grep -E '\[vite-plugin-svelte\] [^ ]+\.svelte:[0-9]+:[0-9]+ |\(!\)|^npm warn'
     return 0
 }
 
