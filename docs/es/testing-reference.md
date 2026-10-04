@@ -10,13 +10,13 @@ Los recuentos son funciones `func Test…` de nivel superior por paquete, obteni
 
 - `pkg/adopt/` — 13 pruebas: descubrimiento de huérfanos, puntuación de cuentas (usuario embebido en la URL, username de la credencial, carpeta padre, empates ambiguos), clones anidados bajo contenedores
 - `pkg/config/` — 96 pruebas: parseo de config, migración v1/v2 → v3, operaciones CRUD, save/load, backups, preparación de test-mode
-- `pkg/credential/` — 25 pruebas: resolución de token, validación, `CanOpenBrowser`, helpers por defecto del OS, `Check`/`FixGlobalGCMConfig` (salud de gitconfig global para GCM)
+- `pkg/credential/` — 21 pruebas: resolución de token, validación, helpers por defecto del OS, `Check`/`FixGlobalGCMConfig` (salud de gitconfig global para GCM)
 - `pkg/doctor/` — 14 pruebas: forma de la tabla de herramientas, pistas de instalación, búsquedas, comprobaciones previas por tipo de credencial, decodificación de la salida de herramientas
-- `pkg/git/` — 33 pruebas: operaciones git mediante subprocess, URLs de repo y de perfil, descubrimiento de repos anidados, helpers de WSL
+- `pkg/git/` — 30 pruebas: operaciones git mediante subprocess, URLs de repo y de perfil, descubrimiento de repos anidados
 - `pkg/gitignore/` — 23 pruebas: ida y vuelta del bloque gestionado, fusión con contenido del usuario, instalación idempotente, backups, saneado de duplicados
-- `pkg/harness/` — 23 pruebas: parseo del directorio de herramientas embebido, herramientas retiradas, parseo del `launch_menu` de WezTerm
+- `pkg/harness/` — 33 pruebas: parseo del directorio de herramientas embebido, herramientas retiradas, parseo del `launch_menu` de WezTerm
 - `pkg/heal/` — 7 pruebas: URL de origin esperada por tipo de credencial, reparación de identidad, eliminación de tokens embebidos
-- `pkg/i18n/` — 3 pruebas: normalización de idioma, idiomas soportados, precedencia de resolución
+- `pkg/i18n/` — 1 prueba: normalización de idioma
 - `pkg/identity/` — 7 pruebas: `ResolveIdentity`, `EnsureRepoIdentity`, `CheckGlobalIdentity`
 - `pkg/launch/` — 13 pruebas: expansión de argv, quoting de shell, envoltura de AI harness por shell, AppleScript de macOS
 - `pkg/mirror/` — 6 pruebas: parseo de URLs remotas, descubrimiento de mirrors, clasificación de errores de estado

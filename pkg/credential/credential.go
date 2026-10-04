@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -205,24 +204,5 @@ func ResolveAPIToken(acct config.Account, accountKey string) (token, source stri
 		// token type: env vars / keyring.
 		return ResolveToken(acct, accountKey)
 	}
-}
-
-// CanOpenBrowser reports whether the current session can likely open a web
-// browser for OAuth flows (GCM credential setup). It returns false for SSH
-// sessions and headless Linux environments where no display server is available.
-func CanOpenBrowser() bool {
-	if runtime.GOOS == "windows" {
-		return true
-	}
-	// SSH session detection: SSH_CLIENT or SSH_TTY set means remote access.
-	if os.Getenv("SSH_CLIENT") != "" || os.Getenv("SSH_TTY") != "" {
-		// On macOS, SSH sessions can still open browsers (via `open`).
-		if runtime.GOOS == "darwin" {
-			return true
-		}
-		// Linux SSH: only if a display server is available.
-		return os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
-	}
-	return true
 }
 

@@ -166,23 +166,6 @@ func ExpectedOriginURL(acct config.Account, repoKey, credType string) string {
 	}
 }
 
-// All heals every cloned repo in the config. Returns a list of reports
-// filtered to those that actually did work (HasWork) — callers that
-// want to see skipped entries should use Repo() per key.
-func All(cfg *config.Config) []Report {
-	var reports []Report
-	for _, sourceKey := range cfg.OrderedSourceKeys() {
-		src := cfg.Sources[sourceKey]
-		for _, repoKey := range src.OrderedRepoKeys() {
-			r := Repo(cfg, sourceKey, repoKey)
-			if r.HasWork() {
-				reports = append(reports, r)
-			}
-		}
-	}
-	return reports
-}
-
 // --- Helpers ------------------------------------------------------
 
 // stripScheme removes "https://" or "http://" from a URL so it can be

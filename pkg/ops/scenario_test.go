@@ -11,6 +11,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/heal"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 )
 
@@ -63,6 +64,18 @@ func TestScenario_FullLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 		return plan.Dest
+	}
+	// cloneRepo mirrors the GUI clone flow: plan, run, then heal.
+	cloneRepo := func(t *testing.T) (string, heal.Report) {
+		t.Helper()
+		plan, err := PlanClone(cfg, srcKey, repoKey)
+		if err != nil {
+			t.Fatalf("plan clone: %v", err)
+		}
+		if err := plan.Run(nil); err != nil {
+			t.Fatalf("clone: %v", err)
+		}
+		return plan.Dest, heal.Repo(cfg, srcKey, repoKey)
 	}
 	ctx := func() context.Context {
 		c, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -120,10 +133,7 @@ func TestScenario_FullLifecycle(t *testing.T) {
 	})
 
 	t.Run("05_clone", func(t *testing.T) {
-		dest, report, err := Clone(cfg, srcKey, repoKey, nil)
-		if err != nil {
-			t.Fatalf("clone: %v", err)
-		}
+		dest, report := cloneRepo(t)
 		if !git.IsRepo(dest) {
 			t.Fatalf("no clone at %s", dest)
 		}
@@ -199,9 +209,7 @@ func TestScenario_FullLifecycle(t *testing.T) {
 		if err := os.RemoveAll(dest); err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := Clone(cfg, srcKey, repoKey, nil); err != nil {
-			t.Fatalf("re-clone: %v", err)
-		}
+		cloneRepo(t)
 		if !git.IsRepo(dest) {
 			t.Fatal("re-clone not on disk")
 		}

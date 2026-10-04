@@ -10,13 +10,13 @@ Counts are top-level `func Test…` functions per package, from `grep -rc "^func
 
 - `pkg/adopt/` — 13 tests: orphan discovery, account scoring (embedded URL user, credential username, parent folder, ambiguous ties), nested clones under containers
 - `pkg/config/` — 96 tests: config parsing, v1/v2 → v3 migration, CRUD operations, save/load, backups, test-mode setup
-- `pkg/credential/` — 25 tests: token resolution, validation, `CanOpenBrowser`, OS-default helpers, `Check`/`FixGlobalGCMConfig` (global gitconfig health for GCM)
+- `pkg/credential/` — 21 tests: token resolution, validation, OS-default helpers, `Check`/`FixGlobalGCMConfig` (global gitconfig health for GCM)
 - `pkg/doctor/` — 14 tests: tool table shape, install hints, lookups, per-credential-type prechecks, tool output decoding
-- `pkg/git/` — 33 tests: git subprocess operations, repo and profile URLs, nested repo discovery, WSL helpers
+- `pkg/git/` — 30 tests: git subprocess operations, repo and profile URLs, nested repo discovery
 - `pkg/gitignore/` — 23 tests: managed block round-trip, merge with user content, idempotent install, backups, duplicate sanitising
-- `pkg/harness/` — 23 tests: embedded tools directory parsing, retired tools, WezTerm `launch_menu` parsing
+- `pkg/harness/` — 33 tests: embedded tools directory parsing, retired tools, WezTerm `launch_menu` parsing
 - `pkg/heal/` — 7 tests: expected origin URL per credential type, identity repair, stripping embedded tokens
-- `pkg/i18n/` — 3 tests: language normalisation, supported languages, resolution precedence
+- `pkg/i18n/` — 1 test: language normalisation
 - `pkg/identity/` — 7 tests: `ResolveIdentity`, `EnsureRepoIdentity`, `CheckGlobalIdentity`
 - `pkg/launch/` — 13 tests: argv expansion, shell quoting, AI harness wrapping per shell, macOS AppleScript
 - `pkg/mirror/` — 6 tests: remote URL parsing, mirror discovery, status error classification

@@ -125,32 +125,6 @@ type RepoStatus struct {
 	Conflicts int    // Conflicted files count
 }
 
-// Clone runs git clone with the given options.
-// When opts.Quiet is true, stdout/stderr are captured instead of forwarded.
-func Clone(url, dest string, opts CloneOpts) error {
-	args := []string{"clone"}
-	for _, c := range opts.ConfigArgs {
-		args = append(args, "-c", c)
-	}
-	if opts.Mirror {
-		args = append(args, "--mirror")
-	} else if opts.Bare {
-		args = append(args, "--bare")
-	}
-	if opts.Depth > 0 {
-		args = append(args, "--depth", strconv.Itoa(opts.Depth))
-	}
-	if opts.Branch != "" {
-		args = append(args, "--branch", opts.Branch)
-	}
-	args = append(args, url, dest)
-	if opts.Quiet {
-		_, err := output(".", args...)
-		return err
-	}
-	return run(".", args...)
-}
-
 // CloneProgress holds a progress update from git clone.
 type CloneProgress struct {
 	Phase   string // e.g. "Receiving objects", "Resolving deltas"
@@ -236,24 +210,13 @@ func parseProgress(r io.Reader, onProgress func(CloneProgress)) {
 	}
 }
 
-// Fetch runs git fetch --all in the given repo.
-func Fetch(repoPath string) error {
-	return run(repoPath, "fetch", "--all", "--prune")
-}
-
-// FetchQuiet runs git fetch --all --prune, capturing output instead of forwarding it.
-func FetchQuiet(repoPath string) error {
-	_, err := output(repoPath, "fetch", "--all", "--prune")
-	return err
-}
-
 // FetchCaptured runs git fetch --all --prune and returns the combined
 // stdout+stderr along with any error. GUI callers need this because
 // git writes actionable diagnostics like "remote: Repository not found."
-// to stderr, and plain Fetch/FetchQuiet either forward them to the
-// terminal (run) or drop them after wrapping in a generic exec error
-// (output). The captured text is what downstream classifiers match on
-// (see IsUpstreamGoneError).
+// to stderr, and the plain run/output helpers either forward them to the
+// terminal or drop them after wrapping in a generic exec error. The
+// captured text is what downstream classifiers match on (see
+// IsUpstreamGoneError).
 func FetchCaptured(repoPath string) (string, error) {
 	cmd := exec.Command(GitBin(), "fetch", "--all", "--prune")
 	cmd.Dir = repoPath
@@ -291,11 +254,6 @@ func IsUpstreamGoneError(err error) bool {
 		strings.Contains(msg, "returned error: 404") ||
 		strings.Contains(msg, "http 404") ||
 		strings.Contains(msg, "repository access denied")
-}
-
-// Pull runs git pull --ff-only in the given repo.
-func Pull(repoPath string) error {
-	return run(repoPath, "pull", "--ff-only")
 }
 
 // PushMirror runs `git push --mirror <url>` from repoPath, pushing every
@@ -427,23 +385,6 @@ func classifyXY(xy string) string {
 		return "added"
 	}
 	return "modified"
-}
-
-// RevCount returns the number of commits ahead/behind the upstream.
-// Returns (0, 0, nil) if there's no upstream.
-func RevCount(repoPath string) (ahead, behind int, err error) {
-	out, err := output(repoPath, "rev-list", "--count", "--left-right", "HEAD...@{upstream}")
-	if err != nil {
-		// No upstream configured — not an error, just 0/0.
-		return 0, 0, nil
-	}
-	parts := strings.Fields(strings.TrimSpace(out))
-	if len(parts) != 2 {
-		return 0, 0, nil
-	}
-	ahead, _ = strconv.Atoi(parts[0])
-	behind, _ = strconv.Atoi(parts[1])
-	return ahead, behind, nil
 }
 
 // RemoteURL returns the URL of the 'origin' remote.
@@ -602,20 +543,6 @@ func SetRemoteURL(repoPath, remote, url string) error {
 // Run executes a git command in the given directory (public wrapper).
 func Run(dir string, args ...string) error {
 	return run(dir, args...)
-}
-
-// RunWithInput executes a git command with data piped to stdin.
-func RunWithInput(dir string, input string, args ...string) (string, error) {
-	cmd := exec.Command(GitBin(), args...)
-	cmd.Dir = dir
-	cmd.Env = Environ() // Homebrew PATH for macOS — do not remove.
-	cmd.Stdin = strings.NewReader(input)
-	HideWindow(cmd)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
-	}
-	return string(out), nil
 }
 
 // CurrentBranch returns the current branch name.

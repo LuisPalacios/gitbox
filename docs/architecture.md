@@ -111,7 +111,7 @@ Manages tokens, SSH keys, GCM integration, and per-repo credential isolation. Se
 
 **SSH key management:** Generates key pairs, writes `~/.ssh/config` entries, tests connections. Naming convention: host alias `gitbox-<account-key>`, key file `gitbox-<account-key>-sshkey`.
 
-**Per-repo credential config** (`repoconfig.go`): `ConfigureRepoCredential()` sets each clone's `.git/config` to be self-contained. `WriteCredentialFile()` and `RemoveCredentialFile()` manage the git-credential-store files for token accounts. `pkg/ops` and `pkg/heal` call the same shared functions.
+**Per-repo credential config** (`repoconfig.go`): `ConfigureRepoCredential()` sets each clone's `.git/config` to be self-contained. `WriteCredentialFile()` and `DeleteToken()` manage the git-credential-store files for token accounts. `pkg/ops` and `pkg/heal` call the same shared functions.
 
 ### pkg/provider — Repository discovery
 
@@ -138,7 +138,7 @@ Helpers include `TestAuth()` for credential validation and `TokenSetupGuide()` f
 
 Thin wrapper around `os/exec` for all Git operations — no libgit2 dependency. Provides `Clone`, `CloneWithProgress`, `Pull`, `Status`, `Fetch`, `ConfigSet`, `ConfigAdd`, `ConfigUnsetAll`, and more. See `pkg/git/git.go`. Multi-value git config keys (like `credential.helper`) are managed with `ConfigUnsetAll` + `ConfigAdd`.
 
-On macOS, `GitBin()` probes Homebrew paths (`/opt/homebrew/bin/git`, `/usr/local/bin/git`) before falling back to PATH, ensuring the GUI finds GCM-enabled git even with the minimal PATH that macOS GUI apps inherit. On Windows, `IsWSLAvailable` and `WSLPath` support WSL-hosted shells.
+On macOS, `GitBin()` probes Homebrew paths (`/opt/homebrew/bin/git`, `/usr/local/bin/git`) before falling back to PATH, ensuring the GUI finds GCM-enabled git even with the minimal PATH that macOS GUI apps inherit.
 
 ### pkg/status — Sync status checking
 

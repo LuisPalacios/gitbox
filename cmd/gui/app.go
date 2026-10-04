@@ -167,12 +167,6 @@ func (a *App) saveConfig() error {
 	return config.Save(a.cfg, a.cfgPath)
 }
 
-// IsTestMode returns true when the app was launched with --test-mode.
-// Exposed to the frontend for UI indicator.
-func (a *App) IsTestMode() bool {
-	return a.testMode
-}
-
 // BeforeClose is called while the window is still alive, before it is destroyed.
 // We capture and persist the window position and size to the active view mode slot.
 func (a *App) BeforeClose(_ context.Context) bool {

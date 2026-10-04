@@ -81,7 +81,7 @@ type GlobalConfig struct {
 	TerminalApps []TerminalApp `json:"terminal_apps,omitempty"`
 	// Shells is the list of command-line interpreters available on the host
 	// (cmd, pwsh, git-bash, per-distro WSL, bash, zsh, fish, …). See
-	// pkg/harness/shell-directory.md for the seed table.
+	// pkg/terminals/catalog.go for the seed table.
 	Shells []ShellEntry `json:"shells,omitempty"`
 	// TerminalProfiles pairs a TerminalApp with a Shell into a launchable
 	// "Open in <terminal> + <shell>" entry. Profiles are what the GUI

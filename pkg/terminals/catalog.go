@@ -44,16 +44,6 @@ type CatalogShell struct {
 	Args    []string              // default flags
 }
 
-// modernTerminal reports whether a terminal entry is "modern" — i.e. it can
-// host an arbitrary shell, identified by the presence of a shell token in
-// its launch template. Bare-shell-as-terminal rows (Git Bash, PowerShell-as-
-// terminal) have no shell tokens and are not modern.
-//
-// This avoids an explicit IsModern flag that would drift from the templates.
-func modernTerminal(t CatalogTerminal) bool {
-	return templateAcceptsShell(t.ArgsTemplate)
-}
-
 // templateAcceptsShell reports whether the args template references either
 // shell token, meaning the terminal hosts a separately-resolved shell.
 func templateAcceptsShell(tmpl []string) bool {

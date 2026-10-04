@@ -3,7 +3,6 @@ package credential
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -82,22 +81,5 @@ func TestFindSSHConfigEntry_NoFile(t *testing.T) {
 	_, err := FindSSHConfigEntry(dir, "anything")
 	if err == nil {
 		t.Error("expected error when config file doesn't exist")
-	}
-}
-
-func TestSSHConfigGuide(t *testing.T) {
-	guide := SSHConfigGuide("gitbox-github-MyUser", "github.com", "~/.ssh/gitbox-github-MyUser-sshkey")
-
-	if !strings.Contains(guide, "Host gitbox-github-MyUser") {
-		t.Error("guide should contain Host alias")
-	}
-	if !strings.Contains(guide, "HostName github.com") {
-		t.Error("guide should contain HostName")
-	}
-	if !strings.Contains(guide, "gitbox-github-MyUser-sshkey") {
-		t.Error("guide should contain key file path")
-	}
-	if !strings.Contains(guide, "IdentitiesOnly yes") {
-		t.Error("guide should contain IdentitiesOnly")
 	}
 }

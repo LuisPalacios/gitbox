@@ -69,17 +69,3 @@ func (p ClonePlan) Run(onProgress func(git.CloneProgress)) error {
 	}
 	return git.CloneWithProgress(p.URL, p.Dest, p.Opts, onProgress)
 }
-
-// Clone plans, runs and heals a single clone. The returned report lists the
-// post-clone fixes (identity, clean origin URL, credential isolation); its
-// warnings are soft failures that don't undo the clone.
-func Clone(cfg *config.Config, sourceKey, repoKey string, onProgress func(git.CloneProgress)) (string, heal.Report, error) {
-	plan, err := PlanClone(cfg, sourceKey, repoKey)
-	if err != nil {
-		return "", heal.Report{}, err
-	}
-	if err := plan.Run(onProgress); err != nil {
-		return plan.Dest, heal.Report{}, err
-	}
-	return plan.Dest, heal.Repo(cfg, sourceKey, repoKey), nil
-}

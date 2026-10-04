@@ -111,7 +111,7 @@ Gestiona tokens, claves SSH, integración GCM y aislamiento de credenciales por 
 
 **Gestión de claves SSH:** Genera pares de claves, escribe entradas `~/.ssh/config`, prueba conexiones. Convención de nombre: alias de host `gitbox-<account-key>`, archivo de clave `gitbox-<account-key>-sshkey`.
 
-**Config de credenciales por repo** (`repoconfig.go`): `ConfigureRepoCredential()` configura el `.git/config` de cada clone para ser autocontenido. `WriteCredentialFile()` y `RemoveCredentialFile()` gestionan los archivos git-credential-store para cuentas token. `pkg/ops` y `pkg/heal` llaman a las mismas funciones compartidas.
+**Config de credenciales por repo** (`repoconfig.go`): `ConfigureRepoCredential()` configura el `.git/config` de cada clone para ser autocontenido. `WriteCredentialFile()` y `DeleteToken()` gestionan los archivos git-credential-store para cuentas token. `pkg/ops` y `pkg/heal` llaman a las mismas funciones compartidas.
 
 ### pkg/provider — discovery de repositorios
 
@@ -138,7 +138,7 @@ Los helpers incluyen `TestAuth()` para validación de credenciales y `TokenSetup
 
 Wrapper fino alrededor de `os/exec` para todas las operaciones Git — sin dependencia de libgit2. Proporciona `Clone`, `CloneWithProgress`, `Pull`, `Status`, `Fetch`, `ConfigSet`, `ConfigAdd`, `ConfigUnsetAll` y más. Consulta `pkg/git/git.go`. Las claves multi-value de config git (como `credential.helper`) se gestionan con `ConfigUnsetAll` + `ConfigAdd`.
 
-En macOS, `GitBin()` prueba rutas de Homebrew (`/opt/homebrew/bin/git`, `/usr/local/bin/git`) antes de hacer fallback a PATH, asegurando que la GUI encuentre git con GCM incluso con el PATH mínimo que heredan las apps GUI en macOS. En Windows, `IsWSLAvailable` y `WSLPath` dan soporte a shells alojados en WSL.
+En macOS, `GitBin()` prueba rutas de Homebrew (`/opt/homebrew/bin/git`, `/usr/local/bin/git`) antes de hacer fallback a PATH, asegurando que la GUI encuentre git con GCM incluso con el PATH mínimo que heredan las apps GUI en macOS.
 
 ### pkg/status — comprobación de estado de sync
 

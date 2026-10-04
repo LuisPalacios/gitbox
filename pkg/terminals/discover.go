@@ -1,8 +1,6 @@
 package terminals
 
 import (
-	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 
@@ -89,79 +87,6 @@ func stripJSONComments(in []byte) []byte {
 		}
 	}
 	return out
-}
-
-// parseWTProfiles parses a JSONC-encoded settings.json blob and returns one
-// TerminalProfile per visible WT profile. A profile is excluded when
-// `hidden: true` is set, or when its `source` appears in the top-level
-// `disabledProfileSources` array — both criteria match WT's own menu rules.
-func parseWTProfiles(data []byte) ([]config.TerminalProfile, error) {
-	clean := stripJSONComments(data)
-	var doc struct {
-		DisabledProfileSources []string `json:"disabledProfileSources"`
-		Profiles               struct {
-			List []struct {
-				Name   string `json:"name"`
-				Hidden *bool  `json:"hidden,omitempty"`
-				Source string `json:"source,omitempty"`
-			} `json:"list"`
-		} `json:"profiles"`
-	}
-	if err := json.Unmarshal(clean, &doc); err != nil {
-		return nil, err
-	}
-	if len(doc.Profiles.List) == 0 {
-		return nil, errors.New("no profiles in settings.json")
-	}
-	disabled := make(map[string]bool, len(doc.DisabledProfileSources))
-	for _, s := range doc.DisabledProfileSources {
-		disabled[s] = true
-	}
-	var out []config.TerminalProfile
-	for _, p := range doc.Profiles.List {
-		if p.Name == "" {
-			continue
-		}
-		if p.Hidden != nil && *p.Hidden {
-			continue
-		}
-		if p.Source != "" && disabled[p.Source] {
-			continue
-		}
-		out = append(out, config.TerminalProfile{
-			ID:         "wt+" + slugifyASCII(p.Name),
-			Name:       p.Name,
-			TerminalID: "wt",
-			Args:       []string{"--profile", p.Name, "-d", launch.TokenPath, launch.TokenCommand},
-			Source:     "wt-profile",
-		})
-	}
-	if len(out) == 0 {
-		return nil, errors.New("no visible WT profiles")
-	}
-	return out, nil
-}
-
-// DiscoverWTProfiles locates Windows Terminal's settings.json, parses the
-// profile list, and returns one TerminalProfile per visible WT profile.
-// Returns an empty slice (no error) when wt.exe is missing or no settings.json
-// is present — that is a normal config, not a failure.
-func DiscoverWTProfiles() []config.TerminalProfile {
-	if _, ok := probeWT(); !ok {
-		return nil
-	}
-	for _, path := range wtSettingsCandidates() {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		profiles, err := parseWTProfiles(data)
-		if err != nil {
-			return nil
-		}
-		return profiles
-	}
-	return nil
 }
 
 // ─── WezTerm launch_menu discovery ────────────────────────────────────────

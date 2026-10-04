@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -66,89 +65,6 @@ type StatusResult struct {
 	// Error = primary broken.
 	// None = no credential type configured.
 	Overall Status
-}
-
-// StatusManager tracks credential status for all accounts.
-// Thread-safe. A single instance is shared by TUI and GUI.
-type StatusManager struct {
-	mu       sync.Mutex
-	statuses map[string]StatusResult
-	epochs   map[string]uint64
-}
-
-// NewStatusManager creates a manager.
-func NewStatusManager() *StatusManager {
-	return &StatusManager{
-		statuses: make(map[string]StatusResult),
-		epochs:   make(map[string]uint64),
-	}
-}
-
-// Get returns the current status for an account.
-// Returns StatusUnknown if never checked.
-func (sm *StatusManager) Get(accountKey string) StatusResult {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-	r, ok := sm.statuses[accountKey]
-	if !ok {
-		return StatusResult{Overall: StatusUnknown, Primary: StatusUnknown, PAT: StatusUnknown}
-	}
-	return r
-}
-
-// GetAll returns a snapshot of all statuses.
-func (sm *StatusManager) GetAll() map[string]StatusResult {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-	out := make(map[string]StatusResult, len(sm.statuses))
-	for k, v := range sm.statuses {
-		out[k] = v
-	}
-	return out
-}
-
-// StartCheck marks an account as Checking and returns an epoch token.
-func (sm *StatusManager) StartCheck(accountKey string) uint64 {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-	sm.epochs[accountKey]++
-	sm.statuses[accountKey] = StatusResult{
-		Overall: StatusChecking,
-		Primary: StatusChecking,
-		PAT:     StatusChecking,
-	}
-	return sm.epochs[accountKey]
-}
-
-// CompleteCheck records a result only if the epoch still matches.
-func (sm *StatusManager) CompleteCheck(accountKey string, epoch uint64, result StatusResult) bool {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-	if sm.epochs[accountKey] != epoch {
-		return false
-	}
-	sm.statuses[accountKey] = result
-	return true
-}
-
-// Invalidate resets an account to Unknown and bumps the epoch.
-func (sm *StatusManager) Invalidate(accountKey string) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-	sm.epochs[accountKey]++
-	sm.statuses[accountKey] = StatusResult{
-		Overall: StatusUnknown,
-		Primary: StatusUnknown,
-		PAT:     StatusUnknown,
-	}
-}
-
-// Remove deletes an account from the manager.
-func (sm *StatusManager) Remove(accountKey string) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-	delete(sm.statuses, accountKey)
-	delete(sm.epochs, accountKey)
 }
 
 // SSHFolder returns the resolved SSH folder from config.
