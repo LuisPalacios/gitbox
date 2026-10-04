@@ -287,6 +287,9 @@ type UpdateInfo struct {
 	Current   string `json:"current"`
 	Latest    string `json:"latest"`
 	URL       string `json:"url"`
+	// SelfUpdate is false for builds that only notify (the AppImage):
+	// the frontend then opens URL instead of calling ApplyUpdate.
+	SelfUpdate bool `json:"selfUpdate"`
 }
 
 func (a *App) updateOpts() update.Options {
@@ -315,9 +318,10 @@ func (a *App) CheckForUpdate() {
 		}
 
 		info := UpdateInfo{
-			Available: true,
-			Current:   result.Current,
-			Latest:    result.Latest,
+			Available:  true,
+			Current:    result.Current,
+			Latest:     result.Latest,
+			SelfUpdate: update.SelfUpdateSupported(),
 		}
 		if result.Release != nil {
 			info.URL = result.Release.HTMLURL
@@ -330,6 +334,10 @@ func (a *App) CheckForUpdate() {
 // On Windows, if the install directory requires admin privileges (e.g.
 // Program Files), it falls back to a UAC-elevated helper process.
 func (a *App) ApplyUpdate() error {
+	if !update.SelfUpdateSupported() {
+		return errors.New("this build can't update itself; download the new version from the release page")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 

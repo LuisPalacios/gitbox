@@ -58,7 +58,7 @@ pkg/                      Shared Go library
   workspace/              Read-only VS Code .code-workspace discovery + cache (RefreshCache); no generation, no tmuxinator
   adopt/                  Orphan repo discovery + adoption (multi-root scan, container nested-clone discovery, in-place absolute clone_folder)
   status/                 Clone status checking
-  update/                 Auto-update: version check, download, self-replace
+  update/                 Auto-update: version check, download, self-replace (AppImage build is notify-only)
   doctor/                 External-tool detection (git, GCM, ssh, …): point-of-use precheck + the GUI's tool check; `LookupIn` is the Setenv-free resolver (extra dirs, ~/.local/bin, Windows shims) shared by harness detection
   harness/                Embedded AI-tool catalog (tools-directory.md: alternates + well-known locations) + pure `Sync` that flags uninstalled harnesses `missing` instead of deleting them
   identity/               Global `~/.gitconfig` user.name/user.email detection + removal

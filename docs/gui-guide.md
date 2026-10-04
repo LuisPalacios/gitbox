@@ -369,6 +369,8 @@ In the account kebab, the same entries appear with identical ordering — the on
 
 Gitbox checks for updates once per day in the background. When a newer version is available, an amber pill appears on the right side of the footer status bar showing the new version. Click it to download and apply the update in place. Gitbox verifies the release's SHA256 checksum and replaces only what is already installed next to the app — on macOS the whole `GitboxApp.app` bundle. After the update completes, click **Quit** and restart the app to use the new version.
 
+The Linux AppImage only notifies: clicking the pill opens the release page, and I download the new AppImage and replace the old file myself. Gitbox never rewrites the AppImage, and it doesn't embed update information for external AppImage updaters.
+
 The updater follows the release GitHub marks as latest, so a v1 GUI moves to v2 the same way.
 
 ### Deleting repos and accounts

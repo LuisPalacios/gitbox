@@ -139,13 +139,33 @@ func TestArtifactNameFor(t *testing.T) {
 	}
 }
 
-// Inside an AppImage the runtime exports $APPIMAGE; the updater must then
-// fetch the AppImage asset (named per the AppImage catalog rules: no
-// "linux", arch as x86_64) instead of the platform zip.
-func TestArtifactName_AppImage(t *testing.T) {
+// The AppImage build is notify-only: it must not self-update, and it never
+// asks for the AppImage release asset.
+func TestSelfUpdateSupported_AppImage(t *testing.T) {
 	t.Setenv("APPIMAGE", "/home/me/Applications/gitbox-x86_64.AppImage")
-	if got := ArtifactName(); got != "gitbox-x86_64.AppImage" {
-		t.Errorf("ArtifactName() inside AppImage = %q, want %q", got, "gitbox-x86_64.AppImage")
+	t.Setenv("APPDIR", "")
+	if SelfUpdateSupported() {
+		t.Error("SelfUpdateSupported() inside an AppImage = true, want false")
+	}
+	if got := ArtifactName(); strings.HasSuffix(got, ".AppImage") {
+		t.Errorf("ArtifactName() inside an AppImage = %q, want the platform zip", got)
+	}
+}
+
+// $APPIMAGE inherited by a process outside the mounted AppImage ($APPDIR)
+// must not disable self-update.
+func TestSelfUpdateSupported_InheritedAppImageEnv(t *testing.T) {
+	t.Setenv("APPIMAGE", "/home/me/Applications/gitbox-x86_64.AppImage")
+	t.Setenv("APPDIR", filepath.Join(t.TempDir(), "squashfs-root"))
+	if got, want := SelfUpdateSupported(), ArtifactName() != ""; got != want {
+		t.Errorf("SelfUpdateSupported() = %v, want %v", got, want)
+	}
+}
+
+func TestSelfUpdateSupported_Zip(t *testing.T) {
+	t.Setenv("APPIMAGE", "")
+	if got, want := SelfUpdateSupported(), ArtifactName() != ""; got != want {
+		t.Errorf("SelfUpdateSupported() = %v, want %v", got, want)
 	}
 }
 

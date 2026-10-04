@@ -134,16 +134,6 @@ func replaceBundle(src, dst string) error {
 	return nil
 }
 
-func applyAppImage(newAppImage string) error {
-	// The current AppImage path is in $APPIMAGE env var.
-	if !runningFromAppImage() {
-		return fmt.Errorf("not running from an AppImage — cannot determine current AppImage path")
-	}
-	currentPath := os.Getenv("APPIMAGE")
-
-	return replaceExecutable(newAppImage, currentPath)
-}
-
 func extractZip(zipPath string) (string, error) {
 	extractDir, err := os.MkdirTemp("", "gitbox-extract-*")
 	if err != nil {
@@ -230,8 +220,9 @@ func copyDir(src, dst string) error {
 
 // runningFromAppImage reports whether this executable runs from inside an
 // AppImage. $APPIMAGE alone isn't enough: terminals opened from the GUI
-// inherit it, and a separately installed CLI started there must not replace
-// the GUI's AppImage. When $APPDIR is set, the executable must live under it.
+// inherit it, and a separately installed binary started there must not be
+// mistaken for the AppImage build. When $APPDIR is set, the executable must
+// live under it.
 func runningFromAppImage() bool {
 	if os.Getenv("APPIMAGE") == "" {
 		return false
