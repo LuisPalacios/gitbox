@@ -8,7 +8,7 @@ The GUI can't be cross-compiled: each platform needs its own native webview (Web
 
 ## What you need
 
-- **Go 1.26+**, **Node.js 20+**, and the **Wails CLI v2** on your development machine and on every remote that builds the GUI (see [developer-guide.md](developer-guide.md) for the per-OS libraries)
+- **Go 1.26+**, **Node.js 20.19+ or 22.12+**, and the **Wails CLI v2** on your development machine and on every remote that builds the GUI (see [developer-guide.md](developer-guide.md) for the per-OS libraries)
 - **SSH key-based auth** to your remote machines (no passwords)
 - **Git Bash** on Windows (comes with Git for Windows)
 - **jq** and **curl** on all machines (for credential setup)

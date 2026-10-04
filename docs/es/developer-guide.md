@@ -3,7 +3,7 @@
 ## Requisitos previos
 
 - **Go** 1.26+ — [instalar](https://go.dev/doc/install)
-- **Node.js** 20+ — [instalar](https://nodejs.org/) (para el frontend Svelte; CI compila con Node 24)
+- **Node.js** 20.19+ o 22.12+ — [instalar](https://nodejs.org/) (frontend Svelte 5 + Vite 8; CI compila con Node 24)
 - **Git** 2.39+
 - **Wails CLI** v2 — `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
 - **Específico por plataforma:** Windows necesita Git for Windows; macOS necesita Xcode CLI Tools (`xcode-select --install`); Linux necesita `libwebkit2gtk-4.1-dev` y `libgtk-3-dev`
@@ -151,7 +151,7 @@ Antes de abrir un PR ejecuto todos los comprobadores de código de una pasada:
 ./scripts/health.sh -v           # todos los hallazgos en lugar de los 15 primeros
 ```
 
-Es de solo lectura y termina con error cuando alguna comprobación encuentra algo. Comprobaciones de Go: `gofmt -s`, `go vet`, staticcheck, modernize, govulncheck, deadcode (con una lista de funciones que se mantienen a propósito) y `go test -short`. Comprobaciones del frontend: `svelte-check` incluidas las pistas, los warnings que imprime `npm run build` (los mismos diagnósticos de Svelte que CI muestra en su paso de build), los warnings de instalación de un `npm ci` limpio en una copia temporal (paquetes obsoletos, scripts de instalación no cubiertos por `allowScripts`) y `npm audit`. La comprobación de `npm ci` necesita npm 11.19 o posterior. Comprobaciones del repo: shellcheck en los scripts de shell, actionlint en los workflows y markdownlint con la config del skill `fixing-markdown` forzada a solo lectura.
+Es de solo lectura y termina con error cuando alguna comprobación encuentra algo. Comprobaciones de Go: `gofmt -s`, `go vet`, staticcheck, modernize, govulncheck, deadcode (con una lista de funciones que se mantienen a propósito) y `go test -short`. Comprobaciones del frontend: `svelte-check` (las variables y parámetros sin usar fallan mediante `noUnusedLocals`/`noUnusedParameters`), los warnings que imprime `npm run build` (los mismos diagnósticos de Svelte que CI muestra en su paso de build), los warnings de instalación de un `npm ci` limpio en una copia temporal (paquetes obsoletos, scripts de instalación no cubiertos por `allowScripts`) y `npm audit`. La comprobación de `npm ci` necesita npm 11.19 o posterior. Comprobaciones del repo: shellcheck en los scripts de shell, actionlint en los workflows y markdownlint con la config del skill `fixing-markdown` forzada a solo lectura.
 
 Los analizadores de Go se ejecutan con `go run` en versiones fijadas al principio del script, así que no necesitan instalación. Las otras tres herramientas deben estar en el `PATH`:
 
