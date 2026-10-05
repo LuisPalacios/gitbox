@@ -94,6 +94,20 @@ export namespace config {
 		    return a;
 		}
 	}
+	export class CollapsedState {
+	    sources?: string[];
+	    repos?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new CollapsedState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sources = source["sources"];
+	        this.repos = source["repos"];
+	    }
+	}
 	export class EditorEntry {
 	    name: string;
 	    command: string;
@@ -254,6 +268,7 @@ export namespace config {
 	    window?: WindowState;
 	    compact_window?: WindowState;
 	    view_mode?: string;
+	    collapsed?: CollapsedState;
 	    credential_ssh?: SSHGlobal;
 	    credential_gcm?: GCMGlobal;
 	    // Go type: TokenGlobal
@@ -282,6 +297,7 @@ export namespace config {
 	        this.window = this.convertValues(source["window"], WindowState);
 	        this.compact_window = this.convertValues(source["compact_window"], WindowState);
 	        this.view_mode = source["view_mode"];
+	        this.collapsed = this.convertValues(source["collapsed"], CollapsedState);
 	        this.credential_ssh = this.convertValues(source["credential_ssh"], SSHGlobal);
 	        this.credential_gcm = this.convertValues(source["credential_gcm"], GCMGlobal);
 	        this.credential_token = this.convertValues(source["credential_token"], null);
