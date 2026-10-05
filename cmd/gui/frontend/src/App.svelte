@@ -5602,7 +5602,7 @@
   }
   .source-header[role="button"] { cursor: pointer; user-select: none; }
   .source-header-title { flex: 0 0 auto; }
-  .collapse-chevron { flex: 0 0 auto; width: 14px; text-align: center; font-size: 11px; opacity: 0.7; }
+  .collapse-chevron { flex: 0 0 auto; width: 18px; text-align: center; font-size: 16px; line-height: 1; opacity: 0.85; }
   .collapse-chevron-btn { background: none; border: none; padding: 0; color: inherit; cursor: pointer; line-height: 1; }
   .collapse-chevron-btn:hover, .source-header[role="button"]:hover .collapse-chevron { opacity: 1; }
   .collapse-summary { flex: 0 0 auto; font-size: 11px; font-weight: normal; opacity: 0.8; }
