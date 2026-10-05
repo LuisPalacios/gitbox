@@ -216,6 +216,7 @@ Launch `GitboxApp` on each platform (`./scripts/run-commands.sh` prints the comm
 - [ ] Mirrors tab shows groups and status
 - [ ] Settings: change root folder, System check, Terminals Manager
 - [ ] Compact view and back to full view
+- [ ] Collapse/expand: account header and a parent clone (chevron or name) fold and unfold; folds survive a restart
 ```
 
 ### Credential flows (interactive, per platform)
