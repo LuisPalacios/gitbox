@@ -265,6 +265,15 @@ El layout estándar es `global.folder / <account> / <org|user> / repo`. Los clon
 
 El dashboard completo muestra la barra superior con health rings, la barra de pestañas (Accounts/Mirrors), tarjetas, listas de detalle de repos o mirrors, y el summary footer. Los botones de acción en la barra superior incluyen Pull All, Fetch All, Delete mode y Compact view.
 
+### Contraer y expandir
+
+La lista de repos se pliega a dos niveles:
+
+- **Grupos de cuenta** — hago clic en la barra de cabecera de una cuenta o en su nombre para plegar su lista de clones. Una cabecera plegada muestra cuántos clones contiene y cuántos requieren atención, así que un problema nunca queda oculto tras un pliegue. El menú ⋮ de la cabecera sigue funcionando y nunca pliega el grupo.
+- **Clones con clones debajo** — cualquier clon que tenga clones anidados bajo él muestra un chevron ▾ antes de su punto de estado. Al pulsarlo se pliega todo lo que hay debajo, a cualquier profundidad. Una fila plegada muestra cuántos clones oculta y cuántos de ellos requieren atención. El chevron es un control propio: nunca abre el detalle del repo.
+
+Gitbox recuerda lo que pliego entre reinicios (`global.collapsed` en `gitbox.json`) y olvida las entradas de cuentas o clones que borro o renombro. La vista compacta mantiene su propia expansión por cuenta.
+
 ### Vista compacta
 
 Haz clic en el botón **◧** en la barra superior para cambiar a modo compacto: una tira estrecha de estado (~220px de ancho) que muestra:

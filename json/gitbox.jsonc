@@ -46,6 +46,14 @@
         // Machine-readable fields, command names and config keys stay English.
         "language": "en",
 
+        // Account groups and parent clones folded in the GUI's full view.
+        // GitboxApp writes this when I click a chevron; absent means
+        // everything is expanded. Keys that no longer exist are pruned on save.
+        // "collapsed": {
+        //     "sources": ["github-MyAccount"],
+        //     "repos": ["github-MyAccount/MyOrg/my-container"]
+        // },
+
         // SSH credentials
         // Recommended for headless servers (SSH access, no browser).
         "credential_ssh": {
