@@ -103,6 +103,8 @@ A passing check prints the key's fingerprint and `the agent signs with the relea
 
 To rehearse without publishing, `./scripts/sign-release.sh v2.2.0 --dry-run` signs and verifies, then stops before uploading. If anything fails, the release stays a hidden draft until I fix the problem and run the script again.
 
+To test the in-app update right after publishing, I delete `~/.config/gitbox/.update-check` before opening an installed copy of the previous release. The app checks for updates at most once a day and records the last check in that file, so without deleting it the new release may not show up until the next day. The amber version pill in the footer then offers the new release, and the update only installs if the signature and checksum verify.
+
 ## Verify a release by hand
 
 Anyone can check a release with stock OpenSSH and the `allowed_signers` file from this repository:

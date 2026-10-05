@@ -103,6 +103,8 @@ Una comprobación correcta imprime la huella de la clave y `the agent signs with
 
 Para ensayar sin publicar, `./scripts/sign-release.sh v2.2.0 --dry-run` firma y verifica, y se detiene antes de subir nada. Si algo falla, la release sigue siendo un borrador oculto hasta que arreglo el problema y vuelvo a ejecutar el script.
 
+Para probar la actualización desde la app justo después de publicar, borro `~/.config/gitbox/.update-check` antes de abrir una copia instalada de la release anterior. La app busca actualizaciones como mucho una vez al día y guarda la última comprobación en ese archivo, así que sin borrarlo la nueva release puede no aparecer hasta el día siguiente. La píldora ámbar con la versión en el pie ofrece entonces la nueva release, y la actualización solo se instala si la firma y el checksum se verifican.
+
 ## Verificar una release a mano
 
 Cualquiera puede comprobar una release con OpenSSH estándar y el fichero `allowed_signers` de este repositorio:
