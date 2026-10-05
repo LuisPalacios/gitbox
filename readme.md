@@ -16,10 +16,6 @@
 </p>
 
 <p align="center">
-  <a href="README.es.md">Leer en español</a>
-</p>
-
-<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/screenshot-dark.png">
     <img src="assets/screenshot-gui.png" alt="Gitbox showing three accounts with their sync rings, and clones that are synced, behind, ahead, or carry local changes" width="820">

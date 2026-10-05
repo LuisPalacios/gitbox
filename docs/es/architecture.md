@@ -1,6 +1,6 @@
 # Gitbox — arquitectura y diseño
 
-Para la visión general del producto (qué hace gitbox, para quién es y por qué existe), consulta el [README](../../README.es.md).
+Para la visión general del producto (qué hace gitbox, para quién es y por qué existe), consulta el [README](../../README.md).
 
 ---
 
