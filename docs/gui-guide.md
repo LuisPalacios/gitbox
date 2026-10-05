@@ -369,7 +369,7 @@ In the account kebab, the same entries appear with identical ordering — the on
 
 ### Update notification
 
-Gitbox checks for updates once per day in the background. When a newer version is available, an amber pill appears on the right side of the footer status bar showing the new version. Click it to download and apply the update in place. Gitbox verifies the release's SHA256 checksum, and refuses the update when the release has no checksum for it or the checksums can't be downloaded; it then replaces only what is already installed next to the app — on macOS the whole `GitboxApp.app` bundle. After the update completes, click **Quit** and restart the app to use the new version.
+Gitbox checks for updates once per day in the background. When a newer version is available, an amber pill appears on the right side of the footer status bar showing the new version. Click it to download and apply the update in place. Gitbox checks that the release is signed by the gitbox release key and verifies its SHA256 checksum, and refuses the update when the signature is missing or invalid, the release has no checksum for it, or either file can't be downloaded; it then replaces only what is already installed next to the app — on macOS the whole `GitboxApp.app` bundle. After the update completes, click **Quit** and restart the app to use the new version.
 
 The Linux AppImage only notifies: clicking the pill opens the release page, and I download the new AppImage and replace the old file myself. Gitbox never rewrites the AppImage, and it doesn't embed update information for external AppImage updaters.
 

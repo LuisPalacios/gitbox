@@ -57,7 +57,7 @@ pkg/                      Shared Go library
   workspace/              Read-only VS Code .code-workspace discovery + cache (RefreshCache); no generation, no tmuxinator
   adopt/                  Orphan repo discovery + adoption (multi-root scan, container nested-clone discovery, in-place absolute clone_folder)
   status/                 Clone status checking
-  update/                 Auto-update: version check, download, self-replace (AppImage build is notify-only)
+  update/                 Auto-update: version check, signature + checksum verified download, self-replace (AppImage build is notify-only); release-signing-key.pub is the pinned release key
   doctor/                 External-tool detection (git, GCM, ssh, …): point-of-use precheck + the GUI's tool check; `LookupIn` is the Setenv-free resolver (extra dirs, ~/.local/bin, Windows shims) shared by harness detection
   harness/                Embedded AI-tool catalog (tools-directory.md: alternates + well-known locations) + pure `Sync` that flags uninstalled harnesses `missing` instead of deleting them
   identity/               Global `~/.gitconfig` user.name/user.email detection + removal
@@ -72,6 +72,7 @@ docs/
   testing-reference.md    Test inventory, harness internals
   multiplatform.md        Remote hosts (.env) for cross-platform testing
   macos-signing.md        macOS code signing setup
+  release-signing.md      Release signing: draft → sign-release.sh → publish, agent setup, fork key swap
   worktree-workflow.md    Parallel worktree sessions (/work-issue, /merge-pr)
   agentic-tools-directory.md  AI harness / agentic tools directory
   es/                     Spanish counterparts of every doc above
@@ -92,6 +93,7 @@ scripts/
   setup-credentials.sh     Run test-setup-credentials.sh locally or on remotes
   test-setup-credentials.sh  Provision test credentials from test-gitbox.json
   send-my-production-config.sh  Copy the local gitbox.json to one remote (with diff + confirm)
+  sign-release.sh          Sign a draft release's checksums through the local SSH agent and publish it (--check, --dry-run); standalone, no .env
   demo-fleet/              Fake fleet + mock provider API + window capture for README screenshots (build.sh, run.sh, mock.py, shot.ps1)
 .githooks/pre-push        Pre-push hook (gofmt -s check + go vet + unit tests; builds the frontend if dist is missing)
 .claude/
@@ -114,8 +116,9 @@ scripts/
     skills-authoring.md   Skill creation guidelines
 AGENTS.md                 → .claude/CLAUDE.md (symlink — Codex reads project guidance here)
 .agents/skills            → ../.claude/skills (symlink — Codex sees skills here)
-.github/workflows/ci.yml  Release CI on v* tags: test, build, release (+ installers, DMGs, AppImage); workflow_dispatch = dry run without publishing
+.github/workflows/ci.yml  Release CI on v* tags: test, build, draft release (+ installers, DMGs, AppImage); scripts/sign-release.sh signs and publishes it; workflow_dispatch = dry run without publishing
 .github/workflows/pr.yml  PR + main CI: frontend build, scripts/health.sh gate (every checker, fails on any finding), Linux GUI build smoke
+allowed_signers           Release public key for manual ssh-keygen -Y verify (must match pkg/update/release-signing-key.pub)
 json/
   gitbox.schema.json      v3 JSON Schema
   gitbox.jsonc            v3 annotated example (Spanish comments)

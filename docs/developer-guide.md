@@ -205,21 +205,23 @@ cd cmd/gui && wails build -ldflags "-X main.version=v2.0.0 -X main.commit=$(git 
 
 ### Creating a release
 
-Releases are fully automated via CI. Push a version tag and GitHub Actions builds the app for every platform, creates a GitHub Release, and attaches the assets:
+I push a version tag and GitHub Actions builds the app for every platform and creates a draft GitHub Release with the assets attached. Then I sign the draft's checksums on my machine, which publishes it:
 
 ```bash
 git tag v2.0.0
 git push origin v2.0.0
+# when the CI workflow finishes:
+./scripts/sign-release.sh v2.0.0
 ```
 
-CI injects `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into the GUI build.
+CI injects `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into the GUI build. The signing key lives in my SSH agent and never reaches CI. See [release-signing.md](release-signing.md) for how signing works, the agent setup and how a fork uses its own key.
 
 ### Continuous integration
 
 Two GitHub Actions workflows run:
 
 - `.github/workflows/pr.yml` runs on pull requests and on pushes to `main`: `scripts/health.sh` as the gate (every checker; any finding fails the job), then a Linux `wails build` and a `--version` smoke test.
-- `.github/workflows/ci.yml` runs on version tags: it builds the app on each platform, packages the installers, and publishes the GitHub Release. Before tagging a change that only the release path exercises, I run it as a dry run with `gh workflow run ci.yml -f version=v0.0.0`: every build and installer job runs, and the release job is skipped.
+- `.github/workflows/ci.yml` runs on version tags: it builds the app on each platform, packages the installers, and creates the GitHub Release as a draft for `scripts/sign-release.sh` to sign and publish. Before tagging a change that only the release path exercises, I run it as a dry run with `gh workflow run ci.yml -f version=v0.0.0`: every build and installer job runs, and the release job is skipped.
 
 ### Release assets
 
@@ -236,6 +238,7 @@ Each release produces the following artifacts:
 | `gitbox-linux-amd64.zip`     | `GitboxApp`                                                                                    |
 | `gitbox-x86_64.AppImage`     | Self-contained Linux app (bundles GTK 3 and WebKitGTK)                                         |
 | `checksums.sha256`           | SHA256 hashes for all artifacts                                                                |
+| `checksums.sha256.sig`       | SSH signature over the tag and `checksums.sha256`, added by `scripts/sign-release.sh`          |
 
 The asset names match v1, so the updater and the bootstrap script find them the same way. v2 drops `gitbox-win-arm64.zip`, which only carried the CLI.
 
@@ -247,7 +250,7 @@ macOS DMGs are currently **unsigned**. Code signing and notarization steps are p
 
 ### Auto-update
 
-The `pkg/update/` package provides version checking and self-update capabilities. The GUI runs a background check once per day and shows an update pill in the footer. The updater downloads the platform-specific artifact from GitHub Releases, verifies the SHA256 checksum, and replaces the app in place.
+The `pkg/update/` package provides version checking and self-update capabilities. The GUI runs a background check once per day and shows an update pill in the footer. The updater checks that the release's `checksums.sha256` carries a valid signature by the release key compiled into the binary, then downloads the platform-specific artifact, verifies its SHA256 checksum, and replaces the app in place.
 
 The GUI and the v1 CLI update differently:
 
@@ -260,7 +263,7 @@ v2 is GUI-only. The CLI and TUI live on in 1.x, on the `release/v1` branch:
 
 - `main` carries v2 and later. Tags look like `v2.y.z`.
 - `release/v1` carries v1 maintenance. It takes critical and security fixes only, tagged `v1.7.z`.
-- CI publishes a release as GitHub's "latest" only when no release with a higher major version exists. A `v1.7.z` tag pushed after `v2.0.0` is therefore published with `--latest=false`, and v2 GUIs never see it as an update.
+- `scripts/sign-release.sh` publishes a release as GitHub's "latest" only when no release with a higher major version exists. A `v1.7.z` tag pushed after `v2.0.0` is therefore published with `--latest=false`, and v2 GUIs never see it as an update.
 
 ---
 

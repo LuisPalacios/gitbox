@@ -28,6 +28,7 @@ Si eres nuevo en el proyecto, lee estos documentos en orden:
 | [Referencia de pruebas](testing-reference.md)                   | Inventario de pruebas, detalles internos del harness                                  |
 | [Arquitectura](architecture.md)                                 | Diseño técnico, diagrama de componentes, referencia del archivo de config             |
 | [Firma en macOS](macos-signing.md)                              | Configuración de firma y notarización para releases de macOS                          |
+| [Firma de releases](release-signing.md)                         | Cómo se firman las releases, configuración del agente SSH, tu propia clave en un fork |
 | [Directorio del ecosistema agentic](agentic-tools-directory.md) | Dónde vive la lista de AI harnesses detectados automáticamente                        |
 
 ## Referencia
