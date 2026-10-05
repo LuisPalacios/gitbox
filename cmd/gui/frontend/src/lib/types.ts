@@ -5,11 +5,8 @@ export interface GlobalConfig {
   language?: string;
   periodic_sync?: string;
   editors?: EditorInfo[];
-  terminals?: TerminalInfo[];
-  // v2.1 Terminal Profile model (issue #69). Coexists with the legacy
-  // `terminals` field during the v2.0 → v2.1 transition; the migrator
-  // populates these arrays on first load and the Gear-panel UI edits them
-  // directly. Legacy `terminals` is dropped in the v2.1 cleanup commit.
+  // v2.1 Terminal Profile model (issue #69). SyncProfiles populates these
+  // arrays and the Gear-panel UI edits them directly.
   terminal_apps?: TerminalAppInfo[];
   shells?: ShellInfo[];
   terminal_profiles?: TerminalProfileInfo[];
@@ -237,13 +234,6 @@ export interface EditorInfo {
   id: string;
   name: string;
   command: string;
-}
-
-export interface TerminalInfo {
-  id: string;
-  name: string;
-  command: string;
-  args: string[];
 }
 
 // ── v2.1 Terminal Profile model (issue #69) ──

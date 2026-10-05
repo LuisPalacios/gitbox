@@ -160,7 +160,7 @@
                 },
                 "terminals": {
                     "type": "array",
-                    "description": "DEPRECATED legacy v2.0 flat list of (terminal-app + shell) entries. Auto-migrated into terminal_apps + shells + terminal_profiles on first load and emptied. Hand-edits here are accepted for one release cycle then dropped.",
+                    "description": "DEPRECATED legacy v2.0 flat list of (terminal-app + shell) entries. Read only to migrate old configs: on load it is converted into terminal_apps + shells + terminal_profiles and dropped. gitbox never writes it.",
                     "items": {
                         "type": "object",
                         "required": ["name", "command"],

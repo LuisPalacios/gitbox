@@ -70,8 +70,6 @@ export function DeleteRepo(arg1:string,arg2:string):Promise<void>;
 
 export function DetectEditors():Promise<Array<main.EditorInfo>>;
 
-export function DetectTerminals():Promise<Array<main.TerminalInfo>>;
-
 export function Discover(arg1:string):Promise<void>;
 
 export function DiscoverMirrors():Promise<void>;
@@ -168,8 +166,6 @@ export function OpenAccountInApp(arg1:string,arg2:string):Promise<void>;
 
 export function OpenAccountInBrowser(arg1:string):Promise<void>;
 
-export function OpenAccountInTerminal(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
-
 export function OpenAccountProfile(arg1:string,arg2:string):Promise<void>;
 
 export function OpenFileInEditor(arg1:string):Promise<void>;
@@ -181,8 +177,6 @@ export function OpenInApp(arg1:string,arg2:string):Promise<void>;
 export function OpenInBrowser(arg1:string):Promise<void>;
 
 export function OpenInExplorer(arg1:string):Promise<void>;
-
-export function OpenInTerminal(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
 
 export function OpenProfile(arg1:string,arg2:string):Promise<void>;
 
@@ -261,8 +255,6 @@ export function SyncAIHarnesses():Promise<boolean>;
 export function SyncEditors():Promise<void>;
 
 export function SyncProfiles():Promise<void>;
-
-export function SyncTerminals():Promise<void>;
 
 export function TentativeContainers():Promise<Array<main.TentativeContainerDTO>>;
 
