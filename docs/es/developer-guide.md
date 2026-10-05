@@ -205,21 +205,23 @@ cd cmd/gui && wails build -ldflags "-X main.version=v2.0.0 -X main.commit=$(git 
 
 ### Crear un release
 
-Los releases están completamente automatizados mediante CI. Haz push de un tag de versión y GitHub Actions construye la app para cada plataforma, crea un GitHub Release y adjunta los assets:
+Hago push de un tag de versión y GitHub Actions construye la app para cada plataforma y crea un GitHub Release en borrador con los assets adjuntos. Después firmo los checksums del borrador en mi máquina, lo que lo publica:
 
 ```bash
 git tag v2.0.0
 git push origin v2.0.0
+# cuando termina el workflow de CI:
+./scripts/sign-release.sh v2.0.0
 ```
 
-CI inyecta `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` en el build de la GUI.
+CI inyecta `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` en el build de la GUI. La clave de firma vive en mi agente SSH y nunca llega a CI. Consulta [release-signing.md](release-signing.md) para ver cómo funciona la firma, la configuración del agente y cómo usa un fork su propia clave.
 
 ### Integración continua
 
 Se ejecutan dos workflows de GitHub Actions:
 
 - `.github/workflows/pr.yml` se ejecuta en los pull requests y en los push a `main`: `scripts/health.sh` como barrera (todos los comprobadores; cualquier hallazgo hace fallar el job), y después un `wails build` de Linux y un smoke test con `--version`.
-- `.github/workflows/ci.yml` se ejecuta en los tags de versión: construye la app en cada plataforma, empaqueta los instaladores y publica el GitHub Release. Antes de etiquetar un cambio que solo ejercita el camino de release, lo ejecuto en seco con `gh workflow run ci.yml -f version=v0.0.0`: se ejecutan todos los jobs de build e instaladores, y el job de release se omite.
+- `.github/workflows/ci.yml` se ejecuta en los tags de versión: construye la app en cada plataforma, empaqueta los instaladores y crea el GitHub Release como borrador para que `scripts/sign-release.sh` lo firme y lo publique. Antes de etiquetar un cambio que solo ejercita el camino de release, lo ejecuto en seco con `gh workflow run ci.yml -f version=v0.0.0`: se ejecutan todos los jobs de build e instaladores, y el job de release se omite.
 
 ### Assets de release
 
@@ -236,6 +238,7 @@ Cada release produce estos artefactos:
 | `gitbox-linux-amd64.zip`     | `GitboxApp`                                                                                          |
 | `gitbox-x86_64.AppImage`     | App Linux autocontenida (incluye GTK 3 y WebKitGTK)                                                  |
 | `checksums.sha256`           | Hashes SHA256 de todos los artefactos                                                                |
+| `checksums.sha256.sig`       | Firma SSH sobre el tag y `checksums.sha256`, añadida por `scripts/sign-release.sh`                   |
 
 Los nombres de los assets coinciden con los de v1, así el updater y el script bootstrap los encuentran del mismo modo. v2 elimina `gitbox-win-arm64.zip`, que solo llevaba la CLI.
 
@@ -247,7 +250,7 @@ Los DMGs de macOS están actualmente **sin firmar**. Los pasos de firma de códi
 
 ### Auto-update
 
-El paquete `pkg/update/` proporciona comprobación de versión y capacidades de self-update. La GUI ejecuta una comprobación en background una vez al día y muestra una píldora de actualización en el pie. El updater descarga el artefacto específico de la plataforma desde GitHub Releases, verifica el checksum SHA256 y reemplaza la app in place.
+El paquete `pkg/update/` proporciona comprobación de versión y capacidades de self-update. La GUI ejecuta una comprobación en background una vez al día y muestra una píldora de actualización en el pie. El updater comprueba que el `checksums.sha256` de la release lleva una firma válida de la clave de releases compilada en el binario, después descarga el artefacto específico de la plataforma, verifica su checksum SHA256 y reemplaza la app in place.
 
 La GUI y la CLI de v1 se actualizan de forma distinta:
 
@@ -260,7 +263,7 @@ v2 es solo GUI. La CLI y la TUI siguen vivas en 1.x, en la rama `release/v1`:
 
 - `main` lleva v2 y posteriores. Los tags son del tipo `v2.y.z`.
 - `release/v1` lleva el mantenimiento de v1. Solo recibe fixes críticos y de seguridad, con tags `v1.7.z`.
-- CI publica un release como "latest" de GitHub solo cuando no existe ningún release con una versión major superior. Un tag `v1.7.z` publicado después de `v2.0.0` se publica por tanto con `--latest=false`, y las GUIs v2 nunca lo ven como actualización.
+- `scripts/sign-release.sh` publica un release como "latest" de GitHub solo cuando no existe ningún release con una versión major superior. Un tag `v1.7.z` publicado después de `v2.0.0` se publica por tanto con `--latest=false`, y las GUIs v2 nunca lo ven como actualización.
 
 ---
 

@@ -54,8 +54,9 @@ check() {
     local out="$tmp/$name.log"
     local rc=0
     "$@" >"$out.raw" 2>&1 || rc=$?
-    # First runs of `go run` announce module downloads; that is not a finding.
-    grep -v '^go: downloading ' "$out.raw" >"$out"
+    # Cold module caches announce downloads, also under per_os's [os] prefix;
+    # that is not a finding.
+    grep -Ev '^(\[[a-z]+\] )?go: downloading ' "$out.raw" >"$out"
     if [[ $rc -eq 0 && ! -s "$out" ]]; then
         printf '  %bok%b    %s\n' "$G" "$N" "$name"
     else

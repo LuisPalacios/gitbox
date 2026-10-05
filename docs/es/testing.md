@@ -229,6 +229,7 @@ Lanza `GitboxApp` en cada plataforma (`./scripts/run-commands.sh` imprime los co
 ### Actualización y upgrade (al menos 1 plataforma)
 
 ```text
+- [ ] ./scripts/sign-release.sh --check pasa (la clave de releases está en el agente SSH)
 - [ ] La píldora de actualización aparece cuando existe un release más nuevo, y la actualización se aplica tras reiniciar
 - [ ] Una instalación v1 se actualiza a v2 y conserva el gitbox.json existente
 ```

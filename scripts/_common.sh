@@ -77,8 +77,8 @@ LOCAL_OS="$(detect_local_os)"
 # SSH client selection (Windows)
 # ---------------------------------------------------------------------------
 # Git Bash ships its own MSYS OpenSSH, which cannot talk to the Windows
-# named-pipe SSH agent (the one 1Password, and Windows' own ssh-agent
-# service, expose). With agent-only keys (only `.pub` files on disk) that
+# named-pipe SSH agent (the one password-manager agents and Windows' own
+# ssh-agent service expose). With agent-only keys (only `.pub` files on disk) that
 # surfaces as `Load key ".../x.pub": error in libcrypto` followed by
 # `Permission denied`. The Windows-native OpenSSH in System32 speaks the
 # pipe natively, so prefer it whenever it exists. Same trick git itself

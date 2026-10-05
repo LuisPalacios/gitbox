@@ -229,6 +229,7 @@ Launch `GitboxApp` on each platform (`./scripts/run-commands.sh` prints the comm
 ### Update and upgrade (at least 1 platform)
 
 ```text
+- [ ] ./scripts/sign-release.sh --check passes (the release key is in the SSH agent)
 - [ ] The update pill appears when a newer release exists, and the update applies after restart
 - [ ] A v1 install upgrades to v2 and keeps the existing gitbox.json
 ```

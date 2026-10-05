@@ -28,6 +28,7 @@ If you're new to the project, read these in order:
 | [Testing Reference](testing-reference.md)                 | Test inventory, harness internals                                      |
 | [Architecture](architecture.md)                           | Technical design, component diagram, config file reference             |
 | [macOS Signing](macos-signing.md)                         | Code signing and notarization setup for macOS releases                 |
+| [Release signing](release-signing.md)                     | How releases are signed, SSH agent setup, using your own key in a fork |
 | [Agentic ecosystem directory](agentic-tools-directory.md) | Where the list of auto-detected AI harnesses lives                     |
 
 ## Reference

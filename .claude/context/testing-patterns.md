@@ -42,6 +42,14 @@ func TestRenameAccount_Something(t *testing.T) {
 - `gitRun(t, dir, args...) string` — runs git in `dir` with `git.Environ()`, fails the test on error, returns trimmed output
 - `makeClone(t, cfg, sourceKey, repoKey, origin) string` — `git init` at the planned clone path with the given `origin`, returns the path
 
+### `pkg/update` helpers
+
+- `releaseServer{...}.start(t)` — an `httptest` server for one fake release: artifact, `checksums.sha256` and its `.sig`, each with an optional failing status; `artifactHits` counts artifact downloads
+- `release(t, srv, withChecksums, withSig)` — the `ReleaseInfo` for that server, tagged `testTag`
+- `isolateTemp(t)` — points the temp dir at a fresh directory, so a refused update can be checked for leftovers
+- `newTestSigner(t)` — an in-process ed25519 key that writes `ssh-keygen -Y sign` compatible signatures (`sign(t, tag, checksums, namespace, hashAlg)`); `useAsReleaseKey(t)` makes `DownloadRelease` trust it for one test
+- `testdata/*.sig` — signatures made by real `ssh-keygen` (private key discarded), proving the verifier reads what OpenSSH writes. To add one, sign `"gitbox v9.9.9\n" + testdata/checksums.sha256` with a throwaway key and commit only the `.pub` and the `.sig`; `.gitattributes` keeps the bytes exact
+
 Other packages follow the same idea with their own local helpers. Prefer table-driven tests for parsers, URL handling and status logic.
 
 ## GUI binding tests (`cmd/gui/`)
