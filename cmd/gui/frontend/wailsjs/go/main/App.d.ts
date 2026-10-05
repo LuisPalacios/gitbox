@@ -96,6 +96,8 @@ export function GetAutostart():Promise<boolean>;
 
 export function GetCheckGlobalGitignore():Promise<boolean>;
 
+export function GetCollapsed():Promise<config.CollapsedState>;
+
 export function GetConfig():Promise<main.ConfigDTO>;
 
 export function GetConfigLoadError():Promise<string>;
@@ -227,6 +229,8 @@ export function ScanFolderForClones(arg1:string):Promise<Array<main.OrphanRepoDT
 export function SetAutostart(arg1:boolean):Promise<void>;
 
 export function SetCheckGlobalGitignore(arg1:boolean):Promise<void>;
+
+export function SetCollapsed(arg1:config.CollapsedState):Promise<void>;
 
 export function SetGlobalFolder(arg1:string):Promise<void>;
 

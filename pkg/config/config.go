@@ -55,11 +55,15 @@ type GlobalConfig struct {
 	// means the default — see NestedScanDepthOrDefault. 1 = immediate children.
 	NestedScanDepth int `json:"nested_scan_depth,omitempty"`
 
-	Language        string           `json:"language,omitempty"`
-	PeriodicSync    string           `json:"periodic_sync,omitempty"`
-	Window          *WindowState     `json:"window,omitempty"`
-	CompactWindow   *WindowState     `json:"compact_window,omitempty"`
-	ViewMode        string           `json:"view_mode,omitempty"` // "full" or "compact"
+	Language      string       `json:"language,omitempty"`
+	PeriodicSync  string       `json:"periodic_sync,omitempty"`
+	Window        *WindowState `json:"window,omitempty"`
+	CompactWindow *WindowState `json:"compact_window,omitempty"`
+	ViewMode      string       `json:"view_mode,omitempty"` // "full" or "compact"
+	// Collapsed records which account groups and parent clones are folded in
+	// the GUI's full view. Absent means everything is expanded. Save prunes
+	// keys that no longer exist — see PruneCollapsed.
+	Collapsed       *CollapsedState  `json:"collapsed,omitempty"`
 	CredentialSSH   *SSHGlobal       `json:"credential_ssh,omitempty"`
 	CredentialGCM   *GCMGlobal       `json:"credential_gcm,omitempty"`
 	CredentialToken *TokenGlobal     `json:"credential_token,omitempty"`

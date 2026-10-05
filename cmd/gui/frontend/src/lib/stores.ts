@@ -76,6 +76,12 @@ export const summary = derived(repoStates, ($rs) => {
   };
 });
 
+// isSynced is the "nothing to do" rule shared by every attention count:
+// clean, or a feature branch that simply has no upstream yet.
+export function isSynced(state: RepoState): boolean {
+  return state.status === 'clean' || (state.status === 'no upstream' && !state.isDefault);
+}
+
 // ── Derived: per-account stats ──
 export const accountStats = derived([sources, repoStates], ([$src, $rs]) => {
   const stats: Record<string, { total: number; synced: number; issues: number }> = {};
@@ -89,8 +95,7 @@ export const accountStats = derived([sources, repoStates], ([$src, $rs]) => {
       const state = $rs[`${sourceKey}/${repoName}`];
       if (!state) continue;
       stats[acctKey].total++;
-      if (state.status === 'clean') stats[acctKey].synced++;
-      else if (state.status === 'no upstream' && !state.isDefault) stats[acctKey].synced++;
+      if (isSynced(state)) stats[acctKey].synced++;
       else stats[acctKey].issues++;
     }
   }

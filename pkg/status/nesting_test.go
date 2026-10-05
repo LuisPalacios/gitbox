@@ -65,3 +65,43 @@ func TestComputeNesting_NoContainersIsEmpty(t *testing.T) {
 		t.Errorf("no containers should yield empty nesting, got %+v", n)
 	}
 }
+
+// A container inside a container: each clone links to its nearest enclosing
+// container, so the GUI can render (and collapse) a tree of any depth.
+func TestComputeNesting_ContainerInsideContainer(t *testing.T) {
+	root := t.TempDir()
+	topPath := filepath.Join(root, "acct", "Org", "top")
+	midPath := filepath.Join(topPath, "mid")
+
+	cfg := &config.Config{
+		Version: 2,
+		Global:  config.GlobalConfig{Folder: root},
+		Sources: map[string]config.Source{
+			"acct": {
+				Account: "acct",
+				Repos: map[string]config.Repo{
+					"Org/top":  {Container: true},
+					"Org/mid":  {Container: true, CloneFolder: midPath},
+					"Org/leaf": {CloneFolder: filepath.Join(midPath, "leaf")},
+				},
+				RepoOrder: []string{"Org/top", "Org/mid", "Org/leaf"},
+			},
+		},
+		SourceOrder: []string{"acct"},
+	}
+
+	n := ComputeNesting(cfg)
+	top := RepoRef{Source: "acct", Repo: "Org/top"}
+	mid := RepoRef{Source: "acct", Repo: "Org/mid"}
+	leaf := RepoRef{Source: "acct", Repo: "Org/leaf"}
+
+	if n.ParentOf[mid] != top {
+		t.Errorf("ParentOf[mid] = %v, want top", n.ParentOf[mid])
+	}
+	if n.ParentOf[leaf] != mid {
+		t.Errorf("ParentOf[leaf] = %v, want mid (the nearest container)", n.ParentOf[leaf])
+	}
+	if _, isChild := n.ParentOf[top]; isChild {
+		t.Errorf("top should be a root, got parent %v", n.ParentOf[top])
+	}
+}

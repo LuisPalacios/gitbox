@@ -182,6 +182,10 @@ export function GetCheckGlobalGitignore() {
   return window['go']['main']['App']['GetCheckGlobalGitignore']();
 }
 
+export function GetCollapsed() {
+  return window['go']['main']['App']['GetCollapsed']();
+}
+
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
@@ -444,6 +448,10 @@ export function SetAutostart(arg1) {
 
 export function SetCheckGlobalGitignore(arg1) {
   return window['go']['main']['App']['SetCheckGlobalGitignore'](arg1);
+}
+
+export function SetCollapsed(arg1) {
+  return window['go']['main']['App']['SetCollapsed'](arg1);
 }
 
 export function SetGlobalFolder(arg1) {

@@ -8,7 +8,7 @@
     summary, accountStats, themeStore, applyStatusResults, applyMirrorStatusResults,
     prsByAccount, prSettings, applyPRUpdate, lookupPRSummary,
     workspaces, workspaceOrder, workspaceMemberships, selectedClones,
-    toggleCloneSelection, clearCloneSelection
+    toggleCloneSelection, clearCloneSelection, isSynced
   } from './lib/stores';
   import { statusColor, credColor, providerLabel, statusSymbol } from './lib/theme';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
@@ -771,10 +771,75 @@
     return tc.has(`${sourceKey}/${repoName}`);
   }
 
-  // nestedRepoRows reorders a source's repos so each container parent is
-  // immediately followed by its nested children (indented). Children are emitted
-  // only under their parent; cross-source children fall back to flat rows.
-  function nestedRepoRows(sourceKey: string, source: SourceDTO, nesting: Record<string, string>): { repoName: string; indent: number }[] {
+  // ── Collapse / expand (issue #117) ──
+  // Folded account groups (source keys) and folded parent clones
+  // ("source/repo"), persisted in global.collapsed. A clone is collapsible
+  // because it has clones below it, whatever made them its children.
+  let collapsedSources: Set<string> = new Set();
+  let collapsedRepos: Set<string> = new Set();
+
+  async function loadCollapsed() {
+    try {
+      const c = await bridge.getCollapsed();
+      collapsedSources = new Set(c.sources || []);
+      collapsedRepos = new Set(c.repos || []);
+    } catch { /* keep everything expanded */ }
+  }
+
+  function saveCollapsed() {
+    bridge.setCollapsed({ sources: [...collapsedSources], repos: [...collapsedRepos] })
+      .catch((e) => console.error('saving collapse state failed', e));
+  }
+
+  // closeDetailIf drops the open detail panel when a collapse hides its row.
+  function closeDetailIf(hidden: (key: string) => boolean) {
+    if (expandedRepo && !detailLoading && hidden(expandedRepo)) {
+      expandedRepo = null;
+      repoDetail = null;
+    }
+  }
+
+  function toggleSourceCollapsed(sourceKey: string) {
+    if (collapsedSources.has(sourceKey)) {
+      collapsedSources.delete(sourceKey);
+    } else {
+      collapsedSources.add(sourceKey);
+      closeDetailIf(k => k.startsWith(`${sourceKey}/`));
+    }
+    collapsedSources = collapsedSources;
+    saveCollapsed();
+  }
+
+  function toggleRepoCollapsed(repoKey: string, descendants: string[], sourceKey: string) {
+    if (collapsedRepos.has(repoKey)) {
+      collapsedRepos.delete(repoKey);
+    } else {
+      collapsedRepos.add(repoKey);
+      const hidden = new Set(descendants.map(d => `${sourceKey}/${d}`));
+      closeDetailIf(k => hidden.has(k));
+    }
+    collapsedRepos = collapsedRepos;
+    saveCollapsed();
+  }
+
+  // attentionCount counts the repos (names within sourceKey) that need
+  // attention, using the same rule as the account stats.
+  function attentionCount(sourceKey: string, repoNames: string[], states: Record<string, RepoState>): number {
+    let n = 0;
+    for (const name of repoNames) {
+      const st = states[`${sourceKey}/${name}`];
+      if (st && !isSynced(st)) n++;
+    }
+    return n;
+  }
+
+  type RepoRow = { repoName: string; depth: number; childCount: number; descendants: string[] };
+
+  // nestedRepoRows orders a source's repos as a tree: each parent is followed
+  // by its nested children, at any depth. Rows below a collapsed parent are
+  // not emitted. Children whose parent lives in another source fall back to
+  // root rows. `collapsed` is passed in so Svelte tracks it.
+  function nestedRepoRows(sourceKey: string, source: SourceDTO, nesting: Record<string, string>, collapsed: Set<string>): RepoRow[] {
     const order = source.repoOrder && source.repoOrder.length > 0 ? source.repoOrder : Object.keys(source.repos);
     const inThisSource = new Set(order);
     const childrenByParent: Record<string, string[]> = {};
@@ -783,19 +848,44 @@
       const parentKey = nesting[`${sourceKey}/${repoName}`];
       if (parentKey && parentKey.startsWith(`${sourceKey}/`)) {
         const parentRepo = parentKey.slice(sourceKey.length + 1);
-        if (inThisSource.has(parentRepo)) {
+        if (parentRepo !== repoName && inThisSource.has(parentRepo)) {
           (childrenByParent[parentRepo] ||= []).push(repoName);
           isChild.add(repoName);
         }
       }
     }
-    const rows: { repoName: string; indent: number }[] = [];
-    for (const repoName of order) {
-      if (isChild.has(repoName)) continue; // emitted under its parent
-      rows.push({ repoName, indent: 0 });
+    // descendantsOf lists every repo below repoName, guarded against cycles.
+    const descendantsOf = (repoName: string, seen: Set<string>): string[] => {
+      const out: string[] = [];
       for (const child of childrenByParent[repoName] || []) {
-        rows.push({ repoName: child, indent: 1 });
+        if (seen.has(child)) continue;
+        seen.add(child);
+        out.push(child, ...descendantsOf(child, seen));
       }
+      return out;
+    };
+    const visited = new Set<string>();
+    const hidden = new Set<string>();
+    const rows: RepoRow[] = [];
+    const walk = (repoName: string, depth: number) => {
+      if (visited.has(repoName)) return;
+      visited.add(repoName);
+      const children = childrenByParent[repoName] || [];
+      const descendants = descendantsOf(repoName, new Set([repoName]));
+      rows.push({ repoName, depth, childCount: children.length, descendants });
+      if (collapsed.has(`${sourceKey}/${repoName}`)) {
+        for (const d of descendants) hidden.add(d);
+        return;
+      }
+      for (const child of children) walk(child, depth + 1);
+    };
+    for (const repoName of order) {
+      if (!isChild.has(repoName)) walk(repoName, 0);
+    }
+    // A parent cycle has no root: show those repos flat rather than drop them,
+    // unless a collapsed ancestor already hides them.
+    for (const repoName of order) {
+      if (!visited.has(repoName) && !hidden.has(repoName)) walk(repoName, 0);
     }
     return rows;
   }
@@ -2381,6 +2471,8 @@
     hostOS = await bridge.getOS();
     fetchInterval = await bridge.getPeriodicSync();
 
+    await loadCollapsed();
+
     // Restore view mode.
     const savedMode = await bridge.getViewMode();
     if (savedMode === 'compact') {
@@ -3388,8 +3480,14 @@
   <section class="repo-list">
     {#each Object.entries($sources) as [sourceKey, source] (sourceKey)}
       {@const accountKey = source.account}
+      {@const sourceCollapsed = collapsedSources.has(sourceKey)}
       <div class="source-group">
-        <div class="source-header">
+        <div class="source-header" role="button" tabindex="0"
+          aria-expanded={!sourceCollapsed}
+          title={sourceCollapsed ? $t('collapse.expand') : $t('collapse.collapse')}
+          on:click={(e) => { if (!(e.target instanceof Element && e.target.closest('.source-header-kebab'))) toggleSourceCollapsed(sourceKey); }}
+          on:keydown={onActivateKey(() => toggleSourceCollapsed(sourceKey))}>
+          <span class="collapse-chevron" aria-hidden="true">{sourceCollapsed ? '▸' : '▾'}</span>
           <span class="source-header-title">{sourceKey}</span>
           <div class="action-menu-container source-header-kebab">
             <button class="btn-kebab" on:click|stopPropagation={() => toggleAccountMenu(accountKey)} title={$t('account.actions')}>&#8942;</button>
@@ -3410,15 +3508,28 @@
               </div>
             {/if}
           </div>
+          {#if sourceCollapsed}
+            {@const names = Object.keys(source.repos)}
+            {@const issues = attentionCount(sourceKey, names, $repoStates)}
+            <span class="collapse-summary">
+              {$t('collapse.clones', { n: names.length })} ·
+              {#if issues === 0}
+                <span style="color:{sc('clean')}">{$t('account.allGood')}</span>
+              {:else}
+                <span style="color:{sc('behind')}">{issues} {issues === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}</span>
+              {/if}
+            </span>
+          {/if}
         </div>
-        {#each nestedRepoRows(sourceKey, source, repoNesting) as { repoName, indent } (repoName)}
+        {#if !sourceCollapsed}
+        {#each nestedRepoRows(sourceKey, source, repoNesting, collapsedRepos) as { repoName, depth, childCount, descendants } (repoName)}
           {@const repoKey = `${sourceKey}/${repoName}`}
           {@const isContainer = !!source.repos[repoName]?.container}
           {@const state = $repoStates[repoKey] || { status: 'unknown', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
           {@const rowOpensDetail = state.status !== 'unknown' && state.status !== 'clean' && state.status !== 'behind' && state.status !== 'not cloned' && state.status !== 'cloning' && state.status !== 'syncing'}
           <div class="repo-row" class:repo-row-clickable={rowOpensDetail}
-            class:repo-row-nested={indent > 0}
-            style={indent > 0 ? `padding-left: ${10 + indent * 22}px` : ''}
+            class:repo-row-nested={depth > 0}
+            style={depth > 0 ? `padding-left: ${10 + depth * 22}px` : ''}
             role="button"
             tabindex={rowOpensDetail || selectionMode ? 0 : -1}
             aria-disabled={!rowOpensDetail && !selectionMode}
@@ -3430,6 +3541,15 @@
                 on:change={() => toggleCloneSelection(repoKey)} title="{repoName}: {$t('repo.selectForWorkspace')}" />
             {:else if deleteMode}
               <button class="btn-delete-x" on:click|stopPropagation={() => askDelete(sourceKey, repoName, state.status)} title="Delete {repoName}">&#10005;</button>
+            {/if}
+            {#if childCount > 0}
+              {@const repoCollapsed = collapsedRepos.has(repoKey)}
+              <button class="collapse-chevron collapse-chevron-btn"
+                aria-expanded={!repoCollapsed}
+                aria-label="{repoCollapsed ? $t('collapse.expand') : $t('collapse.collapse')} {repoName}"
+                title={repoCollapsed ? $t('collapse.expand') : $t('collapse.collapse')}
+                on:click|stopPropagation={() => toggleRepoCollapsed(repoKey, descendants, sourceKey)}
+                on:keydown|stopPropagation>{repoCollapsed ? '▸' : '▾'}</button>
             {/if}
             <span class="dot" style="color: {sc(state.status)}">{statusSymbol(state.status)}</span>
             {#if membershipsFor(repoKey).length > 0}
@@ -3462,7 +3582,21 @@
                 {/if}
               </div>
             {/if}
-            <span class="repo-name">{repoName}</span>
+            {#if childCount > 0}
+              <!-- The name folds its clones too; selection mode keeps the row's own click. -->
+              <span class="repo-name"><span class="repo-name-toggle" role="button" tabindex="-1"
+                title={collapsedRepos.has(repoKey) ? $t('collapse.expand') : $t('collapse.collapse')}
+                on:click={(e) => { if (selectionMode) return; e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants, sourceKey); }}
+                on:keydown={onActivateKey(() => toggleRepoCollapsed(repoKey, descendants, sourceKey))}>{repoName}</span></span>
+            {:else}
+              <span class="repo-name">{repoName}</span>
+            {/if}
+            {#if childCount > 0 && collapsedRepos.has(repoKey)}
+              {@const below = attentionCount(sourceKey, descendants, $repoStates)}
+              <span class="collapse-summary collapse-summary-row">
+                {$t('collapse.below', { n: descendants.length })}{#if below > 0} · <span style="color:{sc('behind')}">{below} {below === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}</span>{/if}
+              </span>
+            {/if}
             {#if isContainer}
               <span class="container-badge" title="Multi-repo container — holds nested clones">&#128193; container</span>
             {:else if isTentativeContainer(sourceKey, repoName, tentativeContainers)}
@@ -3642,6 +3776,7 @@
             </div>
           {/if}
         {/each}
+        {/if}
       </div>
     {/each}
 
@@ -5465,7 +5600,15 @@
     padding: 10px 0 5px; border-bottom: 1px solid var(--border);
     display: flex; align-items: center; gap: 4px;
   }
+  .source-header[role="button"] { cursor: pointer; user-select: none; }
   .source-header-title { flex: 0 0 auto; }
+  .collapse-chevron { flex: 0 0 auto; width: 18px; text-align: center; font-size: 16px; line-height: 1; opacity: 0.85; }
+  .collapse-chevron-btn { background: none; border: none; padding: 0; color: inherit; cursor: pointer; line-height: 1; }
+  .collapse-chevron-btn:hover, .source-header[role="button"]:hover .collapse-chevron { opacity: 1; }
+  .collapse-summary { flex: 0 0 auto; font-size: 11px; font-weight: normal; opacity: 0.8; }
+  .collapse-summary-row { margin-left: 6px; }
+  .repo-name-toggle { cursor: pointer; }
+  .repo-name-toggle:hover { text-decoration: underline; }
   .source-header-kebab { font-size: 14px; flex: 0 0 auto; margin-right: auto; }
   .source-header-kebab .action-dropdown { right: auto; left: 0; }
   .repo-row {

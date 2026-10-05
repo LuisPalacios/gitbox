@@ -6,10 +6,10 @@ Inventario de pruebas y detalles internos del harness. Para ejecutar pruebas, ve
 
 Los recuentos son funciones `func Test…` de nivel superior por paquete, obtenidas con `grep -rc "^func Test" --include=*_test.go pkg cmd`. Los subtests (`t.Run`) no se cuentan.
 
-### Pruebas de paquetes — 431 pruebas (`pkg/`)
+### Pruebas de paquetes — 436 pruebas (`pkg/`)
 
 - `pkg/adopt/` — 13 pruebas: descubrimiento de huérfanos, puntuación de cuentas (usuario embebido en la URL, username de la credencial, carpeta padre, empates ambiguos), clones anidados bajo contenedores
-- `pkg/config/` — 98 pruebas: parseo de config, migración v1/v2 → v3, operaciones CRUD, save/load, backups, preparación de test-mode
+- `pkg/config/` — 102 pruebas: parseo de config, migración v1/v2 → v3, operaciones CRUD, save/load, backups, preparación de test-mode, poda del estado de plegado y omisión del backup
 - `pkg/credential/` — 21 pruebas: resolución de token, validación, helpers por defecto del OS, `Check`/`FixGlobalGCMConfig` (salud de gitconfig global para GCM)
 - `pkg/doctor/` — 24 pruebas: forma de la tabla de herramientas, pistas de instalación, búsquedas, comprobaciones previas por tipo de credencial, decodificación de la salida de herramientas
 - `pkg/git/` — 30 pruebas: operaciones git mediante subprocess, URLs de repo y de perfil, descubrimiento de repos anidados
@@ -23,12 +23,12 @@ Los recuentos son funciones `func Test…` de nivel superior por paquete, obteni
 - `pkg/move/` — 5 pruebas: parseo de claves de repo, URLs de clone, validación previa
 - `pkg/ops/` — 15 pruebas: 14 pruebas unitarias aisladas (añadir, renombrar y borrar cuenta; cambio y borrado de tipo de credencial; borrar repo; planificación de clones; reconfigurar clones; añadir repos descubiertos) más el escenario `TestScenario_FullLifecycle`
 - `pkg/provider/` — 43 pruebas: cliente HTTP, parseo de APIs de proveedor
-- `pkg/status/` — 15 pruebas: comprobación de estado de clones, detección de rama, cálculo de anidamiento
+- `pkg/status/` — 16 pruebas: comprobación de estado de clones, detección de rama, cálculo de anidamiento (incluido un contenedor dentro de otro)
 - `pkg/terminals/` — 51 pruebas: forma del catálogo, composición de Profile según el OS, búsquedas de WezTerm y Windows Terminal, reglas de fusión
 - `pkg/update/` — 26 pruebas: parseo semver, comparación de versiones, comprobación de actualización (API mock), límite de versión mayor, nombres de artefactos, detección del AppImage solo-aviso, destinos de instalación, verificación de checksum, verificación de la firma de release contra firmas hechas con `ssh-keygen` real (otro tag, checksums manipulados, namespace incorrecto, clave ajena, malformada), `allowed_signers` sincronizado con la clave incrustada, descarga que falla cerrada (checksums o firma ausentes, ilegibles o inválidos rechazan la actualización, y una firma mala la detiene antes de descargar el artefacto)
 - `pkg/workspace/` — 5 pruebas: descubrimiento de workspaces, refresco de caché, carpetas extra, contenedores tentativos
 
-### Pruebas de la GUI — 28 pruebas (`cmd/gui/`)
+### Pruebas de la GUI — 30 pruebas (`cmd/gui/`)
 
 Lógica del lado Go de la app Wails que se ejecuta sin ventana:
 
@@ -36,13 +36,13 @@ Lógica del lado Go de la app Wails que se ejecuta sin ventana:
 - Acciones de AI harness — detección, orden, deduplicación, poda de harnesses retirados, fallback a `~/.local/bin`, Profile por defecto del lanzador
 - Auto-actualización — el build AppImage rechaza `ApplyUpdate` antes de cualquier descarga
 - Terminales — saneado de rutas MSYS y del entorno para las terminales lanzadas, y un primer arranque que nunca escribe la lista legacy `global.terminals`
-- Workspaces y contenedores — refresco de caché, persistencia del flag de contenedor, carpetas extra, profundidad de escaneo anidado, `clone_folder` absoluto para clones incorporados
+- Workspaces y contenedores — refresco de caché, persistencia del flag de contenedor, carpetas extra, profundidad de escaneo anidado, `clone_folder` absoluto para clones incorporados, persistencia y poda del estado de plegado
 
 ### Prueba de escenario — 1 prueba, 12 pasos (`pkg/ops/`)
 
 - `TestScenario_FullLifecycle` — end-to-end a través de `pkg/ops`: añadir cuenta → comprobar credencial → descubrir → añadir repo → clone → status → pull y fetch → editar cuenta + reconfigurar clones → CRUD de mirrors → reclonar → renombrar cuenta → borrarlo todo
 
-### Total: 459 pruebas
+### Total: 466 pruebas
 
 ## Cómo funciona el harness de pruebas
 

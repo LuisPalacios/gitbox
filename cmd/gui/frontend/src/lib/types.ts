@@ -139,6 +139,13 @@ export interface TentativeContainerDTO {
   repo: string;
 }
 
+// CollapsedState lists what the full view shows folded: source keys and
+// "source/repo" keys. Mirrors config.CollapsedState.
+export interface CollapsedState {
+  sources?: string[];
+  repos?: string[];
+}
+
 export interface StatusResult {
   source: string;
   repo: string;

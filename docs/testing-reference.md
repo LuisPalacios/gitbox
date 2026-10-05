@@ -6,10 +6,10 @@ Test inventory and harness internals. For running tests, checklists, and fixture
 
 Counts are top-level `func Test…` functions per package, from `grep -rc "^func Test" --include=*_test.go pkg cmd`. Subtests (`t.Run`) are not counted.
 
-### Package tests — 431 tests (`pkg/`)
+### Package tests — 436 tests (`pkg/`)
 
 - `pkg/adopt/` — 13 tests: orphan discovery, account scoring (embedded URL user, credential username, parent folder, ambiguous ties), nested clones under containers
-- `pkg/config/` — 98 tests: config parsing, v1/v2 → v3 migration, CRUD operations, save/load, backups, test-mode setup
+- `pkg/config/` — 102 tests: config parsing, v1/v2 → v3 migration, CRUD operations, save/load, backups, test-mode setup, collapse-state pruning and backup skip
 - `pkg/credential/` — 21 tests: token resolution, validation, OS-default helpers, `Check`/`FixGlobalGCMConfig` (global gitconfig health for GCM)
 - `pkg/doctor/` — 24 tests: tool table shape, install hints, lookups, per-credential-type prechecks, tool output decoding
 - `pkg/git/` — 30 tests: git subprocess operations, repo and profile URLs, nested repo discovery
@@ -23,12 +23,12 @@ Counts are top-level `func Test…` functions per package, from `grep -rc "^func
 - `pkg/move/` — 5 tests: repo key parsing, clone URLs, preflight validation
 - `pkg/ops/` — 15 tests: 14 isolated unit tests (add, rename, delete account; credential type change and delete; delete repo; clone planning; reconfigure clones; add discovered repos) plus the `TestScenario_FullLifecycle` scenario
 - `pkg/provider/` — 43 tests: HTTP client, provider API parsing
-- `pkg/status/` — 15 tests: clone status checking, branch detection, nesting computation
+- `pkg/status/` — 16 tests: clone status checking, branch detection, nesting computation (including container inside container)
 - `pkg/terminals/` — 51 tests: catalog shape, OS-aware Profile composition, WezTerm and Windows Terminal lookups, merge rules
 - `pkg/update/` — 26 tests: semver parsing, version comparison, update check (mock API), major-version cap, artifact names, AppImage notify-only detection, install targets, checksum verification, release signature verification against signatures made by real `ssh-keygen` (wrong tag, tampered checksums, wrong namespace, foreign key, malformed), `allowed_signers` in sync with the embedded key, fail-closed download (missing, unreadable or invalid checksums or signature refuse the update, and a bad signature stops it before the artifact download)
 - `pkg/workspace/` — 5 tests: workspace discovery, cache refresh, extra folders, tentative containers
 
-### GUI tests — 28 tests (`cmd/gui/`)
+### GUI tests — 30 tests (`cmd/gui/`)
 
 Go-side logic of the Wails app that runs without a window:
 
@@ -36,13 +36,13 @@ Go-side logic of the Wails app that runs without a window:
 - AI harness actions — detection, ordering, dedup, retired-harness pruning, `~/.local/bin` fallback, launcher default Profile
 - Self-update — the AppImage build refuses `ApplyUpdate` before any download
 - Terminals — MSYS path and env sanitising for spawned terminals, and a first launch that never writes the legacy `global.terminals` list
-- Workspaces and containers — cache refresh, container flag persistence, extra folders, nested scan depth, absolute `clone_folder` for onboarded clones
+- Workspaces and containers — cache refresh, container flag persistence, extra folders, nested scan depth, absolute `clone_folder` for onboarded clones, collapse-state persistence and pruning
 
 ### Scenario test — 1 test, 12 steps (`pkg/ops/`)
 
 - `TestScenario_FullLifecycle` — end-to-end through `pkg/ops`: add account → credential check → discover → add repo → clone → status → pull and fetch → account edit + reconfigure clones → mirror CRUD → re-clone → rename account → delete everything
 
-### Total: 459 tests
+### Total: 466 tests
 
 ## How the test harness works
 

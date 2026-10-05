@@ -106,6 +106,23 @@
                     "enum": ["full", "compact"],
                     "description": "Last active GUI view mode. Restored on next launch."
                 },
+                "collapsed": {
+                    "type": "object",
+                    "description": "Account groups and parent clones folded in the GUI's full view. Absent means everything is expanded. Keys that no longer exist are pruned on save.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "sources": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Collapsed source keys."
+                        },
+                        "repos": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Collapsed parent clones as \"<source>/<repo>\" keys."
+                        }
+                    }
+                },
                 "credential_ssh": {
                     "type": "object",
                     "description": "Global SSH platform defaults. Presence indicates SSH is available on this platform.",

@@ -1718,6 +1718,29 @@ func (a *App) SetLanguage(lang string) error {
 	return a.saveConfig()
 }
 
+// GetCollapsed returns which account groups and parent clones are folded in
+// the full view. Empty means everything is expanded.
+func (a *App) GetCollapsed() config.CollapsedState {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cfg == nil || a.cfg.Global.Collapsed == nil {
+		return config.CollapsedState{}
+	}
+	return *a.cfg.Global.Collapsed
+}
+
+// SetCollapsed saves the folded account groups ("source") and parent clones
+// ("source/repo"). Save prunes keys that no longer exist.
+func (a *App) SetCollapsed(state config.CollapsedState) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cfg == nil {
+		return fmt.Errorf("config not loaded")
+	}
+	a.cfg.Global.Collapsed = &state
+	return a.saveConfig()
+}
+
 // SetPeriodicSync saves the periodic sync interval to config.
 func (a *App) SetPeriodicSync(interval string) error {
 	switch interval {
