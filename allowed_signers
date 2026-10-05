@@ -1,0 +1,3 @@
+# Public key that signs gitbox releases (checksums.sha256.sig).
+# Must match pkg/update/release-signing-key.pub; see docs/release-signing.md.
+gitbox-release namespaces="gitbox-release" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBNmJEAj33/oXqXX/fA6C8JvQk1ju0Jb5qD7K99qo2pK
