@@ -20,6 +20,9 @@ USE_GH=false
 CLI_INSTALLED=false
 GUI_PATH=""
 DESKTOP_REGISTERED=false
+INSTALLER_COPY=""
+# Uninstall key of the Windows setup exe; must match AppId in scripts/installer.iss.
+INNO_APP_ID='{8B2F4E3A-1C5D-4F8E-9A7B-3D6E2F1A8C4B}_is1'
 
 # ── Output helpers ──────────────────────────────────────────────────
 
@@ -344,6 +347,51 @@ detect_existing_install() {
   fi
 }
 
+# reg_value KEY NAME — prints a REG_SZ value, or nothing when the key or value
+# is missing. MSYS_NO_PATHCONV stops Git Bash from rewriting /v into a path.
+reg_value() {
+  MSYS_NO_PATHCONV=1 reg.exe query "$1" /v "$2" 2>/dev/null \
+    | tr -d '\r' | sed -n "s/^ *$2 *REG_SZ *//p" || true
+}
+
+# The setup exe installs into Program Files with a Start menu entry; bootstrap
+# installs into INSTALL_DIR with none. They are alternatives, so warn when the
+# installer's copy is present (the Start menu keeps launching it) or
+# half-removed. Read-only: never runs that copy, whatever its version.
+detect_windows_installer() {
+  [[ "$PLATFORM" == "windows" ]] || return 0
+
+  local uninstall='Software\Microsoft\Windows\CurrentVersion\Uninstall'
+  local key="" loc="" ver="" k
+  for k in "HKLM\\$uninstall\\$INNO_APP_ID" \
+           "HKLM\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\$INNO_APP_ID" \
+           "HKCU\\$uninstall\\$INNO_APP_ID"; do
+    loc="$(reg_value "$k" InstallLocation)"
+    if [[ -n "$loc" ]]; then key="$k"; break; fi
+  done
+  [[ -n "$key" ]] || return 0
+
+  ver="$(reg_value "$key" DisplayVersion)"
+  loc="$(cygpath -u "$loc" 2>/dev/null || echo "$loc")"
+  loc="${loc%/}"
+  [[ "$loc" -ef "$INSTALL_DIR" ]] && return 0
+
+  if [[ -e "$loc/GitboxApp.exe" ]]; then
+    INSTALLER_COPY="$loc"
+    warn "The Windows installer already installed gitbox ${ver:-(unknown version)} in $loc."
+    warn "Its Start menu entry keeps launching that copy, not $INSTALL_DIR/GitboxApp.exe."
+    warn "Keep one: run gitbox-win-amd64-setup.exe from the release instead of this"
+    warn "script, or uninstall it (Settings → Apps → gitbox) and keep this copy."
+  else
+    local ps_key="${key/#HKLM/HKLM:}"
+    ps_key="${ps_key/#HKCU/HKCU:}"
+    warn "Found a half-removed Windows installer entry for gitbox ${ver:-} ($loc is gone)."
+    warn "Remove the stale Start menu entry and uninstall key from an admin PowerShell:"
+    echo "    Remove-Item -Recurse -Force 'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\gitbox'"
+    echo "    Remove-Item -Recurse -Force '$ps_key'"
+  fi
+}
+
 # ── PATH helper ─────────────────────────────────────────────────────
 
 ensure_path() {
@@ -499,6 +547,9 @@ print_summary() {
   if [[ "$CLI_INSTALLED" == true ]]; then
     echo "  CLI/TUI:  $INSTALL_DIR/$(cli_bin_name)"
   fi
+  if [[ -n "$INSTALLER_COPY" ]]; then
+    warn "  Another copy from the Windows installer is still in $INSTALLER_COPY (see above)."
+  fi
 
   echo ""
 
@@ -552,6 +603,7 @@ main() {
   get_release_info
   extract_archive
   detect_existing_install
+  detect_windows_installer
 
   case "$PLATFORM" in
     macos)   install_macos   ;;

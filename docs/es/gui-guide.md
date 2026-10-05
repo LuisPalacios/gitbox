@@ -34,6 +34,8 @@ Usa `--version <tag>` para una release concreta o `--prefix <dir>` para cambiar 
 
 En Linux el script de bootstrap también registra la app en el menú Activities para que pueda buscar "Gitbox" o arrastrarla al dock. Omítelo con `--no-desktop`; ejecútalo más tarde por separado con `bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/register-gitbox.sh)`. Pasa `--uninstall` al mismo script para eliminar la entrada del menú. El archivo `.desktop` apunta a una ruta absoluta, así que las actualizaciones desde la app y las ejecuciones posteriores del bootstrap no necesitan volver a registrarla.
 
+En Windows el setup exe y el script de bootstrap son alternativas, no capas. El setup exe instala en Program Files con una entrada en el menú Inicio; el script de bootstrap instala en `~/bin` sin ninguna. Elijo uno. Cuando el script de bootstrap encuentra una copia del setup exe, avisa de que el menú Inicio sigue abriendo esa copia y la deja donde está. También detecta una instalación a medio quitar (una entrada de desinstalación cuyos archivos ya no existen) e imprime los comandos para limpiarla.
+
 Los hosts headless no pueden ejecutar la app. Ahí, `--cli-only` instala la última CLI `gitbox` 1.x de la línea de mantenimiento v1, y el script la elige automáticamente en Linux cuando no está definida ni `DISPLAY` ni `WAYLAND_DISPLAY`.
 
 ### Linux AppImage

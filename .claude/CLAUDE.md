@@ -79,7 +79,7 @@ docs/
   diagrams/               Architecture diagrams
 assets/                   Icons, logo, README screenshots (captured with scripts/demo-fleet)
 scripts/
-  bootstrap.sh             Cross-platform installer (downloads a release, places GitboxApp, registers Linux menu entry; --cli-only installs the latest 1.x CLI)
+  bootstrap.sh             Cross-platform installer (downloads a release, places GitboxApp, registers Linux menu entry, warns about a Windows installer copy; --cli-only installs the latest 1.x CLI)
   register-gitbox.sh       Linux-only desktop registrar (.desktop + icon in ~/.local/share, idempotent, supports --uninstall)
   installer.iss            Windows Inno Setup installer script (GUI only; cleans up v1's CLI and PATH entry on upgrade)
   appimage/                Linux AppImage build (build-appimage.sh + linuxdeploy, AppRun, desktop, AppStream metainfo, icon)
