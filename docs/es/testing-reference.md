@@ -6,7 +6,7 @@ Inventario de pruebas y detalles internos del harness. Para ejecutar pruebas, ve
 
 Los recuentos son funciones `func Test…` de nivel superior por paquete, obtenidas con `grep -rc "^func Test" --include=*_test.go pkg cmd`. Los subtests (`t.Run`) no se cuentan.
 
-### Pruebas de paquetes — 436 pruebas (`pkg/`)
+### Pruebas de paquetes — 431 pruebas (`pkg/`)
 
 - `pkg/adopt/` — 13 pruebas: descubrimiento de huérfanos, puntuación de cuentas (usuario embebido en la URL, username de la credencial, carpeta padre, empates ambiguos), clones anidados bajo contenedores
 - `pkg/config/` — 98 pruebas: parseo de config, migración v1/v2 → v3, operaciones CRUD, save/load, backups, preparación de test-mode
@@ -14,7 +14,7 @@ Los recuentos son funciones `func Test…` de nivel superior por paquete, obteni
 - `pkg/doctor/` — 24 pruebas: forma de la tabla de herramientas, pistas de instalación, búsquedas, comprobaciones previas por tipo de credencial, decodificación de la salida de herramientas
 - `pkg/git/` — 30 pruebas: operaciones git mediante subprocess, URLs de repo y de perfil, descubrimiento de repos anidados
 - `pkg/gitignore/` — 23 pruebas: ida y vuelta del bloque gestionado, fusión con contenido del usuario, instalación idempotente, backups, saneado de duplicados
-- `pkg/harness/` — 33 pruebas: parseo del directorio de herramientas embebido, herramientas retiradas, parseo del `launch_menu` de WezTerm
+- `pkg/harness/` — 28 pruebas: parseo del directorio de herramientas embebido, herramientas retiradas, parseo del `launch_menu` de WezTerm
 - `pkg/heal/` — 7 pruebas: URL de origin esperada por tipo de credencial, reparación de identidad, eliminación de tokens embebidos
 - `pkg/i18n/` — 1 prueba: normalización de idioma
 - `pkg/identity/` — 7 pruebas: `ResolveIdentity`, `EnsureRepoIdentity`, `CheckGlobalIdentity`
@@ -28,21 +28,21 @@ Los recuentos son funciones `func Test…` de nivel superior por paquete, obteni
 - `pkg/update/` — 26 pruebas: parseo semver, comparación de versiones, comprobación de actualización (API mock), límite de versión mayor, nombres de artefactos, detección del AppImage solo-aviso, destinos de instalación, verificación de checksum, verificación de la firma de release contra firmas hechas con `ssh-keygen` real (otro tag, checksums manipulados, namespace incorrecto, clave ajena, malformada), `allowed_signers` sincronizado con la clave incrustada, descarga que falla cerrada (checksums o firma ausentes, ilegibles o inválidos rechazan la actualización, y una firma mala la detiene antes de descargar el artefacto)
 - `pkg/workspace/` — 5 pruebas: descubrimiento de workspaces, refresco de caché, carpetas extra, contenedores tentativos
 
-### Pruebas de la GUI — 43 pruebas (`cmd/gui/`)
+### Pruebas de la GUI — 28 pruebas (`cmd/gui/`)
 
 Lógica del lado Go de la app Wails que se ejecuta sin ventana:
 
 - Acciones de cuenta y navegador — resolución de la carpeta de cuenta, URLs de proveedor, rutas de error para cuentas y repos desconocidos
 - Acciones de AI harness — detección, orden, deduplicación, poda de harnesses retirados, fallback a `~/.local/bin`, Profile por defecto del lanzador
 - Auto-actualización — el build AppImage rechaza `ApplyUpdate` antes de cualquier descarga
-- Terminales — resolución de argv, actualización de entradas legacy (omitida cuando ya hay perfiles de terminal), parseo y fusión de perfiles de Windows Terminal, saneado de rutas MSYS y del entorno
+- Terminales — saneado de rutas MSYS y del entorno para las terminales lanzadas, y un primer arranque que nunca escribe la lista legacy `global.terminals`
 - Workspaces y contenedores — refresco de caché, persistencia del flag de contenedor, carpetas extra, profundidad de escaneo anidado, `clone_folder` absoluto para clones incorporados
 
 ### Prueba de escenario — 1 prueba, 12 pasos (`pkg/ops/`)
 
 - `TestScenario_FullLifecycle` — end-to-end a través de `pkg/ops`: añadir cuenta → comprobar credencial → descubrir → añadir repo → clone → status → pull y fetch → editar cuenta + reconfigurar clones → CRUD de mirrors → reclonar → renombrar cuenta → borrarlo todo
 
-### Total: 479 pruebas
+### Total: 459 pruebas
 
 ## Cómo funciona el harness de pruebas
 

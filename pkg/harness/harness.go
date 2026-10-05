@@ -230,17 +230,3 @@ func cleanName(cell string) string {
 func cleanPlainCell(cell string) string {
 	return strings.TrimSpace(cell)
 }
-
-// extractCommand pulls a valid single-binary command name out of the
-// Executable column. The cell may contain trailing annotations like
-// "`Claude` *(App Executable)*" or "`openhands` *(or Docker)*" — only the
-// first backticked token is considered, and only when it matches the strict
-// identifier shape. Cells whose backticked content contains a path, spaces,
-// or is literally "N/A" return an empty string so the row is skipped.
-func extractCommand(cell string) string {
-	toks := backtickTokens(cell)
-	if len(toks) == 0 || !cmdTokenRE.MatchString(toks[0]) {
-		return ""
-	}
-	return toks[0]
-}

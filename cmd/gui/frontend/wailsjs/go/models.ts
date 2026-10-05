@@ -1360,24 +1360,6 @@ export namespace main {
 	        this.args_template = source["args_template"];
 	    }
 	}
-	export class TerminalInfo {
-	    id: string;
-	    name: string;
-	    command: string;
-	    args: string[];
-	
-	    static createFrom(source: any = {}) {
-	        return new TerminalInfo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.name = source["name"];
-	        this.command = source["command"];
-	        this.args = source["args"];
-	    }
-	}
 	export class TerminalProfileInfo {
 	    id: string;
 	    name: string;

@@ -5,30 +5,6 @@ import (
 	"testing"
 )
 
-func TestExtractCommand(t *testing.T) {
-	tests := map[string]string{
-		"`claude`":                     "claude",
-		"`Claude` *(App Executable)*":  "Claude",
-		"`openhands` *(or Docker)*":    "openhands",
-		"`cursor-agent`":               "cursor-agent",
-		"`langgraph` *(CLI/Studio)*":   "langgraph",
-		"*N/A (Library)*":              "",
-		"`python devika.py`":           "",
-		"`docker-compose`":             "docker-compose",
-		"`node --inspect foo.js`":      "",
-		"":                             "",
-		" ` ` ":                        "",
-		"plain text with no backticks": "",
-		"`weird/slash`":                "",
-		"` leading-space-inside `":     "leading-space-inside",
-	}
-	for in, want := range tests {
-		if got := extractCommand(in); got != want {
-			t.Errorf("extractCommand(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
 func TestCleanName(t *testing.T) {
 	tests := map[string]string{
 		"**Claude Code**":        "Claude Code",

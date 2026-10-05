@@ -13,7 +13,7 @@
   import { statusColor, credColor, providerLabel, statusSymbol } from './lib/theme';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit, EventsOn } from '../wailsjs/runtime/runtime';
-  import type { RepoState, SourceDTO, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, TerminalInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
+  import type { RepoState, SourceDTO, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
   import PRPopover from './lib/PRPopover.svelte';
   import TerminalsModal from './lib/TerminalsModal.svelte';
@@ -59,7 +59,6 @@
   let actionMenuRepo: string | null = null;
   let actionMenuAccount: string | null = null;
   $: configEditors = ($configStore?.global?.editors || []) as EditorInfo[];
-  $: configTerminals = ($configStore?.global?.terminals || []) as TerminalInfo[];
   // Harnesses the Go-side sync flagged `missing` (binary uninstalled) stay
   // in config but never reach the launcher menus (issue #81).
   $: configAIHarnesses = (($configStore?.global?.ai_harnesses || []) as AIHarnessInfo[]).filter(h => !h.missing);
@@ -597,12 +596,6 @@
     closeActionMenu();
   }
 
-  async function openRepoInTerminal(repoKey: string, terminal: TerminalInfo) {
-    const path = requireRepoPath(repoKey, 'Open in ' + terminal.name);
-    if (path) await bridge.openInTerminal(path, terminal.command, terminal.args || []);
-    closeActionMenu();
-  }
-
   // openRepoProfile is the v2.1 launcher entry point — resolves the repo's
   // working directory then asks the Go side to expand the profile's
   // template via pkg/launch.ResolveArgs and spawn the terminal.
@@ -659,11 +652,6 @@
 
   async function openAccountInApp(accountKey: string, command: string) {
     try { await bridge.openAccountInApp(accountKey, command); } catch (e) { console.error(e); }
-    closeAccountMenu();
-  }
-
-  async function openAccountInTerminal(accountKey: string, terminal: TerminalInfo) {
-    try { await bridge.openAccountInTerminal(accountKey, terminal.command, terminal.args || []); } catch (e) { console.error(e); }
     closeAccountMenu();
   }
 
@@ -3410,14 +3398,12 @@
                 <LauncherMenu
                   kind="account"
                   editors={configEditors}
-                  terminals={configTerminals}
                   profiles={configProfiles}
                   aiHarnesses={configAIHarnesses}
                   {revealLabel}
                   onOpenBrowser={() => openAccountInBrowser(accountKey)}
                   onOpenFolder={() => openAccountInExplorer(accountKey)}
                   onOpenApp={(cmd) => openAccountInApp(accountKey, cmd)}
-                  onOpenTerminal={(t) => openAccountInTerminal(accountKey, t)}
                   onOpenProfile={(id) => openAccountProfile(accountKey, id)}
                   onOpenAIHarness={(h) => openAccountInAIHarness(accountKey, h)}
                 />
@@ -3577,14 +3563,12 @@
                       <LauncherMenu
                         kind="repo"
                         editors={configEditors}
-                        terminals={configTerminals}
                         profiles={configProfiles}
                         aiHarnesses={configAIHarnesses}
                         {revealLabel}
                         onOpenBrowser={() => openRepoInBrowser(sourceKey, repoName)}
                         onOpenFolder={() => openRepoInExplorer(repoKey)}
                         onOpenApp={(cmd) => openRepoInApp(repoKey, cmd)}
-                        onOpenTerminal={(t) => openRepoInTerminal(repoKey, t)}
                         onOpenProfile={(id) => openRepoProfile(repoKey, id)}
                         onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
                         onSweep={() => sweepBranches(sourceKey, repoName)}

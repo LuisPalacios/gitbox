@@ -1,6 +1,6 @@
 # Pruebas
 
-Esta guía cubre cómo ejecutar y escribir pruebas para gitbox. Para el inventario de pruebas (qué cubre cada paquete) y los detalles internos del harness, consulta [testing-reference.md](testing-reference.md). Recuento actual: 453 funciones de prueba de primer nivel — 414 en `pkg/` y 39 en `cmd/gui/`.
+Esta guía cubre cómo ejecutar y escribir pruebas para gitbox. Para el inventario de pruebas (qué cubre cada paquete) y los detalles internos del harness, consulta [testing-reference.md](testing-reference.md). Recuento actual: 459 funciones de prueba de primer nivel — 431 en `pkg/` y 28 en `cmd/gui/`.
 
 ## Pre-push hook
 

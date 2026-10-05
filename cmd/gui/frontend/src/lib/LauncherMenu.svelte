@@ -11,9 +11,6 @@
   //   - The Profiles submenu lists every Preferred profile (excluding the
   //     default to avoid duplication). Hidden when no preferred profiles
   //     exist.
-  //   - Legacy `terminals` prop is still accepted as a fallback for configs
-  //     that haven't been migrated yet (old wired-up callers, hot-reloads
-  //     mid-rollout). When `profiles` is non-empty it wins.
   //
   // Labels are intentionally terse — every row leads with an icon, so the
   // verb (Open / Open in / Open with) is redundant noise. Issue #69 user
@@ -34,14 +31,12 @@
   //   Sweep branches                      (repo kebab only)
 
   import { onMount, tick } from 'svelte';
-  import type { EditorInfo, TerminalInfo, AIHarnessInfo, TerminalProfileInfo } from './types';
+  import type { EditorInfo, AIHarnessInfo, TerminalProfileInfo } from './types';
 
   export let kind: 'repo' | 'account' = 'repo';
   export let editors: EditorInfo[] = [];
-  export let terminals: TerminalInfo[] = [];
   // profiles is the v2.1 Profile list; the menu's terminal section reads
-  // from this when non-empty. The legacy `terminals` prop covers the
-  // (vanishing) case where a config hasn't been migrated yet.
+  // from it.
   export let profiles: TerminalProfileInfo[] = [];
   export let aiHarnesses: AIHarnessInfo[] = [];
   // revealLabel is the OS-aware string for the folder action: "Reveal in
@@ -53,11 +48,9 @@
   export let onOpenBrowser: () => void;
   export let onOpenFolder: () => void;
   export let onOpenApp: (command: string) => void;
-  export let onOpenTerminal: (terminal: TerminalInfo) => void;
   // onOpenProfile is the v2.1 launch handler — receives the Profile id and
   // routes through bridge.openProfile / bridge.openAccountProfile in the
-  // App.svelte glue. Falls back to onOpenTerminal when only legacy
-  // terminals are configured.
+  // App.svelte glue.
   export let onOpenProfile: (profileID: string) => void = () => {};
   export let onOpenAIHarness: (harness: AIHarnessInfo) => void;
   export let onSweep: (() => void) | null = null;
@@ -221,20 +214,15 @@
   $: preferredProfiles = visibleProfiles.filter(p => p.preferred && (!defaultProfile || p.id !== defaultProfile.id));
 
   $: showProfileDefault = !!defaultProfile;
-  // Legacy fallback when the config has no profiles yet (untouched by any
-  // sync) but does carry a flat terminals[] list. Gives the user something
-  // to click while they migrate.
-  $: showLegacyTerminalDefault = !showProfileDefault && terminals.length >= 1;
   $: showEditorDefault = editors.length >= 1;
   $: showHarnessDefault = aiHarnesses.length >= 1;
 
   $: showProfilesSub = preferredProfiles.length >= 1;
-  $: showLegacyTerminalsSub = !showProfileDefault && terminals.length >= 2;
   $: showEditorsSub = editors.length >= 2;
   $: showHarnessSub = aiHarnesses.length >= 2;
 
-  $: hasDefaultsSection = showProfileDefault || showLegacyTerminalDefault || showEditorDefault || showHarnessDefault;
-  $: hasSubsSection = showProfilesSub || showLegacyTerminalsSub || showEditorsSub || showHarnessSub;
+  $: hasDefaultsSection = showProfileDefault || showEditorDefault || showHarnessDefault;
+  $: hasSubsSection = showProfilesSub || showEditorsSub || showHarnessSub;
   $: hasSweepSection = kind === 'repo' && !!onSweep;
   $: hasMoveSection = kind === 'repo' && !!onMove;
   $: hasContainerSection = kind === 'repo' && !!onToggleContainer;
@@ -257,10 +245,6 @@
     {#if showProfileDefault && defaultProfile}
       <button class="action-item" on:click|stopPropagation={() => onOpenProfile(defaultProfile.id)} title={defaultProfile.name}>
         <span class="lm-icon lm-icon-mono">&gt;_</span> {defaultProfile.name}
-      </button>
-    {:else if showLegacyTerminalDefault}
-      <button class="action-item" on:click|stopPropagation={() => onOpenTerminal(terminals[0])} title={terminals[0].name}>
-        <span class="lm-icon lm-icon-mono">&gt;_</span> {terminals[0].name}
       </button>
     {/if}
     {#if showEditorDefault}
@@ -288,22 +272,6 @@
             {#each preferredProfiles as profile}
               <button class="action-item" on:click|stopPropagation={() => onOpenProfile(profile.id)}>
                 <span class="lm-icon lm-icon-mono">&gt;_</span> {profile.name}
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </div>
-    {:else if showLegacyTerminalsSub}
-      <div class="lm-sub-container">
-        <button class="action-item lm-submenu-trigger" class:lm-active={openSubmenu === 'terminals'} on:click|stopPropagation={() => toggleSub('terminals')}>
-          <span class="lm-icon lm-icon-mono">&gt;_</span> Terminals
-          <span class="lm-arrow">&#9654;</span>
-        </button>
-        {#if openSubmenu === 'terminals'}
-          <div class="action-dropdown launcher-submenu" bind:this={subEl}>
-            {#each terminals as terminal}
-              <button class="action-item" on:click|stopPropagation={() => onOpenTerminal(terminal)}>
-                <span class="lm-icon lm-icon-mono">&gt;_</span> {terminal.name}
               </button>
             {/each}
           </div>

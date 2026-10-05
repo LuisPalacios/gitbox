@@ -67,16 +67,14 @@ type GlobalConfig struct {
 	AIHarnesses     []AIHarnessEntry `json:"ai_harnesses,omitempty"`
 
 	// Terminals (legacy v2.0) is the flat (terminal-app + shell) list. It is
-	// auto-migrated into TerminalApps + Shells + TerminalProfiles on first
-	// load and emptied; the JSON key remains accepted for backward
-	// compatibility with existing user configs but new writes use the
-	// three-array model below. Will be removed once the migrator has been in
-	// the wild for one release cycle.
+	// read only so MigrateLegacyTerminals can convert old configs into
+	// TerminalApps + Shells + TerminalProfiles on load; the migration
+	// empties it, so omitempty keeps the key out of every save.
 	Terminals []TerminalEntry `json:"terminals,omitempty"`
 
 	// TerminalApps is the list of terminal applications detected on the host
 	// (Windows Terminal, WezTerm, iTerm, gnome-terminal, …) — apps only, no
-	// shell coupling. See pkg/harness/terminal-directory.md for the seed
+	// shell coupling. See pkg/terminals/catalog.go for the seed
 	// table; entries are merged with detection on each SyncProfiles run.
 	TerminalApps []TerminalApp `json:"terminal_apps,omitempty"`
 	// Shells is the list of command-line interpreters available on the host
@@ -155,45 +153,6 @@ func (g *GlobalConfig) RemoveExtraFolder(path string) bool {
 // extraFolderKey normalizes a scan-root path for equality comparison.
 func extraFolderKey(p string) string {
 	return strings.ToLower(filepath.ToSlash(filepath.Clean(ExpandTilde(p))))
-}
-
-// EffectiveTerminals returns the user-facing terminal list for legacy
-// consumers (TUI launcher, AI-harness terminal-fallback) during the v2.0 →
-// v2.1 transition. It prefers the legacy Terminals field when populated and
-// synthesises a flat TerminalEntry list from TerminalProfiles otherwise so
-// code that hasn't been ported to the Profile model still finds something to
-// launch. Hidden profiles are skipped; the per-profile Args override (when
-// present) is preserved verbatim — that matches the migrator, which copies
-// legacy argv into Profile.Args.
-//
-// Removed in the final v2.1 cleanup commit alongside the legacy Terminals
-// field and the screens that read it.
-func (g GlobalConfig) EffectiveTerminals() []TerminalEntry {
-	if len(g.Terminals) > 0 {
-		return g.Terminals
-	}
-	if len(g.TerminalProfiles) == 0 {
-		return nil
-	}
-	apps := make(map[string]TerminalApp, len(g.TerminalApps))
-	for _, a := range g.TerminalApps {
-		apps[a.ID] = a
-	}
-	out := make([]TerminalEntry, 0, len(g.TerminalProfiles))
-	for _, p := range g.TerminalProfiles {
-		if p.Hidden {
-			continue
-		}
-		entry := TerminalEntry{Name: p.Name}
-		if app, ok := apps[p.TerminalID]; ok {
-			entry.Command = app.Command
-		}
-		if len(p.Args) > 0 {
-			entry.Args = append([]string(nil), p.Args...)
-		}
-		out = append(out, entry)
-	}
-	return out
 }
 
 // PRBadgesOn reports whether PR badges are enabled, defaulting to true when unset.

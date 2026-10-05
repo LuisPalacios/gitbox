@@ -6,10 +6,8 @@ package main
 // pkg/terminals — this file only exposes the Wails bridge surface that
 // the Svelte frontend talks to: DTOs, list/save/open methods, and the
 // SyncProfiles + RedetectProfiles + MissingModernTerminal entry points.
-//
-// The legacy v2.0 OpenInTerminal path in app.go is unchanged. The two
-// pathways coexist until the legacy Terminals[] field is removed in a
-// future release.
+// It is the only terminal launch path; the v2.0 global.terminals list is
+// only read to migrate old configs (pkg/config.MigrateLegacyTerminals).
 
 import (
 	"fmt"

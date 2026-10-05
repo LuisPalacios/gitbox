@@ -130,10 +130,6 @@ export function DetectEditors() {
   return window['go']['main']['App']['DetectEditors']();
 }
 
-export function DetectTerminals() {
-  return window['go']['main']['App']['DetectTerminals']();
-}
-
 export function Discover(arg1) {
   return window['go']['main']['App']['Discover'](arg1);
 }
@@ -326,10 +322,6 @@ export function OpenAccountInBrowser(arg1) {
   return window['go']['main']['App']['OpenAccountInBrowser'](arg1);
 }
 
-export function OpenAccountInTerminal(arg1, arg2, arg3) {
-  return window['go']['main']['App']['OpenAccountInTerminal'](arg1, arg2, arg3);
-}
-
 export function OpenAccountProfile(arg1, arg2) {
   return window['go']['main']['App']['OpenAccountProfile'](arg1, arg2);
 }
@@ -352,10 +344,6 @@ export function OpenInBrowser(arg1) {
 
 export function OpenInExplorer(arg1) {
   return window['go']['main']['App']['OpenInExplorer'](arg1);
-}
-
-export function OpenInTerminal(arg1, arg2, arg3) {
-  return window['go']['main']['App']['OpenInTerminal'](arg1, arg2, arg3);
 }
 
 export function OpenProfile(arg1, arg2) {
@@ -512,10 +500,6 @@ export function SyncEditors() {
 
 export function SyncProfiles() {
   return window['go']['main']['App']['SyncProfiles']();
-}
-
-export function SyncTerminals() {
-  return window['go']['main']['App']['SyncTerminals']();
 }
 
 export function TentativeContainers() {

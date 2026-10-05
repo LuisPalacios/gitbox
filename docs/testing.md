@@ -1,6 +1,6 @@
 # Testing
 
-This guide covers running and writing tests for gitbox. For the test inventory (what each package covers) and harness internals, see [testing-reference.md](testing-reference.md). Current count: 453 top-level test functions — 414 in `pkg/` and 39 in `cmd/gui/`.
+This guide covers running and writing tests for gitbox. For the test inventory (what each package covers) and harness internals, see [testing-reference.md](testing-reference.md). Current count: 459 top-level test functions — 431 in `pkg/` and 28 in `cmd/gui/`.
 
 ## Pre-push hook
 
