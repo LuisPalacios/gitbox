@@ -107,8 +107,6 @@ scripts/
   skills/
     fixing-markdown/      Markdown lint + format
     merge-pr/             Merge a PR (post-/work-issue), clean up worktree + branch
-    preview-prototype/    Local Svelte preview server
-    screenshot-prototype/ GUI screenshot generation
     ship-builds/          Build + stage GitboxApp on remote hosts in .env
     test-plan/            Pre-PR and release verification
     work-issue/           Worktree → plan → code → push → PR (stops before merge)
