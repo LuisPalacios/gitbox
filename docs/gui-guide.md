@@ -270,7 +270,7 @@ The full dashboard shows the top bar with health rings, the tab bar (Accounts/Mi
 The repo list folds at two levels:
 
 - **Account groups** — click an account's header bar or its name to fold its clone list. A folded header shows how many clones it holds and how many need attention, so a problem never hides behind a fold. The ⋮ menu on the header keeps working and never folds the group.
-- **Clones with clones below them** — any clone that has nested clones under it gets a ▾ chevron before its status dot. Click it to fold everything below, at any depth. A folded row shows how many clones it hides and how many of them need attention. The chevron is its own control: it never opens the repo detail.
+- **Clones with clones below them** — any clone that has nested clones under it gets a ▾ chevron before its status dot. Click the chevron or the clone's name to fold everything below, at any depth. A folded row shows how many clones it hides and how many of them need attention. Neither opens the repo detail; in workspace-selection mode the name still selects the clone.
 
 Gitbox remembers what I fold across restarts (`global.collapsed` in `gitbox.json`) and forgets entries for accounts or clones I delete or rename. The compact view keeps its own per-account expansion.
 

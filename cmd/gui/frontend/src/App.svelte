@@ -3582,7 +3582,15 @@
                 {/if}
               </div>
             {/if}
-            <span class="repo-name">{repoName}</span>
+            {#if childCount > 0}
+              <!-- The name folds its clones too; selection mode keeps the row's own click. -->
+              <span class="repo-name"><span class="repo-name-toggle" role="button" tabindex="-1"
+                title={collapsedRepos.has(repoKey) ? $t('collapse.expand') : $t('collapse.collapse')}
+                on:click={(e) => { if (selectionMode) return; e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants, sourceKey); }}
+                on:keydown={onActivateKey(() => toggleRepoCollapsed(repoKey, descendants, sourceKey))}>{repoName}</span></span>
+            {:else}
+              <span class="repo-name">{repoName}</span>
+            {/if}
             {#if childCount > 0 && collapsedRepos.has(repoKey)}
               {@const below = attentionCount(sourceKey, descendants, $repoStates)}
               <span class="collapse-summary collapse-summary-row">
@@ -5599,6 +5607,8 @@
   .collapse-chevron-btn:hover, .source-header[role="button"]:hover .collapse-chevron { opacity: 1; }
   .collapse-summary { flex: 0 0 auto; font-size: 11px; font-weight: normal; opacity: 0.8; }
   .collapse-summary-row { margin-left: 6px; }
+  .repo-name-toggle { cursor: pointer; }
+  .repo-name-toggle:hover { text-decoration: underline; }
   .source-header-kebab { font-size: 14px; flex: 0 0 auto; margin-right: auto; }
   .source-header-kebab .action-dropdown { right: auto; left: 0; }
   .repo-row {
