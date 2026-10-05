@@ -20,11 +20,14 @@ const maxBackups = 10
 
 // Save writes the configuration to the given file path as indented JSON.
 // It creates the parent directory if it doesn't exist.
+// It first prunes collapse keys that no longer resolve (PruneCollapsed).
 // Before overwriting, it creates a dated backup (best-effort, rolling last 10
-// saves) — unless the only difference between on-disk and in-memory is
-// window-position state, which happens on every GUI close and would rotate
-// meaningful backups out of the ring otherwise.
+// saves) — unless the only difference between on-disk and in-memory is GUI
+// state (window position, collapsed groups), which changes on every GUI close
+// or chevron click and would rotate meaningful backups out of the ring otherwise.
 func Save(cfg *Config, path string) error {
+	cfg.PruneCollapsed()
+
 	if err := EnsureDir(path); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
@@ -48,9 +51,9 @@ func Save(cfg *Config, path string) error {
 // If the file doesn't exist yet, no backup is created.
 //
 // Skips the backup when the only difference between the on-disk file and the
-// next cfg is window-position state (global.window / global.compact_window).
-// Every GUI session writes fresh window coordinates on close, and without
-// this filter a few unrelated launches would roll out the genuine
+// next cfg is GUI state (global.window / global.compact_window /
+// global.collapsed). Every GUI session writes fresh window coordinates on
+// close, every chevron click writes collapse state, and without this filter a few unrelated launches would roll out the genuine
 // pre-corruption copies before the user ever notices anything is wrong. If
 // the on-disk file is unparseable (really stale or bug-mangled), the snapshot
 // is taken regardless — we want a copy of the broken state.
@@ -61,10 +64,10 @@ func backupBeforeSave(path string, next *Config) {
 	}
 
 	// If we can parse the on-disk config and the in-memory one is identical
-	// modulo window state, there's nothing worth preserving.
+	// modulo GUI state, there's nothing worth preserving.
 	if next != nil {
 		if current, err := Load(path); err == nil {
-			if configsEqualIgnoringWindow(current, next) {
+			if configsEqualIgnoringUIState(current, next) {
 				return
 			}
 		}
@@ -85,11 +88,11 @@ func backupBeforeSave(path string, next *Config) {
 	pruneBackups(dir, name)
 }
 
-// configsEqualIgnoringWindow reports whether two configs are content-equal
-// ignoring window-position state. Compares via canonical JSON so nested
+// configsEqualIgnoringUIState reports whether two configs are content-equal
+// ignoring GUI state (window position and collapsed groups). Compares via canonical JSON so nested
 // maps/slices are handled correctly (Go map iteration order doesn't matter
 // because json.Marshal sorts map keys).
-func configsEqualIgnoringWindow(a, b *Config) bool {
+func configsEqualIgnoringUIState(a, b *Config) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
@@ -97,8 +100,10 @@ func configsEqualIgnoringWindow(a, b *Config) bool {
 	bc := *b
 	ac.Global.Window = nil
 	ac.Global.CompactWindow = nil
+	ac.Global.Collapsed = nil
 	bc.Global.Window = nil
 	bc.Global.CompactWindow = nil
+	bc.Global.Collapsed = nil
 	da, err := json.Marshal(&ac)
 	if err != nil {
 		return false

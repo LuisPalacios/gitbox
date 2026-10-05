@@ -144,3 +144,41 @@ func TestAddDiscoveredReposToFolder_StoresAbsoluteCloneFolder(t *testing.T) {
 		t.Errorf("clone_folder = %q, want %q", repo.CloneFolder, custom)
 	}
 }
+
+func TestCollapsed_DefaultEmpty(t *testing.T) {
+	a, _ := newWorkspaceTestApp(t)
+	got := a.GetCollapsed()
+	if len(got.Sources) != 0 || len(got.Repos) != 0 {
+		t.Errorf("GetCollapsed() = %+v, want empty", got)
+	}
+}
+
+func TestSetCollapsed_PersistsAndPrunes(t *testing.T) {
+	a, cfgPath := newWorkspaceTestApp(t)
+
+	err := a.SetCollapsed(config.CollapsedState{
+		Sources: []string{"github-alice", "github-gone"},
+		Repos:   []string{"github-alice/team/frontend", "github-alice/team/deleted"},
+	})
+	if err != nil {
+		t.Fatalf("SetCollapsed: %v", err)
+	}
+	reloaded, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	c := reloaded.Global.Collapsed
+	if c == nil || len(c.Sources) != 1 || c.Sources[0] != "github-alice" ||
+		len(c.Repos) != 1 || c.Repos[0] != "github-alice/team/frontend" {
+		t.Errorf("persisted Collapsed = %+v, want only the existing keys", c)
+	}
+
+	// Expanding everything removes the key from disk.
+	if err := a.SetCollapsed(config.CollapsedState{}); err != nil {
+		t.Fatalf("SetCollapsed empty: %v", err)
+	}
+	reloaded, _ = config.Load(cfgPath)
+	if reloaded.Global.Collapsed != nil {
+		t.Errorf("Collapsed = %+v, want nil after expanding everything", reloaded.Global.Collapsed)
+	}
+}
