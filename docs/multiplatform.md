@@ -198,7 +198,7 @@ CI (GitHub Actions) runs vet, unit tests, the frontend check, and a Linux GUI bu
 Check that your SSH key is in `~/.ssh/authorized_keys` on the remote. The scripts require key-based auth (no passwords). Verify with: `ssh -o ConnectTimeout=5 user@host 'echo ok'`
 
 **"error in libcrypto" then "Permission denied" from Git Bash on Windows:**
-Your keys live in an SSH agent (1Password or the Windows ssh-agent service) and only `.pub` files exist on disk. Git Bash's own MSYS `ssh` cannot reach the Windows named-pipe agent, so it tries to load the `.pub` as a private key and fails. The scripts now prefer the Windows-native OpenSSH in `C:\Windows\System32\OpenSSH` automatically when it exists. If you run `ssh` by hand from Git Bash, prefix the PATH the same way: `PATH="/c/Windows/System32/OpenSSH:$PATH" ssh host`.
+Your keys live in an SSH agent (a password manager such as 1Password or Bitwarden, or the Windows ssh-agent service) and only `.pub` files exist on disk. Git Bash's own MSYS `ssh` cannot reach the Windows named-pipe agent, so it tries to load the `.pub` as a private key and fails. The scripts now prefer the Windows-native OpenSSH in `C:\Windows\System32\OpenSSH` automatically when it exists. If you run `ssh` by hand from Git Bash, prefix the PATH the same way: `PATH="/c/Windows/System32/OpenSSH:$PATH" ssh host`.
 
 **"command not found: jq" on remote:**
 Install jq on the remote machine (`apt install jq` on Debian/Ubuntu, `brew install jq` on macOS).

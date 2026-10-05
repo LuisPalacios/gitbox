@@ -454,25 +454,19 @@ jobs:
       - name: Generate checksums
         run: cd release && sha256sum -- * > checksums.sha256
 
-      - name: Create GitHub Release
+      # The release is created as a draft: invisible to the updater and
+      # never "latest". The maintainer signs checksums.sha256 locally with
+      # scripts/sign-release.sh, which uploads checksums.sha256.sig,
+      # decides --latest and publishes it. CI never holds the signing key.
+      - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Only the highest major line may become "latest": a v1.7.z
-          # maintenance tag pushed after v2.0.0 must not hijack
-          # releases/latest, which every v2 GUI's updater follows.
           tag="${{ inputs.version || github.ref_name }}"
-          major="${tag#v}"; major="${major%%.*}"
-          top="$(gh release list --repo "${{ github.repository }}" --limit 100 \
-                   --json tagName -q '.[].tagName' \
-                 | sed -E 's/^v([0-9]+)\..*/\1/' | grep -E '^[0-9]+$' | sort -n | tail -1)"
-          latest=true
-          if [ -n "$top" ] && [ "$major" -lt "$top" ]; then latest=false; fi
-          echo "Publishing $tag with --latest=$latest (highest existing major: ${top:-none})"
-
           gh release create "$tag" \
             --repo "${{ github.repository }}" \
             --title "gitbox $tag" \
             --generate-notes \
-            --latest="$latest" \
+            --draft \
             release/*
+          echo "Draft $tag created. Sign and publish it with: ./scripts/sign-release.sh $tag"
