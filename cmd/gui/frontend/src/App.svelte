@@ -8,13 +8,16 @@
     summary, accountStats, themeStore, applyStatusResults, applyMirrorStatusResults,
     prsByAccount, prSettings, applyPRUpdate, lookupPRSummary,
     workspaces, workspaceOrder, workspaceMemberships, selectedClones,
-    toggleCloneSelection, clearCloneSelection, isSynced
+    toggleCloneSelection, clearCloneSelection, isSynced, simpleSummary
   } from './lib/stores';
-  import { statusColor, credColor, providerLabel, statusSymbol } from './lib/theme';
+  import { statusColor, credColor, providerLabel, statusSymbol, simpleKind, simpleColor } from './lib/theme';
+  import type { SimpleKind } from './lib/theme';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit, EventsOn } from '../wailsjs/runtime/runtime';
   import type { RepoState, SourceDTO, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
+  import BrandIcon from './lib/BrandIcon.svelte';
+  import UIIcon from './lib/UIIcon.svelte';
   import PRPopover from './lib/PRPopover.svelte';
   import TerminalsModal from './lib/TerminalsModal.svelte';
   import { tooltip } from './lib/tooltip';
@@ -24,6 +27,12 @@
   let viewMode: 'full' | 'compact' = 'full';
   let cardsTab: 'accounts' | 'mirrors' | 'workspaces' = 'accounts';
   let languageChoice: 'en' | 'es' = 'en';
+
+  // ── Experience (issue #124) ──
+  // Simple hides git vocabulary and power features for non-developers;
+  // Advanced is everything. Persisted as global.ui_mode.
+  let uiMode: 'simple' | 'advanced' = 'advanced';
+  $: simple = uiMode === 'simple';
 
   // ── Workspaces (issue #27 / #49) ──
   // UI state for the read-only Workspaces tab.
@@ -2530,6 +2539,9 @@
     await loadCollapsed();
 
     // Restore view mode.
+    uiMode = (await bridge.getUIMode()) === 'simple' ? 'simple' : 'advanced';
+    if (uiMode === 'simple') enterSimple();
+
     const savedMode = await bridge.getViewMode();
     if (savedMode === 'compact') {
       viewMode = 'compact';
@@ -2585,6 +2597,61 @@
     // Load PR badge feature flags and kick off initial PR fetch.
     await loadPRSettings();
     refreshAllPRs();
+  }
+
+  async function setUIMode(mode: 'simple' | 'advanced') {
+    if (uiMode === mode) return;
+    uiMode = mode;
+    if (mode === 'simple') enterSimple();
+    await bridge.setUIMode(mode);
+  }
+
+  // enterSimple leaves the Advanced-only states Simple has no controls for.
+  function enterSimple() {
+    cardsTab = 'accounts';
+    if (selectionMode) toggleSelectionMode();
+    deleteMode = false;
+  }
+
+  // Simple row helpers: the short project name, the "not saved yet" detail,
+  // and the one primary launcher (first AI harness, else editor, else folder).
+  function shortName(repoName: string): string {
+    return repoName.split('/').pop() || repoName;
+  }
+  function simpleTip(kind: SimpleKind, state: { status: string; modified: number; untracked: number }): string {
+    if (kind === 'help') return $t('simple.tipHelp');
+    if (kind !== 'unsaved') return '';
+    if (state.status === 'ahead') return $t('simple.tipAhead');
+    if (state.status === 'no upstream') return $t('simple.tipNoUpstream');
+    return $t('simple.tipDirty', { n: (state.modified || 0) + (state.untracked || 0) });
+  }
+  // Every cloned row, Simple or Advanced, carries three icon-only launchers:
+  // the first AI harness, the first editor, and the default terminal profile
+  // (same defaults as the ⋯ menu). Each picks a brand logo by name, or a
+  // generic icon.
+  $: quickHarness = configAIHarnesses[0] || null;
+  $: quickEditor = configEditors[0] || null;
+  $: quickProfile = (() => {
+    const visible = configProfiles.filter((p) => !p.hidden);
+    return visible.find((p) => p.default) || visible[0] || null;
+  })();
+  function harnessIcon(h: AIHarnessInfo): string {
+    const k = `${h.name} ${h.command}`.toLowerCase();
+    if (k.includes('claude')) return 'claude';
+    if (k.includes('codex') || k.includes('openai')) return 'openai';
+    if (k.includes('gemini')) return 'gemini';
+    if (k.includes('cursor')) return 'cursor';
+    return 'ai';
+  }
+  function editorIcon(e: EditorInfo): string {
+    const k = `${e.name} ${e.command}`.toLowerCase();
+    if (k.includes('cursor')) return 'cursor';
+    if (k.includes('zed')) return 'zed';
+    if (k.includes('visual studio code') || k.includes('vs code') || k.includes('vscode') || /(^|[\\/ ])code(\.exe|\.cmd)?$/.test(e.command.toLowerCase())) return 'vscode';
+    return 'ide';
+  }
+  function terminalIcon(p: TerminalProfileInfo): string {
+    return `${p.name} ${p.terminal}`.toLowerCase().includes('wezterm') ? 'wezterm' : 'terminal';
   }
 
   async function setLanguage(lang: 'en' | 'es') {
@@ -2927,6 +2994,27 @@
   $: cc = (s: string) => credColor(s, $themeStore);
 </script>
 
+<!-- AI / editor / terminal launchers shared by Simple and Advanced repo rows. -->
+{#snippet quickLaunch(repoKey: string)}
+  <span class="launch-group">
+    {#if quickHarness}
+      {@const h = quickHarness}
+      <button class="btn-launch" title={$t('simple.btnOpenWith', { name: h.name })} aria-label={$t('simple.btnOpenWith', { name: h.name })}
+        on:click|stopPropagation={() => openRepoInAIHarness(repoKey, h)}><BrandIcon name={harnessIcon(h)} /></button>
+    {/if}
+    {#if quickEditor}
+      {@const ed = quickEditor}
+      <button class="btn-launch" title={$t('simple.btnOpenWith', { name: ed.name })} aria-label={$t('simple.btnOpenWith', { name: ed.name })}
+        on:click|stopPropagation={() => openRepoInApp(repoKey, ed.command)}><BrandIcon name={editorIcon(ed)} /></button>
+    {/if}
+    {#if quickProfile}
+      {@const pr = quickProfile}
+      <button class="btn-launch" title={$t('simple.btnOpenWith', { name: pr.name })} aria-label={$t('simple.btnOpenWith', { name: pr.name })}
+        on:click|stopPropagation={() => openRepoProfile(repoKey, pr.id)}><BrandIcon name={terminalIcon(pr)} /></button>
+    {/if}
+  </span>
+{/snippet}
+
 <svelte:window on:click={(e) => {
   const inMenu = e.target instanceof Element && e.target.closest('.action-menu-container');
   const inWsPopover = e.target instanceof Element && e.target.closest('.ws-popover, .ws-badge');
@@ -3222,37 +3310,67 @@
       </svg>
       <span class="title">gitbox</span>
     </div>
+    {#if simple}
     <div class="health">
-      <span class="health-ring" style="--pct: {$summary.total ? ($summary.clean / $summary.total) * 100 : 0}">
-        <span class="health-num">{$summary.clean}/{$summary.total}</span>
+      <span class="health-ring" style="--pct: {$simpleSummary.total ? ($simpleSummary.saved / $simpleSummary.total) * 100 : 0}">
+        <span class="health-num">{$simpleSummary.saved}/{$simpleSummary.total}</span>
       </span>
-      <span class="health-label">synced</span>
+      <span class="health-label">{$simpleSummary.help > 0 ? $t('simple.needHelpN', { n: $simpleSummary.help })
+        : $simpleSummary.unsaved > 0 ? $t('simple.notSavedN', { n: $simpleSummary.unsaved })
+        : $t('simple.allSaved')}</span>
     </div>
-    {#if $mirrorSummary.total > 0}
+    {:else}
+    <!-- Advanced: compact rings without labels. The icon names what the ring
+         tracks, the corner badge counts what is not there yet, and the hover
+         tooltip spells it out. -->
+    {@const repoPending = $summary.total - $summary.clean}
+    {@const repoTip = `${$summary.clean}/${$summary.total} synced${repoPending > 0 ? ` · ${repoPending} ${repoPending === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}` : ''}`}
     <div class="health">
-      <span class="health-ring" style="--pct: {$mirrorSummary.total ? ($mirrorSummary.active / $mirrorSummary.total) * 100 : 0}{$mirrorSummary.error > 0 ? '; --ring-accent: #D81E5B' : ''}">
-        <span class="health-num">{$mirrorSummary.active}/{$mirrorSummary.total}</span>
+      <span class="health-ring health-ring-mini" role="img" aria-label={repoTip} use:tooltip={{ text: repoTip, delay: 150 }}
+        style="--pct: {$summary.total ? ($summary.clean / $summary.total) * 100 : 0}">
+        <svg class="health-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="5" cy="3.5" r="1.6"/><circle cx="5" cy="12.5" r="1.6"/><circle cx="11" cy="6" r="1.6"/>
+          <path d="M5 5.1v5.8M11 7.6c0 2.4-6 1.6-6 3.3"/>
+        </svg>
+        {#if repoPending > 0}
+          <span class="health-badge" style="background: {sc('behind')}">{repoPending > 99 ? '99+' : repoPending}</span>
+        {/if}
       </span>
-      <span class="health-label">mirrors</span>
+      {#if $mirrorSummary.total > 0}
+        {@const mirrorPending = $mirrorSummary.total - $mirrorSummary.active}
+        {@const mirrorTip = `${$mirrorSummary.active}/${$mirrorSummary.total} mirrors active${$mirrorSummary.error > 0 ? ` · ${$mirrorSummary.error} with errors` : ''}`}
+        <span class="health-ring health-ring-mini" role="img" aria-label={mirrorTip} use:tooltip={{ text: mirrorTip, delay: 150 }}
+          style="--pct: {($mirrorSummary.active / $mirrorSummary.total) * 100}{$mirrorSummary.error > 0 ? '; --ring-accent: #D81E5B' : ''}">
+          <svg class="health-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2.5 5.5h10M10 3l2.5 2.5L10 8M13.5 10.5h-10M6 8l-2.5 2.5L6 13"/>
+          </svg>
+          {#if mirrorPending > 0}
+            <span class="health-badge" style="background: {$mirrorSummary.error > 0 ? '#D81E5B' : sc('behind')}">{mirrorPending > 99 ? '99+' : mirrorPending}</span>
+          {/if}
+        </span>
+      {/if}
     </div>
     {/if}
     <div class="topbar-actions">
       <button class="btn-gear" on:click={syncAll}
         disabled={syncing || ($summary.behind === 0 && $summary.notCloned === 0)}
-        title="{syncing ? 'Pulling...' : 'Pull All'}">
-        <svg class="topbar-icon" class:spinning={syncing} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-          <line x1="8" y1="2" x2="8" y2="12"/><polyline points="4.5,8.5 8,12 11.5,8.5"/><line x1="4" y1="14" x2="12" y2="14"/>
-        </svg>
+        title="{simple ? $t('simple.updateAll') : syncing ? 'Pulling...' : 'Pull All'}">
+        <span class="icon-spin" class:spinning={syncing}><UIIcon name="pull" /></span>
       </button>
+      {#if !simple}
       <button class="btn-gear" on:click={runFetchAll} disabled={fetchingAll}
         title="{fetchingAll ? 'Fetching...' : 'Fetch All'}">
-        <span class="sync-icon" class:spinning={fetchingAll}>&#8635;</span>
+        <span class="icon-spin" class:spinning={fetchingAll}><UIIcon name="fetch" /></span>
       </button>
-      <button class="btn-gear btn-trash" class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title="{deleteMode ? 'Exit delete mode' : 'Delete mode'}">&#128465;</button>
-      <button class="btn-gear btn-select" class:select-active={selectionMode} on:click={toggleSelectionMode} disabled={cardsTab !== 'accounts' || Object.keys($accounts).length === 0} title="{selectionMode ? 'Exit selection mode' : 'Toggle clone selection mode'}">{selectionMode ? '☑' : '☐'}</button>
-      <button class="btn-gear" on:click={toggleViewMode} title="Compact view">◧</button>
-      <button class="btn-gear" on:click={cycleTheme} title="Theme: {themeChoice}">{themeIcon(themeChoice)}</button>
-      <button class="btn-gear" on:click={() => showSettings = !showSettings} title="Settings" class:active-gear={showSettings}>&#9881;</button>
+      <button class="btn-gear" class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title="{deleteMode ? 'Exit delete mode' : 'Delete mode'}"><UIIcon name="trash" /></button>
+      <button class="btn-gear" class:select-active={selectionMode} on:click={toggleSelectionMode} disabled={cardsTab !== 'accounts' || Object.keys($accounts).length === 0} title="{selectionMode ? 'Exit selection mode' : 'Toggle clone selection mode'}"><UIIcon name={selectionMode ? 'select-on' : 'select'} /></button>
+      <button class="btn-gear" on:click={toggleViewMode} title="Compact view"><UIIcon name="compact" /></button>
+      <button class="btn-gear" on:click={cycleTheme} title="Theme: {themeChoice}"><UIIcon name={themeChoice === 'light' || themeChoice === 'dark' ? `theme-${themeChoice}` : 'theme-system'} /></button>
+      {/if}
+      <button class="mode-switch" class:mode-switch-on={!simple} role="switch" aria-checked={!simple}
+        aria-label={$t('settings.experience')} title={simple ? $t('settings.simple') : $t('settings.advanced')}
+        on:click={() => setUIMode(simple ? 'advanced' : 'simple')}><span class="mode-switch-knob"></span></button>
+      <button class="btn-gear" on:click={() => showSettings = !showSettings} title="Settings" class:active-gear={showSettings}><UIIcon name="gear" /></button>
     </div>
   </header>
 
@@ -3359,11 +3477,13 @@
   <!-- ── SETTINGS PANEL ── -->
   {#if showSettings}
     <div class="settings" transition:slide={{ duration: 150 }}>
+      {#if !simple}
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Absolute path to the gitbox.json file currently in use. Click ‘Open in editor’ to inspect or hand-edit it."}>{$t('settings.config')}</span>
         <button class="settings-action-btn" on:click={() => bridge.openFileInEditor(configPath)}>{$t('settings.openInEditor')}</button>
         <span class="settings-value">{configPath}</span>
       </div>
+      {/if}
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Top-level folder where gitbox keeps every cloned repo. Each account gets a sub-folder under it."}>{$t('settings.rootFolder')}</span>
         <button class="settings-action-btn" on:click={openChangeFolder}>{$t('settings.change')}</button>
@@ -3385,7 +3505,7 @@
         </div>
       </div>
       <div class="settings-row">
-        <span class="settings-label" use:tooltip={"How often gitbox auto-fetches every repo to refresh its ahead/behind counters. ‘Off’ pauses the timer; you can still fetch manually."}>{$t('settings.periodicStatus')}</span>
+        <span class="settings-label" use:tooltip={"How often gitbox auto-fetches every repo to refresh its ahead/behind counters. ‘Off’ pauses the timer; you can still fetch manually."}>{simple ? $t('simple.checkChanges') : $t('settings.periodicStatus')}</span>
         <div class="theme-toggle">
           <button class="theme-btn" class:theme-active={fetchInterval === 'off'} on:click={() => setFetchInterval('off')}>{$t('common.off')}</button>
           <button class="theme-btn" class:theme-active={fetchInterval === '5m'} on:click={() => setFetchInterval('5m')}>5m</button>
@@ -3405,6 +3525,7 @@
           </div>
         </div>
       {/if}
+      {#if !simple}
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Show pull-request indicators on repo rows: badges for PRs you authored and PRs that requested your review."}>{$t('settings.prReviews')}</span>
         <div class="theme-toggle">
@@ -3426,6 +3547,7 @@
           <button class="theme-btn" class:theme-active={checkGitignorePref} on:click={() => { if (!checkGitignorePref) setCheckGitignorePref(true); }}>{$t('common.on')}</button>
         </div>
       </div>
+      {/if}
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Probe external tools gitbox uses (git, Git Credential Manager, ssh, …) and flag missing ones."}>{$t('settings.systemCheck')}</span>
         <button class="settings-action-btn" on:click={openDoctorModal}>{$t('settings.run')}</button>
@@ -3433,6 +3555,7 @@
           <span class="settings-sublabel settings-doctor-summary">{doctorSummary}</span>
         {/if}
       </div>
+      {#if !simple}
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Manage terminal apps, shells, and the launch profiles that pair them. Click ‘Manager’ to open the editor in its own window."}>Terminals</span>
         <button class="settings-action-btn" on:click={openTerminalsManagerWindow} disabled={terminalsManagerOpening}>
@@ -3444,6 +3567,7 @@
           {/if}
         </button>
       </div>
+      {/if}
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Currently running gitbox version (git tag + commit hash baked in at build time)."}>{$t('settings.version')}</span>
         <span class="settings-value">{appVersion}</span>
@@ -3467,6 +3591,7 @@
         </span>
       {/if}
     </button>
+    {#if !simple}
     <button class="cards-tab" class:cards-tab-active={cardsTab === 'mirrors'}
       on:click={() => selectCardsTab('mirrors')}>{$t('tab.mirrors')}
       {#if !cardsVisible && $mirrorSummary.total > 0}
@@ -3479,8 +3604,9 @@
         <span class="tab-summary">{Object.keys($workspaces).length}</span>
       {/if}
     </button>
+    {/if}
     {#if orphanCount > 0}
-      <button class="orphan-pill" on:click={showOrphanModal}>{orphanCount} orphan{orphanCount > 1 ? 's' : ''}</button>
+      <button class="orphan-pill" on:click={showOrphanModal}>{simple ? $t('simple.found', { n: orphanCount }) : `${orphanCount} orphan${orphanCount > 1 ? 's' : ''}`}</button>
     {/if}
     {#if cardsTab === 'mirrors'}
       <div class="tab-bar-actions">
@@ -3534,9 +3660,15 @@
         </div>
         <div class="card-line">
           <span class="card-provider">{providerLabel(acct.provider)}</span>
+          {#if simple}
+            {#if credBroken(credOverall)}
+              <button class="cred-badge cred-badge-err" on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')}>{$t('simple.reconnect')}</button>
+            {/if}
+          {:else}
           <button class="cred-badge cred-badge-{credOverall === 'ok' ? 'ok' : credOverall === 'error' ? 'err' : credOverall === 'warning' ? 'warn' : credOverall === 'offline' ? 'offline' : credOverall === 'none' ? 'none' : credOverall === 'unknown' ? 'pending' : ''}"
             on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')}
             title="Credential: {acct.default_credential_type || 'none'} — {credOverall}">{credOverall === 'unknown' ? '···' : credOverall === 'none' ? 'config' : credOverall === 'offline' ? 'offline' : acct.default_credential_type || 'gcm'}</button>
+          {/if}
           <span class="card-actions">
             <button class="card-btn card-btn-sm" on:click={() => openDiscover(key)} disabled={!canDiscover} title={canDiscover ? $t('account.findProjects') : DISCOVER_DISABLED}>{$t('account.find')}</button>
             <button class="card-btn card-btn-sm" on:click={() => openCreateRepo(key)} disabled={!canCreate} title={canCreate ? $t('account.createRepo') : CREATE_DISABLED}>{$t('account.new')}</button>
@@ -3558,6 +3690,7 @@
       {@const sourceCollapsed = collapsedSources.has(sourceKey)}
       {@const sourceRepoNames = Object.keys(source.repos)}
       {@const sourceIssues = attentionCount(sourceKey, sourceRepoNames, $repoStates)}
+      {@const sourceUnsaved = sourceRepoNames.filter((n) => ['unsaved', 'help'].includes(simpleKind(($repoStates[`${sourceKey}/${n}`] || { status: 'unknown' }).status))).length}
       <div class="source-group">
         <div class="source-header" role="button" tabindex="0"
           aria-expanded={!sourceCollapsed}
@@ -3573,7 +3706,8 @@
                 <LauncherMenu
                   kind="account"
                   editors={configEditors}
-                  profiles={configProfiles}
+                  profiles={simple ? [] : configProfiles}
+                  browserLabelOverride={simple ? $t('simple.openWeb') : ''}
                   aiHarnesses={configAIHarnesses}
                   {revealLabel}
                   onOpenBrowser={() => openAccountInBrowser(accountKey)}
@@ -3592,11 +3726,20 @@
             {/if}
           </div>
           <span class="collapse-summary">
+            {#if simple}
+              {$t('simple.projects', { n: sourceRepoNames.length })} ·
+              {#if sourceUnsaved === 0}
+                <span style="color:{sc('clean')}">{$t('simple.allSaved')}</span>
+              {:else}
+                <span style="color:{sc('dirty')}">{$t('simple.notSavedN', { n: sourceUnsaved })}</span>
+              {/if}
+            {:else}
             {$t('collapse.clones', { n: sourceRepoNames.length })} ·
             {#if sourceIssues === 0}
               <span style="color:{sc('clean')}">{$t('account.allGood')}</span>
             {:else}
               <span style="color:{sc('behind')}">{sourceIssues} {sourceIssues === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}</span>
+            {/if}
             {/if}
           </span>
         </div>
@@ -3630,6 +3773,64 @@
                 on:click|stopPropagation={() => toggleRepoCollapsed(repoKey, descendants, sourceKey)}
                 on:keydown|stopPropagation>{repoCollapsed ? '▸' : '▾'}</button>
             {/if}
+            {#if simple}
+              <!-- Simple row (issue #124): dot, short name, one sentence, one button, ⋯ -->
+              {@const kind = simpleKind(state.status)}
+              {@const kindColor = simpleColor(kind, $themeStore)}
+              <span class="dot" style="color: {kindColor}">●</span>
+              {#if childCount > 0}
+                <span class="repo-name" title={repoName}><span class="repo-name-toggle" role="button" tabindex="-1"
+                  on:click={(e) => { e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants, sourceKey); }}
+                  on:keydown={onActivateKey(() => toggleRepoCollapsed(repoKey, descendants, sourceKey))}>{shortName(repoName)}</span></span>
+              {:else}
+                <span class="repo-name" title={repoName}>{shortName(repoName)}</span>
+              {/if}
+              {#if childCount > 0 && collapsedRepos.has(repoKey)}
+                {@const belowUnsaved = descendants.filter((d) => ['unsaved', 'help'].includes(simpleKind(($repoStates[`${sourceKey}/${d}`] || { status: 'unknown' }).status))).length}
+                <span class="collapse-summary collapse-summary-row">
+                  {$t('collapse.below', { n: descendants.length })}{#if belowUnsaved > 0} · <span style="color:{sc('dirty')}">{$t('simple.notSavedN', { n: belowUnsaved })}</span>{/if}
+                </span>
+              {/if}
+              {#if state.status === 'syncing' || state.status === 'cloning'}
+                <div class="progress-track">
+                  <div class="progress-fill" style="width:{state.progress}%; background:{kindColor}"></div>
+                </div>
+                <span class="progress-pct" style="color:{kindColor}">{state.progress}%</span>
+              {:else}
+                <span class="status-text" style="color: {kindColor}" title={simpleTip(kind, state)}>{$t(`simple.${kind === 'busy' ? 'checking' : kind}`)}</span>
+                {#if kind === 'update'}
+                  <button class="btn-action" on:click|stopPropagation={() => syncRepo(sourceKey, repoName)}>{$t('simple.btnUpdate')}</button>
+                {:else if kind === 'online'}
+                  <button class="btn-action" on:click|stopPropagation={() => cloneRepo(sourceKey, repoName)}>{$t('simple.btnDownload')}</button>
+                {/if}
+                {#if kind !== 'online' && kind !== 'busy'}
+                  {@render quickLaunch(repoKey)}
+                {/if}
+              {/if}
+              {#if kind !== 'online'}
+                <div class="action-menu-container">
+                  <button class="btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title={$t('repo.actions')}>&#8942;</button>
+                  {#if actionMenuRepo === repoKey}
+                    <div transition:fade={{ duration: 80 }}>
+                      <LauncherMenu
+                        kind="repo"
+                        editors={configEditors}
+                        profiles={[]}
+                        aiHarnesses={configAIHarnesses}
+                        {revealLabel}
+                        browserLabelOverride={$t('simple.openWeb')}
+                        onOpenBrowser={() => openRepoInBrowser(sourceKey, repoName)}
+                        onOpenFolder={() => openRepoInExplorer(repoKey)}
+                        onOpenApp={(cmd) => openRepoInApp(repoKey, cmd)}
+                        onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
+                        onDelete={() => { actionMenuRepo = null; askDelete(sourceKey, repoName, state.status); }}
+                        deleteLabel={$t('simple.delete')}
+                      />
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            {:else}
             <span class="dot" style="color: {sc(state.status)}">{statusSymbol(state.status)}</span>
             {#if membershipsFor(repoKey).length > 0}
               <div class="ws-badge-wrap">
@@ -3768,6 +3969,7 @@
               {/if}
               {/if}
               {#if !deleteMode && state.status !== 'not cloned'}
+                {@render quickLaunch(repoKey)}
                 <button class="btn-fetch" class:spinning={fetchingRepos[repoKey] || state.status === 'unknown'} on:click|stopPropagation={() => fetchRepo(sourceKey, repoName)} title={$t('repo.fetchOrigin')} disabled={!!fetchingRepos[repoKey]}>&#8635;</button>
                 <div class="action-menu-container">
                   <button class="btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title={$t('repo.actions')}>&#8942;</button>
@@ -3797,10 +3999,15 @@
                 </div>
               {/if}
             {/if}
+            {/if}
           </div>
           {#if expandedRepo === repoKey}
             <div class="repo-detail" transition:slide={{ duration: 150 }}>
-              {#if state.status === 'upstream gone' || repoDetail?.upstreamGone}
+              {#if simple && (state.status === 'upstream gone' || repoDetail?.upstreamGone)}
+                <div class="detail-gone">
+                  <p class="detail-gone-body" style="color:{sc('upstream gone')}">&#9888; {$t('simple.gone')}</p>
+                </div>
+              {:else if state.status === 'upstream gone' || repoDetail?.upstreamGone}
                 <div class="detail-gone">
                   <div class="detail-gone-title" style="color:{sc('upstream gone')}">&#9888; WARNING: The origin repository is gone</div>
                   <p class="detail-gone-body">
@@ -3821,6 +4028,7 @@
               {:else if repoDetail?.error}
                 <span class="detail-error">{repoDetail.error}</span>
               {:else if repoDetail}
+                {#if !simple}
                 <div class="detail-header">
                   <span class="detail-branch">Branch: <strong>{repoDetail.branch}</strong></span>
                   {#if repoDetail.ahead > 0}
@@ -3830,8 +4038,9 @@
                     <span class="detail-badge" style="color:{sc('behind')}">{repoDetail.behind} behind</span>
                   {/if}
                 </div>
+                {/if}
                 {#if repoDetail.changed.length > 0}
-                  <div class="detail-section-title">Changed files <span class="sbadge" style="color:{sc('dirty')}">✎{repoDetail.changed.length}</span></div>
+                  <div class="detail-section-title">{simple ? $t('simple.changedFiles') : 'Changed files'} <span class="sbadge" style="color:{sc('dirty')}">✎{repoDetail.changed.length}</span></div>
                   {#each repoDetail.changed as file}
                     <div class="detail-file">
                       <span class="detail-kind" class:kind-added={file.kind === 'added'} class:kind-deleted={file.kind === 'deleted'} class:kind-conflict={file.kind === 'conflict'} title={kindLabel(file.kind)}>{kindIcon(file.kind)}</span>
@@ -3840,7 +4049,7 @@
                   {/each}
                 {/if}
                 {#if repoDetail.untracked.length > 0}
-                  <div class="detail-section-title">New files (untracked) <span class="sbadge" style="color:{sc('not cloned')}">?{repoDetail.untracked.length}</span></div>
+                  <div class="detail-section-title">{simple ? $t('simple.newFiles') : 'New files (untracked)'} <span class="sbadge" style="color:{sc('not cloned')}">?{repoDetail.untracked.length}</span></div>
                   {#each repoDetail.untracked as file}
                     <div class="detail-file">
                       <span class="detail-kind kind-untracked" title="Untracked">?</span>
@@ -4074,6 +4283,15 @@
 
   <!-- ── SUMMARY FOOTER ── -->
   <footer class="summary">
+    {#if simple}
+    <div class="summary-left">
+      <span class="sum" style="color:{sc('clean')}">{$t('simple.savedN', { n: $simpleSummary.saved })}</span>
+      {#if $simpleSummary.unsaved > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('dirty')}">{$t('simple.notSavedN', { n: $simpleSummary.unsaved })}</span>{/if}
+      {#if $simpleSummary.help > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('error')}">{$t('simple.needHelpN', { n: $simpleSummary.help })}</span>{/if}
+      {#if $simpleSummary.update > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('behind')}">{$t('simple.updateN', { n: $simpleSummary.update })}</span>{/if}
+      {#if $simpleSummary.online > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('not cloned')}">{$t('simple.onlineN', { n: $simpleSummary.online })}</span>{/if}
+    </div>
+    {:else}
     <div class="summary-left">
       <span class="sum" style="color:{sc('clean')}">{$summary.clean} synced</span>
       {#if $summary.syncing > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('syncing')}">{$summary.syncing} syncing</span>{/if}
@@ -4082,6 +4300,7 @@
       {#if $summary.notCloned > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('not cloned')}">{$summary.notCloned} not local</span>{/if}
       {#if $mirrorSummary.total > 0}<span class="sep">&middot;</span><span class="sum" style="color:{$mirrorSummary.error > 0 ? sc('error') : sc('clean')}">{$mirrorSummary.active}/{$mirrorSummary.total} mirrors</span>{/if}
     </div>
+    {/if}
     {#if updateDone}
       <div class="update-pill update-done">
         <span>&#10003; Updated — restart to apply</span>
@@ -5550,10 +5769,19 @@
   .health-ring::before { content: ''; position: absolute; inset: 4px; background: var(--bg-base); border-radius: 50%; transition: background 0.2s; }
   .health-num { position: relative; z-index: 1; font-size: 10px; font-weight: 700; }
   .health-label { font-size: 12px; color: var(--text-muted); }
+  /* Advanced header rings: smaller, icon inside, attention count in a corner badge. */
+  .health-ring-mini { width: 28px; height: 28px; margin-right: 6px; cursor: default; }
+  .health-ring-mini::before { inset: 3px; }
+  .health-icon { position: relative; z-index: 1; width: 14px; height: 14px; color: var(--text-muted); }
+  .health-badge {
+    position: absolute; z-index: 2; top: -5px; right: -8px;
+    min-width: 15px; height: 15px; padding: 0 4px; box-sizing: border-box;
+    border-radius: 8px; border: 1.5px solid var(--bg-base);
+    color: #fff; font-size: 9px; font-weight: 700; line-height: 12px; text-align: center;
+  }
 
   .topbar-actions { display: flex; gap: 8px; }
-  .topbar-icon { width: 16px; height: 16px; display: inline-block; }
-  .sync-icon { font-size: 18px; display: inline-block; }
+  .icon-spin { display: inline-flex; }
   .spinning { animation: spin 0.8s linear infinite; color: var(--spin-color) !important; stroke: var(--spin-color); stroke-width: 2.5; font-weight: 900; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .btn-gear {
@@ -5564,8 +5792,6 @@
   }
   .btn-gear:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-hover); }
   .btn-gear:disabled { opacity: 0.3; cursor: default; }
-  .btn-trash { font-size: 15px; }
-  .btn-select { font-size: 15px; }
   .select-active { color: var(--text-primary) !important; background: var(--bg-hover) !important; }
 
   .cards-tab-bar {
@@ -5746,6 +5972,31 @@
   }
   .btn-fetch:hover { color: var(--text-primary); }
   .btn-fetch:disabled { opacity: 0.6; cursor: default; }
+  /* Simple / Advanced switch in the top bar: grey pill = Simple, green = Advanced. */
+  .mode-switch {
+    position: relative; align-self: center; width: 30px; height: 16px; padding: 0; margin: 0 4px;
+    border: none; border-radius: 8px; cursor: pointer; flex-shrink: 0;
+    background: var(--border-hover); transition: background 0.18s;
+  }
+  .mode-switch-knob {
+    position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+    background: #fafafa; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); transition: transform 0.18s;
+  }
+  .mode-switch-on { background: #22c55e; }
+  .mode-switch-on .mode-switch-knob { transform: translateX(14px); }
+  :global([data-theme="light"]) .mode-switch-on { background: #16a34a; }
+  .mode-switch:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 2px; }
+
+  /* Repo-row launchers (both modes): icon-only AI, editor and terminal buttons. */
+  .launch-group { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
+  .btn-launch {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; padding: 0; border: none; border-radius: 5px;
+    background: transparent; color: var(--text-secondary); cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+  }
+  .btn-launch:hover { background: var(--bg-hover); color: var(--text-primary); }
+
   .btn-kebab {
     background: transparent; border: none; color: var(--text-dim); cursor: pointer;
     font-size: 16px; padding: 2px 4px; border-radius: 4px; transition: color 0.15s;

@@ -28,12 +28,13 @@ Counts are top-level `func Test…` functions per package, from `grep -rc "^func
 - `pkg/update/` — 26 tests: semver parsing, version comparison, update check (mock API), major-version cap, artifact names, AppImage notify-only detection, install targets, checksum verification, release signature verification against signatures made by real `ssh-keygen` (wrong tag, tampered checksums, wrong namespace, foreign key, malformed), `allowed_signers` in sync with the embedded key, fail-closed download (missing, unreadable or invalid checksums or signature refuse the update, and a bad signature stops it before the artifact download)
 - `pkg/workspace/` — 5 tests: workspace discovery, cache refresh, extra folders, tentative containers
 
-### GUI tests — 30 tests (`cmd/gui/`)
+### GUI tests — 35 tests (`cmd/gui/`)
 
 Go-side logic of the Wails app that runs without a window:
 
 - Account and browser actions — account folder resolution, provider URLs, error paths for unknown accounts and repos
 - AI harness actions — detection, ordering, dedup, retired-harness pruning, `~/.local/bin` fallback, launcher default Profile
+- Experience mode — `ui_mode` defaults to Advanced, set/get validation, and onboarding writes Simple only on a new install
 - Self-update — the AppImage build refuses `ApplyUpdate` before any download
 - Terminals — MSYS path and env sanitising for spawned terminals, and a first launch that never writes the legacy `global.terminals` list
 - Workspaces and containers — cache refresh, container flag persistence, extra folders, nested scan depth, absolute `clone_folder` for onboarded clones, collapse-state persistence and pruning

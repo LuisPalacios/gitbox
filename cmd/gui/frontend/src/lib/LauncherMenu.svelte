@@ -80,6 +80,11 @@
   export let onCreate: (() => void) | null = null;
   export let createEnabled: boolean = true;
   export let createDisabledReason: string = '';
+  // Simple mode (issue #124) passes plain labels and moves "delete local
+  // clone" from the top bar's delete mode into the row menu.
+  export let browserLabelOverride: string = '';
+  export let onDelete: (() => void) | null = null;
+  export let deleteLabel: string = 'Delete from this computer…';
 
   type Sub = 'terminals' | 'editors' | 'ai' | 'workspaces' | null;
   let openSubmenu: Sub = null;
@@ -250,7 +255,7 @@
 
   // Browser action label is kind-aware: repo kebab navigates to the repo
   // page on the provider; account kebab navigates to the account profile.
-  $: browserLabel = kind === 'account' ? 'Navigate to account' : 'Navigate to repo';
+  $: browserLabel = browserLabelOverride || (kind === 'account' ? 'Navigate to account' : 'Navigate to repo');
 </script>
 
 <div class="action-dropdown launcher-menu" bind:this={rootEl}>
@@ -367,6 +372,13 @@
       title="A container repo holds nested clones in its working tree; gitbox discovers and onboards them">
       <span class="lm-icon">&#128193;</span>
       {isContainer ? 'Unmark as multi-repo container' : 'Mark as multi-repo container'}
+    </button>
+  {/if}
+
+  {#if kind === 'repo' && onDelete}
+    <hr class="lm-sep" />
+    <button class="action-item" on:click|stopPropagation={onDelete} title={deleteLabel}>
+      <span class="lm-icon">&#128465;</span> {deleteLabel}
     </button>
   {/if}
 

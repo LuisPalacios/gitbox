@@ -124,6 +124,8 @@ export function GetRepoDetail(arg1:string,arg2:string):Promise<main.RepoDetail>;
 
 export function GetTokenGuide(arg1:string):Promise<main.TokenGuideInfo>;
 
+export function GetUIMode():Promise<string>;
+
 export function GetViewMode():Promise<string>;
 
 export function GetWindowMode():Promise<string>;
@@ -245,6 +247,8 @@ export function SetPRIncludeDrafts(arg1:boolean):Promise<void>;
 export function SetPeriodicSync(arg1:string):Promise<void>;
 
 export function SetRepoContainer(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
+export function SetUIMode(arg1:string):Promise<void>;
 
 export function SetViewMode(arg1:string):Promise<main.WindowStateDTO>;
 

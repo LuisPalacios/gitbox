@@ -46,6 +46,11 @@
         // Machine-readable fields, command names and config keys stay English.
         "language": "en",
 
+        // GUI experience: "simple" (plain words, fewer controls) or
+        // "advanced" (everything). Absent means advanced; onboarding writes
+        // "simple" on a new install.
+        "ui_mode": "simple",
+
         // Account groups and parent clones folded in the GUI's full view.
         // GitboxApp writes this when I click a chevron; absent means
         // everything is expanded. Keys that no longer exist are pruned on save.

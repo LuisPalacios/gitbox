@@ -319,6 +319,16 @@ El build de Wails lee iconos desde `cmd/gui/build/`:
 
 Estos **no se versionan** (gitignored bajo `cmd/gui/build/`). En su lugar, el workflow de CI y los builds locales los copian desde `assets/` antes de ejecutar `wails build`.
 
+### Logos de herramientas e iconos de la barra superior
+
+Los logos de herramientas de cada fila de repo y los iconos de la barra superior salen de originales SVG en `assets/svg/`, no del código. Sustituyo un fichero ahí y vuelvo a compilar, y la app lo adopta. Con `wails dev` la ventana se recarga sola.
+
+- `assets/svg/brand/logo-<name>.svg` — original en color, se muestra tal cual en el tema claro
+- `assets/svg/brand/logo-<name>-dark.svg` — versión de un solo color para el tema oscuro, repintada con el color de texto del tema
+- `assets/svg/ui/<name>.svg` — icono de un solo color de la barra superior, repintado igual
+
+El plugin de Vite `cmd/gui/frontend/vite-plugin-icons.ts` hace la conversión en cada build del frontend. Limpia cada fichero con svgo (quita el recuadro guía oculto y los metadatos del editor, elimina los tamaños fijos) y expone el resultado como el módulo `virtual:icons` que leen `BrandIcon.svelte` y `UIIcon.svelte`. Un fichero de un solo color con un degradado, filtro, máscara, patrón o imagen hace fallar el build con su nombre de fichero. [`assets/svg/README.md`](../../assets/svg/README.md) tiene las reglas de nombres y de dibujo.
+
 ---
 
 ## Capturas del README

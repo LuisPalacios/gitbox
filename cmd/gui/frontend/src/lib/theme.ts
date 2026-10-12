@@ -31,23 +31,33 @@ export function credColor(status: string, theme: string): string {
   return status === 'ok' ? '#61fd5f' : status === 'warning' ? '#F07623' : '#D81E5B';
 }
 
-export function statusLabel(status: string, behind: number, modified: number): string {
-  const map: Record<string, string> = {
-    clean: 'Synced',
-    behind: `${behind} behind`,
-    dirty: `${modified} local change${modified > 1 ? 's' : ''}`,
-    ahead: 'Ahead',
-    syncing: 'Refreshing...',
-    cloning: 'Bringing local...',
-    fetching: 'Fetching...',
-    'not cloned': 'Not local',
-    'no upstream': 'No upstream',
-    diverged: 'Diverged',
-    conflict: 'Conflict',
-    error: 'Error',
-    'upstream gone': 'Upstream gone',
-  };
-  return map[status] || status;
+// Simple mode (issue #124) folds the git statuses into the one question a
+// non-developer asks: is my work safe? Each kind maps to one sentence and
+// one action in the repo row.
+export type SimpleKind = 'saved' | 'unsaved' | 'update' | 'online' | 'help' | 'checking' | 'busy';
+
+const simpleKinds: Record<string, SimpleKind> = {
+  clean: 'saved',
+  dirty: 'unsaved', ahead: 'unsaved', 'no upstream': 'unsaved',
+  behind: 'update',
+  'not cloned': 'online',
+  diverged: 'help', conflict: 'help', 'upstream gone': 'help', error: 'help',
+  unknown: 'checking',
+  syncing: 'busy', cloning: 'busy', fetching: 'busy',
+};
+
+export function simpleKind(status: string): SimpleKind {
+  return simpleKinds[status] || 'help';
+}
+
+// Colors reuse the Advanced palette entry that means the same thing.
+const simpleColorKeys: Record<SimpleKind, string> = {
+  saved: 'clean', unsaved: 'dirty', update: 'behind', online: 'not cloned',
+  help: 'error', checking: 'not cloned', busy: 'syncing',
+};
+
+export function simpleColor(kind: SimpleKind, theme: string): string {
+  return statusColor(simpleColorKeys[kind], theme);
 }
 
 export function providerLabel(p: string): string {

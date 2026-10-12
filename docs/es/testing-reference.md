@@ -28,12 +28,13 @@ Los recuentos son funciones `func Test…` de nivel superior por paquete, obteni
 - `pkg/update/` — 26 pruebas: parseo semver, comparación de versiones, comprobación de actualización (API mock), límite de versión mayor, nombres de artefactos, detección del AppImage solo-aviso, destinos de instalación, verificación de checksum, verificación de la firma de release contra firmas hechas con `ssh-keygen` real (otro tag, checksums manipulados, namespace incorrecto, clave ajena, malformada), `allowed_signers` sincronizado con la clave incrustada, descarga que falla cerrada (checksums o firma ausentes, ilegibles o inválidos rechazan la actualización, y una firma mala la detiene antes de descargar el artefacto)
 - `pkg/workspace/` — 5 pruebas: descubrimiento de workspaces, refresco de caché, carpetas extra, contenedores tentativos
 
-### Pruebas de la GUI — 30 pruebas (`cmd/gui/`)
+### Pruebas de la GUI — 35 pruebas (`cmd/gui/`)
 
 Lógica del lado Go de la app Wails que se ejecuta sin ventana:
 
 - Acciones de cuenta y navegador — resolución de la carpeta de cuenta, URLs de proveedor, rutas de error para cuentas y repos desconocidos
 - Acciones de AI harness — detección, orden, deduplicación, poda de harnesses retirados, fallback a `~/.local/bin`, Profile por defecto del lanzador
+- Modo de experiencia — `ui_mode` es Advanced por defecto, validación de set/get, y el onboarding escribe Simple solo en una instalación nueva
 - Auto-actualización — el build AppImage rechaza `ApplyUpdate` antes de cualquier descarga
 - Terminales — saneado de rutas MSYS y del entorno para las terminales lanzadas, y un primer arranque que nunca escribe la lista legacy `global.terminals`
 - Workspaces y contenedores — refresco de caché, persistencia del flag de contenedor, carpetas extra, profundidad de escaneo anidado, `clone_folder` absoluto para clones incorporados, persistencia y poda del estado de plegado

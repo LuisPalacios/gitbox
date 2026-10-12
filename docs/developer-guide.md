@@ -319,6 +319,16 @@ The Wails build reads icons from `cmd/gui/build/`:
 
 These are **not checked in** (gitignored under `cmd/gui/build/`). Instead, the CI workflow and local builds copy them from `assets/` before running `wails build`.
 
+### Tool logos and top-bar icons
+
+The tool logos on each repo row and the top-bar icons come from SVG originals in `assets/svg/`, not from code. I replace a file there and rebuild, and the app picks it up. Under `wails dev` the window reloads on its own.
+
+- `assets/svg/brand/logo-<name>.svg` — colour original, shown as drawn in the light theme
+- `assets/svg/brand/logo-<name>-dark.svg` — single-colour version for the dark theme, repainted with the theme's text colour
+- `assets/svg/ui/<name>.svg` — single-colour top-bar icon, repainted the same way
+
+The Vite plugin `cmd/gui/frontend/vite-plugin-icons.ts` does the conversion on every frontend build. It cleans each file with svgo (removes the hidden guide box and editor metadata, drops fixed sizes) and exposes the result as the `virtual:icons` module that `BrandIcon.svelte` and `UIIcon.svelte` read. A single-colour file with a gradient, filter, mask, pattern or image fails the build with its file name. [`assets/svg/README.md`](../assets/svg/README.md) has the naming and drawing rules.
+
 ---
 
 ## README screenshots

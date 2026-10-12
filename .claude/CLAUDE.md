@@ -78,6 +78,7 @@ docs/
   es/                     Spanish counterparts of every doc above
   diagrams/               Architecture diagrams
 assets/                   Icons, logo, README screenshots (captured with scripts/demo-fleet)
+  svg/                    Tool-logo (brand/) and top-bar (ui/) SVG originals; vite-plugin-icons.ts turns them into the app's icons at build time
 scripts/
   bootstrap.sh             Cross-platform installer (downloads a release, places GitboxApp, registers Linux menu entry, warns about a Windows installer copy; --cli-only installs the latest 1.x CLI)
   register-gitbox.sh       Linux-only desktop registrar (.desktop + icon in ~/.local/share, idempotent, supports --uninstall)
