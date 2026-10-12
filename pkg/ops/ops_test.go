@@ -103,6 +103,77 @@ func TestAddAccount_DefaultsAndSource(t *testing.T) {
 	}
 }
 
+func TestSuggestAccountKey_ValidAndUnused(t *testing.T) {
+	_, cfg := isolate(t)
+
+	cases := []struct{ provider, username, want string }{
+		{"github", "alice", "github-alice"},
+		{"gitlab", "first.last", "gitlab-first-last"},
+		{"forgejo", "_bob__smith_", "forgejo-bob-smith"},
+		{"gitea", "", "gitea"},
+		{"", "", "account"},
+	}
+	for _, c := range cases {
+		got := SuggestAccountKey(cfg, c.provider, c.username)
+		if got != c.want {
+			t.Errorf("SuggestAccountKey(%q, %q) = %q, want %q", c.provider, c.username, got, c.want)
+		}
+		if err := ValidateAccountKey(got); err != nil {
+			t.Errorf("suggested key %q is invalid: %v", got, err)
+		}
+	}
+
+	if err := AddAccount(cfg, "github-alice", testAccount("gcm")); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Sources["github-alice-2"] = config.Source{Account: "github-alice"}
+	if got := SuggestAccountKey(cfg, "github", "alice"); got != "github-alice-3" {
+		t.Errorf("clashing key = %q, want github-alice-3", got)
+	}
+}
+
+func TestDiscardAccount_ConfigOnlyAndRefusesWithRepos(t *testing.T) {
+	_, cfg := isolate(t)
+
+	// A folder with the account's name may predate the account; discarding
+	// must leave it alone.
+	if err := AddAccount(cfg, "github-alice", testAccount("gcm")); err != nil {
+		t.Fatal(err)
+	}
+	folder := filepath.Join(cfg.Global.Folder, "github-alice")
+	keep := filepath.Join(folder, "old-clone", "file.txt")
+	if err := os.MkdirAll(filepath.Dir(keep), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keep, []byte("mine"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := DiscardAccount(cfg, "github-alice"); err != nil {
+		t.Fatalf("DiscardAccount: %v", err)
+	}
+	if _, ok := cfg.Accounts["github-alice"]; ok {
+		t.Error("account still in config")
+	}
+	if _, ok := cfg.Sources["github-alice"]; ok {
+		t.Error("source still in config")
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Errorf("pre-existing file removed: %v", err)
+	}
+
+	if err := AddAccount(cfg, "github-bob", testAccount("gcm")); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Sources["github-bob"].Repos["bob/app"] = config.Repo{}
+	if err := DiscardAccount(cfg, "github-bob"); err == nil {
+		t.Error("DiscardAccount accepted an account with repos")
+	}
+	if err := DiscardAccount(cfg, "nobody"); err == nil {
+		t.Error("DiscardAccount accepted an unknown account")
+	}
+}
+
 func TestRenameAccount_MigratesEverything(t *testing.T) {
 	_, cfg := isolate(t)
 	if err := AddAccount(cfg, "old", testAccount("ssh")); err != nil {

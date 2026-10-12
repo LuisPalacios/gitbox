@@ -70,6 +70,8 @@ export function DeleteRepo(arg1:string,arg2:string):Promise<void>;
 
 export function DetectEditors():Promise<Array<main.EditorInfo>>;
 
+export function DiscardAccount(arg1:string):Promise<void>;
+
 export function Discover(arg1:string):Promise<void>;
 
 export function DiscoverMirrors():Promise<void>;
@@ -257,6 +259,8 @@ export function SetupMirrorRepo(arg1:string,arg2:string):Promise<void>;
 export function ShowErrorDialog(arg1:string,arg2:string):Promise<void>;
 
 export function ShowWindow():Promise<void>;
+
+export function SuggestAccountKey(arg1:string,arg2:string):Promise<string>;
 
 export function SyncAIHarnesses():Promise<boolean>;
 

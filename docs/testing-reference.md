@@ -21,7 +21,7 @@ Counts are top-level `func Test…` functions per package, from `grep -rc "^func
 - `pkg/launch/` — 13 tests: argv expansion, shell quoting, AI harness wrapping per shell, macOS AppleScript
 - `pkg/mirror/` — 6 tests: remote URL parsing, mirror discovery, status error classification
 - `pkg/move/` — 5 tests: repo key parsing, clone URLs, preflight validation
-- `pkg/ops/` — 15 tests: 14 isolated unit tests (add, rename, delete account; credential type change and delete; delete repo; clone planning; reconfigure clones; add discovered repos) plus the `TestScenario_FullLifecycle` scenario
+- `pkg/ops/` — 17 tests: 16 isolated unit tests (add, rename, delete account; suggest an account key; discard a just-added account; credential type change and delete; delete repo; clone planning; reconfigure clones; add discovered repos) plus the `TestScenario_FullLifecycle` scenario
 - `pkg/provider/` — 43 tests: HTTP client, provider API parsing
 - `pkg/status/` — 16 tests: clone status checking, branch detection, nesting computation (including container inside container)
 - `pkg/terminals/` — 51 tests: catalog shape, OS-aware Profile composition, WezTerm and Windows Terminal lookups, merge rules

@@ -51,15 +51,21 @@ La GUI requiere un entorno de escritorio con servidor de pantalla (X11 o Wayland
 
 ## Paso 1: primer arranque
 
-La primera vez que abres Gitbox, te pide elegir una **root folder**: ahí vivirán todos tus proyectos en disco. Algo como `~/00.git` o `C:\repos` funciona bien.
+La primera vez que abres Gitbox, una configuración guiada corta te lleva por tres pasos:
 
-Haz clic en **Get started** y ya estás dentro.
+1. **Where do you keep your projects?** — elige una **root folder**, donde vivirán todos tus proyectos en disco. Algo como `~/00.git` o `C:\repos` funciona bien.
+2. **Connect where your projects are stored** — elige GitHub, GitLab, Bitbucket u **Other server** para Gitea y Forgejo (con la dirección del servidor). Escribe tu usuario, tu nombre y tu email; el nombre y el email vienen rellenos desde tu identidad global de git cuando la tiene, y aparecen en los cambios que guardes. Haz clic en **Sign in with the browser** e inicia sesión. Gitbox usa Git Credential Manager (GCM) para esto.
+3. **Pick projects to download** — Gitbox lista los repositorios que tu cuenta puede ver. Marca los que quieras y haz clic en **Download**. Empiezan a clonarse en cuanto se abre la pantalla principal.
+
+Si GCM no está instalado, el paso 2 muestra cómo instalarlo y ofrece **Use a token instead**, que enlaza a la página donde creas un token y te pide pegarlo. Si el inicio de sesión falla, puedes usar **Try again**, cambiar a un token o volver atrás con **Change details**.
+
+Nunca escribes un account key: Gitbox elige uno por ti, como `github-alice`, que también es el nombre de la carpeta de la cuenta en disco. Puedes usar **Skip for now** en los pasos 2 y 3 y añadir cuentas más tarde. Las instalaciones nuevas empiezan en modo Simple. Si cierras la app después del primer paso, el siguiente arranque abre la pantalla principal; termina desde la tarjeta **+**.
 
 ## Paso 2: añadir cuentas
 
 Una cuenta le dice a Gitbox quién eres en un servidor concreto. Por ejemplo, tu cuenta de GitHub o el GitLab de tu empresa.
 
-Haz clic en la tarjeta **+** para añadir una. Rellenarás:
+En modo Simple, la tarjeta **+** ejecuta los mismos pasos de conectar y elegir proyectos que el primer arranque. En modo Advanced abre el formulario completo, que también ofrece SSH y te deja elegir el account key. Rellenarás:
 
 1. **Account key** — un nombre corto que eliges (por ejemplo, `github-personal`). También se convierte en el nombre de carpeta en disco.
 2. **Provider** — elige tu servicio (GitHub, GitLab, Gitea, Forgejo o Bitbucket).
