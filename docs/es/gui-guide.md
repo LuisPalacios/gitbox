@@ -271,17 +271,17 @@ El layout estándar es `global.folder / <account> / <org|user> / repo`. Los clon
 
 ### Modos Simple y Advanced
 
-Gitbox tiene dos experiencias. **Simple** es para quien no conoce git y solo quiere sus proyectos a salvo. **Advanced** muestra cada detalle y herramienta de git. Cambio de modo en **Settings → Experience**. Las instalaciones nuevas empiezan en Simple; las configs anteriores a este ajuste se quedan en Advanced. La elección se guarda como `global.ui_mode` en `gitbox.json`.
+Gitbox tiene dos experiencias. **Simple** es para quien no conoce git y solo quiere sus proyectos a salvo. **Advanced** muestra cada detalle y herramienta de git. Cambio de modo con el interruptor de la barra superior, a la izquierda del engranaje de ajustes: gris es Simple, verde es Advanced. Las instalaciones nuevas empiezan en Simple; las configs anteriores a este ajuste se quedan en Advanced. La elección se guarda como `global.ui_mode` en `gitbox.json`.
 
-En Simple, cada proyecto responde a una pregunta, "¿está a salvo mi trabajo?", con uno de cinco estados y un botón:
+En Simple, cada proyecto responde a una pregunta, "¿está a salvo mi trabajo?", con uno de cinco estados:
 
-- **Saved** — todo está en el servidor. Botón: **Open with \<AI\>**.
-- **Not saved yet** — este ordenador tiene cambios que el servidor no tiene (pasa el ratón para ver el detalle). Botón: **Open with \<AI\>**, para pedirle a mi IA que los guarde.
+- **Saved** — todo está en el servidor.
+- **Not saved yet** — este ordenador tiene cambios que el servidor no tiene (pasa el ratón para ver el detalle). Abro el proyecto con mi IA y le pido que los guarde.
 - **Newer version online** — el servidor tiene trabajo más nuevo. Botón: **Update**. Gitbox nunca actualiza por su cuenta.
 - **Only online** — el proyecto aún no está en este ordenador. Botón: **Download**.
-- **Needs help** — algo ha ido mal, por ejemplo cambiaron las dos copias. Hago clic en el proyecto para ver qué pasa, y **Open with \<AI\>** deja que mi IA lo arregle.
+- **Needs help** — algo ha ido mal, por ejemplo cambiaron las dos copias. Hago clic en el proyecto para ver qué pasa y lo abro con mi IA para arreglarlo.
 
-**Open with** usa el primer AI harness, luego el primer editor si no hay harness instalado, y si no, la carpeta. Los nombres se muestran sin el prefijo de la organización; al pasar el ratón sobre un nombre se ve completo. El menú ⋯ mantiene Open on the web, la carpeta, los editores, los AI harnesses y **Delete from this computer…**.
+Cada proyecto que está en este ordenador tiene tres botones de icono: mi primer AI harness, mi primer editor y mi perfil de terminal por defecto. Cada uno muestra el logo de la herramienta cuando gitbox lo conoce (Claude, Codex, Gemini, Cursor, VS Code, Zed, WezTerm) o un icono genérico, y su nombre al pasar el ratón. Los nombres se muestran sin el prefijo de la organización; al pasar el ratón sobre un nombre se ve completo. El menú ⋯ mantiene Open on the web, la carpeta, los editores, los AI harnesses y **Delete from this computer…**.
 
 Simple oculta el resto: las pestañas Mirrors y Workspaces, Fetch All, delete mode, el modo de selección, los botones de vista compacta y de tema (el tema sigue en Settings), los badges de PR, workspace, contenedor y rama, los conteos ahead, behind y de cambios, y el botón de fetch de cada fila. Un credential badge solo aparece cuando una credencial se rompe, como **Reconnect**. Settings oculta las filas del archivo de config, PR reviews, global gitignore y Terminals. La vista compacta es igual en los dos modos.
 

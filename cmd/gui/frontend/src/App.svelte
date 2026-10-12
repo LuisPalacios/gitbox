@@ -16,6 +16,7 @@
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit, EventsOn } from '../wailsjs/runtime/runtime';
   import type { RepoState, SourceDTO, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
+  import BrandIcon from './lib/BrandIcon.svelte';
   import PRPopover from './lib/PRPopover.svelte';
   import TerminalsModal from './lib/TerminalsModal.svelte';
   import { tooltip } from './lib/tooltip';
@@ -2623,11 +2624,33 @@
     if (state.status === 'no upstream') return $t('simple.tipNoUpstream');
     return $t('simple.tipDirty', { n: (state.modified || 0) + (state.untracked || 0) });
   }
-  $: primaryLauncher = configAIHarnesses.length > 0
-    ? { label: $t('simple.btnOpenWith', { name: configAIHarnesses[0].name }), open: (repoKey: string) => openRepoInAIHarness(repoKey, configAIHarnesses[0]) }
-    : configEditors.length > 0
-      ? { label: $t('simple.btnOpenWith', { name: configEditors[0].name }), open: (repoKey: string) => openRepoInApp(repoKey, configEditors[0].command) }
-      : { label: $t('simple.btnOpenFolder'), open: (repoKey: string) => openRepoInExplorer(repoKey) };
+  // Simple rows carry three icon-only launchers: the first AI harness, the
+  // first editor, and the default terminal profile (same defaults as the ⋯
+  // menu). Each picks a brand logo by name, or a generic icon.
+  $: simpleHarness = configAIHarnesses[0] || null;
+  $: simpleEditor = configEditors[0] || null;
+  $: simpleProfile = (() => {
+    const visible = configProfiles.filter((p) => !p.hidden);
+    return visible.find((p) => p.default) || visible[0] || null;
+  })();
+  function harnessIcon(h: AIHarnessInfo): string {
+    const k = `${h.name} ${h.command}`.toLowerCase();
+    if (k.includes('claude')) return 'claude';
+    if (k.includes('codex') || k.includes('openai')) return 'openai';
+    if (k.includes('gemini')) return 'gemini';
+    if (k.includes('cursor')) return 'cursor';
+    return 'ai';
+  }
+  function editorIcon(e: EditorInfo): string {
+    const k = `${e.name} ${e.command}`.toLowerCase();
+    if (k.includes('cursor')) return 'cursor';
+    if (k.includes('zed')) return 'zed';
+    if (k.includes('visual studio code') || k.includes('vs code') || k.includes('vscode') || /(^|[\\/ ])code(\.exe|\.cmd)?$/.test(e.command.toLowerCase())) return 'vscode';
+    return 'ide';
+  }
+  function terminalIcon(p: TerminalProfileInfo): string {
+    return `${p.name} ${p.terminal}`.toLowerCase().includes('wezterm') ? 'wezterm' : 'terminal';
+  }
 
   async function setLanguage(lang: 'en' | 'es') {
     if (languageChoice === lang) return;
@@ -3307,6 +3330,9 @@
       <button class="btn-gear" on:click={toggleViewMode} title="Compact view">◧</button>
       <button class="btn-gear" on:click={cycleTheme} title="Theme: {themeChoice}">{themeIcon(themeChoice)}</button>
       {/if}
+      <button class="mode-switch" class:mode-switch-on={!simple} role="switch" aria-checked={!simple}
+        aria-label={$t('settings.experience')} title={simple ? $t('settings.simple') : $t('settings.advanced')}
+        on:click={() => setUIMode(simple ? 'advanced' : 'simple')}><span class="mode-switch-knob"></span></button>
       <button class="btn-gear" on:click={() => showSettings = !showSettings} title="Settings" class:active-gear={showSettings}>&#9881;</button>
     </div>
   </header>
@@ -3414,13 +3440,6 @@
   <!-- ── SETTINGS PANEL ── -->
   {#if showSettings}
     <div class="settings" transition:slide={{ duration: 150 }}>
-      <div class="settings-row">
-        <span class="settings-label" use:tooltip={"Simple shows each project as saved or not, in plain words. Advanced shows every git detail and tool."}>{$t('settings.experience')}</span>
-        <div class="theme-toggle">
-          <button class="theme-btn" class:theme-active={uiMode === 'simple'} on:click={() => setUIMode('simple')}>{$t('settings.simple')}</button>
-          <button class="theme-btn" class:theme-active={uiMode === 'advanced'} on:click={() => setUIMode('advanced')}>{$t('settings.advanced')}</button>
-        </div>
-      </div>
       {#if !simple}
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Absolute path to the gitbox.json file currently in use. Click ‘Open in editor’ to inspect or hand-edit it."}>{$t('settings.config')}</span>
@@ -3746,8 +3765,25 @@
                   <button class="btn-action" on:click|stopPropagation={() => syncRepo(sourceKey, repoName)}>{$t('simple.btnUpdate')}</button>
                 {:else if kind === 'online'}
                   <button class="btn-action" on:click|stopPropagation={() => cloneRepo(sourceKey, repoName)}>{$t('simple.btnDownload')}</button>
-                {:else if kind !== 'busy' && kind !== 'checking'}
-                  <button class="btn-action" on:click|stopPropagation={() => primaryLauncher.open(repoKey)}>{primaryLauncher.label}</button>
+                {/if}
+                {#if kind !== 'online' && kind !== 'busy'}
+                  <span class="launch-group">
+                    {#if simpleHarness}
+                      {@const h = simpleHarness}
+                      <button class="btn-launch" title={$t('simple.btnOpenWith', { name: h.name })} aria-label={$t('simple.btnOpenWith', { name: h.name })}
+                        on:click|stopPropagation={() => openRepoInAIHarness(repoKey, h)}><BrandIcon name={harnessIcon(h)} /></button>
+                    {/if}
+                    {#if simpleEditor}
+                      {@const ed = simpleEditor}
+                      <button class="btn-launch" title={$t('simple.btnOpenWith', { name: ed.name })} aria-label={$t('simple.btnOpenWith', { name: ed.name })}
+                        on:click|stopPropagation={() => openRepoInApp(repoKey, ed.command)}><BrandIcon name={editorIcon(ed)} /></button>
+                    {/if}
+                    {#if simpleProfile}
+                      {@const pr = simpleProfile}
+                      <button class="btn-launch" title={$t('simple.btnOpenWith', { name: pr.name })} aria-label={$t('simple.btnOpenWith', { name: pr.name })}
+                        on:click|stopPropagation={() => openRepoProfile(repoKey, pr.id)}><BrandIcon name={terminalIcon(pr)} /></button>
+                    {/if}
+                  </span>
                 {/if}
               {/if}
               {#if kind !== 'online'}
@@ -5907,6 +5943,31 @@
   }
   .btn-fetch:hover { color: var(--text-primary); }
   .btn-fetch:disabled { opacity: 0.6; cursor: default; }
+  /* Simple / Advanced switch in the top bar: grey pill = Simple, green = Advanced. */
+  .mode-switch {
+    position: relative; width: 30px; height: 16px; padding: 0; margin: 0 4px;
+    border: none; border-radius: 8px; cursor: pointer; flex-shrink: 0;
+    background: var(--border-hover); transition: background 0.18s;
+  }
+  .mode-switch-knob {
+    position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+    background: #fafafa; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); transition: transform 0.18s;
+  }
+  .mode-switch-on { background: #22c55e; }
+  .mode-switch-on .mode-switch-knob { transform: translateX(14px); }
+  :global([data-theme="light"]) .mode-switch-on { background: #16a34a; }
+  .mode-switch:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 2px; }
+
+  /* Simple-row launchers: icon-only AI, editor and terminal buttons. */
+  .launch-group { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
+  .btn-launch {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; padding: 0; border: none; border-radius: 5px;
+    background: transparent; color: var(--text-secondary); cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+  }
+  .btn-launch:hover { background: var(--bg-hover); color: var(--text-primary); }
+
   .btn-kebab {
     background: transparent; border: none; color: var(--text-dim); cursor: pointer;
     font-size: 16px; padding: 2px 4px; border-radius: 4px; transition: color 0.15s;

@@ -271,17 +271,17 @@ The standard layout is `global.folder / <account> / <org|user> / repo`. Clones f
 
 ### Simple and Advanced modes
 
-Gitbox has two experiences. **Simple** is for people who don't know git and only want their projects safe. **Advanced** shows every git detail and tool. I switch in **Settings → Experience**. New installs start in Simple; configs from before the setting stay in Advanced. The choice is saved as `global.ui_mode` in `gitbox.json`.
+Gitbox has two experiences. **Simple** is for people who don't know git and only want their projects safe. **Advanced** shows every git detail and tool. I switch with the toggle in the top bar, left of the settings gear: grey is Simple, green is Advanced. New installs start in Simple; configs from before the setting stay in Advanced. The choice is saved as `global.ui_mode` in `gitbox.json`.
 
-In Simple, every project answers one question, "is my work safe?", with one of five states and one button:
+In Simple, every project answers one question, "is my work safe?", with one of five states:
 
-- **Saved** — everything is on the server. Button: **Open with \<AI\>**.
-- **Not saved yet** — this computer has changes the server doesn't (hover for the detail). Button: **Open with \<AI\>**, so I can ask my AI to save them.
+- **Saved** — everything is on the server.
+- **Not saved yet** — this computer has changes the server doesn't (hover for the detail). I open the project with my AI and ask it to save them.
 - **Newer version online** — the server has newer work. Button: **Update**. Gitbox never updates on its own.
 - **Only online** — the project isn't on this computer yet. Button: **Download**.
-- **Needs help** — something went wrong, for example both copies changed. I click the project to see what's wrong, and **Open with \<AI\>** lets my AI fix it.
+- **Needs help** — something went wrong, for example both copies changed. I click the project to see what's wrong and open it with my AI to fix it.
 
-**Open with** uses the first AI harness, then the first editor when no harness is installed, then the folder. Names show without the organization prefix; hovering a name shows it in full. The ⋯ menu keeps Open on the web, the folder, editors, AI harnesses, and **Delete from this computer…**.
+Every project on this computer has three icon buttons: my first AI harness, my first editor, and my default terminal profile. Each shows the tool's logo when gitbox knows it (Claude, Codex, Gemini, Cursor, VS Code, Zed, WezTerm) or a generic icon, and its name on hover. Names show without the organization prefix; hovering a name shows it in full. The ⋯ menu keeps Open on the web, the folder, editors, AI harnesses, and **Delete from this computer…**.
 
 Simple hides the rest: the Mirrors and Workspaces tabs, Fetch All, delete mode, selection mode, the compact view and theme buttons (theme stays in Settings), PR, workspace, container and branch badges, ahead, behind and changed counts, and the per-row fetch button. A credential badge appears only when a credential breaks, as **Reconnect**. Settings hides the config file, PR reviews, global gitignore and Terminals rows. The compact view is the same in both modes.
 
