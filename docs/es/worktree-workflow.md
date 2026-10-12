@@ -96,12 +96,12 @@ Cuando estoy listo:
 
 Esto se ejecuta en cualquier sesión de Claude — ya sea la que creó el worktree o una ventana nueva. El skill:
 
-1. Verifica que el PR está rebased sobre el último `origin/main` (vuelve a hacer push con `--force-with-lease` si no).
+1. Comprueba que el worktree no tiene estado sin commit o sin push, y verifica que el PR está rebased sobre el último `origin/main` (vuelve a hacer push con `--force-with-lease` si no).
 2. Pone una puerta sobre CI — todos los checks deben estar green.
 3. Me muestra el comando exacto `gh pr merge --squash --delete-branch` y espera autorización.
-4. Después del merge, elimina el worktree y la rama local, y poda metadatos stale de worktrees.
+4. Después del merge, elimina el worktree y la rama local que `gh` haya dejado, y poda metadatos stale de worktrees.
 
-Se niega a eliminar un worktree que tiene estado sin commit o sin push salvo que yo lo fuerce explícitamente.
+Se niega a hacer el merge mientras el worktree tiene estado sin commit o sin push salvo que yo lo fuerce explícitamente, porque `gh pr merge --delete-branch` también elimina la rama local y su worktree.
 
 ## Referencia de limpieza
 

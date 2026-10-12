@@ -53,6 +53,14 @@ fi
 ## Step 2: Freshness check
 
 - `cd` into the PR's worktree.
+- Check for uncommitted or unpushed state **now**, before the merge. `gh pr merge --delete-branch` also deletes the local branch and removes its worktree, so after the merge there is nothing left to check:
+
+  ```bash
+  git status --porcelain        # must be empty
+  git log --oneline @{u}..HEAD  # must be empty
+  ```
+
+  If either is non-empty, stop and ask the user. Commit and push first, or get an explicit override.
 - `git fetch origin`.
 - Check whether the PR branch is rebased on the latest `origin/<baseRefName>`:
 
@@ -82,7 +90,7 @@ fi
   gh pr merge <PR#> --squash --delete-branch
   ```
 
-- Prefer `--squash` unless the repo convention says otherwise (scan `gh pr list --state merged --limit 5 --json mergeCommit` if unsure). `--delete-branch` deletes the remote branch after merge.
+- Prefer `--squash` unless the repo convention says otherwise (scan `gh pr list --state merged --limit 5 --json mergeCommit` if unsure). `--delete-branch` deletes the remote branch after merge, and also the local branch together with its worktree (observed with gh 2.102).
 
 **Wait for explicit go-ahead** ("merge it", "go ahead", "ship it").
 
@@ -92,16 +100,8 @@ After successful merge:
 
 1. Leave the worktree: `cd` back to the main clone.
 2. Update main: `git fetch origin && git checkout main && git pull --ff-only origin main`.
-3. Check the worktree for uncommitted or unpushed state before removing:
-
-   ```bash
-   cd <worktree-path>
-   git status --porcelain        # must be empty
-   git log --oneline @{u}..HEAD  # must be empty (branch was merged, so local == remote == 0)
-   ```
-
-   If either is non-empty, stop and ask the user. Do not run `git worktree remove --force` without explicit instruction.
-4. Remove the worktree and local branch:
+3. Check what `gh pr merge --delete-branch` left behind: `git worktree list` and `git branch --list <branch-name>`. If both are gone, skip to step 5.
+4. Otherwise remove what is left. The worktree was checked clean in Step 2; if it changed since, stop and ask. Do not run `git worktree remove --force` without explicit instruction.
 
    ```bash
    cd <main-clone>
@@ -110,7 +110,7 @@ After successful merge:
    git worktree prune
    ```
 
-5. Report: PR merged, worktree removed, local branch deleted. Issue `#<N>` (from the PR body's `Closes #N`) will have been closed by GitHub automatically.
+5. Report: PR merged, worktree removed, local branch deleted. If the PR body says `Closes #N`, GitHub has closed issue `#<N>`; a `Refs #N` leaves it open.
 
 ## Behavior notes
 

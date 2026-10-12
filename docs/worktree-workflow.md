@@ -96,12 +96,12 @@ When I'm ready:
 
 This runs in whichever Claude session — either the one that created the worktree, or a fresh window. The skill:
 
-1. Verifies the PR is rebased on latest `origin/main` (re-pushes with `--force-with-lease` if not).
+1. Checks the worktree has no uncommitted or unpushed state, and verifies the PR is rebased on latest `origin/main` (re-pushes with `--force-with-lease` if not).
 2. Gates on CI — all checks must be green.
 3. Shows me the exact `gh pr merge --squash --delete-branch` command and waits for go-ahead.
-4. After the merge, removes the worktree and local branch, and prunes stale worktree metadata.
+4. After the merge, removes whatever worktree and local branch `gh` left behind, and prunes stale worktree metadata.
 
-It refuses to remove a worktree that has uncommitted or unpushed state unless I explicitly override.
+It refuses to merge while the worktree has uncommitted or unpushed state unless I explicitly override, because `gh pr merge --delete-branch` also removes the local branch and its worktree.
 
 ## Cleanup reference
 
