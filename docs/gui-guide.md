@@ -99,15 +99,16 @@ I close any dialog with **Escape** or by clicking outside it. Dialogs that are b
 
 ### Understanding account cards
 
-Each account appears as a two-line card on the **Accounts** tab. Here's what the elements mean:
+Each account appears as a two-line card on the **Accounts** tab: the status dot and the full account name on top, the provider, credential badge and buttons below. Cards widen to fit the name, so it's never cut. Here's what the elements mean:
 
-- **Status dot and provider** (top left) — the dot takes the credential's color
-- **Credential badge** (top right) — shows your credential type with a colored background:
+- **Status dot** — takes the credential's color
+- **Account name** — click it to edit the account
+- **Provider** — the provider the account lives on
+- **Credential badge** — shows your credential type with a colored background:
   - **Green** — everything is working
   - **Orange** — there's a minor issue (e.g., limited permissions)
   - **Red** — the credential is broken or expired
   - **Blue "config"** — no credential set up yet; click it to get started
-- **Account name** — click it to edit the account
 - **Find** — discovers repos from your account (disabled if credentials aren't working)
 - **New** — creates a new repository on the provider (disabled if credentials aren't working)
 

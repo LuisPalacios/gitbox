@@ -3513,15 +3513,17 @@
           {:else}
             <span class="card-dot" style="background: {cc(credOverall)}"></span>
           {/if}
+          <div class="card-name card-name-edit" role="button" tabindex="0" on:click={() => openEditAccount(key)} on:keydown={onActivateKey(() => openEditAccount(key))} title="{$t('account.edit')}">{key}</div>
+        </div>
+        <div class="card-line">
           <span class="card-provider">{providerLabel(acct.provider)}</span>
           <button class="cred-badge cred-badge-{credOverall === 'ok' ? 'ok' : credOverall === 'error' ? 'err' : credOverall === 'warning' ? 'warn' : credOverall === 'offline' ? 'offline' : credOverall === 'none' ? 'none' : credOverall === 'unknown' ? 'pending' : ''}"
             on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')}
             title="Credential: {acct.default_credential_type || 'none'} — {credOverall}">{credOverall === 'unknown' ? '···' : credOverall === 'none' ? 'config' : credOverall === 'offline' ? 'offline' : acct.default_credential_type || 'gcm'}</button>
-        </div>
-        <div class="card-line">
-          <div class="card-name card-name-edit" role="button" tabindex="0" on:click={() => openEditAccount(key)} on:keydown={onActivateKey(() => openEditAccount(key))} title="{$t('account.edit')} {key}">{key}</div>
-          <button class="card-btn card-btn-sm" on:click={() => openDiscover(key)} disabled={!canDiscover} title={canDiscover ? $t('account.findProjects') : DISCOVER_DISABLED}>{$t('account.find')}</button>
-          <button class="card-btn card-btn-sm" on:click={() => openCreateRepo(key)} disabled={!canCreate} title={canCreate ? $t('account.createRepo') : CREATE_DISABLED}>{$t('account.new')}</button>
+          <span class="card-actions">
+            <button class="card-btn card-btn-sm" on:click={() => openDiscover(key)} disabled={!canDiscover} title={canDiscover ? $t('account.findProjects') : DISCOVER_DISABLED}>{$t('account.find')}</button>
+            <button class="card-btn card-btn-sm" on:click={() => openCreateRepo(key)} disabled={!canCreate} title={canCreate ? $t('account.createRepo') : CREATE_DISABLED}>{$t('account.new')}</button>
+          </span>
         </div>
       </div>
     {/each}
@@ -3876,12 +3878,14 @@
           {:else}
             <span class="card-dot" style="background: {mcolor}"></span>
           {/if}
-          <span class="card-provider">MIRROR</span>
-          <span class="card-count" style="color: {mcolor}" title={mstate}>{mstats.active}/{mstats.total}</span>
+          <div class="card-name card-mirror-name">{mir.account_src} ↔ {mir.account_dst}</div>
         </div>
         <div class="card-line">
-          <div class="card-name card-mirror-name" title="{mir.account_src} ↔ {mir.account_dst}">{mir.account_src} ↔ {mir.account_dst}</div>
-          <button class="card-btn card-btn-sm" on:click={() => checkMirrorStatus(mirrorKey)} title={$t('mirror.checkStatus')}>{$t('mirror.check')}</button>
+          <span class="card-provider">MIRROR</span>
+          <span class="card-count" style="color: {mcolor}" title={mstate}>{mstats.active}/{mstats.total}</span>
+          <span class="card-actions">
+            <button class="card-btn card-btn-sm" on:click={() => checkMirrorStatus(mirrorKey)} title={$t('mirror.checkStatus')}>{$t('mirror.check')}</button>
+          </span>
         </div>
       </div>
     {/each}
@@ -3966,12 +3970,14 @@
         <div class="card card-workspace">
           <div class="card-top">
             <span class="card-dot" style="background: {sc('clean')}"></span>
-            <span class="card-provider">CODE</span>
-            <span class="card-count" title="{members} member{members === 1 ? '' : 's'}">{members}</span>
+            <div class="card-name">{ws.name || wsKey}</div>
           </div>
           <div class="card-line">
-            <div class="card-name" title={ws.name || wsKey}>{ws.name || wsKey}</div>
-            <button class="card-btn card-btn-sm" on:click={() => openWorkspace(wsKey)} disabled={workspaceBusy}>{$t('workspace.open')}</button>
+            <span class="card-provider">CODE</span>
+            <span class="card-count" title="{members} member{members === 1 ? '' : 's'}">{members}</span>
+            <span class="card-actions">
+              <button class="card-btn card-btn-sm" on:click={() => openWorkspace(wsKey)} disabled={workspaceBusy}>{$t('workspace.open')}</button>
+            </span>
           </div>
         </div>
       {/if}
@@ -5567,8 +5573,10 @@
   .tab-dot { width: 6px; height: 6px; border-radius: 50%; }
 
   .cards-row { display: flex; gap: 10px; padding: 10px 24px; overflow-x: auto; flex-shrink: 0; }
+  /* Cards grow to fit their content (flex-basis auto, no shrink) so the
+     name on line 1 is never cut; the row scrolls sideways if they overflow. */
   .card {
-    flex: 1; min-width: 200px; background: var(--bg-card); border: 1px solid var(--border);
+    flex: 1 0 auto; min-width: 200px; background: var(--bg-card); border: 1px solid var(--border);
     border-radius: 10px; padding: 8px 12px; transition: border-color 0.15s, box-shadow 0.15s;
     box-shadow: var(--card-shadow);
   }
@@ -5576,7 +5584,7 @@
   .card-top { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
   .card-count { font-size: 10px; font-weight: 700; color: var(--text-muted); }
   .card-dot { width: 7px; height: 7px; border-radius: 50%; }
-  .card-provider { font-size: 10px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.3px; flex: 1; }
+  .card-provider { font-size: 10px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.3px; }
   .cred-badge {
     font-size: 8px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase;
     padding: 1px 4px; border-radius: 3px; cursor: pointer;
@@ -5620,7 +5628,7 @@
     background: var(--accent, #4B95E9); color: #fff;
   }
   .card-name { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
-  .card-mirror-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card-mirror-name { font-size: 12px; }
   .mirror-tab-actions { display: flex; gap: 6px; padding: 8px 24px 0; }
   .discover-progress { padding: 6px 24px 0; }
   .discover-progress-text { font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
@@ -5634,12 +5642,11 @@
   .card-name-edit { cursor: pointer; }
   .card-name-edit:hover { text-decoration: underline; }
 
-  /* Second card line: name on the left, one-word buttons on the right. */
-  .card-line { display: flex; align-items: center; gap: 4px; }
-  .card-line .card-name {
-    flex: 1; min-width: 0; margin-bottom: 0;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
+  /* Line 1 holds the status dot and the full name; line 2 the provider,
+     badge or count on the left and the one-word buttons on the right. */
+  .card-top .card-name { margin-bottom: 0; white-space: nowrap; }
+  .card-line { display: flex; align-items: center; gap: 6px; }
+  .card-actions { margin-left: auto; display: flex; gap: 4px; padding-left: 8px; }
   .card-btn {
     width: 100%; padding: 5px 0; background: transparent; border: 1px solid var(--border);
     color: var(--text-secondary); border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 500;

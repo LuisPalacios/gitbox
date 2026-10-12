@@ -99,15 +99,16 @@ Cierro cualquier diálogo con **Escape** o haciendo clic fuera de él. Los diál
 
 ### Entender las tarjetas de cuenta
 
-Cada cuenta aparece como una tarjeta de dos líneas en la pestaña **Accounts**. Esto significa cada elemento:
+Cada cuenta aparece como una tarjeta de dos líneas en la pestaña **Accounts**: arriba el status dot y el nombre completo de la cuenta, debajo el proveedor, el credential badge y los botones. Las tarjetas se ensanchan para que quepa el nombre, así que nunca se corta. Esto significa cada elemento:
 
-- **Status dot y proveedor** (arriba a la izquierda) — el punto toma el color de la credencial
-- **Credential badge** (arriba a la derecha) — muestra tu tipo de credencial con un fondo de color:
+- **Status dot** — toma el color de la credencial
+- **Nombre de la cuenta** — haz clic en él para editar la cuenta
+- **Proveedor** — el proveedor donde vive la cuenta
+- **Credential badge** — muestra tu tipo de credencial con un fondo de color:
   - **Green** — todo funciona
   - **Orange** — hay un problema menor (por ejemplo, permisos limitados)
   - **Red** — la credencial está rota o caducada
   - **Blue "config"** — todavía no hay credencial configurada; haz clic para empezar
-- **Nombre de la cuenta** — haz clic en él para editar la cuenta
 - **Find** — descubre repos de tu cuenta (deshabilitado si las credenciales no funcionan)
 - **New** — crea un repositorio nuevo en el proveedor (deshabilitado si las credenciales no funcionan)
 
