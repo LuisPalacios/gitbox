@@ -8,12 +8,14 @@
     </linearGradient>
   </defs>
   <rect width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;" x="15" y="15" bx:origin="0.5 0.5"/>
-  <g transform="matrix(1, 0, 0, 1, 0.5, -37.211498)">
-    <g transform="matrix(1, 0, 0, 1, -30, 37.219994)">
-      <rect x="59" y="29" width="91" height="91.983" style="fill: rgb(216, 216, 216); stroke-width: 4px; stroke: url(#gradient-0); paint-order: fill;" rx="20.006" ry="20.006"/>
-      <rect x="65.357" y="34.472" width="78.245" height="80.103" style="paint-order: fill; stroke-width: 9px; stroke: rgb(0, 0, 0); fill: rgb(19, 28, 31);" rx="13.855" ry="13.855"/>
+  <g transform="matrix(1.2632, 0, 0, 1.2632, -19.74, -19.74)">
+    <g transform="matrix(1, 0, 0, 1, 0.5, -37.211498)">
+      <g transform="matrix(1, 0, 0, 1, -30, 37.219994)">
+        <rect x="59" y="29" width="91" height="91.983" style="fill: rgb(216, 216, 216); stroke-width: 4px; stroke: url(#gradient-0); paint-order: fill;" rx="20.006" ry="20.006"/>
+        <rect x="65.357" y="34.472" width="78.245" height="80.103" style="paint-order: fill; stroke-width: 9px; stroke: rgb(0, 0, 0); fill: rgb(19, 28, 31);" rx="13.855" ry="13.855"/>
+      </g>
+      <rect x="58" y="79.322" width="10.465" height="20.779" style="fill: rgb(9, 99, 16);"/>
+      <text style="fill: rgb(5, 229, 23); font-family: Helvetica; font-size: 23px; white-space: pre;" x="41.798" y="97.618">$</text>
     </g>
-    <rect x="58" y="79.322" width="10.465" height="20.779" style="fill: rgb(9, 99, 16);"/>
-    <text style="fill: rgb(5, 229, 23); font-family: Helvetica; font-size: 23px; white-space: pre;" x="41.798" y="97.618">$</text>
   </g>
 </svg>
