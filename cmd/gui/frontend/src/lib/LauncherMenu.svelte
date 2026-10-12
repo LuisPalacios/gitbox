@@ -78,58 +78,61 @@
   let subEl: HTMLDivElement | undefined;
 
   const VIEWPORT_PADDING = 8;
+  const TRIGGER_GAP = 4;
 
+  // The menu is position: fixed and placed in viewport coordinates, so the
+  // scrolling repo list (overflow-y: auto) can't clip it — an absolute menu
+  // flipped up near the top of the list was cut off by the list's edge.
   function positionMenu(el: HTMLElement | undefined) {
     if (!el) return;
-    // Reset any prior inline overrides so measurement reflects default CSS.
-    el.style.top = '';
-    el.style.bottom = '';
-    el.style.left = '';
-    el.style.right = '';
-    el.style.marginTop = '';
-    el.style.marginBottom = '';
-    el.style.transform = '';
-
     const trigger = el.parentElement?.parentElement;
     if (!trigger) return;
-    const triggerRect = trigger.getBoundingClientRect();
+    // Reset the size cap so measurement reflects the menu's natural height.
+    el.style.maxHeight = '';
+    el.style.overflowY = '';
+
+    const t = trigger.getBoundingClientRect();
     const vh = window.innerHeight;
     const vw = window.innerWidth;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
 
-    // Repo kebab rows share a vertical column of kebabs — one per row in
-    // the same group and the next. Slide the menu sideways off that column
-    // (always, whether we open below or flip up) so the user can click
-    // neighbouring kebabs without dismissing this menu first. Account-
-    // header kebabs stand alone and don't need the shift.
-    if (kind === 'repo') {
-      el.style.right = `${Math.round(triggerRect.width)}px`;
+    // Horizontal: right edge on the trigger's right edge. Repo kebab rows
+    // share a vertical column of kebabs — one per row in the same group and
+    // the next — so the repo menu slides off that column (right edge on the
+    // trigger's left edge) and the user can click neighbouring kebabs
+    // without dismissing this menu first. Account-header kebabs stand alone
+    // and don't need the shift. Clamp inside the viewport either way.
+    const anchorRight = kind === 'repo' ? t.left : t.right;
+    const left = Math.max(VIEWPORT_PADDING, Math.min(anchorRight - w, vw - VIEWPORT_PADDING - w));
+
+    // Vertical: open below the trigger when it fits, else above it, else
+    // slide it up just enough to sit fully inside the viewport. If even the
+    // whole viewport is too short, cap the height and scroll inside.
+    const below = t.bottom + TRIGGER_GAP;
+    const above = t.top - TRIGGER_GAP - h;
+    let top: number;
+    if (below + h <= vh - VIEWPORT_PADDING) {
+      top = below;
+    } else if (above >= VIEWPORT_PADDING) {
+      top = above;
+    } else {
+      top = Math.max(VIEWPORT_PADDING, vh - VIEWPORT_PADDING - h);
+      if (h > vh - 2 * VIEWPORT_PADDING) {
+        el.style.maxHeight = `${vh - 2 * VIEWPORT_PADDING}px`;
+        el.style.overflowY = 'auto';
+      }
     }
 
-    // Vertical flip: if the menu overflows the viewport below the trigger
-    // and more space exists above, anchor to the top edge of the trigger.
-    const rect = el.getBoundingClientRect();
-    const overflowsBelow = rect.bottom > vh - VIEWPORT_PADDING;
-    const spaceAbove = triggerRect.top;
-    const spaceBelow = vh - triggerRect.bottom;
-    const flipUp = overflowsBelow && spaceAbove > spaceBelow;
-    if (flipUp) {
-      el.style.top = 'auto';
-      el.style.bottom = '100%';
-      el.style.marginTop = '0';
-      el.style.marginBottom = '4px';
-    }
+    el.style.left = `${Math.round(left)}px`;
+    el.style.top = `${Math.round(top)}px`;
+  }
 
-    // Horizontal clamp: keep the menu inside the viewport with a transform.
-    const post = el.getBoundingClientRect();
-    let dx = 0;
-    if (post.right > vw - VIEWPORT_PADDING) {
-      dx = vw - VIEWPORT_PADDING - post.right;
-    } else if (post.left < VIEWPORT_PADDING) {
-      dx = VIEWPORT_PADDING - post.left;
-    }
-    if (dx !== 0) {
-      el.style.transform = `translateX(${Math.round(dx)}px)`;
-    }
+  // Keep the fixed menu attached to its kebab while the repo list scrolls or
+  // the window resizes. Scrolls inside the menu itself don't move the anchor.
+  function onViewportChange(e: Event) {
+    if (rootEl && e.target instanceof Node && rootEl.contains(e.target)) return;
+    positionMenu(rootEl);
   }
 
   function positionSubmenu(el: HTMLElement | undefined) {
@@ -194,9 +197,14 @@
     }
   }
 
-  onMount(async () => {
-    await tick();
-    positionMenu(rootEl);
+  onMount(() => {
+    tick().then(() => positionMenu(rootEl));
+    window.addEventListener('scroll', onViewportChange, true);
+    window.addEventListener('resize', onViewportChange);
+    return () => {
+      window.removeEventListener('scroll', onViewportChange, true);
+      window.removeEventListener('resize', onViewportChange);
+    };
   });
 
   async function toggleSub(name: Exclude<Sub, null>) {
@@ -394,9 +402,16 @@
     color: var(--text-primary);
   }
 
-  /* Launcher-specific layout additions. */
+  /* Launcher-specific layout additions. The root menu is fixed so scrolling
+     ancestors can't clip it; positionMenu() sets top/left in viewport
+     coordinates. Submenus stay absolute inside it. */
   .launcher-menu {
     min-width: 220px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: auto;
+    margin: 0;
   }
 
   .lm-sep {
