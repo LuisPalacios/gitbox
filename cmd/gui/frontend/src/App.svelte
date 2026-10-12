@@ -2624,12 +2624,13 @@
     if (state.status === 'no upstream') return $t('simple.tipNoUpstream');
     return $t('simple.tipDirty', { n: (state.modified || 0) + (state.untracked || 0) });
   }
-  // Simple rows carry three icon-only launchers: the first AI harness, the
-  // first editor, and the default terminal profile (same defaults as the ⋯
-  // menu). Each picks a brand logo by name, or a generic icon.
-  $: simpleHarness = configAIHarnesses[0] || null;
-  $: simpleEditor = configEditors[0] || null;
-  $: simpleProfile = (() => {
+  // Every cloned row, Simple or Advanced, carries three icon-only launchers:
+  // the first AI harness, the first editor, and the default terminal profile
+  // (same defaults as the ⋯ menu). Each picks a brand logo by name, or a
+  // generic icon.
+  $: quickHarness = configAIHarnesses[0] || null;
+  $: quickEditor = configEditors[0] || null;
+  $: quickProfile = (() => {
     const visible = configProfiles.filter((p) => !p.hidden);
     return visible.find((p) => p.default) || visible[0] || null;
   })();
@@ -2991,6 +2992,27 @@
   $: sc = (s: string) => statusColor(s, $themeStore);
   $: cc = (s: string) => credColor(s, $themeStore);
 </script>
+
+<!-- AI / editor / terminal launchers shared by Simple and Advanced repo rows. -->
+{#snippet quickLaunch(repoKey: string)}
+  <span class="launch-group">
+    {#if quickHarness}
+      {@const h = quickHarness}
+      <button class="btn-launch" title={$t('simple.btnOpenWith', { name: h.name })} aria-label={$t('simple.btnOpenWith', { name: h.name })}
+        on:click|stopPropagation={() => openRepoInAIHarness(repoKey, h)}><BrandIcon name={harnessIcon(h)} /></button>
+    {/if}
+    {#if quickEditor}
+      {@const ed = quickEditor}
+      <button class="btn-launch" title={$t('simple.btnOpenWith', { name: ed.name })} aria-label={$t('simple.btnOpenWith', { name: ed.name })}
+        on:click|stopPropagation={() => openRepoInApp(repoKey, ed.command)}><BrandIcon name={editorIcon(ed)} /></button>
+    {/if}
+    {#if quickProfile}
+      {@const pr = quickProfile}
+      <button class="btn-launch" title={$t('simple.btnOpenWith', { name: pr.name })} aria-label={$t('simple.btnOpenWith', { name: pr.name })}
+        on:click|stopPropagation={() => openRepoProfile(repoKey, pr.id)}><BrandIcon name={terminalIcon(pr)} /></button>
+    {/if}
+  </span>
+{/snippet}
 
 <svelte:window on:click={(e) => {
   const inMenu = e.target instanceof Element && e.target.closest('.action-menu-container');
@@ -3767,23 +3789,7 @@
                   <button class="btn-action" on:click|stopPropagation={() => cloneRepo(sourceKey, repoName)}>{$t('simple.btnDownload')}</button>
                 {/if}
                 {#if kind !== 'online' && kind !== 'busy'}
-                  <span class="launch-group">
-                    {#if simpleHarness}
-                      {@const h = simpleHarness}
-                      <button class="btn-launch" title={$t('simple.btnOpenWith', { name: h.name })} aria-label={$t('simple.btnOpenWith', { name: h.name })}
-                        on:click|stopPropagation={() => openRepoInAIHarness(repoKey, h)}><BrandIcon name={harnessIcon(h)} /></button>
-                    {/if}
-                    {#if simpleEditor}
-                      {@const ed = simpleEditor}
-                      <button class="btn-launch" title={$t('simple.btnOpenWith', { name: ed.name })} aria-label={$t('simple.btnOpenWith', { name: ed.name })}
-                        on:click|stopPropagation={() => openRepoInApp(repoKey, ed.command)}><BrandIcon name={editorIcon(ed)} /></button>
-                    {/if}
-                    {#if simpleProfile}
-                      {@const pr = simpleProfile}
-                      <button class="btn-launch" title={$t('simple.btnOpenWith', { name: pr.name })} aria-label={$t('simple.btnOpenWith', { name: pr.name })}
-                        on:click|stopPropagation={() => openRepoProfile(repoKey, pr.id)}><BrandIcon name={terminalIcon(pr)} /></button>
-                    {/if}
-                  </span>
+                  {@render quickLaunch(repoKey)}
                 {/if}
               {/if}
               {#if kind !== 'online'}
@@ -3948,6 +3954,7 @@
               {/if}
               {/if}
               {#if !deleteMode && state.status !== 'not cloned'}
+                {@render quickLaunch(repoKey)}
                 <button class="btn-fetch" class:spinning={fetchingRepos[repoKey] || state.status === 'unknown'} on:click|stopPropagation={() => fetchRepo(sourceKey, repoName)} title={$t('repo.fetchOrigin')} disabled={!!fetchingRepos[repoKey]}>&#8635;</button>
                 <div class="action-menu-container">
                   <button class="btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title={$t('repo.actions')}>&#8942;</button>
@@ -5958,7 +5965,7 @@
   :global([data-theme="light"]) .mode-switch-on { background: #16a34a; }
   .mode-switch:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 2px; }
 
-  /* Simple-row launchers: icon-only AI, editor and terminal buttons. */
+  /* Repo-row launchers (both modes): icon-only AI, editor and terminal buttons. */
   .launch-group { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
   .btn-launch {
     display: inline-flex; align-items: center; justify-content: center;

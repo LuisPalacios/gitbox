@@ -216,7 +216,7 @@ Lanza `GitboxApp` en cada plataforma (`./scripts/run-commands.sh` imprime los co
 - [ ] Tab Mirrors muestra grupos y status
 - [ ] Settings: cambiar carpeta raíz, System check, Terminals Manager
 - [ ] Vista compacta y vuelta a la vista completa
-- [ ] Simple / Advanced: el interruptor de la barra superior (gris Simple, verde Advanced) cambia de modo al instante; las filas en Simple solo muestran punto, nombre, frase de estado, Update o Download cuando hace falta, los iconos de IA / editor / terminal y ⋯; Advanced no cambia; una config nueva acaba en Simple tras el onboarding
+- [ ] Simple / Advanced: el interruptor de la barra superior (gris Simple, verde Advanced) cambia de modo al instante; las filas en Simple solo muestran punto, nombre, frase de estado, Update o Download cuando hace falta, los iconos de IA / editor / terminal y ⋯; las filas en Advanced mantienen todo el detalle y muestran los mismos tres iconos antes del botón de fetch; una config nueva acaba en Simple tras el onboarding
 - [ ] Contraer/expandir: la cabecera de cuenta y un clon padre (chevron o nombre) se pliegan y despliegan; los pliegues sobreviven a un reinicio; el panel de tarjetas arranca plegado, se despliega con la pestaña activa, y recuerda su estado; un chip se abre en su tarjeta y vuelve a plegarse con un clic fuera o Escape
 ```
 

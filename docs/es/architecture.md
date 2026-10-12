@@ -488,7 +488,7 @@ Las operaciones largas (clone, refresh de status, pull, mirror discovery, movimi
 
 **Estructura de layout:**
 
-- **Experiencia** — un interruptor en la barra superior entre Simple (cinco estados en lenguaje llano, lanzadores de icono para IA / editor / terminal, detalle de git oculto) y Advanced (todo), guardada como `global.ui_mode`; las instalaciones nuevas empiezan en Simple
+- **Experiencia** — un interruptor en la barra superior entre Simple (cinco estados en lenguaje llano, detalle de git oculto) y Advanced (todo), guardada como `global.ui_mode`; ambos modos ponen lanzadores de icono para IA / editor / terminal en cada fila clonada; las instalaciones nuevas empiezan en Simple
 - **Top bar** — logo, repo health ring, mirror health ring (cuando existen mirrors), botones de acción (Pull All, Fetch All, Delete mode, Compact view)
 - **Tab bar** — cambia entre las vistas Accounts, Mirrors y Workspaces
 - **Panel de tarjetas** — la fila de tarjetas bajo la barra de pestañas se pliega; arranca plegada, recuerda su estado en `global.collapsed.cards_open` y se despliega sola con cero cuentas, una credencial rota o delete mode

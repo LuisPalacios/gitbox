@@ -281,7 +281,7 @@ In Simple, every project answers one question, "is my work safe?", with one of f
 - **Only online** — the project isn't on this computer yet. Button: **Download**.
 - **Needs help** — something went wrong, for example both copies changed. I click the project to see what's wrong and open it with my AI to fix it.
 
-Every project on this computer has three icon buttons: my first AI harness, my first editor, and my default terminal profile. Each shows the tool's logo when gitbox knows it (Claude, Codex, Gemini, Cursor, VS Code, Zed, WezTerm) or a generic icon, and its name on hover. Names show without the organization prefix; hovering a name shows it in full. The ⋯ menu keeps Open on the web, the folder, editors, AI harnesses, and **Delete from this computer…**.
+Every project on this computer has three icon buttons, in both Simple and Advanced: my first AI harness, my first editor, and my default terminal profile. Each shows the tool's logo when gitbox knows it (Claude, Codex, Gemini, Cursor, VS Code, Zed, WezTerm) or a generic icon, and its name on hover. Names show without the organization prefix; hovering a name shows it in full. The ⋯ menu keeps Open on the web, the folder, editors, AI harnesses, and **Delete from this computer…**.
 
 Simple hides the rest: the Mirrors and Workspaces tabs, Fetch All, delete mode, selection mode, the compact view and theme buttons (theme stays in Settings), PR, workspace, container and branch badges, ahead, behind and changed counts, and the per-row fetch button. A credential badge appears only when a credential breaks, as **Reconnect**. Settings hides the config file, PR reviews, global gitignore and Terminals rows. The compact view is the same in both modes.
 

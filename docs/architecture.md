@@ -488,7 +488,7 @@ Long-running operations (clone, status refresh, pull, mirror discovery, repo mov
 
 **Layout structure:**
 
-- **Experience** — a top-bar switch between Simple (five plain states, icon launchers for AI / editor / terminal, git detail hidden) and Advanced (everything), saved as `global.ui_mode`; new installs start in Simple
+- **Experience** — a top-bar switch between Simple (five plain states, git detail hidden) and Advanced (everything), saved as `global.ui_mode`; both modes put icon launchers for AI / editor / terminal on each cloned row; new installs start in Simple
 - **Top bar** — logo, repo health ring, mirror health ring (when mirrors exist), action buttons (Pull All, Fetch All, Delete mode, Compact view)
 - **Tab bar** — switches between Accounts, Mirrors, and Workspaces views
 - **Cards panel** — the card row under the tab bar folds; it starts folded, remembers its state in `global.collapsed.cards_open`, and unfolds on its own for zero accounts, a broken credential, or delete mode
