@@ -108,7 +108,7 @@
                 },
                 "collapsed": {
                     "type": "object",
-                    "description": "Account groups and parent clones folded in the GUI's full view. Absent means everything is expanded. Keys that no longer exist are pruned on save.",
+                    "description": "Account groups and parent clones folded in the GUI's full view, plus the cards panel state. Absent means every group and clone is expanded and the cards panel is collapsed. Keys that no longer exist are pruned on save.",
                     "additionalProperties": false,
                     "properties": {
                         "sources": {
@@ -120,6 +120,10 @@
                             "type": "array",
                             "items": { "type": "string" },
                             "description": "Collapsed parent clones as \"<source>/<repo>\" keys."
+                        },
+                        "cards_open": {
+                            "type": "boolean",
+                            "description": "True when the cards panel above the list (accounts, mirrors, workspaces) is unfolded. Absent means collapsed, the default."
                         }
                     }
                 },

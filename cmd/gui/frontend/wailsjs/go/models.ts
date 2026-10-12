@@ -97,6 +97,7 @@ export namespace config {
 	export class CollapsedState {
 	    sources?: string[];
 	    repos?: string[];
+	    cards_open?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new CollapsedState(source);
@@ -106,6 +107,7 @@ export namespace config {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.sources = source["sources"];
 	        this.repos = source["repos"];
+	        this.cards_open = source["cards_open"];
 	    }
 	}
 	export class EditorEntry {

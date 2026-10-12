@@ -140,10 +140,12 @@ export interface TentativeContainerDTO {
 }
 
 // CollapsedState lists what the full view shows folded: source keys and
-// "source/repo" keys. Mirrors config.CollapsedState.
+// "source/repo" keys, plus whether the cards panel is open. Mirrors
+// config.CollapsedState.
 export interface CollapsedState {
   sources?: string[];
   repos?: string[];
+  cards_open?: boolean;
 }
 
 export interface StatusResult {

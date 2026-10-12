@@ -216,7 +216,7 @@ Launch `GitboxApp` on each platform (`./scripts/run-commands.sh` prints the comm
 - [ ] Mirrors tab shows groups and status
 - [ ] Settings: change root folder, System check, Terminals Manager
 - [ ] Compact view and back to full view
-- [ ] Collapse/expand: account header and a parent clone (chevron or name) fold and unfold; folds survive a restart
+- [ ] Collapse/expand: account header and a parent clone (chevron or name) fold and unfold; folds survive a restart; the cards panel starts folded, unfolds from the active tab, and remembers its state; a chip opens into its card and folds back on an outside click or Escape
 ```
 
 ### Credential flows (interactive, per platform)

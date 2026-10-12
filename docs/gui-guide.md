@@ -80,7 +80,7 @@ Once credentials are set up, the account card shows a **green badge** with the c
 
 ## Step 3: Find and add projects
 
-Click **Find projects** on an account card. Gitbox contacts your provider and lists all the repositories visible to your account.
+Open an account's card (click its chip on the **Accounts** tab) and click **Find**, or pick **Find projects** from the account's ⋮ menu in the repo list. Gitbox contacts your provider and lists all the repositories visible to your account.
 
 The discovery window features:
 
@@ -99,18 +99,22 @@ I close any dialog with **Escape** or by clicking outside it. Dialogs that are b
 
 ### Understanding account cards
 
-Each account appears as a card on the **Accounts** tab. Here's what the elements mean:
+Each account appears on the **Accounts** tab as a chip with its status dot and full name, only as wide as the name. Clicking a chip opens it in place into a two-line card: the status dot and the account name on top, the provider, credential badge and buttons below. The other accounts stay as chips. One card is open at a time; clicking outside it or pressing **Escape** folds it back into its chip. Here's what the card's elements mean:
 
-- **Credential badge** (top right) — shows your credential type with a colored background:
+- **Status dot** — takes the credential's color
+- **Account name** — click it to edit the account
+- **Provider** — the provider the account lives on
+- **Credential badge** — shows your credential type with a colored background:
   - **Green** — everything is working
   - **Orange** — there's a minor issue (e.g., limited permissions)
   - **Red** — the credential is broken or expired
   - **Blue "config"** — no credential set up yet; click it to get started
-- **Sync ring** — a small circle showing how many of your projects are in sync
-- **Find projects** — discovers repos from your account (disabled if credentials aren't working)
-- **Create repo** — creates a new repository on the provider (disabled if credentials aren't working)
+- **Find** — discovers repos from your account (disabled if credentials aren't working)
+- **New** — creates a new repository on the provider (disabled if credentials aren't working)
 
-If a credential is missing or broken, the entire card turns **light red** so you notice right away.
+Cards don't repeat clone health. The account's header in the repo list shows how many clones it holds and how many need attention.
+
+If a credential is missing or broken, the chip and the card turn **light red** so you notice right away.
 
 ### Keeping projects in sync
 
@@ -163,7 +167,7 @@ For each adopted clone, Gitbox adds it to `gitbox.json` under the matched source
 
 ### Creating repositories
 
-Click **Create repo** on an account card to create a new repository directly on the provider without leaving Gitbox.
+Click **New** on an open account card, or pick **Create repo** from the account's ⋮ menu, to create a new repository directly on the provider without leaving Gitbox.
 
 The modal asks for:
 
@@ -208,18 +212,22 @@ Mirrors keep backup copies of repos on another provider — for example, pushing
 The main screen uses two tabs above the cards section:
 
 - **Accounts** (default) — shows account cards and the repo list underneath. This is where you manage accounts, discover projects, and create repos.
-- **Mirrors** — shows mirror group cards and the mirror detail list underneath. Each mirror group appears as a card with a sync ring showing the active/total ratio.
+- **Mirrors** — shows mirror group cards and the mirror detail list underneath. Each mirror group appears as a chip that opens into a card with its active/total ratio.
 
 Switch tabs by clicking the tab buttons. The **summary footer** at the bottom always shows both repo and mirror counts regardless of which tab is active.
 
+The cards panel under the tabs folds away so the list gets the room. It starts folded. I click the active tab to unfold it, and again to fold it; clicking another tab switches and unfolds. Gitbox remembers the choice across restarts (`global.collapsed.cards_open` in `gitbox.json`). While folded, each tab carries a summary: one credential-colored dot per account, the `active/total` mirrors, and the workspace count.
+
+The panel also unfolds on its own, without changing the remembered choice, when there are no accounts yet, when an account's credential is missing or broken, and in delete mode, where the ✕ buttons live on the chips and cards. Folding it dismisses the credential alert until the next launch.
+
 ### Mirror cards
 
-Each mirror group card shows:
+Each mirror group shows as a chip (status dot and account pair) that opens into a card, like account cards. The card shows:
 
 - **Status dot** — green if all repos are active, red if errors exist, amber otherwise
-- **MIRROR label** and account pair (e.g., `forgejo ↔ github`)
-- **Sync ring** — ratio of active mirrors to total mirrors in the group
-- **Check status** button — verifies sync state by comparing HEAD commits on both sides
+- **MIRROR label** and the `active/total` mirrors in the group, colored like the dot
+- **Account pair** (e.g., `forgejo ↔ github`)
+- **Check** button — verifies sync state by comparing HEAD commits on both sides
 - A **+** card is always visible on the Mirrors tab to create a new mirror group
 
 ### Mirror health ring
@@ -263,13 +271,13 @@ The standard layout is `global.folder / <account> / <org|user> / repo`. Clones f
 
 ### Full view
 
-The full dashboard shows the top bar with health rings, the tab bar (Accounts/Mirrors), cards, repo or mirror detail lists, and the summary footer. Action buttons in the top bar include Pull All, Fetch All, Delete mode, and Compact view.
+The full dashboard shows the top bar with health rings, the tab bar (Accounts/Mirrors/Workspaces), the foldable cards panel, repo or mirror detail lists, and the summary footer. Action buttons in the top bar include Pull All, Fetch All, Delete mode, and Compact view.
 
 ### Collapse and expand
 
 The repo list folds at two levels:
 
-- **Account groups** — click an account's header bar or its name to fold its clone list. A folded header shows how many clones it holds and how many need attention, so a problem never hides behind a fold. The ⋮ menu on the header keeps working and never folds the group.
+- **Account groups** — click an account's header bar or its name to fold its clone list. The header always shows how many clones it holds and how many need attention, folded or not, so a problem never hides behind a fold. The ⋮ menu on the header keeps working and never folds the group.
 - **Clones with clones below them** — any clone that has nested clones under it gets a ▾ chevron before its status dot. Click the chevron or the clone's name to fold everything below, at any depth. A folded row shows how many clones it hides and how many of them need attention. Neither opens the repo detail; in workspace-selection mode the name still selects the clone.
 
 Gitbox remembers what I fold across restarts (`global.collapsed` in `gitbox.json`) and forgets entries for accounts or clones I delete or rename. The compact view keeps its own per-account expansion.
@@ -332,6 +340,7 @@ Each source group in the repo list has a **kebab menu (⋮)** on the right side 
 - **🌐 Open in browser** — opens the provider profile/org page for the account (e.g. `https://github.com/<username>`, the GitLab group page, the Gitea/Forgejo user page).
 - **📁 Open folder** — opens the account's parent folder in the OS file manager. The folder is the natural workspace root for cross-repo greps, multi-repo edits, or shell loops. If the folder doesn't exist yet (nothing cloned under that account), the action errors silently — clone at least one repo first.
 - **>\_ Open in \<terminal\>**, **✎ Open in \<editor\>**, **🤖 Open in \<AI harness\>** — same default-first entries as the repo kebab, plus the category submenus when you have multiple options configured. Sweep branches is dropped here — it's meaningful only on a specific clone.
+- **🔍 Find projects** and **＋ Create repo** — the account card's **Find** and **New** actions, reachable while the cards panel is folded. Both are disabled when the account's credential can't reach the provider API.
 
 Editors are auto-detected on startup by scanning PATH. Gitbox writes the detected editors to `global.editors` in your config file with their full paths. You can reorder entries or add custom editors by editing the config — the menu always reflects the config order.
 

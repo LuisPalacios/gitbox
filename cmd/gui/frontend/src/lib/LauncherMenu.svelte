@@ -29,6 +29,8 @@
   //   AI Harnesses ▸                      (hidden if <2 harnesses)
   //   ─ separator ─ (repo kebab only, when onSweep is provided)
   //   Sweep branches                      (repo kebab only)
+  //   ─ separator ─ (account kebab only, when onFind/onCreate are provided)
+  //   Find projects / Create repo         (account kebab only)
 
   import { onMount, tick } from 'svelte';
   import type { EditorInfo, AIHarnessInfo, TerminalProfileInfo } from './types';
@@ -68,6 +70,16 @@
   // onRescanContainer re-runs the nested-clone scan for a container repo. Shown
   // only when the repo is already a container.
   export let onRescanContainer: (() => void) | null = null;
+  // onFind / onCreate are the account card's Find and New actions (issue
+  // #123), repeated on the account kebab so they stay reachable while the
+  // cards panel is collapsed. *Enabled gates the click; *DisabledReason is
+  // the tooltip, like the Move entry.
+  export let onFind: (() => void) | null = null;
+  export let findEnabled: boolean = true;
+  export let findDisabledReason: string = '';
+  export let onCreate: (() => void) | null = null;
+  export let createEnabled: boolean = true;
+  export let createDisabledReason: string = '';
 
   type Sub = 'terminals' | 'editors' | 'ai' | 'workspaces' | null;
   let openSubmenu: Sub = null;
@@ -234,6 +246,7 @@
   $: hasSweepSection = kind === 'repo' && !!onSweep;
   $: hasMoveSection = kind === 'repo' && !!onMove;
   $: hasContainerSection = kind === 'repo' && !!onToggleContainer;
+  $: hasAccountActions = kind === 'account' && (!!onFind || !!onCreate);
 
   // Browser action label is kind-aware: repo kebab navigates to the repo
   // page on the provider; account kebab navigates to the account profile.
@@ -355,6 +368,24 @@
       <span class="lm-icon">&#128193;</span>
       {isContainer ? 'Unmark as multi-repo container' : 'Mark as multi-repo container'}
     </button>
+  {/if}
+
+  {#if hasAccountActions}
+    <hr class="lm-sep" />
+    {#if onFind}
+      <button class="action-item" class:lm-disabled={!findEnabled} disabled={!findEnabled}
+        on:click|stopPropagation={onFind}
+        title={findEnabled ? 'Discover repos from provider API' : findDisabledReason}>
+        <span class="lm-icon">&#128269;</span> Find projects
+      </button>
+    {/if}
+    {#if onCreate}
+      <button class="action-item" class:lm-disabled={!createEnabled} disabled={!createEnabled}
+        on:click|stopPropagation={onCreate}
+        title={createEnabled ? 'Create a new repo on the provider' : createDisabledReason}>
+        <span class="lm-icon">&#65291;</span> Create repo
+      </button>
+    {/if}
   {/if}
 </div>
 

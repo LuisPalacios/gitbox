@@ -182,3 +182,30 @@ func TestSetCollapsed_PersistsAndPrunes(t *testing.T) {
 		t.Errorf("Collapsed = %+v, want nil after expanding everything", reloaded.Global.Collapsed)
 	}
 }
+
+func TestSetCollapsed_CardsOpen(t *testing.T) {
+	a, cfgPath := newWorkspaceTestApp(t)
+
+	if err := a.SetCollapsed(config.CollapsedState{CardsOpen: true}); err != nil {
+		t.Fatalf("SetCollapsed: %v", err)
+	}
+	reloaded, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c := reloaded.Global.Collapsed; c == nil || !c.CardsOpen {
+		t.Errorf("persisted Collapsed = %+v, want cards_open", c)
+	}
+	if !a.GetCollapsed().CardsOpen {
+		t.Error("GetCollapsed().CardsOpen = false, want true")
+	}
+
+	// Collapsing the panel with nothing else folded removes the key from disk.
+	if err := a.SetCollapsed(config.CollapsedState{}); err != nil {
+		t.Fatalf("SetCollapsed empty: %v", err)
+	}
+	reloaded, _ = config.Load(cfgPath)
+	if reloaded.Global.Collapsed != nil {
+		t.Errorf("Collapsed = %+v, want nil after collapsing the panel", reloaded.Global.Collapsed)
+	}
+}

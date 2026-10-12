@@ -9,7 +9,7 @@ Counts are top-level `func Test…` functions per package, from `grep -rc "^func
 ### Package tests — 436 tests (`pkg/`)
 
 - `pkg/adopt/` — 13 tests: orphan discovery, account scoring (embedded URL user, credential username, parent folder, ambiguous ties), nested clones under containers
-- `pkg/config/` — 102 tests: config parsing, v1/v2 → v3 migration, CRUD operations, save/load, backups, test-mode setup, collapse-state pruning and backup skip
+- `pkg/config/` — 103 tests: config parsing, v1/v2 → v3 migration, CRUD operations, save/load, backups, test-mode setup, collapse-state pruning and backup skip
 - `pkg/credential/` — 21 tests: token resolution, validation, OS-default helpers, `Check`/`FixGlobalGCMConfig` (global gitconfig health for GCM)
 - `pkg/doctor/` — 24 tests: tool table shape, install hints, lookups, per-credential-type prechecks, tool output decoding
 - `pkg/git/` — 30 tests: git subprocess operations, repo and profile URLs, nested repo discovery
