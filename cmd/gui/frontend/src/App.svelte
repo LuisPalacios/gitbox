@@ -17,6 +17,7 @@
   import type { RepoState, SourceDTO, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
   import BrandIcon from './lib/BrandIcon.svelte';
+  import UIIcon from './lib/UIIcon.svelte';
   import PRPopover from './lib/PRPopover.svelte';
   import TerminalsModal from './lib/TerminalsModal.svelte';
   import { tooltip } from './lib/tooltip';
@@ -3354,24 +3355,22 @@
       <button class="btn-gear" on:click={syncAll}
         disabled={syncing || ($summary.behind === 0 && $summary.notCloned === 0)}
         title="{simple ? $t('simple.updateAll') : syncing ? 'Pulling...' : 'Pull All'}">
-        <svg class="topbar-icon" class:spinning={syncing} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-          <line x1="8" y1="2" x2="8" y2="12"/><polyline points="4.5,8.5 8,12 11.5,8.5"/><line x1="4" y1="14" x2="12" y2="14"/>
-        </svg>
+        <span class="icon-spin" class:spinning={syncing}><UIIcon name="pull" /></span>
       </button>
       {#if !simple}
       <button class="btn-gear" on:click={runFetchAll} disabled={fetchingAll}
         title="{fetchingAll ? 'Fetching...' : 'Fetch All'}">
-        <span class="sync-icon" class:spinning={fetchingAll}>&#8635;</span>
+        <span class="icon-spin" class:spinning={fetchingAll}><UIIcon name="fetch" /></span>
       </button>
-      <button class="btn-gear btn-trash" class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title="{deleteMode ? 'Exit delete mode' : 'Delete mode'}">&#128465;</button>
-      <button class="btn-gear btn-select" class:select-active={selectionMode} on:click={toggleSelectionMode} disabled={cardsTab !== 'accounts' || Object.keys($accounts).length === 0} title="{selectionMode ? 'Exit selection mode' : 'Toggle clone selection mode'}">{selectionMode ? '☑' : '☐'}</button>
-      <button class="btn-gear" on:click={toggleViewMode} title="Compact view">◧</button>
-      <button class="btn-gear" on:click={cycleTheme} title="Theme: {themeChoice}">{themeIcon(themeChoice)}</button>
+      <button class="btn-gear" class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title="{deleteMode ? 'Exit delete mode' : 'Delete mode'}"><UIIcon name="trash" /></button>
+      <button class="btn-gear" class:select-active={selectionMode} on:click={toggleSelectionMode} disabled={cardsTab !== 'accounts' || Object.keys($accounts).length === 0} title="{selectionMode ? 'Exit selection mode' : 'Toggle clone selection mode'}"><UIIcon name={selectionMode ? 'select-on' : 'select'} /></button>
+      <button class="btn-gear" on:click={toggleViewMode} title="Compact view"><UIIcon name="compact" /></button>
+      <button class="btn-gear" on:click={cycleTheme} title="Theme: {themeChoice}"><UIIcon name={themeChoice === 'light' || themeChoice === 'dark' ? `theme-${themeChoice}` : 'theme-system'} /></button>
       {/if}
       <button class="mode-switch" class:mode-switch-on={!simple} role="switch" aria-checked={!simple}
         aria-label={$t('settings.experience')} title={simple ? $t('settings.simple') : $t('settings.advanced')}
         on:click={() => setUIMode(simple ? 'advanced' : 'simple')}><span class="mode-switch-knob"></span></button>
-      <button class="btn-gear" on:click={() => showSettings = !showSettings} title="Settings" class:active-gear={showSettings}>&#9881;</button>
+      <button class="btn-gear" on:click={() => showSettings = !showSettings} title="Settings" class:active-gear={showSettings}><UIIcon name="gear" /></button>
     </div>
   </header>
 
@@ -5782,8 +5781,7 @@
   }
 
   .topbar-actions { display: flex; gap: 8px; }
-  .topbar-icon { width: 16px; height: 16px; display: inline-block; }
-  .sync-icon { font-size: 18px; display: inline-block; }
+  .icon-spin { display: inline-flex; }
   .spinning { animation: spin 0.8s linear infinite; color: var(--spin-color) !important; stroke: var(--spin-color); stroke-width: 2.5; font-weight: 900; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .btn-gear {
@@ -5794,8 +5792,6 @@
   }
   .btn-gear:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-hover); }
   .btn-gear:disabled { opacity: 0.3; cursor: default; }
-  .btn-trash { font-size: 15px; }
-  .btn-select { font-size: 15px; }
   .select-active { color: var(--text-primary) !important; background: var(--bg-hover) !important; }
 
   .cards-tab-bar {
