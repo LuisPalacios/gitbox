@@ -195,11 +195,20 @@ func FixGlobalGCMConfig(cfg *config.Config, cfgPath string) error {
 		}
 	}
 
-	if err := git.GlobalConfigSet("credential.helper", helper); err != nil {
-		return fmt.Errorf("setting global credential.helper: %w", err)
+	// Write only what CheckGlobalGCMConfig would flag. A helper chain that
+	// already resolves to the expected helper stays as it is: rewriting it
+	// gains nothing, and a plain set fails on the multi-value chain that
+	// `git-credential-manager configure` writes on macOS.
+	values, _ := git.GlobalConfigGetAll("credential.helper")
+	if !helperSatisfies(effectiveHelpers(values), helper) {
+		if err := git.GlobalConfigReplaceAll("credential.helper", helper); err != nil {
+			return fmt.Errorf("setting global credential.helper: %w", err)
+		}
 	}
-	if err := git.GlobalConfigSet("credential.credentialStore", store); err != nil {
-		return fmt.Errorf("setting global credential.credentialStore: %w", err)
+	if current, err := git.GlobalConfigGet("credential.credentialStore"); err != nil || current != store {
+		if err := git.GlobalConfigReplaceAll("credential.credentialStore", store); err != nil {
+			return fmt.Errorf("setting global credential.credentialStore: %w", err)
+		}
 	}
 	return nil
 }

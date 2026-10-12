@@ -206,6 +206,7 @@ Lanza `GitboxApp` en cada plataforma (`./scripts/run-commands.sh` imprime los co
 
 ```text
 - [ ] La app abre; en Windows sin console flash
+- [ ] Primer arranque guiado con una config nueva (`XDG_CONFIG_HOME=<carpeta temporal vacía>` en macOS y Linux): carpeta → conectar (inicio de sesión con el navegador; **Use a token instead**; **Change details** conserva cualquier carpeta existente) → elegir proyectos → **Download**; la pantalla principal se abre en Simple y los repos elegidos se clonan. En Simple, la tarjeta **+** ejecuta los mismos pasos de conectar y elegir; en Advanced abre el formulario completo
 - [ ] Dashboard muestra tarjetas de cuenta, badges de credenciales y repos
 - [ ] Cambio de tab (Accounts ↔ Mirrors ↔ Workspaces) funciona
 - [ ] Editar y renombrar cuenta

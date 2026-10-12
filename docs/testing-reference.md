@@ -10,7 +10,7 @@ Counts are top-level `func Test…` functions per package, from `grep -rc "^func
 
 - `pkg/adopt/` — 13 tests: orphan discovery, account scoring (embedded URL user, credential username, parent folder, ambiguous ties), nested clones under containers
 - `pkg/config/` — 103 tests: config parsing, v1/v2 → v3 migration, CRUD operations, save/load, backups, test-mode setup, collapse-state pruning and backup skip
-- `pkg/credential/` — 21 tests: token resolution, validation, OS-default helpers, `Check`/`FixGlobalGCMConfig` (global gitconfig health for GCM)
+- `pkg/credential/` — 23 tests: token resolution, validation, OS-default helpers, `Check`/`FixGlobalGCMConfig` (global gitconfig health for GCM)
 - `pkg/doctor/` — 24 tests: tool table shape, install hints, lookups, per-credential-type prechecks, tool output decoding
 - `pkg/git/` — 30 tests: git subprocess operations, repo and profile URLs, nested repo discovery
 - `pkg/gitignore/` — 23 tests: managed block round-trip, merge with user content, idempotent install, backups, duplicate sanitising
@@ -21,7 +21,7 @@ Counts are top-level `func Test…` functions per package, from `grep -rc "^func
 - `pkg/launch/` — 13 tests: argv expansion, shell quoting, AI harness wrapping per shell, macOS AppleScript
 - `pkg/mirror/` — 6 tests: remote URL parsing, mirror discovery, status error classification
 - `pkg/move/` — 5 tests: repo key parsing, clone URLs, preflight validation
-- `pkg/ops/` — 15 tests: 14 isolated unit tests (add, rename, delete account; credential type change and delete; delete repo; clone planning; reconfigure clones; add discovered repos) plus the `TestScenario_FullLifecycle` scenario
+- `pkg/ops/` — 17 tests: 16 isolated unit tests (add, rename, delete account; suggest an account key; discard a just-added account; credential type change and delete; delete repo; clone planning; reconfigure clones; add discovered repos) plus the `TestScenario_FullLifecycle` scenario
 - `pkg/provider/` — 43 tests: HTTP client, provider API parsing
 - `pkg/status/` — 16 tests: clone status checking, branch detection, nesting computation (including container inside container)
 - `pkg/terminals/` — 51 tests: catalog shape, OS-aware Profile composition, WezTerm and Windows Terminal lookups, merge rules

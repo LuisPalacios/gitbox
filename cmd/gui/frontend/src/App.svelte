@@ -10,7 +10,7 @@
     workspaces, workspaceOrder, workspaceMemberships, selectedClones,
     toggleCloneSelection, clearCloneSelection, isSynced, simpleSummary
   } from './lib/stores';
-  import { statusColor, credColor, providerLabel, statusSymbol, simpleKind, simpleColor } from './lib/theme';
+  import { statusColor, credColor, providerLabel, providerURLs, statusSymbol, simpleKind, simpleColor } from './lib/theme';
   import type { SimpleKind } from './lib/theme';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit, EventsOn } from '../wailsjs/runtime/runtime';
@@ -20,6 +20,7 @@
   import UIIcon from './lib/UIIcon.svelte';
   import PRPopover from './lib/PRPopover.svelte';
   import TerminalsModal from './lib/TerminalsModal.svelte';
+  import Onboarding from './lib/Onboarding.svelte';
   import { tooltip } from './lib/tooltip';
   import { dismiss } from './lib/dismiss';
 
@@ -278,8 +279,8 @@
 
   // ── Onboarding ──
   let firstRun = false;
-  let onboardFolder = '~/00.git';
-  let onboardError = '';
+  // The dashboard loads the language, but onboarding shows before it does.
+  $: if (firstRun) bridge.getLanguage().then((l) => languageStore.set(normalizeLanguage(l))).catch(() => {});
 
   // ── Config-load-error screen (issue #60, smoke-test feedback) ──
   // Rendered when Startup detected a config file that existed but failed to
@@ -387,24 +388,27 @@
     Quit();
   }
 
-  async function browseFolder(target: 'onboard' | 'settings') {
+  async function browseFolder() {
     const dir = await bridge.pickFolder('Choose root folder');
-    if (dir) {
-      if (target === 'onboard') onboardFolder = dir;
-      else changeFolderPath = dir;
-    }
+    if (dir) changeFolderPath = dir;
   }
 
-  async function finishOnboarding() {
-    onboardError = '';
-    if (!onboardFolder.trim()) { onboardError = 'Folder path is required'; return; }
-    try {
-      await bridge.setGlobalFolder(onboardFolder);
-      firstRun = false;
-      await initDashboard();
-    } catch (err: any) {
-      onboardError = err?.message || String(err);
-    }
+  // The guided setup (lib/Onboarding.svelte) saved the folder, maybe an
+  // account and its picked repos; load the dashboard, then clone them so
+  // progress shows on the rows.
+  async function finishOnboarding(result: { sourceKey: string; repos: string[] } | null) {
+    firstRun = false;
+    await initDashboard();
+    for (const repo of result?.repos || []) cloneRepo(result!.sourceKey, repo);
+  }
+
+  // Simple mode's "Add account" runs the connect + pick steps of the same
+  // guided setup; Advanced keeps the full form.
+  let connectModal = false;
+  async function finishConnect(result: { sourceKey: string; repos: string[] } | null) {
+    connectModal = false;
+    await reloadFromDisk();
+    for (const repo of result?.repos || []) cloneRepo(result!.sourceKey, repo);
   }
 
   // ── Change folder (settings) ──
@@ -1197,8 +1201,11 @@
   // known-broken and reloading it would just re-surface the same error
   // as a banner on top of the modal. The user's choice (Repair / Start
   // fresh / Exit) is what drives recovery, not ambient focus events.
+  // Same during first-run onboarding: until the folder step saves, there is
+  // no file to read, and a focus event would leave a stale "open …: no such
+  // file" banner behind on the dashboard.
   async function reloadFromDisk() {
-    if (cfgLoadErrorModal) return;
+    if (cfgLoadErrorModal || firstRun) return;
     try {
       const cfg = await bridge.reloadConfig();
       configStore.set(cfg);
@@ -1327,14 +1334,6 @@
   let sshDiscoveryGuide = '';
   let sshDiscoveryScopes = '';
   let sshDiscoveryBusy = false;
-
-  const providerURLs: Record<string, string> = {
-    github: 'https://github.com',
-    gitlab: 'https://gitlab.com',
-    gitea: '',
-    forgejo: '',
-    bitbucket: 'https://bitbucket.org',
-  };
 
   function onProviderChange() {
     const defaultURL = providerURLs[addAcct.provider];
@@ -3121,50 +3120,7 @@
 
 <!-- ── ONBOARDING ── -->
 {:else if firstRun}
-<div class="onboarding">
-  <div class="onboard-card">
-    <svg class="onboard-logo" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
-      <g transform="matrix(0.838711, 0, 0, 0.838711, 52.15668, 40.24861)">
-        <path d="M 119.779 265.572 L 146.694 265.582 C 146.694 265.582 162.549 310.895 163.783 313.997 L 145.642 332.841 L 166.338 355.62 L 185.565 336.41 C 184.801 337.405 234.42 356.617 234.42 356.617 L 234.74 387.858 L 265.36 389.26 L 265.013 356.868 L 313.812 336.358 L 339.89 361.913 L 362.266 340.797 L 336.562 314.13 L 354.13 265.424 L 394.197 265.15 L 393.609 234.438 L 353.715 234.488 C 352.82 232.067 335.975 185.534 335.975 185.534 L 360.441 160.899 L 337.258 140.162 L 313.098 163.288 C 313.098 163.288 266.045 143.401 265.958 143.359 L 265.79 114.664 L 234.642 116.098 L 234.194 143.169 L 186.316 163.095 L 168.728 146.231 L 147.462 168.692 L 163.361 185.54 L 146.557 234.451 L 120.386 234.37 M 210.493 187.051 L 256.57 234.488 C 256.57 234.488 320.45 234.364 320.586 234.229 C 320.721 234.094 306.162 193.954 306.162 193.954 C 306.162 193.954 250.088 170.32 249.69 170.347 M 187.967 210.526 C 187.649 210.754 174.103 248.738 174.103 249.471 C 174.103 250.2 187.998 289.362 188.741 289.362 C 189.632 289.362 227.328 250.756 227.328 249.843 C 227.328 248.581 188.7 209.996 187.967 210.526 M 257.27 265.455 C 256.179 265.594 249.754 271.775 232.923 288.884 C 220.348 301.667 210.161 312.294 210.285 312.494 C 210.41 312.695 212.068 313.532 213.966 314.356 C 215.864 315.18 220.73 317.306 224.778 319.081 C 241.811 326.551 248.988 329.565 249.748 329.565 C 250.514 329.565 252.968 328.567 267.247 322.463 C 272.788 320.092 283.196 315.705 300.652 308.373 L 306.313 305.995 L 308.715 299.518 C 310.034 295.957 311.861 291.004 312.774 288.514 C 313.686 286.021 315.955 279.905 317.813 274.924 C 319.673 269.94 321.108 265.771 321 265.655 C 320.761 265.397 259.289 265.202 257.27 265.455" fill="var(--logo-light)" fill-rule="evenodd"/>
-        <g>
-          <rect x="389.945" y="234.245" width="88.288" height="31.534" fill="var(--logo-dark)"/>
-          <rect x="145.508" y="578.72" width="57.346" height="31.534" fill="var(--logo-dark)" transform="matrix(0.707107, -0.707107, 0.707107, 0.707107, -37.625373, -231.099206)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
-          <rect x="268.056" y="574.269" width="50.735" height="31.007" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, 89.660145, -467.147635)" style="transform-origin: 152.09px 305.696px;"/>
-          <g transform="matrix(1.929278, 0, 0, 1.929278, -169.667138, -230.101468)">
-            <rect x="167.474" y="297.66" width="31.698" height="16.072" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, 97.683973, 6.752047)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
-            <ellipse cx="298.182" cy="330.143" rx="18.184" ry="18.184" fill="var(--logo-dark)"/>
-          </g>
-          <g transform="matrix(0, 1.929278, -1.929278, 0, -117.597083, 162.12922)" style="transform-origin: 290.242px 321.943px;">
-            <path d="M 234.052 304.012 L 295.85 303.793 L 295.85 319.865 L 240.576 320.139 L 236.241 324.134 L 225.125 312.911 L 234.052 304.012 Z" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, 4.206065, -14.423297)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
-            <ellipse cx="298.182" cy="330.143" rx="18.184" ry="18.184" fill="var(--logo-dark)"/>
-          </g>
-          <g transform="matrix(-1.364205, 1.364205, -1.364205, -1.364205, -225.276898, -72.630123)" style="transform-origin: 290.242px 321.943px;">
-            <rect x="167.474" y="297.66" width="31.698" height="16.072" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, 97.683973, 6.752047)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
-            <ellipse cx="298.182" cy="330.143" rx="18.184" ry="18.184" fill="var(--logo-dark)"/>
-          </g>
-          <g transform="matrix(-1.929277, 0, 0, -1.929277, -96.489034, -305.33812)" style="transform-origin: 290.242px 321.943px;">
-            <path d="M 157.74 296.617 L 199.172 297.66 L 199.172 313.732 L 151.483 313.732 L 133.58 295.866 L 144.962 284.648 L 157.74 296.617 Z" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, 107.248061, -3.32573)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
-            <ellipse cx="298.182" cy="330.143" rx="18.184" ry="18.184" fill="var(--logo-dark)"/>
-          </g>
-          <g transform="matrix(0, -1.929278, 1.929278, 0, 97.57237, -210.81805)" style="transform-origin: 290.242px 321.943px;">
-            <rect x="299.224" y="297.66" width="56.634" height="16.072" fill="var(--logo-dark)" transform="matrix(0.707107, 0.707107, -0.707107, 0.707107, -37.717619, 15.568392)" style="transform-box: fill-box; transform-origin: 50% 50%;"/>
-            <ellipse cx="319.805" cy="350.736" rx="18.184" ry="18.184" fill="var(--logo-dark)"/>
-          </g>
-        </g>
-      </g>
-    </svg>
-    <h1 class="onboard-title">Welcome to gitbox</h1>
-    <p class="onboard-desc">Choose where to store your local clones</p>
-    {#if onboardError}
-      <p class="form-error">{onboardError}</p>
-    {/if}
-    <div class="onboard-input-row">
-      <input class="form-input onboard-input" bind:value={onboardFolder} placeholder="~/00.git" />
-      <button class="settings-btn onboard-browse" on:click={() => browseFolder('onboard')}>Browse</button>
-    </div>
-    <button class="btn-add onboard-go" on:click={finishOnboarding}>Get started</button>
-  </div>
-</div>
+<Onboarding mode="first-run" onDone={finishOnboarding} />
 {:else}
 
 <div class="app">
@@ -3677,7 +3633,7 @@
       </div>
       {/if}
     {/each}
-    <button class="card card-add" on:click={() => addAccountModal = true} title={$t('account.add')}>
+    <button class="card card-add" on:click={() => { if (simple) connectModal = true; else addAccountModal = true; }} title={$t('account.add')}>
       <span class="card-add-icon">+</span>
     </button>
   </section>
@@ -4710,6 +4666,10 @@
   {/if}
 
   <!-- ── ADD ACCOUNT MODAL ── -->
+  {#if connectModal}
+    <Onboarding mode="add" onDone={finishConnect} onCancel={() => { connectModal = false; reloadFromDisk(); }} />
+  {/if}
+
   {#if addAccountModal}
     <div class="overlay" use:dismiss={() => { if (addAccountStep === 'form') resetAddAccount(); }} transition:fade={{ duration: 120 }}>
       <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
@@ -5131,7 +5091,7 @@
           <div class="form-row">
             <label class="form-label" for="change-folder-path">New path</label>
             <input id="change-folder-path" class="form-input" bind:value={changeFolderPath} placeholder="~/new-folder" />
-            <button class="settings-btn" on:click={() => browseFolder('settings')}>Browse</button>
+            <button class="settings-btn" on:click={browseFolder}>Browse</button>
           </div>
 
           <hr style="border:none;border-top:1px solid var(--border); margin:16px 0;" />
@@ -5670,22 +5630,6 @@
     to   { opacity: 1; transform: translateY(0); }
   }
 
-  /* ── Onboarding ── */
-  .onboarding {
-    position: fixed; inset: 0; background: var(--bg-base);
-    display: flex; align-items: center; justify-content: center; z-index: 200;
-  }
-  .onboard-card {
-    display: flex; flex-direction: column; align-items: center;
-    max-width: 380px; width: 100%; padding: 40px 32px;
-  }
-  .onboard-logo { width: 64px; height: 64px; margin-bottom: 16px; }
-  .onboard-title { font-size: 22px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.5px; }
-  .onboard-desc { font-size: 13px; color: var(--text-secondary); margin: 0 0 20px; }
-  .onboard-input-row { display: flex; gap: 8px; width: 100%; margin-bottom: 16px; }
-  .onboard-input { flex: 1; }
-  .onboard-browse { padding: 5px 12px; font-size: 12px; }
-  .onboard-go { width: 100%; padding: 9px 0; font-size: 13px; font-weight: 600; border-radius: 7px; }
 
   :global([data-theme="dark"]) {
     --bg-base: #09090b; --bg-card: #18181b; --bg-hover: #27272a;

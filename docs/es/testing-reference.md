@@ -10,7 +10,7 @@ Los recuentos son funciones `func Test…` de nivel superior por paquete, obteni
 
 - `pkg/adopt/` — 13 pruebas: descubrimiento de huérfanos, puntuación de cuentas (usuario embebido en la URL, username de la credencial, carpeta padre, empates ambiguos), clones anidados bajo contenedores
 - `pkg/config/` — 103 pruebas: parseo de config, migración v1/v2 → v3, operaciones CRUD, save/load, backups, preparación de test-mode, poda del estado de plegado y omisión del backup
-- `pkg/credential/` — 21 pruebas: resolución de token, validación, helpers por defecto del OS, `Check`/`FixGlobalGCMConfig` (salud de gitconfig global para GCM)
+- `pkg/credential/` — 23 pruebas: resolución de token, validación, helpers por defecto del OS, `Check`/`FixGlobalGCMConfig` (salud de gitconfig global para GCM)
 - `pkg/doctor/` — 24 pruebas: forma de la tabla de herramientas, pistas de instalación, búsquedas, comprobaciones previas por tipo de credencial, decodificación de la salida de herramientas
 - `pkg/git/` — 30 pruebas: operaciones git mediante subprocess, URLs de repo y de perfil, descubrimiento de repos anidados
 - `pkg/gitignore/` — 23 pruebas: ida y vuelta del bloque gestionado, fusión con contenido del usuario, instalación idempotente, backups, saneado de duplicados
@@ -21,7 +21,7 @@ Los recuentos son funciones `func Test…` de nivel superior por paquete, obteni
 - `pkg/launch/` — 13 pruebas: expansión de argv, quoting de shell, envoltura de AI harness por shell, AppleScript de macOS
 - `pkg/mirror/` — 6 pruebas: parseo de URLs remotas, descubrimiento de mirrors, clasificación de errores de estado
 - `pkg/move/` — 5 pruebas: parseo de claves de repo, URLs de clone, validación previa
-- `pkg/ops/` — 15 pruebas: 14 pruebas unitarias aisladas (añadir, renombrar y borrar cuenta; cambio y borrado de tipo de credencial; borrar repo; planificación de clones; reconfigurar clones; añadir repos descubiertos) más el escenario `TestScenario_FullLifecycle`
+- `pkg/ops/` — 17 pruebas: 16 pruebas unitarias aisladas (añadir, renombrar y borrar cuenta; sugerir un account key; descartar una cuenta recién añadida; cambio y borrado de tipo de credencial; borrar repo; planificación de clones; reconfigurar clones; añadir repos descubiertos) más el escenario `TestScenario_FullLifecycle`
 - `pkg/provider/` — 43 pruebas: cliente HTTP, parseo de APIs de proveedor
 - `pkg/status/` — 16 pruebas: comprobación de estado de clones, detección de rama, cálculo de anidamiento (incluido un contenedor dentro de otro)
 - `pkg/terminals/` — 51 pruebas: forma del catálogo, composición de Profile según el OS, búsquedas de WezTerm y Windows Terminal, reglas de fusión

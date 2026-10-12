@@ -51,15 +51,21 @@ The GUI requires a desktop environment with a display server (X11 or Wayland).
 
 ## Step 1: First launch
 
-The first time you open Gitbox, it asks you to pick a **root folder** — this is where all your projects will live on disk. Something like `~/00.git` or `C:\repos` works well.
+The first time you open Gitbox, a short guided setup walks you through three steps:
 
-Click **Get started** and you're in.
+1. **Where do you keep your projects?** — pick a **root folder**, where all your projects will live on disk. Something like `~/00.git` or `C:\repos` works well.
+2. **Connect where your projects are stored** — pick GitHub, GitLab, Bitbucket, or the **Forgejo** and **Gitea** tile (then choose which one and type the server address). Type your username, your name and your email; the name and email are prefilled from your global git identity when it has one, and they appear on the changes you save. Click **Sign in with the browser** and log in. Gitbox uses Git Credential Manager (GCM) for this.
+3. **Pick projects to download** — Gitbox lists the repositories your account can see. Tick the ones you want and click **Download**. They start cloning as soon as the main screen opens.
+
+If GCM isn't installed, step 2 shows how to install it and offers **Use a token instead**, which links to the page where you create a token and asks you to paste it. If sign-in fails, you can **Try again**, switch to a token, or go back with **Change details**.
+
+You never type an account key: Gitbox picks one for you, such as `github-alice`, which is also the account's folder name on disk. You can **Skip for now** at steps 2 and 3 and add accounts later. New installs start in Simple mode. If you quit after the first step, the next launch opens the main screen; finish from the **+** card.
 
 ## Step 2: Add accounts
 
 An account tells Gitbox who you are on a particular server. For example, your GitHub account, or your company's GitLab.
 
-Click the **+** card to add one. You'll fill in:
+In Simple mode, the **+** card runs the same connect and pick-projects steps as the first launch. In Advanced mode it opens the full form, which also offers SSH and lets you choose the account key. You'll fill in:
 
 1. **Account key** — a short name you choose (e.g., `github-personal`). This also becomes the folder name on disk.
 2. **Provider** — pick your service (GitHub, GitLab, Gitea, Forgejo, or Bitbucket).

@@ -130,6 +130,10 @@ export function DetectEditors() {
   return window['go']['main']['App']['DetectEditors']();
 }
 
+export function DiscardAccount(arg1) {
+  return window['go']['main']['App']['DiscardAccount'](arg1);
+}
+
 export function Discover(arg1) {
   return window['go']['main']['App']['Discover'](arg1);
 }
@@ -504,6 +508,10 @@ export function ShowErrorDialog(arg1, arg2) {
 
 export function ShowWindow() {
   return window['go']['main']['App']['ShowWindow']();
+}
+
+export function SuggestAccountKey(arg1, arg2) {
+  return window['go']['main']['App']['SuggestAccountKey'](arg1, arg2);
 }
 
 export function SyncAIHarnesses() {

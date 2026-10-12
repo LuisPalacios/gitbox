@@ -38,6 +38,30 @@ func ValidateAccountKey(key string) error {
 	return nil
 }
 
+// keyJunk matches runs of characters an account key can't hold.
+var keyJunk = regexp.MustCompile(`[^a-zA-Z0-9]+`)
+
+// SuggestAccountKey returns a valid, unused account key for provider and
+// username, such as "github-alice", so the guided setup never asks for one.
+// Characters a key can't hold become single hyphens, and a key already used
+// by an account or a source gets a numeric suffix ("github-alice-2").
+func SuggestAccountKey(cfg *config.Config, provider, username string) string {
+	base := strings.Trim(keyJunk.ReplaceAllString(provider+"-"+username, "-"), "-")
+	if base == "" {
+		base = "account"
+	}
+	taken := func(k string) bool {
+		_, acct := cfg.Accounts[k]
+		_, src := cfg.Sources[k]
+		return acct || src
+	}
+	key := base
+	for n := 2; taken(key); n++ {
+		key = fmt.Sprintf("%s-%d", base, n)
+	}
+	return key
+}
+
 // AddAccount adds an account plus a matching source (same key) so repos can
 // be added right away. An empty DefaultCredentialType becomes "gcm", and the
 // credential sub-object for that type is filled in.
@@ -56,6 +80,24 @@ func AddAccount(cfg *config.Config, key string, acct config.Account) error {
 		return err
 	}
 	return nil
+}
+
+// DiscardAccount removes a just-added account and its sources from the
+// config without touching the disk, so the guided setup can start over with
+// different details. Unlike DeleteAccount it never removes a folder: the
+// source folder may predate the account and hold the user's files. It
+// refuses once any of the account's sources has repos.
+func DiscardAccount(cfg *config.Config, accountKey string) error {
+	if _, ok := cfg.Accounts[accountKey]; !ok {
+		return fmt.Errorf("account %q not found", accountKey)
+	}
+	for sourceKey, src := range cfg.Sources {
+		if src.Account == accountKey && len(src.Repos) > 0 {
+			return fmt.Errorf("account %q already has repos in source %q", accountKey, sourceKey)
+		}
+	}
+	_, err := cfg.CascadeDeleteAccount(accountKey)
+	return err
 }
 
 // RenameAccount renames an account key and migrates everything tied to it:

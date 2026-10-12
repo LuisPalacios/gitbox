@@ -290,6 +290,61 @@ func TestFixGlobalGCMConfig_OverwritesExistingHelper(t *testing.T) {
 	}
 }
 
+// The chain `git-credential-manager configure` writes on macOS already
+// resolves to GCM; Fix must leave it alone instead of failing on the
+// multi-value key (it used to run a plain `git config --global` set, which
+// exits 5 when the key holds several values).
+func TestFixGlobalGCMConfig_KeepsSatisfyingMultiValueHelper(t *testing.T) {
+	isolateGlobalGitconfig(t)
+	const absPath = "/usr/local/share/gcm-core/git-credential-manager"
+	for _, v := range []string{"manager", "", absPath} {
+		if err := globalConfigAdd("credential.helper", v); err != nil {
+			t.Fatalf("seeding helper %q: %v", v, err)
+		}
+	}
+	if err := git.GlobalConfigSet("credential.credentialStore", DefaultCredentialStore()); err != nil {
+		t.Fatalf("seeding store: %v", err)
+	}
+
+	if err := FixGlobalGCMConfig(&config.Config{}, filepath.Join(t.TempDir(), "gitbox.json")); err != nil {
+		t.Fatalf("FixGlobalGCMConfig: %v", err)
+	}
+
+	got, err := git.GlobalConfigGetAll("credential.helper")
+	if err != nil {
+		t.Fatalf("reading helper: %v", err)
+	}
+	if len(got) != 3 || got[0] != "manager" || got[1] != "" || got[2] != absPath {
+		t.Errorf("helper chain = %q, want it untouched", got)
+	}
+}
+
+// A multi-value chain that does not resolve to GCM is replaced by the single
+// expected helper rather than failing.
+func TestFixGlobalGCMConfig_ReplacesNonGCMMultiValueHelper(t *testing.T) {
+	isolateGlobalGitconfig(t)
+	for _, v := range []string{"store", "cache"} {
+		if err := globalConfigAdd("credential.helper", v); err != nil {
+			t.Fatalf("seeding helper %q: %v", v, err)
+		}
+	}
+
+	if err := FixGlobalGCMConfig(&config.Config{}, filepath.Join(t.TempDir(), "gitbox.json")); err != nil {
+		t.Fatalf("FixGlobalGCMConfig: %v", err)
+	}
+
+	got, err := git.GlobalConfigGetAll("credential.helper")
+	if err != nil {
+		t.Fatalf("reading helper: %v", err)
+	}
+	if len(got) != 1 || got[0] != DefaultCredentialHelper() {
+		t.Errorf("helper chain = %q, want [%q]", got, DefaultCredentialHelper())
+	}
+	if s := CheckGlobalGCMConfig(&config.Config{}); s.NeedsFix {
+		t.Errorf("NeedsFix after Fix = true, want false (%+v)", s)
+	}
+}
+
 func TestFixGlobalGCMConfig_NoCfgSaveWhenAlreadyPopulated(t *testing.T) {
 	isolateGlobalGitconfig(t)
 	cfgDir := t.TempDir()

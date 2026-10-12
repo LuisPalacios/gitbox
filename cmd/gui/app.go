@@ -2367,6 +2367,25 @@ type AddAccountRequest struct {
 	CredentialType string `json:"credentialType"`
 }
 
+// SuggestAccountKey returns an unused account key such as "github-alice"
+// for the guided setup, which never asks for one.
+func (a *App) SuggestAccountKey(provider, username string) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return ops.SuggestAccountKey(a.cfg, provider, username)
+}
+
+// DiscardAccount removes a just-added account (no repos yet) from the config
+// so the guided setup can start over. It never touches the disk.
+func (a *App) DiscardAccount(accountKey string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if err := ops.DiscardAccount(a.cfg, accountKey); err != nil {
+		return err
+	}
+	return a.saveConfig()
+}
+
 // AddAccount creates a new account and a matching source, then saves.
 // Populates the credential sub-objects (GCM/SSH/Token) based on credential type.
 func (a *App) AddAccount(req AddAccountRequest) error {

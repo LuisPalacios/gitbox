@@ -60,6 +60,16 @@ export function simpleColor(kind: SimpleKind, theme: string): string {
   return statusColor(simpleColorKeys[kind], theme);
 }
 
+// Default server URL per provider; Gitea and Forgejo are self-hosted, so
+// they have none and the user types it.
+export const providerURLs: Record<string, string> = {
+  github: 'https://github.com',
+  gitlab: 'https://gitlab.com',
+  gitea: '',
+  forgejo: '',
+  bitbucket: 'https://bitbucket.org',
+};
+
 export function providerLabel(p: string): string {
   const map: Record<string, string> = {
     github: 'GitHub', forgejo: 'Forgejo', gitea: 'Gitea',
