@@ -339,7 +339,11 @@
         <div class="ob-tiles">
           {#each tiles as tile}
             <button class="ob-tile" class:ob-tile-on={choice === tile} on:click={() => choice = tile}>
-              {tile === 'other' ? $t('onboard.other') : providerLabel(tile)}
+              {#if tile === 'other'}
+                <span class="ob-tile-pair"><span>Forgejo</span><span>Gitea</span></span>
+              {:else}
+                {providerLabel(tile)}
+              {/if}
             </button>
           {/each}
         </div>
@@ -519,6 +523,7 @@
     background: var(--bg-base); border: 1px solid var(--border); color: var(--text-secondary);
   }
   .ob-tile:hover { border-color: var(--border-hover); color: var(--text-primary); }
+  .ob-tile-pair { display: flex; flex-direction: column; align-items: center; line-height: 1.3; }
   .ob-tile-on { border-color: #4B95E9; color: var(--text-primary); box-shadow: inset 0 0 0 1px #4B95E9; }
   .ob-note { border: 1px solid #f59e0b66; background: #f59e0b14; border-radius: 7px; padding: 10px 12px; margin: 8px 0; font-size: 12px; }
   .ob-note p { margin: 0 0 6px; }

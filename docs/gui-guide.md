@@ -54,7 +54,7 @@ The GUI requires a desktop environment with a display server (X11 or Wayland).
 The first time you open Gitbox, a short guided setup walks you through three steps:
 
 1. **Where do you keep your projects?** — pick a **root folder**, where all your projects will live on disk. Something like `~/00.git` or `C:\repos` works well.
-2. **Connect where your projects are stored** — pick GitHub, GitLab, Bitbucket, or **Other server** for Gitea and Forgejo (with the server address). Type your username, your name and your email; the name and email are prefilled from your global git identity when it has one, and they appear on the changes you save. Click **Sign in with the browser** and log in. Gitbox uses Git Credential Manager (GCM) for this.
+2. **Connect where your projects are stored** — pick GitHub, GitLab, Bitbucket, or the **Forgejo** and **Gitea** tile (then choose which one and type the server address). Type your username, your name and your email; the name and email are prefilled from your global git identity when it has one, and they appear on the changes you save. Click **Sign in with the browser** and log in. Gitbox uses Git Credential Manager (GCM) for this.
 3. **Pick projects to download** — Gitbox lists the repositories your account can see. Tick the ones you want and click **Download**. They start cloning as soon as the main screen opens.
 
 If GCM isn't installed, step 2 shows how to install it and offers **Use a token instead**, which links to the page where you create a token and asks you to paste it. If sign-in fails, you can **Try again**, switch to a token, or go back with **Change details**.
