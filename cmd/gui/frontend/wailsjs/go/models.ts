@@ -270,6 +270,7 @@ export namespace config {
 	    window?: WindowState;
 	    compact_window?: WindowState;
 	    view_mode?: string;
+	    ui_mode?: string;
 	    collapsed?: CollapsedState;
 	    credential_ssh?: SSHGlobal;
 	    credential_gcm?: GCMGlobal;
@@ -299,6 +300,7 @@ export namespace config {
 	        this.window = this.convertValues(source["window"], WindowState);
 	        this.compact_window = this.convertValues(source["compact_window"], WindowState);
 	        this.view_mode = source["view_mode"];
+	        this.ui_mode = source["ui_mode"];
 	        this.collapsed = this.convertValues(source["collapsed"], CollapsedState);
 	        this.credential_ssh = this.convertValues(source["credential_ssh"], SSHGlobal);
 	        this.credential_gcm = this.convertValues(source["credential_gcm"], GCMGlobal);

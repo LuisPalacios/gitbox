@@ -232,7 +232,7 @@ Cada grupo mirror se muestra como un chip (status dot y par de cuentas) que se a
 
 ### Anillo de salud de mirror
 
-Cuando hay mirrors configurados, aparece un segundo **health ring** en la barra superior junto al sync ring de repos. Muestra `active/total` mirrors y se vuelve rojo si algún mirror tiene errores.
+En Advanced, la barra superior muestra anillos compactos sin etiquetas. El anillo de repos lleva un icono de rama y se llena a medida que los clones se sincronizan. Cuando hay mirrors configurados, un segundo **health ring** con un icono de dos flechas se llena a medida que los mirrors pasan a activos y se vuelve rojo si algún mirror tiene errores. Una pequeña insignia en cada anillo cuenta lo que aún falta, y al pasar el ratón sobre un anillo se ve la línea completa `synced/total` o `active/total`.
 
 ### Acciones de mirror
 
@@ -268,6 +268,22 @@ También puedes gestionarlo desde el menú kebab (⋮) de la fila del repo — *
 El layout estándar es `global.folder / <account> / <org|user> / repo`. Los clones encontrados en una carpeta de escaneo extra aparecen en el modal de orphans y se incorporan **en el lugar** con una `clone_folder` absoluta: Gitbox nunca los mueve.
 
 ## Vistas del dashboard
+
+### Modos Simple y Advanced
+
+Gitbox tiene dos experiencias. **Simple** es para quien no conoce git y solo quiere sus proyectos a salvo. **Advanced** muestra cada detalle y herramienta de git. Cambio de modo con el interruptor de la barra superior, a la izquierda del engranaje de ajustes: gris es Simple, verde es Advanced. Las instalaciones nuevas empiezan en Simple; las configs anteriores a este ajuste se quedan en Advanced. La elección se guarda como `global.ui_mode` en `gitbox.json`.
+
+En Simple, cada proyecto responde a una pregunta, "¿está a salvo mi trabajo?", con uno de cinco estados:
+
+- **Saved** — todo está en el servidor.
+- **Not saved yet** — este ordenador tiene cambios que el servidor no tiene (pasa el ratón para ver el detalle). Abro el proyecto con mi IA y le pido que los guarde.
+- **Newer version online** — el servidor tiene trabajo más nuevo. Botón: **Update**. Gitbox nunca actualiza por su cuenta.
+- **Only online** — el proyecto aún no está en este ordenador. Botón: **Download**.
+- **Needs help** — algo ha ido mal, por ejemplo cambiaron las dos copias. Hago clic en el proyecto para ver qué pasa y lo abro con mi IA para arreglarlo.
+
+Cada proyecto que está en este ordenador tiene tres botones de icono, tanto en Simple como en Advanced: mi primer AI harness, mi primer editor y mi perfil de terminal por defecto. Cada uno muestra el logo de la herramienta cuando gitbox lo conoce (Claude, Codex, Gemini, Cursor, VS Code, Zed, WezTerm) o un icono genérico, y su nombre al pasar el ratón. Los nombres se muestran sin el prefijo de la organización; al pasar el ratón sobre un nombre se ve completo. El menú ⋯ mantiene Open on the web, la carpeta, los editores, los AI harnesses y **Delete from this computer…**.
+
+Simple oculta el resto: las pestañas Mirrors y Workspaces, Fetch All, delete mode, el modo de selección, los botones de vista compacta y de tema (el tema sigue en Settings), los badges de PR, workspace, contenedor y rama, los conteos ahead, behind y de cambios, y el botón de fetch de cada fila. Un credential badge solo aparece cuando una credencial se rompe, como **Reconnect**. Settings oculta las filas del archivo de config, PR reviews, global gitignore y Terminals. La vista compacta es igual en los dos modos.
 
 ### Vista completa
 

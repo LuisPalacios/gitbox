@@ -232,7 +232,7 @@ Each mirror group shows as a chip (status dot and account pair) that opens into 
 
 ### Mirror health ring
 
-When mirrors are configured, a second **health ring** appears in the top bar next to the repo sync ring. It shows `active/total` mirrors and turns red if any mirrors have errors.
+In Advanced, the top bar shows compact rings without labels. The repo ring holds a branch icon and fills as clones get synced. When mirrors are configured, a second **health ring** with a two-arrow icon fills as mirrors turn active and turns red if any mirror has errors. A small badge on each ring counts what is not there yet, and hovering a ring shows the full `synced/total` or `active/total` line.
 
 ### Mirror actions
 
@@ -268,6 +268,22 @@ You can also manage this from the repo row's kebab menu (⋮) — **Mark as mult
 The standard layout is `global.folder / <account> / <org|user> / repo`. Clones found in an extra scan folder show up in the orphans modal and are onboarded **in place** with an absolute `clone_folder` — Gitbox never moves them.
 
 ## Dashboard views
+
+### Simple and Advanced modes
+
+Gitbox has two experiences. **Simple** is for people who don't know git and only want their projects safe. **Advanced** shows every git detail and tool. I switch with the toggle in the top bar, left of the settings gear: grey is Simple, green is Advanced. New installs start in Simple; configs from before the setting stay in Advanced. The choice is saved as `global.ui_mode` in `gitbox.json`.
+
+In Simple, every project answers one question, "is my work safe?", with one of five states:
+
+- **Saved** — everything is on the server.
+- **Not saved yet** — this computer has changes the server doesn't (hover for the detail). I open the project with my AI and ask it to save them.
+- **Newer version online** — the server has newer work. Button: **Update**. Gitbox never updates on its own.
+- **Only online** — the project isn't on this computer yet. Button: **Download**.
+- **Needs help** — something went wrong, for example both copies changed. I click the project to see what's wrong and open it with my AI to fix it.
+
+Every project on this computer has three icon buttons, in both Simple and Advanced: my first AI harness, my first editor, and my default terminal profile. Each shows the tool's logo when gitbox knows it (Claude, Codex, Gemini, Cursor, VS Code, Zed, WezTerm) or a generic icon, and its name on hover. Names show without the organization prefix; hovering a name shows it in full. The ⋯ menu keeps Open on the web, the folder, editors, AI harnesses, and **Delete from this computer…**.
+
+Simple hides the rest: the Mirrors and Workspaces tabs, Fetch All, delete mode, selection mode, the compact view and theme buttons (theme stays in Settings), PR, workspace, container and branch badges, ahead, behind and changed counts, and the per-row fetch button. A credential badge appears only when a credential breaks, as **Reconnect**. Settings hides the config file, PR reviews, global gitignore and Terminals rows. The compact view is the same in both modes.
 
 ### Full view
 

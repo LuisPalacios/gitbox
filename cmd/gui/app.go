@@ -1675,6 +1675,11 @@ func (a *App) SetGlobalFolder(folder string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	// A new install (no folder yet) starts in Simple mode. Changing the root
+	// folder later, or a config that already chose a mode, keeps its mode.
+	if a.cfg.Global.Folder == "" && a.cfg.Global.UIMode == "" {
+		a.cfg.Global.UIMode = uiModeSimple
+	}
 	a.cfg.Global.Folder = folder
 	// Onboarding completes here: promote the in-memory config to "loaded"
 	// before the first save so saveConfig() accepts it. Only reachable on
@@ -1700,6 +1705,33 @@ func (a *App) GetPeriodicSync() string {
 		return "off"
 	}
 	return a.cfg.Global.PeriodicSync
+}
+
+const (
+	uiModeSimple   = "simple"
+	uiModeAdvanced = "advanced"
+)
+
+// GetUIMode returns the GUI experience, "simple" or "advanced". An unset
+// mode (configs from before the setting) reads as advanced.
+func (a *App) GetUIMode() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cfg.Global.UIMode == uiModeSimple {
+		return uiModeSimple
+	}
+	return uiModeAdvanced
+}
+
+// SetUIMode saves the GUI experience.
+func (a *App) SetUIMode(mode string) error {
+	if mode != uiModeSimple && mode != uiModeAdvanced {
+		return fmt.Errorf("invalid UI mode: %s", mode)
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cfg.Global.UIMode = mode
+	return a.saveConfig()
 }
 
 // GetLanguage returns the configured human-facing UI language.

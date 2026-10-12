@@ -60,6 +60,10 @@ type GlobalConfig struct {
 	Window        *WindowState `json:"window,omitempty"`
 	CompactWindow *WindowState `json:"compact_window,omitempty"`
 	ViewMode      string       `json:"view_mode,omitempty"` // "full" or "compact"
+	// UIMode is the GUI experience: "simple" (plain words, fewer controls) or
+	// "advanced" (everything). Empty means advanced, so configs written before
+	// the setting existed keep today's screen; onboarding writes "simple".
+	UIMode string `json:"ui_mode,omitempty"`
 	// Collapsed records which account groups and parent clones are folded in
 	// the GUI's full view. Absent means everything is expanded. Save prunes
 	// keys that no longer exist — see PruneCollapsed.
