@@ -238,6 +238,10 @@ export function GetTokenGuide(arg1) {
   return window['go']['main']['App']['GetTokenGuide'](arg1);
 }
 
+export function GetUIMode() {
+  return window['go']['main']['App']['GetUIMode']();
+}
+
 export function GetViewMode() {
   return window['go']['main']['App']['GetViewMode']();
 }
@@ -480,6 +484,10 @@ export function SetPeriodicSync(arg1) {
 
 export function SetRepoContainer(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetRepoContainer'](arg1, arg2, arg3);
+}
+
+export function SetUIMode(arg1) {
+  return window['go']['main']['App']['SetUIMode'](arg1);
 }
 
 export function SetViewMode(arg1) {

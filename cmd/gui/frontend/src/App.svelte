@@ -8,9 +8,10 @@
     summary, accountStats, themeStore, applyStatusResults, applyMirrorStatusResults,
     prsByAccount, prSettings, applyPRUpdate, lookupPRSummary,
     workspaces, workspaceOrder, workspaceMemberships, selectedClones,
-    toggleCloneSelection, clearCloneSelection, isSynced
+    toggleCloneSelection, clearCloneSelection, isSynced, simpleSummary
   } from './lib/stores';
-  import { statusColor, credColor, providerLabel, statusSymbol } from './lib/theme';
+  import { statusColor, credColor, providerLabel, statusSymbol, simpleKind, simpleColor } from './lib/theme';
+  import type { SimpleKind } from './lib/theme';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit, EventsOn } from '../wailsjs/runtime/runtime';
   import type { RepoState, SourceDTO, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
@@ -24,6 +25,12 @@
   let viewMode: 'full' | 'compact' = 'full';
   let cardsTab: 'accounts' | 'mirrors' | 'workspaces' = 'accounts';
   let languageChoice: 'en' | 'es' = 'en';
+
+  // ── Experience (issue #124) ──
+  // Simple hides git vocabulary and power features for non-developers;
+  // Advanced is everything. Persisted as global.ui_mode.
+  let uiMode: 'simple' | 'advanced' = 'advanced';
+  $: simple = uiMode === 'simple';
 
   // ── Workspaces (issue #27 / #49) ──
   // UI state for the read-only Workspaces tab.
@@ -2530,6 +2537,9 @@
     await loadCollapsed();
 
     // Restore view mode.
+    uiMode = (await bridge.getUIMode()) === 'simple' ? 'simple' : 'advanced';
+    if (uiMode === 'simple') enterSimple();
+
     const savedMode = await bridge.getViewMode();
     if (savedMode === 'compact') {
       viewMode = 'compact';
@@ -2586,6 +2596,38 @@
     await loadPRSettings();
     refreshAllPRs();
   }
+
+  async function setUIMode(mode: 'simple' | 'advanced') {
+    if (uiMode === mode) return;
+    uiMode = mode;
+    if (mode === 'simple') enterSimple();
+    await bridge.setUIMode(mode);
+  }
+
+  // enterSimple leaves the Advanced-only states Simple has no controls for.
+  function enterSimple() {
+    cardsTab = 'accounts';
+    if (selectionMode) toggleSelectionMode();
+    deleteMode = false;
+  }
+
+  // Simple row helpers: the short project name, the "not saved yet" detail,
+  // and the one primary launcher (first AI harness, else editor, else folder).
+  function shortName(repoName: string): string {
+    return repoName.split('/').pop() || repoName;
+  }
+  function simpleTip(kind: SimpleKind, state: { status: string; modified: number; untracked: number }): string {
+    if (kind === 'help') return $t('simple.tipHelp');
+    if (kind !== 'unsaved') return '';
+    if (state.status === 'ahead') return $t('simple.tipAhead');
+    if (state.status === 'no upstream') return $t('simple.tipNoUpstream');
+    return $t('simple.tipDirty', { n: (state.modified || 0) + (state.untracked || 0) });
+  }
+  $: primaryLauncher = configAIHarnesses.length > 0
+    ? { label: $t('simple.btnOpenWith', { name: configAIHarnesses[0].name }), open: (repoKey: string) => openRepoInAIHarness(repoKey, configAIHarnesses[0]) }
+    : configEditors.length > 0
+      ? { label: $t('simple.btnOpenWith', { name: configEditors[0].name }), open: (repoKey: string) => openRepoInApp(repoKey, configEditors[0].command) }
+      : { label: $t('simple.btnOpenFolder'), open: (repoKey: string) => openRepoInExplorer(repoKey) };
 
   async function setLanguage(lang: 'en' | 'es') {
     if (languageChoice === lang) return;
@@ -3222,13 +3264,24 @@
       </svg>
       <span class="title">gitbox</span>
     </div>
+    {#if simple}
+    <div class="health">
+      <span class="health-ring" style="--pct: {$simpleSummary.total ? ($simpleSummary.saved / $simpleSummary.total) * 100 : 0}">
+        <span class="health-num">{$simpleSummary.saved}/{$simpleSummary.total}</span>
+      </span>
+      <span class="health-label">{$simpleSummary.help > 0 ? $t('simple.needHelpN', { n: $simpleSummary.help })
+        : $simpleSummary.unsaved > 0 ? $t('simple.notSavedN', { n: $simpleSummary.unsaved })
+        : $t('simple.allSaved')}</span>
+    </div>
+    {:else}
     <div class="health">
       <span class="health-ring" style="--pct: {$summary.total ? ($summary.clean / $summary.total) * 100 : 0}">
         <span class="health-num">{$summary.clean}/{$summary.total}</span>
       </span>
       <span class="health-label">synced</span>
     </div>
-    {#if $mirrorSummary.total > 0}
+    {/if}
+    {#if !simple && $mirrorSummary.total > 0}
     <div class="health">
       <span class="health-ring" style="--pct: {$mirrorSummary.total ? ($mirrorSummary.active / $mirrorSummary.total) * 100 : 0}{$mirrorSummary.error > 0 ? '; --ring-accent: #D81E5B' : ''}">
         <span class="health-num">{$mirrorSummary.active}/{$mirrorSummary.total}</span>
@@ -3239,11 +3292,12 @@
     <div class="topbar-actions">
       <button class="btn-gear" on:click={syncAll}
         disabled={syncing || ($summary.behind === 0 && $summary.notCloned === 0)}
-        title="{syncing ? 'Pulling...' : 'Pull All'}">
+        title="{simple ? $t('simple.updateAll') : syncing ? 'Pulling...' : 'Pull All'}">
         <svg class="topbar-icon" class:spinning={syncing} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
           <line x1="8" y1="2" x2="8" y2="12"/><polyline points="4.5,8.5 8,12 11.5,8.5"/><line x1="4" y1="14" x2="12" y2="14"/>
         </svg>
       </button>
+      {#if !simple}
       <button class="btn-gear" on:click={runFetchAll} disabled={fetchingAll}
         title="{fetchingAll ? 'Fetching...' : 'Fetch All'}">
         <span class="sync-icon" class:spinning={fetchingAll}>&#8635;</span>
@@ -3252,6 +3306,7 @@
       <button class="btn-gear btn-select" class:select-active={selectionMode} on:click={toggleSelectionMode} disabled={cardsTab !== 'accounts' || Object.keys($accounts).length === 0} title="{selectionMode ? 'Exit selection mode' : 'Toggle clone selection mode'}">{selectionMode ? '☑' : '☐'}</button>
       <button class="btn-gear" on:click={toggleViewMode} title="Compact view">◧</button>
       <button class="btn-gear" on:click={cycleTheme} title="Theme: {themeChoice}">{themeIcon(themeChoice)}</button>
+      {/if}
       <button class="btn-gear" on:click={() => showSettings = !showSettings} title="Settings" class:active-gear={showSettings}>&#9881;</button>
     </div>
   </header>
@@ -3360,10 +3415,19 @@
   {#if showSettings}
     <div class="settings" transition:slide={{ duration: 150 }}>
       <div class="settings-row">
+        <span class="settings-label" use:tooltip={"Simple shows each project as saved or not, in plain words. Advanced shows every git detail and tool."}>{$t('settings.experience')}</span>
+        <div class="theme-toggle">
+          <button class="theme-btn" class:theme-active={uiMode === 'simple'} on:click={() => setUIMode('simple')}>{$t('settings.simple')}</button>
+          <button class="theme-btn" class:theme-active={uiMode === 'advanced'} on:click={() => setUIMode('advanced')}>{$t('settings.advanced')}</button>
+        </div>
+      </div>
+      {#if !simple}
+      <div class="settings-row">
         <span class="settings-label" use:tooltip={"Absolute path to the gitbox.json file currently in use. Click ‘Open in editor’ to inspect or hand-edit it."}>{$t('settings.config')}</span>
         <button class="settings-action-btn" on:click={() => bridge.openFileInEditor(configPath)}>{$t('settings.openInEditor')}</button>
         <span class="settings-value">{configPath}</span>
       </div>
+      {/if}
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Top-level folder where gitbox keeps every cloned repo. Each account gets a sub-folder under it."}>{$t('settings.rootFolder')}</span>
         <button class="settings-action-btn" on:click={openChangeFolder}>{$t('settings.change')}</button>
@@ -3385,7 +3449,7 @@
         </div>
       </div>
       <div class="settings-row">
-        <span class="settings-label" use:tooltip={"How often gitbox auto-fetches every repo to refresh its ahead/behind counters. ‘Off’ pauses the timer; you can still fetch manually."}>{$t('settings.periodicStatus')}</span>
+        <span class="settings-label" use:tooltip={"How often gitbox auto-fetches every repo to refresh its ahead/behind counters. ‘Off’ pauses the timer; you can still fetch manually."}>{simple ? $t('simple.checkChanges') : $t('settings.periodicStatus')}</span>
         <div class="theme-toggle">
           <button class="theme-btn" class:theme-active={fetchInterval === 'off'} on:click={() => setFetchInterval('off')}>{$t('common.off')}</button>
           <button class="theme-btn" class:theme-active={fetchInterval === '5m'} on:click={() => setFetchInterval('5m')}>5m</button>
@@ -3405,6 +3469,7 @@
           </div>
         </div>
       {/if}
+      {#if !simple}
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Show pull-request indicators on repo rows: badges for PRs you authored and PRs that requested your review."}>{$t('settings.prReviews')}</span>
         <div class="theme-toggle">
@@ -3426,6 +3491,7 @@
           <button class="theme-btn" class:theme-active={checkGitignorePref} on:click={() => { if (!checkGitignorePref) setCheckGitignorePref(true); }}>{$t('common.on')}</button>
         </div>
       </div>
+      {/if}
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Probe external tools gitbox uses (git, Git Credential Manager, ssh, …) and flag missing ones."}>{$t('settings.systemCheck')}</span>
         <button class="settings-action-btn" on:click={openDoctorModal}>{$t('settings.run')}</button>
@@ -3433,6 +3499,7 @@
           <span class="settings-sublabel settings-doctor-summary">{doctorSummary}</span>
         {/if}
       </div>
+      {#if !simple}
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Manage terminal apps, shells, and the launch profiles that pair them. Click ‘Manager’ to open the editor in its own window."}>Terminals</span>
         <button class="settings-action-btn" on:click={openTerminalsManagerWindow} disabled={terminalsManagerOpening}>
@@ -3444,6 +3511,7 @@
           {/if}
         </button>
       </div>
+      {/if}
       <div class="settings-row">
         <span class="settings-label" use:tooltip={"Currently running gitbox version (git tag + commit hash baked in at build time)."}>{$t('settings.version')}</span>
         <span class="settings-value">{appVersion}</span>
@@ -3467,6 +3535,7 @@
         </span>
       {/if}
     </button>
+    {#if !simple}
     <button class="cards-tab" class:cards-tab-active={cardsTab === 'mirrors'}
       on:click={() => selectCardsTab('mirrors')}>{$t('tab.mirrors')}
       {#if !cardsVisible && $mirrorSummary.total > 0}
@@ -3479,8 +3548,9 @@
         <span class="tab-summary">{Object.keys($workspaces).length}</span>
       {/if}
     </button>
+    {/if}
     {#if orphanCount > 0}
-      <button class="orphan-pill" on:click={showOrphanModal}>{orphanCount} orphan{orphanCount > 1 ? 's' : ''}</button>
+      <button class="orphan-pill" on:click={showOrphanModal}>{simple ? $t('simple.found', { n: orphanCount }) : `${orphanCount} orphan${orphanCount > 1 ? 's' : ''}`}</button>
     {/if}
     {#if cardsTab === 'mirrors'}
       <div class="tab-bar-actions">
@@ -3534,9 +3604,15 @@
         </div>
         <div class="card-line">
           <span class="card-provider">{providerLabel(acct.provider)}</span>
+          {#if simple}
+            {#if credBroken(credOverall)}
+              <button class="cred-badge cred-badge-err" on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')}>{$t('simple.reconnect')}</button>
+            {/if}
+          {:else}
           <button class="cred-badge cred-badge-{credOverall === 'ok' ? 'ok' : credOverall === 'error' ? 'err' : credOverall === 'warning' ? 'warn' : credOverall === 'offline' ? 'offline' : credOverall === 'none' ? 'none' : credOverall === 'unknown' ? 'pending' : ''}"
             on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')}
             title="Credential: {acct.default_credential_type || 'none'} — {credOverall}">{credOverall === 'unknown' ? '···' : credOverall === 'none' ? 'config' : credOverall === 'offline' ? 'offline' : acct.default_credential_type || 'gcm'}</button>
+          {/if}
           <span class="card-actions">
             <button class="card-btn card-btn-sm" on:click={() => openDiscover(key)} disabled={!canDiscover} title={canDiscover ? $t('account.findProjects') : DISCOVER_DISABLED}>{$t('account.find')}</button>
             <button class="card-btn card-btn-sm" on:click={() => openCreateRepo(key)} disabled={!canCreate} title={canCreate ? $t('account.createRepo') : CREATE_DISABLED}>{$t('account.new')}</button>
@@ -3558,6 +3634,7 @@
       {@const sourceCollapsed = collapsedSources.has(sourceKey)}
       {@const sourceRepoNames = Object.keys(source.repos)}
       {@const sourceIssues = attentionCount(sourceKey, sourceRepoNames, $repoStates)}
+      {@const sourceUnsaved = sourceRepoNames.filter((n) => ['unsaved', 'help'].includes(simpleKind(($repoStates[`${sourceKey}/${n}`] || { status: 'unknown' }).status))).length}
       <div class="source-group">
         <div class="source-header" role="button" tabindex="0"
           aria-expanded={!sourceCollapsed}
@@ -3573,7 +3650,8 @@
                 <LauncherMenu
                   kind="account"
                   editors={configEditors}
-                  profiles={configProfiles}
+                  profiles={simple ? [] : configProfiles}
+                  browserLabelOverride={simple ? $t('simple.openWeb') : ''}
                   aiHarnesses={configAIHarnesses}
                   {revealLabel}
                   onOpenBrowser={() => openAccountInBrowser(accountKey)}
@@ -3592,11 +3670,20 @@
             {/if}
           </div>
           <span class="collapse-summary">
+            {#if simple}
+              {$t('simple.projects', { n: sourceRepoNames.length })} ·
+              {#if sourceUnsaved === 0}
+                <span style="color:{sc('clean')}">{$t('simple.allSaved')}</span>
+              {:else}
+                <span style="color:{sc('dirty')}">{$t('simple.notSavedN', { n: sourceUnsaved })}</span>
+              {/if}
+            {:else}
             {$t('collapse.clones', { n: sourceRepoNames.length })} ·
             {#if sourceIssues === 0}
               <span style="color:{sc('clean')}">{$t('account.allGood')}</span>
             {:else}
               <span style="color:{sc('behind')}">{sourceIssues} {sourceIssues === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}</span>
+            {/if}
             {/if}
           </span>
         </div>
@@ -3630,6 +3717,63 @@
                 on:click|stopPropagation={() => toggleRepoCollapsed(repoKey, descendants, sourceKey)}
                 on:keydown|stopPropagation>{repoCollapsed ? '▸' : '▾'}</button>
             {/if}
+            {#if simple}
+              <!-- Simple row (issue #124): dot, short name, one sentence, one button, ⋯ -->
+              {@const kind = simpleKind(state.status)}
+              {@const kindColor = simpleColor(kind, $themeStore)}
+              <span class="dot" style="color: {kindColor}">●</span>
+              {#if childCount > 0}
+                <span class="repo-name" title={repoName}><span class="repo-name-toggle" role="button" tabindex="-1"
+                  on:click={(e) => { e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants, sourceKey); }}
+                  on:keydown={onActivateKey(() => toggleRepoCollapsed(repoKey, descendants, sourceKey))}>{shortName(repoName)}</span></span>
+              {:else}
+                <span class="repo-name" title={repoName}>{shortName(repoName)}</span>
+              {/if}
+              {#if childCount > 0 && collapsedRepos.has(repoKey)}
+                {@const belowUnsaved = descendants.filter((d) => ['unsaved', 'help'].includes(simpleKind(($repoStates[`${sourceKey}/${d}`] || { status: 'unknown' }).status))).length}
+                <span class="collapse-summary collapse-summary-row">
+                  {$t('collapse.below', { n: descendants.length })}{#if belowUnsaved > 0} · <span style="color:{sc('dirty')}">{$t('simple.notSavedN', { n: belowUnsaved })}</span>{/if}
+                </span>
+              {/if}
+              {#if state.status === 'syncing' || state.status === 'cloning'}
+                <div class="progress-track">
+                  <div class="progress-fill" style="width:{state.progress}%; background:{kindColor}"></div>
+                </div>
+                <span class="progress-pct" style="color:{kindColor}">{state.progress}%</span>
+              {:else}
+                <span class="status-text" style="color: {kindColor}" title={simpleTip(kind, state)}>{$t(`simple.${kind === 'busy' ? 'checking' : kind}`)}</span>
+                {#if kind === 'update'}
+                  <button class="btn-action" on:click|stopPropagation={() => syncRepo(sourceKey, repoName)}>{$t('simple.btnUpdate')}</button>
+                {:else if kind === 'online'}
+                  <button class="btn-action" on:click|stopPropagation={() => cloneRepo(sourceKey, repoName)}>{$t('simple.btnDownload')}</button>
+                {:else if kind !== 'busy' && kind !== 'checking'}
+                  <button class="btn-action" on:click|stopPropagation={() => primaryLauncher.open(repoKey)}>{primaryLauncher.label}</button>
+                {/if}
+              {/if}
+              {#if kind !== 'online'}
+                <div class="action-menu-container">
+                  <button class="btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title={$t('repo.actions')}>&#8942;</button>
+                  {#if actionMenuRepo === repoKey}
+                    <div transition:fade={{ duration: 80 }}>
+                      <LauncherMenu
+                        kind="repo"
+                        editors={configEditors}
+                        profiles={[]}
+                        aiHarnesses={configAIHarnesses}
+                        {revealLabel}
+                        browserLabelOverride={$t('simple.openWeb')}
+                        onOpenBrowser={() => openRepoInBrowser(sourceKey, repoName)}
+                        onOpenFolder={() => openRepoInExplorer(repoKey)}
+                        onOpenApp={(cmd) => openRepoInApp(repoKey, cmd)}
+                        onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
+                        onDelete={() => { actionMenuRepo = null; askDelete(sourceKey, repoName, state.status); }}
+                        deleteLabel={$t('simple.delete')}
+                      />
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            {:else}
             <span class="dot" style="color: {sc(state.status)}">{statusSymbol(state.status)}</span>
             {#if membershipsFor(repoKey).length > 0}
               <div class="ws-badge-wrap">
@@ -3797,10 +3941,15 @@
                 </div>
               {/if}
             {/if}
+            {/if}
           </div>
           {#if expandedRepo === repoKey}
             <div class="repo-detail" transition:slide={{ duration: 150 }}>
-              {#if state.status === 'upstream gone' || repoDetail?.upstreamGone}
+              {#if simple && (state.status === 'upstream gone' || repoDetail?.upstreamGone)}
+                <div class="detail-gone">
+                  <p class="detail-gone-body" style="color:{sc('upstream gone')}">&#9888; {$t('simple.gone')}</p>
+                </div>
+              {:else if state.status === 'upstream gone' || repoDetail?.upstreamGone}
                 <div class="detail-gone">
                   <div class="detail-gone-title" style="color:{sc('upstream gone')}">&#9888; WARNING: The origin repository is gone</div>
                   <p class="detail-gone-body">
@@ -3821,6 +3970,7 @@
               {:else if repoDetail?.error}
                 <span class="detail-error">{repoDetail.error}</span>
               {:else if repoDetail}
+                {#if !simple}
                 <div class="detail-header">
                   <span class="detail-branch">Branch: <strong>{repoDetail.branch}</strong></span>
                   {#if repoDetail.ahead > 0}
@@ -3830,8 +3980,9 @@
                     <span class="detail-badge" style="color:{sc('behind')}">{repoDetail.behind} behind</span>
                   {/if}
                 </div>
+                {/if}
                 {#if repoDetail.changed.length > 0}
-                  <div class="detail-section-title">Changed files <span class="sbadge" style="color:{sc('dirty')}">✎{repoDetail.changed.length}</span></div>
+                  <div class="detail-section-title">{simple ? $t('simple.changedFiles') : 'Changed files'} <span class="sbadge" style="color:{sc('dirty')}">✎{repoDetail.changed.length}</span></div>
                   {#each repoDetail.changed as file}
                     <div class="detail-file">
                       <span class="detail-kind" class:kind-added={file.kind === 'added'} class:kind-deleted={file.kind === 'deleted'} class:kind-conflict={file.kind === 'conflict'} title={kindLabel(file.kind)}>{kindIcon(file.kind)}</span>
@@ -3840,7 +3991,7 @@
                   {/each}
                 {/if}
                 {#if repoDetail.untracked.length > 0}
-                  <div class="detail-section-title">New files (untracked) <span class="sbadge" style="color:{sc('not cloned')}">?{repoDetail.untracked.length}</span></div>
+                  <div class="detail-section-title">{simple ? $t('simple.newFiles') : 'New files (untracked)'} <span class="sbadge" style="color:{sc('not cloned')}">?{repoDetail.untracked.length}</span></div>
                   {#each repoDetail.untracked as file}
                     <div class="detail-file">
                       <span class="detail-kind kind-untracked" title="Untracked">?</span>
@@ -4074,6 +4225,15 @@
 
   <!-- ── SUMMARY FOOTER ── -->
   <footer class="summary">
+    {#if simple}
+    <div class="summary-left">
+      <span class="sum" style="color:{sc('clean')}">{$t('simple.savedN', { n: $simpleSummary.saved })}</span>
+      {#if $simpleSummary.unsaved > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('dirty')}">{$t('simple.notSavedN', { n: $simpleSummary.unsaved })}</span>{/if}
+      {#if $simpleSummary.help > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('error')}">{$t('simple.needHelpN', { n: $simpleSummary.help })}</span>{/if}
+      {#if $simpleSummary.update > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('behind')}">{$t('simple.updateN', { n: $simpleSummary.update })}</span>{/if}
+      {#if $simpleSummary.online > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('not cloned')}">{$t('simple.onlineN', { n: $simpleSummary.online })}</span>{/if}
+    </div>
+    {:else}
     <div class="summary-left">
       <span class="sum" style="color:{sc('clean')}">{$summary.clean} synced</span>
       {#if $summary.syncing > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('syncing')}">{$summary.syncing} syncing</span>{/if}
@@ -4082,6 +4242,7 @@
       {#if $summary.notCloned > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('not cloned')}">{$summary.notCloned} not local</span>{/if}
       {#if $mirrorSummary.total > 0}<span class="sep">&middot;</span><span class="sum" style="color:{$mirrorSummary.error > 0 ? sc('error') : sc('clean')}">{$mirrorSummary.active}/{$mirrorSummary.total} mirrors</span>{/if}
     </div>
+    {/if}
     {#if updateDone}
       <div class="update-pill update-done">
         <span>&#10003; Updated — restart to apply</span>

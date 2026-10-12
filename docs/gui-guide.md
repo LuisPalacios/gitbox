@@ -269,6 +269,22 @@ The standard layout is `global.folder / <account> / <org|user> / repo`. Clones f
 
 ## Dashboard views
 
+### Simple and Advanced modes
+
+Gitbox has two experiences. **Simple** is for people who don't know git and only want their projects safe. **Advanced** shows every git detail and tool. I switch in **Settings → Experience**. New installs start in Simple; configs from before the setting stay in Advanced. The choice is saved as `global.ui_mode` in `gitbox.json`.
+
+In Simple, every project answers one question, "is my work safe?", with one of five states and one button:
+
+- **Saved** — everything is on the server. Button: **Open with \<AI\>**.
+- **Not saved yet** — this computer has changes the server doesn't (hover for the detail). Button: **Open with \<AI\>**, so I can ask my AI to save them.
+- **Newer version online** — the server has newer work. Button: **Update**. Gitbox never updates on its own.
+- **Only online** — the project isn't on this computer yet. Button: **Download**.
+- **Needs help** — something went wrong, for example both copies changed. I click the project to see what's wrong, and **Open with \<AI\>** lets my AI fix it.
+
+**Open with** uses the first AI harness, then the first editor when no harness is installed, then the folder. Names show without the organization prefix; hovering a name shows it in full. The ⋯ menu keeps Open on the web, the folder, editors, AI harnesses, and **Delete from this computer…**.
+
+Simple hides the rest: the Mirrors and Workspaces tabs, Fetch All, delete mode, selection mode, the compact view and theme buttons (theme stays in Settings), PR, workspace, container and branch badges, ahead, behind and changed counts, and the per-row fetch button. A credential badge appears only when a credential breaks, as **Reconnect**. Settings hides the config file, PR reviews, global gitignore and Terminals rows. The compact view is the same in both modes.
+
 ### Full view
 
 The full dashboard shows the top bar with health rings, the tab bar (Accounts/Mirrors/Workspaces), the foldable cards panel, repo or mirror detail lists, and the summary footer. Action buttons in the top bar include Pull All, Fetch All, Delete mode, and Compact view.
