@@ -470,6 +470,13 @@ func GlobalConfigSet(key, value string) error {
 	return run(".", "config", "--global", key, value)
 }
 
+// GlobalConfigReplaceAll sets a global git config key to a single value,
+// replacing every existing value. Plain GlobalConfigSet fails on a key that
+// already holds several values (exit 5), as credential.helper often does.
+func GlobalConfigReplaceAll(key, value string) error {
+	return run(".", "config", "--global", "--replace-all", key, value)
+}
+
 // GlobalConfigGet reads a global git config value.
 func GlobalConfigGet(key string) (string, error) {
 	out, err := output(".", "config", "--global", "--get", key)

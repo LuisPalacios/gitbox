@@ -10,7 +10,7 @@ Los recuentos son funciones `func Test…` de nivel superior por paquete, obteni
 
 - `pkg/adopt/` — 13 pruebas: descubrimiento de huérfanos, puntuación de cuentas (usuario embebido en la URL, username de la credencial, carpeta padre, empates ambiguos), clones anidados bajo contenedores
 - `pkg/config/` — 103 pruebas: parseo de config, migración v1/v2 → v3, operaciones CRUD, save/load, backups, preparación de test-mode, poda del estado de plegado y omisión del backup
-- `pkg/credential/` — 21 pruebas: resolución de token, validación, helpers por defecto del OS, `Check`/`FixGlobalGCMConfig` (salud de gitconfig global para GCM)
+- `pkg/credential/` — 23 pruebas: resolución de token, validación, helpers por defecto del OS, `Check`/`FixGlobalGCMConfig` (salud de gitconfig global para GCM)
 - `pkg/doctor/` — 24 pruebas: forma de la tabla de herramientas, pistas de instalación, búsquedas, comprobaciones previas por tipo de credencial, decodificación de la salida de herramientas
 - `pkg/git/` — 30 pruebas: operaciones git mediante subprocess, URLs de repo y de perfil, descubrimiento de repos anidados
 - `pkg/gitignore/` — 23 pruebas: ida y vuelta del bloque gestionado, fusión con contenido del usuario, instalación idempotente, backups, saneado de duplicados

@@ -76,7 +76,7 @@ A helper "resolves to GCM" when it is the short name `manager`, the legacy `mana
 
 gitbox detects this at startup whenever at least one account uses GCM. When the global `~/.gitconfig` has no helper resolving to GCM (or the wrong `credentialStore`), an orange warning banner appears in the GUI with a **Configure** button that:
 
-1. Writes `credential.helper = manager` + `credential.credentialStore = <os default>` to `~/.gitconfig`.
+1. Writes `credential.helper = manager` + `credential.credentialStore = <os default>` to `~/.gitconfig`. It only writes what the check flags: a helper chain that already resolves to GCM stays untouched, and a chain that doesn't is replaced as a whole (`--replace-all`), so a multi-value `credential.helper` never makes the fix fail. Browser sign-in during account setup runs the same fix first.
 2. Backfills the same OS defaults into `gitbox.json` so the check stays green even if `~/.gitconfig` is edited later.
 
 The OS defaults come from `pkg/credential.DefaultCredentialHelper()` and `pkg/credential.DefaultCredentialStore()`. Per-host overrides elsewhere in `~/.gitconfig` (for example `[credential "https://github.com"]` pinning `gh auth git-credential`) still take precedence over the global helper, so fixing the global entry is always safe.
