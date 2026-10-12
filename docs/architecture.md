@@ -490,8 +490,8 @@ Long-running operations (clone, status refresh, pull, mirror discovery, repo mov
 - **Top bar** — logo, repo health ring, mirror health ring (when mirrors exist), action buttons (Pull All, Fetch All, Delete mode, Compact view)
 - **Tab bar** — switches between Accounts, Mirrors, and Workspaces views
 - **Cards panel** — the card row under the tab bar folds; it starts folded, remembers its state in `global.collapsed.cards_open`, and unfolds on its own for zero accounts, a broken credential, or delete mode
-- **Accounts tab** — two-line account cards (credential badges, Find/New buttons) + repo detail list, rendered as a tree of nested clones at any depth; account groups and clones with clones below them collapse
-- **Mirrors tab** — mirror group cards (status dots, active/total counts) + mirror detail list with per-repo status, Discover and Check all action buttons
+- **Accounts tab** — account chips (dot + name) that open one at a time into two-line cards (credential badges, Find/New buttons) + repo detail list, rendered as a tree of nested clones at any depth; account groups and clones with clones below them collapse
+- **Mirrors tab** — mirror group chips that open into cards (status dots, active/total counts) + mirror detail list with per-repo status, Discover and Check all action buttons
 - **Workspaces tab** — discovered `.code-workspace` files with their resolved member clones
 - **Summary footer** — aggregated counts for repos and mirrors, plus the update pill when a newer release exists
 - **Compact view** — narrow sidebar mode with health ring, account pills, and mirror summary pill

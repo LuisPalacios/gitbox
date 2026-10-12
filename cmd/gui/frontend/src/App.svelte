@@ -801,6 +801,10 @@
   // dismisses that alert for the rest of the session.
   let cardsOpen = false;
   let cardsAlertDismissed = false;
+  // Inside the panel every card starts as a chip (dot + name). Clicking one
+  // opens it into the full two-line card; clicking outside it or Escape
+  // folds it back. One open card at a time, keyed "acct:", "mir:" or "ws:".
+  let expandedCard: string | null = null;
   // cardsReady holds the alert back until the config and collapse state are
   // loaded, so the panel doesn't flash open while $accounts is still empty.
   let cardsReady = false;
@@ -2929,10 +2933,12 @@
   const inPRPopover = e.target instanceof Element && e.target.closest('.pr-badge-wrap');
   if (actionMenuRepo && !inMenu) closeActionMenu();
   if (actionMenuAccount && !inMenu) closeAccountMenu();
+  if (expandedCard && !(e.target instanceof Element && e.target.closest('.card-open'))) expandedCard = null;
   if (openWsPopover && !inWsPopover) openWsPopover = null;
   if (openPRPopover && !inPRPopover) openPRPopover = null;
 }} on:keydown={(e) => {
   if (e.key === 'Escape' && openWsPopover) openWsPopover = null;
+  if (e.key === 'Escape' && expandedCard) expandedCard = null;
   if (e.key === 'Escape' && openPRPopover) openPRPopover = null;
 }} />
 
@@ -3451,8 +3457,6 @@
 
   <!-- ── TAB BAR ── -->
   <div class="cards-tab-bar">
-    <button class="cards-chevron" aria-expanded={cardsVisible} on:click={toggleCards}
-      title={cardsVisible ? $t('collapse.collapse') : $t('collapse.expand')}>{cardsVisible ? '▾' : '▸'}</button>
     <button class="cards-tab" class:cards-tab-active={cardsTab === 'accounts'}
       on:click={() => selectCardsTab('accounts')}>{$t('tab.accounts')}
       {#if !cardsVisible}
@@ -3505,7 +3509,20 @@
       {@const credOverall = credObj.status}
       {@const canDiscover = canDiscoverWith(credOverall)}
       {@const canCreate = canCreateWith(credOverall)}
-      <div class="card" class:card-delete-mode={deleteMode}
+      {#if expandedCard !== `acct:${key}`}
+      <div class="card-chip" role="button" tabindex="0" title={key}
+        on:click|stopPropagation={() => expandedCard = `acct:${key}`}
+        on:keydown={onActivateKey(() => expandedCard = `acct:${key}`)}
+        style={credBroken(credOverall) ? `background: ${resolvedTheme === 'light' ? '#fef2f2' : '#2a1215'}` : ''}>
+        {#if deleteMode}
+          <button class="btn-delete-x card-delete-btn" on:click|stopPropagation={() => askDeleteAccount(key)} title="{$t('account.delete')} {key}">&#10005;</button>
+        {:else}
+          <span class="card-dot" style="background: {cc(credOverall)}"></span>
+        {/if}
+        <span class="card-chip-name">{key}</span>
+      </div>
+      {:else}
+      <div class="card card-open" class:card-delete-mode={deleteMode}
         style={credBroken(credOverall) ? `background: ${resolvedTheme === 'light' ? '#fef2f2' : '#2a1215'}` : ''}>
         <div class="card-top">
           {#if deleteMode}
@@ -3526,6 +3543,7 @@
           </span>
         </div>
       </div>
+      {/if}
     {/each}
     <button class="card card-add" on:click={() => addAccountModal = true} title={$t('account.add')}>
       <span class="card-add-icon">+</span>
@@ -3871,7 +3889,19 @@
       {@const mstats = mirrorGroupStats[mirrorKey] || { active: 0, unchecked: 0, error: 0, total: 0 }}
       {@const mcolor = mstats.error > 0 ? sc('error') : mstats.active === mstats.total && mstats.total > 0 ? sc('clean') : sc('behind')}
       {@const mstate = mstats.error > 0 ? `${mstats.error} error${mstats.error > 1 ? 's' : ''}` : mstats.unchecked > 0 ? `${mstats.unchecked} ${$t('mirror.unchecked')}` : mstats.total > 0 ? $t('mirror.allSynced') : $t('mirror.noClones')}
-      <div class="card card-mirror" class:card-delete-mode={deleteMode}>
+      {#if expandedCard !== `mir:${mirrorKey}`}
+      <div class="card-chip" role="button" tabindex="0" title={mstate}
+        on:click|stopPropagation={() => expandedCard = `mir:${mirrorKey}`}
+        on:keydown={onActivateKey(() => expandedCard = `mir:${mirrorKey}`)}>
+        {#if deleteMode}
+          <button class="btn-delete-x card-delete-btn" on:click|stopPropagation={() => deleteMirrorGroupConfirm = mirrorKey} title="Delete mirror group {mirrorKey}">&#10005;</button>
+        {:else}
+          <span class="card-dot" style="background: {mcolor}"></span>
+        {/if}
+        <span class="card-chip-name">{mir.account_src} ↔ {mir.account_dst}</span>
+      </div>
+      {:else}
+      <div class="card card-mirror card-open" class:card-delete-mode={deleteMode}>
         <div class="card-top">
           {#if deleteMode}
             <button class="btn-delete-x card-delete-btn" on:click={() => deleteMirrorGroupConfirm = mirrorKey} title="Delete mirror group {mirrorKey}">&#10005;</button>
@@ -3888,6 +3918,7 @@
           </span>
         </div>
       </div>
+      {/if}
     {/each}
     <button class="card card-add" on:click={() => { addMirrorGroupModal = true; newMirrorKey = ''; newMirrorSrc = ''; newMirrorDst = ''; }} title={$t('mirror.addGroup')}>
       <span class="card-add-icon">+</span>
@@ -3967,7 +3998,15 @@
       {@const ws = $workspaces[wsKey]}
       {#if ws}
         {@const members = ws.members?.length ?? 0}
-        <div class="card card-workspace">
+        {#if expandedCard !== `ws:${wsKey}`}
+        <div class="card-chip" role="button" tabindex="0" title={ws.name || wsKey}
+          on:click|stopPropagation={() => expandedCard = `ws:${wsKey}`}
+          on:keydown={onActivateKey(() => expandedCard = `ws:${wsKey}`)}>
+          <span class="card-dot" style="background: {sc('clean')}"></span>
+          <span class="card-chip-name">{ws.name || wsKey}</span>
+        </div>
+        {:else}
+        <div class="card card-workspace card-open">
           <div class="card-top">
             <span class="card-dot" style="background: {sc('clean')}"></span>
             <div class="card-name">{ws.name || wsKey}</div>
@@ -3980,6 +4019,7 @@
             </span>
           </div>
         </div>
+        {/if}
       {/if}
     {/each}
   </section>
@@ -5561,22 +5601,25 @@
     z-index: 1;
   }
 
-  /* Fold chevron for the cards panel, first item of the tab bar. */
-  .cards-chevron {
-    align-self: center; margin-bottom: 4px; width: 18px; padding: 0;
-    background: none; border: none; color: var(--text-dim); cursor: pointer;
-    font-size: 16px; line-height: 1; opacity: 0.85;
-  }
-  .cards-chevron:hover { opacity: 1; color: var(--text-primary); }
   /* What a folded panel hides, summarised inside each tab. */
   .tab-summary { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; font-size: 10px; font-weight: 700; color: var(--text-muted); }
   .tab-dot { width: 6px; height: 6px; border-radius: 50%; }
 
-  .cards-row { display: flex; gap: 10px; padding: 10px 24px; overflow-x: auto; flex-shrink: 0; }
-  /* Cards grow to fit their content (flex-basis auto, no shrink) so the
-     name on line 1 is never cut; the row scrolls sideways if they overflow. */
+  /* Chips and the open card are as wide as their content, so names are
+     never cut; the row wraps instead of scrolling. */
+  .cards-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; padding: 10px 24px; flex-shrink: 0; }
+  .card-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px;
+    background: var(--bg-card); box-shadow: var(--card-shadow);
+    cursor: pointer; transition: border-color 0.15s, background 0.15s;
+    white-space: nowrap;
+  }
+  .card-chip:hover { border-color: var(--border-hover); }
+  .card-chip:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 1px; }
+  .card-chip-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
   .card {
-    flex: 1 0 auto; min-width: 200px; background: var(--bg-card); border: 1px solid var(--border);
+    flex: 0 0 auto; background: var(--bg-card); border: 1px solid var(--border);
     border-radius: 10px; padding: 8px 12px; transition: border-color 0.15s, box-shadow 0.15s;
     box-shadow: var(--card-shadow);
   }
@@ -6005,12 +6048,13 @@
 
   /* ── Add account card ── */
   .card-add {
-    min-width: 60px; max-width: 80px; display: flex; align-items: center; justify-content: center;
+    display: flex; align-items: center; justify-content: center;
+    padding: 3px 12px; border-radius: 999px; box-shadow: none;
     cursor: pointer; border-style: dashed; background: transparent;
     color: var(--text-muted); transition: all 0.15s;
   }
   .card-add:hover { border-color: var(--border-hover); color: var(--text-primary); background: var(--bg-hover); }
-  .card-add-icon { font-size: 24px; font-weight: 300; line-height: 1; }
+  .card-add-icon { font-size: 16px; font-weight: 400; line-height: 1; }
 
   /* ── Add account form ── */
   .modal-account { width: 580px; }

@@ -80,7 +80,7 @@ Once credentials are set up, the account card shows a **green badge** with the c
 
 ## Step 3: Find and add projects
 
-Click **Find** on an account card, or pick **Find projects** from the account's ⋮ menu in the repo list. Gitbox contacts your provider and lists all the repositories visible to your account.
+Open an account's card (click its chip on the **Accounts** tab) and click **Find**, or pick **Find projects** from the account's ⋮ menu in the repo list. Gitbox contacts your provider and lists all the repositories visible to your account.
 
 The discovery window features:
 
@@ -99,7 +99,7 @@ I close any dialog with **Escape** or by clicking outside it. Dialogs that are b
 
 ### Understanding account cards
 
-Each account appears as a two-line card on the **Accounts** tab: the status dot and the full account name on top, the provider, credential badge and buttons below. Cards widen to fit the name, so it's never cut. Here's what the elements mean:
+Each account appears on the **Accounts** tab as a chip with its status dot and full name, only as wide as the name. Clicking a chip opens it in place into a two-line card: the status dot and the account name on top, the provider, credential badge and buttons below. The other accounts stay as chips. One card is open at a time; clicking outside it or pressing **Escape** folds it back into its chip. Here's what the card's elements mean:
 
 - **Status dot** — takes the credential's color
 - **Account name** — click it to edit the account
@@ -114,7 +114,7 @@ Each account appears as a two-line card on the **Accounts** tab: the status dot 
 
 Cards don't repeat clone health. The account's header in the repo list shows how many clones it holds and how many need attention.
 
-If a credential is missing or broken, the entire card turns **light red** so you notice right away.
+If a credential is missing or broken, the chip and the card turn **light red** so you notice right away.
 
 ### Keeping projects in sync
 
@@ -167,7 +167,7 @@ For each adopted clone, Gitbox adds it to `gitbox.json` under the matched source
 
 ### Creating repositories
 
-Click **New** on an account card, or pick **Create repo** from the account's ⋮ menu, to create a new repository directly on the provider without leaving Gitbox.
+Click **New** on an open account card, or pick **Create repo** from the account's ⋮ menu, to create a new repository directly on the provider without leaving Gitbox.
 
 The modal asks for:
 
@@ -212,17 +212,17 @@ Mirrors keep backup copies of repos on another provider — for example, pushing
 The main screen uses two tabs above the cards section:
 
 - **Accounts** (default) — shows account cards and the repo list underneath. This is where you manage accounts, discover projects, and create repos.
-- **Mirrors** — shows mirror group cards and the mirror detail list underneath. Each mirror group appears as a card with its active/total ratio.
+- **Mirrors** — shows mirror group cards and the mirror detail list underneath. Each mirror group appears as a chip that opens into a card with its active/total ratio.
 
 Switch tabs by clicking the tab buttons. The **summary footer** at the bottom always shows both repo and mirror counts regardless of which tab is active.
 
-The cards panel under the tabs folds away so the list gets the room. It starts folded. I click the ▸ chevron at the start of the tab bar, or the active tab, to unfold it, and again to fold it; clicking another tab switches and unfolds. Gitbox remembers the choice across restarts (`global.collapsed.cards_open` in `gitbox.json`). While folded, each tab carries a summary: one credential-colored dot per account, the `active/total` mirrors, and the workspace count.
+The cards panel under the tabs folds away so the list gets the room. It starts folded. I click the active tab to unfold it, and again to fold it; clicking another tab switches and unfolds. Gitbox remembers the choice across restarts (`global.collapsed.cards_open` in `gitbox.json`). While folded, each tab carries a summary: one credential-colored dot per account, the `active/total` mirrors, and the workspace count.
 
-The panel also unfolds on its own, without changing the remembered choice, when there are no accounts yet, when an account's credential is missing or broken, and in delete mode, where the ✕ buttons live on the cards. Folding it dismisses the credential alert until the next launch.
+The panel also unfolds on its own, without changing the remembered choice, when there are no accounts yet, when an account's credential is missing or broken, and in delete mode, where the ✕ buttons live on the chips and cards. Folding it dismisses the credential alert until the next launch.
 
 ### Mirror cards
 
-Each mirror group card shows:
+Each mirror group shows as a chip (status dot and account pair) that opens into a card, like account cards. The card shows:
 
 - **Status dot** — green if all repos are active, red if errors exist, amber otherwise
 - **MIRROR label** and the `active/total` mirrors in the group, colored like the dot

@@ -80,7 +80,7 @@ Cuando las credenciales están configuradas, la tarjeta de cuenta muestra una **
 
 ## Paso 3: encontrar y añadir proyectos
 
-Haz clic en **Find** en una tarjeta de cuenta, o elige **Find projects** en el menú ⋮ de la cuenta en la lista de repos. Gitbox contacta con tu proveedor y lista todos los repositorios visibles para tu cuenta.
+Abre la tarjeta de una cuenta (haz clic en su chip en la pestaña **Accounts**) y haz clic en **Find**, o elige **Find projects** en el menú ⋮ de la cuenta en la lista de repos. Gitbox contacta con tu proveedor y lista todos los repositorios visibles para tu cuenta.
 
 La ventana de discovery incluye:
 
@@ -99,7 +99,7 @@ Cierro cualquier diálogo con **Escape** o haciendo clic fuera de él. Los diál
 
 ### Entender las tarjetas de cuenta
 
-Cada cuenta aparece como una tarjeta de dos líneas en la pestaña **Accounts**: arriba el status dot y el nombre completo de la cuenta, debajo el proveedor, el credential badge y los botones. Las tarjetas se ensanchan para que quepa el nombre, así que nunca se corta. Esto significa cada elemento:
+Cada cuenta aparece en la pestaña **Accounts** como un chip con su status dot y su nombre completo, tan ancho como el nombre. Al hacer clic en un chip se abre en su sitio como una tarjeta de dos líneas: arriba el status dot y el nombre de la cuenta, debajo el proveedor, el credential badge y los botones. Las demás cuentas siguen como chips. Hay una tarjeta abierta a la vez; al hacer clic fuera de ella o pulsar **Escape** vuelve a su chip. Esto significa cada elemento de la tarjeta:
 
 - **Status dot** — toma el color de la credencial
 - **Nombre de la cuenta** — haz clic en él para editar la cuenta
@@ -114,7 +114,7 @@ Cada cuenta aparece como una tarjeta de dos líneas en la pestaña **Accounts**:
 
 Las tarjetas no repiten la salud de los clones. La cabecera de la cuenta en la lista de repos muestra cuántos clones contiene y cuántos requieren atención.
 
-Si falta una credencial o está rota, toda la tarjeta se vuelve **rojo claro** para que lo notes de inmediato.
+Si falta una credencial o está rota, el chip y la tarjeta se vuelven **rojo claro** para que lo notes de inmediato.
 
 ### Mantener proyectos sincronizados
 
@@ -167,7 +167,7 @@ Para cada clon adoptado, Gitbox lo añade a `gitbox.json` bajo la source emparej
 
 ### Crear repositorios
 
-Haz clic en **New** en una tarjeta de cuenta, o elige **Create repo** en el menú ⋮ de la cuenta, para crear un repositorio nuevo directamente en el proveedor sin salir de Gitbox.
+Haz clic en **New** en una tarjeta de cuenta abierta, o elige **Create repo** en el menú ⋮ de la cuenta, para crear un repositorio nuevo directamente en el proveedor sin salir de Gitbox.
 
 El modal pide:
 
@@ -212,17 +212,17 @@ Los mirrors mantienen copias de backup de repos en otro proveedor: por ejemplo, 
 La pantalla principal usa dos pestañas sobre la sección de tarjetas:
 
 - **Accounts** (por defecto) — muestra tarjetas de cuenta y debajo la lista de repos. Aquí gestionas cuentas, descubres proyectos y creas repos.
-- **Mirrors** — muestra tarjetas de grupos mirror y debajo la lista de detalle de mirrors. Cada grupo mirror aparece como una tarjeta con su proporción active/total.
+- **Mirrors** — muestra tarjetas de grupos mirror y debajo la lista de detalle de mirrors. Cada grupo mirror aparece como un chip que se abre en una tarjeta con su proporción active/total.
 
 Cambia de pestaña haciendo clic en los botones de pestaña. El **summary footer** de abajo siempre muestra conteos de repos y mirrors independientemente de la pestaña activa.
 
-El panel de tarjetas bajo las pestañas se pliega para que la lista tenga el espacio. Arranca plegado. Hago clic en el chevron ▸ al inicio de la barra de pestañas, o en la pestaña activa, para desplegarlo, y otra vez para plegarlo; al hacer clic en otra pestaña cambio de pestaña y se despliega. Gitbox recuerda la elección entre reinicios (`global.collapsed.cards_open` en `gitbox.json`). Mientras está plegado, cada pestaña lleva un resumen: un punto con el color de la credencial por cuenta, los mirrors `active/total` y el número de workspaces.
+El panel de tarjetas bajo las pestañas se pliega para que la lista tenga el espacio. Arranca plegado. Hago clic en la pestaña activa para desplegarlo, y otra vez para plegarlo; al hacer clic en otra pestaña cambio de pestaña y se despliega. Gitbox recuerda la elección entre reinicios (`global.collapsed.cards_open` en `gitbox.json`). Mientras está plegado, cada pestaña lleva un resumen: un punto con el color de la credencial por cuenta, los mirrors `active/total` y el número de workspaces.
 
-El panel también se despliega solo, sin cambiar la elección recordada, cuando todavía no hay cuentas, cuando falta la credencial de una cuenta o está rota, y en delete mode, donde están los botones ✕ de las tarjetas. Plegarlo descarta la alerta de credencial hasta el siguiente arranque.
+El panel también se despliega solo, sin cambiar la elección recordada, cuando todavía no hay cuentas, cuando falta la credencial de una cuenta o está rota, y en delete mode, donde están los botones ✕ de los chips y las tarjetas. Plegarlo descarta la alerta de credencial hasta el siguiente arranque.
 
 ### Tarjetas de mirror
 
-Cada tarjeta de grupo mirror muestra:
+Cada grupo mirror se muestra como un chip (status dot y par de cuentas) que se abre en una tarjeta, como las de cuenta. La tarjeta muestra:
 
 - **Status dot** — verde si todos los repos están activos, rojo si hay errores, ámbar en caso contrario
 - Etiqueta **MIRROR** y los mirrors `active/total` del grupo, con el color del punto

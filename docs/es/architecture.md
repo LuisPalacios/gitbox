@@ -490,8 +490,8 @@ Las operaciones largas (clone, refresh de status, pull, mirror discovery, movimi
 - **Top bar** — logo, repo health ring, mirror health ring (cuando existen mirrors), botones de acción (Pull All, Fetch All, Delete mode, Compact view)
 - **Tab bar** — cambia entre las vistas Accounts, Mirrors y Workspaces
 - **Panel de tarjetas** — la fila de tarjetas bajo la barra de pestañas se pliega; arranca plegada, recuerda su estado en `global.collapsed.cards_open` y se despliega sola con cero cuentas, una credencial rota o delete mode
-- **Tab Accounts** — account cards de dos líneas (credential badges, botones Find/New) + lista de detalle de repos, mostrada como un árbol de clones anidados a cualquier profundidad; los grupos de cuenta y los clones con clones debajo se pliegan
-- **Tab Mirrors** — mirror group cards (status dots, conteos active/total) + lista de detalle de mirrors con status por repo, botones Discover y Check all
+- **Tab Accounts** — chips de cuenta (punto + nombre) que se abren de uno en uno en account cards de dos líneas (credential badges, botones Find/New) + lista de detalle de repos, mostrada como un árbol de clones anidados a cualquier profundidad; los grupos de cuenta y los clones con clones debajo se pliegan
+- **Tab Mirrors** — chips de grupo mirror que se abren en mirror group cards (status dots, conteos active/total) + lista de detalle de mirrors con status por repo, botones Discover y Check all
 - **Tab Workspaces** — archivos `.code-workspace` descubiertos con sus clones miembro resueltos
 - **Summary footer** — contadores agregados de repos y mirrors, más la píldora de actualización cuando existe una release más nueva
 - **Compact view** — modo sidebar estrecho con health ring, account pills y mirror summary pill
