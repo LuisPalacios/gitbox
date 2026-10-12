@@ -1,0 +1,9 @@
+<svg viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
+  <rect x="15" y="15" width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;"/>
+  <!-- Scaled from the source's 91-unit square to fill the 120-unit guide box. -->
+  <g transform="translate(75 75) scale(1.3187) translate(-75 -75)">
+    <rect x="34" y="33.5" width="82" height="83" rx="16" fill="none" stroke="currentColor" stroke-width="9"/>
+    <text x="42.3" y="60.4" font-family="Helvetica, Arial, sans-serif" font-size="23" font-weight="700">$</text>
+    <rect x="58.5" y="42.1" width="10.5" height="20.8"/>
+  </g>
+</svg>
