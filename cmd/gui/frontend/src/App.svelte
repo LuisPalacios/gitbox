@@ -1201,8 +1201,11 @@
   // known-broken and reloading it would just re-surface the same error
   // as a banner on top of the modal. The user's choice (Repair / Start
   // fresh / Exit) is what drives recovery, not ambient focus events.
+  // Same during first-run onboarding: until the folder step saves, there is
+  // no file to read, and a focus event would leave a stale "open …: no such
+  // file" banner behind on the dashboard.
   async function reloadFromDisk() {
-    if (cfgLoadErrorModal) return;
+    if (cfgLoadErrorModal || firstRun) return;
     try {
       const cfg = await bridge.reloadConfig();
       configStore.set(cfg);
