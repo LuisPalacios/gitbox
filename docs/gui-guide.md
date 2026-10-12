@@ -232,7 +232,7 @@ Each mirror group shows as a chip (status dot and account pair) that opens into 
 
 ### Mirror health ring
 
-When mirrors are configured, a second **health ring** appears in the top bar next to the repo sync ring. It shows `active/total` mirrors and turns red if any mirrors have errors.
+In Advanced, the top bar shows compact rings without labels. The repo ring holds a branch icon and fills as clones get synced. When mirrors are configured, a second **health ring** with a two-arrow icon fills as mirrors turn active and turns red if any mirror has errors. A small badge on each ring counts what is not there yet, and hovering a ring shows the full `synced/total` or `active/total` line.
 
 ### Mirror actions
 

@@ -232,7 +232,7 @@ Cada grupo mirror se muestra como un chip (status dot y par de cuentas) que se a
 
 ### Anillo de salud de mirror
 
-Cuando hay mirrors configurados, aparece un segundo **health ring** en la barra superior junto al sync ring de repos. Muestra `active/total` mirrors y se vuelve rojo si algún mirror tiene errores.
+En Advanced, la barra superior muestra anillos compactos sin etiquetas. El anillo de repos lleva un icono de rama y se llena a medida que los clones se sincronizan. Cuando hay mirrors configurados, un segundo **health ring** con un icono de dos flechas se llena a medida que los mirrors pasan a activos y se vuelve rojo si algún mirror tiene errores. Una pequeña insignia en cada anillo cuenta lo que aún falta, y al pasar el ratón sobre un anillo se ve la línea completa `synced/total` o `active/total`.
 
 ### Acciones de mirror
 

@@ -3319,19 +3319,35 @@
         : $t('simple.allSaved')}</span>
     </div>
     {:else}
+    <!-- Advanced: compact rings without labels. The icon names what the ring
+         tracks, the corner badge counts what is not there yet, and the hover
+         tooltip spells it out. -->
+    {@const repoPending = $summary.total - $summary.clean}
+    {@const repoTip = `${$summary.clean}/${$summary.total} synced${repoPending > 0 ? ` · ${repoPending} ${repoPending === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}` : ''}`}
     <div class="health">
-      <span class="health-ring" style="--pct: {$summary.total ? ($summary.clean / $summary.total) * 100 : 0}">
-        <span class="health-num">{$summary.clean}/{$summary.total}</span>
+      <span class="health-ring health-ring-mini" role="img" aria-label={repoTip} use:tooltip={{ text: repoTip, delay: 150 }}
+        style="--pct: {$summary.total ? ($summary.clean / $summary.total) * 100 : 0}">
+        <svg class="health-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="5" cy="3.5" r="1.6"/><circle cx="5" cy="12.5" r="1.6"/><circle cx="11" cy="6" r="1.6"/>
+          <path d="M5 5.1v5.8M11 7.6c0 2.4-6 1.6-6 3.3"/>
+        </svg>
+        {#if repoPending > 0}
+          <span class="health-badge" style="background: {sc('behind')}">{repoPending > 99 ? '99+' : repoPending}</span>
+        {/if}
       </span>
-      <span class="health-label">synced</span>
-    </div>
-    {/if}
-    {#if !simple && $mirrorSummary.total > 0}
-    <div class="health">
-      <span class="health-ring" style="--pct: {$mirrorSummary.total ? ($mirrorSummary.active / $mirrorSummary.total) * 100 : 0}{$mirrorSummary.error > 0 ? '; --ring-accent: #D81E5B' : ''}">
-        <span class="health-num">{$mirrorSummary.active}/{$mirrorSummary.total}</span>
-      </span>
-      <span class="health-label">mirrors</span>
+      {#if $mirrorSummary.total > 0}
+        {@const mirrorPending = $mirrorSummary.total - $mirrorSummary.active}
+        {@const mirrorTip = `${$mirrorSummary.active}/${$mirrorSummary.total} mirrors active${$mirrorSummary.error > 0 ? ` · ${$mirrorSummary.error} with errors` : ''}`}
+        <span class="health-ring health-ring-mini" role="img" aria-label={mirrorTip} use:tooltip={{ text: mirrorTip, delay: 150 }}
+          style="--pct: {($mirrorSummary.active / $mirrorSummary.total) * 100}{$mirrorSummary.error > 0 ? '; --ring-accent: #D81E5B' : ''}">
+          <svg class="health-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2.5 5.5h10M10 3l2.5 2.5L10 8M13.5 10.5h-10M6 8l-2.5 2.5L6 13"/>
+          </svg>
+          {#if mirrorPending > 0}
+            <span class="health-badge" style="background: {$mirrorSummary.error > 0 ? '#D81E5B' : sc('behind')}">{mirrorPending > 99 ? '99+' : mirrorPending}</span>
+          {/if}
+        </span>
+      {/if}
     </div>
     {/if}
     <div class="topbar-actions">
@@ -5754,6 +5770,16 @@
   .health-ring::before { content: ''; position: absolute; inset: 4px; background: var(--bg-base); border-radius: 50%; transition: background 0.2s; }
   .health-num { position: relative; z-index: 1; font-size: 10px; font-weight: 700; }
   .health-label { font-size: 12px; color: var(--text-muted); }
+  /* Advanced header rings: smaller, icon inside, attention count in a corner badge. */
+  .health-ring-mini { width: 28px; height: 28px; margin-right: 6px; cursor: default; }
+  .health-ring-mini::before { inset: 3px; }
+  .health-icon { position: relative; z-index: 1; width: 14px; height: 14px; color: var(--text-muted); }
+  .health-badge {
+    position: absolute; z-index: 2; top: -5px; right: -8px;
+    min-width: 15px; height: 15px; padding: 0 4px; box-sizing: border-box;
+    border-radius: 8px; border: 1.5px solid var(--bg-base);
+    color: #fff; font-size: 9px; font-weight: 700; line-height: 12px; text-align: center;
+  }
 
   .topbar-actions { display: flex; gap: 8px; }
   .topbar-icon { width: 16px; height: 16px; display: inline-block; }
