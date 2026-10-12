@@ -5945,7 +5945,7 @@
   .btn-fetch:disabled { opacity: 0.6; cursor: default; }
   /* Simple / Advanced switch in the top bar: grey pill = Simple, green = Advanced. */
   .mode-switch {
-    position: relative; width: 30px; height: 16px; padding: 0; margin: 0 4px;
+    position: relative; align-self: center; width: 30px; height: 16px; padding: 0; margin: 0 4px;
     border: none; border-radius: 8px; cursor: pointer; flex-shrink: 0;
     background: var(--border-hover); transition: background 0.18s;
   }
