@@ -80,7 +80,7 @@ Cuando las credenciales están configuradas, la tarjeta de cuenta muestra una **
 
 ## Paso 3: encontrar y añadir proyectos
 
-Haz clic en **Find projects** en una tarjeta de cuenta. Gitbox contacta con tu proveedor y lista todos los repositorios visibles para tu cuenta.
+Haz clic en **Find** en una tarjeta de cuenta, o elige **Find projects** en el menú ⋮ de la cuenta en la lista de repos. Gitbox contacta con tu proveedor y lista todos los repositorios visibles para tu cuenta.
 
 La ventana de discovery incluye:
 
@@ -99,16 +99,19 @@ Cierro cualquier diálogo con **Escape** o haciendo clic fuera de él. Los diál
 
 ### Entender las tarjetas de cuenta
 
-Cada cuenta aparece como una tarjeta en la pestaña **Accounts**. Esto significa cada elemento:
+Cada cuenta aparece como una tarjeta de dos líneas en la pestaña **Accounts**. Esto significa cada elemento:
 
+- **Status dot y proveedor** (arriba a la izquierda) — el punto toma el color de la credencial
 - **Credential badge** (arriba a la derecha) — muestra tu tipo de credencial con un fondo de color:
   - **Green** — todo funciona
   - **Orange** — hay un problema menor (por ejemplo, permisos limitados)
   - **Red** — la credencial está rota o caducada
   - **Blue "config"** — todavía no hay credencial configurada; haz clic para empezar
-- **Sync ring** — un círculo pequeño que muestra cuántos proyectos están sincronizados
-- **Find projects** — descubre repos de tu cuenta (deshabilitado si las credenciales no funcionan)
-- **Create repo** — crea un repositorio nuevo en el proveedor (deshabilitado si las credenciales no funcionan)
+- **Nombre de la cuenta** — haz clic en él para editar la cuenta
+- **Find** — descubre repos de tu cuenta (deshabilitado si las credenciales no funcionan)
+- **New** — crea un repositorio nuevo en el proveedor (deshabilitado si las credenciales no funcionan)
+
+Las tarjetas no repiten la salud de los clones. La cabecera de la cuenta en la lista de repos muestra cuántos clones contiene y cuántos requieren atención.
 
 Si falta una credencial o está rota, toda la tarjeta se vuelve **rojo claro** para que lo notes de inmediato.
 
@@ -163,7 +166,7 @@ Para cada clon adoptado, Gitbox lo añade a `gitbox.json` bajo la source emparej
 
 ### Crear repositorios
 
-Haz clic en **Create repo** en una tarjeta de cuenta para crear un repositorio nuevo directamente en el proveedor sin salir de Gitbox.
+Haz clic en **New** en una tarjeta de cuenta, o elige **Create repo** en el menú ⋮ de la cuenta, para crear un repositorio nuevo directamente en el proveedor sin salir de Gitbox.
 
 El modal pide:
 
@@ -208,18 +211,22 @@ Los mirrors mantienen copias de backup de repos en otro proveedor: por ejemplo, 
 La pantalla principal usa dos pestañas sobre la sección de tarjetas:
 
 - **Accounts** (por defecto) — muestra tarjetas de cuenta y debajo la lista de repos. Aquí gestionas cuentas, descubres proyectos y creas repos.
-- **Mirrors** — muestra tarjetas de grupos mirror y debajo la lista de detalle de mirrors. Cada grupo mirror aparece como una tarjeta con un sync ring que muestra la proporción active/total.
+- **Mirrors** — muestra tarjetas de grupos mirror y debajo la lista de detalle de mirrors. Cada grupo mirror aparece como una tarjeta con su proporción active/total.
 
 Cambia de pestaña haciendo clic en los botones de pestaña. El **summary footer** de abajo siempre muestra conteos de repos y mirrors independientemente de la pestaña activa.
+
+El panel de tarjetas bajo las pestañas se pliega para que la lista tenga el espacio. Arranca plegado. Hago clic en el chevron ▸ al inicio de la barra de pestañas, o en la pestaña activa, para desplegarlo, y otra vez para plegarlo; al hacer clic en otra pestaña cambio de pestaña y se despliega. Gitbox recuerda la elección entre reinicios (`global.collapsed.cards_open` en `gitbox.json`). Mientras está plegado, cada pestaña lleva un resumen: un punto con el color de la credencial por cuenta, los mirrors `active/total` y el número de workspaces.
+
+El panel también se despliega solo, sin cambiar la elección recordada, cuando todavía no hay cuentas, cuando falta la credencial de una cuenta o está rota, y en delete mode, donde están los botones ✕ de las tarjetas. Plegarlo descarta la alerta de credencial hasta el siguiente arranque.
 
 ### Tarjetas de mirror
 
 Cada tarjeta de grupo mirror muestra:
 
 - **Status dot** — verde si todos los repos están activos, rojo si hay errores, ámbar en caso contrario
-- Etiqueta **MIRROR** y par de cuentas (por ejemplo, `forgejo ↔ github`)
-- **Sync ring** — proporción de mirrors activos frente al total del grupo
-- Botón **Check status** — verifica estado de sync comparando commits HEAD en ambos lados
+- Etiqueta **MIRROR** y los mirrors `active/total` del grupo, con el color del punto
+- **Par de cuentas** (por ejemplo, `forgejo ↔ github`)
+- Botón **Check** — verifica estado de sync comparando commits HEAD en ambos lados
 - Una tarjeta **+** siempre visible en la pestaña Mirrors para crear un grupo mirror nuevo
 
 ### Anillo de salud de mirror
@@ -263,13 +270,13 @@ El layout estándar es `global.folder / <account> / <org|user> / repo`. Los clon
 
 ### Vista completa
 
-El dashboard completo muestra la barra superior con health rings, la barra de pestañas (Accounts/Mirrors), tarjetas, listas de detalle de repos o mirrors, y el summary footer. Los botones de acción en la barra superior incluyen Pull All, Fetch All, Delete mode y Compact view.
+El dashboard completo muestra la barra superior con health rings, la barra de pestañas (Accounts/Mirrors/Workspaces), el panel de tarjetas plegable, listas de detalle de repos o mirrors, y el summary footer. Los botones de acción en la barra superior incluyen Pull All, Fetch All, Delete mode y Compact view.
 
 ### Contraer y expandir
 
 La lista de repos se pliega a dos niveles:
 
-- **Grupos de cuenta** — hago clic en la barra de cabecera de una cuenta o en su nombre para plegar su lista de clones. Una cabecera plegada muestra cuántos clones contiene y cuántos requieren atención, así que un problema nunca queda oculto tras un pliegue. El menú ⋮ de la cabecera sigue funcionando y nunca pliega el grupo.
+- **Grupos de cuenta** — hago clic en la barra de cabecera de una cuenta o en su nombre para plegar su lista de clones. La cabecera siempre muestra cuántos clones contiene y cuántos requieren atención, plegada o no, así que un problema nunca queda oculto tras un pliegue. El menú ⋮ de la cabecera sigue funcionando y nunca pliega el grupo.
 - **Clones con clones debajo** — cualquier clon que tenga clones anidados bajo él muestra un chevron ▾ antes de su punto de estado. Al pulsar el chevron o el nombre del clon se pliega todo lo que hay debajo, a cualquier profundidad. Una fila plegada muestra cuántos clones oculta y cuántos de ellos requieren atención. Ninguno de los dos abre el detalle del repo; en el modo de selección de workspace el nombre sigue seleccionando el clon.
 
 Gitbox recuerda lo que pliego entre reinicios (`global.collapsed` en `gitbox.json`) y olvida las entradas de cuentas o clones que borro o renombro. La vista compacta mantiene su propia expansión por cuenta.
@@ -332,6 +339,7 @@ Cada grupo de source en la lista de repos tiene un **menú kebab (⋮)** en el l
 - **🌐 Open in browser** — abre la página de perfil/org del proveedor para la cuenta (por ejemplo, `https://github.com/<username>`, la página de grupo de GitLab, la página de usuario de Gitea/Forgejo).
 - **📁 Open folder** — abre la carpeta padre de la cuenta en el gestor de archivos del SO. La carpeta es la raíz natural de workspace para greps multi-repo, ediciones multi-repo o loops de shell. Si la carpeta todavía no existe (nada clonado bajo esa cuenta), la acción falla silenciosamente: clona al menos un repo primero.
 - **>\_ Open in \<terminal\>**, **✎ Open in \<editor\>**, **🤖 Open in \<AI harness\>** — las mismas entradas default-first que el kebab de repo, más submenús de categoría cuando tienes varias opciones configuradas. Sweep branches no aparece aquí: solo tiene sentido en un clon concreto.
+- **🔍 Find projects** y **＋ Create repo** — las acciones **Find** y **New** de la tarjeta de cuenta, accesibles mientras el panel de tarjetas está plegado. Ambas se deshabilitan cuando la credencial de la cuenta no llega a la API del proveedor.
 
 Los editores se auto-detectan al arrancar escaneando PATH. Gitbox escribe los editores detectados en `global.editors` en tu archivo de config con sus rutas completas. Puedes reordenar entradas o añadir editores custom editando la config: el menú siempre refleja el orden de la config.
 

@@ -216,7 +216,7 @@ Lanza `GitboxApp` en cada plataforma (`./scripts/run-commands.sh` imprime los co
 - [ ] Tab Mirrors muestra grupos y status
 - [ ] Settings: cambiar carpeta raíz, System check, Terminals Manager
 - [ ] Vista compacta y vuelta a la vista completa
-- [ ] Contraer/expandir: la cabecera de cuenta y un clon padre (chevron o nombre) se pliegan y despliegan; los pliegues sobreviven a un reinicio
+- [ ] Contraer/expandir: la cabecera de cuenta y un clon padre (chevron o nombre) se pliegan y despliegan; los pliegues sobreviven a un reinicio; el panel de tarjetas arranca plegado, se despliega con el chevron o la pestaña activa, y recuerda su estado
 ```
 
 ### Flujos de credenciales (interactivos, por plataforma)

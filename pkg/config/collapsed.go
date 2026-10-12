@@ -7,14 +7,17 @@ import (
 
 // CollapsedState lists what the GUI shows folded in the full view. It records
 // collapsed items (not expanded ones) so new sources and clones appear
-// expanded by default.
+// expanded by default. CardsOpen is the one exception: the cards panel above
+// the list starts collapsed, so it records the panel being open instead.
 type CollapsedState struct {
-	Sources []string `json:"sources,omitempty"` // source keys
-	Repos   []string `json:"repos,omitempty"`   // "source/repo" keys
+	Sources   []string `json:"sources,omitempty"`    // source keys
+	Repos     []string `json:"repos,omitempty"`      // "source/repo" keys
+	CardsOpen bool     `json:"cards_open,omitempty"` // cards panel unfolded
 }
 
 // PruneCollapsed drops collapse keys whose source or repo no longer exists,
-// dedupes and sorts the rest, and clears the field when nothing is left.
+// dedupes and sorts the rest, and clears the field when nothing is left
+// (no keys and the cards panel collapsed).
 // Save calls it so renames, deletes and moves never leave stale keys behind.
 func (c *Config) PruneCollapsed() {
 	cs := c.Global.Collapsed
@@ -36,11 +39,11 @@ func (c *Config) PruneCollapsed() {
 	slices.Sort(repos)
 	sources = slices.Compact(sources)
 	repos = slices.Compact(repos)
-	if len(sources) == 0 && len(repos) == 0 {
+	if len(sources) == 0 && len(repos) == 0 && !cs.CardsOpen {
 		c.Global.Collapsed = nil
 		return
 	}
-	c.Global.Collapsed = &CollapsedState{Sources: sources, Repos: repos}
+	c.Global.Collapsed = &CollapsedState{Sources: sources, Repos: repos, CardsOpen: cs.CardsOpen}
 }
 
 // collapsedRepoExists resolves a "source/repo" key. Repo keys usually hold a

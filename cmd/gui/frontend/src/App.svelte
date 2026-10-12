@@ -783,13 +783,65 @@
       const c = await bridge.getCollapsed();
       collapsedSources = new Set(c.sources || []);
       collapsedRepos = new Set(c.repos || []);
+      cardsOpen = !!c.cards_open;
     } catch { /* keep everything expanded */ }
+    cardsReady = true;
   }
 
   function saveCollapsed() {
-    bridge.setCollapsed({ sources: [...collapsedSources], repos: [...collapsedRepos] })
+    bridge.setCollapsed({ sources: [...collapsedSources], repos: [...collapsedRepos], cards_open: cardsOpen })
       .catch((e) => console.error('saving collapse state failed', e));
   }
+
+  // ── Cards panel (issue #123) ──
+  // The card row under the tab bar starts collapsed and remembers its state
+  // (global.collapsed.cards_open). It also opens on its own, without saving,
+  // while delete mode needs the cards' ✕ buttons or an account needs a look
+  // (no accounts yet, or a missing / broken credential). Collapsing it then
+  // dismisses that alert for the rest of the session.
+  let cardsOpen = false;
+  let cardsAlertDismissed = false;
+  // cardsReady holds the alert back until the config and collapse state are
+  // loaded, so the panel doesn't flash open while $accounts is still empty.
+  let cardsReady = false;
+  $: cardsAlert = cardsReady && (Object.keys($accounts).length === 0 ||
+    Object.keys($accounts).some((k) => credBroken(credStatuses[k]?.status)));
+  $: cardsVisible = cardsOpen || deleteMode || (cardsAlert && !cardsAlertDismissed);
+
+  function toggleCards() {
+    if (cardsVisible) {
+      cardsOpen = false;
+      cardsAlertDismissed = true;
+    } else {
+      cardsOpen = true;
+    }
+    saveCollapsed();
+  }
+
+  // selectCardsTab switches tabs; clicking the active tab folds or unfolds
+  // the panel, and switching to another tab always shows its cards.
+  function selectCardsTab(tab: typeof cardsTab) {
+    if (tab === cardsTab) {
+      toggleCards();
+      return;
+    }
+    cardsTab = tab;
+    if (selectionMode && tab !== 'accounts') toggleSelectionMode();
+    if (!cardsVisible) toggleCards();
+  }
+
+  // Credential rules shared by the account card and the account kebab.
+  function credBroken(status: string | undefined): boolean {
+    return status === 'none' || status === 'error';
+  }
+  function canDiscoverWith(status: string | undefined): boolean {
+    return !!status && status !== 'none' && status !== 'error' && status !== 'offline' && status !== 'unknown';
+  }
+  function canCreateWith(status: string | undefined): boolean {
+    return status === 'ok';
+  }
+  const DISCOVER_DISABLED = 'No working credential for this account';
+  const CREATE_DISABLED = 'Needs a working API credential (GCM that accepts the API, or a companion PAT)';
 
   // closeDetailIf drops the open detail panel when a collapse hides its row.
   function closeDetailIf(hidden: (key: string) => boolean) {
@@ -3399,12 +3451,30 @@
 
   <!-- ── TAB BAR ── -->
   <div class="cards-tab-bar">
+    <button class="cards-chevron" aria-expanded={cardsVisible} on:click={toggleCards}
+      title={cardsVisible ? $t('collapse.collapse') : $t('collapse.expand')}>{cardsVisible ? '▾' : '▸'}</button>
     <button class="cards-tab" class:cards-tab-active={cardsTab === 'accounts'}
-      on:click={() => cardsTab = 'accounts'}>{$t('tab.accounts')}</button>
+      on:click={() => selectCardsTab('accounts')}>{$t('tab.accounts')}
+      {#if !cardsVisible}
+        <span class="tab-summary">
+          {#each Object.keys($accounts) as key (key)}
+            <span class="tab-dot" style="background: {cc((credStatuses[key] || {status: 'unknown'}).status)}" title={key}></span>
+          {/each}
+        </span>
+      {/if}
+    </button>
     <button class="cards-tab" class:cards-tab-active={cardsTab === 'mirrors'}
-      on:click={() => { cardsTab = 'mirrors'; if (selectionMode) toggleSelectionMode(); }}>{$t('tab.mirrors')}</button>
+      on:click={() => selectCardsTab('mirrors')}>{$t('tab.mirrors')}
+      {#if !cardsVisible && $mirrorSummary.total > 0}
+        <span class="tab-summary" style="color: {$mirrorSummary.error > 0 ? sc('error') : sc('clean')}">{$mirrorSummary.active}/{$mirrorSummary.total}</span>
+      {/if}
+    </button>
     <button class="cards-tab" class:cards-tab-active={cardsTab === 'workspaces'}
-      on:click={() => { cardsTab = 'workspaces'; if (selectionMode) toggleSelectionMode(); }}>{$t('tab.workspaces')}</button>
+      on:click={() => selectCardsTab('workspaces')}>{$t('tab.workspaces')}
+      {#if !cardsVisible && Object.keys($workspaces).length > 0}
+        <span class="tab-summary">{Object.keys($workspaces).length}</span>
+      {/if}
+    </button>
     {#if orphanCount > 0}
       <button class="orphan-pill" on:click={showOrphanModal}>{orphanCount} orphan{orphanCount > 1 ? 's' : ''}</button>
     {/if}
@@ -3428,15 +3498,15 @@
 
   {#if cardsTab === 'accounts'}
   <!-- ── ACCOUNT CARDS ── -->
-  <section class="cards-row">
+  {#if cardsVisible}
+  <section class="cards-row" transition:slide={{ duration: 150 }}>
     {#each Object.entries($accounts) as [key, acct]}
-      {@const stats = $accountStats[key] || { total: 0, synced: 0, issues: 0 }}
       {@const credObj = credStatuses[key] || {status: 'unknown', primary: 'unknown', pat: 'unknown'}}
       {@const credOverall = credObj.status}
-      {@const canDiscover = credOverall !== 'none' && credOverall !== 'error' && credOverall !== 'offline' && credOverall !== 'unknown'}
-      {@const canCreate = credOverall === 'ok'}
+      {@const canDiscover = canDiscoverWith(credOverall)}
+      {@const canCreate = canCreateWith(credOverall)}
       <div class="card" class:card-delete-mode={deleteMode}
-        style={credOverall === 'none' || credOverall === 'error' ? `background: ${resolvedTheme === 'light' ? '#fef2f2' : '#2a1215'}` : ''}>
+        style={credBroken(credOverall) ? `background: ${resolvedTheme === 'light' ? '#fef2f2' : '#2a1215'}` : ''}>
         <div class="card-top">
           {#if deleteMode}
             <button class="btn-delete-x card-delete-btn" on:click={() => askDeleteAccount(key)} title="{$t('account.delete')} {key}">&#10005;</button>
@@ -3448,26 +3518,10 @@
             on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')}
             title="Credential: {acct.default_credential_type || 'none'} — {credOverall}">{credOverall === 'unknown' ? '···' : credOverall === 'none' ? 'config' : credOverall === 'offline' ? 'offline' : acct.default_credential_type || 'gcm'}</button>
         </div>
-        <div class="card-name card-name-edit" role="button" tabindex="0" on:click={() => openEditAccount(key)} on:keydown={onActivateKey(() => openEditAccount(key))} title="{$t('account.edit')}">{key}</div>
-        <div class="card-ring-row">
-          <svg class="mini-ring" viewBox="0 0 36 36">
-            <circle cx="18" cy="18" r="15" fill="none" stroke="#27272a" stroke-width="3"/>
-            <circle cx="18" cy="18" r="15" fill="none"
-              stroke="{stats.issues === 0 ? sc('clean') : sc('behind')}"
-              stroke-width="3" stroke-linecap="round"
-              stroke-dasharray="{(stats.synced / Math.max(stats.total, 1)) * 94.2} 94.2"
-              transform="rotate(-90 18 18)"/>
-          </svg>
-          <span class="card-stat">{stats.synced}/{stats.total}</span>
-          {#if stats.issues > 0}
-            <span class="card-issues" style="color: {sc('behind')}">{stats.issues} {stats.issues === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}</span>
-          {:else}
-            <span class="card-ok" style="color: {sc('clean')}">{$t('account.allGood')}</span>
-          {/if}
-        </div>
-        <div class="card-btn-row">
-          <button class="card-btn" on:click={() => openDiscover(key)} disabled={!canDiscover} title={canDiscover ? 'Discover repos from provider API' : 'No working credential for this account'}>{$t('account.findProjects')}</button>
-          <button class="card-btn" on:click={() => openCreateRepo(key)} disabled={!canCreate} title={canCreate ? 'Create a new repo on the provider' : 'Needs a working API credential (GCM that accepts the API, or a companion PAT)'}>{$t('account.createRepo')}</button>
+        <div class="card-line">
+          <div class="card-name card-name-edit" role="button" tabindex="0" on:click={() => openEditAccount(key)} on:keydown={onActivateKey(() => openEditAccount(key))} title="{$t('account.edit')} {key}">{key}</div>
+          <button class="card-btn card-btn-sm" on:click={() => openDiscover(key)} disabled={!canDiscover} title={canDiscover ? $t('account.findProjects') : DISCOVER_DISABLED}>{$t('account.find')}</button>
+          <button class="card-btn card-btn-sm" on:click={() => openCreateRepo(key)} disabled={!canCreate} title={canCreate ? $t('account.createRepo') : CREATE_DISABLED}>{$t('account.new')}</button>
         </div>
       </div>
     {/each}
@@ -3475,12 +3529,15 @@
       <span class="card-add-icon">+</span>
     </button>
   </section>
+  {/if}
 
   <!-- ── REPO LIST ── -->
   <section class="repo-list">
     {#each Object.entries($sources) as [sourceKey, source] (sourceKey)}
       {@const accountKey = source.account}
       {@const sourceCollapsed = collapsedSources.has(sourceKey)}
+      {@const sourceRepoNames = Object.keys(source.repos)}
+      {@const sourceIssues = attentionCount(sourceKey, sourceRepoNames, $repoStates)}
       <div class="source-group">
         <div class="source-header" role="button" tabindex="0"
           aria-expanded={!sourceCollapsed}
@@ -3504,22 +3561,24 @@
                   onOpenApp={(cmd) => openAccountInApp(accountKey, cmd)}
                   onOpenProfile={(id) => openAccountProfile(accountKey, id)}
                   onOpenAIHarness={(h) => openAccountInAIHarness(accountKey, h)}
+                  onFind={() => { actionMenuAccount = null; openDiscover(accountKey); }}
+                  findEnabled={canDiscoverWith(credStatuses[accountKey]?.status)}
+                  findDisabledReason={DISCOVER_DISABLED}
+                  onCreate={() => { actionMenuAccount = null; openCreateRepo(accountKey); }}
+                  createEnabled={canCreateWith(credStatuses[accountKey]?.status)}
+                  createDisabledReason={CREATE_DISABLED}
                 />
               </div>
             {/if}
           </div>
-          {#if sourceCollapsed}
-            {@const names = Object.keys(source.repos)}
-            {@const issues = attentionCount(sourceKey, names, $repoStates)}
-            <span class="collapse-summary">
-              {$t('collapse.clones', { n: names.length })} ·
-              {#if issues === 0}
-                <span style="color:{sc('clean')}">{$t('account.allGood')}</span>
-              {:else}
-                <span style="color:{sc('behind')}">{issues} {issues === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}</span>
-              {/if}
-            </span>
-          {/if}
+          <span class="collapse-summary">
+            {$t('collapse.clones', { n: sourceRepoNames.length })} ·
+            {#if sourceIssues === 0}
+              <span style="color:{sc('clean')}">{$t('account.allGood')}</span>
+            {:else}
+              <span style="color:{sc('behind')}">{sourceIssues} {sourceIssues === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}</span>
+            {/if}
+          </span>
         </div>
         {#if !sourceCollapsed}
         {#each nestedRepoRows(sourceKey, source, repoNesting, collapsedRepos) as { repoName, depth, childCount, descendants } (repoName)}
@@ -3804,46 +3863,33 @@
     {/if}
   </div>
   {/if}
-  <section class="cards-row">
+  {#if cardsVisible}
+  <section class="cards-row" transition:slide={{ duration: 150 }}>
     {#each Object.entries($mirrors) as [mirrorKey, mir]}
       {@const mstats = mirrorGroupStats[mirrorKey] || { active: 0, unchecked: 0, error: 0, total: 0 }}
+      {@const mcolor = mstats.error > 0 ? sc('error') : mstats.active === mstats.total && mstats.total > 0 ? sc('clean') : sc('behind')}
+      {@const mstate = mstats.error > 0 ? `${mstats.error} error${mstats.error > 1 ? 's' : ''}` : mstats.unchecked > 0 ? `${mstats.unchecked} ${$t('mirror.unchecked')}` : mstats.total > 0 ? $t('mirror.allSynced') : $t('mirror.noClones')}
       <div class="card card-mirror" class:card-delete-mode={deleteMode}>
         <div class="card-top">
           {#if deleteMode}
             <button class="btn-delete-x card-delete-btn" on:click={() => deleteMirrorGroupConfirm = mirrorKey} title="Delete mirror group {mirrorKey}">&#10005;</button>
           {:else}
-            <span class="card-dot" style="background: {mstats.error > 0 ? sc('error') : mstats.active === mstats.total && mstats.total > 0 ? sc('clean') : sc('behind')}"></span>
+            <span class="card-dot" style="background: {mcolor}"></span>
           {/if}
           <span class="card-provider">MIRROR</span>
+          <span class="card-count" style="color: {mcolor}" title={mstate}>{mstats.active}/{mstats.total}</span>
         </div>
-        <div class="card-name card-mirror-name">{mir.account_src} ↔ {mir.account_dst}</div>
-        <div class="card-ring-row">
-          <svg class="mini-ring" viewBox="0 0 36 36">
-            <circle cx="18" cy="18" r="15" fill="none" stroke="#27272a" stroke-width="3"/>
-            <circle cx="18" cy="18" r="15" fill="none"
-              stroke="{mstats.error > 0 ? sc('error') : sc('clean')}"
-              stroke-width="3" stroke-linecap="round"
-              stroke-dasharray="{(mstats.active / Math.max(mstats.total, 1)) * 94.2} 94.2"
-              transform="rotate(-90 18 18)"/>
-          </svg>
-          <span class="card-stat">{mstats.active}/{mstats.total}</span>
-          {#if mstats.error > 0}
-            <span class="card-issues" style="color: {sc('error')}">{mstats.error} error{mstats.error > 1 ? 's' : ''}</span>
-          {:else if mstats.unchecked > 0}
-            <span class="card-issues" style="color: {sc('behind')}">{mstats.unchecked} {$t('mirror.unchecked')}</span>
-          {:else if mstats.total > 0}
-            <span class="card-ok" style="color: {sc('clean')}">{$t('mirror.allSynced')}</span>
-          {:else}
-            <span class="card-ok" style="color: {sc('behind')}">{$t('mirror.noClones')}</span>
-          {/if}
+        <div class="card-line">
+          <div class="card-name card-mirror-name" title="{mir.account_src} ↔ {mir.account_dst}">{mir.account_src} ↔ {mir.account_dst}</div>
+          <button class="card-btn card-btn-sm" on:click={() => checkMirrorStatus(mirrorKey)} title={$t('mirror.checkStatus')}>{$t('mirror.check')}</button>
         </div>
-        <button class="card-btn" on:click={() => checkMirrorStatus(mirrorKey)}>{$t('mirror.checkStatus')}</button>
       </div>
     {/each}
     <button class="card card-add" on:click={() => { addMirrorGroupModal = true; newMirrorKey = ''; newMirrorSrc = ''; newMirrorDst = ''; }} title={$t('mirror.addGroup')}>
       <span class="card-add-icon">+</span>
     </button>
   </section>
+  {/if}
 
   <!-- ── MIRROR DETAIL LIST ── -->
   {#if Object.keys($mirrors).length > 0}
@@ -3911,27 +3957,27 @@
 
   {:else}
   <!-- ── WORKSPACE CARDS ── -->
-  <section class="cards-row">
+  {#if cardsVisible}
+  <section class="cards-row" transition:slide={{ duration: 150 }}>
     {#each $workspaceOrder.length > 0 ? $workspaceOrder : Object.keys($workspaces) as wsKey}
       {@const ws = $workspaces[wsKey]}
       {#if ws}
+        {@const members = ws.members?.length ?? 0}
         <div class="card card-workspace">
           <div class="card-top">
             <span class="card-dot" style="background: {sc('clean')}"></span>
             <span class="card-provider">CODE</span>
+            <span class="card-count" title="{members} member{members === 1 ? '' : 's'}">{members}</span>
           </div>
-          <div class="card-name">{ws.name || wsKey}</div>
-          <div class="card-ring-row">
-            <span class="card-stat">{ws.members?.length ?? 0}</span>
-            <span class="card-ok" style="color: {sc('clean')}">member{(ws.members?.length ?? 0) === 1 ? '' : 's'}</span>
-          </div>
-          <div class="card-btn-row">
-            <button class="card-btn" on:click={() => openWorkspace(wsKey)} disabled={workspaceBusy}>{$t('workspace.open')}</button>
+          <div class="card-line">
+            <div class="card-name" title={ws.name || wsKey}>{ws.name || wsKey}</div>
+            <button class="card-btn card-btn-sm" on:click={() => openWorkspace(wsKey)} disabled={workspaceBusy}>{$t('workspace.open')}</button>
           </div>
         </div>
       {/if}
     {/each}
   </section>
+  {/if}
 
   <!-- ── WORKSPACE DETAIL LIST ── -->
   {#if Object.keys($workspaces).length > 0}
@@ -5509,14 +5555,26 @@
     z-index: 1;
   }
 
-  .cards-row { display: flex; gap: 10px; padding: 18px 24px; overflow-x: auto; flex-shrink: 0; }
+  /* Fold chevron for the cards panel, first item of the tab bar. */
+  .cards-chevron {
+    align-self: center; margin-bottom: 4px; width: 18px; padding: 0;
+    background: none; border: none; color: var(--text-dim); cursor: pointer;
+    font-size: 16px; line-height: 1; opacity: 0.85;
+  }
+  .cards-chevron:hover { opacity: 1; color: var(--text-primary); }
+  /* What a folded panel hides, summarised inside each tab. */
+  .tab-summary { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; font-size: 10px; font-weight: 700; color: var(--text-muted); }
+  .tab-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  .cards-row { display: flex; gap: 10px; padding: 10px 24px; overflow-x: auto; flex-shrink: 0; }
   .card {
-    flex: 1; min-width: 165px; background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 10px; padding: 12px 14px; transition: border-color 0.15s, box-shadow 0.15s;
+    flex: 1; min-width: 200px; background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 8px 12px; transition: border-color 0.15s, box-shadow 0.15s;
     box-shadow: var(--card-shadow);
   }
   .card:hover { border-color: var(--border-hover); }
-  .card-top { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+  .card-top { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .card-count { font-size: 10px; font-weight: 700; color: var(--text-muted); }
   .card-dot { width: 7px; height: 7px; border-radius: 50%; }
   .card-provider { font-size: 10px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.3px; flex: 1; }
   .cred-badge {
@@ -5576,14 +5634,12 @@
   .card-name-edit { cursor: pointer; }
   .card-name-edit:hover { text-decoration: underline; }
 
-  .card-ring-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-  .mini-ring { width: 28px; height: 28px; flex-shrink: 0; }
-  .card-stat { font-size: 12px; font-weight: 600; color: var(--text-repo); }
-  .card-issues { font-size: 11px; font-weight: 600; }
-  .card-ok { font-size: 11px; font-weight: 600; }
-
-  .card-btn-row { display: flex; gap: 4px; }
-  .card-btn-row .card-btn { flex: 1; }
+  /* Second card line: name on the left, one-word buttons on the right. */
+  .card-line { display: flex; align-items: center; gap: 4px; }
+  .card-line .card-name {
+    flex: 1; min-width: 0; margin-bottom: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   .card-btn {
     width: 100%; padding: 5px 0; background: transparent; border: 1px solid var(--border);
     color: var(--text-secondary); border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 500;
@@ -5591,6 +5647,7 @@
   }
   .card-btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
   .card-btn:disabled { opacity: 0.35; cursor: default; }
+  .card-btn-sm { width: auto; flex: 0 0 auto; padding: 2px 8px; }
 
   .repo-list { flex: 1; padding: 0 24px 12px; overflow-y: auto; min-height: 0; }
   .source-group { margin-bottom: 6px; }
