@@ -16,7 +16,7 @@
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit, EventsOn } from '../wailsjs/runtime/runtime';
   import type { RepoState, SourceDTO, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
-  import BrandIcon from './lib/BrandIcon.svelte';
+  import BrandIcon, { terminalLogo } from './lib/BrandIcon.svelte';
   import UIIcon from './lib/UIIcon.svelte';
   import PRPopover from './lib/PRPopover.svelte';
   import TerminalsModal from './lib/TerminalsModal.svelte';
@@ -2649,9 +2649,6 @@
     if (k.includes('visual studio code') || k.includes('vs code') || k.includes('vscode') || /(^|[\\/ ])code(\.exe|\.cmd)?$/.test(e.command.toLowerCase())) return 'vscode';
     return 'ide';
   }
-  function terminalIcon(p: TerminalProfileInfo): string {
-    return `${p.name} ${p.terminal}`.toLowerCase().includes('wezterm') ? 'wezterm' : 'terminal';
-  }
 
   async function setLanguage(lang: 'en' | 'es') {
     if (languageChoice === lang) return;
@@ -3009,7 +3006,7 @@
     {#if quickProfile}
       {@const pr = quickProfile}
       <button class="btn-launch" title={$t('simple.btnOpenWith', { name: pr.name })} aria-label={$t('simple.btnOpenWith', { name: pr.name })}
-        on:click|stopPropagation={() => openRepoProfile(repoKey, pr.id)}><BrandIcon name={terminalIcon(pr)} /></button>
+        on:click|stopPropagation={() => openRepoProfile(repoKey, pr.id)}><BrandIcon name={terminalLogo(pr.terminal, pr.shell)} /></button>
     {/if}
   </span>
 {/snippet}

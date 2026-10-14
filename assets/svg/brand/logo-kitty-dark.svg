@@ -1,0 +1,5 @@
+<svg viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
+  <rect x="15" y="15" width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;"/>
+  <!-- Hand-drawn: kitty, a cat-eared terminal with a >_ cut out. -->
+  <path d="M15 15 L52 42 H98 L135 15 V121 Q135 135 121 135 H29 Q15 135 15 121 Z M40 64 L50 64 L68 82 L50 100 L40 100 L58 82 Z M74 96 H106 V106 H74 Z"/>
+</svg>

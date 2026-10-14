@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg height="100%" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;" width="100%" version="1.1" viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" xmlns:bx="https://boxy-svg.com">
+  <defs>
+    <bx:grid x="0" y="0" width="15" height="15"/>
+  </defs>
+  <rect width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;" x="15" y="15"/>
+  <g>
+    <text style="font-style: normal; font-variant: normal; font-weight: normal; font-stretch: normal; line-height: 0%; font-family: &quot;DejaVu Serif&quot;; text-align: start; writing-mode: lr-tb; text-anchor: start; fill: rgb(255, 94, 0); fill-opacity: 1; stroke: rgb(255, 0, 0); stroke-width: 1.2; stroke-linecap: butt; stroke-linejoin: miter; stroke-miterlimit: 4; stroke-dasharray: none; stroke-opacity: 1; white-space: pre; display: inline; fill-rule: nonzero; clip-rule: nonzero;" x="2.2518597" y="46.207344" id="text2393" transform="matrix(2.543784, 0, 0, 2.456969, 15, 15)"><tspan id="tspan2395" x="2.2518597" y="46.207344" style="font-size:59.79689407px;line-height:1.25;fill:#ff5e00;fill-opacity:1;stroke:#ff0000;stroke-width:1.19999993;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1">X</tspan></text>
+    <text style="font-style: normal; font-variant: normal; font-weight: normal; font-stretch: normal; line-height: 0%; font-family: &quot;URW Bookman&quot;; text-align: start; writing-mode: lr-tb; text-anchor: start; fill: rgb(0, 0, 241); fill-opacity: 1; stroke: rgb(0, 162, 255); stroke-width: 0.6; stroke-linecap: butt; stroke-linejoin: miter; stroke-miterlimit: 4; stroke-dasharray: none; stroke-opacity: 1; white-space: pre; fill-rule: nonzero; clip-rule: nonzero;" x="5.3948884" y="45.424522" id="text3153" transform="matrix(2.782121, 0, 0, 2.246487, 15, 15)"><tspan id="tspan3155" x="5.3948884" y="45.424522" style="font-size:52.76168442px;line-height:1.25;stroke-width:0.60000002;stroke-miterlimit:4;stroke-dasharray:none">T</tspan></text>
+  </g>
+</svg>

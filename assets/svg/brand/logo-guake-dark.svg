@@ -1,0 +1,7 @@
+<svg viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
+  <rect x="15" y="15" width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;"/>
+  <!-- Hand-drawn: Guake, a drop-down console hanging from the top edge. -->
+  <rect x="15" y="15" width="120" height="13" rx="4"/>
+  <path d="M28.5 28 V117 Q28.5 130.5 42 130.5 H108 Q121.5 130.5 121.5 117 V28" fill="none" stroke="currentColor" stroke-width="9"/>
+  <path d="M52 64 L75 87 L98 64" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

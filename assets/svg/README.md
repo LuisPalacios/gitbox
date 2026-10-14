@@ -13,7 +13,11 @@ Each tool has up to two files:
 
 When one of the two is missing, both themes use the other. The generic `ai` sparkle only has a `-dark` file, so it shows in the text colour in both themes.
 
-The code looks up these names: `claude`, `openai`, `gemini`, `cursor`, `vscode`, `zed`, `wezterm` (AI harnesses, editors and terminal), plus the generic `ai`, `ide` and `terminal` for tools without a known logo. A new name needs a matching rule in `harnessIcon`, `editorIcon` or `terminalIcon` in `cmd/gui/frontend/src/App.svelte`.
+The code looks up these names: `claude`, `openai`, `gemini`, `cursor` (AI harnesses), `vscode`, `zed` (editors), plus the generic `ai`, `ide` and `terminal` for tools without a known logo. A new AI harness or editor name needs a matching rule in `harnessIcon` or `editorIcon` in `cmd/gui/frontend/src/App.svelte`.
+
+Terminal logos are named after the terminal app's id in `pkg/terminals/catalog.go`, so a new one needs no code: `alacritty`, `conemu`, `foot`, `ghostty`, `gnome-terminal`, `guake`, `hyper`, `iterm`, `kitty`, `konsole`, `mintty`, `tabby`, `terminator`, `tilda`, `warp`, `wezterm` and `xterm`. Two ids map to other names in `terminalLogo` (`cmd/gui/frontend/src/lib/BrandIcon.svelte`): `wt` uses `windows-terminal`, and Terminal.app's `terminal` uses `macos-terminal`, because `terminal` is the generic fallback. Windows bare-shell profiles show their shell's logo: `powershell`, `cmd`, `git-bash` or `wsl`.
+
+To find, fit and preview new logos, I use the `preparing-brand-logos` skill (`.claude/skills/preparing-brand-logos/`).
 
 ## Top-bar icons (`ui/`)
 

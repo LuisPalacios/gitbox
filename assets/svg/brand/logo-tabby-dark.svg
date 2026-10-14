@@ -1,0 +1,5 @@
+<svg viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
+  <rect x="15" y="15" width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;"/>
+  <!-- Hand-drawn: Tabby chevron. -->
+  <path d="M22 15 H58 L128 75 L58 135 H22 L92 75 Z"/>
+</svg>

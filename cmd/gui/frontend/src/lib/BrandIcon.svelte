@@ -1,3 +1,23 @@
+<script module lang="ts">
+  import { brand } from 'virtual:icons';
+
+  // Logo names that differ from the terminal app id (pkg/terminals/catalog.go).
+  // Terminal.app's id is "terminal", which is the generic fallback's name.
+  const TERMINAL_LOGO: Record<string, string> = { wt: 'windows-terminal', terminal: 'macos-terminal' };
+  // Bare-shell profiles have no terminal app, so they show their shell's logo.
+  const SHELL_LOGO: Record<string, string> = { pwsh: 'powershell', powershell: 'powershell', cmd: 'cmd', 'git-bash': 'git-bash', wsl: 'wsl' };
+
+  // terminalLogo picks the logo for a terminal profile, or for a terminal app
+  // when shell is omitted: the app's own logo when assets/svg/brand/ has one,
+  // else the generic terminal.
+  export function terminalLogo(terminal: string, shell = ''): string {
+    const name = terminal
+      ? (TERMINAL_LOGO[terminal] ?? terminal)
+      : (SHELL_LOGO[shell.startsWith('wsl-') ? 'wsl' : shell] ?? '');
+    return brand[name] ? name : 'terminal';
+  }
+</script>
+
 <script lang="ts">
   // BrandIcon — tool logos for the repo-row launch buttons (issue #124).
   // The art lives in assets/svg/brand/ and reaches the app through the
@@ -5,7 +25,6 @@
   // (logo-<name>.svg) as drawn; dark theme shows the single-colour version
   // (logo-<name>-dark.svg) in the theme's text colour. Each theme falls back
   // to the other file when its own is missing.
-  import { brand } from 'virtual:icons';
   import { themeStore } from './stores';
 
   export let name: string;

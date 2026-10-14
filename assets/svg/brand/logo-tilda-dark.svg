@@ -1,0 +1,7 @@
+<svg viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
+  <rect x="15" y="15" width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;"/>
+  <!-- Hand-drawn: Tilda, a drop-down window with a tilde (its colour logo is Tux, which WSL already uses). -->
+  <path d="M15 27 Q15 15 27 15 H123 Q135 15 135 27 V40 H15 Z"/>
+  <path d="M19.5 40 V118 Q19.5 130.5 32 130.5 H118 Q130.5 130.5 130.5 118 V40" fill="none" stroke="currentColor" stroke-width="9"/>
+  <path d="M40 92 C48 72 62 72 75 85 C88 98 102 98 110 78" fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round"/>
+</svg>
