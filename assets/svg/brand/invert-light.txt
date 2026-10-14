@@ -7,6 +7,5 @@ conemu
 foot
 gnome-terminal
 hyper
-macos-terminal
 warp
 windows-terminal
