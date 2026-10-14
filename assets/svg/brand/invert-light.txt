@@ -3,7 +3,6 @@
 # hues kept (CSS invert + hue-rotate). One logo name per line.
 alacritty
 cmd
-conemu
 foot
 gnome-terminal
 hyper

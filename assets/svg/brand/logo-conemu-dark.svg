@@ -1,8 +1,5 @@
 <svg viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
-  <g transform="matrix(1.25, 0, 0, 1.25, -18.75, -18.75)">
-  <!-- Hand-drawn: ConEmu, a monitor on a stand showing its E mark. -->
-  <rect x="19.5" y="19.5" width="111" height="88" rx="8" fill="none" stroke="currentColor" stroke-width="9"/>
-  <path d="M96 42 H54 V85 H96 M54 63.5 H90" fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M62 112 H88 L96 135 H54 Z"/>
-  </g>
+  <!-- Drawn from logo-conemu.svg: rounded frame and the "ce" mark (ring, stem and bar). -->
+  <rect x="5" y="5" width="140" height="140" rx="16" fill="none" stroke="currentColor" stroke-width="10"/>
+  <path d="M 126 75 A 51 51 0 1 0 115.19 106.40 M 75 24 V 126 M 75 75 H 126" fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round"/>
 </svg>
