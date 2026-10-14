@@ -1,8 +1,9 @@
 <svg viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
-  <g transform="matrix(1.25, 0, 0, 1.25, -18.75, -18.75)">
-  <!-- Hand-drawn: Tilda, a drop-down window with a tilde (its colour logo is Tux, which WSL already uses). -->
-  <path d="M15 27 Q15 15 27 15 H123 Q135 15 135 27 V40 H15 Z"/>
-  <path d="M19.5 40 V118 Q19.5 130.5 32 130.5 H118 Q130.5 130.5 130.5 118 V40" fill="none" stroke="currentColor" stroke-width="9"/>
-  <path d="M40 92 C48 72 62 72 75 85 C88 98 102 98 110 78" fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round"/>
+  <!-- Drawn from logo-tilda.svg on its 44x34 grid: window frame, the swoosh, and Tux's head with eyes and beak cut out. -->
+  <g transform="matrix(3.4091, 0, 0, 3.4091, 0, 13.636)">
+    <path d="M0 1H44V35H0Z M2.6 3.6V32.4H41.4V3.6Z"/>
+    <path d="M 3 28.6 C 5 24, 9 20.6, 15 19.4 L 33 19.4 C 36.6 19, 39 17.4, 40.6 14.4 C 40.8 18, 39.6 21.6, 36.6 23.8 C 33 25.8, 28 26, 22 26 L 12 26 C 8 26.2, 5 27, 3 28.6 Z"/>
+    <path d="M 16 19.6 C 15.4 12, 16.8 5.2, 22.5 5.2 C 28.2 5.2, 29.6 12, 29 19.6 Z M 17.7 12.7 a 1.6 2.1 0 1 0 3.2 0 a 1.6 2.1 0 1 0 -3.2 0 Z M 24.1 12.7 a 1.6 2.1 0 1 0 3.2 0 a 1.6 2.1 0 1 0 -3.2 0 Z M 18 16.6 C 19 14.6, 26 14.6, 27 16.6 C 27 18.2, 24.6 19.2, 22.5 19.2 C 20.4 19.2, 18 18.2, 18 16.6 Z"/>
+    <path d="M 19.3 13.3 a 0.75 0.9 0 1 0 1.5 0 a 0.75 0.9 0 1 0 -1.5 0 Z M 24.2 13.3 a 0.75 0.9 0 1 0 1.5 0 a 0.75 0.9 0 1 0 -1.5 0 Z"/>
   </g>
 </svg>
