@@ -108,6 +108,7 @@ scripts/
   skills/
     fixing-markdown/      Markdown lint + format
     merge-pr/             Merge a PR (post-/work-issue), clean up worktree + branch
+    preparing-brand-logos/  Find tool logos, fit them into the 150x150 brand template (tmp/), draft -dark versions
     ship-builds/          Build + stage GitboxApp on remote hosts in .env
     test-plan/            Pre-PR and release verification
     work-issue/           Worktree → plan → code → push → PR (stops before merge)

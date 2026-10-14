@@ -329,6 +329,8 @@ Los logos de herramientas de cada fila de repo y los iconos de la barra superior
 
 El plugin de Vite `cmd/gui/frontend/vite-plugin-icons.ts` hace la conversión en cada build del frontend. Limpia cada fichero con svgo (quita el recuadro guía oculto y los metadatos del editor, elimina los tamaños fijos) y expone el resultado como el módulo `virtual:icons` que leen `BrandIcon.svelte` y `UIIcon.svelte`. Un fichero de un solo color con un degradado, filtro, máscara, patrón o imagen hace fallar el build con su nombre de fichero. [`assets/svg/README.md`](../../assets/svg/README.md) tiene las reglas de nombres y de dibujo.
 
+Para añadir un logo de herramienta nuevo uso el skill `preparing-brand-logos`. Descarga fuentes candidatas en la carpeta `tmp/` (ignorada por git), ajusta cada una a la plantilla de 150×150 con `scripts/fit_logo.py` y escribe `tmp/preview.html` con todos los logos sobre fondo claro y oscuro a tamaño real. Reviso y edito los ficheros ahí, y solo después los muevo a `assets/svg/brand/`.
+
 ---
 
 ## Capturas del README
