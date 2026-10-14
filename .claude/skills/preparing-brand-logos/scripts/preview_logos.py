@@ -4,8 +4,8 @@
 # dependencies = []
 # ///
 """Write <folder>/preview.html: every logo-*.svg in the folder on light and
-dark backgrounds, at the app's real sizes (16, 24) and at 120px with the
-15..135 guide box outlined.
+dark backgrounds, at the app's real sizes (16, 24) and at 150px with the
+canvas edge outlined (the app clips anything past it).
 
 Usage:
     uv run preview_logos.py <folder>
@@ -25,14 +25,11 @@ PAGE = """<!doctype html>
   th {{ text-align: left; font-weight: 600; }}
   .light {{ background: #ffffff; color: #1f2328; }}
   .dark {{ background: #1e1e1e; color: #d4d4d4; }}
-  .big {{ position: relative; width: 150px; height: 150px; }}
-  .big img {{ width: 150px; height: 150px; }}
-  .guide {{ position: absolute; left: 15px; top: 15px; width: 120px; height: 120px;
-           outline: 1px dashed #e5534b; pointer-events: none; }}
+  .big {{ display: block; width: 150px; height: 150px; outline: 1px dashed #e5534b; }}
 </style>
 <table>
-<tr><th>file</th><th class="light">16</th><th class="light">24</th><th class="light">120 + guide</th>
-<th class="dark">16</th><th class="dark">24</th><th class="dark">120 + guide</th></tr>
+<tr><th>file</th><th class="light">16</th><th class="light">24</th><th class="light">150 + edge</th>
+<th class="dark">16</th><th class="dark">24</th><th class="dark">150 + edge</th></tr>
 {rows}
 </table>
 """
@@ -45,7 +42,7 @@ def cells(src: str) -> str:
     for theme in ('light', 'dark'):
         out.append(f'<td class="{theme}"><img src="{src}" width="16" height="16"></td>')
         out.append(f'<td class="{theme}"><img src="{src}" width="24" height="24"></td>')
-        out.append(f'<td class="{theme}"><div class="big"><img src="{src}"><div class="guide"></div></div></td>')
+        out.append(f'<td class="{theme}"><img class="big" src="{src}"></td>')
     return ''.join(out)
 
 

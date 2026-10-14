@@ -3,7 +3,7 @@
   <defs>
     <bx:grid x="0" y="0" width="15" height="15"/>
   </defs>
-  <rect width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;" x="15" y="15"/>
+  <g transform="matrix(1.25, 0, 0, 1.25, -18.75, -18.75)">
   <!-- Source: https://raw.githubusercontent.com/GNOME/gnome-terminal/master/data/icons/hicolor_apps_scalable_org.gnome.Terminal.svg; fitted to the painted artwork 12, 12, 104, 104. -->
   <g transform="matrix(1.1538, 0, 0, 1.1538, 1.1538, 1.1538)" style="fill-rule:nonzero;clip-rule:nonzero;stroke-linecap:butt;stroke-linejoin:miter;display:inline;enable-background:new">
 <!--
@@ -231,6 +231,7 @@
          style="opacity:1;vector-effect:none;fill:url(#linearGradient1950);fill-opacity:1;stroke:none;stroke-width:8;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;marker:none;marker-start:none;marker-mid:none;marker-end:none;paint-order:normal"
          id="rect1059" />
     </g>
+  </g>
   </g>
   </g>
 </svg>

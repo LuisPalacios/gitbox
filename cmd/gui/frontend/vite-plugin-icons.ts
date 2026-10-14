@@ -45,8 +45,9 @@ const stripEditorData: CustomPlugin = {
   }),
 };
 
-// Drop the hidden guide box (and anything else hidden): the files keep it so
-// every icon is drawn inside the same frame, but it must not reach the app.
+// Drop the hidden guide box (and anything else hidden): the top-bar icons keep
+// it so every icon is drawn inside the same frame, but it must not reach the
+// app. Logos have no guide box; their whole canvas is shown.
 const dropHidden: CustomPlugin = {
   name: 'dropHidden',
   fn: () => ({

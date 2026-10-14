@@ -3,7 +3,7 @@
   <defs>
     <bx:grid x="0" y="0" width="15" height="15"/>
   </defs>
-  <rect width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;" x="15" y="15"/>
+  <g transform="matrix(1.25, 0, 0, 1.25, -18.75, -18.75)">
   <!-- Source: https://raw.githubusercontent.com/PapirusDevelopmentTeam/papirus-icon-theme/master/Papirus/64x64/apps/utilities-terminal.svg; fitted to the painted artwork 4, 7, 56, 51. -->
   <g transform="matrix(2.1429, 0, 0, 2.1429, 6.4286, 5.3571)" style="fill-rule:nonzero;clip-rule:nonzero;stroke-linecap:butt;stroke-linejoin:miter">
  <rect style="opacity:0.2" width="56" height="50" x="4" y="8" rx="4.2" ry="4.167"/>
@@ -20,5 +20,6 @@
  <path style="opacity:0.2" transform="matrix(0.72401,0.68979,0.72401,-0.68979,0,0)" d="M 29.481 -5.3097 L 29.48 -6.035 L 34.401 -6.0353 C 34.643 -6.0353 34.87 -5.9736 35.068 -5.8663 L 35.068 -4.0124 C 35.017 -4.7394 34.417 -5.3104 33.676 -5.3104 L 29.481 -5.3097 z"/>
  <rect style="fill:#62c9ea" width="16.763" height="5.588" x="18.31" y="-5.31" rx="1.397" ry="1.397" transform="matrix(0.72401,0.68979,0.72401,-0.68979,0,0)"/>
  <rect style="fill:#ffffff" width="16.763" height="5.588" x="18.31" y="-5.31" rx="1.397" ry="1.397" transform="matrix(0.72401,0.68979,0.72401,-0.68979,0,0)"/>
+  </g>
   </g>
 </svg>

@@ -3,7 +3,7 @@
   <defs>
     <bx:grid x="0" y="0" width="15" height="15"/>
   </defs>
-  <rect width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;" x="15" y="15"/>
+  <g transform="matrix(1.1811, 0, 0, 1.1811, -13.5825, -13.5825)">
   <!-- Source: https://raw.githubusercontent.com/mintty/mintty/master/icon/terminal.svg; fitted to the painted artwork 6, 7, 116, 109. -->
   <g transform="matrix(1.0345, 0, 0, 1.0345, 8.7931, 11.3793)" style="fill-rule:nonzero;clip-rule:nonzero;stroke-linecap:butt;stroke-linejoin:miter" sodipodi:version="0.32" inkscape:version="0.45.1" sodipodi:docname="konsole.svg" inkscape:output_extension="org.inkscape.output.svg.inkscape" sodipodi:docbase="/home/david/sandbox">
   <defs
@@ -4323,6 +4323,7 @@
        d="M 11,8.079208 C 9.3500011,8.079208 8,9.5361386 8,11.316832 L 8,108.44554 C 8,109.41314 8.4024998,110.27916 9.03125,110.87376 C 9.0240254,110.78181 9,110.69787 9,110.60396 L 9,12.39604 C 9,10.615347 10.316907,9.1584159 11.9375,9.1584159 L 116.0625,9.1584159 C 117.68308,9.1584159 118.95136,10.616175 119,12.39604 C 119.68573,37.488452 119,110.60396 119,110.60396 C 119,110.69787 118.97597,110.78181 118.96875,110.87376 C 119.5975,110.27916 120,109.41314 120,108.44554 L 120,11.316832 C 120,9.5361386 118.64998,8.079208 117,8.079208 L 11,8.079208 z "
        id="path12444"
        sodipodi:nodetypes="ccccccssscccccc" />
+  </g>
   </g>
   </g>
 </svg>

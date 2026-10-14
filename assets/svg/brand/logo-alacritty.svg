@@ -3,7 +3,7 @@
   <defs>
     <bx:grid x="0" y="0" width="15" height="15"/>
   </defs>
-  <rect width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;" x="15" y="15"/>
+  <g transform="matrix(1.25, 0, 0, 1.25, -18.75, -18.75)">
   <!-- Source: https://raw.githubusercontent.com/alacritty/alacritty/master/extra/logo/alacritty-term.svg; fitted to the painted artwork 0, 2.9213, 64, 57.0787. -->
   <g transform="matrix(1.875, 0, 0, 1.875, 15, 16.0112)" style="fill-rule:nonzero;clip-rule:nonzero;stroke-linecap:butt;stroke-linejoin:miter;clip-rule:evenodd;fill-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:1.41420996;enable-background:new" sodipodi:docname="alacritty-term.svg" inkscape:version="0.92.4 (5da689c313, 2019-01-14)">
 <metadata
@@ -429,5 +429,6 @@
          id="path9580"
          inkscape:connector-curvature="0"
          sodipodi:nodetypes="cccc" /></g></g>
+  </g>
   </g>
 </svg>

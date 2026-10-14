@@ -1,7 +1,8 @@
 <svg viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
-  <rect x="15" y="15" width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;"/>
+  <g transform="matrix(1.25, 0, 0, 1.25, -18.75, -18.75)">
   <!-- Hand-drawn: ConEmu, a monitor on a stand showing its E mark. -->
   <rect x="19.5" y="19.5" width="111" height="88" rx="8" fill="none" stroke="currentColor" stroke-width="9"/>
   <path d="M96 42 H54 V85 H96 M54 63.5 H90" fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M62 112 H88 L96 135 H54 Z"/>
+  </g>
 </svg>

@@ -3,7 +3,7 @@
   <defs>
     <bx:grid x="0" y="0" width="15" height="15"/>
   </defs>
-  <rect width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;" x="15" y="15"/>
+  <g transform="matrix(1.25, 0, 0, 1.25, -18.75, -18.75)">
   <!-- Source: https://raw.githubusercontent.com/microsoft/terminal/main/res/terminal/Terminal.svg; fitted to the painted artwork 0, 6, 48, 36. -->
   <g transform="matrix(2.5, 0, 0, 2.5, 15, 15)" style="fill-rule:nonzero;clip-rule:nonzero;stroke-linecap:butt;stroke-linejoin:miter" fill="none">
 <path d="M0 13H16V6H2C0.9 6 0 6.9 0 8V13Z" fill="#CCCCCC"/>
@@ -93,5 +93,6 @@
 <stop offset="1" stop-color="#E6E6E6"/>
 </linearGradient>
 </defs>
+  </g>
   </g>
 </svg>

@@ -19,14 +19,14 @@ Logos live in `assets/svg/brand/` and reach the app through `cmd/gui/frontend/vi
    ```
 
    `--bbox content` (default) fits the painted artwork, clamped to the source viewBox, and skips clip-path/mask/pattern shapes. A source with `<text>` falls back to its viewBox, because text extents aren't measured. `--bbox viewbox` keeps the source padding; `--bbox X,Y,W,H` sets the box by hand (use it when a drop shadow, a stray shape or a clip path skews the content bbox). A PNG source gets embedded as `<image>`. That's fine for review, but it must be redrawn as vectors before shipping.
-5. **Check** the result by eye. Run `uv run .claude/skills/preparing-brand-logos/scripts/preview_logos.py tmp` and open `tmp/preview.html` (light and dark, 16/24/120 px, guide box outlined). On macOS, `qlmanage -t -s 300 -o <dir> <file.svg>` renders a PNG you can Read.
+5. **Check** the result by eye. Run `uv run .claude/skills/preparing-brand-logos/scripts/preview_logos.py tmp` and open `tmp/preview.html` (light and dark, 16/24/150 px, canvas edge outlined). On macOS, `qlmanage -t -s 300 -o <dir> <file.svg>` renders a PNG you can Read.
 6. **Stop** and hand over to the user for review. Don't create `-dark` files or touch `assets/` until they say so.
 7. **Dark version** (when asked): write `tmp/logo-<name>-dark.svg` by hand from the reviewed colour file, following the dark template below. Simplify to the logo's recognizable silhouette; inner details become cut-outs (`fill-rule="evenodd"`) or strokes. Check it at 16px in `preview.html`.
 8. **Install** (when asked): copy into `assets/svg/brand/`, add the name to the icon lookup and to the name list in `assets/svg/README.md`, add it to `assets/svg/brand/invert-light.txt` when its body is dark (it reads as a black square at 16–20 px on white), then `cd cmd/gui/frontend && npm run build` (the build fails on a `-dark` file with gradients, filters, masks, patterns or images).
 
 ## Colour template (`logo-<name>.svg`)
 
-Boxy SVG header, a hidden 120×120 guide box at 15,15, and the artwork scaled to touch the guide box and centred. `fit_logo.py` writes exactly this:
+Boxy SVG header and the artwork scaled to touch the edges of the 150×150 canvas, centred. There is no margin: the app shows the whole canvas, and buttons and menus add their own spacing. `fit_logo.py` writes exactly this:
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -34,14 +34,13 @@ Boxy SVG header, a hidden 120×120 guide box at 15,15, and the artwork scaled to
   <defs>
     <bx:grid x="0" y="0" width="15" height="15"/>
   </defs>
-  <rect width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;" x="15" y="15"/>
   <g transform="matrix(s, 0, 0, s, tx, ty)" style="fill-rule:nonzero;clip-rule:nonzero;stroke-linecap:butt;stroke-linejoin:miter">
     <!-- source artwork, verbatim -->
   </g>
 </svg>
 ```
 
-`s = 120 / max(w, h)`, `tx = 15 + (120 - w·s)/2 - x·s`, `ty` likewise, for the artwork box `x, y, w, h`. The group's style resets the root's evenodd/round defaults, which would otherwise punch holes in imported paths.
+`s = 150 / max(w, h)`, `tx = (150 - w·s)/2 - x·s`, `ty` likewise, for the artwork box `x, y, w, h`. The group's style resets the root's evenodd/round defaults, which would otherwise punch holes in imported paths.
 
 ## Dark template (`logo-<name>-dark.svg`)
 
@@ -49,12 +48,11 @@ Single colour, no editor header. The build repaints every colour with the theme'
 
 ```xml
 <svg viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
-  <rect x="15" y="15" width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;"/>
   <!-- shapes in currentColor; strokes use stroke="currentColor" fill="none" -->
 </svg>
 ```
 
-No gradients, filters, masks, patterns, `url(#…)` or images. Keep the artwork inside 15..135.
+No gradients, filters, masks, patterns, `url(#…)` or images. Fill the canvas: the artwork's longer side spans 0..150, and anything past the edge is cut off. Drop shadows and glows count, and the content bbox doesn't see them, so check the edges in `preview.html`.
 
 ## Requirements
 

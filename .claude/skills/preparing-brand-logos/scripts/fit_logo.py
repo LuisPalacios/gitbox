@@ -9,8 +9,8 @@
 """Fit a downloaded logo into gitbox's colour or single-colour brand template.
 
 Wraps an SVG (or, as a fallback, a PNG) in the 150x150 Boxy-SVG frame used by
-assets/svg/brand/logo-<name>.svg: hidden 120x120 guide box at 15,15 and the
-artwork scaled to touch it, centred. The source markup is copied verbatim
+assets/svg/brand/logo-<name>.svg, with the artwork scaled to touch the canvas
+edges and centred. The app shows the whole canvas, so there is no margin. The source markup is copied verbatim
 inside a transform group, so nothing is redrawn. --mono writes the -dark
 template instead and repaints every colour as currentColor (good for Simple
 Icons marks, or for a colour logo whose silhouette alone is recognizable).
@@ -31,8 +31,8 @@ import sys
 from pathlib import Path
 
 FRAME = 150
-BOX = 120
-MARGIN = 15
+BOX = 150
+MARGIN = 0
 
 HEADER = (
     '<?xml version="1.0" encoding="utf-8"?>\n'
@@ -42,15 +42,11 @@ HEADER = (
     '  <defs>\n'
     '    <bx:grid x="0" y="0" width="15" height="15"/>\n'
     '  </defs>\n'
-    '  <rect width="120" height="120" style="fill: none; stroke-width: 0.2px; '
-    'stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;" x="15" y="15"/>\n'
 )
 
 MONO_HEADER = (
     '<svg viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg"{ns} fill="currentColor" '
     'fill-rule="evenodd" clip-rule="evenodd">\n'
-    '  <rect x="15" y="15" width="120" height="120" style="fill: none; stroke-width: 0.2px; '
-    'stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;"/>\n'
 )
 
 # Paint values that --mono turns into currentColor (none, url(#…) and

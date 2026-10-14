@@ -3,7 +3,7 @@
   <defs>
     <bx:grid x="0" y="0" width="15" height="15"/>
   </defs>
-  <rect width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;" x="15" y="15"/>
+  <g transform="matrix(1.25, 0, 0, 1.25, -18.75, -18.75)">
   <!-- Source: https://raw.githubusercontent.com/PowerShell/PowerShell/master/assets/ps_fluent_design_384.svg; fitted to the painted artwork 2.9876, 0, 380.0246, 239.9997. -->
   <g transform="matrix(0.3158, 0, 0, 0.3158, 14.0566, 37.1078)" style="fill-rule:nonzero;clip-rule:nonzero;stroke-linecap:butt;stroke-linejoin:miter" fill="none">
 <g clip-path="url(#clip0)">
@@ -60,5 +60,6 @@
 <rect width="384" height="240" fill="white"/>
 </clipPath>
 </defs>
+  </g>
   </g>
 </svg>

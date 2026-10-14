@@ -1,5 +1,6 @@
 <svg viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
-  <rect x="15" y="15" width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;"/>
+  <g transform="matrix(1.25, 0, 0, 1.25, -18.75, -18.75)">
   <!-- Hand-drawn: Breeze terminal (Konsole), solid screen with a > cut out. -->
   <path d="M27 15 H123 Q135 15 135 27 V123 Q135 135 123 135 H27 Q15 135 15 123 V27 Q15 15 27 15 Z M48 44 L62 44 L90 75 L62 106 L48 106 L76 75 Z"/>
+  </g>
 </svg>

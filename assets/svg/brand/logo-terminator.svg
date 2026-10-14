@@ -3,7 +3,7 @@
   <defs>
     <bx:grid x="0" y="0" width="15" height="15"/>
   </defs>
-  <rect width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;" x="15" y="15"/>
+  <g transform="matrix(1.25, 0, 0, 1.25, -18.75, -18.75)">
   <!-- Source: https://raw.githubusercontent.com/gnome-terminator/terminator/master/data/icons/hicolor/scalable/apps/terminator.svg; fitted to the painted artwork 0, 3.0016, 48, 43.177. -->
   <g transform="matrix(2.5, 0, 0, 2.5, 15, 13.5248)" style="fill-rule:nonzero;clip-rule:nonzero;stroke-linecap:butt;stroke-linejoin:miter" sodipodi:version="0.32" inkscape:version="0.46+devel" sodipodi:docname="terminator.svg" inkscape:export-filename="/home/andreas/projekt/bild/tango/terminal4.png" inkscape:export-xdpi="240.00000" inkscape:export-ydpi="240.00000" inkscape:output_extension="org.inkscape.output.svg.inkscape">
   <defs
@@ -473,6 +473,7 @@
        d="M 25.694704,26.606311 L 25.694704,25.482336 L 29.001002,26.976653 L 29.001002,27.659606 L 25.694704,29.163726 L 25.694704,28.043091 L 28.257511,27.360896 L 25.694704,26.606311 z M 32.64694,30.295875 L 32.64694,31.022353 L 28.634636,31.022353 L 28.634636,30.295875 L 32.64694,30.295875"
        id="path3226"
        sodipodi:nodetypes="ccccccccccccc" />
+  </g>
   </g>
   </g>
 </svg>

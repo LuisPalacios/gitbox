@@ -2,7 +2,7 @@
 
 These SVG files are the source of every logo and top-bar icon in GitboxApp. I edit or replace a file here, rebuild, and the app picks it up. Nothing in the code needs to change. Under `wails dev` the window reloads as soon as a file changes.
 
-The build step lives in `cmd/gui/frontend/vite-plugin-icons.ts`. It runs on every `npm run build`, `wails build` and `wails dev`. It cleans each file with svgo: it removes the hidden guide box and editor metadata, drops fixed sizes, and minifies the paths.
+The build step lives in `cmd/gui/frontend/vite-plugin-icons.ts`. It runs on every `npm run build`, `wails build` and `wails dev`. It cleans each file with svgo: it removes the top-bar icons' hidden guide box and editor metadata, drops fixed sizes, and minifies the paths. It never moves or rescales the artwork.
 
 ## Tool logos (`brand/`)
 
@@ -27,8 +27,8 @@ To find, fit and preview new logos, I use the `preparing-brand-logos` skill (`.c
 
 ## Drawing rules
 
-- Logos use a `0 0 150 150` viewBox with the artwork inside the 120×120 guide box from 15,15 to 135,135, so every logo renders at the same maximum size.
+- Logos use a `0 0 150 150` viewBox, and the app shows the whole canvas edge to edge, so what I see in the editor is what the app draws. There is no margin and no guide box: the artwork's longer side spans the full 150, centred. Buttons and menus add their own spacing around the logo. Anything past the canvas edge is cut off, including drop shadows and glows.
 - Top-bar icons use a `0 0 24 24` viewBox with the artwork inside the 18×18 guide box from 3,3 to 21,21, drawn as 1.8-wide strokes with round caps and joins (set on the root `<svg>`).
-- The guide box is a `<rect>` with `visibility: hidden`. I keep it in the file while editing; the build removes anything hidden.
+- The top-bar guide box is a `<rect>` with `visibility: hidden`. I keep it in the file while editing; the build removes anything hidden.
 - Single-colour files (`-dark` logos and `ui/`) can't use gradients, filters, masks, patterns or embedded images. The build stops with the file name when it finds one. Cut-outs work with `fill-rule="evenodd"`.
 - File names are lowercase. The build warns about and skips any file that doesn't follow the naming above.

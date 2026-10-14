@@ -3,9 +3,10 @@
   <defs>
     <bx:grid x="0" y="0" width="15" height="15"/>
   </defs>
-  <rect width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;" x="15" y="15"/>
+  <g transform="matrix(1.25, 0, 0, 1.25, -18.75, -18.75)">
   <!-- Source: https://raw.githubusercontent.com/lanoxx/tilda/master/tilda.png; embedded PNG 44x36 (alpha-trimmed); redraw as vectors before shipping. -->
   <g transform="matrix(2.7273, 0, 0, 2.7273, 15, 25.9091)">
     <image width="44" height="36" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAkCAYAAADy19hsAAAE3ElEQVR42tWYX2hTVxzHP7m3MaFi3Zqapf/i1lgtQRSdNDWVSi3WrT4MqY8Whw4EKfiShz3KZmGgsI2+2LwIimBLQQZzUBO0zahGqJnJyqrVpi1qldrQpibNTdIke+i82D+JaRpq9oPzcM85nN/n/s73nPM7RwF8+l/JdYsB44qKigrv4cOH9blOOzQ0hMPhaM0rKirKv3z5stjT00MoFMpJ2N27d3Pp0iUcDoc2712l1+vl2LFjOQcbDAZxuVzytwz88uVLnE5nzgGHw2Hy8vKWA09OTvLo0aM1OwiFQrx+/VqWV0FBATqdbpHT1dj8/Dx79uxZDiwIAkqlMmPQ58+fY7PZGB0dJZFILGpTq9VUV1dz6NChjMFXBM50MI/Hw40bN4jH4yu2S5KEw+HgxYsXnD59GlEU0x576c+vOcJ+v5/u7u6ksO+b1+vl/v371NfXrz3CoihmBOxyuYhEImn37+/vp7GxMTsRzkQSbrd7Vf2np6fx+/1oNJq0+i+duTVLwufzAWA2m2lpacHj8dDR0UE8HketVmOxWNi6dSsdHR0MDAzIe6tOp1t/DUciEebm5igrK8Nms+HxeGhqasJgMGCxWLh69SpVVVX4fD7sdjt6vZ7Z2VnC4XDavrIqiXf9jxw5gsfjwWw2o9FoGBwcxGq1UlNTQ2VlJZFIBLfbzf79++np6WHjxo1p+4rFYtlddCqVikgkwvDwMIlEgqmpKca8/1Bfa2Dw778Ih8MAvHr1Sl6cGo0mLV+SJDE+Ps6uXbuyp2GtVovdbuf8+fPU1+j44bsAJqEB05kECcVdfv/1E6x/lLNt2zYePHiAUqmktLQ0rQhfv36dqqqq7O4SpaWlOJ1Ofm77FtsvAUQCcpsiIXHUJPGVKYzlx6+Zm5tj+/btqNXqD447MjLCrVu3MJlMi+qFpRFebTEYDADUGf5cBPu+KeIhvqkeRr1hIVX80JhTU1O0tbURi8UoKyvLboSNRiMAZ34CUQTjFyCFQbUB/AFQKGB0Atq7QIrAgQMHkvqJRqPY7XasViuBQICSkhIKCwvldZCRhqPRKF6vl6dPn/Ls2TOGhoYWDoS30Pw91H8JR2uh/DPw+aHPBb85FmAFQaC/v5/Hjx+zefNmRFFEkiQCgQBPnjzB7XYzPT0t+6qrq0OpVK4MnGqXmJmZobe3F6fTycDAQMqbyd2HCyXZqdXV1ZXWzCmVSpqbm5fNRkpJjI2Nce3aNW7fvr2qfCEb1tLSgl6vXxacFSURj8e5cuUKVquVaDS67reMhoYGzp49iyAIzM/Pfxj4woULdHZ2rjuoKIqcOnWK1tZWBEGQbxwpJdHd3b3usJs2beL48eOcOHGCkpKSZT+R9GiOxWK0t7cnHVgQBLZs2YJKpaKgoGDFPrOzs3LCEgwG5VxApVKhUqnIz8+nuLgYrVZLZWUl+/btw2g0Jr2FLN0IFkX43r17TE5Oyo07d+7EbDZTW1tLRUUFxcXFa7r3ZWIpgfv6+hAEgcbGRs6dO7co6fhYlnJbm5iYoLOzk4MHD+bMu0RK4IsXL8q5Qa5YSkns2LEj515+kkY40wT+owHHYrGcfL2UJGll4PLycnp7e3PyuXXv3r3cuXNnAfjNmzczJ0+eLMzlx+ybN28yMjKSAIIKoAj4nP+Hvf0Xy0bsJKq0avoAAAAASUVORK5CYII="/>
+  </g>
   </g>
 </svg>

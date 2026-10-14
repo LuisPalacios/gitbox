@@ -3,7 +3,7 @@
   <defs>
     <bx:grid x="0" y="0" width="15" height="15"/>
   </defs>
-  <rect width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;" x="15" y="15"/>
+  <g transform="matrix(1.1278, 0, 0, 1.1278, -9.585, -9.585)">
   <!-- Source: https://raw.githubusercontent.com/warpdotdev/warp/master/app/assets/bundled/svg/warp-logo-dark.svg; fitted to the painted artwork 35, 25.57, 181.155, 144.919. -->
   <g transform="matrix(0.6624, 0, 0, 0.6624, -8.1846, 10.0637)" style="fill-rule:nonzero;clip-rule:nonzero;stroke-linecap:butt;stroke-linejoin:miter" fill="none">
 <g filter="url(#filter0_d_8_35)">
@@ -21,5 +21,6 @@
 <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_8_35" result="shape"/>
 </filter>
 </defs>
+  </g>
   </g>
 </svg>

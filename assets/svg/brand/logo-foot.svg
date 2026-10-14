@@ -3,7 +3,7 @@
   <defs>
     <bx:grid x="0" y="0" width="15" height="15"/>
   </defs>
-  <rect width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;" x="15" y="15"/>
+  <g transform="matrix(1.25, 0, 0, 1.25, -18.75, -18.75)">
   <!-- Source: https://codeberg.org/dnkl/foot/raw/branch/master/icons/hicolor/scalable/apps/foot.svg; fitted to the painted artwork 12.4952, 12.4952, 103.0095, 103.0095. -->
   <g transform="matrix(1.1649, 0, 0, 1.1649, 0.4438, 0.4438)" style="fill-rule:nonzero;clip-rule:nonzero;stroke-linecap:butt;stroke-linejoin:miter" inkscape:version="1.0 (4035a4fb49, 2020-05-01)">
  <title>foot logo</title>
@@ -88,5 +88,6 @@
    y="64" x="48"
    height="4" width="22"
    style="fill:#fbf1c7" />
+  </g>
   </g>
 </svg>

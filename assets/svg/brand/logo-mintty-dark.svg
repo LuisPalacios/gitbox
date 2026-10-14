@@ -1,7 +1,8 @@
 <svg viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
-  <rect x="15" y="15" width="120" height="120" style="fill: none; stroke-width: 0.2px; stroke: rgb(84, 84, 84); pointer-events: none; visibility: hidden;"/>
+  <g transform="matrix(1.25, 0, 0, 1.25, -18.75, -18.75)">
   <!-- Hand-drawn: mintty, a CRT screen with a >_ prompt over a speaker grille. -->
   <rect x="19.5" y="19.5" width="111" height="84" rx="12" fill="none" stroke="currentColor" stroke-width="9"/>
   <path d="M40 44 L56 58 L40 72 M64 78 H88" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M21 112 H129 Q135 112 135 118 V129 Q135 135 129 135 H21 Q15 135 15 129 V118 Q15 112 21 112 Z M35 123.5 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z M55 123.5 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z M75 123.5 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z M95 123.5 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z M115 123.5 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z"/>
+  </g>
 </svg>
