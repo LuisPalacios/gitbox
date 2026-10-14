@@ -1,0 +1,6 @@
+<svg viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
+  <!-- Drawn from logo-iterm.svg: rounded frame, "$" prompt and block cursor at the top left. -->
+  <rect x="8" y="8" width="134" height="134" rx="30" fill="none" stroke="currentColor" stroke-width="11"/>
+  <path d="M 50 36 C 46 30, 30 29.5, 30 39 C 30 48, 50 45, 50 55 C 50 65, 33 65, 29 59 M 40 25 V 69" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="58" y="27" width="17" height="40"/>
+</svg>

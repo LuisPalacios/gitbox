@@ -1,0 +1,7 @@
+<svg viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
+  <!-- Drawn from logo-cmd.svg on its 30x25 grid: window frame, title bar with the three buttons cut out, and the C:\_ prompt. -->
+  <g transform="matrix(5, 0, 0, 5, 0, 12.5)">
+    <path d="M0 0H30V25H0Z M1.6 3.6V23.4H28.4V3.6Z M23 1h1v1h-1zM25 1h1v1h-1zM27 1h1v1h-1z"/>
+    <path d="M5 6h2v1h-2zM13 6h1v1h-1zM4 7h1v1h-1zM7 7h1v1h-1zM10 7h1v1h-1zM13 7h1v1h-1zM4 8h1v1h-1zM13 8h2v1h-2zM4 9h1v1h-1zM14 9h2v1h-2zM4 10h1v1h-1zM7 10h1v1h-1zM10 10h1v1h-1zM15 10h1v1h-1zM5 11h2v1h-2zM15 11h1v1h-1zM18 11h8v1h-8z"/>
+  </g>
+</svg>

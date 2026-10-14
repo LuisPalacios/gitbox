@@ -1,0 +1,10 @@
+# Logos with a dark body. At menu size they read as a black square on the
+# light theme, so the app shows them with light and dark swapped and the
+# hues kept (CSS invert + hue-rotate). One logo name per line.
+alacritty
+cmd
+foot
+gnome-terminal
+hyper
+warp
+windows-terminal

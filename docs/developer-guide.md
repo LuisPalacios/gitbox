@@ -327,7 +327,9 @@ The tool logos on each repo row and the top-bar icons come from SVG originals in
 - `assets/svg/brand/logo-<name>-dark.svg` — single-colour version for the dark theme, repainted with the theme's text colour
 - `assets/svg/ui/<name>.svg` — single-colour top-bar icon, repainted the same way
 
-The Vite plugin `cmd/gui/frontend/vite-plugin-icons.ts` does the conversion on every frontend build. It cleans each file with svgo (removes the hidden guide box and editor metadata, drops fixed sizes) and exposes the result as the `virtual:icons` module that `BrandIcon.svelte` and `UIIcon.svelte` read. A single-colour file with a gradient, filter, mask, pattern or image fails the build with its file name. [`assets/svg/README.md`](../assets/svg/README.md) has the naming and drawing rules.
+The Vite plugin `cmd/gui/frontend/vite-plugin-icons.ts` does the conversion on every frontend build. It cleans each file with svgo (removes the top-bar icons' hidden guide box and editor metadata, drops fixed sizes) and exposes the result as the `virtual:icons` module that `BrandIcon.svelte` and `UIIcon.svelte` read. A single-colour file with a gradient, filter, mask, pattern or image fails the build with its file name. [`assets/svg/README.md`](../assets/svg/README.md) has the naming and drawing rules.
+
+To add a new tool logo I use the `preparing-brand-logos` skill. It downloads candidate sources into the gitignored `tmp/` folder, fits each one into the 150×150 template with `scripts/fit_logo.py`, and writes `tmp/preview.html` with every logo on light and dark backgrounds at real sizes. I review and edit the files there, and only then move them into `assets/svg/brand/`.
 
 ---
 

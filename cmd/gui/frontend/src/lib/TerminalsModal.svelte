@@ -11,6 +11,7 @@
   import { bridge } from './bridge';
   import { fade, slide } from 'svelte/transition';
   import { dismiss } from './dismiss';
+  import BrandIcon, { terminalLogo } from './BrandIcon.svelte';
 
   export let open = false;
   // mode='overlay' renders the editor as an in-app modal with a scrim
@@ -255,7 +256,7 @@
             <tbody>
               {#each draftApps as app (app.id)}
                 <tr>
-                  <td>{app.name}</td>
+                  <td><span class="tp-named"><BrandIcon name={terminalLogo(app.id)} size={22} />{app.name}</span></td>
                   <td class="tp-mono">{app.command}</td>
                 </tr>
               {/each}
@@ -333,7 +334,7 @@
                       <button class="tp-btn tp-btn-small tp-btn-ghost" type="button" disabled={busy} on:click={cancelEdit}>Cancel</button>
                     </td>
                   {:else}
-                    <td>{p.name}</td>
+                    <td><span class="tp-named"><BrandIcon name={terminalLogo(p.terminal, p.shell)} size={22} />{p.name}</span></td>
                     <td class="tp-cell-dim">{appName(p.terminal)}</td>
                     <td class="tp-cell-dim">{shellName(p.shell)}</td>
                     <td class="tp-td-icon">
@@ -465,7 +466,7 @@
     padding: 4px 6px;
   }
   .tp-table tbody td {
-    padding: 4px 6px;
+    padding: 6px 6px;
     border-bottom: 1px solid var(--border);
     color: var(--text-secondary);
     vertical-align: middle;
@@ -478,6 +479,8 @@
     font-size: 11px;
   }
   .tp-cell-dim { color: var(--text-dim); }
+  /* Logo + name; the dark-theme logo takes the cell's text colour. */
+  .tp-named { display: inline-flex; align-items: center; gap: 8px; }
   .tp-row-hidden { opacity: 0.5; }
   .tp-row-add td { background: var(--bg-card); }
 

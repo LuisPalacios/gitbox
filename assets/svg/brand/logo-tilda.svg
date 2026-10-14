@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg height="100%" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;" width="100%" version="1.1" viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" xmlns:bx="https://boxy-svg.com">
+  <defs>
+    <bx:grid x="0" y="0" width="15" height="15"/>
+    <linearGradient id="tilda-bg" gradientUnits="userSpaceOnUse" x1="0" y1="3" x2="0" y2="33">
+      <stop offset="0" stop-color="#e0e0e0"/>
+      <stop offset="0.083" stop-color="#707070"/>
+      <stop offset="0.283" stop-color="#909090"/>
+      <stop offset="0.483" stop-color="#b0b0b0"/>
+      <stop offset="0.717" stop-color="#d0d0d0"/>
+      <stop offset="0.917" stop-color="#f0f0f0"/>
+      <stop offset="1" stop-color="#e0e0e0"/>
+    </linearGradient>
+  </defs>
+  <!-- Redrawn as vectors from Tilda's 44x36 icon; drawn on its pixel grid, scaled to 150 wide. -->
+  <g transform="matrix(3.4091, 0, 0, 3.4091, 0, 13.636)">
+    <rect x="0" y="1" width="44" height="34" fill="#303030"/>
+    <rect x="1" y="2" width="42" height="32" fill="#606060"/>
+    <rect x="1" y="2" width="41" height="31" fill="#f0f0f0"/>
+    <rect x="2" y="3" width="40" height="31" fill="#a0a0a0"/>
+    <rect x="3" y="3" width="38" height="30" fill="url(#tilda-bg)"/>
+    <path d="M 3 28.6 C 5 24, 9 20.6, 15 19.4 L 33 19.4 C 36.6 19, 39 17.4, 40.6 14.4 C 40.8 18, 39.6 21.6, 36.6 23.8 C 33 25.8, 28 26, 22 26 L 12 26 C 8 26.2, 5 27, 3 28.6 Z" fill="#000000"/>
+    <path d="M 16 19.6 C 15.4 12, 16.8 5.2, 22.5 5.2 C 28.2 5.2, 29.6 12, 29 19.6 Z" fill="#000000"/>
+    <path d="M 17.7 12.7 a 1.6 2.1 0 1 0 3.2 0 a 1.6 2.1 0 1 0 -3.2 0 Z M 24.1 12.7 a 1.6 2.1 0 1 0 3.2 0 a 1.6 2.1 0 1 0 -3.2 0 Z" fill="#f0f0f0"/>
+    <path d="M 19.3 13.3 a 0.75 0.9 0 1 0 1.5 0 a 0.75 0.9 0 1 0 -1.5 0 Z M 24.2 13.3 a 0.75 0.9 0 1 0 1.5 0 a 0.75 0.9 0 1 0 -1.5 0 Z" fill="#000000"/>
+    <path d="M 18 16.6 C 19 14.6, 26 14.6, 27 16.6 C 27 18.2, 24.6 19.2, 22.5 19.2 C 20.4 19.2, 18 18.2, 18 16.6 Z" fill="#f0c000"/>
+    <path d="M 18.6 17.6 C 20 17.1, 25 17.1, 26.4 17.6 C 25.6 18.7, 24 19.2, 22.5 19.2 C 21 19.2, 19.4 18.7, 18.6 17.6 Z" fill="#c09000"/>
+  </g>
+</svg>

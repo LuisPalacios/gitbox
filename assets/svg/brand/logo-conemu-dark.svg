@@ -1,0 +1,5 @@
+<svg viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
+  <!-- Drawn from logo-conemu.svg: rounded frame and the "ce" mark (ring, stem and bar). -->
+  <rect x="5" y="5" width="140" height="140" rx="16" fill="none" stroke="currentColor" stroke-width="10"/>
+  <path d="M 126 75 A 51 51 0 1 0 115.19 106.40 M 75 24 V 126 M 75 75 H 126" fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round"/>
+</svg>

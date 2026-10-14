@@ -8,9 +8,9 @@
   // Profile model (issue #69, v2.1):
   //   - The terminal entry shows "Open in <default profile name>" — the
   //     profile flagged Default in Settings → Terminals → Manager.
-  //   - The Profiles submenu lists every Preferred profile (excluding the
+  //   - The Terminals submenu lists every Preferred profile (excluding the
   //     default to avoid duplication). Hidden when no preferred profiles
-  //     exist.
+  //     exist. Terminal entries lead with their app's logo.
   //
   // Labels are intentionally terse — every row leads with an icon, so the
   // verb (Open / Open in / Open with) is redundant noise. Issue #69 user
@@ -24,7 +24,7 @@
   //   "Open with <editors[0].name>"       (hidden if editors empty)
   //   "Open with <aiHarnesses[0].name>"   (hidden if harnesses empty)
   //   ─ separator ─ (only if any submenu is shown)
-  //   Profiles ▸                          (hidden if <2 visible profiles)
+  //   Terminals ▸                         (hidden if no preferred profile besides the default)
   //   Editors ▸                           (hidden if <2 editors)
   //   AI Harnesses ▸                      (hidden if <2 harnesses)
   //   ─ separator ─ (repo kebab only, when onSweep is provided)
@@ -34,6 +34,7 @@
 
   import { onMount, tick } from 'svelte';
   import type { EditorInfo, AIHarnessInfo, TerminalProfileInfo } from './types';
+  import BrandIcon, { terminalLogo } from './BrandIcon.svelte';
 
   export let kind: 'repo' | 'account' = 'repo';
   export let editors: EditorInfo[] = [];
@@ -270,7 +271,7 @@
     <hr class="lm-sep" />
     {#if showProfileDefault && defaultProfile}
       <button class="action-item" on:click|stopPropagation={() => onOpenProfile(defaultProfile.id)} title={defaultProfile.name}>
-        <span class="lm-icon lm-icon-mono">&gt;_</span> {defaultProfile.name}
+        <span class="lm-icon lm-icon-brand"><BrandIcon name={terminalLogo(defaultProfile.terminal, defaultProfile.shell)} /></span> {defaultProfile.name}
       </button>
     {/if}
     {#if showEditorDefault}
@@ -290,14 +291,14 @@
     {#if showProfilesSub}
       <div class="lm-sub-container">
         <button class="action-item lm-submenu-trigger" class:lm-active={openSubmenu === 'terminals'} on:click|stopPropagation={() => toggleSub('terminals')}>
-          <span class="lm-icon lm-icon-mono">&gt;_</span> Profiles
+          <span class="lm-icon lm-icon-brand"><BrandIcon name="terminal" /></span> Terminals
           <span class="lm-arrow">&#9654;</span>
         </button>
         {#if openSubmenu === 'terminals'}
           <div class="action-dropdown launcher-submenu" bind:this={subEl}>
             {#each preferredProfiles as profile}
               <button class="action-item" on:click|stopPropagation={() => onOpenProfile(profile.id)}>
-                <span class="lm-icon lm-icon-mono">&gt;_</span> {profile.name}
+                <span class="lm-icon lm-icon-brand"><BrandIcon name={terminalLogo(profile.terminal, profile.shell)} /></span> {profile.name}
               </button>
             {/each}
           </div>
@@ -472,10 +473,12 @@
     flex: 0 0 auto;
   }
 
-  .lm-icon-mono {
-    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
-    font-size: 11px;
-    font-weight: 600;
+  /* Brand logos: the dark-theme single-colour version follows the item's
+     text colour, hover included. */
+  .lm-icon-brand {
+    display: inline-flex;
+    justify-content: center;
+    color: inherit;
   }
 
   .lm-arrow {

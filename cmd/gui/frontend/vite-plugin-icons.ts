@@ -5,6 +5,7 @@
 //
 //   brand/logo-<name>.svg       colour original, shown as drawn (light theme)
 //   brand/logo-<name>-dark.svg  single-colour version, recoloured (dark theme)
+//   brand/invert-light.txt      logo names shown inverted in the light theme
 //   ui/<name>.svg               single-colour top-bar icon, recoloured
 //
 // Colour originals become data URIs rendered through <img>, which keeps their
@@ -44,8 +45,9 @@ const stripEditorData: CustomPlugin = {
   }),
 };
 
-// Drop the hidden guide box (and anything else hidden): the files keep it so
-// every icon is drawn inside the same frame, but it must not reach the app.
+// Drop the hidden guide box (and anything else hidden): the top-bar icons keep
+// it so every icon is drawn inside the same frame, but it must not reach the
+// app. Logos have no guide box; their whole canvas is shown.
 const dropHidden: CustomPlugin = {
   name: 'dropHidden',
   fn: () => ({
@@ -92,6 +94,12 @@ function clean(file: string, id: string, mono: boolean): string {
   return svg;
 }
 
+// One name per line; blank lines and # comments are skipped.
+function readList(file: string): string[] {
+  if (!fs.existsSync(file)) return [];
+  return fs.readFileSync(file, 'utf8').split('\n').map((l) => l.replace(/#.*/, '').trim()).filter(Boolean);
+}
+
 function svgFiles(dir: string): string[] {
   return fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.svg')).sort() : [];
 }
@@ -108,7 +116,7 @@ export default function icons(): Plugin {
     },
     load(id) {
       if (id !== RESOLVED_ID) return null;
-      const brand: Record<string, { color?: string; mono?: string }> = {};
+      const brand: Record<string, { color?: string; mono?: string; invert?: boolean }> = {};
       const ui: Record<string, string> = {};
       for (const f of svgFiles(path.join(dir, 'brand'))) {
         const file = path.join(dir, 'brand', f);
@@ -119,6 +127,12 @@ export default function icons(): Plugin {
         const entry = (brand[name] ||= {});
         if (dark) entry.mono = clean(file, `brand-${name}`, true);
         else entry.color = 'data:image/svg+xml,' + encodeURIComponent(clean(file, `brand-${name}`, false));
+      }
+      const invertList = path.join(dir, 'brand', 'invert-light.txt');
+      this.addWatchFile(invertList);
+      for (const name of readList(invertList)) {
+        if (brand[name]?.color) brand[name].invert = true;
+        else this.warn(`${invertList}: no logo-${name}.svg to invert`);
       }
       for (const f of svgFiles(path.join(dir, 'ui'))) {
         const file = path.join(dir, 'ui', f);
@@ -133,7 +147,7 @@ export default function icons(): Plugin {
       // wails dev: a copied-in or edited icon reloads the window.
       server.watcher.add(dir);
       server.watcher.on('all', (_event, file) => {
-        if (!file.startsWith(dir + path.sep) || !file.endsWith('.svg')) return;
+        if (!file.startsWith(dir + path.sep) || !/\.(svg|txt)$/.test(file)) return;
         const mod = server.moduleGraph.getModuleById(RESOLVED_ID);
         if (mod) server.moduleGraph.invalidateModule(mod);
         server.ws.send({ type: 'full-reload' });

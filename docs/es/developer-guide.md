@@ -327,7 +327,9 @@ Los logos de herramientas de cada fila de repo y los iconos de la barra superior
 - `assets/svg/brand/logo-<name>-dark.svg` — versión de un solo color para el tema oscuro, repintada con el color de texto del tema
 - `assets/svg/ui/<name>.svg` — icono de un solo color de la barra superior, repintado igual
 
-El plugin de Vite `cmd/gui/frontend/vite-plugin-icons.ts` hace la conversión en cada build del frontend. Limpia cada fichero con svgo (quita el recuadro guía oculto y los metadatos del editor, elimina los tamaños fijos) y expone el resultado como el módulo `virtual:icons` que leen `BrandIcon.svelte` y `UIIcon.svelte`. Un fichero de un solo color con un degradado, filtro, máscara, patrón o imagen hace fallar el build con su nombre de fichero. [`assets/svg/README.md`](../../assets/svg/README.md) tiene las reglas de nombres y de dibujo.
+El plugin de Vite `cmd/gui/frontend/vite-plugin-icons.ts` hace la conversión en cada build del frontend. Limpia cada fichero con svgo (quita el recuadro guía oculto de los iconos de la barra superior y los metadatos del editor, elimina los tamaños fijos) y expone el resultado como el módulo `virtual:icons` que leen `BrandIcon.svelte` y `UIIcon.svelte`. Un fichero de un solo color con un degradado, filtro, máscara, patrón o imagen hace fallar el build con su nombre de fichero. [`assets/svg/README.md`](../../assets/svg/README.md) tiene las reglas de nombres y de dibujo.
+
+Para añadir un logo de herramienta nuevo uso el skill `preparing-brand-logos`. Descarga fuentes candidatas en la carpeta `tmp/` (ignorada por git), ajusta cada una a la plantilla de 150×150 con `scripts/fit_logo.py` y escribe `tmp/preview.html` con todos los logos sobre fondo claro y oscuro a tamaño real. Reviso y edito los ficheros ahí, y solo después los muevo a `assets/svg/brand/`.
 
 ---
 

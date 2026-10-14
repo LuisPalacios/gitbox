@@ -1,0 +1,5 @@
+<svg viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd">
+  <!-- Drawn from logo-macos-terminal.svg: rounded window, ">" and "_" at the top left. -->
+  <rect x="9.3" y="11.4" width="131.4" height="127.3" rx="28" fill="none" stroke="currentColor" stroke-width="10"/>
+  <path d="M 33 39.5 L 49 55.5 L 33 71.5 M 60 69.5 H 87" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
