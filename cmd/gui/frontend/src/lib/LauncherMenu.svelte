@@ -271,7 +271,7 @@
     <hr class="lm-sep" />
     {#if showProfileDefault && defaultProfile}
       <button class="action-item" on:click|stopPropagation={() => onOpenProfile(defaultProfile.id)} title={defaultProfile.name}>
-        <span class="lm-icon lm-icon-brand"><BrandIcon name={terminalLogo(defaultProfile.terminal, defaultProfile.shell)} /></span> {defaultProfile.name}
+        <span class="lm-icon lm-icon-brand"><BrandIcon name={terminalLogo(defaultProfile.terminal, defaultProfile.shell)} size={20} /></span> {defaultProfile.name}
       </button>
     {/if}
     {#if showEditorDefault}
@@ -291,14 +291,14 @@
     {#if showProfilesSub}
       <div class="lm-sub-container">
         <button class="action-item lm-submenu-trigger" class:lm-active={openSubmenu === 'terminals'} on:click|stopPropagation={() => toggleSub('terminals')}>
-          <span class="lm-icon lm-icon-brand"><BrandIcon name="terminal" /></span> Terminals
+          <span class="lm-icon lm-icon-brand"><BrandIcon name="terminal" size={20} /></span> Terminals
           <span class="lm-arrow">&#9654;</span>
         </button>
         {#if openSubmenu === 'terminals'}
           <div class="action-dropdown launcher-submenu" bind:this={subEl}>
             {#each preferredProfiles as profile}
               <button class="action-item" on:click|stopPropagation={() => onOpenProfile(profile.id)}>
-                <span class="lm-icon lm-icon-brand"><BrandIcon name={terminalLogo(profile.terminal, profile.shell)} /></span> {profile.name}
+                <span class="lm-icon lm-icon-brand"><BrandIcon name={terminalLogo(profile.terminal, profile.shell)} size={20} /></span> {profile.name}
               </button>
             {/each}
           </div>
@@ -466,7 +466,7 @@
 
   .lm-icon {
     display: inline-block;
-    width: 18px;
+    width: 20px;
     text-align: center;
     margin-right: 10px;
     color: var(--text-dim);

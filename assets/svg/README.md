@@ -13,6 +13,8 @@ Each tool has up to two files:
 
 When one of the two is missing, both themes use the other. The generic `ai` sparkle only has a `-dark` file, so it shows in the text colour in both themes.
 
+Many terminal logos are a dark screen, and at menu size they read as a black square in the light theme. I list those in `invert-light.txt`, one name per line, and the light theme shows them with light and dark swapped and the hues kept (CSS `invert` plus `hue-rotate`). The original file stays as drawn. Logos with a light or colourful body stay off the list, because inverting them makes them dark.
+
 The code looks up these names: `claude`, `openai`, `gemini`, `cursor` (AI harnesses), `vscode`, `zed` (editors), plus the generic `ai`, `ide` and `terminal` for tools without a known logo. A new AI harness or editor name needs a matching rule in `harnessIcon` or `editorIcon` in `cmd/gui/frontend/src/App.svelte`.
 
 Terminal logos are named after the terminal app's id in `pkg/terminals/catalog.go`, so a new one needs no code: `alacritty`, `conemu`, `foot`, `ghostty`, `gnome-terminal`, `guake`, `hyper`, `iterm`, `kitty`, `konsole`, `mintty`, `tabby`, `terminator`, `tilda`, `warp`, `wezterm` and `xterm`. Two ids map to other names in `terminalLogo` (`cmd/gui/frontend/src/lib/BrandIcon.svelte`): `wt` uses `windows-terminal`, and Terminal.app's `terminal` uses `macos-terminal`, because `terminal` is the generic fallback. Windows bare-shell profiles show their shell's logo: `powershell`, `cmd`, `git-bash` or `wsl`.

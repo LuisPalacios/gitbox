@@ -22,7 +22,7 @@ Logos live in `assets/svg/brand/` and reach the app through `cmd/gui/frontend/vi
 5. **Check** the result by eye. Run `uv run .claude/skills/preparing-brand-logos/scripts/preview_logos.py tmp` and open `tmp/preview.html` (light and dark, 16/24/120 px, guide box outlined). On macOS, `qlmanage -t -s 300 -o <dir> <file.svg>` renders a PNG you can Read.
 6. **Stop** and hand over to the user for review. Don't create `-dark` files or touch `assets/` until they say so.
 7. **Dark version** (when asked): write `tmp/logo-<name>-dark.svg` by hand from the reviewed colour file, following the dark template below. Simplify to the logo's recognizable silhouette; inner details become cut-outs (`fill-rule="evenodd"`) or strokes. Check it at 16px in `preview.html`.
-8. **Install** (when asked): copy into `assets/svg/brand/`, add the name to the icon lookup and to the name list in `assets/svg/README.md`, then `cd cmd/gui/frontend && npm run build` (the build fails on a `-dark` file with gradients, filters, masks, patterns or images).
+8. **Install** (when asked): copy into `assets/svg/brand/`, add the name to the icon lookup and to the name list in `assets/svg/README.md`, add it to `assets/svg/brand/invert-light.txt` when its body is dark (it reads as a black square at 16–20 px on white), then `cd cmd/gui/frontend && npm run build` (the build fails on a `-dark` file with gradients, filters, masks, patterns or images).
 
 ## Colour template (`logo-<name>.svg`)
 

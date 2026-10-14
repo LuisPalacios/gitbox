@@ -256,7 +256,7 @@
             <tbody>
               {#each draftApps as app (app.id)}
                 <tr>
-                  <td><span class="tp-named"><BrandIcon name={terminalLogo(app.id)} />{app.name}</span></td>
+                  <td><span class="tp-named"><BrandIcon name={terminalLogo(app.id)} size={20} />{app.name}</span></td>
                   <td class="tp-mono">{app.command}</td>
                 </tr>
               {/each}
@@ -334,7 +334,7 @@
                       <button class="tp-btn tp-btn-small tp-btn-ghost" type="button" disabled={busy} on:click={cancelEdit}>Cancel</button>
                     </td>
                   {:else}
-                    <td><span class="tp-named"><BrandIcon name={terminalLogo(p.terminal, p.shell)} />{p.name}</span></td>
+                    <td><span class="tp-named"><BrandIcon name={terminalLogo(p.terminal, p.shell)} size={20} />{p.name}</span></td>
                     <td class="tp-cell-dim">{appName(p.terminal)}</td>
                     <td class="tp-cell-dim">{shellName(p.shell)}</td>
                     <td class="tp-td-icon">
