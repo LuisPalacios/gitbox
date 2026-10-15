@@ -498,6 +498,8 @@ The cleanup matrix ensures no ghost credentials persist across type changes:
 
 The GUI is a Wails v2 desktop app with a Svelte frontend. The Go backend (`cmd/gui/app.go`) exposes methods that the frontend calls via auto-generated TypeScript bindings. The frontend bridge is in `cmd/gui/frontend/src/lib/bridge.ts`.
 
+**Frontend structure:** `App.svelte` composes the shell and holds the app-level state, the event listeners and the actions several parts share. The dashboard parts live in `src/lib/components/` (top bar, banners, settings panel, tab bar, account cards, repo list and rows, detail panel, Mirrors and Workspaces tabs, footer, compact view) and render from props. Every modal is its own component in `src/lib/modals/` with its own state; App opens it through a small exported function and binds only the state it shares, such as the credential flow common to Add account and Change credential. `src/lib/status.ts` is the one place that maps a repo status to its shape, colour, label and Simple kind. `src/style.css` holds the theme tokens, and `src/lib/modals/modals.css` the dialog shell, buttons and form controls the modals share.
+
 Long-running operations (clone, status refresh, pull, mirror discovery, repo moves) run in goroutines with progress pushed to the frontend via Wails events.
 
 **Layout structure:**

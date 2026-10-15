@@ -498,6 +498,8 @@ La matriz de limpieza asegura que no persistan credenciales fantasma entre cambi
 
 La GUI es una app desktop Wails v2 con frontend Svelte. El backend Go (`cmd/gui/app.go`) expone métodos que el frontend llama mediante bindings TypeScript autogenerados. El puente del frontend está en `cmd/gui/frontend/src/lib/bridge.ts`.
 
+**Estructura del frontend:** `App.svelte` compone el armazón y guarda el estado de la app, los listeners de eventos y las acciones que comparten varias partes. Las partes del dashboard viven en `src/lib/components/` (barra superior, avisos, panel de ajustes, barra de pestañas, tarjetas de cuentas, lista y filas de repos, panel de detalle, pestañas Mirrors y Workspaces, pie y vista compacta) y se pintan a partir de props. Cada modal es su propio componente en `src/lib/modals/` con su propio estado; App lo abre con una pequeña función exportada y enlaza solo el estado que comparte, como el flujo de credenciales común a Add account y Change credential. `src/lib/status.ts` es el único sitio que traduce el estado de un repo a su forma, color, etiqueta y tipo Simple. `src/style.css` guarda los tokens del tema, y `src/lib/modals/modals.css` el marco de diálogo, los botones y los controles de formulario que comparten los modales.
+
 Las operaciones largas (clone, refresh de status, pull, mirror discovery, movimientos de repo) se ejecutan en goroutines con progreso enviado al frontend mediante eventos Wails.
 
 **Estructura de layout:**

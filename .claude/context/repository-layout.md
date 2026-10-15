@@ -3,6 +3,10 @@
 ```text
 cmd/
   gui/                    Wails v2 + Svelte GUI (GitboxApp), the only binary
+    frontend/src/         Svelte frontend: App.svelte composes the shell; style.css holds the theme tokens
+      lib/                Shared modules (bridge, stores, status, theme, i18n, repo-tree + *.test.mjs) and shared pieces (Card, Logo, LauncherMenu, CredentialResult, PrecheckBanner, …)
+      lib/components/     Dashboard parts split out of App.svelte (top bar, banners, settings, tabs, cards, repo list/row/detail, footer, compact view)
+      lib/modals/         One component per modal + modals.css (the shared dialog kit)
 pkg/                      Shared Go library
   ops/                    Account, credential, clone and discovery service layer the GUI calls (+ TestScenario_FullLifecycle)
   config/                 Config v3 model, load/save, v1→v2→v3 migration
