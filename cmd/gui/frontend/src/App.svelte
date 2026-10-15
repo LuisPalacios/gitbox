@@ -186,6 +186,9 @@
   let updateProgress = '';
   let updateDone = false;
   let updateError = '';
+  // Version whose pill the user dismissed: hidden for this session only,
+  // while the periodic re-check keeps reporting it.
+  let updateDismissed = '';
 
   async function checkGlobalIdentity() {
     try {
@@ -2860,24 +2863,29 @@
     });
 
     events.on('update:available', (info: any) => {
-      updateInfo = info;
+      if (info?.latest !== updateDismissed) updateInfo = info;
     });
 
     events.on('update:progress', (msg: string) => {
       updateProgress = msg;
     });
 
+    // Installed and the new version is starting: the backend quits next.
+    events.on('update:restarting', (latest: string) => {
+      updateProgress = `Restarting into ${latest}…`;
+    });
+
+    // Installed, but the new version could not be started automatically.
     events.on('update:done', () => {
       updateApplying = false;
       updateProgress = '';
       updateDone = true;
     });
 
-    events.on('update:quit', () => {
-      // Elevated update script is running — quit so it can overwrite binaries.
-      updateApplying = false;
-      updateProgress = '';
-      updateDone = true;
+    events.on('update:quit', (latest: string) => {
+      // Elevated update script is running — quit so it can overwrite the
+      // binaries; the script starts the new version once it has copied them.
+      updateProgress = `Restarting into ${latest}…`;
       // Auto-quit after a brief moment so the user sees the message.
       setTimeout(() => Quit(), 1500);
     });
@@ -4256,7 +4264,7 @@
           {:else}
             <button class="update-pill-btn" title="Open the release page" on:click={() => updateInfo && BrowserOpenURL(updateInfo.url)}>{updateInfo.latest} available</button>
           {/if}
-          <button class="update-pill-dismiss" on:click={() => updateInfo = null} title="Dismiss">&#10005;</button>
+          <button class="update-pill-dismiss" on:click={() => { updateDismissed = updateInfo?.latest ?? ''; updateInfo = null; }} title="Dismiss until next launch">&#10005;</button>
         {/if}
       </div>
     {/if}

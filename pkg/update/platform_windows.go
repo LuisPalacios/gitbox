@@ -66,7 +66,9 @@ func isPermissionError(err error) bool {
 //
 // extractDir must contain the already-extracted binaries (same layout Apply
 // would have processed). installDir is the target (e.g. C:\Program Files\gitbox).
-func ApplyElevated(extractDir, installDir string) error {
+// relaunch, when not empty, is the app the script starts once the files are
+// copied.
+func ApplyElevated(extractDir, installDir, relaunch string) error {
 	// Build xcopy lines for each entry.
 	entries, err := os.ReadDir(extractDir)
 	if err != nil {
@@ -89,6 +91,21 @@ func ApplyElevated(extractDir, installDir string) error {
 
 	// Write the helper batch script.
 	scriptPath := filepath.Join(extractDir, "gitbox-update.cmd")
+	script := elevatedScript(copyLines, extractDir, relaunch)
+
+	if err := os.WriteFile(scriptPath, []byte(script), 0o644); err != nil {
+		return fmt.Errorf("writing update script: %w", err)
+	}
+
+	// Launch elevated via ShellExecuteW "runas".
+	return shellExecuteRunas(scriptPath)
+}
+
+// elevatedScript returns the batch script ApplyElevated runs elevated. It
+// waits for gitbox to exit, copies the files and, when relaunch is set,
+// starts the new version through explorer.exe: a program explorer starts
+// runs as the signed-in user, so the new GitboxApp is not elevated.
+func elevatedScript(copyLines []string, extractDir, relaunch string) string {
 	var script strings.Builder
 	script.WriteString("@echo off\r\n")
 	script.WriteString("title gitbox update\r\n")
@@ -98,17 +115,16 @@ func ApplyElevated(extractDir, installDir string) error {
 		script.WriteString(line + "\r\n")
 	}
 	script.WriteString("echo.\r\n")
-	script.WriteString("echo Update complete. You can restart gitbox now.\r\n")
-	script.WriteString("timeout /t 3\r\n")
+	if relaunch != "" {
+		script.WriteString("echo Update complete. Restarting gitbox...\r\n")
+		script.WriteString(fmt.Sprintf("explorer.exe \"%s\"\r\n", relaunch))
+	} else {
+		script.WriteString("echo Update complete. You can restart gitbox now.\r\n")
+		script.WriteString("timeout /t 3\r\n")
+	}
 	// Clean up the temp extraction directory (including this script).
 	script.WriteString(fmt.Sprintf("(rd /s /q \"%s\") 2>nul\r\n", extractDir))
-
-	if err := os.WriteFile(scriptPath, []byte(script.String()), 0o644); err != nil {
-		return fmt.Errorf("writing update script: %w", err)
-	}
-
-	// Launch elevated via ShellExecuteW "runas".
-	return shellExecuteRunas(scriptPath)
+	return script.String()
 }
 
 func shellExecuteRunas(script string) error {

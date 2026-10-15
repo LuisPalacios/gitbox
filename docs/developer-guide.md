@@ -264,7 +264,7 @@ macOS DMGs are currently **unsigned**. Code signing and notarization steps are p
 
 ### Auto-update
 
-The `pkg/update/` package provides version checking and self-update capabilities. The GUI runs a background check once per day and shows an update pill in the footer. The updater checks that the release's `checksums.sha256` carries a valid signature by the release key compiled into the binary, then downloads the platform-specific artifact, verifies its SHA256 checksum, and replaces the app in place.
+The `pkg/update/` package provides version checking and self-update capabilities. The GUI runs a background check at launch and every six hours, and shows an update pill in the footer while an update is pending. The updater checks that the release's `checksums.sha256` carries a valid signature by the release key compiled into the binary, then downloads the platform-specific artifact, verifies its SHA256 checksum, replaces the app in place, and restarts it on the new version.
 
 The GUI and the v1 CLI update differently:
 

@@ -283,8 +283,8 @@ func (a *App) DomReady(_ context.Context) {
 	// Throttled to once per 60s; safe to call repeatedly.
 	a.probeUpstreamExistenceAsync()
 
-	// Check for updates in background (throttled to once per 24h).
-	a.CheckForUpdate()
+	// Check for updates now and every updateCheckInterval.
+	a.startUpdateChecks()
 
 	// In compact mode, delay WindowShow — the frontend calls ShowWindow()
 	// after fitCompactHeight() to avoid flickering during resize.
@@ -312,47 +312,58 @@ type UpdateInfo struct {
 	SelfUpdate bool `json:"selfUpdate"`
 }
 
+// updateCheckInterval is how often a running app re-checks for a release,
+// so a session left open also sees one published after launch.
+const updateCheckInterval = 6 * time.Hour
+
 func (a *App) updateOpts() update.Options {
-	cacheDir := filepath.Join(config.ConfigRoot(), config.V2ConfigDir)
 	return update.Options{
 		CurrentVersion: update.ResolveVersion(version),
 		Repo:           "LuisPalacios/gitbox",
-		CacheFile:      filepath.Join(cacheDir, ".update-check"),
-		ThrottleDur:    24 * time.Hour,
 	}
 }
 
-// CheckForUpdate runs a background update check (throttled to 24h).
-// Emits "update:available" event if a newer version exists.
-func (a *App) CheckForUpdate() {
+// startUpdateChecks checks for an update now and then every
+// updateCheckInterval. Each check that finds one emits "update:available",
+// so the pill shows on every launch while an update is pending.
+func (a *App) startUpdateChecks() {
+	// Earlier versions throttled the check to once a day through this file.
+	_ = os.Remove(filepath.Join(config.ConfigRoot(), config.V2ConfigDir, ".update-check"))
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-
-		result, err := update.CheckLatest(ctx, a.updateOpts())
-		if err != nil || result == nil {
-			return
+		for {
+			a.checkForUpdate()
+			time.Sleep(updateCheckInterval)
 		}
-		if !result.Available {
-			return
-		}
-
-		info := UpdateInfo{
-			Available:  true,
-			Current:    result.Current,
-			Latest:     result.Latest,
-			SelfUpdate: update.SelfUpdateSupported(),
-		}
-		if result.Release != nil {
-			info.URL = result.Release.HTMLURL
-		}
-		wailsrt.EventsEmit(a.ctx, "update:available", info)
 	}()
 }
 
-// ApplyUpdate downloads and applies the latest release.
-// On Windows, if the install directory requires admin privileges (e.g.
-// Program Files), it falls back to a UAC-elevated helper process.
+// checkForUpdate emits "update:available" if a newer version exists.
+// Network errors and rate limits stay silent: no pill, no error.
+func (a *App) checkForUpdate() {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	result, err := update.CheckLatest(ctx, a.updateOpts())
+	if err != nil || !result.Available {
+		return
+	}
+
+	info := UpdateInfo{
+		Available:  true,
+		Current:    result.Current,
+		Latest:     result.Latest,
+		SelfUpdate: update.SelfUpdateSupported(),
+	}
+	if result.Release != nil {
+		info.URL = result.Release.HTMLURL
+	}
+	wailsrt.EventsEmit(a.ctx, "update:available", info)
+}
+
+// ApplyUpdate downloads and applies the latest release, then restarts the
+// app on the new version. On Windows, if the install directory requires
+// admin privileges (e.g. Program Files), it falls back to a UAC-elevated
+// helper process, which restarts the app once it has copied the files.
 func (a *App) ApplyUpdate() error {
 	if !update.SelfUpdateSupported() {
 		return errors.New("this build can't update itself; download the new version from the release page")
@@ -362,7 +373,7 @@ func (a *App) ApplyUpdate() error {
 	defer cancel()
 
 	opts := a.updateOpts()
-	result, err := update.CheckLatestForce(ctx, opts)
+	result, err := update.CheckLatest(ctx, opts)
 	if err != nil {
 		return fmt.Errorf("checking for update: %w", err)
 	}
@@ -387,11 +398,18 @@ func (a *App) ApplyUpdate() error {
 		return fmt.Errorf("extracting: %w", err)
 	}
 
+	// Capture what to relaunch before the install replaces the files.
+	// Without it the update still installs; the user restarts by hand.
+	exe, err := update.SelfPath()
+	if err != nil {
+		exe = ""
+	}
+
 	if err := update.InstallExtracted(extractDir, installDir); err != nil {
 		if errors.Is(err, update.ErrNeedElevation) {
 			// Don't clean extractDir — the elevated script needs it.
 			wailsrt.EventsEmit(a.ctx, "update:progress", "Requesting admin privileges...")
-			if elevErr := update.ApplyElevated(extractDir, installDir); elevErr != nil {
+			if elevErr := update.ApplyElevated(extractDir, installDir, exe); elevErr != nil {
 				os.RemoveAll(extractDir)
 				return fmt.Errorf("elevated update: %w", elevErr)
 			}
@@ -404,6 +422,17 @@ func (a *App) ApplyUpdate() error {
 	}
 
 	os.RemoveAll(extractDir)
+
+	// Start the new version, which waits for this process to exit, then
+	// quit. Quit runs BeforeClose, so the window state is saved as usual.
+	if exe != "" && update.Relaunch(exe, os.Getpid(), os.Args[1:]) == nil {
+		wailsrt.EventsEmit(a.ctx, "update:restarting", result.Latest)
+		go func() {
+			time.Sleep(time.Second) // let the pill show "Restarting…"
+			wailsrt.Quit(a.ctx)
+		}()
+		return nil
+	}
 	wailsrt.EventsEmit(a.ctx, "update:done", result.Latest)
 	return nil
 }

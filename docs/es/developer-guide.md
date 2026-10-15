@@ -264,7 +264,7 @@ Los DMGs de macOS están actualmente **sin firmar**. Los pasos de firma de códi
 
 ### Auto-update
 
-El paquete `pkg/update/` proporciona comprobación de versión y capacidades de self-update. La GUI ejecuta una comprobación en background una vez al día y muestra una píldora de actualización en el pie. El updater comprueba que el `checksums.sha256` de la release lleva una firma válida de la clave de releases compilada en el binario, después descarga el artefacto específico de la plataforma, verifica su checksum SHA256 y reemplaza la app in place.
+El paquete `pkg/update/` proporciona comprobación de versión y capacidades de self-update. La GUI ejecuta una comprobación en background al arrancar y cada seis horas, y muestra una píldora de actualización en el pie mientras hay una actualización pendiente. El updater comprueba que el `checksums.sha256` de la release lleva una firma válida de la clave de releases compilada en el binario, después descarga el artefacto específico de la plataforma, verifica su checksum SHA256 reemplaza la app in place y la reinicia en la nueva versión.
 
 La GUI y la CLI de v1 se actualizan de forma distinta:
 

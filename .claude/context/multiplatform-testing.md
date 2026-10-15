@@ -44,7 +44,8 @@ target="darwin/arm64"      # or darwin/amd64 / darwin/universal
 # 1. Wipe and prepare the remote scratch dir.
 ssh "$host" 'rm -rf ~/gitbox-remote-build && mkdir -p ~/gitbox-remote-build'
 
-# 2. Ship source (exclude artefacts, node_modules, .git, .env).
+# 2. Ship source (exclude artefacts, node_modules, .git, .env, and the Codex
+#    symlinks, which Git Bash's tar on Windows can't create).
 tar \
   --exclude='./.git' \
   --exclude='./build' \
@@ -52,6 +53,8 @@ tar \
   --exclude='./cmd/gui/frontend/node_modules' \
   --exclude='./cmd/gui/frontend/dist' \
   --exclude='./.env' \
+  --exclude='./AGENTS.md' \
+  --exclude='./.agents' \
   -cf - . | ssh "$host" 'cd ~/gitbox-remote-build && tar -xf -'
 
 # 3. Build on the remote. PATH needs Homebrew / $HOME/go/bin for non-login SSH shells.

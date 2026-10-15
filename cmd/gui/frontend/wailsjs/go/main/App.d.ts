@@ -30,8 +30,6 @@ export function ApplyUpdate():Promise<void>;
 
 export function ChangeCredentialType(arg1:string,arg2:string):Promise<void>;
 
-export function CheckForUpdate():Promise<void>;
-
 export function CheckGlobalGCMConfig():Promise<credential.GlobalGCMConfigStatus>;
 
 export function CheckGlobalGitignore():Promise<gitignore.Status>;

@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 // ── Semver tests ──
@@ -196,9 +195,9 @@ func TestCheckLatest_UpdateAvailable(t *testing.T) {
 	origURL := srv.URL
 	opts.HTTPClient.Transport = rewriteTransport{base: http.DefaultTransport, target: origURL}
 
-	result, err := CheckLatestForce(context.Background(), opts)
+	result, err := CheckLatest(context.Background(), opts)
 	if err != nil {
-		t.Fatalf("CheckLatestForce error: %v", err)
+		t.Fatalf("CheckLatest error: %v", err)
 	}
 	if !result.Available {
 		t.Error("expected update to be available")
@@ -222,59 +221,6 @@ func TestCheckLatest_AlreadyUpToDate(t *testing.T) {
 	}
 	opts.HTTPClient.Transport = rewriteTransport{base: http.DefaultTransport, target: srv.URL}
 
-	result, err := CheckLatestForce(context.Background(), opts)
-	if err != nil {
-		t.Fatalf("CheckLatestForce error: %v", err)
-	}
-	if result.Available {
-		t.Error("expected no update available")
-	}
-}
-
-// ── Throttle tests ──
-
-func TestThrottle(t *testing.T) {
-	tmpDir := t.TempDir()
-	cacheFile := filepath.Join(tmpDir, ".update-check")
-
-	// Not throttled when file doesn't exist.
-	if isThrottled(cacheFile, 24*time.Hour) {
-		t.Error("expected not throttled when cache file missing")
-	}
-
-	// Write a recent timestamp.
-	writeThrottleTimestamp(cacheFile)
-	if !isThrottled(cacheFile, 24*time.Hour) {
-		t.Error("expected throttled after recent write")
-	}
-
-	// Write an old timestamp.
-	old := time.Now().Add(-25 * time.Hour)
-	os.WriteFile(cacheFile, []byte(old.Format(time.RFC3339)+"\n"), 0o644)
-	if isThrottled(cacheFile, 24*time.Hour) {
-		t.Error("expected not throttled after 25h")
-	}
-}
-
-func TestCheckLatest_NoUpdate_DoesNotThrottle(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"tag_name": "v1.0.0", "html_url": "", "assets": []}`)
-	}))
-	defer srv.Close()
-
-	tmpDir := t.TempDir()
-	cacheFile := filepath.Join(tmpDir, ".update-check")
-
-	opts := Options{
-		CurrentVersion: "v1.0.0",
-		Repo:           "test/test",
-		HTTPClient:     srv.Client(),
-		CacheFile:      cacheFile,
-		ThrottleDur:    24 * time.Hour,
-	}
-	opts.HTTPClient.Transport = rewriteTransport{base: http.DefaultTransport, target: srv.URL}
-
 	result, err := CheckLatest(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("CheckLatest error: %v", err)
@@ -282,52 +228,37 @@ func TestCheckLatest_NoUpdate_DoesNotThrottle(t *testing.T) {
 	if result.Available {
 		t.Error("expected no update available")
 	}
-
-	// Cache file should NOT exist — no-update results must not throttle.
-	if _, err := os.Stat(cacheFile); err == nil {
-		t.Error("throttle cache written after no-update result; should only cache when update is available")
-	}
 }
 
-func TestCheckLatest_UpdateAvailable_Throttles(t *testing.T) {
+// A pending update must show on every check, not only the first one
+// (issue #134: a 24h throttle used to hide it on later launches).
+func TestCheckLatest_PendingUpdateReportedEveryTime(t *testing.T) {
+	calls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"tag_name": "v2.0.0", "html_url": "", "assets": []}`)
 	}))
 	defer srv.Close()
 
-	tmpDir := t.TempDir()
-	cacheFile := filepath.Join(tmpDir, ".update-check")
-
 	opts := Options{
 		CurrentVersion: "v1.0.0",
 		Repo:           "test/test",
 		HTTPClient:     srv.Client(),
-		CacheFile:      cacheFile,
-		ThrottleDur:    24 * time.Hour,
 	}
 	opts.HTTPClient.Transport = rewriteTransport{base: http.DefaultTransport, target: srv.URL}
 
-	result, err := CheckLatest(context.Background(), opts)
-	if err != nil {
-		t.Fatalf("CheckLatest error: %v", err)
+	for i := range 2 {
+		result, err := CheckLatest(context.Background(), opts)
+		if err != nil {
+			t.Fatalf("CheckLatest #%d error: %v", i+1, err)
+		}
+		if result == nil || !result.Available {
+			t.Fatalf("CheckLatest #%d = %+v, want an available update", i+1, result)
+		}
 	}
-	if !result.Available {
-		t.Error("expected update available")
-	}
-
-	// Cache file SHOULD exist — positive results must throttle.
-	if _, err := os.Stat(cacheFile); err != nil {
-		t.Error("throttle cache not written after update-available result")
-	}
-
-	// Second call should be throttled (return nil).
-	result2, err := CheckLatest(context.Background(), opts)
-	if err != nil {
-		t.Fatalf("second CheckLatest error: %v", err)
-	}
-	if result2 != nil {
-		t.Error("expected nil result (throttled) on second call")
+	if calls != 2 {
+		t.Errorf("GitHub API called %d times, want 2 (one per check)", calls)
 	}
 }
 
@@ -415,9 +346,9 @@ func TestCheckLatest_MaxMajor_IgnoresNextMajor(t *testing.T) {
 	}
 	opts.HTTPClient.Transport = rewriteTransport{base: http.DefaultTransport, target: srv.URL}
 
-	result, err := CheckLatestForce(context.Background(), opts)
+	result, err := CheckLatest(context.Background(), opts)
 	if err != nil {
-		t.Fatalf("CheckLatestForce error: %v", err)
+		t.Fatalf("CheckLatest error: %v", err)
 	}
 	if !strings.HasSuffix(gotPath, "/releases") {
 		t.Errorf("pinned check queried %q, want the releases list", gotPath)
@@ -442,9 +373,9 @@ func TestCheckLatest_MaxMajor_NoCandidate(t *testing.T) {
 	}
 	opts.HTTPClient.Transport = rewriteTransport{base: http.DefaultTransport, target: srv.URL}
 
-	result, err := CheckLatestForce(context.Background(), opts)
+	result, err := CheckLatest(context.Background(), opts)
 	if err != nil {
-		t.Fatalf("CheckLatestForce error: %v", err)
+		t.Fatalf("CheckLatest error: %v", err)
 	}
 	if result.Available {
 		t.Errorf("expected no update, got %q", result.Latest)

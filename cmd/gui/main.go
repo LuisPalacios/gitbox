@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/update"
@@ -25,6 +26,16 @@ var (
 var assets embed.FS
 
 func main() {
+	// After an update, the new version starts with --wait-pid=<old PID> and
+	// waits for the old process to exit: then the single-instance lock is
+	// free and, on Windows, the renamed .old binary can be removed.
+	for _, arg := range os.Args[1:] {
+		if after, ok := strings.CutPrefix(arg, update.WaitPIDFlag); ok {
+			if pid, err := strconv.Atoi(after); err == nil {
+				update.WaitForExit(pid, 30*time.Second)
+			}
+		}
+	}
 	update.CleanupOldBinary()
 
 	app := NewApp()

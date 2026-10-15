@@ -21,7 +21,7 @@ var ErrNeedElevation = errors.New("administrator privileges required")
 var errElevationUnsupported = errors.New("elevated update not supported on this platform — run with sudo")
 
 // ApplyElevated is not supported on Unix — return a clear message.
-func ApplyElevated(extractDir, installDir string) error {
+func ApplyElevated(extractDir, installDir, relaunch string) error {
 	return errElevationUnsupported
 }
 

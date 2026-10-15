@@ -7,9 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"runtime"
-	"strings"
 	"time"
 )
 
@@ -36,11 +34,9 @@ type CheckResult struct {
 
 // Options configures the updater.
 type Options struct {
-	CurrentVersion string        // e.g. "v1.2.0" from ldflags
-	Repo           string        // e.g. "LuisPalacios/gitbox"
-	HTTPClient     *http.Client  // nil = default with 10s timeout
-	CacheFile      string        // path to throttle timestamp file
-	ThrottleDur    time.Duration // default 24h
+	CurrentVersion string       // e.g. "v1.2.0" from ldflags
+	Repo           string       // e.g. "LuisPalacios/gitbox"
+	HTTPClient     *http.Client // nil = default with 10s timeout
 	// MaxMajor caps the major version this binary may update to (0 = no
 	// cap). The v1 CLI sets 1 so it never "updates" to a v2 release, which
 	// ships the GUI only. With a cap, the release list is scanned instead
@@ -55,48 +51,14 @@ func (o *Options) defaults() {
 	if o.HTTPClient == nil {
 		o.HTTPClient = &http.Client{Timeout: 10 * time.Second}
 	}
-	if o.ThrottleDur == 0 {
-		o.ThrottleDur = 24 * time.Hour
-	}
 }
 
-// CheckLatest queries GitHub for the latest release, respecting the throttle.
-// Returns nil result (no error) if throttled.
+// CheckLatest queries GitHub for the latest release. It always asks the
+// API: the GUI checks once per launch and every few hours, far below
+// GitHub's unauthenticated limit, so a pending update is never hidden.
 func CheckLatest(ctx context.Context, opts Options) (*CheckResult, error) {
 	opts.defaults()
-
-	if opts.CacheFile != "" && isThrottled(opts.CacheFile, opts.ThrottleDur) {
-		return nil, nil
-	}
-
-	result, err := checkLatestAPI(ctx, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	// Only throttle when an update was found — avoids locking out checks
-	// for 24h after a "no update" result, which would hide a release
-	// published during that window.
-	if opts.CacheFile != "" && result.Available {
-		writeThrottleTimestamp(opts.CacheFile)
-	}
-
-	return result, nil
-}
-
-// CheckLatestForce bypasses the throttle cache.
-func CheckLatestForce(ctx context.Context, opts Options) (*CheckResult, error) {
-	opts.defaults()
-	result, err := checkLatestAPI(ctx, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	if opts.CacheFile != "" {
-		writeThrottleTimestamp(opts.CacheFile)
-	}
-
-	return result, nil
+	return checkLatestAPI(ctx, opts)
 }
 
 func checkLatestAPI(ctx context.Context, opts Options) (*CheckResult, error) {
@@ -256,24 +218,4 @@ func FindAssetURL(release *ReleaseInfo, assetName string) string {
 		}
 	}
 	return ""
-}
-
-// ── Throttle helpers ──
-
-func isThrottled(cacheFile string, dur time.Duration) bool {
-	data, err := os.ReadFile(cacheFile)
-	if err != nil {
-		return false
-	}
-	t, err := time.Parse(time.RFC3339, strings.TrimSpace(string(data)))
-	if err != nil {
-		return false
-	}
-	return time.Since(t) < dur
-}
-
-func writeThrottleTimestamp(cacheFile string) {
-	dir := filepath.Dir(cacheFile)
-	_ = os.MkdirAll(dir, 0o755)
-	_ = os.WriteFile(cacheFile, []byte(time.Now().Format(time.RFC3339)+"\n"), 0o644)
 }
