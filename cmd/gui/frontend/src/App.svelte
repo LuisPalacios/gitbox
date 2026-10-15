@@ -10,7 +10,7 @@
   import type { HealthFix } from './lib/status';
   import { resolveView, viewAccount, accountView, attentionCounts } from './lib/views';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
-  import { pushNotice, errorText } from './lib/notices';
+  import { pushNotice, dismissNotice, errorText } from './lib/notices';
   import { startFetch, startPull, noteDone, summarizeFetch, summarizePull, localWorkCount } from './lib/activity';
   import type { Run } from './lib/activity';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit, EventsOn } from '../wailsjs/runtime/runtime';
@@ -444,6 +444,14 @@
   // leave a card when something changed or failed.
   let fetchRun: Run | null = null;
   let fetchManual = false;
+  // The last fetch card with failures and the repos it lists. It goes away
+  // when those repos fetch fine again or the next fetch run starts, so a
+  // momentary failure doesn't stay on screen after everything recovered.
+  let fetchFailNotice: { id: number; keys: Set<string> } | null = null;
+  function clearFetchFailNotice() {
+    if (fetchFailNotice) dismissNotice(fetchFailNotice.id);
+    fetchFailNotice = null;
+  }
   let pullRun: Run | null = null;
   const statusOfKey = (key: string) => $repoStates[key]?.status || 'unknown';
   const accountOfKey = (key: string) => $sources[key.slice(0, key.indexOf('/'))]?.account || key.slice(0, key.indexOf('/'));
@@ -460,21 +468,30 @@
     const offline = Object.keys(credStatuses).filter((k) => credStatuses[k]?.status === 'offline');
     const sum = summarizeFetch(run, statusOfKey, accountOfKey, offline);
     if (!manual && !sum.changed) return;
-    const failure = Object.entries(run.errors).find(([key]) => !offline.includes(accountOfKey(key)));
     const skippedAccounts = sum.skippedAccounts.join(', ');
-    pushNotice(sum.failed > 0 ? 'error' : 'success', $t(simple ? 'result.checkTitle' : 'result.fetchTitle'), simple ? [
+    const unreachable = sum.unreachable.map((u) => $t(simple ? 'result.unreachableSimple' : 'result.unreachable', { n: u.count, host: u.host || $t('result.theServer') }));
+    // A connect refused within milliseconds is the OS blocking it, not a
+    // slow or down server; on macOS that's usually Local Network privacy.
+    const lanHint = hostOS === 'darwin' && sum.unreachable.some((u) => u.fast) && $t('result.lanHint');
+    const failedKind = sum.unreachable.length > 0 || sum.failed > 0;
+    const id = pushNotice(failedKind ? 'error' : 'success', $t(simple ? 'result.checkTitle' : 'result.fetchTitle'), simple ? [
       $t('result.checked', { n: sum.checked }),
       sum.nowBehind > 0 && $t('result.newerOnline', { n: sum.nowBehind }),
       sum.skipped > 0 && $t('result.skippedSimple', { n: sum.skipped, accounts: skippedAccounts }),
+      ...unreachable,
       sum.failed > 0 && $t('result.needHelp', { n: sum.failed }),
+      lanHint,
       sum.localWork > 0 && $t('result.wipUntouched'),
     ] : [
       $t('result.fetched', { n: sum.checked }),
       sum.nowBehind > 0 && $t('result.nowBehind', { n: sum.nowBehind }),
       sum.skipped > 0 && $t('result.skipped', { n: sum.skipped, accounts: skippedAccounts }),
-      failure && $t('result.failed', { n: sum.failed, error: `${failure[0]}: ${failure[1]}` }),
+      ...unreachable,
+      sum.firstFailure && $t('result.failed', { n: sum.failed, error: `${sum.firstFailure.key}: ${sum.firstFailure.error}` }),
+      lanHint,
       sum.localWork > 0 && $t('result.localUntouched'),
     ]);
+    if (failedKind) fetchFailNotice = { id, keys: new Set(Object.keys(run.errors)) };
   }
 
   function finishPull() {
@@ -1591,10 +1608,12 @@
       delete fetchingRepos[key];
       fetchingRepos = fetchingRepos;
       if (fetchRun) fetchRun = noteDone(fetchRun, key, data.error);
+      if (!data.error && fetchFailNotice?.keys.delete(key) && fetchFailNotice.keys.size === 0) clearFetchFailNotice();
     });
 
     events.on('fetch:allstart', () => {
       fetchingAll = true;
+      clearFetchFailNotice();
       if (!fetchRun) fetchRun = startFetch(Object.keys($repoStates).filter((k) => statusOfKey(k) !== 'not cloned'), accountOfKey, statusOfKey);
     });
 

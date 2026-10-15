@@ -72,8 +72,11 @@ export interface FetchSummary {
   // Repos that failed because their account is offline, and those accounts.
   skipped: number;
   skippedAccounts: string[];
-  // Repos that failed for any other reason.
+  // Servers that couldn't be reached at all, grouped by host, busiest first.
+  unreachable: Unreachable[];
+  // Repos that failed for any other reason, and the first of them.
   failed: number;
+  firstFailure: { key: string; error: string } | null;
   // Repos with local work, all left untouched.
   localWork: number;
   // Something worth a card on a background (periodic or startup) fetch.
@@ -86,22 +89,71 @@ export interface FetchSummary {
 export function summarizeFetch(run: Run, statusOf: (key: string) => string, accountOf: (key: string) => string, offlineAccounts: string[]): FetchSummary {
   const offline = new Set(offlineAccounts);
   const skippedAccounts = new Set<string>();
+  const hosts = new Map<string, Unreachable>();
   let checked = 0, nowBehind = 0, skipped = 0, failed = 0;
+  let firstFailure: FetchSummary['firstFailure'] = null;
   for (const key of run.done) {
-    if (run.errors[key]) {
+    const error = run.errors[key];
+    if (error) {
       const account = accountOf(key);
-      if (offline.has(account)) { skipped++; skippedAccounts.add(account); } else failed++;
+      const host = unreachableHost(error);
+      if (offline.has(account)) { skipped++; skippedAccounts.add(account); }
+      else if (host !== null) {
+        const u = hosts.get(host) || { host, count: 0, fast: false };
+        u.count++;
+        u.fast = u.fast || refusedFast(error);
+        hosts.set(host, u);
+      } else {
+        failed++;
+        firstFailure = firstFailure || { key, error: cleanGitError(error) };
+      }
       continue;
     }
     checked++;
     const now = statusOf(key);
     if ((now === 'behind' || now === 'diverged') && run.before[key] !== now) nowBehind++;
   }
+  const unreachable = [...hosts.values()].sort((x, y) => y.count - x.count || x.host.localeCompare(y.host));
   return {
-    checked, nowBehind, skipped, skippedAccounts: [...skippedAccounts].sort(), failed,
+    checked, nowBehind, skipped, skippedAccounts: [...skippedAccounts].sort(), unreachable, failed, firstFailure,
     localWork: localWorkCount(run.keys, statusOf),
-    changed: nowBehind > 0 || skipped > 0 || failed > 0,
+    changed: nowBehind > 0 || skipped > 0 || unreachable.length > 0 || failed > 0,
   };
+}
+
+export interface Unreachable {
+  // The server's host name, or '' when the error doesn't name it.
+  host: string;
+  count: number;
+  // At least one connect was refused within a second instead of timing
+  // out: the OS blocked it (on macOS often the Local Network permission).
+  fast: boolean;
+}
+
+// Connection-level failures: the server couldn't be reached at all, as
+// opposed to git failing against a server it did reach.
+const UNREACHABLE = /couldn't connect to server|failed to connect to|could not resolve host|no route to host|connection refused|network is unreachable|connection timed out|operation timed out/i;
+
+// unreachableHost returns the host a failed fetch couldn't reach ('' when
+// the message doesn't name it), or null when it isn't a connection failure.
+export function unreachableHost(error: string): string | null {
+  if (!UNREACHABLE.test(error)) return null;
+  const m = /unable to access '[a-z+]+:\/\/(?:[^@/']*@)?([^/:']+)/i.exec(error)
+    || /failed to connect to ([^\s:]+)/i.exec(error)
+    || /could not resolve host:? ([^\s:']+)/i.exec(error)
+    || /connect to host ([^\s:]+)/i.exec(error);
+  return m ? m[1] : '';
+}
+
+// refusedFast tells whether git gave up connecting within a second.
+export function refusedFast(error: string): boolean {
+  const m = /after (\d+) ms/i.exec(error);
+  return !!m && Number(m[1]) < 1000;
+}
+
+// cleanGitError drops git's wrapper so a card shows the reason itself.
+export function cleanGitError(error: string): string {
+  return error.replace(/^git [\w-]+: exit status \d+:\s*/i, '').replace(/^(fatal|error):\s*/i, '').trim();
 }
 
 export interface PullSummary {

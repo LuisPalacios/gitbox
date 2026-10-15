@@ -42,7 +42,7 @@ test('I summarize a fetch: now behind, offline skips, failures and local work', 
   statuses['A/1'] = 'behind';
   statuses['A/3'] = 'ahead';
   const sum = a.summarizeFetch(run, (k) => statuses[k], accountOf, ['B']);
-  assert.deepEqual(sum, { checked: 3, nowBehind: 1, skipped: 2, skippedAccounts: ['B'], failed: 1, localWork: 1, changed: true });
+  assert.deepEqual(sum, { checked: 3, nowBehind: 1, skipped: 2, skippedAccounts: ['B'], unreachable: [], failed: 1, firstFailure: { key: 'C/1', error: 'repository maintenance: x' }, localWork: 1, changed: true });
 });
 
 test('I report nothing changed when a fetch finds nothing new', () => {
@@ -70,4 +70,29 @@ test('I split a pull run into pulls and clones and summarize it', () => {
 test('I count local work across statuses', () => {
   const statuses = { a: 'dirty', b: 'ahead', c: 'diverged', d: 'conflict', e: 'clean', f: 'behind', g: 'not cloned' };
   assert.equal(a.localWorkCount(Object.keys(statuses), (k) => statuses[k]), 4);
+});
+
+test('I group connection failures by host and spot an instant refusal', () => {
+  const lan = "git fetch: exit status 128: fatal: no es posible acceder a 'https://git.example.org/team/app.git/': Failed to connect to git.example.org port 443 after 5 ms: Couldn't connect to server";
+  assert.equal(a.unreachableHost(lan), 'git.example.org');
+  assert.equal(a.refusedFast(lan), true);
+  assert.equal(a.unreachableHost("fatal: unable to access 'https://user@host.test/x.git/': Could not resolve host: host.test"), 'host.test');
+  assert.equal(a.unreachableHost('ssh: connect to host gitea.lan port 22: Connection refused'), 'gitea.lan');
+  assert.equal(a.unreachableHost('fatal: Authentication failed'), null);
+  assert.equal(a.refusedFast("Failed to connect to h port 443 after 75003 ms: Couldn't connect to server"), false);
+  assert.equal(a.cleanGitError('git fetch: exit status 128: fatal: repository not found'), 'repository not found');
+
+  let run = a.startFetch(['A/1', 'A/2', 'A/3', 'B/1', 'C/1'], accountOf, () => 'clean');
+  run = a.noteDone(run, 'A/1', lan);
+  run = a.noteDone(run, 'A/2', lan);
+  run = a.noteDone(run, 'A/3', 'git fetch: exit status 128: fatal: repository not found');
+  run = a.noteDone(run, 'B/1', lan);
+  run = a.noteDone(run, 'C/1');
+  const sum = a.summarizeFetch(run, () => 'clean', accountOf, ['B']);
+  assert.deepEqual(sum.unreachable, [{ host: 'git.example.org', count: 2, fast: true }]);
+  assert.equal(sum.skipped, 1);
+  assert.equal(sum.failed, 1);
+  assert.deepEqual(sum.firstFailure, { key: 'A/3', error: 'repository not found' });
+  assert.equal(sum.checked, 1);
+  assert.equal(sum.changed, true);
 });
