@@ -6,13 +6,13 @@ Inventario de pruebas y detalles internos del harness. Para ejecutar pruebas, ve
 
 Los recuentos son funciones `func Test…` de nivel superior por paquete, obtenidas con `grep -rc "^func Test" --include=*_test.go pkg cmd`. Los subtests (`t.Run`) no se cuentan.
 
-### Pruebas de paquetes — 465 pruebas (`pkg/`)
+### Pruebas de paquetes — 466 pruebas (`pkg/`)
 
 - `pkg/adopt/` — 14 pruebas: descubrimiento de huérfanos, puntuación de cuentas (usuario embebido en la URL, username de la credencial, carpeta padre, empates ambiguos), clones anidados bajo contenedores
 - `pkg/config/` — 105 pruebas: parseo de config, migración v1/v2 → v3, operaciones CRUD, save/load, backups, preparación de test-mode, poda del estado de layout (pliegues, barra lateral, la vista de una cuenta borrada), un renombrado que conserva su vista, y omisión del backup en los guardados de layout y de tema
 - `pkg/credential/` — 32 pruebas: resolución de token, validación, helpers por defecto del OS, `Check`/`FixGlobalGCMConfig` (salud de gitconfig global para GCM), cancelación, mantenimiento con comparación previa, actualizaciones atómicas de archivos de tokens
 - `pkg/doctor/` — 24 pruebas: forma de la tabla de herramientas, pistas de instalación, búsquedas, comprobaciones previas por tipo de credencial, decodificación de la salida de herramientas
-- `pkg/git/` — 33 pruebas: operaciones git mediante subprocess, URLs de repo y de perfil, descubrimiento de repos anidados, fetches cancelables, instantáneas de config con includes y worktrees enlazados
+- `pkg/git/` — 34 pruebas: operaciones git mediante subprocess, URLs de repo y de perfil, descubrimiento de repos anidados, fetches cancelables, conexiones rechazadas en milisegundos, instantáneas de config con includes y worktrees enlazados
 - `pkg/gitignore/` — 23 pruebas: ida y vuelta del bloque gestionado, fusión con contenido del usuario, instalación idempotente, backups, saneado de duplicados
 - `pkg/harness/` — 28 pruebas: parseo del directorio de herramientas embebido, herramientas retiradas, parseo del `launch_menu` de WezTerm
 - `pkg/heal/` — 11 pruebas: URL de origin esperada por tipo de credencial, reparación de identidad, eliminación de tokens embebidos, mantenimiento sin cambios con dos procesos, reparaciones sobrescritas, worktrees enlazados
@@ -28,7 +28,7 @@ Los recuentos son funciones `func Test…` de nivel superior por paquete, obteni
 - `pkg/update/` — 28 pruebas: parseo semver, comparación de versiones, comprobación de actualización (API mock, una actualización pendiente se informa en cada comprobación), límite de versión mayor, nombres de artefactos, detección del AppImage solo-aviso, destinos de instalación, comando de relanzamiento por plataforma y espera a que termine el proceso antiguo (más el script elevado de Windows, en Windows), verificación de checksum, verificación de la firma de release contra firmas hechas con `ssh-keygen` real (otro tag, checksums manipulados, namespace incorrecto, clave ajena, malformada), `allowed_signers` sincronizado con la clave incrustada, descarga que falla cerrada (checksums o firma ausentes, ilegibles o inválidos rechazan la actualización, y una firma mala la detiene antes de descargar el artefacto)
 - `pkg/workspace/` — 7 pruebas: descubrimiento de workspaces, refresco de caché, carpetas extra, contenedores tentativos
 
-### Pruebas de la GUI — 63 pruebas (`cmd/gui/`)
+### Pruebas de la GUI — 65 pruebas (`cmd/gui/`)
 
 Lógica del lado Go de la app Wails que se ejecuta sin ventana:
 

@@ -6,13 +6,13 @@ Test inventory and harness internals. For running tests, checklists, and fixture
 
 Counts are top-level `func Test…` functions per package, from `grep -rc "^func Test" --include=*_test.go pkg cmd`. Subtests (`t.Run`) are not counted.
 
-### Package tests — 465 tests (`pkg/`)
+### Package tests — 466 tests (`pkg/`)
 
 - `pkg/adopt/` — 14 tests: orphan discovery, account scoring (embedded URL user, credential username, parent folder, ambiguous ties), nested clones under containers
 - `pkg/config/` — 105 tests: config parsing, v1/v2 → v3 migration, CRUD operations, save/load, backups, test-mode setup, layout-state pruning (folds, sidebar, the view of a deleted account), a rename that keeps its view, and backup skip for layout and theme saves
 - `pkg/credential/` — 32 tests: token resolution, validation, OS-default helpers, `Check`/`FixGlobalGCMConfig` (global gitconfig health for GCM), cancellation, compare-first maintenance, atomic token-file updates
 - `pkg/doctor/` — 24 tests: tool table shape, install hints, lookups, per-credential-type prechecks, tool output decoding
-- `pkg/git/` — 33 tests: git subprocess operations, repo and profile URLs, nested repo discovery, cancellable fetches, config snapshots with includes and linked worktrees
+- `pkg/git/` — 34 tests: git subprocess operations, repo and profile URLs, nested repo discovery, cancellable fetches, connects refused within milliseconds, config snapshots with includes and linked worktrees
 - `pkg/gitignore/` — 23 tests: managed block round-trip, merge with user content, idempotent install, backups, duplicate sanitising
 - `pkg/harness/` — 28 tests: embedded tools directory parsing, retired tools, WezTerm `launch_menu` parsing
 - `pkg/heal/` — 11 tests: expected origin URL per credential type, identity repair, stripping embedded tokens, two-process unchanged maintenance, shadowed repairs, linked worktrees
@@ -28,7 +28,7 @@ Counts are top-level `func Test…` functions per package, from `grep -rc "^func
 - `pkg/update/` — 28 tests: semver parsing, version comparison, update check (mock API, a pending update reported on every check), major-version cap, artifact names, AppImage notify-only detection, install targets, relaunch command per platform and waiting for the old process to exit (plus the elevated Windows script, on Windows), checksum verification, release signature verification against signatures made by real `ssh-keygen` (wrong tag, tampered checksums, wrong namespace, foreign key, malformed), `allowed_signers` in sync with the embedded key, fail-closed download (missing, unreadable or invalid checksums or signature refuse the update, and a bad signature stops it before the artifact download)
 - `pkg/workspace/` — 7 tests: workspace discovery, cache refresh, extra folders, tentative containers
 
-### GUI tests — 63 tests (`cmd/gui/`)
+### GUI tests — 65 tests (`cmd/gui/`)
 
 Go-side logic of the Wails app that runs without a window:
 
