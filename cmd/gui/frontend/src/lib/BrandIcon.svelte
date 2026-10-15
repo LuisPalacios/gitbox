@@ -16,6 +16,32 @@
       : (SHELL_LOGO[shell.startsWith('wsl-') ? 'wsl' : shell] ?? '');
     return brand[name] ? name : 'terminal';
   }
+
+  // harnessLogo and editorLogo pick an AI harness's or an editor's logo by
+  // its name or command, or the generic ai / ide icon.
+  export function harnessLogo(h: { name: string; command: string }): string {
+    const k = `${h.name} ${h.command}`.toLowerCase();
+    if (k.includes('claude')) return 'claude';
+    if (k.includes('codex') || k.includes('openai')) return 'openai';
+    if (k.includes('gemini')) return 'gemini';
+    if (k.includes('cursor')) return 'cursor';
+    return 'ai';
+  }
+
+  // providerLogo picks a provider's logo (github, gitlab, gitea, forgejo,
+  // bitbucket), or '' when assets/svg/brand/ has none, so the caller can
+  // show a letter instead.
+  export function providerLogo(provider: string): string {
+    return brand[provider] ? provider : '';
+  }
+
+  export function editorLogo(e: { name: string; command: string }): string {
+    const k = `${e.name} ${e.command}`.toLowerCase();
+    if (k.includes('cursor')) return 'cursor';
+    if (k.includes('zed')) return 'zed';
+    if (k.includes('visual studio code') || k.includes('vs code') || k.includes('vscode') || /(^|[\\/ ])code(\.exe|\.cmd)?$/.test(e.command.toLowerCase())) return 'vscode';
+    return 'ide';
+  }
 </script>
 
 <script lang="ts">
@@ -30,7 +56,7 @@
   import { themeStore } from './stores';
 
   export let name: string;
-  export let size: number = 16;
+  export let size: number = 18;
 
   $: entry = brand[name] || {};
   $: useColor = entry.color && ($themeStore === 'light' || !entry.mono);

@@ -6,12 +6,13 @@
   import { t } from '../i18n';
   import { tooltip } from '../tooltip';
   import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime';
+  import type { ThemeChoice } from '../theme';
 
   export let showSettings: boolean;
   export let simple: boolean;
   export let configPath: string;
   export let languageChoice: 'en' | 'es';
-  export let themeChoice: 'system' | 'light' | 'dark';
+  export let themeChoice: ThemeChoice;
   export let fetchInterval: string;
   export let lastFetchTime: string;
   export let autostartSupported: boolean;
@@ -22,7 +23,7 @@
   export let appVersion: string;
   export let openChangeFolder: () => void;
   export let setLanguage: (lang: 'en' | 'es') => Promise<void>;
-  export let applyTheme: () => void;
+  export let setTheme: (choice: ThemeChoice) => void;
   export let setFetchInterval: (val: string) => void;
   export let toggleAutostart: () => Promise<void>;
   export let setPRBadgesEnabled: (enabled: boolean) => Promise<void>;
@@ -56,9 +57,9 @@
     <div class="settings-row">
       <span class="settings-label" use:tooltip={"Color scheme. ‘System’ tracks your OS preference; ‘Light’ and ‘Dark’ pin gitbox to that mode."}>{$t('settings.theme')}</span>
       <div class="theme-toggle">
-        <button class="theme-btn" class:theme-active={themeChoice === 'system'} on:click={() => { themeChoice = 'system'; applyTheme(); }}>System</button>
-        <button class="theme-btn" class:theme-active={themeChoice === 'light'} on:click={() => { themeChoice = 'light'; applyTheme(); }}>Light</button>
-        <button class="theme-btn" class:theme-active={themeChoice === 'dark'} on:click={() => { themeChoice = 'dark'; applyTheme(); }}>Dark</button>
+        <button class="theme-btn" class:theme-active={themeChoice === 'system'} on:click={() => setTheme('system')}>System</button>
+        <button class="theme-btn" class:theme-active={themeChoice === 'light'} on:click={() => setTheme('light')}>Light</button>
+        <button class="theme-btn" class:theme-active={themeChoice === 'dark'} on:click={() => setTheme('dark')}>Dark</button>
       </div>
     </div>
     <div class="settings-row">
@@ -201,7 +202,7 @@
   @keyframes gb-spin {
     to { transform: rotate(360deg); }
   }
-  .theme-toggle { display: flex; gap: 4px; }
+  .theme-toggle { display: flex; align-items: center; gap: 4px; }
   .theme-btn {
     padding: 3px 10px; font-size: 11px; border: 1px solid var(--border);
     background: transparent; color: var(--text-secondary); border-radius: 5px;

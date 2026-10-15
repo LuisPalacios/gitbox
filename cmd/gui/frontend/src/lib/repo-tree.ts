@@ -10,7 +10,9 @@ export interface RepoRow {
 }
 
 // I keep ownership in each row even when a clone lives under another source's container.
-export function repoTreeRows(sources: Record<string, SourceDTO>, nesting: Record<string, string>, collapsed: Set<string>): Record<string, RepoRow[]> {
+// With a rank (lower = needs me more), siblings sort stably by the worst rank
+// in their subtree, so a parent rises with its worst nested clone.
+export function repoTreeRows(sources: Record<string, SourceDTO>, nesting: Record<string, string>, collapsed: Set<string>, rank?: (key: string) => number): Record<string, RepoRow[]> {
   const refs = new Map<string, { sourceKey: string; repoName: string }>();
   for (const [sourceKey, source] of Object.entries(sources)) {
     const order = [...new Set([...(source.repoOrder || []), ...Object.keys(source.repos)])];
@@ -39,12 +41,22 @@ export function repoTreeRows(sources: Record<string, SourceDTO>, nesting: Record
     if (parent) children.set(parent, [...(children.get(parent) || []), key]);
   }
   const descendantsOf = (key: string): string[] => (children.get(key) || []).flatMap(child => [child, ...descendantsOf(child)]);
+  const worst = new Map<string, number>();
+  const worstOf = (key: string): number => {
+    let w = worst.get(key);
+    if (w === undefined) {
+      w = Math.min(rank!(key), ...(children.get(key) || []).map(worstOf));
+      worst.set(key, w);
+    }
+    return w;
+  };
+  const ordered = (keys: string[]): string[] => rank ? [...keys].sort((a, b) => worstOf(a) - worstOf(b)) : keys;
   const rows: Record<string, RepoRow[]> = Object.fromEntries(Object.keys(sources).map(key => [key, []]));
   const walk = (key: string, source: string, depth: number) => {
     const ref = refs.get(key)!;
     rows[source].push({ key, ...ref, depth, childCount: (children.get(key) || []).length, descendants: descendantsOf(key) });
-    if (!collapsed.has(key)) for (const child of children.get(key) || []) walk(child, source, depth + 1);
+    if (!collapsed.has(key)) for (const child of ordered(children.get(key) || [])) walk(child, source, depth + 1);
   };
-  for (const [key, ref] of refs) if (!parents.has(key)) walk(key, ref.sourceKey, 0);
+  for (const key of ordered([...refs.keys()].filter(key => !parents.has(key)))) walk(key, refs.get(key)!.sourceKey, 0);
   return rows;
 }

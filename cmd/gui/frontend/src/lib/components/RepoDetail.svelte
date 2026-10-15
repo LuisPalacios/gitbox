@@ -120,7 +120,7 @@
     color: var(--text-dim); margin: 6px 0 3px 0;
   }
   .detail-file {
-    display: flex; align-items: baseline; gap: 6px; padding: 1px 0;
+    display: flex; align-items: center; gap: 6px; padding: 1px 0;
     font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
     font-size: 10px;
   }

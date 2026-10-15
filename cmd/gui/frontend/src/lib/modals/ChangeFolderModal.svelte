@@ -2,6 +2,8 @@
   // Change the root folder, the extra scan folders and the nested scan depth.
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
+  import { pushNotice, errorText } from '../notices';
+  import { t } from '../i18n';
   import { configStore } from '../stores';
   import { dismiss } from '../dismiss';
 
@@ -29,7 +31,7 @@
       await bridge.addExtraFolder(dir);
       extraFolders = (await bridge.listExtraFolders()) || [];
       $configStore = await bridge.reloadConfig();
-    } catch (err: any) { alert(err?.message || err); }
+    } catch (err: any) { pushNotice('error', $t('notice.extraFolderAddFailed'), [errorText(err)]); }
   }
 
   async function removeExtraFolder(path: string) {
@@ -37,7 +39,7 @@
       await bridge.removeExtraFolder(path);
       extraFolders = (await bridge.listExtraFolders()) || [];
       $configStore = await bridge.reloadConfig();
-    } catch (err: any) { alert(err?.message || err); }
+    } catch (err: any) { pushNotice('error', $t('notice.extraFolderRemoveFailed'), [errorText(err)]); }
   }
 
   let nestedDepthError = '';

@@ -1,103 +1,49 @@
 <script lang="ts">
-  // The repo list: one collapsible group per source (header with its
-  // account kebab and summary), then its clones as a tree, each with its
-  // detail panel when open.
-  import { fade } from 'svelte/transition';
-  import { bridge } from '../bridge';
-  import { sources, repoStates, isSynced, themeStore } from '../stores';
-  import { statusColor, simpleUnsaved, opensDetail, canDiscoverWith, canCreateWith, DISCOVER_DISABLED, CREATE_DISABLED } from '../status';
+  // The All view: one collapsible group per source (header with its
+  // account ⋯ menu and summary), then its clones as a tree (RepoTree),
+  // problems first.
+  import { sources, repoStates, themeStore } from '../stores';
+  import { statusColor, attentionRank, CALM_RANK } from '../status';
   import { t } from '../i18n';
   import { onActivateKey } from '../keyboard';
-  import LauncherMenu from '../LauncherMenu.svelte';
-  import RepoRow from './RepoRow.svelte';
-  import RepoDetail from './RepoDetail.svelte';
-  import type { RepoDetailView, EditorInfo, AIHarnessInfo, TerminalProfileInfo } from '../types';
+  import UIIcon from '../UIIcon.svelte';
+  import RepoTree from './RepoTree.svelte';
+  import AccountMenu from './AccountMenu.svelte';
+  import type { RowProps } from './RepoRow.svelte';
   import type { RepoRow as TreeRow } from '../repo-tree';
 
   export let treeRows: Record<string, TreeRow[]>;
   export let collapsedSources: Set<string>;
   export let credStatuses: Record<string, any>;
-  export let expandedRepo: string | null;
-  export let repoDetail: RepoDetailView | null;
-  export let detailLoading: boolean;
   export let actionMenuAccount: string | null;
   export let toggleSourceCollapsed: (sourceKey: string) => void;
   export let toggleAccountMenu: (accountKey: string) => void;
   export let closeAccountMenu: () => void;
   export let openDiscover: (accountKey: string) => void;
   export let openCreateRepo: (accountKey: string) => Promise<void>;
-  // Passed through to each RepoRow.
-  export let simple: boolean;
-  export let deleteMode: boolean;
-  export let selectionMode: boolean;
-  export let fetchingRepos: Record<string, boolean>;
-  export let collapsedRepos: Set<string>;
-  export let tentativeContainers: Set<string>;
-  export let workspaceBusy: boolean;
-  export let openWsPopover: string | null;
-  export let revealLabel: string;
-  export let configEditors: EditorInfo[];
-  export let configProfiles: TerminalProfileInfo[];
-  export let configAIHarnesses: AIHarnessInfo[];
-  export let actionMenuRepo: string | null;
-  export let openPRPopover: string | null;
-  export let activateRepoRow: (sourceKey: string, repoName: string, repoKey: string, status: string) => void;
-  export let askDelete: (sourceKey: string, repoKey: string, status: string) => void;
-  export let syncRepo: (sourceKey: string, repoKey: string) => void;
-  export let cloneRepo: (sourceKey: string, repoKey: string) => void;
-  export let fetchRepo: (sourceKey: string, repoKey: string) => void;
-  export let toggleActionMenu: (repoKey: string) => void;
-  export let closeActionMenu: () => void;
-  export let toggleWsPopover: (key: string) => void;
-  export let openWorkspaceFromBadge: (wsKey: string) => Promise<void>;
-  export let togglePRPopover: (key: string) => void;
-  export let sweepBranches: (sourceKey: string, repoKey: string) => void;
-  export let openMoveRepo: (sourceKey: string, repoKey: string) => void;
-  export let toggleContainer: (sourceKey: string, repoName: string) => Promise<void>;
-  export let rescanContainer: () => Promise<void>;
-  export let toggleRepoCollapsed: (repoKey: string, descendants: string[]) => void;
-  export let isContainerRepo: (sourceKey: string, repoName: string) => boolean;
+  export let openEditAccount: (accountKey: string) => void;
+  export let openCredChange: (accountKey: string, currentType: string) => void;
+  export let rowProps: RowProps;
 
   $: sc = (s: string) => statusColor(s, $themeStore);
-
-  async function openAccountInExplorer(accountKey: string) {
-    try { await bridge.openAccountFolder(accountKey); } catch (e) { console.error(e); }
-    closeAccountMenu();
-  }
-
-  async function openAccountInApp(accountKey: string, command: string) {
-    try { await bridge.openAccountInApp(accountKey, command); } catch (e) { console.error(e); }
-    closeAccountMenu();
-  }
-
-  async function openAccountProfile(accountKey: string, profileID: string) {
-    try { await bridge.openAccountProfile(accountKey, profileID); }
-    catch (e: any) { await bridge.showErrorDialog('Open profile', (e?.message || String(e))); }
-    closeAccountMenu();
-  }
-
-  async function openAccountInAIHarness(accountKey: string, harness: AIHarnessInfo) {
-    try {
-      await bridge.openAccountInAIHarness(accountKey, harness.command, harness.args || []);
-    } catch (e: any) {
-      await bridge.showErrorDialog('Open in ' + harness.name, (e?.message || String(e)));
-    }
-    closeAccountMenu();
-  }
-
-  async function openAccountInBrowser(accountKey: string) {
-    try { await bridge.openAccountInBrowser(accountKey); } catch (e) { console.error(e); }
-    closeAccountMenu();
-  }
+  $: simple = rowProps.simple;
+  // Repos that need me (as in Needs attention); unknown ones are still checking.
+  $: needsMe = (key: string) => { const st = $repoStates[key]; return !!st && attentionRank(st.status, st.isDefault) < CALM_RANK; };
+  $: total = Object.values($sources).reduce((n, s) => n + Object.keys(s.repos).length, 0);
+  $: accountCount = new Set(Object.values($sources).map((s) => s.account)).size;
+  $: what = simple ? $t('simple.projects', { n: total }) : $t('collapse.clones', { n: total });
 </script>
 
-<section class="repo-list">
+<section class="view-scroll">
+  <div class="view-head">
+    <h3 class="view-title">{$t(simple ? 'nav.allSimple' : 'nav.all')}</h3>
+    <span class="view-sub">{$t(accountCount === 1 ? 'view.acrossOne' : 'view.across', { what, m: accountCount })}</span>
+  </div>
   {#each Object.entries($sources) as [sourceKey, source] (sourceKey)}
     {@const accountKey = source.account}
     {@const sourceCollapsed = collapsedSources.has(sourceKey)}
     {@const sourceRepoKeys = [...new Set((treeRows[sourceKey] || []).flatMap(row => [row.key, ...row.descendants]))]}
-    {@const sourceIssues = sourceRepoKeys.filter(key => $repoStates[key] && $repoStates[key].status !== 'unknown' && !isSynced($repoStates[key])).length}
-    {@const sourceUnsaved = sourceRepoKeys.filter(key => simpleUnsaved(($repoStates[key] || { status: 'unknown' }).status)).length}
+    {@const sourceIssues = sourceRepoKeys.filter(needsMe).length}
     {#if sourceRepoKeys.length > 0}
     <div class="source-group">
       <div class="source-header" role="button" tabindex="0"
@@ -105,73 +51,25 @@
         title={sourceCollapsed ? $t('collapse.expand') : $t('collapse.collapse')}
         on:click={(e) => { if (!(e.target instanceof Element && e.target.closest('.source-header-kebab'))) toggleSourceCollapsed(sourceKey); }}
         on:keydown={onActivateKey(() => toggleSourceCollapsed(sourceKey))}>
-        <span class="collapse-chevron" aria-hidden="true">{sourceCollapsed ? '▸' : '▾'}</span>
+        <span class="collapse-chevron" class:collapsed={sourceCollapsed} aria-hidden="true"><UIIcon name="chevron" /></span>
         <span class="source-header-title">{sourceKey}</span>
-        <div class="action-menu-container source-header-kebab">
-          <button class="btn-kebab" on:click|stopPropagation={() => toggleAccountMenu(accountKey)} title={$t('account.actions')}>&#8942;</button>
-          {#if actionMenuAccount === accountKey}
-            <div transition:fade={{ duration: 80 }}>
-              <LauncherMenu
-                kind="account"
-                editors={configEditors}
-                profiles={simple ? [] : configProfiles}
-                browserLabelOverride={simple ? $t('simple.openWeb') : ''}
-                aiHarnesses={configAIHarnesses}
-                {revealLabel}
-                onOpenBrowser={() => openAccountInBrowser(accountKey)}
-                onOpenFolder={() => openAccountInExplorer(accountKey)}
-                onOpenApp={(cmd) => openAccountInApp(accountKey, cmd)}
-                onOpenProfile={(id) => openAccountProfile(accountKey, id)}
-                onOpenAIHarness={(h) => openAccountInAIHarness(accountKey, h)}
-                onFind={() => { actionMenuAccount = null; openDiscover(accountKey); }}
-                findEnabled={canDiscoverWith(credStatuses[accountKey]?.status)}
-                findDisabledReason={DISCOVER_DISABLED}
-                onCreate={() => { actionMenuAccount = null; openCreateRepo(accountKey); }}
-                createEnabled={canCreateWith(credStatuses[accountKey]?.status)}
-                createDisabledReason={CREATE_DISABLED}
-              />
-            </div>
-          {/if}
-        </div>
+        <span class="source-header-kebab">
+          <AccountMenu {accountKey} credStatus={credStatuses[accountKey]?.status} {actionMenuAccount} {rowProps}
+            {toggleAccountMenu} {closeAccountMenu} {openDiscover} {openCreateRepo} {openEditAccount} {openCredChange} />
+        </span>
         <span class="collapse-summary">
-          {#if simple}
-            {$t('simple.projects', { n: sourceRepoKeys.length })} ·
-            {#if sourceRepoKeys.some(key => !$repoStates[key] || $repoStates[key].status === 'unknown')}
-              {$t('simple.checking')}
-            {:else if sourceUnsaved === 0}
-              <span style="color:{sc('clean')}">{$t('simple.allSaved')}</span>
-            {:else}
-              <span style="color:{sc('dirty')}">{$t('simple.notSavedN', { n: sourceUnsaved })}</span>
-            {/if}
-          {:else}
-          {$t('collapse.clones', { n: sourceRepoKeys.length })} ·
+          {simple ? $t('simple.projects', { n: sourceRepoKeys.length }) : $t('collapse.clones', { n: sourceRepoKeys.length })} ·
           {#if sourceRepoKeys.some(key => !$repoStates[key] || $repoStates[key].status === 'unknown')}
             {$t('simple.checking')}
           {:else if sourceIssues === 0}
-            <span style="color:{sc('clean')}">{$t('account.allGood')}</span>
+            <span style="color:{sc('clean')}">{simple ? $t('simple.allSaved') : $t('account.allUpToDate')}</span>
           {:else}
-            <span style="color:{sc('behind')}">{sourceIssues} {sourceIssues === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}</span>
-          {/if}
+            <span style="color:{sc('behind')}">{$t(sourceIssues === 1 ? 'account.needYouOne' : 'account.needYou', { n: sourceIssues })}</span>
           {/if}
         </span>
       </div>
       {#if !sourceCollapsed}
-      {#each (treeRows[sourceKey] || []) as { sourceKey: rowSourceKey, repoName, depth, childCount, descendants } (`${rowSourceKey}/${repoName}`)}
-        {@const rowAccountKey = $sources[rowSourceKey].account}
-        {@const repoKey = `${rowSourceKey}/${repoName}`}
-        {@const isContainer = !!$sources[rowSourceKey]?.repos[repoName]?.container}
-        {@const state = $repoStates[repoKey] || { status: 'unknown', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
-        {@const rowOpensDetail = opensDetail(state.status)}
-        <RepoRow {sourceKey} {rowSourceKey} {repoName} {depth} {childCount} {descendants} {rowAccountKey} {repoKey} {isContainer} {state} {rowOpensDetail}
-          {simple} {deleteMode} {selectionMode} {fetchingRepos} {collapsedRepos} {tentativeContainers} {workspaceBusy} {openWsPopover}
-          {revealLabel} {configEditors} {configProfiles} {configAIHarnesses} bind:actionMenuRepo bind:openPRPopover
-          {activateRepoRow} {askDelete} {syncRepo} {cloneRepo} {fetchRepo} {toggleActionMenu} {closeActionMenu} {toggleWsPopover}
-          {openWorkspaceFromBadge} {togglePRPopover} {sweepBranches} {openMoveRepo} {toggleContainer} {rescanContainer}
-          {toggleRepoCollapsed} {isContainerRepo} />
-        {#if expandedRepo === repoKey}
-          <RepoDetail {simple} {state} {repoDetail} {detailLoading} />
-        {/if}
-      {/each}
+      <RepoTree rows={treeRows[sourceKey] || []} groupSource={sourceKey} {rowProps} />
       {/if}
     </div>
     {/if}
@@ -180,25 +78,21 @@
 </section>
 
 <style>
-  .repo-list { flex: 1; padding: 0 24px 12px; overflow-y: auto; min-height: 0; }
   .source-group { margin-bottom: 6px; }
   .source-header {
     font-size: 11px; font-weight: 600; color: var(--text-dim);
     text-transform: uppercase; letter-spacing: 0.8px;
-    padding: 10px 0 5px; border-bottom: 1px solid var(--border);
+    padding: 6px 0 2px; border-bottom: 1px solid var(--border);
     display: flex; align-items: center; gap: 4px;
   }
   .source-header[role="button"] { cursor: pointer; user-select: none; }
   .source-header-title { flex: 0 0 auto; }
-  .collapse-chevron { flex: 0 0 auto; width: 18px; text-align: center; font-size: 16px; line-height: 1; opacity: 0.85; }
-  .source-header[role="button"]:hover .collapse-chevron { opacity: 1; }
-  .collapse-summary { flex: 0 0 auto; font-size: 11px; font-weight: normal; opacity: 0.8; }
-  .source-header-kebab { font-size: 14px; flex: 0 0 auto; margin-right: auto; }
-  .btn-kebab {
-    background: transparent; border: none; color: var(--text-dim); cursor: pointer;
-    font-size: 16px; padding: 2px 4px; border-radius: 4px; transition: color 0.15s;
-    flex-shrink: 0; line-height: 1;
+  .collapse-chevron {
+    flex: none; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-muted); transition: transform 0.12s, color 0.12s;
   }
-  .btn-kebab:hover { color: var(--text-primary); }
-  .action-menu-container { position: relative; }
+  .collapse-chevron.collapsed { transform: rotate(-90deg); }
+  .source-header[role="button"]:hover .collapse-chevron { color: var(--text-primary); }
+  .collapse-summary { flex: 0 0 auto; font-size: 11px; font-weight: normal; opacity: 0.8; }
+  .source-header-kebab { flex: 0 0 auto; margin-right: auto; display: inline-flex; align-items: center; }
 </style>

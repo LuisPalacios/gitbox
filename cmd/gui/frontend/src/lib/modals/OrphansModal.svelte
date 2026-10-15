@@ -2,6 +2,8 @@
   // Adopt clones found on disk that the config doesn't know yet.
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
+  import { pushNotice } from '../notices';
+  import { t } from '../i18n';
   import { configStore, applyStatusResults } from '../stores';
   import { dismiss } from '../dismiss';
   import type { OrphanRepoDTO } from '../types';
@@ -31,7 +33,7 @@
     const result = await bridge.adoptOrphans(keys);
     orphanBusy = false;
     orphanModal = null;
-    if (result.error) alert(`Adopt error: ${result.error}`);
+    if (result.error) pushNotice('error', $t('notice.adoptFailed'), [result.error]);
     // Reload config from disk (adoption saved there) so the dashboard
     // picks up the new repos and the orphan scan uses fresh state.
     $configStore = await bridge.reloadConfig();

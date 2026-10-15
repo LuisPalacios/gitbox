@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg height="100%" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;" width="100%" version="1.1" viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" xmlns:bx="https://boxy-svg.com">
+  <defs>
+    <bx:grid x="0" y="0" width="15" height="15"/>
+  </defs>
+  <g transform="matrix(0.059653, 0, 0, 0.059653, 0.490396, 7.592407)" style="">
+    <path class="st2" d="M989.97,1493.09h518.05l125.04-730.04H852.22L989.97,1493.09z" style="fill: none;"/>
+    <path class="st0" d="M88.92,14.4C45.02,13.83,8.97,48.96,8.41,92.86c-0.06,4.61,0.28,9.22,1.02,13.77l337.48,2048.72 c8.68,51.75,53.26,89.8,105.74,90.24h1619.03c39.38,0.5,73.19-27.9,79.49-66.78l337.49-2071.78c7.03-43.34-22.41-84.17-65.75-91.2 c-4.55-0.74-9.15-1.08-13.76-1.02L88.92,14.4z M1509.99,1495.09H993.24l-139.92-731h781.89L1509.99,1495.09z" style="fill: rgb(38, 132, 255);"/>
+    <linearGradient id="SVGID_1_" gradientUnits="userSpaceOnUse" x1="945.1094" y1="1524.8389" x2="944.4923" y2="1524.1893" gradientTransform="matrix(1996.6343 0 0 -1480.3047 -1884485.625 2258195)">
+      <stop offset="0.18" style="stop-color:#0052CC"/>
+      <stop offset="1" style="stop-color:#2684FF"/>
+    </linearGradient>
+    <path class="st1" d="M2379.27,763.06h-745.5l-125.12,730.42H992.31l-609.67,723.67c19.32,16.71,43.96,26,69.5,26.21h1618.13 c39.35,0.51,73.14-27.88,79.44-66.72L2379.27,763.06z" style="fill: url(&quot;#SVGID_1_&quot;);"/>
+  </g>
+</svg>

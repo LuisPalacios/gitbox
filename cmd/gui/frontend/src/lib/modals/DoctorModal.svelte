@@ -109,7 +109,7 @@
   :global([data-theme="light"]) .doctor-state-err { color: #b91c1c; }
   .doctor-state-opt { color: var(--text-muted); }
   .doctor-main { flex: 1; min-width: 0; }
-  .doctor-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .doctor-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .doctor-name { font-weight: 600; color: var(--text-primary); font-size: 13px; }
   .doctor-tag { font-size: 9px; padding: 1px 5px; background: var(--bg-hover); color: var(--text-muted); border-radius: 3px; text-transform: uppercase; letter-spacing: 0.3px; }
   .doctor-version { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }

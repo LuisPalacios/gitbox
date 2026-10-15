@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg height="100%" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;" width="100%" version="1.1" viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg" xmlns:bx="https://boxy-svg.com">
+  <defs>
+    <bx:grid x="0" y="0" width="15" height="15"/>
+  </defs>
+  <g transform="matrix(0.702285, 0, 0, 0.702285, 4.771506, 4.771507)" style="">
+    <path d="M58 168 v-98 a50 50 0 0 1 50-50 h20" class="orange" style="fill: none; stroke: rgb(255, 102, 0); stroke-width: 25px;"/>
+    <path d="M58 168 v-30 a50 50 0 0 1 50-50 h20" class="red" style="fill: none; stroke: rgb(212, 0, 0); stroke-width: 25px;"/>
+    <circle cx="142" cy="20" r="18" class="orange" style="fill: none; stroke: rgb(255, 102, 0); stroke-width: 15px;"/>
+    <circle cx="142" cy="88" r="18" class="red" style="fill: none; stroke: rgb(212, 0, 0); stroke-width: 15px;"/>
+    <circle cx="58" cy="180" r="18" class="red" style="fill: none; stroke: rgb(212, 0, 0); stroke-width: 15px;"/>
+  </g>
+</svg>

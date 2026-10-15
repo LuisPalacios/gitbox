@@ -11,6 +11,14 @@ export function credColor(status: string, theme: string): string {
   return status === 'ok' ? '#61fd5f' : status === 'warning' ? '#F07623' : '#D81E5B';
 }
 
+export type ThemeChoice = 'system' | 'light' | 'dark';
+
+// The saved global.theme as a choice; anything but light or dark (absent
+// included) follows the OS.
+export function themeChoiceOf(saved: string | undefined): ThemeChoice {
+  return saved === 'light' || saved === 'dark' ? saved : 'system';
+}
+
 // Default server URL per provider; Gitea and Forgejo are self-hosted, so
 // they have none and the user types it.
 export const providerURLs: Record<string, string> = {

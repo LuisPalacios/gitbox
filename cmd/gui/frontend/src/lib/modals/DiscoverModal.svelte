@@ -272,7 +272,7 @@
   .dr-tag { font-size: 9px; padding: 1px 5px; background: var(--bg-hover); color: var(--text-dim); border-radius: 3px; }
   .dr-disabled { opacity: 0.4; cursor: default; }
   .dr-disabled:hover { background: transparent; }
-  .discover-orgs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+  .discover-orgs { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
   .org-badge {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 2px 8px; border-radius: 12px; font-size: 11px;
@@ -322,5 +322,5 @@
     font-family: ui-monospace, Menlo, Consolas, monospace;
   }
   .discover-error-hint { margin: 8px 0 0; color: var(--text-primary); font-size: 12px; line-height: 1.5; }
-  .discover-error-actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+  .discover-error-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; justify-content: flex-end; }
 </style>

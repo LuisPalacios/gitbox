@@ -250,13 +250,13 @@ export function SetPeriodicSync(arg1:string):Promise<void>;
 
 export function SetRepoContainer(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
+export function SetTheme(arg1:string):Promise<void>;
+
 export function SetUIMode(arg1:string):Promise<void>;
 
 export function SetViewMode(arg1:string):Promise<main.WindowStateDTO>;
 
 export function SetupMirrorRepo(arg1:string,arg2:string):Promise<void>;
-
-export function ShowErrorDialog(arg1:string,arg2:string):Promise<void>;
 
 export function ShowWindow():Promise<void>;
 

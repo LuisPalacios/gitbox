@@ -89,7 +89,7 @@ func backupBeforeSave(path string, next *Config) {
 }
 
 // configsEqualIgnoringUIState reports whether two configs are content-equal
-// ignoring GUI state (window position and collapsed groups). Compares via canonical JSON so nested
+// ignoring GUI state (window position, collapsed groups and theme). Compares via canonical JSON so nested
 // maps/slices are handled correctly (Go map iteration order doesn't matter
 // because json.Marshal sorts map keys).
 func configsEqualIgnoringUIState(a, b *Config) bool {
@@ -101,9 +101,11 @@ func configsEqualIgnoringUIState(a, b *Config) bool {
 	ac.Global.Window = nil
 	ac.Global.CompactWindow = nil
 	ac.Global.Collapsed = nil
+	ac.Global.Theme = ""
 	bc.Global.Window = nil
 	bc.Global.CompactWindow = nil
 	bc.Global.Collapsed = nil
+	bc.Global.Theme = ""
 	da, err := json.Marshal(&ac)
 	if err != nil {
 		return false

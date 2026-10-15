@@ -2,6 +2,8 @@
   // Confirm removing one repo from a mirror group.
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
+  import { pushNotice, errorText } from '../notices';
+  import { t } from '../i18n';
   import { dismiss } from '../dismiss';
   import { configStore } from '../stores';
 
@@ -19,7 +21,7 @@
       await bridge.deleteMirrorRepo(deleteMirrorRepoConfirm.mirrorKey, deleteMirrorRepoConfirm.repoKey);
       $configStore = await bridge.reloadConfig();
     } catch (e: any) {
-      alert(e?.message || e);
+      pushNotice('error', $t('notice.mirrorRepoDeleteFailed'), [errorText(e)]);
     }
     deleteMirrorRepoConfirm = null;
     deleteMode = false;

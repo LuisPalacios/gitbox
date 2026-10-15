@@ -3,6 +3,8 @@
   // accounts, added one by one or applied all at once.
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
+  import { pushNotice, errorText } from '../notices';
+  import { t } from '../i18n';
   import { dismiss } from '../dismiss';
   import { configStore, mirrors } from '../stores';
 
@@ -44,7 +46,7 @@
       $configStore = await bridge.reloadConfig();
       discoverAdded = { ...discoverAdded, [addKey]: true };
     } catch (e: any) {
-      alert(e?.message || e);
+      pushNotice('error', $t('notice.mirrorRepoAddFailed'), [errorText(e)]);
     }
   }
 
@@ -56,7 +58,7 @@
       discoverAdded = {};
       checkAllMirrorStatus();
     } catch (e: any) {
-      alert(e?.message || e);
+      pushNotice('error', $t('notice.mirrorApplyFailed'), [errorText(e)]);
     }
   }
 </script>

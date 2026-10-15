@@ -515,7 +515,7 @@
     padding-left: 0;
     padding-right: 0;
   }
-  .tp-actions { white-space: nowrap; display: flex; gap: 4px; }
+  .tp-actions { white-space: nowrap; display: flex; align-items: center; gap: 4px; }
 
   .tp-btn {
     background: var(--bg-card);

@@ -2,6 +2,8 @@
   // Previews stale local branches (gone, merged, squashed) and deletes them.
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
+  import { pushNotice } from '../notices';
+  import { t } from '../i18n';
   import { applyStatusResults } from '../stores';
   import { dismiss } from '../dismiss';
 
@@ -14,14 +16,14 @@
     closeActionMenu();
     const preview = await bridge.previewSweep(sourceKey, repoKey);
     if (preview.error) {
-      alert(`Sweep failed: ${preview.error}`);
+      pushNotice('error', $t('notice.sweepFailed'), [preview.error]);
       return;
     }
     const merged = preview.merged || [];
     const gone = preview.gone || [];
     const squashed = preview.squashed || [];
     if (merged.length === 0 && gone.length === 0 && squashed.length === 0) {
-      alert('No stale branches found.');
+      pushNotice('info', $t('notice.sweepNone'), [repoKey]);
       return;
     }
     sweepModal = { sourceKey, repoKey, merged, gone, squashed };
@@ -34,9 +36,9 @@
     sweepBusy = false;
     sweepModal = null;
     if (result.error) {
-      alert(`Sweep error: ${result.error}`);
+      pushNotice('error', $t('notice.sweepFailed'), [result.error]);
     } else if (result.deleted?.length > 0) {
-      alert(`Swept ${result.deleted.length} branch(es): ${result.deleted.join(', ')}`);
+      pushNotice('success', $t('notice.swept'), [$t(result.deleted.length === 1 ? 'notice.sweptOne' : 'notice.sweptN', { n: result.deleted.length }), result.deleted.join(', ')]);
     }
     bridge.getAllStatus().then(results => { applyStatusResults(results); });
   }

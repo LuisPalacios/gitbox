@@ -28,7 +28,7 @@
 .app .btn-x:hover { color: var(--text-primary); }
 .app .modal-body { padding: 14px 18px; overflow-y: auto; flex: 1; }
 .app .modal-foot {
-  display: flex; justify-content: flex-end; gap: 8px;
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
   padding: 10px 18px; border-top: 1px solid var(--border);
 }
 .app .loading { display: flex; align-items: center; gap: 12px; padding: 20px 0; color: var(--text-secondary); font-size: 13px; }

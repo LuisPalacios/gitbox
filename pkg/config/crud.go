@@ -206,6 +206,11 @@ func (c *Config) RenameAccount(oldKey, newKey string) error {
 			c.Mirrors[mirrorKey] = m
 		}
 	}
+
+	// Keep the GUI on the renamed account's view.
+	if cs := c.Global.Collapsed; cs != nil && cs.View == AccountViewPrefix+oldKey {
+		cs.View = AccountViewPrefix + newKey
+	}
 	return nil
 }
 

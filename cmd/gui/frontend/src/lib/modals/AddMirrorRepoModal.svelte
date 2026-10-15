@@ -2,6 +2,8 @@
   // Add a repo to a mirror group, picked from the origin account's repos.
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
+  import { pushNotice, errorText } from '../notices';
+  import { t } from '../i18n';
   import { dismiss } from '../dismiss';
   import { configStore, mirrors } from '../stores';
 
@@ -55,7 +57,7 @@
         await setupMirrorRepo(mirrorKey, repoKey);
       }
     } catch (e: any) {
-      alert(e?.message || e);
+      pushNotice('error', $t('notice.mirrorRepoAddFailed'), [errorText(e)]);
     }
   }
 </script>
@@ -142,6 +144,6 @@
   }
   .mrp-selected { background: var(--hover); outline: 1px solid var(--text-primary); outline-offset: -1px; }
   .mrp-disabled { opacity: 0.4; cursor: default; }
-  .mrp-badges { display: flex; gap: 4px; flex-shrink: 0; }
+  .mrp-badges { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
   .mrp-empty { color: var(--text-muted); font-size: 11px; padding: 8px; margin: 0; }
 </style>

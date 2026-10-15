@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
@@ -511,6 +512,136 @@ func TestRefresh_ShutdownJoinsStandaloneCredentialVerification(t *testing.T) {
 		<-checked
 		if premature {
 			t.Fatal("shutdown returned before the standalone credential worker exited")
+		}
+	})
+}
+
+func TestRefresh_RetriesAConnectRefusedRightAway(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a, events := refreshTestApp(t, 1)
+		defer a.stopRefresh()
+		var calls atomic.Int32
+		a.refreshHooks.fetch = func(context.Context, string) (string, error) {
+			if calls.Add(1) == 1 {
+				return "", errors.New("git fetch: exit status 128: fatal: unable to access 'https://h.lan/a.git/': Failed to connect to h.lan port 443 after 5 ms: Couldn't connect to server")
+			}
+			return "", nil
+		}
+		if err := a.FetchAllRepos(); err != nil {
+			t.Fatalf("FetchAllRepos() = %v, want the retry to succeed", err)
+		}
+		if calls.Load() != 2 {
+			t.Fatalf("fetch calls = %d, want 2 (one retry)", calls.Load())
+		}
+		done := events.named("fetch:done")
+		if len(done) != 1 || done[0].args[0].(map[string]any)["error"] != nil {
+			t.Fatalf("want one clean fetch:done, got %v", done)
+		}
+	})
+}
+
+func TestRefresh_DoesNotRetryOtherFetchErrors(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a, _ := refreshTestApp(t, 1)
+		defer a.stopRefresh()
+		var calls atomic.Int32
+		a.refreshHooks.fetch = func(context.Context, string) (string, error) {
+			calls.Add(1)
+			return "", errors.New("git fetch: exit status 128: fatal: Authentication failed")
+		}
+		if err := a.FetchAllRepos(); err == nil {
+			t.Fatal("FetchAllRepos() = nil, want the authentication error")
+		}
+		if calls.Load() != 1 {
+			t.Fatalf("fetch calls = %d, want 1 (no retry)", calls.Load())
+		}
+	})
+}
+
+func TestCredentialVerify_RetriesAnOfflineCheckRefusedRightAway(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a, _ := refreshTestApp(t, 0)
+		defer a.stopRefresh()
+		var calls atomic.Int32
+		a.refreshHooks.credential = func(context.Context, config.Account, string, *config.Config) credential.StatusResult {
+			if calls.Add(1) == 1 {
+				return credential.StatusResult{Primary: credential.StatusOffline, PAT: credential.StatusOffline, Overall: credential.StatusOffline}
+			}
+			return refreshCredentialOK()
+		}
+		if got := a.CredentialVerify("account-a"); got.Status != "ok" || calls.Load() != 2 {
+			t.Fatalf("CredentialVerify() = %q after %d checks, want ok after a retry", got.Status, calls.Load())
+		}
+	})
+}
+
+func TestCredentialVerify_DoesNotRetryAnOfflineCheckThatTimedOut(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a, _ := refreshTestApp(t, 0)
+		defer a.stopRefresh()
+		var calls atomic.Int32
+		a.refreshHooks.credential = func(context.Context, config.Account, string, *config.Config) credential.StatusResult {
+			calls.Add(1)
+			time.Sleep(15 * time.Second) // a timeout, past the retry budget
+			return credential.StatusResult{Primary: credential.StatusOffline, PAT: credential.StatusOffline, Overall: credential.StatusOffline}
+		}
+		if got := a.CredentialVerify("account-a"); got.Status != "offline" || calls.Load() != 1 {
+			t.Fatalf("CredentialVerify() = %q after %d checks, want offline with no retry", got.Status, calls.Load())
+		}
+	})
+}
+
+func TestCredentialVerify_BacksOffOnAPersistentNetworkFailure(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a, _ := refreshTestApp(t, 0)
+		defer a.stopRefresh()
+		var calls atomic.Int32
+		a.refreshHooks.credential = func(context.Context, config.Account, string, *config.Config) credential.StatusResult {
+			calls.Add(1)
+			return credential.StatusResult{Primary: credential.StatusOffline, PAT: credential.StatusOffline, Overall: credential.StatusOffline}
+		}
+		started := time.Now()
+		if got := a.CredentialVerify("account-a"); got.Status != "offline" {
+			t.Fatalf("CredentialVerify() = %q, want offline", got.Status)
+		}
+		if want := int32(1 + len(retryDelays)); calls.Load() != want {
+			t.Fatalf("checks = %d, want %d (one per backoff step)", calls.Load(), want)
+		}
+		if elapsed := time.Since(started); elapsed != 4600*time.Millisecond {
+			t.Fatalf("backoff took %v, want 4.6s (100ms + 500ms + 1s + 3s)", elapsed)
+		}
+	})
+}
+
+func TestCredentialVerify_DoesNotRetryAnAuthenticationError(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a, _ := refreshTestApp(t, 0)
+		defer a.stopRefresh()
+		var calls atomic.Int32
+		a.refreshHooks.credential = func(context.Context, config.Account, string, *config.Config) credential.StatusResult {
+			calls.Add(1)
+			return credential.StatusResult{Primary: credential.StatusError, PAT: credential.StatusError, Overall: credential.StatusError}
+		}
+		if got := a.CredentialVerify("account-a"); got.Status != "error" || calls.Load() != 1 {
+			t.Fatalf("CredentialVerify() = %q after %d checks, want error with no retry", got.Status, calls.Load())
+		}
+	})
+}
+
+func TestRefresh_BacksOffOnAPersistentRefusal(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a, _ := refreshTestApp(t, 1)
+		defer a.stopRefresh()
+		var calls atomic.Int32
+		a.refreshHooks.fetch = func(context.Context, string) (string, error) {
+			calls.Add(1)
+			return "", errors.New("fatal: unable to access 'https://h.lan/a.git/': Failed to connect to h.lan port 443 after 3 ms: Couldn't connect to server")
+		}
+		if err := a.FetchAllRepos(); err == nil {
+			t.Fatal("FetchAllRepos() = nil, want the refusal to surface after the retries")
+		}
+		if want := int32(1 + len(retryDelays)); calls.Load() != want {
+			t.Fatalf("fetch calls = %d, want %d", calls.Load(), want)
 		}
 	})
 }

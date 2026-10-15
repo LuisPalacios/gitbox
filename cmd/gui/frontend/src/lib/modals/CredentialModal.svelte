@@ -181,12 +181,6 @@
     credBusy = false;
     await credPostSetup(credChangeModal);
   }
-
-  // "Mirror token needed" → Store PAT: open on the token type.
-  export function openStorePat(key: string) {
-    credChangeModal = key;
-    credChangeType = 'token';
-  }
 </script>
 
 {#if credChangeModal}

@@ -60,12 +60,13 @@ export function rowGlyph(status: string, fetching: boolean): string {
 // ── Simple mode (issue #124) ──
 // Simple mode folds the git statuses into the one question a
 // non-developer asks: is my work safe? Each kind maps to one sentence and
-// one action in the repo row.
-export type SimpleKind = 'saved' | 'unsaved' | 'update' | 'online' | 'help' | 'checking' | 'busy';
+// one action in the repo row. Local work splits in two: work in progress
+// (changed files) and saved here but not uploaded (commits).
+export type SimpleKind = 'saved' | 'wip' | 'unpushed' | 'update' | 'online' | 'help' | 'checking' | 'busy';
 
 const simpleKinds: Record<string, SimpleKind> = {
   clean: 'saved',
-  dirty: 'unsaved', ahead: 'unsaved', 'no upstream': 'unsaved',
+  dirty: 'wip', ahead: 'unpushed', 'no upstream': 'unpushed',
   behind: 'update',
   'not cloned': 'online',
   diverged: 'help', conflict: 'help', 'upstream gone': 'help', error: 'help',
@@ -79,7 +80,7 @@ export function simpleKind(status: string): SimpleKind {
 
 // Colors reuse the Advanced palette entry that means the same thing.
 const simpleColorKeys: Record<SimpleKind, string> = {
-  saved: 'clean', unsaved: 'dirty', update: 'behind', online: 'not cloned',
+  saved: 'clean', wip: 'dirty', unpushed: 'ahead', update: 'behind', online: 'not cloned',
   help: 'error', checking: 'not cloned', busy: 'syncing',
 };
 
@@ -94,21 +95,58 @@ export function simpleLabelKey(kind: SimpleKind): string {
 
 // Simple kinds that count as "not saved yet" in the Simple summaries.
 export function simpleUnsaved(status: string): boolean {
-  return ['unsaved', 'help'].includes(simpleKind(status));
+  return ['wip', 'unpushed', 'help'].includes(simpleKind(status));
 }
 
-// ── Advanced label ──
-// The one-word label an Advanced row shows for a settled status, with the
-// palette entry that colours it. null means the row shows its count badges
-// instead (dirty, ahead, behind, diverged, conflict).
-export function advancedLabel(status: string, isDefault: boolean | undefined): { key: string; color: string } | null {
-  switch (status) {
-    case 'clean': return { key: 'repo.synced', color: 'clean' };
-    case 'not cloned': return { key: 'repo.notLocal', color: 'not cloned' };
-    case 'no upstream': return isDefault ? { key: 'repo.noUpstream', color: 'no upstream' } : { key: 'repo.localBranch', color: 'clean' };
-    case 'error': return { key: 'repo.error', color: 'error' };
-    case 'upstream gone': return { key: 'repo.upstreamGone', color: 'upstream gone' };
-    default: return null;
+// ── Attention ──
+// How urgently a status needs me, worst first: 0 needs help, 1 local work,
+// 2 behind, 3 not cloned, 4 nothing to do. A row being pulled or cloned
+// keeps the rank it had, so it doesn't jump while it runs. A feature branch
+// without an upstream is fine, as in isSynced.
+export const ATTENTION_GROUPS = ['help', 'local', 'behind', 'notCloned'] as const;
+export type AttentionGroup = typeof ATTENTION_GROUPS[number];
+export const CALM_RANK = ATTENTION_GROUPS.length;
+
+const attentionRanks: Record<string, number> = {
+  diverged: 0, conflict: 0, 'upstream gone': 0, error: 0,
+  dirty: 1, ahead: 1, 'no upstream': 1,
+  behind: 2, syncing: 2,
+  'not cloned': 3, cloning: 3,
+};
+
+export function attentionRank(status: string, isDefault?: boolean): number {
+  if (status === 'no upstream' && isDefault === false) return CALM_RANK;
+  return attentionRanks[status] ?? CALM_RANK;
+}
+
+// ── Glossary labels (issue #136) ──
+// The words a row shows for its status: i18n key and variables, an
+// optional dimmed note after it, the palette entry that colours it, and
+// whether the Advanced count badges follow (only where the words don't
+// carry the counts).
+export interface LabelState { status: string; ahead?: number; behind?: number; modified?: number; untracked?: number; isDefault?: boolean }
+export interface StatusLabel { key: string; vars?: Record<string, number>; note?: string; noteVars?: Record<string, number>; color: string; badges: boolean }
+
+export function statusLabel(st: LabelState, simple: boolean): StatusLabel {
+  const changes = (st.modified || 0) + (st.untracked || 0);
+  if (simple) {
+    const kind = simpleKind(st.status);
+    const color = simpleColorKeys[kind];
+    if (kind === 'wip') return { key: 'simple.wip', note: changes === 1 ? 'simple.wipSafeOne' : 'simple.wipSafe', noteVars: { n: changes }, color, badges: false };
+    return { key: simpleLabelKey(kind), color, badges: false };
+  }
+  switch (st.status) {
+    case 'clean': return { key: 'status.upToDate', color: 'clean', badges: false };
+    case 'behind': return { key: 'status.behind', vars: { n: st.behind || 0 }, color: 'behind', badges: false };
+    case 'ahead': return { key: 'status.ahead', vars: { n: st.ahead || 0 }, color: 'ahead', badges: false };
+    case 'dirty': return { key: changes === 1 ? 'status.localChange' : 'status.localChanges', vars: { n: changes }, note: changes === 1 ? 'status.protectedOne' : 'status.protected', color: 'dirty', badges: false };
+    case 'diverged': return { key: 'status.diverged', color: 'diverged', badges: true };
+    case 'conflict': return { key: 'status.conflict', color: 'conflict', badges: true };
+    case 'upstream gone': return { key: 'status.upstreamGone', color: 'upstream gone', badges: false };
+    case 'error': return { key: 'status.error', color: 'error', badges: false };
+    case 'not cloned': return { key: 'status.notCloned', color: 'not cloned', badges: false };
+    case 'no upstream': return st.isDefault ? { key: 'repo.noUpstream', color: 'no upstream', badges: false } : { key: 'repo.localBranch', color: 'clean', badges: false };
+    default: return { key: 'simple.checking', color: 'not cloned', badges: false };
   }
 }
 
@@ -164,6 +202,34 @@ export function canCreateWith(status: string | undefined): boolean {
 }
 export const DISCOVER_DISABLED = 'No working credential for this account';
 export const CREATE_DISABLED = 'Needs a working API credential (GCM that accepts the API, or a companion PAT)';
+
+// ── Account health ──
+// What the account card and the sidebar say about a credential: a mark and
+// its palette entry, the words (Simple or Advanced), the fix action and its
+// label, and whether the account belongs in Needs attention.
+//   retry     re-check the connection (offline)
+//   reconnect Simple's credential flow (broken)
+//   change    Advanced's credential modal (warning or failure)
+//   setup     Advanced's credential modal when there is none
+export type HealthFix = 'retry' | 'reconnect' | 'change' | 'setup' | null;
+export interface AccountHealth { level: 'ok' | 'warn' | 'bad' | 'none' | 'pending'; mark: string; color: string; key: string; fix: HealthFix; fixKey: string; attention: boolean }
+
+export function accountHealth(status: string | undefined, simple: boolean): AccountHealth {
+  const h = (level: AccountHealth['level'], mark: string, color: string, word: string, fix: HealthFix): AccountHealth => ({
+    level, mark, color, fix,
+    key: `health.${word}${simple ? 'Simple' : ''}`,
+    fixKey: fix ? `health.fix.${fix}${simple && fix === 'retry' ? 'Simple' : ''}` : '',
+    attention: level === 'bad' || level === 'none',
+  });
+  switch (status) {
+    case 'ok': return h('ok', '●', 'clean', 'ok', null);
+    case 'warning': return h('warn', '◆', 'dirty', 'warning', simple ? null : 'change');
+    case 'offline': return h('bad', '✕', 'error', 'offline', 'retry');
+    case 'error': return h('bad', '✕', 'error', 'error', simple ? 'reconnect' : 'change');
+    case 'none': return h('none', '○', 'ahead', 'none', simple ? 'reconnect' : 'setup');
+    default: return h('pending', '◔', 'not cloned', 'checking', null);
+  }
+}
 
 // Suffix of the account card's cred-badge-* class for a credential status.
 export function credBadgeClass(status: string): string {

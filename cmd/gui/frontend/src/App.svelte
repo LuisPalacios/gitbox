@@ -4,11 +4,15 @@
   import type { DoctorPrecheckDTO } from './lib/bridge';
   import {
     configStore, accounts, sources, mirrors, repoStates, themeStore, applyStatusResults,
-    applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, toggleCloneSelection,
-    clearCloneSelection
+    applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate
   } from './lib/stores';
-  import { detailLocked, credBroken } from './lib/status';
-  import { languageStore, normalizeLanguage } from './lib/i18n';
+  import { detailLocked, attentionRank, accountHealth, CALM_RANK } from './lib/status';
+  import type { HealthFix } from './lib/status';
+  import { resolveView, viewAccount, accountView, attentionCounts } from './lib/views';
+  import { languageStore, normalizeLanguage, t } from './lib/i18n';
+  import { pushNotice, dismissNotice, errorText } from './lib/notices';
+  import { startFetch, startPull, noteDone, summarizeFetch, summarizePull, localWorkCount } from './lib/activity';
+  import type { Run } from './lib/activity';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit, EventsOn } from '../wailsjs/runtime/runtime';
   import type { RepoState, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
   import TerminalsModal from './lib/TerminalsModal.svelte';
@@ -19,12 +23,16 @@
   import TopBar from './lib/components/TopBar.svelte';
   import Banners from './lib/components/Banners.svelte';
   import SettingsPanel from './lib/components/SettingsPanel.svelte';
-  import TabBar from './lib/components/TabBar.svelte';
-  import AccountCards from './lib/components/AccountCards.svelte';
+  import Sidebar from './lib/components/Sidebar.svelte';
+  import AttentionView from './lib/components/AttentionView.svelte';
+  import AccountView from './lib/components/AccountView.svelte';
   import RepoList from './lib/components/RepoList.svelte';
+  import type { RowProps } from './lib/components/RepoRow.svelte';
   import MirrorsTab from './lib/components/MirrorsTab.svelte';
   import WorkspacesTab from './lib/components/WorkspacesTab.svelte';
   import Footer from './lib/components/Footer.svelte';
+  import ActivityStrip from './lib/components/ActivityStrip.svelte';
+  import Notices from './lib/components/Notices.svelte';
   import DiscoverModal from './lib/modals/DiscoverModal.svelte';
   import DoctorModal from './lib/modals/DoctorModal.svelte';
   import SshTokenModal from './lib/modals/SshTokenModal.svelte';
@@ -46,10 +54,11 @@
   import MoveRepoModal from './lib/modals/MoveRepoModal.svelte';
   import CreateRepoModal from './lib/modals/CreateRepoModal.svelte';
   import { repoTreeRows } from './lib/repo-tree';
+  import { themeChoiceOf } from './lib/theme';
+  import type { ThemeChoice } from './lib/theme';
 
   // ── View mode ──
   let viewMode: 'full' | 'compact' = 'full';
-  let cardsTab: 'accounts' | 'mirrors' | 'workspaces' = 'accounts';
   let languageChoice: 'en' | 'es' = 'en';
 
   // ── Experience (issue #124) ──
@@ -62,18 +71,13 @@
   // UI state for the read-only Workspaces tab.
   let workspaceBusy = false;
 
-  // Selection mode toggle for the clone list. Distinct from deleteMode
-  // because the two flows serve different goals and should not share state.
-  let selectionMode = false;
   let compactExpanded: Record<string, boolean> = {};
   let savedFullSize: { w: number; h: number } | null = null;
   let savedFullPos: { x: number; y: number } | null = null;
 
-  // A repo row toggles clone selection in workspace-selection mode and
-  // its detail panel otherwise.
-  function activateRepoRow(sourceKey: string, repoName: string, repoKey: string, status: string) {
-    if (selectionMode) toggleCloneSelection(repoKey);
-    else if (status !== 'unknown') toggleRepoDetail(sourceKey, repoName, status);
+  // A repo row toggles its detail panel once its first scan is in.
+  function activateRepoRow(sourceKey: string, repoName: string, status: string) {
+    if (status !== 'unknown') toggleRepoDetail(sourceKey, repoName, status);
   }
 
   // ── Action menu (kebab) ──
@@ -112,7 +116,7 @@
       WindowSetMinSize(640, 480);
       await tick();
       const target = savedFullSize
-        ?? (savedState ? { w: savedState.width, h: savedState.height } : { w: 900, h: 700 });
+        ?? (savedState ? { w: savedState.width, h: savedState.height } : { w: 1040, h: 700 });
       const pos = savedFullPos
         ?? (savedState ? { x: savedState.x, y: savedState.y } : null);
       setTimeout(async () => {
@@ -383,6 +387,7 @@
   // Simple mode's "Add account" runs the connect + pick steps of the same
   // guided setup; Advanced keeps the full form.
   let connectModal = false;
+  const addAccount = () => { if (simple) connectModal = true; else addAccountDialog.open(); };
   async function finishConnect(result: { sourceKey: string; repos: string[] } | null) {
     connectModal = false;
     await reloadFromDisk();
@@ -396,7 +401,7 @@
     if (orphanList.some(o => o.matchedAccount && !o.localOnly)) {
       showOrphanModal();
     } else {
-      alert('No new nested clones found to onboard.');
+      pushNotice('info', $t('notice.noNested'));
     }
   }
 
@@ -405,7 +410,8 @@
   const openChangeFolder = () => changeFolderDialog.openChangeFolder();
 
   // ── Theme ──
-  let themeChoice: 'system' | 'light' | 'dark' = 'system';
+  // Persisted as global.theme (empty = follow the OS).
+  let themeChoice: ThemeChoice = 'system';
   let resolvedTheme: 'light' | 'dark' = 'dark';
 
   function applyTheme() {
@@ -418,14 +424,95 @@
     document.documentElement.setAttribute('data-theme', resolvedTheme);
   }
 
-  function cycleTheme() {
-    const order: Array<'system' | 'light' | 'dark'> = ['system', 'light', 'dark'];
-    themeChoice = order[(order.indexOf(themeChoice) + 1) % 3];
+  function setTheme(choice: ThemeChoice) {
+    themeChoice = choice;
     applyTheme();
+    bridge.setTheme(choice).catch((e) => console.error('saving theme failed', e));
+  }
+
+  function cycleTheme() {
+    const order: ThemeChoice[] = ['system', 'light', 'dark'];
+    setTheme(order[(order.indexOf(themeChoice) + 1) % 3]);
   }
 
   // ── Sync state ──
   let syncing = false;
+
+  // ── Activity (issue #138) ──
+  // Fetch all and Pull all runs: the strip shows their scope while they
+  // run, and a result card sums them up. Startup and periodic fetches only
+  // leave a card when something changed or failed.
+  let fetchRun: Run | null = null;
+  let fetchManual = false;
+  // The last fetch card with failures and the repos it lists. It goes away
+  // when those repos fetch fine again or the next fetch run starts, so a
+  // momentary failure doesn't stay on screen after everything recovered.
+  let fetchFailNotice: { id: number; keys: Set<string> } | null = null;
+  function clearFetchFailNotice() {
+    if (fetchFailNotice) dismissNotice(fetchFailNotice.id);
+    fetchFailNotice = null;
+  }
+  let pullRun: Run | null = null;
+  const statusOfKey = (key: string) => $repoStates[key]?.status || 'unknown';
+  const accountOfKey = (key: string) => $sources[key.slice(0, key.indexOf('/'))]?.account || key.slice(0, key.indexOf('/'));
+
+  function finishFetch(error?: string) {
+    const run = fetchRun;
+    const manual = fetchManual;
+    fetchRun = null;
+    fetchManual = false;
+    if (!run) {
+      if (manual && error) pushNotice('error', $t(simple ? 'result.checkTitle' : 'result.fetchTitle'), [error]);
+      return;
+    }
+    const offline = Object.keys(credStatuses).filter((k) => credStatuses[k]?.status === 'offline');
+    const sum = summarizeFetch(run, statusOfKey, accountOfKey, offline);
+    if (!manual && !sum.changed) return;
+    const skippedAccounts = sum.skippedAccounts.join(', ');
+    const unreachable = sum.unreachable.map((u) => $t(simple ? 'result.unreachableSimple' : 'result.unreachable', { n: u.count, host: u.host || $t('result.theServer') }));
+    // A connect refused within milliseconds is the OS blocking it, not a
+    // slow or down server; on macOS that's usually Local Network privacy.
+    const lanHint = hostOS === 'darwin' && sum.unreachable.some((u) => u.fast) && $t('result.lanHint');
+    const failedKind = sum.unreachable.length > 0 || sum.failed > 0;
+    const id = pushNotice(failedKind ? 'error' : 'success', $t(simple ? 'result.checkTitle' : 'result.fetchTitle'), simple ? [
+      $t('result.checked', { n: sum.checked }),
+      sum.nowBehind > 0 && $t('result.newerOnline', { n: sum.nowBehind }),
+      sum.skipped > 0 && $t('result.skippedSimple', { n: sum.skipped, accounts: skippedAccounts }),
+      ...unreachable,
+      sum.failed > 0 && $t('result.needHelp', { n: sum.failed }),
+      lanHint,
+      sum.localWork > 0 && $t('result.wipUntouched'),
+    ] : [
+      $t('result.fetched', { n: sum.checked }),
+      sum.nowBehind > 0 && $t('result.nowBehind', { n: sum.nowBehind }),
+      sum.skipped > 0 && $t('result.skipped', { n: sum.skipped, accounts: skippedAccounts }),
+      ...unreachable,
+      sum.firstFailure && $t('result.failed', { n: sum.failed, error: `${sum.firstFailure.key}: ${sum.firstFailure.error}` }),
+      lanHint,
+      sum.localWork > 0 && $t('result.localUntouched'),
+    ]);
+    if (failedKind) fetchFailNotice = { id, keys: new Set(Object.keys(run.errors)) };
+  }
+
+  function finishPull() {
+    const run = pullRun;
+    pullRun = null;
+    if (!run) return;
+    const sum = summarizePull(run);
+    const first = sum.failures[0];
+    const localWork = localWorkCount(Object.keys($repoStates), statusOfKey) > 0;
+    pushNotice(sum.failed > 0 ? 'error' : 'success', $t(simple ? 'result.updateTitle' : 'result.pullTitle'), simple ? [
+      sum.pulled > 0 && $t('result.updated', { n: sum.pulled }),
+      sum.cloned > 0 && $t('result.downloaded', { n: sum.cloned }),
+      sum.failed > 0 && $t('result.needHelp', { n: sum.failed }),
+      localWork && $t('result.wipUntouched'),
+    ] : [
+      sum.pulled > 0 && $t('result.pulled', { n: sum.pulled }),
+      sum.cloned > 0 && $t('result.cloned', { n: sum.cloned }),
+      first && $t('result.failed', { n: sum.failed, error: `${first.key}: ${first.error}` }),
+      localWork && $t('result.localUntouched'),
+    ]);
+  }
 
   async function syncAll() {
     if (syncing) return;
@@ -437,6 +524,7 @@
     const needsSync = Object.entries(currentStates).filter(
       ([_, r]) => r.status === 'behind' || r.status === 'not cloned'
     );
+    if (needsSync.length > 0) pullRun = startPull(needsSync.map(([key]) => key), accountOfKey, statusOfKey);
 
     for (const [key] of needsSync) {
       const [sourceKey, ...repoParts] = key.split('/');
@@ -543,7 +631,7 @@
       await bridge.openTerminalsManagerWindow();
       terminalsManagerHasOpened = true;
     } catch (e: any) {
-      await bridge.showErrorDialog('Open Terminals Manager', (e?.message || String(e)));
+      pushNotice('error', $t('notice.terminalsFailed'), [errorText(e)]);
     } finally {
       setTimeout(() => { terminalsManagerOpening = false; }, cooldown);
     }
@@ -603,51 +691,68 @@
   let collapsedSources: Set<string> = new Set();
   let collapsedRepos: Set<string> = new Set();
 
-  function saveCollapsed() {
-    bridge.setCollapsed({ sources: [...collapsedSources], repos: [...collapsedRepos], cards_open: cardsOpen })
-      .catch((e) => console.error('saving collapse state failed', e));
+  // ── Navigation (issue #138) ──
+  // The selected view (attention, all, mirrors, workspaces or
+  // account:<key>) and the sidebar folded to its rail, both persisted in
+  // global.collapsed. resolveView shows Needs attention for a missing
+  // account or an Advanced-only view in Simple, without touching `view`,
+  // so switching back to Advanced restores Mirrors. A window narrower than
+  // 780px starts on the rail; the sidebar button then widens the sidebar in
+  // place and the content narrows to fit (railPeek, not saved).
+  let view = 'attention';
+  let sidebarCollapsed = false;
+  let railPeek = false;
+  let innerWidth = 1040;
+  $: narrow = innerWidth < 780;
+  $: if (!narrow) railPeek = false;
+  $: rail = narrow ? !railPeek : sidebarCollapsed;
+  $: currentView = resolveView(view, Object.keys($accounts), simple);
+  $: viewAcct = viewAccount(currentView);
+  $: sidebarShortcut = hostOS === 'darwin' ? '⌘B' : 'Ctrl+B';
+
+  // saveLayout persists the folded groups and clones, the sidebar and the view.
+  function saveLayout() {
+    bridge.setCollapsed({ sources: [...collapsedSources], repos: [...collapsedRepos], sidebar: sidebarCollapsed, view })
+      .catch((e) => console.error('saving layout failed', e));
   }
 
-  // ── Cards panel (issue #123) ──
-  // The card row under the tab bar starts collapsed and remembers its state
-  // (global.collapsed.cards_open). It also opens on its own, without saving,
-  // while delete mode needs the cards' ✕ buttons or an account needs a look
-  // (no accounts yet, or a missing / broken credential). Collapsing it then
-  // dismisses that alert for the rest of the session.
-  let cardsOpen = false;
-  let cardsAlertDismissed = false;
-  // Inside the panel every card starts as a chip (dot + name). Clicking one
-  // opens it into the full two-line card; clicking outside it or Escape
-  // folds it back. One open card at a time, keyed "acct:", "mir:" or "ws:".
-  let expandedCard: string | null = null;
-  // cardsReady holds the alert back until the config and collapse state are
-  // loaded, so the panel doesn't flash open while $accounts is still empty.
-  let cardsReady = false;
-  $: cardsAlert = cardsReady && (Object.keys($accounts).length === 0 ||
-    Object.keys($accounts).some((k) => credBroken(credStatuses[k]?.status)));
-  $: cardsVisible = cardsOpen || deleteMode || (cardsAlert && !cardsAlertDismissed);
-
-  function toggleCards() {
-    if (cardsVisible) {
-      cardsOpen = false;
-      cardsAlertDismissed = true;
-    } else {
-      cardsOpen = true;
-    }
-    saveCollapsed();
+  // setView switches views; the detail panel and any open menu close.
+  function setView(next: string) {
+    view = next;
+    expandedRepo = null;
+    repoDetail = null;
+    actionMenuRepo = null;
+    actionMenuAccount = null;
+    openPRPopover = null;
+    openWsPopover = null;
+    expandedCard = null;
+    saveLayout();
   }
+  const showAccountView = (accountKey: string) => setView(accountView(accountKey));
 
-  // selectCardsTab switches tabs; clicking the active tab folds or unfolds
-  // the panel, and switching to another tab always shows its cards.
-  function selectCardsTab(tab: typeof cardsTab) {
-    if (tab === cardsTab) {
-      toggleCards();
+  function toggleSidebar() {
+    if (narrow) {
+      railPeek = !railPeek;
       return;
     }
-    cardsTab = tab;
-    if (selectionMode && tab !== 'accounts') toggleSelectionMode();
-    if (!cardsVisible) toggleCards();
+    sidebarCollapsed = !sidebarCollapsed;
+    saveLayout();
   }
+
+  // ⌘B (macOS) or Ctrl+B folds the sidebar, except in the compact view and
+  // while typing.
+  function sidebarKey(e: KeyboardEvent) {
+    if (e.key.toLowerCase() !== 'b' || e.altKey || e.shiftKey || !(hostOS === 'darwin' ? e.metaKey : e.ctrlKey)) return;
+    if (viewMode !== 'full' || firstRun || cfgLoadErrorModal || windowMode !== 'main') return;
+    if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    e.preventDefault();
+    toggleSidebar();
+  }
+
+  // The mirror and workspace cards start as chips. Clicking one opens it
+  // into the full two-line card; clicking outside it or Escape folds it
+  // back. One open card at a time, keyed "mir:" or "ws:".
+  let expandedCard: string | null = null;
 
   // closeDetailIf drops the open detail panel when a collapse hides its row.
   function closeDetailIf(hidden: (key: string) => boolean) {
@@ -666,7 +771,7 @@
       closeDetailIf(k => hidden.has(k));
     }
     collapsedSources = collapsedSources;
-    saveCollapsed();
+    saveLayout();
   }
 
   function toggleRepoCollapsed(repoKey: string, descendants: string[]) {
@@ -678,10 +783,29 @@
       closeDetailIf(k => hidden.has(k));
     }
     collapsedRepos = collapsedRepos;
-    saveCollapsed();
+    saveLayout();
   }
 
-  $: treeRows = repoTreeRows($sources, repoNesting, collapsedRepos);
+  // Problems first: siblings sort by the worst attention rank in their
+  // subtree (repo-tree.ts), so a parent rises with its worst nested clone.
+  $: rankOf = (key: string) => {
+    const st = $repoStates[key];
+    return st ? attentionRank(st.status, st.isDefault) : attentionRank('unknown');
+  };
+  $: treeRows = repoTreeRows($sources, repoNesting, collapsedRepos, rankOf);
+
+  // How many repos need me, per account and in total; accounts whose
+  // credential needs a fix count too (Needs attention lists them first).
+  $: keysByAccount = (() => {
+    const byAccount: Record<string, string[]> = Object.fromEntries(Object.keys($accounts).map((k) => [k, []]));
+    for (const [sourceKey, source] of Object.entries($sources)) {
+      (byAccount[source.account] ||= []).push(...Object.keys(source.repos).map((r) => `${sourceKey}/${r}`));
+    }
+    return byAccount;
+  })();
+  $: brokenAccounts = Object.keys($accounts).filter((k) => accountHealth(credStatuses[k]?.status, simple).attention);
+  $: attention = attentionCounts(keysByAccount, rankOf, CALM_RANK, brokenAccounts);
+  $: totalRepos = Object.values(keysByAccount).reduce((n, keys) => n + keys.length, 0);
 
   // ── Sweep branches modal ──
   let sweepDialog: SweepModal;
@@ -770,6 +894,10 @@
       repoNesting = snapshot.nesting || {};
       configStore.set(snapshot.config);
       configPath = snapshot.configPath;
+      // A renamed account: Go already moved the saved view to its new key.
+      // A deleted one: Go cleared it, so Needs attention shows.
+      const shown = viewAccount(view);
+      if (shown && !snapshot.config.accounts?.[shown]) view = snapshot.config.global?.collapsed?.view || 'attention';
       const saved = snapshot.config.global.periodic_sync || 'off';
       if (saved !== fetchInterval) applyFetchInterval(saved);
       if (!fetchingAll) {
@@ -922,6 +1050,27 @@
   // ── Change credential type ──
   let credentialDialog: CredentialModal;
   const openCredChange = (accountKey: string, currentType: string) => credentialDialog.openCredChange(accountKey, currentType);
+
+  // The account card's and Needs attention's fix action: retry re-checks
+  // the connection; the others open the credential modal.
+  function fixCredential(accountKey: string, fix: HealthFix) {
+    if (fix === 'retry') retryCredential(accountKey);
+    else if (fix) openCredChange(accountKey, $accounts[accountKey]?.default_credential_type || 'gcm');
+  }
+
+  async function retryCredential(accountKey: string) {
+    const before = credStatuses[accountKey];
+    credStatuses[accountKey] = { ...(before || {}), status: 'unknown' };
+    credStatuses = credStatuses;
+    try {
+      const cs = await bridge.credentialVerify(accountKey);
+      credStatuses[accountKey] = { status: cs.status, primary: cs.primary, pat: cs.pat, primaryMsg: cs.primaryMsg, patMsg: cs.patMsg };
+    } catch (e) {
+      console.error(e);
+      credStatuses[accountKey] = before;
+    }
+    credStatuses = credStatuses;
+  }
   const openTokenSetup = (accountKey: string) => credentialDialog.openTokenSetup(accountKey);
 
   // ── Delete account ──
@@ -1004,8 +1153,8 @@
   async function openWorkspace(key: string) {
     try {
       await bridge.openWorkspace(key);
-    } catch (e: any) {
-      alert(e?.message || e);
+    } catch (e) {
+      pushNotice('error', $t('notice.openWorkspaceFailed'), [errorText(e)]);
     }
   }
 
@@ -1014,8 +1163,8 @@
     try {
       const res = await bridge.discoverWorkspaces();
       if (res.changed) $configStore = await bridge.reloadConfig();
-    } catch (e: any) {
-      alert(e?.message || e);
+    } catch (e) {
+      pushNotice('error', $t('notice.discoverWorkspacesFailed'), [errorText(e)]);
     } finally {
       workspaceBusy = false;
     }
@@ -1041,19 +1190,9 @@
           showOrphanModal();
         }
       }
-    } catch (e: any) {
-      alert(e?.message || e);
+    } catch (e) {
+      pushNotice('error', $t('notice.containerFailed'), [errorText(e)]);
     }
-  }
-
-  function toggleSelectionMode() {
-    selectionMode = !selectionMode;
-    if (!selectionMode) clearCloneSelection();
-  }
-
-  // "Mirror token needed" → Store PAT: the credential modal on the token type.
-  function storeMirrorPat(key: string) {
-    credentialDialog.openStorePat(key);
   }
 
   // ── Settings ──
@@ -1147,6 +1286,9 @@
   function togglePRPopover(key: string) {
     openPRPopover = openPRPopover === key ? null : key;
   }
+  function closePRPopover() {
+    openPRPopover = null;
+  }
 
   // Which workspace popover is open: keyed by `${sourceKey}/${repoName}` or null.
   // Driven by the workspace badge on each clone row; lists every workspace the
@@ -1164,18 +1306,34 @@
     bridge.setPeriodicSync(val);
   }
 
-  async function runFetchAll() {
+  // runFetchAll fetches every clone. A manual run (the top-bar button)
+  // always leaves a result card, also when it joins a run already going.
+  async function runFetchAll(manual = false) {
+    if (manual) fetchManual = true;
     if (fetchingAll) return;
     fetchingAll = true;
     try {
       await bridge.fetchAllRepos();
     } catch (e) {
       lastFetchTime = 'fetch-all error: ' + (e instanceof Error ? e.message : String(e));
+      if (fetchingAll) finishFetch(errorText(e));
     } finally {
       fetchingAll = false;
       fetchingRepos = {};
     }
   }
+
+  // Everything a clone row shares with its list, passed unchanged through
+  // every repo view (RowProps in RepoRow.svelte).
+  let rowProps: RowProps;
+  $: rowProps = {
+    simple, deleteMode, fetchingRepos, collapsedRepos, tentativeContainers, workspaceBusy, openWsPopover,
+    revealLabel, configEditors, configProfiles, configAIHarnesses, actionMenuRepo, openPRPopover,
+    expandedRepo, repoDetail, detailLoading,
+    activateRepoRow, askDelete, syncRepo, cloneRepo, fetchRepo, toggleActionMenu, closeActionMenu,
+    toggleWsPopover, openWorkspaceFromBadge, togglePRPopover, closePRPopover, sweepBranches, openMoveRepo,
+    toggleContainer, rescanContainer, toggleRepoCollapsed, isContainerRepo, showAccountView,
+  };
 
   // ── Credential status cache ──
   let credStatuses: Record<string, any> = {};
@@ -1185,12 +1343,14 @@
   async function initDashboard() {
     const snapshot = await bridge.getStartupSnapshot();
     const cfg = snapshot.config;
+    themeChoice = themeChoiceOf(cfg.global?.theme);
+    applyTheme();
     repoNesting = snapshot.nesting || {};
     const collapsed = cfg.global?.collapsed;
     collapsedSources = new Set(collapsed?.sources || []);
     collapsedRepos = new Set(collapsed?.repos || []);
-    cardsOpen = !!collapsed?.cards_open;
-    cardsReady = true;
+    sidebarCollapsed = !!collapsed?.sidebar;
+    view = collapsed?.view || 'attention';
     languageChoice = normalizeLanguage(cfg.global?.language);
     languageStore.set(languageChoice);
     configPath = snapshot.configPath;
@@ -1271,8 +1431,6 @@
 
   // enterSimple leaves the Advanced-only states Simple has no controls for.
   function enterSimple() {
-    cardsTab = 'accounts';
-    if (selectionMode) toggleSelectionMode();
     deleteMode = false;
   }
 
@@ -1283,6 +1441,21 @@
     await bridge.setLanguage(lang);
     const cfg = await bridge.getConfig();
     configStore.set(cfg);
+  }
+
+  // An account marked offline whose repo just fetched fine is reachable
+  // after all (a refusal right after launch, a VPN that came up), so its
+  // credential is checked again, once at a time.
+  const recheckingAccounts = new Set<string>();
+  function recheckOfflineAccount(key: string) {
+    if (credStatuses[key]?.status !== 'offline' || recheckingAccounts.has(key)) return;
+    recheckingAccounts.add(key);
+    const account = JSON.stringify($accounts[key]);
+    bridge.credentialVerify(key).then((cs) => {
+      if (account !== JSON.stringify($accounts[key])) return;
+      credStatuses[key] = {status: cs.status, primary: cs.primary, pat: cs.pat, primaryMsg: cs.primaryMsg, patMsg: cs.patMsg};
+      credStatuses = credStatuses;
+    }).catch(console.error).finally(() => recheckingAccounts.delete(key));
   }
 
   function verifyAllCredentials() {
@@ -1314,11 +1487,12 @@
         try {
           const cfg = await bridge.getConfig();
           configStore.set(cfg);
+          themeChoice = themeChoiceOf(cfg.global?.theme);
         } catch (e) { console.error(e); }
+        applyTheme();
       };
       try { hostOS = await bridge.getOS(); } catch (e) { console.error(e); }
       await hydrate();
-      applyTheme();
       // The parent uses HideWindowOnClose, so a "second open" of the
       // Manager just re-shows this same hidden window. Re-hydrate the
       // config on focus so the table reflects any wezterm.lua /
@@ -1416,11 +1590,13 @@
         }
         return { ...s };
       });
+      if (pullRun) pullRun = noteDone(pullRun, key, data.error);
       checkSyncDone();
     });
 
     events.on('pull:done', (data: any) => {
       const key = `${data.source}/${data.repo}`;
+      if (pullRun) pullRun = noteDone(pullRun, key, data.error);
       repoStates.update((s) => {
         if (s[key]) {
           s[key] = {
@@ -1446,15 +1622,21 @@
       const key = `${data.source}/${data.repo}`;
       delete fetchingRepos[key];
       fetchingRepos = fetchingRepos;
+      if (fetchRun) fetchRun = noteDone(fetchRun, key, data.error);
+      if (!data.error && fetchFailNotice?.keys.delete(key) && fetchFailNotice.keys.size === 0) clearFetchFailNotice();
+      if (!data.error) recheckOfflineAccount(accountOfKey(key));
     });
 
     events.on('fetch:allstart', () => {
       fetchingAll = true;
+      clearFetchFailNotice();
+      if (!fetchRun) fetchRun = startFetch(Object.keys($repoStates).filter((k) => statusOfKey(k) !== 'not cloned'), accountOfKey, statusOfKey);
     });
 
     events.on('fetch:alldone', (data: { error?: string } | null) => {
       fetchingAll = false;
       fetchingRepos = {};
+      finishFetch(data?.error);
       const now = new Date();
       lastFetchTime = data?.error ? 'fetch-all error: ' + data.error
         : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -1579,12 +1761,15 @@
     const stillRunning = Object.values(states).some(
       (r) => r.status === 'syncing' || r.status === 'cloning'
     );
-    if (!stillRunning) syncing = false;
+    if (!stillRunning) {
+      syncing = false;
+      finishPull();
+    }
   }
 
 </script>
 
-<svelte:window on:click={(e) => {
+<svelte:window bind:innerWidth on:click={(e) => {
   const inMenu = e.target instanceof Element && e.target.closest('.action-menu-container');
   const inWsPopover = e.target instanceof Element && e.target.closest('.ws-popover, .ws-badge');
   const inPRPopover = e.target instanceof Element && e.target.closest('.pr-badge-wrap');
@@ -1594,6 +1779,7 @@
   if (openWsPopover && !inWsPopover) openWsPopover = null;
   if (openPRPopover && !inPRPopover) openPRPopover = null;
 }} on:keydown={(e) => {
+  sidebarKey(e);
   if (e.key === 'Escape' && openWsPopover) openWsPopover = null;
   if (e.key === 'Escape' && expandedCard) expandedCard = null;
   if (e.key === 'Escape' && openPRPopover) openPRPopover = null;
@@ -1641,48 +1827,51 @@
   <!-- ══════ FULL DASHBOARD VIEW ══════ -->
 
   <!-- ── TOP BAR ── -->
-  <TopBar {simple} {syncing} {fetchingAll} {selectionMode} {cardsTab} {themeChoice} bind:deleteMode bind:showSettings
-    {syncAll} {runFetchAll} {toggleSelectionMode} {toggleViewMode} {cycleTheme} {setUIMode} />
+  <TopBar {simple} {syncing} {fetchingAll} {themeChoice} bind:deleteMode bind:showSettings
+    {syncAll} runFetchAll={() => runFetchAll(true)} {toggleViewMode} {cycleTheme} {setUIMode} {rail} {sidebarShortcut} {toggleSidebar} />
+
+  <!-- ── ACTIVITY STRIP (Fetch all / Pull all) ── -->
+  <ActivityStrip run={pullRun || fetchRun} {simple} />
 
   <!-- ── GLOBAL WARNINGS (identity, GCM helper, gitignore) ── -->
   <Banners bind:globalIdentityWarn bind:globalGCMWarn bind:gitignoreWarn bind:gitignoreInstalled bind:gitignoreError
     {globalGCMFixing} {gitignoreInstalling} {fixGlobalIdentity} {fixGlobalGCM} {installGlobalGitignore} />
 
   <!-- ── SETTINGS PANEL ── -->
-  <SettingsPanel {showSettings} {simple} {configPath} {languageChoice} bind:themeChoice {fetchInterval} {lastFetchTime}
+  <SettingsPanel {showSettings} {simple} {configPath} {languageChoice} {themeChoice} {fetchInterval} {lastFetchTime}
     {autostartSupported} {autostartOn} {checkGitignorePref} {doctorSummary} {terminalsManagerOpening} {appVersion}
-    {openChangeFolder} {setLanguage} {applyTheme} {setFetchInterval} {toggleAutostart} {setPRBadgesEnabled}
+    {openChangeFolder} {setLanguage} {setTheme} {setFetchInterval} {toggleAutostart} {setPRBadgesEnabled}
     {setPRIncludeDrafts} {setCheckGitignorePref} {openDoctorModal} {openTerminalsManagerWindow} />
 
-  <!-- ── TAB BAR ── -->
-  <TabBar {cardsTab} {cardsVisible} {simple} {credStatuses} {orphanCount} {mirrorDiscoverLoading} {workspaceBusy} {selectionMode}
-    {selectCardsTab} {showOrphanModal} {runMirrorDiscover} {checkAllMirrorStatus} {refreshWorkspaces} />
+  <div class="body">
+    <!-- ── SIDEBAR ── -->
+    <Sidebar view={currentView} {rail} {simple} {credStatuses} {attention} {totalRepos} {orphanCount}
+      {setView} onAddAccount={addAccount} {showOrphanModal} />
 
-  {#if cardsTab === 'accounts'}
-  <!-- ── ACCOUNT CARDS ── -->
-  <AccountCards {cardsVisible} bind:expandedCard {deleteMode} {simple} {credStatuses} {resolvedTheme}
-    {askDeleteAccount} {openEditAccount} {openCredChange} {openDiscover} {openCreateRepo}
-    onAddAccount={() => { if (simple) connectModal = true; else addAccountDialog.open(); }} />
-
-  <!-- ── REPO LIST ── -->
-  <RepoList {treeRows} {collapsedSources} {collapsedRepos} {simple} {deleteMode} {selectionMode} {fetchingRepos} {credStatuses}
-    {tentativeContainers} {workspaceBusy} {openWsPopover} {revealLabel} {configEditors} {configProfiles} {configAIHarnesses}
-    {expandedRepo} {repoDetail} {detailLoading}
-    bind:actionMenuAccount bind:actionMenuRepo bind:openPRPopover
-    {toggleSourceCollapsed} {toggleRepoCollapsed} {toggleAccountMenu} {closeAccountMenu} {openDiscover} {openCreateRepo}
-    {activateRepoRow} {askDelete} {syncRepo} {cloneRepo} {fetchRepo} {toggleActionMenu} {closeActionMenu} {toggleWsPopover}
-    {openWorkspaceFromBadge} {togglePRPopover} {sweepBranches} {openMoveRepo} {toggleContainer} {rescanContainer} {isContainerRepo} />
-
-  {:else if cardsTab === 'mirrors'}
-  <!-- ── MIRRORS TAB ── -->
-  <MirrorsTab {cardsVisible} bind:expandedCard {deleteMode} {mirrorDiscoverLoading} {mirrorDiscoverProgress} {mirrorChecking} {mirrorSettingUp}
-    {checkMirrorStatus} {setupMirrorRepo} {openTokenSetup}
-    onAddGroup={() => addMirrorGroupDialog.open()} onAddRepo={(mirrorKey) => addMirrorRepoDialog.open(mirrorKey)}
-    onDeleteGroup={(mirrorKey) => deleteMirrorGroupDialog.ask(mirrorKey)} onDeleteRepo={(mirrorKey, repoKey) => deleteMirrorRepoDialog.ask(mirrorKey, repoKey)} />
-  {:else}
-  <!-- ── WORKSPACES TAB ── -->
-  <WorkspacesTab {cardsVisible} bind:expandedCard {workspaceBusy} {openWorkspace} />
-  {/if}
+    <main class="content">
+    {#if currentView === 'attention'}
+      <!-- ── NEEDS ATTENTION ── -->
+      <AttentionView {rankOf} {repoNesting} {credStatuses} {rowProps} {setView} {fixCredential} onAddAccount={addAccount} />
+    {:else if currentView === 'all'}
+      <!-- ── ALL REPOS ── -->
+      <RepoList {treeRows} {collapsedSources} {credStatuses} {actionMenuAccount} {rowProps}
+        {toggleSourceCollapsed} {toggleAccountMenu} {closeAccountMenu} {openDiscover} {openCreateRepo} {openEditAccount} {openCredChange} />
+    {:else if currentView === 'mirrors'}
+      <!-- ── MIRRORS ── -->
+      <MirrorsTab bind:expandedCard {deleteMode} {mirrorDiscoverLoading} {mirrorDiscoverProgress} {mirrorChecking} {mirrorSettingUp}
+        {checkMirrorStatus} {setupMirrorRepo} {openTokenSetup} {runMirrorDiscover} {checkAllMirrorStatus}
+        onAddGroup={() => addMirrorGroupDialog.open()} onAddRepo={(mirrorKey) => addMirrorRepoDialog.open(mirrorKey)}
+        onDeleteGroup={(mirrorKey) => deleteMirrorGroupDialog.ask(mirrorKey)} onDeleteRepo={(mirrorKey, repoKey) => deleteMirrorRepoDialog.ask(mirrorKey, repoKey)} />
+    {:else if currentView === 'workspaces'}
+      <!-- ── WORKSPACES ── -->
+      <WorkspacesTab bind:expandedCard {workspaceBusy} {openWorkspace} {refreshWorkspaces} />
+    {:else}
+      <!-- ── ONE ACCOUNT ── -->
+      <AccountView accountKey={viewAcct} {repoNesting} {rankOf} {credStatuses} {actionMenuAccount} {rowProps}
+        {toggleAccountMenu} {closeAccountMenu} {askDeleteAccount} {openEditAccount} {openCredChange} {openDiscover} {openCreateRepo} {fixCredential} />
+    {/if}
+    </main>
+  </div>
 
   <!-- ── SUMMARY FOOTER ── -->
   <Footer {simple} bind:updateInfo bind:updateApplying bind:updateError bind:updateDismissed {updateProgress} {updateDone} />
@@ -1751,13 +1940,16 @@
   <MirrorDiscoverModal bind:mirrorDiscoverResults bind:discoverAdded {mirrorDiscoverError} {checkAllMirrorStatus} />
 
   <!-- ── MIRROR CREDENTIAL WARNING MODAL ── -->
-  <MirrorTokenModal bind:mirrorCredWarning {storeMirrorPat} />
+  <MirrorTokenModal bind:mirrorCredWarning storeMirrorPat={openTokenSetup} />
 
   <!-- ── MOVE REPO MODAL (issue #64) ── -->
   <MoveRepoModal bind:this={moveDialog} {reloadFromDisk} {openCredChange} {openTokenSetup} />
 
   <!-- ── CREATE REPO MODAL ── -->
   <CreateRepoModal bind:this={createRepoDialog} />
+
+  <!-- ── RESULT CARDS AND MESSAGES ── -->
+  <Notices />
 
 </div>
 {/if}
@@ -1770,5 +1962,9 @@
 <!-- ════════════════════════════════════════════════════════════ -->
 
 <style>
-  .app { max-width: 860px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  .app { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  /* Sidebar next to the view; each view scrolls on its own. */
+  .body { flex: 1; min-height: 0; display: flex; position: relative; }
+  .content { flex: 1; min-width: 0; display: flex; flex-direction: column; container: content / inline-size; }
+  /* Holds the rail's place while the full sidebar opens over the content. */
 </style>

@@ -64,6 +64,9 @@ type GlobalConfig struct {
 	// "advanced" (everything). Empty means advanced, so configs written before
 	// the setting existed keep today's screen; onboarding writes "simple".
 	UIMode string `json:"ui_mode,omitempty"`
+	// Theme is the GUI colour theme: "light" or "dark". Empty follows the
+	// operating system.
+	Theme string `json:"theme,omitempty"`
 	// Collapsed records which account groups and parent clones are folded in
 	// the GUI's full view. Absent means everything is expanded. Save prunes
 	// keys that no longer exist — see PruneCollapsed.

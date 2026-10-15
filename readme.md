@@ -18,7 +18,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/screenshot-dark.png">
-    <img src="assets/screenshot-gui.png" alt="Gitbox showing three accounts with their sync rings, and clones that are synced, behind, ahead, or carry local changes" width="820">
+    <img src="assets/screenshot-gui.png" alt="Gitbox with its sidebar of accounts and the Needs attention view listing clones that are behind, ahead, or carry local changes" width="820">
   </picture>
 </p>
 
@@ -55,8 +55,8 @@ Run it with `--help` for options. If you'd rather place the app yourself, each r
 
 - **Accounts and credentials.** Isolated identities per account with GCM, SSH, or token auth, and a one-click switch between them.
 - **Discover and clone.** Find every repo through the provider API and clone it with the right identity, configured in its own `.git/config`.
-- **Fleet health.** See which clones are synced, behind, ahead, dirty, or diverged, plus their open pull requests and pending reviews.
-- **Safe sync.** Fetch everything and pull fast-forward only. Dirty or conflicted clones are never touched.
+- **What needs me, first.** A sidebar with one entry per account and its health, and a Needs attention view that lists only the clones that are behind, ahead, carry local changes, or diverged, plus their open pull requests and pending reviews. Simple mode says the same in plain words for people who don't know Git.
+- **Safe sync.** Fetch everything and pull fast-forward only. Dirty or conflicted clones are never touched, and a result card says what changed.
 - **Mirrors and moves.** Set up push or pull mirrors between providers for backups, and move a repo to another account or provider with a guided flow.
 - **Workspaces and launchers.** Open any clone in your terminal, editor, file manager, or AI harness (Claude Code, Codex, …), and open existing VS Code workspaces.
 - **Clones anywhere.** Adopt clones that live outside the standard folder tree, including repos nested inside a multi-repo container.
@@ -65,7 +65,7 @@ Run it with `--help` for options. If you'd rather place the app yourself, each r
 Discovery, cloning, and repo creation work on all five providers. Mirroring is fully automated on Gitea, Forgejo, and GitLab; for GitHub and Bitbucket gitbox shows the manual steps.
 
 <p align="center">
-  <img src="assets/screenshot-menu.png" alt="A clone's action menu with browser, file manager, terminal profile, editor and AI harness entries" width="560">
+  <img src="assets/screenshot-menu.png" alt="A clone's flat menu: open on the web or in the file manager, open with every terminal, editor and AI harness, and maintenance" width="560">
   &nbsp;
   <img src="assets/screenshot-compact.png" alt="Compact view: overall sync ring and per-account repo lists" width="220">
 </p>

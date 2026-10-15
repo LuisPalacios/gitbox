@@ -29,7 +29,7 @@ The honest answer is "it depends on the provider":
   1. **Paste a PAT into GCM's password prompt** during setup. GCM will cache it and git + API both work with a single credential. Easiest.
   2. **Keep your password in GCM** (works for `git push`/`pull`) and store a **separate PAT** in the gitbox keyring for API operations. The credential status panel in the GUI has a _Setup API token_ button exactly for this case.
 
-Gitbox's credential verification will tell you which of the two situations you're in. If the card badge is green, you're done. If it's "Warning" and the Current-status panel says _"GCM token found but API check failed"_, your GCM credential is a password that the API refuses — use one of the two recovery paths above.
+Gitbox's credential verification will tell you which of the two situations you're in. If the account's health mark is green, you're done. If it reads "Works, with a warning" and the Current-status panel says _"GCM token found but API check failed"_, your GCM credential is a password that the API refuses — use one of the two recovery paths above.
 
 ## PAT storage
 
@@ -178,8 +178,8 @@ I keep included Git config when its effective settings match the account. If a l
 
 You can verify that credentials are working at any time:
 
-- The credential badge on each account card shows green (working), orange (limited), or red (broken).
-- Click the badge to open the Change Credential modal — the Current-status panel at the top shows the real status of the primary credential and of the API token, with the underlying error message (if any).
+- Each account's sidebar entry and card show its health in words next to a mark: green (working), orange (limited), or red (broken or offline). Broken accounts also head the Needs attention view, with their fix button.
+- Pick **Change credential…** from the account's ⋯ menu to open the Change Credential modal — the Current-status panel at the top shows the real status of the primary credential and of the API token, with the underlying error message (if any).
 - Click **Re-check** in that panel to run the verification again.
 
 ## Missing tools on the host
@@ -199,7 +199,7 @@ Typical fix on each OS:
 
 ### Reading the GUI Current-status panel
 
-Click the credential badge on any account card. The Current-status panel inside the Change Credential modal shows:
+Pick **Change credential…** from any account's ⋯ menu. The Current-status panel inside the Change Credential modal shows:
 
 - **Primary (GCM/SSH/TOKEN):** the real status of the primary credential (OK / Warning / Offline / Error / Not configured) and, below the row, the underlying error as reported by gitbox's network/HTTP layer. That error text is the first place to look when something is wrong — it names the failing URL, the HTTP code, and whatever the kernel / TLS stack reported.
 - **API token (PAT):** status of the companion PAT (only relevant for GCM and SSH). When the primary credential already covers the API, the PAT message says _"not needed — GCM covers the API"_. When the primary was rejected by the API, the PAT message says _"needed for discovery and repo creation"_ and a **Setup API token** button appears next to it.
@@ -213,6 +213,8 @@ Copy that error text as-is when you file a bug report.
 **Symptom.** The GUI shows _Offline_ for an account whose server lives on your LAN (`192.168.x.x`, `10.x.x.x`, or a `.local` hostname). The detail line contains `dial tcp <ip>:<port>: connect: no route to host`. `curl` or `git` at the same moment — run from Terminal — reach the same server without any trouble.
 
 **Root cause.** macOS Sonoma and later gate outbound connections to local-network IPs behind the **Local Network** TCC privacy permission. Each GUI app is tracked separately by code-signing identity + bundle path. Terminal was granted access the first time you used it. Your gitbox bundle has either not been approved yet, was silently denied (common for ad-hoc built binaries), or has been moved/renamed so that TCC no longer recognises it.
+
+Even when access is granted, macOS can refuse a freshly launched app's first LAN connections for a moment. To ride out those startup refusals and short network blips, a credential check that reports offline, or a fetch whose connect is refused within milliseconds, is retried after 100 ms, 500 ms, 1 s and 3 s. Retries only happen within 10 seconds of the first attempt, so a server that is really down and times out isn't retried. Authentication errors are never retried. An account still marked offline is checked again as soon as one of its repos fetches fine.
 
 **Fix — move the app to `/Applications/` and re-prompt.**
 
@@ -236,7 +238,7 @@ The `tccutil` call is best-effort, and in recent macOS versions it often prints 
 - The per-user TCC database lives under `~/Library/Application Support/com.apple.TCC/TCC.db`. SIP blocks direct writes and routes everything through `tccutil`; if Terminal (or your shell emulator) does not have **Full Disk Access** granted in _System Settings → Privacy & Security → Full Disk Access_, the call fails.
 - Even when `tccutil` returns `Failed`, the OS may still re-prompt on the next LAN connect, because the internal decision cache is separate from the on-disk DB on newer releases. You saw this: the reset reported a failure, but GitboxApp still popped the "Allow Local Network" dialog when it reached the server.
 
-Passing a bundle identifier (`tccutil reset LocalNetwork com.wails.GitboxApp`) narrows the reset to one app, but returns the same error whenever the broader reset already can't write. The bundle identifier for a stock gitbox build is `com.wails.GitboxApp` — `wails build` inherits that from its default `Info.plist` template since the repo does not override it. After an ad-hoc `codesign --sign -`, the identifier is preserved (you can confirm with `defaults read /Applications/GitboxApp.app/Contents/Info.plist CFBundleIdentifier`).
+Passing a bundle identifier (`tccutil reset LocalNetwork com.wails.gitboxapp`) narrows the reset to one app, but returns the same error whenever the broader reset already can't write. The bundle identifier for a stock gitbox build is `com.wails.gitboxapp`, in lowercase — `wails build` inherits that from its default `Info.plist` template since the repo does not override it. After an ad-hoc `codesign --sign -`, the identifier is preserved (you can confirm with `defaults read /Applications/GitboxApp.app/Contents/Info.plist CFBundleIdentifier`).
 
 **If `tccutil` fails but the prompt never appears either** — skip it. Open _System Settings → Privacy & Security → Local Network_ directly and flip the GitboxApp toggle on if it's listed. If it isn't listed at all, the app truly never tried a LAN connect yet (or TCC recorded it under a different identity from an earlier ship); relaunch, trigger a credential verification on a LAN account, and the OS will add it.
 

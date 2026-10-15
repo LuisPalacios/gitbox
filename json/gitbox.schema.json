@@ -111,9 +111,14 @@
                     "enum": ["simple", "advanced"],
                     "description": "GUI experience: simple (plain words, fewer controls) or advanced (everything). Absent means advanced; onboarding writes simple on a new install."
                 },
+                "theme": {
+                    "type": "string",
+                    "enum": ["light", "dark"],
+                    "description": "GUI colour theme. Absent means the app follows the operating system."
+                },
                 "collapsed": {
                     "type": "object",
-                    "description": "Account groups and parent clones folded in the GUI's full view, plus the cards panel state. Absent means every group and clone is expanded and the cards panel is collapsed. Keys that no longer exist are pruned on save.",
+                    "description": "GUI layout state: account groups and parent clones folded in the full view, the sidebar rail and the last selected view. Absent means every group and clone is expanded, the sidebar is expanded and the app opens on Needs attention. Keys that no longer exist are pruned on save.",
                     "additionalProperties": false,
                     "properties": {
                         "sources": {
@@ -126,9 +131,14 @@
                             "items": { "type": "string" },
                             "description": "Collapsed parent clones as \"<source>/<repo>\" keys."
                         },
-                        "cards_open": {
+                        "sidebar": {
                             "type": "boolean",
-                            "description": "True when the cards panel above the list (accounts, mirrors, workspaces) is unfolded. Absent means collapsed, the default."
+                            "description": "True when the sidebar is folded to its icon rail. Absent means expanded."
+                        },
+                        "view": {
+                            "type": "string",
+                            "pattern": "^(attention|all|mirrors|workspaces|account:.+)$",
+                            "description": "Last selected view: attention, all, mirrors, workspaces or account:<account-key>. Absent means Needs attention. A view naming a missing account is pruned on save."
                         }
                     }
                 },

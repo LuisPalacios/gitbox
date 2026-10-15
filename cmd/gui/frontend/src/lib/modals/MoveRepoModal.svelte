@@ -413,7 +413,7 @@
   .move-summary li { padding: 2px 0; }
   .move-summary code { background: var(--bg-card); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
   .move-danger-line { color: #D81E5B; font-weight: 500; }
-  .move-phase { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; font-size: 13px; color: var(--text-secondary); }
+  .move-phase { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; color: var(--text-secondary); }
   .move-phase-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex: 0 0 auto; }
   .move-phase-dot.move-phase-err { background: #f59e0b; }
   .move-phase-label { min-width: 150px; color: var(--text-primary); text-transform: capitalize; }
@@ -450,7 +450,7 @@
   .move-readiness-dot-unknown { background: #6b7280; }
   .move-readiness-msg { margin-top: 4px; color: var(--text-secondary); font-size: 12px; }
   .move-readiness-scopes { margin-top: 4px; color: var(--text-dim); font-size: 12px; }
-  .move-readiness-actions { margin-top: 6px; display: flex; gap: 12px; }
+  .move-readiness-actions { margin-top: 6px; display: flex; align-items: center; gap: 12px; }
   .btn-link { background: none; border: none; color: var(--accent); padding: 0; font-size: 12px; cursor: pointer; text-decoration: underline; }
   .btn-link:hover { color: var(--text-primary); }
   .btn-link-subtle { background: none; border: none; color: var(--text-dim); padding: 0; font-size: 12px; cursor: pointer; }

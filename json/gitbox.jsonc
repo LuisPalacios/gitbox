@@ -51,15 +51,21 @@
         // "simple" on a new install.
         "ui_mode": "simple",
 
-        // Account groups and parent clones folded in the GUI's full view.
-        // GitboxApp writes this when I click a chevron; absent means
-        // everything is expanded. Keys that no longer exist are pruned on save.
-        // cards_open records the cards panel above the list being unfolded;
-        // absent means collapsed, the default.
+        // GUI colour theme: "light" or "dark". Absent means the app follows
+        // the operating system.
+        // "theme": "dark",
+
+        // GUI layout state. GitboxApp writes this when I click a chevron,
+        // fold the sidebar or pick a view; absent means everything is
+        // expanded and the app opens on Needs attention. Keys that no longer
+        // exist are pruned on save. sidebar records the sidebar folded to its
+        // icon rail; view is the last selected view (attention, all, mirrors,
+        // workspaces or account:<account-key>).
         // "collapsed": {
         //     "sources": ["github-MyAccount"],
         //     "repos": ["github-MyAccount/MyOrg/my-container"],
-        //     "cards_open": true
+        //     "sidebar": true,
+        //     "view": "account:github-MyAccount"
         // },
 
         // SSH credentials

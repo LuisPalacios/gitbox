@@ -621,6 +621,27 @@ func TestRenameAccountUpdatesMirrors(t *testing.T) {
 	}
 }
 
+// Renaming the account the GUI shows keeps the GUI on that account.
+func TestRenameAccountUpdatesView(t *testing.T) {
+	cfg := newTestConfig()
+	cfg.Global.Collapsed = &CollapsedState{View: "account:github-test"}
+	if err := cfg.RenameAccount("github-test", "github-new"); err != nil {
+		t.Fatalf("RenameAccount: %v", err)
+	}
+	if got := cfg.Global.Collapsed.View; got != "account:github-new" {
+		t.Errorf("view = %q, want account:github-new", got)
+	}
+
+	// Another account's view stays put.
+	cfg.Global.Collapsed.View = "account:forgejo-test"
+	if err := cfg.RenameAccount("github-new", "github-other"); err != nil {
+		t.Fatalf("RenameAccount: %v", err)
+	}
+	if got := cfg.Global.Collapsed.View; got != "account:forgejo-test" {
+		t.Errorf("view = %q, want account:forgejo-test", got)
+	}
+}
+
 // --- Mirror Repo CRUD tests ---
 
 func TestAddMirrorRepo(t *testing.T) {

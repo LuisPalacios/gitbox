@@ -4,6 +4,7 @@
   // back on an outside click or Escape (the .card-open selector).
   import type { Snippet } from 'svelte';
   import { onActivateKey } from './keyboard';
+  import UIIcon from './UIIcon.svelte';
 
   // Show the full card instead of the chip.
   export let open: boolean;
@@ -36,7 +37,7 @@
   on:keydown={onActivateKey(onOpen)}
   {style}>
   {#if deleteMode}
-    <button class="btn-delete-x card-delete-btn" on:click|stopPropagation={onDelete} title={deleteTitle}>&#10005;</button>
+    <button class="btn-delete-x card-delete-btn" on:click|stopPropagation={onDelete} title={deleteTitle} aria-label={deleteTitle}><UIIcon name="x" size={12} /></button>
   {:else}
     <span class="card-dot" style="background: {dotColor}"></span>
   {/if}
@@ -47,7 +48,7 @@
   {style}>
   <div class="card-top">
     {#if deleteMode}
-      <button class="btn-delete-x card-delete-btn" on:click={onDelete} title={deleteTitle}>&#10005;</button>
+      <button class="btn-delete-x card-delete-btn" on:click={onDelete} title={deleteTitle} aria-label={deleteTitle}><UIIcon name="x" size={12} /></button>
     {:else}
       <span class="card-dot" style="background: {dotColor}"></span>
     {/if}
@@ -102,7 +103,7 @@
      badge or count on the left and the one-word buttons on the right. */
   .card-top .card-name { margin-bottom: 0; white-space: nowrap; }
   .card-line { display: flex; align-items: center; gap: 6px; }
-  .card-actions { margin-left: auto; display: flex; gap: 4px; padding-left: 8px; }
+  .card-actions { margin-left: auto; display: flex; align-items: center; gap: 4px; padding-left: 8px; }
   .card-btn {
     width: 100%; padding: 5px 0; background: transparent; border: 1px solid var(--border);
     color: var(--text-secondary); border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 500;
@@ -112,13 +113,13 @@
   .card-btn:disabled { opacity: 0.35; cursor: default; }
   .card-btn-sm { width: auto; flex: 0 0 auto; padding: 2px 8px; }
   .btn-delete-x {
-    background: none; border: 1px solid #D81E5B55; color: #D81E5B;
-    cursor: pointer; font-size: 9px; font-weight: 600;
+    background: none; border: 1px solid color-mix(in srgb, var(--alert) 35%, transparent); color: var(--alert);
+    cursor: pointer;
     width: 16px; height: 16px; padding: 0; flex-shrink: 0;
     border-radius: 3px; display: flex; align-items: center; justify-content: center;
     opacity: 0.7; transition: all 0.12s; line-height: 1;
   }
-  .btn-delete-x:hover { opacity: 1; background: #D81E5B22; border-color: #D81E5B; }
+  .btn-delete-x:hover { opacity: 1; background: color-mix(in srgb, var(--alert) 14%, transparent); border-color: var(--alert); }
   /* Workspace card styling: reuse the mirror card structure but with its
      own dot colour derived inline. */
   .card-workspace .card-provider { letter-spacing: 0.5px; }

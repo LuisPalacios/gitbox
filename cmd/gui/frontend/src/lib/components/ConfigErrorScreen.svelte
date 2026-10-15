@@ -181,7 +181,7 @@
     color: var(--text-secondary);
   }
   .cfg-error-section-actions {
-    display: flex;
+    display: flex; align-items: center;
     justify-content: flex-start;
   }
   .cfg-error-empty {
@@ -226,7 +226,7 @@
     text-overflow: ellipsis;
   }
   .cfg-error-actions {
-    display: flex;
+    display: flex; align-items: center;
     justify-content: flex-end;
     gap: 8px;
   }

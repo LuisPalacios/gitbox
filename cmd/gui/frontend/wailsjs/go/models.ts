@@ -97,7 +97,8 @@ export namespace config {
 	export class CollapsedState {
 	    sources?: string[];
 	    repos?: string[];
-	    cards_open?: boolean;
+	    sidebar?: boolean;
+	    view?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CollapsedState(source);
@@ -107,7 +108,8 @@ export namespace config {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.sources = source["sources"];
 	        this.repos = source["repos"];
-	        this.cards_open = source["cards_open"];
+	        this.sidebar = source["sidebar"];
+	        this.view = source["view"];
 	    }
 	}
 	export class EditorEntry {
@@ -271,6 +273,7 @@ export namespace config {
 	    compact_window?: WindowState;
 	    view_mode?: string;
 	    ui_mode?: string;
+	    theme?: string;
 	    collapsed?: CollapsedState;
 	    credential_ssh?: SSHGlobal;
 	    credential_gcm?: GCMGlobal;
@@ -301,6 +304,7 @@ export namespace config {
 	        this.compact_window = this.convertValues(source["compact_window"], WindowState);
 	        this.view_mode = source["view_mode"];
 	        this.ui_mode = source["ui_mode"];
+	        this.theme = source["theme"];
 	        this.collapsed = this.convertValues(source["collapsed"], CollapsedState);
 	        this.credential_ssh = this.convertValues(source["credential_ssh"], SSHGlobal);
 	        this.credential_gcm = this.convertValues(source["credential_gcm"], GCMGlobal);

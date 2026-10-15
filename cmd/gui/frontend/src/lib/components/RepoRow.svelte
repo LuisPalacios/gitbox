@@ -1,18 +1,63 @@
+<script module lang="ts">
+  import type { RepoState, RepoDetailView, EditorInfo, AIHarnessInfo, TerminalProfileInfo } from '../types';
+
+  // RowProps is what every row shares with its list: App builds it once and
+  // each view passes it down unchanged. The detail fields feed RepoTree, the
+  // rest RepoRow. Rows never write it back; they call the close callbacks.
+  export interface RowProps {
+    simple: boolean;
+    deleteMode: boolean;
+    fetchingRepos: Record<string, boolean>;
+    collapsedRepos: Set<string>;
+    tentativeContainers: Set<string>;
+    workspaceBusy: boolean;
+    openWsPopover: string | null;
+    revealLabel: string;
+    configEditors: EditorInfo[];
+    configProfiles: TerminalProfileInfo[];
+    configAIHarnesses: AIHarnessInfo[];
+    actionMenuRepo: string | null;
+    openPRPopover: string | null;
+    expandedRepo: string | null;
+    repoDetail: RepoDetailView | null;
+    detailLoading: boolean;
+    activateRepoRow: (sourceKey: string, repoName: string, status: string) => void;
+    askDelete: (sourceKey: string, repoKey: string, status: string) => void;
+    syncRepo: (sourceKey: string, repoKey: string) => void;
+    cloneRepo: (sourceKey: string, repoKey: string) => void;
+    fetchRepo: (sourceKey: string, repoKey: string) => void;
+    toggleActionMenu: (repoKey: string) => void;
+    closeActionMenu: () => void;
+    toggleWsPopover: (key: string) => void;
+    openWorkspaceFromBadge: (wsKey: string) => Promise<void>;
+    togglePRPopover: (key: string) => void;
+    closePRPopover: () => void;
+    sweepBranches: (sourceKey: string, repoKey: string) => void;
+    openMoveRepo: (sourceKey: string, repoKey: string) => void;
+    toggleContainer: (sourceKey: string, repoName: string) => Promise<void>;
+    rescanContainer: () => Promise<void>;
+    toggleRepoCollapsed: (repoKey: string, descendants: string[]) => void;
+    isContainerRepo: (sourceKey: string, repoName: string) => boolean;
+    showAccountView: (accountKey: string) => void;
+  }
+</script>
+
 <script lang="ts">
-  // One clone of the repo list: the Simple row (dot, short name, one
-  // sentence, one button, ⋯) or the Advanced row (status shape, workspace
-  // and PR badges, branch, counts, launchers, fetch and ⋯).
+  // One clone of the repo list: the Simple row (dot, short name, its words,
+  // one button, launchers, ⋯) or the Advanced row (status shape, workspace
+  // and PR badges, branch, its words, launchers, fetch and ⋯).
   import { fade } from 'svelte/transition';
   import { bridge } from '../bridge';
-  import { accounts, repoStates, selectedClones, toggleCloneSelection, prSettings, prsByAccount, lookupPRSummary, workspaces, workspaceMemberships, isSynced, themeStore } from '../stores';
-  import { statusColor, simpleKind, simpleColor, simpleLabelKey, simpleUnsaved, rowBusy, rowGlyph, advancedLabel, COUNT_BADGES } from '../status';
+  import { pushNotice, errorText } from '../notices';
+  import { accounts, repoStates, prSettings, prsByAccount, lookupPRSummary, workspaces, workspaceMemberships, isSynced, themeStore } from '../stores';
+  import { statusColor, simpleKind, simpleColor, rowBusy, rowGlyph, statusLabel, attentionRank, CALM_RANK, COUNT_BADGES } from '../status';
   import type { SimpleKind } from '../status';
   import { t } from '../i18n';
   import { onActivateKey } from '../keyboard';
   import LauncherMenu from '../LauncherMenu.svelte';
   import PRPopover from '../PRPopover.svelte';
-  import BrandIcon, { terminalLogo } from '../BrandIcon.svelte';
-  import type { RepoState, EditorInfo, AIHarnessInfo, TerminalProfileInfo } from '../types';
+  import BrandIcon, { terminalLogo, harnessLogo, editorLogo } from '../BrandIcon.svelte';
+  import UIIcon from '../UIIcon.svelte';
 
   // The row's group, its own source (another account's for a nested clone
   // shown under its container) and its place in the tree.
@@ -27,9 +72,15 @@
   export let isContainer: boolean;
   export let state: RepoState;
   export let rowOpensDetail: boolean;
+  // Views without the account groups name the row's account, and a nested
+  // clone shown away from its container names that parent.
+  export let showAccount = false;
+  export let parentLabel = '';
+  // Healthy rows fade until hovered, so problems stand out.
+  export let fadeHealthy = false;
+  // Shared with the whole list (RowProps; the detail fields go to RepoTree).
   export let simple: boolean;
   export let deleteMode: boolean;
-  export let selectionMode: boolean;
   export let fetchingRepos: Record<string, boolean>;
   export let collapsedRepos: Set<string>;
   export let tentativeContainers: Set<string>;
@@ -41,7 +92,7 @@
   export let configAIHarnesses: AIHarnessInfo[];
   export let actionMenuRepo: string | null;
   export let openPRPopover: string | null;
-  export let activateRepoRow: (sourceKey: string, repoName: string, repoKey: string, status: string) => void;
+  export let activateRepoRow: (sourceKey: string, repoName: string, status: string) => void;
   export let askDelete: (sourceKey: string, repoKey: string, status: string) => void;
   export let syncRepo: (sourceKey: string, repoKey: string) => void;
   export let cloneRepo: (sourceKey: string, repoKey: string) => void;
@@ -51,22 +102,30 @@
   export let toggleWsPopover: (key: string) => void;
   export let openWorkspaceFromBadge: (wsKey: string) => Promise<void>;
   export let togglePRPopover: (key: string) => void;
+  export let closePRPopover: () => void;
   export let sweepBranches: (sourceKey: string, repoKey: string) => void;
   export let openMoveRepo: (sourceKey: string, repoKey: string) => void;
   export let toggleContainer: (sourceKey: string, repoName: string) => Promise<void>;
   export let rescanContainer: () => Promise<void>;
   export let toggleRepoCollapsed: (repoKey: string, descendants: string[]) => void;
   export let isContainerRepo: (sourceKey: string, repoName: string) => boolean;
+  export let showAccountView: (accountKey: string) => void;
 
   $: sc = (s: string) => statusColor(s, $themeStore);
+  $: busy = rowBusy(state.status, !!fetchingRepos[repoKey]);
+  $: label = statusLabel(state, simple);
+  // Nested clones below a folded parent, and how many of them need me.
+  $: belowNeed = descendants.filter((d) => { const st = $repoStates[d]; return !!st && attentionRank(st.status, st.isDefault) < CALM_RANK; }).length;
+  // A folded parent hiding clones that need me stays at full strength.
+  $: calm = fadeHealthy && !busy && isSynced(state) && !(belowNeed > 0 && collapsedRepos.has(repoKey));
 
   // requireRepoPath returns the row's local clone path, or shows the
-  // "clone first" dialog and returns null. Path-based kebab actions used
+  // "clone first" notice and returns null. Path-based kebab actions used
   // to return silently when the path was missing (#79); a row cloned
   // in-session has none until clone:done or the next status refresh.
   function requireRepoPath(repoKey: string, title: string): string | null {
     const p = $repoStates[repoKey]?.path;
-    if (!p) { void bridge.showErrorDialog(title, $t('launcher.cloneFirst')); }
+    if (!p) pushNotice('info', title, [$t('launcher.cloneFirst')]);
     return p ?? null;
   }
 
@@ -77,7 +136,7 @@
   }
 
   async function openRepoInApp(repoKey: string, command: string) {
-    const path = requireRepoPath(repoKey, 'Open in editor');
+    const path = requireRepoPath(repoKey, $t('notice.openEditor'));
     if (path) await bridge.openInApp(path, command);
     closeActionMenu();
   }
@@ -86,10 +145,10 @@
   // working directory then asks the Go side to expand the profile's
   // template via pkg/launch.ResolveArgs and spawn the terminal.
   async function openRepoProfile(repoKey: string, profileID: string) {
-    const path = requireRepoPath(repoKey, 'Open profile');
+    const path = requireRepoPath(repoKey, $t('notice.openTerminal'));
     if (path) {
       try { await bridge.openProfile(path, profileID); }
-      catch (e: any) { await bridge.showErrorDialog('Open profile', (e?.message || String(e))); }
+      catch (e) { pushNotice('error', $t('notice.openTerminalFailed'), [errorText(e)]); }
     }
     closeActionMenu();
   }
@@ -97,26 +156,26 @@
   async function openRepoInAIHarness(repoKey: string, harness: AIHarnessInfo) {
     const state = $repoStates[repoKey];
     if (!state?.path) {
-      await bridge.showErrorDialog('Open in ' + harness.name, $t('launcher.cloneFirst'));
+      pushNotice('info', $t('simple.btnOpenWith', { name: harness.name }), [$t('launcher.cloneFirst')]);
       closeActionMenu();
       return;
     }
     try {
       await bridge.openInAIHarness(state.path, harness.command, harness.args || []);
-    } catch (e: any) {
-      await bridge.showErrorDialog('Open in ' + harness.name, (e?.message || String(e)));
+    } catch (e) {
+      pushNotice('error', $t('notice.openFailed', { name: harness.name }), [errorText(e)]);
     }
     closeActionMenu();
   }
 
   // The URL is resolved on the Go side from the authoritative config
   // (git.RepoWebURL), so a stale frontend store can't turn this into a
-  // silent no-op; lookup failures surface in a dialog (#79).
+  // silent no-op; lookup failures surface in a notice (#79).
   async function openRepoInBrowser(sourceKey: string, repoName: string) {
     try {
       await bridge.openRepoInBrowser(sourceKey, repoName);
-    } catch (e: any) {
-      await bridge.showErrorDialog('Navigate to repo', (e?.message || String(e)));
+    } catch (e) {
+      pushNotice('error', $t('notice.openWebFailed'), [errorText(e)]);
     }
     closeActionMenu();
   }
@@ -173,17 +232,23 @@
     return '';
   }
 
-  // Simple row helpers: the short project name, the "not saved yet" detail,
-  // and the one primary launcher (first AI harness, else editor, else folder).
+  // Simple row helpers: the short project name and the local-work detail.
   function shortName(repoName: string): string {
     return repoName.split('/').pop() || repoName;
   }
   function simpleTip(kind: SimpleKind, state: { status: string; modified: number; untracked: number }): string {
     if (kind === 'help') return $t('simple.tipHelp');
-    if (kind !== 'unsaved') return '';
+    if (kind !== 'wip' && kind !== 'unpushed') return '';
     if (state.status === 'ahead') return $t('simple.tipAhead');
     if (state.status === 'no upstream') return $t('simple.tipNoUpstream');
     return $t('simple.tipDirty', { n: (state.modified || 0) + (state.untracked || 0) });
+  }
+  // The words' tooltip: Simple explains its kind, Advanced splits local
+  // changes into changed and untracked files.
+  function labelTip(state: RepoState): string {
+    if (simple) return simpleTip(simpleKind(state.status), state);
+    if (state.status === 'dirty') return $t('status.changesTip', { m: state.modified || 0, u: state.untracked || 0 });
+    return '';
   }
   // Every cloned row, Simple or Advanced, carries three icon-only launchers:
   // the first AI harness, the first editor, and the default terminal profile
@@ -195,73 +260,71 @@
     const visible = configProfiles.filter((p) => !p.hidden);
     return visible.find((p) => p.default) || visible[0] || null;
   })();
-  function harnessIcon(h: AIHarnessInfo): string {
-    const k = `${h.name} ${h.command}`.toLowerCase();
-    if (k.includes('claude')) return 'claude';
-    if (k.includes('codex') || k.includes('openai')) return 'openai';
-    if (k.includes('gemini')) return 'gemini';
-    if (k.includes('cursor')) return 'cursor';
-    return 'ai';
-  }
-  function editorIcon(e: EditorInfo): string {
-    const k = `${e.name} ${e.command}`.toLowerCase();
-    if (k.includes('cursor')) return 'cursor';
-    if (k.includes('zed')) return 'zed';
-    if (k.includes('visual studio code') || k.includes('vs code') || k.includes('vscode') || /(^|[\\/ ])code(\.exe|\.cmd)?$/.test(e.command.toLowerCase())) return 'vscode';
-    return 'ide';
-  }
 </script>
+
+<!-- The status in the glossary words, with its dimmed note. -->
+{#snippet words()}
+  <span class="status-text" style="color: {sc(label.color)}" title={labelTip(state)}>{$t(label.key, label.vars)}{#if label.note}<span class="safe-note">&nbsp;{$t(label.note, label.noteVars)}</span>{/if}</span>
+{/snippet}
+
+<!-- After the name: the account pill, the parent tag and a folded parent's
+     count of clones below. -->
+{#snippet rowTags()}
+  {#if showAccount}<button class="acct-pill" title={$t('nav.openAccount', { name: rowAccountKey })} on:click|stopPropagation={() => showAccountView(rowAccountKey)}>{rowAccountKey}</button>{/if}
+  {#if parentLabel}<span class="container-badge" title={parentLabel}>{$t('repo.inParent', { name: parentLabel.split('/').pop() || parentLabel })}</span>{/if}
+  {#if childCount > 0 && collapsedRepos.has(repoKey)}
+    <span class="collapse-summary collapse-summary-row">
+      {$t('collapse.below', { n: descendants.length })}{#if belowNeed > 0}{' · '}<span style="color:{sc('dirty')}">{$t(belowNeed === 1 ? 'collapse.needYouOne' : 'collapse.needYou', { n: belowNeed })}</span>{/if}
+    </span>
+  {/if}
+{/snippet}
 
 {#snippet quickLaunch(repoKey: string)}
   <span class="launch-group">
     {#if quickHarness}
       {@const h = quickHarness}
-      <button class="btn-launch" title={$t('simple.btnOpenWith', { name: h.name })} aria-label={$t('simple.btnOpenWith', { name: h.name })}
-        on:click|stopPropagation={() => openRepoInAIHarness(repoKey, h)}><BrandIcon name={harnessIcon(h)} /></button>
+      <button class="icon-btn btn-launch" title={$t('simple.btnOpenWith', { name: h.name })} aria-label={$t('simple.btnOpenWith', { name: h.name })}
+        on:click|stopPropagation={() => openRepoInAIHarness(repoKey, h)}><BrandIcon name={harnessLogo(h)} /></button>
     {/if}
     {#if quickEditor}
       {@const ed = quickEditor}
-      <button class="btn-launch" title={$t('simple.btnOpenWith', { name: ed.name })} aria-label={$t('simple.btnOpenWith', { name: ed.name })}
-        on:click|stopPropagation={() => openRepoInApp(repoKey, ed.command)}><BrandIcon name={editorIcon(ed)} /></button>
+      <button class="icon-btn btn-launch" title={$t('simple.btnOpenWith', { name: ed.name })} aria-label={$t('simple.btnOpenWith', { name: ed.name })}
+        on:click|stopPropagation={() => openRepoInApp(repoKey, ed.command)}><BrandIcon name={editorLogo(ed)} /></button>
     {/if}
     {#if quickProfile}
       {@const pr = quickProfile}
-      <button class="btn-launch" title={$t('simple.btnOpenWith', { name: pr.name })} aria-label={$t('simple.btnOpenWith', { name: pr.name })}
+      <button class="icon-btn btn-launch" title={$t('simple.btnOpenWith', { name: pr.name })} aria-label={$t('simple.btnOpenWith', { name: pr.name })}
         on:click|stopPropagation={() => openRepoProfile(repoKey, pr.id)}><BrandIcon name={terminalLogo(pr.terminal, pr.shell)} /></button>
     {/if}
   </span>
 {/snippet}
 
 <div class="repo-row" class:repo-row-clickable={rowOpensDetail}
-  class:repo-row-nested={depth > 0}
-  style={depth > 0 ? `padding-left: ${10 + depth * 22}px` : ''}
+  class:repo-row-nested={depth > 0} class:calm
+  style={depth > 0 ? `--depth: ${depth}` : ''}
   role="button"
-  tabindex={rowOpensDetail || selectionMode ? 0 : -1}
-  aria-disabled={!rowOpensDetail && !selectionMode}
-  on:click={() => activateRepoRow(rowSourceKey, repoName, repoKey, state.status)}
-  on:keydown={onActivateKey(() => activateRepoRow(rowSourceKey, repoName, repoKey, state.status))}>
-  {#if rowSourceKey !== sourceKey}<span class="container-badge" title={rowSourceKey}>{rowAccountKey}</span>{/if}
-  {#if selectionMode}
-    <input type="checkbox" class="clone-select-box" checked={$selectedClones.has(repoKey)}
-      on:click|stopPropagation
-      on:change={() => toggleCloneSelection(repoKey)} title="{repoName}: {$t('repo.selectForWorkspace')}" />
-  {:else if deleteMode}
-    <button class="btn-delete-x" on:click|stopPropagation={() => askDelete(rowSourceKey, repoName, state.status)} title="Delete {repoName}">&#10005;</button>
+  tabindex={rowOpensDetail ? 0 : -1}
+  aria-disabled={!rowOpensDetail}
+  on:click={() => activateRepoRow(rowSourceKey, repoName, state.status)}
+  on:keydown={onActivateKey(() => activateRepoRow(rowSourceKey, repoName, state.status))}>
+  {#if rowSourceKey !== sourceKey && !showAccount}<span class="container-badge" title={rowSourceKey}>{rowAccountKey}</span>{/if}
+  {#if deleteMode}
+    <button class="icon-btn icon-btn-danger btn-delete-x" on:click|stopPropagation={() => askDelete(rowSourceKey, repoName, state.status)} title="Delete {repoName}" aria-label="Delete {repoName}"><UIIcon name="x" /></button>
   {/if}
   {#if childCount > 0}
     {@const repoCollapsed = collapsedRepos.has(repoKey)}
-    <button class="collapse-chevron collapse-chevron-btn"
+    <button class="collapse-chevron-btn" class:collapsed={repoCollapsed}
       aria-expanded={!repoCollapsed}
       aria-label="{repoCollapsed ? $t('collapse.expand') : $t('collapse.collapse')} {repoName}"
       title={repoCollapsed ? $t('collapse.expand') : $t('collapse.collapse')}
       on:click|stopPropagation={() => toggleRepoCollapsed(repoKey, descendants)}
-      on:keydown|stopPropagation>{repoCollapsed ? '▸' : '▾'}</button>
+      on:keydown|stopPropagation><UIIcon name="chevron" /></button>
   {/if}
   {#if simple}
     <!-- Simple row (issue #124): dot, short name, one sentence, one button, ⋯ -->
     {@const kind = simpleKind(state.status)}
     {@const kindColor = simpleColor(kind, $themeStore)}
-    <span class="dot" class:spinning={rowBusy(state.status, !!fetchingRepos[repoKey])} style="color: {kindColor}">{rowBusy(state.status, !!fetchingRepos[repoKey]) ? '↻' : '●'}</span>
+    <span class="dot" class:spinning={busy} style="color: {kindColor}">{busy ? '↻' : '●'}</span>
     {#if childCount > 0}
       <span class="repo-name" title={repoName}><span class="repo-name-toggle" role="button" tabindex="-1"
         on:click={(e) => { e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants); }}
@@ -269,21 +332,16 @@
     {:else}
       <span class="repo-name" title={repoName}>{shortName(repoName)}</span>
     {/if}
-    {#if childCount > 0 && collapsedRepos.has(repoKey)}
-      {@const belowUnsaved = descendants.filter((d) => simpleUnsaved(($repoStates[d] || { status: 'unknown' }).status)).length}
-      <span class="collapse-summary collapse-summary-row">
-        {$t('collapse.below', { n: descendants.length })}{#if belowUnsaved > 0} · <span style="color:{sc('dirty')}">{$t('simple.notSavedN', { n: belowUnsaved })}</span>{/if}
-      </span>
-    {/if}
+    {@render rowTags()}
     {#if state.status === 'syncing' || state.status === 'cloning'}
       <div class="progress-track">
         <div class="progress-fill" style="width:{state.progress}%; background:{kindColor}"></div>
       </div>
       <span class="progress-pct" style="color:{kindColor}">{state.progress}%</span>
     {:else}
-      <span class="status-text" style="color: {kindColor}" title={simpleTip(kind, state)}>{$t(simpleLabelKey(kind))}</span>
+      {@render words()}
       {#if kind === 'update'}
-        <button class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)}>{$t('simple.btnUpdate')}</button>
+        <button class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)} title={$t('simple.updateTip')}>{$t('simple.btnUpdate')}</button>
       {:else if kind === 'online'}
         <button class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('simple.btnDownload')}</button>
       {/if}
@@ -293,7 +351,7 @@
     {/if}
     {#if kind !== 'online'}
       <div class="action-menu-container">
-        <button class="btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title={$t('repo.actions')}>&#8942;</button>
+        <button class="icon-btn btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title={$t('repo.actions')} aria-label={$t('repo.actions')} aria-haspopup="menu"><UIIcon name="dots" /></button>
         {#if actionMenuRepo === repoKey}
           <div transition:fade={{ duration: 80 }}>
             <LauncherMenu
@@ -307,15 +365,14 @@
               onOpenFolder={() => openRepoInExplorer(repoKey)}
               onOpenApp={(cmd) => openRepoInApp(repoKey, cmd)}
               onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
-              onDelete={() => { actionMenuRepo = null; askDelete(rowSourceKey, repoName, state.status); }}
-              deleteLabel={$t('simple.delete')}
+              onDelete={() => { closeActionMenu(); askDelete(rowSourceKey, repoName, state.status); }}
             />
           </div>
         {/if}
       </div>
     {/if}
   {:else}
-  <span class="dot" class:spinning={rowBusy(state.status, !!fetchingRepos[repoKey])} style="color: {sc(state.status)}">{rowGlyph(state.status, !!fetchingRepos[repoKey])}</span>
+  <span class="dot" class:spinning={busy} style="color: {sc(state.status)}">{rowGlyph(state.status, !!fetchingRepos[repoKey])}</span>
   {#if membershipsFor(repoKey).length > 0}
     <div class="ws-badge-wrap">
       <button class="ws-badge"
@@ -347,20 +404,15 @@
     </div>
   {/if}
   {#if childCount > 0}
-    <!-- The name folds its clones too; selection mode keeps the row's own click. -->
+    <!-- The name folds its clones too. -->
     <span class="repo-name"><span class="repo-name-toggle" role="button" tabindex="-1"
       title={collapsedRepos.has(repoKey) ? $t('collapse.expand') : $t('collapse.collapse')}
-      on:click={(e) => { if (selectionMode) return; e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants); }}
+      on:click={(e) => { e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants); }}
       on:keydown={onActivateKey(() => toggleRepoCollapsed(repoKey, descendants))}>{repoName}</span></span>
   {:else}
     <span class="repo-name">{repoName}</span>
   {/if}
-  {#if childCount > 0 && collapsedRepos.has(repoKey)}
-    {@const below = descendants.filter(key => $repoStates[key] && $repoStates[key].status !== 'unknown' && !isSynced($repoStates[key])).length}
-    <span class="collapse-summary collapse-summary-row">
-      {$t('collapse.below', { n: descendants.length })}{#if below > 0} · <span style="color:{sc('behind')}">{below} {below === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}</span>{/if}
-    </span>
-  {/if}
+  {@render rowTags()}
   {#if isContainer}
     <span class="container-badge" title="Multi-repo container — holds nested clones">&#128193; container</span>
   {:else if isTentativeContainer(rowSourceKey, repoName, tentativeContainers)}
@@ -382,7 +434,6 @@
   {:else}
     {#if state.status === 'unknown'}<span class="status-pending">{$t('simple.checking')}</span>{/if}
     {#if state.status !== 'unknown'}
-    {@const label = advancedLabel(state.status, state.isDefault)}
     {#if !deleteMode && $prSettings.enabled}
       {@const prSummary = lookupPRSummary($prsByAccount, rowAccountKey, repoName)}
       {@const acctForPRs = $accounts[rowAccountKey]}
@@ -398,8 +449,8 @@
                 prs={prSummary.authored}
                 providerName={acctForPRs?.provider || ''}
                 providerAllURL={providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName)}
-                onOpenPR={(url) => { bridge.openInBrowser(url); openPRPopover = null; }}
-                onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); openPRPopover = null; }}
+                onOpenPR={(url) => { bridge.openInBrowser(url); closePRPopover(); }}
+                onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); closePRPopover(); }}
               />
             </div>
           {/if}
@@ -417,8 +468,8 @@
                 prs={prSummary.reviewRequested}
                 providerName={acctForPRs?.provider || ''}
                 providerAllURL={providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName)}
-                onOpenPR={(url) => { bridge.openInBrowser(url); openPRPopover = null; }}
-                onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); openPRPopover = null; }}
+                onOpenPR={(url) => { bridge.openInBrowser(url); closePRPopover(); }}
+                onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); closePRPopover(); }}
               />
             </div>
           {/if}
@@ -426,26 +477,24 @@
       {/if}
     {/if}
     <span class="status-badges">
-      {#if label}
-        <span class="status-text" style="color:{sc(label.color)}">{$t(label.key)}</span>
-      {:else}
-        <span class="status-pending">{$t('repo.pending')}</span>
+      {@render words()}
+      {#if label.badges}
         {#each COUNT_BADGES as b}
           {#if state[b.field] > 0}<span class="sbadge" style="color:{sc(b.color)}" title="{state[b.field]} {b.word}">{b.glyph}{state[b.field]}</span>{/if}
         {/each}
       {/if}
     </span>
     {#if state.status === 'behind'}
-      <button class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)}>{$t('repo.pull')}</button>
+      <button class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)} title={$t('repo.pullTip')}>{$t('repo.pull')} <span class="btn-tag">{$t('repo.ffOnly')}</span></button>
     {:else if state.status === 'not cloned'}
-      <button class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('repo.bringLocal')}</button>
+      <button class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('repo.clone')}</button>
     {/if}
     {/if}
     {#if !deleteMode && state.status !== 'not cloned'}
       {@render quickLaunch(repoKey)}
-      <button class="btn-fetch" class:spinning={fetchingRepos[repoKey]} on:click|stopPropagation={() => fetchRepo(rowSourceKey, repoName)} title={$t('repo.fetchOrigin')} disabled={!!fetchingRepos[repoKey]}>&#8635;</button>
+      <button class="icon-btn btn-fetch" on:click|stopPropagation={() => fetchRepo(rowSourceKey, repoName)} title={$t('repo.fetchOrigin')} aria-label={$t('repo.fetchOrigin')} disabled={!!fetchingRepos[repoKey]}><span class="icon-spin" class:spinning={fetchingRepos[repoKey]}><UIIcon name="fetch" /></span></button>
       <div class="action-menu-container">
-        <button class="btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title={$t('repo.actions')}>&#8942;</button>
+        <button class="icon-btn btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title={$t('repo.actions')} aria-label={$t('repo.actions')} aria-haspopup="menu"><UIIcon name="dots" /></button>
         {#if actionMenuRepo === repoKey}
           <div transition:fade={{ duration: 80 }}>
             <LauncherMenu
@@ -460,12 +509,13 @@
               onOpenProfile={(id) => openRepoProfile(repoKey, id)}
               onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
               onSweep={() => sweepBranches(rowSourceKey, repoName)}
-              onMove={() => { actionMenuRepo = null; openMoveRepo(rowSourceKey, repoName); }}
+              onMove={() => { closeActionMenu(); openMoveRepo(rowSourceKey, repoName); }}
               moveEnabled={repoMoveDisabledReason(state) === ''}
               moveDisabledReason={repoMoveDisabledReason(state)}
               isContainer={isContainerRepo(rowSourceKey, repoName)}
-              onToggleContainer={() => { actionMenuRepo = null; toggleContainer(rowSourceKey, repoName); }}
-              onRescanContainer={() => { actionMenuRepo = null; rescanContainer(); }}
+              onToggleContainer={() => { closeActionMenu(); toggleContainer(rowSourceKey, repoName); }}
+              onRescanContainer={() => { closeActionMenu(); rescanContainer(); }}
+              onDelete={() => { closeActionMenu(); askDelete(rowSourceKey, repoName, state.status); }}
             />
           </div>
         {/if}
@@ -499,52 +549,64 @@
   .tentative-container-badge:hover {
     background: var(--accent, #4B95E9); color: #fff;
   }
-  .collapse-chevron { flex: 0 0 auto; width: 18px; text-align: center; font-size: 16px; line-height: 1; opacity: 0.85; }
-  .collapse-chevron-btn { background: none; border: none; padding: 0; color: inherit; cursor: pointer; line-height: 1; }
-  .collapse-chevron-btn:hover { opacity: 1; }
+  .collapse-chevron-btn {
+    flex: none; width: 22px; height: 22px; padding: 0; border: none; border-radius: 5px; background: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-muted); cursor: pointer; transition: transform 0.12s, color 0.12s;
+  }
+  .collapse-chevron-btn:hover { color: var(--text-primary); }
+  .collapse-chevron-btn.collapsed { transform: rotate(-90deg); }
   .collapse-summary { flex: 0 0 auto; font-size: 11px; font-weight: normal; opacity: 0.8; }
   .collapse-summary-row { margin-left: 6px; }
   .repo-name-toggle { cursor: pointer; }
   .repo-name-toggle:hover { text-decoration: underline; }
   .repo-row {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px 6px; border-radius: 6px; transition: background 0.1s;
+    display: flex; align-items: center; gap: 10px; min-height: 38px;
+    padding: 4px 6px; border-radius: 6px; transition: background 0.1s;
   }
   .repo-row:hover { background: var(--bg-row-hover); }
+  .repo-row-nested { padding-left: calc(10px + var(--depth) * 22px); }
   .dot { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; }
   .repo-name { font-size: 13px; color: var(--text-repo); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .progress-track { width: 110px; height: 4px; background: var(--ring-bg); border-radius: 2px; overflow: hidden; flex-shrink: 0; }
   .progress-fill { height: 100%; border-radius: 2px; transition: width 0.12s ease-out; }
   .progress-pct { font-size: 11px; width: 32px; text-align: right; flex-shrink: 0; font-weight: 600; }
-  .status-text { font-size: 12px; white-space: nowrap; font-weight: 600; }
+  .status-text { font-size: 12px; white-space: nowrap; font-weight: 600; display: inline-flex; align-items: center; }
+  .safe-note { color: var(--text-muted); font-weight: 500; }
+  .btn-tag { font-size: 10px; color: var(--text-muted); border-left: 1px solid var(--border); padding-left: 6px; margin-left: 2px; }
+  /* A narrow content area (small window with the sidebar open): text gives
+     way before the actions, so the launchers and ⋯ never get pushed out.
+     The notes repeat what the status and button tooltips say, and a healthy
+     row's green dot already says "up to date". */
+  @container content (max-width: 620px) {
+    .repo-row { gap: 4px; }
+    .pr-badge { padding: 2px 5px; gap: 2px; }
+    .repo-row-nested { padding-left: calc(6px + var(--depth) * 12px); }
+    .repo-name { min-width: 3.5rem; }
+    .safe-note, .btn-tag { display: none; }
+    .repo-row.calm .status-text { display: none; }
+    .status-text, .container-badge, .branch-badge { min-width: 0; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; }
+  }
+  .acct-pill {
+    flex: none; padding: 0 6px; border: 1px solid var(--border); border-radius: 5px; background: none;
+    font-size: 10.5px; color: var(--text-muted); white-space: nowrap; cursor: pointer; line-height: 1.5;
+  }
+  .acct-pill:hover { color: var(--text-primary); border-color: var(--border-hover); }
+  /* Healthy rows step back until hovered or focused, so problems stand out. */
+  .repo-row.calm { opacity: 0.55; }
+  .repo-row.calm:hover, .repo-row.calm:focus-within { opacity: 1; }
   .btn-action {
+    display: inline-flex; align-items: center; gap: 4px;
     padding: 3px 10px; background: transparent; border: 1px solid var(--border);
     color: var(--text-secondary); border-radius: 5px; cursor: pointer;
     font-size: 11px; font-weight: 500; transition: all 0.15s; flex-shrink: 0;
   }
   .btn-action:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
-  .btn-fetch {
-    background: transparent; border: none; color: var(--text-dim); cursor: pointer;
-    font-size: 14px; padding: 2px 4px; border-radius: 4px; transition: color 0.15s;
-    flex-shrink: 0; line-height: 1;
-  }
-  .btn-fetch:hover { color: var(--text-primary); }
-  .btn-fetch:disabled { opacity: 0.6; cursor: default; }
+  .btn-fetch:disabled { opacity: 1; }
+  .icon-spin { display: inline-flex; align-items: center; }
   /* Repo-row launchers (both modes): icon-only AI, editor and terminal buttons. */
   .launch-group { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
-  .btn-launch {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 24px; height: 24px; padding: 0; border: none; border-radius: 5px;
-    background: transparent; color: var(--text-secondary); cursor: pointer;
-    transition: background 0.12s, color 0.12s;
-  }
-  .btn-launch:hover { background: var(--bg-hover); color: var(--text-primary); }
-  .btn-kebab {
-    background: transparent; border: none; color: var(--text-dim); cursor: pointer;
-    font-size: 16px; padding: 2px 4px; border-radius: 4px; transition: color 0.15s;
-    flex-shrink: 0; line-height: 1;
-  }
-  .btn-kebab:hover { color: var(--text-primary); }
+  .btn-launch { color: var(--text-secondary); }
   .action-menu-container { position: relative; }
   .status-badges { display: flex; align-items: center; gap: 6px; }
   .sbadge { font-size: 11px; font-weight: 600; white-space: nowrap; }
@@ -552,7 +614,7 @@
   .branch-badge { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: var(--bg-hover); color: var(--text-dim); white-space: nowrap; }
   .branch-badge.detached { color: var(--status-error, #D81E5B); }
   /* PR indicators (issue #29) */
-  .pr-badge-wrap { position: relative; display: inline-flex; }
+  .pr-badge-wrap { position: relative; display: inline-flex; align-items: center; }
   .pr-badge {
     display: inline-flex;
     align-items: center;
@@ -582,25 +644,8 @@
   /* ── Repo detail panel ── */
   .repo-row-clickable { cursor: pointer; }
   .repo-row-clickable:hover { background: var(--bg-row-hover); }
-  .btn-delete-x {
-    background: none; border: 1px solid #D81E5B55; color: #D81E5B;
-    cursor: pointer; font-size: 9px; font-weight: 600;
-    width: 16px; height: 16px; padding: 0; flex-shrink: 0;
-    border-radius: 3px; display: flex; align-items: center; justify-content: center;
-    opacity: 0.7; transition: all 0.12s; line-height: 1;
-  }
-  .btn-delete-x:hover { opacity: 1; background: #D81E5B22; border-color: #D81E5B; }
   /* ── Workspaces (issue #27 / #49) ────────────────────────────────── */
 
-  /* Per-row checkbox shown in selection mode. Sized to match the delete-X
-     button it visually replaces so the row layout stays stable. */
-  .clone-select-box {
-    width: 14px; height: 14px;
-    margin: 0 6px 0 0;
-    accent-color: var(--text-primary);
-    cursor: pointer;
-    flex: 0 0 auto;
-  }
   /* Small membership count chip on clone rows. Sits beside the branch
      badge and stays subtle — presence of the chip at all is already the
      signal the clone is in a workspace. */

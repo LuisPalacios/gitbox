@@ -5,6 +5,8 @@ export interface GlobalConfig {
   language?: string;
   periodic_sync?: string;
   ui_mode?: string;
+  // GUI colour theme: 'light' or 'dark'; absent follows the OS.
+  theme?: string;
   view_mode?: string;
   collapsed?: CollapsedState;
   editors?: EditorInfo[];
@@ -142,13 +144,14 @@ export interface TentativeContainerDTO {
   repo: string;
 }
 
-// CollapsedState lists what the full view shows folded: source keys and
-// "source/repo" keys, plus whether the cards panel is open. Mirrors
-// config.CollapsedState.
+// CollapsedState is the GUI's layout state: folded source keys and
+// "source/repo" keys, the sidebar folded to its rail and the last selected
+// view. Mirrors config.CollapsedState.
 export interface CollapsedState {
   sources?: string[];
   repos?: string[];
-  cards_open?: boolean;
+  sidebar?: boolean;
+  view?: string;
 }
 
 export interface StatusResult {

@@ -1,5 +1,6 @@
 <script lang="ts">
-  // UIIcon — the top-bar action icons. The art lives in assets/svg/ui/
+  // UIIcon — the app's single-colour action icons (top bar, rows, menus,
+  // sidebar). The art lives in assets/svg/ui/
   // (24×24 viewBox, artwork inside the 18×18 guide box 3,3 → 21,21, one
   // stroke weight) and reaches the app through the build
   // (vite-plugin-icons.ts), recoloured to currentColor so it follows the
