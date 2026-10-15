@@ -70,6 +70,10 @@ func TestSomething(t *testing.T) {
 
 Keep business logic out of `cmd/gui`: if a test needs more than the `App` glue, the logic belongs in `pkg/` and the test goes with it.
 
+## Refresh concurrency tests
+
+I inject refresh work through `refreshHooks` in `cmd/gui` tests and use channels to coordinate overlapping callers. I assert shared active work, bounded follow-ups, event ordering, cancellation, and rejection of stale results without starting Wails. I use local HTTP servers for provider deadlines and cancellation. I isolate Git config and token files, and use `GIT_TRACE2_EVENT` to count real pre-fetch Git processes rather than mocking the config wrappers.
+
 ## Frontend tree tests
 
 I run `npm test` from `cmd/gui/frontend` for pure clone-tree regressions, including cross-source ownership, duplicate prevention, nested collapse state, and recovery from stale parent references. I keep these tests independent of Wails and credentials. `scripts/health.sh frontend-test` runs the same suite.

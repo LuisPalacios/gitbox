@@ -209,25 +209,6 @@ func parseProgress(r io.Reader, onProgress func(CloneProgress)) {
 	}
 }
 
-// FetchCaptured runs git fetch --all --prune and returns the combined
-// stdout+stderr along with any error. GUI callers need this because
-// git writes actionable diagnostics like "remote: Repository not found."
-// to stderr, and the plain run/output helpers either forward them to the
-// terminal or drop them after wrapping in a generic exec error. The
-// captured text is what downstream classifiers match on (see
-// IsUpstreamGoneError).
-func FetchCaptured(repoPath string) (string, error) {
-	cmd := exec.Command(GitBin(), "fetch", "--all", "--prune")
-	cmd.Dir = repoPath
-	cmd.Env = nonInteractiveEnv()
-	HideWindow(cmd)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return string(out), fmt.Errorf("git fetch: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-	return string(out), nil
-}
-
 // IsUpstreamGoneError reports whether a git fetch/pull/ls-remote error
 // indicates that the upstream repository no longer exists (was deleted,
 // renamed without a redirect, archived privately, or credentials lost the
@@ -395,15 +376,6 @@ func RemoteURL(repoPath string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
-// ConfigGet reads a git config value from the given repo.
-func ConfigGet(repoPath, key string) (string, error) {
-	out, err := output(repoPath, "config", "--get", key)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(out), nil
-}
-
 // CredentialUsernames returns every value of repo-local git config keys that
 // match `credential.<url>.username`. Returns nil if none are set. Errors from
 // git (including "no match", which exits 1) are swallowed — a repo without
@@ -432,19 +404,6 @@ func CredentialUsernames(repoPath string) []string {
 // ConfigSet sets a git config value in the given repo.
 func ConfigSet(repoPath, key, value string) error {
 	return run(repoPath, "config", key, value)
-}
-
-// ConfigUnset removes a key from repo-level git config.
-// Returns nil if the key does not exist.
-func ConfigUnset(repoPath, key string) error {
-	err := run(repoPath, "config", "--unset", key)
-	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() == 5 {
-			return nil
-		}
-	}
-	return err
 }
 
 // ConfigUnsetAll removes ALL values of a multi-value key from repo-level git config.

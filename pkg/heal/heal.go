@@ -13,6 +13,8 @@ package heal
 import (
 	"fmt"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -40,7 +42,7 @@ func (r Report) HasWork() bool {
 
 // Repo heals a single cloned repository to match the gitbox config.
 // Returns a report describing what changed. Cheap when nothing drifts
-// — reads are ~3-4 git config lookups and no writes.
+// — reads are two batched config lookups and no writes.
 //
 // Preconditions (caller must validate):
 //   - cfg.Sources[sourceKey] exists and contains repoKey.
@@ -73,65 +75,74 @@ func Repo(cfg *config.Config, sourceKey, repoKey string) Report {
 	path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
 	r.Path = path
 
-	if !git.IsRepo(path) {
+	if !git.IsRepo(path) && !isLinkedWorktree(path) {
 		r.Skipped = "not cloned"
 		return r
 	}
 
+	snapshot, err := git.ReadConfigSnapshot(path)
+	if err != nil {
+		r.Warnings = append(r.Warnings, fmt.Sprintf("reading repo config: %v", err))
+		return r
+	}
+	credType := repo.EffectiveCredentialType(&acct)
+	if credType != "ssh" && credType != "token" && credType != "gcm" {
+		r.Warnings = append(r.Warnings, fmt.Sprintf("credential config: unknown credential type %q", credType))
+		return r
+	}
 	// --- identity ------------------------------------------------
 	wantName, wantEmail := identity.ResolveIdentity(repo, acct)
-	// Only heal identity when both values are resolvable. An account
-	// with no name/email configured shouldn't cause us to wipe a
-	// user-set repo identity — be conservative.
 	if wantName != "" || wantEmail != "" {
-		fixedName, fixedEmail, err := identity.EnsureRepoIdentity(path, wantName, wantEmail)
-		switch {
-		case err != nil:
-			r.Warnings = append(r.Warnings, fmt.Sprintf("identity: %v", err))
-		case fixedName && fixedEmail:
-			r.Fixed = append(r.Fixed, fmt.Sprintf("set user.name=%q, user.email=%q", wantName, wantEmail))
-		case fixedName:
-			r.Fixed = append(r.Fixed, fmt.Sprintf("set user.name=%q", wantName))
-		case fixedEmail:
-			r.Fixed = append(r.Fixed, fmt.Sprintf("set user.email=%q", wantEmail))
+		for _, setting := range []struct{ key, want string }{{"user.name", wantName}, {"user.email", wantEmail}} {
+			if snapshot.Get(setting.key) == setting.want {
+				continue
+			}
+			if err := git.ConfigSet(path, setting.key, setting.want); err != nil {
+				r.Warnings = append(r.Warnings, fmt.Sprintf("identity: %v", err))
+			} else {
+				r.Fixed = append(r.Fixed, fmt.Sprintf("set %s=%q", setting.key, setting.want))
+			}
 		}
 	}
 
 	// --- origin URL ---------------------------------------------
-	credType := repo.EffectiveCredentialType(&acct)
 	wantURL := ExpectedOriginURL(acct, repoKey, credType)
-	curURL, urlErr := git.RemoteURL(path)
-	if urlErr == nil && wantURL != "" && curURL != wantURL {
+	curURL := ""
+	if urls := snapshot.All("remote.origin.url"); len(urls) > 0 {
+		curURL = urls[0]
+	}
+	if curURL != "" && wantURL != "" && curURL != wantURL {
 		if err := git.SetRemoteURL(path, "origin", wantURL); err != nil {
 			r.Warnings = append(r.Warnings, fmt.Sprintf("origin URL: %v", err))
 		} else {
 			r.Fixed = append(r.Fixed, fmt.Sprintf("rewrote origin URL %q → %q", redactURL(curURL), wantURL))
 		}
-	} else if urlErr != nil {
+	} else if curURL == "" {
 		// A clone without an origin remote is highly unusual; surface
 		// it so the operator can investigate.
-		r.Warnings = append(r.Warnings, fmt.Sprintf("origin URL read failed: %v", urlErr))
+		r.Warnings = append(r.Warnings, "origin URL is missing")
 	}
 
 	// --- credential config ---------------------------------------
-	// ConfigureRepoCredential is idempotent: it unsets and re-adds the
-	// credential helpers every call. That's slightly more writes than
-	// a compare-first flow, but the value space (helper, credentialStore,
-	// per-host username/provider/useHttpPath) is wide enough that an
-	// equality check would duplicate most of ConfigureRepoCredential's
-	// logic. Just call it and report one line.
-	//
-	// Token accounts with no token file yet would fail inside
-	// configureToken via ResolveToken — catch that as a warning rather
-	// than a fatal fix.
-	if err := credential.ConfigureRepoCredential(path, acct, src.Account, credType, cfg.Global); err != nil {
+	if err := credential.ConfigureRepoCredentialFromSnapshot(path, acct, src.Account, credType, cfg.Global, snapshot); err != nil {
 		r.Warnings = append(r.Warnings, fmt.Sprintf("credential config: %v", err))
-	} else {
-		// We can't easily tell if this call actually changed anything
-		// without reading every key first. Don't add to Fixed unless
-		// we detected drift above — avoid noise.
 	}
 
+	if len(r.Fixed) > 0 {
+		// A later include or worktree config may override a successful local
+		// write. Surface that instead of fetching with another identity/origin.
+		after, err := git.ReadConfigSnapshot(path)
+		if err != nil {
+			r.Warnings = append(r.Warnings, fmt.Sprintf("validating repo config: %v", err))
+		} else {
+			if (wantName != "" || wantEmail != "") && (after.Get("user.name") != wantName || after.Get("user.email") != wantEmail) {
+				r.Warnings = append(r.Warnings, "identity is overridden by included or worktree config")
+			}
+			if urls := after.All("remote.origin.url"); len(urls) == 0 || urls[0] != wantURL {
+				r.Warnings = append(r.Warnings, "origin URL is overridden by included or worktree config")
+			}
+		}
+	}
 	return r
 }
 
@@ -194,4 +205,10 @@ func redactURL(raw string) string {
 		}
 	}
 	return u.String()
+}
+
+// Linked worktrees use a .git pointer file rather than a directory.
+func isLinkedWorktree(path string) bool {
+	data, err := os.ReadFile(filepath.Join(path, ".git"))
+	return err == nil && strings.HasPrefix(string(data), "gitdir: ")
 }

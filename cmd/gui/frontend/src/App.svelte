@@ -14,7 +14,7 @@
   import type { SimpleKind } from './lib/theme';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit, EventsOn } from '../wailsjs/runtime/runtime';
-  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
+  import type { RepoState, CredentialStatus, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
   import BrandIcon, { terminalLogo } from './lib/BrandIcon.svelte';
   import UIIcon from './lib/UIIcon.svelte';
@@ -1120,6 +1120,8 @@
   // symptom of on-disk config drift (e.g. a dangling reference left by a
   // prior bug). Cleared the next time reload succeeds.
   let reloadError = '';
+  let reloadGeneration = 0;
+  let statusGeneration = 0;
 
   // Re-read config from disk and refresh all repo statuses. Throws on
   // failure; callers catch and populate reloadError so the UI does not
@@ -1134,20 +1136,26 @@
   // file" banner behind on the dashboard.
   async function reloadFromDisk() {
     if (cfgLoadErrorModal || firstRun) return;
+    const generation = ++reloadGeneration;
     try {
       await bridge.reloadConfig();
       const snapshot = await bridge.getStartupSnapshot();
+      if (generation !== reloadGeneration) return;
       repoNesting = snapshot.nesting || {};
       configStore.set(snapshot.config);
       configPath = snapshot.configPath;
       const saved = snapshot.config.global.periodic_sync || 'off';
       if (saved !== fetchInterval) applyFetchInterval(saved);
-      const statuses = await bridge.getAllStatus();
-      applyStatusResults(statuses);
-      verifyAllCredentials();
+      if (!fetchingAll) {
+        const statusVersion = statusGeneration;
+        const statuses = await bridge.getAllStatus();
+        if (generation !== reloadGeneration) return;
+        if (statusVersion === statusGeneration && !fetchingAll) applyStatusResults(statuses);
+        if (!fetchingAll) verifyAllCredentials();
+      }
       reloadError = '';
     } catch (err: any) {
-      reloadError = err?.message || String(err);
+      if (generation === reloadGeneration) reloadError = err?.message || String(err);
       throw err;
     }
   }
@@ -1240,7 +1248,6 @@
       }
       await bridge.updateAccount({ ...editAcct, key: newKey });
       await reloadFromDisk();
-      verifyAllCredentials();
       editAccountModal = null;
     } catch (e: any) {
       editAccountError = e?.message || String(e);
@@ -2358,7 +2365,7 @@
     if (fetchTimerId) { clearInterval(fetchTimerId); fetchTimerId = null; }
     const minutes = val === '5m' ? 5 : val === '15m' ? 15 : val === '30m' ? 30 : 0;
     if (minutes > 0) {
-      fetchTimerId = setInterval(() => { runFetchAll(); verifyAllCredentials(); checkAllMirrorStatus(); refreshAllPRs(); }, minutes * 60 * 1000);
+      fetchTimerId = setInterval(() => { runFetchAll(); checkAllMirrorStatus(); refreshAllPRs(); }, minutes * 60 * 1000);
     }
   }
 
@@ -2442,17 +2449,21 @@
   }
 
   async function runFetchAll() {
+    if (fetchingAll) return;
     fetchingAll = true;
     try {
       await bridge.fetchAllRepos();
     } catch (e) {
-      fetchingAll = false;
       lastFetchTime = 'fetch-all error: ' + (e instanceof Error ? e.message : String(e));
+    } finally {
+      fetchingAll = false;
+      fetchingRepos = {};
     }
   }
 
   // ── Credential status cache ──
   let credStatuses: Record<string, any> = {};
+  let credentialGeneration = 0;
 
   // ── Lifecycle ──
   async function initDashboard() {
@@ -2499,9 +2510,6 @@
 
     // Fetch all repos on startup to detect behind/ahead changes.
     runFetchAll();
-
-    // Verify credentials for each account
-    verifyAllCredentials();
 
     // Check mirror sync status on startup.
     checkAllMirrorStatus();
@@ -2600,11 +2608,14 @@
   }
 
   function verifyAllCredentials() {
+    const generation = ++credentialGeneration;
     for (const key of Object.keys($accounts)) {
+      const account = JSON.stringify($accounts[key]);
       bridge.credentialVerify(key).then((cs) => {
+        if (generation !== credentialGeneration || account !== JSON.stringify($accounts[key])) return;
         credStatuses[key] = {status: cs.status, primary: cs.primary, pat: cs.pat, primaryMsg: cs.primaryMsg, patMsg: cs.patMsg};
         credStatuses = credStatuses;
-      });
+      }).catch(console.error);
     }
   }
 
@@ -2685,6 +2696,7 @@
     });
 
     events.on('status:updated', (results: any) => {
+      statusGeneration++;
       applyStatusResults(results);
       // Refresh expanded detail if a repo is still open (reactive $: handles auto-collapse).
       if (expandedRepo && !detailLoading) {
@@ -2758,12 +2770,21 @@
       fetchingRepos = fetchingRepos;
     });
 
-    events.on('fetch:alldone', () => {
+    events.on('fetch:allstart', () => {
+      fetchingAll = true;
+    });
+
+    events.on('fetch:alldone', (data: { error?: string } | null) => {
       fetchingAll = false;
       fetchingRepos = {};
       const now = new Date();
-      lastFetchTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      verifyAllCredentials();
+      lastFetchTime = data?.error ? 'fetch-all error: ' + data.error
+        : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    });
+
+    events.on('credentials:updated', (statuses: Record<string, CredentialStatus>) => {
+      credentialGeneration++;
+      credStatuses = statuses || {};
     });
 
     events.on('discover:done', (data: any) => {

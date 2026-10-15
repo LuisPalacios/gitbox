@@ -87,6 +87,10 @@ Los clones fuera de este árbol (carpetas de escaneo extra, clones anidados dent
 
 Devuelvo la config, las preferencias, el estado de plegado y la anidación derivada de las rutas en una única instantánea de arranque independiente. Renderizo esa instantánea antes de solicitar el estado local y muestro indicadores giratorios hasta que termina la comprobación o el fetch. Mantengo los hijos de otros sources bajo sus contenedores y conservo el source de cada hijo para el estado, las acciones y la propiedad. Detecto editores y perfiles de terminal fuera del bloqueo de config y después los combino con los ajustes actuales para conservar las ediciones concurrentes.
 
+Coordino el refresco en `cmd/gui/refresh.go`: las llamadas solapadas comparten las comprobaciones activas de estado, fetch-all, fetch por clone y credenciales por cuenta. Conservo una invalidación pendiente del estado local, descarto los resultados de una config que ha cambiado y cancelo el refresco al cerrar la app. Un ciclo fetch-all publica el estado local antes de esperar al proveedor; `fetch:alldone` llega después del estado final y las comprobaciones remotas.
+
+Comparto y limito los sondeos de existencia upstream en `cmd/gui/probe.go`, resuelvo las credenciales una vez por cuenta y consulto cada upstream una vez. Permito cuatro peticiones simultáneas, con diez segundos por petición y treinta segundos para el sondeo completo, incluida la resolución de credenciales. Espero al menos sesenta segundos después de completar un sondeo antes de iniciar otro. Conservo el estado upstream conocido ante errores o cancelaciones y descarto los resultados obsoletos tras fetches o cambios de credenciales más recientes.
+
 ### pkg/ops — operaciones de aplicación
 
 La capa de servicio entre los bindings de la GUI y los paquetes de nivel inferior. Contiene las operaciones que tocan varios paquetes a la vez: `AddAccount`, `RenameAccount`, `DeleteAccount`, `DeleteRepo`, `ChangeCredentialType`, `DeleteCredential`, `RemoveCredentialArtifacts`, `ReconfigureClones` (ejecuta `heal.Repo` en cada clone), `PlanClone` / `Clone`, `ListRemoteRepos`, `ListAccountOrgs`, `CreateRemoteRepo`, `AddDiscoveredRepos` y `ProviderClient`.
@@ -114,6 +118,8 @@ Gestiona tokens, claves SSH, integración GCM y aislamiento de credenciales por 
 **Gestión de claves SSH:** Genera pares de claves, escribe entradas `~/.ssh/config`, prueba conexiones. Convención de nombre: alias de host `gitbox-<account-key>`, archivo de clave `gitbox-<account-key>-sshkey`.
 
 **Config de credenciales por repo** (`repoconfig.go`): `ConfigureRepoCredential()` configura el `.git/config` de cada clone para ser autocontenido. `WriteCredentialFile()` y `DeleteToken()` gestionan los archivos git-credential-store para cuentas token. `pkg/ops` y `pkg/heal` llaman a las mismas funciones compartidas.
+
+Uso `credential.CheckContext` para verificar en segundo plano con cancelación. Comparto las comprobaciones activas de los mismos ajustes de cuenta, conservo las recomprobaciones explícitas tras completarlas y trato la cancelación como estado offline. Los subprocesos de verificación GCM y SSH tienen un límite de quince segundos o el plazo anterior de quien llama.
 
 ### pkg/provider — discovery de repositorios
 
@@ -150,7 +156,7 @@ Determina el estado de sync de clones locales respecto a su upstream. Estados: C
 
 Gestiona identidad git por repo (`user.name`, `user.email`) con una cadena de resolución: los overrides a nivel repo hacen fallback a valores a nivel cuenta. Consulta `pkg/identity/identity.go`.
 
-`EnsureRepoIdentity()` comprueba la git config local de cada clone y arregla la identidad si diverge de los valores esperados. `CheckGlobalIdentity()` y `RemoveGlobalIdentity()` gestionan la identidad global de `~/.gitconfig` — gitbox anima a eliminar la identidad global para que la identidad por repo (definida durante clone/reconfigure) sea siempre autoritativa.
+Compruebo la identidad de cada clone y reparo las diferencias mediante la instantánea compartida de `heal.Repo`. `CheckGlobalIdentity()` y `RemoveGlobalIdentity()` gestionan la identidad global de `~/.gitconfig` — gitbox anima a eliminar la identidad global para que la identidad por repo (definida durante clone/reconfigure) sea siempre autoritativa.
 
 En paralelo al check de identidad, `pkg/credential` expone `IsGlobalGCMConfigNeeded()` + `CheckGlobalGCMConfig()` + `FixGlobalGCMConfig()` para el helper de credenciales GCM global. Cuando al menos una cuenta usa GCM, gitbox verifica que `~/.gitconfig` tenga `credential.helper = manager` y `credential.credentialStore = <keychain|wincredman|secretservice>`; si falta o está mal, la GUI muestra un botón fix que escribe ambas entradas y rellena defaults del OS en `gitbox.json`. Sin esto, `git credential fill` cae a `/dev/tty` y falla con "Device not configured" en contextos GUI.
 
@@ -165,6 +171,8 @@ Sondea el host para cada binario externo que gitbox puede llamar — `git`, `git
 ### pkg/heal — self-heal de .git/config de repo
 
 `heal.Repo(cfg, sourceKey, repoKey)` reconcilia idempotentemente el `.git/config` de un clone contra la spec de cuenta: `user.name`, `user.email`, la URL canónica de `origin` (específica del tipo de credencial, sin secretos embebidos) y el helper de credenciales. Está conectado a cada punto de disparo — clone, fetch, pull, `ops.ReconfigureClones` y el sync periódico de la GUI — para que los clones que se desvíen de la spec se reparen silenciosamente. Se introdujo junto con el fix de stdio GUI en Windows en `pkg/git.run()` para evitar que las escrituras de `.git/config` desde la GUI fallasen silenciosamente.
+
+Comparto una llamada a `git.ReadConfigSnapshot` entre las comprobaciones de identidad, origin y credenciales: dos procesos Git leen la config efectiva con includes y la config local directa. Un clone sin cambios no escribe la config de credenciales ni el archivo de credenciales. Sustituyo de forma atómica los archivos de tokens modificados, serializo las actualizaciones de una cuenta compartida y conservo los permisos privados. Si un include posterior o la config de un worktree sigue sobrescribiendo una reparación, muestro un aviso de mantenimiento y omito el fetch de la GUI para evitar usar una identidad, origin o cadena de helpers incorrectos.
 
 ### pkg/move — movimiento de repo cross-account / cross-provider
 

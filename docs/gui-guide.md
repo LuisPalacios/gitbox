@@ -152,6 +152,8 @@ Click the **Fetch All** button (↻ icon) to check all remotes for new commits w
 
 In Settings, you can enable automatic fetch every 5, 15, or 30 minutes. Gitbox checks all remotes and re-checks credential health in the background.
 
+When startup, periodic checks, and manual refresh overlap, I see one shared refresh cycle. Local status updates appear as soon as Git checks finish; the fetch indicator remains active until that cycle's credential and provider checks finish. A slow or unavailable provider does not turn a known clone into a missing upstream. If repository maintenance cannot restore the configured identity, origin, or credential isolation, I see its warning and that clone's fetch stops.
+
 #### Viewing details
 
 Click a repo that shows local changes, conflicts, or other issues. An expandable panel appears showing:

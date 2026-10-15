@@ -28,28 +28,6 @@ func ResolveIdentity(repo config.Repo, acct config.Account) (name, email string)
 	return name, email
 }
 
-// EnsureRepoIdentity checks the repo's local git config and sets
-// user.name/user.email if they differ from the expected values.
-func EnsureRepoIdentity(repoPath, wantName, wantEmail string) (fixedName, fixedEmail bool, err error) {
-	curName, _ := git.ConfigGet(repoPath, "user.name")
-	if curName != wantName {
-		if err := git.ConfigSet(repoPath, "user.name", wantName); err != nil {
-			return false, false, err
-		}
-		fixedName = true
-	}
-
-	curEmail, _ := git.ConfigGet(repoPath, "user.email")
-	if curEmail != wantEmail {
-		if err := git.ConfigSet(repoPath, "user.email", wantEmail); err != nil {
-			return fixedName, false, err
-		}
-		fixedEmail = true
-	}
-
-	return fixedName, fixedEmail, nil
-}
-
 // CheckGlobalIdentity checks if global ~/.gitconfig has user.name/user.email.
 func CheckGlobalIdentity() GlobalIdentityStatus {
 	var s GlobalIdentityStatus

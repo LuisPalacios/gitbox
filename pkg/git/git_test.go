@@ -173,17 +173,17 @@ func TestRemoteURL(t *testing.T) {
 	}
 }
 
-func TestConfigGetSet(t *testing.T) {
+func TestConfigSetSnapshot(t *testing.T) {
 	clonePath, _ := initTestRepo(t)
 
 	if err := ConfigSet(clonePath, "user.name", "New Name"); err != nil {
 		t.Fatalf("ConfigSet: %v", err)
 	}
-	val, err := ConfigGet(clonePath, "user.name")
+	snapshot, err := ReadConfigSnapshot(clonePath)
 	if err != nil {
-		t.Fatalf("ConfigGet: %v", err)
+		t.Fatalf("ReadConfigSnapshot: %v", err)
 	}
-	if val != "New Name" {
+	if val := snapshot.Get("user.name"); val != "New Name" {
 		t.Errorf("config user.name = %q, want New Name", val)
 	}
 }

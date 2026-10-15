@@ -171,6 +171,39 @@ I run the startup snapshot and workspace discovery tests in `cmd/gui` to verify 
 
 For interactive startup measurements, I record process launch, window visibility, first configured rows, and complete status separately, along with the platform, clone count, container layout, and run count. I distinguish native production launches from browser navigation against an already-running `wails dev` backend. I need an interactive Windows desktop to measure WebView2 rendering; SSH backend timings alone cannot establish the first-row target. I keep unmeasured targets open until that desktop check completes.
 
+### Refresh regression checks
+
+I run `go test -race ./cmd/gui/ ./pkg/credential/ ./pkg/heal/ ./pkg/git/` for refresh coordination, cancellation, stale results, and credential maintenance. I use channels to block injected work and overlap triggers without a Wails runtime. Provider tests use local HTTP servers to verify bounded concurrency, shared probes, deadlines, and preservation of upstream state after errors or credential rotation.
+
+I trace pre-fetch maintenance with `GIT_TRACE2_EVENT` against isolated clones: unchanged SSH, token, and GCM clones must each spawn two read-only Git commands. I check config and credential-file modification times, token rotation, permissions, helper cancellation, type transitions, linked worktrees, and warnings for repairs that included config overrides. I record the platform, clone count, process count, and elapsed time separately from network fetch duration.
+
+### Refresh measurements (2026-10-15)
+
+I compared pre-fetch maintenance from `da83922` with the implementation for #131 using the same isolated fixture: 24 local clones, one account, and no network fetches. I ran one warm, sequential sweep per platform, credential type, and state. For the drifted cases, I changed both identity fields, origin, and helper before each sweep. I used Go 1.26.1 for the standalone harness; Windows used Git 2.53.0.windows.1.
+
+I measured the whole maintenance loop in the parent process and counted Git process-start events with Trace2. The elapsed times include process creation, Git execution, file operations, and tracing overhead. These runs do not separate Git-internal time, measure GUI paint, or estimate a full eight-worker network refresh.
+
+| Platform      | Clone state | Credential | Git processes before → after | Elapsed seconds before → after |
+| ------------- | ----------- | ---------- | ---------------------------- | ------------------------------ |
+| macOS arm64   | unchanged   | SSH        | 216 → 48                     | 0.902 → 0.191                  |
+| macOS arm64   | unchanged   | Token      | 240 → 48                     | 1.013 → 0.202                  |
+| macOS arm64   | unchanged   | GCM        | 192 → 48                     | 0.923 → 0.278                  |
+| Windows amd64 | unchanged   | SSH        | 216 → 48                     | 9.831 → 2.037                  |
+| Windows amd64 | unchanged   | Token      | 240 → 48                     | 12.396 → 2.382                 |
+| Windows amd64 | unchanged   | GCM        | 192 → 48                     | 9.386 → 2.202                  |
+| macOS arm64   | drifted     | SSH        | 288 → 264                    | 1.311 → 1.216                  |
+| macOS arm64   | drifted     | Token      | 312 → 288                    | 1.457 → 1.319                  |
+| macOS arm64   | drifted     | GCM        | 264 → 288                    | 1.222 → 1.402                  |
+| Windows amd64 | drifted     | SSH        | 288 → 264                    | 12.774 → 11.085                |
+| Windows amd64 | drifted     | Token      | 312 → 288                    | 13.576 → 12.089                |
+| Windows amd64 | drifted     | GCM        | 264 → 288                    | 11.105 → 13.073                |
+
+I leave unchanged clones at two read-only Git processes each. GCM drift repair adds effective-config validation after writes, so its drifted case costs more than the baseline; I retain those checks to prevent fetching with settings that an include or worktree config overrides.
+
+In a separate Windows sweep with 24 unchanged SSH clones, I recorded 8.918 → 1.963 s in the parent process, versus 5.421 → 1.193 s of Git-internal time summed from top-level Trace2 session `exit.t_abs` fields. The remaining difference was 3.497 → 0.770 s. That residual includes process startup, IPC, and caller file operations; I do not attribute it solely to antivirus or `HideWindow`. This is a separate sample from the rows above.
+
+I also ran native Windows amd64 probe regressions with Go 1.27.0 and loopback HTTP servers. Twelve upstreams shared by two sources produced twelve requests, one credential lookup, and at most four concurrent requests. With a scaled twenty-millisecond request timeout, twelve stalled requests completed in 61.34 ms. With a twenty-millisecond overall budget, the sweep stopped in 20.57 ms after four requests. These fixture checks verify scheduling and cancellation; production limits remain ten seconds per request and thirty seconds per sweep, and these figures do not predict real provider latency.
+
 ## Pre-PR checklist
 
 Run these before every push or PR. The pre-push hook handles gofmt + vet + unit tests, and the PR workflow runs `scripts/health.sh` as its gate.

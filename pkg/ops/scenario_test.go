@@ -140,7 +140,11 @@ func TestScenario_FullLifecycle(t *testing.T) {
 		if len(report.Warnings) > 0 {
 			t.Logf("heal warnings: %v", report.Warnings)
 		}
-		if name, _ := git.ConfigGet(dest, "user.name"); name != acct.Name {
+		snapshot, err := git.ReadConfigSnapshot(dest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if name := snapshot.Get("user.name"); name != acct.Name {
 			t.Errorf("user.name = %q, want %q", name, acct.Name)
 		}
 		origin, _ := git.RemoteURL(dest)
@@ -166,7 +170,7 @@ func TestScenario_FullLifecycle(t *testing.T) {
 		if err := git.PullQuiet(dest); err != nil {
 			t.Errorf("pull: %v", err)
 		}
-		if out, err := git.FetchCaptured(dest); err != nil {
+		if out, err := git.FetchCapturedContext(context.Background(), dest); err != nil {
 			t.Errorf("fetch: %v\n%s", err, out)
 		}
 	})
@@ -179,7 +183,11 @@ func TestScenario_FullLifecycle(t *testing.T) {
 		}
 		persist(t)
 		ReconfigureClones(cfg, acctKey)
-		if email, _ := git.ConfigGet(clonePath(t, srcKey), "user.email"); email != "updated@example.com" {
+		snapshot, err := git.ReadConfigSnapshot(clonePath(t, srcKey))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if email := snapshot.Get("user.email"); email != "updated@example.com" {
 			t.Errorf("user.email after update = %q", email)
 		}
 	})

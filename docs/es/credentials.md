@@ -170,6 +170,10 @@ Puedes cambiar el tipo de credencial de una cuenta en cualquier momento. Cuando 
 
 No hace falta volver a clonar nada.
 
+Antes de un fetch de la GUI, comparo la identidad, origin y ajustes de credenciales efectivos del clone en dos lecturas de config Git. Conservo los ajustes y archivos de tokens sin cambios, incluidas sus fechas de modificación. Cuando cambia un token, sustituyo su archivo de forma atómica y conservo los permisos privados; los clones concurrentes de una misma cuenta comparten esta actualización de forma segura.
+
+Conservo los includes de config Git cuando sus ajustes efectivos coinciden con la cuenta. Si un include posterior o la config de un worktree sigue sobrescribiendo una reparación, veo un aviso de mantenimiento del repositorio y la GUI omite ese fetch. Corrijo el ajuste que lo sobrescribe antes de reintentar.
+
 ## Verificar credenciales
 
 Puedes verificar que las credenciales funcionan en cualquier momento:
