@@ -214,7 +214,7 @@ Copy that error text as-is when you file a bug report.
 
 **Root cause.** macOS Sonoma and later gate outbound connections to local-network IPs behind the **Local Network** TCC privacy permission. Each GUI app is tracked separately by code-signing identity + bundle path. Terminal was granted access the first time you used it. Your gitbox bundle has either not been approved yet, was silently denied (common for ad-hoc built binaries), or has been moved/renamed so that TCC no longer recognises it.
 
-Even when access is granted, macOS can refuse a freshly launched app's first LAN connections for a moment. A fetch whose connect is refused within milliseconds is retried once, a few seconds later, so those startup refusals don't show up as failures.
+Even when access is granted, macOS can refuse a freshly launched app's first LAN connections for a moment. A fetch whose connect is refused within milliseconds, or a credential check that reports offline within a second, is retried once a few seconds later, so those startup refusals don't show up as failures. An account still marked offline is checked again as soon as one of its repos fetches fine.
 
 **Fix — move the app to `/Applications/` and re-prompt.**
 

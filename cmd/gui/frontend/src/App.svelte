@@ -1443,6 +1443,21 @@
     configStore.set(cfg);
   }
 
+  // An account marked offline whose repo just fetched fine is reachable
+  // after all (a refusal right after launch, a VPN that came up), so its
+  // credential is checked again, once at a time.
+  const recheckingAccounts = new Set<string>();
+  function recheckOfflineAccount(key: string) {
+    if (credStatuses[key]?.status !== 'offline' || recheckingAccounts.has(key)) return;
+    recheckingAccounts.add(key);
+    const account = JSON.stringify($accounts[key]);
+    bridge.credentialVerify(key).then((cs) => {
+      if (account !== JSON.stringify($accounts[key])) return;
+      credStatuses[key] = {status: cs.status, primary: cs.primary, pat: cs.pat, primaryMsg: cs.primaryMsg, patMsg: cs.patMsg};
+      credStatuses = credStatuses;
+    }).catch(console.error).finally(() => recheckingAccounts.delete(key));
+  }
+
   function verifyAllCredentials() {
     const generation = ++credentialGeneration;
     for (const key of Object.keys($accounts)) {
@@ -1609,6 +1624,7 @@
       fetchingRepos = fetchingRepos;
       if (fetchRun) fetchRun = noteDone(fetchRun, key, data.error);
       if (!data.error && fetchFailNotice?.keys.delete(key) && fetchFailNotice.keys.size === 0) clearFetchFailNotice();
+      if (!data.error) recheckOfflineAccount(accountOfKey(key));
     });
 
     events.on('fetch:allstart', () => {

@@ -487,7 +487,18 @@ func (a *App) credentialVerify(cfg *config.Config, key string) CredentialStatus 
 			check = a.refreshHooks.credential
 		}
 		ctx, cancel := context.WithTimeout(a.refreshContext(), 30*time.Second)
+		started := time.Now()
 		r := check(ctx, acct, key, cfg)
+		if r.Overall == credential.StatusOffline && time.Since(started) < time.Second {
+			// Offline within a second means the connection was refused, not
+			// timed out: right after launch macOS can refuse LAN connections
+			// for a moment, so check once more a little later, as fetches do.
+			select {
+			case <-ctx.Done():
+			case <-time.After(refusedFastRetryDelay):
+				r = check(ctx, acct, key, cfg)
+			}
+		}
 		cancel()
 		result := CredentialStatus{Status: r.Overall.String(), Message: r.PrimaryDetail, Primary: r.Primary.String(), PrimaryMsg: r.PrimaryDetail, PAT: r.PAT.String(), PATMsg: r.PATDetail, revision: revision}
 		a.refreshMu.Lock()

@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
@@ -553,6 +554,39 @@ func TestRefresh_DoesNotRetryOtherFetchErrors(t *testing.T) {
 		}
 		if calls.Load() != 1 {
 			t.Fatalf("fetch calls = %d, want 1 (no retry)", calls.Load())
+		}
+	})
+}
+
+func TestCredentialVerify_RetriesAnOfflineCheckRefusedRightAway(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a, _ := refreshTestApp(t, 0)
+		defer a.stopRefresh()
+		var calls atomic.Int32
+		a.refreshHooks.credential = func(context.Context, config.Account, string, *config.Config) credential.StatusResult {
+			if calls.Add(1) == 1 {
+				return credential.StatusResult{Primary: credential.StatusOffline, PAT: credential.StatusOffline, Overall: credential.StatusOffline}
+			}
+			return refreshCredentialOK()
+		}
+		if got := a.CredentialVerify("account-a"); got.Status != "ok" || calls.Load() != 2 {
+			t.Fatalf("CredentialVerify() = %q after %d checks, want ok after a retry", got.Status, calls.Load())
+		}
+	})
+}
+
+func TestCredentialVerify_DoesNotRetryASlowOfflineCheck(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a, _ := refreshTestApp(t, 0)
+		defer a.stopRefresh()
+		var calls atomic.Int32
+		a.refreshHooks.credential = func(context.Context, config.Account, string, *config.Config) credential.StatusResult {
+			calls.Add(1)
+			time.Sleep(5 * time.Second) // a timeout, not a refusal
+			return credential.StatusResult{Primary: credential.StatusOffline, PAT: credential.StatusOffline, Overall: credential.StatusOffline}
+		}
+		if got := a.CredentialVerify("account-a"); got.Status != "offline" || calls.Load() != 1 {
+			t.Fatalf("CredentialVerify() = %q after %d checks, want offline with no retry", got.Status, calls.Load())
 		}
 	})
 }
