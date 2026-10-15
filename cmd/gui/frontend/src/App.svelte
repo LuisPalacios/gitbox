@@ -5562,76 +5562,7 @@
 <!-- ════════════════════════════════════════════════════════════ -->
 
 <style>
-  /* ── Tooltip popup (lib/tooltip.ts) ──
-     The popup is appended to document.body so Svelte's scoped styles
-     don't reach it. :global() opts the rule out of scoping. Kept inside
-     App.svelte (rather than a separate CSS file) to avoid an extra
-     import in main.ts; the rule is small and self-contained. */
-  :global(.gitbox-tooltip) {
-    background: var(--bg-card);
-    color: var(--text-primary);
-    border: 1px solid var(--border);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
-    border-radius: 4px;
-    padding: 6px 10px;
-    font-size: 11px;
-    line-height: 1.4;
-    pointer-events: none;
-    opacity: 0;
-    animation: gitbox-tooltip-in 100ms ease-out forwards;
-  }
-  @keyframes gitbox-tooltip-in {
-    from { opacity: 0; transform: translateY(-2px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
 
-
-  :global([data-theme="dark"]) {
-    --bg-base: #09090b; --bg-card: #18181b; --bg-hover: #27272a;
-    --bg-row-hover: #3f3f46;
-    --border: #27272a; --border-hover: #3f3f46;
-    --text-primary: #fafafa; --text-secondary: #b4b4bd; --text-muted: #8e8e99; --text-dim: #71717a;
-    --text-repo: #e4e4e7;
-    --logo-dark: #4abdd4; --logo-light: #7cd9ec;
-    --ring-bg: #27272a; --ring-accent: #61fd5f; --overlay: rgba(0,0,0,0.6);
-    --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-    --spin-color: #0AFFFF;
-  }
-  :global([data-theme="light"]) {
-    --bg-base: #fafafa; --bg-card: #ffffff; --bg-hover: #f4f4f5;
-    --bg-row-hover: #d4d4d8;
-    --border: #e4e4e7; --border-hover: #d4d4d8;
-    --text-primary: #18181b; --text-secondary: #52525b; --text-muted: #71717a; --text-dim: #a1a1aa;
-    --text-repo: #27272a;
-    --logo-dark: #1c5566; --logo-light: #2e9fc0;
-    --ring-bg: #e4e4e7; --ring-accent: #166534; --overlay: rgba(0,0,0,0.3);
-    --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    --spin-color: #0000ff;
-  }
-  :global(html) { color-scheme: dark light; }
-  :global(body) {
-    margin: 0; background: var(--bg-base);
-    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
-    color: var(--text-primary); -webkit-font-smoothing: antialiased;
-    transition: background 0.2s, color 0.2s;
-    /* GUI chrome is not for copy-paste — drag-select on cards / labels /
-       repo rows is noise, and Ctrl-A nukes the whole window. Inputs and
-       editable surfaces opt back in below. Add `.selectable` on any
-       element that genuinely needs copyable text. */
-    user-select: none;
-    -webkit-user-select: none;
-    -ms-user-select: none;
-  }
-  :global(input),
-  :global(textarea),
-  :global([contenteditable="true"]),
-  :global(pre),
-  :global(code),
-  :global(.selectable) {
-    user-select: text;
-    -webkit-user-select: text;
-    -ms-user-select: text;
-  }
 
   .app { max-width: 860px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
@@ -5797,7 +5728,6 @@
   }
   .card-name { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   .card-mirror-name { font-size: 12px; }
-  .mirror-tab-actions { display: flex; gap: 6px; padding: 8px 24px 0; }
   .discover-progress { padding: 6px 24px 0; }
   .discover-progress-text { font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
   .discover-progress-text strong { color: var(--text-primary); }
@@ -5842,7 +5772,6 @@
   .repo-name-toggle { cursor: pointer; }
   .repo-name-toggle:hover { text-decoration: underline; }
   .source-header-kebab { font-size: 14px; flex: 0 0 auto; margin-right: auto; }
-  .source-header-kebab .action-dropdown { right: auto; left: 0; }
   .repo-row {
     display: flex; align-items: center; gap: 10px;
     padding: 8px 6px; border-radius: 6px; transition: background 0.1s;
@@ -5903,19 +5832,6 @@
   }
   .btn-kebab:hover { color: var(--text-primary); }
   .action-menu-container { position: relative; }
-  .action-dropdown {
-    position: absolute; right: 0; top: 100%; margin-top: 4px;
-    background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-    min-width: 160px; z-index: 100; overflow: hidden;
-  }
-  .action-item {
-    display: block; width: 100%; padding: 8px 14px; border: none;
-    background: transparent; color: var(--text-secondary); text-align: left;
-    font-size: 12px; cursor: pointer; transition: background 0.1s;
-    white-space: nowrap;
-  }
-  .action-item:hover { background: var(--bg-hover); color: var(--text-primary); }
   .status-badges { display: flex; align-items: center; gap: 6px; }
   .sbadge { font-size: 11px; font-weight: 600; white-space: nowrap; }
   .status-pending { font-size: 12px; font-weight: 600; color: var(--text-dim); }
@@ -6076,10 +5992,8 @@
     to { transform: rotate(360deg); }
   }
 
-  /* Legacy aliases — keep .settings-btn / .settings-action working until
-     every call site is moved over. Both now route to the unified style. */
-  .settings-btn,
-  .settings-action {
+  /* Legacy alias — .settings-btn routes to the unified action style. */
+  .settings-btn {
     padding: 3px 12px;
     font-size: 11px;
     font-weight: 500;
@@ -6092,18 +6006,15 @@
     white-space: nowrap;
     flex-shrink: 0;
   }
-  .settings-btn:hover,
-  .settings-action:hover {
+  .settings-btn:hover {
     background: rgba(59, 130, 246, 0.18);
     border-color: rgba(59, 130, 246, 0.44);
   }
-  :global([data-theme="light"]) .settings-btn,
-  :global([data-theme="light"]) .settings-action {
+  :global([data-theme="light"]) .settings-btn {
     background: rgba(59, 130, 246, 0.08);
     border-color: rgba(59, 130, 246, 0.32);
   }
-  :global([data-theme="light"]) .settings-btn:hover,
-  :global([data-theme="light"]) .settings-action:hover {
+  :global([data-theme="light"]) .settings-btn:hover {
     background: rgba(59, 130, 246, 0.14);
     border-color: rgba(59, 130, 246, 0.50);
   }
@@ -6154,30 +6065,7 @@
   .theme-active { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
   .active-gear { color: var(--text-primary) !important; }
 
-  .overlay {
-    position: fixed; inset: 0; background: var(--overlay);
-    display: flex; align-items: center; justify-content: center; z-index: 100;
-  }
-  .modal {
-    background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 12px; width: 440px; max-height: 70vh;
-    display: flex; flex-direction: column;
-  }
-  .modal-head {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 14px 18px; border-bottom: 1px solid var(--border);
-  }
-  .modal-head h3 { margin: 0; font-size: 14px; font-weight: 600; }
-  .btn-x { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; transition: color 0.12s; }
-  .btn-x:hover { color: var(--text-primary); }
-  .modal-body { padding: 14px 18px; overflow-y: auto; flex: 1; }
-  .modal-foot {
-    display: flex; justify-content: flex-end; gap: 8px;
-    padding: 10px 18px; border-top: 1px solid var(--border);
-  }
 
-  .loading { display: flex; align-items: center; gap: 12px; padding: 20px 0; color: var(--text-secondary); font-size: 13px; }
-  .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: #4B95E9; border-radius: 50%; animation: spin 0.7s linear infinite; }
   .found { font-size: 12px; color: var(--text-muted); margin: 0 0 10px; }
 
   .dr { display: flex; align-items: center; gap: 8px; padding: 6px 4px; cursor: pointer; border-radius: 4px; font-size: 13px; }
@@ -6190,11 +6078,6 @@
   .dr-disabled { opacity: 0.4; cursor: default; }
   .dr-disabled:hover { background: transparent; }
 
-  .btn-cancel { padding: 6px 12px; background: var(--bg-hover); border: 1px solid var(--border-hover); color: var(--text-secondary); border-radius: 6px; cursor: pointer; font-size: 12px; }
-  .btn-cancel:hover { color: var(--text-primary); }
-  .btn-add { padding: 6px 12px; background: #4B95E9; border: none; color: #fff; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; }
-  .btn-add:hover:not(:disabled) { background: #3b82f6; }
-  .btn-add:disabled { opacity: 0.4; cursor: default; }
 
   /* ── Add account card ── */
   .card-add {
@@ -6205,10 +6088,6 @@
   }
   .card-add:hover { border-color: var(--border-hover); color: var(--text-primary); background: var(--bg-hover); }
   .card-add-icon { font-size: 16px; font-weight: 400; line-height: 1; }
-
-  /* ── Add account form ── */
-  .modal-account { width: 580px; }
-  .modal-discover { width: 650px; }
   .modal-doctor { width: 680px; max-height: 80vh; display: flex; flex-direction: column; }
   .modal-doctor .modal-body { overflow-y: auto; }
   .doctor-summary { margin: 0 0 12px; font-size: 12px; }
@@ -6241,7 +6120,6 @@
   /* .settings-action shared with .settings-btn / .settings-action-btn —
      unified rule lives near .settings-row above. */
   .settings-doctor-summary { margin-left: 8px; }
-  .discover-filter { width: 100%; margin-bottom: 8px; font-size: 13px; }
   .discover-orgs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
   .org-badge {
     display: inline-flex; align-items: center; gap: 6px;
@@ -6276,57 +6154,6 @@
     line-height: 1;
   }
   .org-switch.is-on .org-switch-thumb { transform: translateX(14px); color: #14532d; }
-  .form-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-  .form-label { font-size: 11px; font-weight: 600; color: var(--text-muted); width: 95px; flex-shrink: 0; }
-  .form-input {
-    flex: 1; padding: 5px 8px; font-size: 12px; border: 1px solid var(--border);
-    background: var(--bg-base); color: var(--text-primary); border-radius: 5px;
-    outline: none; font-family: inherit; transition: border-color 0.12s;
-  }
-  .form-input:focus { border-color: #4B95E9; }
-  select.form-input { cursor: pointer; }
-  .form-static { font-size: 13px; color: var(--text-muted); padding: 6px 0; }
-  .form-error { font-size: 12px; color: #D81E5B; margin: 0 0 10px; font-weight: 600; }
-  /* Small explanatory hint rendered below an input. Spans full row width
-     (no left indent) so the text gets enough horizontal space to fit in
-     one or two lines instead of wrapping heavily under a narrow column. */
-  .form-hint {
-    font-size: 11px; color: var(--text-muted);
-    margin: 2px 0 10px; line-height: 1.4;
-  }
-  /* Fieldset used to visually group a subset of form fields (e.g., the
-     commit-author identity) and explain what they are used for, so users
-     don't confuse them with authentication fields. */
-  .form-fieldset {
-    border: 1px solid var(--border, #27272a);
-    border-radius: 6px;
-    padding: 10px 12px 4px;
-    margin: 4px 0 10px;
-    background: rgba(75, 149, 233, 0.05);
-  }
-  :global([data-theme="light"]) .form-fieldset {
-    background: rgba(75, 149, 233, 0.06);
-    border-color: rgba(75, 149, 233, 0.35);
-  }
-  .form-fieldset-legend {
-    padding: 0 6px;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-primary);
-    letter-spacing: 0.02em;
-  }
-  .form-fieldset-hint {
-    margin: 2px 0 10px;
-    font-size: 11px;
-    color: var(--text-muted);
-    line-height: 1.45;
-  }
-  .form-fieldset-hint code {
-    background: var(--bg-hover); padding: 0 4px; border-radius: 3px;
-    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
-  }
-  .form-fieldset .form-row { margin-bottom: 6px; }
-  .form-fieldset .form-row:last-child { margin-bottom: 4px; }
   .create-repo-warning {
     font-size: 12px; color: #F07623; background: rgba(240, 118, 35, 0.1);
     border: 1px solid rgba(240, 118, 35, 0.3); border-radius: 4px;
@@ -6338,12 +6165,8 @@
 
   /* ── Credential setup step ── */
   .cred-step-intro { font-size: 13px; color: var(--text-primary); margin: 0 0 10px; }
-  .cred-step-desc { font-size: 12px; color: var(--text-secondary); margin: 0 0 10px; line-height: 1.5; }
   .cred-change-warning { font-size: 11px; color: #f59e0b; margin: 8px 0; padding: 6px 10px; border-radius: 4px; background: #f59e0b12; border: 1px solid #f59e0b44; line-height: 1.4; }
   :global([data-theme="light"]) .cred-change-warning { color: #b45309; background: #fef3c7; border-color: #f59e0b66; }
-  .cred-step-link { font-size: 11px; margin: 0 0 10px; }
-  .cred-step-link a { color: #4B95E9; text-decoration: none; word-break: break-all; }
-  .cred-step-link a:hover { text-decoration: underline; }
   .cred-doc-link { font-size: 11px; margin: 0 0 12px; }
   .cred-doc-link a { color: #4B95E9; text-decoration: underline; }
   .cred-doc-link a:hover { color: #6db0f7; }
@@ -6452,7 +6275,6 @@
   }
   .discover-error-hint { margin: 8px 0 0; color: var(--text-primary); font-size: 12px; line-height: 1.5; }
   .discover-error-actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
-  .cred-action-btn { margin-top: 4px; margin-bottom: 10px; }
   .cred-precheck {
     margin: 10px 0; padding: 10px 12px; border-radius: 6px; font-size: 12px;
     background: rgba(245, 158, 11, 0.10);
@@ -6492,21 +6314,6 @@
   }
   .btn-delete-x:hover { opacity: 1; background: #D81E5B22; border-color: #D81E5B; }
 
-  .modal-delete { width: 380px; }
-  .modal-head-delete { border-bottom-color: #D81E5B44; }
-  .modal-head-delete h3 { color: #D81E5B; }
-  .delete-repo-name { font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0 0 8px; font-family: monospace; }
-  .delete-warning { font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.5; }
-  .delete-danger { color: #D81E5B; font-weight: 600; }
-  .delete-final { font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.5; }
-  .btn-delete {
-    padding: 6px 12px; background: #D81E5B; border: none; color: #fff;
-    border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;
-  }
-  .btn-delete:hover:not(:disabled) { background: #be123c; }
-  .btn-delete-final { background: #991b1b; }
-  .btn-delete-final:hover:not(:disabled) { background: #7f1d1d; }
-  .btn-delete:disabled { opacity: 0.5; cursor: default; }
   .cred-delete-btn { margin-right: auto; }
 
   /* ── Sweep modal ── */
@@ -6723,7 +6530,6 @@
     margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
   }
   .mirror-section-header h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-primary); }
-  .mirror-section-actions { display: flex; gap: 6px; }
   .mirror-group { margin-bottom: 12px; }
   .mirror-group-header {
     display: flex; justify-content: space-between; align-items: center;
@@ -6770,22 +6576,9 @@
   .mirror-repo-picker {
     max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px;
   }
-  .mrp-row {
-    display: flex; align-items: center; gap: 8px;
-    padding: 4px 8px; font-size: 11px; cursor: pointer;
-    border-bottom: 1px solid var(--border);
-  }
-  .mrp-row:last-child { border-bottom: none; }
-  .mrp-row:hover { background: var(--hover); }
   .mrp-selected { background: var(--hover); outline: 1px solid var(--text-primary); outline-offset: -1px; }
   .mrp-disabled { opacity: 0.4; cursor: default; }
-  .mrp-name { flex: 1; color: var(--text-primary); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .mrp-badges { display: flex; gap: 4px; flex-shrink: 0; }
-  .mrp-badge {
-    font-size: 9px; padding: 1px 4px; border-radius: 3px;
-    background: var(--bg-raised); color: var(--text-muted); white-space: nowrap;
-  }
-  .mrp-badge-dim { opacity: 0.6; }
   .mrp-empty { color: var(--text-muted); font-size: 11px; padding: 8px; margin: 0; }
 
   /* Compact mirror pill */
@@ -6797,13 +6590,6 @@
   .compact-mirror-label { font-weight: 500; }
 
   /* ── Workspaces (issue #27 / #49) ────────────────────────────────── */
-
-  /* Active state for the tab-bar "Select clones" toggle. */
-  .tab-action-active {
-    background: var(--bg-hover) !important;
-    color: var(--text-primary) !important;
-    border-color: var(--border-hover) !important;
-  }
 
   /* Per-row checkbox shown in selection mode. Sized to match the delete-X
      button it visually replaces so the row layout stays stable. */
@@ -6913,7 +6699,6 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
   }
-  .workspace-file-empty { font-style: italic; color: var(--text-dim); }
 
   .workspace-empty-hint {
     padding: 24px;
@@ -6921,51 +6706,6 @@
     color: var(--text-muted);
     font-size: 13px;
   }
-
-  /* Member picker inside the Create workspace modal. Scrolls when the
-     user has many clones so the modal height stays bounded. */
-  .workspace-member-picker {
-    max-height: 240px;
-    overflow-y: auto;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 6px;
-    background: var(--bg-card);
-  }
-  .workspace-member-source { margin-bottom: 8px; }
-  .workspace-member-source:last-child { margin-bottom: 0; }
-  .workspace-member-source-label {
-    font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px;
-    color: var(--text-dim); padding: 4px 2px;
-  }
-  .workspace-member-row {
-    display: flex; align-items: center; gap: 8px;
-    padding: 4px 2px;
-    font-size: 12px;
-    color: var(--text-primary);
-    cursor: pointer;
-  }
-  .workspace-member-row:hover { background: var(--bg-hover); border-radius: 4px; }
-  .workspace-member-count {
-    margin-top: 6px;
-    font-size: 11px;
-    color: var(--text-dim);
-    text-align: right;
-  }
-
-  /* Danger button shared with the delete-workspace confirm modal. */
-  .btn-danger {
-    background: #dc2626;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    padding: 6px 14px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .btn-danger:hover { background: #b91c1c; }
-  .btn-danger:disabled { opacity: 0.6; cursor: default; }
 
   .reload-error-banner {
     display: flex;
@@ -7189,7 +6929,6 @@
   .move-phase-dot.move-phase-err { background: #f59e0b; }
   .move-phase-label { min-width: 150px; color: var(--text-primary); text-transform: capitalize; }
   .move-phase-msg { flex: 1; }
-  .move-phase-errmsg { color: #D81E5B; font-size: 12px; }
   .move-done-ok { color: #22c55e; font-size: 14px; margin: 8px 0; }
   .move-info { color: var(--text-secondary); font-size: 13px; margin: 4px 0 8px; }
   .move-info code { background: var(--bg-card); padding: 1px 4px; border-radius: 3px; font-size: 12px; }

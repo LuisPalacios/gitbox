@@ -1,4 +1,5 @@
-/* Base reset — theme variables are set by App.svelte via data-theme attribute */
+/* Base reset, theme tokens and the few app-wide rules. App.svelte sets the
+   data-theme attribute on <html>; the tokens below hang off it. */
 *, *::before, *::after { box-sizing: border-box; }
 
 html {
@@ -16,4 +17,73 @@ body {
 
 #app {
   min-height: 100vh;
+}
+
+/* ── Tooltip popup (lib/tooltip.ts) ──
+   The popup is appended to document.body, outside every component, so it
+   is styled globally here. */
+.gitbox-tooltip {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: none;
+  opacity: 0;
+  animation: gitbox-tooltip-in 100ms ease-out forwards;
+}
+@keyframes gitbox-tooltip-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Theme tokens ── */
+[data-theme="dark"] {
+  --bg-base: #09090b; --bg-card: #18181b; --bg-hover: #27272a;
+  --bg-row-hover: #3f3f46;
+  --border: #27272a; --border-hover: #3f3f46;
+  --text-primary: #fafafa; --text-secondary: #b4b4bd; --text-muted: #8e8e99; --text-dim: #71717a;
+  --text-repo: #e4e4e7;
+  --logo-dark: #4abdd4; --logo-light: #7cd9ec;
+  --ring-bg: #27272a; --ring-accent: #61fd5f; --overlay: rgba(0,0,0,0.6);
+  --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --spin-color: #0AFFFF;
+}
+[data-theme="light"] {
+  --bg-base: #fafafa; --bg-card: #ffffff; --bg-hover: #f4f4f5;
+  --bg-row-hover: #d4d4d8;
+  --border: #e4e4e7; --border-hover: #d4d4d8;
+  --text-primary: #18181b; --text-secondary: #52525b; --text-muted: #71717a; --text-dim: #a1a1aa;
+  --text-repo: #27272a;
+  --logo-dark: #1c5566; --logo-light: #2e9fc0;
+  --ring-bg: #e4e4e7; --ring-accent: #166534; --overlay: rgba(0,0,0,0.3);
+  --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --spin-color: #0000ff;
+}
+html { color-scheme: dark light; }
+body {
+  margin: 0; background: var(--bg-base);
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+  color: var(--text-primary); -webkit-font-smoothing: antialiased;
+  transition: background 0.2s, color 0.2s;
+  /* GUI chrome is not for copy-paste — drag-select on cards / labels /
+     repo rows is noise, and Ctrl-A nukes the whole window. Inputs and
+     editable surfaces opt back in below. Add `.selectable` on any
+     element that genuinely needs copyable text. */
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+}
+input,
+textarea,
+[contenteditable="true"],
+pre,
+code,
+.selectable {
+  user-select: text;
+  -webkit-user-select: text;
+  -ms-user-select: text;
 }

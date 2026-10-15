@@ -1,0 +1,140 @@
+/* Modal kit — the dialog shell, buttons and form controls that every modal
+   under lib/modals/ shares. Imported once from main.ts, right after
+   style.css, so it precedes every component stylesheet: a component rule
+   that refines one of these (.modal-account's width, .form-input-sm) keeps
+   winning exactly as it did when all of it lived in App.svelte.
+
+   Every selector is prefixed with .app, which adds the same specificity as
+   Svelte's scoping class did, and keeps these rules off the standalone
+   Terminals window (TerminalsModal reuses some of these class names). */
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.app .overlay {
+  position: fixed; inset: 0; background: var(--overlay);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.app .modal {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; width: 440px; max-height: 70vh;
+  display: flex; flex-direction: column;
+}
+.app .modal-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+}
+.app .modal-head h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.app .btn-x { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; transition: color 0.12s; }
+.app .btn-x:hover { color: var(--text-primary); }
+.app .modal-body { padding: 14px 18px; overflow-y: auto; flex: 1; }
+.app .modal-foot {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 10px 18px; border-top: 1px solid var(--border);
+}
+.app .loading { display: flex; align-items: center; gap: 12px; padding: 20px 0; color: var(--text-secondary); font-size: 13px; }
+.app .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: #4B95E9; border-radius: 50%; animation: spin 0.7s linear infinite; }
+.app .btn-cancel { padding: 6px 12px; background: var(--bg-hover); border: 1px solid var(--border-hover); color: var(--text-secondary); border-radius: 6px; cursor: pointer; font-size: 12px; }
+.app .btn-cancel:hover { color: var(--text-primary); }
+.app .btn-add { padding: 6px 12px; background: #4B95E9; border: none; color: #fff; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; }
+.app .btn-add:hover:not(:disabled) { background: #3b82f6; }
+.app .btn-add:disabled { opacity: 0.4; cursor: default; }
+/* Modal widths */
+.app .modal-account { width: 580px; }
+.app .modal-discover { width: 650px; }
+.app .discover-filter { width: 100%; margin-bottom: 8px; font-size: 13px; }
+.app .form-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.app .form-label { font-size: 11px; font-weight: 600; color: var(--text-muted); width: 95px; flex-shrink: 0; }
+.app .form-input {
+  flex: 1; padding: 5px 8px; font-size: 12px; border: 1px solid var(--border);
+  background: var(--bg-base); color: var(--text-primary); border-radius: 5px;
+  outline: none; font-family: inherit; transition: border-color 0.12s;
+}
+.app .form-input:focus { border-color: #4B95E9; }
+.app select.form-input { cursor: pointer; }
+.app .form-error { font-size: 12px; color: #D81E5B; margin: 0 0 10px; font-weight: 600; }
+/* Small explanatory hint rendered below an input. Spans full row width
+   (no left indent) so the text gets enough horizontal space to fit in
+   one or two lines instead of wrapping heavily under a narrow column. */
+.app .form-hint {
+  font-size: 11px; color: var(--text-muted);
+  margin: 2px 0 10px; line-height: 1.4;
+}
+/* Fieldset used to visually group a subset of form fields (e.g., the
+   commit-author identity) and explain what they are used for, so users
+   don't confuse them with authentication fields. */
+.app .form-fieldset {
+  border: 1px solid var(--border, #27272a);
+  border-radius: 6px;
+  padding: 10px 12px 4px;
+  margin: 4px 0 10px;
+  background: rgba(75, 149, 233, 0.05);
+}
+[data-theme="light"] .app .form-fieldset {
+  background: rgba(75, 149, 233, 0.06);
+  border-color: rgba(75, 149, 233, 0.35);
+}
+.app .form-fieldset-legend {
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+.app .form-fieldset-hint {
+  margin: 2px 0 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+.app .form-fieldset-hint code {
+  background: var(--bg-hover); padding: 0 4px; border-radius: 3px;
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
+}
+.app .form-fieldset .form-row { margin-bottom: 6px; }
+.app .form-fieldset .form-row:last-child { margin-bottom: 4px; }
+.app .cred-step-desc { font-size: 12px; color: var(--text-secondary); margin: 0 0 10px; line-height: 1.5; }
+.app .cred-step-link { font-size: 11px; margin: 0 0 10px; }
+.app .cred-step-link a { color: #4B95E9; text-decoration: none; word-break: break-all; }
+.app .cred-step-link a:hover { text-decoration: underline; }
+.app .cred-action-btn { margin-top: 4px; margin-bottom: 10px; }
+.app .modal-delete { width: 380px; }
+.app .modal-head-delete { border-bottom-color: #D81E5B44; }
+.app .modal-head-delete h3 { color: #D81E5B; }
+.app .delete-repo-name { font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0 0 8px; font-family: monospace; }
+.app .delete-warning { font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.5; }
+.app .delete-danger { color: #D81E5B; font-weight: 600; }
+.app .delete-final { font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.5; }
+.app .btn-delete {
+  padding: 6px 12px; background: #D81E5B; border: none; color: #fff;
+  border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;
+}
+.app .btn-delete:hover:not(:disabled) { background: #be123c; }
+.app .btn-delete-final { background: #991b1b; }
+.app .btn-delete-final:hover:not(:disabled) { background: #7f1d1d; }
+.app .btn-delete:disabled { opacity: 0.5; cursor: default; }
+.app .mrp-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 8px; font-size: 11px; cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+.app .mrp-row:last-child { border-bottom: none; }
+.app .mrp-row:hover { background: var(--hover); }
+.app .mrp-name { flex: 1; color: var(--text-primary); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app .mrp-badge {
+  font-size: 9px; padding: 1px 4px; border-radius: 3px;
+  background: var(--bg-raised); color: var(--text-muted); white-space: nowrap;
+}
+.app .mrp-badge-dim { opacity: 0.6; }
+/* Danger button of the delete and move confirms. */
+.app .btn-danger {
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.app .btn-danger:hover { background: #b91c1c; }
+.app .btn-danger:disabled { opacity: 0.6; cursor: default; }
