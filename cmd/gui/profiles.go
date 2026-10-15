@@ -174,15 +174,16 @@ func (a *App) SaveTerminalProfiles(apps []config.TerminalApp, shells []config.Sh
 // arrays with what the host catalog reports as installed. Idempotent — only
 // writes when the resulting payload differs from what's already persisted.
 func (a *App) SyncProfiles() {
+	detected := terminals.Detect(runtime.GOOS)
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if terminals.Sync(a.cfg, runtime.GOOS) {
+	if terminals.ApplyDetection(a.cfg, detected, runtime.GOOS) {
 		_ = a.saveConfig()
 	}
 }
 
 // RedetectProfiles re-runs SyncProfiles and returns the refreshed config DTO.
-func (a *App) RedetectProfiles() ConfigDTO {
+func (a *App) RedetectProfiles() (ConfigDTO, error) {
 	a.SyncProfiles()
 	return a.GetConfig()
 }

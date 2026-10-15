@@ -93,10 +93,9 @@ func (a *App) SetRepoContainer(sourceKey, repoKey string, container bool) error 
 // container repo's working tree.
 func (a *App) RepoNesting() map[string]string {
 	a.mu.Lock()
-	cfg := a.cfg
-	a.mu.Unlock()
+	defer a.mu.Unlock()
 
-	n := status.ComputeNesting(cfg)
+	n := status.ComputeNesting(a.cfg)
 	out := make(map[string]string, len(n.ParentOf))
 	for child, parent := range n.ParentOf {
 		out[child.Source+"/"+child.Repo] = parent.Source + "/" + parent.Repo
@@ -115,9 +114,10 @@ type TentativeContainerDTO struct {
 // hold a .code-workspace) but are not yet flagged Container.
 func (a *App) TentativeContainers() []TentativeContainerDTO {
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	snapshot := workspace.DiscoverySnapshot(a.cfg)
+	a.mu.Unlock()
 
-	refs := workspace.TentativeContainers(a.cfg)
+	refs := workspace.TentativeContainers(snapshot)
 	out := make([]TentativeContainerDTO, 0, len(refs))
 	for _, r := range refs {
 		out = append(out, TentativeContainerDTO{Source: r.Source, Repo: r.Repo})

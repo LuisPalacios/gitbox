@@ -12,7 +12,7 @@
 #   ./scripts/health.sh -v              # print every finding, not just the first 15
 #
 # Checks: gofmt vet staticcheck modernize govulncheck deadcode test
-#         svelte build npm-install npm-audit shellcheck actionlint markdown
+#         svelte frontend-test build npm-install npm-audit shellcheck actionlint markdown
 #
 # Go analyzers are fetched at pinned versions (go run / go install into the
 # run's temp dir), so they need no install and give the same results
@@ -32,7 +32,10 @@ DEADCODE="golang.org/x/tools/cmd/deadcode@v0.50.0"
 
 # Functions deadcode may report: kept on purpose, used only from tests or
 # kept as part of a small public API. One regex per line.
-DEADCODE_ALLOW='unreachable func: (PSDecode|resetLookupCachesForTest|Version\.String)$'
+# I retain standalone sync/cache wrappers for library callers and their tests.
+DEADCODE_ALLOW='unreachable func: (PSDecode|resetLookupCachesForTest|Version\.String)$
+pkg/terminals/sync[.]go:[0-9]+:[0-9]+: unreachable func: Sync$
+pkg/workspace/workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCache$'
 
 FRONTEND="cmd/gui/frontend"
 MD_CONFIG=".claude/skills/fixing-markdown/.markdownlint-cli2.jsonc"
@@ -145,6 +148,12 @@ run_test() {
     return 1
 }
 
+run_frontend_test() {
+    (cd "$FRONTEND" && npm test) >"$tmp/frontend-test.full" 2>&1 && return 0
+    cat "$tmp/frontend-test.full"
+    return 1
+}
+
 run_govulncheck() {
     local out
     out="$(go run "$GOVULNCHECK" ./... 2>&1)" || { echo "$out"; return 1; }
@@ -227,6 +236,7 @@ want govulncheck go && check govulncheck run_govulncheck
 want deadcode go    && check deadcode    run_deadcode
 want test go        && check test        run_test
 want svelte fe      && check svelte      run_svelte
+want frontend-test fe && check frontend-test run_frontend_test
 want build fe       && check build       run_build
 want npm-install fe && check npm-install run_npm_install
 want npm-audit fe   && check npm-audit   run_npm_audit

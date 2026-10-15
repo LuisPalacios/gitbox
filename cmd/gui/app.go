@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -64,10 +65,13 @@ type App struct {
 	terminalsMu  sync.Mutex
 	terminalsCmd *exec.Cmd
 
-	mu              sync.Mutex
-	savedWindowPos  *config.WindowState // full-mode window state pre-loaded from config
-	savedCompactPos *config.WindowState // compact-mode window state pre-loaded from config
-	savedViewMode   string              // "full" or "compact" pre-loaded from config
+	toolsOnce            sync.Once
+	toolsWG              sync.WaitGroup
+	workspaceDiscoveryMu sync.Mutex
+	mu                   sync.Mutex
+	savedWindowPos       *config.WindowState // full-mode window state pre-loaded from config
+	savedCompactPos      *config.WindowState // compact-mode window state pre-loaded from config
+	savedViewMode        string              // "full" or "compact" pre-loaded from config
 
 	// upstreamGone tracks repos discovered to be missing from the provider
 	// (deleted, archived private, lost access). Populated by fetch errors
@@ -146,6 +150,7 @@ func (a *App) Shutdown(_ context.Context) {
 	// Stop the AI harness watcher before test cleanup removes the temp
 	// config dir, so a late pass can't recreate it via config.Save.
 	a.stopHarnessWatcher()
+	a.toolsWG.Wait()
 	if a.testCleanup != nil {
 		a.testCleanup()
 	}
@@ -235,7 +240,12 @@ func (a *App) DomReady(_ context.Context) {
 			wailsrt.WindowCenter(a.ctx)
 		}
 	}
-	a.syncDetected()
+	a.toolsOnce.Do(func() {
+		a.toolsWG.Go(func() {
+			a.syncDetected()
+			wailsrt.EventsEmit(a.ctx, "tools:updated")
+		})
+	})
 	// AI harnesses are detected off the startup path: startHarnessWatcher
 	// runs a first pass ~2s after launch and then re-probes periodically,
 	// emitting harnesses:updated so the menu refreshes without a reload.
@@ -452,6 +462,10 @@ func (a *App) GetAppVersion() string {
 		}
 	}
 
+	return formatAppVersion(v, c)
+}
+
+func formatAppVersion(v, c string) string {
 	if v == "dev" {
 		return fmt.Sprintf("dev-%s", c)
 	}
@@ -530,28 +544,56 @@ type MirrorCredentialCheck struct {
 }
 
 // GetConfig returns the full configuration for the frontend.
-func (a *App) GetConfig() ConfigDTO {
+func (a *App) GetConfig() (ConfigDTO, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	return a.configDTO()
+}
 
+// configDTO detaches the response from mutable config before Wails serializes it.
+// Caller holds a.mu.
+func (a *App) configDTO() (ConfigDTO, error) {
 	sources := make(map[string]SourceDTO, len(a.cfg.Sources))
 	for key, src := range a.cfg.Sources {
-		sources[key] = SourceDTO{
-			Account:   src.Account,
-			Folder:    src.Folder,
-			Repos:     src.Repos,
-			RepoOrder: src.OrderedRepoKeys(),
-		}
+		sources[key] = SourceDTO{Account: src.Account, Folder: src.Folder, Repos: src.Repos, RepoOrder: src.OrderedRepoKeys()}
 	}
-	return ConfigDTO{
-		Version:        a.cfg.Version,
-		Global:         a.cfg.Global,
-		Accounts:       a.cfg.Accounts,
-		Sources:        sources,
-		Mirrors:        buildMirrorsDTO(a.cfg),
-		Workspaces:     buildWorkspacesDTO(a.cfg),
-		WorkspaceOrder: a.cfg.OrderedWorkspaceKeys(),
+	dto := ConfigDTO{Version: a.cfg.Version, Global: a.cfg.Global, Accounts: a.cfg.Accounts,
+		Sources: sources, Mirrors: buildMirrorsDTO(a.cfg), Workspaces: buildWorkspacesDTO(a.cfg), WorkspaceOrder: a.cfg.OrderedWorkspaceKeys()}
+	data, err := json.Marshal(dto)
+	if err != nil {
+		return ConfigDTO{}, fmt.Errorf("copying config: %w", err)
 	}
+	var detached ConfigDTO
+	if err := json.Unmarshal(data, &detached); err != nil {
+		return ConfigDTO{}, fmt.Errorf("copying config: %w", err)
+	}
+	return detached, nil
+}
+
+// StartupSnapshot contains only information available without disk scanning,
+// subprocesses or provider requests.
+type StartupSnapshot struct {
+	Config     ConfigDTO         `json:"config"`
+	Nesting    map[string]string `json:"nesting"`
+	ConfigPath string            `json:"configPath"`
+	AppVersion string            `json:"appVersion"`
+	OS         string            `json:"os"`
+}
+
+// GetStartupSnapshot keeps preferences, configured rows and nesting consistent
+// in the first frontend update. Pending status never delays this response.
+func (a *App) GetStartupSnapshot() (StartupSnapshot, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	cfg, err := a.configDTO()
+	if err != nil {
+		return StartupSnapshot{}, err
+	}
+	nesting := make(map[string]string)
+	for child, parent := range status.ComputeNesting(a.cfg).ParentOf {
+		nesting[child.Source+"/"+child.Repo] = parent.Source + "/" + parent.Repo
+	}
+	return StartupSnapshot{Config: cfg, Nesting: nesting, ConfigPath: a.cfgPath, AppVersion: formatAppVersion(version, commit), OS: runtime.GOOS}, nil
 }
 
 // ReloadConfig re-reads the config from disk. Call after external edits
@@ -566,24 +608,7 @@ func (a *App) ReloadConfig() (ConfigDTO, error) {
 	}
 	a.cfg = cfg
 
-	sources := make(map[string]SourceDTO, len(a.cfg.Sources))
-	for key, src := range a.cfg.Sources {
-		sources[key] = SourceDTO{
-			Account:   src.Account,
-			Folder:    src.Folder,
-			Repos:     src.Repos,
-			RepoOrder: src.OrderedRepoKeys(),
-		}
-	}
-	return ConfigDTO{
-		Version:        a.cfg.Version,
-		Global:         a.cfg.Global,
-		Accounts:       a.cfg.Accounts,
-		Sources:        sources,
-		Mirrors:        buildMirrorsDTO(a.cfg),
-		Workspaces:     buildWorkspacesDTO(a.cfg),
-		WorkspaceOrder: a.cfg.OrderedWorkspaceKeys(),
-	}, nil
+	return a.configDTO()
 }
 
 func buildMirrorsDTO(cfg *config.Config) map[string]MirrorDTO {
@@ -965,46 +990,13 @@ func (a *App) OpenInApp(path string, command string) error {
 // When PATH still misses, macOS and Linux also probe ~/.local/bin: the
 // native Claude Code and Antigravity CLI installers drop their binaries
 // there, and a GUI launched from the Dock or a desktop menu doesn't inherit
-// the shell rc that adds it to PATH. Windows installers register their
-// directories in the user PATH, so no fallback is needed there.
+// the shell rc that adds it to PATH. I use the shared resolver without
+// changing the process environment while background detection runs.
 func lookPathWithBrewPATH(command string) (string, error) {
-	env := git.Environ() // no-op on non-macOS
-	for _, e := range env {
-		if strings.HasPrefix(e, "PATH=") {
-			origPath := os.Getenv("PATH")
-			os.Setenv("PATH", strings.TrimPrefix(e, "PATH="))
-			fullPath, err := exec.LookPath(command)
-			os.Setenv("PATH", origPath)
-			if err == nil {
-				return fullPath, nil
-			}
-			return lookPathUserLocalBin(command, err)
-		}
+	if path := doctor.Lookup(command); path != "" {
+		return path, nil
 	}
-	fullPath, err := exec.LookPath(command)
-	if err == nil {
-		return fullPath, nil
-	}
-	return lookPathUserLocalBin(command, err)
-}
-
-// lookPathUserLocalBin is the ~/.local/bin fallback for lookPathWithBrewPATH.
-// It returns the original lookup error when the fallback doesn't apply or
-// the file isn't an executable regular file.
-func lookPathUserLocalBin(command string, lookErr error) (string, error) {
-	if runtime.GOOS == "windows" {
-		return "", lookErr
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", lookErr
-	}
-	candidate := filepath.Join(home, ".local", "bin", command)
-	info, err := os.Stat(candidate)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
-		return "", lookErr
-	}
-	return candidate, nil
+	return "", &exec.Error{Name: command, Err: exec.ErrNotFound}
 }
 
 // EditorInfo describes an available code editor.
@@ -1061,7 +1053,7 @@ func (a *App) DetectEditors() []EditorInfo {
 }
 
 // syncDetected merges detected editors and terminal profiles into the config
-// before the frontend reads it. SyncProfiles fills the terminal apps, shells
+// after the first render. SyncProfiles fills the terminal apps, shells
 // and profiles that the Terminals manager and the launcher menus render; it
 // saves only when something changed.
 func (a *App) syncDetected() {
@@ -1075,6 +1067,12 @@ func (a *App) syncDetected() {
 // - Writes the full resolved path so users see a concrete example
 // - Saves config only if changes were made
 func (a *App) SyncEditors() {
+	detected := make([]config.EditorEntry, 0, len(knownEditors))
+	for _, known := range knownEditors {
+		if fullPath, err := lookPathWithBrewPATH(known.Command); err == nil {
+			detected = append(detected, config.EditorEntry{Name: known.Name, Command: fullPath})
+		}
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -1108,22 +1106,12 @@ func (a *App) SyncEditors() {
 	// candidate whose name overlaps the harness list — defence in depth;
 	// knownEditors already excludes them, but new contributors editing the
 	// directory shouldn't have to remember to also edit knownEditors.
-	for _, known := range knownEditors {
-		if claimedByHarness[known.Name] {
+	for _, editor := range detected {
+		if claimedByHarness[editor.Name] || seenName[editor.Name] {
 			continue
 		}
-		if seenName[known.Name] {
-			continue
-		}
-		fullPath, err := lookPathWithBrewPATH(known.Command)
-		if err != nil {
-			continue
-		}
-		deduped = append(deduped, config.EditorEntry{
-			Name:    known.Name,
-			Command: fullPath,
-		})
-		seenName[known.Name] = true
+		deduped = append(deduped, editor)
+		seenName[editor.Name] = true
 		changed = true
 	}
 

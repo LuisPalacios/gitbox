@@ -150,6 +150,8 @@ Imprime el comando exacto para lanzar `GitboxApp --test-mode` en cada plataforma
 
 La misma idea, pero los comandos impresos lanzan GitboxApp contra el `~/.config/gitbox/gitbox.json` real en la máquina target.
 
+Mido el arranque en el escritorio nativo después de compilar: del lanzamiento del proceso a la ventana, de la ventana a las filas configuradas con la anidación de contenedores y el tiempo hasta el estado completo. Registro la plataforma, el número de clones y las ejecuciones repetidas; navegar desde el navegador con `wails dev` ya en ejecución mide otra ruta. Los smoke tests por SSH verifican el binario y el backend, pero necesito una sesión Windows interactiva para medir la aparición de las filas en WebView2 antes de afirmar que cumplo el objetivo de arranque.
+
 ### Sincronizar config de producción a un remoto
 
 ```bash

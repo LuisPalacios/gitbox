@@ -81,9 +81,11 @@ Clones outside this tree (extra scan folders, nested clones inside a multi-repo 
 
 ### cmd/gui — Wails bindings
 
-`cmd/gui/app.go` exposes the methods the Svelte frontend calls through auto-generated TypeScript bindings. Each binding takes the config lock, calls into `pkg/ops` or another `pkg/` package, saves the config, and emits Wails events for progress. Neighbouring files hold GUI-only concerns: terminal profiles (`profiles.go`), workspaces (`workspaces.go`), multi-repo containers (`containers.go`), PR badges (`pr.go`), autostart, and per-OS process lifecycle. Every `exec.Command` in `cmd/gui/` goes through `git.HideWindow` so no console window flashes on Windows.
+`cmd/gui/app.go` exposes the methods the Svelte frontend calls through auto-generated TypeScript bindings. I use the config lock for shared state and call `pkg/ops` or another `pkg/` package for operations, saving changes and emitting Wails events for progress. Neighbouring files hold GUI-only concerns: terminal profiles (`profiles.go`), workspaces (`workspaces.go`), multi-repo containers (`containers.go`), PR badges (`pr.go`), autostart, and per-OS process lifecycle. Every `exec.Command` in `cmd/gui/` goes through `git.HideWindow` so no console window flashes on Windows.
 
 `main.go` handles two flags before Wails starts: `--version` prints the build version and exits, and `--test-mode` routes the config through a temp directory built from the `test-gitbox.json` fixture (see [testing.md](testing.md)).
+
+I return config, preferences, collapse state, and path-derived nesting in one detached startup snapshot. I render that snapshot before requesting local status and show pending spinners until checking or fetching finishes. I keep cross-source children under their containers while retaining each child's source for status, actions, and ownership. I detect editors and terminal profiles outside the config lock, then merge into current settings so concurrent edits survive.
 
 ### pkg/ops — Application operations
 
@@ -176,6 +178,8 @@ Installs a curated managed block of OS-junk patterns (`.DS_Store`, `Thumbs.db`, 
 
 Discovers existing VS Code `.code-workspace` files and exposes them read-only — gitbox never creates, edits, generates, or deletes workspace files. `Discover` walks `global.folder` and every `global.extra_folders` root for `*.code-workspace` files and resolves each file's folder references back to known clones (deepest-prefix match against resolved repo paths); it is pure and only reports what is on disk. `RefreshCache` mirrors the result into the `workspaces` section of `gitbox.json` and persists only when the set changed. `BuildOpenCommand()` launches an existing `.code-workspace` in the first editor in `global.editors`. Tmuxinator support and workspace generation were removed with config v3.
 
+I scan an isolated copy of workspace discovery inputs outside the shared config lock. If paths or known clones change during the scan, I retry with current inputs; otherwise I update only the workspace cache and preserve unrelated edits. I visit overlapping directories once and skip hidden directories, `node_modules`, and `vendor`, except when I explicitly configure one as a scan root.
+
 ### pkg/adopt — Orphan repo discovery
 
 Scans `global.folder`, every `global.extra_folders` root, and the working trees of container repos for clones that are not in `gitbox.json`, then scores each against every host-matching account. All signals are additive, and the highest score wins:
@@ -189,6 +193,8 @@ Scans `global.folder`, every `global.extra_folders` root, and the working trees 
 | `.git/config` has `credential.<url>.username` equal to `account.username` | +10   | `git config --get-regexp '^credential\..*\.username$'` in the repo    |
 
 If the top score is shared by two or more accounts (including a bare host-only tie) the match is marked ambiguous: no account is picked, no files are moved, and the GUI shows the candidate list. Adopted orphans get credential isolation, identity, and a remote URL rewritten to match the credential type. Orphans under the standard tree can optionally be relocated to their canonical path; clones outside it and nested clones are onboarded in place with an absolute `clone_folder`.
+
+I stop ordinary orphan discovery at each clone boundary, including a `.git` file used by a worktree. I scan explicit roots independently and use the container scan with `nested_scan_depth` to discover nested clones.
 
 ### pkg/mirror — Repository mirroring
 

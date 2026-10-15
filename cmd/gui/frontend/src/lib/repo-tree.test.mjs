@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { readFile } from 'node:fs/promises';
+import ts from 'typescript';
+
+const sourceCode = await readFile(new URL('./repo-tree.ts', import.meta.url), 'utf8');
+const { outputText } = ts.transpileModule(sourceCode, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } });
+const { repoTreeRows } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+const source = (names, account = 'account-A') => ({ account, repos: Object.fromEntries(names.map(name => [name, {}])), repoOrder: names });
+test('I group cross-source children with retained action ownership and no duplicate rows', () => {
+  const tree = repoTreeRows({ a: source(['parent', 'other']), b: source(['child'], 'account-B') }, { 'b/child': 'a/parent' }, new Set());
+  assert.deepEqual(tree.a.map(row => [row.key, row.depth]), [['a/parent', 0], ['b/child', 1], ['a/other', 0]]);
+  assert.equal(tree.a[1].sourceKey, 'b');
+  assert.equal(tree.a[1].repoName, 'child');
+  assert.deepEqual(tree.b, []);
+  assert.deepEqual(tree.a[0].descendants, ['b/child']);
+});
+test('I collapse descendants across sources without resurrecting them as roots', () => {
+  const sources = { a: source(['parent']), b: source(['child', 'grandchild', 'other']) };
+  const nesting = { 'b/child': 'a/parent', 'b/grandchild': 'b/child' };
+  const tree = repoTreeRows(sources, nesting, new Set(['a/parent']));
+  assert.deepEqual(tree.a.map(row => row.key), ['a/parent']);
+  assert.deepEqual(tree.a[0].descendants, ['b/child', 'b/grandchild']);
+  assert.deepEqual(tree.b.map(row => row.key), ['b/other']);
+  assert.deepEqual(repoTreeRows(sources, nesting, new Set(['b/child'])).a.map(row => row.key), ['a/parent', 'b/child']);
+});
+test('I retain missing-parent clones and cycles exactly once despite stale order entries', () => {
+  const sources = { a: { ...source(['one', 'two', 'three', 'four']), repoOrder: ['one', 'one', 'missing'] } };
+  const tree = repoTreeRows(sources, { 'a/one': 'a/two', 'a/two': 'a/one', 'a/three': 'missing/parent', 'a/four': 'a/four' }, new Set());
+  assert.equal(tree.a.length, 4);
+  assert.deepEqual(new Set(tree.a.map(row => row.key)), new Set(['a/one', 'a/two', 'a/three', 'a/four']));
+});
+test('I preserve nested depth and configured sibling order', () => {
+  const tree = repoTreeRows({ a: source(['leaf', 'parent', 'child', 'sibling']) }, { 'a/leaf': 'a/child', 'a/child': 'a/parent', 'a/sibling': 'a/parent' }, new Set());
+  assert.deepEqual(tree.a.map(row => [row.repoName, row.depth]), [['parent', 0], ['child', 1], ['leaf', 2], ['sibling', 1]]);
+});

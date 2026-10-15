@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -203,5 +206,56 @@ func TestUniqueKey_DisambiguatesCollisions(t *testing.T) {
 	}
 	if k := uniqueKey("proj", used); k != "proj-3" {
 		t.Errorf("third = %q, want proj-3", k)
+	}
+}
+
+func TestFindCodeWorkspaces_OverlappingAndExplicitExcludedRoots(t *testing.T) {
+	root := t.TempDir()
+	var roots = []string{root, filepath.Join(root, "project"), filepath.Join(root, "node_modules", "explicit")}
+	var want []string
+	for _, rel := range []string{"project/main.code-workspace", "node_modules/ignored/skip.code-workspace", "vendor/ignored/skip.code-workspace", "node_modules/explicit/keep.code-workspace"} {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(`{"folders":[]}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(rel, "ignored") {
+			want = append(want, path)
+		}
+	}
+	sort.Strings(want)
+	got, err := findCodeWorkspaces(roots)
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("files = %v, %v; want %v", got, err, want)
+	}
+}
+
+func TestDiscoverySnapshot_DetachesScanInputs(t *testing.T) {
+	cfg := newTestConfig(t)
+	cfg.Global.ExtraFolders = []string{"extra"}
+	snapshot := DiscoverySnapshot(cfg)
+	cfg.Global.ExtraFolders[0] = "changed"
+	for key, source := range cfg.Sources {
+		source.Folder = "changed"
+		for repoKey, repo := range source.Repos {
+			repo.CloneFolder = "changed"
+			source.Repos[repoKey] = repo
+		}
+		cfg.Sources[key] = source
+	}
+	if snapshot.Global.ExtraFolders[0] != "extra" {
+		t.Fatal("snapshot aliases extra roots")
+	}
+	for _, source := range snapshot.Sources {
+		if source.Folder == "changed" {
+			t.Fatal("snapshot aliases source")
+		}
+		for _, repo := range source.Repos {
+			if repo.CloneFolder == "changed" {
+				t.Fatal("snapshot aliases repo map")
+			}
+		}
 	}
 }

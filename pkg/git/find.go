@@ -7,9 +7,9 @@ import (
 )
 
 // FindRepos walks the directory tree from root and returns absolute paths
-// to all git repositories (directories containing a .git subdirectory).
+// to all git repositories (directories containing a .git entry).
 // Hidden directories (other than .git itself) are skipped.
-// Descending stops once a .git directory is found (no nested repos).
+// Descending stops at each clone boundary (no nested repos).
 func FindRepos(root string) ([]string, error) {
 	var repos []string
 
@@ -21,16 +21,13 @@ func FindRepos(root string) ([]string, error) {
 			return nil
 		}
 
-		name := d.Name()
-
-		// Skip hidden directories (except .git itself).
-		if strings.HasPrefix(name, ".") && name != ".git" {
+		if path != root && strings.HasPrefix(d.Name(), ".") {
 			return filepath.SkipDir
 		}
-
-		// If this directory is .git, its parent is a repo.
-		if name == ".git" {
-			repos = append(repos, filepath.Dir(path))
+		// Inspect the clone boundary before walking its working tree. A .git
+		// file identifies a worktree or submodule just like a .git directory.
+		if isGitClone(path) {
+			repos = append(repos, path)
 			return filepath.SkipDir
 		}
 

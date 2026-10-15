@@ -124,6 +124,8 @@ export function GetPeriodicSync():Promise<string>;
 
 export function GetRepoDetail(arg1:string,arg2:string):Promise<main.RepoDetail>;
 
+export function GetStartupSnapshot():Promise<main.StartupSnapshot>;
+
 export function GetTokenGuide(arg1:string):Promise<main.TokenGuideInfo>;
 
 export function GetUIMode():Promise<string>;

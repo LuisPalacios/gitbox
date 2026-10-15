@@ -137,6 +137,8 @@ cd cmd/gui/frontend
 npm run check
 ```
 
+También ejecuto `npm test` desde `cmd/gui/frontend` para las regresiones puras del árbol de clones: propiedad entre sources, prevención de duplicados, plegado de clones anidados y recuperación ante referencias obsoletas a padres. La comprobación de salud ejecuta estas pruebas como `frontend-test`.
+
 ### Paso 3: escenario de ciclo completo
 
 La grande. Ejecuta el ciclo de vida completo de una cuenta a través de `pkg/ops` contra la primera cuenta del fixture con token: crea la cuenta, comprueba credenciales, descubre repos, clona uno, comprueba status, hace pull, hace fetch, edita la cuenta y reconfigura el clone, crea y borra un grupo de mirror, reclona, renombra la cuenta y lo borra todo. Cada paso guarda y recarga la config, igual que la GUI persiste después de cada acción.
@@ -162,6 +164,12 @@ GitboxApp --test-mode
 ```
 
 El flag `--test-mode` lee `test-gitbox.json` (buscando hacia arriba desde el directorio actual), construye una config descartable en un directorio temporal, sobrescribe `global.folder` e inyecta los tokens del fixture como variables de entorno. Nada toca mi `~/.config/gitbox/` real ni los clones existentes, y el directorio temporal se borra cuando la app sale.
+
+### Comprobaciones de regresión del arranque
+
+Ejecuto las pruebas de instantánea de arranque y descubrimiento de workspaces de `cmd/gui` para verificar la anidación antes de que existan los clones, los datos de respuesta independientes, el acceso a config durante un escaneo bloqueado, la conservación de ediciones concurrentes y los reintentos cuando cambian las entradas del descubrimiento. Mido por separado la construcción de la instantánea con `go test ./cmd/gui/ -run '^$' -bench BenchmarkStartupSnapshot -benchmem`. Este benchmark mide el trabajo del backend, no el tiempo de arranque visible.
+
+Para medir el arranque interactivo, registro por separado el lanzamiento del proceso, la aparición de la ventana, las primeras filas configuradas y el estado completo, junto con la plataforma, el número de clones, la disposición de contenedores y el número de ejecuciones. Distingo los arranques nativos de producción de la navegación del navegador contra un backend `wails dev` ya en ejecución. Necesito un escritorio Windows interactivo para medir el renderizado de WebView2; los tiempos del backend por SSH no bastan para demostrar el objetivo de las primeras filas. Mantengo abiertos los objetivos sin medir hasta completar esa comprobación de escritorio.
 
 ## Checklist pre-PR
 

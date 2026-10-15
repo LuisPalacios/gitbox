@@ -39,6 +39,8 @@ Go-side logic of the Wails app that runs without a window:
 - Terminals — MSYS path and env sanitising for spawned terminals, and a first launch that never writes the legacy `global.terminals` list
 - Workspaces and containers — cache refresh, container flag persistence, extra folders, nested scan depth, absolute `clone_folder` for onboarded clones, collapse-state persistence and pruning
 
+I cover startup snapshots and nonblocking workspace discovery in `cmd/gui/startup_test.go` and `cmd/gui/workspaces_test.go`, including stale scan inputs and concurrent config edits. `BenchmarkStartupSnapshot` measures snapshot construction separately from native rendering. I run pure frontend clone-tree regressions with `npm test` in `cmd/gui/frontend`; `scripts/health.sh frontend-test` runs the same suite.
+
 ### Scenario test — 1 test, 12 steps (`pkg/ops/`)
 
 - `TestScenario_FullLifecycle` — end-to-end through `pkg/ops`: add account → credential check → discover → add repo → clone → status → pull and fetch → account edit + reconfigure clones → mirror CRUD → re-clone → rename account → delete everything

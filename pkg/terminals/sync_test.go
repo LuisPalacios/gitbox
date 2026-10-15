@@ -120,3 +120,47 @@ func TestSyncAddsToEmptyConfig(t *testing.T) {
 		t.Errorf("unexpected counts: apps=%d shells=%d profiles=%d", len(merged.Apps), len(merged.Shells), len(merged.Profiles))
 	}
 }
+
+func TestApplyDetection_PreservesEditsDuringDetection(t *testing.T) {
+	detected := MergePayload{
+		Apps:     []config.TerminalApp{fakeWTApp},
+		Shells:   []config.ShellEntry{fakePwshShell},
+		Profiles: ComposeProfiles([]config.TerminalApp{fakeWTApp}, []config.ShellEntry{fakePwshShell}, "windows"),
+	}
+	cfg := &config.Config{}
+	ApplyDetection(cfg, detected, "windows")
+	// These changes represent edits saved after detection started.
+	cfg.Global.TerminalApps[0].Name = "My terminal"
+	cfg.Global.TerminalProfiles[0].Name = "My profile"
+	cfg.Global.TerminalProfiles[0].Hidden = true
+	cfg.Global.TerminalProfiles[0].Preferred = true
+	cfg.Global.TerminalProfiles = append(cfg.Global.TerminalProfiles, config.TerminalProfile{
+		ID: "custom", Name: "Custom", Source: "user", Default: true,
+	})
+	cfg.Global.TerminalProfiles[0].Default = false
+	if ApplyDetection(cfg, detected, "windows") {
+		t.Fatal("unchanged detection should preserve current edits without saving")
+	}
+	if cfg.Global.TerminalApps[0].Name != "My terminal" || cfg.Global.TerminalProfiles[0].Name != "My profile" ||
+		!cfg.Global.TerminalProfiles[0].Hidden || !cfg.Global.TerminalProfiles[0].Preferred {
+		t.Fatal("current customizations lost")
+	}
+	last := cfg.Global.TerminalProfiles[len(cfg.Global.TerminalProfiles)-1]
+	if last.ID != "custom" || !last.Default {
+		t.Fatalf("current user profile/default lost: %+v", last)
+	}
+}
+
+func TestApplyDetection_InitialDefaultDoesNotMutateDetection(t *testing.T) {
+	detected := MergePayload{Profiles: []config.TerminalProfile{{ID: "first", Source: "detected"}}}
+	cfg := &config.Config{}
+	if !ApplyDetection(cfg, detected, "linux") || !cfg.Global.TerminalProfiles[0].Default {
+		t.Fatal("initial detection must set a default")
+	}
+	if detected.Profiles[0].Default {
+		t.Fatal("applying detection must not mutate reusable detection results")
+	}
+	if ApplyDetection(cfg, detected, "linux") {
+		t.Fatal("second identical detection must not write config")
+	}
+}

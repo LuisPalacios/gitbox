@@ -61,6 +61,8 @@ Si GCM no está instalado, el paso 2 muestra cómo instalarlo y ofrece **Use a t
 
 Nunca escribes un account key: Gitbox elige uno por ti, como `github-alice`, que también es el nombre de la carpeta de la cuenta en disco. Puedes usar **Skip for now** en los pasos 2 y 3 y añadir cuentas más tarde. Las instalaciones nuevas empiezan en modo Simple. Si cierras la app después del primer paso, el siguiente arranque abre la pantalla principal; termina desde la tarjeta **+**.
 
+Cuando vuelvo a abrir Gitbox, veo los clones configurados, las preferencias guardadas y la anidación conocida de los contenedores antes de que terminen las comprobaciones de estado. Los indicadores giratorios muestran qué clones siguen pendientes de comprobación o fetch en las vistas completa, Simple y compacta. Un hijo de otro source permanece bajo su contenedor; sus acciones y su propiedad siguen correspondiendo a su propio source.
+
 ## Paso 2: añadir cuentas
 
 Una cuenta le dice a Gitbox quién eres en un servidor concreto. Por ejemplo, tu cuenta de GitHub o el GitLab de tu empresa.

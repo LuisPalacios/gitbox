@@ -1,10 +1,12 @@
 package terminals
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf16"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -211,15 +213,22 @@ func probePwsh() (string, bool) {
 // and /usr/local/bin, so Homebrew-installed binaries are invisible to a bare
 // exec.LookPath. Falls back to standard LookPath on non-macOS platforms.
 func lookPathWithBrewPATH(command string) (string, error) {
-	env := git.Environ()
-	for _, e := range env {
-		if strings.HasPrefix(e, "PATH=") {
-			origPath := os.Getenv("PATH")
-			os.Setenv("PATH", strings.TrimPrefix(e, "PATH="))
-			fullPath, err := exec.LookPath(command)
-			os.Setenv("PATH", origPath)
-			return fullPath, err
+	if strings.ContainsAny(command, `/\`) {
+		return exec.LookPath(command)
+	}
+	for _, e := range git.Environ() {
+		if !strings.HasPrefix(e, "PATH=") {
+			continue
 		}
+		for _, dir := range filepath.SplitList(strings.TrimPrefix(e, "PATH=")) {
+			if dir == "" || !filepath.IsAbs(dir) {
+				continue
+			}
+			if resolved, err := exec.LookPath(filepath.Join(dir, command)); err == nil {
+				return resolved, nil
+			}
+		}
+		break
 	}
 	return exec.LookPath(command)
 }
@@ -309,7 +318,14 @@ func DetectShells(goos string) []config.ShellEntry {
 // nil when wsl.exe is missing, no distros are installed, or the host is not
 // Windows. None of those are errors — just absence of WSL state.
 func DiscoverWSLDistros() []string {
-	cmd := exec.Command("wsl.exe", "--list", "--quiet")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return discoverWSLDistros(ctx)
+}
+
+func discoverWSLDistros(ctx context.Context) []string {
+	cmd := exec.CommandContext(ctx, "wsl.exe", "--list", "--quiet")
+	cmd.WaitDelay = 100 * time.Millisecond
 	git.HideWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {

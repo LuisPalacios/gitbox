@@ -4,6 +4,9 @@ export interface GlobalConfig {
   folder: string;
   language?: string;
   periodic_sync?: string;
+  ui_mode?: string;
+  view_mode?: string;
+  collapsed?: CollapsedState;
   editors?: EditorInfo[];
   // v2.1 Terminal Profile model (issue #69). SyncProfiles populates these
   // arrays and the Gear-panel UI edits them directly.
@@ -380,4 +383,12 @@ export interface MoveResultDTO {
   newRepoKey?: string;
   warnings?: string[];
   error?: string;
+}
+
+export interface StartupSnapshot {
+  config: ConfigDTO;
+  nesting: Record<string, string>;
+  configPath: string;
+  appVersion: string;
+  os: string;
 }

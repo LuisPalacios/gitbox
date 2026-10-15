@@ -61,6 +61,8 @@ If GCM isn't installed, step 2 shows how to install it and offers **Use a token 
 
 You never type an account key: Gitbox picks one for you, such as `github-alice`, which is also the account's folder name on disk. You can **Skip for now** at steps 2 and 3 and add accounts later. New installs start in Simple mode. If you quit after the first step, the next launch opens the main screen; finish from the **+** card.
 
+When I reopen Gitbox, I see configured clones, saved preferences, and known container nesting before status checks finish. Spinners show which clones still need checking or fetching in full, Simple, and compact views. A child from another source stays under its container; its actions and ownership still refer to its own source.
+
 ## Step 2: Add accounts
 
 An account tells Gitbox who you are on a particular server. For example, your GitHub account, or your company's GitLab.

@@ -155,6 +155,8 @@ go test ./...           # everything (needs test-gitbox.json for the pkg/ops sce
 
 Activate the pre-push hook once per clone: `git config core.hooksPath .githooks` — it runs a `gofmt -s` check, `go vet` and unit tests before every push.
 
+I run `npm test` in `cmd/gui/frontend` when I change clone-tree grouping, ownership, or collapse behavior. These pure tests need neither Wails nor credentials; the health check includes them as `frontend-test`.
+
 ### Health check
 
 Before opening a PR I run every code checker in one pass:
@@ -165,7 +167,7 @@ Before opening a PR I run every code checker in one pass:
 ./scripts/health.sh -v           # every finding instead of the first 15
 ```
 
-It is read-only and exits non-zero when any check reports a finding. Go checks: `gofmt -s`, `go vet`, staticcheck, modernize, govulncheck, deadcode (with an allowlist for functions kept on purpose) and `go test -short`. Frontend checks: `svelte-check` (unused locals and parameters fail through `noUnusedLocals`/`noUnusedParameters`), warnings printed by `npm run build` (the same Svelte diagnostics CI shows in its build step), install warnings from a clean `npm ci` in a scratch copy (deprecated packages, install scripts not covered by `allowScripts`), and `npm audit`. The `npm ci` check needs npm 11.19 or newer. Repo checks: shellcheck on the shell scripts, actionlint on the workflows, and markdownlint with the `fixing-markdown` skill config forced read-only.
+It is read-only and exits non-zero when any check reports a finding. Go checks: `gofmt -s`, `go vet`, staticcheck, modernize, govulncheck, deadcode (with an allowlist for functions kept on purpose) and `go test -short`. Frontend checks: pure clone-tree regressions (`npm test`), `svelte-check` (unused locals and parameters fail through `noUnusedLocals`/`noUnusedParameters`), warnings printed by `npm run build` (the same Svelte diagnostics CI shows in its build step), install warnings from a clean `npm ci` in a scratch copy (deprecated packages, install scripts not covered by `allowScripts`), and `npm audit`. The `npm ci` check needs npm 11.19 or newer. Repo checks: shellcheck on the shell scripts, actionlint on the workflows, and markdownlint with the `fixing-markdown` skill config forced read-only.
 
 The Go analyzers are installed into a temporary folder at versions pinned at the top of the script, so they need no install; vet, staticcheck and modernize analyze linux, darwin and windows on every run, so platform-specific files are checked from any host. The other three tools must be on `PATH`:
 

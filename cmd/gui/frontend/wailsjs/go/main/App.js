@@ -238,6 +238,10 @@ export function GetRepoDetail(arg1, arg2) {
   return window['go']['main']['App']['GetRepoDetail'](arg1, arg2);
 }
 
+export function GetStartupSnapshot() {
+  return window['go']['main']['App']['GetStartupSnapshot']();
+}
+
 export function GetTokenGuide(arg1) {
   return window['go']['main']['App']['GetTokenGuide'](arg1);
 }
