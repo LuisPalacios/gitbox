@@ -202,7 +202,7 @@
   @keyframes gb-spin {
     to { transform: rotate(360deg); }
   }
-  .theme-toggle { display: flex; gap: 4px; }
+  .theme-toggle { display: flex; align-items: center; gap: 4px; }
   .theme-btn {
     padding: 3px 10px; font-size: 11px; border: 1px solid var(--border);
     background: transparent; color: var(--text-secondary); border-radius: 5px;

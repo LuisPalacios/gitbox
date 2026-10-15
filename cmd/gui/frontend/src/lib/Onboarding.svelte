@@ -466,7 +466,7 @@
     padding: 8px; margin: 0 0 12px; white-space: pre-wrap; word-break: break-word; max-height: 120px; overflow-y: auto;
   }
   .ob-label { display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); margin: 10px 0 4px; }
-  .ob-row { display: flex; gap: 8px; margin-bottom: 14px; }
+  .ob-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
   .ob-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .ob-input {
     flex: 1; min-width: 0; padding: 6px 8px; font-size: 12px; border: 1px solid var(--border);
@@ -486,7 +486,7 @@
   .ob-primary { background: #4B95E9; border-color: #4B95E9; color: #fff; font-weight: 600; }
   .ob-primary:hover:not(:disabled) { background: #3b82f6; color: #fff; }
   .ob-wide { width: 100%; padding: 9px 0; font-size: 13px; border-radius: 7px; margin-top: 8px; }
-  .ob-links { display: flex; justify-content: center; gap: 16px; margin-top: 12px; }
+  .ob-links { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 12px; }
   .ob-link { background: none; border: none; padding: 0; color: var(--text-muted); font-size: 12px; cursor: pointer; text-decoration: underline; }
   .ob-link:hover:not(:disabled) { color: var(--text-primary); }
   .ob-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 12px; }

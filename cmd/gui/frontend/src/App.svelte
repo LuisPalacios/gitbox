@@ -1662,7 +1662,7 @@
     {tentativeContainers} {workspaceBusy} {openWsPopover} {revealLabel} {configEditors} {configProfiles} {configAIHarnesses}
     {expandedRepo} {repoDetail} {detailLoading}
     bind:actionMenuAccount bind:actionMenuRepo bind:openPRPopover
-    {toggleSourceCollapsed} {toggleRepoCollapsed} {toggleAccountMenu} {closeAccountMenu} {openDiscover} {openCreateRepo}
+    {toggleSourceCollapsed} {toggleRepoCollapsed} {toggleAccountMenu} {closeAccountMenu} {openDiscover} {openCreateRepo} {openEditAccount} {openCredChange}
     {activateRepoRow} {askDelete} {syncRepo} {cloneRepo} {fetchRepo} {toggleActionMenu} {closeActionMenu} {toggleWsPopover}
     {openWorkspaceFromBadge} {togglePRPopover} {sweepBranches} {openMoveRepo} {toggleContainer} {rescanContainer} {isContainerRepo} />
 

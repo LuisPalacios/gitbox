@@ -142,6 +142,6 @@
   }
   .mrp-selected { background: var(--hover); outline: 1px solid var(--text-primary); outline-offset: -1px; }
   .mrp-disabled { opacity: 0.4; cursor: default; }
-  .mrp-badges { display: flex; gap: 4px; flex-shrink: 0; }
+  .mrp-badges { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
   .mrp-empty { color: var(--text-muted); font-size: 11px; padding: 8px; margin: 0; }
 </style>

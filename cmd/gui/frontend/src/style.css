@@ -40,6 +40,25 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* ── Icon standard ──
+   One icon size everywhere: 18px art (assets/svg/ui/, 24×24 viewBox,
+   1.8 stroke; brand logos the same) inside 30px icon buttons. */
+:root { --icon: 18px; --icon-btn: 30px; }
+
+.icon-btn {
+  width: var(--icon-btn); height: var(--icon-btn); padding: 0; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent; border-radius: 6px; background: none;
+  color: var(--text-muted); cursor: pointer; line-height: 1;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.icon-btn:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-hover); }
+.icon-btn:disabled { opacity: 0.3; cursor: default; }
+.icon-btn:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 1px; }
+/* Delete mode's ✕ buttons. */
+.icon-btn-danger { color: var(--alert); border-color: color-mix(in srgb, var(--alert) 45%, transparent); }
+.icon-btn-danger:hover:not(:disabled) { color: var(--alert); background: color-mix(in srgb, var(--alert) 14%, transparent); border-color: var(--alert); }
+
 /* ── Theme tokens ── */
 [data-theme="dark"] {
   --bg-base: #09090b; --bg-card: #18181b; --bg-hover: #27272a;
@@ -51,6 +70,7 @@ body {
   --ring-bg: #27272a; --ring-accent: #61fd5f; --overlay: rgba(0,0,0,0.6);
   --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   --spin-color: #0AFFFF;
+  --alert: #D81E5B;
 }
 [data-theme="light"] {
   --bg-base: #fafafa; --bg-card: #ffffff; --bg-hover: #f4f4f5;
@@ -62,6 +82,7 @@ body {
   --ring-bg: #e4e4e7; --ring-accent: #166534; --overlay: rgba(0,0,0,0.3);
   --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   --spin-color: #0000ff;
+  --alert: #be123c;
 }
 html { color-scheme: dark light; }
 body {

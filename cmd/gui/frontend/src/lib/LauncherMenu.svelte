@@ -1,40 +1,25 @@
 <script lang="ts">
-  // LauncherMenu — shared action menu used by the repo-row kebab and the
-  // account-header kebab in full view. Renders a top section with the most-
-  // used launchers (default Profile, editors[0], ai_harnesses[0]) and a
-  // submenu section for the rest of each category. Handlers are passed in
-  // as props so this component stays dumb and has no bridge dependency.
+  // LauncherMenu — the shared ⋯ menu of repo rows and account headers. A flat
+  // list in sections, no submenus (issue #138). Handlers come in as props, so
+  // the menu stays dumb and has no bridge dependency.
   //
-  // Profile model (issue #69, v2.1):
-  //   - The terminal entry shows "Open in <default profile name>" — the
-  //     profile flagged Default in Settings → Terminals → Manager.
-  //   - The Terminals submenu lists every Preferred profile (excluding the
-  //     default to avoid duplication). Hidden when no preferred profiles
-  //     exist. Terminal entries lead with their app's logo.
+  //   Open               web page (browserLabel) and folder (revealLabel)
+  //   Open with          every AI harness, editor and terminal profile (the
+  //                      default profile and the Preferred ones), each with
+  //                      its logo; the one the row's launch button uses is
+  //                      tagged "default"
+  //   Maintenance        repo menu, Advanced: sweep, move, container toggle,
+  //                      re-scan (shown when their handlers are passed)
+  //   Account            account menu: Find, New and extraItems
+  //   Delete from this computer…   repo menu, when onDelete is passed
   //
-  // Labels are intentionally terse — every row leads with an icon, so the
-  // verb (Open / Open in / Open with) is redundant noise. Issue #69 user
-  // feedback: drop the prefix everywhere.
-  //
-  // Visual layout (both repo and account kebabs):
-  //   "Navigate to <repo|account>"        (icon: globe)
-  //   "Reveal in <Explorer|Finder|files>" (icon: folder; OS-aware via revealLabel)
-  //   ─ separator ─ (only if any default is shown)
-  //   "<defaultProfile.name>"             (no prefix; hidden if no profile + no legacy term)
-  //   "Open with <editors[0].name>"       (hidden if editors empty)
-  //   "Open with <aiHarnesses[0].name>"   (hidden if harnesses empty)
-  //   ─ separator ─ (only if any submenu is shown)
-  //   Terminals ▸                         (hidden if no preferred profile besides the default)
-  //   Editors ▸                           (hidden if <2 editors)
-  //   AI Harnesses ▸                      (hidden if <2 harnesses)
-  //   ─ separator ─ (repo kebab only, when onSweep is provided)
-  //   Sweep branches                      (repo kebab only)
-  //   ─ separator ─ (account kebab only, when onFind/onCreate are provided)
-  //   Find projects / Create repo         (account kebab only)
+  // Simple passes no profiles and no maintenance handlers.
 
-  import { onMount, tick } from 'svelte';
+  import { onMount } from 'svelte';
   import type { EditorInfo, AIHarnessInfo, TerminalProfileInfo } from './types';
-  import BrandIcon, { terminalLogo } from './BrandIcon.svelte';
+  import BrandIcon, { terminalLogo, harnessLogo, editorLogo } from './BrandIcon.svelte';
+  import UIIcon from './UIIcon.svelte';
+  import { t } from './i18n';
 
   export let kind: 'repo' | 'account' = 'repo';
   export let editors: EditorInfo[] = [];
@@ -85,50 +70,46 @@
   // clone" from the top bar's delete mode into the row menu.
   export let browserLabelOverride: string = '';
   export let onDelete: (() => void) | null = null;
-  export let deleteLabel: string = 'Delete from this computer…';
+  export let deleteLabel: string = '';
+  // Extra account actions after Find and New (Edit account, Change
+  // credential or Reconnect). icon is a short glyph.
+  export let extraItems: { label: string; icon: string; onClick: () => void; title?: string }[] = [];
 
-  type Sub = 'terminals' | 'editors' | 'ai' | 'workspaces' | null;
-  let openSubmenu: Sub = null;
-
-  // Root element of the dropdown, used to measure and flip/shift into view.
+  // Root element of the dropdown, used to measure and place it.
   let rootEl: HTMLDivElement | undefined;
-  // Submenu element (only one is open at a time).
-  let subEl: HTMLDivElement | undefined;
 
   const VIEWPORT_PADDING = 8;
   const TRIGGER_GAP = 4;
 
   // The menu is position: fixed and placed in viewport coordinates, so the
-  // scrolling repo list (overflow-y: auto) can't clip it — an absolute menu
-  // flipped up near the top of the list was cut off by the list's edge.
+  // scrolling repo list (overflow-y: auto) can't clip it. It anchors to the
+  // .action-menu-container that holds its ⋯ button.
   function positionMenu(el: HTMLElement | undefined) {
     if (!el) return;
-    const trigger = el.parentElement?.parentElement;
+    const trigger = el.parentElement?.closest('.action-menu-container');
     if (!trigger) return;
     // Reset the size cap so measurement reflects the menu's natural height.
     el.style.maxHeight = '';
     el.style.overflowY = '';
 
-    const t = trigger.getBoundingClientRect();
+    const r = trigger.getBoundingClientRect();
     const vh = window.innerHeight;
     const vw = window.innerWidth;
     const w = el.offsetWidth;
     const h = el.offsetHeight;
 
-    // Horizontal: right edge on the trigger's right edge. Repo kebab rows
-    // share a vertical column of kebabs — one per row in the same group and
-    // the next — so the repo menu slides off that column (right edge on the
-    // trigger's left edge) and the user can click neighbouring kebabs
-    // without dismissing this menu first. Account-header kebabs stand alone
-    // and don't need the shift. Clamp inside the viewport either way.
-    const anchorRight = kind === 'repo' ? t.left : t.right;
+    // Horizontal: right edge on the trigger's right edge. Repo rows share a
+    // column of ⋯ buttons, so the repo menu slides off that column (right
+    // edge on the trigger's left edge) and a neighbouring ⋯ stays clickable.
+    // Clamp inside the viewport either way.
+    const anchorRight = kind === 'repo' ? r.left : r.right;
     const left = Math.max(VIEWPORT_PADDING, Math.min(anchorRight - w, vw - VIEWPORT_PADDING - w));
 
-    // Vertical: open below the trigger when it fits, else above it, else
-    // slide it up just enough to sit fully inside the viewport. If even the
-    // whole viewport is too short, cap the height and scroll inside.
-    const below = t.bottom + TRIGGER_GAP;
-    const above = t.top - TRIGGER_GAP - h;
+    // Vertical: below the trigger when it fits, else above it, else slid up
+    // just enough to fit. If even the viewport is too short, cap the height
+    // and scroll inside.
+    const below = r.bottom + TRIGGER_GAP;
+    const above = r.top - TRIGGER_GAP - h;
     let top: number;
     if (below + h <= vh - VIEWPORT_PADDING) {
       top = below;
@@ -146,291 +127,161 @@
     el.style.top = `${Math.round(top)}px`;
   }
 
-  // Keep the fixed menu attached to its kebab while the repo list scrolls or
-  // the window resizes. Scrolls inside the menu itself don't move the anchor.
-  function onViewportChange(e: Event) {
-    if (rootEl && e.target instanceof Node && rootEl.contains(e.target)) return;
-    positionMenu(rootEl);
-  }
-
-  function positionSubmenu(el: HTMLElement | undefined) {
-    if (!el) return;
-    el.style.top = '';
-    el.style.bottom = '';
-    el.style.left = '';
-    el.style.right = '';
-    el.style.marginLeft = '';
-    el.style.marginRight = '';
-    el.style.transform = '';
-
-    const vh = window.innerHeight;
-    const vw = window.innerWidth;
-
-    // The submenu is anchored to its own lm-sub-container (the parent
-    // menu item). Use the container's position to decide which side has
-    // more room. This is more reliable than "flip only if the default
-    // side overflows" because on narrow viewports both sides can overflow
-    // and we need to pick the larger one up front.
-    const container = el.parentElement;
-    const anchorRect = container ? container.getBoundingClientRect() : el.getBoundingClientRect();
-    const submenuWidth = el.offsetWidth;
-    const spaceLeft = anchorRect.left;
-    const spaceRight = vw - anchorRect.right;
-    const preferRight = spaceRight >= submenuWidth + VIEWPORT_PADDING
-      || (spaceRight > spaceLeft && spaceLeft < submenuWidth + VIEWPORT_PADDING);
-
-    if (preferRight) {
-      el.style.right = 'auto';
-      el.style.left = '100%';
-      el.style.marginRight = '0';
-      el.style.marginLeft = '2px';
-    } else {
-      el.style.left = 'auto';
-      el.style.right = '100%';
-      el.style.marginLeft = '0';
-      el.style.marginRight = '2px';
-    }
-
-    // Horizontal clamp: if neither side has full room, shift with a
-    // transform so the whole submenu stays on screen. May overlap the
-    // parent menu, but that's preferable to being clipped off-screen.
-    const rect = el.getBoundingClientRect();
-    let dx = 0;
-    if (rect.right > vw - VIEWPORT_PADDING) {
-      dx = vw - VIEWPORT_PADDING - rect.right;
-    } else if (rect.left < VIEWPORT_PADDING) {
-      dx = VIEWPORT_PADDING - rect.left;
-    }
-
-    // Vertical clamp: keep the submenu inside the viewport top and bottom.
-    let dy = 0;
-    if (rect.bottom > vh - VIEWPORT_PADDING) {
-      dy = vh - VIEWPORT_PADDING - rect.bottom;
-    } else if (rect.top < VIEWPORT_PADDING) {
-      dy = VIEWPORT_PADDING - rect.top;
-    }
-
-    if (dx !== 0 || dy !== 0) {
-      el.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px)`;
-    }
-  }
-
+  // Re-place the menu every frame while it is open: the list scrolls, the
+  // window resizes, and rows re-sort under it when their status changes.
   onMount(() => {
-    tick().then(() => positionMenu(rootEl));
-    window.addEventListener('scroll', onViewportChange, true);
-    window.addEventListener('resize', onViewportChange);
-    return () => {
-      window.removeEventListener('scroll', onViewportChange, true);
-      window.removeEventListener('resize', onViewportChange);
-    };
+    let frame = 0;
+    const follow = () => { positionMenu(rootEl); frame = requestAnimationFrame(follow); };
+    follow();
+    return () => cancelAnimationFrame(frame);
   });
 
-  async function toggleSub(name: Exclude<Sub, null>) {
-    openSubmenu = openSubmenu === name ? null : name;
-    if (openSubmenu) {
-      await tick();
-      positionSubmenu(subEl);
-    }
-  }
-
-  // Profile-driven terminal section. visibleProfiles excludes Hidden ones
-  // (the Gear panel keeps them in config but they're not surfaced here).
+  // The menu lists the default profile plus the Preferred ones (Settings →
+  // Terminals → Manager); hidden profiles stay out.
   $: visibleProfiles = (profiles || []).filter(p => !p.hidden);
   $: defaultProfile = visibleProfiles.find(p => p.default) || visibleProfiles[0] || null;
-  $: preferredProfiles = visibleProfiles.filter(p => p.preferred && (!defaultProfile || p.id !== defaultProfile.id));
-
-  $: showProfileDefault = !!defaultProfile;
-  $: showEditorDefault = editors.length >= 1;
-  $: showHarnessDefault = aiHarnesses.length >= 1;
-
-  $: showProfilesSub = preferredProfiles.length >= 1;
-  $: showEditorsSub = editors.length >= 2;
-  $: showHarnessSub = aiHarnesses.length >= 2;
-
-  $: hasDefaultsSection = showProfileDefault || showEditorDefault || showHarnessDefault;
-  $: hasSubsSection = showProfilesSub || showEditorsSub || showHarnessSub;
-  $: hasSweepSection = kind === 'repo' && !!onSweep;
-  $: hasMoveSection = kind === 'repo' && !!onMove;
-  $: hasContainerSection = kind === 'repo' && !!onToggleContainer;
-  $: hasAccountActions = kind === 'account' && (!!onFind || !!onCreate);
+  $: menuProfiles = visibleProfiles.filter(p => p === defaultProfile || p.preferred);
+  $: hasOpenWith = aiHarnesses.length > 0 || editors.length > 0 || menuProfiles.length > 0;
+  $: hasMaintenance = kind === 'repo' && (!!onSweep || !!onMove || !!onToggleContainer);
+  $: hasAccountActions = kind === 'account' && (!!onFind || !!onCreate || extraItems.length > 0);
 
   // Browser action label is kind-aware: repo kebab navigates to the repo
   // page on the provider; account kebab navigates to the account profile.
   $: browserLabel = browserLabelOverride || (kind === 'account' ? 'Navigate to account' : 'Navigate to repo');
 </script>
 
-<div class="action-dropdown launcher-menu" bind:this={rootEl}>
-  <button class="action-item" on:click|stopPropagation={onOpenBrowser} title={browserLabel}>
-    <span class="lm-icon">&#127760;</span> {browserLabel}
+<div class="action-dropdown launcher-menu" role="menu" bind:this={rootEl}>
+  <div class="lm-sec">{$t('menu.open')}</div>
+  <button class="action-item" role="menuitem" on:click|stopPropagation={onOpenBrowser} title={browserLabel}>
+    <span class="lm-icon">&#8599;</span> {browserLabel}
   </button>
-  <button class="action-item" on:click|stopPropagation={onOpenFolder} title={revealLabel}>
-    <span class="lm-icon">&#128193;</span> {revealLabel}
+  <button class="action-item" role="menuitem" on:click|stopPropagation={onOpenFolder} title={revealLabel}>
+    <span class="lm-icon">&#9636;</span> {revealLabel}
   </button>
 
-  {#if hasDefaultsSection}
-    <hr class="lm-sep" />
-    {#if showProfileDefault && defaultProfile}
-      <button class="action-item" on:click|stopPropagation={() => onOpenProfile(defaultProfile.id)} title={defaultProfile.name}>
-        <span class="lm-icon lm-icon-brand"><BrandIcon name={terminalLogo(defaultProfile.terminal, defaultProfile.shell)} /></span> {defaultProfile.name}
+  {#if hasOpenWith}
+    <div class="lm-sec">{$t('menu.openWith')}</div>
+    {#each aiHarnesses as harness, i}
+      <button class="action-item" role="menuitem" on:click|stopPropagation={() => onOpenAIHarness(harness)} title={harness.name}>
+        <span class="lm-icon lm-icon-brand"><BrandIcon name={harnessLogo(harness)} /></span> {harness.name}
+        {#if i === 0}<span class="lm-tag">{$t('menu.default')}</span>{/if}
       </button>
-    {/if}
-    {#if showEditorDefault}
-      <button class="action-item" on:click|stopPropagation={() => onOpenApp(editors[0].command)} title="Open with {editors[0].name}">
-        <span class="lm-icon">&#9998;</span> Open with {editors[0].name}
+    {/each}
+    {#each editors as editor, i}
+      <button class="action-item" role="menuitem" on:click|stopPropagation={() => onOpenApp(editor.command)} title={editor.name}>
+        <span class="lm-icon lm-icon-brand"><BrandIcon name={editorLogo(editor)} /></span> {editor.name}
+        {#if i === 0}<span class="lm-tag">{$t('menu.default')}</span>{/if}
       </button>
-    {/if}
-    {#if showHarnessDefault}
-      <button class="action-item" on:click|stopPropagation={() => onOpenAIHarness(aiHarnesses[0])} title="Open with {aiHarnesses[0].name}">
-        <span class="lm-icon">&#129302;</span> Open with {aiHarnesses[0].name}
+    {/each}
+    {#each menuProfiles as profile}
+      <button class="action-item" role="menuitem" on:click|stopPropagation={() => onOpenProfile(profile.id)} title={profile.name}>
+        <span class="lm-icon lm-icon-brand"><BrandIcon name={terminalLogo(profile.terminal, profile.shell)} /></span> {profile.name}
+        {#if profile === defaultProfile}<span class="lm-tag">{$t('menu.default')}</span>{/if}
       </button>
-    {/if}
+    {/each}
   {/if}
 
-  {#if hasSubsSection}
-    <hr class="lm-sep" />
-    {#if showProfilesSub}
-      <div class="lm-sub-container">
-        <button class="action-item lm-submenu-trigger" class:lm-active={openSubmenu === 'terminals'} on:click|stopPropagation={() => toggleSub('terminals')}>
-          <span class="lm-icon lm-icon-brand"><BrandIcon name="terminal" /></span> Terminals
-          <span class="lm-arrow">&#9654;</span>
-        </button>
-        {#if openSubmenu === 'terminals'}
-          <div class="action-dropdown launcher-submenu" bind:this={subEl}>
-            {#each preferredProfiles as profile}
-              <button class="action-item" on:click|stopPropagation={() => onOpenProfile(profile.id)}>
-                <span class="lm-icon lm-icon-brand"><BrandIcon name={terminalLogo(profile.terminal, profile.shell)} /></span> {profile.name}
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </div>
-    {/if}
-    {#if showEditorsSub}
-      <div class="lm-sub-container">
-        <button class="action-item lm-submenu-trigger" class:lm-active={openSubmenu === 'editors'} on:click|stopPropagation={() => toggleSub('editors')}>
-          <span class="lm-icon">&#9998;</span> Editors
-          <span class="lm-arrow">&#9654;</span>
-        </button>
-        {#if openSubmenu === 'editors'}
-          <div class="action-dropdown launcher-submenu" bind:this={subEl}>
-            {#each editors as editor}
-              <button class="action-item" on:click|stopPropagation={() => onOpenApp(editor.command)}>
-                <span class="lm-icon">&#9998;</span> {editor.name}
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </div>
-    {/if}
-    {#if showHarnessSub}
-      <div class="lm-sub-container">
-        <button class="action-item lm-submenu-trigger" class:lm-active={openSubmenu === 'ai'} on:click|stopPropagation={() => toggleSub('ai')}>
-          <span class="lm-icon">&#129302;</span> AI Harnesses
-          <span class="lm-arrow">&#9654;</span>
-        </button>
-        {#if openSubmenu === 'ai'}
-          <div class="action-dropdown launcher-submenu" bind:this={subEl}>
-            {#each aiHarnesses as harness}
-              <button class="action-item" on:click|stopPropagation={() => onOpenAIHarness(harness)}>
-                <span class="lm-icon">&#129302;</span> {harness.name}
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </div>
-    {/if}
-  {/if}
-
-  {#if hasSweepSection}
-    <hr class="lm-sep" />
-    <button class="action-item" on:click|stopPropagation={onSweep}>
-      <span class="lm-icon">&#129529;</span> Sweep branches
-    </button>
-  {/if}
-
-  {#if hasMoveSection}
-    <hr class="lm-sep" />
-    {#if moveEnabled}
-      <button class="action-item" on:click|stopPropagation={onMove} title="Move this repo to another account or provider">
-        <span class="lm-icon">&#8644;</span> Move repository…
+  {#if hasMaintenance}
+    <div class="lm-sec">{$t('menu.maintenance')}</div>
+    {#if onSweep}
+      <button class="action-item" role="menuitem" on:click|stopPropagation={onSweep}>
+        <span class="lm-icon">&#8997;</span> Sweep branches
       </button>
-    {:else}
-      <button class="action-item lm-disabled" disabled title={moveDisabledReason || 'Move requires a clean, in-sync clone'}>
+    {/if}
+    {#if onMove}
+      <button class="action-item" class:lm-disabled={!moveEnabled} role="menuitem" disabled={!moveEnabled}
+        on:click|stopPropagation={onMove}
+        title={moveEnabled ? 'Move this repo to another account or provider' : (moveDisabledReason || 'Move requires a clean, in-sync clone')}>
         <span class="lm-icon">&#8644;</span> Move repository…
       </button>
     {/if}
+    {#if onToggleContainer}
+      <button class="action-item" role="menuitem" on:click|stopPropagation={onToggleContainer}
+        title="A container repo holds nested clones in its working tree; gitbox discovers and onboards them">
+        <span class="lm-icon">&#9638;</span>
+        {isContainer ? 'Unmark as multi-repo container' : 'Mark as multi-repo container'}
+      </button>
+      {#if isContainer && onRescanContainer}
+        <button class="action-item" role="menuitem" on:click|stopPropagation={onRescanContainer}
+          title="Re-scan this container for nested clones to onboard">
+          <span class="lm-icon"><UIIcon name="fetch" /></span> Re-scan for nested clones
+        </button>
+      {/if}
+    {/if}
   {/if}
 
-  {#if hasContainerSection}
-    <hr class="lm-sep" />
-    {#if isContainer && onRescanContainer}
-      <button class="action-item" on:click|stopPropagation={onRescanContainer}
-        title="Re-scan this container for nested clones to onboard">
-        <span class="lm-icon">&#8635;</span> Re-scan for nested clones
+  {#if hasAccountActions}
+    <div class="lm-sec">{$t('menu.account')}</div>
+    {#if onFind}
+      <button class="action-item" class:lm-disabled={!findEnabled} role="menuitem" disabled={!findEnabled}
+        on:click|stopPropagation={onFind}
+        title={findEnabled ? 'Discover repos from provider API' : findDisabledReason}>
+        <span class="lm-icon"><UIIcon name="search" /></span> {$t('account.findProjects')}…
       </button>
     {/if}
-    <button class="action-item" on:click|stopPropagation={onToggleContainer}
-      title="A container repo holds nested clones in its working tree; gitbox discovers and onboards them">
-      <span class="lm-icon">&#128193;</span>
-      {isContainer ? 'Unmark as multi-repo container' : 'Mark as multi-repo container'}
-    </button>
+    {#if onCreate}
+      <button class="action-item" class:lm-disabled={!createEnabled} role="menuitem" disabled={!createEnabled}
+        on:click|stopPropagation={onCreate}
+        title={createEnabled ? 'Create a new repo on the provider' : createDisabledReason}>
+        <span class="lm-icon"><UIIcon name="plus" /></span> {$t('account.createRepo')}…
+      </button>
+    {/if}
+    {#each extraItems as item}
+      <button class="action-item" role="menuitem" on:click|stopPropagation={item.onClick} title={item.title || item.label}>
+        <span class="lm-icon">{item.icon}</span> {item.label}
+      </button>
+    {/each}
   {/if}
 
   {#if kind === 'repo' && onDelete}
     <hr class="lm-sep" />
-    <button class="action-item" on:click|stopPropagation={onDelete} title={deleteLabel}>
-      <span class="lm-icon">&#128465;</span> {deleteLabel}
+    <button class="action-item lm-danger" role="menuitem" on:click|stopPropagation={onDelete} title={deleteLabel || $t('menu.delete')}>
+      <span class="lm-icon"><UIIcon name="x" /></span> {deleteLabel || $t('menu.delete')}
     </button>
-  {/if}
-
-  {#if hasAccountActions}
-    <hr class="lm-sep" />
-    {#if onFind}
-      <button class="action-item" class:lm-disabled={!findEnabled} disabled={!findEnabled}
-        on:click|stopPropagation={onFind}
-        title={findEnabled ? 'Discover repos from provider API' : findDisabledReason}>
-        <span class="lm-icon">&#128269;</span> Find projects
-      </button>
-    {/if}
-    {#if onCreate}
-      <button class="action-item" class:lm-disabled={!createEnabled} disabled={!createEnabled}
-        on:click|stopPropagation={onCreate}
-        title={createEnabled ? 'Create a new repo on the provider' : createDisabledReason}>
-        <span class="lm-icon">&#65291;</span> Create repo
-      </button>
-    {/if}
   {/if}
 </div>
 
 <style>
   /* The dropdown and item styling lives here: Svelte's scoped styles don't
      cross component boundaries, so the menu owns it (PRPopover keeps its own
-     copy for its wider popover). */
+     copy for its wider popover). The menu is fixed so scrolling ancestors
+     can't clip it; positionMenu() sets top/left in viewport coordinates. */
   .action-dropdown {
-    position: absolute;
-    right: 0;
-    top: 100%;
-    margin-top: 4px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    min-width: 240px;
+    max-width: 340px;
+    padding: 5px;
     background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-    min-width: 160px;
+    border: 1px solid var(--border-hover);
+    border-radius: 9px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
     z-index: 100;
-    overflow: hidden;
+    display: flex;
+    flex-direction: column;
     /* Safety net: on very small viewports, scroll inside the menu instead
-       of clipping below the fold. The flip/shift logic above handles the
-       normal case; this only kicks in when no side has enough space. */
+       of clipping below the fold. */
     max-height: calc(100vh - 16px);
     overflow-y: auto;
+  }
+
+  .lm-sec {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    padding: 7px 9px 3px;
   }
 
   .action-item {
     display: flex;
     align-items: center;
+    gap: 9px;
     width: 100%;
-    padding: 8px 14px;
+    padding: 6px 9px;
     border: none;
+    border-radius: 6px;
     background: transparent;
     color: var(--text-secondary);
     text-align: left;
@@ -445,52 +296,41 @@
     color: var(--text-primary);
   }
 
-  /* Launcher-specific layout additions. The root menu is fixed so scrolling
-     ancestors can't clip it; positionMenu() sets top/left in viewport
-     coordinates. Submenus stay absolute inside it. */
-  .launcher-menu {
-    min-width: 220px;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: auto;
-    margin: 0;
-  }
-
   .lm-sep {
     border: 0;
     border-top: 1px solid var(--border);
-    margin: 4px 0;
+    margin: 4px 2px;
   }
 
   .lm-icon {
-    display: inline-block;
-    width: 18px;
-    text-align: center;
-    margin-right: 10px;
+    width: var(--icon);
+    height: var(--icon);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     color: var(--text-dim);
+    font-size: 13px;
     flex: 0 0 auto;
   }
 
   /* Brand logos: the dark-theme single-colour version follows the item's
      text colour, hover included. */
   .lm-icon-brand {
-    display: inline-flex;
-    justify-content: center;
     color: inherit;
   }
 
-  .lm-arrow {
+  /* The launcher the row's own button uses. */
+  .lm-tag {
     margin-left: auto;
-    padding-left: 10px;
-    color: var(--text-dim);
+    padding-left: 12px;
     font-size: 10px;
-    flex: 0 0 auto;
+    color: var(--text-dim);
   }
 
-  .lm-active {
-    background: var(--bg-hover);
-    color: var(--text-primary);
+  .lm-danger,
+  .lm-danger .lm-icon,
+  .lm-danger:hover {
+    color: var(--alert);
   }
 
   .lm-disabled {
@@ -499,36 +339,5 @@
   }
   .lm-disabled:hover {
     background: transparent;
-  }
-
-  .lm-sub-container {
-    position: relative;
-  }
-
-  /* Overflow has to release for submenus to escape the parent dropdown —
-     action-dropdown above uses overflow: hidden which otherwise clips them. */
-  .launcher-menu {
-    overflow: visible;
-  }
-
-  /* Default (repo-row kebab): parent menu is pinned right: 0 so it extends
-     to the left of the kebab. Open the submenu further left so it stays on
-     screen. */
-  .launcher-submenu {
-    position: absolute;
-    top: -4px;
-    right: 100%;
-    margin-right: 2px;
-    min-width: 180px;
-    z-index: 101;
-  }
-
-  /* Account-header kebab: flip the submenu to open right so it stays on
-     screen. */
-  :global(.source-header-kebab) .launcher-submenu {
-    right: auto;
-    left: 100%;
-    margin-right: 0;
-    margin-left: 2px;
   }
 </style>

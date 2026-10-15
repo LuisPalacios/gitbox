@@ -120,7 +120,7 @@
     padding: 6px 12px;
     font-size: 11px;
     color: var(--text-muted);
-    display: flex; gap: 6px;
+    display: flex; align-items: center; gap: 6px;
     overflow: hidden;
   }
   .workspace-file-label { color: var(--text-dim); flex: 0 0 auto; }

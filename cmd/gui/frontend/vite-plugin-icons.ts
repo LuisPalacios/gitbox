@@ -6,7 +6,7 @@
 //   brand/logo-<name>.svg       colour original, shown as drawn (light theme)
 //   brand/logo-<name>-dark.svg  single-colour version, recoloured (dark theme)
 //   brand/invert-light.txt      logo names shown inverted in the light theme
-//   ui/<name>.svg               single-colour top-bar icon, recoloured
+//   ui/<name>.svg               single-colour UI icon, recoloured
 //
 // Colour originals become data URIs rendered through <img>, which keeps their
 // gradient and filter ids isolated. Single-colour files are inlined with
@@ -45,7 +45,7 @@ const stripEditorData: CustomPlugin = {
   }),
 };
 
-// Drop the hidden guide box (and anything else hidden): the top-bar icons keep
+// Drop the hidden guide box (and anything else hidden): the UI icons keep
 // it so every icon is drawn inside the same frame, but it must not reach the
 // app. Logos have no guide box; their whole canvas is shown.
 const dropHidden: CustomPlugin = {

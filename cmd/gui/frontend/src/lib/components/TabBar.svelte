@@ -70,7 +70,7 @@
     align-items: flex-end;
     border-bottom: 1px solid var(--border);
   }
-  .tab-bar-actions { margin-left: auto; display: flex; gap: 6px; padding-bottom: 6px; }
+  .tab-bar-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; padding-bottom: 6px; }
   .btn-tab-action {
     padding: 3px 10px; font-size: 11px; font-weight: 500;
     border: 1px solid #1e3a5f; background: rgba(37, 99, 235, 0.1);

@@ -6,6 +6,7 @@
   import { statusColor } from '../status';
   import { t } from '../i18n';
   import Card from '../Card.svelte';
+  import UIIcon from '../UIIcon.svelte';
   import type { MirrorDTO, MirrorRepo, MirrorStatusResult } from '../types';
 
   export let cardsVisible: boolean;
@@ -147,7 +148,7 @@
           {/if}
           <button class="btn-tab-action" on:click={() => onAddRepo(mirrorKey)}>{$t('mirror.addRepo')}</button>
           {#if deleteMode}
-            <button class="btn-sm btn-danger" on:click={() => onDeleteGroup(mirrorKey)}>✕</button>
+            <button class="icon-btn icon-btn-danger btn-delete-x" on:click={() => onDeleteGroup(mirrorKey)} title="Delete mirror group {mirrorKey}" aria-label="Delete mirror group {mirrorKey}"><UIIcon name="x" /></button>
           {/if}
         </div>
       </div>
@@ -179,7 +180,7 @@
             <button class="btn-sm btn-setup" on:click={() => setupMirrorRepo(mirrorKey, repoName)} disabled={settingUp}>{$t('mirror.setup')}</button>
           {/if}
           {#if deleteMode}
-            <button class="btn-sm btn-danger" on:click={() => onDeleteRepo(mirrorKey, repoName)}>✕</button>
+            <button class="icon-btn icon-btn-danger btn-delete-x" on:click={() => onDeleteRepo(mirrorKey, repoName)} title="Delete {repoName} from {mirrorKey}" aria-label="Delete {repoName} from {mirrorKey}"><UIIcon name="x" /></button>
           {/if}
         </div>
       {/each}
