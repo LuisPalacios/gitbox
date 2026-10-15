@@ -1,5 +1,5 @@
 import { writable, derived } from 'svelte/store';
-import { simpleKind } from './theme';
+import { simpleKind } from './status';
 import type { ConfigDTO, Account, SourceDTO, MirrorDTO, MirrorStatusResult, RepoState, StatusResult, PRSummaryDTO, PRAccountUpdateDTO, WorkspaceDTO } from './types';
 
 // ── Config store — loaded once from Go backend ──

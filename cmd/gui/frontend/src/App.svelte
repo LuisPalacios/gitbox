@@ -10,8 +10,9 @@
     workspaces, workspaceOrder, workspaceMemberships, selectedClones,
     toggleCloneSelection, clearCloneSelection, isSynced, simpleSummary
   } from './lib/stores';
-  import { statusColor, credColor, providerLabel, providerURLs, statusSymbol, simpleKind, simpleColor } from './lib/theme';
-  import type { SimpleKind } from './lib/theme';
+  import { credColor, providerLabel, providerURLs } from './lib/theme';
+  import { statusColor, simpleKind, simpleColor, simpleLabelKey, simpleUnsaved, rowBusy, rowGlyph, advancedLabel, COUNT_BADGES, countBadge, statusCountBadge, detailLocked, opensDetail, credBroken, canDiscoverWith, canCreateWith, credBadgeClass, credBadgeLabel, DISCOVER_DISABLED, CREATE_DISABLED } from './lib/status';
+  import type { SimpleKind } from './lib/status';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit, EventsOn } from '../wailsjs/runtime/runtime';
   import type { RepoState, CredentialStatus, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
@@ -843,19 +844,6 @@
     if (!cardsVisible) toggleCards();
   }
 
-  // Credential rules shared by the account card and the account kebab.
-  function credBroken(status: string | undefined): boolean {
-    return status === 'none' || status === 'error';
-  }
-  function canDiscoverWith(status: string | undefined): boolean {
-    return !!status && status !== 'none' && status !== 'error' && status !== 'offline' && status !== 'unknown';
-  }
-  function canCreateWith(status: string | undefined): boolean {
-    return status === 'ok';
-  }
-  const DISCOVER_DISABLED = 'No working credential for this account';
-  const CREATE_DISABLED = 'Needs a working API credential (GCM that accepts the API, or a companion PAT)';
-
   // closeDetailIf drops the open detail panel when a collapse hides its row.
   function closeDetailIf(hidden: (key: string) => boolean) {
     if (expandedRepo && !detailLoading && hidden(expandedRepo)) {
@@ -961,10 +949,9 @@
   let detailLoading = false;
 
   // Auto-collapse expanded detail when the repo no longer needs attention.
-  const nonExpandable = new Set(['clean', 'behind', 'not cloned', 'cloning', 'syncing']);
   $: if (expandedRepo) {
     const st = $repoStates[expandedRepo];
-    if (st && nonExpandable.has(st.status)) {
+    if (st && detailLocked(st.status)) {
       expandedRepo = null;
       repoDetail = null;
     }
@@ -972,7 +959,7 @@
 
   async function toggleRepoDetail(sourceKey: string, repoName: string, status: string) {
     // Only expand for repos that need attention (not clean, behind, not cloned, or in-progress)
-    if (status === 'clean' || status === 'behind' || status === 'not cloned' || status === 'cloning' || status === 'syncing') return;
+    if (detailLocked(status)) return;
     const key = `${sourceKey}/${repoName}`;
     if (expandedRepo === key && !detailLoading) {
       expandedRepo = null;
@@ -3164,19 +3151,16 @@
         <div class="compact-repo-list" transition:slide={{ duration: 120 }}>
           {#each Object.entries($sources).filter(([, source]) => source.account === key).flatMap(([sourceKey]) => treeRows[sourceKey] || []) as { key: repoKey, sourceKey: rowSourceKey, repoName, depth }}
             {@const state = $repoStates[repoKey] || { status: 'unknown', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0, branch: '', isDefault: false }}
+            {@const count = statusCountBadge(state.status)}
             <div class="compact-row" style={`padding-left: ${depth * 12}px`} class:compact-row-ok={state.status === 'clean'}>
               {#if rowSourceKey && $sources[rowSourceKey].account !== key}<span class="compact-badge">{$sources[rowSourceKey].account}</span>{/if}
-              <span class="compact-dot" class:spinning={state.status === 'unknown' || !!fetchingRepos[repoKey]} style="color: {sc(state.status)}">{state.status === 'unknown' || fetchingRepos[repoKey] ? '↻' : statusSymbol(state.status)}</span>
+              <span class="compact-dot" class:spinning={rowBusy(state.status, !!fetchingRepos[repoKey])} style="color: {sc(state.status)}">{rowGlyph(state.status, !!fetchingRepos[repoKey])}</span>
               <span class="compact-repo-name">{repoName.includes('/') ? repoName.split('/').pop() : repoName}</span>
               {#if state.branch === '(detached)'}
                 <span class="compact-badge" style="color: {sc('error')}">detached</span>
               {/if}
-              {#if state.status === 'behind'}
-                <span class="compact-badge" style="color: {sc('behind')}">{state.behind} behind</span>
-              {:else if state.status === 'dirty'}
-                <span class="compact-badge" style="color: {sc('dirty')}">{state.modified} changed</span>
-              {:else if state.status === 'ahead'}
-                <span class="compact-badge" style="color: {sc('ahead')}">{state.ahead} ahead</span>
+              {#if count}
+                <span class="compact-badge" style="color: {sc(count.color)}">{state[count.field]} {count.word}</span>
               {/if}
             </div>
           {/each}
@@ -3594,9 +3578,9 @@
               <button class="cred-badge cred-badge-err" on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')}>{$t('simple.reconnect')}</button>
             {/if}
           {:else}
-          <button class="cred-badge cred-badge-{credOverall === 'ok' ? 'ok' : credOverall === 'error' ? 'err' : credOverall === 'warning' ? 'warn' : credOverall === 'offline' ? 'offline' : credOverall === 'none' ? 'none' : credOverall === 'unknown' ? 'pending' : ''}"
+          <button class="cred-badge cred-badge-{credBadgeClass(credOverall)}"
             on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')}
-            title="Credential: {acct.default_credential_type || 'none'} — {credOverall}">{credOverall === 'unknown' ? '···' : credOverall === 'none' ? 'config' : credOverall === 'offline' ? 'offline' : acct.default_credential_type || 'gcm'}</button>
+            title="Credential: {acct.default_credential_type || 'none'} — {credOverall}">{credBadgeLabel(credOverall, acct.default_credential_type)}</button>
           {/if}
           <span class="card-actions">
             <button class="card-btn card-btn-sm" on:click={() => openDiscover(key)} disabled={!canDiscover} title={canDiscover ? $t('account.findProjects') : DISCOVER_DISABLED}>{$t('account.find')}</button>
@@ -3619,7 +3603,7 @@
       {@const sourceCollapsed = collapsedSources.has(sourceKey)}
       {@const sourceRepoKeys = [...new Set((treeRows[sourceKey] || []).flatMap(row => [row.key, ...row.descendants]))]}
       {@const sourceIssues = sourceRepoKeys.filter(key => $repoStates[key] && $repoStates[key].status !== 'unknown' && !isSynced($repoStates[key])).length}
-      {@const sourceUnsaved = sourceRepoKeys.filter(key => ['unsaved', 'help'].includes(simpleKind(($repoStates[key] || { status: 'unknown' }).status))).length}
+      {@const sourceUnsaved = sourceRepoKeys.filter(key => simpleUnsaved(($repoStates[key] || { status: 'unknown' }).status)).length}
       {#if sourceRepoKeys.length > 0}
       <div class="source-group">
         <div class="source-header" role="button" tabindex="0"
@@ -3683,7 +3667,7 @@
           {@const repoKey = `${rowSourceKey}/${repoName}`}
           {@const isContainer = !!$sources[rowSourceKey]?.repos[repoName]?.container}
           {@const state = $repoStates[repoKey] || { status: 'unknown', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
-          {@const rowOpensDetail = state.status !== 'unknown' && state.status !== 'clean' && state.status !== 'behind' && state.status !== 'not cloned' && state.status !== 'cloning' && state.status !== 'syncing'}
+          {@const rowOpensDetail = opensDetail(state.status)}
           <div class="repo-row" class:repo-row-clickable={rowOpensDetail}
             class:repo-row-nested={depth > 0}
             style={depth > 0 ? `padding-left: ${10 + depth * 22}px` : ''}
@@ -3713,7 +3697,7 @@
               <!-- Simple row (issue #124): dot, short name, one sentence, one button, ⋯ -->
               {@const kind = simpleKind(state.status)}
               {@const kindColor = simpleColor(kind, $themeStore)}
-              <span class="dot" class:spinning={state.status === 'unknown' || !!fetchingRepos[repoKey]} style="color: {kindColor}">{state.status === 'unknown' || fetchingRepos[repoKey] ? '↻' : '●'}</span>
+              <span class="dot" class:spinning={rowBusy(state.status, !!fetchingRepos[repoKey])} style="color: {kindColor}">{rowBusy(state.status, !!fetchingRepos[repoKey]) ? '↻' : '●'}</span>
               {#if childCount > 0}
                 <span class="repo-name" title={repoName}><span class="repo-name-toggle" role="button" tabindex="-1"
                   on:click={(e) => { e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants); }}
@@ -3722,7 +3706,7 @@
                 <span class="repo-name" title={repoName}>{shortName(repoName)}</span>
               {/if}
               {#if childCount > 0 && collapsedRepos.has(repoKey)}
-                {@const belowUnsaved = descendants.filter((d) => ['unsaved', 'help'].includes(simpleKind(($repoStates[d] || { status: 'unknown' }).status))).length}
+                {@const belowUnsaved = descendants.filter((d) => simpleUnsaved(($repoStates[d] || { status: 'unknown' }).status)).length}
                 <span class="collapse-summary collapse-summary-row">
                   {$t('collapse.below', { n: descendants.length })}{#if belowUnsaved > 0} · <span style="color:{sc('dirty')}">{$t('simple.notSavedN', { n: belowUnsaved })}</span>{/if}
                 </span>
@@ -3733,7 +3717,7 @@
                 </div>
                 <span class="progress-pct" style="color:{kindColor}">{state.progress}%</span>
               {:else}
-                <span class="status-text" style="color: {kindColor}" title={simpleTip(kind, state)}>{$t(`simple.${kind === 'busy' ? 'checking' : kind}`)}</span>
+                <span class="status-text" style="color: {kindColor}" title={simpleTip(kind, state)}>{$t(simpleLabelKey(kind))}</span>
                 {#if kind === 'update'}
                   <button class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)}>{$t('simple.btnUpdate')}</button>
                 {:else if kind === 'online'}
@@ -3767,7 +3751,7 @@
                 </div>
               {/if}
             {:else}
-            <span class="dot" class:spinning={state.status === 'unknown' || !!fetchingRepos[repoKey]} style="color: {sc(state.status)}">{state.status === 'unknown' || fetchingRepos[repoKey] ? '↻' : statusSymbol(state.status)}</span>
+            <span class="dot" class:spinning={rowBusy(state.status, !!fetchingRepos[repoKey])} style="color: {sc(state.status)}">{rowGlyph(state.status, !!fetchingRepos[repoKey])}</span>
             {#if membershipsFor(repoKey).length > 0}
               <div class="ws-badge-wrap">
                 <button class="ws-badge"
@@ -3834,6 +3818,7 @@
             {:else}
               {#if state.status === 'unknown'}<span class="status-pending">{$t('simple.checking')}</span>{/if}
               {#if state.status !== 'unknown'}
+              {@const label = advancedLabel(state.status, state.isDefault)}
               {#if !deleteMode && $prSettings.enabled}
                 {@const prSummary = lookupPRSummary($prsByAccount, rowAccountKey, repoName)}
                 {@const acctForPRs = $accounts[rowAccountKey]}
@@ -3877,26 +3862,13 @@
                 {/if}
               {/if}
               <span class="status-badges">
-                {#if state.status === 'clean'}
-                  <span class="status-text" style="color:{sc('clean')}">{$t('repo.synced')}</span>
-                {:else if state.status === 'not cloned'}
-                  <span class="status-text" style="color:{sc('not cloned')}">{$t('repo.notLocal')}</span>
-                {:else if state.status === 'no upstream'}
-                  {#if state.isDefault}
-                    <span class="status-text" style="color:{sc('no upstream')}">{$t('repo.noUpstream')}</span>
-                  {:else}
-                    <span class="status-text" style="color:{sc('clean')}">{$t('repo.localBranch')}</span>
-                  {/if}
-                {:else if state.status === 'error'}
-                  <span class="status-text" style="color:{sc('error')}">{$t('repo.error')}</span>
-                {:else if state.status === 'upstream gone'}
-                  <span class="status-text" style="color:{sc('upstream gone')}">{$t('repo.upstreamGone')}</span>
+                {#if label}
+                  <span class="status-text" style="color:{sc(label.color)}">{$t(label.key)}</span>
                 {:else}
                   <span class="status-pending">{$t('repo.pending')}</span>
-                  {#if state.behind > 0}<span class="sbadge" style="color:{sc('behind')}" title="{state.behind} behind">↓{state.behind}</span>{/if}
-                  {#if state.ahead > 0}<span class="sbadge" style="color:{sc('ahead')}" title="{state.ahead} ahead">↑{state.ahead}</span>{/if}
-                  {#if state.modified > 0}<span class="sbadge" style="color:{sc('dirty')}" title="{state.modified} changed">✎{state.modified}</span>{/if}
-                  {#if state.untracked > 0}<span class="sbadge" style="color:{sc('not cloned')}" title="{state.untracked} untracked">?{state.untracked}</span>{/if}
+                  {#each COUNT_BADGES as b}
+                    {#if state[b.field] > 0}<span class="sbadge" style="color:{sc(b.color)}" title="{state[b.field]} {b.word}">{b.glyph}{state[b.field]}</span>{/if}
+                  {/each}
                 {/if}
               </span>
               {#if state.status === 'behind'}
@@ -3969,15 +3941,15 @@
                 <div class="detail-header">
                   <span class="detail-branch">Branch: <strong>{repoDetail.branch}</strong></span>
                   {#if repoDetail.ahead > 0}
-                    <span class="detail-badge" style="color:{sc('ahead')}">{repoDetail.ahead} ahead</span>
+                    <span class="detail-badge" style="color:{sc(countBadge('ahead').color)}">{repoDetail.ahead} {countBadge('ahead').word}</span>
                   {/if}
                   {#if repoDetail.behind > 0}
-                    <span class="detail-badge" style="color:{sc('behind')}">{repoDetail.behind} behind</span>
+                    <span class="detail-badge" style="color:{sc(countBadge('behind').color)}">{repoDetail.behind} {countBadge('behind').word}</span>
                   {/if}
                 </div>
                 {/if}
                 {#if repoDetail.changed.length > 0}
-                  <div class="detail-section-title">{simple ? $t('simple.changedFiles') : 'Changed files'} <span class="sbadge" style="color:{sc('dirty')}">✎{repoDetail.changed.length}</span></div>
+                  <div class="detail-section-title">{simple ? $t('simple.changedFiles') : 'Changed files'} <span class="sbadge" style="color:{sc(countBadge('modified').color)}">{countBadge('modified').glyph}{repoDetail.changed.length}</span></div>
                   {#each repoDetail.changed as file}
                     <div class="detail-file">
                       <span class="detail-kind" class:kind-added={file.kind === 'added'} class:kind-deleted={file.kind === 'deleted'} class:kind-conflict={file.kind === 'conflict'} title={kindLabel(file.kind)}>{kindIcon(file.kind)}</span>
@@ -3986,7 +3958,7 @@
                   {/each}
                 {/if}
                 {#if repoDetail.untracked.length > 0}
-                  <div class="detail-section-title">{simple ? $t('simple.newFiles') : 'New files (untracked)'} <span class="sbadge" style="color:{sc('not cloned')}">?{repoDetail.untracked.length}</span></div>
+                  <div class="detail-section-title">{simple ? $t('simple.newFiles') : 'New files (untracked)'} <span class="sbadge" style="color:{sc(countBadge('untracked').color)}">{countBadge('untracked').glyph}{repoDetail.untracked.length}</span></div>
                   {#each repoDetail.untracked as file}
                     <div class="detail-file">
                       <span class="detail-kind kind-untracked" title="Untracked">?</span>
