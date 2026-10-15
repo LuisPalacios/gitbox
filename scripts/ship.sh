@@ -116,6 +116,8 @@ build_and_ship_gui() {
     ssh "$host" "rm -rf ~/$remote_dir && mkdir -p ~/$remote_dir" || return 1
 
     echo ">> tar source → ssh"
+    # AGENTS.md and .agents are symlinks for Codex. The build needs neither,
+    # and Git Bash's tar on Windows can't create them, failing the extract.
     (cd "$REPO_ROOT" && tar \
         --exclude="./.git" \
         --exclude="./build" \
@@ -123,6 +125,8 @@ build_and_ship_gui() {
         --exclude="./cmd/gui/frontend/node_modules" \
         --exclude="./cmd/gui/frontend/dist" \
         --exclude="./.env" \
+        --exclude="./AGENTS.md" \
+        --exclude="./.agents" \
         -cf - .) | ssh "$host" "cd ~/$remote_dir && tar -xf -" || return 1
 
     # PATH covers: Apple Silicon Homebrew (/opt/homebrew/bin), Intel Homebrew
