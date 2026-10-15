@@ -40,7 +40,7 @@
     </svg>
     <div class="compact-global-text">
       <span class="compact-global-pct" style="color: {callGood ? sc('clean') : sc('behind')}">{pendingStatus ? $t('simple.checking') : `${cpct}%`}</span>
-      <span class="compact-global-label">{$summary.clean}/{$summary.total} synced</span>
+      <span class="compact-global-label">{$t('compact.upToDate', { n: $summary.clean, total: $summary.total })}</span>
     </div>
   </div>
 
@@ -69,9 +69,9 @@
           {#if Object.entries($sources).some(([sk, src]) => src.account === key && Object.keys(src.repos).some(rn => !$repoStates[`${sk}/${rn}`] || $repoStates[`${sk}/${rn}`].status === 'unknown'))}
             <span class="spinning">↻</span> {$t('simple.checking')}
           {:else if stats.issues === 0}
-            <span style="color:{sc('clean')}">All good</span>
+            <span style="color:{sc('clean')}">{$t('account.allUpToDate')}</span>
           {:else}
-            <span style="color:{sc('behind')}">{stats.issues} need attention</span>
+            <span style="color:{sc('behind')}">{stats.issues} {stats.issues === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}</span>
           {/if}
         </span>
       </div>

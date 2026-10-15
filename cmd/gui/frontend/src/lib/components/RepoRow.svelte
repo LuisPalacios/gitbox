@@ -1,11 +1,54 @@
+<script module lang="ts">
+  import type { RepoState, RepoDetailView, EditorInfo, AIHarnessInfo, TerminalProfileInfo } from '../types';
+
+  // RowProps is what every row shares with its list: App builds it once and
+  // each view passes it down unchanged. The detail fields feed RepoTree, the
+  // rest RepoRow. Rows never write it back; they call the close callbacks.
+  export interface RowProps {
+    simple: boolean;
+    deleteMode: boolean;
+    fetchingRepos: Record<string, boolean>;
+    collapsedRepos: Set<string>;
+    tentativeContainers: Set<string>;
+    workspaceBusy: boolean;
+    openWsPopover: string | null;
+    revealLabel: string;
+    configEditors: EditorInfo[];
+    configProfiles: TerminalProfileInfo[];
+    configAIHarnesses: AIHarnessInfo[];
+    actionMenuRepo: string | null;
+    openPRPopover: string | null;
+    expandedRepo: string | null;
+    repoDetail: RepoDetailView | null;
+    detailLoading: boolean;
+    activateRepoRow: (sourceKey: string, repoName: string, status: string) => void;
+    askDelete: (sourceKey: string, repoKey: string, status: string) => void;
+    syncRepo: (sourceKey: string, repoKey: string) => void;
+    cloneRepo: (sourceKey: string, repoKey: string) => void;
+    fetchRepo: (sourceKey: string, repoKey: string) => void;
+    toggleActionMenu: (repoKey: string) => void;
+    closeActionMenu: () => void;
+    toggleWsPopover: (key: string) => void;
+    openWorkspaceFromBadge: (wsKey: string) => Promise<void>;
+    togglePRPopover: (key: string) => void;
+    closePRPopover: () => void;
+    sweepBranches: (sourceKey: string, repoKey: string) => void;
+    openMoveRepo: (sourceKey: string, repoKey: string) => void;
+    toggleContainer: (sourceKey: string, repoName: string) => Promise<void>;
+    rescanContainer: () => Promise<void>;
+    toggleRepoCollapsed: (repoKey: string, descendants: string[]) => void;
+    isContainerRepo: (sourceKey: string, repoName: string) => boolean;
+  }
+</script>
+
 <script lang="ts">
-  // One clone of the repo list: the Simple row (dot, short name, one
-  // sentence, one button, ⋯) or the Advanced row (status shape, workspace
-  // and PR badges, branch, counts, launchers, fetch and ⋯).
+  // One clone of the repo list: the Simple row (dot, short name, its words,
+  // one button, launchers, ⋯) or the Advanced row (status shape, workspace
+  // and PR badges, branch, its words, launchers, fetch and ⋯).
   import { fade } from 'svelte/transition';
   import { bridge } from '../bridge';
   import { accounts, repoStates, prSettings, prsByAccount, lookupPRSummary, workspaces, workspaceMemberships, isSynced, themeStore } from '../stores';
-  import { statusColor, simpleKind, simpleColor, simpleLabelKey, simpleUnsaved, rowBusy, rowGlyph, advancedLabel, COUNT_BADGES } from '../status';
+  import { statusColor, simpleKind, simpleColor, rowBusy, rowGlyph, statusLabel, attentionRank, CALM_RANK, COUNT_BADGES } from '../status';
   import type { SimpleKind } from '../status';
   import { t } from '../i18n';
   import { onActivateKey } from '../keyboard';
@@ -13,7 +56,6 @@
   import PRPopover from '../PRPopover.svelte';
   import BrandIcon, { terminalLogo, harnessLogo, editorLogo } from '../BrandIcon.svelte';
   import UIIcon from '../UIIcon.svelte';
-  import type { RepoState, EditorInfo, AIHarnessInfo, TerminalProfileInfo } from '../types';
 
   // The row's group, its own source (another account's for a nested clone
   // shown under its container) and its place in the tree.
@@ -28,6 +70,13 @@
   export let isContainer: boolean;
   export let state: RepoState;
   export let rowOpensDetail: boolean;
+  // Views without the account groups name the row's account, and a nested
+  // clone shown away from its container names that parent.
+  export let showAccount = false;
+  export let parentLabel = '';
+  // Healthy rows fade until hovered, so problems stand out.
+  export let fadeHealthy = false;
+  // Shared with the whole list (RowProps; the detail fields go to RepoTree).
   export let simple: boolean;
   export let deleteMode: boolean;
   export let fetchingRepos: Record<string, boolean>;
@@ -51,6 +100,7 @@
   export let toggleWsPopover: (key: string) => void;
   export let openWorkspaceFromBadge: (wsKey: string) => Promise<void>;
   export let togglePRPopover: (key: string) => void;
+  export let closePRPopover: () => void;
   export let sweepBranches: (sourceKey: string, repoKey: string) => void;
   export let openMoveRepo: (sourceKey: string, repoKey: string) => void;
   export let toggleContainer: (sourceKey: string, repoName: string) => Promise<void>;
@@ -59,6 +109,12 @@
   export let isContainerRepo: (sourceKey: string, repoName: string) => boolean;
 
   $: sc = (s: string) => statusColor(s, $themeStore);
+  $: busy = rowBusy(state.status, !!fetchingRepos[repoKey]);
+  $: label = statusLabel(state, simple);
+  // Nested clones below a folded parent, and how many of them need me.
+  $: belowNeed = descendants.filter((d) => { const st = $repoStates[d]; return !!st && attentionRank(st.status, st.isDefault) < CALM_RANK; }).length;
+  // A folded parent hiding clones that need me stays at full strength.
+  $: calm = fadeHealthy && !busy && isSynced(state) && !(belowNeed > 0 && collapsedRepos.has(repoKey));
 
   // requireRepoPath returns the row's local clone path, or shows the
   // "clone first" dialog and returns null. Path-based kebab actions used
@@ -173,8 +229,7 @@
     return '';
   }
 
-  // Simple row helpers: the short project name, the "not saved yet" detail,
-  // and the one primary launcher (first AI harness, else editor, else folder).
+  // Simple row helpers: the short project name and the local-work detail.
   function shortName(repoName: string): string {
     return repoName.split('/').pop() || repoName;
   }
@@ -184,6 +239,13 @@
     if (state.status === 'ahead') return $t('simple.tipAhead');
     if (state.status === 'no upstream') return $t('simple.tipNoUpstream');
     return $t('simple.tipDirty', { n: (state.modified || 0) + (state.untracked || 0) });
+  }
+  // The words' tooltip: Simple explains its kind, Advanced splits local
+  // changes into changed and untracked files.
+  function labelTip(state: RepoState): string {
+    if (simple) return simpleTip(simpleKind(state.status), state);
+    if (state.status === 'dirty') return $t('status.changesTip', { m: state.modified || 0, u: state.untracked || 0 });
+    return '';
   }
   // Every cloned row, Simple or Advanced, carries three icon-only launchers:
   // the first AI harness, the first editor, and the default terminal profile
@@ -196,6 +258,23 @@
     return visible.find((p) => p.default) || visible[0] || null;
   })();
 </script>
+
+<!-- The status in the glossary words, with its dimmed note. -->
+{#snippet words()}
+  <span class="status-text" style="color: {sc(label.color)}" title={labelTip(state)}>{$t(label.key, label.vars)}{#if label.note}<span class="safe-note">&nbsp;{$t(label.note, label.noteVars)}</span>{/if}</span>
+{/snippet}
+
+<!-- After the name: the account pill, the parent tag and a folded parent's
+     count of clones below. -->
+{#snippet rowTags()}
+  {#if showAccount}<span class="acct-pill">{rowAccountKey}</span>{/if}
+  {#if parentLabel}<span class="container-badge" title={parentLabel}>{$t('repo.inParent', { name: parentLabel.split('/').pop() || parentLabel })}</span>{/if}
+  {#if childCount > 0 && collapsedRepos.has(repoKey)}
+    <span class="collapse-summary collapse-summary-row">
+      {$t('collapse.below', { n: descendants.length })}{#if belowNeed > 0}{' · '}<span style="color:{sc('dirty')}">{$t(belowNeed === 1 ? 'collapse.needYouOne' : 'collapse.needYou', { n: belowNeed })}</span>{/if}
+    </span>
+  {/if}
+{/snippet}
 
 {#snippet quickLaunch(repoKey: string)}
   <span class="launch-group">
@@ -218,14 +297,14 @@
 {/snippet}
 
 <div class="repo-row" class:repo-row-clickable={rowOpensDetail}
-  class:repo-row-nested={depth > 0}
+  class:repo-row-nested={depth > 0} class:calm
   style={depth > 0 ? `padding-left: ${10 + depth * 22}px` : ''}
   role="button"
   tabindex={rowOpensDetail ? 0 : -1}
   aria-disabled={!rowOpensDetail}
   on:click={() => activateRepoRow(rowSourceKey, repoName, state.status)}
   on:keydown={onActivateKey(() => activateRepoRow(rowSourceKey, repoName, state.status))}>
-  {#if rowSourceKey !== sourceKey}<span class="container-badge" title={rowSourceKey}>{rowAccountKey}</span>{/if}
+  {#if rowSourceKey !== sourceKey && !showAccount}<span class="container-badge" title={rowSourceKey}>{rowAccountKey}</span>{/if}
   {#if deleteMode}
     <button class="icon-btn icon-btn-danger btn-delete-x" on:click|stopPropagation={() => askDelete(rowSourceKey, repoName, state.status)} title="Delete {repoName}" aria-label="Delete {repoName}"><UIIcon name="x" /></button>
   {/if}
@@ -242,7 +321,7 @@
     <!-- Simple row (issue #124): dot, short name, one sentence, one button, ⋯ -->
     {@const kind = simpleKind(state.status)}
     {@const kindColor = simpleColor(kind, $themeStore)}
-    <span class="dot" class:spinning={rowBusy(state.status, !!fetchingRepos[repoKey])} style="color: {kindColor}">{rowBusy(state.status, !!fetchingRepos[repoKey]) ? '↻' : '●'}</span>
+    <span class="dot" class:spinning={busy} style="color: {kindColor}">{busy ? '↻' : '●'}</span>
     {#if childCount > 0}
       <span class="repo-name" title={repoName}><span class="repo-name-toggle" role="button" tabindex="-1"
         on:click={(e) => { e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants); }}
@@ -250,21 +329,16 @@
     {:else}
       <span class="repo-name" title={repoName}>{shortName(repoName)}</span>
     {/if}
-    {#if childCount > 0 && collapsedRepos.has(repoKey)}
-      {@const belowUnsaved = descendants.filter((d) => simpleUnsaved(($repoStates[d] || { status: 'unknown' }).status)).length}
-      <span class="collapse-summary collapse-summary-row">
-        {$t('collapse.below', { n: descendants.length })}{#if belowUnsaved > 0} · <span style="color:{sc('dirty')}">{$t('simple.notSavedN', { n: belowUnsaved })}</span>{/if}
-      </span>
-    {/if}
+    {@render rowTags()}
     {#if state.status === 'syncing' || state.status === 'cloning'}
       <div class="progress-track">
         <div class="progress-fill" style="width:{state.progress}%; background:{kindColor}"></div>
       </div>
       <span class="progress-pct" style="color:{kindColor}">{state.progress}%</span>
     {:else}
-      <span class="status-text" style="color: {kindColor}" title={simpleTip(kind, state)}>{$t(simpleLabelKey(kind))}</span>
+      {@render words()}
       {#if kind === 'update'}
-        <button class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)}>{$t('simple.btnUpdate')}</button>
+        <button class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)} title={$t('simple.updateTip')}>{$t('simple.btnUpdate')}</button>
       {:else if kind === 'online'}
         <button class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('simple.btnDownload')}</button>
       {/if}
@@ -288,14 +362,14 @@
               onOpenFolder={() => openRepoInExplorer(repoKey)}
               onOpenApp={(cmd) => openRepoInApp(repoKey, cmd)}
               onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
-              onDelete={() => { actionMenuRepo = null; askDelete(rowSourceKey, repoName, state.status); }}
+              onDelete={() => { closeActionMenu(); askDelete(rowSourceKey, repoName, state.status); }}
             />
           </div>
         {/if}
       </div>
     {/if}
   {:else}
-  <span class="dot" class:spinning={rowBusy(state.status, !!fetchingRepos[repoKey])} style="color: {sc(state.status)}">{rowGlyph(state.status, !!fetchingRepos[repoKey])}</span>
+  <span class="dot" class:spinning={busy} style="color: {sc(state.status)}">{rowGlyph(state.status, !!fetchingRepos[repoKey])}</span>
   {#if membershipsFor(repoKey).length > 0}
     <div class="ws-badge-wrap">
       <button class="ws-badge"
@@ -335,12 +409,7 @@
   {:else}
     <span class="repo-name">{repoName}</span>
   {/if}
-  {#if childCount > 0 && collapsedRepos.has(repoKey)}
-    {@const below = descendants.filter(key => $repoStates[key] && $repoStates[key].status !== 'unknown' && !isSynced($repoStates[key])).length}
-    <span class="collapse-summary collapse-summary-row">
-      {$t('collapse.below', { n: descendants.length })}{#if below > 0} · <span style="color:{sc('behind')}">{below} {below === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}</span>{/if}
-    </span>
-  {/if}
+  {@render rowTags()}
   {#if isContainer}
     <span class="container-badge" title="Multi-repo container — holds nested clones">&#128193; container</span>
   {:else if isTentativeContainer(rowSourceKey, repoName, tentativeContainers)}
@@ -362,7 +431,6 @@
   {:else}
     {#if state.status === 'unknown'}<span class="status-pending">{$t('simple.checking')}</span>{/if}
     {#if state.status !== 'unknown'}
-    {@const label = advancedLabel(state.status, state.isDefault)}
     {#if !deleteMode && $prSettings.enabled}
       {@const prSummary = lookupPRSummary($prsByAccount, rowAccountKey, repoName)}
       {@const acctForPRs = $accounts[rowAccountKey]}
@@ -378,8 +446,8 @@
                 prs={prSummary.authored}
                 providerName={acctForPRs?.provider || ''}
                 providerAllURL={providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName)}
-                onOpenPR={(url) => { bridge.openInBrowser(url); openPRPopover = null; }}
-                onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); openPRPopover = null; }}
+                onOpenPR={(url) => { bridge.openInBrowser(url); closePRPopover(); }}
+                onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); closePRPopover(); }}
               />
             </div>
           {/if}
@@ -397,8 +465,8 @@
                 prs={prSummary.reviewRequested}
                 providerName={acctForPRs?.provider || ''}
                 providerAllURL={providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName)}
-                onOpenPR={(url) => { bridge.openInBrowser(url); openPRPopover = null; }}
-                onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); openPRPopover = null; }}
+                onOpenPR={(url) => { bridge.openInBrowser(url); closePRPopover(); }}
+                onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); closePRPopover(); }}
               />
             </div>
           {/if}
@@ -406,19 +474,17 @@
       {/if}
     {/if}
     <span class="status-badges">
-      {#if label}
-        <span class="status-text" style="color:{sc(label.color)}">{$t(label.key)}</span>
-      {:else}
-        <span class="status-pending">{$t('repo.pending')}</span>
+      {@render words()}
+      {#if label.badges}
         {#each COUNT_BADGES as b}
           {#if state[b.field] > 0}<span class="sbadge" style="color:{sc(b.color)}" title="{state[b.field]} {b.word}">{b.glyph}{state[b.field]}</span>{/if}
         {/each}
       {/if}
     </span>
     {#if state.status === 'behind'}
-      <button class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)}>{$t('repo.pull')}</button>
+      <button class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)} title={$t('repo.pullTip')}>{$t('repo.pull')} <span class="btn-tag">{$t('repo.ffOnly')}</span></button>
     {:else if state.status === 'not cloned'}
-      <button class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('repo.bringLocal')}</button>
+      <button class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('repo.clone')}</button>
     {/if}
     {/if}
     {#if !deleteMode && state.status !== 'not cloned'}
@@ -440,13 +506,13 @@
               onOpenProfile={(id) => openRepoProfile(repoKey, id)}
               onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
               onSweep={() => sweepBranches(rowSourceKey, repoName)}
-              onMove={() => { actionMenuRepo = null; openMoveRepo(rowSourceKey, repoName); }}
+              onMove={() => { closeActionMenu(); openMoveRepo(rowSourceKey, repoName); }}
               moveEnabled={repoMoveDisabledReason(state) === ''}
               moveDisabledReason={repoMoveDisabledReason(state)}
               isContainer={isContainerRepo(rowSourceKey, repoName)}
-              onToggleContainer={() => { actionMenuRepo = null; toggleContainer(rowSourceKey, repoName); }}
-              onRescanContainer={() => { actionMenuRepo = null; rescanContainer(); }}
-              onDelete={() => { actionMenuRepo = null; askDelete(rowSourceKey, repoName, state.status); }}
+              onToggleContainer={() => { closeActionMenu(); toggleContainer(rowSourceKey, repoName); }}
+              onRescanContainer={() => { closeActionMenu(); rescanContainer(); }}
+              onDelete={() => { closeActionMenu(); askDelete(rowSourceKey, repoName, state.status); }}
             />
           </div>
         {/if}
@@ -501,8 +567,15 @@
   .progress-track { width: 110px; height: 4px; background: var(--ring-bg); border-radius: 2px; overflow: hidden; flex-shrink: 0; }
   .progress-fill { height: 100%; border-radius: 2px; transition: width 0.12s ease-out; }
   .progress-pct { font-size: 11px; width: 32px; text-align: right; flex-shrink: 0; font-weight: 600; }
-  .status-text { font-size: 12px; white-space: nowrap; font-weight: 600; }
+  .status-text { font-size: 12px; white-space: nowrap; font-weight: 600; display: inline-flex; align-items: center; }
+  .safe-note { color: var(--text-muted); font-weight: 500; }
+  .btn-tag { font-size: 10px; color: var(--text-muted); border-left: 1px solid var(--border); padding-left: 6px; margin-left: 2px; }
+  .acct-pill { font-size: 10.5px; color: var(--text-muted); white-space: nowrap; flex: none; }
+  /* Healthy rows step back until hovered or focused, so problems stand out. */
+  .repo-row.calm { opacity: 0.55; }
+  .repo-row.calm:hover, .repo-row.calm:focus-within { opacity: 1; }
   .btn-action {
+    display: inline-flex; align-items: center; gap: 4px;
     padding: 3px 10px; background: transparent; border: 1px solid var(--border);
     color: var(--text-secondary); border-radius: 5px; cursor: pointer;
     font-size: 11px; font-weight: 500; transition: all 0.15s; flex-shrink: 0;

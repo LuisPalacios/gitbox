@@ -6,7 +6,7 @@
     configStore, accounts, sources, mirrors, repoStates, themeStore, applyStatusResults,
     applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate
   } from './lib/stores';
-  import { detailLocked, credBroken } from './lib/status';
+  import { detailLocked, credBroken, attentionRank } from './lib/status';
   import { languageStore, normalizeLanguage } from './lib/i18n';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit, EventsOn } from '../wailsjs/runtime/runtime';
   import type { RepoState, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
@@ -21,6 +21,7 @@
   import TabBar from './lib/components/TabBar.svelte';
   import AccountCards from './lib/components/AccountCards.svelte';
   import RepoList from './lib/components/RepoList.svelte';
+  import type { RowProps } from './lib/components/RepoRow.svelte';
   import MirrorsTab from './lib/components/MirrorsTab.svelte';
   import WorkspacesTab from './lib/components/WorkspacesTab.svelte';
   import Footer from './lib/components/Footer.svelte';
@@ -682,7 +683,12 @@
     saveCollapsed();
   }
 
-  $: treeRows = repoTreeRows($sources, repoNesting, collapsedRepos);
+  // Problems first: siblings sort by the worst attention rank in their
+  // subtree (repo-tree.ts), so a parent rises with its worst nested clone.
+  $: treeRows = repoTreeRows($sources, repoNesting, collapsedRepos, (key) => {
+    const st = $repoStates[key];
+    return st ? attentionRank(st.status, st.isDefault) : attentionRank('unknown');
+  });
 
   // ── Sweep branches modal ──
   let sweepDialog: SweepModal;
@@ -1138,6 +1144,9 @@
   function togglePRPopover(key: string) {
     openPRPopover = openPRPopover === key ? null : key;
   }
+  function closePRPopover() {
+    openPRPopover = null;
+  }
 
   // Which workspace popover is open: keyed by `${sourceKey}/${repoName}` or null.
   // Driven by the workspace badge on each clone row; lists every workspace the
@@ -1167,6 +1176,18 @@
       fetchingRepos = {};
     }
   }
+
+  // Everything a clone row shares with its list, passed unchanged through
+  // every repo view (RowProps in RepoRow.svelte).
+  let rowProps: RowProps;
+  $: rowProps = {
+    simple, deleteMode, fetchingRepos, collapsedRepos, tentativeContainers, workspaceBusy, openWsPopover,
+    revealLabel, configEditors, configProfiles, configAIHarnesses, actionMenuRepo, openPRPopover,
+    expandedRepo, repoDetail, detailLoading,
+    activateRepoRow, askDelete, syncRepo, cloneRepo, fetchRepo, toggleActionMenu, closeActionMenu,
+    toggleWsPopover, openWorkspaceFromBadge, togglePRPopover, closePRPopover, sweepBranches, openMoveRepo,
+    toggleContainer, rescanContainer, toggleRepoCollapsed, isContainerRepo,
+  };
 
   // ── Credential status cache ──
   let credStatuses: Record<string, any> = {};
@@ -1658,13 +1679,8 @@
     onAddAccount={() => { if (simple) connectModal = true; else addAccountDialog.open(); }} />
 
   <!-- ── REPO LIST ── -->
-  <RepoList {treeRows} {collapsedSources} {collapsedRepos} {simple} {deleteMode} {fetchingRepos} {credStatuses}
-    {tentativeContainers} {workspaceBusy} {openWsPopover} {revealLabel} {configEditors} {configProfiles} {configAIHarnesses}
-    {expandedRepo} {repoDetail} {detailLoading}
-    bind:actionMenuAccount bind:actionMenuRepo bind:openPRPopover
-    {toggleSourceCollapsed} {toggleRepoCollapsed} {toggleAccountMenu} {closeAccountMenu} {openDiscover} {openCreateRepo} {openEditAccount} {openCredChange}
-    {activateRepoRow} {askDelete} {syncRepo} {cloneRepo} {fetchRepo} {toggleActionMenu} {closeActionMenu} {toggleWsPopover}
-    {openWorkspaceFromBadge} {togglePRPopover} {sweepBranches} {openMoveRepo} {toggleContainer} {rescanContainer} {isContainerRepo} />
+  <RepoList {treeRows} {collapsedSources} {credStatuses} {actionMenuAccount} {rowProps}
+    {toggleSourceCollapsed} {toggleAccountMenu} {closeAccountMenu} {openDiscover} {openCreateRepo} {openEditAccount} {openCredChange} />
 
   {:else if cardsTab === 'mirrors'}
   <!-- ── MIRRORS TAB ── -->

@@ -132,14 +132,14 @@ export function statusLabel(st: LabelState, simple: boolean): StatusLabel {
   if (simple) {
     const kind = simpleKind(st.status);
     const color = simpleColorKeys[kind];
-    if (kind === 'wip') return { key: 'simple.wip', note: 'simple.wipSafe', noteVars: { n: changes }, color, badges: false };
+    if (kind === 'wip') return { key: 'simple.wip', note: changes === 1 ? 'simple.wipSafeOne' : 'simple.wipSafe', noteVars: { n: changes }, color, badges: false };
     return { key: simpleLabelKey(kind), color, badges: false };
   }
   switch (st.status) {
     case 'clean': return { key: 'status.upToDate', color: 'clean', badges: false };
     case 'behind': return { key: 'status.behind', vars: { n: st.behind || 0 }, color: 'behind', badges: false };
     case 'ahead': return { key: 'status.ahead', vars: { n: st.ahead || 0 }, color: 'ahead', badges: false };
-    case 'dirty': return { key: 'status.localChanges', vars: { n: changes }, note: 'status.protected', color: 'dirty', badges: false };
+    case 'dirty': return { key: changes === 1 ? 'status.localChange' : 'status.localChanges', vars: { n: changes }, note: changes === 1 ? 'status.protectedOne' : 'status.protected', color: 'dirty', badges: false };
     case 'diverged': return { key: 'status.diverged', color: 'diverged', badges: true };
     case 'conflict': return { key: 'status.conflict', color: 'conflict', badges: true };
     case 'upstream gone': return { key: 'status.upstreamGone', color: 'upstream gone', badges: false };
@@ -147,21 +147,6 @@ export function statusLabel(st: LabelState, simple: boolean): StatusLabel {
     case 'not cloned': return { key: 'status.notCloned', color: 'not cloned', badges: false };
     case 'no upstream': return st.isDefault ? { key: 'repo.noUpstream', color: 'no upstream', badges: false } : { key: 'repo.localBranch', color: 'clean', badges: false };
     default: return { key: 'simple.checking', color: 'not cloned', badges: false };
-  }
-}
-
-// ── Advanced label ──
-// The one-word label an Advanced row shows for a settled status, with the
-// palette entry that colours it. null means the row shows its count badges
-// instead (dirty, ahead, behind, diverged, conflict).
-export function advancedLabel(status: string, isDefault: boolean | undefined): { key: string; color: string } | null {
-  switch (status) {
-    case 'clean': return { key: 'repo.synced', color: 'clean' };
-    case 'not cloned': return { key: 'repo.notLocal', color: 'not cloned' };
-    case 'no upstream': return isDefault ? { key: 'repo.noUpstream', color: 'no upstream' } : { key: 'repo.localBranch', color: 'clean' };
-    case 'error': return { key: 'repo.error', color: 'error' };
-    case 'upstream gone': return { key: 'repo.upstreamGone', color: 'upstream gone' };
-    default: return null;
   }
 }
 

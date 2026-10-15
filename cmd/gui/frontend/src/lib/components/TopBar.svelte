@@ -35,7 +35,7 @@
       <span class="health-num">{$simpleSummary.saved}/{$simpleSummary.total}</span>
     </span>
     <span class="health-label">{$simpleSummary.help > 0 ? $t('simple.needHelpN', { n: $simpleSummary.help })
-      : $simpleSummary.wip + $simpleSummary.unpushed > 0 ? $t('simple.notSavedN', { n: $simpleSummary.wip + $simpleSummary.unpushed })
+      : $simpleSummary.wip + $simpleSummary.unpushed > 0 ? $t('simple.wipN', { n: $simpleSummary.wip + $simpleSummary.unpushed })
       : $t('simple.allSaved')}</span>
   </div>
   {:else}
@@ -43,7 +43,7 @@
        tracks, the corner badge counts what is not there yet, and the hover
        tooltip spells it out. -->
   {@const repoPending = $summary.total - $summary.clean}
-  {@const repoTip = `${$summary.clean}/${$summary.total} synced${repoPending > 0 ? ` · ${repoPending} ${repoPending === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}` : ''}`}
+  {@const repoTip = `${$t('top.upToDateTip', { n: $summary.clean, total: $summary.total })}${repoPending > 0 ? ` · ${repoPending} ${repoPending === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}` : ''}`}
   <div class="health">
     <span class="health-ring health-ring-mini" role="img" aria-label={repoTip} use:tooltip={{ text: repoTip, delay: 150 }}
       style="--pct: {$summary.total ? ($summary.clean / $summary.total) * 100 : 0}">
@@ -73,14 +73,14 @@
   <div class="topbar-actions">
     <button class="icon-btn" on:click={syncAll}
       disabled={syncing || ($summary.behind === 0 && $summary.notCloned === 0)}
-      title="{simple ? $t('simple.updateAll') : syncing ? 'Pulling...' : 'Pull All'}">
+      title={syncing ? $t(simple ? 'simple.updating' : 'top.pulling') : $t(simple ? 'simple.updateAll' : 'top.pullAll')}>
       <span class="icon-spin" class:spinning={syncing}><UIIcon name="pull" /></span>
     </button>
-    {#if !simple}
     <button class="icon-btn" on:click={runFetchAll} disabled={fetchingAll}
-      title="{fetchingAll ? 'Fetching...' : 'Fetch All'}">
+      title={fetchingAll ? $t(simple ? 'simple.checking' : 'top.fetching') : $t(simple ? 'simple.checkAll' : 'top.fetchAll')}>
       <span class="icon-spin" class:spinning={fetchingAll}><UIIcon name="fetch" /></span>
     </button>
+    {#if !simple}
     <button class="icon-btn" class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title="{deleteMode ? 'Exit delete mode' : 'Delete mode'}"><UIIcon name="trash" /></button>
     <button class="icon-btn" on:click={toggleViewMode} title="Compact view"><UIIcon name="compact" /></button>
     <button class="icon-btn" on:click={cycleTheme} title="Theme: {themeChoice}"><UIIcon name={themeChoice === 'light' || themeChoice === 'dark' ? `theme-${themeChoice}` : 'theme-system'} /></button>

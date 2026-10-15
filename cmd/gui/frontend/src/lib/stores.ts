@@ -73,6 +73,8 @@ export const summary = derived(repoStates, ($rs) => {
     syncing: vals.filter((r) => r.status === 'syncing' || r.status === 'cloning').length,
     notCloned: vals.filter((r) => r.status === 'not cloned').length,
     error: vals.filter((r) => r.status === 'error').length,
+    // Needs help: diverged, conflict, upstream gone or error.
+    problems: vals.filter((r) => ['diverged', 'conflict', 'upstream gone', 'error'].includes(r.status)).length,
     total: vals.length,
   };
 });
