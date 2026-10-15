@@ -29,9 +29,10 @@
   export let aiHarnesses: AIHarnessInfo[] = [];
   // revealLabel is the OS-aware string for the folder action: "Reveal in
   // Explorer" on Windows, "Reveal in Finder" on macOS, "Reveal in files"
-  // on Linux. Defaulted to a generic phrasing so missing wiring still
+  // on Linux. Falls back to a generic phrasing so missing wiring still
   // renders something coherent.
-  export let revealLabel: string = 'Reveal in file manager';
+  export let revealLabel: string = '';
+  $: revealText = revealLabel || $t('launcher.revealDefault');
 
   export let onOpenBrowser: () => void;
   export let onOpenFolder: () => void;
@@ -147,7 +148,7 @@
 
   // Browser action label is kind-aware: repo kebab navigates to the repo
   // page on the provider; account kebab navigates to the account profile.
-  $: browserLabel = browserLabelOverride || (kind === 'account' ? 'Navigate to account' : 'Navigate to repo');
+  $: browserLabel = browserLabelOverride || (kind === 'account' ? $t('launcher.navigateAccount') : $t('launcher.navigateRepo'));
 </script>
 
 <div class="action-dropdown launcher-menu" role="menu" bind:this={rootEl}>
@@ -155,8 +156,8 @@
   <button class="action-item" role="menuitem" on:click|stopPropagation={onOpenBrowser} title={browserLabel}>
     <span class="lm-icon">&#8599;</span> {browserLabel}
   </button>
-  <button class="action-item" role="menuitem" on:click|stopPropagation={onOpenFolder} title={revealLabel}>
-    <span class="lm-icon">&#9636;</span> {revealLabel}
+  <button class="action-item" role="menuitem" on:click|stopPropagation={onOpenFolder} title={revealText}>
+    <span class="lm-icon">&#9636;</span> {revealText}
   </button>
 
   {#if hasOpenWith}
@@ -185,26 +186,26 @@
     <div class="lm-sec">{$t('menu.maintenance')}</div>
     {#if onSweep}
       <button class="action-item" role="menuitem" on:click|stopPropagation={onSweep}>
-        <span class="lm-icon">&#8997;</span> Sweep branches
+        <span class="lm-icon">&#8997;</span> {$t('launcher.sweep')}
       </button>
     {/if}
     {#if onMove}
       <button class="action-item" class:lm-disabled={!moveEnabled} role="menuitem" disabled={!moveEnabled}
         on:click|stopPropagation={onMove}
-        title={moveEnabled ? 'Move this repo to another account or provider' : (moveDisabledReason || 'Move requires a clean, in-sync clone')}>
-        <span class="lm-icon">&#8644;</span> Move repository…
+        title={moveEnabled ? $t('launcher.moveTip') : (moveDisabledReason || $t('launcher.moveNeedsClean'))}>
+        <span class="lm-icon">&#8644;</span> {$t('launcher.move')}
       </button>
     {/if}
     {#if onToggleContainer}
       <button class="action-item" role="menuitem" on:click|stopPropagation={onToggleContainer}
-        title="A container repo holds nested clones in its working tree; gitbox discovers and onboards them">
+        title={$t('launcher.containerTip')}>
         <span class="lm-icon">&#9638;</span>
-        {isContainer ? 'Unmark as multi-repo container' : 'Mark as multi-repo container'}
+        {isContainer ? $t('launcher.unmarkContainer') : $t('launcher.markContainer')}
       </button>
       {#if isContainer && onRescanContainer}
         <button class="action-item" role="menuitem" on:click|stopPropagation={onRescanContainer}
-          title="Re-scan this container for nested clones to onboard">
-          <span class="lm-icon"><UIIcon name="fetch" /></span> Re-scan for nested clones
+          title={$t('launcher.rescanTip')}>
+          <span class="lm-icon"><UIIcon name="fetch" /></span> {$t('launcher.rescan')}
         </button>
       {/if}
     {/if}
@@ -215,14 +216,14 @@
     {#if onFind}
       <button class="action-item" class:lm-disabled={!findEnabled} role="menuitem" disabled={!findEnabled}
         on:click|stopPropagation={onFind}
-        title={findEnabled ? 'Discover repos from provider API' : findDisabledReason}>
+        title={findEnabled ? $t('launcher.findTip') : findDisabledReason}>
         <span class="lm-icon"><UIIcon name="search" /></span> {$t('account.findProjects')}…
       </button>
     {/if}
     {#if onCreate}
       <button class="action-item" class:lm-disabled={!createEnabled} role="menuitem" disabled={!createEnabled}
         on:click|stopPropagation={onCreate}
-        title={createEnabled ? 'Create a new repo on the provider' : createDisabledReason}>
+        title={createEnabled ? $t('launcher.createTip') : createDisabledReason}>
         <span class="lm-icon"><UIIcon name="plus" /></span> {$t('account.createRepo')}…
       </button>
     {/if}

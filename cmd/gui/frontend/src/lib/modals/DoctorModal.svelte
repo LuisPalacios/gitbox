@@ -5,6 +5,7 @@
   import { bridge } from '../bridge';
   import type { DoctorReport } from '../bridge';
   import { dismiss } from '../dismiss';
+  import { t } from '../i18n';
 
   // One-line result shown next to the Run button in Settings.
   export let doctorSummary = '';
@@ -19,12 +20,16 @@
     doctorReport = null;
     try {
       doctorReport = await bridge.doctorRun();
-      doctorSummary = doctorReport.allOk
-        ? 'All tools present'
-        : `${doctorReport.missingReq} required missing`;
     } finally {
       doctorLoading = false;
     }
+  }
+
+  // Follows the language, so the Settings line re-reads after a switch.
+  $: if (doctorReport) {
+    doctorSummary = doctorReport.allOk
+      ? $t('doctor.allPresent')
+      : $t('doctor.requiredMissing', { n: doctorReport.missingReq });
   }
 </script>
 
@@ -32,47 +37,47 @@
   <div class="overlay" use:dismiss={() => showDoctorModal = false} transition:fade={{ duration: 120 }}>
     <div class="modal modal-doctor" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
       <div class="modal-head">
-        <h3>System check</h3>
+        <h3>{$t('settings.systemCheck')}</h3>
         <button class="btn-x" on:click={() => showDoctorModal = false}>&#10005;</button>
       </div>
       <div class="modal-body">
         {#if doctorLoading}
-          <div class="loading"><div class="spinner"></div><span>Probing tools...</span></div>
+          <div class="loading"><div class="spinner"></div><span>{$t('doctor.probing')}</span></div>
         {:else if doctorReport}
           <p class="doctor-summary">
             {#if doctorReport.allOk}
-              <span class="doctor-ok">✓ Everything gitbox needs is installed.</span>
+              <span class="doctor-ok">✓ {$t('doctor.allOk')}</span>
             {:else}
-              <span class="doctor-err">✕ {doctorReport.missingReq} required tool{doctorReport.missingReq === 1 ? '' : 's'} missing.</span>
+              <span class="doctor-err">✕ {$t(doctorReport.missingReq === 1 ? 'doctor.missingReqOne' : 'doctor.missingReqN', { n: doctorReport.missingReq })}</span>
             {/if}
             {#if doctorReport.missingOpt > 0}
-              <span class="doctor-opt"> {doctorReport.missingOpt} optional tool{doctorReport.missingOpt === 1 ? '' : 's'} not installed.</span>
+              <span class="doctor-opt"> {$t(doctorReport.missingOpt === 1 ? 'doctor.missingOptOne' : 'doctor.missingOptN', { n: doctorReport.missingOpt })}</span>
             {/if}
           </p>
           <div class="doctor-list">
-            {#each doctorReport.tools as t}
-              <div class="doctor-row" class:doctor-row-missing-req={!t.found && t.required}>
+            {#each doctorReport.tools as tool}
+              <div class="doctor-row" class:doctor-row-missing-req={!tool.found && tool.required}>
                 <span class="doctor-state"
-                      class:doctor-state-ok={t.found}
-                      class:doctor-state-err={!t.found && t.required}
-                      class:doctor-state-opt={!t.found && !t.required}>
-                  {t.found ? '✓' : (t.required ? '✕' : '·')}
+                      class:doctor-state-ok={tool.found}
+                      class:doctor-state-err={!tool.found && tool.required}
+                      class:doctor-state-opt={!tool.found && !tool.required}>
+                  {tool.found ? '✓' : (tool.required ? '✕' : '·')}
                 </span>
                 <div class="doctor-main">
                   <div class="doctor-head">
-                    <span class="doctor-name">{t.displayName}</span>
-                    {#if t.required}<span class="doctor-tag">required</span>{/if}
-                    {#if t.found && t.version}<span class="doctor-version">{t.version}</span>{/if}
+                    <span class="doctor-name">{tool.displayName}</span>
+                    {#if tool.required}<span class="doctor-tag">{$t('doctor.required')}</span>{/if}
+                    {#if tool.found && tool.version}<span class="doctor-version">{tool.version}</span>{/if}
                   </div>
-                  {#if t.found}
-                    <div class="doctor-path">{t.path}</div>
+                  {#if tool.found}
+                    <div class="doctor-path">{tool.path}</div>
                   {:else}
-                    <div class="doctor-purpose">{t.purpose}</div>
-                    {#if t.required && t.requiredFor}
-                      <div class="doctor-reason">needed: {t.requiredFor}</div>
+                    <div class="doctor-purpose">{tool.purpose}</div>
+                    {#if tool.required && tool.requiredFor}
+                      <div class="doctor-reason">{$t('doctor.needed', { what: tool.requiredFor })}</div>
                     {/if}
-                    {#if t.installHint}
-                      <div class="doctor-install"><span class="doctor-install-label">install:</span> <code>{t.installHint}</code></div>
+                    {#if tool.installHint}
+                      <div class="doctor-install"><span class="doctor-install-label">{$t('doctor.install')}</span> <code>{tool.installHint}</code></div>
                     {/if}
                   {/if}
                 </div>
@@ -82,8 +87,8 @@
         {/if}
       </div>
       <div class="modal-foot">
-        <button class="btn-cancel" on:click={() => showDoctorModal = false}>Close</button>
-        <button class="btn-add" on:click={openDoctorModal} disabled={doctorLoading}>Re-check</button>
+        <button class="btn-cancel" on:click={() => showDoctorModal = false}>{$t('common.close')}</button>
+        <button class="btn-add" on:click={openDoctorModal} disabled={doctorLoading}>{$t('common.recheck')}</button>
       </div>
     </div>
   </div>

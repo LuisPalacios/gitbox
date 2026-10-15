@@ -49,49 +49,49 @@
   <div class="overlay" use:dismiss={() => orphanModal = null} transition:fade={{ duration: 120 }}>
     <div class="modal modal-adopt" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
       <div class="modal-head modal-head-adopt">
-        <h3>Adopt orphan repos</h3>
+        <h3>{$t('orphans.title')}</h3>
         <button class="btn-x" on:click={() => orphanModal = null}>&#10005;</button>
       </div>
       <div class="modal-body">
         {#each orphanModal.orphans.filter(o => o.matchedAccount && !o.localOnly) as o, i}
           {#if i === 0}
-            <p class="adopt-section-label">Ready to adopt ({orphanModal.orphans.filter(o => o.matchedAccount && !o.localOnly).length}):</p>
+            <p class="adopt-section-label">{$t('orphans.ready', { n: orphanModal.orphans.filter(o => o.matchedAccount && !o.localOnly).length })}</p>
           {/if}
           <label class="adopt-item">
             <input type="checkbox" checked={orphanModal.selected.has(o.repoKey)} on:change={() => toggleOrphan(o.repoKey)} />
             <span class="adopt-repo-key">{o.repoKey}</span>
             <span class="adopt-target">&rarr; {o.matchedSource}</span>
-            <span class="adopt-action">{o.nested ? 'nested (in place)' : o.needsRelocate ? 'relocate' : 'in place'}</span>
-            <span class="adopt-path"><span class="adopt-path-root">Root</span>/{o.relPath}</span>
+            <span class="adopt-action">{o.nested ? $t('orphans.nested') : o.needsRelocate ? $t('orphans.relocate') : $t('orphans.inPlace')}</span>
+            <span class="adopt-path"><span class="adopt-path-root">{$t('orphans.root')}</span>/{o.relPath}</span>
           </label>
         {/each}
         {#each orphanModal.orphans.filter(o => !o.matchedAccount && !o.localOnly) as o, i}
           {#if i === 0}
-            <p class="adopt-section-label adopt-section-unknown">Unknown account ({orphanModal.orphans.filter(o => !o.matchedAccount && !o.localOnly).length}):</p>
+            <p class="adopt-section-label adopt-section-unknown">{$t('orphans.unknown', { n: orphanModal.orphans.filter(o => !o.matchedAccount && !o.localOnly).length })}</p>
           {/if}
           <div class="adopt-item adopt-item-muted">
             <span class="adopt-repo-key">{o.repoKey}</span>
             <span class="adopt-remote">{o.remoteURL}</span>
             {#if o.ambiguousCandidates && o.ambiguousCandidates.length > 1}
-              <span class="adopt-hint">ambiguous: {o.ambiguousCandidates.join(' | ')}</span>
+              <span class="adopt-hint">{$t('orphans.ambiguous', { list: o.ambiguousCandidates.join(' | ') })}</span>
             {/if}
-            <span class="adopt-path adopt-path-muted"><span class="adopt-path-root">Root</span>/{o.relPath}</span>
+            <span class="adopt-path adopt-path-muted"><span class="adopt-path-root">{$t('orphans.root')}</span>/{o.relPath}</span>
           </div>
         {/each}
         {#each orphanModal.orphans.filter(o => o.localOnly) as o, i}
           {#if i === 0}
-            <p class="adopt-section-label adopt-section-local">Local only ({orphanModal.orphans.filter(o => o.localOnly).length}):</p>
+            <p class="adopt-section-label adopt-section-local">{$t('orphans.localOnly', { n: orphanModal.orphans.filter(o => o.localOnly).length })}</p>
           {/if}
           <div class="adopt-item adopt-item-muted">
             <span class="adopt-repo-key">{o.relPath}</span>
-            <span class="adopt-remote">no remote</span>
+            <span class="adopt-remote">{$t('orphans.noRemote')}</span>
           </div>
         {/each}
       </div>
       <div class="modal-foot">
-        <button class="btn-cancel" on:click={() => orphanModal = null}>Cancel</button>
+        <button class="btn-cancel" on:click={() => orphanModal = null}>{$t('common.cancel')}</button>
         <button class="btn-adopt-confirm" on:click={confirmAdopt} disabled={orphanBusy || orphanModal.selected.size === 0}>
-          {orphanBusy ? 'Adopting...' : `Adopt ${orphanModal.selected.size} repo(s)`}
+          {orphanBusy ? $t('orphans.adopting') : $t(orphanModal.selected.size === 1 ? 'orphans.adoptOne' : 'orphans.adoptN', { n: orphanModal.selected.size })}
         </button>
       </div>
     </div>

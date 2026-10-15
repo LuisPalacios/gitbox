@@ -9,6 +9,8 @@
   import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime';
   import CredentialResult from '../CredentialResult.svelte';
   import PrecheckBanner from '../PrecheckBanner.svelte';
+  import Rich from '../Rich.svelte';
+  import { t } from '../i18n';
 
   // Shared credential operation state (App).
   export let credResult: { ok: boolean; message: string; needsPAT?: boolean; sshPublicKey?: string; sshAddURL?: string; sshVerified?: boolean } | null;
@@ -53,10 +55,10 @@
 
   async function submitAddAccount() {
     addAccountError = '';
-    if (!addAcct.key.trim()) { addAccountError = 'Account key is required'; return; }
-    if (!addAcct.provider) { addAccountError = 'Provider is required'; return; }
-    if (!addAcct.url.trim()) { addAccountError = 'URL is required'; return; }
-    if (!addAcct.username.trim()) { addAccountError = 'Username is required'; return; }
+    if (!addAcct.key.trim()) { addAccountError = $t('accountForm.keyRequired'); return; }
+    if (!addAcct.provider) { addAccountError = $t('accountForm.providerRequired'); return; }
+    if (!addAcct.url.trim()) { addAccountError = $t('accountForm.urlRequired'); return; }
+    if (!addAcct.username.trim()) { addAccountError = $t('accountForm.usernameRequired'); return; }
     try {
       await bridge.addAccount(addAcct);
       await reloadFromDisk();
@@ -82,7 +84,7 @@
   <div class="overlay" use:dismiss={() => { if (addAccountStep === 'form') resetAddAccount(); }} transition:fade={{ duration: 120 }}>
     <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
       <div class="modal-head">
-        <h3>{addAccountStep === 'form' ? 'Add account' : 'Credential setup'}</h3>
+        <h3>{addAccountStep === 'form' ? $t('account.add') : $t('addAccount.credTitle')}</h3>
         <button class="btn-x" on:click={resetAddAccount}>&#10005;</button>
       </div>
       <div class="modal-body">
@@ -92,11 +94,11 @@
             <p class="form-error">{addAccountError}</p>
           {/if}
           <div class="form-row">
-            <label class="form-label" for="aa-key">Account key</label>
-            <input class="form-input" id="aa-key" bind:value={addAcct.key} placeholder="github-MyUser" />
+            <label class="form-label" for="aa-key">{$t('accountForm.key')}</label>
+            <input class="form-input" id="aa-key" bind:value={addAcct.key} placeholder="github-MyUser" translate="no" />
           </div>
           <div class="form-row">
-            <label class="form-label" for="aa-provider">Provider</label>
+            <label class="form-label" for="aa-provider">{$t('accountForm.provider')}</label>
             <select class="form-input" id="aa-provider" bind:value={addAcct.provider} on:change={onProviderChange}>
               <option value="github">GitHub</option>
               <option value="gitlab">GitLab</option>
@@ -107,66 +109,66 @@
           </div>
           <div class="form-row">
             <label class="form-label" for="aa-url">URL</label>
-            <input class="form-input" id="aa-url" bind:value={addAcct.url} placeholder="https://github.com" />
+            <input class="form-input" id="aa-url" bind:value={addAcct.url} placeholder="https://github.com" translate="no" />
           </div>
           <div class="form-row">
-            <label class="form-label" for="aa-user">Git username</label>
-            <input class="form-input" id="aa-user" bind:value={addAcct.username} placeholder="MyUser" />
-            <p class="form-hint">The username you use to log in to the provider (for git and API operations).</p>
+            <label class="form-label" for="aa-user">{$t('accountForm.username')}</label>
+            <input class="form-input" id="aa-user" bind:value={addAcct.username} placeholder="MyUser" translate="no" />
+            <p class="form-hint">{$t('accountForm.usernameHint')}</p>
           </div>
           <fieldset class="form-fieldset">
-            <legend class="form-fieldset-legend">Git commit author identity</legend>
-            <p class="form-fieldset-hint">Used only as the author of commits you make under this account. Not used for authentication.</p>
+            <legend class="form-fieldset-legend">{$t('accountForm.identity')}</legend>
+            <p class="form-fieldset-hint">{$t('accountForm.identityHint')}</p>
             <div class="form-row">
-              <label class="form-label" for="aa-name">Name</label>
-              <input class="form-input" id="aa-name" bind:value={addAcct.name} placeholder="Full Name" />
+              <label class="form-label" for="aa-name">{$t('accountForm.name')}</label>
+              <input class="form-input" id="aa-name" bind:value={addAcct.name} placeholder={$t('accountForm.namePlaceholder')} />
             </div>
             <div class="form-row">
-              <label class="form-label" for="aa-email">Email</label>
-              <input class="form-input" id="aa-email" bind:value={addAcct.email} placeholder="user@example.com" />
+              <label class="form-label" for="aa-email">{$t('onboard.email')}</label>
+              <input class="form-input" id="aa-email" bind:value={addAcct.email} placeholder="user@example.com" translate="no" />
             </div>
           </fieldset>
           <div class="form-row">
-            <label class="form-label" for="aa-cred">Credential type</label>
+            <label class="form-label" for="aa-cred">{$t('addAccount.credType')}</label>
             <select class="form-input" id="aa-cred" bind:value={addAcct.credentialType}>
               <option value="gcm">GCM</option>
               <option value="ssh">SSH</option>
-              <option value="token">Token</option>
+              <option value="token">{$t('onboard.token')}</option>
             </select>
           </div>
         {:else}
           <!-- ── Step 2: Credential setup ── -->
-          <p class="cred-step-intro">Account <strong>{addAcct.key}</strong> created. Set up credentials:</p>
+          <p class="cred-step-intro"><Rich key="addAccount.created" vars={{ key: addAcct.key }} /></p>
 
           {#if credPrecheck && !credPrecheck.ok}
-            <PrecheckBanner precheck={credPrecheck} noteTail=", or proceed anyway to retry manually."
+            <PrecheckBanner precheck={credPrecheck} noteKey="cred.precheckNoteAdd"
               onRecheck={() => runCredentialPrecheck(addAcct.credentialType)} />
           {/if}
 
           {#if addAcct.credentialType === 'gcm'}
-            <p class="cred-step-desc">Click below to authenticate via browser (Git Credential Manager).</p>
+            <p class="cred-step-desc">{$t('addAccount.gcmDesc')}</p>
             <button class="btn-add cred-action-btn" on:click={() => runCredSetup(addAcct.key, addAcct.credentialType)} disabled={credBusy || credResult?.ok}>
-              {credBusy ? 'Authenticating...' : credResult?.ok ? 'Authenticated' : 'Authenticate with GCM'}
+              {credBusy ? $t('addAccount.authenticating') : credResult?.ok ? $t('addAccount.authenticated') : $t('addAccount.authGCM')}
             </button>
 
           {:else if addAcct.credentialType === 'token'}
-            <p class="cred-step-desc">Click on the link and login if necessary. Create a Token and paste it below.</p>
+            <p class="cred-step-desc">{$t('cred.tokenSteps')}</p>
             {#if credTokenScopes}
-              <p class="cred-step-desc"><strong>Required scopes:</strong> {credTokenScopes}</p>
+              <p class="cred-step-desc"><Rich key="cred.scopes" vars={{ scopes: credTokenScopes }} /></p>
             {/if}
             {#if credTokenGuide}
               <p class="cred-step-link"><a href={credTokenGuide} on:click|preventDefault={() => BrowserOpenURL(credTokenGuide)}>{credTokenGuide}</a></p>
             {/if}
             <div class="form-row">
-              <label class="form-label" for="aa-token">Token</label>
-              <input class="form-input" id="aa-token" type="password" bind:value={credTokenInput} placeholder="ghp_..." />
+              <label class="form-label" for="aa-token">{$t('onboard.token')}</label>
+              <input class="form-input" id="aa-token" type="password" bind:value={credTokenInput} placeholder="ghp_..." translate="no" />
             </div>
             <button class="btn-add cred-action-btn" on:click={() => runCredSetup(addAcct.key, addAcct.credentialType)} disabled={credBusy || !credTokenInput.trim() || credResult?.ok}>
-              {credBusy ? 'Storing...' : credResult?.ok ? 'Token stored' : 'Store token'}
+              {credBusy ? $t('cred.storing') : credResult?.ok ? $t('cred.tokenStored') : $t('cred.storeToken')}
             </button>
 
           {:else if addAcct.credentialType === 'ssh'}
-            <p class="cred-step-desc">SSH Host and Key configuration.</p>
+            <p class="cred-step-desc">{$t('addAccount.sshDesc')}</p>
           {/if}
 
           {#if credResult}
@@ -175,7 +177,7 @@
               regenerateSSHKey={() => regenerateSSHKey(addAcct.key)} />
           {:else if addAcct.credentialType === 'ssh'}
             <button class="btn-add cred-action-btn" on:click={() => runCredSetup(addAcct.key, addAcct.credentialType)} disabled={credBusy}>
-              {credBusy ? 'Setting up SSH...' : 'Generate SSH key'}
+              {credBusy ? $t('addAccount.settingUpSSH') : $t('addAccount.generateSSH')}
             </button>
           {/if}
 
@@ -183,11 +185,11 @@
       </div>
       <div class="modal-foot">
         {#if addAccountStep === 'form'}
-          <button class="btn-cancel" on:click={resetAddAccount}>Cancel</button>
-          <button class="btn-add" on:click={submitAddAccount}>Add account</button>
+          <button class="btn-cancel" on:click={resetAddAccount}>{$t('common.cancel')}</button>
+          <button class="btn-add" on:click={submitAddAccount}>{$t('account.add')}</button>
         {:else}
           <button class="btn-cancel" on:click={resetAddAccount}>
-            {credResult?.ok && (!credResult?.sshPublicKey || credResult?.sshVerified) ? 'Done' : 'Cancel'}
+            {credResult?.ok && (!credResult?.sshPublicKey || credResult?.sshVerified) ? $t('onboard.done') : $t('common.cancel')}
           </button>
         {/if}
       </div>

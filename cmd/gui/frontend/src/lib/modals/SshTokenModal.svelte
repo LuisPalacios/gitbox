@@ -4,6 +4,7 @@
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
   import { t } from '../i18n';
+  import Rich from '../Rich.svelte';
   import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime';
 
   export let openDiscover: (accountKey: string) => void;
@@ -59,27 +60,27 @@
   <div class="overlay" transition:fade={{ duration: 120 }}>
     <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
       <div class="modal-head">
-        <h3>Discovery token &mdash; {sshDiscoverTokenModal}</h3>
+        <h3>{$t('cred.discoveryToken')} &mdash; {sshDiscoverTokenModal}</h3>
         <button class="btn-x" on:click={() => { sshDiscoverTokenModal = null; sshDiscoveryTokenInput = ''; }}>&#10005;</button>
       </div>
       <div class="modal-body">
         <p class="cred-step-desc">{$t('discover.sshNeedsToken')}<br/>{$t('discover.sshNeedsTokenAction')}</p>
-        <p class="cred-step-desc">Otherwise you can configure your sources manually in the JSON config file.</p>
+        <p class="cred-step-desc">{$t('cred.manualConfig')}</p>
         {#if sshDiscoveryScopes}
-          <p class="cred-step-desc" style="margin-top: 6px;"><strong>Required scopes:</strong> {sshDiscoveryScopes}</p>
+          <p class="cred-step-desc" style="margin-top: 6px;"><Rich key="cred.scopes" vars={{ scopes: sshDiscoveryScopes }} /></p>
         {/if}
         {#if sshDiscoveryGuide}
           <p class="cred-step-link" style="margin-top: 4px;"><a href={sshDiscoveryGuide} on:click|preventDefault={() => BrowserOpenURL(sshDiscoveryGuide)}>{sshDiscoveryGuide}</a></p>
         {/if}
         <div class="form-row" style="margin-top: 10px;">
-          <label class="form-label" for="ssh-disc-token">Token</label>
-          <input class="form-input" id="ssh-disc-token" type="password" bind:value={sshDiscoveryTokenInput} placeholder="Token..." />
+          <label class="form-label" for="ssh-disc-token">{$t('onboard.token')}</label>
+          <input class="form-input" id="ssh-disc-token" type="password" bind:value={sshDiscoveryTokenInput} placeholder={$t('cred.tokenPlaceholder')} />
         </div>
       </div>
       <div class="modal-foot">
-        <button class="btn-cancel" on:click={() => { sshDiscoverTokenModal = null; sshDiscoveryTokenInput = ''; }}>Cancel</button>
+        <button class="btn-cancel" on:click={() => { sshDiscoverTokenModal = null; sshDiscoveryTokenInput = ''; }}>{$t('common.cancel')}</button>
         <button class="btn-add" on:click={storeSSHDiscoveryToken} disabled={sshDiscoveryBusy || !sshDiscoveryTokenInput.trim()}>
-          {sshDiscoveryBusy ? 'Storing...' : 'Store & discover'}
+          {sshDiscoveryBusy ? $t('cred.storing') : $t('cred.storeDiscover')}
         </button>
       </div>
     </div>

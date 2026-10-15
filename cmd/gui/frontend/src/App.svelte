@@ -324,7 +324,7 @@
     try {
       const res = await bridge.restoreFromBackup(path);
       if (!res.success) {
-        cfgRepairFailure = res.error || 'unknown error';
+        cfgRepairFailure = res.error || $t('app.unknownError');
         await cfgLoadBackups(); // the failed restore may have altered backup count
         return;
       }
@@ -346,7 +346,7 @@
     try {
       const res = await bridge.repairConfig();
       if (!res.success) {
-        cfgRepairFailure = res.error || 'unknown error';
+        cfgRepairFailure = res.error || $t('app.unknownError');
         await cfgLoadBackups();
         return;
       }
@@ -640,9 +640,9 @@
   // revealLabel is the OS-aware "Reveal in <file manager>" string passed to
   // every LauncherMenu instance. Computed once from hostOS so the kebabs
   // don't each re-derive it.
-  $: revealLabel = hostOS === 'windows' ? 'Reveal in Explorer'
-    : hostOS === 'darwin' ? 'Reveal in Finder'
-    : 'Reveal in files';
+  $: revealLabel = hostOS === 'windows' ? $t('app.revealExplorer')
+    : hostOS === 'darwin' ? $t('app.revealFinder')
+    : $t('app.revealFiles');
 
   // ── Orphan adoption ──
   let orphanList: import('./lib/types').OrphanRepoDTO[] = [];
@@ -1315,7 +1315,7 @@
     try {
       await bridge.fetchAllRepos();
     } catch (e) {
-      lastFetchTime = 'fetch-all error: ' + (e instanceof Error ? e.message : String(e));
+      lastFetchTime = $t('app.fetchAllError', { error: e instanceof Error ? e.message : String(e) });
       if (fetchingAll) finishFetch(errorText(e));
     } finally {
       fetchingAll = false;
@@ -1638,7 +1638,7 @@
       fetchingRepos = {};
       finishFetch(data?.error);
       const now = new Date();
-      lastFetchTime = data?.error ? 'fetch-all error: ' + data.error
+      lastFetchTime = data?.error ? $t('app.fetchAllError', { error: data.error })
         : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     });
 
@@ -1703,7 +1703,7 @@
 
     // Installed and the new version is starting: the backend quits next.
     events.on('update:restarting', (latest: string) => {
-      updateProgress = `Restarting into ${latest}…`;
+      updateProgress = $t('app.restarting', { version: latest });
     });
 
     // Installed, but the new version could not be started automatically.
@@ -1716,7 +1716,7 @@
     events.on('update:quit', (latest: string) => {
       // Elevated update script is running — quit so it can overwrite the
       // binaries; the script starts the new version once it has copied them.
-      updateProgress = `Restarting into ${latest}…`;
+      updateProgress = $t('app.restarting', { version: latest });
       // Auto-quit after a brief moment so the user sees the message.
       setTimeout(() => Quit(), 1500);
     });

@@ -116,6 +116,9 @@ function scanTemplate(file, code) {
     for (const [k, v] of Object.entries(node)) if (k !== 'metadata' && v && typeof v === 'object') expr(v, inert);
   }
 
+  // A static prop on a component reads as text when it looks like prose.
+  let inComponent = false;
+
   function walk(node) {
     if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) return node.forEach(walk);
@@ -128,7 +131,7 @@ function scanTemplate(file, code) {
       case 'Attribute':
         if (node.value === true) return;
         for (const v of Array.isArray(node.value) ? node.value : [node.value]) {
-          if (v.type === 'Text' && TEXT_ATTRS.has(node.name) && hasWords(v.data)) hit(v.start, `@${node.name}`, v.data);
+          if (v.type === 'Text' && (TEXT_ATTRS.has(node.name) ? hasWords(v.data) : inComponent && looksLikeProse(v.data))) hit(v.start, `@${node.name}`, v.data);
           if (v.type === 'ExpressionTag' && !['class', 'style', 'id', 'href', 'src', 'type', 'name', 'role'].includes(node.name)) expr(v.expression, false);
         }
         return;
@@ -143,6 +146,15 @@ function scanTemplate(file, code) {
         return;
       case 'ExpressionTag':
         return expr(node.expression, false);
+      case 'ConstTag':
+        return expr(node.declaration, false);
+      case 'Component': {
+        const outer = inComponent;
+        inComponent = true;
+        walk(node.attributes);
+        inComponent = outer;
+        return walk(node.fragment);
+      }
       case 'RegularElement':
       case 'SvelteElement':
         if (VERBATIM.has(node.name)) return;

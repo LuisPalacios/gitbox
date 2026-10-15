@@ -4,6 +4,8 @@
   // exit. The recovery actions live in App because they drive startup.
   import { Quit } from '../../../wailsjs/runtime/runtime';
   import type { ConfigBackupInfo } from '../types';
+  import { t } from '../i18n';
+  import Rich from '../Rich.svelte';
 
   export let configPath: string;
   export let cfgLoadErrorMsg: string;
@@ -37,27 +39,24 @@
 
 <div class="cfg-error-screen">
   <div class="cfg-error-card">
-    <h2 class="cfg-error-title">Config file could not be loaded</h2>
+    <h2 class="cfg-error-title">{$t('configError.title')}</h2>
     <p class="cfg-error-path">{configPath || '~/.config/gitbox/gitbox.json'}</p>
     <pre class="cfg-error-detail">{cfgLoadErrorMsg}</pre>
 
     {#if cfgRepairFailure}
       <div class="cfg-error-failure" role="alert">
-        <strong>Action failed:</strong> {cfgRepairFailure}
+        <strong>{$t('configError.actionFailed')}</strong> {cfgRepairFailure}
       </div>
     {/if}
 
     <!-- Primary recovery: pick a dated backup and restore it. -->
     <section class="cfg-error-section">
-      <h3 class="cfg-error-section-title">Restore from a previous backup</h3>
+      <h3 class="cfg-error-section-title">{$t('configError.restoreTitle')}</h3>
       <p class="cfg-error-section-desc">
-        GitboxApp writes a dated copy of <code>gitbox.json</code> before every save
-        (keeping the 5 most recent). Pick the most recent one you trust — the
-        currently-broken file becomes another backup before the restore so
-        nothing is permanently lost.
+        <Rich key="configError.restoreDesc" />
       </p>
       {#if cfgBackups.length === 0}
-        <p class="cfg-error-empty">No backups found in this config directory.</p>
+        <p class="cfg-error-empty">{$t('configError.noBackups')}</p>
       {:else}
         <ul class="cfg-error-backup-list">
           {#each cfgBackups as b}
@@ -68,7 +67,7 @@
               </div>
               <button class="cfg-error-btn cfg-error-btn-primary cfg-error-btn-small"
                       on:click={() => cfgRestoreBackup(b.path)}
-                      disabled={cfgLoadErrorBusy}>Restore</button>
+                      disabled={cfgLoadErrorBusy}>{$t('configError.restore')}</button>
             </li>
           {/each}
         </ul>
@@ -77,25 +76,23 @@
 
     <!-- Secondary: in-place auto-repair (drops dangling refs only). -->
     <section class="cfg-error-section">
-      <h3 class="cfg-error-section-title">Or try auto-repair</h3>
+      <h3 class="cfg-error-section-title">{$t('configError.repairTitle')}</h3>
       <p class="cfg-error-section-desc">
-        Drops dangling mirror or workspace-member references and keeps
-        everything else. Works only when the file parses and the only
-        problem is references pointing at deleted accounts.
+        {$t('configError.repairDesc')}
       </p>
       <div class="cfg-error-section-actions">
         <button class="cfg-error-btn cfg-error-btn-secondary"
                 on:click={cfgDoRepair}
                 disabled={cfgLoadErrorBusy}>
-          {cfgLoadErrorBusy ? 'Working…' : 'Auto-repair in place'}
+          {cfgLoadErrorBusy ? $t('configError.working') : $t('configError.repair')}
         </button>
       </div>
     </section>
 
     <!-- Footer: start fresh or exit. -->
     <div class="cfg-error-actions">
-      <button class="cfg-error-btn cfg-error-btn-ghost" on:click={cfgExit} disabled={cfgLoadErrorBusy}>Exit</button>
-      <button class="cfg-error-btn cfg-error-btn-ghost" on:click={cfgStartFresh} disabled={cfgLoadErrorBusy}>Start fresh (new config)</button>
+      <button class="cfg-error-btn cfg-error-btn-ghost" on:click={cfgExit} disabled={cfgLoadErrorBusy}>{$t('configError.exit')}</button>
+      <button class="cfg-error-btn cfg-error-btn-ghost" on:click={cfgStartFresh} disabled={cfgLoadErrorBusy}>{$t('configError.startFresh')}</button>
     </div>
   </div>
 </div>

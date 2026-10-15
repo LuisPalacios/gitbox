@@ -3,6 +3,8 @@
   // identity, missing GCM helper settings, the global gitignore, and the
   // gitignore install result.
   import type { GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled } from '../types';
+  import { t } from '../i18n';
+  import Rich from '../Rich.svelte';
 
   export let globalIdentityWarn: GlobalIdentityWarn | null;
   export let globalGCMWarn: GCMWarn | null;
@@ -21,11 +23,15 @@
 <div class="identity-warn">
   <span class="identity-warn-icon">&#9888;</span>
   <span class="identity-warn-text">
-    Global <code>~/.gitconfig</code> has
-    {#if globalIdentityWarn.hasName}user.name="{globalIdentityWarn.name}"{/if}{#if globalIdentityWarn.hasName && globalIdentityWarn.hasEmail}, {/if}{#if globalIdentityWarn.hasEmail}user.email="{globalIdentityWarn.email}"{/if}
-    &mdash; this can override per-repo identity.
+    {#if globalIdentityWarn.hasName && globalIdentityWarn.hasEmail}
+      <Rich key="banner.identityBoth" vars={{ name: globalIdentityWarn.name, email: globalIdentityWarn.email }} />
+    {:else if globalIdentityWarn.hasName}
+      <Rich key="banner.identityName" vars={{ name: globalIdentityWarn.name }} />
+    {:else}
+      <Rich key="banner.identityEmail" vars={{ email: globalIdentityWarn.email }} />
+    {/if}
   </span>
-  <button class="identity-warn-fix" on:click={fixGlobalIdentity}>Remove</button>
+  <button class="identity-warn-fix" on:click={fixGlobalIdentity}>{$t('common.remove')}</button>
   <button class="identity-warn-dismiss" on:click={() => globalIdentityWarn = null}>&#10005;</button>
 </div>
 {/if}
@@ -35,23 +41,23 @@
 <div class="identity-warn">
   <span class="identity-warn-icon">&#9888;</span>
   <span class="identity-warn-text">
-    Global <code>~/.gitconfig</code> is missing GCM settings &mdash;
+    <Rich key="banner.gcmIntro" />
     {#if !globalGCMWarn.hasHelper}
-      <code>credential.helper</code> is not set
+      <Rich key="banner.gcmHelperUnset" />
     {:else if globalGCMWarn.helperValue !== globalGCMWarn.expectedHelper}
-      <code>credential.helper</code> is <code>{globalGCMWarn.helperValue}</code>, expected <code>{globalGCMWarn.expectedHelper}</code>
+      <Rich key="banner.gcmHelperWrong" vars={{ value: globalGCMWarn.helperValue, expected: globalGCMWarn.expectedHelper }} />
     {/if}
     {#if (!globalGCMWarn.hasHelper || globalGCMWarn.helperValue !== globalGCMWarn.expectedHelper) && (!globalGCMWarn.hasCredentialStore || globalGCMWarn.credentialStoreValue !== globalGCMWarn.expectedCredentialStore)}
-      and
+      {$t('banner.gcmAnd')}
     {/if}
     {#if !globalGCMWarn.hasCredentialStore}
-      <code>credential.credentialStore</code> is not set
+      <Rich key="banner.gcmStoreUnset" />
     {:else if globalGCMWarn.credentialStoreValue !== globalGCMWarn.expectedCredentialStore}
-      <code>credential.credentialStore</code> is <code>{globalGCMWarn.credentialStoreValue}</code>, expected <code>{globalGCMWarn.expectedCredentialStore}</code>
+      <Rich key="banner.gcmStoreWrong" vars={{ value: globalGCMWarn.credentialStoreValue, expected: globalGCMWarn.expectedCredentialStore }} />
     {/if}
-    &mdash; GCM setup will fail with "Device not configured" until this is fixed.
+    {$t('banner.gcmOutro')}
   </span>
-  <button class="identity-warn-fix" on:click={fixGlobalGCM} disabled={globalGCMFixing}>{globalGCMFixing ? 'Fixing…' : 'Configure'}</button>
+  <button class="identity-warn-fix" on:click={fixGlobalGCM} disabled={globalGCMFixing}>{globalGCMFixing ? $t('banner.fixing') : $t('banner.configure')}</button>
   <button class="identity-warn-dismiss" on:click={() => globalGCMWarn = null}>&#10005;</button>
 </div>
 {/if}
@@ -62,25 +68,23 @@
   <span class="identity-warn-icon">&#9888;</span>
   <span class="identity-warn-text">
     {#if !gitignoreWarn.fileExists}
-      Global gitignore <code>{gitignoreWarn.path}</code> is missing &mdash;
-      install OS-junk patterns (.DS_Store, Thumbs.db, *~, …) so per-project <code>.gitignore</code> files don't have to repeat them.
+      <Rich key="banner.gitignoreMissing" vars={{ path: gitignoreWarn.path }} />
     {:else if !gitignoreWarn.blockPresent}
-      <code>{gitignoreWarn.path}</code> is missing the recommended block &mdash;
-      install OS-junk patterns (.DS_Store, Thumbs.db, *~, …) so per-project <code>.gitignore</code> files don't have to repeat them.
+      <Rich key="banner.gitignoreNoBlock" vars={{ path: gitignoreWarn.path }} />
     {:else if !gitignoreWarn.blockUpToDate}
-      <code>{gitignoreWarn.path}</code> has an out-of-date recommended block &mdash;
-      install will refresh it.
+      <Rich key="banner.gitignoreOutdated" vars={{ path: gitignoreWarn.path }} />
     {:else if gitignoreWarn.hasDuplicates}
-      <code>{gitignoreWarn.path}</code> has {gitignoreWarn.duplicates.length} managed pattern{gitignoreWarn.duplicates.length === 1 ? '' : 's'} duplicated outside the block:
-      <code>{gitignoreWarn.duplicates.slice(0, 5).join(', ')}{gitignoreWarn.duplicates.length > 5 ? ', …' : ''}</code> &mdash;
-      install will sanitize them.
+      <Rich key={gitignoreWarn.duplicates.length === 1 ? 'banner.gitignoreDuplicatesOne' : 'banner.gitignoreDuplicates'} vars={{
+        path: gitignoreWarn.path,
+        n: gitignoreWarn.duplicates.length,
+        list: `${gitignoreWarn.duplicates.slice(0, 5).join(', ')}${gitignoreWarn.duplicates.length > 5 ? ', …' : ''}`,
+      }} />
     {:else if !gitignoreWarn.excludesfileSet}
-      <code>core.excludesfile</code> is not set in your global git config &mdash;
-      install will point it at <code>{gitignoreWarn.path}</code>.
+      <Rich key="banner.excludesUnset" vars={{ path: gitignoreWarn.path }} />
     {/if}
   </span>
   <button class="identity-warn-fix" on:click={installGlobalGitignore} disabled={gitignoreInstalling}>
-    {gitignoreInstalling ? 'Installing…' : 'Install'}
+    {gitignoreInstalling ? $t('banner.installing') : $t('banner.install')}
   </button>
   <button class="identity-warn-dismiss" on:click={() => gitignoreWarn = null}>&#10005;</button>
 </div>
@@ -91,14 +95,14 @@
   <span class="identity-warn-icon">&#10003;</span>
   <span class="identity-warn-text">
     {#if gitignoreInstalled.alreadyUpToDate && !gitignoreInstalled.setExcludesfile}
-      Global gitignore is already up to date.
+      {$t('banner.gitignoreUpToDate')}
     {:else}
-      Global gitignore installed.
+      {$t('banner.gitignoreInstalled')}
       {#if gitignoreInstalled.backupPath}
-        Backup saved at <code>{gitignoreInstalled.backupPath}</code>.
+        <Rich key="banner.backupSaved" vars={{ path: gitignoreInstalled.backupPath }} />
       {/if}
       {#if gitignoreInstalled.setExcludesfile}
-        <code>core.excludesfile</code> set.
+        <Rich key="banner.excludesSet" />
       {/if}
     {/if}
   </span>
@@ -109,7 +113,7 @@
 {#if gitignoreError}
 <div class="identity-warn">
   <span class="identity-warn-icon">&#9888;</span>
-  <span class="identity-warn-text">Could not install global gitignore: {gitignoreError}</span>
+  <span class="identity-warn-text">{$t('banner.gitignoreFailed', { error: gitignoreError })}</span>
   <button class="identity-warn-dismiss" on:click={() => gitignoreError = ''}>&#10005;</button>
 </div>
 {/if}
@@ -127,8 +131,8 @@
   }
   .identity-warn-icon { font-size: 15px; flex-shrink: 0; }
   .identity-warn-text { flex: 1; line-height: 1.4; }
-  .identity-warn-text code { font-size: 11px; padding: 1px 4px; background: rgba(255,255,255,0.1); border-radius: 3px; }
-  :global([data-theme="light"]) .identity-warn-text code { background: rgba(0,0,0,0.06); }
+  .identity-warn-text :global(code) { font-size: 11px; padding: 1px 4px; background: rgba(255,255,255,0.1); border-radius: 3px; }
+  :global([data-theme="light"]) .identity-warn-text :global(code) { background: rgba(0,0,0,0.06); }
   .identity-warn-fix {
     padding: 3px 10px; font-size: 11px; font-weight: 600;
     background: #c2410c; color: #fff; border: none; border-radius: 5px; cursor: pointer;

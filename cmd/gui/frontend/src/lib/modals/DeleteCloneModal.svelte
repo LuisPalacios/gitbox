@@ -3,6 +3,8 @@
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
   import { dismiss } from '../dismiss';
+  import { t } from '../i18n';
+  import Rich from '../Rich.svelte';
   import type { RepoDetailView } from '../types';
 
   export let expandedRepo: string | null;
@@ -53,11 +55,12 @@
     return ['dirty', 'ahead', 'diverged', 'conflict', 'upstream gone'].includes(status);
   }
 
-  function deleteWarning(status: string): string {
-    if (status === 'not cloned') return 'This will remove the config entry. No local folder exists.';
-    if (status === 'upstream gone') return 'The remote repository no longer exists. This local clone may be your ONLY copy — deleting it is unrecoverable.';
-    if (isDangerous(status)) return 'This repo has unpushed commits or local changes that will be permanently lost!';
-    return 'The local folder and config entry will be permanently deleted.';
+  // deleteWarningKey returns the catalog key of the warning for status.
+  function deleteWarningKey(status: string): string {
+    if (status === 'not cloned') return 'deleteClone.warnNotCloned';
+    if (status === 'upstream gone') return 'deleteClone.warnUpstreamGone';
+    if (isDangerous(status)) return 'deleteClone.warnDangerous';
+    return 'deleteClone.warnDefault';
   }
 </script>
 
@@ -65,27 +68,27 @@
   <div class="overlay" use:dismiss={cancelDelete} transition:fade={{ duration: 120 }}>
     <div class="modal modal-delete" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
       <div class="modal-head modal-head-delete">
-        <h3>Delete local clone</h3>
+        <h3>{$t('deleteClone.title')}</h3>
         <button class="btn-x" on:click={cancelDelete}>&#10005;</button>
       </div>
       <div class="modal-body">
         {#if deleteConfirmStep === 1}
           <p class="delete-repo-name">{deleteConfirm.repoKey}</p>
           <p class="delete-warning" class:delete-danger={isDangerous(deleteConfirm.status)}>
-            {deleteWarning(deleteConfirm.status)}
+            {$t(deleteWarningKey(deleteConfirm.status))}
           </p>
         {:else}
           <p class="delete-repo-name">{deleteConfirm.repoKey}</p>
-          <p class="delete-final">This action <strong>cannot be undone</strong>. Are you absolutely sure?</p>
+          <p class="delete-final"><Rich key="deleteClone.final" /></p>
         {/if}
       </div>
       <div class="modal-foot">
-        <button class="btn-cancel" on:click={cancelDelete}>Cancel</button>
+        <button class="btn-cancel" on:click={cancelDelete}>{$t('common.cancel')}</button>
         {#if deleteConfirmStep === 1}
-          <button class="btn-delete" on:click={confirmDelete}>Delete</button>
+          <button class="btn-delete" on:click={confirmDelete}>{$t('common.delete')}</button>
         {:else}
           <button class="btn-delete btn-delete-final" on:click={confirmDelete} disabled={deleting}>
-            {deleting ? 'Deleting...' : 'Yes, delete permanently'}
+            {deleting ? $t('deleteClone.deleting') : $t('deleteClone.confirm')}
           </button>
         {/if}
       </div>

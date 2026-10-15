@@ -1,10 +1,13 @@
 <script lang="ts">
   // Missing-tool banner for a credential type (DoctorPrecheck), shared by
-  // Add account and Change credential. noteTail finishes the install note.
+  // Add account and Change credential. noteKey is the install note, one
+  // whole sentence per caller.
   import type { DoctorPrecheckDTO } from './bridge';
+  import { t } from './i18n';
+  import Rich from './Rich.svelte';
 
   export let precheck: DoctorPrecheckDTO;
-  export let noteTail: string;
+  export let noteKey: string;
   export let onRecheck: () => void;
 </script>
 
@@ -15,8 +18,8 @@
       <p class="cred-precheck-hint"><strong>{m.displayName}</strong>: <code>{m.installHint}</code></p>
     {/each}
   {/if}
-  <p class="cred-precheck-note">Install the missing tool(s) and click <em>Re-check</em>{noteTail}</p>
-  <button class="btn-cancel cred-action-btn" on:click={onRecheck}>Re-check</button>
+  <p class="cred-precheck-note"><Rich key={noteKey} /></p>
+  <button class="btn-cancel cred-action-btn" on:click={onRecheck}>{$t('common.recheck')}</button>
 </div>
 
 <style>

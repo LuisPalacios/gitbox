@@ -12,6 +12,8 @@
   import { fade, slide } from 'svelte/transition';
   import { dismiss } from './dismiss';
   import BrandIcon, { terminalLogo } from './BrandIcon.svelte';
+  import { t, type Vars } from './i18n';
+  import Rich from './Rich.svelte';
 
   export let open = false;
   // mode='overlay' renders the editor as an in-app modal with a scrim
@@ -28,7 +30,10 @@
   export let onClose: () => void = () => {};
 
   let busy = false;
-  let statusMsg = '';
+  // Status line after an action: a catalog key plus its placeholders, so it
+  // follows a language change while it is visible.
+  let statusKey = '';
+  let statusVars: Vars = {};
   let missingModern = false;
   let isWindows = false;
 
@@ -71,27 +76,28 @@
   function appName(id: string): string {
     return draftApps.find(a => a.id === id)?.name ?? id ?? '—';
   }
-  function shellName(id: string): string {
+  // Reactive so the "login shell" hint follows a language change.
+  $: shellName = (id: string): string => {
     // Empty shell on Profile rows means "login shell" on macOS/Linux —
     // render that as a hint so the dim cell tells the user what'll launch
     // instead of an opaque em-dash.
-    if (!id) return isWindows ? '—' : 'login shell';
+    if (!id) return isWindows ? '—' : $t('terminals.loginShell');
     return draftShells.find(s => s.id === id)?.name ?? id;
-  }
+  };
 
   async function setDefault(id: string) {
     draftProfiles = draftProfiles.map(p => ({ ...p, default: p.id === id }));
-    await persist('Default updated');
+    await persist('terminals.defaultUpdated');
   }
 
   async function togglePreferred(id: string) {
     draftProfiles = draftProfiles.map(p => p.id === id ? { ...p, preferred: !p.preferred } : p);
-    await persist('Preferred updated');
+    await persist('terminals.preferredUpdated');
   }
 
   async function toggleHidden(id: string) {
     draftProfiles = draftProfiles.map(p => p.id === id ? { ...p, hidden: !p.hidden } : p);
-    await persist('Visibility updated');
+    await persist('terminals.visibilityUpdated');
   }
 
   function startEdit(p: TerminalProfileInfo) {
@@ -111,7 +117,7 @@
       ? { ...p, name: editName.trim() || p.name, terminal: editTerminal, shell: editShell }
       : p);
     editingId = null;
-    await persist('Profile updated');
+    await persist('terminals.profileUpdated');
   }
 
   function startAdd() {
@@ -145,7 +151,7 @@
     };
     draftProfiles = [...draftProfiles, fresh];
     addDraft = null;
-    await persist('Profile added');
+    await persist('terminals.profileAdded');
   }
 
   function nextProfileID(terminal: string, shell: string, name: string): string {
@@ -164,18 +170,20 @@
   async function deleteProfile(p: TerminalProfileInfo) {
     if (p.source !== 'user') return;
     draftProfiles = draftProfiles.filter(q => q.id !== p.id);
-    await persist('Profile deleted');
+    await persist('terminals.profileDeleted');
   }
 
-  async function persist(label: string) {
+  async function persist(labelKey: string) {
     if (busy) return;
     busy = true;
-    statusMsg = '';
+    statusKey = '';
     try {
       await onSave(draftApps, draftShells, draftProfiles);
-      statusMsg = label;
+      statusKey = labelKey;
+      statusVars = {};
     } catch (e: any) {
-      statusMsg = `Save failed: ${e?.message || e}`;
+      statusKey = 'terminals.saveFailed';
+      statusVars = { error: String(e?.message || e) };
     } finally {
       busy = false;
     }
@@ -184,13 +192,15 @@
   async function redetect() {
     if (busy) return;
     busy = true;
-    statusMsg = '';
+    statusKey = '';
     try {
       await bridge.redetectProfiles();
       onConfigReloaded();
-      statusMsg = 'Re-detected';
+      statusKey = 'terminals.redetected';
+      statusVars = {};
     } catch (e: any) {
-      statusMsg = `Re-detect failed: ${e?.message || e}`;
+      statusKey = 'terminals.redetectFailed';
+      statusVars = { error: String(e?.message || e) };
     } finally {
       busy = false;
     }
@@ -224,35 +234,32 @@
     >
       {#if mode === 'overlay'}
         <div class="modal-head">
-          <h3>Terminals &amp; shells</h3>
-          <button class="btn-x" on:click={close} aria-label="Close">&#10005;</button>
+          <h3>{$t('terminals.title')}</h3>
+          <button class="btn-x" on:click={close} aria-label={$t('common.close')}>&#10005;</button>
         </div>
       {/if}
       <!-- Toolbar lives outside .tp-body so the scrollable area cannot
            render under it (issue #69 user feedback — sticky-inside-scroller
            let rows bleed behind the buttons). -->
       <div class="tp-toolbar">
-        <button class="tp-btn" type="button" on:click={redetect} disabled={busy}>Re-detect</button>
-        <button class="tp-btn" type="button" on:click={startAdd} disabled={busy || !!addDraft}>+ Add profile</button>
-        {#if statusMsg}
-          <span class="tp-status">{statusMsg}</span>
+        <button class="tp-btn" type="button" on:click={redetect} disabled={busy}>{$t('terminals.redetect')}</button>
+        <button class="tp-btn" type="button" on:click={startAdd} disabled={busy || !!addDraft}>{$t('terminals.addProfile')}</button>
+        {#if statusKey}
+          <span class="tp-status">{$t(statusKey, statusVars)}</span>
         {/if}
       </div>
       <div class="modal-body tp-body">
         {#if missingModern}
           <div class="tp-banner" role="status">
-            <strong>Install Windows Terminal for the best experience.</strong>
-            gitbox is using bare-shell launches as a fallback. A modern terminal
-            (Windows Terminal, WezTerm, Alacritty, …) hosts shells better and
-            unlocks the per-Profile launch flow.
+            <Rich key="terminals.modernBanner" />
           </div>
         {/if}
-        <h4 class="tp-h4 tp-h4-first">Detected terminals</h4>
+        <h4 class="tp-h4 tp-h4-first">{$t('terminals.detectedTerminals')}</h4>
         {#if draftApps.length === 0}
-          <p class="tp-empty">No terminal apps detected. Click <em>Re-detect</em> after installing one.</p>
+          <p class="tp-empty"><Rich key="terminals.noApps" /></p>
         {:else}
           <table class="tp-table tp-table-rotw">
-            <thead><tr><th>Name</th><th>Command</th></tr></thead>
+            <thead><tr><th>{$t('terminals.colName')}</th><th>{$t('terminals.colCommand')}</th></tr></thead>
             <tbody>
               {#each draftApps as app (app.id)}
                 <tr>
@@ -264,12 +271,12 @@
           </table>
         {/if}
 
-        <h4 class="tp-h4">Detected shells</h4>
+        <h4 class="tp-h4">{$t('terminals.detectedShells')}</h4>
         {#if draftShells.length === 0}
-          <p class="tp-empty">No shells detected.</p>
+          <p class="tp-empty">{$t('terminals.noShells')}</p>
         {:else}
           <table class="tp-table tp-table-rotw">
-            <thead><tr><th>Name</th><th>Command</th><th>Args</th></tr></thead>
+            <thead><tr><th>{$t('terminals.colName')}</th><th>{$t('terminals.colCommand')}</th><th>{$t('terminals.colArgs')}</th></tr></thead>
             <tbody>
               {#each draftShells as shell (shell.id)}
                 <tr>
@@ -282,20 +289,20 @@
           </table>
         {/if}
 
-        <h4 class="tp-h4">Profiles</h4>
+        <h4 class="tp-h4">{$t('terminals.profiles')}</h4>
         {#if draftProfiles.length === 0 && !addDraft}
-          <p class="tp-empty">No profiles yet. Click <em>+ Add profile</em> or <em>Re-detect</em>.</p>
+          <p class="tp-empty"><Rich key="terminals.noProfiles" /></p>
         {:else}
           <table class="tp-table">
             <thead>
               <tr>
-                <th class="tp-th-icon" title="Default — primary action of the per-row launcher">●</th>
-                <th class="tp-th-icon" title="Preferred — shown in the launcher submenu">★</th>
-                <th>Name</th>
-                <th>Terminal</th>
-                <th>Shell</th>
-                <th class="tp-th-icon" title="Hidden — kept in config but not shown in the launcher">👁</th>
-                <th class="tp-th-actions">Actions</th>
+                <th class="tp-th-icon" title={$t('terminals.defaultTip')}>●</th>
+                <th class="tp-th-icon" title={$t('terminals.preferredTip')}>★</th>
+                <th>{$t('terminals.colName')}</th>
+                <th>{$t('terminals.colTerminal')}</th>
+                <th>{$t('terminals.colShell')}</th>
+                <th class="tp-th-icon" title={$t('terminals.hiddenTip')}>👁</th>
+                <th class="tp-th-actions">{$t('terminals.colActions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -305,10 +312,10 @@
                     <input type="radio" name="tp-default" checked={p.default} disabled={busy} on:change={() => setDefault(p.id)} />
                   </td>
                   <td class="tp-td-icon">
-                    <button class="tp-icon-btn" class:tp-on={p.preferred} type="button" disabled={busy} on:click={() => togglePreferred(p.id)} title="Toggle preferred">★</button>
+                    <button class="tp-icon-btn" class:tp-on={p.preferred} type="button" disabled={busy} on:click={() => togglePreferred(p.id)} title={$t('terminals.togglePreferred')}>★</button>
                   </td>
                   {#if editingId === p.id}
-                    <td><input class="tp-input" bind:value={editName} placeholder="Name" /></td>
+                    <td><input class="tp-input" bind:value={editName} placeholder={$t('terminals.colName')} /></td>
                     <td>
                       <select class="tp-input" bind:value={editTerminal}>
                         {#each draftApps as a (a.id)}
@@ -319,7 +326,7 @@
                     <td>
                       <select class="tp-input" bind:value={editShell}>
                         {#if !isWindows}
-                          <option value="">(login shell)</option>
+                          <option value="">{$t('terminals.loginShellOption')}</option>
                         {/if}
                         {#each draftShells as s (s.id)}
                           <option value={s.id}>{s.name}</option>
@@ -327,23 +334,23 @@
                       </select>
                     </td>
                     <td class="tp-td-icon">
-                      <button class="tp-icon-btn" type="button" disabled={busy} on:click={() => toggleHidden(p.id)} title="Toggle hidden">{p.hidden ? '🙈' : '👁'}</button>
+                      <button class="tp-icon-btn" type="button" disabled={busy} on:click={() => toggleHidden(p.id)} title={$t('terminals.toggleHidden')}>{p.hidden ? '🙈' : '👁'}</button>
                     </td>
                     <td class="tp-actions">
-                      <button class="tp-btn tp-btn-small" type="button" disabled={busy} on:click={saveEdit}>Save</button>
-                      <button class="tp-btn tp-btn-small tp-btn-ghost" type="button" disabled={busy} on:click={cancelEdit}>Cancel</button>
+                      <button class="tp-btn tp-btn-small" type="button" disabled={busy} on:click={saveEdit}>{$t('common.save')}</button>
+                      <button class="tp-btn tp-btn-small tp-btn-ghost" type="button" disabled={busy} on:click={cancelEdit}>{$t('common.cancel')}</button>
                     </td>
                   {:else}
                     <td><span class="tp-named"><BrandIcon name={terminalLogo(p.terminal, p.shell)} size={22} />{p.name}</span></td>
                     <td class="tp-cell-dim">{appName(p.terminal)}</td>
                     <td class="tp-cell-dim">{shellName(p.shell)}</td>
                     <td class="tp-td-icon">
-                      <button class="tp-icon-btn" type="button" disabled={busy} on:click={() => toggleHidden(p.id)} title="Toggle hidden">{p.hidden ? '🙈' : '👁'}</button>
+                      <button class="tp-icon-btn" type="button" disabled={busy} on:click={() => toggleHidden(p.id)} title={$t('terminals.toggleHidden')}>{p.hidden ? '🙈' : '👁'}</button>
                     </td>
                     <td class="tp-actions">
-                      <button class="tp-icon-btn" type="button" disabled={busy} on:click={() => startEdit(p)} title="Edit">✎</button>
+                      <button class="tp-icon-btn" type="button" disabled={busy} on:click={() => startEdit(p)} title={$t('terminals.edit')}>✎</button>
                       {#if p.source === 'user'}
-                        <button class="tp-icon-btn tp-icon-danger" type="button" disabled={busy} on:click={() => deleteProfile(p)} title="Delete">🗑</button>
+                        <button class="tp-icon-btn tp-icon-danger" type="button" disabled={busy} on:click={() => deleteProfile(p)} title={$t('common.delete')}>🗑</button>
                       {/if}
                     </td>
                   {/if}
@@ -353,7 +360,7 @@
                 <tr class="tp-row-add">
                   <td class="tp-td-icon">—</td>
                   <td class="tp-td-icon">—</td>
-                  <td><input class="tp-input" bind:value={addDraft.name} placeholder="Display name" use:focusOnMount /></td>
+                  <td><input class="tp-input" bind:value={addDraft.name} placeholder={$t('terminals.displayName')} use:focusOnMount /></td>
                   <td>
                     <select class="tp-input" bind:value={addDraft.terminal}>
                       {#each draftApps as a (a.id)}
@@ -364,7 +371,7 @@
                   <td>
                     <select class="tp-input" bind:value={addDraft.shell}>
                       {#if !isWindows}
-                        <option value="">(login shell)</option>
+                        <option value="">{$t('terminals.loginShellOption')}</option>
                       {/if}
                       {#each draftShells as s (s.id)}
                         <option value={s.id}>{s.name}</option>
@@ -373,8 +380,8 @@
                   </td>
                   <td class="tp-td-icon">—</td>
                   <td class="tp-actions">
-                    <button class="tp-btn tp-btn-small" type="button" disabled={busy || !addDraft.name.trim() || !addDraft.terminal || (isWindows && !addDraft.shell)} on:click={saveAdd}>Add</button>
-                    <button class="tp-btn tp-btn-small tp-btn-ghost" type="button" disabled={busy} on:click={cancelAdd}>Cancel</button>
+                    <button class="tp-btn tp-btn-small" type="button" disabled={busy || !addDraft.name.trim() || !addDraft.terminal || (isWindows && !addDraft.shell)} on:click={saveAdd}>{$t('common.add')}</button>
+                    <button class="tp-btn tp-btn-small tp-btn-ghost" type="button" disabled={busy} on:click={cancelAdd}>{$t('common.cancel')}</button>
                   </td>
                 </tr>
               {/if}
@@ -569,7 +576,7 @@
     color: var(--text-secondary);
     line-height: 1.4;
   }
-  .tp-banner strong {
+  .tp-banner :global(strong) {
     display: block;
     color: var(--text-primary);
     font-weight: 600;

@@ -5,6 +5,7 @@
   import { themeStore } from '../stores';
   import { statusColor, countBadge } from '../status';
   import { t } from '../i18n';
+  import Rich from '../Rich.svelte';
   import type { RepoState, RepoDetailView } from '../types';
 
   export let simple: boolean;
@@ -19,7 +20,7 @@
   }
 
   function kindLabel(kind: string): string {
-    return kind === 'deleted' ? 'Deleted' : kind === 'added' ? 'New file' : kind === 'renamed' ? 'Renamed' : kind === 'conflict' ? 'Conflict' : 'Changed';
+    return kind === 'deleted' ? $t('detail.kindDeleted') : kind === 'added' ? $t('detail.kindAdded') : kind === 'renamed' ? $t('detail.kindRenamed') : kind === 'conflict' ? $t('status.conflict') : $t('detail.kindChanged');
   }
 </script>
 
@@ -30,28 +31,26 @@
     </div>
   {:else if state.status === 'upstream gone' || repoDetail?.upstreamGone}
     <div class="detail-gone">
-      <div class="detail-gone-title" style="color:{sc('upstream gone')}">&#9888; WARNING: The origin repository is gone</div>
+      <div class="detail-gone-title" style="color:{sc('upstream gone')}">&#9888; {$t('detail.goneTitle')}</div>
       <p class="detail-gone-body">
-        The remote repository for this clone was not found on the provider. It was
-        either deleted, made private without re-granting access, renamed without a
-        redirect, or the credential lost permission to see it.
+        {$t('detail.goneBody')}
       </p>
       <p class="detail-gone-body">
-        <strong>Your local clone is intact.</strong> You have two options:
+        <Rich key="detail.goneOptions" />
       </p>
       <ul class="detail-gone-list">
-        <li><strong>Keep it as a local-only clone.</strong> Do nothing — the folder stays on disk with its full git history. Gitbox will keep flagging it as "Upstream gone" until you remove the remote or the entry.</li>
-        <li><strong>Delete it</strong> (trash icon in the top bar) if you no longer need the code. Since the upstream is gone, this local copy may be the only remaining one — make sure before confirming.</li>
+        <li><Rich key="detail.goneKeep" /></li>
+        <li><Rich key="detail.goneDelete" /></li>
       </ul>
     </div>
   {:else if detailLoading}
-    <span class="detail-loading">Loading...</span>
+    <span class="detail-loading">{$t('detail.loading')}</span>
   {:else if repoDetail?.error}
     <span class="detail-error">{repoDetail.error}</span>
   {:else if repoDetail}
     {#if !simple}
     <div class="detail-header">
-      <span class="detail-branch">Branch: <strong>{repoDetail.branch}</strong></span>
+      <span class="detail-branch"><Rich key="detail.branch" vars={{ branch: repoDetail.branch }} /></span>
       {#if repoDetail.ahead > 0}
         <span class="detail-badge" style="color:{sc(countBadge('ahead').color)}">{repoDetail.ahead} {$t(countBadge('ahead').word)}</span>
       {/if}
@@ -61,7 +60,7 @@
     </div>
     {/if}
     {#if repoDetail.changed.length > 0}
-      <div class="detail-section-title">{simple ? $t('simple.changedFiles') : 'Changed files'} <span class="sbadge" style="color:{sc(countBadge('modified').color)}">{countBadge('modified').glyph}{repoDetail.changed.length}</span></div>
+      <div class="detail-section-title">{$t('simple.changedFiles')} <span class="sbadge" style="color:{sc(countBadge('modified').color)}">{countBadge('modified').glyph}{repoDetail.changed.length}</span></div>
       {#each repoDetail.changed as file}
         <div class="detail-file">
           <span class="detail-kind" class:kind-added={file.kind === 'added'} class:kind-deleted={file.kind === 'deleted'} class:kind-conflict={file.kind === 'conflict'} title={kindLabel(file.kind)}>{kindIcon(file.kind)}</span>
@@ -70,16 +69,16 @@
       {/each}
     {/if}
     {#if repoDetail.untracked.length > 0}
-      <div class="detail-section-title">{simple ? $t('simple.newFiles') : 'New files (untracked)'} <span class="sbadge" style="color:{sc(countBadge('untracked').color)}">{countBadge('untracked').glyph}{repoDetail.untracked.length}</span></div>
+      <div class="detail-section-title">{simple ? $t('simple.newFiles') : $t('detail.newFilesUntracked')} <span class="sbadge" style="color:{sc(countBadge('untracked').color)}">{countBadge('untracked').glyph}{repoDetail.untracked.length}</span></div>
       {#each repoDetail.untracked as file}
         <div class="detail-file">
-          <span class="detail-kind kind-untracked" title="Untracked">?</span>
+          <span class="detail-kind kind-untracked" title={$t('detail.untracked')}>?</span>
           <span class="detail-path detail-path-dim">{file}</span>
         </div>
       {/each}
     {/if}
     {#if repoDetail.changed.length === 0 && repoDetail.untracked.length === 0 && repoDetail.ahead === 0 && repoDetail.behind === 0}
-      <span class="detail-clean">Everything is up to date.</span>
+      <span class="detail-clean">{$t('detail.upToDate')}</span>
     {/if}
   {/if}
 </div>
@@ -113,7 +112,7 @@
     font-size: 11px; color: var(--text-secondary);
   }
   .detail-branch { color: var(--text-muted); }
-  .detail-branch strong { color: var(--text-primary); font-weight: 600; }
+  .detail-branch :global(strong) { color: var(--text-primary); font-weight: 600; }
   .detail-badge { font-weight: 600; font-size: 11px; }
   .detail-section-title {
     font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;

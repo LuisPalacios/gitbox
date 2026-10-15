@@ -4,6 +4,7 @@
   import { bridge } from '../bridge';
   import { BrowserOpenURL, Quit } from '../../../wailsjs/runtime/runtime';
   import type { UpdateInfo } from '../types';
+  import { t } from '../i18n';
 
   export let updateInfo: UpdateInfo | null;
   export let updateApplying: boolean;
@@ -16,29 +17,29 @@
 
 {#if updateDone}
   <div class="update-pill update-done">
-    <span>&#10003; Updated — restart to apply</span>
-    <button class="update-pill-btn" on:click={() => Quit()}>Quit</button>
+    <span>&#10003; {$t('update.updated')}</span>
+    <button class="update-pill-btn" on:click={() => Quit()}>{$t('update.quit')}</button>
   </div>
 {:else if updateError}
   <div class="update-pill update-error">
     <span>&#9888; {updateError}</span>
     {#if updateInfo?.url}
-      <button class="update-pill-btn" on:click={() => updateInfo && BrowserOpenURL(updateInfo.url)}>Release page</button>
+      <button class="update-pill-btn" on:click={() => updateInfo && BrowserOpenURL(updateInfo.url)}>{$t('update.releasePage')}</button>
     {/if}
-    <button class="update-pill-dismiss" on:click={() => updateError = ''} title="Dismiss">&#10005;</button>
+    <button class="update-pill-dismiss" on:click={() => updateError = ''} title={$t('notice.dismiss')}>&#10005;</button>
   </div>
 {:else if updateInfo?.available}
   <div class="update-pill">
     {#if updateApplying}
-      <span class="update-pill-spin">&#8635;</span> <span>{updateProgress || 'Updating…'}</span>
+      <span class="update-pill-spin">&#8635;</span> <span>{updateProgress || $t('simple.updating')}</span>
     {:else}
       <span>&#9650;</span>
       {#if updateInfo.selfUpdate}
-        <button class="update-pill-btn" on:click={() => { updateApplying = true; updateError = ''; bridge.applyUpdate().catch((e) => { updateApplying = false; updateError = typeof e === 'string' ? e : (e?.message || 'Update failed'); }); }}>{updateInfo.latest} available</button>
+        <button class="update-pill-btn" on:click={() => { updateApplying = true; updateError = ''; bridge.applyUpdate().catch((e) => { updateApplying = false; updateError = typeof e === 'string' ? e : (e?.message || $t('update.failed')); }); }}>{$t('update.available', { version: updateInfo.latest })}</button>
       {:else}
-        <button class="update-pill-btn" title="Open the release page" on:click={() => updateInfo && BrowserOpenURL(updateInfo.url)}>{updateInfo.latest} available</button>
+        <button class="update-pill-btn" title={$t('update.openReleaseTip')} on:click={() => updateInfo && BrowserOpenURL(updateInfo.url)}>{$t('update.available', { version: updateInfo.latest })}</button>
       {/if}
-      <button class="update-pill-dismiss" on:click={() => { updateDismissed = updateInfo?.latest ?? ''; updateInfo = null; }} title="Dismiss until next launch">&#10005;</button>
+      <button class="update-pill-dismiss" on:click={() => { updateDismissed = updateInfo?.latest ?? ''; updateInfo = null; }} title={$t('update.dismissTip')}>&#10005;</button>
     {/if}
   </div>
 {/if}

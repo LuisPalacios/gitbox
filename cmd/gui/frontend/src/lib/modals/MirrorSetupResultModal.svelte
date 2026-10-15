@@ -3,6 +3,7 @@
   import { fade, slide } from 'svelte/transition';
   import { dismiss } from '../dismiss';
   import type { MirrorSetupResult } from '../types';
+  import { t } from '../i18n';
 
   export let mirrorSetupResultModal: MirrorSetupResult | null;
 </script>
@@ -11,7 +12,7 @@
   <div class="overlay" use:dismiss={() => mirrorSetupResultModal = null} transition:fade={{ duration: 120 }}>
     <div class="modal modal-confirm" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
       <div class="modal-head">
-        <h3>Mirror setup {mirrorSetupResultModal.error ? 'failed' : 'complete'}</h3>
+        <h3>{mirrorSetupResultModal.error ? $t('mirrorSetup.failed') : $t('mirrorSetup.complete')}</h3>
         <button class="btn-x" on:click={() => mirrorSetupResultModal = null}>&#10005;</button>
       </div>
       <div class="modal-body">
@@ -20,9 +21,9 @@
         {:else}
           <p style="color: var(--text)">
             <strong>{mirrorSetupResultModal.repoKey}</strong> &mdash;
-            {mirrorSetupResultModal.created ? 'target repo created' : ''}
+            {mirrorSetupResultModal.created ? $t('mirrorSetup.created') : ''}
             {mirrorSetupResultModal.created && mirrorSetupResultModal.mirrored ? ', ' : ''}
-            {mirrorSetupResultModal.mirrored ? 'mirror configured' : ''}
+            {mirrorSetupResultModal.mirrored ? $t('mirrorSetup.mirrored') : ''}
           </p>
         {/if}
         {#if mirrorSetupResultModal.method === 'manual' && mirrorSetupResultModal.instructions}

@@ -4,6 +4,7 @@
   import { bridge } from '../bridge';
   import { pushNotice, errorText } from '../notices';
   import { t } from '../i18n';
+  import Rich from '../Rich.svelte';
   import { dismiss } from '../dismiss';
   import { configStore } from '../stores';
 
@@ -31,13 +32,13 @@
 {#if deleteMirrorRepoConfirm}
   <div class="overlay" use:dismiss={() => deleteMirrorRepoConfirm = null} transition:fade={{ duration: 120 }}>
     <div class="modal modal-confirm" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-      <div class="modal-head"><h3>Remove mirrored repo</h3></div>
+      <div class="modal-head"><h3>{$t('mirrorRepo.removeTitle')}</h3></div>
       <div class="modal-body">
-        <p class="delete-warning">Remove <strong>{deleteMirrorRepoConfirm.repoKey}</strong> from mirror <strong>{deleteMirrorRepoConfirm.mirrorKey}</strong>?</p>
+        <p class="delete-warning"><Rich key="mirrorRepo.removeConfirm" vars={{ repo: deleteMirrorRepoConfirm.repoKey, mirror: deleteMirrorRepoConfirm.mirrorKey }} /></p>
       </div>
       <div class="modal-foot">
-        <button class="btn-cancel" on:click={() => deleteMirrorRepoConfirm = null}>Cancel</button>
-        <button class="btn-danger" on:click={confirmDeleteMirrorRepo}>Remove</button>
+        <button class="btn-cancel" on:click={() => deleteMirrorRepoConfirm = null}>{$t('common.cancel')}</button>
+        <button class="btn-danger" on:click={confirmDeleteMirrorRepo}>{$t('common.remove')}</button>
       </div>
     </div>
   </div>

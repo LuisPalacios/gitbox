@@ -3,6 +3,7 @@
   // credential: the SSH key block (copy the public key, verify the
   // connection, regenerate the key) or the plain result message.
   import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
+  import { t } from './i18n';
 
   export let credResult: { ok: boolean; message: string; needsPAT?: boolean; sshPublicKey?: string; sshAddURL?: string; sshVerified?: boolean };
   export let credBusy: boolean;
@@ -18,13 +19,13 @@
   </div>
   <div class="ssh-connection-status" class:ssh-connected={credResult.sshVerified} class:ssh-disconnected={!credResult.sshVerified}>
     <span class="ssh-status-dot"></span>
-    <span>{credResult.sshVerified ? 'Connection verified' : 'Connection not verified'}</span>
+    <span>{credResult.sshVerified ? $t('cred.connVerified') : $t('cred.connNotVerified')}</span>
   </div>
   {#if !credResult.sshVerified}
-    <p class="cred-step-desc" style="margin-top: 8px;">Copy the public SSH key and add it to your provider:</p>
+    <p class="cred-step-desc" style="margin-top: 8px;">{$t('cred.copyKey')}</p>
     <div class="ssh-key-box">
       <code class="ssh-key-text">{credResult.sshPublicKey}</code>
-      <button class="ssh-key-copy" on:click={() => credResult?.sshPublicKey && copySSHKey(credResult.sshPublicKey)} title="Copy to clipboard">{@html sshKeyCopied ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'}</button>
+      <button class="ssh-key-copy" on:click={() => credResult?.sshPublicKey && copySSHKey(credResult.sshPublicKey)} title={$t('cred.copyClipboard')}>{@html sshKeyCopied ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'}</button>
     </div>
     {#if credResult.sshAddURL}
       <p class="cred-step-link"><a href={credResult.sshAddURL} on:click|preventDefault={() => credResult?.sshAddURL && BrowserOpenURL(credResult.sshAddURL)}>{credResult.sshAddURL}</a></p>
@@ -33,11 +34,11 @@
   <div style="display: flex; gap: 8px; margin-top: 8px;">
     {#if !credResult.sshVerified}
       <button class="btn-add cred-action-btn" on:click={verifySSHConnection} disabled={credBusy}>
-        {credBusy ? 'Verifying...' : 'Verify connection'}
+        {credBusy ? $t('cred.verifying') : $t('cred.verify')}
       </button>
     {/if}
     <button class="btn-cancel cred-action-btn" on:click={regenerateSSHKey} disabled={credBusy}>
-      {credBusy ? 'Regenerating...' : 'Regenerate SSH key'}
+      {credBusy ? $t('cred.regenerating') : $t('cred.regenerate')}
     </button>
   </div>
 {:else}

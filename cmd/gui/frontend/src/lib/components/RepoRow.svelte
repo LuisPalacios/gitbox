@@ -193,10 +193,10 @@
   // only a cloned, clean, in-sync repo can be moved. Returns a string
   // tooltip when disabled, or '' when enabled.
   function repoMoveDisabledReason(state: RepoState | undefined): string {
-    if (!state) return 'Clone first';
-    if (state.status === 'not cloned' || state.status === 'error') return 'Clone first';
-    if (state.status !== 'clean') return 'Repo must be clean (commit/push/fetch first)';
-    if ((state.ahead ?? 0) > 0 || (state.behind ?? 0) > 0) return 'Repo must be in sync with origin';
+    if (!state) return $t('row.moveCloneFirst');
+    if (state.status === 'not cloned' || state.status === 'error') return $t('row.moveCloneFirst');
+    if (state.status !== 'clean') return $t('row.moveNotClean');
+    if ((state.ahead ?? 0) > 0 || (state.behind ?? 0) > 0) return $t('row.moveNotInSync');
     return '';
   }
 
@@ -309,7 +309,7 @@
   on:keydown={onActivateKey(() => activateRepoRow(rowSourceKey, repoName, state.status))}>
   {#if rowSourceKey !== sourceKey && !showAccount}<span class="container-badge" title={rowSourceKey}>{rowAccountKey}</span>{/if}
   {#if deleteMode}
-    <button class="icon-btn icon-btn-danger btn-delete-x" on:click|stopPropagation={() => askDelete(rowSourceKey, repoName, state.status)} title="Delete {repoName}" aria-label="Delete {repoName}"><UIIcon name="x" /></button>
+    <button class="icon-btn icon-btn-danger btn-delete-x" on:click|stopPropagation={() => askDelete(rowSourceKey, repoName, state.status)} title={$t('row.delete', { name: repoName })} aria-label={$t('row.delete', { name: repoName })}><UIIcon name="x" /></button>
   {/if}
   {#if childCount > 0}
     {@const repoCollapsed = collapsedRepos.has(repoKey)}
@@ -376,7 +376,7 @@
   {#if membershipsFor(repoKey).length > 0}
     <div class="ws-badge-wrap">
       <button class="ws-badge"
-              title="Member of: {membershipsFor(repoKey).map(workspaceLabel).join(', ')}"
+              title={$t('row.memberOf', { list: membershipsFor(repoKey).map(workspaceLabel).join(', ') })}
               on:click|stopPropagation={() => toggleWsPopover(repoKey)}>
         <svg class="ws-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
           <path d="M2 5.5 L8 2.5 L14 5.5 L8 8.5 Z"/>
@@ -414,14 +414,14 @@
   {/if}
   {@render rowTags()}
   {#if isContainer}
-    <span class="container-badge" title="Multi-repo container — holds nested clones">&#128193; container</span>
+    <span class="container-badge" title={$t('row.containerTip')}>{$t('row.container')}</span>
   {:else if isTentativeContainer(rowSourceKey, repoName, tentativeContainers)}
     <button class="tentative-container-badge"
             on:click|stopPropagation={() => toggleContainer(rowSourceKey, repoName)}
-            title="This repo holds nested clones — mark it as a container to onboard them">&#128193; onboard nested clones</button>
+            title={$t('row.onboardTip')}>{$t('row.onboard')}</button>
   {/if}
   {#if state.branch === '(detached)'}
-    <span class="branch-badge detached">detached</span>
+    <span class="branch-badge detached">{$t('repo.detached')}</span>
   {:else if state.branch && !state.isDefault}
     <span class="branch-badge">{state.branch}</span>
   {/if}
@@ -439,7 +439,7 @@
       {@const acctForPRs = $accounts[rowAccountKey]}
       {#if prSummary.authored.length > 0}
         <div class="action-menu-container pr-badge-wrap">
-          <button class="pr-badge pr-badge-authored" on:click|stopPropagation={() => togglePRPopover(`${repoKey}|authored`)} title="{prSummary.authored.length} open PR{prSummary.authored.length === 1 ? '' : 's'} I authored">
+          <button class="pr-badge pr-badge-authored" on:click|stopPropagation={() => togglePRPopover(`${repoKey}|authored`)} title={$t(prSummary.authored.length === 1 ? 'row.prAuthoredOne' : 'row.prAuthored', { n: prSummary.authored.length })}>
             &#128221; {prSummary.authored.length}
           </button>
           {#if openPRPopover === `${repoKey}|authored`}
@@ -458,7 +458,7 @@
       {/if}
       {#if prSummary.reviewRequested.length > 0}
         <div class="action-menu-container pr-badge-wrap">
-          <button class="pr-badge pr-badge-review" on:click|stopPropagation={() => togglePRPopover(`${repoKey}|review`)} title="{prSummary.reviewRequested.length} PR{prSummary.reviewRequested.length === 1 ? '' : 's'} awaiting my review">
+          <button class="pr-badge pr-badge-review" on:click|stopPropagation={() => togglePRPopover(`${repoKey}|review`)} title={$t(prSummary.reviewRequested.length === 1 ? 'row.prReviewOne' : 'row.prReview', { n: prSummary.reviewRequested.length })}>
             &#128064; {prSummary.reviewRequested.length}
           </button>
           {#if openPRPopover === `${repoKey}|review`}

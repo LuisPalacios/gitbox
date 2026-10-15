@@ -67,14 +67,14 @@
   <div class="overlay" use:dismiss={() => mirrorDiscoverResults = null} transition:fade={{ duration: 120 }}>
     <div class="modal modal-discover" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
       <div class="modal-head">
-        <h3>Mirror Discovery</h3>
+        <h3>{$t('mirrorDiscover.title')}</h3>
         <button class="btn-x" on:click={() => mirrorDiscoverResults = null}>&#10005;</button>
       </div>
       <div class="modal-body">
         {#if mirrorDiscoverError}
           <p class="form-error">{mirrorDiscoverError}</p>
         {:else if mirrorDiscoverResults.length === 0}
-          <p style="color: var(--text-muted); font-size: 12px;">No mirror relationships found across your accounts.</p>
+          <p style="color: var(--text-muted); font-size: 12px;">{$t('mirrorDiscover.none')}</p>
         {:else}
           {#each mirrorDiscoverResults as dr}
             <div style="margin-bottom: 12px;">
@@ -90,9 +90,9 @@
                   <span class="mrp-badge">{dm.Origin}</span>
                   <span class="mrp-badge" class:mrp-badge-dim={dm.Confidence === 'possible'} style={dm.Confidence === 'confirmed' ? 'background: #166534; color: #dcfce7;' : dm.Confidence === 'likely' ? 'background: #1e40af; color: #dbeafe;' : ''}>{dm.Confidence}</span>
                   {#if alreadyConfigured || justAdded}
-                    <span class="mrp-badge" style="background: #166534; color: #dcfce7;">configured</span>
+                    <span class="mrp-badge" style="background: #166534; color: #dcfce7;">{$t('mirrorDiscover.configured')}</span>
                   {:else}
-                    <button class="btn-sm" style="margin-left: auto; padding: 1px 8px; font-size: 10px;" on:click={() => addDiscoveredRepo(dr, dm)}>+ Add</button>
+                    <button class="btn-sm" style="margin-left: auto; padding: 1px 8px; font-size: 10px;" on:click={() => addDiscoveredRepo(dr, dm)}>{$t('mirrorDiscover.add')}</button>
                   {/if}
                 </div>
               {/each}
@@ -101,9 +101,9 @@
         {/if}
       </div>
       <div class="modal-foot">
-        <button class="btn-cancel" on:click={() => mirrorDiscoverResults = null}>Close</button>
+        <button class="btn-cancel" on:click={() => mirrorDiscoverResults = null}>{$t('common.close')}</button>
         {#if mirrorDiscoverResults.length > 0}
-          <button class="btn-add" on:click={applyMirrorDiscovery}>Apply to config</button>
+          <button class="btn-add" on:click={applyMirrorDiscovery}>{$t('mirrorDiscover.apply')}</button>
         {/if}
       </div>
     </div>
