@@ -283,6 +283,10 @@ func (a *App) fetchOne(cfg *config.Config, source, repo string) error {
 	}
 }
 
+// refusedFastRetryDelay is how long a fetch refused within milliseconds
+// waits before its one retry.
+const refusedFastRetryDelay = 3 * time.Second
+
 func (a *App) performFetch(cfg *config.Config, source, repo, path string) error {
 	a.maintenanceMu.RLock()
 	if !a.sameRefreshRepo(cfg, source, repo) {
@@ -306,7 +310,19 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 		if a.refreshHooks != nil && a.refreshHooks.fetch != nil {
 			fetch = a.refreshHooks.fetch
 		}
-		_, err = fetch(a.refreshContext(), path)
+		ctx := a.refreshContext()
+		_, err = fetch(ctx, path)
+		if git.IsRefusedFast(err) {
+			// A connect refused within milliseconds right after launch is
+			// usually macOS Local Network privacy still checking the new
+			// process; one retry a moment later rides it out. A server
+			// that is really down times out instead and isn't retried.
+			select {
+			case <-ctx.Done():
+			case <-time.After(refusedFastRetryDelay):
+				_, err = fetch(ctx, path)
+			}
+		}
 	}
 	payload := map[string]any{"source": source, "repo": repo}
 	if err != nil {

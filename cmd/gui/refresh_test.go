@@ -514,3 +514,45 @@ func TestRefresh_ShutdownJoinsStandaloneCredentialVerification(t *testing.T) {
 		}
 	})
 }
+
+func TestRefresh_RetriesAConnectRefusedRightAway(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a, events := refreshTestApp(t, 1)
+		defer a.stopRefresh()
+		var calls atomic.Int32
+		a.refreshHooks.fetch = func(context.Context, string) (string, error) {
+			if calls.Add(1) == 1 {
+				return "", errors.New("git fetch: exit status 128: fatal: unable to access 'https://h.lan/a.git/': Failed to connect to h.lan port 443 after 5 ms: Couldn't connect to server")
+			}
+			return "", nil
+		}
+		if err := a.FetchAllRepos(); err != nil {
+			t.Fatalf("FetchAllRepos() = %v, want the retry to succeed", err)
+		}
+		if calls.Load() != 2 {
+			t.Fatalf("fetch calls = %d, want 2 (one retry)", calls.Load())
+		}
+		done := events.named("fetch:done")
+		if len(done) != 1 || done[0].args[0].(map[string]any)["error"] != nil {
+			t.Fatalf("want one clean fetch:done, got %v", done)
+		}
+	})
+}
+
+func TestRefresh_DoesNotRetryOtherFetchErrors(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a, _ := refreshTestApp(t, 1)
+		defer a.stopRefresh()
+		var calls atomic.Int32
+		a.refreshHooks.fetch = func(context.Context, string) (string, error) {
+			calls.Add(1)
+			return "", errors.New("git fetch: exit status 128: fatal: Authentication failed")
+		}
+		if err := a.FetchAllRepos(); err == nil {
+			t.Fatal("FetchAllRepos() = nil, want the authentication error")
+		}
+		if calls.Load() != 1 {
+			t.Fatalf("fetch calls = %d, want 1 (no retry)", calls.Load())
+		}
+	})
+}

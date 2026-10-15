@@ -214,6 +214,8 @@ Copy that error text as-is when you file a bug report.
 
 **Root cause.** macOS Sonoma and later gate outbound connections to local-network IPs behind the **Local Network** TCC privacy permission. Each GUI app is tracked separately by code-signing identity + bundle path. Terminal was granted access the first time you used it. Your gitbox bundle has either not been approved yet, was silently denied (common for ad-hoc built binaries), or has been moved/renamed so that TCC no longer recognises it.
 
+Even when access is granted, macOS can refuse a freshly launched app's first LAN connections for a moment. A fetch whose connect is refused within milliseconds is retried once, a few seconds later, so those startup refusals don't show up as failures.
+
 **Fix — move the app to `/Applications/` and re-prompt.**
 
 ```bash
@@ -236,7 +238,7 @@ The `tccutil` call is best-effort, and in recent macOS versions it often prints 
 - The per-user TCC database lives under `~/Library/Application Support/com.apple.TCC/TCC.db`. SIP blocks direct writes and routes everything through `tccutil`; if Terminal (or your shell emulator) does not have **Full Disk Access** granted in _System Settings → Privacy & Security → Full Disk Access_, the call fails.
 - Even when `tccutil` returns `Failed`, the OS may still re-prompt on the next LAN connect, because the internal decision cache is separate from the on-disk DB on newer releases. You saw this: the reset reported a failure, but GitboxApp still popped the "Allow Local Network" dialog when it reached the server.
 
-Passing a bundle identifier (`tccutil reset LocalNetwork com.wails.GitboxApp`) narrows the reset to one app, but returns the same error whenever the broader reset already can't write. The bundle identifier for a stock gitbox build is `com.wails.GitboxApp` — `wails build` inherits that from its default `Info.plist` template since the repo does not override it. After an ad-hoc `codesign --sign -`, the identifier is preserved (you can confirm with `defaults read /Applications/GitboxApp.app/Contents/Info.plist CFBundleIdentifier`).
+Passing a bundle identifier (`tccutil reset LocalNetwork com.wails.gitboxapp`) narrows the reset to one app, but returns the same error whenever the broader reset already can't write. The bundle identifier for a stock gitbox build is `com.wails.gitboxapp`, in lowercase — `wails build` inherits that from its default `Info.plist` template since the repo does not override it. After an ad-hoc `codesign --sign -`, the identifier is preserved (you can confirm with `defaults read /Applications/GitboxApp.app/Contents/Info.plist CFBundleIdentifier`).
 
 **If `tccutil` fails but the prompt never appears either** — skip it. Open _System Settings → Privacy & Security → Local Network_ directly and flip the GitboxApp toggle on if it's listed. If it isn't listed at all, the app truly never tried a LAN connect yet (or TCC recorded it under a different identity from an earlier ship); relaunch, trigger a credential verification on a LAN account, and the OS will add it.
 
