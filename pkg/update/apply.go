@@ -12,7 +12,7 @@ import (
 // ExtractUpdate extracts a zip artifact and resolves the install directory.
 // Returns (extractDir, installDir, error). The caller owns extractDir cleanup.
 func ExtractUpdate(zipPath string) (string, string, error) {
-	self, err := selfPath()
+	self, err := SelfPath()
 	if err != nil {
 		return "", "", err
 	}
@@ -77,8 +77,8 @@ func installEntries(extractDir, installDir string, keep func(name string) bool) 
 	return nil
 }
 
-// selfPath returns the running executable with symlinks resolved.
-func selfPath() (string, error) {
+// SelfPath returns the running executable with symlinks resolved.
+func SelfPath() (string, error) {
 	p, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("finding current executable: %w", err)
@@ -95,15 +95,24 @@ func selfPath() (string, error) {
 // is the directory holding the bundle, so the whole .app is replaced.
 // Otherwise it is the executable's own directory.
 func installTarget(exePath string) string {
+	if bundle := bundleOf(exePath); bundle != "" {
+		return filepath.Dir(bundle)
+	}
+	return filepath.Dir(exePath)
+}
+
+// bundleOf returns the macOS bundle holding exePath
+// (…/X.app/Contents/MacOS/exe → …/X.app), or "" when it isn't in one.
+func bundleOf(exePath string) string {
 	macOSDir := filepath.Dir(exePath)
 	contents := filepath.Dir(macOSDir)
 	bundle := filepath.Dir(contents)
 	if filepath.Base(macOSDir) == "MacOS" &&
 		filepath.Base(contents) == "Contents" &&
 		strings.HasSuffix(filepath.Base(bundle), ".app") {
-		return filepath.Dir(bundle)
+		return bundle
 	}
-	return macOSDir
+	return ""
 }
 
 // replaceBundle swaps the bundle at dst for src. The new bundle is staged
@@ -231,7 +240,7 @@ func runningFromAppImage() bool {
 	if appDir == "" {
 		return true
 	}
-	self, err := selfPath()
+	self, err := SelfPath()
 	if err != nil {
 		return false
 	}
