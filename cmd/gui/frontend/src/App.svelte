@@ -4,8 +4,7 @@
   import type { DoctorPrecheckDTO } from './lib/bridge';
   import {
     configStore, accounts, sources, mirrors, repoStates, themeStore, applyStatusResults,
-    applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, toggleCloneSelection,
-    clearCloneSelection
+    applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate
   } from './lib/stores';
   import { detailLocked, credBroken } from './lib/status';
   import { languageStore, normalizeLanguage } from './lib/i18n';
@@ -62,18 +61,13 @@
   // UI state for the read-only Workspaces tab.
   let workspaceBusy = false;
 
-  // Selection mode toggle for the clone list. Distinct from deleteMode
-  // because the two flows serve different goals and should not share state.
-  let selectionMode = false;
   let compactExpanded: Record<string, boolean> = {};
   let savedFullSize: { w: number; h: number } | null = null;
   let savedFullPos: { x: number; y: number } | null = null;
 
-  // A repo row toggles clone selection in workspace-selection mode and
-  // its detail panel otherwise.
-  function activateRepoRow(sourceKey: string, repoName: string, repoKey: string, status: string) {
-    if (selectionMode) toggleCloneSelection(repoKey);
-    else if (status !== 'unknown') toggleRepoDetail(sourceKey, repoName, status);
+  // A repo row toggles its detail panel once its first scan is in.
+  function activateRepoRow(sourceKey: string, repoName: string, status: string) {
+    if (status !== 'unknown') toggleRepoDetail(sourceKey, repoName, status);
   }
 
   // ── Action menu (kebab) ──
@@ -645,7 +639,6 @@
       return;
     }
     cardsTab = tab;
-    if (selectionMode && tab !== 'accounts') toggleSelectionMode();
     if (!cardsVisible) toggleCards();
   }
 
@@ -1046,11 +1039,6 @@
     }
   }
 
-  function toggleSelectionMode() {
-    selectionMode = !selectionMode;
-    if (!selectionMode) clearCloneSelection();
-  }
-
   // ── Settings ──
   let showSettings = false;
   let configPath = '';
@@ -1267,7 +1255,6 @@
   // enterSimple leaves the Advanced-only states Simple has no controls for.
   function enterSimple() {
     cardsTab = 'accounts';
-    if (selectionMode) toggleSelectionMode();
     deleteMode = false;
   }
 
@@ -1636,8 +1623,8 @@
   <!-- ══════ FULL DASHBOARD VIEW ══════ -->
 
   <!-- ── TOP BAR ── -->
-  <TopBar {simple} {syncing} {fetchingAll} {selectionMode} {cardsTab} {themeChoice} bind:deleteMode bind:showSettings
-    {syncAll} {runFetchAll} {toggleSelectionMode} {toggleViewMode} {cycleTheme} {setUIMode} />
+  <TopBar {simple} {syncing} {fetchingAll} {themeChoice} bind:deleteMode bind:showSettings
+    {syncAll} {runFetchAll} {toggleViewMode} {cycleTheme} {setUIMode} />
 
   <!-- ── GLOBAL WARNINGS (identity, GCM helper, gitignore) ── -->
   <Banners bind:globalIdentityWarn bind:globalGCMWarn bind:gitignoreWarn bind:gitignoreInstalled bind:gitignoreError
@@ -1650,7 +1637,7 @@
     {setPRIncludeDrafts} {setCheckGitignorePref} {openDoctorModal} {openTerminalsManagerWindow} />
 
   <!-- ── TAB BAR ── -->
-  <TabBar {cardsTab} {cardsVisible} {simple} {credStatuses} {orphanCount} {mirrorDiscoverLoading} {workspaceBusy} {selectionMode}
+  <TabBar {cardsTab} {cardsVisible} {simple} {credStatuses} {orphanCount} {mirrorDiscoverLoading} {workspaceBusy}
     {selectCardsTab} {showOrphanModal} {runMirrorDiscover} {checkAllMirrorStatus} {refreshWorkspaces} />
 
   {#if cardsTab === 'accounts'}
@@ -1660,7 +1647,7 @@
     onAddAccount={() => { if (simple) connectModal = true; else addAccountDialog.open(); }} />
 
   <!-- ── REPO LIST ── -->
-  <RepoList {treeRows} {collapsedSources} {collapsedRepos} {simple} {deleteMode} {selectionMode} {fetchingRepos} {credStatuses}
+  <RepoList {treeRows} {collapsedSources} {collapsedRepos} {simple} {deleteMode} {fetchingRepos} {credStatuses}
     {tentativeContainers} {workspaceBusy} {openWsPopover} {revealLabel} {configEditors} {configProfiles} {configAIHarnesses}
     {expandedRepo} {repoDetail} {detailLoading}
     bind:actionMenuAccount bind:actionMenuRepo bind:openPRPopover

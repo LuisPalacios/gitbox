@@ -12,14 +12,11 @@
   export let simple: boolean;
   export let syncing: boolean;
   export let fetchingAll: boolean;
-  export let selectionMode: boolean;
-  export let cardsTab: 'accounts' | 'mirrors' | 'workspaces';
   export let themeChoice: 'system' | 'light' | 'dark';
   export let deleteMode: boolean;
   export let showSettings: boolean;
   export let syncAll: () => Promise<void>;
   export let runFetchAll: () => Promise<void>;
-  export let toggleSelectionMode: () => void;
   export let toggleViewMode: () => Promise<void>;
   export let cycleTheme: () => void;
   export let setUIMode: (mode: 'simple' | 'advanced') => Promise<void>;
@@ -85,7 +82,6 @@
       <span class="icon-spin" class:spinning={fetchingAll}><UIIcon name="fetch" /></span>
     </button>
     <button class="btn-gear" class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title="{deleteMode ? 'Exit delete mode' : 'Delete mode'}"><UIIcon name="trash" /></button>
-    <button class="btn-gear" class:select-active={selectionMode} on:click={toggleSelectionMode} disabled={cardsTab !== 'accounts' || Object.keys($accounts).length === 0} title="{selectionMode ? 'Exit selection mode' : 'Toggle clone selection mode'}"><UIIcon name={selectionMode ? 'select-on' : 'select'} /></button>
     <button class="btn-gear" on:click={toggleViewMode} title="Compact view"><UIIcon name="compact" /></button>
     <button class="btn-gear" on:click={cycleTheme} title="Theme: {themeChoice}"><UIIcon name={themeChoice === 'light' || themeChoice === 'dark' ? `theme-${themeChoice}` : 'theme-system'} /></button>
     {/if}
@@ -132,7 +128,6 @@
   }
   .btn-gear:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-hover); }
   .btn-gear:disabled { opacity: 0.3; cursor: default; }
-  .select-active { color: var(--text-primary) !important; background: var(--bg-hover) !important; }
   /* Simple / Advanced switch in the top bar: grey pill = Simple, green = Advanced. */
   .mode-switch {
     position: relative; align-self: center; width: 30px; height: 16px; padding: 0; margin: 0 4px;

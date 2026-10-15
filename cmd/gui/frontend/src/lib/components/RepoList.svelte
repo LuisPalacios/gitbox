@@ -29,7 +29,6 @@
   // Passed through to each RepoRow.
   export let simple: boolean;
   export let deleteMode: boolean;
-  export let selectionMode: boolean;
   export let fetchingRepos: Record<string, boolean>;
   export let collapsedRepos: Set<string>;
   export let tentativeContainers: Set<string>;
@@ -41,7 +40,7 @@
   export let configAIHarnesses: AIHarnessInfo[];
   export let actionMenuRepo: string | null;
   export let openPRPopover: string | null;
-  export let activateRepoRow: (sourceKey: string, repoName: string, repoKey: string, status: string) => void;
+  export let activateRepoRow: (sourceKey: string, repoName: string, status: string) => void;
   export let askDelete: (sourceKey: string, repoKey: string, status: string) => void;
   export let syncRepo: (sourceKey: string, repoKey: string) => void;
   export let cloneRepo: (sourceKey: string, repoKey: string) => void;
@@ -163,7 +162,7 @@
         {@const state = $repoStates[repoKey] || { status: 'unknown', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
         {@const rowOpensDetail = opensDetail(state.status)}
         <RepoRow {sourceKey} {rowSourceKey} {repoName} {depth} {childCount} {descendants} {rowAccountKey} {repoKey} {isContainer} {state} {rowOpensDetail}
-          {simple} {deleteMode} {selectionMode} {fetchingRepos} {collapsedRepos} {tentativeContainers} {workspaceBusy} {openWsPopover}
+          {simple} {deleteMode} {fetchingRepos} {collapsedRepos} {tentativeContainers} {workspaceBusy} {openWsPopover}
           {revealLabel} {configEditors} {configProfiles} {configAIHarnesses} bind:actionMenuRepo bind:openPRPopover
           {activateRepoRow} {askDelete} {syncRepo} {cloneRepo} {fetchRepo} {toggleActionMenu} {closeActionMenu} {toggleWsPopover}
           {openWorkspaceFromBadge} {togglePRPopover} {sweepBranches} {openMoveRepo} {toggleContainer} {rescanContainer}

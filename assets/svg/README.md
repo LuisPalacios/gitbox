@@ -23,7 +23,7 @@ To find, fit and preview new logos, I use the `preparing-brand-logos` skill (`.c
 
 ## Top-bar icons (`ui/`)
 
-`<name>.svg`, single colour, repainted with the theme's text colour like the `-dark` logos. Names in use: `pull`, `fetch`, `trash`, `select`, `select-on`, `compact`, `theme-light`, `theme-dark`, `theme-system`, `gear`.
+`<name>.svg`, single colour, repainted with the theme's text colour like the `-dark` logos. Names in use: `pull`, `fetch`, `trash`, `compact`, `theme-light`, `theme-dark`, `theme-system`, `gear`.
 
 ## Drawing rules
 

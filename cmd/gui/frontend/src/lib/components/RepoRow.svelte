@@ -4,7 +4,7 @@
   // and PR badges, branch, counts, launchers, fetch and ⋯).
   import { fade } from 'svelte/transition';
   import { bridge } from '../bridge';
-  import { accounts, repoStates, selectedClones, toggleCloneSelection, prSettings, prsByAccount, lookupPRSummary, workspaces, workspaceMemberships, isSynced, themeStore } from '../stores';
+  import { accounts, repoStates, prSettings, prsByAccount, lookupPRSummary, workspaces, workspaceMemberships, isSynced, themeStore } from '../stores';
   import { statusColor, simpleKind, simpleColor, simpleLabelKey, simpleUnsaved, rowBusy, rowGlyph, advancedLabel, COUNT_BADGES } from '../status';
   import type { SimpleKind } from '../status';
   import { t } from '../i18n';
@@ -29,7 +29,6 @@
   export let rowOpensDetail: boolean;
   export let simple: boolean;
   export let deleteMode: boolean;
-  export let selectionMode: boolean;
   export let fetchingRepos: Record<string, boolean>;
   export let collapsedRepos: Set<string>;
   export let tentativeContainers: Set<string>;
@@ -41,7 +40,7 @@
   export let configAIHarnesses: AIHarnessInfo[];
   export let actionMenuRepo: string | null;
   export let openPRPopover: string | null;
-  export let activateRepoRow: (sourceKey: string, repoName: string, repoKey: string, status: string) => void;
+  export let activateRepoRow: (sourceKey: string, repoName: string, status: string) => void;
   export let askDelete: (sourceKey: string, repoKey: string, status: string) => void;
   export let syncRepo: (sourceKey: string, repoKey: string) => void;
   export let cloneRepo: (sourceKey: string, repoKey: string) => void;
@@ -236,16 +235,12 @@
   class:repo-row-nested={depth > 0}
   style={depth > 0 ? `padding-left: ${10 + depth * 22}px` : ''}
   role="button"
-  tabindex={rowOpensDetail || selectionMode ? 0 : -1}
-  aria-disabled={!rowOpensDetail && !selectionMode}
-  on:click={() => activateRepoRow(rowSourceKey, repoName, repoKey, state.status)}
-  on:keydown={onActivateKey(() => activateRepoRow(rowSourceKey, repoName, repoKey, state.status))}>
+  tabindex={rowOpensDetail ? 0 : -1}
+  aria-disabled={!rowOpensDetail}
+  on:click={() => activateRepoRow(rowSourceKey, repoName, state.status)}
+  on:keydown={onActivateKey(() => activateRepoRow(rowSourceKey, repoName, state.status))}>
   {#if rowSourceKey !== sourceKey}<span class="container-badge" title={rowSourceKey}>{rowAccountKey}</span>{/if}
-  {#if selectionMode}
-    <input type="checkbox" class="clone-select-box" checked={$selectedClones.has(repoKey)}
-      on:click|stopPropagation
-      on:change={() => toggleCloneSelection(repoKey)} title="{repoName}: {$t('repo.selectForWorkspace')}" />
-  {:else if deleteMode}
+  {#if deleteMode}
     <button class="btn-delete-x" on:click|stopPropagation={() => askDelete(rowSourceKey, repoName, state.status)} title="Delete {repoName}">&#10005;</button>
   {/if}
   {#if childCount > 0}
@@ -347,10 +342,10 @@
     </div>
   {/if}
   {#if childCount > 0}
-    <!-- The name folds its clones too; selection mode keeps the row's own click. -->
+    <!-- The name folds its clones too. -->
     <span class="repo-name"><span class="repo-name-toggle" role="button" tabindex="-1"
       title={collapsedRepos.has(repoKey) ? $t('collapse.expand') : $t('collapse.collapse')}
-      on:click={(e) => { if (selectionMode) return; e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants); }}
+      on:click={(e) => { e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants); }}
       on:keydown={onActivateKey(() => toggleRepoCollapsed(repoKey, descendants))}>{repoName}</span></span>
   {:else}
     <span class="repo-name">{repoName}</span>
@@ -592,15 +587,6 @@
   .btn-delete-x:hover { opacity: 1; background: #D81E5B22; border-color: #D81E5B; }
   /* ── Workspaces (issue #27 / #49) ────────────────────────────────── */
 
-  /* Per-row checkbox shown in selection mode. Sized to match the delete-X
-     button it visually replaces so the row layout stays stable. */
-  .clone-select-box {
-    width: 14px; height: 14px;
-    margin: 0 6px 0 0;
-    accent-color: var(--text-primary);
-    cursor: pointer;
-    flex: 0 0 auto;
-  }
   /* Small membership count chip on clone rows. Sits beside the branch
      badge and stays subtle — presence of the chip at all is already the
      signal the clone is in a workspace. */

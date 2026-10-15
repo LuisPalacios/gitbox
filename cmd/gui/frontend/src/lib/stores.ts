@@ -212,23 +212,5 @@ export const workspaceMemberships = derived(workspaces, ($ws) => {
   return index;
 });
 
-// Multi-select state for the clone list. Keyed by "sourceKey/repoKey".
-// Populated by the checkbox toggle; consumed by the action bar that
-// offers "Create workspace from N selected".
-export const selectedClones = writable<Set<string>>(new Set());
-
-export function toggleCloneSelection(repoKey: string) {
-  selectedClones.update((s) => {
-    const next = new Set(s);
-    if (next.has(repoKey)) next.delete(repoKey);
-    else next.add(repoKey);
-    return next;
-  });
-}
-
-export function clearCloneSelection() {
-  selectedClones.set(new Set());
-}
-
 // ── Theme store ──
 export const themeStore = writable<'light' | 'dark'>('dark');

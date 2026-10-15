@@ -1,7 +1,7 @@
 <script lang="ts">
   // Accounts / Mirrors / Workspaces tabs with what a folded cards panel
   // hides, the orphans pill and each tab's actions.
-  import { accounts, mirrorSummary, workspaces, selectedClones, clearCloneSelection, themeStore } from '../stores';
+  import { accounts, mirrorSummary, workspaces, themeStore } from '../stores';
   import { statusColor } from '../status';
   import { credColor } from '../theme';
   import { t } from '../i18n';
@@ -13,7 +13,6 @@
   export let orphanCount: number;
   export let mirrorDiscoverLoading: boolean;
   export let workspaceBusy: boolean;
-  export let selectionMode: boolean;
   export let selectCardsTab: (tab: 'accounts' | 'mirrors' | 'workspaces') => void;
   export let showOrphanModal: () => void;
   export let runMirrorDiscover: () => Promise<void>;
@@ -61,11 +60,6 @@
   {#if cardsTab === 'workspaces'}
     <div class="tab-bar-actions">
       <button class="btn-tab-action" title="Rescan disk for .code-workspace files" on:click={refreshWorkspaces} disabled={workspaceBusy}>{$t('tab.discover')}</button>
-    </div>
-  {/if}
-  {#if cardsTab === 'accounts' && selectionMode && $selectedClones.size > 0}
-    <div class="tab-bar-actions">
-      <button class="btn-tab-action" on:click={() => clearCloneSelection()} title="Clear selection">{$t('tab.clear')}</button>
     </div>
   {/if}
 </div>
