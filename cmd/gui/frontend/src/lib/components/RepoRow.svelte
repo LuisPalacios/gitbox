@@ -38,6 +38,7 @@
     rescanContainer: () => Promise<void>;
     toggleRepoCollapsed: (repoKey: string, descendants: string[]) => void;
     isContainerRepo: (sourceKey: string, repoName: string) => boolean;
+    showAccountView: (accountKey: string) => void;
   }
 </script>
 
@@ -107,6 +108,7 @@
   export let rescanContainer: () => Promise<void>;
   export let toggleRepoCollapsed: (repoKey: string, descendants: string[]) => void;
   export let isContainerRepo: (sourceKey: string, repoName: string) => boolean;
+  export let showAccountView: (accountKey: string) => void;
 
   $: sc = (s: string) => statusColor(s, $themeStore);
   $: busy = rowBusy(state.status, !!fetchingRepos[repoKey]);
@@ -267,7 +269,7 @@
 <!-- After the name: the account pill, the parent tag and a folded parent's
      count of clones below. -->
 {#snippet rowTags()}
-  {#if showAccount}<span class="acct-pill">{rowAccountKey}</span>{/if}
+  {#if showAccount}<button class="acct-pill" title={$t('nav.openAccount', { name: rowAccountKey })} on:click|stopPropagation={() => showAccountView(rowAccountKey)}>{rowAccountKey}</button>{/if}
   {#if parentLabel}<span class="container-badge" title={parentLabel}>{$t('repo.inParent', { name: parentLabel.split('/').pop() || parentLabel })}</span>{/if}
   {#if childCount > 0 && collapsedRepos.has(repoKey)}
     <span class="collapse-summary collapse-summary-row">
@@ -570,7 +572,11 @@
   .status-text { font-size: 12px; white-space: nowrap; font-weight: 600; display: inline-flex; align-items: center; }
   .safe-note { color: var(--text-muted); font-weight: 500; }
   .btn-tag { font-size: 10px; color: var(--text-muted); border-left: 1px solid var(--border); padding-left: 6px; margin-left: 2px; }
-  .acct-pill { font-size: 10.5px; color: var(--text-muted); white-space: nowrap; flex: none; }
+  .acct-pill {
+    flex: none; padding: 0 6px; border: 1px solid var(--border); border-radius: 5px; background: none;
+    font-size: 10.5px; color: var(--text-muted); white-space: nowrap; cursor: pointer; line-height: 1.5;
+  }
+  .acct-pill:hover { color: var(--text-primary); border-color: var(--border-hover); }
   /* Healthy rows step back until hovered or focused, so problems stand out. */
   .repo-row.calm { opacity: 0.55; }
   .repo-row.calm:hover, .repo-row.calm:focus-within { opacity: 1; }

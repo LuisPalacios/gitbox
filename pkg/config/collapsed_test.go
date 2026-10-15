@@ -52,24 +52,6 @@ func TestPruneCollapsed_EmptyBecomesNil(t *testing.T) {
 	}
 }
 
-// An open cards panel is state on its own: it keeps the struct alive even
-// when no account group or clone is folded.
-func TestPruneCollapsed_KeepsCardsOpen(t *testing.T) {
-	cfg := collapsedTestConfig()
-	cfg.Global.Collapsed = &CollapsedState{Sources: []string{"gone"}, CardsOpen: true}
-	cfg.PruneCollapsed()
-	got := cfg.Global.Collapsed
-	if got == nil || !got.CardsOpen || len(got.Sources) != 0 {
-		t.Errorf("Collapsed = %+v, want only CardsOpen", got)
-	}
-
-	cfg.Global.Collapsed.CardsOpen = false
-	cfg.PruneCollapsed()
-	if cfg.Global.Collapsed != nil {
-		t.Errorf("Collapsed = %+v, want nil once the panel is collapsed", cfg.Global.Collapsed)
-	}
-}
-
 // The sidebar rail and the last view are layout state on their own: they
 // keep the struct alive with nothing folded.
 func TestPruneCollapsed_KeepsSidebarAndView(t *testing.T) {

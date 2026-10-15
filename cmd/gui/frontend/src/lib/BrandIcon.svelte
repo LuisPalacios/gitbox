@@ -28,6 +28,13 @@
     return 'ai';
   }
 
+  // providerLogo picks a provider's logo (github, gitlab, gitea, forgejo,
+  // bitbucket), or '' when assets/svg/brand/ has none, so the caller can
+  // show a letter instead.
+  export function providerLogo(provider: string): string {
+    return brand[provider] ? provider : '';
+  }
+
   export function editorLogo(e: { name: string; command: string }): string {
     const k = `${e.name} ${e.command}`.toLowerCase();
     if (k.includes('cursor')) return 'cursor';

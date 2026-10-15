@@ -1,7 +1,7 @@
 <script lang="ts">
-  // The Mirrors tab: discovery progress, the mirror group cards and the
-  // list of mirrored repos with their live status and setup actions.
-  import { slide } from 'svelte/transition';
+  // The Mirrors view: its header with Discover and Check all, discovery
+  // progress, the mirror group cards and the list of mirrored repos with
+  // their live status and setup actions.
   import { mirrors, mirrorStates, themeStore } from '../stores';
   import { statusColor } from '../status';
   import { t } from '../i18n';
@@ -9,7 +9,6 @@
   import UIIcon from '../UIIcon.svelte';
   import type { MirrorDTO, MirrorRepo, MirrorStatusResult } from '../types';
 
-  export let cardsVisible: boolean;
   export let expandedCard: string | null;
   export let deleteMode: boolean;
   export let mirrorDiscoverLoading: boolean;
@@ -23,6 +22,8 @@
   export let onAddRepo: (mirrorKey: string) => void;
   export let onDeleteGroup: (mirrorKey: string) => void;
   export let onDeleteRepo: (mirrorKey: string, repoKey: string) => void;
+  export let runMirrorDiscover: () => Promise<void>;
+  export let checkAllMirrorStatus: () => Promise<void>;
 
   $: sc = (s: string) => statusColor(s, $themeStore);
 
@@ -91,6 +92,14 @@
   })();
 </script>
 
+<section class="view-scroll">
+<div class="view-head">
+  <h3 class="view-title">{$t('tab.mirrors')}</h3>
+  <span class="view-actions">
+    <button class="text-btn" on:click={runMirrorDiscover} disabled={mirrorDiscoverLoading}>{mirrorDiscoverLoading ? $t('tab.scanning') : $t('tab.discover')}</button>
+    <button class="text-btn" on:click={checkAllMirrorStatus}>{$t('tab.checkAll')}</button>
+  </span>
+</div>
 {#if mirrorDiscoverLoading && mirrorDiscoverProgress}
 <div class="discover-progress">
   <div class="discover-progress-text">
@@ -111,8 +120,7 @@
   {/if}
 </div>
 {/if}
-{#if cardsVisible}
-<section class="cards-row" transition:slide={{ duration: 150 }}>
+<div class="cards-row">
   {#each Object.entries($mirrors) as [mirrorKey, mir]}
     {@const mstats = mirrorGroupStats[mirrorKey] || { active: 0, unchecked: 0, error: 0, total: 0 }}
     {@const mcolor = mstats.error > 0 ? sc('error') : mstats.active === mstats.total && mstats.total > 0 ? sc('clean') : sc('behind')}
@@ -127,16 +135,11 @@
   <button class="card card-add" on:click={onAddGroup} title={$t('mirror.addGroup')}>
     <span class="card-add-icon">+</span>
   </button>
-</section>
-{/if}
+</div>
 
 <!-- ── MIRROR DETAIL LIST ── -->
 {#if Object.keys($mirrors).length > 0}
-<section class="repo-list">
   <div class="mirror-list">
-  <div class="mirror-section-header">
-    <h3>{$t('tab.mirrors')}</h3>
-  </div>
 
   {#each Object.entries($mirrors) as [mirrorKey, mir]}
     <div class="mirror-group">
@@ -191,8 +194,8 @@
     </div>
   {/each}
   </div>
-</section>
 {/if}
+</section>
 
 <style>
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -208,14 +211,14 @@
   :global([data-theme="light"]) .btn-tab-action:hover:not(:disabled) { background: rgba(37, 99, 235, 0.12); }
   /* Chips and the open card are as wide as their content, so names are
      never cut; the row wraps instead of scrolling. */
-  .cards-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; padding: 10px 24px; flex-shrink: 0; }
+  .cards-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; padding: 4px 0 10px; flex-shrink: 0; }
   .card {
     flex: 0 0 auto; background: var(--bg-card); border: 1px solid var(--border);
     border-radius: 10px; padding: 8px 12px; transition: border-color 0.15s, box-shadow 0.15s;
     box-shadow: var(--card-shadow);
   }
   .card:hover { border-color: var(--border-hover); }
-  .discover-progress { padding: 6px 24px 0; }
+  .discover-progress { padding: 0 0 6px; }
   .discover-progress-text { font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
   .discover-progress-text strong { color: var(--text-primary); }
   .discover-progress-bar { width: 100%; height: 4px; background: var(--ring-bg); border-radius: 2px; overflow: hidden; }
@@ -224,7 +227,6 @@
     width: 30%; animation: indeterminate 1.2s ease-in-out infinite;
   }
   @keyframes indeterminate { 0% { margin-left: 0; } 50% { margin-left: 70%; } 100% { margin-left: 0; } }
-  .repo-list { flex: 1; padding: 0 24px 12px; overflow-y: auto; min-height: 0; }
   /* ── Add account card ── */
   .card-add {
     display: flex; align-items: center; justify-content: center;
@@ -235,12 +237,7 @@
   .card-add:hover { border-color: var(--border-hover); color: var(--text-primary); background: var(--bg-hover); }
   .card-add-icon { font-size: 16px; font-weight: 400; line-height: 1; }
   /* ── Mirror section ── */
-  .mirror-list { padding: 12px 0 0; }
-  .mirror-section-header {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
-  }
-  .mirror-section-header h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-primary); }
+  .mirror-list { padding: 4px 0 0; border-top: 1px solid var(--border); }
   .mirror-group { margin-bottom: 12px; }
   .mirror-group-header {
     display: flex; justify-content: space-between; align-items: center;

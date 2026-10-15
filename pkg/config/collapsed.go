@@ -10,13 +10,11 @@ import (
 // ones) so new sources and clones appear expanded by default. Sidebar
 // records the sidebar folded to its icon rail, and View the last selected
 // view ("attention", "all", "mirrors", "workspaces" or "account:<key>").
-// CardsOpen records the cards panel above the list being open.
 type CollapsedState struct {
-	Sources   []string `json:"sources,omitempty"`    // source keys
-	Repos     []string `json:"repos,omitempty"`      // "source/repo" keys
-	Sidebar   bool     `json:"sidebar,omitempty"`    // sidebar folded to the rail
-	View      string   `json:"view,omitempty"`       // last selected view
-	CardsOpen bool     `json:"cards_open,omitempty"` // cards panel unfolded
+	Sources []string `json:"sources,omitempty"` // source keys
+	Repos   []string `json:"repos,omitempty"`   // "source/repo" keys
+	Sidebar bool     `json:"sidebar,omitempty"` // sidebar folded to the rail
+	View    string   `json:"view,omitempty"`    // last selected view
 }
 
 // AccountViewPrefix starts a View that shows one account: "account:<key>".
@@ -52,11 +50,11 @@ func (c *Config) PruneCollapsed() {
 			view = ""
 		}
 	}
-	if len(sources) == 0 && len(repos) == 0 && !cs.Sidebar && view == "" && !cs.CardsOpen {
+	if len(sources) == 0 && len(repos) == 0 && !cs.Sidebar && view == "" {
 		c.Global.Collapsed = nil
 		return
 	}
-	c.Global.Collapsed = &CollapsedState{Sources: sources, Repos: repos, Sidebar: cs.Sidebar, View: view, CardsOpen: cs.CardsOpen}
+	c.Global.Collapsed = &CollapsedState{Sources: sources, Repos: repos, Sidebar: cs.Sidebar, View: view}
 }
 
 // collapsedRepoExists resolves a "source/repo" key. Repo keys usually hold a

@@ -60,14 +60,12 @@
         // expanded and the app opens on Needs attention. Keys that no longer
         // exist are pruned on save. sidebar records the sidebar folded to its
         // icon rail; view is the last selected view (attention, all, mirrors,
-        // workspaces or account:<account-key>). cards_open records the cards
-        // panel above the list being unfolded; absent means collapsed.
+        // workspaces or account:<account-key>).
         // "collapsed": {
         //     "sources": ["github-MyAccount"],
         //     "repos": ["github-MyAccount/MyOrg/my-container"],
         //     "sidebar": true,
-        //     "view": "account:github-MyAccount",
-        //     "cards_open": true
+        //     "view": "account:github-MyAccount"
         // },
 
         // SSH credentials

@@ -2,17 +2,14 @@
   // The All view: one collapsible group per source (header with its
   // account ⋯ menu and summary), then its clones as a tree (RepoTree),
   // problems first.
-  import { fade } from 'svelte/transition';
-  import { bridge } from '../bridge';
-  import { accounts, sources, repoStates, themeStore } from '../stores';
-  import { statusColor, attentionRank, CALM_RANK, canDiscoverWith, canCreateWith, credBroken, DISCOVER_DISABLED, CREATE_DISABLED } from '../status';
+  import { sources, repoStates, themeStore } from '../stores';
+  import { statusColor, attentionRank, CALM_RANK } from '../status';
   import { t } from '../i18n';
   import { onActivateKey } from '../keyboard';
-  import LauncherMenu from '../LauncherMenu.svelte';
   import UIIcon from '../UIIcon.svelte';
   import RepoTree from './RepoTree.svelte';
+  import AccountMenu from './AccountMenu.svelte';
   import type { RowProps } from './RepoRow.svelte';
-  import type { AIHarnessInfo } from '../types';
   import type { RepoRow as TreeRow } from '../repo-tree';
 
   export let treeRows: Record<string, TreeRow[]>;
@@ -29,53 +26,19 @@
   export let rowProps: RowProps;
 
   $: sc = (s: string) => statusColor(s, $themeStore);
-  $: ({ simple, revealLabel, configEditors, configProfiles, configAIHarnesses } = rowProps);
+  $: simple = rowProps.simple;
   // Repos that need me (as in Needs attention); unknown ones are still checking.
   $: needsMe = (key: string) => { const st = $repoStates[key]; return !!st && attentionRank(st.status, st.isDefault) < CALM_RANK; };
-
-  async function openAccountInExplorer(accountKey: string) {
-    try { await bridge.openAccountFolder(accountKey); } catch (e) { console.error(e); }
-    closeAccountMenu();
-  }
-
-  async function openAccountInApp(accountKey: string, command: string) {
-    try { await bridge.openAccountInApp(accountKey, command); } catch (e) { console.error(e); }
-    closeAccountMenu();
-  }
-
-  async function openAccountProfile(accountKey: string, profileID: string) {
-    try { await bridge.openAccountProfile(accountKey, profileID); }
-    catch (e: any) { await bridge.showErrorDialog('Open profile', (e?.message || String(e))); }
-    closeAccountMenu();
-  }
-
-  async function openAccountInAIHarness(accountKey: string, harness: AIHarnessInfo) {
-    try {
-      await bridge.openAccountInAIHarness(accountKey, harness.command, harness.args || []);
-    } catch (e: any) {
-      await bridge.showErrorDialog('Open in ' + harness.name, (e?.message || String(e)));
-    }
-    closeAccountMenu();
-  }
-
-  async function openAccountInBrowser(accountKey: string) {
-    try { await bridge.openAccountInBrowser(accountKey); } catch (e) { console.error(e); }
-    closeAccountMenu();
-  }
-
-  // The account menu's own actions after Find and New: Edit account, and
-  // Change credential (Advanced) or Reconnect (Simple, broken credential).
-  function accountItems(accountKey: string, simple: boolean, credStatus: string | undefined) {
-    const credType = $accounts[accountKey]?.default_credential_type || 'gcm';
-    const cred = () => { closeAccountMenu(); openCredChange(accountKey, credType); };
-    const items = [{ label: $t('menu.editAccount'), icon: '✎', onClick: () => { closeAccountMenu(); openEditAccount(accountKey); } }];
-    if (!simple) items.push({ label: $t('menu.changeCredential'), icon: '⚿', onClick: cred });
-    else if (credBroken(credStatus)) items.push({ label: $t('menu.reconnect'), icon: '⚿', onClick: cred });
-    return items;
-  }
+  $: total = Object.values($sources).reduce((n, s) => n + Object.keys(s.repos).length, 0);
+  $: accountCount = new Set(Object.values($sources).map((s) => s.account)).size;
+  $: what = simple ? $t('simple.projects', { n: total }) : $t('collapse.clones', { n: total });
 </script>
 
-<section class="repo-list">
+<section class="view-scroll">
+  <div class="view-head">
+    <h3 class="view-title">{$t(simple ? 'nav.allSimple' : 'nav.all')}</h3>
+    <span class="view-sub">{$t(accountCount === 1 ? 'view.acrossOne' : 'view.across', { what, m: accountCount })}</span>
+  </div>
   {#each Object.entries($sources) as [sourceKey, source] (sourceKey)}
     {@const accountKey = source.account}
     {@const sourceCollapsed = collapsedSources.has(sourceKey)}
@@ -90,33 +53,10 @@
         on:keydown={onActivateKey(() => toggleSourceCollapsed(sourceKey))}>
         <span class="collapse-chevron" class:collapsed={sourceCollapsed} aria-hidden="true"><UIIcon name="chevron" /></span>
         <span class="source-header-title">{sourceKey}</span>
-        <div class="action-menu-container source-header-kebab">
-          <button class="icon-btn btn-kebab" on:click|stopPropagation={() => toggleAccountMenu(accountKey)} title={$t('account.actions')} aria-label={$t('account.actions')} aria-haspopup="menu"><UIIcon name="dots" /></button>
-          {#if actionMenuAccount === accountKey}
-            <div transition:fade={{ duration: 80 }}>
-              <LauncherMenu
-                kind="account"
-                editors={configEditors}
-                profiles={simple ? [] : configProfiles}
-                browserLabelOverride={simple ? $t('simple.openWeb') : ''}
-                aiHarnesses={configAIHarnesses}
-                {revealLabel}
-                onOpenBrowser={() => openAccountInBrowser(accountKey)}
-                onOpenFolder={() => openAccountInExplorer(accountKey)}
-                onOpenApp={(cmd) => openAccountInApp(accountKey, cmd)}
-                onOpenProfile={(id) => openAccountProfile(accountKey, id)}
-                onOpenAIHarness={(h) => openAccountInAIHarness(accountKey, h)}
-                onFind={() => { closeAccountMenu(); openDiscover(accountKey); }}
-                findEnabled={canDiscoverWith(credStatuses[accountKey]?.status)}
-                findDisabledReason={DISCOVER_DISABLED}
-                onCreate={() => { closeAccountMenu(); openCreateRepo(accountKey); }}
-                createEnabled={canCreateWith(credStatuses[accountKey]?.status)}
-                createDisabledReason={CREATE_DISABLED}
-                extraItems={accountItems(accountKey, simple, credStatuses[accountKey]?.status)}
-              />
-            </div>
-          {/if}
-        </div>
+        <span class="source-header-kebab">
+          <AccountMenu {accountKey} credStatus={credStatuses[accountKey]?.status} {actionMenuAccount} {rowProps}
+            {toggleAccountMenu} {closeAccountMenu} {openDiscover} {openCreateRepo} {openEditAccount} {openCredChange} />
+        </span>
         <span class="collapse-summary">
           {simple ? $t('simple.projects', { n: sourceRepoKeys.length }) : $t('collapse.clones', { n: sourceRepoKeys.length })} ·
           {#if sourceRepoKeys.some(key => !$repoStates[key] || $repoStates[key].status === 'unknown')}
@@ -138,7 +78,6 @@
 </section>
 
 <style>
-  .repo-list { flex: 1; padding: 0 24px 12px; overflow-y: auto; min-height: 0; }
   .source-group { margin-bottom: 6px; }
   .source-header {
     font-size: 11px; font-weight: 600; color: var(--text-dim);
@@ -156,5 +95,4 @@
   .source-header[role="button"]:hover .collapse-chevron { color: var(--text-primary); }
   .collapse-summary { flex: 0 0 auto; font-size: 11px; font-weight: normal; opacity: 0.8; }
   .source-header-kebab { flex: 0 0 auto; margin-right: auto; display: inline-flex; align-items: center; }
-  .action-menu-container { position: relative; }
 </style>

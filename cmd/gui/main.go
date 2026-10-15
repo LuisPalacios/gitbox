@@ -90,7 +90,7 @@ func main() {
 	}
 
 	// Pre-load config to restore saved window dimensions and view mode.
-	width, height := 900, 700
+	width, height := 1040, 700
 	minWidth, minHeight := 640, 480
 	preloadPath := config.DefaultV2Path()
 	if app.cfgPath != "" {

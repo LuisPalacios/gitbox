@@ -23,7 +23,7 @@ To find, fit and preview new logos, I use the `preparing-brand-logos` skill (`.c
 
 ## UI icons (`ui/`)
 
-`<name>.svg`, single colour, repainted with the theme's text colour like the `-dark` logos. The app shows every one at 18px (`--icon`), inside 30px buttons (`--icon-btn`). Names in use: `pull`, `fetch`, `trash`, `compact`, `theme-light`, `theme-dark`, `theme-system`, `gear`, `menu`, `dots`, `x`, `chevron`, `plus`, `search`, `mirror`, `grid` and `list`.
+`<name>.svg`, single colour, repainted with the theme's text colour like the `-dark` logos. The app shows every one at 18px (`--icon`), inside 30px buttons (`--icon-btn`). Names in use: `pull`, `fetch`, `trash`, `compact`, `theme-light`, `theme-dark`, `theme-system`, `gear`, `menu`, `dots`, `x`, `chevron`, `plus`, `search`, `mirror`, `grid`, `list` and `attention`.
 
 ## Drawing rules
 

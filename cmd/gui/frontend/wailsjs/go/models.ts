@@ -99,7 +99,6 @@ export namespace config {
 	    repos?: string[];
 	    sidebar?: boolean;
 	    view?: string;
-	    cards_open?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new CollapsedState(source);
@@ -111,7 +110,6 @@ export namespace config {
 	        this.repos = source["repos"];
 	        this.sidebar = source["sidebar"];
 	        this.view = source["view"];
-	        this.cards_open = source["cards_open"];
 	    }
 	}
 	export class EditorEntry {

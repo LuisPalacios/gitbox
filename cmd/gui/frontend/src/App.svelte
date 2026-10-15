@@ -6,7 +6,9 @@
     configStore, accounts, sources, mirrors, repoStates, themeStore, applyStatusResults,
     applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate
   } from './lib/stores';
-  import { detailLocked, credBroken, attentionRank } from './lib/status';
+  import { detailLocked, attentionRank, accountHealth, CALM_RANK } from './lib/status';
+  import type { HealthFix } from './lib/status';
+  import { resolveView, viewAccount, accountView, attentionCounts } from './lib/views';
   import { languageStore, normalizeLanguage } from './lib/i18n';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit, EventsOn } from '../wailsjs/runtime/runtime';
   import type { RepoState, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
@@ -18,8 +20,9 @@
   import TopBar from './lib/components/TopBar.svelte';
   import Banners from './lib/components/Banners.svelte';
   import SettingsPanel from './lib/components/SettingsPanel.svelte';
-  import TabBar from './lib/components/TabBar.svelte';
-  import AccountCards from './lib/components/AccountCards.svelte';
+  import Sidebar from './lib/components/Sidebar.svelte';
+  import AttentionView from './lib/components/AttentionView.svelte';
+  import AccountView from './lib/components/AccountView.svelte';
   import RepoList from './lib/components/RepoList.svelte';
   import type { RowProps } from './lib/components/RepoRow.svelte';
   import MirrorsTab from './lib/components/MirrorsTab.svelte';
@@ -51,7 +54,6 @@
 
   // ── View mode ──
   let viewMode: 'full' | 'compact' = 'full';
-  let cardsTab: 'accounts' | 'mirrors' | 'workspaces' = 'accounts';
   let languageChoice: 'en' | 'es' = 'en';
 
   // ── Experience (issue #124) ──
@@ -109,7 +111,7 @@
       WindowSetMinSize(640, 480);
       await tick();
       const target = savedFullSize
-        ?? (savedState ? { w: savedState.width, h: savedState.height } : { w: 900, h: 700 });
+        ?? (savedState ? { w: savedState.width, h: savedState.height } : { w: 1040, h: 700 });
       const pos = savedFullPos
         ?? (savedState ? { x: savedState.x, y: savedState.y } : null);
       setTimeout(async () => {
@@ -380,6 +382,7 @@
   // Simple mode's "Add account" runs the connect + pick steps of the same
   // guided setup; Advanced keeps the full form.
   let connectModal = false;
+  const addAccount = () => { if (simple) connectModal = true; else addAccountDialog.open(); };
   async function finishConnect(result: { sourceKey: string; repos: string[] } | null) {
     connectModal = false;
     await reloadFromDisk();
@@ -606,50 +609,69 @@
   let collapsedSources: Set<string> = new Set();
   let collapsedRepos: Set<string> = new Set();
 
-  function saveCollapsed() {
-    bridge.setCollapsed({ sources: [...collapsedSources], repos: [...collapsedRepos], cards_open: cardsOpen })
-      .catch((e) => console.error('saving collapse state failed', e));
+  // ── Navigation (issue #138) ──
+  // The selected view (attention, all, mirrors, workspaces or
+  // account:<key>) and the sidebar folded to its rail, both persisted in
+  // global.collapsed. resolveView shows Needs attention for a missing
+  // account or an Advanced-only view in Simple, without touching `view`,
+  // so switching back to Advanced restores Mirrors. A window narrower than
+  // 780px always shows the rail; the sidebar button then opens the full
+  // sidebar over the content (railPeek, not saved).
+  let view = 'attention';
+  let sidebarCollapsed = false;
+  let railPeek = false;
+  let innerWidth = 1040;
+  $: narrow = innerWidth < 780;
+  $: if (!narrow) railPeek = false;
+  $: rail = narrow ? !railPeek : sidebarCollapsed;
+  $: currentView = resolveView(view, Object.keys($accounts), simple);
+  $: viewAcct = viewAccount(currentView);
+  $: sidebarShortcut = hostOS === 'darwin' ? '⌘B' : 'Ctrl+B';
+
+  // saveLayout persists the folded groups and clones, the sidebar and the view.
+  function saveLayout() {
+    bridge.setCollapsed({ sources: [...collapsedSources], repos: [...collapsedRepos], sidebar: sidebarCollapsed, view })
+      .catch((e) => console.error('saving layout failed', e));
   }
 
-  // ── Cards panel (issue #123) ──
-  // The card row under the tab bar starts collapsed and remembers its state
-  // (global.collapsed.cards_open). It also opens on its own, without saving,
-  // while delete mode needs the cards' ✕ buttons or an account needs a look
-  // (no accounts yet, or a missing / broken credential). Collapsing it then
-  // dismisses that alert for the rest of the session.
-  let cardsOpen = false;
-  let cardsAlertDismissed = false;
-  // Inside the panel every card starts as a chip (dot + name). Clicking one
-  // opens it into the full two-line card; clicking outside it or Escape
-  // folds it back. One open card at a time, keyed "acct:", "mir:" or "ws:".
-  let expandedCard: string | null = null;
-  // cardsReady holds the alert back until the config and collapse state are
-  // loaded, so the panel doesn't flash open while $accounts is still empty.
-  let cardsReady = false;
-  $: cardsAlert = cardsReady && (Object.keys($accounts).length === 0 ||
-    Object.keys($accounts).some((k) => credBroken(credStatuses[k]?.status)));
-  $: cardsVisible = cardsOpen || deleteMode || (cardsAlert && !cardsAlertDismissed);
-
-  function toggleCards() {
-    if (cardsVisible) {
-      cardsOpen = false;
-      cardsAlertDismissed = true;
-    } else {
-      cardsOpen = true;
-    }
-    saveCollapsed();
+  // setView switches views; the detail panel and any open menu close.
+  function setView(next: string) {
+    view = next;
+    expandedRepo = null;
+    repoDetail = null;
+    actionMenuRepo = null;
+    actionMenuAccount = null;
+    openPRPopover = null;
+    openWsPopover = null;
+    expandedCard = null;
+    railPeek = false;
+    saveLayout();
   }
+  const showAccountView = (accountKey: string) => setView(accountView(accountKey));
 
-  // selectCardsTab switches tabs; clicking the active tab folds or unfolds
-  // the panel, and switching to another tab always shows its cards.
-  function selectCardsTab(tab: typeof cardsTab) {
-    if (tab === cardsTab) {
-      toggleCards();
+  function toggleSidebar() {
+    if (narrow) {
+      railPeek = !railPeek;
       return;
     }
-    cardsTab = tab;
-    if (!cardsVisible) toggleCards();
+    sidebarCollapsed = !sidebarCollapsed;
+    saveLayout();
   }
+
+  // ⌘B (macOS) or Ctrl+B folds the sidebar, except in the compact view and
+  // while typing.
+  function sidebarKey(e: KeyboardEvent) {
+    if (e.key.toLowerCase() !== 'b' || e.altKey || e.shiftKey || !(hostOS === 'darwin' ? e.metaKey : e.ctrlKey)) return;
+    if (viewMode !== 'full' || firstRun || cfgLoadErrorModal || windowMode !== 'main') return;
+    if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    e.preventDefault();
+    toggleSidebar();
+  }
+
+  // The mirror and workspace cards start as chips. Clicking one opens it
+  // into the full two-line card; clicking outside it or Escape folds it
+  // back. One open card at a time, keyed "mir:" or "ws:".
+  let expandedCard: string | null = null;
 
   // closeDetailIf drops the open detail panel when a collapse hides its row.
   function closeDetailIf(hidden: (key: string) => boolean) {
@@ -668,7 +690,7 @@
       closeDetailIf(k => hidden.has(k));
     }
     collapsedSources = collapsedSources;
-    saveCollapsed();
+    saveLayout();
   }
 
   function toggleRepoCollapsed(repoKey: string, descendants: string[]) {
@@ -680,15 +702,29 @@
       closeDetailIf(k => hidden.has(k));
     }
     collapsedRepos = collapsedRepos;
-    saveCollapsed();
+    saveLayout();
   }
 
   // Problems first: siblings sort by the worst attention rank in their
   // subtree (repo-tree.ts), so a parent rises with its worst nested clone.
-  $: treeRows = repoTreeRows($sources, repoNesting, collapsedRepos, (key) => {
+  $: rankOf = (key: string) => {
     const st = $repoStates[key];
     return st ? attentionRank(st.status, st.isDefault) : attentionRank('unknown');
-  });
+  };
+  $: treeRows = repoTreeRows($sources, repoNesting, collapsedRepos, rankOf);
+
+  // How many repos need me, per account and in total; accounts whose
+  // credential needs a fix count too (Needs attention lists them first).
+  $: keysByAccount = (() => {
+    const byAccount: Record<string, string[]> = Object.fromEntries(Object.keys($accounts).map((k) => [k, []]));
+    for (const [sourceKey, source] of Object.entries($sources)) {
+      (byAccount[source.account] ||= []).push(...Object.keys(source.repos).map((r) => `${sourceKey}/${r}`));
+    }
+    return byAccount;
+  })();
+  $: brokenAccounts = Object.keys($accounts).filter((k) => accountHealth(credStatuses[k]?.status, simple).attention);
+  $: attention = attentionCounts(keysByAccount, rankOf, CALM_RANK, brokenAccounts);
+  $: totalRepos = Object.values(keysByAccount).reduce((n, keys) => n + keys.length, 0);
 
   // ── Sweep branches modal ──
   let sweepDialog: SweepModal;
@@ -777,6 +813,10 @@
       repoNesting = snapshot.nesting || {};
       configStore.set(snapshot.config);
       configPath = snapshot.configPath;
+      // A renamed account: Go already moved the saved view to its new key.
+      // A deleted one: Go cleared it, so Needs attention shows.
+      const shown = viewAccount(view);
+      if (shown && !snapshot.config.accounts?.[shown]) view = snapshot.config.global?.collapsed?.view || 'attention';
       const saved = snapshot.config.global.periodic_sync || 'off';
       if (saved !== fetchInterval) applyFetchInterval(saved);
       if (!fetchingAll) {
@@ -929,6 +969,27 @@
   // ── Change credential type ──
   let credentialDialog: CredentialModal;
   const openCredChange = (accountKey: string, currentType: string) => credentialDialog.openCredChange(accountKey, currentType);
+
+  // The account card's and Needs attention's fix action: retry re-checks
+  // the connection; the others open the credential modal.
+  function fixCredential(accountKey: string, fix: HealthFix) {
+    if (fix === 'retry') retryCredential(accountKey);
+    else if (fix) openCredChange(accountKey, $accounts[accountKey]?.default_credential_type || 'gcm');
+  }
+
+  async function retryCredential(accountKey: string) {
+    const before = credStatuses[accountKey];
+    credStatuses[accountKey] = { ...(before || {}), status: 'unknown' };
+    credStatuses = credStatuses;
+    try {
+      const cs = await bridge.credentialVerify(accountKey);
+      credStatuses[accountKey] = { status: cs.status, primary: cs.primary, pat: cs.pat, primaryMsg: cs.primaryMsg, patMsg: cs.patMsg };
+    } catch (e) {
+      console.error(e);
+      credStatuses[accountKey] = before;
+    }
+    credStatuses = credStatuses;
+  }
   const openTokenSetup = (accountKey: string) => credentialDialog.openTokenSetup(accountKey);
 
   // ── Delete account ──
@@ -1186,7 +1247,7 @@
     expandedRepo, repoDetail, detailLoading,
     activateRepoRow, askDelete, syncRepo, cloneRepo, fetchRepo, toggleActionMenu, closeActionMenu,
     toggleWsPopover, openWorkspaceFromBadge, togglePRPopover, closePRPopover, sweepBranches, openMoveRepo,
-    toggleContainer, rescanContainer, toggleRepoCollapsed, isContainerRepo,
+    toggleContainer, rescanContainer, toggleRepoCollapsed, isContainerRepo, showAccountView,
   };
 
   // ── Credential status cache ──
@@ -1203,8 +1264,8 @@
     const collapsed = cfg.global?.collapsed;
     collapsedSources = new Set(collapsed?.sources || []);
     collapsedRepos = new Set(collapsed?.repos || []);
-    cardsOpen = !!collapsed?.cards_open;
-    cardsReady = true;
+    sidebarCollapsed = !!collapsed?.sidebar;
+    view = collapsed?.view || 'attention';
     languageChoice = normalizeLanguage(cfg.global?.language);
     languageStore.set(languageChoice);
     configPath = snapshot.configPath;
@@ -1285,7 +1346,6 @@
 
   // enterSimple leaves the Advanced-only states Simple has no controls for.
   function enterSimple() {
-    cardsTab = 'accounts';
     deleteMode = false;
   }
 
@@ -1598,7 +1658,7 @@
 
 </script>
 
-<svelte:window on:click={(e) => {
+<svelte:window bind:innerWidth on:click={(e) => {
   const inMenu = e.target instanceof Element && e.target.closest('.action-menu-container');
   const inWsPopover = e.target instanceof Element && e.target.closest('.ws-popover, .ws-badge');
   const inPRPopover = e.target instanceof Element && e.target.closest('.pr-badge-wrap');
@@ -1607,7 +1667,9 @@
   if (expandedCard && !(e.target instanceof Element && e.target.closest('.card-open'))) expandedCard = null;
   if (openWsPopover && !inWsPopover) openWsPopover = null;
   if (openPRPopover && !inPRPopover) openPRPopover = null;
+  if (railPeek && !(e.target instanceof Element && e.target.closest('.side, .hamb'))) railPeek = false;
 }} on:keydown={(e) => {
+  sidebarKey(e);
   if (e.key === 'Escape' && openWsPopover) openWsPopover = null;
   if (e.key === 'Escape' && expandedCard) expandedCard = null;
   if (e.key === 'Escape' && openPRPopover) openPRPopover = null;
@@ -1656,7 +1718,7 @@
 
   <!-- ── TOP BAR ── -->
   <TopBar {simple} {syncing} {fetchingAll} {themeChoice} bind:deleteMode bind:showSettings
-    {syncAll} {runFetchAll} {toggleViewMode} {cycleTheme} {setUIMode} />
+    {syncAll} {runFetchAll} {toggleViewMode} {cycleTheme} {setUIMode} {rail} {sidebarShortcut} {toggleSidebar} />
 
   <!-- ── GLOBAL WARNINGS (identity, GCM helper, gitignore) ── -->
   <Banners bind:globalIdentityWarn bind:globalGCMWarn bind:gitignoreWarn bind:gitignoreInstalled bind:gitignoreError
@@ -1668,30 +1730,36 @@
     {openChangeFolder} {setLanguage} {setTheme} {setFetchInterval} {toggleAutostart} {setPRBadgesEnabled}
     {setPRIncludeDrafts} {setCheckGitignorePref} {openDoctorModal} {openTerminalsManagerWindow} />
 
-  <!-- ── TAB BAR ── -->
-  <TabBar {cardsTab} {cardsVisible} {simple} {credStatuses} {orphanCount} {mirrorDiscoverLoading} {workspaceBusy}
-    {selectCardsTab} {showOrphanModal} {runMirrorDiscover} {checkAllMirrorStatus} {refreshWorkspaces} />
+  <div class="body">
+    <!-- ── SIDEBAR ── -->
+    {#if narrow && railPeek}<div class="rail-space"></div>{/if}
+    <Sidebar view={currentView} {rail} peek={narrow && railPeek} {simple} {credStatuses} {attention} {totalRepos} {orphanCount}
+      {setView} onAddAccount={addAccount} {showOrphanModal} />
 
-  {#if cardsTab === 'accounts'}
-  <!-- ── ACCOUNT CARDS ── -->
-  <AccountCards {cardsVisible} bind:expandedCard {deleteMode} {simple} {credStatuses} {resolvedTheme}
-    {askDeleteAccount} {openEditAccount} {openCredChange} {openDiscover} {openCreateRepo}
-    onAddAccount={() => { if (simple) connectModal = true; else addAccountDialog.open(); }} />
-
-  <!-- ── REPO LIST ── -->
-  <RepoList {treeRows} {collapsedSources} {credStatuses} {actionMenuAccount} {rowProps}
-    {toggleSourceCollapsed} {toggleAccountMenu} {closeAccountMenu} {openDiscover} {openCreateRepo} {openEditAccount} {openCredChange} />
-
-  {:else if cardsTab === 'mirrors'}
-  <!-- ── MIRRORS TAB ── -->
-  <MirrorsTab {cardsVisible} bind:expandedCard {deleteMode} {mirrorDiscoverLoading} {mirrorDiscoverProgress} {mirrorChecking} {mirrorSettingUp}
-    {checkMirrorStatus} {setupMirrorRepo} {openTokenSetup}
-    onAddGroup={() => addMirrorGroupDialog.open()} onAddRepo={(mirrorKey) => addMirrorRepoDialog.open(mirrorKey)}
-    onDeleteGroup={(mirrorKey) => deleteMirrorGroupDialog.ask(mirrorKey)} onDeleteRepo={(mirrorKey, repoKey) => deleteMirrorRepoDialog.ask(mirrorKey, repoKey)} />
-  {:else}
-  <!-- ── WORKSPACES TAB ── -->
-  <WorkspacesTab {cardsVisible} bind:expandedCard {workspaceBusy} {openWorkspace} />
-  {/if}
+    <main class="content">
+    {#if currentView === 'attention'}
+      <!-- ── NEEDS ATTENTION ── -->
+      <AttentionView {rankOf} {repoNesting} {credStatuses} {rowProps} {setView} {fixCredential} onAddAccount={addAccount} />
+    {:else if currentView === 'all'}
+      <!-- ── ALL REPOS ── -->
+      <RepoList {treeRows} {collapsedSources} {credStatuses} {actionMenuAccount} {rowProps}
+        {toggleSourceCollapsed} {toggleAccountMenu} {closeAccountMenu} {openDiscover} {openCreateRepo} {openEditAccount} {openCredChange} />
+    {:else if currentView === 'mirrors'}
+      <!-- ── MIRRORS ── -->
+      <MirrorsTab bind:expandedCard {deleteMode} {mirrorDiscoverLoading} {mirrorDiscoverProgress} {mirrorChecking} {mirrorSettingUp}
+        {checkMirrorStatus} {setupMirrorRepo} {openTokenSetup} {runMirrorDiscover} {checkAllMirrorStatus}
+        onAddGroup={() => addMirrorGroupDialog.open()} onAddRepo={(mirrorKey) => addMirrorRepoDialog.open(mirrorKey)}
+        onDeleteGroup={(mirrorKey) => deleteMirrorGroupDialog.ask(mirrorKey)} onDeleteRepo={(mirrorKey, repoKey) => deleteMirrorRepoDialog.ask(mirrorKey, repoKey)} />
+    {:else if currentView === 'workspaces'}
+      <!-- ── WORKSPACES ── -->
+      <WorkspacesTab bind:expandedCard {workspaceBusy} {openWorkspace} {refreshWorkspaces} />
+    {:else}
+      <!-- ── ONE ACCOUNT ── -->
+      <AccountView accountKey={viewAcct} {repoNesting} {rankOf} {credStatuses} {actionMenuAccount} {rowProps}
+        {toggleAccountMenu} {closeAccountMenu} {askDeleteAccount} {openEditAccount} {openCredChange} {openDiscover} {openCreateRepo} {fixCredential} />
+    {/if}
+    </main>
+  </div>
 
   <!-- ── SUMMARY FOOTER ── -->
   <Footer {simple} bind:updateInfo bind:updateApplying bind:updateError bind:updateDismissed {updateProgress} {updateDone} />
@@ -1779,5 +1847,10 @@
 <!-- ════════════════════════════════════════════════════════════ -->
 
 <style>
-  .app { max-width: 860px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  .app { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  /* Sidebar next to the view; each view scrolls on its own. */
+  .body { flex: 1; min-height: 0; display: flex; position: relative; }
+  .content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  /* Holds the rail's place while the full sidebar opens over the content. */
+  .rail-space { width: 52px; flex: none; border-right: 1px solid var(--border); background: var(--bg-card); }
 </style>

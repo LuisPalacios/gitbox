@@ -145,14 +145,13 @@ export interface TentativeContainerDTO {
 }
 
 // CollapsedState is the GUI's layout state: folded source keys and
-// "source/repo" keys, the sidebar folded to its rail, the last selected view
-// and whether the cards panel is open. Mirrors config.CollapsedState.
+// "source/repo" keys, the sidebar folded to its rail and the last selected
+// view. Mirrors config.CollapsedState.
 export interface CollapsedState {
   sources?: string[];
   repos?: string[];
   sidebar?: boolean;
   view?: string;
-  cards_open?: boolean;
 }
 
 export interface StatusResult {

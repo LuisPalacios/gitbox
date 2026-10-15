@@ -59,6 +59,30 @@ body {
 .icon-btn-danger { color: var(--alert); border-color: color-mix(in srgb, var(--alert) 45%, transparent); }
 .icon-btn-danger:hover:not(:disabled) { color: var(--alert); background: color-mix(in srgb, var(--alert) 14%, transparent); border-color: var(--alert); }
 
+/* ── Text buttons ──
+   Small outlined buttons with words: the account card, the view headers
+   and Needs attention. */
+.text-btn {
+  display: inline-flex; align-items: center; gap: 4px; flex: none; white-space: nowrap;
+  padding: 3px 10px; border: 1px solid var(--border); border-radius: 6px;
+  background: transparent; color: var(--text-secondary); cursor: pointer;
+  font-size: 11px; font-weight: 500; line-height: 1.4;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.text-btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
+.text-btn:disabled { opacity: 0.4; cursor: default; }
+.text-btn:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 1px; }
+
+/* ── Views ──
+   Each view scrolls on its own next to the sidebar, and its content stops
+   at 1100px so rows stay readable in a wide window. */
+.view-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 24px 12px; }
+.view-scroll > * { max-width: 1100px; }
+.view-head { display: flex; align-items: center; gap: 10px; padding: 14px 0 8px; }
+.view-title { margin: 0; font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.view-sub { font-size: 12px; color: var(--text-muted); }
+.view-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+
 /* ── Theme tokens ── */
 [data-theme="dark"] {
   --bg-base: #09090b; --bg-card: #18181b; --bg-hover: #27272a;

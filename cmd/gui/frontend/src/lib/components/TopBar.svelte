@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Top bar: logo, health rings (Simple: one saved ring; Advanced: repo and
+  // Top bar: the sidebar button, logo, health rings (Simple: one saved ring; Advanced: repo and
   // mirror rings), the action buttons, the Simple/Advanced switch and the
   // Settings gear.
   import { accounts, summary, simpleSummary, mirrorSummary, themeStore } from '../stores';
@@ -20,11 +20,17 @@
   export let toggleViewMode: () => Promise<void>;
   export let cycleTheme: () => void;
   export let setUIMode: (mode: 'simple' | 'advanced') => Promise<void>;
+  // The sidebar button: folds the sidebar to its rail and back (⌘B / Ctrl+B).
+  export let rail: boolean;
+  export let sidebarShortcut: string;
+  export let toggleSidebar: () => void;
 
   $: sc = (s: string) => statusColor(s, $themeStore);
+  $: sideTip = $t(rail ? 'nav.expand' : 'nav.collapse', { key: sidebarShortcut });
 </script>
 
 <header class="topbar">
+  <button class="icon-btn hamb" on:click={toggleSidebar} aria-expanded={!rail} aria-label={sideTip} title={sideTip}><UIIcon name="menu" /></button>
   <div class="brand">
     <Logo class="logo-svg" />
     <span class="title">gitbox</span>
@@ -93,7 +99,8 @@
 </header>
 
 <style>
-  .topbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--border); }
+  .topbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px 14px 11px; border-bottom: 1px solid var(--border); }
+  .hamb { margin-right: -6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .brand { display: flex; align-items: center; gap: 8px; }
   .brand :global(.logo-svg) { width: 26px; height: 26px; }

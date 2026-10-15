@@ -118,7 +118,7 @@
                 },
                 "collapsed": {
                     "type": "object",
-                    "description": "GUI layout state: account groups and parent clones folded in the full view, the sidebar rail, the last selected view, and the cards panel state. Absent means every group and clone is expanded, the sidebar is expanded, the app opens on Needs attention, and the cards panel is collapsed. Keys that no longer exist are pruned on save.",
+                    "description": "GUI layout state: account groups and parent clones folded in the full view, the sidebar rail and the last selected view. Absent means every group and clone is expanded, the sidebar is expanded and the app opens on Needs attention. Keys that no longer exist are pruned on save.",
                     "additionalProperties": false,
                     "properties": {
                         "sources": {
@@ -139,10 +139,6 @@
                             "type": "string",
                             "pattern": "^(attention|all|mirrors|workspaces|account:.+)$",
                             "description": "Last selected view: attention, all, mirrors, workspaces or account:<account-key>. Absent means Needs attention. A view naming a missing account is pruned on save."
-                        },
-                        "cards_open": {
-                            "type": "boolean",
-                            "description": "True when the cards panel above the list (accounts, mirrors, workspaces) is unfolded. Absent means collapsed, the default."
                         }
                     }
                 },
