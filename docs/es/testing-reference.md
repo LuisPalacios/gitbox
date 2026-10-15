@@ -28,7 +28,7 @@ Los recuentos son funciones `func Test…` de nivel superior por paquete, obteni
 - `pkg/update/` — 28 pruebas: parseo semver, comparación de versiones, comprobación de actualización (API mock, una actualización pendiente se informa en cada comprobación), límite de versión mayor, nombres de artefactos, detección del AppImage solo-aviso, destinos de instalación, comando de relanzamiento por plataforma y espera a que termine el proceso antiguo (más el script elevado de Windows, en Windows), verificación de checksum, verificación de la firma de release contra firmas hechas con `ssh-keygen` real (otro tag, checksums manipulados, namespace incorrecto, clave ajena, malformada), `allowed_signers` sincronizado con la clave incrustada, descarga que falla cerrada (checksums o firma ausentes, ilegibles o inválidos rechazan la actualización, y una firma mala la detiene antes de descargar el artefacto)
 - `pkg/workspace/` — 7 pruebas: descubrimiento de workspaces, refresco de caché, carpetas extra, contenedores tentativos
 
-### Pruebas de la GUI — 67 pruebas (`cmd/gui/`)
+### Pruebas de la GUI — 70 pruebas (`cmd/gui/`)
 
 Lógica del lado Go de la app Wails que se ejecuta sin ventana:
 

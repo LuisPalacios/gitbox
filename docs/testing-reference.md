@@ -28,7 +28,7 @@ Counts are top-level `func Test…` functions per package, from `grep -rc "^func
 - `pkg/update/` — 28 tests: semver parsing, version comparison, update check (mock API, a pending update reported on every check), major-version cap, artifact names, AppImage notify-only detection, install targets, relaunch command per platform and waiting for the old process to exit (plus the elevated Windows script, on Windows), checksum verification, release signature verification against signatures made by real `ssh-keygen` (wrong tag, tampered checksums, wrong namespace, foreign key, malformed), `allowed_signers` in sync with the embedded key, fail-closed download (missing, unreadable or invalid checksums or signature refuse the update, and a bad signature stops it before the artifact download)
 - `pkg/workspace/` — 7 tests: workspace discovery, cache refresh, extra folders, tentative containers
 
-### GUI tests — 67 tests (`cmd/gui/`)
+### GUI tests — 70 tests (`cmd/gui/`)
 
 Go-side logic of the Wails app that runs without a window:
 

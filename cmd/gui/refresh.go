@@ -283,9 +283,34 @@ func (a *App) fetchOne(cfg *config.Config, source, repo string) error {
 	}
 }
 
-// refusedFastRetryDelay is how long a fetch refused within milliseconds
-// waits before its one retry.
-const refusedFastRetryDelay = 3 * time.Second
+// retryDelays is the backoff for a network check that couldn't reach its
+// server: the quick retries ride out macOS refusing LAN connections right
+// after launch, the later ones a short network blip.
+var retryDelays = []time.Duration{100 * time.Millisecond, 500 * time.Millisecond, time.Second, 3 * time.Second}
+
+// retryBudget caps how long after the first attempt a check keeps
+// retrying. A server that is really down times out after longer than this
+// on its own, so it isn't retried at all.
+const retryBudget = 10 * time.Second
+
+// retryWithBackoff calls again after each delay in retryDelays while again
+// reports a failure worth retrying, the run is not cancelled, and the
+// budget since started isn't spent.
+func retryWithBackoff(ctx context.Context, started time.Time, again func() bool) {
+	for _, d := range retryDelays {
+		if time.Since(started) > retryBudget {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(d):
+		}
+		if !again() {
+			return
+		}
+	}
+}
 
 func (a *App) performFetch(cfg *config.Config, source, repo, path string) error {
 	a.maintenanceMu.RLock()
@@ -311,17 +336,17 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 			fetch = a.refreshHooks.fetch
 		}
 		ctx := a.refreshContext()
+		started := time.Now()
 		_, err = fetch(ctx, path)
 		if git.IsRefusedFast(err) {
 			// A connect refused within milliseconds right after launch is
 			// usually macOS Local Network privacy still checking the new
-			// process; one retry a moment later rides it out. A server
-			// that is really down times out instead and isn't retried.
-			select {
-			case <-ctx.Done():
-			case <-time.After(refusedFastRetryDelay):
+			// process; a few quick retries ride it out. A server that is
+			// really down times out instead and isn't retried.
+			retryWithBackoff(ctx, started, func() bool {
 				_, err = fetch(ctx, path)
-			}
+				return git.IsRefusedFast(err)
+			})
 		}
 	}
 	payload := map[string]any{"source": source, "repo": repo}
@@ -489,15 +514,16 @@ func (a *App) credentialVerify(cfg *config.Config, key string) CredentialStatus 
 		ctx, cancel := context.WithTimeout(a.refreshContext(), 30*time.Second)
 		started := time.Now()
 		r := check(ctx, acct, key, cfg)
-		if r.Overall == credential.StatusOffline && time.Since(started) < time.Second {
-			// Offline within a second means the connection was refused, not
-			// timed out: right after launch macOS can refuse LAN connections
-			// for a moment, so check once more a little later, as fetches do.
-			select {
-			case <-ctx.Done():
-			case <-time.After(refusedFastRetryDelay):
+		if r.Overall == credential.StatusOffline {
+			// Offline is a network failure (refused, unreachable, DNS):
+			// retry with backoff to ride out a refusal right after launch
+			// or a short disconnect. Authentication errors aren't retried:
+			// a rejected token stays rejected, and repeated failed logins
+			// can trip a provider's rate limits.
+			retryWithBackoff(ctx, started, func() bool {
 				r = check(ctx, acct, key, cfg)
-			}
+				return r.Overall == credential.StatusOffline
+			})
 		}
 		cancel()
 		result := CredentialStatus{Status: r.Overall.String(), Message: r.PrimaryDetail, Primary: r.Primary.String(), PrimaryMsg: r.PrimaryDetail, PAT: r.PAT.String(), PATMsg: r.PATDetail, revision: revision}
