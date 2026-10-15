@@ -10,12 +10,12 @@
     workspaces, workspaceOrder, workspaceMemberships, selectedClones,
     toggleCloneSelection, clearCloneSelection, isSynced, simpleSummary
   } from './lib/stores';
-  import { credColor, providerLabel, providerURLs } from './lib/theme';
+  import { credColor, providerLabel } from './lib/theme';
   import { statusColor, simpleKind, simpleColor, simpleLabelKey, simpleUnsaved, rowBusy, rowGlyph, advancedLabel, COUNT_BADGES, countBadge, statusCountBadge, detailLocked, opensDetail, credBroken, canDiscoverWith, canCreateWith, credBadgeClass, credBadgeLabel, DISCOVER_DISABLED, CREATE_DISABLED } from './lib/status';
   import type { SimpleKind } from './lib/status';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit, EventsOn } from '../wailsjs/runtime/runtime';
-  import type { RepoState, CredentialStatus, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO, RepoDetailView } from './lib/types';
+  import type { RepoState, CredentialStatus, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, RepoDetailView } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
   import BrandIcon, { terminalLogo } from './lib/BrandIcon.svelte';
   import UIIcon from './lib/UIIcon.svelte';
@@ -31,9 +31,20 @@
   import DeleteAccountModal from './lib/modals/DeleteAccountModal.svelte';
   import ChangeFolderModal from './lib/modals/ChangeFolderModal.svelte';
   import CreateRepoModal from './lib/modals/CreateRepoModal.svelte';
+  import DiscoverModal from './lib/modals/DiscoverModal.svelte';
+  import SshTokenModal from './lib/modals/SshTokenModal.svelte';
+  import AddAccountModal from './lib/modals/AddAccountModal.svelte';
+  import CredentialModal from './lib/modals/CredentialModal.svelte';
+  import MoveRepoModal from './lib/modals/MoveRepoModal.svelte';
+  import AddMirrorGroupModal from './lib/modals/AddMirrorGroupModal.svelte';
+  import AddMirrorRepoModal from './lib/modals/AddMirrorRepoModal.svelte';
+  import DeleteMirrorGroupModal from './lib/modals/DeleteMirrorGroupModal.svelte';
+  import DeleteMirrorRepoModal from './lib/modals/DeleteMirrorRepoModal.svelte';
+  import MirrorSetupResultModal from './lib/modals/MirrorSetupResultModal.svelte';
+  import MirrorDiscoverModal from './lib/modals/MirrorDiscoverModal.svelte';
+  import MirrorTokenModal from './lib/modals/MirrorTokenModal.svelte';
   import { repoTreeRows } from './lib/repo-tree';
   import { tooltip } from './lib/tooltip';
-  import { dismiss } from './lib/dismiss';
   import { onActivateKey } from './lib/keyboard';
 
   // ── View mode ──
@@ -857,16 +868,8 @@
   }
 
   // ── Discovery ──
-  let discoverModal: string | null = null;
-  let discoverLoading = false;
-  let discoverError = ''; // last error from Discover, shown inside the Find-projects modal
-  let discoverRepos: DiscoverResult[] = [];
-  let discoverSelected: Record<string, boolean> = {};
-  let discoverFilter = '';
-  let orgVisible: Record<string, boolean> = {};
-
-  // SSH discovery token modal state.
-  let sshDiscoverTokenModal: string | null = null; // account key needing a PAT for discovery
+  let discoverDialog: DiscoverModal;
+  let sshTokenDialog: SshTokenModal;
 
   function openDiscover(accountKey: string) {
     const acct = $accounts[accountKey];
@@ -877,101 +880,9 @@
     if (acct?.default_credential_type === 'ssh') {
       // Try discovery — if it fails with "no API token", the event handler
       // will open the token modal. This avoids a redundant backend call.
-      sshDiscoverTokenModal = null;
+      sshTokenDialog.close();
     }
-    discoverModal = accountKey;
-    discoverLoading = true;
-    discoverError = '';
-    discoverRepos = [];
-    discoverSelected = {};
-    discoverFilter = '';
-    orgVisible = {};
-    bridge.discover(accountKey);
-  }
-
-  function ownerOf(fullName: string): string { return fullName.split('/', 2)[0]; }
-
-  $: owners = [...new Set(discoverRepos.map((r) => ownerOf(r.fullName)))].sort();
-  $: ownerCounts = discoverRepos.reduce<Record<string, number>>((acc, r) => {
-    const o = ownerOf(r.fullName);
-    acc[o] = (acc[o] || 0) + 1;
-    return acc;
-  }, {});
-  $: showOwnerSection = owners.length > 1;
-  $: filteredByOwner = discoverRepos.filter((r) => orgVisible[ownerOf(r.fullName)] !== false);
-  $: filteredDiscoverRepos = discoverFilter.trim()
-    ? filteredByOwner.filter((r) => r.fullName.toLowerCase().includes(discoverFilter.trim().toLowerCase()))
-    : filteredByOwner;
-  $: existingRepos = discoverModal ? ($sources[discoverModal]?.repos || {}) : {};
-  $: selectableRepos = filteredDiscoverRepos.filter((r) => !existingRepos[r.fullName]);
-  $: selectedCount = Object.values(discoverSelected).filter(Boolean).length;
-  $: allSelected = selectableRepos.length > 0 && selectableRepos.every((r) => discoverSelected[r.fullName]);
-
-  function toggleAll() {
-    if (allSelected) {
-      for (const r of selectableRepos) delete discoverSelected[r.fullName];
-      discoverSelected = discoverSelected;
-    } else {
-      for (const r of selectableRepos) discoverSelected[r.fullName] = true;
-      discoverSelected = discoverSelected;
-    }
-  }
-
-  function toggleOwnerVisibility(owner: string) {
-    const nextOn = orgVisible[owner] === false;
-    orgVisible = { ...orgVisible, [owner]: nextOn };
-    if (!nextOn) {
-      const next = { ...discoverSelected };
-      for (const key of Object.keys(next)) {
-        if (ownerOf(key) === owner) delete next[key];
-      }
-      discoverSelected = next;
-    }
-  }
-
-  function toggleOwnerAll(owner: string) {
-    if (orgVisible[owner] === false) {
-      orgVisible = { ...orgVisible, [owner]: true };
-    }
-    const existing = discoverModal ? ($sources[discoverModal]?.repos || {}) : {};
-    const eligible = discoverRepos.filter((r) => ownerOf(r.fullName) === owner && !existing[r.fullName]);
-    const allOn = eligible.length > 0 && eligible.every((r) => discoverSelected[r.fullName]);
-    const next = { ...discoverSelected };
-    for (const r of eligible) next[r.fullName] = !allOn;
-    discoverSelected = next;
-  }
-
-  function toggleAllOwners() {
-    const anyOn = owners.some((o) => orgVisible[o] !== false);
-    if (anyOn) {
-      const next: Record<string, boolean> = {};
-      for (const o of owners) next[o] = false;
-      orgVisible = next;
-      discoverSelected = {};
-    } else {
-      orgVisible = {};
-    }
-  }
-
-  async function addDiscovered() {
-    if (!discoverModal) return;
-    const sourceKey = discoverModal;
-    const selected = Object.entries(discoverSelected)
-      .filter(([_, v]) => v)
-      .map(([k]) => k);
-    if (selected.length > 0) {
-      await bridge.addDiscoveredRepos(sourceKey, selected);
-      await reloadFromDisk();
-      // Clone each newly added repo that isn't already local.
-      for (const repoName of selected) {
-        const repoKey = `${sourceKey}/${repoName}`;
-        const state = $repoStates[repoKey];
-        if (!state || state.status === 'not cloned') {
-          cloneRepo(sourceKey, repoName);
-        }
-      }
-    }
-    discoverModal = null;
+    discoverDialog.open(accountKey);
   }
 
   // Banner surfaced when reloadFromDisk() or a mutation fails — usually a
@@ -1028,10 +939,7 @@
   const openEditAccount = (key: string) => editAccountDialog.openEditAccount(key);
 
   // ── Add account ──
-  let addAccountModal = false;
-  let addAccountError = '';
-  let addAccountStep: 'form' | 'credential' = 'form';
-  let addAcct = { key: '', provider: 'github', url: 'https://github.com', username: '', name: '', email: '', defaultBranch: 'main', credentialType: 'gcm' };
+  let addAccountDialog: AddAccountModal;
 
   // Shared credential operation state — used by BOTH add-account and change-credential flows.
   // Only one modal can be active at a time, so sharing is safe.
@@ -1040,15 +948,6 @@
   let credTokenInput = '';
   let credTokenGuide = '';
   let credTokenScopes = '';
-  let sshDiscoveryTokenInput = '';
-  let sshDiscoveryGuide = '';
-  let sshDiscoveryScopes = '';
-  let sshDiscoveryBusy = false;
-
-  function onProviderChange() {
-    const defaultURL = providerURLs[addAcct.provider];
-    if (defaultURL !== undefined) addAcct.url = defaultURL;
-  }
 
   // Helper to reset all shared credential state.
   function resetCredState() {
@@ -1057,20 +956,8 @@
     credTokenInput = '';
     credTokenGuide = '';
     credTokenScopes = '';
-    sshDiscoveryTokenInput = '';
-    sshDiscoveryGuide = '';
-    sshDiscoveryScopes = '';
-    sshDiscoveryBusy = false;
+    sshTokenDialog?.resetFields();
     credPrecheck = null;
-  }
-
-  function resetAddAccount() {
-    addAcct = { key: '', provider: 'github', url: 'https://github.com', username: '', name: '', email: '', defaultBranch: 'main', credentialType: 'gcm' };
-    addAccountError = '';
-    addAccountStep = 'form';
-    addAccountModal = false;
-    resetCredState();
-    verifyAllCredentials();
   }
 
   // Precheck result for the credential type being set up. When non-OK, the
@@ -1088,45 +975,14 @@
     }
   }
 
-  async function submitAddAccount() {
-    addAccountError = '';
-    if (!addAcct.key.trim()) { addAccountError = 'Account key is required'; return; }
-    if (!addAcct.provider) { addAccountError = 'Provider is required'; return; }
-    if (!addAcct.url.trim()) { addAccountError = 'URL is required'; return; }
-    if (!addAcct.username.trim()) { addAccountError = 'Username is required'; return; }
-    try {
-      await bridge.addAccount(addAcct);
-      await reloadFromDisk();
-      addAccountStep = 'credential';
-      credResult = null;
-      await runCredentialPrecheck(addAcct.credentialType);
-      if (credPrecheck && !credPrecheck.ok) {
-        // Don't auto-run setup — let the user install the missing tools first.
-        return;
-      }
-      if (addAcct.credentialType === 'gcm' || addAcct.credentialType === 'ssh') {
-        runCredSetup(addAcct.key, addAcct.credentialType);
-      } else if (addAcct.credentialType === 'token') {
-        await fetchTokenGuide(addAcct.key);
-      }
-    } catch (err: any) {
-      addAccountError = err?.message || String(err);
-    }
-  }
-
   // ── Shared credential functions (used by both add-account and change-credential) ──
 
-  // Returns the active account key for whichever credential modal is open.
   let sshKeyCopied = false;
   function copySSHKey(text: string) {
     navigator.clipboard.writeText(text).then(() => {
       sshKeyCopied = true;
       setTimeout(() => { sshKeyCopied = false; }, 2000);
     });
-  }
-
-  function credAccountKey(): string {
-    return credChangeModal || addAcct.key;
   }
 
   // Fetch token guide URL and scopes for the active account.
@@ -1167,9 +1023,9 @@
     await credPostSetup(accountKey);
   }
 
-  // Store a token for the active account (used by both add-account and change-credential token flows).
-  async function storeCredToken() {
-    const key = credAccountKey();
+  // Store a token for the account of the open credential modal (the
+  // modal passes its account key).
+  async function storeCredToken(key: string) {
     credBusy = true;
     try {
       credResult = await bridge.credentialStoreToken(key, credTokenInput);
@@ -1181,8 +1037,7 @@
   }
 
   // Verify SSH connection without regenerating the key.
-  async function verifySSHConnection() {
-    const key = credAccountKey();
+  async function verifySSHConnection(key: string) {
     credBusy = true;
     credResult = null;
     try {
@@ -1195,8 +1050,7 @@
   }
 
   // Regenerate SSH key (deletes old, creates new).
-  async function regenerateSSHKey() {
-    const key = credAccountKey();
+  async function regenerateSSHKey(key: string) {
     credBusy = true;
     credResult = null;
     try {
@@ -1208,201 +1062,10 @@
     await credPostSetup(key);
   }
 
-  // Store SSH discovery token and then open discovery.
-  async function storeSSHDiscoveryToken() {
-    const key = sshDiscoverTokenModal;
-    if (!key) return;
-    sshDiscoveryBusy = true;
-    try {
-      await bridge.credentialStoreToken(key, sshDiscoveryTokenInput);
-      sshDiscoveryTokenInput = '';
-      sshDiscoverTokenModal = null;
-      // Now open discovery with the stored token.
-      openDiscover(key);
-    } catch (err: any) {
-      // Keep modal open so user can retry.
-    }
-    sshDiscoveryBusy = false;
-  }
-
   // ── Change credential type ──
-  let credChangeModal: string | null = null; // account key
-  let credChangeType = '';
-  let credDeleteBusy = false;
-  let credSetupStarted = false;
-  let credForceToken = false; // force PAT input (for mirror fix)
-
-  function openCredChange(accountKey: string, currentType: string) {
-    credChangeModal = accountKey;
-    credChangeType = currentType;
-    credForceToken = false;
-    resetCredState();
-    credDeleteBusy = false;
-    credSetupStarted = false;
-  }
-
-  async function openTokenSetup(accountKey: string) {
-    credChangeModal = accountKey;
-    credChangeType = 'token';
-    credForceToken = true;
-    resetCredState();
-    credDeleteBusy = false;
-    credSetupStarted = true;
-    await fetchTokenGuide(accountKey);
-  }
-
-  async function deleteCredential() {
-    if (!credChangeModal) return;
-    const key = credChangeModal;
-    credDeleteBusy = true;
-    try {
-      await bridge.credentialDelete(key);
-      await reloadFromDisk();
-      credStatuses[key] = {status: 'none', primary: 'none', pat: 'none', primaryMsg: '', patMsg: ''};
-      credStatuses = credStatuses;
-    } catch (err: any) {
-      credResult = { ok: false, message: err?.message || String(err) };
-      credDeleteBusy = false;
-      return;
-    }
-    credDeleteBusy = false;
-    credChangeModal = null;
-  }
-
-  function closeCredChange() {
-    credChangeModal = null;
-    resetCredState();
-    credDeleteBusy = false;
-    verifyAllCredentials();
-  }
-
-  // Detect the specific pattern of "OS-level network-permission denial"
-  // inside a credential-status error message and return a friendly hint
-  // with the right platform-specific advice. Returns null when the error
-  // doesn't match the pattern.
-  //
-  // Why this exists: the raw Go error says "dial tcp 192.168.x.x:443: connect:
-  // no route to host". On macOS that's almost always TCC blocking Local
-  // Network access for an unsigned / untracked app bundle — not an actual
-  // routing problem — and the user-facing recovery is entirely different
-  // from a real network outage. This helper makes that distinction visible.
-  function detectLANPermissionHint(msg: string | undefined): { summary: string; link: string } | null {
-    if (!msg) return null;
-    const m = msg.toLowerCase();
-    const looksLikeLAN = m.includes('192.168.') || m.includes('10.0.') || m.includes('.local');
-    const isConnectRefused = m.includes('no route to host') || m.includes('host is unreachable') || m.includes('wsaehostunreach') || m.includes('host is down');
-    if (!isConnectRefused) return null;
-    const docBase = 'https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md';
-    if (hostOS === 'darwin') {
-      return {
-        summary: 'macOS is blocking this app from reaching devices on your local network. Grant access in System Settings → Privacy & Security → Local Network (enable GitboxApp).',
-        link: docBase + '#macos-local-network-permission',
-      };
-    }
-    if (hostOS === 'windows') {
-      return {
-        summary: 'Windows Defender Firewall may be blocking this app from reaching hosts on your LAN. Allow GitboxApp in Windows Security → Firewall & network protection → Allow an app through firewall.',
-        link: docBase + '#windows-firewall',
-      };
-    }
-    if (looksLikeLAN) {
-      return {
-        summary: 'The server is on your LAN but this app cannot reach it. Check that your network interface is up and any host-level firewall (ufw, firewalld) allows outbound connections.',
-        link: docBase + '#linux-network-troubleshooting',
-      };
-    }
-    return null;
-  }
-
-  // Return a short, user-facing hint explaining a specific discovery
-  // failure mode (auth vs. network vs. permission). The raw Go error is
-  // already shown to the user; this just adds a one-line "what to do"
-  // above the action buttons.
-  function detectDiscoveryHint(msg: string, acctKey: string | null): string {
-    if (!msg) return '';
-    const m = msg.toLowerCase();
-    const acct = acctKey ? $accounts[acctKey] : null;
-    const credType = acct?.default_credential_type || '';
-    const provider = acct?.provider || '';
-    if (m.includes('401') || m.includes('authentication failed') || m.includes('token is invalid')) {
-      if (credType === 'gcm' && (provider === 'gitea' || provider === 'forgejo')) {
-        return 'Forgejo/Gitea refuses account passwords at the REST API. Either paste a PAT into GCM’s password prompt, or click “Open credential settings” and use “Setup API token” to store a companion PAT.';
-      }
-      return 'The stored credential was rejected by the API. Open credential settings and replace it, or store a companion API token.';
-    }
-    if (m.includes('no route to host') || m.includes('host is unreachable') || m.includes('wsaehostunreach')) {
-      return 'The OS blocked or could not reach the server. On macOS check Privacy & Security → Local Network; on Windows check the firewall; on Linux check routes and host firewalls.';
-    }
-    if (m.includes('no such host') || m.includes('dns')) {
-      return 'The server hostname can’t be resolved from this machine. Check VPN / DNS before retrying.';
-    }
-    if (m.includes('x509') || m.includes('certificate')) {
-      return 'TLS certificate validation failed. Install the server’s CA into your OS trust store before retrying.';
-    }
-    return '';
-  }
-
-  // Map a credential status string to a short human label shown in the
-  // status panel of the Change Credential modal.
-  function credStatusLabel(state: string): string {
-    switch (state) {
-      case 'ok':       return 'OK';
-      case 'warning':  return 'Warning';
-      case 'offline':  return 'Offline';
-      case 'error':    return 'Error';
-      case 'none':     return 'Not configured';
-      case 'checking': return 'Checking…';
-      default:         return '—';
-    }
-  }
-
-  // Re-verify credential for the account shown in the Change Credential modal.
-  // Shows a "Checking…" state while the RPC runs.
-  function verifyCredentialForModal(accountKey: string | null) {
-    if (!accountKey) return;
-    const prev = credStatuses[accountKey] || {};
-    credStatuses[accountKey] = {...prev, primary: 'checking', pat: 'checking', status: 'checking'};
-    credStatuses = credStatuses;
-    bridge.credentialVerify(accountKey).then((cs) => {
-      credStatuses[accountKey] = {status: cs.status, primary: cs.primary, pat: cs.pat, primaryMsg: cs.primaryMsg, patMsg: cs.patMsg};
-      credStatuses = credStatuses;
-    }).catch((err: any) => {
-      credStatuses[accountKey] = {status: 'error', primary: 'error', pat: 'error', primaryMsg: String(err?.message || err), patMsg: ''};
-      credStatuses = credStatuses;
-    });
-  }
-
-  async function applyCredChange() {
-    if (!credChangeModal) return;
-    // Precheck: ensure the tools for the selected credential type are
-    // installed before we remove the old credential. Bails out early with
-    // the banner visible when something is missing, so the user can install
-    // first without losing their existing setup.
-    await runCredentialPrecheck(credChangeType);
-    if (credPrecheck && !credPrecheck.ok) {
-      return;
-    }
-    credSetupStarted = true;
-    credBusy = true;
-    credResult = null;
-    try {
-      await bridge.changeCredentialType(credChangeModal, credChangeType);
-      await reloadFromDisk();
-      if (credChangeType === 'gcm') {
-        credResult = await bridge.credentialSetupGCM(credChangeModal);
-      } else if (credChangeType === 'ssh') {
-        credResult = await bridge.credentialSetupSSH(credChangeModal);
-      } else if (credChangeType === 'token') {
-        await fetchTokenGuide(credChangeModal);
-        credBusy = false;
-        return; // Wait for user to paste token.
-      }
-    } catch (err: any) {
-      credResult = { ok: false, message: err?.message || String(err) };
-    }
-    credBusy = false;
-    await credPostSetup(credChangeModal);
-  }
+  let credentialDialog: CredentialModal;
+  const openCredChange = (accountKey: string, currentType: string) => credentialDialog.openCredChange(accountKey, currentType);
+  const openTokenSetup = (accountKey: string) => credentialDialog.openTokenSetup(accountKey);
 
   // ── Delete account ──
   let deleteAccountDialog: DeleteAccountModal;
@@ -1413,10 +1076,10 @@
   // Per-row "setup in progress" flag, keyed by `${mirrorKey}/${repoKey}`.
   // Set before calling bridge.setupMirrorRepo, cleared on the mirror:setup:done event.
   let mirrorSettingUp: Record<string, boolean> = {};
-  let addMirrorGroupModal = false;
-  let addMirrorRepoModal: string | null = null; // holds mirrorKey
-  let deleteMirrorGroupConfirm: string | null = null;
-  let deleteMirrorRepoConfirm: { mirrorKey: string; repoKey: string } | null = null;
+  let addMirrorGroupDialog: AddMirrorGroupModal;
+  let addMirrorRepoDialog: AddMirrorRepoModal;
+  let deleteMirrorGroupDialog: DeleteMirrorGroupModal;
+  let deleteMirrorRepoDialog: DeleteMirrorRepoModal;
   let mirrorSetupResultModal: MirrorSetupResult | null = null;
   let mirrorCredWarning: MirrorCredentialCheck | null = null;
 
@@ -1435,132 +1098,16 @@
     await bridge.discoverMirrors();
   }
 
-  // Check if a discovered mirror repo is already configured.
-  function isDiscoveredRepoConfigured(accountSrc: string, accountDst: string, repoKey: string): boolean {
-    for (const mir of Object.values($mirrors)) {
-      if ((mir.account_src === accountSrc && mir.account_dst === accountDst) ||
-          (mir.account_src === accountDst && mir.account_dst === accountSrc)) {
-        if (mir.repos[repoKey]) return true;
-      }
-    }
-    return false;
-  }
-
   // Track which repos have been individually added during this discover session.
   let discoverAdded: Record<string, boolean> = {};
-
-  async function addDiscoveredRepo(dr: any, dm: any) {
-    const addKey = `${dr.AccountSrc}:${dr.AccountDst}:${dm.RepoKey}`;
-    try {
-      // Find or create mirror group for this account pair.
-      let groupKey = '';
-      for (const [key, mir] of Object.entries($mirrors)) {
-        const m = mir as any;
-        if ((m.account_src === dr.AccountSrc && m.account_dst === dr.AccountDst) ||
-            (m.account_src === dr.AccountDst && m.account_dst === dr.AccountSrc)) {
-          groupKey = key;
-          break;
-        }
-      }
-      if (!groupKey) {
-        groupKey = dr.MirrorKey;
-        await bridge.addMirrorGroup(groupKey, dr.AccountSrc, dr.AccountDst);
-      }
-      await bridge.addMirrorRepo(groupKey, dm.RepoKey, dm.Direction, dm.Origin);
-      $configStore = await bridge.reloadConfig();
-      discoverAdded = { ...discoverAdded, [addKey]: true };
-    } catch (e: any) {
-      alert(e?.message || e);
-    }
-  }
-
-  async function applyMirrorDiscovery() {
-    try {
-      await bridge.applyDiscoveredMirrors();
-      $configStore = await bridge.reloadConfig();
-      mirrorDiscoverResults = null;
-      discoverAdded = {};
-      checkAllMirrorStatus();
-    } catch (e: any) {
-      alert(e?.message || e);
-    }
-  }
 
   // Create repo modal
   let createRepoDialog: CreateRepoModal;
   const openCreateRepo = (accountKey: string) => createRepoDialog.openCreateRepo(accountKey);
 
   // ── Move repository (issue #64) ──
-  //
-  // Two-step modal. Step 1 is the form (destination account+owner, new
-  // name, visibility, opt-in delete toggles). Step 2 is the red
-  // type-to-confirm gate. moveProgress accumulates phase events so the
-  // progress overlay can show each step; moveResult holds the final
-  // outcome and is set once "move:done" fires.
-  type MoveModalStep = null | 'form' | 'confirm' | 'progress' | 'result';
-  let moveModalStep: MoveModalStep = null;
-  let moveSourceSourceKey = '';
-  let moveSourceRepoKey = '';
-  let moveOwnerOptions: MoveOwnerOption[] = [];
-  let moveOwnerSelected = ''; // "account::owner"
-  let moveDestAccountKey = '';
-  let moveDestOwner = '';
-  let moveNewName = '';
-  let moveIsPrivate = true;
-  let moveDeleteSource = false;
-  let moveDeleteLocal = false;
-  let moveTypeConfirm = '';
-  let moveLoadingOwners = false;
-  let moveError = '';
-  let movePreflight: MovePreflightDTO | null = null;
-  let moveProgress: MoveProgressEventDTO[] = [];
-  let moveResult: MoveResultDTO | null = null;
-  // Readiness panel — per-side credential status + scope hint.
-  // Refreshed when the modal opens, when the destination changes,
-  // and when the "Delete source" toggle flips (since delete adds
-  // a required scope to the source side).
-  let moveReadiness: MoveReadinessDTO | null = null;
-  let moveReadinessLoading = false;
-
-  async function refreshMoveReadiness() {
-    if (!moveSourceSourceKey) return;
-    moveReadinessLoading = true;
-    try {
-      moveReadiness = await bridge.checkMoveReadiness(
-        moveSourceSourceKey,
-        moveDestAccountKey || '',
-        moveDeleteSource,
-      );
-    } catch {
-      moveReadiness = null;
-    } finally {
-      moveReadinessLoading = false;
-    }
-  }
-
-  // Jump from the Move modal into the credential setup modal for
-  // the given account, so the user can paste a fresh PAT with the
-  // right scopes. The Move modal stays mounted so the user can
-  // return to it by re-clicking "Move repository…" after closing
-  // the credential modal; we preserve their form inputs by NOT
-  // resetting moveModalStep until they dismiss Move explicitly.
-  function openCredentialsFromMove(accountKey: string) {
-    if (!accountKey) return;
-    const acct = $accounts[accountKey];
-    if (!acct) return;
-    // Use openTokenSetup when the account is token-type so the
-    // PAT paste field is focused immediately; otherwise fall back
-    // to openCredChange which lets the user switch type or refresh
-    // GCM creds.
-    if (acct.default_credential_type === 'token') {
-      void openTokenSetup(accountKey);
-    } else {
-      openCredChange(accountKey, acct.default_credential_type || 'gcm');
-    }
-    // Close the move form — the credential modal opens over the
-    // same dashboard surface and the user restarts Move after.
-    moveModalStep = null;
-  }
+  let moveDialog: MoveRepoModal;
+  const openMoveRepo = (sourceKey: string, repoKey: string) => moveDialog.openMoveRepo(sourceKey, repoKey);
 
   // repoCanMove is the kebab-enable predicate:
   // only a cloned, clean, in-sync repo can be moved. Returns a string
@@ -1572,133 +1119,6 @@
     if ((state.ahead ?? 0) > 0 || (state.behind ?? 0) > 0) return 'Repo must be in sync with origin';
     return '';
   }
-
-  async function openMoveRepo(sourceKey: string, repoKey: string) {
-    moveSourceSourceKey = sourceKey;
-    moveSourceRepoKey = repoKey;
-    moveOwnerOptions = [];
-    moveOwnerSelected = '';
-    moveDestAccountKey = '';
-    moveDestOwner = '';
-    // Prefill new name from the source repo name (strip owner/).
-    const slash = repoKey.indexOf('/');
-    moveNewName = slash >= 0 ? repoKey.slice(slash + 1) : repoKey;
-    moveIsPrivate = true;
-    moveDeleteSource = false;
-    moveDeleteLocal = false;
-    moveTypeConfirm = '';
-    moveError = '';
-    movePreflight = null;
-    moveProgress = [];
-    moveResult = null;
-    moveModalStep = 'form';
-    moveLoadingOwners = true;
-    try {
-      moveOwnerOptions = await bridge.listMoveDestinationOwners(sourceKey);
-      if (moveOwnerOptions.length > 0) {
-        moveOwnerSelected = `${moveOwnerOptions[0].account}::${moveOwnerOptions[0].owner}`;
-        syncMoveSelection();
-      }
-    } catch (e: any) {
-      moveError = e?.message || 'Failed to load destination owners';
-    } finally {
-      moveLoadingOwners = false;
-    }
-    // Kick off the readiness probe once we know both sides so the
-    // credentials panel populates without the user having to change
-    // anything.
-    void refreshMoveReadiness();
-  }
-
-  function syncMoveSelection() {
-    const [acct, owner] = moveOwnerSelected.split('::');
-    moveDestAccountKey = acct || '';
-    moveDestOwner = owner || '';
-    // Destination account changed → re-probe readiness.
-    void refreshMoveReadiness();
-  }
-
-  function cancelMoveRepo() {
-    moveModalStep = null;
-  }
-
-  async function advanceMoveToConfirm() {
-    moveError = '';
-    syncMoveSelection();
-    if (!moveDestAccountKey || !moveDestOwner) {
-      moveError = 'Pick a destination.';
-      return;
-    }
-    if (!/^[a-zA-Z0-9_][a-zA-Z0-9._-]*$/.test(moveNewName)) {
-      moveError = 'Name must be alphanumeric (hyphens/dots/underscores allowed, no leading dot/hyphen).';
-      return;
-    }
-    try {
-      const req = buildMoveRequest();
-      movePreflight = await bridge.preflightMove(req);
-      if (!movePreflight.ok) {
-        moveError = movePreflight.error || 'Preflight failed';
-        return;
-      }
-      moveModalStep = 'confirm';
-    } catch (e: any) {
-      moveError = e?.message || 'Preflight failed';
-    }
-  }
-
-  function buildMoveRequest() {
-    return {
-      sourceSourceKey: moveSourceSourceKey,
-      sourceRepoKey: moveSourceRepoKey,
-      destAccountKey: moveDestAccountKey,
-      destOwner: moveDestOwner,
-      destRepoName: moveNewName,
-      destPrivate: moveIsPrivate,
-      deleteSourceRemote: moveDeleteSource,
-      deleteLocalClone: moveDeleteLocal,
-    };
-  }
-
-  async function confirmMoveRepo() {
-    if (moveTypeConfirm !== moveSourceRepoKey) {
-      moveError = 'Repository name does not match.';
-      return;
-    }
-    moveError = '';
-    moveProgress = [];
-    moveResult = null;
-    moveModalStep = 'progress';
-    try {
-      await bridge.moveRepo(buildMoveRequest());
-    } catch (e: any) {
-      moveError = e?.message || 'Move failed';
-      moveModalStep = 'result';
-    }
-  }
-
-  async function closeMoveResult() {
-    moveModalStep = null;
-    try {
-      await reloadFromDisk();
-    } catch {
-      /* surfaced as reloadError */
-    }
-  }
-
-  // Add mirror group form
-  let newMirrorKey = '';
-  let newMirrorSrc = '';
-  let newMirrorDst = '';
-
-  // Add mirror repo form
-  let newMirrorRepoKey = '';
-  let newMirrorRepoDirection = 'push';
-  let newMirrorRepoOrigin = 'src';
-  let newMirrorRepoAutoSetup = false;
-  let mirrorRepoPickerRepos: { fullName: string; description: string; private: boolean; fork: boolean; archived: boolean }[] = [];
-  let mirrorRepoPickerLoading = false;
-  let mirrorRepoPickerFilter = '';
-  let mirrorRepoPickerLoaded = false;
 
   function mirrorDirLabelHtml(repo: MirrorRepo, m: MirrorDTO): string {
     const origin = repo.origin === 'src' ? m.account_src : m.account_dst;
@@ -1797,18 +1217,6 @@
     await bridge.setupMirrorRepo(mirrorKey, repoKey);
   }
 
-  async function submitAddMirrorGroup() {
-    if (!newMirrorKey || !newMirrorSrc || !newMirrorDst) return;
-    try {
-      await bridge.addMirrorGroup(newMirrorKey, newMirrorSrc, newMirrorDst);
-      $configStore = await bridge.reloadConfig();
-      addMirrorGroupModal = false;
-      newMirrorKey = ''; newMirrorSrc = ''; newMirrorDst = '';
-    } catch (e: any) {
-      alert(e?.message || e);
-    }
-  }
-
   // ── Workspace actions (read-only: open + refresh) ─────────────────
 
   async function openWorkspace(key: string) {
@@ -1868,65 +1276,9 @@
     return $workspaceMemberships[repoKey] || [];
   }
 
-  async function loadMirrorRepoList() {
-    if (!addMirrorRepoModal) return;
-    const mir = $mirrors[addMirrorRepoModal];
-    if (!mir) return;
-    const acctKey = newMirrorRepoOrigin === 'src' ? mir.account_src : mir.account_dst;
-    mirrorRepoPickerLoading = true;
-    mirrorRepoPickerFilter = '';
-    mirrorRepoPickerRepos = [];
-    mirrorRepoPickerLoaded = false;
-    try {
-      const repos = await bridge.listRemoteRepos(acctKey);
-      mirrorRepoPickerRepos = (repos || []).sort((a: any, b: any) => a.fullName.localeCompare(b.fullName));
-      mirrorRepoPickerLoaded = true;
-    } catch {
-      mirrorRepoPickerRepos = [];
-    }
-    mirrorRepoPickerLoading = false;
-  }
-
-  async function submitAddMirrorRepo() {
-    if (!addMirrorRepoModal || !newMirrorRepoKey) return;
-    try {
-      await bridge.addMirrorRepo(addMirrorRepoModal, newMirrorRepoKey, newMirrorRepoDirection, newMirrorRepoOrigin);
-      $configStore = await bridge.reloadConfig();
-      const mirrorKey = addMirrorRepoModal;
-      const repoKey = newMirrorRepoKey;
-      addMirrorRepoModal = null;
-      newMirrorRepoKey = ''; newMirrorRepoDirection = 'push'; newMirrorRepoOrigin = 'src';
-      if (newMirrorRepoAutoSetup) {
-        newMirrorRepoAutoSetup = false;
-        await setupMirrorRepo(mirrorKey, repoKey);
-      }
-    } catch (e: any) {
-      alert(e?.message || e);
-    }
-  }
-
-  async function confirmDeleteMirrorGroup() {
-    if (!deleteMirrorGroupConfirm) return;
-    try {
-      await bridge.deleteMirrorGroup(deleteMirrorGroupConfirm);
-      $configStore = await bridge.reloadConfig();
-    } catch (e: any) {
-      alert(e?.message || e);
-    }
-    deleteMirrorGroupConfirm = null;
-    deleteMode = false;
-  }
-
-  async function confirmDeleteMirrorRepo() {
-    if (!deleteMirrorRepoConfirm) return;
-    try {
-      await bridge.deleteMirrorRepo(deleteMirrorRepoConfirm.mirrorKey, deleteMirrorRepoConfirm.repoKey);
-      $configStore = await bridge.reloadConfig();
-    } catch (e: any) {
-      alert(e?.message || e);
-    }
-    deleteMirrorRepoConfirm = null;
-    deleteMode = false;
+  // "Mirror token needed" → Store PAT: the credential modal on the token type.
+  function storeMirrorPat(key: string) {
+    credentialDialog.openStorePat(key);
   }
 
   // ── Settings ──
@@ -2401,33 +1753,7 @@
       credStatuses = statuses || {};
     });
 
-    events.on('discover:done', (data: any) => {
-      discoverLoading = false;
-      if (data.error) {
-        // If SSH account has no API token, close discover modal and show the token setup modal.
-        const acctKey = data.accountKey || discoverModal;
-        const acct = acctKey ? $accounts[acctKey] : null;
-        if (acct?.default_credential_type === 'ssh' && String(data.error).includes('no API token')) {
-          discoverModal = null;
-          sshDiscoverTokenModal = acctKey;
-          // Fetch the guide for this account.
-          bridge.getTokenGuide(acctKey).then(guide => {
-            sshDiscoveryGuide = guide.creationURL || '';
-            sshDiscoveryScopes = guide.scopes || '';
-          });
-          return;
-        }
-        // Surface the real error in the modal — silently clearing the list
-        // hid auth failures (e.g. Forgejo refusing GCM-cached passwords) and
-        // made discovery look broken when it was really credential-broken.
-        discoverError = String(data.error);
-        discoverRepos = [];
-        return;
-      }
-      discoverError = '';
-      discoverRepos = (data.repos || []).sort((a: DiscoverResult, b: DiscoverResult) => a.fullName.localeCompare(b.fullName));
-      discoverSelected = {};
-    });
+    events.on('discover:done', (data: any) => discoverDialog.onDone(data));
 
     events.on('mirror:status', (results: any) => {
       if (Array.isArray(results)) {
@@ -2505,34 +1831,9 @@
       applyPRUpdate(upd as PRAccountUpdateDTO);
     });
 
-    events.on('move:progress', (p: any) => {
-      moveProgress = [...moveProgress, p as MoveProgressEventDTO];
-    });
+    events.on('move:progress', (p: any) => moveDialog.onProgress(p));
 
-    events.on('move:done', (r: any) => {
-      moveResult = r as MoveResultDTO;
-      moveModalStep = 'result';
-      // If the user opted to delete the local source clone, the
-      // backend auto-triggers a fresh clone of the destination.
-      // Paint the new card as "cloning" up front so the repo
-      // doesn't flash through an "error/not cloned" state before
-      // clone:progress starts flowing.
-      if (moveResult && !moveResult.error && moveResult.localCloneDeleted && moveResult.destSourceKey && moveResult.newRepoKey) {
-        repoStates.update((s) => ({
-          ...s,
-          [`${moveResult!.destSourceKey}/${moveResult!.newRepoKey}`]: {
-            status: 'cloning', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0,
-          },
-        }));
-      }
-      // Reload config so the dashboard reflects the repo's new
-      // home immediately — otherwise the user reads "Move complete"
-      // while still seeing the source-account card list with the
-      // repo in its OLD slot, which looks like the move didn't work.
-      if (moveResult && !moveResult.error) {
-        reloadFromDisk().catch(() => { /* surfaced as reloadError */ });
-      }
-    });
+    events.on('move:done', (r: any) => moveDialog.onDone(r));
 
     // Check if config failed to parse (file exists but is broken/unsupported).
     // Render an in-app modal rather than window.confirm — macOS WebKit has
@@ -3185,7 +2486,7 @@
       </div>
       {/if}
     {/each}
-    <button class="card card-add" on:click={() => { if (simple) connectModal = true; else addAccountModal = true; }} title={$t('account.add')}>
+    <button class="card card-add" on:click={() => { if (simple) connectModal = true; else addAccountDialog.open(); }} title={$t('account.add')}>
       <span class="card-add-icon">+</span>
     </button>
   </section>
@@ -3608,7 +2909,7 @@
         on:click|stopPropagation={() => expandedCard = `mir:${mirrorKey}`}
         on:keydown={onActivateKey(() => expandedCard = `mir:${mirrorKey}`)}>
         {#if deleteMode}
-          <button class="btn-delete-x card-delete-btn" on:click|stopPropagation={() => deleteMirrorGroupConfirm = mirrorKey} title="Delete mirror group {mirrorKey}">&#10005;</button>
+          <button class="btn-delete-x card-delete-btn" on:click|stopPropagation={() => deleteMirrorGroupDialog.ask(mirrorKey)} title="Delete mirror group {mirrorKey}">&#10005;</button>
         {:else}
           <span class="card-dot" style="background: {mcolor}"></span>
         {/if}
@@ -3618,7 +2919,7 @@
       <div class="card card-mirror card-open" class:card-delete-mode={deleteMode}>
         <div class="card-top">
           {#if deleteMode}
-            <button class="btn-delete-x card-delete-btn" on:click={() => deleteMirrorGroupConfirm = mirrorKey} title="Delete mirror group {mirrorKey}">&#10005;</button>
+            <button class="btn-delete-x card-delete-btn" on:click={() => deleteMirrorGroupDialog.ask(mirrorKey)} title="Delete mirror group {mirrorKey}">&#10005;</button>
           {:else}
             <span class="card-dot" style="background: {mcolor}"></span>
           {/if}
@@ -3634,7 +2935,7 @@
       </div>
       {/if}
     {/each}
-    <button class="card card-add" on:click={() => { addMirrorGroupModal = true; newMirrorKey = ''; newMirrorSrc = ''; newMirrorDst = ''; }} title={$t('mirror.addGroup')}>
+    <button class="card card-add" on:click={() => addMirrorGroupDialog.open()} title={$t('mirror.addGroup')}>
       <span class="card-add-icon">+</span>
     </button>
   </section>
@@ -3656,9 +2957,9 @@
             {#if mirrorChecking[mirrorKey]}
               <span class="mirror-checking"><div class="spinner-sm"></div></span>
             {/if}
-            <button class="btn-tab-action" on:click={() => { addMirrorRepoModal = mirrorKey; newMirrorRepoKey = ''; newMirrorRepoDirection = 'push'; newMirrorRepoOrigin = 'src'; newMirrorRepoAutoSetup = false; mirrorRepoPickerRepos = []; mirrorRepoPickerLoaded = false; mirrorRepoPickerFilter = ''; }}>{$t('mirror.addRepo')}</button>
+            <button class="btn-tab-action" on:click={() => addMirrorRepoDialog.open(mirrorKey)}>{$t('mirror.addRepo')}</button>
             {#if deleteMode}
-              <button class="btn-sm btn-danger" on:click={() => deleteMirrorGroupConfirm = mirrorKey}>✕</button>
+              <button class="btn-sm btn-danger" on:click={() => deleteMirrorGroupDialog.ask(mirrorKey)}>✕</button>
             {/if}
           </div>
         </div>
@@ -3690,7 +2991,7 @@
               <button class="btn-sm btn-setup" on:click={() => setupMirrorRepo(mirrorKey, repoName)} disabled={settingUp}>{$t('mirror.setup')}</button>
             {/if}
             {#if deleteMode}
-              <button class="btn-sm btn-danger" on:click={() => deleteMirrorRepoConfirm = { mirrorKey, repoKey: repoName }}>✕</button>
+              <button class="btn-sm btn-danger" on:click={() => deleteMirrorRepoDialog.ask(mirrorKey, repoName)}>✕</button>
             {/if}
           </div>
         {/each}
@@ -3841,94 +3142,7 @@
   <!-- end viewMode -->
 
   <!-- ── DISCOVER MODAL ── -->
-  {#if discoverModal}
-    <div class="overlay" use:dismiss={() => discoverModal = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-discover" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head">
-          <h3>{$t('discover.title')} &mdash; {discoverModal}</h3>
-          <button class="btn-x" on:click={() => discoverModal = null}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          {#if discoverLoading}
-            <div class="loading"><div class="spinner"></div><span>{$t('discover.checking')}</span></div>
-          {:else if discoverError}
-            {@const hint = detectDiscoveryHint(discoverError, discoverModal)}
-            <div class="discover-error">
-              <p class="discover-error-title">{$t('discover.failed')}</p>
-              <p class="discover-error-detail">{discoverError}</p>
-              {#if hint}
-                <p class="discover-error-hint">{hint}</p>
-              {/if}
-              <div class="discover-error-actions">
-                <button class="btn-cancel" on:click={() => { if (discoverModal) { discoverLoading = true; discoverError = ''; bridge.discover(discoverModal); } }}>{$t('discover.retry')}</button>
-                <button class="btn-add" on:click={() => { const k = discoverModal; discoverModal = null; if (k) openCredChange(k, $accounts[k]?.default_credential_type || ''); }}>{$t('discover.openCredentials')}</button>
-              </div>
-            </div>
-          {:else if discoverRepos.length === 0}
-            <p class="found">{$t('discover.none')}</p>
-          {:else}
-            <div class="found-row">
-              <p class="found">{$t('discover.found', { count: discoverRepos.length })}{filteredDiscoverRepos.length !== discoverRepos.length ? ` (${$t('discover.showing', { count: filteredDiscoverRepos.length })})` : ''}:</p>
-              {#if showOwnerSection}
-                {@const anyOn = owners.some((o) => orgVisible[o] !== false)}
-                <button
-                  class="org-switch"
-                  class:is-on={anyOn}
-                  on:click={toggleAllOwners}
-                  title={anyOn ? 'Hide all owners' : 'Show all owners'}
-                >
-                  <span class="org-switch-thumb">{anyOn ? '✓' : '✕'}</span>
-                </button>
-              {/if}
-            </div>
-            {#if showOwnerSection}
-              <div class="discover-orgs">
-                {#each owners as owner}
-                  {@const on = orgVisible[owner] !== false}
-                  {@const eligible = discoverRepos.filter((r) => ownerOf(r.fullName) === owner && !(discoverModal && $sources[discoverModal]?.repos?.[r.fullName]))}
-                  {@const allSel = eligible.length > 0 && eligible.every((r) => discoverSelected[r.fullName])}
-                  {@const someSel = eligible.some((r) => discoverSelected[r.fullName])}
-                  <span class="org-badge" class:is-on={on}>
-                    <input
-                      type="checkbox"
-                      checked={allSel}
-                      indeterminate={someSel && !allSel}
-                      on:click|stopPropagation={() => toggleOwnerAll(owner)}
-                    />
-                    <span class="org-badge-body" role="button" tabindex="0" on:click={() => toggleOwnerVisibility(owner)} on:keydown={onActivateKey(() => toggleOwnerVisibility(owner))}>
-                      {owner} <span class="org-badge-count">({ownerCounts[owner]})</span>
-                    </span>
-                  </span>
-                {/each}
-              </div>
-            {/if}
-            <input class="form-input discover-filter" type="text" placeholder={$t('discover.filter')} bind:value={discoverFilter} />
-            <label class="dr dr-all">
-              <input type="checkbox" checked={allSelected} on:change={toggleAll} />
-              <span class="dr-name">{$t('discover.selectAll')}{discoverFilter ? ` (${$t('discover.filtered')})` : ''}</span>
-            </label>
-            {#each filteredDiscoverRepos as repo}
-              {@const alreadyAdded = !!($sources[discoverModal]?.repos?.[repo.fullName])}
-              <label class="dr" class:dr-disabled={alreadyAdded}>
-                <input type="checkbox" bind:checked={discoverSelected[repo.fullName]} disabled={alreadyAdded} />
-                <span class="dr-name">{repo.fullName}</span>
-                {#if alreadyAdded}<span class="dr-tag">added</span>{/if}
-                {#if repo.archived}<span class="dr-tag">archived</span>{/if}
-                {#if repo.fork}<span class="dr-tag">fork</span>{/if}
-                <span class="dr-desc">{repo.description}</span>
-              </label>
-            {/each}
-          {/if}
-        </div>
-        {#if !discoverLoading && discoverRepos.length > 0}
-          <div class="modal-foot">
-            <button class="btn-cancel" on:click={() => discoverModal = null}>{$t('common.cancel')}</button>
-            <button class="btn-add" on:click={addDiscovered} disabled={selectedCount === 0}>{$t('discover.addPull')} ({selectedCount})</button>
-          </div>
-        {/if}
-      </div>
-    </div>
-  {/if}
+  <DiscoverModal bind:this={discoverDialog} {reloadFromDisk} {cloneRepo} {openCredChange} onNeedsToken={(acctKey) => sshTokenDialog.openFor(acctKey)} />
 
   <!-- ── TERMINALS & SHELLS (issue #69) ──
        The Manager opens in its own OS window via openTerminalsManagerWindow
@@ -3939,36 +3153,7 @@
   <DoctorModal bind:this={doctorModal} bind:doctorSummary />
 
   <!-- ── SSH DISCOVERY TOKEN MODAL ── -->
-  {#if sshDiscoverTokenModal}
-    <div class="overlay" transition:fade={{ duration: 120 }}>
-      <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head">
-          <h3>Discovery token &mdash; {sshDiscoverTokenModal}</h3>
-          <button class="btn-x" on:click={() => { sshDiscoverTokenModal = null; sshDiscoveryTokenInput = ''; }}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          <p class="cred-step-desc">{$t('discover.sshNeedsToken')}<br/>{$t('discover.sshNeedsTokenAction')}</p>
-          <p class="cred-step-desc">Otherwise you can configure your sources manually in the JSON config file.</p>
-          {#if sshDiscoveryScopes}
-            <p class="cred-step-desc" style="margin-top: 6px;"><strong>Required scopes:</strong> {sshDiscoveryScopes}</p>
-          {/if}
-          {#if sshDiscoveryGuide}
-            <p class="cred-step-link" style="margin-top: 4px;"><a href={sshDiscoveryGuide} on:click|preventDefault={() => BrowserOpenURL(sshDiscoveryGuide)}>{sshDiscoveryGuide}</a></p>
-          {/if}
-          <div class="form-row" style="margin-top: 10px;">
-            <label class="form-label" for="ssh-disc-token">Token</label>
-            <input class="form-input" id="ssh-disc-token" type="password" bind:value={sshDiscoveryTokenInput} placeholder="Token..." />
-          </div>
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={() => { sshDiscoverTokenModal = null; sshDiscoveryTokenInput = ''; }}>Cancel</button>
-          <button class="btn-add" on:click={storeSSHDiscoveryToken} disabled={sshDiscoveryBusy || !sshDiscoveryTokenInput.trim()}>
-            {sshDiscoveryBusy ? 'Storing...' : 'Store & discover'}
-          </button>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <SshTokenModal bind:this={sshTokenDialog} {openDiscover} />
 
   <!-- ── EDIT ACCOUNT MODAL ── -->
   <EditAccountModal bind:this={editAccountDialog} {reloadFromDisk} />
@@ -3987,335 +3172,10 @@
     <Onboarding mode="add" onDone={finishConnect} onCancel={() => { connectModal = false; reloadFromDisk(); }} />
   {/if}
 
-  {#if addAccountModal}
-    <div class="overlay" use:dismiss={() => { if (addAccountStep === 'form') resetAddAccount(); }} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head">
-          <h3>{addAccountStep === 'form' ? 'Add account' : 'Credential setup'}</h3>
-          <button class="btn-x" on:click={resetAddAccount}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          {#if addAccountStep === 'form'}
-            <!-- ── Step 1: Account details ── -->
-            {#if addAccountError}
-              <p class="form-error">{addAccountError}</p>
-            {/if}
-            <div class="form-row">
-              <label class="form-label" for="aa-key">Account key</label>
-              <input class="form-input" id="aa-key" bind:value={addAcct.key} placeholder="github-MyUser" />
-            </div>
-            <div class="form-row">
-              <label class="form-label" for="aa-provider">Provider</label>
-              <select class="form-input" id="aa-provider" bind:value={addAcct.provider} on:change={onProviderChange}>
-                <option value="github">GitHub</option>
-                <option value="gitlab">GitLab</option>
-                <option value="gitea">Gitea</option>
-                <option value="forgejo">Forgejo</option>
-                <option value="bitbucket">Bitbucket</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <label class="form-label" for="aa-url">URL</label>
-              <input class="form-input" id="aa-url" bind:value={addAcct.url} placeholder="https://github.com" />
-            </div>
-            <div class="form-row">
-              <label class="form-label" for="aa-user">Git username</label>
-              <input class="form-input" id="aa-user" bind:value={addAcct.username} placeholder="MyUser" />
-              <p class="form-hint">The username you use to log in to the provider (for git and API operations).</p>
-            </div>
-            <fieldset class="form-fieldset">
-              <legend class="form-fieldset-legend">Git commit author identity</legend>
-              <p class="form-fieldset-hint">Used only as the author of commits you make under this account. Not used for authentication.</p>
-              <div class="form-row">
-                <label class="form-label" for="aa-name">Name</label>
-                <input class="form-input" id="aa-name" bind:value={addAcct.name} placeholder="Full Name" />
-              </div>
-              <div class="form-row">
-                <label class="form-label" for="aa-email">Email</label>
-                <input class="form-input" id="aa-email" bind:value={addAcct.email} placeholder="user@example.com" />
-              </div>
-            </fieldset>
-            <div class="form-row">
-              <label class="form-label" for="aa-cred">Credential type</label>
-              <select class="form-input" id="aa-cred" bind:value={addAcct.credentialType}>
-                <option value="gcm">GCM</option>
-                <option value="ssh">SSH</option>
-                <option value="token">Token</option>
-              </select>
-            </div>
-          {:else}
-            <!-- ── Step 2: Credential setup ── -->
-            <p class="cred-step-intro">Account <strong>{addAcct.key}</strong> created. Set up credentials:</p>
-
-            {#if credPrecheck && !credPrecheck.ok}
-              <div class="cred-precheck">
-                <p class="cred-precheck-title">⚠ {credPrecheck.summary}</p>
-                {#if credPrecheck.missing}
-                  {#each credPrecheck.missing as m}
-                    <p class="cred-precheck-hint"><strong>{m.displayName}</strong>: <code>{m.installHint}</code></p>
-                  {/each}
-                {/if}
-                <p class="cred-precheck-note">Install the missing tool(s) and click <em>Re-check</em>, or proceed anyway to retry manually.</p>
-                <button class="btn-cancel cred-action-btn" on:click={() => runCredentialPrecheck(addAcct.credentialType)}>Re-check</button>
-              </div>
-            {/if}
-
-            {#if addAcct.credentialType === 'gcm'}
-              <p class="cred-step-desc">Click below to authenticate via browser (Git Credential Manager).</p>
-              <button class="btn-add cred-action-btn" on:click={() => runCredSetup(addAcct.key, addAcct.credentialType)} disabled={credBusy || credResult?.ok}>
-                {credBusy ? 'Authenticating...' : credResult?.ok ? 'Authenticated' : 'Authenticate with GCM'}
-              </button>
-
-            {:else if addAcct.credentialType === 'token'}
-              <p class="cred-step-desc">Click on the link and login if necessary. Create a Token and paste it below.</p>
-              {#if credTokenScopes}
-                <p class="cred-step-desc"><strong>Required scopes:</strong> {credTokenScopes}</p>
-              {/if}
-              {#if credTokenGuide}
-                <p class="cred-step-link"><a href={credTokenGuide} on:click|preventDefault={() => BrowserOpenURL(credTokenGuide)}>{credTokenGuide}</a></p>
-              {/if}
-              <div class="form-row">
-                <label class="form-label" for="aa-token">Token</label>
-                <input class="form-input" id="aa-token" type="password" bind:value={credTokenInput} placeholder="ghp_..." />
-              </div>
-              <button class="btn-add cred-action-btn" on:click={() => runCredSetup(addAcct.key, addAcct.credentialType)} disabled={credBusy || !credTokenInput.trim() || credResult?.ok}>
-                {credBusy ? 'Storing...' : credResult?.ok ? 'Token stored' : 'Store token'}
-              </button>
-
-            {:else if addAcct.credentialType === 'ssh'}
-              <p class="cred-step-desc">SSH Host and Key configuration.</p>
-            {/if}
-
-            {#if credResult}
-              {#if credResult.sshPublicKey}
-                <!-- SSH-specific structured result -->
-                <div class="cred-result cred-result-ok">
-                  <pre class="cred-result-msg">{credResult.message}</pre>
-                </div>
-                <div class="ssh-connection-status" class:ssh-connected={credResult.sshVerified} class:ssh-disconnected={!credResult.sshVerified}>
-                  <span class="ssh-status-dot"></span>
-                  <span>{credResult.sshVerified ? 'Connection verified' : 'Connection not verified'}</span>
-                </div>
-                {#if !credResult.sshVerified}
-                  <p class="cred-step-desc" style="margin-top: 8px;">Copy the public SSH key and add it to your provider:</p>
-                  <div class="ssh-key-box">
-                    <code class="ssh-key-text">{credResult.sshPublicKey}</code>
-                    <button class="ssh-key-copy" on:click={() => credResult?.sshPublicKey && copySSHKey(credResult.sshPublicKey)} title="Copy to clipboard">{@html sshKeyCopied ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'}</button>
-                  </div>
-                  {#if credResult.sshAddURL}
-                    <p class="cred-step-link"><a href={credResult.sshAddURL} on:click|preventDefault={() => credResult?.sshAddURL && BrowserOpenURL(credResult.sshAddURL)}>{credResult.sshAddURL}</a></p>
-                  {/if}
-                {/if}
-                <div style="display: flex; gap: 8px; margin-top: 8px;">
-                  {#if !credResult.sshVerified}
-                    <button class="btn-add cred-action-btn" on:click={verifySSHConnection} disabled={credBusy}>
-                      {credBusy ? 'Verifying...' : 'Verify connection'}
-                    </button>
-                  {/if}
-                  <button class="btn-cancel cred-action-btn" on:click={regenerateSSHKey} disabled={credBusy}>
-                    {credBusy ? 'Regenerating...' : 'Regenerate SSH key'}
-                  </button>
-                </div>
-              {:else}
-                <!-- Generic result (GCM, Token) -->
-                <div class="cred-result" class:cred-result-ok={credResult.ok} class:cred-result-err={!credResult.ok}>
-                  <pre class="cred-result-msg">{credResult.message}</pre>
-                </div>
-              {/if}
-            {:else if addAcct.credentialType === 'ssh'}
-              <button class="btn-add cred-action-btn" on:click={() => runCredSetup(addAcct.key, addAcct.credentialType)} disabled={credBusy}>
-                {credBusy ? 'Setting up SSH...' : 'Generate SSH key'}
-              </button>
-            {/if}
-
-          {/if}
-        </div>
-        <div class="modal-foot">
-          {#if addAccountStep === 'form'}
-            <button class="btn-cancel" on:click={resetAddAccount}>Cancel</button>
-            <button class="btn-add" on:click={submitAddAccount}>Add account</button>
-          {:else}
-            <button class="btn-cancel" on:click={resetAddAccount}>
-              {credResult?.ok && (!credResult?.sshPublicKey || credResult?.sshVerified) ? 'Done' : 'Cancel'}
-            </button>
-          {/if}
-        </div>
-      </div>
-    </div>
-  {/if}
+  <AddAccountModal bind:this={addAccountDialog} bind:credResult bind:credTokenInput bind:credPrecheck {credBusy} {credTokenGuide} {credTokenScopes} {sshKeyCopied} {copySSHKey} {resetCredState} {verifyAllCredentials} {reloadFromDisk} {runCredentialPrecheck} {runCredSetup} {fetchTokenGuide} {verifySSHConnection} {regenerateSSHKey} />
 
   <!-- ── CHANGE CREDENTIAL MODAL ── -->
-  {#if credChangeModal}
-    {@const currentAcct = $accounts[credChangeModal]}
-    <div class="overlay" use:dismiss={() => { if (!credBusy && !credDeleteBusy) closeCredChange(); }} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head">
-          <h3>{credForceToken ? 'API token' : 'Change credential'} &mdash; {credChangeModal}</h3>
-          <button class="btn-x" on:click={closeCredChange}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          {#if !credResult && !credBusy}
-            {@const cs = credStatuses[credChangeModal] || {}}
-            {@const primary = cs.primary || 'unknown'}
-            {@const pat = cs.pat || 'unknown'}
-            {@const overall = cs.status || 'unknown'}
-            {@const primaryType = currentAcct?.default_credential_type || ''}
-            {@const lanHint = detectLANPermissionHint(cs.primaryMsg) || detectLANPermissionHint(cs.patMsg)}
-            <div class="cred-status-panel cred-status-panel-{overall}">
-              <div class="cred-status-head">
-                <span class="cred-status-title">Current status</span>
-                <button class="cred-status-recheck" title="Re-verify credential" on:click={() => verifyCredentialForModal(credChangeModal)} disabled={primary === 'checking'}>
-                  {primary === 'checking' ? 'Checking…' : 'Re-check'}
-                </button>
-              </div>
-              <div class="cred-status-row">
-                <span class="cred-status-dot cred-status-dot-{primary}"></span>
-                <span class="cred-status-label">Primary{primaryType ? ` (${primaryType.toUpperCase()})` : ''}:</span>
-                <span class="cred-status-value">{credStatusLabel(primary)}</span>
-              </div>
-              {#if cs.primaryMsg}
-                <p class="cred-status-detail">{cs.primaryMsg}</p>
-              {/if}
-              {#if primaryType === 'gcm' || primaryType === 'ssh'}
-                {@const patCoveredByGCM = pat === 'ok' && (cs.patMsg || '').startsWith('API via GCM')}
-                <div class="cred-status-row">
-                  <span class="cred-status-dot cred-status-dot-{pat === 'none' ? 'none' : pat}"></span>
-                  <span class="cred-status-label">API token (PAT):</span>
-                  <span class="cred-status-value">{patCoveredByGCM ? 'Not created' : credStatusLabel(pat)}</span>
-                  {#if pat === 'none' || pat === 'warning'}
-                    <button class="cred-status-pat-btn" on:click={() => credChangeModal && openTokenSetup(credChangeModal)} title="Store a Personal Access Token for API access">
-                      {pat === 'warning' ? 'Replace API token' : 'Setup API token'}
-                    </button>
-                  {/if}
-                </div>
-                {#if cs.patMsg}
-                  {#if cs.patMsg.startsWith('WARNING:')}
-                    <hr class="cred-status-divider" />
-                    <p class="cred-status-warning">{cs.patMsg}</p>
-                  {:else}
-                    <p class="cred-status-detail">{cs.patMsg}</p>
-                  {/if}
-                {/if}
-              {/if}
-              {#if lanHint}
-                <div class="cred-status-lanhint">
-                  <p class="cred-status-lanhint-title">⚠ Looks like the OS blocked this connection</p>
-                  <p>{lanHint.summary} <a href={lanHint.link} on:click|preventDefault={() => BrowserOpenURL(lanHint.link)}>Troubleshooting guide</a>.</p>
-                </div>
-              {/if}
-            </div>
-          {/if}
-          {#if credForceToken}
-          <!-- Simplified PAT-only flow for mirror fix -->
-          <p class="cred-step-desc">Mirrors require an API token (PAT) for status checks. Primary credential: <strong>{currentAcct?.default_credential_type || 'none'}</strong>.</p>
-          {:else}
-          <p class="cred-doc-link"><a href="https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md" on:click|preventDefault={() => BrowserOpenURL('https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md')}>Learn about credential types</a></p>
-          <div class="form-row">
-            <label class="form-label" for="cc-type">Type</label>
-            <select class="form-input" id="cc-type" bind:value={credChangeType} disabled={credBusy}>
-              <option value="gcm">Git Credential Manager (GCM)</option>
-              <option value="ssh">SSH</option>
-              <option value="token">Token</option>
-            </select>
-          </div>
-
-          {#if !credResult && credChangeType !== (currentAcct?.default_credential_type || '') && currentAcct?.default_credential_type}
-            <p class="cred-change-warning">Setting up {credChangeType.toUpperCase()} will remove the current {(currentAcct?.default_credential_type || '').toUpperCase()} credential and its artifacts{currentAcct?.default_credential_type === 'ssh' ? ' (SSH key, ~/.ssh/config entry)' : currentAcct?.default_credential_type === 'token' ? ' (token from OS keyring)' : currentAcct?.default_credential_type === 'gcm' ? ' (cached GCM credential)' : ''}.</p>
-          {/if}
-
-          {#if credPrecheck && !credPrecheck.ok}
-            <div class="cred-precheck">
-              <p class="cred-precheck-title">⚠ {credPrecheck.summary}</p>
-              {#if credPrecheck.missing}
-                {#each credPrecheck.missing as m}
-                  <p class="cred-precheck-hint"><strong>{m.displayName}</strong>: <code>{m.installHint}</code></p>
-                {/each}
-              {/if}
-              <p class="cred-precheck-note">Install the missing tool(s) and click <em>Re-check</em> before applying.</p>
-              <button class="btn-cancel cred-action-btn" on:click={() => runCredentialPrecheck(credChangeType)}>Re-check</button>
-            </div>
-          {/if}
-          {/if}
-
-          {#if (credForceToken || credChangeType === 'token') && credTokenGuide && !credResult}
-            <p class="cred-step-desc">Click on the link and login if necessary. Create a Token and paste it below.</p>
-            {#if credTokenScopes}
-              <p class="cred-step-desc"><strong>Required scopes:</strong> {credTokenScopes}</p>
-            {/if}
-            <p class="cred-step-link"><a href={credTokenGuide} on:click|preventDefault={() => BrowserOpenURL(credTokenGuide)}>{credTokenGuide}</a></p>
-            <div class="form-row">
-              <label class="form-label" for="cc-token">Token</label>
-              <input class="form-input" id="cc-token" type="password" bind:value={credTokenInput} placeholder="ghp_..." />
-            </div>
-          {/if}
-
-          {#if credBusy}
-            <div class="loading"><div class="spinner"></div><span>Setting up credential...</span></div>
-          {/if}
-
-          {#if credResult}
-            {#if credResult.sshPublicKey}
-              <div class="cred-result cred-result-ok">
-                <pre class="cred-result-msg">{credResult.message}</pre>
-              </div>
-              <div class="ssh-connection-status" class:ssh-connected={credResult.sshVerified} class:ssh-disconnected={!credResult.sshVerified}>
-                <span class="ssh-status-dot"></span>
-                <span>{credResult.sshVerified ? 'Connection verified' : 'Connection not verified'}</span>
-              </div>
-              {#if !credResult.sshVerified}
-                <p class="cred-step-desc" style="margin-top: 8px;">Copy the public SSH key and add it to your provider:</p>
-                <div class="ssh-key-box">
-                  <code class="ssh-key-text">{credResult.sshPublicKey}</code>
-                  <button class="ssh-key-copy" on:click={() => credResult?.sshPublicKey && copySSHKey(credResult.sshPublicKey)} title="Copy to clipboard">{@html sshKeyCopied ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'}</button>
-                </div>
-                {#if credResult.sshAddURL}
-                  <p class="cred-step-link"><a href={credResult.sshAddURL} on:click|preventDefault={() => credResult?.sshAddURL && BrowserOpenURL(credResult.sshAddURL)}>{credResult.sshAddURL}</a></p>
-                {/if}
-              {/if}
-              <div style="display: flex; gap: 8px; margin-top: 8px;">
-                {#if !credResult.sshVerified}
-                  <button class="btn-add cred-action-btn" on:click={verifySSHConnection} disabled={credBusy}>
-                    {credBusy ? 'Verifying...' : 'Verify connection'}
-                  </button>
-                {/if}
-                <button class="btn-cancel cred-action-btn" on:click={regenerateSSHKey} disabled={credBusy}>
-                  {credBusy ? 'Regenerating...' : 'Regenerate SSH key'}
-                </button>
-              </div>
-            {:else}
-              <div class="cred-result" class:cred-result-ok={credResult.ok} class:cred-result-err={!credResult.ok}>
-                <pre class="cred-result-msg">{credResult.message}</pre>
-              </div>
-            {/if}
-          {/if}
-
-        </div>
-        <div class="modal-foot">
-          {#if currentAcct?.default_credential_type && !credResult && !credSetupStarted && credChangeType === (currentAcct?.default_credential_type || '')}
-            <button class="btn-delete cred-delete-btn" on:click={deleteCredential} disabled={credDeleteBusy || credBusy}>
-              {credDeleteBusy ? 'Deleting...' : `Delete current ${(currentAcct?.default_credential_type || '').toUpperCase()} credential`}
-            </button>
-          {/if}
-          {#if credResult}
-            <button class="btn-cancel" on:click={closeCredChange}>{credResult.ok ? 'Done' : 'Close'}</button>
-          {:else if credChangeType === 'token' && credTokenGuide}
-            {#if credTokenInput.trim()}
-              <button class="btn-add" on:click={storeCredToken} disabled={credBusy}>
-                {credBusy ? 'Storing...' : 'Store token'}
-              </button>
-            {:else}
-              <button class="btn-cancel" on:click={closeCredChange}>Cancel</button>
-            {/if}
-          {:else}
-            <button class="btn-cancel" on:click={closeCredChange}>Cancel</button>
-            <button class="btn-add" on:click={applyCredChange} disabled={credBusy || (credChangeType === (currentAcct?.default_credential_type || '') && credStatuses[credChangeModal || '']?.status === 'ok')}>
-              {credBusy ? 'Setting up...' : 'Setup'}
-            </button>
-          {/if}
-        </div>
-      </div>
-    </div>
-  {/if}
+  <CredentialModal bind:this={credentialDialog} bind:credResult bind:credBusy bind:credTokenInput bind:credPrecheck bind:credStatuses {credTokenGuide} {credTokenScopes} {sshKeyCopied} {hostOS} {copySSHKey} {resetCredState} {verifyAllCredentials} {reloadFromDisk} {runCredentialPrecheck} {fetchTokenGuide} {credPostSetup} {storeCredToken} {verifySSHConnection} {regenerateSSHKey} />
 
   <!-- ── DELETE ACCOUNT MODAL ── -->
   <DeleteAccountModal bind:this={deleteAccountDialog} bind:reloadError bind:deleteMode {reloadFromDisk} />
@@ -4327,421 +3187,28 @@
   <!-- Workspaces are read-only: no create/delete modals. -->
 
 
-  {#if addMirrorGroupModal}
-    <div class="overlay" use:dismiss={() => addMirrorGroupModal = false} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head">
-          <h3>Add mirror group</h3>
-          <button class="btn-x" on:click={() => addMirrorGroupModal = false}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-row">
-            <label class="form-label" for="mirror-group-src">Source account</label>
-            <select id="mirror-group-src" class="form-input" bind:value={newMirrorSrc} on:change={() => { if (newMirrorSrc && newMirrorDst) newMirrorKey = newMirrorSrc + '-' + newMirrorDst; }}>
-              <option value="">Select...</option>
-              {#each Object.keys($accounts) as acctKey}
-                <option value={acctKey}>{acctKey}</option>
-              {/each}
-            </select>
-          </div>
-          <div class="form-row">
-            <label class="form-label" for="mirror-group-dst">Destination account</label>
-            <select id="mirror-group-dst" class="form-input" bind:value={newMirrorDst} on:change={() => { if (newMirrorSrc && newMirrorDst) newMirrorKey = newMirrorSrc + '-' + newMirrorDst; }}>
-              <option value="">Select...</option>
-              {#each Object.keys($accounts).filter(k => k !== newMirrorSrc) as acctKey}
-                <option value={acctKey}>{acctKey}</option>
-              {/each}
-            </select>
-          </div>
-          <div class="form-row">
-            <label class="form-label" for="mirror-group-key">Mirror key</label>
-            <input id="mirror-group-key" class="form-input" bind:value={newMirrorKey} placeholder="e.g. forgejo-github" />
-          </div>
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={() => addMirrorGroupModal = false}>Cancel</button>
-          <button class="btn-add" on:click={submitAddMirrorGroup} disabled={!newMirrorKey || !newMirrorSrc || !newMirrorDst}>Create</button>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <AddMirrorGroupModal bind:this={addMirrorGroupDialog} />
 
   <!-- ── ADD MIRROR REPO MODAL ── -->
-  {#if addMirrorRepoModal}
-    {@const mir = $mirrors[addMirrorRepoModal]}
-    {@const filteredPickerRepos = mirrorRepoPickerRepos.filter(r => !mirrorRepoPickerFilter || r.fullName.toLowerCase().includes(mirrorRepoPickerFilter.toLowerCase()))}
-    <div class="overlay" use:dismiss={() => addMirrorRepoModal = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-mirror-repo" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head">
-          <h3>Add mirror repo &mdash; {addMirrorRepoModal}</h3>
-          <button class="btn-x" on:click={() => addMirrorRepoModal = null}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          <div class="mirror-form-grid">
-            <span class="mirror-form-label">Direction</span>
-            <div class="radio-group">
-              <label><input type="radio" bind:group={newMirrorRepoDirection} value="push" /> Push (origin pushes to backup)</label>
-              <label><input type="radio" bind:group={newMirrorRepoDirection} value="pull" /> Pull (backup pulls from origin)</label>
-            </div>
-
-            <span class="mirror-form-label">Origin (source of truth)</span>
-            <div class="radio-group">
-              <label><input type="radio" bind:group={newMirrorRepoOrigin} value="src" on:change={loadMirrorRepoList} /> {mir?.account_src || 'src'}</label>
-              <label><input type="radio" bind:group={newMirrorRepoOrigin} value="dst" on:change={loadMirrorRepoList} /> {mir?.account_dst || 'dst'}</label>
-            </div>
-
-            <span class="mirror-form-label">Repository</span>
-            <div>
-              {#if mirrorRepoPickerLoading}
-                <div class="loading"><div class="spinner"></div><span>Loading repos...</span></div>
-              {:else if mirrorRepoPickerLoaded}
-                <input class="form-input form-input-sm" bind:value={mirrorRepoPickerFilter} placeholder="Filter repos..." />
-                <div class="mirror-repo-picker">
-                  {#each filteredPickerRepos as repo}
-                    {@const alreadyMirrored = mir && mir.repos[repo.fullName]}
-                    <label class="mrp-row" class:mrp-disabled={!!alreadyMirrored} class:mrp-selected={newMirrorRepoKey === repo.fullName}>
-                      <input type="radio" bind:group={newMirrorRepoKey} value={repo.fullName} disabled={!!alreadyMirrored} hidden />
-                      <span class="mrp-name">{repo.fullName}</span>
-                      <span class="mrp-badges">
-                        {#if repo.private}<span class="mrp-badge">private</span>{/if}
-                        {#if repo.fork}<span class="mrp-badge">fork</span>{/if}
-                        {#if repo.archived}<span class="mrp-badge">archived</span>{/if}
-                        {#if alreadyMirrored}<span class="mrp-badge mrp-badge-dim">mirrored</span>{/if}
-                      </span>
-                    </label>
-                  {/each}
-                  {#if filteredPickerRepos.length === 0}
-                    <p class="mrp-empty">No repos match filter.</p>
-                  {/if}
-                </div>
-              {:else}
-                <button class="btn-sm" on:click={loadMirrorRepoList}>Load repos from {newMirrorRepoOrigin === 'src' ? mir?.account_src : mir?.account_dst}</button>
-              {/if}
-            </div>
-
-            <span class="mirror-form-label">Options</span>
-            <label style="font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 4px;"><input type="checkbox" bind:checked={newMirrorRepoAutoSetup} /> Set up immediately via API</label>
-          </div>
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={() => addMirrorRepoModal = null}>Cancel</button>
-          <button class="btn-add" on:click={submitAddMirrorRepo} disabled={!newMirrorRepoKey}>Add</button>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <AddMirrorRepoModal bind:this={addMirrorRepoDialog} {setupMirrorRepo} />
 
   <!-- ── DELETE MIRROR GROUP CONFIRM ── -->
-  {#if deleteMirrorGroupConfirm}
-    {@const delMir = $mirrors[deleteMirrorGroupConfirm]}
-    <div class="overlay" use:dismiss={() => deleteMirrorGroupConfirm = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-confirm" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head"><h3>Delete mirror group</h3></div>
-        <div class="modal-body">
-          <p class="delete-warning">Remove mirror group <strong>{deleteMirrorGroupConfirm}</strong> ({delMir ? Object.keys(delMir.repos).length : 0} repos)?</p>
-          <p class="delete-warning delete-danger">This only removes the config entry. Existing mirror configurations on the servers will remain.</p>
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={() => deleteMirrorGroupConfirm = null}>Cancel</button>
-          <button class="btn-danger" on:click={confirmDeleteMirrorGroup}>Delete</button>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <DeleteMirrorGroupModal bind:this={deleteMirrorGroupDialog} bind:deleteMode />
 
   <!-- ── DELETE MIRROR REPO CONFIRM ── -->
-  {#if deleteMirrorRepoConfirm}
-    <div class="overlay" use:dismiss={() => deleteMirrorRepoConfirm = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-confirm" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head"><h3>Remove mirrored repo</h3></div>
-        <div class="modal-body">
-          <p class="delete-warning">Remove <strong>{deleteMirrorRepoConfirm.repoKey}</strong> from mirror <strong>{deleteMirrorRepoConfirm.mirrorKey}</strong>?</p>
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={() => deleteMirrorRepoConfirm = null}>Cancel</button>
-          <button class="btn-danger" on:click={confirmDeleteMirrorRepo}>Remove</button>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <DeleteMirrorRepoModal bind:this={deleteMirrorRepoDialog} bind:deleteMode />
 
   <!-- ── MIRROR SETUP RESULT MODAL ── -->
-  {#if mirrorSetupResultModal}
-    <div class="overlay" use:dismiss={() => mirrorSetupResultModal = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-confirm" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head">
-          <h3>Mirror setup {mirrorSetupResultModal.error ? 'failed' : 'complete'}</h3>
-          <button class="btn-x" on:click={() => mirrorSetupResultModal = null}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          {#if mirrorSetupResultModal.error}
-            <p class="form-error">{mirrorSetupResultModal.error}</p>
-          {:else}
-            <p style="color: var(--text)">
-              <strong>{mirrorSetupResultModal.repoKey}</strong> &mdash;
-              {mirrorSetupResultModal.created ? 'target repo created' : ''}
-              {mirrorSetupResultModal.created && mirrorSetupResultModal.mirrored ? ', ' : ''}
-              {mirrorSetupResultModal.mirrored ? 'mirror configured' : ''}
-            </p>
-          {/if}
-          {#if mirrorSetupResultModal.method === 'manual' && mirrorSetupResultModal.instructions}
-            <pre class="mirror-instructions">{mirrorSetupResultModal.instructions}</pre>
-          {/if}
-        </div>
-        <div class="modal-foot">
-          <button class="btn-add" on:click={() => mirrorSetupResultModal = null}>OK</button>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <MirrorSetupResultModal bind:mirrorSetupResultModal />
 
   <!-- ── MIRROR DISCOVER RESULTS MODAL ── -->
-  {#if mirrorDiscoverResults !== null}
-    <div class="overlay" use:dismiss={() => mirrorDiscoverResults = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-discover" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head">
-          <h3>Mirror Discovery</h3>
-          <button class="btn-x" on:click={() => mirrorDiscoverResults = null}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          {#if mirrorDiscoverError}
-            <p class="form-error">{mirrorDiscoverError}</p>
-          {:else if mirrorDiscoverResults.length === 0}
-            <p style="color: var(--text-muted); font-size: 12px;">No mirror relationships found across your accounts.</p>
-          {:else}
-            {#each mirrorDiscoverResults as dr}
-              <div style="margin-bottom: 12px;">
-                <div style="font-size: 12px; font-weight: 500; color: var(--text-primary); margin-bottom: 4px;">
-                  {dr.AccountSrc} ↔ {dr.AccountDst}
-                </div>
-                {#each dr.Discovered as dm}
-                  {@const alreadyConfigured = isDiscoveredRepoConfigured(dr.AccountSrc, dr.AccountDst, dm.RepoKey)}
-                  {@const justAdded = discoverAdded[`${dr.AccountSrc}:${dr.AccountDst}:${dm.RepoKey}`]}
-                  <div class="mrp-row" style="border-bottom: none; {alreadyConfigured || justAdded ? 'opacity: 0.5;' : ''}">
-                    <span class="mrp-name">{dm.RepoKey}</span>
-                    <span class="mrp-badge">{dm.Direction}</span>
-                    <span class="mrp-badge">{dm.Origin}</span>
-                    <span class="mrp-badge" class:mrp-badge-dim={dm.Confidence === 'possible'} style={dm.Confidence === 'confirmed' ? 'background: #166534; color: #dcfce7;' : dm.Confidence === 'likely' ? 'background: #1e40af; color: #dbeafe;' : ''}>{dm.Confidence}</span>
-                    {#if alreadyConfigured || justAdded}
-                      <span class="mrp-badge" style="background: #166534; color: #dcfce7;">configured</span>
-                    {:else}
-                      <button class="btn-sm" style="margin-left: auto; padding: 1px 8px; font-size: 10px;" on:click={() => addDiscoveredRepo(dr, dm)}>+ Add</button>
-                    {/if}
-                  </div>
-                {/each}
-              </div>
-            {/each}
-          {/if}
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={() => mirrorDiscoverResults = null}>Close</button>
-          {#if mirrorDiscoverResults.length > 0}
-            <button class="btn-add" on:click={applyMirrorDiscovery}>Apply to config</button>
-          {/if}
-        </div>
-      </div>
-    </div>
-  {/if}
+  <MirrorDiscoverModal bind:mirrorDiscoverResults bind:discoverAdded {mirrorDiscoverError} {checkAllMirrorStatus} />
 
   <!-- ── MIRROR CREDENTIAL WARNING MODAL ── -->
-  {#if mirrorCredWarning}
-    <div class="overlay" use:dismiss={() => mirrorCredWarning = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-confirm" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head">
-          <h3>Mirror token needed</h3>
-          <button class="btn-x" on:click={() => mirrorCredWarning = null}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          <p class="delete-warning">{mirrorCredWarning.message}</p>
-          <p style="color: var(--text-muted); margin-top: 8px;">Account: <strong>{mirrorCredWarning.accountKey}</strong></p>
-          <p style="color: var(--text-muted);">GCM OAuth tokens are machine-local and can't be used by remote servers. You need to create a PAT and store it.</p>
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={() => mirrorCredWarning = null}>Cancel</button>
-          <button class="btn-add" on:click={() => {
-            const key = mirrorCredWarning?.accountKey;
-            mirrorCredWarning = null;
-            if (key) {
-              credChangeModal = key;
-              credChangeType = 'token';
-            }
-          }}>Store PAT</button>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <MirrorTokenModal bind:mirrorCredWarning {storeMirrorPat} />
 
   <!-- ── MOVE REPO MODAL (issue #64) ── -->
-  {#if moveModalStep === 'form'}
-    <div class="overlay" use:dismiss={cancelMoveRepo} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head">
-          <h3>Move repository &mdash; {moveSourceRepoKey}</h3>
-          <button class="btn-x" on:click={cancelMoveRepo}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          {#if moveLoadingOwners}
-            <p class="detail-loading">Loading destination accounts…</p>
-          {:else if moveOwnerOptions.length === 0}
-            <p class="form-error">No other accounts are configured. Add a second account first to move a repo across accounts/providers.</p>
-          {:else}
-            <p style="color: var(--text-secondary); margin-bottom: 8px;">This will push every ref and tag to the destination, rewire <code>origin</code>, and (optionally) delete the source.</p>
-            {#if moveError}
-              <p class="form-error">{moveError}</p>
-            {/if}
-            <div class="form-row">
-              <label class="form-label" for="move-repo-dest">Destination</label>
-              <select id="move-repo-dest" class="form-input" bind:value={moveOwnerSelected} on:change={syncMoveSelection}>
-                {#each moveOwnerOptions as opt}
-                  <option value="{opt.account}::{opt.owner}">{opt.account} &rarr; {opt.owner}{opt.isOrg ? ' (org)' : ''}</option>
-                {/each}
-              </select>
-            </div>
-            <div class="form-row">
-              <label class="form-label" for="move-repo-name">New name</label>
-              <input id="move-repo-name" class="form-input" bind:value={moveNewName} placeholder="{moveNewName}" />
-            </div>
-            <div class="form-row form-row-check">
-              <label><input type="checkbox" bind:checked={moveIsPrivate} /> Private repository</label>
-            </div>
-            <div class="form-row form-row-check">
-              <label><input type="checkbox" bind:checked={moveDeleteSource} on:change={refreshMoveReadiness} /> Delete source repository after successful move</label>
-            </div>
-            <div class="form-row form-row-check">
-              <label><input type="checkbox" bind:checked={moveDeleteLocal} /> Delete local clone after successful move</label>
-            </div>
-
-            <!-- Credential readiness panel (issue #64, UX polish) -->
-            <div class="move-readiness">
-              <div class="move-readiness-title">Credential readiness</div>
-              {#if moveReadinessLoading && !moveReadiness}
-                <div class="move-readiness-loading">Checking credentials…</div>
-              {:else if moveReadiness}
-                {#each ['source', 'dest'] as side}
-                  {@const r = side === 'source' ? moveReadiness.source : moveReadiness.dest}
-                  {#if r.accountKey}
-                    <div class="move-readiness-card move-readiness-{r.status || 'unknown'}">
-                      <div class="move-readiness-head">
-                        <span class="move-readiness-role">{side === 'source' ? 'Source' : 'Destination'}</span>
-                        <span class="move-readiness-acct">{r.accountKey}</span>
-                        <span class="move-readiness-type">{r.credentialType || '—'}</span>
-                        <span class="move-readiness-dot move-readiness-dot-{r.status || 'unknown'}" title={r.status}></span>
-                      </div>
-                      {#if r.message}
-                        <div class="move-readiness-msg">{r.message}</div>
-                      {/if}
-                      {#if r.scopesHint}
-                        <div class="move-readiness-scopes">{r.scopesHint}</div>
-                      {/if}
-                      <div class="move-readiness-actions">
-                        <button type="button" class="btn-link" on:click={() => openCredentialsFromMove(r.accountKey)}>Fix credentials…</button>
-                        <button type="button" class="btn-link-subtle" on:click={refreshMoveReadiness} disabled={moveReadinessLoading}>Re-check</button>
-                      </div>
-                    </div>
-                  {/if}
-                {/each}
-                <p class="move-readiness-hint">Scope hints show what each side needs in total for the options you've selected. gitbox only probes auth reachability here — the actual scope check happens when the move runs, with a warning naming the missing scope if it fails.</p>
-              {/if}
-            </div>
-          {/if}
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={cancelMoveRepo}>Cancel</button>
-          {#if moveOwnerOptions.length > 0 && !moveLoadingOwners}
-            <button class="btn-add" on:click={advanceMoveToConfirm}>Continue…</button>
-          {/if}
-        </div>
-      </div>
-    </div>
-  {/if}
-
-  {#if moveModalStep === 'confirm'}
-    <div class="overlay" transition:fade={{ duration: 120 }}>
-      <div class="modal modal-confirm modal-danger" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head modal-head-danger">
-          <h3>Confirm move — destructive</h3>
-          <button class="btn-x" on:click={cancelMoveRepo}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          <p class="delete-warning delete-danger">This action is destructive and cannot be undone.</p>
-          <ul class="move-summary">
-            <li>Destination: <strong>{moveDestAccountKey} &rarr; {moveDestOwner}/{moveNewName}</strong></li>
-            {#if moveDeleteSource}
-              <li class="move-danger-line">Source repo on the origin provider <strong>WILL</strong> be deleted.</li>
-            {:else}
-              <li>Source repo on the origin provider will be kept.</li>
-            {/if}
-            {#if moveDeleteLocal}
-              <li class="move-danger-line">Local clone at <code>{movePreflight?.sourceRepoPath || ''}</code> <strong>WILL</strong> be removed.</li>
-            {:else}
-              <li>Local clone will be kept; its <code>origin</code> will be rewired to the destination.</li>
-            {/if}
-            {#if movePreflight?.destCloneUrl}
-              <li>New origin: <code>{movePreflight.destCloneUrl}</code></li>
-            {/if}
-          </ul>
-          <p class="delete-repo-name">Type <strong>{moveSourceRepoKey}</strong> to unlock:</p>
-          <input class="form-input" bind:value={moveTypeConfirm} placeholder="{moveSourceRepoKey}" />
-          {#if moveError}
-            <p class="form-error">{moveError}</p>
-          {/if}
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={cancelMoveRepo}>Cancel</button>
-          <button class="btn-danger" disabled={moveTypeConfirm !== moveSourceRepoKey} on:click={confirmMoveRepo}>Move</button>
-        </div>
-      </div>
-    </div>
-  {/if}
-
-  {#if moveModalStep === 'progress' || moveModalStep === 'result'}
-    <div class="overlay" transition:fade={{ duration: 120 }}>
-      <div class="modal modal-confirm" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head">
-          <h3>
-            {#if moveModalStep === 'progress'}Moving {moveSourceRepoKey}…
-            {:else if moveResult?.error}Move failed
-            {:else}Move complete
-            {/if}
-          </h3>
-          {#if moveModalStep === 'result'}
-            <button class="btn-x" on:click={closeMoveResult}>&#10005;</button>
-          {/if}
-        </div>
-        <div class="modal-body">
-          {#each moveProgress as p}
-            <div class="move-phase" class:move-phase-has-error={!!p.error}>
-              <span class="move-phase-dot" class:move-phase-err={!!p.error}></span>
-              <span class="move-phase-label">{p.phase.replace(/_/g, ' ')}</span>
-              <span class="move-phase-msg">{p.message}</span>
-            </div>
-          {/each}
-          {#if moveModalStep === 'result' && moveResult}
-            {#if moveResult.error}
-              <p class="form-error">{moveResult.error}</p>
-            {:else}
-              <p class="move-done-ok">✓ Move complete.</p>
-              {#if moveResult.localCloneDeleted && moveResult.destSourceKey && moveResult.newRepoKey}
-                <p class="move-info">Cloning the destination into <code>{moveResult.destSourceKey}/{moveResult.newRepoKey}</code> — watch the card on the dashboard.</p>
-              {/if}
-              {#if moveResult.warnings && moveResult.warnings.length > 0}
-                <ul class="move-warnings">
-                  {#each moveResult.warnings as w}
-                    <li>⚠ {w}</li>
-                  {/each}
-                </ul>
-              {/if}
-            {/if}
-          {/if}
-        </div>
-        <div class="modal-foot">
-          {#if moveModalStep === 'result'}
-            <button class="btn-add" on:click={closeMoveResult}>Close</button>
-          {/if}
-        </div>
-      </div>
-    </div>
-  {/if}
+  <MoveRepoModal bind:this={moveDialog} {reloadFromDisk} {openCredChange} {openTokenSetup} />
 
   <!-- ── CREATE REPO MODAL ── -->
   <CreateRepoModal bind:this={createRepoDialog} />
@@ -5235,17 +3702,7 @@
   .active-gear { color: var(--text-primary) !important; }
 
 
-  .found { font-size: 12px; color: var(--text-muted); margin: 0 0 10px; }
 
-  .dr { display: flex; align-items: center; gap: 8px; padding: 6px 4px; cursor: pointer; border-radius: 4px; font-size: 13px; }
-  .dr:hover { background: var(--bg-hover); }
-  .dr-all { border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 4px; }
-  .dr input { accent-color: #4B95E9; }
-  .dr-name { color: var(--text-repo); font-weight: 500; }
-  .dr-desc { color: var(--text-dim); font-size: 11px; margin-left: auto; }
-  .dr-tag { font-size: 9px; padding: 1px 5px; background: var(--bg-hover); color: var(--text-dim); border-radius: 3px; }
-  .dr-disabled { opacity: 0.4; cursor: default; }
-  .dr-disabled:hover { background: transparent; }
 
 
   /* ── Add account card ── */
@@ -5260,180 +3717,7 @@
   /* .settings-action shared with .settings-btn / .settings-action-btn —
      unified rule lives near .settings-row above. */
   .settings-doctor-summary { margin-left: 8px; }
-  .discover-orgs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
-  .org-badge {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 2px 8px; border-radius: 12px; font-size: 11px;
-    background: transparent; border: 1px solid var(--border);
-    color: var(--text-muted); user-select: none;
-    transition: background 0.12s, color 0.12s, border-color 0.12s;
-  }
-  .org-badge.is-on { background: #14532d; border-color: #166534; color: #86efac; }
-  .org-badge input[type="checkbox"] { margin: 0; cursor: pointer; accent-color: #4B95E9; }
-  .org-badge-body { cursor: pointer; }
-  .org-badge-count { opacity: 0.75; font-variant-numeric: tabular-nums; }
-  :global([data-theme="light"]) .org-badge.is-on { background: #dcfce7; border-color: #86efac; color: #166534; }
-  .found-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .found-row .found { margin: 0 0 10px; }
-  .org-switch {
-    flex-shrink: 0;
-    width: 28px; height: 14px; border-radius: 7px;
-    background: var(--text-muted); border: none; padding: 0;
-    cursor: pointer; position: relative;
-    transition: background 0.18s;
-    margin-bottom: 10px;
-  }
-  .org-switch.is-on { background: #6ee09c; }
-  .org-switch-thumb {
-    position: absolute; top: 2px; left: 2px;
-    width: 10px; height: 10px; border-radius: 50%;
-    background: #fff;
-    display: inline-flex; align-items: center; justify-content: center;
-    font-size: 7px; font-weight: 800; color: var(--text-muted);
-    transition: transform 0.18s, color 0.18s;
-    line-height: 1;
-  }
-  .org-switch.is-on .org-switch-thumb { transform: translateX(14px); color: #14532d; }
 
-  /* ── Credential setup step ── */
-  .cred-step-intro { font-size: 13px; color: var(--text-primary); margin: 0 0 10px; }
-  .cred-change-warning { font-size: 11px; color: #f59e0b; margin: 8px 0; padding: 6px 10px; border-radius: 4px; background: #f59e0b12; border: 1px solid #f59e0b44; line-height: 1.4; }
-  :global([data-theme="light"]) .cred-change-warning { color: #b45309; background: #fef3c7; border-color: #f59e0b66; }
-  .cred-doc-link { font-size: 11px; margin: 0 0 12px; }
-  .cred-doc-link a { color: #4B95E9; text-decoration: underline; }
-  .cred-doc-link a:hover { color: #6db0f7; }
-  /* Credential-status panel inside the Change Credential modal */
-  .cred-status-panel {
-    margin: 0 0 14px;
-    padding: 10px 12px;
-    border-radius: 6px;
-    border: 1px solid var(--border-subtle, #27272a);
-    background: var(--bg-panel, rgba(255,255,255,0.03));
-    font-size: 12px;
-  }
-  .cred-status-panel-ok      { border-color: #16a34a66; background: rgba(22,163,74,0.08); }
-  .cred-status-panel-warning { border-color: #f59e0b66; background: rgba(245,158,11,0.08); }
-  .cred-status-panel-offline { border-color: #D81E5B66; background: rgba(216,30,91,0.10); }
-  .cred-status-panel-error   { border-color: #D81E5B66; background: rgba(216,30,91,0.10); }
-  .cred-status-panel-none    { border-color: #3f3f46; background: rgba(113,113,122,0.08); }
-  :global([data-theme="light"]) .cred-status-panel-ok      { background: rgba(22,163,74,0.10); border-color: #16a34a88; }
-  :global([data-theme="light"]) .cred-status-panel-warning { background: rgba(245,158,11,0.12); border-color: #b45309; }
-  :global([data-theme="light"]) .cred-status-panel-offline { background: rgba(216,30,91,0.12); border-color: #be123c; }
-  :global([data-theme="light"]) .cred-status-panel-error   { background: rgba(216,30,91,0.12); border-color: #be123c; }
-  :global([data-theme="light"]) .cred-status-panel-none    { background: rgba(113,113,122,0.10); border-color: #a1a1aa; }
-  .cred-status-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-  .cred-status-title { font-weight: 600; color: var(--text-primary); }
-  .cred-status-recheck {
-    background: transparent; color: var(--text-muted); border: 1px solid var(--border-subtle, #3f3f46);
-    padding: 2px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
-  }
-  .cred-status-recheck:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
-  .cred-status-recheck:disabled { opacity: 0.6; cursor: default; }
-  .cred-status-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
-  .cred-status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-  .cred-status-dot-ok       { background: #16a34a; }
-  .cred-status-dot-warning  { background: #f59e0b; }
-  .cred-status-dot-offline  { background: #D81E5B; }
-  .cred-status-dot-error    { background: #D81E5B; }
-  .cred-status-dot-none     { background: #71717a; }
-  .cred-status-dot-checking { background: #4B95E9; }
-  .cred-status-dot-unknown  { background: #52525b; }
-  .cred-status-label { color: var(--text-muted); }
-  .cred-status-value { color: var(--text-primary); font-weight: 500; }
-  .cred-status-detail {
-    margin: 2px 0 6px 16px; font-size: 11px; color: var(--text-muted);
-    word-break: break-word; line-height: 1.4;
-    font-family: ui-monospace, Menlo, Consolas, monospace;
-  }
-  /* Visual separator + distinct styling for messages that open with WARNING:
-     so they don't read as a continuation of the row above. */
-  .cred-status-divider {
-    border: none;
-    border-top: 1px dashed rgba(245, 158, 11, 0.45);
-    margin: 10px 0 8px;
-  }
-  :global([data-theme="light"]) .cred-status-divider { border-top-color: rgba(180, 83, 9, 0.6); }
-  .cred-status-warning {
-    margin: 6px 0 4px;
-    padding: 8px 10px;
-    font-size: 12px;
-    line-height: 1.5;
-    color: var(--text-primary);
-    background: rgba(245, 158, 11, 0.10);
-    border-left: 3px solid #f59e0b;
-    border-radius: 0 4px 4px 0;
-    word-break: break-word;
-  }
-  :global([data-theme="light"]) .cred-status-warning {
-    background: rgba(245, 158, 11, 0.12);
-    border-left-color: #b45309;
-  }
-  .cred-status-pat-btn {
-    margin-left: auto;
-    background: var(--accent, #4B95E9); color: #fff; border: 0;
-    padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
-    font-weight: 500; white-space: nowrap;
-  }
-  .cred-status-pat-btn:hover { background: #6db0f7; }
-  .cred-status-lanhint {
-    margin-top: 10px; padding: 10px 12px; border-radius: 6px;
-    background: rgba(59, 130, 246, 0.10);
-    border: 1px solid rgba(59, 130, 246, 0.40);
-    font-size: 12px; line-height: 1.5;
-  }
-  :global([data-theme="light"]) .cred-status-lanhint {
-    background: rgba(59, 130, 246, 0.08);
-    border-color: rgba(59, 130, 246, 0.55);
-  }
-  .cred-status-lanhint-title { margin: 0 0 4px; font-weight: 600; color: #3b82f6; }
-  :global([data-theme="light"]) .cred-status-lanhint-title { color: #1d4ed8; }
-  .cred-status-lanhint p { margin: 4px 0; color: var(--text-primary); }
-  .cred-status-lanhint a { color: #3b82f6; text-decoration: underline; }
-  .cred-status-lanhint a:hover { color: #60a5fa; }
-  /* Discovery-modal error block */
-  .discover-error {
-    margin: 4px 0 12px; padding: 12px 14px; border-radius: 6px;
-    background: rgba(216, 30, 91, 0.10); border: 1px solid rgba(216, 30, 91, 0.45);
-  }
-  :global([data-theme="light"]) .discover-error {
-    background: rgba(216, 30, 91, 0.08); border-color: #be123c;
-  }
-  .discover-error-title { margin: 0 0 6px; font-weight: 600; color: #D81E5B; }
-  :global([data-theme="light"]) .discover-error-title { color: #be123c; }
-  .discover-error-detail {
-    margin: 4px 0; color: var(--text-primary); font-size: 12px; line-height: 1.4;
-    word-break: break-word;
-    font-family: ui-monospace, Menlo, Consolas, monospace;
-  }
-  .discover-error-hint { margin: 8px 0 0; color: var(--text-primary); font-size: 12px; line-height: 1.5; }
-  .discover-error-actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
-  .cred-precheck {
-    margin: 10px 0; padding: 10px 12px; border-radius: 6px; font-size: 12px;
-    background: rgba(245, 158, 11, 0.10);
-    border: 1px solid #f59e0b88;
-  }
-  :global([data-theme="light"]) .cred-precheck { background: rgba(245, 158, 11, 0.08); border-color: #b45309; }
-  .cred-precheck-title { margin: 0 0 6px; font-weight: 600; color: #f59e0b; }
-  :global([data-theme="light"]) .cred-precheck-title { color: #b45309; }
-  .cred-precheck-hint { margin: 4px 0; color: var(--text-primary); }
-  .cred-precheck-hint code { background: var(--bg-hover); padding: 1px 5px; border-radius: 3px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; }
-  .cred-precheck-note { margin: 6px 0 8px; color: var(--text-muted); font-size: 11px; }
-  .cred-result { margin-top: 10px; padding: 8px 10px; border-radius: 6px; font-size: 12px; }
-  .cred-result-ok { background: #16653412; border: 1px solid #166534; color: var(--text-primary); }
-  .cred-result-err { background: #D81E5B12; border: 1px solid #D81E5B; color: #D81E5B; }
-  .cred-result-msg { margin: 0; white-space: pre-wrap; font-family: monospace; font-size: 11px; line-height: 1.5; }
-  .ssh-key-box { margin: 6px 0; padding: 6px 8px; background: var(--bg-hover, #222); border: 1px solid var(--border, #444); border-radius: 4px; display: flex; align-items: center; gap: 6px; }
-  .ssh-key-text { font-family: monospace; font-size: 9px; word-break: break-all; white-space: nowrap; color: var(--text-primary); flex: 1; overflow-x: auto; user-select: all; }
-  .ssh-key-copy { background: none; border: 1px solid var(--border, #444); border-radius: 3px; padding: 3px 6px; cursor: pointer; color: var(--text-muted); font-size: 12px; flex-shrink: 0; transition: all 0.15s; }
-  .ssh-key-copy:hover { color: var(--text-primary); border-color: var(--border-hover, #666); background: var(--bg-card, #2a2a2a); }
-  .ssh-connection-status { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; font-weight: 600; }
-  .ssh-status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-  .ssh-connected .ssh-status-dot { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
-  .ssh-connected { color: #86efac; }
-  .ssh-disconnected .ssh-status-dot { background: #ef4444; box-shadow: 0 0 6px #ef444488; }
-  .ssh-disconnected { color: #fca5a5; }
-  :global([data-theme="light"]) .ssh-connected { color: #166534; }
-  :global([data-theme="light"]) .ssh-disconnected { color: #be123c; }
 
   /* ── Delete mode ── */
   .delete-active { color: #D81E5B !important; }
@@ -5446,7 +3730,6 @@
   }
   .btn-delete-x:hover { opacity: 1; background: #D81E5B22; border-color: #D81E5B; }
 
-  .cred-delete-btn { margin-right: auto; }
 
 
   /* ── Orphan adoption ── */
@@ -5616,30 +3899,10 @@
   .mirror-warning { color: #F07623; font-size: 13px; cursor: help; }
   .mirror-empty { font-size: 11px; color: var(--text-muted); padding: 4px 8px; font-style: italic; }
   .mirror-checking { display: inline-flex; align-items: center; }
-  .mirror-instructions { font-size: 11px; white-space: pre-wrap; background: var(--bg-raised); padding: 8px; border-radius: 4px; margin-top: 8px; overflow: auto; max-height: 200px; }
   .btn-setup { font-size: 10px; padding: 1px 6px; }
   .btn-fix { font-size: 10px; padding: 1px 6px; background: #431407; border-color: #c2410c; color: #fdba74; }
   .spinner-sm { width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--text-primary); border-radius: 50%; animation: spin 0.6s linear infinite; }
-  .radio-group { display: flex; flex-direction: column; gap: 4px; }
-  .radio-group label { font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 4px; cursor: pointer; }
 
-  /* Mirror repo modal */
-  .modal-mirror-repo { max-width: 560px; width: 90vw; }
-  .mirror-form-grid {
-    display: grid; grid-template-columns: 160px 1fr; gap: 10px 12px; align-items: start;
-  }
-  .mirror-form-label {
-    font-size: 12px; font-weight: 500; color: var(--text-muted);
-    padding-top: 3px; white-space: nowrap;
-  }
-  .form-input-sm { font-size: 11px; padding: 4px 8px; margin-bottom: 6px; }
-  .mirror-repo-picker {
-    max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px;
-  }
-  .mrp-selected { background: var(--hover); outline: 1px solid var(--text-primary); outline-offset: -1px; }
-  .mrp-disabled { opacity: 0.4; cursor: default; }
-  .mrp-badges { display: flex; gap: 4px; flex-shrink: 0; }
-  .mrp-empty { color: var(--text-muted); font-size: 11px; padding: 8px; margin: 0; }
 
   /* Compact mirror pill */
   .compact-mirror-pill {
@@ -5974,56 +4237,5 @@
     filter: brightness(1.08);
   }
 
-  /* Move-repo modal (issue #64). */
-  .modal-danger { border-color: #D81E5B; }
-  .modal-head-danger { border-bottom-color: #D81E5B; color: #D81E5B; }
-  .modal-head-danger h3 { color: #D81E5B; }
-  .form-row-check { display: flex; align-items: center; margin: 6px 0; }
-  .form-row-check label { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 13px; }
-  .move-summary { list-style: none; padding: 0; margin: 8px 0 12px; color: var(--text-secondary); font-size: 13px; }
-  .move-summary li { padding: 2px 0; }
-  .move-summary code { background: var(--bg-card); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
-  .move-danger-line { color: #D81E5B; font-weight: 500; }
-  .move-phase { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; font-size: 13px; color: var(--text-secondary); }
-  .move-phase-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex: 0 0 auto; }
-  .move-phase-dot.move-phase-err { background: #f59e0b; }
-  .move-phase-label { min-width: 150px; color: var(--text-primary); text-transform: capitalize; }
-  .move-phase-msg { flex: 1; }
-  .move-done-ok { color: #22c55e; font-size: 14px; margin: 8px 0; }
-  .move-info { color: var(--text-secondary); font-size: 13px; margin: 4px 0 8px; }
-  .move-info code { background: var(--bg-card); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
-  .move-warnings { list-style: none; padding: 0; margin: 8px 0; color: #f59e0b; font-size: 13px; }
-  .move-warnings li { padding: 2px 0; }
 
-  /* Credential readiness panel in the Move form. */
-  .move-readiness { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
-  .move-readiness-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
-  .move-readiness-loading { font-size: 13px; color: var(--text-secondary); padding: 6px 0; }
-  .move-readiness-hint { font-size: 11px; color: var(--text-dim); margin-top: 6px; }
-  .move-readiness-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 8px 10px;
-    margin: 6px 0;
-    font-size: 13px;
-  }
-  .move-readiness-head { display: flex; align-items: center; gap: 8px; }
-  .move-readiness-role { font-weight: 600; min-width: 84px; color: var(--text-primary); }
-  .move-readiness-acct { flex: 1; color: var(--text-secondary); font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace; font-size: 12px; }
-  .move-readiness-type { text-transform: uppercase; font-size: 10px; font-weight: 700; color: var(--text-dim); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; }
-  .move-readiness-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; background: #6b7280; }
-  .move-readiness-dot-ok { background: #22c55e; }
-  .move-readiness-dot-warning { background: #f59e0b; }
-  .move-readiness-dot-error, .move-readiness-dot-none { background: #ef4444; }
-  .move-readiness-dot-offline { background: #64748b; }
-  .move-readiness-dot-checking, .move-readiness-dot-unknown { background: #6b7280; }
-  .move-readiness-msg { margin-top: 4px; color: var(--text-secondary); font-size: 12px; }
-  .move-readiness-scopes { margin-top: 4px; color: var(--text-dim); font-size: 12px; }
-  .move-readiness-actions { margin-top: 6px; display: flex; gap: 12px; }
-  .btn-link { background: none; border: none; color: var(--accent); padding: 0; font-size: 12px; cursor: pointer; text-decoration: underline; }
-  .btn-link:hover { color: var(--text-primary); }
-  .btn-link-subtle { background: none; border: none; color: var(--text-dim); padding: 0; font-size: 12px; cursor: pointer; }
-  .btn-link-subtle:hover { color: var(--text-secondary); }
-  .btn-link-subtle:disabled { opacity: 0.5; cursor: default; }
 </style>
