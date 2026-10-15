@@ -1051,11 +1051,6 @@
     if (!selectionMode) clearCloneSelection();
   }
 
-  // "Mirror token needed" → Store PAT: the credential modal on the token type.
-  function storeMirrorPat(key: string) {
-    credentialDialog.openStorePat(key);
-  }
-
   // ── Settings ──
   let showSettings = false;
   let configPath = '';
@@ -1751,7 +1746,7 @@
   <MirrorDiscoverModal bind:mirrorDiscoverResults bind:discoverAdded {mirrorDiscoverError} {checkAllMirrorStatus} />
 
   <!-- ── MIRROR CREDENTIAL WARNING MODAL ── -->
-  <MirrorTokenModal bind:mirrorCredWarning {storeMirrorPat} />
+  <MirrorTokenModal bind:mirrorCredWarning storeMirrorPat={openTokenSetup} />
 
   <!-- ── MOVE REPO MODAL (issue #64) ── -->
   <MoveRepoModal bind:this={moveDialog} {reloadFromDisk} {openCredChange} {openTokenSetup} />
