@@ -40,6 +40,37 @@ func TestSetUIMode_PersistsAndValidates(t *testing.T) {
 	}
 }
 
+func TestSetTheme_PersistsAndValidates(t *testing.T) {
+	a, cfgPath := newWorkspaceTestApp(t)
+
+	for _, tc := range []struct{ choice, stored string }{
+		{"dark", "dark"},
+		{"light", "light"},
+		{"system", ""},
+	} {
+		if err := a.SetTheme(tc.choice); err != nil {
+			t.Fatalf("SetTheme(%s): %v", tc.choice, err)
+		}
+		reloaded, err := config.Load(cfgPath)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if reloaded.Global.Theme != tc.stored {
+			t.Errorf("SetTheme(%s): persisted theme = %q, want %q", tc.choice, reloaded.Global.Theme, tc.stored)
+		}
+	}
+
+	if err := a.SetTheme("dark"); err != nil {
+		t.Fatalf("SetTheme(dark): %v", err)
+	}
+	if err := a.SetTheme("sepia"); err == nil {
+		t.Error("SetTheme(sepia) = nil, want an error")
+	}
+	if a.cfg.Global.Theme != "dark" {
+		t.Errorf("theme after a rejected value = %q, want dark", a.cfg.Global.Theme)
+	}
+}
+
 // Onboarding finishes in SetGlobalFolder: a new install starts in Simple,
 // while changing the folder later never touches the chosen mode.
 func TestSetGlobalFolder_NewInstallStartsSimple(t *testing.T) {

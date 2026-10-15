@@ -144,6 +144,19 @@ func TestBackupSkippedForWindowOnlyChanges(t *testing.T) {
 		t.Errorf("compact-window-only change should not create a backup, got %d", len(matches))
 	}
 
+	// Cycle the theme only — still no backup, so theme clicks never push
+	// real rollback points out of the ring.
+	for _, theme := range []string{"light", "dark", ""} {
+		cfg.Global.Theme = theme
+		if err := Save(cfg, path); err != nil {
+			t.Fatalf("theme-only Save (%q): %v", theme, err)
+		}
+	}
+	matches, _ = filepath.Glob(filepath.Join(dir, "gitbox-????????-??????.json"))
+	if len(matches) != 0 {
+		t.Errorf("theme-only change should not create a backup, got %d", len(matches))
+	}
+
 	// Change real content (periodic_sync) alongside a window update — must
 	// create a backup: we need a rollback point for the real change.
 	cfg.Global.PeriodicSync = "5m"

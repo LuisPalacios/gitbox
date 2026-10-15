@@ -1768,6 +1768,22 @@ func (a *App) SetUIMode(mode string) error {
 	return a.saveConfig()
 }
 
+// SetTheme saves the GUI colour theme: "system", "light" or "dark".
+// "system" is stored as an empty value, so the app follows the OS.
+func (a *App) SetTheme(choice string) error {
+	switch choice {
+	case "system":
+		choice = ""
+	case "light", "dark":
+	default:
+		return fmt.Errorf("invalid theme: %s", choice)
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cfg.Global.Theme = choice
+	return a.saveConfig()
+}
+
 // GetLanguage returns the configured human-facing UI language.
 func (a *App) GetLanguage() string {
 	a.mu.Lock()

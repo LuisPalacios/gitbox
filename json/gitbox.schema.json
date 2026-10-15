@@ -111,6 +111,11 @@
                     "enum": ["simple", "advanced"],
                     "description": "GUI experience: simple (plain words, fewer controls) or advanced (everything). Absent means advanced; onboarding writes simple on a new install."
                 },
+                "theme": {
+                    "type": "string",
+                    "enum": ["light", "dark"],
+                    "description": "GUI colour theme. Absent means the app follows the operating system."
+                },
                 "collapsed": {
                     "type": "object",
                     "description": "Account groups and parent clones folded in the GUI's full view, plus the cards panel state. Absent means every group and clone is expanded and the cards panel is collapsed. Keys that no longer exist are pruned on save.",

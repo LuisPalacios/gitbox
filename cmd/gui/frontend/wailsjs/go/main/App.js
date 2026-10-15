@@ -490,6 +490,10 @@ export function SetRepoContainer(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetRepoContainer'](arg1, arg2, arg3);
 }
 
+export function SetTheme(arg1) {
+  return window['go']['main']['App']['SetTheme'](arg1);
+}
+
 export function SetUIMode(arg1) {
   return window['go']['main']['App']['SetUIMode'](arg1);
 }

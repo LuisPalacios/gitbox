@@ -51,6 +51,10 @@
         // "simple" on a new install.
         "ui_mode": "simple",
 
+        // GUI colour theme: "light" or "dark". Absent means the app follows
+        // the operating system.
+        // "theme": "dark",
+
         // Account groups and parent clones folded in the GUI's full view.
         // GitboxApp writes this when I click a chevron; absent means
         // everything is expanded. Keys that no longer exist are pruned on save.

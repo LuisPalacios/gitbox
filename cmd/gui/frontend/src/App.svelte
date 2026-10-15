@@ -45,6 +45,8 @@
   import MoveRepoModal from './lib/modals/MoveRepoModal.svelte';
   import CreateRepoModal from './lib/modals/CreateRepoModal.svelte';
   import { repoTreeRows } from './lib/repo-tree';
+  import { themeChoiceOf } from './lib/theme';
+  import type { ThemeChoice } from './lib/theme';
 
   // ── View mode ──
   let viewMode: 'full' | 'compact' = 'full';
@@ -399,7 +401,8 @@
   const openChangeFolder = () => changeFolderDialog.openChangeFolder();
 
   // ── Theme ──
-  let themeChoice: 'system' | 'light' | 'dark' = 'system';
+  // Persisted as global.theme (empty = follow the OS).
+  let themeChoice: ThemeChoice = 'system';
   let resolvedTheme: 'light' | 'dark' = 'dark';
 
   function applyTheme() {
@@ -412,10 +415,15 @@
     document.documentElement.setAttribute('data-theme', resolvedTheme);
   }
 
-  function cycleTheme() {
-    const order: Array<'system' | 'light' | 'dark'> = ['system', 'light', 'dark'];
-    themeChoice = order[(order.indexOf(themeChoice) + 1) % 3];
+  function setTheme(choice: ThemeChoice) {
+    themeChoice = choice;
     applyTheme();
+    bridge.setTheme(choice).catch((e) => console.error('saving theme failed', e));
+  }
+
+  function cycleTheme() {
+    const order: ThemeChoice[] = ['system', 'light', 'dark'];
+    setTheme(order[(order.indexOf(themeChoice) + 1) % 3]);
   }
 
   // ── Sync state ──
@@ -1168,6 +1176,8 @@
   async function initDashboard() {
     const snapshot = await bridge.getStartupSnapshot();
     const cfg = snapshot.config;
+    themeChoice = themeChoiceOf(cfg.global?.theme);
+    applyTheme();
     repoNesting = snapshot.nesting || {};
     const collapsed = cfg.global?.collapsed;
     collapsedSources = new Set(collapsed?.sources || []);
@@ -1296,11 +1306,12 @@
         try {
           const cfg = await bridge.getConfig();
           configStore.set(cfg);
+          themeChoice = themeChoiceOf(cfg.global?.theme);
         } catch (e) { console.error(e); }
+        applyTheme();
       };
       try { hostOS = await bridge.getOS(); } catch (e) { console.error(e); }
       await hydrate();
-      applyTheme();
       // The parent uses HideWindowOnClose, so a "second open" of the
       // Manager just re-shows this same hidden window. Re-hydrate the
       // config on focus so the table reflects any wezterm.lua /
@@ -1631,9 +1642,9 @@
     {globalGCMFixing} {gitignoreInstalling} {fixGlobalIdentity} {fixGlobalGCM} {installGlobalGitignore} />
 
   <!-- ── SETTINGS PANEL ── -->
-  <SettingsPanel {showSettings} {simple} {configPath} {languageChoice} bind:themeChoice {fetchInterval} {lastFetchTime}
+  <SettingsPanel {showSettings} {simple} {configPath} {languageChoice} {themeChoice} {fetchInterval} {lastFetchTime}
     {autostartSupported} {autostartOn} {checkGitignorePref} {doctorSummary} {terminalsManagerOpening} {appVersion}
-    {openChangeFolder} {setLanguage} {applyTheme} {setFetchInterval} {toggleAutostart} {setPRBadgesEnabled}
+    {openChangeFolder} {setLanguage} {setTheme} {setFetchInterval} {toggleAutostart} {setPRBadgesEnabled}
     {setPRIncludeDrafts} {setCheckGitignorePref} {openDoctorModal} {openTerminalsManagerWindow} />
 
   <!-- ── TAB BAR ── -->
