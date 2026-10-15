@@ -198,6 +198,33 @@ export interface RepoState {
   isDefault?: boolean;
 }
 
+// Banner states from the global git config checks (App.svelte).
+export interface GlobalIdentityWarn { hasName: boolean; hasEmail: boolean; name: string; email: string }
+export interface GCMWarn {
+  hasHelper: boolean;
+  helperValue: string;
+  expectedHelper: string;
+  hasCredentialStore: boolean;
+  credentialStoreValue: string;
+  expectedCredentialStore: string;
+}
+export interface GitignoreWarn { path: string; defaultPath: string; needsAction: boolean; blockPresent: boolean; blockUpToDate: boolean; excludesfileSet: boolean; fileExists: boolean; hasDuplicates: boolean; duplicates: string[] }
+export interface GitignoreInstalled { backupPath: string; setExcludesfile: boolean; alreadyUpToDate: boolean }
+// A newer release, as the update:available event reports it.
+export interface UpdateInfo { available: boolean; current: string; latest: string; url: string; selfUpdate: boolean }
+
+// Frontend-only view of one clone's detail panel (GetRepoDetail).
+export interface RepoDetailView {
+  branch: string;
+  ahead: number;
+  behind: number;
+  changed: { kind: string; path: string }[];
+  untracked: string[];
+  error?: string;
+  upstreamGone?: boolean;
+  upstreamError?: string;
+}
+
 export interface OrphanRepoDTO {
   path: string;
   relPath: string;

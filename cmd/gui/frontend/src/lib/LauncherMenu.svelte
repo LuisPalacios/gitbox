@@ -403,10 +403,9 @@
 </div>
 
 <style>
-  /* Mirror the base dropdown/item styling from App.svelte — Svelte's scoped
-     styles don't cross component boundaries, so without these duplicates the
-     menu renders as flow-layout pill buttons. Keep these values in sync with
-     .action-dropdown / .action-item in App.svelte. */
+  /* The dropdown and item styling lives here: Svelte's scoped styles don't
+     cross component boundaries, so the menu owns it (PRPopover keeps its own
+     copy for its wider popover). */
   .action-dropdown {
     position: absolute;
     right: 0;
@@ -524,9 +523,8 @@
     z-index: 101;
   }
 
-  /* Account-header kebab: parent menu is pinned left: 0 (see
-     .source-header-kebab .action-dropdown in App.svelte) so it extends to
-     the right. Flip the submenu to also open right so it stays on screen. */
+  /* Account-header kebab: flip the submenu to open right so it stays on
+     screen. */
   :global(.source-header-kebab) .launcher-submenu {
     right: auto;
     left: 100%;

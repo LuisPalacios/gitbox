@@ -1,4 +1,6 @@
 import './style.css'
+// The modal kit precedes every component stylesheet (see the file header).
+import './lib/modals/modals.css'
 import { mount } from 'svelte'
 import App from './App.svelte'
 

@@ -155,7 +155,7 @@ go test ./...           # everything (needs test-gitbox.json for the pkg/ops sce
 
 Activate the pre-push hook once per clone: `git config core.hooksPath .githooks` — it runs a `gofmt -s` check, `go vet` and unit tests before every push.
 
-I run `npm test` in `cmd/gui/frontend` when I change clone-tree grouping, ownership, or collapse behavior. These pure tests need neither Wails nor credentials; the health check includes them as `frontend-test`.
+I run `npm test` in `cmd/gui/frontend` when I change clone-tree grouping, ownership, collapse behavior, or how a repo status renders (`src/lib/status.ts`). These pure tests need neither Wails nor credentials; the health check includes them as `frontend-test`.
 
 ### Health check
 

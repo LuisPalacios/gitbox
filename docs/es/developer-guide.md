@@ -155,7 +155,7 @@ go test ./...           # todo (necesita test-gitbox.json para el escenario de p
 
 Activa el pre-push hook una vez por clone: `git config core.hooksPath .githooks` — ejecuta una comprobación `gofmt -s`, `go vet` y pruebas unitarias antes de cada push.
 
-Ejecuto `npm test` en `cmd/gui/frontend` cuando cambio la agrupación del árbol de clones, la propiedad o el comportamiento de plegado. Estas pruebas puras no necesitan Wails ni credenciales; la comprobación de salud las incluye como `frontend-test`.
+Ejecuto `npm test` en `cmd/gui/frontend` cuando cambio la agrupación del árbol de clones, la propiedad, el comportamiento de plegado o cómo se pinta el estado de un repo (`src/lib/status.ts`). Estas pruebas puras no necesitan Wails ni credenciales; la comprobación de salud las incluye como `frontend-test`.
 
 ### Comprobación de salud
 
