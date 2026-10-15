@@ -44,6 +44,11 @@ Read the script's final summary. For each platform, tell the user:
 
 Keep the response short. The build logs are verbose; resist summarizing them unless the user asks.
 
+## Troubleshooting build hosts
+
+- If Windows tar cannot create `AGENTS.md` before its target exists, I retry the source archive with `tar -h` to resolve repository guidance symlinks in the scratch copy. I keep the canonical repository symlinks intact. From macOS, `COPYFILE_DISABLE=1` omits extended-attribute headers, and excluding `./tmp` avoids shipping local measurement artifacts.
+- I check `npm`, `go`, and `wails` in the remote non-interactive SSH environment when a build cannot find them. An interactive shell may resolve different paths. I report missing prerequisites or unreachable hosts separately from app build failures; I do not report an older staged binary as verification of the current commit.
+
 ## Notes
 
 - The GUI cannot be cross-compiled (wails needs each platform's native webview), so the script tars source → ssh → `wails build` on the remote. Remote hosts need Go + wails on `$PATH` for non-login SSH shells; the script exports the common prefixes (`/opt/homebrew/bin`, `/usr/local/bin`, `/usr/local/go/bin`, `$HOME/go/bin`) and applies the existing Scoop shim PATH fix on Windows.
