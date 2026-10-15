@@ -4,17 +4,16 @@
   import { bridge, events } from './lib/bridge';
   import type { DoctorPrecheckDTO } from './lib/bridge';
   import {
-    configStore, accounts, sources, mirrors, repoStates, mirrorStates, mirrorSummary, summary,
-    accountStats, themeStore, applyStatusResults, applyMirrorStatusResults, prsByAccount,
-    prSettings, applyPRUpdate, lookupPRSummary, workspaces, workspaceOrder, workspaceMemberships,
-    selectedClones, toggleCloneSelection, clearCloneSelection, isSynced
+    configStore, accounts, sources, mirrors, repoStates, mirrorSummary, summary, accountStats,
+    themeStore, applyStatusResults, applyMirrorStatusResults, prsByAccount, prSettings,
+    applyPRUpdate, lookupPRSummary, workspaces, workspaceMemberships, selectedClones,
+    toggleCloneSelection, clearCloneSelection, isSynced
   } from './lib/stores';
-  import { credColor, providerLabel } from './lib/theme';
-  import { statusColor, simpleKind, simpleColor, simpleLabelKey, simpleUnsaved, rowBusy, rowGlyph, advancedLabel, COUNT_BADGES, countBadge, statusCountBadge, detailLocked, opensDetail, credBroken, canDiscoverWith, canCreateWith, credBadgeClass, credBadgeLabel, DISCOVER_DISABLED, CREATE_DISABLED } from './lib/status';
+  import { statusColor, simpleKind, simpleColor, simpleLabelKey, simpleUnsaved, rowBusy, rowGlyph, advancedLabel, COUNT_BADGES, countBadge, statusCountBadge, detailLocked, opensDetail, credBroken, canDiscoverWith, canCreateWith, DISCOVER_DISABLED, CREATE_DISABLED } from './lib/status';
   import type { SimpleKind } from './lib/status';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit, EventsOn } from '../wailsjs/runtime/runtime';
-  import type { RepoState, CredentialStatus, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
+  import type { RepoState, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
   import BrandIcon, { terminalLogo } from './lib/BrandIcon.svelte';
   import PRPopover from './lib/PRPopover.svelte';
@@ -40,6 +39,9 @@
   import SettingsPanel from './lib/components/SettingsPanel.svelte';
   import TabBar from './lib/components/TabBar.svelte';
   import Footer from './lib/components/Footer.svelte';
+  import AccountCards from './lib/components/AccountCards.svelte';
+  import MirrorsTab from './lib/components/MirrorsTab.svelte';
+  import WorkspacesTab from './lib/components/WorkspacesTab.svelte';
   import AddMirrorGroupModal from './lib/modals/AddMirrorGroupModal.svelte';
   import AddMirrorRepoModal from './lib/modals/AddMirrorRepoModal.svelte';
   import DeleteMirrorGroupModal from './lib/modals/DeleteMirrorGroupModal.svelte';
@@ -1092,70 +1094,6 @@
     return '';
   }
 
-  function mirrorDirLabelHtml(repo: MirrorRepo, m: MirrorDTO): string {
-    const origin = repo.origin === 'src' ? m.account_src : m.account_dst;
-    const backup = repo.origin === 'src' ? m.account_dst : m.account_src;
-    const src = `<span class="mir-origin">${origin}</span>`;
-    const dst = `<span class="mir-backup">${backup}</span>`;
-    if (repo.direction === 'push') return `${src} <span class="mir-arrow">⟶</span> ${dst}`;
-    return `${dst} <span class="mir-arrow">⟵</span> ${src}`;
-  }
-
-  function mirrorStatusColor(_repo: MirrorRepo, live: MirrorStatusResult | undefined, theme: string): string {
-    if (live?.needsSetup) return statusColor('not cloned', theme); // neutral — row has never been set up
-    if (live?.error) return statusColor('error', theme);
-    if (live?.syncStatus === 'synced') return statusColor('clean', theme);
-    if (live?.syncStatus === 'behind') return statusColor('behind', theme);
-    if (live?.syncStatus === 'ahead') return statusColor('error', theme);
-    if (!live) return statusColor('not cloned', theme); // unchecked
-    return statusColor('clean', theme);
-  }
-
-  function mirrorStatusSymbol(_repo: MirrorRepo, live: MirrorStatusResult | undefined): string {
-    if (live?.needsSetup) return '○';
-    if (live?.error) return '✕';
-    if (live?.syncStatus === 'synced') return '●';
-    if (live?.syncStatus === 'behind') return '↓';
-    if (live?.syncStatus === 'ahead') return '↑';
-    if (!live) return '○'; // unchecked
-    return '●';
-  }
-
-  /** Summarize live mirror status in a short, user-friendly string. */
-  function mirrorStatusText(_repo: MirrorRepo, live: MirrorStatusResult | undefined): string {
-    if (live?.needsSetup) return 'needs setup';
-    if (live?.error) return friendlyMirrorError(live.error);
-    if (live?.syncStatus === 'synced') return 'Synced OK';
-    if (live?.syncStatus === 'behind') return 'Backup is behind origin';
-    if (live?.syncStatus === 'ahead') return 'Backup is ahead of origin';
-    if (!live) return 'unchecked';
-    return 'OK';
-  }
-
-  /** Turn raw Go error strings into concise, user-friendly messages. */
-  function friendlyMirrorError(raw: string): string {
-    // Errors from CheckStatus are already user-friendly (e.g. "missing API token in git-parchis-me").
-    if (raw.length > 60) return raw.slice(0, 57) + '...';
-    return raw;
-  }
-
-  $: mirrorGroupStats = (() => {
-    const stats: Record<string, { active: number; unchecked: number; error: number; total: number }> = {};
-    for (const [key, mir] of Object.entries($mirrors)) {
-      let active = 0, unchecked = 0, error = 0, total = 0;
-      for (const repoKey of Object.keys(mir.repos)) {
-        total++;
-        const live = $mirrorStates[`${key}/${repoKey}`];
-        if (!live) unchecked++;
-        else if (live.needsSetup) unchecked++;
-        else if (live.error) error++;
-        else active++;
-      }
-      stats[key] = { active, unchecked, error, total };
-    }
-    return stats;
-  })();
-
   async function checkMirrorStatus(mirrorKey: string) {
     mirrorChecking = { ...mirrorChecking, [mirrorKey]: true };
     await bridge.getMirrorStatus(mirrorKey);
@@ -1842,9 +1780,8 @@
     if (!stillRunning) syncing = false;
   }
 
-  // Reactive helpers that depend on theme
+  // Reactive helper that depends on theme
   $: sc = (s: string) => statusColor(s, $themeStore);
-  $: cc = (s: string) => credColor(s, $themeStore);
 </script>
 
 <!-- AI / editor / terminal launchers shared by Simple and Advanced repo rows. -->
@@ -2037,60 +1974,9 @@
 
   {#if cardsTab === 'accounts'}
   <!-- ── ACCOUNT CARDS ── -->
-  {#if cardsVisible}
-  <section class="cards-row" transition:slide={{ duration: 150 }}>
-    {#each Object.entries($accounts) as [key, acct]}
-      {@const credObj = credStatuses[key] || {status: 'unknown', primary: 'unknown', pat: 'unknown'}}
-      {@const credOverall = credObj.status}
-      {@const canDiscover = canDiscoverWith(credOverall)}
-      {@const canCreate = canCreateWith(credOverall)}
-      {#if expandedCard !== `acct:${key}`}
-      <div class="card-chip" role="button" tabindex="0" title={key}
-        on:click|stopPropagation={() => expandedCard = `acct:${key}`}
-        on:keydown={onActivateKey(() => expandedCard = `acct:${key}`)}
-        style={credBroken(credOverall) ? `background: ${resolvedTheme === 'light' ? '#fef2f2' : '#2a1215'}` : ''}>
-        {#if deleteMode}
-          <button class="btn-delete-x card-delete-btn" on:click|stopPropagation={() => askDeleteAccount(key)} title="{$t('account.delete')} {key}">&#10005;</button>
-        {:else}
-          <span class="card-dot" style="background: {cc(credOverall)}"></span>
-        {/if}
-        <span class="card-chip-name">{key}</span>
-      </div>
-      {:else}
-      <div class="card card-open" class:card-delete-mode={deleteMode}
-        style={credBroken(credOverall) ? `background: ${resolvedTheme === 'light' ? '#fef2f2' : '#2a1215'}` : ''}>
-        <div class="card-top">
-          {#if deleteMode}
-            <button class="btn-delete-x card-delete-btn" on:click={() => askDeleteAccount(key)} title="{$t('account.delete')} {key}">&#10005;</button>
-          {:else}
-            <span class="card-dot" style="background: {cc(credOverall)}"></span>
-          {/if}
-          <div class="card-name card-name-edit" role="button" tabindex="0" on:click={() => openEditAccount(key)} on:keydown={onActivateKey(() => openEditAccount(key))} title="{$t('account.edit')}">{key}</div>
-        </div>
-        <div class="card-line">
-          <span class="card-provider">{providerLabel(acct.provider)}</span>
-          {#if simple}
-            {#if credBroken(credOverall)}
-              <button class="cred-badge cred-badge-err" on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')}>{$t('simple.reconnect')}</button>
-            {/if}
-          {:else}
-          <button class="cred-badge cred-badge-{credBadgeClass(credOverall)}"
-            on:click={() => openCredChange(key, acct.default_credential_type || 'gcm')}
-            title="Credential: {acct.default_credential_type || 'none'} — {credOverall}">{credBadgeLabel(credOverall, acct.default_credential_type)}</button>
-          {/if}
-          <span class="card-actions">
-            <button class="card-btn card-btn-sm" on:click={() => openDiscover(key)} disabled={!canDiscover} title={canDiscover ? $t('account.findProjects') : DISCOVER_DISABLED}>{$t('account.find')}</button>
-            <button class="card-btn card-btn-sm" on:click={() => openCreateRepo(key)} disabled={!canCreate} title={canCreate ? $t('account.createRepo') : CREATE_DISABLED}>{$t('account.new')}</button>
-          </span>
-        </div>
-      </div>
-      {/if}
-    {/each}
-    <button class="card card-add" on:click={() => { if (simple) connectModal = true; else addAccountDialog.open(); }} title={$t('account.add')}>
-      <span class="card-add-icon">+</span>
-    </button>
-  </section>
-  {/if}
+  <AccountCards {cardsVisible} bind:expandedCard {deleteMode} {simple} {credStatuses} {resolvedTheme}
+    {askDeleteAccount} {openEditAccount} {openCredChange} {openDiscover} {openCreateRepo}
+    onAddAccount={() => { if (simple) connectModal = true; else addAccountDialog.open(); }} />
 
   <!-- ── REPO LIST ── -->
   <section class="repo-list">
@@ -2477,214 +2363,14 @@
   </section>
 
   {:else if cardsTab === 'mirrors'}
-  <!-- ── MIRROR CARDS ── -->
-  {#if mirrorDiscoverLoading && mirrorDiscoverProgress}
-  <div class="discover-progress">
-    <div class="discover-progress-text">
-      {#if mirrorDiscoverProgress.phase === 'listing'}
-        Listing repos on <strong>{mirrorDiscoverProgress.account}</strong>...
-      {:else}
-        Analyzing <strong>{mirrorDiscoverProgress.account}</strong>: {mirrorDiscoverProgress.current}/{mirrorDiscoverProgress.total} repos
-      {/if}
-    </div>
-    {#if mirrorDiscoverProgress.phase === 'analyzing' && mirrorDiscoverProgress.total > 0}
-      <div class="discover-progress-bar">
-        <div class="discover-progress-fill" style="width: {(mirrorDiscoverProgress.current / mirrorDiscoverProgress.total) * 100}%"></div>
-      </div>
-    {:else}
-      <div class="discover-progress-bar">
-        <div class="discover-progress-fill discover-progress-indeterminate"></div>
-      </div>
-    {/if}
-  </div>
-  {/if}
-  {#if cardsVisible}
-  <section class="cards-row" transition:slide={{ duration: 150 }}>
-    {#each Object.entries($mirrors) as [mirrorKey, mir]}
-      {@const mstats = mirrorGroupStats[mirrorKey] || { active: 0, unchecked: 0, error: 0, total: 0 }}
-      {@const mcolor = mstats.error > 0 ? sc('error') : mstats.active === mstats.total && mstats.total > 0 ? sc('clean') : sc('behind')}
-      {@const mstate = mstats.error > 0 ? `${mstats.error} error${mstats.error > 1 ? 's' : ''}` : mstats.unchecked > 0 ? `${mstats.unchecked} ${$t('mirror.unchecked')}` : mstats.total > 0 ? $t('mirror.allSynced') : $t('mirror.noClones')}
-      {#if expandedCard !== `mir:${mirrorKey}`}
-      <div class="card-chip" role="button" tabindex="0" title={mstate}
-        on:click|stopPropagation={() => expandedCard = `mir:${mirrorKey}`}
-        on:keydown={onActivateKey(() => expandedCard = `mir:${mirrorKey}`)}>
-        {#if deleteMode}
-          <button class="btn-delete-x card-delete-btn" on:click|stopPropagation={() => deleteMirrorGroupDialog.ask(mirrorKey)} title="Delete mirror group {mirrorKey}">&#10005;</button>
-        {:else}
-          <span class="card-dot" style="background: {mcolor}"></span>
-        {/if}
-        <span class="card-chip-name">{mir.account_src} ↔ {mir.account_dst}</span>
-      </div>
-      {:else}
-      <div class="card card-mirror card-open" class:card-delete-mode={deleteMode}>
-        <div class="card-top">
-          {#if deleteMode}
-            <button class="btn-delete-x card-delete-btn" on:click={() => deleteMirrorGroupDialog.ask(mirrorKey)} title="Delete mirror group {mirrorKey}">&#10005;</button>
-          {:else}
-            <span class="card-dot" style="background: {mcolor}"></span>
-          {/if}
-          <div class="card-name card-mirror-name">{mir.account_src} ↔ {mir.account_dst}</div>
-        </div>
-        <div class="card-line">
-          <span class="card-provider">MIRROR</span>
-          <span class="card-count" style="color: {mcolor}" title={mstate}>{mstats.active}/{mstats.total}</span>
-          <span class="card-actions">
-            <button class="card-btn card-btn-sm" on:click={() => checkMirrorStatus(mirrorKey)} title={$t('mirror.checkStatus')}>{$t('mirror.check')}</button>
-          </span>
-        </div>
-      </div>
-      {/if}
-    {/each}
-    <button class="card card-add" on:click={() => addMirrorGroupDialog.open()} title={$t('mirror.addGroup')}>
-      <span class="card-add-icon">+</span>
-    </button>
-  </section>
-  {/if}
-
-  <!-- ── MIRROR DETAIL LIST ── -->
-  {#if Object.keys($mirrors).length > 0}
-  <section class="repo-list">
-    <div class="mirror-list">
-    <div class="mirror-section-header">
-      <h3>{$t('tab.mirrors')}</h3>
-    </div>
-
-    {#each Object.entries($mirrors) as [mirrorKey, mir]}
-      <div class="mirror-group">
-        <div class="mirror-group-header">
-          <span class="mirror-accounts">{mir.account_src} <span class="mirror-arrow">↔</span> {mir.account_dst}</span>
-          <div class="mirror-group-actions">
-            {#if mirrorChecking[mirrorKey]}
-              <span class="mirror-checking"><div class="spinner-sm"></div></span>
-            {/if}
-            <button class="btn-tab-action" on:click={() => addMirrorRepoDialog.open(mirrorKey)}>{$t('mirror.addRepo')}</button>
-            {#if deleteMode}
-              <button class="btn-sm btn-danger" on:click={() => deleteMirrorGroupDialog.ask(mirrorKey)}>✕</button>
-            {/if}
-          </div>
-        </div>
-
-        {#each (mir.repoOrder && mir.repoOrder.length > 0 ? mir.repoOrder : Object.keys(mir.repos)) as repoName}
-          {@const repo = mir.repos[repoName]}
-          {@const live = $mirrorStates[`${mirrorKey}/${repoName}`]}
-          {@const settingUp = !!mirrorSettingUp[`${mirrorKey}/${repoName}`]}
-          <div class="mirror-row">
-            {#if settingUp}
-              <span class="mirror-dot"><div class="spinner-sm"></div></span>
-            {:else}
-              <span class="mirror-dot" style="color:{mirrorStatusColor(repo, live, $themeStore)}">{mirrorStatusSymbol(repo, live)}</span>
-            {/if}
-            <span class="mirror-repo-name">{repoName}</span>
-            <span class="mirror-direction">{@html mirrorDirLabelHtml(repo, mir)}</span>
-            {#if settingUp}
-              <span class="mirror-status-text">{$t('mirror.settingUp')}</span>
-            {:else}
-              <span class="mirror-status-text" style="color:{mirrorStatusColor(repo, live, $themeStore)}">{mirrorStatusText(repo, live)}</span>
-            {/if}
-            {#if live?.warning}
-              <span class="mirror-warning" title={live.warning}>⚠</span>
-            {/if}
-            {#if live?.error && live.error.startsWith('missing API token in ') && !deleteMode}
-              {@const errAcct = live.error.replace('missing API token in ', '')}
-              <button class="btn-sm btn-fix" on:click={() => openTokenSetup(errAcct)} title="Set up API token for {errAcct}">{$t('mirror.fixCredentials')}</button>
-            {:else if !deleteMode}
-              <button class="btn-sm btn-setup" on:click={() => setupMirrorRepo(mirrorKey, repoName)} disabled={settingUp}>{$t('mirror.setup')}</button>
-            {/if}
-            {#if deleteMode}
-              <button class="btn-sm btn-danger" on:click={() => deleteMirrorRepoDialog.ask(mirrorKey, repoName)}>✕</button>
-            {/if}
-          </div>
-        {/each}
-
-        {#if Object.keys(mir.repos).length === 0}
-          <div class="mirror-empty">{$t('mirror.empty')}</div>
-        {/if}
-      </div>
-    {/each}
-    </div>
-  </section>
-  {/if}
-
+  <!-- ── MIRRORS TAB ── -->
+  <MirrorsTab {cardsVisible} bind:expandedCard {deleteMode} {mirrorDiscoverLoading} {mirrorDiscoverProgress} {mirrorChecking} {mirrorSettingUp}
+    {checkMirrorStatus} {setupMirrorRepo} {openTokenSetup}
+    onAddGroup={() => addMirrorGroupDialog.open()} onAddRepo={(mirrorKey) => addMirrorRepoDialog.open(mirrorKey)}
+    onDeleteGroup={(mirrorKey) => deleteMirrorGroupDialog.ask(mirrorKey)} onDeleteRepo={(mirrorKey, repoKey) => deleteMirrorRepoDialog.ask(mirrorKey, repoKey)} />
   {:else}
-  <!-- ── WORKSPACE CARDS ── -->
-  {#if cardsVisible}
-  <section class="cards-row" transition:slide={{ duration: 150 }}>
-    {#each $workspaceOrder.length > 0 ? $workspaceOrder : Object.keys($workspaces) as wsKey}
-      {@const ws = $workspaces[wsKey]}
-      {#if ws}
-        {@const members = ws.members?.length ?? 0}
-        {#if expandedCard !== `ws:${wsKey}`}
-        <div class="card-chip" role="button" tabindex="0" title={ws.name || wsKey}
-          on:click|stopPropagation={() => expandedCard = `ws:${wsKey}`}
-          on:keydown={onActivateKey(() => expandedCard = `ws:${wsKey}`)}>
-          <span class="card-dot" style="background: {sc('clean')}"></span>
-          <span class="card-chip-name">{ws.name || wsKey}</span>
-        </div>
-        {:else}
-        <div class="card card-workspace card-open">
-          <div class="card-top">
-            <span class="card-dot" style="background: {sc('clean')}"></span>
-            <div class="card-name">{ws.name || wsKey}</div>
-          </div>
-          <div class="card-line">
-            <span class="card-provider">CODE</span>
-            <span class="card-count" title="{members} member{members === 1 ? '' : 's'}">{members}</span>
-            <span class="card-actions">
-              <button class="card-btn card-btn-sm" on:click={() => openWorkspace(wsKey)} disabled={workspaceBusy}>{$t('workspace.open')}</button>
-            </span>
-          </div>
-        </div>
-        {/if}
-      {/if}
-    {/each}
-  </section>
-  {/if}
-
-  <!-- ── WORKSPACE DETAIL LIST ── -->
-  {#if Object.keys($workspaces).length > 0}
-  <section class="repo-list">
-    <div class="mirror-list">
-      <div class="mirror-section-header">
-        <h3>{$t('tab.workspaces')}</h3>
-      </div>
-      {#each $workspaceOrder.length > 0 ? $workspaceOrder : Object.keys($workspaces) as wsKey}
-        {@const ws = $workspaces[wsKey]}
-        {#if ws}
-          <div class="mirror-group">
-            <div class="mirror-group-header">
-              <span class="mirror-accounts">{ws.name || wsKey} <span class="workspace-type">· .code-workspace</span></span>
-              <div class="mirror-group-actions">
-                <button class="btn-tab-action" on:click={() => openWorkspace(wsKey)} disabled={workspaceBusy}>{$t('workspace.open')}</button>
-              </div>
-            </div>
-            {#if ws.file}
-              <div class="workspace-file-row">
-                <span class="workspace-file-label">{$t('workspace.file')}</span>
-                <span class="workspace-file-path" title={ws.file}>{ws.file}</span>
-              </div>
-            {/if}
-            {#if (ws.members?.length ?? 0) === 0}
-              <div class="mirror-empty">{$t('workspace.noMembers')}</div>
-            {:else}
-              {#each ws.members as m}
-                <div class="mirror-row">
-                  <span class="mirror-dot" style="color: {sc('clean')}">●</span>
-                  <span class="mirror-repo-name">{m.source}/{m.repo}</span>
-                </div>
-              {/each}
-            {/if}
-          </div>
-        {/if}
-      {/each}
-    </div>
-  </section>
-  {:else}
-  <section class="repo-list">
-    <div class="workspace-empty-hint">
-      {$t('workspace.empty')}
-    </div>
-  </section>
-  {/if}
+  <!-- ── WORKSPACES TAB ── -->
+  <WorkspacesTab {cardsVisible} bind:expandedCard {workspaceBusy} {openWorkspace} />
   {/if}
 
   <!-- ── SUMMARY FOOTER ── -->
@@ -2786,62 +2472,8 @@
   .spinning { animation: spin 0.8s linear infinite; color: var(--spin-color) !important; stroke: var(--spin-color); stroke-width: 2.5; font-weight: 900; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .btn-tab-action {
-    padding: 3px 10px; font-size: 11px; font-weight: 500;
-    border: 1px solid #1e3a5f; background: rgba(37, 99, 235, 0.1);
-    color: #93c5fd; border-radius: 5px;
-    cursor: pointer; transition: all 0.12s;
-  }
-  .btn-tab-action:hover:not(:disabled) { background: rgba(37, 99, 235, 0.2); color: #bfdbfe; }
-  .btn-tab-action:disabled { opacity: 0.5; cursor: default; }
-  :global([data-theme="light"]) .btn-tab-action { border-color: #93c5fd; background: rgba(37, 99, 235, 0.06); color: #2563eb; }
-  :global([data-theme="light"]) .btn-tab-action:hover:not(:disabled) { background: rgba(37, 99, 235, 0.12); }
 
 
-  /* Chips and the open card are as wide as their content, so names are
-     never cut; the row wraps instead of scrolling. */
-  .cards-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; padding: 10px 24px; flex-shrink: 0; }
-  .card-chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px;
-    background: var(--bg-card); box-shadow: var(--card-shadow);
-    cursor: pointer; transition: border-color 0.15s, background 0.15s;
-    white-space: nowrap;
-  }
-  .card-chip:hover { border-color: var(--border-hover); }
-  .card-chip:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 1px; }
-  .card-chip-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
-  .card {
-    flex: 0 0 auto; background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 10px; padding: 8px 12px; transition: border-color 0.15s, box-shadow 0.15s;
-    box-shadow: var(--card-shadow);
-  }
-  .card:hover { border-color: var(--border-hover); }
-  .card-top { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-  .card-count { font-size: 10px; font-weight: 700; color: var(--text-muted); }
-  .card-dot { width: 7px; height: 7px; border-radius: 50%; }
-  .card-provider { font-size: 10px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.3px; }
-  .cred-badge {
-    font-size: 8px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase;
-    padding: 1px 4px; border-radius: 3px; cursor: pointer;
-    background: var(--bg-hover); border: 1px solid var(--border); color: var(--text-muted);
-    transition: all 0.12s; line-height: 1.3;
-  }
-  .cred-badge:hover { color: var(--text-primary); border-color: var(--border-hover); background: var(--bg-card); }
-  .cred-badge-ok { background: #14532d; border-color: #166534; color: #86efac; }
-  .cred-badge-err { background: #450a0a; border-color: #be123c; color: #fca5a5; }
-  .cred-badge-warn { background: #431407; border-color: #c2410c; color: #fdba74; }
-  .cred-badge-none { background: #1e3a5f; border-color: #2563eb; color: #93c5fd; }
-  .cred-badge-offline { background: #450a0a; border-color: #D81E5B; color: #fca5a5; }
-  .cred-badge-pending { background: #27272a; border-color: #52525b; color: #a1a1aa; animation: pulse-badge 1.5s ease-in-out infinite; }
-  @keyframes pulse-badge { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-  :global([data-theme="light"]) .cred-badge-offline { background: #fee2e2; border-color: #be123c; color: #be123c; }
-  :global([data-theme="light"]) .cred-badge-pending { background: #f4f4f5; border-color: #a1a1aa; color: #71717a; }
-  :global([data-theme="light"]) .cred-badge-ok { background: #dcfce7; border-color: #166534; color: #166534; }
-  :global([data-theme="light"]) .cred-badge-err { background: #fee2e2; border-color: #be123c; color: #be123c; }
-  :global([data-theme="light"]) .cred-badge-warn { background: #ffedd5; border-color: #c2410c; color: #c2410c; }
-  :global([data-theme="light"]) .cred-badge-none { background: #dbeafe; border-color: #2563eb; color: #2563eb; }
-  .card-delete-btn { flex-shrink: 0; }
   .repo-row-nested { position: relative; }
   .repo-row-nested::before {
     content: ''; position: absolute; left: 18px; top: 0; bottom: 0;
@@ -2863,33 +2495,7 @@
   .tentative-container-badge:hover {
     background: var(--accent, #4B95E9); color: #fff;
   }
-  .card-name { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
-  .card-mirror-name { font-size: 12px; }
-  .discover-progress { padding: 6px 24px 0; }
-  .discover-progress-text { font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
-  .discover-progress-text strong { color: var(--text-primary); }
-  .discover-progress-bar { width: 100%; height: 4px; background: var(--ring-bg); border-radius: 2px; overflow: hidden; }
-  .discover-progress-fill { height: 100%; background: var(--ring-accent); border-radius: 2px; transition: width 0.2s; }
-  .discover-progress-indeterminate {
-    width: 30%; animation: indeterminate 1.2s ease-in-out infinite;
-  }
-  @keyframes indeterminate { 0% { margin-left: 0; } 50% { margin-left: 70%; } 100% { margin-left: 0; } }
-  .card-name-edit { cursor: pointer; }
-  .card-name-edit:hover { text-decoration: underline; }
 
-  /* Line 1 holds the status dot and the full name; line 2 the provider,
-     badge or count on the left and the one-word buttons on the right. */
-  .card-top .card-name { margin-bottom: 0; white-space: nowrap; }
-  .card-line { display: flex; align-items: center; gap: 6px; }
-  .card-actions { margin-left: auto; display: flex; gap: 4px; padding-left: 8px; }
-  .card-btn {
-    width: 100%; padding: 5px 0; background: transparent; border: 1px solid var(--border);
-    color: var(--text-secondary); border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 500;
-    transition: all 0.15s;
-  }
-  .card-btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
-  .card-btn:disabled { opacity: 0.35; cursor: default; }
-  .card-btn-sm { width: auto; flex: 0 0 auto; padding: 2px 8px; }
 
   .repo-list { flex: 1; padding: 0 24px 12px; overflow-y: auto; min-height: 0; }
   .source-group { margin-bottom: 6px; }
@@ -3051,15 +2657,6 @@
 
 
 
-  /* ── Add account card ── */
-  .card-add {
-    display: flex; align-items: center; justify-content: center;
-    padding: 3px 12px; border-radius: 999px; box-shadow: none;
-    cursor: pointer; border-style: dashed; background: transparent;
-    color: var(--text-muted); transition: all 0.15s;
-  }
-  .card-add:hover { border-color: var(--border-hover); color: var(--text-primary); background: var(--bg-hover); }
-  .card-add-icon { font-size: 16px; font-weight: 400; line-height: 1; }
 
 
   .btn-delete-x {
@@ -3198,42 +2795,6 @@
   .compact-action-btn:hover { color: var(--text-primary); border-color: #4B95E9; }
   .compact-full-btn { flex: 1; text-align: center; }
 
-  /* ── Mirror section ── */
-  .mirror-list { padding: 12px 0 0; }
-  .mirror-section-header {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
-  }
-  .mirror-section-header h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-primary); }
-  .mirror-group { margin-bottom: 12px; }
-  .mirror-group-header {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 4px 0; font-size: 12px; color: var(--text-muted);
-  }
-  .mirror-accounts { font-weight: 500; color: var(--text-primary); }
-  .mirror-arrow { color: var(--text-muted); margin: 0 2px; }
-  .mirror-group-actions { display: flex; gap: 4px; align-items: center; }
-  .mirror-row {
-    display: flex; align-items: center; gap: 8px;
-    padding: 3px 0 3px 8px; font-size: 12px;
-  }
-  .mirror-row:hover { background: var(--hover); border-radius: 4px; }
-  .mirror-dot { font-size: 11px; flex-shrink: 0; width: 14px; text-align: center; }
-  .mirror-repo-name { font-weight: 500; color: var(--text-primary); min-width: 120px; }
-  .mirror-direction { font-size: 11px; flex-shrink: 0; }
-  :global(.mir-origin) { color: #61fd5f; font-weight: 500; }
-  :global(.mir-backup) { color: #F07623; font-weight: 500; }
-  :global(.mir-arrow) { font-size: 14px; font-weight: 700; color: #F07623; vertical-align: middle; }
-  :global([data-theme="light"]) :global(.mir-origin) { color: #166534; }
-  :global([data-theme="light"]) :global(.mir-backup) { color: #c2410c; }
-  :global([data-theme="light"]) :global(.mir-arrow) { color: #c2410c; }
-  .mirror-status-text { font-size: 11px; margin-left: auto; font-family: var(--font-mono, monospace); }
-  .mirror-warning { color: #F07623; font-size: 13px; cursor: help; }
-  .mirror-empty { font-size: 11px; color: var(--text-muted); padding: 4px 8px; font-style: italic; }
-  .mirror-checking { display: inline-flex; align-items: center; }
-  .btn-setup { font-size: 10px; padding: 1px 6px; }
-  .btn-fix { font-size: 10px; padding: 1px 6px; background: #431407; border-color: #c2410c; color: #fdba74; }
-  .spinner-sm { width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--text-primary); border-radius: 50%; animation: spin 0.6s linear infinite; }
 
 
   /* Compact mirror pill */
@@ -3334,33 +2895,9 @@
   .ws-popover-item:hover:not(:disabled) { background: var(--bg-hover); }
   .ws-popover-item:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  /* Workspace card styling: reuse the mirror card structure but with its
-     own dot colour derived inline. */
-  .card-workspace .card-provider { letter-spacing: 0.5px; }
 
-  /* Workspace type sub-label in the detail list header. */
-  .workspace-type { color: var(--text-muted); font-size: 11px; font-weight: 400; margin-left: 8px; }
 
-  /* File path row inside a workspace group card. */
-  .workspace-file-row {
-    padding: 6px 12px;
-    font-size: 11px;
-    color: var(--text-muted);
-    display: flex; gap: 6px;
-    overflow: hidden;
-  }
-  .workspace-file-label { color: var(--text-dim); flex: 0 0 auto; }
-  .workspace-file-path {
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
-  }
 
-  .workspace-empty-hint {
-    padding: 24px;
-    text-align: center;
-    color: var(--text-muted);
-    font-size: 13px;
-  }
 
 
 
