@@ -111,10 +111,11 @@ La barra lateral de la izquierda elige qué muestra el área principal:
 
 - **Requiere atención** (Simple: **Te necesitan**) — primero las cuentas cuya credencial necesita un arreglo, cada una con su botón de arreglo, y después cada repo que me necesita, agrupados como necesita ayuda, trabajo local, por detrás y no clonado. Cada fila indica su cuenta; hago clic en el nombre para abrir esa cuenta. Un clon anidado en otro clon muestra una etiqueta "en \<parent\>". Una fila que pasa a estar bien mientras miro, después de un pull por ejemplo, se queda en su sitio, atenuada, hasta que salgo de la vista. Cuando nada me necesita, la vista lo dice.
 - **Todos los repos** (Simple: **Todos los proyectos**) — cada clon, agrupado por cuenta, con los problemas primero.
-- **Cuentas** — una entrada por cuenta con el logo de su proveedor, una pequeña marca de salud, su nombre, su salud en palabras y cuántos repos me necesitan. Hago clic en una para abrir la vista de la cuenta.
-- **Añadir cuenta** (Simple: **Conectar una cuenta**) — consulta el [Paso 2](#paso-2-añadir-cuentas).
-- **Encontrados en disco** (Simple: **Encontrados en este ordenador**) — aparece cuando hay clones en disco que todavía no están en gitbox, y abre el diálogo de adopción (consulta [Adoptar repos huérfanos](#adoptar-repos-huérfanos)).
-- **Mirrors** y **Workspaces** bajo **Más**, solo en Advanced.
+- **Cuentas** — solo cuentas: una entrada por cuenta con el logo de su proveedor, una pequeña marca de salud, su nombre, su salud en palabras y cuántos repos me necesitan. Hago clic en una para abrir la vista de la cuenta.
+- **Más** — bajo el separador inferior, todo lo que no es una cuenta:
+  - **Añadir cuenta** (Simple: **Conectar una cuenta**) — consulta el [Paso 2](#paso-2-añadir-cuentas).
+  - **Encontrados en disco** (Simple: **Encontrados en este ordenador**) — aparece cuando hay clones en disco que todavía no están en gitbox, y abre el diálogo de adopción (consulta [Adoptar repos huérfanos](#adoptar-repos-huérfanos)).
+  - **Mirrors** y **Workspaces**, solo en Advanced.
 
 El botón de arriba a la izquierda, o ⌘B en macOS y Ctrl+B en el resto, pliega la barra lateral a un riel de iconos. El riel mantiene los logos de los proveedores con su marca de salud y su conteo de atención; al pasar el ratón sobre uno se ven el nombre de la cuenta y su salud, y un clic cambia a ella. En una ventana de menos de 780 px la barra lateral siempre se muestra como el riel, y el botón abre la barra lateral completa sobre el contenido hasta que elijo una vista.
 

@@ -111,10 +111,11 @@ The sidebar on the left picks what the main area shows:
 
 - **Needs attention** (Simple: **Needs you**) — first the accounts whose credential needs a fix, each with its fix button, then every repo that needs me, grouped as needs help, local work, behind, and not cloned. Each row names its account; I click the name to open that account. A clone nested in another clone shows an "in \<parent\>" tag. A row that turns fine while I watch, after a pull for example, stays in place, faded, until I leave the view. When nothing needs me, the view says so.
 - **All repos** (Simple: **All projects**) — every clone, grouped by account, problems first.
-- **Accounts** — one entry per account with its provider logo, a small health mark, its name, its health in words, and how many repos need me. I click one to open the account's view.
-- **Add account** (Simple: **Connect an account**) — see [Step 2](#step-2-add-accounts).
-- **Found on disk** (Simple: **Found on this computer**) — appears when clones on disk aren't in gitbox yet, and opens the adopt dialog (see [Adopting orphan repos](#adopting-orphan-repos)).
-- **Mirrors** and **Workspaces** under **More**, in Advanced only.
+- **Accounts** — accounts only: one entry per account with its provider logo, a small health mark, its name, its health in words, and how many repos need me. I click one to open the account's view.
+- **More** — below the bottom separator, everything that isn't an account:
+  - **Add account** (Simple: **Connect an account**) — see [Step 2](#step-2-add-accounts).
+  - **Found on disk** (Simple: **Found on this computer**) — appears when clones on disk aren't in gitbox yet, and opens the adopt dialog (see [Adopting orphan repos](#adopting-orphan-repos)).
+  - **Mirrors** and **Workspaces**, in Advanced only.
 
 The button at the top left, or ⌘B on macOS and Ctrl+B elsewhere, folds the sidebar to an icon rail. The rail keeps the provider logos with their health mark and attention count; hovering one shows the account name and its health, and one click switches to it. In a window narrower than 780 px the sidebar always shows as the rail, and the button opens the full sidebar over the content until I pick a view.
 
