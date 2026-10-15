@@ -48,6 +48,7 @@
   // and PR badges, branch, its words, launchers, fetch and ⋯).
   import { fade } from 'svelte/transition';
   import { bridge } from '../bridge';
+  import { pushNotice, errorText } from '../notices';
   import { accounts, repoStates, prSettings, prsByAccount, lookupPRSummary, workspaces, workspaceMemberships, isSynced, themeStore } from '../stores';
   import { statusColor, simpleKind, simpleColor, rowBusy, rowGlyph, statusLabel, attentionRank, CALM_RANK, COUNT_BADGES } from '../status';
   import type { SimpleKind } from '../status';
@@ -119,12 +120,12 @@
   $: calm = fadeHealthy && !busy && isSynced(state) && !(belowNeed > 0 && collapsedRepos.has(repoKey));
 
   // requireRepoPath returns the row's local clone path, or shows the
-  // "clone first" dialog and returns null. Path-based kebab actions used
+  // "clone first" notice and returns null. Path-based kebab actions used
   // to return silently when the path was missing (#79); a row cloned
   // in-session has none until clone:done or the next status refresh.
   function requireRepoPath(repoKey: string, title: string): string | null {
     const p = $repoStates[repoKey]?.path;
-    if (!p) { void bridge.showErrorDialog(title, $t('launcher.cloneFirst')); }
+    if (!p) pushNotice('info', title, [$t('launcher.cloneFirst')]);
     return p ?? null;
   }
 
@@ -135,7 +136,7 @@
   }
 
   async function openRepoInApp(repoKey: string, command: string) {
-    const path = requireRepoPath(repoKey, 'Open in editor');
+    const path = requireRepoPath(repoKey, $t('notice.openEditor'));
     if (path) await bridge.openInApp(path, command);
     closeActionMenu();
   }
@@ -144,10 +145,10 @@
   // working directory then asks the Go side to expand the profile's
   // template via pkg/launch.ResolveArgs and spawn the terminal.
   async function openRepoProfile(repoKey: string, profileID: string) {
-    const path = requireRepoPath(repoKey, 'Open profile');
+    const path = requireRepoPath(repoKey, $t('notice.openTerminal'));
     if (path) {
       try { await bridge.openProfile(path, profileID); }
-      catch (e: any) { await bridge.showErrorDialog('Open profile', (e?.message || String(e))); }
+      catch (e) { pushNotice('error', $t('notice.openTerminalFailed'), [errorText(e)]); }
     }
     closeActionMenu();
   }
@@ -155,26 +156,26 @@
   async function openRepoInAIHarness(repoKey: string, harness: AIHarnessInfo) {
     const state = $repoStates[repoKey];
     if (!state?.path) {
-      await bridge.showErrorDialog('Open in ' + harness.name, $t('launcher.cloneFirst'));
+      pushNotice('info', $t('simple.btnOpenWith', { name: harness.name }), [$t('launcher.cloneFirst')]);
       closeActionMenu();
       return;
     }
     try {
       await bridge.openInAIHarness(state.path, harness.command, harness.args || []);
-    } catch (e: any) {
-      await bridge.showErrorDialog('Open in ' + harness.name, (e?.message || String(e)));
+    } catch (e) {
+      pushNotice('error', $t('notice.openFailed', { name: harness.name }), [errorText(e)]);
     }
     closeActionMenu();
   }
 
   // The URL is resolved on the Go side from the authoritative config
   // (git.RepoWebURL), so a stale frontend store can't turn this into a
-  // silent no-op; lookup failures surface in a dialog (#79).
+  // silent no-op; lookup failures surface in a notice (#79).
   async function openRepoInBrowser(sourceKey: string, repoName: string) {
     try {
       await bridge.openRepoInBrowser(sourceKey, repoName);
-    } catch (e: any) {
-      await bridge.showErrorDialog('Navigate to repo', (e?.message || String(e)));
+    } catch (e) {
+      pushNotice('error', $t('notice.openWebFailed'), [errorText(e)]);
     }
     closeActionMenu();
   }

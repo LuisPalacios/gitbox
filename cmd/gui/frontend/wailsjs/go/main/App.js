@@ -506,10 +506,6 @@ export function SetupMirrorRepo(arg1, arg2) {
   return window['go']['main']['App']['SetupMirrorRepo'](arg1, arg2);
 }
 
-export function ShowErrorDialog(arg1, arg2) {
-  return window['go']['main']['App']['ShowErrorDialog'](arg1, arg2);
-}
-
 export function ShowWindow() {
   return window['go']['main']['App']['ShowWindow']();
 }

@@ -9,7 +9,10 @@
   import { detailLocked, attentionRank, accountHealth, CALM_RANK } from './lib/status';
   import type { HealthFix } from './lib/status';
   import { resolveView, viewAccount, accountView, attentionCounts } from './lib/views';
-  import { languageStore, normalizeLanguage } from './lib/i18n';
+  import { languageStore, normalizeLanguage, t } from './lib/i18n';
+  import { pushNotice, errorText } from './lib/notices';
+  import { startFetch, startPull, noteDone, summarizeFetch, summarizePull, localWorkCount } from './lib/activity';
+  import type { Run } from './lib/activity';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit, EventsOn } from '../wailsjs/runtime/runtime';
   import type { RepoState, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
   import TerminalsModal from './lib/TerminalsModal.svelte';
@@ -28,6 +31,8 @@
   import MirrorsTab from './lib/components/MirrorsTab.svelte';
   import WorkspacesTab from './lib/components/WorkspacesTab.svelte';
   import Footer from './lib/components/Footer.svelte';
+  import ActivityStrip from './lib/components/ActivityStrip.svelte';
+  import Notices from './lib/components/Notices.svelte';
   import DiscoverModal from './lib/modals/DiscoverModal.svelte';
   import DoctorModal from './lib/modals/DoctorModal.svelte';
   import SshTokenModal from './lib/modals/SshTokenModal.svelte';
@@ -396,7 +401,7 @@
     if (orphanList.some(o => o.matchedAccount && !o.localOnly)) {
       showOrphanModal();
     } else {
-      alert('No new nested clones found to onboard.');
+      pushNotice('info', $t('notice.noNested'));
     }
   }
 
@@ -433,6 +438,65 @@
   // ── Sync state ──
   let syncing = false;
 
+  // ── Activity (issue #138) ──
+  // Fetch all and Pull all runs: the strip shows their scope while they
+  // run, and a result card sums them up. Startup and periodic fetches only
+  // leave a card when something changed or failed.
+  let fetchRun: Run | null = null;
+  let fetchManual = false;
+  let pullRun: Run | null = null;
+  const statusOfKey = (key: string) => $repoStates[key]?.status || 'unknown';
+  const accountOfKey = (key: string) => $sources[key.slice(0, key.indexOf('/'))]?.account || key.slice(0, key.indexOf('/'));
+
+  function finishFetch(error?: string) {
+    const run = fetchRun;
+    const manual = fetchManual;
+    fetchRun = null;
+    fetchManual = false;
+    if (!run) {
+      if (manual && error) pushNotice('error', $t(simple ? 'result.checkTitle' : 'result.fetchTitle'), [error]);
+      return;
+    }
+    const offline = Object.keys(credStatuses).filter((k) => credStatuses[k]?.status === 'offline');
+    const sum = summarizeFetch(run, statusOfKey, accountOfKey, offline);
+    if (!manual && !sum.changed) return;
+    const failure = Object.entries(run.errors).find(([key]) => !offline.includes(accountOfKey(key)));
+    const skippedAccounts = sum.skippedAccounts.join(', ');
+    pushNotice(sum.failed > 0 ? 'error' : 'success', $t(simple ? 'result.checkTitle' : 'result.fetchTitle'), simple ? [
+      $t('result.checked', { n: sum.checked }),
+      sum.nowBehind > 0 && $t('result.newerOnline', { n: sum.nowBehind }),
+      sum.skipped > 0 && $t('result.skippedSimple', { n: sum.skipped, accounts: skippedAccounts }),
+      sum.failed > 0 && $t('result.needHelp', { n: sum.failed }),
+      sum.localWork > 0 && $t('result.wipUntouched'),
+    ] : [
+      $t('result.fetched', { n: sum.checked }),
+      sum.nowBehind > 0 && $t('result.nowBehind', { n: sum.nowBehind }),
+      sum.skipped > 0 && $t('result.skipped', { n: sum.skipped, accounts: skippedAccounts }),
+      failure && $t('result.failed', { n: sum.failed, error: `${failure[0]}: ${failure[1]}` }),
+      sum.localWork > 0 && $t('result.localUntouched'),
+    ]);
+  }
+
+  function finishPull() {
+    const run = pullRun;
+    pullRun = null;
+    if (!run) return;
+    const sum = summarizePull(run);
+    const first = sum.failures[0];
+    const localWork = localWorkCount(Object.keys($repoStates), statusOfKey) > 0;
+    pushNotice(sum.failed > 0 ? 'error' : 'success', $t(simple ? 'result.updateTitle' : 'result.pullTitle'), simple ? [
+      sum.pulled > 0 && $t('result.updated', { n: sum.pulled }),
+      sum.cloned > 0 && $t('result.downloaded', { n: sum.cloned }),
+      sum.failed > 0 && $t('result.needHelp', { n: sum.failed }),
+      localWork && $t('result.wipUntouched'),
+    ] : [
+      sum.pulled > 0 && $t('result.pulled', { n: sum.pulled }),
+      sum.cloned > 0 && $t('result.cloned', { n: sum.cloned }),
+      first && $t('result.failed', { n: sum.failed, error: `${first.key}: ${first.error}` }),
+      localWork && $t('result.localUntouched'),
+    ]);
+  }
+
   async function syncAll() {
     if (syncing) return;
     syncing = true;
@@ -443,6 +507,7 @@
     const needsSync = Object.entries(currentStates).filter(
       ([_, r]) => r.status === 'behind' || r.status === 'not cloned'
     );
+    if (needsSync.length > 0) pullRun = startPull(needsSync.map(([key]) => key), accountOfKey, statusOfKey);
 
     for (const [key] of needsSync) {
       const [sourceKey, ...repoParts] = key.split('/');
@@ -549,7 +614,7 @@
       await bridge.openTerminalsManagerWindow();
       terminalsManagerHasOpened = true;
     } catch (e: any) {
-      await bridge.showErrorDialog('Open Terminals Manager', (e?.message || String(e)));
+      pushNotice('error', $t('notice.terminalsFailed'), [errorText(e)]);
     } finally {
       setTimeout(() => { terminalsManagerOpening = false; }, cooldown);
     }
@@ -1072,8 +1137,8 @@
   async function openWorkspace(key: string) {
     try {
       await bridge.openWorkspace(key);
-    } catch (e: any) {
-      alert(e?.message || e);
+    } catch (e) {
+      pushNotice('error', $t('notice.openWorkspaceFailed'), [errorText(e)]);
     }
   }
 
@@ -1082,8 +1147,8 @@
     try {
       const res = await bridge.discoverWorkspaces();
       if (res.changed) $configStore = await bridge.reloadConfig();
-    } catch (e: any) {
-      alert(e?.message || e);
+    } catch (e) {
+      pushNotice('error', $t('notice.discoverWorkspacesFailed'), [errorText(e)]);
     } finally {
       workspaceBusy = false;
     }
@@ -1109,8 +1174,8 @@
           showOrphanModal();
         }
       }
-    } catch (e: any) {
-      alert(e?.message || e);
+    } catch (e) {
+      pushNotice('error', $t('notice.containerFailed'), [errorText(e)]);
     }
   }
 
@@ -1225,13 +1290,17 @@
     bridge.setPeriodicSync(val);
   }
 
-  async function runFetchAll() {
+  // runFetchAll fetches every clone. A manual run (the top-bar button)
+  // always leaves a result card, also when it joins a run already going.
+  async function runFetchAll(manual = false) {
+    if (manual) fetchManual = true;
     if (fetchingAll) return;
     fetchingAll = true;
     try {
       await bridge.fetchAllRepos();
     } catch (e) {
       lastFetchTime = 'fetch-all error: ' + (e instanceof Error ? e.message : String(e));
+      if (fetchingAll) finishFetch(errorText(e));
     } finally {
       fetchingAll = false;
       fetchingRepos = {};
@@ -1490,11 +1559,13 @@
         }
         return { ...s };
       });
+      if (pullRun) pullRun = noteDone(pullRun, key, data.error);
       checkSyncDone();
     });
 
     events.on('pull:done', (data: any) => {
       const key = `${data.source}/${data.repo}`;
+      if (pullRun) pullRun = noteDone(pullRun, key, data.error);
       repoStates.update((s) => {
         if (s[key]) {
           s[key] = {
@@ -1520,15 +1591,18 @@
       const key = `${data.source}/${data.repo}`;
       delete fetchingRepos[key];
       fetchingRepos = fetchingRepos;
+      if (fetchRun) fetchRun = noteDone(fetchRun, key, data.error);
     });
 
     events.on('fetch:allstart', () => {
       fetchingAll = true;
+      if (!fetchRun) fetchRun = startFetch(Object.keys($repoStates).filter((k) => statusOfKey(k) !== 'not cloned'), accountOfKey, statusOfKey);
     });
 
     events.on('fetch:alldone', (data: { error?: string } | null) => {
       fetchingAll = false;
       fetchingRepos = {};
+      finishFetch(data?.error);
       const now = new Date();
       lastFetchTime = data?.error ? 'fetch-all error: ' + data.error
         : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -1653,7 +1727,10 @@
     const stillRunning = Object.values(states).some(
       (r) => r.status === 'syncing' || r.status === 'cloning'
     );
-    if (!stillRunning) syncing = false;
+    if (!stillRunning) {
+      syncing = false;
+      finishPull();
+    }
   }
 
 </script>
@@ -1718,7 +1795,10 @@
 
   <!-- ── TOP BAR ── -->
   <TopBar {simple} {syncing} {fetchingAll} {themeChoice} bind:deleteMode bind:showSettings
-    {syncAll} {runFetchAll} {toggleViewMode} {cycleTheme} {setUIMode} {rail} {sidebarShortcut} {toggleSidebar} />
+    {syncAll} runFetchAll={() => runFetchAll(true)} {toggleViewMode} {cycleTheme} {setUIMode} {rail} {sidebarShortcut} {toggleSidebar} />
+
+  <!-- ── ACTIVITY STRIP (Fetch all / Pull all) ── -->
+  <ActivityStrip run={pullRun || fetchRun} {simple} />
 
   <!-- ── GLOBAL WARNINGS (identity, GCM helper, gitignore) ── -->
   <Banners bind:globalIdentityWarn bind:globalGCMWarn bind:gitignoreWarn bind:gitignoreInstalled bind:gitignoreError
@@ -1835,6 +1915,9 @@
 
   <!-- ── CREATE REPO MODAL ── -->
   <CreateRepoModal bind:this={createRepoDialog} />
+
+  <!-- ── RESULT CARDS AND MESSAGES ── -->
+  <Notices />
 
 </div>
 {/if}

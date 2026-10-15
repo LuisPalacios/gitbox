@@ -2,6 +2,8 @@
   // Confirm removing a mirror group from the config.
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
+  import { pushNotice, errorText } from '../notices';
+  import { t } from '../i18n';
   import { dismiss } from '../dismiss';
   import { configStore, mirrors } from '../stores';
 
@@ -19,7 +21,7 @@
       await bridge.deleteMirrorGroup(deleteMirrorGroupConfirm);
       $configStore = await bridge.reloadConfig();
     } catch (e: any) {
-      alert(e?.message || e);
+      pushNotice('error', $t('notice.mirrorGroupDeleteFailed'), [errorText(e)]);
     }
     deleteMirrorGroupConfirm = null;
     deleteMode = false;

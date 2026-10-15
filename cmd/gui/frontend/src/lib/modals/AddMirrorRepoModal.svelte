@@ -2,6 +2,8 @@
   // Add a repo to a mirror group, picked from the origin account's repos.
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
+  import { pushNotice, errorText } from '../notices';
+  import { t } from '../i18n';
   import { dismiss } from '../dismiss';
   import { configStore, mirrors } from '../stores';
 
@@ -55,7 +57,7 @@
         await setupMirrorRepo(mirrorKey, repoKey);
       }
     } catch (e: any) {
-      alert(e?.message || e);
+      pushNotice('error', $t('notice.mirrorRepoAddFailed'), [errorText(e)]);
     }
   }
 </script>

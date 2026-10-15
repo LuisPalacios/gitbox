@@ -258,8 +258,6 @@ export function SetViewMode(arg1:string):Promise<main.WindowStateDTO>;
 
 export function SetupMirrorRepo(arg1:string,arg2:string):Promise<void>;
 
-export function ShowErrorDialog(arg1:string,arg2:string):Promise<void>;
-
 export function ShowWindow():Promise<void>;
 
 export function SuggestAccountKey(arg1:string,arg2:string):Promise<string>;

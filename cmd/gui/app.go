@@ -1407,21 +1407,6 @@ func (a *App) stopHarnessWatcher() {
 	a.harnessQuitOnce.Do(func() { close(quit) })
 }
 
-// ShowErrorDialog pops a native error dialog from the frontend. Used for
-// flows where the WebView-level window.alert() isn't reliable (notably
-// macOS WKWebView) — the Wails runtime's MessageDialog routes through the
-// host OS's native dialog APIs, which work everywhere.
-func (a *App) ShowErrorDialog(title, message string) {
-	if a.ctx == nil {
-		return
-	}
-	_, _ = wailsrt.MessageDialog(a.ctx, wailsrt.MessageDialogOptions{
-		Type:    wailsrt.ErrorDialog,
-		Title:   title,
-		Message: message,
-	})
-}
-
 // buildHarnessArgv returns the harness argv: the harness binary followed by
 // its args. An empty command returns nil so the profile resolver treats the
 // request as a plain launch instead of silently misfiring.

@@ -6,6 +6,7 @@
   // and the account card share it.
   import { fade } from 'svelte/transition';
   import { bridge } from '../bridge';
+  import { pushNotice, errorText } from '../notices';
   import { accounts } from '../stores';
   import { canDiscoverWith, canCreateWith, credBroken, DISCOVER_DISABLED, CREATE_DISABLED } from '../status';
   import { t } from '../i18n';
@@ -39,15 +40,15 @@
 
   async function openAccountProfile(profileID: string) {
     try { await bridge.openAccountProfile(accountKey, profileID); }
-    catch (e: any) { await bridge.showErrorDialog('Open profile', (e?.message || String(e))); }
+    catch (e) { pushNotice('error', $t('notice.openTerminalFailed'), [errorText(e)]); }
     closeAccountMenu();
   }
 
   async function openAccountInAIHarness(harness: AIHarnessInfo) {
     try {
       await bridge.openAccountInAIHarness(accountKey, harness.command, harness.args || []);
-    } catch (e: any) {
-      await bridge.showErrorDialog('Open in ' + harness.name, (e?.message || String(e)));
+    } catch (e) {
+      pushNotice('error', $t('notice.openFailed', { name: harness.name }), [errorText(e)]);
     }
     closeAccountMenu();
   }

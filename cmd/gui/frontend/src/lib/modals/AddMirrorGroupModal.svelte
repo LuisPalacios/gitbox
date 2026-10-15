@@ -2,6 +2,8 @@
   // Create a mirror group: a source and a destination account.
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
+  import { pushNotice, errorText } from '../notices';
+  import { t } from '../i18n';
   import { dismiss } from '../dismiss';
   import { accounts, configStore } from '../stores';
 
@@ -23,7 +25,7 @@
       addMirrorGroupModal = false;
       newMirrorKey = ''; newMirrorSrc = ''; newMirrorDst = '';
     } catch (e: any) {
-      alert(e?.message || e);
+      pushNotice('error', $t('notice.mirrorGroupAddFailed'), [errorText(e)]);
     }
   }
 </script>
