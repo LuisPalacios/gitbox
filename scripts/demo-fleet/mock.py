@@ -7,10 +7,12 @@
 
 Usage: DEMO_ROOT=<dir> uv run scripts/demo-fleet/mock.py   (run.sh does this)
 
-Three listeners, one per fake account:
+Four listeners, one per fake account:
   3001  Forgejo   (/api/v1)  user "demo"
   3002  GitHub    (/api/v3)  user "alexdev"
   3003  GitHub    (/api/v3)  user "alex-acme"
+  3004  GitLab               user "alex-old", every request answers 401,
+                             so the account shows a broken credential
 Every request is logged so unknown endpoints show up and can be added.
 Unknown GETs answer [] so list endpoints degrade to "nothing".
 Paths containing ".git/" are served as static files from the bare
@@ -22,20 +24,22 @@ from urllib.parse import urlparse, parse_qs
 
 ACCOUNTS = {
     3001: {"kind": "forgejo", "login": "demo", "repos": ["infra/ansible", "infra/k8s-cluster", "tools/dotfiles", "docs/wiki"]},
-    3002: {"kind": "github", "login": "alexdev", "repos": ["alexdev/blog", "alexdev/cli-tools", "alexdev/notes", "alexdev/raytracer"]},
+    3002: {"kind": "github", "login": "alexdev", "repos": ["alexdev/blog", "alexdev/cli-tools", "alexdev/notes", "alexdev/raytracer", "alexdev/site-theme"]},
     3003: {"kind": "github", "login": "alex-acme", "repos": ["acme-corp/api-gateway", "acme-corp/web-portal", "acme-corp/payments"]},
+    3004: {"kind": "gitlab", "login": "alex-old", "repos": ["oldjob/legacy-api", "oldjob/reports"], "rejects": True},
 }
 
 if not os.environ.get("DEMO_ROOT"):
     sys.exit("mock.py: DEMO_ROOT is not set (start it through run.sh)")
 UPSTREAMS = os.path.join(os.environ["DEMO_ROOT"], "upstreams")
-ACCOUNT_KEYS = {3001: "forge-homelab", 3002: "github-alexdev", 3003: "github-acme"}
+ACCOUNT_KEYS = {3001: "forge-homelab", 3002: "github-alexdev", 3003: "github-acme", 3004: "gitlab-oldjob"}
 
 # Open PRs authored by the user / review requests, keyed by "owner/repo".
 PRS = {
     3003: {"authored": {"acme-corp/api-gateway": 2}, "review": {"acme-corp/payments": 1}},
     3002: {"authored": {"alexdev/cli-tools": 1}, "review": {}},
     3001: {"authored": {}, "review": {"infra/k8s-cluster": 1}},
+    3004: {"authored": {}, "review": {}},
 }
 
 
@@ -106,6 +110,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         port = self.server.server_port
         acct = ACCOUNTS[port]
+        if acct.get("rejects"):
+            return self.send(401, {"message": "401 Unauthorized"})
         u = urlparse(self.path)
         if ".git/" in u.path:
             return self.serve_git(port, u.path)
@@ -153,5 +159,5 @@ def serve(port):
 if __name__ == "__main__":
     for port in ACCOUNTS:
         threading.Thread(target=serve, args=(port,), daemon=True).start()
-    sys.stderr.write("mock API on 3001 (forgejo), 3002/3003 (github)\n")
+    sys.stderr.write("mock API on 3001 (forgejo), 3002/3003 (github), 3004 (gitlab, rejects every token)\n")
     threading.Event().wait()

@@ -2,7 +2,7 @@
 #
 # run.sh — Launch GitboxApp against the demo fleet.
 #
-# Starts mock.py (the fake provider APIs on 127.0.0.1:3001-3003), then runs
+# Starts mock.py (the fake provider APIs on 127.0.0.1:3001-3004), then runs
 # GitboxApp with XDG_CONFIG_HOME / GIT_CONFIG_GLOBAL pointing at the demo
 # state. Closing the app stops the mock. Build the fleet first with
 # build.sh, and the GUI with `wails build` (see docs/developer-guide.md).

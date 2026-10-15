@@ -351,8 +351,8 @@ Para añadir un logo de herramienta nuevo uso el skill `preparing-brand-logos`. 
 
 Hago las capturas del README con la app real ejecutándose sobre una flota falsa, así nunca muestran mis cuentas ni mis rutas. El kit vive en `scripts/demo-fleet/`:
 
-- `build.sh` crea tres cuentas demo (Forgejo, GitHub personal, GitHub corporativo) con clones locales reales en estados elegidos (sincronizado, por detrás, por delante, con cambios, sin clonar), un `gitbox.json`, archivos de token y una config global de git aislada bajo `$TEMP/gbdemo`.
-- `mock.py` simula las APIs de los proveedores en `127.0.0.1:3001-3003`, así las credenciales se verifican, aparecen los indicadores de PR y review, y los fetch funcionan contra los upstreams demo. Necesita [uv](https://docs.astral.sh/uv/).
+- `build.sh` crea cuatro cuentas demo (Forgejo, GitHub personal, GitHub corporativo y una cuenta de GitLab con la credencial rota) con clones locales reales en estados elegidos (al día, por detrás, por delante, con cambios, divergido, sin clonar), un `gitbox.json`, archivos de token y una config global de git aislada bajo `$TEMP/gbdemo`.
+- `mock.py` simula las APIs de los proveedores en `127.0.0.1:3001-3004`, así las credenciales se verifican, aparecen los indicadores de PR y review, y los fetch funcionan contra los upstreams demo. El puerto 3004 rechaza todas las peticiones, así la cuenta de GitLab aparece en Requiere atención con su acción para arreglarla. Necesita [uv](https://docs.astral.sh/uv/).
 - `run.sh` arranca el mock y lanza `GitboxApp` con `XDG_CONFIG_HOME` y `GIT_CONFIG_GLOBAL` apuntando a la demo, así mi config real, `~/.gitconfig` y el almacén de credenciales no se tocan. Cierra antes cualquier GitboxApp en ejecución.
 - `shot.ps1` (Windows) redimensiona la ventana, hace clic en puntos dentro de ella y la captura a un PNG.
 

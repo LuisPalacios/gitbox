@@ -351,8 +351,8 @@ To add a new tool logo I use the `preparing-brand-logos` skill. It downloads can
 
 I take the README screenshots from the real app running on a fake fleet, so they never show my own accounts or paths. The kit lives in `scripts/demo-fleet/`:
 
-- `build.sh` creates three demo accounts (Forgejo, personal GitHub, corporate GitHub) with real local clones in chosen states (synced, behind, ahead, dirty, not cloned), a `gitbox.json`, token files, and an isolated global git config under `$TEMP/gbdemo`.
-- `mock.py` fakes the provider APIs on `127.0.0.1:3001-3003`, so credentials verify, PR and review badges appear, and fetches work against the demo upstreams. It needs [uv](https://docs.astral.sh/uv/).
+- `build.sh` creates four demo accounts (Forgejo, personal GitHub, corporate GitHub, and a GitLab account whose credential is broken) with real local clones in chosen states (up to date, behind, ahead, dirty, diverged, not cloned), a `gitbox.json`, token files, and an isolated global git config under `$TEMP/gbdemo`.
+- `mock.py` fakes the provider APIs on `127.0.0.1:3001-3004`, so credentials verify, PR and review badges appear, and fetches work against the demo upstreams. Port 3004 rejects every request, so the GitLab account shows in Needs attention with its fix action. It needs [uv](https://docs.astral.sh/uv/).
 - `run.sh` starts the mock and launches `GitboxApp` with `XDG_CONFIG_HOME` and `GIT_CONFIG_GLOBAL` pointing at the demo, so my real config, `~/.gitconfig`, and credential store stay untouched. Close any running GitboxApp first.
 - `shot.ps1` (Windows) resizes the window, clicks points inside it, and captures it to a PNG.
 

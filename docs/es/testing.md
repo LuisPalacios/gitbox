@@ -137,7 +137,7 @@ cd cmd/gui/frontend
 npm run check
 ```
 
-También ejecuto `npm test` desde `cmd/gui/frontend` para las regresiones puras del árbol de clones: propiedad entre sources, prevención de duplicados, plegado de clones anidados y recuperación ante referencias obsoletas a padres. La misma suite cubre la traducción de estados: la forma, el color, las etiquetas, el tipo Simple y los contadores de cada estado, y si su fila abre el panel de detalle. La comprobación de salud ejecuta estas pruebas como `frontend-test`.
+También ejecuto `npm test` desde `cmd/gui/frontend` para las regresiones puras del árbol de clones: propiedad entre sources, prevención de duplicados, plegado de clones anidados, orden con los problemas primero y recuperación ante referencias obsoletas a padres. La misma suite cubre la traducción de estados (la forma, el color, la etiqueta del glosario, el tipo Simple, el rango de atención y los contadores de cada estado, y si su fila abre el panel de detalle), la salud de la cuenta, la vista guardada y la lista de Requiere atención, los resúmenes de Fetch de todo y Pull de todo, y las tarjetas de resultado. La comprobación de salud ejecuta estas pruebas como `frontend-test`.
 
 ### Paso 3: escenario de ciclo completo
 
@@ -221,7 +221,7 @@ Si el cambio toca un área específica, verifica al menos en la máquina dev:
 
 ```text
 - [ ] Cambios de config → lanzar GitboxApp, confirmar que la config carga y que el cambio persiste tras reiniciar
-- [ ] Cambios de credenciales → verificar badges de estado de credenciales en las tarjetas de cuenta
+- [ ] Cambios de credenciales → verificar las palabras de salud de la cuenta en la barra lateral y en la tarjeta de cuenta
 - [ ] Cambios GUI → lanzar GitboxApp, verificar que la pantalla cambiada renderiza
 - [ ] Windows → no aparece ninguna ventana de consola al ejecutar la acción cambiada
 ```
@@ -247,19 +247,20 @@ Lanza `GitboxApp` en cada plataforma (`./scripts/run-commands.sh` imprime los co
 
 ```text
 - [ ] La app abre; en Windows sin console flash
-- [ ] Primer arranque guiado con una config nueva (`XDG_CONFIG_HOME=<carpeta temporal vacía>` en macOS y Linux): carpeta → conectar (inicio de sesión con el navegador; **Use a token instead**; **Change details** conserva cualquier carpeta existente) → elegir proyectos → **Download**; la pantalla principal se abre en Simple y los repos elegidos se clonan. En Simple, la tarjeta **+** ejecuta los mismos pasos de conectar y elegir; en Advanced abre el formulario completo
-- [ ] Dashboard muestra tarjetas de cuenta, badges de credenciales y repos
-- [ ] Cambio de tab (Accounts ↔ Mirrors ↔ Workspaces) funciona
+- [ ] Primer arranque guiado con una config nueva (`XDG_CONFIG_HOME=<carpeta temporal vacía>` en macOS y Linux): carpeta → conectar (inicio de sesión con el navegador; **Use a token instead**; **Change details** conserva cualquier carpeta existente) → elegir proyectos → **Download**; la pantalla principal se abre en Simple y los repos elegidos se clonan. En Simple, **Conectar una cuenta** en la barra lateral ejecuta los mismos pasos de conectar y elegir; en Advanced, **Añadir cuenta** abre el formulario completo
+- [ ] Dashboard muestra la barra lateral (Requiere atención, Todos los repos, cuentas con logo, salud y conteo) y la vista seleccionada
+- [ ] Barra lateral: cambiar de vista (Requiere atención, Todos los repos, cada cuenta, Mirrors, Workspaces) funciona; el botón de arriba a la izquierda y ⌘B / Ctrl+B la pliegan al riel y la despliegan; por debajo de 780 px muestra el riel y el botón la abre sobre el contenido; la vista y el riel sobreviven a un reinicio
+- [ ] Tarjeta de cuenta: tres líneas (marca de salud y nombre, palabras de salud y acción de arreglo, conteos con Buscar y + Crear en los dos modos); una credencial rota muestra su arreglo en la tarjeta y al principio de Requiere atención
 - [ ] Editar y renombrar cuenta
 - [ ] Credential setup para cada tipo (token/gcm/ssh)
 - [ ] Discovery: Find projects → seleccionar → Add & Pull
-- [ ] Clone, Pull All, Fetch All actualizan los indicadores de status
+- [ ] Clone, Pull de todo, Fetch de todo actualizan los indicadores de status; la tira de actividad muestra el alcance mientras se ejecutan y una tarjeta de resultado los resume
 - [ ] Panel de detalle de repo muestra rama, ahead/behind, archivos cambiados
-- [ ] Tab Mirrors muestra grupos y status
+- [ ] La vista Mirrors muestra grupos y status, con Descubrir y Comprobar todo en su cabecera
 - [ ] Settings: cambiar carpeta raíz, System check, Terminals Manager
 - [ ] Vista compacta y vuelta a la vista completa
-- [ ] Simple / Advanced: el interruptor de la barra superior (gris Simple, verde Advanced) cambia de modo al instante; las filas en Simple solo muestran punto, nombre, frase de estado, Update o Download cuando hace falta, los iconos de IA / editor / terminal y ⋯; las filas en Advanced mantienen todo el detalle y muestran los mismos tres iconos antes del botón de fetch; los anillos de la cabecera en Advanced son compactos (icono, insignia de atención, tooltip al pasar el ratón, sin etiqueta); una config nueva acaba en Simple tras el onboarding
-- [ ] Contraer/expandir: la cabecera de cuenta y un clon padre (chevron o nombre) se pliegan y despliegan; los pliegues sobreviven a un reinicio; el panel de tarjetas arranca plegado, se despliega con la pestaña activa, y recuerda su estado; un chip se abre en su tarjeta y vuelve a plegarse con un clic fuera o Escape
+- [ ] Simple / Advanced: el interruptor de la barra superior (gris Simple, rojo Advanced) cambia de modo al instante; las filas en Simple solo muestran punto, nombre, frase de estado, Update o Download cuando hace falta, los iconos de IA / editor / terminal y ⋯; las filas en Advanced mantienen todo el detalle y muestran los mismos tres iconos antes del botón de fetch; los anillos de la cabecera en Advanced son compactos (icono, insignia de atención, tooltip al pasar el ratón, sin etiqueta); una config nueva acaba en Simple tras el onboarding
+- [ ] Contraer/expandir: la cabecera de cuenta y un clon padre (chevron o nombre) se pliegan y despliegan; los pliegues sobreviven a un reinicio; un chip de mirror o de workspace se abre en su tarjeta y vuelve a plegarse con un clic fuera o Escape
 ```
 
 ### Flujos de credenciales (interactivos, por plataforma)

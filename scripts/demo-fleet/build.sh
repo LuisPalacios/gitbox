@@ -3,10 +3,11 @@
 # build.sh — Create a fake gitbox fleet for README screenshots and demos.
 #
 # Builds, under $DEMO_ROOT (see env.sh):
-#   - three accounts: forge-homelab (Forgejo), github-alexdev (personal
-#     GitHub) and github-acme (corporate GitHub), all served by mock.py
+#   - four accounts: forge-homelab (Forgejo), github-alexdev (personal
+#     GitHub), github-acme (corporate GitHub) and gitlab-oldjob (GitLab,
+#     whose token mock.py rejects, so its credential shows as broken)
 #   - bare upstreams + real clones in chosen states (synced, behind,
-#     ahead, dirty, not cloned) and one .code-workspace file
+#     ahead, dirty, diverged, not cloned) and one .code-workspace file
 #   - gitbox.json, token files and an isolated global git config
 # Nothing touches ~/.config/gitbox, ~/.gitconfig or the OS credential store.
 #
@@ -45,7 +46,7 @@ commit() { # commit <dir> <msg> — one commit with a file change, fixed identit
 }
 
 # repo <accountKey> <port> <email> <org/repo> <state>
-# state: synced | behind:N | ahead:N | dirty | notcloned
+# state: synced | behind:N | ahead:N | dirty | diverged | notcloned
 repo() {
     local acct=$1 port=$2 email=$3 full=$4 state=$5
     local up="upstreams/$acct/$full.git" seed="upstreams/_seed/$acct/$full"
@@ -73,6 +74,11 @@ repo() {
         dirty)
             echo "tweak" >> "$dst/README.md"
             echo "new" > "$dst/notes.txt" ;;
+        diverged)
+            commit "$seed" "Upstream change"
+            git -C "$seed" push -q "$DEMO_ROOT/$up" main
+            commit "$dst" "Local change"
+            git -C "$dst" fetch -q ;;
     esac
     # Point origin at the mock provider; mock.py serves fetches from $up.
     git -C "$dst" remote set-url origin "http://127.0.0.1:$port/$full.git"
@@ -86,9 +92,12 @@ repo github-alexdev 3002 alex@example.com  alexdev/blog          synced
 repo github-alexdev 3002 alex@example.com  alexdev/cli-tools     synced
 repo github-alexdev 3002 alex@example.com  alexdev/notes         synced
 repo github-alexdev 3002 alex@example.com  alexdev/raytracer     ahead:1
+repo github-alexdev 3002 alex@example.com  alexdev/site-theme    diverged
 repo github-acme    3003 alex@acme.example acme-corp/api-gateway synced
 repo github-acme    3003 alex@acme.example acme-corp/web-portal  dirty
 repo github-acme    3003 alex@acme.example acme-corp/payments    synced
+repo gitlab-oldjob  3004 alex@oldjob.example oldjob/legacy-api   synced
+repo gitlab-oldjob  3004 alex@oldjob.example oldjob/reports      behind:2
 rm -rf upstreams/_seed
 
 # Dumb-HTTP metadata so mock.py can serve git fetches as static files.
@@ -100,7 +109,7 @@ cat > fleet/github-acme/acme-platform.code-workspace <<'EOF'
 EOF
 
 # Fake tokens in gitbox's file-based token store.
-for k in forge-homelab github-alexdev github-acme; do
+for k in forge-homelab github-alexdev github-acme gitlab-oldjob; do
     echo "demo-token-$k" > "config/gitbox/credentials/$k"
 done
 
@@ -128,15 +137,21 @@ cat > config/gitbox/gitbox.json <<EOF
     "github-acme": {
       "provider": "github", "url": "http://127.0.0.1:3003", "username": "alex-acme",
       "name": "Alex Demo", "email": "alex@acme.example", "default_credential_type": "token"
+    },
+    "gitlab-oldjob": {
+      "provider": "gitlab", "url": "http://127.0.0.1:3004", "username": "alex-old",
+      "name": "Alex Demo", "email": "alex@oldjob.example", "default_credential_type": "token"
     }
   },
   "sources": {
     "forge-homelab": { "account": "forge-homelab", "repos": {
       "infra/ansible": {}, "infra/k8s-cluster": {}, "tools/dotfiles": {}, "docs/wiki": {} } },
     "github-alexdev": { "account": "github-alexdev", "repos": {
-      "alexdev/blog": {}, "alexdev/cli-tools": {}, "alexdev/notes": {}, "alexdev/raytracer": {} } },
+      "alexdev/blog": {}, "alexdev/cli-tools": {}, "alexdev/notes": {}, "alexdev/raytracer": {}, "alexdev/site-theme": {} } },
     "github-acme": { "account": "github-acme", "repos": {
-      "acme-corp/api-gateway": {}, "acme-corp/web-portal": {}, "acme-corp/payments": {} } }
+      "acme-corp/api-gateway": {}, "acme-corp/web-portal": {}, "acme-corp/payments": {} } },
+    "gitlab-oldjob": { "account": "gitlab-oldjob", "repos": {
+      "oldjob/legacy-api": {}, "oldjob/reports": {} } }
   }
 }
 EOF

@@ -29,7 +29,7 @@ La respuesta honesta es "depende del proveedor":
   1. **Pega un PAT en el prompt de contraseña de GCM** durante el setup. GCM lo cachea y tanto git como la API funcionan con una sola credencial. Es lo más sencillo.
   2. **Mantén tu contraseña en GCM** (funciona para `git push`/`pull`) y guarda un **PAT separado** en el keyring de gitbox para operaciones API. El panel de estado de credenciales de la GUI tiene un botón _Setup API token_ exactamente para este caso.
 
-La verificación de credenciales de gitbox te dirá en cuál de las dos situaciones estás. Si la insignia de la tarjeta es verde, ya está. Si está en "Warning" y el panel Current-status dice _"GCM token found but API check failed"_, tu credencial guardada en GCM es una contraseña que la API rechaza: usa uno de los dos caminos anteriores.
+La verificación de credenciales de gitbox te dirá en cuál de las dos situaciones estás. Si la marca de salud de la cuenta es verde, ya está. Si dice "Funciona, con un aviso" y el panel Current-status dice _"GCM token found but API check failed"_, tu credencial guardada en GCM es una contraseña que la API rechaza: usa uno de los dos caminos anteriores.
 
 ## Almacenamiento de PAT
 
@@ -178,8 +178,8 @@ Conservo los includes de config Git cuando sus ajustes efectivos coinciden con l
 
 Puedes verificar que las credenciales funcionan en cualquier momento:
 
-- La insignia de credencial en cada tarjeta de cuenta aparece verde (funciona), naranja (limitada) o roja (rota).
-- Haz clic en la insignia para abrir el modal Change Credential: el panel Current-status de arriba muestra el estado real de la credencial primaria y del API token, con el mensaje de error subyacente (si lo hay).
+- La entrada de cada cuenta en la barra lateral y su tarjeta muestran su salud en palabras junto a una marca: verde (funciona), naranja (limitada) o roja (rota o sin conexión). Las cuentas rotas encabezan también la vista Requiere atención, con su botón para arreglarlas.
+- Elige **Cambiar credencial…** en el menú ⋯ de la cuenta para abrir el modal Change Credential: el panel Current-status de arriba muestra el estado real de la credencial primaria y del API token, con el mensaje de error subyacente (si lo hay).
 - Haz clic en **Re-check** en ese panel para volver a ejecutar la verificación.
 
 ## Herramientas ausentes en el host
@@ -199,7 +199,7 @@ Arreglo típico en cada SO:
 
 ### Leer el panel Current-status de la GUI
 
-Haz clic en la insignia de credencial de cualquier tarjeta de cuenta. El panel Current-status dentro del modal Change Credential muestra:
+Elige **Cambiar credencial…** en el menú ⋯ de cualquier cuenta. El panel Current-status dentro del modal Change Credential muestra:
 
 - **Primary (GCM/SSH/TOKEN):** el estado real de la credencial primaria (OK / Warning / Offline / Error / Not configured) y, debajo de la fila, el error subyacente tal como lo reporta la capa network/HTTP de gitbox. Ese texto de error es el primer sitio donde mirar cuando algo va mal: nombra la URL que falla, el código HTTP y lo que reportó el kernel / stack TLS.
 - **API token (PAT):** estado del PAT complementario (solo relevante para GCM y SSH). Cuando la credencial primaria ya cubre la API, el mensaje del PAT dice _"not needed — GCM covers the API"_. Cuando la API rechazó la primaria, el mensaje del PAT dice _"needed for discovery and repo creation"_ y aparece un botón **Setup API token** junto a él.

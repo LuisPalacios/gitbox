@@ -137,7 +137,7 @@ cd cmd/gui/frontend
 npm run check
 ```
 
-I also run `npm test` from `cmd/gui/frontend` for pure clone-tree regressions: cross-source ownership, duplicate prevention, nested collapse state, and recovery from stale parent references. The same suite covers the status mappings: each status's shape, colour, labels, Simple kind, count badges and whether its row opens the detail panel. The health check runs these tests as `frontend-test`.
+I also run `npm test` from `cmd/gui/frontend` for pure clone-tree regressions: cross-source ownership, duplicate prevention, nested collapse state, problems-first order, and recovery from stale parent references. The same suite covers the status mappings (each status's shape, colour, glossary label, Simple kind, attention rank, count badges and whether its row opens the detail panel), account health, the saved view and the Needs attention list, the Fetch all and Pull all summaries, and the result cards. The health check runs these tests as `frontend-test`.
 
 ### Step 3: Full lifecycle scenario
 
@@ -221,7 +221,7 @@ If the change touches a specific area, verify on at least the dev machine:
 
 ```text
 - [ ] Config changes → launch GitboxApp, confirm the config loads and the change persists after a restart
-- [ ] Credential changes → verify credential status badges on the account cards
+- [ ] Credential changes → verify the account health words in the sidebar and on the account card
 - [ ] GUI changes → launch GitboxApp, verify the changed screen renders
 - [ ] Windows → no console window flashes when the changed action runs
 ```
@@ -247,19 +247,20 @@ Launch `GitboxApp` on each platform (`./scripts/run-commands.sh` prints the comm
 
 ```text
 - [ ] App opens; on Windows without a console flash
-- [ ] Guided first run with a fresh config (`XDG_CONFIG_HOME=<empty temp dir>` on macOS and Linux): folder → connect (browser sign-in; **Use a token instead**; **Change details** keeps any existing folder) → pick projects → **Download**; the main screen opens in Simple and the picked repos clone. In Simple, the **+** card runs the same connect and pick steps; in Advanced it opens the full form
-- [ ] Dashboard shows account cards, credential badges, and repos
-- [ ] Tab switch (Accounts ↔ Mirrors ↔ Workspaces) works
+- [ ] Guided first run with a fresh config (`XDG_CONFIG_HOME=<empty temp dir>` on macOS and Linux): folder → connect (browser sign-in; **Use a token instead**; **Change details** keeps any existing folder) → pick projects → **Download**; the main screen opens in Simple and the picked repos clone. In Simple, **Connect an account** in the sidebar runs the same connect and pick steps; in Advanced, **Add account** opens the full form
+- [ ] Dashboard shows the sidebar (Needs attention, All repos, accounts with logo, health and count) and the selected view
+- [ ] Sidebar: switching views (Needs attention, All repos, each account, Mirrors, Workspaces) works; the top-left button and ⌘B / Ctrl+B fold it to the rail and back; below 780 px it shows the rail and the button opens it over the content; the view and the rail survive a restart
+- [ ] Account card: three lines (health mark and name, health words and fix action, counts with Find and + New in both modes); a broken credential shows its fix in the card and at the top of Needs attention
 - [ ] Account edit and rename
 - [ ] Credential setup for each type (token/gcm/ssh)
 - [ ] Discovery: Find projects → select → Add & Pull
-- [ ] Clone, Pull All, Fetch All update the status indicators
+- [ ] Clone, Pull all, Fetch all update the status indicators; the activity strip shows the scope while they run and a result card sums them up
 - [ ] Repo detail panel shows branch, ahead/behind, changed files
-- [ ] Mirrors tab shows groups and status
+- [ ] Mirrors view shows groups and status, with Discover and Check all in its header
 - [ ] Settings: change root folder, System check, Terminals Manager
 - [ ] Compact view and back to full view
-- [ ] Simple / Advanced: the top-bar switch (grey Simple, green Advanced) changes mode instantly; Simple rows show only dot, name, status sentence, Update or Download when needed, the AI / editor / terminal icons and ⋯; Advanced rows keep every detail and show the same three icons before the fetch button; the Advanced header rings are compact (icon, attention badge, hover tooltip, no label); a fresh config lands in Simple after onboarding
-- [ ] Collapse/expand: account header and a parent clone (chevron or name) fold and unfold; folds survive a restart; the cards panel starts folded, unfolds from the active tab, and remembers its state; a chip opens into its card and folds back on an outside click or Escape
+- [ ] Simple / Advanced: the top-bar switch (grey Simple, red Advanced) changes mode instantly; Simple rows show only dot, name, status sentence, Update or Download when needed, the AI / editor / terminal icons and ⋯; Advanced rows keep every detail and show the same three icons before the fetch button; the Advanced header rings are compact (icon, attention badge, hover tooltip, no label); a fresh config lands in Simple after onboarding
+- [ ] Collapse/expand: account header and a parent clone (chevron or name) fold and unfold; folds survive a restart; a mirror or workspace chip opens into its card and folds back on an outside click or Escape
 ```
 
 ### Credential flows (interactive, per platform)

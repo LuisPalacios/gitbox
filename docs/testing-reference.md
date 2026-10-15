@@ -6,10 +6,10 @@ Test inventory and harness internals. For running tests, checklists, and fixture
 
 Counts are top-level `func Test…` functions per package, from `grep -rc "^func Test" --include=*_test.go pkg cmd`. Subtests (`t.Run`) are not counted.
 
-### Package tests — 461 tests (`pkg/`)
+### Package tests — 465 tests (`pkg/`)
 
 - `pkg/adopt/` — 14 tests: orphan discovery, account scoring (embedded URL user, credential username, parent folder, ambiguous ties), nested clones under containers
-- `pkg/config/` — 103 tests: config parsing, v1/v2 → v3 migration, CRUD operations, save/load, backups, test-mode setup, collapse-state pruning and backup skip
+- `pkg/config/` — 105 tests: config parsing, v1/v2 → v3 migration, CRUD operations, save/load, backups, test-mode setup, layout-state pruning (folds, sidebar, the view of a deleted account), a rename that keeps its view, and backup skip for layout and theme saves
 - `pkg/credential/` — 32 tests: token resolution, validation, OS-default helpers, `Check`/`FixGlobalGCMConfig` (global gitconfig health for GCM), cancellation, compare-first maintenance, atomic token-file updates
 - `pkg/doctor/` — 24 tests: tool table shape, install hints, lookups, per-credential-type prechecks, tool output decoding
 - `pkg/git/` — 33 tests: git subprocess operations, repo and profile URLs, nested repo discovery, cancellable fetches, config snapshots with includes and linked worktrees
@@ -28,18 +28,18 @@ Counts are top-level `func Test…` functions per package, from `grep -rc "^func
 - `pkg/update/` — 28 tests: semver parsing, version comparison, update check (mock API, a pending update reported on every check), major-version cap, artifact names, AppImage notify-only detection, install targets, relaunch command per platform and waiting for the old process to exit (plus the elevated Windows script, on Windows), checksum verification, release signature verification against signatures made by real `ssh-keygen` (wrong tag, tampered checksums, wrong namespace, foreign key, malformed), `allowed_signers` in sync with the embedded key, fail-closed download (missing, unreadable or invalid checksums or signature refuse the update, and a bad signature stops it before the artifact download)
 - `pkg/workspace/` — 7 tests: workspace discovery, cache refresh, extra folders, tentative containers
 
-### GUI tests — 62 tests (`cmd/gui/`)
+### GUI tests — 63 tests (`cmd/gui/`)
 
 Go-side logic of the Wails app that runs without a window:
 
 - Account and browser actions — account folder resolution, provider URLs, error paths for unknown accounts and repos
 - AI harness actions — detection, ordering, dedup, retired-harness pruning, `~/.local/bin` fallback, launcher default Profile
-- Experience mode — `ui_mode` defaults to Advanced, set/get validation, and onboarding writes Simple only on a new install
+- Experience mode and theme — `ui_mode` defaults to Advanced, set/get validation, and onboarding writes Simple only on a new install; `SetTheme` validates and persists the theme
 - Self-update — the AppImage build refuses `ApplyUpdate` before any download
 - Terminals — MSYS path and env sanitising for spawned terminals, and a first launch that never writes the legacy `global.terminals` list
-- Workspaces and containers — cache refresh, container flag persistence, extra folders, nested scan depth, absolute `clone_folder` for onboarded clones, collapse-state persistence and pruning
+- Workspaces and containers — cache refresh, container flag persistence, extra folders, nested scan depth, absolute `clone_folder` for onboarded clones, layout-state persistence and pruning (folds, sidebar and view)
 
-I cover startup snapshots and nonblocking workspace discovery in `cmd/gui/startup_test.go` and `cmd/gui/workspaces_test.go`, including stale scan inputs and concurrent config edits. `BenchmarkStartupSnapshot` measures snapshot construction separately from native rendering. I run pure frontend clone-tree and status-mapping regressions (`src/lib/repo-tree.test.mjs`, `src/lib/status.test.mjs`) with `npm test` in `cmd/gui/frontend`; `scripts/health.sh frontend-test` runs the same suite.
+I cover startup snapshots and nonblocking workspace discovery in `cmd/gui/startup_test.go` and `cmd/gui/workspaces_test.go`, including stale scan inputs and concurrent config edits. `BenchmarkStartupSnapshot` measures snapshot construction separately from native rendering. I run pure frontend regressions with `npm test` in `cmd/gui/frontend`: the clone tree and problems-first order (`src/lib/repo-tree.test.mjs`), status mappings, glossary labels, attention ranks and account health (`src/lib/status.test.mjs`), view resolution and the Needs attention list and counts (`src/lib/views.test.mjs`), Fetch all and Pull all runs and summaries (`src/lib/activity.test.mjs`), and the result cards (`src/lib/notices.test.mjs`); `scripts/health.sh frontend-test` runs the same suite.
 
 I cover refresh coordination and upstream probes without a Wails window, including overlapping triggers, bounded workers, cancellation, and stale config or credential results. Credential context tests use local provider servers and a stalled helper. Config snapshot and maintenance regressions use isolated Git config, include files, linked worktrees, and Trace2 process counts; token-file checks cover unchanged modification times, concurrent readers, rotation, permissions, and account separation.
 

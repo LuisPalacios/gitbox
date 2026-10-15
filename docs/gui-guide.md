@@ -59,7 +59,7 @@ The first time you open Gitbox, a short guided setup walks you through three ste
 
 If GCM isn't installed, step 2 shows how to install it and offers **Use a token instead**, which links to the page where you create a token and asks you to paste it. If sign-in fails, you can **Try again**, switch to a token, or go back with **Change details**.
 
-You never type an account key: Gitbox picks one for you, such as `github-alice`, which is also the account's folder name on disk. You can **Skip for now** at steps 2 and 3 and add accounts later. New installs start in Simple mode. If you quit after the first step, the next launch opens the main screen; finish from the **+** card.
+You never type an account key: Gitbox picks one for you, such as `github-alice`, which is also the account's folder name on disk. You can **Skip for now** at steps 2 and 3 and add accounts later. New installs start in Simple mode. If you quit after the first step, the next launch opens the main screen; finish from **Connect an account** in the sidebar.
 
 When I reopen Gitbox, I see configured clones, saved preferences, and known container nesting before status checks finish. Spinners show which clones still need checking or fetching in full, Simple, and compact views. A child from another source stays under its container; its actions and ownership still refer to its own source.
 
@@ -67,7 +67,7 @@ When I reopen Gitbox, I see configured clones, saved preferences, and known cont
 
 An account tells Gitbox who you are on a particular server. For example, your GitHub account, or your company's GitLab.
 
-In Simple mode, the **+** card runs the same connect and pick-projects steps as the first launch. In Advanced mode it opens the full form, which also offers SSH and lets you choose the account key. You'll fill in:
+In Simple mode, **Connect an account** in the sidebar runs the same connect and pick-projects steps as the first launch. In Advanced mode, **Add account** opens the full form, which also offers SSH and lets you choose the account key. You'll fill in:
 
 1. **Account key** — a short name you choose (e.g., `github-personal`). This also becomes the folder name on disk.
 2. **Provider** — pick your service (GitHub, GitLab, Gitea, Forgejo, or Bitbucket).
@@ -84,11 +84,11 @@ After creating your account, Gitbox needs a way to log in to your provider. Ther
 - **Token (Personal Access Token)** — You create a token on your provider's website and paste it into Gitbox. The app tells you exactly which URL to visit and what permissions to select.
 - **SSH** — Gitbox generates a key pair for you. You copy the public key and add it to your provider's settings. The app gives you the direct link.
 
-Once credentials are set up, the account card shows a **green badge** with the credential type — you're good to go. For more details on each type and what permissions to select, see [credentials.md](credentials.md).
+Once credentials are set up, the account's sidebar entry and card read **Credential works** next to a green mark — you're good to go. For more details on each type and what permissions to select, see [credentials.md](credentials.md).
 
 ## Step 3: Find and add projects
 
-Open an account's card (click its chip on the **Accounts** tab) and click **Find**, or pick **Find projects** from the account's ⋮ menu in the repo list. Gitbox contacts your provider and lists all the repositories visible to your account.
+Select the account in the sidebar and click **Find** on its card, or pick **Find projects…** from the account's ⋯ menu. Gitbox contacts your provider and lists all the repositories visible to your account.
 
 The discovery window features:
 
@@ -105,24 +105,30 @@ Discovery is **add-only** — it adds repos to your config but never removes the
 
 I close any dialog with **Escape** or by clicking outside it. Dialogs that are busy or that need an explicit choice (a running clone, a confirmation in progress) stay open until they finish. Account names, repo rows and organization badges also respond to **Enter** and **Space** when focused with **Tab**.
 
-### Understanding account cards
+### The sidebar
 
-Each account appears on the **Accounts** tab as a chip with its status dot and full name, only as wide as the name. Clicking a chip opens it in place into a two-line card: the status dot and the account name on top, the provider, credential badge and buttons below. The other accounts stay as chips. One card is open at a time; clicking outside it or pressing **Escape** folds it back into its chip. Here's what the card's elements mean:
+The sidebar on the left picks what the main area shows:
 
-- **Status dot** — takes the credential's color
-- **Account name** — click it to edit the account
-- **Provider** — the provider the account lives on
-- **Credential badge** — shows your credential type with a colored background:
-  - **Green** — everything is working
-  - **Orange** — there's a minor issue (e.g., limited permissions)
-  - **Red** — the credential is broken or expired
-  - **Blue "config"** — no credential set up yet; click it to get started
-- **Find** — discovers repos from your account (disabled if credentials aren't working)
-- **New** — creates a new repository on the provider (disabled if credentials aren't working)
+- **Needs attention** (Simple: **Needs you**) — first the accounts whose credential needs a fix, each with its fix button, then every repo that needs me, grouped as needs help, local work, behind, and not cloned. Each row names its account; I click the name to open that account. A clone nested in another clone shows an "in \<parent\>" tag. A row that turns fine while I watch, after a pull for example, stays in place, faded, until I leave the view. When nothing needs me, the view says so.
+- **All repos** (Simple: **All projects**) — every clone, grouped by account, problems first.
+- **Accounts** — one entry per account with its provider logo, a small health mark, its name, its health in words, and how many repos need me. I click one to open the account's view.
+- **Add account** (Simple: **Connect an account**) — see [Step 2](#step-2-add-accounts).
+- **Found on disk** (Simple: **Found on this computer**) — appears when clones on disk aren't in gitbox yet, and opens the adopt dialog (see [Adopting orphan repos](#adopting-orphan-repos)).
+- **Mirrors** and **Workspaces** under **More**, in Advanced only.
 
-Cards don't repeat clone health. The account's header in the repo list shows how many clones it holds and how many need attention.
+The button at the top left, or ⌘B on macOS and Ctrl+B elsewhere, folds the sidebar to an icon rail. The rail keeps the provider logos with their health mark and attention count; hovering one shows the account name and its health, and one click switches to it. In a window narrower than 780 px the sidebar always shows as the rail, and the button opens the full sidebar over the content until I pick a view.
 
-If a credential is missing or broken, the chip and the card turn **light red** so you notice right away.
+Gitbox remembers the last view and the folded sidebar across restarts (`global.collapsed.view` and `global.collapsed.sidebar` in `gitbox.json`). If that account no longer exists, or Simple can't show Mirrors or Workspaces, Needs attention opens instead. Renaming an account keeps its view.
+
+### Understanding the account card
+
+An account's view starts with a three-line card:
+
+1. **Health mark and name** on the left; I click the name to edit the account. The provider and the account ⋯ menu sit on the right.
+2. **Health in words**: Credential works, Works, with a warning, Offline · can't reach the server, Credential failed, or No credential set up (Simple: Connected, Can't connect right now, Needs reconnecting, Not connected). When something needs fixing, the button on the right does it: **Retry** checks an offline account again, and **Fix credential**, **Set up credential** or Simple's **Reconnect** opens the credential screen. In Advanced, hovering the words shows the credential type and its messages.
+3. **Counts**: how many repos the account holds and how many need me. **Find** discovers repos and **+ New** creates one, in both modes. Both are disabled, with the reason on hover, when the credential can't reach the provider API.
+
+A missing or broken credential tints the card **light red**, and a warning tints it orange. The account's clones follow the card, problems first. A clone nested in another account's container shows here with an "in \<parent\>" tag; **All repos** keeps it under its container.
 
 ### Keeping projects in sync
 
@@ -130,23 +136,32 @@ If a credential is missing or broken, the chip and the card turn **light red** s
 
 Gitbox watches your projects and shows their status:
 
-- **Synced** (green) — up to date with the remote
-- **Behind** (magenta) — the remote has new commits you can pull
-- **Local changes** (orange) — you have uncommitted work
-- **Ahead** (blue) — you have commits that haven't been pushed
-- **Not local** (grey) — the repo hasn't been cloned yet
+- **Up to date** (green) — matches the remote
+- **N behind** (magenta) — the remote has N new commits you can pull
+- **N local changes · protected** (orange) — you have uncommitted work, and nothing in Gitbox touches it
+- **N ahead** (blue) — you have N commits that haven't been pushed
+- **Diverged**, **Conflict**, **Upstream gone** and **Error** (red) — the repo needs a look; click it for the details
+- **Not cloned** (grey) — the repo isn't on this computer yet; **Clone** downloads it
 - **Local branch** (green) — on a feature branch with no upstream tracking (normal)
 - **No upstream** (grey) — default branch has no upstream tracking (needs attention)
 
+Rows with nothing to do fade until I hover them, so the problems stand out.
+
 When a repo is checked out on a non-default branch, a small branch badge appears next to the repo name (e.g., `feature-xyz`). Repos on the default branch show no badge. Detached HEAD state shows a red `detached` badge.
 
-#### Pull All
+#### Pull all
 
-Click the **Pull All** button (down-arrow icon) in the top bar to bring everything up to date in one click. It clones missing repos and pulls repos that are safely behind (skipping anything with local changes).
+Click the **Pull all** button (down-arrow icon) in the top bar to bring everything up to date in one click. It clones missing repos and pulls repos that are behind with fast-forward only (`git pull --ff-only`), so it never merges and never touches local changes. A behind row's own **Pull** button does the same for one repo. In Simple, the button is **Update all**.
 
-#### Fetch All
+#### Fetch all
 
-Click the **Fetch All** button (↻ icon) to check all remotes for new commits without pulling. This updates the status indicators so you can see what's changed before deciding to pull.
+Click the **Fetch all** button (↻ icon) to check all remotes for new commits without pulling. This updates the status indicators so you can see what's changed before deciding to pull. In Simple, the button is **Check all**.
+
+#### Activity and result cards
+
+While Fetch all or Pull all runs, a strip under the top bar says what it covers, such as "Fetching 17 clones across 3 accounts" or "Pulling 2 (fast-forward only) and cloning 1", with a progress bar. When it ends, a result card in the bottom-right corner sums it up: how many clones it fetched, how many are now behind and ready to pull, which ones it skipped because their account is offline, any failures with the first error, and that local changes were left untouched. Success cards go away after a few seconds; a card with a failure stays until I close it. Startup and periodic fetches leave a card only when something changed or failed.
+
+Other actions report their errors the same way, for example a tool that doesn't open or a mirror that can't be added.
 
 #### Periodic fetch
 
@@ -177,7 +192,7 @@ For each adopted clone, Gitbox adds it to `gitbox.json` under the matched source
 
 ### Creating repositories
 
-Click **New** on an open account card, or pick **Create repo** from the account's ⋮ menu, to create a new repository directly on the provider without leaving Gitbox.
+Click **+ New** on the account card, or pick **Create repo…** from the account's ⋯ menu, to create a new repository directly on the provider without leaving Gitbox.
 
 The modal asks for:
 
@@ -193,7 +208,7 @@ Repo creation is supported on all providers (GitHub, GitLab, Gitea, Forgejo, and
 
 ### Editing an account
 
-Click the account name on any card to open the edit screen. You can change:
+Click the account name on its card, or pick **Edit account…** from the account's ⋯ menu, to open the edit screen. You can change:
 
 - **Account key** — if you rename it, Gitbox takes care of everything: it renames the folder on disk, updates your SSH keys and config, migrates stored tokens, and fixes all internal references.
 - **Provider** — in case you picked the wrong one originally.
@@ -201,7 +216,7 @@ Click the account name on any card to open the edit screen. You can change:
 
 ### Managing credentials
 
-Click the credential badge on a card to open the credential management screen. For details on each credential type and what permissions they need, see [credentials.md](credentials.md).
+Pick **Change credential…** from the account's ⋯ menu to open the credential management screen. When the credential needs a fix, the button on the account card and in Needs attention opens the same screen; in Simple, the menu offers **Reconnect…** instead, and only when the credential is broken. For details on each credential type and what permissions they need, see [credentials.md](credentials.md).
 
 #### Changing credential type
 
@@ -211,42 +226,33 @@ Use the dropdown to switch between GCM, Token, and SSH. Click **Setup** to apply
 
 When viewing the current credential type, click the red **Delete** button to remove all stored authentication data. This is useful when you need a clean start — for example, if a token expired or you want to start fresh.
 
-After deleting, the card turns red and the badge shows "config". Click it to set up a fresh credential.
+After deleting, the card turns red and reads **No credential set up**. Click **Set up credential** to start fresh.
 
 ## Step 5: Mirrors (optional)
 
 Mirrors keep backup copies of repos on another provider — for example, pushing from a homelab Forgejo to GitHub. Repos are mirrored server-side via provider APIs, not cloned locally.
 
-### Accounts and mirrors tabs
+### The Mirrors view
 
-The main screen uses two tabs above the cards section:
-
-- **Accounts** (default) — shows account cards and the repo list underneath. This is where you manage accounts, discover projects, and create repos.
-- **Mirrors** — shows mirror group cards and the mirror detail list underneath. Each mirror group appears as a chip that opens into a card with its active/total ratio.
-
-Switch tabs by clicking the tab buttons. The **summary footer** at the bottom always shows both repo and mirror counts regardless of which tab is active.
-
-The cards panel under the tabs folds away so the list gets the room. It starts folded. I click the active tab to unfold it, and again to fold it; clicking another tab switches and unfolds. Gitbox remembers the choice across restarts (`global.collapsed.cards_open` in `gitbox.json`). While folded, each tab carries a summary: one credential-colored dot per account, the `active/total` mirrors, and the workspace count.
-
-The panel also unfolds on its own, without changing the remembered choice, when there are no accounts yet, when an account's credential is missing or broken, and in delete mode, where the ✕ buttons live on the chips and cards. Folding it dismisses the credential alert until the next launch.
+In Advanced, **Mirrors** under **More** in the sidebar opens the Mirrors view: a header with the **Discover** and **Check all** buttons, the mirror group cards, and the mirror detail list underneath. Each mirror group appears as a chip that opens into a card with its active/total ratio. The **summary footer** at the bottom always shows both repo and mirror counts, whatever the view.
 
 ### Mirror cards
 
-Each mirror group shows as a chip (status dot and account pair) that opens into a card, like account cards. The card shows:
+Each mirror group shows as a chip (status dot and account pair) that opens into a card; clicking outside it or pressing **Escape** folds it back. The card shows:
 
 - **Status dot** — green if all repos are active, red if errors exist, amber otherwise
 - **MIRROR label** and the `active/total` mirrors in the group, colored like the dot
 - **Account pair** (e.g., `forgejo ↔ github`)
 - **Check** button — verifies sync state by comparing HEAD commits on both sides
-- A **+** card is always visible on the Mirrors tab to create a new mirror group
+- A **+** chip after the cards creates a new mirror group
 
 ### Mirror health ring
 
-In Advanced, the top bar shows compact rings without labels. The repo ring holds a branch icon and fills as clones get synced. When mirrors are configured, a second **health ring** with a two-arrow icon fills as mirrors turn active and turns red if any mirror has errors. A small badge on each ring counts what is not there yet, and hovering a ring shows the full `synced/total` or `active/total` line.
+In Advanced, the top bar shows compact rings without labels. The repo ring holds a branch icon and fills as clones get up to date. When mirrors are configured, a second **health ring** with a two-arrow icon fills as mirrors turn active and turns red if any mirror has errors. A small badge on each ring counts what is not there yet, and hovering a ring shows the full `N of total up to date` or `active/total` line.
 
 ### Mirror actions
 
-The Mirrors tab provides two section-level buttons:
+The Mirrors view header provides two buttons:
 
 - **Discover** — scans all account pairs to detect existing mirror relationships, with decreasing confidence: push mirror API (confirmed), pull mirror flag (likely), and name match (possible). During scanning, a progress bar shows per-account progress (indeterminate during repo listing, determinate during analysis). When results appear, repos already in your config are marked as **"configured"** and dimmed. Each unconfigured result has an individual **+ Add** button to add it to your config one by one, or use **Apply to config** to add all at once.
 - **Check all** — checks sync status for every mirror group.
@@ -258,22 +264,22 @@ Below the mirror cards, each group expands into a detail list showing individual
 - Direction label (e.g., `origin → backup (mirror)`)
 - Sync status (Synced OK, Backup is behind origin, etc.)
 - Warning icon if the backup repo is public
-- **Setup** button for pending repos that haven't been configured yet via API
+- **Setup** button for repos that haven't been configured yet via API
 - **+ Repo** button to add new repos to the group
 
 ## Step 6: Workspaces (read-only)
 
-The **Workspaces** tab next to Accounts and Mirrors lists discovered VS Code `.code-workspace` files. Workspaces are read-only: the GUI discovers existing files, lists them with their resolved member clones, and opens one in my editor. It never creates, edits, generates, or deletes them — I own those files. Each entry has an **Open** button that opens the `.code-workspace` in the first editor in `global.editors`; the tab's **Discover** button rescans on demand.
+The **Workspaces** view, under **More** in the sidebar in Advanced, lists discovered VS Code `.code-workspace` files. Workspaces are read-only: the GUI discovers existing files, lists them with their resolved member clones, and opens one in my editor. It never creates, edits, generates, or deletes them — I own those files. Each entry has an **Open** button that opens the `.code-workspace` in the first editor in `global.editors`; the view's **Discover** button rescans on demand.
 
 ### Auto-discovery on startup
 
-Whenever I drop a `*.code-workspace` file under the gitbox-managed folder (or a configured extra folder) — or carry one over from another machine — the GUI picks it up: the cached list shows instantly at launch, then a background pass refreshes it and the tab updates if anything changed. Discovery walks `global.folder` and every `global.extra_folders` root for `*.code-workspace` files. Each file's folder references are resolved back to known clones by a deepest-prefix path match, and the cache in `gitbox.json` is only rewritten when something changed.
+Whenever I drop a `*.code-workspace` file under the gitbox-managed folder (or a configured extra folder) — or carry one over from another machine — the GUI picks it up: the cached list shows instantly at launch, then a background pass refreshes it and the view updates if anything changed. Discovery walks `global.folder` and every `global.extra_folders` root for `*.code-workspace` files. Each file's folder references are resolved back to known clones by a deepest-prefix path match, and the cache in `gitbox.json` is only rewritten when something changed.
 
 ### Non-standard clones & multi-repo containers
 
 A **multi-repo container** is a managed clone that holds other clones nested in its working tree (for example, a project repo whose `.code-workspace` ties together several sibling clones). When a clone looks like one — it has a `.code-workspace` at its root but isn't flagged yet — its row shows an inline **onboard nested clones** hint. Clicking it flags the clone as a container, scans its working tree, and opens the adopt modal with the nested clones it finds; you confirm which to onboard. Nested clones are adopted in place under their real account/org (stored with an absolute `clone_folder` inside the container, never relocated), and the hint is replaced by a **container** badge.
 
-You can also manage this from the repo row's kebab menu (⋮) — **Mark as multi-repo container**, **Unmark as multi-repo container**, and **Re-scan for nested clones** (shown once a clone is a container) — or with the **Multi-repo container** checkbox in the repo detail panel. The **Change root folder** dialog manages **extra scan folders** (additional roots scanned for clones and `.code-workspace` files) and the **nested scan depth** (how many levels below a container Gitbox descends, default 1 — the container's immediate children; raise it to reach clones nested deeper).
+You can also manage this from the repo row's ⋯ menu, under **Maintenance** — **Mark as multi-repo container**, **Unmark as multi-repo container**, and **Re-scan for nested clones** (shown once a clone is a container) — or with the **Multi-repo container** checkbox in the repo detail panel. The **Change root folder** dialog manages **extra scan folders** (additional roots scanned for clones and `.code-workspace` files) and the **nested scan depth** (how many levels below a container Gitbox descends, default 1 — the container's immediate children; raise it to reach clones nested deeper).
 
 The standard layout is `global.folder / <account> / <org|user> / repo`. Clones found in an extra scan folder show up in the orphans modal and are onboarded **in place** with an absolute `clone_folder` — Gitbox never moves them.
 
@@ -281,32 +287,33 @@ The standard layout is `global.folder / <account> / <org|user> / repo`. Clones f
 
 ### Simple and Advanced modes
 
-Gitbox has two experiences. **Simple** is for people who don't know git and only want their projects safe. **Advanced** shows every git detail and tool. I switch with the toggle in the top bar, left of the settings gear: grey is Simple, green is Advanced. New installs start in Simple; configs from before the setting stay in Advanced. The choice is saved as `global.ui_mode` in `gitbox.json`.
+Gitbox has two experiences. **Simple** is for people who don't know git and only want their projects safe. **Advanced** shows every git detail and tool. I switch with the toggle in the top bar, left of the settings gear: grey is Simple, red is Advanced, the mode with destructive power. New installs start in Simple; configs from before the setting stay in Advanced. The choice is saved as `global.ui_mode` in `gitbox.json`.
 
-In Simple, every project answers one question, "is my work safe?", with one of five states:
+In Simple, every project answers one question, "is my work safe?", with one of six states:
 
 - **Saved** — everything is on the server.
-- **Not saved yet** — this computer has changes the server doesn't (hover for the detail). I open the project with my AI and ask it to save them.
-- **Newer version online** — the server has newer work. Button: **Update**. Gitbox never updates on its own.
+- **Work in progress · N files safe here** — files changed on this computer and not on the server yet. I open the project with my AI and ask it to save them.
+- **Saved here, not uploaded** — saved changes that haven't reached the server (hover for the detail).
+- **Newer version online** — the server has newer work. Button: **Update**, which only adds the newer version and never touches my work. Gitbox never updates on its own.
 - **Only online** — the project isn't on this computer yet. Button: **Download**.
 - **Needs help** — something went wrong, for example both copies changed. I click the project to see what's wrong and open it with my AI to fix it.
 
 Every project on this computer has three icon buttons, in both Simple and Advanced: my first AI harness, my first editor, and my default terminal profile. Each shows the tool's logo when gitbox knows it (Claude, Codex, Gemini, Cursor, VS Code, Zed, and every terminal app gitbox detects) or a generic icon, and its name on hover. Names show without the organization prefix; hovering a name shows it in full. The ⋯ menu keeps Open on the web, the folder, editors, AI harnesses, and **Delete from this computer…**.
 
-Simple hides the rest: the Mirrors and Workspaces tabs, Fetch All, delete mode, selection mode, the compact view and theme buttons (theme stays in Settings), PR, workspace, container and branch badges, ahead, behind and changed counts, and the per-row fetch button. A credential badge appears only when a credential breaks, as **Reconnect**. Settings hides the config file, PR reviews, global gitignore and Terminals rows. The compact view is the same in both modes.
+Simple hides the rest: the Mirrors and Workspaces views, delete mode, the compact view and theme buttons (theme stays in Settings), PR, workspace, container and branch badges, ahead, behind and changed counts, and the per-row fetch button. The top bar keeps **Check all** and **Update all**. Account health reads in plain words, and **Reconnect** appears when a credential breaks. Settings hides the config file, PR reviews, global gitignore and Terminals rows. The compact view is the same in both modes.
 
 ### Full view
 
-The full dashboard shows the top bar with health rings, the tab bar (Accounts/Mirrors/Workspaces), the foldable cards panel, repo or mirror detail lists, and the summary footer. Action buttons in the top bar include Pull All, Fetch All, Delete mode, and Compact view.
+The full dashboard shows the top bar with health rings, the sidebar, the selected view, and the summary footer. Action buttons in the top bar include Pull all, Fetch all, Delete mode, Compact view, the theme, the Simple/Advanced switch and Settings; the button at the far left folds the sidebar. The window opens 1040 px wide the first time and can shrink to 640 × 480; the content stops at 1100 px in a wider window.
 
 ### Collapse and expand
 
-The repo list folds at two levels:
+The **All repos** view folds at two levels, and an account's view folds parent clones too:
 
-- **Account groups** — click an account's header bar or its name to fold its clone list. The header always shows how many clones it holds and how many need attention, folded or not, so a problem never hides behind a fold. The ⋮ menu on the header keeps working and never folds the group.
-- **Clones with clones below them** — any clone that has nested clones under it gets a ▾ chevron before its status dot. Click the chevron or the clone's name to fold everything below, at any depth. A folded row shows how many clones it hides and how many of them need attention. Neither opens the repo detail; in workspace-selection mode the name still selects the clone.
+- **Account groups** — click an account's header bar or its name to fold its clone list. The header always shows how many clones it holds and how many need attention, folded or not, so a problem never hides behind a fold. The ⋯ menu on the header keeps working and never folds the group.
+- **Clones with clones below them** — any clone that has nested clones under it gets a ▾ chevron before its status dot. Click the chevron or the clone's name to fold everything below, at any depth. A folded row shows how many clones it hides and how many of them need attention. Neither opens the repo detail.
 
-Gitbox remembers what I fold across restarts (`global.collapsed` in `gitbox.json`) and forgets entries for accounts or clones I delete or rename. The compact view keeps its own per-account expansion.
+Gitbox remembers what I fold across restarts, along with the sidebar and the last view (`global.collapsed` in `gitbox.json`), and forgets entries for accounts or clones I delete or rename. The compact view keeps its own per-account expansion.
 
 ### Compact view
 
@@ -331,7 +338,7 @@ Click the **gear icon** to open the settings panel:
 - **Periodic fetch** — automatic fetch interval (off, 5m, 15m, 30m)
 - **Run at startup** — launch Gitbox automatically when you log in (platform dependent)
 - **System check** — **Run** opens a report of every external tool gitbox uses (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, and `wsl` on Windows), where it's installed, its version, and — for anything missing that your config needs — an install command. Each tool is marked ok, missing (required by your config), or optional.
-- **Terminals** — **Manager** opens the Terminal Profile editor in its own OS window. Three sections: detected Terminal apps (read-only), detected Shells (read-only), and Profiles (the launchable Terminal × Shell pairs the kebab menu offers). Each terminal and profile row leads with the terminal app's logo. Toggle Default / Preferred / Hidden per row, edit a Profile's name + Terminal + Shell binding, add user-defined Profiles, or delete those you added. Re-detect re-runs the host probe to pick up new shells, fresh WezTerm `launch_menu` entries, or freshly installed terminals without restarting the GUI. The window is owned by the main app — closing the main window closes the Manager too.
+- **Terminals** — **Manager** opens the Terminal Profile editor in its own OS window. Three sections: detected Terminal apps (read-only), detected Shells (read-only), and Profiles (the launchable Terminal × Shell pairs the ⋯ menu offers). Each terminal and profile row leads with the terminal app's logo. Toggle Default / Preferred / Hidden per row, edit a Profile's name + Terminal + Shell binding, add user-defined Profiles, or delete those you added. Re-detect re-runs the host probe to pick up new shells, fresh WezTerm `launch_menu` entries, or freshly installed terminals without restarting the GUI. The window is owned by the main app — closing the main window closes the Manager too.
 
   When I click a `WezTerm + <Shell>` or `Windows Terminal + <Shell>` Profile, gitbox first looks up a matching entry in my own terminal config (`wezterm.lua` `launch_menu` for WezTerm, `settings.json` `profiles.list` for Windows Terminal). On a hit, gitbox launches that entry — for WezTerm it builds `wezterm-gui.exe start --cwd <path> -- <entry argv>` and splices the entry's `set_environment_variables` on top of the parent env; for Windows Terminal it runs `wt.exe -w 0 nt --profile "<name>" -d <path>` so WT applies my profile's font, colors, and `commandline` without spawning a second window when `firstWindowPreference: persistedWindowLayout` is set. With no match (or no config / terminal not installed), gitbox falls back to its generic argv template. Note: WezTerm picker-callback logic in `wezterm.lua` (per-entry `color_scheme`, custom `mux.spawn_window` hooks, etc.) only fires when the entry is chosen from WezTerm's own launcher menu — gitbox spawning the pane externally bypasses those callbacks. See [Architecture › How launch matching works](architecture.md#how-launch-matching-works) for the matcher rules (em-dash suffix, pattern fallback for `pwsh` / `cmd` / WSL distros, etc.).
 
@@ -342,35 +349,36 @@ The add-account and change-credential flows run the same check automatically: if
 
 ### Clone actions
 
-Each cloned repo row has a **kebab menu (⋮)** on the right side. The menu is split into three sections so the items you use most aren't buried behind scrolling:
+Each cloned repo row has a **⋯ menu** on the right side. It is one flat list in sections, with no submenus:
 
-1. **Always visible** — `🌐 Open in browser` and `📁 Open folder`. The browser entry opens `<account url>/<owner>/<name>`, resolved on the Go side from the saved config, and shows an error dialog if the row can't be found there. Every path-based entry (folder, editor, terminal, profile, AI harness) shows a "clone first" dialog instead of doing nothing when the clone hasn't finished or its status hasn't loaded yet.
-2. **Defaults** — one entry per category: `>_ <default profile>` (the Terminal Profile marked Default, shown by its name), `✎ Open with <editors[0]>`, and `🤖 Open with <ai_harnesses[0]>`. An entry is hidden when that category has nothing configured.
-3. **Submenus** — `Terminals ▸`, `Editors ▸`, `AI Harnesses ▸`. `Terminals ▸` lists the profiles marked Preferred, other than the default, and appears when there is at least one. Terminal entries lead with the terminal app's logo. `Editors ▸` and `AI Harnesses ▸` only appear when the category has **two or more** entries — with just one, the default already covers it. Click the submenu to expand (not hover), click another submenu to switch, click outside or pick an item to close everything.
+1. **Open** — **Navigate to repo** and **Reveal in Finder** (Explorer, or the file manager on Linux). The browser entry opens `<account url>/<owner>/<name>`, resolved on the Go side from the saved config, and shows an error card if the row can't be found there. Every path-based entry (folder, editor, terminal, AI harness) shows a "clone first" message instead of doing nothing when the clone hasn't finished or its status hasn't loaded yet.
+2. **Open with** — every AI harness and editor, then the default terminal profile and the ones marked Preferred, each with its logo. The tool the row's own launch button uses carries a **default** tag.
+3. **Maintenance** (Advanced) — **Sweep branches**, **Move repository…**, **Mark as multi-repo container** or **Unmark as multi-repo container**, and **Re-scan for nested clones**.
+4. **Delete from this computer…** — in both modes.
 
-Below the submenus:
+Next to the ⋯ menu, every cloned row has three launch buttons: the first AI harness, the first editor and the default terminal profile (Simple shows the AI harness and editor too). In Maintenance:
 
 - **🧹 Sweep branches** — finds and deletes stale local branches. Shows a confirmation dialog with the list of branches before deleting anything. The current branch and the default branch are never touched. Three kinds of stale branch are detected:
   - **Gone** — the remote tracking branch was deleted (e.g. a PR merged and its branch deleted on the server); deleted with `git branch -D`.
   - **Merged** — fully merged into the default branch; deleted with `git branch -d`.
   - **Squashed** — squash-merged or rebase-merged on the server (different commits, same changes); deleted with `git branch -D`.
 
-To change which editor or AI harness appears as the top-level default, reorder the array in `gitbox.json` — the first entry is always the default. The terminal default is the profile marked Default in **Settings → Terminals → Manager**.
+To change which editor or AI harness the row's launch button uses (the **default** tag), reorder the array in `gitbox.json` — the first entry is always the default. The terminal default is the profile marked Default in **Settings → Terminals → Manager**.
 
 Terminal detection covers Windows Terminal, WezTerm, Alacritty, Tabby, ConEmu, Hyper, Mintty, and ZOC on Windows; iTerm2, Terminal, Warp, Kitty, Ghostty, WezTerm, and Alacritty on macOS; GNOME Terminal, Konsole, Terminator, Foot, Alacritty, Kitty, Tilda, Guake, and xterm on Linux. Shell detection covers PowerShell 7/5, Command Prompt, Git Bash, and WSL on Windows; Zsh, Bash, Fish, and Dash on macOS; Bash, Zsh, Fish, Ksh, and Dash on Linux. Editors cover VS Code, Cursor, Zed, and anything else discoverable on `PATH`. AI harnesses (Claude Code, Codex, Antigravity, Aider, Cursor Agent, OpenCode) run inside the default Terminal Profile's shell — see [AI harness actions](#ai-harness-actions) below.
 
 ### Account actions
 
-Each source group in the repo list has a **kebab menu (⋮)** on the right side of its header (the account title above the list of clones). The account kebab uses the **same structure and icons** as the repo-row kebab — top-level defaults, per-category submenus, same hide rules — scoped to the account's parent folder (`<global.folder>/<account-key>`) rather than a single clone:
+Each account has a **⋯ menu**: on its card in the account's view, and on its group header in **All repos**. It uses the same flat sections as the repo menu, scoped to the account's parent folder (`<global.folder>/<account-key>`) rather than a single clone:
 
-- **🌐 Open in browser** — opens the provider profile/org page for the account (e.g. `https://github.com/<username>`, the GitLab group page, the Gitea/Forgejo user page).
-- **📁 Open folder** — opens the account's parent folder in the OS file manager. The folder is the natural workspace root for cross-repo greps, multi-repo edits, or shell loops. If the folder doesn't exist yet (nothing cloned under that account), the action errors silently — clone at least one repo first.
-- **>\_ Open in \<terminal\>**, **✎ Open in \<editor\>**, **🤖 Open in \<AI harness\>** — same default-first entries as the repo kebab, plus the category submenus when you have multiple options configured. Sweep branches is dropped here — it's meaningful only on a specific clone.
-- **🔍 Find projects** and **＋ Create repo** — the account card's **Find** and **New** actions, reachable while the cards panel is folded. Both are disabled when the account's credential can't reach the provider API.
+- **Navigate to account** — opens the provider profile/org page for the account (e.g. `https://github.com/<username>`, the GitLab group page, the Gitea/Forgejo user page).
+- **Reveal in Finder** (Explorer, or the file manager) — opens the account's parent folder in the OS file manager. The folder is the natural workspace root for cross-repo greps, multi-repo edits, or shell loops. If the folder doesn't exist yet (nothing cloned under that account), the action errors silently — clone at least one repo first.
+- **Open with** — the same terminal, editor and AI harness entries as the repo menu. Sweep branches is dropped here — it's meaningful only on a specific clone.
+- **Account** — **Find projects…** and **Create repo…**, disabled when the account's credential can't reach the provider API; **Edit account…**; and **Change credential…** in Advanced, or **Reconnect…** in Simple when the credential is broken.
 
 Editors are auto-detected on startup by scanning PATH. Gitbox writes the detected editors to `global.editors` in your config file with their full paths. You can reorder entries or add custom editors by editing the config — the menu always reflects the config order.
 
-Terminals use profiles instead. On startup gitbox detects the installed terminal apps and shells, writes them to `global.terminal_apps` and `global.shells`, and pairs them into launchable entries in `global.terminal_profiles`. On Windows a profile pairs a terminal with a shell, for example Windows Terminal + PowerShell 7. On macOS and Linux a profile is the terminal alone and runs your login shell. I manage them in **Settings → Terminals → Manager**: mark one profile Default (the kebab's top-level terminal entry), mark others Preferred (the `Terminals ▸` submenu), hide the ones I never use, or add my own. Re-detection keeps my flags, renames, hand-edited args, and the profiles I added.
+Terminals use profiles instead. On startup gitbox detects the installed terminal apps and shells, writes them to `global.terminal_apps` and `global.shells`, and pairs them into launchable entries in `global.terminal_profiles`. On Windows a profile pairs a terminal with a shell, for example Windows Terminal + PowerShell 7. On macOS and Linux a profile is the terminal alone and runs your login shell. I manage them in **Settings → Terminals → Manager**: mark one profile Default (the row's terminal button and the menu's **default** tag), mark others Preferred (listed under **Open with**), hide the ones I never use, or add my own. Re-detection keeps my flags, renames, hand-edited args, and the profiles I added.
 
 On Windows, bare-shell profiles that open a shell without a terminal app (`pwsh.exe`, `powershell.exe`, `cmd.exe`, `wsl.exe`) are hidden by default, and only show up on their own when no modern terminal is installed. Un-hide one in the Manager for a direct shortcut. The launcher wraps them in `cmd.exe /C start "" /D <path>`, which gives each shell a fresh console and sets the starting directory.
 
@@ -397,7 +405,7 @@ Two equally clean fixes:
 
 ### AI harness actions
 
-AI CLI harnesses (Claude Code, Codex, Antigravity, Aider, Cursor Agent, OpenCode, …) are interactive shell processes — they need a terminal to run in. Gitbox adds one **Open in \<harness\>** entry per configured harness to both the repo kebab and the source-header (account) kebab. Clicking an entry opens the **default Terminal Profile** in the target folder and runs the harness inside that profile's shell, so the same terminal and shell you get from `>_ <profile>` hosts the harness.
+AI CLI harnesses (Claude Code, Codex, Antigravity, Aider, Cursor Agent, OpenCode, …) are interactive shell processes — they need a terminal to run in. Gitbox adds one entry per configured harness under **Open with** in both the repo ⋯ menu and the account ⋯ menu. Clicking an entry opens the **default Terminal Profile** in the target folder and runs the harness inside that profile's shell, so the same terminal and shell you get from `>_ <profile>` hosts the harness.
 
 I pick the host by choosing the default profile in **Settings → Terminals → Manager** (the same default the launcher uses). To switch hosts, mark a different profile as default.
 
@@ -411,7 +419,7 @@ When a detected harness is uninstalled, the next pass flags its entry `missing: 
 
 The set of harnesses gitbox tries to auto-detect is maintained as a markdown table embedded into the binary. The authoritative list lives at [`pkg/harness/tools-directory.md`](../pkg/harness/tools-directory.md) — to add or remove a detected harness, edit that file. A row is auto-detected when its `Category` is `Agentic CLI`, `AI Harness`, `Headless Harness`, `Agentic IDE`, or `Agentic IDE / CLI`, and its `Executable / CLI Command` cell contains one or more backticked identifiers (e.g. `` `claude` ``, `` `aider` ``, `` `cursor` ``). A cell with several names, such as "`` `agent` `` or `` `cursor-agent` ``" for the renamed Cursor CLI, probes them in order so either install resolves. The trailing `Well-known locations` column lists per-tool install directories outside PATH, each as its own backticked token with `~`, `$VAR` and `%VAR%` expanded at probe time. Framework, orchestrator, and cloud-platform rows are documented for reference but skipped by the detector — they don't launch from a terminal in a folder. Rows whose `Category` is `Retired CLI` (Gemini CLI, retired in favour of Antigravity CLI) are skipped too, and any `global.ai_harnesses` entry carrying a retired name is removed on the next sync so a dead binary stops showing up in the menu. Agentic IDEs (Cursor, Devin Desktop) are treated as AI tools, not editors: the "Open in Cursor" entry will therefore appear under the AI harness section of the menu, not the editor section.
 
-In the account kebab, the same entries appear with identical ordering — the only runtime difference is that the working directory is `<global.folder>/<account-key>` (the account's parent folder) instead of a single clone. If the parent folder doesn't exist yet (nothing cloned under that account), the action errors with "account folder does not exist" — clone at least one repo first.
+In the account menu, the same entries appear with identical ordering — the only runtime difference is that the working directory is `<global.folder>/<account-key>` (the account's parent folder) instead of a single clone. If the parent folder doesn't exist yet (nothing cloned under that account), the action errors with "account folder does not exist" — clone at least one repo first.
 
 ### Update notification
 
@@ -423,13 +431,13 @@ The updater follows the release GitHub marks as latest, so a v1 GUI moves to v2 
 
 ### Deleting repos and accounts
 
-Click the **trash icon** in the top bar to enter delete mode. Red X buttons appear on account cards, mirror group cards, and repo rows. Click one to remove it. Account deletion also removes its source and local clone folders.
+Click the **trash icon** in the top bar to enter delete mode. Red ✕ buttons appear on the account card in an account's view, on mirror group cards, and on repo rows. Click one to remove it. Account deletion also removes its source and local clone folders.
 
 Exit delete mode by clicking the trash icon again.
 
 ### Move a repository across accounts / providers
 
-Open the kebab (⋮) on any repo row and pick **Move repository…**. The entry is disabled when the clone isn't clean and in sync — the tooltip explains why. The modal:
+Open the ⋯ menu on any repo row and pick **Move repository…** under **Maintenance**. The entry is disabled when the clone isn't clean and in sync — the tooltip explains why. The modal:
 
 1. **Form** — pick the destination account + owner (personal or org, loaded asynchronously), confirm the new repo name, set visibility, and optionally opt in to deleting the source repo and/or the local clone after a successful move. Both delete toggles are unchecked by default.
 2. **Confirm** — a red-bordered summary listing every destructive side effect. Type the source repo key (e.g. `acme/widget`) to unlock the **Move** button.
@@ -464,7 +472,7 @@ The automatic startup check can be toggled via **Settings → Global gitignore �
 - **Window position** — Gitbox remembers your window size and position. If you disconnect a secondary monitor and the window would open off-screen, it automatically centers on your main display.
 - **External edits** — if you edit `gitbox.json` by hand, the GUI picks up changes automatically when the window regains focus.
 - **Same config as v1** — the app reads `~/.config/gitbox/gitbox.json`, the same file v1 used. The format stays at version 3, so upgrading from v1 needs no migration.
-- **Automatic backups** — every time a meaningful change is saved, Gitbox creates a dated backup (e.g., `gitbox-20260401-143025.json`) in the same directory. The 10 most recent backups are kept automatically; older ones are pruned. The GUI's corruption-recovery screen can restore from any of them in one click. Window-position-only saves (moving or resizing the app) do not create a backup — they are cosmetic churn and would rotate real pre-corruption copies out of the ring.
+- **Automatic backups** — every time a meaningful change is saved, Gitbox creates a dated backup (e.g., `gitbox-20260401-143025.json`) in the same directory. The 10 most recent backups are kept automatically; older ones are pruned. The GUI's corruption-recovery screen can restore from any of them in one click. Saves that only change the window position, the folds, the sidebar, the last view or the theme do not create a backup — they are cosmetic churn and would rotate real pre-corruption copies out of the ring.
 
 ## See also
 

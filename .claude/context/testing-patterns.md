@@ -76,7 +76,7 @@ I inject refresh work through `refreshHooks` in `cmd/gui` tests and use channels
 
 ## Frontend tree and status tests
 
-I run `npm test` from `cmd/gui/frontend` for pure clone-tree regressions, including cross-source ownership, duplicate prevention, nested collapse state, and recovery from stale parent references. `src/lib/status.test.mjs` covers the status mappings in `src/lib/status.ts`. Each test file transpiles its TypeScript module with `typescript` and imports it from a data URL, so the module under test must have no runtime imports. I keep these tests independent of Wails and credentials. `scripts/health.sh frontend-test` runs the same suite.
+I run `npm test` from `cmd/gui/frontend` for pure clone-tree regressions, including cross-source ownership, duplicate prevention, nested collapse state, and recovery from stale parent references. `src/lib/status.test.mjs` covers the status mappings and account health in `src/lib/status.ts`, `src/lib/views.test.mjs` the view resolution and Needs attention list in `src/lib/views.ts`, `src/lib/activity.test.mjs` the Fetch all and Pull all runs in `src/lib/activity.ts`, and `src/lib/notices.test.mjs` the result cards in `src/lib/notices.ts` (it uses `mock.timers` for auto-dismiss and re-imports the module per test for a fresh list). Each test file transpiles its TypeScript module with `typescript` and imports it from a data URL, so the module under test must have no runtime imports. I keep these tests independent of Wails and credentials. `scripts/health.sh frontend-test` runs the same suite.
 
 ## Integration tests and the fixture gate
 
