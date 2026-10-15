@@ -301,7 +301,7 @@
 
 <div class="repo-row" class:repo-row-clickable={rowOpensDetail}
   class:repo-row-nested={depth > 0} class:calm
-  style={depth > 0 ? `padding-left: ${10 + depth * 22}px` : ''}
+  style={depth > 0 ? `--depth: ${depth}` : ''}
   role="button"
   tabindex={rowOpensDetail ? 0 : -1}
   aria-disabled={!rowOpensDetail}
@@ -565,6 +565,7 @@
     padding: 4px 6px; border-radius: 6px; transition: background 0.1s;
   }
   .repo-row:hover { background: var(--bg-row-hover); }
+  .repo-row-nested { padding-left: calc(10px + var(--depth) * 22px); }
   .dot { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; }
   .repo-name { font-size: 13px; color: var(--text-repo); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .progress-track { width: 110px; height: 4px; background: var(--ring-bg); border-radius: 2px; overflow: hidden; flex-shrink: 0; }
@@ -573,6 +574,19 @@
   .status-text { font-size: 12px; white-space: nowrap; font-weight: 600; display: inline-flex; align-items: center; }
   .safe-note { color: var(--text-muted); font-weight: 500; }
   .btn-tag { font-size: 10px; color: var(--text-muted); border-left: 1px solid var(--border); padding-left: 6px; margin-left: 2px; }
+  /* A narrow content area (small window with the sidebar open): text gives
+     way before the actions, so the launchers and ⋯ never get pushed out.
+     The notes repeat what the status and button tooltips say, and a healthy
+     row's green dot already says "up to date". */
+  @container content (max-width: 620px) {
+    .repo-row { gap: 4px; }
+    .pr-badge { padding: 2px 5px; gap: 2px; }
+    .repo-row-nested { padding-left: calc(6px + var(--depth) * 12px); }
+    .repo-name { min-width: 3.5rem; }
+    .safe-note, .btn-tag { display: none; }
+    .repo-row.calm .status-text { display: none; }
+    .status-text, .container-badge, .branch-badge { min-width: 0; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; }
+  }
   .acct-pill {
     flex: none; padding: 0 6px; border: 1px solid var(--border); border-radius: 5px; background: none;
     font-size: 10.5px; color: var(--text-muted); white-space: nowrap; cursor: pointer; line-height: 1.5;

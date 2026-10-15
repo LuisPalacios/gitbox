@@ -15,7 +15,6 @@
   export let view: string;
   export let rail: boolean;
   // Expanded over the content in a narrow window (not saved).
-  export let peek = false;
   export let simple: boolean;
   export let credStatuses: Record<string, any>;
   export let attention: { total: number; byAccount: Record<string, number> };
@@ -48,7 +47,7 @@
   </span>
 {/snippet}
 
-<nav class="side" class:rail class:peek aria-label={$t('nav.label')}>
+<nav class="side" class:rail aria-label={$t('nav.label')}>
   {#if rail}
     <button class="rail-btn" aria-current={view === 'attention'} aria-label={attentionLabel}
       use:tooltip={{ text: attentionLabel, delay: 150 }} on:click={() => setView('attention')}>
@@ -138,7 +137,6 @@
     padding: 10px 8px; display: flex; flex-direction: column; gap: 2px;
   }
   /* A narrow window shows the expanded sidebar over the content. */
-  .side.peek { position: absolute; top: 0; bottom: 0; left: 0; z-index: 30; box-shadow: var(--card-shadow); }
   .side-sec {
     font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
     color: var(--text-dim); padding: 12px 8px 4px;

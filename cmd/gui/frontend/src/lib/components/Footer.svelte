@@ -49,7 +49,7 @@
     padding: 10px 24px; border-top: 1px solid var(--border); font-size: 12px; font-weight: 500;
     flex-shrink: 0;
   }
-  .summary-left { display: flex; align-items: center; gap: 6px; }
-  .sum { font-weight: 600; }
+  .summary-left { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 6px; min-width: 0; }
+  .sum { font-weight: 600; white-space: nowrap; }
   .sep { color: var(--border-hover); }
 </style>

@@ -680,8 +680,8 @@
   // global.collapsed. resolveView shows Needs attention for a missing
   // account or an Advanced-only view in Simple, without touching `view`,
   // so switching back to Advanced restores Mirrors. A window narrower than
-  // 780px always shows the rail; the sidebar button then opens the full
-  // sidebar over the content (railPeek, not saved).
+  // 780px starts on the rail; the sidebar button then widens the sidebar in
+  // place and the content narrows to fit (railPeek, not saved).
   let view = 'attention';
   let sidebarCollapsed = false;
   let railPeek = false;
@@ -709,7 +709,6 @@
     openPRPopover = null;
     openWsPopover = null;
     expandedCard = null;
-    railPeek = false;
     saveLayout();
   }
   const showAccountView = (accountKey: string) => setView(accountView(accountKey));
@@ -1744,7 +1743,6 @@
   if (expandedCard && !(e.target instanceof Element && e.target.closest('.card-open'))) expandedCard = null;
   if (openWsPopover && !inWsPopover) openWsPopover = null;
   if (openPRPopover && !inPRPopover) openPRPopover = null;
-  if (railPeek && !(e.target instanceof Element && e.target.closest('.side, .hamb'))) railPeek = false;
 }} on:keydown={(e) => {
   sidebarKey(e);
   if (e.key === 'Escape' && openWsPopover) openWsPopover = null;
@@ -1812,8 +1810,7 @@
 
   <div class="body">
     <!-- ── SIDEBAR ── -->
-    {#if narrow && railPeek}<div class="rail-space"></div>{/if}
-    <Sidebar view={currentView} {rail} peek={narrow && railPeek} {simple} {credStatuses} {attention} {totalRepos} {orphanCount}
+    <Sidebar view={currentView} {rail} {simple} {credStatuses} {attention} {totalRepos} {orphanCount}
       {setView} onAddAccount={addAccount} {showOrphanModal} />
 
     <main class="content">
@@ -1933,7 +1930,6 @@
   .app { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
   /* Sidebar next to the view; each view scrolls on its own. */
   .body { flex: 1; min-height: 0; display: flex; position: relative; }
-  .content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .content { flex: 1; min-width: 0; display: flex; flex-direction: column; container: content / inline-size; }
   /* Holds the rail's place while the full sidebar opens over the content. */
-  .rail-space { width: 52px; flex: none; border-right: 1px solid var(--border); background: var(--bg-card); }
 </style>
