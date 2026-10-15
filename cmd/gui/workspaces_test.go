@@ -185,6 +185,33 @@ func TestSetCollapsed_PersistsAndPrunes(t *testing.T) {
 	}
 }
 
+func TestSetCollapsed_SidebarAndView(t *testing.T) {
+	a, cfgPath := newWorkspaceTestApp(t)
+
+	if err := a.SetCollapsed(config.CollapsedState{Sidebar: true, View: "account:github-alice"}); err != nil {
+		t.Fatalf("SetCollapsed: %v", err)
+	}
+	reloaded, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c := reloaded.Global.Collapsed; c == nil || !c.Sidebar || c.View != "account:github-alice" {
+		t.Errorf("persisted Collapsed = %+v, want sidebar and the account view", c)
+	}
+	if got := a.GetCollapsed(); !got.Sidebar || got.View != "account:github-alice" {
+		t.Errorf("GetCollapsed() = %+v, want sidebar and the account view", got)
+	}
+
+	// A view naming a missing account is pruned on save.
+	if err := a.SetCollapsed(config.CollapsedState{View: "account:github-gone"}); err != nil {
+		t.Fatalf("SetCollapsed stale view: %v", err)
+	}
+	reloaded, _ = config.Load(cfgPath)
+	if reloaded.Global.Collapsed != nil {
+		t.Errorf("Collapsed = %+v, want nil after a stale view", reloaded.Global.Collapsed)
+	}
+}
+
 func TestSetCollapsed_CardsOpen(t *testing.T) {
 	a, cfgPath := newWorkspaceTestApp(t)
 

@@ -5,19 +5,26 @@ import (
 	"strings"
 )
 
-// CollapsedState lists what the GUI shows folded in the full view. It records
-// collapsed items (not expanded ones) so new sources and clones appear
-// expanded by default. CardsOpen is the one exception: the cards panel above
-// the list starts collapsed, so it records the panel being open instead.
+// CollapsedState holds the GUI's layout state. Sources and Repos list what
+// the full view shows folded. They record collapsed items (not expanded
+// ones) so new sources and clones appear expanded by default. Sidebar
+// records the sidebar folded to its icon rail, and View the last selected
+// view ("attention", "all", "mirrors", "workspaces" or "account:<key>").
+// CardsOpen records the cards panel above the list being open.
 type CollapsedState struct {
 	Sources   []string `json:"sources,omitempty"`    // source keys
 	Repos     []string `json:"repos,omitempty"`      // "source/repo" keys
+	Sidebar   bool     `json:"sidebar,omitempty"`    // sidebar folded to the rail
+	View      string   `json:"view,omitempty"`       // last selected view
 	CardsOpen bool     `json:"cards_open,omitempty"` // cards panel unfolded
 }
 
+// AccountViewPrefix starts a View that shows one account: "account:<key>".
+const AccountViewPrefix = "account:"
+
 // PruneCollapsed drops collapse keys whose source or repo no longer exists,
-// dedupes and sorts the rest, and clears the field when nothing is left
-// (no keys and the cards panel collapsed).
+// dedupes and sorts the rest, clears a View that names a missing account,
+// and clears the field when nothing is left.
 // Save calls it so renames, deletes and moves never leave stale keys behind.
 func (c *Config) PruneCollapsed() {
 	cs := c.Global.Collapsed
@@ -39,11 +46,17 @@ func (c *Config) PruneCollapsed() {
 	slices.Sort(repos)
 	sources = slices.Compact(sources)
 	repos = slices.Compact(repos)
-	if len(sources) == 0 && len(repos) == 0 && !cs.CardsOpen {
+	view := cs.View
+	if key, ok := strings.CutPrefix(view, AccountViewPrefix); ok {
+		if _, exists := c.Accounts[key]; !exists {
+			view = ""
+		}
+	}
+	if len(sources) == 0 && len(repos) == 0 && !cs.Sidebar && view == "" && !cs.CardsOpen {
 		c.Global.Collapsed = nil
 		return
 	}
-	c.Global.Collapsed = &CollapsedState{Sources: sources, Repos: repos, CardsOpen: cs.CardsOpen}
+	c.Global.Collapsed = &CollapsedState{Sources: sources, Repos: repos, Sidebar: cs.Sidebar, View: view, CardsOpen: cs.CardsOpen}
 }
 
 // collapsedRepoExists resolves a "source/repo" key. Repo keys usually hold a

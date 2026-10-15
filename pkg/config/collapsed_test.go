@@ -70,6 +70,43 @@ func TestPruneCollapsed_KeepsCardsOpen(t *testing.T) {
 	}
 }
 
+// The sidebar rail and the last view are layout state on their own: they
+// keep the struct alive with nothing folded.
+func TestPruneCollapsed_KeepsSidebarAndView(t *testing.T) {
+	cfg := collapsedTestConfig()
+	cfg.Global.Collapsed = &CollapsedState{Sources: []string{"gone"}, Sidebar: true}
+	cfg.PruneCollapsed()
+	if got := cfg.Global.Collapsed; got == nil || !got.Sidebar || len(got.Sources) != 0 {
+		t.Errorf("Collapsed = %+v, want only Sidebar", got)
+	}
+
+	for _, view := range []string{"attention", "all", "mirrors", "workspaces", "account:a"} {
+		cfg.Global.Collapsed = &CollapsedState{View: view}
+		cfg.PruneCollapsed()
+		if got := cfg.Global.Collapsed; got == nil || got.View != view {
+			t.Errorf("view %q: Collapsed = %+v, want the view kept", view, got)
+		}
+	}
+}
+
+// A view that names a deleted account is cleared, so the GUI falls back to
+// Needs attention; the rest of the state survives.
+func TestPruneCollapsed_DropsViewOfMissingAccount(t *testing.T) {
+	cfg := collapsedTestConfig()
+	cfg.Global.Collapsed = &CollapsedState{Sources: []string{"src-a"}, View: "account:gone"}
+	cfg.PruneCollapsed()
+	got := cfg.Global.Collapsed
+	if got == nil || got.View != "" || !slices.Equal(got.Sources, []string{"src-a"}) {
+		t.Errorf("Collapsed = %+v, want src-a and no view", got)
+	}
+
+	cfg.Global.Collapsed = &CollapsedState{View: "account:gone"}
+	cfg.PruneCollapsed()
+	if cfg.Global.Collapsed != nil {
+		t.Errorf("Collapsed = %+v, want nil once the stale view is dropped", cfg.Global.Collapsed)
+	}
+}
+
 func TestSave_PrunesCollapsedAndOmitsWhenEmpty(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "gitbox.json")
 	cfg := collapsedTestConfig()
@@ -115,6 +152,10 @@ func TestBackupSkippedForCollapsedOnlyChanges(t *testing.T) {
 	if err := Save(cfg, path); err != nil {
 		t.Fatalf("collapse Save: %v", err)
 	}
+	cfg.Global.Collapsed = &CollapsedState{Sidebar: true, View: "account:a"}
+	if err := Save(cfg, path); err != nil {
+		t.Fatalf("layout Save: %v", err)
+	}
 	cfg.Global.Collapsed = nil
 	if err := Save(cfg, path); err != nil {
 		t.Fatalf("expand Save: %v", err)
@@ -122,6 +163,6 @@ func TestBackupSkippedForCollapsedOnlyChanges(t *testing.T) {
 
 	matches, _ := filepath.Glob(filepath.Join(dir, "gitbox-????????-??????.json"))
 	if len(matches) != 0 {
-		t.Errorf("collapse-only changes should not create backups, got %d", len(matches))
+		t.Errorf("collapse and layout-only changes should not create backups, got %d", len(matches))
 	}
 }

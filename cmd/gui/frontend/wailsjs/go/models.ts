@@ -97,6 +97,8 @@ export namespace config {
 	export class CollapsedState {
 	    sources?: string[];
 	    repos?: string[];
+	    sidebar?: boolean;
+	    view?: string;
 	    cards_open?: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -107,6 +109,8 @@ export namespace config {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.sources = source["sources"];
 	        this.repos = source["repos"];
+	        this.sidebar = source["sidebar"];
+	        this.view = source["view"];
 	        this.cards_open = source["cards_open"];
 	    }
 	}

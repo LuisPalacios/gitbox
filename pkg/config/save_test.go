@@ -157,6 +157,16 @@ func TestBackupSkippedForWindowOnlyChanges(t *testing.T) {
 		t.Errorf("theme-only change should not create a backup, got %d", len(matches))
 	}
 
+	// Fold the sidebar and pick a view — layout only, still no backup.
+	cfg.Global.Collapsed = &CollapsedState{Sidebar: true, View: "account:a1"}
+	if err := Save(cfg, path); err != nil {
+		t.Fatalf("layout-only Save: %v", err)
+	}
+	matches, _ = filepath.Glob(filepath.Join(dir, "gitbox-????????-??????.json"))
+	if len(matches) != 0 {
+		t.Errorf("layout-only change should not create a backup, got %d", len(matches))
+	}
+
 	// Change real content (periodic_sync) alongside a window update — must
 	// create a backup: we need a rollback point for the real change.
 	cfg.Global.PeriodicSync = "5m"
