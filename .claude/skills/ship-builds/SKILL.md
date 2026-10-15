@@ -1,11 +1,11 @@
 ---
 name: ship-builds
-description: Build the GitboxApp GUI on remote hosts and stage it at conventional paths for smoke testing on a feature branch. No arg ships to every configured host in .env in parallel. One arg ships to the host matching that short name. Use when the user says "ship to <host>", "send the builds", "deploy to <host> for testing", or invokes the skill as /ship-builds [host].
+description: Build and stage GitboxApp on remote hosts configured in .env. Use for ship to a host, send the builds, or deploy for testing. An optional host argument limits the targets.
 ---
 
 # Ship builds
 
-Delegates to [scripts/ship.sh](../../../scripts/ship.sh). That script does the entire build+ship pipeline; this skill exists so Claude invokes it with zero ceremony.
+Delegates to [scripts/ship.sh](../../../scripts/ship.sh). That script does the entire build+ship pipeline; this skill exists so Claude Code or Codex invokes it with zero ceremony.
 
 ## How to invoke
 

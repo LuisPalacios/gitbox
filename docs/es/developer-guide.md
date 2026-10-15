@@ -1,5 +1,17 @@
 # Guía de desarrollo
 
+## Trabajar con Claude Code y Codex
+
+Comparto un único conjunto de instrucciones de proyecto y seis skills del repositorio entre Claude Code y Codex. Edito `.claude/CLAUDE.md` y `.claude/skills/`; los enlaces simbólicos relativos versionados `AGENTS.md` y `.agents/skills` exponen los mismos archivos a Codex.
+
+Abro cualquiera de las herramientas en la raíz del repositorio. En Claude Code invoco `/work-issue 123` o `/test-plan`; en Codex invoco `$work-issue 123` o `$test-plan`. Las peticiones en lenguaje natural también seleccionan skills. Ambas herramientas siguen las mismas reglas de pruebas y requieren aprobación explícita antes de publicar en GitHub.
+
+Mantengo los permisos de Claude en `.claude/settings.json`; Codex usa los permisos de su propia sesión. Mantengo las instrucciones compartidas por debajo del límite predeterminado de 32 KiB de Codex y cargo el contexto detallado cuando hace falta. Codex lee la regla de autoría de skills de Claude mediante una instrucción explícita y usa un plan en la conversación cuando su sesión no puede entrar en plan mode.
+
+Inicio una sesión nueva después de cambiar las instrucciones o los metadatos de skills. Le pido que resuma las reglas del proyecto y enumere las seis skills locales. Para comprobar enlaces simbólicos, repararlos en Windows, consultar equivalencias de capacidades y verificar los resultados esperados, uso [la guía de configuración compartida](../../.claude/context/guideline_codex.md).
+
+---
+
 ## Requisitos previos
 
 - **Go** 1.26+ — [instalar](https://go.dev/doc/install)
@@ -164,7 +176,7 @@ npm install -g markdownlint-cli2
 
 El workflow de PR ejecuta el mismo script como barrera: cualquier hallazgo hace fallar el job, incluido un aviso nuevo de govulncheck o de `npm audit`. CI fija shellcheck 0.11.0, actionlint 1.7.12 y markdownlint-cli2 0.23.3; usa esas versiones en local para que ambas ejecuciones coincidan.
 
-Para el workflow completo de pruebas (preparación de fixture, pruebas de integración, checklists pre-PR y de release), consulta [testing.md](testing.md). Para pruebas multiplataforma vía SSH, consulta [multiplatform.md](multiplatform.md). Si usas Claude Code, `/test-plan` automatiza las comprobaciones pre-PR.
+Para el workflow completo de pruebas (preparación de fixture, pruebas de integración, checklists pre-PR y de release), consulta [testing.md](testing.md). Para pruebas multiplataforma vía SSH, consulta [multiplatform.md](multiplatform.md). Uso `/test-plan` en Claude Code o `$test-plan` en Codex para automatizar las comprobaciones pre-PR.
 
 ---
 
@@ -273,8 +285,8 @@ Sigo el backlog en GitHub en [github.com/LuisPalacios/gitbox/issues](https://git
 
 El workflow:
 
-1. **Capturar** — abrir un issue con un título corto y un cuerpo que describa el concepto y cualquier nota del codebase que querría que una sesión futura de Claude tuviera.
-2. **Planificar** — discutir en comentarios, luego entrar en plan mode en Claude Code para diseñar una implementación archivo por archivo.
+1. **Capturar** — abrir un issue con un título corto y un cuerpo que describa el concepto y cualquier nota del codebase que querría que una sesión futura de un agente tuviera.
+2. **Planificar** — discutir en comentarios, luego planificar en Claude Code o Codex para diseñar una implementación archivo por archivo.
 3. **Construir** — implementar el plan y verificar con `/test-plan`.
 4. **Publicar** — referenciar el issue en el mensaje de commit (por ejemplo, `Closes #22`) para que se cierre automáticamente al hacer push.
 

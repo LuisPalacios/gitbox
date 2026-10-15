@@ -27,6 +27,18 @@ Notes:
 - Symlink targets should be relative, not absolute.
 - The canonical content is `.claude/CLAUDE.md`; `AGENTS.md` is only the Codex-facing bridge.
 
+## Capability parity
+
+I keep project policy, build rules, verification requirements, and publication gates in `.claude/CLAUDE.md`. Both harnesses use the same skill bodies and scripts. I use `/work-issue 123` in Claude Code and `$work-issue 123` in Codex; the arguments and approval gates match.
+
+I route Claude's automatic skill-authoring rule explicitly from the shared instructions because Codex does not inherit `.claude/rules/` discovery. I use the available tools for planning, checklists, file reads, searches, images, and delegation. When Codex cannot switch into plan mode itself, I write the plan in the conversation and preserve the invoked skill's approval gates.
+
+I keep `.claude/settings.json` as Claude-only configuration. Codex permissions come from its own session; I do not copy Claude allowlists into a permissive Codex policy. A `.codex/` directory is optional for this setup: instruction and skill discovery use `AGENTS.md` and `.agents/skills`.
+
+I keep the root instruction file below Codex's default 32 KiB instruction budget, leaving room for global instructions. I keep the detailed repository map in `.claude/context/repository-layout.md`. I keep detailed remote-testing recipes in `.claude/context/multiplatform-testing.md` and route agents there before those tasks. A smaller configured budget or large global instructions can still truncate the project guidance.
+
+I keep shared skill metadata concise and avoid embedded quotation marks so discovery clients expose complete descriptions. I resolve repository paths from the active repository or worktree root. Markdown links in skill files resolve from the skill directory.
+
 ## Quick check
 
 Before repairing anything, verify whether repair is actually needed.
@@ -125,6 +137,31 @@ Why this setup exists:
 - It avoids maintaining duplicate instruction files.
 - It lets Claude Code and Codex share the same project guidance.
 - It keeps Claude-specific layout preferences under `.claude/` while still satisfying Codex's root `AGENTS.md` discovery behavior.
+
+## Fresh-session verification
+
+After changing instructions or skill metadata, I start a fresh Codex session at the repository root and ask:
+
+```text
+Summarize this repository's instructions and list its six local skills.
+Explain the publication gate, GUI build rule, and skill-authoring rule.
+Do not modify files or run the skills.
+```
+
+I expect `fixing-markdown`, `merge-pr`, `preparing-brand-logos`, `ship-builds`, `test-plan`, and `work-issue`, with complete descriptions. I expect the session to require approval before publishing and a Wails build after Go changes. I repeat the check in Claude Code to confirm the shared guidance.
+
+I check the instruction size without invoking either agent:
+
+```bash
+wc -c .claude/CLAUDE.md
+```
+
+I inspect Git symlink modes with the earlier `git ls-files --stage` command. I verify both paths resolve to the canonical files rather than accepting matching names alone.
+
+## Official Codex references
+
+- [Instruction discovery and its default size limit](https://developers.openai.com/codex/guides/agents-md)
+- [Skill discovery, invocation, and symlink support](https://developers.openai.com/codex/skills)
 
 ## Troubleshooting
 

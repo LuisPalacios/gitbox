@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working with code in this repository.
+This file provides shared guidance to Claude Code and Codex when working in this repository. Resolve repository paths from the repository root, including when reading this file through `AGENTS.md`.
 
 ## What this repo is
 
@@ -44,93 +44,30 @@ When translating documentation into any supported language, preserve the English
 
 ## Repository layout
 
-```text
-cmd/
-  gui/                    Wails v2 + Svelte GUI (GitboxApp), the only binary
-pkg/                      Shared Go library
-  ops/                    Account, credential, clone and discovery service layer the GUI calls (+ TestScenario_FullLifecycle)
-  config/                 Config v3 model, load/save, v1→v2→v3 migration
-  credential/             Credential verification (GCM, SSH, token); global GCM helper check accepts any helper resolving to git-credential-manager (short name or absolute path)
-  git/                    Git subprocess operations (os/exec); global config get/get-all/set/unset
-  provider/               Provider API clients + mirror interfaces (GitHub, GitLab, Gitea, Forgejo)
-  mirror/                 Push/pull mirror setup, status, guides
-  workspace/              Read-only VS Code .code-workspace discovery + cache (RefreshCache); no generation, no tmuxinator
-  adopt/                  Orphan repo discovery + adoption (multi-root scan, container nested-clone discovery, in-place absolute clone_folder)
-  status/                 Clone status checking
-  update/                 Auto-update: version check, signature + checksum verified download, self-replace (AppImage build is notify-only); release-signing-key.pub is the pinned release key
-  doctor/                 External-tool detection (git, GCM, ssh, …): point-of-use precheck + the GUI's tool check; `LookupIn` is the Setenv-free resolver (extra dirs, ~/.local/bin, Windows shims) shared by harness detection
-  harness/                Embedded AI-tool catalog (tools-directory.md: alternates + well-known locations) + pure `Sync` that flags uninstalled harnesses `missing` instead of deleting them
-  identity/               Global `~/.gitconfig` user.name/user.email detection + removal
-  gitignore/              Global `~/.gitignore_global` managed-block install with sentinel dedup + timestamped backups
-docs/
-  README.md               Documentation index
-  gui-guide.md            GUI guide
-  developer-guide.md      Build instructions, contributing
-  architecture.md         Technical design
-  credentials.md          Credential setup guide
-  testing.md              Test levels, fixture format, pre-PR and release checklists
-  testing-reference.md    Test inventory, harness internals
-  multiplatform.md        Remote hosts (.env) for cross-platform testing
-  macos-signing.md        macOS code signing setup
-  release-signing.md      Release signing: draft → sign-release.sh → publish, agent setup, fork key swap
-  worktree-workflow.md    Parallel worktree sessions (/work-issue, /merge-pr)
-  agentic-tools-directory.md  AI harness / agentic tools directory
-  es/                     Spanish counterparts of every doc above
-  diagrams/               Architecture diagrams
-assets/                   Icons, logo, README screenshots (captured with scripts/demo-fleet)
-  svg/                    Tool-logo (brand/) and top-bar (ui/) SVG originals; vite-plugin-icons.ts turns them into the app's icons at build time
-scripts/
-  bootstrap.sh             Cross-platform installer (downloads a release, places GitboxApp, registers Linux menu entry, warns about a Windows installer copy; --cli-only installs the latest 1.x CLI)
-  register-gitbox.sh       Linux-only desktop registrar (.desktop + icon in ~/.local/share, idempotent, supports --uninstall)
-  installer.iss            Windows Inno Setup installer script (GUI only; cleans up v1's CLI and PATH entry on upgrade)
-  appimage/                Linux AppImage build (build-appimage.sh + linuxdeploy, AppRun, desktop, AppStream metainfo, icon)
-  dmg/                     macOS DMG installer script + README
-  _common.sh               Shared helpers for the dev scripts (.env, SSH, GitboxApp paths)
-  ship.sh                  Build GitboxApp on each remote host in .env and stage it
-  smoke.sh                 Run `GitboxApp --version` locally and on staged remotes
-  health.sh                Read-only run of every checker (gofmt, vet, staticcheck, modernize, govulncheck, deadcode, tests, svelte-check, frontend build warnings, npm ci warnings, npm audit, shellcheck, actionlint, markdownlint)
-  test-commands.sh         Print GitboxApp --test-mode launch commands per platform
-  run-commands.sh          Print GitboxApp launch commands per platform
-  setup-credentials.sh     Run test-setup-credentials.sh locally or on remotes
-  test-setup-credentials.sh  Provision test credentials from test-gitbox.json
-  send-my-production-config.sh  Copy the local gitbox.json to one remote (with diff + confirm)
-  sign-release.sh          Sign a draft release's checksums through the local SSH agent and publish it (--check, --dry-run); standalone, no .env
-  demo-fleet/              Fake fleet + mock provider API + window capture for README screenshots (build.sh, run.sh, mock.py, shot.ps1)
-.githooks/pre-push        Pre-push hook (gofmt -s check + go vet + unit tests; builds the frontend if dist is missing)
-.claude/
-  CLAUDE.md               Canonical agent guidance (this file)
-  context/
-    guideline_codex.md    Dual Claude/Codex wiring (AGENTS.md + .agents/skills symlinks)
-    guideline_js.md       JS/TS script conventions
-    guideline_python.md   Python script conventions
-    guideline_skills.md   Skill-authoring quick reference
-    testing-patterns.md   Test helpers, naming conventions
-  skills/
-    fixing-markdown/      Markdown lint + format
-    merge-pr/             Merge a PR (post-/work-issue), clean up worktree + branch
-    preparing-brand-logos/  Find tool logos, fit them into the 150x150 brand template (tmp/), draft -dark versions
-    ship-builds/          Build + stage GitboxApp on remote hosts in .env
-    test-plan/            Pre-PR and release verification
-    work-issue/           Worktree → plan → code → push → PR (stops before merge)
-  rules/
-    skills-authoring.md   Skill creation guidelines
-AGENTS.md                 → .claude/CLAUDE.md (symlink — Codex reads project guidance here)
-.agents/skills            → ../.claude/skills (symlink — Codex sees skills here)
-.github/workflows/ci.yml  Release CI on v* tags: test, build, draft release (+ installers, DMGs, AppImage); scripts/sign-release.sh signs and publishes it; workflow_dispatch = dry run without publishing
-.github/workflows/pr.yml  PR + main CI: frontend build, scripts/health.sh gate (every checker, fails on any finding), Linux GUI build smoke
-allowed_signers           Release public key for manual ssh-keygen -Y verify (must match pkg/update/release-signing-key.pub)
-json/
-  gitbox.schema.json      v3 JSON Schema
-  gitbox.jsonc            v3 annotated example (Spanish comments)
-go.mod / go.sum           Go module
-README.md                 Project overview
-```
+- `cmd/gui/`: Wails v2 + Svelte GUI, the only binary (`GitboxApp`).
+- `pkg/`: shared Go library; business flows live in `pkg/ops/`.
+- `docs/`: canonical English documentation; `docs/es/` mirrors it in Spanish.
+- `assets/`: icons, brand SVGs, and screenshots; `scripts/`: builds, checks, shipping, and release tooling.
+- `.claude/CLAUDE.md`: shared instructions; `.claude/context/`: task-specific guidance; `.claude/rules/`: authoring rules; `.claude/skills/`: canonical skills.
+- `AGENTS.md` links to `.claude/CLAUDE.md`; `.agents/skills` links to `../.claude/skills`.
+- `.github/workflows/`: CI and releases; `json/`: config schema and example.
+
+Read `.claude/context/repository-layout.md` when locating components or changing the repository structure. Keep that map up to date with structural changes.
 
 ## Dual Claude / Codex setup
 
 This repo is wired so Claude Code and Codex share one source of truth without duplication. `.claude/CLAUDE.md` is the canonical guidance file — Claude Code reads it directly, and Codex reads `AGENTS.md` at the repo root, which is a symlink back to it. Skills live under `.claude/skills/` and are exposed to Codex through `.agents/skills` (symlink to `../.claude/skills`).
 
-If the symlinks ever go missing or get checked out as plain files, follow the repair procedure in [`.claude/context/guideline_codex.md`](context/guideline_codex.md). On Windows, create them with `mklink` from cmd.exe — Git Bash's `ln -s` produces file copies, not symlinks.
+If the symlinks ever go missing or get checked out as plain files, follow the repair procedure in `.claude/context/guideline_codex.md`. On Windows, create them with `mklink` from cmd.exe — Git Bash's `ln -s` produces file copies, not symlinks.
+
+## Shared agent capabilities
+
+- Claude Code uses `/skill-name`; Codex uses `$skill-name` (for example, `$work-issue 123`). Natural-language requests work in both. The slash-command examples in shared skills describe the same workflow in Codex.
+- Before creating or changing a skill, read `.claude/rules/skills-authoring.md`. Codex must read it explicitly; Claude's path-scoped rule loading does not apply to Codex. Read `.claude/context/guideline_python.md` or `.claude/context/guideline_js.md` before changing skill scripts in that language. These script conventions do not replace the frontend's existing npm workflow.
+- Use the available planning, progress, search, file-reading, image-viewing, and delegation tools. Claude tool names in shared skills describe capabilities, not required Codex tool names. If a tool is unavailable, use the equivalent supported capability; never claim to have called it.
+- If the harness cannot enter plan mode itself, write the implementation plan in the conversation before editing. Preserve any explicit user gates in the invoked skill. Track phases with the available plan tool or a Markdown checklist.
+- `.claude/settings.json` permissions apply only to Claude Code. Codex follows its own session permissions, sandbox, and approval policy. Repository instructions cannot grant filesystem or network access. If a required action is blocked, report the limitation and the remaining step.
+- Keep shared, durable project lessons in the relevant canonical instructions, context file, or skill. Use private memory only when the harness provides it; do not copy private memory or credentials into the repository.
 
 ## Go app
 
@@ -257,7 +194,7 @@ When in doubt, ask. It is never wrong to pause; it is sometimes wrong to push.
 
 ### 1. Plan first
 
-- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
+- Plan before ANY non-trivial task (3+ steps or architectural decisions), using plan mode when available or the conversation fallback above
 - If something goes sideways, STOP and re-plan immediately
 - Write detailed specs upfront to reduce ambiguity
 
@@ -314,7 +251,7 @@ The project has a comprehensive test suite. Read `.claude/context/testing-patter
 
 **Pre-push hook:** The repo includes `.githooks/pre-push` which runs a `gofmt -s -l` check, `go vet` and `go test -short` before every push, building the frontend first when `cmd/gui/frontend/dist` is missing. Run `gofmt -s -w` on changed Go files before committing. Activate with `git config core.hooksPath .githooks`.
 
-**Test plan:** The full pre-PR and release verification workflow is documented in `docs/testing.md`. If using Claude Code, the `/test-plan` skill automates the automated steps and guides through interactive ones.
+**Test plan:** The full pre-PR and release verification workflow is documented in `docs/testing.md`. In Claude Code (`/test-plan`) or Codex (`$test-plan`), the shared test-plan skill automates the automated steps and guides through interactive ones.
 
 ### Update stakeholder documents
 
@@ -337,11 +274,11 @@ Every English doc under `docs/` has a counterpart under `docs/es/`; update both 
 
 ### 5. Learn from corrections
 
-- After corrections from the user: save a `feedback` memory via the memory system
+- After corrections from the user: save a `feedback` memory when available; record reusable, non-private project lessons in the relevant shared guidance or skill
 
 ## Worktree-based parallel workflow
 
-For multi-issue work where several Claude sessions run in parallel, use the `/work-issue <N>` skill. It creates a sibling worktree at `../gitbox-<N>-<slug>`, drives the plan → code → auto-test → user-smoke-test → sync → push → PR flow, and stops before merge. `/merge-pr <PR#>` handles rebase check, CI gate, merge, and worktree cleanup as a separate, deliberate action.
+For multi-issue work where several Claude Code or Codex sessions run in parallel, use the `/work-issue <N>` skill. It creates a sibling worktree at `../gitbox-<N>-<slug>`, drives the plan → code → auto-test → user-smoke-test → sync → push → PR flow, and stops before merge. `/merge-pr <PR#>` handles rebase check, CI gate, merge, and worktree cleanup as a separate, deliberate action.
 
 If I already have a plan written (in the issue body, a local file, or a URL), I can pass it with `/work-issue <N> <plan-source>`. The skill evaluates completeness: adopts it if it covers files-to-change, verification, and key decisions; extends it via plan mode if partial; falls back to full plan mode if absent.
 
@@ -352,11 +289,11 @@ Cross-cutting rules when a session is running inside a worktree:
 - Before any `gh` command, derive the expected user from this clone's `remote.origin.url` (not a hardcoded name) and switch with `gh auth switch` if needed. The skill does this automatically.
 - If the worktree path falls under a gitbox-managed folder, expect GitboxApp's status and discovery views to list it as an orphan. It's not actually orphaned — just unrecognised by the scanner. Safe to ignore.
 
-See [docs/worktree-workflow.md](../docs/worktree-workflow.md) for the full walkthrough.
+See `docs/worktree-workflow.md` for the full walkthrough.
 
 ## Git commits
 
-- **Never** include `Co-Authored-By: Claude` or any Claude attribution in commit messages
+- **Never** attribute authorship or co-authorship to any AI model, assistant, agent, or harness in commit messages, PR titles, PR descriptions, or PR comments. This applies to Claude Code, Codex, and every other AI tool. Never add AI `Co-Authored-By` trailers, AI signatures, or “generated by/with” footers. Before committing or publishing PR text, inspect the final text and remove any such attribution.
 - **Never** modify git config for author/committer
 - Commits should appear as the user's own work
 
@@ -389,86 +326,9 @@ Anything I publish to a GitHub-visible surface — issue body, issue comment, PR
 
 ## Multiplatform testing
 
-The developer workstation can be any OS. Remote machines are available via SSH for cross-platform testing. Every build-and-test cycle MUST cover all three platforms.
+For runtime changes, build and smoke-test locally first, then run `./scripts/ship.sh` and `./scripts/smoke.sh all` for the remotes configured in `.env`. If `.env` is absent or has no remote hosts, local build and smoke complete the cycle. Documentation-only changes do not need GUI builds or remote shipping.
 
-**Local first, then ship remotes.** The default test flow for any change is: (1) build the GUI locally per the build rule, (2) smoke-test it on the local host, (3) `./scripts/ship.sh` to fan out to the remotes configured in `.env` (or `./scripts/ship.sh <short-name>` for one). Never skip step 1 — the local host is part of the cycle, and jumping straight to ship reports "green" without verifying on the machine you actually iterated on. If `.env` is absent or empty, the local build + smoke is the entire cycle.
-
-Connection details are in `.env` (gitignored). Copy `docs/.env.example` to `.env` and fill in your SSH hosts. See `docs/multiplatform.md` for the full setup guide.
-
-| Platform            | Env var              | Arch  | Wails target    | Script token              |
-| ------------------- | -------------------- | ----- | --------------- | ------------------------- |
-| Windows amd64       | `SSH_WIN_INTEL_HOST` | amd64 | `windows/amd64` | `win-intel` (alias `win`) |
-| Windows arm64       | `SSH_WIN_ARM_HOST`   | arm64 | `windows/arm64` | `win-arm`                 |
-| macOS Apple Silicon | `SSH_MAC_ARM_HOST`   | arm64 | `darwin/arm64`  | `mac-arm` (alias `mac`)   |
-| macOS Intel         | `SSH_MAC_INTEL_HOST` | amd64 | `darwin/amd64`  | `mac-intel`               |
-| Linux               | `SSH_LINUX_HOST`     | amd64 | `linux/amd64`   | `linux`                   |
-
-Legacy `SSH_WIN_HOST` is still honored as a fallback for `SSH_WIN_INTEL_HOST` — older `.env` files keep working without a rename.
-
-### Build-test-ship cycle
-
-Scripts in `scripts/` automate the full cycle:
-
-```bash
-./scripts/ship.sh            # build GitboxApp on every remote in .env and stage it (+ test-gitbox.json)
-./scripts/smoke.sh all       # GitboxApp --version on the local build and every staged remote
-./scripts/test-commands.sh   # print GitboxApp --test-mode launch commands
-./scripts/run-commands.sh    # print GitboxApp launch commands (real config)
-./scripts/setup-credentials.sh all  # set up SSH keys + tokens on all platforms
-```
-
-The scripts auto-detect the local OS. Local commands run directly, remote commands use SSH. See each script's header for usage.
-
-### Building the GUI on a remote host
-
-`wails build` cannot cross-compile because each target needs the host's native webview (WebView2 on Windows, WebKit on macOS, WebKitGTK on Linux), so `scripts/ship.sh` builds the GUI **on each remote** over SSH. The manual recipe below is what it does under the hood; it uses `tar | ssh` (rsync isn't available in Git Bash on Windows by default).
-
-```bash
-# Build GUI for mac from a Windows or Linux host.
-# For Apple Silicon: host=$SSH_MAC_ARM_HOST,   target=darwin/arm64
-# For Intel Mac:     host=$SSH_MAC_INTEL_HOST, target=darwin/amd64
-host="me@mac-host"       # from $SSH_MAC_ARM_HOST or $SSH_MAC_INTEL_HOST
-target="darwin/arm64"      # or darwin/amd64 / darwin/universal
-
-# 1. Wipe and prepare the remote scratch dir.
-ssh "$host" 'rm -rf ~/gitbox-remote-build && mkdir -p ~/gitbox-remote-build'
-
-# 2. Ship source (exclude artefacts, node_modules, .git, .env).
-tar \
-  --exclude='./.git' \
-  --exclude='./build' \
-  --exclude='./cmd/gui/build/bin' \
-  --exclude='./cmd/gui/frontend/node_modules' \
-  --exclude='./cmd/gui/frontend/dist' \
-  --exclude='./.env' \
-  -cf - . | ssh "$host" 'cd ~/gitbox-remote-build && tar -xf -'
-
-# 3. Build on the remote. PATH needs Homebrew / $HOME/go/bin for non-login SSH shells.
-#    Include both Homebrew prefixes so the recipe works on arm64 (/opt/homebrew)
-#    and Intel (/usr/local) without tweaks.
-ssh "$host" 'export PATH=/opt/homebrew/bin:/usr/local/bin:$HOME/go/bin:$PATH && \
-  export CGO_CFLAGS=-mmacosx-version-min=13.0 CGO_LDFLAGS=-mmacosx-version-min=13.0 && \
-  cd ~/gitbox-remote-build && \
-  cp assets/appicon.png cmd/gui/build/appicon.png 2>/dev/null; \
-  cd cmd/gui && wails build -platform '"$target"
-
-# 4. Stage somewhere the user can double-click from Finder / open.
-ssh "$host" 'rm -rf /tmp/GitboxApp.app && \
-  cp -R ~/gitbox-remote-build/cmd/gui/build/bin/GitboxApp.app /tmp/GitboxApp.app'
-```
-
-Notes:
-
-- **Non-login SSH shells** don't source `.zshrc` / `.bash_profile`, so `go` and `wails` are usually off `$PATH`. Prefix every remote command with `export PATH=/opt/homebrew/bin:/usr/local/bin:$HOME/go/bin:$PATH` — Apple Silicon Homebrew uses `/opt/homebrew/bin`, Intel Homebrew uses `/usr/local/bin`; including both keeps the same recipe working for `mac-arm` and `mac-intel`.
-- **Tar from the repo root.** If the shell cwd is wrong, tar will happily ship a partial tree. Anchor with `cd "$(git rev-parse --show-toplevel)"` first.
-- **`.env` is gitignored** — if the worktree doesn't have one yet, copy it in from the main clone (`cp ../gitbox/.env .`) before running `scripts/ship.sh` or `scripts/smoke.sh`.
-- Linux builds the same way — swap `$host` to `$SSH_LINUX_HOST`, `$target` to `linux/amd64`, adjust PATH (e.g. `/usr/local/go/bin`). The artifact lands at `cmd/gui/build/bin/GitboxApp`.
-- macOS signing/notarization is a separate concern — see `docs/macos-signing.md`. A `wails build` unsigned binary launches fine locally but gets the Gatekeeper quarantine on first download; for smoke tests that's fine.
-
-### Non-interactive vs interactive tests
-
-- **Non-interactive** (`GitboxApp --version`, unit tests): Claude runs via `./scripts/smoke.sh` or directly via SSH.
-- **Interactive** (anything in the GUI window: onboarding, credential setup, clone, mirrors): Claude uses `./scripts/test-commands.sh` or `./scripts/run-commands.sh` to print the exact launch commands. The user runs them in a terminal inside each host's desktop session.
+Before remote builds, credential setup, or interactive GUI testing, read `.claude/context/multiplatform-testing.md` for the platform variables, commands, and desktop-session requirements. See `docs/multiplatform.md` for the human setup guide. Never include private `.env` values in published output.
 
 ## Screenshots for debugging
 
@@ -486,4 +346,4 @@ ls -t "$HOME/Pictures/Screenshots/"*.png | head -1
 ls -t ~/Desktop/*.png | head -1
 ```
 
-Read the file with the Read tool (it supports images). Then analyze what the GUI shows and report what you see.
+View the file with the harness image-viewing tool (Claude Code: Read; Codex: the available image viewer). Then analyze what the GUI shows and report what you see.

@@ -1,12 +1,14 @@
 # Flujo paralelo basado en worktrees
 
-Uso este flujo cuando quiero trabajar en dos o más issues de GitHub a la vez, cada uno en su propia sesión de Claude Code, cada uno en su propia rama, sin que las sesiones se pisen. Lo impulsan dos skills: `/work-issue <N>` crea un worktree hermano y lleva el issue por plan, código, test, push y PR; `/merge-pr <PR#>` gestiona el merge y la limpieza.
+Uso este flujo cuando quiero trabajar en dos o más issues de GitHub a la vez, cada uno en su propia sesión de Claude Code o Codex, cada uno en su propia rama, sin que las sesiones se pisen. Lo impulsan dos skills: `/work-issue <N>` crea un worktree hermano y lleva el issue por plan, código, test, push y PR; `/merge-pr <PR#>` gestiona el merge y la limpieza.
 
 Los skills aplican las puertas que me importan — nada llega a GitHub sin que yo lo diga — así no tengo que volver a explicar las reglas en cada sesión.
 
+Uso los ejemplos de comandos con barra de esta guía en Claude Code. En Codex uso `$work-issue <N>` y `$merge-pr <PR#>` con los mismos argumentos y requisitos de aprobación. Ambas herramientas cargan las instrucciones y skills compartidas que describo en [developer-guide.md](developer-guide.md#trabajar-con-claude-code-y-codex).
+
 ## Qué me da este flujo
 
-- Una sesión de Claude por issue, completamente aislada a nivel de filesystem.
+- Una sesión de Claude Code o Codex por issue, completamente aislada a nivel de filesystem.
 - Un `gh auth switch` automático al usuario correcto para el clone, así nunca hago push desde la cuenta equivocada.
 - Una pausa explícita antes de cada paso de publicación (push, PR, merge).
 - Una ruta de limpieza clara: cuando el PR se mergea, desaparecen el worktree y la rama local.
@@ -20,7 +22,7 @@ Desde el clone principal:
 3. El skill deriva un nombre de rama como `fix/42-my-slug`, propone un worktree en `../gitbox-42-my-slug` y me pide confirmación.
 4. Al confirmar crea el worktree, hace `cd` dentro de él y avanza por las fases.
 
-Si quiero trabajar en el issue 43 al mismo tiempo, abro una segunda ventana de Claude Code, ejecuto `/work-issue 43` en _esa_ ventana y ahora tengo dos sesiones paralelas en dos worktrees separados.
+Si quiero trabajar en el issue 43 al mismo tiempo, abro una segunda ventana de Claude Code o Codex, ejecuto `/work-issue 43` en _esa_ ventana y ahora tengo dos sesiones paralelas en dos worktrees separados.
 
 ## Las puertas
 
@@ -82,7 +84,7 @@ Tres formas de convivir con ello:
 
 ## Cuando main avanza debajo de mí
 
-Si alguien (normalmente yo en otra sesión de Claude) aterriza un PR mientras sigo trabajando en el mío, la rama `origin/main` se mueve y necesito hacer rebase. El skill gestiona esto en la puerta Sync-with-main — hace fetch, comprueba commits nuevos y ofrece `git rebase origin/main`. Los conflictos se me muestran por archivo; el skill no auto-resuelve conflictos no triviales.
+Si alguien (normalmente yo en otra sesión de Claude Code o Codex) aterriza un PR mientras sigo trabajando en el mío, la rama `origin/main` se mueve y necesito hacer rebase. El skill gestiona esto en la puerta Sync-with-main — hace fetch, comprueba commits nuevos y ofrece `git rebase origin/main`. Los conflictos se me muestran por archivo; el skill no auto-resuelve conflictos no triviales.
 
 Después de un rebase, se repiten auto-verify y la puerta de smoke-test. Mi "ok, push it" anterior no se conserva — el rebase reescribe historia, así que el skill vuelve a preguntar.
 
@@ -94,7 +96,7 @@ Cuando estoy listo:
 /merge-pr <PR#>
 ```
 
-Esto se ejecuta en cualquier sesión de Claude — ya sea la que creó el worktree o una ventana nueva. El skill:
+Esto se ejecuta en cualquier sesión de Claude Code o Codex — ya sea la que creó el worktree o una ventana nueva. El skill:
 
 1. Comprueba que el worktree no tiene estado sin commit o sin push, y verifica que el PR está rebased sobre el último `origin/main` (vuelve a hacer push con `--force-with-lease` si no).
 2. Pone una puerta sobre CI — todos los checks deben estar green.

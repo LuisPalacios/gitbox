@@ -256,4 +256,4 @@ When I add a new feature, I update this file:
 2. Add a manual verification step to the appropriate GUI section above
 3. If the feature is platform-sensitive, add a note to the platform-specific table
 
-If using Claude Code, the `/test-plan` skill automates the pre-PR checks and guides through interactive steps.
+I use `/test-plan` in Claude Code or `$test-plan` in Codex to automate the pre-PR checks and guide the interactive steps.

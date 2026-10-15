@@ -1,6 +1,6 @@
-# Skill Authoring Guidelines
+# Skill authoring guidelines
 
-Quick reference for creating and reviewing Claude Code skills.
+I keep shared Claude Code and Codex skill-authoring guidance here. Claude Code loads the path-scoped rule in `.claude/rules/skills-authoring.md`; Codex follows the explicit routing in `.claude/CLAUDE.md`.
 
 **Sources:**
 
@@ -31,11 +31,9 @@ Context window is shared. Only add what Claude doesn't already know.
 | **Medium** (pseudocode/params) | Preferred pattern exists  | Report template with options |
 | **Low** (exact script)         | Operations are fragile    | Database migrations          |
 
-### 3. Test With All Models
+### 3. Verify in both harnesses
 
-- **Haiku:** Needs more guidance
-- **Sonnet:** Balanced
-- **Opus:** Avoid over-explaining
+I check skill discovery in fresh Claude Code and Codex sessions. I verify the description, invocation, repository paths, available tool equivalents, and approval gates. I do not execute a publishing workflow merely to test discovery.
 
 ---
 
@@ -120,10 +118,10 @@ skill-name/
 
 Skills can be invoked two ways:
 
-1. **Slash command (explicit):** `/skill-name` or `/skill-name arg1 arg2`
-2. **Natural language (auto-detected):** Claude matches your request against the skill's `description` field
+1. **Explicit invocation:** Claude Code uses `/skill-name arg1 arg2`; Codex uses `$skill-name arg1 arg2`.
+2. **Natural language (auto-detected):** Claude Code or Codex matches the request against the skill's `description` field
 
-Both methods work. Use `disable-model-invocation: true` in frontmatter to allow only explicit slash commands.
+I keep shared `name` and `description` fields concise and free of embedded quotation marks so discovery clients expose complete descriptions. Claude-specific invocation settings do not configure Codex. I preserve explicit publication gates in the workflow body.
 
 ---
 

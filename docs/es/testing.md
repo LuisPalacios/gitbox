@@ -256,4 +256,4 @@ Cuando añado una feature nueva, actualizo este archivo:
 2. Añadir un paso de verificación manual a la sección GUI adecuada anterior
 3. Si la feature es sensible a plataforma, añadir una nota a la tabla específica por plataforma
 
-Si usas Claude Code, el skill `/test-plan` automatiza los checks pre-PR y guía los pasos interactivos.
+Uso `/test-plan` en Claude Code o `$test-plan` en Codex para automatizar los checks pre-PR y guiar los pasos interactivos.

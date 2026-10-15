@@ -1,12 +1,14 @@
 # Worktree-based parallel workflow
 
-I use this workflow when I want to work on two or more GitHub issues at the same time, each in its own Claude Code session, each on its own branch, without the sessions stepping on each other. It's driven by two skills: `/work-issue <N>` creates a sibling worktree and walks the issue through plan, code, test, push, and PR; `/merge-pr <PR#>` handles the merge and cleanup.
+I use this workflow when I want to work on two or more GitHub issues at the same time, each in its own Claude Code or Codex session, each on its own branch, without the sessions stepping on each other. It's driven by two skills: `/work-issue <N>` creates a sibling worktree and walks the issue through plan, code, test, push, and PR; `/merge-pr <PR#>` handles the merge and cleanup.
 
 The skills enforce the gates I care about — nothing lands on GitHub without me saying so — so I don't have to re-explain the rules in every session.
 
+I use the slash-command examples below in Claude Code. In Codex I use `$work-issue <N>` and `$merge-pr <PR#>` with the same arguments and approval gates. Both tools load the shared instructions and skills described in [developer-guide.md](developer-guide.md#working-with-claude-code-and-codex).
+
 ## What this workflow gives me
 
-- One Claude session per issue, fully isolated at the filesystem level.
+- One Claude Code or Codex session per issue, fully isolated at the filesystem level.
 - An automatic `gh auth switch` to the right user for the clone, so I never push from the wrong account.
 - An explicit pause before every publish step (push, PR, merge).
 - A clean cleanup path: when the PR merges, the worktree and local branch disappear.
@@ -15,12 +17,12 @@ The skills enforce the gates I care about — nothing lands on GitHub without me
 
 From the main clone:
 
-1. Open a fresh Claude Code window.
+1. Open a fresh Claude Code or Codex window.
 2. Type `/work-issue 42` (or whatever the issue number is).
 3. The skill derives a branch name like `fix/42-my-slug`, proposes a worktree at `../gitbox-42-my-slug`, and asks me to confirm.
 4. On confirmation it creates the worktree, `cd`s into it, and moves through the phases.
 
-If I want to work on issue 43 at the same time, I open a second Claude Code window, run `/work-issue 43` in *that* window, and now I have two parallel sessions on two separate worktrees.
+If I want to work on issue 43 at the same time, I open a second Claude Code or Codex window, run `/work-issue 43` in *that* window, and now I have two parallel sessions on two separate worktrees.
 
 ## The gates
 
@@ -82,7 +84,7 @@ Three ways to live with it:
 
 ## When main advances under me
 
-If someone (usually me in the other Claude session) lands a PR while I'm still working on mine, the `origin/main` branch moves and I need to rebase. The skill handles this at the Sync-with-main gate — it fetches, checks for new commits, and offers `git rebase origin/main`. Conflicts are surfaced to me per-file; the skill doesn't auto-resolve non-trivial conflicts.
+If someone (usually me in the other Claude Code or Codex session) lands a PR while I'm still working on mine, the `origin/main` branch moves and I need to rebase. The skill handles this at the Sync-with-main gate — it fetches, checks for new commits, and offers `git rebase origin/main`. Conflicts are surfaced to me per-file; the skill doesn't auto-resolve non-trivial conflicts.
 
 After a rebase, auto-verify and the smoke-test gate re-run. My earlier "ok, push it" doesn't carry over — rebase rewrites history, so the skill asks again.
 
@@ -94,7 +96,7 @@ When I'm ready:
 /merge-pr <PR#>
 ```
 
-This runs in whichever Claude session — either the one that created the worktree, or a fresh window. The skill:
+This runs in whichever Claude Code or Codex session — either the one that created the worktree, or a fresh window. The skill:
 
 1. Checks the worktree has no uncommitted or unpushed state, and verifies the PR is rebased on latest `origin/main` (re-pushes with `--force-with-lease` if not).
 2. Gates on CI — all checks must be green.

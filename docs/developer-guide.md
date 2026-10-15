@@ -1,5 +1,17 @@
 # Developer guide
 
+## Working with Claude Code and Codex
+
+I share one set of project instructions and six repository skills between Claude Code and Codex. I edit `.claude/CLAUDE.md` and `.claude/skills/`; the tracked relative symlinks `AGENTS.md` and `.agents/skills` expose the same files to Codex.
+
+I open either tool at the repository root. In Claude Code I invoke `/work-issue 123` or `/test-plan`; in Codex I invoke `$work-issue 123` or `$test-plan`. Natural-language requests also select skills. Both tools follow the same testing rules and require explicit approval before publishing to GitHub.
+
+I keep Claude permissions in `.claude/settings.json`; Codex uses its own session permissions. I keep shared instructions below Codex's default 32 KiB budget and load detailed context when needed. Codex reads Claude's skill-authoring rule through an explicit instruction, and uses a conversation plan when its session cannot enter plan mode.
+
+I start a fresh session after changing instructions or skill metadata. I ask it to summarize the project rules and list all six local skills. For symlink checks, Windows repair, capability mapping, and expected verification results, I use [the shared setup guide](../.claude/context/guideline_codex.md).
+
+---
+
 ## Prerequisites
 
 - **Go** 1.26+ — [install](https://go.dev/doc/install)
@@ -164,7 +176,7 @@ npm install -g markdownlint-cli2
 
 The PR workflow runs the same script as its gate: any finding fails the job, including a new advisory reported by govulncheck or `npm audit`. CI pins shellcheck 0.11.0, actionlint 1.7.12 and markdownlint-cli2 0.23.3; use those versions locally so both runs agree.
 
-For the full testing workflow (fixture setup, integration tests, pre-PR and release checklists), see [testing.md](testing.md). For multiplatform testing via SSH, see [multiplatform.md](multiplatform.md). If you use Claude Code, `/test-plan` automates the pre-PR checks.
+For the full testing workflow (fixture setup, integration tests, pre-PR and release checklists), see [testing.md](testing.md). For multiplatform testing via SSH, see [multiplatform.md](multiplatform.md). I use `/test-plan` in Claude Code or `$test-plan` in Codex to automate the pre-PR checks.
 
 ---
 
@@ -273,8 +285,8 @@ I track the backlog on GitHub at [github.com/LuisPalacios/gitbox/issues](https:/
 
 The workflow:
 
-1. **Capture** — open an issue with a short title and a body describing the concept and any codebase notes I'd want a future Claude session to have.
-2. **Plan** — discuss in comments, then enter plan mode in Claude Code to design a file-by-file implementation.
+1. **Capture** — open an issue with a short title and a body describing the concept and any codebase notes I'd want a future agent session to have.
+2. **Plan** — discuss in comments, then plan in Claude Code or Codex to design a file-by-file implementation.
 3. **Build** — implement the plan, then verify with `/test-plan`.
 4. **Ship** — reference the issue in the commit message (e.g. `Closes #22`) so it auto-closes on push.
 
