@@ -7,6 +7,7 @@ package main
 
 import (
 	"fmt"
+	"reflect"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
@@ -99,25 +100,40 @@ type DiscoverWorkspacesResult struct {
 // idempotent when nothing on disk changed. Intended to run in the DomReady
 // background goroutine so the cached list shows instantly and refreshes after.
 func (a *App) DiscoverWorkspaces() (DiscoverWorkspacesResult, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+	return a.discoverWorkspaces(workspace.Discover)
+}
 
-	out := DiscoverWorkspacesResult{}
-	changed, err := workspace.RefreshCache(a.cfg)
-	if err != nil {
-		return out, err
-	}
-	out.Changed = changed
-	out.Count = len(a.cfg.Workspaces)
-	if changed {
-		if err := a.saveConfig(); err != nil {
-			return out, fmt.Errorf("saving workspace cache: %w", err)
+// discoverWorkspaces serializes scans without holding the shared config lock.
+// A changed path or clone set invalidates the result and triggers a fresh scan.
+func (a *App) discoverWorkspaces(scan func(*config.Config) ([]workspace.Found, error)) (DiscoverWorkspacesResult, error) {
+	a.workspaceDiscoveryMu.Lock()
+	defer a.workspaceDiscoveryMu.Unlock()
+	for {
+		a.mu.Lock()
+		snapshot := workspace.DiscoverySnapshot(a.cfg)
+		a.mu.Unlock()
+		found, err := scan(snapshot)
+		if err != nil {
+			return DiscoverWorkspacesResult{}, err
 		}
-		if a.ctx != nil {
+		a.mu.Lock()
+		if !reflect.DeepEqual(snapshot, workspace.DiscoverySnapshot(a.cfg)) {
+			a.mu.Unlock()
+			continue
+		}
+		out := DiscoverWorkspacesResult{Changed: workspace.UpdateCache(a.cfg, found), Count: len(found)}
+		if out.Changed {
+			if err := a.saveConfig(); err != nil {
+				a.mu.Unlock()
+				return out, fmt.Errorf("saving workspace cache: %w", err)
+			}
+		}
+		a.mu.Unlock()
+		if out.Changed && a.ctx != nil {
 			wailsrt.EventsEmit(a.ctx, "workspaces:discovered", out)
 		}
+		return out, nil
 	}
-	return out, nil
 }
 
 // OpenWorkspace launches a discovered .code-workspace file in the first

@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/LuisPalacios/gitbox/pkg/workspace"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 )
@@ -207,5 +209,99 @@ func TestSetCollapsed_CardsOpen(t *testing.T) {
 	reloaded, _ = config.Load(cfgPath)
 	if reloaded.Global.Collapsed != nil {
 		t.Errorf("Collapsed = %+v, want nil after collapsing the panel", reloaded.Global.Collapsed)
+	}
+}
+
+func TestDiscoverWorkspaces_ScanDoesNotBlockConfigAndPreservesEdits(t *testing.T) {
+	a, cfgPath := newWorkspaceTestApp(t)
+	started, release := make(chan struct{}), make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		_, err := a.discoverWorkspaces(func(snapshot *config.Config) ([]workspace.Found, error) {
+			close(started)
+			<-release
+			return []workspace.Found{{Key: "found", Name: "found", File: filepath.Join(snapshot.Global.Folder, "found.code-workspace")}}, nil
+		})
+		done <- err
+	}()
+	<-started
+	unlocked := make(chan struct{})
+	go func() {
+		a.GetConfig()
+		a.mu.Lock()
+		a.cfg.Global.Language = "es"
+		a.mu.Unlock()
+		close(unlocked)
+	}()
+	select {
+	case <-unlocked:
+	case <-time.After(time.Second):
+		close(release)
+		t.Fatal("config access blocked behind workspace scan")
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Global.Language != "es" || len(reloaded.Workspaces) != 1 {
+		t.Fatalf("lost concurrent edit or cache: %+v", reloaded)
+	}
+}
+
+func TestDiscoverWorkspaces_RetriesChangedInputs(t *testing.T) {
+	a, _ := newWorkspaceTestApp(t)
+	started, release := make(chan struct{}), make(chan struct{})
+	done := make(chan error, 1)
+	calls := 0
+	newRoot := t.TempDir()
+	go func() {
+		_, err := a.discoverWorkspaces(func(snapshot *config.Config) ([]workspace.Found, error) {
+			calls++
+			if calls == 1 {
+				close(started)
+				<-release
+			}
+			return []workspace.Found{{Key: "found", File: filepath.Join(snapshot.Global.Folder, "found.code-workspace")}}, nil
+		})
+		done <- err
+	}()
+	<-started
+	a.mu.Lock()
+	a.cfg.Global.Folder = newRoot
+	a.mu.Unlock()
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 || a.cfg.Workspaces["found"].File != filepath.Join(newRoot, "found.code-workspace") {
+		t.Fatalf("stale results published: calls=%d cache=%v", calls, a.cfg.Workspaces)
+	}
+}
+
+func TestTentativeContainers_DoesNotSuggestKnownContainers(t *testing.T) {
+	a, _ := newWorkspaceTestApp(t)
+	parent := filepath.Join(a.cfg.Global.Folder, "parent")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(parent, "parent.code-workspace"), []byte(`{"folders":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	source := a.cfg.Sources["github-alice"]
+	repo := source.Repos["team/frontend"]
+	repo.CloneFolder, repo.Container = parent, true
+	source.Repos["team/frontend"] = repo
+	a.cfg.Sources["github-alice"] = source
+	if got := a.TentativeContainers(); len(got) != 0 {
+		t.Fatalf("already marked container suggested again: %v", got)
+	}
+	repo.Container = false
+	source.Repos["team/frontend"] = repo
+	if got := a.TentativeContainers(); len(got) != 1 || got[0].Source != "github-alice" || got[0].Repo != "team/frontend" {
+		t.Fatalf("unmarked container not suggested: %v", got)
 	}
 }

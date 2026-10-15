@@ -64,11 +64,13 @@ func FindOrphansIn(cfg *config.Config, extraRoots []string) ([]OrphanRepo, error
 	}
 	sort.Strings(flat)
 	flat = dedupPaths(flat)
-	candidates := filterSubmodules(flat)
+	// Each flat scan already stops at clone boundaries. Keep results from
+	// explicitly requested nested roots instead of filtering across roots.
+	candidates := flat
 
 	// Pass 2 — nested clones inside container repos. These live inside another
-	// clone's working tree, so they must bypass the submodule filter. Container
-	// paths are also added to the root set so RelPath is computed against them.
+	// clone's working tree and the flat scan stops at clone boundaries. Container
+	// paths also join the root set so RelPath resolves against them.
 	depth := cfg.Global.NestedScanDepthOrDefault()
 	containerPaths := containerRepoPaths(cfg, parentFolder)
 	nestedSet := make(map[string]bool)
@@ -143,27 +145,6 @@ func FindOrphansIn(cfg *config.Config, extraRoots []string) ([]OrphanRepo, error
 		return orphans[i].RelPath < orphans[j].RelPath
 	})
 	return orphans, nil
-}
-
-// filterSubmodules removes repos nested inside other repos (submodules).
-// Input must be sorted. A repo whose path starts with a previous repo's path
-// followed by a separator is considered a submodule and is dropped.
-func filterSubmodules(sorted []string) []string {
-	var result []string
-	for _, p := range sorted {
-		nested := false
-		for _, parent := range result {
-			norm := filepath.ToSlash(parent) + "/"
-			if strings.HasPrefix(filepath.ToSlash(p), norm) {
-				nested = true
-				break
-			}
-		}
-		if !nested {
-			result = append(result, p)
-		}
-	}
-	return result
 }
 
 // gatherRoots returns the de-duplicated, tilde-expanded list of directories to

@@ -150,6 +150,8 @@ Prints the exact command to launch `GitboxApp --test-mode` on each platform. The
 
 Same idea, but the printed commands launch GitboxApp against the real `~/.config/gitbox/gitbox.json` on the target machine.
 
+I measure startup on the native desktop after building: process launch to window, window to configured rows with container nesting, and time to complete status. I record platform, clone count, and repeated runs; a warm browser navigation in `wails dev` measures a different path. SSH smoke tests verify the binary and backend, but I need an interactive Windows session for WebView2 row-paint timings before claiming the startup target.
+
 ### Sync production config to a remote
 
 ```bash

@@ -137,6 +137,8 @@ cd cmd/gui/frontend
 npm run check
 ```
 
+I also run `npm test` from `cmd/gui/frontend` for pure clone-tree regressions: cross-source ownership, duplicate prevention, nested collapse state, and recovery from stale parent references. The health check runs these tests as `frontend-test`.
+
 ### Step 3: Full lifecycle scenario
 
 The big one. Runs the whole account lifecycle through `pkg/ops` against the first fixture account with a token: creates the account, checks credentials, discovers repos, clones one, checks status, pulls, fetches, edits the account and reconfigures the clone, creates and deletes a mirror group, re-clones, renames the account, and deletes everything. Every step saves and reloads the config, the same way the GUI persists after each action.
@@ -162,6 +164,12 @@ GitboxApp --test-mode
 ```
 
 The `--test-mode` flag reads `test-gitbox.json` (searching upwards from the current directory), builds a throwaway config in a temp directory, overrides `global.folder`, and injects the fixture tokens as environment variables. Nothing touches my real `~/.config/gitbox/` or existing clones, and the temp directory is deleted when the app exits.
+
+### Startup regression checks
+
+I run the startup snapshot and workspace discovery tests in `cmd/gui` to verify nesting before clones exist, detached response data, config access during a blocked scan, preservation of concurrent edits, and retries after discovery inputs change. I measure snapshot construction separately with `go test ./cmd/gui/ -run '^$' -bench BenchmarkStartupSnapshot -benchmem`. This benchmark measures backend work, not visible startup time.
+
+For interactive startup measurements, I record process launch, window visibility, first configured rows, and complete status separately, along with the platform, clone count, container layout, and run count. I distinguish native production launches from browser navigation against an already-running `wails dev` backend. I need an interactive Windows desktop to measure WebView2 rendering; SSH backend timings alone cannot establish the first-row target. I keep unmeasured targets open until that desktop check completes.
 
 ## Pre-PR checklist
 

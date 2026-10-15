@@ -30,6 +30,11 @@ func RefreshCache(cfg *config.Config) (changed bool, err error) {
 	if err != nil {
 		return false, err
 	}
+	return UpdateCache(cfg, found), nil
+}
+
+// UpdateCache applies discovery results without replacing unrelated config fields.
+func UpdateCache(cfg *config.Config, found []Found) bool {
 	newWS := make(map[string]config.Workspace, len(found))
 	order := make([]string, 0, len(found))
 	for _, f := range found {
@@ -42,11 +47,11 @@ func RefreshCache(cfg *config.Config) (changed bool, err error) {
 		order = append(order, f.Key)
 	}
 	if workspacesEqual(cfg.Workspaces, newWS) {
-		return false, nil
+		return false
 	}
 	cfg.Workspaces = newWS
 	cfg.WorkspaceOrder = order
-	return true, nil
+	return true
 }
 
 // TentativeContainers returns managed repos that have a .code-workspace file at

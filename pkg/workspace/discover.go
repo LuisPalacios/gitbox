@@ -73,6 +73,7 @@ func uniqueKey(stem string, used map[string]bool) string {
 // outside hidden directories. Results are de-duplicated and sorted by path.
 func findCodeWorkspaces(roots []string) ([]string, error) {
 	seen := make(map[string]bool)
+	visited := make(map[string]bool)
 	var out []string
 	for _, root := range roots {
 		if root == "" {
@@ -87,9 +88,14 @@ func findCodeWorkspaces(roots []string) ([]string, error) {
 			}
 			if d.IsDir() {
 				name := d.Name()
-				if strings.HasPrefix(name, ".") && name != "." {
+				if p != root && (strings.HasPrefix(name, ".") || workspaceSkipDirs[name]) {
 					return filepath.SkipDir
 				}
+				abs, _ := filepath.Abs(p)
+				if visited[normPath(abs)] {
+					return filepath.SkipDir
+				}
+				visited[normPath(abs)] = true
 				return nil
 			}
 			if strings.HasSuffix(strings.ToLower(d.Name()), ".code-workspace") {
@@ -108,6 +114,10 @@ func findCodeWorkspaces(roots []string) ([]string, error) {
 	sort.Strings(out)
 	return out, nil
 }
+
+// Explicit scan roots override these exclusions, so users can opt in to a
+// dependency directory without walking every dependency tree by default.
+var workspaceSkipDirs = map[string]bool{"node_modules": true, "vendor": true}
 
 type rawCodeWorkspace struct {
 	Folders []struct {

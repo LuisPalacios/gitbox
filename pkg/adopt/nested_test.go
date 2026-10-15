@@ -83,3 +83,27 @@ func TestFindOrphansIn_ExtraRoot(t *testing.T) {
 		t.Errorf("extra-root clone = %+v, want matched github-me + NeedsRelocate", found)
 	}
 }
+
+func TestFindOrphansIn_ExplicitNestedRoot(t *testing.T) {
+	root := t.TempDir()
+	cfg := testConfig(root)
+	parent := filepath.Join(root, "github-me", "LuisPalacios", "tracked-repo")
+	initBareRepo(t, parent, "https://github.com/LuisPalacios/tracked-repo.git")
+	child := filepath.Join(parent, "explicit-child")
+	initBareRepo(t, child, "https://github.com/LuisPalacios/explicit-child.git")
+	for _, configured := range []bool{false, true} {
+		cfg.Global.ExtraFolders = nil
+		roots := []string{child}
+		if configured {
+			cfg.Global.ExtraFolders = roots
+			roots = nil
+		}
+		found, err := FindOrphansIn(cfg, roots)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(found) != 1 || found[0].Path != child {
+			t.Fatalf("configured=%t: explicit nested clone lost: %v", configured, found)
+		}
+	}
+}

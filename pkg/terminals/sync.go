@@ -32,15 +32,28 @@ func Sync(cfg *config.Config, goos string) bool {
 	if cfg == nil {
 		return false
 	}
+	return ApplyDetection(cfg, Detect(goos), goos)
+}
+
+// Detect gathers installed tools without reading or changing config.
+func Detect(goos string) MergePayload {
 	apps := DetectTerminals(goos)
 	shells := DetectShells(goos)
-	composed := ComposeProfiles(apps, shells, goos)
-
-	profiles := composed
+	profiles := ComposeProfiles(apps, shells, goos)
 	if wez := DiscoverWeztermProfiles(); len(wez) > 0 {
 		profiles = mergeProfilesByID(wez, profiles)
 	}
+	return MergePayload{Apps: apps, Shells: shells, Profiles: profiles}
+}
 
+// ApplyDetection merges discovery into the latest config, preserving edits
+// made while host detection ran. The caller synchronizes access to cfg.
+func ApplyDetection(cfg *config.Config, detected MergePayload, goos string) bool {
+	if cfg == nil {
+		return false
+	}
+	apps, shells := detected.Apps, detected.Shells
+	profiles := append([]config.TerminalProfile(nil), detected.Profiles...)
 	if defaultProfileMissing(cfg.Global.TerminalProfiles) {
 		applyInitialDefault(profiles, goos)
 	}

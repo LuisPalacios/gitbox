@@ -1,6 +1,7 @@
 package git
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -51,5 +52,33 @@ func TestFindRepos_Empty(t *testing.T) {
 	}
 	if len(repos) != 0 {
 		t.Errorf("expected 0 repos, got %d", len(repos))
+	}
+}
+
+func TestFindRepos_StopsAtCloneBoundary(t *testing.T) {
+	for _, gitFile := range []bool{false, true} {
+		for _, rootClone := range []bool{false, true} {
+			t.Run(fmt.Sprintf("file=%t/root=%t", gitFile, rootClone), func(t *testing.T) {
+				root := t.TempDir()
+				clone := root
+				if !rootClone {
+					clone = filepath.Join(root, "parent")
+				}
+				if err := os.MkdirAll(filepath.Join(clone, "child", ".git"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if gitFile {
+					if err := os.WriteFile(filepath.Join(clone, ".git"), []byte("gitdir: elsewhere"), 0o644); err != nil {
+						t.Fatal(err)
+					}
+				} else if err := os.Mkdir(filepath.Join(clone, ".git"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				got, err := FindRepos(root)
+				if err != nil || len(got) != 1 || got[0] != clone {
+					t.Fatalf("FindRepos = %v, %v; want [%s]", got, err, clone)
+				}
+			})
+		}
 	}
 }

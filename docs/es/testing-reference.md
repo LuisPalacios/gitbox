@@ -39,6 +39,8 @@ Lógica del lado Go de la app Wails que se ejecuta sin ventana:
 - Terminales — saneado de rutas MSYS y del entorno para las terminales lanzadas, y un primer arranque que nunca escribe la lista legacy `global.terminals`
 - Workspaces y contenedores — refresco de caché, persistencia del flag de contenedor, carpetas extra, profundidad de escaneo anidado, `clone_folder` absoluto para clones incorporados, persistencia y poda del estado de plegado
 
+Cubro las instantáneas de arranque y el descubrimiento de workspaces sin bloqueo en `cmd/gui/startup_test.go` y `cmd/gui/workspaces_test.go`, incluidas las entradas de escaneo obsoletas y las ediciones concurrentes de config. `BenchmarkStartupSnapshot` mide la construcción de la instantánea por separado del renderizado nativo. Ejecuto las regresiones puras del árbol de clones del frontend con `npm test` en `cmd/gui/frontend`; `scripts/health.sh frontend-test` ejecuta la misma suite.
+
 ### Prueba de escenario — 1 prueba, 12 pasos (`pkg/ops/`)
 
 - `TestScenario_FullLifecycle` — end-to-end a través de `pkg/ops`: añadir cuenta → comprobar credencial → descubrir → añadir repo → clone → status → pull y fetch → editar cuenta + reconfigurar clones → CRUD de mirrors → reclonar → renombrar cuenta → borrarlo todo

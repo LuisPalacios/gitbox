@@ -109,7 +109,7 @@ export const accountStats = derived([sources, repoStates], ([$src, $rs]) => {
       if (!state) continue;
       stats[acctKey].total++;
       if (isSynced(state)) stats[acctKey].synced++;
-      else stats[acctKey].issues++;
+      else if (state.status !== 'unknown') stats[acctKey].issues++;
     }
   }
   return stats;

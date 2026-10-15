@@ -81,9 +81,11 @@ Los clones fuera de este árbol (carpetas de escaneo extra, clones anidados dent
 
 ### cmd/gui — bindings Wails
 
-`cmd/gui/app.go` expone los métodos que el frontend Svelte llama mediante bindings TypeScript autogenerados. Cada binding toma el lock de config, llama a `pkg/ops` o a otro paquete de `pkg/`, guarda la config y emite eventos Wails de progreso. Los archivos vecinos contienen asuntos exclusivos de la GUI: perfiles de terminal (`profiles.go`), workspaces (`workspaces.go`), contenedores multi-repo (`containers.go`), badges de PR (`pr.go`), autostart y ciclo de vida de procesos por OS. Cada `exec.Command` en `cmd/gui/` pasa por `git.HideWindow` para que no parpadee ninguna ventana de consola en Windows.
+`cmd/gui/app.go` expone los métodos que el frontend Svelte llama mediante bindings TypeScript autogenerados. Uso el bloqueo de config para el estado compartido y llamo a `pkg/ops` o a otro paquete de `pkg/` para las operaciones, guardando los cambios y emitiendo eventos Wails de progreso. Los archivos vecinos contienen asuntos exclusivos de la GUI: perfiles de terminal (`profiles.go`), workspaces (`workspaces.go`), contenedores multi-repo (`containers.go`), badges de PR (`pr.go`), autostart y ciclo de vida de procesos por OS. Cada `exec.Command` en `cmd/gui/` pasa por `git.HideWindow` para que no parpadee ninguna ventana de consola en Windows.
 
 `main.go` gestiona dos flags antes de que arranque Wails: `--version` imprime la versión del build y termina, y `--test-mode` enruta la config a través de un directorio temporal construido desde el fixture `test-gitbox.json` (consulta [testing.md](testing.md)).
+
+Devuelvo la config, las preferencias, el estado de plegado y la anidación derivada de las rutas en una única instantánea de arranque independiente. Renderizo esa instantánea antes de solicitar el estado local y muestro indicadores giratorios hasta que termina la comprobación o el fetch. Mantengo los hijos de otros sources bajo sus contenedores y conservo el source de cada hijo para el estado, las acciones y la propiedad. Detecto editores y perfiles de terminal fuera del bloqueo de config y después los combino con los ajustes actuales para conservar las ediciones concurrentes.
 
 ### pkg/ops — operaciones de aplicación
 
@@ -176,6 +178,8 @@ Instala un bloque gestionado curado de patrones de basura de OS (`.DS_Store`, `T
 
 Descubre archivos `.code-workspace` de VS Code existentes y los expone en solo lectura — gitbox nunca crea, edita, genera ni borra archivos de workspace. `Discover` recorre `global.folder` y cada raíz de `global.extra_folders` buscando archivos `*.code-workspace` y resuelve las referencias de carpeta de cada archivo hacia clones conocidos (deepest-prefix match contra las rutas de repo resueltas); es pura y solo informa de lo que hay en disco. `RefreshCache` refleja el resultado en la sección `workspaces` de `gitbox.json` y solo persiste cuando el conjunto cambió. `BuildOpenCommand()` lanza un `.code-workspace` existente en el primer editor de `global.editors`. El soporte de tmuxinator y la generación de workspaces se eliminaron con la config v3.
 
+Escaneo una copia independiente de las entradas del descubrimiento de workspaces fuera del bloqueo compartido de config. Si cambian las rutas o los clones conocidos durante el escaneo, reintento con las entradas actuales; en caso contrario, actualizo solo la caché de workspaces y conservo las demás ediciones. Visito una sola vez los directorios solapados y omito los directorios ocultos, `node_modules` y `vendor`, salvo cuando configuro explícitamente uno como raíz de escaneo.
+
 ### pkg/adopt — discovery de repos huérfanos
 
 Escanea `global.folder`, cada raíz de `global.extra_folders` y los árboles de trabajo de los repos contenedor buscando clones que no están en `gitbox.json`, y luego puntúa cada uno contra cada cuenta cuyo host coincide. Todas las señales son aditivas, y gana la puntuación más alta:
@@ -189,6 +193,8 @@ Escanea `global.folder`, cada raíz de `global.extra_folders` y los árboles de 
 | `.git/config` tiene `credential.<url>.username` igual a `account.username` | +10        | `git config --get-regexp '^credential\..*\.username$'` en el repo           |
 
 Si la puntuación máxima la comparten dos o más cuentas (incluido un empate solo por host) el match se marca como ambiguo: no se elige cuenta, no se mueven archivos y la GUI muestra la lista de candidatas. Los huérfanos adoptados reciben aislamiento de credenciales, identidad y una URL remota reescrita para coincidir con el tipo de credencial. Los huérfanos bajo el árbol estándar pueden reubicarse opcionalmente a su ruta canónica; los clones fuera de él y los clones anidados se incorporan en su sitio con un `clone_folder` absoluto.
+
+Detengo el descubrimiento ordinario de huérfanos en el límite de cada clon, incluido un archivo `.git` de un worktree. Escaneo las raíces explícitas de forma independiente y uso el escaneo de contenedores con `nested_scan_depth` para descubrir clones anidados.
 
 ### pkg/mirror — mirroring de repositorios
 

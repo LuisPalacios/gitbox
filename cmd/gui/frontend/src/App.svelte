@@ -14,13 +14,14 @@
   import type { SimpleKind } from './lib/theme';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit, EventsOn } from '../wailsjs/runtime/runtime';
-  import type { RepoState, SourceDTO, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
+  import type { RepoState, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
   import BrandIcon, { terminalLogo } from './lib/BrandIcon.svelte';
   import UIIcon from './lib/UIIcon.svelte';
   import PRPopover from './lib/PRPopover.svelte';
   import TerminalsModal from './lib/TerminalsModal.svelte';
   import Onboarding from './lib/Onboarding.svelte';
+  import { repoTreeRows } from './lib/repo-tree';
   import { tooltip } from './lib/tooltip';
   import { dismiss } from './lib/dismiss';
 
@@ -684,8 +685,10 @@
   }
 
   async function reloadConfigFromDisk() {
-    const fresh = await bridge.reloadConfig();
-    configStore.set(fresh);
+    await bridge.reloadConfig();
+    const snapshot = await bridge.getStartupSnapshot();
+    repoNesting = snapshot.nesting || {};
+    configStore.set(snapshot.config);
   }
 
   // openTerminalsManagerWindow asks the Go side to spawn a sub-process of
@@ -742,12 +745,12 @@
   let orphanBusy = false;
 
   async function loadOrphans() {
+    await loadNesting();
     try {
       const result = await bridge.findOrphans();
       orphanList = result || [];
       orphanCount = orphanList.filter(o => o.matchedAccount && !o.localOnly).length;
     } catch { orphanCount = 0; }
-    await loadNesting();
     await loadTentativeContainers();
   }
 
@@ -758,7 +761,7 @@
   async function loadNesting() {
     try {
       repoNesting = await bridge.repoNesting();
-    } catch { repoNesting = {}; }
+    } catch { /* I retain the last known nesting when a refresh fails. */ }
   }
 
   // ── Tentative containers ──
@@ -790,16 +793,6 @@
   // because it has clones below it, whatever made them its children.
   let collapsedSources: Set<string> = new Set();
   let collapsedRepos: Set<string> = new Set();
-
-  async function loadCollapsed() {
-    try {
-      const c = await bridge.getCollapsed();
-      collapsedSources = new Set(c.sources || []);
-      collapsedRepos = new Set(c.repos || []);
-      cardsOpen = !!c.cards_open;
-    } catch { /* keep everything expanded */ }
-    cardsReady = true;
-  }
 
   function saveCollapsed() {
     bridge.setCollapsed({ sources: [...collapsedSources], repos: [...collapsedRepos], cards_open: cardsOpen })
@@ -873,91 +866,26 @@
       collapsedSources.delete(sourceKey);
     } else {
       collapsedSources.add(sourceKey);
-      closeDetailIf(k => k.startsWith(`${sourceKey}/`));
+      const hidden = new Set((treeRows[sourceKey] || []).flatMap(row => [row.key, ...row.descendants]));
+      closeDetailIf(k => hidden.has(k));
     }
     collapsedSources = collapsedSources;
     saveCollapsed();
   }
 
-  function toggleRepoCollapsed(repoKey: string, descendants: string[], sourceKey: string) {
+  function toggleRepoCollapsed(repoKey: string, descendants: string[]) {
     if (collapsedRepos.has(repoKey)) {
       collapsedRepos.delete(repoKey);
     } else {
       collapsedRepos.add(repoKey);
-      const hidden = new Set(descendants.map(d => `${sourceKey}/${d}`));
+      const hidden = new Set(descendants);
       closeDetailIf(k => hidden.has(k));
     }
     collapsedRepos = collapsedRepos;
     saveCollapsed();
   }
 
-  // attentionCount counts the repos (names within sourceKey) that need
-  // attention, using the same rule as the account stats.
-  function attentionCount(sourceKey: string, repoNames: string[], states: Record<string, RepoState>): number {
-    let n = 0;
-    for (const name of repoNames) {
-      const st = states[`${sourceKey}/${name}`];
-      if (st && !isSynced(st)) n++;
-    }
-    return n;
-  }
-
-  type RepoRow = { repoName: string; depth: number; childCount: number; descendants: string[] };
-
-  // nestedRepoRows orders a source's repos as a tree: each parent is followed
-  // by its nested children, at any depth. Rows below a collapsed parent are
-  // not emitted. Children whose parent lives in another source fall back to
-  // root rows. `collapsed` is passed in so Svelte tracks it.
-  function nestedRepoRows(sourceKey: string, source: SourceDTO, nesting: Record<string, string>, collapsed: Set<string>): RepoRow[] {
-    const order = source.repoOrder && source.repoOrder.length > 0 ? source.repoOrder : Object.keys(source.repos);
-    const inThisSource = new Set(order);
-    const childrenByParent: Record<string, string[]> = {};
-    const isChild = new Set<string>();
-    for (const repoName of order) {
-      const parentKey = nesting[`${sourceKey}/${repoName}`];
-      if (parentKey && parentKey.startsWith(`${sourceKey}/`)) {
-        const parentRepo = parentKey.slice(sourceKey.length + 1);
-        if (parentRepo !== repoName && inThisSource.has(parentRepo)) {
-          (childrenByParent[parentRepo] ||= []).push(repoName);
-          isChild.add(repoName);
-        }
-      }
-    }
-    // descendantsOf lists every repo below repoName, guarded against cycles.
-    const descendantsOf = (repoName: string, seen: Set<string>): string[] => {
-      const out: string[] = [];
-      for (const child of childrenByParent[repoName] || []) {
-        if (seen.has(child)) continue;
-        seen.add(child);
-        out.push(child, ...descendantsOf(child, seen));
-      }
-      return out;
-    };
-    const visited = new Set<string>();
-    const hidden = new Set<string>();
-    const rows: RepoRow[] = [];
-    const walk = (repoName: string, depth: number) => {
-      if (visited.has(repoName)) return;
-      visited.add(repoName);
-      const children = childrenByParent[repoName] || [];
-      const descendants = descendantsOf(repoName, new Set([repoName]));
-      rows.push({ repoName, depth, childCount: children.length, descendants });
-      if (collapsed.has(`${sourceKey}/${repoName}`)) {
-        for (const d of descendants) hidden.add(d);
-        return;
-      }
-      for (const child of children) walk(child, depth + 1);
-    };
-    for (const repoName of order) {
-      if (!isChild.has(repoName)) walk(repoName, 0);
-    }
-    // A parent cycle has no root: show those repos flat rather than drop them,
-    // unless a collapsed ancestor already hides them.
-    for (const repoName of order) {
-      if (!visited.has(repoName) && !hidden.has(repoName)) walk(repoName, 0);
-    }
-    return rows;
-  }
+  $: treeRows = repoTreeRows($sources, repoNesting, collapsedRepos);
 
   function showOrphanModal() {
     const matched = orphanList.filter(o => o.matchedAccount && !o.localOnly);
@@ -1207,10 +1135,12 @@
   async function reloadFromDisk() {
     if (cfgLoadErrorModal || firstRun) return;
     try {
-      const cfg = await bridge.reloadConfig();
-      configStore.set(cfg);
-      configPath = await bridge.getConfigPath();
-      const saved = await bridge.getPeriodicSync();
+      await bridge.reloadConfig();
+      const snapshot = await bridge.getStartupSnapshot();
+      repoNesting = snapshot.nesting || {};
+      configStore.set(snapshot.config);
+      configPath = snapshot.configPath;
+      const saved = snapshot.config.global.periodic_sync || 'off';
       if (saved !== fetchInterval) applyFetchInterval(saved);
       const statuses = await bridge.getAllStatus();
       applyStatusResults(statuses);
@@ -2526,22 +2456,27 @@
 
   // ── Lifecycle ──
   async function initDashboard() {
-    const cfg = await bridge.getConfig();
-    configStore.set(cfg);
+    const snapshot = await bridge.getStartupSnapshot();
+    const cfg = snapshot.config;
+    repoNesting = snapshot.nesting || {};
+    const collapsed = cfg.global?.collapsed;
+    collapsedSources = new Set(collapsed?.sources || []);
+    collapsedRepos = new Set(collapsed?.repos || []);
+    cardsOpen = !!collapsed?.cards_open;
+    cardsReady = true;
     languageChoice = normalizeLanguage(cfg.global?.language);
     languageStore.set(languageChoice);
-    configPath = await bridge.getConfigPath();
-    appVersion = await bridge.getAppVersion();
-    hostOS = await bridge.getOS();
-    fetchInterval = await bridge.getPeriodicSync();
-
-    await loadCollapsed();
-
-    // Restore view mode.
-    uiMode = (await bridge.getUIMode()) === 'simple' ? 'simple' : 'advanced';
+    configPath = snapshot.configPath;
+    appVersion = snapshot.appVersion;
+    hostOS = snapshot.os;
+    fetchInterval = cfg.global?.periodic_sync || 'off';
+    uiMode = cfg.global?.ui_mode === 'simple' ? 'simple' : 'advanced';
     if (uiMode === 'simple') enterSimple();
-
-    const savedMode = await bridge.getViewMode();
+    const savedMode = cfg.global?.view_mode;
+    configStore.set(cfg);
+    repoStates.set(Object.fromEntries(Object.entries(cfg.sources).flatMap(([sourceKey, source]) =>
+      Object.keys(source.repos).map(repoName => [`${sourceKey}/${repoName}`, { status: 'unknown' as const, progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }])
+    )));
     if (savedMode === 'compact') {
       viewMode = 'compact';
       await tick();
@@ -2554,8 +2489,13 @@
       setTimeout(() => fitCompactHeight(), 800);
     }
 
-    const statuses = await bridge.getAllStatus();
-    applyStatusResults(statuses);
+    try {
+      applyStatusResults(await bridge.getAllStatus());
+    } catch (e) {
+      repoStates.update(states => Object.fromEntries(Object.entries(states).map(([key, state]) =>
+        [key, state.status === 'unknown' ? { ...state, status: 'error' as const, error: String(e) } : state]
+      )));
+    }
 
     // Fetch all repos on startup to detect behind/ahead changes.
     runFetchAll();
@@ -2738,6 +2678,10 @@
     // it; swap the list in the store without a full config reload.
     events.on('harnesses:updated', (list: AIHarnessInfo[] | null) => {
       configStore.update((c) => c ? { ...c, global: { ...c.global, ai_harnesses: list || [] } } : c);
+    });
+
+    events.on('tools:updated', () => {
+      bridge.getConfig().then(cfg => configStore.update(current => current ? { ...current, global: { ...current.global, editors: cfg.global.editors, terminal_apps: cfg.global.terminal_apps, shells: cfg.global.shells, terminal_profiles: cfg.global.terminal_profiles } } : current)).catch(console.error);
     });
 
     events.on('status:updated', (results: any) => {
@@ -3134,7 +3078,8 @@
   {#if viewMode === 'compact'}
   <!-- ══════ COMPACT STATUS VIEW ══════ -->
   {@const cpct = Math.round(($summary.clean / Math.max($summary.total, 1)) * 100)}
-  {@const callGood = $summary.clean === $summary.total}
+  {@const pendingStatus = Object.values($repoStates).some(state => state.status === 'unknown')}
+  {@const callGood = !pendingStatus && $summary.clean === $summary.total}
   <div class="compact-strip">
     <!-- Global health -->
     <div class="compact-global">
@@ -3147,7 +3092,7 @@
           transform="rotate(-90 18 18)"/>
       </svg>
       <div class="compact-global-text">
-        <span class="compact-global-pct" style="color: {callGood ? sc('clean') : sc('behind')}">{cpct}%</span>
+        <span class="compact-global-pct" style="color: {callGood ? sc('clean') : sc('behind')}">{pendingStatus ? $t('simple.checking') : `${cpct}%`}</span>
         <span class="compact-global-label">{$summary.clean}/{$summary.total} synced</span>
       </div>
     </div>
@@ -3174,7 +3119,9 @@
         <div class="compact-acct-info">
           <span class="compact-acct-name">{key}</span>
           <span class="compact-acct-stat">
-            {#if stats.issues === 0}
+            {#if Object.entries($sources).some(([sk, src]) => src.account === key && Object.keys(src.repos).some(rn => !$repoStates[`${sk}/${rn}`] || $repoStates[`${sk}/${rn}`].status === 'unknown'))}
+              <span class="spinning">↻</span> {$t('simple.checking')}
+            {:else if stats.issues === 0}
               <span style="color:{sc('clean')}">All good</span>
             {:else}
               <span style="color:{sc('behind')}">{stats.issues} need attention</span>
@@ -3184,13 +3131,13 @@
         <span class="compact-chevron">{compactExpanded[key] ? '▾' : '▸'}</span>
       </button>
 
-      {#if compactExpanded[key] && $sources[key]}
+      {#if compactExpanded[key]}
         <div class="compact-repo-list" transition:slide={{ duration: 120 }}>
-          {#each ($sources[key].repoOrder || Object.keys($sources[key].repos)) as repoName}
-            {@const repoKey = `${key}/${repoName}`}
+          {#each Object.entries($sources).filter(([, source]) => source.account === key).flatMap(([sourceKey]) => treeRows[sourceKey] || []) as { key: repoKey, sourceKey: rowSourceKey, repoName, depth }}
             {@const state = $repoStates[repoKey] || { status: 'unknown', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0, branch: '', isDefault: false }}
-            <div class="compact-row" class:compact-row-ok={state.status === 'clean'}>
-              <span class="compact-dot" style="color: {sc(state.status)}">{statusSymbol(state.status)}</span>
+            <div class="compact-row" style={`padding-left: ${depth * 12}px`} class:compact-row-ok={state.status === 'clean'}>
+              {#if rowSourceKey && $sources[rowSourceKey].account !== key}<span class="compact-badge">{$sources[rowSourceKey].account}</span>{/if}
+              <span class="compact-dot" class:spinning={state.status === 'unknown' || !!fetchingRepos[repoKey]} style="color: {sc(state.status)}">{state.status === 'unknown' || fetchingRepos[repoKey] ? '↻' : statusSymbol(state.status)}</span>
               <span class="compact-repo-name">{repoName.includes('/') ? repoName.split('/').pop() : repoName}</span>
               {#if state.branch === '(detached)'}
                 <span class="compact-badge" style="color: {sc('error')}">detached</span>
@@ -3641,9 +3588,10 @@
     {#each Object.entries($sources) as [sourceKey, source] (sourceKey)}
       {@const accountKey = source.account}
       {@const sourceCollapsed = collapsedSources.has(sourceKey)}
-      {@const sourceRepoNames = Object.keys(source.repos)}
-      {@const sourceIssues = attentionCount(sourceKey, sourceRepoNames, $repoStates)}
-      {@const sourceUnsaved = sourceRepoNames.filter((n) => ['unsaved', 'help'].includes(simpleKind(($repoStates[`${sourceKey}/${n}`] || { status: 'unknown' }).status))).length}
+      {@const sourceRepoKeys = [...new Set((treeRows[sourceKey] || []).flatMap(row => [row.key, ...row.descendants]))]}
+      {@const sourceIssues = sourceRepoKeys.filter(key => $repoStates[key] && $repoStates[key].status !== 'unknown' && !isSynced($repoStates[key])).length}
+      {@const sourceUnsaved = sourceRepoKeys.filter(key => ['unsaved', 'help'].includes(simpleKind(($repoStates[key] || { status: 'unknown' }).status))).length}
+      {#if sourceRepoKeys.length > 0}
       <div class="source-group">
         <div class="source-header" role="button" tabindex="0"
           aria-expanded={!sourceCollapsed}
@@ -3680,15 +3628,19 @@
           </div>
           <span class="collapse-summary">
             {#if simple}
-              {$t('simple.projects', { n: sourceRepoNames.length })} ·
-              {#if sourceUnsaved === 0}
+              {$t('simple.projects', { n: sourceRepoKeys.length })} ·
+              {#if sourceRepoKeys.some(key => !$repoStates[key] || $repoStates[key].status === 'unknown')}
+                {$t('simple.checking')}
+              {:else if sourceUnsaved === 0}
                 <span style="color:{sc('clean')}">{$t('simple.allSaved')}</span>
               {:else}
                 <span style="color:{sc('dirty')}">{$t('simple.notSavedN', { n: sourceUnsaved })}</span>
               {/if}
             {:else}
-            {$t('collapse.clones', { n: sourceRepoNames.length })} ·
-            {#if sourceIssues === 0}
+            {$t('collapse.clones', { n: sourceRepoKeys.length })} ·
+            {#if sourceRepoKeys.some(key => !$repoStates[key] || $repoStates[key].status === 'unknown')}
+              {$t('simple.checking')}
+            {:else if sourceIssues === 0}
               <span style="color:{sc('clean')}">{$t('account.allGood')}</span>
             {:else}
               <span style="color:{sc('behind')}">{sourceIssues} {sourceIssues === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}</span>
@@ -3697,9 +3649,10 @@
           </span>
         </div>
         {#if !sourceCollapsed}
-        {#each nestedRepoRows(sourceKey, source, repoNesting, collapsedRepos) as { repoName, depth, childCount, descendants } (repoName)}
-          {@const repoKey = `${sourceKey}/${repoName}`}
-          {@const isContainer = !!source.repos[repoName]?.container}
+        {#each (treeRows[sourceKey] || []) as { sourceKey: rowSourceKey, repoName, depth, childCount, descendants } (`${rowSourceKey}/${repoName}`)}
+          {@const rowAccountKey = $sources[rowSourceKey].account}
+          {@const repoKey = `${rowSourceKey}/${repoName}`}
+          {@const isContainer = !!$sources[rowSourceKey]?.repos[repoName]?.container}
           {@const state = $repoStates[repoKey] || { status: 'unknown', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
           {@const rowOpensDetail = state.status !== 'unknown' && state.status !== 'clean' && state.status !== 'behind' && state.status !== 'not cloned' && state.status !== 'cloning' && state.status !== 'syncing'}
           <div class="repo-row" class:repo-row-clickable={rowOpensDetail}
@@ -3708,14 +3661,15 @@
             role="button"
             tabindex={rowOpensDetail || selectionMode ? 0 : -1}
             aria-disabled={!rowOpensDetail && !selectionMode}
-            on:click={() => activateRepoRow(sourceKey, repoName, repoKey, state.status)}
-            on:keydown={onActivateKey(() => activateRepoRow(sourceKey, repoName, repoKey, state.status))}>
+            on:click={() => activateRepoRow(rowSourceKey, repoName, repoKey, state.status)}
+            on:keydown={onActivateKey(() => activateRepoRow(rowSourceKey, repoName, repoKey, state.status))}>
+            {#if rowSourceKey !== sourceKey}<span class="container-badge" title={rowSourceKey}>{rowAccountKey}</span>{/if}
             {#if selectionMode}
               <input type="checkbox" class="clone-select-box" checked={$selectedClones.has(repoKey)}
                 on:click|stopPropagation
                 on:change={() => toggleCloneSelection(repoKey)} title="{repoName}: {$t('repo.selectForWorkspace')}" />
             {:else if deleteMode}
-              <button class="btn-delete-x" on:click|stopPropagation={() => askDelete(sourceKey, repoName, state.status)} title="Delete {repoName}">&#10005;</button>
+              <button class="btn-delete-x" on:click|stopPropagation={() => askDelete(rowSourceKey, repoName, state.status)} title="Delete {repoName}">&#10005;</button>
             {/if}
             {#if childCount > 0}
               {@const repoCollapsed = collapsedRepos.has(repoKey)}
@@ -3723,23 +3677,23 @@
                 aria-expanded={!repoCollapsed}
                 aria-label="{repoCollapsed ? $t('collapse.expand') : $t('collapse.collapse')} {repoName}"
                 title={repoCollapsed ? $t('collapse.expand') : $t('collapse.collapse')}
-                on:click|stopPropagation={() => toggleRepoCollapsed(repoKey, descendants, sourceKey)}
+                on:click|stopPropagation={() => toggleRepoCollapsed(repoKey, descendants)}
                 on:keydown|stopPropagation>{repoCollapsed ? '▸' : '▾'}</button>
             {/if}
             {#if simple}
               <!-- Simple row (issue #124): dot, short name, one sentence, one button, ⋯ -->
               {@const kind = simpleKind(state.status)}
               {@const kindColor = simpleColor(kind, $themeStore)}
-              <span class="dot" style="color: {kindColor}">●</span>
+              <span class="dot" class:spinning={state.status === 'unknown' || !!fetchingRepos[repoKey]} style="color: {kindColor}">{state.status === 'unknown' || fetchingRepos[repoKey] ? '↻' : '●'}</span>
               {#if childCount > 0}
                 <span class="repo-name" title={repoName}><span class="repo-name-toggle" role="button" tabindex="-1"
-                  on:click={(e) => { e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants, sourceKey); }}
-                  on:keydown={onActivateKey(() => toggleRepoCollapsed(repoKey, descendants, sourceKey))}>{shortName(repoName)}</span></span>
+                  on:click={(e) => { e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants); }}
+                  on:keydown={onActivateKey(() => toggleRepoCollapsed(repoKey, descendants))}>{shortName(repoName)}</span></span>
               {:else}
                 <span class="repo-name" title={repoName}>{shortName(repoName)}</span>
               {/if}
               {#if childCount > 0 && collapsedRepos.has(repoKey)}
-                {@const belowUnsaved = descendants.filter((d) => ['unsaved', 'help'].includes(simpleKind(($repoStates[`${sourceKey}/${d}`] || { status: 'unknown' }).status))).length}
+                {@const belowUnsaved = descendants.filter((d) => ['unsaved', 'help'].includes(simpleKind(($repoStates[d] || { status: 'unknown' }).status))).length}
                 <span class="collapse-summary collapse-summary-row">
                   {$t('collapse.below', { n: descendants.length })}{#if belowUnsaved > 0} · <span style="color:{sc('dirty')}">{$t('simple.notSavedN', { n: belowUnsaved })}</span>{/if}
                 </span>
@@ -3752,9 +3706,9 @@
               {:else}
                 <span class="status-text" style="color: {kindColor}" title={simpleTip(kind, state)}>{$t(`simple.${kind === 'busy' ? 'checking' : kind}`)}</span>
                 {#if kind === 'update'}
-                  <button class="btn-action" on:click|stopPropagation={() => syncRepo(sourceKey, repoName)}>{$t('simple.btnUpdate')}</button>
+                  <button class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)}>{$t('simple.btnUpdate')}</button>
                 {:else if kind === 'online'}
-                  <button class="btn-action" on:click|stopPropagation={() => cloneRepo(sourceKey, repoName)}>{$t('simple.btnDownload')}</button>
+                  <button class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('simple.btnDownload')}</button>
                 {/if}
                 {#if kind !== 'online' && kind !== 'busy'}
                   {@render quickLaunch(repoKey)}
@@ -3772,11 +3726,11 @@
                         aiHarnesses={configAIHarnesses}
                         {revealLabel}
                         browserLabelOverride={$t('simple.openWeb')}
-                        onOpenBrowser={() => openRepoInBrowser(sourceKey, repoName)}
+                        onOpenBrowser={() => openRepoInBrowser(rowSourceKey, repoName)}
                         onOpenFolder={() => openRepoInExplorer(repoKey)}
                         onOpenApp={(cmd) => openRepoInApp(repoKey, cmd)}
                         onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
-                        onDelete={() => { actionMenuRepo = null; askDelete(sourceKey, repoName, state.status); }}
+                        onDelete={() => { actionMenuRepo = null; askDelete(rowSourceKey, repoName, state.status); }}
                         deleteLabel={$t('simple.delete')}
                       />
                     </div>
@@ -3784,7 +3738,7 @@
                 </div>
               {/if}
             {:else}
-            <span class="dot" style="color: {sc(state.status)}">{statusSymbol(state.status)}</span>
+            <span class="dot" class:spinning={state.status === 'unknown' || !!fetchingRepos[repoKey]} style="color: {sc(state.status)}">{state.status === 'unknown' || fetchingRepos[repoKey] ? '↻' : statusSymbol(state.status)}</span>
             {#if membershipsFor(repoKey).length > 0}
               <div class="ws-badge-wrap">
                 <button class="ws-badge"
@@ -3819,22 +3773,22 @@
               <!-- The name folds its clones too; selection mode keeps the row's own click. -->
               <span class="repo-name"><span class="repo-name-toggle" role="button" tabindex="-1"
                 title={collapsedRepos.has(repoKey) ? $t('collapse.expand') : $t('collapse.collapse')}
-                on:click={(e) => { if (selectionMode) return; e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants, sourceKey); }}
-                on:keydown={onActivateKey(() => toggleRepoCollapsed(repoKey, descendants, sourceKey))}>{repoName}</span></span>
+                on:click={(e) => { if (selectionMode) return; e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants); }}
+                on:keydown={onActivateKey(() => toggleRepoCollapsed(repoKey, descendants))}>{repoName}</span></span>
             {:else}
               <span class="repo-name">{repoName}</span>
             {/if}
             {#if childCount > 0 && collapsedRepos.has(repoKey)}
-              {@const below = attentionCount(sourceKey, descendants, $repoStates)}
+              {@const below = descendants.filter(key => $repoStates[key] && $repoStates[key].status !== 'unknown' && !isSynced($repoStates[key])).length}
               <span class="collapse-summary collapse-summary-row">
                 {$t('collapse.below', { n: descendants.length })}{#if below > 0} · <span style="color:{sc('behind')}">{below} {below === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}</span>{/if}
               </span>
             {/if}
             {#if isContainer}
               <span class="container-badge" title="Multi-repo container — holds nested clones">&#128193; container</span>
-            {:else if isTentativeContainer(sourceKey, repoName, tentativeContainers)}
+            {:else if isTentativeContainer(rowSourceKey, repoName, tentativeContainers)}
               <button class="tentative-container-badge"
-                      on:click|stopPropagation={() => toggleContainer(sourceKey, repoName)}
+                      on:click|stopPropagation={() => toggleContainer(rowSourceKey, repoName)}
                       title="This repo holds nested clones — mark it as a container to onboard them">&#128193; onboard nested clones</button>
             {/if}
             {#if state.branch === '(detached)'}
@@ -3849,10 +3803,11 @@
               </div>
               <span class="progress-pct" style="color:{sc(state.status)}">{state.progress}%</span>
             {:else}
+              {#if state.status === 'unknown'}<span class="status-pending">{$t('simple.checking')}</span>{/if}
               {#if state.status !== 'unknown'}
               {#if !deleteMode && $prSettings.enabled}
-                {@const prSummary = lookupPRSummary($prsByAccount, accountKey, repoName)}
-                {@const acctForPRs = $accounts[accountKey]}
+                {@const prSummary = lookupPRSummary($prsByAccount, rowAccountKey, repoName)}
+                {@const acctForPRs = $accounts[rowAccountKey]}
                 {#if prSummary.authored.length > 0}
                   <div class="action-menu-container pr-badge-wrap">
                     <button class="pr-badge pr-badge-authored" on:click|stopPropagation={() => togglePRPopover(`${repoKey}|authored`)} title="{prSummary.authored.length} open PR{prSummary.authored.length === 1 ? '' : 's'} I authored">
@@ -3916,14 +3871,14 @@
                 {/if}
               </span>
               {#if state.status === 'behind'}
-                <button class="btn-action" on:click|stopPropagation={() => syncRepo(sourceKey, repoName)}>{$t('repo.pull')}</button>
+                <button class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)}>{$t('repo.pull')}</button>
               {:else if state.status === 'not cloned'}
-                <button class="btn-action" on:click|stopPropagation={() => cloneRepo(sourceKey, repoName)}>{$t('repo.bringLocal')}</button>
+                <button class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('repo.bringLocal')}</button>
               {/if}
               {/if}
               {#if !deleteMode && state.status !== 'not cloned'}
                 {@render quickLaunch(repoKey)}
-                <button class="btn-fetch" class:spinning={fetchingRepos[repoKey] || state.status === 'unknown'} on:click|stopPropagation={() => fetchRepo(sourceKey, repoName)} title={$t('repo.fetchOrigin')} disabled={!!fetchingRepos[repoKey]}>&#8635;</button>
+                <button class="btn-fetch" class:spinning={fetchingRepos[repoKey]} on:click|stopPropagation={() => fetchRepo(rowSourceKey, repoName)} title={$t('repo.fetchOrigin')} disabled={!!fetchingRepos[repoKey]}>&#8635;</button>
                 <div class="action-menu-container">
                   <button class="btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title={$t('repo.actions')}>&#8942;</button>
                   {#if actionMenuRepo === repoKey}
@@ -3934,17 +3889,17 @@
                         profiles={configProfiles}
                         aiHarnesses={configAIHarnesses}
                         {revealLabel}
-                        onOpenBrowser={() => openRepoInBrowser(sourceKey, repoName)}
+                        onOpenBrowser={() => openRepoInBrowser(rowSourceKey, repoName)}
                         onOpenFolder={() => openRepoInExplorer(repoKey)}
                         onOpenApp={(cmd) => openRepoInApp(repoKey, cmd)}
                         onOpenProfile={(id) => openRepoProfile(repoKey, id)}
                         onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
-                        onSweep={() => sweepBranches(sourceKey, repoName)}
-                        onMove={() => { actionMenuRepo = null; openMoveRepo(sourceKey, repoName); }}
+                        onSweep={() => sweepBranches(rowSourceKey, repoName)}
+                        onMove={() => { actionMenuRepo = null; openMoveRepo(rowSourceKey, repoName); }}
                         moveEnabled={repoMoveDisabledReason(state) === ''}
                         moveDisabledReason={repoMoveDisabledReason(state)}
-                        isContainer={isContainerRepo(sourceKey, repoName)}
-                        onToggleContainer={() => { actionMenuRepo = null; toggleContainer(sourceKey, repoName); }}
+                        isContainer={isContainerRepo(rowSourceKey, repoName)}
+                        onToggleContainer={() => { actionMenuRepo = null; toggleContainer(rowSourceKey, repoName); }}
                         onRescanContainer={() => { actionMenuRepo = null; rescanContainer(); }}
                       />
                     </div>
@@ -4019,6 +3974,7 @@
         {/each}
         {/if}
       </div>
+      {/if}
     {/each}
 
   </section>
@@ -4238,6 +4194,7 @@
   <footer class="summary">
     {#if simple}
     <div class="summary-left">
+      {#if Object.values($repoStates).some(state => state.status === 'unknown')}<span class="sum">{$t('simple.checking')}</span><span class="sep">&middot;</span>{/if}
       <span class="sum" style="color:{sc('clean')}">{$t('simple.savedN', { n: $simpleSummary.saved })}</span>
       {#if $simpleSummary.unsaved > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('dirty')}">{$t('simple.notSavedN', { n: $simpleSummary.unsaved })}</span>{/if}
       {#if $simpleSummary.help > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('error')}">{$t('simple.needHelpN', { n: $simpleSummary.help })}</span>{/if}

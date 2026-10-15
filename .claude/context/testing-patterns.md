@@ -70,6 +70,10 @@ func TestSomething(t *testing.T) {
 
 Keep business logic out of `cmd/gui`: if a test needs more than the `App` glue, the logic belongs in `pkg/` and the test goes with it.
 
+## Frontend tree tests
+
+I run `npm test` from `cmd/gui/frontend` for pure clone-tree regressions, including cross-source ownership, duplicate prevention, nested collapse state, and recovery from stale parent references. I keep these tests independent of Wails and credentials. `scripts/health.sh frontend-test` runs the same suite.
+
 ## Integration tests and the fixture gate
 
 Integration tests run real provider operations with credentials from `test-gitbox.json` at the repo root (copy `json/test-gitbox.json.example` and fill it in). The gate is `requireIntegration(t)`:
