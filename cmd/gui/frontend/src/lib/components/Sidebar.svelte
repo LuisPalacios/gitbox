@@ -66,6 +66,7 @@
         {#if n > 0}<span class="rail-cnt" style="background: {sc('dirty')}">{badge(n)}</span>{/if}
       </button>
     {/each}
+    <span class="rail-sep"></span>
     <button class="rail-btn" aria-label={addLabel} use:tooltip={{ text: addLabel, delay: 150 }} on:click={onAddAccount}><UIIcon name="plus" /></button>
     {#if orphanCount > 0}
       <button class="rail-btn" aria-label={foundTip} use:tooltip={{ text: foundTip, delay: 150 }} on:click={showOrphanModal}>
@@ -73,7 +74,6 @@
       </button>
     {/if}
     {#if !simple}
-      <span class="rail-sep"></span>
       <button class="rail-btn" aria-current={view === 'mirrors'} aria-label={$t('tab.mirrors')}
         use:tooltip={{ text: $t('tab.mirrors'), delay: 150 }} on:click={() => setView('mirrors')}><UIIcon name="mirror" /></button>
       <button class="rail-btn" aria-current={view === 'workspaces'} aria-label={$t('tab.workspaces')}
@@ -103,6 +103,7 @@
         {#if n > 0}<span class="cnt">{n}</span>{/if}
       </button>
     {/each}
+    <div class="side-sec">{$t('nav.more')}</div>
     <button class="nav" on:click={onAddAccount}>
       <span class="navi"><UIIcon name="plus" /></span>
       <span class="nav-label">{addLabel}</span>
@@ -115,7 +116,6 @@
       </button>
     {/if}
     {#if !simple}
-      <div class="side-sec">{$t('nav.more')}</div>
       <button class="nav" aria-current={view === 'mirrors'} on:click={() => setView('mirrors')}>
         <span class="navi"><UIIcon name="mirror" /></span>
         <span class="nav-label">{$t('tab.mirrors')}</span>
