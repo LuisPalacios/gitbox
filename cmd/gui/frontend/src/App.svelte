@@ -4,25 +4,22 @@
   import { bridge, events } from './lib/bridge';
   import type { DoctorPrecheckDTO } from './lib/bridge';
   import {
-    configStore, accounts, sources, mirrors, repoStates, mirrorStates, mirrorSummary,
-    summary, accountStats, themeStore, applyStatusResults, applyMirrorStatusResults,
-    prsByAccount, prSettings, applyPRUpdate, lookupPRSummary,
-    workspaces, workspaceOrder, workspaceMemberships, selectedClones,
-    toggleCloneSelection, clearCloneSelection, isSynced, simpleSummary
+    configStore, accounts, sources, mirrors, repoStates, mirrorStates, mirrorSummary, summary,
+    accountStats, themeStore, applyStatusResults, applyMirrorStatusResults, prsByAccount,
+    prSettings, applyPRUpdate, lookupPRSummary, workspaces, workspaceOrder, workspaceMemberships,
+    selectedClones, toggleCloneSelection, clearCloneSelection, isSynced
   } from './lib/stores';
   import { credColor, providerLabel } from './lib/theme';
   import { statusColor, simpleKind, simpleColor, simpleLabelKey, simpleUnsaved, rowBusy, rowGlyph, advancedLabel, COUNT_BADGES, countBadge, statusCountBadge, detailLocked, opensDetail, credBroken, canDiscoverWith, canCreateWith, credBadgeClass, credBadgeLabel, DISCOVER_DISABLED, CREATE_DISABLED } from './lib/status';
   import type { SimpleKind } from './lib/status';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
-  import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit, EventsOn } from '../wailsjs/runtime/runtime';
-  import type { RepoState, CredentialStatus, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, RepoDetailView } from './lib/types';
+  import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit, EventsOn } from '../wailsjs/runtime/runtime';
+  import type { RepoState, CredentialStatus, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
   import BrandIcon, { terminalLogo } from './lib/BrandIcon.svelte';
-  import UIIcon from './lib/UIIcon.svelte';
   import PRPopover from './lib/PRPopover.svelte';
   import TerminalsModal from './lib/TerminalsModal.svelte';
   import Onboarding from './lib/Onboarding.svelte';
-  import Logo from './lib/Logo.svelte';
   import DoctorModal from './lib/modals/DoctorModal.svelte';
   import EditAccountModal from './lib/modals/EditAccountModal.svelte';
   import DeleteCloneModal from './lib/modals/DeleteCloneModal.svelte';
@@ -36,6 +33,13 @@
   import AddAccountModal from './lib/modals/AddAccountModal.svelte';
   import CredentialModal from './lib/modals/CredentialModal.svelte';
   import MoveRepoModal from './lib/modals/MoveRepoModal.svelte';
+  import ConfigErrorScreen from './lib/components/ConfigErrorScreen.svelte';
+  import ReloadErrorBanner from './lib/components/ReloadErrorBanner.svelte';
+  import TopBar from './lib/components/TopBar.svelte';
+  import Banners from './lib/components/Banners.svelte';
+  import SettingsPanel from './lib/components/SettingsPanel.svelte';
+  import TabBar from './lib/components/TabBar.svelte';
+  import Footer from './lib/components/Footer.svelte';
   import AddMirrorGroupModal from './lib/modals/AddMirrorGroupModal.svelte';
   import AddMirrorRepoModal from './lib/modals/AddMirrorRepoModal.svelte';
   import DeleteMirrorGroupModal from './lib/modals/DeleteMirrorGroupModal.svelte';
@@ -44,7 +48,6 @@
   import MirrorDiscoverModal from './lib/modals/MirrorDiscoverModal.svelte';
   import MirrorTokenModal from './lib/modals/MirrorTokenModal.svelte';
   import { repoTreeRows } from './lib/repo-tree';
-  import { tooltip } from './lib/tooltip';
   import { onActivateKey } from './lib/keyboard';
 
   // ── View mode ──
@@ -160,21 +163,13 @@
   }
 
   // ── Global identity warning ──
-  let globalIdentityWarn: { hasName: boolean; hasEmail: boolean; name: string; email: string } | null = null;
+  let globalIdentityWarn: GlobalIdentityWarn | null = null;
 
   // ── Global GCM credential-helper warning ──
   // Surfaces when a GCM account exists but ~/.gitconfig has no (or wrong)
   // global `credential.helper` / `credential.credentialStore`. Without those,
   // GCM fills fall through to a TTY prompt and fail with the cryptic
   // "Device not configured" error inside the GUI.
-  type GCMWarn = {
-    hasHelper: boolean;
-    helperValue: string;
-    expectedHelper: string;
-    hasCredentialStore: boolean;
-    credentialStoreValue: string;
-    expectedCredentialStore: string;
-  };
   let globalGCMWarn: GCMWarn | null = null;
   let globalGCMFixing = false;
 
@@ -184,14 +179,14 @@
   // The user can install in one click; gitbox creates a timestamped .bak-…
   // backup of any existing file. Gated by the check_global_gitignore
   // preference — the gear-panel toggle binds to `checkGitignorePref`.
-  let gitignoreWarn: { path: string; defaultPath: string; needsAction: boolean; blockPresent: boolean; blockUpToDate: boolean; excludesfileSet: boolean; fileExists: boolean; hasDuplicates: boolean; duplicates: string[] } | null = null;
+  let gitignoreWarn: GitignoreWarn | null = null;
   let gitignoreInstalling = false;
-  let gitignoreInstalled: { backupPath: string; setExcludesfile: boolean; alreadyUpToDate: boolean } | null = null;
+  let gitignoreInstalled: GitignoreInstalled | null = null;
   let gitignoreError = '';
   let checkGitignorePref = true;
 
   // ── Update state ──
-  let updateInfo: { available: boolean; current: string; latest: string; url: string; selfUpdate: boolean } | null = null;
+  let updateInfo: UpdateInfo | null = null;
   let updateApplying = false;
   let updateProgress = '';
   let updateDone = false;
@@ -311,7 +306,7 @@
   let cfgLoadErrorMsg = '';
   let cfgLoadErrorBusy = false;
   let cfgRepairFailure = '';
-  let cfgBackups: { path: string; filename: string; timestamp: string; size_bytes: number }[] = [];
+  let cfgBackups: ConfigBackupInfo[] = [];
 
   async function cfgLoadBackups() {
     try {
@@ -320,22 +315,6 @@
       console.error('listConfigBackups failed', err);
       cfgBackups = [];
     }
-  }
-
-  function cfgFormatBackupTime(ts: string): string {
-    if (!ts) return '';
-    const d = new Date(ts);
-    if (isNaN(d.getTime())) return ts;
-    return d.toLocaleString(undefined, {
-      year: 'numeric', month: 'short', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-    });
-  }
-
-  function cfgFormatBackupSize(n: number): string {
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-    return `${(n / 1024 / 1024).toFixed(1)} MB`;
   }
 
   async function cfgRestoreBackup(path: string) {
@@ -398,13 +377,6 @@
     firstRun = true;
   }
 
-  function cfgExit() {
-    Quit();
-  }
-
-  // The guided setup (lib/Onboarding.svelte) saved the folder, maybe an
-  // account and its picked repos; load the dashboard, then clone them so
-  // progress shows on the rows.
   async function finishOnboarding(result: { sourceKey: string; repos: string[] } | null) {
     firstRun = false;
     await initDashboard();
@@ -1935,70 +1907,7 @@
 
 <!-- ── CONFIG LOAD ERROR ── -->
 {#if cfgLoadErrorModal}
-<div class="cfg-error-screen">
-  <div class="cfg-error-card">
-    <h2 class="cfg-error-title">Config file could not be loaded</h2>
-    <p class="cfg-error-path">{configPath || '~/.config/gitbox/gitbox.json'}</p>
-    <pre class="cfg-error-detail">{cfgLoadErrorMsg}</pre>
-
-    {#if cfgRepairFailure}
-      <div class="cfg-error-failure" role="alert">
-        <strong>Action failed:</strong> {cfgRepairFailure}
-      </div>
-    {/if}
-
-    <!-- Primary recovery: pick a dated backup and restore it. -->
-    <section class="cfg-error-section">
-      <h3 class="cfg-error-section-title">Restore from a previous backup</h3>
-      <p class="cfg-error-section-desc">
-        GitboxApp writes a dated copy of <code>gitbox.json</code> before every save
-        (keeping the 5 most recent). Pick the most recent one you trust — the
-        currently-broken file becomes another backup before the restore so
-        nothing is permanently lost.
-      </p>
-      {#if cfgBackups.length === 0}
-        <p class="cfg-error-empty">No backups found in this config directory.</p>
-      {:else}
-        <ul class="cfg-error-backup-list">
-          {#each cfgBackups as b}
-            <li class="cfg-error-backup-row">
-              <div class="cfg-error-backup-meta">
-                <div class="cfg-error-backup-time">{cfgFormatBackupTime(b.timestamp) || b.filename}</div>
-                <div class="cfg-error-backup-sub">{b.filename} · {cfgFormatBackupSize(b.size_bytes)}</div>
-              </div>
-              <button class="cfg-error-btn cfg-error-btn-primary cfg-error-btn-small"
-                      on:click={() => cfgRestoreBackup(b.path)}
-                      disabled={cfgLoadErrorBusy}>Restore</button>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </section>
-
-    <!-- Secondary: in-place auto-repair (drops dangling refs only). -->
-    <section class="cfg-error-section">
-      <h3 class="cfg-error-section-title">Or try auto-repair</h3>
-      <p class="cfg-error-section-desc">
-        Drops dangling mirror or workspace-member references and keeps
-        everything else. Works only when the file parses and the only
-        problem is references pointing at deleted accounts.
-      </p>
-      <div class="cfg-error-section-actions">
-        <button class="cfg-error-btn cfg-error-btn-secondary"
-                on:click={cfgDoRepair}
-                disabled={cfgLoadErrorBusy}>
-          {cfgLoadErrorBusy ? 'Working…' : 'Auto-repair in place'}
-        </button>
-      </div>
-    </section>
-
-    <!-- Footer: start fresh or exit. -->
-    <div class="cfg-error-actions">
-      <button class="cfg-error-btn cfg-error-btn-ghost" on:click={cfgExit} disabled={cfgLoadErrorBusy}>Exit</button>
-      <button class="cfg-error-btn cfg-error-btn-ghost" on:click={cfgStartFresh} disabled={cfgLoadErrorBusy}>Start fresh (new config)</button>
-    </div>
-  </div>
-</div>
+<ConfigErrorScreen {configPath} {cfgLoadErrorMsg} {cfgRepairFailure} {cfgBackups} {cfgLoadErrorBusy} {cfgRestoreBackup} {cfgDoRepair} {cfgStartFresh} />
 
 <!-- ── ONBOARDING ── -->
 {:else if firstRun}
@@ -2007,14 +1916,7 @@
 
 <div class="app">
 
-  {#if reloadError}
-    <div class="reload-error-banner" role="alert">
-      <span class="reload-error-label">Config sync issue:</span>
-      <span class="reload-error-msg">{reloadError}</span>
-      <span class="reload-error-hint">Please relaunch GitboxApp.</span>
-      <button class="reload-error-dismiss" on:click={() => reloadError = ''} title="Dismiss">&#10005;</button>
-    </div>
-  {/if}
+  <ReloadErrorBanner bind:reloadError />
 
   {#if viewMode === 'compact'}
   <!-- ══════ COMPACT STATUS VIEW ══════ -->
@@ -2114,326 +2016,24 @@
   <!-- ══════ FULL DASHBOARD VIEW ══════ -->
 
   <!-- ── TOP BAR ── -->
-  <header class="topbar">
-    <div class="brand">
-      <Logo class="logo-svg" />
-      <span class="title">gitbox</span>
-    </div>
-    {#if simple}
-    <div class="health">
-      <span class="health-ring" style="--pct: {$simpleSummary.total ? ($simpleSummary.saved / $simpleSummary.total) * 100 : 0}">
-        <span class="health-num">{$simpleSummary.saved}/{$simpleSummary.total}</span>
-      </span>
-      <span class="health-label">{$simpleSummary.help > 0 ? $t('simple.needHelpN', { n: $simpleSummary.help })
-        : $simpleSummary.unsaved > 0 ? $t('simple.notSavedN', { n: $simpleSummary.unsaved })
-        : $t('simple.allSaved')}</span>
-    </div>
-    {:else}
-    <!-- Advanced: compact rings without labels. The icon names what the ring
-         tracks, the corner badge counts what is not there yet, and the hover
-         tooltip spells it out. -->
-    {@const repoPending = $summary.total - $summary.clean}
-    {@const repoTip = `${$summary.clean}/${$summary.total} synced${repoPending > 0 ? ` · ${repoPending} ${repoPending === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}` : ''}`}
-    <div class="health">
-      <span class="health-ring health-ring-mini" role="img" aria-label={repoTip} use:tooltip={{ text: repoTip, delay: 150 }}
-        style="--pct: {$summary.total ? ($summary.clean / $summary.total) * 100 : 0}">
-        <svg class="health-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="5" cy="3.5" r="1.6"/><circle cx="5" cy="12.5" r="1.6"/><circle cx="11" cy="6" r="1.6"/>
-          <path d="M5 5.1v5.8M11 7.6c0 2.4-6 1.6-6 3.3"/>
-        </svg>
-        {#if repoPending > 0}
-          <span class="health-badge" style="background: {sc('behind')}">{repoPending > 99 ? '99+' : repoPending}</span>
-        {/if}
-      </span>
-      {#if $mirrorSummary.total > 0}
-        {@const mirrorPending = $mirrorSummary.total - $mirrorSummary.active}
-        {@const mirrorTip = `${$mirrorSummary.active}/${$mirrorSummary.total} mirrors active${$mirrorSummary.error > 0 ? ` · ${$mirrorSummary.error} with errors` : ''}`}
-        <span class="health-ring health-ring-mini" role="img" aria-label={mirrorTip} use:tooltip={{ text: mirrorTip, delay: 150 }}
-          style="--pct: {($mirrorSummary.active / $mirrorSummary.total) * 100}{$mirrorSummary.error > 0 ? '; --ring-accent: #D81E5B' : ''}">
-          <svg class="health-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M2.5 5.5h10M10 3l2.5 2.5L10 8M13.5 10.5h-10M6 8l-2.5 2.5L6 13"/>
-          </svg>
-          {#if mirrorPending > 0}
-            <span class="health-badge" style="background: {$mirrorSummary.error > 0 ? '#D81E5B' : sc('behind')}">{mirrorPending > 99 ? '99+' : mirrorPending}</span>
-          {/if}
-        </span>
-      {/if}
-    </div>
-    {/if}
-    <div class="topbar-actions">
-      <button class="btn-gear" on:click={syncAll}
-        disabled={syncing || ($summary.behind === 0 && $summary.notCloned === 0)}
-        title="{simple ? $t('simple.updateAll') : syncing ? 'Pulling...' : 'Pull All'}">
-        <span class="icon-spin" class:spinning={syncing}><UIIcon name="pull" /></span>
-      </button>
-      {#if !simple}
-      <button class="btn-gear" on:click={runFetchAll} disabled={fetchingAll}
-        title="{fetchingAll ? 'Fetching...' : 'Fetch All'}">
-        <span class="icon-spin" class:spinning={fetchingAll}><UIIcon name="fetch" /></span>
-      </button>
-      <button class="btn-gear" class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title="{deleteMode ? 'Exit delete mode' : 'Delete mode'}"><UIIcon name="trash" /></button>
-      <button class="btn-gear" class:select-active={selectionMode} on:click={toggleSelectionMode} disabled={cardsTab !== 'accounts' || Object.keys($accounts).length === 0} title="{selectionMode ? 'Exit selection mode' : 'Toggle clone selection mode'}"><UIIcon name={selectionMode ? 'select-on' : 'select'} /></button>
-      <button class="btn-gear" on:click={toggleViewMode} title="Compact view"><UIIcon name="compact" /></button>
-      <button class="btn-gear" on:click={cycleTheme} title="Theme: {themeChoice}"><UIIcon name={themeChoice === 'light' || themeChoice === 'dark' ? `theme-${themeChoice}` : 'theme-system'} /></button>
-      {/if}
-      <button class="mode-switch" class:mode-switch-on={!simple} role="switch" aria-checked={!simple}
-        aria-label={$t('settings.experience')} title={simple ? $t('settings.simple') : $t('settings.advanced')}
-        on:click={() => setUIMode(simple ? 'advanced' : 'simple')}><span class="mode-switch-knob"></span></button>
-      <button class="btn-gear" on:click={() => showSettings = !showSettings} title="Settings" class:active-gear={showSettings}><UIIcon name="gear" /></button>
-    </div>
-  </header>
+  <TopBar {simple} {syncing} {fetchingAll} {selectionMode} {cardsTab} {themeChoice} bind:deleteMode bind:showSettings
+    {syncAll} {runFetchAll} {toggleSelectionMode} {toggleViewMode} {cycleTheme} {setUIMode} />
 
   <!-- update notification moved to summary footer -->
 
-  <!-- ── GLOBAL IDENTITY WARNING ── -->
-  {#if globalIdentityWarn}
-  <div class="identity-warn">
-    <span class="identity-warn-icon">&#9888;</span>
-    <span class="identity-warn-text">
-      Global <code>~/.gitconfig</code> has
-      {#if globalIdentityWarn.hasName}user.name="{globalIdentityWarn.name}"{/if}{#if globalIdentityWarn.hasName && globalIdentityWarn.hasEmail}, {/if}{#if globalIdentityWarn.hasEmail}user.email="{globalIdentityWarn.email}"{/if}
-      &mdash; this can override per-repo identity.
-    </span>
-    <button class="identity-warn-fix" on:click={fixGlobalIdentity}>Remove</button>
-    <button class="identity-warn-dismiss" on:click={() => globalIdentityWarn = null}>&#10005;</button>
-  </div>
-  {/if}
-
-  <!-- ── GLOBAL GCM CREDENTIAL-HELPER WARNING ── -->
-  {#if globalGCMWarn}
-  <div class="identity-warn">
-    <span class="identity-warn-icon">&#9888;</span>
-    <span class="identity-warn-text">
-      Global <code>~/.gitconfig</code> is missing GCM settings &mdash;
-      {#if !globalGCMWarn.hasHelper}
-        <code>credential.helper</code> is not set
-      {:else if globalGCMWarn.helperValue !== globalGCMWarn.expectedHelper}
-        <code>credential.helper</code> is <code>{globalGCMWarn.helperValue}</code>, expected <code>{globalGCMWarn.expectedHelper}</code>
-      {/if}
-      {#if (!globalGCMWarn.hasHelper || globalGCMWarn.helperValue !== globalGCMWarn.expectedHelper) && (!globalGCMWarn.hasCredentialStore || globalGCMWarn.credentialStoreValue !== globalGCMWarn.expectedCredentialStore)}
-        and
-      {/if}
-      {#if !globalGCMWarn.hasCredentialStore}
-        <code>credential.credentialStore</code> is not set
-      {:else if globalGCMWarn.credentialStoreValue !== globalGCMWarn.expectedCredentialStore}
-        <code>credential.credentialStore</code> is <code>{globalGCMWarn.credentialStoreValue}</code>, expected <code>{globalGCMWarn.expectedCredentialStore}</code>
-      {/if}
-      &mdash; GCM setup will fail with "Device not configured" until this is fixed.
-    </span>
-    <button class="identity-warn-fix" on:click={fixGlobalGCM} disabled={globalGCMFixing}>{globalGCMFixing ? 'Fixing…' : 'Configure'}</button>
-    <button class="identity-warn-dismiss" on:click={() => globalGCMWarn = null}>&#10005;</button>
-  </div>
-  {/if}
-
-  <!-- ── GLOBAL GITIGNORE WARNING ── -->
-  {#if gitignoreWarn}
-  <div class="identity-warn">
-    <span class="identity-warn-icon">&#9888;</span>
-    <span class="identity-warn-text">
-      {#if !gitignoreWarn.fileExists}
-        Global gitignore <code>{gitignoreWarn.path}</code> is missing &mdash;
-        install OS-junk patterns (.DS_Store, Thumbs.db, *~, …) so per-project <code>.gitignore</code> files don't have to repeat them.
-      {:else if !gitignoreWarn.blockPresent}
-        <code>{gitignoreWarn.path}</code> is missing the recommended block &mdash;
-        install OS-junk patterns (.DS_Store, Thumbs.db, *~, …) so per-project <code>.gitignore</code> files don't have to repeat them.
-      {:else if !gitignoreWarn.blockUpToDate}
-        <code>{gitignoreWarn.path}</code> has an out-of-date recommended block &mdash;
-        install will refresh it.
-      {:else if gitignoreWarn.hasDuplicates}
-        <code>{gitignoreWarn.path}</code> has {gitignoreWarn.duplicates.length} managed pattern{gitignoreWarn.duplicates.length === 1 ? '' : 's'} duplicated outside the block:
-        <code>{gitignoreWarn.duplicates.slice(0, 5).join(', ')}{gitignoreWarn.duplicates.length > 5 ? ', …' : ''}</code> &mdash;
-        install will sanitize them.
-      {:else if !gitignoreWarn.excludesfileSet}
-        <code>core.excludesfile</code> is not set in your global git config &mdash;
-        install will point it at <code>{gitignoreWarn.path}</code>.
-      {/if}
-    </span>
-    <button class="identity-warn-fix" on:click={installGlobalGitignore} disabled={gitignoreInstalling}>
-      {gitignoreInstalling ? 'Installing…' : 'Install'}
-    </button>
-    <button class="identity-warn-dismiss" on:click={() => gitignoreWarn = null}>&#10005;</button>
-  </div>
-  {/if}
-
-  {#if gitignoreInstalled && !gitignoreWarn}
-  <div class="identity-warn identity-warn-ok">
-    <span class="identity-warn-icon">&#10003;</span>
-    <span class="identity-warn-text">
-      {#if gitignoreInstalled.alreadyUpToDate && !gitignoreInstalled.setExcludesfile}
-        Global gitignore is already up to date.
-      {:else}
-        Global gitignore installed.
-        {#if gitignoreInstalled.backupPath}
-          Backup saved at <code>{gitignoreInstalled.backupPath}</code>.
-        {/if}
-        {#if gitignoreInstalled.setExcludesfile}
-          <code>core.excludesfile</code> set.
-        {/if}
-      {/if}
-    </span>
-    <button class="identity-warn-dismiss" on:click={() => gitignoreInstalled = null}>&#10005;</button>
-  </div>
-  {/if}
-
-  {#if gitignoreError}
-  <div class="identity-warn">
-    <span class="identity-warn-icon">&#9888;</span>
-    <span class="identity-warn-text">Could not install global gitignore: {gitignoreError}</span>
-    <button class="identity-warn-dismiss" on:click={() => gitignoreError = ''}>&#10005;</button>
-  </div>
-  {/if}
+  <!-- ── GLOBAL WARNINGS (identity, GCM helper, gitignore) ── -->
+  <Banners bind:globalIdentityWarn bind:globalGCMWarn bind:gitignoreWarn bind:gitignoreInstalled bind:gitignoreError
+    {globalGCMFixing} {gitignoreInstalling} {fixGlobalIdentity} {fixGlobalGCM} {installGlobalGitignore} />
 
   <!-- ── SETTINGS PANEL ── -->
-  {#if showSettings}
-    <div class="settings" transition:slide={{ duration: 150 }}>
-      {#if !simple}
-      <div class="settings-row">
-        <span class="settings-label" use:tooltip={"Absolute path to the gitbox.json file currently in use. Click ‘Open in editor’ to inspect or hand-edit it."}>{$t('settings.config')}</span>
-        <button class="settings-action-btn" on:click={() => bridge.openFileInEditor(configPath)}>{$t('settings.openInEditor')}</button>
-        <span class="settings-value">{configPath}</span>
-      </div>
-      {/if}
-      <div class="settings-row">
-        <span class="settings-label" use:tooltip={"Top-level folder where gitbox keeps every cloned repo. Each account gets a sub-folder under it."}>{$t('settings.rootFolder')}</span>
-        <button class="settings-action-btn" on:click={openChangeFolder}>{$t('settings.change')}</button>
-        <span class="settings-value">{$configStore?.global?.folder || '(not set)'}</span>
-      </div>
-      <div class="settings-row">
-        <span class="settings-label" use:tooltip={"Language used by the gitbox UI. Switching takes effect immediately."}>{$t('settings.language')}</span>
-        <div class="theme-toggle">
-          <button class="theme-btn" class:theme-active={languageChoice === 'en'} on:click={() => setLanguage('en')}>English</button>
-          <button class="theme-btn" class:theme-active={languageChoice === 'es'} on:click={() => setLanguage('es')}>Español</button>
-        </div>
-      </div>
-      <div class="settings-row">
-        <span class="settings-label" use:tooltip={"Color scheme. ‘System’ tracks your OS preference; ‘Light’ and ‘Dark’ pin gitbox to that mode."}>{$t('settings.theme')}</span>
-        <div class="theme-toggle">
-          <button class="theme-btn" class:theme-active={themeChoice === 'system'} on:click={() => { themeChoice = 'system'; applyTheme(); }}>System</button>
-          <button class="theme-btn" class:theme-active={themeChoice === 'light'} on:click={() => { themeChoice = 'light'; applyTheme(); }}>Light</button>
-          <button class="theme-btn" class:theme-active={themeChoice === 'dark'} on:click={() => { themeChoice = 'dark'; applyTheme(); }}>Dark</button>
-        </div>
-      </div>
-      <div class="settings-row">
-        <span class="settings-label" use:tooltip={"How often gitbox auto-fetches every repo to refresh its ahead/behind counters. ‘Off’ pauses the timer; you can still fetch manually."}>{simple ? $t('simple.checkChanges') : $t('settings.periodicStatus')}</span>
-        <div class="theme-toggle">
-          <button class="theme-btn" class:theme-active={fetchInterval === 'off'} on:click={() => setFetchInterval('off')}>{$t('common.off')}</button>
-          <button class="theme-btn" class:theme-active={fetchInterval === '5m'} on:click={() => setFetchInterval('5m')}>5m</button>
-          <button class="theme-btn" class:theme-active={fetchInterval === '15m'} on:click={() => setFetchInterval('15m')}>15m</button>
-          <button class="theme-btn" class:theme-active={fetchInterval === '30m'} on:click={() => setFetchInterval('30m')}>30m</button>
-        </div>
-        {#if lastFetchTime}
-          <span class="settings-value" style="font-size:10px; margin-left:4px">last {lastFetchTime}</span>
-        {/if}
-      </div>
-      {#if autostartSupported}
-        <div class="settings-row">
-          <span class="settings-label" use:tooltip={"Launch GitboxApp automatically when you log in. Toggling writes the OS autostart entry."}>{$t('settings.runAtStartup')}</span>
-          <div class="theme-toggle">
-            <button class="theme-btn" class:theme-active={!autostartOn} on:click={() => { if (autostartOn) toggleAutostart(); }}>{$t('common.off')}</button>
-            <button class="theme-btn" class:theme-active={autostartOn} on:click={() => { if (!autostartOn) toggleAutostart(); }}>{$t('common.on')}</button>
-          </div>
-        </div>
-      {/if}
-      {#if !simple}
-      <div class="settings-row">
-        <span class="settings-label" use:tooltip={"Show pull-request indicators on repo rows: badges for PRs you authored and PRs that requested your review."}>{$t('settings.prReviews')}</span>
-        <div class="theme-toggle">
-          <button class="theme-btn" class:theme-active={!$prSettings.enabled} on:click={() => { if ($prSettings.enabled) setPRBadgesEnabled(false); }}>{$t('common.off')}</button>
-          <button class="theme-btn" class:theme-active={$prSettings.enabled} on:click={() => { if (!$prSettings.enabled) setPRBadgesEnabled(true); }}>{$t('common.on')}</button>
-        </div>
-        {#if $prSettings.enabled}
-          <span class="settings-sublabel" use:tooltip={"Count draft PRs in the ‘my PRs’ badge. Off restricts the count to ready-for-review PRs."}>{$t('settings.includeDrafts')}</span>
-          <div class="theme-toggle">
-            <button class="theme-btn" class:theme-active={!$prSettings.includeDrafts} on:click={() => { if ($prSettings.includeDrafts) setPRIncludeDrafts(false); }}>{$t('common.off')}</button>
-            <button class="theme-btn" class:theme-active={$prSettings.includeDrafts} on:click={() => { if (!$prSettings.includeDrafts) setPRIncludeDrafts(true); }}>{$t('common.on')}</button>
-          </div>
-        {/if}
-      </div>
-      <div class="settings-row">
-        <span class="settings-label" use:tooltip={"Check ~/.gitignore_global on startup and offer to install gitbox’s recommended OS-junk patterns (.DS_Store, Thumbs.db, etc.) if missing."}>{$t('settings.globalGitignore')}</span>
-        <div class="theme-toggle">
-          <button class="theme-btn" class:theme-active={!checkGitignorePref} on:click={() => { if (checkGitignorePref) setCheckGitignorePref(false); }}>{$t('common.off')}</button>
-          <button class="theme-btn" class:theme-active={checkGitignorePref} on:click={() => { if (!checkGitignorePref) setCheckGitignorePref(true); }}>{$t('common.on')}</button>
-        </div>
-      </div>
-      {/if}
-      <div class="settings-row">
-        <span class="settings-label" use:tooltip={"Probe external tools gitbox uses (git, Git Credential Manager, ssh, …) and flag missing ones."}>{$t('settings.systemCheck')}</span>
-        <button class="settings-action-btn" on:click={openDoctorModal}>{$t('settings.run')}</button>
-        {#if doctorSummary}
-          <span class="settings-sublabel settings-doctor-summary">{doctorSummary}</span>
-        {/if}
-      </div>
-      {#if !simple}
-      <div class="settings-row">
-        <span class="settings-label" use:tooltip={"Manage terminal apps, shells, and the launch profiles that pair them. Click ‘Manager’ to open the editor in its own window."}>Terminals</span>
-        <button class="settings-action-btn" on:click={openTerminalsManagerWindow} disabled={terminalsManagerOpening}>
-          {#if terminalsManagerOpening}
-            <span class="settings-action-spinner" aria-hidden="true"></span>
-            Opening…
-          {:else}
-            Manager
-          {/if}
-        </button>
-      </div>
-      {/if}
-      <div class="settings-row">
-        <span class="settings-label" use:tooltip={"Currently running gitbox version (git tag + commit hash baked in at build time)."}>{$t('settings.version')}</span>
-        <span class="settings-value">{appVersion}</span>
-      </div>
-      <div class="settings-row">
-        <span class="settings-label" use:tooltip={"Project author and source repository. Click the link to open the project on GitHub."}>{$t('settings.author')}</span>
-        <span class="settings-value">Luis Palacios Derqui &mdash; <a href="https://github.com/LuisPalacios/gitbox" on:click|preventDefault={() => BrowserOpenURL('https://github.com/LuisPalacios/gitbox')}>github.com/LuisPalacios/gitbox</a></span>
-      </div>
-    </div>
-  {/if}
+  <SettingsPanel {showSettings} {simple} {configPath} {languageChoice} bind:themeChoice {fetchInterval} {lastFetchTime}
+    {autostartSupported} {autostartOn} {checkGitignorePref} {doctorSummary} {terminalsManagerOpening} {appVersion}
+    {openChangeFolder} {setLanguage} {applyTheme} {setFetchInterval} {toggleAutostart} {setPRBadgesEnabled}
+    {setPRIncludeDrafts} {setCheckGitignorePref} {openDoctorModal} {openTerminalsManagerWindow} />
 
   <!-- ── TAB BAR ── -->
-  <div class="cards-tab-bar">
-    <button class="cards-tab" class:cards-tab-active={cardsTab === 'accounts'}
-      on:click={() => selectCardsTab('accounts')}>{$t('tab.accounts')}
-      {#if !cardsVisible}
-        <span class="tab-summary">
-          {#each Object.keys($accounts) as key (key)}
-            <span class="tab-dot" style="background: {cc((credStatuses[key] || {status: 'unknown'}).status)}" title={key}></span>
-          {/each}
-        </span>
-      {/if}
-    </button>
-    {#if !simple}
-    <button class="cards-tab" class:cards-tab-active={cardsTab === 'mirrors'}
-      on:click={() => selectCardsTab('mirrors')}>{$t('tab.mirrors')}
-      {#if !cardsVisible && $mirrorSummary.total > 0}
-        <span class="tab-summary" style="color: {$mirrorSummary.error > 0 ? sc('error') : sc('clean')}">{$mirrorSummary.active}/{$mirrorSummary.total}</span>
-      {/if}
-    </button>
-    <button class="cards-tab" class:cards-tab-active={cardsTab === 'workspaces'}
-      on:click={() => selectCardsTab('workspaces')}>{$t('tab.workspaces')}
-      {#if !cardsVisible && Object.keys($workspaces).length > 0}
-        <span class="tab-summary">{Object.keys($workspaces).length}</span>
-      {/if}
-    </button>
-    {/if}
-    {#if orphanCount > 0}
-      <button class="orphan-pill" on:click={showOrphanModal}>{simple ? $t('simple.found', { n: orphanCount }) : `${orphanCount} orphan${orphanCount > 1 ? 's' : ''}`}</button>
-    {/if}
-    {#if cardsTab === 'mirrors'}
-      <div class="tab-bar-actions">
-        <button class="btn-tab-action" on:click={runMirrorDiscover} disabled={mirrorDiscoverLoading}>{mirrorDiscoverLoading ? $t('tab.scanning') : $t('tab.discover')}</button>
-        <button class="btn-tab-action" on:click={checkAllMirrorStatus}>{$t('tab.checkAll')}</button>
-      </div>
-    {/if}
-    {#if cardsTab === 'workspaces'}
-      <div class="tab-bar-actions">
-        <button class="btn-tab-action" title="Rescan disk for .code-workspace files" on:click={refreshWorkspaces} disabled={workspaceBusy}>{$t('tab.discover')}</button>
-      </div>
-    {/if}
-    {#if cardsTab === 'accounts' && selectionMode && $selectedClones.size > 0}
-      <div class="tab-bar-actions">
-        <button class="btn-tab-action" on:click={() => clearCloneSelection()} title="Clear selection">{$t('tab.clear')}</button>
-      </div>
-    {/if}
-  </div>
+  <TabBar {cardsTab} {cardsVisible} {simple} {credStatuses} {orphanCount} {mirrorDiscoverLoading} {workspaceBusy} {selectionMode}
+    {selectCardsTab} {showOrphanModal} {runMirrorDiscover} {checkAllMirrorStatus} {refreshWorkspaces} />
 
   {#if cardsTab === 'accounts'}
   <!-- ── ACCOUNT CARDS ── -->
@@ -3088,55 +2688,7 @@
   {/if}
 
   <!-- ── SUMMARY FOOTER ── -->
-  <footer class="summary">
-    {#if simple}
-    <div class="summary-left">
-      {#if Object.values($repoStates).some(state => state.status === 'unknown')}<span class="sum">{$t('simple.checking')}</span><span class="sep">&middot;</span>{/if}
-      <span class="sum" style="color:{sc('clean')}">{$t('simple.savedN', { n: $simpleSummary.saved })}</span>
-      {#if $simpleSummary.unsaved > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('dirty')}">{$t('simple.notSavedN', { n: $simpleSummary.unsaved })}</span>{/if}
-      {#if $simpleSummary.help > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('error')}">{$t('simple.needHelpN', { n: $simpleSummary.help })}</span>{/if}
-      {#if $simpleSummary.update > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('behind')}">{$t('simple.updateN', { n: $simpleSummary.update })}</span>{/if}
-      {#if $simpleSummary.online > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('not cloned')}">{$t('simple.onlineN', { n: $simpleSummary.online })}</span>{/if}
-    </div>
-    {:else}
-    <div class="summary-left">
-      <span class="sum" style="color:{sc('clean')}">{$summary.clean} synced</span>
-      {#if $summary.syncing > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('syncing')}">{$summary.syncing} syncing</span>{/if}
-      {#if $summary.behind > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('behind')}">{$summary.behind} behind</span>{/if}
-      {#if $summary.dirty > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('dirty')}">{$summary.dirty} local changes</span>{/if}
-      {#if $summary.notCloned > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('not cloned')}">{$summary.notCloned} not local</span>{/if}
-      {#if $mirrorSummary.total > 0}<span class="sep">&middot;</span><span class="sum" style="color:{$mirrorSummary.error > 0 ? sc('error') : sc('clean')}">{$mirrorSummary.active}/{$mirrorSummary.total} mirrors</span>{/if}
-    </div>
-    {/if}
-    {#if updateDone}
-      <div class="update-pill update-done">
-        <span>&#10003; Updated — restart to apply</span>
-        <button class="update-pill-btn" on:click={() => Quit()}>Quit</button>
-      </div>
-    {:else if updateError}
-      <div class="update-pill update-error">
-        <span>&#9888; {updateError}</span>
-        {#if updateInfo?.url}
-          <button class="update-pill-btn" on:click={() => updateInfo && BrowserOpenURL(updateInfo.url)}>Release page</button>
-        {/if}
-        <button class="update-pill-dismiss" on:click={() => updateError = ''} title="Dismiss">&#10005;</button>
-      </div>
-    {:else if updateInfo?.available}
-      <div class="update-pill">
-        {#if updateApplying}
-          <span class="update-pill-spin">&#8635;</span> <span>{updateProgress || 'Updating…'}</span>
-        {:else}
-          <span>&#9650;</span>
-          {#if updateInfo.selfUpdate}
-            <button class="update-pill-btn" on:click={() => { updateApplying = true; updateError = ''; bridge.applyUpdate().catch((e) => { updateApplying = false; updateError = typeof e === 'string' ? e : (e?.message || 'Update failed'); }); }}>{updateInfo.latest} available</button>
-          {:else}
-            <button class="update-pill-btn" title="Open the release page" on:click={() => updateInfo && BrowserOpenURL(updateInfo.url)}>{updateInfo.latest} available</button>
-          {/if}
-          <button class="update-pill-dismiss" on:click={() => { updateDismissed = updateInfo?.latest ?? ''; updateInfo = null; }} title="Dismiss until next launch">&#10005;</button>
-        {/if}
-      </div>
-    {/if}
-  </footer>
+  <Footer {simple} bind:updateInfo bind:updateApplying bind:updateError bind:updateDismissed {updateProgress} {updateDone} />
 
   {/if}
   <!-- end viewMode -->
@@ -3228,70 +2780,12 @@
 
   .app { max-width: 860px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
-  .topbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--border); }
-  /* update pill in footer */
-  .update-pill {
-    display: flex; align-items: center; gap: 4px;
-    color: #f59e0b; font-size: 11px; font-weight: 600; white-space: nowrap;
-  }
-  :global([data-theme="light"]) .update-pill { color: #d97706; }
-  .update-pill.update-done { color: #22d3ee; }
-  :global([data-theme="light"]) .update-pill.update-done { color: #0891b2; }
-  .update-pill.update-error { color: #f87171; }
-  :global([data-theme="light"]) .update-pill.update-error { color: #dc2626; }
-  .update-pill-btn {
-    background: none; border: none; color: inherit; cursor: pointer;
-    font-size: 11px; font-weight: 600; padding: 0; text-decoration: underline; text-underline-offset: 2px;
-  }
-  .update-pill-btn:hover { opacity: 0.8; }
-  .update-pill-dismiss { background: none; border: none; color: inherit; cursor: pointer; opacity: 0.5; font-size: 10px; padding: 0 2px; }
-  .update-pill-dismiss:hover { opacity: 1; }
-  .update-pill-spin { animation: spin 1s linear infinite; display: inline-block; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .brand { display: flex; align-items: center; gap: 8px; }
-  .brand :global(.logo-svg) { width: 26px; height: 26px; }
-  .title { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
 
-  .health { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-  .health-ring {
-    width: 38px; height: 38px; border-radius: 50%;
-    background: conic-gradient(var(--ring-accent) calc(var(--pct) * 1%), var(--ring-bg) 0);
-    display: flex; align-items: center; justify-content: center; position: relative;
-  }
-  .health-ring::before { content: ''; position: absolute; inset: 4px; background: var(--bg-base); border-radius: 50%; transition: background 0.2s; }
-  .health-num { position: relative; z-index: 1; font-size: 10px; font-weight: 700; }
-  .health-label { font-size: 12px; color: var(--text-muted); }
-  /* Advanced header rings: smaller, icon inside, attention count in a corner badge. */
-  .health-ring-mini { width: 28px; height: 28px; margin-right: 6px; cursor: default; }
-  .health-ring-mini::before { inset: 3px; }
-  .health-icon { position: relative; z-index: 1; width: 14px; height: 14px; color: var(--text-muted); }
-  .health-badge {
-    position: absolute; z-index: 2; top: -5px; right: -8px;
-    min-width: 15px; height: 15px; padding: 0 4px; box-sizing: border-box;
-    border-radius: 8px; border: 1.5px solid var(--bg-base);
-    color: #fff; font-size: 9px; font-weight: 700; line-height: 12px; text-align: center;
-  }
 
-  .topbar-actions { display: flex; gap: 8px; }
-  .icon-spin { display: inline-flex; }
   .spinning { animation: spin 0.8s linear infinite; color: var(--spin-color) !important; stroke: var(--spin-color); stroke-width: 2.5; font-weight: 900; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .btn-gear {
-    background: none; border: 1px solid transparent; color: var(--text-muted);
-    font-size: 18px; cursor: pointer; padding: 4px 6px; border-radius: 6px; transition: all 0.12s;
-    width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
-    line-height: 1;
-  }
-  .btn-gear:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-hover); }
-  .btn-gear:disabled { opacity: 0.3; cursor: default; }
-  .select-active { color: var(--text-primary) !important; background: var(--bg-hover) !important; }
 
-  .cards-tab-bar {
-    display: flex; gap: 4px; padding: 12px 24px 0;
-    align-items: flex-end;
-    border-bottom: 1px solid var(--border);
-  }
-  .tab-bar-actions { margin-left: auto; display: flex; gap: 6px; padding-bottom: 6px; }
   .btn-tab-action {
     padding: 3px 10px; font-size: 11px; font-weight: 500;
     border: 1px solid #1e3a5f; background: rgba(37, 99, 235, 0.1);
@@ -3302,26 +2796,7 @@
   .btn-tab-action:disabled { opacity: 0.5; cursor: default; }
   :global([data-theme="light"]) .btn-tab-action { border-color: #93c5fd; background: rgba(37, 99, 235, 0.06); color: #2563eb; }
   :global([data-theme="light"]) .btn-tab-action:hover:not(:disabled) { background: rgba(37, 99, 235, 0.12); }
-  .cards-tab {
-    padding: 5px 14px; font-size: 12px; font-weight: 600;
-    border: 1px solid var(--border);
-    border-radius: 6px 6px 0 0;
-    background: transparent; color: var(--text-secondary);
-    cursor: pointer; transition: background 0.12s, color 0.12s;
-    margin-bottom: -1px;
-    position: relative;
-  }
-  .cards-tab:hover:not(.cards-tab-active) { background: var(--bg-hover); color: var(--text-primary); }
-  .cards-tab-active {
-    background: var(--bg-base); color: var(--text-primary);
-    border-color: var(--border-hover);
-    border-bottom-color: var(--bg-base);
-    z-index: 1;
-  }
 
-  /* What a folded panel hides, summarised inside each tab. */
-  .tab-summary { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; font-size: 10px; font-weight: 700; color: var(--text-muted); }
-  .tab-dot { width: 6px; height: 6px; border-radius: 50%; }
 
   /* Chips and the open card are as wide as their content, so names are
      never cut; the row wraps instead of scrolling. */
@@ -3462,20 +2937,6 @@
   }
   .btn-fetch:hover { color: var(--text-primary); }
   .btn-fetch:disabled { opacity: 0.6; cursor: default; }
-  /* Simple / Advanced switch in the top bar: grey pill = Simple, green = Advanced. */
-  .mode-switch {
-    position: relative; align-self: center; width: 30px; height: 16px; padding: 0; margin: 0 4px;
-    border: none; border-radius: 8px; cursor: pointer; flex-shrink: 0;
-    background: var(--border-hover); transition: background 0.18s;
-  }
-  .mode-switch-knob {
-    position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
-    background: #fafafa; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); transition: transform 0.18s;
-  }
-  .mode-switch-on { background: #22c55e; }
-  .mode-switch-on .mode-switch-knob { transform: translateX(14px); }
-  :global([data-theme="light"]) .mode-switch-on { background: #16a34a; }
-  .mode-switch:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 2px; }
 
   /* Repo-row launchers (both modes): icon-only AI, editor and terminal buttons. */
   .launch-group { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
@@ -3579,127 +3040,12 @@
   .detail-path { color: var(--text-repo); word-break: break-all; }
   .detail-path-dim { color: var(--text-dim); }
 
-  .summary {
-    display: flex; align-items: center; justify-content: space-between; gap: 6px;
-    padding: 10px 24px; border-top: 1px solid var(--border); font-size: 12px; font-weight: 500;
-    flex-shrink: 0;
-  }
-  .summary-left { display: flex; align-items: center; gap: 6px; }
-  .sum { font-weight: 600; }
-  .sep { color: var(--border-hover); }
-
-  .settings {
-    padding: 14px 24px; border-bottom: 1px solid var(--border);
-    background: var(--bg-card); display: flex; flex-direction: column; gap: 8px;
-  }
-  .settings-row { display: flex; align-items: center; gap: 12px; }
-  .settings-label { font-size: 11px; font-weight: 600; color: var(--text-muted); width: 80px; flex-shrink: 0; }
-  .settings-sublabel { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-left: 12px; flex-shrink: 0; }
-  .settings-value { font-size: 12px; color: var(--text-secondary); font-family: monospace; flex: 1; }
-
-  /* Action buttons (Open in editor / Change / Run / Manager) — same shape
-     across every Gear row, sitting immediately right of the label so the
-     eye doesn't have to hunt. The subtle blue tint distinguishes them
-     from the option toggles (English/Español/System/Light/Dark) which are
-     stateful selectors, not actions. */
-  .settings-action-btn {
-    padding: 3px 12px;
-    font-size: 11px;
-    font-weight: 500;
-    background: rgba(59, 130, 246, 0.10);  /* blue-500 @ 10% — soft tint */
-    border: 1px solid rgba(59, 130, 246, 0.28);
-    color: var(--text-primary);
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background 0.12s, border-color 0.12s, color 0.12s;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-  .settings-action-btn:hover {
-    background: rgba(59, 130, 246, 0.18);
-    border-color: rgba(59, 130, 246, 0.44);
-  }
-  /* Light theme reads better with a touch more saturation. */
-  :global([data-theme="light"]) .settings-action-btn {
-    background: rgba(59, 130, 246, 0.08);
-    border-color: rgba(59, 130, 246, 0.32);
-  }
-  :global([data-theme="light"]) .settings-action-btn:hover {
-    background: rgba(59, 130, 246, 0.14);
-    border-color: rgba(59, 130, 246, 0.50);
-  }
-  .settings-action-btn:disabled {
-    opacity: 0.7;
-    cursor: progress;
-  }
-  .settings-action-btn:disabled:hover {
-    background: rgba(59, 130, 246, 0.10);
-    border-color: rgba(59, 130, 246, 0.28);
-  }
-  /* Tiny inline spinner shown next to "Opening…" while a Manager
-     subprocess cold-start is in flight. Borderless ring driven by a
-     1s rotate. */
-  .settings-action-spinner {
-    display: inline-block;
-    width: 9px;
-    height: 9px;
-    margin-right: 6px;
-    vertical-align: -1px;
-    border: 1.5px solid rgba(59, 130, 246, 0.30);
-    border-top-color: rgb(59, 130, 246);
-    border-radius: 50%;
-    animation: gb-spin 0.85s linear infinite;
-  }
-  @keyframes gb-spin {
-    to { transform: rotate(360deg); }
-  }
 
 
-  /* ── Global identity warning banner ── */
-  .identity-warn {
-    display: flex; align-items: center; gap: 8px;
-    padding: 7px 12px; margin: 0 16px 8px;
-    background: #431407; border: 1px solid #c2410c; border-radius: 8px;
-    font-size: 12px; color: #fdba74;
-  }
-  :global([data-theme="light"]) .identity-warn {
-    background: #fff7ed; border-color: #c2410c; color: #7c2d12;
-  }
-  .identity-warn-icon { font-size: 15px; flex-shrink: 0; }
-  .identity-warn-text { flex: 1; line-height: 1.4; }
-  .identity-warn-text code { font-size: 11px; padding: 1px 4px; background: rgba(255,255,255,0.1); border-radius: 3px; }
-  :global([data-theme="light"]) .identity-warn-text code { background: rgba(0,0,0,0.06); }
-  .identity-warn-fix {
-    padding: 3px 10px; font-size: 11px; font-weight: 600;
-    background: #c2410c; color: #fff; border: none; border-radius: 5px; cursor: pointer;
-    white-space: nowrap;
-  }
-  .identity-warn-fix:hover { background: #ea580c; }
-  .identity-warn-dismiss {
-    background: none; border: none; color: #fdba74; cursor: pointer;
-    font-size: 14px; padding: 0 2px; line-height: 1;
-  }
-  :global([data-theme="light"]) .identity-warn-dismiss { color: #7c2d12; }
-  .identity-warn-dismiss:hover { opacity: 0.7; }
-  .identity-warn-fix:disabled { opacity: 0.6; cursor: progress; }
 
-  /* Success variant of the warning banner — used for the gitignore install confirmation. */
-  .identity-warn.identity-warn-ok {
-    background: #052e1a; border-color: #15803d; color: #86efac;
-  }
-  :global([data-theme="light"]) .identity-warn.identity-warn-ok {
-    background: #f0fdf4; border-color: #15803d; color: #14532d;
-  }
 
-  .theme-toggle { display: flex; gap: 4px; }
-  .theme-btn {
-    padding: 3px 10px; font-size: 11px; border: 1px solid var(--border);
-    background: transparent; color: var(--text-secondary); border-radius: 5px;
-    cursor: pointer; transition: all 0.12s;
-  }
-  .theme-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
-  .theme-active { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
-  .active-gear { color: var(--text-primary) !important; }
+
+
 
 
 
@@ -3714,13 +3060,8 @@
   }
   .card-add:hover { border-color: var(--border-hover); color: var(--text-primary); background: var(--bg-hover); }
   .card-add-icon { font-size: 16px; font-weight: 400; line-height: 1; }
-  /* .settings-action shared with .settings-btn / .settings-action-btn —
-     unified rule lives near .settings-row above. */
-  .settings-doctor-summary { margin-left: 8px; }
 
 
-  /* ── Delete mode ── */
-  .delete-active { color: #D81E5B !important; }
   .btn-delete-x {
     background: none; border: 1px solid #D81E5B55; color: #D81E5B;
     cursor: pointer; font-size: 9px; font-weight: 600;
@@ -3732,15 +3073,6 @@
 
 
 
-  /* ── Orphan adoption ── */
-  .orphan-pill {
-    margin-left: auto; margin-bottom: 6px; padding: 2px 10px; border: 1px solid #f59e0b88;
-    background: #f59e0b22; color: #f59e0b; border-radius: 12px;
-    font-size: 11px; font-weight: 600; cursor: pointer;
-  }
-  .orphan-pill:hover { background: #f59e0b44; }
-  :global([data-theme="light"]) .orphan-pill { color: #b45309; border-color: #b4530966; background: #fef3c722; }
-  :global([data-theme="light"]) .orphan-pill:hover { background: #fef3c7; }
 
 
 
@@ -4030,212 +3362,9 @@
     font-size: 13px;
   }
 
-  .reload-error-banner {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    background: #3a1515;
-    border-bottom: 1px solid #7f1d1d;
-    color: #fecaca;
-    font-size: 12px;
-    line-height: 1.35;
-  }
-  .reload-error-label {
-    font-weight: 700;
-    color: #fca5a5;
-    white-space: nowrap;
-  }
-  .reload-error-msg {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .reload-error-hint {
-    font-style: italic;
-    opacity: 0.8;
-    white-space: nowrap;
-  }
-  .reload-error-dismiss {
-    background: transparent;
-    border: none;
-    color: #fca5a5;
-    cursor: pointer;
-    font-size: 14px;
-    padding: 0 4px;
-  }
-  .reload-error-dismiss:hover { color: #fff; }
 
-  .cfg-error-screen {
-    position: fixed;
-    inset: 0;
-    background: var(--bg-base);
-    color: var(--text-primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    overflow: auto;
-    z-index: 10000;
-  }
-  .cfg-error-card {
-    max-width: 620px;
-    width: 100%;
-    background: var(--bg-card);
-    color: var(--text-primary);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 22px 24px;
-    box-shadow: var(--card-shadow);
-  }
-  .cfg-error-title {
-    margin: 0 0 4px;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-  .cfg-error-path {
-    margin: 0 0 12px;
-    font-size: 11.5px;
-    color: var(--text-muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    word-break: break-all;
-  }
-  .cfg-error-detail {
-    background: rgba(216, 30, 91, 0.10);
-    border: 1px solid rgba(216, 30, 91, 0.45);
-    border-radius: 6px;
-    padding: 10px 12px;
-    margin: 0 0 14px;
-    font-size: 11.5px;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 140px;
-    overflow: auto;
-    color: var(--text-primary);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  }
-  .cfg-error-failure {
-    background: #D81E5B;
-    border: 1px solid #D81E5B;
-    border-radius: 6px;
-    padding: 10px 12px;
-    margin: 0 0 14px;
-    font-size: 12px;
-    color: #ffffff;
-  }
-  .cfg-error-failure strong { color: #ffffff; }
 
-  .cfg-error-section {
-    margin: 0 0 16px;
-    padding: 12px 14px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--bg-base);
-  }
-  .cfg-error-section-title {
-    margin: 0 0 4px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-  .cfg-error-section-desc {
-    margin: 0 0 10px;
-    font-size: 11.5px;
-    line-height: 1.45;
-    color: var(--text-secondary);
-  }
-  .cfg-error-section-actions {
-    display: flex;
-    justify-content: flex-start;
-  }
-  .cfg-error-empty {
-    margin: 0;
-    padding: 8px 10px;
-    font-size: 11.5px;
-    color: var(--text-muted);
-    font-style: italic;
-  }
-  .cfg-error-backup-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    max-height: 200px;
-    overflow-y: auto;
-  }
-  .cfg-error-backup-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 8px 10px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-  }
-  .cfg-error-backup-meta { flex: 1 1 auto; min-width: 0; }
-  .cfg-error-backup-time {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-  .cfg-error-backup-sub {
-    font-size: 11px;
-    color: var(--text-muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
 
-  .cfg-error-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-  }
-  .cfg-error-btn {
-    border-radius: 6px;
-    padding: 8px 14px;
-    font-size: 12.5px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.12s, opacity 0.12s, border-color 0.12s;
-    border: 1px solid transparent;
-  }
-  .cfg-error-btn:disabled { opacity: 0.55; cursor: default; }
-  .cfg-error-btn-small { padding: 5px 10px; font-size: 11.5px; }
-  .cfg-error-btn-ghost {
-    background: transparent;
-    color: var(--text-secondary);
-    border-color: var(--border);
-  }
-  .cfg-error-btn-ghost:hover:not(:disabled) {
-    color: var(--text-primary);
-    border-color: var(--border-hover);
-    background: var(--bg-hover);
-  }
-  .cfg-error-btn-secondary {
-    background: transparent;
-    color: #D81E5B;
-    border-color: #D81E5B;
-  }
-  .cfg-error-btn-secondary:hover:not(:disabled) {
-    background: rgba(216, 30, 91, 0.10);
-  }
-  .cfg-error-btn-primary {
-    background: #D81E5B;
-    color: #ffffff;
-    border-color: #D81E5B;
-  }
-  .cfg-error-btn-primary:hover:not(:disabled) {
-    filter: brightness(1.08);
-  }
 
 
 </style>
