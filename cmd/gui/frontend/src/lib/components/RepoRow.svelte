@@ -480,7 +480,7 @@
       {@render words()}
       {#if label.badges}
         {#each COUNT_BADGES as b}
-          {#if state[b.field] > 0}<span class="sbadge" style="color:{sc(b.color)}" title="{state[b.field]} {b.word}">{b.glyph}{state[b.field]}</span>{/if}
+          {#if state[b.field] > 0}<span class="sbadge" style="color:{sc(b.color)}" title="{state[b.field]} {$t(b.word)}">{b.glyph}{state[b.field]}</span>{/if}
         {/each}
       {/if}
     </span>

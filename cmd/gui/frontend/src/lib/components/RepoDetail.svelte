@@ -53,10 +53,10 @@
     <div class="detail-header">
       <span class="detail-branch">Branch: <strong>{repoDetail.branch}</strong></span>
       {#if repoDetail.ahead > 0}
-        <span class="detail-badge" style="color:{sc(countBadge('ahead').color)}">{repoDetail.ahead} {countBadge('ahead').word}</span>
+        <span class="detail-badge" style="color:{sc(countBadge('ahead').color)}">{repoDetail.ahead} {$t(countBadge('ahead').word)}</span>
       {/if}
       {#if repoDetail.behind > 0}
-        <span class="detail-badge" style="color:{sc(countBadge('behind').color)}">{repoDetail.behind} {countBadge('behind').word}</span>
+        <span class="detail-badge" style="color:{sc(countBadge('behind').color)}">{repoDetail.behind} {$t(countBadge('behind').word)}</span>
       {/if}
     </div>
     {/if}

@@ -91,7 +91,7 @@
               <span class="compact-badge" style="color: {sc('error')}">detached</span>
             {/if}
             {#if count}
-              <span class="compact-badge" style="color: {sc(count.color)}">{state[count.field]} {count.word}</span>
+              <span class="compact-badge" style="color: {sc(count.color)}">{state[count.field]} {$t(count.word)}</span>
             {/if}
           </div>
         {/each}

@@ -20,6 +20,12 @@ const catalogs: Record<Language, Record<string, string>> = {
     'account.delete': 'Delete account',
     'account.edit': 'Edit account',
     'account.actions': 'Account actions',
+    'account.findDisabled': 'No working credential for this account',
+    'account.createDisabled': 'Needs a working API credential (GCM that accepts the API, or a companion PAT)',
+    'count.behind': 'behind',
+    'count.ahead': 'ahead',
+    'count.changed': 'changed',
+    'count.untracked': 'untracked',
     'account.needsAttention': 'need attention',
     'account.needAttentionPlural': 'need attention',
     'collapse.expand': 'Expand',
@@ -330,6 +336,12 @@ const catalogs: Record<Language, Record<string, string>> = {
     'account.delete': 'Eliminar cuenta',
     'account.edit': 'Editar cuenta',
     'account.actions': 'Acciones de cuenta',
+    'account.findDisabled': 'Esta cuenta no tiene una credencial que funcione',
+    'account.createDisabled': 'Necesita una credencial de API que funcione (GCM que acepte la API, o un PAT complementario)',
+    'count.behind': 'por detrás',
+    'count.ahead': 'por delante',
+    'count.changed': 'cambiados',
+    'count.untracked': 'sin seguimiento',
     'account.needsAttention': 'requiere atención',
     'account.needAttentionPlural': 'requieren atención',
     'collapse.expand': 'Expandir',
@@ -633,14 +645,24 @@ export function normalizeLanguage(lang: string | undefined | null): Language {
   return lang === 'es' ? 'es' : 'en';
 }
 
-export const t = derived(languageStore, ($lang) => {
-  return (key: string, vars?: Record<string, string | number>): string => {
-    let value = catalogs[$lang]?.[key] ?? catalogs[fallback][key] ?? key;
-    if (vars) {
-      for (const [name, replacement] of Object.entries(vars)) {
-        value = value.replaceAll(`{${name}}`, String(replacement));
-      }
-    }
-    return value;
-  };
+export type Vars = Record<string, string | number>;
+
+// format fills each {name} in a template with its value from vars.
+export function format(template: string, vars?: Vars): string {
+  if (!vars) return template;
+  let value = template;
+  for (const [name, replacement] of Object.entries(vars)) {
+    value = value.replaceAll(`{${name}}`, String(replacement));
+  }
+  return value;
+}
+
+// tpl returns a key's template with its {name} placeholders unfilled, for
+// Rich.svelte, which splits the markup before it fills them.
+export const tpl = derived(languageStore, ($lang) => {
+  return (key: string): string => catalogs[$lang]?.[key] ?? catalogs[fallback][key] ?? key;
+});
+
+export const t = derived(tpl, ($tpl) => {
+  return (key: string, vars?: Vars): string => format($tpl(key), vars);
 });

@@ -88,10 +88,10 @@
         onOpenAIHarness={openAccountInAIHarness}
         onFind={() => { closeAccountMenu(); openDiscover(accountKey); }}
         findEnabled={canDiscoverWith(credStatus)}
-        findDisabledReason={DISCOVER_DISABLED}
+        findDisabledReason={$t(DISCOVER_DISABLED)}
         onCreate={() => { closeAccountMenu(); openCreateRepo(accountKey); }}
         createEnabled={canCreateWith(credStatus)}
-        createDisabledReason={CREATE_DISABLED}
+        createDisabledReason={$t(CREATE_DISABLED)}
         extraItems={accountItems(simple, credStatus)}
       />
     </div>
