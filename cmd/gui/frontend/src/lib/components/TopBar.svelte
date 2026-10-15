@@ -35,7 +35,7 @@
       <span class="health-num">{$simpleSummary.saved}/{$simpleSummary.total}</span>
     </span>
     <span class="health-label">{$simpleSummary.help > 0 ? $t('simple.needHelpN', { n: $simpleSummary.help })
-      : $simpleSummary.unsaved > 0 ? $t('simple.notSavedN', { n: $simpleSummary.unsaved })
+      : $simpleSummary.wip + $simpleSummary.unpushed > 0 ? $t('simple.notSavedN', { n: $simpleSummary.wip + $simpleSummary.unpushed })
       : $t('simple.allSaved')}</span>
   </div>
   {:else}

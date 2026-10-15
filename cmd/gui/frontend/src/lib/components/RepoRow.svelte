@@ -179,7 +179,7 @@
   }
   function simpleTip(kind: SimpleKind, state: { status: string; modified: number; untracked: number }): string {
     if (kind === 'help') return $t('simple.tipHelp');
-    if (kind !== 'unsaved') return '';
+    if (kind !== 'wip' && kind !== 'unpushed') return '';
     if (state.status === 'ahead') return $t('simple.tipAhead');
     if (state.status === 'no upstream') return $t('simple.tipNoUpstream');
     return $t('simple.tipDirty', { n: (state.modified || 0) + (state.untracked || 0) });

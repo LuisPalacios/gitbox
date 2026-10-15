@@ -80,7 +80,7 @@ export const summary = derived(repoStates, ($rs) => {
 // ── Derived: Simple mode summary (issue #124) ──
 // Counts per simpleKind; busy and checking rows count toward the total only.
 export const simpleSummary = derived(repoStates, ($rs) => {
-  const sum = { saved: 0, unsaved: 0, update: 0, online: 0, help: 0, total: 0 };
+  const sum = { saved: 0, wip: 0, unpushed: 0, update: 0, online: 0, help: 0, total: 0 };
   for (const r of Object.values($rs)) {
     const k = simpleKind(r.status);
     if (k in sum) sum[k as keyof typeof sum]++;

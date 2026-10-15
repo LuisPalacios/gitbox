@@ -23,7 +23,7 @@
   <div class="summary-left">
     {#if Object.values($repoStates).some(state => state.status === 'unknown')}<span class="sum">{$t('simple.checking')}</span><span class="sep">&middot;</span>{/if}
     <span class="sum" style="color:{sc('clean')}">{$t('simple.savedN', { n: $simpleSummary.saved })}</span>
-    {#if $simpleSummary.unsaved > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('dirty')}">{$t('simple.notSavedN', { n: $simpleSummary.unsaved })}</span>{/if}
+    {#if $simpleSummary.wip + $simpleSummary.unpushed > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('dirty')}">{$t('simple.notSavedN', { n: $simpleSummary.wip + $simpleSummary.unpushed })}</span>{/if}
     {#if $simpleSummary.help > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('error')}">{$t('simple.needHelpN', { n: $simpleSummary.help })}</span>{/if}
     {#if $simpleSummary.update > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('behind')}">{$t('simple.updateN', { n: $simpleSummary.update })}</span>{/if}
     {#if $simpleSummary.online > 0}<span class="sep">&middot;</span><span class="sum" style="color:{sc('not cloned')}">{$t('simple.onlineN', { n: $simpleSummary.online })}</span>{/if}
