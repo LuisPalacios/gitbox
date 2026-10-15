@@ -170,6 +170,10 @@ You can switch an account's credential type at any time. When you change the typ
 
 No need to re-clone anything.
 
+Before a GUI fetch, I compare the clone's effective identity, origin, and credential settings in two Git config reads. I leave unchanged settings and token files untouched, including their modification times. When a token changes, I replace its file atomically and retain private file permissions; concurrent clones from the same account share this update safely.
+
+I keep included Git config when its effective settings match the account. If a later include or worktree config keeps overriding a repair, I see a repository-maintenance warning and the GUI skips that fetch. I correct the overriding setting before retrying.
+
 ## Verifying credentials
 
 You can verify that credentials are working at any time:

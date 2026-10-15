@@ -2,6 +2,7 @@ package credential
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -79,6 +80,12 @@ func SSHFolder(cfg *config.Config) string {
 // Check runs the credential verification for one account synchronously.
 // Returns a structured result with separate primary and PAT statuses.
 func Check(acct config.Account, accountKey string, cfg *config.Config) StatusResult {
+	return CheckContext(context.Background(), acct, accountKey, cfg)
+}
+
+// CheckContext verifies one account while honoring cancellation of network and
+// credential-helper operations. Cancellation reports offline instead of broken credentials.
+func CheckContext(ctx context.Context, acct config.Account, accountKey string, cfg *config.Config) StatusResult {
 	if acct.DefaultCredentialType == "" {
 		return StatusResult{
 			Overall:     StatusNone,
@@ -88,18 +95,26 @@ func Check(acct config.Account, accountKey string, cfg *config.Config) StatusRes
 		}
 	}
 
-	switch acct.DefaultCredentialType {
-	case "ssh":
-		return checkSSH(acct, accountKey, cfg)
-	case "gcm":
-		return checkGCM(acct, accountKey, cfg)
-	default: // "token"
-		return checkToken(acct, accountKey, cfg)
+	result := StatusResult{PrimaryType: acct.DefaultCredentialType}
+	if ctx.Err() == nil {
+		switch acct.DefaultCredentialType {
+		case "ssh":
+			result = checkSSH(ctx, acct, accountKey, cfg)
+		case "gcm":
+			result = checkGCM(ctx, acct, accountKey, cfg)
+		default: // "token"
+			result = checkToken(ctx, acct, accountKey, cfg)
+		}
 	}
+	if err := ctx.Err(); err != nil {
+		result.Primary, result.PAT, result.Overall = StatusOffline, StatusOffline, StatusOffline
+		result.PrimaryDetail, result.PATDetail = err.Error(), err.Error()
+	}
+	return result
 }
 
 // checkSSH verifies SSH key + optional companion PAT.
-func checkSSH(acct config.Account, accountKey string, cfg *config.Config) StatusResult {
+func checkSSH(ctx context.Context, acct config.Account, accountKey string, cfg *config.Config) StatusResult {
 	r := StatusResult{PrimaryType: "ssh"}
 
 	// Primary: SSH key + connection.
@@ -124,8 +139,8 @@ func checkSSH(acct config.Account, accountKey string, cfg *config.Config) Status
 		return r
 	}
 
-	if _, err := TestSSHConnection(sshFolder, acct.SSH.Host); err != nil {
-		if isSSHNetworkError(err) {
+	if _, err := TestSSHConnectionContext(ctx, sshFolder, acct.SSH.Host); err != nil {
+		if isSSHNetworkError(err) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			r.Primary = StatusOffline
 			r.PrimaryDetail = "server unreachable"
 		} else {
@@ -138,7 +153,7 @@ func checkSSH(acct config.Account, accountKey string, cfg *config.Config) Status
 	}
 
 	// PAT: optional companion token for discovery/API.
-	r.PAT, r.PATDetail = checkPATStatus(acct, accountKey, cfg)
+	r.PAT, r.PATDetail = checkPATStatus(ctx, acct, accountKey, cfg)
 	if r.PATDetail == "" {
 		if r.PAT == StatusOK {
 			r.PATDetail = "PAT verified"
@@ -172,11 +187,16 @@ func checkSSH(acct config.Account, accountKey string, cfg *config.Config) Status
 // as "Warning" on the Primary row because the GCM-cached password (which
 // Forgejo/Gitea refuse at their REST API) was being counted against GCM.
 // That's wrong: GCM did its job.
-func checkGCM(acct config.Account, accountKey string, cfg *config.Config) StatusResult {
+func checkGCM(ctx context.Context, acct config.Account, accountKey string, cfg *config.Config) StatusResult {
 	r := StatusResult{PrimaryType: "gcm"}
 
-	token, _, err := ResolveGCMToken(acct.URL, acct.Username)
+	token, _, err := ResolveGCMTokenContext(ctx, acct.URL, acct.Username)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			r.Primary, r.PAT, r.Overall = StatusOffline, StatusOffline, StatusOffline
+			r.PrimaryDetail, r.PATDetail = err.Error(), err.Error()
+			return r
+		}
 		// No credential means git operations don't work either. This IS
 		// a Primary failure.
 		r.Primary = StatusError
@@ -191,7 +211,7 @@ func checkGCM(acct config.Account, accountKey string, cfg *config.Config) Status
 	r.PrimaryDetail = "GCM credential present — git push/pull works"
 
 	// API reachability: try GCM's cached token, then the keyring PAT.
-	r.PAT, r.PATDetail = checkAPIReachabilityForGCM(acct, accountKey, token)
+	r.PAT, r.PATDetail = checkAPIReachabilityForGCM(ctx, acct, accountKey, token)
 	r.Overall = combineStatus(r.Primary, r.PAT)
 	return r
 }
@@ -200,9 +220,9 @@ func checkGCM(acct config.Account, accountKey string, cfg *config.Config) Status
 // account by trying two paths in order: the GCM-cached token, then any
 // companion PAT in env vars / keyring. The first success wins; details
 // reflect which path worked (or what failed if neither did).
-func checkAPIReachabilityForGCM(acct config.Account, accountKey string, gcmToken string) (Status, string) {
+func checkAPIReachabilityForGCM(parent context.Context, acct config.Account, accountKey string, gcmToken string) (Status, string) {
 	// 1. GCM-token path.
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
 	gcmErr := provider.TestAuth(ctx, acct.Provider, acct.URL, gcmToken, acct.Username)
 	if gcmErr == nil {
@@ -231,7 +251,7 @@ func checkAPIReachabilityForGCM(acct config.Account, accountKey string, gcmToken
 		return StatusNone, fmt.Sprintf("WARNING: API via GCM failed (%v) and no companion PAT is configured", gcmErr)
 	}
 
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx2, cancel2 := context.WithTimeout(parent, 15*time.Second)
 	defer cancel2()
 	if err := provider.TestAuth(ctx2, acct.Provider, acct.URL, patToken, acct.Username); err != nil {
 		if provider.IsNetworkError(err) {
@@ -243,10 +263,10 @@ func checkAPIReachabilityForGCM(acct config.Account, accountKey string, gcmToken
 }
 
 // checkToken verifies the PAT used for everything.
-func checkToken(acct config.Account, accountKey string, cfg *config.Config) StatusResult {
+func checkToken(parent context.Context, acct config.Account, accountKey string, cfg *config.Config) StatusResult {
 	r := StatusResult{PrimaryType: "token"}
 
-	token, _, err := ResolveAPIToken(acct, accountKey)
+	token, _, err := ResolveAPITokenContext(parent, acct, accountKey)
 	if err != nil {
 		r.Primary = StatusError
 		r.PrimaryDetail = "API token not found"
@@ -256,7 +276,7 @@ func checkToken(acct config.Account, accountKey string, cfg *config.Config) Stat
 		return r
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
 	if err := provider.TestAuth(ctx, acct.Provider, acct.URL, token, acct.Username); err != nil {
 		if provider.IsNetworkError(err) {
@@ -286,12 +306,12 @@ func checkToken(acct config.Account, accountKey string, cfg *config.Config) Stat
 // checkPATStatus checks if a companion PAT file exists and works.
 // Returns (status, detail). Detail is empty for StatusOK/StatusNone so the
 // caller can fill in context-appropriate messages.
-func checkPATStatus(acct config.Account, accountKey string, cfg *config.Config) (Status, string) {
+func checkPATStatus(parent context.Context, acct config.Account, accountKey string, cfg *config.Config) (Status, string) {
 	token, _, err := ResolveToken(acct, accountKey)
 	if err != nil {
 		return StatusNone, "" // not configured (optional)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
 	if err := provider.TestAuth(ctx, acct.Provider, acct.URL, token, acct.Username); err != nil {
 		if provider.IsNetworkError(err) {

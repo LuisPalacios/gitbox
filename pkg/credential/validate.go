@@ -2,12 +2,14 @@ package credential
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/git"
 )
@@ -188,14 +190,26 @@ func containsWord(s, word string) bool {
 // from the user's ~/.ssh/config.
 // Returns the greeting message (e.g., "Hi MyUser!") or an error.
 func TestSSHConnection(sshFolder, host string) (string, error) {
+	return TestSSHConnectionContext(context.Background(), sshFolder, host)
+}
+
+// TestSSHConnectionContext bounds SSH verification to 15 seconds or the
+// caller's earlier cancellation, including stalled authentication.
+func TestSSHConnectionContext(ctx context.Context, sshFolder, host string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	configFile := filepath.Join(sshFolder, "config")
-	cmd := exec.Command("ssh", "-T",
+	cmd := exec.CommandContext(ctx, "ssh", "-T",
 		"-F", configFile,
 		"-o", "ConnectTimeout=5",
 		"-o", "StrictHostKeyChecking=accept-new",
 		host)
+	cmd.WaitDelay = time.Second
 	git.HideWindow(cmd)
 	out, err := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		return "", fmt.Errorf("SSH connection failed: %w", ctx.Err())
+	}
 	output := strings.TrimSpace(string(out))
 
 	// Many providers return exit code 1 with a greeting (e.g., GitHub: "Hi user!").

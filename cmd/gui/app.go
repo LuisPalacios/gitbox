@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -79,14 +78,31 @@ type App struct {
 	// Keyed by "<sourceKey>/<repoKey>". Cleared when a fetch succeeds or
 	// a RepoExists probe returns true. In-memory only — we re-discover on
 	// the next periodic sync rather than persist a potentially-stale fact.
-	upstreamGone map[string]bool
+	upstreamGone       map[string]bool
+	upstreamRevision   map[string]uint64
+	credentialRevision map[string]uint64
 
 	// probeMu serializes upstream-existence probes so a burst of
 	// RefreshStatus calls from the frontend doesn't spawn N concurrent
 	// API sweeps. Separate from a.mu because probing takes seconds and
 	// would block every other state read.
-	probeMu     sync.Mutex
-	lastProbeAt time.Time
+	probeMu            sync.Mutex
+	probeFlight        *upstreamProbeFlight
+	lastProbeAt        time.Time
+	maintenanceMu      sync.RWMutex
+	refreshMu          sync.Mutex
+	refreshCtx         context.Context
+	refreshCancel      context.CancelFunc
+	refreshClosed      bool
+	refreshWG          sync.WaitGroup
+	refreshHooks       *refreshHooks
+	statusRun          *statusFlight
+	cachedStatus       []StatusResult
+	cachedStatusConfig *config.Config
+	fetchRun           *fetchFlight
+	fetchSlots         chan struct{}
+	repoFetches        map[string]*repoFetchFlight
+	credentialRuns     map[string]*credentialFlight
 
 	// harnessMu serializes AI harness detection passes (background
 	// ticker, window-focus refresh) the same way probeMu does for upstream
@@ -149,6 +165,7 @@ func (a *App) Shutdown(_ context.Context) {
 	}
 	// Stop the AI harness watcher before test cleanup removes the temp
 	// config dir, so a late pass can't recreate it via config.Save.
+	a.stopRefresh()
 	a.stopHarnessWatcher()
 	a.toolsWG.Wait()
 	if a.testCleanup != nil {
@@ -1871,29 +1888,6 @@ func toStatusResult(rs status.RepoStatus) StatusResult {
 	}
 }
 
-// GetAllStatus returns the sync status of every configured repo.
-// Overlays the in-memory upstreamGone map on top of local status so a repo
-// whose remote has been deleted (known because a fetch returned "repository
-// not found" or a RepoExists probe returned false) is surfaced as
-// "upstream gone" even though git status alone can't see that fact.
-func (a *App) GetAllStatus() []StatusResult {
-	a.mu.Lock()
-	cfg := a.cfg
-	gone := make(map[string]bool, len(a.upstreamGone))
-	maps.Copy(gone, a.upstreamGone)
-	a.mu.Unlock()
-
-	raw := status.CheckAll(cfg)
-	results := make([]StatusResult, len(raw))
-	for i, rs := range raw {
-		results[i] = toStatusResult(rs)
-		if gone[rs.Source+"/"+rs.Repo] {
-			results[i].State = status.UpstreamGone.String()
-		}
-	}
-	return results
-}
-
 // markUpstreamGone records that a repo's remote was confirmed missing.
 // Thread-safe; callers should not hold a.mu.
 func (a *App) markUpstreamGone(sourceKey, repoKey string, gone bool) {
@@ -1903,125 +1897,15 @@ func (a *App) markUpstreamGone(sourceKey, repoKey string, gone bool) {
 		a.upstreamGone = make(map[string]bool)
 	}
 	key := sourceKey + "/" + repoKey
+	if a.upstreamRevision == nil {
+		a.upstreamRevision = make(map[string]uint64)
+	}
+	a.upstreamRevision[key]++
 	if gone {
 		a.upstreamGone[key] = true
 	} else {
 		delete(a.upstreamGone, key)
 	}
-}
-
-// probeUpstreamExistence asks each provider's REST API whether every
-// configured repo still exists. Complements git-fetch-based detection by
-// catching cases where fetch silently succeeds against an archived-but-
-// public repo or a server-side redirect: the fetch looks fine, but the
-// API source-of-truth says the repo is gone. Updates a.upstreamGone.
-//
-// Runs one round-trip per repo — cheap — and intentionally bails out
-// cautiously when it can't authenticate or reach the API so a temporary
-// network glitch doesn't turn the whole fleet red. Only a definitive
-// "exists=false" from the API marks a repo gone; every other outcome is
-// left as-is.
-//
-// Returns true if any repo's gone-state flipped, so the caller can trigger
-// a status event for the frontend to re-render.
-func (a *App) probeUpstreamExistence() bool {
-	a.mu.Lock()
-	cfg := a.cfg
-	a.mu.Unlock()
-	if cfg == nil {
-		return false
-	}
-
-	changed := false
-	for srcKey, src := range cfg.Sources {
-		acct, ok := cfg.Accounts[src.Account]
-		if !ok {
-			continue
-		}
-		prov, err := provider.ByName(acct.Provider)
-		if err != nil {
-			continue
-		}
-		creator, ok := prov.(provider.RepoCreator)
-		if !ok {
-			continue
-		}
-		token, _, err := credential.ResolveAPIToken(acct, src.Account)
-		if err != nil {
-			// No usable token — we can't probe. Leave existing marks in place.
-			continue
-		}
-		for repoKey := range src.Repos {
-			owner, name := splitRepoKeyForProbe(repoKey)
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			exists, rerr := creator.RepoExists(ctx, acct.URL, token, acct.Username, owner, name)
-			cancel()
-			if rerr != nil {
-				// Network / auth hiccup — don't change state.
-				continue
-			}
-			key := srcKey + "/" + repoKey
-			a.mu.Lock()
-			wasGone := a.upstreamGone[key]
-			a.mu.Unlock()
-			if wasGone != !exists {
-				changed = true
-			}
-			a.markUpstreamGone(srcKey, repoKey, !exists)
-		}
-	}
-	return changed
-}
-
-// probeUpstreamExistenceAsync runs the probe in a goroutine, throttled to
-// once per probeMinInterval. Used on Startup and RefreshStatus so the UI
-// reflects upstream-gone state without requiring an explicit fetch click.
-// Emits status:updated when marks change so the frontend re-renders.
-func (a *App) probeUpstreamExistenceAsync() {
-	const probeMinInterval = 60 * time.Second
-
-	if !a.probeMu.TryLock() {
-		return // another probe is already running
-	}
-	go func() {
-		defer a.probeMu.Unlock()
-		a.mu.Lock()
-		since := time.Since(a.lastProbeAt)
-		a.mu.Unlock()
-		if since < probeMinInterval {
-			return
-		}
-		changed := a.probeUpstreamExistence()
-		a.mu.Lock()
-		a.lastProbeAt = time.Now()
-		a.mu.Unlock()
-		if changed && a.ctx != nil {
-			wailsrt.EventsEmit(a.ctx, "status:updated", a.GetAllStatus())
-		}
-	}()
-}
-
-// splitRepoKeyForProbe splits "owner/repo" for provider API calls.
-// Empty owner means the repo key wasn't in org/name form — provider
-// clients handle that case by falling back to the authenticated user.
-func splitRepoKeyForProbe(repoKey string) (string, string) {
-	if before, after, ok := strings.Cut(repoKey, "/"); ok {
-		return before, after
-	}
-	return "", repoKey
-}
-
-// RefreshStatus checks all repos and emits a "status:updated" event.
-// Also kicks off a throttled upstream-existence probe so a user who never
-// clicks "fetch all" still sees repos that disappeared on the provider
-// flip to "upstream gone" — the probe emits its own status:updated when
-// any mark changes.
-func (a *App) RefreshStatus() {
-	go func() {
-		results := a.GetAllStatus()
-		wailsrt.EventsEmit(a.ctx, "status:updated", results)
-	}()
-	a.probeUpstreamExistenceAsync()
 }
 
 // ─── Clone ────────────────────────────────────────────────────
@@ -2079,10 +1963,9 @@ func (a *App) CloneRepo(sourceKey, repoKey string) {
 // PullRepo pulls a single repo. Emits pull:done event.
 func (a *App) PullRepo(sourceKey, repoKey string) {
 	go func() {
-		a.mu.Lock()
-		src, ok := a.cfg.Sources[sourceKey]
+		cfg := a.snapshotRefreshConfig()
+		src, ok := cfg.Sources[sourceKey]
 		if !ok {
-			a.mu.Unlock()
 			wailsrt.EventsEmit(a.ctx, "pull:done", map[string]string{
 				"source": sourceKey, "repo": repoKey,
 				"error": fmt.Sprintf("source %q not found", sourceKey),
@@ -2091,24 +1974,34 @@ func (a *App) PullRepo(sourceKey, repoKey string) {
 		}
 		repo, ok := src.Repos[repoKey]
 		if !ok {
-			a.mu.Unlock()
 			wailsrt.EventsEmit(a.ctx, "pull:done", map[string]string{
 				"source": sourceKey, "repo": repoKey,
 				"error": fmt.Sprintf("repo %q not found in source %q", repoKey, sourceKey),
 			})
 			return
 		}
-		globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
+		globalFolder := config.ExpandTilde(cfg.Global.Folder)
 		sourceFolder := src.EffectiveFolder(sourceKey)
-		a.mu.Unlock()
 
 		path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
 		// Pre-pull self-heal: if .git/config drifted from spec (e.g. a
 		// manual edit, an older gitbox that didn't run the heal), fix
 		// it before the network op so auth uses the right credentials.
-		// Failures are non-fatal — the pull itself runs either way.
-		_ = heal.Repo(a.cfg, sourceKey, repoKey)
-		err := git.PullQuiet(path)
+		// I stop the pull if maintenance cannot restore the configured settings.
+		a.maintenanceMu.RLock()
+		var report heal.Report
+		if a.sameRefreshRepo(cfg, sourceKey, repoKey) {
+			report = heal.Repo(cfg, sourceKey, repoKey)
+		} else {
+			report.Warnings = []string{"repository settings changed during pull"}
+		}
+		a.maintenanceMu.RUnlock()
+		var err error
+		if len(report.Warnings) > 0 {
+			err = fmt.Errorf("repository maintenance: %s", strings.Join(report.Warnings, "; "))
+		} else {
+			err = git.PullQuiet(path)
+		}
 
 		result := map[string]any{"source": sourceKey, "repo": repoKey}
 		if err != nil {
@@ -2130,11 +2023,8 @@ type RepoDetail struct {
 	UpstreamError string           `json:"upstreamError,omitempty"`
 }
 
-// GetRepoDetail returns detailed file-level status for a repo. It also
-// performs an on-demand single-repo upstream-existence probe so the "click
-// to expand" action gives the user an authoritative answer right now,
-// without waiting for the throttled background sweep. The result is
-// promoted into a.upstreamGone so the card badge reflects it too.
+// GetRepoDetail returns local file-level status and the latest upstream flag.
+// I share the bounded background probe without delaying expanded details.
 func (a *App) GetRepoDetail(sourceKey, repoKey string) RepoDetail {
 	a.mu.Lock()
 	src, ok := a.cfg.Sources[sourceKey]
@@ -2147,200 +2037,55 @@ func (a *App) GetRepoDetail(sourceKey, repoKey string) RepoDetail {
 		a.mu.Unlock()
 		return RepoDetail{Error: fmt.Sprintf("repo %q not found", repoKey)}
 	}
-	acct, acctOK := a.cfg.Accounts[src.Account]
 	globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
 	sourceFolder := src.EffectiveFolder(sourceKey)
 	a.mu.Unlock()
 
 	path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
 
-	// On-demand probe: resolve an API token and ask the provider whether
-	// this repo still exists. Runs before DetailedStatus so a failure here
-	// doesn't starve the regular status fields. Silent on auth/network
-	// hiccups — we only mark gone on a definitive exists=false.
-	var goneFlag bool
-	var probeErr string
-	if acctOK {
-		if prov, err := provider.ByName(acct.Provider); err == nil {
-			if creator, ok := prov.(provider.RepoCreator); ok {
-				if token, _, err := credential.ResolveAPIToken(acct, src.Account); err == nil {
-					owner, name := splitRepoKeyForProbe(repoKey)
-					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-					exists, rerr := creator.RepoExists(ctx, acct.URL, token, acct.Username, owner, name)
-					cancel()
-					if rerr == nil && !exists {
-						goneFlag = true
-						a.markUpstreamGone(sourceKey, repoKey, true)
-						if a.ctx != nil {
-							wailsrt.EventsEmit(a.ctx, "status:updated", a.GetAllStatus())
-						}
-					} else if rerr == nil && exists {
-						a.markUpstreamGone(sourceKey, repoKey, false)
-					} else if rerr != nil {
-						probeErr = rerr.Error()
-					}
-				}
-			}
-		}
-	}
+	// I show local details immediately and share the bounded background probe.
+	a.probeUpstreamExistenceAsync()
+	a.mu.Lock()
+	goneFlag := a.upstreamGone[sourceKey+"/"+repoKey]
+	a.mu.Unlock()
 
 	branch, ahead, behind, changed, untracked, err := git.DetailedStatus(path)
 	if err != nil {
 		return RepoDetail{
-			Error:         err.Error(),
-			UpstreamGone:  goneFlag,
-			UpstreamError: probeErr,
+			Error:        err.Error(),
+			UpstreamGone: goneFlag,
 		}
 	}
 	return RepoDetail{
-		Branch:        branch,
-		Ahead:         ahead,
-		Behind:        behind,
-		Changed:       changed,
-		Untracked:     untracked,
-		UpstreamGone:  goneFlag,
-		UpstreamError: probeErr,
+		Branch:       branch,
+		Ahead:        ahead,
+		Behind:       behind,
+		Changed:      changed,
+		Untracked:    untracked,
+		UpstreamGone: goneFlag,
 	}
 }
 
 // FetchRepo runs git fetch on a single repo and emits fetch:done + refreshes status.
 func (a *App) FetchRepo(sourceKey, repoKey string) {
-	go func() {
-		a.mu.Lock()
-		src, ok := a.cfg.Sources[sourceKey]
-		if !ok {
-			a.mu.Unlock()
-			wailsrt.EventsEmit(a.ctx, "fetch:done", map[string]string{
-				"source": sourceKey, "repo": repoKey,
-				"error": fmt.Sprintf("source %q not found", sourceKey),
-			})
-			return
-		}
-		repo, ok := src.Repos[repoKey]
-		if !ok {
-			a.mu.Unlock()
-			wailsrt.EventsEmit(a.ctx, "fetch:done", map[string]string{
-				"source": sourceKey, "repo": repoKey,
-				"error": fmt.Sprintf("repo %q not found in source %q", repoKey, sourceKey),
-			})
-			return
-		}
-		globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
-		sourceFolder := src.EffectiveFolder(sourceKey)
-		a.mu.Unlock()
-
-		path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
-		// Pre-fetch self-heal: ensure .git/config matches spec before
-		// the network op runs, so credentials, identity, and origin
-		// URL are right. Drift is silently fixed; warnings are ignored
-		// here because the fetch error (if any) is more actionable.
-		_ = heal.Repo(a.cfg, sourceKey, repoKey)
-		_, err := git.FetchCaptured(path)
-
-		result := map[string]any{"source": sourceKey, "repo": repoKey}
-		if err != nil {
-			result["error"] = err.Error()
-			if git.IsUpstreamGoneError(err) {
-				result["upstreamGone"] = true
-				a.markUpstreamGone(sourceKey, repoKey, true)
-			}
-		} else {
-			// Clear any previous "upstream gone" mark — the fact that fetch
-			// succeeded is the most direct evidence we have that the repo
-			// is reachable again.
-			a.markUpstreamGone(sourceKey, repoKey, false)
-		}
-		wailsrt.EventsEmit(a.ctx, "fetch:done", result)
-
-		// Refresh status after fetch so the UI picks up behind/ahead changes.
+	a.refreshMu.Lock()
+	if a.refreshClosed {
+		a.refreshMu.Unlock()
+		return
+	}
+	a.refreshWG.Go(func() {
+		cfg := a.snapshotRefreshConfig()
+		_ = a.fetchOne(cfg, sourceKey, repoKey)
 		a.RefreshStatus()
-	}()
+	})
+	a.refreshMu.Unlock()
 }
 
-// fetchAllConcurrency caps the number of concurrent fetches inside
-// FetchAllRepos. A tight serial loop on Windows/WebView2 coalesces the
+// fetchAllConcurrency caps transfers across full refreshes and single-repo fetches. A tight serial loop on Windows/WebView2 coalesces the
 // per-repo Wails events so the top-bar and per-row spinners never
 // animate (issue #57); running fetches in a worker pool yields to the
 // Wails IPC layer between events and also cuts wall-clock fetch time.
 const fetchAllConcurrency = 8
-
-// FetchAllRepos runs git fetch on every cloned repo and emits fetch:alldone when finished.
-// Fetches run up to fetchAllConcurrency at a time. Each worker emits
-// fetch:start before its fetch and fetch:done after; fetch:alldone is
-// emitted once, after all workers finish.
-func (a *App) FetchAllRepos() {
-	go func() {
-		a.mu.Lock()
-		globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
-		type repoRef struct {
-			sourceKey, repoKey, path string
-		}
-		var repos []repoRef
-		for _, srcKey := range a.cfg.OrderedSourceKeys() {
-			src := a.cfg.Sources[srcKey]
-			sourceFolder := src.EffectiveFolder(srcKey)
-			for _, rKey := range src.OrderedRepoKeys() {
-				repo := src.Repos[rKey]
-				p := status.ResolveRepoPath(globalFolder, sourceFolder, rKey, repo)
-				if git.IsRepo(p) {
-					repos = append(repos, repoRef{srcKey, rKey, p})
-				}
-			}
-		}
-		a.mu.Unlock()
-
-		sem := make(chan struct{}, fetchAllConcurrency)
-		var wg sync.WaitGroup
-		for _, r := range repos {
-			wg.Add(1)
-			sem <- struct{}{}
-			go func(r repoRef) {
-				defer wg.Done()
-				defer func() { <-sem }()
-				wailsrt.EventsEmit(a.ctx, "fetch:start", map[string]string{
-					"source": r.sourceKey, "repo": r.repoKey,
-				})
-				// Periodic self-heal: fix .git/config drift (identity,
-				// origin URL, credential helpers) before each fetch so
-				// repos stay within spec between sessions.
-				_ = heal.Repo(a.cfg, r.sourceKey, r.repoKey)
-				_, err := git.FetchCaptured(r.path)
-				payload := map[string]any{
-					"source": r.sourceKey, "repo": r.repoKey,
-				}
-				if err == nil {
-					a.markUpstreamGone(r.sourceKey, r.repoKey, false)
-				} else {
-					// Previously the error was swallowed here and the UI never
-					// learned the fetch had failed — e.g. when the repo was
-					// deleted upstream, the card kept showing "synced". Surface
-					// the raw error AND a structured upstreamGone flag so the
-					// frontend can paint a distinct state.
-					payload["error"] = err.Error()
-					if git.IsUpstreamGoneError(err) {
-						payload["upstreamGone"] = true
-						a.markUpstreamGone(r.sourceKey, r.repoKey, true)
-					}
-				}
-				wailsrt.EventsEmit(a.ctx, "fetch:done", payload)
-			}(r)
-		}
-		wg.Wait()
-
-		wailsrt.EventsEmit(a.ctx, "fetch:alldone", nil)
-		// A fetch that silently succeeds against an archived-but-public
-		// repo or a server-side redirect won't mark anything gone on its
-		// own — ask the provider API to be sure. One round-trip per repo;
-		// bails safely on network/auth errors. Reset the throttle so this
-		// probe runs even if RefreshStatus just did one seconds ago — the
-		// user explicitly asked for a fresh sweep.
-		a.mu.Lock()
-		a.lastProbeAt = time.Time{}
-		a.mu.Unlock()
-		_ = a.probeUpstreamExistence()
-		a.RefreshStatus()
-	}()
-}
 
 // ─── Account CRUD ─────────────────────────────────────────────
 
@@ -2406,6 +2151,10 @@ type UpdateAccountRequest struct {
 
 // UpdateAccount updates the editable fields of an existing account and saves.
 func (a *App) UpdateAccount(req UpdateAccountRequest) error {
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+	a.invalidateCredential(req.Key)
+	defer a.invalidateCredential(req.Key)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -2438,6 +2187,12 @@ func (a *App) UpdateAccount(req UpdateAccountRequest) error {
 // config references, source key + folder, stored tokens, SSH keys/config.
 // Existing clones are then reconfigured for the new key.
 func (a *App) RenameAccount(oldKey, newKey string) error {
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+	a.invalidateCredential(oldKey)
+	a.invalidateCredential(newKey)
+	defer a.invalidateCredential(oldKey)
+	defer a.invalidateCredential(newKey)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -2567,6 +2322,10 @@ type CredentialSetupResult struct {
 
 // CredentialSetupGCM triggers GCM browser authentication for an account.
 func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+	a.invalidateCredential(accountKey)
+	defer a.invalidateCredential(accountKey)
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
 	a.mu.Unlock()
@@ -2671,6 +2430,10 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 
 // CredentialStoreToken stores a PAT in the credential file for an account.
 func (a *App) CredentialStoreToken(accountKey, token string) CredentialSetupResult {
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+	a.invalidateCredential(accountKey)
+	defer a.invalidateCredential(accountKey)
 	a.mu.Lock()
 	_, ok := a.cfg.Accounts[accountKey]
 	a.mu.Unlock()
@@ -2726,6 +2489,14 @@ func (a *App) GetTokenGuide(accountKey string) TokenGuideInfo {
 
 // CredentialSetupSSH generates an SSH key and configures ~/.ssh/config.
 func (a *App) CredentialSetupSSH(accountKey string) CredentialSetupResult {
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+	return a.setupSSH(accountKey)
+}
+
+func (a *App) setupSSH(accountKey string) CredentialSetupResult {
+	a.invalidateCredential(accountKey)
+	defer a.invalidateCredential(accountKey)
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
 	cfg := a.cfg
@@ -2832,6 +2603,10 @@ func (a *App) CredentialSetupSSH(accountKey string) CredentialSetupResult {
 // CredentialRegenerateSSH deletes the existing SSH key and config entry,
 // then runs CredentialSetupSSH to create fresh ones.
 func (a *App) CredentialRegenerateSSH(accountKey string) CredentialSetupResult {
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+	a.invalidateCredential(accountKey)
+	defer a.invalidateCredential(accountKey)
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
 	cfg := a.cfg
@@ -2857,13 +2632,15 @@ func (a *App) CredentialRegenerateSSH(accountKey string) CredentialSetupResult {
 	_ = acct
 
 	// Re-run setup from scratch — creates config entry + key + tests connection.
-	return a.CredentialSetupSSH(accountKey)
+	return a.setupSSH(accountKey)
 }
 
 // ─── Delete ───────────────────────────────────────────────────
 
 // DeleteRepo removes a repo from the config and deletes its local folder.
 func (a *App) DeleteRepo(sourceKey, repoKey string) error {
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -2919,6 +2696,10 @@ func (a *App) AccountDeletionImpact(accountKey string) AccountDeletionImpactDTO 
 // DeleteAccount removes an account, every source and mirror that references
 // it, and all its local clone folders (see ops.DeleteAccount).
 func (a *App) DeleteAccount(accountKey string) error {
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+	a.invalidateCredential(accountKey)
+	defer a.invalidateCredential(accountKey)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -2931,6 +2712,10 @@ func (a *App) DeleteAccount(accountKey string) error {
 // ChangeCredentialType removes the account's current credential artifacts,
 // switches it to newType, and reconfigures existing clones.
 func (a *App) ChangeCredentialType(accountKey, newType string) error {
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+	a.invalidateCredential(accountKey)
+	defer a.invalidateCredential(accountKey)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -2947,6 +2732,10 @@ func (a *App) ChangeCredentialType(accountKey, newType string) error {
 // CredentialDelete removes the credential artifacts for an account and clears
 // its credential configuration so it can be set up from scratch.
 func (a *App) CredentialDelete(accountKey string) CredentialSetupResult {
+	a.maintenanceMu.Lock()
+	defer a.maintenanceMu.Unlock()
+	a.invalidateCredential(accountKey)
+	defer a.invalidateCredential(accountKey)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -3030,35 +2819,13 @@ func (a *App) AddDiscoveredRepos(key string, repoNames []string) error {
 
 // CredentialStatus is the result of verifying an account's credentials.
 type CredentialStatus struct {
+	revision   uint64
 	Status     string `json:"status"` // overall: "ok", "warning", "error", "none"
 	Message    string `json:"message"`
 	Primary    string `json:"primary"` // primary credential status
 	PrimaryMsg string `json:"primaryMsg"`
 	PAT        string `json:"pat"` // companion PAT status (for SSH/GCM)
 	PATMsg     string `json:"patMsg"`
-}
-
-// CredentialVerify checks if credentials are working for an account.
-// Uses the shared credential.Check logic from pkg/credential/status.go.
-func (a *App) CredentialVerify(accountKey string) CredentialStatus {
-	a.mu.Lock()
-	acct, ok := a.cfg.Accounts[accountKey]
-	cfg := a.cfg
-	a.mu.Unlock()
-
-	if !ok {
-		return CredentialStatus{Status: "error", Message: "account not found"}
-	}
-
-	result := credential.Check(acct, accountKey, cfg)
-	return CredentialStatus{
-		Status:     result.Overall.String(),
-		Message:    result.PrimaryDetail,
-		Primary:    result.Primary.String(),
-		PrimaryMsg: result.PrimaryDetail,
-		PAT:        result.PAT.String(),
-		PATMsg:     result.PATDetail,
-	}
 }
 
 // ─── Helpers ──────────────────────────────────────────────────

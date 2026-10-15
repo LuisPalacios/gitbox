@@ -152,6 +152,8 @@ Haz clic en el botón **Fetch All** (icono ↻) para consultar todos los remotos
 
 En Settings puedes activar fetch automático cada 5, 15 o 30 minutos. Gitbox comprueba todos los remotos y re-verifica salud de credenciales en segundo plano.
 
+Cuando coinciden el arranque, las comprobaciones periódicas y el refresco manual, veo un único ciclo de refresco compartido. El estado local aparece en cuanto terminan las comprobaciones Git; el indicador de fetch permanece activo hasta que terminan las comprobaciones de credenciales y proveedores de ese ciclo. Un proveedor lento o inaccesible no convierte un clone conocido en un upstream ausente. Si el mantenimiento del repositorio no puede restaurar la identidad, origin o aislamiento de credenciales configurados, veo su aviso y el fetch de ese clone se detiene.
+
 #### Ver detalles
 
 Haz clic en un repo que muestre cambios locales, conflictos u otros problemas. Aparece un panel expansible que muestra:

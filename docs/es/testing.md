@@ -171,6 +171,39 @@ Ejecuto las pruebas de instantánea de arranque y descubrimiento de workspaces d
 
 Para medir el arranque interactivo, registro por separado el lanzamiento del proceso, la aparición de la ventana, las primeras filas configuradas y el estado completo, junto con la plataforma, el número de clones, la disposición de contenedores y el número de ejecuciones. Distingo los arranques nativos de producción de la navegación del navegador contra un backend `wails dev` ya en ejecución. Necesito un escritorio Windows interactivo para medir el renderizado de WebView2; los tiempos del backend por SSH no bastan para demostrar el objetivo de las primeras filas. Mantengo abiertos los objetivos sin medir hasta completar esa comprobación de escritorio.
 
+### Comprobaciones de regresión del refresco
+
+Ejecuto `go test -race ./cmd/gui/ ./pkg/credential/ ./pkg/heal/ ./pkg/git/` para la coordinación del refresco, la cancelación, los resultados obsoletos y el mantenimiento de credenciales. Uso canales para bloquear trabajo inyectado y solapar disparadores sin un runtime Wails. Las pruebas de proveedores usan servidores HTTP locales para verificar la concurrencia limitada, los sondeos compartidos, los plazos y la conservación del estado upstream tras errores o rotación de credenciales.
+
+Trazo el mantenimiento previo al fetch con `GIT_TRACE2_EVENT` contra clones aislados: los clones SSH, token y GCM sin cambios deben lanzar dos comandos Git de solo lectura cada uno. Compruebo las fechas de modificación de config y archivos de credenciales, la rotación de tokens, los permisos, la cancelación de helpers, las transiciones de tipo, los worktrees enlazados y los avisos cuando los includes de config sobrescriben las reparaciones. Registro la plataforma, el número de clones, el número de procesos y el tiempo transcurrido por separado de la duración del fetch de red.
+
+### Mediciones del refresco (2026-10-15)
+
+Comparé el mantenimiento previo al fetch de `da83922` con la implementación de #131 usando el mismo fixture aislado: 24 clones locales, una cuenta y ningún fetch de red. Ejecuté una pasada secuencial en caliente por plataforma, tipo de credencial y estado. Para los casos con diferencias, cambié ambos campos de identidad, origin y helper antes de cada pasada. Usé Go 1.26.1 para el harness independiente; Windows usó Git 2.53.0.windows.1.
+
+Medí el bucle completo de mantenimiento en el proceso padre y conté los eventos de inicio de procesos Git con Trace2. Los tiempos incluyen creación de procesos, ejecución Git, operaciones de archivos y sobrecarga del trazado. Estas pasadas no separan el tiempo interno de Git, no miden el pintado de la GUI ni estiman un refresco de red completo con ocho workers.
+
+| Plataforma    | Estado de los clones | Credencial | Procesos Git antes → después | Segundos antes → después |
+| ------------- | -------------------- | ---------- | ---------------------------- | ------------------------ |
+| macOS arm64   | sin cambios          | SSH        | 216 → 48                     | 0.902 → 0.191            |
+| macOS arm64   | sin cambios          | Token      | 240 → 48                     | 1.013 → 0.202            |
+| macOS arm64   | sin cambios          | GCM        | 192 → 48                     | 0.923 → 0.278            |
+| Windows amd64 | sin cambios          | SSH        | 216 → 48                     | 9.831 → 2.037            |
+| Windows amd64 | sin cambios          | Token      | 240 → 48                     | 12.396 → 2.382           |
+| Windows amd64 | sin cambios          | GCM        | 192 → 48                     | 9.386 → 2.202            |
+| macOS arm64   | con diferencias      | SSH        | 288 → 264                    | 1.311 → 1.216            |
+| macOS arm64   | con diferencias      | Token      | 312 → 288                    | 1.457 → 1.319            |
+| macOS arm64   | con diferencias      | GCM        | 264 → 288                    | 1.222 → 1.402            |
+| Windows amd64 | con diferencias      | SSH        | 288 → 264                    | 12.774 → 11.085          |
+| Windows amd64 | con diferencias      | Token      | 312 → 288                    | 13.576 → 12.089          |
+| Windows amd64 | con diferencias      | GCM        | 264 → 288                    | 11.105 → 13.073          |
+
+Mantengo los clones sin cambios en dos procesos Git de solo lectura cada uno. La reparación de diferencias con GCM añade validación de la config efectiva tras las escrituras, por lo que su caso con diferencias cuesta más que la referencia; conservo esas comprobaciones para evitar fetches con ajustes que sobrescriben un include o la config de un worktree.
+
+En una pasada adicional de Windows con 24 clones SSH sin cambios, registré 8.918 → 1.963 s en el proceso padre, frente a 5.421 → 1.193 s de tiempo interno Git sumado de los campos `exit.t_abs` de las sesiones Trace2 de nivel superior. La diferencia restante fue de 3.497 → 0.770 s. Esa diferencia incluye inicio de procesos, IPC y operaciones de archivos del llamador; no la atribuyo solo al antivirus ni a `HideWindow`. Este dato procede de una muestra distinta de las filas anteriores.
+
+También ejecuté regresiones nativas de sondeos en Windows amd64 con Go 1.27.0 y servidores HTTP locales. Doce upstreams compartidos por dos sources produjeron doce peticiones, una búsqueda de credenciales y un máximo de cuatro peticiones concurrentes. Con un timeout reducido de veinte milisegundos por petición, doce peticiones bloqueadas terminaron en 61.34 ms. Con un presupuesto total de veinte milisegundos, el sondeo se detuvo en 20.57 ms después de cuatro peticiones. Estas comprobaciones del fixture verifican la planificación y la cancelación; los límites de producción siguen en diez segundos por petición y treinta segundos por sondeo, y estas cifras no predicen la latencia real del proveedor.
+
 ## Checklist pre-PR
 
 Ejecuta esto antes de cada push o PR. El pre-push hook se encarga de gofmt + vet + unit tests, y el workflow de PR ejecuta `scripts/health.sh` como barrera.

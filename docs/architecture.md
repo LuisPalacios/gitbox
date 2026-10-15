@@ -87,6 +87,10 @@ Clones outside this tree (extra scan folders, nested clones inside a multi-repo 
 
 I return config, preferences, collapse state, and path-derived nesting in one detached startup snapshot. I render that snapshot before requesting local status and show pending spinners until checking or fetching finishes. I keep cross-source children under their containers while retaining each child's source for status, actions, and ownership. I detect editors and terminal profiles outside the config lock, then merge into current settings so concurrent edits survive.
 
+I coordinate refresh work in `cmd/gui/refresh.go`: overlapping callers share active status, fetch-all, per-clone fetch, and per-account credential checks. I retain one pending local-status invalidation, reject results from changed config, and cancel refresh work when the app closes. A fetch-all cycle publishes local status before waiting for provider work; `fetch:alldone` follows its final status and remote checks.
+
+I share and throttle upstream-existence sweeps in `cmd/gui/probe.go`, resolving credentials once per account and probing each upstream once. I allow four requests at a time, with ten seconds per request and thirty seconds for the sweep, including credential resolution. I wait at least sixty seconds after a completed sweep before starting another. I preserve known upstream state on errors or cancellation and discard results superseded by newer fetches or credential changes.
+
 ### pkg/ops — Application operations
 
 The service layer between the GUI bindings and the lower-level packages. It holds the operations that touch several packages at once: `AddAccount`, `RenameAccount`, `DeleteAccount`, `DeleteRepo`, `ChangeCredentialType`, `DeleteCredential`, `RemoveCredentialArtifacts`, `ReconfigureClones` (runs `heal.Repo` on each clone), `PlanClone` / `Clone`, `ListRemoteRepos`, `ListAccountOrgs`, `CreateRemoteRepo`, `AddDiscoveredRepos`, and `ProviderClient`.
@@ -114,6 +118,8 @@ Manages tokens, SSH keys, GCM integration, and per-repo credential isolation. Se
 **SSH key management:** Generates key pairs, writes `~/.ssh/config` entries, tests connections. Naming convention: host alias `gitbox-<account-key>`, key file `gitbox-<account-key>-sshkey`.
 
 **Per-repo credential config** (`repoconfig.go`): `ConfigureRepoCredential()` sets each clone's `.git/config` to be self-contained. `WriteCredentialFile()` and `DeleteToken()` manage the git-credential-store files for token accounts. `pkg/ops` and `pkg/heal` call the same shared functions.
+
+I use `credential.CheckContext` for cancellable background verification. I share active checks for the same account settings, preserve explicitly requested re-checks after completion, and report cancellation as offline. GCM and SSH verification subprocesses have a fifteen-second limit or the caller's earlier deadline.
 
 ### pkg/provider — Repository discovery
 
@@ -150,7 +156,7 @@ Determines the sync state of local clones relative to their upstream. States: Cl
 
 Manages per-repo git identity (`user.name`, `user.email`) with a resolution chain: repo-level overrides fall back to account-level values. See `pkg/identity/identity.go`.
 
-`EnsureRepoIdentity()` checks each clone's local git config and fixes identity if it diverges from the expected values. `CheckGlobalIdentity()` and `RemoveGlobalIdentity()` handle global `~/.gitconfig` identity — gitbox encourages removing global identity so that per-repo identity (set during clone/reconfigure) is always authoritative.
+I check each clone's identity and repair drift through the shared snapshot in `heal.Repo`. `CheckGlobalIdentity()` and `RemoveGlobalIdentity()` handle global `~/.gitconfig` identity — gitbox encourages removing global identity so that per-repo identity (set during clone/reconfigure) is always authoritative.
 
 Parallel to the identity check, `pkg/credential` exposes `IsGlobalGCMConfigNeeded()` + `CheckGlobalGCMConfig()` + `FixGlobalGCMConfig()` for the global GCM credential helper. When at least one account uses GCM, gitbox verifies `~/.gitconfig` has `credential.helper = manager` and `credential.credentialStore = <keychain|wincredman|secretservice>`; when missing or wrong, the GUI surfaces a fix button that writes both entries and backfills OS defaults into `gitbox.json`. Without this, `git credential fill` falls through to `/dev/tty` and fails with "Device not configured" in GUI contexts.
 
@@ -165,6 +171,8 @@ Probes the host for every external binary gitbox may call — `git`, `git-creden
 ### pkg/heal — Repo .git/config self-heal
 
 `heal.Repo(cfg, sourceKey, repoKey)` idempotently reconciles a clone's `.git/config` against the account spec: `user.name`, `user.email`, the canonical `origin` URL (credential-type specific, no embedded secrets), and the credential helper. Wired into every trigger point — clone, fetch, pull, `ops.ReconfigureClones`, and the GUI's periodic sync — so that clones drifting out of spec are silently repaired. Introduced alongside the GUI Windows-stdio fix in `pkg/git.run()` to stop GUI-side `.git/config` writes from silently failing.
+
+I share one `git.ReadConfigSnapshot` between identity, origin, and credential checks: two Git processes read effective config with includes and direct local config. An unchanged clone performs no credential-config or credential-file writes. I replace changed token files atomically, serialize shared-account updates, and retain private file permissions. If a later include or worktree config still overrides a repair, I report a maintenance warning and skip the GUI fetch rather than use the wrong identity, origin, or helper chain.
 
 ### pkg/move — Cross-account / cross-provider repo move
 

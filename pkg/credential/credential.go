@@ -7,12 +7,14 @@
 package credential
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
@@ -117,6 +119,17 @@ func ResolveToken(acct config.Account, accountKey string) (token, source string,
 // The username is required to distinguish between multiple accounts on the same host.
 // GCM stores OAuth tokens that double as bearer tokens for provider REST APIs.
 func ResolveGCMToken(accountURL, username string) (token, source string, err error) {
+	return ResolveGCMTokenContext(context.Background(), accountURL, username)
+}
+
+// ResolveGCMTokenContext extracts a cached GCM credential without prompting and
+// bounds the subprocess to 15 seconds or the caller's earlier cancellation.
+func ResolveGCMTokenContext(ctx context.Context, accountURL, username string) (token, source string, err error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return "", "", err
+	}
 	u, err := url.Parse(accountURL)
 	if err != nil {
 		return "", "", fmt.Errorf("invalid account URL %q: %w", accountURL, err)
@@ -124,7 +137,8 @@ func ResolveGCMToken(accountURL, username string) (token, source string, err err
 
 	input := fmt.Sprintf("protocol=%s\nhost=%s\nusername=%s\n\n", u.Scheme, u.Host, username)
 
-	cmd := exec.Command(git.GitBin(), "credential", "fill")
+	cmd := exec.CommandContext(ctx, git.GitBin(), "credential", "fill")
+	cmd.WaitDelay = time.Second
 	cmd.Stdin = strings.NewReader(input)
 	// Run from home dir so repo-local .git/config credential helpers
 	// don't override the global GCM helper. Home has ~/.gitconfig with
@@ -142,6 +156,9 @@ func ResolveGCMToken(accountURL, username string) (token, source string, err err
 	git.HideWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			return "", "", fmt.Errorf("git credential fill failed: %w", ctx.Err())
+		}
 		return "", "", fmt.Errorf("git credential fill failed: %w (is GCM installed and authenticated?)", err)
 	}
 
@@ -185,12 +202,24 @@ func ResolveMirrorToken(acct config.Account, accountKey string) (token, source s
 //
 // Returns the token, source description, or an error.
 func ResolveAPIToken(acct config.Account, accountKey string) (token, source string, err error) {
+	return ResolveAPITokenContext(context.Background(), acct, accountKey)
+}
+
+// ResolveAPITokenContext resolves an API token and cancels any GCM subprocess
+// when the caller cancels its operation.
+func ResolveAPITokenContext(ctx context.Context, acct config.Account, accountKey string) (token, source string, err error) {
+	if err := ctx.Err(); err != nil {
+		return "", "", err
+	}
 	switch acct.DefaultCredentialType {
 	case "gcm":
 		// Try GCM first (primary for this credential type).
-		tok, src, err := ResolveGCMToken(acct.URL, acct.Username)
+		tok, src, err := ResolveGCMTokenContext(ctx, acct.URL, acct.Username)
 		if err == nil {
 			return tok, src, nil
+		}
+		if ctx.Err() != nil {
+			return "", "", ctx.Err()
 		}
 		// Fall back to env vars / keyring.
 		return ResolveToken(acct, accountKey)
