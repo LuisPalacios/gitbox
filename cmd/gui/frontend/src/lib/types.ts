@@ -198,6 +198,18 @@ export interface RepoState {
   isDefault?: boolean;
 }
 
+// Frontend-only view of one clone's detail panel (GetRepoDetail).
+export interface RepoDetailView {
+  branch: string;
+  ahead: number;
+  behind: number;
+  changed: { kind: string; path: string }[];
+  untracked: string[];
+  error?: string;
+  upstreamGone?: boolean;
+  upstreamError?: string;
+}
+
 export interface OrphanRepoDTO {
   path: string;
   relPath: string;

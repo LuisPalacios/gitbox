@@ -2,7 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { fade, slide } from 'svelte/transition';
   import { bridge, events } from './lib/bridge';
-  import type { DoctorReport, DoctorPrecheckDTO } from './lib/bridge';
+  import type { DoctorPrecheckDTO } from './lib/bridge';
   import {
     configStore, accounts, sources, mirrors, repoStates, mirrorStates, mirrorSummary,
     summary, accountStats, themeStore, applyStatusResults, applyMirrorStatusResults,
@@ -15,7 +15,7 @@
   import type { SimpleKind } from './lib/status';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, BrowserOpenURL, Quit, EventsOn } from '../wailsjs/runtime/runtime';
-  import type { RepoState, CredentialStatus, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from './lib/types';
+  import type { RepoState, CredentialStatus, DiscoverResult, MirrorDTO, MirrorRepo, MirrorStatusResult, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO, RepoDetailView } from './lib/types';
   import LauncherMenu from './lib/LauncherMenu.svelte';
   import BrandIcon, { terminalLogo } from './lib/BrandIcon.svelte';
   import UIIcon from './lib/UIIcon.svelte';
@@ -23,6 +23,14 @@
   import TerminalsModal from './lib/TerminalsModal.svelte';
   import Onboarding from './lib/Onboarding.svelte';
   import Logo from './lib/Logo.svelte';
+  import DoctorModal from './lib/modals/DoctorModal.svelte';
+  import EditAccountModal from './lib/modals/EditAccountModal.svelte';
+  import DeleteCloneModal from './lib/modals/DeleteCloneModal.svelte';
+  import SweepModal from './lib/modals/SweepModal.svelte';
+  import OrphansModal from './lib/modals/OrphansModal.svelte';
+  import DeleteAccountModal from './lib/modals/DeleteAccountModal.svelte';
+  import ChangeFolderModal from './lib/modals/ChangeFolderModal.svelte';
+  import CreateRepoModal from './lib/modals/CreateRepoModal.svelte';
   import { repoTreeRows } from './lib/repo-tree';
   import { tooltip } from './lib/tooltip';
   import { dismiss } from './lib/dismiss';
@@ -383,11 +391,6 @@
     Quit();
   }
 
-  async function browseFolder() {
-    const dir = await bridge.pickFolder('Choose root folder');
-    if (dir) changeFolderPath = dir;
-  }
-
   // The guided setup (lib/Onboarding.svelte) saved the folder, maybe an
   // account and its picked repos; load the dashboard, then clone them so
   // progress shows on the rows.
@@ -406,55 +409,6 @@
     for (const repo of result?.repos || []) cloneRepo(result!.sourceKey, repo);
   }
 
-  // ── Change folder (settings) ──
-  let changeFolderModal = false;
-  let changeFolderPath = '';
-  let changeFolderError = '';
-
-  // Extra scan-root folders + nested-clone scan depth (non-standard clones).
-  let extraFolders: string[] = [];
-  let nestedScanDepth = 1;
-
-  async function loadScanSettings() {
-    try {
-      extraFolders = (await bridge.listExtraFolders()) || [];
-      nestedScanDepth = (await bridge.getNestedScanDepth()) || 1;
-    } catch { extraFolders = []; }
-  }
-
-  async function addExtraFolder() {
-    const dir = await bridge.pickFolder('Choose an extra scan folder');
-    if (!dir) return;
-    try {
-      await bridge.addExtraFolder(dir);
-      extraFolders = (await bridge.listExtraFolders()) || [];
-      $configStore = await bridge.reloadConfig();
-    } catch (err: any) { alert(err?.message || err); }
-  }
-
-  async function removeExtraFolder(path: string) {
-    try {
-      await bridge.removeExtraFolder(path);
-      extraFolders = (await bridge.listExtraFolders()) || [];
-      $configStore = await bridge.reloadConfig();
-    } catch (err: any) { alert(err?.message || err); }
-  }
-
-  let nestedDepthError = '';
-  async function saveNestedScanDepth() {
-    const d = Math.max(1, Math.floor(nestedScanDepth || 1));
-    nestedScanDepth = d;
-    nestedDepthError = '';
-    // Persist only. Deliberately no config reload, dashboard re-render, or disk
-    // re-scan here — those would block this dialog. Re-scan explicitly afterward
-    // via a container repo's ⋮ → "Re-scan for nested clones".
-    try {
-      await bridge.setNestedScanDepth(d);
-    } catch (err: any) {
-      nestedDepthError = err?.message || String(err);
-    }
-  }
-
   // Re-run the nested-clone scan for a container and open the orphans modal so
   // newly cloned siblings (or ones surfaced by a deeper scan) can be adopted.
   async function rescanContainer() {
@@ -466,24 +420,9 @@
     }
   }
 
-  function openChangeFolder() {
-    changeFolderPath = '';
-    changeFolderError = '';
-    loadScanSettings();
-    changeFolderModal = true;
-  }
-
-  async function confirmChangeFolder() {
-    changeFolderError = '';
-    if (!changeFolderPath.trim()) { changeFolderError = 'Folder path is required'; return; }
-    try {
-      await bridge.setGlobalFolder(changeFolderPath);
-      changeFolderModal = false;
-      await reloadFromDisk();
-    } catch (err: any) {
-      changeFolderError = err?.message || String(err);
-    }
-  }
+  // ── Change folder (settings) ──
+  let changeFolderDialog: ChangeFolderModal;
+  const openChangeFolder = () => changeFolderDialog.openChangeFolder();
 
   // ── Theme ──
   let themeChoice: 'system' | 'light' | 'dark' = 'system';
@@ -735,8 +674,8 @@
   // ── Orphan adoption ──
   let orphanList: import('./lib/types').OrphanRepoDTO[] = [];
   let orphanCount = 0;
-  let orphanModal: { orphans: import('./lib/types').OrphanRepoDTO[]; selected: Set<string>; } | null = null;
-  let orphanBusy = false;
+  let orphansDialog: OrphansModal;
+  const showOrphanModal = () => orphansDialog.showOrphanModal();
 
   async function loadOrphans() {
     await loadNesting();
@@ -868,74 +807,13 @@
 
   $: treeRows = repoTreeRows($sources, repoNesting, collapsedRepos);
 
-  function showOrphanModal() {
-    const matched = orphanList.filter(o => o.matchedAccount && !o.localOnly);
-    orphanModal = { orphans: orphanList, selected: new Set(matched.map(o => o.repoKey)) };
-  }
-
-  function toggleOrphan(repoKey: string) {
-    if (!orphanModal) return;
-    const s = new Set(orphanModal.selected);
-    if (s.has(repoKey)) s.delete(repoKey); else s.add(repoKey);
-    orphanModal = { ...orphanModal, selected: s };
-  }
-
-  async function confirmAdopt() {
-    if (!orphanModal) return;
-    orphanBusy = true;
-    const keys = [...orphanModal.selected];
-    const result = await bridge.adoptOrphans(keys);
-    orphanBusy = false;
-    orphanModal = null;
-    if (result.error) alert(`Adopt error: ${result.error}`);
-    // Reload config from disk (adoption saved there) so the dashboard
-    // picks up the new repos and the orphan scan uses fresh state.
-    $configStore = await bridge.reloadConfig();
-    // Refresh all repo statuses — includes newly adopted repos.
-    const statuses = await bridge.getAllStatus();
-    applyStatusResults(statuses);
-    // Rescan orphans with the reloaded config.
-    await loadOrphans();
-  }
-
   // ── Sweep branches modal ──
-  let sweepModal: { sourceKey: string; repoKey: string; merged: string[]; gone: string[]; squashed: string[]; } | null = null;
-  let sweepBusy = false;
-
-  async function sweepBranches(sourceKey: string, repoKey: string) {
-    closeActionMenu();
-    const preview = await bridge.previewSweep(sourceKey, repoKey);
-    if (preview.error) {
-      alert(`Sweep failed: ${preview.error}`);
-      return;
-    }
-    const merged = preview.merged || [];
-    const gone = preview.gone || [];
-    const squashed = preview.squashed || [];
-    if (merged.length === 0 && gone.length === 0 && squashed.length === 0) {
-      alert('No stale branches found.');
-      return;
-    }
-    sweepModal = { sourceKey, repoKey, merged, gone, squashed };
-  }
-
-  async function confirmSweepAction() {
-    if (!sweepModal) return;
-    sweepBusy = true;
-    const result = await bridge.confirmSweep(sweepModal.sourceKey, sweepModal.repoKey);
-    sweepBusy = false;
-    sweepModal = null;
-    if (result.error) {
-      alert(`Sweep error: ${result.error}`);
-    } else if (result.deleted?.length > 0) {
-      alert(`Swept ${result.deleted.length} branch(es): ${result.deleted.join(', ')}`);
-    }
-    bridge.getAllStatus().then(results => { applyStatusResults(results); });
-  }
+  let sweepDialog: SweepModal;
+  const sweepBranches = (sourceKey: string, repoKey: string) => sweepDialog.sweepBranches(sourceKey, repoKey);
 
   // ── Repo detail panel ──
   let expandedRepo: string | null = null;
-  let repoDetail: { branch: string; ahead: number; behind: number; changed: { kind: string; path: string }[]; untracked: string[]; error?: string; upstreamGone?: boolean; upstreamError?: string } | null = null;
+  let repoDetail: RepoDetailView | null = null;
   let detailLoading = false;
 
   // Auto-collapse expanded detail when the repo no longer needs attention.
@@ -1142,97 +1020,12 @@
 
   // ── Delete mode ──
   let deleteMode = false;
-  let deleteConfirm: { sourceKey: string; repoKey: string; status: string } | null = null;
-  let deleteConfirmStep = 0; // 0=closed, 1=first confirm, 2=final confirm
-  let deleting = false;
-
-  function askDelete(sourceKey: string, repoKey: string, status: string) {
-    deleteConfirm = { sourceKey, repoKey, status };
-    deleteConfirmStep = 1;
-  }
-
-  function cancelDelete() {
-    deleteConfirm = null;
-    deleteConfirmStep = 0;
-  }
-
-  async function confirmDelete() {
-    if (!deleteConfirm) return;
-    if (deleteConfirmStep === 1) {
-      deleteConfirmStep = 2;
-      return;
-    }
-    // Step 2 — actually delete.
-    deleting = true;
-    const deletedKey = `${deleteConfirm.sourceKey}/${deleteConfirm.repoKey}`;
-    try {
-      await bridge.deleteRepo(deleteConfirm.sourceKey, deleteConfirm.repoKey);
-      // Clear expanded detail if the deleted repo was open.
-      if (expandedRepo === deletedKey) {
-        expandedRepo = null;
-        repoDetail = null;
-      }
-      await reloadFromDisk();
-    } finally {
-      deleting = false;
-      deleteConfirm = null;
-      deleteConfirmStep = 0;
-      deleteMode = false;
-    }
-  }
-
-  function isDangerous(status: string): boolean {
-    return ['dirty', 'ahead', 'diverged', 'conflict', 'upstream gone'].includes(status);
-  }
-
-  function deleteWarning(status: string): string {
-    if (status === 'not cloned') return 'This will remove the config entry. No local folder exists.';
-    if (status === 'upstream gone') return 'The remote repository no longer exists. This local clone may be your ONLY copy — deleting it is unrecoverable.';
-    if (isDangerous(status)) return 'This repo has unpushed commits or local changes that will be permanently lost!';
-    return 'The local folder and config entry will be permanently deleted.';
-  }
+  let deleteCloneDialog: DeleteCloneModal;
+  const askDelete = (sourceKey: string, repoKey: string, status: string) => deleteCloneDialog.askDelete(sourceKey, repoKey, status);
 
   // ── Edit account ──
-  let editAccountModal: string | null = null;
-  let editAccountError = '';
-  let editAcct = { key: '', provider: '', url: '', username: '', name: '', email: '' };
-
-  function openEditAccount(key: string) {
-    const acct = $accounts[key];
-    if (!acct) return;
-    editAcct = {
-      key,
-      provider: acct.provider || '',
-      url: acct.url || '',
-      username: acct.username || '',
-      name: acct.name || '',
-      email: acct.email || '',
-    };
-    editAccountError = '';
-    editAccountModal = key;
-  }
-
-  async function submitEditAccount() {
-    if (!editAccountModal) return;
-    editAccountError = '';
-    const newKey = editAcct.key.trim();
-    if (!newKey) { editAccountError = 'Account key is required'; return; }
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(newKey)) { editAccountError = 'Key: letters, numbers, hyphens only'; return; }
-    if (!editAcct.url.trim()) { editAccountError = 'URL is required'; return; }
-    if (!editAcct.username.trim()) { editAccountError = 'Username is required'; return; }
-    try {
-      const oldKey = editAccountModal;
-      const keyChanged = newKey !== oldKey;
-      if (keyChanged) {
-        await bridge.renameAccount(oldKey, newKey);
-      }
-      await bridge.updateAccount({ ...editAcct, key: newKey });
-      await reloadFromDisk();
-      editAccountModal = null;
-    } catch (e: any) {
-      editAccountError = e?.message || String(e);
-    }
-  }
+  let editAccountDialog: EditAccountModal;
+  const openEditAccount = (key: string) => editAccountDialog.openEditAccount(key);
 
   // ── Add account ──
   let addAccountModal = false;
@@ -1612,80 +1405,8 @@
   }
 
   // ── Delete account ──
-  let deleteAcctConfirm: string | null = null; // account key
-  let deleteAcctStep = 0; // 0=inactive, 1=type name, 2=warning, 3=final confirm
-  let deleteAcctBusy = false;
-  let deleteAcctInput = '';
-  let deleteAcctError = '';
-  // Cascade impact from the backend — populated on modal open so the warning
-  // step lists every mirror and workspace-member that will be pruned along
-  // with the account. Workspace entries themselves survive even if emptied.
-  let deleteAcctImpact: {
-    sources: string[];
-    mirrors: string[];
-    workspaces: string[];
-    workspaceMembers: number;
-    repoCount: number;
-    cloneCount: number;
-  } | null = null;
-
-  async function askDeleteAccount(accountKey: string) {
-    deleteAcctConfirm = accountKey;
-    deleteAcctStep = 1;
-    deleteAcctInput = '';
-    deleteAcctError = '';
-    deleteAcctImpact = null;
-    try {
-      const dto = await bridge.accountDeletionImpact(accountKey);
-      deleteAcctImpact = {
-        sources: dto.sources || [],
-        mirrors: dto.mirrors || [],
-        workspaces: dto.workspaces || [],
-        workspaceMembers: dto.workspace_members || 0,
-        repoCount: dto.repo_count || 0,
-        cloneCount: dto.clone_count || 0,
-      };
-    } catch (err) {
-      // Non-fatal — fall back to the generic source/repo-count text.
-      console.error('accountDeletionImpact failed', err);
-    }
-  }
-
-  function cancelDeleteAccount() {
-    deleteAcctConfirm = null;
-    deleteAcctStep = 0;
-    deleteAcctInput = '';
-    deleteAcctError = '';
-    deleteAcctImpact = null;
-  }
-
-  function deleteAcctCheckName() {
-    if (deleteAcctInput.trim() === deleteAcctConfirm) {
-      deleteAcctStep = 2;
-      deleteAcctError = '';
-    } else {
-      deleteAcctError = 'Name does not match.';
-    }
-  }
-
-  async function confirmDeleteAccount() {
-    if (!deleteAcctConfirm) return;
-    if (deleteAcctStep === 2) { deleteAcctStep = 3; return; }
-    deleteAcctBusy = true;
-    try {
-      await bridge.deleteAccount(deleteAcctConfirm);
-      await reloadFromDisk();
-    } catch (err: any) {
-      reloadError = err?.message || String(err);
-    } finally {
-      deleteAcctBusy = false;
-      deleteAcctConfirm = null;
-      deleteAcctStep = 0;
-      deleteAcctInput = '';
-      deleteAcctImpact = null;
-      deleteMode = false;
-    }
-  }
+  let deleteAccountDialog: DeleteAccountModal;
+  const askDeleteAccount = (accountKey: string) => deleteAccountDialog.askDeleteAccount(accountKey);
 
   // ── Mirrors ──
   let mirrorChecking: Record<string, boolean> = {};
@@ -1766,81 +1487,8 @@
   }
 
   // Create repo modal
-  let createRepoModal: string | null = null;
-  let createRepoOrgs: string[] = [];
-  let createRepoOwner = '';
-  let createRepoName = '';
-  let createRepoDesc = '';
-  let createRepoPrivate = true;
-  let createRepoClone = true;
-  let createRepoBusy = false;
-  let createRepoError = '';
-  let createRepoNameError = '';
-
-  function sanitizeRepoName(raw: string): string {
-    // Replace spaces with hyphens, strip everything except [a-zA-Z0-9._-]
-    return raw.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9._-]/g, '');
-  }
-
-  function onCreateRepoNameInput() {
-    createRepoName = sanitizeRepoName(createRepoName);
-    if (createRepoName.length === 0) {
-      createRepoNameError = '';
-    } else if (/^[.-]/.test(createRepoName)) {
-      createRepoNameError = 'Name cannot start with a dot or hyphen';
-    } else if (/[.-]$/.test(createRepoName)) {
-      createRepoNameError = 'Name cannot end with a dot or hyphen';
-    } else if (/\.\./.test(createRepoName)) {
-      createRepoNameError = 'Name cannot contain consecutive dots';
-    } else {
-      createRepoNameError = '';
-    }
-  }
-
-  async function openCreateRepo(accountKey: string) {
-    createRepoModal = accountKey;
-    createRepoOrgs = [];
-    createRepoOwner = '';
-    createRepoName = '';
-    createRepoDesc = '';
-    createRepoPrivate = true;
-    createRepoClone = true;
-    createRepoBusy = false;
-    createRepoError = '';
-    createRepoNameError = '';
-    try {
-      createRepoOrgs = await bridge.listAccountOrgs(accountKey);
-      if (createRepoOrgs.length > 0) createRepoOwner = createRepoOrgs[0];
-    } catch (e: any) {
-      createRepoError = e?.message || 'Failed to load organizations';
-    }
-  }
-
-  async function submitCreateRepo() {
-    if (!createRepoModal || !createRepoOwner || !createRepoName) return;
-    createRepoBusy = true;
-    createRepoError = '';
-    try {
-      const acctKey = createRepoModal;
-      const repoKey = createRepoOwner + '/' + createRepoName;
-      const willClone = createRepoClone;
-      await bridge.createNewRepo(acctKey, createRepoOwner, createRepoName, createRepoDesc, createRepoPrivate, willClone);
-      $configStore = await bridge.reloadConfig();
-      // Pre-set status to 'cloning' so the repo doesn't flash as 'error'
-      // before the async clone finishes.
-      if (willClone) {
-        repoStates.update((s) => ({
-          ...s,
-          [`${acctKey}/${repoKey}`]: { status: 'cloning', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 },
-        }));
-      }
-      createRepoModal = null;
-    } catch (e: any) {
-      createRepoError = e?.message || 'Failed to create repository';
-    } finally {
-      createRepoBusy = false;
-    }
-  }
+  let createRepoDialog: CreateRepoModal;
+  const openCreateRepo = (accountKey: string) => createRepoDialog.openCreateRepo(accountKey);
 
   // ── Move repository (issue #64) ──
   //
@@ -2296,24 +1944,10 @@
   let autostartSupported = true;
 
   // ── Doctor (System check) ──
-  let showDoctorModal = false;
-  let doctorReport: DoctorReport | null = null;
-  let doctorLoading = false;
+  // DoctorModal runs the check; Settings shows its one-line summary.
   let doctorSummary = '';
-
-  async function openDoctorModal() {
-    showDoctorModal = true;
-    doctorLoading = true;
-    doctorReport = null;
-    try {
-      doctorReport = await bridge.doctorRun();
-      doctorSummary = doctorReport.allOk
-        ? 'All tools present'
-        : `${doctorReport.missingReq} required missing`;
-    } finally {
-      doctorLoading = false;
-    }
-  }
+  let doctorModal: DoctorModal;
+  const openDoctorModal = () => doctorModal.openDoctorModal();
 
   async function loadAutostart() {
     try {
@@ -4302,66 +3936,7 @@
 
 
   <!-- ── DOCTOR (SYSTEM CHECK) MODAL ── -->
-  {#if showDoctorModal}
-    <div class="overlay" use:dismiss={() => showDoctorModal = false} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-doctor" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head">
-          <h3>System check</h3>
-          <button class="btn-x" on:click={() => showDoctorModal = false}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          {#if doctorLoading}
-            <div class="loading"><div class="spinner"></div><span>Probing tools...</span></div>
-          {:else if doctorReport}
-            <p class="doctor-summary">
-              {#if doctorReport.allOk}
-                <span class="doctor-ok">✓ Everything gitbox needs is installed.</span>
-              {:else}
-                <span class="doctor-err">✕ {doctorReport.missingReq} required tool{doctorReport.missingReq === 1 ? '' : 's'} missing.</span>
-              {/if}
-              {#if doctorReport.missingOpt > 0}
-                <span class="doctor-opt"> {doctorReport.missingOpt} optional tool{doctorReport.missingOpt === 1 ? '' : 's'} not installed.</span>
-              {/if}
-            </p>
-            <div class="doctor-list">
-              {#each doctorReport.tools as t}
-                <div class="doctor-row" class:doctor-row-missing-req={!t.found && t.required}>
-                  <span class="doctor-state"
-                        class:doctor-state-ok={t.found}
-                        class:doctor-state-err={!t.found && t.required}
-                        class:doctor-state-opt={!t.found && !t.required}>
-                    {t.found ? '✓' : (t.required ? '✕' : '·')}
-                  </span>
-                  <div class="doctor-main">
-                    <div class="doctor-head">
-                      <span class="doctor-name">{t.displayName}</span>
-                      {#if t.required}<span class="doctor-tag">required</span>{/if}
-                      {#if t.found && t.version}<span class="doctor-version">{t.version}</span>{/if}
-                    </div>
-                    {#if t.found}
-                      <div class="doctor-path">{t.path}</div>
-                    {:else}
-                      <div class="doctor-purpose">{t.purpose}</div>
-                      {#if t.required && t.requiredFor}
-                        <div class="doctor-reason">needed: {t.requiredFor}</div>
-                      {/if}
-                      {#if t.installHint}
-                        <div class="doctor-install"><span class="doctor-install-label">install:</span> <code>{t.installHint}</code></div>
-                      {/if}
-                    {/if}
-                  </div>
-                </div>
-              {/each}
-            </div>
-          {/if}
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={() => showDoctorModal = false}>Close</button>
-          <button class="btn-add" on:click={openDoctorModal} disabled={doctorLoading}>Re-check</button>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <DoctorModal bind:this={doctorModal} bind:doctorSummary />
 
   <!-- ── SSH DISCOVERY TOKEN MODAL ── -->
   {#if sshDiscoverTokenModal}
@@ -4396,190 +3971,16 @@
   {/if}
 
   <!-- ── EDIT ACCOUNT MODAL ── -->
-  {#if editAccountModal}
-    <div class="overlay" use:dismiss={() => editAccountModal = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head">
-          <h3>Edit account</h3>
-          <button class="btn-x" on:click={() => editAccountModal = null}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          {#if editAccountError}
-            <p class="form-error">{editAccountError}</p>
-          {/if}
-          <div class="form-row">
-            <label class="form-label" for="ea-key">Account key</label>
-            <input class="form-input" id="ea-key" bind:value={editAcct.key} placeholder="account-key" />
-          </div>
-          <div class="form-row">
-            <label class="form-label" for="ea-provider">Provider</label>
-            <select class="form-input" id="ea-provider" bind:value={editAcct.provider}>
-              <option value="github">GitHub</option>
-              <option value="gitlab">GitLab</option>
-              <option value="gitea">Gitea</option>
-              <option value="forgejo">Forgejo</option>
-              <option value="bitbucket">Bitbucket</option>
-            </select>
-          </div>
-          <div class="form-row">
-            <label class="form-label" for="ea-url">URL</label>
-            <input class="form-input" id="ea-url" bind:value={editAcct.url} />
-          </div>
-          <div class="form-row">
-            <label class="form-label" for="ea-user">Git username</label>
-            <input class="form-input" id="ea-user" bind:value={editAcct.username} />
-            <p class="form-hint">The username you use to log in to the provider (for git and API operations).</p>
-          </div>
-          <fieldset class="form-fieldset">
-            <legend class="form-fieldset-legend">Git commit author identity</legend>
-            <p class="form-fieldset-hint">Used only as the author of commits you make under this account (<code>git config user.name</code> / <code>user.email</code>). Not used for authentication.</p>
-            <div class="form-row">
-              <label class="form-label" for="ea-name">Name</label>
-              <input class="form-input" id="ea-name" bind:value={editAcct.name} />
-            </div>
-            <div class="form-row">
-              <label class="form-label" for="ea-email">Email</label>
-              <input class="form-input" id="ea-email" bind:value={editAcct.email} />
-            </div>
-          </fieldset>
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={() => editAccountModal = null}>Cancel</button>
-          <button class="btn-add" on:click={submitEditAccount}>Save</button>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <EditAccountModal bind:this={editAccountDialog} {reloadFromDisk} />
 
   <!-- ── DELETE CONFIRMATION MODAL ── -->
-  {#if deleteConfirm}
-    <div class="overlay" use:dismiss={cancelDelete} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-delete" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head modal-head-delete">
-          <h3>Delete local clone</h3>
-          <button class="btn-x" on:click={cancelDelete}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          {#if deleteConfirmStep === 1}
-            <p class="delete-repo-name">{deleteConfirm.repoKey}</p>
-            <p class="delete-warning" class:delete-danger={isDangerous(deleteConfirm.status)}>
-              {deleteWarning(deleteConfirm.status)}
-            </p>
-          {:else}
-            <p class="delete-repo-name">{deleteConfirm.repoKey}</p>
-            <p class="delete-final">This action <strong>cannot be undone</strong>. Are you absolutely sure?</p>
-          {/if}
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={cancelDelete}>Cancel</button>
-          {#if deleteConfirmStep === 1}
-            <button class="btn-delete" on:click={confirmDelete}>Delete</button>
-          {:else}
-            <button class="btn-delete btn-delete-final" on:click={confirmDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Yes, delete permanently'}
-            </button>
-          {/if}
-        </div>
-      </div>
-    </div>
-  {/if}
+  <DeleteCloneModal bind:this={deleteCloneDialog} bind:expandedRepo bind:repoDetail bind:deleteMode {reloadFromDisk} />
 
   <!-- ── SWEEP CONFIRM MODAL ── -->
-  {#if sweepModal}
-    <div class="overlay" use:dismiss={() => sweepModal = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-sweep" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head modal-head-sweep">
-          <h3>Sweep branches</h3>
-          <button class="btn-x" on:click={() => sweepModal = null}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          <p class="sweep-repo-name">Clone: {sweepModal.repoKey}</p>
-          <p class="sweep-explain">You are about to permanently delete local branches that are, in theory, no longer needed. Only a <strong>local</strong> delete — remote branches and your current active branch are never touched.</p>
-          {#if sweepModal.gone.length > 0}
-            <div class="sweep-group">
-              <span class="sweep-label sweep-label-gone">Gone: {sweepModal.gone.length}</span>
-              <span class="sweep-hint">Remote doesn't exist but you have a probably useless local copy.</span>
-              <ul class="sweep-list">{#each sweepModal.gone as b}<li>{b}</li>{/each}</ul>
-            </div>
-          {/if}
-          {#if sweepModal.merged.length > 0}
-            <div class="sweep-group">
-              <span class="sweep-label sweep-label-merged">Merged: {sweepModal.merged.length}</span>
-              <span class="sweep-hint">Already merged into the default branch, safe to remove.</span>
-              <ul class="sweep-list">{#each sweepModal.merged as b}<li>{b}</li>{/each}</ul>
-            </div>
-          {/if}
-          {#if sweepModal.squashed.length > 0}
-            <div class="sweep-group">
-              <span class="sweep-label sweep-label-squashed">Squashed: {sweepModal.squashed.length}</span>
-              <span class="sweep-hint">PR was squash-merged or rebase-merged on the server. Different commits but same changes — already in the default branch.</span>
-              <ul class="sweep-list">{#each sweepModal.squashed as b}<li>{b}</li>{/each}</ul>
-            </div>
-          {/if}
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={() => sweepModal = null}>Cancel</button>
-          <button class="btn-sweep-confirm" on:click={confirmSweepAction} disabled={sweepBusy}>
-            {sweepBusy ? 'Sweeping...' : `Delete ${sweepModal.merged.length + sweepModal.gone.length + sweepModal.squashed.length} branch(es)`}
-          </button>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <SweepModal bind:this={sweepDialog} {closeActionMenu} />
 
   <!-- ── ORPHAN ADOPTION MODAL ── -->
-  {#if orphanModal}
-    <div class="overlay" use:dismiss={() => orphanModal = null} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-adopt" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head modal-head-adopt">
-          <h3>Adopt orphan repos</h3>
-          <button class="btn-x" on:click={() => orphanModal = null}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          {#each orphanModal.orphans.filter(o => o.matchedAccount && !o.localOnly) as o, i}
-            {#if i === 0}
-              <p class="adopt-section-label">Ready to adopt ({orphanModal.orphans.filter(o => o.matchedAccount && !o.localOnly).length}):</p>
-            {/if}
-            <label class="adopt-item">
-              <input type="checkbox" checked={orphanModal.selected.has(o.repoKey)} on:change={() => toggleOrphan(o.repoKey)} />
-              <span class="adopt-repo-key">{o.repoKey}</span>
-              <span class="adopt-target">&rarr; {o.matchedSource}</span>
-              <span class="adopt-action">{o.nested ? 'nested (in place)' : o.needsRelocate ? 'relocate' : 'in place'}</span>
-              <span class="adopt-path"><span class="adopt-path-root">Root</span>/{o.relPath}</span>
-            </label>
-          {/each}
-          {#each orphanModal.orphans.filter(o => !o.matchedAccount && !o.localOnly) as o, i}
-            {#if i === 0}
-              <p class="adopt-section-label adopt-section-unknown">Unknown account ({orphanModal.orphans.filter(o => !o.matchedAccount && !o.localOnly).length}):</p>
-            {/if}
-            <div class="adopt-item adopt-item-muted">
-              <span class="adopt-repo-key">{o.repoKey}</span>
-              <span class="adopt-remote">{o.remoteURL}</span>
-              {#if o.ambiguousCandidates && o.ambiguousCandidates.length > 1}
-                <span class="adopt-hint">ambiguous: {o.ambiguousCandidates.join(' | ')}</span>
-              {/if}
-              <span class="adopt-path adopt-path-muted"><span class="adopt-path-root">Root</span>/{o.relPath}</span>
-            </div>
-          {/each}
-          {#each orphanModal.orphans.filter(o => o.localOnly) as o, i}
-            {#if i === 0}
-              <p class="adopt-section-label adopt-section-local">Local only ({orphanModal.orphans.filter(o => o.localOnly).length}):</p>
-            {/if}
-            <div class="adopt-item adopt-item-muted">
-              <span class="adopt-repo-key">{o.relPath}</span>
-              <span class="adopt-remote">no remote</span>
-            </div>
-          {/each}
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={() => orphanModal = null}>Cancel</button>
-          <button class="btn-adopt-confirm" on:click={confirmAdopt} disabled={orphanBusy || orphanModal.selected.size === 0}>
-            {orphanBusy ? 'Adopting...' : `Adopt ${orphanModal.selected.size} repo(s)`}
-          </button>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <OrphansModal bind:this={orphansDialog} {orphanList} {loadOrphans} />
 
   <!-- ── ADD ACCOUNT MODAL ── -->
   {#if connectModal}
@@ -4917,128 +4318,10 @@
   {/if}
 
   <!-- ── DELETE ACCOUNT MODAL ── -->
-  {#if deleteAcctConfirm}
-    {@const acctSources = Object.entries($sources).filter(([_, s]) => s.account === deleteAcctConfirm)}
-    {@const repoCount = acctSources.reduce((n, [_, s]) => n + Object.keys(s.repos).length, 0)}
-    <div class="overlay" use:dismiss={cancelDeleteAccount} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-delete" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head modal-head-delete">
-          <h3>Delete account</h3>
-          <button class="btn-x" on:click={cancelDeleteAccount}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          {#if deleteAcctStep === 1}
-            <p class="delete-warning">Type the account name to confirm:</p>
-            <div class="form-row" style="margin-top: 8px;">
-              <input class="form-input" type="text" bind:value={deleteAcctInput} placeholder="{deleteAcctConfirm}" on:keydown={(e) => { if (e.key === 'Enter') deleteAcctCheckName(); }} />
-            </div>
-            {#if deleteAcctError}
-              <p class="delete-danger" style="margin-top: 6px;">{deleteAcctError}</p>
-            {/if}
-          {:else if deleteAcctStep === 2}
-            <p class="delete-repo-name">{deleteAcctConfirm}</p>
-            {#if deleteAcctImpact}
-              <p class="delete-warning delete-danger">
-                This will permanently delete the account, {deleteAcctImpact.sources.length} source{deleteAcctImpact.sources.length !== 1 ? 's' : ''}, {deleteAcctImpact.repoCount} repo{deleteAcctImpact.repoCount !== 1 ? 's' : ''} ({deleteAcctImpact.cloneCount} cloned), and all their local folders.
-              </p>
-              {#if deleteAcctImpact.mirrors.length > 0}
-                <p class="delete-warning delete-danger" style="margin-top: 8px;">
-                  The following mirror group{deleteAcctImpact.mirrors.length !== 1 ? 's' : ''} will also be removed because {deleteAcctImpact.mirrors.length !== 1 ? 'they reference' : 'it references'} this account:
-                </p>
-                <ul style="margin: 4px 0 0 18px;">
-                  {#each deleteAcctImpact.mirrors as m}
-                    <li><code>{m}</code></li>
-                  {/each}
-                </ul>
-              {/if}
-              {#if deleteAcctImpact.workspaces.length > 0}
-                <p class="delete-warning" style="margin-top: 8px;">
-                  {deleteAcctImpact.workspaceMembers} workspace member{deleteAcctImpact.workspaceMembers !== 1 ? 's' : ''} will be pruned from the following workspace{deleteAcctImpact.workspaces.length !== 1 ? 's' : ''} (the workspace entry and its on-disk file are kept):
-                </p>
-                <ul style="margin: 4px 0 0 18px;">
-                  {#each deleteAcctImpact.workspaces as w}
-                    <li><code>{w}</code></li>
-                  {/each}
-                </ul>
-              {/if}
-            {:else}
-              <p class="delete-warning delete-danger">
-                This will permanently delete the account, {acctSources.length} source{acctSources.length !== 1 ? 's' : ''}, {repoCount} repo{repoCount !== 1 ? 's' : ''}, and all their local clone folders.
-              </p>
-            {/if}
-          {:else}
-            <p class="delete-repo-name">{deleteAcctConfirm}</p>
-            <p class="delete-final">This action <strong>cannot be undone</strong>. Are you absolutely sure?</p>
-          {/if}
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={cancelDeleteAccount}>Cancel</button>
-          {#if deleteAcctStep === 1}
-            <button class="btn-delete" on:click={deleteAcctCheckName} disabled={!deleteAcctInput.trim()}>Confirm name</button>
-          {:else if deleteAcctStep === 2}
-            <button class="btn-delete" on:click={confirmDeleteAccount}>Delete account</button>
-          {:else}
-            <button class="btn-delete btn-delete-final" on:click={confirmDeleteAccount} disabled={deleteAcctBusy}>
-              {deleteAcctBusy ? 'Deleting...' : 'Yes, delete everything'}
-            </button>
-          {/if}
-        </div>
-      </div>
-    </div>
-  {/if}
+  <DeleteAccountModal bind:this={deleteAccountDialog} bind:reloadError bind:deleteMode {reloadFromDisk} />
 
   <!-- ── CHANGE FOLDER MODAL ── -->
-  {#if changeFolderModal}
-    <div class="overlay" use:dismiss={() => changeFolderModal = false} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head">
-          <h3>Change root folder</h3>
-          <button class="btn-x" on:click={() => changeFolderModal = false}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          <p class="delete-warning delete-danger"><strong>WARNING:</strong> Changing the root folder will <strong>not</strong> move existing clones. They will show as "Not local" until re-cloned at the new location (or moved manually).</p>
-          <div class="form-row" style="margin-top: 12px;">
-            <span class="form-label">Current</span>
-            <span class="settings-value">{$configStore?.global?.folder || '(not set)'}</span>
-          </div>
-          {#if changeFolderError}
-            <p class="form-error">{changeFolderError}</p>
-          {/if}
-          <div class="form-row">
-            <label class="form-label" for="change-folder-path">New path</label>
-            <input id="change-folder-path" class="form-input" bind:value={changeFolderPath} placeholder="~/new-folder" />
-            <button class="settings-btn" on:click={browseFolder}>Browse</button>
-          </div>
-
-          <hr style="border:none;border-top:1px solid var(--border); margin:16px 0;" />
-
-          <div class="form-row" style="flex-direction:column; align-items:stretch; gap:6px;">
-            <span class="form-label">Extra scan folders</span>
-            <p class="settings-value" style="margin:0 0 4px 0;">Additional roots scanned for clones and <code>.code-workspace</code> files, beyond the root folder.</p>
-            {#each extraFolders || [] as ef}
-              <div class="repo-row" style="justify-content:space-between;">
-                <span class="workspace-file-path" title={ef}>{ef}</span>
-                <button class="btn-sm btn-danger" on:click={() => removeExtraFolder(ef)} title="Remove">✕</button>
-              </div>
-            {/each}
-            <button class="settings-btn" on:click={addExtraFolder} style="align-self:flex-start;">+ Add folder…</button>
-          </div>
-
-          <div class="form-row" style="margin-top:10px;">
-            <label class="form-label" for="nested-scan-depth">Nested scan depth</label>
-            <input id="nested-scan-depth" class="form-input" type="number" min="1" style="max-width:90px;"
-              bind:value={nestedScanDepth} on:change={saveNestedScanDepth} />
-            <span class="settings-value">levels below a container repo (default 1). Re-scan via a repo's ⋮ menu.</span>
-          </div>
-          {#if nestedDepthError}<p class="form-error">{nestedDepthError}</p>{/if}
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={() => changeFolderModal = false}>Close</button>
-          <button class="btn-add" on:click={confirmChangeFolder} disabled={!changeFolderPath.trim()}>Change folder</button>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <ChangeFolderModal bind:this={changeFolderDialog} {reloadFromDisk} />
 
   <!-- ── ADD MIRROR GROUP MODAL ── -->
   <!-- Workspaces are read-only: no create/delete modals. -->
@@ -5461,56 +4744,7 @@
   {/if}
 
   <!-- ── CREATE REPO MODAL ── -->
-  {#if createRepoModal}
-    <div class="overlay" use:dismiss={() => { if (!createRepoBusy) createRepoModal = null; }} transition:fade={{ duration: 120 }}>
-      <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
-        <div class="modal-head">
-          <h3>Create repository &mdash; {createRepoModal}</h3>
-          <button class="btn-x" on:click={() => { if (!createRepoBusy) createRepoModal = null; }}>&#10005;</button>
-        </div>
-        <div class="modal-body">
-          <p class="create-repo-warning">This will create a <strong>new</strong> repository in your <strong>{$accounts[createRepoModal]?.provider || 'provider'}</strong> account ({$accounts[createRepoModal]?.url || ''})</p>
-          {#if createRepoError}
-            <p class="form-error">{createRepoError}</p>
-          {/if}
-          <div class="form-row">
-            <label class="form-label" for="create-repo-owner">Owner</label>
-            <select id="create-repo-owner" class="form-input" bind:value={createRepoOwner} disabled={createRepoBusy}>
-              {#each createRepoOrgs as org}
-                <option value={org}>{org}</option>
-              {/each}
-            </select>
-          </div>
-          <div class="form-row">
-            <label class="form-label" for="create-repo-name">Name</label>
-            <input id="create-repo-name" class="form-input" bind:value={createRepoName} on:input={onCreateRepoNameInput} placeholder="my-new-repo" disabled={createRepoBusy} />
-            {#if createRepoNameError}
-              <span class="form-error" style="margin: 2px 0 0; font-size: 10px;">{createRepoNameError}</span>
-            {/if}
-          </div>
-          <div class="form-row">
-            <label class="form-label" for="create-repo-desc">Description</label>
-            <input id="create-repo-desc" class="form-input" bind:value={createRepoDesc} placeholder="Short description (optional)" disabled={createRepoBusy} />
-          </div>
-          <div class="form-row" style="gap: 12px;">
-            <label style="font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 4px;">
-              <input type="checkbox" bind:checked={createRepoPrivate} disabled={createRepoBusy} /> Private
-            </label>
-            <label style="font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 4px;">
-              <input type="checkbox" bind:checked={createRepoClone} disabled={createRepoBusy} /> Clone after creating
-            </label>
-          </div>
-        </div>
-        <div class="modal-foot">
-          <button class="btn-cancel" on:click={() => { if (!createRepoBusy) createRepoModal = null; }} disabled={createRepoBusy}>Cancel</button>
-          <button class="btn-add" on:click={submitCreateRepo}
-            disabled={createRepoBusy || !createRepoOwner || !createRepoName || !!createRepoNameError}>
-            {createRepoBusy ? 'Creating...' : createRepoClone ? 'Create & Clone' : 'Create'}
-          </button>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <CreateRepoModal bind:this={createRepoDialog} />
 
 </div>
 {/if}
@@ -5953,32 +5187,6 @@
     to { transform: rotate(360deg); }
   }
 
-  /* Legacy alias — .settings-btn routes to the unified action style. */
-  .settings-btn {
-    padding: 3px 12px;
-    font-size: 11px;
-    font-weight: 500;
-    background: rgba(59, 130, 246, 0.10);
-    border: 1px solid rgba(59, 130, 246, 0.28);
-    color: var(--text-primary);
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background 0.12s, border-color 0.12s, color 0.12s;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-  .settings-btn:hover {
-    background: rgba(59, 130, 246, 0.18);
-    border-color: rgba(59, 130, 246, 0.44);
-  }
-  :global([data-theme="light"]) .settings-btn {
-    background: rgba(59, 130, 246, 0.08);
-    border-color: rgba(59, 130, 246, 0.32);
-  }
-  :global([data-theme="light"]) .settings-btn:hover {
-    background: rgba(59, 130, 246, 0.14);
-    border-color: rgba(59, 130, 246, 0.50);
-  }
 
   /* ── Global identity warning banner ── */
   .identity-warn {
@@ -6049,35 +5257,6 @@
   }
   .card-add:hover { border-color: var(--border-hover); color: var(--text-primary); background: var(--bg-hover); }
   .card-add-icon { font-size: 16px; font-weight: 400; line-height: 1; }
-  .modal-doctor { width: 680px; max-height: 80vh; display: flex; flex-direction: column; }
-  .modal-doctor .modal-body { overflow-y: auto; }
-  .doctor-summary { margin: 0 0 12px; font-size: 12px; }
-  .doctor-ok { color: #86efac; font-weight: 600; }
-  .doctor-err { color: #fca5a5; font-weight: 600; }
-  .doctor-opt { color: var(--text-muted); }
-  :global([data-theme="light"]) .doctor-ok { color: #166534; }
-  :global([data-theme="light"]) .doctor-err { color: #b91c1c; }
-  .doctor-list { display: flex; flex-direction: column; gap: 8px; }
-  .doctor-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); }
-  .doctor-row-missing-req { border-color: #be123c; background: rgba(190, 18, 60, 0.06); }
-  :global([data-theme="light"]) .doctor-row-missing-req { background: rgba(190, 18, 60, 0.04); }
-  .doctor-state { font-size: 14px; font-weight: 800; flex-shrink: 0; width: 14px; line-height: 1.3; }
-  .doctor-state-ok { color: #86efac; }
-  :global([data-theme="light"]) .doctor-state-ok { color: #166534; }
-  .doctor-state-err { color: #fca5a5; }
-  :global([data-theme="light"]) .doctor-state-err { color: #b91c1c; }
-  .doctor-state-opt { color: var(--text-muted); }
-  .doctor-main { flex: 1; min-width: 0; }
-  .doctor-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-  .doctor-name { font-weight: 600; color: var(--text-primary); font-size: 13px; }
-  .doctor-tag { font-size: 9px; padding: 1px 5px; background: var(--bg-hover); color: var(--text-muted); border-radius: 3px; text-transform: uppercase; letter-spacing: 0.3px; }
-  .doctor-version { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-  .doctor-path { color: var(--text-dim); font-size: 11px; font-family: ui-monospace, Menlo, Consolas, monospace; margin-top: 2px; word-break: break-all; }
-  .doctor-purpose { color: var(--text-muted); font-size: 11px; margin-top: 2px; }
-  .doctor-reason { color: var(--text-dim); font-size: 11px; margin-top: 4px; }
-  .doctor-install { font-size: 11px; margin-top: 4px; color: var(--text-primary); }
-  .doctor-install code { background: var(--bg-hover); padding: 1px 5px; border-radius: 3px; font-family: ui-monospace, Menlo, Consolas, monospace; }
-  .doctor-install-label { color: var(--text-muted); margin-right: 4px; }
   /* .settings-action shared with .settings-btn / .settings-action-btn —
      unified rule lives near .settings-row above. */
   .settings-doctor-summary { margin-left: 8px; }
@@ -6115,14 +5294,6 @@
     line-height: 1;
   }
   .org-switch.is-on .org-switch-thumb { transform: translateX(14px); color: #14532d; }
-  .create-repo-warning {
-    font-size: 12px; color: #F07623; background: rgba(240, 118, 35, 0.1);
-    border: 1px solid rgba(240, 118, 35, 0.3); border-radius: 4px;
-    padding: 8px 10px; margin: 0 0 12px;
-  }
-  :global([data-theme="light"]) .create-repo-warning {
-    color: #c2410c; background: #fff7ed; border-color: rgba(194, 65, 12, 0.3);
-  }
 
   /* ── Credential setup step ── */
   .cred-step-intro { font-size: 13px; color: var(--text-primary); margin: 0 0 10px; }
@@ -6277,34 +5448,6 @@
 
   .cred-delete-btn { margin-right: auto; }
 
-  /* ── Sweep modal ── */
-  .modal-sweep { width: 420px; }
-  .modal-head-sweep { border-bottom-color: #f59e0b44; }
-  .modal-head-sweep h3 { color: #f59e0b; }
-  :global([data-theme="light"]) .modal-head-sweep h3 { color: #b45309; }
-  .sweep-repo-name { font-size: 13px; font-weight: 600; color: var(--text-primary); margin: 0 0 8px; }
-  .sweep-explain { font-size: 12px; color: var(--text-secondary); margin: 0 0 12px; line-height: 1.5; }
-  .sweep-group { margin-bottom: 10px; }
-  .sweep-label { font-size: 12px; font-weight: 600; display: block; margin-bottom: 2px; }
-  .sweep-label-merged { color: #22c55e; }
-  :global([data-theme="light"]) .sweep-label-merged { color: #16a34a; }
-  .sweep-label-gone { color: #f59e0b; }
-  :global([data-theme="light"]) .sweep-label-gone { color: #d97706; }
-  .sweep-label-squashed { color: #a78bfa; }
-  :global([data-theme="light"]) .sweep-label-squashed { color: #7c3aed; }
-  .sweep-hint { font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px; }
-  .sweep-list {
-    margin: 0; padding: 0 0 0 16px; font-size: 12px; color: #D81E5B;
-    list-style: disc; max-height: 120px; overflow-y: auto;
-  }
-  :global([data-theme="light"]) .sweep-list { color: #be123c; }
-  .sweep-list li { margin: 1px 0; }
-  .btn-sweep-confirm {
-    padding: 6px 12px; background: #f59e0b; border: none; color: #000;
-    border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;
-  }
-  .btn-sweep-confirm:hover:not(:disabled) { background: #d97706; }
-  .btn-sweep-confirm:disabled { opacity: 0.5; cursor: default; }
 
   /* ── Orphan adoption ── */
   .orphan-pill {
@@ -6316,53 +5459,9 @@
   :global([data-theme="light"]) .orphan-pill { color: #b45309; border-color: #b4530966; background: #fef3c722; }
   :global([data-theme="light"]) .orphan-pill:hover { background: #fef3c7; }
 
-  .modal-adopt { width: 500px; }
-  .modal-head-adopt { border-bottom-color: #f59e0b44; }
-  .modal-head-adopt h3 { color: #f59e0b; }
-  :global([data-theme="light"]) .modal-head-adopt h3 { color: #b45309; }
 
-  .adopt-section-label { font-size: 12px; font-weight: 600; color: #22c55e; margin: 8px 0 4px; }
-  :global([data-theme="light"]) .adopt-section-label { color: #16a34a; }
-  .adopt-section-unknown { color: #f87171; }
-  :global([data-theme="light"]) .adopt-section-unknown { color: #dc2626; }
-  .adopt-section-local { color: var(--text-muted); }
 
-  .adopt-item {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-    padding: 3px 0; font-size: 12px; color: var(--text-primary);
-  }
-  .adopt-item input[type="checkbox"] { margin: 0; accent-color: #22c55e; }
-  .adopt-item-muted { color: var(--text-muted); padding-left: 22px; }
-  .adopt-repo-key { font-weight: 500; }
-  .adopt-target { color: var(--text-secondary); font-size: 11px; }
-  .adopt-action { color: var(--text-muted); font-size: 11px; font-style: italic; margin-left: auto; }
-  .adopt-remote { color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
-  .adopt-hint { color: #f59e0b; font-size: 11px; font-style: italic; margin-left: auto; }
-  .adopt-path {
-    flex-basis: 100%; padding-left: 22px;
-    color: var(--text-muted); font-size: 11px; font-family: var(--font-mono, monospace);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .adopt-path-muted { padding-left: 0; }
-  .adopt-path-root {
-    display: inline-block;
-    padding: 0 6px;
-    background: var(--bg-secondary, rgba(128, 128, 128, 0.18));
-    color: var(--text-secondary);
-    border-radius: 3px;
-    font-family: inherit;
-    font-size: 10px;
-    font-weight: 600;
-  }
 
-  .btn-adopt-confirm {
-    padding: 6px 12px; background: #22c55e; border: none; color: #000;
-    border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;
-  }
-  .btn-adopt-confirm:hover:not(:disabled) { background: #16a34a; }
-  .btn-adopt-confirm:disabled { opacity: 0.5; cursor: default; }
-  :global([data-theme="light"]) .btn-sweep-confirm { background: #f59e0b; color: #000; }
-  :global([data-theme="light"]) .btn-sweep-confirm:hover:not(:disabled) { background: #d97706; }
 
   /* ── Compact status view ── */
   .compact-strip {
