@@ -17,9 +17,11 @@
 #   ./scripts/sign-release.sh --check           # sign a test message: agent setup check
 #
 # Environment:
-#   SSH_KEYGEN  ssh-keygen binary to use (default: ssh-keygen on PATH; on
-#               Windows the native OpenSSH one, which reaches the agent's
-#               named pipe)
+#   SSH_KEYGEN     ssh-keygen binary to use (default: ssh-keygen on PATH; on
+#                  Windows the native OpenSSH one, which reaches the agent's
+#                  named pipe)
+#   SSH_AUTH_SOCK  agent to sign with; when it lacks the release key, the
+#                  1Password and Bitwarden agents' default sockets are tried
 
 
 # Standalone on purpose: _common.sh needs the .env of remote test hosts,
@@ -78,6 +80,31 @@ native_path() {
     fi
 }
 
+# agent_has_key <socket>: true when the agent at <socket> offers the release key.
+agent_has_key() {
+    SSH_AUTH_SOCK="$1" ssh-add -L 2>/dev/null | grep -qF "$(cut -d' ' -f2 "$PUBKEY")"
+}
+
+# use_release_agent: ssh-keygen -Y sign reaches the agent only through
+# SSH_AUTH_SOCK, never through IdentityAgent in ~/.ssh/config. When the
+# session's agent (macOS launchd's, say) lacks the release key, switch to a
+# password manager's agent at its default socket if that one offers it.
+use_release_agent() {
+    $on_windows && return 0
+    command -v ssh-add >/dev/null || return 0
+    [[ -n "${SSH_AUTH_SOCK:-}" ]] && agent_has_key "$SSH_AUTH_SOCK" && return 0
+    local sock
+    for sock in "$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock" \
+                "$HOME/.1password/agent.sock" \
+                "$HOME/.bitwarden-ssh-agent.sock"; do
+        if [[ -S "$sock" ]] && agent_has_key "$sock"; then
+            export SSH_AUTH_SOCK="$sock"
+            info "using the SSH agent at $sock"
+            return 0
+        fi
+    done
+}
+
 # sign_and_verify <message-file>: writes <message-file>.sig through the
 # agent and checks it against allowed_signers.
 sign_and_verify() {
@@ -99,6 +126,7 @@ trap 'rm -rf "$work"' EXIT
 # ── Agent setup check ──
 if [[ "${1:-}" == "--check" ]]; then
     header "Release signing check"
+    use_release_agent
     info "key: $(keygen -l -f "$(native_path "$PUBKEY")")"
     printf 'gitbox signing check %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$work/check.txt"
     info "signing a test message (approve the prompt if your agent shows one)"
@@ -142,6 +170,7 @@ $(diff <(echo "$listed") <(echo "$shipped") || true)"
 ok "checksums.sha256 lists all $(wc -l <<<"$shipped" | tr -d ' ') assets"
 
 { printf 'gitbox %s\n' "$tag"; cat "$work/checksums.sha256"; } > "$work/message"
+use_release_agent
 info "signing with $(keygen -l -f "$(native_path "$PUBKEY")" | awk '{print $2}') (approve the prompt if your agent shows one)"
 sign_and_verify "$work/message"
 mv "$work/message.sig" "$work/checksums.sha256.sig"

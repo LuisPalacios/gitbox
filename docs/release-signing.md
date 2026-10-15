@@ -42,6 +42,8 @@ Password managers with a built-in SSH agent are a good fit, because the key sync
 
 On Windows, Git Bash's own `ssh-keygen` cannot reach an agent behind the Windows named pipe. `sign-release.sh` therefore uses the native `C:\Windows\System32\OpenSSH\ssh-keygen.exe` when it exists. Set `SSH_KEYGEN` to override the binary on any platform.
 
+On macOS and Linux, `ssh-keygen -Y sign` reaches the agent only through `SSH_AUTH_SOCK` and ignores `IdentityAgent` in `~/.ssh/config`, so `ssh` can work while signing fails. When the `SSH_AUTH_SOCK` agent does not offer the release key, `sign-release.sh` tries the default sockets of the 1Password and Bitwarden agents and uses the first one that does.
+
 ### Example: 1Password
 
 1. In the 1Password desktop app, open **Settings → Developer** and turn on **Use the SSH agent**.
