@@ -373,7 +373,7 @@ func combineStatus(primary, pat Status) Status {
 	}
 }
 
-// isAPIAuthRejection reports whether an error from provider.TestAuth looks
+// isAPIAuthRejection reports whether an error from provider.CheckAuth looks
 // like the server rejecting the credential (HTTP 401 or text that names an
 // authentication failure), as opposed to a network error, a TLS error, or
 // some other HTTP failure mode. It's intentionally conservative — the only
