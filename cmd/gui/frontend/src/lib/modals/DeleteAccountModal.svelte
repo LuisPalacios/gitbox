@@ -5,6 +5,8 @@
   import { bridge } from '../bridge';
   import { sources } from '../stores';
   import { dismiss } from '../dismiss';
+  import Rich from '../Rich.svelte';
+  import { t } from '../i18n';
 
   export let reloadError: string;
   export let deleteMode: boolean;
@@ -62,7 +64,7 @@
       deleteAcctStep = 2;
       deleteAcctError = '';
     } else {
-      deleteAcctError = 'Name does not match.';
+      deleteAcctError = $t('deleteAccount.nameMismatch');
     }
   }
 
@@ -92,12 +94,12 @@
   <div class="overlay" use:dismiss={cancelDeleteAccount} transition:fade={{ duration: 120 }}>
     <div class="modal modal-delete" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
       <div class="modal-head modal-head-delete">
-        <h3>Delete account</h3>
+        <h3>{$t('account.delete')}</h3>
         <button class="btn-x" on:click={cancelDeleteAccount}>&#10005;</button>
       </div>
       <div class="modal-body">
         {#if deleteAcctStep === 1}
-          <p class="delete-warning">Type the account name to confirm:</p>
+          <p class="delete-warning">{$t('deleteAccount.typeName')}</p>
           <div class="form-row" style="margin-top: 8px;">
             <input class="form-input" type="text" bind:value={deleteAcctInput} placeholder="{deleteAcctConfirm}" on:keydown={(e) => { if (e.key === 'Enter') deleteAcctCheckName(); }} />
           </div>
@@ -108,11 +110,11 @@
           <p class="delete-repo-name">{deleteAcctConfirm}</p>
           {#if deleteAcctImpact}
             <p class="delete-warning delete-danger">
-              This will permanently delete the account, {deleteAcctImpact.sources.length} source{deleteAcctImpact.sources.length !== 1 ? 's' : ''}, {deleteAcctImpact.repoCount} repo{deleteAcctImpact.repoCount !== 1 ? 's' : ''} ({deleteAcctImpact.cloneCount} cloned), and all their local folders.
+              {$t('deleteAccount.impact', { sources: $t(deleteAcctImpact.sources.length === 1 ? 'deleteAccount.sourceOne' : 'deleteAccount.sourceN', { n: deleteAcctImpact.sources.length }), repos: $t(deleteAcctImpact.repoCount === 1 ? 'deleteAccount.repoOne' : 'deleteAccount.repoN', { n: deleteAcctImpact.repoCount }), cloned: $t(deleteAcctImpact.cloneCount === 1 ? 'deleteAccount.clonedOne' : 'deleteAccount.clonedN', { n: deleteAcctImpact.cloneCount }) })}
             </p>
             {#if deleteAcctImpact.mirrors.length > 0}
               <p class="delete-warning delete-danger" style="margin-top: 8px;">
-                The following mirror group{deleteAcctImpact.mirrors.length !== 1 ? 's' : ''} will also be removed because {deleteAcctImpact.mirrors.length !== 1 ? 'they reference' : 'it references'} this account:
+                {$t(deleteAcctImpact.mirrors.length !== 1 ? 'deleteAccount.mirrorsN' : 'deleteAccount.mirrorsOne')}
               </p>
               <ul style="margin: 4px 0 0 18px;">
                 {#each deleteAcctImpact.mirrors as m}
@@ -122,7 +124,7 @@
             {/if}
             {#if deleteAcctImpact.workspaces.length > 0}
               <p class="delete-warning" style="margin-top: 8px;">
-                {deleteAcctImpact.workspaceMembers} workspace member{deleteAcctImpact.workspaceMembers !== 1 ? 's' : ''} will be pruned from the following workspace{deleteAcctImpact.workspaces.length !== 1 ? 's' : ''} (the workspace entry and its on-disk file are kept):
+                {$t(`deleteAccount.members${deleteAcctImpact.workspaceMembers !== 1 ? 'N' : 'One'}Workspaces${deleteAcctImpact.workspaces.length !== 1 ? 'N' : 'One'}`, { n: deleteAcctImpact.workspaceMembers })}
               </p>
               <ul style="margin: 4px 0 0 18px;">
                 {#each deleteAcctImpact.workspaces as w}
@@ -132,23 +134,23 @@
             {/if}
           {:else}
             <p class="delete-warning delete-danger">
-              This will permanently delete the account, {acctSources.length} source{acctSources.length !== 1 ? 's' : ''}, {repoCount} repo{repoCount !== 1 ? 's' : ''}, and all their local clone folders.
+              {$t('deleteAccount.impactFallback', { sources: $t(acctSources.length === 1 ? 'deleteAccount.sourceOne' : 'deleteAccount.sourceN', { n: acctSources.length }), repos: $t(repoCount === 1 ? 'deleteAccount.repoOne' : 'deleteAccount.repoN', { n: repoCount }) })}
             </p>
           {/if}
         {:else}
           <p class="delete-repo-name">{deleteAcctConfirm}</p>
-          <p class="delete-final">This action <strong>cannot be undone</strong>. Are you absolutely sure?</p>
+          <p class="delete-final"><Rich key="deleteAccount.final" /></p>
         {/if}
       </div>
       <div class="modal-foot">
-        <button class="btn-cancel" on:click={cancelDeleteAccount}>Cancel</button>
+        <button class="btn-cancel" on:click={cancelDeleteAccount}>{$t('common.cancel')}</button>
         {#if deleteAcctStep === 1}
-          <button class="btn-delete" on:click={deleteAcctCheckName} disabled={!deleteAcctInput.trim()}>Confirm name</button>
+          <button class="btn-delete" on:click={deleteAcctCheckName} disabled={!deleteAcctInput.trim()}>{$t('deleteAccount.confirmName')}</button>
         {:else if deleteAcctStep === 2}
-          <button class="btn-delete" on:click={confirmDeleteAccount}>Delete account</button>
+          <button class="btn-delete" on:click={confirmDeleteAccount}>{$t('account.delete')}</button>
         {:else}
           <button class="btn-delete btn-delete-final" on:click={confirmDeleteAccount} disabled={deleteAcctBusy}>
-            {deleteAcctBusy ? 'Deleting...' : 'Yes, delete everything'}
+            {deleteAcctBusy ? $t('deleteAccount.deleting') : $t('deleteAccount.yes')}
           </button>
         {/if}
       </div>

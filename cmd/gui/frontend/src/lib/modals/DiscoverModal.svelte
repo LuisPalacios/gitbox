@@ -143,10 +143,10 @@
     discoverModal = null;
   }
 
-  // Return a short, user-facing hint explaining a specific discovery
-  // failure mode (auth vs. network vs. permission). The raw Go error is
-  // already shown to the user; this just adds a one-line "what to do"
-  // above the action buttons.
+  // Return the catalog key of a short, user-facing hint explaining a
+  // specific discovery failure mode (auth vs. network vs. permission). The
+  // raw Go error is already shown to the user; this just adds a one-line
+  // "what to do" above the action buttons.
   function detectDiscoveryHint(msg: string, acctKey: string | null): string {
     if (!msg) return '';
     const m = msg.toLowerCase();
@@ -155,18 +155,18 @@
     const provider = acct?.provider || '';
     if (m.includes('401') || m.includes('authentication failed') || m.includes('token is invalid')) {
       if (credType === 'gcm' && (provider === 'gitea' || provider === 'forgejo')) {
-        return 'Forgejo/Gitea refuses account passwords at the REST API. Either paste a PAT into GCM’s password prompt, or click “Open credential settings” and use “Setup API token” to store a companion PAT.';
+        return 'discover.hintGcmPassword';
       }
-      return 'The stored credential was rejected by the API. Open credential settings and replace it, or store a companion API token.';
+      return 'discover.hintRejected';
     }
     if (m.includes('no route to host') || m.includes('host is unreachable') || m.includes('wsaehostunreach')) {
-      return 'The OS blocked or could not reach the server. On macOS check Privacy & Security → Local Network; on Windows check the firewall; on Linux check routes and host firewalls.';
+      return 'discover.hintUnreachable';
     }
     if (m.includes('no such host') || m.includes('dns')) {
-      return 'The server hostname can’t be resolved from this machine. Check VPN / DNS before retrying.';
+      return 'discover.hintDns';
     }
     if (m.includes('x509') || m.includes('certificate')) {
-      return 'TLS certificate validation failed. Install the server’s CA into your OS trust store before retrying.';
+      return 'discover.hintCertificate';
     }
     return '';
   }
@@ -188,7 +188,7 @@
             <p class="discover-error-title">{$t('discover.failed')}</p>
             <p class="discover-error-detail">{discoverError}</p>
             {#if hint}
-              <p class="discover-error-hint">{hint}</p>
+              <p class="discover-error-hint">{$t(hint)}</p>
             {/if}
             <div class="discover-error-actions">
               <button class="btn-cancel" on:click={() => { if (discoverModal) { discoverLoading = true; discoverError = ''; bridge.discover(discoverModal); } }}>{$t('discover.retry')}</button>
@@ -206,7 +206,7 @@
                 class="org-switch"
                 class:is-on={anyOn}
                 on:click={toggleAllOwners}
-                title={anyOn ? 'Hide all owners' : 'Show all owners'}
+                title={anyOn ? $t('discover.hideOwners') : $t('discover.showOwners')}
               >
                 <span class="org-switch-thumb">{anyOn ? '✓' : '✕'}</span>
               </button>
@@ -243,9 +243,9 @@
             <label class="dr" class:dr-disabled={alreadyAdded}>
               <input type="checkbox" bind:checked={discoverSelected[repo.fullName]} disabled={alreadyAdded} />
               <span class="dr-name">{repo.fullName}</span>
-              {#if alreadyAdded}<span class="dr-tag">added</span>{/if}
-              {#if repo.archived}<span class="dr-tag">archived</span>{/if}
-              {#if repo.fork}<span class="dr-tag">fork</span>{/if}
+              {#if alreadyAdded}<span class="dr-tag">{$t('discover.added')}</span>{/if}
+              {#if repo.archived}<span class="dr-tag">{$t('onboard.archived')}</span>{/if}
+              {#if repo.fork}<span class="dr-tag">{$t('onboard.fork')}</span>{/if}
               <span class="dr-desc">{repo.description}</span>
             </label>
           {/each}

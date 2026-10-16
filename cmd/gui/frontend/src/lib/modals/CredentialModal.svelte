@@ -10,6 +10,8 @@
   import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime';
   import CredentialResult from '../CredentialResult.svelte';
   import PrecheckBanner from '../PrecheckBanner.svelte';
+  import Rich from '../Rich.svelte';
+  import { t } from '../i18n';
 
   // Shared credential operation state (App).
   export let credResult: { ok: boolean; message: string; needsPAT?: boolean; sshPublicKey?: string; sshAddURL?: string; sshVerified?: boolean } | null;
@@ -83,16 +85,16 @@
   }
 
   // Detect the specific pattern of "OS-level network-permission denial"
-  // inside a credential-status error message and return a friendly hint
-  // with the right platform-specific advice. Returns null when the error
-  // doesn't match the pattern.
+  // inside a credential-status error message and return the catalog key of
+  // a friendly hint with the right platform-specific advice. Returns null
+  // when the error doesn't match the pattern.
   //
   // Why this exists: the raw Go error says "dial tcp 192.168.x.x:443: connect:
   // no route to host". On macOS that's almost always TCC blocking Local
   // Network access for an unsigned / untracked app bundle — not an actual
   // routing problem — and the user-facing recovery is entirely different
   // from a real network outage. This helper makes that distinction visible.
-  function detectLANPermissionHint(msg: string | undefined): { summary: string; link: string } | null {
+  function detectLANPermissionHint(msg: string | undefined): { summaryKey: string; link: string } | null {
     if (!msg) return null;
     const m = msg.toLowerCase();
     const looksLikeLAN = m.includes('192.168.') || m.includes('10.0.') || m.includes('.local');
@@ -101,36 +103,36 @@
     const docBase = 'https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md';
     if (hostOS === 'darwin') {
       return {
-        summary: 'macOS is blocking this app from reaching devices on your local network. Grant access in System Settings → Privacy & Security → Local Network (enable GitboxApp).',
+        summaryKey: 'cred.lanMac',
         link: docBase + '#macos-local-network-permission',
       };
     }
     if (hostOS === 'windows') {
       return {
-        summary: 'Windows Defender Firewall may be blocking this app from reaching hosts on your LAN. Allow GitboxApp in Windows Security → Firewall & network protection → Allow an app through firewall.',
+        summaryKey: 'cred.lanWindows',
         link: docBase + '#windows-firewall',
       };
     }
     if (looksLikeLAN) {
       return {
-        summary: 'The server is on your LAN but this app cannot reach it. Check that your network interface is up and any host-level firewall (ufw, firewalld) allows outbound connections.',
+        summaryKey: 'cred.lanLinux',
         link: docBase + '#linux-network-troubleshooting',
       };
     }
     return null;
   }
 
-  // Map a credential status string to a short human label shown in the
-  // status panel of the Change Credential modal.
-  function credStatusLabel(state: string): string {
+  // Map a credential status string to the catalog key of the short human
+  // label shown in the status panel of the Change Credential modal.
+  function credStatusKey(state: string): string {
     switch (state) {
-      case 'ok':       return 'OK';
-      case 'warning':  return 'Warning';
-      case 'offline':  return 'Offline';
-      case 'error':    return 'Error';
-      case 'none':     return 'Not configured';
-      case 'checking': return 'Checking…';
-      default:         return '—';
+      case 'ok':       return 'cred.state.ok';
+      case 'warning':  return 'cred.state.warning';
+      case 'offline':  return 'cred.state.offline';
+      case 'error':    return 'cred.state.error';
+      case 'none':     return 'cred.state.none';
+      case 'checking': return 'health.checking';
+      default:         return 'cred.state.unknown';
     }
   }
 
@@ -188,7 +190,7 @@
   <div class="overlay" use:dismiss={() => { if (!credBusy && !credDeleteBusy) closeCredChange(); }} transition:fade={{ duration: 120 }}>
     <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
       <div class="modal-head">
-        <h3>{credForceToken ? 'API token' : 'Change credential'} &mdash; {credChangeModal}</h3>
+        <h3>{credForceToken ? $t('cred.apiToken') : $t('cred.change')} &mdash; {credChangeModal}</h3>
         <button class="btn-x" on:click={closeCredChange}>&#10005;</button>
       </div>
       <div class="modal-body">
@@ -201,15 +203,15 @@
           {@const lanHint = detectLANPermissionHint(cs.primaryMsg) || detectLANPermissionHint(cs.patMsg)}
           <div class="cred-status-panel cred-status-panel-{overall}">
             <div class="cred-status-head">
-              <span class="cred-status-title">Current status</span>
-              <button class="cred-status-recheck" title="Re-verify credential" on:click={() => verifyCredentialForModal(credChangeModal)} disabled={primary === 'checking'}>
-                {primary === 'checking' ? 'Checking…' : 'Re-check'}
+              <span class="cred-status-title">{$t('cred.currentStatus')}</span>
+              <button class="cred-status-recheck" title={$t('cred.reverify')} on:click={() => verifyCredentialForModal(credChangeModal)} disabled={primary === 'checking'}>
+                {primary === 'checking' ? $t('health.checking') : $t('common.recheck')}
               </button>
             </div>
             <div class="cred-status-row">
               <span class="cred-status-dot cred-status-dot-{primary}"></span>
-              <span class="cred-status-label">Primary{primaryType ? ` (${primaryType.toUpperCase()})` : ''}:</span>
-              <span class="cred-status-value">{credStatusLabel(primary)}</span>
+              <span class="cred-status-label">{primaryType ? $t('cred.primaryType', { type: primaryType.toUpperCase() }) : $t('cred.primary')}</span>
+              <span class="cred-status-value">{$t(credStatusKey(primary))}</span>
             </div>
             {#if cs.primaryMsg}
               <p class="cred-status-detail">{cs.primaryMsg}</p>
@@ -218,11 +220,11 @@
               {@const patCoveredByGCM = pat === 'ok' && (cs.patMsg || '').startsWith('API via GCM')}
               <div class="cred-status-row">
                 <span class="cred-status-dot cred-status-dot-{pat === 'none' ? 'none' : pat}"></span>
-                <span class="cred-status-label">API token (PAT):</span>
-                <span class="cred-status-value">{patCoveredByGCM ? 'Not created' : credStatusLabel(pat)}</span>
+                <span class="cred-status-label">{$t('cred.patLabel')}</span>
+                <span class="cred-status-value">{patCoveredByGCM ? $t('cred.notCreated') : $t(credStatusKey(pat))}</span>
                 {#if pat === 'none' || pat === 'warning'}
-                  <button class="cred-status-pat-btn" on:click={() => credChangeModal && openTokenSetup(credChangeModal)} title="Store a Personal Access Token for API access">
-                    {pat === 'warning' ? 'Replace API token' : 'Setup API token'}
+                  <button class="cred-status-pat-btn" on:click={() => credChangeModal && openTokenSetup(credChangeModal)} title={$t('cred.patTip')}>
+                    {pat === 'warning' ? $t('cred.replacePat') : $t('cred.setupPat')}
                   </button>
                 {/if}
               </div>
@@ -237,50 +239,50 @@
             {/if}
             {#if lanHint}
               <div class="cred-status-lanhint">
-                <p class="cred-status-lanhint-title">⚠ Looks like the OS blocked this connection</p>
-                <p>{lanHint.summary} <a href={lanHint.link} on:click|preventDefault={() => BrowserOpenURL(lanHint.link)}>Troubleshooting guide</a>.</p>
+                <p class="cred-status-lanhint-title">{$t('cred.lanTitle')}</p>
+                <p>{$t(lanHint.summaryKey)} <a href={lanHint.link} on:click|preventDefault={() => BrowserOpenURL(lanHint.link)}>{$t('cred.troubleshooting')}</a>.</p>
               </div>
             {/if}
           </div>
         {/if}
         {#if credForceToken}
         <!-- Simplified PAT-only flow for mirror fix -->
-        <p class="cred-step-desc">Mirrors require an API token (PAT) for status checks. Primary credential: <strong>{currentAcct?.default_credential_type || 'none'}</strong>.</p>
+        <p class="cred-step-desc"><Rich key="cred.mirrorNeedsPat" vars={{ type: currentAcct?.default_credential_type || 'none' }} /></p>
         {:else}
-        <p class="cred-doc-link"><a href="https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md" on:click|preventDefault={() => BrowserOpenURL('https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md')}>Learn about credential types</a></p>
+        <p class="cred-doc-link"><a href="https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md" on:click|preventDefault={() => BrowserOpenURL('https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md')}>{$t('cred.learnTypes')}</a></p>
         <div class="form-row">
-          <label class="form-label" for="cc-type">Type</label>
+          <label class="form-label" for="cc-type">{$t('cred.type')}</label>
           <select class="form-input" id="cc-type" bind:value={credChangeType} disabled={credBusy}>
-            <option value="gcm">Git Credential Manager (GCM)</option>
+            <option value="gcm" translate="no">Git Credential Manager (GCM)</option>
             <option value="ssh">SSH</option>
-            <option value="token">Token</option>
+            <option value="token">{$t('onboard.token')}</option>
           </select>
         </div>
 
         {#if !credResult && credChangeType !== (currentAcct?.default_credential_type || '') && currentAcct?.default_credential_type}
-          <p class="cred-change-warning">Setting up {credChangeType.toUpperCase()} will remove the current {(currentAcct?.default_credential_type || '').toUpperCase()} credential and its artifacts{currentAcct?.default_credential_type === 'ssh' ? ' (SSH key, ~/.ssh/config entry)' : currentAcct?.default_credential_type === 'token' ? ' (token from OS keyring)' : currentAcct?.default_credential_type === 'gcm' ? ' (cached GCM credential)' : ''}.</p>
+          <p class="cred-change-warning">{$t(currentAcct?.default_credential_type === 'ssh' ? 'cred.changeWarnSsh' : currentAcct?.default_credential_type === 'token' ? 'cred.changeWarnToken' : currentAcct?.default_credential_type === 'gcm' ? 'cred.changeWarnGcm' : 'cred.changeWarn', { new: credChangeType.toUpperCase(), old: (currentAcct?.default_credential_type || '').toUpperCase() })}</p>
         {/if}
 
         {#if credPrecheck && !credPrecheck.ok}
-          <PrecheckBanner precheck={credPrecheck} noteTail=" before applying."
+          <PrecheckBanner precheck={credPrecheck} noteKey="cred.precheckNoteChange"
             onRecheck={() => runCredentialPrecheck(credChangeType)} />
         {/if}
         {/if}
 
         {#if (credForceToken || credChangeType === 'token') && credTokenGuide && !credResult}
-          <p class="cred-step-desc">Click on the link and login if necessary. Create a Token and paste it below.</p>
+          <p class="cred-step-desc">{$t('cred.tokenSteps')}</p>
           {#if credTokenScopes}
-            <p class="cred-step-desc"><strong>Required scopes:</strong> {credTokenScopes}</p>
+            <p class="cred-step-desc"><Rich key="cred.scopes" vars={{ scopes: credTokenScopes }} /></p>
           {/if}
           <p class="cred-step-link"><a href={credTokenGuide} on:click|preventDefault={() => BrowserOpenURL(credTokenGuide)}>{credTokenGuide}</a></p>
           <div class="form-row">
-            <label class="form-label" for="cc-token">Token</label>
-            <input class="form-input" id="cc-token" type="password" bind:value={credTokenInput} placeholder="ghp_..." />
+            <label class="form-label" for="cc-token">{$t('onboard.token')}</label>
+            <input class="form-input" id="cc-token" type="password" bind:value={credTokenInput} placeholder="ghp_..." translate="no" />
           </div>
         {/if}
 
         {#if credBusy}
-          <div class="loading"><div class="spinner"></div><span>Setting up credential...</span></div>
+          <div class="loading"><div class="spinner"></div><span>{$t('cred.settingUpCred')}</span></div>
         {/if}
 
         {#if credResult}
@@ -293,23 +295,23 @@
       <div class="modal-foot">
         {#if currentAcct?.default_credential_type && !credResult && !credSetupStarted && credChangeType === (currentAcct?.default_credential_type || '')}
           <button class="btn-delete cred-delete-btn" on:click={deleteCredential} disabled={credDeleteBusy || credBusy}>
-            {credDeleteBusy ? 'Deleting...' : `Delete current ${(currentAcct?.default_credential_type || '').toUpperCase()} credential`}
+            {credDeleteBusy ? $t('cred.deleting') : $t('cred.deleteCurrent', { type: (currentAcct?.default_credential_type || '').toUpperCase() })}
           </button>
         {/if}
         {#if credResult}
-          <button class="btn-cancel" on:click={closeCredChange}>{credResult.ok ? 'Done' : 'Close'}</button>
+          <button class="btn-cancel" on:click={closeCredChange}>{credResult.ok ? $t('onboard.done') : $t('common.close')}</button>
         {:else if credChangeType === 'token' && credTokenGuide}
           {#if credTokenInput.trim()}
             <button class="btn-add" on:click={() => credChangeModal && storeCredToken(credChangeModal)} disabled={credBusy}>
-              {credBusy ? 'Storing...' : 'Store token'}
+              {credBusy ? $t('cred.storing') : $t('cred.storeToken')}
             </button>
           {:else}
-            <button class="btn-cancel" on:click={closeCredChange}>Cancel</button>
+            <button class="btn-cancel" on:click={closeCredChange}>{$t('common.cancel')}</button>
           {/if}
         {:else}
-          <button class="btn-cancel" on:click={closeCredChange}>Cancel</button>
+          <button class="btn-cancel" on:click={closeCredChange}>{$t('common.cancel')}</button>
           <button class="btn-add" on:click={applyCredChange} disabled={credBusy || (credChangeType === (currentAcct?.default_credential_type || '') && credStatuses[credChangeModal || '']?.status === 'ok')}>
-            {credBusy ? 'Setting up...' : 'Setup'}
+            {credBusy ? $t('cred.settingUp') : $t('cred.setup')}
           </button>
         {/if}
       </div>

@@ -6,6 +6,7 @@
 
   import { onMount, tick } from 'svelte';
   import type { PullRequestDTO } from './types';
+  import { t } from './i18n';
 
   export let kind: 'authored' | 'review' = 'authored';
   export let prs: PullRequestDTO[] = [];
@@ -21,7 +22,7 @@
 
   $: visible = prs.slice(0, MAX_ITEMS);
   $: remaining = Math.max(0, prs.length - MAX_ITEMS);
-  $: title = kind === 'authored' ? 'My open PRs' : 'Review requested';
+  $: title = kind === 'authored' ? $t('pr.authored') : $t('pr.review');
 
   function positionMenu(el: HTMLElement | undefined) {
     if (!el) return;
@@ -68,22 +69,24 @@
     positionMenu(rootEl);
   });
 
-  function formatRelative(iso: string): string {
+  // Reactive so the relative times follow a language change.
+  $: formatRelative = (iso: string): string => {
     if (!iso) return '';
-    const t = Date.parse(iso);
-    if (Number.isNaN(t)) return '';
-    const diffMs = Date.now() - t;
+    const ts = Date.parse(iso);
+    if (Number.isNaN(ts)) return '';
+    const diffMs = Date.now() - ts;
     const mins = Math.floor(diffMs / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
+    if (mins < 1) return $t('pr.justNow');
+    if (mins < 60) return $t('pr.minutesAgo', { n: mins });
     const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h ago`;
+    if (hours < 24) return $t('pr.hoursAgo', { n: hours });
     const days = Math.floor(hours / 24);
-    if (days < 30) return `${days}d ago`;
+    if (days < 30) return $t('pr.daysAgo', { n: days });
     const months = Math.floor(days / 30);
-    if (months < 12) return `${months}mo ago`;
-    return `${Math.floor(months / 12)}y ago`;
-  }
+    if (months < 12) return $t(months === 1 ? 'pr.monthAgo' : 'pr.monthsAgo', { n: months });
+    const years = Math.floor(months / 12);
+    return $t(years === 1 ? 'pr.yearAgo' : 'pr.yearsAgo', { n: years });
+  };
 </script>
 
 <div class="pr-popover action-dropdown" bind:this={rootEl}>
@@ -93,18 +96,18 @@
       <span class="pr-num">#{pr.number}</span>
       <span class="pr-title">{pr.title}</span>
       {#if pr.isDraft}
-        <span class="pr-draft" title="Draft">draft</span>
+        <span class="pr-draft" title={$t('pr.draftTip')}>{$t('pr.draft')}</span>
       {/if}
       <span class="pr-updated">{formatRelative(pr.updated)}</span>
     </button>
   {/each}
   {#if remaining > 0}
-    <div class="pr-more">+{remaining} more</div>
+    <div class="pr-more">{$t('pr.more', { n: remaining })}</div>
   {/if}
   {#if providerAllURL}
     <hr class="pr-sep" />
     <button class="action-item pr-footer" on:click|stopPropagation={onOpenAll}>
-      Open all PRs on {providerName || 'provider'} <span class="pr-ext">&#8599;</span>
+      {providerName ? $t('pr.openAll', { provider: providerName }) : $t('pr.openAllProvider')} <span class="pr-ext">&#8599;</span>
     </button>
   {/if}
 </div>

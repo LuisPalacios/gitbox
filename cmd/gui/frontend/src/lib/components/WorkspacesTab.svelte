@@ -30,7 +30,7 @@
       {@const members = ws.members?.length ?? 0}
       <Card open={expandedCard === `ws:${wsKey}`} title={ws.name || wsKey} name={ws.name || wsKey} dotColor={sc('clean')}
         variant="card-workspace" onOpen={() => expandedCard = `ws:${wsKey}`}
-        provider="CODE" count={{ text: `${members}`, title: `${members} member${members === 1 ? '' : 's'}` }}
+        provider="CODE" count={{ text: `${members}`, title: `${members} ${members === 1 ? $t('workspace.member') : $t('workspace.members')}` }}
         actions={[{ label: $t('workspace.open'), onClick: () => openWorkspace(wsKey), disabled: workspaceBusy }]} />
     {/if}
   {/each}
@@ -43,7 +43,7 @@
       {#if ws}
         <div class="mirror-group">
           <div class="mirror-group-header">
-            <span class="mirror-accounts">{ws.name || wsKey} <span class="workspace-type">· .code-workspace</span></span>
+            <span class="mirror-accounts">{ws.name || wsKey} <span class="workspace-type" translate="no">· .code-workspace</span></span>
             <div class="mirror-group-actions">
               <button class="btn-tab-action" on:click={() => openWorkspace(wsKey)} disabled={workspaceBusy}>{$t('workspace.open')}</button>
             </div>

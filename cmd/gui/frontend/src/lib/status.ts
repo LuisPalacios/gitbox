@@ -152,14 +152,15 @@ export function statusLabel(st: LabelState, simple: boolean): StatusLabel {
 
 // ── Counts ──
 // A count badge: the RepoState field it reads, its glyph, the palette entry
-// that colours it and the word that follows the number ("3 behind").
+// that colours it and the i18n key of the word that follows the number
+// ("3 behind").
 export interface CountBadge { field: 'behind' | 'ahead' | 'modified' | 'untracked'; glyph: string; color: string; word: string }
 
 export const COUNT_BADGES: CountBadge[] = [
-  { field: 'behind', glyph: '↓', color: 'behind', word: 'behind' },
-  { field: 'ahead', glyph: '↑', color: 'ahead', word: 'ahead' },
-  { field: 'modified', glyph: '✎', color: 'dirty', word: 'changed' },
-  { field: 'untracked', glyph: '?', color: 'not cloned', word: 'untracked' },
+  { field: 'behind', glyph: '↓', color: 'behind', word: 'count.behind' },
+  { field: 'ahead', glyph: '↑', color: 'ahead', word: 'count.ahead' },
+  { field: 'modified', glyph: '✎', color: 'dirty', word: 'count.changed' },
+  { field: 'untracked', glyph: '?', color: 'not cloned', word: 'count.untracked' },
 ];
 
 export function countBadge(field: CountBadge['field']): CountBadge {
@@ -200,8 +201,9 @@ export function canDiscoverWith(status: string | undefined): boolean {
 export function canCreateWith(status: string | undefined): boolean {
   return status === 'ok';
 }
-export const DISCOVER_DISABLED = 'No working credential for this account';
-export const CREATE_DISABLED = 'Needs a working API credential (GCM that accepts the API, or a companion PAT)';
+// i18n keys of why Find and + New are disabled.
+export const DISCOVER_DISABLED = 'account.findDisabled';
+export const CREATE_DISABLED = 'account.createDisabled';
 
 // ── Account health ──
 // What the account card and the sidebar say about a credential: a mark and

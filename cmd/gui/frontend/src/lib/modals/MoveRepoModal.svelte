@@ -6,6 +6,8 @@
   import { bridge } from '../bridge';
   import { accounts, repoStates } from '../stores';
   import { dismiss } from '../dismiss';
+  import { t } from '../i18n';
+  import Rich from '../Rich.svelte';
   import type { MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from '../types';
 
   export let reloadFromDisk: () => Promise<void>;
@@ -111,7 +113,7 @@
         syncMoveSelection();
       }
     } catch (e: any) {
-      moveError = e?.message || 'Failed to load destination owners';
+      moveError = e?.message || $t('move.loadOwnersFailed');
     } finally {
       moveLoadingOwners = false;
     }
@@ -137,23 +139,23 @@
     moveError = '';
     syncMoveSelection();
     if (!moveDestAccountKey || !moveDestOwner) {
-      moveError = 'Pick a destination.';
+      moveError = $t('move.pickDestination');
       return;
     }
     if (!/^[a-zA-Z0-9_][a-zA-Z0-9._-]*$/.test(moveNewName)) {
-      moveError = 'Name must be alphanumeric (hyphens/dots/underscores allowed, no leading dot/hyphen).';
+      moveError = $t('move.invalidName');
       return;
     }
     try {
       const req = buildMoveRequest();
       movePreflight = await bridge.preflightMove(req);
       if (!movePreflight.ok) {
-        moveError = movePreflight.error || 'Preflight failed';
+        moveError = movePreflight.error || $t('move.preflightFailed');
         return;
       }
       moveModalStep = 'confirm';
     } catch (e: any) {
-      moveError = e?.message || 'Preflight failed';
+      moveError = e?.message || $t('move.preflightFailed');
     }
   }
 
@@ -172,7 +174,7 @@
 
   async function confirmMoveRepo() {
     if (moveTypeConfirm !== moveSourceRepoKey) {
-      moveError = 'Repository name does not match.';
+      moveError = $t('move.nameMismatch');
       return;
     }
     moveError = '';
@@ -182,7 +184,7 @@
     try {
       await bridge.moveRepo(buildMoveRequest());
     } catch (e: any) {
-      moveError = e?.message || 'Move failed';
+      moveError = e?.message || $t('move.failed');
       moveModalStep = 'result';
     }
   }
@@ -232,53 +234,53 @@
   <div class="overlay" use:dismiss={cancelMoveRepo} transition:fade={{ duration: 120 }}>
     <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
       <div class="modal-head">
-        <h3>Move repository &mdash; {moveSourceRepoKey}</h3>
+        <h3>{$t('move.title')} &mdash; {moveSourceRepoKey}</h3>
         <button class="btn-x" on:click={cancelMoveRepo}>&#10005;</button>
       </div>
       <div class="modal-body">
         {#if moveLoadingOwners}
-          <p class="detail-loading">Loading destination accounts…</p>
+          <p class="detail-loading">{$t('move.loadingOwners')}</p>
         {:else if moveOwnerOptions.length === 0}
-          <p class="form-error">No other accounts are configured. Add a second account first to move a repo across accounts/providers.</p>
+          <p class="form-error">{$t('move.noOtherAccounts')}</p>
         {:else}
-          <p style="color: var(--text-secondary); margin-bottom: 8px;">This will push every ref and tag to the destination, rewire <code>origin</code>, and (optionally) delete the source.</p>
+          <p style="color: var(--text-secondary); margin-bottom: 8px;"><Rich key="move.intro" /></p>
           {#if moveError}
             <p class="form-error">{moveError}</p>
           {/if}
           <div class="form-row">
-            <label class="form-label" for="move-repo-dest">Destination</label>
+            <label class="form-label" for="move-repo-dest">{$t('move.destination')}</label>
             <select id="move-repo-dest" class="form-input" bind:value={moveOwnerSelected} on:change={syncMoveSelection}>
               {#each moveOwnerOptions as opt}
-                <option value="{opt.account}::{opt.owner}">{opt.account} &rarr; {opt.owner}{opt.isOrg ? ' (org)' : ''}</option>
+                <option value="{opt.account}::{opt.owner}">{opt.account} &rarr; {opt.owner}{opt.isOrg ? ` ${$t('move.org')}` : ''}</option>
               {/each}
             </select>
           </div>
           <div class="form-row">
-            <label class="form-label" for="move-repo-name">New name</label>
+            <label class="form-label" for="move-repo-name">{$t('move.newName')}</label>
             <input id="move-repo-name" class="form-input" bind:value={moveNewName} placeholder="{moveNewName}" />
           </div>
           <div class="form-row form-row-check">
-            <label><input type="checkbox" bind:checked={moveIsPrivate} /> Private repository</label>
+            <label><input type="checkbox" bind:checked={moveIsPrivate} /> {$t('move.private')}</label>
           </div>
           <div class="form-row form-row-check">
-            <label><input type="checkbox" bind:checked={moveDeleteSource} on:change={refreshMoveReadiness} /> Delete source repository after successful move</label>
+            <label><input type="checkbox" bind:checked={moveDeleteSource} on:change={refreshMoveReadiness} /> {$t('move.deleteSource')}</label>
           </div>
           <div class="form-row form-row-check">
-            <label><input type="checkbox" bind:checked={moveDeleteLocal} /> Delete local clone after successful move</label>
+            <label><input type="checkbox" bind:checked={moveDeleteLocal} /> {$t('move.deleteLocal')}</label>
           </div>
 
           <!-- Credential readiness panel (issue #64, UX polish) -->
           <div class="move-readiness">
-            <div class="move-readiness-title">Credential readiness</div>
+            <div class="move-readiness-title">{$t('move.readiness')}</div>
             {#if moveReadinessLoading && !moveReadiness}
-              <div class="move-readiness-loading">Checking credentials…</div>
+              <div class="move-readiness-loading">{$t('move.checkingCredentials')}</div>
             {:else if moveReadiness}
               {#each ['source', 'dest'] as side}
                 {@const r = side === 'source' ? moveReadiness.source : moveReadiness.dest}
                 {#if r.accountKey}
                   <div class="move-readiness-card move-readiness-{r.status || 'unknown'}">
                     <div class="move-readiness-head">
-                      <span class="move-readiness-role">{side === 'source' ? 'Source' : 'Destination'}</span>
+                      <span class="move-readiness-role">{side === 'source' ? $t('move.source') : $t('move.destination')}</span>
                       <span class="move-readiness-acct">{r.accountKey}</span>
                       <span class="move-readiness-type">{r.credentialType || '—'}</span>
                       <span class="move-readiness-dot move-readiness-dot-{r.status || 'unknown'}" title={r.status}></span>
@@ -290,21 +292,21 @@
                       <div class="move-readiness-scopes">{r.scopesHint}</div>
                     {/if}
                     <div class="move-readiness-actions">
-                      <button type="button" class="btn-link" on:click={() => openCredentialsFromMove(r.accountKey)}>Fix credentials…</button>
-                      <button type="button" class="btn-link-subtle" on:click={refreshMoveReadiness} disabled={moveReadinessLoading}>Re-check</button>
+                      <button type="button" class="btn-link" on:click={() => openCredentialsFromMove(r.accountKey)}>{$t('move.fixCredentials')}</button>
+                      <button type="button" class="btn-link-subtle" on:click={refreshMoveReadiness} disabled={moveReadinessLoading}>{$t('common.recheck')}</button>
                     </div>
                   </div>
                 {/if}
               {/each}
-              <p class="move-readiness-hint">Scope hints show what each side needs in total for the options you've selected. gitbox only probes auth reachability here — the actual scope check happens when the move runs, with a warning naming the missing scope if it fails.</p>
+              <p class="move-readiness-hint">{$t('move.scopeHint')}</p>
             {/if}
           </div>
         {/if}
       </div>
       <div class="modal-foot">
-        <button class="btn-cancel" on:click={cancelMoveRepo}>Cancel</button>
+        <button class="btn-cancel" on:click={cancelMoveRepo}>{$t('common.cancel')}</button>
         {#if moveOwnerOptions.length > 0 && !moveLoadingOwners}
-          <button class="btn-add" on:click={advanceMoveToConfirm}>Continue…</button>
+          <button class="btn-add" on:click={advanceMoveToConfirm}>{$t('move.continue')}</button>
         {/if}
       </div>
     </div>
@@ -315,36 +317,36 @@
   <div class="overlay" transition:fade={{ duration: 120 }}>
     <div class="modal modal-confirm modal-danger" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
       <div class="modal-head modal-head-danger">
-        <h3>Confirm move — destructive</h3>
+        <h3>{$t('move.confirmTitle')}</h3>
         <button class="btn-x" on:click={cancelMoveRepo}>&#10005;</button>
       </div>
       <div class="modal-body">
-        <p class="delete-warning delete-danger">This action is destructive and cannot be undone.</p>
+        <p class="delete-warning delete-danger">{$t('move.destructive')}</p>
         <ul class="move-summary">
-          <li>Destination: <strong>{moveDestAccountKey} &rarr; {moveDestOwner}/{moveNewName}</strong></li>
+          <li><Rich key="move.summaryDest" vars={{ dest: `${moveDestAccountKey} → ${moveDestOwner}/${moveNewName}` }} /></li>
           {#if moveDeleteSource}
-            <li class="move-danger-line">Source repo on the origin provider <strong>WILL</strong> be deleted.</li>
+            <li class="move-danger-line"><Rich key="move.sourceDeleted" /></li>
           {:else}
-            <li>Source repo on the origin provider will be kept.</li>
+            <li>{$t('move.sourceKept')}</li>
           {/if}
           {#if moveDeleteLocal}
-            <li class="move-danger-line">Local clone at <code>{movePreflight?.sourceRepoPath || ''}</code> <strong>WILL</strong> be removed.</li>
+            <li class="move-danger-line"><Rich key="move.localRemoved" vars={{ path: movePreflight?.sourceRepoPath || '' }} /></li>
           {:else}
-            <li>Local clone will be kept; its <code>origin</code> will be rewired to the destination.</li>
+            <li><Rich key="move.localKept" /></li>
           {/if}
           {#if movePreflight?.destCloneUrl}
-            <li>New origin: <code>{movePreflight.destCloneUrl}</code></li>
+            <li><Rich key="move.newOrigin" vars={{ url: movePreflight.destCloneUrl }} /></li>
           {/if}
         </ul>
-        <p class="delete-repo-name">Type <strong>{moveSourceRepoKey}</strong> to unlock:</p>
+        <p class="delete-repo-name"><Rich key="move.typeToUnlock" vars={{ repo: moveSourceRepoKey }} /></p>
         <input class="form-input" bind:value={moveTypeConfirm} placeholder="{moveSourceRepoKey}" />
         {#if moveError}
           <p class="form-error">{moveError}</p>
         {/if}
       </div>
       <div class="modal-foot">
-        <button class="btn-cancel" on:click={cancelMoveRepo}>Cancel</button>
-        <button class="btn-danger" disabled={moveTypeConfirm !== moveSourceRepoKey} on:click={confirmMoveRepo}>Move</button>
+        <button class="btn-cancel" on:click={cancelMoveRepo}>{$t('common.cancel')}</button>
+        <button class="btn-danger" disabled={moveTypeConfirm !== moveSourceRepoKey} on:click={confirmMoveRepo}>{$t('move.move')}</button>
       </div>
     </div>
   </div>
@@ -355,9 +357,9 @@
     <div class="modal modal-confirm" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
       <div class="modal-head">
         <h3>
-          {#if moveModalStep === 'progress'}Moving {moveSourceRepoKey}…
-          {:else if moveResult?.error}Move failed
-          {:else}Move complete
+          {#if moveModalStep === 'progress'}{$t('move.moving', { repo: moveSourceRepoKey })}
+          {:else if moveResult?.error}{$t('move.failed')}
+          {:else}{$t('move.complete')}
           {/if}
         </h3>
         {#if moveModalStep === 'result'}
@@ -376,9 +378,9 @@
           {#if moveResult.error}
             <p class="form-error">{moveResult.error}</p>
           {:else}
-            <p class="move-done-ok">✓ Move complete.</p>
+            <p class="move-done-ok">✓ {$t('move.completeDone')}</p>
             {#if moveResult.localCloneDeleted && moveResult.destSourceKey && moveResult.newRepoKey}
-              <p class="move-info">Cloning the destination into <code>{moveResult.destSourceKey}/{moveResult.newRepoKey}</code> — watch the card on the dashboard.</p>
+              <p class="move-info"><Rich key="move.cloningDest" vars={{ path: `${moveResult.destSourceKey}/${moveResult.newRepoKey}` }} /></p>
             {/if}
             {#if moveResult.warnings && moveResult.warnings.length > 0}
               <ul class="move-warnings">
@@ -392,7 +394,7 @@
       </div>
       <div class="modal-foot">
         {#if moveModalStep === 'result'}
-          <button class="btn-add" on:click={closeMoveResult}>Close</button>
+          <button class="btn-add" on:click={closeMoveResult}>{$t('common.close')}</button>
         {/if}
       </div>
     </div>
@@ -411,7 +413,7 @@
   .form-row-check label { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 13px; }
   .move-summary { list-style: none; padding: 0; margin: 8px 0 12px; color: var(--text-secondary); font-size: 13px; }
   .move-summary li { padding: 2px 0; }
-  .move-summary code { background: var(--bg-card); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+  .move-summary :global(code) { background: var(--bg-card); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
   .move-danger-line { color: #D81E5B; font-weight: 500; }
   .move-phase { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; color: var(--text-secondary); }
   .move-phase-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex: 0 0 auto; }
@@ -420,7 +422,7 @@
   .move-phase-msg { flex: 1; }
   .move-done-ok { color: #22c55e; font-size: 14px; margin: 8px 0; }
   .move-info { color: var(--text-secondary); font-size: 13px; margin: 4px 0 8px; }
-  .move-info code { background: var(--bg-card); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+  .move-info :global(code) { background: var(--bg-card); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
   .move-warnings { list-style: none; padding: 0; margin: 8px 0; color: #f59e0b; font-size: 13px; }
   .move-warnings li { padding: 2px 0; }
   /* Credential readiness panel in the Move form. */

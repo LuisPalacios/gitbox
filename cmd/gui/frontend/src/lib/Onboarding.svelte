@@ -298,7 +298,7 @@
       <p class="ob-desc">{$t('onboard.folderDesc')}</p>
       {#if folderError}<p class="ob-error">{folderError}</p>{/if}
       <div class="ob-row">
-        <input class="ob-input" bind:value={folder} placeholder="~/00.git" />
+        <input class="ob-input" bind:value={folder} placeholder="~/00.git" translate="no" />
         <button class="ob-btn" on:click={browse}>{$t('onboard.browse')}</button>
       </div>
       <button class="ob-btn ob-primary ob-wide" on:click={saveFolder} disabled={folderBusy}>{$t('onboard.continue')}</button>

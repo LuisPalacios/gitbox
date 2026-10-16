@@ -1,14 +1,16 @@
 <script lang="ts">
   // Shown when a config reload or mutation fails (usually on-disk drift).
+  import { t } from '../i18n';
+
   export let reloadError: string;
 </script>
 
 {#if reloadError}
   <div class="reload-error-banner" role="alert">
-    <span class="reload-error-label">Config sync issue:</span>
+    <span class="reload-error-label">{$t('reloadError.label')}</span>
     <span class="reload-error-msg">{reloadError}</span>
-    <span class="reload-error-hint">Please relaunch GitboxApp.</span>
-    <button class="reload-error-dismiss" on:click={() => reloadError = ''} title="Dismiss">&#10005;</button>
+    <span class="reload-error-hint">{$t('reloadError.hint')}</span>
+    <button class="reload-error-dismiss" on:click={() => reloadError = ''} title={$t('notice.dismiss')}>&#10005;</button>
   </div>
 {/if}
 

@@ -43,7 +43,7 @@ test('I fold every status into one Simple kind with its colour and label', () =>
 });
 
 test('I describe count badges in a fixed order and pick the compact one', () => {
-  assert.deepEqual(s.COUNT_BADGES.map((b) => `${b.glyph}${b.field}:${b.color}:${b.word}`), ['↓behind:behind:behind', '↑ahead:ahead:ahead', '✎modified:dirty:changed', '?untracked:not cloned:untracked']);
+  assert.deepEqual(s.COUNT_BADGES.map((b) => `${b.glyph}${b.field}:${b.color}:${b.word}`), ['↓behind:behind:count.behind', '↑ahead:ahead:count.ahead', '✎modified:dirty:count.changed', '?untracked:not cloned:count.untracked']);
   assert.equal(s.statusCountBadge('behind').field, 'behind');
   assert.equal(s.statusCountBadge('dirty').field, 'modified');
   assert.equal(s.statusCountBadge('ahead').field, 'ahead');

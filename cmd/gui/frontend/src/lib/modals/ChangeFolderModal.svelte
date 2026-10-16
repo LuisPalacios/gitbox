@@ -4,6 +4,7 @@
   import { bridge } from '../bridge';
   import { pushNotice, errorText } from '../notices';
   import { t } from '../i18n';
+  import Rich from '../Rich.svelte';
   import { configStore } from '../stores';
   import { dismiss } from '../dismiss';
 
@@ -25,7 +26,7 @@
   }
 
   async function addExtraFolder() {
-    const dir = await bridge.pickFolder('Choose an extra scan folder');
+    const dir = await bridge.pickFolder($t('folder.pickExtra'));
     if (!dir) return;
     try {
       await bridge.addExtraFolder(dir);
@@ -58,7 +59,7 @@
   }
 
   async function browseFolder() {
-    const dir = await bridge.pickFolder('Choose root folder');
+    const dir = await bridge.pickFolder($t('folder.pickRoot'));
     if (dir) changeFolderPath = dir;
   }
 
@@ -71,7 +72,7 @@
 
   async function confirmChangeFolder() {
     changeFolderError = '';
-    if (!changeFolderPath.trim()) { changeFolderError = 'Folder path is required'; return; }
+    if (!changeFolderPath.trim()) { changeFolderError = $t('folder.pathRequired'); return; }
     try {
       await bridge.setGlobalFolder(changeFolderPath);
       changeFolderModal = false;
@@ -86,49 +87,49 @@
   <div class="overlay" use:dismiss={() => changeFolderModal = false} transition:fade={{ duration: 120 }}>
     <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
       <div class="modal-head">
-        <h3>Change root folder</h3>
+        <h3>{$t('folder.title')}</h3>
         <button class="btn-x" on:click={() => changeFolderModal = false}>&#10005;</button>
       </div>
       <div class="modal-body">
-        <p class="delete-warning delete-danger"><strong>WARNING:</strong> Changing the root folder will <strong>not</strong> move existing clones. They will show as "Not local" until re-cloned at the new location (or moved manually).</p>
+        <p class="delete-warning delete-danger"><Rich key="folder.warning" /></p>
         <div class="form-row" style="margin-top: 12px;">
-          <span class="form-label">Current</span>
-          <span class="settings-value">{$configStore?.global?.folder || '(not set)'}</span>
+          <span class="form-label">{$t('folder.current')}</span>
+          <span class="settings-value">{$configStore?.global?.folder || $t('folder.notSet')}</span>
         </div>
         {#if changeFolderError}
           <p class="form-error">{changeFolderError}</p>
         {/if}
         <div class="form-row">
-          <label class="form-label" for="change-folder-path">New path</label>
-          <input id="change-folder-path" class="form-input" bind:value={changeFolderPath} placeholder="~/new-folder" />
-          <button class="settings-btn" on:click={browseFolder}>Browse</button>
+          <label class="form-label" for="change-folder-path">{$t('folder.newPath')}</label>
+          <input id="change-folder-path" class="form-input" bind:value={changeFolderPath} placeholder={$t('folder.newPathPlaceholder')} />
+          <button class="settings-btn" on:click={browseFolder}>{$t('onboard.browse')}</button>
         </div>
 
         <hr style="border:none;border-top:1px solid var(--border); margin:16px 0;" />
 
         <div class="form-row" style="flex-direction:column; align-items:stretch; gap:6px;">
-          <span class="form-label">Extra scan folders</span>
-          <p class="settings-value" style="margin:0 0 4px 0;">Additional roots scanned for clones and <code>.code-workspace</code> files, beyond the root folder.</p>
+          <span class="form-label">{$t('folder.extraFolders')}</span>
+          <p class="settings-value" style="margin:0 0 4px 0;"><Rich key="folder.extraHint" /></p>
           {#each extraFolders || [] as ef}
             <div class="repo-row" style="justify-content:space-between;">
               <span class="workspace-file-path" title={ef}>{ef}</span>
-              <button class="btn-sm btn-danger" on:click={() => removeExtraFolder(ef)} title="Remove">✕</button>
+              <button class="btn-sm btn-danger" on:click={() => removeExtraFolder(ef)} title={$t('common.remove')}>✕</button>
             </div>
           {/each}
-          <button class="settings-btn" on:click={addExtraFolder} style="align-self:flex-start;">+ Add folder…</button>
+          <button class="settings-btn" on:click={addExtraFolder} style="align-self:flex-start;">{$t('folder.addFolder')}</button>
         </div>
 
         <div class="form-row" style="margin-top:10px;">
-          <label class="form-label" for="nested-scan-depth">Nested scan depth</label>
+          <label class="form-label" for="nested-scan-depth">{$t('folder.nestedDepth')}</label>
           <input id="nested-scan-depth" class="form-input" type="number" min="1" style="max-width:90px;"
             bind:value={nestedScanDepth} on:change={saveNestedScanDepth} />
-          <span class="settings-value">levels below a container repo (default 1). Re-scan via a repo's ⋮ menu.</span>
+          <span class="settings-value">{$t('folder.nestedDepthHint')}</span>
         </div>
         {#if nestedDepthError}<p class="form-error">{nestedDepthError}</p>{/if}
       </div>
       <div class="modal-foot">
-        <button class="btn-cancel" on:click={() => changeFolderModal = false}>Close</button>
-        <button class="btn-add" on:click={confirmChangeFolder} disabled={!changeFolderPath.trim()}>Change folder</button>
+        <button class="btn-cancel" on:click={() => changeFolderModal = false}>{$t('common.close')}</button>
+        <button class="btn-add" on:click={confirmChangeFolder} disabled={!changeFolderPath.trim()}>{$t('folder.change')}</button>
       </div>
     </div>
   </div>

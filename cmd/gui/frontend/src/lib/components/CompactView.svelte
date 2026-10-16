@@ -88,10 +88,10 @@
             <span class="compact-dot" class:spinning={rowBusy(state.status, !!fetchingRepos[repoKey])} style="color: {sc(state.status)}">{rowGlyph(state.status, !!fetchingRepos[repoKey])}</span>
             <span class="compact-repo-name">{repoName.includes('/') ? repoName.split('/').pop() : repoName}</span>
             {#if state.branch === '(detached)'}
-              <span class="compact-badge" style="color: {sc('error')}">detached</span>
+              <span class="compact-badge" style="color: {sc('error')}">{$t('repo.detached')}</span>
             {/if}
             {#if count}
-              <span class="compact-badge" style="color: {sc(count.color)}">{state[count.field]} {count.word}</span>
+              <span class="compact-badge" style="color: {sc(count.color)}">{state[count.field]} {$t(count.word)}</span>
             {/if}
           </div>
         {/each}
@@ -104,15 +104,15 @@
   <div class="compact-sep"></div>
   <div class="compact-mirror-pill">
     <span class="compact-mirror-dot" style="color:{$mirrorSummary.error > 0 ? sc('error') : sc('clean')}">●</span>
-    <span class="compact-mirror-label">Mirrors {$mirrorSummary.active}/{$mirrorSummary.total}</span>
+    <span class="compact-mirror-label">{$t('compact.mirrors', { active: $mirrorSummary.active, total: $mirrorSummary.total })}</span>
   </div>
   {/if}
 
   <!-- Bottom actions -->
   <div class="compact-sep"></div>
   <div class="compact-actions">
-    <button class="compact-action-btn" on:click={cycleTheme} title="Theme: {themeChoice}">{themeIcon(themeChoice)}</button>
-    <button class="compact-action-btn compact-full-btn" on:click={toggleViewMode}>◧ Full view</button>
+    <button class="compact-action-btn" on:click={cycleTheme} title={$t('top.themeTip', { name: $t(`theme.${themeChoice}`) })}>{themeIcon(themeChoice)}</button>
+    <button class="compact-action-btn compact-full-btn" on:click={toggleViewMode}>{$t('compact.fullView')}</button>
   </div>
 </div>
 

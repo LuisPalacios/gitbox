@@ -37,33 +37,33 @@
   <div class="settings" transition:slide={{ duration: 150 }}>
     {#if !simple}
     <div class="settings-row">
-      <span class="settings-label" use:tooltip={"Absolute path to the gitbox.json file currently in use. Click ‘Open in editor’ to inspect or hand-edit it."}>{$t('settings.config')}</span>
+      <span class="settings-label" use:tooltip={$t('settings.configTip')}>{$t('settings.config')}</span>
       <button class="settings-action-btn" on:click={() => bridge.openFileInEditor(configPath)}>{$t('settings.openInEditor')}</button>
       <span class="settings-value">{configPath}</span>
     </div>
     {/if}
     <div class="settings-row">
-      <span class="settings-label" use:tooltip={"Top-level folder where gitbox keeps every cloned repo. Each account gets a sub-folder under it."}>{$t('settings.rootFolder')}</span>
+      <span class="settings-label" use:tooltip={$t('settings.rootFolderTip')}>{$t('settings.rootFolder')}</span>
       <button class="settings-action-btn" on:click={openChangeFolder}>{$t('settings.change')}</button>
-      <span class="settings-value">{$configStore?.global?.folder || '(not set)'}</span>
+      <span class="settings-value">{$configStore?.global?.folder || $t('settings.notSet')}</span>
     </div>
     <div class="settings-row">
-      <span class="settings-label" use:tooltip={"Language used by the gitbox UI. Switching takes effect immediately."}>{$t('settings.language')}</span>
+      <span class="settings-label" use:tooltip={$t('settings.languageTip')}>{$t('settings.language')}</span>
       <div class="theme-toggle">
-        <button class="theme-btn" class:theme-active={languageChoice === 'en'} on:click={() => setLanguage('en')}>English</button>
-        <button class="theme-btn" class:theme-active={languageChoice === 'es'} on:click={() => setLanguage('es')}>Español</button>
+        <button class="theme-btn" class:theme-active={languageChoice === 'en'} on:click={() => setLanguage('en')} translate="no">English</button>
+        <button class="theme-btn" class:theme-active={languageChoice === 'es'} on:click={() => setLanguage('es')} translate="no">Español</button>
       </div>
     </div>
     <div class="settings-row">
-      <span class="settings-label" use:tooltip={"Color scheme. ‘System’ tracks your OS preference; ‘Light’ and ‘Dark’ pin gitbox to that mode."}>{$t('settings.theme')}</span>
+      <span class="settings-label" use:tooltip={$t('settings.themeTip')}>{$t('settings.theme')}</span>
       <div class="theme-toggle">
-        <button class="theme-btn" class:theme-active={themeChoice === 'system'} on:click={() => setTheme('system')}>System</button>
-        <button class="theme-btn" class:theme-active={themeChoice === 'light'} on:click={() => setTheme('light')}>Light</button>
-        <button class="theme-btn" class:theme-active={themeChoice === 'dark'} on:click={() => setTheme('dark')}>Dark</button>
+        <button class="theme-btn" class:theme-active={themeChoice === 'system'} on:click={() => setTheme('system')}>{$t('theme.system')}</button>
+        <button class="theme-btn" class:theme-active={themeChoice === 'light'} on:click={() => setTheme('light')}>{$t('theme.light')}</button>
+        <button class="theme-btn" class:theme-active={themeChoice === 'dark'} on:click={() => setTheme('dark')}>{$t('theme.dark')}</button>
       </div>
     </div>
     <div class="settings-row">
-      <span class="settings-label" use:tooltip={"How often gitbox auto-fetches every repo to refresh its ahead/behind counters. ‘Off’ pauses the timer; you can still fetch manually."}>{simple ? $t('simple.checkChanges') : $t('settings.periodicStatus')}</span>
+      <span class="settings-label" use:tooltip={$t('settings.periodicStatusTip')}>{simple ? $t('simple.checkChanges') : $t('settings.periodicStatus')}</span>
       <div class="theme-toggle">
         <button class="theme-btn" class:theme-active={fetchInterval === 'off'} on:click={() => setFetchInterval('off')}>{$t('common.off')}</button>
         <button class="theme-btn" class:theme-active={fetchInterval === '5m'} on:click={() => setFetchInterval('5m')}>5m</button>
@@ -71,12 +71,12 @@
         <button class="theme-btn" class:theme-active={fetchInterval === '30m'} on:click={() => setFetchInterval('30m')}>30m</button>
       </div>
       {#if lastFetchTime}
-        <span class="settings-value" style="font-size:10px; margin-left:4px">last {lastFetchTime}</span>
+        <span class="settings-value" style="font-size:10px; margin-left:4px">{$t('settings.lastFetch', { time: lastFetchTime })}</span>
       {/if}
     </div>
     {#if autostartSupported}
       <div class="settings-row">
-        <span class="settings-label" use:tooltip={"Launch GitboxApp automatically when you log in. Toggling writes the OS autostart entry."}>{$t('settings.runAtStartup')}</span>
+        <span class="settings-label" use:tooltip={$t('settings.runAtStartupTip')}>{$t('settings.runAtStartup')}</span>
         <div class="theme-toggle">
           <button class="theme-btn" class:theme-active={!autostartOn} on:click={() => { if (autostartOn) toggleAutostart(); }}>{$t('common.off')}</button>
           <button class="theme-btn" class:theme-active={autostartOn} on:click={() => { if (!autostartOn) toggleAutostart(); }}>{$t('common.on')}</button>
@@ -85,13 +85,13 @@
     {/if}
     {#if !simple}
     <div class="settings-row">
-      <span class="settings-label" use:tooltip={"Show pull-request indicators on repo rows: badges for PRs you authored and PRs that requested your review."}>{$t('settings.prReviews')}</span>
+      <span class="settings-label" use:tooltip={$t('settings.prReviewsTip')}>{$t('settings.prReviews')}</span>
       <div class="theme-toggle">
         <button class="theme-btn" class:theme-active={!$prSettings.enabled} on:click={() => { if ($prSettings.enabled) setPRBadgesEnabled(false); }}>{$t('common.off')}</button>
         <button class="theme-btn" class:theme-active={$prSettings.enabled} on:click={() => { if (!$prSettings.enabled) setPRBadgesEnabled(true); }}>{$t('common.on')}</button>
       </div>
       {#if $prSettings.enabled}
-        <span class="settings-sublabel" use:tooltip={"Count draft PRs in the ‘my PRs’ badge. Off restricts the count to ready-for-review PRs."}>{$t('settings.includeDrafts')}</span>
+        <span class="settings-sublabel" use:tooltip={$t('settings.includeDraftsTip')}>{$t('settings.includeDrafts')}</span>
         <div class="theme-toggle">
           <button class="theme-btn" class:theme-active={!$prSettings.includeDrafts} on:click={() => { if ($prSettings.includeDrafts) setPRIncludeDrafts(false); }}>{$t('common.off')}</button>
           <button class="theme-btn" class:theme-active={$prSettings.includeDrafts} on:click={() => { if (!$prSettings.includeDrafts) setPRIncludeDrafts(true); }}>{$t('common.on')}</button>
@@ -99,7 +99,7 @@
       {/if}
     </div>
     <div class="settings-row">
-      <span class="settings-label" use:tooltip={"Check ~/.gitignore_global on startup and offer to install gitbox’s recommended OS-junk patterns (.DS_Store, Thumbs.db, etc.) if missing."}>{$t('settings.globalGitignore')}</span>
+      <span class="settings-label" use:tooltip={$t('settings.globalGitignoreTip')}>{$t('settings.globalGitignore')}</span>
       <div class="theme-toggle">
         <button class="theme-btn" class:theme-active={!checkGitignorePref} on:click={() => { if (checkGitignorePref) setCheckGitignorePref(false); }}>{$t('common.off')}</button>
         <button class="theme-btn" class:theme-active={checkGitignorePref} on:click={() => { if (!checkGitignorePref) setCheckGitignorePref(true); }}>{$t('common.on')}</button>
@@ -107,7 +107,7 @@
     </div>
     {/if}
     <div class="settings-row">
-      <span class="settings-label" use:tooltip={"Probe external tools gitbox uses (git, Git Credential Manager, ssh, …) and flag missing ones."}>{$t('settings.systemCheck')}</span>
+      <span class="settings-label" use:tooltip={$t('settings.systemCheckTip')}>{$t('settings.systemCheck')}</span>
       <button class="settings-action-btn" on:click={openDoctorModal}>{$t('settings.run')}</button>
       {#if doctorSummary}
         <span class="settings-sublabel settings-doctor-summary">{doctorSummary}</span>
@@ -115,24 +115,24 @@
     </div>
     {#if !simple}
     <div class="settings-row">
-      <span class="settings-label" use:tooltip={"Manage terminal apps, shells, and the launch profiles that pair them. Click ‘Manager’ to open the editor in its own window."}>Terminals</span>
+      <span class="settings-label" use:tooltip={$t('settings.terminalsTip')}>{$t('settings.terminals')}</span>
       <button class="settings-action-btn" on:click={openTerminalsManagerWindow} disabled={terminalsManagerOpening}>
         {#if terminalsManagerOpening}
           <span class="settings-action-spinner" aria-hidden="true"></span>
-          Opening…
+          {$t('settings.opening')}
         {:else}
-          Manager
+          {$t('settings.manager')}
         {/if}
       </button>
     </div>
     {/if}
     <div class="settings-row">
-      <span class="settings-label" use:tooltip={"Currently running gitbox version (git tag + commit hash baked in at build time)."}>{$t('settings.version')}</span>
+      <span class="settings-label" use:tooltip={$t('settings.versionTip')}>{$t('settings.version')}</span>
       <span class="settings-value">{appVersion}</span>
     </div>
     <div class="settings-row">
-      <span class="settings-label" use:tooltip={"Project author and source repository. Click the link to open the project on GitHub."}>{$t('settings.author')}</span>
-      <span class="settings-value">Luis Palacios Derqui &mdash; <a href="https://github.com/LuisPalacios/gitbox" on:click|preventDefault={() => BrowserOpenURL('https://github.com/LuisPalacios/gitbox')}>github.com/LuisPalacios/gitbox</a></span>
+      <span class="settings-label" use:tooltip={$t('settings.authorTip')}>{$t('settings.author')}</span>
+      <span class="settings-value" translate="no">Luis Palacios Derqui &mdash; <a href="https://github.com/LuisPalacios/gitbox" on:click|preventDefault={() => BrowserOpenURL('https://github.com/LuisPalacios/gitbox')}>github.com/LuisPalacios/gitbox</a></span>
     </div>
   </div>
 {/if}

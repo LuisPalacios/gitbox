@@ -5,6 +5,7 @@
   import { mirrors, mirrorStates, themeStore } from '../stores';
   import { statusColor } from '../status';
   import { t } from '../i18n';
+  import Rich from '../Rich.svelte';
   import Card from '../Card.svelte';
   import UIIcon from '../UIIcon.svelte';
   import type { MirrorDTO, MirrorRepo, MirrorStatusResult } from '../types';
@@ -58,12 +59,12 @@
 
   /** Summarize live mirror status in a short, user-friendly string. */
   function mirrorStatusText(_repo: MirrorRepo, live: MirrorStatusResult | undefined): string {
-    if (live?.needsSetup) return 'needs setup';
+    if (live?.needsSetup) return $t('mirror.needsSetup');
     if (live?.error) return friendlyMirrorError(live.error);
-    if (live?.syncStatus === 'synced') return 'Synced OK';
-    if (live?.syncStatus === 'behind') return 'Backup is behind origin';
-    if (live?.syncStatus === 'ahead') return 'Backup is ahead of origin';
-    if (!live) return 'unchecked';
+    if (live?.syncStatus === 'synced') return $t('mirror.synced');
+    if (live?.syncStatus === 'behind') return $t('mirror.backupBehind');
+    if (live?.syncStatus === 'ahead') return $t('mirror.backupAhead');
+    if (!live) return $t('mirror.unchecked');
     return 'OK';
   }
 
@@ -104,9 +105,9 @@
 <div class="discover-progress">
   <div class="discover-progress-text">
     {#if mirrorDiscoverProgress.phase === 'listing'}
-      Listing repos on <strong>{mirrorDiscoverProgress.account}</strong>...
+      <Rich key="mirror.listing" vars={{ account: mirrorDiscoverProgress.account }} />
     {:else}
-      Analyzing <strong>{mirrorDiscoverProgress.account}</strong>: {mirrorDiscoverProgress.current}/{mirrorDiscoverProgress.total} repos
+      <Rich key="mirror.analyzing" vars={{ account: mirrorDiscoverProgress.account, current: mirrorDiscoverProgress.current, total: mirrorDiscoverProgress.total }} />
     {/if}
   </div>
   {#if mirrorDiscoverProgress.phase === 'analyzing' && mirrorDiscoverProgress.total > 0}
@@ -124,10 +125,10 @@
   {#each Object.entries($mirrors) as [mirrorKey, mir]}
     {@const mstats = mirrorGroupStats[mirrorKey] || { active: 0, unchecked: 0, error: 0, total: 0 }}
     {@const mcolor = mstats.error > 0 ? sc('error') : mstats.active === mstats.total && mstats.total > 0 ? sc('clean') : sc('behind')}
-    {@const mstate = mstats.error > 0 ? `${mstats.error} error${mstats.error > 1 ? 's' : ''}` : mstats.unchecked > 0 ? `${mstats.unchecked} ${$t('mirror.unchecked')}` : mstats.total > 0 ? $t('mirror.allSynced') : $t('mirror.noClones')}
+    {@const mstate = mstats.error > 0 ? $t(mstats.error > 1 ? 'mirror.errors' : 'mirror.errorsOne', { n: mstats.error }) : mstats.unchecked > 0 ? `${mstats.unchecked} ${$t('mirror.unchecked')}` : mstats.total > 0 ? $t('mirror.allSynced') : $t('mirror.noClones')}
     <Card open={expandedCard === `mir:${mirrorKey}`} title={mstate} name="{mir.account_src} ↔ {mir.account_dst}" dotColor={mcolor}
       variant="card-mirror" nameClass="card-mirror-name"
-      {deleteMode} deleteTitle="Delete mirror group {mirrorKey}" onDelete={() => onDeleteGroup(mirrorKey)}
+      {deleteMode} deleteTitle={$t('mirror.deleteGroup', { name: mirrorKey })} onDelete={() => onDeleteGroup(mirrorKey)}
       onOpen={() => expandedCard = `mir:${mirrorKey}`}
       provider="MIRROR" count={{ text: `${mstats.active}/${mstats.total}`, title: mstate, style: `color: ${mcolor}` }}
       actions={[{ label: $t('mirror.check'), onClick: () => checkMirrorStatus(mirrorKey), title: $t('mirror.checkStatus') }]} />
@@ -151,7 +152,7 @@
           {/if}
           <button class="btn-tab-action" on:click={() => onAddRepo(mirrorKey)}>{$t('mirror.addRepo')}</button>
           {#if deleteMode}
-            <button class="icon-btn icon-btn-danger btn-delete-x" on:click={() => onDeleteGroup(mirrorKey)} title="Delete mirror group {mirrorKey}" aria-label="Delete mirror group {mirrorKey}"><UIIcon name="x" /></button>
+            <button class="icon-btn icon-btn-danger btn-delete-x" on:click={() => onDeleteGroup(mirrorKey)} title={$t('mirror.deleteGroup', { name: mirrorKey })} aria-label={$t('mirror.deleteGroup', { name: mirrorKey })}><UIIcon name="x" /></button>
           {/if}
         </div>
       </div>
@@ -178,12 +179,12 @@
           {/if}
           {#if live?.error && live.error.startsWith('missing API token in ') && !deleteMode}
             {@const errAcct = live.error.replace('missing API token in ', '')}
-            <button class="btn-sm btn-fix" on:click={() => openTokenSetup(errAcct)} title="Set up API token for {errAcct}">{$t('mirror.fixCredentials')}</button>
+            <button class="btn-sm btn-fix" on:click={() => openTokenSetup(errAcct)} title={$t('mirror.setupToken', { account: errAcct })}>{$t('mirror.fixCredentials')}</button>
           {:else if !deleteMode}
             <button class="btn-sm btn-setup" on:click={() => setupMirrorRepo(mirrorKey, repoName)} disabled={settingUp}>{$t('mirror.setup')}</button>
           {/if}
           {#if deleteMode}
-            <button class="icon-btn icon-btn-danger btn-delete-x" on:click={() => onDeleteRepo(mirrorKey, repoName)} title="Delete {repoName} from {mirrorKey}" aria-label="Delete {repoName} from {mirrorKey}"><UIIcon name="x" /></button>
+            <button class="icon-btn icon-btn-danger btn-delete-x" on:click={() => onDeleteRepo(mirrorKey, repoName)} title={$t('mirror.deleteRepo', { repo: repoName, group: mirrorKey })} aria-label={$t('mirror.deleteRepo', { repo: repoName, group: mirrorKey })}><UIIcon name="x" /></button>
           {/if}
         </div>
       {/each}
@@ -220,7 +221,7 @@
   .card:hover { border-color: var(--border-hover); }
   .discover-progress { padding: 0 0 6px; }
   .discover-progress-text { font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
-  .discover-progress-text strong { color: var(--text-primary); }
+  .discover-progress-text :global(strong) { color: var(--text-primary); }
   .discover-progress-bar { width: 100%; height: 4px; background: var(--ring-bg); border-radius: 2px; overflow: hidden; }
   .discover-progress-fill { height: 100%; background: var(--ring-accent); border-radius: 2px; transition: width 0.2s; }
   .discover-progress-indeterminate {

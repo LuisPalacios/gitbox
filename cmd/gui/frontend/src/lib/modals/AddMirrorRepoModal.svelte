@@ -68,29 +68,29 @@
   <div class="overlay" use:dismiss={() => addMirrorRepoModal = null} transition:fade={{ duration: 120 }}>
     <div class="modal modal-mirror-repo" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
       <div class="modal-head">
-        <h3>Add mirror repo &mdash; {addMirrorRepoModal}</h3>
+        <h3>{$t('mirrorRepo.title', { key: addMirrorRepoModal })}</h3>
         <button class="btn-x" on:click={() => addMirrorRepoModal = null}>&#10005;</button>
       </div>
       <div class="modal-body">
         <div class="mirror-form-grid">
-          <span class="mirror-form-label">Direction</span>
+          <span class="mirror-form-label">{$t('mirrorRepo.direction')}</span>
           <div class="radio-group">
-            <label><input type="radio" bind:group={newMirrorRepoDirection} value="push" /> Push (origin pushes to backup)</label>
-            <label><input type="radio" bind:group={newMirrorRepoDirection} value="pull" /> Pull (backup pulls from origin)</label>
+            <label><input type="radio" bind:group={newMirrorRepoDirection} value="push" /> {$t('mirrorRepo.push')}</label>
+            <label><input type="radio" bind:group={newMirrorRepoDirection} value="pull" /> {$t('mirrorRepo.pull')}</label>
           </div>
 
-          <span class="mirror-form-label">Origin (source of truth)</span>
+          <span class="mirror-form-label">{$t('mirrorRepo.origin')}</span>
           <div class="radio-group">
             <label><input type="radio" bind:group={newMirrorRepoOrigin} value="src" on:change={loadMirrorRepoList} /> {mir?.account_src || 'src'}</label>
             <label><input type="radio" bind:group={newMirrorRepoOrigin} value="dst" on:change={loadMirrorRepoList} /> {mir?.account_dst || 'dst'}</label>
           </div>
 
-          <span class="mirror-form-label">Repository</span>
+          <span class="mirror-form-label">{$t('mirrorRepo.repository')}</span>
           <div>
             {#if mirrorRepoPickerLoading}
-              <div class="loading"><div class="spinner"></div><span>Loading repos...</span></div>
+              <div class="loading"><div class="spinner"></div><span>{$t('mirrorRepo.loading')}</span></div>
             {:else if mirrorRepoPickerLoaded}
-              <input class="form-input form-input-sm" bind:value={mirrorRepoPickerFilter} placeholder="Filter repos..." />
+              <input class="form-input form-input-sm" bind:value={mirrorRepoPickerFilter} placeholder={$t('mirrorRepo.filter')} />
               <div class="mirror-repo-picker">
                 {#each filteredPickerRepos as repo}
                   {@const alreadyMirrored = mir && mir.repos[repo.fullName]}
@@ -98,29 +98,29 @@
                     <input type="radio" bind:group={newMirrorRepoKey} value={repo.fullName} disabled={!!alreadyMirrored} hidden />
                     <span class="mrp-name">{repo.fullName}</span>
                     <span class="mrp-badges">
-                      {#if repo.private}<span class="mrp-badge">private</span>{/if}
-                      {#if repo.fork}<span class="mrp-badge">fork</span>{/if}
-                      {#if repo.archived}<span class="mrp-badge">archived</span>{/if}
-                      {#if alreadyMirrored}<span class="mrp-badge mrp-badge-dim">mirrored</span>{/if}
+                      {#if repo.private}<span class="mrp-badge">{$t('onboard.private')}</span>{/if}
+                      {#if repo.fork}<span class="mrp-badge">{$t('onboard.fork')}</span>{/if}
+                      {#if repo.archived}<span class="mrp-badge">{$t('onboard.archived')}</span>{/if}
+                      {#if alreadyMirrored}<span class="mrp-badge mrp-badge-dim">{$t('mirrorRepo.mirrored')}</span>{/if}
                     </span>
                   </label>
                 {/each}
                 {#if filteredPickerRepos.length === 0}
-                  <p class="mrp-empty">No repos match filter.</p>
+                  <p class="mrp-empty">{$t('mirrorRepo.noMatch')}</p>
                 {/if}
               </div>
             {:else}
-              <button class="btn-sm" on:click={loadMirrorRepoList}>Load repos from {newMirrorRepoOrigin === 'src' ? mir?.account_src : mir?.account_dst}</button>
+              <button class="btn-sm" on:click={loadMirrorRepoList}>{$t('mirrorRepo.load', { account: (newMirrorRepoOrigin === 'src' ? mir?.account_src : mir?.account_dst) ?? '' })}</button>
             {/if}
           </div>
 
-          <span class="mirror-form-label">Options</span>
-          <label style="font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 4px;"><input type="checkbox" bind:checked={newMirrorRepoAutoSetup} /> Set up immediately via API</label>
+          <span class="mirror-form-label">{$t('mirrorRepo.options')}</span>
+          <label style="font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 4px;"><input type="checkbox" bind:checked={newMirrorRepoAutoSetup} /> {$t('mirrorRepo.autoSetup')}</label>
         </div>
       </div>
       <div class="modal-foot">
-        <button class="btn-cancel" on:click={() => addMirrorRepoModal = null}>Cancel</button>
-        <button class="btn-add" on:click={submitAddMirrorRepo} disabled={!newMirrorRepoKey}>Add</button>
+        <button class="btn-cancel" on:click={() => addMirrorRepoModal = null}>{$t('common.cancel')}</button>
+        <button class="btn-add" on:click={submitAddMirrorRepo} disabled={!newMirrorRepoKey}>{$t('common.add')}</button>
       </div>
     </div>
   </div>

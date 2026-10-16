@@ -63,7 +63,9 @@
     </span>
     {#if $mirrorSummary.total > 0}
       {@const mirrorPending = $mirrorSummary.total - $mirrorSummary.active}
-      {@const mirrorTip = `${$mirrorSummary.active}/${$mirrorSummary.total} mirrors active${$mirrorSummary.error > 0 ? ` · ${$mirrorSummary.error} with errors` : ''}`}
+      {@const mirrorTip = $mirrorSummary.error > 0
+        ? $t('top.mirrorsActiveErrors', { active: $mirrorSummary.active, total: $mirrorSummary.total, n: $mirrorSummary.error })
+        : $t('top.mirrorsActive', { active: $mirrorSummary.active, total: $mirrorSummary.total })}
       <span class="health-ring health-ring-mini" role="img" aria-label={mirrorTip} use:tooltip={{ text: mirrorTip, delay: 150 }}
         style="--pct: {($mirrorSummary.active / $mirrorSummary.total) * 100}{$mirrorSummary.error > 0 ? '; --ring-accent: #D81E5B' : ''}">
         <svg class="health-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -87,14 +89,14 @@
       <span class="icon-spin" class:spinning={fetchingAll}><UIIcon name="fetch" /></span>
     </button>
     {#if !simple}
-    <button class="icon-btn" class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title="{deleteMode ? 'Exit delete mode' : 'Delete mode'}"><UIIcon name="trash" /></button>
-    <button class="icon-btn" on:click={toggleViewMode} title="Compact view"><UIIcon name="compact" /></button>
-    <button class="icon-btn" on:click={cycleTheme} title="Theme: {themeChoice}"><UIIcon name={themeChoice === 'light' || themeChoice === 'dark' ? `theme-${themeChoice}` : 'theme-system'} /></button>
+    <button class="icon-btn" class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title={deleteMode ? $t('top.exitDeleteMode') : $t('top.deleteMode')}><UIIcon name="trash" /></button>
+    <button class="icon-btn" on:click={toggleViewMode} title={$t('top.compactView')}><UIIcon name="compact" /></button>
+    <button class="icon-btn" on:click={cycleTheme} title={$t('top.themeTip', { name: $t(`theme.${themeChoice}`) })}><UIIcon name={themeChoice === 'light' || themeChoice === 'dark' ? `theme-${themeChoice}` : 'theme-system'} /></button>
     {/if}
     <button class="mode-switch" class:mode-switch-on={!simple} role="switch" aria-checked={!simple}
       aria-label={$t('settings.experience')} title={simple ? $t('settings.simple') : $t('settings.advanced')}
       on:click={() => setUIMode(simple ? 'advanced' : 'simple')}><span class="mode-switch-knob"></span></button>
-    <button class="icon-btn" on:click={() => showSettings = !showSettings} title="Settings" class:active-gear={showSettings}><UIIcon name="gear" /></button>
+    <button class="icon-btn" on:click={() => showSettings = !showSettings} title={$t('top.settings')} class:active-gear={showSettings}><UIIcon name="gear" /></button>
   </div>
 </header>
 

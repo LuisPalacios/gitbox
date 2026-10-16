@@ -4,6 +4,7 @@
   import { bridge } from '../bridge';
   import { pushNotice } from '../notices';
   import { t } from '../i18n';
+  import Rich from '../Rich.svelte';
   import { applyStatusResults } from '../stores';
   import { dismiss } from '../dismiss';
 
@@ -29,6 +30,8 @@
     sweepModal = { sourceKey, repoKey, merged, gone, squashed };
   }
 
+  $: sweepTotal = sweepModal ? sweepModal.merged.length + sweepModal.gone.length + sweepModal.squashed.length : 0;
+
   async function confirmSweepAction() {
     if (!sweepModal) return;
     sweepBusy = true;
@@ -48,38 +51,38 @@
   <div class="overlay" use:dismiss={() => sweepModal = null} transition:fade={{ duration: 120 }}>
     <div class="modal modal-sweep" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
       <div class="modal-head modal-head-sweep">
-        <h3>Sweep branches</h3>
+        <h3>{$t('sweep.title')}</h3>
         <button class="btn-x" on:click={() => sweepModal = null}>&#10005;</button>
       </div>
       <div class="modal-body">
-        <p class="sweep-repo-name">Clone: {sweepModal.repoKey}</p>
-        <p class="sweep-explain">You are about to permanently delete local branches that are, in theory, no longer needed. Only a <strong>local</strong> delete — remote branches and your current active branch are never touched.</p>
+        <p class="sweep-repo-name">{$t('sweep.clone', { repo: sweepModal.repoKey })}</p>
+        <p class="sweep-explain"><Rich key="sweep.explain" /></p>
         {#if sweepModal.gone.length > 0}
           <div class="sweep-group">
-            <span class="sweep-label sweep-label-gone">Gone: {sweepModal.gone.length}</span>
-            <span class="sweep-hint">Remote doesn't exist but you have a probably useless local copy.</span>
+            <span class="sweep-label sweep-label-gone">{$t('sweep.gone', { n: sweepModal.gone.length })}</span>
+            <span class="sweep-hint">{$t('sweep.goneHint')}</span>
             <ul class="sweep-list">{#each sweepModal.gone as b}<li>{b}</li>{/each}</ul>
           </div>
         {/if}
         {#if sweepModal.merged.length > 0}
           <div class="sweep-group">
-            <span class="sweep-label sweep-label-merged">Merged: {sweepModal.merged.length}</span>
-            <span class="sweep-hint">Already merged into the default branch, safe to remove.</span>
+            <span class="sweep-label sweep-label-merged">{$t('sweep.merged', { n: sweepModal.merged.length })}</span>
+            <span class="sweep-hint">{$t('sweep.mergedHint')}</span>
             <ul class="sweep-list">{#each sweepModal.merged as b}<li>{b}</li>{/each}</ul>
           </div>
         {/if}
         {#if sweepModal.squashed.length > 0}
           <div class="sweep-group">
-            <span class="sweep-label sweep-label-squashed">Squashed: {sweepModal.squashed.length}</span>
-            <span class="sweep-hint">PR was squash-merged or rebase-merged on the server. Different commits but same changes — already in the default branch.</span>
+            <span class="sweep-label sweep-label-squashed">{$t('sweep.squashed', { n: sweepModal.squashed.length })}</span>
+            <span class="sweep-hint">{$t('sweep.squashedHint')}</span>
             <ul class="sweep-list">{#each sweepModal.squashed as b}<li>{b}</li>{/each}</ul>
           </div>
         {/if}
       </div>
       <div class="modal-foot">
-        <button class="btn-cancel" on:click={() => sweepModal = null}>Cancel</button>
+        <button class="btn-cancel" on:click={() => sweepModal = null}>{$t('common.cancel')}</button>
         <button class="btn-sweep-confirm" on:click={confirmSweepAction} disabled={sweepBusy}>
-          {sweepBusy ? 'Sweeping...' : `Delete ${sweepModal.merged.length + sweepModal.gone.length + sweepModal.squashed.length} branch(es)`}
+          {sweepBusy ? $t('sweep.sweeping') : $t(sweepTotal === 1 ? 'sweep.deleteOne' : 'sweep.deleteN', { n: sweepTotal })}
         </button>
       </div>
     </div>

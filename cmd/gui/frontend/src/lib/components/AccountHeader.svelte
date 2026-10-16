@@ -76,9 +76,9 @@
     </span>
     <span class="right">
       <button class="text-btn" on:click={() => openDiscover(accountKey)} disabled={!canDiscover}
-        title={canDiscover ? $t('account.findProjects') : DISCOVER_DISABLED}>{$t('account.find')}</button>
+        title={canDiscover ? $t('account.findProjects') : $t(DISCOVER_DISABLED)}>{$t('account.find')}</button>
       <button class="text-btn" on:click={() => openCreateRepo(accountKey)} disabled={!canCreate}
-        title={canCreate ? $t('account.createRepo') : CREATE_DISABLED}>+ {$t('account.new')}</button>
+        title={canCreate ? $t('account.createRepo') : $t(CREATE_DISABLED)}>+ {$t('account.new')}</button>
     </span>
   </div>
 </div>
