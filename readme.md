@@ -16,10 +16,7 @@
 </p>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/screenshot-dark.png">
-    <img src="assets/screenshot-gui.png" alt="Gitbox with its sidebar of accounts and the Needs attention view listing clones that are behind, ahead, or carry local changes" width="820">
-  </picture>
+  <img src="assets/screenshot-gui.png" alt="Gitbox in Simple mode: one account's projects, each with its state in plain words and buttons to open it in an AI harness, an editor, or a terminal" width="640">
 </p>
 
 ## What it is
@@ -64,10 +61,12 @@ Run it with `--help` for options. If you'd rather place the app yourself, each r
 
 Discovery, cloning, and repo creation work on all five providers. Mirroring is fully automated on Gitea, Forgejo, and GitLab; for GitHub and Bitbucket gitbox shows the manual steps.
 
+## Simple and Advanced modes
+
+Gitbox has two modes, and I switch between them with the toggle in the top bar. Simple is for people who don't know Git and only want their projects safe: each project says in plain words whether the work is saved, and the screen keeps only the buttons they need. New installs start in Simple. Advanced adds every Git detail and tool: ahead, behind, and changed counts, pull request and branch badges, a fetch button per row, the Mirrors and Workspaces views, delete mode, and the compact view.
+
 <p align="center">
-  <img src="assets/screenshot-menu.png" alt="A clone's flat menu: open on the web or in the file manager, open with every terminal, editor and AI harness, and maintenance" width="560">
-  &nbsp;
-  <img src="assets/screenshot-compact.png" alt="Compact view: overall sync ring and per-account repo lists" width="220">
+  <img src="assets/screenshot-advanced.png" alt="Advanced mode: the account sidebar and the Needs attention view, grouped into credentials, needs attention, local work, behind, and not cloned" width="820">
 </p>
 
 ## Updating
