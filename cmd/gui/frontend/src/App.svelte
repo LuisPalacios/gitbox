@@ -1828,7 +1828,7 @@
 
   <!-- ── TOP BAR ── -->
   <TopBar {simple} {syncing} {fetchingAll} {themeChoice} bind:deleteMode bind:showSettings
-    {syncAll} runFetchAll={() => runFetchAll(true)} {toggleViewMode} {cycleTheme} {setUIMode} {rail} {sidebarShortcut} {toggleSidebar} />
+    {syncAll} runFetchAll={() => runFetchAll(true)} {toggleViewMode} {cycleTheme} {setUIMode} {rail} {sidebarShortcut} {toggleSidebar} {setView} />
 
   <!-- ── ACTIVITY STRIP (Fetch all / Pull all) ── -->
   <ActivityStrip run={pullRun || fetchRun} {simple} />

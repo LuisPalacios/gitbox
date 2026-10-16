@@ -89,11 +89,15 @@
   .acct-card {
     margin: 14px 0 10px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px;
     background: var(--bg-card); box-shadow: var(--card-shadow);
-    display: flex; flex-direction: column; gap: 3px;
+    display: flex; flex-direction: column; gap: 1px;
   }
   .acct-card.bad { background: color-mix(in srgb, var(--alert) 9%, var(--bg-card)); }
   .acct-card.warn { background: color-mix(in srgb, #F07623 8%, var(--bg-card)); }
-  .line { display: flex; align-items: center; gap: 8px; min-height: 26px; min-width: 0; }
+  /* Tight lines: the card's buttons are shorter than elsewhere, so the three
+     lines sit together without gaps that read as blank lines. */
+  .line { display: flex; align-items: center; gap: 8px; min-height: 20px; min-width: 0; }
+  .acct-card :global(.icon-btn) { height: 22px; }
+  .acct-card .text-btn { padding-top: 1px; padding-bottom: 1px; }
   .right { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: none; }
   .mark { width: var(--icon-btn); flex: none; text-align: center; font-size: 14px; }
   .name {

@@ -251,7 +251,7 @@ Each mirror group shows as a chip (status dot and account pair) that opens into 
 
 ### Mirror health ring
 
-The top bar shows compact rings without labels in both modes. The repo ring holds a branch icon and fills as clones get up to date; in Simple, it fills as projects are saved. In Advanced, when mirrors are configured, a second **health ring** with a two-arrow icon fills as mirrors turn active and turns red if any mirror has errors. A small badge on each ring counts what is not there yet, and hovering a ring shows the full `N of total up to date` (Simple: `N of total saved`) or `active/total` line.
+The top bar shows compact rings without labels in both modes. The repo ring holds a branch icon and fills as clones get up to date; in Simple, it fills as projects are saved. In Advanced, when mirrors are configured, a second **health ring** with a two-arrow icon fills as mirrors turn active and turns red if any mirror has errors. A small badge on each ring counts what is not there yet, and hovering a ring shows the full `N of total up to date` (Simple: `N of total saved`) or `active/total` line. When a ring has something pending, clicking it opens **Needs attention** (Simple: **Needs you**); the mirror ring opens **Mirrors**.
 
 ### Mirror actions
 

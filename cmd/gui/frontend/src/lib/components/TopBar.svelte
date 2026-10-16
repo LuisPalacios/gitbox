@@ -24,6 +24,8 @@
   export let rail: boolean;
   export let sidebarShortcut: string;
   export let toggleSidebar: () => void;
+  // A ring with something pending opens the view that lists it.
+  export let setView: (view: string) => void;
 
   $: sc = (s: string) => statusColor(s, $themeStore);
   $: sideTip = $t(rail ? 'nav.expand' : 'nav.collapse', { key: sidebarShortcut });
@@ -52,32 +54,37 @@
   <!-- Compact rings without labels, in both modes. The icon names what the
        ring tracks, the corner badge counts what is not there yet, and the
        hover tooltip spells it out. Simple counts saved projects, Advanced
-       up-to-date clones. -->
+       up-to-date clones. With something pending, a click opens Needs
+       attention (the mirror ring opens Mirrors). -->
   <div class="health">
-    <span class="health-ring health-ring-mini" role="img" aria-label={repoTip} use:tooltip={{ text: repoTip, delay: 150 }}
+    <button class="health-ring health-ring-mini" class:health-idle={repoPending === 0} aria-label={repoTip}
+      aria-disabled={repoPending === 0} tabindex={repoPending > 0 ? 0 : -1} use:tooltip={{ text: repoTip, delay: 150 }}
+      on:click={() => repoPending > 0 && setView('attention')}
       style="--pct: {repoTotal ? (repoDone / repoTotal) * 100 : 0}">
       <svg class="health-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="5" cy="3.5" r="1.6"/><circle cx="5" cy="12.5" r="1.6"/><circle cx="11" cy="6" r="1.6"/>
         <path d="M5 5.1v5.8M11 7.6c0 2.4-6 1.6-6 3.3"/>
       </svg>
       {#if repoPending > 0}
-        <span class="health-badge" style="background: {sc('behind')}">{repoPending > 99 ? '99+' : repoPending}</span>
+        <span class="health-badge" style="--cnt: {sc('dirty')}">{repoPending > 99 ? '99+' : repoPending}</span>
       {/if}
-    </span>
+    </button>
     {#if !simple && $mirrorSummary.total > 0}
       {@const mirrorPending = $mirrorSummary.total - $mirrorSummary.active}
       {@const mirrorTip = $mirrorSummary.error > 0
         ? $t('top.mirrorsActiveErrors', { active: $mirrorSummary.active, total: $mirrorSummary.total, n: $mirrorSummary.error })
         : $t('top.mirrorsActive', { active: $mirrorSummary.active, total: $mirrorSummary.total })}
-      <span class="health-ring health-ring-mini" role="img" aria-label={mirrorTip} use:tooltip={{ text: mirrorTip, delay: 150 }}
+      <button class="health-ring health-ring-mini" class:health-idle={mirrorPending === 0} aria-label={mirrorTip}
+        aria-disabled={mirrorPending === 0} tabindex={mirrorPending > 0 ? 0 : -1} use:tooltip={{ text: mirrorTip, delay: 150 }}
+        on:click={() => mirrorPending > 0 && setView('mirrors')}
         style="--pct: {($mirrorSummary.active / $mirrorSummary.total) * 100}{$mirrorSummary.error > 0 ? '; --ring-accent: #D81E5B' : ''}">
         <svg class="health-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M2.5 5.5h10M10 3l2.5 2.5L10 8M13.5 10.5h-10M6 8l-2.5 2.5L6 13"/>
         </svg>
         {#if mirrorPending > 0}
-          <span class="health-badge" style="background: {$mirrorSummary.error > 0 ? '#D81E5B' : sc('behind')}">{mirrorPending > 99 ? '99+' : mirrorPending}</span>
+          <span class="health-badge" style="--cnt: {sc('dirty')}">{mirrorPending > 99 ? '99+' : mirrorPending}</span>
         {/if}
-      </span>
+      </button>
     {/if}
   </div>
   <div class="topbar-actions">
@@ -117,15 +124,21 @@
   }
   .health-ring::before { content: ''; position: absolute; inset: 4px; background: var(--bg-base); border-radius: 50%; transition: background 0.2s; }
   /* Advanced header rings: smaller, icon inside, attention count in a corner badge. */
-  .health-ring-mini { width: 28px; height: 28px; margin-right: 6px; cursor: default; }
+  .health-ring-mini { width: 28px; height: 28px; margin-right: 6px; padding: 0; border: none; cursor: pointer; font: inherit; }
+  .health-ring-mini.health-idle { cursor: default; }
+  .health-ring-mini:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 2px; }
   .health-ring-mini::before { inset: 3px; }
   .health-icon { position: relative; z-index: 1; width: 14px; height: 14px; color: var(--text-muted); }
+  /* The sidebar's count style: a soft tint of the attention colour over an
+     opaque base, with the number in that colour. */
   .health-badge {
     position: absolute; z-index: 2; top: -5px; right: -8px;
     min-width: 15px; height: 15px; padding: 0 4px; box-sizing: border-box;
-    border-radius: 8px; border: 1.5px solid var(--bg-base);
-    color: #fff; font-size: 9px; font-weight: 700; line-height: 12px; text-align: center;
+    border-radius: 8px; border: 1.5px solid var(--bg-base); background: var(--bg-base);
+    color: var(--cnt); font-size: 9px; font-weight: 700; line-height: 12px; text-align: center;
+    font-variant-numeric: tabular-nums; isolation: isolate;
   }
+  .health-badge::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--cnt); opacity: 0.16; }
   .topbar-actions { display: flex; align-items: center; gap: 6px; }
   .icon-spin { display: inline-flex; align-items: center; }
   .spinning { animation: spin 0.8s linear infinite; color: var(--spin-color) !important; stroke: var(--spin-color); stroke-width: 2.5; font-weight: 900; }
