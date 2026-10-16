@@ -63,7 +63,7 @@ func (g *GitLab) ListRepos(ctx context.Context, baseURL, token, username string)
 	return all, nil
 }
 
-// checkAuth lists the repos like TestAuth, then asks GitLab (15.5+) when the
+// checkAuth lists the repos like CheckAuth does for any provider, then asks GitLab (15.5+) when the
 // token expires. That second call only answers for personal access tokens;
 // when it fails (OAuth tokens, older servers) the expiry stays unknown and
 // the check still passes.

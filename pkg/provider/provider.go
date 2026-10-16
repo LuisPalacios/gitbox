@@ -105,22 +105,16 @@ type PRLister interface {
 	ListAccountPRs(ctx context.Context, baseURL, token, username string, includeDrafts bool) (AccountPRs, error)
 }
 
-// TestAuth makes a minimal API call to verify credentials work.
-// Returns nil if authenticated successfully, error otherwise.
-func TestAuth(ctx context.Context, providerName, baseURL, token, username string) error {
-	_, err := CheckAuth(ctx, providerName, baseURL, token, username)
-	return err
-}
-
 // authChecker is implemented by providers that can tell when the token
 // expires while verifying it.
 type authChecker interface {
 	checkAuth(ctx context.Context, baseURL, token, username string) (time.Time, error)
 }
 
-// CheckAuth verifies credentials like TestAuth and also returns when the
-// token expires, or the zero time when the provider doesn't say (Gitea,
-// Forgejo and Bitbucket never do; tokens without an expiry neither).
+// CheckAuth makes a minimal API call (listing the repos) to verify the
+// credentials work, and returns when the token expires, or the zero time when
+// the provider doesn't say (Gitea, Forgejo and Bitbucket never do; tokens
+// without an expiry neither).
 func CheckAuth(ctx context.Context, providerName, baseURL, token, username string) (time.Time, error) {
 	prov, err := ByName(providerName)
 	if err != nil {
