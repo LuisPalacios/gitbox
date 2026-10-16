@@ -786,13 +786,13 @@
     saveLayout();
   }
 
-  // Problems first: siblings sort by the worst attention rank in their
-  // subtree (repo-tree.ts), so a parent rises with its worst nested clone.
+  // How much each clone needs me (status.ts), for Needs attention and the counts.
   $: rankOf = (key: string) => {
     const st = $repoStates[key];
     return st ? attentionRank(st.status, st.isDefault) : attentionRank('unknown');
   };
-  $: treeRows = repoTreeRows($sources, repoNesting, collapsedRepos, rankOf);
+  // Clones in alphabetical order (repo-tree.ts).
+  $: treeRows = repoTreeRows($sources, repoNesting, collapsedRepos);
 
   // How many repos need me, per account and in total; accounts whose
   // credential needs a fix count too (Needs attention lists them first).

@@ -12,6 +12,7 @@
   import { t } from '../i18n';
   import RepoTree from './RepoTree.svelte';
   import type { RowProps } from './RepoRow.svelte';
+  import { compareRepoKeys } from '../repo-tree';
   import type { RepoRow as TreeRow } from '../repo-tree';
 
   export let rankOf: (key: string) => number;
@@ -25,9 +26,8 @@
   $: simple = rowProps.simple;
   $: sc = (s: string) => statusColor(s, $themeStore);
 
-  // Every clone in config order; attentionItems keeps that order inside a group.
-  $: keys = Object.entries($sources).flatMap(([sk, s]) =>
-    [...new Set([...(s.repoOrder || []), ...Object.keys(s.repos)])].filter((r) => s.repos[r]).map((r) => `${sk}/${r}`));
+  // Every clone in alphabetical order; attentionItems keeps that order inside a group.
+  $: keys = Object.entries($sources).flatMap(([sk, s]) => Object.keys(s.repos).map((r) => `${sk}/${r}`)).sort(compareRepoKeys);
 
   // The rank each row had when it first showed. Plain (not reactive) state:
   // pinning it must not re-run the list it comes from.
@@ -81,7 +81,7 @@
     {/if}
     {#each groups as g (g.name)}
       <div class="group-h">{$t(`attention.group.${g.name}${simple ? 'Simple' : ''}`)} <span class="group-n">· {g.rows.length}</span></div>
-      <RepoTree rows={g.rows} {rowProps} {parentLabels} showAccount />
+      <RepoTree rows={g.rows} {rowProps} {parentLabels} showAccount fadeHealthy={items.some((i) => !i.settled)} />
     {/each}
   {/if}
 </section>

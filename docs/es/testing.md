@@ -137,7 +137,7 @@ cd cmd/gui/frontend
 npm run check
 ```
 
-También ejecuto `npm test` desde `cmd/gui/frontend` para las regresiones puras del árbol de clones: propiedad entre sources, prevención de duplicados, plegado de clones anidados, orden con los problemas primero y recuperación ante referencias obsoletas a padres. La misma suite cubre la traducción de estados (la forma, el color, la etiqueta del glosario, el tipo Simple, el rango de atención y los contadores de cada estado, y si su fila abre el panel de detalle), la salud de la cuenta, la vista guardada y la lista de Requiere atención, los resúmenes de Fetch de todo y Pull de todo, y las tarjetas de resultado. La comprobación de salud ejecuta estas pruebas como `frontend-test`.
+También ejecuto `npm test` desde `cmd/gui/frontend` para las regresiones puras del árbol de clones: propiedad entre sources, prevención de duplicados, plegado de clones anidados, orden alfabético y recuperación ante referencias obsoletas a padres. La misma suite cubre la traducción de estados (la forma, el color, la etiqueta del glosario, el tipo Simple, el rango de atención y los contadores de cada estado, y si su fila abre el panel de detalle), la salud de la cuenta, la vista guardada y la lista de Requiere atención, los resúmenes de Fetch de todo y Pull de todo, y las tarjetas de resultado. La comprobación de salud ejecuta estas pruebas como `frontend-test`.
 
 ### Paso 3: escenario de ciclo completo
 

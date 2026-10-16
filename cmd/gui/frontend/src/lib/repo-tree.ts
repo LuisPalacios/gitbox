@@ -9,10 +9,18 @@ export interface RepoRow {
   descendants: string[];
 }
 
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+// Clone keys ("source/org/repo") in alphabetical order of the name a row
+// shows (the last segment), ignoring case; the full key breaks ties.
+export function compareRepoKeys(a: string, b: string): number {
+  const name = (key: string) => key.slice(key.lastIndexOf('/') + 1);
+  return collator.compare(name(a), name(b)) || collator.compare(a, b);
+}
+
 // I keep ownership in each row even when a clone lives under another source's container.
-// With a rank (lower = needs me more), siblings sort stably by the worst rank
-// in their subtree, so a parent rises with its worst nested clone.
-export function repoTreeRows(sources: Record<string, SourceDTO>, nesting: Record<string, string>, collapsed: Set<string>, rank?: (key: string) => number): Record<string, RepoRow[]> {
+// Siblings, at every depth, sort alphabetically (compareRepoKeys).
+export function repoTreeRows(sources: Record<string, SourceDTO>, nesting: Record<string, string>, collapsed: Set<string>): Record<string, RepoRow[]> {
   const refs = new Map<string, { sourceKey: string; repoName: string }>();
   for (const [sourceKey, source] of Object.entries(sources)) {
     const order = [...new Set([...(source.repoOrder || []), ...Object.keys(source.repos)])];
@@ -41,16 +49,7 @@ export function repoTreeRows(sources: Record<string, SourceDTO>, nesting: Record
     if (parent) children.set(parent, [...(children.get(parent) || []), key]);
   }
   const descendantsOf = (key: string): string[] => (children.get(key) || []).flatMap(child => [child, ...descendantsOf(child)]);
-  const worst = new Map<string, number>();
-  const worstOf = (key: string): number => {
-    let w = worst.get(key);
-    if (w === undefined) {
-      w = Math.min(rank!(key), ...(children.get(key) || []).map(worstOf));
-      worst.set(key, w);
-    }
-    return w;
-  };
-  const ordered = (keys: string[]): string[] => rank ? [...keys].sort((a, b) => worstOf(a) - worstOf(b)) : keys;
+  const ordered = (keys: string[]): string[] => [...keys].sort(compareRepoKeys);
   const rows: Record<string, RepoRow[]> = Object.fromEntries(Object.keys(sources).map(key => [key, []]));
   const walk = (key: string, source: string, depth: number) => {
     const ref = refs.get(key)!;

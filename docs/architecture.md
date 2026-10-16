@@ -510,7 +510,7 @@ Long-running operations (clone, status refresh, pull, mirror discovery, repo mov
 - **Activity strip** — under the top bar while Fetch all or Pull all runs: its scope and a progress bar
 - **Sidebar** — Needs attention and All repos with their counts, one entry per account (provider logo, health mark and words, attention count), Add account, Found on disk (orphans), and Mirrors and Workspaces in Advanced; it folds to an icon rail (⌘B / Ctrl+B), always shows as the rail below 780 px, and remembers the view and the rail in `global.collapsed`
 - **Needs attention view** — accounts whose credential needs a fix, then repos grouped needs help, local work, behind, and not cloned, with account pills and parent tags; rows that turn fine stay, faded, until the view closes
-- **All repos view** — repo list grouped by account, rendered as a tree of nested clones at any depth, problems first; account groups and clones with clones below them collapse
+- **All repos view** — repo list grouped by account, rendered as a tree of nested clones at any depth, in alphabetical order (`compareRepoKeys` in `src/lib/repo-tree.ts`); account groups and clones with clones below them collapse
 - **Account view** — a three-line account card (health, fix action, counts, Find and + New) and the account's clones
 - **Mirrors view** — Discover and Check all, mirror group chips that open into cards (status dots, active/total counts) + mirror detail list with per-repo status
 - **Workspaces view** — Discover, discovered `.code-workspace` files with their resolved member clones
