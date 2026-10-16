@@ -132,7 +132,7 @@ Capa de abstracción para APIs de proveedores de hosting Git. Cada proveedor imp
 | Gitea/Forgejo | REST /api/v1 | Token + fallback Basic auth | Misma API, misma implementación |
 | Bitbucket     | REST v2      | HTTP Basic (app password)   | Solo cloud                      |
 
-Los helpers incluyen `TestAuth()` para validación de credenciales y `TokenSetupGuide()` para instrucciones de creación PAT por proveedor.
+Los helpers incluyen `TestAuth()` para validación de credenciales y `TokenSetupGuide()` para instrucciones de creación PAT por proveedor. `CheckAuth()` ejecuta la misma validación y además devuelve la caducidad del token: GitHub lee la cabecera `GitHub-Authentication-Token-Expiration` de la llamada que ya lista los repos, y GitLab añade un `GET /personal_access_tokens/self` tras una comprobación correcta. Los demás proveedores no devuelven caducidad. `credential.StatusResult.ExpiresAt` la lleva hasta `CredentialStatus.expiresAt` en la GUI, y `accountHealth` en `src/lib/status.ts` convierte en aviso un token que funciona y caduca en 14 días o menos.
 
 **Interfaces adicionales** (opcionales, mediante type assertions):
 
