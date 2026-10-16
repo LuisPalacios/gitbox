@@ -1,7 +1,7 @@
 <script lang="ts">
   // The All view: one collapsible group per source (header with its
-  // account ⋯ menu and summary), then its clones as a tree (RepoTree),
-  // problems first.
+  // account ⋯ menu and summary), then its clones as a tree (RepoTree), in
+  // alphabetical order.
   import { sources, repoStates, themeStore } from '../stores';
   import { statusColor, attentionRank, CALM_RANK } from '../status';
   import { t } from '../i18n';
@@ -30,6 +30,8 @@
   // Repos that need me (as in Needs attention); unknown ones are still checking.
   $: needsMe = (key: string) => { const st = $repoStates[key]; return !!st && attentionRank(st.status, st.isDefault) < CALM_RANK; };
   $: total = Object.values($sources).reduce((n, s) => n + Object.keys(s.repos).length, 0);
+  // Calm rows fade only when another row in the list needs me.
+  $: anyNeedsMe = Object.entries($sources).some(([sk, s]) => Object.keys(s.repos).some((r) => needsMe(`${sk}/${r}`)));
   $: accountCount = new Set(Object.values($sources).map((s) => s.account)).size;
   $: what = simple ? $t('simple.projects', { n: total }) : $t('collapse.clones', { n: total });
 </script>
@@ -69,7 +71,7 @@
         </span>
       </div>
       {#if !sourceCollapsed}
-      <RepoTree rows={treeRows[sourceKey] || []} groupSource={sourceKey} {rowProps} />
+      <RepoTree rows={treeRows[sourceKey] || []} groupSource={sourceKey} {rowProps} fadeHealthy={anyNeedsMe} />
       {/if}
     </div>
     {/if}

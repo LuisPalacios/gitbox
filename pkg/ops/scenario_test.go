@@ -110,6 +110,12 @@ func TestScenario_FullLifecycle(t *testing.T) {
 		if res.Overall == credential.StatusError {
 			t.Fatalf("credential check failed: %s", res.PrimaryDetail)
 		}
+		// GitHub and GitLab report a token's expiry; it can only be ahead
+		// of a token that just worked.
+		if !res.ExpiresAt.IsZero() && !res.ExpiresAt.After(time.Now()) {
+			t.Fatalf("working token reports a past expiry: %v", res.ExpiresAt)
+		}
+		t.Logf("token expiry: %v (zero = unknown or never)", res.ExpiresAt)
 	})
 
 	t.Run("03_discover", func(t *testing.T) {

@@ -137,7 +137,7 @@ cd cmd/gui/frontend
 npm run check
 ```
 
-I also run `npm test` from `cmd/gui/frontend` for pure clone-tree regressions: cross-source ownership, duplicate prevention, nested collapse state, problems-first order, and recovery from stale parent references. The same suite covers the status mappings (each status's shape, colour, glossary label, Simple kind, attention rank, count badges and whether its row opens the detail panel), account health, the saved view and the Needs attention list, the Fetch all and Pull all summaries, and the result cards. The health check runs these tests as `frontend-test`.
+I also run `npm test` from `cmd/gui/frontend` for pure clone-tree regressions: cross-source ownership, duplicate prevention, nested collapse state, alphabetical order, and recovery from stale parent references. The same suite covers the status mappings (each status's shape, colour, glossary label, Simple kind, attention rank, count badges and whether its row opens the detail panel), account health, the saved view and the Needs attention list, the Fetch all and Pull all summaries, and the result cards. The health check runs these tests as `frontend-test`.
 
 ### Step 3: Full lifecycle scenario
 

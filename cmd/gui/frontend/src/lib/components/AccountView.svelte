@@ -1,6 +1,6 @@
 <script lang="ts">
-  // One account's view: its three-line card, then its clones as a tree,
-  // problems first. A clone nested in another account's container shows
+  // One account's view: its three-line card, then its clones as a tree in
+  // alphabetical order. A clone nested in another account's container shows
   // here at the top level with an "in <parent>" tag; the All view keeps
   // that cross-account nesting.
   import { sources, repoStates } from '../stores';
@@ -27,7 +27,7 @@
   export let fixCredential: (accountKey: string, fix: HealthFix) => void;
 
   $: own = Object.fromEntries(Object.entries($sources).filter(([, s]) => s.account === accountKey));
-  $: tree = repoTreeRows(own, repoNesting, rowProps.collapsedRepos, rankOf);
+  $: tree = repoTreeRows(own, repoNesting, rowProps.collapsedRepos);
   $: rows = Object.keys(own).flatMap((k) => tree[k] || []);
   // Top-level rows whose container belongs to another account.
   $: parentLabels = Object.fromEntries(rows.filter((r) => r.depth === 0 && repoNesting[r.key] && repoNesting[r.key] !== r.key).map((r) => [r.key, repoNesting[r.key]]));
@@ -40,6 +40,6 @@
   <AccountHeader {accountKey} {credStatuses} total={keys.length} {needYou} {checking} {actionMenuAccount} {rowProps}
     {toggleAccountMenu} {closeAccountMenu} {askDeleteAccount} {openEditAccount} {openCredChange} {openDiscover} {openCreateRepo} {fixCredential} />
   <div class="rows">
-    <RepoTree {rows} {rowProps} {parentLabels} />
+    <RepoTree {rows} {rowProps} {parentLabels} fadeHealthy={needYou > 0} />
   </div>
 </section>

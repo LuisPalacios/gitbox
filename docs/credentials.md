@@ -179,6 +179,7 @@ I keep included Git config when its effective settings match the account. If a l
 You can verify that credentials are working at any time:
 
 - Each account's sidebar entry and card show its health in words next to a mark: green (working), orange (limited), or red (broken or offline). Broken accounts also head the Needs attention view, with their fix button.
+- A GitHub or GitLab token that expires within 14 days turns the health words orange: "Token expires in N days". GitHub reports the expiry in a header of the verification call itself; GitLab answers it through `GET /api/v4/personal_access_tokens/self` (GitLab 15.5 and later, personal access tokens only). A token account whose token the server rejects (HTTP 401, for example once it expires) shows as failing.
 - Pick **Change credential…** from the account's ⋯ menu to open the Change Credential modal — the Current-status panel at the top shows the real status of the primary credential and of the API token, with the underlying error message (if any).
 - Click **Re-check** in that panel to run the verification again.
 

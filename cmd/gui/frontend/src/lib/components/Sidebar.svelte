@@ -25,7 +25,7 @@
   export let showOrphanModal: () => void;
 
   $: sc = (s: string) => statusColor(s, $themeStore);
-  $: health = (key: string) => accountHealth(credStatuses[key]?.status, simple);
+  $: health = (key: string) => accountHealth(credStatuses[key]?.status, simple, credStatuses[key]?.expiresAt);
   $: attentionLabel = $t(simple ? 'nav.attentionSimple' : 'nav.attention');
   $: allLabel = $t(simple ? 'nav.allSimple' : 'nav.all');
   $: addLabel = simple ? $t('nav.connect') : $t('account.add');
@@ -58,7 +58,7 @@
       use:tooltip={{ text: allLabel, delay: 150 }} on:click={() => setView('all')}><UIIcon name="list" /></button>
     <span class="rail-sep"></span>
     {#each Object.entries($accounts) as [key, acct] (key)}
-      {@const tip = `${key} · ${$t(health(key).key)}`}
+      {@const tip = `${key} · ${$t(health(key).key, health(key).vars)}`}
       {@const n = attention.byAccount[key] || 0}
       <button class="rail-btn" aria-current={view === accountView(key)} aria-label={tip}
         use:tooltip={{ text: tip, delay: 150 }} on:click={() => setView(accountView(key))}>
@@ -98,7 +98,7 @@
         {@render logo(key, acct.provider)}
         <span class="two">
           <span class="nav-label">{key}</span>
-          <small style={h.level === 'ok' || h.level === 'pending' ? '' : `color: ${sc(h.color)}`}>{$t(h.key)}</small>
+          <small style={h.level === 'ok' || h.level === 'pending' ? '' : `color: ${sc(h.color)}`}>{$t(h.key, h.vars)}</small>
         </span>
         {#if n > 0}<span class="cnt">{n}</span>{/if}
       </button>

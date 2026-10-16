@@ -76,7 +76,8 @@
   // clone shown away from its container names that parent.
   export let showAccount = false;
   export let parentLabel = '';
-  // Healthy rows fade until hovered, so problems stand out.
+  // Healthy rows fade until hovered, so problems stand out; the view sets
+  // it only when some row in it needs me.
   export let fadeHealthy = false;
   // Shared with the whole list (RowProps; the detail fields go to RepoTree).
   export let simple: boolean;
@@ -593,7 +594,7 @@
   }
   .acct-pill:hover { color: var(--text-primary); border-color: var(--border-hover); }
   /* Healthy rows step back until hovered or focused, so problems stand out. */
-  .repo-row.calm { opacity: 0.55; }
+  .repo-row.calm { opacity: 0.75; }
   .repo-row.calm:hover, .repo-row.calm:focus-within { opacity: 1; }
   .btn-action {
     display: inline-flex; align-items: center; gap: 4px;

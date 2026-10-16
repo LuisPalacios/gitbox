@@ -14,7 +14,8 @@
   export let groupSource = '';
   export let rowProps: RowProps;
   export let showAccount = false;
-  export let fadeHealthy = true;
+  // Fade calm rows: the view sets it when some row in it needs me.
+  export let fadeHealthy = false;
   // Parent label per row key, for rows shown away from their container.
   export let parentLabels: Record<string, string> = {};
 

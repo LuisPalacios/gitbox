@@ -109,8 +109,8 @@ Cierro cualquier diálogo con **Escape** o haciendo clic fuera de él. Los diál
 
 La barra lateral de la izquierda elige qué muestra el área principal:
 
-- **Requiere atención** (Simple: **Te necesitan**) — primero las cuentas cuya credencial necesita un arreglo, cada una con su botón de arreglo, y después cada repo que me necesita, agrupados como necesita ayuda, trabajo local, por detrás y no clonado. Cada fila indica su cuenta; hago clic en el nombre para abrir esa cuenta. Un clon anidado en otro clon muestra una etiqueta "en \<parent\>". Una fila que pasa a estar bien mientras miro, después de un pull por ejemplo, se queda en su sitio, atenuada, hasta que salgo de la vista. Cuando nada me necesita, la vista lo dice.
-- **Todos los repos** (Simple: **Todos los proyectos**) — cada clon, agrupado por cuenta, con los problemas primero.
+- **Requiere atención** (Simple: **Te necesitan**) — primero las cuentas cuya credencial necesita un arreglo, cada una con su botón de arreglo, y después cada repo que me necesita, agrupados como necesita ayuda, trabajo local, por detrás y no clonado, en orden alfabético dentro de cada grupo. Cada fila indica su cuenta; hago clic en el nombre para abrir esa cuenta. Un clon anidado en otro clon muestra una etiqueta "en \<parent\>". Una fila que pasa a estar bien mientras miro, después de un pull por ejemplo, se queda en su sitio, atenuada, hasta que salgo de la vista. Cuando nada me necesita, la vista lo dice.
+- **Todos los repos** (Simple: **Todos los proyectos**) — cada clon, agrupado por cuenta, en orden alfabético.
 - **Cuentas** — solo cuentas: una entrada por cuenta con el logo de su proveedor, una pequeña marca de salud, su nombre, su salud en palabras y cuántos repos me necesitan. Hago clic en una para abrir la vista de la cuenta.
 - **Más** — bajo el separador inferior, todo lo que no es una cuenta:
   - **Añadir cuenta** (Simple: **Conectar una cuenta**) — consulta el [Paso 2](#paso-2-añadir-cuentas).
@@ -129,7 +129,9 @@ La vista de una cuenta empieza con una tarjeta de tres líneas:
 2. **Salud en palabras**: La credencial funciona, Funciona, con un aviso, Sin conexión · no se llega al servidor, La credencial ha fallado o Sin credencial configurada (Simple: Conectado, No se puede conectar ahora, Hay que reconectar, Sin conectar). Cuando algo necesita arreglo, el botón de la derecha lo hace: **Reintentar** vuelve a comprobar una cuenta sin conexión, y **Arreglar credencial**, **Configurar credencial** o **Reconectar** de Simple abren la pantalla de credenciales. En Advanced, al pasar el ratón sobre las palabras se ven el tipo de credencial y sus mensajes.
 3. **Conteos**: cuántos repos tiene la cuenta y cuántos me necesitan. **Buscar** descubre repos y **+ Crear** crea uno, en los dos modos. Ambos se deshabilitan, con el motivo al pasar el ratón, cuando la credencial no llega a la API del proveedor.
 
-Una credencial ausente o rota tiñe la tarjeta de **rojo claro**, y un aviso la tiñe de naranja. Los clones de la cuenta siguen a la tarjeta, con los problemas primero. Un clon anidado en el contenedor de otra cuenta aparece aquí con una etiqueta "en \<parent\>"; **Todos los repos** lo mantiene bajo su contenedor.
+Cuando a un token de GitHub o GitLab que funciona le quedan 14 días o menos para caducar, la salud en palabras pasa a **El token caduca en N días** en naranja, y **Cambiar token** (Simple: **Renovar**) abre la pantalla de credenciales. La entrada de la barra lateral y su tooltip dicen lo mismo. En Avanzado, al pasar el ratón por las palabras también se ve la fecha de caducidad de cualquier token que la tenga. Los tokens sin caducidad, y las cuentas de Gitea, Forgejo y Bitbucket, cuyas APIs no la informan, se ven como antes.
+
+Una credencial ausente o rota tiñe la tarjeta de **rojo claro**, y un aviso la tiñe de naranja. Los clones de la cuenta siguen a la tarjeta, en orden alfabético. Un clon anidado en el contenedor de otra cuenta aparece aquí con una etiqueta "en \<parent\>"; **Todos los repos** lo mantiene bajo su contenedor.
 
 ### Mantener proyectos sincronizados
 
@@ -146,7 +148,7 @@ Gitbox vigila tus proyectos y muestra su estado:
 - **Rama local** (verde) — en una feature branch sin upstream tracking (normal)
 - **No upstream** (gris) — la rama predeterminada no tiene upstream tracking (requiere atención)
 
-Las filas sin nada que hacer se atenúan hasta que paso el ratón por encima, para que los problemas destaquen.
+Los clones aparecen siempre en orden alfabético del nombre que muestra la fila, también los anidados. Cuando alguna fila de una lista me necesita, las filas sin nada que hacer se atenúan ligeramente hasta que paso el ratón por encima, para que los problemas destaquen; cuando nada me necesita, ninguna fila se atenúa.
 
 Cuando un repo está checked out en una rama no predeterminada, aparece una pequeña insignia de rama junto al nombre del repo (por ejemplo, `feature-xyz`). Los repos en la rama predeterminada no muestran insignia. El estado detached HEAD muestra una insignia roja `detached`.
 

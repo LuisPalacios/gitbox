@@ -6,11 +6,11 @@ Test inventory and harness internals. For running tests, checklists, and fixture
 
 Counts are top-level `func Test…` functions per package, from `grep -rc "^func Test" --include=*_test.go pkg cmd`. Subtests (`t.Run`) are not counted.
 
-### Package tests — 466 tests (`pkg/`)
+### Package tests — 478 tests (`pkg/`)
 
 - `pkg/adopt/` — 14 tests: orphan discovery, account scoring (embedded URL user, credential username, parent folder, ambiguous ties), nested clones under containers
 - `pkg/config/` — 105 tests: config parsing, v1/v2 → v3 migration, CRUD operations, save/load, backups, test-mode setup, layout-state pruning (folds, sidebar, the view of a deleted account), a rename that keeps its view, and backup skip for layout and theme saves
-- `pkg/credential/` — 32 tests: token resolution, validation, OS-default helpers, `Check`/`FixGlobalGCMConfig` (global gitconfig health for GCM), cancellation, compare-first maintenance, atomic token-file updates
+- `pkg/credential/` — 35 tests: token resolution, validation, token expiry and rejected tokens, OS-default helpers, `Check`/`FixGlobalGCMConfig` (global gitconfig health for GCM), cancellation, compare-first maintenance, atomic token-file updates
 - `pkg/doctor/` — 24 tests: tool table shape, install hints, lookups, per-credential-type prechecks, tool output decoding
 - `pkg/git/` — 34 tests: git subprocess operations, repo and profile URLs, nested repo discovery, cancellable fetches, connects refused within milliseconds, config snapshots with includes and linked worktrees
 - `pkg/gitignore/` — 23 tests: managed block round-trip, merge with user content, idempotent install, backups, duplicate sanitising
@@ -22,13 +22,13 @@ Counts are top-level `func Test…` functions per package, from `grep -rc "^func
 - `pkg/mirror/` — 6 tests: remote URL parsing, mirror discovery, status error classification
 - `pkg/move/` — 5 tests: repo key parsing, clone URLs, preflight validation
 - `pkg/ops/` — 17 tests: 16 isolated unit tests (add, rename, delete account; suggest an account key; discard a just-added account; credential type change and delete; delete repo; clone planning; reconfigure clones; add discovered repos) plus the `TestScenario_FullLifecycle` scenario
-- `pkg/provider/` — 43 tests: HTTP client, provider API parsing
+- `pkg/provider/` — 52 tests: HTTP client, provider API parsing, token expiry (GitHub header layouts, GitLab `personal_access_tokens/self`, no extra GitHub request, unknown expiry still passes)
 - `pkg/status/` — 16 tests: clone status checking, branch detection, nesting computation (including container inside container)
 - `pkg/terminals/` — 55 tests: catalog shape, OS-aware Profile composition, WezTerm and Windows Terminal lookups, merge rules
 - `pkg/update/` — 28 tests: semver parsing, version comparison, update check (mock API, a pending update reported on every check), major-version cap, artifact names, AppImage notify-only detection, install targets, relaunch command per platform and waiting for the old process to exit (plus the elevated Windows script, on Windows), checksum verification, release signature verification against signatures made by real `ssh-keygen` (wrong tag, tampered checksums, wrong namespace, foreign key, malformed), `allowed_signers` in sync with the embedded key, fail-closed download (missing, unreadable or invalid checksums or signature refuse the update, and a bad signature stops it before the artifact download)
 - `pkg/workspace/` — 7 tests: workspace discovery, cache refresh, extra folders, tentative containers
 
-### GUI tests — 70 tests (`cmd/gui/`)
+### GUI tests — 71 tests (`cmd/gui/`)
 
 Go-side logic of the Wails app that runs without a window:
 
@@ -39,15 +39,15 @@ Go-side logic of the Wails app that runs without a window:
 - Terminals — MSYS path and env sanitising for spawned terminals, and a first launch that never writes the legacy `global.terminals` list
 - Workspaces and containers — cache refresh, container flag persistence, extra folders, nested scan depth, absolute `clone_folder` for onboarded clones, layout-state persistence and pruning (folds, sidebar and view)
 
-I cover startup snapshots and nonblocking workspace discovery in `cmd/gui/startup_test.go` and `cmd/gui/workspaces_test.go`, including stale scan inputs and concurrent config edits. `BenchmarkStartupSnapshot` measures snapshot construction separately from native rendering. I run pure frontend regressions with `npm test` in `cmd/gui/frontend`: the clone tree and problems-first order (`src/lib/repo-tree.test.mjs`), status mappings, glossary labels, attention ranks and account health (`src/lib/status.test.mjs`), view resolution and the Needs attention list and counts (`src/lib/views.test.mjs`), Fetch all and Pull all runs and summaries (`src/lib/activity.test.mjs`), the result cards (`src/lib/notices.test.mjs`), and the UI text rules (`src/lib/i18n.test.mjs`: matching English and Spanish keys and placeholders, no missing keys, no hard-coded template text, and the inline markup of `src/lib/rich.ts`); `scripts/health.sh frontend-test` runs the same suite.
+I cover startup snapshots and nonblocking workspace discovery in `cmd/gui/startup_test.go` and `cmd/gui/workspaces_test.go`, including stale scan inputs and concurrent config edits. `BenchmarkStartupSnapshot` measures snapshot construction separately from native rendering. I run pure frontend regressions with `npm test` in `cmd/gui/frontend`: the clone tree and its alphabetical order (`src/lib/repo-tree.test.mjs`), status mappings, glossary labels, attention ranks and account health, including the token-expiry warning (`src/lib/status.test.mjs`), view resolution and the Needs attention list and counts (`src/lib/views.test.mjs`), Fetch all and Pull all runs and summaries (`src/lib/activity.test.mjs`), the result cards (`src/lib/notices.test.mjs`), and the UI text rules (`src/lib/i18n.test.mjs`: matching English and Spanish keys and placeholders, no missing keys, no hard-coded template text, and the inline markup of `src/lib/rich.ts`); `scripts/health.sh frontend-test` runs the same suite.
 
-I cover refresh coordination and upstream probes without a Wails window, including overlapping triggers, bounded workers, cancellation, and stale config or credential results. Credential context tests use local provider servers and a stalled helper. Config snapshot and maintenance regressions use isolated Git config, include files, linked worktrees, and Trace2 process counts; token-file checks cover unchanged modification times, concurrent readers, rotation, permissions, and account separation.
+I cover refresh coordination and upstream probes without a Wails window, including overlapping triggers, bounded workers, cancellation, stale config or credential results, and the token expiry passed to the frontend. Credential context tests use local provider servers and a stalled helper. Config snapshot and maintenance regressions use isolated Git config, include files, linked worktrees, and Trace2 process counts; token-file checks cover unchanged modification times, concurrent readers, rotation, permissions, and account separation.
 
 ### Scenario test — 1 test, 12 steps (`pkg/ops/`)
 
 - `TestScenario_FullLifecycle` — end-to-end through `pkg/ops`: add account → credential check → discover → add repo → clone → status → pull and fetch → account edit + reconfigure clones → mirror CRUD → re-clone → rename account → delete everything
 
-### Total: 523 tests
+### Total: 536 tests
 
 ## How the test harness works
 

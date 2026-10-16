@@ -109,8 +109,8 @@ I close any dialog with **Escape** or by clicking outside it. Dialogs that are b
 
 The sidebar on the left picks what the main area shows:
 
-- **Needs attention** (Simple: **Needs you**) — first the accounts whose credential needs a fix, each with its fix button, then every repo that needs me, grouped as needs help, local work, behind, and not cloned. Each row names its account; I click the name to open that account. A clone nested in another clone shows an "in \<parent\>" tag. A row that turns fine while I watch, after a pull for example, stays in place, faded, until I leave the view. When nothing needs me, the view says so.
-- **All repos** (Simple: **All projects**) — every clone, grouped by account, problems first.
+- **Needs attention** (Simple: **Needs you**) — first the accounts whose credential needs a fix, each with its fix button, then every repo that needs me, grouped as needs help, local work, behind, and not cloned, in alphabetical order inside each group. Each row names its account; I click the name to open that account. A clone nested in another clone shows an "in \<parent\>" tag. A row that turns fine while I watch, after a pull for example, stays in place, faded, until I leave the view. When nothing needs me, the view says so.
+- **All repos** (Simple: **All projects**) — every clone, grouped by account, in alphabetical order.
 - **Accounts** — accounts only: one entry per account with its provider logo, a small health mark, its name, its health in words, and how many repos need me. I click one to open the account's view.
 - **More** — below the bottom separator, everything that isn't an account:
   - **Add account** (Simple: **Connect an account**) — see [Step 2](#step-2-add-accounts).
@@ -129,7 +129,9 @@ An account's view starts with a three-line card:
 2. **Health in words**: Credential works, Works, with a warning, Offline · can't reach the server, Credential failed, or No credential set up (Simple: Connected, Can't connect right now, Needs reconnecting, Not connected). When something needs fixing, the button on the right does it: **Retry** checks an offline account again, and **Fix credential**, **Set up credential** or Simple's **Reconnect** opens the credential screen. In Advanced, hovering the words shows the credential type and its messages.
 3. **Counts**: how many repos the account holds and how many need me. **Find** discovers repos and **+ New** creates one, in both modes. Both are disabled, with the reason on hover, when the credential can't reach the provider API.
 
-A missing or broken credential tints the card **light red**, and a warning tints it orange. The account's clones follow the card, problems first. A clone nested in another account's container shows here with an "in \<parent\>" tag; **All repos** keeps it under its container.
+When a working GitHub or GitLab token expires within 14 days, the health words change to **Token expires in N days** in orange, and **Replace token** (Simple: **Renew**) opens the credential screen. The sidebar entry and its tooltip say the same. In Advanced, hovering the words also shows the expiry date of any token that has one. Tokens without an expiry, and Gitea, Forgejo and Bitbucket accounts, whose APIs don't report it, look as before.
+
+A missing or broken credential tints the card **light red**, and a warning tints it orange. The account's clones follow the card, in alphabetical order. A clone nested in another account's container shows here with an "in \<parent\>" tag; **All repos** keeps it under its container.
 
 ### Keeping projects in sync
 
@@ -146,7 +148,7 @@ Gitbox watches your projects and shows their status:
 - **Local branch** (green) — on a feature branch with no upstream tracking (normal)
 - **No upstream** (grey) — default branch has no upstream tracking (needs attention)
 
-Rows with nothing to do fade until I hover them, so the problems stand out.
+Clones always appear in alphabetical order of the name the row shows, nested clones too. When some row in a list needs me, the rows with nothing to do fade slightly until I hover them, so the problems stand out; when nothing needs me, no row fades.
 
 When a repo is checked out on a non-default branch, a small branch badge appears next to the repo name (e.g., `feature-xyz`). Repos on the default branch show no badge. Detached HEAD state shows a red `detached` badge.
 

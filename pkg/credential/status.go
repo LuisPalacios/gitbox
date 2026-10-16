@@ -66,6 +66,10 @@ type StatusResult struct {
 	// Error = primary broken.
 	// None = no credential type configured.
 	Overall Status
+
+	// ExpiresAt is when the token that passed the API check expires; zero
+	// when the provider doesn't say or the token never expires.
+	ExpiresAt time.Time
 }
 
 // SSHFolder returns the resolved SSH folder from config.
@@ -153,7 +157,7 @@ func checkSSH(ctx context.Context, acct config.Account, accountKey string, cfg *
 	}
 
 	// PAT: optional companion token for discovery/API.
-	r.PAT, r.PATDetail = checkPATStatus(ctx, acct, accountKey, cfg)
+	r.PAT, r.PATDetail, r.ExpiresAt = checkPATStatus(ctx, acct, accountKey, cfg)
 	if r.PATDetail == "" {
 		if r.PAT == StatusOK {
 			r.PATDetail = "PAT verified"
@@ -211,7 +215,7 @@ func checkGCM(ctx context.Context, acct config.Account, accountKey string, cfg *
 	r.PrimaryDetail = "GCM credential present — git push/pull works"
 
 	// API reachability: try GCM's cached token, then the keyring PAT.
-	r.PAT, r.PATDetail = checkAPIReachabilityForGCM(ctx, acct, accountKey, token)
+	r.PAT, r.PATDetail, r.ExpiresAt = checkAPIReachabilityForGCM(ctx, acct, accountKey, token)
 	r.Overall = combineStatus(r.Primary, r.PAT)
 	return r
 }
@@ -219,17 +223,18 @@ func checkGCM(ctx context.Context, acct config.Account, accountKey string, cfg *
 // checkAPIReachabilityForGCM produces the PAT-row status for a GCM-backed
 // account by trying two paths in order: the GCM-cached token, then any
 // companion PAT in env vars / keyring. The first success wins; details
-// reflect which path worked (or what failed if neither did).
-func checkAPIReachabilityForGCM(parent context.Context, acct config.Account, accountKey string, gcmToken string) (Status, string) {
+// reflect which path worked (or what failed if neither did), and the expiry
+// is that of the token that worked.
+func checkAPIReachabilityForGCM(parent context.Context, acct config.Account, accountKey string, gcmToken string) (Status, string, time.Time) {
 	// 1. GCM-token path.
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
-	gcmErr := provider.TestAuth(ctx, acct.Provider, acct.URL, gcmToken, acct.Username)
+	expires, gcmErr := provider.CheckAuth(ctx, acct.Provider, acct.URL, gcmToken, acct.Username)
 	if gcmErr == nil {
-		return StatusOK, "API via GCM (no separate PAT needed; only required for mirrors)"
+		return StatusOK, "API via GCM (no separate PAT needed; only required for mirrors)", expires
 	}
 	if provider.IsNetworkError(gcmErr) {
-		return StatusOffline, fmt.Sprintf("server unreachable: %v", gcmErr)
+		return StatusOffline, fmt.Sprintf("server unreachable: %v", gcmErr), time.Time{}
 	}
 
 	// 2. Keyring / env-var PAT fallback.
@@ -244,22 +249,23 @@ func checkAPIReachabilityForGCM(parent context.Context, acct config.Account, acc
 				return StatusNone, fmt.Sprintf(
 					"WARNING: API rejected the GCM credential (HTTP 401). Either the user or the password are wrong (most probably), or your %s installation is configured to require a Personal Access Token at its REST API (passwords are not always accepted). Delete and re-setup the credential with the right value, or click 'Setup API token' to store a companion PAT.",
 					providerDisplayName(acct.Provider),
-				)
+				), time.Time{}
 			}
-			return StatusNone, "WARNING: API rejected the GCM credential (HTTP 401). The user or password are most likely wrong or expired — delete and re-setup the credential with the correct value, or click 'Setup API token' to store a companion PAT."
+			return StatusNone, "WARNING: API rejected the GCM credential (HTTP 401). The user or password are most likely wrong or expired — delete and re-setup the credential with the correct value, or click 'Setup API token' to store a companion PAT.", time.Time{}
 		}
-		return StatusNone, fmt.Sprintf("WARNING: API via GCM failed (%v) and no companion PAT is configured", gcmErr)
+		return StatusNone, fmt.Sprintf("WARNING: API via GCM failed (%v) and no companion PAT is configured", gcmErr), time.Time{}
 	}
 
 	ctx2, cancel2 := context.WithTimeout(parent, 15*time.Second)
 	defer cancel2()
-	if err := provider.TestAuth(ctx2, acct.Provider, acct.URL, patToken, acct.Username); err != nil {
+	expires, err := provider.CheckAuth(ctx2, acct.Provider, acct.URL, patToken, acct.Username)
+	if err != nil {
 		if provider.IsNetworkError(err) {
-			return StatusOffline, fmt.Sprintf("WARNING: server unreachable: %v", err)
+			return StatusOffline, fmt.Sprintf("WARNING: server unreachable: %v", err), time.Time{}
 		}
-		return StatusWarning, fmt.Sprintf("WARNING: companion PAT stored but API check failed: %v", err)
+		return StatusWarning, fmt.Sprintf("WARNING: companion PAT stored but API check failed: %v", err), time.Time{}
 	}
-	return StatusOK, "API via companion PAT (GCM handles git operations)"
+	return StatusOK, "API via companion PAT (GCM handles git operations)", expires
 }
 
 // checkToken verifies the PAT used for everything.
@@ -278,13 +284,22 @@ func checkToken(parent context.Context, acct config.Account, accountKey string, 
 
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
-	if err := provider.TestAuth(ctx, acct.Provider, acct.URL, token, acct.Username); err != nil {
+	expires, err := provider.CheckAuth(ctx, acct.Provider, acct.URL, token, acct.Username)
+	if err != nil {
 		if provider.IsNetworkError(err) {
 			r.Primary = StatusOffline
 			r.PrimaryDetail = fmt.Sprintf("server unreachable: %v", err)
 			r.PAT = StatusOffline
 			r.PATDetail = r.PrimaryDetail
 			r.Overall = StatusOffline
+		} else if isAPIAuthRejection(err) {
+			// The token is all a token account has: once the server
+			// rejects it (expired, revoked), nothing works.
+			r.Primary = StatusError
+			r.PrimaryDetail = fmt.Sprintf("API token rejected: %v", err)
+			r.PAT = StatusError
+			r.PATDetail = r.PrimaryDetail
+			r.Overall = StatusError
 		} else {
 			r.Primary = StatusWarning
 			r.PrimaryDetail = fmt.Sprintf("API check failed: %v", err)
@@ -300,26 +315,28 @@ func checkToken(parent context.Context, acct config.Account, accountKey string, 
 	r.PAT = StatusOK
 	r.PATDetail = "OK"
 	r.Overall = StatusOK
+	r.ExpiresAt = expires
 	return r
 }
 
 // checkPATStatus checks if a companion PAT file exists and works.
-// Returns (status, detail). Detail is empty for StatusOK/StatusNone so the
-// caller can fill in context-appropriate messages.
-func checkPATStatus(parent context.Context, acct config.Account, accountKey string, cfg *config.Config) (Status, string) {
+// Returns (status, detail, expiry). Detail is empty for StatusOK/StatusNone so
+// the caller can fill in context-appropriate messages.
+func checkPATStatus(parent context.Context, acct config.Account, accountKey string, cfg *config.Config) (Status, string, time.Time) {
 	token, _, err := ResolveToken(acct, accountKey)
 	if err != nil {
-		return StatusNone, "" // not configured (optional)
+		return StatusNone, "", time.Time{} // not configured (optional)
 	}
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
-	if err := provider.TestAuth(ctx, acct.Provider, acct.URL, token, acct.Username); err != nil {
+	expires, err := provider.CheckAuth(ctx, acct.Provider, acct.URL, token, acct.Username)
+	if err != nil {
 		if provider.IsNetworkError(err) {
-			return StatusOffline, fmt.Sprintf("server unreachable: %v", err)
+			return StatusOffline, fmt.Sprintf("server unreachable: %v", err), time.Time{}
 		}
-		return StatusWarning, "" // stored but broken
+		return StatusWarning, "", time.Time{} // stored but broken
 	}
-	return StatusOK, ""
+	return StatusOK, "", expires
 }
 
 // combineStatus derives the overall status from primary + PAT.

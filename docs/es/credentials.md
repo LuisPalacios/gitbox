@@ -179,6 +179,7 @@ Conservo los includes de config Git cuando sus ajustes efectivos coinciden con l
 Puedes verificar que las credenciales funcionan en cualquier momento:
 
 - La entrada de cada cuenta en la barra lateral y su tarjeta muestran su salud en palabras junto a una marca: verde (funciona), naranja (limitada) o roja (rota o sin conexión). Las cuentas rotas encabezan también la vista Requiere atención, con su botón para arreglarlas.
+- Un token de GitHub o GitLab que caduca en 14 días o menos pone en naranja la salud en palabras: "El token caduca en N días". GitHub informa de la caducidad en una cabecera de la propia llamada de verificación; GitLab la da con `GET /api/v4/personal_access_tokens/self` (GitLab 15.5 o posterior, solo personal access tokens). Una cuenta de tipo token cuyo token rechaza el servidor (HTTP 401, por ejemplo al caducar) aparece como fallida.
 - Elige **Cambiar credencial…** en el menú ⋯ de la cuenta para abrir el modal Change Credential: el panel Current-status de arriba muestra el estado real de la credencial primaria y del API token, con el mensaje de error subyacente (si lo hay).
 - Haz clic en **Re-check** en ese panel para volver a ejecutar la verificación.
 

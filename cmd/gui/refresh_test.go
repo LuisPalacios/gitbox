@@ -645,3 +645,29 @@ func TestRefresh_BacksOffOnAPersistentRefusal(t *testing.T) {
 		}
 	})
 }
+
+func TestCredentialVerify_ExposesTokenExpiry(t *testing.T) {
+	a, _ := refreshTestApp(t, 0)
+	defer a.stopRefresh()
+	expiry := time.Date(2026, 11, 1, 12, 0, 0, 0, time.FixedZone("CEST", 2*60*60))
+	a.refreshHooks.credential = func(context.Context, config.Account, string, *config.Config) credential.StatusResult {
+		r := refreshCredentialOK()
+		r.ExpiresAt = expiry
+		return r
+	}
+	if got := a.CredentialVerify("account-a"); got.ExpiresAt != "2026-11-01T10:00:00Z" {
+		t.Fatalf("ExpiresAt = %q, want the UTC RFC 3339 time", got.ExpiresAt)
+	}
+
+	a.refreshHooks.credential = func(context.Context, config.Account, string, *config.Config) credential.StatusResult {
+		return refreshCredentialOK()
+	}
+	a.invalidateCredential("account-a")
+	raw, err := json.Marshal(a.CredentialVerify("account-a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "expiresAt") {
+		t.Fatalf("unknown expiry reached the frontend: %s", raw)
+	}
+}

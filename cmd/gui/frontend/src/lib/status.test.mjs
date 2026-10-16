@@ -117,3 +117,24 @@ test('I describe account health with its words and fix action per mode', () => {
   assert.deepEqual(pick(s.accountHealth('none', true)), ['none', '○', 'ahead', 'health.noneSimple', 'reconnect', 'health.fix.reconnect', true]);
   for (const x of ['unknown', 'checking', undefined]) assert.deepEqual(pick(s.accountHealth(x, false)), ['pending', '◔', 'not cloned', 'health.checking', null, '', false]);
 });
+
+test('I warn about a working token within 14 days of its expiry', () => {
+  const now = Date.parse('2026-10-16T12:00:00Z');
+  const inDays = (d) => new Date(now + d * 24 * 60 * 60 * 1000 + 60 * 1000).toISOString();
+  const pick = (h) => [h.level, h.mark, h.color, h.key, h.vars, h.fix, h.fixKey, h.attention];
+  for (const simple of [false, true]) {
+    for (const expiresAt of [undefined, '', 'garbage', inDays(15), inDays(400)]) {
+      assert.deepEqual(s.accountHealth('ok', simple, expiresAt, now), s.accountHealth('ok', simple), String(expiresAt));
+    }
+  }
+  assert.deepEqual(pick(s.accountHealth('ok', false, inDays(14), now)), ['warn', '◆', 'dirty', 'health.expiresIn', { n: 14 }, 'replace', 'health.fix.replace', false]);
+  assert.deepEqual(pick(s.accountHealth('ok', false, inDays(6), now)), ['warn', '◆', 'dirty', 'health.expiresIn', { n: 6 }, 'replace', 'health.fix.replace', false]);
+  assert.deepEqual(pick(s.accountHealth('ok', true, inDays(6), now)), ['warn', '◆', 'dirty', 'health.expiresIn', { n: 6 }, 'renew', 'health.fix.renew', false]);
+  assert.equal(s.accountHealth('ok', false, inDays(1), now).key, 'health.expiresInOne');
+  assert.equal(s.accountHealth('ok', false, inDays(0), now).key, 'health.expiresToday');
+  assert.equal(s.accountHealth('ok', false, inDays(-1), now).key, 'health.expiresToday');
+  // A failing check keeps its own words: the expiry only refines a working token.
+  for (const x of ['warning', 'offline', 'error', 'none', 'unknown']) {
+    assert.deepEqual(s.accountHealth(x, false, inDays(3), now), s.accountHealth(x, false), x);
+  }
+});

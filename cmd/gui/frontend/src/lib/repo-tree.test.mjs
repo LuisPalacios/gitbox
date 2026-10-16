@@ -5,15 +5,15 @@ import ts from 'typescript';
 
 const sourceCode = await readFile(new URL('./repo-tree.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(sourceCode, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } });
-const { repoTreeRows } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+const { repoTreeRows, compareRepoKeys } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 const source = (names, account = 'account-A') => ({ account, repos: Object.fromEntries(names.map(name => [name, {}])), repoOrder: names });
 test('I group cross-source children with retained action ownership and no duplicate rows', () => {
   const tree = repoTreeRows({ a: source(['parent', 'other']), b: source(['child'], 'account-B') }, { 'b/child': 'a/parent' }, new Set());
-  assert.deepEqual(tree.a.map(row => [row.key, row.depth]), [['a/parent', 0], ['b/child', 1], ['a/other', 0]]);
-  assert.equal(tree.a[1].sourceKey, 'b');
-  assert.equal(tree.a[1].repoName, 'child');
+  assert.deepEqual(tree.a.map(row => [row.key, row.depth]), [['a/other', 0], ['a/parent', 0], ['b/child', 1]]);
+  assert.equal(tree.a[2].sourceKey, 'b');
+  assert.equal(tree.a[2].repoName, 'child');
   assert.deepEqual(tree.b, []);
-  assert.deepEqual(tree.a[0].descendants, ['b/child']);
+  assert.deepEqual(tree.a[1].descendants, ['b/child']);
 });
 test('I collapse descendants across sources without resurrecting them as roots', () => {
   const sources = { a: source(['parent']), b: source(['child', 'grandchild', 'other']) };
@@ -30,21 +30,15 @@ test('I retain missing-parent clones and cycles exactly once despite stale order
   assert.equal(tree.a.length, 4);
   assert.deepEqual(new Set(tree.a.map(row => row.key)), new Set(['a/one', 'a/two', 'a/three', 'a/four']));
 });
-test('I preserve nested depth and configured sibling order', () => {
-  const tree = repoTreeRows({ a: source(['leaf', 'parent', 'child', 'sibling']) }, { 'a/leaf': 'a/child', 'a/child': 'a/parent', 'a/sibling': 'a/parent' }, new Set());
-  assert.deepEqual(tree.a.map(row => [row.repoName, row.depth]), [['parent', 0], ['child', 1], ['leaf', 2], ['sibling', 1]]);
+test('I preserve nested depth and sort siblings alphabetically at every level', () => {
+  const tree = repoTreeRows({ a: source(['zeta', 'parent', 'leaf', 'child', 'sibling']) }, { 'a/leaf': 'a/child', 'a/child': 'a/parent', 'a/sibling': 'a/parent' }, new Set());
+  assert.deepEqual(tree.a.map(row => [row.repoName, row.depth]), [['parent', 0], ['child', 1], ['leaf', 2], ['sibling', 1], ['zeta', 0]]);
 });
-test('I sort siblings by the worst rank in their subtree, keeping order on ties', () => {
-  const sources = { a: source(['calm', 'parent', 'behind', 'calm2']), b: source(['child', 'grandchild'], 'account-B') };
-  const nesting = { 'b/child': 'a/parent', 'b/grandchild': 'b/child', };
-  const ranks = { 'a/calm': 4, 'a/parent': 4, 'a/behind': 2, 'a/calm2': 4, 'b/child': 4, 'b/grandchild': 0 };
-  const tree = repoTreeRows(sources, nesting, new Set(), key => ranks[key]);
-  assert.deepEqual(tree.a.map(row => [row.key, row.depth]), [['a/parent', 0], ['b/child', 1], ['b/grandchild', 2], ['a/behind', 0], ['a/calm', 0], ['a/calm2', 0]]);
-  const folded = repoTreeRows(sources, nesting, new Set(['a/parent']), key => ranks[key]);
-  assert.deepEqual(folded.a.map(row => row.key), ['a/parent', 'a/behind', 'a/calm', 'a/calm2']);
-  assert.deepEqual(repoTreeRows(sources, nesting, new Set()).a.map(row => row.key), ['a/calm', 'a/parent', 'b/child', 'b/grandchild', 'a/behind', 'a/calm2']);
+test('I ignore the configured order and sort by the shown name, ignoring case and owner', () => {
+  const tree = repoTreeRows({ a: source(['org-z/Mvtv', 'org-a/xurxodev', 'org-b/1password', 'org-a/repo10', 'org-a/repo9', 'org-c/captura']) }, {}, new Set());
+  assert.deepEqual(tree.a.map(row => row.repoName), ['org-b/1password', 'org-c/captura', 'org-z/Mvtv', 'org-a/repo9', 'org-a/repo10', 'org-a/xurxodev']);
 });
-test('I sort nested siblings under their parent by rank', () => {
-  const tree = repoTreeRows({ a: source(['parent', 'one', 'two', 'three']) }, { 'a/one': 'a/parent', 'a/two': 'a/parent', 'a/three': 'a/parent' }, new Set(), key => ({ 'a/two': 1, 'a/three': 3 })[key] ?? 4);
-  assert.deepEqual(tree.a.map(row => row.repoName), ['parent', 'two', 'three', 'one']);
+test('I order clone keys by shown name, then by the full key', () => {
+  const keys = ['b/org/tools', 'a/org/Alpha', 'a/other/tools', 'c/org/beta'];
+  assert.deepEqual([...keys].sort(compareRepoKeys), ['a/org/Alpha', 'c/org/beta', 'a/other/tools', 'b/org/tools']);
 });

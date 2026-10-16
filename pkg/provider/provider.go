@@ -108,16 +108,39 @@ type PRLister interface {
 // TestAuth makes a minimal API call to verify credentials work.
 // Returns nil if authenticated successfully, error otherwise.
 func TestAuth(ctx context.Context, providerName, baseURL, token, username string) error {
+	_, err := CheckAuth(ctx, providerName, baseURL, token, username)
+	return err
+}
+
+// authChecker is implemented by providers that can tell when the token
+// expires while verifying it.
+type authChecker interface {
+	checkAuth(ctx context.Context, baseURL, token, username string) (time.Time, error)
+}
+
+// CheckAuth verifies credentials like TestAuth and also returns when the
+// token expires, or the zero time when the provider doesn't say (Gitea,
+// Forgejo and Bitbucket never do; tokens without an expiry neither).
+func CheckAuth(ctx context.Context, providerName, baseURL, token, username string) (time.Time, error) {
 	prov, err := ByName(providerName)
 	if err != nil {
-		return err
+		return time.Time{}, err
 	}
-	repos, err := prov.ListRepos(ctx, baseURL, token, username)
+	checker, ok := prov.(authChecker)
+	if !ok {
+		_, err := prov.ListRepos(ctx, baseURL, token, username)
+		return time.Time{}, err
+	}
+	expires, err := checker.checkAuth(ctx, baseURL, token, username)
 	if err != nil {
-		return err
+		return time.Time{}, err
 	}
-	_ = repos
-	return nil
+	// The token just worked, so an expiry in the past is bogus data (GitHub
+	// briefly sent the request time in this header).
+	if !expires.After(time.Now()) {
+		return time.Time{}, nil
+	}
+	return expires, nil
 }
 
 // ByName returns the Provider implementation for a given provider name.

@@ -213,16 +213,34 @@ export const CREATE_DISABLED = 'account.createDisabled';
 //   reconnect Simple's credential flow (broken)
 //   change    Advanced's credential modal (warning or failure)
 //   setup     Advanced's credential modal when there is none
-export type HealthFix = 'retry' | 'reconnect' | 'change' | 'setup' | null;
-export interface AccountHealth { level: 'ok' | 'warn' | 'bad' | 'none' | 'pending'; mark: string; color: string; key: string; fix: HealthFix; fixKey: string; attention: boolean }
+//   replace   Advanced's credential modal for a token about to expire
+//   renew     Simple's credential flow for a token about to expire
+export type HealthFix = 'retry' | 'reconnect' | 'change' | 'setup' | 'replace' | 'renew' | null;
+export interface AccountHealth { level: 'ok' | 'warn' | 'bad' | 'none' | 'pending'; mark: string; color: string; key: string; vars: Record<string, number>; fix: HealthFix; fixKey: string; attention: boolean }
 
-export function accountHealth(status: string | undefined, simple: boolean): AccountHealth {
+const DAY = 24 * 60 * 60 * 1000;
+// A working token this close to its expiry turns the health line into a warning.
+export const EXPIRY_WARN_DAYS = 14;
+
+// Whole days until expiresAt (RFC 3339); null when unknown or unparsable.
+export function daysToExpiry(expiresAt: string | undefined, now: number = Date.now()): number | null {
+  const at = expiresAt ? Date.parse(expiresAt) : NaN;
+  return Number.isNaN(at) ? null : Math.max(0, Math.floor((at - now) / DAY));
+}
+
+export function accountHealth(status: string | undefined, simple: boolean, expiresAt?: string, now: number = Date.now()): AccountHealth {
   const h = (level: AccountHealth['level'], mark: string, color: string, word: string, fix: HealthFix): AccountHealth => ({
-    level, mark, color, fix,
+    level, mark, color, fix, vars: {},
     key: `health.${word}${simple ? 'Simple' : ''}`,
     fixKey: fix ? `health.fix.${fix}${simple && fix === 'retry' ? 'Simple' : ''}` : '',
     attention: level === 'bad' || level === 'none',
   });
+  const days = status === 'ok' ? daysToExpiry(expiresAt, now) : null;
+  if (days !== null && days <= EXPIRY_WARN_DAYS) {
+    const fix = simple ? 'renew' : 'replace';
+    const key = days === 0 ? 'health.expiresToday' : days === 1 ? 'health.expiresInOne' : 'health.expiresIn';
+    return { level: 'warn', mark: '◆', color: 'dirty', key, vars: { n: days }, fix, fixKey: `health.fix.${fix}`, attention: false };
+  }
   switch (status) {
     case 'ok': return h('ok', '●', 'clean', 'ok', null);
     case 'warning': return h('warn', '◆', 'dirty', 'warning', simple ? null : 'change');

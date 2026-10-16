@@ -132,7 +132,7 @@ Capa de abstracción para APIs de proveedores de hosting Git. Cada proveedor imp
 | Gitea/Forgejo | REST /api/v1 | Token + fallback Basic auth | Misma API, misma implementación |
 | Bitbucket     | REST v2      | HTTP Basic (app password)   | Solo cloud                      |
 
-Los helpers incluyen `TestAuth()` para validación de credenciales y `TokenSetupGuide()` para instrucciones de creación PAT por proveedor.
+Los helpers incluyen `TestAuth()` para validación de credenciales y `TokenSetupGuide()` para instrucciones de creación PAT por proveedor. `CheckAuth()` ejecuta la misma validación y además devuelve la caducidad del token: GitHub lee la cabecera `GitHub-Authentication-Token-Expiration` de la llamada que ya lista los repos, y GitLab añade un `GET /personal_access_tokens/self` tras una comprobación correcta. Los demás proveedores no devuelven caducidad. `credential.StatusResult.ExpiresAt` la lleva hasta `CredentialStatus.expiresAt` en la GUI, y `accountHealth` en `src/lib/status.ts` convierte en aviso un token que funciona y caduca en 14 días o menos.
 
 **Interfaces adicionales** (opcionales, mediante type assertions):
 
@@ -510,7 +510,7 @@ Las operaciones largas (clone, refresh de status, pull, mirror discovery, movimi
 - **Tira de actividad** — bajo la barra superior mientras se ejecuta Fetch de todo o Pull de todo: su alcance y una barra de progreso
 - **Barra lateral** — Requiere atención y Todos los repos con sus conteos, una entrada por cuenta (logo del proveedor, marca y palabras de salud, conteo de atención), Añadir cuenta, Encontrados en disco (orphans), y Mirrors y Workspaces en Advanced; se pliega a un riel de iconos (⌘B / Ctrl+B), siempre se muestra como el riel por debajo de 780 px, y recuerda la vista y el riel en `global.collapsed`
 - **Vista Requiere atención** — cuentas cuya credencial necesita un arreglo, y después repos agrupados en necesita ayuda, trabajo local, por detrás y no clonado, con píldoras de cuenta y etiquetas de padre; las filas que pasan a estar bien se quedan, atenuadas, hasta que se cierra la vista
-- **Vista Todos los repos** — lista de repos agrupada por cuenta, mostrada como un árbol de clones anidados a cualquier profundidad, con los problemas primero; los grupos de cuenta y los clones con clones debajo se pliegan
+- **Vista Todos los repos** — lista de repos agrupada por cuenta, mostrada como un árbol de clones anidados a cualquier profundidad, en orden alfabético (`compareRepoKeys` en `src/lib/repo-tree.ts`); los grupos de cuenta y los clones con clones debajo se pliegan
 - **Vista de cuenta** — una account card de tres líneas (salud, acción de arreglo, conteos, Buscar y + Crear) y los clones de la cuenta
 - **Vista Mirrors** — Descubrir y Comprobar todo, chips de grupo mirror que se abren en mirror group cards (status dots, conteos active/total) + lista de detalle de mirrors con status por repo
 - **Vista Workspaces** — Descubrir, archivos `.code-workspace` descubiertos con sus clones miembro resueltos

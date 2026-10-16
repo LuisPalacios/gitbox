@@ -527,6 +527,9 @@ func (a *App) credentialVerify(cfg *config.Config, key string) CredentialStatus 
 		}
 		cancel()
 		result := CredentialStatus{Status: r.Overall.String(), Message: r.PrimaryDetail, Primary: r.Primary.String(), PrimaryMsg: r.PrimaryDetail, PAT: r.PAT.String(), PATMsg: r.PATDetail, revision: revision}
+		if !r.ExpiresAt.IsZero() {
+			result.ExpiresAt = r.ExpiresAt.UTC().Format(time.RFC3339)
+		}
 		a.refreshMu.Lock()
 		call.result = result
 		delete(a.credentialRuns, identity)
