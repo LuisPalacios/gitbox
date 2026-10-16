@@ -185,6 +185,7 @@ export interface CredentialStatus {
   primaryMsg: string;  // human-readable detail for primary (may include raw error)
   pat: string;         // companion PAT status
   patMsg: string;      // human-readable detail for PAT
+  expiresAt?: string;  // RFC 3339 expiry of the token that passed the API check; absent when unknown
 }
 
 // Frontend-only UI state for a single repo row

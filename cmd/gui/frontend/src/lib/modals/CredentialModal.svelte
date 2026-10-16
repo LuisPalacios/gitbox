@@ -144,7 +144,7 @@
     credStatuses[accountKey] = {...prev, primary: 'checking', pat: 'checking', status: 'checking'};
     credStatuses = credStatuses;
     bridge.credentialVerify(accountKey).then((cs) => {
-      credStatuses[accountKey] = {status: cs.status, primary: cs.primary, pat: cs.pat, primaryMsg: cs.primaryMsg, patMsg: cs.patMsg};
+      credStatuses[accountKey] = { ...cs };
       credStatuses = credStatuses;
     }).catch((err: any) => {
       credStatuses[accountKey] = {status: 'error', primary: 'error', pat: 'error', primaryMsg: String(err?.message || err), patMsg: ''};

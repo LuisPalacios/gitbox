@@ -810,6 +810,7 @@ export namespace main {
 	    primaryMsg: string;
 	    pat: string;
 	    patMsg: string;
+	    expiresAt?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CredentialStatus(source);
@@ -823,6 +824,7 @@ export namespace main {
 	        this.primaryMsg = source["primaryMsg"];
 	        this.pat = source["pat"];
 	        this.patMsg = source["patMsg"];
+	        this.expiresAt = source["expiresAt"];
 	    }
 	}
 	export class DiscoverResult {

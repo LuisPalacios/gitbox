@@ -981,7 +981,7 @@
   async function credPostSetup(accountKey: string) {
     if (!credResult?.ok) return;
     bridge.credentialVerify(accountKey).then((cs) => {
-      credStatuses[accountKey] = {status: cs.status, primary: cs.primary, pat: cs.pat, primaryMsg: cs.primaryMsg, patMsg: cs.patMsg};
+      credStatuses[accountKey] = { ...cs };
       credStatuses = credStatuses;
     }).catch(() => {
       credStatuses[accountKey] = {status: 'ok', primary: 'ok', pat: 'ok', primaryMsg: '', patMsg: ''};
@@ -1064,7 +1064,7 @@
     credStatuses = credStatuses;
     try {
       const cs = await bridge.credentialVerify(accountKey);
-      credStatuses[accountKey] = { status: cs.status, primary: cs.primary, pat: cs.pat, primaryMsg: cs.primaryMsg, patMsg: cs.patMsg };
+      credStatuses[accountKey] = { ...cs };
     } catch (e) {
       console.error(e);
       credStatuses[accountKey] = before;
@@ -1453,7 +1453,7 @@
     const account = JSON.stringify($accounts[key]);
     bridge.credentialVerify(key).then((cs) => {
       if (account !== JSON.stringify($accounts[key])) return;
-      credStatuses[key] = {status: cs.status, primary: cs.primary, pat: cs.pat, primaryMsg: cs.primaryMsg, patMsg: cs.patMsg};
+      credStatuses[key] = { ...cs };
       credStatuses = credStatuses;
     }).catch(console.error).finally(() => recheckingAccounts.delete(key));
   }
@@ -1464,7 +1464,7 @@
       const account = JSON.stringify($accounts[key]);
       bridge.credentialVerify(key).then((cs) => {
         if (generation !== credentialGeneration || account !== JSON.stringify($accounts[key])) return;
-        credStatuses[key] = {status: cs.status, primary: cs.primary, pat: cs.pat, primaryMsg: cs.primaryMsg, patMsg: cs.patMsg};
+        credStatuses[key] = { ...cs };
         credStatuses = credStatuses;
       }).catch(console.error);
     }

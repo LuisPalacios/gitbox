@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -22,6 +23,36 @@ type githubRepo struct {
 }
 
 func (g *GitHub) ListRepos(ctx context.Context, baseURL, token, username string) ([]RemoteRepo, error) {
+	repos, _, err := g.listRepos(ctx, baseURL, token)
+	return repos, err
+}
+
+// checkAuth lists the repos and reads the token's expiry from the first
+// response, so it costs no extra request.
+func (g *GitHub) checkAuth(ctx context.Context, baseURL, token, _ string) (time.Time, error) {
+	_, hdrs, err := g.listRepos(ctx, baseURL, token)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return parseGitHubExpiry(hdrs.Get("GitHub-Authentication-Token-Expiration")), nil
+}
+
+// parseGitHubExpiry parses the GitHub-Authentication-Token-Expiration header:
+// "2025-09-10 02:30:13 +0200" for fine-grained PATs, "2027-09-06 12:00:00 UTC"
+// for classic ones. Tokens without an expiry don't send it; empty or
+// unparsable values return the zero time.
+func parseGitHubExpiry(v string) time.Time {
+	v = strings.TrimSpace(v)
+	for _, layout := range []string{"2006-01-02 15:04:05 -0700", "2006-01-02 15:04:05 MST"} {
+		if t, err := time.Parse(layout, v); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
+// listRepos returns every repo plus the first page's response headers.
+func (g *GitHub) listRepos(ctx context.Context, baseURL, token string) ([]RemoteRepo, http.Header, error) {
 	apiBase := "https://api.github.com"
 	if baseURL != "" && baseURL != "https://github.com" {
 		// GitHub Enterprise: <baseURL>/api/v3
@@ -33,12 +64,17 @@ func (g *GitHub) ListRepos(ctx context.Context, baseURL, token, username string)
 	}
 
 	var all []RemoteRepo
+	var first http.Header
 	page := 1
 	for {
 		url := fmt.Sprintf("%s/user/repos?per_page=100&type=all&page=%d", apiBase, page)
 		var batch []githubRepo
-		if _, err := doGet(ctx, url, headers, &batch); err != nil {
-			return nil, fmt.Errorf("github: %w", err)
+		hdrs, err := doGet(ctx, url, headers, &batch)
+		if err != nil {
+			return nil, nil, fmt.Errorf("github: %w", err)
+		}
+		if first == nil {
+			first = hdrs
 		}
 		if len(batch) == 0 {
 			break
@@ -59,7 +95,7 @@ func (g *GitHub) ListRepos(ctx context.Context, baseURL, token, username string)
 		}
 		page++
 	}
-	return all, nil
+	return all, first, nil
 }
 
 func (g *GitHub) apiBase(baseURL string) string {

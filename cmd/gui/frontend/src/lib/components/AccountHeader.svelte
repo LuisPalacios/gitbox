@@ -33,9 +33,10 @@
   $: ({ simple, deleteMode } = rowProps);
   $: acct = $accounts[accountKey];
   $: cred = credStatuses[accountKey] || { status: 'unknown' };
-  $: health = accountHealth(cred.status, simple);
+  $: health = accountHealth(cred.status, simple, cred.expiresAt);
   $: sc = (s: string) => statusColor(s, $themeStore);
-  $: credTip = [`${acct?.default_credential_type || 'gcm'} — ${cred.status}`, cred.primaryMsg, cred.patMsg].filter(Boolean).join('\n');
+  $: expiresOn = cred.expiresAt ? $t('health.expiresOn', { date: new Date(cred.expiresAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) }) : '';
+  $: credTip = [`${acct?.default_credential_type || 'gcm'} — ${cred.status}`, cred.primaryMsg, cred.patMsg, expiresOn].filter(Boolean).join('\n');
   $: canDiscover = canDiscoverWith(cred.status);
   $: canCreate = canCreateWith(cred.status);
 </script>
@@ -58,7 +59,7 @@
   </div>
   <div class="line">
     <span class="words" style={health.level === 'ok' || health.level === 'pending' ? '' : `color: ${sc(health.color)}`}
-      title={simple ? undefined : credTip}>{$t(health.key)}</span>
+      title={simple ? undefined : credTip}>{$t(health.key, health.vars)}</span>
     {#if health.fix}
       <span class="right"><button class="text-btn" on:click={() => fixCredential(accountKey, health.fix)}>{$t(health.fixKey)}</button></span>
     {/if}

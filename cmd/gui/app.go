@@ -2856,6 +2856,7 @@ type CredentialStatus struct {
 	PrimaryMsg string `json:"primaryMsg"`
 	PAT        string `json:"pat"` // companion PAT status (for SSH/GCM)
 	PATMsg     string `json:"patMsg"`
+	ExpiresAt  string `json:"expiresAt,omitempty"` // RFC 3339; absent when unknown or never
 }
 
 // ─── Helpers ──────────────────────────────────────────────────

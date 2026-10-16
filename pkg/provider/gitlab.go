@@ -63,6 +63,29 @@ func (g *GitLab) ListRepos(ctx context.Context, baseURL, token, username string)
 	return all, nil
 }
 
+// checkAuth lists the repos like TestAuth, then asks GitLab (15.5+) when the
+// token expires. That second call only answers for personal access tokens;
+// when it fails (OAuth tokens, older servers) the expiry stays unknown and
+// the check still passes.
+func (g *GitLab) checkAuth(ctx context.Context, baseURL, token, username string) (time.Time, error) {
+	if _, err := g.ListRepos(ctx, baseURL, token, username); err != nil {
+		return time.Time{}, err
+	}
+	var self struct {
+		ExpiresAt *string `json:"expires_at"`
+	}
+	url := strings.TrimRight(baseURL, "/") + "/api/v4/personal_access_tokens/self"
+	if _, err := doGet(ctx, url, g.authHeaders(token), &self); err != nil || self.ExpiresAt == nil {
+		return time.Time{}, nil
+	}
+	// A date only: the token stops working on that day, UTC.
+	expires, err := time.Parse("2006-01-02", *self.ExpiresAt)
+	if err != nil {
+		return time.Time{}, nil
+	}
+	return expires, nil
+}
+
 func (g *GitLab) authHeaders(token string) map[string]string {
 	return map[string]string{
 		"PRIVATE-TOKEN": token,
