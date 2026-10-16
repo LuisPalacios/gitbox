@@ -31,10 +31,16 @@
   $: repoDone = simple ? $simpleSummary.saved : $summary.clean;
   $: repoTotal = simple ? $simpleSummary.total : $summary.total;
   $: repoPending = repoTotal - repoDone;
-  $: repoTip = simple
-    ? `${$t('simple.savedTip', { n: repoDone, total: repoTotal })}${$simpleSummary.help > 0 ? ` · ${$t('simple.needHelpN', { n: $simpleSummary.help })}`
-      : $simpleSummary.wip + $simpleSummary.unpushed > 0 ? ` · ${$t('simple.wipN', { n: $simpleSummary.wip + $simpleSummary.unpushed })}` : ''}`
-    : `${$t('top.upToDateTip', { n: repoDone, total: repoTotal })}${repoPending > 0 ? ` · ${repoPending} ${repoPending === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}` : ''}`;
+  // One fact per line in the hover tooltip.
+  $: repoTip = (simple
+    ? [$t('simple.savedTip', { n: repoDone, total: repoTotal }),
+       $simpleSummary.help > 0 ? $t('simple.needHelpN', { n: $simpleSummary.help }) : '',
+       $simpleSummary.wip + $simpleSummary.unpushed > 0 ? $t('simple.wipN', { n: $simpleSummary.wip + $simpleSummary.unpushed }) : '',
+       $simpleSummary.update > 0 ? $t('simple.updateN', { n: $simpleSummary.update }) : '',
+       $simpleSummary.online > 0 ? $t('simple.onlineN', { n: $simpleSummary.online }) : '']
+    : [$t('top.upToDateTip', { n: repoDone, total: repoTotal }),
+       repoPending > 0 ? `${repoPending} ${repoPending === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}` : ''])
+    .filter(Boolean).join('\n');
 </script>
 
 <header class="topbar">
