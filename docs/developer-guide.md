@@ -362,7 +362,7 @@ I take the README screenshots from the real app running on a fake fleet, so they
 pwsh scripts/demo-fleet/shot.ps1 -Out assets/screenshot-gui.png -Width 1360 -Height 1300
 ```
 
-The README uses `assets/screenshot-gui.png` (Simple mode) and `assets/screenshot-advanced.png`, both in the light theme. `screenshot-gui.png` is also the AppStream screenshot for the Linux AppImage. Settings → Terminals lists the host's real terminals and paths, so keep that screen out of shots.
+The README uses `assets/screenshot-gui.png` (Simple mode) and `assets/screenshot-advanced.png`, and the GUI guide uses `screenshot-advanced.png`, `screenshot-menu.png`, and `screenshot-compact.png`, all in the light theme. `screenshot-gui.png` is also the AppStream screenshot for the Linux AppImage. Settings → Terminals lists the host's real terminals and paths, so keep that screen out of shots.
 
 ---
 

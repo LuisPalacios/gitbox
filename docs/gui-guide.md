@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../assets/screenshot-gui.png" alt="Gitbox" width="800" />
+  <img src="../assets/screenshot-advanced.png" alt="Gitbox in Advanced mode: the account sidebar and the Needs attention view" width="800" />
 </p>
 
 # Gitbox desktop — user guide
@@ -329,6 +329,10 @@ Click the **◧** button in the top bar to switch to compact mode — a narrow s
 
 This is useful when you want gitbox visible as a sidebar while working in other apps. Click **◧ Full view** to return to the full dashboard.
 
+<p align="center">
+  <img src="../assets/screenshot-compact.png" alt="Compact view: the overall sync ring and one row per account, one of them expanded to show its clones" width="220" />
+</p>
+
 ## Settings and maintenance
 
 ### Settings panel
@@ -358,6 +362,10 @@ Each cloned repo row has a **⋯ menu** on the right side. It is one flat list i
 2. **Open with** — every AI harness and editor, then the default terminal profile and the ones marked Preferred, each with its logo. The tool the row's own launch button uses carries a **default** tag.
 3. **Maintenance** (Advanced) — **Sweep branches**, **Move repository…**, **Mark as multi-repo container** or **Unmark as multi-repo container**, and **Re-scan for nested clones**.
 4. **Delete from this computer…** — in both modes.
+
+<p align="center">
+  <img src="../assets/screenshot-menu.png" alt="A clone's ⋯ menu: Open, Open with every AI harness, editor and terminal, Maintenance, and Delete from this computer" width="560" />
+</p>
 
 Next to the ⋯ menu, every cloned row has three launch buttons: the first AI harness, the first editor and the default terminal profile (Simple shows the AI harness and editor too). In Maintenance:
 

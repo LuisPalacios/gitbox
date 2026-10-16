@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../../assets/screenshot-gui.png" alt="Gitbox" width="800" />
+  <img src="../../assets/screenshot-advanced.png" alt="Gitbox en modo Advanced: la barra lateral de cuentas y la vista Needs attention" width="800" />
 </p>
 
 # Gitbox desktop — guía de usuario
@@ -329,6 +329,10 @@ Haz clic en el botón **◧** en la barra superior para cambiar a modo compacto:
 
 Esto es útil cuando quieres tener gitbox visible como sidebar mientras trabajas en otras apps. Haz clic en **◧ Full view** para volver al dashboard completo.
 
+<p align="center">
+  <img src="../../assets/screenshot-compact.png" alt="Vista compacta: el anillo global de sync y una fila por cuenta, una de ellas desplegada con sus clones" width="220" />
+</p>
+
 ## Ajustes y mantenimiento
 
 ### Panel de ajustes
@@ -358,6 +362,10 @@ Cada fila de repo clonado tiene un **menú ⋯** en el lado derecho. Es una list
 2. **Abrir con** — cada AI harness y editor, y después el Terminal Profile por defecto y los marcados como Preferred, cada uno con su logo. La herramienta que usa el botón de lanzamiento propio de la fila lleva una etiqueta **predeterminado**.
 3. **Mantenimiento** (Advanced) — **Sweep branches**, **Move repository…**, **Mark as multi-repo container** o **Unmark as multi-repo container**, y **Re-scan for nested clones**.
 4. **Borrar de este ordenador…** — en los dos modos.
+
+<p align="center">
+  <img src="../../assets/screenshot-menu.png" alt="El menú ⋯ de un clon: Open, Open with con cada AI harness, editor y terminal, Maintenance y Delete from this computer" width="560" />
+</p>
 
 Junto al menú ⋯, cada fila clonada tiene tres botones de lanzamiento: el primer AI harness, el primer editor y el Terminal Profile por defecto (Simple también muestra el AI harness y el editor). En Mantenimiento:
 
