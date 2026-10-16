@@ -52,7 +52,7 @@
     <button class="rail-btn" aria-current={view === 'attention'} aria-label={attentionLabel}
       use:tooltip={{ text: attentionLabel, delay: 150 }} on:click={() => setView('attention')}>
       <span class="navi" style="color: {attention.total > 0 ? sc('dirty') : 'inherit'}"><UIIcon name="attention" /></span>
-      {#if attention.total > 0}<span class="rail-cnt" style="background: {sc('dirty')}">{badge(attention.total)}</span>{/if}
+      {#if attention.total > 0}<span class="rail-cnt" style="--cnt: {sc('dirty')}">{badge(attention.total)}</span>{/if}
     </button>
     <button class="rail-btn" aria-current={view === 'all'} aria-label={allLabel}
       use:tooltip={{ text: allLabel, delay: 150 }} on:click={() => setView('all')}><UIIcon name="list" /></button>
@@ -63,14 +63,14 @@
       <button class="rail-btn" aria-current={view === accountView(key)} aria-label={tip}
         use:tooltip={{ text: tip, delay: 150 }} on:click={() => setView(accountView(key))}>
         {@render logo(key, acct.provider)}
-        {#if n > 0}<span class="rail-cnt" style="background: {sc('dirty')}">{badge(n)}</span>{/if}
+        {#if n > 0}<span class="rail-cnt" style="--cnt: {sc('dirty')}">{badge(n)}</span>{/if}
       </button>
     {/each}
     <span class="rail-sep"></span>
     <button class="rail-btn" aria-label={addLabel} use:tooltip={{ text: addLabel, delay: 150 }} on:click={onAddAccount}><UIIcon name="plus" /></button>
     {#if orphanCount > 0}
       <button class="rail-btn" aria-label={foundTip} use:tooltip={{ text: foundTip, delay: 150 }} on:click={showOrphanModal}>
-        <UIIcon name="search" /><span class="rail-cnt" style="background: {sc('dirty')}">{badge(orphanCount)}</span>
+        <UIIcon name="search" /><span class="rail-cnt" style="--cnt: {sc('dirty')}">{badge(orphanCount)}</span>
       </button>
     {/if}
     {#if !simple}
@@ -178,9 +178,14 @@
   .rail-btn .hb { background: var(--bg-card); }
   .rail-btn:hover .hb, .rail-btn[aria-current="true"] .hb { background: var(--bg-hover); }
   .rail-sep { width: 28px; border-top: 1px solid var(--border); margin: 6px 0; flex: none; }
+  /* A soft tint of the attention colour with the number in that colour, so
+     the counts inform without shouting. The ::before layer tints an opaque
+     base, so the logo never shows through. */
   .rail-cnt {
     position: absolute; top: 1px; right: 0; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box;
-    border-radius: 8px; color: var(--bg-base); font-size: 9.5px; font-weight: 700;
+    border-radius: 8px; background: var(--bg-base); color: var(--cnt); font-size: 9.5px; font-weight: 700;
     display: inline-flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums;
+    isolation: isolate;
   }
+  .rail-cnt::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--cnt); opacity: 0.16; }
 </style>

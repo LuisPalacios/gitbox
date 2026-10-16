@@ -31,6 +31,7 @@ body {
   padding: 6px 10px;
   font-size: 11px;
   line-height: 1.4;
+  white-space: pre-line;
   pointer-events: none;
   opacity: 0;
   animation: gitbox-tooltip-in 100ms ease-out forwards;

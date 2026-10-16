@@ -1,7 +1,7 @@
 <script lang="ts">
-  // Top bar: the sidebar button, logo, health rings (Simple: one saved ring; Advanced: repo and
-  // mirror rings), the action buttons, the Simple/Advanced switch and the
-  // Settings gear.
+  // Top bar: the sidebar button, logo, compact health rings (the repo ring, plus
+  // the mirror ring in Advanced), the action buttons, the Simple/Advanced switch
+  // and the Settings gear.
   import { accounts, summary, simpleSummary, mirrorSummary, themeStore } from '../stores';
   import { statusColor } from '../status';
   import { t } from '../i18n';
@@ -27,6 +27,20 @@
 
   $: sc = (s: string) => statusColor(s, $themeStore);
   $: sideTip = $t(rail ? 'nav.expand' : 'nav.collapse', { key: sidebarShortcut });
+  // The repo ring: Simple counts saved projects, Advanced up-to-date clones.
+  $: repoDone = simple ? $simpleSummary.saved : $summary.clean;
+  $: repoTotal = simple ? $simpleSummary.total : $summary.total;
+  $: repoPending = repoTotal - repoDone;
+  // One fact per line in the hover tooltip.
+  $: repoTip = (simple
+    ? [$t('simple.savedTip', { n: repoDone, total: repoTotal }),
+       $simpleSummary.help > 0 ? $t('simple.needHelpN', { n: $simpleSummary.help }) : '',
+       $simpleSummary.wip + $simpleSummary.unpushed > 0 ? $t('simple.wipN', { n: $simpleSummary.wip + $simpleSummary.unpushed }) : '',
+       $simpleSummary.update > 0 ? $t('simple.updateN', { n: $simpleSummary.update }) : '',
+       $simpleSummary.online > 0 ? $t('simple.onlineN', { n: $simpleSummary.online }) : '']
+    : [$t('top.upToDateTip', { n: repoDone, total: repoTotal }),
+       repoPending > 0 ? `${repoPending} ${repoPending === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}` : ''])
+    .filter(Boolean).join('\n');
 </script>
 
 <header class="topbar">
@@ -35,24 +49,13 @@
     <Logo class="logo-svg" />
     <span class="title">gitbox</span>
   </div>
-  {#if simple}
-  <div class="health">
-    <span class="health-ring" style="--pct: {$simpleSummary.total ? ($simpleSummary.saved / $simpleSummary.total) * 100 : 0}">
-      <span class="health-num">{$simpleSummary.saved}/{$simpleSummary.total}</span>
-    </span>
-    <span class="health-label">{$simpleSummary.help > 0 ? $t('simple.needHelpN', { n: $simpleSummary.help })
-      : $simpleSummary.wip + $simpleSummary.unpushed > 0 ? $t('simple.wipN', { n: $simpleSummary.wip + $simpleSummary.unpushed })
-      : $t('simple.allSaved')}</span>
-  </div>
-  {:else}
-  <!-- Advanced: compact rings without labels. The icon names what the ring
-       tracks, the corner badge counts what is not there yet, and the hover
-       tooltip spells it out. -->
-  {@const repoPending = $summary.total - $summary.clean}
-  {@const repoTip = `${$t('top.upToDateTip', { n: $summary.clean, total: $summary.total })}${repoPending > 0 ? ` · ${repoPending} ${repoPending === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}` : ''}`}
+  <!-- Compact rings without labels, in both modes. The icon names what the
+       ring tracks, the corner badge counts what is not there yet, and the
+       hover tooltip spells it out. Simple counts saved projects, Advanced
+       up-to-date clones. -->
   <div class="health">
     <span class="health-ring health-ring-mini" role="img" aria-label={repoTip} use:tooltip={{ text: repoTip, delay: 150 }}
-      style="--pct: {$summary.total ? ($summary.clean / $summary.total) * 100 : 0}">
+      style="--pct: {repoTotal ? (repoDone / repoTotal) * 100 : 0}">
       <svg class="health-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="5" cy="3.5" r="1.6"/><circle cx="5" cy="12.5" r="1.6"/><circle cx="11" cy="6" r="1.6"/>
         <path d="M5 5.1v5.8M11 7.6c0 2.4-6 1.6-6 3.3"/>
@@ -61,7 +64,7 @@
         <span class="health-badge" style="background: {sc('behind')}">{repoPending > 99 ? '99+' : repoPending}</span>
       {/if}
     </span>
-    {#if $mirrorSummary.total > 0}
+    {#if !simple && $mirrorSummary.total > 0}
       {@const mirrorPending = $mirrorSummary.total - $mirrorSummary.active}
       {@const mirrorTip = $mirrorSummary.error > 0
         ? $t('top.mirrorsActiveErrors', { active: $mirrorSummary.active, total: $mirrorSummary.total, n: $mirrorSummary.error })
@@ -77,7 +80,6 @@
       </span>
     {/if}
   </div>
-  {/if}
   <div class="topbar-actions">
     <button class="icon-btn" on:click={syncAll}
       disabled={syncing || ($summary.behind === 0 && $summary.notCloned === 0)}
@@ -114,8 +116,6 @@
     display: flex; align-items: center; justify-content: center; position: relative;
   }
   .health-ring::before { content: ''; position: absolute; inset: 4px; background: var(--bg-base); border-radius: 50%; transition: background 0.2s; }
-  .health-num { position: relative; z-index: 1; font-size: 10px; font-weight: 700; }
-  .health-label { font-size: 12px; color: var(--text-muted); }
   /* Advanced header rings: smaller, icon inside, attention count in a corner badge. */
   .health-ring-mini { width: 28px; height: 28px; margin-right: 6px; cursor: default; }
   .health-ring-mini::before { inset: 3px; }

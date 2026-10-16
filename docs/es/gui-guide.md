@@ -251,7 +251,7 @@ Cada grupo mirror se muestra como un chip (status dot y par de cuentas) que se a
 
 ### Anillo de salud de mirror
 
-En Advanced, la barra superior muestra anillos compactos sin etiquetas. El anillo de repos lleva un icono de rama y se llena a medida que los clones se ponen al día. Cuando hay mirrors configurados, un segundo **health ring** con un icono de dos flechas se llena a medida que los mirrors pasan a activos y se vuelve rojo si algún mirror tiene errores. Una pequeña insignia en cada anillo cuenta lo que aún falta, y al pasar el ratón sobre un anillo se ve la línea completa `N de total al día` o `active/total`.
+La barra superior muestra anillos compactos sin etiquetas en los dos modos. El anillo de repos lleva un icono de rama y se llena a medida que los clones se ponen al día; en Simple, se llena a medida que los proyectos se guardan. En Advanced, cuando hay mirrors configurados, un segundo **health ring** con un icono de dos flechas se llena a medida que los mirrors pasan a activos y se vuelve rojo si algún mirror tiene errores. Una pequeña insignia en cada anillo cuenta lo que aún falta, y al pasar el ratón sobre un anillo se ve la línea completa `N de total al día` (Simple: `N de total guardados`) o `active/total`.
 
 ### Acciones de mirror
 
