@@ -109,7 +109,7 @@ I close any dialog with **Escape** or by clicking outside it. Dialogs that are b
 
 The sidebar on the left picks what the main area shows:
 
-- **Needs attention** (Simple: **Needs you**) — first the accounts whose credential needs a fix, each with its fix button, then every repo that needs me, grouped as needs help, local work, behind, and not cloned, in alphabetical order inside each group. Each row names its account; I click the name to open that account. A clone nested in another clone shows an "in \<parent\>" tag. A row that turns fine while I watch, after a pull for example, stays in place, faded, until I leave the view. When nothing needs me, the view says so.
+- **Needs attention** (Simple: **Needs you**) — first the accounts whose credential needs a fix, each with its fix button, then every repo that needs me, grouped as needs help, local work, behind, and not cloned. Inside each group, rows sit under a header per account, which I click to fold, in alphabetical order. A container nests the clones beside it, as in All repos; a clone whose container is in another group shows an "in \<parent\>" tag. A row that turns fine while I watch, after a pull for example, stays in place, faded, until I leave the view. When nothing needs me, the view says so.
 - **All repos** (Simple: **All projects**) — every clone, grouped by account, in alphabetical order.
 - **Accounts** — accounts only: one entry per account with its provider logo, a small health mark, its name, its health in words, and how many repos need me. I click one to open the account's view.
 - **More** — below the bottom separator, everything that isn't an account:
@@ -154,7 +154,7 @@ When a repo is checked out on a non-default branch, a small branch badge appears
 
 #### Pull all
 
-Click the **Pull all** button (down-arrow icon) in the top bar to bring everything up to date in one click. It clones missing repos and pulls repos that are behind with fast-forward only (`git pull --ff-only`), so it never merges and never touches local changes. A behind row's own **Pull** button does the same for one repo. In Simple, the button is **Update all**.
+Click the **Pull all** button (down-arrow icon) in the top bar to bring everything up to date in one click. It clones missing repos and pulls repos that are behind with fast-forward only (`git pull --ff-only`), so it never merges and never touches local changes. A behind row's own **Pull · FF only** button does the same for one repo. In Simple, the button is **Update all**.
 
 #### Fetch all
 
@@ -280,7 +280,7 @@ Whenever I drop a `*.code-workspace` file under the gitbox-managed folder (or a 
 
 ### Non-standard clones & multi-repo containers
 
-A **multi-repo container** is a managed clone that holds other clones nested in its working tree (for example, a project repo whose `.code-workspace` ties together several sibling clones). When a clone looks like one — it has a `.code-workspace` at its root but isn't flagged yet — its row shows an inline **onboard nested clones** hint. Clicking it flags the clone as a container, scans its working tree, and opens the adopt modal with the nested clones it finds; you confirm which to onboard. Nested clones are adopted in place under their real account/org (stored with an absolute `clone_folder` inside the container, never relocated), and the hint is replaced by a **container** badge.
+A **multi-repo container** is a managed clone that holds other clones nested in its working tree (for example, a project repo whose `.code-workspace` ties together several sibling clones). When a clone looks like one — it has a `.code-workspace` at its root but isn't flagged yet — its row shows an inline **onboard nested clones** hint. Clicking it flags the clone as a container, scans its working tree, and opens the adopt modal with the nested clones it finds; you confirm which to onboard. Nested clones are adopted in place under their real account/org (stored with an absolute `clone_folder` inside the container, never relocated), and the hint is replaced by a 📁 icon; hovering it says it's a container.
 
 You can also manage this from the repo row's ⋯ menu, under **Maintenance** — **Mark as multi-repo container**, **Unmark as multi-repo container**, and **Re-scan for nested clones** (shown once a clone is a container) — or with the **Multi-repo container** checkbox in the repo detail panel. The **Change root folder** dialog manages **extra scan folders** (additional roots scanned for clones and `.code-workspace` files) and the **nested scan depth** (how many levels below a container Gitbox descends, default 1 — the container's immediate children; raise it to reach clones nested deeper).
 

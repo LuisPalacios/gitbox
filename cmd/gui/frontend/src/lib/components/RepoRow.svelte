@@ -464,7 +464,7 @@
   {/if}
   {@render rowTags()}
   {#if isContainer}
-    <span class="container-badge" title={$t('row.containerTip')}>{$t('row.container')}</span>
+    <span class="container-icon" title={$t('row.containerTip')} aria-label={$t('row.containerTip')} role="img">📁</span>
   {:else if isTentativeContainer(rowSourceKey, repoName, tentativeContainers)}
     <button class="tentative-container-badge"
             on:click|stopPropagation={() => toggleContainer(rowSourceKey, repoName)}
@@ -542,6 +542,8 @@
     content: ''; position: absolute; left: 18px; top: 0; bottom: 0;
     border-left: 2px solid var(--border); opacity: 0.6;
   }
+  /* A container shows only its folder icon; the tooltip says what it is (#148). */
+  .container-icon { flex: none; font-size: 13px; line-height: 1; margin-left: 4px; cursor: default; }
   .container-badge {
     font-size: 10px; color: var(--text-secondary); border: 1px solid var(--border);
     border-radius: 4px; padding: 0 5px; margin-left: 6px; white-space: nowrap;

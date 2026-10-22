@@ -109,7 +109,7 @@ Cierro cualquier diálogo con **Escape** o haciendo clic fuera de él. Los diál
 
 La barra lateral de la izquierda elige qué muestra el área principal:
 
-- **Requiere atención** (Simple: **Te necesitan**) — primero las cuentas cuya credencial necesita un arreglo, cada una con su botón de arreglo, y después cada repo que me necesita, agrupados como necesita ayuda, trabajo local, por detrás y no clonado, en orden alfabético dentro de cada grupo. Cada fila indica su cuenta; hago clic en el nombre para abrir esa cuenta. Un clon anidado en otro clon muestra una etiqueta "en \<parent\>". Una fila que pasa a estar bien mientras miro, después de un pull por ejemplo, se queda en su sitio, atenuada, hasta que salgo de la vista. Cuando nada me necesita, la vista lo dice.
+- **Requiere atención** (Simple: **Te necesitan**) — primero las cuentas cuya credencial necesita un arreglo, cada una con su botón de arreglo, y después cada repo que me necesita, agrupados como necesita ayuda, trabajo local, por detrás y no clonado. Dentro de cada grupo, las filas quedan bajo una cabecera por cuenta, que pliego con un clic, en orden alfabético. Un contenedor anida los clones que tiene al lado, como en Todos los repos; un clon cuyo contenedor está en otro grupo muestra una etiqueta "en \<parent\>". Una fila que pasa a estar bien mientras miro, después de un pull por ejemplo, se queda en su sitio, atenuada, hasta que salgo de la vista. Cuando nada me necesita, la vista lo dice.
 - **Todos los repos** (Simple: **Todos los proyectos**) — cada clon, agrupado por cuenta, en orden alfabético.
 - **Cuentas** — solo cuentas: una entrada por cuenta con el logo de su proveedor, una pequeña marca de salud, su nombre, su salud en palabras y cuántos repos me necesitan. Hago clic en una para abrir la vista de la cuenta.
 - **Más** — bajo el separador inferior, todo lo que no es una cuenta:
@@ -154,7 +154,7 @@ Cuando un repo está checked out en una rama no predeterminada, aparece una pequ
 
 #### Pull de todo
 
-Haz clic en el botón **Pull de todo** (icono de flecha hacia abajo) en la barra superior para actualizar todo con un clic. Clona repos ausentes y hace pull de repos que están por detrás solo con avance rápido (`git pull --ff-only`), así que nunca fusiona y nunca toca los cambios locales. El botón **Pull** propio de una fila por detrás hace lo mismo para un repo. En Simple, el botón es **Actualizar todo**.
+Haz clic en el botón **Pull de todo** (icono de flecha hacia abajo) en la barra superior para actualizar todo con un clic. Clona repos ausentes y hace pull de repos que están por detrás solo con avance rápido (`git pull --ff-only`), así que nunca fusiona y nunca toca los cambios locales. El botón **Pull · solo FF** propio de una fila por detrás hace lo mismo para un repo. En Simple, el botón es **Actualizar todo**.
 
 #### Fetch de todo
 
@@ -280,7 +280,7 @@ Cuando dejo un archivo `*.code-workspace` bajo la carpeta gestionada por gitbox 
 
 ### Clones no estándar y contenedores multi-repo
 
-Un **contenedor multi-repo** es un clon gestionado que mantiene otros clones anidados en su árbol de trabajo (por ejemplo, un repo de proyecto cuyo `.code-workspace` agrupa varios clones hermanos). Cuando un clon parece serlo — tiene un `.code-workspace` en su raíz pero aún no está marcado — su fila muestra un aviso inline **onboard nested clones**. Al hacer clic, marca el clon como contenedor, escanea su árbol de trabajo y abre el modal de adopción con los clones anidados que encuentra; tú confirmas cuáles incorporar. Los clones anidados se adoptan en el lugar bajo su cuenta/org real (se guardan con una `clone_folder` absoluta dentro del contenedor, nunca se reubican), y el aviso se reemplaza por un badge **container**.
+Un **contenedor multi-repo** es un clon gestionado que mantiene otros clones anidados en su árbol de trabajo (por ejemplo, un repo de proyecto cuyo `.code-workspace` agrupa varios clones hermanos). Cuando un clon parece serlo — tiene un `.code-workspace` en su raíz pero aún no está marcado — su fila muestra un aviso inline **onboard nested clones**. Al hacer clic, marca el clon como contenedor, escanea su árbol de trabajo y abre el modal de adopción con los clones anidados que encuentra; tú confirmas cuáles incorporar. Los clones anidados se adoptan en el lugar bajo su cuenta/org real (se guardan con una `clone_folder` absoluta dentro del contenedor, nunca se reubican), y el aviso se reemplaza por un icono 📁; al pasar el ratón indica que es un contenedor.
 
 También puedes gestionarlo desde el menú ⋯ de la fila del repo, bajo **Mantenimiento** — **Mark as multi-repo container**, **Unmark as multi-repo container** y **Re-scan for nested clones** (visible una vez que el clon es contenedor) — o con la casilla **Multi-repo container** del panel de detalle del repo. El diálogo **Change root folder** gestiona las **carpetas de escaneo extra** (raíces adicionales escaneadas en busca de clones y archivos `.code-workspace`) y la **profundidad de escaneo anidado** (cuántos niveles desciende Gitbox por debajo de un contenedor, por defecto 1: los hijos inmediatos del contenedor; súbela para alcanzar clones anidados más profundos).
 
