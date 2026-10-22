@@ -14,7 +14,7 @@
   import { startFetch, startPull, noteDone, summarizeFetch, summarizePull, localWorkCount } from './lib/activity';
   import type { Run } from './lib/activity';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit, EventsOn } from '../wailsjs/runtime/runtime';
-  import type { RepoState, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
+  import type { RepoState, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, OrphanRepoDTO, ReconcileDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
   import TerminalsModal from './lib/TerminalsModal.svelte';
   import Onboarding from './lib/Onboarding.svelte';
   import ConfigErrorScreen from './lib/components/ConfigErrorScreen.svelte';
@@ -395,12 +395,14 @@
     if (result) await cloneRepos(result.sourceKey, result.repos);
   }
 
-  // Re-run the nested-clone scan for a container and open the orphans modal so
-  // newly cloned siblings (or ones surfaced by a deeper scan) can be adopted.
+  // Re-run the scan for a container: nested clones gitbox recognises are
+  // added on the spot; the Unmatched list opens for the rest.
   async function rescanContainer() {
-    await loadOrphans();
-    if (orphanList.some(o => o.matchedAccount && !o.localOnly)) {
+    const res = await runReconcile();
+    if (orphanList.some(o => o.nested)) {
       showOrphanModal();
+    } else if (res && res.adopted > 0) {
+      pushNotice('info', $t(res.adopted === 1 ? 'notice.pickedUpOne' : 'notice.pickedUp', { n: res.adopted }));
     } else {
       pushNotice('info', $t('notice.noNested'));
     }
@@ -657,19 +659,38 @@
     : hostOS === 'darwin' ? $t('app.revealFinder')
     : $t('app.revealFiles');
 
-  // ── Orphan adoption ──
-  let orphanList: import('./lib/types').OrphanRepoDTO[] = [];
+  // ── Disk reconcile (#149) ──
+  // A pass adopts the clones gitbox recognises and re-links moved ones by
+  // itself; orphanList holds the clones that need me (Unmatched clones).
+  let orphanList: OrphanRepoDTO[] = [];
+  let ignoredClones: OrphanRepoDTO[] = [];
   let orphanCount = 0;
   let orphansDialog: OrphansModal;
   const showOrphanModal = () => orphansDialog.showOrphanModal();
 
-  async function loadOrphans() {
-    await loadNesting();
+  async function runReconcile(): Promise<ReconcileDTO | null> {
     try {
-      const result = await bridge.findOrphans();
-      orphanList = result || [];
-      orphanCount = orphanList.filter(o => o.matchedAccount && !o.localOnly).length;
-    } catch { orphanCount = 0; }
+      const res = await bridge.reconcile();
+      await applyReconcile(res);
+      return res;
+    } catch (e) {
+      pushNotice('error', $t('notice.reconcileFailed'), [errorText(e)]);
+      return null;
+    }
+  }
+
+  // applyReconcile shows a pass: the lists, and the config and statuses when
+  // it added or moved anything.
+  async function applyReconcile(res: ReconcileDTO) {
+    orphanList = res.unmatched || [];
+    ignoredClones = res.ignored || [];
+    orphanCount = orphanList.length;
+    if (res.error) pushNotice('error', $t('notice.reconcileFailed'), [res.error]);
+    if (res.adopted + res.relinked > 0) {
+      $configStore = await bridge.reloadConfig();
+      applyStatusResults(await bridge.getAllStatus());
+    }
+    await loadNesting();
     await loadTentativeContainers();
   }
 
@@ -1195,13 +1216,10 @@
       await bridge.setRepoContainer(sourceKey, repoName, next);
       $configStore = await bridge.reloadConfig();
       if (next) {
-        // Newly a container — rescan and open the orphans modal so the user
-        // reviews and adopts the nested clones via the tested flow. They adopt
-        // in place (an absolute clone_folder inside the container).
-        await loadOrphans();
-        if (orphanList.some(o => o.nested && o.matchedAccount && !o.localOnly)) {
-          showOrphanModal();
-        }
+        // Newly a container — rescan: recognised nested clones are added in
+        // place; the Unmatched list opens for any it couldn't place.
+        await runReconcile();
+        if (orphanList.some(o => o.nested)) showOrphanModal();
       }
     } catch (e) {
       pushNotice('error', $t('notice.containerFailed'), [errorText(e)]);
@@ -1334,6 +1352,7 @@
       fetchingAll = false;
       fetchingRepos = {};
     }
+    if (manual) runReconcile();
   }
 
   // Everything a clone row shares with its list, passed unchanged through
@@ -1424,8 +1443,8 @@
     // Load autostart state.
     loadAutostart();
 
-    // Scan for orphan repos in the background.
-    loadOrphans();
+    // Sync the config with the clones on disk in the background.
+    runReconcile();
 
     // Start periodic status check if previously configured.
     if (fetchInterval !== 'off') applyFetchInterval(fetchInterval);
@@ -1545,7 +1564,7 @@
     let focusTimer: ReturnType<typeof setTimeout> | null = null;
     window.addEventListener('focus', () => {
       if (focusTimer) clearTimeout(focusTimer);
-      focusTimer = setTimeout(() => reloadFromDisk(), 300);
+      focusTimer = setTimeout(() => reloadFromDisk().then(() => runReconcile(), () => {}), 300);
       bridge.refreshAIHarnesses().catch(() => {});
     });
 
@@ -1643,7 +1662,7 @@
     events.on('fetch:allstart', () => {
       fetchingAll = true;
       clearFetchFailNotice();
-      if (!fetchRun) fetchRun = startFetch(Object.keys($repoStates).filter((k) => statusOfKey(k) !== 'not cloned'), accountOfKey, statusOfKey);
+      if (!fetchRun) fetchRun = startFetch(Object.keys($repoStates).filter((k) => !['not cloned', 'root offline'].includes(statusOfKey(k))), accountOfKey, statusOfKey);
     });
 
     events.on('fetch:alldone', (data: { error?: string } | null) => {
@@ -1858,7 +1877,7 @@
 
   <div class="body">
     <!-- ── SIDEBAR ── -->
-    <Sidebar view={currentView} {rail} {simple} {credStatuses} {attention} {totalRepos} {orphanCount}
+    <Sidebar view={currentView} {rail} {simple} {credStatuses} {attention} {totalRepos} {orphanCount} ignoredCount={ignoredClones.length}
       {setView} onAddAccount={addAccount} {showOrphanModal} />
 
     <main class="content">
@@ -1915,7 +1934,7 @@
   <SweepModal bind:this={sweepDialog} {closeActionMenu} />
 
   <!-- ── ORPHAN ADOPTION MODAL ── -->
-  <OrphansModal bind:this={orphansDialog} {orphanList} {loadOrphans} />
+  <OrphansModal bind:this={orphansDialog} unmatched={orphanList} ignored={ignoredClones} {applyReconcile} />
 
   <!-- ── ADD ACCOUNT MODAL ── -->
   {#if connectModal}
@@ -1931,7 +1950,7 @@
   <DeleteAccountModal bind:this={deleteAccountDialog} bind:reloadError bind:deleteMode {reloadFromDisk} />
 
   <!-- ── CHANGE FOLDER MODAL ── -->
-  <RootsModal bind:this={rootsDialog} {reloadFromDisk} />
+  <RootsModal bind:this={rootsDialog} {reloadFromDisk} {runReconcile} />
   <RootPickerModal bind:this={rootPicker} />
 
   <!-- ── ADD MIRROR GROUP MODAL ── -->

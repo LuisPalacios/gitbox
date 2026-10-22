@@ -11,7 +11,7 @@
 const darkPalette: Record<string, string> = {
   clean: '#61fd5f', behind: '#D91C9A', dirty: '#F07623',
   ahead: '#4B95E9', syncing: '#4B95E9', cloning: '#4B95E9', fetching: '#4B95E9',
-  'not cloned': '#71717a', 'no upstream': '#71717a',
+  'not cloned': '#71717a', 'no upstream': '#71717a', 'root offline': '#71717a',
   diverged: '#D81E5B', conflict: '#D81E5B', error: '#D81E5B',
   'upstream gone': '#D81E5B',
 };
@@ -19,7 +19,7 @@ const darkPalette: Record<string, string> = {
 const lightPalette: Record<string, string> = {
   clean: '#166534', behind: '#a21caf', dirty: '#c2410c',
   ahead: '#2563eb', syncing: '#2563eb', cloning: '#2563eb', fetching: '#2563eb',
-  'not cloned': '#52525b', 'no upstream': '#52525b',
+  'not cloned': '#52525b', 'no upstream': '#52525b', 'root offline': '#52525b',
   diverged: '#be123c', conflict: '#be123c', error: '#be123c',
   'upstream gone': '#be123c',
 };
@@ -37,6 +37,8 @@ export function statusSymbol(status: string): string {
     syncing: '◔', cloning: '◔', fetching: '◔', 'not cloned': '○',
     'no upstream': '~', diverged: '⚠', conflict: '⚡', error: '✕',
     'upstream gone': '⊗',
+    // Its clone root is missing (#149): an unmounted drive, not a problem.
+    'root offline': '◌',
     // 'unknown' = first scan hasn't completed yet. Render the same shape as
     // 'clean' but in the muted grey returned by statusColor() so the row
     // says "I don't know yet" instead of lying with a red ✕.
@@ -62,13 +64,14 @@ export function rowGlyph(status: string, fetching: boolean): string {
 // non-developer asks: is my work safe? Each kind maps to one sentence and
 // one action in the repo row. Local work splits in two: work in progress
 // (changed files) and saved here but not uploaded (commits).
-export type SimpleKind = 'saved' | 'wip' | 'unpushed' | 'update' | 'online' | 'help' | 'checking' | 'busy';
+export type SimpleKind = 'saved' | 'wip' | 'unpushed' | 'update' | 'online' | 'offline' | 'help' | 'checking' | 'busy';
 
 const simpleKinds: Record<string, SimpleKind> = {
   clean: 'saved',
   dirty: 'wip', ahead: 'unpushed', 'no upstream': 'unpushed',
   behind: 'update',
   'not cloned': 'online',
+  'root offline': 'offline',
   diverged: 'help', conflict: 'help', 'upstream gone': 'help', error: 'help',
   unknown: 'checking',
   syncing: 'busy', cloning: 'busy', fetching: 'busy',
@@ -81,7 +84,7 @@ export function simpleKind(status: string): SimpleKind {
 // Colors reuse the Advanced palette entry that means the same thing.
 const simpleColorKeys: Record<SimpleKind, string> = {
   saved: 'clean', wip: 'dirty', unpushed: 'ahead', update: 'behind', online: 'not cloned',
-  help: 'error', checking: 'not cloned', busy: 'syncing',
+  offline: 'root offline', help: 'error', checking: 'not cloned', busy: 'syncing',
 };
 
 export function simpleColor(kind: SimpleKind, theme: string): string {
@@ -100,7 +103,8 @@ export function simpleUnsaved(status: string): boolean {
 
 // ── Attention ──
 // How urgently a status needs me, worst first: 0 needs help, 1 local work,
-// 2 behind, 3 not cloned, 4 nothing to do. A row being pulled or cloned
+// 2 behind, 3 not cloned, 4 nothing to do (a repo under a missing root
+// included: its drive is away, nothing to fix). A row being pulled or cloned
 // keeps the rank it had, so it doesn't jump while it runs. A feature branch
 // without an upstream is fine, as in isSynced.
 export const ATTENTION_GROUPS = ['help', 'local', 'behind', 'notCloned'] as const;
@@ -150,6 +154,7 @@ export function statusLabel(st: LabelState, simple: boolean): StatusLabel {
     case 'upstream gone': return { key: 'status.upstreamGone', color: 'upstream gone', badges: false };
     case 'error': return { key: 'status.error', color: 'error', badges: false };
     case 'not cloned': return { key: 'status.notCloned', color: 'not cloned', badges: false };
+    case 'root offline': return { key: 'status.rootOffline', color: 'root offline', badges: false };
     case 'no upstream': return st.isDefault ? { key: 'repo.noUpstream', color: 'no upstream', badges: false } : { key: 'repo.localBranch', color: 'clean', badges: false };
     default: return { key: 'simple.checking', color: 'not cloned', badges: false };
   }
@@ -183,7 +188,7 @@ export function statusCountBadge(status: string): CountBadge | null {
 // ── Detail panel ──
 // Statuses with nothing to inspect: an open detail panel folds when its
 // row reaches one of them, and clicking such a row does nothing.
-const noDetailStatuses = new Set(['clean', 'behind', 'not cloned', 'cloning', 'syncing']);
+const noDetailStatuses = new Set(['clean', 'behind', 'not cloned', 'root offline', 'cloning', 'syncing']);
 
 export function detailLocked(status: string): boolean {
   return noDetailStatuses.has(status);

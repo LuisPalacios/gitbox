@@ -70,17 +70,17 @@ Algunas cosas se comparten entre worktrees aunque los árboles de código estén
 - Dos worktrees no pueden tener la misma rama checked out. Git lo rechaza. El mensaje de error es obvio.
 - No hago push a la misma rama remota desde dos worktrees. Si alguna vez lo necesito, uno de ellos debe hacer force-push with lease después de que el otro aterrice.
 
-## Worktrees y la detección de orphans propia de gitbox
+## Worktrees y la detección de clones propia de gitbox
 
-Si mi folder root gestionado por gitbox es `~/00.git/github-<me>/<me>/`, entonces un worktree hermano en `~/00.git/github-<me>/<me>/gitbox-42-my-slug` queda _dentro_ de ese árbol gestionado. Cuando abro el modal de huérfanos de la GUI, lista el worktree como un repo orphan — no encaja con el layout esperado de ninguna cuenta.
+Si mi folder root gestionado por gitbox es `~/00.git/github-<me>/<me>/`, entonces un worktree hermano en `~/00.git/github-<me>/<me>/gitbox-42-my-slug` queda _dentro_ de ese árbol gestionado. La pasada de reconcile de la GUI lo encuentra y lo lista en **Clones sin ubicar** como un worktree de git de otro clon.
 
-No está realmente orphaned. El worktree tiene un archivo puntero `.git` válido y git lo ve correctamente. gitbox escanea por estructura de directorios, no leyendo el contenido de `.git`, así que no puede distinguir un worktree de un clone no registrado.
+No es un clon propio: el worktree tiene un archivo puntero `.git` al clon principal. gitbox reconoce ese archivo y nunca adopta un worktree en la config.
 
 Tres formas de convivir con ello:
 
 1. Ignorar el ruido. El worktree desaparece cuando `/merge-pr` limpia después del merge.
-2. Colocar worktrees fuera de cualquier carpeta gestionada por gitbox. Hoy no es el default del skill — usa la ruta hermana porque editores y gestores de archivos se comportan mejor ahí — pero puedo usar `git worktree add` manualmente a otra ubicación si el ruido me molesta en una rama concreta.
-3. Abrir un issue de seguimiento si empieza a molestar. Aún no hay ningún ajuste para excluir patrones de worktree del discovery.
+2. Hacer clic en **Ignorar** en su fila de Clones sin ubicar para ocultarlo para siempre.
+3. Colocar worktrees fuera de cualquier carpeta gestionada por gitbox. Hoy no es el default del skill — usa la ruta hermana porque editores y gestores de archivos se comportan mejor ahí — pero puedo usar `git worktree add` manualmente a otra ubicación si el ruido me molesta en una rama concreta.
 
 ## Cuando main avanza debajo de mí
 

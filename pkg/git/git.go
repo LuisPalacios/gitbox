@@ -479,6 +479,13 @@ func GlobalConfigUnset(key string) error {
 	return err
 }
 
+// IsLinkedWorktree reports whether path is a linked worktree of another
+// clone: its .git is a file pointing at the main clone's git directory.
+func IsLinkedWorktree(path string) bool {
+	data, err := os.ReadFile(filepath.Join(path, ".git"))
+	return err == nil && strings.HasPrefix(string(data), "gitdir: ")
+}
+
 // IsRepo checks if the given path contains a .git directory or is a bare repo.
 func IsRepo(path string) bool {
 	gitDir := filepath.Join(path, ".git")

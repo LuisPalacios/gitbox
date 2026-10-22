@@ -20,6 +20,8 @@
   export let attention: { total: number; byAccount: Record<string, number> };
   export let totalRepos: number;
   export let orphanCount: number;
+  // Ignored clones keep the entry reachable, without a count (#149).
+  export let ignoredCount = 0;
   export let setView: (view: string) => void;
   export let onAddAccount: () => void;
   export let showOrphanModal: () => void;
@@ -29,8 +31,8 @@
   $: attentionLabel = $t(simple ? 'nav.attentionSimple' : 'nav.attention');
   $: allLabel = $t(simple ? 'nav.allSimple' : 'nav.all');
   $: addLabel = simple ? $t('nav.connect') : $t('account.add');
-  $: foundLabel = $t(simple ? 'nav.foundSimple' : 'nav.found');
-  $: foundTip = $t(simple ? 'nav.foundTipSimple' : 'nav.foundTip', { n: orphanCount });
+  $: foundLabel = $t('nav.found');
+  $: foundTip = orphanCount > 0 ? $t(simple ? 'nav.foundTipSimple' : 'nav.foundTip', { n: orphanCount }) : foundLabel;
   $: wsCount = Object.keys($workspaces).length;
   $: mirrorCount = $mirrorSummary.total > 0 ? `${$mirrorSummary.active}/${$mirrorSummary.total}` : '';
   const badge = (n: number) => (n > 99 ? '99+' : String(n));
@@ -68,9 +70,9 @@
     {/each}
     <span class="rail-sep"></span>
     <button class="rail-btn" aria-label={addLabel} use:tooltip={{ text: addLabel, delay: 150 }} on:click={onAddAccount}><UIIcon name="plus" /></button>
-    {#if orphanCount > 0}
+    {#if orphanCount > 0 || ignoredCount > 0}
       <button class="rail-btn" aria-label={foundTip} use:tooltip={{ text: foundTip, delay: 150 }} on:click={showOrphanModal}>
-        <UIIcon name="search" /><span class="rail-cnt" style="--cnt: {sc('dirty')}">{badge(orphanCount)}</span>
+        <UIIcon name="search" />{#if orphanCount > 0}<span class="rail-cnt" style="--cnt: {sc('dirty')}">{badge(orphanCount)}</span>{/if}
       </button>
     {/if}
     {#if !simple}
@@ -108,11 +110,11 @@
       <span class="navi"><UIIcon name="plus" /></span>
       <span class="nav-label">{addLabel}</span>
     </button>
-    {#if orphanCount > 0}
+    {#if orphanCount > 0 || ignoredCount > 0}
       <button class="nav" title={foundTip} on:click={showOrphanModal}>
         <span class="navi"><UIIcon name="search" /></span>
         <span class="nav-label">{foundLabel}</span>
-        <span class="cnt">{orphanCount}</span>
+        {#if orphanCount > 0}<span class="cnt">{orphanCount}</span>{/if}
       </button>
     {/if}
     {#if !simple}

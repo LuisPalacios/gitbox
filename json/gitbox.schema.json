@@ -33,6 +33,11 @@
                     "minimum": 1,
                     "description": "How many directory levels gitbox descends below a container repo (see repo.container) when discovering nested clones. Defaults to 1 (immediate children) when unset."
                 },
+                "ignored_clones": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Absolute paths of clones found under a root that you chose not to track. The disk reconcile never adopts them or lists them as unmatched."
+                },
                 "language": {
                     "type": "string",
                     "enum": ["en", "es"],

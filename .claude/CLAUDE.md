@@ -134,6 +134,7 @@ Config file: `~/.config/gitbox/gitbox.json` — `accounts` + `sources`, real boo
 
 - `global.roots` (`[]string`, v4, required) — the clone roots: folders gitbox clones into and scans for clones and `.code-workspace` files. The first is the default. A clone lives at `<root>/<source folder>/<org>/<repo>`.
 - `source.root` / `repo.root` (v4) — the root a source clones into (remembered from the last clone; empty = the default) and, only when it differs, the root one repo lives in. Every path resolves through `status.RepoPath`. The mutators in `pkg/config/roots.go` (`SetSourceRoot`, `SetDefaultRoot`, `RemoveRoot`, `PlaceRepo`) pin the roots clones already resolve through, so no clone path moves; never set these fields by hand in code.
+- `global.ignored_clones` (`[]string`) — clones found under a root that I chose not to track; the disk reconcile (`pkg/reconcile`) never adopts or lists them. Reconcile runs from the GUI at startup, on focus, after a manual Fetch all and after root changes: it adopts confident matches in place, re-links moved clones and leaves the rest in Unmatched clones; repos under a missing root read `root offline`.
 - `global.nested_scan_depth` (`int`, default 1 via `NestedScanDepthOrDefault`) — how many levels gitbox descends below a container repo to find nested clones.
 - `repo.container` (`bool`) — marks a clone as a multi-repo parent; gitbox descends into its working tree to discover and onboard nested clones the user provisioned there. Nested clones onboard as plain repos under their real account/org with an absolute `clone_folder`, never relocated. Parent→child nesting is derived from paths by `status.ComputeNesting`.
 - `global.collapsed` (`{sources: [], repos: [], sidebar: bool, view: string}`) — GUI layout state: folded account groups (source keys), folded parent clones (`"source/repo"` keys), the sidebar folded to its icon rail, and the last selected view (`attention`, `all`, `mirrors`, `workspaces` or `account:<key>`). Records what is collapsed, so absent means all expanded and Needs attention. `config.Save` prunes keys that no longer resolve and a view of a missing account (`PruneCollapsed`), `RenameAccount` rewrites `account:<old>` to `account:<new>`, and the backup ring ignores layout-only changes, like window state. The old `cards_open` key is gone; `Parse` ignores it.
@@ -222,16 +223,17 @@ The project has a comprehensive test suite. Read `.claude/context/testing-patter
 
 **After any code change, always run the relevant tests:**
 
-| What changed                                | Command                                           |
-| ------------------------------------------- | ------------------------------------------------- |
-| `pkg/` (shared library)                     | `go test ./pkg/...`                               |
-| Account/credential/clone flows (`pkg/ops/`) | `go test ./pkg/ops/`                              |
-| Credential logic (`pkg/credential/`)        | `go test ./pkg/credential/ ./pkg/ops/ ./cmd/gui/` |
-| Config logic (`pkg/config/`)                | `go test ./pkg/config/ ./pkg/ops/ ./cmd/gui/`     |
-| GUI bindings (`cmd/gui/`)                   | `go test ./cmd/gui/`                              |
-| Update logic (`pkg/update/`)                | `go test ./pkg/update/`                           |
-| Doctor / tool detection (`pkg/doctor/`)     | `go test ./pkg/doctor/`                           |
-| Unsure what's affected                      | `go test ./...`                                   |
+| What changed                                | Command                                            |
+| ------------------------------------------- | -------------------------------------------------- |
+| `pkg/` (shared library)                     | `go test ./pkg/...`                                |
+| Account/credential/clone flows (`pkg/ops/`) | `go test ./pkg/ops/`                               |
+| Credential logic (`pkg/credential/`)        | `go test ./pkg/credential/ ./pkg/ops/ ./cmd/gui/`  |
+| Config logic (`pkg/config/`)                | `go test ./pkg/config/ ./pkg/ops/ ./cmd/gui/`      |
+| Disk reconcile (`pkg/reconcile/`)           | `go test ./pkg/reconcile/ ./pkg/adopt/ ./cmd/gui/` |
+| GUI bindings (`cmd/gui/`)                   | `go test ./cmd/gui/`                               |
+| Update logic (`pkg/update/`)                | `go test ./pkg/update/`                            |
+| Doctor / tool detection (`pkg/doctor/`)     | `go test ./pkg/doctor/`                            |
+| Unsure what's affected                      | `go test ./...`                                    |
 
 `cmd/gui` tests (and `./...`) need `cmd/gui/frontend/dist` — build the frontend once if it is missing.
 

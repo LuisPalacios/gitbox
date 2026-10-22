@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -406,10 +407,37 @@ func TestStateString(t *testing.T) {
 		{Conflict, "conflict"},
 		{NotCloned, "not cloned"},
 		{Error, "error"},
+		{RootOffline, "root offline"},
 	}
 	for _, tt := range tests {
 		if got := tt.state.String(); got != tt.want {
 			t.Errorf("State(%d).String() = %q, want %q", tt.state, got, tt.want)
 		}
+	}
+}
+
+// TestCheckAll_RootOffline verifies a repo whose clone root is missing reads
+// "root offline" instead of "not cloned", while a repo pinned by an
+// absolute clone_folder still gets a real check (#149).
+func TestCheckAll_RootOffline(t *testing.T) {
+	online := t.TempDir()
+	missing := filepath.Join(t.TempDir(), "unplugged")
+	cfg := &config.Config{
+		Global: config.GlobalConfig{Roots: []string{online, missing}},
+		Sources: map[string]config.Source{
+			"a": {Account: "acct", Repos: map[string]config.Repo{
+				"org/here":   {},
+				"org/away":   {Root: missing},
+				"org/pinned": {Root: missing, CloneFolder: filepath.Join(online, "pinned")},
+			}},
+		},
+	}
+	got := map[string]State{}
+	for _, rs := range CheckAll(cfg) {
+		got[rs.Repo] = rs.State
+	}
+	want := map[string]State{"org/here": NotCloned, "org/away": RootOffline, "org/pinned": NotCloned}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("states = %v, want %v", got, want)
 	}
 }

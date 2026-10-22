@@ -12,6 +12,9 @@
   import type { RootDTO } from '../types';
 
   export let reloadFromDisk: () => Promise<void>;
+  // Picks up clones under a root just added, and shows repos of a removed
+  // or missing root as they are (#149).
+  export let runReconcile: () => Promise<unknown>;
 
   let open = false;
   let roots: RootDTO[] = [];
@@ -37,6 +40,8 @@
       await bridge.addRoot(dir);
       await loadRoots();
       $configStore = await bridge.reloadConfig();
+      await runReconcile();
+      await loadRoots();
     } catch (err: any) { pushNotice('error', $t('notice.rootAddFailed'), [errorText(err)]); }
   }
 
@@ -59,6 +64,7 @@
       await loadRoots();
       // Forgotten repos leave every view, so reload status too.
       await reloadFromDisk();
+      await runReconcile();
     } catch (err: any) { pushNotice('error', $t('notice.rootRemoveFailed'), [errorText(err)]); }
   }
 

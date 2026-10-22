@@ -131,3 +131,32 @@ func TestFindOrphans_CanonicalCloneInSecondRootAdoptsInPlace(t *testing.T) {
 		t.Errorf("orphan = %+v, want github-me in place under %s", o, second)
 	}
 }
+
+// TestFindOrphans_ConfidenceNeedsMoreThanTheHost verifies a third-party repo
+// matched on host alone is not confident, while one owned by the account, or
+// placed under its source folder, is (#149).
+func TestFindOrphans_ConfidenceNeedsMoreThanTheHost(t *testing.T) {
+	root := t.TempDir()
+	cfg := testConfig(root)
+	initBareRepo(t, filepath.Join(root, "scratch", "linux"), "https://github.com/torvalds/linux.git")
+	initBareRepo(t, filepath.Join(root, "scratch", "mine"), "https://github.com/LuisPalacios/mine.git")
+	initBareRepo(t, filepath.Join(root, "github-me", "torvalds", "subsurface"), "https://github.com/torvalds/subsurface.git")
+
+	orphans, err := FindOrphans(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, o := range orphans {
+		if o.MatchedAccount != "github-me" || len(o.Candidates) == 0 {
+			t.Errorf("%s: matched %q candidates %v", o.RepoKey, o.MatchedAccount, o.Candidates)
+		}
+		got[o.RepoKey] = o.Confident
+	}
+	want := map[string]bool{"torvalds/linux": false, "LuisPalacios/mine": true, "torvalds/subsurface": true}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s confident = %v, want %v", k, got[k], v)
+		}
+	}
+}

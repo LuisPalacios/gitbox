@@ -70,17 +70,17 @@ A few things are shared across worktrees even though the source trees are isolat
 - Two worktrees can't have the same branch checked out. Git refuses. The error message is obvious.
 - I don't push to the same remote branch from two worktrees. If I ever need to, one of them must force-push with lease after the other lands.
 
-## Worktrees and gitbox's own orphan detection
+## Worktrees and gitbox's own clone detection
 
-If my gitbox-managed folder root is `~/00.git/github-<me>/<me>/`, then a sibling worktree at `~/00.git/github-<me>/<me>/gitbox-42-my-slug` sits *inside* that managed tree. When I open the GUI's orphans modal, it lists the worktree as an orphan repo — it doesn't match any account's expected layout.
+If my gitbox-managed folder root is `~/00.git/github-<me>/<me>/`, then a sibling worktree at `~/00.git/github-<me>/<me>/gitbox-42-my-slug` sits *inside* that managed tree. The GUI's reconcile pass finds it and lists it under **Unmatched clones** as a git worktree of another clone.
 
-It isn't actually orphaned. The worktree has a valid `.git` pointer file and git sees it correctly. gitbox scans by directory structure, not by reading `.git` contents, so it can't tell a worktree from an unregistered clone.
+It isn't a clone of its own: the worktree has a `.git` pointer file to the main clone. gitbox recognises that file and never adopts a worktree into the config.
 
 Three ways to live with it:
 
 1. Ignore the noise. The worktree disappears when `/merge-pr` cleans up after the merge.
-2. Place worktrees outside any gitbox-managed folder. This is not the skill's default today — it uses the sibling path because editors and file managers behave best there — but I can `git worktree add` manually to a different location if the noise bothers me on a particular branch.
-3. Track it as a follow-up issue if it starts biting. There's no setting for excluding worktree patterns from discovery yet.
+2. Click **Ignore** on its row in Unmatched clones to hide it for good.
+3. Place worktrees outside any gitbox-managed folder. This is not the skill's default today — it uses the sibling path because editors and file managers behave best there — but I can `git worktree add` manually to a different location if the noise bothers me on a particular branch.
 
 ## When main advances under me
 

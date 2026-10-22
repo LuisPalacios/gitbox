@@ -15,7 +15,8 @@ pkg/                      Shared Go library
   provider/               Provider API clients + mirror interfaces (GitHub, GitLab, Gitea, Forgejo)
   mirror/                 Push/pull mirror setup, status, guides
   workspace/              Read-only VS Code .code-workspace discovery + cache (RefreshCache); no generation, no tmuxinator
-  adopt/                  Orphan repo discovery + adoption (multi-root scan, container nested-clone discovery, in-place absolute clone_folder)
+  adopt/                  Orphan repo discovery + account scoring (multi-root scan, container nested-clone discovery, confident matches)
+  reconcile/              Disk reconcile: adopt recognised clones in place, re-link moved ones, list the rest (Unmatched clones)
   status/                 Clone status checking
   update/                 Auto-update: version check, signature + checksum verified download, self-replace (AppImage build is notify-only); release-signing-key.pub is the pinned release key
   doctor/                 External-tool detection (git, GCM, ssh, …): point-of-use precheck + the GUI's tool check; `LookupIn` is the Setenv-free resolver (extra dirs, ~/.local/bin, Windows shims) shared by harness detection

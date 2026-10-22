@@ -48,6 +48,8 @@ El archivo JSON de config (`~/.config/gitbox/gitbox.json`) es el **estado desead
 
 **Discovery** es una consulta hacia el norte — pregunta a la API del proveedor "¿qué repos existen?" y permite añadirlos a la config. Discovery es add-only bajo demanda; nunca elimina repos automáticamente.
 
+**Reconcile** es su contrapartida en disco: gitbox lee qué clones existen a partir de las raíces de clonado. La config sigue siendo el registro de la intención — cuentas, raíces, mirrors, sobrescrituras, repos que quiero pero que no he clonado — y `pkg/reconcile` mantiene el inventario al día: adopta en su sitio los clones que reconoce, vuelve a enlazar los que se han movido y me deja el resto a mí. Nunca toca archivos y nunca olvida un repo cuyo clon ha desaparecido.
+
 ### Estructura de carpetas
 
 Los repos se clonan en una jerarquía de 3 niveles bajo una raíz de clonado. `global.roots` lista las raíces, la predeterminada primero; cada source clona en una de ellas (`source.root`, vacío para la predeterminada), y un repo concreto puede vivir en otra (`repo.root`):
@@ -150,7 +152,7 @@ En macOS, `GitBin()` prueba rutas de Homebrew (`/opt/homebrew/bin/git`, `/usr/lo
 
 ### pkg/status — comprobación de estado de sync
 
-Determina el estado de sync de clones locales respecto a su upstream. Estados: Clean, Dirty, Behind, Ahead, Diverged, Conflict, NotCloned, NoUpstream, Error. Prioridad: Conflicts > Dirty > Diverged > Behind > Ahead > NoUpstream > Clean. `ComputeNesting` deriva las relaciones padre → hijo entre clones contenedor y los clones anidados dentro de ellos. Consulta `pkg/status/status.go`.
+Determina el estado de sync de clones locales respecto a su upstream. Estados: Clean, Dirty, Behind, Ahead, Diverged, Conflict, NotCloned, NoUpstream, Error, UpstreamGone, RootOffline. Un repo cuya raíz de clonado falta se lee como RootOffline en lugar de NotCloned (`RepoRootOffline`), para que un disco desconectado no parezca clones borrados. Prioridad: Conflicts > Dirty > Diverged > Behind > Ahead > NoUpstream > Clean. `ComputeNesting` deriva las relaciones padre → hijo entre clones contenedor y los clones anidados dentro de ellos. Consulta `pkg/status/status.go`.
 
 ### pkg/identity — gestión de identidad Git
 
@@ -196,13 +198,24 @@ Escanea cada raíz de `global.roots` y los árboles de trabajo de los repos cont
 | -------------------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------- |
 | Coincidencia de host (base obligatoria)                                    | 1          | hostname de la URL de la cuenta o alias SSH frente al host remoto parseado  |
 | Owner igual a `account.username`                                           | +3         | segmento owner de la ruta de la URL remota                                  |
-| El repo vive bajo la carpeta source de la cuenta                           | +5         | primer componente de la ruta del repo relativa a la carpeta padre de gitbox |
+| El repo vive bajo la carpeta source de la cuenta                           | +5         | primer componente de la ruta del repo relativa a la raíz que lo contiene    |
 | La URL HTTPS embebe `user@` donde user es igual a `account.username`       | +10        | `url.User.Username()` del remoto origin                                     |
 | `.git/config` tiene `credential.<url>.username` igual a `account.username` | +10        | `git config --get-regexp '^credential\..*\.username$'` en el repo           |
 
-Si la puntuación máxima la comparten dos o más cuentas (incluido un empate solo por host) el match se marca como ambiguo: no se elige cuenta, no se mueven archivos y la GUI muestra la lista de candidatas. Los huérfanos adoptados reciben aislamiento de credenciales, identidad y una URL remota reescrita para coincidir con el tipo de credencial. Los huérfanos bajo el árbol estándar pueden reubicarse opcionalmente a su ruta canónica; los clones fuera de él y los clones anidados se incorporan en su sitio con un `clone_folder` absoluto.
+Si la puntuación máxima la comparten dos o más cuentas (incluido un empate solo por host) el match se marca como ambiguo: no se elige cuenta. Un match único es **seguro** cuando su puntuación supera la base de solo host, de modo que algo más allá del servidor vincula el clon a la cuenta. La adopción nunca mueve archivos: un clon en su sitio estándar bajo una raíz registra esa raíz, y cualquier otro clon un `clone_folder` absoluto. Los clones adoptados reciben aislamiento de credenciales, identidad y una URL remota reescrita para coincidir con el tipo de credencial.
 
 Detengo el descubrimiento ordinario de huérfanos en el límite de cada clon, incluido un archivo `.git` de un worktree. Escaneo las raíces explícitas de forma independiente y uso el escaneo de contenedores con `nested_scan_depth` para descubrir clones anidados.
+
+### pkg/reconcile — reconcile de disco
+
+`Plan` ejecuta el escaneo de huérfanos y decide, para cada clon que la config no sigue, en este orden:
+
+- Un worktree enlazado, o un clon sin un remoto utilizable, me espera a mí.
+- Un clon cuya clave de repo y servidor coinciden exactamente con un repo seguido cuyo clon ha desaparecido, con su raíz disponible, **vuelve a enlazar** esa entrada a la nueva ruta.
+- Un match seguro se **adopta** en su sitio.
+- Todo lo demás espera en la lista de clones sin ubicar con su motivo: solo host, ambiguo, host desconocido, sin remoto, ya seguido o worktree.
+
+Las rutas de `global.ignored_clones` se informan aparte. `Apply` escribe las decisiones en la config; ningún paso toca archivos. La GUI ejecuta una pasada al arrancar, al recuperar el foco la ventana, tras un Fetch all manual, tras cambios en las raíces de clonado y al reescanear un contenedor. Igual que el descubrimiento de workspaces, toma una instantánea de la config, escanea sin el bloqueo, vuelve a comprobar la config (reintentando cuando ha cambiado) y aplica bajo el bloqueo. Los repos bajo una raíz que falta nunca se vuelven a enlazar ni se olvidan.
 
 ### pkg/mirror — mirroring de repositorios
 
@@ -261,6 +274,7 @@ La config vive en `~/.config/gitbox/gitbox.json`. Consulta el [ejemplo JSON anot
 | --------------------------------- | ------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `roots`                           | array  | Sí          | Raíces de clonado: las carpetas en las que gitbox clona y que escanea. La primera es la predeterminada. Soporta `~`.                                                                                                                                                                                                                                                                                   |
 | `nested_scan_depth`               | int    | No          | Niveles que gitbox desciende bajo un repo contenedor para encontrar clones anidados. Por defecto `1` (hijos inmediatos).                                                                                                                                                                                                                                                                               |
+| `ignored_clones`                  | array  | No          | Clones bajo una raíz que he decidido no seguir; reconcile nunca los adopta ni los lista.                                                                                                                                                                                                                                                                                                               |
 | `language`                        | string | No          | Idioma de la UI. Vacío significa el locale del OS (inglés como fallback).                                                                                                                                                                                                                                                                                                                              |
 | `periodic_sync`                   | string | No          | Intervalo de fetch en segundo plano: off, `5m`, `15m` o `30m`.                                                                                                                                                                                                                                                                                                                                         |
 | `view_mode`                       | string | No          | `"full"` o `"compact"`.                                                                                                                                                                                                                                                                                                                                                                                |

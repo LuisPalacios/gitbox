@@ -32,6 +32,9 @@ type OrphanRepo struct {
 	LocalOnly           bool     // no remote — cannot adopt
 	AmbiguousCandidates []string // when multiple host-matching accounts tie with no disambiguator
 	Nested              bool     // found inside a container repo's working tree — adopt in place, never relocate
+	MatchScore          int      // matchAccount score of the matched account (0 when none)
+	Confident           bool     // a unique match backed by a signal beyond the host: safe to adopt unasked (#149)
+	Candidates          []string // every account whose host matches, best first
 }
 
 // FindOrphans walks every configured root and container repos' working
@@ -126,10 +129,16 @@ func FindOrphansIn(cfg *config.Config, extraRoots []string) ([]OrphanRepo, error
 			RepoPath:     absPath,
 			ParentFolder: root,
 		}
-		acctKey, srcKey, ambiguous := MatchAccountEx(cfg, mc)
+		m := matchAccount(cfg, mc)
+		acctKey, srcKey := m.accountKey, m.sourceKey
 		o.MatchedAccount = acctKey
 		o.MatchedSource = srcKey
-		o.AmbiguousCandidates = ambiguous
+		o.AmbiguousCandidates = m.ambiguous
+		o.Candidates = m.candidates
+		if acctKey != "" {
+			o.MatchScore = m.score
+			o.Confident = m.score > hostWeight
+		}
 
 		// Compute expected path and relocation need: in place when the clone
 		// sits at its standard spot under the root it was found in, else
@@ -275,7 +284,7 @@ func containingRoot(roots []string, absPath string) string {
 	return best
 }
 
-// MatchContext carries every signal MatchAccountEx uses to pick an account.
+// MatchContext carries every signal matchAccount uses to pick an account.
 // Host and Owner are always required; the rest are optional and, when absent,
 // simply don't contribute to scoring.
 type MatchContext struct {
@@ -286,7 +295,7 @@ type MatchContext struct {
 	ParentFolder string // the root holding the repo (used to compute parent-folder source match)
 }
 
-// Score weights for MatchAccountEx. The thresholds are picked so that:
+// Score weights for matchAccount. The thresholds are picked so that:
 //   - hostWeight alone never claims a match (ambiguous when ≥2 candidates tie).
 //   - Any non-host signal unambiguously beats host-only.
 //   - credentialWeight and urlUserWeight are the strongest — they directly name
@@ -299,11 +308,20 @@ const (
 	credentialWeight  = 10
 )
 
-// MatchAccountEx scores every host-matching account against the signals in mc
-// and returns the best match. Returns empty account/source keys when no
-// account matches the host or when the top score is tied across ≥2 accounts
-// (the tied candidates are returned in ambiguous).
-func MatchAccountEx(cfg *config.Config, mc MatchContext) (accountKey, sourceKey string, ambiguous []string) {
+// match is matchAccount's answer: the winner (empty on a tie), its score,
+// the tied accounts, and every host-matching account, best first.
+type match struct {
+	accountKey, sourceKey string
+	score                 int
+	ambiguous             []string
+	candidates            []string
+}
+
+// matchAccount scores every host-matching account against the signals in mc
+// and returns the best match. The winner is empty when no account matches
+// the host or when the top score is tied across ≥2 accounts (the tied
+// candidates are returned in ambiguous).
+func matchAccount(cfg *config.Config, mc MatchContext) match {
 	type candidate struct {
 		accountKey string
 		sourceKey  string
@@ -344,13 +362,7 @@ func MatchAccountEx(cfg *config.Config, mc MatchContext) (accountKey, sourceKey 
 	var candidates []candidate
 	for _, acctKey := range acctKeys {
 		acct := cfg.Accounts[acctKey]
-		acctHost := HostnameFromURL(acct.URL)
-
-		hostMatch := strings.EqualFold(mc.Host, acctHost)
-		if !hostMatch && acct.SSH != nil && acct.SSH.Host != "" {
-			hostMatch = strings.EqualFold(mc.Host, acct.SSH.Host)
-		}
-		if !hostMatch {
+		if !HostMatches(acct, mc.Host) {
 			continue
 		}
 
@@ -407,7 +419,7 @@ func MatchAccountEx(cfg *config.Config, mc MatchContext) (accountKey, sourceKey 
 	}
 
 	if len(candidates) == 0 {
-		return "", "", nil
+		return match{}
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
@@ -418,6 +430,10 @@ func MatchAccountEx(cfg *config.Config, mc MatchContext) (accountKey, sourceKey 
 	})
 
 	top := candidates[0]
+	all := make([]string, 0, len(candidates))
+	for _, c := range candidates {
+		all = append(all, c.accountKey)
+	}
 	// Collect every candidate tied at the top score.
 	tied := []string{top.accountKey}
 	for _, c := range candidates[1:] {
@@ -426,9 +442,18 @@ func MatchAccountEx(cfg *config.Config, mc MatchContext) (accountKey, sourceKey 
 		}
 	}
 	if len(tied) >= 2 {
-		return "", "", tied
+		return match{score: top.score, ambiguous: tied, candidates: all}
 	}
-	return top.accountKey, top.sourceKey, nil
+	return match{accountKey: top.accountKey, sourceKey: top.sourceKey, score: top.score, candidates: all}
+}
+
+// HostMatches reports whether host, parsed from a remote URL, names the
+// account's server: its URL host or its SSH alias.
+func HostMatches(acct config.Account, host string) bool {
+	if strings.EqualFold(host, HostnameFromURL(acct.URL)) {
+		return true
+	}
+	return acct.SSH != nil && acct.SSH.Host != "" && strings.EqualFold(host, acct.SSH.Host)
 }
 
 // PlainRemoteURL builds a remote URL without embedded credentials.

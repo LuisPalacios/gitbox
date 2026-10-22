@@ -114,7 +114,7 @@ La barra lateral de la izquierda elige qué muestra el área principal:
 - **Cuentas** — solo cuentas: una entrada por cuenta con el logo de su proveedor, una pequeña marca de salud, su nombre, su salud en palabras y cuántos repos me necesitan. Hago clic en una para abrir la vista de la cuenta.
 - **Más** — bajo el separador inferior, todo lo que no es una cuenta:
   - **Añadir cuenta** (Simple: **Conectar una cuenta**) — consulta el [Paso 2](#paso-2-añadir-cuentas).
-  - **Encontrados en disco** (Simple: **Encontrados en este ordenador**) — aparece cuando hay clones en disco que todavía no están en gitbox, y abre el diálogo de adopción (consulta [Adoptar repos huérfanos](#adoptar-repos-huérfanos)).
+  - **Encontrados en disco** — aparece cuando gitbox encuentra clones en disco que no ha podido ubicar por su cuenta, con cuántos son, o cuando he ignorado alguno, y abre **Clones sin ubicar** (consulta [Clones encontrados en disco](#clones-encontrados-en-disco)).
   - **Mirrors** y **Workspaces**, solo en Advanced.
 
 El botón de arriba a la izquierda, o ⌘B en macOS y Ctrl+B en el resto, pliega la barra lateral a un riel de iconos. El riel mantiene los logos de los proveedores con su marca de salud y su conteo de atención; al pasar el ratón sobre uno se ven el nombre de la cuenta y su salud, y un clic cambia a ella. En una ventana de menos de 780 px la barra lateral siempre se muestra como el riel, y el botón abre la barra lateral completa sobre el contenido hasta que elijo una vista.
@@ -145,6 +145,7 @@ Gitbox vigila tus proyectos y muestra su estado:
 - **N por delante** (azul) — tienes N commits que no has pusheado
 - **Divergido**, **Conflicto**, **Upstream eliminado** y **Error** (rojo) — el repo necesita una revisión; haz clic en él para ver los detalles
 - **No clonado** (gris) — el repo todavía no está en este ordenador; **Clonar** lo descarga
+- **Raíz no disponible** (gris; Simple: **Carpeta no encontrada**) — su raíz de clonado no está, por ejemplo un disco desconectado. No se pierde nada: el repo vuelve cuando vuelve la raíz.
 - **Rama local** (verde) — en una feature branch sin upstream tracking (normal)
 - **No upstream** (gris) — la rama predeterminada no tiene upstream tracking (requiere atención)
 
@@ -182,16 +183,27 @@ Haz clic en un repo que muestre cambios locales, conflictos u otros problemas. A
 
 Esta vista de detalle **se actualiza automáticamente** cuando Gitbox detecta cambios nuevos: no necesitas cerrarla y volver a abrirla.
 
-### Adoptar repos huérfanos
+### Clones encontrados en disco
 
-El modal de orphans lista clones bajo tu carpeta padre que todavía no están en `gitbox.json`, agrupados por cómo Gitbox puede gestionarlos:
+Gitbox mantiene `gitbox.json` al día con los clones bajo tus raíces de clonado. Lo comprueba al arrancar, cuando la ventana recupera el foco, tras un **Fetch de todo** manual y cuando cambian las raíces:
 
-- **Ready to adopt** — Gitbox emparejó el clon con una cuenta usando su URL remota, el `credential.<url>.username` del repo o la carpeta donde vive. Marca la casilla y haz clic en **Adopt** para registrarlo (y opcionalmente reubicarlo a la ruta canónica).
-- **Unknown account** — ninguna cuenta configurada coincide con el host remoto. Añade una cuenta primero y vuelve a abrir el modal.
-- **Unknown account, `ambiguous: a | b`** — dos o más cuentas en el mismo host empatan en cada señal de identidad que Gitbox mira. La casilla está deshabilitada para que no se muevan archivos. Para desambiguar: mueve el clon bajo el subtree de source correcto, edita `gitbox.json` para reflejar la cuenta deseada, o establece `credential.<url>.username` en el clon; luego vuelve a abrir el modal.
-- **Local only** — sin remoto `origin`, no adoptable.
+- **Los clones nuevos que reconoce** se añaden solos, en su sitio; Gitbox nunca los mueve. Un clon cuenta como reconocido cuando exactamente una cuenta coincide con él y algo más allá del servidor lo confirma: el owner es el usuario de la cuenta, está bajo la carpeta de esa cuenta en una raíz, o su URL remota o su `credential.<url>.username` nombra la cuenta.
+- **Clones movidos** — cuando la carpeta de un repo seguido ha desaparecido pero aparece un clon del mismo repo en otro lugar bajo una raíz, Gitbox apunta la entrada al nuevo sitio en lugar de listarlo dos veces.
+- **Los clones borrados** siguen listados como **No clonado**, para que pueda clonarlos de nuevo o borrar la entrada.
+- **Los repos bajo una raíz que falta** se leen como **Raíz no disponible** y se dejan en paz hasta que la raíz vuelve.
 
-Para cada clon adoptado, Gitbox lo añade a `gitbox.json` bajo la source emparejada, configura el aislamiento de credenciales por repo, fija `user.name` y `user.email` a partir de la cuenta y reescribe la URL remota para que coincida con el tipo de credencial. Las reglas de puntuación detrás del emparejamiento de cuenta están en [Arquitectura › pkg/adopt](architecture.md#pkgadopt--discovery-de-repos-huérfanos).
+Para cada clon añadido, Gitbox configura el aislamiento de credenciales por repo, fija `user.name` y `user.email` a partir de la cuenta y reescribe la URL remota para que coincida con el tipo de credencial.
+
+Todo lo demás espera en **Clones sin ubicar**, que se abre desde **Encontrados en disco** en la barra lateral. Cada fila dice por qué Gitbox no ha podido ubicarlo:
+
+- **solo coincide el servidor** — una cuenta en ese servidor, pero nada más vincula el clon a ella, como el proyecto de otra persona clonado para leerlo
+- **coinciden varias cuentas** — dos o más cuentas en el mismo servidor empatan
+- **ninguna cuenta en este servidor**
+- **sin remoto** — sin `origin`
+- **ya gestionado en otra ruta** — un segundo checkout de un repo que Gitbox ya sigue
+- **un worktree de git de otro clon**
+
+Donde una cuenta puede aplicarse, la elijo y hago clic en **Adoptar**; el clon se une a esa cuenta en su sitio. **Ignorar** oculta un clon para siempre, y **Mostrar ignorados** lista los ignorados: todavía puedo **Adoptar** uno, o usar **Dejar de ignorar**. Las rutas ignoradas se guardan en `global.ignored_clones`. Las reglas de puntuación detrás del emparejamiento de cuenta están en [Arquitectura › pkg/adopt](architecture.md#pkgadopt--discovery-de-repos-huérfanos).
 
 ### Crear repositorios
 
@@ -285,7 +297,7 @@ Un **contenedor multi-repo** es un clon gestionado que mantiene otros clones ani
 
 También puedes gestionarlo desde el menú ⋯ de la fila del repo, bajo **Mantenimiento** — **Mark as multi-repo container**, **Unmark as multi-repo container** y **Re-scan for nested clones** (visible una vez que el clon es contenedor) — o con la casilla **Multi-repo container** del panel de detalle del repo. El diálogo **Raíces de clonado** de Settings fija la **profundidad de escaneo anidado** (cuántos niveles desciende Gitbox por debajo de un contenedor, por defecto 1: los hijos inmediatos del contenedor; súbela para alcanzar clones anidados más profundos).
 
-El layout estándar es `<root> / <account> / <org|user> / repo`. Un clon encontrado en ese sitio bajo cualquier raíz de clonado se adopta en el lugar bajo esa raíz. Un clon encontrado en otro sitio de una raíz también aparece en el modal de orphans; adoptarlo lo mueve a su sitio estándar bajo la raíz de la cuenta cuando ese sitio está libre, y si no, lo mantiene donde está con una `clone_folder` absoluta. Los clones anidados nunca se mueven.
+El layout estándar es `<root> / <account> / <org|user> / repo`. Un clon encontrado en ese sitio bajo cualquier raíz de clonado se adopta en el lugar bajo esa raíz. Un clon encontrado en otro sitio de una raíz también se añade donde está, con una `clone_folder` absoluta. Gitbox nunca mueve un clon.
 
 ## Vistas del dashboard
 

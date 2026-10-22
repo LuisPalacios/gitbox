@@ -113,19 +113,7 @@ func (a *App) ScanFolderForClones(path string) []OrphanRepoDTO {
 	}
 	dtos := make([]OrphanRepoDTO, len(orphans))
 	for i, o := range orphans {
-		dtos[i] = OrphanRepoDTO{
-			Path:                o.Path,
-			RelPath:             o.RelPath,
-			RemoteURL:           o.RemoteURL,
-			RepoKey:             o.RepoKey,
-			MatchedAccount:      o.MatchedAccount,
-			MatchedSource:       o.MatchedSource,
-			ExpectedPath:        o.ExpectedPath,
-			NeedsRelocate:       o.NeedsRelocate,
-			LocalOnly:           o.LocalOnly,
-			AmbiguousCandidates: o.AmbiguousCandidates,
-			Nested:              o.Nested,
-		}
+		dtos[i] = toOrphanDTO(o, "")
 	}
 	return dtos
 }
