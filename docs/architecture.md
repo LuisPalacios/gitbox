@@ -48,6 +48,8 @@ The JSON config file (`~/.config/gitbox/gitbox.json`) is the **desired state** �
 
 **Discovery** is a northbound query — it asks the provider API "what repos exist?" and lets you add them to the config. Discovery is add-only on demand; it never auto-removes repos.
 
+**Reconcile** is its counterpart on disk: gitbox reads back which clones exist from the clone roots. The config stays the record of intent — accounts, roots, mirrors, overrides, repos I want but haven't cloned — and `pkg/reconcile` keeps the inventory in step: it adopts the clones it recognises in place, re-links moved ones, and leaves the rest for me. It never touches files and never forgets a repo whose clone is gone.
+
 ### Folder structure
 
 Repos are cloned into a 3-level hierarchy under a clone root. `global.roots` lists the roots, the default first; each source clones into one of them (`source.root`, empty for the default), and a single repo can live in another (`repo.root`):
@@ -150,7 +152,7 @@ On macOS, `GitBin()` probes Homebrew paths (`/opt/homebrew/bin/git`, `/usr/local
 
 ### pkg/status — Sync status checking
 
-Determines the sync state of local clones relative to their upstream. States: Clean, Dirty, Behind, Ahead, Diverged, Conflict, NotCloned, NoUpstream, Error. Priority: Conflicts > Dirty > Diverged > Behind > Ahead > NoUpstream > Clean. `ComputeNesting` derives parent → child relationships between container clones and the clones nested inside them. See `pkg/status/status.go`.
+Determines the sync state of local clones relative to their upstream. States: Clean, Dirty, Behind, Ahead, Diverged, Conflict, NotCloned, NoUpstream, Error, UpstreamGone, RootOffline. A repo whose clone root is missing reads RootOffline instead of NotCloned (`RepoRootOffline`), so an unplugged drive doesn't look like deleted clones. Priority: Conflicts > Dirty > Diverged > Behind > Ahead > NoUpstream > Clean. `ComputeNesting` derives parent → child relationships between container clones and the clones nested inside them. See `pkg/status/status.go`.
 
 ### pkg/identity — Git identity management
 
@@ -196,13 +198,24 @@ Scans every root in `global.roots` and the working trees of container repos for 
 | ------------------------------------------------------------------------- | ----- | --------------------------------------------------------------------- |
 | Host match (required baseline)                                            | 1     | account URL hostname or SSH alias vs the parsed remote host           |
 | Owner equals `account.username`                                           | +3    | owner segment of the remote URL path                                  |
-| Repo lives under the account's source folder                              | +5    | first path component of the repo relative to the gitbox parent folder |
+| Repo lives under the account's source folder                              | +5    | first path component of the repo relative to the root holding it      |
 | HTTPS URL embeds `user@` where user equals `account.username`             | +10   | `url.User.Username()` of the origin remote                            |
 | `.git/config` has `credential.<url>.username` equal to `account.username` | +10   | `git config --get-regexp '^credential\..*\.username$'` in the repo    |
 
-If the top score is shared by two or more accounts (including a bare host-only tie) the match is marked ambiguous: no account is picked, no files are moved, and the GUI shows the candidate list. Adopted orphans get credential isolation, identity, and a remote URL rewritten to match the credential type. Orphans under the standard tree can optionally be relocated to their canonical path; clones outside it and nested clones are onboarded in place with an absolute `clone_folder`.
+If the top score is shared by two or more accounts (including a bare host-only tie) the match is marked ambiguous: no account is picked. A unique match is **confident** when its score is above the host-only baseline, so something beyond the server ties the clone to the account. Adoption never moves files: a clone at its standard spot under a root records that root, and any other clone an absolute `clone_folder`. Adopted clones get credential isolation, identity, and a remote URL rewritten to match the credential type.
 
 I stop ordinary orphan discovery at each clone boundary, including a `.git` file used by a worktree. I scan explicit roots independently and use the container scan with `nested_scan_depth` to discover nested clones.
+
+### pkg/reconcile — Disk reconcile
+
+`Plan` runs the orphan scan and decides, for each clone the config doesn't track, in this order:
+
+- A linked worktree, or a clone without a usable remote, waits for me.
+- A clone whose repo key and server match exactly one tracked repo whose clone went missing, with its root online, **re-links** that entry to the new path.
+- A confident match is **adopted** in place.
+- Everything else waits in the Unmatched list with its reason: host-only, ambiguous, unknown host, no remote, already tracked, or worktree.
+
+Paths in `global.ignored_clones` are reported apart. `Apply` writes the decisions into the config; neither step touches files. The GUI runs a pass at startup, on window focus, after a manual Fetch all, after clone-root changes and on a container rescan. Like workspace discovery, it snapshots the config, scans without the lock, re-checks the config (retrying when it changed) and applies under the lock. Repos under a missing root are never re-linked or forgotten.
 
 ### pkg/mirror — Repository mirroring
 
@@ -261,6 +274,7 @@ The config lives at `~/.config/gitbox/gitbox.json`. See the [JSON annotated exam
 | --------------------------------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `roots`                           | array  | Yes      | Clone roots: the folders gitbox clones into and scans. The first is the default. Supports `~`.                                                                                                                                                                                                                                                                                  |
 | `nested_scan_depth`               | int    | No       | Levels gitbox descends below a container repo to find nested clones. Default `1` (immediate children).                                                                                                                                                                                                                                                                          |
+| `ignored_clones`                  | array  | No       | Clones under a root that I chose not to track; reconcile never adopts or lists them.                                                                                                                                                                                                                                                                                            |
 | `language`                        | string | No       | UI language. Empty means the OS locale (English as the fallback).                                                                                                                                                                                                                                                                                                               |
 | `periodic_sync`                   | string | No       | Background fetch interval: off, `5m`, `15m`, or `30m`.                                                                                                                                                                                                                                                                                                                          |
 | `view_mode`                       | string | No       | `"full"` or `"compact"`.                                                                                                                                                                                                                                                                                                                                                        |

@@ -40,6 +40,10 @@
         // (the container's immediate children).
         // "nested_scan_depth": 1,
 
+        // Clones found under a root that I chose not to track (the GUI's
+        // Unmatched clones → Ignore). gitbox never adopts or lists them.
+        // "ignored_clones": ["~/00.git/scratch/someone-elses-project"],
+
         // Language for human-facing program output. Use "en" or "es".
         // Machine-readable fields, command names and config keys stay English.
         "language": "en",

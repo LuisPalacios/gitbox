@@ -114,7 +114,7 @@ The sidebar on the left picks what the main area shows:
 - **Accounts** — accounts only: one entry per account with its provider logo, a small health mark, its name, its health in words, and how many repos need me. I click one to open the account's view.
 - **More** — below the bottom separator, everything that isn't an account:
   - **Add account** (Simple: **Connect an account**) — see [Step 2](#step-2-add-accounts).
-  - **Found on disk** (Simple: **Found on this computer**) — appears when clones on disk aren't in gitbox yet, and opens the adopt dialog (see [Adopting orphan repos](#adopting-orphan-repos)).
+  - **Found on disk** (Simple: **Found on this computer**) — appears when gitbox finds clones on disk it couldn't place on its own, and opens **Unmatched clones** (see [Clones found on disk](#clones-found-on-disk)).
   - **Mirrors** and **Workspaces**, in Advanced only.
 
 The button at the top left, or ⌘B on macOS and Ctrl+B elsewhere, folds the sidebar to an icon rail. The rail keeps the provider logos with their health mark and attention count; hovering one shows the account name and its health, and one click switches to it. In a window narrower than 780 px the sidebar always shows as the rail, and the button opens the full sidebar over the content until I pick a view.
@@ -145,6 +145,7 @@ Gitbox watches your projects and shows their status:
 - **N ahead** (blue) — you have N commits that haven't been pushed
 - **Diverged**, **Conflict**, **Upstream gone** and **Error** (red) — the repo needs a look; click it for the details
 - **Not cloned** (grey) — the repo isn't on this computer yet; **Clone** downloads it
+- **Root offline** (grey; Simple: **Folder not found**) — its clone root isn't there, for example an unplugged drive. Nothing is lost: the repo comes back when the root does.
 - **Local branch** (green) — on a feature branch with no upstream tracking (normal)
 - **No upstream** (grey) — default branch has no upstream tracking (needs attention)
 
@@ -182,16 +183,27 @@ Click a repo that shows local changes, conflicts, or other issues. An expandable
 
 This detail view **updates automatically** when Gitbox detects new changes — you don't need to close and reopen it.
 
-### Adopting orphan repos
+### Clones found on disk
 
-The orphans modal lists clones under your parent folder that aren't yet in `gitbox.json`, grouped by how Gitbox can handle them:
+Gitbox keeps `gitbox.json` in step with the clones under your clone roots. It checks at startup, when the window regains focus, after a manual **Fetch all**, and when the roots change:
 
-- **Ready to adopt** — Gitbox matched the clone to an account using its remote URL, the repo's `credential.<url>.username`, or the folder it lives under. Check the box and click **Adopt** to register it (and optionally relocate it to the canonical path).
-- **Unknown account** — no configured account matches the remote host. Add an account first, then re-open the modal.
-- **Unknown account, `ambiguous: a | b`** — two or more accounts on the same host tie on every identity signal Gitbox looks at. The checkbox is disabled so no files are moved. To disambiguate: move the clone under the correct source subtree, edit `gitbox.json` to reflect the intended account, or set `credential.<url>.username` in the clone, then re-open the modal.
-- **Local only** — no `origin` remote, not adoptable.
+- **New clones it recognises** are added on their own, in place; Gitbox never moves them. A clone counts as recognised when exactly one account matches it and something beyond the server confirms it: the owner is the account's username, it sits under that account's folder in a root, or its remote URL or `credential.<url>.username` names the account.
+- **Moved clones** — when a tracked repo's folder is gone but a clone of the same repo shows up elsewhere under a root, Gitbox points the entry at the new place instead of listing it twice.
+- **Deleted clones** stay listed as **Not cloned**, so I can clone them again or delete the entry.
+- **Repos under a missing root** read **Root offline** and are left alone until the root comes back.
 
-For each adopted clone, Gitbox adds it to `gitbox.json` under the matched source, configures per-repo credential isolation, sets `user.name` and `user.email` from the account, and rewrites the remote URL to match the credential type. The scoring rules behind the account match are in [Architecture › pkg/adopt](architecture.md#pkgadopt--orphan-repo-discovery).
+For each added clone, Gitbox configures per-repo credential isolation, sets `user.name` and `user.email` from the account, and rewrites the remote URL to match the credential type.
+
+Everything else waits in **Unmatched clones**, opened from **Found on disk** in the sidebar. Each row says why Gitbox couldn't place it:
+
+- **matches the server only** — one account on that server, but nothing else ties the clone to it, as with someone else's project cloned to read
+- **several accounts match** — two or more accounts on the same server tie
+- **no account on this server**
+- **no remote** — no `origin`
+- **already tracked at another path** — a second checkout of a repo Gitbox already tracks
+- **a git worktree of another clone**
+
+Where an account can apply, I pick it and click **Adopt**; the clone joins that account in place. **Ignore** hides a clone for good, and **Show ignored** lists the ignored ones with **Stop ignoring**. Ignored paths are saved in `global.ignored_clones`. The scoring rules behind the account match are in [Architecture › pkg/adopt](architecture.md#pkgadopt--orphan-repo-discovery).
 
 ### Creating repositories
 
@@ -285,7 +297,7 @@ A **multi-repo container** is a managed clone that holds other clones nested in 
 
 You can also manage this from the repo row's ⋯ menu, under **Maintenance** — **Mark as multi-repo container**, **Unmark as multi-repo container**, and **Re-scan for nested clones** (shown once a clone is a container) — or with the **Multi-repo container** checkbox in the repo detail panel. The **Clone roots** dialog in Settings sets the **nested scan depth** (how many levels below a container Gitbox descends, default 1 — the container's immediate children; raise it to reach clones nested deeper).
 
-The standard layout is `<root> / <account> / <org|user> / repo`. A clone found at that spot under any clone root is adopted in place under that root. A clone found elsewhere in a root shows up in the orphans modal too; adopting it moves it to its standard spot under the account's root when that spot is free, and otherwise keeps it where it is with an absolute `clone_folder`. Nested clones never move.
+The standard layout is `<root> / <account> / <org|user> / repo`. A clone found at that spot under any clone root is adopted in place under that root. A clone found elsewhere in a root is added where it is too, with an absolute `clone_folder`. Gitbox never moves a clone.
 
 ## Dashboard views
 
