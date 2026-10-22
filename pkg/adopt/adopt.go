@@ -32,7 +32,7 @@ type OrphanRepo struct {
 	LocalOnly           bool     // no remote — cannot adopt
 	AmbiguousCandidates []string // when multiple host-matching accounts tie with no disambiguator
 	Nested              bool     // found inside a container repo's working tree — adopt in place, never relocate
-	MatchScore          int      // MatchAccountEx score of the matched account (0 when none)
+	MatchScore          int      // matchAccount score of the matched account (0 when none)
 	Confident           bool     // a unique match backed by a signal beyond the host: safe to adopt unasked (#149)
 	Candidates          []string // every account whose host matches, best first
 }
@@ -284,7 +284,7 @@ func containingRoot(roots []string, absPath string) string {
 	return best
 }
 
-// MatchContext carries every signal MatchAccountEx uses to pick an account.
+// MatchContext carries every signal matchAccount uses to pick an account.
 // Host and Owner are always required; the rest are optional and, when absent,
 // simply don't contribute to scoring.
 type MatchContext struct {
@@ -295,7 +295,7 @@ type MatchContext struct {
 	ParentFolder string // the root holding the repo (used to compute parent-folder source match)
 }
 
-// Score weights for MatchAccountEx. The thresholds are picked so that:
+// Score weights for matchAccount. The thresholds are picked so that:
 //   - hostWeight alone never claims a match (ambiguous when ≥2 candidates tie).
 //   - Any non-host signal unambiguously beats host-only.
 //   - credentialWeight and urlUserWeight are the strongest — they directly name
@@ -308,17 +308,8 @@ const (
 	credentialWeight  = 10
 )
 
-// MatchAccountEx scores every host-matching account against the signals in mc
-// and returns the best match. Returns empty account/source keys when no
-// account matches the host or when the top score is tied across ≥2 accounts
-// (the tied candidates are returned in ambiguous).
-func MatchAccountEx(cfg *config.Config, mc MatchContext) (accountKey, sourceKey string, ambiguous []string) {
-	m := matchAccount(cfg, mc)
-	return m.accountKey, m.sourceKey, m.ambiguous
-}
-
-// match is MatchAccountEx's full answer: the winner (empty on a tie), its
-// score, the tied accounts, and every host-matching account, best first.
+// match is matchAccount's answer: the winner (empty on a tie), its score,
+// the tied accounts, and every host-matching account, best first.
 type match struct {
 	accountKey, sourceKey string
 	score                 int
@@ -326,6 +317,10 @@ type match struct {
 	candidates            []string
 }
 
+// matchAccount scores every host-matching account against the signals in mc
+// and returns the best match. The winner is empty when no account matches
+// the host or when the top score is tied across ≥2 accounts (the tied
+// candidates are returned in ambiguous).
 func matchAccount(cfg *config.Config, mc MatchContext) match {
 	type candidate struct {
 		accountKey string

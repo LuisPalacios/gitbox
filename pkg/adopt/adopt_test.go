@@ -215,7 +215,7 @@ func TestMatchAccount(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			acct, src, _ := MatchAccountEx(cfg, MatchContext{Host: tt.host, Owner: tt.owner})
+			acct, src, _ := matchAccountEx(cfg, MatchContext{Host: tt.host, Owner: tt.owner})
 			if acct != tt.wantAcct {
 				t.Errorf("account = %q, want %q", acct, tt.wantAcct)
 			}
@@ -274,7 +274,7 @@ func TestMatchAccountEx_EmbeddedURLUser(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acct, _, amb := MatchAccountEx(cfg, MatchContext{
+	acct, _, amb := matchAccountEx(cfg, MatchContext{
 		Host:         "github.com",
 		Owner:        "org-a",
 		RemoteURL:    "https://user-b@github.com/org-a/repo-a.git",
@@ -305,7 +305,7 @@ func TestMatchAccountEx_CredentialUsername(t *testing.T) {
 		t.Fatalf("git config: %v\n%s", err, out)
 	}
 
-	acct, _, amb := MatchAccountEx(cfg, MatchContext{
+	acct, _, amb := matchAccountEx(cfg, MatchContext{
 		Host:         "github.com",
 		Owner:        "org-a",
 		RemoteURL:    "https://github.com/org-a/repo.git",
@@ -331,7 +331,7 @@ func TestMatchAccountEx_ParentFolderMatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acct, _, amb := MatchAccountEx(cfg, MatchContext{
+	acct, _, amb := matchAccountEx(cfg, MatchContext{
 		Host:         "github.com",
 		Owner:        "org-a",
 		RemoteURL:    "https://github.com/org-a/repo.git",
@@ -358,7 +358,7 @@ func TestMatchAccountEx_Ambiguous(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	acct, src, amb := MatchAccountEx(cfg, MatchContext{
+	acct, src, amb := matchAccountEx(cfg, MatchContext{
 		Host:         "github.com",
 		Owner:        "org-c",
 		RemoteURL:    "https://github.com/org-c/repo.git",
@@ -386,7 +386,7 @@ func TestMatchAccountEx_UnambiguousWhenOnlyOneHostMatches(t *testing.T) {
 	root := t.TempDir()
 	cfg := twoGithubConfig(root)
 	orphanPath := filepath.Join(root, "x", "y", "z")
-	acct, _, amb := MatchAccountEx(cfg, MatchContext{
+	acct, _, amb := matchAccountEx(cfg, MatchContext{
 		Host:         "forgejo.example.com",
 		Owner:        "some-org",
 		RemoteURL:    "https://forgejo.example.com/some-org/repo.git",
@@ -419,4 +419,10 @@ func TestHostnameFromURL(t *testing.T) {
 			}
 		})
 	}
+}
+
+// matchAccountEx unpacks matchAccount's winner, ties and source for the tests.
+func matchAccountEx(cfg *config.Config, mc MatchContext) (accountKey, sourceKey string, ambiguous []string) {
+	m := matchAccount(cfg, mc)
+	return m.accountKey, m.sourceKey, m.ambiguous
 }
