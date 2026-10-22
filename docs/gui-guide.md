@@ -114,7 +114,7 @@ The sidebar on the left picks what the main area shows:
 - **Accounts** — accounts only: one entry per account with its provider logo, a small health mark, its name, its health in words, and how many repos need me. I click one to open the account's view.
 - **More** — below the bottom separator, everything that isn't an account:
   - **Add account** (Simple: **Connect an account**) — see [Step 2](#step-2-add-accounts).
-  - **Found on disk** (Simple: **Found on this computer**) — appears when gitbox finds clones on disk it couldn't place on its own, and opens **Unmatched clones** (see [Clones found on disk](#clones-found-on-disk)).
+  - **Found on disk** — appears when gitbox finds clones on disk it couldn't place on its own, with how many, or when I ignored some, and opens **Unmatched clones** (see [Clones found on disk](#clones-found-on-disk)).
   - **Mirrors** and **Workspaces**, in Advanced only.
 
 The button at the top left, or ⌘B on macOS and Ctrl+B elsewhere, folds the sidebar to an icon rail. The rail keeps the provider logos with their health mark and attention count; hovering one shows the account name and its health, and one click switches to it. In a window narrower than 780 px the sidebar always shows as the rail, and the button opens the full sidebar over the content until I pick a view.
@@ -203,7 +203,7 @@ Everything else waits in **Unmatched clones**, opened from **Found on disk** in 
 - **already tracked at another path** — a second checkout of a repo Gitbox already tracks
 - **a git worktree of another clone**
 
-Where an account can apply, I pick it and click **Adopt**; the clone joins that account in place. **Ignore** hides a clone for good, and **Show ignored** lists the ignored ones with **Stop ignoring**. Ignored paths are saved in `global.ignored_clones`. The scoring rules behind the account match are in [Architecture › pkg/adopt](architecture.md#pkgadopt--orphan-repo-discovery).
+Where an account can apply, I pick it and click **Adopt**; the clone joins that account in place. **Ignore** hides a clone for good, and **Show ignored** lists the ignored ones: I can still **Adopt** one, or **Stop ignoring** it. Ignored paths are saved in `global.ignored_clones`. The scoring rules behind the account match are in [Architecture › pkg/adopt](architecture.md#pkgadopt--orphan-repo-discovery).
 
 ### Creating repositories
 

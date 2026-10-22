@@ -39,7 +39,7 @@
     open = true;
   }
 
-  $: for (const o of unmatched) {
+  $: for (const o of [...unmatched, ...ignored]) {
     if (adoptable(o) && !picked[o.path]) picked[o.path] = o.matchedAccount || o.candidates![0];
   }
 
@@ -81,7 +81,7 @@
             <div class="clone-head">
               <span class="clone-name">{o.repoKey || o.relPath}</span>
               {#if o.nested}<span class="tag">{$t('unmatched.nested')}</span>{/if}
-              <span class="reason">{$t(reasonKeys[o.reason] || 'unmatched.unknownHost')}</span>
+              {#if reasonKeys[o.reason]}<span class="reason">{$t(reasonKeys[o.reason])}</span>{/if}
             </div>
             <div class="clone-path" title={o.path}>{o.relPath}{#if o.remoteURL}&nbsp;· {o.remoteURL}{/if}</div>
             <div class="clone-actions">
@@ -109,9 +109,23 @@
               <div class="clone clone-ignored">
                 <div class="clone-head">
                   <span class="clone-name">{o.repoKey || o.relPath}</span>
+                  {#if reasonKeys[o.reason]}<span class="reason">{$t(reasonKeys[o.reason])}</span>{/if}
+                </div>
+                <div class="clone-path" title={o.path}>{o.relPath}{#if o.remoteURL}&nbsp;· {o.remoteURL}{/if}</div>
+                <div class="clone-actions">
+                  {#if adoptable(o)}
+                    <label class="account">
+                      <span>{$t('unmatched.account')}</span>
+                      <select class="form-input" bind:value={picked[o.path]} disabled={!!busy}>
+                        {#each o.candidates || [] as acct (acct)}
+                          <option value={acct}>{acct}</option>
+                        {/each}
+                      </select>
+                    </label>
+                    <button class="btn-adopt" on:click={() => adoptOne(o)} disabled={!!busy}>{$t('unmatched.adopt')}</button>
+                  {/if}
                   <button class="btn-cancel" on:click={() => setIgnored(o, false)} disabled={!!busy}>{$t('unmatched.unignore')}</button>
                 </div>
-                <div class="clone-path" title={o.path}>{o.relPath}</div>
               </div>
             {/each}
           {/if}
@@ -147,7 +161,6 @@
   .btn-adopt:hover:not(:disabled) { background: #16a34a; }
   .btn-adopt:disabled { opacity: 0.5; cursor: default; }
   .clone-actions .btn-cancel { margin-left: auto; }
-  .clone-ignored .btn-cancel { margin-left: auto; }
   .link {
     margin-top: 10px; padding: 0; border: none; background: none; cursor: pointer;
     font-size: 11px; color: var(--text-secondary); text-decoration: underline; text-underline-offset: 3px;

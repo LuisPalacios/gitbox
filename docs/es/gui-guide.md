@@ -114,7 +114,7 @@ La barra lateral de la izquierda elige qué muestra el área principal:
 - **Cuentas** — solo cuentas: una entrada por cuenta con el logo de su proveedor, una pequeña marca de salud, su nombre, su salud en palabras y cuántos repos me necesitan. Hago clic en una para abrir la vista de la cuenta.
 - **Más** — bajo el separador inferior, todo lo que no es una cuenta:
   - **Añadir cuenta** (Simple: **Conectar una cuenta**) — consulta el [Paso 2](#paso-2-añadir-cuentas).
-  - **Encontrados en disco** (Simple: **Encontrados en este ordenador**) — aparece cuando gitbox encuentra clones en disco que no ha podido ubicar por su cuenta, y abre **Clones sin ubicar** (consulta [Clones encontrados en disco](#clones-encontrados-en-disco)).
+  - **Encontrados en disco** — aparece cuando gitbox encuentra clones en disco que no ha podido ubicar por su cuenta, con cuántos son, o cuando he ignorado alguno, y abre **Clones sin ubicar** (consulta [Clones encontrados en disco](#clones-encontrados-en-disco)).
   - **Mirrors** y **Workspaces**, solo en Advanced.
 
 El botón de arriba a la izquierda, o ⌘B en macOS y Ctrl+B en el resto, pliega la barra lateral a un riel de iconos. El riel mantiene los logos de los proveedores con su marca de salud y su conteo de atención; al pasar el ratón sobre uno se ven el nombre de la cuenta y su salud, y un clic cambia a ella. En una ventana de menos de 780 px la barra lateral siempre se muestra como el riel, y el botón abre la barra lateral completa sobre el contenido hasta que elijo una vista.
@@ -203,7 +203,7 @@ Todo lo demás espera en **Clones sin ubicar**, que se abre desde **Encontrados 
 - **ya gestionado en otra ruta** — un segundo checkout de un repo que Gitbox ya sigue
 - **un worktree de git de otro clon**
 
-Donde una cuenta puede aplicarse, la elijo y hago clic en **Adoptar**; el clon se une a esa cuenta en su sitio. **Ignorar** oculta un clon para siempre, y **Mostrar ignorados** lista los ignorados con **Dejar de ignorar**. Las rutas ignoradas se guardan en `global.ignored_clones`. Las reglas de puntuación detrás del emparejamiento de cuenta están en [Arquitectura › pkg/adopt](architecture.md#pkgadopt--discovery-de-repos-huérfanos).
+Donde una cuenta puede aplicarse, la elijo y hago clic en **Adoptar**; el clon se une a esa cuenta en su sitio. **Ignorar** oculta un clon para siempre, y **Mostrar ignorados** lista los ignorados: todavía puedo **Adoptar** uno, o usar **Dejar de ignorar**. Las rutas ignoradas se guardan en `global.ignored_clones`. Las reglas de puntuación detrás del emparejamiento de cuenta están en [Arquitectura › pkg/adopt](architecture.md#pkgadopt--discovery-de-repos-huérfanos).
 
 ### Crear repositorios
 

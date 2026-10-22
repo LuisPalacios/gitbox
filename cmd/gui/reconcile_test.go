@@ -112,4 +112,14 @@ func TestAdoptClonesAndIgnoreClone(t *testing.T) {
 	if !reloaded.IsIgnoredClone(other) {
 		t.Error("ignore not saved")
 	}
+
+	// An ignored clone can still be adopted; it stops being ignored.
+	res = a.AdoptClones([]AdoptRequestDTO{{Path: other, Account: "github-alice"}})
+	if res.Error != "" || len(res.Ignored) != 0 {
+		t.Fatalf("adopt from ignored = %+v", res)
+	}
+	reloaded, _ = config.Load(cfgPath)
+	if _, ok := reloaded.Sources["github-alice"].Repos["someone/other"]; !ok || reloaded.IsIgnoredClone(other) {
+		t.Errorf("adopted=%v still ignored=%v", ok, reloaded.IsIgnoredClone(other))
+	}
 }

@@ -142,8 +142,8 @@ func (a *App) Reconcile() ReconcileDTO {
 	for _, u := range res.Unmatched {
 		out.Unmatched = append(out.Unmatched, toOrphanDTO(u.OrphanRepo, u.Reason))
 	}
-	for _, o := range res.Ignored {
-		out.Ignored = append(out.Ignored, toOrphanDTO(o, ""))
+	for _, u := range res.Ignored {
+		out.Ignored = append(out.Ignored, toOrphanDTO(u.OrphanRepo, u.Reason))
 	}
 	if saveErr != nil {
 		out.Error = saveErr.Error()
@@ -154,8 +154,9 @@ func (a *App) Reconcile() ReconcileDTO {
 	return out
 }
 
-// AdoptClones adopts unmatched clones into the accounts I picked, in place,
-// then runs a fresh pass and returns it.
+// AdoptClones adopts unmatched or ignored clones into the accounts I
+// picked, in place (an ignored one stops being ignored), then runs a fresh
+// pass and returns it.
 func (a *App) AdoptClones(reqs []AdoptRequestDTO) ReconcileDTO {
 	a.reconcileMu.Lock()
 	res, err := a.scanConfig()
@@ -168,7 +169,7 @@ func (a *App) AdoptClones(reqs []AdoptRequestDTO) ReconcileDTO {
 	var errs []string
 	for _, req := range reqs {
 		found := false
-		for _, u := range res.Unmatched {
+		for _, u := range append(append([]reconcile.Unmatched{}, res.Unmatched...), res.Ignored...) {
 			if !config.SamePath(u.Path, req.Path) {
 				continue
 			}
@@ -178,6 +179,7 @@ func (a *App) AdoptClones(reqs []AdoptRequestDTO) ReconcileDTO {
 				errs = append(errs, err.Error())
 				break
 			}
+			a.cfg.IgnoreClone(u.Path, false)
 			setups = append(setups, setupFor(a.cfg, reconcile.Placed{Account: req.Account, Source: source, Repo: u.RepoKey, Path: u.Path}))
 			break
 		}

@@ -44,7 +44,7 @@ type Result struct {
 	Adopt     []adopt.OrphanRepo
 	Relink    []Relink
 	Unmatched []Unmatched
-	Ignored   []adopt.OrphanRepo
+	Ignored   []Unmatched // with the reason they would wait for me, "" when adoptable
 }
 
 // Plan scans every root and decides, for each clone the config doesn't
@@ -75,19 +75,40 @@ func Plan(cfg *config.Config) (Result, error) {
 		}
 	}
 
+	// reason says why a clone waits for me, or "" when it can be adopted.
+	reason := func(o adopt.OrphanRepo) string {
+		source := o.MatchedSource
+		if source == "" {
+			source = o.MatchedAccount
+		}
+		switch {
+		case git.IsLinkedWorktree(o.Path):
+			return ReasonWorktree
+		case o.LocalOnly:
+			return ReasonNoRemote
+		case o.MatchedAccount == "" && len(o.AmbiguousCandidates) > 0:
+			return ReasonAmbiguous
+		case o.MatchedAccount == "":
+			return ReasonUnknown
+		case tracked[source+"/"+strings.ToLower(o.RepoKey)]:
+			return ReasonTracked
+		case !o.Confident:
+			return ReasonHostOnly
+		}
+		return ""
+	}
+
 	var res Result
 	relinked := map[ref]bool{}
 	for _, o := range orphans {
+		// Ignored clones keep their reason, so the list can still offer
+		// Adopt where it applies.
 		if cfg.IsIgnoredClone(o.Path) {
-			res.Ignored = append(res.Ignored, o)
+			res.Ignored = append(res.Ignored, Unmatched{o, reason(o)})
 			continue
 		}
-		if git.IsLinkedWorktree(o.Path) {
-			res.Unmatched = append(res.Unmatched, Unmatched{o, ReasonWorktree})
-			continue
-		}
-		if o.LocalOnly {
-			res.Unmatched = append(res.Unmatched, Unmatched{o, ReasonNoRemote})
+		if r := reason(o); r == ReasonWorktree || r == ReasonNoRemote {
+			res.Unmatched = append(res.Unmatched, Unmatched{o, r})
 			continue
 		}
 		var hits []ref
@@ -101,23 +122,16 @@ func Plan(cfg *config.Config) (Result, error) {
 			res.Relink = append(res.Relink, Relink{Source: hits[0].source, Repo: hits[0].repo, Path: o.Path})
 			continue
 		}
+		if r := reason(o); r != "" {
+			res.Unmatched = append(res.Unmatched, Unmatched{o, r})
+			continue
+		}
 		source := o.MatchedSource
 		if source == "" {
 			source = o.MatchedAccount
 		}
-		switch {
-		case o.MatchedAccount == "" && len(o.AmbiguousCandidates) > 0:
-			res.Unmatched = append(res.Unmatched, Unmatched{o, ReasonAmbiguous})
-		case o.MatchedAccount == "":
-			res.Unmatched = append(res.Unmatched, Unmatched{o, ReasonUnknown})
-		case tracked[source+"/"+strings.ToLower(o.RepoKey)]:
-			res.Unmatched = append(res.Unmatched, Unmatched{o, ReasonTracked})
-		case !o.Confident:
-			res.Unmatched = append(res.Unmatched, Unmatched{o, ReasonHostOnly})
-		default:
-			tracked[source+"/"+strings.ToLower(o.RepoKey)] = true
-			res.Adopt = append(res.Adopt, o)
-		}
+		tracked[source+"/"+strings.ToLower(o.RepoKey)] = true
+		res.Adopt = append(res.Adopt, o)
 	}
 	return res, nil
 }

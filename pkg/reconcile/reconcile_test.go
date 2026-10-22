@@ -183,8 +183,8 @@ func TestPlan_SkipsIgnoredClones(t *testing.T) {
 	cfg.IgnoreClone(path, true)
 
 	res := planAndApply(t, cfg)
-	if len(res.Ignored) != 1 || len(res.Unmatched) != 0 {
-		t.Errorf("ignored=%d unmatched=%v", len(res.Ignored), reasons(res))
+	if len(res.Ignored) != 1 || len(res.Unmatched) != 0 || res.Ignored[0].Reason != ReasonHostOnly {
+		t.Errorf("ignored=%+v unmatched=%v", res.Ignored, reasons(res))
 	}
 }
 

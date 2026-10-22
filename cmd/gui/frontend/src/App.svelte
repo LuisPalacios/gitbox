@@ -1877,7 +1877,7 @@
 
   <div class="body">
     <!-- ── SIDEBAR ── -->
-    <Sidebar view={currentView} {rail} {simple} {credStatuses} {attention} {totalRepos} {orphanCount}
+    <Sidebar view={currentView} {rail} {simple} {credStatuses} {attention} {totalRepos} {orphanCount} ignoredCount={ignoredClones.length}
       {setView} onAddAccount={addAccount} {showOrphanModal} />
 
     <main class="content">
