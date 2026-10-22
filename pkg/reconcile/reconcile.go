@@ -117,11 +117,17 @@ func Plan(cfg *config.Config) (Result, error) {
 	return res, nil
 }
 
-// Apply writes a plan into the config and reports whether it changed.
-// Clones that can't be added (a source key taken by another account) are
-// skipped.
-func Apply(cfg *config.Config, res Result) bool {
+// Placed is a clone Apply or Adopt added to the config.
+type Placed struct {
+	Account, Source, Repo, Path string
+}
+
+// Apply writes a plan into the config: it returns the clones it adopted and
+// whether the config changed. Clones that can't be added (a source key
+// taken by another account) are skipped.
+func Apply(cfg *config.Config, res Result) ([]Placed, bool) {
 	changed := false
+	var placed []Placed
 	for _, r := range res.Relink {
 		src, ok := cfg.Sources[r.Source]
 		if !ok {
@@ -136,11 +142,12 @@ func Apply(cfg *config.Config, res Result) bool {
 		changed = true
 	}
 	for _, o := range res.Adopt {
-		if _, err := Adopt(cfg, o, o.MatchedAccount); err == nil {
+		if source, err := Adopt(cfg, o, o.MatchedAccount); err == nil {
+			placed = append(placed, Placed{Account: o.MatchedAccount, Source: source, Repo: o.RepoKey, Path: o.Path})
 			changed = true
 		}
 	}
-	return changed
+	return placed, changed
 }
 
 // Adopt adds a found clone to the config under accountKey, in place, and

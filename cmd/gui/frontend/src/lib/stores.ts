@@ -37,6 +37,7 @@ export function applyStatusResults(results: StatusResult[]) {
         case 'not cloned': status = 'not cloned'; break;
         case 'no upstream': status = 'no upstream'; break;
         case 'upstream gone': status = 'upstream gone'; break;
+        case 'root offline': status = 'root offline'; break;
         default: status = 'error';
       }
       // Preserve in-flight progress if repo is syncing/cloning

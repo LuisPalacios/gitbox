@@ -22,7 +22,7 @@ export function AddMirrorRepo(arg1:string,arg2:string,arg3:string,arg4:string):P
 
 export function AddRoot(arg1:string):Promise<void>;
 
-export function AdoptOrphans(arg1:Array<string>):Promise<main.AdoptResultDTO>;
+export function AdoptClones(arg1:Array<main.AdoptRequestDTO>):Promise<main.ReconcileDTO>;
 
 export function ApplyDiscoveredMirrors():Promise<void>;
 
@@ -84,8 +84,6 @@ export function FetchAllRepos():Promise<void>;
 
 export function FetchRepo(arg1:string,arg2:string):Promise<void>;
 
-export function FindOrphans():Promise<Array<main.OrphanRepoDTO>>;
-
 export function FixGlobalGCMConfig():Promise<void>;
 
 export function GetAllStatus():Promise<Array<main.StatusResult>>;
@@ -131,6 +129,8 @@ export function GetViewMode():Promise<string>;
 export function GetWindowMode():Promise<string>;
 
 export function GetWorkspace(arg1:string):Promise<main.WorkspaceDTO>;
+
+export function IgnoreClone(arg1:string,arg2:boolean):Promise<void>;
 
 export function InitRoot(arg1:string):Promise<void>;
 
@@ -201,6 +201,8 @@ export function PreviewSweep(arg1:string,arg2:string):Promise<main.SweepPreviewD
 export function PullRepo(arg1:string,arg2:string):Promise<void>;
 
 export function RecommendedGlobalGitignoreBody():Promise<string>;
+
+export function Reconcile():Promise<main.ReconcileDTO>;
 
 export function RedetectProfiles():Promise<main.ConfigDTO>;
 

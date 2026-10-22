@@ -17,7 +17,6 @@ import (
 
 	"time"
 
-	"github.com/LuisPalacios/gitbox/pkg/adopt"
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/doctor"
@@ -31,6 +30,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/move"
 	"github.com/LuisPalacios/gitbox/pkg/ops"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
+	"github.com/LuisPalacios/gitbox/pkg/reconcile"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 	"github.com/LuisPalacios/gitbox/pkg/terminals"
 	"github.com/LuisPalacios/gitbox/pkg/update"
@@ -67,10 +67,14 @@ type App struct {
 	toolsOnce            sync.Once
 	toolsWG              sync.WaitGroup
 	workspaceDiscoveryMu sync.Mutex
-	mu                   sync.Mutex
-	savedWindowPos       *config.WindowState // full-mode window state pre-loaded from config
-	savedCompactPos      *config.WindowState // compact-mode window state pre-loaded from config
-	savedViewMode        string              // "full" or "compact" pre-loaded from config
+	// reconcileMu serializes reconcile passes and manual adoptions (#149);
+	// reconcileScan replaces reconcile.Plan in tests.
+	reconcileMu     sync.Mutex
+	reconcileScan   func(*config.Config) (reconcile.Result, error)
+	mu              sync.Mutex
+	savedWindowPos  *config.WindowState // full-mode window state pre-loaded from config
+	savedCompactPos *config.WindowState // compact-mode window state pre-loaded from config
+	savedViewMode   string              // "full" or "compact" pre-loaded from config
 
 	// upstreamGone tracks repos discovered to be missing from the provider
 	// (deleted, archived private, lost access). Populated by fetch errors
@@ -875,139 +879,6 @@ func (a *App) ConfirmSweep(sourceKey, repoKey string) SweepDeleteDTO {
 		return SweepDeleteDTO{Deleted: deleted, Error: errs[0].Error()}
 	}
 	return SweepDeleteDTO{Deleted: deleted}
-}
-
-// ── Orphan repo adoption ──────────────────────────────────────────────────
-
-// OrphanRepoDTO describes an orphan repo for the frontend.
-type OrphanRepoDTO struct {
-	Path                string   `json:"path"`
-	RelPath             string   `json:"relPath"`
-	RemoteURL           string   `json:"remoteURL"`
-	RepoKey             string   `json:"repoKey"`
-	MatchedAccount      string   `json:"matchedAccount"`
-	MatchedSource       string   `json:"matchedSource"`
-	ExpectedPath        string   `json:"expectedPath"`
-	NeedsRelocate       bool     `json:"needsRelocate"`
-	LocalOnly           bool     `json:"localOnly"`
-	AmbiguousCandidates []string `json:"ambiguousCandidates,omitempty"`
-	Nested              bool     `json:"nested"`
-}
-
-// AdoptResultDTO holds the result of adopting orphan repos.
-type AdoptResultDTO struct {
-	Adopted   int    `json:"adopted"`
-	Relocated int    `json:"relocated"`
-	Skipped   int    `json:"skipped"`
-	Error     string `json:"error,omitempty"`
-}
-
-// FindOrphans returns orphan repos under the parent folder.
-func (a *App) FindOrphans() []OrphanRepoDTO {
-	a.mu.Lock()
-	cfg := a.cfg
-	a.mu.Unlock()
-
-	orphans, err := adopt.FindOrphans(cfg)
-	if err != nil {
-		return nil
-	}
-
-	dtos := make([]OrphanRepoDTO, len(orphans))
-	for i, o := range orphans {
-		dtos[i] = OrphanRepoDTO{
-			Path:                o.Path,
-			RelPath:             o.RelPath,
-			RemoteURL:           o.RemoteURL,
-			RepoKey:             o.RepoKey,
-			MatchedAccount:      o.MatchedAccount,
-			MatchedSource:       o.MatchedSource,
-			ExpectedPath:        o.ExpectedPath,
-			NeedsRelocate:       o.NeedsRelocate,
-			LocalOnly:           o.LocalOnly,
-			AmbiguousCandidates: o.AmbiguousCandidates,
-			Nested:              o.Nested,
-		}
-	}
-	return dtos
-}
-
-// AdoptOrphans adopts the specified orphans by repoKey.
-func (a *App) AdoptOrphans(repoKeys []string) AdoptResultDTO {
-	a.mu.Lock()
-	cfg := a.cfg
-	a.mu.Unlock()
-
-	// Build lookup of requested keys.
-	requested := make(map[string]bool, len(repoKeys))
-	for _, k := range repoKeys {
-		requested[k] = true
-	}
-
-	orphans, err := adopt.FindOrphans(cfg)
-	if err != nil {
-		return AdoptResultDTO{Error: err.Error()}
-	}
-
-	adopted := 0
-	relocated := 0
-	skipped := 0
-
-	for _, o := range orphans {
-		if !requested[o.RepoKey] || o.MatchedAccount == "" || o.MatchedSource == "" || o.LocalOnly {
-			continue
-		}
-
-		repoPath := o.Path
-
-		// Relocate if needed — but never for nested clones, which must stay
-		// inside their container; they adopt in place with an absolute clone_folder.
-		if o.NeedsRelocate && !o.Nested && o.ExpectedPath != "" {
-			if _, statErr := os.Stat(o.ExpectedPath); statErr != nil {
-				if mkErr := os.MkdirAll(filepath.Dir(o.ExpectedPath), 0o755); mkErr == nil {
-					if mvErr := os.Rename(o.Path, o.ExpectedPath); mvErr == nil {
-						repoPath = o.ExpectedPath
-						relocated++
-					}
-				}
-			}
-		}
-
-		// Add to config: a clone left out of the standard layout keeps an
-		// absolute clone_folder; one in place under another root records it.
-		repo := config.Repo{}
-		if repoPath == o.Path && o.NeedsRelocate {
-			repo.CloneFolder = repoPath
-		} else if o.ExpectedRoot != "" && !config.SameRoot(o.ExpectedRoot, cfg.SourceRoot(o.MatchedSource)) {
-			repo.Root = cfg.ListedRoot(o.ExpectedRoot)
-		}
-		if err := cfg.AddRepo(o.MatchedSource, o.RepoKey, repo); err != nil {
-			skipped++
-			continue
-		}
-
-		// Sanitize .git/config.
-		acct := cfg.Accounts[o.MatchedAccount]
-		credType := repo.EffectiveCredentialType(&acct)
-		newURL := adopt.PlainRemoteURL(acct, o.RepoKey, credType)
-		_ = git.SetRemoteURL(repoPath, "origin", newURL)
-		_ = credential.ConfigureRepoCredential(repoPath, acct, o.MatchedAccount, credType, cfg.Global)
-		_ = git.ConfigSet(repoPath, "user.name", acct.Name)
-		_ = git.ConfigSet(repoPath, "user.email", acct.Email)
-
-		adopted++
-	}
-
-	if adopted > 0 {
-		a.mu.Lock()
-		saveErr := a.saveConfig()
-		a.mu.Unlock()
-		if saveErr != nil {
-			return AdoptResultDTO{Adopted: adopted, Relocated: relocated, Skipped: skipped, Error: saveErr.Error()}
-		}
-	}
-
-	return AdoptResultDTO{Adopted: adopted, Relocated: relocated, Skipped: skipped}
 }
 
 // OpenInApp opens a folder in a specific application (e.g. VS Code).

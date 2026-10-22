@@ -195,7 +195,7 @@
   // tooltip when disabled, or '' when enabled.
   function repoMoveDisabledReason(state: RepoState | undefined): string {
     if (!state) return $t('row.moveCloneFirst');
-    if (state.status === 'not cloned' || state.status === 'error') return $t('row.moveCloneFirst');
+    if (state.status === 'not cloned' || state.status === 'root offline' || state.status === 'error') return $t('row.moveCloneFirst');
     if (state.status !== 'clean') return $t('row.moveNotClean');
     if ((state.ahead ?? 0) > 0 || (state.behind ?? 0) > 0) return $t('row.moveNotInSync');
     return '';
@@ -395,7 +395,7 @@
       {:else if kind === 'online'}
         <button class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('simple.btnDownload')}</button>
       {/if}
-      {#if kind !== 'online' && kind !== 'busy'}
+      {#if kind !== 'online' && kind !== 'offline' && kind !== 'busy'}
         {@render quickLaunch(repoKey)}
       {/if}
     {/if}
@@ -499,7 +499,7 @@
       <button class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('repo.clone')}</button>
     {/if}
     {/if}
-    {#if !deleteMode && state.status !== 'not cloned'}
+    {#if !deleteMode && state.status !== 'not cloned' && state.status !== 'root offline'}
       {@render quickLaunch(repoKey)}
       <button class="icon-btn btn-fetch" on:click|stopPropagation={() => fetchRepo(rowSourceKey, repoName)} title={$t('repo.fetchOrigin')} aria-label={$t('repo.fetchOrigin')} disabled={!!fetchingRepos[repoKey]}><span class="icon-spin" class:spinning={fetchingRepos[repoKey]}><UIIcon name="fetch" /></span></button>
       <div class="action-menu-container">

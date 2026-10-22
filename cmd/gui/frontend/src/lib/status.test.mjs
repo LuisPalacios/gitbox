@@ -7,16 +7,16 @@ const sourceCode = await readFile(new URL('./status.ts', import.meta.url), 'utf8
 const { outputText } = ts.transpileModule(sourceCode, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } });
 const s = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
-const STATUSES = ['clean', 'dirty', 'behind', 'ahead', 'diverged', 'conflict', 'not cloned', 'no upstream', 'upstream gone', 'error', 'syncing', 'cloning', 'fetching', 'unknown'];
+const STATUSES = ['clean', 'dirty', 'behind', 'ahead', 'diverged', 'conflict', 'not cloned', 'no upstream', 'upstream gone', 'root offline', 'error', 'syncing', 'cloning', 'fetching', 'unknown'];
 
 test('I map every status to its shape', () => {
-  assert.deepEqual(STATUSES.map(s.statusSymbol), ['●', '◆', '◗', '▲', '⚠', '⚡', '○', '~', '⊗', '✕', '◔', '◔', '◔', '●']);
+  assert.deepEqual(STATUSES.map(s.statusSymbol), ['●', '◆', '◗', '▲', '⚠', '⚡', '○', '~', '⊗', '◌', '✕', '◔', '◔', '◔', '●']);
   assert.equal(s.statusSymbol('bogus'), '?');
 });
 
 test('I colour every status per theme, with a muted fallback', () => {
-  assert.deepEqual(STATUSES.map((x) => s.statusColor(x, 'dark')), ['#61fd5f', '#F07623', '#D91C9A', '#4B95E9', '#D81E5B', '#D81E5B', '#71717a', '#71717a', '#D81E5B', '#D81E5B', '#4B95E9', '#4B95E9', '#4B95E9', '#71717a']);
-  assert.deepEqual(STATUSES.map((x) => s.statusColor(x, 'light')), ['#166534', '#c2410c', '#a21caf', '#2563eb', '#be123c', '#be123c', '#52525b', '#52525b', '#be123c', '#be123c', '#2563eb', '#2563eb', '#2563eb', '#52525b']);
+  assert.deepEqual(STATUSES.map((x) => s.statusColor(x, 'dark')), ['#61fd5f', '#F07623', '#D91C9A', '#4B95E9', '#D81E5B', '#D81E5B', '#71717a', '#71717a', '#D81E5B', '#71717a', '#D81E5B', '#4B95E9', '#4B95E9', '#4B95E9', '#71717a']);
+  assert.deepEqual(STATUSES.map((x) => s.statusColor(x, 'light')), ['#166534', '#c2410c', '#a21caf', '#2563eb', '#be123c', '#be123c', '#52525b', '#52525b', '#be123c', '#52525b', '#be123c', '#2563eb', '#2563eb', '#2563eb', '#52525b']);
 });
 
 test('I show a spinning glyph while a row is unscanned or fetching', () => {
@@ -28,7 +28,7 @@ test('I show a spinning glyph while a row is unscanned or fetching', () => {
 });
 
 test('I fold every status into one Simple kind with its colour and label', () => {
-  assert.deepEqual(STATUSES.map(s.simpleKind), ['saved', 'wip', 'update', 'unpushed', 'help', 'help', 'online', 'unpushed', 'help', 'help', 'busy', 'busy', 'busy', 'checking']);
+  assert.deepEqual(STATUSES.map(s.simpleKind), ['saved', 'wip', 'update', 'unpushed', 'help', 'help', 'online', 'unpushed', 'help', 'offline', 'help', 'busy', 'busy', 'busy', 'checking']);
   assert.equal(s.simpleKind('bogus'), 'help');
   assert.equal(s.simpleColor('saved', 'dark'), '#61fd5f');
   assert.equal(s.simpleColor('wip', 'light'), '#c2410c');
@@ -52,7 +52,7 @@ test('I describe count badges in a fixed order and pick the compact one', () => 
 
 test('I open the detail panel only for statuses that need attention', () => {
   assert.deepEqual(STATUSES.filter(s.opensDetail), ['dirty', 'ahead', 'diverged', 'conflict', 'no upstream', 'upstream gone', 'error', 'fetching']);
-  assert.deepEqual(STATUSES.filter(s.detailLocked), ['clean', 'behind', 'not cloned', 'syncing', 'cloning']);
+  assert.deepEqual(STATUSES.filter(s.detailLocked), ['clean', 'behind', 'not cloned', 'root offline', 'syncing', 'cloning']);
   assert.equal(s.detailLocked('unknown'), false);
 });
 
@@ -67,7 +67,7 @@ test('I apply the credential rules for cards and kebabs', () => {
 });
 
 test('I rank every status by how much it needs me, worst first', () => {
-  assert.deepEqual(STATUSES.map((x) => s.attentionRank(x)), [4, 1, 2, 1, 0, 0, 3, 1, 0, 0, 2, 3, 4, 4]);
+  assert.deepEqual(STATUSES.map((x) => s.attentionRank(x)), [4, 1, 2, 1, 0, 0, 3, 1, 0, 4, 0, 2, 3, 4, 4]);
   assert.equal(s.attentionRank('no upstream', true), 1);
   assert.equal(s.attentionRank('no upstream', false), 4);
   assert.equal(s.attentionRank('bogus'), s.CALM_RANK);
@@ -89,6 +89,7 @@ test('I label every Advanced status in the glossary words', () => {
   assert.deepEqual(label('upstream gone'), { key: 'status.upstreamGone', color: 'upstream gone', badges: false });
   assert.deepEqual(label('error'), { key: 'status.error', color: 'error', badges: false });
   assert.deepEqual(label('not cloned'), { key: 'status.notCloned', color: 'not cloned', badges: false });
+  assert.deepEqual(label('root offline'), { key: 'status.rootOffline', color: 'root offline', badges: false });
   assert.deepEqual(label('no upstream'), { key: 'repo.noUpstream', color: 'no upstream', badges: false });
   assert.deepEqual(label('no upstream', { isDefault: false }), { key: 'repo.localBranch', color: 'clean', badges: false });
   assert.equal(label('unknown').key, 'simple.checking');
@@ -96,7 +97,7 @@ test('I label every Advanced status in the glossary words', () => {
 
 test('I label every Simple status by its kind', () => {
   const label = (status) => s.statusLabel({ status, modified: 2, untracked: 1 }, true);
-  assert.deepEqual(STATUSES.map((x) => label(x).key), ['simple.saved', 'simple.wip', 'simple.update', 'simple.unpushed', 'simple.help', 'simple.help', 'simple.online', 'simple.unpushed', 'simple.help', 'simple.help', 'simple.checking', 'simple.checking', 'simple.checking', 'simple.checking']);
+  assert.deepEqual(STATUSES.map((x) => label(x).key), ['simple.saved', 'simple.wip', 'simple.update', 'simple.unpushed', 'simple.help', 'simple.help', 'simple.online', 'simple.unpushed', 'simple.help', 'simple.offline', 'simple.help', 'simple.checking', 'simple.checking', 'simple.checking', 'simple.checking']);
   assert.deepEqual(label('dirty'), { key: 'simple.wip', note: 'simple.wipSafe', noteVars: { n: 3 }, short: 'simple.wipShort', shortVars: { n: 3 }, color: 'dirty', badges: false });
   assert.equal(s.statusLabel({ status: 'dirty', modified: 1 }, true).note, 'simple.wipSafeOne');
   assert.equal(s.statusLabel({ status: 'dirty', modified: 1 }, true).short, 'simple.wipShortOne');

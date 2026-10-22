@@ -34,8 +34,8 @@ export function AddRoot(arg1) {
   return window['go']['main']['App']['AddRoot'](arg1);
 }
 
-export function AdoptOrphans(arg1) {
-  return window['go']['main']['App']['AdoptOrphans'](arg1);
+export function AdoptClones(arg1) {
+  return window['go']['main']['App']['AdoptClones'](arg1);
 }
 
 export function ApplyDiscoveredMirrors() {
@@ -158,10 +158,6 @@ export function FetchRepo(arg1, arg2) {
   return window['go']['main']['App']['FetchRepo'](arg1, arg2);
 }
 
-export function FindOrphans() {
-  return window['go']['main']['App']['FindOrphans']();
-}
-
 export function FixGlobalGCMConfig() {
   return window['go']['main']['App']['FixGlobalGCMConfig']();
 }
@@ -252,6 +248,10 @@ export function GetWindowMode() {
 
 export function GetWorkspace(arg1) {
   return window['go']['main']['App']['GetWorkspace'](arg1);
+}
+
+export function IgnoreClone(arg1, arg2) {
+  return window['go']['main']['App']['IgnoreClone'](arg1, arg2);
 }
 
 export function InitRoot(arg1) {
@@ -392,6 +392,10 @@ export function PullRepo(arg1, arg2) {
 
 export function RecommendedGlobalGitignoreBody() {
   return window['go']['main']['App']['RecommendedGlobalGitignoreBody']();
+}
+
+export function Reconcile() {
+  return window['go']['main']['App']['Reconcile']();
 }
 
 export function RedetectProfiles() {

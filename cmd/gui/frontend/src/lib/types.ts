@@ -210,7 +210,7 @@ export interface CredentialStatus {
 
 // Frontend-only UI state for a single repo row
 export interface RepoState {
-  status: 'clean' | 'dirty' | 'behind' | 'ahead' | 'diverged' | 'conflict' | 'not cloned' | 'no upstream' | 'upstream gone' | 'error' | 'syncing' | 'cloning' | 'unknown';
+  status: 'clean' | 'dirty' | 'behind' | 'ahead' | 'diverged' | 'conflict' | 'not cloned' | 'no upstream' | 'upstream gone' | 'root offline' | 'error' | 'syncing' | 'cloning' | 'unknown';
   path?: string;
   progress: number;
   behind: number;
@@ -249,24 +249,26 @@ export interface RepoDetailView {
   upstreamError?: string;
 }
 
+// A clone found under a root that the config doesn't track (#149).
 export interface OrphanRepoDTO {
   path: string;
   relPath: string;
   remoteURL: string;
   repoKey: string;
   matchedAccount: string;
-  matchedSource: string;
-  expectedPath: string;
-  needsRelocate: boolean;
-  localOnly: boolean;
-  ambiguousCandidates?: string[];
+  // Why it waits for me: 'host-only' | 'ambiguous' | 'unknown-host' | 'no-remote' | 'already-tracked'.
+  reason: string;
+  // Accounts it could go to, best first.
+  candidates?: string[];
   nested: boolean;
 }
 
-export interface AdoptResultDTO {
+// One reconcile pass: what it adopted and re-linked, and what needs me.
+export interface ReconcileDTO {
   adopted: number;
-  relocated: number;
-  skipped: number;
+  relinked: number;
+  unmatched: OrphanRepoDTO[];
+  ignored: OrphanRepoDTO[];
   error?: string;
 }
 
