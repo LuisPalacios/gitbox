@@ -139,6 +139,7 @@ Run in this order, stop on first failure and fix before continuing:
 
    # Full build (needed before push)
    cp assets/appicon.png cmd/gui/build/appicon.png
+   mkdir -p cmd/gui/build/windows   # absent in a fresh clone or worktree
    cp assets/icon.ico    cmd/gui/build/windows/icon.ico
    (cd cmd/gui && wails build)
 

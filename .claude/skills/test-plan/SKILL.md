@@ -51,6 +51,7 @@ All tests must pass. If any fail, report and stop.
 ```bash
 LDFLAGS="-X main.version=$(git describe --tags --always)-dev -X main.commit=$(git rev-parse --short HEAD)"
 cp assets/appicon.png cmd/gui/build/appicon.png
+mkdir -p cmd/gui/build/windows   # absent in a fresh clone or worktree
 cp assets/icon.ico    cmd/gui/build/windows/icon.ico
 (cd cmd/gui && wails build -ldflags "$LDFLAGS")
 ```
