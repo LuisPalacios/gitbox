@@ -53,7 +53,7 @@ La GUI requiere un entorno de escritorio con servidor de pantalla (X11 o Wayland
 
 La primera vez que abres Gitbox, una configuración guiada corta te lleva por tres pasos:
 
-1. **Where do you keep your projects?** — elige una **root folder**, donde vivirán todos tus proyectos en disco. Algo como `~/00.git` o `C:\repos` funciona bien.
+1. **Where do you keep your projects?** — elige tu primera **raíz de clonado**, la carpeta donde vivirán tus proyectos en disco. Algo como `~/00.git` o `C:\repos` funciona bien. Puedes añadir más raíces después en Settings.
 2. **Connect where your projects are stored** — elige GitHub, GitLab, Bitbucket o la tarjeta **Forgejo** y **Gitea** (después elige cuál y escribe la dirección del servidor). Escribe tu usuario, tu nombre y tu email; el nombre y el email vienen rellenos desde tu identidad global de git cuando la tiene, y aparecen en los cambios que guardes. Haz clic en **Sign in with the browser** e inicia sesión. Gitbox usa Git Credential Manager (GCM) para esto.
 3. **Pick projects to download** — Gitbox lista los repositorios que tu cuenta puede ver. Marca los que quieras y haz clic en **Download**. Empiezan a clonarse en cuanto se abre la pantalla principal.
 
@@ -97,7 +97,7 @@ La ventana de discovery incluye:
 - **Select all** — marca la casilla para seleccionar todo lo visible (respeta el filtro)
 - **Already added** — los repos ya añadidos aparecen atenuados y no se pueden seleccionar de nuevo
 
-Elige los que quieras y haz clic en **Add & Pull**. Gitbox los guarda en tu config y empieza a clonarlos en tu carpeta.
+Elige los que quieras y haz clic en **Add & Pull**. Gitbox los guarda en tu config y empieza a clonarlos en la raíz de clonado de la cuenta. Con dos o más raíces, primero pregunta a cuál van.
 
 Discovery es **solo de adición**: añade repos a tu config pero nunca los elimina.
 
@@ -204,6 +204,7 @@ El modal pide:
 - **Description** — un resumen opcional de una línea.
 - **Private** — marcado por defecto. Desmarca para crear un repo público.
 - **Clone after creating** — marcado por defecto. Cuando está activo, Gitbox añade el repo a tu config y lo clona inmediatamente.
+- **Raíz de clonado** — aparece cuando tienes dos o más raíces de clonado y la casilla de clone está activa. Por defecto es la raíz de la cuenta.
 
 El texto del botón cambia según la casilla de clone: **Create & Clone** o **Create**.
 
@@ -276,15 +277,15 @@ La vista **Workspaces**, bajo **Más** en la barra lateral en Advanced, lista lo
 
 ### Auto-descubrimiento al arrancar
 
-Cuando dejo un archivo `*.code-workspace` bajo la carpeta gestionada por gitbox (o una carpeta extra configurada), o traigo uno desde otra máquina, la GUI lo recoge: la lista en caché aparece al instante al arrancar y luego una pasada en segundo plano la refresca, actualizando la vista si algo cambió. Discovery recorre `global.folder` y cada raíz de `global.extra_folders` en busca de archivos `*.code-workspace`. Las carpetas de cada archivo se resuelven de vuelta a clones conocidos por coincidencia deepest-prefix, y la caché de `gitbox.json` solo se reescribe cuando algo cambió.
+Cuando dejo un archivo `*.code-workspace` bajo cualquier raíz de clonado, o traigo uno desde otra máquina, la GUI lo recoge: la lista en caché aparece al instante al arrancar y luego una pasada en segundo plano la refresca, actualizando la vista si algo cambió. Discovery recorre cada raíz de `global.roots` en busca de archivos `*.code-workspace`. Las carpetas de cada archivo se resuelven de vuelta a clones conocidos por coincidencia deepest-prefix, y la caché de `gitbox.json` solo se reescribe cuando algo cambió.
 
 ### Clones no estándar y contenedores multi-repo
 
 Un **contenedor multi-repo** es un clon gestionado que mantiene otros clones anidados en su árbol de trabajo (por ejemplo, un repo de proyecto cuyo `.code-workspace` agrupa varios clones hermanos). Cuando un clon parece serlo — tiene un `.code-workspace` en su raíz pero aún no está marcado — su fila muestra un aviso inline **onboard nested clones**. Al hacer clic, marca el clon como contenedor, escanea su árbol de trabajo y abre el modal de adopción con los clones anidados que encuentra; tú confirmas cuáles incorporar. Los clones anidados se adoptan en el lugar bajo su cuenta/org real (se guardan con una `clone_folder` absoluta dentro del contenedor, nunca se reubican), y el aviso se reemplaza por un icono 📁; al pasar el ratón indica que es un contenedor.
 
-También puedes gestionarlo desde el menú ⋯ de la fila del repo, bajo **Mantenimiento** — **Mark as multi-repo container**, **Unmark as multi-repo container** y **Re-scan for nested clones** (visible una vez que el clon es contenedor) — o con la casilla **Multi-repo container** del panel de detalle del repo. El diálogo **Change root folder** gestiona las **carpetas de escaneo extra** (raíces adicionales escaneadas en busca de clones y archivos `.code-workspace`) y la **profundidad de escaneo anidado** (cuántos niveles desciende Gitbox por debajo de un contenedor, por defecto 1: los hijos inmediatos del contenedor; súbela para alcanzar clones anidados más profundos).
+También puedes gestionarlo desde el menú ⋯ de la fila del repo, bajo **Mantenimiento** — **Mark as multi-repo container**, **Unmark as multi-repo container** y **Re-scan for nested clones** (visible una vez que el clon es contenedor) — o con la casilla **Multi-repo container** del panel de detalle del repo. El diálogo **Raíces de clonado** de Settings fija la **profundidad de escaneo anidado** (cuántos niveles desciende Gitbox por debajo de un contenedor, por defecto 1: los hijos inmediatos del contenedor; súbela para alcanzar clones anidados más profundos).
 
-El layout estándar es `global.folder / <account> / <org|user> / repo`. Los clones encontrados en una carpeta de escaneo extra aparecen en el modal de orphans y se incorporan **en el lugar** con una `clone_folder` absoluta: Gitbox nunca los mueve.
+El layout estándar es `<root> / <account> / <org|user> / repo`. Un clon encontrado en ese sitio bajo cualquier raíz de clonado se adopta en el lugar bajo esa raíz. Un clon encontrado en otro sitio de una raíz también aparece en el modal de orphans; adoptarlo lo mueve a su sitio estándar bajo la raíz de la cuenta cuando ese sitio está libre, y si no, lo mantiene donde está con una `clone_folder` absoluta. Los clones anidados nunca se mueven.
 
 ## Vistas del dashboard
 
@@ -340,7 +341,7 @@ Esto es útil cuando quieres tener gitbox visible como sidebar mientras trabajas
 Haz clic en el **icono de engranaje** para abrir el panel de ajustes:
 
 - **Config** — muestra la ruta a tu archivo de config con un botón "Open in Editor"
-- **Root folder** — dónde se guardan los proyectos, con un botón "Change"
+- **Raíces de clonado** — las carpetas donde se guardan los proyectos, la predeterminada primero, con un botón "Change" (consulta [Raíces de clonado](#raíces-de-clonado))
 - **Theme** — cambia entre System, Light y Dark
 - **Fetch periódico** — intervalo de fetch automático (off, 5m, 15m, 30m)
 - **Run at startup** — lanzar Gitbox automáticamente al iniciar sesión (dependiente de plataforma)
@@ -353,6 +354,20 @@ Haz clic en el **icono de engranaje** para abrir el panel de ajustes:
 - **Author** — autor del proyecto y enlace al repositorio de GitHub
 
 Los flujos add-account y change-credential ejecutan la misma comprobación automáticamente: si eliges el tipo de credencial `gcm` en una máquina sin Git Credential Manager instalado, recibes un banner amarillo con el comando de instalación en lugar de un fallo críptico de autenticación más tarde.
+
+### Raíces de clonado
+
+Gitbox guarda los clones bajo una o más **raíces de clonado**, por ejemplo `~/00.git` para el trabajo diario y un disco más grande para proyectos grandes. Cada clon vive en `<root>/<account>/<org|user>/<repo>`. La primera raíz es la predeterminada, y las cuentas nuevas clonan en ella.
+
+Abre **Settings** y luego **Change** junto a **Raíces de clonado** para gestionarlas. Cada fila muestra la carpeta, cuántos repos viven bajo ella y una insignia **Predeterminada** en la predeterminada. Una raíz que no está en disco aparece tachada.
+
+- **+ Añadir raíz…** — elige una carpeta; Gitbox la crea si no existe
+- **Hacer predeterminada** — las cuentas nuevas clonan en esta raíz a partir de ahora. Las cuentas que ya usan la predeterminada anterior siguen en ella, y ningún clon se mueve.
+- **✕** — quita una raíz. Cuando todavía viven repos bajo ella, Gitbox pregunta si olvidarlos; sus archivos se quedan en disco.
+
+Con dos o más raíces, un clonado explícito pregunta una vez adónde va: el **Clonar** de una fila (Simple: **Descargar**), **Buscar → Add & Pull** y los proyectos que elijo al añadir una cuenta. La opción por defecto es la raíz de la cuenta, y la cuenta la recuerda para su siguiente clonado. **Crear repositorio** muestra la misma opción como un campo. **Pull de todo** nunca pregunta: los clones ausentes van a la raíz de su cuenta.
+
+El mismo diálogo fija la **profundidad de escaneo anidado** para los contenedores multi-repo.
 
 ### Acciones de clones
 
@@ -380,7 +395,7 @@ La detección de terminales cubre Windows Terminal, WezTerm, Alacritty, Tabby, C
 
 ### Acciones de cuenta
 
-Cada cuenta tiene un **menú ⋯**: en su tarjeta en la vista de la cuenta, y en la cabecera de su grupo en **Todos los repos**. Usa las mismas secciones planas que el menú de repo, pero aplicado a la carpeta padre de la cuenta (`<global.folder>/<account-key>`) en lugar de a un clon concreto:
+Cada cuenta tiene un **menú ⋯**: en su tarjeta en la vista de la cuenta, y en la cabecera de su grupo en **Todos los repos**. Usa las mismas secciones planas que el menú de repo, pero aplicado a la carpeta padre de la cuenta (`<root>/<account-key>`, en la raíz de clonado de la cuenta) en lugar de a un clon concreto:
 
 - **Navigate to account** — abre la página de perfil/org del proveedor para la cuenta (por ejemplo, `https://github.com/<username>`, la página de grupo de GitLab, la página de usuario de Gitea/Forgejo).
 - **Reveal in Finder** (Explorer, o el gestor de archivos) — abre la carpeta padre de la cuenta en el gestor de archivos del SO. La carpeta es la raíz natural de workspace para greps multi-repo, ediciones multi-repo o loops de shell. Si la carpeta todavía no existe (nada clonado bajo esa cuenta), la acción falla silenciosamente: clona al menos un repo primero.
@@ -430,7 +445,7 @@ Cuando un harness detectado se desinstala, la siguiente pasada marca su entrada 
 
 El conjunto de harnesses que gitbox intenta auto-detectar se mantiene como una tabla markdown embebida en el binario. La lista autoritativa vive en [`pkg/harness/tools-directory.md`](../../pkg/harness/tools-directory.md): para añadir o quitar un harness detectado, edita ese archivo. Una fila se auto-detecta cuando su `Category` es `Agentic CLI`, `AI Harness`, `Headless Harness`, `Agentic IDE` o `Agentic IDE / CLI`, y su celda `Executable / CLI Command` contiene uno o más identificadores entre backticks (por ejemplo `` `claude` ``, `` `aider` ``, `` `cursor` ``). Una celda con varios nombres, como "`` `agent` `` or `` `cursor-agent` ``" para la Cursor CLI renombrada, los sondea en orden para que cualquiera de las dos instalaciones resuelva. La columna final `Well-known locations` lista directorios de instalación por herramienta fuera de PATH, cada uno como su propio token entre backticks, con `~`, `$VAR` y `%VAR%` expandidos en el momento del sondeo. Las filas de framework, orchestrator y cloud-platform se documentan como referencia pero el detector las omite: no se lanzan desde una terminal en una carpeta. Las filas cuya `Category` es `Retired CLI` (Gemini CLI, retirado en favor de Antigravity CLI) también se omiten, y cualquier entrada de `global.ai_harnesses` con un nombre retirado se elimina en el siguiente sync para que un binario muerto deje de aparecer en el menú. Los Agentic IDEs (Cursor, Devin Desktop) se tratan como herramientas AI, no como editores: por tanto, la entrada "Open in Cursor" aparecerá en la sección AI harness del menú, no en la sección editor.
 
-En el menú de cuenta, las mismas entradas aparecen con orden idéntico: la única diferencia en runtime es que el directorio de trabajo es `<global.folder>/<account-key>` (la carpeta padre de la cuenta) en lugar de un clon concreto. Si la carpeta padre no existe todavía (nada clonado bajo esa cuenta), la acción falla con "account folder does not exist": clona al menos un repo primero.
+En el menú de cuenta, las mismas entradas aparecen con orden idéntico: la única diferencia en runtime es que el directorio de trabajo es `<root>/<account-key>` (la carpeta padre de la cuenta) en lugar de un clon concreto. Si la carpeta padre no existe todavía (nada clonado bajo esa cuenta), la acción falla con "account folder does not exist": clona al menos un repo primero.
 
 ### Notificación de actualización
 

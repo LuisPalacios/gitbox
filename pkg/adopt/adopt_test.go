@@ -33,8 +33,8 @@ func initBareRepo(t *testing.T, path, remoteURL string) {
 
 func testConfig(parentFolder string) *config.Config {
 	return &config.Config{
-		Version: 2,
-		Global:  config.GlobalConfig{Folder: parentFolder},
+		Version: config.CurrentVersion,
+		Global:  config.GlobalConfig{Roots: []string{parentFolder}},
 		Accounts: map[string]config.Account{
 			"github-me": {
 				Provider: "github",
@@ -230,8 +230,8 @@ func TestMatchAccount(t *testing.T) {
 // Forgejo account — the configuration shape that triggers the #35 bug.
 func twoGithubConfig(parentFolder string) *config.Config {
 	return &config.Config{
-		Version: 2,
-		Global:  config.GlobalConfig{Folder: parentFolder},
+		Version: config.CurrentVersion,
+		Global:  config.GlobalConfig{Roots: []string{parentFolder}},
 		Accounts: map[string]config.Account{
 			"github-personal": {
 				Provider: "github",

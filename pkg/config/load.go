@@ -3,11 +3,13 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 )
 
-// Load reads and parses a configuration file. It auto-detects v1 vs v2 format.
+// Load reads and parses a configuration file.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -31,30 +33,91 @@ type Repair struct {
 // turns the GUI's delete-account bug into total config loss (see issue #60).
 //
 // Contract:
-//   - Unrecoverable errors (I/O, malformed JSON, schema mismatch, missing
-//     global.folder, missing account required fields, dangling source
-//     account ref, invalid workspace type) still surface as an error.
+//   - Unrecoverable errors (I/O, malformed JSON, schema mismatch, no root,
+//     missing account required fields, dangling source account ref) still
+//     surface as an error.
 //   - Recoverable repairs are returned alongside the repaired config so the
 //     GUI can show the user what was dropped before saving back.
-//   - Strict Load remains unchanged and is still what the CLI / tests use.
+//   - Strict Load remains unchanged and is still what the tests use.
 func LoadWithRepair(path string) (*Config, []Repair, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("reading config: %w", err)
 	}
+	return decode(data, true)
+}
 
+// Parse parses JSON configuration data. It accepts the current v4 format and
+// transparently migrates v2 and v3 files. Any other version is an error. The
+// migration is in-memory only — the next Save persists the v4 shape.
+func Parse(data []byte) (*Config, error) {
+	cfg, _, err := decode(data, false)
+	return cfg, err
+}
+
+// decode unmarshals, migrates, validates and finalizes a config. With
+// repair set it first drops dangling mirrors and reports them.
+//
+// Migrations, in order, all in memory:
+//   - v2→v3: the workspaces section becomes a regenerable discovered cache,
+//     so v2 entries (user-created or tmuxinator) are dropped wholesale.
+//   - v3→v4: global.folder + global.extra_folders become global.roots, in
+//     that order, so every clone keeps its path.
+func decode(data []byte, repair bool) (*Config, []Repair, error) {
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, nil, fmt.Errorf("parsing config: %w", err)
 	}
-	if cfg.Version != 2 && cfg.Version != CurrentVersion {
-		return nil, nil, fmt.Errorf("unsupported config version %d (expected 2 or %d)", cfg.Version, CurrentVersion)
+	from := cfg.Version
+	if from < 2 || from > CurrentVersion {
+		return nil, nil, fmt.Errorf("unsupported config version %d (expected 2 to %d)", from, CurrentVersion)
 	}
-	migrated := cfg.Version == 2
 
 	var repairs []Repair
+	if repair {
+		repairs = dropDanglingMirrors(&cfg)
+	}
+	if from < 4 {
+		migrateRoots(&cfg, data)
+	}
+	listRoots(&cfg)
 
-	// Repair pass: drop mirror entries whose account refs are dangling.
+	// After repairs, run the strict validator — anything still broken is out
+	// of scope for auto-repair and the caller must surface it.
+	if err := validate(&cfg); err != nil {
+		return nil, repairs, err
+	}
+
+	extractKeyOrder(data, &cfg)
+
+	if from == 2 {
+		cfg.Workspaces = nil
+		cfg.WorkspaceOrder = nil
+	} else {
+		// Defend against hand-edited entries — keep only discovered
+		// codeWorkspace entries, without duplicate members.
+		sanitizeWorkspaces(&cfg, data)
+		for key, w := range cfg.Workspaces {
+			if deduped := dedupWorkspaceMembers(w.Members); len(deduped) != len(w.Members) {
+				w.Members = deduped
+				cfg.Workspaces[key] = w
+			}
+		}
+	}
+	cfg.Version = CurrentVersion
+
+	// Auto-migrate legacy v2.0 flat global.terminals[] into the three-array
+	// shape (terminal_apps + shells + terminal_profiles). In-memory; the next
+	// save persists the new shape and drops the legacy block.
+	MigrateLegacyTerminals(&cfg.Global)
+
+	return &cfg, repairs, nil
+}
+
+// dropDanglingMirrors removes mirror entries whose account refs no longer
+// exist and reports each one.
+func dropDanglingMirrors(cfg *Config) []Repair {
+	var repairs []Repair
 	for name, m := range cfg.Mirrors {
 		_, srcOk := cfg.Accounts[m.AccountSrc]
 		_, dstOk := cfg.Accounts[m.AccountDst]
@@ -75,104 +138,44 @@ func LoadWithRepair(path string) (*Config, []Repair, error) {
 		})
 		delete(cfg.Mirrors, name)
 	}
-
-	// After repairs, run the strict validator — anything still broken is out
-	// of scope for auto-repair and the caller must surface it.
-	if err := validate(&cfg); err != nil {
-		return nil, repairs, err
-	}
-
-	extractKeyOrder(data, &cfg)
-
-	if migrated {
-		// v2→v3: bump version and discard the regenerable workspace cache.
-		// Silent (no Repair entry) so it doesn't trigger the repair dialog;
-		// it persists on the next save.
-		cfg.Version = CurrentVersion
-		cfg.Workspaces = nil
-		cfg.WorkspaceOrder = nil
-	} else {
-		sanitizeWorkspaces(&cfg, data)
-		for key, w := range cfg.Workspaces {
-			if deduped := dedupWorkspaceMembers(w.Members); len(deduped) != len(w.Members) {
-				w.Members = deduped
-				cfg.Workspaces[key] = w
-			}
-		}
-	}
-
-	MigrateLegacyTerminals(&cfg.Global)
-
-	return &cfg, repairs, nil
+	return repairs
 }
 
-// Parse parses JSON configuration data. It accepts the current v3 format and
-// transparently migrates v2 files (see migrateV2toV3). Any other version is an
-// error. The migration is in-memory only — the next Save persists the v3 shape.
-func Parse(data []byte) (*Config, error) {
-	var probe struct {
-		Version int `json:"version"`
+// migrateRoots turns a v2/v3 global.folder + global.extra_folders into
+// global.roots, keeping the folder first so it stays the default.
+func migrateRoots(cfg *Config, data []byte) {
+	var legacy struct {
+		Global struct {
+			Folder       string   `json:"folder"`
+			ExtraFolders []string `json:"extra_folders"`
+		} `json:"global"`
 	}
-	if err := json.Unmarshal(data, &probe); err != nil {
-		return nil, fmt.Errorf("parsing config: %w", err)
+	_ = json.Unmarshal(data, &legacy)
+	if legacy.Global.Folder == "" && len(legacy.Global.ExtraFolders) == 0 {
+		return
 	}
-	switch probe.Version {
-	case CurrentVersion:
-		return parseConfig(data, false)
-	case 2:
-		return parseConfig(data, true)
-	default:
-		return nil, fmt.Errorf("unsupported config version %d (expected 2 or %d)", probe.Version, CurrentVersion)
+	cfg.Global.Roots = nil
+	cfg.AddRoot(legacy.Global.Folder)
+	for _, p := range legacy.Global.ExtraFolders {
+		cfg.AddRoot(p)
 	}
 }
 
-// parseConfig unmarshals, optionally migrates v2→v3, validates, and finalizes
-// the config. When migrate is true the workspaces section is discarded wholesale
-// (it is a regenerable discovered cache) and the version is bumped to v3.
-func parseConfig(data []byte, migrate bool) (*Config, error) {
-	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parsing config: %w", err)
+// listRoots drops blank and duplicate roots and adds any root a source or
+// repo names but the list lacks, so every clone stays scanned.
+func listRoots(cfg *Config) {
+	roots := cfg.Global.Roots
+	cfg.Global.Roots = nil
+	for _, r := range roots {
+		cfg.AddRoot(r)
 	}
-	if migrate {
-		cfg.Version = CurrentVersion
-	}
-	if cfg.Version != CurrentVersion {
-		return nil, fmt.Errorf("expected version %d, got %d", CurrentVersion, cfg.Version)
-	}
-	if err := validate(&cfg); err != nil {
-		return nil, err
-	}
-
-	// Extract JSON key order for sources and repos (and, for v3 files, workspaces).
-	extractKeyOrder(data, &cfg)
-
-	if migrate {
-		// v2→v3: workspaces are now a read-only discovered cache. Drop any v2
-		// entries (user-created or tmuxinator) wholesale; discovery rebuilds the
-		// cache on next launch. New v3 keys (extra_folders, nested_scan_depth,
-		// repo.container) are absent in v2 and default cleanly.
-		cfg.Workspaces = nil
-		cfg.WorkspaceOrder = nil
-	} else {
-		// v3 strict load: defend against hand-edited entries — keep only
-		// discovered codeWorkspace entries.
-		sanitizeWorkspaces(&cfg, data)
-		// Collapse duplicate members that may have been hand-edited in.
-		for key, w := range cfg.Workspaces {
-			if deduped := dedupWorkspaceMembers(w.Members); len(deduped) != len(w.Members) {
-				w.Members = deduped
-				cfg.Workspaces[key] = w
-			}
+	for _, sk := range slices.Sorted(maps.Keys(cfg.Sources)) {
+		src := cfg.Sources[sk]
+		cfg.AddRoot(src.Root)
+		for _, rk := range slices.Sorted(maps.Keys(src.Repos)) {
+			cfg.AddRoot(src.Repos[rk].Root)
 		}
 	}
-
-	// Auto-migrate legacy v2.0 flat global.terminals[] into the three-array
-	// shape (terminal_apps + shells + terminal_profiles). In-memory; the next
-	// save persists the new shape and drops the legacy block.
-	MigrateLegacyTerminals(&cfg.Global)
-
-	return &cfg, nil
 }
 
 // sanitizeWorkspaces enforces the read-only-cache invariant on the workspaces
@@ -362,10 +365,10 @@ func skipValue(dec *json.Decoder) {
 	// Primitives (string, number, bool, null) are already consumed by Token().
 }
 
-// validate checks that required fields are present in a v2 config.
+// validate checks that required fields are present in a config.
 func validate(cfg *Config) error {
-	if cfg.Global.Folder == "" {
-		return fmt.Errorf("global.folder is required")
+	if len(cfg.Global.Roots) == 0 {
+		return fmt.Errorf("global.roots needs at least one folder")
 	}
 	switch cfg.Global.Language {
 	case "", "en", "es":

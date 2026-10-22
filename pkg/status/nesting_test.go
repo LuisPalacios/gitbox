@@ -12,8 +12,8 @@ func TestComputeNesting_GroupsChildrenUnderContainer(t *testing.T) {
 	parentPath := filepath.Join(root, "acct", "Org", "project")
 
 	cfg := &config.Config{
-		Version: 2,
-		Global:  config.GlobalConfig{Folder: root},
+		Version: config.CurrentVersion,
+		Global:  config.GlobalConfig{Roots: []string{root}},
 		Sources: map[string]config.Source{
 			"acct": {
 				Account: "acct",
@@ -53,8 +53,8 @@ func TestComputeNesting_GroupsChildrenUnderContainer(t *testing.T) {
 
 func TestComputeNesting_NoContainersIsEmpty(t *testing.T) {
 	cfg := &config.Config{
-		Version: 2,
-		Global:  config.GlobalConfig{Folder: "/x"},
+		Version: config.CurrentVersion,
+		Global:  config.GlobalConfig{Roots: []string{"/x"}},
 		Sources: map[string]config.Source{
 			"acct": {Account: "acct", Repos: map[string]config.Repo{"o/r": {}}, RepoOrder: []string{"o/r"}},
 		},
@@ -74,8 +74,8 @@ func TestComputeNesting_ContainerInsideContainer(t *testing.T) {
 	midPath := filepath.Join(topPath, "mid")
 
 	cfg := &config.Config{
-		Version: 2,
-		Global:  config.GlobalConfig{Folder: root},
+		Version: config.CurrentVersion,
+		Global:  config.GlobalConfig{Roots: []string{root}},
 		Sources: map[string]config.Source{
 			"acct": {
 				Account: "acct",

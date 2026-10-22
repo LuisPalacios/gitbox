@@ -225,7 +225,7 @@ func TestFixGlobalGCMConfig_BackfillsDefaults(t *testing.T) {
 
 	cfg := &config.Config{
 		Schema:   "https://example.com/schema.json",
-		Version:  2,
+		Version:  config.CurrentVersion,
 		Accounts: map[string]config.Account{},
 		Sources:  map[string]config.Source{},
 	}
@@ -272,7 +272,7 @@ func TestFixGlobalGCMConfig_OverwritesExistingHelper(t *testing.T) {
 
 	cfg := &config.Config{
 		Schema:   "https://example.com/schema.json",
-		Version:  2,
+		Version:  config.CurrentVersion,
 		Accounts: map[string]config.Account{},
 		Sources:  map[string]config.Source{},
 	}
@@ -352,7 +352,7 @@ func TestFixGlobalGCMConfig_NoCfgSaveWhenAlreadyPopulated(t *testing.T) {
 
 	cfg := &config.Config{
 		Schema:  "https://example.com/schema.json",
-		Version: 2,
+		Version: config.CurrentVersion,
 		Global: config.GlobalConfig{
 			CredentialGCM: &config.GCMGlobal{
 				Helper:          DefaultCredentialHelper(),

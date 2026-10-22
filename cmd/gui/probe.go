@@ -4,6 +4,7 @@ import (
 	"context"
 	"maps"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -241,8 +242,8 @@ func (a *App) applyUpstreamProbe(snapshot *config.Config, results []upstreamProb
 			source, sourceOK := a.cfg.Sources[sourceKey]
 			repo, repoOK := source.Repos[result.repoKey]
 			if oldSource.Account != result.accountKey || !oldOK || !sourceOK || !repoOK ||
-				source.Account != oldSource.Account || source.Folder != oldSource.Folder || repo != oldRepo ||
-				a.cfg.Global.Folder != snapshot.Global.Folder {
+				source.Account != oldSource.Account || source.Folder != oldSource.Folder || source.Root != oldSource.Root || repo != oldRepo ||
+				!slices.Equal(a.cfg.Global.Roots, snapshot.Global.Roots) {
 				continue
 			}
 			key := sourceKey + "/" + result.repoKey

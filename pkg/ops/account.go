@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -177,26 +178,48 @@ func RenameAccount(cfg *config.Config, oldKey, newKey string) error {
 	return cfg.RenameAccount(oldKey, newKey)
 }
 
-// moveSourceFolder renames <global folder>/<oldKey> to <global folder>/<newKey>,
-// the default on-disk folder of a source. A missing old folder (nothing cloned
-// yet) is fine; an existing new folder or a failed rename is an error.
-func moveSourceFolder(cfg *config.Config, oldKey, newKey string) error {
-	globalFolder := config.ExpandTilde(cfg.Global.Folder)
-	oldPath := filepath.Join(globalFolder, oldKey)
-	newPath := filepath.Join(globalFolder, newKey)
-
-	if _, err := os.Stat(oldPath); os.IsNotExist(err) {
-		return nil
-	}
-	// Windows and default macOS filesystems are case-insensitive: a
-	// case-only rename makes newPath "exist" as the old folder itself.
-	if !strings.EqualFold(oldPath, newPath) {
-		if _, err := os.Stat(newPath); err == nil {
-			return fmt.Errorf("cannot rename folder %s: %s already exists", oldPath, newPath)
+// sourceRoots returns every root a source uses, tilde-expanded and deduped:
+// its own root, then any other root one of its repos lives in.
+func sourceRoots(cfg *config.Config, sourceKey string) []string {
+	roots := []string{cfg.SourceRoot(sourceKey)}
+	for _, repo := range cfg.Sources[sourceKey].Repos {
+		r := cfg.RepoRoot(sourceKey, repo)
+		if !slices.ContainsFunc(roots, func(x string) bool { return config.SameRoot(x, r) }) {
+			roots = append(roots, r)
 		}
 	}
-	if err := os.Rename(oldPath, newPath); err != nil {
-		return fmt.Errorf("cannot rename folder %s to %s: %w (close any terminal, editor or program working inside it and try again)", oldPath, newPath, err)
+	return roots
+}
+
+// moveSourceFolder renames <root>/<oldKey> to <root>/<newKey>, the default
+// on-disk folder of a source, in every root the source uses. A missing old
+// folder (nothing cloned there yet) is fine. Every target is checked before
+// anything moves, and a failed rename puts back the ones already done.
+func moveSourceFolder(cfg *config.Config, oldKey, newKey string) error {
+	type move struct{ from, to string }
+	var moves []move
+	for _, root := range sourceRoots(cfg, oldKey) {
+		oldPath := filepath.Join(root, oldKey)
+		newPath := filepath.Join(root, newKey)
+		if _, err := os.Stat(oldPath); os.IsNotExist(err) {
+			continue
+		}
+		// Windows and default macOS filesystems are case-insensitive: a
+		// case-only rename makes newPath "exist" as the old folder itself.
+		if !strings.EqualFold(oldPath, newPath) {
+			if _, err := os.Stat(newPath); err == nil {
+				return fmt.Errorf("cannot rename folder %s: %s already exists", oldPath, newPath)
+			}
+		}
+		moves = append(moves, move{oldPath, newPath})
+	}
+	for i, m := range moves {
+		if err := os.Rename(m.from, m.to); err != nil {
+			for _, done := range moves[:i] {
+				_ = os.Rename(done.to, done.from)
+			}
+			return fmt.Errorf("cannot rename folder %s to %s: %w (close any terminal, editor or program working inside it and try again)", m.from, m.to, err)
+		}
 	}
 	return nil
 }
@@ -210,19 +233,19 @@ func DeleteAccount(cfg *config.Config, accountKey string) error {
 		return fmt.Errorf("account %q not found", accountKey)
 	}
 
-	globalFolder := config.ExpandTilde(cfg.Global.Folder)
 	for sourceKey, src := range cfg.Sources {
 		if src.Account != accountKey {
 			continue
 		}
-		sourceFolder := src.EffectiveFolder(sourceKey)
 		for repoKey, repo := range src.Repos {
-			path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
+			path := status.RepoPath(cfg, sourceKey, repoKey, repo)
 			if git.IsRepo(path) {
 				_ = os.RemoveAll(path)
 			}
 		}
-		_ = os.RemoveAll(filepath.Join(globalFolder, sourceFolder))
+		for _, root := range sourceRoots(cfg, sourceKey) {
+			_ = os.RemoveAll(filepath.Join(root, src.EffectiveFolder(sourceKey)))
+		}
 	}
 
 	_, err := cfg.CascadeDeleteAccount(accountKey)
@@ -240,8 +263,7 @@ func DeleteRepo(cfg *config.Config, sourceKey, repoKey string) error {
 		return fmt.Errorf("repo %q not found in source %q", repoKey, sourceKey)
 	}
 
-	globalFolder := config.ExpandTilde(cfg.Global.Folder)
-	path := status.ResolveRepoPath(globalFolder, src.EffectiveFolder(sourceKey), repoKey, repo)
+	path := status.RepoPath(cfg, sourceKey, repoKey, repo)
 	if git.IsRepo(path) {
 		if err := os.RemoveAll(path); err != nil {
 			return fmt.Errorf("deleting folder %s: %w", path, err)
@@ -254,14 +276,12 @@ func DeleteRepo(cfg *config.Config, sourceKey, repoKey string) error {
 // to the account, keyed by "sourceKey/repoKey".
 func ClonedRepoPaths(cfg *config.Config, accountKey string) map[string]string {
 	paths := map[string]string{}
-	globalFolder := config.ExpandTilde(cfg.Global.Folder)
 	for sourceKey, src := range cfg.Sources {
 		if src.Account != accountKey {
 			continue
 		}
-		sourceFolder := src.EffectiveFolder(sourceKey)
 		for repoKey, repo := range src.Repos {
-			path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
+			path := status.RepoPath(cfg, sourceKey, repoKey, repo)
 			if git.IsRepo(path) {
 				paths[sourceKey+"/"+repoKey] = path
 			}

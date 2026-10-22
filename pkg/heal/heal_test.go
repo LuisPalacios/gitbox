@@ -83,7 +83,7 @@ func TestRedactURL(t *testing.T) {
 func TestRepo_NotClonedSkipsCleanly(t *testing.T) {
 	tmp := t.TempDir()
 	cfg := &config.Config{
-		Global: config.GlobalConfig{Folder: tmp},
+		Global: config.GlobalConfig{Roots: []string{tmp}},
 		Accounts: map[string]config.Account{
 			"a": {URL: "https://github.com", Username: "alice"},
 		},
@@ -123,7 +123,7 @@ func TestRepo_FixesMissingIdentity(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Global: config.GlobalConfig{Folder: tmp},
+		Global: config.GlobalConfig{Roots: []string{tmp}},
 		Accounts: map[string]config.Account{
 			"alice": {
 				URL:                   "https://github.com",
@@ -179,7 +179,7 @@ func TestRepo_StripsEmbeddedTokenFromOrigin(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Global: config.GlobalConfig{Folder: tmp},
+		Global: config.GlobalConfig{Roots: []string{tmp}},
 		Accounts: map[string]config.Account{
 			"alice": {
 				URL:                   "https://github.com",
@@ -229,7 +229,7 @@ func TestRepo_UnchangedUsesTwoReadsAndNoWrites(t *testing.T) {
 			if err := gitRun(path, "remote", "add", "origin", ExpectedOriginURL(acct, "team/project", typ)); err != nil {
 				t.Fatal(err)
 			}
-			cfg := &config.Config{Global: config.GlobalConfig{Folder: root}, Accounts: map[string]config.Account{"account-a": acct}, Sources: map[string]config.Source{"repos": {Account: "account-a", Repos: map[string]config.Repo{"team/project": {}}}}}
+			cfg := &config.Config{Global: config.GlobalConfig{Roots: []string{root}}, Accounts: map[string]config.Account{"account-a": acct}, Sources: map[string]config.Source{"repos": {Account: "account-a", Repos: map[string]config.Repo{"team/project": {}}}}}
 			first := Repo(cfg, "repos", "team/project")
 			if len(first.Warnings) != 0 {
 				t.Fatalf("initial repair: %+v", first)
@@ -293,7 +293,7 @@ func healFixture(t *testing.T) (*config.Config, string) {
 	if err := gitRun(path, "remote", "add", "origin", ExpectedOriginURL(acct, "team/project", "ssh")); err != nil {
 		t.Fatal(err)
 	}
-	return &config.Config{Global: config.GlobalConfig{Folder: root}, Accounts: map[string]config.Account{"account-a": acct}, Sources: map[string]config.Source{"repos": {Account: "account-a", Repos: map[string]config.Repo{"team/project": {}}}}}, path
+	return &config.Config{Global: config.GlobalConfig{Roots: []string{root}}, Accounts: map[string]config.Account{"account-a": acct}, Sources: map[string]config.Source{"repos": {Account: "account-a", Repos: map[string]config.Repo{"team/project": {}}}}}, path
 }
 
 func TestRepo_ReportsShadowedIdentity(t *testing.T) {

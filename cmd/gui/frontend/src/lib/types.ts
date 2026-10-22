@@ -1,7 +1,8 @@
 // Types mirroring Go structs from pkg/config and cmd/gui/app.go
 
 export interface GlobalConfig {
-  folder: string;
+  // Clone roots (#149), the default first.
+  roots: string[];
   language?: string;
   periodic_sync?: string;
   ui_mode?: string;
@@ -46,14 +47,33 @@ export interface Repo {
   email?: string;
   id_folder?: string;
   clone_folder?: string;
+  // Set only when the clone lives in a root other than its source's.
+  root?: string;
   container?: boolean;
 }
 
 export interface SourceDTO {
   account: string;
   folder?: string;
+  // The root this source clones into; absent means the default root.
+  root?: string;
   repos: Record<string, Repo>;
   repoOrder: string[];
+}
+
+// One clone root as Settings lists it (#149).
+export interface RootDTO {
+  path: string;
+  isDefault: boolean;
+  exists: boolean;
+  repos: number;
+}
+
+// RemoveRoot's answer: inUse > 0 means nothing changed because that many
+// repos still resolve under the root; forgotten lists the repos dropped.
+export interface RemoveRootDTO {
+  inUse: number;
+  forgotten: string[];
 }
 
 export interface MirrorRepo {

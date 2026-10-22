@@ -53,7 +53,7 @@ The GUI requires a desktop environment with a display server (X11 or Wayland).
 
 The first time you open Gitbox, a short guided setup walks you through three steps:
 
-1. **Where do you keep your projects?** — pick a **root folder**, where all your projects will live on disk. Something like `~/00.git` or `C:\repos` works well.
+1. **Where do you keep your projects?** — pick your first **clone root**, the folder where your projects will live on disk. Something like `~/00.git` or `C:\repos` works well. You can add more roots later in Settings.
 2. **Connect where your projects are stored** — pick GitHub, GitLab, Bitbucket, or the **Forgejo** and **Gitea** tile (then choose which one and type the server address). Type your username, your name and your email; the name and email are prefilled from your global git identity when it has one, and they appear on the changes you save. Click **Sign in with the browser** and log in. Gitbox uses Git Credential Manager (GCM) for this.
 3. **Pick projects to download** — Gitbox lists the repositories your account can see. Tick the ones you want and click **Download**. They start cloning as soon as the main screen opens.
 
@@ -97,7 +97,7 @@ The discovery window features:
 - **Select all** — check the box to select everything visible (respects your filter)
 - **Already added** — repos you've already added appear dimmed and can't be selected again
 
-Pick the ones you want, then click **Add & Pull**. Gitbox saves them to your config and starts cloning them into your folder.
+Pick the ones you want, then click **Add & Pull**. Gitbox saves them to your config and starts cloning them into the account's clone root. With two or more roots, it first asks which one they go to.
 
 Discovery is **add-only** — it adds repos to your config but never removes them.
 
@@ -204,6 +204,7 @@ The modal asks for:
 - **Description** — an optional one-line summary.
 - **Private** — checked by default. Uncheck to create a public repo.
 - **Clone after creating** — checked by default. When enabled, Gitbox adds the repo to your config and clones it immediately.
+- **Clone root** — shown when you have two or more clone roots and the clone checkbox is on. It defaults to the account's root.
 
 The button text changes based on the clone checkbox: **Create & Clone** or **Create**.
 
@@ -276,15 +277,15 @@ The **Workspaces** view, under **More** in the sidebar in Advanced, lists discov
 
 ### Auto-discovery on startup
 
-Whenever I drop a `*.code-workspace` file under the gitbox-managed folder (or a configured extra folder) — or carry one over from another machine — the GUI picks it up: the cached list shows instantly at launch, then a background pass refreshes it and the view updates if anything changed. Discovery walks `global.folder` and every `global.extra_folders` root for `*.code-workspace` files. Each file's folder references are resolved back to known clones by a deepest-prefix path match, and the cache in `gitbox.json` is only rewritten when something changed.
+Whenever I drop a `*.code-workspace` file under any clone root — or carry one over from another machine — the GUI picks it up: the cached list shows instantly at launch, then a background pass refreshes it and the view updates if anything changed. Discovery walks every root in `global.roots` for `*.code-workspace` files. Each file's folder references are resolved back to known clones by a deepest-prefix path match, and the cache in `gitbox.json` is only rewritten when something changed.
 
 ### Non-standard clones & multi-repo containers
 
 A **multi-repo container** is a managed clone that holds other clones nested in its working tree (for example, a project repo whose `.code-workspace` ties together several sibling clones). When a clone looks like one — it has a `.code-workspace` at its root but isn't flagged yet — its row shows an inline **onboard nested clones** hint. Clicking it flags the clone as a container, scans its working tree, and opens the adopt modal with the nested clones it finds; you confirm which to onboard. Nested clones are adopted in place under their real account/org (stored with an absolute `clone_folder` inside the container, never relocated), and the hint is replaced by a 📁 icon; hovering it says it's a container.
 
-You can also manage this from the repo row's ⋯ menu, under **Maintenance** — **Mark as multi-repo container**, **Unmark as multi-repo container**, and **Re-scan for nested clones** (shown once a clone is a container) — or with the **Multi-repo container** checkbox in the repo detail panel. The **Change root folder** dialog manages **extra scan folders** (additional roots scanned for clones and `.code-workspace` files) and the **nested scan depth** (how many levels below a container Gitbox descends, default 1 — the container's immediate children; raise it to reach clones nested deeper).
+You can also manage this from the repo row's ⋯ menu, under **Maintenance** — **Mark as multi-repo container**, **Unmark as multi-repo container**, and **Re-scan for nested clones** (shown once a clone is a container) — or with the **Multi-repo container** checkbox in the repo detail panel. The **Clone roots** dialog in Settings sets the **nested scan depth** (how many levels below a container Gitbox descends, default 1 — the container's immediate children; raise it to reach clones nested deeper).
 
-The standard layout is `global.folder / <account> / <org|user> / repo`. Clones found in an extra scan folder show up in the orphans modal and are onboarded **in place** with an absolute `clone_folder` — Gitbox never moves them.
+The standard layout is `<root> / <account> / <org|user> / repo`. A clone found at that spot under any clone root is adopted in place under that root. A clone found elsewhere in a root shows up in the orphans modal too; adopting it moves it to its standard spot under the account's root when that spot is free, and otherwise keeps it where it is with an absolute `clone_folder`. Nested clones never move.
 
 ## Dashboard views
 
@@ -340,7 +341,7 @@ This is useful when you want gitbox visible as a sidebar while working in other 
 Click the **gear icon** to open the settings panel:
 
 - **Config** — shows the path to your config file with an "Open in Editor" button
-- **Root folder** — where projects are stored, with a "Change" button
+- **Clone roots** — the folders where projects are stored, the default first, with a "Change" button (see [Clone roots](#clone-roots))
 - **Theme** — switch between System, Light, and Dark
 - **Periodic fetch** — automatic fetch interval (off, 5m, 15m, 30m)
 - **Run at startup** — launch Gitbox automatically when you log in (platform dependent)
@@ -353,6 +354,20 @@ Click the **gear icon** to open the settings panel:
 - **Author** — project author and link to the GitHub repository
 
 The add-account and change-credential flows run the same check automatically: if you pick the `gcm` credential type on a machine that doesn't have Git Credential Manager installed, you get a yellow banner with the install command instead of a cryptic authentication failure later on.
+
+### Clone roots
+
+Gitbox keeps clones under one or more **clone roots**, for example `~/00.git` for everyday work and a bigger disk for large projects. Each clone lives at `<root>/<account>/<org|user>/<repo>`. The first root is the default, and new accounts clone into it.
+
+Open **Settings**, then **Change** next to **Clone roots**, to manage them. Each row shows the folder, how many repos live under it, and a **Default** badge on the default one. A root that isn't on disk shows struck through.
+
+- **+ Add root…** — pick a folder; Gitbox creates it if it doesn't exist
+- **Make default** — new accounts clone into this root from now on. Accounts that already use the old default stay on it, and no clone moves.
+- **✕** — removes a root. When repos still live under it, Gitbox asks whether to forget them; their files stay on disk.
+
+With two or more roots, an explicit clone asks once where it goes: a row's **Clone** (Simple: **Download**), **Find → Add & Pull**, and the projects I pick when I add an account. The choice defaults to the account's root, and the account remembers it for its next clone. **Create repository** shows the same choice as a field. **Pull all** never asks: missing clones go to their account's root.
+
+The same dialog sets the **nested scan depth** for multi-repo containers.
 
 ### Clone actions
 
@@ -380,7 +395,7 @@ Terminal detection covers Windows Terminal, WezTerm, Alacritty, Tabby, ConEmu, H
 
 ### Account actions
 
-Each account has a **⋯ menu**: on its card in the account's view, and on its group header in **All repos**. It uses the same flat sections as the repo menu, scoped to the account's parent folder (`<global.folder>/<account-key>`) rather than a single clone:
+Each account has a **⋯ menu**: on its card in the account's view, and on its group header in **All repos**. It uses the same flat sections as the repo menu, scoped to the account's parent folder (`<root>/<account-key>`, in the account's clone root) rather than a single clone:
 
 - **Navigate to account** — opens the provider profile/org page for the account (e.g. `https://github.com/<username>`, the GitLab group page, the Gitea/Forgejo user page).
 - **Reveal in Finder** (Explorer, or the file manager) — opens the account's parent folder in the OS file manager. The folder is the natural workspace root for cross-repo greps, multi-repo edits, or shell loops. If the folder doesn't exist yet (nothing cloned under that account), the action errors silently — clone at least one repo first.
@@ -430,7 +445,7 @@ When a detected harness is uninstalled, the next pass flags its entry `missing: 
 
 The set of harnesses gitbox tries to auto-detect is maintained as a markdown table embedded into the binary. The authoritative list lives at [`pkg/harness/tools-directory.md`](../pkg/harness/tools-directory.md) — to add or remove a detected harness, edit that file. A row is auto-detected when its `Category` is `Agentic CLI`, `AI Harness`, `Headless Harness`, `Agentic IDE`, or `Agentic IDE / CLI`, and its `Executable / CLI Command` cell contains one or more backticked identifiers (e.g. `` `claude` ``, `` `aider` ``, `` `cursor` ``). A cell with several names, such as "`` `agent` `` or `` `cursor-agent` ``" for the renamed Cursor CLI, probes them in order so either install resolves. The trailing `Well-known locations` column lists per-tool install directories outside PATH, each as its own backticked token with `~`, `$VAR` and `%VAR%` expanded at probe time. Framework, orchestrator, and cloud-platform rows are documented for reference but skipped by the detector — they don't launch from a terminal in a folder. Rows whose `Category` is `Retired CLI` (Gemini CLI, retired in favour of Antigravity CLI) are skipped too, and any `global.ai_harnesses` entry carrying a retired name is removed on the next sync so a dead binary stops showing up in the menu. Agentic IDEs (Cursor, Devin Desktop) are treated as AI tools, not editors: the "Open in Cursor" entry will therefore appear under the AI harness section of the menu, not the editor section.
 
-In the account menu, the same entries appear with identical ordering — the only runtime difference is that the working directory is `<global.folder>/<account-key>` (the account's parent folder) instead of a single clone. If the parent folder doesn't exist yet (nothing cloned under that account), the action errors with "account folder does not exist" — clone at least one repo first.
+In the account menu, the same entries appear with identical ordering — the only runtime difference is that the working directory is `<root>/<account-key>` (the account's parent folder) instead of a single clone. If the parent folder doesn't exist yet (nothing cloned under that account), the action errors with "account folder does not exist" — clone at least one repo first.
 
 ### Update notification
 

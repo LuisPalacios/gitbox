@@ -49,8 +49,9 @@ func TestMigrateV2ToV3(t *testing.T) {
 	if cfg.Global.NestedScanDepthOrDefault() != DefaultNestedScanDepth {
 		t.Error("nested scan depth should default")
 	}
-	if len(cfg.Global.ExtraFolders) != 0 {
-		t.Error("extra folders should be empty after migration")
+	// v3→v4: the folder becomes the only root.
+	if len(cfg.Global.Roots) != 1 || cfg.Global.Roots[0] != "~/git" {
+		t.Errorf("roots = %v, want [~/git]", cfg.Global.Roots)
 	}
 }
 

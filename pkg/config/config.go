@@ -1,18 +1,14 @@
 // Package config handles loading, saving, and migrating gitbox configuration files.
 package config
 
-import (
-	"path/filepath"
-	"strings"
-)
-
 // CurrentVersion is the config schema version this build reads and writes.
-// v3 introduced read-only workspaces (no type/layout, discovered cache only),
-// extra scan-root folders, nested-scan depth, and the repo container flag.
-// v2 files are migrated to v3 transparently on load (see migrateV2toV3).
-const CurrentVersion = 3
+// v4 replaced global.folder + global.extra_folders with the global.roots
+// list and added source.root and repo.root (issue #149). v3 introduced
+// read-only workspaces (discovered cache only), nested-scan depth and the
+// repo container flag. v2 and v3 files migrate on load (see decode).
+const CurrentVersion = 4
 
-// Config represents the top-level gitbox configuration (v3 format).
+// Config represents the top-level gitbox configuration (v4 format).
 type Config struct {
 	Schema     string               `json:"$schema,omitempty"`
 	Version    int                  `json:"version"`
@@ -44,12 +40,10 @@ func (c *Config) OrderedSourceKeys() []string {
 
 // GlobalConfig holds global settings.
 type GlobalConfig struct {
-	Folder string `json:"folder"`
-
-	// ExtraFolders are additional root directories scanned for clones and
-	// VSCode .code-workspace files, on top of Folder. They let gitbox onboard
-	// repositories that live outside the standard folder/account/org/repo tree.
-	ExtraFolders []string `json:"extra_folders,omitempty"`
+	// Roots are the folders gitbox clones into and scans for clones and
+	// VSCode .code-workspace files, in display order; the first is the
+	// default. A clone lives at <root>/<source>/<org>/<repo>. See roots.go.
+	Roots []string `json:"roots"`
 	// NestedScanDepth is how many directory levels gitbox descends below a
 	// container repo (Repo.Container) when discovering nested clones. Zero/unset
 	// means the default — see NestedScanDepthOrDefault. 1 = immediate children.
@@ -124,46 +118,6 @@ func (g GlobalConfig) NestedScanDepthOrDefault() int {
 		return DefaultNestedScanDepth
 	}
 	return g.NestedScanDepth
-}
-
-// AddExtraFolder appends path to ExtraFolders unless an equivalent root is
-// already present (compared after tilde-expansion + clean). Empty input is a
-// no-op. Returns true when the list changed.
-func (g *GlobalConfig) AddExtraFolder(path string) bool {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return false
-	}
-	want := extraFolderKey(path)
-	for _, p := range g.ExtraFolders {
-		if extraFolderKey(p) == want {
-			return false
-		}
-	}
-	g.ExtraFolders = append(g.ExtraFolders, path)
-	return true
-}
-
-// RemoveExtraFolder drops the entry matching path (compared after
-// tilde-expansion + clean). Returns true when the list changed.
-func (g *GlobalConfig) RemoveExtraFolder(path string) bool {
-	want := extraFolderKey(strings.TrimSpace(path))
-	out := g.ExtraFolders[:0]
-	changed := false
-	for _, p := range g.ExtraFolders {
-		if extraFolderKey(p) == want {
-			changed = true
-			continue
-		}
-		out = append(out, p)
-	}
-	g.ExtraFolders = out
-	return changed
-}
-
-// extraFolderKey normalizes a scan-root path for equality comparison.
-func extraFolderKey(p string) string {
-	return strings.ToLower(filepath.ToSlash(filepath.Clean(ExpandTilde(p))))
 }
 
 // PRBadgesOn reports whether PR badges are enabled, defaulting to true when unset.
@@ -364,9 +318,12 @@ type GCMConfig struct {
 // The map key is the source ID. The clone folder defaults to the source key
 // unless overridden by the Folder field.
 type Source struct {
-	Account string          `json:"account"`
-	Folder  string          `json:"folder,omitempty"`
-	Repos   map[string]Repo `json:"repos"`
+	Account string `json:"account"`
+	Folder  string `json:"folder,omitempty"`
+	// Root is the root this source clones into, remembered from the last
+	// clone. Empty means the default root (Global.Roots[0]).
+	Root  string          `json:"root,omitempty"`
+	Repos map[string]Repo `json:"repos"`
 
 	// RepoOrder preserves the JSON key order for deterministic iteration.
 	RepoOrder []string `json:"-"`
@@ -401,6 +358,9 @@ type Repo struct {
 	Email          string `json:"email,omitempty"`
 	IdFolder       string `json:"id_folder,omitempty"`    // overrides 2nd level dir (org). Default: part before / in repo key.
 	CloneFolder    string `json:"clone_folder,omitempty"` // overrides 3rd level dir (clone name). If absolute (/ ~ ../), replaces entire path.
+	// Root is set only when this clone lives in a root other than its
+	// source's; empty means the source's root.
+	Root string `json:"root,omitempty"`
 	// Container marks this clone as a multi-repo parent: gitbox descends into
 	// its working tree (up to Global.NestedScanDepth) to discover and onboard
 	// nested clones cloned there by the user's own tooling.

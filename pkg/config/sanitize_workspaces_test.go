@@ -51,22 +51,3 @@ func TestNestedScanDepthOrDefault(t *testing.T) {
 		t.Errorf("depth = %d, want 3", d)
 	}
 }
-
-func TestExtraFolders_AddRemoveDedup(t *testing.T) {
-	g := &GlobalConfig{}
-	if !g.AddExtraFolder("/work/x") {
-		t.Fatal("first add should return true")
-	}
-	if g.AddExtraFolder("/work/x") {
-		t.Error("duplicate add should return false")
-	}
-	if len(g.ExtraFolders) != 1 {
-		t.Fatalf("extra folders = %v, want one", g.ExtraFolders)
-	}
-	if !g.RemoveExtraFolder("/work/x") {
-		t.Error("remove should return true")
-	}
-	if len(g.ExtraFolders) != 0 {
-		t.Errorf("after remove = %v, want none", g.ExtraFolders)
-	}
-}

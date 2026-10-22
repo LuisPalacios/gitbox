@@ -1,4 +1,4 @@
-// Configuration file for gitbox (v2 format)
+// Configuration file for gitbox (v4 format)
 // Location: $HOME/.config/gitbox/gitbox.json
 //
 // REMOVE ALL COMMENTS BEFORE USING THIS FILE
@@ -8,34 +8,32 @@
 //   "accounts" → WHO you are on each server (credentials, identity)
 //   "sources"  → WHAT you clone from each account (repos organized by org/repo)
 //
-// Folder rules (3 levels):
+// Folder rules (3 levels below the source's clone root):
 //   1st level: source key (or source "folder" if specified)
 //   2nd level: org (part before / in the repo key, or "id_folder" if specified)
 //   3rd level: repo (part after / in the repo key, or "clone_folder" if specified)
-//   If clone_folder is absolute (/, ~ or ../): replaces the entire path
+//   If clone_folder is absolute (/ or ~): replaces the entire path
+//   If clone_folder starts with ../: replaces it too, relative to the root
 //
 {
     // JSON Schema reference for editor validation and autocompletion
     "$schema": "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/json/gitbox.schema.json",
 
-    // Format version. Always 3. (v2 files are migrated to v3 automatically on load.)
-    "version": 3,
+    // Format version. Always 4. (v2 and v3 files migrate to v4 automatically on load.)
+    "version": 4,
 
     // ──────────────────────────────────────────────────────────────────────────────
     // GLOBAL SECTION
     // ──────────────────────────────────────────────────────────────────────────────
     "global": {
 
-        // Root directory where all repositories are organized.
+        // Clone roots: the folders gitbox clones into and scans for clones
+        // AND .code-workspace files. The first one is the default; each
+        // source clones into one of them (see source "root").
         //   "~/00.git"                 →  $HOME/00.git
         //   "/home/user/00.git"        →  absolute path on Linux/macOS
         //   "C:/Users/user/00.git"     →  absolute path on Windows (Git Bash)
-        "folder": "~/00.git",
-
-        // Additional root directories scanned for clones AND .code-workspace
-        // files, on top of "folder". Use them to onboard repos that live
-        // outside the standard folder/account/org/repo tree.
-        // "extra_folders": ["~/work/clients", "/opt/repos"],
+        "roots": ["~/00.git", "~/work/clients"],
 
         // How many directory levels gitbox descends below a "container" repo
         // (see repo.container) when discovering nested clones. Default 1
@@ -403,12 +401,16 @@
             }
         },
 
-        // ── Source with custom folder ─────────────────────────────────────────
+        // ── Source with custom folder, in the second root ─────────────────────
         // The source key is "my-headless-server" but clones go to
-        // ~/00.git/server-ssh/ instead of ~/00.git/my-headless-server/
+        // ~/work/clients/server-ssh/ instead of ~/00.git/my-headless-server/.
+        // "root" names one of global.roots; gitbox remembers the last root
+        // picked for a clone here. A single repo in another root carries its
+        // own "root".
         "my-headless-server": {
             "account": "git-example",
             "folder": "server-ssh",
+            "root": "~/work/clients",
             "repos": {
                 "infra/deploy-scripts": {
                     "credential_type": "ssh"
@@ -422,7 +424,7 @@
     // ═════════════════════════════════════════════════════════════════════════
     //
     // Workspaces are READ-ONLY. gitbox discovers existing *.code-workspace files
-    // under "folder" and "extra_folders", caches them here, lists them, and opens
+    // under every root in "roots", caches them here, lists them, and opens
     // them in the first editor in global.editors. It never creates, edits,
     // generates, or deletes them — you own the files. This whole section is a
     // regenerable cache: delete it and the next workspace discovery rebuilds it.

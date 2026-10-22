@@ -22,16 +22,16 @@ export function AddDiscoveredReposToFolder(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddDiscoveredReposToFolder'](arg1, arg2, arg3);
 }
 
-export function AddExtraFolder(arg1) {
-  return window['go']['main']['App']['AddExtraFolder'](arg1);
-}
-
 export function AddMirrorGroup(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddMirrorGroup'](arg1, arg2, arg3);
 }
 
 export function AddMirrorRepo(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddMirrorRepo'](arg1, arg2, arg3, arg4);
+}
+
+export function AddRoot(arg1) {
+  return window['go']['main']['App']['AddRoot'](arg1);
 }
 
 export function AdoptOrphans(arg1) {
@@ -70,16 +70,16 @@ export function CheckMoveReadiness(arg1, arg2, arg3) {
   return window['go']['main']['App']['CheckMoveReadiness'](arg1, arg2, arg3);
 }
 
-export function CloneRepo(arg1, arg2) {
-  return window['go']['main']['App']['CloneRepo'](arg1, arg2);
+export function CloneRepo(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CloneRepo'](arg1, arg2, arg3);
 }
 
 export function ConfirmSweep(arg1, arg2) {
   return window['go']['main']['App']['ConfirmSweep'](arg1, arg2);
 }
 
-export function CreateNewRepo(arg1, arg2, arg3, arg4, arg5, arg6) {
-  return window['go']['main']['App']['CreateNewRepo'](arg1, arg2, arg3, arg4, arg5, arg6);
+export function CreateNewRepo(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+  return window['go']['main']['App']['CreateNewRepo'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
 
 export function CredentialDelete(arg1) {
@@ -198,10 +198,6 @@ export function GetConfigPath() {
   return window['go']['main']['App']['GetConfigPath']();
 }
 
-export function GetGlobalFolder() {
-  return window['go']['main']['App']['GetGlobalFolder']();
-}
-
 export function GetLanguage() {
   return window['go']['main']['App']['GetLanguage']();
 }
@@ -258,6 +254,10 @@ export function GetWorkspace(arg1) {
   return window['go']['main']['App']['GetWorkspace'](arg1);
 }
 
+export function InitRoot(arg1) {
+  return window['go']['main']['App']['InitRoot'](arg1);
+}
+
 export function InstallGlobalGitignore() {
   return window['go']['main']['App']['InstallGlobalGitignore']();
 }
@@ -282,16 +282,16 @@ export function ListConfigBackups() {
   return window['go']['main']['App']['ListConfigBackups']();
 }
 
-export function ListExtraFolders() {
-  return window['go']['main']['App']['ListExtraFolders']();
-}
-
 export function ListMoveDestinationOwners(arg1) {
   return window['go']['main']['App']['ListMoveDestinationOwners'](arg1);
 }
 
 export function ListRemoteRepos(arg1) {
   return window['go']['main']['App']['ListRemoteRepos'](arg1);
+}
+
+export function ListRoots() {
+  return window['go']['main']['App']['ListRoots']();
 }
 
 export function ListShells() {
@@ -414,12 +414,12 @@ export function ReloadConfig() {
   return window['go']['main']['App']['ReloadConfig']();
 }
 
-export function RemoveExtraFolder(arg1) {
-  return window['go']['main']['App']['RemoveExtraFolder'](arg1);
-}
-
 export function RemoveGlobalIdentity() {
   return window['go']['main']['App']['RemoveGlobalIdentity']();
+}
+
+export function RemoveRoot(arg1, arg2) {
+  return window['go']['main']['App']['RemoveRoot'](arg1, arg2);
 }
 
 export function RenameAccount(arg1, arg2) {
@@ -462,8 +462,8 @@ export function SetCollapsed(arg1) {
   return window['go']['main']['App']['SetCollapsed'](arg1);
 }
 
-export function SetGlobalFolder(arg1) {
-  return window['go']['main']['App']['SetGlobalFolder'](arg1);
+export function SetDefaultRoot(arg1) {
+  return window['go']['main']['App']['SetDefaultRoot'](arg1);
 }
 
 export function SetLanguage(arg1) {

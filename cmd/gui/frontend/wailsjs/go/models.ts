@@ -264,8 +264,7 @@ export namespace config {
 	    }
 	}
 	export class GlobalConfig {
-	    folder: string;
-	    extra_folders?: string[];
+	    roots: string[];
 	    nested_scan_depth?: number;
 	    language?: string;
 	    periodic_sync?: string;
@@ -295,8 +294,7 @@ export namespace config {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.folder = source["folder"];
-	        this.extra_folders = source["extra_folders"];
+	        this.roots = source["roots"];
 	        this.nested_scan_depth = source["nested_scan_depth"];
 	        this.language = source["language"];
 	        this.periodic_sync = source["periodic_sync"];
@@ -364,6 +362,7 @@ export namespace config {
 	    email?: string;
 	    id_folder?: string;
 	    clone_folder?: string;
+	    root?: string;
 	    container?: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -377,6 +376,7 @@ export namespace config {
 	        this.email = source["email"];
 	        this.id_folder = source["id_folder"];
 	        this.clone_folder = source["clone_folder"];
+	        this.root = source["root"];
 	        this.container = source["container"];
 	    }
 	}
@@ -1223,6 +1223,20 @@ export namespace main {
 		}
 	}
 	
+	export class RemoveRootDTO {
+	    inUse: number;
+	    forgotten: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RemoveRootDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.inUse = source["inUse"];
+	        this.forgotten = source["forgotten"];
+	    }
+	}
 	export class RepoDetail {
 	    branch: string;
 	    ahead: number;
@@ -1267,6 +1281,24 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class RootDTO {
+	    path: string;
+	    isDefault: boolean;
+	    exists: boolean;
+	    repos: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RootDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.isDefault = source["isDefault"];
+	        this.exists = source["exists"];
+	        this.repos = source["repos"];
+	    }
+	}
 	export class ShellInfo {
 	    id: string;
 	    name: string;
@@ -1292,11 +1324,11 @@ export namespace main {
 	    configPath: string;
 	    appVersion: string;
 	    os: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new StartupSnapshot(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.config = this.convertValues(source["config"], ConfigDTO);
@@ -1305,7 +1337,7 @@ export namespace main {
 	        this.appVersion = source["appVersion"];
 	        this.os = source["os"];
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;

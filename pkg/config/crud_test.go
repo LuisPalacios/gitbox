@@ -4,8 +4,8 @@ import "testing"
 
 func newTestConfig() *Config {
 	return &Config{
-		Version: 2,
-		Global:  GlobalConfig{Folder: "~/00.git"},
+		Version: CurrentVersion,
+		Global:  GlobalConfig{Roots: []string{"~/00.git"}},
 		Accounts: map[string]Account{
 			"github-test": {
 				Provider: "github", URL: "https://github.com",

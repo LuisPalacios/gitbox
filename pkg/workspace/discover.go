@@ -44,11 +44,11 @@ func Discover(cfg *config.Config) ([]Found, error) {
 	return out, nil
 }
 
-// scanRoots returns the directories scanned for .code-workspace files: the
-// standard folder plus any configured extra folders, tilde-expanded.
+// scanRoots returns the directories scanned for .code-workspace files: every
+// configured root, tilde-expanded.
 func scanRoots(cfg *config.Config) []string {
-	roots := []string{config.ExpandTilde(cfg.Global.Folder)}
-	for _, p := range cfg.Global.ExtraFolders {
+	var roots []string
+	for _, p := range cfg.Global.Roots {
 		if p = strings.TrimSpace(p); p != "" {
 			roots = append(roots, config.ExpandTilde(p))
 		}
@@ -164,13 +164,11 @@ type cloneIndex struct {
 
 func buildCloneIndex(cfg *config.Config) cloneIndex {
 	idx := cloneIndex{byPath: make(map[string][]config.WorkspaceMember)}
-	globalFolder := config.ExpandTilde(cfg.Global.Folder)
 	for _, srcKey := range cfg.OrderedSourceKeys() {
 		src := cfg.Sources[srcKey]
-		sourceFolder := src.EffectiveFolder(srcKey)
 		for _, repoKey := range src.OrderedRepoKeys() {
 			repo := src.Repos[repoKey]
-			p := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
+			p := status.RepoPath(cfg, srcKey, repoKey, repo)
 			n := normPath(p)
 			idx.byPath[n] = append(idx.byPath[n], config.WorkspaceMember{Source: srcKey, Repo: repoKey})
 		}

@@ -540,8 +540,8 @@ func TestCheckGlobalGitignore_RoundTripExplicitFalse(t *testing.T) {
 	f := false
 	cfg := &Config{
 		Schema:   "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/json/gitbox.schema.json",
-		Version:  2,
-		Global:   GlobalConfig{Folder: "~/git", CheckGlobalGitignore: &f},
+		Version:  CurrentVersion,
+		Global:   GlobalConfig{Roots: []string{"~/git"}, CheckGlobalGitignore: &f},
 		Accounts: map[string]Account{},
 		Sources:  map[string]Source{},
 	}
@@ -570,8 +570,8 @@ func TestCheckGlobalGitignore_RoundTripExplicitTrue(t *testing.T) {
 	tru := true
 	cfg := &Config{
 		Schema:   "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/json/gitbox.schema.json",
-		Version:  2,
-		Global:   GlobalConfig{Folder: "~/git", CheckGlobalGitignore: &tru},
+		Version:  CurrentVersion,
+		Global:   GlobalConfig{Roots: []string{"~/git"}, CheckGlobalGitignore: &tru},
 		Accounts: map[string]Account{},
 		Sources:  map[string]Source{},
 	}

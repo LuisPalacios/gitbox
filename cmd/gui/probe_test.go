@@ -224,7 +224,7 @@ func TestUpstreamProbe_DiscardsStaleConfig(t *testing.T) {
 				src.Folder = "elsewhere"
 				app.cfg.Sources["source-a"] = src
 			case "global folder":
-				app.cfg.Global.Folder = "elsewhere"
+				app.cfg.Global.Roots = []string{"elsewhere"}
 			case "global credential":
 				app.cfg.Global.CredentialGCM = &config.GCMGlobal{CredentialStore: "different"}
 			}

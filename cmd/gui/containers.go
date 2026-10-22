@@ -1,7 +1,6 @@
 package main
 
-// Wails bindings for non-standard clone locations: extra scan-root folders,
-// nested-scan depth, the multi-repo container flag, on-demand folder scanning,
+// Wails bindings for non-standard clone locations: nested-scan depth, the multi-repo container flag, on-demand folder scanning,
 // and adopting a discovered repo into a custom destination folder.
 
 import (
@@ -13,38 +12,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/workspace"
 )
 
-// ─── Extra scan folders + nested depth ─────────────────────────────────────
-
-// ListExtraFolders returns the configured extra scan-root folders. Always a
-// non-nil slice so it serializes to a JSON array (not null), which the frontend
-// iterates safely.
-func (a *App) ListExtraFolders() []string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	out := make([]string, 0, len(a.cfg.Global.ExtraFolders))
-	out = append(out, a.cfg.Global.ExtraFolders...)
-	return out
-}
-
-// AddExtraFolder appends a scan-root folder (deduped) and persists.
-func (a *App) AddExtraFolder(path string) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.cfg.Global.AddExtraFolder(path) {
-		return a.saveConfig()
-	}
-	return nil
-}
-
-// RemoveExtraFolder drops a scan-root folder and persists.
-func (a *App) RemoveExtraFolder(path string) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.cfg.Global.RemoveExtraFolder(path) {
-		return a.saveConfig()
-	}
-	return nil
-}
+// ─── Nested depth ──────────────────────────────────────────────────────────
 
 // GetNestedScanDepth returns the effective nested-scan depth (default applied).
 func (a *App) GetNestedScanDepth() int {

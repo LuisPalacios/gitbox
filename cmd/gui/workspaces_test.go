@@ -20,7 +20,7 @@ func newWorkspaceTestApp(t *testing.T) (*App, string) {
 	cfgPath := filepath.Join(dir, "gitbox.json")
 	cfg := &config.Config{
 		Version: config.CurrentVersion,
-		Global:  config.GlobalConfig{Folder: dir},
+		Global:  config.GlobalConfig{Roots: []string{dir}},
 		Accounts: map[string]config.Account{
 			"github-alice": {Provider: "github", URL: "https://github.com",
 				Username: "alice", Name: "Alice", Email: "a@e"},
@@ -46,14 +46,14 @@ func TestDiscoverWorkspaces_RefreshesCache(t *testing.T) {
 
 	// Stage a clone path resolving to (github-alice, team/frontend) plus a
 	// .code-workspace referencing it.
-	cloneDir := filepath.Join(a.cfg.Global.Folder, "github-alice", "team", "frontend")
+	cloneDir := filepath.Join(a.cfg.Global.Roots[0], "github-alice", "team", "frontend")
 	if err := os.MkdirAll(cloneDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 	body, _ := json.Marshal(map[string]any{
 		"folders": []map[string]string{{"path": cloneDir}},
 	})
-	wsFile := filepath.Join(a.cfg.Global.Folder, "feat.code-workspace")
+	wsFile := filepath.Join(a.cfg.Global.Roots[0], "feat.code-workspace")
 	if err := os.WriteFile(wsFile, body, 0o644); err != nil {
 		t.Fatalf("write workspace: %v", err)
 	}
@@ -88,30 +88,6 @@ func TestSetRepoContainer_Persists(t *testing.T) {
 	reloaded, _ = config.Load(cfgPath)
 	if reloaded.Sources["github-alice"].Repos["team/frontend"].Container {
 		t.Error("container flag not cleared")
-	}
-}
-
-func TestExtraFolders_AddRemove(t *testing.T) {
-	a, cfgPath := newWorkspaceTestApp(t)
-
-	if err := a.AddExtraFolder("/work/extra"); err != nil {
-		t.Fatalf("AddExtraFolder: %v", err)
-	}
-	// Adding the same folder again is a no-op (deduped).
-	if err := a.AddExtraFolder("/work/extra"); err != nil {
-		t.Fatalf("AddExtraFolder dup: %v", err)
-	}
-	reloaded, _ := config.Load(cfgPath)
-	if len(reloaded.Global.ExtraFolders) != 1 {
-		t.Fatalf("extra folders = %v, want one", reloaded.Global.ExtraFolders)
-	}
-
-	if err := a.RemoveExtraFolder("/work/extra"); err != nil {
-		t.Fatalf("RemoveExtraFolder: %v", err)
-	}
-	reloaded, _ = config.Load(cfgPath)
-	if len(reloaded.Global.ExtraFolders) != 0 {
-		t.Errorf("extra folders = %v, want none", reloaded.Global.ExtraFolders)
 	}
 }
 
@@ -220,7 +196,7 @@ func TestDiscoverWorkspaces_ScanDoesNotBlockConfigAndPreservesEdits(t *testing.T
 		_, err := a.discoverWorkspaces(func(snapshot *config.Config) ([]workspace.Found, error) {
 			close(started)
 			<-release
-			return []workspace.Found{{Key: "found", Name: "found", File: filepath.Join(snapshot.Global.Folder, "found.code-workspace")}}, nil
+			return []workspace.Found{{Key: "found", Name: "found", File: filepath.Join(snapshot.Global.Roots[0], "found.code-workspace")}}, nil
 		})
 		done <- err
 	}()
@@ -265,13 +241,13 @@ func TestDiscoverWorkspaces_RetriesChangedInputs(t *testing.T) {
 				close(started)
 				<-release
 			}
-			return []workspace.Found{{Key: "found", File: filepath.Join(snapshot.Global.Folder, "found.code-workspace")}}, nil
+			return []workspace.Found{{Key: "found", File: filepath.Join(snapshot.Global.Roots[0], "found.code-workspace")}}, nil
 		})
 		done <- err
 	}()
 	<-started
 	a.mu.Lock()
-	a.cfg.Global.Folder = newRoot
+	a.cfg.Global.Roots = []string{newRoot}
 	a.mu.Unlock()
 	close(release)
 	if err := <-done; err != nil {
@@ -284,7 +260,7 @@ func TestDiscoverWorkspaces_RetriesChangedInputs(t *testing.T) {
 
 func TestTentativeContainers_DoesNotSuggestKnownContainers(t *testing.T) {
 	a, _ := newWorkspaceTestApp(t)
-	parent := filepath.Join(a.cfg.Global.Folder, "parent")
+	parent := filepath.Join(a.cfg.Global.Roots[0], "parent")
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		t.Fatal(err)
 	}
