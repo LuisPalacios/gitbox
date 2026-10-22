@@ -43,7 +43,8 @@
   import AddAccountModal from './lib/modals/AddAccountModal.svelte';
   import CredentialModal from './lib/modals/CredentialModal.svelte';
   import DeleteAccountModal from './lib/modals/DeleteAccountModal.svelte';
-  import ChangeFolderModal from './lib/modals/ChangeFolderModal.svelte';
+  import RootsModal from './lib/modals/RootsModal.svelte';
+  import RootPickerModal from './lib/modals/RootPickerModal.svelte';
   import AddMirrorGroupModal from './lib/modals/AddMirrorGroupModal.svelte';
   import AddMirrorRepoModal from './lib/modals/AddMirrorRepoModal.svelte';
   import DeleteMirrorGroupModal from './lib/modals/DeleteMirrorGroupModal.svelte';
@@ -381,7 +382,7 @@
   async function finishOnboarding(result: { sourceKey: string; repos: string[] } | null) {
     firstRun = false;
     await initDashboard();
-    for (const repo of result?.repos || []) cloneRepo(result!.sourceKey, repo);
+    if (result) await cloneRepos(result.sourceKey, result.repos);
   }
 
   // Simple mode's "Add account" runs the connect + pick steps of the same
@@ -391,7 +392,7 @@
   async function finishConnect(result: { sourceKey: string; repos: string[] } | null) {
     connectModal = false;
     await reloadFromDisk();
-    for (const repo of result?.repos || []) cloneRepo(result!.sourceKey, repo);
+    if (result) await cloneRepos(result.sourceKey, result.repos);
   }
 
   // Re-run the nested-clone scan for a container and open the orphans modal so
@@ -405,9 +406,9 @@
     }
   }
 
-  // ── Change folder (settings) ──
-  let changeFolderDialog: ChangeFolderModal;
-  const openChangeFolder = () => changeFolderDialog.openChangeFolder();
+  // ── Clone roots (settings) ──
+  let rootsDialog: RootsModal;
+  const openRoots = () => rootsDialog.openRoots();
 
   // ── Theme ──
   // Persisted as global.theme (empty = follow the OS).
@@ -557,14 +558,26 @@
     bridge.pullRepo(sourceKey, repoKey);
   }
 
-  function cloneRepo(sourceKey: string, repoKey: string) {
+  // startClone clones one repo into root ('' = its account's own root).
+  function startClone(sourceKey: string, repoKey: string, root = '') {
     const key = `${sourceKey}/${repoKey}`;
     repoStates.update((s) => {
       s[key] = { ...s[key], status: 'cloning', progress: 0 };
       return { ...s };
     });
-    bridge.cloneRepo(sourceKey, repoKey);
+    bridge.cloneRepo(sourceKey, repoKey, root);
   }
+
+  // An explicit clone asks once which root the batch goes to (#149), when
+  // there are two or more; cancelling clones nothing.
+  let rootPicker: RootPickerModal;
+  async function cloneRepos(sourceKey: string, repoKeys: string[]) {
+    if (repoKeys.length === 0) return;
+    const root = await rootPicker.pick(sourceKey, repoKeys);
+    if (root === null) return;
+    for (const repoKey of repoKeys) startClone(sourceKey, repoKey, root);
+  }
+  const cloneRepo = (sourceKey: string, repoKey: string) => cloneRepos(sourceKey, [repoKey]);
 
   // Track which repos are currently fetching (separate from status).
   let fetchingRepos: Record<string, boolean> = {};
@@ -1840,7 +1853,7 @@
   <!-- ── SETTINGS PANEL ── -->
   <SettingsPanel {showSettings} {simple} {configPath} {languageChoice} {themeChoice} {fetchInterval} {lastFetchTime}
     {autostartSupported} {autostartOn} {checkGitignorePref} {doctorSummary} {terminalsManagerOpening} {appVersion}
-    {openChangeFolder} {setLanguage} {setTheme} {setFetchInterval} {toggleAutostart} {setPRBadgesEnabled}
+    {openRoots} {setLanguage} {setTheme} {setFetchInterval} {toggleAutostart} {setPRBadgesEnabled}
     {setPRIncludeDrafts} {setCheckGitignorePref} {openDoctorModal} {openTerminalsManagerWindow} />
 
   <div class="body">
@@ -1880,7 +1893,7 @@
   <!-- end viewMode -->
 
   <!-- ── DISCOVER MODAL ── -->
-  <DiscoverModal bind:this={discoverDialog} {reloadFromDisk} {cloneRepo} {openCredChange} onNeedsToken={(acctKey) => sshTokenDialog.openFor(acctKey)} />
+  <DiscoverModal bind:this={discoverDialog} {reloadFromDisk} {cloneRepos} {openCredChange} onNeedsToken={(acctKey) => sshTokenDialog.openFor(acctKey)} />
 
   <!-- ── TERMINALS & SHELLS (issue #69) ──
        The Manager opens in its own OS window via openTerminalsManagerWindow
@@ -1918,7 +1931,8 @@
   <DeleteAccountModal bind:this={deleteAccountDialog} bind:reloadError bind:deleteMode {reloadFromDisk} />
 
   <!-- ── CHANGE FOLDER MODAL ── -->
-  <ChangeFolderModal bind:this={changeFolderDialog} {reloadFromDisk} />
+  <RootsModal bind:this={rootsDialog} {reloadFromDisk} />
+  <RootPickerModal bind:this={rootPicker} />
 
   <!-- ── ADD MIRROR GROUP MODAL ── -->
   <!-- Workspaces are read-only: no create/delete modals. -->

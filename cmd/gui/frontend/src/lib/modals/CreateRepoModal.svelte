@@ -14,6 +14,9 @@
   let createRepoDesc = '';
   let createRepoPrivate = true;
   let createRepoClone = true;
+  // The clone root (#149): asked only when there are two or more.
+  let createRepoRoot = '';
+  $: rootChoices = ($configStore?.global?.roots || []) as string[];
   let createRepoBusy = false;
   let createRepoError = '';
   let createRepoNameError = '';
@@ -46,6 +49,7 @@
     createRepoDesc = '';
     createRepoPrivate = true;
     createRepoClone = true;
+    createRepoRoot = $configStore?.sources?.[accountKey]?.root || $configStore?.global?.roots?.[0] || '';
     createRepoBusy = false;
     createRepoError = '';
     createRepoNameError = '';
@@ -65,7 +69,7 @@
       const acctKey = createRepoModal;
       const repoKey = createRepoOwner + '/' + createRepoName;
       const willClone = createRepoClone;
-      await bridge.createNewRepo(acctKey, createRepoOwner, createRepoName, createRepoDesc, createRepoPrivate, willClone);
+      await bridge.createNewRepo(acctKey, createRepoOwner, createRepoName, createRepoDesc, createRepoPrivate, willClone, rootChoices.length > 1 ? createRepoRoot : '');
       $configStore = await bridge.reloadConfig();
       // Pre-set status to 'cloning' so the repo doesn't flash as 'error'
       // before the async clone finishes.
@@ -123,6 +127,16 @@
             <input type="checkbox" bind:checked={createRepoClone} disabled={createRepoBusy} /> {$t('createRepo.cloneAfter')}
           </label>
         </div>
+        {#if createRepoClone && rootChoices.length > 1}
+          <div class="form-row">
+            <label class="form-label" for="create-repo-root">{$t('roots.field')}</label>
+            <select id="create-repo-root" class="form-input" bind:value={createRepoRoot} disabled={createRepoBusy}>
+              {#each rootChoices as root}
+                <option value={root}>{root}</option>
+              {/each}
+            </select>
+          </div>
+        {/if}
       </div>
       <div class="modal-foot">
         <button class="btn-cancel" on:click={() => { if (!createRepoBusy) createRepoModal = null; }} disabled={createRepoBusy}>{$t('common.cancel')}</button>

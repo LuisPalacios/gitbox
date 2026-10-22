@@ -43,7 +43,7 @@
     folderBusy = true;
     try {
       // Also switches config saving on and starts new installs in Simple.
-      await bridge.setGlobalFolder(folder.trim());
+      await bridge.initRoot(folder.trim());
       step = 'connect';
     } catch (err: any) {
       folderError = err?.message || String(err);

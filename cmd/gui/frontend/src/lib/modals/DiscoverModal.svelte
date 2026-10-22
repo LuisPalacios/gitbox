@@ -10,7 +10,7 @@
   import type { DiscoverResult } from '../types';
 
   export let reloadFromDisk: () => Promise<void>;
-  export let cloneRepo: (sourceKey: string, repoKey: string) => void;
+  export let cloneRepos: (sourceKey: string, repoKeys: string[]) => Promise<void>;
   export let openCredChange: (accountKey: string, currentType: string) => void;
   // An SSH account has no API token for discovery: App opens the token modal.
   export let onNeedsToken: (accountKey: string) => void;
@@ -131,14 +131,14 @@
     if (selected.length > 0) {
       await bridge.addDiscoveredRepos(sourceKey, selected);
       await reloadFromDisk();
-      // Clone each newly added repo that isn't already local.
-      for (const repoName of selected) {
-        const repoKey = `${sourceKey}/${repoName}`;
-        const state = $repoStates[repoKey];
-        if (!state || state.status === 'not cloned') {
-          cloneRepo(sourceKey, repoName);
-        }
-      }
+      // Clone each newly added repo that isn't already local, asking once
+      // which root they go to.
+      const missing = selected.filter((repoName) => {
+        const state = $repoStates[`${sourceKey}/${repoName}`];
+        return !state || state.status === 'not cloned';
+      });
+      discoverModal = null;
+      await cloneRepos(sourceKey, missing);
     }
     discoverModal = null;
   }

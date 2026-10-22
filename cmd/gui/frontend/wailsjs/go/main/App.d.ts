@@ -16,11 +16,11 @@ export function AddDiscoveredRepos(arg1:string,arg2:Array<string>):Promise<void>
 
 export function AddDiscoveredReposToFolder(arg1:string,arg2:Array<string>,arg3:string):Promise<void>;
 
-export function AddExtraFolder(arg1:string):Promise<void>;
-
 export function AddMirrorGroup(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function AddMirrorRepo(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function AddRoot(arg1:string):Promise<void>;
 
 export function AdoptOrphans(arg1:Array<string>):Promise<main.AdoptResultDTO>;
 
@@ -40,11 +40,11 @@ export function CheckMirrorCredentials(arg1:string):Promise<main.MirrorCredentia
 
 export function CheckMoveReadiness(arg1:string,arg2:string,arg3:boolean):Promise<main.MoveReadinessDTO>;
 
-export function CloneRepo(arg1:string,arg2:string):Promise<void>;
+export function CloneRepo(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function ConfirmSweep(arg1:string,arg2:string):Promise<main.SweepDeleteDTO>;
 
-export function CreateNewRepo(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean,arg6:boolean):Promise<void>;
+export function CreateNewRepo(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean,arg6:boolean,arg7:string):Promise<void>;
 
 export function CredentialDelete(arg1:string):Promise<main.CredentialSetupResult>;
 
@@ -104,8 +104,6 @@ export function GetConfigLoadError():Promise<string>;
 
 export function GetConfigPath():Promise<string>;
 
-export function GetGlobalFolder():Promise<string>;
-
 export function GetLanguage():Promise<string>;
 
 export function GetMirrorStatus(arg1:string):Promise<void>;
@@ -134,6 +132,8 @@ export function GetWindowMode():Promise<string>;
 
 export function GetWorkspace(arg1:string):Promise<main.WorkspaceDTO>;
 
+export function InitRoot(arg1:string):Promise<void>;
+
 export function InstallGlobalGitignore():Promise<gitignore.InstallResult>;
 
 export function IsFirstRun():Promise<boolean>;
@@ -146,11 +146,11 @@ export function ListAccountOrgs(arg1:string):Promise<Array<string>>;
 
 export function ListConfigBackups():Promise<Array<main.ConfigBackupInfo>>;
 
-export function ListExtraFolders():Promise<Array<string>>;
-
 export function ListMoveDestinationOwners(arg1:string):Promise<Array<main.MoveOwnerOption>>;
 
 export function ListRemoteRepos(arg1:string):Promise<Array<main.DiscoverResult>>;
+
+export function ListRoots():Promise<Array<main.RootDTO>>;
 
 export function ListShells():Promise<Array<main.ShellInfo>>;
 
@@ -212,9 +212,9 @@ export function RefreshStatus():Promise<void>;
 
 export function ReloadConfig():Promise<main.ConfigDTO>;
 
-export function RemoveExtraFolder(arg1:string):Promise<void>;
-
 export function RemoveGlobalIdentity():Promise<void>;
+
+export function RemoveRoot(arg1:string,arg2:boolean):Promise<main.RemoveRootDTO>;
 
 export function RenameAccount(arg1:string,arg2:string):Promise<void>;
 
@@ -236,7 +236,7 @@ export function SetCheckGlobalGitignore(arg1:boolean):Promise<void>;
 
 export function SetCollapsed(arg1:config.CollapsedState):Promise<void>;
 
-export function SetGlobalFolder(arg1:string):Promise<void>;
+export function SetDefaultRoot(arg1:string):Promise<void>;
 
 export function SetLanguage(arg1:string):Promise<void>;
 

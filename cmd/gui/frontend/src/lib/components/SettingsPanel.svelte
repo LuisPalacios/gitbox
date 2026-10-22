@@ -21,7 +21,8 @@
   export let doctorSummary: string;
   export let terminalsManagerOpening: boolean;
   export let appVersion: string;
-  export let openChangeFolder: () => void;
+  export let openRoots: () => void;
+  $: roots = ($configStore?.global?.roots || []) as string[];
   export let setLanguage: (lang: 'en' | 'es') => Promise<void>;
   export let setTheme: (choice: ThemeChoice) => void;
   export let setFetchInterval: (val: string) => void;
@@ -43,9 +44,9 @@
     </div>
     {/if}
     <div class="settings-row">
-      <span class="settings-label" use:tooltip={$t('settings.rootFolderTip')}>{$t('settings.rootFolder')}</span>
-      <button class="settings-action-btn" on:click={openChangeFolder}>{$t('settings.change')}</button>
-      <span class="settings-value">{$configStore?.global?.folder || $t('settings.notSet')}</span>
+      <span class="settings-label" use:tooltip={$t('settings.rootsTip')}>{$t('settings.roots')}</span>
+      <button class="settings-action-btn" on:click={openRoots}>{$t('settings.change')}</button>
+      <span class="settings-value">{roots[0] || $t('settings.notSet')}{#if roots.length > 1}&nbsp;<span class="roots-more">{$t('settings.rootsMore', { n: roots.length - 1 })}</span>{/if}</span>
     </div>
     <div class="settings-row">
       <span class="settings-label" use:tooltip={$t('settings.languageTip')}>{$t('settings.language')}</span>
@@ -146,6 +147,7 @@
   .settings-label { font-size: 11px; font-weight: 600; color: var(--text-muted); width: 80px; flex-shrink: 0; }
   .settings-sublabel { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-left: 12px; flex-shrink: 0; }
   .settings-value { font-size: 12px; color: var(--text-secondary); font-family: monospace; flex: 1; }
+  .roots-more { font-family: inherit; color: var(--text-muted); }
   /* Action buttons (Open in editor / Change / Run / Manager) — same shape
      across every Gear row, sitting immediately right of the label so the
      eye doesn't have to hunt. The subtle blue tint distinguishes them
