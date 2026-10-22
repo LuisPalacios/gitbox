@@ -6,10 +6,10 @@ Test inventory and harness internals. For running tests, checklists, and fixture
 
 Counts are top-level `func Test…` functions per package, from `grep -rc "^func Test" --include=*_test.go pkg cmd`. Subtests (`t.Run`) are not counted.
 
-### Package tests — 489 tests (`pkg/`)
+### Package tests — 490 tests (`pkg/`)
 
 - `pkg/adopt/` — 15 tests: orphan discovery, account scoring (embedded URL user, credential username, parent folder, ambiguous ties), nested clones under containers, in-place adoption under a second clone root
-- `pkg/config/` — 113 tests: config parsing, v2 → v3 → v4 migration, clone roots (add, default, remove and forget, placing a clone, pins that keep every clone path), CRUD operations, save/load, backups, test-mode setup, layout-state pruning (folds, sidebar, the view of a deleted account), a rename that keeps its view, and backup skip for layout and theme saves
+- `pkg/config/` — 114 tests: config parsing, v2 → v3 → v4 migration, clone roots (add, default, remove and forget, placing a clone, pins that keep every clone path), CRUD operations, save/load, backups, test-mode setup, layout-state pruning (folds, sidebar, the view of a deleted account), a rename that keeps its view, backup skip for layout and theme saves, and a backup always kept for a file written by an older config version
 - `pkg/credential/` — 35 tests: token resolution, validation, token expiry and rejected tokens, OS-default helpers, `Check`/`FixGlobalGCMConfig` (global gitconfig health for GCM), cancellation, compare-first maintenance, atomic token-file updates
 - `pkg/doctor/` — 24 tests: tool table shape, install hints, lookups, per-credential-type prechecks, tool output decoding
 - `pkg/git/` — 34 tests: git subprocess operations, repo and profile URLs, nested repo discovery, cancellable fetches, connects refused within milliseconds, config snapshots with includes and linked worktrees
@@ -48,7 +48,7 @@ I cover refresh coordination and upstream probes without a Wails window, includi
 
 - `TestScenario_FullLifecycle` — end-to-end through `pkg/ops`: add account → credential check → discover → add repo → clone → status → pull and fetch → account edit + reconfigure clones → mirror CRUD → re-clone → rename account → delete everything
 
-### Total: 561 tests
+### Total: 562 tests
 
 ## How the test harness works
 

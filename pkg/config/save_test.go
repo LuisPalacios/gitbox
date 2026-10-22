@@ -232,3 +232,30 @@ func TestBackupFailureDoesNotBlockSave(t *testing.T) {
 		t.Error("config file should have been written")
 	}
 }
+
+// TestBackupTakenForOlderVersionOnDisk verifies the first save after an
+// upgrade keeps the old-version file even when only window state changed:
+// loading migrates it, so it would otherwise compare equal (#149).
+func TestBackupTakenForOlderVersionOnDisk(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gitbox.json")
+	v3 := `{"version": 3, "global": {"folder": "~/test"}, "accounts": {}, "sources": {}}`
+	if err := os.WriteFile(path, []byte(v3), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	cfg.Global.Window = &WindowState{X: 1, Y: 2, Width: 800, Height: 600}
+	if err := Save(cfg, path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	matches, _ := filepath.Glob(filepath.Join(dir, "gitbox-????????-??????.json"))
+	if len(matches) != 1 {
+		t.Fatalf("expected 1 backup of the v3 file, got %d", len(matches))
+	}
+	if data, _ := os.ReadFile(matches[0]); string(data) != v3 {
+		t.Errorf("backup = %s, want the v3 file", data)
+	}
+}

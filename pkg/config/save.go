@@ -64,8 +64,11 @@ func backupBeforeSave(path string, next *Config) {
 	}
 
 	// If we can parse the on-disk config and the in-memory one is identical
-	// modulo GUI state, there's nothing worth preserving.
-	if next != nil {
+	// modulo GUI state, there's nothing worth preserving. A file written by
+	// an older config version is always kept: loading migrates it, so it
+	// would compare equal and the last copy an older gitbox can read would
+	// be overwritten (#149).
+	if next != nil && onDiskVersion(path) == CurrentVersion {
 		if current, err := Load(path); err == nil {
 			if configsEqualIgnoringUIState(current, next) {
 				return
@@ -86,6 +89,20 @@ func backupBeforeSave(path string, next *Config) {
 	}
 
 	pruneBackups(dir, name)
+}
+
+// onDiskVersion returns the "version" field of the config file at path,
+// or 0 when it can't be read.
+func onDiskVersion(path string) int {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	var probe struct {
+		Version int `json:"version"`
+	}
+	_ = json.Unmarshal(data, &probe)
+	return probe.Version
 }
 
 // configsEqualIgnoringUIState reports whether two configs are content-equal

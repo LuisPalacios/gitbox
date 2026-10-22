@@ -6,10 +6,10 @@ Inventario de pruebas y detalles internos del harness. Para ejecutar pruebas, ve
 
 Los recuentos son funciones `func Test…` de nivel superior por paquete, obtenidas con `grep -rc "^func Test" --include=*_test.go pkg cmd`. Los subtests (`t.Run`) no se cuentan.
 
-### Pruebas de paquetes — 489 pruebas (`pkg/`)
+### Pruebas de paquetes — 490 pruebas (`pkg/`)
 
 - `pkg/adopt/` — 15 pruebas: descubrimiento de huérfanos, puntuación de cuentas (usuario embebido en la URL, username de la credencial, carpeta padre, empates ambiguos), clones anidados bajo contenedores, adopción en el lugar bajo una segunda raíz de clonado
-- `pkg/config/` — 113 pruebas: parseo de config, migración v2 → v3 → v4, raíces de clonado (añadir, predeterminada, quitar y olvidar, ubicar un clon, fijaciones que conservan cada ruta de clon), operaciones CRUD, save/load, backups, preparación de test-mode, poda del estado de layout (pliegues, barra lateral, la vista de una cuenta borrada), un renombrado que conserva su vista, y omisión del backup en los guardados de layout y de tema
+- `pkg/config/` — 114 pruebas: parseo de config, migración v2 → v3 → v4, raíces de clonado (añadir, predeterminada, quitar y olvidar, ubicar un clon, fijaciones que conservan cada ruta de clon), operaciones CRUD, save/load, backups, preparación de test-mode, poda del estado de layout (pliegues, barra lateral, la vista de una cuenta borrada), un renombrado que conserva su vista, omisión del backup en los guardados de layout y de tema, y un backup que siempre se conserva para un archivo escrito por una versión anterior de la config
 - `pkg/credential/` — 35 pruebas: resolución de token, validación, caducidad del token y tokens rechazados, helpers por defecto del OS, `Check`/`FixGlobalGCMConfig` (salud de gitconfig global para GCM), cancelación, mantenimiento con comparación previa, actualizaciones atómicas de archivos de tokens
 - `pkg/doctor/` — 24 pruebas: forma de la tabla de herramientas, pistas de instalación, búsquedas, comprobaciones previas por tipo de credencial, decodificación de la salida de herramientas
 - `pkg/git/` — 34 pruebas: operaciones git mediante subprocess, URLs de repo y de perfil, descubrimiento de repos anidados, fetches cancelables, conexiones rechazadas en milisegundos, instantáneas de config con includes y worktrees enlazados
@@ -48,7 +48,7 @@ Cubro la coordinación del refresco y los sondeos upstream sin una ventana Wails
 
 - `TestScenario_FullLifecycle` — end-to-end a través de `pkg/ops`: añadir cuenta → comprobar credencial → descubrir → añadir repo → clone → status → pull y fetch → editar cuenta + reconfigurar clones → CRUD de mirrors → reclonar → renombrar cuenta → borrarlo todo
 
-### Total: 561 pruebas
+### Total: 562 pruebas
 
 ## Cómo funciona el harness de pruebas
 
