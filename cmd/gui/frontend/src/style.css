@@ -75,11 +75,13 @@ body {
 .text-btn:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 1px; }
 
 /* ── Views ──
-   Each view scrolls on its own next to the sidebar, and its content stops
-   at 1100px so rows stay readable in a wide window. */
+   Each view scrolls on its own next to the sidebar. The window stops at
+   sidebar + 1100px of content (maxWindowWidth in main.go), so rows stay
+   readable; folding the sidebar to its 52px rail hands the freed 168px to
+   the content. This cap only binds in full screen. */
 .view-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 24px 12px; }
 @container content (max-width: 620px) { .view-scroll { padding: 0 12px 12px; } }
-.view-scroll > * { max-width: 1100px; }
+.view-scroll > * { max-width: 1268px; }
 .view-head { display: flex; align-items: center; gap: 10px; padding: 14px 0 8px; }
 .view-title { margin: 0; font-size: 15px; font-weight: 700; color: var(--text-primary); }
 .view-sub { font-size: 12px; color: var(--text-muted); }

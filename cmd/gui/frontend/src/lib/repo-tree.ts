@@ -59,3 +59,23 @@ export function repoTreeRows(sources: Record<string, SourceDTO>, nesting: Record
   for (const key of ordered([...refs.keys()].filter(key => !parents.has(key)))) walk(key, refs.get(key)!.sourceKey, 0);
   return rows;
 }
+
+// One account's share of a Needs attention group, with how many clones it holds.
+export interface AccountRows { sourceKey: string; rows: RepoRow[]; count: number }
+
+// I split one Needs attention group (#148) by account, alphabetically, each
+// as a tree built from the group's clones only: a container nests the clones
+// beside it, and a clone whose container sits in another group stays on top.
+export function groupTreeRows(keys: string[], sources: Record<string, SourceDTO>, nesting: Record<string, string>, collapsed: Set<string>): AccountRows[] {
+  const picked: Record<string, SourceDTO> = {};
+  for (const key of keys) {
+    const slash = key.indexOf('/');
+    const sourceKey = key.slice(0, slash), repoName = key.slice(slash + 1);
+    const source = sources[sourceKey];
+    if (!source?.repos[repoName]) continue;
+    (picked[sourceKey] ??= { ...source, repos: {} }).repos[repoName] = source.repos[repoName];
+  }
+  const tree = repoTreeRows(picked, nesting, collapsed);
+  return Object.keys(tree).filter(sourceKey => tree[sourceKey].length > 0).sort(collator.compare)
+    .map(sourceKey => ({ sourceKey, rows: tree[sourceKey], count: new Set(tree[sourceKey].flatMap(row => [row.key, ...row.descendants])).size }));
+}

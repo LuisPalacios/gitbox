@@ -100,6 +100,7 @@ LDFLAGS="-X main.version=$(git describe --tags --always)-dev -X main.commit=$(gi
 # Build GUI (requires Wails CLI)
 # ALWAYS copy icons before building — they are not checked in under cmd/gui/build/
 cp assets/appicon.png cmd/gui/build/appicon.png
+mkdir -p cmd/gui/build/windows   # absent in a fresh clone or worktree
 cp assets/icon.ico    cmd/gui/build/windows/icon.ico
 (cd cmd/gui && wails build -ldflags "$LDFLAGS")   # Linux: add -tags webkit2_41
 # macOS: export CGO_CFLAGS=-mmacosx-version-min=13.0 CGO_LDFLAGS=-mmacosx-version-min=13.0

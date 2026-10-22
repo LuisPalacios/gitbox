@@ -109,7 +109,7 @@ I close any dialog with **Escape** or by clicking outside it. Dialogs that are b
 
 The sidebar on the left picks what the main area shows:
 
-- **Needs attention** (Simple: **Needs you**) — first the accounts whose credential needs a fix, each with its fix button, then every repo that needs me, grouped as needs help, local work, behind, and not cloned, in alphabetical order inside each group. Each row names its account; I click the name to open that account. A clone nested in another clone shows an "in \<parent\>" tag. A row that turns fine while I watch, after a pull for example, stays in place, faded, until I leave the view. When nothing needs me, the view says so.
+- **Needs attention** (Simple: **Needs you**) — first the accounts whose credential needs a fix, each with its fix button, then every repo that needs me, grouped as needs help, local work, behind, and not cloned. Inside each group, rows sit under a header per account, which I click to fold, in alphabetical order. A container nests the clones beside it, as in All repos; a clone whose container is in another group shows an "in \<parent\>" tag. A row that turns fine while I watch, after a pull for example, stays in place, faded, until I leave the view. When nothing needs me, the view says so.
 - **All repos** (Simple: **All projects**) — every clone, grouped by account, in alphabetical order.
 - **Accounts** — accounts only: one entry per account with its provider logo, a small health mark, its name, its health in words, and how many repos need me. I click one to open the account's view.
 - **More** — below the bottom separator, everything that isn't an account:
@@ -154,7 +154,7 @@ When a repo is checked out on a non-default branch, a small branch badge appears
 
 #### Pull all
 
-Click the **Pull all** button (down-arrow icon) in the top bar to bring everything up to date in one click. It clones missing repos and pulls repos that are behind with fast-forward only (`git pull --ff-only`), so it never merges and never touches local changes. A behind row's own **Pull** button does the same for one repo. In Simple, the button is **Update all**.
+Click the **Pull all** button (down-arrow icon) in the top bar to bring everything up to date in one click. It clones missing repos and pulls repos that are behind with fast-forward only (`git pull --ff-only`), so it never merges and never touches local changes. A behind row's own **Pull · FF only** button does the same for one repo. In Simple, the button is **Update all**.
 
 #### Fetch all
 
@@ -280,7 +280,7 @@ Whenever I drop a `*.code-workspace` file under the gitbox-managed folder (or a 
 
 ### Non-standard clones & multi-repo containers
 
-A **multi-repo container** is a managed clone that holds other clones nested in its working tree (for example, a project repo whose `.code-workspace` ties together several sibling clones). When a clone looks like one — it has a `.code-workspace` at its root but isn't flagged yet — its row shows an inline **onboard nested clones** hint. Clicking it flags the clone as a container, scans its working tree, and opens the adopt modal with the nested clones it finds; you confirm which to onboard. Nested clones are adopted in place under their real account/org (stored with an absolute `clone_folder` inside the container, never relocated), and the hint is replaced by a **container** badge.
+A **multi-repo container** is a managed clone that holds other clones nested in its working tree (for example, a project repo whose `.code-workspace` ties together several sibling clones). When a clone looks like one — it has a `.code-workspace` at its root but isn't flagged yet — its row shows an inline **onboard nested clones** hint. Clicking it flags the clone as a container, scans its working tree, and opens the adopt modal with the nested clones it finds; you confirm which to onboard. Nested clones are adopted in place under their real account/org (stored with an absolute `clone_folder` inside the container, never relocated), and the hint is replaced by a 📁 icon; hovering it says it's a container.
 
 You can also manage this from the repo row's ⋯ menu, under **Maintenance** — **Mark as multi-repo container**, **Unmark as multi-repo container**, and **Re-scan for nested clones** (shown once a clone is a container) — or with the **Multi-repo container** checkbox in the repo detail panel. The **Change root folder** dialog manages **extra scan folders** (additional roots scanned for clones and `.code-workspace` files) and the **nested scan depth** (how many levels below a container Gitbox descends, default 1 — the container's immediate children; raise it to reach clones nested deeper).
 
@@ -303,11 +303,11 @@ In Simple, every project answers one question, "is my work safe?", with one of s
 
 Every project on this computer has three icon buttons, in both Simple and Advanced: my first AI harness, my first editor, and my default terminal profile. Each shows the tool's logo when gitbox knows it (Claude, Codex, Gemini, Cursor, VS Code, Zed, and every terminal app gitbox detects) or a generic icon, and its name on hover. Names show without the organization prefix; hovering a name shows it in full. The ⋯ menu keeps Open on the web, the folder, editors, AI harnesses, and **Delete from this computer…**.
 
-Simple hides the rest: the Mirrors and Workspaces views, delete mode, the compact view and theme buttons (theme stays in Settings), PR, workspace, container and branch badges, ahead, behind and changed counts, and the per-row fetch button. The top bar keeps **Check all** and **Update all**. Account health reads in plain words, and **Reconnect** appears when a credential breaks. Settings hides the config file, PR reviews, global gitignore and Terminals rows. The compact view is the same in both modes.
+Simple hides the rest: the Mirrors and Workspaces views, delete mode, the compact view and theme buttons (theme stays in Settings), workspace, container and branch badges, ahead, behind and changed counts, and the per-row fetch button. Open PRs I authored (📝) and PRs awaiting my review (👀) show in both modes. The top bar keeps **Check all** and **Update all**. Account health reads in plain words, and **Reconnect** appears when a credential breaks. Settings hides the config file, PR reviews, global gitignore and Terminals rows. The compact view is the same in both modes.
 
 ### Full view
 
-The full dashboard shows the top bar with health rings, the sidebar, the selected view, and the summary footer. Action buttons in the top bar include Pull all, Fetch all, Delete mode, Compact view, the theme, the Simple/Advanced switch and Settings; the button at the far left folds the sidebar. The window opens 1040 px wide the first time and can shrink to 640 × 480; the content stops at 1100 px in a wider window.
+The full dashboard shows the top bar with health rings, the sidebar, the selected view, and the summary footer. Action buttons in the top bar include Pull all, Fetch all, Delete mode, Compact view, the theme, the Simple/Advanced switch and Settings; the button at the far left folds the sidebar. The window opens 1040 px wide the first time and can shrink to 640 × 480; it grows no wider than the sidebar plus 1100 px of content, and folding the sidebar gives its width to the content.
 
 ### Collapse and expand
 

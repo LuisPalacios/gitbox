@@ -97,8 +97,10 @@ test('I label every Advanced status in the glossary words', () => {
 test('I label every Simple status by its kind', () => {
   const label = (status) => s.statusLabel({ status, modified: 2, untracked: 1 }, true);
   assert.deepEqual(STATUSES.map((x) => label(x).key), ['simple.saved', 'simple.wip', 'simple.update', 'simple.unpushed', 'simple.help', 'simple.help', 'simple.online', 'simple.unpushed', 'simple.help', 'simple.help', 'simple.checking', 'simple.checking', 'simple.checking', 'simple.checking']);
-  assert.deepEqual(label('dirty'), { key: 'simple.wip', note: 'simple.wipSafe', noteVars: { n: 3 }, color: 'dirty', badges: false });
+  assert.deepEqual(label('dirty'), { key: 'simple.wip', note: 'simple.wipSafe', noteVars: { n: 3 }, short: 'simple.wipShort', shortVars: { n: 3 }, color: 'dirty', badges: false });
   assert.equal(s.statusLabel({ status: 'dirty', modified: 1 }, true).note, 'simple.wipSafeOne');
+  assert.equal(s.statusLabel({ status: 'dirty', modified: 1 }, true).short, 'simple.wipShortOne');
+  assert.ok(STATUSES.filter((x) => x !== 'dirty').every((x) => !label(x).short));
   assert.equal(label('ahead').color, 'ahead');
   assert.ok(STATUSES.every((x) => !label(x).badges));
 });

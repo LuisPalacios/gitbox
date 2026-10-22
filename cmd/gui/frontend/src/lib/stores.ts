@@ -162,9 +162,15 @@ export const prSettings = writable<{ enabled: boolean; includeDrafts: boolean }>
   { enabled: true, includeDrafts: true }
 );
 
-// Merge one account's worth of PR data into the store.
+// Merge one account's worth of PR data into the store. A failed refresh
+// (token lookup timing out, network down after sleep, rate limit) keeps
+// the account's last good data instead of wiping its pills (#148).
 export function applyPRUpdate(upd: PRAccountUpdateDTO) {
   if (!upd || !upd.accountKey) return;
+  if (upd.error) {
+    console.warn(`PR refresh failed for ${upd.accountKey}: ${upd.error}`);
+    return;
+  }
   prsByAccount.update((cur) => {
     const next = { ...cur };
     next[upd.accountKey] = upd.byRepo ?? {};

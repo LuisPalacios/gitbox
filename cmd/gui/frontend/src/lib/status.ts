@@ -121,18 +121,23 @@ export function attentionRank(status: string, isDefault?: boolean): number {
 
 // ── Glossary labels (issue #136) ──
 // The words a row shows for its status: i18n key and variables, an
-// optional dimmed note after it, the palette entry that colours it, and
+// optional dimmed note after it, an optional short form that replaces
+// both in a narrow row (#148), the palette entry that colours it, and
 // whether the Advanced count badges follow (only where the words don't
 // carry the counts).
 export interface LabelState { status: string; ahead?: number; behind?: number; modified?: number; untracked?: number; isDefault?: boolean }
-export interface StatusLabel { key: string; vars?: Record<string, number>; note?: string; noteVars?: Record<string, number>; color: string; badges: boolean }
+export interface StatusLabel { key: string; vars?: Record<string, number>; note?: string; noteVars?: Record<string, number>; short?: string; shortVars?: Record<string, number>; color: string; badges: boolean }
 
 export function statusLabel(st: LabelState, simple: boolean): StatusLabel {
   const changes = (st.modified || 0) + (st.untracked || 0);
   if (simple) {
     const kind = simpleKind(st.status);
     const color = simpleColorKeys[kind];
-    if (kind === 'wip') return { key: 'simple.wip', note: changes === 1 ? 'simple.wipSafeOne' : 'simple.wipSafe', noteVars: { n: changes }, color, badges: false };
+    if (kind === 'wip') {
+      const one = changes === 1;
+      return { key: 'simple.wip', note: one ? 'simple.wipSafeOne' : 'simple.wipSafe', noteVars: { n: changes },
+        short: one ? 'simple.wipShortOne' : 'simple.wipShort', shortVars: { n: changes }, color, badges: false };
+    }
     return { key: simpleLabelKey(kind), color, badges: false };
   }
   switch (st.status) {

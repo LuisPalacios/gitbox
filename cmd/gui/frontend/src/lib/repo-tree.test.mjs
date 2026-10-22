@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const sourceCode = await readFile(new URL('./repo-tree.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(sourceCode, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } });
-const { repoTreeRows, compareRepoKeys } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+const { repoTreeRows, compareRepoKeys, groupTreeRows } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 const source = (names, account = 'account-A') => ({ account, repos: Object.fromEntries(names.map(name => [name, {}])), repoOrder: names });
 test('I group cross-source children with retained action ownership and no duplicate rows', () => {
   const tree = repoTreeRows({ a: source(['parent', 'other']), b: source(['child'], 'account-B') }, { 'b/child': 'a/parent' }, new Set());
@@ -41,4 +41,14 @@ test('I ignore the configured order and sort by the shown name, ignoring case an
 test('I order clone keys by shown name, then by the full key', () => {
   const keys = ['b/org/tools', 'a/org/Alpha', 'a/other/tools', 'c/org/beta'];
   assert.deepEqual([...keys].sort(compareRepoKeys), ['a/org/Alpha', 'c/org/beta', 'a/other/tools', 'b/org/tools']);
+});
+test('I split an attention group by account, nesting only the clones in the group', () => {
+  const sources = { b: source(['parent', 'child', 'other', 'calm']), a: source(['solo'], 'account-B'), c: source(['away']) };
+  const nesting = { 'b/child': 'b/parent', 'c/away': 'b/calm' };
+  const groups = groupTreeRows(['b/child', 'b/parent', 'b/other', 'a/solo', 'c/away', 'gone/repo'], sources, nesting, new Set());
+  assert.deepEqual(groups.map(g => [g.sourceKey, g.count]), [['a', 1], ['b', 3], ['c', 1]]);
+  assert.deepEqual(groups[1].rows.map(row => [row.key, row.depth]), [['b/other', 0], ['b/parent', 0], ['b/child', 1]]);
+  assert.deepEqual(groups[2].rows.map(row => [row.key, row.depth]), [['c/away', 0]]);
+  const folded = groupTreeRows(['b/child', 'b/parent'], sources, nesting, new Set(['b/parent']));
+  assert.deepEqual(folded.map(g => [g.rows.map(row => row.key), g.count]), [[['b/parent'], 2]]);
 });
