@@ -27,10 +27,11 @@
     'unknown-host': 'unmatched.unknownHost',
     'no-remote': 'unmatched.noRemote',
     'already-tracked': 'unmatched.alreadyTracked',
+    worktree: 'unmatched.worktree',
   };
 
   // A clone I can adopt has accounts to pick from and a free repo key.
-  const adoptable = (o: OrphanRepoDTO) => (o.candidates?.length || 0) > 0 && o.reason !== 'already-tracked';
+  const adoptable = (o: OrphanRepoDTO) => (o.candidates?.length || 0) > 0 && !['already-tracked', 'worktree'].includes(o.reason);
 
   export function showOrphanModal() {
     picked = {};

@@ -13,8 +13,6 @@ package heal
 import (
 	"fmt"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -73,7 +71,7 @@ func Repo(cfg *config.Config, sourceKey, repoKey string) Report {
 	path := status.RepoPath(cfg, sourceKey, repoKey, repo)
 	r.Path = path
 
-	if !git.IsRepo(path) && !isLinkedWorktree(path) {
+	if !git.IsRepo(path) && !git.IsLinkedWorktree(path) {
 		r.Skipped = "not cloned"
 		return r
 	}
@@ -203,10 +201,4 @@ func redactURL(raw string) string {
 		}
 	}
 	return u.String()
-}
-
-// Linked worktrees use a .git pointer file rather than a directory.
-func isLinkedWorktree(path string) bool {
-	data, err := os.ReadFile(filepath.Join(path, ".git"))
-	return err == nil && strings.HasPrefix(string(data), "gitdir: ")
 }

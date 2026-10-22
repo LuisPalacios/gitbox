@@ -24,6 +24,7 @@ const (
 	ReasonUnknown   = "unknown-host"    // no account on that server
 	ReasonNoRemote  = "no-remote"       // no origin, or one gitbox can't read
 	ReasonTracked   = "already-tracked" // the repo is already tracked at another path
+	ReasonWorktree  = "worktree"        // a linked worktree of another clone, not a clone of its own
 )
 
 // Unmatched is a found clone that needs a decision.
@@ -67,7 +68,7 @@ func Plan(cfg *config.Config) (Result, error) {
 		for _, rk := range sortedKeys(src.Repos) {
 			repo := src.Repos[rk]
 			tracked[sk+"/"+strings.ToLower(rk)] = true
-			if status.RepoRootOffline(cfg, sk, repo) || git.IsRepo(status.RepoPath(cfg, sk, rk, repo)) {
+			if p := status.RepoPath(cfg, sk, rk, repo); status.RepoRootOffline(cfg, sk, repo) || git.IsRepo(p) || git.IsLinkedWorktree(p) {
 				continue
 			}
 			missing[strings.ToLower(rk)] = append(missing[strings.ToLower(rk)], ref{sk, rk})
@@ -79,6 +80,10 @@ func Plan(cfg *config.Config) (Result, error) {
 	for _, o := range orphans {
 		if cfg.IsIgnoredClone(o.Path) {
 			res.Ignored = append(res.Ignored, o)
+			continue
+		}
+		if git.IsLinkedWorktree(o.Path) {
+			res.Unmatched = append(res.Unmatched, Unmatched{o, ReasonWorktree})
 			continue
 		}
 		if o.LocalOnly {

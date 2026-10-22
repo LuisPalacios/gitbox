@@ -256,7 +256,7 @@ export interface OrphanRepoDTO {
   remoteURL: string;
   repoKey: string;
   matchedAccount: string;
-  // Why it waits for me: 'host-only' | 'ambiguous' | 'unknown-host' | 'no-remote' | 'already-tracked'.
+  // Why it waits for me: 'host-only' | 'ambiguous' | 'unknown-host' | 'no-remote' | 'already-tracked' | 'worktree'.
   reason: string;
   // Accounts it could go to, best first.
   candidates?: string[];

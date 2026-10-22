@@ -217,3 +217,29 @@ func equal(a, b map[string]string) bool {
 	}
 	return true
 }
+
+func TestPlan_NeverAdoptsALinkedWorktree(t *testing.T) {
+	root := t.TempDir()
+	cfg := testConfig(root)
+	main := filepath.Join(root, "scratch", "main")
+	initRepo(t, main, "https://github.com/me/untracked.git")
+	cmd := exec.Command("git", "-C", main, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-q", "--allow-empty", "-m", "first")
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("commit: %v\n%s", err, out)
+	}
+	tree := filepath.Join(root, "scratch", "main-feature")
+	if out, err := exec.Command("git", "-C", main, "worktree", "add", "-q", tree).CombinedOutput(); err != nil {
+		t.Fatalf("worktree add: %v\n%s", err, out)
+	}
+
+	res := planAndApply(t, cfg)
+	if got := reasons(res)["main-feature"]; got != ReasonWorktree {
+		t.Errorf("worktree reason = %q, want %q (unmatched %v)", got, ReasonWorktree, reasons(res))
+	}
+	for _, o := range res.Adopt {
+		if o.Path == tree {
+			t.Error("the linked worktree was adopted")
+		}
+	}
+}
