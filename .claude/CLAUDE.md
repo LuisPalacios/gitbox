@@ -126,20 +126,21 @@ Every `exec.Command` in the GUI binary (`cmd/gui/`) **MUST** call `git.HideWindo
 
 ## Config format
 
-Config file: `~/.config/gitbox/gitbox.json` — `accounts` + `sources`, real booleans, `gcm`/`ssh`/`token` credential types, nested SSH/GCM objects, `provider` field, `version: 3`. Optional `mirrors` section for push/pull mirror configuration between providers.
+Config file: `~/.config/gitbox/gitbox.json` — `accounts` + `sources`, real booleans, `gcm`/`ssh`/`token` credential types, nested SSH/GCM objects, `provider` field, `version: 4`. Optional `mirrors` section for push/pull mirror configuration between providers.
 
-**Versioning & migration:** `config.CurrentVersion` is 3. `config.Parse` loads v3 strictly and migrates v2 transparently on load (in-memory; persisted on next save). The v2→v3 migration bumps the version and **discards the `workspaces` section wholesale** (it is now a regenerable discovered cache); accounts, sources, mirrors, and global settings are preserved; legacy `global.terminals` is converted by the existing terminal migrator. Any other version is an error.
+**Versioning & migration:** `config.CurrentVersion` is 4. `config.Parse` and `LoadWithRepair` share one `decode` that loads v4 strictly and migrates v2 and v3 transparently on load (in-memory; persisted on next save). The v2→v3 step **discards the `workspaces` section wholesale** (it is now a regenerable discovered cache). The v3→v4 step turns `global.folder` + `global.extra_folders` into `global.roots`, in that order, so every clone keeps its path. Accounts, sources, mirrors, and global settings are preserved; legacy `global.terminals` is converted by the existing terminal migrator. Any other version is an error.
 
-**v3 keys:**
+**Keys:**
 
-- `global.extra_folders` (`[]string`) — additional root directories scanned for clones and `.code-workspace` files, on top of `global.folder`. Onboard repos outside the standard `folder/account/org/repo` tree.
+- `global.roots` (`[]string`, v4, required) — the clone roots: folders gitbox clones into and scans for clones and `.code-workspace` files. The first is the default. A clone lives at `<root>/<source folder>/<org>/<repo>`.
+- `source.root` / `repo.root` (v4) — the root a source clones into (remembered from the last clone; empty = the default) and, only when it differs, the root one repo lives in. Every path resolves through `status.RepoPath`. The mutators in `pkg/config/roots.go` (`SetSourceRoot`, `SetDefaultRoot`, `RemoveRoot`, `PlaceRepo`) pin the roots clones already resolve through, so no clone path moves; never set these fields by hand in code.
 - `global.nested_scan_depth` (`int`, default 1 via `NestedScanDepthOrDefault`) — how many levels gitbox descends below a container repo to find nested clones.
 - `repo.container` (`bool`) — marks a clone as a multi-repo parent; gitbox descends into its working tree to discover and onboard nested clones the user provisioned there. Nested clones onboard as plain repos under their real account/org with an absolute `clone_folder`, never relocated. Parent→child nesting is derived from paths by `status.ComputeNesting`.
 - `global.collapsed` (`{sources: [], repos: [], sidebar: bool, view: string}`) — GUI layout state: folded account groups (source keys), folded parent clones (`"source/repo"` keys), the sidebar folded to its icon rail, and the last selected view (`attention`, `all`, `mirrors`, `workspaces` or `account:<key>`). Records what is collapsed, so absent means all expanded and Needs attention. `config.Save` prunes keys that no longer resolve and a view of a missing account (`PruneCollapsed`), `RenameAccount` rewrites `account:<old>` to `account:<new>`, and the backup ring ignores layout-only changes, like window state. The old `cards_open` key is gone; `Parse` ignores it.
 - `global.theme` (`"light"`, `"dark"`, absent = follow the OS) — the GUI theme, set through `SetTheme`; theme-only saves skip the backup ring too.
-- `repo.clone_folder` (existing) — an absolute value (`/`, `~`, `../`) places a clone anywhere on disk; this is how non-standard and nested clones are stored.
+- `repo.clone_folder` (existing) — an absolute value (`/`, `~`) places a clone anywhere on disk; this is how non-standard and nested clones are stored. A `../` value is resolved against the repo's root.
 
-**Workspaces are read-only** (`version: 3`): gitbox discovers existing VS Code `.code-workspace` files, caches them under `workspaces` (all `discovered: true`, no `type`/`layout`), lists them, and opens them. It never creates, edits, generates, or deletes them, and tmuxinator support is removed. `pkg/workspace.RefreshCache` rebuilds the cache; `Discover` is pure.
+**Workspaces are read-only** (since `version: 3`): gitbox discovers existing VS Code `.code-workspace` files, caches them under `workspaces` (all `discovered: true`, no `type`/`layout`), lists them, and opens them. It never creates, edits, generates, or deletes them, and tmuxinator support is removed. `pkg/workspace.RefreshCache` rebuilds the cache; `Discover` is pure.
 
 ## Workflow orchestration
 

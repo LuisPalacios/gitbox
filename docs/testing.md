@@ -108,11 +108,11 @@ Both accounts need tokens in their `_test` keys. The destination token needs wri
 
 ### Safety
 
-The test runner **always overrides** `global.folder` with a throwaway temp directory — all clones and config files go there and are deleted after each test.
+The test runner **always overrides** `global.roots` with one throwaway temp directory — all clones and config files go there and are deleted after each test.
 
 For `credential_ssh.ssh_folder`, the scenario test reads the path from `test-gitbox.json` so it can find real SSH keys. This path **must not be `~/.ssh`** — point it at an isolated location like `~/.gitbox-test/ssh`.
 
-The test runner enforces this: if the fixture points `ssh_folder` at `~/.ssh` or `global.folder` at `~/.config/gitbox`, the tests fail immediately.
+The test runner enforces this: if the fixture points `ssh_folder` at `~/.ssh` or a root in `global.roots` at `~/.config/gitbox`, the tests fail immediately.
 
 ## Run the tests
 
@@ -163,7 +163,7 @@ Runs the app against the fixture instead of my real config:
 GitboxApp --test-mode
 ```
 
-The `--test-mode` flag reads `test-gitbox.json` (searching upwards from the current directory), builds a throwaway config in a temp directory, overrides `global.folder`, and injects the fixture tokens as environment variables. Nothing touches my real `~/.config/gitbox/` or existing clones, and the temp directory is deleted when the app exits.
+The `--test-mode` flag reads `test-gitbox.json` (searching upwards from the current directory), builds a throwaway config in a temp directory, overrides `global.roots`, and injects the fixture tokens as environment variables. Nothing touches my real `~/.config/gitbox/` or existing clones, and the temp directory is deleted when the app exits.
 
 ### Startup regression checks
 
@@ -257,7 +257,8 @@ Launch `GitboxApp` on each platform (`./scripts/run-commands.sh` prints the comm
 - [ ] Clone, Pull all, Fetch all update the status indicators; the activity strip shows the scope while they run and a result card sums them up
 - [ ] Repo detail panel shows branch, ahead/behind, changed files
 - [ ] Mirrors view shows groups and status, with Discover and Check all in its header
-- [ ] Settings: change root folder, System check, Terminals Manager
+- [ ] Settings: Clone roots (add a root, make it default, remove it), System check, Terminals Manager
+- [ ] With two roots, a row's Clone asks which root and lands there; Pull all doesn't ask
 - [ ] Compact view and back to full view
 - [ ] Simple / Advanced: the top-bar switch (grey Simple, red Advanced) changes mode instantly; Simple rows show only dot, name, status sentence, Update or Download when needed, the AI / editor / terminal icons and ⋯; Advanced rows keep every detail and show the same three icons before the fetch button; the Advanced header rings are compact (icon, attention badge, hover tooltip, no label); a fresh config lands in Simple after onboarding
 - [ ] Collapse/expand: account header and a parent clone (chevron or name) fold and unfold; folds survive a restart; a mirror or workspace chip opens into its card and folds back on an outside click or Escape

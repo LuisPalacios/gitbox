@@ -44,16 +44,16 @@ Each credential type is **self-sufficient** for the account. Per-repo credential
 
 ### Config as local database
 
-The JSON config file (`~/.config/gitbox/gitbox.json`) is the **desired state** — a local database of what accounts, sources, and repos should exist.
+The JSON config file (`~/.config/gitbox/gitbox.json`) is the **desired state** — a local database of what accounts, sources, and repos should exist, and of the clone roots they live in.
 
 **Discovery** is a northbound query — it asks the provider API "what repos exist?" and lets you add them to the config. Discovery is add-only on demand; it never auto-removes repos.
 
 ### Folder structure
 
-Repos are cloned into a 3-level hierarchy:
+Repos are cloned into a 3-level hierarchy under a clone root. `global.roots` lists the roots, the default first; each source clones into one of them (`source.root`, empty for the default), and a single repo can live in another (`repo.root`):
 
 ```text
-~/00.git/                          <- global.folder
+~/00.git/                          <- a root in global.roots
   github-personal/                 <- source key (1st level)
     MyOrg/                         <- org from "MyOrg/project-a" (2nd level)
       project-a/                   <- repo name (3rd level)
@@ -71,9 +71,9 @@ Each level can be overridden:
 
 - **1st level**: `source.folder` overrides the source key
 - **2nd level**: `repo.id_folder` overrides the org part
-- **3rd level**: `repo.clone_folder` overrides the repo name (if absolute — `/`, `~`, or `../` — it replaces the entire path)
+- **3rd level**: `repo.clone_folder` overrides the repo name (if absolute — `/` or `~` — it replaces the entire path; one starting with `../` replaces it too, relative to the root)
 
-Clones outside this tree (extra scan folders, nested clones inside a multi-repo container) always carry an absolute `clone_folder`, so gitbox never moves them.
+Changing a source's root or the default root pins the root every existing clone already resolves through, so no clone path moves. Clones outside this tree (nested clones inside a multi-repo container, clones found away from the standard layout) always carry an absolute `clone_folder`, so gitbox never moves them.
 
 ---
 
@@ -99,7 +99,7 @@ Each operation works on a `*config.Config` plus the files it owns on disk (clone
 
 ### pkg/config — Configuration management
 
-Handles the v3 configuration file (v1 and v2 files are migrated transparently on load). Core types: `Config`, `Account`, `Source`, `Repo`. v3 adds multi-repo containers (`Repo.Container`), extra scan roots (`Global.ExtraFolders`), nested-clone discovery depth (`Global.NestedScanDepth`), the GUI collapse state (`Global.Collapsed`, pruned of stale keys on every `Save`), absolute `clone_folder` overrides, and read-only discovered workspaces. See `pkg/config/config.go` for struct definitions.
+Handles the v4 configuration file (v2 and v3 files are migrated transparently on load). Core types: `Config`, `Account`, `Source`, `Repo`. v4 replaces the single folder with clone roots (`Global.Roots`, `Source.Root`, `Repo.Root`; see `roots.go`), and `status.RepoPath` resolves every clone path through them. v3 added multi-repo containers (`Repo.Container`), nested-clone discovery depth (`Global.NestedScanDepth`), the GUI collapse state (`Global.Collapsed`, pruned of stale keys on every `Save`), absolute `clone_folder` overrides, and read-only discovered workspaces. See `pkg/config/config.go` for struct definitions.
 
 **Key design decisions:**
 
@@ -184,13 +184,13 @@ Installs a curated managed block of OS-junk patterns (`.DS_Store`, `Thumbs.db`, 
 
 ### pkg/workspace — Read-only workspaces
 
-Discovers existing VS Code `.code-workspace` files and exposes them read-only — gitbox never creates, edits, generates, or deletes workspace files. `Discover` walks `global.folder` and every `global.extra_folders` root for `*.code-workspace` files and resolves each file's folder references back to known clones (deepest-prefix match against resolved repo paths); it is pure and only reports what is on disk. `RefreshCache` mirrors the result into the `workspaces` section of `gitbox.json` and persists only when the set changed. `BuildOpenCommand()` launches an existing `.code-workspace` in the first editor in `global.editors`. Tmuxinator support and workspace generation were removed with config v3.
+Discovers existing VS Code `.code-workspace` files and exposes them read-only — gitbox never creates, edits, generates, or deletes workspace files. `Discover` walks every root in `global.roots` for `*.code-workspace` files and resolves each file's folder references back to known clones (deepest-prefix match against resolved repo paths); it is pure and only reports what is on disk. `RefreshCache` mirrors the result into the `workspaces` section of `gitbox.json` and persists only when the set changed. `BuildOpenCommand()` launches an existing `.code-workspace` in the first editor in `global.editors`. Tmuxinator support and workspace generation were removed with config v3.
 
 I scan an isolated copy of workspace discovery inputs outside the shared config lock. If paths or known clones change during the scan, I retry with current inputs; otherwise I update only the workspace cache and preserve unrelated edits. I visit overlapping directories once and skip hidden directories, `node_modules`, and `vendor`, except when I explicitly configure one as a scan root.
 
 ### pkg/adopt — Orphan repo discovery
 
-Scans `global.folder`, every `global.extra_folders` root, and the working trees of container repos for clones that are not in `gitbox.json`, then scores each against every host-matching account. All signals are additive, and the highest score wins:
+Scans every root in `global.roots` and the working trees of container repos for clones that are not in `gitbox.json`, then scores each against every host-matching account. All signals are additive, and the highest score wins:
 
 | Signal                                                                    | Score | Source                                                                |
 | ------------------------------------------------------------------------- | ----- | --------------------------------------------------------------------- |
@@ -243,24 +243,23 @@ Resolves and normalizes the UI language, in order: the `GITBOX_LANG` environment
 
 ---
 
-## 4. Config format (v3)
+## 4. Config format (v4)
 
 The config lives at `~/.config/gitbox/gitbox.json`. See the [JSON annotated example](../json/gitbox.jsonc) for a complete config with comments, and the [JSON Schema](../json/gitbox.schema.json) for editor validation and autocompletion.
 
-**Versioning:** `config.CurrentVersion` is 3. gitbox loads v3 strictly and migrates v1 and v2 files transparently on load (in memory; persisted on the next save). The v2 → v3 migration drops the old `workspaces` section, which is now a regenerable cache. Any other version is an error. Additive changes never bump the version.
+**Versioning:** `config.CurrentVersion` is 4. gitbox loads v4 strictly and migrates v2 and v3 files transparently on load (in memory; persisted on the next save). The v2 → v3 step drops the old `workspaces` section, which is now a regenerable cache. The v3 → v4 step turns `global.folder` and `global.extra_folders` into `global.roots`, in that order, so every clone keeps its path. Any other version is an error. Additive changes never bump the version.
 
 **Automatic backups:** Every meaningful save creates a dated backup in the same directory (e.g., `gitbox-20260401-143025.json`). The 10 most recent are kept — older ones are pruned automatically. The GUI's corruption-recovery screen can restore from any of them in one click. Window-position-only saves (moving or resizing the GUI) skip the backup step, so real pre-corruption copies are not rotated out by cosmetic churn.
 
 **Credential type inheritance:** Repos inherit `default_credential_type` from their account unless they set their own `credential_type`.
 
-**Folder resolution:** `globalFolder / sourceFolder / idFolder / cloneFolder`, with overrides possible at each level. If `clone_folder` is an absolute path, it replaces the entire hierarchy.
+**Folder resolution:** `root / sourceFolder / idFolder / cloneFolder`, where the root is `repo.root`, else `source.root`, else the first of `global.roots`, with overrides possible at each level. If `clone_folder` is an absolute path, it replaces the entire hierarchy.
 
 ### Global
 
 | Field                             | Type   | Required | Description                                                                                                                                                                                                                                                                                                                                                                     |
 | --------------------------------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `folder`                          | string | Yes      | Root directory for all clones. Supports `~`.                                                                                                                                                                                                                                                                                                                                    |
-| `extra_folders`                   | array  | No       | Additional root directories scanned for clones and `.code-workspace` files, on top of `folder`.                                                                                                                                                                                                                                                                                 |
+| `roots`                           | array  | Yes      | Clone roots: the folders gitbox clones into and scans. The first is the default. Supports `~`.                                                                                                                                                                                                                                                                                  |
 | `nested_scan_depth`               | int    | No       | Levels gitbox descends below a container repo to find nested clones. Default `1` (immediate children).                                                                                                                                                                                                                                                                          |
 | `language`                        | string | No       | UI language. Empty means the OS locale (English as the fallback).                                                                                                                                                                                                                                                                                                               |
 | `periodic_sync`                   | string | No       | Background fetch interval: off, `5m`, `15m`, or `30m`.                                                                                                                                                                                                                                                                                                                          |
@@ -329,11 +328,12 @@ An account is unique by `(hostname, username)`. Deleting an account cascades thr
 
 ### Source
 
-| Field     | Type   | Required | Description                                             |
-| --------- | ------ | -------- | ------------------------------------------------------- |
-| `account` | string | Yes      | References an account key.                              |
-| `folder`  | string | No       | Override first-level clone folder. Default: source key. |
-| `repos`   | object | Yes      | Repos keyed by `org/repo`.                              |
+| Field     | Type   | Required | Description                                                                  |
+| --------- | ------ | -------- | ---------------------------------------------------------------------------- |
+| `account` | string | Yes      | References an account key.                                                   |
+| `folder`  | string | No       | Override first-level clone folder. Default: source key.                      |
+| `root`    | string | No       | Clone root it clones into, remembered from the last clone. Default: first.   |
+| `repos`   | object | Yes      | Repos keyed by `org/repo`.                                                   |
 
 ### Repo (within source.repos)
 
@@ -344,6 +344,7 @@ An account is unique by `(hostname, username)`. Deleting an account cascades thr
 | `email`           | string | No       | Override `git user.email`.                                                |
 | `id_folder`       | string | No       | Override 2nd level dir (org folder).                                      |
 | `clone_folder`    | string | No       | Override 3rd level dir. If absolute, replaces entire path.                |
+| `root`            | string | No       | Clone root, set only when it differs from the source's.                   |
 | `container`       | bool   | No       | Mark as a multi-repo container; gitbox scans inside it for nested clones. |
 
 ### Mirrors

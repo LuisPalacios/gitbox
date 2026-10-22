@@ -108,11 +108,11 @@ Ambas cuentas necesitan tokens en sus claves `_test`. El token de destino necesi
 
 ### Seguridad
 
-El test runner **siempre sobrescribe** `global.folder` con un directorio temporal descartable — todos los clones y archivos de config van ahí y se borran después de cada prueba.
+El test runner **siempre sobrescribe** `global.roots` con un único directorio temporal descartable — todos los clones y archivos de config van ahí y se borran después de cada prueba.
 
 Para `credential_ssh.ssh_folder`, la prueba de escenario lee la ruta desde `test-gitbox.json` para poder encontrar claves SSH reales. Esta ruta **no debe ser `~/.ssh`** — apúntala a una ubicación aislada como `~/.gitbox-test/ssh`.
 
-El test runner lo exige: si el fixture apunta `ssh_folder` a `~/.ssh` o `global.folder` a `~/.config/gitbox`, las pruebas fallan inmediatamente.
+El test runner lo exige: si el fixture apunta `ssh_folder` a `~/.ssh` o una raíz de `global.roots` a `~/.config/gitbox`, las pruebas fallan inmediatamente.
 
 ## Ejecutar las pruebas
 
@@ -163,7 +163,7 @@ Ejecuta la app contra el fixture en lugar de mi config real:
 GitboxApp --test-mode
 ```
 
-El flag `--test-mode` lee `test-gitbox.json` (buscando hacia arriba desde el directorio actual), construye una config descartable en un directorio temporal, sobrescribe `global.folder` e inyecta los tokens del fixture como variables de entorno. Nada toca mi `~/.config/gitbox/` real ni los clones existentes, y el directorio temporal se borra cuando la app sale.
+El flag `--test-mode` lee `test-gitbox.json` (buscando hacia arriba desde el directorio actual), construye una config descartable en un directorio temporal, sobrescribe `global.roots` e inyecta los tokens del fixture como variables de entorno. Nada toca mi `~/.config/gitbox/` real ni los clones existentes, y el directorio temporal se borra cuando la app sale.
 
 ### Comprobaciones de regresión del arranque
 
@@ -257,7 +257,8 @@ Lanza `GitboxApp` en cada plataforma (`./scripts/run-commands.sh` imprime los co
 - [ ] Clone, Pull de todo, Fetch de todo actualizan los indicadores de status; la tira de actividad muestra el alcance mientras se ejecutan y una tarjeta de resultado los resume
 - [ ] Panel de detalle de repo muestra rama, ahead/behind, archivos cambiados
 - [ ] La vista Mirrors muestra grupos y status, con Descubrir y Comprobar todo en su cabecera
-- [ ] Settings: cambiar carpeta raíz, System check, Terminals Manager
+- [ ] Settings: Raíces de clonado (añadir una raíz, hacerla predeterminada, quitarla), System check, Terminals Manager
+- [ ] Con dos raíces, el Clonar de una fila pregunta qué raíz y acaba ahí; Pull de todo no pregunta
 - [ ] Vista compacta y vuelta a la vista completa
 - [ ] Simple / Advanced: el interruptor de la barra superior (gris Simple, rojo Advanced) cambia de modo al instante; las filas en Simple solo muestran punto, nombre, frase de estado, Update o Download cuando hace falta, los iconos de IA / editor / terminal y ⋯; las filas en Advanced mantienen todo el detalle y muestran los mismos tres iconos antes del botón de fetch; los anillos de la cabecera en Advanced son compactos (icono, insignia de atención, tooltip al pasar el ratón, sin etiqueta); una config nueva acaba en Simple tras el onboarding
 - [ ] Contraer/expandir: la cabecera de cuenta y un clon padre (chevron o nombre) se pliegan y despliegan; los pliegues sobreviven a un reinicio; un chip de mirror o de workspace se abre en su tarjeta y vuelve a plegarse con un clic fuera o Escape

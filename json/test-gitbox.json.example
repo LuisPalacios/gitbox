@@ -17,13 +17,13 @@
     "credential_gcm.credential_store: Windows uses wincredman, macOS uses osxkeychain,",
     "  Linux uses secretservice. Only relevant for GCM credential type.",
     "",
-    "global.folder and credential_ssh.ssh_folder: isolated test paths.",
-    "  The test runner overrides global.folder with a temp directory.",
+    "global.roots and credential_ssh.ssh_folder: isolated test paths.",
+    "  The test runner overrides global.roots with one temp directory.",
     "  ssh_folder MUST NOT point at ~/.ssh — use an isolated path."
   ],
-  "version": 2,
+  "version": 4,
   "global": {
-    "folder": "~/.gitbox-test/git",
+    "roots": ["~/.gitbox-test/git"],
     "credential_ssh": { "ssh_folder": "~/.gitbox-test/ssh" },
     "credential_gcm": { "helper": "manager", "credential_store": "wincredman" },
     "credential_token": {}

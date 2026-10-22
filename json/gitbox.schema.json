@@ -1,7 +1,7 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/json/gitbox.schema.json",
-    "title": "gitbox configuration v3",
+    "title": "gitbox configuration v4",
     "description": "Configuration file for gitbox — manages Git multi-account environments across multiple providers (GitHub, GitLab, Gitea, Forgejo, Bitbucket).",
     "type": "object",
     "required": ["version", "global", "accounts", "sources"],
@@ -13,23 +13,20 @@
         },
         "version": {
             "type": "integer",
-            "const": 3,
-            "description": "Configuration format version. Must be 3. v2 files are migrated to v3 automatically on load."
+            "const": 4,
+            "description": "Configuration format version. Must be 4. v2 and v3 files are migrated to v4 automatically on load."
         },
         "global": {
             "type": "object",
-            "description": "Global settings: root directory for clones, SSH and GCM credential configuration.",
-            "required": ["folder"],
+            "description": "Global settings: clone roots, SSH and GCM credential configuration.",
+            "required": ["roots"],
             "additionalProperties": false,
             "properties": {
-                "folder": {
-                    "type": "string",
-                    "description": "Root directory for all git repositories. Supports ~ prefix for home directory or absolute paths."
-                },
-                "extra_folders": {
+                "roots": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Additional root directories scanned for clones and VS Code .code-workspace files, on top of folder. Lets gitbox onboard repositories that live outside the standard folder/account/org/repo tree."
+                    "minItems": 1,
+                    "description": "Clone roots: the folders gitbox clones into and scans for clones and VS Code .code-workspace files. The first one is the default. A clone lives at <root>/<source folder>/<org>/<repo>. Supports ~ prefix for home directory or absolute paths."
                 },
                 "nested_scan_depth": {
                     "type": "integer",
@@ -439,7 +436,11 @@
                     },
                     "folder": {
                         "type": "string",
-                        "description": "Override the first-level clone folder. If omitted, the source map key is used. Path under global.folder."
+                        "description": "Override the first-level clone folder. If omitted, the source map key is used. Path under the source's root."
+                    },
+                    "root": {
+                        "type": "string",
+                        "description": "The clone root this source clones into, one of global.roots; gitbox remembers the last one picked. If omitted, the default root (the first in global.roots)."
                     },
                     "repos": {
                         "type": "object",
@@ -469,7 +470,11 @@
                                 },
                                 "clone_folder": {
                                     "type": "string",
-                                    "description": "Override the third-level directory (clone folder). Default: the part after '/' in the repo key. If absolute (starts with '/', '~', or '../'), replaces the entire clone path, ignoring source folder and id_folder."
+                                    "description": "Override the third-level directory (clone folder). Default: the part after '/' in the repo key. If absolute (starts with '/' or '~'), replaces the entire clone path, ignoring source folder and id_folder; one starting with '../' replaces it too, relative to the repo's root."
+                                },
+                                "root": {
+                                    "type": "string",
+                                    "description": "The clone root this repo lives in, set only when it differs from its source's root."
                                 },
                                 "container": {
                                     "type": "boolean",

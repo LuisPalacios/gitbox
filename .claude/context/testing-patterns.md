@@ -37,7 +37,7 @@ func TestRenameAccount_Something(t *testing.T) {
 
 ### `pkg/ops` helpers
 
-- `isolate(t) (root string, cfg *config.Config)` — points `XDG_CONFIG_HOME`, `GIT_CONFIG_GLOBAL` and the SSH folder at a temp dir, sets `GIT_CONFIG_NOSYSTEM=1`, returns an empty v3 config whose `global.folder` is `<root>/git`
+- `isolate(t) (root string, cfg *config.Config)` — points `XDG_CONFIG_HOME`, `GIT_CONFIG_GLOBAL` and the SSH folder at a temp dir, sets `GIT_CONFIG_NOSYSTEM=1`, returns an empty current-version config whose only root (`global.roots`) is `<root>/git`
 - `testAccount(credType) config.Account` — a GitHub account (`alice`) with the given default credential type
 - `gitRun(t, dir, args...) string` — runs git in `dir` with `git.Environ()`, fails the test on error, returns trimmed output
 - `makeClone(t, cfg, sourceKey, repoKey, origin) string` — `git init` at the planned clone path with the given `origin`, returns the path
@@ -84,7 +84,7 @@ Integration tests run real provider operations with credentials from `test-gitbo
 
 - `go test -short` — skips every integration test
 - full run without the file — fails with instructions, so a full run never passes silently without coverage
-- with the file — exports each account's `_test.token` as `GITBOX_TOKEN_<KEY>`, points `GIT_SSH_COMMAND` at the fixture's isolated SSH folder, and rejects fixtures whose `ssh_folder` is `~/.ssh` or whose `global.folder` is the real gitbox config dir
+- with the file — exports each account's `_test.token` as `GITBOX_TOKEN_<KEY>`, points `GIT_SSH_COMMAND` at the fixture's isolated SSH folder, and rejects fixtures whose `ssh_folder` is `~/.ssh` or with a root in `global.roots` that is the real gitbox config dir
 
 ```go
 func TestIntegration_Something(t *testing.T) {
@@ -114,7 +114,7 @@ Add a new lifecycle step as another numbered `t.Run("NN_name", ...)` in order, n
 
 - `XDG_CONFIG_HOME` → temp dir (`isolate`, or `t.Setenv` in the scenario)
 - `GIT_CONFIG_GLOBAL` → temp file, `GIT_CONFIG_NOSYSTEM=1`
-- `global.folder` → `<tmpDir>/git`
+- `global.roots` → `[<tmpDir>/git]`
 - `credential_ssh.ssh_folder` → `<tmpDir>/ssh` (fixture: its own isolated folder)
 - Config → `<tmpDir>/gitbox/gitbox.json`; credentials → `<tmpDir>/gitbox/credentials/<accountKey>`
 - Never fall through to the real `~/.config/gitbox/gitbox.json` or `~/.ssh`
