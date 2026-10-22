@@ -64,7 +64,7 @@ func refreshTestApp(t *testing.T, count int) (*App, *refreshTestEvents) {
 	}
 	cfg := &config.Config{
 		Version: config.CurrentVersion,
-		Global:  config.GlobalConfig{Folder: root},
+		Global:  config.GlobalConfig{Roots: []string{root}},
 		Accounts: map[string]config.Account{
 			"account-a": {DefaultCredentialType: "token", URL: "https://example.invalid"},
 		},

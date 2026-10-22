@@ -59,16 +59,14 @@ func UpdateCache(cfg *config.Config, found []Found) bool {
 // suggestions ("this looks like a multi-repo parent — mark as container?");
 // confirming sets Repo.Container and unlocks nested-clone discovery.
 func TentativeContainers(cfg *config.Config) []status.RepoRef {
-	globalFolder := config.ExpandTilde(cfg.Global.Folder)
 	// Map each managed clone's normalized root path to its RepoRef.
 	rootToRef := make(map[string]status.RepoRef)
 	containerByRoot := make(map[string]bool)
 	for _, srcKey := range cfg.OrderedSourceKeys() {
 		src := cfg.Sources[srcKey]
-		sourceFolder := src.EffectiveFolder(srcKey)
 		for _, repoKey := range src.OrderedRepoKeys() {
 			repo := src.Repos[repoKey]
-			p := normPath(status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo))
+			p := normPath(status.RepoPath(cfg, srcKey, repoKey, repo))
 			rootToRef[p] = status.RepoRef{Source: srcKey, Repo: repoKey}
 			containerByRoot[p] = repo.Container
 		}

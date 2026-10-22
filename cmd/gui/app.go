@@ -675,11 +675,6 @@ func (a *App) GetConfigPath() string {
 	return a.cfgPath
 }
 
-// GetGlobalFolder returns the expanded clone base folder.
-func (a *App) GetGlobalFolder() string {
-	return config.ExpandTilde(a.cfg.Global.Folder)
-}
-
 // OpenFileInEditor opens a file with the OS default application.
 // On Windows we route through `cmd /c start`; HideWindow hides the cmd.exe
 // host without affecting the grandchild GUI (start → ShellExecute spawns
@@ -720,17 +715,17 @@ func (a *App) OpenInBrowser(url string) error {
 }
 
 // resolveAccountFolder returns the absolute path to the account's parent
-// folder: <global.folder>/<accountKey>. Returns an error if the account key
+// folder: <root>/<source folder> of the account's source (the one keyed like
+// the account, else the first in order). Returns an error if the account key
 // is unknown or the folder does not exist on disk.
 func (a *App) resolveAccountFolder(accountKey string) (string, error) {
 	a.mu.Lock()
 	_, ok := a.cfg.Accounts[accountKey]
-	globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
+	path := accountFolder(a.cfg, accountKey)
 	a.mu.Unlock()
 	if !ok {
 		return "", fmt.Errorf("account %q not found", accountKey)
 	}
-	path := filepath.Join(globalFolder, accountKey)
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -849,9 +844,7 @@ func (a *App) resolveRepoPath(sourceKey, repoKey string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("repo %q not found", repoKey)
 	}
-	globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
-	sourceFolder := src.EffectiveFolder(sourceKey)
-	return status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo), nil
+	return status.RepoPath(a.cfg, sourceKey, repoKey, repo), nil
 }
 
 // PreviewSweep scans for stale branches without deleting anything.
@@ -980,10 +973,13 @@ func (a *App) AdoptOrphans(repoKeys []string) AdoptResultDTO {
 			}
 		}
 
-		// Add to config.
+		// Add to config: a clone left out of the standard layout keeps an
+		// absolute clone_folder; one in place under another root records it.
 		repo := config.Repo{}
 		if repoPath == o.Path && o.NeedsRelocate {
 			repo.CloneFolder = repoPath
+		} else if o.ExpectedRoot != "" && !config.SameRoot(o.ExpectedRoot, cfg.SourceRoot(o.MatchedSource)) {
+			repo.Root = cfg.ListedRoot(o.ExpectedRoot)
 		}
 		if err := cfg.AddRepo(o.MatchedSource, o.RepoKey, repo); err != nil {
 			skipped++
@@ -1488,13 +1484,13 @@ func isDarwin() bool {
 	return err == nil && strings.TrimSpace(string(out)) == "Darwin"
 }
 
-// ─── Global Folder ────────────────────────────────────────────
+// ─── First run ────────────────────────────────────────────────
 
-// IsFirstRun returns true if no global folder is configured (fresh install).
+// IsFirstRun returns true if no root is configured (fresh install).
 func (a *App) IsFirstRun() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.cfg.Global.Folder == ""
+	return len(a.cfg.Global.Roots) == 0
 }
 
 // GetConfigLoadError returns a non-empty string if the config file existed but
@@ -1665,55 +1661,6 @@ func (a *App) PickFolder(title string) string {
 		return ""
 	}
 	return dir
-}
-
-// SetGlobalFolder validates and sets the global clone folder, then saves config.
-// Creates the directory if it doesn't exist.
-func (a *App) SetGlobalFolder(folder string) error {
-	folder = strings.TrimSpace(folder)
-	if folder == "" {
-		return fmt.Errorf("folder path cannot be empty")
-	}
-
-	expanded := config.ExpandTilde(folder)
-
-	// Create the directory if it doesn't exist.
-	if err := os.MkdirAll(expanded, 0o755); err != nil {
-		return fmt.Errorf("creating folder %s: %w", expanded, err)
-	}
-
-	// Verify it's actually a directory.
-	info, err := os.Stat(expanded)
-	if err != nil {
-		return fmt.Errorf("checking folder %s: %w", expanded, err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("%s is not a directory", expanded)
-	}
-
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	// A new install (no folder yet) starts in Simple mode. Changing the root
-	// folder later, or a config that already chose a mode, keeps its mode.
-	if a.cfg.Global.Folder == "" && a.cfg.Global.UIMode == "" {
-		a.cfg.Global.UIMode = uiModeSimple
-	}
-	a.cfg.Global.Folder = folder
-	// Onboarding completes here: promote the in-memory config to "loaded"
-	// before the first save so saveConfig() accepts it. Only reachable on
-	// the os.ErrNotExist branch of Startup — if the config file existed but
-	// failed to parse, cfgLoadError is non-empty and onboarding is blocked
-	// by the frontend until the user repairs or replaces it.
-	if a.cfgLoadError != "" {
-		return fmt.Errorf("cannot complete onboarding while a config load error is pending: %s", a.cfgLoadError)
-	}
-	a.cfgLoaded = true
-	if err := a.saveConfig(); err != nil {
-		a.cfgLoaded = false
-		return err
-	}
-	return nil
 }
 
 // GetPeriodicSync returns the current periodic sync interval from config.
@@ -1941,10 +1888,19 @@ func (a *App) markUpstreamGone(sourceKey, repoKey string, gone bool) {
 // ─── Clone ────────────────────────────────────────────────────
 
 // CloneRepo clones a single repo. Emits clone:progress and clone:done events.
-func (a *App) CloneRepo(sourceKey, repoKey string) {
+// A non-empty root is the root the person picked: the repo clones there and
+// its account remembers it for the next clone (#149).
+func (a *App) CloneRepo(sourceKey, repoKey, root string) {
 	go func() {
 		a.mu.Lock()
-		plan, err := ops.PlanClone(a.cfg, sourceKey, repoKey)
+		var err error
+		if root != "" && a.cfg.PlaceRepo(sourceKey, repoKey, root) {
+			err = a.saveConfig()
+		}
+		var plan ops.ClonePlan
+		if err == nil {
+			plan, err = ops.PlanClone(a.cfg, sourceKey, repoKey)
+		}
 		a.mu.Unlock()
 		if err != nil {
 			wailsrt.EventsEmit(a.ctx, "clone:done", map[string]string{
@@ -2010,10 +1966,7 @@ func (a *App) PullRepo(sourceKey, repoKey string) {
 			})
 			return
 		}
-		globalFolder := config.ExpandTilde(cfg.Global.Folder)
-		sourceFolder := src.EffectiveFolder(sourceKey)
-
-		path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
+		path := status.RepoPath(cfg, sourceKey, repoKey, repo)
 		// Pre-pull self-heal: if .git/config drifted from spec (e.g. a
 		// manual edit, an older gitbox that didn't run the heal), fix
 		// it before the network op so auth uses the right credentials.
@@ -2067,11 +2020,8 @@ func (a *App) GetRepoDetail(sourceKey, repoKey string) RepoDetail {
 		a.mu.Unlock()
 		return RepoDetail{Error: fmt.Sprintf("repo %q not found", repoKey)}
 	}
-	globalFolder := config.ExpandTilde(a.cfg.Global.Folder)
-	sourceFolder := src.EffectiveFolder(sourceKey)
+	path := status.RepoPath(a.cfg, sourceKey, repoKey, repo)
 	a.mu.Unlock()
-
-	path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
 
 	// I show local details immediately and share the bounded background probe.
 	a.probeUpstreamExistenceAsync()
@@ -3041,7 +2991,7 @@ func (a *App) ListAccountOrgs(accountKey string) ([]string, error) {
 
 // CreateNewRepo creates a repository on the provider and optionally adds it
 // to the config and clones it locally.
-func (a *App) CreateNewRepo(accountKey, owner, repoName, description string, private, cloneAfter bool) error {
+func (a *App) CreateNewRepo(accountKey, owner, repoName, description string, private, cloneAfter bool, root string) error {
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
 	a.mu.Unlock()
@@ -3079,7 +3029,7 @@ func (a *App) CreateNewRepo(accountKey, owner, repoName, description string, pri
 		}
 
 		// Trigger clone (reuses existing async clone flow).
-		a.CloneRepo(sourceKey, repoKey)
+		a.CloneRepo(sourceKey, repoKey, root)
 	}
 
 	return nil
@@ -3527,9 +3477,7 @@ func (a *App) PreflightMove(req MoveRequestDTO) MovePreflightDTO {
 		out.Error = fmt.Sprintf("repo %q not found in source %q", req.SourceRepoKey, req.SourceSourceKey)
 		return out
 	}
-	globalFolder := config.ExpandTilde(cfg.Global.Folder)
-	sourceFolder := src.EffectiveFolder(req.SourceSourceKey)
-	repoPath := status.ResolveRepoPath(globalFolder, sourceFolder, req.SourceRepoKey, repo)
+	repoPath := status.RepoPath(cfg, req.SourceSourceKey, req.SourceRepoKey, repo)
 	out.SourceRepoPath = repoPath
 
 	moveReq := move.Request{
@@ -3582,9 +3530,7 @@ func (a *App) MoveRepo(req MoveRequestDTO) {
 		return
 	}
 	repo := src.Repos[req.SourceRepoKey]
-	globalFolder := config.ExpandTilde(cfg.Global.Folder)
-	sourceFolder := src.EffectiveFolder(req.SourceSourceKey)
-	repoPath := status.ResolveRepoPath(globalFolder, sourceFolder, req.SourceRepoKey, repo)
+	repoPath := status.RepoPath(cfg, req.SourceSourceKey, req.SourceRepoKey, repo)
 
 	moveReq := move.Request{
 		SourceAccountKey:   src.Account,
@@ -3636,7 +3582,7 @@ func (a *App) MoveRepo(req MoveRequestDTO) {
 		// and the frontend can watch the new clone via its normal
 		// clone:progress / clone:done channel.
 		if result.Err == nil && result.LocalCloneDeleted && result.DestSourceKey != "" && result.NewRepoKey != "" {
-			a.CloneRepo(result.DestSourceKey, result.NewRepoKey)
+			a.CloneRepo(result.DestSourceKey, result.NewRepoKey, "")
 		}
 	}()
 }

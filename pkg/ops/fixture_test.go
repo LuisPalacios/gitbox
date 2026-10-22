@@ -80,10 +80,9 @@ func rejectRealPaths(t *testing.T, cfg *config.Config) {
 			t.Fatal("test-gitbox.json has ssh_folder pointing at ~/.ssh — use an isolated path like ~/.gitbox-test/ssh")
 		}
 	}
-	if cfg.Global.Folder != "" {
-		folder := filepath.Clean(config.ExpandTilde(cfg.Global.Folder))
-		if folder == filepath.Clean(filepath.Join(config.ConfigRoot(), "gitbox")) {
-			t.Fatal("test-gitbox.json has global.folder pointing at ~/.config/gitbox — use an isolated path like ~/.gitbox-test/git")
+	for _, root := range cfg.Global.Roots {
+		if config.SameRoot(root, filepath.Join(config.ConfigRoot(), "gitbox")) {
+			t.Fatal("test-gitbox.json has a root pointing at ~/.config/gitbox — use an isolated path like ~/.gitbox-test/git")
 		}
 	}
 }

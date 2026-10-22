@@ -14,8 +14,8 @@ import (
 // Repo. This is the exact shape the #79 row has when its kebab is opened.
 func appWithCreatedRepo(accountURL string) *App {
 	cfg := &config.Config{
-		Version: 2,
-		Global:  config.GlobalConfig{Folder: "~/x"},
+		Version: config.CurrentVersion,
+		Global:  config.GlobalConfig{Roots: []string{"~/x"}},
 		Accounts: map[string]config.Account{
 			"github-alice": {Provider: "github", URL: accountURL,
 				Username: "alice", Name: "Alice", Email: "a@e"},

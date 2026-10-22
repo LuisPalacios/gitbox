@@ -36,7 +36,7 @@ func TestScenario_FullLifecycle(t *testing.T) {
 	cfg := &config.Config{
 		Version: config.CurrentVersion,
 		Global: config.GlobalConfig{
-			Folder:        filepath.Join(tmp, "git"),
+			Roots:         []string{filepath.Join(tmp, "git")},
 			CredentialSSH: fixture.Config.Global.CredentialSSH,
 		},
 		Accounts: map[string]config.Account{},

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -168,9 +169,9 @@ func TestCheckAll(t *testing.T) {
 
 	// Build a config pointing to our test repo.
 	cfg := &config.Config{
-		Version: 2,
+		Version: config.CurrentVersion,
 		Global: config.GlobalConfig{
-			Folder: dir,
+			Roots: []string{dir},
 		},
 		Accounts: map[string]config.Account{
 			"TestAccount": {
@@ -227,8 +228,8 @@ func TestCheckAll_Ordered(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:     2,
-		Global:      config.GlobalConfig{Folder: dir},
+		Version:     config.CurrentVersion,
+		Global:      config.GlobalConfig{Roots: []string{dir}},
 		SourceOrder: sourceOrder,
 		Accounts: map[string]config.Account{
 			"acctA": {Provider: "github", URL: "https://example.com", Username: "a"},
@@ -279,7 +280,7 @@ func TestResolveRepoPath(t *testing.T) {
 	sep := string(filepath.Separator)
 	tests := []struct {
 		name         string
-		globalFolder string
+		root         string
 		sourceFolder string
 		repoName     string
 		repo         config.Repo
@@ -287,14 +288,14 @@ func TestResolveRepoPath(t *testing.T) {
 	}{
 		{
 			name:         "default: org/repo → nested dirs",
-			globalFolder: "/home/user/git",
+			root:         "/home/user/git",
 			sourceFolder: "github",
 			repoName:     "MyGitHubUser/my-repo",
 			wantSuffix:   sep + "github" + sep + "MyGitHubUser" + sep + "my-repo",
 		},
 		{
 			name:         "id_folder override: changes 2nd level",
-			globalFolder: "/home/user/git",
+			root:         "/home/user/git",
 			sourceFolder: "github",
 			repoName:     "MyOrg/myorg.web",
 			repo:         config.Repo{IdFolder: "myorg-rest"},
@@ -302,7 +303,7 @@ func TestResolveRepoPath(t *testing.T) {
 		},
 		{
 			name:         "clone_folder override: changes 3rd level",
-			globalFolder: "/home/user/git",
+			root:         "/home/user/git",
 			sourceFolder: "github",
 			repoName:     "MyOrg/myorg.github.io",
 			repo:         config.Repo{CloneFolder: "website"},
@@ -310,7 +311,7 @@ func TestResolveRepoPath(t *testing.T) {
 		},
 		{
 			name:         "both overrides",
-			globalFolder: "/home/user/git",
+			root:         "/home/user/git",
 			sourceFolder: "github",
 			repoName:     "MyOrg/myorg.github.io",
 			repo:         config.Repo{IdFolder: "sw-rest", CloneFolder: "website"},
@@ -318,7 +319,7 @@ func TestResolveRepoPath(t *testing.T) {
 		},
 		{
 			name:         "absolute clone_folder replaces everything",
-			globalFolder: "/home/user/git",
+			root:         "/home/user/git",
 			sourceFolder: "github",
 			repoName:     "org/my-repo",
 			repo:         config.Repo{CloneFolder: "/opt/repos/special"},
@@ -326,15 +327,23 @@ func TestResolveRepoPath(t *testing.T) {
 		},
 		{
 			name:         "tilde clone_folder replaces everything",
-			globalFolder: "/home/user/git",
+			root:         "/home/user/git",
 			sourceFolder: "github",
 			repoName:     "org/my-config",
 			repo:         config.Repo{CloneFolder: "~/.config/my-config"},
 			wantSuffix:   ".config" + sep + "my-config", // partial check, tilde expanded
 		},
 		{
+			name:         "../ clone_folder resolves against the root",
+			root:         "/home/user/git",
+			sourceFolder: "github",
+			repoName:     "org/side",
+			repo:         config.Repo{CloneFolder: "../side"},
+			wantSuffix:   "/home/user/side",
+		},
+		{
 			name:         "no slash in repo name",
-			globalFolder: "/home/user/git",
+			root:         "/home/user/git",
 			sourceFolder: "github",
 			repoName:     "simple-repo",
 			wantSuffix:   sep + "github" + sep + "simple-repo",
@@ -343,7 +352,7 @@ func TestResolveRepoPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ResolveRepoPath(tt.globalFolder, tt.sourceFolder, tt.repoName, tt.repo)
+			got := ResolveRepoPath(tt.root, tt.sourceFolder, tt.repoName, tt.repo)
 			if runtime.GOOS == "windows" && tt.repo.CloneFolder != "" && (filepath.IsAbs(config.ExpandTilde(tt.repo.CloneFolder))) {
 				if !filepath.IsAbs(got) {
 					t.Errorf("expected absolute path, got %q", got)
@@ -354,6 +363,26 @@ func TestResolveRepoPath(t *testing.T) {
 				t.Errorf("ResolveRepoPath() = %q, want suffix %q", got, tt.wantSuffix)
 			}
 		})
+	}
+}
+
+func TestRepoPath_FollowsSourceAndRepoRoots(t *testing.T) {
+	cfg := &config.Config{
+		Global: config.GlobalConfig{Roots: []string{"/r1", "/r2"}},
+		Sources: map[string]config.Source{
+			"one": {Account: "a", Repos: map[string]config.Repo{"org/x": {}, "org/y": {Root: "/r3"}}},
+			"two": {Account: "a", Root: "/r2", Folder: "work", Repos: map[string]config.Repo{"org/z": {}}},
+		},
+	}
+	for _, c := range []struct{ src, repo, want string }{
+		{"one", "org/x", "/r1/one/org/x"},
+		{"one", "org/y", "/r3/one/org/y"},
+		{"two", "org/z", "/r2/work/org/z"},
+	} {
+		got := filepath.ToSlash(RepoPath(cfg, c.src, c.repo, cfg.Sources[c.src].Repos[c.repo]))
+		if !strings.HasSuffix(got, c.want) {
+			t.Errorf("RepoPath(%s, %s) = %q, want %q", c.src, c.repo, got, c.want)
+		}
 	}
 }
 

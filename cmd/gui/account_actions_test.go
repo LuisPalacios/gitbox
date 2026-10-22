@@ -13,9 +13,9 @@ import (
 func TestResolveAccountFolder(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{
-		Version: 2,
+		Version: config.CurrentVersion,
 		Global: config.GlobalConfig{
-			Folder: dir,
+			Roots: []string{dir},
 		},
 		Accounts: map[string]config.Account{
 			"github-alice": {Provider: "github", URL: "https://github.com",
@@ -70,8 +70,8 @@ func TestResolveAccountFolder(t *testing.T) {
 
 func TestOpenAccountInBrowser_UnknownAccount(t *testing.T) {
 	cfg := &config.Config{
-		Version:  2,
-		Global:   config.GlobalConfig{Folder: t.TempDir()},
+		Version:  config.CurrentVersion,
+		Global:   config.GlobalConfig{Roots: []string{t.TempDir()}},
 		Accounts: map[string]config.Account{},
 	}
 	a := &App{cfg: cfg, cfgPath: "", mu: sync.Mutex{}}

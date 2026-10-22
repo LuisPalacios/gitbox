@@ -33,8 +33,6 @@ type Nesting struct {
 // paths, so a child onboarded with an absolute clone_folder inside a container
 // is grouped correctly regardless of its account/org.
 func ComputeNesting(cfg *config.Config) Nesting {
-	globalFolder := config.ExpandTilde(cfg.Global.Folder)
-
 	n := Nesting{
 		ParentOf: make(map[RepoRef]RepoRef),
 		Children: make(map[RepoRef][]RepoRef),
@@ -49,11 +47,10 @@ func ComputeNesting(cfg *config.Config) Nesting {
 	var containers []container
 	for _, srcKey := range cfg.OrderedSourceKeys() {
 		src := cfg.Sources[srcKey]
-		sourceFolder := src.EffectiveFolder(srcKey)
 		for _, repoKey := range src.OrderedRepoKeys() {
 			repo := src.Repos[repoKey]
 			ref := RepoRef{Source: srcKey, Repo: repoKey}
-			p := ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
+			p := RepoPath(cfg, srcKey, repoKey, repo)
 			n.Path[ref] = p
 			if repo.Container {
 				containers = append(containers, container{ref: ref, path: normNestPath(p)})

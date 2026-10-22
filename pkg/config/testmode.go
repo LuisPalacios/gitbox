@@ -50,23 +50,31 @@ func SetupTestMode() (cfgPath string, cleanup func(), err error) {
 		}
 	}
 
-	// Safety: validate global.folder is not ~/.config/gitbox.
-	if cfg.Global.Folder != "" {
-		folder := ExpandTilde(cfg.Global.Folder)
-		gitboxConfig := filepath.Join(ConfigRoot(), V2ConfigDir)
-		if filepath.Clean(folder) == filepath.Clean(gitboxConfig) {
+	// Safety: validate no root is ~/.config/gitbox.
+	gitboxConfig := filepath.Join(ConfigRoot(), V2ConfigDir)
+	for _, root := range cfg.Global.Roots {
+		if SameRoot(root, gitboxConfig) {
 			cleanupFn()
-			return "", nil, fmt.Errorf("test-gitbox.json has global.folder pointing at ~/.config/gitbox — use an isolated path like ~/.gitbox-test/git")
+			return "", nil, fmt.Errorf("test-gitbox.json has a root pointing at ~/.config/gitbox — use an isolated path like ~/.gitbox-test/git")
 		}
 	}
 
-	// Override global.folder with temp dir for clone isolation.
+	// Override the roots with one temp dir for clone isolation; every
+	// source and repo then resolves under it.
 	gitDir := filepath.Join(tmpDir, "git")
 	if err := os.MkdirAll(gitDir, 0o755); err != nil {
 		cleanupFn()
 		return "", nil, fmt.Errorf("creating git dir: %w", err)
 	}
-	cfg.Global.Folder = gitDir
+	cfg.Global.Roots = []string{gitDir}
+	for sk, src := range cfg.Sources {
+		src.Root = ""
+		for rk, repo := range src.Repos {
+			repo.Root = ""
+			src.Repos[rk] = repo
+		}
+		cfg.Sources[sk] = src
+	}
 
 	// Write modified config to temp.
 	cfgDir := filepath.Join(tmpDir, "gitbox")

@@ -162,8 +162,6 @@ const checkAllConcurrency = 8
 // Up to checkAllConcurrency repos are checked in parallel; the returned
 // slice is ordered as cfg.OrderedSourceKeys() × Source.OrderedRepoKeys().
 func CheckAll(cfg *config.Config) []RepoStatus {
-	globalFolder := config.ExpandTilde(cfg.Global.Folder)
-
 	type job struct {
 		index      int
 		sourceName string
@@ -174,7 +172,6 @@ func CheckAll(cfg *config.Config) []RepoStatus {
 	var jobs []job
 	for _, sourceName := range cfg.OrderedSourceKeys() {
 		source := cfg.Sources[sourceName]
-		sourceFolder := source.EffectiveFolder(sourceName)
 		for _, repoName := range source.OrderedRepoKeys() {
 			repo := source.Repos[repoName]
 			jobs = append(jobs, job{
@@ -182,7 +179,7 @@ func CheckAll(cfg *config.Config) []RepoStatus {
 				sourceName: sourceName,
 				sourceAcct: source.Account,
 				repoName:   repoName,
-				path:       ResolveRepoPath(globalFolder, sourceFolder, repoName, repo),
+				path:       RepoPath(cfg, sourceName, repoName, repo),
 			})
 		}
 	}
@@ -209,7 +206,7 @@ func CheckAll(cfg *config.Config) []RepoStatus {
 
 // ResolveRepoPath computes the clone path for a repository.
 //
-// Path structure: globalFolder / sourceFolder / idFolder / cloneFolder
+// Path structure: root / sourceFolder / idFolder / cloneFolder
 //
 // Repo key format: "org/repo" (e.g., "myorg/my-project")
 //   - idFolder defaults to "org" (part before /)
@@ -218,13 +215,19 @@ func CheckAll(cfg *config.Config) []RepoStatus {
 // Overrides:
 //   - repo.IdFolder overrides the 2nd level (org) dir
 //   - repo.CloneFolder overrides the 3rd level (clone) dir
-//   - If cloneFolder is absolute (starts with /, ~, or ../), it replaces the entire path
-func ResolveRepoPath(globalFolder, sourceFolder, repoName string, repo config.Repo) string {
+//   - If cloneFolder is absolute (starts with / or ~), it replaces the entire
+//     path; one starting with ../ replaces it too, relative to the root
+//
+// root is the repo's root, already tilde-expanded (see RepoPath).
+func ResolveRepoPath(root, sourceFolder, repoName string, repo config.Repo) string {
 	// If clone_folder is absolute, it replaces everything.
 	if repo.CloneFolder != "" {
 		expanded := config.ExpandTilde(repo.CloneFolder)
-		if filepath.IsAbs(expanded) || strings.HasPrefix(repo.CloneFolder, "~") || strings.HasPrefix(repo.CloneFolder, "../") {
+		if filepath.IsAbs(expanded) || strings.HasPrefix(repo.CloneFolder, "~") {
 			return expanded
+		}
+		if strings.HasPrefix(repo.CloneFolder, "../") {
+			return filepath.Join(root, repo.CloneFolder)
 		}
 	}
 
@@ -240,9 +243,16 @@ func ResolveRepoPath(globalFolder, sourceFolder, repoName string, repo config.Re
 	}
 
 	if orgPart != "" {
-		return filepath.Join(globalFolder, sourceFolder, orgPart, repoPart)
+		return filepath.Join(root, sourceFolder, orgPart, repoPart)
 	}
-	return filepath.Join(globalFolder, sourceFolder, repoPart)
+	return filepath.Join(root, sourceFolder, repoPart)
+}
+
+// RepoPath returns where a repo of a source lives on disk: its root, then
+// the standard layout and overrides of ResolveRepoPath.
+func RepoPath(cfg *config.Config, sourceKey, repoKey string, repo config.Repo) string {
+	src := cfg.Sources[sourceKey]
+	return ResolveRepoPath(cfg.RepoRoot(sourceKey, repo), src.EffectiveFolder(sourceKey), repoKey, repo)
 }
 
 // splitRepoKey splits "org/repo" into ("org", "repo").

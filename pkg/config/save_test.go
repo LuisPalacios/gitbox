@@ -14,8 +14,8 @@ func TestBackupCreatedOnSave(t *testing.T) {
 	os.WriteFile(path, []byte(`{"version":2,"original":true}`), 0o644)
 
 	cfg := &Config{
-		Version:  2,
-		Global:   GlobalConfig{Folder: "~/test"},
+		Version:  CurrentVersion,
+		Global:   GlobalConfig{Roots: []string{"~/test"}},
 		Accounts: make(map[string]Account),
 		Sources:  make(map[string]Source),
 	}
@@ -43,8 +43,8 @@ func TestNoBackupOnFirstSave(t *testing.T) {
 	path := filepath.Join(dir, "gitbox.json")
 
 	cfg := &Config{
-		Version:  2,
-		Global:   GlobalConfig{Folder: "~/test"},
+		Version:  CurrentVersion,
+		Global:   GlobalConfig{Roots: []string{"~/test"}},
 		Accounts: make(map[string]Account),
 		Sources:  make(map[string]Source),
 	}
@@ -76,8 +76,8 @@ func TestBackupPruning(t *testing.T) {
 	}
 
 	cfg := &Config{
-		Version:  2,
-		Global:   GlobalConfig{Folder: "~/test"},
+		Version:  CurrentVersion,
+		Global:   GlobalConfig{Roots: []string{"~/test"}},
 		Accounts: make(map[string]Account),
 		Sources:  make(map[string]Source),
 	}
@@ -106,7 +106,7 @@ func TestBackupSkippedForWindowOnlyChanges(t *testing.T) {
 	cfg := &Config{
 		Version: CurrentVersion,
 		Global: GlobalConfig{
-			Folder: "~/00.git",
+			Roots:  []string{"~/00.git"},
 			Window: &WindowState{X: 10, Y: 10, Width: 800, Height: 600},
 		},
 		Accounts: map[string]Account{
@@ -192,9 +192,9 @@ func TestBackupTakenWhenOnDiskUnparseable(t *testing.T) {
 	os.WriteFile(path, []byte(`{"version":2,"global":{},"accounts":{},"sources":{}}`), 0o644)
 
 	cfg := &Config{
-		Version: 2,
+		Version: CurrentVersion,
 		Global: GlobalConfig{
-			Folder: "~/00.git",
+			Roots:  []string{"~/00.git"},
 			Window: &WindowState{X: 1, Y: 1, Width: 10, Height: 10},
 		},
 		Accounts: map[string]Account{},
@@ -221,7 +221,7 @@ func TestBackupFailureDoesNotBlockSave(t *testing.T) {
 	// On Windows this doesn't prevent file creation the same way,
 	// so we test with a path that can't be a backup target.
 	// The key assertion: Save() must succeed regardless.
-	cfg := &Config{Version: 2, Global: GlobalConfig{Folder: "~/test"}, Accounts: make(map[string]Account), Sources: make(map[string]Source)}
+	cfg := &Config{Version: CurrentVersion, Global: GlobalConfig{Roots: []string{"~/test"}}, Accounts: make(map[string]Account), Sources: make(map[string]Source)}
 	if err := Save(cfg, path); err != nil {
 		t.Fatalf("Save should succeed even if backup fails: %v", err)
 	}

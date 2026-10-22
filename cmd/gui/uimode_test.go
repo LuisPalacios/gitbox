@@ -71,9 +71,9 @@ func TestSetTheme_PersistsAndValidates(t *testing.T) {
 	}
 }
 
-// Onboarding finishes in SetGlobalFolder: a new install starts in Simple,
+// Onboarding finishes in InitRoot: a new install starts in Simple,
 // while changing the folder later never touches the chosen mode.
-func TestSetGlobalFolder_NewInstallStartsSimple(t *testing.T) {
+func TestInitRoot_NewInstallStartsSimple(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "gitbox.json")
 	a := &App{
@@ -82,8 +82,8 @@ func TestSetGlobalFolder_NewInstallStartsSimple(t *testing.T) {
 		mu:      sync.Mutex{},
 	}
 
-	if err := a.SetGlobalFolder(filepath.Join(dir, "projects")); err != nil {
-		t.Fatalf("SetGlobalFolder: %v", err)
+	if err := a.InitRoot(filepath.Join(dir, "projects")); err != nil {
+		t.Fatalf("InitRoot: %v", err)
 	}
 	if got := a.GetUIMode(); got != "simple" {
 		t.Errorf("GetUIMode() after onboarding = %q, want simple", got)
@@ -92,18 +92,18 @@ func TestSetGlobalFolder_NewInstallStartsSimple(t *testing.T) {
 	if err := a.SetUIMode("advanced"); err != nil {
 		t.Fatalf("SetUIMode: %v", err)
 	}
-	if err := a.SetGlobalFolder(filepath.Join(dir, "elsewhere")); err != nil {
-		t.Fatalf("SetGlobalFolder again: %v", err)
+	if err := a.InitRoot(filepath.Join(dir, "elsewhere")); err != nil {
+		t.Fatalf("InitRoot again: %v", err)
 	}
 	if got := a.GetUIMode(); got != "advanced" {
 		t.Errorf("GetUIMode() after changing the folder = %q, want advanced", got)
 	}
 }
 
-func TestSetGlobalFolder_ExistingConfigKeepsAdvanced(t *testing.T) {
+func TestInitRoot_ExistingConfigKeepsAdvanced(t *testing.T) {
 	a, _ := newWorkspaceTestApp(t)
-	if err := a.SetGlobalFolder(filepath.Join(t.TempDir(), "moved")); err != nil {
-		t.Fatalf("SetGlobalFolder: %v", err)
+	if err := a.InitRoot(filepath.Join(t.TempDir(), "moved")); err != nil {
+		t.Fatalf("InitRoot: %v", err)
 	}
 	if got := a.GetUIMode(); got != "advanced" {
 		t.Errorf("GetUIMode() = %q, want advanced for an existing config", got)

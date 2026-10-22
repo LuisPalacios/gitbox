@@ -19,7 +19,7 @@ func TestStartupSyncNeverWritesLegacyTerminals(t *testing.T) {
 
 	cfg := &config.Config{
 		Version:  config.CurrentVersion,
-		Global:   config.GlobalConfig{Folder: "~/x"},
+		Global:   config.GlobalConfig{Roots: []string{"~/x"}},
 		Accounts: map[string]config.Account{},
 		Sources:  map[string]config.Source{},
 	}

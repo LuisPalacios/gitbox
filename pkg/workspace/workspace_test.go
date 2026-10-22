@@ -18,8 +18,8 @@ func newTestConfig(t *testing.T) *config.Config {
 	t.Helper()
 	root := t.TempDir()
 	return &config.Config{
-		Version: 2,
-		Global:  config.GlobalConfig{Folder: root},
+		Version: config.CurrentVersion,
+		Global:  config.GlobalConfig{Roots: []string{root}},
 		Accounts: map[string]config.Account{
 			"github-test":  {Provider: "github", URL: "https://github.com", Username: "u", Name: "N", Email: "e@e"},
 			"forgejo-test": {Provider: "forgejo", URL: "https://f.local", Username: "u", Name: "N", Email: "e@e"},
@@ -58,7 +58,7 @@ func makeRepoDir(t *testing.T, cfg *config.Config, srcKey, repoKey string) strin
 	t.Helper()
 	src := cfg.Sources[srcKey]
 	folder := src.EffectiveFolder(srcKey)
-	parts := []string{cfg.Global.Folder, folder}
+	parts := []string{cfg.Global.Roots[0], folder}
 	if i := filepath.ToSlash(repoKey); len(i) > 0 {
 		if j := indexByte(repoKey, '/'); j >= 0 {
 			parts = append(parts, repoKey[:j], repoKey[j+1:])
@@ -99,7 +99,7 @@ func TestDiscover_CodeWorkspaceResolvesMembers(t *testing.T) {
 	frontend := makeRepoDir(t, cfg, "github-test", "team/frontend")
 	backend := makeRepoDir(t, cfg, "github-test", "team/backend")
 
-	wsFile := filepath.Join(cfg.Global.Folder, "feature-x.code-workspace")
+	wsFile := filepath.Join(cfg.Global.Roots[0], "feature-x.code-workspace")
 	writeCodeWorkspace(t, wsFile, frontend, backend)
 
 	found, err := Discover(cfg)
@@ -120,7 +120,7 @@ func TestDiscover_CodeWorkspaceResolvesMembers(t *testing.T) {
 func TestRefreshCache_PopulatesAndDetectsChange(t *testing.T) {
 	cfg := newTestConfig(t)
 	frontend := makeRepoDir(t, cfg, "github-test", "team/frontend")
-	wsFile := filepath.Join(cfg.Global.Folder, "feat.code-workspace")
+	wsFile := filepath.Join(cfg.Global.Roots[0], "feat.code-workspace")
 	writeCodeWorkspace(t, wsFile, frontend)
 
 	changed, err := RefreshCache(cfg)
@@ -157,10 +157,10 @@ func TestRefreshCache_PopulatesAndDetectsChange(t *testing.T) {
 	}
 }
 
-func TestDiscover_ScansExtraFolders(t *testing.T) {
+func TestDiscover_ScansEveryRoot(t *testing.T) {
 	cfg := newTestConfig(t)
 	extra := t.TempDir()
-	cfg.Global.ExtraFolders = []string{extra}
+	cfg.Global.Roots = append(cfg.Global.Roots, extra)
 	wsFile := filepath.Join(extra, "side.code-workspace")
 	writeCodeWorkspace(t, wsFile) // no resolvable members, still discovered
 
@@ -169,7 +169,7 @@ func TestDiscover_ScansExtraFolders(t *testing.T) {
 		t.Fatalf("Discover: %v", err)
 	}
 	if len(found) != 1 || found[0].Key != "side" {
-		t.Fatalf("found = %+v, want one 'side' from the extra folder", found)
+		t.Fatalf("found = %+v, want one 'side' from the second root", found)
 	}
 }
 
@@ -234,9 +234,9 @@ func TestFindCodeWorkspaces_OverlappingAndExplicitExcludedRoots(t *testing.T) {
 
 func TestDiscoverySnapshot_DetachesScanInputs(t *testing.T) {
 	cfg := newTestConfig(t)
-	cfg.Global.ExtraFolders = []string{"extra"}
+	root := cfg.Global.Roots[0]
 	snapshot := DiscoverySnapshot(cfg)
-	cfg.Global.ExtraFolders[0] = "changed"
+	cfg.Global.Roots[0] = "changed"
 	for key, source := range cfg.Sources {
 		source.Folder = "changed"
 		for repoKey, repo := range source.Repos {
@@ -245,8 +245,8 @@ func TestDiscoverySnapshot_DetachesScanInputs(t *testing.T) {
 		}
 		cfg.Sources[key] = source
 	}
-	if snapshot.Global.ExtraFolders[0] != "extra" {
-		t.Fatal("snapshot aliases extra roots")
+	if snapshot.Global.Roots[0] != root {
+		t.Fatal("snapshot aliases the roots")
 	}
 	for _, source := range snapshot.Sources {
 		if source.Folder == "changed" {

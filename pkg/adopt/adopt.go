@@ -1,5 +1,5 @@
-// Package adopt discovers git repos under the gitbox parent folder
-// that are not tracked in gitbox.json and helps adopt them.
+// Package adopt discovers git repos under the gitbox roots that are not
+// tracked in gitbox.json and helps adopt them.
 package adopt
 
 import (
@@ -18,7 +18,7 @@ import (
 // OrphanRepo describes a git repo on disk not tracked in gitbox.json.
 type OrphanRepo struct {
 	Path                string   // absolute path on disk
-	RelPath             string   // relative to parent folder
+	RelPath             string   // relative to the deepest scanned root
 	RemoteURL           string   // origin remote URL (empty if local-only)
 	Host                string   // extracted hostname from remote
 	Owner               string   // extracted owner/org from remote
@@ -27,14 +27,15 @@ type OrphanRepo struct {
 	MatchedAccount      string   // account key if matched, empty if unknown/ambiguous
 	MatchedSource       string   // source key if matched, empty if needs creation
 	ExpectedPath        string   // where gitbox convention says this should live
+	ExpectedRoot        string   // the root ExpectedPath sits under
 	NeedsRelocate       bool     // current path != expected path
 	LocalOnly           bool     // no remote — cannot adopt
 	AmbiguousCandidates []string // when multiple host-matching accounts tie with no disambiguator
 	Nested              bool     // found inside a container repo's working tree — adopt in place, never relocate
 }
 
-// FindOrphans walks the gitbox parent folder, configured extra folders, and
-// container repos' working trees, returning repos not tracked in config.
+// FindOrphans walks every configured root and container repos' working
+// trees, returning repos not tracked in config.
 func FindOrphans(cfg *config.Config) ([]OrphanRepo, error) {
 	return FindOrphansIn(cfg, nil)
 }
@@ -42,18 +43,18 @@ func FindOrphans(cfg *config.Config) ([]OrphanRepo, error) {
 // FindOrphansIn is FindOrphans with additional caller-supplied scan roots — used
 // by the on-demand "scan this folder" picker. Each root is scanned for top-level
 // clones; container repos (Repo.Container) are additionally scanned for nested
-// clones up to Global.NestedScanDepth. Clones found outside the standard layout
-// are reported with NeedsRelocate set, so adoption stores an absolute clone_folder.
+// clones up to Global.NestedScanDepth. A clone at the standard layout spot of
+// any configured root adopts in place under that root; one found elsewhere is
+// reported with NeedsRelocate set, so adoption moves it under its source's
+// root or stores an absolute clone_folder.
 func FindOrphansIn(cfg *config.Config, extraRoots []string) ([]OrphanRepo, error) {
-	parentFolder := config.ExpandTilde(cfg.Global.Folder)
-
 	// Build set of tracked repo paths from config.
-	tracked := trackedPaths(cfg, parentFolder)
+	tracked := trackedPaths(cfg)
 
-	// Pass 1 — flat scan of every root: the standard folder, configured extra
-	// folders, and any caller-supplied roots. FindRepos stops at each .git
-	// boundary, so this yields top-level clones only.
-	roots := gatherRoots(parentFolder, cfg.Global.ExtraFolders, extraRoots)
+	// Pass 1 — flat scan of every root: the configured roots and any
+	// caller-supplied ones. FindRepos stops at each .git boundary, so this
+	// yields top-level clones only.
+	roots := gatherRoots(cfg.Global.Roots, extraRoots)
 	var flat []string
 	for _, root := range roots {
 		paths, err := git.FindRepos(root)
@@ -72,7 +73,7 @@ func FindOrphansIn(cfg *config.Config, extraRoots []string) ([]OrphanRepo, error
 	// clone's working tree and the flat scan stops at clone boundaries. Container
 	// paths also join the root set so RelPath resolves against them.
 	depth := cfg.Global.NestedScanDepthOrDefault()
-	containerPaths := containerRepoPaths(cfg, parentFolder)
+	containerPaths := containerRepoPaths(cfg)
 	nestedSet := make(map[string]bool)
 	for _, cp := range containerPaths {
 		for _, np := range git.FindNestedRepos(cp, depth) {
@@ -117,25 +118,33 @@ func FindOrphansIn(cfg *config.Config, extraRoots []string) ([]OrphanRepo, error
 		o.RepoKey = owner + "/" + repo
 
 		// Match against accounts using the richer identity signals.
+		root := containingRoot(cfg.Global.Roots, absPath)
 		mc := MatchContext{
 			Host:         host,
 			Owner:        owner,
 			RemoteURL:    remoteURL,
 			RepoPath:     absPath,
-			ParentFolder: parentFolder,
+			ParentFolder: root,
 		}
 		acctKey, srcKey, ambiguous := MatchAccountEx(cfg, mc)
 		o.MatchedAccount = acctKey
 		o.MatchedSource = srcKey
 		o.AmbiguousCandidates = ambiguous
 
-		// Compute expected path and relocation need.
+		// Compute expected path and relocation need: in place when the clone
+		// sits at its standard spot under the root it was found in, else
+		// under its source's root.
 		if srcKey != "" {
 			src := cfg.Sources[srcKey]
 			sourceFolder := src.EffectiveFolder(srcKey)
-			expected := status.ResolveRepoPath(parentFolder, sourceFolder, o.RepoKey, config.Repo{})
-			o.ExpectedPath = expected
-			o.NeedsRelocate = normPath(absPath) != normPath(expected)
+			o.ExpectedRoot = cfg.SourceRoot(srcKey)
+			if root != "" {
+				if inPlace := status.ResolveRepoPath(root, sourceFolder, o.RepoKey, config.Repo{}); normPath(inPlace) == normPath(absPath) {
+					o.ExpectedRoot = root
+				}
+			}
+			o.ExpectedPath = status.ResolveRepoPath(o.ExpectedRoot, sourceFolder, o.RepoKey, config.Repo{})
+			o.NeedsRelocate = normPath(absPath) != normPath(o.ExpectedPath)
 		}
 
 		orphans = append(orphans, o)
@@ -148,10 +157,9 @@ func FindOrphansIn(cfg *config.Config, extraRoots []string) ([]OrphanRepo, error
 }
 
 // gatherRoots returns the de-duplicated, tilde-expanded list of directories to
-// scan for top-level clones: the primary (standard) folder first, then the
-// configured extra folders, then any caller-supplied roots. Empty entries are
-// dropped; order is preserved with the primary folder first.
-func gatherRoots(primary string, configExtra, callerExtra []string) []string {
+// scan for top-level clones: the configured roots first, then any
+// caller-supplied ones. Empty entries are dropped; order is preserved.
+func gatherRoots(configured, callerExtra []string) []string {
 	var roots []string
 	seen := make(map[string]bool)
 	add := func(p string) {
@@ -167,8 +175,7 @@ func gatherRoots(primary string, configExtra, callerExtra []string) []string {
 		seen[key] = true
 		roots = append(roots, abs)
 	}
-	add(primary)
-	for _, p := range configExtra {
+	for _, p := range configured {
 		add(p)
 	}
 	for _, p := range callerExtra {
@@ -179,17 +186,16 @@ func gatherRoots(primary string, configExtra, callerExtra []string) []string {
 
 // containerRepoPaths resolves the on-disk path of every config repo flagged as a
 // container, keeping only those that currently exist on disk.
-func containerRepoPaths(cfg *config.Config, parentFolder string) []string {
+func containerRepoPaths(cfg *config.Config) []string {
 	var paths []string
 	for _, srcKey := range cfg.OrderedSourceKeys() {
 		src := cfg.Sources[srcKey]
-		sourceFolder := src.EffectiveFolder(srcKey)
 		for _, repoKey := range src.OrderedRepoKeys() {
 			repo := src.Repos[repoKey]
 			if !repo.Container {
 				continue
 			}
-			p := status.ResolveRepoPath(parentFolder, sourceFolder, repoKey, repo)
+			p := status.RepoPath(cfg, srcKey, repoKey, repo)
 			if info, err := os.Stat(p); err == nil && info.IsDir() {
 				paths = append(paths, p)
 			}
@@ -245,18 +251,28 @@ func isPathUnder(child, parent string) bool {
 }
 
 // trackedPaths builds a set of normalized absolute paths for all configured repos.
-func trackedPaths(cfg *config.Config, parentFolder string) map[string]bool {
+func trackedPaths(cfg *config.Config) map[string]bool {
 	paths := make(map[string]bool)
 	for _, srcKey := range cfg.OrderedSourceKeys() {
 		src := cfg.Sources[srcKey]
-		sourceFolder := src.EffectiveFolder(srcKey)
 		for _, repoKey := range src.OrderedRepoKeys() {
-			repo := src.Repos[repoKey]
-			p := status.ResolveRepoPath(parentFolder, sourceFolder, repoKey, repo)
-			paths[normPath(p)] = true
+			paths[normPath(status.RepoPath(cfg, srcKey, repoKey, src.Repos[repoKey]))] = true
 		}
 	}
 	return paths
+}
+
+// containingRoot returns the deepest configured root that holds absPath,
+// tilde-expanded, or "" when none does.
+func containingRoot(roots []string, absPath string) string {
+	best := ""
+	for _, r := range roots {
+		r = filepath.Clean(config.ExpandTilde(strings.TrimSpace(r)))
+		if r != "." && isPathUnder(absPath, r) && len(r) > len(best) {
+			best = r
+		}
+	}
+	return best
 }
 
 // MatchContext carries every signal MatchAccountEx uses to pick an account.
@@ -267,7 +283,7 @@ type MatchContext struct {
 	Owner        string // owner/org parsed from the remote URL path
 	RemoteURL    string // full remote URL (used to extract an embedded user)
 	RepoPath     string // repo path on disk (used for credential + parent-folder signals)
-	ParentFolder string // gitbox parent folder (used to compute parent-folder source match)
+	ParentFolder string // the root holding the repo (used to compute parent-folder source match)
 }
 
 // Score weights for MatchAccountEx. The thresholds are picked so that:
@@ -303,9 +319,9 @@ func MatchAccountEx(cfg *config.Config, mc MatchContext) (accountKey, sourceKey 
 	if mc.RepoPath != "" {
 		credUsers = git.CredentialUsernames(mc.RepoPath)
 	}
-	// First path component of the repo relative to the gitbox parent folder.
-	// For a canonical layout "parent/sourceFolder/owner/repo" this is the
-	// source folder name; for a flat layout "parent/sourceFolder/repo" it is
+	// First path component of the repo relative to the root holding it.
+	// For a canonical layout "root/sourceFolder/owner/repo" this is the
+	// source folder name; for a flat layout "root/sourceFolder/repo" it is
 	// still the source folder name. That's the signal we want.
 	repoSourceFolder := ""
 	if mc.RepoPath != "" && mc.ParentFolder != "" {

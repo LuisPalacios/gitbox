@@ -11,7 +11,7 @@ import (
 func collapsedTestConfig() *Config {
 	return &Config{
 		Version: CurrentVersion,
-		Global:  GlobalConfig{Folder: "~/test"},
+		Global:  GlobalConfig{Roots: []string{"~/test"}},
 		Accounts: map[string]Account{
 			"a": {Provider: "github", URL: "https://github.com", Username: "u", Name: "N", Email: "e@e"},
 			"b": {Provider: "github", URL: "https://github.com", Username: "v", Name: "M", Email: "f@f"},

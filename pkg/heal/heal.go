@@ -70,9 +70,7 @@ func Repo(cfg *config.Config, sourceKey, repoKey string) Report {
 		return r
 	}
 
-	globalFolder := config.ExpandTilde(cfg.Global.Folder)
-	sourceFolder := src.EffectiveFolder(sourceKey)
-	path := status.ResolveRepoPath(globalFolder, sourceFolder, repoKey, repo)
+	path := status.RepoPath(cfg, sourceKey, repoKey, repo)
 	r.Path = path
 
 	if !git.IsRepo(path) && !isLinkedWorktree(path) {

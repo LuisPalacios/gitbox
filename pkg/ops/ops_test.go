@@ -31,7 +31,7 @@ func isolate(t *testing.T) (string, *config.Config) {
 	cfg := &config.Config{
 		Version: config.CurrentVersion,
 		Global: config.GlobalConfig{
-			Folder:        filepath.Join(root, "git"),
+			Roots:         []string{filepath.Join(root, "git")},
 			CredentialSSH: &config.SSHGlobal{SSHFolder: filepath.Join(root, "ssh")},
 		},
 		Accounts: map[string]config.Account{},
@@ -140,7 +140,7 @@ func TestDiscardAccount_ConfigOnlyAndRefusesWithRepos(t *testing.T) {
 	if err := AddAccount(cfg, "github-alice", testAccount("gcm")); err != nil {
 		t.Fatal(err)
 	}
-	folder := filepath.Join(cfg.Global.Folder, "github-alice")
+	folder := filepath.Join(cfg.Global.Roots[0], "github-alice")
 	keep := filepath.Join(folder, "old-clone", "file.txt")
 	if err := os.MkdirAll(filepath.Dir(keep), 0o755); err != nil {
 		t.Fatal(err)
@@ -396,7 +396,7 @@ func TestPlanClone(t *testing.T) {
 	if len(plan.Opts.ConfigArgs) != 1 || plan.Opts.ConfigArgs[0] != "credential.helper=" {
 		t.Errorf("token clone must cancel the global helper, got %v", plan.Opts.ConfigArgs)
 	}
-	wantDest := filepath.Join(cfg.Global.Folder, "tok", "alice", "repo")
+	wantDest := filepath.Join(cfg.Global.Roots[0], "tok", "alice", "repo")
 	if plan.Dest != wantDest {
 		t.Errorf("dest = %q, want %q", plan.Dest, wantDest)
 	}
@@ -525,7 +525,7 @@ func TestRenameAccount_FolderMoveFailureChangesNothing(t *testing.T) {
 
 	t.Run("destination exists", func(t *testing.T) {
 		cfg := setup(t)
-		if err := os.MkdirAll(filepath.Join(cfg.Global.Folder, "new"), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(cfg.Global.Roots[0], "new"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		err := RenameAccount(cfg, "old", "new")
@@ -540,7 +540,7 @@ func TestRenameAccount_FolderMoveFailureChangesNothing(t *testing.T) {
 			t.Skip("only Windows blocks renaming a folder with open handles inside")
 		}
 		cfg := setup(t)
-		f, err := os.Open(filepath.Join(cfg.Global.Folder, "old", "alice", "repo", ".git", "HEAD"))
+		f, err := os.Open(filepath.Join(cfg.Global.Roots[0], "old", "alice", "repo", ".git", "HEAD"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -562,5 +562,48 @@ func TestRenameAccount_NoFolderYet(t *testing.T) {
 	}
 	if _, ok := cfg.Sources["new"]; !ok {
 		t.Error("source not renamed")
+	}
+}
+
+// A source with clones in two roots renames and deletes its folder in
+// both (#149).
+func TestRenameAndDeleteAccount_AcrossRoots(t *testing.T) {
+	root, cfg := isolate(t)
+	second := filepath.Join(root, "git2")
+	cfg.AddRoot(second)
+	if err := AddAccount(cfg, "old", testAccount("gcm")); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.AddRepo("old", "alice/one", config.Repo{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.AddRepo("old", "alice/two", config.Repo{Root: second}); err != nil {
+		t.Fatal(err)
+	}
+	makeClone(t, cfg, "old", "alice/one", "https://alice@github.com/alice/one.git")
+	if two := makeClone(t, cfg, "old", "alice/two", "https://alice@github.com/alice/two.git"); !strings.HasPrefix(two, second) {
+		t.Fatalf("clone in the second root landed at %s", two)
+	}
+
+	if err := RenameAccount(cfg, "old", "new"); err != nil {
+		t.Fatal(err)
+	}
+	moved := []string{
+		filepath.Join(cfg.Global.Roots[0], "new", "alice", "one"),
+		filepath.Join(second, "new", "alice", "two"),
+	}
+	for _, p := range moved {
+		if !git.IsRepo(p) {
+			t.Errorf("%s is not a clone after the rename", p)
+		}
+	}
+
+	if err := DeleteAccount(cfg, "new"); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{filepath.Join(cfg.Global.Roots[0], "new"), filepath.Join(second, "new")} {
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Errorf("%s survived the delete", dir)
+		}
 	}
 }

@@ -59,7 +59,7 @@ func (a *App) snapshotRefreshConfig() *config.Config {
 	if c == nil {
 		return &config.Config{Accounts: map[string]config.Account{}, Sources: map[string]config.Source{}}
 	}
-	out := &config.Config{Global: config.GlobalConfig{Folder: c.Global.Folder}, Accounts: make(map[string]config.Account, len(c.Accounts)), Sources: make(map[string]config.Source, len(c.Sources)), SourceOrder: append([]string(nil), c.OrderedSourceKeys()...)}
+	out := &config.Config{Global: config.GlobalConfig{Roots: append([]string(nil), c.Global.Roots...)}, Accounts: make(map[string]config.Account, len(c.Accounts)), Sources: make(map[string]config.Source, len(c.Sources)), SourceOrder: append([]string(nil), c.OrderedSourceKeys()...)}
 	if c.Global.CredentialSSH != nil {
 		v := *c.Global.CredentialSSH
 		out.Global.CredentialSSH = &v
@@ -87,7 +87,7 @@ func (a *App) snapshotRefreshConfig() *config.Config {
 		out.Accounts[key] = acct
 	}
 	for key, src := range c.Sources {
-		dst := config.Source{Account: src.Account, Folder: src.Folder, Repos: make(map[string]config.Repo, len(src.Repos)), RepoOrder: append([]string(nil), src.OrderedRepoKeys()...)}
+		dst := config.Source{Account: src.Account, Folder: src.Folder, Root: src.Root, Repos: make(map[string]config.Repo, len(src.Repos)), RepoOrder: append([]string(nil), src.OrderedRepoKeys()...)}
 		if len(src.RepoOrder) == 0 {
 			sort.Strings(dst.RepoOrder)
 		}
@@ -214,7 +214,7 @@ func (a *App) sameRefreshRepo(cfg *config.Config, source, repo string) bool {
 	current := a.snapshotRefreshConfig()
 	s, ok := cfg.Sources[source]
 	n, exists := current.Sources[source]
-	if !ok || !exists || s.Account != n.Account || s.Folder != n.Folder {
+	if !ok || !exists || s.Account != n.Account || s.Folder != n.Folder || s.Root != n.Root {
 		return false
 	}
 	old, ok := s.Repos[repo]
@@ -235,7 +235,7 @@ func (a *App) fetchOne(cfg *config.Config, source, repo string) error {
 		a.emitRefreshEvent("fetch:done", map[string]string{"source": source, "repo": repo, "error": err.Error()})
 		return err
 	}
-	path := status.ResolveRepoPath(config.ExpandTilde(cfg.Global.Folder), src.EffectiveFolder(source), repo, r)
+	path := status.RepoPath(cfg, source, repo, r)
 	key := filepath.Clean(path)
 	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
 		key = strings.ToLower(key)
@@ -414,7 +414,7 @@ func (a *App) fetchCycle() error {
 		for _, source := range cfg.SourceOrder {
 			src := cfg.Sources[source]
 			for _, repo := range src.RepoOrder {
-				path := status.ResolveRepoPath(config.ExpandTilde(cfg.Global.Folder), src.EffectiveFolder(source), repo, src.Repos[repo])
+				path := status.RepoPath(cfg, source, repo, src.Repos[repo])
 				if !git.IsRepo(path) {
 					continue
 				}

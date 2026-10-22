@@ -21,9 +21,9 @@ func TestSyncEditorsPrunesHarnessClaimedNames(t *testing.T) {
 	// doesn't show "Open in Cursor" under both sections.
 	dir := t.TempDir()
 	cfg := &config.Config{
-		Version: 2,
+		Version: config.CurrentVersion,
 		Global: config.GlobalConfig{
-			Folder: dir,
+			Roots: []string{dir},
 			Editors: []config.EditorEntry{
 				{Name: "VS Code", Command: "/usr/bin/code"},
 				{Name: "Cursor", Command: "/usr/bin/cursor"},
@@ -48,9 +48,9 @@ func TestSyncEditorsPrunesHarnessClaimedNames(t *testing.T) {
 
 func TestDetectEditorsExcludesHarnessClaimedNames(t *testing.T) {
 	cfg := &config.Config{
-		Version: 2,
+		Version: config.CurrentVersion,
 		Global: config.GlobalConfig{
-			Folder: "~/x",
+			Roots: []string{"~/x"},
 			Editors: []config.EditorEntry{
 				{Name: "Cursor", Command: "/usr/bin/cursor"},
 			},
@@ -140,9 +140,9 @@ func harnessTestApp(t *testing.T, entries []config.AIHarnessEntry) *App {
 	t.Helper()
 	dir := t.TempDir()
 	cfg := &config.Config{
-		Version: 2,
+		Version: config.CurrentVersion,
 		Global: config.GlobalConfig{
-			Folder:      dir,
+			Roots:       []string{dir},
 			AIHarnesses: entries,
 		},
 		Accounts: map[string]config.Account{
@@ -320,8 +320,8 @@ func TestSyncAIHarnessesSkipsApplyWhenConfigReplacedDuringProbe(t *testing.T) {
 	tool := knownAIHarnesses[0]
 	a := harnessTestApp(t, nil)
 	replacement := &config.Config{
-		Version:  2,
-		Global:   config.GlobalConfig{Folder: a.cfg.Global.Folder, AIHarnesses: []config.AIHarnessEntry{{Name: "Hand Made", Command: "/opt/hand", Source: harness.SourceUser}}},
+		Version:  config.CurrentVersion,
+		Global:   config.GlobalConfig{Roots: []string{a.cfg.Global.Roots[0]}, AIHarnesses: []config.AIHarnessEntry{{Name: "Hand Made", Command: "/opt/hand", Source: harness.SourceUser}}},
 		Accounts: a.cfg.Accounts,
 		Sources:  a.cfg.Sources,
 	}
@@ -414,9 +414,9 @@ func appWithProfilesAndHarnesses(t *testing.T, apps []config.TerminalApp, shells
 	t.Helper()
 	dir := t.TempDir()
 	cfg := &config.Config{
-		Version: 2,
+		Version: config.CurrentVersion,
 		Global: config.GlobalConfig{
-			Folder:           dir,
+			Roots:            []string{dir},
 			TerminalApps:     apps,
 			Shells:           shells,
 			TerminalProfiles: profiles,

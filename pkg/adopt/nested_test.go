@@ -92,10 +92,10 @@ func TestFindOrphansIn_ExplicitNestedRoot(t *testing.T) {
 	child := filepath.Join(parent, "explicit-child")
 	initBareRepo(t, child, "https://github.com/LuisPalacios/explicit-child.git")
 	for _, configured := range []bool{false, true} {
-		cfg.Global.ExtraFolders = nil
+		cfg.Global.Roots = cfg.Global.Roots[:1:1]
 		roots := []string{child}
 		if configured {
-			cfg.Global.ExtraFolders = roots
+			cfg.Global.Roots = append(cfg.Global.Roots, roots...)
 			roots = nil
 		}
 		found, err := FindOrphansIn(cfg, roots)
@@ -105,5 +105,29 @@ func TestFindOrphansIn_ExplicitNestedRoot(t *testing.T) {
 		if len(found) != 1 || found[0].Path != child {
 			t.Fatalf("configured=%t: explicit nested clone lost: %v", configured, found)
 		}
+	}
+}
+
+// TestFindOrphans_CanonicalCloneInSecondRootAdoptsInPlace verifies a clone at
+// the standard layout spot of a second configured root is adopted where it
+// is, under that root (#149), instead of being moved to the default one.
+func TestFindOrphans_CanonicalCloneInSecondRootAdoptsInPlace(t *testing.T) {
+	root := t.TempDir()
+	cfg := testConfig(root)
+	second := t.TempDir()
+	cfg.AddRoot(second)
+	clone := filepath.Join(second, "github-me", "LuisPalacios", "side-project")
+	initBareRepo(t, clone, "https://github.com/LuisPalacios/side-project.git")
+
+	orphans, err := FindOrphans(cfg)
+	if err != nil {
+		t.Fatalf("FindOrphans: %v", err)
+	}
+	if len(orphans) != 1 {
+		t.Fatalf("orphans = %+v, want the one clone", orphans)
+	}
+	o := orphans[0]
+	if o.MatchedSource != "github-me" || o.NeedsRelocate || o.ExpectedRoot != second || o.ExpectedPath != clone {
+		t.Errorf("orphan = %+v, want github-me in place under %s", o, second)
 	}
 }

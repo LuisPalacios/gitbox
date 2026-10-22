@@ -45,7 +45,7 @@ func TestCheckStatus_404_NeedsSetup_vs_Error(t *testing.T) {
 
 	makeCfg := func(lastSync string) *config.Config {
 		return &config.Config{
-			Version: 2,
+			Version: config.CurrentVersion,
 			Accounts: map[string]config.Account{
 				"origin-acct": {
 					Provider: "github", URL: origin.URL, Username: "alice",
