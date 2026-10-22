@@ -25,6 +25,12 @@ var (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// maxWindowWidth stops the main window where the content stops (#148):
+// the 220px sidebar, the 1100px view content, its 2×24px padding and a
+// 16px scrollbar. A wider window would only add an empty band; folding
+// the sidebar hands its width to the content instead (style.css).
+const maxWindowWidth = 220 + 1100 + 48 + 16
+
 func main() {
 	// After an update, the new version starts with --wait-pid=<old PID> and
 	// waits for the old process to exit: then the single-instance lock is
@@ -118,7 +124,7 @@ func main() {
 			}
 		} else if fw := cfg.Global.Window; fw != nil {
 			if fw.Width >= 640 {
-				width = fw.Width
+				width = min(fw.Width, maxWindowWidth)
 			}
 			if fw.Height >= 480 {
 				height = fw.Height
@@ -146,6 +152,7 @@ func main() {
 		Height:      height,
 		MinWidth:    minWidth,
 		MinHeight:   minHeight,
+		MaxWidth:    maxWindowWidth,
 		StartHidden: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,

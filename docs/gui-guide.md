@@ -303,11 +303,11 @@ In Simple, every project answers one question, "is my work safe?", with one of s
 
 Every project on this computer has three icon buttons, in both Simple and Advanced: my first AI harness, my first editor, and my default terminal profile. Each shows the tool's logo when gitbox knows it (Claude, Codex, Gemini, Cursor, VS Code, Zed, and every terminal app gitbox detects) or a generic icon, and its name on hover. Names show without the organization prefix; hovering a name shows it in full. The ⋯ menu keeps Open on the web, the folder, editors, AI harnesses, and **Delete from this computer…**.
 
-Simple hides the rest: the Mirrors and Workspaces views, delete mode, the compact view and theme buttons (theme stays in Settings), PR, workspace, container and branch badges, ahead, behind and changed counts, and the per-row fetch button. The top bar keeps **Check all** and **Update all**. Account health reads in plain words, and **Reconnect** appears when a credential breaks. Settings hides the config file, PR reviews, global gitignore and Terminals rows. The compact view is the same in both modes.
+Simple hides the rest: the Mirrors and Workspaces views, delete mode, the compact view and theme buttons (theme stays in Settings), workspace, container and branch badges, ahead, behind and changed counts, and the per-row fetch button. Open PRs I authored (📝) and PRs awaiting my review (👀) show in both modes. The top bar keeps **Check all** and **Update all**. Account health reads in plain words, and **Reconnect** appears when a credential breaks. Settings hides the config file, PR reviews, global gitignore and Terminals rows. The compact view is the same in both modes.
 
 ### Full view
 
-The full dashboard shows the top bar with health rings, the sidebar, the selected view, and the summary footer. Action buttons in the top bar include Pull all, Fetch all, Delete mode, Compact view, the theme, the Simple/Advanced switch and Settings; the button at the far left folds the sidebar. The window opens 1040 px wide the first time and can shrink to 640 × 480; the content stops at 1100 px in a wider window.
+The full dashboard shows the top bar with health rings, the sidebar, the selected view, and the summary footer. Action buttons in the top bar include Pull all, Fetch all, Delete mode, Compact view, the theme, the Simple/Advanced switch and Settings; the button at the far left folds the sidebar. The window opens 1040 px wide the first time and can shrink to 640 × 480; it grows no wider than the sidebar plus 1100 px of content, and folding the sidebar gives its width to the content.
 
 ### Collapse and expand
 

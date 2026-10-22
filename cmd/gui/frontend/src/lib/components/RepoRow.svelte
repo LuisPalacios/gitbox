@@ -263,9 +263,10 @@
   })();
 </script>
 
-<!-- The status in the glossary words, with its dimmed note. -->
+<!-- The status in the glossary words, with its dimmed note. A label with a
+     short form swaps to it in a narrow row, so the count stays visible. -->
 {#snippet words()}
-  <span class="status-text" style="color: {sc(label.color)}" title={labelTip(state)}>{$t(label.key, label.vars)}{#if label.note}<span class="safe-note">&nbsp;{$t(label.note, label.noteVars)}</span>{/if}</span>
+  <span class="status-text" style="color: {sc(label.color)}" title={labelTip(state)}>{#if label.short}<span class="words-full">{$t(label.key, label.vars)}{#if label.note}<span class="safe-note">&nbsp;{$t(label.note, label.noteVars)}</span>{/if}</span><span class="words-short">{$t(label.short, label.shortVars)}</span>{:else}{$t(label.key, label.vars)}{#if label.note}<span class="safe-note">&nbsp;{$t(label.note, label.noteVars)}</span>{/if}{/if}</span>
 {/snippet}
 
 <!-- After the name: the account pill, the parent tag and a folded parent's
@@ -298,6 +299,53 @@
         on:click|stopPropagation={() => openRepoProfile(repoKey, pr.id)}><BrandIcon name={terminalLogo(pr.terminal, pr.shell)} /></button>
     {/if}
   </span>
+{/snippet}
+
+<!-- The open PR pills (issue #29): mine, and those awaiting my review.
+     Simple and Advanced rows show the same ones. -->
+{#snippet prBadges()}
+  {#if !deleteMode && $prSettings.enabled}
+    {@const prSummary = lookupPRSummary($prsByAccount, rowAccountKey, repoName)}
+    {@const acctForPRs = $accounts[rowAccountKey]}
+    {#if prSummary.authored.length > 0}
+      <div class="action-menu-container pr-badge-wrap">
+        <button class="pr-badge pr-badge-authored" on:click|stopPropagation={() => togglePRPopover(`${repoKey}|authored`)} title={$t(prSummary.authored.length === 1 ? 'row.prAuthoredOne' : 'row.prAuthored', { n: prSummary.authored.length })}>
+          &#128221; {prSummary.authored.length}
+        </button>
+        {#if openPRPopover === `${repoKey}|authored`}
+          <div transition:fade={{ duration: 80 }}>
+            <PRPopover
+              kind="authored"
+              prs={prSummary.authored}
+              providerName={acctForPRs?.provider || ''}
+              providerAllURL={providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName)}
+              onOpenPR={(url) => { bridge.openInBrowser(url); closePRPopover(); }}
+              onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); closePRPopover(); }}
+            />
+          </div>
+        {/if}
+      </div>
+    {/if}
+    {#if prSummary.reviewRequested.length > 0}
+      <div class="action-menu-container pr-badge-wrap">
+        <button class="pr-badge pr-badge-review" on:click|stopPropagation={() => togglePRPopover(`${repoKey}|review`)} title={$t(prSummary.reviewRequested.length === 1 ? 'row.prReviewOne' : 'row.prReview', { n: prSummary.reviewRequested.length })}>
+          &#128064; {prSummary.reviewRequested.length}
+        </button>
+        {#if openPRPopover === `${repoKey}|review`}
+          <div transition:fade={{ duration: 80 }}>
+            <PRPopover
+              kind="review"
+              prs={prSummary.reviewRequested}
+              providerName={acctForPRs?.provider || ''}
+              providerAllURL={providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName)}
+              onOpenPR={(url) => { bridge.openInBrowser(url); closePRPopover(); }}
+              onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); closePRPopover(); }}
+            />
+          </div>
+        {/if}
+      </div>
+    {/if}
+  {/if}
 {/snippet}
 
 <div class="repo-row" class:repo-row-clickable={rowOpensDetail}
@@ -340,6 +388,7 @@
       </div>
       <span class="progress-pct" style="color:{kindColor}">{state.progress}%</span>
     {:else}
+      {@render prBadges()}
       {@render words()}
       {#if kind === 'update'}
         <button class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)} title={$t('simple.updateTip')}>{$t('simple.btnUpdate')}</button>
@@ -435,48 +484,7 @@
   {:else}
     {#if state.status === 'unknown'}<span class="status-pending">{$t('simple.checking')}</span>{/if}
     {#if state.status !== 'unknown'}
-    {#if !deleteMode && $prSettings.enabled}
-      {@const prSummary = lookupPRSummary($prsByAccount, rowAccountKey, repoName)}
-      {@const acctForPRs = $accounts[rowAccountKey]}
-      {#if prSummary.authored.length > 0}
-        <div class="action-menu-container pr-badge-wrap">
-          <button class="pr-badge pr-badge-authored" on:click|stopPropagation={() => togglePRPopover(`${repoKey}|authored`)} title={$t(prSummary.authored.length === 1 ? 'row.prAuthoredOne' : 'row.prAuthored', { n: prSummary.authored.length })}>
-            &#128221; {prSummary.authored.length}
-          </button>
-          {#if openPRPopover === `${repoKey}|authored`}
-            <div transition:fade={{ duration: 80 }}>
-              <PRPopover
-                kind="authored"
-                prs={prSummary.authored}
-                providerName={acctForPRs?.provider || ''}
-                providerAllURL={providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName)}
-                onOpenPR={(url) => { bridge.openInBrowser(url); closePRPopover(); }}
-                onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); closePRPopover(); }}
-              />
-            </div>
-          {/if}
-        </div>
-      {/if}
-      {#if prSummary.reviewRequested.length > 0}
-        <div class="action-menu-container pr-badge-wrap">
-          <button class="pr-badge pr-badge-review" on:click|stopPropagation={() => togglePRPopover(`${repoKey}|review`)} title={$t(prSummary.reviewRequested.length === 1 ? 'row.prReviewOne' : 'row.prReview', { n: prSummary.reviewRequested.length })}>
-            &#128064; {prSummary.reviewRequested.length}
-          </button>
-          {#if openPRPopover === `${repoKey}|review`}
-            <div transition:fade={{ duration: 80 }}>
-              <PRPopover
-                kind="review"
-                prs={prSummary.reviewRequested}
-                providerName={acctForPRs?.provider || ''}
-                providerAllURL={providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName)}
-                onOpenPR={(url) => { bridge.openInBrowser(url); closePRPopover(); }}
-                onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); closePRPopover(); }}
-              />
-            </div>
-          {/if}
-        </div>
-      {/if}
-    {/if}
+    {@render prBadges()}
     <span class="status-badges">
       {@render words()}
       {#if label.badges}
@@ -574,6 +582,7 @@
   .progress-pct { font-size: 11px; width: 32px; text-align: right; flex-shrink: 0; font-weight: 600; }
   .status-text { font-size: 12px; white-space: nowrap; font-weight: 600; display: inline-flex; align-items: center; }
   .safe-note { color: var(--text-muted); font-weight: 500; }
+  .words-short { display: none; }
   .btn-tag { font-size: 10px; color: var(--text-muted); border-left: 1px solid var(--border); padding-left: 6px; margin-left: 2px; }
   /* A narrow content area (small window with the sidebar open): text gives
      way before the actions, so the launchers and ⋯ never get pushed out.
@@ -584,7 +593,8 @@
     .pr-badge { padding: 2px 5px; gap: 2px; }
     .repo-row-nested { padding-left: calc(6px + var(--depth) * 12px); }
     .repo-name { min-width: 3.5rem; }
-    .safe-note, .btn-tag { display: none; }
+    .safe-note, .btn-tag, .words-full { display: none; }
+    .words-short { display: inline; }
     .repo-row.calm .status-text { display: none; }
     .status-text, .container-badge, .branch-badge { min-width: 0; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; }
   }
