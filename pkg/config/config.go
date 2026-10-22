@@ -48,6 +48,9 @@ type GlobalConfig struct {
 	// container repo (Repo.Container) when discovering nested clones. Zero/unset
 	// means the default — see NestedScanDepthOrDefault. 1 = immediate children.
 	NestedScanDepth int `json:"nested_scan_depth,omitempty"`
+	// IgnoredClones are absolute paths of clones found under a root that I
+	// chose not to track; reconcile never adopts or lists them as unmatched.
+	IgnoredClones []string `json:"ignored_clones,omitempty"`
 
 	Language      string       `json:"language,omitempty"`
 	PeriodicSync  string       `json:"periodic_sync,omitempty"`

@@ -2,6 +2,7 @@
 package status
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -24,6 +25,7 @@ const (
 	NoUpstream                // No upstream tracking branch
 	Error                     // Could not determine status
 	UpstreamGone              // Remote repo no longer exists (404 / deleted / lost access)
+	RootOffline               // Its clone root is missing (unmounted drive, missing share)
 )
 
 // String returns a human-readable label for the state.
@@ -49,6 +51,8 @@ func (s State) String() string {
 		return "error"
 	case UpstreamGone:
 		return "upstream gone"
+	case RootOffline:
+		return "root offline"
 	default:
 		return "unknown"
 	}
@@ -77,6 +81,8 @@ func (s State) Symbol() string {
 		return "!"
 	case UpstreamGone:
 		return "⊗"
+	case RootOffline:
+		return "◌"
 	default:
 		return "?"
 	}
@@ -168,6 +174,7 @@ func CheckAll(cfg *config.Config) []RepoStatus {
 		sourceAcct string
 		repoName   string
 		path       string
+		offline    bool
 	}
 	var jobs []job
 	for _, sourceName := range cfg.OrderedSourceKeys() {
@@ -180,6 +187,7 @@ func CheckAll(cfg *config.Config) []RepoStatus {
 				sourceAcct: source.Account,
 				repoName:   repoName,
 				path:       RepoPath(cfg, sourceName, repoName, repo),
+				offline:    RepoRootOffline(cfg, sourceName, repo),
 			})
 		}
 	}
@@ -193,7 +201,10 @@ func CheckAll(cfg *config.Config) []RepoStatus {
 		go func(j job) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			rs := Check(j.path)
+			rs := RepoStatus{Path: j.path, State: RootOffline}
+			if !j.offline {
+				rs = Check(j.path)
+			}
 			rs.Source = j.sourceName
 			rs.Repo = j.repoName
 			rs.Account = j.sourceAcct
@@ -202,6 +213,23 @@ func CheckAll(cfg *config.Config) []RepoStatus {
 	}
 	wg.Wait()
 	return results
+}
+
+// RootOnline reports whether a clone root folder exists.
+func RootOnline(root string) bool {
+	info, err := os.Stat(root)
+	return err == nil && info.IsDir()
+}
+
+// RepoRootOffline reports whether a repo's clone root is missing (#149): its
+// path then says nothing about whether it was cloned. A repo with an
+// absolute clone_folder doesn't depend on its root.
+func RepoRootOffline(cfg *config.Config, sourceKey string, repo config.Repo) bool {
+	if repo.CloneFolder != "" && (filepath.IsAbs(config.ExpandTilde(repo.CloneFolder)) || strings.HasPrefix(repo.CloneFolder, "~")) {
+		return false
+	}
+	root := cfg.RepoRoot(sourceKey, repo)
+	return root != "" && !RootOnline(root)
 }
 
 // ResolveRepoPath computes the clone path for a repository.
