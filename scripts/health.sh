@@ -34,8 +34,8 @@ DEADCODE="golang.org/x/tools/cmd/deadcode@v0.50.0"
 # kept as part of a small public API. One regex per line.
 # I retain standalone sync/cache wrappers for library callers and their tests.
 DEADCODE_ALLOW='unreachable func: (PSDecode|resetLookupCachesForTest|Version\.String)$
-pkg/terminals/sync[.]go:[0-9]+:[0-9]+: unreachable func: Sync$
-pkg/workspace/workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCache$'
+pkg[/\\]terminals[/\\]sync[.]go:[0-9]+:[0-9]+: unreachable func: Sync$
+pkg[/\\]workspace[/\\]workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCache$'
 
 FRONTEND="cmd/gui/frontend"
 MD_CONFIG=".claude/skills/fixing-markdown/.markdownlint-cli2.jsonc"
