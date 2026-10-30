@@ -1,15 +1,13 @@
 package terminals
 
 import (
-	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
-	"unicode/utf16"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/doctor"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 )
 
@@ -208,6 +206,20 @@ func probePwsh() (string, bool) {
 	return "", false
 }
 
+// wslDistros lists the installed WSL distros; tests replace it.
+var wslDistros = doctor.WSLDistros
+
+// probeWSL resolves wsl.exe only when a distro is installed. The file alone
+// proves nothing: Windows ships it as a stub that prompts to install WSL when
+// launched, so neither detection nor the profiles it feeds may rely on it, and
+// detection must never run it (see doctor.WSLDistros).
+func probeWSL() (string, bool) {
+	if len(wslDistros()) == 0 {
+		return "", false
+	}
+	return probeBinary("wsl.exe")()
+}
+
 // lookPathWithBrewPATH resolves a command using the Homebrew-augmented PATH.
 // On macOS, GUI apps inherit a minimal PATH that excludes /opt/homebrew/bin
 // and /usr/local/bin, so Homebrew-installed binaries are invisible to a bare
@@ -266,7 +278,7 @@ func DetectTerminals(goos string) []config.TerminalApp {
 }
 
 // DetectShells walks the shell catalog for `goos` and returns one ShellEntry
-// per installed entry, in catalog order. On Windows, when wsl.exe resolves,
+// per installed entry, in catalog order. On Windows, when WSL is usable,
 // per-distro entries are appended after the bare "wsl" entry — the bare
 // entry is kept (issue #71) so it can back the standalone "DIRECT" wsl
 // Profile that ComposeProfiles emits as a hidden-by-default shortcut.
@@ -300,7 +312,7 @@ func DetectShells(goos string) []config.ShellEntry {
 	// Per-distro WSL entries (Windows only) — appended after the bare wsl
 	// row so the catalog-vs-runtime split is preserved.
 	if goos == "windows" && wslCmd != "" {
-		for _, d := range DiscoverWSLDistros() {
+		for _, d := range wslDistros() {
 			out = append(out, config.ShellEntry{
 				ID:      "wsl-" + slugifyASCII(d),
 				Name:    "WSL — " + d,
@@ -310,64 +322,6 @@ func DetectShells(goos string) []config.ShellEntry {
 		}
 	}
 	return out
-}
-
-// ─── WSL distro discovery ─────────────────────────────────────────────────
-
-// DiscoverWSLDistros returns the list of installed WSL distributions. Returns
-// nil when wsl.exe is missing, no distros are installed, or the host is not
-// Windows. None of those are errors — just absence of WSL state.
-func DiscoverWSLDistros() []string {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	return discoverWSLDistros(ctx)
-}
-
-func discoverWSLDistros(ctx context.Context) []string {
-	cmd := exec.CommandContext(ctx, "wsl.exe", "--list", "--quiet")
-	cmd.WaitDelay = 100 * time.Millisecond
-	git.HideWindow(cmd)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
-	text := decodeWSLBytes(out)
-	var distros []string
-	for line := range strings.SplitSeq(text, "\n") {
-		name := strings.TrimSpace(line)
-		// `wsl --list --quiet` prints a trailing empty line; some builds also
-		// emit a "(Default)" suffix that --quiet was supposed to suppress.
-		name = strings.TrimSuffix(name, " (Default)")
-		if name == "" {
-			continue
-		}
-		distros = append(distros, name)
-	}
-	return distros
-}
-
-// decodeWSLBytes converts wsl.exe's UTF-16 LE output (BOM-prefixed in modern
-// builds, sometimes BOM-less) into UTF-8. Falls back to the raw string when
-// the bytes don't look like UTF-16 — a few `wsl.exe` ports emit UTF-8.
-func decodeWSLBytes(b []byte) string {
-	if len(b) >= 2 && b[0] == 0xFF && b[1] == 0xFE {
-		return decodeUTF16LE(b[2:])
-	}
-	if len(b) >= 2 && len(b)%2 == 0 && b[1] == 0 {
-		return decodeUTF16LE(b)
-	}
-	return strings.TrimPrefix(string(b), "\ufeff")
-}
-
-func decodeUTF16LE(b []byte) string {
-	if len(b)%2 != 0 {
-		b = b[:len(b)-1]
-	}
-	u16 := make([]uint16, len(b)/2)
-	for i := range u16 {
-		u16[i] = uint16(b[2*i]) | uint16(b[2*i+1])<<8
-	}
-	return string(utf16.Decode(u16))
 }
 
 // ─── Login-shell detection (macOS / Linux) ────────────────────────────────

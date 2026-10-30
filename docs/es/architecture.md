@@ -170,6 +170,8 @@ Proporciona comprobación de versión y self-update mediante GitHub Releases. `C
 
 Sondea el host para cada binario externo que gitbox puede llamar — `git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, `wsl` (solo Windows) — y reporta ruta, versión y sugerencias de instalación por OS para cualquier ausente. `PrecheckForCredentialType()` alimenta los flujos de setup de la GUI para que una herramienta faltante aparezca como banner amarillo con el comando de instalación en vez de un error críptico de runtime. El informe completo está disponible en la GUI en **Settings → System check**.
 
+La sonda nunca ejecuta `C:\Windows\System32\wsl.exe`: Windows trae ese fichero como un stub que pide instalar WSL cuando falta el paquete, en una ventana propia. `doctor.WSLDistros()` lee las distros del registro y la versión sale del binario del propio paquete en `Program Files\WSL`. La detección de shells usa la misma lista, así que el shell `wsl` solo aparece cuando hay una distro instalada.
+
 ### pkg/heal — self-heal de .git/config de repo
 
 `heal.Repo(cfg, sourceKey, repoKey)` reconcilia idempotentemente el `.git/config` de un clone contra la spec de cuenta: `user.name`, `user.email`, la URL canónica de `origin` (específica del tipo de credencial, sin secretos embebidos) y el helper de credenciales. Está conectado a cada punto de disparo — clone, fetch, pull, `ops.ReconfigureClones` y el sync periódico de la GUI — para que los clones que se desvíen de la spec se reparen silenciosamente. Se introdujo junto con el fix de stdio GUI en Windows en `pkg/git.run()` para evitar que las escrituras de `.git/config` desde la GUI fallasen silenciosamente.

@@ -220,8 +220,8 @@ var windowsShells = []CatalogShell{
 	// is the WSL launcher and would be wrong here).
 	{ID: "git-bash", Name: "Git Bash", OS: "windows", Probe: probeGitBashShell, Args: []string{"--login", "-i"}},
 	// WSL is special — the bare wsl.exe row is the fallback; per-distro entries
-	// are emitted at runtime via DiscoverWSLDistros.
-	{ID: "wsl", Name: "WSL (default distro)", OS: "windows", Probe: probeBinary("wsl.exe"), Args: nil},
+	// are emitted at runtime from the registered distros.
+	{ID: "wsl", Name: "WSL (default distro)", OS: "windows", Probe: probeWSL, Args: nil},
 }
 
 // darwinShells is the supported macOS shell catalog.

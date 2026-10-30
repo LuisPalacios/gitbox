@@ -24,6 +24,10 @@ type Tool struct {
 	Purpose      string            // one-line description of why gitbox uses it
 	InstallHints map[string]string // runtime.GOOS -> install command
 	VersionArgs  []string          // args to probe version; empty = skip version probe
+
+	// Probe replaces the default lookup and version probe for a tool that is
+	// not safe to run just because its file exists. Nil = default.
+	Probe func() (path, version string, found bool)
 }
 
 // Result is the outcome of checking one Tool on the current host.
@@ -230,6 +234,10 @@ func windowsFallbackDirs(name string) []string {
 // CheckOne probes a single Tool.
 func CheckOne(t Tool) Result {
 	r := Result{Tool: t}
+	if t.Probe != nil {
+		r.Path, r.Version, r.Found = t.Probe()
+		return r
+	}
 	path := Lookup(t.Name)
 	if path == "" {
 		return r
@@ -405,7 +413,7 @@ func toolSSHAdd() Tool {
 }
 
 func toolWSL() Tool {
-	return Tool{
+	t := Tool{
 		Name:        "wsl",
 		DisplayName: "Windows Subsystem for Linux",
 		Purpose:     "WSL shell bridge. Used on Windows to launch WSL-based terminal profiles and convert paths.",
@@ -414,4 +422,8 @@ func toolWSL() Tool {
 		},
 		VersionArgs: []string{"--version"},
 	}
+	if runtime.GOOS == "windows" {
+		t.Probe = probeWSLWindows
+	}
+	return t
 }
