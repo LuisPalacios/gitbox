@@ -493,7 +493,7 @@ Click **Remove** to clear the global identity entries, or dismiss the banner wit
 
 ### Global credential helper warning
 
-When at least one account uses **GCM** (Git Credential Manager), Gitbox verifies that your global `~/.gitconfig` has a `credential.helper` that resolves to Git Credential Manager — the short name `manager`, the legacy `manager-core`, or an absolute path to the `git-credential-manager` binary (the form `git-credential-manager configure` writes on macOS) — and `credential.credentialStore` set to the OS-appropriate value (`keychain` on macOS, `wincredman` on Windows, `secretservice` on Linux). If no helper resolves to GCM or the store is wrong, a second orange banner appears.
+When at least one account uses **GCM** (Git Credential Manager), Gitbox verifies that your global `~/.gitconfig` has a `credential.helper` that resolves to Git Credential Manager — the short name `manager`, the legacy `manager-core`, or an absolute path to the `git-credential-manager` binary (the form `git-credential-manager configure` writes) — and `credential.credentialStore` set to the OS-appropriate value (`keychain` on macOS, `wincredman` on Windows, `secretservice` on Linux). If no helper resolves to GCM or the store is wrong, a second orange banner appears.
 
 Without a GCM helper configured, GCM falls through to a TTY prompt during authentication and fails with `fatal: could not read Password ... Device not configured` in the GUI — see the banner text for the specific issue (no GCM helper, or the wrong credential store).
 

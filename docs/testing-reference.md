@@ -10,8 +10,8 @@ Counts are top-level `func Test…` functions per package, from `grep -rc "^func
 
 - `pkg/adopt/` — 16 tests: orphan discovery, account scoring (embedded URL user, credential username, parent folder, ambiguous ties), confidence beyond the host, nested clones under containers, in-place adoption under a second clone root
 - `pkg/config/` — 116 tests: config parsing, v2 → v3 → v4 migration, ignored clones and a deep copy for unlocked scans, clone roots (add, default, remove and forget, placing a clone, pins that keep every clone path), CRUD operations, save/load, backups, test-mode setup, layout-state pruning (folds, sidebar, the view of a deleted account), a rename that keeps its view, backup skip for layout and theme saves, and a backup always kept for a file written by an older config version
-- `pkg/credential/` — 35 tests: token resolution, validation, token expiry and rejected tokens, OS-default helpers, `Check`/`FixGlobalGCMConfig` (global gitconfig health for GCM), cancellation, compare-first maintenance, atomic token-file updates
-- `pkg/doctor/` — 24 tests: tool table shape, install hints, lookups, per-credential-type prechecks, tool output decoding
+- `pkg/credential/` — 36 tests: token resolution, validation, token expiry and rejected tokens, OS-default helpers, `Check`/`FixGlobalGCMConfig` (global gitconfig health for GCM), cancellation, compare-first maintenance, atomic token-file updates
+- `pkg/doctor/` — 29 tests: tool table shape, install hints, lookups, the GCM probe (asking git, install folders, reported missing), per-credential-type prechecks, tool output decoding
 - `pkg/git/` — 34 tests: git subprocess operations, repo and profile URLs, nested repo discovery, cancellable fetches, connects refused within milliseconds, config snapshots with includes and linked worktrees
 - `pkg/gitignore/` — 23 tests: managed block round-trip, merge with user content, idempotent install, backups, duplicate sanitising
 - `pkg/harness/` — 28 tests: embedded tools directory parsing, retired tools, WezTerm `launch_menu` parsing
