@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -2216,8 +2215,10 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 	fillCmd.Dir = homeDir
 	fillCmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
 	fillCmd.Stdin = strings.NewReader(input)
+	// Capture only: a GUI launched without a console has no valid stderr
+	// handle, so forwarding to os.Stderr would fail the whole fill.
 	var stderrBuf bytes.Buffer
-	fillCmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
+	fillCmd.Stderr = &stderrBuf
 	git.HideWindow(fillCmd)
 	out, err := fillCmd.Output()
 	if err != nil {

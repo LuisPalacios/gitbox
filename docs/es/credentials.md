@@ -72,7 +72,7 @@ GCM gestiona todo mediante un único login. GCM guarda una credencial y la usa p
 
 GCM enruta por host mediante la clave global `credential.helper` en `~/.gitconfig`. Sin un `credential.helper` efectivo que resuelva a Git Credential Manager y `credential.credentialStore = <keychain|wincredman|secretservice>`, `git credential fill` cae a un prompt TTY, y en un proceso GUI eso aparece como el críptico `fatal: could not read Password ... Device not configured` (errno ENXIO en `/dev/tty`).
 
-Un helper "resuelve a GCM" cuando es el nombre corto `manager`, el heredado `manager-core`, o una ruta absoluta cuyo binario es `git-credential-manager` (la forma que escribe `git-credential-manager configure` en macOS, p. ej. `/usr/local/share/gcm-core/git-credential-manager`). gitbox lee la lista completa de valores del helper y respeta la regla de reset de git (un valor vacío descarta los helpers anteriores), de modo que un `git-credential-manager configure` estándar — que añade una ruta absoluta tras un reset — mantiene la comprobación en verde sin necesidad de re-aplicar el arreglo.
+Un helper "resuelve a GCM" cuando es el nombre corto `manager`, el heredado `manager-core`, o una ruta absoluta cuyo binario es `git-credential-manager` (la forma que escribe `git-credential-manager configure`, p. ej. `/usr/local/share/gcm-core/git-credential-manager` en macOS, o una ruta con espacios escapados con barra invertida del instalador de usuario de Windows). gitbox lee la lista completa de valores del helper y respeta la regla de reset de git (un valor vacío descarta los helpers anteriores), de modo que un `git-credential-manager configure` estándar — que añade una ruta absoluta tras un reset — mantiene la comprobación en verde sin necesidad de re-aplicar el arreglo.
 
 gitbox lo detecta al arrancar cuando al menos una cuenta usa GCM. Cuando el `~/.gitconfig` global no tiene un helper que resuelva a GCM (o un `credentialStore` incorrecto), aparece un banner naranja en la GUI con un botón **Configure** que:
 
@@ -194,7 +194,7 @@ Arreglo típico en cada SO:
 
 - macOS: `brew install --cask git-credential-manager` (ssh/ssh-keygen vienen preinstalados).
 - Linux: instala el paquete GCM de tu distro (consulta la [documentación de instalación de GCM](https://github.com/git-ecosystem/git-credential-manager/blob/main/docs/install.md)); `sudo apt install openssh-client` para SSH.
-- Windows: GCM viene incluido con Git for Windows; el cliente OpenSSH es una característica opcional integrada.
+- Windows: GCM viene incluido con Git for Windows y no necesita estar en `PATH`: gitbox pregunta primero a `git credential-manager --version` y luego comprueba las carpetas de instalación de Git for Windows y de GCM independiente. El cliente OpenSSH es una característica opcional integrada.
 
 ## Troubleshooting
 

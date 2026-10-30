@@ -137,9 +137,10 @@ func helperSatisfies(eff []string, expected string) bool {
 // Manager, whether written as the short name git resolves on PATH ("manager",
 // legacy "manager-core") or as an absolute/relative path to the binary (e.g.
 // /usr/local/share/gcm-core/git-credential-manager, as the macOS Homebrew cask's
-// `git-credential-manager configure` writes).
+// `git-credential-manager configure` writes). The path may be quoted, or carry
+// the backslash-escaped spaces the Windows installer's `configure` writes.
 func isGCMHelper(value string) bool {
-	v := strings.TrimSpace(value)
+	v := strings.Trim(strings.TrimSpace(value), `"'`)
 	if v == "" {
 		return false
 	}

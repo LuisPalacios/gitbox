@@ -34,8 +34,15 @@ DEADCODE="golang.org/x/tools/cmd/deadcode@v0.50.0"
 # kept as part of a small public API. One regex per line.
 # I retain standalone sync/cache wrappers for library callers and their tests.
 DEADCODE_ALLOW='unreachable func: (PSDecode|resetLookupCachesForTest|Version\.String)$
-pkg/terminals/sync[.]go:[0-9]+:[0-9]+: unreachable func: Sync$
-pkg/workspace/workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCache$'
+pkg[/\\]terminals[/\\]sync[.]go:[0-9]+:[0-9]+: unreachable func: Sync$
+pkg[/\\]workspace[/\\]workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCache$'
+
+# Advisories npm audit may report: no fixed version exists yet and the package
+# never reaches the binary. A listed advisory that stops being reported fails
+# the check, so the entry goes away with the fix. Space-separated GHSA ids.
+# GHSA-gcqx-w48m-w2h4: deepmerge, a dev-only dependency of vite-plugin-svelte;
+# sveltejs/vite-plugin-svelte#1415 removes it.
+NPM_AUDIT_ALLOW="GHSA-gcqx-w48m-w2h4"
 
 FRONTEND="cmd/gui/frontend"
 MD_CONFIG=".claude/skills/fixing-markdown/.markdownlint-cli2.jsonc"
@@ -196,9 +203,26 @@ run_npm_install() {
 }
 
 run_npm_audit() {
-    (cd "$FRONTEND" && npm audit --audit-level=low >"$tmp/npm-audit.full" 2>&1) && return 0
-    grep -E '^[a-z@].*  |^Severity|vulnerabilit' "$tmp/npm-audit.full"
-    return 1
+    # npm audit exits non-zero on any advisory, allowed or not, so the verdict
+    # comes from its report. No report (network, registry) is a failure too.
+    (cd "$FRONTEND" && npm audit --json >"$tmp/npm-audit.json" 2>/dev/null)
+    NPM_AUDIT_ALLOW="$NPM_AUDIT_ALLOW" node -e '
+        const report = JSON.parse(require("fs").readFileSync(0, "utf8"));
+        if (!report.vulnerabilities) throw new Error("npm audit gave no report");
+        const allow = process.env.NPM_AUDIT_ALLOW.split(" ").filter(Boolean);
+        const seen = new Set();
+        for (const [pkg, vuln] of Object.entries(report.vulnerabilities)) {
+            for (const via of vuln.via) {
+                if (typeof via === "string" || via.severity === "info") continue;
+                const id = via.url.split("/").pop();
+                seen.add(id);
+                if (!allow.includes(id)) console.log(pkg + "  " + id + "  " + via.severity + "  " + via.title);
+            }
+        }
+        for (const id of allow) {
+            if (!seen.has(id)) console.log(id + " is no longer reported: remove it from NPM_AUDIT_ALLOW");
+        }
+    ' <"$tmp/npm-audit.json"
 }
 
 run_shellcheck() {

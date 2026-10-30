@@ -168,7 +168,7 @@ Provides version checking and self-update via GitHub Releases. `CheckLatest()` q
 
 ### pkg/doctor — External-tool detection
 
-Probes the host for every external binary gitbox may call — `git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, `wsl` (Windows only) — and reports path, version, and per-OS install hints for anything missing. `PrecheckForCredentialType()` powers the GUI setup flows so a missing tool surfaces as a yellow banner with the install command instead of a cryptic runtime error. The full report is available in the GUI under **Settings → System check**.
+Probes the host for every external binary gitbox may call — `git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, `wsl` (Windows only) — and reports path, version, and per-OS install hints for anything missing. `PrecheckForCredentialType()` powers the GUI setup flows so a missing tool surfaces as a yellow banner with the install command instead of a cryptic runtime error. For GCM the probe asks `git credential-manager --version` first, because git resolves it from its own directories, which need not be on `PATH`, and falls back to the known install folders only when git can't run it. The full report is available in the GUI under **Settings → System check**.
 
 The probe never runs `C:\Windows\System32\wsl.exe`: Windows ships that file as a stub that prompts to install WSL when the package is absent, in a window of its own. `doctor.WSLDistros()` reads the distros from the registry, and the version comes from the package's own binary under `Program Files\WSL`. Shell detection uses the same list, so the `wsl` shell only appears when a distro is installed.
 

@@ -7,12 +7,14 @@ package doctor
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/git"
 )
@@ -34,7 +36,7 @@ type Tool struct {
 type Result struct {
 	Tool    Tool
 	Found   bool
-	Path    string // absolute path when Found
+	Path    string // absolute path when Found (GCM: empty if only git can reach it)
 	Version string // first non-empty line of version output, if any
 }
 
@@ -79,8 +81,8 @@ func Lookup(name string) string {
 //     rc that adds it to PATH.
 //  5. Windows: well-known Git-for-Windows / GCM install dirs. GUI apps
 //     occasionally inherit an environment where `C:\Program Files\Git\cmd`
-//     is missing from PATH, which made gitbox wrongly report GCM as not
-//     installed.
+//     is missing from PATH, and GCM's own directory is rarely on it, which
+//     made gitbox wrongly report GCM as not installed.
 //
 // LookupIn never mutates the process environment, so it is safe to call
 // from background goroutines while other code spawns subprocesses.
@@ -207,26 +209,38 @@ func windowsFallbackDirs(name string) []string {
 	pf86 := os.Getenv("ProgramFiles(x86)")
 	localAppData := os.Getenv("LOCALAPPDATA")
 
-	dirs := make([]string, 0, 6)
+	var dirs []string
+	// A Git-for-Windows tree holds its binaries under one toolchain prefix:
+	// ucrt64 today, clangarm64 on ARM, mingw64 and mingw32 in older installs.
+	addGitTree := func(root string, toolchains ...string) {
+		dirs = append(dirs, filepath.Join(root, "cmd"))
+		for _, tc := range toolchains {
+			dirs = append(dirs, filepath.Join(root, tc, "bin"))
+		}
+	}
 	if pf != "" {
-		dirs = append(dirs,
-			filepath.Join(pf, "Git", "cmd"),
-			filepath.Join(pf, "Git", "mingw64", "bin"),
-		)
+		addGitTree(filepath.Join(pf, "Git"), "ucrt64", "clangarm64", "mingw64")
 	}
 	if pf86 != "" {
-		dirs = append(dirs,
-			filepath.Join(pf86, "Git", "cmd"),
-			filepath.Join(pf86, "Git", "mingw32", "bin"),
-		)
+		addGitTree(filepath.Join(pf86, "Git"), "mingw32")
 	}
 	if localAppData != "" {
 		// Git-for-Windows user-scope install.
-		dirs = append(dirs, filepath.Join(localAppData, "Programs", "Git", "cmd"))
+		addGitTree(filepath.Join(localAppData, "Programs", "Git"), "ucrt64", "clangarm64", "mingw64")
 	}
-	if base == "git-credential-manager" && pf != "" {
-		// Standalone GCM installer drops the binary outside of Git's tree.
-		dirs = append(dirs, filepath.Join(pf, "Git Credential Manager"))
+	if base == "git-credential-manager" {
+		// Standalone GCM installer drops the binary outside of Git's tree:
+		// under Program Files for a system install, under
+		// %LOCALAPPDATA%\Programs for a user install.
+		if pf != "" {
+			dirs = append(dirs, filepath.Join(pf, "Git Credential Manager"))
+		}
+		if pf86 != "" {
+			dirs = append(dirs, filepath.Join(pf86, "Git Credential Manager"))
+		}
+		if localAppData != "" {
+			dirs = append(dirs, filepath.Join(localAppData, "Programs", "Git Credential Manager"))
+		}
 	}
 	return dirs
 }
@@ -269,7 +283,11 @@ func probeVersion(path string, args []string) string {
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
 	_ = cmd.Run()
-	text := decodeToolOutput(buf.Bytes())
+	return firstLine(decodeToolOutput(buf.Bytes()))
+}
+
+// firstLine returns the first non-empty line of text, trimmed.
+func firstLine(text string) string {
 	for line := range strings.SplitSeq(text, "\n") {
 		if s := strings.TrimSpace(line); s != "" {
 			return s
@@ -368,7 +386,63 @@ func toolGCM() Tool {
 			"windows": "bundled with Git for Windows   (or: winget install GitHub.GitCredentialManager)",
 		},
 		VersionArgs: []string{"--version"},
+		Probe:       probeGCM,
 	}
+}
+
+// gitProbeTimeout bounds each git call of the GCM probe; GCM is a .NET app
+// and its first start can be slow, but a hung probe must not hang the GUI.
+const gitProbeTimeout = 10 * time.Second
+
+// probeGCM reports the GCM that `credential.helper = manager` runs. Git
+// resolves it from its own directories, which need not be on PATH, so asking
+// git comes first and no list of install directories can go stale. The file
+// lookup covers what git can't reach by itself: a standalone install used
+// through an absolute credential.helper path.
+func probeGCM() (path, version string, found bool) {
+	const name = "git-credential-manager"
+	if gitPath := Lookup("git"); gitPath != "" {
+		if v := gitFirstLine(gitPath, "credential-manager", "--version"); v != "" {
+			return gcmPathFromGit(gitPath, name), v, true
+		}
+	}
+	path = Lookup(name)
+	if path == "" {
+		return "", "", false
+	}
+	return path, probeVersion(path, []string{"--version"}), true
+}
+
+// gcmPathFromGit locates the binary git just ran, for display: next to git's
+// exec path (`<prefix>/libexec/git-core`), in `<prefix>/bin`, or else wherever
+// Lookup finds it. Returns "" when git can run it but no probe can see it.
+func gcmPathFromGit(gitPath, name string) string {
+	if execPath := gitFirstLine(gitPath, "--exec-path"); execPath != "" {
+		for _, dir := range []string{filepath.Clean(execPath), filepath.Join(execPath, "..", "..", "bin")} {
+			if p := statExecutable(dir, name); p != "" {
+				return p
+			}
+		}
+	}
+	return Lookup(name)
+}
+
+// gitFirstLine runs git and returns the first line of its stdout, or "" when
+// it fails. It runs from the home dir so a repo's local config can't alias
+// the subcommand.
+func gitFirstLine(gitPath string, args ...string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), gitProbeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, gitPath, args...)
+	cmd.WaitDelay = time.Second
+	cmd.Env = git.Environ()
+	cmd.Dir, _ = os.UserHomeDir()
+	git.HideWindow(cmd) // suppress console flash when called from the Windows GUI
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return firstLine(decodeToolOutput(out))
 }
 
 func toolSSH() Tool {

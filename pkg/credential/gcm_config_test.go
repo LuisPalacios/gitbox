@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -170,6 +171,39 @@ func TestCheckGlobalGCMConfig_ResetClearsHelper(t *testing.T) {
 	}
 }
 
+// The Windows user installer runs `git-credential-manager configure`, which
+// leaves the absolute path with backslash-escaped spaces after a reset. That
+// chain is valid: the check stays green and a fix leaves it untouched.
+func TestGlobalGCMConfig_WindowsEscapedPathChainIsOK(t *testing.T) {
+	isolateGlobalGitconfig(t)
+	const escaped = `C:/Users/someone/AppData/Local/Programs/Git\ Credential\ Manager/git-credential-manager.exe`
+	chain := []string{"manager", "", escaped}
+	for _, v := range chain {
+		if err := globalConfigAdd("credential.helper", v); err != nil {
+			t.Fatalf("seeding helper %q: %v", v, err)
+		}
+	}
+	if err := git.GlobalConfigSet("credential.credentialStore", DefaultCredentialStore()); err != nil {
+		t.Fatalf("seeding store: %v", err)
+	}
+
+	s := CheckGlobalGCMConfig(&config.Config{})
+	if s.NeedsFix || s.HelperValue != escaped {
+		t.Errorf("NeedsFix=%v HelperValue=%q, want false and %q", s.NeedsFix, s.HelperValue, escaped)
+	}
+
+	if err := FixGlobalGCMConfig(&config.Config{}, ""); err != nil {
+		t.Fatalf("FixGlobalGCMConfig: %v", err)
+	}
+	got, err := git.GlobalConfigGetAll("credential.helper")
+	if err != nil {
+		t.Fatalf("reading helper chain: %v", err)
+	}
+	if !slices.Equal(got, chain) {
+		t.Errorf("helper chain = %q, want %q", got, chain)
+	}
+}
+
 func TestIsGCMHelper(t *testing.T) {
 	cases := []struct {
 		value string
@@ -180,6 +214,8 @@ func TestIsGCMHelper(t *testing.T) {
 		{"git-credential-manager", true},
 		{"/usr/local/share/gcm-core/git-credential-manager", true},
 		{"C:\\Program Files\\Git\\mingw64\\bin\\git-credential-manager.exe", true},
+		{`C:/Users/someone/AppData/Local/Programs/Git\ Credential\ Manager/git-credential-manager.exe`, true},
+		{`"C:/Program Files/Git Credential Manager/git-credential-manager.exe"`, true},
 		{"  manager  ", true},
 		{"", false},
 		{"store", false},
