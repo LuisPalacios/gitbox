@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 )
@@ -43,6 +44,8 @@ case "$1" in
 get)
 	if [ -f '%[1]s' ]; then creds; exit 0; fi
 	[ "$GCM_INTERACTIVE" = never ] && exit 0
+	# Real GCM prompts on a terminal nobody sees here and waits; so does this.
+	if [ "$GCM_GUI_PROMPT" = false ] || [ -n "$FAKE_GCM_HANG" ]; then sleep 2; exit 1; fi
 	echo 'fake-gcm: opening the browser' >&2
 	[ -n "$FAKE_GCM_FAIL" ] && exit 1
 	creds
@@ -90,6 +93,50 @@ func TestCredentialSetupGCMSurvivesInvalidStderr(t *testing.T) {
 	r := a.CredentialSetupGCM("github-alice")
 	if !r.OK {
 		t.Fatalf("CredentialSetupGCM failed: %s", r.Message)
+	}
+}
+
+// shortSignInTimeout makes a sign-in that hangs fail fast instead of stalling
+// the test.
+func shortSignInTimeout(t *testing.T, d time.Duration) {
+	t.Helper()
+	saved := gcmSignInTimeout
+	gcmSignInTimeout = d
+	t.Cleanup(func() { gcmSignInTimeout = saved })
+}
+
+// Per-user GCM_GUI_PROMPT=false / GCM_INTERACTIVE=never made GCM wait on a
+// hidden terminal prompt; the sign-in must force GCM's own windows.
+func TestCredentialSetupGCMOverridesNonGUIEnv(t *testing.T) {
+	a := gcmSetupTestApp(t)
+	shortSignInTimeout(t, time.Second)
+	t.Setenv("GCM_GUI_PROMPT", "false")
+	t.Setenv("GCM_INTERACTIVE", "never")
+	r := a.CredentialSetupGCM("github-alice")
+	if !r.OK {
+		t.Fatalf("CredentialSetupGCM failed: %s", r.Message)
+	}
+}
+
+// A sign-in that never answers times out with a message naming the GCM_*
+// variables that usually cause it.
+func TestCredentialSetupGCMTimesOut(t *testing.T) {
+	a := gcmSetupTestApp(t)
+	shortSignInTimeout(t, 300*time.Millisecond)
+	t.Setenv("FAKE_GCM_HANG", "1")
+	t.Setenv("GCM_CREDENTIAL_STORE", "plaintext")
+	start := time.Now()
+	r := a.CredentialSetupGCM("github-alice")
+	if r.OK {
+		t.Fatalf("CredentialSetupGCM succeeded, want a timeout: %s", r.Message)
+	}
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Errorf("CredentialSetupGCM took %s, want it bounded by the timeout", elapsed)
+	}
+	for _, want := range []string{"did not finish", "GCM_CREDENTIAL_STORE"} {
+		if !strings.Contains(r.Message, want) {
+			t.Errorf("Message = %q, want it to contain %q", r.Message, want)
+		}
 	}
 }
 

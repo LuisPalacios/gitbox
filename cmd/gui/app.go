@@ -2170,6 +2170,43 @@ type CredentialSetupResult struct {
 	SSHVerified  bool   `json:"sshVerified,omitempty"`  // true when SSH connection test passed
 }
 
+// gcmSignInTimeout bounds the interactive GCM sign-in: long enough to type a
+// password or finish a browser flow, short enough that a GCM waiting on a
+// prompt nobody can see never hangs the GUI. A var so tests can shorten it.
+var gcmSignInTimeout = 5 * time.Minute
+
+// gcmSignInEnv is the environment for the interactive sign-in. GitboxApp has
+// no visible console, so a terminal prompt from GCM or git waits forever on a
+// hidden one. Per-user variables such as GCM_GUI_PROMPT=false or
+// GCM_INTERACTIVE=never cause exactly that, so the sign-in forces GCM's own
+// windows and turns git's terminal fallback off. Later entries win, so these
+// override the inherited values. git.Environ keeps the Homebrew PATH on macOS.
+func gcmSignInEnv() []string {
+	return append(git.Environ(),
+		"GCM_GUI_PROMPT=true",
+		"GCM_INTERACTIVE=always",
+		"GIT_TERMINAL_PROMPT=0",
+	)
+}
+
+// gcmSignInTimeoutMessage explains a sign-in that never finished, naming any
+// GCM_* variables in the environment because they are the usual cause.
+func gcmSignInTimeoutMessage(username, host string) string {
+	msg := fmt.Sprintf("GCM sign-in for %s@%s did not finish within %s, so gitbox stopped waiting. Close any open GCM window and try again.",
+		username, host, gcmSignInTimeout)
+	var vars []string
+	for _, kv := range os.Environ() {
+		if name, _, ok := strings.Cut(kv, "="); ok && strings.HasPrefix(strings.ToUpper(name), "GCM_") {
+			vars = append(vars, name)
+		}
+	}
+	if len(vars) > 0 {
+		sort.Strings(vars)
+		msg += " Your environment sets " + strings.Join(vars, ", ") + ", which changes how GCM behaves; see Troubleshooting in docs/credentials.md."
+	}
+	return msg
+}
+
 // CredentialSetupGCM triggers GCM browser authentication for an account.
 func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 	a.maintenanceMu.Lock()
@@ -2204,16 +2241,20 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 		return CredentialSetupResult{OK: true, Message: fmt.Sprintf("GCM credential already stored for %s@%s", acct.Username, host)}
 	}
 
-	// Trigger interactive git credential fill — GCM opens the browser.
-	// Stderr MUST be connected so GCM can launch its browser auth window.
+	// Trigger interactive git credential fill — GCM opens its sign-in window
+	// (password dialog or browser).
 	input := fmt.Sprintf("protocol=https\nhost=%s\nusername=%s\n\n", host, acct.Username)
 
 	// Run from home dir so repo-local .git/config credential overrides
 	// don't interfere with GCM. Home has ~/.gitconfig with per-host settings.
 	homeDir, _ := os.UserHomeDir()
-	fillCmd := exec.Command(git.GitBin(), "credential", "fill")
+	fillCtx, cancelFill := context.WithTimeout(context.Background(), gcmSignInTimeout)
+	defer cancelFill()
+	fillCmd := exec.CommandContext(fillCtx, git.GitBin(), "credential", "fill")
+	// GCM may outlive the killed git and hold the pipes open; stop waiting.
+	fillCmd.WaitDelay = 2 * time.Second
 	fillCmd.Dir = homeDir
-	fillCmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
+	fillCmd.Env = gcmSignInEnv()
 	fillCmd.Stdin = strings.NewReader(input)
 	// Capture only: a GUI launched without a console has no valid stderr
 	// handle, so forwarding to os.Stderr would fail the whole fill.
@@ -2222,6 +2263,9 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 	git.HideWindow(fillCmd)
 	out, err := fillCmd.Output()
 	if err != nil {
+		if fillCtx.Err() != nil {
+			return CredentialSetupResult{OK: false, Message: gcmSignInTimeoutMessage(acct.Username, host)}
+		}
 		detail := strings.TrimSpace(stderrBuf.String())
 		if detail == "" {
 			detail = err.Error()
@@ -2257,9 +2301,12 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 
 	// Approve so git stores it persistently. Best-effort — modern GCM may
 	// already persist during fill. We verify storage below.
-	approveCmd := exec.Command(git.GitBin(), "credential", "approve")
+	approveCtx, cancelApprove := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelApprove()
+	approveCmd := exec.CommandContext(approveCtx, git.GitBin(), "credential", "approve")
+	approveCmd.WaitDelay = 2 * time.Second
 	approveCmd.Dir = homeDir
-	approveCmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
+	approveCmd.Env = gcmSignInEnv()
 	approveCmd.Stdin = strings.NewReader(string(out))
 	git.HideWindow(approveCmd)
 	_ = approveCmd.Run()

@@ -68,6 +68,8 @@ GCM handles everything through a single login. One credential is stored by GCM i
 
 **Storage:** GCM manages its own credential storage (OS keyring). gitbox extracts the cached secret via `git credential fill` for API calls.
 
+**Sign-in window:** GitboxApp has no visible console, so it always asks GCM for its own windows (`GCM_GUI_PROMPT=true`, `GCM_INTERACTIVE=always`) and turns git's terminal prompt off, whatever the user environment says. If the sign-in still doesn't finish within 5 minutes, gitbox stops waiting and names any `GCM_*` variables it found (see [Windows: GCM sign-in hangs with no window](#windows-gcm-sign-in-hangs-with-no-window)).
+
 ### Global gitconfig requirements
 
 GCM dispatches per-host through the global `credential.helper` key in `~/.gitconfig`. Without an effective `credential.helper` that resolves to Git Credential Manager and `credential.credentialStore = <keychain|wincredman|secretservice>`, `git credential fill` falls through to a TTY prompt — and in a GUI process that surfaces as the cryptic `fatal: could not read Password ... Device not configured` (errno ENXIO on `/dev/tty`).
@@ -250,6 +252,47 @@ Passing a bundle identifier (`tccutil reset LocalNetwork com.wails.gitboxapp`) n
 **Root cause.** `git credential fill` tried to open `/dev/tty` for an interactive password prompt because `credential.helper` and `credential.credentialStore` were missing or wrong in `~/.gitconfig`. GUI processes have no controlling tty; the `open()` returns `ENXIO` and git surfaces the cryptic message.
 
 **Fix.** Click **Configure** on the global credential helper banner in the GUI. Gitbox writes the right entries and verifies. Redo the credential setup.
+
+### Windows: GCM sign-in hangs with no window
+
+**Symptom.** Setting up a GCM credential spins forever and the GCM username/password window never appears. The same account works for another Windows user on the same PC, and `~/.gitconfig` looks identical for both.
+
+**Root cause.** Per-user environment variables override `~/.gitconfig` for GCM. Setup scripts meant for SSH or headless use sometimes set them:
+
+- `GCM_GUI_PROMPT=false` makes GCM ask on a terminal. GitboxApp runs git with a hidden console, so GCM waits on a prompt nobody can see.
+- `GCM_INTERACTIVE=never` makes the sign-in fail instead of prompting.
+- `GCM_CREDENTIAL_STORE=plaintext` (or `dpapi`, `cache`) wins over `credential.credentialStore = wincredman`. GCM then keeps secrets in clear text under `%USERPROFILE%\.gcm\store\` instead of Windows Credential Manager.
+- `GCM_GITHUB_AUTHMODES=device` forces the GitHub device-code flow, whose code shows up only on a terminal.
+
+Since v2.6.2 gitbox forces the GUI prompt during sign-in and stops after 5 minutes, so the hang is gone, but `GCM_CREDENTIAL_STORE` still decides where GCM stores the credential. Remove the variables.
+
+**Check.** As the affected user, in PowerShell:
+
+```powershell
+[Environment]::GetEnvironmentVariables('User').Keys | Where-Object { $_ -like 'GCM_*' }
+[Environment]::GetEnvironmentVariables('Machine').Keys | Where-Object { $_ -like 'GCM_*' }
+```
+
+**Fix as the affected user.** Delete the user-level variables, then sign out and back in, because Explorer reads the environment only at sign-in:
+
+```powershell
+'GCM_GUI_PROMPT','GCM_INTERACTIVE','GCM_CREDENTIAL_STORE','GCM_GITHUB_AUTHMODES' |
+  ForEach-Object { [Environment]::SetEnvironmentVariable($_, $null, 'User') }
+```
+
+A `Machine` hit needs an elevated PowerShell with `'Machine'` in place of `'User'`, and affects every user on the PC.
+
+**Fix from an administrator account.** When the affected user is signed out, load their registry hive, delete the values and unload it. Run elevated, replace `<user>`, and keep the user signed out until `reg unload` succeeds, or Windows gives them a temporary profile:
+
+```powershell
+reg load 'HKU\gbx_tmp' 'C:\Users\<user>\NTUSER.DAT'
+foreach ($n in 'GCM_GUI_PROMPT','GCM_INTERACTIVE','GCM_CREDENTIAL_STORE','GCM_GITHUB_AUTHMODES') {
+  Remove-ItemProperty -Path 'Registry::HKEY_USERS\gbx_tmp\Environment' -Name $n -ErrorAction SilentlyContinue
+}
+[GC]::Collect(); reg unload 'HKU\gbx_tmp'
+```
+
+**Afterwards.** Sign in as the user, redo the GCM setup in GitboxApp and confirm the GCM window appears. Once the credential lives in Windows Credential Manager, delete `%USERPROFILE%\.gcm\store\`, which still holds the old secrets in clear text.
 
 ### Windows: firewall
 
