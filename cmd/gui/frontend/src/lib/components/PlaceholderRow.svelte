@@ -1,6 +1,7 @@
 <script lang="ts">
   // A folder a container's .code-workspace lists that is not cloned yet:
-  // a dimmed row under the container, with no actions. It reads like a
+  // a dimmed row under the container, with no actions, its name in the
+  // workspace colour like the clones the workspace lists. It reads like a
   // nested clone row so the tree keeps its shape.
   import { t } from '../i18n';
   import type { Placeholder } from '../repo-tree';
@@ -26,7 +27,7 @@
     border-left: 2px solid var(--border); opacity: 0.6;
   }
   .dot { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; color: var(--text-muted); }
-  .name { font-size: 13px; color: var(--text-repo); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .name { font-size: 13px; color: var(--text-workspace); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .path { flex: 1; font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .words { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
   @container content (max-width: 620px) {

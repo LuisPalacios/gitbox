@@ -46,7 +46,10 @@ type ReconcileDTO struct {
 	WorkspacesChanged bool                 `json:"workspacesChanged"`
 	WorkspaceChoices  []WorkspaceChoiceDTO `json:"workspaceChoices"`
 	Placeholders      []WorkspaceFolderDTO `json:"placeholders"`
-	Error             string               `json:"error,omitempty"`
+	// WorkspaceMembers lists the clones ("source/repo") a container's
+	// workspace file lists inside it.
+	WorkspaceMembers []string `json:"workspaceMembers"`
+	Error            string   `json:"error,omitempty"`
 }
 
 // WorkspaceChoiceDTO is a container whose root holds several workspace
@@ -69,7 +72,7 @@ type WorkspaceFolderDTO struct {
 // frontend.
 func emptyReconcile(errText string) ReconcileDTO {
 	return ReconcileDTO{Unmatched: []OrphanRepoDTO{}, Ignored: []OrphanRepoDTO{},
-		WorkspaceChoices: []WorkspaceChoiceDTO{}, Placeholders: []WorkspaceFolderDTO{}, Error: errText}
+		WorkspaceChoices: []WorkspaceChoiceDTO{}, Placeholders: []WorkspaceFolderDTO{}, WorkspaceMembers: []string{}, Error: errText}
 }
 
 // AdoptRequestDTO asks to adopt the clone at Path into Account.
@@ -177,7 +180,7 @@ func (a *App) Reconcile() ReconcileDTO {
 	for _, c := range choices {
 		out.WorkspaceChoices = append(out.WorkspaceChoices, WorkspaceChoiceDTO{Source: c.Source, Repo: c.Repo, Files: c.Files})
 	}
-	out.Placeholders = a.workspacePlaceholders()
+	out.Placeholders, out.WorkspaceMembers = a.workspaceTree()
 	for _, u := range res.Unmatched {
 		out.Unmatched = append(out.Unmatched, toOrphanDTO(u.OrphanRepo, u.Reason))
 	}
@@ -211,20 +214,23 @@ func (a *App) syncWorkspaces() ([]workspace.Choice, bool, error) {
 	return ws.Choices, true, a.saveConfig()
 }
 
-// workspacePlaceholders lists the not-yet-cloned folders of every
-// container's workspace, reading disk without the lock.
-func (a *App) workspacePlaceholders() []WorkspaceFolderDTO {
-	out := []WorkspaceFolderDTO{}
+// workspaceTree lists, for every container's workspace, the folders not
+// cloned yet and the clones it lists, reading disk without the lock.
+func (a *App) workspaceTree() ([]WorkspaceFolderDTO, []string) {
+	placeholders, members := []WorkspaceFolderDTO{}, []string{}
 	a.mu.Lock()
 	snap, err := a.cfg.Clone()
 	a.mu.Unlock()
 	if err != nil {
-		return out
+		return placeholders, members
 	}
 	for _, p := range workspace.Placeholders(snap) {
-		out = append(out, WorkspaceFolderDTO{Parent: p.Parent.Source + "/" + p.Parent.Repo, Name: p.Name, Path: p.Path})
+		placeholders = append(placeholders, WorkspaceFolderDTO{Parent: p.Parent.Source + "/" + p.Parent.Repo, Name: p.Name, Path: p.Path})
 	}
-	return out
+	for _, r := range workspace.MemberRepos(snap) {
+		members = append(members, r.Source+"/"+r.Repo)
+	}
+	return placeholders, members
 }
 
 // AdoptClones adopts unmatched or ignored clones into the accounts I

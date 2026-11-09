@@ -297,6 +297,8 @@ Gitbox comprueba al arrancar, al recuperar el foco la ventana, tras un Fetch all
 
 Cada clon dentro del árbol de trabajo de un contenedor aparece debajo de él, sangrado, y se pliega con él. Gitbox los busca hasta la **profundidad de escaneo anidado** por debajo del contenedor, y en cada carpeta que lista el archivo de workspace del contenedor, a cualquier profundidad. Los clones anidados se adoptan en el lugar bajo su cuenta/org real, se guardan con una `clone_folder` absoluta dentro del contenedor y nunca se reubican. Una carpeta que el archivo de workspace lista dentro del contenedor y que todavía no está en disco aparece como una fila atenuada **sin clonar** con su ruta, salvo que esté dentro de otro clon, como un submódulo sin descargar. Las carpetas que el workspace lista fuera del contenedor mantienen su sitio normal bajo su propia cuenta.
 
+Los nombres de un contenedor con archivo de workspace, de los clones que ese archivo lista y de sus carpetas sin clonar aparecen en azul, así veo de un vistazo lo que abre VS Code. Un clon anidado que el workspace no lista mantiene el color normal.
+
 ### Abrir un contenedor
 
 El botón de editor de un contenedor con archivo de workspace abre el archivo `.code-workspace`, no la carpeta, cuando el editor es VS Code o un fork suyo (VS Code Insiders, VSCodium, Cursor, Windsurf). Los demás editores abren la carpeta como siempre. Lo mismo vale para los editores del menú ⋯.

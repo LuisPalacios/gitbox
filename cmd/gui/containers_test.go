@@ -187,6 +187,9 @@ func TestReconcile_WorkspaceFileMakesContainer(t *testing.T) {
 	if !reflect.DeepEqual(res.Placeholders, want) {
 		t.Errorf("placeholders = %+v, want %+v", res.Placeholders, want)
 	}
+	if want := []string{"github-alice/alice/fresh"}; !reflect.DeepEqual(res.WorkspaceMembers, want) {
+		t.Errorf("members = %v, want %v", res.WorkspaceMembers, want)
+	}
 	reloaded, _ := config.Load(cfgPath)
 	repos := reloaded.Sources["github-alice"].Repos
 	if r := repos["team/frontend"]; !r.Container || r.Workspace != "front.code-workspace" {

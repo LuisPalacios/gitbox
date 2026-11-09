@@ -1187,6 +1187,7 @@ export namespace main {
 	    workspacesChanged: boolean;
 	    workspaceChoices: WorkspaceChoiceDTO[];
 	    placeholders: WorkspaceFolderDTO[];
+	    workspaceMembers: string[];
 	    error?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -1202,6 +1203,7 @@ export namespace main {
 	        this.workspacesChanged = source["workspacesChanged"];
 	        this.workspaceChoices = this.convertValues(source["workspaceChoices"], WorkspaceChoiceDTO);
 	        this.placeholders = this.convertValues(source["placeholders"], WorkspaceFolderDTO);
+	        this.workspaceMembers = source["workspaceMembers"];
 	        this.error = source["error"];
 	    }
 	

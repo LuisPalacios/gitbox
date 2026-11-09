@@ -93,7 +93,7 @@ body {
   --bg-row-hover: #3f3f46;
   --border: #27272a; --border-hover: #3f3f46;
   --text-primary: #fafafa; --text-secondary: #b4b4bd; --text-muted: #8e8e99; --text-dim: #71717a;
-  --text-repo: #e4e4e7;
+  --text-repo: #e4e4e7; --text-workspace: #6ea8fe;
   --logo-dark: #4abdd4; --logo-light: #7cd9ec;
   --ring-bg: #27272a; --ring-accent: #61fd5f; --overlay: rgba(0,0,0,0.6);
   --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
@@ -105,7 +105,7 @@ body {
   --bg-row-hover: #d4d4d8;
   --border: #e4e4e7; --border-hover: #d4d4d8;
   --text-primary: #18181b; --text-secondary: #52525b; --text-muted: #71717a; --text-dim: #a1a1aa;
-  --text-repo: #27272a;
+  --text-repo: #27272a; --text-workspace: #1d4ed8;
   --logo-dark: #1c5566; --logo-light: #2e9fc0;
   --ring-bg: #e4e4e7; --ring-accent: #166534; --overlay: rgba(0,0,0,0.3);
   --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);

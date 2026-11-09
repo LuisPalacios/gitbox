@@ -27,7 +27,7 @@ Los recuentos son funciones `func Test…` de nivel superior por paquete, obteni
 - `pkg/status/` — 18 pruebas: comprobación de estado de clones, raíz no disponible, detección de rama, rutas de repo a través de las raíces de source y de repo, cálculo de anidamiento (incluido un contenedor dentro de otro)
 - `pkg/terminals/` — 55 pruebas: forma del catálogo, composición de Profile según el OS, búsquedas de WezTerm y Windows Terminal, reglas de fusión
 - `pkg/update/` — 28 pruebas: parseo semver, comparación de versiones, comprobación de actualización (API mock, una actualización pendiente se informa en cada comprobación), límite de versión mayor, nombres de artefactos, detección del AppImage solo-aviso, destinos de instalación, comando de relanzamiento por plataforma y espera a que termine el proceso antiguo (más el script elevado de Windows, en Windows), verificación de checksum, verificación de la firma de release contra firmas hechas con `ssh-keygen` real (otro tag, checksums manipulados, namespace incorrecto, clave ajena, malformada), `allowed_signers` sincronizado con la clave incrustada, descarga que falla cerrada (checksums o firma ausentes, ilegibles o inválidos rechazan la actualización, y una firma mala la detiene antes de descargar el artefacto)
-- `pkg/workspace/` — 11 pruebas: archivos de workspace en la raíz de un clon, un archivo que convierte el clon en contenedor, varios que preguntan una vez y conservan una elección, un archivo preferido que vuelve a ganar cuando regresa, un archivo desaparecido que borra la elección, clones que no están en disco que se dejan como están, placeholders para las carpetas listadas dentro de un contenedor que faltan en disco (nunca para carpetas dentro de otro clon), y JSON con comentarios
+- `pkg/workspace/` — 12 pruebas: archivos de workspace en la raíz de un clon, un archivo que convierte el clon en contenedor, varios que preguntan una vez y conservan una elección, un archivo preferido que vuelve a ganar cuando regresa, un archivo desaparecido que borra la elección, clones que no están en disco que se dejan como están, placeholders para las carpetas listadas dentro de un contenedor que faltan en disco (nunca para carpetas dentro de otro clon), los clones que lista un workspace, y JSON con comentarios
 
 ### Pruebas de la GUI — 73 pruebas (`cmd/gui/`)
 
@@ -50,7 +50,7 @@ Cubro la coordinación del refresco y los sondeos upstream sin una ventana Wails
 
 - `TestScenario_FullLifecycle` — end-to-end a través de `pkg/ops`: añadir cuenta → comprobar credencial → descubrir → añadir repo → clone → status → pull y fetch → editar cuenta + reconfigurar clones → CRUD de mirrors → reclonar → renombrar cuenta → borrarlo todo
 
-### Total: 575 pruebas
+### Total: 576 pruebas
 
 ## Cómo funciona el harness de pruebas
 

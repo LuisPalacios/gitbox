@@ -241,6 +241,7 @@ export interface ReconcileDTO {
   workspacesChanged: boolean;
   workspaceChoices: WorkspaceChoiceDTO[];
   placeholders: WorkspaceFolderDTO[];
+  workspaceMembers: string[];
   error?: string;
 }
 

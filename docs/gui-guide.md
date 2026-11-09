@@ -297,6 +297,8 @@ Gitbox checks at startup, on window focus, after a manual Fetch all and after I 
 
 Every clone inside a container's working tree shows below it, indented, and folds with it. Gitbox looks for them up to the **nested scan depth** below the container, and at every folder the container's workspace file lists, at any depth. Nested clones are adopted in place under their real account/org, stored with an absolute `clone_folder` inside the container and never relocated. A folder the workspace file lists inside the container that isn't on disk yet shows as a dimmed **not cloned** row with its path, unless it sits inside another clone, like a submodule that isn't checked out. Folders the workspace lists outside the container keep their normal place under their own account.
 
+The names of a container with a workspace file, of the clones that file lists and of its not-cloned folders show in blue, so I see at a glance what VS Code opens. A nested clone the workspace doesn't list keeps the normal colour.
+
 ### Opening a container
 
 The editor button on a container with a workspace file opens the `.code-workspace` file, not the folder, when the editor is VS Code or a fork of it (VS Code Insiders, VSCodium, Cursor, Windsurf). Other editors open the folder as usual. The same goes for the editors in the ⋯ menu.

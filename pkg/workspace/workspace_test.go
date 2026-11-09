@@ -277,6 +277,21 @@ func TestPlaceholders_SkipsFoldersInsideNestedClones(t *testing.T) {
 	}
 }
 
+func TestMemberRepos_ListsClonesTheWorkspaceNames(t *testing.T) {
+	cfg := newTestConfig(t)
+	dir := makeRepoDir(t, cfg, "github-test", "team/frontend")
+	src := cfg.Sources["github-test"]
+	src.Repos["team/backend"] = config.Repo{CloneFolder: filepath.Join(dir, "Backend")}
+	src.Repos["team/frontend"] = config.Repo{Container: true, Workspace: "w.code-workspace"}
+	cfg.Sources["forgejo-test"].Repos["team/infra"] = config.Repo{CloneFolder: filepath.Join(dir, "infra")}
+	writeCodeWorkspace(t, filepath.Join(dir, "w.code-workspace"), ".", "Backend", "missing")
+
+	want := []status.RepoRef{{Source: "github-test", Repo: "team/backend"}}
+	if got := MemberRepos(cfg); !reflect.DeepEqual(got, want) {
+		t.Errorf("MemberRepos = %+v, want %+v (infra is nested but not listed)", got, want)
+	}
+}
+
 func TestPlaceholders_IgnoresContainersWithoutWorkspace(t *testing.T) {
 	cfg := newTestConfig(t)
 	dir := makeRepoDir(t, cfg, "github-test", "team/frontend")

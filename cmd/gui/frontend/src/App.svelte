@@ -4,7 +4,7 @@
   import type { DoctorPrecheckDTO } from './lib/bridge';
   import {
     configStore, accounts, sources, mirrors, repoStates, themeStore, applyStatusResults,
-    applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, workspacePlaceholders
+    applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, workspacePlaceholders, workspaceMembers
   } from './lib/stores';
   import { detailLocked, attentionRank, accountHealth, CALM_RANK } from './lib/status';
   import type { HealthFix } from './lib/status';
@@ -690,6 +690,7 @@
     const byParent: Record<string, Placeholder[]> = {};
     for (const p of res.placeholders || []) (byParent[p.parent] ??= []).push({ name: p.name, path: p.path });
     $workspacePlaceholders = byParent;
+    $workspaceMembers = new Set(res.workspaceMembers || []);
     workspaceChoices = new Set((res.workspaceChoices || []).map(c => `${c.source}/${c.repo}`));
     await loadNesting();
     askWorkspaceChoices(res.workspaceChoices || []);

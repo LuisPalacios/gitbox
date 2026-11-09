@@ -48,7 +48,7 @@
   import { fade } from 'svelte/transition';
   import { bridge } from '../bridge';
   import { pushNotice, errorText } from '../notices';
-  import { accounts, repoStates, prSettings, prsByAccount, lookupPRSummary, sources, isSynced, themeStore } from '../stores';
+  import { accounts, repoStates, prSettings, prsByAccount, lookupPRSummary, sources, workspaceMembers, isSynced, themeStore } from '../stores';
   import { statusColor, simpleKind, simpleColor, rowBusy, rowGlyph, statusLabel, attentionRank, CALM_RANK, COUNT_BADGES } from '../status';
   import type { SimpleKind } from '../status';
   import { t } from '../i18n';
@@ -119,6 +119,9 @@
   // have to pick one among several.
   $: wsFile = $sources[rowSourceKey]?.repos[repoName]?.workspace || '';
   $: wsPending = workspaceChoices.has(repoKey);
+  // A container with a workspace file and the clones that file lists show
+  // their names in the workspace colour: what VS Code opens.
+  $: inWorkspace = (isContainer && !!wsFile) || $workspaceMembers.has(repoKey);
   // A folded parent hiding clones that need me stays at full strength.
   $: calm = fadeHealthy && !busy && isSynced(state) && !(belowNeed > 0 && collapsedRepos.has(repoKey));
 
@@ -368,11 +371,11 @@
     {@const kindColor = simpleColor(kind, $themeStore)}
     <span class="dot" class:spinning={busy} style="color: {kindColor}">{busy ? '↻' : '●'}</span>
     {#if childCount > 0}
-      <span class="repo-name" title={repoName}><span class="repo-name-toggle" role="button" tabindex="-1"
+      <span class="repo-name" class:ws-member={inWorkspace} title={repoName}><span class="repo-name-toggle" role="button" tabindex="-1"
         on:click={(e) => { e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants); }}
         on:keydown={onActivateKey(() => toggleRepoCollapsed(repoKey, descendants))}>{shortName(repoName)}</span></span>
     {:else}
-      <span class="repo-name" title={repoName}>{shortName(repoName)}</span>
+      <span class="repo-name" class:ws-member={inWorkspace} title={repoName}>{shortName(repoName)}</span>
     {/if}
     {@render rowTags()}
     {#if state.status === 'syncing' || state.status === 'cloning'}
@@ -418,12 +421,12 @@
   <span class="dot" class:spinning={busy} style="color: {sc(state.status)}">{rowGlyph(state.status, !!fetchingRepos[repoKey])}</span>
   {#if childCount > 0}
     <!-- The name folds its clones too. -->
-    <span class="repo-name"><span class="repo-name-toggle" role="button" tabindex="-1"
+    <span class="repo-name" class:ws-member={inWorkspace}><span class="repo-name-toggle" role="button" tabindex="-1"
       title={collapsedRepos.has(repoKey) ? $t('collapse.expand') : $t('collapse.collapse')}
       on:click={(e) => { e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants); }}
       on:keydown={onActivateKey(() => toggleRepoCollapsed(repoKey, descendants))}>{repoName}</span></span>
   {:else}
-    <span class="repo-name">{repoName}</span>
+    <span class="repo-name" class:ws-member={inWorkspace}>{repoName}</span>
   {/if}
   {@render rowTags()}
   {#if isContainer}
@@ -545,6 +548,7 @@
   .repo-row-nested { padding-left: calc(10px + var(--depth) * 22px); }
   .dot { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; }
   .repo-name { font-size: 13px; color: var(--text-repo); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .repo-name.ws-member { color: var(--text-workspace); font-weight: 500; }
   .progress-track { width: 110px; height: 4px; background: var(--ring-bg); border-radius: 2px; overflow: hidden; flex-shrink: 0; }
   .progress-fill { height: 100%; border-radius: 2px; transition: width 0.12s ease-out; }
   .progress-pct { font-size: 11px; width: 32px; text-align: right; flex-shrink: 0; font-weight: 600; }

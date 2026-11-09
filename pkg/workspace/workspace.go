@@ -175,6 +175,35 @@ func Placeholders(cfg *config.Config) []Placeholder {
 	return out
 }
 
+// MemberRepos returns the configured repos that a container's workspace
+// file lists inside it, so the GUI can show what the workspace opens. The
+// container itself is not listed.
+func MemberRepos(cfg *config.Config) []status.RepoRef {
+	byPath := make(map[string]status.RepoRef)
+	for _, srcKey := range cfg.OrderedSourceKeys() {
+		src := cfg.Sources[srcKey]
+		for _, repoKey := range src.OrderedRepoKeys() {
+			byPath[normPath(status.RepoPath(cfg, srcKey, repoKey, src.Repos[repoKey]))] = status.RepoRef{Source: srcKey, Repo: repoKey}
+		}
+	}
+	var out []status.RepoRef
+	for _, srcKey := range cfg.OrderedSourceKeys() {
+		src := cfg.Sources[srcKey]
+		for _, repoKey := range src.OrderedRepoKeys() {
+			repo := src.Repos[repoKey]
+			if !repo.Container || repo.Workspace == "" {
+				continue
+			}
+			for _, m := range Members(status.RepoPath(cfg, srcKey, repoKey, repo), repo.Workspace) {
+				if ref, ok := byPath[normPath(m.Path)]; ok {
+					out = append(out, ref)
+				}
+			}
+		}
+	}
+	return out
+}
+
 // insideClone reports whether p lies inside a known clone nested in the
 // container dir: a folder of that clone (a submodule, say) is not a clone
 // gitbox could provide.
