@@ -1,25 +1,27 @@
 # Release signing
 
-Every gitbox release carries `checksums.sha256.sig`, an SSH signature over the release's `checksums.sha256`. The updater inside `GitboxApp` refuses to install a release whose signature is missing or doesn't come from the release key compiled into the binary. This page explains how the signing works, how I run it for each release, and how a fork sets it up with its own key.
+Every Gitbox release carries `checksums.sha256.sig`, an SSH signature over the release's `checksums.sha256`. The updater inside `GitboxApp` refuses to install a release whose signature is missing or doesn't come from the release key compiled into the binary. This page explains how the signing works, how I run it for each release, and how a fork sets it up with its own key. The rest of the release process lives in [developer-guide.md](developer-guide.md#release-process).
 
 ## Why releases are signed
 
-The updater has always compared each downloaded artifact with its SHA256 in `checksums.sha256`. That proves the download isn't corrupted, but both files come from the same GitHub release, so anyone able to upload release assets could replace an artifact and its checksum together. The signature adds authenticity: only the holder of the private key can produce it, and that key never leaves the maintainer's machine.
+The updater compares each downloaded artifact with its SHA256 in `checksums.sha256`. That proves the download isn't corrupted, but both files come from the same GitHub release, so anyone able to upload release assets could replace an artifact and its checksum together. The signature adds authenticity: only the holder of the private key can produce it, and that key never leaves the maintainer's machine.
 
 ## How it works
 
 The flow has three actors: CI, the maintainer, and the updater on every user's machine.
 
 1. I push a version tag. CI builds every artifact, writes `checksums.sha256` and creates the GitHub release as a **draft**. A draft is invisible to users and to the updater.
-2. I run `./scripts/sign-release.sh <tag>` on my machine. The script downloads the draft's `checksums.sha256`, checks that it lists exactly the release's assets, and signs this message with `ssh-keygen -Y sign` through my SSH agent:
+2. I run `./scripts/sign-release.sh <tag>` on my machine. The script downloads the draft's `checksums.sha256`, checks that it lists exactly the release's assets, and signs this message with `ssh-keygen -Y sign -n gitbox-release` through my SSH agent:
 
    ```text
    gitbox <tag>
    <checksums.sha256, byte for byte>
    ```
 
-   The agent asks me to approve the signature. The script then verifies the new signature against `allowed_signers`, uploads it as `checksums.sha256.sig` and publishes the release.
-3. When a user's `GitboxApp` finds the new release, it downloads `checksums.sha256` and `checksums.sha256.sig` first and checks the signature: it must use the `gitbox-release` namespace, come from the key compiled into the binary, and cover this exact tag and these exact checksums. Only then does it download the artifact and compare its SHA256. Any failure refuses the update.
+   The first line is the literal word `gitbox`, a space, the tag (for example `gitbox v2.2.0`) and a newline. The agent asks me to approve the signature. The script then verifies the new signature against `allowed_signers`, uploads it as `checksums.sha256.sig` and publishes the release.
+3. When a user's `GitboxApp` finds the new release, it downloads `checksums.sha256` and `checksums.sha256.sig` first and checks the signature: it must use the `gitbox-release` namespace, come from the key compiled into the binary, and cover this exact tag and these exact checksums. Only then does it download the artifact and compare its SHA256.
+
+The updater fails closed. A release without `checksums.sha256` or `checksums.sha256.sig` is refused before the artifact is downloaded, and a signature that doesn't verify, or a checksum that doesn't match, refuses the update. [architecture.md](architecture.md#pkgupdate--auto-update) describes the updater's design.
 
 The tag inside the message binds a signature to one release, so an old signature can't be replayed onto a new tag. The `gitbox-release` namespace keeps a signature made with the same key for anything else, such as a git commit, from passing as a release signature.
 
@@ -37,6 +39,8 @@ Any SSH agent works, as long as it:
 - Holds an Ed25519 key (`ssh-ed25519`).
 - Speaks the standard SSH agent protocol, so `ssh-add -L` lists the key and `ssh-keygen -Y sign` can use it.
 - Is reachable from the shell where I run the script: through `SSH_AUTH_SOCK` on macOS and Linux, and through the Windows OpenSSH named pipe on Windows.
+
+The script is standalone: it doesn't need the `.env` of the remote test hosts, so it works in any clone or fork.
 
 Password managers with a built-in SSH agent are a good fit, because the key syncs with the vault, never exists as a file, and every signature can require an approval. Plain `ssh-agent` with a key file also works.
 
@@ -101,11 +105,11 @@ A passing check prints the key's fingerprint and `the agent signs with the relea
    ./scripts/sign-release.sh v2.2.0
    ```
 
-   The script refuses a release that is already published, has no `checksums.sha256`, already has a signature, or whose checksums don't list exactly the release's assets. It decides whether the release becomes GitHub's "latest" with the same rule CI used before: only the highest major version line may be latest, so a `v1.x` maintenance release never hijacks the updater of v2 apps.
+   The script signs the release of the repository that `remote.origin.url` points to, and switches `gh` to the account of that repository's owner when several are logged in. It refuses a release that is already published, has no `checksums.sha256`, already has a signature, or whose checksums don't list exactly the release's assets. It decides whether the release becomes GitHub's "latest": only the highest major version line may be latest, so a `v1.x` maintenance release never hijacks the updater of v2 apps.
 
-To rehearse without publishing, `./scripts/sign-release.sh v2.2.0 --dry-run` signs and verifies, then stops before uploading. If anything fails, the release stays a hidden draft until I fix the problem and run the script again.
+To rehearse without publishing, `./scripts/sign-release.sh v2.2.0 --dry-run` signs and verifies, then stops before uploading. The tag must look like `vX.Y.Z` and come first. If anything fails, the release stays a hidden draft until I fix the problem and run the script again.
 
-To test the in-app update right after publishing, I open an installed copy of the previous release. The app checks for updates at every launch, so the amber version pill in the footer offers the new release right away. The update only installs if the signature and checksum verify, and the app then restarts on the new version.
+To test the in-app update right after publishing, I open an installed copy of the previous release. The app checks for updates at launch and every six hours, so the amber version pill in the footer offers the new release right away. The update only installs if the signature and checksum verify, and the app then restarts on the new version.
 
 ## Verify a release by hand
 
@@ -140,7 +144,7 @@ A fork that publishes its own releases needs its own key, because it can't sign 
 
 4. Run `go test ./pkg/update/`. `TestReleaseSigningKey_MatchesAllowedSigners` fails if the two files disagree.
 5. Run `./scripts/sign-release.sh --check`.
-6. Point the updater at your repository: the default `Repo` in `pkg/update` names this repository.
+6. Point the updater at your repository: replace `LuisPalacios/gitbox` in `updateOpts()` in `cmd/gui/app.go`, which the GUI passes as `update.Options.Repo`, and in the default of `Options.defaults()` in `pkg/update/check.go`.
 
 From then on, binaries built from the fork only accept releases signed with the fork's key.
 
@@ -156,4 +160,4 @@ The signature proves that I approved the exact `checksums.sha256` of a release. 
 
 ## Transition
 
-Releases up to v2.1.3 are unsigned, and the apps that shipped with them don't verify signatures. They update to the first signing release normally. From that release on, every release must be signed, or updated apps refuse it.
+v2.2.0 is the first signed release. Older apps, v1 included, don't verify signatures and update to a signed release normally; from v2.2.0 on, every release must be signed, or the app refuses it. The 1.x maintenance releases from the `release/v1` branch are not signed, and the v1 updater checks only the SHA256.

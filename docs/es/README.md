@@ -2,39 +2,33 @@
 
 [Read the documentation in English](../README.md)
 
-## Primeros colaboradores
+## Para usuarios
 
-Si eres nuevo en el proyecto, lee estos documentos en orden:
+| Doc                            | Qué contiene                                                                                    |
+| ------------------------------ | ----------------------------------------------------------------------------------------------- |
+| [Guía de la GUI](gui-guide.md) | Instalación, primer arranque, cuentas, sincronización, acciones, mirrors, contenedores, ajustes |
+| [Credenciales](credentials.md) | Configuración de GCM, token y SSH, scopes de token, resolución de problemas                     |
 
-1. [Guía de desarrollo](developer-guide.md) — requisitos previos y compilación desde el código fuente
-2. [Pruebas](testing.md) — ejecución de pruebas, preparación del fixture de pruebas, checklists pre-PR y de release
-3. [Multiplataforma](multiplatform.md) — flujo de build, envío y prueba multiplataforma (opcional pero recomendado)
+## Para colaboradores
 
-## Guías de usuario
+Empieza por la guía de desarrollo y luego sigue con las pruebas. Multiplataforma es opcional, pero recomendable.
 
-| Doc                            | Qué contiene                                                                     |
-| ------------------------------ | -------------------------------------------------------------------------------- |
-| [Guía GUI](gui-guide.md)       | App de escritorio: instalación, cuentas, discovery, mirrors, workspaces, ajustes |
-| [Credenciales](credentials.md) | Configuración detallada de Token, GCM y SSH, resolución de problemas             |
-
-## Guías de desarrollo
-
-| Doc                                                             | Qué contiene                                                                          |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| [Guía de desarrollo](developer-guide.md)                        | Compilar desde el código fuente, hooks de git, releases, contribución                 |
-| [Multiplataforma](multiplatform.md)                             | Flujo de build, envío y prueba multiplataforma                                        |
-| [Pruebas](testing.md)                                           | Niveles de prueba, configuración de fixtures, checklists pre-PR y de release          |
-| [Flujo de worktrees](worktree-workflow.md)                      | Trabajo paralelo por issue: una sesión de Claude por worktree, push/merge con puertas |
-| [Referencia de pruebas](testing-reference.md)                   | Inventario de pruebas, detalles internos del harness                                  |
-| [Arquitectura](architecture.md)                                 | Diseño técnico, diagrama de componentes, referencia del archivo de config             |
-| [Firma en macOS](macos-signing.md)                              | Configuración de firma y notarización para releases de macOS                          |
-| [Firma de releases](release-signing.md)                         | Cómo se firman las releases, configuración del agente SSH, tu propia clave en un fork |
-| [Directorio del ecosistema agentic](agentic-tools-directory.md) | Dónde vive la lista de AI harnesses detectados automáticamente                        |
+| Doc                                                             | Qué contiene                                                                                      |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [Guía de desarrollo](developer-guide.md)                        | Requisitos previos, compilación, comprobación de salud, ampliación del código, proceso de release |
+| [Pruebas](testing.md)                                           | Niveles de prueba, el fixture de pruebas, checklists pre-PR y de release                          |
+| [Referencia de pruebas](testing-reference.md)                   | Inventario de pruebas por paquete y detalles internos del harness                                 |
+| [Multiplataforma](multiplatform.md)                             | Compilar, enviar y hacer smoke tests en hosts remotos por SSH                                     |
+| [Flujo de worktrees](worktree-workflow.md)                      | Trabajo paralelo por issue con una sesión de agente por worktree                                  |
+| [Arquitectura](architecture.md)                                 | Diseño, responsabilidades de los paquetes, referencia del archivo de config                       |
+| [Firma de releases](release-signing.md)                         | Cómo se firman y verifican las releases, configuración del agente, forks                          |
+| [Firma en macOS](macos-signing.md)                              | Firma de código y notarización opcionales de Apple en CI                                          |
+| [Directorio del ecosistema agentic](agentic-tools-directory.md) | Cómo lee su catálogo la detección de AI harnesses                                                 |
 
 ## Referencia
 
 | Doc                                                                        | Qué contiene                                                       |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| [Referencia del archivo de config](architecture.md#4-formato-de-config-v3) | Todas las claves de `gitbox.json`, estructura de carpetas, backups |
-| [Ejemplo JSON anotado](../../json/gitbox.jsonc)                            | Ejemplo del archivo `gitbox.json`                                  |
-| [JSON Schema](../../json/gitbox.schema.json)                               | El schema usado en el archivo `gitbox.json`                        |
+| [Referencia del archivo de config](architecture.md#4-formato-de-config-v5) | Todas las claves de `gitbox.json`, estructura de carpetas, backups |
+| [Ejemplo anotado](../../json/gitbox.jsonc)                                 | Un `gitbox.json` completo con comentarios                          |
+| [JSON Schema](../../json/gitbox.schema.json)                               | Schema para validación y autocompletado en el editor               |

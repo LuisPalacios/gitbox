@@ -1,12 +1,12 @@
 # Credential setup
 
-Each gitbox account needs credentials to do two things (and optionally a third):
+Each Gitbox account needs credentials to do two things (and optionally a third):
 
 - **Operations** — git operations like clone, fetch, and pull.
 - **Discovery** — calling your provider's REST API to list your repositories, create new ones, and check their sync status.
 - **Mirrors** (optional) — a portable PAT that remote servers use to push/pull on your behalf.
 
-You choose one credential type per account. Depending on the type — and the provider — gitbox may need one or two secrets to cover all three.
+You choose one credential type per account. Depending on the type — and the provider — Gitbox may need one or two secrets to cover all three.
 
 <p align="center">
   <img src="diagrams/credential-types.png" alt="Credential Types" width="850" />
@@ -14,89 +14,82 @@ You choose one credential type per account. Depending on the type — and the pr
 
 ## Which type should I use?
 
-| Type      | Secrets                                                           | Operations | Discovery / API                      | Mirrors     | Best for                                       |
-| --------- | ----------------------------------------------------------------- | ---------- | ------------------------------------ | ----------- | ---------------------------------------------- |
-| **GCM**   | 1 (credential managed by GCM, cached in the OS keyring)           | Yes        | Depends on provider — see note below | Needs a PAT | Desktop users (Windows, macOS, Linux with GUI) |
-| **Token** | 1 (PAT in `~/.config/gitbox/credentials/`)                        | Yes        | Yes                                  | Same PAT    | All platforms, CI/CD, Gitea/Forgejo            |
-| **SSH**   | 2 (SSH key in `~/.ssh/` + PAT in `~/.config/gitbox/credentials/`) | Yes        | Needs the companion PAT              | Same PAT    | Users who prefer SSH keys                      |
+| Type      | Secrets                                                                  | Operations | Discovery / API                      | Mirrors     | Best for                                       |
+| --------- | ------------------------------------------------------------------------ | ---------- | ------------------------------------ | ----------- | ---------------------------------------------- |
+| **GCM**   | 1 (credential that GCM stores in the OS credential store)                | Yes        | Depends on provider — see note below | Needs a PAT | Desktop users (Windows, macOS, Linux with GUI) |
+| **Token** | 1 (PAT in `~/.config/gitbox/credentials/`)                               | Yes        | Yes                                  | Same PAT    | All platforms, CI/CD, Gitea/Forgejo            |
+| **SSH**   | 2 (SSH key in `~/.ssh/` + PAT in `~/.config/gitbox/credentials/`)        | Yes        | Needs the companion PAT              | Same PAT    | Users who prefer SSH keys                      |
 
 ### When do I need a PAT alongside GCM?
 
-The honest answer is "it depends on the provider":
+It depends on the provider:
 
-- **GitHub, GitLab:** GCM stores an **OAuth token** that doubles as a valid API bearer. GCM alone is enough for everything — discovery, repo creation, the lot. A PAT is only needed if you want push/pull mirrors, where the token has to leave your machine.
-- **Gitea, Forgejo, Bitbucket (basic auth):** GCM prompts you for a **username and password** and stores whatever you paste. Those providers refuse passwords at their REST API — only PATs work there. Two recovery paths, pick one:
-  1. **Paste a PAT into GCM's password prompt** during setup. GCM will cache it and git + API both work with a single credential. Easiest.
-  2. **Keep your password in GCM** (works for `git push`/`pull`) and store a **separate PAT** in the gitbox keyring for API operations. The credential status panel in the GUI has a _Setup API token_ button exactly for this case.
+- **GitHub, GitLab:** GCM stores an **OAuth token** that doubles as a valid API bearer. GCM alone covers discovery and repo creation. You only need a PAT for push/pull mirrors, where the token has to leave your machine.
+- **Gitea, Forgejo, Bitbucket (basic auth):** GCM prompts you for a **username and password** and stores whatever you paste. These providers may refuse passwords at their REST API and accept only PATs. Pick one of two recovery paths:
+  1. **Paste a PAT into GCM's password prompt** during setup. GCM stores it, and git and the API both work with a single credential. This is the easiest path.
+  2. **Keep your password in GCM** (it works for `git push`/`pull`) and store a **separate PAT** in the Gitbox credential file for API operations. The **Setup API token** button in the account's Current-status panel does this.
 
-Gitbox's credential verification will tell you which of the two situations you're in. If the account's health mark is green, you're done. If it reads "Works, with a warning" and the Current-status panel says _"GCM token found but API check failed"_, your GCM credential is a password that the API refuses — use one of the two recovery paths above.
+Gitbox's credential check tells you which situation you're in. If the account reads **Credential works**, you're done. If it reads **Works, with a warning** and the API token row of the Current-status panel says _API rejected the GCM credential (HTTP 401)_, the API refuses your GCM credential: use one of the two recovery paths above.
 
 ## PAT storage
 
-All Personal Access Tokens (PATs) are stored in a single file per account at `~/.config/gitbox/credentials/<accountKey>` (file mode `0600`, readable only by the owner).
+Gitbox stores every Personal Access Token (PAT) in one file per account, `~/.config/gitbox/credentials/<accountKey>` (file mode `0600`, readable only by the owner).
 
-The file format depends on who needs to read it:
+The file format depends on who reads it:
 
-- **Token accounts** use **git-credential-store format** (`https://user:token@host`). The reason: git CLI reads this file directly through `credential.helper = store --file <path>`, and that's the format git expects. gitbox also reads it for API calls — same file, two consumers.
-- **SSH and GCM accounts** store the **raw token** (just the PAT string, one line). Git CLI never touches this file — SSH authenticates through keys in `~/.ssh/`, and GCM manages its own OAuth tokens in the OS keyring. Only gitbox reads it, for API calls (discovery, repo creation) and mirror operations.
+- **Token accounts** use **git-credential-store format** (`https://user:token@host`), because git reads this file directly through `credential.helper = store --file <path>`. Gitbox reads the same file for API calls.
+- **SSH and GCM accounts** store the **raw token** (the PAT string, one line). Git never reads this file: SSH authenticates with the keys in `~/.ssh/`, and GCM keeps its own credential in the OS credential store. Only Gitbox reads it, for API calls (discovery, repo creation) and mirror operations.
 
-gitbox reads tokens transparently from both formats — it tries parsing as a URL first, then falls back to raw token. You never need to worry about which format a file uses.
+Gitbox reads both formats: it parses the file as a URL first and falls back to a raw token.
 
-The resolution chain when gitbox needs a token:
+When Gitbox needs a token, it looks in this order:
 
-1. Account-specific environment variable (`GITBOX_TOKEN_<ACCOUNT_KEY>`)
+1. Account-specific environment variable (`GITBOX_TOKEN_<ACCOUNT_KEY>`, the account key uppercased with hyphens turned into underscores)
 2. Generic `GIT_TOKEN` env var (CI fallback)
 3. Credential file (`~/.config/gitbox/credentials/<accountKey>`)
 
 ## GCM (Git Credential Manager)
 
-GCM handles everything through a single login. One credential is stored by GCM itself and used for git operations; whether it also works for the API depends on what GCM cached (see note above).
+GCM handles everything through a single login. GCM stores one credential and uses it for git operations; whether it also works for the API depends on the provider (see [When do I need a PAT alongside GCM?](#when-do-i-need-a-pat-alongside-gcm)).
 
 ### Prerequisites
 
 - **Windows:** already installed with Git for Windows.
-- **macOS:** `brew install git-credential-manager`
-- **Linux:** see [GCM install docs](https://github.com/git-ecosystem/git-credential-manager/blob/release/docs/install.md)
+- **macOS:** `brew install --cask git-credential-manager`
+- **Linux:** see the [GCM install docs](https://github.com/git-ecosystem/git-credential-manager/blob/main/docs/install.md)
 
 ### How it works
 
-1. gitbox triggers the GCM login flow.
+1. Gitbox starts the GCM sign-in.
 2. For GitHub and GitLab, GCM opens your browser for OAuth authentication.
-3. For Gitea and Forgejo, GCM prompts for a username and password. If you want _just one credential_ to cover git and the API, paste a PAT into the password field — GCM will cache it as the password.
-4. GCM stores the credential automatically in its own storage.
-5. All discovery and git operations use that stored credential.
+3. For Gitea and Forgejo, GCM prompts for a username and password. To cover git and the API with one credential, paste a PAT into the password field.
+4. GCM stores the credential in the OS credential store (Windows Credential Manager, macOS Keychain, or Secret Service on Linux).
+5. Git operations use that credential, and Gitbox reads it through `git credential fill` for API calls.
 
-**Storage:** GCM manages its own credential storage (OS keyring). gitbox extracts the cached secret via `git credential fill` for API calls.
-
-**Sign-in window:** GitboxApp has no visible console, so it always asks GCM for its own windows (`GCM_GUI_PROMPT=true`, `GCM_INTERACTIVE=always`) and turns git's terminal prompt off, whatever the user environment says. If the sign-in still doesn't finish within 5 minutes, gitbox stops waiting and names any `GCM_*` variables it found (see [Windows: GCM sign-in hangs with no window](#windows-gcm-sign-in-hangs-with-no-window)).
+GitboxApp always asks GCM for its own sign-in window, whatever your environment says. If the sign-in doesn't finish within 5 minutes, Gitbox stops waiting and names any `GCM_*` variables it found (see [Windows: GCM sign-in times out](#windows-gcm-sign-in-times-out)).
 
 ### Global gitconfig requirements
 
-GCM dispatches per-host through the global `credential.helper` key in `~/.gitconfig`. Without an effective `credential.helper` that resolves to Git Credential Manager and `credential.credentialStore = <keychain|wincredman|secretservice>`, `git credential fill` falls through to a TTY prompt — and in a GUI process that surfaces as the cryptic `fatal: could not read Password ... Device not configured` (errno ENXIO on `/dev/tty`).
+GCM needs two global entries in `~/.gitconfig`: a `credential.helper` that resolves to Git Credential Manager, and `credential.credentialStore = <keychain|wincredman|secretservice>`. Without them, `git credential fill` falls back to a terminal prompt, which fails in a GUI app with `fatal: could not read Password ... Device not configured`.
 
-A helper "resolves to GCM" when it is the short name `manager`, the legacy `manager-core`, or an absolute path whose binary is `git-credential-manager` (the form `git-credential-manager configure` writes, e.g. `/usr/local/share/gcm-core/git-credential-manager` on macOS, or a path with backslash-escaped spaces from the Windows user installer). gitbox reads the full multi-value helper list and honors git's reset rule (an empty value clears the helpers before it), so a stock `git-credential-manager configure` — which appends an absolute path after a reset — keeps the check green without a re-fix.
+A helper resolves to GCM when it is `manager`, the legacy `manager-core`, or an absolute path to the `git-credential-manager` binary (the form `git-credential-manager configure` writes).
 
-gitbox detects this at startup whenever at least one account uses GCM. When the global `~/.gitconfig` has no helper resolving to GCM (or the wrong `credentialStore`), an orange warning banner appears in the GUI with a **Configure** button that:
-
-1. Writes `credential.helper = manager` + `credential.credentialStore = <os default>` to `~/.gitconfig`. It only writes what the check flags: a helper chain that already resolves to GCM stays untouched, and a chain that doesn't is replaced as a whole (`--replace-all`), so a multi-value `credential.helper` never makes the fix fail. Browser sign-in during account setup runs the same fix first.
-2. Backfills the same OS defaults into `gitbox.json` so the check stays green even if `~/.gitconfig` is edited later.
-
-The OS defaults come from `pkg/credential.DefaultCredentialHelper()` and `pkg/credential.DefaultCredentialStore()`. Per-host overrides elsewhere in `~/.gitconfig` (for example `[credential "https://github.com"]` pinning `gh auth git-credential`) still take precedence over the global helper, so fixing the global entry is always safe.
+When at least one account uses GCM and these entries are missing or wrong, Gitbox shows an orange banner with a **Configure** button. It writes `credential.helper = manager` and the OS default `credential.credentialStore` to `~/.gitconfig`, and records the same defaults in `gitbox.json`. A helper chain that already resolves to GCM stays untouched. Browser sign-in during account setup runs the same fix first. Per-host overrides in `~/.gitconfig` (for example `[credential "https://github.com"]` pinning `gh auth git-credential`) still take precedence, so the fix is always safe.
 
 ### Browser detection
 
-When you set up GCM credentials, gitbox needs to open a browser for OAuth authentication (GitHub, GitLab). Whether a browser can open depends on your environment:
+GCM opens a browser for OAuth sign-in (GitHub, GitLab). Whether a browser can open depends on your environment:
 
 - **Windows:** always works — the system browser opens directly.
 - **macOS:** always works, even via SSH — macOS's `open` command forwards to the desktop session.
 - **Linux desktop:** works when a display server is available (X11 or Wayland).
-- **Linux SSH / headless:** no browser available. GitboxApp itself needs a desktop session, so this only matters for a host you reach over SSH. GCM will still prompt interactively on the next `git clone` or `git fetch` from a terminal there. When browser auth isn't practical, switch the account to the Token credential type instead.
+- **Linux SSH / headless:** no browser available. GitboxApp itself needs a desktop session, so this only matters for a host you reach over SSH. GCM still prompts on the next `git clone` or `git fetch` from a terminal there. When browser sign-in isn't practical, switch the account to the Token credential type.
 
 ### Mirrors with GCM
 
-GCM OAuth tokens are machine-local and cannot be used by remote servers for mirroring. If you need mirrors, store a separate PAT. When a mirror needs one, its row on the Mirrors tab shows a **Fix credentials** button that opens the API token setup for that account. When the GCM credential doesn't cover the API, the Current-status panel in the account's credential settings also offers **Setup API token**.
+GCM's OAuth tokens are machine-local, so remote servers can't use them for mirroring. If you need mirrors, store a separate PAT. When a mirror needs one, its row on the Mirrors tab shows a **Fix credentials** button that opens the API token setup for that account. When the GCM credential doesn't cover the API, the Current-status panel in the account's credential settings also offers **Setup API token**.
 
-This stores the PAT in `~/.config/gitbox/credentials/` alongside the GCM credential. The PAT is used for mirror operations; GCM continues to handle normal git operations.
+Gitbox stores this PAT in `~/.config/gitbox/credentials/`. The PAT handles mirror and API operations; GCM keeps handling git operations.
 
 ## Token (Personal Access Token)
 
@@ -104,99 +97,96 @@ A PAT is a password-like string you generate on your provider's website. One tok
 
 ### How to create a PAT
 
-When you set up a Token credential, gitbox shows you the exact URL to visit and which permissions to select. The steps are:
+When you set up a Token credential, Gitbox shows the link to your provider's token page and the permissions to select:
 
-1. Click the link gitbox gives you (it opens your provider's token page).
+1. Click the link Gitbox gives you (it opens your provider's token page).
 2. Name the token something like `gitbox-<your-account>`.
-3. Select the permissions gitbox recommends.
+3. Select the scopes for what you plan to do, as listed in [Token scopes by capability](#token-scopes-by-capability).
 4. Copy the generated token.
-5. Paste it into gitbox.
+5. Paste it into Gitbox.
 
-Here's what each provider needs:
-
-| Provider            | Required permissions                                   |
-| ------------------- | ------------------------------------------------------ |
-| **GitHub**          | `repo` (full), `read:user`                             |
-| **GitLab**          | `api`                                                  |
-| **Gitea / Forgejo** | Repository: Read+Write, User: Read, Organization: Read |
-| **Bitbucket**       | Repositories: Read+Write                               |
-
-**Storage:** 1 secret → `~/.config/gitbox/credentials/<account>` (git-credential-store format, used by both gitbox and git CLI).
+**Storage:** 1 secret → `~/.config/gitbox/credentials/<account>` (git-credential-store format, read by both Gitbox and git).
 
 ## SSH
 
-SSH uses a cryptographic key pair for git operations. gitbox generates the key pair and configures everything for you.
+SSH uses a key pair for git operations. Gitbox generates the key pair and configures everything for you.
 
-However, SSH keys **cannot** call your provider's API, so discovery and repo creation require a separate PAT. This makes SSH a two-secret setup.
+SSH keys **cannot** call your provider's API, so discovery and repo creation need a separate PAT. This makes SSH a two-secret setup.
 
 ### Setup flow
 
-1. gitbox creates an ed25519 key pair in `~/.ssh/`.
-2. It writes the necessary `~/.ssh/config` entry.
+1. Gitbox creates an ed25519 key pair in `~/.ssh/`.
+2. It writes the `~/.ssh/config` entry, with the host alias `gitbox-<account-key>`.
 3. It shows you the public key and a direct link to your provider's SSH key page.
 4. You paste the public key there and click save.
-5. gitbox verifies the SSH connection works.
+5. Gitbox verifies the SSH connection.
 6. You store a PAT for API access (discovery, repo creation, mirrors).
 
 ### SSH companion PAT
 
-The PAT stored for SSH accounts is used for:
+The companion PAT covers:
 
 - **Discovery** — listing repos from the provider API.
-- **Repo creation** — creating new repos via the provider API.
+- **Repo creation** — creating new repos through the provider API.
 - **Mirrors** — remote servers pushing/pulling on your behalf.
 
-It needs broader permissions than a read-only token:
-
-| Provider            | Required permissions                                   |
-| ------------------- | ------------------------------------------------------ |
-| **GitHub**          | `repo` (read/write), `read:user`, `read:org`           |
-| **GitLab**          | `api` (full API access)                                |
-| **Gitea / Forgejo** | Repository: Read+Write, User: Read, Organization: Read |
-| **Bitbucket**       | Repositories: Read+Write, Account: Read                |
+It needs the same scopes as a Token account's PAT: see [Token scopes by capability](#token-scopes-by-capability).
 
 **Storage:** 2 secrets:
 
 - **Operations** → SSH key pair in `~/.ssh/` (private key + public key + config entry).
 - **API access** → PAT in `~/.config/gitbox/credentials/<account>` (raw token).
 
-Without the PAT, the account works for git operations but cannot discover repos, create repos, or set up mirrors.
+Without the PAT, the account works for git operations but can't discover repos, create repos, or set up mirrors.
+
+## Token scopes by capability
+
+This is the reference for every PAT Gitbox uses: Token accounts, SSH companion PATs, and the PAT a GCM account stores for mirrors or the API. The first column is the minimum every account needs. Each other column adds what one capability needs on top. Give each account only the scopes it needs, and add the destructive ones (delete) only when you plan to use them.
+
+| Provider        | Discovery + clone + fetch            | Owner pickers (orgs)  | Create repo (**Create repo**, move destination) | Delete repo (move with "delete source")        | Mirror                                     |
+| --------------- | ------------------------------------ | --------------------- | ----------------------------------------------- | ---------------------------------------------- | ------------------------------------------ |
+| GitHub          | `repo`                               | `read:org`            | `repo`                                          | `delete_repo` (sensitive — add only if needed) | `repo`                                     |
+| GitLab          | `api`                                | `api`                 | `api`                                           | `api`                                          | `api`                                      |
+| Gitea / Forgejo | `read:repository`, `read:user`       | `read:organization`   | `write:repository`                              | `write:repository`                             | `write:repository`                         |
+| Bitbucket Cloud | Repositories: Read, Write            | —                     | Repositories: Admin                             | Repositories: Delete (sensitive)               | Not available through the Bitbucket API    |
+
+On a Gitea or Forgejo token page, these scopes appear as permission levels: **repository** Read and Write, **user** Read, and **organization** Read cover every column. On Bitbucket, Gitbox opens the app password page.
+
+When a scope is missing, Gitbox shows a warning naming the scope and the page to regenerate the PAT, for example: _"Source repo delete refused: your github PAT is missing the `delete_repo` scope. Regenerate it at <https://github.com/settings/tokens> (keep existing scopes, add `delete_repo`), then store the new token in the account's credential settings."_
 
 ## Changing credentials
 
 You can switch an account's credential type at any time. When you change the type:
 
-- gitbox removes the old credential and its artifacts (tokens, keys, config entries).
+- Gitbox removes the old credential and its artifacts (tokens, keys, config entries).
 - It sets up the new credential type.
-- All existing clones are automatically reconfigured to use the new credential.
+- It reconfigures every existing clone to use the new credential.
 
-No need to re-clone anything.
+You don't need to re-clone anything.
 
-Before a GUI fetch, I compare the clone's effective identity, origin, and credential settings in two Git config reads. I leave unchanged settings and token files untouched, including their modification times. When a token changes, I replace its file atomically and retain private file permissions; concurrent clones from the same account share this update safely.
-
-I keep included Git config when its effective settings match the account. If a later include or worktree config keeps overriding a repair, I see a repository-maintenance warning and the GUI skips that fetch. I correct the overriding setting before retrying.
+Gitbox also repairs a clone's identity, remote and credential settings before each fetch. If a git include keeps overriding them, it warns and skips that clone's fetch.
 
 ## Verifying credentials
 
-You can verify that credentials are working at any time:
+You can verify credentials at any time:
 
 - Each account's sidebar entry and card show its health in words next to a mark: green (working), orange (limited), or red (broken or offline). Broken accounts also head the Needs attention view, with their fix button.
-- A GitHub or GitLab token that expires within 14 days turns the health words orange: "Token expires in N days". GitHub reports the expiry in a header of the verification call itself; GitLab answers it through `GET /api/v4/personal_access_tokens/self` (GitLab 15.5 and later, personal access tokens only). A token account whose token the server rejects (HTTP 401, for example once it expires) shows as failing.
-- Pick **Change credential…** from the account's ⋯ menu to open the Change Credential modal — the Current-status panel at the top shows the real status of the primary credential and of the API token, with the underlying error message (if any).
+- A GitHub or GitLab token that expires within 14 days turns the health words orange: "Token expires in N days". On GitLab this needs GitLab 15.5 or later and a personal access token. A Token account whose token the server rejects (HTTP 401, for example once it expires) shows as failing.
+- Pick **Change credential…** from the account's ⋯ menu to open the Change Credential modal. Its Current-status panel shows the real status of the primary credential and of the API token, with the underlying error message (if any).
 - Click **Re-check** in that panel to run the verification again.
 
 ## Missing tools on the host
 
-Credential types rely on external binaries that may not be installed on the current machine: GCM needs `git-credential-manager`, SSH needs `ssh` / `ssh-keygen` / `ssh-add`. Gitbox detects these before it starts a setup:
+Credential types rely on external binaries that may be missing on the current machine: GCM needs `git-credential-manager`, SSH needs `ssh`, `ssh-keygen` and `ssh-add`. Gitbox checks for them before it starts a setup:
 
-- **Setup flows** — opening the add-account or change-credential modal runs a pre-flight check. If a required tool is missing, you see a yellow banner naming it and the exact install command for your OS. The setup will not auto-run until you address it (you can still click through manually if you know what you're doing).
-- **System check** — open **Settings → System check → Run** for a full inventory at any time: every tool gitbox may call (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, and `wsl` on Windows), where it's installed, its version, and whether your current config needs it.
+- **Setup flows** — opening the add-account or change-credential modal runs a pre-flight check. If a required tool is missing, a yellow banner names it with the install command for your OS. The setup doesn't run automatically until you install it and click **Re-check**; you can still proceed manually.
+- **System check** — open **Settings → System check → Run** for a full inventory at any time: every tool Gitbox may call (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, and `wsl` on Windows), where it's installed, its version, and whether your current config needs it.
 
 Typical fix on each OS:
 
-- macOS: `brew install --cask git-credential-manager` (ssh/ssh-keygen are preinstalled).
+- macOS: `brew install --cask git-credential-manager` (`ssh` and `ssh-keygen` are preinstalled).
 - Linux: install your distro's GCM package (see the [GCM install docs](https://github.com/git-ecosystem/git-credential-manager/blob/main/docs/install.md)); `sudo apt install openssh-client` for SSH.
-- Windows: GCM is bundled with Git for Windows, and it doesn't need to be on `PATH`: gitbox asks `git credential-manager --version` first, then checks the Git for Windows and standalone GCM install folders. OpenSSH client is a built-in optional feature.
+- Windows: GCM comes with Git for Windows and doesn't need to be on `PATH`: Gitbox asks `git credential-manager --version` first, then checks the Git for Windows and standalone GCM install folders. The OpenSSH client is a built-in optional feature.
 
 ## Troubleshooting
 
@@ -204,67 +194,153 @@ Typical fix on each OS:
 
 Pick **Change credential…** from any account's ⋯ menu. The Current-status panel inside the Change Credential modal shows:
 
-- **Primary (GCM/SSH/TOKEN):** the real status of the primary credential (OK / Warning / Offline / Error / Not configured) and, below the row, the underlying error as reported by gitbox's network/HTTP layer. That error text is the first place to look when something is wrong — it names the failing URL, the HTTP code, and whatever the kernel / TLS stack reported.
-- **API token (PAT):** status of the companion PAT (only relevant for GCM and SSH). When the primary credential already covers the API, the PAT message says _"not needed — GCM covers the API"_. When the primary was rejected by the API, the PAT message says _"needed for discovery and repo creation"_ and a **Setup API token** button appears next to it.
+- **Primary (GCM/SSH/TOKEN):** the status of the primary credential (OK / Warning / Offline / Error / Not configured) and, below the row, the underlying error. That error text is the first place to look: it names the failing URL, the HTTP code, and what the network or TLS stack reported.
+- **API token (PAT):** the status of the companion PAT (GCM and SSH only). When GCM already covers the API, the row reads _Not created_ and its detail starts with _API via GCM_. When no PAT covers the API, a **Setup API token** button appears next to the row; when a stored PAT fails, a **Replace API token** button appears instead.
 - A **Re-check** button re-runs the verification without leaving the modal.
-- A blue advisory banner appears under the panel when gitbox detects the error looks like an OS-level network-permission denial (see macOS / Windows / Linux sections below).
+- A blue hint appears under the panel when the error looks like the OS blocking network access, with a link to the matching section below.
 
 Copy that error text as-is when you file a bug report.
 
-### macOS: local network permission
+### "Repository not found" on clone
 
-**Symptom.** The GUI shows _Offline_ for an account whose server lives on your LAN (`192.168.x.x`, `10.x.x.x`, or a `.local` hostname). The detail line contains `dial tcp <ip>:<port>: connect: no route to host`. `curl` or `git` at the same moment — run from Terminal — reach the same server without any trouble.
+**Symptom.** A clone fails with `Repository not found`.
 
-**Root cause.** macOS Sonoma and later gate outbound connections to local-network IPs behind the **Local Network** TCC privacy permission. Each GUI app is tracked separately by code-signing identity + bundle path. Terminal was granted access the first time you used it. Your gitbox bundle has either not been approved yet, was silently denied (common for ad-hoc built binaries), or has been moved/renamed so that TCC no longer recognises it.
+**Cause.** The `org/repo` name is wrong, or the account has no access to that repo.
 
-Even when access is granted, macOS can refuse a freshly launched app's first LAN connections for a moment. To ride out those startup refusals and short network blips, a credential check that reports offline, or a fetch whose connect is refused within milliseconds, is retried after 100 ms, 500 ms, 1 s and 3 s. Retries only happen within 10 seconds of the first attempt, so a server that is really down and times out isn't retried. Authentication errors are never retried. An account still marked offline is checked again as soon as one of its repos fetches fine.
+**Fix.**
 
-**Fix — move the app to `/Applications/` and re-prompt.**
+- Check that the `org/repo` name matches the actual repo.
+- Check your credentials from a shell: `git ls-remote <url>`.
+- For repos in another organization, make sure your account has access.
+
+### HTTP 401 from Forgejo or Gitea
+
+**Symptom.** A GCM account reads **Works, with a warning**, and the API token row says _API rejected the GCM credential (HTTP 401)_.
+
+**Cause.** Either the GCM credential is wrong, or your Forgejo or Gitea server refuses passwords at its REST API. A real account password works for `git push` / `pull` but not for `/api/v1/*`.
+
+**Fix.** One of:
+
+- Delete the current GCM credential and redo the credential setup, pasting a **PAT** into GCM's password prompt. GCM stores it the same way, and it works for the API too.
+- Keep GCM as it is and click **Setup API token** in the Current-status panel to store a companion PAT in the Gitbox credential file. The API uses the PAT; git operations keep using GCM.
+
+### GCM opens the wrong browser account
+
+**Symptom.** GCM setup signs in with a different account than the one configured in Gitbox.
+
+**Cause.** The browser already holds a session for another login, and GCM reuses it.
+
+**Fix.** Clear the stored credentials for that host, sign out of the other account in the browser, and redo the credential setup:
+
+- **Windows:** Control Panel > Credential Manager > remove `git:https://github.com` entries
+- **macOS:** Keychain Access > search `github.com` > delete
+- **Linux:** `secret-tool clear protocol https host github.com`
+
+### SSH verification fails
+
+**Symptom.** The credential check fails for an SSH account.
+
+**Cause.** The public key isn't registered at the provider, `~/.ssh/config` points at the wrong key, or `ssh-agent` isn't running.
+
+**Fix.** Test the connection from a shell with the account's host alias (`ssh.host` in the account, `gitbox-<account-key>` by default) and read the verbose output:
 
 ```bash
-# Close the running GitboxApp first (⌘Q), then as the user who'll run it:
+ssh -T git@gitbox-<account-key> -v
+```
+
+Check that the public key is registered at the provider, that the `IdentityFile` in `~/.ssh/config` points at the right key, and that `ssh-agent` is running.
+
+### DNS errors
+
+**Symptom.** The detail line contains `no such host`, `server misbehaving`, or `i/o timeout` during DNS lookup.
+
+**Cause.** This machine can't resolve the hostname in the account URL: a typo in the URL, a VPN or split-horizon DNS that isn't up, or a private DNS resolver that isn't configured.
+
+**Fix.** Try `dig +short <host>` or `nslookup <host>` from a shell. Fix your DNS, then re-check in Gitbox.
+
+### TLS / certificate errors
+
+**Symptom.** The detail line contains `x509:`, `certificate signed by unknown authority`, or `tls: failed to verify certificate`.
+
+**Cause.** The server presents a certificate that the system can't validate: usually a self-signed certificate, one signed by an internal CA that isn't in the system trust store, or a hostname mismatch.
+
+**Fix.** Add the internal CA certificate to your OS trust store (macOS Keychain, Windows certificate store, or Linux `/usr/local/share/ca-certificates/` + `update-ca-certificates`). Gitbox uses the system trust store and has no per-app bypass.
+
+### "Connection refused" (any OS)
+
+**Symptom.** The detail line contains `connect: connection refused`.
+
+**Cause.** The server is reachable, but nothing listens on the target port: the service is down, or the host or port is wrong.
+
+**Fix.** Check the server URL in the account settings (click the account name on its card), then check the service on the server side.
+
+### macOS: local network permission
+
+**Symptom.** An account whose server is on your LAN (`192.168.x.x`, `10.x.x.x`, or a `.local` hostname) shows _Offline_, and the detail line contains `connect: no route to host`. `curl` or `git` from Terminal reach the same server.
+
+**Cause.** macOS gates connections to the local network behind the **Local Network** privacy permission, per app. GitboxApp hasn't been approved yet, was denied (common for ad-hoc builds), or was moved or renamed, so macOS no longer recognizes it. Short refusals right after launch are normal: Gitbox retries offline credential checks, and fetches refused within milliseconds, for up to 10 seconds before it marks the account offline.
+
+**Fix.** Quit GitboxApp (⌘Q), then as the user who runs it:
+
+```bash
 xattr -dr com.apple.quarantine /Applications/GitboxApp.app
 codesign --force --deep --sign - /Applications/GitboxApp.app   # ad-hoc signature
 tccutil reset LocalNetwork                                     # forget existing decisions
 open /Applications/GitboxApp.app
 ```
 
-The ad-hoc `codesign --sign -` does not require an Apple Developer account. What it buys you is a **stable code-designated requirement** — a hash that TCC can track across launches — so the permission sticks after you grant it.
+The ad-hoc signature needs no Apple Developer account; it gives macOS a stable identity to remember the permission by. On the first LAN connection, macOS asks _"GitboxApp would like to find and connect to devices on your local network"_. Click **Allow**.
 
-On first LAN access the OS should pop _"GitboxApp would like to find and connect to devices on your local network"_. Click **Allow**. After that, `GitboxApp` appears in _System Settings → Privacy & Security → Local Network_ with a green toggle.
+**If `tccutil` fails.** It often prints `tccutil: Failed to reset LocalNetwork`. Run it as your normal user, not with `sudo`, from a terminal that has **Full Disk Access**. macOS may still ask for permission on the next LAN connection anyway. If it doesn't, open _System Settings → Privacy & Security → Local Network_ and turn GitboxApp on. If GitboxApp isn't listed, relaunch it and click **Re-check** on a LAN account so macOS adds it.
 
-#### When `tccutil reset` fails
+### Windows: firewall
 
-The `tccutil` call is best-effort, and in recent macOS versions it often prints `tccutil: Failed to reset LocalNetwork` — sometimes even with `sudo` and even when Terminal has Full Disk Access. What's happening under the hood:
+**Symptom.** An account on your LAN shows _Offline_, and the detail line contains `A connection attempt failed` or `No route to host`.
 
-- `tccutil` modifies per-user TCC records. `sudo tccutil` edits **root's** TCC database, which is not the one your GUI session reads — so the error is partly a sign you ran it with the wrong identity. Run it as your normal user, not with `sudo`.
-- The per-user TCC database lives under `~/Library/Application Support/com.apple.TCC/TCC.db`. SIP blocks direct writes and routes everything through `tccutil`; if Terminal (or your shell emulator) does not have **Full Disk Access** granted in _System Settings → Privacy & Security → Full Disk Access_, the call fails.
-- Even when `tccutil` returns `Failed`, the OS may still re-prompt on the next LAN connect, because the internal decision cache is separate from the on-disk DB on newer releases. You saw this: the reset reported a failure, but GitboxApp still popped the "Allow Local Network" dialog when it reached the server.
+**Cause.** Windows Defender Firewall, or a third-party endpoint product, blocks outbound connections from `GitboxApp.exe` to the LAN. The rule is per executable, so a browser or `git.exe` getting through says nothing about GitboxApp.
 
-Passing a bundle identifier (`tccutil reset LocalNetwork com.wails.gitboxapp`) narrows the reset to one app, but returns the same error whenever the broader reset already can't write. The bundle identifier for a stock gitbox build is `com.wails.gitboxapp`, in lowercase — `wails build` inherits that from its default `Info.plist` template since the repo does not override it. After an ad-hoc `codesign --sign -`, the identifier is preserved (you can confirm with `defaults read /Applications/GitboxApp.app/Contents/Info.plist CFBundleIdentifier`).
+**Fix.**
 
-**If `tccutil` fails but the prompt never appears either** — skip it. Open _System Settings → Privacy & Security → Local Network_ directly and flip the GitboxApp toggle on if it's listed. If it isn't listed at all, the app truly never tried a LAN connect yet (or TCC recorded it under a different identity from an earlier ship); relaunch, trigger a credential verification on a LAN account, and the OS will add it.
+1. Open _Windows Security → Firewall & network protection → Allow an app through firewall_.
+2. Click _Change settings_ → _Allow another app_ → browse to the installed `GitboxApp.exe`.
+3. Check the **Private** and **Public** columns for the network you use.
+4. If corporate endpoint software is in place, ask IT for a rule, giving them the executable path and the target server.
+
+Re-check in the GUI once the rule is live.
+
+### Linux: network troubleshooting
+
+**Symptom.** An account on your LAN or a private IP shows _Offline_, and the detail line contains `connect: no route to host`, `connect: network is unreachable`, or `connect: connection refused`.
+
+**Cause.** Linux desktops usually have no OS-level network permission. Either the network is down (VPN off, wrong interface, wrong subnet) or a host firewall (`ufw`, `firewalld`, nftables) blocks the outbound connection.
+
+**Fix.**
+
+1. Try the same request from a shell: `curl -sSI https://<host>/`. If that also fails, the problem is the network, not the app.
+2. Confirm the VPN is up (if needed) and the route exists: `ip route get <server-ip>`.
+3. Inspect your firewall: `sudo ufw status verbose`, `sudo firewall-cmd --list-all`, or `sudo nft list ruleset`. Allow outbound TCP to the target server.
+4. If the shell reaches the server but the GUI doesn't, a sandbox (Flatpak, Snap) may restrict the app. Launch it from a plain terminal to confirm.
 
 ### macOS: "Device not configured" during GCM setup
 
-**Symptom.** Setting up a GCM credential in the GUI returns `fatal: could not read Password ... Device not configured`.
+**Symptom.** Setting up a GCM credential returns `fatal: could not read Password ... Device not configured`.
 
-**Root cause.** `git credential fill` tried to open `/dev/tty` for an interactive password prompt because `credential.helper` and `credential.credentialStore` were missing or wrong in `~/.gitconfig`. GUI processes have no controlling tty; the `open()` returns `ENXIO` and git surfaces the cryptic message.
+**Cause.** `credential.helper` or `credential.credentialStore` is missing or wrong in `~/.gitconfig`, so git falls back to a terminal prompt, which a GUI app doesn't have (see [Global gitconfig requirements](#global-gitconfig-requirements)).
 
-**Fix.** Click **Configure** on the global credential helper banner in the GUI. Gitbox writes the right entries and verifies. Redo the credential setup.
+**Fix.** Click **Configure** on the credential helper banner, then redo the credential setup.
 
-### Windows: GCM sign-in hangs with no window
+### Windows: GCM sign-in times out
 
-**Symptom.** Setting up a GCM credential spins forever and the GCM username/password window never appears. The same account works for another Windows user on the same PC, and `~/.gitconfig` looks identical for both.
+**Symptom.** Setting up a GCM credential never shows the GCM window and stops after 5 minutes with a message that names `GCM_*` variables. Or the sign-in works, but GCM keeps the secret in clear text under `%USERPROFILE%\.gcm\store\`. Another Windows user on the same PC, with the same `~/.gitconfig`, doesn't have the problem.
 
-**Root cause.** Per-user environment variables override `~/.gitconfig` for GCM. Setup scripts meant for SSH or headless use sometimes set them:
+**Cause.** Per-user `GCM_*` environment variables override `~/.gitconfig`. Setup scripts meant for SSH or headless use sometimes set them:
 
-- `GCM_GUI_PROMPT=false` makes GCM ask on a terminal. GitboxApp runs git with a hidden console, so GCM waits on a prompt nobody can see.
+- `GCM_GUI_PROMPT=false` makes GCM ask on a terminal, which GitboxApp doesn't have.
 - `GCM_INTERACTIVE=never` makes the sign-in fail instead of prompting.
-- `GCM_CREDENTIAL_STORE=plaintext` (or `dpapi`, `cache`) wins over `credential.credentialStore = wincredman`. GCM then keeps secrets in clear text under `%USERPROFILE%\.gcm\store\` instead of Windows Credential Manager.
-- `GCM_GITHUB_AUTHMODES=device` forces the GitHub device-code flow, whose code shows up only on a terminal.
+- `GCM_CREDENTIAL_STORE=plaintext` (or `dpapi`, `cache`) wins over `credential.credentialStore = wincredman`, so GCM keeps secrets outside Windows Credential Manager.
+- `GCM_GITHUB_AUTHMODES=device` forces the GitHub device-code flow, whose code shows only on a terminal.
 
-Since v2.6.2 gitbox forces the GUI prompt during sign-in and stops after 5 minutes, so the hang is gone, but `GCM_CREDENTIAL_STORE` still decides where GCM stores the credential. Remove the variables.
+Gitbox forces GCM's window during sign-in, but the variables still change where and how GCM stores the credential. Remove them.
 
 **Check.** As the affected user, in PowerShell:
 
@@ -282,7 +358,7 @@ Since v2.6.2 gitbox forces the GUI prompt during sign-in and stops after 5 minut
 
 A `Machine` hit needs an elevated PowerShell with `'Machine'` in place of `'User'`, and affects every user on the PC.
 
-**Fix from an administrator account.** When the affected user is signed out, load their registry hive, delete the values and unload it. Run elevated, replace `<user>`, and keep the user signed out until `reg unload` succeeds, or Windows gives them a temporary profile:
+**Fix from an administrator account.** While the affected user is signed out, load their registry hive, delete the values and unload it. Run elevated, replace `<user>`, and keep the user signed out until `reg unload` succeeds, or Windows gives them a temporary profile:
 
 ```powershell
 reg load 'HKU\gbx_tmp' 'C:\Users\<user>\NTUSER.DAT'
@@ -294,119 +370,11 @@ foreach ($n in 'GCM_GUI_PROMPT','GCM_INTERACTIVE','GCM_CREDENTIAL_STORE','GCM_GI
 
 **Afterwards.** Sign in as the user, redo the GCM setup in GitboxApp and confirm the GCM window appears. Once the credential lives in Windows Credential Manager, delete `%USERPROFILE%\.gcm\store\`, which still holds the old secrets in clear text.
 
-### Windows: firewall
+### Reporting an unusual error
 
-**Symptom.** GUI shows _Offline_ for an account on your LAN. Detail line contains `A connection attempt failed` or `No route to host` (Windows translates `WSAEHOSTUNREACH`).
-
-**Root cause.** Windows Defender Firewall — or a third-party endpoint product — is blocking outbound connections from `GitboxApp.exe` to the LAN subnet. The block is per executable, so Chrome / Edge / git.exe being allowed says nothing about the Wails app.
-
-**Fix.**
-
-1. Open _Windows Security → Firewall & network protection → Allow an app through firewall_.
-2. Click _Change settings_ → _Allow another app_ → browse to the installed `GitboxApp.exe`.
-3. Check both the **Private** and **Public** columns for the network you actually use.
-4. If corporate endpoint software is in place, it usually needs an admin-side rule — escalate to IT with the executable path and the target server.
-
-Re-run the verification in the GUI once the rule is live.
-
-### Linux: network troubleshooting
-
-**Symptom.** GUI shows _Offline_ for an account on your LAN or a private IP. Detail line contains `connect: no route to host`, `connect: network is unreachable`, or `connect: connection refused`.
-
-**Root cause.** Linux desktops usually don't have an OS-level network-permission mechanism. Either the network itself is down (VPN off, wrong interface, wrong subnet) or a host-level firewall (`ufw`, `firewalld`, nftables) is blocking the outbound connection.
-
-**Fix.**
-
-1. Try the same request from a shell: `curl -sSI https://<host>/` — if that also fails, the issue is the network, not the app.
-2. Confirm the VPN is up (if needed) and the correct routes exist: `ip route get <server-ip>`.
-3. Inspect your firewall: `sudo ufw status verbose`, `sudo firewall-cmd --list-all`, or `sudo nft list ruleset`. Allow outbound TCP to the target server.
-4. If you reach the server from shell but not from the GUI, the Wails binary may have been started in a restricted namespace — rare, typically only seen under Flatpak/Snap sandboxing. Launch from a plain Terminal to confirm.
-
-### HTTP 401 from Forgejo or Gitea
-
-**Symptom.** The Current-status panel shows _Primary (GCM): Warning_ with `gitea: authentication failed (HTTP 401) — token is invalid or expired`.
-
-**Root cause.** Forgejo and Gitea refuse username/password authentication at the REST API. Your GCM-stored credential is probably a real account password — it works for `git push` / `pull` but not for `/api/v1/*`.
-
-**Fix.** One of:
-
-- Delete the current GCM entry and redo credential setup, pasting a **PAT** into GCM's password prompt. The PAT caches the same way but works for the API too.
-- Leave GCM as-is and click **Setup API token** inside the Current-status panel to store a companion PAT in the gitbox keyring. The API will use the PAT, git operations keep using GCM.
-
-### "Connection refused" (any OS)
-
-**Symptom.** Detail line contains `connect: connection refused`.
-
-**Root cause.** The server is reachable but nothing is listening on the target port — either the service is down, or you're hitting the wrong host/port.
-
-**Fix.** Confirm the server URL in the account settings (click the account name on its card), then check service status on the server side. This is never an app-side problem.
-
-### DNS errors
-
-**Symptom.** Detail line contains `no such host`, `server misbehaving`, or `i/o timeout` during DNS lookup.
-
-**Root cause.** The hostname in the account URL can't be resolved from this machine. Possible reasons: typo in the account URL, VPN / split-horizon DNS is required but isn't up, private DNS resolver isn't configured.
-
-**Fix.** Try `dig +short <host>` or `nslookup <host>` from a shell. Fix your DNS before re-verifying in gitbox.
-
-### TLS / certificate errors
-
-**Symptom.** Detail line contains `x509:`, `certificate signed by unknown authority`, or `tls: failed to verify certificate`.
-
-**Root cause.** The server is presenting a certificate that the Go HTTP client can't validate — usually a self-signed cert, a cert signed by an internal CA that isn't in the system trust store, or a hostname mismatch.
-
-**Fix.** Add the internal CA certificate to your OS trust store (macOS Keychain, Windows cert store, or Linux `/usr/local/share/ca-certificates/` + `update-ca-certificates`). Gitbox uses the system trust store via `net/http`; it has no per-app bypass and intentionally won't offer one.
-
-### GCM opens the wrong browser account
-
-**Symptom.** GCM setup signs in with a different account than the one configured in gitbox, usually because the browser already holds a session for another login.
-
-**Fix.** Clear the cached credentials for that host, sign out of the other account in the browser, and redo the credential setup:
-
-- **Windows:** Control Panel > Credential Manager > remove `git:https://github.com` entries
-- **macOS:** Keychain Access > search `github.com` > delete
-- **Linux:** `secret-tool clear protocol https host github.com`
-
-### SSH connection refused
-
-**Symptom.** SSH verification fails for an SSH account.
-
-**Fix.** Test the connection from a shell with the account's host alias (`ssh.host` in the account, `gitbox-<account-key>` by default) and read the verbose output:
-
-```bash
-ssh -T git@gitbox-<account-key> -v
-```
-
-Check that the public key is registered at the provider, that the `IdentityFile` in `~/.ssh/config` points at the right key, and that `ssh-agent` is running.
-
-### "Repository not found" on clone
-
-- Verify the `org/repo` name matches the actual repo.
-- Verify your credentials from a shell: `git ls-remote <url>`.
-- For cross-org repos, make sure your account has access.
-
-## Token scopes by capability
-
-Different gitbox operations need different PAT scopes. The baseline (list + clone + fetch + pull) is the minimum every account needs; create, delete, and mirror each add one or more scopes on top. Give each account only the scopes it needs — add the destructive ones (delete) only when you plan to use them.
-
-| Provider        | Discovery + clone + fetch              | Create repo (GUI "Create repo" / move dest) | Delete repo (move with "delete source")        | Mirror (push/pull between accounts)  |
-| --------------- | -------------------------------------- | ------------------------------------------- | ---------------------------------------------- | ------------------------------------ |
-| GitHub          | `repo`, `read:org`                     | `repo`                                      | `delete_repo` (sensitive — add only if needed) | `repo` plus the destination's scopes |
-| GitLab          | `api`                                  | `api`                                       | `api`                                          | `api`                                |
-| Gitea / Forgejo | `read:repository`, `read:organization` | `write:repository`                          | `write:repository` (or admin on target)        | `write:repository` on destination    |
-| Bitbucket Cloud | `repository`                           | `repository:admin`                          | `repository:delete`                            | `repository:admin` on destination    |
-
-When a scope is missing, gitbox surfaces a warning naming the exact scope required plus the provider URL to regenerate the PAT — e.g. _"Source repo delete refused: your github PAT is missing the `delete_repo` scope. Regenerate it at <https://github.com/settings/tokens> (keep existing scopes, add `delete_repo`), then store the new token in the account's credential settings."_
-
-The account setup wizard shows the same per-capability table when you store a PAT, so you can decide which scopes to include up front.
-
-### When the error says something unusual
-
-Gitbox surfaces the Go-level error verbatim — it does not translate or summarise it. Copy the exact string into an issue at [github.com/LuisPalacios/gitbox/issues](https://github.com/LuisPalacios/gitbox/issues) along with:
+Gitbox shows the underlying error verbatim, without translating or summarizing it. Copy the exact string into an issue at [github.com/LuisPalacios/gitbox/issues](https://github.com/LuisPalacios/gitbox/issues) along with:
 
 - The OS and version (e.g. "macOS 14.5 Sonoma").
 - The credential type in use (GCM / SSH / Token) and the provider (GitHub / Forgejo / ...).
 - The error text from the Current-status panel in the account's credential settings.
 - Whether the same request works from `curl` in a shell on the same machine.
-
-That's usually enough to tell network issues apart from app-level issues in a single round-trip.

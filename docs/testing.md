@@ -1,303 +1,224 @@
 # Testing
 
-This guide covers running and writing tests for gitbox. For the test inventory (what each package covers) and harness internals, see [testing-reference.md](testing-reference.md). Current count: 594 top-level test functions — 517 in `pkg/` and 77 in `cmd/gui/`.
+This guide covers the test levels, the `test-gitbox.json` fixture, and the checklists I run before a PR and before a release. The inventory of tests and the harness internals live in [testing-reference.md](testing-reference.md). The health check is described in [developer-guide.md › Health check](developer-guide.md#health-check).
+
+## Test levels
+
+- **Package unit tests** — the Go tests under `pkg/`. They need no setup, no network and no provider, and isolate everything with `t.TempDir()` and `t.Setenv()`. The `pkg/ops` unit tests run against a temp `XDG_CONFIG_HOME`, a temp `GIT_CONFIG_GLOBAL` and a temp SSH folder, so nothing on the host changes.
+- **GUI tests** — the Go tests under `cmd/gui/`. They call `App` methods directly, without a Wails window. They need the compiled frontend in `cmd/gui/frontend/dist`, because the package embeds it.
+- **Frontend tests** — pure Node tests in `cmd/gui/frontend/src/lib/*.test.mjs`, run with `npm test`. They need neither Wails nor credentials.
+- **Scenario test** — `TestScenario_FullLifecycle` in `pkg/ops/scenario_test.go` drives the whole account lifecycle through `pkg/ops` against a real provider. It needs the fixture below, and `go test -short` skips it.
+
+`go test ./pkg/...` runs without the frontend build. Everything else under Go needs `cmd/gui/frontend/dist`; build it once:
+
+```bash
+(cd cmd/gui/frontend && npm ci && npm run build)
+```
+
+`wails build` creates it too. See [developer-guide.md › Building from source](developer-guide.md#building-from-source).
 
 ## Pre-push hook
 
-The repo includes a safety net: a pre-push hook that runs a `gofmt -s` check, static analysis and all unit tests before every `git push`. It builds the GUI frontend first when `cmd/gui/frontend/dist` is missing.
-
-Git does not pick up custom hooks automatically, so after cloning the repo I run this once:
+`.githooks/pre-push` runs a `gofmt -s -l` check, `go vet ./...` and `go test -short ./...` before every push, and builds the frontend first when `cmd/gui/frontend/dist` is missing. Tag-only pushes skip it. I activate it once per clone:
 
 ```bash
 git config core.hooksPath .githooks
 ```
 
-From now on every `git push` runs the checks. To bypass temporarily (not recommended): `git push --no-verify`.
+## The test fixture
 
-## Test levels
-
-There are three levels of tests, each requiring a bit more setup than the previous one:
-
-- **Package unit tests** — the tests under `pkg/`. They run instantly with no setup and test logic in isolation without touching the network or any provider. `pkg/ops/ops_test.go` covers the application operations against a temp `XDG_CONFIG_HOME`, a temp `GIT_CONFIG_GLOBAL`, and a temp SSH folder, so nothing on the real host changes.
-- **GUI tests** — the Go tests under `cmd/gui/`. They cover the Wails-side logic that doesn't need a window: terminal and AI harness launching, browser and folder actions, and multi-repo containers with their workspace files. They need the compiled frontend in `cmd/gui/frontend/dist`, because the package embeds it.
-- **Scenario test** — `TestScenario_FullLifecycle` in `pkg/ops/scenario_test.go` drives the whole lifecycle against a real provider: add account → credential check → discover → clone → status → pull and fetch → account edit + clone reconfigure → mirror CRUD → re-clone → rename → delete. It needs the test fixture described below.
-
-## Before you start: the frontend build
-
-`cmd/gui` embeds `cmd/gui/frontend/dist`, so `go vet ./...` and `go test ./...` fail to compile that package until the folder exists. A `wails build` creates it. To create it without a full build:
-
-```bash
-cd cmd/gui/frontend
-npm ci
-npm run build
-```
-
-Package tests alone (`go test ./pkg/...`) don't need it.
-
-## Before you start: the test fixture
-
-The scenario test needs to talk to a real Git provider. The project uses a file called `test-gitbox.json` at the repo root — a normal gitbox configuration with one extra field per account: a `_test` key that holds the token for that provider. The test runner reads it, injects the tokens as environment variables, and runs everything in throwaway temp directories so the real machine is never touched.
-
-**Unit tests work without this file.** If you run the scenario test without it, it fails with a clear message telling you to create it (or use `go test -short` to skip it).
+The scenario test and `GitboxApp --test-mode` read `test-gitbox.json` at the repo root: a normal `gitbox.json` whose accounts can carry a `_test` key with a token. Unit tests don't need it. Without it, the scenario test fails with instructions to create the file or run `go test -short`.
 
 ### Setting it up
 
-Copy the template:
+I copy the template and fill in real accounts:
 
 ```bash
 cp json/test-gitbox.json.example test-gitbox.json
 ```
 
-The file is gitignored — it contains real secrets and should never be committed.
+The file is gitignored because it holds real secrets. Never commit it.
 
-Edit the `accounts` section with real provider accounts. For each one, add a `_test` key with a Personal Access Token:
+Each account that the tests may call gets a `_test` key with a personal access token:
 
 ```json
-"github-personal": {
-   :
-   "_test": {
-     "token": "ghp_xxxxxxxxxxxxxxxxxxxx"
-   }
+"gb-github-personal": {
+  "provider": "github",
+  "_test": {
+    "token": "ghp_xxxxxxxxxxxxxxxxxxxx"
+  }
 }
 ```
 
-You can add as many accounts as you want. The test runner picks the first one that has sources with repos and a valid token. Accounts without a `_test` key are display-only — they show up for UI testing but no API calls are made against them.
-
-### Creating a token
-
-You create tokens on your provider's website, the same way you would for gitbox itself:
-
-| Provider | Where to create | Required permissions |
-| --- | --- | --- |
-| **GitHub** | Settings → Developer settings → Personal access tokens | `repo` (full), `read:user` |
-| **Gitea / Forgejo** | Settings → Applications → Manage Access Tokens | Repository: Read+Write, User: Read, Organization: Read |
-| **GitLab** | Preferences → Access Tokens | `api` scope |
-| **Bitbucket** | Personal settings → App passwords | Repositories: Read+Write |
-
-### Verifying your setup
-
-Before running the scenario test, **run the setup script at least once** to verify tokens and generate SSH keys:
-
-```bash
-./scripts/setup-credentials.sh
-```
-
-This verifies API tokens, generates per-host SSH key pairs, and tests SSH connections. If a token is wrong or expired, you'll see it here — much faster than debugging a failing test. The script is idempotent and safe to run multiple times. When everything shows green `ok`, you're ready for the scenario test.
-
-To run credential setup on remote machines too: `./scripts/setup-credentials.sh all`. See [multiplatform.md](multiplatform.md) for the full cross-platform workflow.
+Accounts without `_test` are display-only: they show in `--test-mode`, but no API call goes to them. The scenario test uses the first source, in key order, that has repos and whose account has a token. The token needs the same permissions as a gitbox token credential; see [credentials.md › How to create a PAT](credentials.md#how-to-create-a-pat).
 
 ### GCM accounts
 
-GCM credentials live in the OS keyring and come from an interactive browser login — there's no token to put in a file. Don't add a `_test` key to GCM accounts — the scenario test only picks accounts with a token, and GCM accounts stay available for manual checks in `--test-mode`.
+GCM credentials come from an interactive browser sign-in, so there is no token to store. I leave `_test` off GCM accounts: the scenario test skips them, and they stay available for manual checks in `--test-mode`.
 
-### Mirror testing (optional)
+### Mirrors (optional)
 
-To check mirror operations by hand in `--test-mode`, add a `mirrors` section with a real account pair:
+To check mirrors by hand in `--test-mode`, I add a `mirrors` section with a real account pair:
 
 ```json
 "mirrors": {
   "gh-to-forgejo": {
-    "account_src": "github-personal",
-    "account_dst": "forgejo-testuser",
+    "account_src": "gb-github-personal",
+    "account_dst": "gb-home-personal",
     "repos": {}
   }
 }
 ```
 
-Both accounts need tokens in their `_test` keys. The destination token needs write access because setting up a mirror creates the target repo there. The scenario test doesn't need this section — its mirror step only creates and deletes a mirror group in the config.
+Both accounts need a `_test` token, and the destination token needs write access, because setting up a mirror creates the target repo. The scenario test doesn't need this section: its mirror step only creates and deletes a mirror group in the config.
+
+### Verifying the tokens and SSH keys
+
+Before the first scenario run, I check the fixture:
+
+```bash
+./scripts/setup-credentials.sh
+```
+
+It verifies each `_test` token against its provider, generates per-host SSH key pairs, adds their `Host` entries to the fixture's SSH config and tests the SSH connections. It is idempotent. With no argument it runs on this machine and on every remote configured in `.env`; a target such as `linux` limits it. When every line shows a green `ok`, the fixture is ready. See [multiplatform.md](multiplatform.md) for the remote setup.
 
 ### Safety
 
-The test runner **always overrides** `global.roots` with one throwaway temp directory — all clones and config files go there and are deleted after each test.
+- The harness and `--test-mode` replace `global.roots` with one temp directory, so every clone and config file lands there and is deleted afterwards.
+- `credential_ssh.ssh_folder` comes from the fixture, so the tests find the generated SSH keys. Point it at an isolated folder such as `~/.gitbox-test/ssh`.
+- The run stops at once when `ssh_folder` is `~/.ssh` or a root in `global.roots` is the gitbox config directory (`~/.config/gitbox`).
 
-For `credential_ssh.ssh_folder`, the scenario test reads the path from `test-gitbox.json` so it can find real SSH keys. This path **must not be `~/.ssh`** — point it at an isolated location like `~/.gitbox-test/ssh`.
+## Running the tests
 
-The test runner enforces this: if the fixture points `ssh_folder` at `~/.ssh` or a root in `global.roots` at `~/.config/gitbox`, the tests fail immediately.
+I run them in this order, from fastest to slowest.
 
-## Run the tests
+1. Unit tests, no fixture needed:
 
-I recommend running tests incrementally, building confidence as you go.
+   ```bash
+   go test -short ./...
+   ```
 
-### Step 1: Unit tests (no credentials needed)
+2. Frontend type check and frontend tests:
 
-Confirms the code compiles and basic logic works. No network, no providers, no `test-gitbox.json` needed.
+   ```bash
+   cd cmd/gui/frontend
+   npm run check
+   npm test
+   ```
 
-```bash
-go test -short ./...
-```
+3. The scenario test, against the first fixture account with a token:
 
-The WSL probing tests in `pkg/git` are skipped by default on Windows. To exercise them, set `GITBOX_TEST_WSL=1` and re-run `go test ./pkg/git/`. The probe runs `wsl.exe --status` and skips cleanly if WSL is not installed; on non-Windows the tests assert the helpers return false / error.
+   ```bash
+   go test -v -run TestScenario ./pkg/ops/
+   ```
 
-### Step 2: Frontend type check
+4. Everything, verbose and uncached:
 
-Checks the Svelte frontend with `svelte-check`, the same check the PR workflow runs.
+   ```bash
+   go test -v -p 1 -count=1 ./...
+   ```
 
-```bash
-cd cmd/gui/frontend
-npm run check
-```
+5. The app against the fixture instead of my real config:
 
-I also run `npm test` from `cmd/gui/frontend` for pure clone-tree regressions: cross-source ownership, duplicate prevention, nested collapse state, alphabetical order, and recovery from stale parent references. The same suite covers the status mappings (each status's shape, colour, glossary label, Simple kind, attention rank, count badges and whether its row opens the detail panel), account health, the saved view and the Needs attention list, the Fetch all and Pull all summaries, and the result cards. The health check runs these tests as `frontend-test`.
+   ```bash
+   GitboxApp --test-mode
+   ```
 
-### Step 3: Full lifecycle scenario
+   `--test-mode` finds `test-gitbox.json` by walking up from the current directory, writes a throwaway config to a temp directory, overrides `global.roots`, applies the same safety checks and injects the fixture tokens as environment variables. My real `~/.config/gitbox/` and clones stay untouched, and the temp directory goes away when the app exits. `./scripts/test-commands.sh` prints the launch command for each platform.
 
-The big one. Runs the whole account lifecycle through `pkg/ops` against the first fixture account with a token: creates the account, checks credentials, discovers repos, clones one, checks status, pulls, fetches, edits the account and reconfigures the clone, creates and deletes a mirror group, re-clones, renames the account, and deletes everything. Every step saves and reloads the config, the same way the GUI persists after each action.
+### Focused regression runs
 
-```bash
-go test -v -run TestScenario ./pkg/ops/
-```
+- **Startup snapshot** — `go test ./cmd/gui/ -run TestStartupSnapshot` checks nesting before clones exist and detached snapshot data. `go test ./cmd/gui/ -run '^$' -bench BenchmarkStartupSnapshot -benchmem` measures snapshot construction, which is backend work, not visible startup time.
+- **Refresh and credential maintenance** — `go test -race ./cmd/gui/ ./pkg/credential/ ./pkg/heal/ ./pkg/git/` covers refresh coordination, cancellation, stale results, upstream probes and pre-fetch maintenance.
 
-### Step 4: Everything
-
-Runs verbose, ignores cache:
-
-```bash
-go test -v -p 1 -count=1 ./...
-```
-
-### Step 5: Interactive test mode
-
-Runs the app against the fixture instead of my real config:
-
-```bash
-GitboxApp --test-mode
-```
-
-The `--test-mode` flag reads `test-gitbox.json` (searching upwards from the current directory), builds a throwaway config in a temp directory, overrides `global.roots`, and injects the fixture tokens as environment variables. Nothing touches my real `~/.config/gitbox/` or existing clones, and the temp directory is deleted when the app exits.
-
-### Startup regression checks
-
-I run the startup snapshot tests in `cmd/gui` to verify nesting before clones exist and detached response data. I measure snapshot construction separately with `go test ./cmd/gui/ -run '^$' -bench BenchmarkStartupSnapshot -benchmem`. This benchmark measures backend work, not visible startup time.
-
-For interactive startup measurements, I record process launch, window visibility, first configured rows, and complete status separately, along with the platform, clone count, container layout, and run count. I distinguish native production launches from browser navigation against an already-running `wails dev` backend. I need an interactive Windows desktop to measure WebView2 rendering; SSH backend timings alone cannot establish the first-row target. I keep unmeasured targets open until that desktop check completes.
-
-### Refresh regression checks
-
-I run `go test -race ./cmd/gui/ ./pkg/credential/ ./pkg/heal/ ./pkg/git/` for refresh coordination, cancellation, stale results, and credential maintenance. I use channels to block injected work and overlap triggers without a Wails runtime. Provider tests use local HTTP servers to verify bounded concurrency, shared probes, deadlines, and preservation of upstream state after errors or credential rotation.
-
-I trace pre-fetch maintenance with `GIT_TRACE2_EVENT` against isolated clones: unchanged SSH, token, and GCM clones must each spawn two read-only Git commands. I check config and credential-file modification times, token rotation, permissions, helper cancellation, type transitions, linked worktrees, and warnings for repairs that included config overrides. I record the platform, clone count, process count, and elapsed time separately from network fetch duration.
-
-### Refresh measurements (2026-10-15)
-
-I compared pre-fetch maintenance from `da83922` with the implementation for #131 using the same isolated fixture: 24 local clones, one account, and no network fetches. I ran one warm, sequential sweep per platform, credential type, and state. For the drifted cases, I changed both identity fields, origin, and helper before each sweep. I used Go 1.26.1 for the standalone harness; Windows used Git 2.53.0.windows.1.
-
-I measured the whole maintenance loop in the parent process and counted Git process-start events with Trace2. The elapsed times include process creation, Git execution, file operations, and tracing overhead. These runs do not separate Git-internal time, measure GUI paint, or estimate a full eight-worker network refresh.
-
-| Platform      | Clone state | Credential | Git processes before → after | Elapsed seconds before → after |
-| ------------- | ----------- | ---------- | ---------------------------- | ------------------------------ |
-| macOS arm64   | unchanged   | SSH        | 216 → 48                     | 0.902 → 0.191                  |
-| macOS arm64   | unchanged   | Token      | 240 → 48                     | 1.013 → 0.202                  |
-| macOS arm64   | unchanged   | GCM        | 192 → 48                     | 0.923 → 0.278                  |
-| Windows amd64 | unchanged   | SSH        | 216 → 48                     | 9.831 → 2.037                  |
-| Windows amd64 | unchanged   | Token      | 240 → 48                     | 12.396 → 2.382                 |
-| Windows amd64 | unchanged   | GCM        | 192 → 48                     | 9.386 → 2.202                  |
-| macOS arm64   | drifted     | SSH        | 288 → 264                    | 1.311 → 1.216                  |
-| macOS arm64   | drifted     | Token      | 312 → 288                    | 1.457 → 1.319                  |
-| macOS arm64   | drifted     | GCM        | 264 → 288                    | 1.222 → 1.402                  |
-| Windows amd64 | drifted     | SSH        | 288 → 264                    | 12.774 → 11.085                |
-| Windows amd64 | drifted     | Token      | 312 → 288                    | 13.576 → 12.089                |
-| Windows amd64 | drifted     | GCM        | 264 → 288                    | 11.105 → 13.073                |
-
-I leave unchanged clones at two read-only Git processes each. GCM drift repair adds effective-config validation after writes, so its drifted case costs more than the baseline; I retain those checks to prevent fetching with settings that an include or worktree config overrides.
-
-In a separate Windows sweep with 24 unchanged SSH clones, I recorded 8.918 → 1.963 s in the parent process, versus 5.421 → 1.193 s of Git-internal time summed from top-level Trace2 session `exit.t_abs` fields. The remaining difference was 3.497 → 0.770 s. That residual includes process startup, IPC, and caller file operations; I do not attribute it solely to antivirus or `HideWindow`. This is a separate sample from the rows above.
-
-I also ran native Windows amd64 probe regressions with Go 1.27.0 and loopback HTTP servers. Twelve upstreams shared by two sources produced twelve requests, one credential lookup, and at most four concurrent requests. With a scaled twenty-millisecond request timeout, twelve stalled requests completed in 61.34 ms. With a twenty-millisecond overall budget, the sweep stopped in 20.57 ms after four requests. These fixture checks verify scheduling and cancellation; production limits remain ten seconds per request and thirty seconds per sweep, and these figures do not predict real provider latency.
+For visible startup time I measure on the native desktop: process launch to window, window to the first configured rows with container nesting, and time to complete status. I record the platform, clone count, container layout and number of runs. A browser navigation against a running `wails dev` backend measures a different path, and SSH timings can't show WebView2 row paint, so a Windows startup target stays open until I measure it on an interactive Windows desktop.
 
 ## Pre-PR checklist
 
-Run these before every push or PR. The pre-push hook handles gofmt + vet + unit tests, and the PR workflow runs `scripts/health.sh` as its gate.
+I run these before every push or PR. `/test-plan` in Claude Code or `$test-plan` in Codex automates them.
 
-```text
-- [ ] ./scripts/health.sh                  (every checker: Go, frontend, scripts, workflows, docs)
-- [ ] go vet ./...
-- [ ] go test -short ./...
-- [ ] cd cmd/gui/frontend && npm run check
-- [ ] cd cmd/gui && wails build             (local GUI build)
-- [ ] ./scripts/smoke.sh                   (GitboxApp --version on all configured platforms)
-```
+- [ ] `./scripts/health.sh` passes: it includes `go vet`, `go test -short`, `svelte-check` and `npm test` (see [Health check](developer-guide.md#health-check))
+- [ ] The focused tests for the changed area pass (`go test ./pkg/<area>/ ./cmd/gui/`)
+- [ ] `cd cmd/gui && wails build` succeeds after copying the icons (see [Building from source](developer-guide.md#building-from-source))
+- [ ] `cmd/gui/build/bin/GitboxApp --version` prints `GitboxApp <version> (<sha>)`
+- [ ] `./scripts/ship.sh` and `./scripts/smoke.sh` pass on every remote in `.env` (skip when `.env` has none)
 
-If the change touches a specific area, verify on at least the dev machine:
+When the change touches one of these areas, I also check it on the dev machine:
 
-```text
-- [ ] Config changes → launch GitboxApp, confirm the config loads and the change persists after a restart
-- [ ] Credential changes → verify the account health words in the sidebar and on the account card
-- [ ] GUI changes → launch GitboxApp, verify the changed screen renders
-- [ ] Windows → no console window flashes when the changed action runs
-```
+- [ ] Config: GitboxApp loads the config, and the change survives a restart
+- [ ] Credentials: the account's health words in the sidebar and on its card match the real credential state
+- [ ] Disk reconcile or containers: a clone dropped under a root is adopted or listed in **Unmatched clones** on the next window focus
+- [ ] GUI: the changed screen renders in Simple and in Advanced, in light and dark themes
+- [ ] Windows: no console window flashes when the changed action runs
 
 ## Full release checklist
 
-Run before tagging a release. Combines automated + interactive steps across all platforms.
+I run this before tagging a release. It combines automated and interactive steps across every platform.
 
 ### Automated
 
-```text
-- [ ] go vet ./...
-- [ ] go test -short ./...              (unit tests)
-- [ ] go test ./...                     (scenario test, requires test-gitbox.json)
-- [ ] cd cmd/gui/frontend && npm run check
-- [ ] ./scripts/ship.sh                 (build and stage the GUI on every remote)
-- [ ] ./scripts/smoke.sh all            (GitboxApp --version on all platforms)
-```
+- [ ] `./scripts/health.sh` passes
+- [ ] `go test ./...` passes with `test-gitbox.json` in place, including `TestScenario_FullLifecycle`
+- [ ] `./scripts/ship.sh` builds and stages the GUI on every remote
+- [ ] `./scripts/smoke.sh all` prints a version on every platform
+- [ ] `./scripts/sign-release.sh --check` passes, so the release key is in the SSH agent
 
 ### GUI verification (interactive, all platforms)
 
-Launch `GitboxApp` on each platform (`./scripts/run-commands.sh` prints the commands):
+I launch GitboxApp on each platform with the commands `./scripts/run-commands.sh` (real config) or `./scripts/test-commands.sh` (fixture) prints.
 
-```text
-- [ ] App opens; on Windows without a console flash
-- [ ] Guided first run with a fresh config (`XDG_CONFIG_HOME=<empty temp dir>` on macOS and Linux): folder → connect (browser sign-in; **Use a token instead**; **Change details** keeps any existing folder) → pick projects → **Download**; the main screen opens in Simple and the picked repos clone. In Simple, **Connect an account** in the sidebar runs the same connect and pick steps; in Advanced, **Add account** opens the full form
-- [ ] Dashboard shows the sidebar (Needs attention, All repos, accounts with logo, health and count) and the selected view
-- [ ] Sidebar: switching views (Needs attention, All repos, each account, Mirrors) works; the top-left button and ⌘B / Ctrl+B fold it to the rail and back; below 780 px it shows the rail and the button opens it over the content; the view and the rail survive a restart
-- [ ] Account card: three lines (health mark and name, health words and fix action, counts with Find and + New in both modes); a broken credential shows its fix in the card and at the top of Needs attention
-- [ ] Account edit and rename
-- [ ] Credential setup for each type (token/gcm/ssh)
-- [ ] Discovery: Find projects → select → Add & Pull
-- [ ] Clone, Pull all, Fetch all update the status indicators; the activity strip shows the scope while they run and a result card sums them up
-- [ ] Repo detail panel shows branch, ahead/behind, changed files
-- [ ] Mirrors view shows groups and status, with Discover and Check all in its header
-- [ ] Settings: Clone roots (add a root, make it default, remove it), System check, Terminals Manager
-- [ ] With two roots, a row's Clone asks which root and lands there; Pull all doesn't ask
-- [ ] Compact view and back to full view
-- [ ] Simple / Advanced: the top-bar switch (grey Simple, red Advanced) changes mode instantly; Simple rows show only dot, name, status sentence, Update or Download when needed, the AI / editor / terminal icons and ⋯; Advanced rows keep every detail and show the same three icons before the fetch button; the Advanced header rings are compact (icon, attention badge, hover tooltip, no label); a fresh config lands in Simple after onboarding
-- [ ] Collapse/expand: account header and a parent clone (chevron or name) fold and unfold; folds survive a restart; a mirror chip opens into its card and folds back on an outside click or Escape
-- [ ] Workspace containers: a `.code-workspace` dropped at a clone's root makes it a container on the next window focus, with its nested clones below and missing workspace folders as dimmed **not cloned** rows; a second file opens the picker; the editor button opens the workspace in VS Code
-```
+- [ ] The app opens; on Windows without a console flash
+- [ ] First run: with `XDG_CONFIG_HOME` pointing at an empty folder, the guided setup goes folder → connect (browser sign-in, **Use a token instead**, **Change details** keeps the chosen folder) → pick projects → **Download**; the main screen opens in Simple and the picked repos clone
+- [ ] Adding accounts: in Simple, **Connect an account** runs the same connect and pick steps; in Advanced, **Add account** opens the full form
+- [ ] Sidebar: Needs attention, All repos, each account and Mirrors open their view; the GitBox logo and ⌘B / Ctrl+B fold it to the icon rail and back; below 780 px the rail shows and the logo opens the sidebar over the content; the view and the rail survive a restart
+- [ ] Account groups: in All repos and Needs attention each account sits in a light card with a filled ▾ caret and its name in uppercase in the provider's colour; clicking the header folds it, and its counts stay visible while folded
+- [ ] Account card: the account view's card shows the health mark and name, the health words with their fix button, and the counts with **Find** and **+ New** in both modes; a broken credential tints it red and puts its fix at the top of Needs attention
+- [ ] Account edit and rename keep the clones, the view and the credential
+- [ ] Credential setup works for token, GCM and SSH
+- [ ] Discovery: **Find** → select repos → **Add & Pull** clones them into the account's root
+- [ ] Clone, **Pull all** and **Fetch all** update the status dots; the activity strip shows the scope while they run, and a result card sums them up
+- [ ] The repo detail panel shows branch, ahead/behind and changed files
+- [ ] Clone roots: in Settings I add a root, make it default and remove it; with two roots, a row's **Clone** asks which root and lands there, and **Pull all** doesn't ask
+- [ ] Disk reconcile: a recognised clone dropped under a root is adopted in place on the next window focus; an unrecognised one appears in **Unmatched clones** under **Found on disk**, where **Adopt**, **Ignore**, **Show ignored** and **Stop ignoring** work; a moved clone is re-linked; repos under an unplugged root read **Root offline**
+- [ ] Containers: a clone with nested clones shows an outlined ▾ chevron in place of its status dot; the chevron or the name folds everything below, and folds survive a restart
+- [ ] Workspaces: a `.code-workspace` dropped at a clone's root makes it a container on the next window focus, with its nested clones below and missing listed folders as dimmed **not cloned** rows; a second file asks which one to use; the editor button opens the workspace file in VS Code
+- [ ] Simple / Advanced: the top-bar switch (grey Simple, red Advanced) changes mode at once; Simple rows show the status dot, name, status sentence, **Update** or **Download** when needed, the AI, editor and terminal icons and ⋯; Advanced rows keep every detail and the per-row fetch button; Simple hides Mirrors, delete mode and the compact view
+- [ ] The top-bar rings show an icon, an attention badge and a hover tooltip, and clicking a pending ring opens Needs attention (the mirror ring opens Mirrors)
+- [ ] Mirrors view shows its groups with **Discover** and **Check all** in the header; a mirror chip opens into its card and folds back on an outside click or Escape
+- [ ] Settings: System check and the Terminals Manager open; the theme follows the OS, light or dark, and survives a restart
+- [ ] Compact view and back to the full view
 
 ### Credential flows (interactive, per platform)
 
-```text
-- [ ] Windows: token, gcm (browser), ssh (key gen)
-- [ ] macOS: token, gcm (browser), ssh
-- [ ] Linux: token, gcm (browser on a desktop session), ssh
-```
+- [ ] Windows: token, GCM (browser), SSH (key generation)
+- [ ] macOS: token, GCM (browser), SSH
+- [ ] Linux: token, GCM (browser on a desktop session), SSH
 
-### Update and upgrade (at least 1 platform)
+### Update and upgrade (at least one platform)
 
-```text
-- [ ] ./scripts/sign-release.sh --check passes (the release key is in the SSH agent)
-- [ ] The update pill appears when a newer release exists, and the update applies after restart
-- [ ] A v1 install upgrades to v2 and keeps the existing gitbox.json
-```
+- [ ] With a newer signed release published, the update pill appears in the footer; clicking it verifies the signature and checksum, applies the update, and the app restarts on the new version
+- [ ] The Linux AppImage pill opens the release page instead of updating
+- [ ] A v1 install upgrades to v2 and keeps its `gitbox.json`
+
+The fail-closed paths (missing or invalid signature, missing checksum) are covered by the `pkg/update` tests, not by hand.
 
 ### Platform-specific notes
 
 | Area | Windows | macOS | Linux |
 | --- | --- | --- | --- |
-| GCM store | Windows Credential Manager | macOS Keychain | `secretservice` or `gpg` |
+| GCM store | Windows Credential Manager | macOS Keychain | `secretservice` (default) or `gpg` |
 | SSH agent | OpenSSH agent or Pageant | System ssh-agent | System ssh-agent |
 | Git binary | `git.exe` (Git for Windows) | `/usr/bin/git` or Homebrew | System `git` |
 | Browser open (GCM) | Always works | Works even via SSH | Needs `DISPLAY` or `WAYLAND_DISPLAY` |
 | GUI framework | Wails + WebView2 | Wails + WebKit | Wails + WebKitGTK |
-| Config path | `%APPDATA%/gitbox/` or `~/.config/gitbox/` | `~/.config/gitbox/` | `~/.config/gitbox/` |
+| Config path | `~/.config/gitbox/` | `~/.config/gitbox/` | `~/.config/gitbox/` |
+
+`XDG_CONFIG_HOME` overrides the config path on every platform.
 
 ## Adding new checks
 
-When I add a new feature, I update this file:
+When I add a feature, I update the test docs:
 
-1. Add the relevant automated test and update the [test inventory](testing-reference.md)
-2. Add a manual verification step to the appropriate GUI section above
-3. If the feature is platform-sensitive, add a note to the platform-specific table
-
-I use `/test-plan` in Claude Code or `$test-plan` in Codex to automate the pre-PR checks and guide the interactive steps.
+1. Add the automated test and list it in the [test inventory](testing-reference.md#test-inventory).
+2. Add a manual step to the matching checklist section above.
+3. If the feature behaves differently per platform, add a row or note to the platform table.

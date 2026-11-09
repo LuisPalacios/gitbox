@@ -1,18 +1,18 @@
 # Desarrollo multiplataforma
 
-Pruebo gitbox en tres plataformas: Windows, macOS y Linux. Los scripts de `scripts/` automatizan el ciclo build-ship-test para que pueda trabajar desde cualquier OS y ejecutar `GitboxApp` en los otros dos vía SSH.
-
-Para probar las 3 plataformas, necesitas acceso SSH a máquinas que ejecuten los otros dos OSs (máquinas físicas, VMs o instancias cloud). Si solo tienes una máquina, aun así puedes ejecutar las pruebas unitarias y la prueba de escenario localmente — CI cubre las otras plataformas.
+Gitbox funciona en Windows, macOS y Linux. Los scripts de `scripts/` automatizan el ciclo de build, envío y smoke test, así que el trabajo se hace en una máquina y `GitboxApp` se ejecuta en las demás por SSH.
 
 La GUI no se puede cross-compilar: cada plataforma necesita su propio webview nativo (WebView2 en Windows, WebKit en macOS, WebKitGTK en Linux). Por eso los scripts envían el código fuente a cada remoto y ejecutan `wails build` allí.
 
+Sin máquinas remotas, las pruebas unitarias y la prueba de escenario siguen ejecutándose en local, y CI cubre las demás plataformas. Consulta [Pruebas solo locales](#pruebas-solo-locales).
+
 ## Qué necesitas
 
-- **Go 1.26+**, **Node.js 20.19+ o 22.12+** y la **Wails CLI v2** en tu máquina de desarrollo y en cada remoto que compile la GUI (consulta [developer-guide.md](developer-guide.md) para ver las librerías de cada OS)
-- **Autenticación SSH basada en clave** a tus máquinas remotas (sin passwords)
-- **Git Bash** en Windows (viene con Git for Windows)
-- **jq** y **curl** en todas las máquinas (para configuración de credenciales)
-- **Una sesión de escritorio** en cada máquina donde lances la GUI de forma interactiva
+- Los requisitos de build de [developer-guide.md](developer-guide.md#requisitos-previos) (Go, Node.js, la Wails CLI y las librerías de cada OS) en la máquina de desarrollo y en cada remoto que compile la GUI.
+- Autenticación SSH basada en clave en todos los remotos (sin contraseñas).
+- Git Bash en Windows (viene con Git for Windows).
+- `jq` y `curl` en todas las máquinas, para la configuración de credenciales.
+- Una sesión de escritorio en cada máquina donde se lance la GUI de forma interactiva.
 
 ## Configuración inicial
 
@@ -22,56 +22,37 @@ La GUI no se puede cross-compilar: cada plataforma necesita su propio webview na
 cp docs/.env.example .env
 ```
 
-Edita `.env` con tus hosts SSH remotos. Los scripts autodetectan tu OS local, así que deja vacía la variable de esa plataforma. Define las demás como `user@hostname`. Windows y macOS se separan en dos targets por arquitectura — `SSH_WIN_INTEL_HOST` / `SSH_WIN_ARM_HOST` y `SSH_MAC_ARM_HOST` / `SSH_MAC_INTEL_HOST` — para que máquinas amd64 y arm64 puedan coexistir en un `.env`:
+Edita `.env` con tus hosts SSH remotos. Los scripts detectan el OS local, así que deja vacía la variable de esa plataforma y define las demás como `user@hostname`. Windows y macOS se dividen cada uno en dos targets por arquitectura, para que máquinas amd64 y arm64 puedan coexistir en un mismo `.env`:
+
+| Variable             | Target      | Plataforma                  |
+| -------------------- | ----------- | --------------------------- |
+| `SSH_WIN_INTEL_HOST` | `win-intel` | Windows amd64               |
+| `SSH_WIN_ARM_HOST`   | `win-arm`   | Windows arm64               |
+| `SSH_MAC_ARM_HOST`   | `mac-arm`   | macOS Apple Silicon (arm64) |
+| `SSH_MAC_INTEL_HOST` | `mac-intel` | macOS Intel (amd64)         |
+| `SSH_LINUX_HOST`     | `linux`     | Linux amd64                 |
+
+Por ejemplo, en una máquina Windows amd64 con dos Macs y un equipo Linux como remotos:
 
 ```bash
-# Desarrollo en Windows amd64, remotos son Macs y Linux:
 SSH_WIN_INTEL_HOST=""
 SSH_WIN_ARM_HOST=""
 SSH_MAC_ARM_HOST="user@mac-arm-host"
 SSH_MAC_INTEL_HOST="user@mac-intel-host"
 SSH_LINUX_HOST="user@linux-host"
-
-# Desarrollo en Apple Silicon, remotos incluyen una caja Windows amd64,
-# una VM Windows-on-ARM (Parallels/VMware Fusion), Intel Mac y Linux:
-SSH_WIN_INTEL_HOST="user@win-amd64-host"
-SSH_WIN_ARM_HOST="user@win-arm-vm"
-SSH_MAC_ARM_HOST=""
-SSH_MAC_INTEL_HOST="user@mac-intel-host"
-SSH_LINUX_HOST="user@linux-host"
-
-# Desarrollo en Linux, remoto es un solo Mac:
-SSH_WIN_INTEL_HOST=""
-SSH_WIN_ARM_HOST=""
-SSH_MAC_ARM_HOST="user@mac-host"
-SSH_MAC_INTEL_HOST=""
-SSH_LINUX_HOST=""
 ```
 
-Los archivos `.env` antiguos con un único `SSH_WIN_HOST` siguen funcionando — los scripts hacen fallback a él cuando `SSH_WIN_INTEL_HOST` no está definido.
+`docs/.env.example` incluye más escenarios. Deja una variable vacía u omítela para saltar esa plataforma. Un `.env` antiguo con un único `SSH_WIN_HOST` sigue funcionando: los scripts recurren a él cuando `SSH_WIN_INTEL_HOST` no está definido.
 
-Deja una variable vacía u omítela para saltar esa plataforma. Verifica que SSH funciona antes de continuar:
+Comprueba SSH antes de continuar:
 
 ```bash
-ssh -o ConnectTimeout=5 user@mac-host 'echo ok'
+ssh -o ConnectTimeout=5 user@mac-arm-host 'echo ok'
 ```
 
 ### 2. Preparar el fixture de pruebas
 
-```bash
-cp json/test-gitbox.json.example test-gitbox.json
-```
-
-Edita `test-gitbox.json` y rellena cuentas y tokens reales. Cada cuenta con clave `_test` necesita un token API válido — créalos en la web de tu proveedor:
-
-| Proveedor           | Dónde crearlo                                          | Scopes necesarios                                      |
-| ------------------- | ------------------------------------------------------ | ------------------------------------------------------ |
-| **GitHub**          | Settings → Developer settings → Personal access tokens | `repo` (full), `read:user`                             |
-| **Gitea / Forgejo** | Settings → Applications → Manage Access Tokens         | Repository: Read+Write, User: Read, Organization: Read |
-| **GitLab**          | Preferences → Access Tokens                            | scope `api`                                            |
-| **Bitbucket**       | Personal settings → App passwords                      | Repositories: Read+Write                               |
-
-Consulta [test-gitbox.json.example](../../json/test-gitbox.json.example) para ver la estructura completa con comentarios inline.
+Copia `json/test-gitbox.json.example` a `test-gitbox.json` en la raíz del repo y rellena cuentas y tokens reales. [testing.md](testing.md#el-fixture-de-pruebas) explica el fixture y su clave `_test`, y [credentials.md](credentials.md#cómo-crear-un-pat) muestra cómo crear el token de cada proveedor.
 
 ### 3. Configurar credenciales en todas las máquinas
 
@@ -79,35 +60,27 @@ Consulta [test-gitbox.json.example](../../json/test-gitbox.json.example) para ve
 ./scripts/setup-credentials.sh all
 ```
 
-Esto hace varias cosas en cada target:
+Para cada target, el script copia `test-gitbox.json` y `scripts/test-setup-credentials.sh` al remoto y lo ejecuta allí. En cada máquina:
 
-1. Copia `test-gitbox.json` al remoto
-2. Verifica tokens API contra cada proveedor
-3. Genera pares de claves SSH únicos para esa máquina (nombrados `test-<hostname>-<account>-sshkey`)
-4. Escribe entradas SSH config para cada cuenta
-5. Prueba conexiones SSH
+1. Verifica el token API de cada cuenta que tiene clave `_test`.
+2. Genera un par de claves SSH único para esa máquina, llamado `test-<hostname>-<account>-sshkey` (conserva las claves existentes).
+3. Añade una entrada `Host` por cuenta a `~/.ssh/config` (conserva las entradas existentes).
+4. Prueba cada conexión SSH.
 
-Después de ejecutar el script, registra las claves públicas de cada máquina en tus proveedores. El script imprime la clave exacta que debes pegar para cualquiera que falle la verificación:
+Después registra las claves públicas de cada máquina en tus proveedores. Para cada clave que falla la verificación, el script imprime la página que debes abrir y la clave exacta que debes pegar:
 
 ```text
-  FAIL  gitbox-gb-github-personal — public key not registered
-        Add key at https://github.com/settings/keys: ssh-ed25519 AAAAC3... test-bolica-gb-github-personal
+  FAIL  gitbox-github-myaccount — public key not registered
+        Add key at https://github.com/settings/keys: ssh-ed25519 AAAAC3... test-<hostname>-github-MyAccount
 ```
 
-Dónde registrar claves SSH:
+Vuelve a ejecutar `./scripts/setup-credentials.sh all` después de registrar las claves. Todas las líneas deberían mostrar un `ok` verde. El script es idempotente.
 
-- **GitHub:** Settings → SSH and GPG keys → New SSH key
-- **GitLab:** Settings → SSH keys → Add key
-- **Gitea / Forgejo:** Settings → SSH / GPG Keys → Add Key
-- **Bitbucket:** Personal settings → SSH keys → Add key
-
-Después de registrar todas las claves, vuelve a ejecutar `./scripts/setup-credentials.sh all` para verificar que todo muestra `ok` verde.
-
-## Workflow diario
+## Flujo diario
 
 ### Build local
 
-Siempre empiezo en la máquina donde trabajo: compilo la GUI con `wails build` (consulta [developer-guide.md](developer-guide.md)) y la lanzo allí primero. La salida queda en `cmd/gui/build/bin/`.
+Empieza en la máquina donde trabajas: compila la GUI como se describe en [developer-guide.md](developer-guide.md#compilar-desde-el-código-fuente) y lánzala allí primero. La salida queda en `cmd/gui/build/bin/`.
 
 ### Enviar a remotos
 
@@ -116,7 +89,14 @@ Siempre empiezo en la máquina donde trabajo: compilo la GUI con `wails build` (
 ./scripts/ship.sh myhost     # solo el host cuyo nombre corto coincide
 ```
 
-Envía el código fuente a cada remoto con `tar | ssh`, ejecuta `wails build` allí y deja el resultado preparado: `/tmp/GitboxApp.app` en macOS, `/tmp/GitboxApp` en Linux y `~/GitboxApp.exe` en Windows. Cuando existe `test-gitbox.json` en la raíz del repo, se copia a `~/test-gitbox.json` en cada remoto. Los logs de cada host van a `/tmp/gitbox-ship-<platform>.log`.
+El nombre corto es la parte de host de `user@host` sin su dominio; el valor completo `user@host` también funciona. Para cada remoto, `ship.sh`:
+
+1. Envía el código fuente con `tar | ssh` a `~/gitbox-remote-build`, sin `.git`, `.env`, `node_modules` ni la salida de build.
+2. Compila el frontend y después ejecuta `wails build -s` con la versión y el commit del checkout local estampados mediante `-ldflags`, para que el binario remoto no muestre `dev-none`.
+3. Deja el resultado preparado en `/tmp/GitboxApp.app` en macOS, `/tmp/GitboxApp` en Linux y `~/GitboxApp.exe` en Windows.
+4. Copia `test-gitbox.json` a `~/test-gitbox.json` cuando existe en la raíz del repo.
+
+Los logs de cada host van a `/tmp/gitbox-ship-<platform>.log`, y el resumen muestra las últimas líneas de cada log fallido. Después de enviar a un Mac, `ship.sh` imprime los pasos únicos que permiten a una app preparada en `/tmp` alcanzar servidores de la red local; [credentials.md](credentials.md#macos-permiso-de-red-local) explica por qué.
 
 ### Smoke test
 
@@ -124,23 +104,23 @@ Envía el código fuente a cada remoto con `tar | ssh`, ejecuta `wails build` al
 ./scripts/smoke.sh all
 ```
 
-Ejecuta `GitboxApp --version` en todas las plataformas — la salida local de `wails build` y las copias que `ship.sh` dejó preparadas en los remotos. El flag imprime la versión y sale sin abrir ninguna ventana, así que funciona por SSH normal. No interactivo — el script lo ejecuta todo y reporta pass/fail.
+Ejecuta `GitboxApp --version` en todas las plataformas: la salida local de `wails build` y las copias que `ship.sh` dejó preparadas en los remotos. El flag imprime `GitboxApp <version> (<sha>)` y sale sin abrir ninguna ventana, así que funciona por SSH normal. El script informa de éxito o fallo por plataforma y sale con código distinto de cero ante cualquier fallo.
 
-### Pruebas interactivas (test-mode)
+### Pruebas interactivas (modo de prueba)
 
 ```bash
 ./scripts/test-commands.sh
 ```
 
-Imprime el comando exacto para lanzar `GitboxApp --test-mode` en cada plataforma. La GUI necesita la sesión de escritorio del target, así que los comandos se imprimen, no se ejecutan — ejecuta cada uno en un terminal de ese host:
+Imprime el comando que lanza `GitboxApp --test-mode` en cada plataforma. La GUI necesita la sesión de escritorio del target, así que el script imprime los comandos en vez de ejecutarlos. Ejecuta cada uno en un terminal de ese host:
 
 ```text
-  Windows (me@win-host):  cd ~ && ~/GitboxApp.exe --test-mode
-  macOS:  cd "/path/to/gitbox" && "/path/to/gitbox/cmd/gui/build/bin/GitboxApp.app/Contents/MacOS/GitboxApp" --test-mode
-  Linux (me@linux-host):  cd ~ && /tmp/GitboxApp --test-mode
+  Windows (amd64) (user@win-host):  cd ~ && ~/GitboxApp.exe --test-mode
+  macOS (arm64):  cd "<repo>" && "<repo>/cmd/gui/build/bin/GitboxApp.app/Contents/MacOS/GitboxApp" --test-mode
+  Linux (user@linux-host):  cd ~ && /tmp/GitboxApp --test-mode
 ```
 
-**¿Qué es test-mode?** El flag `--test-mode` ejecuta GitboxApp en un directorio temporal aislado. Lee `test-gitbox.json` (buscándolo hacia arriba desde el directorio actual) en vez de tu config real, crea todos los clones en una carpeta temporal descartable e inyecta tokens de prueba como variables de entorno. Nada toca tu `~/.config/gitbox/` real ni clones existentes. El directorio temporal se borra automáticamente cuando la app sale.
+El modo de prueba ejecuta la app contra `test-gitbox.json` en un directorio desechable y nunca toca la config ni los clones reales; [testing.md](testing.md#ejecutar-las-pruebas) tiene los detalles. La app encuentra el fixture subiendo desde su directorio de trabajo, por eso los comandos remotos empiezan con `cd ~`. El script avisa cuando un remoto no tiene `~/test-gitbox.json`.
 
 ### Pruebas interactivas (producción)
 
@@ -148,68 +128,63 @@ Imprime el comando exacto para lanzar `GitboxApp --test-mode` en cada plataforma
 ./scripts/run-commands.sh
 ```
 
-La misma idea, pero los comandos impresos lanzan GitboxApp contra el `~/.config/gitbox/gitbox.json` real en la máquina target.
+La misma idea, pero los comandos impresos lanzan `GitboxApp` contra el `~/.config/gitbox/gitbox.json` real de cada máquina. En macOS usan `open` sobre el bundle.
 
-Mido el arranque en el escritorio nativo después de compilar: del lanzamiento del proceso a la ventana, de la ventana a las filas configuradas con la anidación de contenedores y el tiempo hasta el estado completo. Registro la plataforma, el número de clones y las ejecuciones repetidas; navegar desde el navegador con `wails dev` ya en ejecución mide otra ruta. Los smoke tests por SSH verifican el binario y el backend, pero necesito una sesión Windows interactiva para medir la aparición de las filas en WebView2 antes de afirmar que cumplo el objetivo de arranque.
+[testing.md](testing.md#ejecuciones-de-regresión-enfocadas) describe cómo medir el arranque en un escritorio nativo.
 
-### Sincronizar config de producción a un remoto
+### Sincronizar la config de producción a un remoto
 
 ```bash
-./scripts/send-my-production-config.sh mac
+./scripts/send-my-production-config.sh mac-arm
 ```
 
-Copia tu `gitbox.json` local al remoto. Muestra un diff y pide confirmación antes — esto sobrescribe la config remota.
+Copia el `~/.config/gitbox/gitbox.json` local a un remoto. Primero muestra un diff y pide confirmación, porque sobrescribe la config del remoto. Acepta un único target y rechaza `all`.
 
 ## Referencia de scripts
 
-| Script                                  | Qué hace                                                                        |
-| --------------------------------------- | ------------------------------------------------------------------------------- |
-| `ship.sh [short-name]`                  | Compila la GUI en cada remoto y la deja preparada para pruebas                  |
-| `smoke.sh [target]`                     | Smoke test no interactivo (`GitboxApp --version`)                               |
-| `test-commands.sh [target]`             | Imprime comandos de lanzamiento test-mode para que el usuario los ejecute       |
-| `run-commands.sh [target]`              | Imprime comandos de lanzamiento production-mode para que el usuario los ejecute |
-| `setup-credentials.sh [target]`         | Configura claves SSH y verifica tokens en el target                             |
-| `send-my-production-config.sh <target>` | Copia la config local de producción a un remoto                                 |
-| `test-setup-credentials.sh [path]`      | Configuración de credenciales de bajo nivel (llamada por setup-credentials)     |
+| Script                                  | Qué hace                                                                       |
+| --------------------------------------- | ------------------------------------------------------------------------------ |
+| `ship.sh [short-name]`                  | Compila la GUI en cada remoto y la deja preparada para pruebas                 |
+| `smoke.sh [target]`                     | Smoke test no interactivo (`GitboxApp --version`)                              |
+| `test-commands.sh [target]`             | Imprime los comandos de lanzamiento en modo de prueba                          |
+| `run-commands.sh [target]`              | Imprime los comandos de lanzamiento en modo producción                         |
+| `setup-credentials.sh [target]`         | Verifica tokens y configura claves SSH en cada target                          |
+| `send-my-production-config.sh <target>` | Copia la config local de producción a un remoto                                |
+| `test-setup-credentials.sh [path]`      | Configuración de credenciales de bajo nivel que ejecuta `setup-credentials.sh` |
 
-**Targets:** `win-intel`, `win-arm`, `mac-arm`, `mac-intel`, `linux` o `all`. Aliases back-compat: `win` → `win-intel` y `mac` → `mac-arm` (los defaults históricos de una sola máquina). La mayoría de scripts usa por defecto `all` las plataformas disponibles cuando no se pasa target. `ship.sh` recibe en su lugar el nombre corto de un host (p. ej. `myhost` para `user@myhost`).
+**Targets:** `win-intel`, `win-arm`, `mac-arm`, `mac-intel`, `linux` o `all`. Los alias `win` y `mac` equivalen a `win-intel` y `mac-arm`. Los scripts que aceptan `[target]` usan `all` por defecto y saltan las plataformas sin host en `.env`. `ship.sh` acepta en su lugar el nombre corto de un host y por defecto usa todos los remotos configurados. `ship.sh -h` imprime su ayuda.
 
 ## Cómo funciona
 
-Los scripts autodetectan tu OS local. Para operaciones locales, los comandos se ejecutan directamente. Para operaciones remotas, usan SSH con los hosts de `.env`.
+Los scripts cargan `scripts/_common.sh`, que detecta el OS local y carga `.env`. Los comandos para la plataforma local se ejecutan directamente; los comandos para las demás se ejecutan por SSH con los hosts de `.env`.
 
-- **La GUI** se compila localmente en `cmd/gui/build/bin/`, y en remotos en un directorio scratch antes de quedar preparada en `/tmp/GitboxApp[.app]` en Unix y `~/GitboxApp.exe` en Windows
-- **test-gitbox.json** va a `~/test-gitbox.json` en remotos (GitboxApp lo busca hacia arriba desde el directorio actual)
-- **Claves SSH** se nombran `test-<hostname>-<account>-sshkey` para que cada OS tenga claves únicas
-- **Las shells SSH sin login** no cargan tu perfil de shell, así que los scripts amplían `PATH` con las ubicaciones habituales de Go, Wails y Homebrew antes de compilar en un remoto
+- La GUI se compila localmente en `cmd/gui/build/bin/`. En los remotos se compila en `~/gitbox-remote-build` y queda preparada en `/tmp/GitboxApp[.app]` en Unix y en `~/GitboxApp.exe` en Windows, porque `scp` y Git Bash no coinciden en dónde está `/tmp`.
+- `test-gitbox.json` va a `~/test-gitbox.json` en los remotos.
+- Las claves SSH se llaman `test-<hostname>-<account>-sshkey`, así que cada máquina tiene sus propias claves y todas se pueden registrar a la vez en un proveedor.
+- Las shells SSH sin login no cargan el perfil de la shell, así que los scripts añaden a `PATH` las ubicaciones habituales de Go, Wails y Homebrew antes de compilar en un remoto. En remotos Windows también ponen las carpetas de apps de Scoop por delante de sus shims, que fallan en sesiones SSH.
+- En una máquina de desarrollo Windows, los scripts prefieren el OpenSSH nativo de `C:\Windows\System32\OpenSSH`, que alcanza los agentes SSH detrás de la named pipe de Windows.
 
 ## Pruebas solo locales
 
-Si no tienes acceso SSH a otras máquinas, aun así puedes:
+Sin acceso SSH a otras máquinas:
 
-- Ejecutar pruebas unitarias: `go test -short ./...`
-- Ejecutar la prueba de escenario: `go test ./...` (requiere `test-gitbox.json`)
-- Compilar para tu OS local: `cd cmd/gui && wails build`
-- Configurar credenciales locales: `./scripts/setup-credentials.sh`
+- Ejecuta las pruebas unitarias: `go test -short ./...`
+- Ejecuta la prueba de escenario: `go test ./pkg/ops/` (requiere `test-gitbox.json`)
+- Compila para el OS local: consulta [developer-guide.md](developer-guide.md#compilar-desde-el-código-fuente)
+- Configura las credenciales locales: `./scripts/setup-credentials.sh`
 
-CI (GitHub Actions) ejecuta vet, pruebas unitarias, la comprobación del frontend y un build de la GUI en Linux en cada pull request, y compila todas las plataformas en cada tag de release, así que las regresiones cross-platform se detectan incluso sin remotos.
+CI detecta las regresiones multiplataforma incluso sin remotos: `pr.yml` ejecuta la comprobación de salud y un build de la GUI en Linux en cada pull request, y `ci.yml` compila todas las plataformas en cada tag de release. Consulta [developer-guide.md](developer-guide.md#integración-continua).
 
-## Troubleshooting
+## Resolución de problemas
 
-**"Permission denied" en SSH:**
-Comprueba que tu clave SSH está en `~/.ssh/authorized_keys` en el remoto. Los scripts requieren autenticación basada en clave (sin passwords). Verifica con: `ssh -o ConnectTimeout=5 user@host 'echo ok'`
+**"Permission denied" en SSH.** Comprueba que tu clave pública está en `~/.ssh/authorized_keys` en el remoto. Los scripts requieren autenticación basada en clave. Prueba con `ssh -o ConnectTimeout=5 user@host 'echo ok'`.
 
-**"error in libcrypto" seguido de "Permission denied" desde Git Bash en Windows:**
-Tus claves viven en un agente SSH (un gestor de contraseñas como 1Password o Bitwarden, o el servicio ssh-agent de Windows) y en disco solo existen ficheros `.pub`. El `ssh` MSYS propio de Git Bash no puede alcanzar el agente de named pipe de Windows, así que intenta cargar el `.pub` como clave privada y falla. Los scripts ahora prefieren automáticamente el OpenSSH nativo de Windows en `C:\Windows\System32\OpenSSH` cuando existe. Si ejecutas `ssh` a mano desde Git Bash, antepón el PATH de la misma forma: `PATH="/c/Windows/System32/OpenSSH:$PATH" ssh host`.
+**"error in libcrypto" seguido de "Permission denied" desde Git Bash en Windows.** Las claves viven en un agente SSH (un gestor de contraseñas como 1Password o Bitwarden, o el servicio ssh-agent de Windows) y en disco solo existen ficheros `.pub`. El `ssh` MSYS propio de Git Bash no puede alcanzar el agente de la named pipe de Windows, así que intenta cargar el `.pub` como clave privada y falla. Los scripts ya usan el OpenSSH nativo de Windows cuando existe. Si ejecutas `ssh` a mano desde Git Bash, ponlo primero en `PATH`: `PATH="/c/Windows/System32/OpenSSH:$PATH" ssh host`.
 
-**"command not found: jq" en remoto:**
-Instala jq en la máquina remota (`apt install jq` en Debian/Ubuntu, `brew install jq` en macOS).
+**"command not found: jq" en un remoto.** Instala `jq` allí (`apt install jq` en Debian o Ubuntu, `brew install jq` en macOS).
 
-**"wails: command not found" durante ship:**
-El build remoto se ejecuta en una shell sin login. Instala la Wails CLI en el remoto con `go install github.com/wailsapp/wails/v2/cmd/wails@latest` y comprueba que `$HOME/go/bin` existe. Lee el log del host en `/tmp/gitbox-ship-<platform>.log` para ver el error exacto.
+**"wails: command not found" durante el envío.** El build remoto se ejecuta en una shell sin login. Instala la Wails CLI en el remoto con `go install github.com/wailsapp/wails/v2/cmd/wails@latest` y comprueba que `$HOME/go/bin` existe. El log del host en `/tmp/gitbox-ship-<platform>.log` muestra el error exacto.
 
-**test-mode no encuentra test-gitbox.json:**
-Ejecuta `./scripts/ship.sh` — copia el fixture a `~/test-gitbox.json` en remotos. O ejecuta `./scripts/setup-credentials.sh <target>`, que también lo copia. Lanza la app desde el directorio home (`cd ~`) para que la búsqueda hacia arriba encuentre el archivo.
+**El modo de prueba no encuentra `test-gitbox.json`.** Ejecuta `./scripts/ship.sh` o `./scripts/setup-credentials.sh <target>`; ambos copian el fixture a `~/test-gitbox.json` en los remotos. Lanza la app desde el directorio home (`cd ~`) para que la búsqueda hacia arriba lo encuentre.
 
-**SSH timeout:**
-Añade `ConnectTimeout 10` a tu `~/.ssh/config` para ese host.
+**Timeout de SSH.** Añade `ConnectTimeout 10` a la entrada de ese host en `~/.ssh/config`.
