@@ -498,7 +498,7 @@ Long-running operations (clone, status refresh, pull, mirror discovery, repo mov
 **Layout structure:**
 
 - **Experience** — a top-bar switch between Simple (six plain states, git detail hidden) and Advanced (everything), grey and red, saved as `global.ui_mode`; both modes put icon launchers for AI / editor / terminal on each cloned row; new installs start in Simple
-- **Top bar** — sidebar button, logo, repo health ring, mirror health ring (when mirrors exist), action buttons (Pull all, Fetch all, Delete mode, Compact view, theme)
+- **Top bar** — the logo (it folds the sidebar), repo health ring, mirror health ring (when mirrors exist), action buttons (Pull all, Fetch all, Delete mode, Compact view, theme)
 - **Activity strip** — under the top bar while Fetch all or Pull all runs: its scope and a progress bar
 - **Sidebar** — Needs attention and All repos with their counts, one entry per account (provider logo, health mark and words, attention count), Add account, Found on disk (orphans), and Mirrors in Advanced; it folds to an icon rail (⌘B / Ctrl+B), always shows as the rail below 780 px, and remembers the view and the rail in `global.collapsed`
 - **Needs attention view** — accounts whose credential needs a fix, then repos grouped needs help, local work, behind, and not cloned, with account pills and parent tags; rows that turn fine stay, faded, until the view closes

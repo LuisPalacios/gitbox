@@ -277,6 +277,18 @@
   {/if}
 {/snippet}
 
+<!-- A parent clone shows its fold chevron in the dot's place, so its name
+     stays in line with its siblings'; the status words still say how it is. -->
+{#snippet foldChevron()}
+  {@const repoCollapsed = collapsedRepos.has(repoKey)}
+  <button class="collapse-chevron-btn" class:collapsed={repoCollapsed}
+    aria-expanded={!repoCollapsed}
+    aria-label="{repoCollapsed ? $t('collapse.expand') : $t('collapse.collapse')} {repoName}"
+    title={repoCollapsed ? $t('collapse.expand') : $t('collapse.collapse')}
+    on:click|stopPropagation={() => toggleRepoCollapsed(repoKey, descendants)}
+    on:keydown|stopPropagation><UIIcon name="chevron" /></button>
+{/snippet}
+
 {#snippet quickLaunch(repoKey: string)}
   <span class="launch-group">
     {#if quickHarness}
@@ -356,20 +368,11 @@
   {#if deleteMode}
     <button class="icon-btn icon-btn-danger btn-delete-x" on:click|stopPropagation={() => askDelete(rowSourceKey, repoName, state.status)} title={$t('row.delete', { name: repoName })} aria-label={$t('row.delete', { name: repoName })}><UIIcon name="x" /></button>
   {/if}
-  {#if childCount > 0}
-    {@const repoCollapsed = collapsedRepos.has(repoKey)}
-    <button class="collapse-chevron-btn" class:collapsed={repoCollapsed}
-      aria-expanded={!repoCollapsed}
-      aria-label="{repoCollapsed ? $t('collapse.expand') : $t('collapse.collapse')} {repoName}"
-      title={repoCollapsed ? $t('collapse.expand') : $t('collapse.collapse')}
-      on:click|stopPropagation={() => toggleRepoCollapsed(repoKey, descendants)}
-      on:keydown|stopPropagation><UIIcon name="chevron" /></button>
-  {/if}
   {#if simple}
     <!-- Simple row (issue #124): dot, short name, one sentence, one button, ⋯ -->
     {@const kind = simpleKind(state.status)}
     {@const kindColor = simpleColor(kind, $themeStore)}
-    <span class="dot" class:spinning={busy} style="color: {kindColor}">{busy ? '↻' : '●'}</span>
+    {#if childCount > 0}{@render foldChevron()}{:else}<span class="dot" class:spinning={busy} style="color: {kindColor}">{busy ? '↻' : '●'}</span>{/if}
     {#if childCount > 0}
       <span class="repo-name" class:ws-member={inWorkspace} title={repoName}><span class="repo-name-toggle" role="button" tabindex="-1"
         on:click={(e) => { e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants); }}
@@ -418,7 +421,7 @@
       </div>
     {/if}
   {:else}
-  <span class="dot" class:spinning={busy} style="color: {sc(state.status)}">{rowGlyph(state.status, !!fetchingRepos[repoKey])}</span>
+  {#if childCount > 0}{@render foldChevron()}{:else}<span class="dot" class:spinning={busy} style="color: {sc(state.status)}">{rowGlyph(state.status, !!fetchingRepos[repoKey])}</span>{/if}
   {#if childCount > 0}
     <!-- The name folds its clones too. -->
     <span class="repo-name" class:ws-member={inWorkspace}><span class="repo-name-toggle" role="button" tabindex="-1"
@@ -530,12 +533,9 @@
   .choose-workspace-badge:hover {
     background: var(--accent, #4B95E9); color: #fff;
   }
-  /* The fold chevron hangs in the gutter left of the dot, out of the flex
-     flow, so a parent's dot and name line up with its siblings'. At depth 0
-     it sits in the view's side padding. */
+  /* The fold chevron takes the dot's 18px column. */
   .collapse-chevron-btn {
-    position: absolute; top: calc(50% - 11px); left: calc(var(--row-pad) - 18px);
-    width: 16px; height: 22px; padding: 0; border: none; border-radius: 5px; background: none;
+    flex: none; width: 18px; height: 22px; padding: 0; border: none; border-radius: 5px; background: none;
     display: inline-flex; align-items: center; justify-content: center;
     color: var(--text-muted); cursor: pointer; transition: transform 0.12s, color 0.12s;
   }

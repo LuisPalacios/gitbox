@@ -46,10 +46,10 @@
 </script>
 
 <header class="topbar">
-  <button class="icon-btn hamb" on:click={toggleSidebar} aria-expanded={!rail} aria-label={sideTip} title={sideTip}><UIIcon name="menu" /></button>
+  <!-- The logo is the sidebar button. -->
   <div class="brand">
-    <Logo class="logo-svg" />
-    <span class="title">gitbox</span>
+    <button class="logo-btn" on:click={toggleSidebar} aria-expanded={!rail} aria-label={sideTip} title={sideTip}><Logo class="logo-svg" /></button>
+    <span class="title" translate="no">GitBox</span>
   </div>
   <!-- Compact rings without labels, in both modes. The icon names what the
        ring tracks, the corner badge counts what is not there yet, and the
@@ -110,12 +110,18 @@
 </header>
 
 <style>
-  .topbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px 14px 11px; border-bottom: 1px solid var(--border); }
-  .hamb { margin-right: -6px; }
+  /* The 38px logo button is centred on the 52px sidebar rail (7px + 19px). */
+  .topbar { display: flex; align-items: center; gap: 16px; padding: 10px 24px 10px 7px; border-bottom: 1px solid var(--border); }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .brand { display: flex; align-items: center; gap: 8px; }
-  .brand :global(.logo-svg) { width: 26px; height: 26px; }
-  .title { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .logo-btn {
+    flex: none; width: 38px; height: 38px; padding: 0; border: none; border-radius: 8px; background: none;
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.12s;
+  }
+  .logo-btn:hover { background: var(--bg-hover); }
+  .logo-btn:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 1px; }
+  .brand :global(.logo-svg) { width: 32px; height: 32px; }
+  .title { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
   .health { display: flex; align-items: center; gap: 8px; margin-left: auto; }
   .health-ring {
     width: 38px; height: 38px; border-radius: 50%;

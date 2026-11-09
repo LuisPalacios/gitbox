@@ -117,7 +117,7 @@ The sidebar on the left picks what the main area shows:
   - **Found on disk** — appears when gitbox finds clones on disk it couldn't place on its own, with how many, or when I ignored some, and opens **Unmatched clones** (see [Clones found on disk](#clones-found-on-disk)).
   - **Mirrors**, in Advanced only.
 
-The button at the top left, or ⌘B on macOS and Ctrl+B elsewhere, folds the sidebar to an icon rail. The rail keeps the provider logos with their health mark and attention count; hovering one shows the account name and its health, and one click switches to it. In a window narrower than 780 px the sidebar always shows as the rail, and the button opens the full sidebar over the content until I pick a view.
+The GitBox logo at the top left, or ⌘B on macOS and Ctrl+B elsewhere, folds the sidebar to an icon rail. The rail keeps the provider logos with their health mark and attention count; hovering one shows the account name and its health, and one click switches to it. In a window narrower than 780 px the sidebar always shows as the rail, and the logo opens the full sidebar over the content until I pick a view.
 
 Gitbox remembers the last view and the folded sidebar across restarts (`global.collapsed.view` and `global.collapsed.sidebar` in `gitbox.json`). If that account no longer exists, or Simple can't show Mirrors, Needs attention opens instead. Renaming an account keeps its view.
 
@@ -330,14 +330,14 @@ Simple hides the rest: the Mirrors view, delete mode, the compact view and theme
 
 ### Full view
 
-The full dashboard shows the top bar with health rings, the sidebar, the selected view, and the summary footer. Action buttons in the top bar include Pull all, Fetch all, Delete mode, Compact view, the theme, the Simple/Advanced switch and Settings; the button at the far left folds the sidebar. The window opens 1040 px wide the first time and can shrink to 640 × 480; it grows no wider than the sidebar plus 1100 px of content, and folding the sidebar gives its width to the content.
+The full dashboard shows the top bar with health rings, the sidebar, the selected view, and the summary footer. Action buttons in the top bar include Pull all, Fetch all, Delete mode, Compact view, the theme, the Simple/Advanced switch and Settings; the logo at the far left folds the sidebar. The window opens 1040 px wide the first time and can shrink to 640 × 480; it grows no wider than the sidebar plus 1100 px of content, and folding the sidebar gives its width to the content.
 
 ### Collapse and expand
 
 The **All repos** view folds at two levels, and an account's view folds parent clones too:
 
-- **Account groups** — each account sits in its own light card, here and in **Needs attention**. Its name lines up with the clone names below, in its provider's colour (GitHub indigo, GitLab orange, Gitea green, Forgejo red, Bitbucket blue), and a filled ▾ caret hangs to its left, in the same column as a container's chevron. Click the header bar or the name to fold its clone list. The header always shows how many clones it holds and how many need attention, folded or not, so a problem never hides behind a fold. The ⋯ menu on the header keeps working and never folds the group.
-- **Clones with clones below them** — any clone that has nested clones or not-yet-cloned workspace folders under it gets a ▾ chevron before its status dot. Click the chevron or the clone's name to fold everything below, at any depth. A folded row shows how many rows it hides and how many of them need attention. Neither opens the repo detail.
+- **Account groups** — each account sits in its own light card, here and in **Needs attention**. Its name, in its provider's colour (GitHub indigo, GitLab orange, Gitea green, Forgejo red, Bitbucket blue), sits in the column of the status dots below, right next to the filled ▾ caret that hangs to its left. Click the header bar or the name to fold its clone list. The header always shows how many clones it holds and how many need attention, folded or not, so a problem never hides behind a fold. The ⋯ menu on the header keeps working and never folds the group.
+- **Clones with clones below them** — any clone that has nested clones or not-yet-cloned workspace folders under it shows an outlined ▾ chevron in place of its status dot, so its name stays in line with its siblings'; its status words still say how it is. Click the chevron or the clone's name to fold everything below, at any depth. A folded row shows how many rows it hides and how many of them need attention. Neither opens the repo detail.
 
 Gitbox remembers what I fold across restarts, along with the sidebar and the last view (`global.collapsed` in `gitbox.json`), and forgets entries for accounts or clones I delete or rename. The compact view keeps its own per-account expansion.
 

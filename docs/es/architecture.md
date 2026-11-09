@@ -498,7 +498,7 @@ Las operaciones largas (clone, refresh de status, pull, mirror discovery, movimi
 **Estructura de layout:**
 
 - **Experiencia** — un interruptor en la barra superior entre Simple (seis estados en lenguaje llano, detalle de git oculto) y Advanced (todo), gris y rojo, guardada como `global.ui_mode`; ambos modos ponen lanzadores de icono para IA / editor / terminal en cada fila clonada; las instalaciones nuevas empiezan en Simple
-- **Top bar** — botón de la barra lateral, logo, repo health ring, mirror health ring (cuando existen mirrors), botones de acción (Pull de todo, Fetch de todo, Delete mode, Compact view, tema)
+- **Top bar** — el logo (pliega la barra lateral), repo health ring, mirror health ring (cuando existen mirrors), botones de acción (Pull de todo, Fetch de todo, Delete mode, Compact view, tema)
 - **Tira de actividad** — bajo la barra superior mientras se ejecuta Fetch de todo o Pull de todo: su alcance y una barra de progreso
 - **Barra lateral** — Requiere atención y Todos los repos con sus conteos, una entrada por cuenta (logo del proveedor, marca y palabras de salud, conteo de atención), Añadir cuenta, Encontrados en disco (orphans), y Mirrors en Advanced; se pliega a un riel de iconos (⌘B / Ctrl+B), siempre se muestra como el riel por debajo de 780 px, y recuerda la vista y el riel en `global.collapsed`
 - **Vista Requiere atención** — cuentas cuya credencial necesita un arreglo, y después repos agrupados en necesita ayuda, trabajo local, por detrás y no clonado, con píldoras de cuenta y etiquetas de padre; las filas que pasan a estar bien se quedan, atenuadas, hasta que se cierra la vista
