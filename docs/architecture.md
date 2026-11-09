@@ -83,7 +83,7 @@ Changing a source's root or the default root pins the root every existing clone 
 
 ### cmd/gui — Wails bindings
 
-`cmd/gui/app.go` exposes the methods the Svelte frontend calls through auto-generated TypeScript bindings. I use the config lock for shared state and call `pkg/ops` or another `pkg/` package for operations, saving changes and emitting Wails events for progress. Neighbouring files hold GUI-only concerns: terminal profiles (`profiles.go`), workspaces (`workspaces.go`), multi-repo containers (`containers.go`), PR badges (`pr.go`), autostart, and per-OS process lifecycle. Every `exec.Command` in `cmd/gui/` goes through `git.HideWindow` so no console window flashes on Windows.
+`cmd/gui/app.go` exposes the methods the Svelte frontend calls through auto-generated TypeScript bindings. I use the config lock for shared state and call `pkg/ops` or another `pkg/` package for operations, saving changes and emitting Wails events for progress. Neighbouring files hold GUI-only concerns: terminal profiles (`profiles.go`), multi-repo containers and their workspace files (`containers.go`), PR badges (`pr.go`), autostart, and per-OS process lifecycle. Every `exec.Command` in `cmd/gui/` goes through `git.HideWindow` so no console window flashes on Windows.
 
 `main.go` handles two flags before Wails starts: `--version` prints the build version and exits, and `--test-mode` routes the config through a temp directory built from the `test-gitbox.json` fixture (see [testing.md](testing.md)).
 
@@ -101,7 +101,7 @@ Each operation works on a `*config.Config` plus the files it owns on disk (clone
 
 ### pkg/config — Configuration management
 
-Handles the v4 configuration file (v2 and v3 files are migrated transparently on load). Core types: `Config`, `Account`, `Source`, `Repo`. v4 replaces the single folder with clone roots (`Global.Roots`, `Source.Root`, `Repo.Root`; see `roots.go`), and `status.RepoPath` resolves every clone path through them. v3 added multi-repo containers (`Repo.Container`), nested-clone discovery depth (`Global.NestedScanDepth`), the GUI collapse state (`Global.Collapsed`, pruned of stale keys on every `Save`), absolute `clone_folder` overrides, and read-only discovered workspaces. See `pkg/config/config.go` for struct definitions.
+Handles the v5 configuration file (v2, v3 and v4 files are migrated transparently on load). Core types: `Config`, `Account`, `Source`, `Repo`. v4 replaces the single folder with clone roots (`Global.Roots`, `Source.Root`, `Repo.Root`; see `roots.go`), and `status.RepoPath` resolves every clone path through them. v3 added multi-repo containers (`Repo.Container`), nested-clone discovery depth (`Global.NestedScanDepth`), the GUI collapse state (`Global.Collapsed`, pruned of stale keys on every `Save`), and absolute `clone_folder` overrides. v5 dropped the workspaces cache: a container records its own `.code-workspace` file in `Repo.Workspace`. See `pkg/config/config.go` for struct definitions.
 
 **Key design decisions:**
 
@@ -186,11 +186,11 @@ Relocates a clone from one configured account to another, including across provi
 
 Installs a curated managed block of OS-junk patterns (`.DS_Store`, `Thumbs.db`, `*~`, …) into `~/.gitignore_global` and points `core.excludesfile` at it. The block is wrapped in sentinel markers (`# >>> gitbox:global-gitignore >>>` / `# <<< gitbox:global-gitignore <<<`) so re-installs rewrite only the managed region; user-added entries and negation patterns (`!.DS_Store`) outside the sentinels are preserved, and duplicates of managed patterns outside the sentinels are sanitised away. Atomic tmp+rename write with a rolling 3-backup cap (`.bak-YYYYMMDD-HHMMSS`). Opt-out via `global.check_global_gitignore` in `gitbox.json` gates only the automatic startup check; explicit actions always run. Exposed in the GUI as a banner with an **Install** button.
 
-### pkg/workspace — Read-only workspaces
+### pkg/workspace — Container workspace files
 
-Discovers existing VS Code `.code-workspace` files and exposes them read-only — gitbox never creates, edits, generates, or deletes workspace files. `Discover` walks every root in `global.roots` for `*.code-workspace` files and resolves each file's folder references back to known clones (deepest-prefix match against resolved repo paths); it is pure and only reports what is on disk. `RefreshCache` mirrors the result into the `workspaces` section of `gitbox.json` and persists only when the set changed. `BuildOpenCommand()` launches an existing `.code-workspace` in the first editor in `global.editors`. Tmuxinator support and workspace generation were removed with config v3.
+Ties VS Code `.code-workspace` files to the clones that hold them — gitbox never creates, edits, generates, or deletes workspace files. `Sync` reads the root of every clone on disk (it doesn't recurse): one workspace file makes the clone a container with that file in `repo.workspace`; several make it a container and report a `Choice` unless its current pick still exists; none clears a stale pick and leaves the container flag alone. `Apply` writes those changes into the config. `Members` reads the folders a workspace file lists inside its container, and `Placeholders` keeps those that aren't on disk and that no configured repo resolves to. Workspace files are JSON with comments, so I strip comments and trailing commas before parsing.
 
-I scan an isolated copy of workspace discovery inputs outside the shared config lock. If paths or known clones change during the scan, I retry with current inputs; otherwise I update only the workspace cache and preserve unrelated edits. I visit overlapping directories once and skip hidden directories, `node_modules`, and `vendor`, except when I explicitly configure one as a scan root.
+The disk reconcile binding runs `Sync` on a snapshot without the config lock, applies the changes under it, then runs the reconcile scan, so a container that just gained a workspace file has its nested clones adopted in the same pass. Tmuxinator support and workspace generation were removed with config v3, and the workspaces cache with v5.
 
 ### pkg/adopt — Orphan repo discovery
 
@@ -206,7 +206,7 @@ Scans every root in `global.roots` and the working trees of container repos for 
 
 If the top score is shared by two or more accounts (including a bare host-only tie) the match is marked ambiguous: no account is picked. A unique match is **confident** when its score is above the host-only baseline, so something beyond the server ties the clone to the account. Adoption never moves files: a clone at its standard spot under a root records that root, and any other clone an absolute `clone_folder`. Adopted clones get credential isolation, identity, and a remote URL rewritten to match the credential type.
 
-I stop ordinary orphan discovery at each clone boundary, including a `.git` file used by a worktree. I scan explicit roots independently and use the container scan with `nested_scan_depth` to discover nested clones.
+I stop ordinary orphan discovery at each clone boundary, including a `.git` file used by a worktree. I scan explicit roots independently and use the container scan with `nested_scan_depth` to discover nested clones, plus every folder a container's workspace file lists inside it, at any depth.
 
 ### pkg/reconcile — Disk reconcile
 
@@ -217,7 +217,7 @@ I stop ordinary orphan discovery at each clone boundary, including a `.git` file
 - A confident match is **adopted** in place.
 - Everything else waits in the Unmatched list with its reason: host-only, ambiguous, unknown host, no remote, already tracked, or worktree.
 
-Paths in `global.ignored_clones` are reported apart. `Apply` writes the decisions into the config; neither step touches files. The GUI runs a pass at startup, on window focus, after a manual Fetch all, after clone-root changes and on a container rescan. Like workspace discovery, it snapshots the config, scans without the lock, re-checks the config (retrying when it changed) and applies under the lock. Repos under a missing root are never re-linked or forgotten.
+Paths in `global.ignored_clones` are reported apart. `Apply` writes the decisions into the config; neither step touches files. The GUI runs a pass at startup, on window focus, after a manual Fetch all, after clone-root changes and on a container rescan. Each pass first syncs container workspace files (`pkg/workspace`). It snapshots the config, scans without the lock, re-checks the config (retrying when it changed) and applies under the lock. Repos under a missing root are never re-linked or forgotten.
 
 ### pkg/mirror — Repository mirroring
 
@@ -258,11 +258,11 @@ Resolves and normalizes the UI language, in order: the `GITBOX_LANG` environment
 
 ---
 
-## 4. Config format (v4)
+## 4. Config format (v5)
 
 The config lives at `~/.config/gitbox/gitbox.json`. See the [JSON annotated example](../json/gitbox.jsonc) for a complete config with comments, and the [JSON Schema](../json/gitbox.schema.json) for editor validation and autocompletion.
 
-**Versioning:** `config.CurrentVersion` is 4. gitbox loads v4 strictly and migrates v2 and v3 files transparently on load (in memory; persisted on the next save). The v2 → v3 step drops the old `workspaces` section, which is now a regenerable cache. The v3 → v4 step turns `global.folder` and `global.extra_folders` into `global.roots`, in that order, so every clone keeps its path. Any other version is an error. Additive changes never bump the version.
+**Versioning:** `config.CurrentVersion` is 5. gitbox loads v5 strictly and migrates v2, v3 and v4 files transparently on load (in memory; persisted on the next save). The v3 → v4 step turns `global.folder` and `global.extra_folders` into `global.roots`, in that order, so every clone keeps its path. The v4 → v5 step drops the `workspaces` section; the next disk reconcile records each container's workspace file in `repo.workspace`. Any other version is an error. Additive changes never bump the version.
 
 **Automatic backups:** Every meaningful save creates a dated backup in the same directory (e.g., `gitbox-20260401-143025.json`). The 10 most recent are kept — older ones are pruned automatically. The GUI's corruption-recovery screen can restore from any of them in one click. Window-position-only saves (moving or resizing the GUI) skip the backup step, so real pre-corruption copies are not rotated out by cosmetic churn.
 
@@ -282,7 +282,7 @@ The config lives at `~/.config/gitbox/gitbox.json`. See the [JSON annotated exam
 | `view_mode`                       | string | No       | `"full"` or `"compact"`.                                                                                                                                                                                                                                                                                                                                                        |
 | `ui_mode`                         | string | No       | `"simple"` or `"advanced"` GUI experience. Absent means advanced; onboarding writes `"simple"` on a new install.                                                                                                                                                                                                                                                                |
 | `theme`                           | string | No       | `"light"` or `"dark"` GUI theme. Absent follows the OS. Theme-only saves skip the backup ring.                                                                                                                                                                                                                                                                                  |
-| `collapsed`                       | object | No       | Folded account groups (`sources`) and parent clones (`repos`, as `"<source>/<repo>"`), `sidebar` (folded to the icon rail) and `view` (`attention`, `all`, `mirrors`, `workspaces` or `account:<key>`). Absent means all expanded and Needs attention. `Save` prunes stale keys and a deleted account's view; a rename rewrites it. Layout-only saves skip the backup ring.     |
+| `collapsed`                       | object | No       | Folded account groups (`sources`) and parent clones (`repos`, as `"<source>/<repo>"`), `sidebar` (folded to the icon rail) and `view` (`attention`, `all`, `mirrors` or `account:<key>`). Absent means all expanded and Needs attention. `Save` prunes stale keys, a deleted account's view and the retired `workspaces` view; a rename rewrites it. Layout-only saves skip the backup ring. |
 | `window` / `compact_window`       | object | No       | Saved position and size (`x`, `y`, `width`, `height`) per view mode.                                                                                                                                                                                                                                                                                                            |
 | `check_global_gitignore`          | bool   | No       | Run the automatic `~/.gitignore_global` check at startup. Default `true`.                                                                                                                                                                                                                                                                                                       |
 | `pr_badges_enabled`               | bool   | No       | Fetch and show PR / review indicators on clone rows. Default `true`.                                                                                                                                                                                                                                                                                                            |
@@ -340,7 +340,7 @@ The config lives at `~/.config/gitbox/gitbox.json`. See the [JSON annotated exam
 | `gcm.provider`            | string  | No          | GCM provider hint.                                                          |
 | `gcm.useHttpPath`         | boolean | No          | Scope credentials by HTTP path.                                             |
 
-An account is unique by `(hostname, username)`. Deleting an account cascades through every source, mirror, and workspace that references it.
+An account is unique by `(hostname, username)`. Deleting an account cascades through every source and mirror that references it.
 
 ### Source
 
@@ -362,6 +362,7 @@ An account is unique by `(hostname, username)`. Deleting an account cascades thr
 | `clone_folder`    | string | No       | Override 3rd level dir. If absolute, replaces entire path.                |
 | `root`            | string | No       | Clone root, set only when it differs from the source's.                   |
 | `container`       | bool   | No       | Mark as a multi-repo container; gitbox scans inside it for nested clones. |
+| `workspace`       | string | No       | The container's `.code-workspace` file, relative to the clone root.       |
 
 ### Mirrors
 
@@ -401,33 +402,6 @@ An account is unique by `(hostname, username)`. Deleting an account cascades thr
 | `repos.<key>.status`      | string | No       | `"active"`, `"pending"`, `"error"`, `"paused"`            |
 | `repos.<key>.last_sync`   | string | No       | RFC3339 timestamp of last known sync                      |
 | `repos.<key>.error`       | string | No       | Last error message                                        |
-
-### Workspaces cache
-
-The `workspaces` section is a regenerable cache — it can be deleted safely and rediscovered. Entries are always discovered VS Code workspaces (no `type`/`layout`).
-
-```json
-{
-  "workspaces": {
-    "sumwall": {
-      "name": "sumwall",
-      "file": "/home/me/00.git/.../sumwall.project/sumwall.code-workspace",
-      "members": [
-        { "source": "github-org", "repo": "Org/browser" },
-        { "source": "github-org", "repo": "Org/services" }
-      ],
-      "discovered": true
-    }
-  }
-}
-```
-
-| Field        | Type   | Description                                                        |
-| ------------ | ------ | ------------------------------------------------------------------ |
-| `name`       | string | Display name (the `.code-workspace` filename stem)                 |
-| `file`       | string | Absolute path to the discovered `.code-workspace` file             |
-| `members`    | array  | Member clones resolved from the file's folders (`source` + `repo`) |
-| `discovered` | bool   | Always `true` — entries are discovered, never authored             |
 
 ### Terminal profiles
 
@@ -516,7 +490,7 @@ The cleanup matrix ensures no ghost credentials persist across type changes:
 
 The GUI is a Wails v2 desktop app with a Svelte frontend. The Go backend (`cmd/gui/app.go`) exposes methods that the frontend calls via auto-generated TypeScript bindings. The frontend bridge is in `cmd/gui/frontend/src/lib/bridge.ts`.
 
-**Frontend structure:** `App.svelte` composes the shell and holds the app-level state, the event listeners and the actions several parts share. The dashboard parts live in `src/lib/components/` (top bar, activity strip, banners, settings panel, sidebar, the Needs attention, All repos, account, Mirrors and Workspaces views, account card and menu, repo tree, rows and detail panel, footer, notices, compact view) and render from props. Every modal is its own component in `src/lib/modals/` with its own state; App opens it through a small exported function and binds only the state it shares, such as the credential flow common to Add account and Change credential. `src/lib/status.ts` is the one place that maps a repo status to its shape, colour, glossary label, Simple kind and attention rank, and an account's credential to its health words and fix action. `src/lib/views.ts` resolves the saved view and builds the Needs attention list and counts, `src/lib/activity.ts` tracks Fetch all and Pull all runs and their summaries, and `src/lib/notices.ts` holds the result cards and error messages that replace `window.alert()`; each has a `node:test` file. `src/style.css` holds the theme tokens, and `src/lib/modals/modals.css` the dialog shell, buttons and form controls the modals share. Every user-facing string goes through `$t()` from `src/lib/i18n.ts`, which holds the English and Spanish catalogs with the same keys; a sentence with an inline config key, bold or emphasis stays one catalog entry with `` `code` ``, `**strong**` and `*em*` markers, rendered by `src/lib/Rich.svelte`. `src/lib/i18n.test.mjs` fails on hard-coded template text, on keys missing in either language, and on keys the code asks for that don't exist.
+**Frontend structure:** `App.svelte` composes the shell and holds the app-level state, the event listeners and the actions several parts share. The dashboard parts live in `src/lib/components/` (top bar, activity strip, banners, settings panel, sidebar, the Needs attention, All repos, account and Mirrors views, account card and menu, repo tree, rows and detail panel, footer, notices, compact view) and render from props. Every modal is its own component in `src/lib/modals/` with its own state; App opens it through a small exported function and binds only the state it shares, such as the credential flow common to Add account and Change credential. `src/lib/status.ts` is the one place that maps a repo status to its shape, colour, glossary label, Simple kind and attention rank, and an account's credential to its health words and fix action. `src/lib/views.ts` resolves the saved view and builds the Needs attention list and counts, `src/lib/activity.ts` tracks Fetch all and Pull all runs and their summaries, and `src/lib/notices.ts` holds the result cards and error messages that replace `window.alert()`; each has a `node:test` file. `src/style.css` holds the theme tokens, and `src/lib/modals/modals.css` the dialog shell, buttons and form controls the modals share. Every user-facing string goes through `$t()` from `src/lib/i18n.ts`, which holds the English and Spanish catalogs with the same keys; a sentence with an inline config key, bold or emphasis stays one catalog entry with `` `code` ``, `**strong**` and `*em*` markers, rendered by `src/lib/Rich.svelte`. `src/lib/i18n.test.mjs` fails on hard-coded template text, on keys missing in either language, and on keys the code asks for that don't exist.
 
 Long-running operations (clone, status refresh, pull, mirror discovery, repo moves) run in goroutines with progress pushed to the frontend via Wails events.
 
@@ -525,12 +499,11 @@ Long-running operations (clone, status refresh, pull, mirror discovery, repo mov
 - **Experience** — a top-bar switch between Simple (six plain states, git detail hidden) and Advanced (everything), grey and red, saved as `global.ui_mode`; both modes put icon launchers for AI / editor / terminal on each cloned row; new installs start in Simple
 - **Top bar** — sidebar button, logo, repo health ring, mirror health ring (when mirrors exist), action buttons (Pull all, Fetch all, Delete mode, Compact view, theme)
 - **Activity strip** — under the top bar while Fetch all or Pull all runs: its scope and a progress bar
-- **Sidebar** — Needs attention and All repos with their counts, one entry per account (provider logo, health mark and words, attention count), Add account, Found on disk (orphans), and Mirrors and Workspaces in Advanced; it folds to an icon rail (⌘B / Ctrl+B), always shows as the rail below 780 px, and remembers the view and the rail in `global.collapsed`
+- **Sidebar** — Needs attention and All repos with their counts, one entry per account (provider logo, health mark and words, attention count), Add account, Found on disk (orphans), and Mirrors in Advanced; it folds to an icon rail (⌘B / Ctrl+B), always shows as the rail below 780 px, and remembers the view and the rail in `global.collapsed`
 - **Needs attention view** — accounts whose credential needs a fix, then repos grouped needs help, local work, behind, and not cloned, with account pills and parent tags; rows that turn fine stay, faded, until the view closes
-- **All repos view** — repo list grouped by account, rendered as a tree of nested clones at any depth, in alphabetical order (`compareRepoKeys` in `src/lib/repo-tree.ts`); account groups and clones with clones below them collapse
+- **All repos view** — repo list grouped by account, rendered as a tree of nested clones at any depth, in alphabetical order (`compareRepoKeys` in `src/lib/repo-tree.ts`), with a container's not-yet-cloned workspace folders as dimmed rows after its clones; account groups and clones with clones below them collapse
 - **Account view** — a three-line account card (health, fix action, counts, Find and + New) and the account's clones
 - **Mirrors view** — Discover and Check all, mirror group chips that open into cards (status dots, active/total counts) + mirror detail list with per-repo status
-- **Workspaces view** — Discover, discovered `.code-workspace` files with their resolved member clones
 - **Result cards** — what Fetch all or Pull all did, and any action's error, bottom right, above modals
 - **Summary footer** — aggregated counts for repos and mirrors, plus the update pill when a newer release exists
 - **Compact view** — narrow sidebar mode with health ring, account pills, and mirror summary pill

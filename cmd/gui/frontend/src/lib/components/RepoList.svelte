@@ -44,7 +44,7 @@
   {#each Object.entries($sources) as [sourceKey, source] (sourceKey)}
     {@const accountKey = source.account}
     {@const sourceCollapsed = collapsedSources.has(sourceKey)}
-    {@const sourceRepoKeys = [...new Set((treeRows[sourceKey] || []).flatMap(row => [row.key, ...row.descendants]))]}
+    {@const sourceRepoKeys = [...new Set((treeRows[sourceKey] || []).filter(row => !row.placeholder).flatMap(row => [row.key, ...row.descendants]))]}
     {@const sourceIssues = sourceRepoKeys.filter(needsMe).length}
     {#if sourceRepoKeys.length > 0}
     <div class="source-group">

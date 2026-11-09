@@ -366,6 +366,7 @@ export namespace config {
 	    clone_folder?: string;
 	    root?: string;
 	    container?: boolean;
+	    workspace?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Repo(source);
@@ -380,6 +381,7 @@ export namespace config {
 	        this.clone_folder = source["clone_folder"];
 	        this.root = source["root"];
 	        this.container = source["container"];
+	        this.workspace = source["workspace"];
 	    }
 	}
 	
@@ -523,8 +525,6 @@ export namespace main {
 	    account: string;
 	    sources: string[];
 	    mirrors: string[];
-	    workspaces: string[];
-	    workspace_members: number;
 	    repo_count: number;
 	    clone_count: number;
 	
@@ -537,8 +537,6 @@ export namespace main {
 	        this.account = source["account"];
 	        this.sources = source["sources"];
 	        this.mirrors = source["mirrors"];
-	        this.workspaces = source["workspaces"];
-	        this.workspace_members = source["workspace_members"];
 	        this.repo_count = source["repo_count"];
 	        this.clone_count = source["clone_count"];
 	    }
@@ -598,56 +596,6 @@ export namespace main {
 	        this.timestamp = source["timestamp"];
 	        this.size_bytes = source["size_bytes"];
 	    }
-	}
-	export class WorkspaceMemberDTO {
-	    source: string;
-	    repo: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new WorkspaceMemberDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.source = source["source"];
-	        this.repo = source["repo"];
-	    }
-	}
-	export class WorkspaceDTO {
-	    name?: string;
-	    file?: string;
-	    members: WorkspaceMemberDTO[];
-	    discovered?: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new WorkspaceDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.file = source["file"];
-	        this.members = this.convertValues(source["members"], WorkspaceMemberDTO);
-	        this.discovered = source["discovered"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class MirrorDTO {
 	    account_src: string;
@@ -727,8 +675,6 @@ export namespace main {
 	    accounts: Record<string, config.Account>;
 	    sources: Record<string, SourceDTO>;
 	    mirrors: Record<string, MirrorDTO>;
-	    workspaces: Record<string, WorkspaceDTO>;
-	    workspaceOrder: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ConfigDTO(source);
@@ -741,8 +687,6 @@ export namespace main {
 	        this.accounts = this.convertValues(source["accounts"], config.Account, true);
 	        this.sources = this.convertValues(source["sources"], SourceDTO, true);
 	        this.mirrors = this.convertValues(source["mirrors"], MirrorDTO, true);
-	        this.workspaces = this.convertValues(source["workspaces"], WorkspaceDTO, true);
-	        this.workspaceOrder = source["workspaceOrder"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -843,20 +787,6 @@ export namespace main {
 	        this.private = source["private"];
 	        this.fork = source["fork"];
 	        this.archived = source["archived"];
-	    }
-	}
-	export class DiscoverWorkspacesResult {
-	    changed: boolean;
-	    count: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new DiscoverWorkspacesResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.changed = source["changed"];
-	        this.count = source["count"];
 	    }
 	}
 	export class DoctorToolDTO {
@@ -1215,11 +1145,46 @@ export namespace main {
 		}
 	}
 	
+	export class WorkspaceFolderDTO {
+	    parent: string;
+	    name: string;
+	    path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceFolderDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.parent = source["parent"];
+	        this.name = source["name"];
+	        this.path = source["path"];
+	    }
+	}
+	export class WorkspaceChoiceDTO {
+	    source: string;
+	    repo: string;
+	    files: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceChoiceDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.repo = source["repo"];
+	        this.files = source["files"];
+	    }
+	}
 	export class ReconcileDTO {
 	    adopted: number;
 	    relinked: number;
 	    unmatched: OrphanRepoDTO[];
 	    ignored: OrphanRepoDTO[];
+	    workspacesChanged: boolean;
+	    workspaceChoices: WorkspaceChoiceDTO[];
+	    placeholders: WorkspaceFolderDTO[];
 	    error?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -1232,6 +1197,9 @@ export namespace main {
 	        this.relinked = source["relinked"];
 	        this.unmatched = this.convertValues(source["unmatched"], OrphanRepoDTO);
 	        this.ignored = this.convertValues(source["ignored"], OrphanRepoDTO);
+	        this.workspacesChanged = source["workspacesChanged"];
+	        this.workspaceChoices = this.convertValues(source["workspaceChoices"], WorkspaceChoiceDTO);
+	        this.placeholders = this.convertValues(source["placeholders"], WorkspaceFolderDTO);
 	        this.error = source["error"];
 	    }
 	
@@ -1454,20 +1422,6 @@ export namespace main {
 	        this.error = source["error"];
 	    }
 	}
-	export class TentativeContainerDTO {
-	    source: string;
-	    repo: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new TentativeContainerDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.source = source["source"];
-	        this.repo = source["repo"];
-	    }
-	}
 	export class TerminalAppInfo {
 	    id: string;
 	    name: string;
@@ -1571,38 +1525,6 @@ export namespace main {
 	    }
 	}
 	
-	export class WorkspaceListResult {
-	    workspaces: Record<string, WorkspaceDTO>;
-	    order: string[];
-	
-	    static createFrom(source: any = {}) {
-	        return new WorkspaceListResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.workspaces = this.convertValues(source["workspaces"], WorkspaceDTO, true);
-	        this.order = source["order"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 
 }
 

@@ -62,7 +62,6 @@ func (c *Config) Clone() (*Config, error) {
 	}
 	out.SourceOrder = append([]string(nil), c.SourceOrder...)
 	out.MirrorOrder = append([]string(nil), c.MirrorOrder...)
-	out.WorkspaceOrder = append([]string(nil), c.WorkspaceOrder...)
 	for key, src := range c.Sources {
 		dst := out.Sources[key]
 		dst.RepoOrder = append([]string(nil), src.RepoOrder...)

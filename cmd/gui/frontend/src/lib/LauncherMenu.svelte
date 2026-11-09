@@ -57,6 +57,9 @@
   // onRescanContainer re-runs the nested-clone scan for a container repo. Shown
   // only when the repo is already a container.
   export let onRescanContainer: (() => void) | null = null;
+  // onChooseWorkspace picks which .code-workspace file at a container's root
+  // it opens with. Shown only when provided.
+  export let onChooseWorkspace: (() => void) | null = null;
   // onFind / onCreate are the account card's Find and New actions (issue
   // #123), repeated on the account kebab so they stay reachable while the
   // cards panel is collapsed. *Enabled gates the click; *DisabledReason is
@@ -143,7 +146,7 @@
   $: defaultProfile = visibleProfiles.find(p => p.default) || visibleProfiles[0] || null;
   $: menuProfiles = visibleProfiles.filter(p => p === defaultProfile || p.preferred);
   $: hasOpenWith = aiHarnesses.length > 0 || editors.length > 0 || menuProfiles.length > 0;
-  $: hasMaintenance = kind === 'repo' && (!!onSweep || !!onMove || !!onToggleContainer);
+  $: hasMaintenance = kind === 'repo' && (!!onSweep || !!onMove || !!onToggleContainer || !!onChooseWorkspace || (isContainer && !!onRescanContainer));
   $: hasAccountActions = kind === 'account' && (!!onFind || !!onCreate || extraItems.length > 0);
 
   // Browser action label is kind-aware: repo kebab navigates to the repo
@@ -202,12 +205,18 @@
         <span class="lm-icon">&#9638;</span>
         {isContainer ? $t('launcher.unmarkContainer') : $t('launcher.markContainer')}
       </button>
-      {#if isContainer && onRescanContainer}
-        <button class="action-item" role="menuitem" on:click|stopPropagation={onRescanContainer}
-          title={$t('launcher.rescanTip')}>
-          <span class="lm-icon"><UIIcon name="fetch" /></span> {$t('launcher.rescan')}
-        </button>
-      {/if}
+    {/if}
+    {#if onChooseWorkspace}
+      <button class="action-item" role="menuitem" on:click|stopPropagation={onChooseWorkspace}
+        title={$t('launcher.chooseWorkspaceTip')}>
+        <span class="lm-icon">&#9638;</span> {$t('launcher.chooseWorkspace')}
+      </button>
+    {/if}
+    {#if isContainer && onRescanContainer}
+      <button class="action-item" role="menuitem" on:click|stopPropagation={onRescanContainer}
+        title={$t('launcher.rescanTip')}>
+        <span class="lm-icon"><UIIcon name="fetch" /></span> {$t('launcher.rescan')}
+      </button>
     {/if}
   {/if}
 

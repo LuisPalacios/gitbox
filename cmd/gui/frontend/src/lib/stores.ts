@@ -1,6 +1,7 @@
 import { writable, derived } from 'svelte/store';
+import type { Placeholder } from './repo-tree';
 import { simpleKind } from './status';
-import type { ConfigDTO, Account, SourceDTO, MirrorDTO, MirrorStatusResult, RepoState, StatusResult, PRSummaryDTO, PRAccountUpdateDTO, WorkspaceDTO } from './types';
+import type { ConfigDTO, Account, SourceDTO, MirrorDTO, MirrorStatusResult, RepoState, StatusResult, PRSummaryDTO, PRAccountUpdateDTO } from './types';
 
 // ── Config store — loaded once from Go backend ──
 export const configStore = writable<ConfigDTO | null>(null);
@@ -191,35 +192,10 @@ export function lookupPRSummary(
   return acct[repoKey.toLowerCase()] ?? empty;
 }
 
-// ── Workspaces (issue #27 / #49) ──
-
-// Derived map of workspace key → WorkspaceDTO, populated from the loaded
-// config. Mirrors the `mirrors` derived store above.
-export const workspaces = derived(configStore, ($cfg) =>
-  $cfg?.workspaces ?? {} as Record<string, WorkspaceDTO>
-);
-
-// Derived ordered key list for deterministic iteration in the UI.
-export const workspaceOrder = derived(configStore, ($cfg) =>
-  $cfg?.workspaceOrder ?? []
-);
-
-// Reverse index: "sourceKey/repoKey" → [workspaceKey, …]. Lets the clone
-// list show a membership count badge and the launcher submenu list only
-// the workspaces a given clone belongs to. Recomputed whenever the
-// workspaces map changes — O(workspaces × members), fine at any realistic
-// size.
-export const workspaceMemberships = derived(workspaces, ($ws) => {
-  const index: Record<string, string[]> = {};
-  for (const [wsKey, ws] of Object.entries($ws)) {
-    for (const m of ws.members ?? []) {
-      const repoKey = `${m.source}/${m.repo}`;
-      if (!index[repoKey]) index[repoKey] = [];
-      index[repoKey].push(wsKey);
-    }
-  }
-  return index;
-});
+// ── Workspace placeholders ──
+// Folders each container's .code-workspace lists that are not cloned yet,
+// keyed by the container's "source/repo"; refreshed by every reconcile pass.
+export const workspacePlaceholders = writable<Record<string, Placeholder[]>>({});
 
 // ── Theme store ──
 export const themeStore = writable<'light' | 'dark'>('dark');

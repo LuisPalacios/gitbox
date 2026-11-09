@@ -1,13 +1,11 @@
 package main
 
 import (
-	"encoding/json"
-	"github.com/LuisPalacios/gitbox/pkg/workspace"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 )
@@ -39,36 +37,6 @@ func newWorkspaceTestApp(t *testing.T) (*App, string) {
 		t.Fatalf("seeding config: %v", err)
 	}
 	return &App{cfg: cfg, cfgPath: cfgPath, cfgLoaded: true, mu: sync.Mutex{}}, cfgPath
-}
-
-func TestDiscoverWorkspaces_RefreshesCache(t *testing.T) {
-	a, cfgPath := newWorkspaceTestApp(t)
-
-	// Stage a clone path resolving to (github-alice, team/frontend) plus a
-	// .code-workspace referencing it.
-	cloneDir := filepath.Join(a.cfg.Global.Roots[0], "github-alice", "team", "frontend")
-	if err := os.MkdirAll(cloneDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	body, _ := json.Marshal(map[string]any{
-		"folders": []map[string]string{{"path": cloneDir}},
-	})
-	wsFile := filepath.Join(a.cfg.Global.Roots[0], "feat.code-workspace")
-	if err := os.WriteFile(wsFile, body, 0o644); err != nil {
-		t.Fatalf("write workspace: %v", err)
-	}
-
-	res, err := a.DiscoverWorkspaces()
-	if err != nil {
-		t.Fatalf("DiscoverWorkspaces: %v", err)
-	}
-	if !res.Changed || res.Count != 1 {
-		t.Fatalf("result = %+v, want changed/count 1", res)
-	}
-	reloaded, _ := config.Load(cfgPath)
-	if _, ok := reloaded.Workspaces["feat"]; !ok {
-		t.Error("workspace 'feat' not persisted")
-	}
 }
 
 func TestSetRepoContainer_Persists(t *testing.T) {
@@ -188,96 +156,73 @@ func TestSetCollapsed_SidebarAndView(t *testing.T) {
 	}
 }
 
-func TestDiscoverWorkspaces_ScanDoesNotBlockConfigAndPreservesEdits(t *testing.T) {
+// containerClone makes team/frontend a clone on disk holding the given
+// workspace files, and returns its path.
+func containerClone(t *testing.T, a *App, files map[string]string) string {
+	t.Helper()
+	dir := filepath.Join(a.cfg.Global.Roots[0], "github-alice", "team", "frontend")
+	initClone(t, dir, "git@github.com:team/frontend.git")
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// A workspace file appearing in a clone makes it a container on the next
+// pass, which also adopts its nested clone and lists the missing folder.
+func TestReconcile_WorkspaceFileMakesContainer(t *testing.T) {
 	a, cfgPath := newWorkspaceTestApp(t)
-	started, release := make(chan struct{}), make(chan struct{})
-	done := make(chan error, 1)
-	go func() {
-		_, err := a.discoverWorkspaces(func(snapshot *config.Config) ([]workspace.Found, error) {
-			close(started)
-			<-release
-			return []workspace.Found{{Key: "found", Name: "found", File: filepath.Join(snapshot.Global.Roots[0], "found.code-workspace")}}, nil
-		})
-		done <- err
-	}()
-	<-started
-	unlocked := make(chan struct{})
-	go func() {
-		a.GetConfig()
-		a.mu.Lock()
-		a.cfg.Global.Language = "es"
-		a.mu.Unlock()
-		close(unlocked)
-	}()
-	select {
-	case <-unlocked:
-	case <-time.After(time.Second):
-		close(release)
-		t.Fatal("config access blocked behind workspace scan")
+	dir := containerClone(t, a, map[string]string{
+		"front.code-workspace": `{"folders": [{"path": "."}, {"path": "libs/fresh"}, {"path": "libs/todo"}]}`,
+	})
+	initClone(t, filepath.Join(dir, "libs", "fresh"), "git@github.com:alice/fresh.git")
+
+	res := a.Reconcile()
+	if res.Error != "" || !res.WorkspacesChanged || res.Adopted != 1 {
+		t.Fatalf("reconcile = %+v", res)
 	}
-	close(release)
-	if err := <-done; err != nil {
-		t.Fatal(err)
+	want := []WorkspaceFolderDTO{{Parent: "github-alice/team/frontend", Name: "todo", Path: "libs/todo"}}
+	if !reflect.DeepEqual(res.Placeholders, want) {
+		t.Errorf("placeholders = %+v, want %+v", res.Placeholders, want)
 	}
-	reloaded, err := config.Load(cfgPath)
-	if err != nil {
-		t.Fatal(err)
+	reloaded, _ := config.Load(cfgPath)
+	repos := reloaded.Sources["github-alice"].Repos
+	if r := repos["team/frontend"]; !r.Container || r.Workspace != "front.code-workspace" {
+		t.Errorf("container = %+v", r)
 	}
-	if reloaded.Global.Language != "es" || len(reloaded.Workspaces) != 1 {
-		t.Fatalf("lost concurrent edit or cache: %+v", reloaded)
+	if _, ok := repos["alice/fresh"]; !ok {
+		t.Error("nested clone not adopted")
+	}
+	if res := a.Reconcile(); res.WorkspacesChanged {
+		t.Error("second pass changed workspaces again")
 	}
 }
 
-func TestDiscoverWorkspaces_RetriesChangedInputs(t *testing.T) {
-	a, _ := newWorkspaceTestApp(t)
-	started, release := make(chan struct{}), make(chan struct{})
-	done := make(chan error, 1)
-	calls := 0
-	newRoot := t.TempDir()
-	go func() {
-		_, err := a.discoverWorkspaces(func(snapshot *config.Config) ([]workspace.Found, error) {
-			calls++
-			if calls == 1 {
-				close(started)
-				<-release
-			}
-			return []workspace.Found{{Key: "found", File: filepath.Join(snapshot.Global.Roots[0], "found.code-workspace")}}, nil
-		})
-		done <- err
-	}()
-	<-started
-	a.mu.Lock()
-	a.cfg.Global.Roots = []string{newRoot}
-	a.mu.Unlock()
-	close(release)
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-	if calls != 2 || a.cfg.Workspaces["found"].File != filepath.Join(newRoot, "found.code-workspace") {
-		t.Fatalf("stale results published: calls=%d cache=%v", calls, a.cfg.Workspaces)
-	}
-}
+func TestReconcile_SeveralWorkspaceFilesAskThenSetRepoWorkspace(t *testing.T) {
+	a, cfgPath := newWorkspaceTestApp(t)
+	containerClone(t, a, map[string]string{"a.code-workspace": "{}", "b.code-workspace": "{}"})
 
-func TestTentativeContainers_DoesNotSuggestKnownContainers(t *testing.T) {
-	a, _ := newWorkspaceTestApp(t)
-	parent := filepath.Join(a.cfg.Global.Roots[0], "parent")
-	if err := os.MkdirAll(parent, 0o755); err != nil {
+	res := a.Reconcile()
+	want := []WorkspaceChoiceDTO{{Source: "github-alice", Repo: "team/frontend", Files: []string{"a.code-workspace", "b.code-workspace"}}}
+	if !reflect.DeepEqual(res.WorkspaceChoices, want) {
+		t.Fatalf("choices = %+v, want %+v", res.WorkspaceChoices, want)
+	}
+	if got := a.RepoWorkspaceFiles("github-alice", "team/frontend"); !reflect.DeepEqual(got, want[0].Files) {
+		t.Errorf("RepoWorkspaceFiles = %v", got)
+	}
+	if err := a.SetRepoWorkspace("github-alice", "team/frontend", "c.code-workspace"); err == nil {
+		t.Error("SetRepoWorkspace accepted a file that is not at the root")
+	}
+	if err := a.SetRepoWorkspace("github-alice", "team/frontend", "b.code-workspace"); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(parent, "parent.code-workspace"), []byte(`{"folders":[]}`), 0o644); err != nil {
-		t.Fatal(err)
+	reloaded, _ := config.Load(cfgPath)
+	if r := reloaded.Sources["github-alice"].Repos["team/frontend"]; !r.Container || r.Workspace != "b.code-workspace" {
+		t.Errorf("repo = %+v", r)
 	}
-	source := a.cfg.Sources["github-alice"]
-	repo := source.Repos["team/frontend"]
-	repo.CloneFolder, repo.Container = parent, true
-	source.Repos["team/frontend"] = repo
-	a.cfg.Sources["github-alice"] = source
-	if got := a.TentativeContainers(); len(got) != 0 {
-		t.Fatalf("already marked container suggested again: %v", got)
-	}
-	repo.Container = false
-	source.Repos["team/frontend"] = repo
-	if got := a.TentativeContainers(); len(got) != 1 || got[0].Source != "github-alice" || got[0].Repo != "team/frontend" {
-		t.Fatalf("unmarked container not suggested: %v", got)
+	if res := a.Reconcile(); len(res.WorkspaceChoices) != 0 {
+		t.Errorf("asked again after the pick: %+v", res.WorkspaceChoices)
 	}
 }

@@ -7,7 +7,16 @@ export interface RepoRow {
   depth: number;
   childCount: number;
   descendants: string[];
+  // How many of the row's children are placeholders.
+  placeholders: number;
+  // Set on a placeholder row: a folder the parent container's workspace
+  // file lists that is not cloned yet.
+  placeholder?: Placeholder;
 }
+
+// A folder a container's .code-workspace lists that is not cloned yet; path
+// is relative to the container.
+export interface Placeholder { name: string; path: string }
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
@@ -19,8 +28,10 @@ export function compareRepoKeys(a: string, b: string): number {
 }
 
 // I keep ownership in each row even when a clone lives under another source's container.
-// Siblings, at every depth, sort alphabetically (compareRepoKeys).
-export function repoTreeRows(sources: Record<string, SourceDTO>, nesting: Record<string, string>, collapsed: Set<string>): Record<string, RepoRow[]> {
+// Siblings, at every depth, sort alphabetically (compareRepoKeys). A
+// container's placeholders (keyed by its "source/repo") follow its clones,
+// in workspace file order.
+export function repoTreeRows(sources: Record<string, SourceDTO>, nesting: Record<string, string>, collapsed: Set<string>, placeholders: Record<string, Placeholder[]> = {}): Record<string, RepoRow[]> {
   const refs = new Map<string, { sourceKey: string; repoName: string }>();
   for (const [sourceKey, source] of Object.entries(sources)) {
     const order = [...new Set([...(source.repoOrder || []), ...Object.keys(source.repos)])];
@@ -53,8 +64,13 @@ export function repoTreeRows(sources: Record<string, SourceDTO>, nesting: Record
   const rows: Record<string, RepoRow[]> = Object.fromEntries(Object.keys(sources).map(key => [key, []]));
   const walk = (key: string, source: string, depth: number) => {
     const ref = refs.get(key)!;
-    rows[source].push({ key, ...ref, depth, childCount: (children.get(key) || []).length, descendants: descendantsOf(key) });
-    if (!collapsed.has(key)) for (const child of ordered(children.get(key) || [])) walk(child, source, depth + 1);
+    const waiting = placeholders[key] || [];
+    rows[source].push({ key, ...ref, depth, childCount: (children.get(key) || []).length + waiting.length, descendants: descendantsOf(key), placeholders: waiting.length });
+    if (collapsed.has(key)) return;
+    for (const child of ordered(children.get(key) || [])) walk(child, source, depth + 1);
+    for (const p of waiting) {
+      rows[source].push({ key: `${key}#${p.path}`, sourceKey: ref.sourceKey, repoName: p.name, depth: depth + 1, childCount: 0, descendants: [], placeholders: 0, placeholder: p });
+    }
   };
   for (const key of ordered([...refs.keys()].filter(key => !parents.has(key)))) walk(key, refs.get(key)!.sourceKey, 0);
   return rows;

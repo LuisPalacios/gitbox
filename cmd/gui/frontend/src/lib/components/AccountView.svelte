@@ -3,7 +3,7 @@
   // alphabetical order. A clone nested in another account's container shows
   // here at the top level with an "in <parent>" tag; the All view keeps
   // that cross-account nesting.
-  import { sources, repoStates } from '../stores';
+  import { sources, repoStates, workspacePlaceholders } from '../stores';
   import { CALM_RANK } from '../status';
   import type { HealthFix } from '../status';
   import { repoTreeRows } from '../repo-tree';
@@ -27,7 +27,7 @@
   export let fixCredential: (accountKey: string, fix: HealthFix) => void;
 
   $: own = Object.fromEntries(Object.entries($sources).filter(([, s]) => s.account === accountKey));
-  $: tree = repoTreeRows(own, repoNesting, rowProps.collapsedRepos);
+  $: tree = repoTreeRows(own, repoNesting, rowProps.collapsedRepos, $workspacePlaceholders);
   $: rows = Object.keys(own).flatMap((k) => tree[k] || []);
   // Top-level rows whose container belongs to another account.
   $: parentLabels = Object.fromEntries(rows.filter((r) => r.depth === 0 && repoNesting[r.key] && repoNesting[r.key] !== r.key).map((r) => [r.key, repoNesting[r.key]]));

@@ -138,10 +138,6 @@ export function DiscoverMirrors() {
   return window['go']['main']['App']['DiscoverMirrors']();
 }
 
-export function DiscoverWorkspaces() {
-  return window['go']['main']['App']['DiscoverWorkspaces']();
-}
-
 export function DoctorPrecheck(arg1) {
   return window['go']['main']['App']['DoctorPrecheck'](arg1);
 }
@@ -246,10 +242,6 @@ export function GetWindowMode() {
   return window['go']['main']['App']['GetWindowMode']();
 }
 
-export function GetWorkspace(arg1) {
-  return window['go']['main']['App']['GetWorkspace'](arg1);
-}
-
 export function IgnoreClone(arg1, arg2) {
   return window['go']['main']['App']['IgnoreClone'](arg1, arg2);
 }
@@ -304,10 +296,6 @@ export function ListTerminalApps() {
 
 export function ListTerminalProfiles() {
   return window['go']['main']['App']['ListTerminalProfiles']();
-}
-
-export function ListWorkspaces() {
-  return window['go']['main']['App']['ListWorkspaces']();
 }
 
 export function MissingModernTerminal() {
@@ -368,10 +356,6 @@ export function OpenRepoInBrowser(arg1, arg2) {
 
 export function OpenTerminalsManagerWindow() {
   return window['go']['main']['App']['OpenTerminalsManagerWindow']();
-}
-
-export function OpenWorkspace(arg1) {
-  return window['go']['main']['App']['OpenWorkspace'](arg1);
 }
 
 export function PickFolder(arg1) {
@@ -438,6 +422,10 @@ export function RepoNesting() {
   return window['go']['main']['App']['RepoNesting']();
 }
 
+export function RepoWorkspaceFiles(arg1, arg2) {
+  return window['go']['main']['App']['RepoWorkspaceFiles'](arg1, arg2);
+}
+
 export function RestoreFromBackup(arg1) {
   return window['go']['main']['App']['RestoreFromBackup'](arg1);
 }
@@ -494,6 +482,10 @@ export function SetRepoContainer(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetRepoContainer'](arg1, arg2, arg3);
 }
 
+export function SetRepoWorkspace(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetRepoWorkspace'](arg1, arg2, arg3);
+}
+
 export function SetTheme(arg1) {
   return window['go']['main']['App']['SetTheme'](arg1);
 }
@@ -528,10 +520,6 @@ export function SyncEditors() {
 
 export function SyncProfiles() {
   return window['go']['main']['App']['SyncProfiles']();
-}
-
-export function TentativeContainers() {
-  return window['go']['main']['App']['TentativeContainers']();
 }
 
 export function UpdateAccount(arg1) {

@@ -17,7 +17,7 @@ test('I resolve the saved view, falling back to Needs attention', () => {
   assert.equal(v.resolveView('account:gone', accounts, false), 'attention');
   assert.equal(v.resolveView('account:', accounts, false), 'attention');
   assert.equal(v.resolveView('mirrors', accounts, false), 'mirrors');
-  assert.equal(v.resolveView('workspaces', accounts, false), 'workspaces');
+  assert.equal(v.resolveView('workspaces', accounts, false), 'attention');
   assert.equal(v.resolveView('mirrors', accounts, true), 'attention');
   assert.equal(v.resolveView('workspaces', accounts, true), 'attention');
   for (const bad of ['', undefined, null, 'bogus', 'account-A']) assert.equal(v.resolveView(bad, accounts, false), 'attention');

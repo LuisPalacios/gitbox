@@ -5,11 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
-	"strings"
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/status"
 )
 
 // newTestConfig builds a minimal config with two sources under a known global
@@ -94,168 +93,166 @@ func writeCodeWorkspace(t *testing.T, file string, folders ...string) {
 	writeFile(t, file, string(buf))
 }
 
-func TestDiscover_CodeWorkspaceResolvesMembers(t *testing.T) {
-	cfg := newTestConfig(t)
-	frontend := makeRepoDir(t, cfg, "github-test", "team/frontend")
-	backend := makeRepoDir(t, cfg, "github-test", "team/backend")
+func repoOf(cfg *config.Config, src, repo string) config.Repo {
+	return cfg.Sources[src].Repos[repo]
+}
 
-	wsFile := filepath.Join(cfg.Global.Roots[0], "feature-x.code-workspace")
-	writeCodeWorkspace(t, wsFile, frontend, backend)
-
-	found, err := Discover(cfg)
-	if err != nil {
-		t.Fatalf("Discover: %v", err)
+func TestRootFiles_ListsOnlyRootWorkspaceFiles(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "b.code-workspace"), "{}")
+	writeFile(t, filepath.Join(dir, "A.Code-Workspace"), "{}")
+	writeFile(t, filepath.Join(dir, "notes.md"), "")
+	writeFile(t, filepath.Join(dir, "sub", "deep.code-workspace"), "{}")
+	if got, want := RootFiles(dir), []string{"A.Code-Workspace", "b.code-workspace"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("RootFiles = %v, want %v", got, want)
 	}
-	if len(found) != 1 {
-		t.Fatalf("found = %d, want 1", len(found))
-	}
-	if found[0].Key != "feature-x" {
-		t.Errorf("key = %q, want feature-x", found[0].Key)
-	}
-	if len(found[0].Members) != 2 {
-		t.Errorf("members = %d, want 2", len(found[0].Members))
+	if got := RootFiles(filepath.Join(dir, "missing")); got != nil {
+		t.Errorf("RootFiles(missing) = %v, want nil", got)
 	}
 }
 
-func TestRefreshCache_PopulatesAndDetectsChange(t *testing.T) {
+func TestSync_OneFileFlagsContainer(t *testing.T) {
 	cfg := newTestConfig(t)
-	frontend := makeRepoDir(t, cfg, "github-test", "team/frontend")
-	wsFile := filepath.Join(cfg.Global.Roots[0], "feat.code-workspace")
-	writeCodeWorkspace(t, wsFile, frontend)
+	dir := makeRepoDir(t, cfg, "github-test", "team/frontend")
+	makeRepoDir(t, cfg, "github-test", "team/backend")
+	writeFile(t, filepath.Join(dir, "front.code-workspace"), "{}")
 
-	changed, err := RefreshCache(cfg)
-	if err != nil {
-		t.Fatalf("RefreshCache: %v", err)
+	res := Sync(cfg)
+	if len(res.Choices) != 0 || len(res.Changes) != 1 {
+		t.Fatalf("Sync = %+v, want one change", res)
 	}
-	if !changed {
-		t.Fatal("first refresh should report changed")
+	if !Apply(cfg, res.Changes) {
+		t.Fatal("Apply reported no change")
 	}
-	w, ok := cfg.Workspaces["feat"]
-	if !ok {
-		t.Fatal("cache missing feat workspace")
+	if r := repoOf(cfg, "github-test", "team/frontend"); !r.Container || r.Workspace != "front.code-workspace" {
+		t.Errorf("repo = %+v, want container with front.code-workspace", r)
 	}
-	if !w.Discovered || w.File != wsFile {
-		t.Errorf("workspace = %+v, want Discovered + File=%s", w, wsFile)
-	}
-
-	// Second refresh with nothing changed must report no change.
-	changed, err = RefreshCache(cfg)
-	if err != nil {
-		t.Fatalf("RefreshCache 2: %v", err)
-	}
-	if changed {
-		t.Error("second refresh should report no change")
-	}
-
-	// Removing the file on disk should drop it from the cache (changed=true).
-	if err := os.Remove(wsFile); err != nil {
-		t.Fatalf("remove: %v", err)
-	}
-	changed, _ = RefreshCache(cfg)
-	if !changed || len(cfg.Workspaces) != 0 {
-		t.Errorf("after delete: changed=%v workspaces=%d, want true/0", changed, len(cfg.Workspaces))
+	if res := Sync(cfg); len(res.Changes) != 0 {
+		t.Errorf("second Sync = %+v, want no changes", res)
 	}
 }
 
-func TestDiscover_ScansEveryRoot(t *testing.T) {
+func TestSync_SeveralFilesAskOnceAndKeepPick(t *testing.T) {
 	cfg := newTestConfig(t)
-	extra := t.TempDir()
-	cfg.Global.Roots = append(cfg.Global.Roots, extra)
-	wsFile := filepath.Join(extra, "side.code-workspace")
-	writeCodeWorkspace(t, wsFile) // no resolvable members, still discovered
+	dir := makeRepoDir(t, cfg, "github-test", "team/frontend")
+	writeFile(t, filepath.Join(dir, "a.code-workspace"), "{}")
+	writeFile(t, filepath.Join(dir, "b.code-workspace"), "{}")
 
-	found, err := Discover(cfg)
-	if err != nil {
-		t.Fatalf("Discover: %v", err)
+	res := Sync(cfg)
+	want := []Choice{{Source: "github-test", Repo: "team/frontend", Files: []string{"a.code-workspace", "b.code-workspace"}}}
+	if !reflect.DeepEqual(res.Choices, want) {
+		t.Fatalf("Choices = %+v, want %+v", res.Choices, want)
 	}
-	if len(found) != 1 || found[0].Key != "side" {
-		t.Fatalf("found = %+v, want one 'side' from the second root", found)
-	}
-}
-
-func TestTentativeContainers_FlagsManagedCloneWithWorkspaceFile(t *testing.T) {
-	cfg := newTestConfig(t)
-	// Make the frontend clone a container candidate by dropping a
-	// .code-workspace at its root.
-	frontend := makeRepoDir(t, cfg, "github-test", "team/frontend")
-	writeCodeWorkspace(t, filepath.Join(frontend, "team.code-workspace"))
-
-	got := TentativeContainers(cfg)
-	if len(got) != 1 || got[0].Source != "github-test" || got[0].Repo != "team/frontend" {
-		t.Fatalf("tentative = %+v, want github-test/team/frontend", got)
+	Apply(cfg, res.Changes)
+	if r := repoOf(cfg, "github-test", "team/frontend"); !r.Container || r.Workspace != "" {
+		t.Errorf("repo = %+v, want container without a pick", r)
 	}
 
-	// Once flagged a container, it's no longer tentative.
 	src := cfg.Sources["github-test"]
-	repo := src.Repos["team/frontend"]
-	repo.Container = true
-	src.Repos["team/frontend"] = repo
-	cfg.Sources["github-test"] = src
-	if got := TentativeContainers(cfg); len(got) != 0 {
-		t.Errorf("after flagging: tentative = %+v, want none", got)
+	r := src.Repos["team/frontend"]
+	r.Workspace = "b.code-workspace"
+	src.Repos["team/frontend"] = r
+	if res := Sync(cfg); len(res.Choices) != 0 || len(res.Changes) != 0 {
+		t.Errorf("Sync with a valid pick = %+v, want nothing", res)
+	}
+
+	if err := os.Remove(filepath.Join(dir, "b.code-workspace")); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, "c.code-workspace"), "{}")
+	res = Sync(cfg)
+	if len(res.Choices) != 1 {
+		t.Fatalf("Sync after the pick vanished = %+v, want a choice", res)
+	}
+	Apply(cfg, res.Changes)
+	if r := repoOf(cfg, "github-test", "team/frontend"); r.Workspace != "" {
+		t.Errorf("stale pick kept: %+v", r)
 	}
 }
 
-func TestUniqueKey_DisambiguatesCollisions(t *testing.T) {
-	used := map[string]bool{}
-	if k := uniqueKey("proj", used); k != "proj" {
-		t.Errorf("first = %q, want proj", k)
-	}
-	if k := uniqueKey("proj", used); k != "proj-2" {
-		t.Errorf("second = %q, want proj-2", k)
-	}
-	if k := uniqueKey("proj", used); k != "proj-3" {
-		t.Errorf("third = %q, want proj-3", k)
-	}
-}
-
-func TestFindCodeWorkspaces_OverlappingAndExplicitExcludedRoots(t *testing.T) {
-	root := t.TempDir()
-	var roots = []string{root, filepath.Join(root, "project"), filepath.Join(root, "node_modules", "explicit")}
-	var want []string
-	for _, rel := range []string{"project/main.code-workspace", "node_modules/ignored/skip.code-workspace", "vendor/ignored/skip.code-workspace", "node_modules/explicit/keep.code-workspace"} {
-		path := filepath.Join(root, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(`{"folders":[]}`), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		if !strings.Contains(rel, "ignored") {
-			want = append(want, path)
-		}
-	}
-	sort.Strings(want)
-	got, err := findCodeWorkspaces(roots)
-	if err != nil || !reflect.DeepEqual(got, want) {
-		t.Fatalf("files = %v, %v; want %v", got, err, want)
-	}
-}
-
-func TestDiscoverySnapshot_DetachesScanInputs(t *testing.T) {
+func TestSync_FileGoneClearsPickKeepsContainer(t *testing.T) {
 	cfg := newTestConfig(t)
-	root := cfg.Global.Roots[0]
-	snapshot := DiscoverySnapshot(cfg)
-	cfg.Global.Roots[0] = "changed"
-	for key, source := range cfg.Sources {
-		source.Folder = "changed"
-		for repoKey, repo := range source.Repos {
-			repo.CloneFolder = "changed"
-			source.Repos[repoKey] = repo
-		}
-		cfg.Sources[key] = source
+	makeRepoDir(t, cfg, "github-test", "team/frontend")
+	src := cfg.Sources["github-test"]
+	src.Repos["team/frontend"] = config.Repo{Container: true, Workspace: "gone.code-workspace"}
+
+	Apply(cfg, Sync(cfg).Changes)
+	if r := repoOf(cfg, "github-test", "team/frontend"); !r.Container || r.Workspace != "" {
+		t.Errorf("repo = %+v, want container without a workspace", r)
 	}
-	if snapshot.Global.Roots[0] != root {
-		t.Fatal("snapshot aliases the roots")
+}
+
+func TestSync_SkipsClonesNotOnDisk(t *testing.T) {
+	cfg := newTestConfig(t)
+	src := cfg.Sources["github-test"]
+	src.Repos["team/frontend"] = config.Repo{Container: true, Workspace: "w.code-workspace"}
+	if res := Sync(cfg); len(res.Changes) != 0 {
+		t.Errorf("Sync = %+v, want a missing clone left alone", res)
 	}
-	for _, source := range snapshot.Sources {
-		if source.Folder == "changed" {
-			t.Fatal("snapshot aliases source")
-		}
-		for _, repo := range source.Repos {
-			if repo.CloneFolder == "changed" {
-				t.Fatal("snapshot aliases repo map")
-			}
-		}
+}
+
+func TestApply_SkipsRemovedRepos(t *testing.T) {
+	cfg := newTestConfig(t)
+	if Apply(cfg, []Change{{Source: "github-test", Repo: "gone/repo", Container: true}, {Source: "nope", Repo: "x"}}) {
+		t.Error("Apply changed a repo that is not in the config")
+	}
+}
+
+func TestPlaceholders_ListsMissingFoldersInside(t *testing.T) {
+	cfg := newTestConfig(t)
+	dir := makeRepoDir(t, cfg, "github-test", "team/frontend")
+	if err := os.MkdirAll(filepath.Join(dir, "libs", "present"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// team/backend resolves inside the container through an absolute
+	// clone_folder: it nests there, so it is no placeholder.
+	src := cfg.Sources["github-test"]
+	src.Repos["team/backend"] = config.Repo{CloneFolder: filepath.Join(dir, "libs", "backend")}
+	src.Repos["team/frontend"] = config.Repo{Container: true, Workspace: "w.code-workspace"}
+	body := `{
+  // the root and its parts
+  "folders": [
+    {"path": "."},
+    {"path": "libs/present"},
+    {"path": "libs/backend"},
+    {"path": "libs/missing", "name": "Missing lib"},
+    {"path": "libs/other/"},
+    {"path": "libs/missing"},
+    {"path": "../outside"}, /* skipped */
+  ],
+}`
+	writeFile(t, filepath.Join(dir, "w.code-workspace"), body)
+
+	got := Placeholders(cfg)
+	parent := status.RepoRef{Source: "github-test", Repo: "team/frontend"}
+	want := []Placeholder{
+		{Parent: parent, Name: "Missing lib", Path: "libs/missing"},
+		{Parent: parent, Name: "other", Path: "libs/other"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Placeholders = %+v, want %+v", got, want)
+	}
+}
+
+func TestPlaceholders_IgnoresContainersWithoutWorkspace(t *testing.T) {
+	cfg := newTestConfig(t)
+	dir := makeRepoDir(t, cfg, "github-test", "team/frontend")
+	writeCodeWorkspace(t, filepath.Join(dir, "w.code-workspace"), "missing")
+	src := cfg.Sources["github-test"]
+	src.Repos["team/frontend"] = config.Repo{Container: true}
+	if got := Placeholders(cfg); len(got) != 0 {
+		t.Errorf("Placeholders = %+v, want none without a picked workspace", got)
+	}
+}
+
+func TestStripJSONC_KeepsStrings(t *testing.T) {
+	in := `{"a": "http://x/*y*/", // c
+"b": [1,2,], /* d */ "c": "q\"//"}`
+	var out map[string]any
+	if err := json.Unmarshal(stripJSONC([]byte(in)), &out); err != nil {
+		t.Fatalf("Unmarshal: %v (%s)", err, stripJSONC([]byte(in)))
+	}
+	if out["a"] != "http://x/*y*/" || out["c"] != `q"//` {
+		t.Errorf("strings changed: %v", out)
 	}
 }

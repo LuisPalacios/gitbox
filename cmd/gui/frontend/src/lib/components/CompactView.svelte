@@ -80,7 +80,7 @@
 
     {#if compactExpanded[key]}
       <div class="compact-repo-list" transition:slide={{ duration: 120 }}>
-        {#each Object.entries($sources).filter(([, source]) => source.account === key).flatMap(([sourceKey]) => treeRows[sourceKey] || []) as { key: repoKey, sourceKey: rowSourceKey, repoName, depth }}
+        {#each Object.entries($sources).filter(([, source]) => source.account === key).flatMap(([sourceKey]) => (treeRows[sourceKey] || []).filter(row => !row.placeholder)) as { key: repoKey, sourceKey: rowSourceKey, repoName, depth }}
           {@const state = $repoStates[repoKey] || { status: 'unknown', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0, branch: '', isDefault: false }}
           {@const count = statusCountBadge(state.status)}
           <div class="compact-row" style={`padding-left: ${depth * 12}px`} class:compact-row-ok={state.status === 'clean'}>

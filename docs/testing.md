@@ -19,7 +19,7 @@ From now on every `git push` runs the checks. To bypass temporarily (not recomme
 There are three levels of tests, each requiring a bit more setup than the previous one:
 
 - **Package unit tests** — the tests under `pkg/`. They run instantly with no setup and test logic in isolation without touching the network or any provider. `pkg/ops/ops_test.go` covers the application operations against a temp `XDG_CONFIG_HOME`, a temp `GIT_CONFIG_GLOBAL`, and a temp SSH folder, so nothing on the real host changes.
-- **GUI tests** — the Go tests under `cmd/gui/`. They cover the Wails-side logic that doesn't need a window: terminal and AI harness launching, browser and folder actions, workspaces, and multi-repo containers. They need the compiled frontend in `cmd/gui/frontend/dist`, because the package embeds it.
+- **GUI tests** — the Go tests under `cmd/gui/`. They cover the Wails-side logic that doesn't need a window: terminal and AI harness launching, browser and folder actions, and multi-repo containers with their workspace files. They need the compiled frontend in `cmd/gui/frontend/dist`, because the package embeds it.
 - **Scenario test** — `TestScenario_FullLifecycle` in `pkg/ops/scenario_test.go` drives the whole lifecycle against a real provider: add account → credential check → discover → clone → status → pull and fetch → account edit + clone reconfigure → mirror CRUD → re-clone → rename → delete. It needs the test fixture described below.
 
 ## Before you start: the frontend build
@@ -167,7 +167,7 @@ The `--test-mode` flag reads `test-gitbox.json` (searching upwards from the curr
 
 ### Startup regression checks
 
-I run the startup snapshot and workspace discovery tests in `cmd/gui` to verify nesting before clones exist, detached response data, config access during a blocked scan, preservation of concurrent edits, and retries after discovery inputs change. I measure snapshot construction separately with `go test ./cmd/gui/ -run '^$' -bench BenchmarkStartupSnapshot -benchmem`. This benchmark measures backend work, not visible startup time.
+I run the startup snapshot tests in `cmd/gui` to verify nesting before clones exist and detached response data. I measure snapshot construction separately with `go test ./cmd/gui/ -run '^$' -bench BenchmarkStartupSnapshot -benchmem`. This benchmark measures backend work, not visible startup time.
 
 For interactive startup measurements, I record process launch, window visibility, first configured rows, and complete status separately, along with the platform, clone count, container layout, and run count. I distinguish native production launches from browser navigation against an already-running `wails dev` backend. I need an interactive Windows desktop to measure WebView2 rendering; SSH backend timings alone cannot establish the first-row target. I keep unmeasured targets open until that desktop check completes.
 
@@ -249,7 +249,7 @@ Launch `GitboxApp` on each platform (`./scripts/run-commands.sh` prints the comm
 - [ ] App opens; on Windows without a console flash
 - [ ] Guided first run with a fresh config (`XDG_CONFIG_HOME=<empty temp dir>` on macOS and Linux): folder → connect (browser sign-in; **Use a token instead**; **Change details** keeps any existing folder) → pick projects → **Download**; the main screen opens in Simple and the picked repos clone. In Simple, **Connect an account** in the sidebar runs the same connect and pick steps; in Advanced, **Add account** opens the full form
 - [ ] Dashboard shows the sidebar (Needs attention, All repos, accounts with logo, health and count) and the selected view
-- [ ] Sidebar: switching views (Needs attention, All repos, each account, Mirrors, Workspaces) works; the top-left button and ⌘B / Ctrl+B fold it to the rail and back; below 780 px it shows the rail and the button opens it over the content; the view and the rail survive a restart
+- [ ] Sidebar: switching views (Needs attention, All repos, each account, Mirrors) works; the top-left button and ⌘B / Ctrl+B fold it to the rail and back; below 780 px it shows the rail and the button opens it over the content; the view and the rail survive a restart
 - [ ] Account card: three lines (health mark and name, health words and fix action, counts with Find and + New in both modes); a broken credential shows its fix in the card and at the top of Needs attention
 - [ ] Account edit and rename
 - [ ] Credential setup for each type (token/gcm/ssh)
@@ -261,7 +261,8 @@ Launch `GitboxApp` on each platform (`./scripts/run-commands.sh` prints the comm
 - [ ] With two roots, a row's Clone asks which root and lands there; Pull all doesn't ask
 - [ ] Compact view and back to full view
 - [ ] Simple / Advanced: the top-bar switch (grey Simple, red Advanced) changes mode instantly; Simple rows show only dot, name, status sentence, Update or Download when needed, the AI / editor / terminal icons and ⋯; Advanced rows keep every detail and show the same three icons before the fetch button; the Advanced header rings are compact (icon, attention badge, hover tooltip, no label); a fresh config lands in Simple after onboarding
-- [ ] Collapse/expand: account header and a parent clone (chevron or name) fold and unfold; folds survive a restart; a mirror or workspace chip opens into its card and folds back on an outside click or Escape
+- [ ] Collapse/expand: account header and a parent clone (chevron or name) fold and unfold; folds survive a restart; a mirror chip opens into its card and folds back on an outside click or Escape
+- [ ] Workspace containers: a `.code-workspace` dropped at a clone's root makes it a container on the next window focus, with its nested clones below and missing workspace folders as dimmed **not cloned** rows; a second file opens the picker; the editor button opens the workspace in VS Code
 ```
 
 ### Credential flows (interactive, per platform)

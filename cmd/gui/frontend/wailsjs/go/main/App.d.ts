@@ -74,8 +74,6 @@ export function Discover(arg1:string):Promise<void>;
 
 export function DiscoverMirrors():Promise<void>;
 
-export function DiscoverWorkspaces():Promise<main.DiscoverWorkspacesResult>;
-
 export function DoctorPrecheck(arg1:string):Promise<main.DoctorPrecheckDTO>;
 
 export function DoctorRun():Promise<main.DoctorReport>;
@@ -128,8 +126,6 @@ export function GetViewMode():Promise<string>;
 
 export function GetWindowMode():Promise<string>;
 
-export function GetWorkspace(arg1:string):Promise<main.WorkspaceDTO>;
-
 export function IgnoreClone(arg1:string,arg2:boolean):Promise<void>;
 
 export function InitRoot(arg1:string):Promise<void>;
@@ -157,8 +153,6 @@ export function ListShells():Promise<Array<main.ShellInfo>>;
 export function ListTerminalApps():Promise<Array<main.TerminalAppInfo>>;
 
 export function ListTerminalProfiles():Promise<Array<main.TerminalProfileInfo>>;
-
-export function ListWorkspaces():Promise<main.WorkspaceListResult>;
 
 export function MissingModernTerminal():Promise<boolean>;
 
@@ -189,8 +183,6 @@ export function OpenProfile(arg1:string,arg2:string):Promise<void>;
 export function OpenRepoInBrowser(arg1:string,arg2:string):Promise<void>;
 
 export function OpenTerminalsManagerWindow():Promise<void>;
-
-export function OpenWorkspace(arg1:string):Promise<void>;
 
 export function PickFolder(arg1:string):Promise<string>;
 
@@ -224,6 +216,8 @@ export function RepairConfig():Promise<main.ConfigRepairResult>;
 
 export function RepoNesting():Promise<Record<string, string>>;
 
+export function RepoWorkspaceFiles(arg1:string,arg2:string):Promise<Array<string>>;
+
 export function RestoreFromBackup(arg1:string):Promise<main.ConfigRepairResult>;
 
 export function SaveTerminalProfiles(arg1:Array<config.TerminalApp>,arg2:Array<config.ShellEntry>,arg3:Array<config.TerminalProfile>):Promise<void>;
@@ -252,6 +246,8 @@ export function SetPeriodicSync(arg1:string):Promise<void>;
 
 export function SetRepoContainer(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
+export function SetRepoWorkspace(arg1:string,arg2:string,arg3:string):Promise<void>;
+
 export function SetTheme(arg1:string):Promise<void>;
 
 export function SetUIMode(arg1:string):Promise<void>;
@@ -269,7 +265,5 @@ export function SyncAIHarnesses():Promise<boolean>;
 export function SyncEditors():Promise<void>;
 
 export function SyncProfiles():Promise<void>;
-
-export function TentativeContainers():Promise<Array<main.TentativeContainerDTO>>;
 
 export function UpdateAccount(arg1:main.UpdateAccountRequest):Promise<void>;

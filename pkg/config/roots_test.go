@@ -113,8 +113,7 @@ func TestMigrateV3ToV4_FolderAndExtraFoldersBecomeRoots(t *testing.T) {
   "version": 3,
   "global": {"folder": "~/git", "extra_folders": ["/work", "~/git/", "/more"]},
   "accounts": {"gh": {"provider": "github", "url": "https://github.com", "username": "u", "name": "N", "email": "e@e"}},
-  "sources": {"gh": {"account": "gh", "repos": {"org/repo": {}}}},
-  "workspaces": {"w": {"name": "W", "discovered": true, "file": "/work/w.code-workspace", "members": []}}
+  "sources": {"gh": {"account": "gh", "repos": {"org/repo": {}}}}
 }`
 	cfg, err := Parse([]byte(v3))
 	if err != nil {
@@ -125,9 +124,6 @@ func TestMigrateV3ToV4_FolderAndExtraFoldersBecomeRoots(t *testing.T) {
 	}
 	if want := []string{"~/git", "/work", "/more"}; !reflect.DeepEqual(cfg.Global.Roots, want) {
 		t.Errorf("roots = %v, want %v", cfg.Global.Roots, want)
-	}
-	if len(cfg.Workspaces) != 1 {
-		t.Errorf("v3 workspaces must survive, got %v", cfg.Workspaces)
 	}
 }
 

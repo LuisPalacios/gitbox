@@ -47,9 +47,9 @@ func LoadWithRepair(path string) (*Config, []Repair, error) {
 	return decode(data, true)
 }
 
-// Parse parses JSON configuration data. It accepts the current v4 format and
-// transparently migrates v2 and v3 files. Any other version is an error. The
-// migration is in-memory only — the next Save persists the v4 shape.
+// Parse parses JSON configuration data. It accepts the current v5 format and
+// transparently migrates v2, v3 and v4 files. Any other version is an error.
+// The migration is in-memory only — the next Save persists the v5 shape.
 func Parse(data []byte) (*Config, error) {
 	cfg, _, err := decode(data, false)
 	return cfg, err
@@ -59,10 +59,11 @@ func Parse(data []byte) (*Config, error) {
 // repair set it first drops dangling mirrors and reports them.
 //
 // Migrations, in order, all in memory:
-//   - v2→v3: the workspaces section becomes a regenerable discovered cache,
-//     so v2 entries (user-created or tmuxinator) are dropped wholesale.
 //   - v3→v4: global.folder + global.extra_folders become global.roots, in
 //     that order, so every clone keeps its path.
+//   - v4→v5: the workspaces section is gone; Config no longer has the field,
+//     so Unmarshal drops it and pkg/workspace.Sync re-derives each
+//     container's repo.workspace from disk.
 func decode(data []byte, repair bool) (*Config, []Repair, error) {
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
@@ -89,21 +90,6 @@ func decode(data []byte, repair bool) (*Config, []Repair, error) {
 	}
 
 	extractKeyOrder(data, &cfg)
-
-	if from == 2 {
-		cfg.Workspaces = nil
-		cfg.WorkspaceOrder = nil
-	} else {
-		// Defend against hand-edited entries — keep only discovered
-		// codeWorkspace entries, without duplicate members.
-		sanitizeWorkspaces(&cfg, data)
-		for key, w := range cfg.Workspaces {
-			if deduped := dedupWorkspaceMembers(w.Members); len(deduped) != len(w.Members) {
-				w.Members = deduped
-				cfg.Workspaces[key] = w
-			}
-		}
-	}
 	cfg.Version = CurrentVersion
 
 	// Auto-migrate legacy v2.0 flat global.terminals[] into the three-array
@@ -178,61 +164,6 @@ func listRoots(cfg *Config) {
 	}
 }
 
-// sanitizeWorkspaces enforces the read-only-cache invariant on the workspaces
-// section: only discovered VSCode .code-workspace entries survive. Legacy
-// tmuxinator workspaces and user-created (non-discovered) entries are dropped.
-// The pre-slim "type"/"discovered" fields are read from the raw JSON because
-// the Workspace struct no longer carries "type". In-memory only.
-func sanitizeWorkspaces(cfg *Config, data []byte) {
-	if len(cfg.Workspaces) == 0 {
-		return
-	}
-	var raw struct {
-		Workspaces map[string]struct {
-			Type       string `json:"type"`
-			Discovered bool   `json:"discovered"`
-		} `json:"workspaces"`
-	}
-	_ = json.Unmarshal(data, &raw)
-	for key := range cfg.Workspaces {
-		meta, ok := raw.Workspaces[key]
-		// Drop tmuxinator entries and anything not marked discovered. Entries
-		// with no recorded type but discovered==true are kept (the new shape).
-		if !ok || !meta.Discovered || (meta.Type != "" && meta.Type != "codeWorkspace") {
-			delete(cfg.Workspaces, key)
-		}
-	}
-	// Drop removed keys from the order slice, preserving the rest.
-	if len(cfg.WorkspaceOrder) > 0 {
-		kept := cfg.WorkspaceOrder[:0]
-		for _, k := range cfg.WorkspaceOrder {
-			if _, ok := cfg.Workspaces[k]; ok {
-				kept = append(kept, k)
-			}
-		}
-		cfg.WorkspaceOrder = kept
-	}
-}
-
-// dedupWorkspaceMembers preserves member order while collapsing duplicates by
-// (source, repo). Defensive: hand-edited or legacy workspace entries can carry
-// the same clone twice.
-func dedupWorkspaceMembers(members []WorkspaceMember) []WorkspaceMember {
-	if len(members) < 2 {
-		return members
-	}
-	seen := make(map[WorkspaceMember]bool, len(members))
-	out := members[:0]
-	for _, m := range members {
-		if seen[m] {
-			continue
-		}
-		seen[m] = true
-		out = append(out, m)
-	}
-	return out
-}
-
 // extractKeyOrder parses the raw JSON to capture the insertion order of
 // "sources" keys and each source's "repos" keys, since Go maps lose ordering.
 func extractKeyOrder(data []byte, cfg *Config) {
@@ -269,10 +200,6 @@ func extractKeyOrder(data []byte, cfg *Config) {
 			cfg.Mirrors[mirrorName] = m
 		}
 	}
-
-	// Extract workspace key order by tokenizing. Members inside each workspace
-	// are an ordered array, so no per-workspace order extraction is needed.
-	cfg.WorkspaceOrder = extractMapKeyOrder(data, "workspaces")
 }
 
 // extractMapKeyOrder extracts the ordered keys of a named object field from JSON.
@@ -429,7 +356,5 @@ func validate(cfg *Config) error {
 			}
 		}
 	}
-	// Workspaces are a read-only discovered cache (VSCode .code-workspace only).
-	// No structural validation: any legacy shape is sanitized in parseV2.
 	return nil
 }

@@ -55,7 +55,7 @@ Run it with `--help` for options. If you'd rather place the app yourself, each r
 - **What needs me, first.** A sidebar with one entry per account and its health, and a Needs attention view that lists only the clones that are behind, ahead, carry local changes, or diverged, plus their open pull requests and pending reviews. Simple mode says the same in plain words for people who don't know Git.
 - **Safe sync.** Fetch everything and pull fast-forward only. Dirty or conflicted clones are never touched, and a result card says what changed.
 - **Mirrors and moves.** Set up push or pull mirrors between providers for backups, and move a repo to another account or provider with a guided flow.
-- **Workspaces and launchers.** Open any clone in your terminal, editor, file manager, or AI harness (Claude Code, Codex, …), and open existing VS Code workspaces.
+- **Workspaces and launchers.** Open any clone in your terminal, editor, file manager, or AI harness (Claude Code, Codex, …), and open a multi-repo container's VS Code workspace with the editor button.
 - **Clones anywhere.** Adopt clones that live outside the standard folder tree, including repos nested inside a multi-repo container.
 - **Self-healing setup.** A system check for the tools gitbox needs, one-click fixes for global git settings that cause cryptic failures, and dated config backups you can restore.
 

@@ -115,11 +115,11 @@ The sidebar on the left picks what the main area shows:
 - **More** — below the bottom separator, everything that isn't an account:
   - **Add account** (Simple: **Connect an account**) — see [Step 2](#step-2-add-accounts).
   - **Found on disk** — appears when gitbox finds clones on disk it couldn't place on its own, with how many, or when I ignored some, and opens **Unmatched clones** (see [Clones found on disk](#clones-found-on-disk)).
-  - **Mirrors** and **Workspaces**, in Advanced only.
+  - **Mirrors**, in Advanced only.
 
 The button at the top left, or ⌘B on macOS and Ctrl+B elsewhere, folds the sidebar to an icon rail. The rail keeps the provider logos with their health mark and attention count; hovering one shows the account name and its health, and one click switches to it. In a window narrower than 780 px the sidebar always shows as the rail, and the button opens the full sidebar over the content until I pick a view.
 
-Gitbox remembers the last view and the folded sidebar across restarts (`global.collapsed.view` and `global.collapsed.sidebar` in `gitbox.json`). If that account no longer exists, or Simple can't show Mirrors or Workspaces, Needs attention opens instead. Renaming an account keeps its view.
+Gitbox remembers the last view and the folded sidebar across restarts (`global.collapsed.view` and `global.collapsed.sidebar` in `gitbox.json`). If that account no longer exists, or Simple can't show Mirrors, Needs attention opens instead. Renaming an account keeps its view.
 
 ### Understanding the account card
 
@@ -283,19 +283,27 @@ Below the mirror cards, each group expands into a detail list showing individual
 - **Setup** button for repos that haven't been configured yet via API
 - **+ Repo** button to add new repos to the group
 
-## Step 6: Workspaces (read-only)
+## Step 6: VS Code workspaces and multi-repo containers
 
-The **Workspaces** view, under **More** in the sidebar in Advanced, lists discovered VS Code `.code-workspace` files. Workspaces are read-only: the GUI discovers existing files, lists them with their resolved member clones, and opens one in my editor. It never creates, edits, generates, or deletes them — I own those files. Each entry has an **Open** button that opens the `.code-workspace` in the first editor in `global.editors`; the view's **Discover** button rescans on demand.
+A **multi-repo container** is a managed clone that holds other clones nested in its working tree, for example a project repo whose `.code-workspace` ties together several sibling clones. Gitbox has no separate workspaces view: a workspace lives in the clone list, on the container that holds it. Gitbox never creates, edits, or deletes `.code-workspace` files — I own them.
 
-### Auto-discovery on startup
+### Workspace files make containers
 
-Whenever I drop a `*.code-workspace` file under any clone root — or carry one over from another machine — the GUI picks it up: the cached list shows instantly at launch, then a background pass refreshes it and the view updates if anything changed. Discovery walks every root in `global.roots` for `*.code-workspace` files. Each file's folder references are resolved back to known clones by a deepest-prefix path match, and the cache in `gitbox.json` is only rewritten when something changed.
+When a clone has a `.code-workspace` file at its root, gitbox makes it a container on its own and records that file in `repo.workspace`. If the root holds two or more, gitbox asks me which one the container opens with; until I choose, the row shows a **choose workspace** hint, and the ⋯ menu offers **Choose workspace…** to change it later. A 📁 icon marks a container, and hovering it names its workspace file.
 
-### Non-standard clones & multi-repo containers
+Gitbox checks at startup, on window focus, after a manual Fetch all and after I change the clone roots. A clone that had no workspace yesterday becomes a container the next time I switch back to gitbox after the file appears. If the file disappears, gitbox clears `repo.workspace` and keeps the container.
 
-A **multi-repo container** is a managed clone that holds other clones nested in its working tree (for example, a project repo whose `.code-workspace` ties together several sibling clones). When a clone looks like one — it has a `.code-workspace` at its root but isn't flagged yet — its row shows an inline **onboard nested clones** hint. Clicking it flags the clone as a container, scans its working tree, and opens the adopt modal with the nested clones it finds; you confirm which to onboard. Nested clones are adopted in place under their real account/org (stored with an absolute `clone_folder` inside the container, never relocated), and the hint is replaced by a 📁 icon; hovering it says it's a container.
+### Clones below a container
 
-You can also manage this from the repo row's ⋯ menu, under **Maintenance** — **Mark as multi-repo container**, **Unmark as multi-repo container**, and **Re-scan for nested clones** (shown once a clone is a container) — or with the **Multi-repo container** checkbox in the repo detail panel. The **Clone roots** dialog in Settings sets the **nested scan depth** (how many levels below a container Gitbox descends, default 1 — the container's immediate children; raise it to reach clones nested deeper).
+Every clone inside a container's working tree shows below it, indented, and folds with it. Gitbox looks for them up to the **nested scan depth** below the container, and at every folder the container's workspace file lists, at any depth. Nested clones are adopted in place under their real account/org, stored with an absolute `clone_folder` inside the container and never relocated. A folder the workspace file lists inside the container that isn't on disk yet shows as a dimmed **not cloned** row with its path. Folders the workspace lists outside the container keep their normal place under their own account.
+
+### Opening a container
+
+The editor button on a container with a workspace file opens the `.code-workspace` file, not the folder, when the editor is VS Code or a fork of it (VS Code Insiders, VSCodium, Cursor, Windsurf). Other editors open the folder as usual. The same goes for the editors in the ⋯ menu.
+
+### Containers without a workspace file
+
+I can still flag a clone without a workspace file from the repo row's ⋯ menu, under **Maintenance** — **Mark as multi-repo container**, **Unmark as multi-repo container**, and **Re-scan for nested clones** (shown once a clone is a container). A container with a workspace file has no Unmark entry: the file is what makes it one. The **Clone roots** dialog in Settings sets the **nested scan depth** (how many levels below a container gitbox descends, default 1 — the container's immediate children; raise it to reach clones nested deeper).
 
 The standard layout is `<root> / <account> / <org|user> / repo`. A clone found at that spot under any clone root is adopted in place under that root. A clone found elsewhere in a root is added where it is too, with an absolute `clone_folder`. Gitbox never moves a clone.
 
@@ -316,7 +324,7 @@ In Simple, every project answers one question, "is my work safe?", with one of s
 
 Every project on this computer has three icon buttons, in both Simple and Advanced: my first AI harness, my first editor, and my default terminal profile. Each shows the tool's logo when gitbox knows it (Claude, Codex, Gemini, Cursor, VS Code, Zed, and every terminal app gitbox detects) or a generic icon, and its name on hover. Names show without the organization prefix; hovering a name shows it in full. The ⋯ menu keeps Open on the web, the folder, editors, AI harnesses, and **Delete from this computer…**.
 
-Simple hides the rest: the Mirrors and Workspaces views, delete mode, the compact view and theme buttons (theme stays in Settings), workspace, container and branch badges, ahead, behind and changed counts, and the per-row fetch button. Open PRs I authored (📝) and PRs awaiting my review (👀) show in both modes. The top bar keeps **Check all** and **Update all**. Account health reads in plain words, and **Reconnect** appears when a credential breaks. Settings hides the config file, PR reviews, global gitignore and Terminals rows. The compact view is the same in both modes.
+Simple hides the rest: the Mirrors view, delete mode, the compact view and theme buttons (theme stays in Settings), container and branch badges, ahead, behind and changed counts, and the per-row fetch button. Open PRs I authored (📝) and PRs awaiting my review (👀) show in both modes. The top bar keeps **Check all** and **Update all**. Account health reads in plain words, and **Reconnect** appears when a credential breaks. Settings hides the config file, PR reviews, global gitignore and Terminals rows. The compact view is the same in both modes.
 
 ### Full view
 
@@ -327,7 +335,7 @@ The full dashboard shows the top bar with health rings, the sidebar, the selecte
 The **All repos** view folds at two levels, and an account's view folds parent clones too:
 
 - **Account groups** — click an account's header bar or its name to fold its clone list. The header always shows how many clones it holds and how many need attention, folded or not, so a problem never hides behind a fold. The ⋯ menu on the header keeps working and never folds the group.
-- **Clones with clones below them** — any clone that has nested clones under it gets a ▾ chevron before its status dot. Click the chevron or the clone's name to fold everything below, at any depth. A folded row shows how many clones it hides and how many of them need attention. Neither opens the repo detail.
+- **Clones with clones below them** — any clone that has nested clones or not-yet-cloned workspace folders under it gets a ▾ chevron before its status dot. Click the chevron or the clone's name to fold everything below, at any depth. A folded row shows how many rows it hides and how many of them need attention. Neither opens the repo detail.
 
 Gitbox remembers what I fold across restarts, along with the sidebar and the last view (`global.collapsed` in `gitbox.json`), and forgets entries for accounts or clones I delete or rename. The compact view keeps its own per-account expansion.
 
@@ -387,7 +395,7 @@ Each cloned repo row has a **⋯ menu** on the right side. It is one flat list i
 
 1. **Open** — **Navigate to repo** and **Reveal in Finder** (Explorer, or the file manager on Linux). The browser entry opens `<account url>/<owner>/<name>`, resolved on the Go side from the saved config, and shows an error card if the row can't be found there. Every path-based entry (folder, editor, terminal, AI harness) shows a "clone first" message instead of doing nothing when the clone hasn't finished or its status hasn't loaded yet.
 2. **Open with** — every AI harness and editor, then the default terminal profile and the ones marked Preferred, each with its logo. The tool the row's own launch button uses carries a **default** tag.
-3. **Maintenance** (Advanced) — **Sweep branches**, **Move repository…**, **Mark as multi-repo container** or **Unmark as multi-repo container**, and **Re-scan for nested clones**.
+3. **Maintenance** (Advanced) — **Sweep branches**, **Move repository…**, **Mark as multi-repo container** or **Unmark as multi-repo container**, **Choose workspace…** on a container with workspace files, and **Re-scan for nested clones**.
 4. **Delete from this computer…** — in both modes.
 
 <p align="center">

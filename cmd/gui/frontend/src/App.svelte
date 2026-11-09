@@ -4,7 +4,7 @@
   import type { DoctorPrecheckDTO } from './lib/bridge';
   import {
     configStore, accounts, sources, mirrors, repoStates, themeStore, applyStatusResults,
-    applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate
+    applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, workspacePlaceholders
   } from './lib/stores';
   import { detailLocked, attentionRank, accountHealth, CALM_RANK } from './lib/status';
   import type { HealthFix } from './lib/status';
@@ -14,7 +14,7 @@
   import { startFetch, startPull, noteDone, summarizeFetch, summarizePull, localWorkCount } from './lib/activity';
   import type { Run } from './lib/activity';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit, EventsOn } from '../wailsjs/runtime/runtime';
-  import type { RepoState, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, OrphanRepoDTO, ReconcileDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
+  import type { RepoState, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, OrphanRepoDTO, ReconcileDTO, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
   import TerminalsModal from './lib/TerminalsModal.svelte';
   import Onboarding from './lib/Onboarding.svelte';
   import ConfigErrorScreen from './lib/components/ConfigErrorScreen.svelte';
@@ -29,7 +29,6 @@
   import RepoList from './lib/components/RepoList.svelte';
   import type { RowProps } from './lib/components/RepoRow.svelte';
   import MirrorsTab from './lib/components/MirrorsTab.svelte';
-  import WorkspacesTab from './lib/components/WorkspacesTab.svelte';
   import Footer from './lib/components/Footer.svelte';
   import ActivityStrip from './lib/components/ActivityStrip.svelte';
   import Notices from './lib/components/Notices.svelte';
@@ -45,6 +44,7 @@
   import DeleteAccountModal from './lib/modals/DeleteAccountModal.svelte';
   import RootsModal from './lib/modals/RootsModal.svelte';
   import RootPickerModal from './lib/modals/RootPickerModal.svelte';
+  import WorkspacePickerModal from './lib/modals/WorkspacePickerModal.svelte';
   import AddMirrorGroupModal from './lib/modals/AddMirrorGroupModal.svelte';
   import AddMirrorRepoModal from './lib/modals/AddMirrorRepoModal.svelte';
   import DeleteMirrorGroupModal from './lib/modals/DeleteMirrorGroupModal.svelte';
@@ -55,6 +55,7 @@
   import MoveRepoModal from './lib/modals/MoveRepoModal.svelte';
   import CreateRepoModal from './lib/modals/CreateRepoModal.svelte';
   import { repoTreeRows } from './lib/repo-tree';
+  import type { Placeholder } from './lib/repo-tree';
   import { themeChoiceOf } from './lib/theme';
   import type { ThemeChoice } from './lib/theme';
 
@@ -67,10 +68,6 @@
   // Advanced is everything. Persisted as global.ui_mode.
   let uiMode: 'simple' | 'advanced' = 'advanced';
   $: simple = uiMode === 'simple';
-
-  // ── Workspaces (issue #27 / #49) ──
-  // UI state for the read-only Workspaces tab.
-  let workspaceBusy = false;
 
   let compactExpanded: Record<string, boolean> = {};
   let savedFullSize: { w: number; h: number } | null = null;
@@ -686,12 +683,54 @@
     ignoredClones = res.ignored || [];
     orphanCount = orphanList.length;
     if (res.error) pushNotice('error', $t('notice.reconcileFailed'), [res.error]);
-    if (res.adopted + res.relinked > 0) {
+    if (res.adopted + res.relinked > 0 || res.workspacesChanged) {
       $configStore = await bridge.reloadConfig();
       applyStatusResults(await bridge.getAllStatus());
     }
+    const byParent: Record<string, Placeholder[]> = {};
+    for (const p of res.placeholders || []) (byParent[p.parent] ??= []).push({ name: p.name, path: p.path });
+    $workspacePlaceholders = byParent;
+    workspaceChoices = new Set((res.workspaceChoices || []).map(c => `${c.source}/${c.repo}`));
     await loadNesting();
-    await loadTentativeContainers();
+    askWorkspaceChoices(res.workspaceChoices || []);
+  }
+
+  // ── Container workspace files ──
+  // Containers whose root holds several .code-workspace files and no pick;
+  // each is asked once per session, then keeps a "choose workspace" hint.
+  let workspaceChoices: Set<string> = new Set();
+  const workspaceAsked = new Set<string>();
+  let workspacePicker: WorkspacePickerModal;
+
+  // askWorkspaceChoices opens the picker for each new choice, one after the
+  // other, without holding up the pass that found them.
+  async function askWorkspaceChoices(choices: WorkspaceChoiceDTO[]) {
+    for (const c of choices) {
+      const key = `${c.source}/${c.repo}`;
+      if (workspaceAsked.has(key)) continue;
+      workspaceAsked.add(key);
+      await pickWorkspace(c.source, c.repo, c.files);
+    }
+  }
+
+  async function pickWorkspace(sourceKey: string, repoName: string, files: string[]) {
+    const current = $configStore?.sources?.[sourceKey]?.repos?.[repoName]?.workspace || '';
+    const file = await workspacePicker.pick(repoName, files, current);
+    if (!file || file === current) return;
+    try {
+      await bridge.setRepoWorkspace(sourceKey, repoName, file);
+      await runReconcile();
+    } catch (e) {
+      pushNotice('error', $t('notice.workspaceFailed'), [errorText(e)]);
+    }
+  }
+
+  async function chooseWorkspace(sourceKey: string, repoName: string) {
+    try {
+      await pickWorkspace(sourceKey, repoName, await bridge.repoWorkspaceFiles(sourceKey, repoName));
+    } catch (e) {
+      pushNotice('error', $t('notice.workspaceFailed'), [errorText(e)]);
+    }
   }
 
   // ── Nested-clone display (container repos) ──
@@ -704,20 +743,6 @@
     } catch { /* I retain the last known nesting when a refresh fails. */ }
   }
 
-  // ── Tentative containers ──
-  // Managed repos that hold a .code-workspace at their root but are not yet
-  // flagged as containers. We surface an inline "onboard nested clones" hint on
-  // their row so the user can flag them (which then scans + opens the adopt
-  // modal). Keyed by "source/repo" for O(1) lookup during row rendering.
-  let tentativeContainers: Set<string> = new Set();
-
-  async function loadTentativeContainers() {
-    try {
-      const refs = await bridge.tentativeContainers();
-      tentativeContainers = new Set((refs || []).map(r => `${r.source}/${r.repo}`));
-    } catch { tentativeContainers = new Set(); }
-  }
-
   // ── Collapse / expand (issue #117) ──
   // Folded account groups (source keys) and folded parent clones
   // ("source/repo"), persisted in global.collapsed. A clone is collapsible
@@ -726,8 +751,7 @@
   let collapsedRepos: Set<string> = new Set();
 
   // ── Navigation (issue #138) ──
-  // The selected view (attention, all, mirrors, workspaces or
-  // account:<key>) and the sidebar folded to its rail, both persisted in
+  // The selected view (attention, all, mirrors or account:<key>) and the sidebar folded to its rail, both persisted in
   // global.collapsed. resolveView shows Needs attention for a missing
   // account or an Advanced-only view in Simple, without touching `view`,
   // so switching back to Advanced restores Mirrors. A window narrower than
@@ -758,7 +782,6 @@
     actionMenuRepo = null;
     actionMenuAccount = null;
     openPRPopover = null;
-    openWsPopover = null;
     expandedCard = null;
     saveLayout();
   }
@@ -783,9 +806,9 @@
     toggleSidebar();
   }
 
-  // The mirror and workspace cards start as chips. Clicking one opens it
-  // into the full two-line card; clicking outside it or Escape folds it
-  // back. One open card at a time, keyed "mir:" or "ws:".
+  // The mirror cards start as chips. Clicking one opens it into the full
+  // two-line card; clicking outside it or Escape folds it back. One open
+  // card at a time, keyed "mir:".
   let expandedCard: string | null = null;
 
   // closeDetailIf drops the open detail panel when a collapse hides its row.
@@ -826,7 +849,7 @@
     return st ? attentionRank(st.status, st.isDefault) : attentionRank('unknown');
   };
   // Clones in alphabetical order (repo-tree.ts).
-  $: treeRows = repoTreeRows($sources, repoNesting, collapsedRepos);
+  $: treeRows = repoTreeRows($sources, repoNesting, collapsedRepos, $workspacePlaceholders);
 
   // How many repos need me, per account and in total; accounts whose
   // credential needs a fix count too (Needs attention lists them first).
@@ -1182,28 +1205,6 @@
     await bridge.setupMirrorRepo(mirrorKey, repoKey);
   }
 
-  // ── Workspace actions (read-only: open + refresh) ─────────────────
-
-  async function openWorkspace(key: string) {
-    try {
-      await bridge.openWorkspace(key);
-    } catch (e) {
-      pushNotice('error', $t('notice.openWorkspaceFailed'), [errorText(e)]);
-    }
-  }
-
-  async function refreshWorkspaces() {
-    workspaceBusy = true;
-    try {
-      const res = await bridge.discoverWorkspaces();
-      if (res.changed) $configStore = await bridge.reloadConfig();
-    } catch (e) {
-      pushNotice('error', $t('notice.discoverWorkspacesFailed'), [errorText(e)]);
-    } finally {
-      workspaceBusy = false;
-    }
-  }
-
   // ── Multi-repo container toggle ────────────────────────────────────
 
   function isContainerRepo(sourceKey: string, repoName: string): boolean {
@@ -1321,17 +1322,6 @@
     openPRPopover = null;
   }
 
-  // Which workspace popover is open: keyed by `${sourceKey}/${repoName}` or null.
-  // Driven by the workspace badge on each clone row; lists every workspace the
-  // clone belongs to, opens one on click and dismisses itself.
-  let openWsPopover: string | null = null;
-  function toggleWsPopover(key: string) {
-    openWsPopover = openWsPopover === key ? null : key;
-  }
-  async function openWorkspaceFromBadge(wsKey: string) {
-    openWsPopover = null;
-    await openWorkspace(wsKey);
-  }
   function setFetchInterval(val: string) {
     applyFetchInterval(val);
     bridge.setPeriodicSync(val);
@@ -1359,12 +1349,12 @@
   // every repo view (RowProps in RepoRow.svelte).
   let rowProps: RowProps;
   $: rowProps = {
-    simple, deleteMode, fetchingRepos, collapsedRepos, tentativeContainers, workspaceBusy, openWsPopover,
+    simple, deleteMode, fetchingRepos, collapsedRepos, workspaceChoices,
     revealLabel, configEditors, configProfiles, configAIHarnesses, actionMenuRepo, openPRPopover,
     expandedRepo, repoDetail, detailLoading,
     activateRepoRow, askDelete, syncRepo, cloneRepo, fetchRepo, toggleActionMenu, closeActionMenu,
-    toggleWsPopover, openWorkspaceFromBadge, togglePRPopover, closePRPopover, sweepBranches, openMoveRepo,
-    toggleContainer, rescanContainer, toggleRepoCollapsed, isContainerRepo, showAccountView,
+    togglePRPopover, closePRPopover, sweepBranches, openMoveRepo,
+    toggleContainer, rescanContainer, chooseWorkspace, toggleRepoCollapsed, isContainerRepo, showAccountView,
   };
 
   // ── Credential status cache ──
@@ -1719,12 +1709,6 @@
       checkAllMirrorStatus();
     });
 
-    // Discovery emitted on startup and on every manual rescan. Refresh
-    // the config store so the new entries appear in the Workspaces tab.
-    events.on('workspaces:discovered', async (_data: any) => {
-      $configStore = await bridge.reloadConfig();
-    });
-
     events.on('update:available', (info: any) => {
       if (info?.latest !== updateDismissed) updateInfo = info;
     });
@@ -1803,16 +1787,13 @@
 
 <svelte:window bind:innerWidth on:click={(e) => {
   const inMenu = e.target instanceof Element && e.target.closest('.action-menu-container');
-  const inWsPopover = e.target instanceof Element && e.target.closest('.ws-popover, .ws-badge');
   const inPRPopover = e.target instanceof Element && e.target.closest('.pr-badge-wrap');
   if (actionMenuRepo && !inMenu) closeActionMenu();
   if (actionMenuAccount && !inMenu) closeAccountMenu();
   if (expandedCard && !(e.target instanceof Element && e.target.closest('.card-open'))) expandedCard = null;
-  if (openWsPopover && !inWsPopover) openWsPopover = null;
   if (openPRPopover && !inPRPopover) openPRPopover = null;
 }} on:keydown={(e) => {
   sidebarKey(e);
-  if (e.key === 'Escape' && openWsPopover) openWsPopover = null;
   if (e.key === 'Escape' && expandedCard) expandedCard = null;
   if (e.key === 'Escape' && openPRPopover) openPRPopover = null;
 }} />
@@ -1894,9 +1875,6 @@
         {checkMirrorStatus} {setupMirrorRepo} {openTokenSetup} {runMirrorDiscover} {checkAllMirrorStatus}
         onAddGroup={() => addMirrorGroupDialog.open()} onAddRepo={(mirrorKey) => addMirrorRepoDialog.open(mirrorKey)}
         onDeleteGroup={(mirrorKey) => deleteMirrorGroupDialog.ask(mirrorKey)} onDeleteRepo={(mirrorKey, repoKey) => deleteMirrorRepoDialog.ask(mirrorKey, repoKey)} />
-    {:else if currentView === 'workspaces'}
-      <!-- ── WORKSPACES ── -->
-      <WorkspacesTab bind:expandedCard {workspaceBusy} {openWorkspace} {refreshWorkspaces} />
     {:else}
       <!-- ── ONE ACCOUNT ── -->
       <AccountView accountKey={viewAcct} {repoNesting} {rankOf} {credStatuses} {actionMenuAccount} {rowProps}
@@ -1952,9 +1930,9 @@
   <!-- ── CHANGE FOLDER MODAL ── -->
   <RootsModal bind:this={rootsDialog} {reloadFromDisk} {runReconcile} />
   <RootPickerModal bind:this={rootPicker} />
+  <WorkspacePickerModal bind:this={workspacePicker} />
 
   <!-- ── ADD MIRROR GROUP MODAL ── -->
-  <!-- Workspaces are read-only: no create/delete modals. -->
   <AddMirrorGroupModal bind:this={addMirrorGroupDialog} />
 
   <!-- ── ADD MIRROR REPO MODAL ── -->

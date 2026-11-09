@@ -1,9 +1,9 @@
 <script lang="ts">
   // The sidebar: the Needs attention and All views, one entry per account
   // (provider logo, health mark, name, health words, attention count), Add
-  // account, Found on disk, and Mirrors and Workspaces in Advanced. As a
+  // account, Found on disk, and Mirrors in Advanced. As a
   // rail it keeps only the icons, with the names in tooltips.
-  import { accounts, mirrorSummary, workspaces, themeStore } from '../stores';
+  import { accounts, mirrorSummary, themeStore } from '../stores';
   import { statusColor, accountHealth } from '../status';
   import { providerLabel } from '../theme';
   import { accountView } from '../views';
@@ -33,7 +33,6 @@
   $: addLabel = simple ? $t('nav.connect') : $t('account.add');
   $: foundLabel = $t('nav.found');
   $: foundTip = orphanCount > 0 ? $t(simple ? 'nav.foundTipSimple' : 'nav.foundTip', { n: orphanCount }) : foundLabel;
-  $: wsCount = Object.keys($workspaces).length;
   $: mirrorCount = $mirrorSummary.total > 0 ? `${$mirrorSummary.active}/${$mirrorSummary.total}` : '';
   const badge = (n: number) => (n > 99 ? '99+' : String(n));
 </script>
@@ -78,8 +77,6 @@
     {#if !simple}
       <button class="rail-btn" aria-current={view === 'mirrors'} aria-label={$t('tab.mirrors')}
         use:tooltip={{ text: $t('tab.mirrors'), delay: 150 }} on:click={() => setView('mirrors')}><UIIcon name="mirror" /></button>
-      <button class="rail-btn" aria-current={view === 'workspaces'} aria-label={$t('tab.workspaces')}
-        use:tooltip={{ text: $t('tab.workspaces'), delay: 150 }} on:click={() => setView('workspaces')}><UIIcon name="grid" /></button>
     {/if}
   {:else}
     <button class="nav" aria-current={view === 'attention'} on:click={() => setView('attention')}>
@@ -122,11 +119,6 @@
         <span class="navi"><UIIcon name="mirror" /></span>
         <span class="nav-label">{$t('tab.mirrors')}</span>
         {#if mirrorCount}<span class="cnt" style={$mirrorSummary.error > 0 ? `color: ${sc('error')}` : ''}>{mirrorCount}</span>{/if}
-      </button>
-      <button class="nav" aria-current={view === 'workspaces'} on:click={() => setView('workspaces')}>
-        <span class="navi"><UIIcon name="grid" /></span>
-        <span class="nav-label">{$t('tab.workspaces')}</span>
-        {#if wsCount > 0}<span class="cnt">{wsCount}</span>{/if}
       </button>
     {/if}
   {/if}

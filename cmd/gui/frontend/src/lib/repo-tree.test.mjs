@@ -52,3 +52,12 @@ test('I split an attention group by account, nesting only the clones in the grou
   const folded = groupTreeRows(['b/child', 'b/parent'], sources, nesting, new Set(['b/parent']));
   assert.deepEqual(folded.map(g => [g.rows.map(row => row.key), g.count]), [[['b/parent'], 2]]);
 });
+test('I list a container\'s placeholders after its clones and count them as children', () => {
+  const placeholders = { 'a/parent': [{ name: 'todo', path: 'libs/todo' }] };
+  const tree = repoTreeRows({ a: source(['parent', 'child']) }, { 'a/child': 'a/parent' }, new Set(), placeholders);
+  assert.deepEqual(tree.a.map(row => [row.key, row.depth, !!row.placeholder]), [['a/parent', 0, false], ['a/child', 1, false], ['a/parent#libs/todo', 1, true]]);
+  assert.equal(tree.a[0].childCount, 2);
+  assert.equal(tree.a[0].placeholders, 1);
+  assert.deepEqual(tree.a[0].descendants, ['a/child']);
+  assert.deepEqual(repoTreeRows({ a: source(['parent']) }, {}, new Set(['a/parent']), placeholders).a.map(row => row.key), ['a/parent']);
+});
