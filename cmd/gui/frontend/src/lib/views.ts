@@ -3,7 +3,7 @@
 // Kept free of runtime imports so lib/views.test.mjs can load it on its
 // own: the status rules come in as functions (rankOf) from lib/status.ts.
 
-export type View = 'attention' | 'all' | 'mirrors' | 'workspaces' | `account:${string}`;
+export type View = 'attention' | 'all' | 'mirrors' | `account:${string}`;
 
 export const ACCOUNT_VIEW = 'account:';
 
@@ -13,7 +13,7 @@ export const ACCOUNT_VIEW = 'account:';
 // account coming back) restores it.
 export function resolveView(view: string | null | undefined, accountKeys: string[], simple: boolean): View {
   if (view === 'attention' || view === 'all') return view;
-  if (view === 'mirrors' || view === 'workspaces') return simple ? 'attention' : view;
+  if (view === 'mirrors') return simple ? 'attention' : view;
   if (view && view.startsWith(ACCOUNT_VIEW) && accountKeys.includes(view.slice(ACCOUNT_VIEW.length))) return view as View;
   return 'attention';
 }

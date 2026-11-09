@@ -3,9 +3,11 @@ package main
 // Wails bindings for the disk reconcile (issue #149): keep gitbox.json in
 // step with the clones under the roots. A pass snapshots the config, scans
 // without the lock (pkg/reconcile.Plan), re-checks the config and applies
-// the decisions under the lock, the same pattern as workspace discovery.
-// Confident clones are adopted and moved clones re-linked silently; the rest
-// comes back as the Unmatched list for me to adopt or ignore.
+// the decisions under the lock. Confident clones are adopted and moved clones
+// re-linked silently; the rest comes back as the Unmatched list for me to
+// adopt or ignore. Each pass first syncs containers with the
+// .code-workspace files at their roots (pkg/workspace), so a container that
+// just gained one has its nested clones adopted in the same pass.
 
 import (
 	"fmt"
@@ -16,6 +18,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/reconcile"
+	"github.com/LuisPalacios/gitbox/pkg/workspace"
 	wailsrt "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -38,7 +41,38 @@ type ReconcileDTO struct {
 	Relinked  int             `json:"relinked"`
 	Unmatched []OrphanRepoDTO `json:"unmatched"`
 	Ignored   []OrphanRepoDTO `json:"ignored"`
-	Error     string          `json:"error,omitempty"`
+	// WorkspacesChanged is set when the pass flagged a container or changed
+	// a repo's workspace file.
+	WorkspacesChanged bool                 `json:"workspacesChanged"`
+	WorkspaceChoices  []WorkspaceChoiceDTO `json:"workspaceChoices"`
+	Placeholders      []WorkspaceFolderDTO `json:"placeholders"`
+	// WorkspaceMembers lists the clones ("source/repo") a container's
+	// workspace file lists inside it.
+	WorkspaceMembers []string `json:"workspaceMembers"`
+	Error            string   `json:"error,omitempty"`
+}
+
+// WorkspaceChoiceDTO is a container whose root holds several workspace
+// files and no pick yet.
+type WorkspaceChoiceDTO struct {
+	Source string   `json:"source"`
+	Repo   string   `json:"repo"`
+	Files  []string `json:"files"`
+}
+
+// WorkspaceFolderDTO is a folder a container's workspace lists that is not
+// cloned yet. Parent is the container's "source/repo" key.
+type WorkspaceFolderDTO struct {
+	Parent string `json:"parent"`
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+}
+
+// emptyReconcile is a pass with no results, its lists non-nil for the
+// frontend.
+func emptyReconcile(errText string) ReconcileDTO {
+	return ReconcileDTO{Unmatched: []OrphanRepoDTO{}, Ignored: []OrphanRepoDTO{},
+		WorkspaceChoices: []WorkspaceChoiceDTO{}, Placeholders: []WorkspaceFolderDTO{}, WorkspaceMembers: []string{}, Error: errText}
 }
 
 // AdoptRequestDTO asks to adopt the clone at Path into Account.
@@ -116,18 +150,21 @@ func (a *App) Reconcile() ReconcileDTO {
 	ready := a.cfg != nil && a.cfgLoaded
 	a.mu.Unlock()
 	if !ready {
-		return ReconcileDTO{Unmatched: []OrphanRepoDTO{}, Ignored: []OrphanRepoDTO{}}
+		return emptyReconcile("")
 	}
 
+	choices, wsChanged, wsErr := a.syncWorkspaces()
 	res, err := a.scanConfig()
 	if err != nil {
 		a.mu.Unlock()
-		return ReconcileDTO{Unmatched: []OrphanRepoDTO{}, Ignored: []OrphanRepoDTO{}, Error: err.Error()}
+		return emptyReconcile(err.Error())
 	}
 	placed, changed := reconcile.Apply(a.cfg, res)
-	var saveErr error
+	saveErr := wsErr
 	if changed {
-		saveErr = a.saveConfig()
+		if err := a.saveConfig(); err != nil {
+			saveErr = err
+		}
 	}
 	setups := make([]repoSetup, 0, len(placed))
 	for _, p := range placed {
@@ -138,7 +175,12 @@ func (a *App) Reconcile() ReconcileDTO {
 	for _, s := range setups {
 		s.run()
 	}
-	out := ReconcileDTO{Adopted: len(placed), Relinked: len(res.Relink), Unmatched: []OrphanRepoDTO{}, Ignored: []OrphanRepoDTO{}}
+	out := emptyReconcile("")
+	out.Adopted, out.Relinked, out.WorkspacesChanged = len(placed), len(res.Relink), wsChanged
+	for _, c := range choices {
+		out.WorkspaceChoices = append(out.WorkspaceChoices, WorkspaceChoiceDTO{Source: c.Source, Repo: c.Repo, Files: c.Files})
+	}
+	out.Placeholders, out.WorkspaceMembers = a.workspaceTree()
 	for _, u := range res.Unmatched {
 		out.Unmatched = append(out.Unmatched, toOrphanDTO(u.OrphanRepo, u.Reason))
 	}
@@ -148,10 +190,47 @@ func (a *App) Reconcile() ReconcileDTO {
 	if saveErr != nil {
 		out.Error = saveErr.Error()
 	}
-	if changed && a.ctx != nil {
+	if (changed || wsChanged) && a.ctx != nil {
 		wailsrt.EventsEmit(a.ctx, "reconcile:done", out)
 	}
 	return out
+}
+
+// syncWorkspaces runs workspace.Sync on a snapshot without the lock, then
+// applies its changes to the live config and saves.
+func (a *App) syncWorkspaces() ([]workspace.Choice, bool, error) {
+	a.mu.Lock()
+	snap, err := a.cfg.Clone()
+	a.mu.Unlock()
+	if err != nil {
+		return nil, false, err
+	}
+	ws := workspace.Sync(snap)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !workspace.Apply(a.cfg, ws.Changes) {
+		return ws.Choices, false, nil
+	}
+	return ws.Choices, true, a.saveConfig()
+}
+
+// workspaceTree lists, for every container's workspace, the folders not
+// cloned yet and the clones it lists, reading disk without the lock.
+func (a *App) workspaceTree() ([]WorkspaceFolderDTO, []string) {
+	placeholders, members := []WorkspaceFolderDTO{}, []string{}
+	a.mu.Lock()
+	snap, err := a.cfg.Clone()
+	a.mu.Unlock()
+	if err != nil {
+		return placeholders, members
+	}
+	for _, p := range workspace.Placeholders(snap) {
+		placeholders = append(placeholders, WorkspaceFolderDTO{Parent: p.Parent.Source + "/" + p.Parent.Repo, Name: p.Name, Path: p.Path})
+	}
+	for _, r := range workspace.MemberRepos(snap) {
+		members = append(members, r.Source+"/"+r.Repo)
+	}
+	return placeholders, members
 }
 
 // AdoptClones adopts unmatched or ignored clones into the accounts I
@@ -163,7 +242,7 @@ func (a *App) AdoptClones(reqs []AdoptRequestDTO) ReconcileDTO {
 	if err != nil {
 		a.mu.Unlock()
 		a.reconcileMu.Unlock()
-		return ReconcileDTO{Unmatched: []OrphanRepoDTO{}, Ignored: []OrphanRepoDTO{}, Error: err.Error()}
+		return emptyReconcile(err.Error())
 	}
 	var setups []repoSetup
 	var errs []string

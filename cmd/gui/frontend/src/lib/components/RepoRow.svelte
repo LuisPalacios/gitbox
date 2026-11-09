@@ -9,9 +9,9 @@
     deleteMode: boolean;
     fetchingRepos: Record<string, boolean>;
     collapsedRepos: Set<string>;
-    tentativeContainers: Set<string>;
-    workspaceBusy: boolean;
-    openWsPopover: string | null;
+    // Containers ("source/repo") whose root holds several .code-workspace
+    // files and no pick yet.
+    workspaceChoices: Set<string>;
     revealLabel: string;
     configEditors: EditorInfo[];
     configProfiles: TerminalProfileInfo[];
@@ -28,14 +28,13 @@
     fetchRepo: (sourceKey: string, repoKey: string) => void;
     toggleActionMenu: (repoKey: string) => void;
     closeActionMenu: () => void;
-    toggleWsPopover: (key: string) => void;
-    openWorkspaceFromBadge: (wsKey: string) => Promise<void>;
     togglePRPopover: (key: string) => void;
     closePRPopover: () => void;
     sweepBranches: (sourceKey: string, repoKey: string) => void;
     openMoveRepo: (sourceKey: string, repoKey: string) => void;
     toggleContainer: (sourceKey: string, repoName: string) => Promise<void>;
     rescanContainer: () => Promise<void>;
+    chooseWorkspace: (sourceKey: string, repoName: string) => Promise<void>;
     toggleRepoCollapsed: (repoKey: string, descendants: string[]) => void;
     isContainerRepo: (sourceKey: string, repoName: string) => boolean;
     showAccountView: (accountKey: string) => void;
@@ -44,12 +43,12 @@
 
 <script lang="ts">
   // One clone of the repo list: the Simple row (dot, short name, its words,
-  // one button, launchers, ⋯) or the Advanced row (status shape, workspace
-  // and PR badges, branch, its words, launchers, fetch and ⋯).
+  // one button, launchers, ⋯) or the Advanced row (status shape, PR
+  // badges, branch, its words, launchers, fetch and ⋯).
   import { fade } from 'svelte/transition';
   import { bridge } from '../bridge';
   import { pushNotice, errorText } from '../notices';
-  import { accounts, repoStates, prSettings, prsByAccount, lookupPRSummary, workspaces, workspaceMemberships, isSynced, themeStore } from '../stores';
+  import { accounts, repoStates, prSettings, prsByAccount, lookupPRSummary, sources, workspaceMembers, isSynced, themeStore } from '../stores';
   import { statusColor, simpleKind, simpleColor, rowBusy, rowGlyph, statusLabel, attentionRank, CALM_RANK, COUNT_BADGES } from '../status';
   import type { SimpleKind } from '../status';
   import { t } from '../i18n';
@@ -67,6 +66,8 @@
   export let depth: number;
   export let childCount: number;
   export let descendants: string[];
+  // How many of the children are not-yet-cloned workspace folders.
+  export let placeholders = 0;
   export let rowAccountKey: string;
   export let repoKey: string;
   export let isContainer: boolean;
@@ -84,9 +85,7 @@
   export let deleteMode: boolean;
   export let fetchingRepos: Record<string, boolean>;
   export let collapsedRepos: Set<string>;
-  export let tentativeContainers: Set<string>;
-  export let workspaceBusy: boolean;
-  export let openWsPopover: string | null;
+  export let workspaceChoices: Set<string>;
   export let revealLabel: string;
   export let configEditors: EditorInfo[];
   export let configProfiles: TerminalProfileInfo[];
@@ -100,14 +99,13 @@
   export let fetchRepo: (sourceKey: string, repoKey: string) => void;
   export let toggleActionMenu: (repoKey: string) => void;
   export let closeActionMenu: () => void;
-  export let toggleWsPopover: (key: string) => void;
-  export let openWorkspaceFromBadge: (wsKey: string) => Promise<void>;
   export let togglePRPopover: (key: string) => void;
   export let closePRPopover: () => void;
   export let sweepBranches: (sourceKey: string, repoKey: string) => void;
   export let openMoveRepo: (sourceKey: string, repoKey: string) => void;
   export let toggleContainer: (sourceKey: string, repoName: string) => Promise<void>;
   export let rescanContainer: () => Promise<void>;
+  export let chooseWorkspace: (sourceKey: string, repoName: string) => Promise<void>;
   export let toggleRepoCollapsed: (repoKey: string, descendants: string[]) => void;
   export let isContainerRepo: (sourceKey: string, repoName: string) => boolean;
   export let showAccountView: (accountKey: string) => void;
@@ -117,6 +115,13 @@
   $: label = statusLabel(state, simple);
   // Nested clones below a folded parent, and how many of them need me.
   $: belowNeed = descendants.filter((d) => { const st = $repoStates[d]; return !!st && attentionRank(st.status, st.isDefault) < CALM_RANK; }).length;
+  // The .code-workspace file a container opens with, and whether I still
+  // have to pick one among several.
+  $: wsFile = $sources[rowSourceKey]?.repos[repoName]?.workspace || '';
+  $: wsPending = workspaceChoices.has(repoKey);
+  // A container with a workspace file and the clones that file lists show
+  // their names in the workspace colour: what VS Code opens.
+  $: inWorkspace = (isContainer && !!wsFile) || $workspaceMembers.has(repoKey);
   // A folded parent hiding clones that need me stays at full strength.
   $: calm = fadeHealthy && !busy && isSynced(state) && !(belowNeed > 0 && collapsedRepos.has(repoKey));
 
@@ -136,10 +141,23 @@
     closeActionMenu();
   }
 
+  // A container with a workspace file opens it in VS Code-family editors,
+  // which understand .code-workspace; other editors get the folder.
   async function openRepoInApp(repoKey: string, command: string) {
     const path = requireRepoPath(repoKey, $t('notice.openEditor'));
-    if (path) await bridge.openInApp(path, command);
+    if (path) await bridge.openInApp(wsFile && opensCodeWorkspace(command) ? joinPath(path, wsFile) : path, command);
     closeActionMenu();
+  }
+
+  // opensCodeWorkspace reports whether an editor command is VS Code or a
+  // fork of it, matched on the executable's base name.
+  function opensCodeWorkspace(command: string): boolean {
+    const base = (command.split(/[\\/]/).pop() || '').toLowerCase().replace(/\.(exe|cmd|bat)$/, '');
+    return ['code', 'code-insiders', 'codium', 'vscodium', 'cursor', 'windsurf'].includes(base);
+  }
+
+  function joinPath(dir: string, file: string): string {
+    return dir + (dir.includes('\\') && !dir.includes('/') ? '\\' : '/') + file;
   }
 
   // openRepoProfile is the v2.1 launcher entry point — resolves the repo's
@@ -181,15 +199,6 @@
     closeActionMenu();
   }
 
-  // isTentativeContainer reports whether the backend suggested this repo as a
-  // container. The set is passed in (not read off the closure) so Svelte tracks
-  // it as a reactive dependency of the row markup. Callers gate this behind the
-  // reactive `isContainer` check, so an already-flagged container never shows
-  // the hint.
-  function isTentativeContainer(sourceKey: string, repoName: string, tc: Set<string>): boolean {
-    return tc.has(`${sourceKey}/${repoName}`);
-  }
-
   // repoCanMove is the kebab-enable predicate:
   // only a cloned, clean, in-sync repo can be moved. Returns a string
   // tooltip when disabled, or '' when enabled.
@@ -199,19 +208,6 @@
     if (state.status !== 'clean') return $t('row.moveNotClean');
     if ((state.ahead ?? 0) > 0 || (state.behind ?? 0) > 0) return $t('row.moveNotInSync');
     return '';
-  }
-
-  // Lookup the ordered list of workspaces a given clone belongs to.
-  // Returns an empty array when the clone has no memberships, so the
-  // caller can cheaply check `.length > 0` to hide/show UI.
-  function membershipsFor(repoKey: string): string[] {
-    return $workspaceMemberships[repoKey] || [];
-  }
-
-  function workspaceLabel(wsKey: string): string {
-    const ws = $workspaces[wsKey];
-    if (!ws) return wsKey;
-    return ws.name && ws.name !== wsKey ? `${ws.name} (${wsKey})` : wsKey;
   }
 
   // Build the provider-native "all PRs" URL for a given repo full name.
@@ -276,7 +272,7 @@
   {#if parentLabel}<span class="container-badge" title={parentLabel}>{$t('repo.inParent', { name: parentLabel.split('/').pop() || parentLabel })}</span>{/if}
   {#if childCount > 0 && collapsedRepos.has(repoKey)}
     <span class="collapse-summary collapse-summary-row">
-      {$t('collapse.below', { n: descendants.length })}{#if belowNeed > 0}{' · '}<span style="color:{sc('dirty')}">{$t(belowNeed === 1 ? 'collapse.needYouOne' : 'collapse.needYou', { n: belowNeed })}</span>{/if}
+      {$t('collapse.below', { n: descendants.length + placeholders })}{#if belowNeed > 0}{' · '}<span style="color:{sc('dirty')}">{$t(belowNeed === 1 ? 'collapse.needYouOne' : 'collapse.needYou', { n: belowNeed })}</span>{/if}
     </span>
   {/if}
 {/snippet}
@@ -375,11 +371,11 @@
     {@const kindColor = simpleColor(kind, $themeStore)}
     <span class="dot" class:spinning={busy} style="color: {kindColor}">{busy ? '↻' : '●'}</span>
     {#if childCount > 0}
-      <span class="repo-name" title={repoName}><span class="repo-name-toggle" role="button" tabindex="-1"
+      <span class="repo-name" class:ws-member={inWorkspace} title={repoName}><span class="repo-name-toggle" role="button" tabindex="-1"
         on:click={(e) => { e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants); }}
         on:keydown={onActivateKey(() => toggleRepoCollapsed(repoKey, descendants))}>{shortName(repoName)}</span></span>
     {:else}
-      <span class="repo-name" title={repoName}>{shortName(repoName)}</span>
+      <span class="repo-name" class:ws-member={inWorkspace} title={repoName}>{shortName(repoName)}</span>
     {/if}
     {@render rowTags()}
     {#if state.status === 'syncing' || state.status === 'cloning'}
@@ -423,52 +419,24 @@
     {/if}
   {:else}
   <span class="dot" class:spinning={busy} style="color: {sc(state.status)}">{rowGlyph(state.status, !!fetchingRepos[repoKey])}</span>
-  {#if membershipsFor(repoKey).length > 0}
-    <div class="ws-badge-wrap">
-      <button class="ws-badge"
-              title={$t('row.memberOf', { list: membershipsFor(repoKey).map(workspaceLabel).join(', ') })}
-              on:click|stopPropagation={() => toggleWsPopover(repoKey)}>
-        <svg class="ws-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
-          <path d="M2 5.5 L8 2.5 L14 5.5 L8 8.5 Z"/>
-          <path d="M2 8.5 L8 11.5 L14 8.5"/>
-          <path d="M2 11.5 L8 14.5 L14 11.5"/>
-        </svg>
-      </button>
-      {#if openWsPopover === repoKey}
-        <div class="ws-popover" role="presentation" transition:fade={{ duration: 80 }} on:click|stopPropagation on:keydown|stopPropagation>
-          <div class="ws-popover-title">{$t('workspace.openWorkspace')}</div>
-          {#each membershipsFor(repoKey) as wsKey}
-            <button class="ws-popover-item"
-                    on:click={() => openWorkspaceFromBadge(wsKey)}
-                    disabled={workspaceBusy}>
-              <svg class="ws-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
-                <path d="M2 5.5 L8 2.5 L14 5.5 L8 8.5 Z"/>
-                <path d="M2 8.5 L8 11.5 L14 8.5"/>
-                <path d="M2 11.5 L8 14.5 L14 11.5"/>
-              </svg>
-              {workspaceLabel(wsKey)}
-            </button>
-          {/each}
-        </div>
-      {/if}
-    </div>
-  {/if}
   {#if childCount > 0}
     <!-- The name folds its clones too. -->
-    <span class="repo-name"><span class="repo-name-toggle" role="button" tabindex="-1"
+    <span class="repo-name" class:ws-member={inWorkspace}><span class="repo-name-toggle" role="button" tabindex="-1"
       title={collapsedRepos.has(repoKey) ? $t('collapse.expand') : $t('collapse.collapse')}
       on:click={(e) => { e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants); }}
       on:keydown={onActivateKey(() => toggleRepoCollapsed(repoKey, descendants))}>{repoName}</span></span>
   {:else}
-    <span class="repo-name">{repoName}</span>
+    <span class="repo-name" class:ws-member={inWorkspace}>{repoName}</span>
   {/if}
   {@render rowTags()}
   {#if isContainer}
-    <span class="container-icon" title={$t('row.containerTip')} aria-label={$t('row.containerTip')} role="img">📁</span>
-  {:else if isTentativeContainer(rowSourceKey, repoName, tentativeContainers)}
-    <button class="tentative-container-badge"
-            on:click|stopPropagation={() => toggleContainer(rowSourceKey, repoName)}
-            title={$t('row.onboardTip')}>{$t('row.onboard')}</button>
+    {@const tip = wsFile ? $t('row.containerWsTip', { file: wsFile }) : $t('row.containerTip')}
+    <span class="container-icon" title={tip} aria-label={tip} role="img">📁</span>
+    {#if wsPending}
+      <button class="choose-workspace-badge"
+              on:click|stopPropagation={() => chooseWorkspace(rowSourceKey, repoName)}
+              title={$t('row.chooseWorkspaceTip')}>{$t('row.chooseWorkspace')}</button>
+    {/if}
   {/if}
   {#if state.branch === '(detached)'}
     <span class="branch-badge detached">{$t('repo.detached')}</span>
@@ -522,8 +490,9 @@
               moveEnabled={repoMoveDisabledReason(state) === ''}
               moveDisabledReason={repoMoveDisabledReason(state)}
               isContainer={isContainerRepo(rowSourceKey, repoName)}
-              onToggleContainer={() => { closeActionMenu(); toggleContainer(rowSourceKey, repoName); }}
+              onToggleContainer={wsFile || wsPending ? null : () => { closeActionMenu(); toggleContainer(rowSourceKey, repoName); }}
               onRescanContainer={() => { closeActionMenu(); rescanContainer(); }}
+              onChooseWorkspace={wsFile || wsPending ? () => { closeActionMenu(); chooseWorkspace(rowSourceKey, repoName); } : null}
               onDelete={() => { closeActionMenu(); askDelete(rowSourceKey, repoName, state.status); }}
             />
           </div>
@@ -549,15 +518,15 @@
     border-radius: 4px; padding: 0 5px; margin-left: 6px; white-space: nowrap;
     flex: 0 0 auto;
   }
-  /* Actionable hint on a repo that looks like a container but isn't flagged.
-     Clicking it flags the container (which scans + opens the adopt modal). */
-  .tentative-container-badge {
+  /* Actionable hint on a container whose root holds several workspace files
+     and no pick: clicking it opens the picker. */
+  .choose-workspace-badge {
     font-size: 10px; color: var(--accent, #4B95E9);
     border: 1px solid var(--accent, #4B95E9); background: transparent;
     border-radius: 4px; padding: 0 5px; margin-left: 6px; white-space: nowrap;
     flex: 0 0 auto; cursor: pointer; line-height: 1.6;
   }
-  .tentative-container-badge:hover {
+  .choose-workspace-badge:hover {
     background: var(--accent, #4B95E9); color: #fff;
   }
   .collapse-chevron-btn {
@@ -579,6 +548,7 @@
   .repo-row-nested { padding-left: calc(10px + var(--depth) * 22px); }
   .dot { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; }
   .repo-name { font-size: 13px; color: var(--text-repo); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .repo-name.ws-member { color: var(--text-workspace); font-weight: 500; }
   .progress-track { width: 110px; height: 4px; background: var(--ring-bg); border-radius: 2px; overflow: hidden; flex-shrink: 0; }
   .progress-fill { height: 100%; border-radius: 2px; transition: width 0.12s ease-out; }
   .progress-pct { font-size: 11px; width: 32px; text-align: right; flex-shrink: 0; font-weight: 600; }
@@ -657,83 +627,4 @@
   /* ── Repo detail panel ── */
   .repo-row-clickable { cursor: pointer; }
   .repo-row-clickable:hover { background: var(--bg-row-hover); }
-  /* ── Workspaces (issue #27 / #49) ────────────────────────────────── */
-
-  /* Small membership count chip on clone rows. Sits beside the branch
-     badge and stays subtle — presence of the chip at all is already the
-     signal the clone is in a workspace. */
-  /* Negative margins claw back the .repo-row `gap: 10px` on each side so
-     the badge sits visually flush against the status dot and the repo
-     name, instead of looking like a 50px-wide gutter. */
-  .ws-badge-wrap {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    flex: 0 0 auto;
-    margin-left: -6px;
-    margin-right: -4px;
-  }
-  /* Now an action button: clicking it opens the workspace popover. The icon
-     alone signals membership; the count is gone (the popover lists the
-     workspaces by name). Compact footprint — one emoji glyph, tight padding,
-     no border. */
-  .ws-badge {
-    line-height: 1;
-    padding: 2px 3px;
-    border: none;
-    background: transparent;
-    color: var(--text-muted);
-    cursor: pointer;
-    border-radius: 4px;
-    transition: background 0.12s, color 0.12s;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .ws-badge:hover { background: var(--bg-hover); color: var(--text-primary); }
-  .ws-icon { display: block; }
-  .ws-badge:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 1px; }
-  /* Anchor ABOVE the badge — bottom rows would otherwise spawn the popover
-     beneath the visible viewport and need scrolling to reveal it. The
-     popover is at most 3-5 entries tall so opening upward fits comfortably
-     even for rows near the very top of the cards area. */
-  .ws-popover {
-    position: absolute;
-    bottom: calc(100% + 4px);
-    left: 0;
-    z-index: 30;
-    min-width: 200px;
-    max-width: 320px;
-    padding: 6px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .ws-popover-title {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: var(--text-muted);
-    padding: 4px 8px 2px;
-  }
-  .ws-popover-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 8px;
-    border: none;
-    background: transparent;
-    color: var(--text-primary);
-    font-size: 12px;
-    text-align: left;
-    border-radius: 6px;
-    cursor: pointer;
-  }
-  .ws-popover-item:hover:not(:disabled) { background: var(--bg-hover); }
-  .ws-popover-item:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

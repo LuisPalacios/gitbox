@@ -19,7 +19,7 @@ A partir de ahora cada `git push` ejecuta los checks. Para saltarlo temporalment
 Hay tres niveles de pruebas, cada uno con algo más de preparación que el anterior:
 
 - **Pruebas unitarias de paquete** — las pruebas bajo `pkg/`. Se ejecutan al instante, no necesitan setup y prueban lógica en aislamiento sin tocar la red ni ningún proveedor. `pkg/ops/ops_test.go` cubre las operaciones de la aplicación contra un `XDG_CONFIG_HOME` temporal, un `GIT_CONFIG_GLOBAL` temporal y una carpeta SSH temporal, así que nada cambia en el host real.
-- **Pruebas de GUI** — las pruebas Go bajo `cmd/gui/`. Cubren la lógica del lado de Wails que no necesita ventana: lanzamiento de terminales y de AI harness, acciones de navegador y de carpeta, workspaces y contenedores multi-repo. Necesitan el frontend compilado en `cmd/gui/frontend/dist`, porque el paquete lo embebe.
+- **Pruebas de GUI** — las pruebas Go bajo `cmd/gui/`. Cubren la lógica del lado de Wails que no necesita ventana: lanzamiento de terminales y de AI harness, acciones de navegador y de carpeta, y contenedores multi-repo con sus archivos de workspace. Necesitan el frontend compilado en `cmd/gui/frontend/dist`, porque el paquete lo embebe.
 - **Prueba de escenario** — `TestScenario_FullLifecycle` en `pkg/ops/scenario_test.go` recorre el ciclo de vida completo contra un proveedor real: añadir cuenta → comprobar credenciales → discover → clone → status → pull y fetch → editar cuenta + reconfigurar clone → CRUD de mirror → reclonar → renombrar → borrar. Necesita el fixture de pruebas descrito más abajo.
 
 ## Antes de empezar: el build del frontend
@@ -167,7 +167,7 @@ El flag `--test-mode` lee `test-gitbox.json` (buscando hacia arriba desde el dir
 
 ### Comprobaciones de regresión del arranque
 
-Ejecuto las pruebas de instantánea de arranque y descubrimiento de workspaces de `cmd/gui` para verificar la anidación antes de que existan los clones, los datos de respuesta independientes, el acceso a config durante un escaneo bloqueado, la conservación de ediciones concurrentes y los reintentos cuando cambian las entradas del descubrimiento. Mido por separado la construcción de la instantánea con `go test ./cmd/gui/ -run '^$' -bench BenchmarkStartupSnapshot -benchmem`. Este benchmark mide el trabajo del backend, no el tiempo de arranque visible.
+Ejecuto las pruebas de instantánea de arranque de `cmd/gui` para verificar la anidación antes de que existan los clones y los datos de respuesta independientes. Mido por separado la construcción de la instantánea con `go test ./cmd/gui/ -run '^$' -bench BenchmarkStartupSnapshot -benchmem`. Este benchmark mide el trabajo del backend, no el tiempo de arranque visible.
 
 Para medir el arranque interactivo, registro por separado el lanzamiento del proceso, la aparición de la ventana, las primeras filas configuradas y el estado completo, junto con la plataforma, el número de clones, la disposición de contenedores y el número de ejecuciones. Distingo los arranques nativos de producción de la navegación del navegador contra un backend `wails dev` ya en ejecución. Necesito un escritorio Windows interactivo para medir el renderizado de WebView2; los tiempos del backend por SSH no bastan para demostrar el objetivo de las primeras filas. Mantengo abiertos los objetivos sin medir hasta completar esa comprobación de escritorio.
 
@@ -249,7 +249,7 @@ Lanza `GitboxApp` en cada plataforma (`./scripts/run-commands.sh` imprime los co
 - [ ] La app abre; en Windows sin console flash
 - [ ] Primer arranque guiado con una config nueva (`XDG_CONFIG_HOME=<carpeta temporal vacía>` en macOS y Linux): carpeta → conectar (inicio de sesión con el navegador; **Use a token instead**; **Change details** conserva cualquier carpeta existente) → elegir proyectos → **Download**; la pantalla principal se abre en Simple y los repos elegidos se clonan. En Simple, **Conectar una cuenta** en la barra lateral ejecuta los mismos pasos de conectar y elegir; en Advanced, **Añadir cuenta** abre el formulario completo
 - [ ] Dashboard muestra la barra lateral (Requiere atención, Todos los repos, cuentas con logo, salud y conteo) y la vista seleccionada
-- [ ] Barra lateral: cambiar de vista (Requiere atención, Todos los repos, cada cuenta, Mirrors, Workspaces) funciona; el botón de arriba a la izquierda y ⌘B / Ctrl+B la pliegan al riel y la despliegan; por debajo de 780 px muestra el riel y el botón la abre sobre el contenido; la vista y el riel sobreviven a un reinicio
+- [ ] Barra lateral: cambiar de vista (Requiere atención, Todos los repos, cada cuenta, Mirrors) funciona; el botón de arriba a la izquierda y ⌘B / Ctrl+B la pliegan al riel y la despliegan; por debajo de 780 px muestra el riel y el botón la abre sobre el contenido; la vista y el riel sobreviven a un reinicio
 - [ ] Tarjeta de cuenta: tres líneas (marca de salud y nombre, palabras de salud y acción de arreglo, conteos con Buscar y + Crear en los dos modos); una credencial rota muestra su arreglo en la tarjeta y al principio de Requiere atención
 - [ ] Editar y renombrar cuenta
 - [ ] Credential setup para cada tipo (token/gcm/ssh)
@@ -261,7 +261,8 @@ Lanza `GitboxApp` en cada plataforma (`./scripts/run-commands.sh` imprime los co
 - [ ] Con dos raíces, el Clonar de una fila pregunta qué raíz y acaba ahí; Pull de todo no pregunta
 - [ ] Vista compacta y vuelta a la vista completa
 - [ ] Simple / Advanced: el interruptor de la barra superior (gris Simple, rojo Advanced) cambia de modo al instante; las filas en Simple solo muestran punto, nombre, frase de estado, Update o Download cuando hace falta, los iconos de IA / editor / terminal y ⋯; las filas en Advanced mantienen todo el detalle y muestran los mismos tres iconos antes del botón de fetch; los anillos de la cabecera en Advanced son compactos (icono, insignia de atención, tooltip al pasar el ratón, sin etiqueta); una config nueva acaba en Simple tras el onboarding
-- [ ] Contraer/expandir: la cabecera de cuenta y un clon padre (chevron o nombre) se pliegan y despliegan; los pliegues sobreviven a un reinicio; un chip de mirror o de workspace se abre en su tarjeta y vuelve a plegarse con un clic fuera o Escape
+- [ ] Contraer/expandir: la cabecera de cuenta y un clon padre (chevron o nombre) se pliegan y despliegan; los pliegues sobreviven a un reinicio; un chip de mirror se abre en su tarjeta y vuelve a plegarse con un clic fuera o Escape
+- [ ] Contenedores de workspace: un `.code-workspace` puesto en la raíz de un clon lo convierte en contenedor la próxima vez que la ventana recupera el foco, con sus clones anidados debajo y las carpetas de workspace que faltan como filas atenuadas **sin clonar**; un segundo archivo abre el selector; el botón de editor abre el workspace en VS Code
 ```
 
 ### Flujos de credenciales (interactivos, por plataforma)

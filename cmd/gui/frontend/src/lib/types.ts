@@ -50,6 +50,8 @@ export interface Repo {
   // Set only when the clone lives in a root other than its source's.
   root?: string;
   container?: boolean;
+  workspace?: string;
+  workspace_preferred?: string;
 }
 
 export interface SourceDTO {
@@ -129,39 +131,6 @@ export interface ConfigDTO {
   accounts: Record<string, Account>;
   sources: Record<string, SourceDTO>;
   mirrors: Record<string, MirrorDTO>;
-  workspaces: Record<string, WorkspaceDTO>;
-  workspaceOrder: string[];
-}
-
-// ── Workspaces (read-only discovered cache) ──
-
-export interface WorkspaceMemberDTO {
-  source: string;
-  repo: string;
-}
-
-export interface WorkspaceDTO {
-  name?: string;
-  file?: string;
-  members: WorkspaceMemberDTO[];
-  discovered?: boolean;
-}
-
-export interface WorkspaceListResult {
-  workspaces: Record<string, WorkspaceDTO>;
-  order: string[];
-}
-
-export interface DiscoverWorkspacesResult {
-  changed: boolean;
-  count: number;
-}
-
-// ── Multi-repo containers ──
-
-export interface TentativeContainerDTO {
-  source: string;
-  repo: string;
 }
 
 // CollapsedState is the GUI's layout state: folded source keys and
@@ -269,15 +238,32 @@ export interface ReconcileDTO {
   relinked: number;
   unmatched: OrphanRepoDTO[];
   ignored: OrphanRepoDTO[];
+  workspacesChanged: boolean;
+  workspaceChoices: WorkspaceChoiceDTO[];
+  placeholders: WorkspaceFolderDTO[];
+  workspaceMembers: string[];
   error?: string;
+}
+
+// A container whose root holds several .code-workspace files and no pick.
+export interface WorkspaceChoiceDTO {
+  source: string;
+  repo: string;
+  files: string[];
+}
+
+// A folder a container's workspace lists that is not cloned yet. parent is
+// the container's "source/repo" key; path is relative to it.
+export interface WorkspaceFolderDTO {
+  parent: string;
+  name: string;
+  path: string;
 }
 
 export interface AccountDeletionImpactDTO {
   account: string;
   sources: string[];
   mirrors: string[];
-  workspaces: string[];
-  workspace_members: number;
   repo_count: number;
   clone_count: number;
 }

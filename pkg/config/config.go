@@ -2,28 +2,26 @@
 package config
 
 // CurrentVersion is the config schema version this build reads and writes.
-// v4 replaced global.folder + global.extra_folders with the global.roots
+// v5 dropped the workspaces cache: a container clone now records its own
+// .code-workspace file in repo.workspace. v4 replaced global.folder + global.extra_folders with the global.roots
 // list and added source.root and repo.root (issue #149). v3 introduced
 // read-only workspaces (discovered cache only), nested-scan depth and the
 // repo container flag. v2 and v3 files migrate on load (see decode).
-const CurrentVersion = 4
+const CurrentVersion = 5
 
-// Config represents the top-level gitbox configuration (v4 format).
+// Config represents the top-level gitbox configuration (v5 format).
 type Config struct {
-	Schema     string               `json:"$schema,omitempty"`
-	Version    int                  `json:"version"`
-	Global     GlobalConfig         `json:"global"`
-	Accounts   map[string]Account   `json:"accounts"`
-	Sources    map[string]Source    `json:"sources"`
-	Mirrors    map[string]Mirror    `json:"mirrors,omitempty"`
-	Workspaces map[string]Workspace `json:"workspaces,omitempty"`
+	Schema   string             `json:"$schema,omitempty"`
+	Version  int                `json:"version"`
+	Global   GlobalConfig       `json:"global"`
+	Accounts map[string]Account `json:"accounts"`
+	Sources  map[string]Source  `json:"sources"`
+	Mirrors  map[string]Mirror  `json:"mirrors,omitempty"`
 
 	// SourceOrder preserves the JSON key order for deterministic iteration.
 	SourceOrder []string `json:"-"`
 	// MirrorOrder preserves the JSON key order for deterministic iteration.
 	MirrorOrder []string `json:"-"`
-	// WorkspaceOrder preserves the JSON key order for deterministic iteration.
-	WorkspaceOrder []string `json:"-"`
 }
 
 // OrderedSourceKeys returns source keys in JSON order (falling back to map order).
@@ -368,6 +366,12 @@ type Repo struct {
 	// its working tree (up to Global.NestedScanDepth) to discover and onboard
 	// nested clones cloned there by the user's own tooling.
 	Container bool `json:"container,omitempty"`
+	// Workspace is the .code-workspace file, relative to the clone root, that
+	// a container opens with. pkg/workspace.Sync keeps it in step with disk.
+	Workspace string `json:"workspace,omitempty"`
+	// WorkspacePreferred is the file I picked among several. Sync uses it
+	// whenever it is at the root and remembers it while it is missing.
+	WorkspacePreferred string `json:"workspace_preferred,omitempty"`
 }
 
 // EffectiveCredentialType returns the credential type for this repo.
@@ -425,42 +429,6 @@ type MirrorRepo struct {
 	TargetRepo string `json:"target_repo,omitempty"` // target full name; defaults to same as key
 	LastSync   string `json:"last_sync,omitempty"`   // RFC3339 from last known sync
 	Error      string `json:"error,omitempty"`
-}
-
-// Workspace is a discovered VSCode .code-workspace file. Workspaces are
-// read-only in gitbox: they are discovered on disk and cached here, never
-// created or generated. The map key in Config.Workspaces is the workspace ID.
-type Workspace struct {
-	Name       string            `json:"name,omitempty"`       // human-friendly display name
-	File       string            `json:"file,omitempty"`       // absolute path to the .code-workspace file on disk
-	Members    []WorkspaceMember `json:"members"`              // ordered list of member clones resolved from the file
-	Discovered bool              `json:"discovered,omitempty"` // always true — kept for forward/back compat of the cache
-}
-
-// WorkspaceMember references a single clone (by source + repo) inside a workspace.
-type WorkspaceMember struct {
-	Source string `json:"source"`
-	Repo   string `json:"repo"`
-}
-
-// OrderedWorkspaceKeys returns workspace keys in JSON order (falling back to map order).
-func (c *Config) OrderedWorkspaceKeys() []string {
-	if len(c.WorkspaceOrder) > 0 {
-		return c.WorkspaceOrder
-	}
-	keys := make([]string, 0, len(c.Workspaces))
-	for k := range c.Workspaces {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
-// EffectiveName returns Name if set, otherwise the workspace key.
-func (w *Workspace) EffectiveName(key string) string {
-	if w.Name != "" {
-		return w.Name
-	}
-	return key
 }
 
 // GetAccount resolves the account for a source. Returns nil if not found.

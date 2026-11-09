@@ -6,6 +6,7 @@
   import RepoRow from './RepoRow.svelte';
   import type { RowProps } from './RepoRow.svelte';
   import RepoDetail from './RepoDetail.svelte';
+  import PlaceholderRow from './PlaceholderRow.svelte';
   import type { RepoRow as TreeRow } from '../repo-tree';
 
   export let rows: TreeRow[];
@@ -22,14 +23,18 @@
   $: ({ expandedRepo, repoDetail, detailLoading, ...shared } = rowProps);
 </script>
 
-{#each rows as { sourceKey: rowSourceKey, repoName, depth, childCount, descendants } (`${rowSourceKey}/${repoName}`)}
+{#each rows as { key, sourceKey: rowSourceKey, repoName, depth, childCount, descendants, placeholders, placeholder } (key)}
+  {#if placeholder}
+    <PlaceholderRow {placeholder} {depth} />
+  {:else}
   {@const repoKey = `${rowSourceKey}/${repoName}`}
   {@const state = $repoStates[repoKey] || { status: 'unknown' as const, progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
-  <RepoRow {...shared} sourceKey={groupSource || rowSourceKey} {rowSourceKey} {repoName} {depth} {childCount} {descendants}
+  <RepoRow {...shared} sourceKey={groupSource || rowSourceKey} {rowSourceKey} {repoName} {depth} {childCount} {descendants} {placeholders}
     rowAccountKey={$sources[rowSourceKey]?.account || rowSourceKey} {repoKey}
     isContainer={!!$sources[rowSourceKey]?.repos[repoName]?.container} {state} rowOpensDetail={opensDetail(state.status)}
     {showAccount} parentLabel={parentLabels[repoKey] || ''} {fadeHealthy} />
   {#if expandedRepo === repoKey}
     <RepoDetail simple={shared.simple} {state} {repoDetail} {detailLoading} />
+  {/if}
   {/if}
 {/each}

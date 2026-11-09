@@ -18,13 +18,10 @@
   let deleteAcctInput = '';
   let deleteAcctError = '';
   // Cascade impact from the backend — populated on modal open so the warning
-  // step lists every mirror and workspace-member that will be pruned along
-  // with the account. Workspace entries themselves survive even if emptied.
+  // step lists every mirror that will be removed along with the account.
   let deleteAcctImpact: {
     sources: string[];
     mirrors: string[];
-    workspaces: string[];
-    workspaceMembers: number;
     repoCount: number;
     cloneCount: number;
   } | null = null;
@@ -40,8 +37,6 @@
       deleteAcctImpact = {
         sources: dto.sources || [],
         mirrors: dto.mirrors || [],
-        workspaces: dto.workspaces || [],
-        workspaceMembers: dto.workspace_members || 0,
         repoCount: dto.repo_count || 0,
         cloneCount: dto.clone_count || 0,
       };
@@ -119,16 +114,6 @@
               <ul style="margin: 4px 0 0 18px;">
                 {#each deleteAcctImpact.mirrors as m}
                   <li><code>{m}</code></li>
-                {/each}
-              </ul>
-            {/if}
-            {#if deleteAcctImpact.workspaces.length > 0}
-              <p class="delete-warning" style="margin-top: 8px;">
-                {$t(`deleteAccount.members${deleteAcctImpact.workspaceMembers !== 1 ? 'N' : 'One'}Workspaces${deleteAcctImpact.workspaces.length !== 1 ? 'N' : 'One'}`, { n: deleteAcctImpact.workspaceMembers })}
-              </p>
-              <ul style="margin: 4px 0 0 18px;">
-                {#each deleteAcctImpact.workspaces as w}
-                  <li><code>{w}</code></li>
                 {/each}
               </ul>
             {/if}

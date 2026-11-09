@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/LuisPalacios/gitbox/pkg/adopt"
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -71,26 +72,42 @@ func (a *App) RepoNesting() map[string]string {
 	return out
 }
 
-// TentativeContainerDTO names a managed repo that has a .code-workspace at its
-// root but is not yet flagged a container — a suggestion for the user.
-type TentativeContainerDTO struct {
-	Source string `json:"source"`
-	Repo   string `json:"repo"`
+// SetRepoWorkspace records which .code-workspace file at a container's root
+// it opens with, remembered as my preferred one, and persists. The file must
+// be at the clone root.
+func (a *App) SetRepoWorkspace(sourceKey, repoKey, file string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	src, ok := a.cfg.Sources[sourceKey]
+	if !ok {
+		return fmt.Errorf("unknown source %q", sourceKey)
+	}
+	repo, ok := src.Repos[repoKey]
+	if !ok {
+		return fmt.Errorf("unknown repo %q in source %q", repoKey, sourceKey)
+	}
+	if !slices.Contains(workspace.RootFiles(status.RepoPath(a.cfg, sourceKey, repoKey, repo)), file) {
+		return fmt.Errorf("%s is not a workspace file at the root of %s", file, repoKey)
+	}
+	repo.Container, repo.Workspace, repo.WorkspacePreferred = true, file, file
+	src.Repos[repoKey] = repo
+	return a.saveConfig()
 }
 
-// TentativeContainers returns repos that look like multi-repo parents (they
-// hold a .code-workspace) but are not yet flagged Container.
-func (a *App) TentativeContainers() []TentativeContainerDTO {
+// RepoWorkspaceFiles lists the .code-workspace files at a clone's root.
+func (a *App) RepoWorkspaceFiles(sourceKey, repoKey string) []string {
 	a.mu.Lock()
-	snapshot := workspace.DiscoverySnapshot(a.cfg)
+	repo, ok := a.cfg.Sources[sourceKey].Repos[repoKey]
+	dir := status.RepoPath(a.cfg, sourceKey, repoKey, repo)
 	a.mu.Unlock()
-
-	refs := workspace.TentativeContainers(snapshot)
-	out := make([]TentativeContainerDTO, 0, len(refs))
-	for _, r := range refs {
-		out = append(out, TentativeContainerDTO{Source: r.Source, Repo: r.Repo})
+	if !ok {
+		return []string{}
 	}
-	return out
+	if files := workspace.RootFiles(dir); files != nil {
+		return files
+	}
+	return []string{}
 }
 
 // ─── On-demand folder scan + custom-destination adopt ──────────────────────

@@ -115,11 +115,11 @@ La barra lateral de la izquierda elige qué muestra el área principal:
 - **Más** — bajo el separador inferior, todo lo que no es una cuenta:
   - **Añadir cuenta** (Simple: **Conectar una cuenta**) — consulta el [Paso 2](#paso-2-añadir-cuentas).
   - **Encontrados en disco** — aparece cuando gitbox encuentra clones en disco que no ha podido ubicar por su cuenta, con cuántos son, o cuando he ignorado alguno, y abre **Clones sin ubicar** (consulta [Clones encontrados en disco](#clones-encontrados-en-disco)).
-  - **Mirrors** y **Workspaces**, solo en Advanced.
+  - **Mirrors**, solo en Advanced.
 
 El botón de arriba a la izquierda, o ⌘B en macOS y Ctrl+B en el resto, pliega la barra lateral a un riel de iconos. El riel mantiene los logos de los proveedores con su marca de salud y su conteo de atención; al pasar el ratón sobre uno se ven el nombre de la cuenta y su salud, y un clic cambia a ella. En una ventana de menos de 780 px la barra lateral siempre se muestra como el riel, y el botón abre la barra lateral completa sobre el contenido hasta que elijo una vista.
 
-Gitbox recuerda la última vista y la barra lateral plegada entre reinicios (`global.collapsed.view` y `global.collapsed.sidebar` en `gitbox.json`). Si esa cuenta ya no existe, o Simple no puede mostrar Mirrors o Workspaces, se abre Requiere atención en su lugar. Renombrar una cuenta conserva su vista.
+Gitbox recuerda la última vista y la barra lateral plegada entre reinicios (`global.collapsed.view` y `global.collapsed.sidebar` en `gitbox.json`). Si esa cuenta ya no existe, o Simple no puede mostrar Mirrors, se abre Requiere atención en su lugar. Renombrar una cuenta conserva su vista.
 
 ### Entender la tarjeta de cuenta
 
@@ -283,19 +283,29 @@ Bajo las tarjetas de mirror, cada grupo se expande en una lista de detalle con r
 - Botón **Setup** para repos que todavía no se han configurado mediante API
 - Botón **+ Repo** para añadir repos nuevos al grupo
 
-## Paso 6: workspaces (solo lectura)
+## Paso 6: workspaces de VS Code y contenedores multi-repo
 
-La vista **Workspaces**, bajo **Más** en la barra lateral en Advanced, lista los archivos `.code-workspace` de VS Code descubiertos. Los workspaces son de solo lectura: la GUI descubre los archivos existentes, los lista con sus clones miembro resueltos y abre uno en mi editor. Nunca los crea, edita, genera ni borra: los archivos son míos. Cada entrada tiene un botón **Abrir** que abre el `.code-workspace` en el primer editor de `global.editors`; el botón **Descubrir** de la vista reescanea bajo demanda.
+Un **contenedor multi-repo** es un clon gestionado que mantiene otros clones anidados en su árbol de trabajo, por ejemplo un repo de proyecto cuyo `.code-workspace` agrupa varios clones hermanos. Gitbox no tiene una vista de workspaces aparte: un workspace vive en la lista de clones, en el contenedor que lo contiene. Gitbox nunca crea, edita ni borra archivos `.code-workspace`: son míos.
 
-### Auto-descubrimiento al arrancar
+### Los archivos de workspace crean contenedores
 
-Cuando dejo un archivo `*.code-workspace` bajo cualquier raíz de clonado, o traigo uno desde otra máquina, la GUI lo recoge: la lista en caché aparece al instante al arrancar y luego una pasada en segundo plano la refresca, actualizando la vista si algo cambió. Discovery recorre cada raíz de `global.roots` en busca de archivos `*.code-workspace`. Las carpetas de cada archivo se resuelven de vuelta a clones conocidos por coincidencia deepest-prefix, y la caché de `gitbox.json` solo se reescribe cuando algo cambió.
+Cuando un clon tiene un archivo `.code-workspace` en su raíz, gitbox lo convierte en contenedor por su cuenta y registra ese archivo en `repo.workspace`. Si la raíz contiene dos o más, gitbox me pregunta con cuál se abre el contenedor; hasta que elijo, la fila muestra un aviso **elegir workspace**, y el menú ⋯ ofrece **Elegir workspace…** para cambiarlo más tarde. Gitbox recuerda el archivo que elegí en `repo.workspace_preferred`: si desaparece, otro archivo de la raíz ocupa su lugar, y cuando vuelve el contenedor lo abre de nuevo sin preguntar. Un icono 📁 marca un contenedor, y al pasar el ratón sobre él se ve el nombre de su archivo de workspace.
 
-### Clones no estándar y contenedores multi-repo
+Gitbox comprueba al arrancar, al recuperar el foco la ventana, tras un Fetch all manual y tras cambiar las raíces de clonado. Un clon que ayer no tenía workspace se convierte en contenedor la próxima vez que vuelvo a gitbox después de que aparezca el archivo. Si el archivo desaparece, gitbox borra `repo.workspace` y mantiene el contenedor.
 
-Un **contenedor multi-repo** es un clon gestionado que mantiene otros clones anidados en su árbol de trabajo (por ejemplo, un repo de proyecto cuyo `.code-workspace` agrupa varios clones hermanos). Cuando un clon parece serlo — tiene un `.code-workspace` en su raíz pero aún no está marcado — su fila muestra un aviso inline **onboard nested clones**. Al hacer clic, marca el clon como contenedor, escanea su árbol de trabajo y abre el modal de adopción con los clones anidados que encuentra; tú confirmas cuáles incorporar. Los clones anidados se adoptan en el lugar bajo su cuenta/org real (se guardan con una `clone_folder` absoluta dentro del contenedor, nunca se reubican), y el aviso se reemplaza por un icono 📁; al pasar el ratón indica que es un contenedor.
+### Clones bajo un contenedor
 
-También puedes gestionarlo desde el menú ⋯ de la fila del repo, bajo **Mantenimiento** — **Mark as multi-repo container**, **Unmark as multi-repo container** y **Re-scan for nested clones** (visible una vez que el clon es contenedor) — o con la casilla **Multi-repo container** del panel de detalle del repo. El diálogo **Raíces de clonado** de Settings fija la **profundidad de escaneo anidado** (cuántos niveles desciende Gitbox por debajo de un contenedor, por defecto 1: los hijos inmediatos del contenedor; súbela para alcanzar clones anidados más profundos).
+Cada clon dentro del árbol de trabajo de un contenedor aparece debajo de él, sangrado, y se pliega con él. Gitbox los busca hasta la **profundidad de escaneo anidado** por debajo del contenedor, y en cada carpeta que lista el archivo de workspace del contenedor, a cualquier profundidad. Los clones anidados se adoptan en el lugar bajo su cuenta/org real, se guardan con una `clone_folder` absoluta dentro del contenedor y nunca se reubican. Una carpeta que el archivo de workspace lista dentro del contenedor y que todavía no está en disco aparece como una fila atenuada **sin clonar** con su ruta, salvo que esté dentro de otro clon, como un submódulo sin descargar. Las carpetas que el workspace lista fuera del contenedor mantienen su sitio normal bajo su propia cuenta.
+
+Los nombres de un contenedor con archivo de workspace, de los clones que ese archivo lista y de sus carpetas sin clonar aparecen en azul, así veo de un vistazo lo que abre VS Code. Un clon anidado que el workspace no lista mantiene el color normal.
+
+### Abrir un contenedor
+
+El botón de editor de un contenedor con archivo de workspace abre el archivo `.code-workspace`, no la carpeta, cuando el editor es VS Code o un fork suyo (VS Code Insiders, VSCodium, Cursor, Windsurf). Los demás editores abren la carpeta como siempre. Lo mismo vale para los editores del menú ⋯.
+
+### Contenedores sin archivo de workspace
+
+Sigo pudiendo marcar un clon sin archivo de workspace desde el menú ⋯ de la fila del repo, bajo **Mantenimiento** — **Marcar como contenedor multi-repo**, **Desmarcar como contenedor multi-repo** y **Volver a buscar clones anidados** (visible una vez que el clon es contenedor). Un contenedor con archivo de workspace no tiene la entrada Desmarcar: el archivo es lo que lo convierte en contenedor. El diálogo **Raíces de clonado** de Settings fija la **profundidad de escaneo anidado** (cuántos niveles desciende gitbox por debajo de un contenedor, por defecto 1: los hijos inmediatos del contenedor; súbela para alcanzar clones anidados más profundos).
 
 El layout estándar es `<root> / <account> / <org|user> / repo`. Un clon encontrado en ese sitio bajo cualquier raíz de clonado se adopta en el lugar bajo esa raíz. Un clon encontrado en otro sitio de una raíz también se añade donde está, con una `clone_folder` absoluta. Gitbox nunca mueve un clon.
 
@@ -316,7 +326,7 @@ En Simple, cada proyecto responde a una pregunta, "¿está a salvo mi trabajo?",
 
 Cada proyecto que está en este ordenador tiene tres botones de icono, tanto en Simple como en Advanced: mi primer AI harness, mi primer editor y mi perfil de terminal por defecto. Cada uno muestra el logo de la herramienta cuando gitbox lo conoce (Claude, Codex, Gemini, Cursor, VS Code, Zed y cada app de terminal que gitbox detecta) o un icono genérico, y su nombre al pasar el ratón. Los nombres se muestran sin el prefijo de la organización; al pasar el ratón sobre un nombre se ve completo. El menú ⋯ mantiene Open on the web, la carpeta, los editores, los AI harnesses y **Delete from this computer…**.
 
-Simple oculta el resto: las vistas Mirrors y Workspaces, delete mode, los botones de vista compacta y de tema (el tema sigue en Settings), los badges de workspace, contenedor y rama, los conteos ahead, behind y de cambios, y el botón de fetch de cada fila. Los PR abiertos que he creado (📝) y los PR que esperan mi revisión (👀) aparecen en los dos modos. La barra superior mantiene **Comprobar todo** y **Actualizar todo**. La salud de la cuenta se lee en palabras sencillas, y **Reconectar** aparece cuando una credencial se rompe. Settings oculta las filas del archivo de config, PR reviews, global gitignore y Terminals. La vista compacta es igual en los dos modos.
+Simple oculta el resto: la vista Mirrors, delete mode, los botones de vista compacta y de tema (el tema sigue en Settings), los badges de contenedor y rama, los conteos ahead, behind y de cambios, y el botón de fetch de cada fila. Los PR abiertos que he creado (📝) y los PR que esperan mi revisión (👀) aparecen en los dos modos. La barra superior mantiene **Comprobar todo** y **Actualizar todo**. La salud de la cuenta se lee en palabras sencillas, y **Reconectar** aparece cuando una credencial se rompe. Settings oculta las filas del archivo de config, PR reviews, global gitignore y Terminals. La vista compacta es igual en los dos modos.
 
 ### Vista completa
 
@@ -327,7 +337,7 @@ El dashboard completo muestra la barra superior con health rings, la barra later
 La vista **Todos los repos** se pliega a dos niveles, y la vista de una cuenta también pliega los clones padre:
 
 - **Grupos de cuenta** — hago clic en la barra de cabecera de una cuenta o en su nombre para plegar su lista de clones. La cabecera siempre muestra cuántos clones contiene y cuántos requieren atención, plegada o no, así que un problema nunca queda oculto tras un pliegue. El menú ⋯ de la cabecera sigue funcionando y nunca pliega el grupo.
-- **Clones con clones debajo** — cualquier clon que tenga clones anidados bajo él muestra un chevron ▾ antes de su punto de estado. Al pulsar el chevron o el nombre del clon se pliega todo lo que hay debajo, a cualquier profundidad. Una fila plegada muestra cuántos clones oculta y cuántos de ellos requieren atención. Ninguno de los dos abre el detalle del repo.
+- **Clones con clones debajo** — cualquier clon que tenga clones anidados o carpetas de workspace aún sin clonar bajo él muestra un chevron ▾ antes de su punto de estado. Al pulsar el chevron o el nombre del clon se pliega todo lo que hay debajo, a cualquier profundidad. Una fila plegada muestra cuántas filas oculta y cuántas de ellas requieren atención. Ninguno de los dos abre el detalle del repo.
 
 Gitbox recuerda lo que pliego entre reinicios, junto con la barra lateral y la última vista (`global.collapsed` en `gitbox.json`), y olvida las entradas de cuentas o clones que borro o renombro. La vista compacta mantiene su propia expansión por cuenta.
 
@@ -387,7 +397,7 @@ Cada fila de repo clonado tiene un **menú ⋯** en el lado derecho. Es una list
 
 1. **Abrir** — **Navigate to repo** y **Reveal in Finder** (Explorer, o el gestor de archivos en Linux). La entrada de navegador abre `<account url>/<owner>/<name>`, resuelto en el lado Go a partir de la config guardada, y muestra una tarjeta de error si la fila no se encuentra ahí. Toda entrada basada en ruta (carpeta, editor, terminal, AI harness) muestra un mensaje de "clona primero" en lugar de no hacer nada cuando el clon no ha terminado o su estado todavía no se ha cargado.
 2. **Abrir con** — cada AI harness y editor, y después el Terminal Profile por defecto y los marcados como Preferred, cada uno con su logo. La herramienta que usa el botón de lanzamiento propio de la fila lleva una etiqueta **predeterminado**.
-3. **Mantenimiento** (Advanced) — **Sweep branches**, **Move repository…**, **Mark as multi-repo container** o **Unmark as multi-repo container**, y **Re-scan for nested clones**.
+3. **Mantenimiento** (Advanced) — **Sweep branches**, **Move repository…**, **Mark as multi-repo container** o **Unmark as multi-repo container**, **Elegir workspace…** en un contenedor con archivos de workspace, y **Re-scan for nested clones**.
 4. **Borrar de este ordenador…** — en los dos modos.
 
 <p align="center">

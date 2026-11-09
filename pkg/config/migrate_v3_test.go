@@ -3,8 +3,8 @@ package config
 import "testing"
 
 // TestMigrateV2ToV3 verifies that a real-world v2 config (with the old
-// workspace section and legacy fields) loads, bumps to v3, and discards the
-// regenerable workspace cache while preserving accounts/sources untouched.
+// workspace section and legacy fields) loads, bumps to the current version,
+// and discards the workspace section while preserving accounts/sources.
 func TestMigrateV2ToV3(t *testing.T) {
 	v2 := `{
   "version": 2,
@@ -30,13 +30,6 @@ func TestMigrateV2ToV3(t *testing.T) {
 	}
 	if cfg.Version != CurrentVersion {
 		t.Errorf("version = %d, want %d", cfg.Version, CurrentVersion)
-	}
-	// Workspaces are dropped wholesale on migration — they rediscover.
-	if len(cfg.Workspaces) != 0 {
-		t.Errorf("workspaces after migration = %v, want none (cache is regenerable)", cfg.Workspaces)
-	}
-	if len(cfg.WorkspaceOrder) != 0 {
-		t.Errorf("workspace order after migration = %v, want none", cfg.WorkspaceOrder)
 	}
 	// Accounts and sources are preserved.
 	if _, ok := cfg.Accounts["gh"]; !ok {

@@ -21,7 +21,7 @@
     "  The test runner overrides global.roots with one temp directory.",
     "  ssh_folder MUST NOT point at ~/.ssh — use an isolated path."
   ],
-  "version": 4,
+  "version": 5,
   "global": {
     "roots": ["~/.gitbox-test/git"],
     "credential_ssh": { "ssh_folder": "~/.gitbox-test/ssh" },

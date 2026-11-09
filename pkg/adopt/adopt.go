@@ -13,6 +13,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/status"
+	"github.com/LuisPalacios/gitbox/pkg/workspace"
 )
 
 // OrphanRepo describes a git repo on disk not tracked in gitbox.json.
@@ -83,6 +84,12 @@ func FindOrphansIn(cfg *config.Config, extraRoots []string) ([]OrphanRepo, error
 			candidates = append(candidates, np)
 			nestedSet[normPath(np)] = true
 		}
+	}
+	// The folders a container's workspace file lists are nested clones at
+	// any depth.
+	for _, np := range workspaceClones(cfg) {
+		candidates = append(candidates, np)
+		nestedSet[normPath(np)] = true
 	}
 	relRoots := append(append([]string{}, roots...), containerPaths...)
 
@@ -211,6 +218,27 @@ func containerRepoPaths(cfg *config.Config) []string {
 		}
 	}
 	return paths
+}
+
+// workspaceClones returns the git clones among the folders each container's
+// workspace file lists inside it.
+func workspaceClones(cfg *config.Config) []string {
+	var out []string
+	for _, srcKey := range cfg.OrderedSourceKeys() {
+		src := cfg.Sources[srcKey]
+		for _, repoKey := range src.OrderedRepoKeys() {
+			repo := src.Repos[repoKey]
+			if !repo.Container || repo.Workspace == "" {
+				continue
+			}
+			for _, m := range workspace.Members(status.RepoPath(cfg, srcKey, repoKey, repo), repo.Workspace) {
+				if _, err := os.Stat(filepath.Join(m.Path, ".git")); err == nil {
+					out = append(out, m.Path)
+				}
+			}
+		}
+	}
+	return out
 }
 
 // dedupPaths removes duplicate paths by normalized form, preserving order.

@@ -63,9 +63,8 @@ type App struct {
 	terminalsMu  sync.Mutex
 	terminalsCmd *exec.Cmd
 
-	toolsOnce            sync.Once
-	toolsWG              sync.WaitGroup
-	workspaceDiscoveryMu sync.Mutex
+	toolsOnce sync.Once
+	toolsWG   sync.WaitGroup
 	// reconcileMu serializes reconcile passes and manual adoptions (#149);
 	// reconcileScan replaces reconcile.Plan in tests.
 	reconcileMu     sync.Mutex
@@ -219,7 +218,7 @@ func (a *App) DomReady(_ context.Context) {
 	// Terminals subprocess (issue #69 — see runTerminalsWindow in main.go)
 	// only renders the Profile editor and shouldn't spin up the full app's
 	// background workers. SyncProfiles still runs so the editor sees a
-	// fresh terminal/shell list, but workspace discovery, upstream probing,
+	// fresh terminal/shell list, but upstream probing,
 	// update checks and editor/terminal sync are skipped.
 	if a.windowMode == "terminals" {
 		// Refresh the detected terminal/shell list before painting so the
@@ -270,15 +269,6 @@ func (a *App) DomReady(_ context.Context) {
 	// runs a first pass ~2s after launch and then re-probes periodically,
 	// emitting harnesses:updated so the menu refreshes without a reload.
 	a.startHarnessWatcher()
-
-	// Discover and auto-adopt workspace artifacts dropped on disk outside
-	// gitbox. Runs off the UI thread so startup paints immediately; the
-	// frontend listens for the `workspaces:discovered` event to refresh.
-	go func() {
-		if _, err := a.DiscoverWorkspaces(); err != nil {
-			fmt.Fprintf(os.Stderr, "workspace discovery: %v\n", err)
-		}
-	}()
 
 	// Ask each provider API whether every configured repo still exists.
 	// Without this, a deleted upstream only surfaces after the user clicks
@@ -532,13 +522,11 @@ func minInt(a, b int) int {
 
 // ConfigDTO is the JSON-friendly config sent to the frontend.
 type ConfigDTO struct {
-	Version        int                       `json:"version"`
-	Global         config.GlobalConfig       `json:"global"`
-	Accounts       map[string]config.Account `json:"accounts"`
-	Sources        map[string]SourceDTO      `json:"sources"`
-	Mirrors        map[string]MirrorDTO      `json:"mirrors"`
-	Workspaces     map[string]WorkspaceDTO   `json:"workspaces"`
-	WorkspaceOrder []string                  `json:"workspaceOrder"`
+	Version  int                       `json:"version"`
+	Global   config.GlobalConfig       `json:"global"`
+	Accounts map[string]config.Account `json:"accounts"`
+	Sources  map[string]SourceDTO      `json:"sources"`
+	Mirrors  map[string]MirrorDTO      `json:"mirrors"`
 }
 
 // SourceDTO mirrors config.Source but exposes repos as a map.
@@ -607,7 +595,7 @@ func (a *App) configDTO() (ConfigDTO, error) {
 		sources[key] = SourceDTO{Account: src.Account, Folder: src.Folder, Repos: src.Repos, RepoOrder: src.OrderedRepoKeys()}
 	}
 	dto := ConfigDTO{Version: a.cfg.Version, Global: a.cfg.Global, Accounts: a.cfg.Accounts,
-		Sources: sources, Mirrors: buildMirrorsDTO(a.cfg), Workspaces: buildWorkspacesDTO(a.cfg), WorkspaceOrder: a.cfg.OrderedWorkspaceKeys()}
+		Sources: sources, Mirrors: buildMirrorsDTO(a.cfg)}
 	data, err := json.Marshal(dto)
 	if err != nil {
 		return ConfigDTO{}, fmt.Errorf("copying config: %w", err)
@@ -2550,21 +2538,17 @@ func (a *App) DeleteRepo(sourceKey, repoKey string) error {
 }
 
 // AccountDeletionImpactDTO describes what a DeleteAccount call would remove.
-// Lists are sorted for stable rendering. WorkspaceMembers counts member
-// references that would be pruned across all affected workspaces — the
-// workspace entries themselves are kept even if emptied.
+// Lists are sorted for stable rendering.
 type AccountDeletionImpactDTO struct {
-	Account          string   `json:"account"`
-	Sources          []string `json:"sources"`
-	Mirrors          []string `json:"mirrors"`
-	Workspaces       []string `json:"workspaces"`
-	WorkspaceMembers int      `json:"workspace_members"`
-	RepoCount        int      `json:"repo_count"`
-	CloneCount       int      `json:"clone_count"`
+	Account    string   `json:"account"`
+	Sources    []string `json:"sources"`
+	Mirrors    []string `json:"mirrors"`
+	RepoCount  int      `json:"repo_count"`
+	CloneCount int      `json:"clone_count"`
 }
 
 // AccountDeletionImpact reports the cascade effect of deleting the given
-// account — every source, mirror, and workspace-member that references it,
+// account — every source and mirror that references it,
 // plus the total repo count and how many are currently cloned on disk.
 // Read-only.
 func (a *App) AccountDeletionImpact(accountKey string) AccountDeletionImpactDTO {
@@ -2572,22 +2556,17 @@ func (a *App) AccountDeletionImpact(accountKey string) AccountDeletionImpactDTO 
 	defer a.mu.Unlock()
 	r := a.cfg.AccountDeletionImpact(accountKey)
 	dto := AccountDeletionImpactDTO{
-		Account:          accountKey,
-		Sources:          r.Sources,
-		Mirrors:          r.Mirrors,
-		Workspaces:       r.Workspaces,
-		WorkspaceMembers: r.WorkspaceMembers,
-		RepoCount:        r.RepoCount,
-		CloneCount:       ops.CountClonedRepos(a.cfg, accountKey),
+		Account:    accountKey,
+		Sources:    r.Sources,
+		Mirrors:    r.Mirrors,
+		RepoCount:  r.RepoCount,
+		CloneCount: ops.CountClonedRepos(a.cfg, accountKey),
 	}
 	if dto.Sources == nil {
 		dto.Sources = []string{}
 	}
 	if dto.Mirrors == nil {
 		dto.Mirrors = []string{}
-	}
-	if dto.Workspaces == nil {
-		dto.Workspaces = []string{}
 	}
 	return dto
 }

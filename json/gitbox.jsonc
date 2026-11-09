@@ -19,17 +19,17 @@
     // JSON Schema reference for editor validation and autocompletion
     "$schema": "https://raw.githubusercontent.com/LuisPalacios/gitbox/main/json/gitbox.schema.json",
 
-    // Format version. Always 4. (v2 and v3 files migrate to v4 automatically on load.)
-    "version": 4,
+    // Format version. Always 5. (v2, v3 and v4 files migrate to v5 automatically on load.)
+    "version": 5,
 
     // ──────────────────────────────────────────────────────────────────────────────
     // GLOBAL SECTION
     // ──────────────────────────────────────────────────────────────────────────────
     "global": {
 
-        // Clone roots: the folders gitbox clones into and scans for clones
-        // AND .code-workspace files. The first one is the default; each
-        // source clones into one of them (see source "root").
+        // Clone roots: the folders gitbox clones into and scans for clones.
+        // The first one is the default; each source clones into one of them
+        // (see source "root").
         //   "~/00.git"                 →  $HOME/00.git
         //   "/home/user/00.git"        →  absolute path on Linux/macOS
         //   "C:/Users/user/00.git"     →  absolute path on Windows (Git Bash)
@@ -61,8 +61,8 @@
         // fold the sidebar or pick a view; absent means everything is
         // expanded and the app opens on Needs attention. Keys that no longer
         // exist are pruned on save. sidebar records the sidebar folded to its
-        // icon rail; view is the last selected view (attention, all, mirrors,
-        // workspaces or account:<account-key>).
+        // icon rail; view is the last selected view (attention, all, mirrors
+        // or account:<account-key>).
         // "collapsed": {
         //     "sources": ["github-MyAccount"],
         //     "repos": ["github-MyAccount/MyOrg/my-container"],
@@ -367,10 +367,17 @@
                 // dynamic set of sibling repos (with your own script, not
                 // submodules). With "container": true, gitbox descends into this
                 // clone's working tree (up to global.nested_scan_depth) during
-                // orphan discovery (the GUI's orphans modal) and onboards each nested clone under its real
+                // the disk reconcile and onboards each nested clone under its real
                 // account/org with an absolute clone_folder inside this folder.
+                // A clone with a .code-workspace file at its root becomes a
+                // container on its own; "workspace" names that file (gitbox asks
+                // when there are several), every folder it lists is scanned at
+                // any depth, and the GUI's editor button opens it in VS Code.
+                // "workspace_preferred" remembers the file I picked among
+                // several: it wins again whenever it is back at the root.
                 "MyOrg/myorg.project": {
-                    "container": true
+                    "container": true,
+                    "workspace": "myorg.code-workspace"
                 }
             }
         },
@@ -420,32 +427,6 @@
                     "credential_type": "ssh"
                 }
             }
-        }
-    },
-
-    // ═════════════════════════════════════════════════════════════════════════
-    //   WORKSPACES — read-only cache of discovered VS Code workspaces (optional)
-    // ═════════════════════════════════════════════════════════════════════════
-    //
-    // Workspaces are READ-ONLY. gitbox discovers existing *.code-workspace files
-    // under every root in "roots", caches them here, lists them, and opens
-    // them in the first editor in global.editors. It never creates, edits,
-    // generates, or deletes them — you own the files. This whole section is a
-    // regenerable cache: delete it and the next workspace discovery rebuilds it.
-    //
-    // In GitboxApp, the Workspaces tab lists them; Open launches one and
-    // Discover rescans the disk.
-    "workspaces": {
-        "sumwall": {
-            "name": "sumwall",
-            // Absolute path to the discovered .code-workspace file on disk.
-            "file": "/home/me/00.git/github-org/Org/sumwall.project/sumwall.code-workspace",
-            // Member clones resolved from the file's folders[] to known repos.
-            "members": [
-                { "source": "github-myuser", "repo": "myuser/frontend" },
-                { "source": "gitea-ci",      "repo": "deploy/infra-scripts" }
-            ],
-            "discovered": true
         }
     }
 }

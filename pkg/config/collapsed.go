@@ -9,7 +9,7 @@ import (
 // the full view shows folded. They record collapsed items (not expanded
 // ones) so new sources and clones appear expanded by default. Sidebar
 // records the sidebar folded to its icon rail, and View the last selected
-// view ("attention", "all", "mirrors", "workspaces" or "account:<key>").
+// view ("attention", "all", "mirrors" or "account:<key>").
 type CollapsedState struct {
 	Sources []string `json:"sources,omitempty"` // source keys
 	Repos   []string `json:"repos,omitempty"`   // "source/repo" keys
@@ -21,8 +21,8 @@ type CollapsedState struct {
 const AccountViewPrefix = "account:"
 
 // PruneCollapsed drops collapse keys whose source or repo no longer exists,
-// dedupes and sorts the rest, clears a View that names a missing account,
-// and clears the field when nothing is left.
+// dedupes and sorts the rest, clears a View that names a missing account
+// or the retired "workspaces" view, and clears the field when nothing is left.
 // Save calls it so renames, deletes and moves never leave stale keys behind.
 func (c *Config) PruneCollapsed() {
 	cs := c.Global.Collapsed
@@ -45,6 +45,9 @@ func (c *Config) PruneCollapsed() {
 	sources = slices.Compact(sources)
 	repos = slices.Compact(repos)
 	view := cs.View
+	if view == "workspaces" {
+		view = ""
+	}
 	if key, ok := strings.CutPrefix(view, AccountViewPrefix); ok {
 		if _, exists := c.Accounts[key]; !exists {
 			view = ""

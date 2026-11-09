@@ -474,81 +474,6 @@ func TestCascadeDeleteAccount_SourcesAndMirrors(t *testing.T) {
 	}
 }
 
-func TestCascadeDeleteAccount_PrunesWorkspaceMembers(t *testing.T) {
-	cfg := newTestConfig()
-	// Add a second source tied to the forgejo account, plus a workspace that
-	// mixes members from BOTH sources. Cascading the github account must
-	// drop only the github member; the forgejo member, the workspace entry
-	// itself, and its File field all survive.
-	if err := cfg.AddSource("forgejo-test", Source{
-		Account: "forgejo-test",
-		Repos: map[string]Repo{
-			"user/theme": {},
-		},
-	}); err != nil {
-		t.Fatalf("AddSource forgejo-test: %v", err)
-	}
-	setTestWorkspace(cfg, "mixed", Workspace{
-		Name:       "Mixed",
-		File:       "/tmp/mixed.code-workspace",
-		Discovered: true,
-		Members: []WorkspaceMember{
-			{Source: "github-test", Repo: "testuser/repo-a"},
-			{Source: "forgejo-test", Repo: "user/theme"},
-		},
-	})
-
-	r, err := cfg.CascadeDeleteAccount("github-test")
-	if err != nil {
-		t.Fatalf("CascadeDeleteAccount: %v", err)
-	}
-	if len(r.Workspaces) != 1 || r.Workspaces[0] != "mixed" {
-		t.Errorf("affected workspaces = %v, want [mixed]", r.Workspaces)
-	}
-	if r.WorkspaceMembers != 1 {
-		t.Errorf("WorkspaceMembers = %d, want 1", r.WorkspaceMembers)
-	}
-
-	w, ok := cfg.Workspaces["mixed"]
-	if !ok {
-		t.Fatal("workspace entry should survive the cascade (only members are pruned)")
-	}
-	if w.File != "/tmp/mixed.code-workspace" {
-		t.Errorf("workspace File lost: %q", w.File)
-	}
-	if len(w.Members) != 1 {
-		t.Fatalf("members = %d, want 1", len(w.Members))
-	}
-	if w.Members[0].Source != "forgejo-test" || w.Members[0].Repo != "user/theme" {
-		t.Errorf("remaining member = %+v, want forgejo-test/user/theme", w.Members[0])
-	}
-}
-
-func TestCascadeDeleteAccount_EmptiedWorkspaceSurvives(t *testing.T) {
-	// A workspace every member of which belongs to the cascaded account must
-	// end up with an empty Members slice, NOT be deleted — the user may want
-	// to rename/repopulate it rather than lose the entry.
-	cfg := newTestConfig()
-	setTestWorkspace(cfg, "only-github", Workspace{
-		Discovered: true,
-		Members: []WorkspaceMember{
-			{Source: "github-test", Repo: "testuser/repo-a"},
-		},
-	})
-
-	if _, err := cfg.CascadeDeleteAccount("github-test"); err != nil {
-		t.Fatalf("CascadeDeleteAccount: %v", err)
-	}
-
-	w, ok := cfg.Workspaces["only-github"]
-	if !ok {
-		t.Fatal("workspace entry should survive even when emptied")
-	}
-	if len(w.Members) != 0 {
-		t.Errorf("members = %d, want 0", len(w.Members))
-	}
-}
-
 func TestCascadeDeleteAccount_NotFound(t *testing.T) {
 	cfg := newTestConfig()
 	if _, err := cfg.CascadeDeleteAccount("nope"); err == nil {
@@ -567,25 +492,12 @@ func TestAccountDeletionImpact(t *testing.T) {
 	if err := cfg.AddMirror("m1", Mirror{AccountSrc: "github-test", AccountDst: "gitea-extra"}); err != nil {
 		t.Fatalf("AddMirror: %v", err)
 	}
-	setTestWorkspace(cfg, "ws1", Workspace{
-		Discovered: true,
-		Members: []WorkspaceMember{
-			{Source: "github-test", Repo: "testuser/repo-a"},
-		},
-	})
-
 	r := cfg.AccountDeletionImpact("github-test")
 	if len(r.Sources) != 1 || r.Sources[0] != "github-test" {
 		t.Errorf("sources = %v", r.Sources)
 	}
 	if len(r.Mirrors) != 1 || r.Mirrors[0] != "m1" {
 		t.Errorf("mirrors = %v", r.Mirrors)
-	}
-	if len(r.Workspaces) != 1 || r.Workspaces[0] != "ws1" {
-		t.Errorf("workspaces = %v", r.Workspaces)
-	}
-	if r.WorkspaceMembers != 1 {
-		t.Errorf("WorkspaceMembers = %d, want 1", r.WorkspaceMembers)
 	}
 	if r.RepoCount != 1 {
 		t.Errorf("repoCount = %d, want 1", r.RepoCount)
@@ -596,9 +508,6 @@ func TestAccountDeletionImpact(t *testing.T) {
 	}
 	if _, ok := cfg.Mirrors["m1"]; !ok {
 		t.Error("impact mutated mirrors map")
-	}
-	if w, ok := cfg.Workspaces["ws1"]; !ok || len(w.Members) != 1 {
-		t.Error("impact mutated workspace members")
 	}
 }
 
@@ -736,41 +645,5 @@ func TestListMirrorReposBadMirror(t *testing.T) {
 	cfg := newTestConfig()
 	if _, err := cfg.ListMirrorRepos("nope"); err == nil {
 		t.Error("expected error")
-	}
-}
-
-// --- Workspaces (read-only cache) ---
-
-// setTestWorkspace installs a discovered workspace directly into the cache,
-// mirroring how discovery populates it (there is no AddWorkspace anymore).
-func setTestWorkspace(cfg *Config, key string, w Workspace) {
-	if cfg.Workspaces == nil {
-		cfg.Workspaces = make(map[string]Workspace)
-	}
-	if _, exists := cfg.Workspaces[key]; !exists {
-		cfg.WorkspaceOrder = append(cfg.WorkspaceOrder, key)
-	}
-	cfg.Workspaces[key] = w
-}
-
-func TestOrderedWorkspaceKeys(t *testing.T) {
-	cfg := newTestConfig()
-	setTestWorkspace(cfg, "bravo", Workspace{Discovered: true})
-	setTestWorkspace(cfg, "alpha", Workspace{Discovered: true})
-	cfg.WorkspaceOrder = []string{"bravo", "alpha"}
-
-	keys := cfg.OrderedWorkspaceKeys()
-	if len(keys) != 2 || keys[0] != "bravo" || keys[1] != "alpha" {
-		t.Errorf("OrderedWorkspaceKeys = %v, want [bravo alpha]", keys)
-	}
-}
-
-func TestOrderedWorkspaceKeysFallback(t *testing.T) {
-	cfg := newTestConfig()
-	cfg.Workspaces = map[string]Workspace{"only": {Discovered: true}}
-	// No WorkspaceOrder set — fall back to map iteration.
-	keys := cfg.OrderedWorkspaceKeys()
-	if len(keys) != 1 || keys[0] != "only" {
-		t.Errorf("OrderedWorkspaceKeys fallback = %v", keys)
 	}
 }

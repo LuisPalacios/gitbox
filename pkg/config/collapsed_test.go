@@ -62,12 +62,23 @@ func TestPruneCollapsed_KeepsSidebarAndView(t *testing.T) {
 		t.Errorf("Collapsed = %+v, want only Sidebar", got)
 	}
 
-	for _, view := range []string{"attention", "all", "mirrors", "workspaces", "account:a"} {
+	for _, view := range []string{"attention", "all", "mirrors", "account:a"} {
 		cfg.Global.Collapsed = &CollapsedState{View: view}
 		cfg.PruneCollapsed()
 		if got := cfg.Global.Collapsed; got == nil || got.View != view {
 			t.Errorf("view %q: Collapsed = %+v, want the view kept", view, got)
 		}
+	}
+}
+
+// The retired Workspaces view is cleared, so the GUI falls back to Needs
+// attention.
+func TestPruneCollapsed_DropsWorkspacesView(t *testing.T) {
+	cfg := collapsedTestConfig()
+	cfg.Global.Collapsed = &CollapsedState{View: "workspaces"}
+	cfg.PruneCollapsed()
+	if got := cfg.Global.Collapsed; got != nil {
+		t.Errorf("Collapsed = %+v, want nil", got)
 	}
 }
 

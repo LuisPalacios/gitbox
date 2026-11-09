@@ -1,5 +1,5 @@
 <script lang="ts">
-  // One entry of the cards panel (accounts, mirrors, workspaces): a chip
+  // One entry of the cards panel (accounts, mirrors): a chip
   // (dot + name) that opens into the two-line card. App folds the open card
   // back on an outside click or Escape (the .card-open selector).
   import type { Snippet } from 'svelte';
@@ -13,7 +13,7 @@
   export let dotColor: string;
   // Inline style of the chip and the card (accounts flag a broken credential).
   export let style: string | undefined = undefined;
-  // Extra class of the open card: 'card-mirror' or 'card-workspace'.
+  // Extra class of the open card: 'card-mirror'.
   export let variant = '';
   // Extra class of the card name; onName makes the name a button.
   export let nameClass = '';
@@ -120,7 +120,4 @@
     opacity: 0.7; transition: all 0.12s; line-height: 1;
   }
   .btn-delete-x:hover { opacity: 1; background: color-mix(in srgb, var(--alert) 14%, transparent); border-color: var(--alert); }
-  /* Workspace card styling: reuse the mirror card structure but with its
-     own dot colour derived inline. */
-  .card-workspace .card-provider { letter-spacing: 0.5px; }
 </style>
