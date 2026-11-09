@@ -1,22 +1,22 @@
-# Gitbox — architecture & design
+# Gitbox — architecture and design
 
-For the product overview (what gitbox does, who it's for, and why it exists), see the [README](../readme.md).
+For the product overview (what Gitbox does, who it's for, and why it exists), see the [README](../readme.md).
 
 ---
 
 ## 1. Architecture overview
 
-gitbox is a Go monorepo that produces one binary, the `GitboxApp` desktop app, on top of a shared library in `pkg/`:
+Gitbox is a Go monorepo that produces one binary, the `GitboxApp` desktop app, on top of a shared library in `pkg/`:
 
 <p align="center">
   <img src="diagrams/architecture-overview.png" alt="Architecture Overview" width="800" />
 </p>
 
-The GUI is a Wails v2 app with a Svelte frontend. The Go side lives in `cmd/gui/` and is a thin layer of Wails bindings, locking, and events. Application-level operations (account lifecycle, credential switching, clone planning, discovery) live in `pkg/ops`, and everything below that — config, credentials, providers, git, status, mirrors — lives in the other `pkg/` packages. The GUI supports GCM, SSH, and Token credentials.
+The GUI is a Wails v2 app with a Svelte frontend. The Go side lives in `cmd/gui/` and is a thin layer of Wails bindings, locking and events. Application-level operations (account lifecycle, credential switching, clone planning, discovery) live in `pkg/ops`. Everything below that (config, credentials, providers, git, status, mirrors) lives in the other `pkg/` packages. The GUI supports GCM, SSH and Token credentials.
 
 The app needs no companion binary. It shells out only to tools already on the system: `git`, Git Credential Manager, `ssh` / `ssh-keygen` / `ssh-add`, `wsl` on Windows, and the user's terminals and editors.
 
-Until v1.x, gitbox also shipped a `gitbox` CLI with an embedded TUI. v2 removed both; they live on in the v1 maintenance line on the `release/v1` branch.
+The v1 CLI and its embedded TUI were removed in v2. They live on in the v1 maintenance line on the `release/v1` branch.
 
 ## 2. Core concepts
 
@@ -26,33 +26,33 @@ Until v1.x, gitbox also shipped a `gitbox` CLI with an embedded TUI. v2 removed 
   <img src="diagrams/config-model.png" alt="Config Model" width="800" />
 </p>
 
-**Why separate?** One account can have multiple sources (e.g., different GitHub orgs under the same login). Sources group repos logically. Repos use `org/repo` naming — the org part becomes the folder structure.
+Accounts and sources are separate because one account can have several sources (for example, different GitHub orgs under the same login). Sources group repos logically. Repos use `org/repo` naming, and the org part becomes the folder structure.
 
 ### Credential model
 
-See [credentials.md](credentials.md) for user-facing setup details. This section covers the design.
+[credentials.md](credentials.md) covers user-facing setup. This section covers the design.
 
-Each credential type is **self-sufficient** for the account. Per-repo credential isolation ensures every clone has self-contained config in `.git/config` — an empty `credential.helper =` line cancels inherited (global/system) helpers, then the type-specific helper is set. This makes clones independent of `~/.gitconfig`.
+Each credential type is **self-sufficient** for the account. Per-repo credential isolation gives every clone a self-contained `.git/config`: an empty `credential.helper =` line cancels inherited (global and system) helpers, then the type-specific helper is set. Clones don't depend on `~/.gitconfig`.
 
 **Design decisions:**
 
-- **Token** uses dual storage: OS keyring (for gitbox API calls) + per-repo `credential-store` file (for git). The file is derived from the keyring entry.
-- **GCM** uses `helper = manager` with per-host config (`username`, `provider`, `credentialStore`) scoped per-repo.
-- **SSH** only cancels helpers (auth is via `~/.ssh/config`). Discovery requires an optional PAT.
+- **Token** stores the PAT in one gitbox credential file per account, `~/.config/gitbox/credentials/<key>` (0600, git-credential-store format). Gitbox reads it for API calls, and every clone of the account points `credential.helper = store --file <path>` at it for git.
+- **GCM** uses `helper = manager` with per-host `username` and `provider` scoped per repo, plus `credential.credentialStore`. GCM keeps its secrets in the OS credential store.
+- **SSH** only cancels helpers (auth goes through `~/.ssh/config`). Discovery needs an optional PAT, kept in the same credential file as a token account's.
 
-**Credential lifecycle:** Type switching cleans up old artifacts before configuring the new type. Existing clones are automatically reconfigured (remote URL + credential config). Account key renames migrate all artifacts: config keys, source folders, keyring entries, credential files, SSH keys, and SSH config aliases.
+**Credential lifecycle:** switching type removes the old type's artifacts before configuring the new one, then reconfigures existing clones (remote URL and credential config). Renaming an account key migrates every artifact: config keys, the source folder, the credential file, SSH keys, and the SSH config alias.
 
 ### Config as local database
 
-The JSON config file (`~/.config/gitbox/gitbox.json`) is the **desired state** — a local database of what accounts, sources, and repos should exist, and of the clone roots they live in.
+The JSON config file (`~/.config/gitbox/gitbox.json`) is the **desired state**: a local database of the accounts, sources and repos that should exist, and of the clone roots they live in.
 
-**Discovery** is a northbound query — it asks the provider API "what repos exist?" and lets you add them to the config. Discovery is add-only on demand; it never auto-removes repos.
+**Discovery** is a northbound query. It asks the provider API which repos exist and lets the user add them to the config. Discovery only adds, on demand, and never removes repos.
 
-**Reconcile** is its counterpart on disk: gitbox reads back which clones exist from the clone roots. The config stays the record of intent — accounts, roots, mirrors, overrides, repos I want but haven't cloned — and `pkg/reconcile` keeps the inventory in step: it adopts the clones it recognises in place, re-links moved ones, and leaves the rest for me. It never touches files and never forgets a repo whose clone is gone.
+**Reconcile** is its counterpart on disk: Gitbox reads back which clones exist under the clone roots. The config stays the record of intent (accounts, roots, mirrors, overrides, repos wanted but not cloned yet), and `pkg/reconcile` keeps the inventory in step. It adopts the clones it recognises in place, re-links moved ones, and leaves the rest for the user. It never touches files and never forgets a repo whose clone is gone.
 
 ### Folder structure
 
-Repos are cloned into a 3-level hierarchy under a clone root. `global.roots` lists the roots, the default first; each source clones into one of them (`source.root`, empty for the default), and a single repo can live in another (`repo.root`):
+Repos are cloned into a 3-level hierarchy under a clone root. `global.roots` lists the roots, the default first. Each source clones into one of them (`source.root`, empty for the default), and a single repo can live in another (`repo.root`):
 
 ```text
 ~/00.git/                          <- a root in global.roots
@@ -71,11 +71,11 @@ Repos are cloned into a 3-level hierarchy under a clone root. `global.roots` lis
 
 Each level can be overridden:
 
-- **1st level**: `source.folder` overrides the source key
-- **2nd level**: `repo.id_folder` overrides the org part
-- **3rd level**: `repo.clone_folder` overrides the repo name (if absolute — `/` or `~` — it replaces the entire path; one starting with `../` replaces it too, relative to the root)
+- **1st level**: `source.folder` overrides the source key.
+- **2nd level**: `repo.id_folder` overrides the org part.
+- **3rd level**: `repo.clone_folder` overrides the repo name. An absolute value (`/` or `~`) replaces the entire path, and so does one starting with `../`, resolved against the root.
 
-Changing a source's root or the default root pins the root every existing clone already resolves through, so no clone path moves. Clones outside this tree (nested clones inside a multi-repo container, clones found away from the standard layout) always carry an absolute `clone_folder`, so gitbox never moves them.
+Changing a source's root or the default root pins the root every existing clone already resolves through, so no clone path moves. Clones outside this tree (nested clones inside a multi-repo container, clones found away from the standard layout) always carry an absolute `clone_folder`, so Gitbox never moves them.
 
 ---
 
@@ -83,45 +83,56 @@ Changing a source's root or the default root pins the root every existing clone 
 
 ### cmd/gui — Wails bindings
 
-`cmd/gui/app.go` exposes the methods the Svelte frontend calls through auto-generated TypeScript bindings. I use the config lock for shared state and call `pkg/ops` or another `pkg/` package for operations, saving changes and emitting Wails events for progress. Neighbouring files hold GUI-only concerns: terminal profiles (`profiles.go`), multi-repo containers and their workspace files (`containers.go`), PR badges (`pr.go`), autostart, and per-OS process lifecycle. Every `exec.Command` in `cmd/gui/` goes through `git.HideWindow` so no console window flashes on Windows.
+`cmd/gui/app.go` exposes the methods the Svelte frontend calls through auto-generated TypeScript bindings. Bound methods take the config lock for shared state, call `pkg/ops` or another `pkg/` package for the work, save changes, and emit Wails events for progress. Neighbouring files hold GUI-only concerns: terminal profiles (`profiles.go`), multi-repo containers and their workspace files (`containers.go`), clone roots (`roots.go`), disk reconcile (`reconcile.go`), PR badges (`pr.go`), autostart, and per-OS process lifecycle. Every `exec.Command` in `cmd/gui/` goes through `git.HideWindow`, so no console window flashes on Windows.
 
 `main.go` handles two flags before Wails starts: `--version` prints the build version and exits, and `--test-mode` routes the config through a temp directory built from the `test-gitbox.json` fixture (see [testing.md](testing.md)).
 
-I return config, preferences, collapse state, and path-derived nesting in one detached startup snapshot. I render that snapshot before requesting local status and show pending spinners until checking or fetching finishes. I keep cross-source children under their containers while retaining each child's source for status, actions, and ownership. I detect editors and terminal profiles outside the config lock, then merge into current settings so concurrent edits survive.
+Startup returns config, preferences, collapse state and path-derived nesting in one detached snapshot. The frontend renders it before local status arrives and shows pending spinners until checking or fetching finishes. Cross-source children stay under their containers but keep their own source for status, actions and ownership. Editor and terminal-profile detection runs outside the config lock and merges into the current settings, so concurrent edits survive.
 
-I coordinate refresh work in `cmd/gui/refresh.go`: overlapping callers share active status, fetch-all, per-clone fetch, and per-account credential checks. I retain one pending local-status invalidation, reject results from changed config, and cancel refresh work when the app closes. A fetch-all cycle publishes local status before waiting for provider work; `fetch:alldone` follows its final status and remote checks.
+`cmd/gui/refresh.go` coordinates refresh work:
 
-I share and throttle upstream-existence sweeps in `cmd/gui/probe.go`, resolving credentials once per account and probing each upstream once. I allow four requests at a time, with ten seconds per request and thirty seconds for the sweep, including credential resolution. I wait at least sixty seconds after a completed sweep before starting another. I preserve known upstream state on errors or cancellation and discard results superseded by newer fetches or credential changes.
+- Overlapping callers share one active run of local status, Fetch all, per-clone fetch, and each account's credential check.
+- One pending local-status invalidation is kept, results computed from a config that has since changed are dropped, and closing the app cancels refresh work.
+- When the account changes or a re-check is requested during a credential check, the check runs again against the current config. Offline results retry with backoff; authentication errors don't.
+- A Fetch all cycle publishes local status before waiting for provider work. `fetch:alldone` follows its final status and remote checks.
+
+`cmd/gui/probe.go` shares and throttles the sweeps that check whether each upstream still exists:
+
+- Credentials resolve once per account, and each upstream is probed once per sweep.
+- Limits: four requests at a time, 10 seconds per request, 30 seconds per sweep (credential resolution included), and at least 60 seconds after a completed sweep before the next one.
+- Errors and cancellation keep the known upstream state. Results superseded by newer fetches or credential changes are discarded.
 
 ### pkg/ops — Application operations
 
 The service layer between the GUI bindings and the lower-level packages. It holds the operations that touch several packages at once: `AddAccount`, `RenameAccount`, `DeleteAccount`, `DeleteRepo`, `ChangeCredentialType`, `DeleteCredential`, `RemoveCredentialArtifacts`, `ReconfigureClones` (runs `heal.Repo` on each clone), `PlanClone` / `Clone`, `ListRemoteRepos`, `ListAccountOrgs`, `CreateRemoteRepo`, `AddDiscoveredRepos`, and `ProviderClient`.
 
-Each operation works on a `*config.Config` plus the files it owns on disk (clones, SSH keys, credential stores). Operations never save the config and never lock — the caller serializes access and persists afterwards. Operations that touch every clone of an account (`ReconfigureClones`) are separate so the caller can run them after a successful save.
+Each operation works on a `*config.Config` plus the files it owns on disk (clones, SSH keys, credential files). Operations never save the config and never lock: the caller serializes access and persists afterwards. Operations that touch every clone of an account (`ReconfigureClones`) are separate, so the caller can run them after a successful save.
 
 ### pkg/config — Configuration management
 
-Handles the v5 configuration file (v2, v3 and v4 files are migrated transparently on load). Core types: `Config`, `Account`, `Source`, `Repo`. v4 replaces the single folder with clone roots (`Global.Roots`, `Source.Root`, `Repo.Root`; see `roots.go`), and `status.RepoPath` resolves every clone path through them. v3 added multi-repo containers (`Repo.Container`), nested-clone discovery depth (`Global.NestedScanDepth`), the GUI collapse state (`Global.Collapsed`, pruned of stale keys on every `Save`), and absolute `clone_folder` overrides. v5 dropped the workspaces cache: a container records its own `.code-workspace` file in `Repo.Workspace`. See `pkg/config/config.go` for struct definitions.
+Handles the v5 configuration file and migrates v2, v3 and v4 files on load. Core types: `Config`, `Account`, `Source`, `Repo`, `Mirror`. Clone roots (`Global.Roots`, `Source.Root`, `Repo.Root`) and their mutators live in `roots.go`, and `status.RepoPath` resolves every clone path through them. Multi-repo containers (`Repo.Container`, `Repo.Workspace`), the nested-scan depth (`Global.NestedScanDepth`) and the GUI collapse state (`Global.Collapsed`, pruned of stale keys on every `Save`) round out the model. `pkg/config/config.go` holds the struct definitions; [section 4](#4-config-format-v5) is the field reference.
 
 **Key design decisions:**
 
-- **JSON order preservation:** `SourceOrder` and `RepoOrder` ensure iteration follows the user's config file order
-- **Credential inheritance:** Repos inherit `default_credential_type` from their account unless they override it
-- **CRUD with referential integrity:** `DeleteAccount` fails if any source references it; `DeleteSource` cascades to its repos
+- **JSON order preservation:** `SourceOrder`, `RepoOrder` and `MirrorOrder` make iteration follow the order of the config file.
+- **Credential inheritance:** repos inherit `default_credential_type` from their account unless they override it.
+- **CRUD with referential integrity:** `DeleteAccount` fails if any source references the account, and `DeleteSource` cascades to its repos.
 
 ### pkg/credential — Credential management
 
-Manages tokens, SSH keys, GCM integration, and per-repo credential isolation. See `pkg/credential/credential.go`, `pkg/credential/validate.go`, and `pkg/credential/repoconfig.go`.
+Manages tokens, SSH keys, GCM integration and per-repo credential isolation. See `pkg/credential/credential.go`, `pkg/credential/validate.go` and `pkg/credential/repoconfig.go`.
 
-**Token resolution chain:** Environment variable (`GITBOX_TOKEN_<KEY>`) -> `GIT_TOKEN` fallback -> credential file (`~/.config/gitbox/credentials/<key>`).
+**Token storage:** `StoreToken`, `GetToken` and `DeleteToken` write, read and remove the credential file `~/.config/gitbox/credentials/<key>` (`CredentialFilePath`). `GetToken` accepts both the git-credential-store line (`https://user:TOKEN@host`) and a raw token. There is no other token store.
 
-**API token dispatch:** Routes by credential type — `token` uses the credential file, `gcm` runs `git credential fill` (falls back to credential file), `ssh` tries the credential file (optional PAT for discovery).
+**Token resolution chain (`ResolveToken`):** the `GITBOX_TOKEN_<KEY>` environment variable, then `GIT_TOKEN`, then the credential file.
 
-**SSH key management:** Generates key pairs, writes `~/.ssh/config` entries, tests connections. Naming convention: host alias `gitbox-<account-key>`, key file `gitbox-<account-key>-sshkey`.
+**API token dispatch:** routes by credential type. `token` uses `ResolveToken`, `gcm` runs `git credential fill` and falls back to `ResolveToken`, and `ssh` tries `ResolveToken` (the optional discovery PAT). `ResolveMirrorToken` requires a portable PAT for mirrors (see [pkg/mirror](#pkgmirror--repository-mirroring)).
 
-**Per-repo credential config** (`repoconfig.go`): `ConfigureRepoCredential()` sets each clone's `.git/config` to be self-contained. `WriteCredentialFile()` and `DeleteToken()` manage the git-credential-store files for token accounts. `pkg/ops` and `pkg/heal` call the same shared functions.
+**SSH key management:** generates key pairs, writes `~/.ssh/config` entries and tests connections. Naming convention: host alias `gitbox-<account-key>`, key file `gitbox-<account-key>-sshkey`.
 
-I use `credential.CheckContext` for cancellable background verification. I share active checks for the same account settings, preserve explicitly requested re-checks after completion, and report cancellation as offline. GCM and SSH verification subprocesses have a fifteen-second limit or the caller's earlier deadline.
+**Per-repo credential config** (`repoconfig.go`): `ConfigureRepoCredential()` makes each clone's `.git/config` self-contained, and `WriteCredentialFile()` writes the git-credential-store line for token accounts. `pkg/ops` and `pkg/heal` call the same functions.
+
+`credential.CheckContext` verifies one account and honours cancellation, which reports as offline. GCM and SSH verification subprocesses stop after 15 seconds or the caller's earlier deadline.
 
 ### pkg/provider — Repository discovery
 
@@ -134,94 +145,109 @@ Abstraction layer for Git hosting provider APIs. Each provider implements `ListR
 | Gitea/Forgejo | REST /api/v1 | Token + Basic auth fallback | Same API, same implementation |
 | Bitbucket     | REST v2      | HTTP Basic (app password)   | Cloud only                    |
 
-Helpers include `CheckAuth()` for credential validation and `TokenSetupGuide()` for per-provider PAT creation instructions. `CheckAuth()` also returns the token's expiry: GitHub reads the `GitHub-Authentication-Token-Expiration` header of the existing repo-list call, and GitLab adds one `GET /personal_access_tokens/self` after a successful check. The other providers return no expiry. `credential.StatusResult.ExpiresAt` carries it to the GUI's `CredentialStatus.expiresAt`, and `accountHealth` in `src/lib/status.ts` turns a working token within 14 days of expiry into a warning.
+`CheckAuth()` validates a credential and `TokenSetupGuide()` returns per-provider PAT creation instructions. `CheckAuth()` also returns the token's expiry: GitHub reads the `GitHub-Authentication-Token-Expiration` header of the existing repo-list call, and GitLab adds one `GET /personal_access_tokens/self` after a successful check. The other providers return no expiry. `credential.StatusResult.ExpiresAt` carries it to the GUI's `CredentialStatus.expiresAt`, and `accountHealth` in `src/lib/status.ts` turns a working token within 14 days of expiry into a warning.
 
-**Additional interfaces** (optional, via type assertions):
+**Optional interfaces** (via type assertions):
 
-- `RepoCreator` — create repos (under user or org namespace, with description) and check existence (all providers)
-- `OrgLister` — list organizations/groups the user belongs to, for the "create repo" owner dropdown (all providers)
-- `PushMirrorProvider` — server-side push mirrors (Gitea/Forgejo, GitLab)
-- `PullMirrorProvider` — pull mirrors via migrate API (Gitea/Forgejo)
-- `RepoInfoProvider` — fetch HEAD commit and visibility for sync comparison (GitHub, GitLab, Gitea/Forgejo)
+- `RepoCreator`: create repos (under the user or an org, with a description) and check existence (all providers).
+- `OrgLister`: list the organizations or groups the user belongs to, for the owner dropdown when creating a repo (all providers).
+- `PushMirrorProvider`: server-side push mirrors (Gitea/Forgejo, GitLab).
+- `PullMirrorProvider`: pull mirrors via the migrate API (Gitea/Forgejo).
+- `RepoInfoProvider`: fetch the HEAD commit and visibility for sync comparison (GitHub, GitLab, Gitea/Forgejo).
 
 ### pkg/git — Git operations
 
-Thin wrapper around `os/exec` for all Git operations — no libgit2 dependency. Provides `Clone`, `CloneWithProgress`, `Pull`, `Status`, `Fetch`, `ConfigSet`, `ConfigAdd`, `ConfigUnsetAll`, and more. See `pkg/git/git.go`. Multi-value git config keys (like `credential.helper`) are managed with `ConfigUnsetAll` + `ConfigAdd`.
+Thin wrapper around `os/exec` for all Git operations, with no libgit2 dependency. Provides `Clone`, `CloneWithProgress`, `Pull`, `Status`, `Fetch`, `ConfigSet`, `ConfigAdd`, `ConfigUnsetAll` and more (see `pkg/git/git.go`). Multi-value git config keys such as `credential.helper` are managed with `ConfigUnsetAll` + `ConfigAdd`.
 
-On macOS, `GitBin()` probes Homebrew paths (`/opt/homebrew/bin/git`, `/usr/local/bin/git`) before falling back to PATH, ensuring the GUI finds GCM-enabled git even with the minimal PATH that macOS GUI apps inherit.
+On macOS, `GitBin()` probes the Homebrew paths (`/opt/homebrew/bin/git`, `/usr/local/bin/git`) before falling back to `PATH`, so the GUI finds a GCM-enabled git even with the minimal `PATH` that macOS GUI apps inherit.
 
 ### pkg/status — Sync status checking
 
-Determines the sync state of local clones relative to their upstream. States: Clean, Dirty, Behind, Ahead, Diverged, Conflict, NotCloned, NoUpstream, Error, UpstreamGone, RootOffline. A repo whose clone root is missing reads RootOffline instead of NotCloned (`RepoRootOffline`), so an unplugged drive doesn't look like deleted clones. Priority: Conflicts > Dirty > Diverged > Behind > Ahead > NoUpstream > Clean. `ComputeNesting` derives parent → child relationships between container clones and the clones nested inside them. See `pkg/status/status.go`.
+Determines the sync state of local clones relative to their upstream. States: Clean, Dirty, Behind, Ahead, Diverged, Conflict, NotCloned, NoUpstream, Error, UpstreamGone, RootOffline. A repo whose clone root is missing reads RootOffline instead of NotCloned (`RepoRootOffline`), so an unplugged drive doesn't look like deleted clones. Priority: Conflict > Dirty > Diverged > Behind > Ahead > NoUpstream > Clean. `ComputeNesting` derives parent → child relationships between container clones and the clones nested inside them. See `pkg/status/status.go`.
 
 ### pkg/identity — Git identity management
 
-Manages per-repo git identity (`user.name`, `user.email`) with a resolution chain: repo-level overrides fall back to account-level values. See `pkg/identity/identity.go`.
+Manages per-repo git identity (`user.name`, `user.email`) with a resolution chain: repo-level overrides fall back to account-level values. See `pkg/identity/identity.go`. `heal.Repo` checks each clone's identity and repairs drift.
 
-I check each clone's identity and repair drift through the shared snapshot in `heal.Repo`. `CheckGlobalIdentity()` and `RemoveGlobalIdentity()` handle global `~/.gitconfig` identity — gitbox encourages removing global identity so that per-repo identity (set during clone/reconfigure) is always authoritative.
+`CheckGlobalIdentity()` and `RemoveGlobalIdentity()` handle the global identity in `~/.gitconfig`. Gitbox encourages removing it, so the per-repo identity set at clone or reconfigure time is always authoritative.
 
-Parallel to the identity check, `pkg/credential` exposes `IsGlobalGCMConfigNeeded()` + `CheckGlobalGCMConfig()` + `FixGlobalGCMConfig()` for the global GCM credential helper. When at least one account uses GCM, gitbox verifies `~/.gitconfig` has `credential.helper = manager` and `credential.credentialStore = <keychain|wincredman|secretservice>`; when missing or wrong, the GUI surfaces a fix button that writes both entries and backfills OS defaults into `gitbox.json`. Without this, `git credential fill` falls through to `/dev/tty` and fails with "Device not configured" in GUI contexts.
+`pkg/credential` does the same for the global GCM helper (`gcm_config.go`). Without a GCM helper in `~/.gitconfig`, `git credential fill` falls through to `/dev/tty` and fails with "Device not configured" in GUI contexts. The design:
+
+- **When:** `IsGlobalGCMConfigNeeded()` gates the check on at least one account using GCM, so SSH- and token-only setups never see the warning.
+- **Check:** `CheckGlobalGCMConfig()` expects `credential.helper` to resolve to GCM and `credential.credentialStore` to match (`keychain`, `wincredman` or `secretservice`), taking the expected values from `global.credential_gcm` or the OS defaults. It reads the full multi-value `credential.helper` list and applies git's reset rule (an empty value clears the helpers before it). A helper resolves to GCM when it is `manager`, the legacy `manager-core`, or a path (quoted or not) whose binary is `git-credential-manager`. A stock `git-credential-manager configure` chain (a reset plus an absolute path) therefore passes without a fix.
+- **Fix:** `FixGlobalGCMConfig()`, behind the GUI's fix button, first backfills `DefaultCredentialHelper()` and `DefaultCredentialStore()` into `gitbox.json` when `global.credential_gcm` lacks them. It then writes only what the check flags: a helper chain that already resolves to GCM stays untouched, and one that doesn't is replaced as a whole with `--replace-all`, as is a wrong `credentialStore`.
+
+Per-host `[credential "https://…"]` sections, including the per-repo config Gitbox writes, still take precedence over these global values.
 
 ### pkg/update — Auto-update
 
-Provides version checking and self-update via GitHub Releases. `CheckLatest()` queries the GitHub API on every call; the GUI calls it at launch and every six hours. `DownloadRelease()` first verifies that the release's `checksums.sha256.sig` is an `ssh-keygen -Y sign` signature, in the `gitbox-release` namespace, by the key embedded from `release-signing-key.pub`, over `gitbox <tag>` plus the checksums (a small sshsig verifier on `golang.org/x/crypto/ssh`); only then does it fetch the platform-specific artifact and verify its SHA256 checksum. It fails closed when the signature or `checksums.sha256` is missing, unreadable or invalid, or doesn't list the artifact. See [release-signing.md](release-signing.md). `ExtractUpdate()` and `InstallExtracted()` unpack the zip and replace what is already installed next to the running app — on macOS the whole `GitboxApp.app` bundle, on Unix via atomic rename, on Windows by renaming the running binary to `.old` first (`CleanupOldBinary()` removes stale `.old` files on the next startup). `Relaunch()` then starts the new version detached with `--wait-pid=<old PID>` (on macOS through `open -n` on the bundle), and the GUI quits; the new process waits in `WaitForExit()` until the old one has exited, so the single-instance lock is free. An elevated Windows update relaunches from its helper script through `explorer.exe`, so the new app is not elevated. The GUI follows the release GitHub marks as latest; a `MaxMajor` option caps the major version, which the v1 CLI on `release/v1` uses to stay on 1.x.
+Provides version checking and self-update via GitHub Releases. The design:
+
+- **Check:** `CheckLatest()` queries the GitHub API on every call. The GUI calls it at launch and every six hours, and follows the release GitHub marks as latest. A `MaxMajor` option caps the major version; the v1 CLI on `release/v1` uses it to stay on 1.x.
+- **Verify:** `DownloadRelease()` first verifies that the release's `checksums.sha256.sig` is an `ssh-keygen -Y sign` signature in the `gitbox-release` namespace, by the key embedded from `release-signing-key.pub`, over `gitbox <tag>` plus the checksums (a small sshsig verifier on `golang.org/x/crypto/ssh`). Only then does it fetch the platform-specific artifact and verify its SHA256 checksum. It fails closed when the signature or `checksums.sha256` is missing, unreadable or invalid, or doesn't list the artifact. See [release-signing.md](release-signing.md).
+- **Install:** `ExtractUpdate()` and `InstallExtracted()` unpack the zip and replace what is installed next to the running app: the whole `GitboxApp.app` bundle on macOS, an atomic rename on other Unix systems, and on Windows a rename of the running binary to `.old` first (`CleanupOldBinary()` removes stale `.old` files on the next startup).
+- **Relaunch:** `Relaunch()` starts the new version detached with `--wait-pid=<old PID>` (on macOS through `open -n` on the bundle), and the GUI quits. The new process waits in `WaitForExit()` until the old one has exited, so the single-instance lock is free. An elevated Windows update relaunches from its helper script through `explorer.exe`, so the new app isn't elevated.
 
 ### pkg/doctor — External-tool detection
 
-Probes the host for every external binary gitbox may call — `git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, `wsl` (Windows only) — and reports path, version, and per-OS install hints for anything missing. `PrecheckForCredentialType()` powers the GUI setup flows so a missing tool surfaces as a yellow banner with the install command instead of a cryptic runtime error. For GCM the probe asks `git credential-manager --version` first, because git resolves it from its own directories, which need not be on `PATH`, and falls back to the known install folders only when git can't run it. The full report is available in the GUI under **Settings → System check**.
+Probes the host for every external binary Gitbox may call (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, and `wsl` on Windows) and reports path, version and per-OS install hints for anything missing. `PrecheckForCredentialType()` powers the GUI setup flows, so a missing tool shows as a yellow banner with the install command instead of a cryptic runtime error. For GCM the probe asks `git credential-manager --version` first, because git resolves it from its own directories, which need not be on `PATH`. It falls back to the known install folders only when git can't run it. The GUI shows the full report under **Settings → System check**.
 
-The probe never runs `C:\Windows\System32\wsl.exe`: Windows ships that file as a stub that prompts to install WSL when the package is absent, in a window of its own. `doctor.WSLDistros()` reads the distros from the registry, and the version comes from the package's own binary under `Program Files\WSL`. Shell detection uses the same list, so the `wsl` shell only appears when a distro is installed.
+The probe never runs `C:\Windows\System32\wsl.exe`: Windows ships that file as a stub that prompts to install WSL, in a window of its own, when the package is absent. `doctor.WSLDistros()` reads the distros from the registry, and the version comes from the package's own binary under `Program Files\WSL`. Shell detection uses the same list, so the `wsl` shell only appears when a distro is installed.
 
 ### pkg/heal — Repo .git/config self-heal
 
-`heal.Repo(cfg, sourceKey, repoKey)` idempotently reconciles a clone's `.git/config` against the account spec: `user.name`, `user.email`, the canonical `origin` URL (credential-type specific, no embedded secrets), and the credential helper. Wired into every trigger point — clone, fetch, pull, `ops.ReconfigureClones`, and the GUI's periodic sync — so that clones drifting out of spec are silently repaired. Introduced alongside the GUI Windows-stdio fix in `pkg/git.run()` to stop GUI-side `.git/config` writes from silently failing.
+`heal.Repo(cfg, sourceKey, repoKey)` idempotently reconciles a clone's `.git/config` against the account spec: `user.name`, `user.email`, the canonical `origin` URL (credential-type specific, no embedded secrets), and the credential helper. Every trigger point runs it (clone, fetch, pull, repo move, `ops.ReconfigureClones` and the GUI's periodic sync), so clones that drift out of spec are repaired silently.
 
-I share one `git.ReadConfigSnapshot` between identity, origin, and credential checks: two Git processes read effective config with includes and direct local config. An unchanged clone performs no credential-config or credential-file writes. I replace changed token files atomically, serialize shared-account updates, and retain private file permissions. If a later include or worktree config still overrides a repair, I report a maintenance warning and skip the GUI fetch rather than use the wrong identity, origin, or helper chain.
+Identity, origin and credential checks share one `git.ReadConfigSnapshot`: two Git processes read the effective config (with includes) and the direct local config. An unchanged clone causes no credential-config or credential-file writes. A changed token file is replaced atomically, updates for a shared account are serialized, and file permissions stay private. If a later include or worktree config still overrides a repair, heal reports a maintenance warning and the GUI skips the fetch rather than use the wrong identity, origin or helper chain.
 
-### pkg/move — Cross-account / cross-provider repo move
+### pkg/move — Cross-account and cross-provider repo move
 
-Relocates a clone from one configured account to another, including across providers (GitHub → GitLab, Gitea → Forgejo). Orchestrates a phased flow — preflight (credential-readiness probe) → fetch → create destination → `git push --mirror` → rewire `origin` → update `gitbox.json` → optional source-remote delete → optional local-clone delete → auto-clone destination when the local was deleted. Phase callbacks stream progress to the GUI. Phases 1–6 are fatal on failure; optional deletes are best-effort and surface as warnings with `provider.InsufficientScopesError` humanised into remediation text (e.g. "add `delete_repo` scope to your GitHub PAT").
+Relocates a clone from one configured account to another, including across providers (GitHub → GitLab, Gitea → Forgejo). The flow runs in phases: preflight (credential-readiness probe) → fetch → create destination → `git push --mirror` → rewire `origin` → update `gitbox.json` → optional source-remote delete → optional local-clone delete → auto-clone of the destination when the local clone was deleted. Phase callbacks stream progress to the GUI. Phases 1–6 are fatal on failure. The optional deletes are best-effort and surface as warnings, with `provider.InsufficientScopesError` turned into remediation text (for example, "add `delete_repo` scope to your GitHub PAT").
 
 ### pkg/gitignore — Global gitignore self-heal
 
-Installs a curated managed block of OS-junk patterns (`.DS_Store`, `Thumbs.db`, `*~`, …) into `~/.gitignore_global` and points `core.excludesfile` at it. The block is wrapped in sentinel markers (`# >>> gitbox:global-gitignore >>>` / `# <<< gitbox:global-gitignore <<<`) so re-installs rewrite only the managed region; user-added entries and negation patterns (`!.DS_Store`) outside the sentinels are preserved, and duplicates of managed patterns outside the sentinels are sanitised away. Atomic tmp+rename write with a rolling 3-backup cap (`.bak-YYYYMMDD-HHMMSS`). Opt-out via `global.check_global_gitignore` in `gitbox.json` gates only the automatic startup check; explicit actions always run. Exposed in the GUI as a banner with an **Install** button.
+Installs a curated managed block of OS-junk patterns (`.DS_Store`, `Thumbs.db`, `*~`, …) into `~/.gitignore_global` and points `core.excludesfile` at it. Sentinel markers (`# >>> gitbox:global-gitignore >>>` / `# <<< gitbox:global-gitignore <<<`) wrap the block, so re-installs rewrite only the managed region. User entries and negation patterns (`!.DS_Store`) outside the sentinels are preserved, and duplicates of managed patterns outside them are removed. The write is an atomic tmp+rename with a rolling cap of 3 backups (`.bak-YYYYMMDD-HHMMSS`). `global.check_global_gitignore` in `gitbox.json` gates only the automatic startup check; explicit actions always run. The GUI exposes it as a banner with an **Install** button.
 
 ### pkg/workspace — Container workspace files
 
-Ties VS Code `.code-workspace` files to the clones that hold them — gitbox never creates, edits, generates, or deletes workspace files. `Sync` reads the root of every clone on disk (it doesn't recurse): one workspace file makes the clone a container with that file in `repo.workspace`; several make it a container that opens my preferred file (`repo.workspace_preferred`, set when I pick one) when it is there, else keeps its current file, else reports a `Choice`; none clears a stale pick and leaves the container flag alone. `Apply` writes those changes into the config. `Members` reads the folders a workspace file lists inside its container, and `Placeholders` keeps those that aren't on disk, that no configured repo resolves to and that don't sit inside another clone (a submodule, say). `MemberRepos` lists the configured clones it names, which the GUI shows in the workspace colour. Workspace files are JSON with comments, so I strip comments and trailing commas before parsing.
+Ties VS Code `.code-workspace` files to the clones that hold them. Gitbox never creates, edits, generates or deletes workspace files.
 
-The disk reconcile binding runs `Sync` on a snapshot without the config lock, applies the changes under it, then runs the reconcile scan, so a container that just gained a workspace file has its nested clones adopted in the same pass. Tmuxinator support and workspace generation were removed with config v3, and the workspaces cache with v5.
+- `Sync` reads the root of every clone on disk (it doesn't recurse). One workspace file makes the clone a container with that file in `repo.workspace`. Several make it a container that opens the preferred file (`repo.workspace_preferred`, set when the user picks one) when it is there, else keeps its current file, else reports a `Choice` for the GUI to ask about. None clears a stale pick and leaves the container flag alone.
+- `Apply` writes those changes into the config.
+- `Members` reads the folders a workspace file lists inside its container. `Placeholders` keeps those that aren't on disk, that no configured repo resolves to, and that don't sit inside another clone (a submodule, say). `MemberRepos` lists the configured clones it names, which the GUI shows in the workspace colour.
+
+Workspace files are JSON with comments, so comments and trailing commas are stripped before parsing. The disk reconcile binding runs `Sync` on a snapshot without the config lock, applies the changes under it, then runs the reconcile scan, so a container that just gained a workspace file has its nested clones adopted in the same pass.
 
 ### pkg/adopt — Orphan repo discovery
 
 Scans every root in `global.roots` and the working trees of container repos for clones that are not in `gitbox.json`, then scores each against every host-matching account. All signals are additive, and the highest score wins:
 
-| Signal                                                                    | Score | Source                                                                |
-| ------------------------------------------------------------------------- | ----- | --------------------------------------------------------------------- |
-| Host match (required baseline)                                            | 1     | account URL hostname or SSH alias vs the parsed remote host           |
-| Owner equals `account.username`                                           | +3    | owner segment of the remote URL path                                  |
-| Repo lives under the account's source folder                              | +5    | first path component of the repo relative to the root holding it      |
-| HTTPS URL embeds `user@` where user equals `account.username`             | +10   | `url.User.Username()` of the origin remote                            |
-| `.git/config` has `credential.<url>.username` equal to `account.username` | +10   | `git config --get-regexp '^credential\..*\.username$'` in the repo    |
+| Signal                                                                    | Score | Source                                                             |
+| ------------------------------------------------------------------------- | ----- | ------------------------------------------------------------------ |
+| Host match (required baseline)                                            | 1     | account URL hostname or SSH alias vs the parsed remote host        |
+| Owner equals `account.username`                                           | +3    | owner segment of the remote URL path                               |
+| Repo lives under the account's source folder                              | +5    | first path component of the repo relative to the root holding it   |
+| HTTPS URL embeds `user@` where user equals `account.username`             | +10   | `url.User.Username()` of the origin remote                         |
+| `.git/config` has `credential.<url>.username` equal to `account.username` | +10   | `git config --get-regexp '^credential\..*\.username$'` in the repo |
 
-If the top score is shared by two or more accounts (including a bare host-only tie) the match is marked ambiguous: no account is picked. A unique match is **confident** when its score is above the host-only baseline, so something beyond the server ties the clone to the account. Adoption never moves files: a clone at its standard spot under a root records that root, and any other clone an absolute `clone_folder`. Adopted clones get credential isolation, identity, and a remote URL rewritten to match the credential type.
+If two or more accounts share the top score (including a bare host-only tie), the match is ambiguous and no account is picked. A unique match is **confident** when its score is above the host-only baseline, so something beyond the server ties the clone to the account. Adoption never moves files: a clone at its standard spot under a root records that root, and any other clone gets an absolute `clone_folder`. Adopted clones get credential isolation, identity, and a remote URL rewritten to match the credential type.
 
-I stop ordinary orphan discovery at each clone boundary, including a `.git` file used by a worktree. I scan explicit roots independently and use the container scan with `nested_scan_depth` to discover nested clones, plus every folder a container's workspace file lists inside it, at any depth.
+Ordinary orphan discovery stops at each clone boundary, including a `.git` file used by a worktree. Explicit roots are scanned independently. The container scan uses `nested_scan_depth` to find nested clones, and also scans every folder a container's workspace file lists inside it, at any depth.
 
 ### pkg/reconcile — Disk reconcile
 
 `Plan` runs the orphan scan and decides, for each clone the config doesn't track, in this order:
 
-- A linked worktree, or a clone without a usable remote, waits for me.
+- A linked worktree, or a clone without a usable remote, waits for the user.
 - A clone whose repo key and server match exactly one tracked repo whose clone went missing, with its root online, **re-links** that entry to the new path.
 - A confident match is **adopted** in place.
 - Everything else waits in the Unmatched list with its reason: host-only, ambiguous, unknown host, no remote, already tracked, or worktree.
 
-Paths in `global.ignored_clones` are reported apart. `Apply` writes the decisions into the config; neither step touches files. The GUI runs a pass at startup, on window focus, after a manual Fetch all, after clone-root changes and on a container rescan. Each pass first syncs container workspace files (`pkg/workspace`). It snapshots the config, scans without the lock, re-checks the config (retrying when it changed) and applies under the lock. Repos under a missing root are never re-linked or forgotten.
+Paths in `global.ignored_clones` are reported apart. `Apply` writes the decisions into the config; neither step touches files. The GUI runs a pass at startup, on window focus, after a manual Fetch all, after clone-root changes and on a container rescan. Each pass first syncs container workspace files (`pkg/workspace`), then snapshots the config, scans without the lock, re-checks the config (retrying when it changed) and applies under the lock. Repos under a missing root are never re-linked or forgotten.
 
 ### pkg/mirror — Repository mirroring
 
-Handles push and pull mirror setup, status checking, discovery, and manual setup guides. Mirrors keep backup copies of repos on another provider without cloning locally.
+Handles push and pull mirror setup, status checking, discovery and manual setup guides. Mirrors keep backup copies of repos on another provider without cloning locally.
 
 **Mirror types:**
 
@@ -241,129 +267,129 @@ Handles push and pull mirror setup, status checking, discovery, and manual setup
 
 **Key design decisions:**
 
-- **Config model:** `mirrors` is an optional top-level section (`omitempty`), backward compatible with existing configs. Each mirror group pairs two accounts (`account_src`, `account_dst`) with per-repo direction and origin settings.
-- **Mirror tokens:** Remote servers need portable PATs, not machine-local GCM OAuth tokens. `ResolveMirrorToken()` enforces this — GCM accounts must store a separate PAT for mirrors.
-- **Immediate sync:** After creating a push mirror on Forgejo/Gitea, the code triggers `/push_mirrors-sync` so the first sync happens immediately instead of waiting for the configured interval.
-- **Status comparison:** `CheckStatus()` queries HEAD commit SHAs on both origin and backup via provider APIs and compares them to determine sync state.
-- **Visibility checks:** Status warns if backup repos are not private.
-- **Discovery:** Scans all account pairs for existing mirror relationships, with decreasing confidence: push mirror API (confirmed), pull mirror flag (likely), name match (possible).
+- **Config model:** `mirrors` is an optional top-level section (`omitempty`), so configs without mirrors stay valid. Each mirror group pairs two accounts (`account_src`, `account_dst`) with per-repo direction and origin settings.
+- **Mirror tokens:** remote servers need portable PATs, not machine-local GCM OAuth tokens. `ResolveMirrorToken()` enforces this, so GCM accounts must store a separate PAT for mirrors.
+- **Immediate sync:** after creating a push mirror on Forgejo/Gitea, the code calls `/push_mirrors-sync`, so the first sync runs immediately instead of waiting for the configured interval.
+- **Status comparison:** `CheckStatus()` queries the HEAD commit SHAs of origin and backup via the provider APIs and compares them. Mirror status is derived from these live checks, never stored.
+- **Visibility checks:** status warns when backup repos are not private.
+- **Discovery:** scans all account pairs for existing mirror relationships, with decreasing confidence: push mirror API (confirmed), pull mirror flag (likely), name match (possible).
 
 ### pkg/terminals, pkg/launch, pkg/harness — Open-in actions
 
-`pkg/terminals` owns the compiled-in catalog of supported terminals and shells per OS, host detection, OS-aware Profile composition, and the merge logic that keeps `terminal_apps[]`, `shells[]`, and `terminal_profiles[]` in sync with what is installed. `pkg/launch.ResolveArgs` expands a Profile's argv template for a folder, outside the Wails runtime so the token rules are unit-tested. `pkg/harness` parses the embedded [`tools-directory.md`](../pkg/harness/tools-directory.md) table to decide which AI CLI harnesses the GUI auto-detects. See [Terminal profiles](#terminal-profiles) below for the user-visible rules.
+`pkg/terminals` owns the compiled-in catalog of supported terminals and shells per OS, host detection, OS-aware Profile composition, and the merge logic that keeps `terminal_apps[]`, `shells[]` and `terminal_profiles[]` in step with what is installed. `pkg/launch.ResolveArgs` expands a Profile's argv template for a folder outside the Wails runtime, so the token rules are unit-tested. `pkg/harness` parses the embedded [`tools-directory.md`](../pkg/harness/tools-directory.md) table to decide which AI CLI harnesses the GUI auto-detects; [agentic-tools-directory.md](agentic-tools-directory.md) documents its rules. See [Terminal profiles](#terminal-profiles) for the detection and launch rules.
 
 ### pkg/i18n — UI language
 
-Resolves and normalizes the UI language, in order: the `GITBOX_LANG` environment variable, `global.language`, the OS locale, and English as the fallback. The string catalogs themselves ship in the Svelte frontend (`cmd/gui/frontend/src/lib/i18n.ts`); this package only decides which one to use.
+Resolves and normalizes the UI language, in order: the `GITBOX_LANG` environment variable, `global.language`, the OS locale, and English as the fallback. The string catalogs ship in the Svelte frontend (`cmd/gui/frontend/src/lib/i18n.ts`); this package only decides which one to use.
 
 ---
 
 ## 4. Config format (v5)
 
-The config lives at `~/.config/gitbox/gitbox.json`. See the [JSON annotated example](../json/gitbox.jsonc) for a complete config with comments, and the [JSON Schema](../json/gitbox.schema.json) for editor validation and autocompletion.
+The config lives at `~/.config/gitbox/gitbox.json`. The [annotated JSON example](../json/gitbox.jsonc) shows a complete config with comments, and the [JSON Schema](../json/gitbox.schema.json) drives editor validation and autocompletion. The top-level keys are `$schema` (optional), `version`, `global`, `accounts`, `sources` and the optional `mirrors`.
 
-**Versioning:** `config.CurrentVersion` is 5. gitbox loads v5 strictly and migrates v2, v3 and v4 files transparently on load (in memory; persisted on the next save). The v3 → v4 step turns `global.folder` and `global.extra_folders` into `global.roots`, in that order, so every clone keeps its path. The v4 → v5 step drops the `workspaces` section; the next disk reconcile records each container's workspace file in `repo.workspace`. Any other version is an error. Additive changes never bump the version.
+**Versioning:** `config.CurrentVersion` is 5. Gitbox loads v5 strictly and migrates v2, v3 and v4 files on load (in memory, persisted on the next save). The v3 → v4 step turns `global.folder` and `global.extra_folders` into `global.roots`, in that order, so every clone keeps its path. The v4 → v5 step drops the `workspaces` section, and the next disk reconcile records each container's workspace file in `repo.workspace`. Any other version is an error. Additive changes never bump the version.
 
-**Automatic backups:** Every meaningful save creates a dated backup in the same directory (e.g., `gitbox-20260401-143025.json`). The 10 most recent are kept — older ones are pruned automatically. The GUI's corruption-recovery screen can restore from any of them in one click. Window-position-only saves (moving or resizing the GUI) skip the backup step, so real pre-corruption copies are not rotated out by cosmetic churn.
+**Automatic backups:** every meaningful save first writes a dated backup in the same directory (for example, `gitbox-20260401-143025.json`) and keeps the 10 most recent. The GUI's corruption-recovery screen restores any of them in one click. Saves that only change the window position, the layout (`collapsed`) or the theme skip the backup, so cosmetic churn never rotates real pre-corruption copies out of the ring.
 
-**Credential type inheritance:** Repos inherit `default_credential_type` from their account unless they set their own `credential_type`.
+**Credential type inheritance:** repos inherit `default_credential_type` from their account unless they set their own `credential_type`.
 
-**Folder resolution:** `root / sourceFolder / idFolder / cloneFolder`, where the root is `repo.root`, else `source.root`, else the first of `global.roots`, with overrides possible at each level. If `clone_folder` is an absolute path, it replaces the entire hierarchy.
+**Folder resolution:** `root / sourceFolder / idFolder / cloneFolder`, where the root is `repo.root`, else `source.root`, else the first of `global.roots`, with overrides possible at each level. An absolute `clone_folder` replaces the entire hierarchy.
 
 ### Global
 
-| Field                             | Type   | Required | Description                                                                                                                                                                                                                                                                                                                                                                                  |
-| --------------------------------- | ------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `roots`                           | array  | Yes      | Clone roots: the folders gitbox clones into and scans. The first is the default. Supports `~`.                                                                                                                                                                                                                                                                                               |
-| `nested_scan_depth`               | int    | No       | Levels gitbox descends below a container repo to find nested clones. Default `1` (immediate children).                                                                                                                                                                                                                                                                                       |
-| `ignored_clones`                  | array  | No       | Clones under a root that I chose not to track; reconcile never adopts or lists them.                                                                                                                                                                                                                                                                                                         |
-| `language`                        | string | No       | UI language. Empty means the OS locale (English as the fallback).                                                                                                                                                                                                                                                                                                                            |
-| `periodic_sync`                   | string | No       | Background fetch interval: off, `5m`, `15m`, or `30m`.                                                                                                                                                                                                                                                                                                                                       |
-| `view_mode`                       | string | No       | `"full"` or `"compact"`.                                                                                                                                                                                                                                                                                                                                                                     |
-| `ui_mode`                         | string | No       | `"simple"` or `"advanced"` GUI experience. Absent means advanced; onboarding writes `"simple"` on a new install.                                                                                                                                                                                                                                                                             |
-| `theme`                           | string | No       | `"light"` or `"dark"` GUI theme. Absent follows the OS. Theme-only saves skip the backup ring.                                                                                                                                                                                                                                                                                               |
-| `collapsed`                       | object | No       | Folded account groups (`sources`) and parent clones (`repos`, as `"<source>/<repo>"`), `sidebar` (folded to the icon rail) and `view` (`attention`, `all`, `mirrors` or `account:<key>`). Absent means all expanded and Needs attention. `Save` prunes stale keys, a deleted account's view and the retired `workspaces` view; a rename rewrites it. Layout-only saves skip the backup ring. |
-| `window` / `compact_window`       | object | No       | Saved position and size (`x`, `y`, `width`, `height`) per view mode.                                                                                                                                                                                                                                                                                                                         |
-| `check_global_gitignore`          | bool   | No       | Run the automatic `~/.gitignore_global` check at startup. Default `true`.                                                                                                                                                                                                                                                                                                                    |
-| `pr_badges_enabled`               | bool   | No       | Fetch and show PR / review indicators on clone rows. Default `true`.                                                                                                                                                                                                                                                                                                                         |
-| `pr_include_drafts`               | bool   | No       | Count draft PRs in the "my PRs" badge. Default `true`.                                                                                                                                                                                                                                                                                                                                       |
-| `credential_ssh`                  | object | No       | SSH platform defaults. Presence indicates SSH is available.                                                                                                                                                                                                                                                                                                                                  |
-| `credential_ssh.ssh_folder`       | string | No       | SSH config directory. Default `~/.ssh`.                                                                                                                                                                                                                                                                                                                                                      |
-| `credential_gcm`                  | object | No       | GCM platform defaults. Presence indicates GCM is available.                                                                                                                                                                                                                                                                                                                                  |
-| `credential_gcm.helper`           | string | No       | Credential helper. Typically `"manager"`.                                                                                                                                                                                                                                                                                                                                                    |
-| `credential_gcm.credential_store` | string | No       | `"wincredman"`, `"keychain"`, or `"secretservice"`.                                                                                                                                                                                                                                                                                                                                          |
-| `credential_token`                | object | No       | Token/PAT platform defaults. Presence indicates token auth is available.                                                                                                                                                                                                                                                                                                                     |
-| `editors`                         | array  | No       | Code editors for the "Open in" menu. Auto-populated on first launch.                                                                                                                                                                                                                                                                                                                         |
-| `editors[].name`                  | string | Yes      | Display name (e.g. `"VS Code"`).                                                                                                                                                                                                                                                                                                                                                             |
-| `editors[].command`               | string | Yes      | Full path or command name (e.g. `"C:\\...\\code.cmd"`).                                                                                                                                                                                                                                                                                                                                      |
-| `terminals`                       | array  | No       | Legacy flat terminal list from before Terminal Profiles. Read only to migrate old configs into the three arrays below on load; gitbox never writes it.                                                                                                                                                                                                                                       |
-| `terminal_apps`                   | array  | No       | Detected terminal emulators. Populated by the catalog probe in `pkg/terminals` (Windows: Windows Terminal, WezTerm, Alacritty, Tabby, ConEmu, Hyper, Mintty, ZOC. macOS: iTerm2, Terminal.app, Warp, Kitty, Ghostty, WezTerm, Alacritty. Linux: GNOME Terminal, Konsole, Terminator, Foot, Alacritty, Kitty, Tilda, Guake, xterm). The GUI's Terminals Manager probes directly.              |
-| `terminal_apps[].id`              | string | Yes      | Stable id (`"wt"`, `"wezterm"`, `"gnome-terminal"`, `"iterm"`, …). Used as the cross-reference target from `terminal_profiles[].terminal`.                                                                                                                                                                                                                                                   |
-| `terminal_apps[].name`            | string | Yes      | Display name shown in the Manager and the per-row launcher.                                                                                                                                                                                                                                                                                                                                  |
-| `terminal_apps[].command`         | string | Yes      | Resolved absolute path (filled in at detect time).                                                                                                                                                                                                                                                                                                                                           |
-| `terminal_apps[].args_template`   | array  | No       | Argv template that `pkg/launch.ResolveArgs` expands per Profile. Tokens: `{path}` (appended when absent), `{command}` (AI harness argv, empty for plain launches), `{shell_command}` (resolved shell binary), `{shell_args}` (the shell's default args).                                                                                                                                     |
-| `shells`                          | array  | No       | Detected shells. Catalog scope per OS — Windows: PowerShell 7, PowerShell 5, CMD, Git Bash, plus per-distro `wsl-<name>` rows when WSL is installed. macOS: Zsh, Bash, Fish, Dash. Linux: Bash, Zsh, Fish, Ksh, Dash.                                                                                                                                                                        |
-| `shells[].id`                     | string | Yes      | Stable id (`"cmd"`, `"pwsh"`, `"git-bash"`, `"wsl-ubuntu"`, …). Cross-referenced by `terminal_profiles[].shell`.                                                                                                                                                                                                                                                                             |
-| `shells[].name`                   | string | Yes      | Display name.                                                                                                                                                                                                                                                                                                                                                                                |
-| `shells[].command`                | string | Yes      | Resolved absolute path.                                                                                                                                                                                                                                                                                                                                                                      |
-| `shells[].args`                   | array  | No       | Default args spliced where the terminal's `args_template` references `{shell_args}`.                                                                                                                                                                                                                                                                                                         |
-| `terminal_profiles`               | array  | No       | Launchable Profiles. The per-row launcher and the `Open in…` menu read this list when populated. **OS-aware composition** (issue #71): on Windows each auto-derived Profile pairs a Terminal × Shell; on macOS / Linux each is Terminal-only with the host's login shell as the implicit shell.                                                                                              |
-| `terminal_profiles[].id`          | string | Yes      | Stable id (`"wt+pwsh"`, `"wezterm+launchmenu-mybash"`, `"user-1"`, …).                                                                                                                                                                                                                                                                                                                       |
-| `terminal_profiles[].name`        | string | Yes      | Display name (e.g. `"Windows Terminal — pwsh"`).                                                                                                                                                                                                                                                                                                                                             |
-| `terminal_profiles[].terminal`    | string | Yes      | `terminal_apps[].id` to launch. Empty only for the bare-shell fallback Profiles emitted on Windows when no modern Terminal is installed.                                                                                                                                                                                                                                                     |
-| `terminal_profiles[].shell`       | string | No       | `shells[].id` to run inside the terminal. Empty means "use the terminal's default" — on macOS / Linux that is the host's login shell, displayed in the Manager as a dim badge next to the Terminal name.                                                                                                                                                                                     |
-| `terminal_profiles[].args`        | array  | No       | Override argv. When empty the launcher uses `terminal_apps[].args_template`. WezTerm `launch_menu` rows store the full `start --cwd {path} -- <argv>` shape here.                                                                                                                                                                                                                            |
-| `terminal_profiles[].default`     | bool   | No       | Marks the Profile invoked by the per-row launcher's primary action. Mutually exclusive across the list.                                                                                                                                                                                                                                                                                      |
-| `terminal_profiles[].preferred`   | bool   | No       | Lists the Profile under Open with in the ⋯ menus.                                                                                                                                                                                                                                                                                                                                            |
-| `terminal_profiles[].hidden`      | bool   | No       | Suppresses the Profile from menus without deleting it. The only way to suppress an auto-detected / WT-imported / WezTerm-imported / migrated Profile (those reappear on the next detect cycle if removed).                                                                                                                                                                                   |
-| `terminal_profiles[].source`      | string | No       | **Internal field** — never displayed in the Manager. Origin tag used by the engine to gate delete-vs-hide: only `"user"` Profiles are deletable; `"detected"` / `"wt-profile"` / `"wezterm-launchmenu"` / `"migrated"` rows can only be Hidden.                                                                                                                                              |
-| `ai_harnesses`                    | array  | No       | AI CLI harnesses for the "Open in" menu. Detected in the background (shortly after launch, every 10 minutes, on window focus) from the embedded catalog plus `~/.local/bin`, Homebrew prefixes and per-tool well-known directories. Launched inside the default Terminal Profile's shell (see `terminal_profiles[].default`).                                                                |
-| `ai_harnesses[].name`             | string | Yes      | Display name (e.g. `"Claude Code"`).                                                                                                                                                                                                                                                                                                                                                         |
-| `ai_harnesses[].command`          | string | Yes      | Absolute path or on-PATH binary (e.g. `"claude"`).                                                                                                                                                                                                                                                                                                                                           |
-| `ai_harnesses[].args`             | array  | No       | Optional extra args for the harness. Usually empty.                                                                                                                                                                                                                                                                                                                                          |
-| `ai_harnesses[].source`           | string | No       | **Internal field.** `"detected"` entries were added by the harness sync and may have their `command` re-resolved after a reinstall; `"user"` entries are never altered beyond `missing`. Empty on pre-existing entries until the first sync classifies them.                                                                                                                                 |
-| `ai_harnesses[].missing`          | bool   | No       | Set by the harness sync when the binary can no longer be found; the entry is hidden from menus but kept so a reinstall restores it with its `args` intact. Cleared automatically when the binary reappears.                                                                                                                                                                                  |
+| Field                             | Type   | Required | Description                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `roots`                           | array  | Yes      | Clone roots: the folders Gitbox clones into and scans. The first is the default. Supports `~`.                                                                                                                                                                                                                                                                                                                           |
+| `nested_scan_depth`               | int    | No       | Levels Gitbox descends below a container repo to find nested clones. Default `1` (immediate children).                                                                                                                                                                                                                                                                                                                   |
+| `ignored_clones`                  | array  | No       | Absolute paths of clones under a root that the user chose not to track. Reconcile never adopts or lists them.                                                                                                                                                                                                                                                                                                            |
+| `language`                        | string | No       | UI language. Empty means the OS locale (English as the fallback).                                                                                                                                                                                                                                                                                                                                                        |
+| `periodic_sync`                   | string | No       | Background fetch interval: off, `5m`, `15m`, or `30m`.                                                                                                                                                                                                                                                                                                                                                                   |
+| `view_mode`                       | string | No       | `"full"` or `"compact"`.                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `ui_mode`                         | string | No       | `"simple"` or `"advanced"` GUI experience. Absent means advanced; onboarding writes `"simple"` on a new install.                                                                                                                                                                                                                                                                                                         |
+| `theme`                           | string | No       | `"light"` or `"dark"` GUI theme. Absent follows the OS. Theme-only saves skip the backup ring.                                                                                                                                                                                                                                                                                                                           |
+| `collapsed`                       | object | No       | GUI layout state: folded account groups (`sources`), folded parent clones (`repos`, as `"<source>/<repo>"`), `sidebar` (folded to the icon rail) and `view` (`attention`, `all`, `mirrors` or `account:<key>`). Absent means all expanded and Needs attention. `Save` prunes stale keys, a deleted account's view and the retired `workspaces` view; a rename rewrites the view. Layout-only saves skip the backup ring. |
+| `window` / `compact_window`       | object | No       | Saved position and size (`x`, `y`, `width`, `height`) per view mode.                                                                                                                                                                                                                                                                                                                                                     |
+| `check_global_gitignore`          | bool   | No       | Run the automatic `~/.gitignore_global` check at startup. Default `true`.                                                                                                                                                                                                                                                                                                                                                |
+| `pr_badges_enabled`               | bool   | No       | Fetch and show PR / review indicators on clone rows. Default `true`.                                                                                                                                                                                                                                                                                                                                                     |
+| `pr_include_drafts`               | bool   | No       | Count draft PRs in the "my PRs" badge. Default `true`.                                                                                                                                                                                                                                                                                                                                                                   |
+| `credential_ssh`                  | object | No       | SSH platform defaults. Presence indicates SSH is available.                                                                                                                                                                                                                                                                                                                                                              |
+| `credential_ssh.ssh_folder`       | string | No       | SSH config directory. Default `~/.ssh`.                                                                                                                                                                                                                                                                                                                                                                                  |
+| `credential_gcm`                  | object | No       | GCM platform defaults. Presence indicates GCM is available.                                                                                                                                                                                                                                                                                                                                                              |
+| `credential_gcm.helper`           | string | No       | Credential helper. Typically `"manager"`.                                                                                                                                                                                                                                                                                                                                                                                |
+| `credential_gcm.credential_store` | string | No       | `"wincredman"`, `"keychain"`, or `"secretservice"`.                                                                                                                                                                                                                                                                                                                                                                      |
+| `credential_token`                | object | No       | Token/PAT platform defaults (no fields yet). Presence indicates token auth is available.                                                                                                                                                                                                                                                                                                                                 |
+| `editors`                         | array  | No       | Code editors for the "Open in" menu. Auto-populated on first launch.                                                                                                                                                                                                                                                                                                                                                     |
+| `editors[].name`                  | string | Yes      | Display name (for example, `"VS Code"`).                                                                                                                                                                                                                                                                                                                                                                                 |
+| `editors[].command`               | string | Yes      | Full path or command name (for example, `"C:\\...\\code.cmd"`).                                                                                                                                                                                                                                                                                                                                                          |
+| `terminals`                       | array  | No       | Legacy flat terminal list from before Terminal Profiles. Read only to migrate old configs into the three arrays below on load; Gitbox never writes it.                                                                                                                                                                                                                                                                   |
+| `terminal_apps`                   | array  | No       | Detected terminal emulators, from the `pkg/terminals` catalog (see [Terminal profiles](#terminal-profiles)).                                                                                                                                                                                                                                                                                                             |
+| `terminal_apps[].id`              | string | Yes      | Stable id (`"wt"`, `"wezterm"`, `"gnome-terminal"`, `"iterm"`, …), referenced by `terminal_profiles[].terminal`.                                                                                                                                                                                                                                                                                                         |
+| `terminal_apps[].name`            | string | Yes      | Display name shown in the Terminals Manager and the per-row launcher.                                                                                                                                                                                                                                                                                                                                                    |
+| `terminal_apps[].command`         | string | Yes      | Resolved absolute path, filled in at detect time.                                                                                                                                                                                                                                                                                                                                                                        |
+| `terminal_apps[].args_template`   | array  | No       | Argv template that `pkg/launch.ResolveArgs` expands per Profile. Tokens: `{path}` (appended when absent), `{command}` (AI harness argv, empty for plain launches), `{shell_command}` (resolved shell binary), `{shell_args}` (the shell's default args).                                                                                                                                                                 |
+| `shells`                          | array  | No       | Detected shells, from the `pkg/terminals` catalog, plus one `wsl-<distro>` row per installed WSL distro on Windows.                                                                                                                                                                                                                                                                                                      |
+| `shells[].id`                     | string | Yes      | Stable id (`"cmd"`, `"pwsh"`, `"git-bash"`, `"wsl-ubuntu"`, …), referenced by `terminal_profiles[].shell`.                                                                                                                                                                                                                                                                                                               |
+| `shells[].name`                   | string | Yes      | Display name.                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `shells[].command`                | string | Yes      | Resolved absolute path.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `shells[].args`                   | array  | No       | Default args spliced where the terminal's `args_template` references `{shell_args}`.                                                                                                                                                                                                                                                                                                                                     |
+| `terminal_profiles`               | array  | No       | Launchable Profiles, read by the per-row launcher and the "Open in" menu. Composition is OS-aware (see [OS-aware composition](#os-aware-composition)).                                                                                                                                                                                                                                                                   |
+| `terminal_profiles[].id`          | string | Yes      | Stable id (`"wt+pwsh"`, `"wezterm+launchmenu-mybash"`, `"user-1"`, …).                                                                                                                                                                                                                                                                                                                                                   |
+| `terminal_profiles[].name`        | string | Yes      | Display name (for example, `"Windows Terminal — PowerShell 7"`).                                                                                                                                                                                                                                                                                                                                                         |
+| `terminal_profiles[].terminal`    | string | Yes      | `terminal_apps[].id` to launch. Empty only for bare-shell Profiles on Windows.                                                                                                                                                                                                                                                                                                                                           |
+| `terminal_profiles[].shell`       | string | No       | `shells[].id` to run inside the terminal. Empty means the terminal's default, which on macOS and Linux is the host's login shell.                                                                                                                                                                                                                                                                                        |
+| `terminal_profiles[].args`        | array  | No       | Override argv. When empty the launcher uses `terminal_apps[].args_template`. WezTerm `launch_menu` rows store the full `start --cwd {path} -- <argv>` shape here.                                                                                                                                                                                                                                                        |
+| `terminal_profiles[].default`     | bool   | No       | Marks the Profile the per-row launcher's primary action runs. At most one Profile has it.                                                                                                                                                                                                                                                                                                                                |
+| `terminal_profiles[].preferred`   | bool   | No       | Lists the Profile under Open with in the ⋯ menus.                                                                                                                                                                                                                                                                                                                                                                        |
+| `terminal_profiles[].hidden`      | bool   | No       | Hides the Profile from menus without deleting it. This is the only way to suppress a non-user Profile, since a deleted one comes back on the next detect cycle.                                                                                                                                                                                                                                                          |
+| `terminal_profiles[].source`      | string | No       | **Internal field**, never displayed. Origin tag that gates delete versus hide: only `"user"` Profiles can be deleted; `"detected"`, `"wt-profile"`, `"wezterm-launchmenu"` and `"migrated"` rows can only be hidden.                                                                                                                                                                                                     |
+| `ai_harnesses`                    | array  | No       | AI CLI harnesses for the "Open in" menu. Detected in the background (shortly after launch, every 10 minutes, and on window focus) from the embedded catalog plus `~/.local/bin`, Homebrew prefixes and per-tool well-known directories. Launched inside the default Terminal Profile's shell (see `terminal_profiles[].default`).                                                                                        |
+| `ai_harnesses[].name`             | string | Yes      | Display name (for example, `"Claude Code"`).                                                                                                                                                                                                                                                                                                                                                                             |
+| `ai_harnesses[].command`          | string | Yes      | Absolute path or on-PATH binary (for example, `"claude"`).                                                                                                                                                                                                                                                                                                                                                               |
+| `ai_harnesses[].args`             | array  | No       | Optional extra args for the harness. Usually empty.                                                                                                                                                                                                                                                                                                                                                                      |
+| `ai_harnesses[].source`           | string | No       | **Internal field.** The harness sync adds `"detected"` entries and may re-resolve their `command` after a reinstall; it never alters `"user"` entries beyond `missing`. Empty on older entries until the first sync classifies them.                                                                                                                                                                                     |
+| `ai_harnesses[].missing`          | bool   | No       | Set by the harness sync when the binary can no longer be found. The entry is hidden from menus but kept, so a reinstall restores it with its `args` intact. Cleared when the binary reappears.                                                                                                                                                                                                                           |
 
 ### Account
 
-| Field                     | Type    | Required    | Description                                                                 |
-| ------------------------- | ------- | ----------- | --------------------------------------------------------------------------- |
-| `provider`                | string  | Yes         | `"github"`, `"gitlab"`, `"gitea"`, `"forgejo"`, `"bitbucket"`, `"generic"`  |
-| `url`                     | string  | Yes         | Server URL (scheme+host, no path).                                          |
-| `username`                | string  | Yes         | Account username.                                                           |
-| `name`                    | string  | Yes         | Default `git user.name`.                                                    |
-| `email`                   | string  | Yes         | Default `git user.email`.                                                   |
-| `default_credential_type` | string  | No          | Default auth: `"gcm"`, `"ssh"`, or `"token"`.                               |
-| `ssh.host`                | string  | Conditional | SSH Host alias (e.g., `"gt-myuser"`). **Mandatory** when SSH is configured. |
-| `ssh.hostname`            | string  | No          | Real SSH hostname. Auto-derived from URL if omitted.                        |
-| `ssh.key_type`            | string  | Conditional | `"ed25519"` or `"rsa"`. **Mandatory** when SSH is configured.               |
-| `gcm.provider`            | string  | No          | GCM provider hint.                                                          |
-| `gcm.useHttpPath`         | boolean | No          | Scope credentials by HTTP path.                                             |
+| Field                     | Type    | Required    | Description                                                                        |
+| ------------------------- | ------- | ----------- | ---------------------------------------------------------------------------------- |
+| `provider`                | string  | Yes         | `"github"`, `"gitlab"`, `"gitea"`, `"forgejo"`, `"bitbucket"`, `"generic"`         |
+| `url`                     | string  | Yes         | Server URL (scheme+host, no path).                                                 |
+| `username`                | string  | Yes         | Account username.                                                                  |
+| `name`                    | string  | Yes         | Default `git user.name`.                                                           |
+| `email`                   | string  | Yes         | Default `git user.email`.                                                          |
+| `default_credential_type` | string  | No          | Default auth: `"gcm"`, `"ssh"`, or `"token"`.                                      |
+| `ssh.host`                | string  | Conditional | SSH Host alias (for example, `"gt-myuser"`). **Mandatory** when SSH is configured. |
+| `ssh.hostname`            | string  | No          | Real SSH hostname. Derived from the URL if omitted.                                |
+| `ssh.key_type`            | string  | Conditional | `"ed25519"` or `"rsa"`. **Mandatory** when SSH is configured.                      |
+| `gcm.provider`            | string  | No          | GCM provider hint.                                                                 |
+| `gcm.useHttpPath`         | boolean | No          | Scope credentials by HTTP path.                                                    |
 
 An account is unique by `(hostname, username)`. Deleting an account cascades through every source and mirror that references it.
 
 ### Source
 
-| Field     | Type   | Required | Description                                                                  |
-| --------- | ------ | -------- | ---------------------------------------------------------------------------- |
-| `account` | string | Yes      | References an account key.                                                   |
-| `folder`  | string | No       | Override first-level clone folder. Default: source key.                      |
-| `root`    | string | No       | Clone root it clones into, remembered from the last clone. Default: first.   |
-| `repos`   | object | Yes      | Repos keyed by `org/repo`.                                                   |
+| Field     | Type   | Required | Description                                                                         |
+| --------- | ------ | -------- | ----------------------------------------------------------------------------------- |
+| `account` | string | Yes      | References an account key.                                                          |
+| `folder`  | string | No       | Overrides the first-level clone folder. Default: the source key.                    |
+| `root`    | string | No       | Clone root it clones into, remembered from the last clone. Default: the first root. |
+| `repos`   | object | Yes      | Repos keyed by `org/repo`.                                                          |
 
 ### Repo (within source.repos)
 
-| Field                 | Type   | Required | Description                                                               |
-| --------------------- | ------ | -------- | ------------------------------------------------------------------------- |
-| `credential_type`     | string | No       | Override auth method. Inherits from account.                              |
-| `name`                | string | No       | Override `git user.name`.                                                 |
-| `email`               | string | No       | Override `git user.email`.                                                |
-| `id_folder`           | string | No       | Override 2nd level dir (org folder).                                      |
-| `clone_folder`        | string | No       | Override 3rd level dir. If absolute, replaces entire path.                |
-| `root`                | string | No       | Clone root, set only when it differs from the source's.                   |
-| `container`           | bool   | No       | Mark as a multi-repo container; gitbox scans inside it for nested clones. |
-| `workspace`           | string | No       | The container's `.code-workspace` file, relative to the clone root.       |
-| `workspace_preferred` | string | No       | The file I picked among several; it wins whenever it is at the root.      |
+| Field                 | Type   | Required | Description                                                                                                          |
+| --------------------- | ------ | -------- | -------------------------------------------------------------------------------------------------------------------- |
+| `credential_type`     | string | No       | Overrides the auth method. Inherits from the account.                                                                |
+| `name`                | string | No       | Overrides `git user.name`.                                                                                           |
+| `email`               | string | No       | Overrides `git user.email`.                                                                                          |
+| `id_folder`           | string | No       | Overrides the 2nd-level dir (org folder).                                                                            |
+| `clone_folder`        | string | No       | Overrides the 3rd-level dir. An absolute value replaces the entire path.                                             |
+| `root`                | string | No       | Clone root, set only when it differs from the source's.                                                              |
+| `container`           | bool   | No       | Marks a multi-repo container; Gitbox scans inside it for nested clones.                                              |
+| `workspace`           | string | No       | The container's `.code-workspace` file, relative to the clone root. `pkg/workspace.Sync` keeps it in step with disk. |
+| `workspace_preferred` | string | No       | The file the user picked among several. It wins whenever it is at the root, and survives while it is missing.        |
 
 ### Mirrors
 
@@ -376,15 +402,11 @@ An account is unique by `(hostname, username)`. Deleting an account cascades thr
       "repos": {
         "infra/homelab": {
           "direction": "push",
-          "origin": "src",
-          "method": "api",
-          "status": "active"
+          "origin": "src"
         },
         "MyUser/dotfiles": {
           "direction": "pull",
-          "origin": "dst",
-          "method": "api",
-          "status": "active"
+          "origin": "dst"
         }
       }
     }
@@ -392,55 +414,80 @@ An account is unique by `(hostname, username)`. Deleting an account cascades thr
 }
 ```
 
-| Field                     | Type   | Required | Description                                               |
-| ------------------------- | ------ | -------- | --------------------------------------------------------- |
-| `account_src`             | string | Yes      | Source account key                                        |
-| `account_dst`             | string | Yes      | Destination account key (must differ from src)            |
-| `repos.<key>.direction`   | string | Yes      | `"push"` or `"pull"`                                      |
-| `repos.<key>.origin`      | string | Yes      | `"src"` or `"dst"` — which account is the source of truth |
-| `repos.<key>.target_repo` | string | No       | Override target repo name (default: same as key)          |
-| `repos.<key>.method`      | string | No       | `"api"` or `"manual"`                                     |
-| `repos.<key>.status`      | string | No       | `"active"`, `"pending"`, `"error"`, `"paused"`            |
-| `repos.<key>.last_sync`   | string | No       | RFC3339 timestamp of last known sync                      |
-| `repos.<key>.error`       | string | No       | Last error message                                        |
+| Field                     | Type   | Required | Description                                                  |
+| ------------------------- | ------ | -------- | ------------------------------------------------------------ |
+| `account_src`             | string | Yes      | Source account key.                                          |
+| `account_dst`             | string | Yes      | Destination account key (must differ from `account_src`).    |
+| `repos.<key>.direction`   | string | Yes      | `"push"` or `"pull"`.                                        |
+| `repos.<key>.origin`      | string | Yes      | `"src"` or `"dst"`: which account holds the source of truth. |
+| `repos.<key>.target_repo` | string | No       | Overrides the target repo name (default: same as the key).   |
+| `repos.<key>.last_sync`   | string | No       | RFC3339 timestamp of the last known sync.                    |
+| `repos.<key>.error`       | string | No       | Last error message.                                          |
+
+Mirror status is not stored: the GUI derives it from live checks (see [pkg/mirror](#pkgmirror--repository-mirroring)).
 
 ### Terminal profiles
 
-The `terminal_apps[]` + `shells[]` + `terminal_profiles[]` trio is owned by `pkg/terminals`. The package ships a compiled-in catalog of supported Terminals + Shells per OS — that's the vocabulary gitbox knows how to detect and launch. Adding a new terminal-emulator entry is a code change in `pkg/terminals/catalog.go`.
+`pkg/terminals` owns the `terminal_apps[]` + `shells[]` + `terminal_profiles[]` trio. It ships a compiled-in catalog of the terminals and shells Gitbox knows how to detect and launch per OS. Adding a terminal is a code change in `pkg/terminals/catalog.go`. The catalog covers:
 
-On every launch the catalog probes the host and reconciles the result with what's already in `gitbox.json`:
+- **Windows:** Windows Terminal, WezTerm, Alacritty, Tabby, ConEmu, Hyper, Mintty and ZOC; shells PowerShell 7, PowerShell 5, Command Prompt, Git Bash, and WSL (one `wsl-<distro>` row per installed distro).
+- **macOS:** iTerm2, Terminal, Warp, Kitty, Ghostty, WezTerm and Alacritty; shells Zsh, Bash, Fish and Dash.
+- **Linux:** GNOME Terminal, Konsole, Terminator, Foot, Alacritty, Kitty, Tilda, Guake and xterm; shells Bash, Zsh, Fish, Ksh and Dash.
 
-- Catalog entries the host has installed are added to `terminal_apps[]` / `shells[]` (only if missing — existing rows survive across re-detect).
-- Hidden flags survive across re-detect — hiding Mintty in this session keeps it hidden after upgrades that grow the catalog.
-- User-added Profiles (`source: "user"`) and migrated legacy Profiles (`source: "migrated"`) are preserved verbatim, even when not in the freshly-detected set.
-- Catalog-but-not-installed entries are skipped silently — they reappear automatically once the user installs the binary.
+On every launch the catalog probes the host and merges the result into `gitbox.json`:
+
+- Installed catalog entries are added to `terminal_apps[]` and `shells[]` only if missing, so existing rows survive re-detection.
+- Hidden flags survive re-detection, including after upgrades that grow the catalog.
+- User Profiles (`source: "user"`) and migrated legacy Profiles (`source: "migrated"`) are kept verbatim, even when they aren't in the freshly detected set.
+- Catalog entries that aren't installed are skipped silently and appear once the binary is installed.
 
 #### OS-aware composition
 
 The auto-derived Profile set follows different rules per platform:
 
-- **Windows** — Each Profile pairs a Terminal × Shell. Bare-shell auto-Profiles (a row whose Terminal is itself the shell) are not emitted when at least one modern Terminal is installed. When no modern Terminal is installed, gitbox falls back to one bare-shell Profile per shell so the user isn't stranded — and surfaces a banner in the Manager: "Install Windows Terminal for the best experience."
-- **macOS / Linux** — Each Profile is Terminal-only (`terminal_profiles[].shell == ""`). The host's login shell is implicit — `pkg/launch.ResolveArgs` collapses the empty shell tokens to zero items, and the Manager renders the login shell as a dim metadata badge next to the Terminal name. Power users can still pair a Terminal with a non-login Shell via the Manager's `+ Add profile` form; the resulting row is stamped `source: "user"`.
+- **Windows:** each Profile pairs a Terminal with a Shell, for every modern Terminal and every Shell. The four directly launchable shells (`pwsh`, `powershell`, `cmd`, `wsl`) also get a bare-shell Profile, hidden by default. When no modern Terminal is installed, every shell gets a visible bare-shell Profile instead, and the Manager shows a banner: "Install Windows Terminal for the best experience."
+- **macOS and Linux:** each Profile is Terminal-only (`terminal_profiles[].shell == ""`). The host's login shell is implicit: `pkg/launch.ResolveArgs` collapses the empty shell tokens to zero items, and the Manager shows the login shell as a dim badge next to the Terminal name. A Terminal can still be paired with a non-login Shell through the Manager's `+ Add profile` form, which stamps the row `source: "user"`.
 
-The Add-Profile form mirrors these rules: on macOS / Linux the shell selector includes a `(login shell)` virtual entry as the default; on Windows the shell pick is mandatory.
+The Add-Profile form follows the same rules: on macOS and Linux the shell selector defaults to a `(login shell)` entry, and on Windows a shell is mandatory.
 
 #### How launch matching works
 
-When I click a `WezTerm — PowerShell 7` or `Windows Terminal — PowerShell 7` Profile, gitbox does NOT just run the generic per-Terminal template. It first consults my own terminal config for a matching entry, and only falls back to the generic template when none is found.
+A `WezTerm — PowerShell 7` or `Windows Terminal — PowerShell 7` Profile doesn't just run the generic per-Terminal template. Gitbox first looks for a matching entry in the user's own terminal config and falls back to the generic template only when none matches.
 
-The lookup runs at every launch (with an mtime-invalidated in-process cache, so re-edits to `wezterm.lua` / `settings.json` are picked up without restart):
+The lookup runs at every launch, behind an in-process cache invalidated by file mtime and size, so edits to `wezterm.lua` or `settings.json` apply without a restart:
 
-- **WezTerm** — gitbox parses `wezterm.lua` (`$WEZTERM_CONFIG_FILE`, then `$XDG_CONFIG_HOME/wezterm/wezterm.lua`, then `~/.config/wezterm/wezterm.lua`, then `~/.wezterm.lua`) and looks up an entry of `config.launch_menu` whose label matches the gitbox shell. On hit, gitbox launches `wezterm-gui.exe start --cwd <path> -- <entry args>` and splices the entry's `set_environment_variables` on top of the parent env. The parser binds specifically to the documented `config.launch_menu` table — if my config stores entries in a custom `local profiles = { … }` variable driving a custom keybinding picker, gitbox cannot discover them and falls back to the generic template. To make custom-picker entries visible to gitbox, alias them with `config.launch_menu = profiles` at the end of `wezterm.lua` (one line, no behavioural impact on the existing keybinding). What gitbox does NOT reproduce is any Lua picker callback wired in `wezterm.lua` (per-entry `color_scheme`, `mux.spawn_window` overrides, `window-focus-changed` handlers, etc.) — those only fire when an entry is picked from WezTerm's own launcher menu, never when a pane is spawned externally.
-- **Windows Terminal** — gitbox parses `settings.json` (Store install, Preview install, then unpackaged install under `%LOCALAPPDATA%`) and looks up a profile in `profiles.list` whose `name` matches the gitbox shell. On hit, gitbox runs `wt.exe -w 0 nt --profile "<name>" -d <path>` — `wt.exe` itself reads the profile's `commandline`, font, colors, and starting flags from `settings.json`. The `-w 0 nt` prefix pins the new tab to the most-recent existing WT window (or creates one if none exists) so a `firstWindowPreference: persistedWindowLayout` setting in `settings.json` doesn't spawn a second window beside ours when WT was closed with saved tabs.
-- **No match / no config / terminal not installed** — gitbox falls back to the generic argv template (`wezterm-gui.exe start --cwd <path> -- <shell> <args>`, `wt.exe -d <path> <shell> <args>`, etc.). That's the right behaviour for shells I haven't wired into my terminal config.
+- **WezTerm:** Gitbox parses `wezterm.lua` (`$WEZTERM_CONFIG_FILE`, then `$XDG_CONFIG_HOME/wezterm/wezterm.lua`, then `~/.config/wezterm/wezterm.lua`, then `~/.wezterm.lua`) and looks for a `config.launch_menu` entry whose label matches the Gitbox shell. On a hit it launches `wezterm-gui.exe start --cwd <path> -- <entry args>` and applies the entry's `set_environment_variables` on top of the parent environment. The parser binds only to the documented `config.launch_menu` table. Entries kept in a custom variable (`local profiles = { … }`) that drives a custom picker stay invisible; adding `config.launch_menu = profiles` at the end of `wezterm.lua` exposes them without changing the picker. Lua picker callbacks (per-entry `color_scheme`, `mux.spawn_window` overrides, `window-focus-changed` handlers) are not reproduced, since they fire only when an entry is picked from WezTerm's own launcher, never when a pane is spawned externally.
+- **Windows Terminal:** Gitbox parses `settings.json` (Store install, then Preview install, then the unpackaged install under `%LOCALAPPDATA%`) and looks for a profile in `profiles.list` whose `name` matches the Gitbox shell. Hidden WT profiles and profiles whose `source` appears in WT's top-level `disabledProfileSources` never match. On a hit it runs `wt.exe -w 0 nt --profile "<name>" -d <path>`, and `wt.exe` reads the profile's `commandline`, font, colours and starting flags itself. The `-w 0 nt` prefix opens a new tab in the most recent WT window (or a new window if none exists), so `firstWindowPreference: persistedWindowLayout` doesn't spawn a second window when WT was closed with saved tabs.
+- **No match, no config, or terminal not installed:** Gitbox falls back to the generic argv template (`wezterm-gui.exe start --cwd <path> -- <shell> <args>`, `wt.exe -d <path> <shell> <args>`, and so on), which suits shells not wired into the terminal config.
 
-Bare-shell DIRECT Profiles (the four hidden-by-default `pwsh / powershell / cmd / wsl` shortcuts on Windows) skip the lookup — they have no terminal config to consult, so the generic "run the shell directly" template is correct.
+Bare-shell Profiles (no terminal) skip the lookup: there is no terminal config to consult, so running the shell directly is correct. On Windows they launch through `cmd.exe /C start "" /D <path> <shell>`, which gives the shell a fresh console and its starting folder.
 
 The shell-name matcher is forgiving:
 
-- Direct match — the entry's normalised name equals the gitbox shell's display name (`"PowerShell 7"` ≡ `"PowerShell 7"`, `"WSL — Ubuntu-24.04"` ≡ `"WSL — Ubuntu-24.04"`).
-- Em-dash suffix — for gitbox names like `"WSL — Ubuntu-24.04"`, an entry labelled just `"Ubuntu-24.04"` matches too.
-- Pattern fallback — `pwsh` matches entries containing `"powershell 7"`, `"powershell core"`, or `"pwsh"`; `powershell` matches `"powershell 5"` or `"windows powershell"`; `cmd` matches `"command prompt"` or `"cmd exe"`; `git-bash` matches `"git bash"`; `wsl-<distro>` matches the bare distro slug (`"ubuntu 24 04"`).
+- **Direct match:** the entry's normalised name equals the Gitbox shell's display name (`"PowerShell 7"`, `"WSL — Ubuntu-24.04"`).
+- **Em-dash suffix:** for Gitbox names like `"WSL — Ubuntu-24.04"`, an entry labelled just `"Ubuntu-24.04"` matches too.
+- **Pattern fallback:** `pwsh` matches entries containing `"powershell 7"`, `"powershell core"` or `"pwsh"`; `powershell` matches `"powershell 5"` or `"windows powershell"`; `cmd` matches `"command prompt"` or `"cmd exe"`; `git-bash` matches `"git bash"`; `wsl-<distro>` matches the bare distro slug (`"ubuntu 24 04"`).
+
+#### AI harness launches
+
+An AI harness runs inside a shell of the default Terminal Profile, so it inherits the user's rc files (where nvm, npm and Git Bash put most harness CLIs on `PATH`), and the shell stays open when the harness exits. `pkg/launch.HarnessInShell` wraps the harness per shell family:
+
+- **PowerShell:** `-NoExit -EncodedCommand <base64>`, which survives WT's argv rebuild and the `cmd.exe start` wrapper without quoting.
+- **cmd:** `/K <harness> <args>`.
+- **fish:** `-C '<harness> <args>'`.
+- **WSL:** `-- sh -lc '<harness>; exec "${SHELL:-sh}" -l'`.
+- **Other POSIX shells** (bash, zsh, sh, dash, ksh, Git Bash): the shell's args plus `-i -c '<harness>; exec <shell> <args>'`.
+
+On Windows, Git Bash receives npm `.cmd` shims by bare name (npm also installs an extensionless shim on the same `PATH`) and other binaries by path with forward slashes, and WSL always gets the bare name. Native Windows shells get the resolved path.
+
+`pkg/terminals.ResolveLaunch` places the wrapped shell:
+
+- A Profile without a shell (the macOS and Linux default) wraps `$SHELL`, falling back to `/bin/sh`.
+- A matched WT profile gets the wrapped shell as WT's trailing commandline, and a matched WezTerm `launch_menu` entry is wrapped around the shell from the entry's args.
+- macOS Terminal and iTerm are driven through AppleScript (`osascript`), which runs `cd <folder> && <harness>` in a new window.
+- Terminals whose template can't host a command (Warp, Kitty, Ghostty and Alacritty on macOS) return an error that asks for a Profile that hosts a shell.
+
+Harness detection resolves binaries through `doctor.Lookup` without changing the process `PATH`, so it is safe while fetches and clones run.
 
 ---
 
@@ -456,108 +503,96 @@ The shell-name matcher is forgiving:
 
 ### Token flow
 
-The user picks Token in the account's credential settings -> app shows the provider-specific PAT creation URL with required scopes -> user pastes the token -> app validates it via the provider API -> stores it in the credential file (`~/.config/gitbox/credentials/<key>`). On clone, the token is temporarily embedded in the URL for authentication, then sanitized from the remote URL. The per-repo `.git/config` is configured with `credential.helper = store --file <path>` pointing to the same gitbox-managed credential store file, so subsequent `git push/pull` from any terminal works without GCM.
+The user picks Token in the account's credential settings → the app shows the provider-specific PAT creation URL with the required scopes → the user pastes the token → the app validates it via the provider API and stores it in the credential file (`~/.config/gitbox/credentials/<key>`). On clone, the token is embedded in the URL for authentication, then stripped from the remote URL. Each clone's `.git/config` gets `credential.helper = store --file <path>` pointing at that same file, so `git push` and `git pull` from any terminal work without GCM.
 
 ### GCM flow
 
-The user picks GCM in the account's credential settings -> app triggers `git credential fill` which opens browser OAuth -> app runs `git credential approve` to persist -> tests API access with the GCM token. Clone uses HTTPS with username. The per-repo `.git/config` is configured with `credential.helper = manager` plus per-host `username`, `provider`, and `credentialStore`, making each clone self-contained. API access extracts the OAuth token via `git credential fill`.
+The user picks GCM in the account's credential settings → the app runs `git credential fill`, which opens GCM's browser sign-in → the app runs `git credential approve` to persist the result → it tests API access with the GCM token. Clones use HTTPS with the username. Each clone's `.git/config` gets `credential.helper = manager` plus per-host `username` and `provider` and `credential.credentialStore`, making it self-contained. API access extracts the OAuth token via `git credential fill`.
 
 ### SSH flow
 
-The user picks SSH in the account's credential settings -> app creates `~/.ssh/config` entry and generates an ed25519 key pair -> displays the public key for the user to register at their provider -> tests the SSH connection. Clone uses `git@<host-alias>:repo.git` URLs routed through the SSH config. API access optionally uses a separately stored PAT for discovery. The per-repo `.git/config` sets an empty `credential.helper =` to defensively cancel any global credential helper.
+The user picks SSH in the account's credential settings → the app writes a `~/.ssh/config` entry and generates a key pair (`ssh.key_type`, ed25519 by default) → it shows the public key for the user to register at the provider → it tests the SSH connection. Clones use `git@<host-alias>:repo.git` URLs routed through the SSH config. API access optionally uses a PAT for discovery, stored in the credential file. Each clone's `.git/config` sets an empty `credential.helper =` to cancel any global credential helper.
 
 ### Credential type switching
 
-When changing an account's credential type, gitbox (`ops.ChangeCredentialType` + `ops.ReconfigureClones`):
+When an account's credential type changes, `ops.ChangeCredentialType` and `ops.ReconfigureClones`:
 
-1. **Cleans up old artifacts** based on the current type (keyring entries, credential store files, SSH keys, GCM cached credentials)
-2. **Updates the account config** with the new type and credential sub-object
-3. **Reconfigures all existing clones** — updates remote URLs and per-repo credential config
+1. **Remove the old type's artifacts** (`ops.RemoveCredentialArtifacts`).
+2. **Update the account config** with the new type and credential sub-object.
+3. **Reconfigure every existing clone**: remote URL and per-repo credential config.
 
-The cleanup matrix ensures no ghost credentials persist across type changes:
+What step 1 removes depends only on the old type, so no ghost credentials outlive a switch. `ops.DeleteCredential` runs the same cleanup.
 
-| From -> To   | Keyring `gitbox:<key>` | Credential store file | GCM `git:https://` | SSH keys + config |
-| ------------ | ---------------------- | --------------------- | ------------------ | ----------------- |
-| GCM -> Token | ---                    | ---                   | Deleted            | ---               |
-| GCM -> SSH   | ---                    | ---                   | Deleted            | ---               |
-| Token -> GCM | Deleted                | Deleted               | ---                | ---               |
-| Token -> SSH | Deleted                | Deleted               | ---                | ---               |
-| SSH -> Token | Deleted (discovery)    | ---                   | ---                | Deleted           |
-| SSH -> GCM   | Deleted (discovery)    | ---                   | ---                | Deleted           |
+| Old type | Credential file `credentials/<key>` | GCM cached credential (`git credential reject`) | SSH key pair + `~/.ssh/config` host |
+| -------- | ----------------------------------- | ----------------------------------------------- | ----------------------------------- |
+| Token    | Deleted (the PAT)                   | ---                                             | ---                                 |
+| GCM      | Deleted if present (mirror PAT)     | Deleted                                         | ---                                 |
+| SSH      | Deleted if present (discovery PAT)  | ---                                             | Deleted                             |
 
 ---
 
 ## 6. GUI architecture
 
-The GUI is a Wails v2 desktop app with a Svelte frontend. The Go backend (`cmd/gui/app.go`) exposes methods that the frontend calls via auto-generated TypeScript bindings. The frontend bridge is in `cmd/gui/frontend/src/lib/bridge.ts`.
+The Go backend (`cmd/gui/app.go`) exposes methods the Svelte frontend calls through auto-generated TypeScript bindings, wrapped by `cmd/gui/frontend/src/lib/bridge.ts`. Long-running operations (clone, status refresh, pull, mirror discovery, repo moves) run in goroutines and push progress to the frontend through Wails events.
 
-**Frontend structure:** `App.svelte` composes the shell and holds the app-level state, the event listeners and the actions several parts share. The dashboard parts live in `src/lib/components/` (top bar, activity strip, banners, settings panel, sidebar, the Needs attention, All repos, account and Mirrors views, account card and menu, repo tree, rows and detail panel, footer, notices, compact view) and render from props. Every modal is its own component in `src/lib/modals/` with its own state; App opens it through a small exported function and binds only the state it shares, such as the credential flow common to Add account and Change credential. `src/lib/status.ts` is the one place that maps a repo status to its shape, colour, glossary label, Simple kind and attention rank, and an account's credential to its health words and fix action. `src/lib/views.ts` resolves the saved view and builds the Needs attention list and counts, `src/lib/activity.ts` tracks Fetch all and Pull all runs and their summaries, and `src/lib/notices.ts` holds the result cards and error messages that replace `window.alert()`; each has a `node:test` file. `src/style.css` holds the theme tokens, and `src/lib/modals/modals.css` the dialog shell, buttons and form controls the modals share. Every user-facing string goes through `$t()` from `src/lib/i18n.ts`, which holds the English and Spanish catalogs with the same keys; a sentence with an inline config key, bold or emphasis stays one catalog entry with `` `code` ``, `**strong**` and `*em*` markers, rendered by `src/lib/Rich.svelte`. `src/lib/i18n.test.mjs` fails on hard-coded template text, on keys missing in either language, and on keys the code asks for that don't exist.
+**Frontend structure:**
 
-Long-running operations (clone, status refresh, pull, mirror discovery, repo moves) run in goroutines with progress pushed to the frontend via Wails events.
+- `App.svelte` composes the shell and holds the app-level state, the event listeners and the actions several parts share.
+- `src/lib/components/` holds the dashboard parts (top bar, activity strip, banners, settings panel, sidebar, the Needs attention, All repos, account and Mirrors views, account card and menu, repo tree, rows and detail panel, footer, notices, compact view). They render from props.
+- `src/lib/modals/` holds one component per modal, each with its own state. App opens a modal through a small exported function and binds only the state it shares, such as the credential flow common to Add account and Change credential. `modals.css` holds the dialog shell, buttons and form controls the modals share; `src/style.css` holds the theme tokens.
+- `src/lib/status.ts` is the one place that maps a repo status to its shape, colour, glossary label, Simple kind and attention rank, and an account's credential to its health words and fix action. `src/lib/views.ts` resolves the saved view and builds the Needs attention list and counts. `src/lib/activity.ts` tracks Fetch all and Pull all runs and their summaries. `src/lib/notices.ts` holds the result cards and error messages that replace `window.alert()`. `src/lib/repo-tree.ts` builds the nested clone tree and sorts siblings (`compareRepoKeys`). Each has a `node:test` file.
+- Every user-facing string goes through `$t()` from `src/lib/i18n.ts`, which holds the English and Spanish catalogs with the same keys. A sentence with an inline config key, bold or emphasis stays one catalog entry with `` `code` ``, `**strong**` and `*em*` markers, rendered by `src/lib/Rich.svelte`. `src/lib/i18n.test.mjs` fails on hard-coded template text, on keys missing in either language, and on keys the code asks for that don't exist.
 
-**Layout structure:**
+**Layout structure** (the [GUI guide](gui-guide.md) describes each part from the user's side):
 
-- **Experience** — a top-bar switch between Simple (six plain states, git detail hidden) and Advanced (everything), grey and red, saved as `global.ui_mode`; both modes put icon launchers for AI / editor / terminal on each cloned row; new installs start in Simple
-- **Top bar** — the logo (it folds the sidebar), repo health ring, mirror health ring (when mirrors exist), action buttons (Pull all, Fetch all, Delete mode, Compact view, theme)
-- **Activity strip** — under the top bar while Fetch all or Pull all runs: its scope and a progress bar
-- **Sidebar** — Needs attention and All repos with their counts, one entry per account (provider logo, health mark and words, attention count), Add account, Found on disk (orphans), and Mirrors in Advanced; it folds to an icon rail (⌘B / Ctrl+B), always shows as the rail below 780 px, and remembers the view and the rail in `global.collapsed`
-- **Needs attention view** — accounts whose credential needs a fix, then repos grouped needs help, local work, behind, and not cloned, with account pills and parent tags; rows that turn fine stay, faded, until the view closes
-- **All repos view** — repo list grouped by account, rendered as a tree of nested clones at any depth, in alphabetical order (`compareRepoKeys` in `src/lib/repo-tree.ts`), with a container's not-yet-cloned workspace folders as dimmed rows after its clones; account groups and clones with clones below them collapse
-- **Account view** — a three-line account card (health, fix action, counts, Find and + New) and the account's clones
-- **Mirrors view** — Discover and Check all, mirror group chips that open into cards (status dots, active/total counts) + mirror detail list with per-repo status
-- **Result cards** — what Fetch all or Pull all did, and any action's error, bottom right, above modals
-- **Summary footer** — aggregated counts for repos and mirrors, plus the update pill when a newer release exists
-- **Compact view** — narrow sidebar mode with health ring, account pills, and mirror summary pill
+- **Top bar:** the GitBox logo (the sidebar toggle, ⌘B / Ctrl+B), the repo health ring, the mirror health ring (Advanced, when mirrors exist), Pull all and Fetch all, then Delete mode, Compact view and theme in Advanced, the Simple/Advanced switch and the Settings gear.
+- **Experience:** Simple shows plain-language states and hides git detail, Mirrors and the advanced controls; Advanced shows everything. Saved as `global.ui_mode`; new installs start in Simple.
+- **Activity strip:** below the top bar while Fetch all or Pull all runs, with its scope and a progress bar.
+- **Sidebar:** Needs attention and All repos with their counts, one entry per account (provider logo, health, attention count), Add account, Found on disk (orphans), and Mirrors in Advanced. It folds to an icon rail, is always the rail below 780 px, and remembers the view and the rail in `global.collapsed`.
+- **Views:** Needs attention (accounts with a credential to fix, then repos grouped by what they need), All repos (a tree of nested clones per account group, with a container's missing workspace folders as dimmed rows), the account view (account card and its clones), and Mirrors (Advanced only). There is no Workspaces view: workspaces live on their container in the clone tree.
+- **Result cards:** what Fetch all or Pull all did, and any action's error, bottom right, above modals.
+- **Summary footer:** aggregated counts for repos and mirrors, plus the update pill when a newer release exists.
+- **Compact view:** a narrow window with the health ring, account pills and a mirror summary pill.
 
-**Additional features:**
+**Cross-cutting behaviour:**
 
-- **Config auto-backup:** Meaningful saves create a dated backup (rolling window of the 10 most recent) before overwriting. Saves that only change the window position, the layout (`collapsed`) or the theme skip the backup — cosmetic churn would otherwise rotate real pre-corruption copies out of the ring.
-- **Window state persistence:** Position and size are saved per view mode (`window` and `compact_window` in config), restored on launch.
-- **Autostart:** Platform-specific autostart registration (macOS launch agent, Windows registry). Configurable from the GUI.
-- **Create repo:** Repos can be created directly on providers (under user namespace or org) from the account card or menu, with owner dropdown populated via `OrgLister`.
-- **External edits:** When `gitbox.json` changes on disk, the GUI reloads it when the window regains focus.
-
-See the [GUI Guide](gui-guide.md) for the user-facing walkthrough.
+- **Config auto-backup:** see [Automatic backups](#4-config-format-v5).
+- **Window state:** position and size are saved per view mode (`window` and `compact_window`) and restored on launch.
+- **Autostart:** platform-specific registration (macOS launch agent, Windows registry), configurable from the GUI.
+- **Create repo:** repos can be created on the provider (under the user or an org) from the account card or menu, with the owner dropdown filled via `OrgLister`.
+- **External edits:** when `gitbox.json` changes on disk, the GUI reloads it when the window regains focus.
 
 ---
 
 ## 7. UX design principles
 
-The user should NOT need to know Git internals — actions are verbs that do what they say.
+The user doesn't need to know Git internals: actions are verbs that do what they say.
 
-**Feedback:**
-
-- Status updates per repo as it happens (not batched)
-- Long operations show progress bars, then snap to the final state; Fetch all and Pull all state their scope while they run and leave a result card
-- Quiet by default — the UI highlights errors, warnings, and repos that need attention; clean repos stay calm
-
-**Status colors** are consistent across rings, badges, and rows. The [GUI Guide](gui-guide.md#automatic-checking) lists what each state and color means.
-
-**Behavioral rules:** Lists follow config file order. Actions are idempotent. Errors tell the user what to do, not just what went wrong. Tokens are never displayed.
+- **Live feedback:** each repo's status updates as soon as it is known, not in a batch. Long operations show progress, then snap to the final state; Fetch all and Pull all state their scope while they run and leave a result card.
+- **Quiet by default:** the UI highlights errors, warnings and repos that need attention; clean repos stay calm.
+- **Consistent colours:** status colours match across rings, badges and rows. The [GUI guide](gui-guide.md#automatic-checking) lists what each state and colour means.
+- **Predictable behaviour:** lists follow config file order, actions are idempotent, errors say what to do next, and tokens are never displayed.
 
 ---
 
 ## 8. Security
 
-- **Tokens are NEVER stored in the JSON config file.** PATs live in git-credential-store format files (`~/.config/gitbox/credentials/<key>`) with 0600 permissions. GCM OAuth tokens live in the OS credential store (Windows Credential Manager, macOS Keychain, Linux Secret Service) managed by Git Credential Manager.
-- **The config file contains no secrets** — only URLs, usernames, folder paths, and preference flags.
-- **Provider API calls use tokens from credential files or GCM** at runtime, never from config.
-- **SSH private keys** are standard `~/.ssh/` files with appropriate permissions (600).
-- **Clone URLs are sanitized** — token-authenticated clone URLs have the token stripped from the remote after cloning. Subsequent git operations authenticate via the per-repo credential helper, not the URL.
-- **Per-repo credential isolation** — each clone's `.git/config` cancels global credential helpers and sets its own, preventing credential leakage between accounts and eliminating ghost credentials from GCM's OAuth refresh tokens.
-- **Credential store files** (`~/.config/gitbox/credentials/<key>`) are plaintext with 0600 permissions — the same security model as `~/.git-credentials` and SSH private keys.
-- **No secrets in output** — tokens are never displayed, not even in error messages.
-- **The repository is public** — no real hostnames, usernames, emails, or tokens in tracked files.
+- **No secrets in the config file.** `gitbox.json` holds only URLs, usernames, folder paths and preference flags. Provider API calls read tokens from credential files or GCM at runtime.
+- **PATs** live in gitbox credential files (`~/.config/gitbox/credentials/<key>`), plaintext in git-credential-store format with 0600 permissions: the same model as `~/.git-credentials` and SSH private keys.
+- **GCM OAuth tokens** live in the OS credential store (Windows Credential Manager, macOS Keychain, Linux Secret Service), managed by Git Credential Manager.
+- **SSH private keys** are standard `~/.ssh/` files with 0600 permissions.
+- **Sanitized clone URLs:** a token used to clone is stripped from the remote URL afterwards. Later git operations authenticate through the per-repo credential helper, not the URL.
+- **Per-repo credential isolation:** each clone's `.git/config` cancels global credential helpers and sets its own, which prevents credential leakage between accounts and ghost credentials from GCM's OAuth refresh tokens.
+- **No secrets in output:** tokens are never displayed, not even in error messages.
+- **Public repository:** tracked files contain no real hostnames, usernames, emails or tokens.
 
 ---
 
 ## 9. Diagrams
 
-Architecture diagrams are available in `docs/diagrams/` as editable `.drawio` files:
+The diagrams live in `docs/diagrams/` as editable `.drawio` files, which open in [draw.io](https://app.diagrams.net/) or the VS Code drawio extension:
 
-- **architecture-overview.drawio** — High-level system component diagram
-- **credential-flow.drawio** — Per-type credential resolution flow
-- **credential-types.drawio** — Which secrets power Discovery, Git Operations, and Mirrors per credential type
-- **config-model.drawio** — Accounts / Sources / Repos / Mirrors data model
-
-These can be opened and edited with [draw.io](https://app.diagrams.net/) or the VS Code drawio extension.
+- `architecture-overview.drawio`: high-level system components.
+- `credential-flow.drawio`: per-type credential resolution flow.
+- `credential-types.drawio`: which secrets power discovery, git operations and mirrors per credential type.
+- `config-model.drawio`: the accounts, sources, repos and mirrors data model.

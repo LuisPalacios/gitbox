@@ -1,27 +1,29 @@
 # Firma de releases
 
-Cada release de gitbox incluye `checksums.sha256.sig`, una firma SSH sobre el `checksums.sha256` de la release. El actualizador de `GitboxApp` se niega a instalar una release cuya firma falte o no venga de la clave de releases compilada en el binario. Esta página explica cómo funciona la firma, cómo la ejecuto en cada release y cómo la configura un fork con su propia clave.
+Cada release de Gitbox incluye `checksums.sha256.sig`, una firma SSH sobre el `checksums.sha256` de la release. El actualizador de `GitboxApp` se niega a instalar una release cuya firma falte o no venga de la clave de releases compilada en el binario. Esta página explica cómo funciona la firma, cómo la ejecuto en cada release y cómo la configura un fork con su propia clave. El resto del proceso de release está en [developer-guide.md](developer-guide.md#proceso-de-release).
 
 ## Por qué se firman las releases
 
-El actualizador siempre ha comparado cada artefacto descargado con su SHA256 en `checksums.sha256`. Eso demuestra que la descarga no está corrupta, pero los dos ficheros vienen de la misma release de GitHub, así que cualquiera capaz de subir assets a la release podría sustituir un artefacto y su checksum a la vez. La firma añade autenticidad: solo quien tiene la clave privada puede producirla, y esa clave nunca sale de la máquina del mantenedor.
+El actualizador compara cada artefacto descargado con su SHA256 en `checksums.sha256`. Eso demuestra que la descarga no está corrupta, pero los dos ficheros vienen de la misma release de GitHub, así que cualquiera capaz de subir assets a la release podría sustituir un artefacto y su checksum a la vez. La firma añade autenticidad: solo quien tiene la clave privada puede producirla, y esa clave nunca sale de la máquina del mantenedor.
 
 ## Cómo funciona
 
 El flujo tiene tres actores: CI, el mantenedor y el actualizador en la máquina de cada usuario.
 
 1. Publico un tag de versión. CI compila todos los artefactos, escribe `checksums.sha256` y crea la release de GitHub como **borrador**. Un borrador es invisible para los usuarios y para el actualizador.
-2. Ejecuto `./scripts/sign-release.sh <tag>` en mi máquina. El script descarga el `checksums.sha256` del borrador, comprueba que lista exactamente los assets de la release y firma este mensaje con `ssh-keygen -Y sign` a través de mi agente SSH:
+2. Ejecuto `./scripts/sign-release.sh <tag>` en mi máquina. El script descarga el `checksums.sha256` del borrador, comprueba que lista exactamente los assets de la release y firma este mensaje con `ssh-keygen -Y sign -n gitbox-release` a través de mi agente SSH:
 
    ```text
    gitbox <tag>
    <checksums.sha256, byte a byte>
    ```
 
-   El agente me pide aprobar la firma. Después el script verifica la nueva firma contra `allowed_signers`, la sube como `checksums.sha256.sig` y publica la release.
-3. Cuando el `GitboxApp` de un usuario encuentra la nueva release, descarga primero `checksums.sha256` y `checksums.sha256.sig` y comprueba la firma: debe usar el namespace `gitbox-release`, venir de la clave compilada en el binario y cubrir exactamente este tag y estos checksums. Solo entonces descarga el artefacto y compara su SHA256. Cualquier fallo rechaza la actualización.
+   La primera línea es la palabra literal `gitbox`, un espacio, el tag (por ejemplo `gitbox v2.2.0`) y un salto de línea. El agente me pide aprobar la firma. Después el script verifica la nueva firma contra `allowed_signers`, la sube como `checksums.sha256.sig` y publica la release.
+3. Cuando el `GitboxApp` de un usuario encuentra la nueva release, descarga primero `checksums.sha256` y `checksums.sha256.sig` y comprueba la firma: debe usar el namespace `gitbox-release`, venir de la clave compilada en el binario y cubrir exactamente este tag y estos checksums. Solo entonces descarga el artefacto y compara su SHA256.
 
-El tag dentro del mensaje ata cada firma a una release, así que una firma antigua no se puede reutilizar en un tag nuevo. El namespace `gitbox-release` impide que una firma hecha con la misma clave para otra cosa, como un commit de git, pase por firma de release.
+El actualizador falla en cerrado. Una release sin `checksums.sha256` o sin `checksums.sha256.sig` se rechaza antes de descargar el artefacto, y una firma que no se verifica, o un checksum que no coincide, rechaza la actualización. [architecture.md](architecture.md#pkgupdate--auto-update) describe el diseño del actualizador.
+
+El tag dentro del mensaje ata una firma a una release, así que una firma antigua no se puede reutilizar en un tag nuevo. El namespace `gitbox-release` impide que una firma hecha con la misma clave para otra cosa, como un commit de git, pase por firma de release.
 
 ## Qué se guarda dónde
 
@@ -38,11 +40,13 @@ Sirve cualquier agente SSH, siempre que:
 - Hable el protocolo estándar de agente SSH, para que `ssh-add -L` liste la clave y `ssh-keygen -Y sign` pueda usarla.
 - Sea accesible desde la shell donde ejecuto el script: a través de `SSH_AUTH_SOCK` en macOS y Linux, y a través de la named pipe de OpenSSH de Windows en Windows.
 
+El script es autónomo: no necesita el `.env` de los hosts remotos de pruebas, así que funciona en cualquier clon o fork.
+
 Los gestores de contraseñas con agente SSH integrado encajan bien, porque la clave se sincroniza con la bóveda, nunca existe como fichero y cada firma puede requerir una aprobación. El `ssh-agent` normal con un fichero de clave también funciona.
 
 En Windows, el `ssh-keygen` propio de Git Bash no puede alcanzar un agente detrás de la named pipe de Windows. Por eso `sign-release.sh` usa el `C:\Windows\System32\OpenSSH\ssh-keygen.exe` nativo cuando existe. Define `SSH_KEYGEN` para cambiar el binario en cualquier plataforma.
 
-En macOS y Linux, `ssh-keygen -Y sign` alcanza el agente solo a través de `SSH_AUTH_SOCK` e ignora `IdentityAgent` en `~/.ssh/config`, así que `ssh` puede funcionar mientras la firma falla. Cuando el agente de `SSH_AUTH_SOCK` no ofrece la clave de release, `sign-release.sh` prueba los sockets por defecto de los agentes de 1Password y Bitwarden y usa el primero que sí la ofrece.
+En macOS y Linux, `ssh-keygen -Y sign` alcanza el agente solo a través de `SSH_AUTH_SOCK` e ignora `IdentityAgent` en `~/.ssh/config`, así que `ssh` puede funcionar mientras la firma falla. Cuando el agente de `SSH_AUTH_SOCK` no ofrece la clave de releases, `sign-release.sh` prueba los sockets por defecto de los agentes de 1Password y Bitwarden y usa el primero que sí la ofrece.
 
 ### Ejemplo: 1Password
 
@@ -101,11 +105,11 @@ Una comprobación correcta imprime la huella de la clave y `the agent signs with
    ./scripts/sign-release.sh v2.2.0
    ```
 
-   El script rechaza una release que ya está publicada, que no tiene `checksums.sha256`, que ya tiene firma o cuyos checksums no listan exactamente los assets de la release. Decide si la release pasa a ser la "latest" de GitHub con la misma regla que usaba antes CI: solo la línea de versión mayor más alta puede ser latest, así que una release de mantenimiento `v1.x` nunca secuestra el actualizador de las apps v2.
+   El script firma la release del repositorio al que apunta `remote.origin.url`, y cambia `gh` a la cuenta del propietario de ese repositorio cuando hay varias con sesión iniciada. Rechaza una release que ya está publicada, que no tiene `checksums.sha256`, que ya tiene firma o cuyos checksums no listan exactamente los assets de la release. Decide si la release pasa a ser la "latest" de GitHub: solo la línea de versión mayor más alta puede ser latest, así que una release de mantenimiento `v1.x` nunca secuestra el actualizador de las apps v2.
 
-Para ensayar sin publicar, `./scripts/sign-release.sh v2.2.0 --dry-run` firma y verifica, y se detiene antes de subir nada. Si algo falla, la release sigue siendo un borrador oculto hasta que arreglo el problema y vuelvo a ejecutar el script.
+Para ensayar sin publicar, `./scripts/sign-release.sh v2.2.0 --dry-run` firma y verifica, y se detiene antes de subir nada. El tag debe tener la forma `vX.Y.Z` e ir primero. Si algo falla, la release sigue siendo un borrador oculto hasta que arreglo el problema y vuelvo a ejecutar el script.
 
-Para probar la actualización desde la app justo después de publicar, abro una copia instalada de la release anterior. La app busca actualizaciones en cada arranque, así que la píldora ámbar con la versión en el pie ofrece la nueva release enseguida. La actualización solo se instala si la firma y el checksum se verifican, y después la app se reinicia en la nueva versión.
+Para probar la actualización desde la app justo después de publicar, abro una copia instalada de la release anterior. La app busca actualizaciones al arrancar y cada seis horas, así que la píldora ámbar con la versión en el pie ofrece la nueva release enseguida. La actualización solo se instala si la firma y el checksum se verifican, y después la app se reinicia en la nueva versión.
 
 ## Verificar una release a mano
 
@@ -140,7 +144,7 @@ Un fork que publica sus propias releases necesita su propia clave, porque no pue
 
 4. Ejecuta `go test ./pkg/update/`. `TestReleaseSigningKey_MatchesAllowedSigners` falla si los dos ficheros no coinciden.
 5. Ejecuta `./scripts/sign-release.sh --check`.
-6. Apunta el actualizador a tu repositorio: el `Repo` por defecto en `pkg/update` nombra este repositorio.
+6. Apunta el actualizador a tu repositorio: sustituye `LuisPalacios/gitbox` en `updateOpts()` de `cmd/gui/app.go`, que la GUI pasa como `update.Options.Repo`, y en el valor por defecto de `Options.defaults()` de `pkg/update/check.go`.
 
 A partir de ahí, los binarios compilados desde el fork solo aceptan releases firmadas con la clave del fork.
 
@@ -152,8 +156,8 @@ Si la clave se filtra, quien la tenga puede firmar actualizaciones que las apps 
 
 ## De qué no protege la firma
 
-La firma demuestra que aprobé exactamente el `checksums.sha256` de una release. No demuestra que los artefactos estén libres de código malicioso: si CI estuviera comprometido y compilara un binario manipulado, firmaría su checksum como cualquier otro. La firma cierra el hueco entre "CI lo compiló" y "el actualizador lo instala", donde un token robado para subir assets o un asset sustituido pasarían desapercibidos.
+La firma demuestra que aprobé exactamente el `checksums.sha256` de una release. No demuestra que los artefactos estén libres de código malicioso: si el propio CI estuviera comprometido y compilara un binario manipulado, firmaría su checksum como cualquier otro. La firma cierra el hueco entre "CI lo compiló" y "el actualizador lo instala", donde un token robado para subir assets o un asset sustituido pasarían desapercibidos.
 
 ## Transición
 
-Las releases hasta la v2.1.3 no están firmadas, y las apps que salieron con ellas no verifican firmas. Se actualizan a la primera release firmada con normalidad. A partir de esa release, todas las releases deben estar firmadas, o las apps actualizadas las rechazan.
+La v2.2.0 es la primera release firmada. Las apps anteriores, v1 incluida, no verifican firmas y se actualizan con normalidad a una release firmada; desde la v2.2.0, todas las releases deben estar firmadas, o la app las rechaza. Las releases de mantenimiento 1.x de la rama `release/v1` no están firmadas, y el actualizador de v1 solo comprueba el SHA256.

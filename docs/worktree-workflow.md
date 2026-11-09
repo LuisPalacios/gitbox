@@ -1,113 +1,113 @@
 # Worktree-based parallel workflow
 
-I use this workflow when I want to work on two or more GitHub issues at the same time, each in its own Claude Code or Codex session, each on its own branch, without the sessions stepping on each other. It's driven by two skills: `/work-issue <N>` creates a sibling worktree and walks the issue through plan, code, test, push, and PR; `/merge-pr <PR#>` handles the merge and cleanup.
+I use this workflow to work on several GitHub issues at once, each in its own Claude Code or Codex session and its own branch, without the sessions stepping on each other. Two skills drive it: `/work-issue <N>` creates a sibling worktree and takes the issue through plan, code, verification, push and PR; `/merge-pr <PR#>` merges the PR and cleans up.
 
-The skills enforce the gates I care about — nothing lands on GitHub without me saying so — so I don't have to re-explain the rules in every session.
-
-I use the slash-command examples below in Claude Code. In Codex I use `$work-issue <N>` and `$merge-pr <PR#>` with the same arguments and approval gates. Both tools load the shared instructions and skills described in [developer-guide.md](developer-guide.md#working-with-claude-code-and-codex).
+The skills enforce my publishing rule: nothing reaches GitHub until I say so. In Codex I run `$work-issue <N>` and `$merge-pr <PR#>` with the same arguments and gates. Both tools load the shared instructions and skills described in [developer-guide.md](developer-guide.md#working-with-claude-code-and-codex).
 
 ## What this workflow gives me
 
-- One Claude Code or Codex session per issue, fully isolated at the filesystem level.
-- An automatic `gh auth switch` to the right user for the clone, so I never push from the wrong account.
-- An explicit pause before every publish step (push, PR, merge).
-- A clean cleanup path: when the PR merges, the worktree and local branch disappear.
+- One session per issue, each in its own worktree and branch.
+- An automatic `gh auth switch` to the account that owns this clone's `origin`, so I never push from the wrong account. The skills derive it from `remote.origin.url` and never hardcode a user, so they work in a fork too.
+- An explicit pause before every publish step: push, PR and merge.
+- A clean exit: when the PR merges, the worktree and the local branch go away.
 
 ## Opening a session per issue
 
 From the main clone:
 
 1. Open a fresh Claude Code or Codex window.
-2. Type `/work-issue 42` (or whatever the issue number is).
-3. The skill derives a branch name like `fix/42-my-slug`, proposes a worktree at `../gitbox-42-my-slug`, and asks me to confirm.
-4. On confirmation it creates the worktree, `cd`s into it, and moves through the phases.
+2. Type `/work-issue 42`.
+3. The skill reads the issue and shows its title, labels, branch name and worktree path. The branch is `<type>/<N>-<slug>`: `fix` for a `bug` issue, `feat` for an `enhancement`, `chore` otherwise. The slug comes from the title, and the worktree goes to `../gitbox-<N>-<slug>`.
+4. Once I confirm it is the right issue, the skill creates the worktree from `origin/main` and continues there.
 
-If I want to work on issue 43 at the same time, I open a second Claude Code or Codex window, run `/work-issue 43` in *that* window, and now I have two parallel sessions on two separate worktrees.
+To work on issue 43 at the same time, I open a second window and run `/work-issue 43` there. I can also open a new session directly inside a worktree; the skill resumes from the right phase.
 
 ## The gates
 
-The skill pauses at each gate and waits for me. I don't have to memorise them — it tells me what's next — but here's the flow so I know what to expect:
+The skill stops at each gate and tells me what comes next:
 
-- **Preflight** — the skill confirms the gh user, fetches origin, reads the issue, proposes a branch + worktree path.
-- **Create worktree** — after I confirm, it runs `git worktree add` and switches into the new directory.
-- **Understand** — it re-reads the issue and summarises in five lines. I say "ready" before planning.
-- **Plan (or adopt an existing plan)** — if I pass a plan source, it reads and evaluates it. Otherwise it enters plan mode fresh. See [Providing my own plan](#providing-my-own-plan) below.
-- **Implement** — edit and commit cycles. Everything stays local.
-- **Auto-verify** — `go vet`, focused tests, the GUI built.
-- **Smoke-test gate** — the skill hands me the app path and a concrete check. I test. If something's wrong I say so and it fixes. If it's good I say "push it".
-- **Sync with main** — it checks whether `origin/main` moved and offers to rebase.
-- **Push gate** — I approve, it pushes the branch.
-- **PR gate** — it drafts title and body (anonymised), I approve, it runs `gh pr create`.
-- **Stop** — it reports the PR URL and tells me to run `/merge-pr` when I'm ready.
+1. **Preflight**: it checks that it runs in the main clone, switches the `gh` account, fetches `origin`, reads the issue, and proposes the branch and worktree path.
+2. **Create worktree**: after my confirmation it runs `git worktree add ../gitbox-<N>-<slug> -b <branch> origin/main`.
+3. **Understand**: it re-reads the issue, summarises it in five lines and asks whether I'm ready to plan.
+4. **Plan**: it adopts my plan or writes one with me. See [Providing my own plan](#providing-my-own-plan).
+5. **Implement**: edit and commit cycles. The final commit carries `Closes #<N>`. Everything stays local.
+6. **Auto-verify**: `go vet ./...`, the focused tests for what changed, and the GUI build with a `GitboxApp --version` smoke check. Doc-only changes skip the build.
+7. **Smoke-test gate**: it gives me the commit, the binary path to launch and one concrete check, plus the push command it intends to run. I test. If something is wrong, it fixes it and offers a new build. When it's good, I say "push it".
+8. **Sync with main**: it fetches and, if `origin/main` moved, offers `git rebase origin/main`.
+9. **Push gate**: it runs `git push -u origin <branch>`.
+10. **PR gate**: it drafts an anonymised title and body (`Closes #<N>`, what changed, test plan), waits for my approval and runs `gh pr create`.
+11. **Stop**: it reports the PR URL and tells me to run `/merge-pr` when I'm ready.
 
-At no point does the skill merge. Merging is a separate, deliberate action.
+The skill never merges. Merging is a separate, deliberate action.
 
 ## Providing my own plan
 
-If I've already thought through the issue and have a plan written down — in the issue body, a local markdown file, or a URL — I pass it to the skill:
+When I already have a plan, I pass its source as the second argument:
 
-```bash
+```text
 /work-issue 42 ./plans/42.md      # local file
 /work-issue 42 https://.../42     # URL
-/work-issue 42 issue              # use a "## Plan" section inside the issue body
+/work-issue 42 issue              # a section of the issue body
 ```
 
-The skill reads the plan and evaluates whether it covers the three things it needs:
+With `issue`, the skill reads the section of the issue body titled `Plan`, `Implementation`, `Approach` or `Proposed solution`. Without a second argument it still looks for those sections.
 
-- Which files will change and why.
+A plan is complete when it covers three things:
+
+- Which files change and why.
 - Test or verification steps.
-- Any architectural decisions or non-obvious trade-offs.
+- Architectural decisions or non-obvious trade-offs.
 
-If the plan covers all three, the skill adopts it verbatim and skips plan mode. If it's a sketch, the skill enters plan mode with my plan as seed material and we fill the gaps together. If there's no plan at all, it plans from scratch.
+A complete plan is adopted as is: the skill summarises it, asks me to confirm and skips plan mode. A partial plan seeds plan mode, where the skill calls out the gaps and we fill them. Without a plan, the skill plans from scratch. Either way, I approve the plan before it implements anything.
 
 ## Running two sessions in parallel
 
-A few things are shared across worktrees even though the source trees are isolated. I keep these in mind:
+The source trees are isolated, but some state is shared across worktrees:
 
-- `~/.config/gitbox/gitbox.json` is one file. I never run two GUI credential setup or first-run flows simultaneously — they fight over the same file.
-- The SSH agent and Git Credential Manager are global. Not a problem for pushes, but I don't run two credential-setup flows at once.
-- `go test -short ./...` in parallel is fine. `go test ./...` (the scenario test) reads shared fixtures and can collide — I run those serially.
-- Two worktrees can't have the same branch checked out. Git refuses. The error message is obvious.
-- I don't push to the same remote branch from two worktrees. If I ever need to, one of them must force-push with lease after the other lands.
+- `~/.config/gitbox/gitbox.json` is one file. I never run credential setup or first-run flows in two sessions at once; they fight over the same file.
+- The SSH agent, Git Credential Manager and the system git config are global. Pushes are fine; two credential setups at once are not.
+- `go test -short ./...` in parallel is fine. The scenario test in `go test ./...` works against the same provider fixture, so I run it in one session at a time.
+- Two worktrees can't have the same branch checked out; git refuses.
+- I never push the same remote branch from two worktrees.
 
-## Worktrees and gitbox's own clone detection
+## Worktrees and Gitbox's own clone detection
 
-If my gitbox-managed folder root is `~/00.git/github-<me>/<me>/`, then a sibling worktree at `~/00.git/github-<me>/<me>/gitbox-42-my-slug` sits *inside* that managed tree. The GUI's reconcile pass finds it and lists it under **Unmatched clones** as a git worktree of another clone.
-
-It isn't a clone of its own: the worktree has a `.git` pointer file to the main clone. gitbox recognises that file and never adopts a worktree into the config.
+When the main clone lives under one of Gitbox's clone roots, a sibling worktree sits inside that root too. The reconcile pass finds it and lists it under **Unmatched clones** as "a git worktree of another clone". A worktree isn't a clone of its own: its `.git` is a pointer file to the main clone, so Gitbox never offers to adopt it.
 
 Three ways to live with it:
 
-1. Ignore the noise. The worktree disappears when `/merge-pr` cleans up after the merge.
-2. Click **Ignore** on its row in Unmatched clones to hide it for good.
-3. Place worktrees outside any gitbox-managed folder. This is not the skill's default today — it uses the sibling path because editors and file managers behave best there — but I can `git worktree add` manually to a different location if the noise bothers me on a particular branch.
+1. Ignore it. The row disappears when `/merge-pr` removes the worktree.
+2. Click **Ignore** on its row in Unmatched clones to hide it.
+3. Create the worktree outside every clone root with `git worktree add` by hand. The skill always uses the sibling path.
 
 ## When main advances under me
 
-If someone (usually me in the other Claude Code or Codex session) lands a PR while I'm still working on mine, the `origin/main` branch moves and I need to rebase. The skill handles this at the Sync-with-main gate — it fetches, checks for new commits, and offers `git rebase origin/main`. Conflicts are surfaced to me per-file; the skill doesn't auto-resolve non-trivial conflicts.
+When a PR lands while I'm still working on mine, usually from my other session, `origin/main` moves. The Sync-with-main gate fetches, lists the new commits and offers `git rebase origin/main`. The skill shows me each conflicting file and doesn't resolve non-trivial conflicts on its own.
 
-After a rebase, auto-verify and the smoke-test gate re-run. My earlier "ok, push it" doesn't carry over — rebase rewrites history, so the skill asks again.
+After a rebase, auto-verify and the smoke-test gate run again. My earlier "push it" doesn't carry over, because the rebase changed what I tested. If the rebased commits were already pushed, the skill pushes with `--force-with-lease`.
 
 ## Merging
 
 When I'm ready:
 
-```bash
+```text
 /merge-pr <PR#>
 ```
 
-This runs in whichever Claude Code or Codex session — either the one that created the worktree, or a fresh window. The skill:
+It runs in any session, the one that created the worktree or a fresh one. The skill:
 
-1. Checks the worktree has no uncommitted or unpushed state, and verifies the PR is rebased on latest `origin/main` (re-pushes with `--force-with-lease` if not).
-2. Gates on CI — all checks must be green.
-3. Shows me the exact `gh pr merge --squash --delete-branch` command and waits for go-ahead.
-4. After the merge, removes whatever worktree and local branch `gh` left behind, and prunes stale worktree metadata.
+1. Reads the PR and finds its worktree by branch name.
+2. Checks that the worktree has no uncommitted or unpushed changes, and stops if it has, unless I override. This check runs before the merge because `gh pr merge --delete-branch` also deletes the local branch and its worktree.
+3. Fetches and, if the base branch moved, offers a rebase and re-pushes with `--force-with-lease`.
+4. Gates on CI: every check must pass. It stops on a failed check and reports its log; it stops too while checks are still running, and I re-run it later.
+5. Shows me `gh pr merge <PR#> --squash --delete-branch` and waits for my go-ahead.
+6. After the merge, returns to the main clone, fast-forwards `main`, removes any worktree and local branch `gh` left behind, and prunes stale worktree metadata.
 
-It refuses to merge while the worktree has uncommitted or unpushed state unless I explicitly override, because `gh pr merge --delete-branch` also removes the local branch and its worktree.
+If the PR body says `Closes #N`, GitHub closes the issue on merge.
 
 ## Cleanup reference
 
-If I need to clean up manually (abandoned work, skill crash, whatever):
+To clean up by hand (abandoned work, a crashed session):
 
 ```bash
 # Remove a worktree. Refuses if dirty.
@@ -116,24 +116,24 @@ git worktree remove ../gitbox-42-my-slug
 # Force-remove even if dirty.
 git worktree remove --force ../gitbox-42-my-slug
 
-# Prune metadata for worktrees that were deleted from disk without git knowing.
+# Prune metadata for worktrees deleted from disk without git knowing.
 git worktree prune
 
 # Delete the local branch.
 git branch -D fix/42-my-slug
 
-# List what's currently registered.
+# List the registered worktrees.
 git worktree list
 ```
 
 ## FAQ
 
-**Can I work on a branch without an issue?** Not today. `/work-issue` requires an issue number. If I want to do exploratory work with no issue, I open one first — a single `chore:` issue is cheap and keeps the workflow consistent.
+**Can I work on a branch without an issue?** Not with these skills: `/work-issue` requires an issue number. For exploratory work I open a short `chore:` issue first.
 
-**What if I abandon the work mid-flow?** Leave the worktree where it is. The next time I re-invoke `/work-issue <N>`, the skill detects the existing worktree from `git worktree list` and resumes at the right phase. If I want the work gone, `git worktree remove --force` + `git branch -D`.
+**What if I abandon the work mid-flow?** I leave the worktree where it is. When I run `/work-issue <N>` again, the skill reads the git state (branch, worktrees, last commit, open PR) and resumes at the right phase. To drop the work, I run `git worktree remove --force` and `git branch -D`.
 
-**How do I share a WIP worktree with another machine?** Push the branch to origin. On the other machine, clone and check out the branch normally — there's no need to replicate the worktree structure.
+**How do I continue a worktree on another machine?** I push the branch and check it out there normally. The worktree layout doesn't need to be replicated.
 
-**Can I skip the plan phase?** Yes. Either pass an existing plan as the second argument, or tell the skill during the Understand gate that the plan is trivial. It will still confirm with me before implementing.
+**Can I skip the plan phase?** I pass a complete plan as the second argument. The skill adopts it and only asks me to confirm before implementing.
 
-**What if `/merge-pr` fails after the merge but before cleanup?** Re-invoke it. It checks PR state first — if it's already `MERGED`, it jumps straight to cleanup.
+**What if `/merge-pr` fails after the merge but before cleanup?** I run it again from the main clone. It sees the PR is already merged and goes straight to cleanup.

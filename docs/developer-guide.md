@@ -1,14 +1,6 @@
 # Developer guide
 
-## Working with Claude Code and Codex
-
-I share one set of project instructions and six repository skills between Claude Code and Codex. I edit `.claude/CLAUDE.md` and `.claude/skills/`; the tracked relative symlinks `AGENTS.md` and `.agents/skills` expose the same files to Codex.
-
-I open either tool at the repository root. In Claude Code I invoke `/work-issue 123` or `/test-plan`; in Codex I invoke `$work-issue 123` or `$test-plan`. Natural-language requests also select skills. Both tools follow the same testing rules and require explicit approval before publishing to GitHub.
-
-I keep Claude permissions in `.claude/settings.json`; Codex uses its own session permissions. I keep shared instructions below Codex's default 32 KiB budget and load detailed context when needed. Codex reads Claude's skill-authoring rule through an explicit instruction, and uses a conversation plan when its session cannot enter plan mode.
-
-I start a fresh session after changing instructions or skill metadata. I ask it to summarize the project rules and list all six local skills. For symlink checks, Windows repair, capability mapping, and expected verification results, I use [the shared setup guide](../.claude/context/guideline_codex.md).
+This guide covers building Gitbox from source, checking a change, extending providers, operations and the config schema, and cutting a release. For how the pieces fit together, see [architecture.md](architecture.md).
 
 ---
 
@@ -26,7 +18,7 @@ For multiplatform testing via SSH, see [multiplatform.md](multiplatform.md).
 
 ## Building from source
 
-gitbox v2 builds one binary, the `GitboxApp` desktop app. The CLI and TUI live only on the `release/v1` branch.
+Gitbox v2 builds one binary, the `GitboxApp` desktop app. The v1 CLI and TUI live only on the `release/v1` branch.
 
 ```bash
 # Build-time version stamp. Without it the app falls back to `git describe` at runtime.
@@ -34,6 +26,7 @@ LDFLAGS="-X main.version=$(git describe --tags --always)-dev -X main.commit=$(gi
 
 # Copy app icons from assets/ into the Wails build directory (they are not checked in there)
 cp assets/appicon.png cmd/gui/build/appicon.png
+mkdir -p cmd/gui/build/windows                         # absent in a fresh clone
 cp assets/icon.ico    cmd/gui/build/windows/icon.ico   # Windows only
 
 # Development mode (hot reload)
@@ -43,11 +36,11 @@ wails dev
 # Production build
 # macOS only: target macOS 13, the Go runtime's minimum (Wails defaults to 10.13)
 export CGO_CFLAGS=-mmacosx-version-min=13.0 CGO_LDFLAGS=-mmacosx-version-min=13.0
-wails build -ldflags "$LDFLAGS"
-# Output: cmd/gui/build/bin/GitboxApp[.exe]
+wails build -ldflags "$LDFLAGS"          # Linux: add -tags webkit2_41
+# Output: cmd/gui/build/bin/GitboxApp[.exe] (GitboxApp.app on macOS)
 ```
 
-`wails build` cannot cross-compile the GUI: each target needs its host's native webview (WebView2 on Windows, WebKit on macOS, WebKitGTK on Linux). To build for another platform, build on that platform — [multiplatform.md](multiplatform.md) shows how `scripts/ship.sh` does it over SSH.
+`wails build` cannot cross-compile the GUI: each target needs its host's native webview (WebView2 on Windows, WebKit on macOS, WebKitGTK on Linux). To build for another platform, I build on that platform; [multiplatform.md](multiplatform.md) shows how `scripts/ship.sh` does it over SSH.
 
 The Go code embeds the compiled frontend from `cmd/gui/frontend/dist`. Plain Go commands such as `go vet ./...`, `go test ./...`, or a quick compile check (`go build -o /dev/null ./cmd/gui`) need that folder to exist. `wails build` creates it; to create it without a full build:
 
@@ -59,76 +52,89 @@ npm run build
 
 Once the app is built, `GitboxApp --version` prints the version and exits.
 
-### Key design decisions
+### Design rules
 
-- **`pkg/` is the heart** — all business logic lives in `pkg/`. `cmd/gui` only holds Wails bindings, locking, events, and GUI-only concerns.
-- **`pkg/ops` is the service layer** — operations that span several packages (account lifecycle, credential switching, clone planning, discovery) live there, so the GUI bindings stay thin and the logic stays testable without Wails.
-- **GUI calls Go directly** — Wails bindings expose Go methods to Svelte. No subprocess spawning of gitbox itself.
-- **Git operations use `os/exec`** — we shell out to the system `git` binary, not libgit2.
-- **Provider APIs use `net/http`** — standard Go, no external HTTP client dependencies.
-- **Accounts (WHO) + Sources (WHAT)** — accounts define identity on a server (hostname, username, credentials); sources reference an account and contain the list of repos to manage. This separation allows multiple sources to share the same account.
-- **Account uniqueness** — an account is unique by `(hostname, username)`.
-- **Repo keys use `org/repo` format** — this produces a 3-level folder structure: `<source>/<org>/<repo>`. The `id_folder` field overrides the 2nd level (org), and `clone_folder` overrides the 3rd level (or replaces the entire path when absolute).
-- **Credential inheritance** — accounts have a `default_credential_type`; repos inherit it unless they set their own `credential_type`.
-- **No console flash on Windows** — every `exec.Command` in `cmd/gui/` calls `git.HideWindow(cmd)` before it runs.
-- **Version auto-detection** — local builds run `git describe --tags --always` at runtime; CI builds inject version and commit via ldflags.
+These rules hold for every change. [architecture.md](architecture.md) explains the rest of the design.
+
+- **`pkg/` holds the business logic.** `cmd/gui` only holds Wails bindings, locking, events, and GUI-only concerns.
+- **`pkg/ops` never saves or locks.** The caller in `cmd/gui` takes the config lock, runs the operation, saves, and emits events.
+- **Git runs through `os/exec`.** Gitbox shells out to the system `git` binary, not libgit2; provider APIs use `net/http`.
+- **No console flash on Windows.** Every `exec.Command` in `cmd/gui/` calls `git.HideWindow(cmd)` before it runs.
+
+---
+
+## Testing
+
+Quick start:
+
+```bash
+go test -short ./...    # unit tests (no setup needed beyond the frontend dist folder)
+go test ./...           # everything (needs test-gitbox.json for the pkg/ops scenario)
+```
+
+I activate the pre-push hook once per clone with `git config core.hooksPath .githooks`. [testing.md](testing.md) covers the test levels, the fixture, the frontend tests, and the pre-PR and release checklists. I use `/test-plan` in Claude Code or `$test-plan` in Codex to automate the pre-PR checks.
+
+### Health check
+
+Before opening a PR I run every code checker in one pass:
+
+```bash
+./scripts/health.sh              # every check, one summary line each
+./scripts/health.sh go svelte    # only some checks ("go" = all Go checks)
+./scripts/health.sh -v           # every finding instead of the first 15
+```
+
+It is read-only and exits non-zero when any check reports a finding. Go checks: `gofmt -s`, `go vet`, staticcheck, modernize, govulncheck, deadcode (with an allowlist for functions kept on purpose) and `go test -short`. Frontend checks: pure clone-tree regressions (`npm test`), `svelte-check` (unused locals and parameters fail through `noUnusedLocals`/`noUnusedParameters`), warnings printed by `npm run build` (the same Svelte diagnostics CI shows in its build step), install warnings from a clean `npm ci` in a scratch copy (deprecated packages, install scripts not covered by `allowScripts`), and `npm audit` (with an allowlist, `NPM_AUDIT_ALLOW`, for advisories with no fix that never reach the binary; a listed advisory that stops being reported fails the check). The `npm ci` check needs npm 11.19 or newer. Repo checks: shellcheck on the shell scripts, actionlint on the workflows, and markdownlint with the `fixing-markdown` skill config forced read-only.
+
+The Go analyzers are installed into a temporary folder at versions pinned at the top of the script, so they need no install. Vet, staticcheck and modernize analyze linux, darwin and windows on every run, so platform-specific files are checked from any host. The other three tools must be on `PATH`:
+
+```bash
+scoop install shellcheck actionlint     # Windows (brew install … on macOS, apt/dnf on Linux)
+npm install -g markdownlint-cli2
+```
+
+The PR workflow runs the same script as its gate: any finding fails the job, including a new advisory reported by govulncheck or `npm audit`. CI pins shellcheck 0.11.0, actionlint 1.7.12 and markdownlint-cli2 0.23.3; I use those versions locally so both runs agree.
+
+---
+
+## Development environment quirks
+
+### Launching GitboxApp from Git Bash
+
+When I start `GitboxApp.exe` from a Git Bash or MSYS2 shell, the app inherits Windows variables in POSIX form (`LOCALAPPDATA=/c/Users/you/AppData/Local`). Gitbox cleans the environment it hands to terminals it opens, but when Windows Terminal is the default console host, its delegation path can bypass that cleanup. Tools that read those variables as Windows paths, such as `oh-my-posh` or `$PROFILE` helpers, then fail with errors like `& '/c/Users/...' — not recognized as a cmdlet`.
+
+End users never hit this. Either fix works:
+
+- Launch `GitboxApp.exe` from Explorer, the Start Menu, or a pinned shortcut, which start it with a clean Windows environment.
+- Use a [Windows Terminal profile](gui-guide.md#windows-terminal-and-wezterm-profiles) that matches the shell. Gitbox then launches through `wt.exe --profile`, and Windows Terminal starts the shell from its own profile context.
+
+---
+
+## Working with Claude Code and Codex
+
+Claude Code and Codex share one set of project instructions and six repository skills. I edit `.claude/CLAUDE.md` and `.claude/skills/`; the tracked relative symlinks `AGENTS.md` and `.agents/skills` expose the same files to Codex.
+
+I open either tool at the repository root and invoke a skill as `/work-issue 123` in Claude Code or `$work-issue 123` in Codex; natural-language requests also select skills. Both tools follow the same testing rules and require explicit approval before publishing to GitHub. Claude permissions live in `.claude/settings.json`; Codex uses its own session permissions.
+
+After changing instructions or skill metadata, I start a fresh session and ask it to summarize the project rules and list the six skills. For symlink checks, Windows repair, capability mapping, and the instruction size budget, see [the shared setup guide](../.claude/context/guideline_codex.md).
 
 ---
 
 ## Adding a new provider
 
-> Providers are implemented in `pkg/provider/`. GitHub, GitLab, Gitea/Forgejo, and Bitbucket are all functional. To add a new provider:
+Providers live in `pkg/provider/`. GitHub, GitLab, Gitea/Forgejo, and Bitbucket are implemented. To add one:
 
-1. Create `pkg/provider/newprovider.go`:
+1. Create `pkg/provider/newprovider.go` with a type that implements `Provider` (`ListRepos`, paginated). Add the optional interfaces from `provider.go` and `deleter.go` the provider supports: `RepoCreator` (create repo, existence check), `OrgLister` (owner dropdown in Create repo), `RepoDeleter`, `PushMirrorProvider`, `PullMirrorProvider`, `RepoInfoProvider` (mirror sync checks), and `PRLister` (PR badges). Callers detect each one with a type assertion and skip or refuse the feature when it is absent.
+2. Register it in `ByName` in `pkg/provider/provider.go`, the factory every caller uses to get a provider by its config name:
 
-```go
-package provider
-
-import "context"
-
-type NewProvider struct{}
-
-// Required: Provider interface
-func (p *NewProvider) ListRepos(ctx context.Context, baseURL, token, username string) ([]RemoteRepo, error) {
-    // Implement paginated API call to list repositories
-}
-
-// Optional: RepoCreator interface — enables repo creation from the GUI
-func (p *NewProvider) CreateRepo(ctx context.Context, baseURL, token, username, owner, repoName, description string, private bool) error {
-    // If owner is empty, create under the user's personal namespace.
-    // If owner is non-empty, create under that organization.
-}
-
-func (p *NewProvider) RepoExists(ctx context.Context, baseURL, token, username, owner, repoName string) (bool, error) {
-    // Check if a repo exists (used by mirror setup)
-}
-
-// Optional: OrgLister interface — enables the owner dropdown in "Create repo"
-func (p *NewProvider) ListUserOrgs(ctx context.Context, baseURL, token, username string) ([]string, error) {
-    // Return organization names the user belongs to
-}
-
-// Optional: PushMirrorProvider, PullMirrorProvider, RepoInfoProvider
-// See existing implementations for examples.
-```
-
-1. Register the provider in `pkg/provider/provider.go` (once the interface and factory are defined):
-
-```go
-func NewFromConfig(acct *config.Account) (Provider, error) {
-    switch acct.Provider {
-    case "github":
-        return &GitHub{...}, nil
+    ```go
     case "newprovider":
-        return &NewProvider{...}, nil
-    // ...
-    }
-}
-```
+        return &NewProvider{}, nil
+    ```
 
-1. Add `"newprovider"` to the `provider` enum in `json/gitbox.schema.json`.
-
-2. Write tests in `pkg/provider/newprovider_test.go`.
+3. Add the provider to the per-provider switches: token guidance and scopes in `pkg/provider/guide.go` and `ScopesForAction` in `pkg/provider/errors.go`, `SSHPublicKeyURL` in `pkg/credential/validate.go`, `providerDisplayName` in `pkg/credential/status.go`, and `GCMProviderFor` in `pkg/ops/credential.go` when GCM has a native provider for it.
+4. Add `"newprovider"` to the `provider` enum in `json/gitbox.schema.json`, and to the provider options in `cmd/gui/frontend/src/lib/modals/AddAccountModal.svelte` and `EditAccountModal.svelte`.
+5. Write `httptest`-backed tests in `pkg/provider/`, following `provider_test.go`.
 
 ---
 
@@ -144,57 +150,26 @@ When a new GUI action touches more than one package — config plus clones on di
 
 ---
 
-## Testing
-
-Quick start:
-
-```bash
-go test -short ./...    # unit tests (no setup needed beyond the frontend dist folder)
-go test ./...           # everything (needs test-gitbox.json for the pkg/ops scenario)
-```
-
-Activate the pre-push hook once per clone: `git config core.hooksPath .githooks` — it runs a `gofmt -s` check, `go vet` and unit tests before every push.
-
-I run `npm test` in `cmd/gui/frontend` when I change clone-tree grouping, ownership, collapse behavior, or how a repo status renders (`src/lib/status.ts`). These pure tests need neither Wails nor credentials; the health check includes them as `frontend-test`.
-
-### Health check
-
-Before opening a PR I run every code checker in one pass:
-
-```bash
-./scripts/health.sh              # every check, one summary line each
-./scripts/health.sh go svelte    # only some checks ("go" = all Go checks)
-./scripts/health.sh -v           # every finding instead of the first 15
-```
-
-It is read-only and exits non-zero when any check reports a finding. Go checks: `gofmt -s`, `go vet`, staticcheck, modernize, govulncheck, deadcode (with an allowlist for functions kept on purpose) and `go test -short`. Frontend checks: pure clone-tree regressions (`npm test`), `svelte-check` (unused locals and parameters fail through `noUnusedLocals`/`noUnusedParameters`), warnings printed by `npm run build` (the same Svelte diagnostics CI shows in its build step), install warnings from a clean `npm ci` in a scratch copy (deprecated packages, install scripts not covered by `allowScripts`), and `npm audit` (with an allowlist, `NPM_AUDIT_ALLOW`, for advisories with no fix that never reach the binary; a listed advisory that stops being reported fails the check). The `npm ci` check needs npm 11.19 or newer. Repo checks: shellcheck on the shell scripts, actionlint on the workflows, and markdownlint with the `fixing-markdown` skill config forced read-only.
-
-The Go analyzers are installed into a temporary folder at versions pinned at the top of the script, so they need no install; vet, staticcheck and modernize analyze linux, darwin and windows on every run, so platform-specific files are checked from any host. The other three tools must be on `PATH`:
-
-```bash
-scoop install shellcheck actionlint     # Windows (brew install … on macOS, apt/dnf on Linux)
-npm install -g markdownlint-cli2
-```
-
-The PR workflow runs the same script as its gate: any finding fails the job, including a new advisory reported by govulncheck or `npm audit`. CI pins shellcheck 0.11.0, actionlint 1.7.12 and markdownlint-cli2 0.23.3; use those versions locally so both runs agree.
-
-For the full testing workflow (fixture setup, integration tests, pre-PR and release checklists), see [testing.md](testing.md). For multiplatform testing via SSH, see [multiplatform.md](multiplatform.md). I use `/test-plan` in Claude Code or `$test-plan` in Codex to automate the pre-PR checks.
-
----
-
 ## Config schema evolution
 
 When adding new fields to the configuration:
 
-1. Add the field to the appropriate Go struct in `pkg/config/config.go` — use `json:"fieldName,omitempty"` with the correct casing (e.g., `useHttpPath` is camelCase to match GCM conventions)
-2. Add the field to `json/gitbox.schema.json` with a clear description
-3. Update `json/gitbox.jsonc` with an example
-4. If the field belongs to an account vs a source, ensure it's in the right struct (`Account` for identity/credentials, `Source` for what to clone, `Repo` for per-repo overrides)
-5. If there are CRUD implications, update `pkg/config/crud.go`
-6. Update the config reference tables in `docs/architecture.md` and `docs/es/architecture.md`
-7. Add tests for the new field in `pkg/config/config_test.go`
+1. Add the field to the right struct in `pkg/config/config.go`: `Account` for identity and credentials, `Source` for what to clone, `Repo` for per-repo overrides. Optional fields use `omitempty`. Keys are snake_case, except fields that mirror another tool's names (`useHttpPath` stays camelCase to match GCM).
+2. Add the field to `json/gitbox.schema.json` with a clear description.
+3. Add an example to `json/gitbox.jsonc`.
+4. If there are CRUD implications, update `pkg/config/crud.go`.
+5. Update the [config reference](architecture.md#4-config-format-v5) in `docs/architecture.md` and `docs/es/architecture.md`.
+6. Add tests for the new field in `pkg/config/config_test.go`.
 
-**Never bump the version number for additive changes.** Version 3 can grow with optional fields. Only bump to version 4 if breaking changes are needed (renames, removals, type changes).
+**Additive changes never bump `config.CurrentVersion`.** The current version grows with optional fields. Only a breaking change (a rename, removal, or type change) bumps it, and then:
+
+1. Raise `CurrentVersion` in `pkg/config/config.go`.
+2. Add the migration step to `decode` in `pkg/config/load.go`, gated on the version read from the file (`from < N`), and list it in `decode`'s doc comment. `decode` backs both `Parse` and `LoadWithRepair`, so every loader migrates the same way, in memory; the next save writes the new version.
+3. Update the `version` constant in `json/gitbox.schema.json`, `json/gitbox.jsonc`, and `json/test-gitbox.json.example`.
+4. Add a migration test (`pkg/config/migrate_v<N>_test.go`) that loads a file at the previous version.
+5. Update the versioning notes in [architecture.md](architecture.md#4-config-format-v5) and `.claude/CLAUDE.md`.
+
+The backup ring always keeps a copy of a file written at an older version, so a user can go back to a release that still reads it.
 
 ---
 
@@ -202,19 +177,19 @@ When adding new fields to the configuration:
 
 ### Versioning
 
-Version is **auto-detected from git tags** at runtime for local builds. CI builds inject explicit values via ldflags:
+Local builds detect the version from git tags at runtime. CI builds inject explicit values via ldflags:
 
 ```bash
 # CI build with explicit version (full SHA is truncated to 7 chars at runtime)
 cd cmd/gui && wails build -ldflags "-X main.version=v2.0.0 -X main.commit=$(git rev-parse HEAD)"
 
-# Local builds auto-detect by running:
-#   git describe --tags --always   → version (e.g., "v1.2.11")
+# Local builds without ldflags run:
+#   git describe --tags --always   → version, with "-dev" appended
 #   git rev-parse --short HEAD     → commit SHA (e.g., "a99cf17")
 # Display format:
-#   CI:    "v2.0.0 (abc1234)"
-#   Local: "v1.2.11-dev (a99cf17)"
-#   No tags: "dev-a99cf17"
+#   CI:             "v2.0.0 (abc1234)"
+#   Local:          "v2.0.0-3-ga99cf17-dev (a99cf17)"
+#   Outside a repo: "dev-none" (the app's working folder has no .git)
 ```
 
 ### Creating a release
@@ -229,6 +204,16 @@ git push origin v2.0.0
 ```
 
 CI injects `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into the GUI build. The signing key lives in my SSH agent and never reaches CI. See [release-signing.md](release-signing.md) for how signing works, the agent setup and how a fork uses its own key.
+
+### Release lines
+
+v2 is GUI-only. The CLI and TUI live on in 1.x, on the `release/v1` branch:
+
+- `main` carries v2 and later. Tags look like `v2.y.z`.
+- `release/v1` carries v1 maintenance. It takes critical and security fixes only, tagged `v1.7.z`.
+- `scripts/sign-release.sh` publishes a release as GitHub's "latest" only when no release with a higher major version exists. A `v1.7.z` tag pushed after `v2.0.0` is therefore published with `--latest=false`.
+
+The GUI updater follows the release GitHub marks as latest, so these rules decide what every installed GUI updates to. The v1 CLI caps itself at 1.x (`MaxMajor: 1`). [architecture.md](architecture.md#pkgupdate--auto-update) describes how the updater checks, verifies and installs a release.
 
 ### Continuous integration
 
@@ -254,30 +239,13 @@ Each release produces the following artifacts:
 | `checksums.sha256`           | SHA256 hashes for all artifacts                                                                |
 | `checksums.sha256.sig`       | SSH signature over the tag and `checksums.sha256`, added by `scripts/sign-release.sh`          |
 
-The asset names match v1, so the updater and the bootstrap script find them the same way. v2 drops `gitbox-win-arm64.zip`, which only carried the CLI.
+The updater and the bootstrap script look these assets up by name, including from v1 installs, so I never rename them.
 
 The Windows installer is built with Inno Setup (`scripts/installer.iss`). It installs only `GitboxApp.exe` and adds nothing to PATH; when it upgrades a v1 install, it removes the old `gitbox.exe` and its PATH entry. macOS DMGs are built with `create-dmg` and include a bundled `Install Gitbox.command` script (`scripts/dmg/`) that copies `GitboxApp.app` to `/Applications/` and removes quarantine flags. The Linux AppImage is built by `scripts/appimage/build-appimage.sh`, which uses linuxdeploy and its GTK plugin to bundle GTK 3, WebKitGTK and the WebKit helper processes, so the AppImage runs on systems without those libraries installed. The Linux GUI and the AppImage build on the `ubuntu-22.04` runner on purpose: the bundled libraries then need no newer glibc than 2.35, which keeps the AppImage working on older distributions.
 
 ### macOS code signing
 
-macOS DMGs are currently **unsigned**. Code signing and notarization steps are present in the CI workflow but gated on the `APPLE_CERTIFICATE` secret. See [macos-signing.md](macos-signing.md) for setup instructions. Until signing is configured, the DMG includes a bundled "Install Gitbox" script that handles quarantine removal automatically. Users can also use the bootstrap script or ZIP downloads.
-
-### Auto-update
-
-The `pkg/update/` package provides version checking and self-update capabilities. The GUI runs a background check at launch and every six hours, and shows an update pill in the footer while an update is pending. The updater checks that the release's `checksums.sha256` carries a valid signature by the release key compiled into the binary, then downloads the platform-specific artifact, verifies its SHA256 checksum, replaces the app in place, and restarts it on the new version.
-
-The GUI and the v1 CLI update differently:
-
-- The GUI follows the release GitHub marks as latest, including the jump from 1.x to 2.x. It replaces only what is already installed next to it; on macOS it replaces the whole `GitboxApp.app` bundle in the folder that holds it.
-- The v1 CLI, maintained on `release/v1`, stays on the 1.x line (`MaxMajor: 1`) and replaces only its own binary, so it never downgrades a v2 GUI installed next to it. It keeps its own throttle file (`.update-check-cli`).
-
-### Release lines
-
-v2 is GUI-only. The CLI and TUI live on in 1.x, on the `release/v1` branch:
-
-- `main` carries v2 and later. Tags look like `v2.y.z`.
-- `release/v1` carries v1 maintenance. It takes critical and security fixes only, tagged `v1.7.z`.
-- `scripts/sign-release.sh` publishes a release as GitHub's "latest" only when no release with a higher major version exists. A `v1.7.z` tag pushed after `v2.0.0` is therefore published with `--latest=false`, and v2 GUIs never see it as an update.
+macOS DMGs are **unsigned** for now. The CI workflow has code signing and notarization steps, gated on the `APPLE_CERTIFICATE` secret. See [macos-signing.md](macos-signing.md) for setup instructions. Until signing is configured, the DMG's bundled "Install Gitbox" script removes the quarantine flag, and users can also install with the bootstrap script or the ZIP downloads.
 
 ---
 
@@ -292,13 +260,13 @@ The workflow:
 3. **Build** — implement the plan, then verify with `/test-plan`.
 4. **Ship** — reference the issue in the commit message (e.g. `Closes #22`) so it auto-closes on push.
 
-Use `gh issue list --label enhancement` or `gh issue view <n>` to review the radar from the terminal (run `gh auth switch --user LuisPalacios` first).
+I review the backlog from the terminal with `gh issue list --label enhancement` or `gh issue view <n>`, after `gh auth switch --user LuisPalacios`.
 
 ### Push to main vs branch + PR
 
-I pick per task. Default to branch + PR when in doubt — the cost of a PR is trivial, the cost of a bad push to main is a revert.
+I pick per task and default to branch + PR when in doubt: a PR costs little, a bad push to main costs a revert.
 
-**Push directly to main** for one-file, mechanically-obvious changes: a typo, a one-line bug fix, a doc tweak. `go vet ./...` and focused tests must pass locally. Reference the issue with `Closes #N` in the commit message so GitHub auto-closes on push.
+**Push directly to main** for one-file, mechanically obvious changes: a typo, a one-line bug fix, a doc tweak. `go vet ./...` and focused tests must pass locally. The commit message references the issue with `Closes #N` so GitHub closes it on push.
 
 **Branch + PR** for everything else: multi-file features, `pkg/` public-surface changes, refactors, UI work — anything that benefits from a full diff view or from letting CI gate the merge. Branch names follow `<type>/<issue>-<slug>`, e.g. `fix/31-ide-flash` or `feat/22-open-in-terminal`. The PR body closes the issue with `Closes #N`; I self-approve and merge immediately.
 
@@ -318,11 +286,11 @@ The source of truth for the logo is `assets/logo.svg`. The derived icon files us
 
 ### Editing the logo
 
-1. Open `assets/logo.svg` in [Boxy SVG](https://boxy-svg.com/) (available as a desktop app for Windows and macOS)
-2. Edit the design
-3. Export to PNG 1024x1024 — Boxy SVG has this configured in the SVG's `<bx:export>` metadata. Save as `assets/appicon.png`
-4. Convert PNG to ICO using [icoconverter.com](https://www.icoconverter.com/) — select all 6 sizes (256, 128, 64, 48, 32, 16). Save as `assets/icon.ico`
-5. Run `wails build` from `cmd/gui/` — the build copies icons from `assets/` automatically
+1. Open `assets/logo.svg` in [Boxy SVG](https://boxy-svg.com/) (available as a desktop app for Windows and macOS).
+2. Edit the design.
+3. Export to PNG 1024x1024 — Boxy SVG has this configured in the SVG's `<bx:export>` metadata. Save as `assets/appicon.png`.
+4. Convert PNG to ICO using [icoconverter.com](https://www.icoconverter.com/) — select all 6 sizes (256, 128, 64, 48, 32, 16). Save as `assets/icon.ico`.
+5. Copy the icons into `cmd/gui/build/` and run `wails build`, as in [Building from source](#building-from-source).
 
 ### Build-time icon flow
 
@@ -331,7 +299,7 @@ The Wails build reads icons from `cmd/gui/build/`:
 - `cmd/gui/build/appicon.png` — used by Wails for all platforms
 - `cmd/gui/build/windows/icon.ico` — embedded in the Windows `.exe`
 
-These are **not checked in** (gitignored under `cmd/gui/build/`). Instead, the CI workflow and local builds copy them from `assets/` before running `wails build`.
+These are **not checked in** (gitignored under `cmd/gui/build/`). The CI workflow and local builds copy them from `assets/` before running `wails build`.
 
 ### Tool logos and top-bar icons
 
@@ -362,14 +330,15 @@ I take the README screenshots from the real app running on a fake fleet, so they
 pwsh scripts/demo-fleet/shot.ps1 -Out assets/screenshot-gui.png -Width 1360 -Height 1300
 ```
 
-The README uses `assets/screenshot-gui.png` (Simple mode) and `assets/screenshot-advanced.png`, and the GUI guide uses `screenshot-advanced.png`, `screenshot-menu.png`, and `screenshot-compact.png`, all in the light theme. `screenshot-gui.png` is also the AppStream screenshot for the Linux AppImage. Settings → Terminals lists the host's real terminals and paths, so keep that screen out of shots.
+The README uses `assets/screenshot-gui.png` (Simple mode) and `assets/screenshot-advanced.png`, and the GUI guide uses `screenshot-advanced.png`, `screenshot-menu.png`, and `screenshot-compact.png`, all in the light theme. `screenshot-gui.png` is also the AppStream screenshot for the Linux AppImage. Settings → Terminals lists the host's real terminals and paths, so I keep that screen out of shots.
 
 ---
 
 ## Code style
 
-- Follow standard Go conventions (`gofmt`, `go vet`)
-- Use `golangci-lint` if available
-- Error messages should be lowercase, no trailing punctuation
-- Exported functions need doc comments
-- Use `context.Context` for operations that may be cancelled (GUI async ops)
+- Go code passes the [health check](#health-check): `gofmt -s`, `go vet`, staticcheck, modernize and deadcode, with no findings. I run `gofmt -s -w` on changed files before committing.
+- Frontend code passes `svelte-check` with no unused locals or parameters, and builds without Svelte warnings.
+- Shell scripts pass shellcheck, workflows pass actionlint, and Markdown passes markdownlint with the `fixing-markdown` config.
+- Error messages are lowercase, with no trailing punctuation.
+- Exported functions have doc comments.
+- Operations the GUI may cancel take a `context.Context`.

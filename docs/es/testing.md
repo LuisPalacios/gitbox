@@ -1,303 +1,224 @@
 # Pruebas
 
-Esta guía cubre cómo ejecutar y escribir pruebas para gitbox. Para el inventario de pruebas (qué cubre cada paquete) y los detalles internos del harness, consulta [testing-reference.md](testing-reference.md). Recuento actual: 594 funciones de prueba de primer nivel — 517 en `pkg/` y 77 en `cmd/gui/`.
+Esta guía cubre los niveles de prueba, el fixture `test-gitbox.json` y las checklists que ejecuto antes de un PR y antes de un release. El inventario de pruebas y los detalles internos del harness viven en [testing-reference.md](testing-reference.md). La comprobación de salud se describe en [developer-guide.md › Comprobación de salud](developer-guide.md#comprobación-de-salud).
+
+## Niveles de prueba
+
+- **Pruebas unitarias de paquete** — las pruebas Go bajo `pkg/`. No necesitan preparación, ni red, ni proveedor, y lo aíslan todo con `t.TempDir()` y `t.Setenv()`. Las pruebas unitarias de `pkg/ops` se ejecutan contra un `XDG_CONFIG_HOME` temporal, un `GIT_CONFIG_GLOBAL` temporal y una carpeta SSH temporal, así que nada cambia en el host.
+- **Pruebas de GUI** — las pruebas Go bajo `cmd/gui/`. Llaman directamente a los métodos de `App`, sin ventana de Wails. Necesitan el frontend compilado en `cmd/gui/frontend/dist`, porque el paquete lo embebe.
+- **Pruebas del frontend** — pruebas puras de Node en `cmd/gui/frontend/src/lib/*.test.mjs`, que se ejecutan con `npm test`. No necesitan ni Wails ni credenciales.
+- **Prueba de escenario** — `TestScenario_FullLifecycle` en `pkg/ops/scenario_test.go` recorre el ciclo de vida completo de una cuenta a través de `pkg/ops` contra un proveedor real. Necesita el fixture descrito más abajo, y `go test -short` la salta.
+
+`go test ./pkg/...` se ejecuta sin el build del frontend. Todo lo demás en Go necesita `cmd/gui/frontend/dist`; constrúyelo una vez:
+
+```bash
+(cd cmd/gui/frontend && npm ci && npm run build)
+```
+
+`wails build` también lo crea. Consulta [developer-guide.md › Compilar desde el código fuente](developer-guide.md#compilar-desde-el-código-fuente).
 
 ## Pre-push hook
 
-El repo incluye una red de seguridad: un pre-push hook que ejecuta una comprobación `gofmt -s`, análisis estático y todas las pruebas unitarias antes de cada `git push`. Primero construye el frontend de la GUI cuando falta `cmd/gui/frontend/dist`.
-
-Git no recoge hooks personalizados automáticamente, así que después de clonar el repo ejecuto esto una vez:
+`.githooks/pre-push` ejecuta una comprobación `gofmt -s -l`, `go vet ./...` y `go test -short ./...` antes de cada push, y construye primero el frontend cuando falta `cmd/gui/frontend/dist`. Los push que solo llevan tags lo saltan. Lo activo una vez por clon:
 
 ```bash
 git config core.hooksPath .githooks
 ```
 
-A partir de ahora cada `git push` ejecuta los checks. Para saltarlo temporalmente (no recomendado): `git push --no-verify`.
+## El fixture de pruebas
 
-## Niveles de prueba
-
-Hay tres niveles de pruebas, cada uno con algo más de preparación que el anterior:
-
-- **Pruebas unitarias de paquete** — las pruebas bajo `pkg/`. Se ejecutan al instante, no necesitan setup y prueban lógica en aislamiento sin tocar la red ni ningún proveedor. `pkg/ops/ops_test.go` cubre las operaciones de la aplicación contra un `XDG_CONFIG_HOME` temporal, un `GIT_CONFIG_GLOBAL` temporal y una carpeta SSH temporal, así que nada cambia en el host real.
-- **Pruebas de GUI** — las pruebas Go bajo `cmd/gui/`. Cubren la lógica del lado de Wails que no necesita ventana: lanzamiento de terminales y de AI harness, acciones de navegador y de carpeta, y contenedores multi-repo con sus archivos de workspace. Necesitan el frontend compilado en `cmd/gui/frontend/dist`, porque el paquete lo embebe.
-- **Prueba de escenario** — `TestScenario_FullLifecycle` en `pkg/ops/scenario_test.go` recorre el ciclo de vida completo contra un proveedor real: añadir cuenta → comprobar credenciales → discover → clone → status → pull y fetch → editar cuenta + reconfigurar clone → CRUD de mirror → reclonar → renombrar → borrar. Necesita el fixture de pruebas descrito más abajo.
-
-## Antes de empezar: el build del frontend
-
-`cmd/gui` embebe `cmd/gui/frontend/dist`, así que `go vet ./...` y `go test ./...` no consiguen compilar ese paquete hasta que la carpeta existe. Un `wails build` la crea. Para crearla sin un build completo:
-
-```bash
-cd cmd/gui/frontend
-npm ci
-npm run build
-```
-
-Las pruebas de paquete por sí solas (`go test ./pkg/...`) no la necesitan.
-
-## Antes de empezar: el fixture de pruebas
-
-La prueba de escenario necesita hablar con un proveedor Git real. El proyecto usa un archivo llamado `test-gitbox.json` en la raíz del repo — una configuración normal de gitbox con un campo extra por cuenta: una clave `_test` que guarda el token de ese proveedor. El test runner lo lee, inyecta los tokens como variables de entorno y ejecuta todo en directorios temporales descartables para no tocar nunca la máquina real.
-
-**Las pruebas unitarias funcionan sin este archivo.** Si ejecutas la prueba de escenario sin él, falla con un mensaje claro que te dice que lo crees (o que uses `go test -short` para saltarla).
+La prueba de escenario y `GitboxApp --test-mode` leen `test-gitbox.json` en la raíz del repo: un `gitbox.json` normal cuyas cuentas pueden llevar una clave `_test` con un token. Las pruebas unitarias no lo necesitan. Sin él, la prueba de escenario falla con instrucciones para crear el archivo o ejecutar `go test -short`.
 
 ### Prepararlo
 
-Copia la plantilla:
+Copio la plantilla y la relleno con cuentas reales:
 
 ```bash
 cp json/test-gitbox.json.example test-gitbox.json
 ```
 
-El archivo está gitignored — contiene secretos reales y no debe commitearse nunca.
+El archivo está en el gitignore porque contiene secretos reales. No lo commitees nunca.
 
-Edita la sección `accounts` con cuentas reales de proveedores. Para cada una, añade una clave `_test` con un Personal Access Token:
+Cada cuenta a la que las pruebas pueden llamar recibe una clave `_test` con un personal access token:
 
 ```json
-"github-personal": {
-   :
-   "_test": {
-     "token": "ghp_xxxxxxxxxxxxxxxxxxxx"
-   }
+"gb-github-personal": {
+  "provider": "github",
+  "_test": {
+    "token": "ghp_xxxxxxxxxxxxxxxxxxxx"
+  }
 }
 ```
 
-Puedes añadir tantas cuentas como quieras. El test runner elige la primera que tiene sources con repos y un token válido. Las cuentas sin clave `_test` son solo display — aparecen para pruebas UI pero no se hacen llamadas API contra ellas.
-
-### Crear un token
-
-Creas tokens en la web de tu proveedor, igual que harías para gitbox:
-
-| Proveedor           | Dónde crearlo                                          | Permisos necesarios                                    |
-| ------------------- | ------------------------------------------------------ | ------------------------------------------------------ |
-| **GitHub**          | Settings → Developer settings → Personal access tokens | `repo` (full), `read:user`                             |
-| **Gitea / Forgejo** | Settings → Applications → Manage Access Tokens         | Repository: Read+Write, User: Read, Organization: Read |
-| **GitLab**          | Preferences → Access Tokens                            | scope `api`                                            |
-| **Bitbucket**       | Personal settings → App passwords                      | Repositories: Read+Write                               |
-
-### Verificar tu setup
-
-Antes de ejecutar la prueba de escenario, **ejecuta el script de setup al menos una vez** para verificar tokens y generar claves SSH:
-
-```bash
-./scripts/setup-credentials.sh
-```
-
-Esto verifica tokens API, genera pares de claves SSH por host y prueba conexiones SSH. Si un token está mal o expirado, lo verás aquí — mucho más rápido que depurar una prueba fallida. El script es idempotente y seguro de ejecutar varias veces. Cuando todo muestre `ok` verde, estás listo para la prueba de escenario.
-
-Para ejecutar credential setup también en máquinas remotas: `./scripts/setup-credentials.sh all`. Consulta [multiplatform.md](multiplatform.md) para el workflow cross-platform completo.
+Las cuentas sin `_test` son solo de visualización: aparecen en `--test-mode`, pero no se les hace ninguna llamada API. La prueba de escenario usa la primera source, en orden de clave, que tiene repos y cuya cuenta tiene un token. El token necesita los mismos permisos que una credencial token de gitbox; consulta [credentials.md › Cómo crear un PAT](credentials.md#cómo-crear-un-pat).
 
 ### Cuentas GCM
 
-Las credenciales GCM viven en el keyring del OS y salen de un login interactivo en navegador — no hay token que poner en un archivo. No añadas una clave `_test` a cuentas GCM — la prueba de escenario solo elige cuentas con token, y las cuentas GCM siguen disponibles para comprobaciones manuales en `--test-mode`.
+Las credenciales GCM salen de un inicio de sesión interactivo en el navegador, así que no hay token que guardar. No pongo `_test` en las cuentas GCM: la prueba de escenario las salta y siguen disponibles para comprobaciones manuales en `--test-mode`.
 
-### Pruebas de mirrors (opcional)
+### Mirrors (opcional)
 
-Para comprobar a mano operaciones de mirror en `--test-mode`, añade una sección `mirrors` con un par de cuentas real:
+Para comprobar mirrors a mano en `--test-mode`, añado una sección `mirrors` con un par de cuentas real:
 
 ```json
 "mirrors": {
   "gh-to-forgejo": {
-    "account_src": "github-personal",
-    "account_dst": "forgejo-testuser",
+    "account_src": "gb-github-personal",
+    "account_dst": "gb-home-personal",
     "repos": {}
   }
 }
 ```
 
-Ambas cuentas necesitan tokens en sus claves `_test`. El token de destino necesita acceso de escritura porque configurar un mirror crea ahí el repo de destino. La prueba de escenario no necesita esta sección — su paso de mirror solo crea y borra un grupo de mirror en la config.
+Ambas cuentas necesitan un token `_test`, y el token de destino necesita acceso de escritura, porque configurar un mirror crea el repo de destino. La prueba de escenario no necesita esta sección: su paso de mirror solo crea y borra un grupo de mirror en la config.
+
+### Verificar los tokens y las claves SSH
+
+Antes de la primera ejecución del escenario, compruebo el fixture:
+
+```bash
+./scripts/setup-credentials.sh
+```
+
+Verifica cada token `_test` contra su proveedor, genera pares de claves SSH por host, añade sus entradas `Host` a la config SSH del fixture y prueba las conexiones SSH. Es idempotente. Sin argumentos se ejecuta en esta máquina y en cada remoto configurado en `.env`; un destino como `linux` lo limita. Cuando cada línea muestra un `ok` verde, el fixture está listo. Consulta [multiplatform.md](multiplatform.md) para la preparación de los remotos.
 
 ### Seguridad
 
-El test runner **siempre sobrescribe** `global.roots` con un único directorio temporal descartable — todos los clones y archivos de config van ahí y se borran después de cada prueba.
-
-Para `credential_ssh.ssh_folder`, la prueba de escenario lee la ruta desde `test-gitbox.json` para poder encontrar claves SSH reales. Esta ruta **no debe ser `~/.ssh`** — apúntala a una ubicación aislada como `~/.gitbox-test/ssh`.
-
-El test runner lo exige: si el fixture apunta `ssh_folder` a `~/.ssh` o una raíz de `global.roots` a `~/.config/gitbox`, las pruebas fallan inmediatamente.
+- El harness y `--test-mode` sustituyen `global.roots` por un único directorio temporal, así que cada clon y archivo de config acaba ahí y se borra después.
+- `credential_ssh.ssh_folder` sale del fixture, para que las pruebas encuentren las claves SSH generadas. Apúntalo a una carpeta aislada como `~/.gitbox-test/ssh`.
+- La ejecución se detiene de inmediato cuando `ssh_folder` es `~/.ssh` o una raíz de `global.roots` es el directorio de config de gitbox (`~/.config/gitbox`).
 
 ## Ejecutar las pruebas
 
-Recomiendo ejecutar pruebas incrementalmente, ganando confianza a medida que avanzas.
+Las ejecuto en este orden, de la más rápida a la más lenta.
 
-### Paso 1: pruebas unitarias (sin credenciales)
+1. Pruebas unitarias, sin fixture:
 
-Confirma que el código compila y que la lógica básica funciona. Sin red, sin proveedores, sin `test-gitbox.json`.
+   ```bash
+   go test -short ./...
+   ```
 
-```bash
-go test -short ./...
-```
+2. Comprobación de tipos y pruebas del frontend:
 
-Las pruebas de probing WSL en `pkg/git` se saltan por defecto en Windows. Para ejercitarlas, define `GITBOX_TEST_WSL=1` y vuelve a ejecutar `go test ./pkg/git/`. El probe ejecuta `wsl.exe --status` y salta limpiamente si WSL no está instalado; en sistemas no Windows las pruebas afirman que los helpers devuelven false / error.
+   ```bash
+   cd cmd/gui/frontend
+   npm run check
+   npm test
+   ```
 
-### Paso 2: comprobación de tipos del frontend
+3. La prueba de escenario, contra la primera cuenta del fixture con token:
 
-Comprueba el frontend Svelte con `svelte-check`, la misma comprobación que ejecuta el workflow de PR.
+   ```bash
+   go test -v -run TestScenario ./pkg/ops/
+   ```
 
-```bash
-cd cmd/gui/frontend
-npm run check
-```
+4. Todo, en verbose y sin caché:
 
-También ejecuto `npm test` desde `cmd/gui/frontend` para las regresiones puras del árbol de clones: propiedad entre sources, prevención de duplicados, plegado de clones anidados, orden alfabético y recuperación ante referencias obsoletas a padres. La misma suite cubre la traducción de estados (la forma, el color, la etiqueta del glosario, el tipo Simple, el rango de atención y los contadores de cada estado, y si su fila abre el panel de detalle), la salud de la cuenta, la vista guardada y la lista de Requiere atención, los resúmenes de Fetch de todo y Pull de todo, y las tarjetas de resultado. La comprobación de salud ejecuta estas pruebas como `frontend-test`.
+   ```bash
+   go test -v -p 1 -count=1 ./...
+   ```
 
-### Paso 3: escenario de ciclo completo
+5. La app contra el fixture en lugar de mi config real:
 
-La grande. Ejecuta el ciclo de vida completo de una cuenta a través de `pkg/ops` contra la primera cuenta del fixture con token: crea la cuenta, comprueba credenciales, descubre repos, clona uno, comprueba status, hace pull, hace fetch, edita la cuenta y reconfigura el clone, crea y borra un grupo de mirror, reclona, renombra la cuenta y lo borra todo. Cada paso guarda y recarga la config, igual que la GUI persiste después de cada acción.
+   ```bash
+   GitboxApp --test-mode
+   ```
 
-```bash
-go test -v -run TestScenario ./pkg/ops/
-```
+   `--test-mode` busca `test-gitbox.json` subiendo desde el directorio actual, escribe una config descartable en un directorio temporal, sobrescribe `global.roots`, aplica las mismas comprobaciones de seguridad e inyecta los tokens del fixture como variables de entorno. Mi `~/.config/gitbox/` real y mis clones no se tocan, y el directorio temporal desaparece cuando la app sale. `./scripts/test-commands.sh` imprime el comando de lanzamiento para cada plataforma.
 
-### Paso 4: todo
+### Ejecuciones de regresión enfocadas
 
-Ejecuta en verbose, ignora caché:
+- **Instantánea de arranque** — `go test ./cmd/gui/ -run TestStartupSnapshot` comprueba la anidación antes de que existan los clones y los datos de instantánea independientes. `go test ./cmd/gui/ -run '^$' -bench BenchmarkStartupSnapshot -benchmem` mide la construcción de la instantánea, que es trabajo del backend, no tiempo de arranque visible.
+- **Refresco y mantenimiento de credenciales** — `go test -race ./cmd/gui/ ./pkg/credential/ ./pkg/heal/ ./pkg/git/` cubre la coordinación del refresco, la cancelación, los resultados obsoletos, los sondeos upstream y el mantenimiento previo al fetch.
 
-```bash
-go test -v -p 1 -count=1 ./...
-```
-
-### Paso 5: modo de prueba interactivo
-
-Ejecuta la app contra el fixture en lugar de mi config real:
-
-```bash
-GitboxApp --test-mode
-```
-
-El flag `--test-mode` lee `test-gitbox.json` (buscando hacia arriba desde el directorio actual), construye una config descartable en un directorio temporal, sobrescribe `global.roots` e inyecta los tokens del fixture como variables de entorno. Nada toca mi `~/.config/gitbox/` real ni los clones existentes, y el directorio temporal se borra cuando la app sale.
-
-### Comprobaciones de regresión del arranque
-
-Ejecuto las pruebas de instantánea de arranque de `cmd/gui` para verificar la anidación antes de que existan los clones y los datos de respuesta independientes. Mido por separado la construcción de la instantánea con `go test ./cmd/gui/ -run '^$' -bench BenchmarkStartupSnapshot -benchmem`. Este benchmark mide el trabajo del backend, no el tiempo de arranque visible.
-
-Para medir el arranque interactivo, registro por separado el lanzamiento del proceso, la aparición de la ventana, las primeras filas configuradas y el estado completo, junto con la plataforma, el número de clones, la disposición de contenedores y el número de ejecuciones. Distingo los arranques nativos de producción de la navegación del navegador contra un backend `wails dev` ya en ejecución. Necesito un escritorio Windows interactivo para medir el renderizado de WebView2; los tiempos del backend por SSH no bastan para demostrar el objetivo de las primeras filas. Mantengo abiertos los objetivos sin medir hasta completar esa comprobación de escritorio.
-
-### Comprobaciones de regresión del refresco
-
-Ejecuto `go test -race ./cmd/gui/ ./pkg/credential/ ./pkg/heal/ ./pkg/git/` para la coordinación del refresco, la cancelación, los resultados obsoletos y el mantenimiento de credenciales. Uso canales para bloquear trabajo inyectado y solapar disparadores sin un runtime Wails. Las pruebas de proveedores usan servidores HTTP locales para verificar la concurrencia limitada, los sondeos compartidos, los plazos y la conservación del estado upstream tras errores o rotación de credenciales.
-
-Trazo el mantenimiento previo al fetch con `GIT_TRACE2_EVENT` contra clones aislados: los clones SSH, token y GCM sin cambios deben lanzar dos comandos Git de solo lectura cada uno. Compruebo las fechas de modificación de config y archivos de credenciales, la rotación de tokens, los permisos, la cancelación de helpers, las transiciones de tipo, los worktrees enlazados y los avisos cuando los includes de config sobrescriben las reparaciones. Registro la plataforma, el número de clones, el número de procesos y el tiempo transcurrido por separado de la duración del fetch de red.
-
-### Mediciones del refresco (2026-10-15)
-
-Comparé el mantenimiento previo al fetch de `da83922` con la implementación de #131 usando el mismo fixture aislado: 24 clones locales, una cuenta y ningún fetch de red. Ejecuté una pasada secuencial en caliente por plataforma, tipo de credencial y estado. Para los casos con diferencias, cambié ambos campos de identidad, origin y helper antes de cada pasada. Usé Go 1.26.1 para el harness independiente; Windows usó Git 2.53.0.windows.1.
-
-Medí el bucle completo de mantenimiento en el proceso padre y conté los eventos de inicio de procesos Git con Trace2. Los tiempos incluyen creación de procesos, ejecución Git, operaciones de archivos y sobrecarga del trazado. Estas pasadas no separan el tiempo interno de Git, no miden el pintado de la GUI ni estiman un refresco de red completo con ocho workers.
-
-| Plataforma    | Estado de los clones | Credencial | Procesos Git antes → después | Segundos antes → después |
-| ------------- | -------------------- | ---------- | ---------------------------- | ------------------------ |
-| macOS arm64   | sin cambios          | SSH        | 216 → 48                     | 0.902 → 0.191            |
-| macOS arm64   | sin cambios          | Token      | 240 → 48                     | 1.013 → 0.202            |
-| macOS arm64   | sin cambios          | GCM        | 192 → 48                     | 0.923 → 0.278            |
-| Windows amd64 | sin cambios          | SSH        | 216 → 48                     | 9.831 → 2.037            |
-| Windows amd64 | sin cambios          | Token      | 240 → 48                     | 12.396 → 2.382           |
-| Windows amd64 | sin cambios          | GCM        | 192 → 48                     | 9.386 → 2.202            |
-| macOS arm64   | con diferencias      | SSH        | 288 → 264                    | 1.311 → 1.216            |
-| macOS arm64   | con diferencias      | Token      | 312 → 288                    | 1.457 → 1.319            |
-| macOS arm64   | con diferencias      | GCM        | 264 → 288                    | 1.222 → 1.402            |
-| Windows amd64 | con diferencias      | SSH        | 288 → 264                    | 12.774 → 11.085          |
-| Windows amd64 | con diferencias      | Token      | 312 → 288                    | 13.576 → 12.089          |
-| Windows amd64 | con diferencias      | GCM        | 264 → 288                    | 11.105 → 13.073          |
-
-Mantengo los clones sin cambios en dos procesos Git de solo lectura cada uno. La reparación de diferencias con GCM añade validación de la config efectiva tras las escrituras, por lo que su caso con diferencias cuesta más que la referencia; conservo esas comprobaciones para evitar fetches con ajustes que sobrescriben un include o la config de un worktree.
-
-En una pasada adicional de Windows con 24 clones SSH sin cambios, registré 8.918 → 1.963 s en el proceso padre, frente a 5.421 → 1.193 s de tiempo interno Git sumado de los campos `exit.t_abs` de las sesiones Trace2 de nivel superior. La diferencia restante fue de 3.497 → 0.770 s. Esa diferencia incluye inicio de procesos, IPC y operaciones de archivos del llamador; no la atribuyo solo al antivirus ni a `HideWindow`. Este dato procede de una muestra distinta de las filas anteriores.
-
-También ejecuté regresiones nativas de sondeos en Windows amd64 con Go 1.27.0 y servidores HTTP locales. Doce upstreams compartidos por dos sources produjeron doce peticiones, una búsqueda de credenciales y un máximo de cuatro peticiones concurrentes. Con un timeout reducido de veinte milisegundos por petición, doce peticiones bloqueadas terminaron en 61.34 ms. Con un presupuesto total de veinte milisegundos, el sondeo se detuvo en 20.57 ms después de cuatro peticiones. Estas comprobaciones del fixture verifican la planificación y la cancelación; los límites de producción siguen en diez segundos por petición y treinta segundos por sondeo, y estas cifras no predicen la latencia real del proveedor.
+Para el tiempo de arranque visible mido en el escritorio nativo: del lanzamiento del proceso a la ventana, de la ventana a las primeras filas configuradas con la anidación de contenedores, y el tiempo hasta completar el estado. Registro la plataforma, el número de clones, la disposición de contenedores y el número de ejecuciones. Una navegación del navegador contra un backend `wails dev` en ejecución mide un camino distinto, y los tiempos por SSH no pueden mostrar el pintado de filas de WebView2, así que un objetivo de arranque en Windows sigue abierto hasta que lo mido en un escritorio Windows interactivo.
 
 ## Checklist pre-PR
 
-Ejecuta esto antes de cada push o PR. El pre-push hook se encarga de gofmt + vet + unit tests, y el workflow de PR ejecuta `scripts/health.sh` como barrera.
+Ejecuto esto antes de cada push o PR. `/test-plan` en Claude Code o `$test-plan` en Codex lo automatiza.
 
-```text
-- [ ] ./scripts/health.sh                  (todos los comprobadores: Go, frontend, scripts, workflows, docs)
-- [ ] go vet ./...
-- [ ] go test -short ./...
-- [ ] cd cmd/gui/frontend && npm run check
-- [ ] cd cmd/gui && wails build             (build local de la GUI)
-- [ ] ./scripts/smoke.sh                   (GitboxApp --version en todas las plataformas configuradas)
-```
+- [ ] `./scripts/health.sh` pasa: incluye `go vet`, `go test -short`, `svelte-check` y `npm test` (consulta [Comprobación de salud](developer-guide.md#comprobación-de-salud))
+- [ ] Las pruebas enfocadas del área cambiada pasan (`go test ./pkg/<area>/ ./cmd/gui/`)
+- [ ] `cd cmd/gui && wails build` termina bien después de copiar los iconos (consulta [Compilar desde el código fuente](developer-guide.md#compilar-desde-el-código-fuente))
+- [ ] `cmd/gui/build/bin/GitboxApp --version` imprime `GitboxApp <version> (<sha>)`
+- [ ] `./scripts/ship.sh` y `./scripts/smoke.sh` pasan en cada remoto de `.env` (se omite cuando `.env` no tiene ninguno)
 
-Si el cambio toca un área específica, verifica al menos en la máquina dev:
+Cuando el cambio toca una de estas áreas, también lo compruebo en la máquina de desarrollo:
 
-```text
-- [ ] Cambios de config → lanzar GitboxApp, confirmar que la config carga y que el cambio persiste tras reiniciar
-- [ ] Cambios de credenciales → verificar las palabras de salud de la cuenta en la barra lateral y en la tarjeta de cuenta
-- [ ] Cambios GUI → lanzar GitboxApp, verificar que la pantalla cambiada renderiza
-- [ ] Windows → no aparece ninguna ventana de consola al ejecutar la acción cambiada
-```
+- [ ] Config: GitboxApp carga la config, y el cambio sobrevive a un reinicio
+- [ ] Credenciales: las palabras de salud de la cuenta en la barra lateral y en su tarjeta coinciden con el estado real de la credencial
+- [ ] Reconcile de disco o contenedores: un clon puesto bajo una raíz se adopta o aparece en **Clones sin ubicar** la próxima vez que la ventana recupera el foco
+- [ ] GUI: la pantalla cambiada se renderiza en Simple y en Avanzado, en los temas claro y oscuro
+- [ ] Windows: no aparece ninguna ventana de consola al ejecutar la acción cambiada
 
 ## Checklist completa de release
 
-Ejecuta antes de crear un tag de release. Combina pasos automatizados + interactivos en todas las plataformas.
+Ejecuto esto antes de crear el tag de un release. Combina pasos automatizados e interactivos en todas las plataformas.
 
 ### Automatizado
 
-```text
-- [ ] go vet ./...
-- [ ] go test -short ./...              (pruebas unitarias)
-- [ ] go test ./...                     (prueba de escenario, requiere test-gitbox.json)
-- [ ] cd cmd/gui/frontend && npm run check
-- [ ] ./scripts/ship.sh                 (construye y prepara la GUI en cada remoto)
-- [ ] ./scripts/smoke.sh all            (GitboxApp --version en todas las plataformas)
-```
+- [ ] `./scripts/health.sh` pasa
+- [ ] `go test ./...` pasa con `test-gitbox.json` en su sitio, incluida `TestScenario_FullLifecycle`
+- [ ] `./scripts/ship.sh` construye y prepara la GUI en cada remoto
+- [ ] `./scripts/smoke.sh all` imprime una versión en cada plataforma
+- [ ] `./scripts/sign-release.sh --check` pasa, así que la clave de releases está en el agente SSH
 
 ### Verificación GUI (interactiva, todas las plataformas)
 
-Lanza `GitboxApp` en cada plataforma (`./scripts/run-commands.sh` imprime los comandos):
+Lanzo GitboxApp en cada plataforma con los comandos que imprimen `./scripts/run-commands.sh` (config real) o `./scripts/test-commands.sh` (fixture).
 
-```text
-- [ ] La app abre; en Windows sin console flash
-- [ ] Primer arranque guiado con una config nueva (`XDG_CONFIG_HOME=<carpeta temporal vacía>` en macOS y Linux): carpeta → conectar (inicio de sesión con el navegador; **Use a token instead**; **Change details** conserva cualquier carpeta existente) → elegir proyectos → **Download**; la pantalla principal se abre en Simple y los repos elegidos se clonan. En Simple, **Conectar una cuenta** en la barra lateral ejecuta los mismos pasos de conectar y elegir; en Advanced, **Añadir cuenta** abre el formulario completo
-- [ ] Dashboard muestra la barra lateral (Requiere atención, Todos los repos, cuentas con logo, salud y conteo) y la vista seleccionada
-- [ ] Barra lateral: cambiar de vista (Requiere atención, Todos los repos, cada cuenta, Mirrors) funciona; el botón de arriba a la izquierda y ⌘B / Ctrl+B la pliegan al riel y la despliegan; por debajo de 780 px muestra el riel y el botón la abre sobre el contenido; la vista y el riel sobreviven a un reinicio
-- [ ] Tarjeta de cuenta: tres líneas (marca de salud y nombre, palabras de salud y acción de arreglo, conteos con Buscar y + Crear en los dos modos); una credencial rota muestra su arreglo en la tarjeta y al principio de Requiere atención
-- [ ] Editar y renombrar cuenta
-- [ ] Credential setup para cada tipo (token/gcm/ssh)
-- [ ] Discovery: Find projects → seleccionar → Add & Pull
-- [ ] Clone, Pull de todo, Fetch de todo actualizan los indicadores de status; la tira de actividad muestra el alcance mientras se ejecutan y una tarjeta de resultado los resume
-- [ ] Panel de detalle de repo muestra rama, ahead/behind, archivos cambiados
-- [ ] La vista Mirrors muestra grupos y status, con Descubrir y Comprobar todo en su cabecera
-- [ ] Settings: Raíces de clonado (añadir una raíz, hacerla predeterminada, quitarla), System check, Terminals Manager
-- [ ] Con dos raíces, el Clonar de una fila pregunta qué raíz y acaba ahí; Pull de todo no pregunta
+- [ ] La app se abre; en Windows sin console flash
+- [ ] Primer arranque: con `XDG_CONFIG_HOME` apuntando a una carpeta vacía, la configuración guiada va de carpeta → conectar (inicio de sesión en el navegador, **Usar un token**, **Cambiar los datos** conserva la carpeta elegida) → elegir proyectos → **Descargar**; la pantalla principal se abre en Simple y los repos elegidos se clonan
+- [ ] Añadir cuentas: en Simple, **Conectar una cuenta** ejecuta los mismos pasos de conectar y elegir; en Avanzado, **Añadir cuenta** abre el formulario completo
+- [ ] Barra lateral: Requiere atención, Todos los repos, cada cuenta y Mirrors abren su vista; el logo de GitBox y ⌘B / Ctrl+B la pliegan al riel de iconos y la despliegan; por debajo de 780 px se muestra el riel y el logo abre la barra lateral sobre el contenido; la vista y el riel sobreviven a un reinicio
+- [ ] Grupos de cuenta: en Todos los repos y Requiere atención cada cuenta está en una tarjeta clara con un triángulo ▾ relleno y su nombre en mayúsculas en el color del proveedor; un clic en la cabecera la pliega, y sus conteos siguen visibles mientras está plegada
+- [ ] Tarjeta de cuenta: la tarjeta de la vista de cuenta muestra la marca de salud y el nombre, las palabras de salud con su botón de arreglo, y los conteos con **Buscar** y **+ Crear** en los dos modos; una credencial rota la tiñe de rojo y pone su arreglo al principio de Requiere atención
+- [ ] Editar y renombrar la cuenta conserva los clones, la vista y la credencial
+- [ ] La configuración de credenciales funciona para token, GCM y SSH
+- [ ] Discovery: **Buscar** → seleccionar repos → **Añadir y Pull** los clona en la raíz de la cuenta
+- [ ] Clonar, **Pull de todo** y **Fetch de todo** actualizan los puntos de estado; la tira de actividad muestra el alcance mientras se ejecutan, y una tarjeta de resultado los resume
+- [ ] El panel de detalle del repo muestra la rama, ahead/behind y los archivos cambiados
+- [ ] Raíces de clonado: en Ajustes añado una raíz, la hago predeterminada y la quito; con dos raíces, el **Clonar** de una fila pregunta qué raíz y acaba ahí, y **Pull de todo** no pregunta
+- [ ] Reconcile de disco: un clon reconocido puesto bajo una raíz se adopta en su sitio la próxima vez que la ventana recupera el foco; uno no reconocido aparece en **Clones sin ubicar** bajo **Encontrados en disco**, donde **Adoptar**, **Ignorar**, **Mostrar ignorados** y **Dejar de ignorar** funcionan; un clon movido se vuelve a enlazar; los repos bajo una raíz desconectada muestran **Raíz no disponible**
+- [ ] Contenedores: un clon con clones anidados muestra un chevron ▾ con contorno en lugar de su punto de estado; el chevron o el nombre pliegan todo lo que hay debajo, y los pliegues sobreviven a un reinicio
+- [ ] Workspaces: un `.code-workspace` puesto en la raíz de un clon lo convierte en contenedor la próxima vez que la ventana recupera el foco, con sus clones anidados debajo y las carpetas listadas que faltan como filas atenuadas **sin clonar**; un segundo archivo pregunta cuál usar; el botón de editor abre el archivo de workspace en VS Code
+- [ ] Simple / Avanzado: el interruptor de la barra superior (Simple en gris, Avanzado en rojo) cambia de modo al instante; las filas en Simple muestran el punto de estado, el nombre, la frase de estado, **Actualizar** o **Descargar** cuando hace falta, los iconos de IA, editor y terminal y ⋯; las filas en Avanzado mantienen todo el detalle y el botón de fetch por fila; Simple oculta Mirrors, el modo de borrado y la vista compacta
+- [ ] Los anillos de la barra superior muestran un icono, una insignia de atención y un tooltip al pasar el ratón, y un clic en un anillo pendiente abre Requiere atención (el anillo de mirrors abre Mirrors)
+- [ ] La vista Mirrors muestra sus grupos con **Descubrir** y **Comprobar todo** en la cabecera; un chip de mirror se abre en su tarjeta y vuelve a plegarse con un clic fuera o Escape
+- [ ] Ajustes: Comprobación del sistema y el gestor de terminales se abren; el tema sigue al OS, claro u oscuro, y sobrevive a un reinicio
 - [ ] Vista compacta y vuelta a la vista completa
-- [ ] Simple / Advanced: el interruptor de la barra superior (gris Simple, rojo Advanced) cambia de modo al instante; las filas en Simple solo muestran punto, nombre, frase de estado, Update o Download cuando hace falta, los iconos de IA / editor / terminal y ⋯; las filas en Advanced mantienen todo el detalle y muestran los mismos tres iconos antes del botón de fetch; los anillos de la cabecera en Advanced son compactos (icono, insignia de atención, tooltip al pasar el ratón, sin etiqueta); una config nueva acaba en Simple tras el onboarding
-- [ ] Contraer/expandir: la cabecera de cuenta y un clon padre (chevron o nombre) se pliegan y despliegan; los pliegues sobreviven a un reinicio; un chip de mirror se abre en su tarjeta y vuelve a plegarse con un clic fuera o Escape
-- [ ] Contenedores de workspace: un `.code-workspace` puesto en la raíz de un clon lo convierte en contenedor la próxima vez que la ventana recupera el foco, con sus clones anidados debajo y las carpetas de workspace que faltan como filas atenuadas **sin clonar**; un segundo archivo abre el selector; el botón de editor abre el workspace en VS Code
-```
 
 ### Flujos de credenciales (interactivos, por plataforma)
 
-```text
-- [ ] Windows: token, gcm (navegador), ssh (key gen)
-- [ ] macOS: token, gcm (navegador), ssh
-- [ ] Linux: token, gcm (navegador en una sesión de escritorio), ssh
-```
+- [ ] Windows: token, GCM (navegador), SSH (generación de claves)
+- [ ] macOS: token, GCM (navegador), SSH
+- [ ] Linux: token, GCM (navegador en una sesión de escritorio), SSH
 
-### Actualización y upgrade (al menos 1 plataforma)
+### Actualización y upgrade (al menos una plataforma)
 
-```text
-- [ ] ./scripts/sign-release.sh --check pasa (la clave de releases está en el agente SSH)
-- [ ] La píldora de actualización aparece cuando existe un release más nuevo, y la actualización se aplica tras reiniciar
-- [ ] Una instalación v1 se actualiza a v2 y conserva el gitbox.json existente
-```
+- [ ] Con un release firmado más nuevo publicado, la píldora de actualización aparece en el pie; un clic en ella verifica la firma y el checksum, aplica la actualización, y la app se reinicia en la versión nueva
+- [ ] La píldora del AppImage de Linux abre la página del release en lugar de actualizar
+- [ ] Una instalación v1 se actualiza a v2 y conserva su `gitbox.json`
+
+Los caminos que fallan cerrados (firma ausente o inválida, checksum ausente) los cubren las pruebas de `pkg/update`, no se comprueban a mano.
 
 ### Notas específicas por plataforma
 
-| Área                | Windows                                   | macOS                     | Linux                                  |
-| ------------------- | ----------------------------------------- | ------------------------- | -------------------------------------- |
-| Store GCM           | Windows Credential Manager                | macOS Keychain            | `secretservice` o `gpg`                |
-| SSH agent           | OpenSSH agent o Pageant                   | System ssh-agent          | System ssh-agent                       |
-| Binario Git         | `git.exe` (Git for Windows)               | `/usr/bin/git` o Homebrew | `git` del sistema                      |
-| Abrir browser (GCM) | Funciona siempre                          | Funciona incluso vía SSH  | Necesita `DISPLAY` o `WAYLAND_DISPLAY` |
-| Framework GUI       | Wails + WebView2                          | Wails + WebKit            | Wails + WebKitGTK                      |
-| Ruta config         | `%APPDATA%/gitbox/` o `~/.config/gitbox/` | `~/.config/gitbox/`       | `~/.config/gitbox/`                    |
+| Área | Windows | macOS | Linux |
+| --- | --- | --- | --- |
+| Store GCM | Windows Credential Manager | macOS Keychain | `secretservice` (predeterminado) o `gpg` |
+| SSH agent | OpenSSH agent o Pageant | System ssh-agent | System ssh-agent |
+| Binario Git | `git.exe` (Git for Windows) | `/usr/bin/git` o Homebrew | `git` del sistema |
+| Abrir navegador (GCM) | Funciona siempre | Funciona incluso vía SSH | Necesita `DISPLAY` o `WAYLAND_DISPLAY` |
+| Framework GUI | Wails + WebView2 | Wails + WebKit | Wails + WebKitGTK |
+| Ruta de config | `~/.config/gitbox/` | `~/.config/gitbox/` | `~/.config/gitbox/` |
+
+`XDG_CONFIG_HOME` sobrescribe la ruta de config en todas las plataformas.
 
 ## Añadir checks nuevos
 
-Cuando añado una feature nueva, actualizo este archivo:
+Cuando añado una feature, actualizo los docs de pruebas:
 
-1. Añadir la prueba automatizada relevante y actualizar el [inventario de pruebas](testing-reference.md)
-2. Añadir un paso de verificación manual a la sección GUI adecuada anterior
-3. Si la feature es sensible a plataforma, añadir una nota a la tabla específica por plataforma
-
-Uso `/test-plan` en Claude Code o `$test-plan` en Codex para automatizar los checks pre-PR y guiar los pasos interactivos.
+1. Añadir la prueba automatizada y listarla en el [inventario de pruebas](testing-reference.md#inventario-de-pruebas).
+2. Añadir un paso manual a la sección de checklist correspondiente de arriba.
+3. Si la feature se comporta distinto según la plataforma, añadir una fila o una nota a la tabla de plataformas.
