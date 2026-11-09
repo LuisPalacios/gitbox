@@ -2347,11 +2347,10 @@ func (a *App) CredentialStoreToken(accountKey, token string) CredentialSetupResu
 	return CredentialSetupResult{OK: true, Message: msg}
 }
 
-// TokenGuideInfo returns the PAT creation URL and guidance for an account.
+// TokenGuideInfo holds where to create an account's PAT and the scopes it needs.
 type TokenGuideInfo struct {
 	CreationURL string `json:"creationURL"`
 	Scopes      string `json:"scopes"`
-	Guide       string `json:"guide"`
 }
 
 // GetTokenGuide returns provider-specific PAT creation info.
@@ -2363,14 +2362,9 @@ func (a *App) GetTokenGuide(accountKey string) TokenGuideInfo {
 	if !ok {
 		return TokenGuideInfo{}
 	}
-	scopes := provider.TokenRequiredScopes(acct.Provider)
-	if acct.DefaultCredentialType == "ssh" {
-		scopes = provider.DiscoveryRequiredScopes(acct.Provider)
-	}
 	return TokenGuideInfo{
 		CreationURL: provider.TokenCreationURL(acct.Provider, acct.URL),
-		Scopes:      scopes,
-		Guide:       provider.TokenSetupGuide(acct.Provider, acct.URL, accountKey),
+		Scopes:      provider.TokenRequiredScopes(acct.Provider),
 	}
 }
 

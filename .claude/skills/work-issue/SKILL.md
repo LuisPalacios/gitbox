@@ -88,7 +88,7 @@ Ask: "Is this the right issue? Proceed?" Do not create the worktree until the us
 
 ## Step 2: Create worktree
 
-- **Orphan heads-up:** if `~/.config/gitbox/gitbox.json` exists, read it and check whether the proposed worktree absolute path falls under `folder` (top-level) or any account's `folder`. If it does, warn once: "Heads-up — this worktree will sit inside a gitbox-managed folder, so GitboxApp's status and discovery will list it as an orphan. Not actually orphaned — just unrecognised by the scanner. Safe to ignore." Proceed unless the user says otherwise.
+- **Orphan heads-up:** if `~/.config/gitbox/gitbox.json` exists, read it and check whether the proposed worktree absolute path falls under any of the clone roots in `global.roots` (a leading `~` means the home folder). If it does, warn once: "Heads-up — this worktree will sit inside a gitbox-managed folder, so GitboxApp's status and discovery will list it as an orphan. Not actually orphaned — just unrecognised by the scanner. Safe to ignore." Proceed unless the user says otherwise.
 - Create: `git worktree add ../gitbox-<N>-<slug> -b <branch> origin/main`.
 - `cd` into the worktree for all subsequent steps.
 - Tell the user: "Worktree ready at `<path>` on branch `<branch>`. You can open a separate Claude Code or Codex session in that directory and continue there — I'll resume from Step 3 either way."

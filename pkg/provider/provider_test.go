@@ -220,30 +220,33 @@ func TestBitbucketListRepos(t *testing.T) {
 
 func TestTokenSetupGuide(t *testing.T) {
 	providers := []struct {
-		name     string
-		url      string
-		contains string
+		name   string
+		url    string
+		path   string
+		scopes []string
 	}{
-		{"github", "https://github.com", "/settings/tokens/new"},
-		{"gitlab", "https://gitlab.com", "/-/user_settings/personal_access_tokens"},
-		{"gitea", "https://git.example.com", "/user/settings/applications"},
-		{"forgejo", "https://git.example.com", "/user/settings/applications"},
-		{"bitbucket", "https://bitbucket.org", "/account/settings/app-passwords/new"},
+		{"github", "https://github.com", "/settings/tokens/new", []string{"repo", "read:org"}},
+		{"gitlab", "https://gitlab.com", "/-/user_settings/personal_access_tokens", []string{"api"}},
+		{"gitea", "https://git.example.com", "/user/settings/applications", []string{"repository", "user", "organization"}},
+		{"forgejo", "https://git.example.com", "/user/settings/applications", []string{"repository", "user", "organization"}},
+		{"bitbucket", "https://bitbucket.org", "/account/settings/app-passwords/new", []string{"Repositories", "Admin", "Account"}},
 	}
 
 	for _, tt := range providers {
 		t.Run(tt.name, func(t *testing.T) {
-			guide := TokenSetupGuide(tt.name, tt.url, "test-account")
-			if guide == "" {
-				t.Fatal("guide is empty")
+			if got := TokenCreationURL(tt.name, tt.url+"/"); got != tt.url+tt.path {
+				t.Errorf("TokenCreationURL = %q, want %q", got, tt.url+tt.path)
 			}
-			if !contains(guide, tt.contains) {
-				t.Errorf("guide for %s should contain %q:\n%s", tt.name, tt.contains, guide)
-			}
-			if !contains(guide, "credential settings") {
-				t.Errorf("guide should say where to store the token:\n%s", guide)
+			scopes := TokenRequiredScopes(tt.name)
+			for _, s := range tt.scopes {
+				if !contains(scopes, s) {
+					t.Errorf("scopes for %s should name %q: %q", tt.name, s, scopes)
+				}
 			}
 		})
+	}
+	if TokenCreationURL("unknown", "https://example.com") != "" {
+		t.Error("unknown provider should have no creation URL")
 	}
 }
 

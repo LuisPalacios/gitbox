@@ -9,12 +9,12 @@ import (
 )
 
 // SetupTestMode reads test-gitbox.json from the repo root, creates a throwaway
-// config in a temp directory with global.folder overridden, and validates that
+// config in a temp directory with global.roots overridden, and validates that
 // ssh_folder does not point at ~/.ssh. Returns the temp config path and a
 // cleanup function that removes the temp directory.
 //
-// Used by both CLI (gitbox --test-mode) and GUI (GitboxApp --test-mode) to
-// provide interactive testing with the same isolation as automated tests.
+// Used by GitboxApp --test-mode to provide interactive testing with the same
+// isolation as automated tests.
 func SetupTestMode() (cfgPath string, cleanup func(), err error) {
 	// Find test-gitbox.json by walking up from cwd.
 	fixturePath, err := findFixture()
