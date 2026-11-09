@@ -6,7 +6,7 @@ Esto es distinto de la firma SSH sobre `checksums.sha256` que cada release inclu
 
 ## Qué cubre la ruta de CI
 
-Los jobs `dmg-macos-arm64` y `dmg-macos-amd64` ejecutan estos pasos solo cuando `env.APPLE_CERTIFICATE != ''`:
+Los jobs `dmg-macos-arm64` y `dmg-macos-amd64` ejecutan estos pasos solo cuando el secreto `APPLE_CERTIFICATE` está definido (el indicador `APPLE_SIGNING` del job):
 
 1. **Import signing certificate**: decodifica el `.p12` en un `build.keychain` efímero.
 2. **Codesign app bundle**: firma `GitboxApp.app` con `codesign --force --deep --sign "$APPLE_IDENTITY" --options runtime`.
