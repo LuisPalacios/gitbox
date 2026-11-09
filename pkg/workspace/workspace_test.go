@@ -234,6 +234,23 @@ func TestPlaceholders_ListsMissingFoldersInside(t *testing.T) {
 	}
 }
 
+// A folder inside a nested clone, like a submodule not checked out, is
+// that clone's content, not a clone to make.
+func TestPlaceholders_SkipsFoldersInsideNestedClones(t *testing.T) {
+	cfg := newTestConfig(t)
+	dir := makeRepoDir(t, cfg, "github-test", "team/frontend")
+	src := cfg.Sources["github-test"]
+	src.Repos["team/backend"] = config.Repo{CloneFolder: filepath.Join(dir, "Browser")}
+	src.Repos["team/frontend"] = config.Repo{Container: true, Workspace: "w.code-workspace"}
+	writeCodeWorkspace(t, filepath.Join(dir, "w.code-workspace"), "Browser/ext/common/lib", "Missing")
+
+	got := Placeholders(cfg)
+	want := []Placeholder{{Parent: status.RepoRef{Source: "github-test", Repo: "team/frontend"}, Name: "Missing", Path: "Missing"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Placeholders = %+v, want %+v", got, want)
+	}
+}
+
 func TestPlaceholders_IgnoresContainersWithoutWorkspace(t *testing.T) {
 	cfg := newTestConfig(t)
 	dir := makeRepoDir(t, cfg, "github-test", "team/frontend")

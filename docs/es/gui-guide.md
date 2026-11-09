@@ -295,7 +295,7 @@ Gitbox comprueba al arrancar, al recuperar el foco la ventana, tras un Fetch all
 
 ### Clones bajo un contenedor
 
-Cada clon dentro del árbol de trabajo de un contenedor aparece debajo de él, sangrado, y se pliega con él. Gitbox los busca hasta la **profundidad de escaneo anidado** por debajo del contenedor, y en cada carpeta que lista el archivo de workspace del contenedor, a cualquier profundidad. Los clones anidados se adoptan en el lugar bajo su cuenta/org real, se guardan con una `clone_folder` absoluta dentro del contenedor y nunca se reubican. Una carpeta que el archivo de workspace lista dentro del contenedor y que todavía no está en disco aparece como una fila atenuada **sin clonar** con su ruta. Las carpetas que el workspace lista fuera del contenedor mantienen su sitio normal bajo su propia cuenta.
+Cada clon dentro del árbol de trabajo de un contenedor aparece debajo de él, sangrado, y se pliega con él. Gitbox los busca hasta la **profundidad de escaneo anidado** por debajo del contenedor, y en cada carpeta que lista el archivo de workspace del contenedor, a cualquier profundidad. Los clones anidados se adoptan en el lugar bajo su cuenta/org real, se guardan con una `clone_folder` absoluta dentro del contenedor y nunca se reubican. Una carpeta que el archivo de workspace lista dentro del contenedor y que todavía no está en disco aparece como una fila atenuada **sin clonar** con su ruta, salvo que esté dentro de otro clon, como un submódulo sin descargar. Las carpetas que el workspace lista fuera del contenedor mantienen su sitio normal bajo su propia cuenta.
 
 ### Abrir un contenedor
 

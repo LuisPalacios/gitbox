@@ -132,7 +132,8 @@ func Apply(cfg *config.Config, changes []Change) bool {
 // folders that file lists inside the container that are missing on disk
 // and that no configured repo resolves to. A configured repo there already
 // nests under the container (status.ComputeNesting) with its Clone action.
-// Folders outside the container are skipped: the tree stays path-based.
+// Folders inside another clone (a submodule, say) and folders outside the
+// container are skipped: the tree stays path-based.
 func Placeholders(cfg *config.Config) []Placeholder {
 	known := make(map[string]bool)
 	for _, srcKey := range cfg.OrderedSourceKeys() {
@@ -149,8 +150,9 @@ func Placeholders(cfg *config.Config) []Placeholder {
 			if !repo.Container || repo.Workspace == "" {
 				continue
 			}
-			for _, m := range Members(status.RepoPath(cfg, srcKey, repoKey, repo), repo.Workspace) {
-				if known[normPath(m.Path)] {
+			dir := status.RepoPath(cfg, srcKey, repoKey, repo)
+			for _, m := range Members(dir, repo.Workspace) {
+				if known[normPath(m.Path)] || insideClone(normPath(m.Path), normPath(dir), known) {
 					continue
 				}
 				if _, err := os.Stat(m.Path); err == nil {
@@ -165,6 +167,18 @@ func Placeholders(cfg *config.Config) []Placeholder {
 		}
 	}
 	return out
+}
+
+// insideClone reports whether p lies inside a known clone nested in the
+// container dir: a folder of that clone (a submodule, say) is not a clone
+// gitbox could provide.
+func insideClone(p, dir string, known map[string]bool) bool {
+	for parent := filepath.Dir(p); parent != dir && strings.HasPrefix(parent, dir+string(filepath.Separator)); parent = filepath.Dir(parent) {
+		if known[parent] {
+			return true
+		}
+	}
+	return false
 }
 
 // Member is a folder a container's workspace file lists inside the

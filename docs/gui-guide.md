@@ -295,7 +295,7 @@ Gitbox checks at startup, on window focus, after a manual Fetch all and after I 
 
 ### Clones below a container
 
-Every clone inside a container's working tree shows below it, indented, and folds with it. Gitbox looks for them up to the **nested scan depth** below the container, and at every folder the container's workspace file lists, at any depth. Nested clones are adopted in place under their real account/org, stored with an absolute `clone_folder` inside the container and never relocated. A folder the workspace file lists inside the container that isn't on disk yet shows as a dimmed **not cloned** row with its path. Folders the workspace lists outside the container keep their normal place under their own account.
+Every clone inside a container's working tree shows below it, indented, and folds with it. Gitbox looks for them up to the **nested scan depth** below the container, and at every folder the container's workspace file lists, at any depth. Nested clones are adopted in place under their real account/org, stored with an absolute `clone_folder` inside the container and never relocated. A folder the workspace file lists inside the container that isn't on disk yet shows as a dimmed **not cloned** row with its path, unless it sits inside another clone, like a submodule that isn't checked out. Folders the workspace lists outside the container keep their normal place under their own account.
 
 ### Opening a container
 
