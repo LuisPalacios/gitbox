@@ -148,7 +148,7 @@ Esta es la referencia de cada PAT que usa Gitbox: cuentas Token, PATs complement
 | GitHub          | `repo`                         | `read:org`                       | `repo`                                          | `delete_repo` (sensible — añádelo solo si hace falta) | `repo`                                        |
 | GitLab          | `api`                          | `api`                            | `api`                                           | `api`                                                 | `api`                                         |
 | Gitea / Forgejo | `read:repository`, `read:user` | `read:organization`              | `write:repository`                              | `write:repository`                                    | `write:repository`                            |
-| Bitbucket Cloud | Repositories: Read, Write      | —                                | Repositories: Admin                             | Repositories: Delete (sensible)                       | No disponible a través de la API de Bitbucket |
+| Bitbucket Cloud | Repositories: Read, Write      | Account: Read                    | Repositories: Admin                             | Repositories: Delete (sensible)                       | No disponible a través de la API de Bitbucket |
 
 En la página de tokens de Gitea o Forgejo, estos scopes aparecen como niveles de permiso: **repository** Read y Write, **user** Read y **organization** Read cubren todas las columnas. En Bitbucket, Gitbox abre la página de app passwords.
 

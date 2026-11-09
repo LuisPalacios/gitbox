@@ -180,7 +180,7 @@ func ResolveGCMTokenContext(ctx context.Context, accountURL, username string) (t
 // GCM OAuth tokens since those are machine-local and can't be used by third-party
 // servers.
 //
-// For all credential types, it checks env vars and OS keyring only (ResolveToken).
+// For all credential types, it checks env vars and the credential file only (ResolveToken).
 // GCM accounts must have a separate PAT stored in the account's credential settings.
 func ResolveMirrorToken(acct config.Account, accountKey string) (token, source string, err error) {
 	tok, src, err := ResolveToken(acct, accountKey)
@@ -196,7 +196,7 @@ func ResolveMirrorToken(acct config.Account, accountKey string) (token, source s
 
 // ResolveAPIToken resolves an API token for the given account based on its
 // credential type:
-//   - token: resolves from env vars / OS keyring (ResolveToken)
+//   - token: resolves from env vars / the credential file (ResolveToken)
 //   - gcm:   extracts from GCM via "git credential fill", falls back to ResolveToken
 //   - ssh:   tries ResolveToken (optional — user may have stored a PAT for discovery)
 //
@@ -221,15 +221,15 @@ func ResolveAPITokenContext(ctx context.Context, acct config.Account, accountKey
 		if ctx.Err() != nil {
 			return "", "", ctx.Err()
 		}
-		// Fall back to env vars / keyring.
+		// Fall back to env vars / the credential file.
 		return ResolveToken(acct, accountKey)
 
 	case "ssh":
-		// SSH can't do API auth natively. Try env vars / keyring as fallback.
+		// SSH can't do API auth natively. Try env vars / the credential file as fallback.
 		return ResolveToken(acct, accountKey)
 
 	default:
-		// token type: env vars / keyring.
+		// token type: env vars / the credential file.
 		return ResolveToken(acct, accountKey)
 	}
 }

@@ -39,7 +39,7 @@ func TestCheckStatus_404_NeedsSetup_vs_Error(t *testing.T) {
 	defer backup.Close()
 
 	// Token env vars so credential.ResolveToken / ResolveAPIToken find PATs
-	// without hitting the keyring.
+	// without reading a credential file.
 	t.Setenv(credential.EnvVarName("origin-acct"), "tok-origin")
 	t.Setenv(credential.EnvVarName("backup-acct"), "tok-backup")
 

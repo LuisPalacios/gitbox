@@ -145,7 +145,7 @@ Abstraction layer for Git hosting provider APIs. Each provider implements `ListR
 | Gitea/Forgejo | REST /api/v1 | Token + Basic auth fallback | Same API, same implementation |
 | Bitbucket     | REST v2      | HTTP Basic (app password)   | Cloud only                    |
 
-`CheckAuth()` validates a credential and `TokenSetupGuide()` returns per-provider PAT creation instructions. `CheckAuth()` also returns the token's expiry: GitHub reads the `GitHub-Authentication-Token-Expiration` header of the existing repo-list call, and GitLab adds one `GET /personal_access_tokens/self` after a successful check. The other providers return no expiry. `credential.StatusResult.ExpiresAt` carries it to the GUI's `CredentialStatus.expiresAt`, and `accountHealth` in `src/lib/status.ts` turns a working token within 14 days of expiry into a warning.
+`CheckAuth()` validates a credential, and `TokenCreationURL()` and `TokenRequiredScopes()` give the GUI each provider's PAT page and scopes. `CheckAuth()` also returns the token's expiry: GitHub reads the `GitHub-Authentication-Token-Expiration` header of the existing repo-list call, and GitLab adds one `GET /personal_access_tokens/self` after a successful check. The other providers return no expiry. `credential.StatusResult.ExpiresAt` carries it to the GUI's `CredentialStatus.expiresAt`, and `accountHealth` in `src/lib/status.ts` turns a working token within 14 days of expiry into a warning.
 
 **Optional interfaces** (via type assertions):
 

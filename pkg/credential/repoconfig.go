@@ -163,7 +163,7 @@ func CredentialFilePath(accountKey string) string {
 // Format: https://username:token@hostname (one line).
 // Sets file permissions to 0600.
 func WriteCredentialFile(filePath string, acct config.Account, accountKey string) error {
-	// Resolve the token from env vars / OS keyring.
+	// Resolve the token from env vars / the gitbox credential file.
 	token, _, err := ResolveToken(acct, accountKey)
 	if err != nil {
 		return fmt.Errorf("resolving token for credential file: %w", err)

@@ -244,8 +244,7 @@ The project has a comprehensive test suite. Read `.claude/context/testing-patter
 **Test levels:**
 
 - **Unit tests** — always run, no credentials needed. Package-level tests in `pkg/`, isolated with `t.TempDir()` and `t.Setenv()`; `cmd/gui` tests call `App` methods directly, without the Wails runtime.
-- **Integration tests** (`TestIntegration_*`) — require `test-gitbox.json` at repo root with real provider credentials. Fail with a clear message when missing; skip with `-short`.
-- **Scenario test** (`TestScenario_FullLifecycle` in `pkg/ops`) — the full account → clone → mirror → rename → delete lifecycle against a real provider, also gated by the fixture.
+- **Integration tests** — require `test-gitbox.json` at repo root with real provider credentials, through `requireIntegration(t)`. They fail with a clear message when the file is missing and skip with `-short`. Today the only one is the scenario test, `TestScenario_FullLifecycle` in `pkg/ops`: the full account → clone → mirror → rename → delete lifecycle against a real provider. Name new ones `TestIntegration_*`.
 
 **When adding new features or fixing bugs:**
 

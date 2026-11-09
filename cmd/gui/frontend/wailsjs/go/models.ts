@@ -1475,7 +1475,6 @@ export namespace main {
 	export class TokenGuideInfo {
 	    creationURL: string;
 	    scopes: string;
-	    guide: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new TokenGuideInfo(source);
@@ -1485,7 +1484,6 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.creationURL = source["creationURL"];
 	        this.scopes = source["scopes"];
-	        this.guide = source["guide"];
 	    }
 	}
 	export class UpdateAccountRequest {

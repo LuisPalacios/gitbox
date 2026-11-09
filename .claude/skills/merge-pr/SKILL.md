@@ -52,7 +52,7 @@ fi
   ```
 
 - Report to the user: PR number, title, base branch, head branch, state, mergeable status.
-- If `state` is not `OPEN`, stop — nothing to do.
+- If `state` is `MERGED`, the merge already happened: skip to Step 5 to finish the cleanup. If it is `CLOSED`, stop — nothing to do.
 - Locate the local worktree: `git worktree list` and match on branch name.
 
 ## Step 2: Freshness check

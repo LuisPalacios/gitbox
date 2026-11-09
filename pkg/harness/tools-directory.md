@@ -2,7 +2,7 @@
 
 This document is the **authoritative list of known AI harnesses, orchestrators, CLIs, and IDEs** for gitbox. It is embedded into the GUI binary via `//go:embed` and parsed at startup: rows whose `Executable / CLI Command` cell holds one or more backticked binary names (e.g. `` `claude` ``, `` `aider` ``, or "`` `agent` `` or `` `cursor-agent` ``" for a renamed CLI) and whose `Category` is one of `Agentic CLI`, `AI Harness`, `Headless Harness`, `Agentic IDE`, or `Agentic IDE / CLI` are added to the "Open in AI harness" auto-detection list. Every other row is treated as reference-only documentation.
 
-To add a new harness that gitbox should auto-detect, insert a new row with a single-identifier executable and one of the five eligible categories. When a tool ships under more than one binary name (a rename, or a platform-specific name), list every name in backticks in the same cell: the first is probed first and the rest are alternates.
+To add a new harness that gitbox should auto-detect, insert a new row with its executable in backticks and one of the five eligible categories. When a tool ships under more than one binary name (a rename, or a platform-specific name), list every name in backticks in the same cell: the first is probed first and the rest are alternates.
 
 The `Well-known locations` column lists install directories that are not on a typical PATH. Each directory must be its own backticked token; `~`, `$VAR` and `%VAR%` are expanded at probe time. Use `*N/A*` when the tool lives on PATH or in `~/.local/bin`, which gitbox already probes on every OS (together with the Homebrew prefixes on macOS).
 

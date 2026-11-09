@@ -183,7 +183,7 @@ func checkSSH(ctx context.Context, acct config.Account, accountKey string, cfg *
 //  2. PAT row = "can gitbox reach the API for discovery / repo creation?"
 //     We try GCM's cached token first (works for GitHub / GitLab OAuth
 //     tokens, works when the user pasted a PAT into GCM's prompt). If
-//     that fails, we fall back to a PAT stored in the gitbox keyring.
+//     that fails, we fall back to a PAT stored in the gitbox credential file.
 //     Either success path marks the PAT row as OK with an explanatory
 //     detail. Only when neither covers the API do we downgrade.
 //
@@ -214,7 +214,7 @@ func checkGCM(ctx context.Context, acct config.Account, accountKey string, cfg *
 	r.Primary = StatusOK
 	r.PrimaryDetail = "GCM credential present — git push/pull works"
 
-	// API reachability: try GCM's cached token, then the keyring PAT.
+	// API reachability: try GCM's cached token, then the credential-file PAT.
 	r.PAT, r.PATDetail, r.ExpiresAt = checkAPIReachabilityForGCM(ctx, acct, accountKey, token)
 	r.Overall = combineStatus(r.Primary, r.PAT)
 	return r
@@ -222,7 +222,7 @@ func checkGCM(ctx context.Context, acct config.Account, accountKey string, cfg *
 
 // checkAPIReachabilityForGCM produces the PAT-row status for a GCM-backed
 // account by trying two paths in order: the GCM-cached token, then any
-// companion PAT in env vars / keyring. The first success wins; details
+// companion PAT in env vars / the credential file. The first success wins; details
 // reflect which path worked (or what failed if neither did), and the expiry
 // is that of the token that worked.
 func checkAPIReachabilityForGCM(parent context.Context, acct config.Account, accountKey string, gcmToken string) (Status, string, time.Time) {
@@ -237,7 +237,7 @@ func checkAPIReachabilityForGCM(parent context.Context, acct config.Account, acc
 		return StatusOffline, fmt.Sprintf("server unreachable: %v", gcmErr), time.Time{}
 	}
 
-	// 2. Keyring / env-var PAT fallback.
+	// 2. Credential-file / env-var PAT fallback.
 	patToken, _, patErr := ResolveToken(acct, accountKey)
 	if patErr != nil {
 		// No PAT configured. The 401 we got could be either a wrong
