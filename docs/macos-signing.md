@@ -6,7 +6,7 @@ This is separate from the SSH signature over `checksums.sha256` that every relea
 
 ## What the CI path covers
 
-The `dmg-macos-arm64` and `dmg-macos-amd64` jobs run these steps only when `env.APPLE_CERTIFICATE != ''`:
+The `dmg-macos-arm64` and `dmg-macos-amd64` jobs run these steps only when the `APPLE_CERTIFICATE` secret is set (the job-level `APPLE_SIGNING` flag):
 
 1. **Import signing certificate**: decodes the `.p12` into an ephemeral `build.keychain`.
 2. **Codesign app bundle**: signs `GitboxApp.app` with `codesign --force --deep --sign "$APPLE_IDENTITY" --options runtime`.
