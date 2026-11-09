@@ -87,7 +87,7 @@
 
 <style>
   .acct-card {
-    margin: 14px 0 10px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px;
+    margin: 10px 0 6px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 10px;
     background: var(--bg-card); box-shadow: var(--card-shadow);
     display: flex; flex-direction: column; gap: 1px;
   }

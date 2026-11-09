@@ -19,11 +19,12 @@
 
 <style>
   .placeholder-row {
-    position: relative; display: flex; align-items: center; gap: 10px; min-height: 38px;
-    padding: 4px 6px 4px calc(10px + var(--depth) * 22px); opacity: 0.55; cursor: default;
+    position: relative; display: flex; align-items: center; gap: 8px; min-height: 34px;
+    --indent: 16px; padding: 3px 6px 3px calc(6px + var(--depth) * var(--indent)); opacity: 0.55; cursor: default;
   }
+  /* Same indent and tree guide as RepoRow, so the tree keeps its shape. */
   .placeholder-row::before {
-    content: ''; position: absolute; left: 18px; top: 0; bottom: 0;
+    content: ''; position: absolute; left: 14px; top: 0; bottom: 0;
     border-left: 2px solid var(--border); opacity: 0.6;
   }
   .dot { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; color: var(--text-muted); }
@@ -31,7 +32,7 @@
   .path { flex: 1; font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .words { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
   @container content (max-width: 620px) {
-    .placeholder-row { gap: 4px; padding-left: calc(6px + var(--depth) * 12px); }
+    .placeholder-row { gap: 4px; --indent: 12px; }
     .path { display: none; }
   }
 </style>

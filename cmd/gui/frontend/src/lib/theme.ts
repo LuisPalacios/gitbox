@@ -29,6 +29,22 @@ export const providerURLs: Record<string, string> = {
   bitbucket: 'https://bitbucket.org',
 };
 
+// Account names in the account groups take their provider's brand colour
+// (the logo's main hue), darker in the light theme and lighter in the dark
+// one so it reads on the card. An unknown provider keeps the text colour.
+const providerColors: Record<string, [light: string, dark: string]> = {
+  github: ['#4a56b0', '#8f9cf0'],
+  gitlab: ['#c4501a', '#fc8a4f'],
+  gitea: ['#4d7c1f', '#8bc34a'],
+  forgejo: ['#b91c1c', '#f0605a'],
+  bitbucket: ['#0052cc', '#4c9aff'],
+};
+
+export function providerColor(p: string | undefined, theme: string): string {
+  const c = p ? providerColors[p] : undefined;
+  return c ? c[theme === 'light' ? 0 : 1] : '';
+}
+
 export function providerLabel(p: string): string {
   const map: Record<string, string> = {
     github: 'GitHub', forgejo: 'Forgejo', gitea: 'Gitea',

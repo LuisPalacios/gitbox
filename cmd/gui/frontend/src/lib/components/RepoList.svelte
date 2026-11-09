@@ -2,8 +2,9 @@
   // The All view: one collapsible group per source (header with its
   // account ⋯ menu and summary), then its clones as a tree (RepoTree), in
   // alphabetical order.
-  import { sources, repoStates, themeStore } from '../stores';
+  import { accounts, sources, repoStates, themeStore } from '../stores';
   import { statusColor, attentionRank, CALM_RANK } from '../status';
+  import { providerColor } from '../theme';
   import { t } from '../i18n';
   import { onActivateKey } from '../keyboard';
   import UIIcon from '../UIIcon.svelte';
@@ -47,14 +48,14 @@
     {@const sourceRepoKeys = [...new Set((treeRows[sourceKey] || []).filter(row => !row.placeholder).flatMap(row => [row.key, ...row.descendants]))]}
     {@const sourceIssues = sourceRepoKeys.filter(needsMe).length}
     {#if sourceRepoKeys.length > 0}
-    <div class="source-group">
-      <div class="source-header" role="button" tabindex="0"
+    <div class="acct-group">
+      <div class="acct-group-h" role="button" tabindex="0"
         aria-expanded={!sourceCollapsed}
         title={sourceCollapsed ? $t('collapse.expand') : $t('collapse.collapse')}
         on:click={(e) => { if (!(e.target instanceof Element && e.target.closest('.source-header-kebab'))) toggleSourceCollapsed(sourceKey); }}
         on:keydown={onActivateKey(() => toggleSourceCollapsed(sourceKey))}>
-        <span class="collapse-chevron" class:collapsed={sourceCollapsed} aria-hidden="true"><UIIcon name="chevron" /></span>
-        <span class="source-header-title">{sourceKey}</span>
+        <span class="acct-caret" class:collapsed={sourceCollapsed} aria-hidden="true"><UIIcon name="caret" size={14} /></span>
+        <span class="source-header-title" style:color={providerColor($accounts[accountKey]?.provider, $themeStore) || null}>{sourceKey}</span>
         <span class="source-header-kebab">
           <AccountMenu {accountKey} credStatus={credStatuses[accountKey]?.status} {actionMenuAccount} {rowProps}
             {toggleAccountMenu} {closeAccountMenu} {openDiscover} {openCreateRepo} {openEditAccount} {openCredChange} />
@@ -80,21 +81,8 @@
 </section>
 
 <style>
-  .source-group { margin-bottom: 6px; }
-  .source-header {
-    font-size: 11px; font-weight: 600; color: var(--text-dim);
-    text-transform: uppercase; letter-spacing: 0.8px;
-    padding: 6px 0 2px; border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; gap: 4px;
-  }
-  .source-header[role="button"] { cursor: pointer; user-select: none; }
+  /* The card, header and filled caret are shared (.acct-group in style.css). */
   .source-header-title { flex: 0 0 auto; }
-  .collapse-chevron {
-    flex: none; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
-    color: var(--text-muted); transition: transform 0.12s, color 0.12s;
-  }
-  .collapse-chevron.collapsed { transform: rotate(-90deg); }
-  .source-header[role="button"]:hover .collapse-chevron { color: var(--text-primary); }
   .collapse-summary { flex: 0 0 auto; font-size: 11px; font-weight: normal; opacity: 0.8; }
   .source-header-kebab { flex: 0 0 auto; margin-right: auto; display: inline-flex; align-items: center; }
 </style>
