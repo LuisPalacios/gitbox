@@ -43,7 +43,8 @@ body {
 
 /* ── Icon standard ──
    One icon size everywhere: 18px art (assets/svg/ui/, 24×24 viewBox,
-   1.8 stroke; brand logos the same) inside 30px icon buttons. */
+   1.8 stroke; brand logos the same) inside 30px icon buttons; repo rows
+   narrow the button to 28px. */
 :root { --icon: 18px; --icon-btn: 30px; }
 
 .icon-btn {
@@ -73,6 +74,31 @@ body {
 .text-btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
 .text-btn:disabled { opacity: 0.4; cursor: default; }
 .text-btn:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 1px; }
+
+/* ── Account groups ──
+   All repos and Needs attention put each account's clones in a light card.
+   The header lines up with the rows below it (RepoRow): the name starts
+   where clone names do (6px row padding + 18px dot + the row gap) and the
+   filled caret hangs in the card's left padding, in the column of a
+   container's fold chevron. */
+.acct-group {
+  margin-bottom: 8px; padding: 2px 8px 4px 16px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card);
+}
+.acct-group-h {
+  position: relative; display: flex; align-items: center; gap: 4px; min-height: 28px;
+  padding: 4px 6px 4px 32px; cursor: pointer; user-select: none;
+  font-size: 11px; font-weight: 600; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.8px;
+}
+.acct-caret {
+  position: absolute; left: -12px; top: calc(50% - 9px); width: 16px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-muted); transition: transform 0.12s, color 0.12s;
+}
+.acct-caret.collapsed { transform: rotate(-90deg); }
+.acct-group-h:hover .acct-caret { color: var(--text-primary); }
+@container content (max-width: 620px) { .acct-group-h { padding-left: 28px; } }
 
 /* ── Views ──
    Each view scrolls on its own next to the sidebar. The window stops at

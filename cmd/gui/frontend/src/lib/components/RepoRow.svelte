@@ -346,7 +346,7 @@
 
 <div class="repo-row" class:repo-row-clickable={rowOpensDetail}
   class:repo-row-nested={depth > 0} class:calm
-  style={depth > 0 ? `--depth: ${depth}` : ''}
+  style="--depth: {depth}"
   role="button"
   tabindex={rowOpensDetail ? 0 : -1}
   aria-disabled={!rowOpensDetail}
@@ -506,9 +506,10 @@
 <style>
   @keyframes spin { to { transform: rotate(360deg); } }
   .spinning { animation: spin 0.8s linear infinite; color: var(--spin-color) !important; stroke: var(--spin-color); stroke-width: 2.5; font-weight: 900; }
-  .repo-row-nested { position: relative; }
+  /* The tree guide drops from the top-level dot's centre (padding 6 + half
+     the 18px dot, minus half the 2px line). */
   .repo-row-nested::before {
-    content: ''; position: absolute; left: 18px; top: 0; bottom: 0;
+    content: ''; position: absolute; left: 14px; top: 0; bottom: 0;
     border-left: 2px solid var(--border); opacity: 0.6;
   }
   /* A container shows only its folder icon; the tooltip says what it is (#148). */
@@ -529,8 +530,12 @@
   .choose-workspace-badge:hover {
     background: var(--accent, #4B95E9); color: #fff;
   }
+  /* The fold chevron hangs in the gutter left of the dot, out of the flex
+     flow, so a parent's dot and name line up with its siblings'. At depth 0
+     it sits in the view's side padding. */
   .collapse-chevron-btn {
-    flex: none; width: 22px; height: 22px; padding: 0; border: none; border-radius: 5px; background: none;
+    position: absolute; top: calc(50% - 11px); left: calc(var(--row-pad) - 18px);
+    width: 16px; height: 22px; padding: 0; border: none; border-radius: 5px; background: none;
     display: inline-flex; align-items: center; justify-content: center;
     color: var(--text-muted); cursor: pointer; transition: transform 0.12s, color 0.12s;
   }
@@ -540,12 +545,14 @@
   .collapse-summary-row { margin-left: 6px; }
   .repo-name-toggle { cursor: pointer; }
   .repo-name-toggle:hover { text-decoration: underline; }
+  /* Each level indents by --indent; --row-pad is where the dot starts. Rows
+     use 28px icon buttons (same 18px art) so the list reads a touch denser. */
   .repo-row {
-    display: flex; align-items: center; gap: 10px; min-height: 38px;
-    padding: 4px 6px; border-radius: 6px; transition: background 0.1s;
+    --indent: 16px; --row-pad: calc(6px + var(--depth, 0) * var(--indent)); --icon-btn: 28px;
+    position: relative; display: flex; align-items: center; gap: 8px; min-height: 34px;
+    padding: 3px 6px 3px var(--row-pad); border-radius: 6px; transition: background 0.1s;
   }
   .repo-row:hover { background: var(--bg-row-hover); }
-  .repo-row-nested { padding-left: calc(10px + var(--depth) * 22px); }
   .dot { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; }
   .repo-name { font-size: 13px; color: var(--text-repo); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .repo-name.ws-member { color: var(--text-workspace); font-weight: 500; }
@@ -561,9 +568,8 @@
      The notes repeat what the status and button tooltips say, and a healthy
      row's green dot already says "up to date". */
   @container content (max-width: 620px) {
-    .repo-row { gap: 4px; }
+    .repo-row { gap: 4px; --indent: 12px; }
     .pr-badge { padding: 2px 5px; gap: 2px; }
-    .repo-row-nested { padding-left: calc(6px + var(--depth) * 12px); }
     .repo-name { min-width: 3.5rem; }
     .safe-note, .btn-tag, .words-full { display: none; }
     .words-short { display: inline; }
@@ -588,7 +594,7 @@
   .btn-fetch:disabled { opacity: 1; }
   .icon-spin { display: inline-flex; align-items: center; }
   /* Repo-row launchers (both modes): icon-only AI, editor and terminal buttons. */
-  .launch-group { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
+  .launch-group { display: inline-flex; align-items: center; gap: 1px; flex-shrink: 0; }
   .btn-launch { color: var(--text-secondary); }
   .action-menu-container { position: relative; }
   .status-badges { display: flex; align-items: center; gap: 6px; }
@@ -604,7 +610,7 @@
     gap: 4px;
     font-size: 11px;
     font-weight: 600;
-    padding: 2px 7px;
+    padding: 1px 6px;
     border-radius: 10px;
     border: 1px solid transparent;
     background: var(--bg-hover);

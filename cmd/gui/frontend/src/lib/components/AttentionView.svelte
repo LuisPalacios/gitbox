@@ -8,6 +8,7 @@
   // faded, until I leave the view and come back.
   import { accounts, sources, themeStore } from '../stores';
   import { statusColor, accountHealth, ATTENTION_GROUPS, CALM_RANK } from '../status';
+  import { providerColor } from '../theme';
   import type { HealthFix } from '../status';
   import { attentionItems, pinAttention, accountView } from '../views';
   import type { AttentionItem } from '../views';
@@ -95,16 +96,18 @@
       {#each g.accounts as a (a.sourceKey)}
         {@const fold = `${g.name}|${a.sourceKey}`}
         {@const isFolded = folded.has(fold)}
-        <div class="acct-h" role="button" tabindex="0" aria-expanded={!isFolded}
-          title={isFolded ? $t('collapse.expand') : $t('collapse.collapse')}
-          on:click={() => toggleFold(fold)} on:keydown={onActivateKey(() => toggleFold(fold))}>
-          <span class="chev" class:folded={isFolded} aria-hidden="true"><UIIcon name="chevron" size={16} /></span>
-          <span class="acct-h-name">{a.sourceKey}</span>
-          <span class="group-n">· {a.count}</span>
+        <div class="acct-group">
+          <div class="acct-group-h" role="button" tabindex="0" aria-expanded={!isFolded}
+            title={isFolded ? $t('collapse.expand') : $t('collapse.collapse')}
+            on:click={() => toggleFold(fold)} on:keydown={onActivateKey(() => toggleFold(fold))}>
+            <span class="acct-caret" class:collapsed={isFolded} aria-hidden="true"><UIIcon name="caret" size={14} /></span>
+            <span class="acct-h-name" style:color={providerColor($accounts[$sources[a.sourceKey]?.account]?.provider, $themeStore) || null}>{a.sourceKey}</span>
+            <span class="group-n">· {a.count}</span>
+          </div>
+          {#if !isFolded}
+            <RepoTree rows={a.rows} groupSource={a.sourceKey} {rowProps} {parentLabels} fadeHealthy={items.some((i) => !i.settled)} />
+          {/if}
         </div>
-        {#if !isFolded}
-          <RepoTree rows={a.rows} groupSource={a.sourceKey} {rowProps} {parentLabels} fadeHealthy={items.some((i) => !i.settled)} />
-        {/if}
       {/each}
     {/each}
   {/if}
@@ -112,23 +115,14 @@
 
 <style>
   .group-h {
-    display: flex; align-items: center; gap: 4px; padding: 12px 0 4px;
+    display: flex; align-items: center; gap: 4px; padding: 10px 0 4px;
     font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-dim);
     border-bottom: 1px solid var(--border); margin-bottom: 2px;
   }
   .group-n { font-weight: 400; }
-  .acct-h {
-    display: flex; align-items: center; gap: 4px; padding: 6px 0 2px;
-    font-size: 12px; font-weight: 600; color: var(--text-secondary); cursor: pointer; user-select: none;
-  }
-  .acct-h .group-n { color: var(--text-dim); }
-  .chev {
-    flex: none; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center;
-    color: var(--text-muted); transition: transform 0.12s, color 0.12s;
-  }
-  .chev.folded { transform: rotate(-90deg); }
-  .acct-h:hover .chev { color: var(--text-primary); }
-  .acct-row { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 4px 6px; border-radius: 6px; }
+  /* The card, header (type included, as in All repos) and filled caret are
+     shared (.acct-group in style.css). */
+  .acct-row { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 3px 6px; border-radius: 6px; }
   .acct-row:hover { background: var(--bg-row-hover); }
   .mark { width: 18px; flex: none; text-align: center; font-size: 14px; }
   .acct-name {

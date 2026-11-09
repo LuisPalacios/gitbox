@@ -336,7 +336,7 @@ The full dashboard shows the top bar with health rings, the sidebar, the selecte
 
 The **All repos** view folds at two levels, and an account's view folds parent clones too:
 
-- **Account groups** — click an account's header bar or its name to fold its clone list. The header always shows how many clones it holds and how many need attention, folded or not, so a problem never hides behind a fold. The ⋯ menu on the header keeps working and never folds the group.
+- **Account groups** — each account sits in its own light card, here and in **Needs attention**. Its name lines up with the clone names below, in its provider's colour (GitHub indigo, GitLab orange, Gitea green, Forgejo red, Bitbucket blue), and a filled ▾ caret hangs to its left, in the same column as a container's chevron. Click the header bar or the name to fold its clone list. The header always shows how many clones it holds and how many need attention, folded or not, so a problem never hides behind a fold. The ⋯ menu on the header keeps working and never folds the group.
 - **Clones with clones below them** — any clone that has nested clones or not-yet-cloned workspace folders under it gets a ▾ chevron before its status dot. Click the chevron or the clone's name to fold everything below, at any depth. A folded row shows how many rows it hides and how many of them need attention. Neither opens the repo detail.
 
 Gitbox remembers what I fold across restarts, along with the sidebar and the last view (`global.collapsed` in `gitbox.json`), and forgets entries for accounts or clones I delete or rename. The compact view keeps its own per-account expansion.
