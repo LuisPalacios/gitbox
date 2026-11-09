@@ -289,7 +289,7 @@ Un **contenedor multi-repo** es un clon gestionado que mantiene otros clones ani
 
 ### Los archivos de workspace crean contenedores
 
-Cuando un clon tiene un archivo `.code-workspace` en su raíz, gitbox lo convierte en contenedor por su cuenta y registra ese archivo en `repo.workspace`. Si la raíz contiene dos o más, gitbox me pregunta con cuál se abre el contenedor; hasta que elijo, la fila muestra un aviso **elegir workspace**, y el menú ⋯ ofrece **Elegir workspace…** para cambiarlo más tarde. Un icono 📁 marca un contenedor, y al pasar el ratón sobre él se ve el nombre de su archivo de workspace.
+Cuando un clon tiene un archivo `.code-workspace` en su raíz, gitbox lo convierte en contenedor por su cuenta y registra ese archivo en `repo.workspace`. Si la raíz contiene dos o más, gitbox me pregunta con cuál se abre el contenedor; hasta que elijo, la fila muestra un aviso **elegir workspace**, y el menú ⋯ ofrece **Elegir workspace…** para cambiarlo más tarde. Gitbox recuerda el archivo que elegí en `repo.workspace_preferred`: si desaparece, otro archivo de la raíz ocupa su lugar, y cuando vuelve el contenedor lo abre de nuevo sin preguntar. Un icono 📁 marca un contenedor, y al pasar el ratón sobre él se ve el nombre de su archivo de workspace.
 
 Gitbox comprueba al arrancar, al recuperar el foco la ventana, tras un Fetch all manual y tras cambiar las raíces de clonado. Un clon que ayer no tenía workspace se convierte en contenedor la próxima vez que vuelvo a gitbox después de que aparezca el archivo. Si el archivo desaparece, gitbox borra `repo.workspace` y mantiene el contenedor.
 

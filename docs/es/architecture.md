@@ -188,7 +188,7 @@ Instala un bloque gestionado curado de patrones de basura de OS (`.DS_Store`, `T
 
 ### pkg/workspace — archivos de workspace de los contenedores
 
-Vincula los archivos `.code-workspace` de VS Code a los clones que los contienen — gitbox nunca crea, edita, genera ni borra archivos de workspace. `Sync` lee la raíz de cada clon en disco (no recorre subcarpetas): un archivo de workspace convierte el clon en contenedor con ese archivo en `repo.workspace`; varios lo convierten en contenedor e informan de una `Choice` salvo que su elección actual siga existiendo; ninguno borra una elección obsoleta y deja el flag de contenedor como está. `Apply` escribe esos cambios en la config. `Members` lee las carpetas que un archivo de workspace lista dentro de su contenedor, y `Placeholders` se queda con las que no están en disco, a las que no resuelve ningún repo configurado y que no están dentro de otro clon (un submódulo, por ejemplo). Los archivos de workspace son JSON con comentarios, así que elimino los comentarios y las comas finales antes de parsearlos.
+Vincula los archivos `.code-workspace` de VS Code a los clones que los contienen — gitbox nunca crea, edita, genera ni borra archivos de workspace. `Sync` lee la raíz de cada clon en disco (no recorre subcarpetas): un archivo de workspace convierte el clon en contenedor con ese archivo en `repo.workspace`; varios lo convierten en un contenedor que abre mi archivo preferido (`repo.workspace_preferred`, que se fija cuando elijo uno) si está, si no conserva su archivo actual, y si no informa de una `Choice`; ninguno borra una elección obsoleta y deja el flag de contenedor como está. `Apply` escribe esos cambios en la config. `Members` lee las carpetas que un archivo de workspace lista dentro de su contenedor, y `Placeholders` se queda con las que no están en disco, a las que no resuelve ningún repo configurado y que no están dentro de otro clon (un submódulo, por ejemplo). Los archivos de workspace son JSON con comentarios, así que elimino los comentarios y las comas finales antes de parsearlos.
 
 El binding del reconcile de disco ejecuta `Sync` sobre una instantánea sin el bloqueo de config, aplica los cambios bajo él y después ejecuta el escaneo de reconcile, de modo que un contenedor que acaba de ganar un archivo de workspace adopta sus clones anidados en la misma pasada. El soporte de tmuxinator y la generación de workspaces se eliminaron con la config v3, y la caché de workspaces con la v5.
 
@@ -363,6 +363,7 @@ Una cuenta es única por `(hostname, username)`. Borrar una cuenta recorre en ca
 | `root`            | string | No          | Raíz de clonado, definida solo cuando difiere de la del source.                      |
 | `container`       | bool   | No          | Lo marca como contenedor multi-repo; gitbox escanea dentro buscando clones anidados. |
 | `workspace`       | string | No          | El archivo `.code-workspace` del contenedor, relativo a la raíz del clon.            |
+| `workspace_preferred` | string | No      | El archivo que elegí entre varios; gana siempre que está en la raíz.                 |
 
 ### Mirrors
 

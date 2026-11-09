@@ -219,7 +219,7 @@ func TestReconcile_SeveralWorkspaceFilesAskThenSetRepoWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 	reloaded, _ := config.Load(cfgPath)
-	if r := reloaded.Sources["github-alice"].Repos["team/frontend"]; !r.Container || r.Workspace != "b.code-workspace" {
+	if r := reloaded.Sources["github-alice"].Repos["team/frontend"]; !r.Container || r.Workspace != "b.code-workspace" || r.WorkspacePreferred != "b.code-workspace" {
 		t.Errorf("repo = %+v", r)
 	}
 	if res := a.Reconcile(); len(res.WorkspaceChoices) != 0 {

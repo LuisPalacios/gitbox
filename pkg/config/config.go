@@ -369,6 +369,9 @@ type Repo struct {
 	// Workspace is the .code-workspace file, relative to the clone root, that
 	// a container opens with. pkg/workspace.Sync keeps it in step with disk.
 	Workspace string `json:"workspace,omitempty"`
+	// WorkspacePreferred is the file I picked among several. Sync uses it
+	// whenever it is at the root and remembers it while it is missing.
+	WorkspacePreferred string `json:"workspace_preferred,omitempty"`
 }
 
 // EffectiveCredentialType returns the credential type for this repo.

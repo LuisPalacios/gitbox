@@ -70,10 +70,13 @@ func RootFiles(dir string) []string {
 // Sync compares every clone on disk with the workspace files at its root.
 // It reads disk but never changes cfg; Apply writes the changes.
 //   - One file: the repo becomes a container that opens it.
-//   - Several: the repo becomes a container; its pick stays while the file
-//     exists, otherwise it is cleared and a Choice is reported.
-//   - None: a stale pick is cleared. The container flag stays, so a
+//   - Several: the repo becomes a container that opens my preferred file
+//     (repo.workspace_preferred) when it is there, else keeps its current
+//     file while it exists, else clears it and reports a Choice.
+//   - None: a stale file is cleared. The container flag stays, so a
 //     container I flagged by hand keeps working.
+//
+// The preferred file is never cleared: it wins again when it comes back.
 //
 // Clones that are not on disk (not cloned, root offline) are left alone.
 func Sync(cfg *config.Config) Result {
@@ -93,7 +96,10 @@ func Sync(cfg *config.Config) Result {
 				container, ws = true, files[0]
 			case len(files) > 1:
 				container = true
-				if !slices.Contains(files, ws) {
+				switch {
+				case slices.Contains(files, repo.WorkspacePreferred):
+					ws = repo.WorkspacePreferred
+				case !slices.Contains(files, ws):
 					ws = ""
 					res.Choices = append(res.Choices, Choice{Source: srcKey, Repo: repoKey, Files: files})
 				}

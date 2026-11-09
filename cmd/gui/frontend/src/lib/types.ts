@@ -51,6 +51,7 @@ export interface Repo {
   root?: string;
   container?: boolean;
   workspace?: string;
+  workspace_preferred?: string;
 }
 
 export interface SourceDTO {

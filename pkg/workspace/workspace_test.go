@@ -170,6 +170,32 @@ func TestSync_SeveralFilesAskOnceAndKeepPick(t *testing.T) {
 	}
 }
 
+// My preferred file wins whenever it is at the root: another file stands
+// in while it is away, and it takes over again, without asking, when it
+// comes back.
+func TestSync_PreferredFileComesBack(t *testing.T) {
+	cfg := newTestConfig(t)
+	dir := makeRepoDir(t, cfg, "github-test", "team/frontend")
+	writeFile(t, filepath.Join(dir, "other.code-workspace"), "{}")
+	src := cfg.Sources["github-test"]
+	src.Repos["team/frontend"] = config.Repo{Container: true, Workspace: "mine.code-workspace", WorkspacePreferred: "mine.code-workspace"}
+
+	Apply(cfg, Sync(cfg).Changes)
+	if r := repoOf(cfg, "github-test", "team/frontend"); r.Workspace != "other.code-workspace" || r.WorkspacePreferred != "mine.code-workspace" {
+		t.Fatalf("while away: repo = %+v, want other open and mine remembered", r)
+	}
+
+	writeFile(t, filepath.Join(dir, "mine.code-workspace"), "{}")
+	res := Sync(cfg)
+	if len(res.Choices) != 0 {
+		t.Errorf("asked although the preferred file is back: %+v", res.Choices)
+	}
+	Apply(cfg, res.Changes)
+	if r := repoOf(cfg, "github-test", "team/frontend"); r.Workspace != "mine.code-workspace" {
+		t.Errorf("back: repo = %+v, want mine open again", r)
+	}
+}
+
 func TestSync_FileGoneClearsPickKeepsContainer(t *testing.T) {
 	cfg := newTestConfig(t)
 	makeRepoDir(t, cfg, "github-test", "team/frontend")

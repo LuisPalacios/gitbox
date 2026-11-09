@@ -73,7 +73,8 @@ func (a *App) RepoNesting() map[string]string {
 }
 
 // SetRepoWorkspace records which .code-workspace file at a container's root
-// it opens with, and persists. The file must be at the clone root.
+// it opens with, remembered as my preferred one, and persists. The file must
+// be at the clone root.
 func (a *App) SetRepoWorkspace(sourceKey, repoKey, file string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -89,7 +90,7 @@ func (a *App) SetRepoWorkspace(sourceKey, repoKey, file string) error {
 	if !slices.Contains(workspace.RootFiles(status.RepoPath(a.cfg, sourceKey, repoKey, repo)), file) {
 		return fmt.Errorf("%s is not a workspace file at the root of %s", file, repoKey)
 	}
-	repo.Container, repo.Workspace = true, file
+	repo.Container, repo.Workspace, repo.WorkspacePreferred = true, file, file
 	src.Repos[repoKey] = repo
 	return a.saveConfig()
 }

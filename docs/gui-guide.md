@@ -289,7 +289,7 @@ A **multi-repo container** is a managed clone that holds other clones nested in 
 
 ### Workspace files make containers
 
-When a clone has a `.code-workspace` file at its root, gitbox makes it a container on its own and records that file in `repo.workspace`. If the root holds two or more, gitbox asks me which one the container opens with; until I choose, the row shows a **choose workspace** hint, and the ⋯ menu offers **Choose workspace…** to change it later. A 📁 icon marks a container, and hovering it names its workspace file.
+When a clone has a `.code-workspace` file at its root, gitbox makes it a container on its own and records that file in `repo.workspace`. If the root holds two or more, gitbox asks me which one the container opens with; until I choose, the row shows a **choose workspace** hint, and the ⋯ menu offers **Choose workspace…** to change it later. Gitbox remembers the file I chose in `repo.workspace_preferred`: if it disappears, another file at the root stands in, and when it comes back the container opens it again without asking. A 📁 icon marks a container, and hovering it names its workspace file.
 
 Gitbox checks at startup, on window focus, after a manual Fetch all and after I change the clone roots. A clone that had no workspace yesterday becomes a container the next time I switch back to gitbox after the file appears. If the file disappears, gitbox clears `repo.workspace` and keeps the container.
 

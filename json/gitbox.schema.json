@@ -488,6 +488,10 @@
                                 "workspace": {
                                     "type": "string",
                                     "description": "The .code-workspace file, relative to the clone root, that this container opens with in VS Code. gitbox keeps it in step with disk: it records the only file at the root, asks when there are several, and clears it when the file is gone."
+                                },
+                                "workspace_preferred": {
+                                    "type": "string",
+                                    "description": "The .code-workspace file I picked among several. Whenever it is at the clone root, the container opens it; while it is missing, another file stands in, and it takes over again, without asking, when it comes back."
                                 }
                             }
                         }

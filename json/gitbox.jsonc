@@ -373,6 +373,8 @@
                 // container on its own; "workspace" names that file (gitbox asks
                 // when there are several), every folder it lists is scanned at
                 // any depth, and the GUI's editor button opens it in VS Code.
+                // "workspace_preferred" remembers the file I picked among
+                // several: it wins again whenever it is back at the root.
                 "MyOrg/myorg.project": {
                     "container": true,
                     "workspace": "myorg.code-workspace"

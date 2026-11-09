@@ -367,6 +367,7 @@ export namespace config {
 	    root?: string;
 	    container?: boolean;
 	    workspace?: string;
+	    workspace_preferred?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Repo(source);
@@ -382,6 +383,7 @@ export namespace config {
 	        this.root = source["root"];
 	        this.container = source["container"];
 	        this.workspace = source["workspace"];
+	        this.workspace_preferred = source["workspace_preferred"];
 	    }
 	}
 	

@@ -188,7 +188,7 @@ Installs a curated managed block of OS-junk patterns (`.DS_Store`, `Thumbs.db`, 
 
 ### pkg/workspace — Container workspace files
 
-Ties VS Code `.code-workspace` files to the clones that hold them — gitbox never creates, edits, generates, or deletes workspace files. `Sync` reads the root of every clone on disk (it doesn't recurse): one workspace file makes the clone a container with that file in `repo.workspace`; several make it a container and report a `Choice` unless its current pick still exists; none clears a stale pick and leaves the container flag alone. `Apply` writes those changes into the config. `Members` reads the folders a workspace file lists inside its container, and `Placeholders` keeps those that aren't on disk, that no configured repo resolves to and that don't sit inside another clone (a submodule, say). Workspace files are JSON with comments, so I strip comments and trailing commas before parsing.
+Ties VS Code `.code-workspace` files to the clones that hold them — gitbox never creates, edits, generates, or deletes workspace files. `Sync` reads the root of every clone on disk (it doesn't recurse): one workspace file makes the clone a container with that file in `repo.workspace`; several make it a container that opens my preferred file (`repo.workspace_preferred`, set when I pick one) when it is there, else keeps its current file, else reports a `Choice`; none clears a stale pick and leaves the container flag alone. `Apply` writes those changes into the config. `Members` reads the folders a workspace file lists inside its container, and `Placeholders` keeps those that aren't on disk, that no configured repo resolves to and that don't sit inside another clone (a submodule, say). Workspace files are JSON with comments, so I strip comments and trailing commas before parsing.
 
 The disk reconcile binding runs `Sync` on a snapshot without the config lock, applies the changes under it, then runs the reconcile scan, so a container that just gained a workspace file has its nested clones adopted in the same pass. Tmuxinator support and workspace generation were removed with config v3, and the workspaces cache with v5.
 
@@ -363,6 +363,7 @@ An account is unique by `(hostname, username)`. Deleting an account cascades thr
 | `root`            | string | No       | Clone root, set only when it differs from the source's.                   |
 | `container`       | bool   | No       | Mark as a multi-repo container; gitbox scans inside it for nested clones. |
 | `workspace`       | string | No       | The container's `.code-workspace` file, relative to the clone root.       |
+| `workspace_preferred` | string | No   | The file I picked among several; it wins whenever it is at the root.      |
 
 ### Mirrors
 

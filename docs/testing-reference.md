@@ -27,7 +27,7 @@ Counts are top-level `func Test…` functions per package, from `grep -rc "^func
 - `pkg/status/` — 18 tests: clone status checking, root offline, branch detection, repo paths through source and repo roots, nesting computation (including container inside container)
 - `pkg/terminals/` — 55 tests: catalog shape, OS-aware Profile composition, WezTerm and Windows Terminal lookups, merge rules
 - `pkg/update/` — 28 tests: semver parsing, version comparison, update check (mock API, a pending update reported on every check), major-version cap, artifact names, AppImage notify-only detection, install targets, relaunch command per platform and waiting for the old process to exit (plus the elevated Windows script, on Windows), checksum verification, release signature verification against signatures made by real `ssh-keygen` (wrong tag, tampered checksums, wrong namespace, foreign key, malformed), `allowed_signers` in sync with the embedded key, fail-closed download (missing, unreadable or invalid checksums or signature refuse the update, and a bad signature stops it before the artifact download)
-- `pkg/workspace/` — 10 tests: workspace files at a clone root, one file making a container, several asking once and keeping a pick, a vanished file clearing the pick, clones not on disk left alone, placeholders for listed folders inside a container that are missing on disk (never for folders inside another clone), and JSON with comments
+- `pkg/workspace/` — 11 tests: workspace files at a clone root, one file making a container, several asking once and keeping a pick, a preferred file winning again when it comes back, a vanished file clearing the pick, clones not on disk left alone, placeholders for listed folders inside a container that are missing on disk (never for folders inside another clone), and JSON with comments
 
 ### GUI tests — 73 tests (`cmd/gui/`)
 
@@ -50,7 +50,7 @@ I cover refresh coordination and upstream probes without a Wails window, includi
 
 - `TestScenario_FullLifecycle` — end-to-end through `pkg/ops`: add account → credential check → discover → add repo → clone → status → pull and fetch → account edit + reconfigure clones → mirror CRUD → re-clone → rename account → delete everything
 
-### Total: 574 tests
+### Total: 575 tests
 
 ## How the test harness works
 
