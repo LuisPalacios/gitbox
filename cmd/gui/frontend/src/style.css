@@ -77,17 +77,16 @@ body {
 
 /* ── Account groups ──
    All repos and Needs attention put each account's clones in a light card.
-   The header lines up with the rows below it (RepoRow): the name starts
-   where clone names do (6px row padding + 18px dot + the row gap) and the
-   filled caret hangs in the card's left padding, in the column of a
-   container's fold chevron. */
+   The header lines up with the rows below it (RepoRow): the name starts in
+   the dot column (6px row padding), next to the filled caret that hangs in
+   the card's left padding. */
 .acct-group {
   margin-bottom: 8px; padding: 2px 8px 4px 16px;
   border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card);
 }
 .acct-group-h {
   position: relative; display: flex; align-items: center; gap: 4px; min-height: 28px;
-  padding: 4px 6px 4px 32px; cursor: pointer; user-select: none;
+  padding: 4px 6px; cursor: pointer; user-select: none;
   font-size: 11px; font-weight: 600; color: var(--text-dim);
   text-transform: uppercase; letter-spacing: 0.8px;
 }
@@ -98,7 +97,6 @@ body {
 }
 .acct-caret.collapsed { transform: rotate(-90deg); }
 .acct-group-h:hover .acct-caret { color: var(--text-primary); }
-@container content (max-width: 620px) { .acct-group-h { padding-left: 28px; } }
 
 /* ── Views ──
    Each view scrolls on its own next to the sidebar. The window stops at
