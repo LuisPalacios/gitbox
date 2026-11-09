@@ -719,6 +719,9 @@
     if (!file || file === current) return;
     try {
       await bridge.setRepoWorkspace(sourceKey, repoName, file);
+      // The pass below sees no change to report, so I reload the config
+      // myself: the row's editor button reads repo.workspace from it.
+      $configStore = await bridge.reloadConfig();
       await runReconcile();
     } catch (e) {
       pushNotice('error', $t('notice.workspaceFailed'), [errorText(e)]);
