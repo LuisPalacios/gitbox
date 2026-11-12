@@ -84,16 +84,17 @@ Before opening a PR I run every code checker in one pass:
 ./scripts/health.sh -v           # every finding instead of the first 15
 ```
 
-It is read-only and exits non-zero when any check reports a finding. Go checks: `gofmt -s`, `go vet`, staticcheck, modernize, govulncheck, deadcode (with an allowlist for functions kept on purpose) and `go test -short`. Frontend checks: pure clone-tree regressions (`npm test`), `svelte-check` (unused locals and parameters fail through `noUnusedLocals`/`noUnusedParameters`), warnings printed by `npm run build` (the same Svelte diagnostics CI shows in its build step), install warnings from a clean `npm ci` in a scratch copy (deprecated packages, install scripts not covered by `allowScripts`), and `npm audit` (with an allowlist, `NPM_AUDIT_ALLOW`, for advisories with no fix that never reach the binary; a listed advisory that stops being reported fails the check). The `npm ci` check needs npm 11.19 or newer. Repo checks: shellcheck on the shell scripts, actionlint on the workflows, and markdownlint with the `fixing-markdown` skill config forced read-only.
+It is read-only and exits non-zero when any check reports a finding. Go checks: `gofmt -s`, `go vet`, staticcheck, modernize, govulncheck, deadcode (with an allowlist for functions kept on purpose) and `go test -short`. Frontend checks: pure clone-tree regressions (`npm test`), `svelte-check` (unused locals and parameters fail through `noUnusedLocals`/`noUnusedParameters`), warnings printed by `npm run build` (the same Svelte diagnostics CI shows in its build step), install warnings from a clean `npm ci` in a scratch copy (deprecated packages, install scripts not covered by `allowScripts`), and `npm audit` (with an allowlist, `NPM_AUDIT_ALLOW`, for advisories with no fix that never reach the binary; a listed advisory that stops being reported fails the check). The `npm ci` check needs npm 11.19 or newer. Repo checks: shellcheck on the shell scripts, actionlint on the workflows, markdownlint with the `fixing-markdown` skill config forced read-only, and the agent harness check, which fails when `AGENTS.md`, `.codex/` or `.agents/skills/` drift from `.claude/`.
 
-The Go analyzers are installed into a temporary folder at versions pinned at the top of the script, so they need no install. Vet, staticcheck and modernize analyze linux, darwin and windows on every run, so platform-specific files are checked from any host. The other three tools must be on `PATH`:
+The Go analyzers are installed into a temporary folder at versions pinned at the top of the script, so they need no install. Vet, staticcheck and modernize analyze linux, darwin and windows on every run, so platform-specific files are checked from any host. The other four tools must be on `PATH`:
 
 ```bash
 scoop install shellcheck actionlint     # Windows (brew install … on macOS, apt/dnf on Linux)
 npm install -g markdownlint-cli2
+scoop install uv                        # brew install uv on macOS
 ```
 
-The PR workflow runs the same script as its gate: any finding fails the job, including a new advisory reported by govulncheck or `npm audit`. CI pins shellcheck 0.11.0, actionlint 1.7.12 and markdownlint-cli2 0.23.3; I use those versions locally so both runs agree.
+The PR workflow runs the same script as its gate: any finding fails the job, including a new advisory reported by govulncheck or `npm audit`. CI pins shellcheck 0.11.0, actionlint 1.7.12, markdownlint-cli2 0.23.3 and setup-uv 10.3.3; I use those versions locally so both runs agree.
 
 ---
 
@@ -112,11 +113,18 @@ End users never hit this. Either fix works:
 
 ## Working with Claude Code and Codex
 
-Claude Code and Codex share one set of project instructions and six repository skills. I edit `.claude/CLAUDE.md` and `.claude/skills/`; the tracked relative symlinks `AGENTS.md` and `.agents/skills` expose the same files to Codex.
+Claude Code and Codex share one set of project instructions and seven repository skills. I edit only `.claude/`: `CLAUDE.md`, `rules/`, `context/` and `skills/`. The `mirroring-harness` skill generates the Codex side as real, tracked files: `AGENTS.md` at the root, `.codex/rules/`, `.codex/context/` and `.agents/skills/`. After any change under `.claude/` I run the sync and commit the source and the mirrors together:
+
+```bash
+uv run .claude/skills/mirroring-harness/scripts/sync.py diff   # what would change
+uv run .claude/skills/mirroring-harness/scripts/sync.py sync   # write the mirrors, then verify
+```
+
+The [health check](#health-check) fails when a mirror drifts from its source, so a hand edit to `AGENTS.md` never reaches `main`.
 
 I open either tool at the repository root and invoke a skill as `/work-issue 123` in Claude Code or `$work-issue 123` in Codex; natural-language requests also select skills. Both tools follow the same testing rules and require explicit approval before publishing to GitHub. Claude permissions live in `.claude/settings.json`; Codex uses its own session permissions.
 
-After changing instructions or skill metadata, I start a fresh session and ask it to summarize the project rules and list the six skills. For symlink checks, Windows repair, capability mapping, and the instruction size budget, see [the shared setup guide](../.claude/context/guideline_codex.md).
+After changing instructions or skill metadata, I start a fresh session and ask it to summarize the project rules and list the seven skills. For capability mapping, the instruction size budget and fresh-session checks, see [the shared setup guide](../.claude/context/guideline_codex.md).
 
 ---
 
@@ -167,7 +175,7 @@ When adding new fields to the configuration:
 2. Add the migration step to `decode` in `pkg/config/load.go`, gated on the version read from the file (`from < N`), and list it in `decode`'s doc comment. `decode` backs both `Parse` and `LoadWithRepair`, so every loader migrates the same way, in memory; the next save writes the new version.
 3. Update the `version` constant in `json/gitbox.schema.json`, `json/gitbox.jsonc`, and `json/test-gitbox.json.example`.
 4. Add a migration test (`pkg/config/migrate_v<N>_test.go`) that loads a file at the previous version.
-5. Update the versioning notes in [architecture.md](architecture.md#4-config-format-v5) and `.claude/CLAUDE.md`.
+5. Update the versioning notes in [architecture.md](architecture.md#4-config-format-v5) and `.claude/context/config-format.md`.
 
 The backup ring always keeps a copy of a file written at an older version, so a user can go back to a release that still reads it.
 

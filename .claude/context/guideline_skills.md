@@ -1,6 +1,10 @@
+---
+read-when: Before creating or changing a skill.
+---
+
 # Skill authoring guidelines
 
-I keep shared Claude Code and Codex skill-authoring guidance here. Claude Code loads the path-scoped rule in `.claude/rules/skills-authoring.md`; Codex follows the explicit routing in `.claude/CLAUDE.md`.
+I keep shared Claude Code and Codex skill-authoring guidance here. Claude Code loads the path-scoped rule in `.claude/rules/skills-authoring.md`; Codex reaches it through the rules table in the generated `AGENTS.md`. After changing a skill, I run the `mirroring-harness` sync and commit `.claude/skills/` and `.agents/skills/` together.
 
 **Sources:**
 

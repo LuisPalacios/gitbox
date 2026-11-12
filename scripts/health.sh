@@ -13,12 +13,13 @@
 #
 # Checks: gofmt vet staticcheck modernize govulncheck deadcode test
 #         svelte frontend-test build npm-install npm-audit shellcheck actionlint markdown
+#         harness
 #
 # Go analyzers are fetched at pinned versions (go run / go install into the
 # run's temp dir), so they need no install and give the same results
 # everywhere; vet, staticcheck and modernize analyze linux, darwin and
-# windows on every run. shellcheck, actionlint and
-# markdownlint-cli2 must be on PATH (see docs/developer-guide.md).
+# windows on every run. shellcheck, actionlint, markdownlint-cli2 and uv
+# must be on PATH (see docs/developer-guide.md).
 
 set -uo pipefail
 
@@ -46,6 +47,7 @@ NPM_AUDIT_ALLOW="GHSA-gcqx-w48m-w2h4"
 
 FRONTEND="cmd/gui/frontend"
 MD_CONFIG=".claude/skills/fixing-markdown/.markdownlint-cli2.jsonc"
+HARNESS=".claude/skills/mirroring-harness/scripts"
 
 if [[ -t 1 ]]; then
     G='\033[0;32m' R='\033[0;31m' D='\033[0;90m' N='\033[0m'
@@ -242,6 +244,14 @@ run_markdown() {
     return 0
 }
 
+run_harness() {
+    # The Codex mirror (AGENTS.md, .codex/, .agents/skills/) must match
+    # .claude/; the sync script's own tests run first.
+    uv run -q "$HARNESS/test_sync.py" >"$tmp/harness-test.full" 2>&1 \
+        || cat "$tmp/harness-test.full"
+    uv run -q "$HARNESS/sync.py" verify --quiet
+}
+
 # ── Main ─────────────────────────────────────────────────────────────
 
 printf '\n━━ Health check ━━\n\n'
@@ -267,6 +277,7 @@ want npm-audit fe   && check npm-audit   run_npm_audit
 want shellcheck x   && need shellcheck shellcheck        && check shellcheck run_shellcheck
 want actionlint x   && need actionlint actionlint        && check actionlint run_actionlint
 want markdown x     && need markdownlint-cli2 markdown   && check markdown   run_markdown
+want harness x      && need uv harness                   && check harness    run_harness
 
 echo ""
 if [[ ${#failed[@]} -eq 0 ]]; then

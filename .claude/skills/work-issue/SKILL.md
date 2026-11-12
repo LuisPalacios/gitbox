@@ -130,7 +130,7 @@ Resolve the plan source:
 Run in this order, stop on first failure and fix before continuing:
 
 1. `go vet ./...`
-2. The focused test command from the table in `.claude/CLAUDE.md` under "Testing" (match what changed: `pkg/`, `pkg/ops/`, `cmd/gui/`, etc.). When unsure, run `go test ./...`.
+2. The focused test command from the table in `.claude/context/testing-patterns.md` under "Which tests to run" (match what changed: `pkg/`, `pkg/ops/`, `cmd/gui/`, etc.). When unsure, run `go test ./...`.
 3. Build the GUI (quick compile-check during iteration, full build before reporting done). `cmd/gui` embeds `frontend/dist`, so build the frontend once if it is missing (`cd cmd/gui/frontend && npm ci && npm run build`):
 
    ```bash

@@ -84,16 +84,17 @@ Antes de abrir un PR ejecuto todos los comprobadores de código de una pasada:
 ./scripts/health.sh -v           # todos los hallazgos en lugar de los 15 primeros
 ```
 
-Es de solo lectura y termina con error cuando alguna comprobación encuentra algo. Comprobaciones de Go: `gofmt -s`, `go vet`, staticcheck, modernize, govulncheck, deadcode (con una lista de funciones que se mantienen a propósito) y `go test -short`. Comprobaciones del frontend: regresiones puras del árbol de clones (`npm test`), `svelte-check` (las variables y parámetros sin usar fallan mediante `noUnusedLocals`/`noUnusedParameters`), los warnings que imprime `npm run build` (los mismos diagnósticos de Svelte que CI muestra en su paso de build), los warnings de instalación de un `npm ci` limpio en una copia temporal (paquetes obsoletos, scripts de instalación no cubiertos por `allowScripts`) y `npm audit` (con una lista, `NPM_AUDIT_ALLOW`, para avisos sin corrección que nunca llegan al binario; un aviso de la lista que deja de aparecer hace fallar la comprobación). La comprobación de `npm ci` necesita npm 11.19 o posterior. Comprobaciones del repo: shellcheck en los scripts de shell, actionlint en los workflows y markdownlint con la config del skill `fixing-markdown` forzada a solo lectura.
+Es de solo lectura y termina con error cuando alguna comprobación encuentra algo. Comprobaciones de Go: `gofmt -s`, `go vet`, staticcheck, modernize, govulncheck, deadcode (con una lista de funciones que se mantienen a propósito) y `go test -short`. Comprobaciones del frontend: regresiones puras del árbol de clones (`npm test`), `svelte-check` (las variables y parámetros sin usar fallan mediante `noUnusedLocals`/`noUnusedParameters`), los warnings que imprime `npm run build` (los mismos diagnósticos de Svelte que CI muestra en su paso de build), los warnings de instalación de un `npm ci` limpio en una copia temporal (paquetes obsoletos, scripts de instalación no cubiertos por `allowScripts`) y `npm audit` (con una lista, `NPM_AUDIT_ALLOW`, para avisos sin corrección que nunca llegan al binario; un aviso de la lista que deja de aparecer hace fallar la comprobación). La comprobación de `npm ci` necesita npm 11.19 o posterior. Comprobaciones del repo: shellcheck en los scripts de shell, actionlint en los workflows markdownlint con la config del skill `fixing-markdown` forzada a solo lectura, y la comprobación del harness de agentes, que falla cuando `AGENTS.md`, `.codex/` o `.agents/skills/` se desvían de `.claude/`.
 
-Los analizadores de Go se instalan en una carpeta temporal en versiones fijadas al principio del script, así que no necesitan instalación. Vet, staticcheck y modernize analizan linux, darwin y windows en cada ejecución, así que los archivos específicos de cada plataforma se comprueban desde cualquier host. Las otras tres herramientas deben estar en el `PATH`:
+Los analizadores de Go se instalan en una carpeta temporal en versiones fijadas al principio del script, así que no necesitan instalación. Vet, staticcheck y modernize analizan linux, darwin y windows en cada ejecución, así que los archivos específicos de cada plataforma se comprueban desde cualquier host. Las otras cuatro herramientas deben estar en el `PATH`:
 
 ```bash
 scoop install shellcheck actionlint     # Windows (brew install … en macOS, apt/dnf en Linux)
 npm install -g markdownlint-cli2
+scoop install uv                        # brew install uv en macOS
 ```
 
-El workflow de PR ejecuta el mismo script como barrera: cualquier hallazgo hace fallar el job, incluido un aviso nuevo de govulncheck o de `npm audit`. CI fija shellcheck 0.11.0, actionlint 1.7.12 y markdownlint-cli2 0.23.3; uso esas versiones en local para que ambas ejecuciones coincidan.
+El workflow de PR ejecuta el mismo script como barrera: cualquier hallazgo hace fallar el job, incluido un aviso nuevo de govulncheck o de `npm audit`. CI fija shellcheck 0.11.0, actionlint 1.7.12, markdownlint-cli2 0.23.3 y setup-uv 10.3.3; uso esas versiones en local para que ambas ejecuciones coincidan.
 
 ---
 
@@ -112,11 +113,18 @@ Los usuarios finales nunca se encuentran con esto. Cualquiera de estas solucione
 
 ## Trabajar con Claude Code y Codex
 
-Claude Code y Codex comparten un único conjunto de instrucciones de proyecto y seis skills del repositorio. Edito `.claude/CLAUDE.md` y `.claude/skills/`; los enlaces simbólicos relativos versionados `AGENTS.md` y `.agents/skills` exponen los mismos archivos a Codex.
+Claude Code y Codex comparten un único conjunto de instrucciones de proyecto y siete skills del repositorio. Edito solo `.claude/`: `CLAUDE.md`, `rules/`, `context/` y `skills/`. El skill `mirroring-harness` genera la parte de Codex como archivos reales y versionados: `AGENTS.md` en la raíz, `.codex/rules/`, `.codex/context/` y `.agents/skills/`. Después de cualquier cambio bajo `.claude/` ejecuto la sincronización y hago commit de la fuente y los espejos juntos:
+
+```bash
+uv run .claude/skills/mirroring-harness/scripts/sync.py diff   # qué cambiaría
+uv run .claude/skills/mirroring-harness/scripts/sync.py sync   # escribe los espejos y verifica
+```
+
+La [comprobación de salud](#comprobación-de-salud) falla cuando un espejo se desvía de su fuente, así que una edición a mano de `AGENTS.md` nunca llega a `main`.
 
 Abro cualquiera de las dos herramientas en la raíz del repositorio e invoco una skill como `/work-issue 123` en Claude Code o `$work-issue 123` en Codex; las peticiones en lenguaje natural también seleccionan skills. Ambas herramientas siguen las mismas reglas de pruebas y requieren aprobación explícita antes de publicar en GitHub. Los permisos de Claude viven en `.claude/settings.json`; Codex usa los permisos de su propia sesión.
 
-Después de cambiar las instrucciones o los metadatos de las skills, inicio una sesión nueva y le pido que resuma las reglas del proyecto y enumere las seis skills. Para comprobar los enlaces simbólicos, repararlos en Windows, consultar la equivalencia de capacidades y el presupuesto de tamaño de las instrucciones, consulta [la guía de configuración compartida](../../.claude/context/guideline_codex.md).
+Después de cambiar las instrucciones o los metadatos de las skills, inicio una sesión nueva y le pido que resuma las reglas del proyecto y enumere las siete skills. Para consultar la equivalencia de capacidades, el presupuesto de tamaño de las instrucciones y las comprobaciones en sesión nueva, consulta [la guía de configuración compartida](../../.claude/context/guideline_codex.md).
 
 ---
 
@@ -167,7 +175,7 @@ Al añadir campos nuevos a la configuración:
 2. Añade el paso de migración a `decode` en `pkg/config/load.go`, condicionado a la versión leída del archivo (`from < N`), y enuméralo en el comentario doc de `decode`. `decode` respalda tanto `Parse` como `LoadWithRepair`, así que todos los cargadores migran igual, en memoria; el siguiente guardado escribe la versión nueva.
 3. Actualiza la constante `version` en `json/gitbox.schema.json`, `json/gitbox.jsonc` y `json/test-gitbox.json.example`.
 4. Añade una prueba de migración (`pkg/config/migrate_v<N>_test.go`) que cargue un archivo de la versión anterior.
-5. Actualiza las notas de versionado en [architecture.md](architecture.md#4-formato-de-config-v5) y `.claude/CLAUDE.md`.
+5. Actualiza las notas de versionado en [architecture.md](architecture.md#4-formato-de-config-v5) y `.claude/context/config-format.md`.
 
 El ring de backups siempre conserva una copia de un archivo escrito con una versión anterior, para que un usuario pueda volver a un release que todavía lo lee.
 

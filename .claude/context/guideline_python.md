@@ -1,3 +1,7 @@
+---
+read-when: Before writing or changing a Python skill script.
+---
+
 # Python Script Guidelines
 
 ## Core Rule
