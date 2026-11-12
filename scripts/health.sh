@@ -46,8 +46,8 @@ pkg[/\\]workspace[/\\]workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCac
 NPM_AUDIT_ALLOW="GHSA-gcqx-w48m-w2h4"
 
 FRONTEND="cmd/gui/frontend"
-MD_CONFIG=".claude/skills/fixing-markdown/.markdownlint-cli2.jsonc"
-HARNESS=".claude/skills/mirroring-harness/scripts"
+MD_CONFIG="ai/skills/fixing-markdown/.markdownlint-cli2.jsonc"
+HARNESS="ai/scripts"
 
 if [[ -t 1 ]]; then
     G='\033[0;32m' R='\033[0;31m' D='\033[0;90m' N='\033[0m'

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **Generated file, do not edit by hand.** The mirroring-harness skill renders it from `.claude/CLAUDE.md`. Edit the source under `.claude/` and run `uv run .claude/skills/mirroring-harness/scripts/sync.py sync`; direct edits here are overwritten.
+> **Generated file, do not edit by hand.** `ai/scripts/sync.py` renders it from the neutral masters in `ai/`. Edit the master, run `uv run ai/scripts/sync.py sync`, and commit the master and both harness trees together.
 
 This file provides shared guidance to Claude Code and Codex when working in this repository. Codex reads it as the generated `AGENTS.md`. Resolve repository paths from the repository root.
 
@@ -78,8 +78,6 @@ Read `.claude/context/repository-layout.md` when locating components or changing
 
 <!-- index:rules -->
 
-Codex does not load rules automatically. **Before editing a file that matches a pattern, read its rule.**
-
 | When editing | Read first |
 | --- | --- |
 | `.claude/skills/**/SKILL.md`, `.claude/skills/**/*.md` | `.codex/rules/skills-authoring.md` |
@@ -111,9 +109,9 @@ Codex does not load rules automatically. **Before editing a file that matches a 
 | --- | --- |
 | `$fixing-markdown` | Validate and fix markdown formatting in files and folders. |
 | `$merge-pr` | Merge a verified PR and clean up its worktree and branch. |
-| `$mirroring-harness` | Mirror the .claude/ harness into Codex and check it for drift. |
 | `$preparing-brand-logos` | Finds, downloads and prepares tool logos (terminals, editors, AI harnesses, shells) for assets/svg/brand/ in gitbox's 150x150 template, and drafts their single-colour -dark versions. |
 | `$ship-builds` | Build and stage GitboxApp on remote hosts configured in .env. |
+| `$syncing-ai-harness` | Render the Claude Code and Codex harnesses from the neutral masters in ai/ and check them for drift. |
 | `$test-plan` | Run the gitbox test plan. |
 | `$work-issue` | Drive a GitHub issue through an isolated worktree, planning, implementation, verification, and PR creation. |
 

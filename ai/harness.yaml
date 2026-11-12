@@ -1,0 +1,43 @@
+# Render map for ai/scripts/sync.py. ai/ is the only hand-edited source; both
+# harness trees are generated from it. Edit masters, never the rendered files.
+version: 2
+
+masters: ai                     # neutral sources: main.md, rules/, context/, skills/
+main: main.md                   # renders to each harness's entry file
+
+harnesses:
+  claude:
+    name: Claude Code
+    entry: .claude/CLAUDE.md
+    title: CLAUDE.md
+    rules: .claude/rules        # Claude loads a rule by its `paths:` globs
+    context: .claude/context
+    skills: .claude/skills
+    invoke: /
+    max_bytes: null             # no flat-text cap
+    warn_bytes: null
+  codex:
+    name: Codex
+    entry: AGENTS.md            # Codex discovers project instructions at the repo root
+    title: AGENTS.md
+    rules: .codex/rules         # no rule loader: AGENTS.md says which rule to read first
+    context: .codex/context
+    skills: .agents/skills      # Codex's native repo skill folder
+    invoke: $
+    max_bytes: 32768            # Codex's default project_doc_max_bytes: sync refuses above it
+    warn_bytes: 28672           # early warning, leaves room for a personal ~/.codex/AGENTS.md
+
+# Masters rendered for one harness only: fnmatch globs relative to ai/.
+# Example: claude: ["skills/some-skill/**"] keeps that skill out of Codex.
+only:
+  claude: []
+  codex: []
+
+budgets:
+  description_chars: 1024       # the Agent Skills limit for a skill description (fails above it)
+  skill_lines: 500              # SKILL.md size from guideline_skills.md (warns above it)
+
+banner: >-
+  **Generated file, do not edit by hand.** `ai/scripts/sync.py` renders it from the
+  neutral masters in `ai/`. Edit the master, run `uv run ai/scripts/sync.py sync`,
+  and commit the master and both harness trees together.
