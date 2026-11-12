@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sync AI harness"
+  short_description: "Render and verify both harnesses from ai/"
+  default_prompt: "Use $syncing-ai-harness to render and verify both harnesses."

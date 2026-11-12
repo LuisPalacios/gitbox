@@ -8,7 +8,7 @@ Claude Code and Codex read this repository's agent guidance from neutral masters
 
 ## Model
 
-Claude Code and Codex agree on what to do here (policy, builds, gates, workflows) but not on how they load instructions. Claude Code reads `.claude/CLAUDE.md`, loads a rule when it touches a matching file and discovers skills itself. Codex reads one flat `AGENTS.md` at the root, follows no imports, ignores text past 32 KiB and loads no rules by itself.
+Claude Code and Codex share policy, build requirements, approval gates and workflows. Claude Code reads `.claude/CLAUDE.md`, loads path-scoped rules and discovers `.claude/skills/`. Codex discovers `.agents/skills/` natively and loads applicable `AGENTS.md` instructions from global and project scopes, with `AGENTS.override.md` taking precedence at each scope. Its default project-instruction budget is 32 KiB, configurable with `project_doc_max_bytes`. This repository keeps its entry instructions at the root and routes task-specific reading through the context and Markdown-rule indexes; Codex does not automatically load these Markdown rules.
 
 So I write each instruction once and let an engine compile it into both native layouts, like source and build output:
 
@@ -29,17 +29,23 @@ Every rendered file is committed, so a fresh clone works in both tools on every 
 - **Shared with divergent parts:** harness blocks inside one master. I use them for mechanism only: tool names, plan workflow, permissions, image viewing, documentation links.
 - **One tool only:** an `only:` glob for a whole master, `claude:` or `codex:` frontmatter keys for metadata, and native configuration (`.claude/settings.json`, `.codex/config.toml`) that the engine never touches.
 
-Each tool also gets the indexes it needs: both get the on-demand context table; only Codex gets the rules and skills tables, because Claude Code loads rules and lists skills on its own.
+Both tools get the on-demand context table. Codex also gets the Markdown-rule routing table and a compact skills index. Its native skill catalog supplies names, descriptions and paths; the index remains useful as a repository overview, not as a discovery mechanism.
 
 ## Working from either tool
 
-I can ask Claude Code or Codex to change the harness. Both load `ai-harness.md` when they touch `ai/` or a rendered file, both run the same `uv run ai/scripts/sync.py` commands, and `./scripts/health.sh harness` fails the PR gate when a rendered file drifts from its master. A drift message names the master to edit.
+I can ask Claude Code or Codex to change the harness. Both follow `ai-harness.md` before edits (Codex reads it explicitly through the index), both run the same `uv run ai/scripts/sync.py` commands, and `./scripts/health.sh harness` fails the PR gate when a rendered file drifts from its master. A drift message names the master to edit.
+
+I preserve the other tool's behavior when changing a shared master. I inspect both rendered diffs, including exclusions and approval gates. For a tool-only addition, I verify that the other tree remains byte-for-byte unchanged. I use the existing tokens, blocks and `only:` filters before considering an engine extension.
+
+Optional Codex UI metadata lives in `ai/skills/<name>/agents/openai.yaml`. The `only: codex:` glob reserves these sidecars for Codex, and the engine copies them byte for byte. I keep shared `name` and `description` in `SKILL.md`; sidecar fields do not belong in the `codex:` frontmatter mapping. Natural-language skill selection stays enabled unless I deliberately request an explicit-only workflow.
+
+Native configuration does not replace publication approval. I leave personal profiles, credentials, trust decisions and sandbox permissions outside shared masters. A project `.codex/config.toml`, if needed, stays hand-edited and must respect the session's enforced permissions; I do not add one merely to repeat defaults.
 
 ## Size budget
 
 Codex reads at most 32 KiB of project instructions by default. The engine refuses an `AGENTS.md` above that and warns above the budget in `ai/harness.yaml`, which leaves room for a personal `~/.codex/AGENTS.md`. When `ai/main.md` grows, I move task-specific detail into a context file with a `read-when:` line instead of raising the cap.
 
-I keep skill descriptions concise and free of embedded quotation marks so discovery clients show them whole. Markdown links in skills resolve from the skill directory, which sits at the same depth in `ai/skills/`, `.claude/skills/` and `.agents/skills/`.
+I front-load each skill description with its purpose and trigger. Codex can shorten descriptions or omit entries when its skill-catalog budget is exhausted; concise text helps, but does not guarantee complete discovery. I check the actual catalog rather than inferring it from YAML formatting. Markdown links in skills resolve from the skill directory, which sits at the same depth in `ai/skills/`, `.claude/skills/` and `.agents/skills/`.
 
 ## Fresh-session verification
 
@@ -48,10 +54,11 @@ After changing the harness, I run the sync, then start a fresh session at the re
 ```text
 Summarize this repository's instructions and list its local skills.
 Explain the publication gate, the GUI build rule, and where to edit a skill.
+Explain how to format a rendered file safely and where build commands live.
 Do not modify files or run the skills.
 ```
 
-I expect every skill under `ai/skills/` with a complete description, approval before publishing, a Wails build after Go changes, and `ai/skills/` as the place to edit.
+I expect the skills intended for that tool, complete descriptions when the catalog budget permits, explicit authorization for each publication action, a Wails build after Go changes, `ai/skills/` as the place to edit, and `.claude/context/building.md` for build commands. Formatter requests must select masters and regenerate both trees. I do not execute publication or formatting workflows merely to test discovery.
 
 ## Troubleshooting
 

@@ -19,7 +19,7 @@ description: Drive a GitHub issue through an isolated worktree, planning, implem
 
 ## Golden rules (never skip)
 
-- **Never push, PR, merge, or comment on an issue/PR without explicit user go-ahead.** Local commits are free; publishing is not.
+- **Never push, PR, merge, or comment on an issue/PR without explicit user go-ahead.** Local commits are free; publishing is not. An explicit authorization in the current session applies only to the actions and scope it names; do not ask again for an action it already covers.
 - **Never hardcode a GitHub username.** Derive the expected owner from this clone's `remote.origin.url` — the skill must work on any fork.
 - **Stay in the worktree** after Phase 2. Never edit files outside it, never check out a different branch in it.
 - **Anonymise anything that lands on GitHub** (PR title/body, commit messages that will be pushed). No local paths, no private account keys, no org names unrelated to this repository. See "Anonymize before posting to GitHub" in `.claude/CLAUDE.md`.
@@ -34,27 +34,15 @@ Each phase begins by reading current git state (`git rev-parse --abbrev-ref HEAD
 Run this before every `gh` command. It is portable across Git Bash (Windows), macOS, and Linux.
 
 ```bash
-# Derive expected owner from this clone's origin remote.
-# Handles HTTPS (https://github.com/OWNER/REPO.git)
-# and SSH   (git@github.com:OWNER/REPO.git).
 origin_url=$(git config --get remote.origin.url)
-expected_owner=$(echo "$origin_url" | sed -E 's|.*[:/]([^/]+)/[^/]+$|\1|' | sed 's|\.git$||')
-
-# What user does gh currently consider active?
-active_user=$(gh auth status 2>&1 | grep -oE 'account [A-Za-z0-9-]+' | head -1 | awk '{print $2}')
-
-echo "expected=$expected_owner active=$active_user"
-
-if [ "$active_user" != "$expected_owner" ]; then
-  gh auth switch --user "$expected_owner" || {
-    echo "gh does not know user '$expected_owner'. Run:"
-    echo "  gh auth login --hostname github.com --web"
-    exit 1
-  }
-fi
+expected_owner=$(printf '%s\n' "$origin_url" | sed -E 's|.*[:/]([^/]+)/[^/]+$|\1|')
+gh auth switch --hostname github.com --user "$expected_owner" || {
+  echo "Cannot select the account for this origin; stop and confirm the login."
+  exit 1
+}
 ```
 
-If `gh auth switch` fails (the owner is not in `gh auth status`), stop and ask the user to log in manually. Never attempt non-interactive auth.
+This repository and personal forks use the origin owner as the login. If the owner is an organization or the switch fails, stop and confirm the intended account; never infer it from the first account printed by `gh auth status` or attempt non-interactive authentication.
 
 ---
 
@@ -92,7 +80,7 @@ Ask: "Is this the right issue? Proceed?" Do not create the worktree until the us
 ## Step 3: Understand
 
 - Re-read the issue body and labels.
-- Explore only the files the issue clearly touches (use Grep/Glob, not broad scans).
+- Explore only the files the issue clearly touches, using targeted filename and content searches.
 - Summarise in ≤5 lines: what the problem is, where it lives, what success looks like.
 
 **Gate:** ask the user "Ready to plan?" before moving on.
@@ -101,7 +89,7 @@ Ask: "Is this the right issue? Proceed?" Do not create the worktree until the us
 
 Resolve the plan source:
 
-- **Explicit second argument** — treat as a path or URL if it's not the literal `issue`. Read it (use WebFetch for URLs, Read for local paths).
+- **Explicit second argument** — treat as a path or URL if it's not the literal `issue`. Fetch URLs with an available web tool; read local paths with an available file-reading tool.
 - **Second argument is `issue`** — extract any section from the issue body titled `Plan`, `Implementation`, `Approach`, or `Proposed solution` (case-insensitive).
 - **No second argument** — scan the issue body for the same section headings anyway (cheap), but do not assume one exists.
 

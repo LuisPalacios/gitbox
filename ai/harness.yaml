@@ -31,7 +31,8 @@ harnesses:
 # Example: claude: ["skills/some-skill/**"] keeps that skill out of Codex.
 only:
   claude: []
-  codex: []
+  codex:
+    - "skills/*/agents/openai.yaml"
 
 budgets:
   description_chars: 1024       # the Agent Skills limit for a skill description (fails above it)

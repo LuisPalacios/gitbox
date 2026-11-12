@@ -69,6 +69,7 @@ ai/                       Agent harness masters: the only hand-edited agent guid
   scripts/                sync.py (renders both harnesses, checks drift) and test_sync.py
   context/
     repository-layout.md  Detailed repository map
+    building.md           Binary names, frontend prerequisite, Wails build and smoke commands
     config-format.md      gitbox.json keys, versioning and migration
     guideline_harness.md  Dual AI harness model: masters, sharing levels, verification
     multiplatform-testing.md  Agent recipes for remote builds and desktop testing

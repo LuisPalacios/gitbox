@@ -1,9 +1,5 @@
 {
-  // markdownlint-cli2 configuration for palas plugin
   // Docs: https://github.com/DavidAnson/markdownlint-cli2
-
-  // Auto-fix enabled by default
-  "fix": true,
 
   // Paths to ignore
   "ignores": [

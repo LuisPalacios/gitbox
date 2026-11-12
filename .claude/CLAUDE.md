@@ -16,7 +16,7 @@ A multi-component project for managing Git multi-account environments across pro
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
 - **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
 - **Skills first**: Check if a skill exists before manual work
-- **Self-improve**: When a skill fails, update its SKILL.md with the fix
+- **Self-improve**: When a skill fails, fix its master under `ai/skills/` and render both harnesses
 - **Zero entropy**: Never create files outside defined structure
 
 ## Documentation style
@@ -65,7 +65,7 @@ Read `.claude/context/repository-layout.md` when locating components or changing
 ## Agent capabilities
 
 - Invoke a skill as `/skill-name` (for example, `/work-issue 123`); natural-language requests also select skills.
-- Read `.claude/context/guideline_python.md` or `.claude/context/guideline_js.md` before changing skill scripts in that language. These script conventions do not replace the frontend's existing npm workflow.
+- Read `.claude/context/guideline_python.md` or `.claude/context/guideline_js.md` before changing harness or skill scripts in that language. These script conventions do not replace the frontend's existing npm workflow.
 - `.claude/settings.json` holds the permission allowlist. Repository instructions cannot grant filesystem or network access; if an action is blocked, report the limitation and the remaining step.
 - Keep shared, durable project lessons in the relevant master under `ai/`. Use private memory only when the harness provides it; do not copy private memory or credentials into the repository.
 
@@ -75,10 +75,11 @@ Read `.claude/context/repository-layout.md` when locating components or changing
 
 | Task | Read first |
 | --- | --- |
+| Before building GitboxApp or running Go commands that require the embedded frontend. | `.claude/context/building.md` |
 | Before changing gitbox.json keys, versioning or migration, or code in `pkg/config`, `pkg/reconcile` or `pkg/workspace`. | `.claude/context/config-format.md` |
 | Before changing how the AI harness is structured or rendered, or when Claude Code or Codex seems to miss an instruction, rule or skill. | `.claude/context/guideline_harness.md` |
 | Before writing or changing a JavaScript or TypeScript skill script. | `.claude/context/guideline_js.md` |
-| Before writing or changing a Python skill script. | `.claude/context/guideline_python.md` |
+| Before writing or changing a Python script under ai/scripts/ or ai/skills/. | `.claude/context/guideline_python.md` |
 | Before creating or changing a skill. | `.claude/context/guideline_skills.md` |
 | Before remote builds, shipping to another OS, credential setup or interactive GUI testing. | `.claude/context/multiplatform-testing.md` |
 | When locating a component or changing the repository structure. | `.claude/context/repository-layout.md` |
@@ -90,48 +91,7 @@ Read `.claude/context/repository-layout.md` when locating components or changing
 
 **Language:** Go. **GUI:** Wails v2 + Svelte. One binary, `GitboxApp`, on top of the shared `pkg/` library. Business logic lives in `pkg/` (account, credential, clone and discovery flows in `pkg/ops`); `cmd/gui` is Wails glue.
 
-### Binary naming
-
-The GUI binary is `GitboxApp`. The v1 CLI/TUI binary was `gitbox` — a different name, so the two never collided on the case-insensitive NTFS filesystem when shipped side by side. The CLI/TUI is maintained on the `release/v1` branch and installed with `scripts/bootstrap.sh --cli-only` (latest 1.x).
-
-| Platform | GUI             |
-| -------- | --------------- |
-| Windows  | `GitboxApp.exe` |
-| macOS    | `GitboxApp.app` |
-| Linux    | `GitboxApp`     |
-
-`GitboxApp --version` prints `GitboxApp <version> (<sha>)` and exits without opening a window, so scripts and CI use it as a smoke check.
-
-### Build commands
-
-```bash
-# Build-time version stamp. Without -ldflags the GUI launched from Finder
-# shows "dev-none" (runtime git fallback can't find .git when the app's CWD
-# is outside the repo). Matches the values CI and scripts/ship.sh inject.
-LDFLAGS="-X main.version=$(git describe --tags --always)-dev -X main.commit=$(git rev-parse --short HEAD)"
-
-# cmd/gui embeds frontend/dist (go:embed), so `go build ./...`, `go vet ./...`
-# and `go test ./...` need the frontend built once (wails build also does it).
-(cd cmd/gui/frontend && npm ci && npm run build)
-
-# Build GUI (requires Wails CLI)
-# ALWAYS copy icons before building — they are not checked in under cmd/gui/build/
-cp assets/appicon.png cmd/gui/build/appicon.png
-mkdir -p cmd/gui/build/windows   # absent in a fresh clone or worktree
-cp assets/icon.ico    cmd/gui/build/windows/icon.ico
-(cd cmd/gui && wails build -ldflags "$LDFLAGS")   # Linux: add -tags webkit2_41
-# macOS: export CGO_CFLAGS=-mmacosx-version-min=13.0 CGO_LDFLAGS=-mmacosx-version-min=13.0
-# first (Go's runtime minimum; cmd/gui/build/darwin/Info.plist declares the same 13.0)
-# Output: cmd/gui/build/bin/GitboxApp[.exe] (GitboxApp.app on macOS)
-
-# Smoke check
-cmd/gui/build/bin/GitboxApp --version        # macOS: GitboxApp.app/Contents/MacOS/GitboxApp
-
-# Run tests
-go test ./pkg/...              # shared library (pkg/ops holds the lifecycle scenario)
-go test ./cmd/gui/             # Wails-bound App methods
-go test ./...                  # everything
-```
+Read `.claude/context/building.md` before building or running Go checks. After changes to `cmd/` or `pkg/`, build with Wails, copy the icons first, and run the resulting `GitboxApp --version` smoke check.
 
 Git operations shell out to system `git` via `os/exec`. Provider APIs use `net/http`.
 
@@ -155,7 +115,7 @@ Config file: `~/.config/gitbox/gitbox.json`, `version: 5`. Read `.claude/context
 
 The backlog lives on GitHub at [github.com/LuisPalacios/gitbox/issues](https://github.com/LuisPalacios/gitbox/issues). Features use the `enhancement` label (plus `priority:P1` when they're up next); bugs use the `bug` label. Size and severity are captured in the issue body.
 
-Flow: open an issue → discuss/plan in comments → implement with plan mode → reference the issue in the commit message → close on merge. Use `gh issue list --label enhancement` or `gh issue view <n>` from the CLI; remember to `gh auth switch --user LuisPalacios` first.
+Flow: open an issue → discuss/plan in comments → implement with a plan → reference the issue in the commit message → close on merge. Use `gh issue list --label enhancement` or `gh issue view <n>` from the CLI; derive the expected account from this clone's `remote.origin.url` and select it first.
 
 ### Push to main vs branch + PR
 
@@ -196,7 +156,7 @@ The protocol has two shapes depending on what was changed:
 2. Stop and ask: "Commit `<sha>` ready — want me to push directly / open a PR, or hold?" One sentence, no ceremony.
 3. Wait for the answer before any push or PR action.
 
-The only pre-authorisation that bypasses this is an explicit, in-session "ship on green" for a specific task ("just push it when tests pass"). A blanket "you have my approval" from a previous session does not count — authorisation applies to the scope it was granted for.
+Explicit authorization in the current session can cover named publication actions for a specific task, including "push this branch and create a PR when checks pass". Complete the required checks and honor that authorization without asking again. Approval to create a PR does not authorize its merge. A blanket approval from a previous session does not count; authorization applies only to the actions and scope granted.
 
 When in doubt, ask. It is never wrong to pause; it is sometimes wrong to push.
 
@@ -227,7 +187,7 @@ After any code change, run the focused tests for the package that changed. Read 
 
 **Run `go vet ./...` before committing** — it catches issues the test suite doesn't.
 
-**Health check:** `./scripts/health.sh` runs every checker read-only (Go analyzers at pinned versions, svelte-check with unused-code errors, frontend build and npm ci warnings, npm audit, shellcheck, actionlint, markdownlint). Run it before every PR; `pr.yml` runs it as the CI gate and fails on any finding (including new govulncheck / npm audit advisories). Never run the `fixing-markdown` markdownlint config directly for a check — it has `"fix": true` and rewrites files.
+**Health check:** `./scripts/health.sh` runs every checker read-only (Go analyzers at pinned versions, svelte-check with unused-code errors, frontend build and npm ci warnings, npm audit, shellcheck, actionlint, markdownlint). Run it before every PR; `pr.yml` runs it as the CI gate and fails on any finding (including new govulncheck / npm audit advisories). The shared Markdown lint config is read-only by default; use `--fix` only for approved editable targets, never generated files.
 
 **Pre-push hook:** The repo includes `.githooks/pre-push` which runs a `gofmt -s -l` check, `go vet` and `go test -short` before every push, building the frontend first when `cmd/gui/frontend/dist` is missing. Run `gofmt -s -w` on changed Go files before committing. Activate with `git config core.hooksPath .githooks`.
 
@@ -260,7 +220,7 @@ Every English doc under `docs/` has a counterpart under `docs/es/`; update both 
 
 For multi-issue work where several agent sessions run in parallel, use the `/work-issue <N>` skill. It creates a sibling worktree at `../gitbox-<N>-<slug>`, drives the plan → code → auto-test → user-smoke-test → sync → push → PR flow, and stops before merge. `/merge-pr <PR#>` handles rebase check, CI gate, merge, and worktree cleanup as a separate, deliberate action.
 
-If I already have a plan written (in the issue body, a local file, or a URL), I can pass it with `/work-issue <N> <plan-source>`. The skill evaluates completeness: adopts it if it covers files-to-change, verification, and key decisions; extends it via plan mode if partial; falls back to full plan mode if absent.
+If I already have a plan written (in the issue body, a local file, or a URL), I can pass it with `/work-issue <N> <plan-source>`. The skill evaluates completeness: adopts it if it covers files-to-change, verification, and key decisions; extends it with a plan if partial; creates a full plan if absent, using the available planning capability.
 
 Cross-cutting rules when a session is running inside a worktree:
 
@@ -279,13 +239,7 @@ See `docs/worktree-workflow.md` for the full walkthrough.
 
 ## GitHub CLI (`gh`) account
 
-This repo is owned by the `LuisPalacios` GitHub account. Before running any `gh` command (PR, issue, release, etc.), **always** switch to the correct account:
-
-```bash
-gh auth switch --user LuisPalacios
-```
-
-Do this at the start of any `gh` workflow — do not assume the active account is correct.
+Before a `gh` operation, derive the expected account from this clone's `remote.origin.url` and select it with `gh auth switch --user <expected-account>`. Do not assume the active account is correct or hardcode an account into reusable workflows. The `work-issue` and `merge-pr` skills contain the command sequence for this user-owned repository. If the remote owner is an organization or has no matching authenticated account, stop and resolve the account instead of guessing.
 
 ## Anonymize before posting to GitHub
 

@@ -144,3 +144,7 @@ GCM drift repair validates the effective config after writing, so its drifted ca
 
 - **Git-internal time** — a separate Windows sweep of 24 unchanged SSH clones took 8.918 → 1.963 s in the parent process and 5.421 → 1.193 s of git-internal time (summed from top-level Trace2 `exit.t_abs`). The 3.497 → 0.770 s residual covers process startup, IPC and caller file operations; I don't attribute it to antivirus or `HideWindow` alone.
 - **Probe scheduling** — native Windows amd64 runs on Go 1.27.0 with loopback HTTP servers: twelve upstreams shared by two sources made twelve requests, one credential lookup and at most four concurrent requests. With a 20 ms per-request timeout, twelve stalled requests finished in 61.34 ms; with a 20 ms overall budget, the sweep stopped after four requests in 20.57 ms. Production limits stay at ten seconds per request and thirty per sweep, and these numbers don't predict real provider latency.
+
+## Agent harness maintenance tests
+
+I run `ai/scripts/test_sync.py` for rendering, drift detection, native configuration preservation, and Codex-only sidecars that leave the Claude tree unchanged. I run `ai/scripts/test_fixing_markdown.py` for safe formatter target selection and execution against temporary fixtures. `scripts/health.sh harness` runs both suites and verifies the committed renders; neither suite needs credentials or application binaries.

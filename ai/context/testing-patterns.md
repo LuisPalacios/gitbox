@@ -6,7 +6,7 @@ read-when: Before running, writing or changing tests; it holds the per-package t
 
 How to write new tests for gitbox. Reference this when adding or modifying tests.
 
-All logic lives in `pkg/`, so tests live there too: plain `go test` packages with no UI driver. `cmd/gui` keeps a few tests for the Wails-bound `App` methods.
+Application business logic lives in `pkg/`, so its tests live there too: plain `go test` packages with no UI driver. `cmd/gui` keeps a few tests for the Wails-bound `App` methods.
 
 ## Which tests to run
 
@@ -25,6 +25,10 @@ After any code change, always run the relevant tests:
 | Unsure what's affected                      | `go test ./...`                                    |
 
 `cmd/gui` tests (and `./...`) need `cmd/gui/frontend/dist` — build the frontend once if it is missing.
+
+## Harness checks
+
+For changes limited to `ai/` and its rendered trees, I run `uv run ai/scripts/test_sync.py`, `uv run ai/scripts/test_fixing_markdown.py`, `uv run ai/scripts/sync.py verify` and `./scripts/health.sh harness markdown shellcheck actionlint`. These changes do not require Go tests or a GUI build; the full health check still runs before a PR. I test formatter selection against temporary fixtures, including rendered targets and symlinks, without formatting the real repository. The harness health gate runs both Python suites.
 
 ## Test levels
 

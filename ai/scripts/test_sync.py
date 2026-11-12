@@ -145,6 +145,23 @@ class SyncTest(unittest.TestCase):
         self.assertFalse((self.root / ".agents/skills/doing-things").exists())
         self.assertNotIn("doing-things", self.read("AGENTS.md"))
 
+    def test_codex_sidecar_preserves_claude_tree(self):
+        self.sync_ok()
+        claude_before = {
+            p.relative_to(self.root): p.read_bytes()
+            for p in (self.root / ".claude").rglob("*") if p.is_file()
+        }
+        # YAML stays literal, including dollar signs and token-like text.
+        content = 'interface:\n  default_prompt: "Use $doing-things with {{LITERAL}}"\n'
+        self.put("ai/skills/doing-things/agents/openai.yaml", content)
+        self.sync_ok()
+        self.assertEqual(self.read(".agents/skills/doing-things/agents/openai.yaml"), content)
+        self.assertEqual(claude_before, {
+            p.relative_to(self.root): p.read_bytes()
+            for p in (self.root / ".claude").rglob("*") if p.is_file()
+        })
+        self.assertEqual(self.run_cmd("verify", "--quiet"), (0, ""))
+
     def test_verify_names_the_master_to_edit(self):
         self.sync_ok()
         (self.root / ".codex/rules/docs.md").write_text("hand edit\n", encoding="utf-8")

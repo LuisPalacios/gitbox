@@ -17,11 +17,11 @@ I keep shared skill-authoring guidance here. Skills live under `ai/skills/`; `ai
 
 ### 1. Conciseness is Key
 
-Context window is shared. Only add what Claude doesn't already know.
+Context window is shared. Only add what the agent doesn't already know.
 
 **Challenge each line:**
 
-- "Does Claude need this explanation?"
+- "Does the agent need this explanation?"
 - "Does this paragraph justify its token cost?"
 
 **Good:** ~50 tokens with code example
@@ -125,7 +125,13 @@ Skills can be invoked two ways:
 1. **Explicit invocation:** Claude Code uses `/skill-name arg1 arg2`; Codex uses `$skill-name arg1 arg2`.
 2. **Natural language (auto-detected):** Claude Code or Codex matches the request against the skill's `description` field
 
-I keep shared `name` and `description` fields concise and free of embedded quotation marks so discovery clients expose complete descriptions. Claude-specific invocation settings do not configure Codex. I preserve explicit publication gates in the workflow body.
+I keep shared `name` and `description` fields concise, front-load the use case, and check the actual discovery output. Clients can shorten descriptions to fit their discovery budget. Claude-specific invocation settings do not configure Codex. I preserve explicit publication gates in the workflow body.
+
+### Codex metadata
+
+I put optional Codex UI metadata (`interface.display_name`, `interface.short_description`, `interface.default_prompt`) in `ai/skills/<name>/agents/openai.yaml`, not in the `SKILL.md` frontmatter. I reserve these files with `only.codex` in `ai/harness.yaml`; the renderer copies YAML byte for byte, so I use literal `$skill-name` invocations instead of harness tokens. Claude receives neither the file nor an instruction to read it.
+
+I preserve implicit invocation unless the user requests an explicit-only skill. Invocation policy does not authorize publication. I add tool dependencies only when the skill actually needs them. Tool-specific frontmatter keys belong under `claude:` or `codex:` only when the corresponding tool supports those keys.
 
 ---
 
@@ -251,7 +257,7 @@ def process_file(path):
         print(f"Creating {path}")
         return ""
 
-# BAD - punts to Claude
+# BAD - punts to the agent
 def process_file(path):
     return open(path).read()  # Just fails
 ```
@@ -282,14 +288,14 @@ See `scripts/build.py` for the build algorithm.
 
 ## Anti-Patterns
 
-| Don't                             | Do Instead                              |
-| --------------------------------- | --------------------------------------- |
-| Windows paths `scripts\helper.py` | Unix paths `scripts/helper.py`          |
-| Multiple options without default  | One recommended approach + alternatives |
-| Deeply nested references          | One level deep from SKILL.md            |
-| Time-sensitive dates              | "Old patterns" section                  |
-| Assuming packages installed       | Explicit `pip install` or `npm install` |
-| Magic numbers                     | Document all constants                  |
+| Don't                             | Do Instead                                                             |
+| --------------------------------- | ---------------------------------------------------------------------- |
+| Windows paths `scripts\helper.py` | Unix paths `scripts/helper.py`                                         |
+| Multiple options without default  | One recommended approach + alternatives                                |
+| Deeply nested references          | One level deep from SKILL.md                                           |
+| Time-sensitive dates              | "Old patterns" section                                                 |
+| Assuming packages installed       | Declare prerequisites and respect installation and network permissions |
+| Magic numbers                     | Document all constants                                                 |
 
 ---
 
