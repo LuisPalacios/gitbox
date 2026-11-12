@@ -3,20 +3,20 @@ name: test-plan
 description: Run the gitbox test plan. Use when the user wants to verify changes before pushing, run pre-PR checks, or do a full release verification. Accepts an optional mode argument.
 ---
 
-# /test-plan — Run test plan
+# $test-plan — Run test plan
 
-**IMPORTANT:** Before starting, inform the user: "I'm executing `/test-plan`"
+**IMPORTANT:** Before starting, inform the user: "I'm executing `$test-plan`"
 
 ## Harness compatibility
 
-In Codex, invoke this skill with `$test-plan` and the same arguments. Follow the capability mapping in `.claude/CLAUDE.md`: use supported tools or a conversation plan/checklist when Claude-specific tools are unavailable. Preserve every explicit approval gate below. Resolve repository paths from the active worktree root.
+Follow "Agent capabilities" in `AGENTS.md`: use supported tools or a conversation plan/checklist when Claude-specific tools are unavailable. Preserve every explicit approval gate below. Resolve repository paths from the active worktree root.
 
 ## Usage
 
 ```text
-/test-plan              Run pre-PR checks (default)
-/test-plan pre-pr       Same as above — quick automated checks
-/test-plan full         Full release verification (automated + interactive)
+$test-plan              Run pre-PR checks (default)
+$test-plan pre-pr       Same as above — quick automated checks
+$test-plan full         Full release verification (automated + interactive)
 ```
 
 ## Checklist source

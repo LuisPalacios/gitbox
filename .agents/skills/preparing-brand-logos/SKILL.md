@@ -15,11 +15,11 @@ Logos live in `assets/svg/brand/` and reach the app through `cmd/gui/frontend/vi
 4. **Fit** each source into the colour template:
 
    ```bash
-   uv run .claude/skills/preparing-brand-logos/scripts/fit_logo.py tmp/originals/<name>.svg tmp/logo-<name>.svg --source-url <url>
+   uv run .agents/skills/preparing-brand-logos/scripts/fit_logo.py tmp/originals/<name>.svg tmp/logo-<name>.svg --source-url <url>
    ```
 
    `--bbox content` (default) fits the painted artwork, clamped to the source viewBox, and skips clip-path/mask/pattern shapes. A source with `<text>` falls back to its viewBox, because text extents aren't measured. `--bbox viewbox` keeps the source padding; `--bbox X,Y,W,H` sets the box by hand (use it when a drop shadow, a stray shape or a clip path skews the content bbox). A PNG source gets embedded as `<image>`. That's fine for review, but it must be redrawn as vectors before shipping.
-5. **Check** the result by eye. Run `uv run .claude/skills/preparing-brand-logos/scripts/preview_logos.py tmp` and open `tmp/preview.html` (light and dark, 16/24/150 px, canvas edge outlined). On macOS, `qlmanage -t -s 300 -o <dir> <file.svg>` renders a PNG you can Read.
+5. **Check** the result by eye. Run `uv run .agents/skills/preparing-brand-logos/scripts/preview_logos.py tmp` and open `tmp/preview.html` (light and dark, 16/24/150 px, canvas edge outlined). On macOS, `qlmanage -t -s 300 -o <dir> <file.svg>` renders a PNG you can Read.
 6. **Stop** and hand over to the user for review. Don't create `-dark` files or touch `assets/` until they say so.
 7. **Dark version** (when asked): write `tmp/logo-<name>-dark.svg` by hand from the reviewed colour file, following the dark template below. Simplify to the logo's recognizable silhouette; inner details become cut-outs (`fill-rule="evenodd"`) or strokes. Check it at 16px in `preview.html`.
 8. **Install** (when asked): copy into `assets/svg/brand/`, add the name to the icon lookup and to the name list in `assets/svg/README.md`, add it to `assets/svg/brand/invert-light.txt` when its body is dark (it reads as a black square at 16–20 px on white), then `cd cmd/gui/frontend && npm run build` (the build fails on a `-dark` file with gradients, filters, masks, patterns or images).

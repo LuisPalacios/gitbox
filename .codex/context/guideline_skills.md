@@ -4,12 +4,12 @@ read-when: Before creating or changing a skill.
 
 # Skill authoring guidelines
 
-I keep shared Claude Code and Codex skill-authoring guidance here. Claude Code loads the path-scoped rule in `.claude/rules/skills-authoring.md`; Codex reaches it through the rules table in the generated `AGENTS.md`. After changing a skill, I run the `mirroring-harness` sync and commit `.claude/skills/` and `.agents/skills/` together.
+I keep shared skill-authoring guidance here. Skills live under `ai/skills/`; `ai/scripts/sync.py` renders them into `.claude/skills/` and `.agents/skills/`, so I edit only the master and follow `.codex/rules/ai-harness.md` for the parts that differ per tool.
 
 **Sources:**
 
-- [Skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
-- [Claude Code Skills docs](https://code.claude.com/docs/en/skills)
+- [Codex skills](https://developers.openai.com/codex/skills)
+- [Agent Skills best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices), the shared format both tools read
 
 ---
 
@@ -99,10 +99,10 @@ description: Helps with building
 
 ```text
 # CORRECT
-.claude/skills/lib-verify/SKILL.md
+ai/skills/lib-verify/SKILL.md
 
 # WRONG - will NOT work
-.claude/skills/lib-verify.md
+ai/skills/lib-verify.md
 ```
 
 Keep SKILL.md under **500 lines**. Split into separate files:
