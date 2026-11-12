@@ -39,6 +39,7 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: cmd/gui/frontend/package-lock.json
+      - uses: astral-sh/setup-uv@v10.3.3
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
@@ -55,7 +56,8 @@ jobs:
 
       # scripts/health.sh is the gate: gofmt, vet, staticcheck, modernize,
       # govulncheck, deadcode, unit tests, svelte-check, frontend build and
-      # npm ci warnings, npm audit, shellcheck, actionlint and markdownlint.
+      # npm ci warnings, npm audit, shellcheck, actionlint, markdownlint and
+      # the agent harness mirror check (uv).
       # Any finding fails the job. Tools are pinned to the versions the
       # developer guide lists, so CI and local runs agree.
       - name: Install health check tools

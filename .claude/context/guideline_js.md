@@ -1,3 +1,7 @@
+---
+read-when: Before writing or changing a JavaScript or TypeScript skill script.
+---
+
 # JavaScript/TypeScript Script Guidelines
 
 ## Core Rule

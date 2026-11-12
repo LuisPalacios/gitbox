@@ -1,8 +1,42 @@
+---
+read-when: Before running, writing or changing tests; it holds the per-package test table, test levels, helpers and naming.
+---
+
 # Test authoring patterns
 
 How to write new tests for gitbox. Reference this when adding or modifying tests.
 
 All logic lives in `pkg/`, so tests live there too: plain `go test` packages with no UI driver. `cmd/gui` keeps a few tests for the Wails-bound `App` methods.
+
+## Which tests to run
+
+After any code change, always run the relevant tests:
+
+| What changed                                | Command                                            |
+| ------------------------------------------- | -------------------------------------------------- |
+| `pkg/` (shared library)                     | `go test ./pkg/...`                                |
+| Account/credential/clone flows (`pkg/ops/`) | `go test ./pkg/ops/`                               |
+| Credential logic (`pkg/credential/`)        | `go test ./pkg/credential/ ./pkg/ops/ ./cmd/gui/`  |
+| Config logic (`pkg/config/`)                | `go test ./pkg/config/ ./pkg/ops/ ./cmd/gui/`      |
+| Disk reconcile (`pkg/reconcile/`)           | `go test ./pkg/reconcile/ ./pkg/adopt/ ./cmd/gui/` |
+| GUI bindings (`cmd/gui/`)                   | `go test ./cmd/gui/`                               |
+| Update logic (`pkg/update/`)                | `go test ./pkg/update/`                            |
+| Doctor / tool detection (`pkg/doctor/`)     | `go test ./pkg/doctor/`                            |
+| Unsure what's affected                      | `go test ./...`                                    |
+
+`cmd/gui` tests (and `./...`) need `cmd/gui/frontend/dist` — build the frontend once if it is missing.
+
+## Test levels
+
+- **Unit tests** — always run, no credentials needed. Package-level tests in `pkg/`, isolated with `t.TempDir()` and `t.Setenv()`; `cmd/gui` tests call `App` methods directly, without the Wails runtime.
+- **Integration tests** — require `test-gitbox.json` at repo root with real provider credentials, through `requireIntegration(t)`. They fail with a clear message when the file is missing and skip with `-short`. Today the only one is the scenario test, `TestScenario_FullLifecycle` in `pkg/ops`: the full account → clone → mirror → rename → delete lifecycle against a real provider. Name new ones `TestIntegration_*`.
+
+## When adding features or fixing bugs
+
+- Add or update tests that cover the change. Check the helpers below before writing new ones.
+- `pkg/` changes: add package-level tests. Account, credential, clone and discovery flows go in `pkg/ops` (helpers: `isolate`, `makeClone`, `gitRun`).
+- Flows that need real credentials or API calls: gate them with `requireIntegration(t)`, or extend `TestScenario_FullLifecycle` with a new step.
+- GUI binding changes: add `cmd/gui` tests that build an `App` and call the method.
 
 ## Test infrastructure files
 

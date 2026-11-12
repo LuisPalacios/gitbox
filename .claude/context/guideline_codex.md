@@ -1,201 +1,65 @@
+---
+read-when: Before changing how Codex sees this repo's instructions, rules, context or skills, or when Codex seems to miss them.
+---
+
 # Guideline: dual Claude/Codex setup
 
-This document explains how this repository is wired so Claude Code and Codex can coexist while sharing one canonical instructions file and one shared skills directory.
+This document explains how Claude Code and Codex share one set of agent guidance in this repository.
 
 ## Intent
 
-- Human source of truth for agent guidance lives at `.claude/CLAUDE.md`.
-- Claude Code reads that file directly.
-- Codex reads `AGENTS.md` from the repository root, so the repo exposes a symlink instead of duplicating the file.
-- Repo-scoped skills remain under `.claude/skills`, and Codex sees them through a symlink at `.agents/skills`.
-- The design goal is zero duplication and low-maintenance cross-platform compatibility.
+- `.claude/` is the only hand-edited source: `CLAUDE.md`, `rules/`, `context/` and `skills/`.
+- Claude Code reads `.claude/` directly and loads each rule when it reads a matching file.
+- Codex reads generated real files: `AGENTS.md` at the root, `.codex/rules/`, `.codex/context/` and `.agents/skills/`. The `mirroring-harness` skill renders them from `.claude/`.
+- Real files, not symlinks: a fresh clone works in Codex on every OS without Developer Mode, `mklink` or `tar -h` workarounds.
 
-## Expected repository state
-
-These paths should exist:
+## Layout
 
 ```text
-.claude/CLAUDE.md
-.claude/skills/
-AGENTS.md -> .claude/CLAUDE.md
-.agents/skills -> ../.claude/skills
+.claude/CLAUDE.md      ->  AGENTS.md          (plus the index blocks inside CLAUDE.md itself)
+.claude/rules/         ->  .codex/rules/
+.claude/context/       ->  .codex/context/
+.claude/skills/        ->  .agents/skills/
+.claude/harness.yaml       mirror map and size budgets
 ```
 
-Notes:
-
-- `AGENTS.md` must stay at the repository root because Codex instruction discovery checks root `AGENTS.md`; `.agents/AGENTS.md` is not the default project instruction location.
-- Symlink targets should be relative, not absolute.
-- The canonical content is `.claude/CLAUDE.md`; `AGENTS.md` is only the Codex-facing bridge.
+`AGENTS.md` must stay at the repository root: that is where Codex discovers project instructions. `.agents/skills/` is Codex's native repository skill folder.
 
 ## Capability parity
 
 I keep project policy, build rules, verification requirements, and publication gates in `.claude/CLAUDE.md`. Both harnesses use the same skill bodies and scripts. I use `/work-issue 123` in Claude Code and `$work-issue 123` in Codex; the arguments and approval gates match.
 
-I route Claude's automatic skill-authoring rule explicitly from the shared instructions because Codex does not inherit `.claude/rules/` discovery. I use the available tools for planning, checklists, file reads, searches, images, and delegation. When Codex cannot switch into plan mode itself, I write the plan in the conversation and preserve the invoked skill's approval gates.
+Codex has no rule loader, so the generated `AGENTS.md` carries a table that names the rule to read before editing a matching file. The context table works the same way in both harnesses: each context file declares its `read-when:` sentence in frontmatter, and the table routes an agent there before that task.
 
-I keep `.claude/settings.json` as Claude-only configuration. Codex permissions come from its own session; I do not copy Claude allowlists into a permissive Codex policy. A `.codex/` directory is optional for this setup: instruction and skill discovery use `AGENTS.md` and `.agents/skills`.
+I use the available tools for planning, checklists, file reads, searches, images, and delegation. When Codex cannot switch into plan mode itself, I write the plan in the conversation and preserve the invoked skill's approval gates.
 
-I keep the root instruction file below Codex's default 32 KiB instruction budget, leaving room for global instructions. I keep the detailed repository map in `.claude/context/repository-layout.md`. I keep detailed remote-testing recipes in `.claude/context/multiplatform-testing.md` and route agents there before those tasks. A smaller configured budget or large global instructions can still truncate the project guidance.
+I keep `.claude/settings.json` as Claude-only configuration. Codex permissions come from its own session; I do not copy Claude allowlists into a permissive Codex policy.
 
-I keep shared skill metadata concise and avoid embedded quotation marks so discovery clients expose complete descriptions. I resolve repository paths from the active repository or worktree root. Markdown links in skill files resolve from the skill directory.
+## Size budget
 
-## Quick check
+Codex reads at most 32 KiB of project instructions by default. The sync refuses an `AGENTS.md` above that and warns above the budget in `.claude/harness.yaml`, which leaves room for a personal `~/.codex/AGENTS.md`. When `CLAUDE.md` grows, I move task-specific detail into a context file with a `read-when:` line instead of raising the cap.
 
-Before repairing anything, verify whether repair is actually needed.
-
-Linux, macOS, or WSL:
-
-```bash
-ls -l AGENTS.md .agents/skills
-```
-
-Expected result:
-
-- `AGENTS.md` points to `.claude/CLAUDE.md`
-- `.agents/skills` points to `../.claude/skills`
-
-Git check:
-
-```bash
-git ls-files --stage -- AGENTS.md .agents/skills
-```
-
-Expected result after staging:
-
-- symlinks appear with mode `120000`
-
-If the links already match the expected targets, stop there. Do not recreate them unnecessarily.
-
-## Repair procedure for AI agents
-
-Use this procedure only if the wiring is missing, broken, or explicitly requested by the user.
-
-1. Confirm the canonical files still exist:
-   - `.claude/CLAUDE.md`
-   - `.claude/skills/`
-2. Check the current state of:
-   - `AGENTS.md`
-   - `.agents/skills`
-3. If the expected link already exists and is correct, leave it unchanged.
-4. If a wrong plain file or wrong symlink exists, pause and assess whether replacing it could overwrite user work.
-5. Recreate the expected links using relative targets:
-   - `AGENTS.md` -> `.claude/CLAUDE.md`
-   - `.agents/skills` -> `../.claude/skills`
-6. Re-verify the links after creation.
-7. If Git tracking matters, ensure the symlinks are staged as symlinks, not copied file contents.
-8. Remind the user to restart Codex or start a fresh Codex session so it reloads `AGENTS.md`.
-
-Agent behavior rules:
-
-- Do not move the canonical instructions away from `.claude/CLAUDE.md` unless the user explicitly asks.
-- Do not move `AGENTS.md` into `.agents/`; that is not the default Codex project-discovery path.
-- Do not duplicate the text of `CLAUDE.md` into a separate `AGENTS.md` file unless symlinks are impossible and the user explicitly accepts duplication.
-- Prefer the smallest possible repair.
-
-## How to create the links
-
-### Linux / macOS / WSL
-
-From the repository root:
-
-```bash
-ln -s .claude/CLAUDE.md AGENTS.md
-mkdir -p .agents
-ln -s ../.claude/skills .agents/skills
-```
-
-If an incorrect existing path must be replaced, inspect it first and only then remove or replace it carefully.
-
-### Windows CMD
-
-From the repository root:
-
-```cmd
-mklink AGENTS.md .claude\CLAUDE.md
-mkdir .agents
-mklink /D .agents\skills ..\.claude\skills
-```
-
-Notes for Windows:
-
-- Developer Mode is strongly recommended so symlink creation works without extra friction.
-- `mklink` must be run from `cmd.exe`, not regular PowerShell syntax.
-- Git stores symlinks well, but the operating system creates them. In practice, create the link with `ln -s` or `mklink`, then commit it with Git.
-
-## Cross-platform guidance for humans
-
-Recommended practice:
-
-1. Keep editing `.claude/CLAUDE.md` and `.claude/skills/` as the real files.
-2. Keep `AGENTS.md` and `.agents/skills` as thin symlink bridges for Codex.
-3. Commit the symlinks to Git so macOS/Linux clones preserve them naturally.
-4. On Windows, enable Developer Mode and ensure Git is configured to honor symlinks when possible.
-5. After changing `AGENTS.md` or its target, restart Codex or open a fresh session.
-
-Why this setup exists:
-
-- It avoids maintaining duplicate instruction files.
-- It lets Claude Code and Codex share the same project guidance.
-- It keeps Claude-specific layout preferences under `.claude/` while still satisfying Codex's root `AGENTS.md` discovery behavior.
+I keep shared skill metadata concise and avoid embedded quotation marks so discovery clients expose complete descriptions. Markdown links in skill files resolve from the skill directory, which sits at the same depth in `.claude/skills/` and `.agents/skills/`.
 
 ## Fresh-session verification
 
-After changing instructions or skill metadata, I start a fresh Codex session at the repository root and ask:
+After changing instructions or skill metadata, I run the sync, then start a fresh Codex session at the repository root and ask:
 
 ```text
-Summarize this repository's instructions and list its six local skills.
-Explain the publication gate, GUI build rule, and skill-authoring rule.
+Summarize this repository's instructions and list its local skills.
+Explain the publication gate, the GUI build rule, and which rule to read before editing a SKILL.md.
 Do not modify files or run the skills.
 ```
 
-I expect `fixing-markdown`, `merge-pr`, `preparing-brand-logos`, `ship-builds`, `test-plan`, and `work-issue`, with complete descriptions. I expect the session to require approval before publishing and a Wails build after Go changes. I repeat the check in Claude Code to confirm the shared guidance.
+I expect every skill under `.claude/skills/` with a complete description, approval before publishing, a Wails build after Go changes, and `.codex/rules/skills-authoring.md` for skill edits. I repeat the check in Claude Code to confirm the shared guidance.
 
-I check the instruction size without invoking either agent:
+## Troubleshooting
 
-```bash
-wc -c .claude/CLAUDE.md
-```
-
-I inspect Git symlink modes with the earlier `git ls-files --stage` command. I verify both paths resolve to the canonical files rather than accepting matching names alone.
+- **`verify` reports drift I did not cause:** someone edited a mirror by hand. Run the sync to restore it, and move the intended change into `.claude/`.
+- **`AGENTS.md` or `.agents/skills` is a symlink:** an old checkout. Run the sync; it replaces the symlinks with real files.
+- **Codex still shows old instructions:** restart the Codex extension or start a fresh session; it reads `AGENTS.md` once per session.
 
 ## Official Codex references
 
 - [Instruction discovery and its default size limit](https://developers.openai.com/codex/guides/agents-md)
-- [Skill discovery, invocation, and symlink support](https://developers.openai.com/codex/skills)
-
-## Troubleshooting
-
-### Problem: `AGENTS.md` exists but is a normal text file
-
-This usually means symlinks were not created correctly on the current machine, or Git checked out a symlink as a plain file.
-
-Fix:
-
-- Compare its contents and target intent.
-- Replace it with a proper symlink if safe to do so.
-
-### Problem: `.agents/skills` cannot be created on Windows
-
-Common causes:
-
-- Developer Mode disabled
-- insufficient privileges
-- wrong shell for `mklink`
-
-Fix:
-
-- use `cmd.exe`
-- enable Developer Mode
-- retry `mklink /D`
-
-### Problem: Codex still does not see the updated instructions
-
-Fix:
-
-- restart the Codex extension or launch a fresh Codex session
-- verify `AGENTS.md` exists at the repository root
-- verify the target resolves to `.claude/CLAUDE.md`
-
-### Problem: someone proposes `.agents/AGENTS.md`
-
-Do not assume Codex will load that automatically. The supported default is root `AGENTS.md`, unless each machine is configured with a custom fallback filename strategy.
+- [Skill discovery and invocation](https://developers.openai.com/codex/skills)

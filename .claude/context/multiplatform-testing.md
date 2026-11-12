@@ -1,3 +1,7 @@
+---
+read-when: Before remote builds, shipping to another OS, credential setup or interactive GUI testing.
+---
+
 # Multiplatform testing
 
 The developer workstation can be any OS. Remote machines are available via SSH for cross-platform testing. For runtime changes, I test the local platform and every remote configured in `.env`; documentation-only changes do not require GUI builds or shipping.
@@ -44,8 +48,7 @@ target="darwin/arm64"      # or darwin/amd64 / darwin/universal
 # 1. Wipe and prepare the remote scratch dir.
 ssh "$host" 'rm -rf ~/gitbox-remote-build && mkdir -p ~/gitbox-remote-build'
 
-# 2. Ship source (exclude artefacts, node_modules, .git, .env, and the Codex
-#    symlinks, which Git Bash's tar on Windows can't create).
+# 2. Ship source (exclude artefacts, node_modules, .git and .env).
 tar \
   --exclude='./.git' \
   --exclude='./build' \
@@ -53,8 +56,6 @@ tar \
   --exclude='./cmd/gui/frontend/node_modules' \
   --exclude='./cmd/gui/frontend/dist' \
   --exclude='./.env' \
-  --exclude='./AGENTS.md' \
-  --exclude='./.agents' \
   -cf - . | ssh "$host" 'cd ~/gitbox-remote-build && tar -xf -'
 
 # 3. Build on the remote. PATH needs Homebrew / $HOME/go/bin for non-login SSH shells.
