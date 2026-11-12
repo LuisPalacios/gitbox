@@ -3,18 +3,20 @@ name: merge-pr
 description: Merge a verified PR and clean up its worktree and branch. Use for merge PR N or merge the branch for an issue. Checks branch freshness and CI, and requires explicit approval before merging.
 ---
 
-# /merge-pr — Merge a PR and clean up
+# {{INVOKE}}merge-pr — Merge a PR and clean up
 
-**IMPORTANT:** Before starting, tell the user "I'm executing `/merge-pr <PR#>`" and create a todo list with the phases below.
+**IMPORTANT:** Before starting, tell the user "I'm executing `{{INVOKE}}merge-pr <PR#>`" and create a todo list with the phases below.
 
+<!-- harness:codex -->
 ## Harness compatibility
 
-In Codex, invoke this skill with `$merge-pr` and the same arguments. Follow the capability mapping in `.claude/CLAUDE.md`: use supported tools or a conversation plan/checklist when Claude-specific tools are unavailable. Preserve every explicit approval gate below. Resolve repository paths from the active worktree root.
+Follow "Agent capabilities" in `{{ENTRY}}`: use supported tools or a conversation plan/checklist when Claude-specific tools are unavailable. Preserve every explicit approval gate below. Resolve repository paths from the active worktree root.
+<!-- /harness -->
 
 ## Usage
 
 ```text
-/merge-pr <PR#>
+{{INVOKE}}merge-pr <PR#>
 ```
 
 `<PR#>` is the pull request number.
@@ -29,7 +31,7 @@ In Codex, invoke this skill with `$merge-pr` and the same arguments. Follow the 
 
 ## Universal gh-user detection
 
-Same snippet as `/work-issue`. Run it before every `gh` call.
+Same snippet as `{{INVOKE}}work-issue`. Run it before every `gh` call.
 
 ```bash
 origin_url=$(git config --get remote.origin.url)

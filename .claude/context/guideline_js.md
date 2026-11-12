@@ -31,7 +31,7 @@ pnpm dlx tsx <plugin-path>/skills/skill-name/scripts/script.ts [args]
 ## File Structure
 
 ```text
-.claude/skills/skill-name/
+ai/skills/skill-name/
 ├── SKILL.md
 └── scripts/
     ├── script_name.ts    # TypeScript (recommended)
@@ -77,7 +77,7 @@ pnpm dlx -y tsx -y package-name script.ts
 
 **Option 2**: Skill-level package.json (complex cases)
 
-Create `package.json` ONLY in `.claude/skills/skill-name/` directory:
+Create `package.json` ONLY in `ai/skills/skill-name/` directory:
 
 ```json
 {
@@ -91,7 +91,7 @@ Create `package.json` ONLY in `.claude/skills/skill-name/` directory:
 }
 ```
 
-Then: `cd .claude/skills/skill-name && pnpm install && pnpm dlx tsx scripts/script.ts`
+Then: `cd ai/skills/skill-name && pnpm install && pnpm dlx tsx scripts/script.ts`
 
 **Critical**: Never create `package.json` in project root.
 
@@ -117,14 +117,14 @@ Document in the skill's SKILL.md:
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `pnpm: command not found` | Install pnpm: `winget install -e --id pnpm.pnpm` (Windows) or `curl -fsSL https://get.pnpm.io/install.sh \| sh` (Unix) |
 | First run is slow         | Expected. pnpm downloads tools to global store on first execution. Subsequent runs are instant.                        |
-| Config file not found     | Ensure `--config` flag points to correct skill path: `.claude/skills/skill-name/.configfile`                           |
+| Config file not found     | Ensure `--config` flag points to correct skill path: `ai/skills/skill-name/.configfile`                                |
 | TypeScript errors         | Use `pnpm dlx tsx` (not `node`) — tsx handles TypeScript transpilation                                                 |
 
 **Cache location:** pnpm global content-addressable store — shared across all projects, no per-repo footprint.
 
 ## Reference
 
-- **CLI tools example**: `.claude/skills/fixing-markdown/` (uses markdownlint-cli2, prettier)
+- **CLI tools example**: `ai/skills/fixing-markdown/` (uses markdownlint-cli2, prettier)
 - **pnpm dlx docs**: [pnpm.io/cli/dlx](https://pnpm.io/cli/dlx)
 - **tsx docs**: [github.com/privatenumber/tsx](https://github.com/privatenumber/tsx)
 - **pnpm installation**: [pnpm.io/installation](https://pnpm.io/installation)

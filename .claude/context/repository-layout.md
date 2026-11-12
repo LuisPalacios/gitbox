@@ -62,13 +62,15 @@ scripts/
   sign-release.sh          Sign a draft release's checksums through the local SSH agent and publish it (--check, --dry-run); standalone, no .env
   demo-fleet/              Fake fleet + mock provider API + window capture for README screenshots (build.sh, run.sh, mock.py, shot.ps1)
 .githooks/pre-push        Pre-push hook (gofmt -s check + go vet + unit tests; builds the frontend if dist is missing)
-.claude/
-  CLAUDE.md               Canonical agent guidance, source of AGENTS.md
-  harness.yaml            Mirror map and size budgets for the mirroring-harness skill
+.claude/settings.json     Claude Code permission allowlist (hand-edited, not rendered)
+ai/                       Agent harness masters: the only hand-edited agent guidance
+  harness.yaml            Render map: destinations per tool, `only:` globs, size budgets
+  main.md                 Entry instructions, rendered to .claude/CLAUDE.md and AGENTS.md
+  scripts/                sync.py (renders both harnesses, checks drift) and test_sync.py
   context/
     repository-layout.md  Detailed repository map
     config-format.md      gitbox.json keys, versioning and migration
-    guideline_codex.md    Dual Claude/Codex wiring and capability mapping
+    guideline_harness.md  Dual AI harness model: masters, sharing levels, verification
     multiplatform-testing.md  Agent recipes for remote builds and desktop testing
     guideline_js.md       JS/TS script conventions
     guideline_python.md   Python script conventions
@@ -76,17 +78,17 @@ scripts/
     testing-patterns.md   Which tests to run, test levels, helpers, naming conventions
   skills/
     fixing-markdown/      Markdown lint + format
-    merge-pr/             Merge a PR (post-/work-issue), clean up worktree + branch
-    mirroring-harness/    Generate the Codex mirror (AGENTS.md, .codex/, .agents/skills/) and check drift
+    merge-pr/             Merge a PR (post-work-issue), clean up worktree + branch
     preparing-brand-logos/  Find tool logos, fit them into the 150x150 brand template (tmp/), draft -dark versions
     ship-builds/          Build + stage GitboxApp on remote hosts in .env
+    syncing-ai-harness/   Render both harnesses from ai/ and check drift
     test-plan/            Pre-PR and release verification
     work-issue/           Worktree → plan → code → push → PR (stops before merge)
   rules/
+    ai-harness.md         Harness authoring: masters, harness blocks, tokens, rendered files
     skills-authoring.md   Skill creation guidelines
-AGENTS.md                 Generated from .claude/CLAUDE.md: Codex reads project guidance here
-.codex/                   Generated copies of .claude/rules and .claude/context for Codex
-.agents/skills/           Generated copies of .claude/skills: Codex sees skills here
+.claude/CLAUDE.md, rules/, context/, skills/   Rendered from ai/ for Claude Code
+AGENTS.md, .codex/rules/, .codex/context/, .agents/skills/   Rendered from ai/ for Codex
 .github/workflows/ci.yml  Release CI on v* tags: test, build, draft release (+ installers, DMGs, AppImage); scripts/sign-release.sh signs and publishes it; workflow_dispatch = dry run without publishing
 .github/workflows/pr.yml  PR + main CI: frontend build, scripts/health.sh gate (every checker, fails on any finding), Linux GUI build smoke
 allowed_signers           Release public key for manual ssh-keygen -Y verify (must match pkg/update/release-signing-key.pub)

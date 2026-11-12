@@ -204,6 +204,12 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("Codex reads only 32768", out)
 
+    def test_escaped_tokens_render_literally(self):
+        self.put("ai/context/layout.md", "---\nread-when: X.\n---\n\nUse `{{!SKILLS}}` for {{SKILLS}}; escape with `{{!!SKILLS}}`.\n")
+        self.sync_ok()
+        self.assertIn("Use `{{SKILLS}}` for .agents/skills; escape with `{{!SKILLS}}`.", self.read(".codex/context/layout.md"))
+        self.assertIn("Use `{{SKILLS}}` for .claude/skills;", self.read(".claude/context/layout.md"))
+
     def test_harness_markers_inside_code_fences_are_text(self):
         self.put("ai/context/layout.md", "---\nread-when: X.\n---\n\n```text\n<!-- harness:codex -->\n```\n")
         self.sync_ok()

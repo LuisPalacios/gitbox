@@ -7,10 +7,6 @@ description: Drive a GitHub issue through an isolated worktree, planning, implem
 
 **IMPORTANT:** Before starting, tell the user "I'm executing `/work-issue <N>`" and create a todo list with the phases below. Use the todo list to track progress and to survive context compaction.
 
-## Harness compatibility
-
-In Codex, invoke this skill with `$work-issue` and the same arguments. Follow the capability mapping in `.claude/CLAUDE.md`: use supported tools or a conversation plan/checklist when Claude-specific tools are unavailable. Preserve every explicit approval gate below. Resolve repository paths from the active worktree root.
-
 ## Usage
 
 ```text
@@ -116,8 +112,8 @@ Resolve the plan source:
 3. Any architectural decisions or non-obvious trade-offs called out.
 
 - **Complete:** summarise the adopted plan in 5 lines for the user, confirm, skip to Step 5. No plan-mode exit is needed because plan mode was never entered.
-- **Partial:** enter plan mode, seed it with the user's plan, call out the gaps, draft additions, finish by presenting the plan for approval (Claude Code: `ExitPlanMode`; Codex: the available plan workflow or conversation).
-- **Absent:** enter plan mode fresh, finish by presenting the plan for approval (Claude Code: `ExitPlanMode`; Codex: the available plan workflow or conversation).
+- **Partial:** enter plan mode, seed it with the user's plan, call out the gaps, draft additions, finish with `ExitPlanMode` to present the plan for approval.
+- **Absent:** enter plan mode fresh, finish with `ExitPlanMode` to present the plan for approval.
 
 ## Step 5: Implement
 
@@ -147,7 +143,7 @@ Run in this order, stop on first failure and fix before continuing:
    cmd/gui/build/bin/GitboxApp --version   # GitboxApp.exe on Windows, GitboxApp.app/Contents/MacOS/GitboxApp on macOS
    ```
 
-Doc-only changes (`.md`, `docs/`, comments, `.claude/`, `.gitignore`, `go.mod` tidy) skip the builds but still run `go vet` and relevant tests.
+Doc-only changes (`.md`, `docs/`, comments, `ai/` and the harness files it renders, `.gitignore`, `go.mod` tidy) skip the builds but still run `go vet` and relevant tests.
 
 ## Step 7: User smoke-test gate
 

@@ -3,9 +3,9 @@ name: fixing-markdown
 description: Validate and fix markdown formatting in files and folders. Use when the user wants to check formatting, validate markdown, fix lint errors, review markdown format, fix markdown format.
 ---
 
-# /fixing-markdown — Validate and Fix Markdown
+# {{INVOKE}}fixing-markdown — Validate and Fix Markdown
 
-**IMPORTANT:** Before starting execution, inform the user: "I'm executing `/fixing-markdown`"
+**IMPORTANT:** Before starting execution, inform the user: "I'm executing `{{INVOKE}}fixing-markdown`"
 
 Run `markdownlint-cli2` + `fix_md_extra.py` + `prettier` to auto-fix markdown formatting issues.
 
@@ -33,7 +33,7 @@ markdownlint-cli2 --fix → (sees exit code 1) → STOP
 ## Usage
 
 ```text
-/fixing-markdown <target>
+{{INVOKE}}fixing-markdown <target>
 ```
 
 **Arguments:**
@@ -66,44 +66,44 @@ Replace `<plugin-path>` with the actual path to this plugin's installation direc
 
 ```bash
 # Step 1: Fix structural issues (ALWAYS run, ignore exit code)
-pnpm dlx markdownlint-cli2 --config .claude/skills/fixing-markdown/.markdownlint-cli2.jsonc --fix "path/to/file.md"
+pnpm dlx markdownlint-cli2 --config {{SKILLS}}/fixing-markdown/.markdownlint-cli2.jsonc --fix "path/to/file.md"
 
 # Step 2: Fix issues markdownlint cannot auto-fix (MD040, MD025)
-uv run .claude/skills/fixing-markdown/scripts/fix_md_extra.py "path/to/file.md"
+uv run {{SKILLS}}/fixing-markdown/scripts/fix_md_extra.py "path/to/file.md"
 
 # Step 3: Format (ALWAYS run, even if previous steps had errors)
-pnpm dlx prettier --config .claude/skills/fixing-markdown/.prettierrc --write "path/to/file.md"
+pnpm dlx prettier --config {{SKILLS}}/fixing-markdown/.prettierrc --write "path/to/file.md"
 
 # Step 4: Check remaining errors (if any, fix manually)
-pnpm dlx markdownlint-cli2 --config .claude/skills/fixing-markdown/.markdownlint-cli2.jsonc "path/to/file.md"
+pnpm dlx markdownlint-cli2 --config {{SKILLS}}/fixing-markdown/.markdownlint-cli2.jsonc "path/to/file.md"
 ```
 
 ### Folder (recursive)
 
 ```bash
 # Step 1: Fix structural issues (exclude .agent/, ignore exit code)
-pnpm dlx markdownlint-cli2 --config .claude/skills/fixing-markdown/.markdownlint-cli2.jsonc --fix "path/to/folder/**/*.md" "#.agent"
+pnpm dlx markdownlint-cli2 --config {{SKILLS}}/fixing-markdown/.markdownlint-cli2.jsonc --fix "path/to/folder/**/*.md" "#.agent"
 
 # Step 2: Fix issues markdownlint cannot auto-fix (MD040, MD025)
-uv run .claude/skills/fixing-markdown/scripts/fix_md_extra.py "path/to/folder"
+uv run {{SKILLS}}/fixing-markdown/scripts/fix_md_extra.py "path/to/folder"
 
 # Step 3: Format (exclude .agent/, ALWAYS run)
-pnpm dlx prettier --config .claude/skills/fixing-markdown/.prettierrc --write "path/to/folder/**/*.md" --ignore-pattern ".agent/**"
+pnpm dlx prettier --config {{SKILLS}}/fixing-markdown/.prettierrc --write "path/to/folder/**/*.md" --ignore-pattern ".agent/**"
 
 # Step 4: Check remaining errors
-pnpm dlx markdownlint-cli2 --config .claude/skills/fixing-markdown/.markdownlint-cli2.jsonc "path/to/folder/**/*.md" "#.agent"
+pnpm dlx markdownlint-cli2 --config {{SKILLS}}/fixing-markdown/.markdownlint-cli2.jsonc "path/to/folder/**/*.md" "#.agent"
 ```
 
 ## Examples
 
 ```text
-/fixing-markdown src/content/posts/example.md
+{{INVOKE}}fixing-markdown src/content/posts/example.md
 -> Fixes and formats specific file
 
-/fixing-markdown src/content/posts
+{{INVOKE}}fixing-markdown src/content/posts
 -> Fixes and formats all .md files in posts/ recursively
 
-/fixing-markdown docs
+{{INVOKE}}fixing-markdown docs
 -> Fixes and formats all .md files in docs/ recursively
 ```
 

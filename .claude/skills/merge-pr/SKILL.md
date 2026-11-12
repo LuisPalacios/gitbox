@@ -7,10 +7,6 @@ description: Merge a verified PR and clean up its worktree and branch. Use for m
 
 **IMPORTANT:** Before starting, tell the user "I'm executing `/merge-pr <PR#>`" and create a todo list with the phases below.
 
-## Harness compatibility
-
-In Codex, invoke this skill with `$merge-pr` and the same arguments. Follow the capability mapping in `.claude/CLAUDE.md`: use supported tools or a conversation plan/checklist when Claude-specific tools are unavailable. Preserve every explicit approval gate below. Resolve repository paths from the active worktree root.
-
 ## Usage
 
 ```text

@@ -19,7 +19,7 @@ The code looks up these names: `claude`, `openai`, `gemini`, `cursor` (AI harnes
 
 Terminal logos are named after the terminal app's id in `pkg/terminals/catalog.go`, so a new one needs no code: `alacritty`, `conemu`, `foot`, `ghostty`, `gnome-terminal`, `guake`, `hyper`, `iterm`, `kitty`, `konsole`, `mintty`, `tabby`, `terminator`, `tilda`, `warp`, `wezterm` and `xterm`. Two ids map to other names in `terminalLogo` (`cmd/gui/frontend/src/lib/BrandIcon.svelte`): `wt` uses `windows-terminal`, and Terminal.app's `terminal` uses `macos-terminal`, because `terminal` is the generic fallback. Windows bare-shell profiles show their shell's logo: `powershell`, `cmd`, `git-bash` or `wsl`.
 
-To find, fit and preview new logos, I use the `preparing-brand-logos` skill (`.claude/skills/preparing-brand-logos/`).
+To find, fit and preview new logos, I use the `preparing-brand-logos` skill (`ai/skills/preparing-brand-logos/`).
 
 ## UI icons (`ui/`)
 

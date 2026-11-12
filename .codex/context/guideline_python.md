@@ -15,7 +15,7 @@ read-when: Before writing or changing a Python skill script.
 ## File Structure
 
 ```text
-.claude/skills/skill-name/
+ai/skills/skill-name/
 ├── SKILL.md
 └── scripts/
     └── script_name.py
@@ -80,7 +80,7 @@ Document in the skill's SKILL.md:
 
 ## Reference
 
-- **Working example**: `.claude/skills/fixing-markdown/scripts/fix_md_extra.py`
+- **Working example**: `ai/skills/fixing-markdown/scripts/fix_md_extra.py`
 - **PEP 723 spec**: [peps.python.org/pep-0723](https://peps.python.org/pep-0723/)
 - **uv docs**: [docs.astral.sh/uv](https://docs.astral.sh/uv/)
 

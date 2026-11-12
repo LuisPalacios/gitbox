@@ -41,7 +41,7 @@ IGNORED_NAMES = {".DS_Store", "Thumbs.db", "__pycache__"}
 INDEXES = ("rules", "context", "skills")
 BLOCK_RE = re.compile(r"^<!-- harness:([a-z]+) -->$")
 BLOCK_END = "<!-- /harness -->"
-TOKEN_RE = re.compile(r"\{\{([A-Z_]+)\}\}")
+TOKEN_RE = re.compile(r"\{\{(!*)([A-Z_]+)\}\}")  # each leading ! escapes one level: {{!NAME}} -> {{NAME}}
 LINK_RE = re.compile(r"\]\(([^)\s]+)\)")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
 
@@ -144,9 +144,12 @@ def expand_tokens(text: str, harness: Harness, where: str) -> str:
     tokens = harness.tokens()
 
     def sub(m: re.Match) -> str:
-        if m.group(1) not in tokens:
-            raise HarnessError(f"{where}: unknown token {{{{{m.group(1)}}}}}")
-        return tokens[m.group(1)]
+        escaped, name = m.groups()
+        if escaped:
+            return "{{" + escaped[1:] + name + "}}"
+        if name not in tokens:
+            raise HarnessError(f"{where}: unknown token {{{{{name}}}}}")
+        return tokens[name]
 
     return TOKEN_RE.sub(sub, text)
 
