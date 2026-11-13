@@ -23,9 +23,17 @@ Inspect the selection without writing:
 uv run {{SKILLS}}/fixing-markdown/scripts/fix_md_extra.py --list <target>
 ```
 
-## Prerequisites
+## Environment and dependencies
 
-Use existing installations of `uv`, `markdownlint-cli2` and `prettier`. The scripts use only Python's standard library. The runner checks both formatting executables before changing files and never downloads or installs tools. If a prerequisite is missing, request installation approval instead of running `pnpm dlx`, `npx` or an installer implicitly. Respect the session's network and cache permissions when invoking `uv`.
+I use zero-footprint execution: `uv run` runs the Python scripts with PEP 723 metadata, and `pnpm dlx` resolves the npm tools into its cache. The bootstrap prerequisites are `uv`, `pnpm`, Python and Node. The Python scripts use only the standard library; no global formatter installation or project dependency setup is needed.
+
+- `markdownlint-cli2@0.23.3` checks Markdown structure and repairs supported lint findings.
+- `prettier@3.8.0` formats Markdown layout, including tables and spacing.
+- `fix_md_extra.py` handles fence languages and duplicate H1 headings, and selects editable masters.
+
+Execute the runner below; it runs `pnpm --silent dlx markdownlint-cli2@0.23.3` and `pnpm --silent dlx prettier@3.8.0`, followed by `--config`, the mode flags and selected files. It resolves the configuration paths from the repository root to `ai/skills/fixing-markdown/.markdownlint-cli2.jsonc` and `ai/skills/fixing-markdown/.prettierrc`. Configurations stay in the skill folder. The runner prepares both cached tools before any edit and stops if either cannot run.
+
+Respect session network and cache permissions. If a download or cache write needs approval, request that approval; do not replace cached execution with a global or project-local installation. If a bootstrap tool is missing, report it and request approval before installing it. Check mode may populate tool caches but never writes to the selected Markdown files.
 
 ## Workflow
 

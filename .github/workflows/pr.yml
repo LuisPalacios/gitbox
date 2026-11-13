@@ -40,6 +40,9 @@ jobs:
           cache: npm
           cache-dependency-path: cmd/gui/frontend/package-lock.json
       - uses: astral-sh/setup-uv@v10.3.3
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.9.1
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
@@ -66,7 +69,6 @@ jobs:
             | tar -xJ -C /tmp
           sudo install /tmp/shellcheck-v0.11.0/shellcheck /usr/local/bin/shellcheck
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          npm install -g markdownlint-cli2@0.23.3
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Health check
         run: ./scripts/health.sh

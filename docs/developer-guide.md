@@ -86,17 +86,17 @@ Before opening a PR I run every code checker in one pass:
 
 It is read-only and exits non-zero when any check reports a finding. Go checks: `gofmt -s`, `go vet`, staticcheck, modernize, govulncheck, deadcode (with an allowlist for functions kept on purpose) and `go test -short`. Frontend checks: pure clone-tree regressions (`npm test`), `svelte-check` (unused locals and parameters fail through `noUnusedLocals`/`noUnusedParameters`), warnings printed by `npm run build` (the same Svelte diagnostics CI shows in its build step), install warnings from a clean `npm ci` in a scratch copy (deprecated packages, install scripts not covered by `allowScripts`), and `npm audit` (with an allowlist, `NPM_AUDIT_ALLOW`, for advisories with no fix that never reach the binary; a listed advisory that stops being reported fails the check). The `npm ci` check needs npm 11.19 or newer. Repo checks: shellcheck on the shell scripts, actionlint on the workflows, markdownlint with the read-only `fixing-markdown` skill config, and the agent harness check, which runs the engine's tests and fails when a rendered harness file drifts from its master in `ai/`.
 
-The Markdown health check runs markdownlint only and preserves its failure status, including configuration and execution errors. The `fixing-markdown` skill also checks structural fixes and Prettier formatting, so its `--check` requires Prettier on `PATH`. A green health check does not imply that Prettier ran; the skill reports a missing prerequisite before editing and does not silently skip it.
+I run Markdown tooling without global or project-local package installations: `pnpm dlx` resolves `markdownlint-cli2@0.23.3` and `prettier@3.8.0` into its cache, while `uv run` handles the skill's PEP 723 Python scripts. The Markdown health check runs markdownlint only and preserves configuration and execution failures. The `fixing-markdown` runner also checks structural fixes and Prettier formatting; it prepares both cached tools before editing. Its `--check` leaves source files unchanged, although a first run can populate the caches. A green Markdown health check does not imply that Prettier checked the selected files. Markdown/harness-only health checks do not install or build the application frontend.
 
-The Go analyzers are installed into a temporary folder at versions pinned at the top of the script, so they need no install. Vet, staticcheck and modernize analyze linux, darwin and windows on every run, so platform-specific files are checked from any host. The other four tools must be on `PATH`:
+The Go analyzers are installed into a temporary folder at versions pinned at the top of the script, so they need no install. Vet, staticcheck and modernize analyze linux, darwin and windows on every run, so platform-specific files are checked from any host. I need shellcheck, actionlint, uv, pnpm and Node on `PATH`; Prettier and markdownlint do not need to be there. I approve any required bootstrap installation separately:
 
 ```bash
 scoop install shellcheck actionlint     # Windows (brew install … on macOS, apt/dnf on Linux)
-npm install -g markdownlint-cli2
 scoop install uv                        # brew install uv on macOS
+scoop install pnpm                      # brew install pnpm on macOS
 ```
 
-The PR workflow runs the same script as its gate: any finding fails the job, including a new advisory reported by govulncheck or `npm audit`. CI pins shellcheck 0.11.0, actionlint 1.7.12, markdownlint-cli2 0.23.3 and setup-uv 10.3.3; I use those versions locally so both runs agree.
+The PR workflow runs the same script as its gate: any finding fails the job, including a new advisory reported by govulncheck or `npm audit`. CI pins shellcheck 0.11.0, actionlint 1.7.12, pnpm 12.9.1 and setup-uv 10.3.3; the Markdown commands pin their package versions. I use those versions locally so both runs agree.
 
 ---
 

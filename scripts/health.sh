@@ -18,8 +18,8 @@
 # Go analyzers are fetched at pinned versions (go run / go install into the
 # run's temp dir), so they need no install and give the same results
 # everywhere; vet, staticcheck and modernize analyze linux, darwin and
-# windows on every run. shellcheck, actionlint, markdownlint-cli2 and uv
-# must be on PATH (see docs/developer-guide.md).
+# windows on every run. shellcheck, actionlint, pnpm and uv must be on PATH
+# (see docs/developer-guide.md). Markdown tooling runs in pnpm's cache.
 
 set -uo pipefail
 
@@ -47,6 +47,7 @@ NPM_AUDIT_ALLOW="GHSA-gcqx-w48m-w2h4"
 
 FRONTEND="cmd/gui/frontend"
 MD_CONFIG="ai/skills/fixing-markdown/.markdownlint-cli2.jsonc"
+MARKDOWNLINT="markdownlint-cli2@0.23.3"
 HARNESS="ai/scripts"
 
 if [[ -t 1 ]]; then
@@ -238,7 +239,7 @@ run_actionlint() { actionlint; }
 run_markdown() {
     # The shared config is read-only; never pass --fix in a health check.
     local out="$tmp/markdown.full" rc=0
-    markdownlint-cli2 --config "$MD_CONFIG" \
+    pnpm --silent dlx "$MARKDOWNLINT" --config "$MD_CONFIG" \
         "**/*.md" "#**/node_modules" "#CONTINUITY*.md" >"$out" 2>&1 || rc=$?
     # Keep lint findings concise, but retain diagnostics for tool/config failures.
     if ! grep -E ' error MD[0-9]+' "$out" && [[ $rc -ne 0 ]]; then
@@ -263,7 +264,8 @@ run_harness() {
 printf '\n━━ Health check ━━\n\n'
 
 # cmd/gui embeds frontend/dist; vet, tests and analyzers need it built.
-if [[ ! -d "$FRONTEND/dist" ]]; then
+if [[ ! -d "$FRONTEND/dist" ]] && { want vet go || want staticcheck go || want modernize go \
+    || want govulncheck go || want deadcode go || want test go; }; then
     printf '  %binfo%b  building the frontend (dist missing)\n' "$D" "$N"
     (cd "$FRONTEND" && npm ci --silent && npm run build --silent) >/dev/null
 fi
@@ -282,8 +284,9 @@ want npm-install fe && check npm-install run_npm_install
 want npm-audit fe   && check npm-audit   run_npm_audit
 want shellcheck x   && need shellcheck shellcheck        && check shellcheck run_shellcheck
 want actionlint x   && need actionlint actionlint        && check actionlint run_actionlint
-want markdown x     && need markdownlint-cli2 markdown   && check markdown   run_markdown
-want harness x      && need uv harness                   && check harness    run_harness
+want markdown x     && need pnpm markdown               && check markdown   run_markdown
+want harness x      && need uv harness && need pnpm harness && need node harness \
+                    && check harness run_harness
 
 echo ""
 if [[ ${#failed[@]} -eq 0 ]]; then

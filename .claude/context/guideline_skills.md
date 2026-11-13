@@ -162,7 +162,7 @@ Run validator -> fix errors -> repeat
 
 ```markdown
 1. Make changes
-2. **Validate immediately**: `python validate.py`
+2. **Validate immediately**: `uv run .claude/skills/skill-name/scripts/validate.py`
 3. If validation fails, fix and re-validate
 4. **Only proceed when validation passes**
 ```
@@ -277,7 +277,7 @@ TIMEOUT = 47  # Magic number, no explanation
 ```markdown
 # Execute the script
 
-Run `python scripts/build.py` to compile.
+Run `uv run .claude/skills/skill-name/scripts/build.py` to compile.
 
 # Read as reference
 

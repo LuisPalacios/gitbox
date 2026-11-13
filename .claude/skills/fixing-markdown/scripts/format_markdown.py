@@ -3,7 +3,7 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Run installed Markdown tools against one shared, editable target list."""
+"""Run cached Markdown tools against one shared, editable target list."""
 
 from __future__ import annotations
 
@@ -16,22 +16,34 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 from fix_md_extra import fix_markdown_with_context, process_file, repository_root, select_targets
 
+MARKDOWNLINT = "markdownlint-cli2@0.23.3"
+PRETTIER = "prettier@3.8.0"
+
 
 def run_pipeline(targets: list[Path], root: Path, check: bool = False) -> int:
     files = select_targets(targets, root)
     if not files:
         print("No editable Markdown files selected.")
         return 0
-    # Resolve every dependency before making any edits. Never install implicitly.
-    binaries = {name: shutil.which(name) for name in ("markdownlint-cli2", "prettier")}
-    missing = [name for name, path in binaries.items() if path is None]
-    if missing:
-        raise ValueError(f"Install requires approval; missing tools: {', '.join(missing)}")
+    pnpm = shutil.which("pnpm")
+    if pnpm is None:
+        raise ValueError("Missing bootstrap tool: pnpm; request approval before installing it")
+    lint = [pnpm, "--silent", "dlx", MARKDOWNLINT]
+    pretty = [pnpm, "--silent", "dlx", PRETTIER]
+    # Resolve both packages in pnpm's cache before any source file can change.
+    # Never fall back to a global executable or a project-local installation.
+    for command in (lint, pretty):
+        result = subprocess.run([*command, "--version"], cwd=root, check=False,
+                                capture_output=True, text=True)
+        if result.returncode:
+            detail = (result.stderr or result.stdout).strip()
+            raise ValueError(f"Cannot prepare {command[-1]} in pnpm's cache "
+                             f"(exit {result.returncode}): {detail}")
     skill = root / "ai/skills/fixing-markdown"
     config = skill / ".markdownlint-cli2.jsonc"
     paths = [str(path) for path in files]
-    lint = [binaries["markdownlint-cli2"], "--config", str(config)]
-    pretty = [binaries["prettier"], "--config", str(skill / ".prettierrc")]
+    lint += ["--config", str(config)]
+    pretty += ["--config", str(skill / ".prettierrc")]
     if not check:
         # No config sets fix: nested configs must not override these CLI modes.
         result = subprocess.run([*lint, "--fix", *paths], cwd=root, check=False)
