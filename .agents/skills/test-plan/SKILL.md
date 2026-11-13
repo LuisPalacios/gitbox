@@ -9,7 +9,7 @@ description: Run the gitbox test plan. Use when the user wants to verify changes
 
 ## Harness compatibility
 
-Follow "Agent capabilities" in `AGENTS.md`: use supported tools or a conversation plan/checklist when Claude-specific tools are unavailable. Preserve every explicit approval gate below. Resolve repository paths from the active worktree root.
+Follow "Agent capabilities" in `AGENTS.md`: use supported tools or a conversation plan/checklist when a native capability is unavailable. Preserve every explicit approval gate below. Resolve repository paths from the active worktree root.
 
 ## Usage
 

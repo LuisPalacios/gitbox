@@ -1,6 +1,6 @@
 ---
 paths:
-  - "ai/skills/**/*.md"
+  - "ai/skills/**"
 ---
 
 # Skill authoring rules

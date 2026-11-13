@@ -1,5 +1,5 @@
 ---
-read-when: Before writing or changing a Python skill script.
+read-when: Before writing or changing a Python script under ai/scripts/ or ai/skills/.
 ---
 
 # Python Script Guidelines
@@ -47,8 +47,10 @@ if __name__ == '__main__':
 
 ## Execution
 
+For engine scripts, use `uv run ai/scripts/<script>.py`. For a skill script, use the rendered path for the active harness:
+
 ```bash
-uv run <plugin-path>/skills/skill-name/scripts/script.py [args]
+uv run .claude/skills/skill-name/scripts/script.py [args]
 ```
 
 ## Key Rules
@@ -65,18 +67,18 @@ Document in the skill's SKILL.md:
 
 - **Environment Setup**: Mention `uv` requirement and zero-footprint approach
 - **Dependencies**: List what each package does (from PEP 723 header)
-- **Commands**: Show exact `uv run` syntax with plugin-path placeholder
+- **Commands**: Show exact `uv run` syntax with the harness skill-path token
 
 ## Troubleshooting
 
 | Issue                    | Solution                                                                                                                                         |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `uv: command not found`  | Install uv: `powershell -c "irm https://astral.sh/uv/install.ps1 \| iex"` (Windows) or `curl -LsSf https://astral.sh/uv/install.sh \| sh` (Unix) |
+| `uv: command not found`  | Report the missing prerequisite and request approval before installing it.                                                                       |
 | First run is slow        | Expected. uv downloads and caches deps on first execution. Subsequent runs are instant.                                                          |
 | `ImportError` at runtime | Check PEP 723 metadata: `# /// script` and `# ///` delimiters must be exact, all packages listed in `dependencies`                               |
 | Script fails silently    | Ensure `encoding='utf-8'` on all file operations                                                                                                 |
 
-**Cache location:** `~/.cache/uv/` — shared across all projects, no per-repo footprint.
+**Cache location:** Use `uv cache dir` to inspect the platform-specific cache. Respect the session's installation, network and filesystem permissions; caching does not authorize downloads or writes outside permitted paths.
 
 ## Reference
 

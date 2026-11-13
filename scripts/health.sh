@@ -236,19 +236,20 @@ run_shellcheck() {
 run_actionlint() { actionlint; }
 
 run_markdown() {
-    # The skill config auto-fixes; force read-only for a health check.
-    sed 's/"fix": true/"fix": false/' "$MD_CONFIG" >"$tmp/.markdownlint-cli2.jsonc"
-    markdownlint-cli2 --config "$tmp/.markdownlint-cli2.jsonc" \
+    # The shared config is read-only; never pass --fix in a health check.
+    markdownlint-cli2 --config "$MD_CONFIG" \
         "**/*.md" "#**/node_modules" "#CONTINUITY*.md" 2>&1 \
         | grep -E ' error MD[0-9]+'
     return 0
 }
 
 run_harness() {
-    # The Codex mirror (AGENTS.md, .codex/, .agents/skills/) must match
-    # .claude/; the sync script's own tests run first.
-    uv run -q "$HARNESS/test_sync.py" >"$tmp/harness-test.full" 2>&1 \
-        || cat "$tmp/harness-test.full"
+    # Test shared maintenance tools, then verify both renders against ai/.
+    local suite
+    for suite in test_sync.py test_fixing_markdown.py; do
+        uv run -q "$HARNESS/$suite" >"$tmp/harness-test.full" 2>&1 \
+            || { cat "$tmp/harness-test.full"; return 1; }
+    done
     uv run -q "$HARNESS/sync.py" verify --quiet
 }
 

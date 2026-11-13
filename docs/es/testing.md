@@ -222,3 +222,7 @@ Cuando añado una feature, actualizo los docs de pruebas:
 1. Añadir la prueba automatizada y listarla en el [inventario de pruebas](testing-reference.md#inventario-de-pruebas).
 2. Añadir un paso manual a la sección de checklist correspondiente de arriba.
 3. Si la feature se comporta distinto según la plataforma, añadir una fila o una nota a la tabla de plataformas.
+
+## Comprobaciones del harness de agentes
+
+Verifico los cambios limitados a las instrucciones de agentes y los scripts de mantenimiento con `./scripts/health.sh harness markdown shellcheck actionlint`. El gate del harness ejecuta las suites de regresión del renderizador y del formateador Markdown, y después compara ambos árboles generados con `ai/`. Estos cambios no necesitan pruebas de la aplicación ni compilar la GUI. Aun así, ejecuto la comprobación de salud completa antes de una PR y verifico el descubrimiento en una sesión nueva de cada herramienta.

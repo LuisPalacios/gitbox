@@ -30,14 +30,16 @@ uv run ai/scripts/sync.py verify   # read-only; exit 1 on any problem
 uv run ai/scripts/test_sync.py     # the engine's own tests
 ```
 
-`./scripts/health.sh harness` runs the tests and `verify --quiet`; the PR gate runs it too.
+`./scripts/health.sh harness` runs the renderer and safe-formatting regression suites, then `verify --quiet`; the PR gate runs it too. Dependency downloads and cache access follow the current session permissions. Do not install prerequisites or bypass a restriction without the required authorization.
 
 ## Routine
 
 1. Edit the master under `ai/`, following `.codex/rules/ai-harness.md`.
 2. Run `diff` and show the user the list.
 3. Run `sync`. It writes nothing when a check fails, and verifies itself after writing.
-4. Commit the masters and both rendered trees together.
+4. Inspect both rendered diffs. Keep common policy consistent and verify that tool-only additions leave the other tree unchanged. Run `./scripts/health.sh harness markdown shellcheck actionlint`.
+5. After changes to discovery or instructions, verify them in a fresh session of each tool; report any tool not yet checked. See `.codex/context/guideline_harness.md` for the diagnostic prompt.
+6. Commit the masters and both rendered trees together; follow the publication gate in `AGENTS.md`.
 
 ## When verify reports drift
 

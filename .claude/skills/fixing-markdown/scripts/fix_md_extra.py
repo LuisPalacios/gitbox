@@ -3,30 +3,92 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""
-fix_md_extra.py — Correcciones de markdown que markdownlint no puede auto-fixear.
+"""Fix Markdown structure in editable repository files.
 
-Arregla:
-- MD040: Code blocks sin lenguaje especificado → añade 'text'
-- MD025: Múltiples encabezados H1 → degrada los duplicados a H2
-
-Uso:
-    python fix_md_extra.py <archivo.md>
-    python fix_md_extra.py <carpeta>  # procesa todos los .md recursivamente
+Resolve generated harness targets to their masters before selecting files.
+Use --list for a JSON preview or --check for read-only structural validation.
 """
 
+import argparse
+import json
+import os
 import re
 import sys
 from pathlib import Path
 
+# These are generated destinations, not additional sources of guidance.
+RENDERED = {
+    "AGENTS.md": "ai/main.md",
+    ".claude/CLAUDE.md": "ai/main.md",
+    ".claude/rules": "ai/rules",
+    ".claude/context": "ai/context",
+    ".claude/skills": "ai/skills",
+    ".codex/rules": "ai/rules",
+    ".codex/context": "ai/context",
+    ".agents/skills": "ai/skills",
+}
+EXCLUDED_DIRS = {
+    ".git", ".agent", ".agents", ".claude", ".codex", ".continuity",
+    "node_modules", ".venv", "venv", "__pycache__", "build", "dist", "tmp",
+    "themes", "public",
+}
+
+
+def repository_root() -> Path:
+    """Find the same repository from a master or either rendered script."""
+    return next(p for p in Path(__file__).resolve().parents if (p / "ai/harness.yaml").is_file())
+
+
+def is_safe(path: Path, root: Path) -> bool:
+    """Reject symlinks, generated outputs, dependencies and private scratch files."""
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        return False
+    if any(part in EXCLUDED_DIRS for part in relative.parts):
+        return False
+    if relative == Path("AGENTS.md") or path.name.startswith("CONTINUITY"):
+        return False
+    return not any(p.is_symlink() for p in [path, *path.parents] if p != root and p.is_relative_to(root))
+
+
+def select_targets(targets: list[Path], root: Path) -> list[Path]:
+    """Resolve explicit generated targets to masters; never traverse rendered trees."""
+    root = root.resolve()
+    selected = set()
+    for target in targets:
+        target = Path(os.path.abspath(target))
+        try:
+            relative = target.relative_to(root)
+        except ValueError:
+            raise ValueError(f"Target is outside the repository: {target}") from None
+        # Reject a symlink before mapping a rendered path to its master.
+        if any(p.is_symlink() for p in [target, *target.parents] if p != root and p.is_relative_to(root)):
+            raise ValueError(f"Symlink targets are not supported: {target}")
+        for rendered, master in RENDERED.items():
+            prefix = Path(rendered)
+            if relative == prefix or relative.is_relative_to(prefix):
+                target = root / master / relative.relative_to(prefix)
+                break
+        if not is_safe(target, root):
+            raise ValueError(f"Target is excluded from formatting: {target}")
+        if target.is_file():
+            if target.suffix != ".md":
+                raise ValueError(f"Expected a Markdown file: {target}")
+            selected.add(target)
+        elif target.is_dir():
+            for current, dirs, files in os.walk(target, followlinks=False):
+                directory = Path(current)
+                dirs[:] = sorted(d for d in dirs if is_safe(directory / d, root))
+                selected.update(directory / name for name in files
+                                if name.endswith(".md") and is_safe(directory / name, root))
+        else:
+            raise ValueError(f"Target or its master does not exist: {target}")
+    return sorted(selected)
+
 
 def fix_markdown_with_context(content: str) -> str:
-    """
-    Aplica correcciones MD040 y MD025 respetando el contexto de code blocks.
-
-    - MD040: Añade 'text' a code blocks sin lenguaje (solo aperturas, no cierres)
-    - MD025: Degrada H1 duplicados a H2 (solo fuera de code blocks)
-    """
+    """Add missing fence languages and demote duplicate H1s outside code blocks."""
     lines = content.split('\n')
     result = []
     inside_code_block = False
@@ -35,7 +97,7 @@ def fix_markdown_with_context(content: str) -> str:
     found_h1 = False
 
     for line in lines:
-        # Detectar líneas de fence (``` con posible lenguaje)
+        # Detect an opening or closing fence.
         fence_match = re.match(r'^(`{3,}|~{3,})(\s*)(\S*)(.*)$', line)
 
         if fence_match:
@@ -43,12 +105,12 @@ def fix_markdown_with_context(content: str) -> str:
             lang = fence_match.group(3)
 
             if not inside_code_block:
-                # Apertura de code block
+                # Opening fence.
                 inside_code_block = True
                 opening_fence_char = fence_chars[0]
                 opening_fence_len = len(fence_chars)
                 if not lang:
-                    # MD040: No tiene lenguaje, añadir 'text'
+                    # MD040: add a default language to opening fences only.
                     result.append(f'{fence_chars}text')
                 else:
                     result.append(line)
@@ -61,33 +123,29 @@ def fix_markdown_with_context(content: str) -> str:
                     inside_code_block = False
                 result.append(line)
         elif not inside_code_block and line.startswith('# ') and not line.startswith('## '):
-            # MD025: H1 fuera de code block
+            # MD025: H1 outside a code block.
             if found_h1:
-                # Ya encontramos un H1 antes, degradar este a H2
+                # Demote subsequent H1 headings.
                 result.append('#' + line)
             else:
-                # Primer H1, lo mantenemos
+                # Keep the first H1 heading.
                 found_h1 = True
                 result.append(line)
         else:
-            # Línea normal, no modificar
+            # Keep other lines unchanged.
             result.append(line)
 
     return '\n'.join(result)
 
 
 def process_file(filepath: Path) -> bool:
-    """
-    Procesa un archivo markdown aplicando todas las correcciones.
-
-    Retorna True si el archivo fue modificado.
-    """
+    """Apply structural corrections to a selected editable file; report changes."""
     original = filepath.read_text(encoding='utf-8')
 
-    # Aplicar correcciones con awareness de contexto
+    # Preserve fenced examples while correcting structure.
     content = fix_markdown_with_context(original)
 
-    # Solo escribir si hubo cambios
+    # Leave unchanged files untouched.
     if content != original:
         filepath.write_text(content, encoding='utf-8')
         return True
@@ -95,48 +153,32 @@ def process_file(filepath: Path) -> bool:
     return False
 
 
-def main():
-    if len(sys.argv) < 2:
-        print(__doc__)
-        sys.exit(1)
-
-    target = Path(sys.argv[1])
-
-    # Excluir .agent/ siempre (convención del skill)
-    def should_skip(path: Path) -> bool:
-        return '.agent' in path.parts
-
-    if target.is_file():
-        # Archivo único
-        if should_skip(target):
-            print(f"Saltando {target} (directorio .agent/)")
-            sys.exit(0)
-
-        if process_file(target):
-            print(f"Corregido: {target}")
-        else:
-            print(f"Sin cambios: {target}")
-
-    elif target.is_dir():
-        # Carpeta: procesar todos los .md recursivamente
-        modified = 0
-        skipped = 0
-
-        for md_file in target.rglob('*.md'):
-            if should_skip(md_file):
-                skipped += 1
-                continue
-
-            if process_file(md_file):
-                print(f"Corregido: {md_file}")
-                modified += 1
-
-        print(f"\nResumen: {modified} archivo(s) modificado(s), {skipped} saltado(s)")
-
-    else:
-        print(f"Error: {target} no existe")
-        sys.exit(1)
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Fix Markdown structure in editable repository files.")
+    parser.add_argument("targets", nargs="+", type=Path)
+    parser.add_argument("--list", action="store_true", help="Print the selected master paths as JSON without writing")
+    parser.add_argument("--check", action="store_true", help="Report structural changes without writing")
+    args = parser.parse_args()
+    try:
+        files = select_targets(args.targets, repository_root())
+        if args.list:
+            print(json.dumps([str(p) for p in files]))
+            return 0
+        changed = 0
+        for path in files:
+            if args.check:
+                original = path.read_text(encoding="utf-8")
+                needs_change = fix_markdown_with_context(original) != original
+            else:
+                needs_change = process_file(path)
+            if needs_change:
+                changed += 1
+                print(f"{'Needs formatting' if args.check else 'Fixed'}: {path}")
+        return int(args.check and changed > 0)
+    except (OSError, ValueError) as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
 
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    sys.exit(main())
