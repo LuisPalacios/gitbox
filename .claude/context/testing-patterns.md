@@ -28,7 +28,7 @@ After any code change, always run the relevant tests:
 
 ## Harness checks
 
-For changes limited to `ai/` and its rendered trees, I run `uv run ai/scripts/test_sync.py`, `uv run ai/scripts/test_fixing_markdown.py`, `uv run ai/scripts/sync.py verify` and `./scripts/health.sh harness markdown shellcheck actionlint`. These changes do not require Go tests or a GUI build; the full health check still runs before a PR. I test formatter selection against temporary fixtures, including rendered targets and symlinks, without formatting the real repository. The harness health gate runs both Python suites.
+For changes limited to `ai/` and its rendered trees, I run `uv run ai/scripts/test_sync.py`, `uv run ai/scripts/test_fixing_markdown.py`, `uv run ai/scripts/sync.py verify` and `./scripts/health.sh harness markdown shellcheck actionlint`. These changes do not require Go tests or a GUI build; the full health check still runs before a PR. I test formatter selection against temporary fixtures, including rendered targets and symlinks, without formatting the real repository. The harness health gate runs both Python suites. With markdownlint installed, the formatter suite also runs the Markdown health gate in an isolated repository to check clean input, lint findings and malformed configuration without writes.
 
 ## Test levels
 

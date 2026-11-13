@@ -237,10 +237,15 @@ run_actionlint() { actionlint; }
 
 run_markdown() {
     # The shared config is read-only; never pass --fix in a health check.
+    local out="$tmp/markdown.full" rc=0
     markdownlint-cli2 --config "$MD_CONFIG" \
-        "**/*.md" "#**/node_modules" "#CONTINUITY*.md" 2>&1 \
-        | grep -E ' error MD[0-9]+'
-    return 0
+        "**/*.md" "#**/node_modules" "#CONTINUITY*.md" >"$out" 2>&1 || rc=$?
+    # Keep lint findings concise, but retain diagnostics for tool/config failures.
+    if ! grep -E ' error MD[0-9]+' "$out" && [[ $rc -ne 0 ]]; then
+        cat "$out"
+        printf 'markdownlint-cli2 exited with status %s\n' "$rc"
+    fi
+    return "$rc"
 }
 
 run_harness() {

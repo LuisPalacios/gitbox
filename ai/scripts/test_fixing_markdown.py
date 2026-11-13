@@ -161,5 +161,39 @@ class MarkdownTest(unittest.TestCase):
         self.assertEqual(generated.read_bytes(), generated_before)
 
 
+    @unittest.skipUnless(all(shutil.which(tool) for tool in ("bash", "git", "markdownlint-cli2")),
+                         "bash, git and markdownlint-cli2 are required")
+    def test_health_markdown_preserves_lint_and_configuration_failures(self):
+        health = Path(__file__).resolve().parents[2] / "scripts/health.sh"
+        self.put("scripts/health.sh", health.read_text(encoding="utf-8"))
+        # Avoid unrelated frontend installation in this isolated health-check fixture.
+        (self.root / "cmd/gui/frontend/dist").mkdir(parents=True)
+        env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+        env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+        subprocess.run(["git", "init", "--quiet", str(self.root)], env=env, check=True)
+        valid_config = (SKILL / ".markdownlint-cli2.jsonc").read_text(encoding="utf-8")
+        cases = [
+            ("clean", "# Main\n", valid_config, 0),
+            ("lint finding", "# Main\n- item\n", valid_config, 1),
+            ("broken configuration", "# Main\n", '{"config": invalid}', 1),
+        ]
+        for name, content, config, expected in cases:
+            with self.subTest(case=name):
+                master = self.put("ai/main.md", content)
+                settings = self.put("ai/skills/fixing-markdown/.markdownlint-cli2.jsonc", config)
+                before = (master.read_bytes(), settings.read_bytes())
+                result = subprocess.run(["bash", "scripts/health.sh", "markdown"], cwd=self.root,
+                                        env=env, capture_output=True, text=True)
+                output = result.stdout + result.stderr
+                self.assertEqual(result.returncode, expected, output)
+                if expected:
+                    self.assertRegex(output, r"FAIL\s+markdown")
+                    self.assertNotIn("all checks clean", output)
+                    self.assertIn("MD032" if name == "lint finding" else "Unable to parse", output)
+                else:
+                    self.assertIn("all checks clean", output)
+                self.assertEqual((master.read_bytes(), settings.read_bytes()), before)
+
+
 if __name__ == "__main__":
     unittest.main()
