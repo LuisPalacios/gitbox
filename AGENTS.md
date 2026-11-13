@@ -163,7 +163,7 @@ Pick per task. Default to branch + PR when in doubt — the cost of a PR for a s
 
 Reference the issue in the commit with `Closes #N` — GitHub auto-closes on push.
 
-**Branch + PR to self-merge** for everything else: multi-file features, anything touching `pkg/` public surface, refactors, UI changes, anything that benefits from seeing the full diff at once or letting CI gate the merge. The PR body is where I narrate the change (and where CI runs) — I am allowed to self-approve and merge immediately. Branch names follow `<type>/<issue>-<slug>`, e.g. `fix/31-ide-flash` or `feat/22-open-in-terminal`. Always use `gh pr create --body "Closes #N\n\n..."` so the issue closes on merge.
+**Branch + PR** for everything else: multi-file features, anything touching `pkg/` public surface, refactors, UI changes, anything that benefits from seeing the full diff at once or letting CI gate the merge. The PR body is where I narrate the change (and where CI runs). As maintainer, I may merge my own PR after the required checks; this does not authorize an agent to merge without my explicit go-ahead. Branch names follow `<type>/<issue>-<slug>`, e.g. `fix/31-ide-flash` or `feat/22-open-in-terminal`. Always use `gh pr create --body "Closes #N\n\n..."` so the issue closes on merge.
 
 **External contributions** (anyone who is not me): always come through PRs from forks — I review, CI must pass, then merge.
 
@@ -179,7 +179,7 @@ The protocol has two shapes depending on what was changed:
 2. Stop and send one short message with:
    - Which commit(s) or branch are ready and the binary path to launch (e.g. `cmd/gui/build/bin/GitboxApp.exe`).
    - A concrete check: what to click, what output to expect, what regression to rule out ("open Preferences → Open In Editor, confirm no cmd.exe flash").
-   - The exact publish command I intend to run next (`git push origin main` or `gh pr merge <n> --squash`) — described, not executed.
+   - The exact publish command I intend to run next (`git push origin main` or `git push origin <branch>`) — described, not executed. Merging is a separate action through `$merge-pr`.
 3. Wait. Do not push, do not merge, do not `gh pr create` with auto-merge. If the user reports a regression, fix it and re-offer the build — never ship over an unresolved user-reported failure.
 4. Only run the publish step after an explicit "ok, push it" / "go ahead" / "ship it".
 
@@ -195,7 +195,7 @@ When in doubt, ask. It is never wrong to pause; it is sometimes wrong to push.
 
 ### 1. Plan first
 
-- Plan before ANY non-trivial task (3+ steps or architectural decisions), using plan mode when available or the conversation fallback above
+- Plan before ANY non-trivial task (3+ steps or architectural decisions), using plan mode when available or the conversation fallback in "Agent capabilities".
 - If something goes sideways, STOP and re-plan immediately
 - Write detailed specs upfront to reduce ambiguity
 
@@ -210,7 +210,7 @@ When in doubt, ask. It is never wrong to pause; it is sometimes wrong to push.
 - Never mark a task complete without proving it works
 - Test scripts with `bash -n` (syntax check) and `shellcheck` when available
 - Go: `go vet ./...` + run the relevant test commands (see Testing below)
-- **Build the GUI** after any code change to `cmd/` or `pkg/`. `go build ./...` alone skips the Wails build tags and the frontend build, so a change that compiles there can still break `wails build`. Quick compile-check during iterative edits: `go build ./...` (needs `cmd/gui/frontend/dist`, see Build commands). Full build before reporting done or pushing: `cd cmd/gui && wails build` (copy icons first — see Build commands), then `GitboxApp --version` on the result. Doc-only and non-Go changes are exempt.
+- **Build the GUI** after any code change to `cmd/` or `pkg/`. `go build ./...` alone skips the Wails build tags and the frontend build, so a change that compiles there can still break `wails build`. Quick compile-check during iterative edits: `go build ./...` (needs `cmd/gui/frontend/dist`, see `.codex/context/building.md`). Full build before reporting done or pushing: `cd cmd/gui && wails build` (copy icons first — see `.codex/context/building.md`), then `GitboxApp --version` on the result. Doc-only and non-Go changes are exempt.
 - Validate config templates render correctly before committing
 - After any command that writes config files, read the actual file on disk — never trust command output alone
 

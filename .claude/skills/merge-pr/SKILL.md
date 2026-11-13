@@ -87,7 +87,7 @@ This repository and personal forks use the origin owner as the login. If the own
 
 ## Step 4: Merge gate
 
-- Show the exact merge command and wait for explicit go-ahead:
+- Show the exact merge command. Execute it only with explicit current-session authorization for this merge and scope; if that authorization is missing or no longer applies, wait for it:
 
   ```bash
   gh pr merge <PR#> --squash --delete-branch
@@ -95,7 +95,7 @@ This repository and personal forks use the origin owner as the login. If the own
 
 - Prefer `--squash` unless the repo convention says otherwise (scan `gh pr list --state merged --limit 5 --json mergeCommit` if unsure). `--delete-branch` deletes the remote branch after merge, and also the local branch together with its worktree (observed with gh 2.102).
 
-**Wait for explicit go-ahead** ("merge it", "go ahead", "ship it").
+**Require explicit go-ahead** ("merge it", "go ahead", "ship it"). Honor an existing authorization for this merge without asking again. Approval to push or create a PR does not authorize merging it; approval tied to a particular SHA must still match the verified head.
 
 ## Step 5: Cleanup
 

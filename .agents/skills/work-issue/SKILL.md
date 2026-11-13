@@ -139,7 +139,7 @@ Doc-only changes (`.md`, `docs/`, comments, `ai/` and the harness files it rende
 
 ## Step 7: User smoke-test gate
 
-This is a hard pause. Follow the "Never push without asking first" protocol from `AGENTS.md` verbatim.
+Follow the "Never push without asking first" protocol from `AGENTS.md`. Check whether current-session authorization already covers the proposed publication action and scope. Existing publication authorization does not waive the required user smoke test for runtime changes.
 
 **Runtime-affecting changes** (anything under `cmd/` or `pkg/`, build config, UI behaviour):
 
@@ -149,13 +149,13 @@ This is a hard pause. Follow the "Never push without asking first" protocol from
    - macOS: `cmd/gui/build/bin/GitboxApp.app`
    - Linux: `cmd/gui/build/bin/GitboxApp`
 3. Name a concrete check: what to click/type, expected output, regression to rule out. Be specific — "open Preferences → Open In Editor, confirm no cmd.exe flash" is good; "test it" is not.
-4. Show the exact push command you intend to run next (`git push -u origin <branch>`). Describe it, do not execute it.
+4. Show the exact push command you intend to run next (`git push -u origin <branch>`). Describe it, do not execute it. Wait for the user to confirm the smoke test before proceeding.
 
 **Trivial or doc-only changes:**
 
-One line — "Commit `<sha>` ready. Push directly to main / open a PR / hold?" — and wait.
+State the commit and intended publication action. If the user has not already authorized that action and scope in this session, ask whether to push the branch, open a PR, or hold, and wait.
 
-**Wait for explicit go-ahead** ("ok, push it", "go ahead", "ship it"). If the user reports a regression, fix it and re-offer the build. Never ship over an unresolved failure.
+**Require explicit go-ahead for publication** ("ok, push it", "go ahead", "ship it") unless current-session authorization already covers that action and scope. Approval of a smoke test alone does not authorize publication. If the user reports a regression, fix it and re-offer the build. Never ship over an unresolved failure.
 
 ## Step 8: Sync with main
 
@@ -167,17 +167,19 @@ git log --oneline HEAD..origin/main
 ```
 
 - If `origin/main` has not advanced, skip to Step 9.
-- If it has advanced, offer `git rebase origin/main`. On conflicts, surface each file and ask for guidance — do not auto-resolve non-trivial conflicts. After rebase: re-run Step 6 (auto-verify) and re-offer Step 7 (smoke test). The user's earlier go-ahead applied to the pre-rebase state; a rebase invalidates it.
+- If it has advanced, offer `git rebase origin/main`. On conflicts, surface each file and ask for guidance — do not auto-resolve non-trivial conflicts.
+- A rebase invalidates the earlier verification results. Re-run Step 6 on the rebased state; for runtime changes, rebuild and repeat Step 7's user smoke test before publishing.
+- Reassess authorization separately from verification. If approval named a particular SHA or build, or the scope changed, show the new state and obtain renewed approval. An existing authorization to push this branch and create a PR once checks pass remains valid for the same actions and scope after those checks and any required smoke test pass; do not ask for it again.
 
 ## Step 9: Push gate
 
-After re-confirmed go-ahead:
+Show the exact push command and execute it only after verification and any required user smoke test pass, with explicit current-session authorization for this push and scope. If that authorization is missing or no longer applies, obtain it before running:
 
 ```bash
 git push -u origin <branch>
 ```
 
-If Step 8 rebased commits that were already pushed, use `--force-with-lease` instead of a plain push.
+If Step 8 rebased commits that were already pushed, propose `git push --force-with-lease origin <branch>`. Obtain explicit authorization for that force push unless the current-session authorization already covers it; permission for a plain push is insufficient.
 
 ## Step 10: PR gate
 
@@ -200,7 +202,7 @@ Closes #<N>
 
 **Anonymise before showing:** no local paths (`~/00.git/...`, `C:\Users\...`), no private account keys (`github-<realname>`), no unrelated org/repo names. See "Anonymize before posting to GitHub" in `AGENTS.md` for the full rule.
 
-Show the title and body. **Wait for explicit go-ahead.** Then:
+Show the title and body. Create the PR only with explicit current-session authorization for PR creation and its scope. If the user already granted that authorization, proceed without asking again; otherwise wait for it. Push authorization alone does not authorize PR creation. Then:
 
 ```bash
 gh pr create --title "<title>" --body "$(cat <<'EOF'

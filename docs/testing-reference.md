@@ -147,4 +147,4 @@ GCM drift repair validates the effective config after writing, so its drifted ca
 
 ## Agent harness maintenance tests
 
-I run `ai/scripts/test_sync.py` for rendering, drift detection, native configuration preservation, and Codex-only sidecars that leave the Claude tree unchanged. I run `ai/scripts/test_fixing_markdown.py` for safe formatter target selection and execution against temporary fixtures. `scripts/health.sh harness` runs both suites and verifies the committed renders; neither suite needs credentials or application binaries.
+I run `ai/scripts/test_sync.py` for rendering, drift detection, native configuration preservation, and Codex-only sidecars that leave the Claude tree unchanged. I run `ai/scripts/test_fixing_markdown.py` for safe formatter target selection and execution against temporary fixtures, including the Markdown health gate with clean files, lint findings and malformed configuration. `scripts/health.sh harness` runs both suites and verifies the committed renders; neither suite needs credentials or application binaries.
