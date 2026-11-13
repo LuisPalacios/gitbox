@@ -88,6 +88,12 @@ class MarkdownTest(unittest.TestCase):
         targets = [self.root / "AGENTS.md", self.root / "ai/main.md", self.root / ".claude/CLAUDE.md"]
         self.assertEqual(extra.select_targets(targets, self.root), [self.root / "ai/main.md"])
 
+    def test_health_and_runner_pin_the_same_markdownlint_version(self):
+        health = Path(__file__).resolve().parents[2] / "scripts/health.sh"
+        versions = re.findall(r'^MARKDOWNLINT="([^"]+)"$', health.read_text(encoding="utf-8"), re.MULTILINE)
+        self.assertEqual(versions, [runner.MARKDOWNLINT],
+                         "Update the Markdown health gate and formatter package pins together")
+
     def run_fake_tools(self, check: bool):
         calls = []
 
@@ -274,6 +280,47 @@ class MarkdownTest(unittest.TestCase):
                 else:
                     self.assertIn("all checks clean", output)
                 self.assertEqual(self.snapshot(), before)
+
+    @unittest.skipIf(os.name == "nt", "isolated PATH uses POSIX shell launchers")
+    @unittest.skipUnless(shutil.which("bash") and shutil.which("git"), "bash and git are required")
+    def test_health_harness_does_not_install_or_build_missing_frontend(self):
+        health = Path(__file__).resolve().parents[2] / "scripts/health.sh"
+        self.put("scripts/health.sh", health.read_text(encoding="utf-8"))
+        frontend = self.root / "cmd/gui/frontend"
+        frontend.mkdir(parents=True)
+        env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+        env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+        subprocess.run(["git", "init", "--quiet", str(self.root)], env=env, check=True)
+        before = self.snapshot()
+        with tempfile.TemporaryDirectory() as directory:
+            tools = Path(directory)
+            calls = tools / "calls.log"
+            # Exercise real health dispatch, without recursively running this suite.
+            # Any npm call is a regression; record it before refusing to execute it.
+            scripts = {
+                "uv": 'printf "uv %s\\n" "$*" >> "$CALL_LOG"\n',
+                "npm": 'printf "unexpected npm %s\\n" "$*" >> "$CALL_LOG"\nexit 1\n',
+                "pnpm": "exit 1\n",
+                "node": "exit 1\n",
+            }
+            for name, body in scripts.items():
+                executable = tools / name
+                executable.write_text("#!/bin/sh\n" + body, encoding="utf-8")
+                executable.chmod(0o755)
+            env.update(PATH=os.pathsep.join([directory, "/usr/bin", "/bin"]), CALL_LOG=str(calls))
+            self.assertFalse((frontend / "dist").exists())
+            result = subprocess.run([shutil.which("bash"), "scripts/health.sh", "harness"],
+                                    cwd=self.root, env=env, capture_output=True, text=True)
+            output = result.stdout + result.stderr
+            self.assertEqual(result.returncode, 0, output)
+            self.assertRegex(output, r"ok\s+harness")
+            self.assertNotIn("building the frontend", output)
+            self.assertEqual(calls.read_text(encoding="utf-8").splitlines(), [
+                "uv run -q ai/scripts/test_sync.py",
+                "uv run -q ai/scripts/test_fixing_markdown.py",
+                "uv run -q ai/scripts/sync.py verify --quiet",
+            ])
+        self.assertEqual(self.snapshot(), before)
 
 
 if __name__ == "__main__":
