@@ -11,6 +11,7 @@ import contextlib
 import io
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -162,7 +163,11 @@ class MarkdownTest(unittest.TestCase):
             for name in ("pnpm", "node", "bash", "git"):
                 executable = shutil.which(name)
                 if executable:
-                    (Path(directory) / name).symlink_to(executable)
+                    # Invoke the original path: npm/pnpm shims use dirname($0)
+                    # to find their payload, so symlinking the shim breaks it.
+                    launcher = Path(directory) / name
+                    launcher.write_text(f'#!/bin/sh\nexec {shlex.quote(executable)} "$@"\n', encoding="utf-8")
+                    launcher.chmod(0o755)
             with patch.dict(os.environ, PATH=os.pathsep.join([directory, "/usr/bin", "/bin"])):
                 self.assertIsNone(shutil.which("markdownlint-cli2"))
                 self.assertIsNone(shutil.which("prettier"))
@@ -172,7 +177,20 @@ class MarkdownTest(unittest.TestCase):
         return {path.relative_to(self.root): path.read_bytes() if path.is_file() else None
                 for path in self.root.rglob("*")}
 
-    @unittest.skipIf(os.name == "nt", "isolated POSIX PATH; Windows may restrict symlinks")
+    @unittest.skipIf(os.name == "nt", "POSIX shell launcher")
+    def test_isolated_path_preserves_bootstrap_launcher_location(self):
+        # Package-manager shims locate their payload relative to their own path.
+        shim = self.put("bootstrap tools/pnpm", '#!/bin/sh\ncat "$(dirname "$0")/version.txt"\n')
+        shim.chmod(0o755)
+        self.put("bootstrap tools/version.txt", "fixture-pnpm\n")
+        real_which = shutil.which
+        with patch.object(shutil, "which", side_effect=lambda name: str(shim) if name == "pnpm" else real_which(name)):
+            with self.bootstrap_only_path():
+                result = subprocess.run(["pnpm", "--version"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "fixture-pnpm\n")
+
+    @unittest.skipIf(os.name == "nt", "isolated PATH uses POSIX shell launchers")
     @unittest.skipUnless(shutil.which("pnpm") and shutil.which("node"), "pnpm and Node are required")
     def test_real_cached_tools_without_global_installations_or_repo_footprint(self):
         # A target beside the nested config reproduces markdownlint's precedence rules.
@@ -222,7 +240,7 @@ class MarkdownTest(unittest.TestCase):
             after = (self.root / name).read_text(encoding="utf-8")
             self.assertEqual(re.sub(r"\s+", "", original), re.sub(r"\s+", "", after), name)
 
-    @unittest.skipIf(os.name == "nt", "isolated POSIX PATH; Windows may restrict symlinks")
+    @unittest.skipIf(os.name == "nt", "isolated PATH uses POSIX shell launchers")
     @unittest.skipUnless(all(shutil.which(tool) for tool in ("bash", "git", "pnpm", "node")),
                          "bash, git, pnpm and Node are required")
     def test_health_markdown_preserves_lint_and_configuration_failures(self):
