@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -26,22 +27,59 @@ const maxBackups = 10
 // state (window position, collapsed groups), which changes on every GUI close
 // or chevron click and would rotate meaningful backups out of the ring otherwise.
 func Save(cfg *Config, path string) error {
+	return saveWithFiles(cfg, path, configFiles())
+}
+
+// I pass file operations per save so failure tests never replace global hooks.
+type stagedFile interface {
+	io.Writer
+	Name() string
+	Chmod(os.FileMode) error
+	Sync() error
+	Close() error
+}
+
+type configFileOps struct {
+	createTemp func(string, string) (stagedFile, error)
+	rename     func(string, string) error
+	link       func(string, string) error
+	now        func() time.Time
+}
+
+func configFiles() configFileOps {
+	return configFileOps{
+		createTemp: func(dir, pattern string) (stagedFile, error) { return os.CreateTemp(dir, pattern) },
+		rename:     os.Rename,
+		link:       os.Link,
+		now:        time.Now,
+	}
+}
+
+func saveWithFiles(cfg *Config, path string, files configFileOps) error {
 	cfg.PruneCollapsed()
 
 	if err := EnsureDir(path); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
 
-	// Best-effort backup — errors logged to stderr, never block saving.
-	backupBeforeSave(path, cfg)
-
 	data, err := Marshal(cfg)
 	if err != nil {
 		return err
 	}
-
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
+	tmp, err := stageConfigFile(filepath.Dir(path), bytes.NewReader(data), mode, files)
+	if err != nil {
 		return fmt.Errorf("writing config: %w", err)
+	}
+	defer os.Remove(tmp)
+
+	// I snapshot the old file only after the replacement is ready.
+	backupBeforeSave(path, cfg, files)
+	if err := files.rename(tmp, path); err != nil {
+		return fmt.Errorf("replacing config: %w", err)
 	}
 	return nil
 }
@@ -57,7 +95,7 @@ func Save(cfg *Config, path string) error {
 // pre-corruption copies before the user ever notices anything is wrong. If
 // the on-disk file is unparseable (really stale or bug-mangled), the snapshot
 // is taken regardless — we want a copy of the broken state.
-func backupBeforeSave(path string, next *Config) {
+func backupBeforeSave(path string, next *Config, files configFileOps) {
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
 		return // file doesn't exist or is a directory — nothing to back up
@@ -76,19 +114,11 @@ func backupBeforeSave(path string, next *Config) {
 		}
 	}
 
-	dir := filepath.Dir(path)
-	base := filepath.Base(path)
-	name := strings.TrimSuffix(base, ".json")
-	now := time.Now().Format("20060102-150405")
-	backupName := fmt.Sprintf("%s-%s.json", name, now)
-	backupPath := filepath.Join(dir, backupName)
-
-	if err := copyFile(path, backupPath); err != nil {
+	if err := copyBackup(path, files); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: config backup failed: %v\n", err)
 		return
 	}
-
-	pruneBackups(dir, name)
+	pruneBackups(path)
 }
 
 // onDiskVersion returns the "version" field of the config file at path,
@@ -134,41 +164,119 @@ func configsEqualIgnoringUIState(a, b *Config) bool {
 	return bytes.Equal(da, db)
 }
 
-// copyFile copies src to dst, overwriting dst if it exists.
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
+// stageConfigFile finishes the bytes and metadata before exposing a final name.
+func stageConfigFile(dir string, src io.Reader, mode os.FileMode, files configFileOps) (name string, err error) {
+	out, err := files.createTemp(dir, ".gitbox-*.tmp")
+	if err != nil {
+		return "", err
+	}
+	name = out.Name()
+	closed := false
+	defer func() {
+		if !closed {
+			_ = out.Close()
+		}
+		if err != nil {
+			_ = os.Remove(name)
+		}
+	}()
+	if _, err = io.Copy(out, src); err != nil {
+		return name, err
+	}
+	if err = out.Chmod(mode); err != nil {
+		return name, err
+	}
+	if err = out.Sync(); err != nil {
+		return name, err
+	}
+	err = out.Close()
+	closed = true
+	return name, err
+}
+
+// copyBackup publishes only complete files. Link refuses an existing name,
+// unlike Rename, without exposing an empty reservation to recovery readers.
+func copyBackup(path string, files configFileOps) error {
+	in, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
-
-	out, err := os.Create(dst)
+	info, err := in.Stat()
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-
-	if _, err := io.Copy(out, in); err != nil {
+	dir := filepath.Dir(path)
+	tmp, err := stageConfigFile(dir, in, info.Mode().Perm(), files)
+	if err != nil {
 		return err
 	}
-	return out.Close()
+	defer os.Remove(tmp)
+	base := strings.TrimSuffix(filepath.Base(path), ".json")
+	prefix := base + "-" + files.now().Format("20060102-150405")
+	for sequence := range maxBackups {
+		name := prefix
+		if sequence > 0 {
+			name += fmt.Sprintf("-%d", sequence)
+		}
+		err = files.link(tmp, filepath.Join(dir, name+".json"))
+		if !errors.Is(err, os.ErrExist) {
+			return err
+		}
+	}
+	return fmt.Errorf("all %d backup names for %s already exist: %w", maxBackups, prefix, err)
 }
 
-// pruneBackups removes the oldest dated backup files beyond maxBackups.
-// Matches files like "gitbox-2026-04-01.json" in the config directory.
-func pruneBackups(dir, baseName string) {
-	pattern := filepath.Join(dir, baseName+"-????????-??????.json")
-	matches, err := filepath.Glob(pattern)
-	if err != nil || len(matches) <= maxBackups {
+// Backup describes a completed config snapshot.
+type Backup struct {
+	Path      string
+	Timestamp time.Time
+	sequence  int
+}
+
+// ListBackups returns recognized backup files, newest first. A numbered suffix
+// orders same-second snapshots after the original unsuffixed name.
+func ListBackups(path string) ([]Backup, error) {
+	dir := filepath.Dir(path)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	prefix := strings.TrimSuffix(filepath.Base(path), ".json") + "-"
+	var backups []Backup
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), prefix) || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		stamp := strings.TrimSuffix(strings.TrimPrefix(entry.Name(), prefix), ".json")
+		sequence := 0
+		if len(stamp) == 17 && stamp[15] == '-' && stamp[16] >= '1' && stamp[16] <= '9' {
+			sequence = int(stamp[16] - '0')
+			stamp = stamp[:15]
+		}
+		timestamp, err := time.Parse("20060102-150405", stamp)
+		if err != nil {
+			continue
+		}
+		backups = append(backups, Backup{Path: filepath.Join(dir, entry.Name()), Timestamp: timestamp, sequence: sequence})
+	}
+	sort.Slice(backups, func(i, j int) bool {
+		if backups[i].Timestamp.Equal(backups[j].Timestamp) {
+			return backups[i].sequence > backups[j].sequence
+		}
+		return backups[i].Timestamp.After(backups[j].Timestamp)
+	})
+	return backups, nil
+}
+
+// pruneBackups removes the oldest completed snapshots beyond maxBackups.
+func pruneBackups(path string) {
+	backups, err := ListBackups(path)
+	if err != nil || len(backups) <= maxBackups {
 		return
 	}
-
-	// Sort lexicographically — ISO dates sort correctly.
-	sort.Strings(matches)
-
-	// Remove the oldest files beyond the limit.
-	for _, old := range matches[:len(matches)-maxBackups] {
-		os.Remove(old)
+	for _, old := range backups[maxBackups:] {
+		_ = os.Remove(old.Path)
 	}
 }
 

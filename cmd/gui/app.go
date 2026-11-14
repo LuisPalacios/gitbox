@@ -1427,41 +1427,28 @@ type ConfigBackupInfo struct {
 }
 
 // ListConfigBackups returns the dated backup files beside gitbox.json,
-// newest first. Matches files of the form gitbox-YYYYMMDD-HHMMSS.json
-// (the naming pattern produced by Save). Safe to call while the config
+// newest first, including numbered same-second snapshots from Save.
+// Safe to call while the config
 // is unloaded — reads only filesystem state.
 func (a *App) ListConfigBackups() []ConfigBackupInfo {
 	a.mu.Lock()
 	cfgPath := a.cfgPath
 	a.mu.Unlock()
 
-	dir := filepath.Dir(cfgPath)
-	base := strings.TrimSuffix(filepath.Base(cfgPath), ".json")
-	pattern := filepath.Join(dir, base+"-????????-??????.json")
-	matches, err := filepath.Glob(pattern)
+	backups, err := config.ListBackups(cfgPath)
 	if err != nil {
 		return []ConfigBackupInfo{}
 	}
-	// Filenames embed YYYYMMDD-HHMMSS so lexicographic order == chronological.
-	sort.Sort(sort.Reverse(sort.StringSlice(matches)))
-
-	infos := make([]ConfigBackupInfo, 0, len(matches))
-	for _, p := range matches {
-		fi, err := os.Stat(p)
+	infos := make([]ConfigBackupInfo, 0, len(backups))
+	for _, backup := range backups {
+		fi, err := os.Stat(backup.Path)
 		if err != nil || fi.IsDir() {
 			continue
 		}
-		fn := filepath.Base(p)
-		ts := ""
-		mid := strings.TrimPrefix(fn, base+"-")
-		mid = strings.TrimSuffix(mid, ".json")
-		if t, perr := time.Parse("20060102-150405", mid); perr == nil {
-			ts = t.Format(time.RFC3339)
-		}
 		infos = append(infos, ConfigBackupInfo{
-			Path:      p,
-			Filename:  fn,
-			Timestamp: ts,
+			Path:      backup.Path,
+			Filename:  filepath.Base(backup.Path),
+			Timestamp: backup.Timestamp.Format(time.RFC3339),
 			SizeBytes: fi.Size(),
 		})
 	}
