@@ -10,7 +10,7 @@ Counts are top-level Go test functions (subtests from `t.Run` and `TestMain` are
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-The current total is 604 Go tests (525 in `pkg/`, 79 in `cmd/gui/`) and 48 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
+The current total is 622 Go tests (540 in `pkg/`, 82 in `cmd/gui/`) and 48 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
 
 ### Shared library (`pkg/`)
 
@@ -23,7 +23,11 @@ The current total is 604 Go tests (525 in `pkg/`, 79 in `cmd/gui/`) and 48 front
   - `roots_test.go`: clone roots (add, make default, remove and forget, place a repo) with every clone path pinned.
   - `crud_test.go`, `clones_test.go`, `ai_harness_test.go`: account, source, repo and mirror CRUD, ignored clones, the deep copy used by unlocked scans, AI harness entries.
   - `collapsed_test.go`, `save_test.go`: layout-state pruning (folds, sidebar, the view of a deleted account, the retired `workspaces` view key), the backup ring, no backup for layout-only and theme-only saves, and a backup always kept for a file written by an older config version.
-- **`pkg/credential`** (38) — token resolution from `GITBOX_TOKEN_<KEY>` and `GIT_TOKEN`, token checks with expiry and rejected tokens, OS-default GCM helper and store, global gitconfig health for GCM (`CheckGlobalGCMConfig`, `FixGlobalGCMConfig`), SSH key and config lookup, cancellation with a stalled helper, compare-first per-repo credential config, and atomic credential-file writes with concurrent readers. Real helper queries check GitLab usernames and file paths with spaces and shell characters.
+- **`pkg/credential`** (52) — token resolution from `GITBOX_TOKEN_<KEY>` and `GIT_TOKEN`, token checks with expiry and rejected tokens, OS-default GCM helper and store, global gitconfig health for GCM (`CheckGlobalGCMConfig`, `FixGlobalGCMConfig`), SSH key and config lookup, cancellation with a stalled helper, compare-first per-repo credential config, and atomic credential-file writes with concurrent readers. Real helper queries check GitLab usernames and file paths with spaces and shell characters.
+  - `atomic_test.go` (4): raw and account-aware formats, one trailing newline, Unix permissions, unchanged-file preservation, actual replacement failure preserving the previous file and cleaning the temporary file, and concurrent readers during rotation.
+  - `atomic_windows_test.go` (1, Windows only): an external reader that denies delete sharing rejects replacement without changing the previous credential or leaving temporary files; replacement succeeds after the reader closes.
+  - `audit_test.go` (4), `audit_unix_test.go` (2): missing directories, unexpected entries, symbolic links, directory and file modes, unreadable directories, and metadata-only checks that never repair permissions.
+  - `audit_windows_test.go` (3, Windows only): controlled protected DACL fixtures for files and directories, owner/SYSTEM/Administrators grants, inherited and inherit-only entries, deny entries, NULL versus empty DACLs, and unverifiable descriptors or ACE types.
 - **`pkg/doctor`** (34) — the tool table and install hints, tool lookup (extra folders, `~/.local/bin`, stored paths, Windows shims), the GCM probe (asking git, install folders, reported missing), per-credential-type prechecks, UTF-16 tool output decoding. `wsl_windows_test.go` (Windows only) reads WSL distros from the registry and proves the WSL install stub is never run.
 - **`pkg/git`** (39) — git subprocess operations (status, clone, branches, branch sweeps), remote and profile URLs, repo and nested repo discovery, connects refused within milliseconds, config snapshots with includes, multi-value keys and linked worktrees. `incoming_test.go` covers incoming-only history, divergence, differently named upstream branches, empty and missing upstreams, long lists, Unicode, record parsing and unchanged clone files. Clone arguments preserve helper entries intact without including the token.
 - **`pkg/gitignore`** (23) — the managed global gitignore block: round trip, merge with user content, idempotent install, an existing `core.excludesfile`, duplicate cleanup, backups.
@@ -34,7 +38,7 @@ The current total is 604 Go tests (525 in `pkg/`, 79 in `cmd/gui/`) and 48 front
 - **`pkg/launch`** (13) — argv expansion, POSIX shell quoting, AI harness wrapping per shell (PowerShell, cmd, POSIX), macOS AppleScript.
 - **`pkg/mirror`** (6) — remote URL parsing, mirror discovery, status error classification.
 - **`pkg/move`** (5) — repo key parsing, HTTPS clone URLs, preflight validation.
-- **`pkg/ops`** (20) — 19 isolated unit tests (add, discard, rename and delete accounts, also across two clone roots; suggest an account key; change and delete credentials; delete a repo; plan a secret-free clone, reject token-preparation failures and authenticate through the isolated helper; reconfigure clones; add discovered repos) plus `TestScenario_FullLifecycle`.
+- **`pkg/ops`** (21) — 20 isolated unit tests (add, discard, rename and delete accounts, also across two clone roots; suggest an account key; change and delete credentials; delete a repo; plan a secret-free clone, reject token-preparation failures and authenticate through the isolated helper; reconfigure clones; add discovered repos) plus `TestScenario_FullLifecycle`. Account renaming preserves git-credential-store format even without clones.
 - **`pkg/provider`** (52) — the HTTP client, provider API parsing for every provider (repos, pagination, create, delete, mirrors, PR lists), and token expiry (GitHub header layouts with no extra request, GitLab `personal_access_tokens/self`, unknown expiry still passing).
 - **`pkg/reconcile`** (8) — confident clones adopted in place, undecided ones left with their reason, a moved clone re-linked, a deleted clone kept, an offline root left alone, ignored clones skipped, adopting into a picked account, linked worktrees never adopted.
 - **`pkg/status`** (18) — clone status (clean, dirty, ahead, behind, not cloned, detached), branch detection, root offline, repo paths through source and repo roots, nesting (including a container inside a container).
@@ -44,6 +48,7 @@ The current total is 604 Go tests (525 in `pkg/`, 79 in `cmd/gui/`) and 48 front
 
 ### GUI bindings (`cmd/gui/`)
 
+- `credential_audit_test.go` (3) — startup findings in detached snapshots, rechecks clear stale findings, permission findings prevent a successful System check report, and token saves use the account format without clones or environment-token substitution.
 - `clone_test.go` (1) — report remaining clone destinations without changing repository config, directories or symlink targets.
 - `account_actions_test.go`, `browser_actions_test.go` (4) — account folder resolution, provider URLs, error paths for unknown accounts and repos.
 - `roots_test.go` (2) — add, make default and remove clone roots; account folders through the source root.
@@ -118,7 +123,7 @@ The scenario then sets a temp `XDG_CONFIG_HOME`, builds a fresh config whose onl
 
 - Refresh and probe tests in `cmd/gui` block injected work on channels to overlap triggers without a Wails runtime, and use local HTTP servers to check bounded concurrency, shared probes, deadlines, and upstream state kept after errors or credential rotation.
 - Credential context tests use local provider servers and a stalled helper script to prove cancellation.
-- Maintenance tests in `pkg/git`, `pkg/heal` and `pkg/credential` use isolated git config, include files and linked worktrees, and count git processes with `GIT_TRACE2_EVENT`: an unchanged SSH, token or GCM clone spawns two read-only git commands. Credential-file tests check unchanged modification times, concurrent readers, rotation, permissions and account separation.
+- Maintenance tests in `pkg/git`, `pkg/heal` and `pkg/credential` use isolated git config, include files and linked worktrees, and count git processes with `GIT_TRACE2_EVENT`: an unchanged SSH, token or GCM clone spawns two read-only git commands. Credential-file tests check unchanged modification times, concurrent readers, rotation, permissions and account separation. The shared-writer tests also force a replacement failure to verify preservation and temporary-file cleanup. `GetToken` readers share the writer lock; a Windows test confirms that an external file lock can reject replacement safely without a delete-first fallback. Permission-audit tests use synthetic files; Windows tests establish protected DACLs rather than assume a temporary directory inherits private permissions.
 - `TestMain` in `pkg/terminals/detect_test.go` and `pkg/doctor/wsl_windows_test.go` turns the test binary into a fake `wsl.exe` that writes a sentinel file (`GITBOX_TEST_FAKE_WSL_SENTINEL`) when run, so the tests prove WSL detection never executes it.
 - `.githooks/pre-push` unsets `GIT_DIR`, `GIT_WORK_TREE` and the other variables git exports to hooks, so the tests' own git calls target their temp repos instead of this repository.
 

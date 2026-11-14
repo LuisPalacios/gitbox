@@ -36,7 +36,7 @@ Each credential type is **self-sufficient** for the account. Per-repo credential
 
 **Design decisions:**
 
-- **Token** stores the PAT in one gitbox credential file per account, `~/.config/gitbox/credentials/<key>` (0600, git-credential-store format). Gitbox reads it for API calls, and every clone of the account points `credential.helper = store --file <path>` at it for git.
+- **Token** stores the PAT in one gitbox credential file per account, `~/.config/gitbox/credentials/<key>` (git-credential-store format; mode `0600` on Unix, ACL-controlled access on Windows). Gitbox reads it for API calls, and every clone of the account points `credential.helper = store --file <path>` at it for git.
 - **GCM** uses `helper = manager` with per-host `username` and `provider` scoped per repo, plus `credential.credentialStore`. GCM keeps its secrets in the OS credential store.
 - **SSH** only cancels helpers (auth goes through `~/.ssh/config`). Discovery needs an optional PAT, kept in the same credential file as a token account's.
 
@@ -122,7 +122,11 @@ Handles the v5 configuration file and migrates v2, v3 and v4 files on load. Core
 
 Manages tokens, SSH keys, GCM integration and per-repo credential isolation. See `pkg/credential/credential.go`, `pkg/credential/validate.go` and `pkg/credential/repoconfig.go`.
 
-**Token storage:** `StoreToken`, `GetToken` and `DeleteToken` write, read and remove the credential file `~/.config/gitbox/credentials/<key>` (`CredentialFilePath`). `GetToken` accepts both the git-credential-store line (`https://user:TOKEN@host`) and a raw token. There is no other token store.
+**Token storage:** `StoreTokenWithAccount` writes the git-credential-store line (`https://user:TOKEN@host`) directly when the account is known, including GUI saves and account renames. `StoreToken` keeps the raw-token compatibility path. `GetToken` reads both formats and `DeleteToken` removes the file `~/.config/gitbox/credentials/<key>` (`CredentialFilePath`). There is no other token store.
+
+**Shared writer:** both storage paths and `WriteCredentialFile` use one private writer. It serializes comparison and replacement, skips identical content, and prepares changed content in a temporary file in the destination directory. It sets mode `0600` before writing, calls `Sync`, closes the file and renames it over the destination; errors before replacement preserve the previous file and clean up the temporary file. A normal write can repair an existing Unix file's mode to `0600`. Windows replacement uses the operating system's rename semantics; this does not promise uniform crash or power-loss durability across filesystems.
+
+**Permission audit:** `AuditCredentialDir` inspects metadata without reading secrets or changing permissions. Unix checks expect directory mode `0700` and file mode `0600`. Windows checks inspect directory and file DACLs, flag grants outside the owner/SYSTEM/Administrators allowlist, and distinguish exposure from permissions they cannot verify. The GUI runs the audit once after loading config, outside the config lock, caches the findings for the startup snapshot, and reruns it through System check. A warning above the full or Compact dashboard highlights exposure; the report includes all findings and suggested actions.
 
 **Token resolution chain (`ResolveToken`):** the `GITBOX_TOKEN_<KEY>` environment variable, then `GIT_TOKEN`, then the credential file.
 
@@ -192,7 +196,7 @@ Provides version checking and self-update via GitHub Releases. The design:
 
 ### pkg/doctor — External-tool detection
 
-Probes the host for every external binary Gitbox may call (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, and `wsl` on Windows) and reports path, version and per-OS install hints for anything missing. `PrecheckForCredentialType()` powers the GUI setup flows, so a missing tool shows as a yellow banner with the install command instead of a cryptic runtime error. For GCM the probe asks `git credential-manager --version` first, because git resolves it from its own directories, which need not be on `PATH`. It falls back to the known install folders only when git can't run it. The GUI shows the full report under **Settings → System check**.
+Probes the host for every external binary Gitbox may call (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, and `wsl` on Windows) and reports path, version and per-OS install hints for anything missing. `PrecheckForCredentialType()` powers the GUI setup flows, so a missing tool shows as a yellow banner with the install command instead of a cryptic runtime error. For GCM the probe asks `git credential-manager --version` first, because git resolves it from its own directories, which need not be on `PATH`. It falls back to the known install folders only when git can't run it. The GUI shows the full report under **Settings → System check**, alongside the credential permission audit from `pkg/credential`.
 
 The probe never runs `C:\Windows\System32\wsl.exe`: Windows ships that file as a stub that prompts to install WSL, in a window of its own, when the package is absent. `doctor.WSLDistros()` reads the distros from the registry, and the version comes from the package's own binary under `Program Files\WSL`. Shell detection uses the same list, so the `wsl` shell only appears when a distro is installed.
 
@@ -200,7 +204,7 @@ The probe never runs `C:\Windows\System32\wsl.exe`: Windows ships that file as a
 
 `heal.Repo(cfg, sourceKey, repoKey)` idempotently reconciles a clone's `.git/config` against the account spec: `user.name`, `user.email`, the canonical `origin` URL (credential-type specific, no embedded secrets), and the credential helper. Every trigger point runs it (clone, fetch, pull, repo move, `ops.ReconfigureClones` and the GUI's periodic sync), so clones that drift out of spec are repaired silently.
 
-Identity, origin and credential checks share one `git.ReadConfigSnapshot`: two Git processes read the effective config (with includes) and the direct local config. An unchanged clone causes no credential-config or credential-file writes. A changed token file is replaced atomically, updates for a shared account are serialized, and file permissions stay private. If a later include or worktree config still overrides a repair, heal reports a maintenance warning and the GUI skips the fetch rather than use the wrong identity, origin or helper chain.
+Identity, origin and credential checks share one `git.ReadConfigSnapshot`: two Git processes read the effective config (with includes) and the direct local config. An unchanged clone causes no credential-config or credential-file writes. Changed token files use the shared credential writer, which serializes updates, prepares complete replacement files and applies the Unix file mode policy. The permission audit separately reports Windows ACL exposure and any permissions it cannot verify. If a later include or worktree config still overrides a repair, heal reports a maintenance warning and the GUI skips the fetch rather than use the wrong identity, origin or helper chain.
 
 ### pkg/move — Cross-account and cross-provider repo move
 
@@ -505,7 +509,7 @@ Harness detection resolves binaries through `doctor.Lookup` without changing the
 
 ### Token flow
 
-The user picks Token in the account's credential settings → the app shows the provider-specific PAT creation URL with the required scopes → the user pastes the token → the app validates it via the provider API and stores it in the credential file (`~/.config/gitbox/credentials/<key>`). Before cloning, Gitbox prepares that file in git-credential-store format and passes an empty credential-helper reset followed by the account's store-file helper to Git. The clone URL and process arguments never contain the token. Each clone's `.git/config` gets `credential.helper = store --file <path>` pointing at that same file, so `git push` and `git pull` from any terminal work without GCM.
+The user picks Token in the account's credential settings → the app shows the provider-specific PAT creation URL with the required scopes → the user pastes the token → the app validates it via the provider API and stores it directly in git-credential-store format in the credential file (`~/.config/gitbox/credentials/<key>`). Before cloning, Gitbox ensures that file matches the resolved credential and passes an empty credential-helper reset followed by the account's store-file helper to Git. The clone URL and process arguments never contain the token. Each clone's `.git/config` gets `credential.helper = store --file <path>` pointing at that same file, so `git push` and `git pull` from any terminal work without GCM.
 
 ### GCM flow
 
@@ -580,7 +584,7 @@ The user doesn't need to know Git internals: actions are verbs that do what they
 ## 8. Security
 
 - **No secrets in the config file.** `gitbox.json` holds only URLs, usernames, folder paths and preference flags. Provider API calls read tokens from credential files or GCM at runtime.
-- **PATs** live in gitbox credential files (`~/.config/gitbox/credentials/<key>`), plaintext in git-credential-store format with 0600 permissions: the same model as `~/.git-credentials` and SSH private keys.
+- **PATs** live in gitbox credential files (`~/.config/gitbox/credentials/<key>`), plaintext in git-credential-store format. Unix files use mode `0600` in a `0700` directory; Windows ACLs determine access. The metadata-only permission audit reports exposure and unverifiable permissions without repairing them.
 - **GCM OAuth tokens** live in the OS credential store (Windows Credential Manager, macOS Keychain, Linux Secret Service), managed by Git Credential Manager.
 - **SSH private keys** are standard `~/.ssh/` files with 0600 permissions.
 - **Secret-free clone URLs:** cloning and later git operations authenticate through the per-repo credential helper. URLs and process arguments never contain the token. If a clone fails, Gitbox leaves any remaining destination in place and reports its path without rewriting the origin.

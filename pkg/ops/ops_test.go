@@ -700,3 +700,29 @@ func TestPlanClone_TokenHelperAuthentication(t *testing.T) {
 		})
 	}
 }
+
+func TestRenameAccount_PreservesStoreFormatWithoutClones(t *testing.T) {
+	_, cfg := isolate(t)
+	acct := testAccount("token")
+	cfg.Accounts["old"] = acct
+	if err := credential.StoreToken("old", "legacy-token"); err != nil {
+		t.Fatal(err)
+	}
+	if err := RenameAccount(cfg, "old", "new"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(credential.CredentialFilePath("new"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(data), "https://") {
+		t.Fatal("rename reverted to raw format")
+	}
+	got, err := credential.GetToken("new")
+	if err != nil || got != "legacy-token" {
+		t.Fatalf("migrated token = %q, %v", got, err)
+	}
+	if _, err := os.Stat(credential.CredentialFilePath("old")); !os.IsNotExist(err) {
+		t.Fatal("old credential remains")
+	}
+}

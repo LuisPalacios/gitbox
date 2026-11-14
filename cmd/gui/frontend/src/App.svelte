@@ -15,7 +15,7 @@
   import { startFetch, startPull, noteDone, summarizeFetch, summarizePull, localWorkCount } from './lib/activity';
   import type { Run } from './lib/activity';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit, EventsOn } from '../wailsjs/runtime/runtime';
-  import type { RepoState, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, OrphanRepoDTO, ReconcileDTO, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
+  import type { CredentialFinding, RepoState, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, OrphanRepoDTO, ReconcileDTO, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
   import TerminalsModal from './lib/TerminalsModal.svelte';
   import Onboarding from './lib/Onboarding.svelte';
   import ConfigErrorScreen from './lib/components/ConfigErrorScreen.svelte';
@@ -23,6 +23,7 @@
   import CompactView from './lib/components/CompactView.svelte';
   import TopBar from './lib/components/TopBar.svelte';
   import Banners from './lib/components/Banners.svelte';
+  import CredentialWarning from './lib/components/CredentialWarning.svelte';
   import SettingsPanel from './lib/components/SettingsPanel.svelte';
   import Sidebar from './lib/components/Sidebar.svelte';
   import AttentionView from './lib/components/AttentionView.svelte';
@@ -621,6 +622,7 @@
     await bridge.reloadConfig();
     const snapshot = await bridge.getStartupSnapshot();
     repoNesting = snapshot.nesting || {};
+    credentialFindings = snapshot.credentialFindings || [];
     configStore.set(snapshot.config);
   }
 
@@ -961,6 +963,7 @@
       const snapshot = await bridge.getStartupSnapshot();
       if (generation !== reloadGeneration) return;
       repoNesting = snapshot.nesting || {};
+      credentialFindings = snapshot.credentialFindings || [];
       configStore.set(snapshot.config);
       configPath = snapshot.configPath;
       // A renamed account: Go already moved the saved view to its new key.
@@ -1256,6 +1259,7 @@
   // ── Doctor (System check) ──
   // DoctorModal runs the check; Settings shows its one-line summary.
   let doctorSummary = '';
+  let credentialFindings: CredentialFinding[] = [];
   let doctorModal: DoctorModal;
   const openDoctorModal = () => doctorModal.openDoctorModal();
 
@@ -1380,6 +1384,7 @@
     themeChoice = themeChoiceOf(cfg.global?.theme);
     applyTheme();
     repoNesting = snapshot.nesting || {};
+    credentialFindings = snapshot.credentialFindings || [];
     const collapsed = cfg.global?.collapsed;
     collapsedSources = new Set(collapsed?.sources || []);
     collapsedRepos = new Set(collapsed?.repos || []);
@@ -1840,6 +1845,7 @@
 <div class="app">
 
   <ReloadErrorBanner bind:reloadError />
+  <CredentialWarning findings={credentialFindings} onReview={openDoctorModal} />
 
   {#if viewMode === 'compact'}
   <!-- ══════ COMPACT STATUS VIEW ══════ -->
@@ -1905,7 +1911,7 @@
        (subprocess spawn), so no in-app modal is mounted here. -->
 
   <!-- ── DOCTOR (SYSTEM CHECK) MODAL ── -->
-  <DoctorModal bind:this={doctorModal} bind:doctorSummary />
+  <DoctorModal bind:this={doctorModal} bind:doctorSummary bind:credentialFindings />
 
   <!-- ── SSH DISCOVERY TOKEN MODAL ── -->
   <SshTokenModal bind:this={sshTokenDialog} {openDiscover} />

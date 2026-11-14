@@ -141,6 +141,14 @@ With enough viewport space, I expect the count, filter, **Select all** and one r
 
 I let the opening transition and result update finish before reading element sizes. Intermediate layout reads can force WebKit to recalculate sizes and hide the regression from #221. I compare the body's `clientHeight` and `scrollHeight`, inspect the rendered result, and check the row and footer bounds; searching CSS text does not test layout.
 
+### Credential storage and permission audit
+
+I run permission checks against a temporary `XDG_CONFIG_HOME` with synthetic accounts and dummy credential files. I never relax production credential permissions or copy real credential files into an exposure fixture.
+
+- I open **Settings → System check → Run** and confirm that credential findings show the affected path, problem and suggested action without token contents. A clean fixture passes; an unreadable or unsupported permission state reports a finding rather than success.
+- In the fixture only, I give a dummy file mode `0644` on Unix or a Windows ACL grant outside owner/SYSTEM/Administrators. After restarting, the exposure warning appears in the full and Compact dashboards and opens System check. The audit leaves permissions unchanged. After repairing the fixture permissions, **Re-check** clears the finding and warning.
+- I save and rename a dedicated test account, then confirm its credential still works after restarting. The isolated automated checks verify that both actions write git-credential-store format directly, including accounts without clones, and keep reading legacy raw-token files. I never print a real token or credential-file contents in test output.
+
 ## Pre-PR checklist
 
 I run these before every push or PR. `/test-plan` in Claude Code or `$test-plan` in Codex automates them.

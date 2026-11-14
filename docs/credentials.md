@@ -33,20 +33,30 @@ Gitbox's credential check tells you which situation you're in. If the account re
 
 ## PAT storage
 
-Gitbox stores every Personal Access Token (PAT) in one file per account, `~/.config/gitbox/credentials/<accountKey>` (file mode `0600`, readable only by the owner).
+I keep each Personal Access Token (PAT) in one file per account, `~/.config/gitbox/credentials/<accountKey>`. On macOS and Linux, Gitbox creates the directory with mode `0700` and files with mode `0600`. On Windows, access-control lists (ACLs) determine access; the Unix mode does not establish who can read a file.
 
-The file format depends on who reads it:
+Saving a PAT or renaming an account writes **git-credential-store format** (`https://user:token@host`):
 
-- **Token accounts** use **git-credential-store format** (`https://user:token@host`), because git reads this file directly through `credential.helper = store --file <path>`. Gitbox reads the same file for API calls.
-- **SSH and GCM accounts** store the **raw token** (the PAT string, one line). Git never reads this file: SSH authenticates with the keys in `~/.ssh/`, and GCM keeps its own credential in the OS credential store. Only Gitbox reads it, for API calls (discovery, repo creation) and mirror operations.
+- **Token accounts** let git read this file through `credential.helper = store --file <path>`. Gitbox reads the same file for API calls.
+- **SSH and GCM accounts** use the file only for Gitbox API calls (discovery, repo creation) and mirror operations. SSH still authenticates with the keys in `~/.ssh/`, and GCM keeps its own git credential in the OS credential store.
 
-Gitbox reads both formats: it parses the file as a URL first and falls back to a raw token.
+Gitbox still reads existing raw-token files (the PAT string, one line). It parses the file as a URL first and falls back to a raw token.
+
+For an update, Gitbox prepares a temporary file in the same directory, flushes and closes it, then replaces the destination. It preserves the previous file if preparation fails and avoids rewriting identical content. A normal write can restore Unix file mode `0600`; the permission audit below never changes permissions.
 
 When Gitbox needs a token, it looks in this order:
 
 1. Account-specific environment variable (`GITBOX_TOKEN_<ACCOUNT_KEY>`, the account key uppercased with hyphens turned into underscores)
 2. Generic `GIT_TOKEN` env var (CI fallback)
 3. Credential file (`~/.config/gitbox/credentials/<accountKey>`)
+
+### Credential file permissions
+
+At startup, Gitbox audits the credential directory and its entries using metadata only: it does not read token contents. On macOS and Linux, it expects directory mode `0700` and file mode `0600`. On Windows, it inspects the directory and file ACLs and flags grants to identities other than the owner, SYSTEM or Administrators. It also reports permissions it cannot verify, symbolic links and unexpected entry types.
+
+Open **Settings → System check → Run** to inspect the findings and their suggested actions. If the audit detects exposure, a warning appears above the dashboard, including Compact view. The warning opens the same report. A failed inspection appears as a finding rather than a successful check.
+
+Review and change permissions with your operating system's tools, then click **Re-check** in System check to audit again. The audit never repairs permissions automatically.
 
 ## GCM (Git Credential Manager)
 
@@ -135,7 +145,7 @@ It needs the same scopes as a Token account's PAT: see [Token scopes by capabili
 **Storage:** 2 secrets:
 
 - **Operations** → SSH key pair in `~/.ssh/` (private key + public key + config entry).
-- **API access** → PAT in `~/.config/gitbox/credentials/<account>` (raw token).
+- **API access** → PAT in `~/.config/gitbox/credentials/<account>` (git-credential-store format; existing raw-token files remain readable).
 
 Without the PAT, the account works for git operations but can't discover repos, create repos, or set up mirrors.
 
@@ -180,7 +190,7 @@ You can verify credentials at any time:
 Credential types rely on external binaries that may be missing on the current machine: GCM needs `git-credential-manager`, SSH needs `ssh`, `ssh-keygen` and `ssh-add`. Gitbox checks for them before it starts a setup:
 
 - **Setup flows** — opening the add-account or change-credential modal runs a pre-flight check. If a required tool is missing, a yellow banner names it with the install command for your OS. The setup doesn't run automatically until you install it and click **Re-check**; you can still proceed manually.
-- **System check** — open **Settings → System check → Run** for a full inventory at any time: every tool Gitbox may call (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, and `wsl` on Windows), where it's installed, its version, and whether your current config needs it.
+- **System check** — open **Settings → System check → Run** for a full inventory at any time: every tool Gitbox may call (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, and `wsl` on Windows), where it's installed, its version, and whether your current config needs it. The same report also audits [credential file permissions](#credential-file-permissions).
 
 Typical fix on each OS:
 

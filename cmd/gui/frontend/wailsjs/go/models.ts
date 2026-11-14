@@ -397,6 +397,24 @@ export namespace config {
 
 export namespace credential {
 	
+	export class Finding {
+	    path: string;
+	    problem: string;
+	    hint: string;
+	    exposed: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new Finding(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.problem = source["problem"];
+	        this.hint = source["hint"];
+	        this.exposed = source["exposed"];
+	    }
+	}
 	export class GlobalGCMConfigStatus {
 	    hasHelper: boolean;
 	    helperValue: string;
@@ -872,6 +890,7 @@ export namespace main {
 		}
 	}
 	export class DoctorReport {
+	    credentialFindings: credential.Finding[];
 	    tools: DoctorToolDTO[];
 	    allOk: boolean;
 	    missingReq: number;
@@ -883,6 +902,7 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.credentialFindings = this.convertValues(source["credentialFindings"], credential.Finding);
 	        this.tools = this.convertValues(source["tools"], DoctorToolDTO);
 	        this.allOk = source["allOk"];
 	        this.missingReq = source["missingReq"];
@@ -1346,6 +1366,7 @@ export namespace main {
 	    configPath: string;
 	    appVersion: string;
 	    os: string;
+	    credentialFindings: credential.Finding[];
 	
 	    static createFrom(source: any = {}) {
 	        return new StartupSnapshot(source);
@@ -1358,6 +1379,7 @@ export namespace main {
 	        this.configPath = source["configPath"];
 	        this.appVersion = source["appVersion"];
 	        this.os = source["os"];
+	        this.credentialFindings = this.convertValues(source["credentialFindings"], credential.Finding);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

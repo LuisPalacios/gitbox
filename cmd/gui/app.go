@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -39,13 +40,15 @@ import (
 // App is the Wails application struct. All exported methods become
 // frontend bindings via window.go.main.App.<Method>().
 type App struct {
-	ctx          context.Context
-	cfg          *config.Config
-	cfgPath      string
-	cfgLoaded    bool   // true if config was loaded from disk (safe to save back)
-	cfgLoadError string // non-empty if config exists but failed to parse
-	testMode     bool   // true when launched with --test-mode
-	testCleanup  func() // cleanup function for test-mode temp dir
+	ctx                context.Context
+	cfg                *config.Config
+	cfgPath            string
+	cfgLoaded          bool // true if config was loaded from disk (safe to save back)
+	credentialAuditMu  sync.Mutex
+	credentialFindings []credential.Finding // cached metadata-only audit, guarded by mu
+	cfgLoadError       string               // non-empty if config exists but failed to parse
+	testMode           bool                 // true when launched with --test-mode
+	testCleanup        func()               // cleanup function for test-mode temp dir
 	// windowMode selects which UI the frontend should render. Empty (or
 	// "main") = the full gitbox app. "terminals" = the standalone Profile
 	// editor sub-process spawned by OpenTerminalsManagerWindow (issue #69
@@ -147,6 +150,7 @@ func (a *App) Startup(ctx context.Context) {
 		a.cfgLoaded = true
 	}
 	a.cfg = cfg
+	a.refreshCredentialAudit()
 }
 
 // Shutdown is called by Wails when the app is closing.
@@ -610,11 +614,12 @@ func (a *App) configDTO() (ConfigDTO, error) {
 // StartupSnapshot contains only information available without disk scanning,
 // subprocesses or provider requests.
 type StartupSnapshot struct {
-	Config     ConfigDTO         `json:"config"`
-	Nesting    map[string]string `json:"nesting"`
-	ConfigPath string            `json:"configPath"`
-	AppVersion string            `json:"appVersion"`
-	OS         string            `json:"os"`
+	Config             ConfigDTO            `json:"config"`
+	Nesting            map[string]string    `json:"nesting"`
+	ConfigPath         string               `json:"configPath"`
+	AppVersion         string               `json:"appVersion"`
+	OS                 string               `json:"os"`
+	CredentialFindings []credential.Finding `json:"credentialFindings"`
 }
 
 // GetStartupSnapshot keeps preferences, configured rows and nesting consistent
@@ -630,7 +635,7 @@ func (a *App) GetStartupSnapshot() (StartupSnapshot, error) {
 	for child, parent := range status.ComputeNesting(a.cfg).ParentOf {
 		nesting[child.Source+"/"+child.Repo] = parent.Source + "/" + parent.Repo
 	}
-	return StartupSnapshot{Config: cfg, Nesting: nesting, ConfigPath: a.cfgPath, AppVersion: formatAppVersion(version, commit), OS: runtime.GOOS}, nil
+	return StartupSnapshot{Config: cfg, Nesting: nesting, ConfigPath: a.cfgPath, AppVersion: formatAppVersion(version, commit), OS: runtime.GOOS, CredentialFindings: slices.Clone(a.credentialFindings)}, nil
 }
 
 // ReloadConfig re-reads the config from disk. Call after external edits
@@ -2339,7 +2344,7 @@ func (a *App) CredentialStoreToken(accountKey, token string) CredentialSetupResu
 	a.invalidateCredential(accountKey)
 	defer a.invalidateCredential(accountKey)
 	a.mu.Lock()
-	_, ok := a.cfg.Accounts[accountKey]
+	acct, ok := a.cfg.Accounts[accountKey]
 	a.mu.Unlock()
 
 	if !ok {
@@ -2349,7 +2354,7 @@ func (a *App) CredentialStoreToken(accountKey, token string) CredentialSetupResu
 		return CredentialSetupResult{OK: false, Message: "Token cannot be empty"}
 	}
 
-	if err := credential.StoreToken(accountKey, strings.TrimSpace(token)); err != nil {
+	if err := credential.StoreTokenWithAccount(accountKey, strings.TrimSpace(token), acct); err != nil {
 		return CredentialSetupResult{OK: false, Message: err.Error()}
 	}
 
@@ -3044,12 +3049,13 @@ type DoctorToolDTO struct {
 }
 
 // DoctorReport is the full "System check" result: the tool list plus a
-// rolled-up boolean saying "any required tool missing?".
+// rolled-up status for required tools and credential permissions.
 type DoctorReport struct {
-	Tools      []DoctorToolDTO `json:"tools"`
-	AllOK      bool            `json:"allOk"`      // true when nothing required is missing
-	MissingReq int             `json:"missingReq"` // count of required tools that are missing
-	MissingOpt int             `json:"missingOpt"` // count of optional tools that are missing
+	CredentialFindings []credential.Finding `json:"credentialFindings"`
+	Tools              []DoctorToolDTO      `json:"tools"`
+	AllOK              bool                 `json:"allOk"`      // true when required tools and credential permissions pass
+	MissingReq         int                  `json:"missingReq"` // count of required tools that are missing
+	MissingOpt         int                  `json:"missingOpt"` // count of optional tools that are missing
 }
 
 // DoctorPrecheckDTO is the point-of-use answer for "is credential type X
@@ -3072,7 +3078,12 @@ func (a *App) DoctorRun() DoctorReport {
 	results := doctor.Check(doctor.StandardTools())
 	required := gatherRequiredTools(cfg)
 
-	report := DoctorReport{Tools: make([]DoctorToolDTO, 0, len(results)), AllOK: true}
+	findings := a.refreshCredentialAudit()
+	return makeDoctorReport(results, required, findings)
+}
+
+func makeDoctorReport(results []doctor.Result, required map[string]string, findings []credential.Finding) DoctorReport {
+	report := DoctorReport{Tools: make([]DoctorToolDTO, 0, len(results)), CredentialFindings: findings, AllOK: len(findings) == 0}
 	for _, r := range results {
 		reason, isRequired := required[r.Tool.Name]
 		dto := DoctorToolDTO{
