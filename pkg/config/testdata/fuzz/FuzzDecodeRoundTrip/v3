@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"version\":3,\"global\":{\"folder\":\"~/git\",\"extra_folders\":[\"/work\",\"~/git/\",\"/more\"]},\"accounts\":{\"gh\":{\"provider\":\"github\",\"url\":\"https://github.com\",\"username\":\"u\",\"name\":\"N\",\"email\":\"e@e\"}},\"sources\":{\"gh\":{\"account\":\"gh\",\"repos\":{\"org/repo\":{}}}}}")

@@ -37,6 +37,14 @@ I also assert that the health gate and formatter pin the same markdownlint packa
 - **Unit tests** — always run, no credentials needed. Package-level tests in `pkg/`, isolated with `t.TempDir()` and `t.Setenv()`; `cmd/gui` tests call `App` methods directly, without the Wails runtime.
 - **Integration tests** — require `test-gitbox.json` at repo root with real provider credentials, through `requireIntegration(t)`. They fail with a clear message when the file is missing and skip with `-short`. Today the only one is the scenario test, `TestScenario_FullLifecycle` in `pkg/ops`: the full account → clone → mirror → rename → delete lifecycle against a real provider. Name new ones `TestIntegration_*`.
 
+## Fuzz tests
+
+I keep Go fuzz targets in `pkg/<package>/fuzz_test.go` and small checked-in corpora in `pkg/<package>/testdata/fuzz/<target>/`. Ordinary tests run the seeds; `HEALTH_FUZZ=1 ./scripts/health.sh fuzz` generates mutations for 10 seconds per target with two workers. The Linux PR health job opts in. A longer pass selects exactly one target, for example `go test ./pkg/config/ -run='^$' -fuzz='^FuzzDecodeRoundTrip$' -fuzztime=1m -parallel=2`.
+
+`FuzzDecodeRoundTrip` uses external `config_test` to compare repository intent through `status.RepoPath` without an import cycle, and checks migration to `CurrentVersion`. `FuzzStripJSONC` checks no panic, no growth and exact preservation of valid JSON. I keep a minimized failure in the target's corpus after fixing the cause, retain example tests with distinct assertions, and leave the generated fuzz cache untracked.
+
+`FuzzRepoPath` checks absolute results and lexical containment within the selected default/source/repo root for absolute roots and safe relative components. The relative-path domain allows empty and nested paths but excludes parent segments, backslashes, NUL and leading tildes. Separate branches check absolute clone overrides and one leading `../` followed by a safe relative path. Native temporary-root seeds keep the property active on Windows and POSIX. This is a test boundary, not config validation or a symlink guarantee; arbitrary accepted configs can still escape roots or resolve relatively.
+
 ## When adding features or fixing bugs
 
 - Add or update tests that cover the change. Check the helpers below before writing new ones.

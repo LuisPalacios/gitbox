@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"url\":\"https://example.com/a//b\",\"comment\":\"/* keep */\",\"quote\":\"\\\"\",\"slash\":\"\\\\\"}\n")

@@ -1,0 +1,7 @@
+go test fuzz v1
+string("/synthetic/first")
+string("/synthetic/second")
+string("")
+string("")
+string("")
+byte(0)
