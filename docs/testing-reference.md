@@ -10,7 +10,7 @@ Counts are top-level Go test functions (subtests from `t.Run` and `TestMain` are
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-The current total is 627 Go tests (545 in `pkg/`, 82 in `cmd/gui/`) and 48 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
+The current total is 628 Go tests (546 in `pkg/`, 82 in `cmd/gui/`) and 48 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
 
 ### Shared library (`pkg/`)
 
@@ -29,7 +29,7 @@ The current total is 627 Go tests (545 in `pkg/`, 82 in `cmd/gui/`) and 48 front
   - `audit_test.go` (4), `audit_unix_test.go` (2): missing directories, unexpected entries, symbolic links, directory and file modes, unreadable directories, and metadata-only checks that never repair permissions.
   - `audit_windows_test.go` (3, Windows only): controlled protected DACL fixtures for files and directories, owner/SYSTEM/Administrators grants, inherited and inherit-only entries, deny entries, NULL versus empty DACLs, and unverifiable descriptors or ACE types.
 - **`pkg/doctor`** (34) — the tool table and install hints, tool lookup (extra folders, `~/.local/bin`, stored paths, Windows shims), the GCM probe (asking git, install folders, reported missing), per-credential-type prechecks, UTF-16 tool output decoding. `wsl_windows_test.go` (Windows only) reads WSL distros from the registry and proves the WSL install stub is never run.
-- **`pkg/git`** (39) — git subprocess operations (status, clone, branches, branch sweeps), remote and profile URLs, repo and nested repo discovery, connects refused within milliseconds, config snapshots with includes, multi-value keys and linked worktrees. `incoming_test.go` covers incoming-only history, divergence, differently named upstream branches, empty and missing upstreams, long lists, Unicode, record parsing and unchanged clone files. Clone arguments preserve helper entries intact without including the token.
+- **`pkg/git`** (40) — git subprocess operations (status, clone, branches, branch sweeps), remote and profile URLs, repo and nested repo discovery, connects refused within milliseconds, config snapshots with includes, multi-value keys and linked worktrees. `incoming_test.go` covers incoming-only history, divergence, differently named upstream branches, empty and missing upstreams, long lists, Unicode, record parsing and unchanged clone files. Clone arguments preserve helper entries intact without including the token. I check both status readers with stale index metadata and an existing lock, and verify that only ordinary Git status refreshes the index.
 - **`pkg/gitignore`** (23) — the managed global gitignore block: round trip, merge with user content, idempotent install, an existing `core.excludesfile`, duplicate cleanup, backups.
 - **`pkg/harness`** (28) — the embedded AI harness directory (parsing, retired tools), harness sync (detection, missing and reinstalled tools, user entries, ordering), WezTerm `launch_menu` parsing.
 - **`pkg/heal`** (11) — expected origin URL per credential type, URL redaction, identity repair, stripping embedded tokens, two reads and no writes for an unchanged clone, shadowed identity, linked worktrees.
