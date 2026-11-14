@@ -10,7 +10,7 @@ Counts are top-level Go test functions (subtests from `t.Run` and `TestMain` are
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-The current total is 622 Go tests (540 in `pkg/`, 82 in `cmd/gui/`) and 48 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
+The current total is 627 Go tests (545 in `pkg/`, 82 in `cmd/gui/`) and 48 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
 
 ### Shared library (`pkg/`)
 
@@ -43,7 +43,7 @@ The current total is 622 Go tests (540 in `pkg/`, 82 in `cmd/gui/`) and 48 front
 - **`pkg/reconcile`** (8) — confident clones adopted in place, undecided ones left with their reason, a moved clone re-linked, a deleted clone kept, an offline root left alone, ignored clones skipped, adopting into a picked account, linked worktrees never adopted.
 - **`pkg/status`** (18) — clone status (clean, dirty, ahead, behind, not cloned, detached), branch detection, root offline, repo paths through source and repo roots, nesting (including a container inside a container).
 - **`pkg/terminals`** (57) — catalog shape, OS-aware profile composition, WezTerm and Windows Terminal lookups, launch resolution, merge and sync rules, WSL distros detected without running `wsl.exe`.
-- **`pkg/update`** (28) — semver parsing and comparison, the update check (a pending update reported on every check, the major-version cap), artifact names, AppImage notify-only detection, install targets, relaunch and waiting for the old process (plus the elevated Windows script, Windows only), checksum verification, release signatures checked against fixtures made by real `ssh-keygen` (wrong tag, tampered checksums, wrong namespace, foreign key, malformed), the embedded key matching `allowed_signers`, and fail-closed downloads.
+- **`pkg/update`** (33) — semver parsing and comparison, the update check (a pending update reported on every check, the major-version cap), artifact names, AppImage notify-only detection, install targets, relaunch and waiting for the old process (plus the elevated Windows script, Windows only), checksum verification, release signatures checked against fixtures made by real `ssh-keygen` (wrong tag, tampered checksums, wrong namespace, foreign key, malformed), the embedded key matching `allowed_signers`, and fail-closed downloads, plus exact-host HTTPS token gating across redirects (including downgrade, unlisted subdomains, caller policies and redirect limits).
 - **`pkg/workspace`** (12) — `.code-workspace` files at a clone root, one file making a container, several asking once and keeping the pick, a preferred file winning again when it comes back, a vanished file clearing the pick, placeholders for listed folders missing inside a container (never inside another clone), the clones a workspace lists, JSON with comments.
 
 ### Fuzz properties
