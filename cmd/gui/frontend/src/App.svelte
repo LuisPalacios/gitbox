@@ -7,6 +7,7 @@
     applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, workspacePlaceholders, workspaceMembers
   } from './lib/stores';
   import { detailLocked, attentionRank, accountHealth, CALM_RANK } from './lib/status';
+  import { createDetailLoader } from './lib/repo-detail';
   import type { HealthFix } from './lib/status';
   import { resolveView, viewAccount, accountView, attentionCounts } from './lib/views';
   import { languageStore, normalizeLanguage, t } from './lib/i18n';
@@ -817,7 +818,7 @@
 
   // closeDetailIf drops the open detail panel when a collapse hides its row.
   function closeDetailIf(hidden: (key: string) => boolean) {
-    if (expandedRepo && !detailLoading && hidden(expandedRepo)) {
+    if (expandedRepo && hidden(expandedRepo)) {
       expandedRepo = null;
       repoDetail = null;
     }
@@ -876,6 +877,12 @@
   let expandedRepo: string | null = null;
   let repoDetail: RepoDetailView | null = null;
   let detailLoading = false;
+  const detailLoader = createDetailLoader(bridge.getRepoDetail);
+
+  $: if (!expandedRepo) {
+    detailLoader.cancel();
+    detailLoading = false;
+  }
 
   // Auto-collapse expanded detail when the repo no longer needs attention.
   $: if (expandedRepo) {
@@ -886,26 +893,27 @@
     }
   }
 
-  async function toggleRepoDetail(sourceKey: string, repoName: string, status: string) {
-    // Only expand for repos that need attention (not clean, behind, not cloned, or in-progress)
+  function toggleRepoDetail(sourceKey: string, repoName: string, status: string) {
+    // I include incoming updates among the states with details to inspect.
     if (detailLocked(status)) return;
     const key = `${sourceKey}/${repoName}`;
-    if (expandedRepo === key && !detailLoading) {
+    if (expandedRepo === key) {
+      detailLoader.cancel();
       expandedRepo = null;
       repoDetail = null;
       return;
     }
-    if (detailLoading) return; // Ignore clicks while a detail fetch is in flight
     expandedRepo = key;
+    void loadRepoDetail(sourceKey, repoName);
+  }
+
+  async function loadRepoDetail(sourceKey: string, repoName: string) {
+    const key = `${sourceKey}/${repoName}`;
     repoDetail = null;
     detailLoading = true;
-    try {
-      const raw = await bridge.getRepoDetail(sourceKey, repoName);
-      // Go nil slices serialize as JSON null — normalise to empty arrays.
-      repoDetail = { ...raw, changed: raw.changed || [], untracked: raw.untracked || [] };
-    } catch (e: any) {
-      repoDetail = { branch: '', ahead: 0, behind: 0, changed: [], untracked: [], error: String(e) };
-    }
+    const detail = await detailLoader.load(sourceKey, repoName);
+    if (!detail || expandedRepo !== key) return;
+    repoDetail = detail;
     detailLoading = false;
   }
 
@@ -1577,15 +1585,11 @@
       statusGeneration++;
       applyStatusResults(results);
       // Refresh expanded detail if a repo is still open (reactive $: handles auto-collapse).
-      if (expandedRepo && !detailLoading) {
+      if (expandedRepo && !detailLocked($repoStates[expandedRepo]?.status)) {
         const slash = expandedRepo.indexOf('/');
         const sk = expandedRepo.substring(0, slash);
         const rn = expandedRepo.substring(slash + 1);
-        bridge.getRepoDetail(sk, rn).then((raw) => {
-          if (expandedRepo === `${sk}/${rn}`) {
-            repoDetail = { ...raw, changed: raw.changed || [], untracked: raw.untracked || [] };
-          }
-        }).catch(() => {});
+        void loadRepoDetail(sk, rn);
       }
     });
 

@@ -373,7 +373,7 @@
     {@const kind = simpleKind(state.status)}
     {@const kindColor = simpleColor(kind, $themeStore)}
     {#if childCount > 0}{@render foldChevron()}{:else}<span class="dot" class:spinning={busy} style="color: {kindColor}">{busy ? '↻' : '●'}</span>{/if}
-    {#if childCount > 0}
+    {#if childCount > 0 && !rowOpensDetail}
       <span class="repo-name" class:ws-member={inWorkspace} title={repoName}><span class="repo-name-toggle" role="button" tabindex="-1"
         on:click={(e) => { e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants); }}
         on:keydown={onActivateKey(() => toggleRepoCollapsed(repoKey, descendants))}>{shortName(repoName)}</span></span>
@@ -422,8 +422,8 @@
     {/if}
   {:else}
   {#if childCount > 0}{@render foldChevron()}{:else}<span class="dot" class:spinning={busy} style="color: {sc(state.status)}">{rowGlyph(state.status, !!fetchingRepos[repoKey])}</span>{/if}
-  {#if childCount > 0}
-    <!-- The name folds its clones too. -->
+  {#if childCount > 0 && !rowOpensDetail}
+    <!-- I keep name-based folding when this clone has no details. -->
     <span class="repo-name" class:ws-member={inWorkspace}><span class="repo-name-toggle" role="button" tabindex="-1"
       title={collapsedRepos.has(repoKey) ? $t('collapse.expand') : $t('collapse.collapse')}
       on:click={(e) => { e.stopPropagation(); toggleRepoCollapsed(repoKey, descendants); }}

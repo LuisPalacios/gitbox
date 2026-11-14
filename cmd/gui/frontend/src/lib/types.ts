@@ -213,6 +213,8 @@ export interface RepoDetailView {
   behind: number;
   changed: { kind: string; path: string }[];
   untracked: string[];
+  incoming: { hash: string; author: string; subject: string }[];
+  incomingError?: string;
   error?: string;
   upstreamGone?: boolean;
   upstreamError?: string;

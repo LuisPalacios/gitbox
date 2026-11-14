@@ -1,6 +1,5 @@
 <script lang="ts">
-  // The detail panel under a repo row: the gone-upstream warning, or the
-  // branch, the counts and the changed and untracked files.
+  // I show incoming commits alongside the clone's local file details.
   import { slide } from 'svelte/transition';
   import { themeStore } from '../stores';
   import { statusColor, countBadge } from '../status';
@@ -24,7 +23,8 @@
   }
 </script>
 
-<div class="repo-detail" transition:slide={{ duration: 150 }}>
+<!-- svelte-ignore a11y_no_noninteractive_tabindex (I make the scrollable region reachable by keyboard.) -->
+<div class="repo-detail" role="region" aria-label={$t('detail.title')} tabindex="0" aria-busy={detailLoading} transition:slide={{ duration: 150 }}>
   {#if simple && (state.status === 'upstream gone' || repoDetail?.upstreamGone)}
     <div class="detail-gone">
       <p class="detail-gone-body" style="color:{sc('upstream gone')}">&#9888; {$t('simple.gone')}</p>
@@ -58,6 +58,24 @@
         <span class="detail-badge" style="color:{sc(countBadge('behind').color)}">{repoDetail.behind} {$t(countBadge('behind').word)}</span>
       {/if}
     </div>
+    {/if}
+    {#if repoDetail.behind > 0 || repoDetail.incoming.length > 0 || repoDetail.incomingError}
+      <div class="detail-section-title">{$t(simple ? 'detail.incomingSimple' : 'detail.incoming')} <span class="sbadge" style="color:{sc('behind')}">{repoDetail.incoming.length}</span></div>
+      <p class="detail-freshness">{$t('detail.incomingFreshness')}</p>
+      {#if repoDetail.incomingError}
+        <p class="detail-error">{$t('detail.incomingError')} {repoDetail.incomingError}</p>
+      {:else if repoDetail.incoming.length === 0}
+        <p class="detail-clean">{$t('detail.noIncoming')}</p>
+      {:else}
+        <ul class="detail-commits">
+          {#each repoDetail.incoming as commit (commit.hash)}
+            <li class="detail-commit">
+              <span class="detail-subject" translate="no">{commit.subject}</span>
+              <span class="detail-author" translate="no">{commit.author}</span>
+            </li>
+          {/each}
+        </ul>
+      {/if}
     {/if}
     {#if repoDetail.changed.length > 0}
       <div class="detail-section-title">{$t('simple.changedFiles')} <span class="sbadge" style="color:{sc(countBadge('modified').color)}">{countBadge('modified').glyph}{repoDetail.changed.length}</span></div>
@@ -96,6 +114,12 @@
     color: var(--text-muted); font-style: italic;
   }
   .detail-error { color: var(--text-primary); }
+  .detail-freshness { margin: 3px 0 6px; color: var(--text-muted); font-size: 11px; }
+  .detail-commits { list-style: none; margin: 0; padding: 0; }
+  .detail-commit { display: flex; flex-direction: column; gap: 2px; padding: 5px 0; }
+  .detail-commit + .detail-commit { border-top: 1px solid var(--border); }
+  .detail-subject { color: var(--text-primary); overflow-wrap: anywhere; }
+  .detail-author { color: var(--text-secondary); font-size: 11px; overflow-wrap: anywhere; }
   .detail-gone {
     display: flex; flex-direction: column; gap: 6px;
     font-size: 12px; line-height: 1.45;

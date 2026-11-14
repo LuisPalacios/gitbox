@@ -10,7 +10,7 @@ Counts are top-level Go test functions (subtests from `t.Run` and `TestMain` are
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-The current total is 599 Go tests (521 in `pkg/`, 78 in `cmd/gui/`) and 42 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
+The current total is 604 Go tests (525 in `pkg/`, 79 in `cmd/gui/`) and 48 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
 
 ### Shared library (`pkg/`)
 
@@ -25,7 +25,7 @@ The current total is 599 Go tests (521 in `pkg/`, 78 in `cmd/gui/`) and 42 front
   - `collapsed_test.go`, `save_test.go`: layout-state pruning (folds, sidebar, the view of a deleted account, the retired `workspaces` view key), the backup ring, no backup for layout-only and theme-only saves, and a backup always kept for a file written by an older config version.
 - **`pkg/credential`** (38) — token resolution from `GITBOX_TOKEN_<KEY>` and `GIT_TOKEN`, token checks with expiry and rejected tokens, OS-default GCM helper and store, global gitconfig health for GCM (`CheckGlobalGCMConfig`, `FixGlobalGCMConfig`), SSH key and config lookup, cancellation with a stalled helper, compare-first per-repo credential config, and atomic credential-file writes with concurrent readers. Real helper queries check GitLab usernames and file paths with spaces and shell characters.
 - **`pkg/doctor`** (34) — the tool table and install hints, tool lookup (extra folders, `~/.local/bin`, stored paths, Windows shims), the GCM probe (asking git, install folders, reported missing), per-credential-type prechecks, UTF-16 tool output decoding. `wsl_windows_test.go` (Windows only) reads WSL distros from the registry and proves the WSL install stub is never run.
-- **`pkg/git`** (35) — git subprocess operations (status, clone, branches, branch sweeps), remote and profile URLs, repo and nested repo discovery, connects refused within milliseconds, config snapshots with includes, multi-value keys and linked worktrees. Clone arguments preserve helper entries intact without including the token.
+- **`pkg/git`** (39) — git subprocess operations (status, clone, branches, branch sweeps), remote and profile URLs, repo and nested repo discovery, connects refused within milliseconds, config snapshots with includes, multi-value keys and linked worktrees. `incoming_test.go` covers incoming-only history, divergence, differently named upstream branches, empty and missing upstreams, long lists, Unicode, record parsing and unchanged clone files. Clone arguments preserve helper entries intact without including the token.
 - **`pkg/gitignore`** (23) — the managed global gitignore block: round trip, merge with user content, idempotent install, an existing `core.excludesfile`, duplicate cleanup, backups.
 - **`pkg/harness`** (28) — the embedded AI harness directory (parsing, retired tools), harness sync (detection, missing and reinstalled tools, user entries, ordering), WezTerm `launch_menu` parsing.
 - **`pkg/heal`** (11) — expected origin URL per credential type, URL redaction, identity repair, stripping embedded tokens, two reads and no writes for an unchanged clone, shadowed identity, linked worktrees.
@@ -57,12 +57,14 @@ The current total is 599 Go tests (521 in `pkg/`, 78 in `cmd/gui/`) and 42 front
 - `probe_test.go` (10) — upstream probes: bounded concurrency, shared flights and throttling, cancellation, a shared deadline for credential lookup, stale config and rotated tokens, shutdown.
 - `startup_test.go` (2 + `BenchmarkStartupSnapshot`) — nesting before clones exist, a snapshot detached from the live config.
 - `update_test.go` (1) — the AppImage build refuses `ApplyUpdate` before any download.
+- `repo_detail_test.go` (1) — incoming commits and local file details coexist, and the preview clears after the clone receives the commits.
 
 ### Frontend (`cmd/gui/frontend/src/lib/`)
 
 `npm test` in `cmd/gui/frontend` runs these with `node --test`; `./scripts/health.sh frontend-test` runs the same suite.
 
 - `repo-tree.test.mjs` (8) — the clone tree: cross-source ownership, no duplicate rows, nested collapse, recovery from stale parents and cycles, alphabetical order, attention groups split by account, a container's placeholder rows.
+- `repo-detail.test.mjs` (6) — nil-slice normalisation, switching clones, closing and reopening during a read, out-of-order refreshes, current versus superseded errors, complete incoming lists and independent history errors.
 - `status.test.mjs` (12) — each status's shape, colour, spinner, Simple kind, count badges, detail-panel rule, credential rules, attention rank and glossary label; account health per mode; the token-expiry warning.
 - `views.test.mjs` (5) — saved-view resolution, account views, the Needs attention list and its counts.
 - `activity.test.mjs` (7) — Fetch all and Pull all scopes and summaries, connection failures grouped by host.

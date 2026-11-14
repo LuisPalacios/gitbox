@@ -159,6 +159,8 @@ Abstraction layer for Git hosting provider APIs. Each provider implements `ListR
 
 Thin wrapper around `os/exec` for all Git operations, with no libgit2 dependency. Provides `Clone`, `CloneWithProgress`, `Pull`, `Status`, `Fetch`, `ConfigSet`, `ConfigAdd`, `ConfigUnsetAll` and more (see `pkg/git/git.go`). Multi-value git config keys such as `credential.helper` are managed with `ConfigUnsetAll` + `ConfigAdd`.
 
+I use `IncomingCommits` in `pkg/git/incoming.go` to read `HEAD..@{upstream}` from local refs, returning each incoming commit's hash, author and subject without fetching or modifying the clone. `GetRepoDetail` includes this history when the branch is behind and reports history errors separately from local-file details. The frontend's `repo-detail.ts` loader discards superseded reads so switching clones or refreshing an open panel cannot display an older response.
+
 On macOS, `GitBin()` probes the Homebrew paths (`/opt/homebrew/bin/git`, `/usr/local/bin/git`) before falling back to `PATH`, so the GUI finds a GCM-enabled git even with the minimal `PATH` that macOS GUI apps inherit.
 
 ### pkg/status — Sync status checking

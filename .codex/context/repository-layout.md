@@ -8,14 +8,14 @@ read-when: When locating a component or changing the repository structure.
 cmd/
   gui/                    Wails v2 + Svelte GUI (GitboxApp), the only binary
     frontend/src/         Svelte frontend: App.svelte composes the shell; style.css holds the theme tokens
-      lib/                Shared modules (bridge, stores, status, views, activity, notices, theme, i18n, rich, repo-tree + *.test.mjs) and shared pieces (Card, Logo, Rich, LauncherMenu, CredentialResult, PrecheckBanner, …)
+      lib/                Shared modules (bridge, stores, status, views, activity, notices, theme, i18n, rich, repo-tree, repo-detail + *.test.mjs) and shared pieces (Card, Logo, Rich, LauncherMenu, CredentialResult, PrecheckBanner, …)
       lib/components/     Dashboard parts (top bar, activity strip, banners, settings, sidebar, Needs attention / All / account / Mirrors views, account card and menu, repo tree/row/detail, footer, notices, compact view)
       lib/modals/         One component per modal + modals.css (the shared dialog kit)
 pkg/                      Shared Go library
   ops/                    Account, credential, clone and discovery service layer the GUI calls (+ TestScenario_FullLifecycle)
   config/                 Config v5 model (clone roots in roots.go), load/save, v2→v3→v4→v5 migration
   credential/             Credential verification (GCM, SSH, token); global GCM helper check accepts any helper resolving to git-credential-manager (short name or absolute path)
-  git/                    Git subprocess operations (os/exec); global config get/get-all/set/unset
+  git/                    Git subprocess operations (os/exec); global config get/get-all/set/unset; incoming.go reads incoming commit history from local upstream refs
   provider/               Provider API clients + mirror interfaces (GitHub, GitLab, Gitea, Forgejo)
   mirror/                 Push/pull mirror setup, status, guides
   workspace/              Container .code-workspace files: Sync (flag containers, record repo.workspace), Members, Placeholders; never writes them

@@ -166,7 +166,7 @@ Una credencial ausente o rota tiñe la tarjeta de rojo claro, y un aviso la tiñ
 La vista **Todos los repos** se pliega a dos niveles, y la vista de una cuenta también pliega los clones padre:
 
 - **Grupos de cuenta** — cada cuenta va en su propia tarjeta suave, aquí y en **Requiere atención**. Su nombre, en mayúsculas y en el color de su proveedor (GitHub índigo, GitLab naranja, Gitea verde, Forgejo rojo, Bitbucket azul), queda en la columna de los puntos de estado de debajo, junto al triángulo ▾ relleno que cuelga a su izquierda. Haz clic en la barra de cabecera o en el nombre para plegar su lista de clones. La cabecera siempre muestra cuántos clones contiene y cuántos requieren atención, plegada o no, así que un problema nunca queda oculto tras un pliegue. El menú ⋯ de la cabecera sigue funcionando y nunca pliega el grupo.
-- **Clones con clones debajo** — un clon que tiene clones anidados o carpetas de workspace aún sin clonar bajo él muestra un chevron ▾ de línea en lugar de su punto de estado, así que su nombre queda alineado con el de sus hermanos; sus palabras de estado siguen diciendo cómo está. Haz clic en el chevron o en el nombre del clon para plegar todo lo que hay debajo, a cualquier profundidad. Una fila plegada muestra cuántas filas oculta y cuántas de ellas requieren atención. Ninguno de los dos abre el detalle del repo.
+- **Clones con clones debajo** — un clon que tiene clones anidados o carpetas de workspace aún sin clonar bajo él muestra un chevron ▾ de línea en lugar de su punto de estado, así que su nombre queda alineado con el de sus hermanos; sus palabras de estado siguen diciendo cómo está. Haz clic en el chevron para plegar todo lo que hay debajo, a cualquier profundidad. Cuando el clon tiene actualizaciones, cambios locales u otros detalles que revisar, su nombre abre el panel de detalle; en caso contrario, su nombre también pliega los hijos. Una fila plegada muestra cuántas filas oculta y cuántas de ellas requieren atención.
 
 Gitbox recuerda lo que pliegas entre reinicios (`global.collapsed` en `gitbox.json`) y olvida las entradas de cuentas o clones que borras o renombras. La vista compacta mantiene su propia expansión por cuenta.
 
@@ -212,13 +212,16 @@ Las comprobaciones del arranque, las periódicas y las manuales comparten un ún
 
 #### Ver detalles
 
-Haz clic en un repo que muestre cambios locales, conflictos u otros problemas. Se abre un panel con:
+Haz clic en el nombre de un repo que muestre actualizaciones disponibles, cambios locales, conflictos u otros problemas. Un panel se abre justo debajo de su fila; haz clic otra vez en el nombre para cerrarlo. En Simple y Avanzado puedo revisar:
 
-- La rama actual y cuántos commits vas por delante o por detrás.
+- La rama actual y cuántos commits voy por delante o por detrás (solo Avanzado).
+- Cada commit entrante, del más reciente al más antiguo, con su autor y mensaje. Son los commits del upstream de la rama actual que mi rama local no contiene.
 - Cada archivo cambiado, con un icono de lo que ocurrió (añadido, eliminado, renombrado, modificado).
 - Cualquier archivo sin seguimiento.
 
-El panel se actualiza solo cuando Gitbox detecta cambios nuevos.
+El panel mantiene un tamaño compacto y permite recorrer la lista completa con scroll. Conserva los detalles de los archivos pendientes junto a los commits entrantes cuando existen ambos. La lista refleja la última comprobación de actualizaciones; **Comprobar todo** (Avanzado: **Fetch de todo**) la refresca. Abrir el panel no ejecuta fetch ni pull, y **Actualizar** sigue siendo la acción explícita que incorpora los cambios entrantes al clon.
+
+El panel se refresca cuando Gitbox detecta cambios nuevos y se cierra cuando el clon ya no requiere atención. Cambiar de repositorio mientras cargan los detalles nunca sustituye la nueva selección por un resultado anterior.
 
 ### Vista compacta
 

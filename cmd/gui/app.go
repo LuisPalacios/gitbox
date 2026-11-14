@@ -1862,17 +1862,19 @@ func (a *App) PullRepo(sourceKey, repoKey string) {
 
 // RepoDetail holds human-readable status information for a single repo.
 type RepoDetail struct {
-	Branch        string           `json:"branch"`
-	Ahead         int              `json:"ahead"`
-	Behind        int              `json:"behind"`
-	Changed       []git.FileChange `json:"changed"`
-	Untracked     []string         `json:"untracked"`
-	Error         string           `json:"error,omitempty"`
-	UpstreamGone  bool             `json:"upstreamGone,omitempty"`
-	UpstreamError string           `json:"upstreamError,omitempty"`
+	Branch        string               `json:"branch"`
+	Ahead         int                  `json:"ahead"`
+	Behind        int                  `json:"behind"`
+	Changed       []git.FileChange     `json:"changed"`
+	Untracked     []string             `json:"untracked"`
+	Incoming      []git.IncomingCommit `json:"incoming"`
+	IncomingError string               `json:"incomingError,omitempty"`
+	Error         string               `json:"error,omitempty"`
+	UpstreamGone  bool                 `json:"upstreamGone,omitempty"`
+	UpstreamError string               `json:"upstreamError,omitempty"`
 }
 
-// GetRepoDetail returns local file-level status and the latest upstream flag.
+// GetRepoDetail returns local files, incoming commits and the latest upstream flag.
 // I share the bounded background probe without delaying expanded details.
 func (a *App) GetRepoDetail(sourceKey, repoKey string) RepoDetail {
 	a.mu.Lock()
@@ -1902,7 +1904,7 @@ func (a *App) GetRepoDetail(sourceKey, repoKey string) RepoDetail {
 			UpstreamGone: goneFlag,
 		}
 	}
-	return RepoDetail{
+	detail := RepoDetail{
 		Branch:       branch,
 		Ahead:        ahead,
 		Behind:       behind,
@@ -1910,6 +1912,13 @@ func (a *App) GetRepoDetail(sourceKey, repoKey string) RepoDetail {
 		Untracked:    untracked,
 		UpstreamGone: goneFlag,
 	}
+	if behind > 0 {
+		detail.Incoming, err = git.IncomingCommits(path)
+		if err != nil {
+			detail.IncomingError = err.Error()
+		}
+	}
+	return detail
 }
 
 // FetchRepo runs git fetch on a single repo and emits fetch:done + refreshes status.
