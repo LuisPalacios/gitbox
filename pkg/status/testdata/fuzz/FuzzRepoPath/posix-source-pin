@@ -1,0 +1,7 @@
+go test fuzz v1
+string("/synthetic/first")
+string("/synthetic/second")
+string("nested/source")
+string("group/team")
+string("repo")
+byte(1)

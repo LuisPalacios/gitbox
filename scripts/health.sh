@@ -9,11 +9,12 @@
 # Usage:
 #   ./scripts/health.sh                 # every check
 #   ./scripts/health.sh go svelte       # only the named checks ("go" = all Go checks)
+#   HEALTH_FUZZ=1 ./scripts/health.sh fuzz # mutation passes (10s per target)
 #   ./scripts/health.sh -v              # print every finding, not just the first 15
 #
 # Checks: gofmt vet staticcheck modernize govulncheck deadcode test
 #         svelte frontend-test build npm-install npm-audit shellcheck actionlint markdown
-#         harness
+#         harness fuzz (fuzz requires HEALTH_FUZZ=1)
 #
 # Go analyzers are fetched at pinned versions (go run / go install into the
 # run's temp dir), so they need no install and give the same results
@@ -160,6 +161,22 @@ run_test() {
     return 1
 }
 
+# A fuzz command accepts exactly one target. Keep successes quiet while
+# retaining the complete reproducer and corpus path on failure.
+run_fuzz() {
+    local spec package target rc=0
+    for spec in config:FuzzDecodeRoundTrip workspace:FuzzStripJSONC status:FuzzRepoPath; do
+        package="${spec%%:*}"
+        target="${spec#*:}"
+        if ! go test "./pkg/$package/" -run='^$' -fuzz="^$target$" -fuzztime=10s -parallel=2 \
+            >"$tmp/fuzz-$target.full" 2>&1; then
+            cat "$tmp/fuzz-$target.full"
+            rc=1
+        fi
+    done
+    return "$rc"
+}
+
 run_frontend_test() {
     (cd "$FRONTEND" && npm test) >"$tmp/frontend-test.full" 2>&1 && return 0
     cat "$tmp/frontend-test.full"
@@ -279,6 +296,7 @@ want modernize go   && check modernize   run_modernize
 want govulncheck go && check govulncheck run_govulncheck
 want deadcode go    && check deadcode    run_deadcode
 want test go        && check test        run_test
+[[ ${HEALTH_FUZZ:-0} == 1 ]] && want fuzz go && check fuzz run_fuzz
 want svelte fe      && check svelte      run_svelte
 want frontend-test fe && check frontend-test run_frontend_test
 want build fe       && check build       run_build

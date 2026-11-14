@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"version\":4,\"global\":{\"roots\":[\"/tmp\"]},\"accounts\":{\"a\":{\"provider\":\"github\",\"url\":\"https://github.com\",\"username\":\"u\",\"name\":\"n\",\"email\":\"e@e\"}},\"sources\":{\"a\":{\"account\":\"a\",\"repos\":{\"o/r\":{\"container\":true,\"workspace\":\"r.code-workspace\"}}}},\"workspaces\":{\"w\":{\"discovered\":true,\"file\":\"/tmp/w.code-workspace\",\"members\":[]}}}")

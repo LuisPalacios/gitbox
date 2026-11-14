@@ -46,6 +46,16 @@ The current total is 622 Go tests (540 in `pkg/`, 82 in `cmd/gui/`) and 48 front
 - **`pkg/update`** (28) — semver parsing and comparison, the update check (a pending update reported on every check, the major-version cap), artifact names, AppImage notify-only detection, install targets, relaunch and waiting for the old process (plus the elevated Windows script, Windows only), checksum verification, release signatures checked against fixtures made by real `ssh-keygen` (wrong tag, tampered checksums, wrong namespace, foreign key, malformed), the embedded key matching `allowed_signers`, and fail-closed downloads.
 - **`pkg/workspace`** (12) — `.code-workspace` files at a clone root, one file making a container, several asking once and keeping the pick, a preferred file winning again when it comes back, a vanished file clearing the pick, placeholders for listed folders missing inside a container (never inside another clone), the clones a workspace lists, JSON with comments.
 
+### Fuzz properties
+
+I keep fuzz targets separate from the `Test*` counts above. `pkg/config/fuzz_test.go` compares sets of source, repo, resolved clone path, effective credential type, container flag and workspace after `Parse` → `Marshal` → `Parse`; both parses must yield `CurrentVersion`. The seed corpus contains the comment-free `json/gitbox.jsonc` example and the existing v2, v3 and v4 migration fixtures. The external `config_test` package lets the property call `status.RepoPath` without a config/status import cycle.
+
+`pkg/workspace/fuzz_test.go` feeds arbitrary bytes to `stripJSONC`: it must not panic or grow the input, and valid JSON must remain byte-for-byte unchanged. Seeds include comments, trailing commas, comment-like strings, escapes and truncated input. These properties complement the existing example tests, which assert specific migration and stripping results; I retain those tests.
+
+`pkg/status/fuzz_test.go` checks `FuzzRepoPath` within an explicit domain: two absolute roots and safe relative source, ID and ordinary clone paths. Empty overrides and nested relative paths are valid; parent segments, backslashes, NUL and leading tildes are outside the relative-path domain. The target checks that the result stays absolute and lexically inside the selected default, source or repo root. Separate branches check absolute clone overrides and one leading `../` followed by a safe relative path. Native temporary-root seeds run on every OS; the checked-in corpus also includes POSIX and Windows roots.
+
+This boundary belongs to the test, not the config validator. Accepted configs can still contain relative roots, traversal components or unsupported `~name` overrides. The property does not guarantee containment for those inputs or follow symlinks on disk.
+
 ### GUI bindings (`cmd/gui/`)
 
 - `credential_audit_test.go` (3) — startup findings in detached snapshots, rechecks clear stale findings, permission findings prevent a successful System check report, and token saves use the account format without clones or environment-token substitution.

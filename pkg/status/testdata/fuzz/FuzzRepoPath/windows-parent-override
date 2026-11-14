@@ -1,0 +1,7 @@
+go test fuzz v1
+string("C:/synthetic/first")
+string("D:/synthetic/second")
+string("source")
+string("group")
+string("../outside/repo")
+byte(1)

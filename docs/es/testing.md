@@ -17,6 +17,29 @@ Esta guía cubre los niveles de prueba, el fixture `test-gitbox.json` y las chec
 
 `wails build` también lo crea. Consulta [developer-guide.md › Compilar desde el código fuente](developer-guide.md#compilar-desde-el-código-fuente).
 
+## Pruebas fuzz
+
+Mantengo pequeños corpus de semillas de Go en `testdata/fuzz/<target>/` dentro de cada paquete. `go test` y `go test -short` normales ejecutan estas entradas sin generar mutaciones. Ejecuto las semillas directamente con:
+
+```bash
+go test ./pkg/config/ ./pkg/workspace/ ./pkg/status/
+```
+
+Activo las pasadas de mutaciones con `HEALTH_FUZZ=1`; la comprobación de salud predeterminada sigue ejecutando solo las semillas. Cada target dispone de 10 segundos y dos workers. El job de salud de PR en Linux activa esta variable. Puedo ejecutar solo estas pasadas o incluirlas en la comprobación completa:
+
+```bash
+HEALTH_FUZZ=1 ./scripts/health.sh fuzz
+HEALTH_FUZZ=1 ./scripts/health.sh
+```
+
+Para investigar durante más tiempo selecciono un solo target explícitamente:
+
+```bash
+go test ./pkg/config/ -run='^$' -fuzz='^FuzzDecodeRoundTrip$' -fuzztime=1m -parallel=2
+```
+
+`FuzzDecodeRoundTrip` comprueba la intención de la config migrada, `FuzzStripJSONC` comprueba las propiedades de la eliminación de comentarios y `FuzzRepoPath` comprueba la resolución de rutas dentro de su dominio de entrada seguro documentado; [testing-reference.md](testing-reference.md#propiedades-fuzz) describe las aserciones. Go guarda una entrada que falla en el directorio `testdata/fuzz/` del target e imprime un comando para reproducirla. Conservo la entrada minimizada como semilla de regresión después de corregir su causa; no copio la caché de fuzz al repositorio.
+
 ## Pre-push hook
 
 `.githooks/pre-push` ejecuta una comprobación `gofmt -s -l`, `go vet ./...` y `go test -short ./...` antes de cada push, y construye primero el frontend cuando falta `cmd/gui/frontend/dist`. Los push que solo llevan tags lo saltan. Lo activo una vez por clon:

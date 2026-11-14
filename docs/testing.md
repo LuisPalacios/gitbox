@@ -17,6 +17,29 @@ This guide covers the test levels, the `test-gitbox.json` fixture, and the check
 
 `wails build` creates it too. See [developer-guide.md › Building from source](developer-guide.md#building-from-source).
 
+## Fuzz tests
+
+I keep small Go seed corpora under each package's `testdata/fuzz/<target>/`. Ordinary `go test` and `go test -short` execute these inputs without generating mutations. I run the seeds directly with:
+
+```bash
+go test ./pkg/config/ ./pkg/workspace/ ./pkg/status/
+```
+
+I opt into mutation passes with `HEALTH_FUZZ=1`; the default health check keeps running only the seeds. Each target gets 10 seconds and two workers. The Linux PR health job enables this flag. I can run just these passes or include them in the full gate:
+
+```bash
+HEALTH_FUZZ=1 ./scripts/health.sh fuzz
+HEALTH_FUZZ=1 ./scripts/health.sh
+```
+
+For a longer investigation I select one target explicitly:
+
+```bash
+go test ./pkg/config/ -run='^$' -fuzz='^FuzzDecodeRoundTrip$' -fuzztime=1m -parallel=2
+```
+
+`FuzzDecodeRoundTrip` checks migrated config intent, `FuzzStripJSONC` checks stripping properties, and `FuzzRepoPath` checks path resolution within its documented safe input domain; [testing-reference.md](testing-reference.md#fuzz-properties) describes the assertions. Go saves a failing input under the target's `testdata/fuzz/` directory and prints a reproduction command. I keep the minimized input as a regression seed after fixing its cause; I do not copy the fuzz cache into the repository.
+
 ## Pre-push hook
 
 `.githooks/pre-push` runs a `gofmt -s -l` check, `go vet ./...` and `go test -short ./...` before every push, and builds the frontend first when `cmd/gui/frontend/dist` is missing. Tag-only pushes skip it. I activate it once per clone:
