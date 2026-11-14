@@ -133,9 +133,8 @@ type CloneProgress struct {
 // progressRe matches git progress lines like "Receiving objects:  45% (114/253)".
 var progressRe = regexp.MustCompile(`^(remote: )?([\w ]+):\s+(\d+)%`)
 
-// CloneWithProgress runs git clone --progress and calls onProgress with updates.
-// stderr is parsed for percentage lines; stdout is discarded.
-func CloneWithProgress(url, dest string, opts CloneOpts, onProgress func(CloneProgress)) error {
+// cloneArgs keeps each -c entry intact so Git receives helper strings verbatim.
+func cloneArgs(url, dest string, opts CloneOpts) []string {
 	args := []string{"clone", "--progress"}
 	for _, c := range opts.ConfigArgs {
 		args = append(args, "-c", c)
@@ -152,6 +151,14 @@ func CloneWithProgress(url, dest string, opts CloneOpts, onProgress func(ClonePr
 		args = append(args, "--branch", opts.Branch)
 	}
 	args = append(args, url, dest)
+
+	return args
+}
+
+// CloneWithProgress runs git clone --progress and calls onProgress with updates.
+// stderr is parsed for percentage lines; stdout is discarded.
+func CloneWithProgress(url, dest string, opts CloneOpts, onProgress func(CloneProgress)) error {
+	args := cloneArgs(url, dest, opts)
 
 	cmd := exec.Command(GitBin(), args...)
 	cmd.Dir = "."

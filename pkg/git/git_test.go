@@ -4,6 +4,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -520,3 +522,35 @@ func TestIsUpstreamGoneError(t *testing.T) {
 type testErr struct{ msg string }
 
 func (e *testErr) Error() string { return e.msg }
+
+func TestCloneArgs_TokenStoreHelper(t *testing.T) {
+	const cloneURL = "https://alice@example.com/alice/repo.git"
+	const helper = "credential.helper=store --file '/config with spaces/credentials/account'"
+	opts := CloneOpts{ConfigArgs: []string{"credential.helper=", helper}, Depth: 1, Branch: "main"}
+	args := cloneArgs(cloneURL, "/clone destination", opts)
+	want := []string{"clone", "--progress", "-c", "credential.helper=", "-c", helper,
+		"--depth", "1", "--branch", "main", cloneURL, "/clone destination"}
+	if !slices.Equal(args, want) {
+		t.Fatalf("clone argv = %q, want %q", args, want)
+	}
+	for _, arg := range args {
+		if strings.Contains(arg, "fake-secret") {
+			t.Fatal("token leaked into clone argv")
+		}
+	}
+	for _, tc := range []struct {
+		name string
+		opts CloneOpts
+		flag string
+	}{
+		{"bare", CloneOpts{Bare: true}, "--bare"},
+		{"mirror", CloneOpts{Bare: true, Mirror: true}, "--mirror"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			want := []string{"clone", "--progress", tc.flag, cloneURL, "/dest"}
+			if args := cloneArgs(cloneURL, "/dest", tc.opts); !slices.Equal(args, want) {
+				t.Fatalf("clone argv = %q, want %q", args, want)
+			}
+		})
+	}
+}

@@ -10,7 +10,7 @@ Los recuentos son funciones de prueba Go de nivel superior (no se cuentan los su
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-El total actual es de 593 pruebas Go (516 en `pkg/`, 77 en `cmd/gui/`) y 42 pruebas del frontend. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
+El total actual es de 599 pruebas Go (521 en `pkg/`, 78 en `cmd/gui/`) y 42 pruebas del frontend. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
 
 ### Biblioteca compartida (`pkg/`)
 
@@ -23,9 +23,9 @@ El total actual es de 593 pruebas Go (516 en `pkg/`, 77 en `cmd/gui/`) y 42 prue
   - `roots_test.go`: raíces de clonado (añadir, hacer predeterminada, quitar y olvidar, ubicar un repo) con cada ruta de clon fijada.
   - `crud_test.go`, `clones_test.go`, `ai_harness_test.go`: CRUD de cuentas, sources, repos y mirrors, clones ignorados, la copia profunda que usan los escaneos sin bloqueo, entradas de AI harness.
   - `collapsed_test.go`, `save_test.go`: poda del estado de layout (pliegues, barra lateral, la vista de una cuenta borrada, la clave de vista `workspaces` retirada), el ring de backups, ningún backup en los guardados solo de layout y solo de tema, y un backup que siempre se conserva para un archivo escrito por una versión anterior de la config.
-- **`pkg/credential`** (36) — resolución de tokens desde `GITBOX_TOKEN_<KEY>` y `GIT_TOKEN`, comprobaciones de token con caducidad y tokens rechazados, helper y store de GCM por defecto del OS, salud del gitconfig global para GCM (`CheckGlobalGCMConfig`, `FixGlobalGCMConfig`), búsqueda de claves SSH y de config, cancelación con un helper bloqueado, config de credenciales por repo con comparación previa, y escrituras atómicas de archivos de credenciales con lectores concurrentes.
+- **`pkg/credential`** (38) — resolución de tokens desde `GITBOX_TOKEN_<KEY>` y `GIT_TOKEN`, comprobaciones de token con caducidad y tokens rechazados, helper y store de GCM por defecto del OS, salud del gitconfig global para GCM (`CheckGlobalGCMConfig`, `FixGlobalGCMConfig`), búsqueda de claves SSH y de config, cancelación con un helper bloqueado, config de credenciales por repo con comparación previa, y escrituras atómicas de archivos de credenciales con lectores concurrentes. Las consultas reales al helper comprueban el usuario de GitLab y las rutas de archivos con espacios y caracteres de shell.
 - **`pkg/doctor`** (34) — la tabla de herramientas y las pistas de instalación, búsqueda de herramientas (carpetas extra, `~/.local/bin`, rutas guardadas, shims de Windows), el sondeo de GCM (preguntar a git, carpetas de instalación, ausente), comprobaciones previas por tipo de credencial, decodificación de la salida UTF-16 de las herramientas. `wsl_windows_test.go` (solo Windows) lee las distros de WSL del registro y demuestra que el stub de instalación de WSL nunca se ejecuta.
-- **`pkg/git`** (34) — operaciones git mediante subprocess (status, clone, ramas, barridos de ramas), URLs de remoto y de perfil, descubrimiento de repos y de repos anidados, conexiones rechazadas en milisegundos, instantáneas de config con includes, claves multivalor y worktrees enlazados.
+- **`pkg/git`** (35) — operaciones git mediante subprocess (status, clone, ramas, barridos de ramas), URLs de remoto y de perfil, descubrimiento de repos y de repos anidados, conexiones rechazadas en milisegundos, instantáneas de config con includes, claves multivalor y worktrees enlazados. Los argumentos de clonado conservan intactas las entradas del helper sin incluir el token.
 - **`pkg/gitignore`** (23) — el bloque gestionado del gitignore global: ida y vuelta, fusión con contenido del usuario, instalación idempotente, un `core.excludesfile` existente, limpieza de duplicados, backups.
 - **`pkg/harness`** (28) — el directorio de AI harness embebido (parseo, herramientas retiradas), la sincronización de harnesses (detección, herramientas ausentes y reinstaladas, entradas del usuario, orden), parseo del `launch_menu` de WezTerm.
 - **`pkg/heal`** (11) — URL de origin esperada por tipo de credencial, ocultación de URLs, reparación de identidad, eliminación de tokens embebidos, dos lecturas y ninguna escritura para un clon sin cambios, identidad sobrescrita, worktrees enlazados.
@@ -34,7 +34,7 @@ El total actual es de 593 pruebas Go (516 en `pkg/`, 77 en `cmd/gui/`) y 42 prue
 - **`pkg/launch`** (13) — expansión de argv, quoting de shell POSIX, envoltura de AI harness por shell (PowerShell, cmd, POSIX), AppleScript de macOS.
 - **`pkg/mirror`** (6) — parseo de URLs remotas, descubrimiento de mirrors, clasificación de errores de estado.
 - **`pkg/move`** (5) — parseo de claves de repo, URLs de clone HTTPS, validación previa.
-- **`pkg/ops`** (18) — 17 pruebas unitarias aisladas (añadir, descartar, renombrar y borrar cuentas, también entre dos raíces de clonado; sugerir una clave de cuenta; cambiar y borrar credenciales; borrar un repo; planificar un clone; reconfigurar clones; añadir repos descubiertos) más `TestScenario_FullLifecycle`.
+- **`pkg/ops`** (20) — 19 pruebas unitarias aisladas (añadir, descartar, renombrar y borrar cuentas, también entre dos raíces de clonado; sugerir una clave de cuenta; cambiar y borrar credenciales; borrar un repo; planificar un clone sin secretos, rechazar fallos al preparar el token y autenticar mediante el helper aislado; reconfigurar clones; añadir repos descubiertos) más `TestScenario_FullLifecycle`.
 - **`pkg/provider`** (52) — el cliente HTTP, el parseo de la API de cada proveedor (repos, paginación, crear, borrar, mirrors, listas de PR) y la caducidad del token (formatos de cabecera de GitHub sin petición extra, `personal_access_tokens/self` de GitLab, una caducidad desconocida sigue pasando).
 - **`pkg/reconcile`** (8) — clones seguros adoptados en su sitio, los indecisos dejados con su motivo, un clon movido vuelto a enlazar, un clon borrado conservado, una raíz no disponible dejada en paz, clones ignorados omitidos, adopción en una cuenta elegida, worktrees enlazados nunca adoptados.
 - **`pkg/status`** (18) — estado del clon (limpio, con cambios, por delante, por detrás, sin clonar, detached), detección de rama, raíz no disponible, rutas de repo a través de las raíces de source y de repo, anidamiento (incluido un contenedor dentro de otro).
@@ -44,6 +44,7 @@ El total actual es de 593 pruebas Go (516 en `pkg/`, 77 en `cmd/gui/`) y 42 prue
 
 ### Bindings de la GUI (`cmd/gui/`)
 
+- `clone_test.go` (1) — informar de los destinos de clonado restantes sin cambiar la config del repositorio, los directorios ni los destinos de enlaces simbólicos.
 - `account_actions_test.go`, `browser_actions_test.go` (4) — resolución de la carpeta de cuenta, URLs de proveedor, rutas de error para cuentas y repos desconocidos.
 - `roots_test.go` (2) — añadir, hacer predeterminada y quitar raíces de clonado; carpetas de cuenta a través de la raíz de la source.
 - `reconcile_test.go` (3) — un clon seguro adoptado y guardado, un reintento cuando la config cambia durante el escaneo, adopción en una cuenta elegida, ignorar un clon y adoptarlo desde la lista de ignorados.

@@ -2,7 +2,6 @@ package ops
 
 import (
 	"fmt"
-	"net/url"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
@@ -11,21 +10,20 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/status"
 )
 
-// ClonePlan is everything needed to clone one configured repo. Building the
-// plan reads the config; running it doesn't, so the caller can release its
-// config lock while git transfers data.
+// ClonePlan is everything needed to clone one configured repo. I resolve the
+// config and prepare token credentials while building the plan, so the caller
+// can release its config lock while Git transfers data.
 type ClonePlan struct {
 	SourceKey string
 	RepoKey   string
 	Dest      string // absolute clone destination
-	URL       string // URL handed to git clone (may embed a token)
+	URL       string // canonical clone URL without a token or password
 	Opts      git.CloneOpts
 }
 
 // PlanClone resolves the destination, URL and git options for cloning a
-// configured repo. For token accounts the token is embedded in the clone URL
-// and the global credential helper is cancelled, so GCM can't store a ghost
-// credential; heal.Repo strips the token from the stored origin afterwards.
+// configured repo. For token accounts, I prepare the credential-store file
+// before cloning and reset global helpers so Git only uses that account's file.
 func PlanClone(cfg *config.Config, sourceKey, repoKey string) (ClonePlan, error) {
 	src, ok := cfg.Sources[sourceKey]
 	if !ok {
@@ -50,13 +48,14 @@ func PlanClone(cfg *config.Config, sourceKey, repoKey string) (ClonePlan, error)
 	}
 
 	if credType == "token" {
-		if tok, _, err := credential.ResolveToken(acct, src.Account); err == nil && tok != "" {
-			if u, err := url.Parse(plan.URL); err == nil {
-				u.User = url.UserPassword(acct.Username, tok)
-				plan.URL = u.String()
-			}
+		credFile := credential.CredentialFilePath(src.Account)
+		if err := credential.WriteCredentialFile(credFile, acct, src.Account); err != nil {
+			return ClonePlan{}, err
 		}
-		plan.Opts.ConfigArgs = []string{"credential.helper="}
+		plan.Opts.ConfigArgs = []string{
+			"credential.helper=",
+			"credential.helper=" + credential.StoreHelper(credFile),
+		}
 	}
 	return plan, nil
 }

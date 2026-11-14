@@ -10,7 +10,7 @@ Counts are top-level Go test functions (subtests from `t.Run` and `TestMain` are
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-The current total is 593 Go tests (516 in `pkg/`, 77 in `cmd/gui/`) and 42 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
+The current total is 599 Go tests (521 in `pkg/`, 78 in `cmd/gui/`) and 42 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
 
 ### Shared library (`pkg/`)
 
@@ -23,9 +23,9 @@ The current total is 593 Go tests (516 in `pkg/`, 77 in `cmd/gui/`) and 42 front
   - `roots_test.go`: clone roots (add, make default, remove and forget, place a repo) with every clone path pinned.
   - `crud_test.go`, `clones_test.go`, `ai_harness_test.go`: account, source, repo and mirror CRUD, ignored clones, the deep copy used by unlocked scans, AI harness entries.
   - `collapsed_test.go`, `save_test.go`: layout-state pruning (folds, sidebar, the view of a deleted account, the retired `workspaces` view key), the backup ring, no backup for layout-only and theme-only saves, and a backup always kept for a file written by an older config version.
-- **`pkg/credential`** (36) — token resolution from `GITBOX_TOKEN_<KEY>` and `GIT_TOKEN`, token checks with expiry and rejected tokens, OS-default GCM helper and store, global gitconfig health for GCM (`CheckGlobalGCMConfig`, `FixGlobalGCMConfig`), SSH key and config lookup, cancellation with a stalled helper, compare-first per-repo credential config, and atomic credential-file writes with concurrent readers.
+- **`pkg/credential`** (38) — token resolution from `GITBOX_TOKEN_<KEY>` and `GIT_TOKEN`, token checks with expiry and rejected tokens, OS-default GCM helper and store, global gitconfig health for GCM (`CheckGlobalGCMConfig`, `FixGlobalGCMConfig`), SSH key and config lookup, cancellation with a stalled helper, compare-first per-repo credential config, and atomic credential-file writes with concurrent readers. Real helper queries check GitLab usernames and file paths with spaces and shell characters.
 - **`pkg/doctor`** (34) — the tool table and install hints, tool lookup (extra folders, `~/.local/bin`, stored paths, Windows shims), the GCM probe (asking git, install folders, reported missing), per-credential-type prechecks, UTF-16 tool output decoding. `wsl_windows_test.go` (Windows only) reads WSL distros from the registry and proves the WSL install stub is never run.
-- **`pkg/git`** (34) — git subprocess operations (status, clone, branches, branch sweeps), remote and profile URLs, repo and nested repo discovery, connects refused within milliseconds, config snapshots with includes, multi-value keys and linked worktrees.
+- **`pkg/git`** (35) — git subprocess operations (status, clone, branches, branch sweeps), remote and profile URLs, repo and nested repo discovery, connects refused within milliseconds, config snapshots with includes, multi-value keys and linked worktrees. Clone arguments preserve helper entries intact without including the token.
 - **`pkg/gitignore`** (23) — the managed global gitignore block: round trip, merge with user content, idempotent install, an existing `core.excludesfile`, duplicate cleanup, backups.
 - **`pkg/harness`** (28) — the embedded AI harness directory (parsing, retired tools), harness sync (detection, missing and reinstalled tools, user entries, ordering), WezTerm `launch_menu` parsing.
 - **`pkg/heal`** (11) — expected origin URL per credential type, URL redaction, identity repair, stripping embedded tokens, two reads and no writes for an unchanged clone, shadowed identity, linked worktrees.
@@ -34,7 +34,7 @@ The current total is 593 Go tests (516 in `pkg/`, 77 in `cmd/gui/`) and 42 front
 - **`pkg/launch`** (13) — argv expansion, POSIX shell quoting, AI harness wrapping per shell (PowerShell, cmd, POSIX), macOS AppleScript.
 - **`pkg/mirror`** (6) — remote URL parsing, mirror discovery, status error classification.
 - **`pkg/move`** (5) — repo key parsing, HTTPS clone URLs, preflight validation.
-- **`pkg/ops`** (18) — 17 isolated unit tests (add, discard, rename and delete accounts, also across two clone roots; suggest an account key; change and delete credentials; delete a repo; plan a clone; reconfigure clones; add discovered repos) plus `TestScenario_FullLifecycle`.
+- **`pkg/ops`** (20) — 19 isolated unit tests (add, discard, rename and delete accounts, also across two clone roots; suggest an account key; change and delete credentials; delete a repo; plan a secret-free clone, reject token-preparation failures and authenticate through the isolated helper; reconfigure clones; add discovered repos) plus `TestScenario_FullLifecycle`.
 - **`pkg/provider`** (52) — the HTTP client, provider API parsing for every provider (repos, pagination, create, delete, mirrors, PR lists), and token expiry (GitHub header layouts with no extra request, GitLab `personal_access_tokens/self`, unknown expiry still passing).
 - **`pkg/reconcile`** (8) — confident clones adopted in place, undecided ones left with their reason, a moved clone re-linked, a deleted clone kept, an offline root left alone, ignored clones skipped, adopting into a picked account, linked worktrees never adopted.
 - **`pkg/status`** (18) — clone status (clean, dirty, ahead, behind, not cloned, detached), branch detection, root offline, repo paths through source and repo roots, nesting (including a container inside a container).
@@ -44,6 +44,7 @@ The current total is 593 Go tests (516 in `pkg/`, 77 in `cmd/gui/`) and 42 front
 
 ### GUI bindings (`cmd/gui/`)
 
+- `clone_test.go` (1) — report remaining clone destinations without changing repository config, directories or symlink targets.
 - `account_actions_test.go`, `browser_actions_test.go` (4) — account folder resolution, provider URLs, error paths for unknown accounts and repos.
 - `roots_test.go` (2) — add, make default and remove clone roots; account folders through the source root.
 - `reconcile_test.go` (3) — a confident clone adopted and saved, a retry when the config changes during the scan, adopting into a picked account, ignoring a clone and adopting it from the ignored list.
