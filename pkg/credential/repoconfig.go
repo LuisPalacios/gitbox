@@ -1,16 +1,11 @@
 package credential
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
 	"net/url"
-	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
-	"sync"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
@@ -175,7 +170,10 @@ func WriteCredentialFile(filePath string, acct config.Account, accountKey string
 		return fmt.Errorf("resolving token for credential file: %w", err)
 	}
 
-	// Build the credential line in git-credential-store format.
+	return writeCredentialFileAtomic(filePath, credentialLine(acct, token))
+}
+
+func credentialLine(acct config.Account, token string) []byte {
 	hostname := extractHostname(acct.URL)
 	scheme := "https"
 	if u, err := url.Parse(acct.URL); err == nil && u.Scheme == "http" {
@@ -185,48 +183,8 @@ func WriteCredentialFile(filePath string, acct config.Account, accountKey string
 	if acct.Provider == "gitlab" && username == "" {
 		username = "oauth2"
 	}
-	line := fmt.Sprintf("%s://%s:%s@%s\n", scheme, url.PathEscape(username), url.PathEscape(token), hostname)
-
-	// Serialize the compare and atomic replacement across fetch workers sharing
-	// an account. Readers see either complete version, never a truncated file.
-	credentialFileMu.Lock()
-	defer credentialFileMu.Unlock()
-	data, readErr := os.ReadFile(filePath)
-	if readErr == nil && bytes.Equal(data, []byte(line)) {
-		info, err := os.Stat(filePath)
-		if err != nil {
-			return err
-		}
-		if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
-			return os.Chmod(filePath, 0o600)
-		}
-		return nil
-	}
-	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-		return fmt.Errorf("reading credential file: %w", readErr)
-	}
-	if err := os.MkdirAll(filepath.Dir(filePath), 0o700); err != nil {
-		return fmt.Errorf("creating credentials directory: %w", err)
-	}
-	file, err := os.CreateTemp(filepath.Dir(filePath), ".credential-*")
-	if err != nil {
-		return fmt.Errorf("creating credential file: %w", err)
-	}
-	defer os.Remove(file.Name())
-	if _, err := file.WriteString(line); err != nil {
-		_ = file.Close()
-		return fmt.Errorf("writing credential file: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return fmt.Errorf("closing credential file: %w", err)
-	}
-	if err := os.Rename(file.Name(), filePath); err != nil {
-		return fmt.Errorf("replacing credential file: %w", err)
-	}
-	return nil
+	return fmt.Appendf(nil, "%s://%s:%s@%s\n", scheme, url.PathEscape(username), url.PathEscape(token), hostname)
 }
-
-var credentialFileMu sync.Mutex
 
 // extractHostname extracts the hostname from a URL string, stripping scheme and path.
 func extractHostname(rawURL string) string {

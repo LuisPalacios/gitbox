@@ -33,8 +33,10 @@ DEADCODE="golang.org/x/tools/cmd/deadcode@v0.50.0"
 
 # Functions deadcode may report: kept on purpose, used only from tests or
 # kept as part of a small public API. One regex per line.
-# I retain standalone sync/cache wrappers for library callers and their tests.
-DEADCODE_ALLOW='unreachable func: (PSDecode|resetLookupCachesForTest|Version\.String)$
+# I retain standalone sync/cache wrappers and the legacy raw-token writer
+# for library callers and their compatibility tests.
+DEADCODE_ALLOW='pkg[/\\]credential[/\\]credential[.]go:[0-9]+:[0-9]+: unreachable func: StoreToken$
+unreachable func: (PSDecode|resetLookupCachesForTest|Version\.String)$
 pkg[/\\]terminals[/\\]sync[.]go:[0-9]+:[0-9]+: unreachable func: Sync$
 pkg[/\\]workspace[/\\]workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCache$'
 

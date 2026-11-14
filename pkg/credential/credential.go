@@ -1,7 +1,7 @@
 // Package credential handles credential storage and retrieval for gitbox accounts.
 //
 // Three credential types are supported:
-//   - token: PAT stored in ~/.config/gitbox/credentials/<accountKey>.token
+//   - token: PAT stored in ~/.config/gitbox/credentials/<accountKey>
 //   - gcm:   Git Credential Manager handles git auth; token extracted via "git credential fill" for API access
 //   - ssh:   SSH key pairs for git auth; API access requires a separate PAT (same file storage)
 package credential
@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -20,21 +19,20 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/git"
 )
 
-// StoreToken stores a PAT in the git-credential-store format file.
-// Location: ~/.config/gitbox/credentials/<accountKey>
-// The same file is used by both gitbox (API calls) and git CLI (clone/push/pull).
-// To write the credential-store format, the account config is needed — use
-// StoreTokenWithAccount. This function is a convenience for cases where only
-// the raw token needs to be stored (it writes just the token, and
-// WriteCredentialFile should be called afterward to update the git format).
+// StoreToken writes the legacy raw-token format with one trailing newline.
+// GetToken accepts both this format and git-credential-store URLs. Call
+// StoreTokenWithAccount when the account is known so Git can use the file too.
 func StoreToken(accountKey, token string) error {
-	// Write raw token to a temp marker so GetToken can find it before
-	// WriteCredentialFile runs. GetToken reads both formats.
-	path := CredentialFilePath(accountKey)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("creating credentials directory: %w", err)
+	if err := writeCredentialFileAtomic(CredentialFilePath(accountKey), []byte(strings.TrimSpace(token)+"\n")); err != nil {
+		return fmt.Errorf("storing token for %q: %w", accountKey, err)
 	}
-	if err := os.WriteFile(path, []byte(strings.TrimSpace(token)+"\n"), 0o600); err != nil {
+	return nil
+}
+
+// StoreTokenWithAccount writes a PAT as a git-credential-store URL directly,
+// without an intermediate raw-token file or environment-variable resolution.
+func StoreTokenWithAccount(accountKey, token string, acct config.Account) error {
+	if err := writeCredentialFileAtomic(CredentialFilePath(accountKey), credentialLine(acct, strings.TrimSpace(token))); err != nil {
 		return fmt.Errorf("storing token for %q: %w", accountKey, err)
 	}
 	return nil
@@ -46,7 +44,11 @@ func StoreToken(accountKey, token string) error {
 // and gitbox API calls.
 func GetToken(accountKey string) (string, error) {
 	path := CredentialFilePath(accountKey)
+	// Go opens Windows files without delete sharing. Coordinate our readers
+	// with replacement so a concurrent token lookup cannot block a writer.
+	credentialFileMu.Lock()
 	data, err := os.ReadFile(path)
+	credentialFileMu.Unlock()
 	if err != nil {
 		return "", fmt.Errorf("token not found for %q: %w", accountKey, err)
 	}

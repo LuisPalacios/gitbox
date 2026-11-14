@@ -33,20 +33,30 @@ La comprobación de credenciales de Gitbox te dice en qué situación estás. Si
 
 ## Almacenamiento de PAT
 
-Gitbox guarda cada Personal Access Token (PAT) en un archivo por cuenta, `~/.config/gitbox/credentials/<accountKey>` (modo de archivo `0600`, legible solo por el propietario).
+Guardo cada Personal Access Token (PAT) en un archivo por cuenta, `~/.config/gitbox/credentials/<accountKey>`. En macOS y Linux, Gitbox crea el directorio con modo `0700` y los archivos con modo `0600`. En Windows, las listas de control de acceso (ACL) determinan el acceso; el modo Unix no establece quién puede leer un archivo.
 
-El formato del archivo depende de quién lo lee:
+Guardar un PAT o renombrar una cuenta escribe el **formato git-credential-store** (`https://user:token@host`):
 
-- Las **cuentas Token** usan el **formato git-credential-store** (`https://user:token@host`), porque git lee este archivo directamente mediante `credential.helper = store --file <path>`. Gitbox lee el mismo archivo para las llamadas a la API.
-- Las **cuentas SSH y GCM** guardan el **token en bruto** (la cadena del PAT, en una línea). Git nunca lee este archivo: SSH se autentica con las claves de `~/.ssh/`, y GCM guarda su propia credencial en el almacén de credenciales del SO. Solo Gitbox lo lee, para las llamadas a la API (discovery, creación de repos) y las operaciones de mirror.
+- Las **cuentas Token** permiten que git lea este archivo mediante `credential.helper = store --file <path>`. Gitbox lee el mismo archivo para las llamadas a la API.
+- Las **cuentas SSH y GCM** usan el archivo solo para las llamadas de Gitbox a la API (discovery, creación de repos) y las operaciones de mirror. SSH sigue autenticándose con las claves de `~/.ssh/`, y GCM guarda su propia credencial git en el almacén de credenciales del SO.
 
-Gitbox lee ambos formatos: primero interpreta el archivo como una URL y, si no lo es, como un token en bruto.
+Gitbox sigue leyendo los archivos existentes con el token en bruto (la cadena del PAT, en una línea). Primero interpreta el archivo como una URL y, si no lo es, como un token en bruto.
+
+Para una actualización, Gitbox prepara un archivo temporal en el mismo directorio, lo sincroniza y lo cierra, y después sustituye el destino. Conserva el archivo anterior si falla la preparación y evita reescribir contenido idéntico. Una escritura normal puede restaurar el modo Unix `0600` del archivo; la auditoría de permisos de abajo nunca cambia permisos.
 
 Cuando Gitbox necesita un token, lo busca en este orden:
 
 1. Variable de entorno específica de la cuenta (`GITBOX_TOKEN_<ACCOUNT_KEY>`, la clave de la cuenta en mayúsculas y con los guiones convertidos en guiones bajos)
 2. Variable de entorno genérica `GIT_TOKEN` (alternativa para CI)
 3. Archivo de credencial (`~/.config/gitbox/credentials/<accountKey>`)
+
+### Permisos de los archivos de credenciales
+
+Al arrancar, Gitbox audita el directorio de credenciales y sus entradas usando solo metadatos: no lee el contenido de los tokens. En macOS y Linux, espera el modo `0700` para el directorio y `0600` para los archivos. En Windows, inspecciona las ACL del directorio y de los archivos y señala las concesiones a identidades distintas del propietario, SYSTEM o Administrators. También informa de los permisos que no puede verificar, los enlaces simbólicos y los tipos de entrada inesperados.
+
+Abre **Ajustes → Comprobación del sistema → Ejecutar** para inspeccionar los hallazgos y sus acciones sugeridas. Si la auditoría detecta exposición, aparece un aviso sobre el panel, incluida la vista Compacta. El aviso abre el mismo informe. Una inspección fallida aparece como un hallazgo en lugar de una comprobación correcta.
+
+Revisa y cambia los permisos con las herramientas de tu sistema operativo y después pulsa **Volver a comprobar** en Comprobación del sistema para repetir la auditoría. La auditoría nunca repara permisos automáticamente.
 
 ## GCM (Git Credential Manager)
 
@@ -135,7 +145,7 @@ Necesita los mismos scopes que el PAT de una cuenta Token: ver [Scopes de token 
 **Almacenamiento:** 2 secretos:
 
 - **Operaciones** → par de claves SSH en `~/.ssh/` (clave privada + clave pública + entrada de config).
-- **Acceso a la API** → PAT en `~/.config/gitbox/credentials/<account>` (token en bruto).
+- **Acceso a la API** → PAT en `~/.config/gitbox/credentials/<account>` (formato git-credential-store; Gitbox sigue leyendo los archivos existentes con tokens en bruto).
 
 Sin el PAT, la cuenta funciona para las operaciones git, pero no puede descubrir repos, crear repos ni configurar mirrors.
 
@@ -180,7 +190,7 @@ Puedes verificar las credenciales en cualquier momento:
 Los tipos de credencial dependen de binarios externos que pueden faltar en la máquina actual: GCM necesita `git-credential-manager`; SSH necesita `ssh`, `ssh-keygen` y `ssh-add`. Gitbox los comprueba antes de iniciar una configuración:
 
 - **Flujos de configuración** — abrir el modal de añadir cuenta o de cambiar credencial ejecuta una comprobación previa. Si falta una herramienta necesaria, un banner amarillo la nombra con el comando de instalación para tu SO. La configuración no se ejecuta automáticamente hasta que la instales y hagas clic en **Volver a comprobar**; aun así, puedes continuar manualmente.
-- **Comprobación del sistema** — abre **Ajustes → Comprobación del sistema → Ejecutar** para obtener un inventario completo en cualquier momento: cada herramienta que Gitbox puede llamar (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add` y `wsl` en Windows), dónde está instalada, su versión y si tu config actual la necesita.
+- **Comprobación del sistema** — abre **Ajustes → Comprobación del sistema → Ejecutar** para obtener un inventario completo en cualquier momento: cada herramienta que Gitbox puede llamar (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add` y `wsl` en Windows), dónde está instalada, su versión y si tu config actual la necesita. El mismo informe también audita los [permisos de los archivos de credenciales](#permisos-de-los-archivos-de-credenciales).
 
 Arreglo típico en cada SO:
 

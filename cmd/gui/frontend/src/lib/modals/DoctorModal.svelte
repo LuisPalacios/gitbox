@@ -4,24 +4,31 @@
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
   import type { DoctorReport } from '../bridge';
+  import type { CredentialFinding } from '../types';
   import { dismiss } from '../dismiss';
   import { t } from '../i18n';
 
   // One-line result shown next to the Run button in Settings.
   export let doctorSummary = '';
+  export let credentialFindings: CredentialFinding[] = [];
 
   let showDoctorModal = false;
   let doctorReport: DoctorReport | null = null;
   let doctorLoading = false;
+  let doctorGeneration = 0;
 
   export async function openDoctorModal() {
+    const generation = ++doctorGeneration;
     showDoctorModal = true;
     doctorLoading = true;
     doctorReport = null;
     try {
-      doctorReport = await bridge.doctorRun();
+      const report = await bridge.doctorRun();
+      if (generation !== doctorGeneration) return;
+      doctorReport = report;
+      credentialFindings = report.credentialFindings || [];
     } finally {
-      doctorLoading = false;
+      if (generation === doctorGeneration) doctorLoading = false;
     }
   }
 
@@ -29,7 +36,7 @@
   $: if (doctorReport) {
     doctorSummary = doctorReport.allOk
       ? $t('doctor.allPresent')
-      : $t('doctor.requiredMissing', { n: doctorReport.missingReq });
+      : $t('doctor.attentionRequired');
   }
 </script>
 
@@ -47,13 +54,30 @@
           <p class="doctor-summary">
             {#if doctorReport.allOk}
               <span class="doctor-ok">✓ {$t('doctor.allOk')}</span>
-            {:else}
+            {:else if doctorReport.missingReq > 0}
               <span class="doctor-err">✕ {$t(doctorReport.missingReq === 1 ? 'doctor.missingReqOne' : 'doctor.missingReqN', { n: doctorReport.missingReq })}</span>
             {/if}
             {#if doctorReport.missingOpt > 0}
               <span class="doctor-opt"> {$t(doctorReport.missingOpt === 1 ? 'doctor.missingOptOne' : 'doctor.missingOptN', { n: doctorReport.missingOpt })}</span>
             {/if}
           </p>
+          <h4>{$t('credentialAudit.title')}</h4>
+          {#if credentialFindings.length === 0}
+            <p class="doctor-ok">{$t('credentialAudit.ok')}</p>
+          {:else}
+            <div class="doctor-list">
+              {#each credentialFindings as finding}
+                <div class="doctor-row doctor-row-missing-req">
+                  <div class="doctor-main">
+                    <div class="doctor-name">{$t(`credentialAudit.problem.${finding.problem}`)}</div>
+                    <code class="doctor-path">{finding.path}</code>
+                    <div class="doctor-purpose">{$t(`credentialAudit.hint.${finding.hint}`)}</div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+          <h4>{$t('credentialAudit.tools')}</h4>
           <div class="doctor-list">
             {#each doctorReport.tools as tool}
               <div class="doctor-row" class:doctor-row-missing-req={!tool.found && tool.required}>

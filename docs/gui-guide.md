@@ -466,10 +466,12 @@ Click the **gear icon** to open the settings panel:
 - **Run at startup** — launch Gitbox when you log in, where the platform supports it.
 - **PR / reviews** — show badges for your open PRs and the PRs awaiting your review, with **Include drafts** to count draft PRs.
 - **Global gitignore** — the automatic startup check of `~/.gitignore_global` (see [Global gitignore warning](#global-gitignore-warning)).
-- **System check** — **Run** opens a report of every external tool Gitbox uses (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, and `wsl` on Windows): where it's installed, its version, and an install command for anything missing that your config needs. Each tool reads ok, missing (required by your config) or optional.
+- **System check** — **Run** opens a report of every external tool Gitbox uses (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, and `wsl` on Windows): where it's installed, its version, and an install command for anything missing that your config needs. Each tool reads ok, missing (required by your config) or optional. The report also lists credential-directory and file permission findings, with the path, problem and suggested action. **Re-check** repeats both checks without changing permissions.
 - **Terminals** — **Manager** opens the terminal profile editor (see [Editors and terminal profiles](#editors-and-terminal-profiles)).
 - **Version** — the current app version.
 - **Author** — the project author and a link to the GitHub repository.
+
+At startup, Gitbox checks credential permissions without reading token contents. If it detects exposure, a warning appears above the dashboard, including Compact view, and opens System check. The audit reports problems and unverifiable permissions; it never repairs them automatically. See [Credential file permissions](credentials.md#credential-file-permissions).
 
 The add-account and change-credential flows run the same tool check: if you pick the `gcm` credential type on a machine without Git Credential Manager, a yellow banner shows the install command instead of a cryptic authentication failure later on.
 

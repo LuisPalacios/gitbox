@@ -141,6 +141,14 @@ Con espacio suficiente en la ventana, espero que el contador, el filtro, **Selec
 
 Dejo que terminen la transición de apertura y la actualización de resultados antes de leer las dimensiones de los elementos. Las lecturas intermedias del layout pueden forzar a WebKit a recalcular las dimensiones y ocultar la regresión de #221. Comparo `clientHeight` y `scrollHeight` del cuerpo, inspecciono el resultado renderizado y compruebo los límites de la fila y del pie; buscar texto CSS no prueba el layout.
 
+### Almacenamiento de credenciales y auditoría de permisos
+
+Ejecuto las comprobaciones de permisos contra un `XDG_CONFIG_HOME` temporal con cuentas sintéticas y archivos de credenciales ficticios. Nunca relajo los permisos de credenciales de producción ni copio archivos de credenciales reales en un fixture de exposición.
+
+- Abro **Ajustes → Comprobación del sistema → Ejecutar** y confirmo que los hallazgos de credenciales muestran la ruta afectada, el problema y la acción sugerida sin el contenido del token. Un fixture correcto pasa; un estado de permisos ilegible o no compatible informa de un hallazgo en lugar de un resultado correcto.
+- Solo en el fixture, doy a un archivo ficticio el modo `0644` en Unix o una concesión de ACL Windows fuera de propietario/SYSTEM/Administrators. Tras reiniciar, el aviso de exposición aparece en los paneles completo y Compacto y abre Comprobación del sistema. La auditoría deja los permisos intactos. Después de reparar los permisos del fixture, **Volver a comprobar** elimina el hallazgo y el aviso.
+- Guardo y renombro una cuenta dedicada de pruebas y después confirmo que su credencial sigue funcionando tras reiniciar. Las comprobaciones automatizadas aisladas verifican que ambas acciones escriben directamente el formato git-credential-store, incluso en cuentas sin clones, y siguen leyendo archivos antiguos con tokens en bruto. Nunca imprimo un token real ni el contenido de archivos de credenciales en la salida de las pruebas.
+
 ## Checklist pre-PR
 
 Ejecuto esto antes de cada push o PR. `/test-plan` en Claude Code o `$test-plan` en Codex lo automatiza.

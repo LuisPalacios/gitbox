@@ -426,7 +426,15 @@ export interface MoveResultDTO {
   error?: string;
 }
 
+export interface CredentialFinding {
+  path: string;
+  problem: string;
+  hint: string;
+  exposed: boolean;
+}
+
 export interface StartupSnapshot {
+  credentialFindings: CredentialFinding[];
   config: ConfigDTO;
   nesting: Record<string, string>;
   configPath: string;

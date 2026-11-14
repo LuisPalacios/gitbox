@@ -139,7 +139,7 @@ func RenameAccount(cfg *config.Config, oldKey, newKey string) error {
 
 	// Any credential type may carry a stored token (token accounts as the
 	// primary credential, SSH/GCM accounts as the companion API PAT).
-	migrateStoredToken(oldKey, newKey)
+	migrateStoredToken(oldKey, newKey, acct)
 
 	if acct.DefaultCredentialType == "ssh" {
 		sshFolder := credential.SSHFolder(cfg)
@@ -315,12 +315,12 @@ func ReconfigureClones(cfg *config.Config, accountKey string) []heal.Report {
 }
 
 // migrateStoredToken moves a stored token from oldKey to newKey.
-func migrateStoredToken(oldKey, newKey string) {
+func migrateStoredToken(oldKey, newKey string, acct config.Account) {
 	tok, err := credential.GetToken(oldKey)
 	if err != nil || tok == "" {
 		return
 	}
-	if err := credential.StoreToken(newKey, tok); err != nil {
+	if err := credential.StoreTokenWithAccount(newKey, tok, acct); err != nil {
 		return
 	}
 	_ = credential.DeleteToken(oldKey)
