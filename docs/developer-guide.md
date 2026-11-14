@@ -235,8 +235,10 @@ The GUI updater follows the release GitHub marks as latest, so these rules decid
 
 Two GitHub Actions workflows run:
 
-- `.github/workflows/pr.yml` runs on pull requests and on pushes to `main`: `scripts/health.sh` as the gate (every checker; any finding fails the job), then a Linux `wails build` and a `--version` smoke test.
+- `.github/workflows/pr.yml` runs on pull requests and on pushes to `main`: the Linux `check` job runs `scripts/health.sh` as the gate (every checker; any finding fails the job), then a `wails build` and a `--version` smoke test. In parallel, `native-tests` runs short Go tests for config, status, credential, update, Git, workspace and GUI bindings on Windows and macOS.
 - `.github/workflows/ci.yml` runs on version tags: it builds the app on each platform, packages the installers, and creates the GitHub Release as a draft for `scripts/sign-release.sh` to sign and publish. Before tagging a change that only the release path exercises, I run it as a dry run with `gh workflow run ci.yml -f version=v0.0.0`: every build and installer job runs, and the release job is skipped.
+
+The native jobs build the embedded frontend first, use Go from `go.mod`, and cache Go and npm dependencies per OS. See [Native PR tests](testing.md#native-pr-tests) for the command, Windows runner settings and the manual required-check rollout after the first green hosted run. These native jobs do not launch the GUI; I keep packaged-launch smoke tests in `scripts/smoke.sh`.
 
 ### Release assets
 
