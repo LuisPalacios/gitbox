@@ -440,6 +440,22 @@ export namespace git {
 	        this.path = source["path"];
 	    }
 	}
+	export class IncomingCommit {
+	    hash: string;
+	    author: string;
+	    subject: string;
+
+	    static createFrom(source: any = {}) {
+	        return new IncomingCommit(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hash = source["hash"];
+	        this.author = source["author"];
+	        this.subject = source["subject"];
+	    }
+	}
 
 }
 
@@ -1245,6 +1261,8 @@ export namespace main {
 	    behind: number;
 	    changed: git.FileChange[];
 	    untracked: string[];
+	    incoming: git.IncomingCommit[];
+	    incomingError?: string;
 	    error?: string;
 	    upstreamGone?: boolean;
 	    upstreamError?: string;
@@ -1260,6 +1278,8 @@ export namespace main {
 	        this.behind = source["behind"];
 	        this.changed = this.convertValues(source["changed"], git.FileChange);
 	        this.untracked = source["untracked"];
+	        this.incoming = this.convertValues(source["incoming"], git.IncomingCommit);
+	        this.incomingError = source["incomingError"];
 	        this.error = source["error"];
 	        this.upstreamGone = source["upstreamGone"];
 	        this.upstreamError = source["upstreamError"];

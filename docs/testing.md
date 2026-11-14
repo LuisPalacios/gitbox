@@ -185,10 +185,11 @@ I launch GitboxApp on each platform with the commands `./scripts/run-commands.sh
 - [ ] Credential setup works for token, GCM and SSH
 - [ ] Discovery: **Find** → select repos → **Add & Pull** clones them into the account's root
 - [ ] Clone, **Pull all** and **Fetch all** update the status dots; the activity strip shows the scope while they run, and a result card sums them up
-- [ ] The repo detail panel shows branch, ahead/behind and changed files
+- [ ] The repo detail panel shows branch and ahead/behind in Advanced, and changed files in both modes; a clone with incoming updates opens a scrollable list of every commit with author and message, keeps local-file details, and refreshes after an update
+- [ ] Incoming preview: a long list fits a small window; switching clones or closing and reopening while loading never shows another clone's results; opening the panel alone does not fetch or pull
 - [ ] Clone roots: in Settings I add a root, make it default and remove it; with two roots, a row's **Clone** asks which root and lands there, and **Pull all** doesn't ask
 - [ ] Disk reconcile: a recognised clone dropped under a root is adopted in place on the next window focus; an unrecognised one appears in **Unmatched clones** under **Found on disk**, where **Adopt**, **Ignore**, **Show ignored** and **Stop ignoring** work; a moved clone is re-linked; repos under an unplugged root read **Root offline**
-- [ ] Containers: a clone with nested clones shows an outlined ▾ chevron in place of its status dot; the chevron or the name folds everything below, and folds survive a restart
+- [ ] Containers: a clone with nested clones shows an outlined ▾ chevron in place of its status dot; the chevron folds everything below, the name opens available details or otherwise folds the children, and folds survive a restart
 - [ ] Workspaces: a `.code-workspace` dropped at a clone's root makes it a container on the next window focus, with its nested clones below and missing listed folders as dimmed **not cloned** rows; a second file asks which one to use; the editor button opens the workspace file in VS Code
 - [ ] Simple / Advanced: the top-bar switch (grey Simple, red Advanced) changes mode at once; Simple rows show the status dot, name, status sentence, **Update** or **Download** when needed, the AI, editor and terminal icons and ⋯; Advanced rows keep every detail and the per-row fetch button; Simple hides Mirrors, delete mode and the compact view
 - [ ] The top-bar rings show an icon, an attention badge and a hover tooltip, and clicking a pending ring opens Needs attention (the mirror ring opens Mirrors)

@@ -51,8 +51,8 @@ test('I describe count badges in a fixed order and pick the compact one', () => 
 });
 
 test('I open the detail panel only for statuses that need attention', () => {
-  assert.deepEqual(STATUSES.filter(s.opensDetail), ['dirty', 'ahead', 'diverged', 'conflict', 'no upstream', 'upstream gone', 'error', 'fetching']);
-  assert.deepEqual(STATUSES.filter(s.detailLocked), ['clean', 'behind', 'not cloned', 'root offline', 'syncing', 'cloning']);
+  assert.deepEqual(STATUSES.filter(s.opensDetail), ['dirty', 'behind', 'ahead', 'diverged', 'conflict', 'no upstream', 'upstream gone', 'error', 'fetching']);
+  assert.deepEqual(STATUSES.filter(s.detailLocked), ['clean', 'not cloned', 'root offline', 'syncing', 'cloning']);
   assert.equal(s.detailLocked('unknown'), false);
 });
 

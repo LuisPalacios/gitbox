@@ -166,7 +166,7 @@ A missing or broken credential tints the card light red, and a warning tints it 
 The **All repos** view folds at two levels, and an account's view folds parent clones too:
 
 - **Account groups** — each account sits in its own light card, here and in **Needs attention**. Its name, in uppercase and in its provider's colour (GitHub indigo, GitLab orange, Gitea green, Forgejo red, Bitbucket blue), sits in the column of the status dots below, next to the filled ▾ caret that hangs to its left. Click the header bar or the name to fold its clone list. The header always shows how many clones it holds and how many need attention, folded or not, so a problem never hides behind a fold. The ⋯ menu on the header keeps working and never folds the group.
-- **Clones with clones below them** — a clone that has nested clones or not-yet-cloned workspace folders under it shows an outlined ▾ chevron in place of its status dot, so its name stays in line with its siblings'; its status words still say how it is. Click the chevron or the clone's name to fold everything below, at any depth. A folded row shows how many rows it hides and how many of them need attention. Neither opens the repo detail.
+- **Clones with clones below them** — a clone that has nested clones or not-yet-cloned workspace folders under it shows an outlined ▾ chevron in place of its status dot, so its name stays in line with its siblings'; its status words still say how it is. Click the chevron to fold everything below, at any depth. When the clone has updates, local changes or other details to inspect, its name opens the detail panel; otherwise, its name also folds the children. A folded row shows how many rows it hides and how many of them need attention.
 
 Gitbox remembers what you fold across restarts (`global.collapsed` in `gitbox.json`) and forgets entries for accounts or clones you delete or rename. The compact view keeps its own per-account expansion.
 
@@ -212,13 +212,16 @@ Startup, periodic and manual checks share one refresh cycle. Local status shows 
 
 #### Viewing details
 
-Click a repo that shows local changes, conflicts or other issues. A panel opens with:
+Click the name of a repo that shows available updates, local changes, conflicts or other issues. A panel opens directly below its row; click the name again to close it. In Simple and Advanced, I can inspect:
 
-- The current branch and how many commits you're ahead or behind.
+- The current branch and how many commits I am ahead or behind (Advanced only).
+- Every incoming commit, newest first, with its author and message. These are the commits from the current branch's upstream that my local branch does not contain.
 - Every changed file, with an icon for what happened (added, deleted, renamed, modified).
 - Any untracked files.
 
-The panel updates on its own when Gitbox detects new changes.
+The panel stays compact and scrolls through the complete list. It keeps the pending-file details alongside incoming commits when both exist. The list reflects the last check for updates; **Check all** (Advanced: **Fetch all**) refreshes it. Opening the panel does not fetch or pull, and **Update** remains the explicit action that brings incoming changes into the clone.
+
+The panel refreshes when Gitbox detects new changes and closes when the clone no longer needs attention. Switching repositories while details load never replaces the new selection with an older result.
 
 ### Compact view
 

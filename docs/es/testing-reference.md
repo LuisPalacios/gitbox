@@ -10,7 +10,7 @@ Los recuentos son funciones de prueba Go de nivel superior (no se cuentan los su
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-El total actual es de 599 pruebas Go (521 en `pkg/`, 78 en `cmd/gui/`) y 42 pruebas del frontend. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
+El total actual es de 604 pruebas Go (525 en `pkg/`, 79 en `cmd/gui/`) y 48 pruebas del frontend. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
 
 ### Biblioteca compartida (`pkg/`)
 
@@ -25,7 +25,7 @@ El total actual es de 599 pruebas Go (521 en `pkg/`, 78 en `cmd/gui/`) y 42 prue
   - `collapsed_test.go`, `save_test.go`: poda del estado de layout (pliegues, barra lateral, la vista de una cuenta borrada, la clave de vista `workspaces` retirada), el ring de backups, ningún backup en los guardados solo de layout y solo de tema, y un backup que siempre se conserva para un archivo escrito por una versión anterior de la config.
 - **`pkg/credential`** (38) — resolución de tokens desde `GITBOX_TOKEN_<KEY>` y `GIT_TOKEN`, comprobaciones de token con caducidad y tokens rechazados, helper y store de GCM por defecto del OS, salud del gitconfig global para GCM (`CheckGlobalGCMConfig`, `FixGlobalGCMConfig`), búsqueda de claves SSH y de config, cancelación con un helper bloqueado, config de credenciales por repo con comparación previa, y escrituras atómicas de archivos de credenciales con lectores concurrentes. Las consultas reales al helper comprueban el usuario de GitLab y las rutas de archivos con espacios y caracteres de shell.
 - **`pkg/doctor`** (34) — la tabla de herramientas y las pistas de instalación, búsqueda de herramientas (carpetas extra, `~/.local/bin`, rutas guardadas, shims de Windows), el sondeo de GCM (preguntar a git, carpetas de instalación, ausente), comprobaciones previas por tipo de credencial, decodificación de la salida UTF-16 de las herramientas. `wsl_windows_test.go` (solo Windows) lee las distros de WSL del registro y demuestra que el stub de instalación de WSL nunca se ejecuta.
-- **`pkg/git`** (35) — operaciones git mediante subprocess (status, clone, ramas, barridos de ramas), URLs de remoto y de perfil, descubrimiento de repos y de repos anidados, conexiones rechazadas en milisegundos, instantáneas de config con includes, claves multivalor y worktrees enlazados. Los argumentos de clonado conservan intactas las entradas del helper sin incluir el token.
+- **`pkg/git`** (39) — operaciones git mediante subprocess (status, clone, ramas, barridos de ramas), URLs de remoto y de perfil, descubrimiento de repos y de repos anidados, conexiones rechazadas en milisegundos, instantáneas de config con includes, claves multivalor y worktrees enlazados. `incoming_test.go` cubre el historial exclusivamente entrante, divergencia, ramas upstream con otro nombre, upstreams vacíos y ausentes, listas largas, Unicode, parseo de registros y archivos del clon sin cambios. Los argumentos de clonado conservan intactas las entradas del helper sin incluir el token.
 - **`pkg/gitignore`** (23) — el bloque gestionado del gitignore global: ida y vuelta, fusión con contenido del usuario, instalación idempotente, un `core.excludesfile` existente, limpieza de duplicados, backups.
 - **`pkg/harness`** (28) — el directorio de AI harness embebido (parseo, herramientas retiradas), la sincronización de harnesses (detección, herramientas ausentes y reinstaladas, entradas del usuario, orden), parseo del `launch_menu` de WezTerm.
 - **`pkg/heal`** (11) — URL de origin esperada por tipo de credencial, ocultación de URLs, reparación de identidad, eliminación de tokens embebidos, dos lecturas y ninguna escritura para un clon sin cambios, identidad sobrescrita, worktrees enlazados.
@@ -57,12 +57,14 @@ El total actual es de 599 pruebas Go (521 en `pkg/`, 78 en `cmd/gui/`) y 42 prue
 - `probe_test.go` (10) — sondeos upstream: concurrencia limitada, vuelos compartidos y throttling, cancelación, un plazo compartido para la búsqueda de credenciales, config obsoleta y tokens rotados, apagado.
 - `startup_test.go` (2 + `BenchmarkStartupSnapshot`) — anidamiento antes de que existan los clones, una instantánea independiente de la config viva.
 - `update_test.go` (1) — el build AppImage rechaza `ApplyUpdate` antes de cualquier descarga.
+- `repo_detail_test.go` (1) — los commits entrantes y los detalles de archivos locales conviven, y la vista previa se vacía cuando el clon recibe los commits.
 
 ### Frontend (`cmd/gui/frontend/src/lib/`)
 
 `npm test` en `cmd/gui/frontend` las ejecuta con `node --test`; `./scripts/health.sh frontend-test` ejecuta la misma suite.
 
 - `repo-tree.test.mjs` (8) — el árbol de clones: propiedad entre sources, ninguna fila duplicada, plegado de anidados, recuperación ante padres obsoletos y ciclos, orden alfabético, grupos de atención separados por cuenta, las filas placeholder de un contenedor.
+- `repo-detail.test.mjs` (6) — normalización de slices nulos, cambio de clon, cierre y reapertura durante una lectura, refrescos fuera de orden, errores actuales frente a sustituidos, listas entrantes completas y errores independientes del historial.
 - `status.test.mjs` (12) — la forma, el color, el spinner, el tipo Simple, los indicadores de conteo, la regla del panel de detalle, las reglas de credenciales, el rango de atención y la etiqueta del glosario de cada estado; la salud de la cuenta por modo; el aviso de caducidad del token.
 - `views.test.mjs` (5) — resolución de la vista guardada, vistas de cuenta, la lista de Requiere atención y sus conteos.
 - `activity.test.mjs` (7) — alcances y resúmenes de Fetch de todo y Pull de todo, fallos de conexión agrupados por host.
