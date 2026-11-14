@@ -52,7 +52,7 @@ func ConfigureRepoCredentialFromSnapshot(repoPath string, acct config.Account, a
 		if err := WriteCredentialFile(credFile, acct, accountKey); err != nil {
 			return fmt.Errorf("writing credential file: %w", err)
 		}
-		wantHelpers = append(wantHelpers, fmt.Sprintf("store --file %s", filepath.ToSlash(credFile)))
+		wantHelpers = append(wantHelpers, StoreHelper(credFile))
 	case "gcm":
 		helper := "manager"
 		if globalCfg.CredentialGCM != nil {
@@ -152,6 +152,12 @@ func validateCredentialType(credType string) error {
 	}
 }
 
+// StoreHelper returns a credential helper command with its file path quoted for
+// Git's shell. Forward slashes also work with the shell bundled with Git for Windows.
+func StoreHelper(filePath string) string {
+	return "store --file '" + strings.ReplaceAll(filepath.ToSlash(filePath), "'", `'\''`) + "'"
+}
+
 // CredentialFilePath returns the path to the git-credential-store file for an account.
 // Location: <configRoot>/gitbox/credentials/<accountKey>
 // Respects XDG_CONFIG_HOME for test isolation.
@@ -160,7 +166,7 @@ func CredentialFilePath(accountKey string) string {
 }
 
 // WriteCredentialFile writes a git-credential-store format file for token auth.
-// Format: https://username:token@hostname (one line).
+// Format: scheme://username:token@hostname (one line).
 // Sets file permissions to 0600.
 func WriteCredentialFile(filePath string, acct config.Account, accountKey string) error {
 	// Resolve the token from env vars / the gitbox credential file.
@@ -171,11 +177,15 @@ func WriteCredentialFile(filePath string, acct config.Account, accountKey string
 
 	// Build the credential line in git-credential-store format.
 	hostname := extractHostname(acct.URL)
+	scheme := "https"
+	if u, err := url.Parse(acct.URL); err == nil && u.Scheme == "http" {
+		scheme = "http"
+	}
 	username := acct.Username
-	if acct.Provider == "gitlab" {
+	if acct.Provider == "gitlab" && username == "" {
 		username = "oauth2"
 	}
-	line := fmt.Sprintf("https://%s:%s@%s\n", url.PathEscape(username), url.PathEscape(token), hostname)
+	line := fmt.Sprintf("%s://%s:%s@%s\n", scheme, url.PathEscape(username), url.PathEscape(token), hostname)
 
 	// Serialize the compare and atomic replacement across fetch workers sharing
 	// an account. Readers see either complete version, never a truncated file.

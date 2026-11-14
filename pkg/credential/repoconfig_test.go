@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -77,7 +78,7 @@ func TestConfigureRepoCredential_UnchangedAndTypeTransitions(t *testing.T) {
 			want := []string{""}
 			switch typ {
 			case "token":
-				want = append(want, "store --file "+filepath.ToSlash(CredentialFilePath("account-a")))
+				want = append(want, StoreHelper(CredentialFilePath("account-a")))
 			case "gcm":
 				want = append(want, "manager")
 			}
@@ -88,6 +89,32 @@ func TestConfigureRepoCredential_UnchangedAndTypeTransitions(t *testing.T) {
 				t.Fatal("type transition retained GCM host configuration")
 			}
 		})
+	}
+}
+
+func TestConfigureRepoCredential_StoreHelperQuotesPath(t *testing.T) {
+	root := credentialRepo(t)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config with ' quote and $literal"))
+	t.Setenv("GIT_TERMINAL_PROMPT", "0")
+	t.Setenv("GIT_ASKPASS", "")
+	t.Setenv("SSH_ASKPASS", "")
+	const token = "fake-token"
+	t.Setenv(EnvVarName("account-a"), token)
+	acct := credentialAccount()
+	if err := ConfigureRepoCredential(root, acct, "account-a", "token", config.GlobalConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(git.GitBin(), "-c", "core.askPass=", "credential", "fill")
+	cmd.Dir = root
+	cmd.Env = git.Environ()
+	cmd.Stdin = strings.NewReader("protocol=https\nhost=example.org\nusername=account-a\n\n")
+	git.HideWindow(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("credential fill: %v: %s", err, out)
+	}
+	if !strings.Contains(string(out), "password="+token+"\n") {
+		t.Fatalf("configured helper did not resolve the token: %q", out)
 	}
 }
 
@@ -170,6 +197,53 @@ func TestWriteCredentialFile_UnchangedRotationAndConcurrentReaders(t *testing.T)
 	}
 	if got, err := GetToken("account-a"); err != nil || got != "rotated-token" {
 		t.Fatal("account B overwrote account A")
+	}
+}
+
+func TestWriteCredentialFile_GitLabUsernameMatchesOrigin(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		url      string
+		protocol string
+		host     string
+		username string
+		wantUser string
+	}{
+		{name: "https account username", url: "https://gitlab.example.org", protocol: "https", host: "gitlab.example.org", username: "alice", wantUser: "alice"},
+		{name: "http account username with port", url: "http://gitlab.example.org:3000", protocol: "http", host: "gitlab.example.org:3000", username: "alice", wantUser: "alice"},
+		{name: "empty username fallback", url: "https://gitlab.example.org", protocol: "https", host: "gitlab.example.org", wantUser: "oauth2"},
+		{name: "scheme-less legacy default", url: "gitlab.example.org", protocol: "https", host: "gitlab.example.org", username: "alice", wantUser: "alice"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := credentialRepo(t)
+			const token = "fake-token /?#%123"
+			t.Setenv(EnvVarName("gitlab-test"), token)
+			acct := config.Account{Provider: "gitlab", URL: tc.url, Username: tc.username}
+			path := filepath.Join(root, "credentials with spaces", "gitlab-test")
+			if err := WriteCredentialFile(path, acct, "gitlab-test"); err != nil {
+				t.Fatal(err)
+			}
+
+			// Git includes the canonical origin's username in its credential
+			// query. A username-free origin lets the store supply the fallback.
+			query := "protocol=" + tc.protocol + "\nhost=" + tc.host + "\n"
+			if tc.username != "" {
+				query += "username=" + tc.username + "\n"
+			}
+			cmd := exec.Command(git.GitBin(), "credential-store", "--file", path, "get")
+			cmd.Dir = root
+			cmd.Env = git.Environ()
+			cmd.Stdin = strings.NewReader(query + "\n")
+			git.HideWindow(cmd)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("credential-store get: %v: %s", err, out)
+			}
+			want := "username=" + tc.wantUser + "\npassword=" + token + "\n"
+			if string(out) != want {
+				t.Fatalf("credential-store did not resolve the expected username and token: %q", out)
+			}
+		})
 	}
 }
 

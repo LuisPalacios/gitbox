@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -390,11 +391,23 @@ func TestPlanClone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanClone token: %v", err)
 	}
-	if plan.URL != "https://alice:s3cret@github.com/alice/repo.git" {
+	if plan.URL != "https://alice@github.com/alice/repo.git" {
 		t.Errorf("token clone URL = %q", plan.URL)
 	}
-	if len(plan.Opts.ConfigArgs) != 1 || plan.Opts.ConfigArgs[0] != "credential.helper=" {
-		t.Errorf("token clone must cancel the global helper, got %v", plan.Opts.ConfigArgs)
+	credFile := credential.CredentialFilePath("tok")
+	wantArgs := []string{"credential.helper=", "credential.helper=" + credential.StoreHelper(credFile)}
+	if !slices.Equal(plan.Opts.ConfigArgs, wantArgs) {
+		t.Errorf("token clone helpers = %v, want %v", plan.Opts.ConfigArgs, wantArgs)
+	}
+	if strings.Contains(plan.URL+strings.Join(plan.Opts.ConfigArgs, " "), "s3cret") {
+		t.Fatal("token leaked into the clone plan")
+	}
+	info, err := os.Stat(credFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+		t.Errorf("credential mode = %o, want 600", info.Mode().Perm())
 	}
 	wantDest := filepath.Join(cfg.Global.Roots[0], "tok", "alice", "repo")
 	if plan.Dest != wantDest {
@@ -414,6 +427,37 @@ func TestPlanClone(t *testing.T) {
 	}
 	if _, err := PlanClone(cfg, "ssh", "alice/nope"); err == nil {
 		t.Error("expected error for a missing repo")
+	}
+}
+
+func TestPlanClone_TokenPreparationFailure(t *testing.T) {
+	for _, blockedFile := range []bool{false, true} {
+		t.Run(map[bool]string{false: "missing token", true: "unreadable credential file"}[blockedFile], func(t *testing.T) {
+			_, cfg := isolate(t)
+			if err := AddAccount(cfg, "tok", testAccount("token")); err != nil {
+				t.Fatal(err)
+			}
+			if err := cfg.AddRepo("tok", "alice/repo", config.Repo{}); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("GITBOX_TOKEN_TOK", "")
+			if blockedFile {
+				t.Setenv("GITBOX_TOKEN_TOK", "fake-secret")
+				if err := os.MkdirAll(credential.CredentialFilePath("tok"), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			plan, err := PlanClone(cfg, "tok", "alice/repo")
+			if err == nil {
+				t.Fatal("expected token preparation to fail")
+			}
+			if strings.Contains(err.Error(), "fake-secret") || plan.URL != "" {
+				t.Fatal("failed preparation returned a secret or a runnable plan")
+			}
+			if _, err := os.Stat(filepath.Join(cfg.Global.Roots[0], "tok", "alice", "repo")); !os.IsNotExist(err) {
+				t.Fatalf("failed planning touched the clone destination: %v", err)
+			}
+		})
 	}
 }
 
@@ -605,5 +649,54 @@ func TestRenameAndDeleteAccount_AcrossRoots(t *testing.T) {
 		if _, err := os.Stat(dir); !os.IsNotExist(err) {
 			t.Errorf("%s survived the delete", dir)
 		}
+	}
+}
+
+func TestPlanClone_TokenHelperAuthentication(t *testing.T) {
+	for _, tc := range []struct{ provider, url string }{
+		{"forgejo", "https://example.com"},
+		{"gitlab", "https://example.com"},
+		{"forgejo", "http://example.com:3000"},
+	} {
+		t.Run(tc.provider+" "+tc.url, func(t *testing.T) {
+			root, cfg := isolate(t)
+			t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config with spaces ' $literal"))
+			t.Setenv("GIT_TERMINAL_PROMPT", "0")
+			t.Setenv("GITBOX_TOKEN_TOK", "fake-secret")
+			acct := testAccount("token")
+			acct.Provider = tc.provider
+			acct.URL = tc.url
+			if err := AddAccount(cfg, "tok", acct); err != nil {
+				t.Fatal(err)
+			}
+			if err := cfg.AddRepo("tok", "alice/repo", config.Repo{}); err != nil {
+				t.Fatal(err)
+			}
+			plan, err := PlanClone(cfg, "tok", "alice/repo")
+			if err != nil {
+				t.Fatal(err)
+			}
+			// An inherited helper must not supply another account's password.
+			gitRun(t, root, "config", "--global", "credential.helper", "!echo password=wrong-account")
+			args := []string{}
+			for _, configArg := range plan.Opts.ConfigArgs {
+				args = append(args, "-c", configArg)
+			}
+			args = append(args, "credential", "fill")
+			cmd := exec.Command(git.GitBin(), args...)
+			cmd.Dir = root
+			cmd.Env = git.Environ()
+			cmd.Stdin = strings.NewReader("url=" + plan.URL + "\n\n")
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("credential fill: %v\n%s", err, out)
+			}
+			if !strings.Contains(string(out), "username=alice\n") || !strings.Contains(string(out), "password=fake-secret\n") {
+				t.Fatalf("credential fill did not select the account's store: %s", out)
+			}
+			if strings.Contains(plan.URL+strings.Join(args, " "), "fake-secret") {
+				t.Fatal("token leaked into URL or process arguments")
+			}
+		})
 	}
 }

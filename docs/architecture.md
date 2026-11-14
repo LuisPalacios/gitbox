@@ -503,7 +503,7 @@ Harness detection resolves binaries through `doctor.Lookup` without changing the
 
 ### Token flow
 
-The user picks Token in the account's credential settings → the app shows the provider-specific PAT creation URL with the required scopes → the user pastes the token → the app validates it via the provider API and stores it in the credential file (`~/.config/gitbox/credentials/<key>`). On clone, the token is embedded in the URL for authentication, then stripped from the remote URL. Each clone's `.git/config` gets `credential.helper = store --file <path>` pointing at that same file, so `git push` and `git pull` from any terminal work without GCM.
+The user picks Token in the account's credential settings → the app shows the provider-specific PAT creation URL with the required scopes → the user pastes the token → the app validates it via the provider API and stores it in the credential file (`~/.config/gitbox/credentials/<key>`). Before cloning, Gitbox prepares that file in git-credential-store format and passes an empty credential-helper reset followed by the account's store-file helper to Git. The clone URL and process arguments never contain the token. Each clone's `.git/config` gets `credential.helper = store --file <path>` pointing at that same file, so `git push` and `git pull` from any terminal work without GCM.
 
 ### GCM flow
 
@@ -581,7 +581,7 @@ The user doesn't need to know Git internals: actions are verbs that do what they
 - **PATs** live in gitbox credential files (`~/.config/gitbox/credentials/<key>`), plaintext in git-credential-store format with 0600 permissions: the same model as `~/.git-credentials` and SSH private keys.
 - **GCM OAuth tokens** live in the OS credential store (Windows Credential Manager, macOS Keychain, Linux Secret Service), managed by Git Credential Manager.
 - **SSH private keys** are standard `~/.ssh/` files with 0600 permissions.
-- **Sanitized clone URLs:** a token used to clone is stripped from the remote URL afterwards. Later git operations authenticate through the per-repo credential helper, not the URL.
+- **Secret-free clone URLs:** cloning and later git operations authenticate through the per-repo credential helper. URLs and process arguments never contain the token. If a clone fails, Gitbox leaves any remaining destination in place and reports its path without rewriting the origin.
 - **Per-repo credential isolation:** each clone's `.git/config` cancels global credential helpers and sets its own, which prevents credential leakage between accounts and ghost credentials from GCM's OAuth refresh tokens.
 - **No secrets in output:** tokens are never displayed, not even in error messages.
 - **Public repository:** tracked files contain no real hostnames, usernames, emails or tokens.

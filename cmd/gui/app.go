@@ -1781,11 +1781,10 @@ func (a *App) CloneRepo(sourceKey, repoKey, root string) {
 		// action silently no-ops (#79).
 		result := map[string]any{"source": sourceKey, "repo": repoKey, "path": plan.Dest}
 		if err != nil {
-			result["error"] = err.Error()
+			result["error"] = failedCloneError(plan.Dest, err).Error()
 		} else {
 			// heal.Repo sets user.name/user.email, normalizes the origin
-			// URL (stripping any embedded token from the clone URL), and
-			// configures per-repo credential isolation. Warnings are
+			// URL, and configures per-repo credential isolation. Warnings are
 			// returned instead of panicking so a partial heal (e.g. token
 			// file missing) still reports clone success.
 			a.mu.Lock()
@@ -1800,6 +1799,15 @@ func (a *App) CloneRepo(sourceKey, repoKey, root string) {
 		}
 		wailsrt.EventsEmit(a.ctx, "clone:done", result)
 	}()
+}
+
+// failedCloneError reports a remaining destination without changing it. A path
+// absent before cloning could belong to another process by the time Git fails.
+func failedCloneError(dest string, cloneErr error) error {
+	if _, err := os.Lstat(dest); err == nil {
+		return fmt.Errorf("%w; clone destination remains at %s", cloneErr, dest)
+	}
+	return cloneErr
 }
 
 // ─── Pull ─────────────────────────────────────────────────────

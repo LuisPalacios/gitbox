@@ -503,7 +503,7 @@ La detección de harnesses resuelve los binarios mediante `doctor.Lookup` sin ca
 
 ### Flujo token
 
-El usuario elige Token en los ajustes de credenciales de la cuenta → la app muestra la URL de creación de PAT específica del proveedor con los scopes necesarios → el usuario pega el token → la app lo valida mediante la API del proveedor y lo guarda en el archivo de credenciales (`~/.config/gitbox/credentials/<key>`). Al clonar, el token se embebe en la URL para autenticarse y después se elimina de la URL remota. El `.git/config` de cada clon recibe `credential.helper = store --file <path>` apuntando a ese mismo archivo, así que `git push` y `git pull` funcionan desde cualquier terminal sin GCM.
+El usuario elige Token en los ajustes de credenciales de la cuenta → la app muestra la URL de creación de PAT específica del proveedor con los scopes necesarios → el usuario pega el token → la app lo valida mediante la API del proveedor y lo guarda en el archivo de credenciales (`~/.config/gitbox/credentials/<key>`). Antes de clonar, Gitbox prepara ese archivo en formato git-credential-store y pasa a Git un reinicio vacío de los helpers de credenciales seguido del helper del archivo de la cuenta. La URL de clonado y los argumentos del proceso nunca contienen el token. El `.git/config` de cada clon recibe `credential.helper = store --file <path>` apuntando a ese mismo archivo, así que `git push` y `git pull` funcionan desde cualquier terminal sin GCM.
 
 ### Flujo GCM
 
@@ -581,7 +581,7 @@ El usuario no necesita conocer los detalles internos de Git: las acciones son ve
 - **Los PATs** viven en archivos de credenciales de gitbox (`~/.config/gitbox/credentials/<key>`), en texto plano con formato git-credential-store y permisos 0600: el mismo modelo que `~/.git-credentials` y las claves privadas SSH.
 - **Los tokens OAuth de GCM** viven en el almacén de credenciales del OS (Windows Credential Manager, macOS Keychain, Linux Secret Service), gestionado por Git Credential Manager.
 - **Las claves privadas SSH** son archivos estándar de `~/.ssh/` con permisos 0600.
-- **URLs de clonado saneadas:** un token usado para clonar se elimina después de la URL remota. Las operaciones git posteriores se autentican mediante el helper de credenciales por repo, no mediante la URL.
+- **URLs de clonado sin secretos:** el clonado y las operaciones git posteriores se autentican mediante el helper de credenciales por repo. Las URLs y los argumentos del proceso nunca contienen el token. Si un clon falla, Gitbox conserva cualquier destino que quede en disco e informa de su ruta sin reescribir el origen.
 - **Aislamiento de credenciales por repo:** el `.git/config` de cada clon cancela los helpers de credenciales globales y define el suyo, lo que evita fugas de credenciales entre cuentas y credenciales fantasma de los refresh tokens OAuth de GCM.
 - **Sin secretos en la salida:** los tokens nunca se muestran, ni siquiera en los mensajes de error.
 - **Repositorio público:** los archivos versionados no contienen hostnames, nombres de usuario, emails ni tokens reales.
