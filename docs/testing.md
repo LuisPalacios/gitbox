@@ -133,6 +133,14 @@ I run them in this order, from fastest to slowest.
 
 For visible startup time I measure on the native desktop: process launch to window, window to the first configured rows with container nesting, and time to complete status. I record the platform, clone count, container layout and number of runs. A browser navigation against a running `wails dev` backend measures a different path, and SSH timings can't show WebView2 row paint, so a Windows startup target stays open until I measure it on an interactive Windows desktop.
 
+### Discovery dialog layout
+
+I check **Find projects** in native WebKit with synthetic accounts and repositories. I cover loading, error, empty, one-result and long-list states, with results arriving both during and after the opening transition. I reopen the dialog, filter the list, resize between short and tall windows, and check keyboard access, selection and **Add & Pull**. I keep provider and clone calls isolated from production credentials and repositories.
+
+With enough viewport space, I expect the count, filter, **Select all** and one repository to fit without scrolling. Long lists must scroll while the header and action buttons remain accessible. When shared modal styles change, I also check account, credential, confirmation and mirror discovery dialogs.
+
+I let the opening transition and result update finish before reading element sizes. Intermediate layout reads can force WebKit to recalculate sizes and hide the regression from #221. I compare the body's `clientHeight` and `scrollHeight`, inspect the rendered result, and check the row and footer bounds; searching CSS text does not test layout.
+
 ## Pre-PR checklist
 
 I run these before every push or PR. `/test-plan` in Claude Code or `$test-plan` in Codex automates them.
