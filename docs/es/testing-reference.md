@@ -10,19 +10,19 @@ Los recuentos son funciones de prueba Go de nivel superior (no se cuentan los su
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-El total actual es de 628 pruebas Go (546 en `pkg/`, 82 en `cmd/gui/`) y 48 pruebas del frontend. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
+El total actual es de 636 pruebas Go (553 en `pkg/`, 83 en `cmd/gui/`) y 48 pruebas del frontend. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
 
 ### Biblioteca compartida (`pkg/`)
 
 - **`pkg/adopt`** (16) — descubrimiento de huérfanos y puntuación de cuentas.
   - `adopt_test.go`: alias de host SSH, descubrimiento en su sitio, asociación de cuentas por el usuario embebido en la URL, el username de la credencial y la carpeta padre, empates ambiguos.
   - `nested_test.go`: clones anidados bajo un contenedor, raíces anidadas extra y explícitas, adopción en su sitio bajo una segunda raíz de clonado, confianza que necesita algo más que el host.
-- **`pkg/config`** (112) — el archivo de config.
+- **`pkg/config`** (119) — el archivo de config.
   - `config_test.go`, `load_test.go`: parseo, validación, versiones incorrectas, mirrors, idas y vueltas, `LoadWithRepair` para mirrors y sources colgantes, valores por defecto del gitignore global y de los indicadores de PR.
   - `migrate_v3_test.go`, `roots_test.go`, `migrate_v5_test.go`, `migrate_terminals_test.go`: migración v2 → v3 → v4 → v5 (v4 convierte `global.folder` en `global.roots`, v5 descarta la sección `workspaces`), el valor por defecto de la profundidad de escaneo anidado, listas de terminales legacy.
   - `roots_test.go`: raíces de clonado (añadir, hacer predeterminada, quitar y olvidar, ubicar un repo) con cada ruta de clon fijada.
   - `crud_test.go`, `clones_test.go`, `ai_harness_test.go`: CRUD de cuentas, sources, repos y mirrors, clones ignorados, la copia profunda que usan los escaneos sin bloqueo, entradas de AI harness.
-  - `collapsed_test.go`, `save_test.go`: poda del estado de layout (pliegues, barra lateral, la vista de una cuenta borrada, la clave de vista `workspaces` retirada), el ring de backups, ningún backup en los guardados solo de layout y solo de tema, y un backup que siempre se conserva para un archivo escrito por una versión anterior de la config.
+  - `collapsed_test.go`, `save_test.go`: poda del estado de layout (pliegues, barra lateral, la vista de una cuenta borrada, la clave de vista `workspaces` retirada), el ring de backups, guardados con fallos de E/S inyectados que conservan la config activa y limpian temporales, publicación concurrente y exclusiva de backups, orden de copias del mismo segundo, agotamiento de sufijos y fallos por falta de soporte para enlaces duros, ningún backup en los guardados solo de layout y solo de tema, y un backup que siempre se conserva para un archivo escrito por una versión anterior de la config.
 - **`pkg/credential`** (52) — resolución de tokens desde `GITBOX_TOKEN_<KEY>` y `GIT_TOKEN`, comprobaciones de token con caducidad y tokens rechazados, helper y store de GCM por defecto del OS, salud del gitconfig global para GCM (`CheckGlobalGCMConfig`, `FixGlobalGCMConfig`), búsqueda de claves SSH y de config, cancelación con un helper bloqueado, config de credenciales por repo con comparación previa, y escrituras atómicas de archivos de credenciales con lectores concurrentes. Las consultas reales al helper comprueban el usuario de GitLab y las rutas de archivos con espacios y caracteres de shell.
   - `atomic_test.go` (4): formatos en bruto y con datos de cuenta, un único salto de línea final, permisos Unix, conservación del archivo sin cambios, fallo real de sustitución que conserva el archivo anterior y elimina el temporal, y lectores concurrentes durante la rotación.
   - `atomic_windows_test.go` (1, solo Windows): un lector externo que deniega compartir borrado rechaza la sustitución sin cambiar la credencial anterior ni dejar archivos temporales; la sustitución termina correctamente después de cerrar el lector.
@@ -58,6 +58,7 @@ Este límite pertenece a la prueba, no al validador de config. Las configs acept
 
 ### Bindings de la GUI (`cmd/gui/`)
 
+- `config_backups_test.go` (1) — copias de recuperación del mismo segundo en orden descendente, con marcas de tiempo y tamaños correctos.
 - `credential_audit_test.go` (3) — hallazgos de arranque en instantáneas independientes, las nuevas comprobaciones borran hallazgos obsoletos, los hallazgos de permisos impiden un informe correcto de Comprobación del sistema y los guardados de token usan el formato de cuenta sin clones ni sustitución por tokens del entorno.
 - `clone_test.go` (1) — informar de los destinos de clonado restantes sin cambiar la config del repositorio, los directorios ni los destinos de enlaces simbólicos.
 - `account_actions_test.go`, `browser_actions_test.go` (4) — resolución de la carpeta de cuenta, URLs de proveedor, rutas de error para cuentas y repos desconocidos.

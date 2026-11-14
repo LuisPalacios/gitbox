@@ -10,19 +10,19 @@ Counts are top-level Go test functions (subtests from `t.Run` and `TestMain` are
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-The current total is 628 Go tests (546 in `pkg/`, 82 in `cmd/gui/`) and 48 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
+The current total is 636 Go tests (553 in `pkg/`, 83 in `cmd/gui/`) and 48 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
 
 ### Shared library (`pkg/`)
 
 - **`pkg/adopt`** (16) — orphan discovery and account scoring.
   - `adopt_test.go`: SSH host aliases, in-place discovery, account matching by embedded URL user, credential username and parent folder, ambiguous ties.
   - `nested_test.go`: nested clones under a container, extra and explicit nested roots, in-place adoption under a second clone root, confidence that needs more than the host.
-- **`pkg/config`** (112) — the config file.
+- **`pkg/config`** (119) — the config file.
   - `config_test.go`, `load_test.go`: parsing, validation, wrong versions, mirrors, round trips, `LoadWithRepair` for dangling mirrors and sources, global gitignore and PR badge defaults.
   - `migrate_v3_test.go`, `roots_test.go`, `migrate_v5_test.go`, `migrate_terminals_test.go`: migration v2 → v3 → v4 → v5 (v4 turns `global.folder` into `global.roots`, v5 drops the `workspaces` section), the nested scan depth default, legacy terminal lists.
   - `roots_test.go`: clone roots (add, make default, remove and forget, place a repo) with every clone path pinned.
   - `crud_test.go`, `clones_test.go`, `ai_harness_test.go`: account, source, repo and mirror CRUD, ignored clones, the deep copy used by unlocked scans, AI harness entries.
-  - `collapsed_test.go`, `save_test.go`: layout-state pruning (folds, sidebar, the view of a deleted account, the retired `workspaces` view key), the backup ring, no backup for layout-only and theme-only saves, and a backup always kept for a file written by an older config version.
+  - `collapsed_test.go`, `save_test.go`: layout-state pruning (folds, sidebar, the view of a deleted account, the retired `workspaces` view key), the backup ring, injected I/O failures that preserve the live config and clean temporary files, concurrent exclusive backup publication, same-second ordering, suffix exhaustion and unsupported hard-link failures, no backup for layout-only and theme-only saves, and a backup always kept for a file written by an older config version.
 - **`pkg/credential`** (52) — token resolution from `GITBOX_TOKEN_<KEY>` and `GIT_TOKEN`, token checks with expiry and rejected tokens, OS-default GCM helper and store, global gitconfig health for GCM (`CheckGlobalGCMConfig`, `FixGlobalGCMConfig`), SSH key and config lookup, cancellation with a stalled helper, compare-first per-repo credential config, and atomic credential-file writes with concurrent readers. Real helper queries check GitLab usernames and file paths with spaces and shell characters.
   - `atomic_test.go` (4): raw and account-aware formats, one trailing newline, Unix permissions, unchanged-file preservation, actual replacement failure preserving the previous file and cleaning the temporary file, and concurrent readers during rotation.
   - `atomic_windows_test.go` (1, Windows only): an external reader that denies delete sharing rejects replacement without changing the previous credential or leaving temporary files; replacement succeeds after the reader closes.
@@ -58,6 +58,7 @@ This boundary belongs to the test, not the config validator. Accepted configs ca
 
 ### GUI bindings (`cmd/gui/`)
 
+- `config_backups_test.go` (1) — same-second recovery snapshots in newest-first order, with correct timestamps and sizes.
 - `credential_audit_test.go` (3) — startup findings in detached snapshots, rechecks clear stale findings, permission findings prevent a successful System check report, and token saves use the account format without clones or environment-token substitution.
 - `clone_test.go` (1) — report remaining clone destinations without changing repository config, directories or symlink targets.
 - `account_actions_test.go`, `browser_actions_test.go` (4) — account folder resolution, provider URLs, error paths for unknown accounts and repos.
