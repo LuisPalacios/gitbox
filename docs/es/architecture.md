@@ -163,6 +163,8 @@ Capa de abstracción para las APIs de los proveedores de hosting Git. Cada prove
 
 Wrapper fino alrededor de `os/exec` para todas las operaciones Git, sin dependencia de libgit2. Proporciona `Clone`, `CloneWithProgress`, `Pull`, `Status`, `Fetch`, `ConfigSet`, `ConfigAdd`, `ConfigUnsetAll` y más (consulta `pkg/git/git.go`). Las claves de config git con varios valores, como `credential.helper`, se gestionan con `ConfigUnsetAll` + `ConfigAdd`.
 
+Ejecuto `Status` y `DetailedStatus` con `git --no-optional-locks status` para que las comprobaciones en segundo plano y los detalles del repo no refresquen el índice ni tomen su bloqueo de escritura opcional. Un `index.lock` existente no bloquea estas lecturas.
+
 Uso `IncomingCommits` en `pkg/git/incoming.go` para leer `HEAD..@{upstream}` desde las referencias locales y devolver el hash, el autor y el asunto de cada commit entrante sin ejecutar fetch ni modificar el clon. `GetRepoDetail` incluye este historial cuando la rama va por detrás e informa de sus errores por separado de los detalles de archivos locales. El cargador `repo-detail.ts` del frontend descarta las lecturas sustituidas para que cambiar de clon o refrescar un panel abierto no muestre una respuesta anterior.
 
 En macOS, `GitBin()` prueba las rutas de Homebrew (`/opt/homebrew/bin/git`, `/usr/local/bin/git`) antes de recurrir a `PATH`, así que la GUI encuentra un git con GCM incluso con el `PATH` mínimo que heredan las apps GUI de macOS.

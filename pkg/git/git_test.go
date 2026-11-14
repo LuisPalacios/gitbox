@@ -1,12 +1,14 @@
 package git
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // initTestRepo creates a bare git repo with one commit, then clones it.
@@ -104,6 +106,116 @@ func TestStatusDirty(t *testing.T) {
 	}
 	if st.Untracked == 0 {
 		t.Error("expected untracked > 0")
+	}
+}
+
+func TestStatus_ReadOnlyIndex(t *testing.T) {
+	for _, entry := range os.Environ() {
+		key, value, _ := strings.Cut(entry, "=")
+		if strings.HasPrefix(key, "GIT_") {
+			t.Setenv(key, value)
+			if err := os.Unsetenv(key); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", home)
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(home, "gitconfig"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_OPTIONAL_LOCKS", "1")
+
+	checks := []struct {
+		name string
+		read func(*testing.T, string)
+	}{
+		{"Status", func(t *testing.T, dir string) {
+			t.Helper()
+			got, err := Status(dir)
+			want := RepoStatus{Branch: "main", Modified: 1, Untracked: 1}
+			if err != nil || got != want {
+				t.Fatalf("Status = %+v, %v; want %+v", got, err, want)
+			}
+		}},
+		{"DetailedStatus", func(t *testing.T, dir string) {
+			t.Helper()
+			branch, ahead, behind, changed, untracked, err := DetailedStatus(dir)
+			if err != nil || branch != "main" || ahead != 0 || behind != 0 ||
+				!slices.Equal(changed, []FileChange{{Kind: "modified", Path: "dirty.txt"}}) ||
+				!slices.Equal(untracked, []string{"untracked.txt"}) {
+				t.Fatalf("DetailedStatus = %q, %d, %d, %v, %v, %v", branch, ahead, behind, changed, untracked, err)
+			}
+		}},
+	}
+	for _, check := range checks {
+		for _, locked := range []bool{false, true} {
+			name := check.name + "/unlocked"
+			if locked {
+				name = check.name + "/locked"
+			}
+			t.Run(name, func(t *testing.T) {
+				dir := t.TempDir()
+				runGit(t, dir, "init", "--initial-branch=main")
+				writeFile(t, filepath.Join(dir, "clean.txt"), "unchanged\n")
+				writeFile(t, filepath.Join(dir, "dirty.txt"), "original\n")
+				runGit(t, dir, "add", ".")
+				runGit(t, dir, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-m", "initial")
+				writeFile(t, filepath.Join(dir, "dirty.txt"), "modified\n")
+				writeFile(t, filepath.Join(dir, "untracked.txt"), "untracked\n")
+				// I change only the clean file's timestamp so ordinary status refreshes its index entry.
+				stamp := time.Unix(1700000000, 0)
+				if err := os.Chtimes(filepath.Join(dir, "clean.txt"), stamp, stamp); err != nil {
+					t.Fatal(err)
+				}
+				index := filepath.Join(dir, ".git", "index")
+				if err := os.Chtimes(index, stamp, stamp); err != nil {
+					t.Fatal(err)
+				}
+				before, err := os.ReadFile(index)
+				if err != nil {
+					t.Fatal(err)
+				}
+				infoBefore, err := os.Stat(index)
+				if err != nil {
+					t.Fatal(err)
+				}
+				lock := index + ".lock"
+				if locked {
+					writeFile(t, lock, "another operation\n")
+				}
+				check.read(t, dir)
+				after, err := os.ReadFile(index)
+				if err != nil {
+					t.Fatal(err)
+				}
+				infoAfter, err := os.Stat(index)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(before, after) || !infoBefore.ModTime().Equal(infoAfter.ModTime()) {
+					t.Fatal("status read refreshed the index")
+				}
+				if locked {
+					contents, err := os.ReadFile(lock)
+					if err != nil || string(contents) != "another operation\n" {
+						t.Fatalf("status read changed the existing lock: %q, %v", contents, err)
+					}
+				} else {
+					if _, err := os.Stat(lock); !os.IsNotExist(err) {
+						t.Fatalf("status read left an index lock: %v", err)
+					}
+					if _, err := output(dir, "status", "--porcelain=v2", "--branch"); err != nil {
+						t.Fatal(err)
+					}
+					refreshed, err := os.ReadFile(index)
+					if err != nil || bytes.Equal(before, refreshed) {
+						t.Fatalf("fixture must refresh the index with ordinary git status: %v", err)
+					}
+				}
+			})
+		}
 	}
 }
 

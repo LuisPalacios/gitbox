@@ -283,8 +283,9 @@ func PullQuiet(repoPath string) error {
 }
 
 // Status runs git status and parses the result.
+// I disable optional locks to prevent background reads from refreshing the index.
 func Status(repoPath string) (RepoStatus, error) {
-	out, err := output(repoPath, "status", "--porcelain=v2", "--branch")
+	out, err := output(repoPath, "--no-optional-locks", "status", "--porcelain=v2", "--branch")
 	if err != nil {
 		return RepoStatus{}, err
 	}
@@ -298,8 +299,9 @@ type FileChange struct {
 }
 
 // DetailedStatus returns the list of changed and untracked files in a repo.
+// I disable optional locks to leave the index untouched when opening repo details.
 func DetailedStatus(repoPath string) (branch string, ahead, behind int, changed []FileChange, untracked []string, err error) {
-	out, err := output(repoPath, "status", "--porcelain=v2", "--branch")
+	out, err := output(repoPath, "--no-optional-locks", "status", "--porcelain=v2", "--branch")
 	if err != nil {
 		return "", 0, 0, nil, nil, err
 	}
