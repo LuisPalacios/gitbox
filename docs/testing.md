@@ -149,6 +149,20 @@ I run permission checks against a temporary `XDG_CONFIG_HOME` with synthetic acc
 - In the fixture only, I give a dummy file mode `0644` on Unix or a Windows ACL grant outside owner/SYSTEM/Administrators. After restarting, the exposure warning appears in the full and Compact dashboards and opens System check. The audit leaves permissions unchanged. After repairing the fixture permissions, **Re-check** clears the finding and warning.
 - I save and rename a dedicated test account, then confirm its credential still works after restarting. The isolated automated checks verify that both actions write git-credential-store format directly, including accounts without clones, and keep reading legacy raw-token files. I never print a real token or credential-file contents in test output.
 
+## Native PR tests
+
+I run the full health gate and Linux GUI build smoke in the `check` job of `.github/workflows/pr.yml`. Alongside it, `native-tests` runs short tests on `windows-latest` and `macos-latest`, with `fail-fast: false` so a failure on one platform does not cancel the other. These jobs check native path, rename, permission and process behavior without launching the GUI.
+
+The native jobs fetch full history and tags for version tests, select Go from `go.mod`, and build the embedded frontend with Node 24. Go and npm caches stay separate per OS. On the Windows runner only, I set `core.autocrlf=false` and `core.longpaths=true` before checkout; I do not need these global Git changes on my workstation. After `npm ci && npm run build` in `cmd/gui/frontend`, I run from the repository root:
+
+```bash
+go test -short ./pkg/config/ ./pkg/status/ ./pkg/credential/ ./pkg/update/ ./pkg/git/ ./pkg/workspace/ ./cmd/gui/
+```
+
+After the first green hosted run, I add `native-tests (windows-latest)` and `native-tests (macos-latest)` as required checks alongside `check` in branch protection. The workflow file does not change branch protection. To validate the Windows failure gate, I use a throwaway commit with an intentionally failing Windows-only path test, confirm the Windows job fails, then drop that commit and require both native jobs to pass again. Local tests and workflow lint do not complete these hosted rollout checks.
+
+Hosted native tests do not verify desktop rendering or packaged launches. I keep the packaged-launch smoke in `scripts/smoke.sh` and test interactive GUI behavior in a native desktop session.
+
 ## Pre-PR checklist
 
 I run these before every push or PR. `/test-plan` in Claude Code or `$test-plan` in Codex automates them.

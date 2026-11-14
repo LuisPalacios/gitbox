@@ -85,3 +85,40 @@ jobs:
         run: wails build -s -tags webkit2_41
       - name: Smoke test
         run: cmd/gui/build/bin/GitboxApp --version
+
+  # Exercise native filesystem and process behavior without launching a GUI.
+  native-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Configure Git for Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.longpaths true
+      - uses: actions/checkout@v7
+        with:
+          # Version tests need tags and the history for git describe.
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          # setup-go and setup-node include the OS in their cache keys.
+          cache: true
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: cmd/gui/frontend/package-lock.json
+      # cmd/gui embeds frontend/dist even when tests use the Wails stub.
+      - name: Build frontend
+        shell: bash
+        working-directory: cmd/gui/frontend
+        run: npm ci && npm run build
+      - name: Run native short tests
+        run: go test -short ./pkg/config/ ./pkg/status/ ./pkg/credential/ ./pkg/update/ ./pkg/git/ ./pkg/workspace/ ./cmd/gui/
