@@ -133,6 +133,14 @@ Las ejecuto en este orden, de la más rápida a la más lenta.
 
 Para el tiempo de arranque visible mido en el escritorio nativo: del lanzamiento del proceso a la ventana, de la ventana a las primeras filas configuradas con la anidación de contenedores, y el tiempo hasta completar el estado. Registro la plataforma, el número de clones, la disposición de contenedores y el número de ejecuciones. Una navegación del navegador contra un backend `wails dev` en ejecución mide un camino distinto, y los tiempos por SSH no pueden mostrar el pintado de filas de WebView2, así que un objetivo de arranque en Windows sigue abierto hasta que lo mido en un escritorio Windows interactivo.
 
+### Disposición del diálogo de descubrimiento
+
+Compruebo **Buscar proyectos** en WebKit nativo con cuentas y repositorios sintéticos. Cubro los estados de carga, error, lista vacía, un resultado y lista larga, con resultados que llegan tanto durante como después de la transición de apertura. Reabro el diálogo, filtro la lista, alterno entre ventanas bajas y altas, y compruebo el acceso por teclado, la selección y **Añadir y Pull**. Mantengo las llamadas al proveedor y a la clonación aisladas de las credenciales y los repositorios de producción.
+
+Con espacio suficiente en la ventana, espero que el contador, el filtro, **Seleccionar todo** y un repositorio quepan sin desplazamiento. Las listas largas deben permitir el desplazamiento mientras la cabecera y los botones de acción siguen accesibles. Cuando cambio los estilos compartidos de los modales, también compruebo los diálogos de cuenta, credenciales, confirmación y descubrimiento de mirrors.
+
+Dejo que terminen la transición de apertura y la actualización de resultados antes de leer las dimensiones de los elementos. Las lecturas intermedias del layout pueden forzar a WebKit a recalcular las dimensiones y ocultar la regresión de #221. Comparo `clientHeight` y `scrollHeight` del cuerpo, inspecciono el resultado renderizado y compruebo los límites de la fila y del pie; buscar texto CSS no prueba el layout.
+
 ## Checklist pre-PR
 
 Ejecuto esto antes de cada push o PR. `/test-plan` en Claude Code o `$test-plan` en Codex lo automatiza.
