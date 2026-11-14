@@ -97,11 +97,11 @@ func downloadFile(ctx context.Context, client *http.Client, url, dest string) er
 		return err
 	}
 	req.Header.Set("User-Agent", "gitbox-updater")
-	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" && allowTokenForRequest(req) {
 		req.Header.Set("Authorization", "token "+token)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := tokenHTTPClient(client).Do(req)
 	if err != nil {
 		return err
 	}
@@ -122,4 +122,42 @@ func downloadFile(ctx context.Context, client *http.Client, url, dest string) er
 	}
 
 	return f.Close()
+}
+
+// allowTokenForHost deliberately matches exact lowercase names, not suffixes.
+func allowTokenForHost(host string) bool {
+	switch host {
+	case "api.github.com", "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com", "uploads.github.com":
+		return true
+	default:
+		return false
+	}
+}
+
+func allowTokenForRequest(req *http.Request) bool {
+	return req.URL.Scheme == "https" && allowTokenForHost(req.URL.Hostname())
+}
+
+// tokenHTTPClient keeps the caller's client intact and applies the token policy
+// after its redirect hook. Once a chain leaves trusted HTTPS hosts, no later hop
+// may recover Authorization from the initial request's headers.
+func tokenHTTPClient(client *http.Client) *http.Client {
+	secured := *client
+	secured.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		var err error
+		if client.CheckRedirect != nil {
+			err = client.CheckRedirect(req, via)
+		} else if len(via) >= 10 {
+			err = fmt.Errorf("stopped after 10 redirects")
+		}
+		allowed := allowTokenForRequest(req)
+		for _, previous := range via {
+			allowed = allowed && allowTokenForRequest(previous)
+		}
+		if !allowed {
+			req.Header.Del("Authorization")
+		}
+		return err
+	}
+	return &secured
 }

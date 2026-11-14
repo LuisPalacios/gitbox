@@ -154,7 +154,7 @@ func getJSON(ctx context.Context, opts Options, path string, out any) error {
 		req.Header.Set("Authorization", "token "+token)
 	}
 
-	resp, err := opts.HTTPClient.Do(req)
+	resp, err := tokenHTTPClient(opts.HTTPClient).Do(req)
 	if err != nil {
 		return fmt.Errorf("fetching releases: %w", err)
 	}

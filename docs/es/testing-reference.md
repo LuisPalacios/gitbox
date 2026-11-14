@@ -10,7 +10,7 @@ Los recuentos son funciones de prueba Go de nivel superior (no se cuentan los su
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-El total actual es de 622 pruebas Go (540 en `pkg/`, 82 en `cmd/gui/`) y 48 pruebas del frontend. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
+El total actual es de 627 pruebas Go (545 en `pkg/`, 82 en `cmd/gui/`) y 48 pruebas del frontend. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
 
 ### Biblioteca compartida (`pkg/`)
 
@@ -43,7 +43,7 @@ El total actual es de 622 pruebas Go (540 en `pkg/`, 82 en `cmd/gui/`) y 48 prue
 - **`pkg/reconcile`** (8) — clones seguros adoptados en su sitio, los indecisos dejados con su motivo, un clon movido vuelto a enlazar, un clon borrado conservado, una raíz no disponible dejada en paz, clones ignorados omitidos, adopción en una cuenta elegida, worktrees enlazados nunca adoptados.
 - **`pkg/status`** (18) — estado del clon (limpio, con cambios, por delante, por detrás, sin clonar, detached), detección de rama, raíz no disponible, rutas de repo a través de las raíces de source y de repo, anidamiento (incluido un contenedor dentro de otro).
 - **`pkg/terminals`** (57) — forma del catálogo, composición de perfiles según el OS, búsquedas de WezTerm y Windows Terminal, resolución del lanzamiento, reglas de fusión y sincronización, distros de WSL detectadas sin ejecutar `wsl.exe`.
-- **`pkg/update`** (28) — parseo y comparación semver, la comprobación de actualización (una actualización pendiente se informa en cada comprobación, el límite de versión major), nombres de artefactos, detección del AppImage solo-aviso, destinos de instalación, relanzamiento y espera al proceso antiguo (más el script elevado de Windows, solo en Windows), verificación de checksum, firmas de release comprobadas contra fixtures hechos con `ssh-keygen` real (otro tag, checksums manipulados, namespace incorrecto, clave ajena, malformada), la clave embebida que coincide con `allowed_signers`, y descargas que fallan cerradas.
+- **`pkg/update`** (33) — parseo y comparación semver, la comprobación de actualización (una actualización pendiente se informa en cada comprobación, el límite de versión major), nombres de artefactos, detección del AppImage solo-aviso, destinos de instalación, relanzamiento y espera al proceso antiguo (más el script elevado de Windows, solo en Windows), verificación de checksum, firmas de release comprobadas contra fixtures hechos con `ssh-keygen` real (otro tag, checksums manipulados, namespace incorrecto, clave ajena, malformada), la clave embebida que coincide con `allowed_signers`, y descargas que fallan cerradas, además del filtrado del token por host exacto y HTTPS en redirecciones (incluidos cambios a HTTP, subdominios no permitidos, políticas del llamador y límites de redirección).
 - **`pkg/workspace`** (12) — archivos `.code-workspace` en la raíz de un clon, un archivo que crea un contenedor, varios que preguntan una vez y conservan la elección, un archivo preferido que vuelve a ganar cuando regresa, un archivo desaparecido que borra la elección, placeholders para las carpetas listadas que faltan dentro de un contenedor (nunca dentro de otro clon), los clones que lista un workspace, JSON con comentarios.
 
 ### Propiedades fuzz
