@@ -24,6 +24,7 @@ Start with the developer guide, then testing. Multiplatform is optional but reco
 | [Release signing](release-signing.md)                 | How releases are signed and verified, agent setup, forks                   |
 | [macOS signing](macos-signing.md)                     | Optional Apple code signing and notarization in CI                         |
 | [Agentic tools directory](agentic-tools-directory.md) | How AI harness detection reads its catalog                                 |
+| [Remote mode spike](remote-spike.md)                  | Decision record for remote mode measurements (#234), English only          |
 
 ## Reference
 
