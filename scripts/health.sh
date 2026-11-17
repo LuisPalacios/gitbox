@@ -44,9 +44,7 @@ pkg[/\\]workspace[/\\]workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCac
 # Advisories npm audit may report: no fixed version exists yet and the package
 # never reaches the binary. A listed advisory that stops being reported fails
 # the check, so the entry goes away with the fix. Space-separated GHSA ids.
-# GHSA-gcqx-w48m-w2h4: deepmerge, a dev-only dependency of vite-plugin-svelte;
-# sveltejs/vite-plugin-svelte#1415 removes it.
-NPM_AUDIT_ALLOW="GHSA-gcqx-w48m-w2h4"
+NPM_AUDIT_ALLOW=""
 
 FRONTEND="cmd/gui/frontend"
 MD_CONFIG="ai/skills/fixing-markdown/.markdownlint-cli2.jsonc"
