@@ -108,7 +108,7 @@ func backupBeforeSave(path string, next *Config, files configFileOps) {
 	// be overwritten (#149).
 	if next != nil && onDiskVersion(path) == CurrentVersion {
 		if current, err := Load(path); err == nil {
-			if configsEqualIgnoringUIState(current, next) {
+			if EqualIgnoringUIState(current, next) {
 				return
 			}
 		}
@@ -135,11 +135,11 @@ func onDiskVersion(path string) int {
 	return probe.Version
 }
 
-// configsEqualIgnoringUIState reports whether two configs are content-equal
+// EqualIgnoringUIState reports whether two configs are content-equal
 // ignoring GUI state (window position, collapsed groups and theme). Compares via canonical JSON so nested
 // maps/slices are handled correctly (Go map iteration order doesn't matter
 // because json.Marshal sorts map keys).
-func configsEqualIgnoringUIState(a, b *Config) bool {
+func EqualIgnoringUIState(a, b *Config) bool {
 	if a == nil || b == nil {
 		return a == b
 	}

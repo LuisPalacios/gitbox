@@ -574,3 +574,45 @@ func (a *App) CredentialVerify(key string) CredentialStatus {
 	defer a.refreshWG.Done()
 	return a.credentialVerify(a.snapshotRefreshConfig(), key)
 }
+
+// I coalesce stale reconcile requests into one follow-up after the current
+// refresh. The follow-up cannot schedule itself again when edits keep landing.
+func (a *App) retryReconcileAfterRefresh() {
+	a.refreshMu.Lock()
+	defer a.refreshMu.Unlock()
+	if a.refreshClosed {
+		return
+	}
+	a.mu.Lock()
+	if a.reconcilePending {
+		a.mu.Unlock()
+		return
+	}
+	a.reconcilePending = true
+	a.mu.Unlock()
+	ctx := a.refreshContextLocked()
+	var waits []<-chan struct{}
+	if a.fetchRun != nil {
+		waits = append(waits, a.fetchRun.done)
+	}
+	if a.statusRun != nil {
+		waits = append(waits, a.statusRun.done)
+	}
+	a.refreshWG.Go(func() {
+		defer func() {
+			a.mu.Lock()
+			a.reconcilePending = false
+			a.mu.Unlock()
+		}()
+		for _, done := range waits {
+			select {
+			case <-ctx.Done():
+				return
+			case <-done:
+			}
+		}
+		if ctx.Err() == nil {
+			a.reconcilePass(false)
+		}
+	})
+}

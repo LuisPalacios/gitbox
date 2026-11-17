@@ -10,7 +10,7 @@ Counts are top-level Go test functions (subtests from `t.Run` and `TestMain` are
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-The current total is 639 Go tests (554 in `pkg/`, 85 in `cmd/gui/`) and 52 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
+The current total is 645 Go tests (554 in `pkg/`, 91 in `cmd/gui/`) and 52 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
 
 ### Shared library (`pkg/`)
 
@@ -64,7 +64,7 @@ This boundary belongs to the test, not the config validator. Accepted configs ca
 - `clone_test.go` (1) — report remaining clone destinations without changing repository config, directories or symlink targets.
 - `account_actions_test.go`, `browser_actions_test.go` (4) — account folder resolution, provider URLs, error paths for unknown accounts and repos.
 - `roots_test.go` (2) — add, make default and remove clone roots; account folders through the source root.
-- `reconcile_test.go` (3) — a confident clone adopted and saved, a retry when the config changes during the scan, adopting into a picked account, ignoring a clone and adopting it from the ignored list.
+- `reconcile_test.go` (9) — a confident clone adopted and saved, a retry when the config changes during the scan, adopting into a picked account, ignoring a clone and adopting it from the ignored list. I also inject scan and clone failures to verify the two-attempt limit, preserved config and suppressed events for stale plans, UI-only changes, one coalesced retry after active refresh work, shutdown cancellation and fresh retry persistence; I run these regressions with `-race`.
 - `containers_test.go` (8) — container flag persistence, nested scan depth, absolute `clone_folder` for onboarded clones, layout-state persistence and pruning (folds, sidebar, view), a workspace file making a container that adopts its nested clone and lists its missing folders in one pass, choosing among several workspace files.
 - `uimode_test.go` (5) — `ui_mode` defaults to Advanced, set and get validation, onboarding writes Simple only on a new install, `SetTheme` validates and persists the theme.
 - `harness_test.go` (15) — AI harness detection, ordering, dedup, retired-harness pruning, missing and reinstalled tools, the `~/.local/bin` fallback, the launcher default profile, error paths.

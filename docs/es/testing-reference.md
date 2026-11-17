@@ -10,7 +10,7 @@ Los recuentos son funciones de prueba Go de nivel superior (no se cuentan los su
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-El total actual es de 639 pruebas Go (554 en `pkg/`, 85 en `cmd/gui/`) y 52 pruebas del frontend. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
+El total actual es de 645 pruebas Go (554 en `pkg/`, 91 en `cmd/gui/`) y 52 pruebas del frontend. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
 
 ### Biblioteca compartida (`pkg/`)
 
@@ -64,7 +64,7 @@ Este límite pertenece a la prueba, no al validador de config. Las configs acept
 - `clone_test.go` (1) — informar de los destinos de clonado restantes sin cambiar la config del repositorio, los directorios ni los destinos de enlaces simbólicos.
 - `account_actions_test.go`, `browser_actions_test.go` (4) — resolución de la carpeta de cuenta, URLs de proveedor, rutas de error para cuentas y repos desconocidos.
 - `roots_test.go` (2) — añadir, hacer predeterminada y quitar raíces de clonado; carpetas de cuenta a través de la raíz de la source.
-- `reconcile_test.go` (3) — un clon seguro adoptado y guardado, un reintento cuando la config cambia durante el escaneo, adopción en una cuenta elegida, ignorar un clon y adoptarlo desde la lista de ignorados.
+- `reconcile_test.go` (9) — un clon seguro adoptado y guardado, un reintento cuando la config cambia durante el escaneo, adopción en una cuenta elegida, ignorar un clon y adoptarlo desde la lista de ignorados. También inyecto fallos de escaneo y de copia para verificar el límite de dos intentos, la conservación de la config y la ausencia de eventos para planes obsoletos, los cambios exclusivos de la UI, un único reintento agrupado tras el refresco activo, la cancelación al cerrar y la persistencia del reintento con datos actuales; ejecuto estas regresiones con `-race`.
 - `containers_test.go` (8) — persistencia del flag de contenedor, profundidad de escaneo anidado, `clone_folder` absoluto para los clones incorporados, persistencia y poda del estado de layout (pliegues, barra lateral, vista), un archivo de workspace que crea un contenedor que adopta su clon anidado y lista sus carpetas que faltan en una sola pasada, elegir entre varios archivos de workspace.
 - `uimode_test.go` (5) — `ui_mode` es Advanced por defecto, validación de set y get, el onboarding escribe Simple solo en una instalación nueva, `SetTheme` valida y persiste el tema.
 - `harness_test.go` (15) — detección de AI harness, orden, deduplicación, poda de harnesses retirados, herramientas ausentes y reinstaladas, el fallback a `~/.local/bin`, el perfil por defecto del lanzador, rutas de error.
