@@ -122,5 +122,10 @@ jobs:
         shell: bash
         working-directory: cmd/gui/frontend
         run: npm ci && npm run build
+      - uses: astral-sh/setup-uv@v10.3.3
+      - name: Run native coordination tests
+        run: |
+          uv run ai/scripts/test_coordinate_issues.py
+          uv run ai/scripts/test_coordinate_roadmap.py
       - name: Run native short tests
         run: go test -short ./pkg/config/ ./pkg/status/ ./pkg/credential/ ./pkg/update/ ./pkg/git/ ./pkg/workspace/ ./cmd/gui/

@@ -279,4 +279,4 @@ When I add a feature, I update the test docs:
 
 ## Agent harness checks
 
-I verify changes limited to agent guidance and maintenance scripts with `./scripts/health.sh harness markdown shellcheck actionlint`. The harness gate runs the renderer and Markdown formatter regression suites, then checks both generated trees against `ai/`. These changes do not need application tests or a GUI build. I still run the full health check before a PR and verify discovery in a fresh session of each tool.
+I verify changes limited to agent guidance and maintenance scripts with `./scripts/health.sh harness markdown shellcheck actionlint`. The harness gate runs the renderer, Markdown formatter, coordination registry and roadmap editing regression suites, then checks both generated trees against `ai/`. These changes do not need application tests or a GUI build. I still run the full health check before a PR and verify discovery in a fresh session of each tool.

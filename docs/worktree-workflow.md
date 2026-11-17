@@ -4,6 +4,36 @@ I use this workflow to work on several GitHub issues at once, each in its own Cl
 
 The skills enforce my publishing rule: nothing reaches GitHub until I say so. In Codex I run `$work-issue <N>` and `$merge-pr <PR#>` with the same arguments and gates. Both tools load the shared instructions and skills described in [developer-guide.md](developer-guide.md#working-with-claude-code-and-codex).
 
+## One supervisor for a batch
+
+I use `coordinate-issues` when I want one conversation to select and supervise up to three independent issues. The supervisor checks live issues, comments, dependencies, open PRs and affected files before choosing a finite batch. It may choose fewer issues when overlap or available agent capacity makes three unsafe. It keeps one agent slot for itself and delegates each issue to a worker in its own worktree.
+
+In Codex I can start with an umbrella issue, declare work already underway elsewhere, or select from the repository without an umbrella:
+
+```text
+$coordinate-issues --roadmap 214 --count 3 --active none
+$coordinate-issues --roadmap 214 --count 3 --active 162,170
+$coordinate-issues --no-roadmap --count 3 --active none
+```
+
+In Claude Code I replace `$coordinate-issues` with `/coordinate-issues`. If I omit the active-session information, the supervisor asks once before choosing the batch. Roadmap checkboxes provide context; live issue and PR state determine which work remains. I do not need to open a conversation for each worker.
+
+The invocation authorizes local selection, planning, implementation, verification and commits. I can explicitly authorize publication for the selected batch with `--publish`, which covers its branch pushes and PR creation or updates after checks pass. `--create-subissues` authorizes justified subissues; `--update-roadmap` authorizes completion updates to the selected umbrella. These options do not authorize a merge, a force push, real credential changes or remote staging. The supervisor keeps publication and questions in the main conversation; workers do not publish. Asking how the skill works does not start a batch.
+
+### Reservations and recovery
+
+Cooperating Claude and Codex sessions share an atomic SQLite registry under `<git-common-dir>/gitbox-coordination/registry.sqlite`. The registry covers a local clone and its worktrees; it does not coordinate separate clones or machines. I still declare external sessions so the supervisor can account for their issue and file ownership.
+
+The supervisor reserves the selected issues together before creating worktrees. A conflict leaves the whole request unreserved, so it can reconsider the batch. It records the owner and generation, worktree, branch, worker, progress and verification evidence. An old heartbeat does not free a reservation: the supervisor checks surviving workers, Git state and PRs before recovering it with a new generation. An open PR keeps its issue occupied. On interruption, I ask the supervisor to resume the recorded batch; it checks existing effects before retrying a push, PR or subissue creation.
+
+GUI sessions, shared configuration, credential operations and staging destinations need exclusive coordination. A reservation does not grant permission to use a resource. The supervisor serializes GUI smoke tests because test-mode instances share an application identity, and checks which binary and window it is testing.
+
+### Verification and completion
+
+The supervisor links each required check to the tested commit and base, with PASS, FAIL or PENDING and the command or interaction evidence. A rebase or new change invalidates the old evidence. An automated smoke can satisfy an interactive criterion when it verifies the correct binary and commit, isolated fixture, window, actions and expected behavior. A version string or screenshot alone does not prove the interaction works. I perform only the required steps that the available tools cannot verify.
+
+Failing or pending required checks block publication. Once publication has authorization and the local checks pass, the supervisor opens the PR and waits for CI before calling it ready. It stops before merge; I use `merge-pr` separately. With authorization to update the umbrella, the merge workflow or a resumed supervisor marks only entries whose merged PR fully resolves the issue. A partial PR or successful CI alone does not complete a roadmap entry.
+
 ## What this workflow gives me
 
 - One session per issue, each in its own worktree and branch.

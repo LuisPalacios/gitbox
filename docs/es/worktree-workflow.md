@@ -4,6 +4,36 @@ Uso este flujo para trabajar en varios issues de GitHub a la vez, cada uno en su
 
 Los skills aplican mi regla de publicación: nada llega a GitHub hasta que yo lo digo. En Codex ejecuto `$work-issue <N>` y `$merge-pr <PR#>` con los mismos argumentos y puertas. Ambas herramientas cargan las instrucciones y skills compartidas que describo en [developer-guide.md](developer-guide.md#trabajar-con-claude-code-y-codex).
 
+## Un supervisor para un lote
+
+Uso `coordinate-issues` cuando quiero que una conversación seleccione y supervise hasta tres issues independientes. El supervisor comprueba issues actuales, comentarios, dependencias, PR abiertas y archivos afectados antes de elegir un lote finito. Puede elegir menos issues si los solapamientos o la capacidad disponible de agentes impiden trabajar con tres de forma segura. Reserva una plaza de agente para sí mismo y delega cada issue a un agente en su propio worktree.
+
+En Codex puedo empezar con un issue paraguas, declarar trabajo que ya está en marcha en otra sesión o seleccionar del repositorio sin paraguas:
+
+```text
+$coordinate-issues --roadmap 214 --count 3 --active none
+$coordinate-issues --roadmap 214 --count 3 --active 162,170
+$coordinate-issues --no-roadmap --count 3 --active none
+```
+
+En Claude Code sustituyo `$coordinate-issues` por `/coordinate-issues`. Si omito la información sobre sesiones activas, el supervisor la pregunta una vez antes de elegir el lote. Las casillas del roadmap aportan contexto; el estado actual de issues y PR determina qué trabajo queda. No necesito abrir una conversación por agente.
+
+La invocación autoriza selección, planificación, implementación, verificación y commits locales. Puedo autorizar explícitamente la publicación del lote seleccionado con `--publish`, que cubre los pushes de sus ramas y la creación o actualización de PR después de superar las comprobaciones. `--create-subissues` autoriza subissues justificadas; `--update-roadmap` autoriza actualizaciones de finalización en el paraguas seleccionado. Estas opciones no autorizan un merge, un push forzado, cambios de credenciales reales ni staging remoto. El supervisor mantiene la publicación y las preguntas en la conversación principal; los agentes no publican. Preguntar cómo funciona el skill no inicia un lote.
+
+### Reservas y recuperación
+
+Las sesiones de Claude y Codex que cooperan comparten un registro SQLite atómico en `<git-common-dir>/gitbox-coordination/registry.sqlite`. El registro cubre un clon local y sus worktrees; no coordina clones o máquinas independientes. Sigo declarando las sesiones externas para que el supervisor tenga en cuenta sus issues y archivos asignados.
+
+El supervisor reserva juntos los issues seleccionados antes de crear worktrees. Un conflicto deja toda la solicitud sin reservar, para que pueda reconsiderar el lote. Registra el propietario y su generación, worktree, rama, agente, progreso y evidencias de verificación. Un heartbeat antiguo no libera una reserva: el supervisor comprueba los agentes que siguen activos, el estado de Git y las PR antes de recuperarla con una generación nueva. Una PR abierta mantiene su issue ocupado. Tras una interrupción, pido al supervisor que reanude el lote registrado; comprueba los efectos existentes antes de reintentar un push o la creación de una PR o subissue.
+
+Las sesiones de GUI, la configuración compartida, las operaciones de credenciales y los destinos de staging necesitan coordinación exclusiva. Una reserva no concede permiso para usar un recurso. El supervisor serializa los smoke tests de GUI porque las instancias en modo de prueba comparten una identidad de aplicación, y comprueba qué binario y ventana está probando.
+
+### Verificación y finalización
+
+El supervisor vincula cada comprobación obligatoria al commit y la base probados, con PASS, FAIL o PENDING y las evidencias del comando o interacción. Un rebase o un cambio nuevo invalida las evidencias anteriores. Un smoke automatizado puede satisfacer un criterio interactivo cuando verifica el binario y commit correctos, el fixture aislado, la ventana, las acciones y el comportamiento esperado. Una cadena de versión o una captura por sí sola no demuestra que funcione la interacción. Solo realizo los pasos obligatorios que las herramientas disponibles no pueden verificar.
+
+Las comprobaciones obligatorias fallidas o pendientes bloquean la publicación. Cuando la publicación cuenta con autorización y pasan las comprobaciones locales, el supervisor abre la PR y espera a CI antes de declararla lista. Se detiene antes del merge; uso `merge-pr` por separado. Con autorización para actualizar el paraguas, el flujo de merge o un supervisor reanudado marca solo las entradas cuya PR integrada resuelve todo el issue. Una PR parcial o una CI correcta por sí solas no completan una entrada del roadmap.
+
 ## Qué me da este flujo
 
 - Una sesión por issue, cada una en su propio worktree y su propia rama.

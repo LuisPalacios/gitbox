@@ -38,7 +38,7 @@ docs/
   multiplatform.md        Remote hosts (.env) for cross-platform testing
   macos-signing.md        macOS code signing setup
   release-signing.md      Release signing: draft → sign-release.sh → publish, agent setup, fork key swap
-  worktree-workflow.md    Parallel worktree sessions (/work-issue, /merge-pr)
+  worktree-workflow.md    Supervised issue batches and parallel worktree sessions
   agentic-tools-directory.md  AI harness / agentic tools directory
   es/                     Spanish counterparts of every doc above
   diagrams/               Architecture diagrams
@@ -78,6 +78,7 @@ ai/                       Agent harness masters: the only hand-edited agent guid
     guideline_skills.md   Skill-authoring quick reference
     testing-patterns.md   Which tests to run, test levels, helpers, naming conventions
   skills/
+    coordinate-issues/    Supervisor + up to three issue workers; shared local reservations
     fixing-markdown/      Markdown lint + format
     merge-pr/             Merge a PR (post-work-issue), clean up worktree + branch
     preparing-brand-logos/  Find tool logos, fit them into the 150x150 brand template (tmp/), draft -dark versions

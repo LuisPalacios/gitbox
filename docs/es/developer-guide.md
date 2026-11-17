@@ -117,7 +117,7 @@ Los usuarios finales nunca se encuentran con esto. Cualquiera de estas solucione
 
 ## Trabajar con Claude Code y Codex
 
-Claude Code y Codex comparten un único conjunto de instrucciones de proyecto y siete skills del repositorio, cada uno en su propio formato nativo. Edito solo los masters neutros de `ai/`: `main.md`, `rules/`, `context/` y `skills/`. El motor de `ai/scripts/sync.py` los renderiza para ambas herramientas como archivos reales y versionados: `.claude/CLAUDE.md`, `.claude/rules/`, `.claude/context/` y `.claude/skills/` para Claude Code, y `AGENTS.md`, `.codex/rules/`, `.codex/context/` y `.agents/skills/` para Codex.
+Claude Code y Codex comparten un único conjunto de instrucciones de proyecto y ocho skills del repositorio, cada uno en su propio formato nativo. Edito solo los masters neutros de `ai/`: `main.md`, `rules/`, `context/` y `skills/`. El motor de `ai/scripts/sync.py` los renderiza para ambas herramientas como archivos reales y versionados: `.claude/CLAUDE.md`, `.claude/rules/`, `.claude/context/` y `.claude/skills/` para Claude Code, y `AGENTS.md`, `.codex/rules/`, `.codex/context/` y `.agents/skills/` para Codex.
 
 La mayor parte del texto es común. Donde las herramientas difieren (nombres de herramientas, flujo de planificación, permisos), un master guarda ambas variantes en bloques de harness, y tokens como `{{INVOKE}}` y `{{CONTEXT}}` se expanden al prefijo y las carpetas de cada herramienta. Después de cualquier cambio bajo `ai/` renderizo y hago commit de los masters con ambos árboles, desde cualquiera de las dos herramientas:
 
@@ -129,6 +129,8 @@ uv run ai/scripts/sync.py sync   # renderiza ambos harness y verifica
 La [comprobación de salud](#comprobación-de-salud) falla cuando un archivo renderizado se desvía de su master, así que una edición a mano de `AGENTS.md` o `.claude/CLAUDE.md` nunca llega a `main`.
 
 Abro cualquiera de las dos herramientas en la raíz del repositorio e invoco una skill como `/work-issue 123` en Claude Code o `$work-issue 123` en Codex; las peticiones en lenguaje natural también seleccionan skills. Ambas herramientas siguen las mismas reglas de pruebas y requieren aprobación explícita antes de publicar en GitHub. La configuración nativa se sigue editando a mano: los permisos de Claude viven en `.claude/settings.json`, y Codex usa los permisos de su propia sesión.
+
+Para un lote supervisado, uso `$coordinate-issues --roadmap 214 --count 3 --active none` en Codex o `/coordinate-issues` con los mismos argumentos en Claude Code. El supervisor selecciona issues compatibles, los reserva entre las sesiones que cooperan y delega un worktree a cada agente. Describo las opciones y los permisos de publicación en [worktree-workflow.md](worktree-workflow.md#un-supervisor-para-un-lote).
 
 Mantengo las recetas de compilación en `ai/context/building.md`; ambas entradas conservan los requisitos de compilación y me dirigen a su copia nativa del contexto. Codex descubre `.agents/skills/` automáticamente, mientras que su tabla de reglas Markdown indica cuáles debe leer. Su tabla de skills es un índice compacto. Los metadatos opcionales de interfaz de skills para Codex viven en `ai/skills/<name>/agents/openai.yaml`, reservados para Codex mediante `only:` en `ai/harness.yaml`; las descripciones comunes permanecen en `SKILL.md`.
 
