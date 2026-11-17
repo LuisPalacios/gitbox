@@ -117,7 +117,7 @@ End users never hit this. Either fix works:
 
 ## Working with Claude Code and Codex
 
-Claude Code and Codex share one set of project instructions and seven repository skills, each in its own native layout. I edit only the neutral masters in `ai/`: `main.md`, `rules/`, `context/` and `skills/`. The engine in `ai/scripts/sync.py` renders them into both tools as real, tracked files: `.claude/CLAUDE.md`, `.claude/rules/`, `.claude/context/` and `.claude/skills/` for Claude Code, and `AGENTS.md`, `.codex/rules/`, `.codex/context/` and `.agents/skills/` for Codex.
+Claude Code and Codex share one set of project instructions and eight repository skills, each in its own native layout. I edit only the neutral masters in `ai/`: `main.md`, `rules/`, `context/` and `skills/`. The engine in `ai/scripts/sync.py` renders them into both tools as real, tracked files: `.claude/CLAUDE.md`, `.claude/rules/`, `.claude/context/` and `.claude/skills/` for Claude Code, and `AGENTS.md`, `.codex/rules/`, `.codex/context/` and `.agents/skills/` for Codex.
 
 Most text is shared. Where the tools differ (tool names, plan workflow, permissions), a master holds both variants in harness blocks, and tokens such as `{{INVOKE}}` and `{{CONTEXT}}` expand to each tool's prefix and folders. After any change under `ai/` I render and commit the masters with both trees, from either tool:
 
@@ -129,6 +129,8 @@ uv run ai/scripts/sync.py sync   # render both harnesses, then verify
 The [health check](#health-check) fails when a rendered file drifts from its master, so a hand edit to `AGENTS.md` or `.claude/CLAUDE.md` never reaches `main`.
 
 I open either tool at the repository root and invoke a skill as `/work-issue 123` in Claude Code or `$work-issue 123` in Codex; natural-language requests also select skills. Both tools follow the same testing rules and require explicit approval before publishing to GitHub. Native configuration stays hand-edited: Claude permissions live in `.claude/settings.json`, and Codex uses its own session permissions.
+
+For a supervised batch, I use `$coordinate-issues --roadmap 214 --count 3 --active none` in Codex or `/coordinate-issues` with the same arguments in Claude Code. The supervisor selects compatible issues, reserves them across cooperating sessions and delegates one worktree to each worker. I describe the options and publication permissions in [worktree-workflow.md](worktree-workflow.md#one-supervisor-for-a-batch).
 
 I keep build recipes in `ai/context/building.md`; both entry files retain the build requirements and route me to their native context copy. Codex discovers `.agents/skills/` automatically, while its Markdown-rule table tells it which rules to read. Its skills table is a compact index. Optional Codex skill UI metadata lives in `ai/skills/<name>/agents/openai.yaml`, reserved for Codex through `only:` in `ai/harness.yaml`; shared descriptions stay in `SKILL.md`.
 

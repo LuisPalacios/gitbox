@@ -23,6 +23,12 @@ $test-plan full         Full release verification (automated + interactive)
 
 Read the checklists from `docs/testing.md` (sections "Pre-PR checklist" and "Full release checklist"). This is the single source of truth — always re-read it at execution time to pick up any updates.
 
+## Coordinated batches
+
+When called by `$coordinate-issues`, report evidence to its supervisor with the tested head/base SHA, platform and fixture. The supervisor schedules shared GUI, integration and staging resources; a resource reservation does not grant permission to stage remotely or use real credentials. Apply these requirements before Step 4 or Step 6. The harness-only exception in `.codex/context/testing-patterns.md` still applies.
+
+Automate Step 7's behavioral checks when tools can prove the same acceptance criteria with isolated fixtures. Verify the actual binary SHA and window, execute the actions, assert the expected behavior and retain evidence. Version output, CI and screenshots alone do not replace behavioral checks. Ask the user for remaining mandatory coverage and report it as PENDING until confirmed; report failed checks as FAIL. A head/base change invalidates earlier evidence. The standalone interactive workflow remains unchanged.
+
 ## Pre-PR mode (default)
 
 Run all automated checks. Track progress with the todo list.

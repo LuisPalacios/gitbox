@@ -35,6 +35,12 @@ Follow "Agent capabilities" in `{{ENTRY}}`: use supported tools or a conversatio
 
 Each phase begins by reading current git state (`git rev-parse --abbrev-ref HEAD`, `git worktree list`, `git log -1`, `gh pr view` if a PR exists). If `{{INVOKE}}work-issue <N>` is re-invoked mid-flow, jump to the right phase instead of restarting.
 
+## Delegated batch work
+
+When a supervisor assigns a reserved issue through `{{INVOKE}}coordinate-issues`, read that skill and follow its worker contract. The user's batch-start instruction delegates local issue selection and plan approval to the supervisor: send the preflight details and plan there instead of repeating the ordinary user gates below. Resume in the assigned worktree when it already exists; Step 1's main-clone check applies only to initial creation. Keep every command and edit in that worktree, report scope changes before editing, and return verified local commits to the supervisor. Workers stop before Steps 8–10; the supervisor owns sync, publication and CI.
+
+Only in this coordinated mode, evidence of an equivalent automated behavioral smoke can satisfy Step 7 under `coordinate-issues` criteria. Missing coverage still requires the user's check. This mode grants no worker publication authority and does not change the standalone workflow below.
+
 ## Universal gh-user detection
 
 Run this before every `gh` command. It is portable across Git Bash (Windows), macOS, and Linux.

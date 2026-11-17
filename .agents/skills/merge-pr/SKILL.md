@@ -59,6 +59,7 @@ This repository and personal forks use the origin owner as the login. If the own
 
 ## Step 2: Freshness check
 
+- For a coordinated issue, inspect its reservation and arrange with its supervisor for the worker to stop. Confirm it cannot still modify the worktree before checking cleanliness, and keep it stopped through merge and cleanup. A stale heartbeat alone is insufficient. Do this before Step 4 because `--delete-branch` can remove the worktree during the merge command itself.
 - `cd` into the PR's worktree.
 - Check for uncommitted or unpushed state **now**, before the merge. `gh pr merge --delete-branch` also deletes the local branch and removes its worktree, so after the merge there is nothing left to check:
 
@@ -104,6 +105,8 @@ This repository and personal forks use the origin owner as the login. If the own
 ## Step 5: Cleanup
 
 After successful merge:
+
+For a coordinated issue already merged externally, perform Step 2's worker-stop check before cleanup. After cleanup, confirm the PR merged and the linked issue is fully resolved; do not infer resolution from a `Closes` string alone. With current-session permission to update its roadmap, follow `.agents/skills/coordinate-issues/protocol.md` to mark only the matching umbrella checkbox, including when this invocation resumes after an external merge. Merge permission alone does not authorize the issue-body edit. Record pending roadmap updates when permission is absent, and retain the report for later reconciliation. Release a resolved issue's claim only after confirming no active worker or unfinished work remains; a partial PR leaves it reserved. An issue claim can be released after resolution while a journal entry preserves a pending roadmap update.
 
 1. Leave the worktree: `cd` back to the main clone.
 2. Update main: `git fetch origin && git checkout main && git pull --ff-only origin main`.

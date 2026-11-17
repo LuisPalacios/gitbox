@@ -271,7 +271,7 @@ run_markdown() {
 run_harness() {
     # Test shared maintenance tools, then verify both renders against ai/.
     local suite
-    for suite in test_sync.py test_fixing_markdown.py; do
+    for suite in test_sync.py test_fixing_markdown.py test_coordinate_issues.py test_coordinate_roadmap.py; do
         uv run -q "$HARNESS/$suite" >"$tmp/harness-test.full" 2>&1 \
             || { cat "$tmp/harness-test.full"; return 1; }
     done

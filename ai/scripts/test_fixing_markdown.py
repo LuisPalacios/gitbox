@@ -318,6 +318,8 @@ class MarkdownTest(unittest.TestCase):
             self.assertEqual(calls.read_text(encoding="utf-8").splitlines(), [
                 "uv run -q ai/scripts/test_sync.py",
                 "uv run -q ai/scripts/test_fixing_markdown.py",
+                "uv run -q ai/scripts/test_coordinate_issues.py",
+                "uv run -q ai/scripts/test_coordinate_roadmap.py",
                 "uv run -q ai/scripts/sync.py verify --quiet",
             ])
         self.assertEqual(self.snapshot(), before)
