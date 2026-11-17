@@ -44,7 +44,10 @@ pkg[/\\]workspace[/\\]workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCac
 # Advisories npm audit may report: no fixed version exists yet and the package
 # never reaches the binary. A listed advisory that stops being reported fails
 # the check, so the entry goes away with the fix. Space-separated GHSA ids.
-NPM_AUDIT_ALLOW=""
+# I temporarily accept build-tool-only picomatch GHSA-fc5q-39xc-vjpf
+# (no patched version on 2026-11-17). Review by 2026-12-01; scope and removal
+# conditions: docs/developer-guide.md#temporary-npm-audit-exception.
+NPM_AUDIT_ALLOW="GHSA-fc5q-39xc-vjpf"
 
 FRONTEND="cmd/gui/frontend"
 MD_CONFIG="ai/skills/fixing-markdown/.markdownlint-cli2.jsonc"
