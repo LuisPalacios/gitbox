@@ -13,7 +13,6 @@ NO_DESKTOP=false
 PLATFORM=""
 ARCH=""
 ARTIFACT_NAME=""
-DOWNLOAD_URL=""
 RELEASE_TAG=""
 TMP_DIR=""
 USE_GH=false
@@ -60,6 +59,11 @@ Options:
                     menu. The binary is still installed; you can register
                     it later with scripts/register-gitbox.sh.
   -h, --help        Show this help.
+
+Verification:
+  OpenSSH 8.2+ (ssh-keygen) and SHA-256 support are required. Every release,
+  including --cli-only 1.x, must carry checksums.sha256.sig signed by the
+  pinned release key. Missing signatures stop installation.
 
 Examples:
   # Install the latest GUI
@@ -148,6 +152,7 @@ check_dependencies() {
   local missing=()
 
   command -v curl &>/dev/null || missing+=("curl")
+  command -v ssh-keygen &>/dev/null || missing+=("ssh-keygen (OpenSSH 8.2+)")
 
   # unzip is required on macOS/Linux; on Windows we can fall back to PowerShell
   if [[ "$PLATFORM" != "windows" ]]; then
@@ -217,64 +222,83 @@ resolve_cli_version() {
 
 # ── Download release ────────────────────────────────────────────────
 
+# I pin the same public key as the updater; an archive cannot replace its trust root.
+release_public_key() {
+  printf '%s\n' 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBNmJEAj33/oXqXX/fA6C8JvQk1ju0Jb5qD7K99qo2pK gitbox-release'
+}
+
 get_release_info() {
   TMP_DIR="$(mktemp -d)"
   trap 'rm -rf "$TMP_DIR"' EXIT
 
-  if [[ "$USE_GH" == true ]]; then
-    log "Downloading via gh CLI..."
-    local gh_args=(release download --repo "$REPO" --pattern "$ARTIFACT_NAME" --dir "$TMP_DIR")
-    if [[ -n "$VERSION_TAG" ]]; then
-      gh_args=(release download "$VERSION_TAG" --repo "$REPO" --pattern "$ARTIFACT_NAME" --dir "$TMP_DIR")
-    fi
-    if ! gh "${gh_args[@]}"; then
-      die "Failed to download $ARTIFACT_NAME from $REPO. Check the version tag and try again."
-    fi
-    # Determine the tag we actually downloaded
-    if [[ -n "$VERSION_TAG" ]]; then
-      RELEASE_TAG="$VERSION_TAG"
-    else
-      RELEASE_TAG="$(gh release view --repo "$REPO" --json tagName -q .tagName 2>/dev/null || echo "latest")"
-    fi
+  # Resolve latest once, before downloading any asset, to avoid mixing releases.
+  if [[ -n "$VERSION_TAG" ]]; then
+    RELEASE_TAG="$VERSION_TAG"
+  elif [[ "$USE_GH" == true ]]; then
+    RELEASE_TAG="$(gh release view --repo "$REPO" --json tagName -q .tagName)" \
+      || die "Could not resolve the latest release."
   else
-    log "Downloading via GitHub API..."
-    local api_url
-    if [[ -n "$VERSION_TAG" ]]; then
-      api_url="${GITHUB_API}/repos/${REPO}/releases/tags/${VERSION_TAG}"
-    else
-      api_url="${GITHUB_API}/repos/${REPO}/releases/latest"
-    fi
-
-    local api_response http_code
-    http_code="$(curl -fsSL -w '%{http_code}' -o "$TMP_DIR/api.json" "$api_url" 2>/dev/null || true)"
-
-    if [[ "$http_code" == "403" ]]; then
-      die "GitHub API rate limit hit. Set GITHUB_TOKEN env var or install gh CLI (gh auth login)."
-    elif [[ "$http_code" != "200" ]]; then
-      die "Failed to fetch release info (HTTP $http_code). Check the version tag and network."
-    fi
-
-    api_response="$(<"$TMP_DIR/api.json")"
-
-    RELEASE_TAG="$(printf '%s' "$api_response" | grep -m1 '"tag_name"' | sed 's/.*: *"\([^"]*\)".*/\1/')"
-    DOWNLOAD_URL="$(printf '%s' "$api_response" | grep -o "https://[^\"]*/${ARTIFACT_NAME}" | head -1)"
-
-    if [[ -z "$DOWNLOAD_URL" ]]; then
-      die "Artifact $ARTIFACT_NAME not found in release $RELEASE_TAG."
-    fi
-
-    log "Downloading $ARTIFACT_NAME ($RELEASE_TAG)..."
-
-    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-      local curl_cmd=(curl -fSL --progress-bar -H "Authorization: token $GITHUB_TOKEN" -o "$TMP_DIR/$ARTIFACT_NAME" "$DOWNLOAD_URL")
-    else
-      local curl_cmd=(curl -fSL --progress-bar -o "$TMP_DIR/$ARTIFACT_NAME" "$DOWNLOAD_URL")
-    fi
-
-    if ! "${curl_cmd[@]}"; then
-      die "Download failed. Check your network and try again."
-    fi
+    curl -fsSL -o "$TMP_DIR/api.json" "${GITHUB_API}/repos/${REPO}/releases/latest" \
+      || die "Could not resolve the latest release. Check the network or use --version."
+    RELEASE_TAG="$(sed -n 's/.*"tag_name": *"\([^" ]*\)".*/\1/p' "$TMP_DIR/api.json" | head -1)"
   fi
+  [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] \
+    || die "Invalid release tag: $RELEASE_TAG"
+
+  log "Downloading $ARTIFACT_NAME and verification files ($RELEASE_TAG)..."
+  local asset
+  for asset in "$ARTIFACT_NAME" checksums.sha256 checksums.sha256.sig; do
+    if [[ "$USE_GH" == true ]]; then
+      gh release download "$RELEASE_TAG" --repo "$REPO" --pattern "$asset" --dir "$TMP_DIR" \
+        || die "Release $RELEASE_TAG lacks a required download ($asset). Unsigned releases, including legacy 1.x, cannot be installed."
+    else
+      curl -fSL --progress-bar -o "$TMP_DIR/$asset" "https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${asset}" \
+        || die "Release $RELEASE_TAG lacks a required download ($asset). Unsigned releases, including legacy 1.x, cannot be installed."
+    fi
+  done
+}
+
+archive_sha256() {
+  local archive="$TMP_DIR/$ARTIFACT_NAME"
+  if command -v sha256sum &>/dev/null; then
+    sha256sum "$archive" | cut -d ' ' -f1
+  elif command -v shasum &>/dev/null; then
+    shasum -a 256 "$archive" | cut -d ' ' -f1
+  elif [[ "$PLATFORM" == windows ]] && command -v powershell &>/dev/null; then
+    # PowerShell expands its own environment references.
+    # shellcheck disable=SC2016
+    GITBOX_VERIFY_ARCHIVE="$(cygpath -w "$archive")" powershell -NoProfile -NonInteractive -Command \
+      '(Get-FileHash -LiteralPath $env:GITBOX_VERIFY_ARCHIVE -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()' | tr -d '\r'
+  else
+    die "SHA-256 verification needs sha256sum, shasum, or Windows PowerShell."
+  fi
+}
+
+verify_release() {
+  command -v ssh-keygen &>/dev/null || die "Verification requires ssh-keygen from OpenSSH 8.2 or later."
+  local asset
+  for asset in "$ARTIFACT_NAME" checksums.sha256 checksums.sha256.sig; do
+    [[ -s "$TMP_DIR/$asset" ]] || die "Missing verification input: $asset. Refusing to install an unsigned release."
+  done
+  printf 'gitbox-release namespaces="gitbox-release" %s\n' "$(release_public_key)" > "$TMP_DIR/allowed_signers"
+  { printf 'gitbox %s\n' "$RELEASE_TAG"; cat "$TMP_DIR/checksums.sha256"; } > "$TMP_DIR/signed-message"
+  ssh-keygen -Y verify -f "$TMP_DIR/allowed_signers" -I gitbox-release -n gitbox-release \
+    -s "$TMP_DIR/checksums.sha256.sig" < "$TMP_DIR/signed-message" >/dev/null 2>&1 \
+    || die "Release signature verification failed. Refusing to extract or install. OpenSSH 8.2+ is required."
+
+  # Select exactly one well-formed entry; never let a checksum file select paths.
+  local expected actual
+  expected="$(awk -v name="$ARTIFACT_NAME" '
+    $2 == name || $2 == "*" name {
+      count++
+      if (NF != 2 || length($1) != 64 || $1 ~ /[^0-9a-fA-F]/) bad = 1
+      hash = tolower($1)
+    }
+    END { if (count != 1 || bad) exit 1; print hash }
+  ' "$TMP_DIR/checksums.sha256")" || die "Signed checksums must contain exactly one SHA-256 entry for $ARTIFACT_NAME."
+  actual="$(archive_sha256)" || die "Could not compute archive SHA-256."
+  [[ "$actual" == "$expected" ]] || die "Archive checksum mismatch. Refusing to extract or install."
+  log "Release signature and archive checksum verified."
 }
 
 # ── Extract ─────────────────────────────────────────────────────────
@@ -434,22 +458,56 @@ ensure_path() {
 
 # ── macOS install ───────────────────────────────────────────────────
 
+# I retain quarantine for Developer ID signatures (including notarized apps).
+# Ad-hoc signatures only seal local code; they do not identify a publisher.
+prepare_macos_binary() {
+  local binary="$1" details
+  command -v codesign &>/dev/null || die "codesign is required to inspect macOS signing."
+  details="$(LC_ALL=C codesign -dv --verbose=2 "$binary" 2>&1)" || {
+    [[ "$details" == *"code object is not signed at all"* ]] || die "Cannot inspect macOS signature: $binary"
+  }
+  if [[ "$details" == *"Authority="* ]]; then
+    codesign --verify --deep --strict "$binary" || die "Invalid macOS code signature: $binary"
+    return
+  fi
+  [[ "$details" == *"Signature=adhoc"* || "$details" == *"code object is not signed at all"* ]] \
+    || die "Unrecognized macOS signing state: $binary"
+  warn "This release has no Apple publisher signature; clearing quarantine after release verification."
+  xattr -cr "$binary"
+}
+
+prepare_windows_binary() {
+  local binary="$1"
+  # Environment transport keeps paths out of PowerShell source code.
+  # shellcheck disable=SC2016
+  GITBOX_INSTALL_BINARY="$(cygpath -w "$binary")" powershell -NoProfile -NonInteractive -Command '
+    $ErrorActionPreference = "Stop"
+    $signature = Get-AuthenticodeSignature -LiteralPath $env:GITBOX_INSTALL_BINARY
+    if ($signature.Status -eq "NotSigned") {
+      Write-Host "[gitbox] This release has no Authenticode signature; unblocking after release verification."
+      Unblock-File -LiteralPath $env:GITBOX_INSTALL_BINARY
+    } elseif ($signature.Status -ne "Valid") {
+      throw "Invalid Windows code signature: $($signature.Status)"
+    }
+  ' || die "Windows code-signature inspection failed."
+}
+
 install_macos() {
   # CLI (1.x archives only)
   if [[ -f "$TMP_DIR/extracted/gitbox" ]]; then
     mkdir -p "$INSTALL_DIR"
+    prepare_macos_binary "$TMP_DIR/extracted/gitbox"
     cp "$TMP_DIR/extracted/gitbox" "$INSTALL_DIR/gitbox"
     chmod +x "$INSTALL_DIR/gitbox"
-    xattr -cr "$INSTALL_DIR/gitbox" 2>/dev/null || true
     CLI_INSTALLED=true
     log "CLI installed: $INSTALL_DIR/gitbox"
   fi
 
   # GUI
   if [[ "$CLI_ONLY" == false ]]; then
+    prepare_macos_binary "$TMP_DIR/extracted/GitboxApp.app"
     rm -rf /Applications/GitboxApp.app
     cp -R "$TMP_DIR/extracted/GitboxApp.app" /Applications/GitboxApp.app
-    xattr -cr /Applications/GitboxApp.app 2>/dev/null || true
     GUI_PATH="/Applications/GitboxApp.app"
     log "GUI installed: $GUI_PATH"
   fi
@@ -463,17 +521,16 @@ install_macos() {
 # ── Linux install ───────────────────────────────────────────────────
 
 register_linux_desktop() {
-  local script_url="https://raw.githubusercontent.com/${REPO}/main/scripts/register-gitbox.sh"
-  local script_path="$TMP_DIR/register-gitbox.sh"
-  if ! curl -fsSL -o "$script_path" "$script_url"; then
-    warn "Could not download register-gitbox.sh — skipping menu entry."
-    warn "Register later with: bash <(curl -fsSL $script_url)"
+  local script_path="$TMP_DIR/extracted/register-gitbox.sh"
+  local icon_path="$TMP_DIR/extracted/appicon.png"
+  if [[ ! -f "$script_path" || ! -f "$icon_path" ]]; then
+    warn "This verified release has no bundled desktop helper/icon; skipping menu entry."
     return
   fi
-  if GITBOX_GUI_BIN="$INSTALL_DIR/GitboxApp" bash "$script_path"; then
+  if GITBOX_GUI_BIN="$INSTALL_DIR/GitboxApp" GITBOX_ICON_FILE="$icon_path" bash "$script_path"; then
     DESKTOP_REGISTERED=true
   else
-    warn "Desktop registration failed — run manually: bash <(curl -fsSL $script_url)"
+    warn "Desktop registration failed; the verified application is installed."
   fi
 }
 
@@ -512,17 +569,16 @@ install_windows() {
 
   # CLI (1.x archives only)
   if [[ -f "$TMP_DIR/extracted/gitbox.exe" ]]; then
+    prepare_windows_binary "$TMP_DIR/extracted/gitbox.exe"
     cp "$TMP_DIR/extracted/gitbox.exe" "$INSTALL_DIR/gitbox.exe"
-    # Remove "downloaded from internet" mark so SmartScreen doesn't block it
-    powershell -Command "Unblock-File -Path '${win_path}\\gitbox.exe'" 2>/dev/null || true
     CLI_INSTALLED=true
     log "CLI installed: $INSTALL_DIR/gitbox.exe"
   fi
 
   # GUI
   if [[ "$CLI_ONLY" == false ]]; then
+    prepare_windows_binary "$TMP_DIR/extracted/GitboxApp.exe"
     cp "$TMP_DIR/extracted/GitboxApp.exe" "$INSTALL_DIR/GitboxApp.exe"
-    powershell -Command "Unblock-File -Path '${win_path}\\GitboxApp.exe'" 2>/dev/null || true
     GUI_PATH="$INSTALL_DIR/GitboxApp.exe"
     log "GUI installed: $GUI_PATH"
     log "Windows path: $win_path"
@@ -601,6 +657,7 @@ main() {
   detect_headless
   resolve_cli_version
   get_release_info
+  verify_release
   extract_archive
   detect_existing_install
   detect_windows_installer
@@ -614,4 +671,6 @@ main() {
   print_summary
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

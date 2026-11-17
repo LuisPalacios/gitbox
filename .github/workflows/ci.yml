@@ -432,6 +432,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
@@ -456,7 +457,8 @@ jobs:
           # their execute bit on download, so restore it before zipping.
           cp artifacts/gui-linux/GitboxApp tmp-linux/GitboxApp
           chmod +x tmp-linux/GitboxApp
-          (cd tmp-linux && zip ../release/gitbox-linux-amd64.zip GitboxApp)
+          cp scripts/register-gitbox.sh assets/appicon.png tmp-linux/
+          (cd tmp-linux && zip ../release/gitbox-linux-amd64.zip GitboxApp register-gitbox.sh appicon.png)
 
       - name: Collect installer artifacts
         run: |

@@ -100,6 +100,8 @@ scoop install pnpm                      # brew install pnpm on macOS
 
 The PR workflow runs the same script as its gate: any finding fails the job, including a new advisory reported by govulncheck or `npm audit`. CI pins shellcheck 0.11.0, actionlint 1.7.12, pnpm 12.9.1 and setup-uv 10.3.3; the Markdown commands pin their package versions. I use those versions locally so both runs agree.
 
+I run `bash scripts/test-bootstrap.sh` (or `./scripts/health.sh bootstrap`) to verify the installer against throwaway-key fixtures without installing software or touching credentials. The native PR jobs run the same fixtures on Windows and macOS. The bootstrap pins the updater’s public key, verifies the tag-bound checksum signature and archive digest before extraction, and refuses unsigned releases, including legacy 1.x. Linux release archives include `register-gitbox.sh` and `appicon.png`; registration uses these verified copies without downloading executable code.
+
 ---
 
 ## Development environment quirks

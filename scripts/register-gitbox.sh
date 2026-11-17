@@ -13,6 +13,7 @@
 #
 # Env vars (alternative to flags, used by bootstrap.sh):
 #   GITBOX_GUI_BIN   absolute path to GitboxApp (default: $HOME/bin/GitboxApp)
+#   GITBOX_ICON_FILE local icon from a verified release (optional)
 #   GITBOX_REF       git ref to fetch the icon from (default: main)
 
 set -euo pipefail
@@ -131,6 +132,11 @@ check_binary() {
 install_icon() {
   local icon_url="https://raw.githubusercontent.com/${REPO}/${REF}/assets/appicon.png"
   mkdir -p "$ICON_DIR"
+  if [[ -n "${GITBOX_ICON_FILE:-}" ]]; then
+    cp "$GITBOX_ICON_FILE" "$ICON_FILE"
+    log "Icon installed from the verified release: $ICON_FILE"
+    return
+  fi
   if ! command -v curl &>/dev/null; then
     warn "curl not found — skipping icon fetch. Menu entry will use a fallback icon."
     return

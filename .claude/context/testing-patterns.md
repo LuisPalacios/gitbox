@@ -34,6 +34,10 @@ I also assert that the health gate and formatter pin the same markdownlint packa
 
 I test the coordination registry with temporary Git repositories and separate processes: competing claims, all-or-none batches, recovery fencing, resource exclusion and evidence invalidation. I separately test minimal roadmap checkbox edits, idempotency, ambiguous references and unrelated text preservation. The tests need no GitHub credentials or live agents. The local gate's macOS and Windows lanes run both coordination suites, and the release workflow runs them on all three platforms; I report native results only after one of them runs.
 
+## Bootstrap verification tests
+
+I run `bash scripts/test-bootstrap.sh` or `./scripts/health.sh bootstrap` for installer changes. The fixtures sign local checksums with a throwaway SSH key, check parity with the updater's pinned public key, and reject wrong keys, modified archives/checksums, replayed tags, missing signatures and ambiguous checksum entries. They prove verification precedes extraction, exercise both download paths with local stubs, and check bundled desktop registration and quarantine policy without installing software or touching credentials. The native PR jobs run the same fixtures on Windows and macOS.
+
 ## Test levels
 
 - **Unit tests** — always run, no credentials needed. Package-level tests in `pkg/`, isolated with `t.TempDir()` and `t.Setenv()`; `cmd/gui` tests call `App` methods directly, without the Wails runtime.

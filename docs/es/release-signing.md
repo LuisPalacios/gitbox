@@ -30,6 +30,7 @@ El tag dentro del mensaje ata una firma a una release, así que una firma antigu
 - La **clave privada** vive solo en el agente SSH del mantenedor. Nunca está en el repositorio, ni en los secretos de CI, ni en disco como fichero.
 - La **clave pública** vive en `pkg/update/release-signing-key.pub`. El actualizador la incrusta al compilar, y `sign-release.sh` pasa el mismo fichero a `ssh-keygen -Y sign`, así que el agente elige la clave privada correspondiente.
 - `allowed_signers`, en la raíz del repositorio, publica la misma clave pública en el formato que lee `ssh-keygen -Y verify`, para la verificación manual. Un test unitario falla si este fichero y `release-signing-key.pub` llegan a listar claves distintas.
+- `scripts/bootstrap.sh` incrusta la misma clave pública en `release_public_key()`. Su suite de fixtures rechaza una clave distinta de la del actualizador antes de probar la verificación.
 - La **firma** vive en cada release como `checksums.sha256.sig`.
 
 ## Elegir un agente SSH
@@ -142,9 +143,9 @@ Un fork que publica sus propias releases necesita su propia clave, porque no pue
    gitbox-release namespaces="gitbox-release" ssh-ed25519 AAAA...
    ```
 
-4. Ejecuta `go test ./pkg/update/`. `TestReleaseSigningKey_MatchesAllowedSigners` falla si los dos ficheros no coinciden.
+4. Sustituye la clave pública de `release_public_key()` en `scripts/bootstrap.sh` por la misma línea. Ejecuta `go test ./pkg/update/` y `bash scripts/test-bootstrap.sh` para comprobar las tres copias de la raíz de confianza.
 5. Ejecuta `./scripts/sign-release.sh --check`.
-6. Apunta el actualizador a tu repositorio: sustituye `LuisPalacios/gitbox` en `updateOpts()` de `cmd/gui/app.go`, que la GUI pasa como `update.Options.Repo`, y en el valor por defecto de `Options.defaults()` de `pkg/update/check.go`.
+6. Apunta el actualizador a tu repositorio: sustituye `LuisPalacios/gitbox` en `updateOpts()` de `cmd/gui/app.go`, que la GUI pasa como `update.Options.Repo`, y en el valor por defecto de `Options.defaults()` de `pkg/update/check.go`. Configura también `REPO` en `scripts/bootstrap.sh` y `scripts/register-gitbox.sh` con tu repositorio.
 
 A partir de ahí, los binarios compilados desde el fork solo aceptan releases firmadas con la clave del fork.
 
