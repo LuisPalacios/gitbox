@@ -1070,6 +1070,7 @@
         credResult = await bridge.credentialSetupGCM(accountKey);
       } else if (credType === 'token') {
         credResult = await bridge.credentialStoreToken(accountKey, credTokenInput);
+        if (credResult?.ok) credTokenInput = '';
       } else if (credType === 'ssh') {
         credResult = await bridge.credentialSetupSSH(accountKey);
       }
@@ -1086,6 +1087,7 @@
     credBusy = true;
     try {
       credResult = await bridge.credentialStoreToken(key, credTokenInput);
+      if (credResult?.ok) credTokenInput = '';
     } catch (err: any) {
       credResult = { ok: false, message: err?.message || String(err) };
     }

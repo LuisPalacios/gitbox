@@ -115,6 +115,8 @@ Cuando configuras una credencial Token, Gitbox te muestra el enlace a la página
 4. Copia el token generado.
 5. Pégalo en Gitbox.
 
+Al guardar un token correctamente, Gitbox vacía el campo antes de comprobar la credencial. Si falla el guardado, conservo el valor en el formulario para corregirlo y reintentarlo. Cerrar el formulario también borra el valor.
+
 **Almacenamiento:** 1 secreto → `~/.config/gitbox/credentials/<account>` (formato git-credential-store, que leen tanto Gitbox como git).
 
 ## SSH
