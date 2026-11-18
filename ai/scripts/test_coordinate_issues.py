@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 sys.dont_write_bytecode = True
@@ -121,7 +122,9 @@ class CoordinationTest(unittest.TestCase):
     def test_heartbeat_age_never_releases_a_claim_or_resource(self):
         self.start()
         self.apply("acquire", resource="gui")
-        with sqlite3.connect(self.db) as db:
+        # The connection's own context only commits; closing() releases the
+        # file, which Windows keeps locked and tearDown could not delete.
+        with closing(sqlite3.connect(self.db)) as db, db:
             db.execute("UPDATE sessions SET heartbeat=0")
         with self.assertRaises(coordinate.Conflict):
             self.start("two")
@@ -253,7 +256,7 @@ class CoordinationTest(unittest.TestCase):
         self.assertEqual(self.db.read_bytes(), b"not sqlite")
         self.db.unlink()
         self.start()
-        with sqlite3.connect(self.db) as db:
+        with closing(sqlite3.connect(self.db)) as db, db:
             db.execute("PRAGMA user_version=999")
         with self.assertRaises(coordinate.Conflict):
             self.start("two", [43])
