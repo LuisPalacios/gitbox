@@ -44,6 +44,16 @@ jobs:
         run: go vet ./...
       - name: Run tests
         run: go test -short ./...
+      # Native coverage for the coordination suites; PR checks no longer run
+      # them on macOS and Windows (the local gate does).
+      - uses: astral-sh/setup-uv@v10.3.3
+      - name: Run coordination tests
+        # bash stops at the first failing suite; pwsh, the Windows default,
+        # would only report the last command's exit code.
+        shell: bash
+        run: |
+          uv run ai/scripts/test_coordinate_issues.py
+          uv run ai/scripts/test_coordinate_roadmap.py
 
   # ── GUI build (native per platform, needs webview libs) ──
   gui-windows:

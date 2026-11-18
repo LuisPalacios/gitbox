@@ -42,7 +42,7 @@ go test ./pkg/config/ -run='^$' -fuzz='^FuzzDecodeRoundTrip$' -fuzztime=1m -para
 
 ## Pre-push hook
 
-`.githooks/pre-push` ejecuta una comprobación `gofmt -s -l`, `go vet ./...` y `go test -short ./...` antes de cada push, y construye primero el frontend cuando falta `cmd/gui/frontend/dist`. Los push que solo llevan tags lo saltan. Lo activo una vez por clon:
+`.githooks/pre-push` se niega a actualizar `main` salvo que el commit que se sube haya pasado el [gate local](local-gate.md). En otras ramas ejecuta una comprobación `gofmt -s -l`, `go vet ./...` y `go test -short ./...` salvo que el commit ya haya pasado el gate, y construye primero el frontend cuando falta `cmd/gui/frontend/dist`. Los push que solo llevan tags lo saltan. Lo activo una vez por clon:
 
 ```bash
 git config core.hooksPath .githooks
@@ -172,24 +172,19 @@ Ejecuto las comprobaciones de permisos contra un `XDG_CONFIG_HOME` temporal con 
 - Solo en el fixture, doy a un archivo ficticio el modo `0644` en Unix o una concesión de ACL Windows fuera de propietario/SYSTEM/Administrators. Tras reiniciar, el aviso de exposición aparece en los paneles completo y Compacto y abre Comprobación del sistema. La auditoría deja los permisos intactos. Después de reparar los permisos del fixture, **Volver a comprobar** elimina el hallazgo y el aviso.
 - Guardo y renombro una cuenta dedicada de pruebas y después confirmo que su credencial sigue funcionando tras reiniciar. Las comprobaciones automatizadas aisladas verifican que ambas acciones escriben directamente el formato git-credential-store, incluso en cuentas sin clones, y siguen leyendo archivos antiguos con tokens en bruto. Nunca imprimo un token real ni el contenido de archivos de credenciales en la salida de las pruebas.
 
-## Pruebas nativas de PR
+## Pruebas nativas
 
-Ejecuto la comprobación de salud completa y el smoke test del build de la GUI de Linux en el job `check` de `.github/workflows/pr.yml`. En paralelo, `native-tests` ejecuta pruebas cortas en `windows-latest` y `macos-latest`, con `fail-fast: false` para que un fallo en una plataforma no cancele la otra. Estos jobs comprueban el comportamiento nativo de rutas, renombrados, permisos y procesos sin abrir la GUI.
+El [gate local](local-gate.md) ejecuta las pruebas nativas en cada cambio: su carril de macOS ejecuta la comprobación de salud completa y las suites de coordinación, su carril de Linux ejecuta `go vet` y las pruebas cortas, y su carril de Windows ejecuta las suites de coordinación y las pruebas cortas. Cada carril también construye la GUI y ejecuta el smoke con `--version`. El carril de Windows fija `core.autocrlf=false` y `core.longpaths=true` solo para sus propios procesos, así que mi configuración global de Git no cambia.
 
-Los jobs nativos descargan el historial completo y los tags para las pruebas de versión, seleccionan Go desde `go.mod` y compilan el frontend embebido con Node 24. Las cachés de Go y npm permanecen separadas por SO. Solo en el runner de Windows, configuro `core.autocrlf=false` y `core.longpaths=true` antes del checkout; no necesito estos cambios globales de Git en mi máquina de desarrollo. Después de `npm ci && npm run build` en `cmd/gui/frontend`, ejecuto desde la raíz del repositorio:
+El workflow de release repite vet, las pruebas cortas y las dos suites de coordinación en runners alojados de Linux, macOS y Windows antes de construir la release. `pr.yml` mantiene solo el job informativo `check` de Linux.
 
-```bash
-go test -short ./pkg/config/ ./pkg/status/ ./pkg/credential/ ./pkg/update/ ./pkg/git/ ./pkg/workspace/ ./cmd/gui/
-```
-
-Tras la primera ejecución correcta en los runners alojados, añado `native-tests (windows-latest)` y `native-tests (macos-latest)` como comprobaciones obligatorias junto con `check` en la protección de ramas. El archivo del workflow no cambia la protección de ramas. Para validar la barrera de fallos de Windows, uso un commit desechable con una prueba de rutas exclusiva de Windows que falla a propósito, confirmo que falla el job de Windows, elimino ese commit y exijo que ambos jobs nativos vuelvan a pasar. Las pruebas locales y el lint del workflow no completan estas comprobaciones de despliegue en runners alojados.
-
-Las pruebas nativas alojadas no verifican el renderizado del escritorio ni el arranque del paquete. Mantengo el smoke test de arranque del paquete en `scripts/smoke.sh` y pruebo el comportamiento interactivo de la GUI en una sesión de escritorio nativa.
+Ni el gate ni los jobs de release verifican el renderizado del escritorio ni el arranque del paquete. Mantengo el smoke test de arranque del paquete en `scripts/smoke.sh` y pruebo el comportamiento interactivo de la GUI en una sesión de escritorio nativa.
 
 ## Checklist pre-PR
 
 Ejecuto esto antes de cada push o PR. `/test-plan` en Claude Code o `$test-plan` en Codex lo automatiza.
 
+- [ ] `./scripts/gate.sh` pasa sobre el commit final en macOS, Linux y Windows (consulta [Gate local](local-gate.md)); cubre los cuatro puntos siguientes en todas las plataformas
 - [ ] `./scripts/health.sh` pasa: incluye `go vet`, `go test -short`, `svelte-check` y `npm test` (consulta [Comprobación de salud](developer-guide.md#comprobación-de-salud))
 - [ ] Las pruebas enfocadas del área cambiada pasan (`go test ./pkg/<area>/ ./cmd/gui/`)
 - [ ] `cd cmd/gui && wails build` termina bien después de copiar los iconos (consulta [Compilar desde el código fuente](developer-guide.md#compilar-desde-el-código-fuente))

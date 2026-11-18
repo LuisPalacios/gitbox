@@ -29,6 +29,8 @@ Automate Step 7's behavioral checks when tools can prove the same acceptance cri
 
 Run all automated checks. Track progress with the todo list.
 
+When the work is committed, `./scripts/gate.sh` runs the equivalent of Steps 1–4 on the committed `HEAD` for macOS, Linux and Windows in one parallel pass, adds the full health check, and records the marker that the pre-push hook and `/merge-pr` require (see `docs/local-gate.md`). Prefer it, and report its summary in Step 5. Run Steps 1–4 one by one for uncommitted iteration, or when Step 7 needs the GUI that `ship.sh` stages on each remote.
+
 ### Step 1: Static analysis
 
 `cmd/gui` embeds `cmd/gui/frontend/dist`, so build the frontend first when `dist` is missing:

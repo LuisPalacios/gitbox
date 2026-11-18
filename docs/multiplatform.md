@@ -142,15 +142,16 @@ Copies the local `~/.config/gitbox/gitbox.json` to one remote. It shows a diff a
 
 ## Script reference
 
-| Script                                  | What it does                                                    |
-| --------------------------------------- | --------------------------------------------------------------- |
-| `ship.sh [short-name]`                  | Build the GUI on each remote and stage it for testing           |
-| `smoke.sh [target]`                     | Non-interactive smoke test (`GitboxApp --version`)              |
-| `test-commands.sh [target]`             | Print the test-mode launch commands                             |
-| `run-commands.sh [target]`              | Print the production-mode launch commands                       |
-| `setup-credentials.sh [target]`         | Verify tokens and set up SSH keys on each target                |
-| `send-my-production-config.sh <target>` | Copy the local production config to one remote                  |
-| `test-setup-credentials.sh [path]`      | Low-level credential setup that `setup-credentials.sh` runs     |
+| Script                                  | What it does                                                        |
+| --------------------------------------- | ------------------------------------------------------------------- |
+| `ship.sh [short-name]`                  | Build the GUI on each remote and stage it for testing               |
+| `smoke.sh [target]`                     | Non-interactive smoke test (`GitboxApp --version`)                  |
+| `gate.sh [--only/--skip lane]`          | Verify HEAD on every lane in parallel ([Local gate](local-gate.md)) |
+| `test-commands.sh [target]`             | Print the test-mode launch commands                                 |
+| `run-commands.sh [target]`              | Print the production-mode launch commands                           |
+| `setup-credentials.sh [target]`         | Verify tokens and set up SSH keys on each target                    |
+| `send-my-production-config.sh <target>` | Copy the local production config to one remote                      |
+| `test-setup-credentials.sh [path]`      | Low-level credential setup that `setup-credentials.sh` runs         |
 
 **Targets:** `win-intel`, `win-arm`, `mac-arm`, `mac-intel`, `linux` or `all`. The aliases `win` and `mac` mean `win-intel` and `mac-arm`. Scripts that take `[target]` default to `all` and skip platforms with no host in `.env`. `ship.sh` takes a host short name instead and defaults to every configured remote. `ship.sh -h` prints its help.
 

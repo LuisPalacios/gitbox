@@ -53,6 +53,8 @@ scripts/
   _common.sh               Shared helpers for the dev scripts (.env, SSH, GitboxApp paths)
   ship.sh                  Build GitboxApp on each remote host in .env and stage it
   smoke.sh                 Run `GitboxApp --version` locally and on staged remotes
+  gate.sh                  Local merge gate: verify HEAD on macOS, Linux and Windows hosts in parallel; per-SHA marker, --report status
+  gate-lane.sh             One gate lane, copied to each host: clean clone of the bundled commit + that platform's checks
   health.sh                Read-only run of every checker (gofmt, vet, staticcheck, modernize, govulncheck, deadcode, tests, svelte-check, frontend build warnings, npm ci warnings, npm audit, shellcheck, actionlint, markdownlint)
   test-commands.sh         Print GitboxApp --test-mode launch commands per platform
   run-commands.sh          Print GitboxApp launch commands per platform
@@ -92,7 +94,7 @@ ai/                       Agent harness masters: the only hand-edited agent guid
 .claude/CLAUDE.md, rules/, context/, skills/   Rendered from ai/ for Claude Code
 AGENTS.md, .codex/rules/, .codex/context/, .agents/skills/   Rendered from ai/ for Codex
 .github/workflows/ci.yml  Release CI on v* tags: test, build, draft release (+ installers, DMGs, AppImage); scripts/sign-release.sh signs and publishes it; workflow_dispatch = dry run without publishing
-.github/workflows/pr.yml  PR + main CI: frontend build, scripts/health.sh gate (every checker, fails on any finding), Linux GUI build smoke
+.github/workflows/pr.yml  Informational PR + main check on Linux: frontend build, scripts/health.sh, Linux GUI build smoke (the merge gate is scripts/gate.sh)
 allowed_signers           Release public key for manual ssh-keygen -Y verify (must match pkg/update/release-signing-key.pub)
 json/
   gitbox.schema.json      v3 JSON Schema

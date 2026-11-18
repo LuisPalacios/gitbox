@@ -20,6 +20,7 @@ Empieza por la guía de desarrollo y luego sigue con las pruebas. Multiplataform
 | [Referencia de pruebas](testing-reference.md)                   | Inventario de pruebas por paquete y detalles internos del harness                                 |
 | [Multiplataforma](multiplatform.md)                             | Compilar, enviar y hacer smoke tests en hosts remotos por SSH                                     |
 | [Flujo de worktrees](worktree-workflow.md)                      | Trabajo paralelo por issue con una sesión de agente por worktree                                  |
+| [Gate local](local-gate.md)                                     | Verificar cada commit en mis hosts macOS, Linux y Windows antes del merge                         |
 | [Arquitectura](architecture.md)                                 | Diseño, responsabilidades de los paquetes, referencia del archivo de config                       |
 | [Firma de releases](release-signing.md)                         | Cómo se firman y verifican las releases, configuración del agente, forks                          |
 | [Firma en macOS](macos-signing.md)                              | Firma de código y notarización opcionales de Apple en CI                                          |

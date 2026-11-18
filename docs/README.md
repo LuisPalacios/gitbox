@@ -20,6 +20,7 @@ Start with the developer guide, then testing. Multiplatform is optional but reco
 | [Testing reference](testing-reference.md)             | Test inventory by package and harness internals                            |
 | [Multiplatform](multiplatform.md)                     | Building, shipping and smoke-testing on remote hosts over SSH              |
 | [Worktree workflow](worktree-workflow.md)             | Parallel issue work with one agent session per worktree                    |
+| [Local gate](local-gate.md)                           | Verifying each commit on my macOS, Linux and Windows hosts before merging  |
 | [Architecture](architecture.md)                       | Design, package responsibilities, config file reference                    |
 | [Release signing](release-signing.md)                 | How releases are signed and verified, agent setup, forks                   |
 | [macOS signing](macos-signing.md)                     | Optional Apple code signing and notarization in CI                         |

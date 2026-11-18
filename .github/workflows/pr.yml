@@ -13,6 +13,10 @@ concurrency:
   group: pr-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# The merge gate is scripts/gate.sh, which verifies each commit on macOS,
+# Linux and Windows hosts before it reaches main (docs/local-gate.md). This
+# Linux job stays as an informational clean-room check; it is not required.
+# Native macOS and Windows tests run in the release workflow (ci.yml).
 jobs:
   # ── Frontend build, go vet, unit tests and a Linux GUI build smoke ──
   # Same base image and WebKitGTK packages as the gui-linux release job, so
@@ -87,45 +91,3 @@ jobs:
         run: wails build -s -tags webkit2_41
       - name: Smoke test
         run: cmd/gui/build/bin/GitboxApp --version
-
-  # Exercise native filesystem and process behavior without launching a GUI.
-  native-tests:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Configure Git for Windows
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          git config --global core.autocrlf false
-          git config --global core.longpaths true
-      - uses: actions/checkout@v7
-        with:
-          # Version tests need tags and the history for git describe.
-          fetch-depth: 0
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          # setup-go and setup-node include the OS in their cache keys.
-          cache: true
-          cache-dependency-path: go.sum
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: cmd/gui/frontend/package-lock.json
-      # cmd/gui embeds frontend/dist even when tests use the Wails stub.
-      - name: Build frontend
-        shell: bash
-        working-directory: cmd/gui/frontend
-        run: npm ci && npm run build
-      - uses: astral-sh/setup-uv@v10.3.3
-      - name: Run native coordination tests
-        run: |
-          uv run ai/scripts/test_coordinate_issues.py
-          uv run ai/scripts/test_coordinate_roadmap.py
-      - name: Run native short tests
-        run: go test -short ./pkg/config/ ./pkg/status/ ./pkg/credential/ ./pkg/update/ ./pkg/git/ ./pkg/workspace/ ./cmd/gui/

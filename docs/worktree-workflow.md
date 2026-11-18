@@ -32,7 +32,7 @@ GUI sessions, shared configuration, credential operations and staging destinatio
 
 The supervisor links each required check to the tested commit and base, with PASS, FAIL or PENDING and the command or interaction evidence. A rebase or new change invalidates the old evidence. An automated smoke can satisfy an interactive criterion when it verifies the correct binary and commit, isolated fixture, window, actions and expected behavior. A version string or screenshot alone does not prove the interaction works. I perform only the required steps that the available tools cannot verify.
 
-Failing or pending required checks block publication. Once publication has authorization and the local checks pass, the supervisor opens the PR and waits for CI before calling it ready. It stops before merge; I use `merge-pr` separately. With authorization to update the umbrella, the merge workflow or a resumed supervisor marks only entries whose merged PR fully resolves the issue. A partial PR or successful CI alone does not complete a roadmap entry.
+Failing or pending required checks block publication. Once publication has authorization and the local checks pass, the supervisor opens the PR and confirms the local gate passed on its head before calling it ready. It stops before merge; I use `merge-pr` separately. With authorization to update the umbrella, the merge workflow or a resumed supervisor marks only entries whose merged PR fully resolves the issue. A partial PR or a successful gate or CI alone does not complete a roadmap entry.
 
 ## What this workflow gives me
 
@@ -61,10 +61,10 @@ The skill stops at each gate and tells me what comes next:
 3. **Understand**: it re-reads the issue, summarises it in five lines and asks whether I'm ready to plan.
 4. **Plan**: it adopts my plan or writes one with me. See [Providing my own plan](#providing-my-own-plan).
 5. **Implement**: edit and commit cycles. The final commit carries `Closes #<N>`. Everything stays local.
-6. **Auto-verify**: `go vet ./...`, the focused tests for what changed, and the GUI build with a `GitboxApp --version` smoke check. Doc-only changes skip the build.
+6. **Auto-verify**: `go vet ./...`, the focused tests for what changed, and the GUI build with a `GitboxApp --version` smoke check. Doc-only changes skip the build. Then `./scripts/gate.sh` verifies the final commit on macOS, Linux and Windows (see [Local gate](local-gate.md)).
 7. **Smoke-test gate**: it gives me the commit, the binary path to launch and one concrete check, plus the push command it intends to run. I test. If something is wrong, it fixes it and offers a new build. When it's good, I say "push it".
 8. **Sync with main**: it fetches and, if `origin/main` moved, offers `git rebase origin/main`.
-9. **Push gate**: it runs `git push -u origin <branch>`.
+9. **Push gate**: it runs `git push -u origin <branch>`, then `./scripts/gate.sh --report` to show the gate result on the commit.
 10. **PR gate**: it drafts an anonymised title and body (`Closes #<N>`, what changed, test plan), waits for my approval and runs `gh pr create`.
 11. **Stop**: it reports the PR URL and tells me to run `/merge-pr` when I'm ready.
 
@@ -129,7 +129,7 @@ It runs in any session, the one that created the worktree or a fresh one. The sk
 1. Reads the PR and finds its worktree by branch name.
 2. Checks that the worktree has no uncommitted or unpushed changes, and stops if it has, unless I override. This check runs before the merge because `gh pr merge --delete-branch` also deletes the local branch and its worktree.
 3. Fetches and, if the base branch moved, offers a rebase and re-pushes with `--force-with-lease`.
-4. Gates on CI: every check must pass. It stops on a failed check and reports its log; it stops too while checks are still running, and I re-run it later.
+4. Gates on the local gate: the head commit needs a passing gate marker or `local-gate` status, and it offers to run the gate when there is none. A failed GitHub check also stops it and reports its log; a check still running does not.
 5. Shows me `gh pr merge <PR#> --squash --delete-branch` and waits for my go-ahead.
 6. After the merge, returns to the main clone, fast-forwards `main`, removes any worktree and local branch `gh` left behind, and prunes stale worktree metadata.
 
