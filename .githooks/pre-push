@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-# Pre-push hook: lightweight safety net before pushing.
-# Runs a gofmt check, go vet and unit tests. Blocks the push if any fails.
-# Builds the GUI frontend first when cmd/gui/frontend/dist is missing.
-# Skips checks for tag-only pushes (no code changed).
+# Pre-push hook: the local gate's enforcement point.
+#
+# - A push that updates main needs a scripts/gate.sh marker for the pushed
+#   commit. A "partial" marker (a lane was skipped) passes only with
+#   GATE_ALLOW_PARTIAL=1. No marker blocks the push.
+# - Other branches: a commit with a gate marker skips the checks below;
+#   otherwise the hook runs a gofmt check, go vet and unit tests, building
+#   the GUI frontend first when cmd/gui/frontend/dist is missing.
+# - Tag-only pushes and branch deletions skip every check.
 #
 # Setup (one time):
 #   git config core.hooksPath .githooks
@@ -16,18 +21,48 @@ set -e
 # core.bare=true. Scrub them so tests run against a clean environment.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
-# Git passes the remote ref info via stdin. If every ref being pushed
-# is a tag (refs/tags/...), skip the checks — no code changed.
-all_tags=true
-while read -r local_ref _; do
-    case "$local_ref" in
-        refs/tags/*) ;;
-        *) all_tags=false; break ;;
-    esac
+# Gate markers live in the git common dir, shared by every worktree.
+marker_dir="$(git rev-parse --path-format=absolute --git-common-dir)/gitbox-gate"
+zero="0000000000000000000000000000000000000000"
+
+# gate_status <sha>: prints pass, partial or nothing.
+gate_status() {
+    [ -f "$marker_dir/$1" ] && sed -n 's/^status=//p' "$marker_dir/$1"
+}
+
+# Git passes "<local ref> <local sha> <remote ref> <remote sha>" per ref on
+# stdin. Read every line: main needs a gate marker; other branch commits
+# without a marker need the light checks.
+need_checks=false
+blocked=false
+while read -r local_ref local_sha remote_ref _; do
+    case "$local_ref" in refs/tags/*) continue ;; esac
+    [ "$local_sha" = "$zero" ] && continue   # branch deletion
+    status="$(gate_status "$local_sha")"
+    if [ "$remote_ref" = "refs/heads/main" ]; then
+        case "$status" in
+            pass) echo "pre-push: main ← ${local_sha:0:12}: gate passed" ;;
+            partial)
+                if [ "${GATE_ALLOW_PARTIAL:-}" = "1" ]; then
+                    echo "pre-push: main ← ${local_sha:0:12}: partial gate allowed by GATE_ALLOW_PARTIAL=1"
+                else
+                    echo "pre-push: main ← ${local_sha:0:12}: the gate skipped a lane; re-run ./scripts/gate.sh or set GATE_ALLOW_PARTIAL=1"
+                    blocked=true
+                fi ;;
+            *)
+                echo "pre-push: main ← ${local_sha:0:12}: no gate marker; run ./scripts/gate.sh on this commit first"
+                blocked=true ;;
+        esac
+    elif [ -z "$status" ]; then
+        need_checks=true
+    fi
 done
 
-if [ "$all_tags" = true ]; then
-    echo "pre-push: tag-only push, skipping checks"
+if [ "$blocked" = true ]; then
+    exit 1
+fi
+if [ "$need_checks" = false ]; then
+    echo "pre-push: nothing left to check"
     exit 0
 fi
 
