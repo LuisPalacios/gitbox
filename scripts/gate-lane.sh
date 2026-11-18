@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+#
+# gate-lane.sh — One lane of the local gate (scripts/gate.sh).
+#
+# gate.sh copies this script and a git bundle of the commit under test to
+# each host, then runs it there. The lane clones the bundled commit into a
+# clean directory under ~/.cache/gitbox-gate and runs that platform's checks,
+# so it never touches a working checkout. It never runs from the repo itself.
+#
+# Usage:
+#   bash gate-lane.sh <mac|linux|win> <sha> <bundle>
+#
+# Lanes:
+#   mac    frontend, scripts/health.sh (HEALTH_FUZZ=1), coordination suites,
+#          Wails build, --version smoke
+#   linux  frontend, go vet, go test -short, Wails build (webkit2_41), smoke
+#   win    frontend, coordination suites, go test -short, Wails build, smoke
+#
+# Environment:
+#   GATE_KEEP=1   keep the lane's clone after a pass (a failure always keeps it)
+
+set -euo pipefail
+
+if [[ $# -ne 3 ]]; then
+    echo "usage: bash gate-lane.sh <mac|linux|win> <sha> <bundle>" >&2
+    exit 2
+fi
+lane="$1" sha="$2" bundle="$3"
+case "$lane" in
+    mac|linux|win) ;;
+    *) echo "unknown lane: $lane" >&2; exit 2 ;;
+esac
+
+# Same Wails CLI version as the CI workflows.
+WAILS="github.com/wailsapp/wails/v2/cmd/wails@v2.16.0"
+
+# A caller running inside a git hook exports these, and every git call the
+# test suite makes would then target the caller's repository.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
+
+# Non-interactive SSH sessions skip the login profile. Same prefixes as
+# scripts/ship.sh: Homebrew, /usr/local, the Go tarball and per-user bins.
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/local/go/bin:$HOME/go/bin:$HOME/.local/bin:$PATH"
+
+if [[ "$lane" == "win" ]]; then
+    # The Windows CI runner sets these with `git config --global`. Scoping
+    # them to this process gives the tests the same Git behaviour without
+    # changing the host user's global config.
+    export GIT_CONFIG_COUNT=2
+    export GIT_CONFIG_KEY_0=core.autocrlf GIT_CONFIG_VALUE_0=false
+    export GIT_CONFIG_KEY_1=core.longpaths GIT_CONFIG_VALUE_1=true
+fi
+
+cache="$HOME/.cache/gitbox-gate"
+repo="$cache/repo.git"
+work="$cache/work-$lane-${sha:0:12}"
+bundle="$(cd "$(dirname "$bundle")" && pwd)/$(basename "$bundle")"
+
+# Each step runs in a subshell outside any condition: bash ignores set -e
+# inside a function called from an `if`, which would let a failed command
+# in the middle of a step pass unnoticed.
+step() {
+    local name="$1"; shift
+    local t0=$SECONDS rc
+    printf '\n>> %s\n' "$name"
+    set +e
+    (set -e; "$@")
+    rc=$?
+    set -e
+    if [[ $rc -eq 0 ]]; then
+        printf '<< %s ok (%ss)\n' "$name" $((SECONDS - t0))
+    else
+        printf '!! %s FAILED after %ss (clone kept at %s)\n' "$name" $((SECONDS - t0)) "$work"
+        exit 1
+    fi
+}
+
+checkout() {
+    mkdir -p "$cache"
+    # Clones from a failed or abandoned run older than a day.
+    find "$cache" -maxdepth 1 -name 'work-*' -mtime +1 -exec rm -rf {} + 2>/dev/null || true
+    [[ -d "$repo" ]] || git init -q --bare "$repo"
+    # A per-SHA ref, so concurrent gates from parallel worktrees never
+    # fight over the same ref lock.
+    git -C "$repo" fetch -q --force "$bundle" \
+        "+HEAD:refs/heads/gate-$sha" "+refs/tags/*:refs/tags/*"
+    rm -rf "$work"
+    git clone -q --no-checkout "$repo" "$work"
+    git -C "$work" checkout -q --detach "$sha"
+    git -C "$repo" update-ref -d "refs/heads/gate-$sha"
+    rm -f "$bundle"
+    [[ "$(git -C "$work" rev-parse HEAD)" == "$sha" ]]
+}
+
+frontend() {
+    (cd cmd/gui/frontend && npm ci --no-audit --no-fund && npm run build)
+}
+
+health() {
+    HEALTH_FUZZ=1 ./scripts/health.sh
+}
+
+coordination() {
+    uv run ai/scripts/test_coordinate_issues.py &&
+        uv run ai/scripts/test_coordinate_roadmap.py
+}
+
+vet() { go vet ./...; }
+
+unit_tests() { go test -short ./...; }
+
+gui_build() {
+    mkdir -p cmd/gui/build/windows
+    cp assets/appicon.png cmd/gui/build/appicon.png
+    cp assets/icon.ico cmd/gui/build/windows/icon.ico
+    local ldflags
+    ldflags="-X main.version=$(git describe --tags --always)-gate -X main.commit=$(git rev-parse --short HEAD)"
+    local extra=()
+    case "$lane" in
+        linux) extra=(-tags webkit2_41) ;;
+        mac)
+            # Go's runtime targets macOS 13; same minimum as ci.yml.
+            export CGO_CFLAGS=-mmacosx-version-min=13.0 CGO_LDFLAGS=-mmacosx-version-min=13.0
+            ;;
+    esac
+    # -s: the frontend step already built frontend/dist.
+    (cd cmd/gui && go run "$WAILS" build -s -ldflags "$ldflags" "${extra[@]}")
+}
+
+smoke() {
+    local exe out
+    case "$lane" in
+        mac)   exe=cmd/gui/build/bin/GitboxApp.app/Contents/MacOS/GitboxApp ;;
+        linux) exe=cmd/gui/build/bin/GitboxApp ;;
+        win)   exe=cmd/gui/build/bin/GitboxApp.exe ;;
+    esac
+    out="$("$exe" --version 2>&1)" || { echo "$out"; return 1; }
+    echo "$out"
+    # Expected: "GitboxApp <version> (<short sha>)".
+    [[ "$out" == GitboxApp* && "$out" == *"$(git rev-parse --short HEAD)"* ]]
+}
+
+printf 'lane %s on %s, commit %s\n' "$lane" "$(uname -sm)" "$sha"
+step "checkout" checkout
+cd "$work"
+step "frontend" frontend
+case "$lane" in
+    mac)
+        step "health" health
+        step "coordination" coordination
+        ;;
+    linux)
+        step "go vet" vet
+        step "go test -short" unit_tests
+        ;;
+    win)
+        step "coordination" coordination
+        step "go test -short" unit_tests
+        ;;
+esac
+step "gui build" gui_build
+step "smoke" smoke
+
+cd "$cache"
+[[ "${GATE_KEEP:-}" == "1" ]] || rm -rf "$work"
+printf '\nlane %s passed\n' "$lane"

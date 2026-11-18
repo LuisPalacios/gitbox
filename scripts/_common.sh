@@ -103,6 +103,13 @@ prefer_windows_openssh
 
 load_env() {
     local env_file="$REPO_ROOT/.env"
+    # A linked worktree has no .env of its own; fall back to the main
+    # clone's, which sits next to the shared git common dir.
+    if [[ ! -f "$env_file" ]]; then
+        local common
+        common="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+        [[ -n "$common" && -f "$(dirname "$common")/.env" ]] && env_file="$(dirname "$common")/.env"
+    fi
     if [[ ! -f "$env_file" ]]; then
         die ".env not found.\n  Copy docs/.env.example to .env and fill in your SSH hosts.\n  See docs/multiplatform.md for setup instructions."
     fi
