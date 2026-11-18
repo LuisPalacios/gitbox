@@ -24,6 +24,7 @@ Empieza por la guía de desarrollo y luego sigue con las pruebas. Multiplataform
 | [Firma de releases](release-signing.md)                         | Cómo se firman y verifican las releases, configuración del agente, forks                          |
 | [Firma en macOS](macos-signing.md)                              | Firma de código y notarización opcionales de Apple en CI                                          |
 | [Directorio del ecosistema agentic](agentic-tools-directory.md) | Cómo lee su catálogo la detección de AI harnesses                                                 |
+| [Spike del modo remoto](../remote-spike.md)                     | Registro de decisiones de las mediciones del modo remoto (#234), solo en inglés                   |
 
 ## Referencia
 
