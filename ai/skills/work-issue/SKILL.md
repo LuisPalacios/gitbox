@@ -149,8 +149,6 @@ Run in this order, stop on first failure and fix before continuing:
    cmd/gui/build/bin/GitboxApp --version   # GitboxApp.exe on Windows, GitboxApp.app/Contents/MacOS/GitboxApp on macOS
    ```
 
-Doc-only changes (`.md`, `docs/`, comments, `ai/` and the harness files it renders, `.gitignore`, `go.mod` tidy) skip the builds but still run `go vet` and relevant tests.
-
 4. Once the work is committed, run the local gate on the final commit. It verifies the committed `HEAD` on macOS, Linux and Windows and replaces waiting for GitHub CI (see `docs/local-gate.md`). Doc-only changes run it too, because its health check lints Markdown and the harness mirror:
 
    ```bash
@@ -158,6 +156,8 @@ Doc-only changes (`.md`, `docs/`, comments, `ai/` and the harness files it rende
    ```
 
    A failing lane prints its log path; fix the cause, commit, and re-run. Skip a lane (`--skip <lane>`) only with the user's agreement when its host is down; the result is a partial gate, which `{{INVOKE}}merge-pr` reports.
+
+Doc-only changes (`.md`, `docs/`, comments, `ai/` and the harness files it renders, `.gitignore`, `go.mod` tidy) skip the builds but still run `go vet` and relevant tests.
 
 ## Step 7: User smoke-test gate
 

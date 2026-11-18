@@ -32,7 +32,7 @@ Las sesiones de GUI, la configuración compartida, las operaciones de credencial
 
 El supervisor vincula cada comprobación obligatoria al commit y la base probados, con PASS, FAIL o PENDING y las evidencias del comando o interacción. Un rebase o un cambio nuevo invalida las evidencias anteriores. Un smoke automatizado puede satisfacer un criterio interactivo cuando verifica el binario y commit correctos, el fixture aislado, la ventana, las acciones y el comportamiento esperado. Una cadena de versión o una captura por sí sola no demuestra que funcione la interacción. Solo realizo los pasos obligatorios que las herramientas disponibles no pueden verificar.
 
-Las comprobaciones obligatorias fallidas o pendientes bloquean la publicación. Cuando la publicación cuenta con autorización y pasan las comprobaciones locales, el supervisor abre la PR y espera a CI antes de declararla lista. Se detiene antes del merge; uso `merge-pr` por separado. Con autorización para actualizar el paraguas, el flujo de merge o un supervisor reanudado marca solo las entradas cuya PR integrada resuelve todo el issue. Una PR parcial o una CI correcta por sí solas no completan una entrada del roadmap.
+Las comprobaciones obligatorias fallidas o pendientes bloquean la publicación. Cuando la publicación cuenta con autorización y pasan las comprobaciones locales, el supervisor abre la PR y confirma que el gate local pasó sobre su head antes de declararla lista. Se detiene antes del merge; uso `merge-pr` por separado. Con autorización para actualizar el paraguas, el flujo de merge o un supervisor reanudado marca solo las entradas cuya PR integrada resuelve todo el issue. Una PR parcial o un gate o una CI correctos por sí solos no completan una entrada del roadmap.
 
 ## Qué me da este flujo
 
@@ -61,10 +61,10 @@ El skill se detiene en cada puerta y me dice qué viene después:
 3. **Entender**: relee el issue, lo resume en cinco líneas y me pregunta si estoy listo para planificar.
 4. **Plan**: adopta mi plan o escribe uno conmigo. Consulta [Proporcionar mi propio plan](#proporcionar-mi-propio-plan).
 5. **Implementar**: ciclos de edición y commit. El último commit lleva `Closes #<N>`. Todo se queda en local.
-6. **Auto-verificar**: `go vet ./...`, las pruebas enfocadas en lo que cambió y el build de la GUI con un smoke check `GitboxApp --version`. Los cambios solo de documentación se saltan el build.
+6. **Auto-verificar**: `go vet ./...`, las pruebas enfocadas en lo que cambió y el build de la GUI con un smoke check `GitboxApp --version`. Los cambios solo de documentación se saltan el build. Después, `./scripts/gate.sh` verifica el commit final en macOS, Linux y Windows (consulta [Gate local](local-gate.md)).
 7. **Puerta de smoke test**: me da el commit, la ruta del binario que debo lanzar y una comprobación concreta, además del comando de push que pretende ejecutar. Yo pruebo. Si algo falla, lo arregla y me ofrece un build nuevo. Cuando está bien, digo "push it".
 8. **Sincronizar con main**: hace fetch y, si `origin/main` se movió, ofrece `git rebase origin/main`.
-9. **Puerta de push**: ejecuta `git push -u origin <branch>`.
+9. **Puerta de push**: ejecuta `git push -u origin <branch>` y después `./scripts/gate.sh --report` para mostrar el resultado del gate en el commit.
 10. **Puerta de PR**: redacta un título y un cuerpo anonimizados (`Closes #<N>`, qué cambió, plan de pruebas), espera mi aprobación y ejecuta `gh pr create`.
 11. **Parar**: informa de la URL del PR y me dice que ejecute `/merge-pr` cuando esté listo.
 
@@ -129,7 +129,7 @@ Se ejecuta en cualquier sesión, la que creó el worktree o una nueva. El skill:
 1. Lee el PR y encuentra su worktree por el nombre de la rama.
 2. Comprueba que el worktree no tiene cambios sin commit ni sin push, y se detiene si los tiene, salvo que yo lo fuerce. Esta comprobación se hace antes del merge porque `gh pr merge --delete-branch` también borra la rama local y su worktree.
 3. Hace fetch y, si la rama base se movió, ofrece un rebase y vuelve a hacer push con `--force-with-lease`.
-4. Pone una puerta sobre CI: todos los checks deben pasar. Se detiene ante un check fallido e informa de su log; también se detiene mientras los checks siguen en ejecución, y lo vuelvo a lanzar más tarde.
+4. Pone una puerta sobre el gate local: el commit head necesita un marcador del gate correcto o un estado `local-gate`, y ofrece ejecutar el gate cuando no lo hay. Un check de GitHub fallido también lo detiene e informa de su log; un check que sigue en ejecución no.
 5. Me muestra `gh pr merge <PR#> --squash --delete-branch` y espera mi autorización.
 6. Después del merge, vuelve al clon principal, avanza `main` en fast-forward, elimina cualquier worktree y rama local que `gh` haya dejado y poda los metadatos obsoletos de worktrees.
 

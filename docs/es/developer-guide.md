@@ -237,12 +237,14 @@ El updater de la GUI sigue el release que GitHub marca como latest, así que est
 
 ### Integración continua
 
+La barrera de merge se ejecuta en mis máquinas: `./scripts/gate.sh` verifica cada commit en macOS, Linux y Windows antes de que llegue a `main`, y el pre-push hook y `/merge-pr` exigen su marcador. [Gate local](local-gate.md) explica los carriles, los hosts y cómo reproducirlo en otro repositorio.
+
 Se ejecutan dos workflows de GitHub Actions:
 
-- `.github/workflows/pr.yml` se ejecuta en los pull requests y en los push a `main`: el job `check` de Linux ejecuta `scripts/health.sh` como barrera (todos los comprobadores; cualquier hallazgo hace fallar el job), y después un `wails build` y un smoke test con `--version`. En paralelo, `native-tests` ejecuta pruebas cortas de Go para config, status, credential, update, Git, workspace y los bindings de la GUI en Windows y macOS.
-- `.github/workflows/ci.yml` se ejecuta en los tags de versión: construye la app en cada plataforma, empaqueta los instaladores y crea el GitHub Release como borrador para que `scripts/sign-release.sh` lo firme y lo publique. Antes de etiquetar un cambio que solo ejercita el camino de release, lo ejecuto en seco con `gh workflow run ci.yml -f version=v0.0.0`: se ejecutan todos los jobs de build e instaladores, y el job de release se omite.
+- `.github/workflows/pr.yml` se ejecuta en los pull requests y en los push a `main`. Su job `check` de Linux ejecuta `scripts/health.sh`, y después un `wails build` y un smoke test con `--version`, en un runner `ubuntu-22.04` limpio. Es informativo y ya no es obligatorio para un merge.
+- `.github/workflows/ci.yml` se ejecuta en los tags de versión. Su job `test` ejecuta vet, las pruebas cortas y las dos suites de coordinación en Linux, macOS y Windows. Después construye la app en cada plataforma, empaqueta los instaladores y crea el GitHub Release como borrador para que `scripts/sign-release.sh` lo firme y lo publique. Antes de etiquetar un cambio que solo ejercita el camino de release, lo ejecuto en seco con `gh workflow run ci.yml -f version=v0.0.0`: se ejecutan todos los jobs de build e instaladores, y el job de release se omite.
 
-Los jobs nativos compilan primero el frontend embebido, usan Go desde `go.mod` y guardan las dependencias de Go y npm en cachés separadas por SO. Consulta [Pruebas nativas de PR](testing.md#pruebas-nativas-de-pr) para ver el comando, la configuración del runner de Windows y el despliegue manual de las comprobaciones obligatorias tras la primera ejecución correcta en los runners alojados. Estos jobs nativos no abren la GUI; mantengo los smoke tests de arranque del paquete en `scripts/smoke.sh`.
+Consulta [Pruebas nativas](testing.md#pruebas-nativas) para ver qué cubre cada plataforma. Ni el gate ni CI abren la GUI; mantengo los smoke tests de arranque del paquete en `scripts/smoke.sh`.
 
 ### Assets de release
 
