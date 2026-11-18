@@ -80,6 +80,10 @@ checkout() {
     # Clones from a failed or abandoned run older than a day.
     find "$cache" -maxdepth 1 -name 'work-*' -mtime +1 -exec rm -rf {} + 2>/dev/null || true
     [[ -d "$repo" ]] || git init -q --bare "$repo"
+    # fetch would start a detached auto gc that repacks the cache while the
+    # clone below hardlinks its objects ("hardlink different from source").
+    git -C "$repo" config gc.auto 0
+    git -C "$repo" config maintenance.auto false
     # A per-SHA ref, so concurrent gates from parallel worktrees never
     # fight over the same ref lock.
     git -C "$repo" fetch -q --force "$bundle" \
