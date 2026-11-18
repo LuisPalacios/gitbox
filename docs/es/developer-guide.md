@@ -102,16 +102,6 @@ El workflow de PR ejecuta el mismo script como barrera: cualquier hallazgo hace 
 
 Ejecuto `bash scripts/test-bootstrap.sh` (o `./scripts/health.sh bootstrap`) para verificar el instalador con fixtures y una clave desechable, sin instalar software ni tocar credenciales. Los jobs nativos de PR ejecutan los mismos fixtures en Windows y macOS. El bootstrap fija la clave pública del actualizador, verifica la firma de las sumas vinculada a la etiqueta y el hash del archivo antes de extraerlo, y rechaza las versiones sin firma, incluidas las antiguas 1.x. Los archivos de las versiones Linux incluyen `register-gitbox.sh` y `appicon.png`; el registro utiliza estas copias verificadas sin descargar código ejecutable.
 
-### Excepción temporal de npm audit
-
-El 2026-11-17 acepto temporalmente solo [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) (CVE-2026-112366) mediante `NPM_AUDIT_ALLOW` en `scripts/health.sh`. Este aviso de severidad alta afecta a `picomatch` hasta la versión 4.0.7: ciertos patrones glob maliciosos pueden provocar un retroceso excesivo en expresiones regulares y bloquear Node.js. El aviso no identifica ninguna versión corregida en esa fecha.
-
-Acepto el riesgo residual durante la compilación porque el árbol actual de dependencias usa `picomatch` solo mediante las herramientas Vite y `svelte-check`, incluidas `tinyglobby` y `fdir`. GitboxApp incorpora los recursos compilados de `frontend/dist`, no estas herramientas de Node.js, y el código de la aplicación no las importa. He verificado las rutas de dependencias con `npm ls picomatch` y he confirmado que `npm audit --omit=dev` no informa de vulnerabilidades. Esto no convierte las dependencias de desarrollo en herramientas seguras para procesar entradas de compilación no fiables; limito esta excepción al uso actual de las herramientas.
-
-Mantengo activa la comprobación completa de `npm audit`. La excepción solo coincide con este identificador GHSA, incluidos sus informes transitivos; cualquier otro aviso sigue haciendo fallar la barrera. La comprobación existente también falla cuando este identificador desaparece y me obliga a retirar la entrada obsoleta.
-
-Reviso la excepción en cada actualización de dependencias del frontend y, como máximo, el 2026-12-01. La retiro y actualizo el lockfile en cuanto exista una versión corregida compatible. La retiro inmediatamente si `picomatch` pasa al código de ejecución de la aplicación o recibe patrones glob no fiables en un flujo de compilación. Elimino esta nota junto con la entrada de la lista después de que la corrección supere el control de salud completo.
-
 ---
 
 ## Peculiaridades del entorno de desarrollo

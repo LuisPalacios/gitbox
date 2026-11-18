@@ -102,16 +102,6 @@ The PR workflow runs the same script as its gate: any finding fails the job, inc
 
 I run `bash scripts/test-bootstrap.sh` (or `./scripts/health.sh bootstrap`) to verify the installer against throwaway-key fixtures without installing software or touching credentials. The native PR jobs run the same fixtures on Windows and macOS. The bootstrap pins the updater’s public key, verifies the tag-bound checksum signature and archive digest before extraction, and refuses unsigned releases, including legacy 1.x. Linux release archives include `register-gitbox.sh` and `appicon.png`; registration uses these verified copies without downloading executable code.
 
-### Temporary npm audit exception
-
-On 2026-11-17, I temporarily allow only [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) (CVE-2026-112366) through `NPM_AUDIT_ALLOW` in `scripts/health.sh`. This high-severity advisory affects `picomatch` through 4.0.7: crafted glob patterns can cause excessive regular-expression backtracking and block Node.js. The advisory lists no patched version on that date.
-
-I accept the residual build-time risk because the current dependency tree uses `picomatch` only through Vite and `svelte-check` tooling, including `tinyglobby` and `fdir`. GitboxApp embeds the built `frontend/dist` assets, not these Node.js tools, and application code does not import them. I verified the dependency paths with `npm ls picomatch` and confirmed that `npm audit --omit=dev` reports no vulnerabilities. This does not make development dependencies safe to process untrusted build inputs; I keep this exception limited to the current tooling use.
-
-I keep the full `npm audit` check enabled. The exception matches only this GHSA identifier, including its transitive reports; any other advisory still fails the gate. The existing check also fails when this identifier disappears, requiring me to remove the obsolete entry.
-
-I review the exception at every frontend dependency update and no later than 2026-12-01. I remove it and update the lockfile as soon as a compatible patched version becomes available. I withdraw it immediately if `picomatch` enters application runtime code or receives untrusted glob patterns in a build workflow. I remove this note with the allowlist entry after the fix passes the full health check.
-
 ---
 
 ## Development environment quirks
