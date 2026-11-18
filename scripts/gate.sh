@@ -16,7 +16,8 @@
 # When every lane passes, gate.sh records a marker for the SHA in the git
 # common dir (shared by all worktrees). .githooks/pre-push refuses to update
 # main without it. Skipping a lane records a "partial" marker, which the hook
-# accepts only with GATE_ALLOW_PARTIAL=1.
+# accepts only with GATE_ALLOW_PARTIAL=1. A failed lane removes the commit's
+# marker; a passing partial re-run keeps an earlier full pass.
 #
 # Usage:
 #   ./scripts/gate.sh                  # every lane
@@ -228,6 +229,12 @@ fi
 
 overall=pass
 [[ ${#skipped[@]} -eq 0 ]] || overall=partial
+# A passing subset re-run never downgrades a full pass of the same commit.
+if [[ "$overall" == "partial" && -f "$marker" ]] &&
+    [[ "$(sed -n 's/^status=//p' "$marker")" == "pass" ]]; then
+    ok "marker: kept the earlier full pass for ${sha:0:12}"
+    exit 0
+fi
 mkdir -p "$marker_dir"
 {
     echo "sha=$sha"

@@ -58,7 +58,7 @@ The first run on a host downloads Go modules, npm packages and the Wails CLI. La
 
 ## Markers, the pre-push hook and merges
 
-The marker is a small text file at `$(git rev-parse --git-common-dir)/gitbox-gate/<sha>` with the status, the lanes and their durations. The git common dir is shared by every worktree of the clone, so a gate run in one worktree counts in the others.
+The marker is a small text file at `$(git rev-parse --git-common-dir)/gitbox-gate/<sha>` with the status, the lanes and their durations. The git common dir is shared by every worktree of the clone, so a gate run in one worktree counts in the others. A failed lane removes the commit's marker, because the latest evidence wins; a passing `--only` or `--skip` re-run keeps an earlier full pass.
 
 `.githooks/pre-push` enforces the gate:
 

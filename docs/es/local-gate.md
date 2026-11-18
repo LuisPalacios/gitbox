@@ -58,7 +58,7 @@ La primera ejecución en un host descarga los módulos de Go, los paquetes npm y
 
 ## Marcadores, el pre-push hook y los merges
 
-El marcador es un pequeño archivo de texto en `$(git rev-parse --git-common-dir)/gitbox-gate/<sha>` con el estado, los carriles y sus duraciones. Todos los worktrees del clon comparten el git common dir, así que un gate ejecutado en un worktree cuenta en los demás.
+El marcador es un pequeño archivo de texto en `$(git rev-parse --git-common-dir)/gitbox-gate/<sha>` con el estado, los carriles y sus duraciones. Todos los worktrees del clon comparten el git common dir, así que un gate ejecutado en un worktree cuenta en los demás. Un carril fallido elimina el marcador del commit, porque manda la evidencia más reciente; una re-ejecución con `--only` o `--skip` que pasa conserva un paso completo anterior.
 
 `.githooks/pre-push` hace cumplir el gate:
 
