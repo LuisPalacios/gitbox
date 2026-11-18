@@ -46,7 +46,7 @@ Track this checklist in the conversation and persist issue progress in the regis
 - [ ] Atomically reserve issues and create or recover independent worktrees.
 - [ ] Delegate scoped work and supervise questions, overlap and shared resources.
 - [ ] Review changes and verify acceptance against each exact commit.
-- [ ] Publish only authorized results, check CI and report remaining work.
+- [ ] Publish only authorized results, check the local gate and report remaining work.
 
 ### 1. Select from live evidence
 
@@ -97,8 +97,8 @@ Commit the final change before collecting final evidence; generated output and t
 
 Only the supervisor publishes, after checking current-session authority, the clean worktree, current remote base, exact head, required PASS evidence and anonymized content. Sync against the live base; rebase and reverify when needed. Force push requires separate explicit permission and a lease against the inspected remote SHA. Before each external mutation, journal its intent with a unique action ID; record the returned commit, PR or issue identifier afterward. On a retry, inspect the remote first to determine whether the action already succeeded. Never blindly repeat a PR or subissue creation after a timeout.
 
-Publish each branch/PR separately. An open PR keeps its issue reserved, including while CI is pending or failing. Check CI on the exact published head before declaring a PR ready; pending CI means published/pending, not complete. Stop before merge and direct the user to `$merge-pr <PR#>`. Release execution resources only after their actual users stop; preserve issue ownership while work or an open PR remains.
+Publish each branch/PR separately. An open PR keeps its issue reserved, including while its gate or GitHub check is pending or failing. Before declaring a PR ready, confirm `./scripts/gate.sh` passed on the exact published head (its marker or `local-gate` status) and that the informational GitHub check has not failed; a missing gate means published/pending, not complete. Gates for several branches can run at once; each lane clones its own SHA. Stop before merge and direct the user to `$merge-pr <PR#>`. Release execution resources only after their actual users stop; preserve issue ownership while work or an open PR remains.
 
-When an authorized merge later resolves an issue, or resumption discovers an external merge, confirm both the merged PR and the complete issue resolution. If umbrella-update permission is current, follow [protocol.md](protocol.md) to mark only its matching checkbox. A partial PR, closed-unmerged PR or green CI does not complete the issue. Release the issue claim only after confirming no active worker remains and recording its resolved or explicitly abandoned outcome. Never delete dirty or unpushed work to free a reservation.
+When an authorized merge later resolves an issue, or resumption discovers an external merge, confirm both the merged PR and the complete issue resolution. If umbrella-update permission is current, follow [protocol.md](protocol.md) to mark only its matching checkbox. A partial PR, closed-unmerged PR or green gate or CI does not complete the issue. Release the issue claim only after confirming no active worker remains and recording its resolved or explicitly abandoned outcome. Never delete dirty or unpushed work to free a reservation.
 
-Finish with each issue's branch/worktree, commit, verification, PR/CI state, blockers and exact next action. Keep local evidence links in the private report and public text free of local paths, account details, credentials or agent attribution.
+Finish with each issue's branch/worktree, commit, verification, PR/gate state, blockers and exact next action. Keep local evidence links in the private report and public text free of local paths, account details, credentials or agent attribution.

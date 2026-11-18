@@ -43,7 +43,7 @@ Allowed states are `reserved`, `working`, `blocked`, `verifying`, `publication-p
 }
 ```
 
-`result` is `PASS`, `FAIL` or `PENDING`. `{"op":"check","owner":"batch-example","generation":1,"issue":42}` rejects absent, failed, pending or stale required evidence. It cannot detect fabricated results, uncommitted changes or an unrecorded remote-base change; the supervisor must inspect those before recording/publishing. State `ready` also checks the recorded evidence, but live CI on the published SHA remains the supervisor's responsibility.
+`result` is `PASS`, `FAIL` or `PENDING`. `{"op":"check","owner":"batch-example","generation":1,"issue":42}` rejects absent, failed, pending or stale required evidence. It cannot detect fabricated results, uncommitted changes or an unrecorded remote-base change; the supervisor must inspect those before recording/publishing. State `ready` also checks the recorded evidence, but the local gate on the published SHA remains the supervisor's responsibility.
 
 ## Resources and recovery
 
@@ -83,7 +83,7 @@ After interruption, an intent without a result means unknown outcome. Inspect th
 
 ## Roadmap completion
 
-With current-session permission to update the named umbrella, acquire `roadmap:<N>` and inspect the live merged PR plus linked issue. Require a merged PR that completes the entire issue and a resolved issue state; closure alone, partial work, green CI or an open PR is insufficient. Reconcile merges from other sessions with the same checks. With no umbrella, skip this procedure.
+With current-session permission to update the named umbrella, acquire `roadmap:<N>` and inspect the live merged PR plus linked issue. Require a merged PR that completes the entire issue and a resolved issue state; closure alone, partial work, a green gate or CI, or an open PR is insufficient. Reconcile merges from other sessions with the same checks. With no umbrella, skip this procedure.
 
 Read the live body and retain its version/update timestamp. The offline helper prepares only checkbox substitutions:
 

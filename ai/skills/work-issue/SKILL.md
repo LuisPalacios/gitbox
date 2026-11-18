@@ -151,6 +151,14 @@ Run in this order, stop on first failure and fix before continuing:
 
 Doc-only changes (`.md`, `docs/`, comments, `ai/` and the harness files it renders, `.gitignore`, `go.mod` tidy) skip the builds but still run `go vet` and relevant tests.
 
+4. Once the work is committed, run the local gate on the final commit. It verifies the committed `HEAD` on macOS, Linux and Windows and replaces waiting for GitHub CI (see `docs/local-gate.md`). Doc-only changes run it too, because its health check lints Markdown and the harness mirror:
+
+   ```bash
+   ./scripts/gate.sh
+   ```
+
+   A failing lane prints its log path; fix the cause, commit, and re-run. Skip a lane (`--skip <lane>`) only with the user's agreement when its host is down; the result is a partial gate, which `{{INVOKE}}merge-pr` reports.
+
 ## Step 7: User smoke-test gate
 
 Follow the "Never push without asking first" protocol from `{{ENTRY}}`. Check whether current-session authorization already covers the proposed publication action and scope. Existing publication authorization does not waive the required user smoke test for runtime changes.
@@ -182,7 +190,7 @@ git log --oneline HEAD..origin/main
 
 - If `origin/main` has not advanced, skip to Step 9.
 - If it has advanced, offer `git rebase origin/main`. On conflicts, surface each file and ask for guidance — do not auto-resolve non-trivial conflicts.
-- A rebase invalidates the earlier verification results. Re-run Step 6 on the rebased state; for runtime changes, rebuild and repeat Step 7's user smoke test before publishing.
+- A rebase invalidates the earlier verification results, including the gate marker of the old SHA. Re-run Step 6 on the rebased state; for runtime changes, rebuild and repeat Step 7's user smoke test before publishing.
 - Reassess authorization separately from verification. If approval named a particular SHA or build, or the scope changed, show the new state and obtain renewed approval. An existing authorization to push this branch and create a PR once checks pass remains valid for the same actions and scope after those checks and any required smoke test pass; do not ask for it again.
 
 ## Step 9: Push gate
@@ -192,6 +200,8 @@ Show the exact push command and execute it only after verification and any requi
 ```bash
 git push -u origin <branch>
 ```
+
+After the push, publish the gate result as an informational `local-gate` commit status with `./scripts/gate.sh --report`. It is part of the authorized push, not a separate publication.
 
 If Step 8 rebased commits that were already pushed, propose `git push --force-with-lease origin <branch>`. Obtain explicit authorization for that force push unless the current-session authorization already covers it; permission for a plain push is insufficient.
 

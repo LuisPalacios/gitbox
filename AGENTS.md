@@ -51,7 +51,7 @@ When translating documentation into any supported language, preserve the English
 - `docs/`: canonical English documentation; `docs/es/` mirrors it in Spanish.
 - `assets/`: icons, brand SVGs, and screenshots; `scripts/`: builds, checks, shipping, and release tooling.
 - `ai/`: the agent harness masters (entry instructions, rules, context, skills) and the engine that renders them into `.claude/`, `AGENTS.md`, `.codex/` and `.agents/skills/`.
-- `.github/workflows/`: CI and releases; `json/`: config schema and example.
+- `.github/workflows/`: release CI and an informational Linux PR check; `json/`: config schema and example.
 
 Read `.codex/context/repository-layout.md` when locating components or changing the repository structure. Keep that map up to date with structural changes.
 
@@ -159,14 +159,14 @@ Pick per task. Default to branch + PR when in doubt — the cost of a PR for a s
 
 - The change is one file (or a tightly-coupled 2-file edit like config + its test).
 - The fix or addition is mechanically obvious — a typo, a one-line bug fix, a doc tweak, a `HideWindow` call that was clearly missing.
-- `go vet ./...` and the relevant focused tests pass locally.
+- `go vet ./...` and the relevant focused tests pass locally, and `./scripts/gate.sh` passes on the commit (the pre-push hook refuses to update main without its marker).
 - No new public API, no behavior change that another platform might surface differently, no risky refactor.
 
 Reference the issue in the commit with `Closes #N` — GitHub auto-closes on push.
 
-**Branch + PR** for everything else: multi-file features, anything touching `pkg/` public surface, refactors, UI changes, anything that benefits from seeing the full diff at once or letting CI gate the merge. The PR body is where I narrate the change (and where CI runs). As maintainer, I may merge my own PR after the required checks; this does not authorize an agent to merge without my explicit go-ahead. Branch names follow `<type>/<issue>-<slug>`, e.g. `fix/31-ide-flash` or `feat/22-open-in-terminal`. Always use `gh pr create --body "Closes #N\n\n..."` so the issue closes on merge.
+**Branch + PR** for everything else: multi-file features, anything touching `pkg/` public surface, refactors, UI changes, anything that benefits from seeing the full diff at once. The PR body is where I narrate the change; the local gate (`./scripts/gate.sh`) verifies the exact head commit, and GitHub runs an informational Linux check. As maintainer, I may merge my own PR after the gate passes; this does not authorize an agent to merge without my explicit go-ahead. Branch names follow `<type>/<issue>-<slug>`, e.g. `fix/31-ide-flash` or `feat/22-open-in-terminal`. Always use `gh pr create --body "Closes #N\n\n..."` so the issue closes on merge.
 
-**External contributions** (anyone who is not me): always come through PRs from forks — I review, CI must pass, then merge.
+**External contributions** (anyone who is not me): always come through PRs from forks — I review, the local gate must pass on the PR head, then merge.
 
 ### Never push without asking first
 
@@ -176,7 +176,7 @@ The protocol has two shapes depending on what was changed:
 
 **Runtime-affecting changes** (code under `cmd/` or `pkg/`, build config, UI behaviour):
 
-1. Finish the implementation locally: commits on the fix branch (or staged on main), `go vet ./...` clean, focused tests passing, **the GUI built** per the build rule.
+1. Finish the implementation locally: commits on the fix branch (or staged on main), `go vet ./...` clean, focused tests passing, **the GUI built** per the build rule, and `./scripts/gate.sh` green on the final commit.
 2. Stop and send one short message with:
    - Which commit(s) or branch are ready and the binary path to launch (e.g. `cmd/gui/build/bin/GitboxApp.exe`).
    - A concrete check: what to click, what output to expect, what regression to rule out ("open Preferences → Open In Editor, confirm no cmd.exe flash").
@@ -213,6 +213,7 @@ When in doubt, ask. It is never wrong to pause; it is sometimes wrong to push.
 - Never mark a task complete without proving it works
 - Test scripts with `bash -n` (syntax check) and `shellcheck` when available
 - Go: `go vet ./...` + run the relevant test commands (see Testing below)
+- Before publishing: `./scripts/gate.sh` on the committed HEAD (see Testing below)
 - **Build the GUI** after any code change to `cmd/` or `pkg/`. `go build ./...` alone skips the Wails build tags and the frontend build, so a change that compiles there can still break `wails build`. Quick compile-check during iterative edits: `go build ./...` (needs `cmd/gui/frontend/dist`, see `.codex/context/building.md`). Full build before reporting done or pushing: `cd cmd/gui && wails build` (copy icons first — see `.codex/context/building.md`), then `GitboxApp --version` on the result. Doc-only and non-Go changes are exempt.
 - Validate config templates render correctly before committing
 - After any command that writes config files, read the actual file on disk — never trust command output alone
@@ -223,9 +224,11 @@ After any code change, run the focused tests for the package that changed. Read 
 
 **Run `go vet ./...` before committing** — it catches issues the test suite doesn't.
 
-**Health check:** `./scripts/health.sh` runs every checker read-only (Go analyzers at pinned versions, svelte-check with unused-code errors, frontend build and npm ci warnings, npm audit, shellcheck, actionlint, markdownlint). Run it before every PR; `pr.yml` runs it as the CI gate and fails on any finding (including new govulncheck / npm audit advisories). The shared Markdown lint config is read-only by default; use `--fix` only for approved editable targets, never generated files.
+**Health check:** `./scripts/health.sh` runs every checker read-only (Go analyzers at pinned versions, svelte-check with unused-code errors, frontend build and npm ci warnings, npm audit, shellcheck, actionlint, markdownlint). The macOS lane of `./scripts/gate.sh` runs it with fuzzing and fails on any finding (including new govulncheck / npm audit advisories); `pr.yml` still runs it as an informational Linux check. The shared Markdown lint config is read-only by default; use `--fix` only for approved editable targets, never generated files.
 
-**Pre-push hook:** The repo includes `.githooks/pre-push` which runs a `gofmt -s -l` check, `go vet` and `go test -short` before every push, building the frontend first when `cmd/gui/frontend/dist` is missing. Run `gofmt -s -w` on changed Go files before committing. Activate with `git config core.hooksPath .githooks`.
+**Local gate:** `./scripts/gate.sh` verifies the committed HEAD in parallel on macOS, Linux and Windows (this machine plus the SSH hosts in `.env`): health check, unit and coordination tests, Wails build and `--version` smoke, each in a clean clone. It replaces the GitHub PR checks as the merge gate. A pass records a per-SHA marker; `--report` posts it as an informational `local-gate` commit status after the push. `--only`/`--skip` record a partial marker. See `docs/local-gate.md`.
+
+**Pre-push hook:** `.githooks/pre-push` refuses to update main unless the pushed commit has a gate marker (a partial one needs `GATE_ALLOW_PARTIAL=1`). For other branches it runs a `gofmt -s -l` check, `go vet` and `go test -short` unless the commit already passed the gate, building the frontend first when `cmd/gui/frontend/dist` is missing. Run `gofmt -s -w` on changed Go files before committing. Activate with `git config core.hooksPath .githooks`.
 
 **Test plan:** The full pre-PR and release verification workflow is documented in `docs/testing.md`. The `$test-plan` skill automates the automated steps and guides through interactive ones.
 
@@ -256,7 +259,7 @@ Every English doc under `docs/` has a counterpart under `docs/es/`; update both 
 
 For one supervisor selecting and governing up to three parallel issue workers, use `$coordinate-issues --roadmap <N> --count 3 --active none` (or `--no-roadmap` for the open backlog). Declare other sessions with `--active <issues>`; the skill combines that information with live evidence and atomic local reservations. Its default authority covers local work. `--publish` explicitly adds push and PR publication for the selected batch; merge remains separate.
 
-For multi-issue work where several agent sessions run in parallel, use the `$work-issue <N>` skill. It creates a sibling worktree at `../gitbox-<N>-<slug>`, drives the plan → code → auto-test → user-smoke-test → sync → push → PR flow, and stops before merge. `$merge-pr <PR#>` handles rebase check, CI gate, merge, and worktree cleanup as a separate, deliberate action.
+For multi-issue work where several agent sessions run in parallel, use the `$work-issue <N>` skill. It creates a sibling worktree at `../gitbox-<N>-<slug>`, drives the plan → code → auto-test → user-smoke-test → sync → push → PR flow, and stops before merge. `$merge-pr <PR#>` handles rebase check, local gate check, merge, and worktree cleanup as a separate, deliberate action.
 
 If I already have a plan written (in the issue body, a local file, or a URL), I can pass it with `$work-issue <N> <plan-source>`. The skill evaluates completeness: adopts it if it covers files-to-change, verification, and key decisions; extends it with a plan if partial; creates a full plan if absent, using the available planning capability.
 
@@ -298,7 +301,7 @@ Anything I publish to a GitHub-visible surface — issue body, issue comment, PR
 
 ## Multiplatform testing
 
-For runtime changes, build and smoke-test locally first, then run `./scripts/ship.sh` and `./scripts/smoke.sh all` for the remotes configured in `.env`. If `.env` is absent or has no remote hosts, local build and smoke complete the cycle. Documentation-only changes do not need GUI builds or remote shipping.
+For runtime changes, build and smoke-test locally first, then run `./scripts/ship.sh` and `./scripts/smoke.sh all` for the remotes configured in `.env`. `./scripts/gate.sh` uses the same hosts for automated verification; `ship.sh` stages a GUI for interactive testing. If `.env` is absent or has no remote hosts, local build and smoke complete the cycle. Documentation-only changes do not need GUI builds or remote shipping.
 
 Before remote builds, credential setup, or interactive GUI testing, read `.codex/context/multiplatform-testing.md` for the platform variables, commands, and desktop-session requirements. See `docs/multiplatform.md` for the human setup guide. Never include private `.env` values in published output.
 
