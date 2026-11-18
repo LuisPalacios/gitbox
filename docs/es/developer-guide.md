@@ -100,7 +100,7 @@ scoop install pnpm                      # brew install pnpm en macOS
 
 El workflow de PR ejecuta el mismo script como barrera: cualquier hallazgo hace fallar el job, incluido un aviso nuevo de govulncheck o de `npm audit`. CI fija shellcheck 0.11.0, actionlint 1.7.12, pnpm 12.9.1 y setup-uv 10.3.3; los comandos de Markdown fijan las versiones de sus paquetes. Uso esas versiones en local para que ambas ejecuciones coincidan.
 
-Ejecuto `bash scripts/test-bootstrap.sh` (o `./scripts/health.sh bootstrap`) para verificar el instalador con fixtures y una clave desechable, sin instalar software ni tocar credenciales. Los jobs nativos de PR ejecutan los mismos fixtures en Windows y macOS. El bootstrap fija la clave pública del actualizador, verifica la firma de las sumas vinculada a la etiqueta y el hash del archivo antes de extraerlo, y rechaza las versiones sin firma, incluidas las antiguas 1.x. Los archivos de las versiones Linux incluyen `register-gitbox.sh` y `appicon.png`; el registro utiliza estas copias verificadas sin descargar código ejecutable.
+Ejecuto `bash scripts/test-bootstrap.sh` (o `./scripts/health.sh bootstrap`) para verificar el instalador con fixtures y una clave desechable, sin instalar software ni tocar credenciales. El gate local ejecuta los mismos fixtures en macOS mediante su comprobación de salud y directamente en los carriles Linux y Windows. El bootstrap fija la clave pública del actualizador, verifica la firma de las sumas vinculada a la etiqueta y el hash del archivo antes de extraerlo, y rechaza las versiones sin firma, incluidas las antiguas 1.x. Los archivos de las versiones Linux incluyen `register-gitbox.sh` y `appicon.png`; el registro utiliza estas copias verificadas sin descargar código ejecutable.
 
 ---
 

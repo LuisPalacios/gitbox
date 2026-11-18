@@ -36,7 +36,7 @@ I test the coordination registry with temporary Git repositories and separate pr
 
 ## Bootstrap verification tests
 
-I run `bash scripts/test-bootstrap.sh` or `./scripts/health.sh bootstrap` for installer changes. The fixtures sign local checksums with a throwaway SSH key, check parity with the updater's pinned public key, and reject wrong keys, modified archives/checksums, replayed tags, missing signatures and ambiguous checksum entries. They prove verification precedes extraction, exercise both download paths with local stubs, and check bundled desktop registration and quarantine policy without installing software or touching credentials. The native PR jobs run the same fixtures on Windows and macOS.
+I run `bash scripts/test-bootstrap.sh` or `./scripts/health.sh bootstrap` for installer changes. The fixtures sign local checksums with a throwaway SSH key, check parity with the updater's pinned public key, and reject wrong keys, modified archives/checksums, replayed tags, missing signatures and ambiguous checksum entries. They prove verification precedes extraction, exercise both download paths with local stubs, and check bundled desktop registration and quarantine policy without installing software or touching credentials. The local gate runs the same fixtures on macOS through its health check and directly in the Linux and Windows lanes.
 
 ## Test levels
 
