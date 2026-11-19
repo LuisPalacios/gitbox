@@ -174,7 +174,7 @@ Without SSH access to other machines:
 - Build for the local OS: see [developer-guide.md](developer-guide.md#building-from-source)
 - Set up local credentials: `./scripts/setup-credentials.sh`
 
-CI catches cross-platform regressions even without remotes: `pr.yml` runs the health check and a Linux GUI build on every pull request, and `ci.yml` builds every platform on each release tag. See [developer-guide.md](developer-guide.md#continuous-integration).
+CI catches cross-platform regressions even without remotes: `pr.yml` runs the health check and a Linux GUI build on every pull request, and `ci.yml` builds Linux and Windows on each release tag (`scripts/release-macos.sh` builds macOS locally). See [developer-guide.md](developer-guide.md#continuous-integration).
 
 ## Troubleshooting
 

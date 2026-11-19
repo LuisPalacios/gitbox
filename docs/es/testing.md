@@ -210,6 +210,7 @@ Ejecuto esto antes de crear el tag de un release. Combina pasos automatizados e 
 - [ ] `./scripts/ship.sh` construye y prepara la GUI en cada remoto
 - [ ] `./scripts/smoke.sh all` imprime una versión en cada plataforma
 - [ ] `./scripts/sign-release.sh --check` pasa, así que la clave de releases está en el agente SSH
+- [ ] `create-dmg` está instalado en el Mac que ejecuta `./scripts/release-macos.sh`
 
 ### Verificación GUI (interactiva, todas las plataformas)
 

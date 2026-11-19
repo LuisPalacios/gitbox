@@ -216,16 +216,17 @@ cd cmd/gui && wails build -ldflags "-X main.version=v2.0.0 -X main.commit=$(git 
 
 ### Crear un release
 
-Hago push de un tag de versión y GitHub Actions construye la app para cada plataforma y crea un GitHub Release en borrador con los assets adjuntos. Después firmo los checksums del borrador en mi máquina, lo que lo publica:
+Hago push de un tag de versión y GitHub Actions construye la app para Linux y Windows y crea un GitHub Release en borrador con esos assets adjuntos. Construyo los assets de macOS en mi Mac y los añado al borrador, y después firmo los checksums del borrador, lo que lo publica:
 
 ```bash
 git tag v2.0.0
 git push origin v2.0.0
 # cuando termina el workflow de CI:
+./scripts/release-macos.sh v2.0.0
 ./scripts/sign-release.sh v2.0.0
 ```
 
-CI inyecta `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` en el build de la GUI. La clave de firma vive en mi agente SSH y nunca llega a CI. Consulta [release-signing.md](release-signing.md) para ver cómo funciona la firma, la configuración del agente y cómo usa un fork su propia clave.
+CI y `release-macos.sh` inyectan `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` en el build de la GUI. Los runners de macOS alojados en GitHub a menudo se quedan en cola hasta que el job se cancela, así que `release-macos.sh` clona el tag en un directorio limpio bajo `~/.cache/gitbox-release/`, construye darwin/arm64 y darwin/amd64 con la versión fijada del CLI de Wails, empaqueta los zips y los DMG, los sube y añade sus líneas a `checksums.sha256`. La clave de firma vive en mi agente SSH y nunca llega a CI. Consulta [release-signing.md](release-signing.md) para ver cómo funciona la firma, la configuración del agente y cómo usa un fork su propia clave.
 
 ### Líneas de release
 
@@ -244,7 +245,7 @@ La barrera de merge se ejecuta en mis máquinas: `./scripts/gate.sh` verifica ca
 Se ejecutan dos workflows de GitHub Actions:
 
 - `.github/workflows/pr.yml` se ejecuta en los pull requests y en los push a `main`. Su job `check` de Linux ejecuta `scripts/health.sh`, y después un `wails build` y un smoke test con `--version`, en un runner `ubuntu-22.04` limpio. Es informativo y ya no es obligatorio para un merge.
-- `.github/workflows/ci.yml` se ejecuta en los tags de versión. Su job `test` ejecuta vet, las pruebas cortas y las dos suites de coordinación en Linux, macOS y Windows. Después construye la app en cada plataforma, empaqueta los instaladores y crea el GitHub Release como borrador para que `scripts/sign-release.sh` lo firme y lo publique. Antes de etiquetar un cambio que solo ejercita el camino de release, lo ejecuto en seco con `gh workflow run ci.yml -f version=v0.0.0`: se ejecutan todos los jobs de build e instaladores, y el job de release se omite.
+- `.github/workflows/ci.yml` se ejecuta en los tags de versión. Su job `test` ejecuta vet, las pruebas cortas y las dos suites de coordinación en Linux y Windows; el carril mac del gate local cubre macOS. Después construye la app para Linux y Windows, empaqueta sus instaladores y crea el GitHub Release como borrador. `scripts/release-macos.sh` añade los assets de macOS y `scripts/sign-release.sh` lo firma y lo publica. Antes de etiquetar un cambio que solo ejercita el camino de release, lo ejecuto en seco con `gh workflow run ci.yml -f version=v0.0.0`: se ejecutan todos los jobs de build e instaladores, y el job de release se omite.
 
 Consulta [Pruebas nativas](testing.md#pruebas-nativas) para ver qué cubre cada plataforma. Ni el gate ni CI abren la GUI; mantengo los smoke tests de arranque del paquete en `scripts/smoke.sh`.
 

@@ -1,27 +1,37 @@
 # macOS code signing and notarization
 
-Gitbox releases are currently **not** signed or notarized for macOS. The `CI` workflow (`.github/workflows/ci.yml`) has an Apple code-signing and notarization path for the DMGs, but it stays inactive until the Apple secrets below exist in the repository. This page describes that path and what users do with unsigned builds today.
+Gitbox releases are currently **not** signed or notarized for macOS. `scripts/release-macos.sh`, which builds the macOS assets on my Mac, has an Apple code-signing and notarization path for the DMGs, but it stays inactive until the environment variables below are set. This page describes that path and what users do with unsigned builds today.
 
 This is separate from the SSH signature over `checksums.sha256` that every release carries for the updater; see [release-signing.md](release-signing.md).
 
 The bootstrap verifies the tag-bound SSH release signature and archive SHA-256 before extraction. It then preserves quarantine for an app with a valid Apple publisher signature, including a notarized app, and refuses an invalid signature. For unsigned or ad-hoc-signed builds, it explains and clears quarantine. Missing release signatures stop installation, including legacy 1.x releases.
 
-## What the CI path covers
+## What the signing path covers
 
-The `dmg-macos-arm64` and `dmg-macos-amd64` jobs run these steps only when the `APPLE_CERTIFICATE` secret is set (the job-level `APPLE_SIGNING` flag):
+For each architecture, `release-macos.sh` runs these steps:
 
-1. **Import signing certificate**: decodes the `.p12` into an ephemeral `build.keychain`.
-2. **Codesign app bundle**: signs `GitboxApp.app` with `codesign --force --deep --sign "$APPLE_IDENTITY" --options runtime`.
-3. **Build DMG**: `create-dmg` packs the app, `Install Gitbox.command` and `README.txt`. This step always runs.
-4. **Notarize DMG**: `xcrun notarytool submit … --wait` uploads the DMG to Apple, then `xcrun stapler staple` attaches the notarization ticket.
+1. **Codesign app bundle**, only when `APPLE_IDENTITY` is set: signs `GitboxApp.app` with `codesign --force --deep --sign "$APPLE_IDENTITY" --options runtime`, using the certificate in my login keychain.
+2. **Build DMG**: `create-dmg` packs the app, `Install Gitbox.command` and `README.txt`. This step always runs.
+3. **Notarize DMG**, only when `NOTARY_PROFILE` is set: `xcrun notarytool submit … --keychain-profile "$NOTARY_PROFILE" --wait` uploads the DMG to Apple, then `xcrun stapler staple` attaches the notarization ticket.
 
-Without the secrets, steps 1, 2 and 4 are skipped and the DMG is unsigned. The signing applies only to the app inside the DMG: the `gitbox-macos-arm64.zip` and `gitbox-macos-amd64.zip` archives, which the in-app updater and `bootstrap.sh` download, are never Apple-signed.
+Without the variables, steps 1 and 3 are skipped and the DMG is unsigned. The certificate and the notarization password stay in my keychain and never reach GitHub. The signing applies only to the app inside the DMG: the `gitbox-macos-arm64.zip` and `gitbox-macos-amd64.zip` archives, which the in-app updater and `bootstrap.sh` download, are never Apple-signed.
 
 ## Enabling it
 
-Signing needs an Apple Developer account ($99/year) from <https://developer.apple.com>. Add these secrets under **Settings → Secrets and variables → Actions**:
+Signing needs an Apple Developer account ($99/year) from <https://developer.apple.com>. I import the Developer ID certificate into my login keychain, store the notarization credentials once, and export both variables before running `release-macos.sh`:
 
-| Secret                       | Description                                                                                                                             |
+```bash
+security find-identity -v -p codesigning   # lists the identity
+xcrun notarytool store-credentials gitbox-notary \
+  --apple-id "you@example.com" --team-id "ABCDE12345" --password "app-specific-password"
+export APPLE_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+export NOTARY_PROFILE=gitbox-notary
+./scripts/release-macos.sh v2.2.0
+```
+
+The values come from these sources:
+
+| Value                        | Description                                                                                                                             |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `APPLE_CERTIFICATE`          | Base64-encoded `.p12` Developer ID certificate. Export it from Keychain Access, then run `base64 -i cert.p12 \| pbcopy`.                |
 | `APPLE_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12` file.                                                                                           |
@@ -30,7 +40,7 @@ Signing needs an Apple Developer account ($99/year) from <https://developer.appl
 | `APPLE_TEAM_ID`              | 10-character Team ID from the Apple Developer portal (Membership section).                                                              |
 | `APPLE_APP_PASSWORD`         | App-specific password for notarization. Generate it at <https://appleid.apple.com> under Sign-In and Security → App-Specific Passwords. |
 
-`APPLE_CERTIFICATE` is the gate: when it is set, all signing and notarization steps run and need the other secrets too.
+`APPLE_CERTIFICATE` and `APPLE_CERTIFICATE_PASSWORD` are only needed to move the certificate between machines; `release-macos.sh` reads the identity from the keychain.
 
 ## Testing locally
 

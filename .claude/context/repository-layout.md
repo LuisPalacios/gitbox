@@ -62,6 +62,7 @@ scripts/
   setup-credentials.sh     Run test-setup-credentials.sh locally or on remotes
   test-setup-credentials.sh  Provision test credentials from test-gitbox.json
   send-my-production-config.sh  Copy the local gitbox.json to one remote (with diff + confirm)
+  release-macos.sh         Build the macOS zips and DMGs from a clean clone of a tag and add them to the draft release (--no-upload)
   sign-release.sh          Sign a draft release's checksums through the local SSH agent and publish it (--check, --dry-run); standalone, no .env
   demo-fleet/              Fake fleet + mock provider API + window capture for README screenshots (build.sh, run.sh, mock.py, shot.ps1)
 .githooks/pre-push        Pre-push hook (gofmt -s check + go vet + unit tests; builds the frontend if dist is missing)
@@ -94,7 +95,7 @@ ai/                       Agent harness masters: the only hand-edited agent guid
     skills-authoring.md   Skill creation guidelines
 .claude/CLAUDE.md, rules/, context/, skills/   Rendered from ai/ for Claude Code
 AGENTS.md, .codex/rules/, .codex/context/, .agents/skills/   Rendered from ai/ for Codex
-.github/workflows/ci.yml  Release CI on v* tags: test, build, draft release (+ installers, DMGs, AppImage); scripts/sign-release.sh signs and publishes it; workflow_dispatch = dry run without publishing
+.github/workflows/ci.yml  Release CI on v* tags: Linux and Windows test, build, draft release (+ Windows installer, AppImage); scripts/release-macos.sh adds macOS; scripts/sign-release.sh signs and publishes it; workflow_dispatch = dry run without publishing
 .github/workflows/pr.yml  Informational PR + main check on Linux: frontend build, scripts/health.sh, Linux GUI build smoke (the merge gate is scripts/gate.sh)
 allowed_signers           Release public key for manual ssh-keygen -Y verify (must match pkg/update/release-signing-key.pub)
 json/

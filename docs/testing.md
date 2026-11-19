@@ -210,6 +210,7 @@ I run this before tagging a release. It combines automated and interactive steps
 - [ ] `./scripts/ship.sh` builds and stages the GUI on every remote
 - [ ] `./scripts/smoke.sh all` prints a version on every platform
 - [ ] `./scripts/sign-release.sh --check` passes, so the release key is in the SSH agent
+- [ ] `create-dmg` is installed on the Mac that runs `./scripts/release-macos.sh`
 
 ### GUI verification (interactive, all platforms)
 

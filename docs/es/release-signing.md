@@ -10,7 +10,7 @@ El actualizador compara cada artefacto descargado con su SHA256 en `checksums.sh
 
 El flujo tiene tres actores: CI, el mantenedor y el actualizador en la máquina de cada usuario.
 
-1. Publico un tag de versión. CI compila todos los artefactos, escribe `checksums.sha256` y crea la release de GitHub como **borrador**. Un borrador es invisible para los usuarios y para el actualizador.
+1. Publico un tag de versión. CI compila los artefactos de Linux y Windows, escribe `checksums.sha256` y crea la release de GitHub como **borrador**. Un borrador es invisible para los usuarios y para el actualizador. En mi Mac, `./scripts/release-macos.sh <tag>` compila los zips y los DMG de macOS, los sube y añade sus líneas a `checksums.sha256`.
 2. Ejecuto `./scripts/sign-release.sh <tag>` en mi máquina. El script descarga el `checksums.sha256` del borrador, comprueba que lista exactamente los assets de la release y firma este mensaje con `ssh-keygen -Y sign -n gitbox-release` a través de mi agente SSH:
 
    ```text
@@ -92,15 +92,21 @@ Una comprobación correcta imprime la huella de la clave y `the agent signs with
 
 ## Procedimiento de release
 
-1. Crea el tag y publícalo. CI lo compila todo y crea una release en borrador:
+1. Crea el tag y publícalo. CI compila Linux y Windows y crea una release en borrador:
 
    ```bash
    git tag v2.2.0
    git push origin v2.2.0
    ```
 
-2. Espera a que termine el workflow `CI`. Su último paso imprime el comando que toca ejecutar.
-3. Firma y publica:
+2. Espera a que termine el workflow `CI`. Su último paso imprime los comandos que toca ejecutar.
+3. Añade los assets de macOS desde tu Mac:
+
+   ```bash
+   ./scripts/release-macos.sh v2.2.0
+   ```
+
+4. Firma y publica:
 
    ```bash
    ./scripts/sign-release.sh v2.2.0
