@@ -10,8 +10,8 @@ package main
 // just gained one has its nested clones adopted in the same pass.
 
 import (
+	"errors"
 	"fmt"
-	"reflect"
 
 	"github.com/LuisPalacios/gitbox/pkg/adopt"
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -19,7 +19,6 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/reconcile"
 	"github.com/LuisPalacios/gitbox/pkg/workspace"
-	wailsrt "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // OrphanRepoDTO describes a clone found under a root that the config
@@ -111,6 +110,9 @@ func (s repoSetup) run() {
 	_ = git.ConfigSet(s.path, "user.email", s.acct.Email)
 }
 
+// ErrStalePlan means both scans observed concurrent changes to config intent.
+var ErrStalePlan = errors.New("reconcile plan is stale")
+
 // scanConfig snapshots the config and runs the reconcile scan without the
 // lock, retrying when the config changed meanwhile. It returns with a.mu
 // held and the plan for the live config; the caller unlocks.
@@ -119,9 +121,13 @@ func (a *App) scanConfig() (reconcile.Result, error) {
 	if scan == nil {
 		scan = reconcile.Plan
 	}
-	for attempt := 0; ; attempt++ {
+	clone := a.reconcileClone
+	if clone == nil {
+		clone = (*config.Config).Clone
+	}
+	for attempt := range 2 {
 		a.mu.Lock()
-		snap, err := a.cfg.Clone()
+		snap, err := clone(a.cfg)
 		a.mu.Unlock()
 		if err != nil {
 			a.mu.Lock()
@@ -132,19 +138,33 @@ func (a *App) scanConfig() (reconcile.Result, error) {
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		if cur, cerr := a.cfg.Clone(); cerr == nil && (reflect.DeepEqual(cur, snap) || attempt >= 2) {
+		cur, err := clone(a.cfg)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		if config.EqualIgnoringUIState(cur, snap) {
 			return res, nil
 		}
-		a.mu.Unlock()
+		if attempt == 0 {
+			a.mu.Unlock()
+		}
 	}
+	return reconcile.Result{}, ErrStalePlan
 }
 
 // Reconcile runs one pass: re-link moved clones, adopt confident ones in
 // place, and return what needs me. Emits "reconcile:done" when the config
 // changed.
 func (a *App) Reconcile() ReconcileDTO {
+	return a.reconcilePass(true)
+}
+
+func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 	a.reconcileMu.Lock()
 	defer a.reconcileMu.Unlock()
+	if !retryStale && a.refreshContext().Err() != nil {
+		return emptyReconcile("")
+	}
 
 	a.mu.Lock()
 	ready := a.cfg != nil && a.cfgLoaded
@@ -157,6 +177,9 @@ func (a *App) Reconcile() ReconcileDTO {
 	res, err := a.scanConfig()
 	if err != nil {
 		a.mu.Unlock()
+		if retryStale && errors.Is(err, ErrStalePlan) {
+			a.retryReconcileAfterRefresh()
+		}
 		return emptyReconcile(err.Error())
 	}
 	placed, changed := reconcile.Apply(a.cfg, res)
@@ -190,8 +213,8 @@ func (a *App) Reconcile() ReconcileDTO {
 	if saveErr != nil {
 		out.Error = saveErr.Error()
 	}
-	if (changed || wsChanged) && a.ctx != nil {
-		wailsrt.EventsEmit(a.ctx, "reconcile:done", out)
+	if changed || wsChanged {
+		a.emitRefreshEvent("reconcile:done", out)
 	}
 	return out
 }

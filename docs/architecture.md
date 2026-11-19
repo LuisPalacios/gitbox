@@ -252,7 +252,7 @@ Ordinary orphan discovery stops at each clone boundary, including a `.git` file 
 - A confident match is **adopted** in place.
 - Everything else waits in the Unmatched list with its reason: host-only, ambiguous, unknown host, no remote, already tracked, or worktree.
 
-Paths in `global.ignored_clones` are reported apart. `Apply` writes the decisions into the config; neither step touches files. The GUI runs a pass at startup, on window focus, after a manual Fetch all, after clone-root changes and on a container rescan. Each pass first syncs container workspace files (`pkg/workspace`), then snapshots the config, scans without the lock, re-checks the config (retrying when it changed) and applies under the lock. Repos under a missing root are never re-linked or forgotten.
+Paths in `global.ignored_clones` are reported apart. `Apply` writes the decisions into the config; neither step touches files. The GUI runs a pass at startup, on window focus, after a manual Fetch all, after clone-root changes and on a container rescan. I first sync container workspace files (`pkg/workspace`), then snapshot the config, scan without the lock and re-check the config under the lock before applying. I try at most two scans and reject the plan if config intent still changes; window geometry, collapsed groups and theme do not invalidate a scan. A clone failure returns immediately. A stale pass requests one asynchronous, coalesced follow-up after the current fetch and status work; that follow-up never reschedules itself. I emit `reconcile:done` only after applying changes, never for a stale plan. Repos under a missing root are never re-linked or forgotten.
 
 ### pkg/mirror — Repository mirroring
 

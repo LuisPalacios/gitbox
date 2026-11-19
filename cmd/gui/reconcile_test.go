@@ -1,11 +1,18 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/reconcile"
@@ -122,4 +129,203 @@ func TestAdoptClonesAndIgnoreClone(t *testing.T) {
 	if _, ok := reloaded.Sources["github-alice"].Repos["someone/other"]; !ok || reloaded.IsIgnoredClone(other) {
 		t.Errorf("adopted=%v still ignored=%v", ok, reloaded.IsIgnoredClone(other))
 	}
+}
+
+func TestScanConfig_RejectsStalePlanAfterTwoAttempts(t *testing.T) {
+	a, _ := newWorkspaceTestApp(t)
+	calls := 0
+	a.reconcileScan = func(*config.Config) (reconcile.Result, error) {
+		calls++
+		a.mu.Lock()
+		a.cfg.Global.NestedScanDepth++
+		a.mu.Unlock()
+		return reconcile.Result{Relink: []reconcile.Relink{{Source: "github-alice", Repo: "team/frontend", Path: "stale"}}}, nil
+	}
+	res, err := a.scanConfig()
+	defer a.mu.Unlock()
+	if !errors.Is(err, ErrStalePlan) || calls != 2 || len(res.Relink) != 0 {
+		t.Fatalf("scans=%d result=%+v error=%v", calls, res, err)
+	}
+	if a.mu.TryLock() {
+		a.mu.Unlock()
+		t.Fatal("scanConfig returned without the config lock")
+	}
+}
+
+func TestScanConfig_CloneFailureReturnsWithLock(t *testing.T) {
+	for _, failAt := range []int{1, 2} {
+		t.Run(fmt.Sprint(failAt), func(t *testing.T) {
+			a, _ := newWorkspaceTestApp(t)
+			want := errors.New("clone failed")
+			calls := 0
+			a.reconcileClone = func(cfg *config.Config) (*config.Config, error) {
+				calls++
+				if calls == failAt {
+					return nil, want
+				}
+				return cfg.Clone()
+			}
+			a.reconcileScan = func(*config.Config) (reconcile.Result, error) { return reconcile.Result{}, nil }
+			done := make(chan error, 1)
+			go func() {
+				_, err := a.scanConfig()
+				if a.mu.TryLock() {
+					err = errors.New("scanConfig returned without the config lock")
+				}
+				a.mu.Unlock()
+				done <- err
+			}()
+			select {
+			case err := <-done:
+				if !errors.Is(err, want) || calls != failAt {
+					t.Fatalf("clones=%d error=%v", calls, err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("clone failure did not terminate")
+			}
+		})
+	}
+}
+
+func TestScanConfig_IgnoresOnlyUIState(t *testing.T) {
+	a, _ := newWorkspaceTestApp(t)
+	calls := 0
+	a.reconcileScan = func(*config.Config) (reconcile.Result, error) {
+		calls++
+		a.mu.Lock()
+		a.cfg.Global.Window = &config.WindowState{Width: calls}
+		a.cfg.Global.CompactWindow = &config.WindowState{Height: calls}
+		a.cfg.Global.Collapsed = &config.CollapsedState{Sidebar: true}
+		a.cfg.Global.Theme = "dark"
+		a.mu.Unlock()
+		return reconcile.Result{}, nil
+	}
+	_, err := a.scanConfig()
+	a.mu.Unlock()
+	if err != nil || calls != 1 {
+		t.Fatalf("scans=%d error=%v", calls, err)
+	}
+}
+
+func TestReconcile_StalePlanCoalescesOneRetryAfterRefresh(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a, cfgPath := newWorkspaceTestApp(t)
+		defer a.stopRefresh()
+		before, err := os.ReadFile(cfgPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		events := &refreshTestEvents{}
+		a.refreshHooks = &refreshHooks{emit: events.emit}
+		fetchDone, statusDone := make(chan struct{}), make(chan struct{})
+		a.fetchRun = &fetchFlight{done: fetchDone}
+		a.statusRun = &statusFlight{done: statusDone}
+		var scans atomic.Int32
+		a.reconcileScan = func(*config.Config) (reconcile.Result, error) {
+			scans.Add(1)
+			a.mu.Lock()
+			a.cfg.Global.NestedScanDepth++
+			a.mu.Unlock()
+			return reconcile.Result{Relink: []reconcile.Relink{{Source: "github-alice", Repo: "team/frontend", Path: "stale"}}}, nil
+		}
+		var callers sync.WaitGroup
+		for range 3 {
+			callers.Go(func() {
+				if res := a.Reconcile(); res.Error != ErrStalePlan.Error() || res.Relinked != 0 {
+					t.Errorf("stale result = %+v", res)
+				}
+			})
+		}
+		callers.Wait()
+		synctest.Wait()
+		if scans.Load() != 6 {
+			t.Fatalf("retry ran during fetch: %d scans", scans.Load())
+		}
+		close(fetchDone)
+		synctest.Wait()
+		if scans.Load() != 6 {
+			t.Fatal("retry ran during status")
+		}
+		close(statusDone)
+		synctest.Wait()
+		if scans.Load() != 8 {
+			t.Fatalf("scans=%d, want six requested and two in one follow-up", scans.Load())
+		}
+		a.mu.Lock()
+		pending := a.reconcilePending
+		repo := a.cfg.Sources["github-alice"].Repos["team/frontend"]
+		a.mu.Unlock()
+		if pending || repo.CloneFolder != "" {
+			t.Fatalf("pending=%v repo=%+v", pending, repo)
+		}
+		after, err := os.ReadFile(cfgPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(before, after) {
+			t.Fatal("stale plan changed the config on disk")
+		}
+		if len(events.named("reconcile:done")) != 0 {
+			t.Fatal("stale pass emitted completion")
+		}
+	})
+}
+
+func TestReconcile_RetryCancelsOnShutdown(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a, _ := newWorkspaceTestApp(t)
+		a.statusRun = &statusFlight{done: make(chan struct{})}
+		var scans atomic.Int32
+		a.reconcileScan = func(*config.Config) (reconcile.Result, error) {
+			scans.Add(1)
+			return reconcile.Result{}, nil
+		}
+		a.retryReconcileAfterRefresh()
+		synctest.Wait()
+		a.stopRefresh()
+		a.retryReconcileAfterRefresh()
+		synctest.Wait()
+		if scans.Load() != 0 || a.reconcilePending {
+			t.Fatal("retry survived shutdown")
+		}
+	})
+}
+
+func TestReconcile_RetryAppliesFreshPlanAndEmitsOnce(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a, cfgPath := newWorkspaceTestApp(t)
+		defer a.stopRefresh()
+		events := &refreshTestEvents{}
+		a.refreshHooks = &refreshHooks{emit: events.emit}
+		done := make(chan struct{})
+		a.statusRun = &statusFlight{done: done}
+		freshPath := filepath.Join(t.TempDir(), "fresh")
+		var scans atomic.Int32
+		a.reconcileScan = func(*config.Config) (reconcile.Result, error) {
+			if scans.Add(1) <= 2 {
+				a.mu.Lock()
+				a.cfg.Global.NestedScanDepth++
+				a.mu.Unlock()
+			}
+			return reconcile.Result{Relink: []reconcile.Relink{{Source: "github-alice", Repo: "team/frontend", Path: freshPath}}}, nil
+		}
+		if res := a.Reconcile(); res.Error != ErrStalePlan.Error() {
+			t.Fatalf("result = %+v", res)
+		}
+		close(done)
+		synctest.Wait()
+		if scans.Load() != 3 {
+			t.Fatalf("scans=%d, want two stale and one fresh", scans.Load())
+		}
+		reloaded, err := config.Load(cfgPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if reloaded.Sources["github-alice"].Repos["team/frontend"].CloneFolder != freshPath {
+			t.Fatal("fresh retry did not persist the relink")
+		}
+		if len(events.named("reconcile:done")) != 1 {
+			t.Fatal("fresh retry did not emit exactly one completion")
+		}
+	})
 }

@@ -70,12 +70,14 @@ type App struct {
 	toolsWG   sync.WaitGroup
 	// reconcileMu serializes reconcile passes and manual adoptions (#149);
 	// reconcileScan replaces reconcile.Plan in tests.
-	reconcileMu     sync.Mutex
-	reconcileScan   func(*config.Config) (reconcile.Result, error)
-	mu              sync.Mutex
-	savedWindowPos  *config.WindowState // full-mode window state pre-loaded from config
-	savedCompactPos *config.WindowState // compact-mode window state pre-loaded from config
-	savedViewMode   string              // "full" or "compact" pre-loaded from config
+	reconcileMu      sync.Mutex
+	reconcileScan    func(*config.Config) (reconcile.Result, error)
+	reconcileClone   func(*config.Config) (*config.Config, error)
+	reconcilePending bool // guarded by mu; one asynchronous stale-plan retry
+	mu               sync.Mutex
+	savedWindowPos   *config.WindowState // full-mode window state pre-loaded from config
+	savedCompactPos  *config.WindowState // compact-mode window state pre-loaded from config
+	savedViewMode    string              // "full" or "compact" pre-loaded from config
 
 	// upstreamGone tracks repos discovered to be missing from the provider
 	// (deleted, archived private, lost access). Populated by fetch errors
