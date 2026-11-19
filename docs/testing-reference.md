@@ -10,7 +10,7 @@ Counts are top-level Go test functions (subtests from `t.Run` and `TestMain` are
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-The current total is 636 Go tests (553 in `pkg/`, 83 in `cmd/gui/`) and 48 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
+The current total is 637 Go tests (554 in `pkg/`, 83 in `cmd/gui/`) and 48 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
 
 ### Shared library (`pkg/`)
 
@@ -39,7 +39,7 @@ The current total is 636 Go tests (553 in `pkg/`, 83 in `cmd/gui/`) and 48 front
 - **`pkg/mirror`** (6) — remote URL parsing, mirror discovery, status error classification.
 - **`pkg/move`** (5) — repo key parsing, HTTPS clone URLs, preflight validation.
 - **`pkg/ops`** (21) — 20 isolated unit tests (add, discard, rename and delete accounts, also across two clone roots; suggest an account key; change and delete credentials; delete a repo; plan a secret-free clone, reject token-preparation failures and authenticate through the isolated helper; reconfigure clones; add discovered repos) plus `TestScenario_FullLifecycle`. Account renaming preserves git-credential-store format even without clones.
-- **`pkg/provider`** (52) — the HTTP client, provider API parsing for every provider (repos, pagination, create, delete, mirrors, PR lists), and token expiry (GitHub header layouts with no extra request, GitLab `personal_access_tokens/self`, unknown expiry still passing).
+- **`pkg/provider`** (53) — the HTTP client, numeric HTTP status handling for repository existence across all five providers (404 means absent; server and authentication errors remain errors), provider API parsing for every provider (repos, pagination, create, delete, mirrors, PR lists), and token expiry (GitHub header layouts with no extra request, GitLab `personal_access_tokens/self`, unknown expiry still passing).
 - **`pkg/reconcile`** (8) — confident clones adopted in place, undecided ones left with their reason, a moved clone re-linked, a deleted clone kept, an offline root left alone, ignored clones skipped, adopting into a picked account, linked worktrees never adopted.
 - **`pkg/status`** (18) — clone status (clean, dirty, ahead, behind, not cloned, detached), branch detection, root offline, repo paths through source and repo roots, nesting (including a container inside a container).
 - **`pkg/terminals`** (57) — catalog shape, OS-aware profile composition, WezTerm and Windows Terminal lookups, launch resolution, merge and sync rules, WSL distros detected without running `wsl.exe`.

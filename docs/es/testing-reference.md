@@ -10,7 +10,7 @@ Los recuentos son funciones de prueba Go de nivel superior (no se cuentan los su
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-El total actual es de 636 pruebas Go (553 en `pkg/`, 83 en `cmd/gui/`) y 48 pruebas del frontend. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
+El total actual es de 637 pruebas Go (554 en `pkg/`, 83 en `cmd/gui/`) y 48 pruebas del frontend. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
 
 ### Biblioteca compartida (`pkg/`)
 
@@ -39,7 +39,7 @@ El total actual es de 636 pruebas Go (553 en `pkg/`, 83 en `cmd/gui/`) y 48 prue
 - **`pkg/mirror`** (6) — parseo de URLs remotas, descubrimiento de mirrors, clasificación de errores de estado.
 - **`pkg/move`** (5) — parseo de claves de repo, URLs de clone HTTPS, validación previa.
 - **`pkg/ops`** (21) — 20 pruebas unitarias aisladas (añadir, descartar, renombrar y borrar cuentas, también entre dos raíces de clonado; sugerir una clave de cuenta; cambiar y borrar credenciales; borrar un repo; planificar un clone sin secretos, rechazar fallos al preparar el token y autenticar mediante el helper aislado; reconfigurar clones; añadir repos descubiertos) más `TestScenario_FullLifecycle`. Renombrar una cuenta conserva el formato git-credential-store incluso sin clones.
-- **`pkg/provider`** (52) — el cliente HTTP, el parseo de la API de cada proveedor (repos, paginación, crear, borrar, mirrors, listas de PR) y la caducidad del token (formatos de cabecera de GitHub sin petición extra, `personal_access_tokens/self` de GitLab, una caducidad desconocida sigue pasando).
+- **`pkg/provider`** (53) — el cliente HTTP, el tratamiento del estado HTTP numérico para comprobar la existencia de repositorios en los cinco proveedores (404 significa ausente; los errores de servidor y autenticación siguen siendo errores), el parseo de la API de cada proveedor (repos, paginación, crear, borrar, mirrors, listas de PR) y la caducidad del token (formatos de cabecera de GitHub sin petición extra, `personal_access_tokens/self` de GitLab, una caducidad desconocida sigue pasando).
 - **`pkg/reconcile`** (8) — clones seguros adoptados en su sitio, los indecisos dejados con su motivo, un clon movido vuelto a enlazar, un clon borrado conservado, una raíz no disponible dejada en paz, clones ignorados omitidos, adopción en una cuenta elegida, worktrees enlazados nunca adoptados.
 - **`pkg/status`** (18) — estado del clon (limpio, con cambios, por delante, por detrás, sin clonar, detached), detección de rama, raíz no disponible, rutas de repo a través de las raíces de source y de repo, anidamiento (incluido un contenedor dentro de otro).
 - **`pkg/terminals`** (57) — forma del catálogo, composición de perfiles según el OS, búsquedas de WezTerm y Windows Terminal, resolución del lanzamiento, reglas de fusión y sincronización, distros de WSL detectadas sin ejecutar `wsl.exe`.

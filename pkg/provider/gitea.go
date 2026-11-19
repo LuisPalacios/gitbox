@@ -210,7 +210,7 @@ func (g *Gitea) RepoExists(ctx context.Context, baseURL, token, username, owner,
 	url := fmt.Sprintf("%s/api/v1/repos/%s/%s", base, owner, repoName)
 	var repo giteaRepo
 	if _, err := doGet(ctx, url, headers, &repo); err != nil {
-		if strings.Contains(err.Error(), "404") {
+		if isNotFound(err) {
 			return false, nil
 		}
 		return false, fmt.Errorf("gitea repo exists: %w", err)
