@@ -14,14 +14,16 @@ on:
 # Builds use inputs.version on a dry run and the tag otherwise.
 
 jobs:
-  # ── Go vet + unit tests (all platforms) ──
+  # ── Go vet + unit tests (Linux and Windows) ──
   # cmd/gui embeds frontend/dist (go:embed), so the frontend is built first.
   # Without Wails' desktop/production build tags the GUI package compiles
   # against Wails' stub app, so no WebKitGTK is needed on Linux here.
   test:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # macOS is covered by the local gate's mac lane; hosted macOS
+        # runners queue too long for a release (see release-macos.sh).
+        os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -94,91 +96,6 @@ jobs:
           name: gui-windows
           path: cmd/gui/build/bin/GitboxApp.exe
 
-  gui-macos-arm64:
-    runs-on: macos-latest
-    needs: test
-    env:
-      # Go's runtime targets macOS 13; give cgo and the linker the same
-      # minimum (Wails adds 10.13 only when none is set). Info.plist in
-      # cmd/gui/build/darwin declares it to the OS.
-      CGO_CFLAGS: -mmacosx-version-min=13.0
-      CGO_LDFLAGS: -mmacosx-version-min=13.0
-      LDFLAGS: >-
-        -X main.version=${{ inputs.version || github.ref_name }}
-        -X main.commit=${{ github.sha }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version: 'stable'
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-      - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
-      - name: Copy app icons
-        run: |
-          mkdir -p cmd/gui/build
-          cp assets/appicon.png cmd/gui/build/appicon.png
-      - name: Set version in wails.json
-        run: |
-          VER="${{ inputs.version || github.ref_name }}"
-          VER="${VER#v}"
-          sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
-      - name: Build GUI
-        working-directory: cmd/gui
-        run: wails build -ldflags "$LDFLAGS"
-      - name: Zip macOS app bundle
-        run: cd cmd/gui/build/bin && zip -r gitbox-macos-arm64.zip GitboxApp.app
-      - uses: actions/upload-artifact@v7
-        with:
-          name: gui-macos-arm64
-          path: cmd/gui/build/bin/gitbox-macos-arm64.zip
-
-  gui-macos-amd64:
-    runs-on: macos-latest
-    needs: test
-    env:
-      # Go's runtime targets macOS 13; give cgo and the linker the same
-      # minimum (Wails adds 10.13 only when none is set). Info.plist in
-      # cmd/gui/build/darwin declares it to the OS.
-      CGO_CFLAGS: -mmacosx-version-min=13.0
-      CGO_LDFLAGS: -mmacosx-version-min=13.0
-      GOARCH: amd64
-      LDFLAGS: >-
-        -X main.version=${{ inputs.version || github.ref_name }}
-        -X main.commit=${{ github.sha }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version: 'stable'
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-      - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
-        env:
-          GOARCH: arm64
-      - name: Copy app icons
-        run: |
-          mkdir -p cmd/gui/build
-          cp assets/appicon.png cmd/gui/build/appicon.png
-      - name: Set version in wails.json
-        run: |
-          VER="${{ inputs.version || github.ref_name }}"
-          VER="${VER#v}"
-          sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
-      - name: Build GUI
-        working-directory: cmd/gui
-        run: wails build -platform darwin/amd64 -ldflags "$LDFLAGS"
-      - name: Zip macOS app bundle
-        run: cd cmd/gui/build/bin && zip -r gitbox-macos-amd64.zip GitboxApp.app
-      - uses: actions/upload-artifact@v7
-        with:
-          name: gui-macos-amd64
-          path: cmd/gui/build/bin/gitbox-macos-amd64.zip
-
   # Oldest supported Ubuntu on purpose: the AppImage bundles this runner's
   # GTK/WebKitGTK libraries, and libraries from a newer base need a newer
   # glibc than the systems the AppImage should run on (24.04 libs want
@@ -250,152 +167,6 @@ jobs:
           name: installer-windows
           path: release/gitbox-win-amd64-setup.exe
 
-  # ── macOS DMG (arm64) ──
-  dmg-macos-arm64:
-    runs-on: macos-latest
-    needs: gui-macos-arm64
-    # A step's own env is not visible in its if:, so the signing gate lives
-    # at job level. Secrets can't appear in if: directly; this flag can.
-    env:
-      APPLE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' }}
-    steps:
-      - uses: actions/checkout@v7
-      # By name, see the note in installer-windows.
-      - uses: actions/download-artifact@v8
-        with:
-          name: gui-macos-arm64
-          path: artifacts/gui-macos-arm64
-      - name: Install create-dmg
-        run: brew install create-dmg
-      - name: Stage DMG contents
-        run: |
-          mkdir -p staging release
-          cd staging && unzip ../artifacts/gui-macos-arm64/gitbox-macos-arm64.zip
-          cd ..
-          cp 'scripts/dmg/Install Gitbox.command' staging/
-          cp scripts/dmg/README.txt staging/
-          chmod +x 'staging/Install Gitbox.command'
-          sed -i '' 's/\r$//' 'staging/Install Gitbox.command'
-      - name: Import signing certificate
-        if: env.APPLE_SIGNING == 'true'
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          echo "$APPLE_CERTIFICATE" | base64 --decode > cert.p12
-          security create-keychain -p "" build.keychain
-          security import cert.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "" build.keychain
-      - name: Codesign app bundle
-        if: env.APPLE_SIGNING == 'true'
-        env:
-          APPLE_IDENTITY: ${{ secrets.APPLE_IDENTITY }}
-        run: |
-          codesign --force --deep --sign "$APPLE_IDENTITY" --options runtime staging/GitboxApp.app
-      - name: Build DMG
-        run: |
-          create-dmg \
-            --volname "gitbox" \
-            --window-pos 200 120 --window-size 660 500 \
-            --icon-size 100 \
-            --icon "GitboxApp.app" 150 170 \
-            --app-drop-link 450 170 \
-            --hide-extension "GitboxApp.app" \
-            --icon "Install Gitbox.command" 150 370 \
-            --hide-extension "Install Gitbox.command" \
-            --icon "README.txt" 450 370 \
-            release/gitbox-macos-arm64.dmg staging/ || test $? -eq 2
-      - name: Notarize DMG
-        if: env.APPLE_SIGNING == 'true'
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        run: |
-          xcrun notarytool submit release/gitbox-macos-arm64.dmg \
-            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
-            --password "$APPLE_APP_PASSWORD" --wait
-          xcrun stapler staple release/gitbox-macos-arm64.dmg
-      - uses: actions/upload-artifact@v7
-        with:
-          name: dmg-macos-arm64
-          path: release/gitbox-macos-arm64.dmg
-
-  # ── macOS DMG (amd64) ──
-  dmg-macos-amd64:
-    runs-on: macos-latest
-    needs: gui-macos-amd64
-    # A step's own env is not visible in its if:, so the signing gate lives
-    # at job level. Secrets can't appear in if: directly; this flag can.
-    env:
-      APPLE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' }}
-    steps:
-      - uses: actions/checkout@v7
-      # By name, see the note in installer-windows.
-      - uses: actions/download-artifact@v8
-        with:
-          name: gui-macos-amd64
-          path: artifacts/gui-macos-amd64
-      - name: Install create-dmg
-        run: brew install create-dmg
-      - name: Stage DMG contents
-        run: |
-          mkdir -p staging release
-          cd staging && unzip ../artifacts/gui-macos-amd64/gitbox-macos-amd64.zip
-          cd ..
-          cp 'scripts/dmg/Install Gitbox.command' staging/
-          cp scripts/dmg/README.txt staging/
-          chmod +x 'staging/Install Gitbox.command'
-          sed -i '' 's/\r$//' 'staging/Install Gitbox.command'
-      - name: Import signing certificate
-        if: env.APPLE_SIGNING == 'true'
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          echo "$APPLE_CERTIFICATE" | base64 --decode > cert.p12
-          security create-keychain -p "" build.keychain
-          security import cert.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "" build.keychain
-      - name: Codesign app bundle
-        if: env.APPLE_SIGNING == 'true'
-        env:
-          APPLE_IDENTITY: ${{ secrets.APPLE_IDENTITY }}
-        run: |
-          codesign --force --deep --sign "$APPLE_IDENTITY" --options runtime staging/GitboxApp.app
-      - name: Build DMG
-        run: |
-          create-dmg \
-            --volname "gitbox" \
-            --window-pos 200 120 --window-size 660 500 \
-            --icon-size 100 \
-            --icon "GitboxApp.app" 150 170 \
-            --app-drop-link 450 170 \
-            --hide-extension "GitboxApp.app" \
-            --icon "Install Gitbox.command" 150 370 \
-            --hide-extension "Install Gitbox.command" \
-            --icon "README.txt" 450 370 \
-            release/gitbox-macos-amd64.dmg staging/ || test $? -eq 2
-      - name: Notarize DMG
-        if: env.APPLE_SIGNING == 'true'
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        run: |
-          xcrun notarytool submit release/gitbox-macos-amd64.dmg \
-            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
-            --password "$APPLE_APP_PASSWORD" --wait
-          xcrun stapler staple release/gitbox-macos-amd64.dmg
-      - uses: actions/upload-artifact@v7
-        with:
-          name: dmg-macos-amd64
-          path: release/gitbox-macos-amd64.dmg
-
   # ── Linux AppImage ──
   appimage-linux:
     runs-on: ubuntu-22.04 # same base as gui-linux, see the note there
@@ -427,8 +198,8 @@ jobs:
   # ── GitHub Release with all binaries ──
   release:
     runs-on: ubuntu-latest
-    needs: [gui-windows, gui-macos-arm64, gui-macos-amd64, gui-linux, installer-windows, dmg-macos-arm64, dmg-macos-amd64, appimage-linux]
-    if: always() && github.event_name == 'push' && needs.gui-windows.result == 'success' && needs.gui-macos-arm64.result == 'success' && needs.gui-macos-amd64.result == 'success' && needs.gui-linux.result == 'success'
+    needs: [gui-windows, gui-linux, installer-windows, appimage-linux]
+    if: always() && github.event_name == 'push' && needs.gui-windows.result == 'success' && needs.gui-linux.result == 'success'
     permissions:
       contents: write
     steps:
@@ -448,10 +219,8 @@ jobs:
           cp artifacts/gui-windows/GitboxApp.exe tmp-win/GitboxApp.exe
           (cd tmp-win && zip ../release/gitbox-win-amd64.zip GitboxApp.exe)
 
-          # macOS: the gui-macos-* jobs already zip GitboxApp.app under the
-          # release asset name.
-          cp artifacts/gui-macos-arm64/gitbox-macos-arm64.zip release/
-          cp artifacts/gui-macos-amd64/gitbox-macos-amd64.zip release/
+          # macOS zips and DMGs are added to the draft by
+          # scripts/release-macos.sh on the maintainer's Mac.
 
           # Linux (amd64): GitboxApp → gitbox-linux-amd64.zip. Artifacts lose
           # their execute bit on download, so restore it before zipping.
@@ -463,17 +232,17 @@ jobs:
       - name: Collect installer artifacts
         run: |
           cp artifacts/installer-windows/gitbox-win-amd64-setup.exe release/ 2>/dev/null || true
-          cp artifacts/dmg-macos-arm64/gitbox-macos-arm64.dmg release/ 2>/dev/null || true
-          cp artifacts/dmg-macos-amd64/gitbox-macos-amd64.dmg release/ 2>/dev/null || true
           cp artifacts/appimage-linux/gitbox-x86_64.AppImage release/ 2>/dev/null || true
 
       - name: Generate checksums
         run: cd release && sha256sum -- * > checksums.sha256
 
       # The release is created as a draft: invisible to the updater and
-      # never "latest". The maintainer signs checksums.sha256 locally with
-      # scripts/sign-release.sh, which uploads checksums.sha256.sig,
-      # decides --latest and publishes it. CI never holds the signing key.
+      # never "latest". The maintainer adds the macOS assets with
+      # scripts/release-macos.sh, which extends checksums.sha256, then
+      # signs it locally with scripts/sign-release.sh, which uploads
+      # checksums.sha256.sig, decides --latest and publishes the release.
+      # CI never holds the signing key.
       - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -485,4 +254,4 @@ jobs:
             --generate-notes \
             --draft \
             release/*
-          echo "Draft $tag created. Sign and publish it with: ./scripts/sign-release.sh $tag"
+          echo "Draft $tag created. Next: ./scripts/release-macos.sh $tag, then ./scripts/sign-release.sh $tag"

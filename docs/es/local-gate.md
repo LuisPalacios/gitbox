@@ -73,7 +73,7 @@ Nada en GitHub exige ya una comprobación. El ruleset que protege `main` de borr
 ## Qué queda en GitHub
 
 - `.github/workflows/pr.yml` ejecuta el job `check` de Linux en los pull requests y en los push a `main`: la comprobación de salud, un build de la GUI de Linux y un smoke con `--version` en un runner `ubuntu-22.04` limpio. Es informativo, así que no bloquea ni retrasa nada.
-- `.github/workflows/ci.yml` se ejecuta con los tags de versión. Su job `test` ejecuta vet, las pruebas cortas y las dos suites de coordinación en Linux, macOS y Windows antes de construir y empaquetar la release.
+- `.github/workflows/ci.yml` se ejecuta con los tags de versión. Su job `test` ejecuta vet, las pruebas cortas y las dos suites de coordinación en Linux y Windows antes de construir y empaquetar sus assets de la release. `scripts/release-macos.sh` construye los assets de macOS en mi Mac.
 
 ## Replicar el gate en otro repositorio
 

@@ -174,7 +174,7 @@ Sin acceso SSH a otras máquinas:
 - Compila para el OS local: consulta [developer-guide.md](developer-guide.md#compilar-desde-el-código-fuente)
 - Configura las credenciales locales: `./scripts/setup-credentials.sh`
 
-CI detecta las regresiones multiplataforma incluso sin remotos: `pr.yml` ejecuta la comprobación de salud y un build de la GUI en Linux en cada pull request, y `ci.yml` compila todas las plataformas en cada tag de release. Consulta [developer-guide.md](developer-guide.md#integración-continua).
+CI detecta las regresiones multiplataforma incluso sin remotos: `pr.yml` ejecuta la comprobación de salud y un build de la GUI en Linux en cada pull request, y `ci.yml` compila Linux y Windows en cada tag de release (`scripts/release-macos.sh` compila macOS en local). Consulta [developer-guide.md](developer-guide.md#integración-continua).
 
 ## Resolución de problemas
 

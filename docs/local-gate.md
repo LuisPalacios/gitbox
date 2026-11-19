@@ -73,7 +73,7 @@ Nothing on GitHub requires a check anymore. The ruleset that protects `main` fro
 ## What stays on GitHub
 
 - `.github/workflows/pr.yml` runs the Linux `check` job on pull requests and on pushes to `main`: the health check, a Linux GUI build and a `--version` smoke on a clean `ubuntu-22.04` runner. It is informational, so it neither blocks nor delays anything.
-- `.github/workflows/ci.yml` runs on version tags. Its `test` job runs vet, the short tests and both coordination suites on Linux, macOS and Windows before it builds and packages the release.
+- `.github/workflows/ci.yml` runs on version tags. Its `test` job runs vet, the short tests and both coordination suites on Linux and Windows before it builds and packages their release assets. `scripts/release-macos.sh` builds the macOS assets on my Mac.
 
 ## Replicating the gate in another repository
 

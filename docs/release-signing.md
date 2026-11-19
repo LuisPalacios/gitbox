@@ -10,7 +10,7 @@ The updater compares each downloaded artifact with its SHA256 in `checksums.sha2
 
 The flow has three actors: CI, the maintainer, and the updater on every user's machine.
 
-1. I push a version tag. CI builds every artifact, writes `checksums.sha256` and creates the GitHub release as a **draft**. A draft is invisible to users and to the updater.
+1. I push a version tag. CI builds the Linux and Windows artifacts, writes `checksums.sha256` and creates the GitHub release as a **draft**. A draft is invisible to users and to the updater. On my Mac, `./scripts/release-macos.sh <tag>` builds the macOS zips and DMGs, uploads them and adds their lines to `checksums.sha256`.
 2. I run `./scripts/sign-release.sh <tag>` on my machine. The script downloads the draft's `checksums.sha256`, checks that it lists exactly the release's assets, and signs this message with `ssh-keygen -Y sign -n gitbox-release` through my SSH agent:
 
    ```text
@@ -92,15 +92,21 @@ A passing check prints the key's fingerprint and `the agent signs with the relea
 
 ## Release procedure
 
-1. Tag and push. CI builds everything and creates a draft release:
+1. Tag and push. CI builds Linux and Windows and creates a draft release:
 
    ```bash
    git tag v2.2.0
    git push origin v2.2.0
    ```
 
-2. Wait for the `CI` workflow to finish. Its last step prints the command to run next.
-3. Sign and publish:
+2. Wait for the `CI` workflow to finish. Its last step prints the commands to run next.
+3. Add the macOS assets from my Mac:
+
+   ```bash
+   ./scripts/release-macos.sh v2.2.0
+   ```
+
+4. Sign and publish:
 
    ```bash
    ./scripts/sign-release.sh v2.2.0

@@ -216,16 +216,17 @@ cd cmd/gui && wails build -ldflags "-X main.version=v2.0.0 -X main.commit=$(git 
 
 ### Creating a release
 
-I push a version tag and GitHub Actions builds the app for every platform and creates a draft GitHub Release with the assets attached. Then I sign the draft's checksums on my machine, which publishes it:
+I push a version tag and GitHub Actions builds the app for Linux and Windows and creates a draft GitHub Release with those assets attached. I build the macOS assets on my Mac and add them to the draft, then sign the draft's checksums, which publishes it:
 
 ```bash
 git tag v2.0.0
 git push origin v2.0.0
 # when the CI workflow finishes:
+./scripts/release-macos.sh v2.0.0
 ./scripts/sign-release.sh v2.0.0
 ```
 
-CI injects `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into the GUI build. The signing key lives in my SSH agent and never reaches CI. See [release-signing.md](release-signing.md) for how signing works, the agent setup and how a fork uses its own key.
+CI and `release-macos.sh` inject `-ldflags "-X main.version=<tag> -X main.commit=<sha>"` into the GUI build. GitHub's hosted macOS runners often queue until the job is cancelled, so `release-macos.sh` clones the tag into a clean directory under `~/.cache/gitbox-release/`, builds darwin/arm64 and darwin/amd64 with the pinned Wails CLI, packs the zips and DMGs, uploads them and adds their lines to `checksums.sha256`. The signing key lives in my SSH agent and never reaches CI. See [release-signing.md](release-signing.md) for how signing works, the agent setup and how a fork uses its own key.
 
 ### Release lines
 
@@ -244,7 +245,7 @@ The merge gate runs on my machines: `./scripts/gate.sh` verifies each commit on 
 Two GitHub Actions workflows run:
 
 - `.github/workflows/pr.yml` runs on pull requests and on pushes to `main`. Its Linux `check` job runs `scripts/health.sh`, then a `wails build` and a `--version` smoke test, on a clean `ubuntu-22.04` runner. It is informational and no longer required for a merge.
-- `.github/workflows/ci.yml` runs on version tags. Its `test` job runs vet, the short tests and both coordination suites on Linux, macOS and Windows. It then builds the app on each platform, packages the installers, and creates the GitHub Release as a draft for `scripts/sign-release.sh` to sign and publish. Before tagging a change that only the release path exercises, I run it as a dry run with `gh workflow run ci.yml -f version=v0.0.0`: every build and installer job runs, and the release job is skipped.
+- `.github/workflows/ci.yml` runs on version tags. Its `test` job runs vet, the short tests and both coordination suites on Linux and Windows; the local gate's mac lane covers macOS. It then builds the app for Linux and Windows, packages their installers, and creates the GitHub Release as a draft. `scripts/release-macos.sh` adds the macOS assets and `scripts/sign-release.sh` signs and publishes it. Before tagging a change that only the release path exercises, I run it as a dry run with `gh workflow run ci.yml -f version=v0.0.0`: every build and installer job runs, and the release job is skipped.
 
 See [Native tests](testing.md#native-tests) for what each platform covers. Neither the gate nor CI launches the GUI; I keep packaged-launch smoke tests in `scripts/smoke.sh`.
 
