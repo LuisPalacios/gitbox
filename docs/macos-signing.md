@@ -4,6 +4,8 @@ Gitbox releases are currently **not** signed or notarized for macOS. The `CI` wo
 
 This is separate from the SSH signature over `checksums.sha256` that every release carries for the updater; see [release-signing.md](release-signing.md).
 
+The bootstrap verifies the tag-bound SSH release signature and archive SHA-256 before extraction. It then preserves quarantine for an app with a valid Apple publisher signature, including a notarized app, and refuses an invalid signature. For unsigned or ad-hoc-signed builds, it explains and clears quarantine. Missing release signatures stop installation, including legacy 1.x releases.
+
 ## What the CI path covers
 
 The `dmg-macos-arm64` and `dmg-macos-amd64` jobs run these steps only when the `APPLE_CERTIFICATE` secret is set (the job-level `APPLE_SIGNING` flag):
@@ -58,5 +60,5 @@ Because releases are unsigned, macOS shows a Gatekeeper warning when a user open
 
 - Run `bash "/Volumes/gitbox/Install Gitbox.command"` from Terminal. The script bundled in the DMG copies `GitboxApp.app` to `/Applications/` and removes the quarantine attribute.
 - Remove the quarantine attribute by hand: `xattr -cr /Applications/GitboxApp.app`.
-- Install with `scripts/bootstrap.sh`, which clears the quarantine attribute itself.
+- Install with `scripts/bootstrap.sh`, which verifies the release and clears quarantine only for unsigned or ad-hoc-signed builds.
 - Update from inside the app (the update pill in the footer). The updater downloads the zip itself, so macOS never quarantines it.

@@ -30,6 +30,7 @@ The tag inside the message binds a signature to one release, so an old signature
 - The **private key** lives only in the maintainer's SSH agent. It is never in the repository, never in CI secrets and never on disk as a file.
 - The **public key** lives in `pkg/update/release-signing-key.pub`. The updater embeds it at build time, and `sign-release.sh` passes the same file to `ssh-keygen -Y sign`, so the agent picks the matching private key.
 - `allowed_signers` at the repository root publishes the same public key in the format `ssh-keygen -Y verify` reads, for manual verification. A unit test fails if it and `release-signing-key.pub` ever list different keys.
+- `scripts/bootstrap.sh` embeds the same public key in `release_public_key()`. Its fixture suite rejects a key that differs from the updater before testing verification.
 - The **signature** lives in each release as `checksums.sha256.sig`.
 
 ## Choosing an SSH agent
@@ -142,9 +143,9 @@ A fork that publishes its own releases needs its own key, because it can't sign 
    gitbox-release namespaces="gitbox-release" ssh-ed25519 AAAA...
    ```
 
-4. Run `go test ./pkg/update/`. `TestReleaseSigningKey_MatchesAllowedSigners` fails if the two files disagree.
+4. Replace the public key in `release_public_key()` in `scripts/bootstrap.sh` with the same line. Run `go test ./pkg/update/` and `bash scripts/test-bootstrap.sh` to check all three trust-root copies.
 5. Run `./scripts/sign-release.sh --check`.
-6. Point the updater at your repository: replace `LuisPalacios/gitbox` in `updateOpts()` in `cmd/gui/app.go`, which the GUI passes as `update.Options.Repo`, and in the default of `Options.defaults()` in `pkg/update/check.go`.
+6. Point the updater at your repository: replace `LuisPalacios/gitbox` in `updateOpts()` in `cmd/gui/app.go`, which the GUI passes as `update.Options.Repo`, and in the default of `Options.defaults()` in `pkg/update/check.go`. Set `REPO` in `scripts/bootstrap.sh` and `scripts/register-gitbox.sh` to your repository too.
 
 From then on, binaries built from the fork only accept releases signed with the fork's key.
 

@@ -4,6 +4,8 @@ Las releases de Gitbox **no** están firmadas ni notarizadas para macOS por ahor
 
 Esto es distinto de la firma SSH sobre `checksums.sha256` que cada release incluye para el actualizador; consulta [release-signing.md](release-signing.md).
 
+El bootstrap verifica la firma SSH de la versión vinculada a su etiqueta y el SHA-256 del archivo antes de extraerlo. Después conserva la cuarentena de una app con una firma válida de un editor de Apple, incluidas las apps notarizadas, y rechaza las firmas no válidas. Para las compilaciones sin firma o con firma ad hoc, explica y elimina la cuarentena. Si falta la firma de la versión, detiene la instalación, incluidas las versiones antiguas 1.x.
+
 ## Qué cubre la ruta de CI
 
 Los jobs `dmg-macos-arm64` y `dmg-macos-amd64` ejecutan estos pasos solo cuando el secreto `APPLE_CERTIFICATE` está definido (el indicador `APPLE_SIGNING` del job):
@@ -58,5 +60,5 @@ Como las releases no están firmadas, macOS muestra un aviso de Gatekeeper cuand
 
 - Ejecutar `bash "/Volumes/gitbox/Install Gitbox.command"` desde Terminal. El script incluido en el DMG copia `GitboxApp.app` a `/Applications/` y elimina el atributo de cuarentena.
 - Eliminar el atributo de cuarentena a mano: `xattr -cr /Applications/GitboxApp.app`.
-- Instalar con `scripts/bootstrap.sh`, que elimina el atributo de cuarentena por sí mismo.
+- Instalar con `scripts/bootstrap.sh`, que verifica la versión y elimina la cuarentena solo en compilaciones sin firma o con firma ad hoc.
 - Actualizar desde la propia app (la píldora de actualización del pie). El actualizador descarga el zip por sí mismo, así que macOS nunca lo pone en cuarentena.

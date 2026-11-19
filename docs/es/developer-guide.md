@@ -100,6 +100,8 @@ scoop install pnpm                      # brew install pnpm en macOS
 
 El workflow de PR ejecuta el mismo script como barrera: cualquier hallazgo hace fallar el job, incluido un aviso nuevo de govulncheck o de `npm audit`. CI fija shellcheck 0.11.0, actionlint 1.7.12, pnpm 12.9.1 y setup-uv 10.3.3; los comandos de Markdown fijan las versiones de sus paquetes. Uso esas versiones en local para que ambas ejecuciones coincidan.
 
+Ejecuto `bash scripts/test-bootstrap.sh` (o `./scripts/health.sh bootstrap`) para verificar el instalador con fixtures y una clave desechable, sin instalar software ni tocar credenciales. El gate local ejecuta los mismos fixtures en macOS mediante su comprobación de salud y directamente en los carriles Linux y Windows. El bootstrap fija la clave pública del actualizador, verifica la firma de las sumas vinculada a la etiqueta y el hash del archivo antes de extraerlo, y rechaza las versiones sin firma, incluidas las antiguas 1.x. Los archivos de las versiones Linux incluyen `register-gitbox.sh` y `appicon.png`; el registro utiliza estas copias verificadas sin descargar código ejecutable.
+
 ---
 
 ## Peculiaridades del entorno de desarrollo
@@ -147,10 +149,10 @@ Los proveedores viven en `pkg/provider/`. GitHub, GitLab, Gitea/Forgejo y Bitbuc
 1. Crea `pkg/provider/newprovider.go` con un tipo que implemente `Provider` (`ListRepos`, paginado). Añade las interfaces opcionales de `provider.go` y `deleter.go` que el proveedor soporte: `RepoCreator` (crear repo, comprobar si existe), `OrgLister` (desplegable de propietario en Crear repo), `RepoDeleter`, `PushMirrorProvider`, `PullMirrorProvider`, `RepoInfoProvider` (comprobaciones de sincronización de mirrors) y `PRLister` (indicadores de PR). Los llamantes detectan cada una con una aserción de tipo y omiten o rechazan la función cuando falta.
 2. Regístralo en `ByName` en `pkg/provider/provider.go`, la factory que usa cada llamante para obtener un proveedor por su nombre en la config:
 
-    ```go
-    case "newprovider":
-        return &NewProvider{}, nil
-    ```
+   ```go
+   case "newprovider":
+       return &NewProvider{}, nil
+   ```
 
 3. Añade el proveedor a los switches por proveedor: la guía de tokens y los scopes en `pkg/provider/guide.go` y `ScopesForAction` en `pkg/provider/errors.go`, `SSHPublicKeyURL` en `pkg/credential/validate.go`, `providerDisplayName` en `pkg/credential/status.go`, y `GCMProviderFor` en `pkg/ops/credential.go` cuando GCM tiene un proveedor nativo para él.
 4. Añade `"newprovider"` al enum `provider` en `json/gitbox.schema.json`, y a las opciones de proveedor en `cmd/gui/frontend/src/lib/modals/AddAccountModal.svelte` y `EditAccountModal.svelte`.

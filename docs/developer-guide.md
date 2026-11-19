@@ -100,6 +100,8 @@ scoop install pnpm                      # brew install pnpm on macOS
 
 The PR workflow runs the same script as its gate: any finding fails the job, including a new advisory reported by govulncheck or `npm audit`. CI pins shellcheck 0.11.0, actionlint 1.7.12, pnpm 12.9.1 and setup-uv 10.3.3; the Markdown commands pin their package versions. I use those versions locally so both runs agree.
 
+I run `bash scripts/test-bootstrap.sh` (or `./scripts/health.sh bootstrap`) to verify the installer against throwaway-key fixtures without installing software or touching credentials. The local gate runs the same fixtures on macOS through its health check and directly in the Linux and Windows lanes. The bootstrap pins the updater’s public key, verifies the tag-bound checksum signature and archive digest before extraction, and refuses unsigned releases, including legacy 1.x. Linux release archives include `register-gitbox.sh` and `appicon.png`; registration uses these verified copies without downloading executable code.
+
 ---
 
 ## Development environment quirks
@@ -147,10 +149,10 @@ Providers live in `pkg/provider/`. GitHub, GitLab, Gitea/Forgejo, and Bitbucket 
 1. Create `pkg/provider/newprovider.go` with a type that implements `Provider` (`ListRepos`, paginated). Add the optional interfaces from `provider.go` and `deleter.go` the provider supports: `RepoCreator` (create repo, existence check), `OrgLister` (owner dropdown in Create repo), `RepoDeleter`, `PushMirrorProvider`, `PullMirrorProvider`, `RepoInfoProvider` (mirror sync checks), and `PRLister` (PR badges). Callers detect each one with a type assertion and skip or refuse the feature when it is absent.
 2. Register it in `ByName` in `pkg/provider/provider.go`, the factory every caller uses to get a provider by its config name:
 
-    ```go
-    case "newprovider":
-        return &NewProvider{}, nil
-    ```
+   ```go
+   case "newprovider":
+       return &NewProvider{}, nil
+   ```
 
 3. Add the provider to the per-provider switches: token guidance and scopes in `pkg/provider/guide.go` and `ScopesForAction` in `pkg/provider/errors.go`, `SSHPublicKeyURL` in `pkg/credential/validate.go`, `providerDisplayName` in `pkg/credential/status.go`, and `GCMProviderFor` in `pkg/ops/credential.go` when GCM has a native provider for it.
 4. Add `"newprovider"` to the `provider` enum in `json/gitbox.schema.json`, and to the provider options in `cmd/gui/frontend/src/lib/modals/AddAccountModal.svelte` and `EditAccountModal.svelte`.

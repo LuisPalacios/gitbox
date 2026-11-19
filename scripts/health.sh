@@ -14,7 +14,7 @@
 #
 # Checks: gofmt vet staticcheck modernize govulncheck deadcode test
 #         svelte frontend-test build npm-install npm-audit shellcheck actionlint markdown
-#         harness fuzz (fuzz requires HEALTH_FUZZ=1)
+#         harness bootstrap fuzz (fuzz requires HEALTH_FUZZ=1)
 #
 # Go analyzers are fetched at pinned versions (go run / go install into the
 # run's temp dir), so they need no install and give the same results
@@ -251,6 +251,11 @@ run_shellcheck() {
     shellcheck -f gcc -x -P SCRIPTDIR "${files[@]}"
 }
 
+run_bootstrap() {
+    bash scripts/test-bootstrap.sh >"$tmp/bootstrap.full" 2>&1 \
+        || { cat "$tmp/bootstrap.full"; return 1; }
+}
+
 run_actionlint() { actionlint; }
 
 run_markdown() {
@@ -301,6 +306,7 @@ want build fe       && check build       run_build
 want npm-install fe && check npm-install run_npm_install
 want npm-audit fe   && check npm-audit   run_npm_audit
 want shellcheck x   && need shellcheck shellcheck        && check shellcheck run_shellcheck
+want bootstrap x    && need ssh-keygen bootstrap        && check bootstrap run_bootstrap
 want actionlint x   && need actionlint actionlint        && check actionlint run_actionlint
 want markdown x     && need pnpm markdown               && check markdown   run_markdown
 want harness x      && need uv harness && need pnpm harness && need node harness \

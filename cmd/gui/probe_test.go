@@ -154,7 +154,11 @@ func TestUpstreamProbe_CancellationAndErrorsPreserveGoneState(t *testing.T) {
 				}
 			}))
 			defer srv.Close()
-			cfg := probeTestConfig(srv.URL, 12)
+			baseURL := srv.URL
+			if scenario == "server error" {
+				baseURL += "/404"
+			}
+			cfg := probeTestConfig(baseURL, 12)
 			app := &App{cfg: cfg, upstreamGone: map[string]bool{"source-a/org/repo-0": true}}
 			budget, requestTimeout := time.Second, 20*time.Millisecond
 			if scenario == "sweep timeout" {

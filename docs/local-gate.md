@@ -23,9 +23,9 @@ A lane deletes its clone after a pass (`GATE_KEEP=1` keeps it) and keeps it afte
 
 Every lane builds the embedded frontend with `npm ci && npm run build`, builds the GUI with the Wails CLI version that CI pins (`go run github.com/wailsapp/wails/v2/cmd/wails@v2.16.0 build`), and checks that `GitboxApp --version` prints the commit's short SHA.
 
-- **mac:** `HEALTH_FUZZ=1 ./scripts/health.sh` (every checker, including vet and staticcheck for linux, darwin and windows, the unit tests, Markdown lint and the harness mirror check), plus both coordination suites. The build targets macOS 13 like the release.
-- **linux:** `go vet ./...` and `go test -short ./...`, then the build with `-tags webkit2_41`.
-- **win:** both coordination suites and `go test -short ./...`, then the build. The lane sets `core.autocrlf=false` and `core.longpaths=true` through `GIT_CONFIG_COUNT` for its own processes, so the host user's global Git config never changes.
+- **mac:** `HEALTH_FUZZ=1 ./scripts/health.sh` (every checker, including vet and staticcheck for linux, darwin and windows, the unit tests, bootstrap fixtures, Markdown lint and the harness mirror check), plus both coordination suites. The build targets macOS 13 like the release.
+- **linux:** `go vet ./...`, `go test -short ./...` and `bash scripts/test-bootstrap.sh`, then the build with `-tags webkit2_41`.
+- **win:** both coordination suites, `go test -short ./...` and `bash scripts/test-bootstrap.sh`, then the build. The lane sets `core.autocrlf=false` and `core.longpaths=true` through `GIT_CONFIG_COUNT` for its own processes, so the host user's global Git config never changes.
 
 ## Hosts and prerequisites
 
@@ -39,7 +39,7 @@ SSH_MAC_ARM_HOST=""                  # mac lane; empty when the gate runs on tha
 
 A linked worktree has no `.env` of its own, so the scripts fall back to the main clone's `.env`.
 
-Each host needs key-based SSH without prompts (`BatchMode`), `git`, Go, Node with npm, and `bash` (Git Bash on Windows). The mac and win lanes also need `uv`. The mac lane runs the health check, so it needs the health tools from the [developer guide](developer-guide.md#health-check) (`shellcheck`, `actionlint`, `pnpm`). The Linux host needs the GTK 3 and WebKitGTK 4.1 development packages (`libgtk-3-dev libwebkit2gtk-4.1-dev` on Debian or Ubuntu). Debian works as well as Ubuntu; only the release AppImage depends on an Ubuntu base, and the release still builds on GitHub.
+Each host needs key-based SSH without prompts (`BatchMode`), `git`, Go, Node with npm, `ssh-keygen` from OpenSSH 8.2 or later for the bootstrap fixtures, and `bash` (Git Bash on Windows). The mac and win lanes also need `uv`. The mac lane runs the health check, so it needs the health tools from the [developer guide](developer-guide.md#health-check) (`shellcheck`, `actionlint`, `pnpm`). The Linux host needs the GTK 3 and WebKitGTK 4.1 development packages (`libgtk-3-dev libwebkit2gtk-4.1-dev` on Debian or Ubuntu). Debian works as well as Ubuntu; only the release AppImage depends on an Ubuntu base, and the release still builds on GitHub.
 
 The first run on a host downloads Go modules, npm packages and the Wails CLI. Later runs reuse those caches, which is where most of the speed comes from.
 

@@ -43,10 +43,12 @@ To install from a terminal instead, the bootstrap script downloads the latest re
 bash <(curl -fsSL https://raw.githubusercontent.com/LuisPalacios/gitbox/main/scripts/bootstrap.sh)
 ```
 
-Run it with `--help` for options. To place the app yourself, each release also ships plain zips (`gitbox-<platform>-<arch>.zip`) and a `checksums.sha256` file.
+Run it with `--help` for options. The script requires OpenSSH 8.2+ (`ssh-keygen`) and verifies the release signature and archive SHA-256 before extraction or installation. It pins the updater’s release public key and binds the signature to the selected tag. Missing signatures, wrong keys or changed downloads stop installation, including `--cli-only` for unsigned legacy 1.x releases. A maintainer must sign those releases before the bootstrap can install them.
+
+To place the app yourself, each release also ships plain zips (`gitbox-<platform>-<arch>.zip`), `checksums.sha256` and `checksums.sha256.sig`; follow the [manual verification steps](docs/release-signing.md). Linux archives include the desktop helper and icon, so bootstrap registration runs only the verified bundled copy.
 
 > [!WARNING]
-> **The binaries are not code-signed or notarized**, so macOS Gatekeeper and Windows SmartScreen flag them. The DMG installer and the bootstrap script clear those flags for you (`xattr -cr` on macOS, `Unblock-File` on Windows). From a zip, run `xattr -cr GitboxApp.app` on macOS, or pick **More info → Run anyway** in SmartScreen. Either way you're trusting unsigned code, so audit the [source](https://github.com/LuisPalacios/gitbox) and the [bootstrap script](scripts/bootstrap.sh) first, or build it yourself.
+> **The binaries are not code-signed or notarized**, so macOS Gatekeeper and Windows SmartScreen flag them. The DMG installer clears quarantine. After release verification, the bootstrap clears those flags only for builds without a platform publisher signature (`xattr -cr` on macOS, `Unblock-File` on Windows); it preserves them for valid signed builds and refuses invalid signatures. From a zip, run `xattr -cr GitboxApp.app` on macOS, or pick **More info → Run anyway** in SmartScreen. Either way you're trusting unsigned code, so audit the [source](https://github.com/LuisPalacios/gitbox) and the [bootstrap script](scripts/bootstrap.sh) first, or build it yourself.
 
 ## Features
 

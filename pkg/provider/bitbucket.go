@@ -95,7 +95,7 @@ func (b *Bitbucket) RepoExists(ctx context.Context, _, token, username, owner, r
 	apiURL := fmt.Sprintf("https://api.bitbucket.org/2.0/repositories/%s/%s", workspace, repoName)
 	var repo bitbucketRepo
 	if _, err := doGet(ctx, apiURL, b.authHeaders(token, username), &repo); err != nil {
-		if strings.Contains(err.Error(), "404") {
+		if isNotFound(err) {
 			return false, nil
 		}
 		return false, fmt.Errorf("bitbucket repo exists: %w", err)

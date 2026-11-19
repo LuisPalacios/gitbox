@@ -3,10 +3,23 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 )
+
+type httpStatusError struct {
+	statusCode int
+	message    string
+}
+
+func (e *httpStatusError) Error() string { return e.message }
+
+func isNotFound(err error) bool {
+	var statusErr *httpStatusError
+	return errors.As(err, &statusErr) && statusErr.statusCode == http.StatusNotFound
+}
 
 // doGet performs an authenticated GET request, decodes the JSON response into target,
 // and returns the response headers. The authHeader is sent as-is in the Authorization
@@ -36,7 +49,10 @@ func doGet(ctx context.Context, url string, headers map[string]string, target an
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("HTTP %d from %s: %s", resp.StatusCode, url, string(body))
+		return nil, &httpStatusError{
+			statusCode: resp.StatusCode,
+			message:    fmt.Sprintf("HTTP %d from %s: %s", resp.StatusCode, url, string(body)),
+		}
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(target); err != nil {

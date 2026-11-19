@@ -13,8 +13,10 @@
 # Lanes:
 #   mac    frontend, scripts/health.sh (HEALTH_FUZZ=1), coordination suites,
 #          Wails build, --version smoke
-#   linux  frontend, go vet, go test -short, Wails build (webkit2_41), smoke
-#   win    frontend, coordination suites, go test -short, Wails build, smoke
+#   linux  frontend, go vet, go test -short, bootstrap fixtures,
+#          Wails build (webkit2_41), smoke
+#   win    frontend, coordination suites, go test -short, bootstrap fixtures,
+#          Wails build, smoke
 #
 # Environment:
 #   GATE_KEEP=1   keep the lane's clone after a pass (a failure always keeps it)
@@ -113,6 +115,8 @@ vet() { go vet ./...; }
 
 unit_tests() { go test -short ./...; }
 
+bootstrap() { bash scripts/test-bootstrap.sh; }
+
 gui_build() {
     mkdir -p cmd/gui/build/windows
     cp assets/appicon.png cmd/gui/build/appicon.png
@@ -156,10 +160,12 @@ case "$lane" in
     linux)
         step "go vet" vet
         step "go test -short" unit_tests
+        step "bootstrap" bootstrap
         ;;
     win)
         step "coordination" coordination
         step "go test -short" unit_tests
+        step "bootstrap" bootstrap
         ;;
 esac
 step "gui build" gui_build

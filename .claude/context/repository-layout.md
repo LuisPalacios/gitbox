@@ -45,7 +45,8 @@ docs/
 assets/                   Icons, logo, README screenshots (captured with scripts/demo-fleet)
   svg/                    Tool-logo (brand/) and top-bar (ui/) SVG originals; vite-plugin-icons.ts turns them into the app's icons at build time
 scripts/
-  bootstrap.sh             Cross-platform installer (downloads a release, places GitboxApp, registers Linux menu entry, warns about a Windows installer copy; --cli-only installs the latest 1.x CLI)
+  bootstrap.sh             Cross-platform installer (verifies release signature/digest, places GitboxApp, registers the bundled Linux desktop helper; --cli-only requires a signed 1.x release)
+  test-bootstrap.sh        Isolated signed-release installer fixtures (throwaway key, tampering, tag replay, quarantine policy)
   register-gitbox.sh       Linux-only desktop registrar (.desktop + icon in ~/.local/share, idempotent, supports --uninstall)
   installer.iss            Windows Inno Setup installer script (GUI only; cleans up v1's CLI and PATH entry on upgrade)
   appimage/                Linux AppImage build (build-appimage.sh + linuxdeploy, AppRun, desktop, AppStream metainfo, icon)

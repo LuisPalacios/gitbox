@@ -23,9 +23,9 @@ Un carril borra su clon tras pasar (`GATE_KEEP=1` lo conserva) y lo conserva tra
 
 Cada carril construye el frontend embebido con `npm ci && npm run build`, construye la GUI con la versión de la CLI de Wails que fija CI (`go run github.com/wailsapp/wails/v2/cmd/wails@v2.16.0 build`) y comprueba que `GitboxApp --version` imprime el SHA corto del commit.
 
-- **mac:** `HEALTH_FUZZ=1 ./scripts/health.sh` (todos los comprobadores, incluidos vet y staticcheck para linux, darwin y windows, las pruebas unitarias, el lint de Markdown y la comprobación del espejo del arnés), más las dos suites de coordinación. El build apunta a macOS 13 como la release.
-- **linux:** `go vet ./...` y `go test -short ./...`, y después el build con `-tags webkit2_41`.
-- **win:** las dos suites de coordinación y `go test -short ./...`, y después el build. El carril fija `core.autocrlf=false` y `core.longpaths=true` mediante `GIT_CONFIG_COUNT` para sus propios procesos, así que la configuración global de Git del usuario del host nunca cambia.
+- **mac:** `HEALTH_FUZZ=1 ./scripts/health.sh` (todos los comprobadores, incluidos vet y staticcheck para linux, darwin y windows, las pruebas unitarias, los fixtures del bootstrap, el lint de Markdown y la comprobación del espejo del arnés), más las dos suites de coordinación. El build apunta a macOS 13 como la release.
+- **linux:** `go vet ./...`, `go test -short ./...` y `bash scripts/test-bootstrap.sh`, y después el build con `-tags webkit2_41`.
+- **win:** las dos suites de coordinación, `go test -short ./...` y `bash scripts/test-bootstrap.sh`, y después el build. El carril fija `core.autocrlf=false` y `core.longpaths=true` mediante `GIT_CONFIG_COUNT` para sus propios procesos, así que la configuración global de Git del usuario del host nunca cambia.
 
 ## Hosts y requisitos previos
 
@@ -39,7 +39,7 @@ SSH_MAC_ARM_HOST=""                  # mac lane; empty when the gate runs on tha
 
 Un worktree enlazado no tiene `.env` propio, así que los scripts recurren al `.env` del clon principal.
 
-Cada host necesita SSH por clave sin preguntas (`BatchMode`), `git`, Go, Node con npm y `bash` (Git Bash en Windows). Los carriles mac y win también necesitan `uv`. El carril mac ejecuta la comprobación de salud, así que necesita las herramientas de salud de la [guía de desarrollo](developer-guide.md#comprobación-de-salud) (`shellcheck`, `actionlint`, `pnpm`). El host Linux necesita los paquetes de desarrollo de GTK 3 y WebKitGTK 4.1 (`libgtk-3-dev libwebkit2gtk-4.1-dev` en Debian o Ubuntu). Debian funciona igual que Ubuntu; solo el AppImage de la release depende de una base Ubuntu, y la release sigue construyéndose en GitHub.
+Cada host necesita SSH por clave sin preguntas (`BatchMode`), `git`, Go, Node con npm, `ssh-keygen` de OpenSSH 8.2 o posterior para los fixtures del bootstrap y `bash` (Git Bash en Windows). Los carriles mac y win también necesitan `uv`. El carril mac ejecuta la comprobación de salud, así que necesita las herramientas de salud de la [guía de desarrollo](developer-guide.md#comprobación-de-salud) (`shellcheck`, `actionlint`, `pnpm`). El host Linux necesita los paquetes de desarrollo de GTK 3 y WebKitGTK 4.1 (`libgtk-3-dev libwebkit2gtk-4.1-dev` en Debian o Ubuntu). Debian funciona igual que Ubuntu; solo el AppImage de la release depende de una base Ubuntu, y la release sigue construyéndose en GitHub.
 
 La primera ejecución en un host descarga los módulos de Go, los paquetes npm y la CLI de Wails. Las siguientes reutilizan esas cachés, y de ahí sale la mayor parte de la velocidad.
 
