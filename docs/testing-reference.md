@@ -10,7 +10,7 @@ Counts are top-level Go test functions (subtests from `t.Run` and `TestMain` are
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-The current total is 637 Go tests (554 in `pkg/`, 83 in `cmd/gui/`) and 48 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
+The current total is 639 Go tests (554 in `pkg/`, 85 in `cmd/gui/`) and 52 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
 
 ### Shared library (`pkg/`)
 
@@ -60,6 +60,7 @@ This boundary belongs to the test, not the config validator. Accepted configs ca
 
 - `config_backups_test.go` (1) — same-second recovery snapshots in newest-first order, with correct timestamps and sizes.
 - `credential_audit_test.go` (3) — startup findings in detached snapshots, rechecks clear stale findings, permission findings prevent a successful System check report, and token saves use the account format without clones or environment-token substitution.
+- `dto_secrets_test.go` (2) — I inspect App method output types and event DTOs, walk nested fields, and check the DTO inventory against source. I allow only exact metadata fields with explicit types and justifications; a detector test rejects nested secrets and JSON names.
 - `clone_test.go` (1) — report remaining clone destinations without changing repository config, directories or symlink targets.
 - `account_actions_test.go`, `browser_actions_test.go` (4) — account folder resolution, provider URLs, error paths for unknown accounts and repos.
 - `roots_test.go` (2) — add, make default and remove clone roots; account folders through the source root.
@@ -79,6 +80,7 @@ This boundary belongs to the test, not the config validator. Accepted configs ca
 
 `npm test` in `cmd/gui/frontend` runs these with `node --test`; `./scripts/health.sh frontend-test` runs the same suite.
 
+- `credential-token.test.mjs` (4) — I execute the real handlers with an isolated bridge: clear saved tokens before post-setup, retain failed tokens for correction and retry, reset on close and reopen, and compile the real credential modal with fixture initial state to check its rendered failed input and enabled retry button, then its hidden successful input.
 - `repo-tree.test.mjs` (8) — the clone tree: cross-source ownership, no duplicate rows, nested collapse, recovery from stale parents and cycles, alphabetical order, attention groups split by account, a container's placeholder rows.
 - `repo-detail.test.mjs` (6) — nil-slice normalisation, switching clones, closing and reopening during a read, out-of-order refreshes, current versus superseded errors, complete incoming lists and independent history errors.
 - `status.test.mjs` (12) — each status's shape, colour, spinner, Simple kind, count badges, detail-panel rule, credential rules, attention rank and glossary label; account health per mode; the token-expiry warning.

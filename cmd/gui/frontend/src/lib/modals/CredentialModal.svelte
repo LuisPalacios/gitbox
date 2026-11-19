@@ -269,7 +269,7 @@
         {/if}
         {/if}
 
-        {#if (credForceToken || credChangeType === 'token') && credTokenGuide && !credResult}
+        {#if (credForceToken || credChangeType === 'token') && credTokenGuide && !credResult?.ok}
           <p class="cred-step-desc">{$t('cred.tokenSteps')}</p>
           {#if credTokenScopes}
             <p class="cred-step-desc"><Rich key="cred.scopes" vars={{ scopes: credTokenScopes }} /></p>
@@ -298,7 +298,7 @@
             {credDeleteBusy ? $t('cred.deleting') : $t('cred.deleteCurrent', { type: (currentAcct?.default_credential_type || '').toUpperCase() })}
           </button>
         {/if}
-        {#if credResult}
+        {#if credResult && (credResult.ok || credChangeType !== 'token' || !credTokenGuide)}
           <button class="btn-cancel" on:click={closeCredChange}>{credResult.ok ? $t('onboard.done') : $t('common.close')}</button>
         {:else if credChangeType === 'token' && credTokenGuide}
           {#if credTokenInput.trim()}

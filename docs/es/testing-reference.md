@@ -10,7 +10,7 @@ Los recuentos son funciones de prueba Go de nivel superior (no se cuentan los su
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-El total actual es de 637 pruebas Go (554 en `pkg/`, 83 en `cmd/gui/`) y 48 pruebas del frontend. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
+El total actual es de 639 pruebas Go (554 en `pkg/`, 85 en `cmd/gui/`) y 52 pruebas del frontend. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
 
 ### Biblioteca compartida (`pkg/`)
 
@@ -60,6 +60,7 @@ Este límite pertenece a la prueba, no al validador de config. Las configs acept
 
 - `config_backups_test.go` (1) — copias de recuperación del mismo segundo en orden descendente, con marcas de tiempo y tamaños correctos.
 - `credential_audit_test.go` (3) — hallazgos de arranque en instantáneas independientes, las nuevas comprobaciones borran hallazgos obsoletos, los hallazgos de permisos impiden un informe correcto de Comprobación del sistema y los guardados de token usan el formato de cuenta sin clones ni sustitución por tokens del entorno.
+- `dto_secrets_test.go` (2) — inspecciono los tipos de salida de los métodos de App y los DTO de eventos, recorro campos anidados y compruebo el inventario de DTO frente al código fuente. Solo permito campos de metadatos concretos con tipos y justificaciones explícitos; una prueba comprueba que el detector rechaza secretos anidados y nombres JSON.
 - `clone_test.go` (1) — informar de los destinos de clonado restantes sin cambiar la config del repositorio, los directorios ni los destinos de enlaces simbólicos.
 - `account_actions_test.go`, `browser_actions_test.go` (4) — resolución de la carpeta de cuenta, URLs de proveedor, rutas de error para cuentas y repos desconocidos.
 - `roots_test.go` (2) — añadir, hacer predeterminada y quitar raíces de clonado; carpetas de cuenta a través de la raíz de la source.
@@ -79,6 +80,7 @@ Este límite pertenece a la prueba, no al validador de config. Las configs acept
 
 `npm test` en `cmd/gui/frontend` las ejecuta con `node --test`; `./scripts/health.sh frontend-test` ejecuta la misma suite.
 
+- `credential-token.test.mjs` (4) — ejecuto los manejadores reales con un bridge aislado: borro los tokens guardados antes del paso posterior, conservo los fallidos para corregirlos y reintentarlo, limpio el estado al cerrar y reabrir, y compilo el modal real de credenciales con un estado inicial de prueba para comprobar que muestra el campo fallido y el botón de reintento habilitado, y después oculta el campo tras el éxito.
 - `repo-tree.test.mjs` (8) — el árbol de clones: propiedad entre sources, ninguna fila duplicada, plegado de anidados, recuperación ante padres obsoletos y ciclos, orden alfabético, grupos de atención separados por cuenta, las filas placeholder de un contenedor.
 - `repo-detail.test.mjs` (6) — normalización de slices nulos, cambio de clon, cierre y reapertura durante una lectura, refrescos fuera de orden, errores actuales frente a sustituidos, listas entrantes completas y errores independientes del historial.
 - `status.test.mjs` (12) — la forma, el color, el spinner, el tipo Simple, los indicadores de conteo, la regla del panel de detalle, las reglas de credenciales, el rango de atención y la etiqueta del glosario de cada estado; la salud de la cuenta por modo; el aviso de caducidad del token.

@@ -115,6 +115,8 @@ When you set up a Token credential, Gitbox shows the link to your provider's tok
 4. Copy the generated token.
 5. Paste it into Gitbox.
 
+After a successful token save, Gitbox clears the input before checking the credential. If saving fails, I keep the value in the form to correct it and retry. Closing the form also clears the value.
+
 **Storage:** 1 secret → `~/.config/gitbox/credentials/<account>` (git-credential-store format, read by both Gitbox and git).
 
 ## SSH
