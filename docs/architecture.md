@@ -85,7 +85,20 @@ Changing a source's root or the default root pins the root every existing clone 
 
 `cmd/gui/app.go` exposes the methods the Svelte frontend calls through auto-generated TypeScript bindings. Bound methods take the config lock for shared state, call `pkg/ops` or another `pkg/` package for the work, save changes, and emit Wails events for progress. Neighbouring files hold GUI-only concerns: terminal profiles (`profiles.go`), multi-repo containers and their workspace files (`containers.go`), clone roots (`roots.go`), disk reconcile (`reconcile.go`), PR badges (`pr.go`), autostart, and per-OS process lifecycle. Every `exec.Command` in `cmd/gui/` goes through `git.HideWindow`, so no console window flashes on Windows.
 
-`main.go` handles two flags before Wails starts: `--version` prints the build version and exits, and `--test-mode` routes the config through a temp directory built from the `test-gitbox.json` fixture (see [testing.md](testing.md)).
+`main.go` handles three flags before Wails starts: `--version` prints the build version and exits, `--test-mode` routes the config through a temp directory built from the `test-gitbox.json` fixture (see [testing.md](testing.md)), and `--experimental-remote` opts in to remote mode, which is dormant for now.
+
+#### Backend seam
+
+The `App` struct does two jobs, and `cmd/gui` keeps them apart so that remote mode can run the first one on another host:
+
+- **The work** (config, git, credentials, providers) sits behind the `Backend` interface in `backend.go`. Each bound method that does work calls `a.be()`, and `localBackend` runs the original body, which stays on `*App` as an unexported `<name>Local` method. `localBackend` owns no state. `Init`, `Start` and `Close` are the backend half of the Wails lifecycle hooks.
+- **The window** (geometry, dialogs, the updater, autostart, launching local apps) is the local shell. Those methods never go through `Backend`. The ones that call the Wails runtime live in `shell.go`.
+
+Every event goes through one `EventSink` (`events.go`): code calls `a.sink().Emit("name", …)` with a literal name, `Startup` installs the Wails sink, and an `App` without a sink drops events.
+
+`classification.go` records every bound method, lifecycle hook and event as LOCAL, REMOTE or MIXED, with the remote-mode phase that owns it and whether it changes state on the host. Guard tests fail when a method or an event is added without a row, and when a row disagrees with `Backend`.
+
+`gitbox-server`, the process remote mode runs on the other host, is this same package built with `-tags gitboxserver` and `CGO_ENABLED=0`. A second binary cannot import `package main`, so a build tag is how the server reuses the backend code and its DTOs. Every file that imports Wails carries `//go:build !gitboxserver` (`main.go`, `shell.go`, `events_wails.go`), a guard test enforces it, and the health check compiles the server build for Linux, macOS and Windows. Today that build is a placeholder that exits.
 
 Startup returns config, preferences, collapse state and path-derived nesting in one detached snapshot. The frontend renders it before local status arrives and shows pending spinners until checking or fetching finishes. Cross-source children stay under their containers but keep their own source for status, actions and ownership. Editor and terminal-profile detection runs outside the config lock and merges into the current settings, so concurrent edits survive.
 
