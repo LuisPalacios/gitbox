@@ -35,8 +35,8 @@ func boundMethods(t *testing.T) map[string]bool {
 
 func methodSet(typ reflect.Type) map[string]bool {
 	set := map[string]bool{}
-	for i := range typ.NumMethod() {
-		set[typ.Method(i).Name] = true
+	for m := range typ.Methods() {
+		set[m.Name] = true
 	}
 	return set
 }

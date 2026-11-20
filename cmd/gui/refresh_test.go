@@ -20,10 +20,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/status"
 )
 
-type (
-	refreshTestEvent  = recordedEvent
-	refreshTestEvents = recordingSink
-)
+type refreshTestEvents = recordingSink
 
 func refreshTestApp(t *testing.T, count int) (*App, *refreshTestEvents) {
 	t.Helper()

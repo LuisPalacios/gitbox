@@ -12,7 +12,7 @@
 #   HEALTH_FUZZ=1 ./scripts/health.sh fuzz # mutation passes (10s per target)
 #   ./scripts/health.sh -v              # print every finding, not just the first 15
 #
-# Checks: gofmt vet staticcheck modernize govulncheck deadcode test
+# Checks: gofmt vet server staticcheck modernize govulncheck deadcode test
 #         svelte frontend-test build npm-install npm-audit shellcheck actionlint markdown
 #         harness bootstrap fuzz (fuzz requires HEALTH_FUZZ=1)
 #
@@ -151,6 +151,16 @@ per_os() {
 }
 
 run_vet()         { per_os go vet ./...; }
+# gitbox-server is cmd/gui built with -tags gitboxserver and CGO off (#233).
+# The compile fails when Wails or a shell-only method leaks into that build;
+# go vet cannot run there, because the tests call the Wails lifecycle hooks.
+run_server_build() {
+    per_os go build -tags gitboxserver -o /dev/null ./cmd/gui || return 1
+    if go list -tags gitboxserver -deps ./cmd/gui | grep -q wailsapp; then
+        echo "the gitboxserver build of cmd/gui depends on Wails"
+        return 1
+    fi
+}
 run_staticcheck() { local bin; bin="$(tool "$STATICCHECK")" || return 1; per_os "$bin" ./...; }
 run_modernize()   { local bin; bin="$(tool "$MODERNIZE")" || return 1; per_os "$bin" ./...; }
 run_test() {
@@ -294,6 +304,7 @@ fi
 
 want gofmt go       && check gofmt       run_gofmt
 want vet go         && check vet         run_vet
+want server go      && check server      run_server_build
 want staticcheck go && check staticcheck run_staticcheck
 want modernize go   && check modernize   run_modernize
 want govulncheck go && check govulncheck run_govulncheck
