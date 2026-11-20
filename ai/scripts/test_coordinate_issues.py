@@ -19,7 +19,7 @@ from contextlib import closing
 from pathlib import Path
 
 sys.dont_write_bytecode = True
-HELPER = Path(__file__).resolve().parents[1] / "skills/coordinate-issues/scripts/coordinate.py"
+HELPER = Path(__file__).resolve().parents[1] / "skills/wu-coordinate-tasks/scripts/coordinate.py"
 spec = importlib.util.spec_from_file_location("coordinate", HELPER)
 coordinate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(coordinate)
@@ -63,8 +63,8 @@ class CoordinationTest(unittest.TestCase):
     def apply(self, op, **kwargs):
         return coordinate.apply(self.db, {"op": op, "owner": "one", "generation": 1, **kwargs})
 
-    def start(self, owner="one", issues=None):
-        return self.apply("start", owner=owner, issues=issues or [42])
+    def start(self, owner="one", issues=None, work_unit=40):
+        return self.apply("start", owner=owner, issues=issues or [42], work_unit=work_unit)
 
     def child(self, request, crash=None):
         command = [sys.executable, "-c", CHILD, str(HELPER), str(self.db)]
@@ -87,9 +87,95 @@ class CoordinationTest(unittest.TestCase):
         self.assertEqual(coordinate.status(self.db)["claims"], [])
         self.assertFalse(self.db.exists())
 
+    def test_start_requires_explicit_work_unit_and_rejects_container_as_task(self):
+        for fields in ({}, {"roadmap": 40}, {"work_unit": None}, {"work_unit": True},
+                       {"work_unit": 0}, {"work_unit": "40"}, {"work_unit": 42},
+                       {"work_unit": 40, "roadmap": 40}, {"external": "true"}):
+            with self.subTest(fields=fields), self.assertRaises(coordinate.Conflict):
+                self.apply("start", issues=[42], **fields)
+        self.assertEqual(coordinate.status(self.db)["claims"], [])
+
+    def test_same_work_unit_excludes_disjoint_batches_until_all_claims_release(self):
+        first = self.start(issues=[41, 42])
+        self.assertEqual(first, self.start(issues=[41, 42]))
+        with self.assertRaises(coordinate.Conflict):
+            self.start(issues=[41, 42], work_unit=50)
+        with self.assertRaisesRegex(coordinate.Conflict, "work unit 40"):
+            self.start("two", [43])
+        self.apply("release", issue=41, reason="merged", confirmed_stopped=True)
+        with self.assertRaises(coordinate.Conflict):
+            self.start("two", [43])
+        self.apply("release", issue=42, reason="merged", confirmed_stopped=True)
+        self.start("two", [43])
+        self.assertEqual(coordinate.status(self.db)["sessions"][-1]["work_unit"], 40)
+
+    def test_concurrent_disjoint_batches_in_same_work_unit_have_one_winner(self):
+        processes = [self.child({"op": "start", "owner": owner, "issues": issues, "work_unit": 40})
+                     for owner, issues in (("one", [41]), ("two", [42]))]
+        outputs = [p.communicate(timeout=20) for p in processes]
+        self.assertEqual(sorted(p.returncode for p in processes), [0, 1], outputs)
+        snapshot = coordinate.status(self.db)
+        self.assertEqual(len(snapshot["sessions"]), 1)
+        self.assertEqual(len(snapshot["claims"]), 1)
+
+    def test_independent_work_units_can_reserve_but_share_resource_exclusion(self):
+        self.start()
+        self.start("two", [43], work_unit=50)
+        self.apply("acquire", resource="heavy-checks")
+        with self.assertRaises(coordinate.Conflict):
+            self.apply("acquire", owner="two", resource="heavy-checks")
+        state = coordinate.status(self.db)
+        self.assertEqual([s["work_unit"] for s in state["sessions"]], [40, 50])
+
+    def test_external_reservations_only_exclude_work_and_cannot_become_batches(self):
+        self.apply("start", owner="external", issues=[41], external=True)
+        self.start(issues=[42])
+        with self.assertRaises(coordinate.Conflict):
+            self.start("two", [41], work_unit=50)
+        with self.assertRaises(coordinate.Conflict):
+            self.apply("start", owner="mixed", issues=[43], external=True, work_unit=50)
+        with self.assertRaisesRegex(coordinate.Conflict, "unscoped"):
+            self.apply("takeover", owner="external", new_owner="converted", work_unit=50, confirmed_stopped=True)
+        self.apply("release", owner="external", issue=41, reason="abandoned", confirmed_stopped=True)
+        self.start("two", [41], work_unit=50)
+
+    def test_takeover_requires_matching_explicit_work_unit(self):
+        self.start()
+        before = coordinate.status(self.db)
+        for fields in ({}, {"work_unit": 50}, {"roadmap": 40}):
+            with self.subTest(fields=fields), self.assertRaises(coordinate.Conflict):
+                self.apply("takeover", new_owner="two", confirmed_stopped=True, **fields)
+            self.assertEqual(coordinate.status(self.db), before)
+        self.apply("takeover", new_owner="two", confirmed_stopped=True, work_unit=40)
+
+    def test_legacy_v1_data_is_read_without_migration_and_unscoped_work_needs_review(self):
+        with closing(sqlite3.connect(self.db)) as db, db:
+            for name, columns in coordinate.TABLES.items():
+                db.execute(f"CREATE TABLE {name} ({columns})")
+            db.execute("PRAGMA user_version=1")
+            db.execute("INSERT INTO sessions VALUES ('legacy',1,123,1,40)")
+            db.execute("INSERT INTO sessions VALUES ('unscoped',1,123,1,NULL)")
+            db.execute("INSERT INTO claims VALUES (42,'legacy',1,'working',?)", (json.dumps({"note": "old work"}),))
+            db.execute("INSERT INTO claims VALUES (43,'unscoped',1,'working','{}')")
+            db.execute("INSERT INTO actions VALUES ('old-action','legacy',1,42,'roadmap','done','{}','{}')")
+        original = self.db.read_bytes()
+        state = coordinate.status(self.db)
+        self.assertEqual(state["sessions"][0]["work_unit"], 40)
+        self.assertIsNone(state["sessions"][1]["work_unit"])
+        self.assertEqual(self.db.read_bytes(), original)
+        with self.assertRaises(coordinate.Conflict):
+            self.start(issues=[44])
+        with self.assertRaisesRegex(coordinate.Conflict, "unscoped"):
+            self.apply("takeover", owner="unscoped", new_owner="new", work_unit=50, confirmed_stopped=True)
+        self.apply("takeover", owner="legacy", new_owner="new", work_unit=40, confirmed_stopped=True)
+        state = coordinate.status(self.db)
+        self.assertEqual(state["claims"][0]["detail"], {"note": "old work"})
+        self.assertEqual(state["actions"][0]["id"], "old-action")
+        self.apply("release", owner="unscoped", issue=43, reason="abandoned", confirmed_stopped=True)
+
     def test_concurrent_overlapping_batches_have_one_winner_and_no_partial_claim(self):
-        processes = [self.child({"op": "start", "owner": owner, "issues": issues})
-                     for owner, issues in (("one", [41, 42]), ("two", [42, 43]))]
+        processes = [self.child({"op": "start", "owner": owner, "issues": issues, "work_unit": work_unit})
+                     for owner, issues, work_unit in (("one", [41, 42], 40), ("two", [42, 43], 50))]
         outputs = [p.communicate(timeout=20) for p in processes]
         self.assertEqual(sorted(p.returncode for p in processes), [0, 1], outputs)
         snapshot = coordinate.status(self.db)
@@ -100,7 +186,7 @@ class CoordinationTest(unittest.TestCase):
         self.assertEqual([r["issue"] for r in snapshot["claims"]], [41, 42] if owner == "one" else [42, 43])
 
     def test_existing_conflict_rolls_back_every_new_claim(self):
-        self.start("two", [43])
+        self.start("two", [43], work_unit=50)
         with self.assertRaises(coordinate.Conflict):
             self.start("one", [41, 42, 43])
         self.assertEqual([r["issue"] for r in coordinate.status(self.db)["claims"]], [43])
@@ -108,7 +194,7 @@ class CoordinationTest(unittest.TestCase):
     def test_crash_before_commit_rolls_back_and_after_commit_keeps_reservation(self):
         for phase in ("before", "after"):
             with self.subTest(phase=phase):
-                process = self.child({"op": "start", "owner": phase, "issues": [42]}, phase)
+                process = self.child({"op": "start", "owner": phase, "issues": [42], "work_unit": 40}, phase)
                 try:
                     self.assertTrue(process.stdout.readline())
                 finally:
@@ -128,7 +214,7 @@ class CoordinationTest(unittest.TestCase):
             db.execute("UPDATE sessions SET heartbeat=0")
         with self.assertRaises(coordinate.Conflict):
             self.start("two")
-        self.start("two", [43])
+        self.start("two", [43], work_unit=50)
         with self.assertRaises(coordinate.Conflict):
             self.apply("acquire", owner="two", resource="gui")
 
@@ -139,7 +225,7 @@ class CoordinationTest(unittest.TestCase):
         self.apply("acquire", resource="gui")
         with self.assertRaises(coordinate.Conflict):
             self.apply("takeover", new_owner="two")
-        result = self.apply("takeover", new_owner="two", confirmed_stopped=True)
+        result = self.apply("takeover", new_owner="two", confirmed_stopped=True, work_unit=40)
         self.assertEqual(result, {"owner": "two", "generation": 2})
         for request in ({"op": "heartbeat"}, {"op": "update", "issue": 42, "state": "working"},
                         {"op": "release-resource", "resource": "gui"}):
@@ -223,7 +309,7 @@ class CoordinationTest(unittest.TestCase):
             self.apply("result", issue=42, id="roadmap-42", result={"different": True})
         with self.assertRaises(coordinate.Conflict):
             self.apply("intent", **{**request, "request": {"roadmap": 215}})
-        self.apply("takeover", new_owner="two", confirmed_stopped=True)
+        self.apply("takeover", new_owner="two", confirmed_stopped=True, work_unit=40)
         self.assertEqual(self.apply("intent", owner="two", generation=2, **request)["state"], "done")
 
     def test_release_requires_explicit_stop_and_terminal_reason(self):
@@ -241,7 +327,7 @@ class CoordinationTest(unittest.TestCase):
         self.start()
         self.apply("intent", issue=42, id="roadmap-42", kind="roadmap", request={"roadmap": 214})
         self.apply("release", issue=42, confirmed_stopped=True, reason="merged")
-        self.apply("takeover", new_owner="two", confirmed_stopped=True)
+        self.apply("takeover", new_owner="two", confirmed_stopped=True, work_unit=40)
         with self.assertRaises(coordinate.Conflict):
             self.apply("result", issue=42, id="roadmap-42", result={"verified": True})
         done = self.apply("result", owner="two", generation=2, issue=42, id="roadmap-42", result={"verified": True})
@@ -275,7 +361,7 @@ class CoordinationTest(unittest.TestCase):
         first, second = coordinate.registry_path(repo), coordinate.registry_path(worktree)
         self.assertEqual(first, second)
         result = subprocess.run([sys.executable, str(HELPER), "--repo", str(worktree), "apply"],
-                                input=json.dumps({"op": "start", "owner": "cli", "issues": [42]}),
+                                input=json.dumps({"op": "start", "owner": "cli", "issues": [42], "work_unit": 40}),
                                 capture_output=True, text=True, check=True)
         self.assertEqual(json.loads(result.stdout)["generation"], 1)
         self.assertEqual(coordinate.status(first)["claims"][0]["owner"], "cli")

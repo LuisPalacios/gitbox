@@ -17,6 +17,18 @@ This guide covers the test levels, the `test-gitbox.json` fixture, and the check
 
 `wails build` creates it too. See [developer-guide.md › Building from source](developer-guide.md#building-from-source).
 
+## Work-unit workflow checks
+
+I check changes to the work-unit skills with the harness gate:
+
+```bash
+./scripts/health.sh harness markdown shellcheck actionlint
+```
+
+The harness gate includes `ai/scripts/test_coordinate_issues.py` and `ai/scripts/test_coordinate_roadmap.py`. They exercise the shared registry and optional work-unit checklist helper with local fixtures, without creating GitHub issues or starting workers. I describe their coverage in [testing-reference.md](testing-reference.md#agent-harness-maintenance-tests).
+
+I also review the workflow in a fresh Codex and Claude Code session: `wu-container` drafts populated HLR and acceptance criteria, `wu-tasks` maps tasks to those criteria, and `wu-coordinate-tasks` asks for a missing container number. I check that coordination rejects standalone issues, tasks from another parent and unresolved dependencies, and that resumption preserves the specified work unit. I use read-only scenarios for these checks; testing discovery does not authorize publication. Changes limited to the harness skip Go tests and GUI builds; I still run the full health check before a PR.
+
 ## Fuzz tests
 
 I keep small Go seed corpora under each package's `testdata/fuzz/<target>/`. Ordinary `go test` and `go test -short` execute these inputs without generating mutations. I run the seeds directly with:

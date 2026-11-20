@@ -4,27 +4,41 @@ I use this workflow to work on several GitHub issues at once, each in its own Cl
 
 The skills enforce my publishing rule: nothing reaches GitHub until I say so. In Codex I run `$work-issue <N>` and `$merge-pr <PR#>` with the same arguments and gates. Both tools load the shared instructions and skills described in [developer-guide.md](developer-guide.md#working-with-claude-code-and-codex).
 
+## Independent issues and work units
+
+I use two forms of work: an independent issue with no parent or children, or a work unit that contains tasks. A work unit carries the `work-unit` label and has no parent. Its tasks are direct GitHub sub-issues in the same repository, with no children of their own. I keep exactly these two levels; I do not add an umbrella above the work unit. A title, a body reference or a checklist does not establish a parent-child relationship.
+
+I create the container with `$wu-container <description>` in Codex or `/wu-container <description>` in Claude Code. The skill drafts its purpose, the problem, scope and exclusions, high-level requirements with stable `HLR1` IDs, and populated acceptance criteria with `AC1` IDs linked to those requirements. It checks for existing work and presents the concrete issue before any publication that needs my approval. For one independent issue I use `wu-container --independent`; I implement that issue with `work-issue`.
+
+I then use `wu-tasks <N>` to decompose a work unit. The skill reads the entire container and its existing children, proposes tasks that cover its acceptance criteria, and identifies dependencies and a useful execution order. It drafts the task bodies before requesting any missing publication authorization. It creates and links only the approved tasks, verifies the native relationships and list order, and resumes partial work by inspecting existing effects before retrying. It does not rewrite the container's requirements or acceptance criteria to fit the tasks.
+
 ## One supervisor for a batch
 
-I use `coordinate-issues` when I want one conversation to select and supervise up to three independent issues. The supervisor checks live issues, comments, dependencies, open PRs and affected files before choosing a finite batch. It may choose fewer issues when overlap or available agent capacity makes three unsafe. It keeps one agent slot for itself and delegates each issue to a worker in its own worktree.
+I use `wu-coordinate-tasks` when I want one conversation to select and supervise up to three compatible pending tasks from one work unit. The supervisor checks live issues, comments, dependencies, open PRs and affected files before choosing a finite batch. It selects only open direct sub-issues and excludes unresolved prerequisites. It may choose fewer tasks when overlap or available agent capacity makes three unsafe. It keeps one agent slot for itself and delegates each task to a worker in its own worktree.
 
-In Codex I can start with an umbrella issue, declare work already underway elsewhere, or select from the repository without an umbrella:
+In Codex I pass the work unit's issue number and declare work already underway elsewhere:
 
 ```text
-$coordinate-issues --roadmap 214 --count 3 --active none
-$coordinate-issues --roadmap 214 --count 3 --active 162,170
-$coordinate-issues --no-roadmap --count 3 --active none
+$wu-coordinate-tasks <N> --count 3 --active none
+$wu-coordinate-tasks <N> --count 3 --active <issue-numbers>
+$wu-coordinate-tasks <N> --resume <owner>
 ```
 
-In Claude Code I replace `$coordinate-issues` with `/coordinate-issues`. If I omit the active-session information, the supervisor asks once before choosing the batch. Roadmap checkboxes provide context; live issue and PR state determine which work remains. I do not need to open a conversation for each worker.
+In Claude Code I replace `$wu-coordinate-tasks` with `/wu-coordinate-tasks`. The work unit number is mandatory, including on resume: if I omit it, the supervisor asks and never infers a container or falls back to the global backlog. If I omit the active-session information, it asks once before reserving the batch. Checkboxes provide context; native relationships and live issue and PR state determine which work belongs to this unit and remains pending. I do not need to open a conversation for each worker.
 
-The invocation authorizes local selection, planning, implementation, verification and commits. I can explicitly authorize publication for the selected batch with `--publish`, which covers its branch pushes and PR creation or updates after checks pass. `--create-subissues` authorizes justified subissues; `--update-roadmap` authorizes completion updates to the selected umbrella. These options do not authorize a merge, a force push, real credential changes or remote staging. The supervisor keeps publication and questions in the main conversation; workers do not publish. Asking how the skill works does not start a batch.
+The invocation authorizes local selection, planning, implementation, verification and commits. I can explicitly authorize publication for the selected batch with `--publish`, which covers its branch pushes and PR creation or updates after checks pass. `--update-work-unit` authorizes minimal completion-checkbox updates to that container after verified resolution. I create additional tasks through `wu-tasks`; the coordinator does not create them. These options do not authorize a merge, a force push, real credential changes or remote staging. The supervisor keeps publication and questions in the main conversation; workers do not publish. Asking how the skill works does not start a batch.
+
+`wu-coordinate-tasks` replaces `coordinate-issues`; `--roadmap`, `--no-roadmap`, `--create-subissues` and `--update-roadmap` no longer apply. Existing roadmaps such as #214 need an explicit review and authorized conversion before they qualify as work units. The skills do not silently label them or turn their references into native sub-issues.
 
 ### Reservations and recovery
 
 Cooperating Claude and Codex sessions share an atomic SQLite registry under `<git-common-dir>/gitbox-coordination/registry.sqlite`. The registry covers a local clone and its worktrees; it does not coordinate separate clones or machines. I still declare external sessions so the supervisor can account for their issue and file ownership.
 
-The supervisor reserves the selected issues together before creating worktrees. A conflict leaves the whole request unreserved, so it can reconsider the batch. It records the owner and generation, worktree, branch, worker, progress and verification evidence. An old heartbeat does not free a reservation: the supervisor checks surviving workers, Git state and PRs before recovering it with a new generation. An open PR keeps its issue occupied. On interruption, I ask the supervisor to resume the recorded batch; it checks existing effects before retrying a push, PR or subissue creation.
+The supervisor reserves the selected tasks together before creating worktrees. A conflict leaves the whole request unreserved, so it can reconsider the batch. The registry also excludes another batch for the same work unit until the supervisor releases all its task claims. It records the owner and generation, work unit, worktree, branch, worker, progress and verification evidence. An old heartbeat does not free a reservation: the supervisor checks surviving workers, Git state and PRs before recovering it with a new generation. An open PR keeps its task occupied. On interruption, I pass the work unit number and recorded owner to resume; the supervisor checks existing effects before retrying a push or PR creation.
+
+The helper requires `work_unit` when starting a batch. It accepts an unscoped `external: true` reservation only to exclude work from another session. The registry keeps its historical `roadmap` storage field for compatibility; that field alone never proves native membership. When resuming an older batch, the supervisor validates the chosen work unit and every pending task against GitHub before continuing. It preserves old records and unfinished work.
+
+I can run separate supervisor sessions for different work units. Their tasks still share a repository and may overlap in files, APIs or generated output, so the supervisor checks those boundaries before delegating work.
 
 GUI sessions, shared configuration, credential operations and staging destinations need exclusive coordination. A reservation does not grant permission to use a resource. The supervisor serializes GUI smoke tests because test-mode instances share an application identity, and checks which binary and window it is testing.
 
@@ -32,7 +46,7 @@ GUI sessions, shared configuration, credential operations and staging destinatio
 
 The supervisor links each required check to the tested commit and base, with PASS, FAIL or PENDING and the command or interaction evidence. A rebase or new change invalidates the old evidence. An automated smoke can satisfy an interactive criterion when it verifies the correct binary and commit, isolated fixture, window, actions and expected behavior. A version string or screenshot alone does not prove the interaction works. I perform only the required steps that the available tools cannot verify.
 
-Failing or pending required checks block publication. Once publication has authorization and the local checks pass, the supervisor opens the PR and confirms the local gate passed on its head before calling it ready. It stops before merge; I use `merge-pr` separately. With authorization to update the umbrella, the merge workflow or a resumed supervisor marks only entries whose merged PR fully resolves the issue. A partial PR or a successful gate or CI alone does not complete a roadmap entry.
+Failing or pending required checks block publication. Once publication has authorization and the local checks pass, the supervisor opens the PR and confirms the local gate passed on its head before calling it ready. It stops before merge; I use `merge-pr` separately. With authorization to update the work unit, the merge workflow or a resumed supervisor marks only existing checklist entries whose merged PR fully resolves the task. The optional checklist helper retains the filename `roadmap.py`; a checklist never replaces native membership. A partial PR or a successful gate or CI alone does not complete a task, and finishing a batch does not automatically close its container or prove all its acceptance criteria.
 
 ## What this workflow gives me
 

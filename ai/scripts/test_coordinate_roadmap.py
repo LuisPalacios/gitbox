@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 sys.dont_write_bytecode = True
-SCRIPT = Path(__file__).resolve().parents[1] / "skills/coordinate-issues/scripts/roadmap.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "skills/wu-coordinate-tasks/scripts/roadmap.py"
 SPEC = importlib.util.spec_from_file_location("coordinate_roadmap", SCRIPT)
 assert SPEC and SPEC.loader
 roadmap = importlib.util.module_from_spec(SPEC)

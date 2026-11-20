@@ -35,9 +35,9 @@ Each phase begins by reading current git state (`git rev-parse --abbrev-ref HEAD
 
 ## Delegated batch work
 
-When a supervisor assigns a reserved issue through `$coordinate-issues`, read that skill and follow its worker contract. The user's batch-start instruction delegates local issue selection and plan approval to the supervisor: send the preflight details and plan there instead of repeating the ordinary user gates below. Resume in the assigned worktree when it already exists; Step 1's main-clone check applies only to initial creation. Keep every command and edit in that worktree, report scope changes before editing, and return verified local commits to the supervisor. Workers stop before Steps 8–10; the supervisor owns sync, publication and CI.
+When a supervisor assigns a reserved issue through `$wu-coordinate-tasks`, read that skill and follow its worker contract. The user's batch-start instruction delegates local issue selection and plan approval to the supervisor: send the preflight details and plan there instead of repeating the ordinary user gates below. Resume in the assigned worktree when it already exists; Step 1's main-clone check applies only to initial creation. Keep every command and edit in that worktree, report scope changes before editing, and return verified local commits to the supervisor. Workers stop before Steps 8–10; the supervisor owns sync, publication and CI.
 
-Only in this coordinated mode, evidence of an equivalent automated behavioral smoke can satisfy Step 7 under `coordinate-issues` criteria. Missing coverage still requires the user's check. This mode grants no worker publication authority and does not change the standalone workflow below.
+Only in this coordinated mode, evidence of an equivalent automated behavioral smoke can satisfy Step 7 under `wu-coordinate-tasks` criteria. Missing coverage still requires the user's check. This mode grants no worker publication authority and does not change the standalone workflow below.
 
 ## Universal gh-user detection
 
@@ -57,6 +57,8 @@ This repository and personal forks use the origin owner as the login. If the own
 ---
 
 ## Step 1: Preflight
+
+Read `.agents/skills/wu-container/issue-rules.md` to distinguish an independent issue from a work-unit task. Implement leaves only. A container goes through `$wu-tasks` and `$wu-coordinate-tasks <N>`; do not implement or close the container as one task. For a native child, read the parent specification and referenced AC, verify its prerequisites, and check the coordination registry for an existing claim before creating competing work.
 
 - Confirm we are in the main clone, not already inside a worktree: `git rev-parse --show-toplevel` and `git rev-parse --git-dir`. If the git dir is under `.git/worktrees/`, we're in a worktree — re-invoke in the main clone.
 - Run the gh-user detection snippet above.
