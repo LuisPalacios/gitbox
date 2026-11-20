@@ -16,14 +16,20 @@ import (
 // ─── Nested depth ──────────────────────────────────────────────────────────
 
 // GetNestedScanDepth returns the effective nested-scan depth (default applied).
-func (a *App) GetNestedScanDepth() int {
+func (a *App) GetNestedScanDepth() int { return a.be().GetNestedScanDepth() }
+
+// getNestedScanDepthLocal is the local backend's GetNestedScanDepth.
+func (a *App) getNestedScanDepthLocal() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.cfg.Global.NestedScanDepthOrDefault()
 }
 
 // SetNestedScanDepth sets the nested-scan depth (>=1) and persists.
-func (a *App) SetNestedScanDepth(depth int) error {
+func (a *App) SetNestedScanDepth(depth int) error { return a.be().SetNestedScanDepth(depth) }
+
+// setNestedScanDepthLocal is the local backend's SetNestedScanDepth.
+func (a *App) setNestedScanDepthLocal(depth int) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if depth < 1 {
@@ -39,6 +45,11 @@ func (a *App) SetNestedScanDepth(depth int) error {
 // then persists. When set, 'gitbox adopt' / ScanFolderForClones descend into its
 // working tree to discover nested clones.
 func (a *App) SetRepoContainer(sourceKey, repoKey string, container bool) error {
+	return a.be().SetRepoContainer(sourceKey, repoKey, container)
+}
+
+// setRepoContainerLocal is the local backend's SetRepoContainer.
+func (a *App) setRepoContainerLocal(sourceKey, repoKey string, container bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -60,7 +71,10 @@ func (a *App) SetRepoContainer(sourceKey, repoKey string, container bool) error 
 // resolved clone paths, so the GUI can render nested clones indented under their
 // container parent. A repo appears as a key only when it lives inside a
 // container repo's working tree.
-func (a *App) RepoNesting() map[string]string {
+func (a *App) RepoNesting() map[string]string { return a.be().RepoNesting() }
+
+// repoNestingLocal is the local backend's RepoNesting.
+func (a *App) repoNestingLocal() map[string]string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -76,6 +90,11 @@ func (a *App) RepoNesting() map[string]string {
 // it opens with, remembered as my preferred one, and persists. The file must
 // be at the clone root.
 func (a *App) SetRepoWorkspace(sourceKey, repoKey, file string) error {
+	return a.be().SetRepoWorkspace(sourceKey, repoKey, file)
+}
+
+// setRepoWorkspaceLocal is the local backend's SetRepoWorkspace.
+func (a *App) setRepoWorkspaceLocal(sourceKey, repoKey, file string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -97,6 +116,11 @@ func (a *App) SetRepoWorkspace(sourceKey, repoKey, file string) error {
 
 // RepoWorkspaceFiles lists the .code-workspace files at a clone's root.
 func (a *App) RepoWorkspaceFiles(sourceKey, repoKey string) []string {
+	return a.be().RepoWorkspaceFiles(sourceKey, repoKey)
+}
+
+// repoWorkspaceFilesLocal is the local backend's RepoWorkspaceFiles.
+func (a *App) repoWorkspaceFilesLocal(sourceKey, repoKey string) []string {
 	a.mu.Lock()
 	repo, ok := a.cfg.Sources[sourceKey].Repos[repoKey]
 	dir := status.RepoPath(a.cfg, sourceKey, repoKey, repo)
@@ -116,6 +140,11 @@ func (a *App) RepoWorkspaceFiles(sourceKey, repoKey string) []string {
 // folder (plus the standard + extra roots and container nested clones) and
 // returns adoptable orphans for the frontend to confirm.
 func (a *App) ScanFolderForClones(path string) []OrphanRepoDTO {
+	return a.be().ScanFolderForClones(path)
+}
+
+// scanFolderForClonesLocal is the local backend's ScanFolderForClones.
+func (a *App) scanFolderForClonesLocal(path string) []OrphanRepoDTO {
 	a.mu.Lock()
 	cfg := a.cfg
 	a.mu.Unlock()
@@ -139,6 +168,11 @@ func (a *App) ScanFolderForClones(path string) []OrphanRepoDTO {
 // folder, stored as an absolute clone_folder so the clone lands there. When
 // cloneFolder is empty it behaves like AddDiscoveredRepos (standard layout).
 func (a *App) AddDiscoveredReposToFolder(key string, repoNames []string, cloneFolder string) error {
+	return a.be().AddDiscoveredReposToFolder(key, repoNames, cloneFolder)
+}
+
+// addDiscoveredReposToFolderLocal is the local backend's AddDiscoveredReposToFolder.
+func (a *App) addDiscoveredReposToFolderLocal(key string, repoNames []string, cloneFolder string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 

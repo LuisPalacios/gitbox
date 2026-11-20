@@ -34,13 +34,17 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/status"
 	"github.com/LuisPalacios/gitbox/pkg/terminals"
 	"github.com/LuisPalacios/gitbox/pkg/update"
-	wailsrt "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App is the Wails application struct. All exported methods become
 // frontend bindings via window.go.main.App.<Method>().
 type App struct {
-	ctx                context.Context
+	ctx context.Context
+	// events carries every event to the frontend; nil means nopSink (see
+	// events.go). Startup installs the Wails sink.
+	events EventSink
+	// backend does the work; nil means localBackend{a} (see backend.go).
+	backend            Backend
 	cfg                *config.Config
 	cfgPath            string
 	cfgLoaded          bool // true if config was loaded from disk (safe to save back)
@@ -128,8 +132,9 @@ func NewApp() *App {
 
 // ─── Lifecycle ────────────────────────────────────────────────
 
-// Startup is called by Wails at application start.
-func (a *App) Startup(ctx context.Context) {
+// initLocal loads the config and the credential audit. It is the local
+// backend's Init: the GUI calls it from Startup, gitbox-server from main.
+func (a *App) initLocal(ctx context.Context) {
 	a.ctx = ctx
 	if a.cfgPath == "" {
 		a.cfgPath = config.DefaultV2Path()
@@ -155,30 +160,24 @@ func (a *App) Startup(ctx context.Context) {
 	a.refreshCredentialAudit()
 }
 
-// Shutdown is called by Wails when the app is closing.
-func (a *App) Shutdown(_ context.Context) {
-	// Tear down the Profile-editor subprocess (issue #69) so the user can't
-	// end up with an orphaned terminals window after closing the main app.
-	// Only fires in the parent process — the subprocess never spawns its
-	// own subprocess, so terminalsCmd stays nil there.
-	a.terminalsMu.Lock()
-	cmd := a.terminalsCmd
-	a.terminalsCmd = nil
-	a.terminalsMu.Unlock()
-	if cmd != nil && cmd.Process != nil {
-		_ = cmd.Process.Kill()
-		// Reap to release the OS handle; ignore the error from a process we
-		// just killed.
-		_, _ = cmd.Process.Wait()
-	}
-	// Stop the AI harness watcher before test cleanup removes the temp
-	// config dir, so a late pass can't recreate it via config.Save.
+// startLocal launches the local backend's background workers.
+func (a *App) startLocal() {
+	// AI harnesses are detected off the startup path: startHarnessWatcher
+	// runs a first pass ~2s after launch and then re-probes periodically,
+	// emitting harnesses:updated so the menu refreshes without a reload.
+	a.startHarnessWatcher()
+
+	// Ask each provider API whether every configured repo still exists.
+	// Without this, a deleted upstream only surfaces after the user clicks
+	// "Fetch all" — on launch, the card would show Error/Synced and lie.
+	// Throttled to once per 60s; safe to call repeatedly.
+	a.probeUpstreamExistenceAsync()
+}
+
+// closeLocal stops the local backend's background workers.
+func (a *App) closeLocal() {
 	a.stopRefresh()
 	a.stopHarnessWatcher()
-	a.toolsWG.Wait()
-	if a.testCleanup != nil {
-		a.testCleanup()
-	}
 }
 
 // saveConfig persists the in-memory config to disk. It refuses to save when
@@ -195,107 +194,6 @@ func (a *App) saveConfig() error {
 		return fmt.Errorf("refusing to save: config not loaded")
 	}
 	return config.Save(a.cfg, a.cfgPath)
-}
-
-// BeforeClose is called while the window is still alive, before it is destroyed.
-// We capture and persist the window position and size to the active view mode slot.
-func (a *App) BeforeClose(_ context.Context) bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if !a.cfgLoaded {
-		return false // don't overwrite a config we failed to load
-	}
-	x, y := wailsrt.WindowGetPosition(a.ctx)
-	w, h := wailsrt.WindowGetSize(a.ctx)
-	ws := &config.WindowState{X: x, Y: y, Width: w, Height: h}
-	if a.cfg.Global.ViewMode == "compact" {
-		a.cfg.Global.CompactWindow = ws
-	} else {
-		a.cfg.Global.Window = ws
-	}
-	_ = a.saveConfig()
-	return false // don't prevent closing
-}
-
-// DomReady is called after the frontend DOM is ready.
-// We start hidden, restore saved position, then show the window to prevent flickering.
-// If the saved position is off-screen (e.g. monitor disconnected), we center instead.
-func (a *App) DomReady(_ context.Context) {
-	// Terminals subprocess (issue #69 — see runTerminalsWindow in main.go)
-	// only renders the Profile editor and shouldn't spin up the full app's
-	// background workers. SyncProfiles still runs so the editor sees a
-	// fresh terminal/shell list, but upstream probing,
-	// update checks and editor/terminal sync are skipped.
-	if a.windowMode == "terminals" {
-		// Refresh the detected terminal/shell list before painting so the
-		// editor opens with a real table on first show.
-		a.SyncProfiles()
-		// runTerminalsWindow sets StartHidden so the user doesn't see a
-		// dark-empty-webview flash before Svelte paints. We *don't*
-		// reveal the window here — DomReady fires before the browser
-		// has actually rasterised the first frame, so calling
-		// WindowShow here still leaks a flash on Windows + Linux (the
-		// macOS WebKit happens to paint synchronously and so it's fine
-		// there). Instead, App.svelte calls bridge.showWindow() from
-		// onMount after tick() + two requestAnimationFrames, which is
-		// the canonical "after paint" point.
-		//
-		// Safety net: if the frontend bundle ever fails to load (JS
-		// error, hung script), the user would be stranded with an
-		// invisible window and no way to dismiss it. After 1.5s we
-		// reveal anyway — by then either the frontend has already
-		// shown it (no-op) or we accept a brief flash to recover from
-		// a broken state.
-		go func(ctx context.Context) {
-			time.Sleep(1500 * time.Millisecond)
-			wailsrt.WindowShow(ctx)
-		}(a.ctx)
-		return
-	}
-
-	// Pick the right saved position based on view mode.
-	w := a.savedWindowPos
-	if a.savedViewMode == "compact" && a.savedCompactPos != nil {
-		w = a.savedCompactPos
-	}
-	if w != nil {
-		if a.isPositionOnScreen(w.X, w.Y, w.Width, w.Height) {
-			wailsrt.WindowSetPosition(a.ctx, w.X, w.Y)
-		} else {
-			wailsrt.WindowCenter(a.ctx)
-		}
-	}
-	a.toolsOnce.Do(func() {
-		a.toolsWG.Go(func() {
-			a.syncDetected()
-			wailsrt.EventsEmit(a.ctx, "tools:updated")
-		})
-	})
-	// AI harnesses are detected off the startup path: startHarnessWatcher
-	// runs a first pass ~2s after launch and then re-probes periodically,
-	// emitting harnesses:updated so the menu refreshes without a reload.
-	a.startHarnessWatcher()
-
-	// Ask each provider API whether every configured repo still exists.
-	// Without this, a deleted upstream only surfaces after the user clicks
-	// "Fetch all" — on launch, the card would show Error/Synced and lie.
-	// Throttled to once per 60s; safe to call repeatedly.
-	a.probeUpstreamExistenceAsync()
-
-	// Check for updates now and every updateCheckInterval.
-	a.startUpdateChecks()
-
-	// In compact mode, delay WindowShow — the frontend calls ShowWindow()
-	// after fitCompactHeight() to avoid flickering during resize.
-	if a.savedViewMode != "compact" {
-		wailsrt.WindowShow(a.ctx)
-	}
-}
-
-// ShowWindow makes the window visible. Called by the frontend after
-// compact mode layout is measured and the window is correctly sized.
-func (a *App) ShowWindow() {
-	wailsrt.WindowShow(a.ctx)
 }
 
 // ─── Update ──────────────────────────────────────────────────
@@ -356,133 +254,26 @@ func (a *App) checkForUpdate() {
 	if result.Release != nil {
 		info.URL = result.Release.HTMLURL
 	}
-	wailsrt.EventsEmit(a.ctx, "update:available", info)
-}
-
-// ApplyUpdate downloads and applies the latest release, then restarts the
-// app on the new version. On Windows, if the install directory requires
-// admin privileges (e.g. Program Files), it falls back to a UAC-elevated
-// helper process, which restarts the app once it has copied the files.
-func (a *App) ApplyUpdate() error {
-	if !update.SelfUpdateSupported() {
-		return errors.New("this build can't update itself; download the new version from the release page")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	opts := a.updateOpts()
-	result, err := update.CheckLatest(ctx, opts)
-	if err != nil {
-		return fmt.Errorf("checking for update: %w", err)
-	}
-	if !result.Available {
-		return fmt.Errorf("no update available")
-	}
-
-	wailsrt.EventsEmit(a.ctx, "update:progress", "Downloading...")
-
-	zipPath, err := update.DownloadRelease(ctx, result.Release, opts)
-	if err != nil {
-		return fmt.Errorf("downloading: %w", err)
-	}
-	defer os.RemoveAll(filepath.Dir(zipPath))
-
-	wailsrt.EventsEmit(a.ctx, "update:progress", "Applying...")
-
-	// Extract first so we can retry with elevation if the in-place
-	// install fails due to permissions (e.g. Program Files on Windows).
-	extractDir, installDir, err := update.ExtractUpdate(zipPath)
-	if err != nil {
-		return fmt.Errorf("extracting: %w", err)
-	}
-
-	// Capture what to relaunch before the install replaces the files.
-	// Without it the update still installs; the user restarts by hand.
-	exe, err := update.SelfPath()
-	if err != nil {
-		exe = ""
-	}
-
-	if err := update.InstallExtracted(extractDir, installDir); err != nil {
-		if errors.Is(err, update.ErrNeedElevation) {
-			// Don't clean extractDir — the elevated script needs it.
-			wailsrt.EventsEmit(a.ctx, "update:progress", "Requesting admin privileges...")
-			if elevErr := update.ApplyElevated(extractDir, installDir, exe); elevErr != nil {
-				os.RemoveAll(extractDir)
-				return fmt.Errorf("elevated update: %w", elevErr)
-			}
-			// Elevated script will copy files after we exit.
-			wailsrt.EventsEmit(a.ctx, "update:quit", result.Latest)
-			return nil
-		}
-		os.RemoveAll(extractDir)
-		return fmt.Errorf("applying: %w", err)
-	}
-
-	os.RemoveAll(extractDir)
-
-	// Start the new version, which waits for this process to exit, then
-	// quit. Quit runs BeforeClose, so the window state is saved as usual.
-	if exe != "" && update.Relaunch(exe, os.Getpid(), os.Args[1:]) == nil {
-		wailsrt.EventsEmit(a.ctx, "update:restarting", result.Latest)
-		go func() {
-			time.Sleep(time.Second) // let the pill show "Restarting…"
-			wailsrt.Quit(a.ctx)
-		}()
-		return nil
-	}
-	wailsrt.EventsEmit(a.ctx, "update:done", result.Latest)
-	return nil
-}
-
-// isPositionOnScreen checks whether the saved window position would be visible
-// on any connected monitor. On Windows, uses the virtual desktop rectangle
-// (covers all monitors). Falls back to Wails primary-screen check on other platforms.
-func (a *App) isPositionOnScreen(x, y, w, h int) bool {
-	const margin = 100
-
-	// Try platform-specific virtual desktop bounds (all monitors combined).
-	if vx, vy, vw, vh, ok := virtualDesktopBounds(); ok {
-		// At least margin pixels of the window must overlap the virtual desktop.
-		return x+w > vx+margin && y+h > vy+margin && x < vx+vw-margin && y < vy+vh-margin
-	}
-
-	// Fallback: use Wails ScreenGetAll (no position info, only sizes).
-	screens, err := wailsrt.ScreenGetAll(a.ctx)
-	if err != nil || len(screens) == 0 {
-		return x >= 0 && y >= 0
-	}
-	var sw, sh int
-	for _, s := range screens {
-		if s.IsPrimary {
-			sw, sh = s.Size.Width, s.Size.Height
-			break
-		}
-	}
-	if sw == 0 || sh == 0 {
-		sw, sh = screens[0].Size.Width, screens[0].Size.Height
-	}
-	return x+w > margin && y+h > margin && x < sw-margin && y < sh-margin
-}
-
-// IsPositionOnScreen is the exported binding so the frontend can validate
-// a window position before calling WindowSetPosition.
-func (a *App) IsPositionOnScreen(x, y, w, h int) bool {
-	return a.isPositionOnScreen(x, y, w, h)
+	a.sink().Emit("update:available", info)
 }
 
 // GetOS returns the Go runtime GOOS value so the frontend can render
 // platform-specific hints (e.g. macOS Local Network permission guidance).
 // Values: "darwin", "windows", "linux".
-func (a *App) GetOS() string {
+func (a *App) GetOS() string { return a.be().GetOS() }
+
+// getOSLocal is the local backend's GetOS.
+func (a *App) getOSLocal() string {
 	return runtime.GOOS
 }
 
 // GetAppVersion returns the application version string for the frontend.
 // CI builds:    "v1.0.6 (abc1234)" — version and commit set via ldflags
 // Local builds: "v1.0.5-3-ga99cf17-dev (a99cf17)" — auto-detected from git
-func (a *App) GetAppVersion() string {
+func (a *App) GetAppVersion() string { return a.be().GetAppVersion() }
+
+// getAppVersionLocal is the local backend's GetAppVersion.
+func (a *App) getAppVersionLocal() string {
 	v, c := version, commit
 
 	// If not set by ldflags, try to detect from git at runtime.
@@ -587,7 +378,10 @@ type MirrorCredentialCheck struct {
 }
 
 // GetConfig returns the full configuration for the frontend.
-func (a *App) GetConfig() (ConfigDTO, error) {
+func (a *App) GetConfig() (ConfigDTO, error) { return a.be().GetConfig() }
+
+// getConfigLocal is the local backend's GetConfig.
+func (a *App) getConfigLocal() (ConfigDTO, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.configDTO()
@@ -626,7 +420,10 @@ type StartupSnapshot struct {
 
 // GetStartupSnapshot keeps preferences, configured rows and nesting consistent
 // in the first frontend update. Pending status never delays this response.
-func (a *App) GetStartupSnapshot() (StartupSnapshot, error) {
+func (a *App) GetStartupSnapshot() (StartupSnapshot, error) { return a.be().GetStartupSnapshot() }
+
+// getStartupSnapshotLocal is the local backend's GetStartupSnapshot.
+func (a *App) getStartupSnapshotLocal() (StartupSnapshot, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	cfg, err := a.configDTO()
@@ -642,7 +439,10 @@ func (a *App) GetStartupSnapshot() (StartupSnapshot, error) {
 
 // ReloadConfig re-reads the config from disk. Call after external edits
 // or when the window regains focus.
-func (a *App) ReloadConfig() (ConfigDTO, error) {
+func (a *App) ReloadConfig() (ConfigDTO, error) { return a.be().ReloadConfig() }
+
+// reloadConfigLocal is the local backend's ReloadConfig.
+func (a *App) reloadConfigLocal() (ConfigDTO, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -669,7 +469,10 @@ func buildMirrorsDTO(cfg *config.Config) map[string]MirrorDTO {
 }
 
 // GetConfigPath returns the path to the config file.
-func (a *App) GetConfigPath() string {
+func (a *App) GetConfigPath() string { return a.be().GetConfigPath() }
+
+// getConfigPathLocal is the local backend's GetConfigPath.
+func (a *App) getConfigPathLocal() string {
 	return a.cfgPath
 }
 
@@ -739,7 +542,10 @@ func (a *App) resolveAccountFolder(accountKey string) (string, error) {
 
 // OpenAccountFolder reveals the account's parent folder in the OS file
 // manager. Errors if the folder does not exist yet (no repos cloned).
-func (a *App) OpenAccountFolder(accountKey string) error {
+func (a *App) OpenAccountFolder(accountKey string) error { return a.be().OpenAccountFolder(accountKey) }
+
+// openAccountFolderLocal is the local backend's OpenAccountFolder.
+func (a *App) openAccountFolderLocal(accountKey string) error {
 	path, err := a.resolveAccountFolder(accountKey)
 	if err != nil {
 		return err
@@ -759,6 +565,11 @@ func (a *App) OpenAccountFolder(accountKey string) error {
 
 // OpenAccountInApp opens the account's parent folder in a specific editor.
 func (a *App) OpenAccountInApp(accountKey string, command string) error {
+	return a.be().OpenAccountInApp(accountKey, command)
+}
+
+// openAccountInAppLocal is the local backend's OpenAccountInApp.
+func (a *App) openAccountInAppLocal(accountKey string, command string) error {
 	if command == "" {
 		return fmt.Errorf("command is required")
 	}
@@ -774,6 +585,11 @@ func (a *App) OpenAccountInApp(accountKey string, command string) error {
 
 // OpenAccountInBrowser opens the provider profile page for the account.
 func (a *App) OpenAccountInBrowser(accountKey string) error {
+	return a.be().OpenAccountInBrowser(accountKey)
+}
+
+// openAccountInBrowserLocal is the local backend's OpenAccountInBrowser.
+func (a *App) openAccountInBrowserLocal(accountKey string) error {
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
 	a.mu.Unlock()
@@ -809,6 +625,11 @@ func (a *App) repoWebURL(sourceKey, repoKey string) (string, error) {
 // action into a silent no-op; lookup failures come back as errors the UI
 // shows in a dialog. No HideWindow: this launches the user's browser.
 func (a *App) OpenRepoInBrowser(sourceKey, repoKey string) error {
+	return a.be().OpenRepoInBrowser(sourceKey, repoKey)
+}
+
+// openRepoInBrowserLocal is the local backend's OpenRepoInBrowser.
+func (a *App) openRepoInBrowserLocal(sourceKey, repoKey string) error {
 	url, err := a.repoWebURL(sourceKey, repoKey)
 	if err != nil {
 		return err
@@ -847,6 +668,11 @@ func (a *App) resolveRepoPath(sourceKey, repoKey string) (string, error) {
 
 // PreviewSweep scans for stale branches without deleting anything.
 func (a *App) PreviewSweep(sourceKey, repoKey string) SweepPreviewDTO {
+	return a.be().PreviewSweep(sourceKey, repoKey)
+}
+
+// previewSweepLocal is the local backend's PreviewSweep.
+func (a *App) previewSweepLocal(sourceKey, repoKey string) SweepPreviewDTO {
 	path, err := a.resolveRepoPath(sourceKey, repoKey)
 	if err != nil {
 		return SweepPreviewDTO{Error: err.Error()}
@@ -860,6 +686,11 @@ func (a *App) PreviewSweep(sourceKey, repoKey string) SweepPreviewDTO {
 
 // ConfirmSweep deletes the stale branches found by PreviewSweep.
 func (a *App) ConfirmSweep(sourceKey, repoKey string) SweepDeleteDTO {
+	return a.be().ConfirmSweep(sourceKey, repoKey)
+}
+
+// confirmSweepLocal is the local backend's ConfirmSweep.
+func (a *App) confirmSweepLocal(sourceKey, repoKey string) SweepDeleteDTO {
 	path, err := a.resolveRepoPath(sourceKey, repoKey)
 	if err != nil {
 		return SweepDeleteDTO{Error: err.Error()}
@@ -1142,7 +973,10 @@ const (
 // (ReloadConfig / RepairConfig / RestoreFromBackup swap a.cfg wholesale —
 // in that case the next pass simply re-syncs the new config). Returns
 // whether config changed and was saved.
-func (a *App) SyncAIHarnesses() bool {
+func (a *App) SyncAIHarnesses() bool { return a.be().SyncAIHarnesses() }
+
+// syncAIHarnessesLocal is the local backend's SyncAIHarnesses.
+func (a *App) syncAIHarnessesLocal() bool {
 	a.mu.Lock()
 	if a.cfg == nil {
 		a.mu.Unlock()
@@ -1210,8 +1044,8 @@ func (a *App) syncAIHarnessesAsync(force bool) {
 			list = cloneHarnesses(a.cfg.Global.AIHarnesses)
 		}
 		a.mu.Unlock()
-		if changed && a.ctx != nil {
-			wailsrt.EventsEmit(a.ctx, "harnesses:updated", list)
+		if changed {
+			a.sink().Emit("harnesses:updated", list)
 		}
 	}()
 }
@@ -1219,7 +1053,10 @@ func (a *App) syncAIHarnessesAsync(force bool) {
 // RefreshAIHarnesses is the frontend hook for window focus: re-probe the
 // host (throttled) so a harness installed or removed while the app was in
 // the background shows up without a restart.
-func (a *App) RefreshAIHarnesses() {
+func (a *App) RefreshAIHarnesses() { a.be().RefreshAIHarnesses() }
+
+// refreshAIHarnessesLocal is the local backend's RefreshAIHarnesses.
+func (a *App) refreshAIHarnessesLocal() {
 	a.syncAIHarnessesAsync(false)
 }
 
@@ -1319,6 +1156,11 @@ func (a *App) OpenInAIHarness(path string, command string, args []string) error 
 // Profile's shell. Errors out when the account is unknown or the folder is
 // missing, matching OpenAccountProfile.
 func (a *App) OpenAccountInAIHarness(accountKey string, command string, args []string) error {
+	return a.be().OpenAccountInAIHarness(accountKey, command, args)
+}
+
+// openAccountInAIHarnessLocal is the local backend's OpenAccountInAIHarness.
+func (a *App) openAccountInAIHarnessLocal(accountKey string, command string, args []string) error {
 	if command == "" {
 		return fmt.Errorf("AI harness command is required")
 	}
@@ -1352,7 +1194,10 @@ func isDarwin() bool {
 // ─── First run ────────────────────────────────────────────────
 
 // IsFirstRun returns true if no root is configured (fresh install).
-func (a *App) IsFirstRun() bool {
+func (a *App) IsFirstRun() bool { return a.be().IsFirstRun() }
+
+// isFirstRunLocal is the local backend's IsFirstRun.
+func (a *App) isFirstRunLocal() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return len(a.cfg.Global.Roots) == 0
@@ -1362,7 +1207,10 @@ func (a *App) IsFirstRun() bool {
 // failed to parse. The frontend should show this to the user and offer
 // Repair / Start fresh / Exit. Returns "" if config loaded successfully or
 // didn't exist.
-func (a *App) GetConfigLoadError() string {
+func (a *App) GetConfigLoadError() string { return a.be().GetConfigLoadError() }
+
+// getConfigLoadErrorLocal is the local backend's GetConfigLoadError.
+func (a *App) getConfigLoadErrorLocal() string {
 	return a.cfgLoadError
 }
 
@@ -1370,7 +1218,10 @@ func (a *App) GetConfigLoadError() string {
 // proceed through onboarding and overwrite the broken file. Called when the
 // user chooses "Start fresh" from the corruption modal — the backup taken
 // on the next Save preserves the pre-overwrite copy.
-func (a *App) AcknowledgeConfigError() {
+func (a *App) AcknowledgeConfigError() { a.be().AcknowledgeConfigError() }
+
+// acknowledgeConfigErrorLocal is the local backend's AcknowledgeConfigError.
+func (a *App) acknowledgeConfigErrorLocal() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.cfgLoadError = ""
@@ -1395,7 +1246,10 @@ type ConfigRepairResult struct {
 //
 // The normal Save() backup sweep covers the pre-repair file, so users who
 // regret the repair can roll back manually from ~/.config/gitbox/gitbox-*.json.
-func (a *App) RepairConfig() ConfigRepairResult {
+func (a *App) RepairConfig() ConfigRepairResult { return a.be().RepairConfig() }
+
+// repairConfigLocal is the local backend's RepairConfig.
+func (a *App) repairConfigLocal() ConfigRepairResult {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -1432,7 +1286,10 @@ type ConfigBackupInfo struct {
 // newest first, including numbered same-second snapshots from Save.
 // Safe to call while the config
 // is unloaded — reads only filesystem state.
-func (a *App) ListConfigBackups() []ConfigBackupInfo {
+func (a *App) ListConfigBackups() []ConfigBackupInfo { return a.be().ListConfigBackups() }
+
+// listConfigBackupsLocal is the local backend's ListConfigBackups.
+func (a *App) listConfigBackupsLocal() []ConfigBackupInfo {
 	a.mu.Lock()
 	cfgPath := a.cfgPath
 	a.mu.Unlock()
@@ -1467,6 +1324,11 @@ func (a *App) ListConfigBackups() []ConfigBackupInfo {
 // other path is rejected to prevent a rogue frontend from pointing at an
 // arbitrary file.
 func (a *App) RestoreFromBackup(backupPath string) ConfigRepairResult {
+	return a.be().RestoreFromBackup(backupPath)
+}
+
+// restoreFromBackupLocal is the local backend's RestoreFromBackup.
+func (a *App) restoreFromBackupLocal(backupPath string) ConfigRepairResult {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -1503,20 +1365,11 @@ func (a *App) RestoreFromBackup(backupPath string) ConfigRepairResult {
 	}
 }
 
-// PickFolder opens the native OS directory picker and returns the selected path.
-// Returns empty string if the user cancels.
-func (a *App) PickFolder(title string) string {
-	dir, err := wailsrt.OpenDirectoryDialog(a.ctx, wailsrt.OpenDialogOptions{
-		Title: title,
-	})
-	if err != nil {
-		return ""
-	}
-	return dir
-}
-
 // GetPeriodicSync returns the current periodic sync interval from config.
-func (a *App) GetPeriodicSync() string {
+func (a *App) GetPeriodicSync() string { return a.be().GetPeriodicSync() }
+
+// getPeriodicSyncLocal is the local backend's GetPeriodicSync.
+func (a *App) getPeriodicSyncLocal() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.cfg.Global.PeriodicSync == "" {
@@ -1586,7 +1439,10 @@ func (a *App) SetLanguage(lang string) error {
 
 // GetCollapsed returns which account groups and parent clones are folded in
 // the full view. Empty means everything is expanded.
-func (a *App) GetCollapsed() config.CollapsedState {
+func (a *App) GetCollapsed() config.CollapsedState { return a.be().GetCollapsed() }
+
+// getCollapsedLocal is the local backend's GetCollapsed.
+func (a *App) getCollapsedLocal() config.CollapsedState {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.cfg == nil || a.cfg.Global.Collapsed == nil {
@@ -1597,7 +1453,10 @@ func (a *App) GetCollapsed() config.CollapsedState {
 
 // SetCollapsed saves the folded account groups ("source") and parent clones
 // ("source/repo"). Save prunes keys that no longer exist.
-func (a *App) SetCollapsed(state config.CollapsedState) error {
+func (a *App) SetCollapsed(state config.CollapsedState) error { return a.be().SetCollapsed(state) }
+
+// setCollapsedLocal is the local backend's SetCollapsed.
+func (a *App) setCollapsedLocal(state config.CollapsedState) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.cfg == nil {
@@ -1608,7 +1467,10 @@ func (a *App) SetCollapsed(state config.CollapsedState) error {
 }
 
 // SetPeriodicSync saves the periodic sync interval to config.
-func (a *App) SetPeriodicSync(interval string) error {
+func (a *App) SetPeriodicSync(interval string) error { return a.be().SetPeriodicSync(interval) }
+
+// setPeriodicSyncLocal is the local backend's SetPeriodicSync.
+func (a *App) setPeriodicSyncLocal(interval string) error {
 	switch interval {
 	case "off", "5m", "15m", "30m":
 	default:
@@ -1640,44 +1502,6 @@ type WindowStateDTO struct {
 	Y      int `json:"y"`
 	Width  int `json:"width"`
 	Height int `json:"height"`
-}
-
-// SetViewMode saves the view mode and current window position/size to the
-// appropriate slot, then switches to the target mode. Returns the target
-// mode's previously saved window state (or nil if none was persisted).
-func (a *App) SetViewMode(mode string) *WindowStateDTO {
-	// Save current window position to the slot we're leaving.
-	x, y := wailsrt.WindowGetPosition(a.ctx)
-	w, h := wailsrt.WindowGetSize(a.ctx)
-	ws := &config.WindowState{X: x, Y: y, Width: w, Height: h}
-
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.cfg.Global.ViewMode == "compact" {
-		a.cfg.Global.CompactWindow = ws
-	} else {
-		a.cfg.Global.Window = ws
-	}
-
-	if mode == "compact" {
-		a.cfg.Global.ViewMode = "compact"
-	} else {
-		a.cfg.Global.ViewMode = ""
-	}
-	_ = a.saveConfig()
-
-	// Return the target mode's saved window state.
-	var target *config.WindowState
-	if mode == "compact" {
-		target = a.cfg.Global.CompactWindow
-	} else {
-		target = a.cfg.Global.Window
-	}
-	if target == nil {
-		return nil
-	}
-	return &WindowStateDTO{X: target.X, Y: target.Y, Width: target.Width, Height: target.Height}
 }
 
 // ─── Status ───────────────────────────────────────────────────
@@ -1742,7 +1566,10 @@ func (a *App) markUpstreamGone(sourceKey, repoKey string, gone bool) {
 // CloneRepo clones a single repo. Emits clone:progress and clone:done events.
 // A non-empty root is the root the person picked: the repo clones there and
 // its account remembers it for the next clone (#149).
-func (a *App) CloneRepo(sourceKey, repoKey, root string) {
+func (a *App) CloneRepo(sourceKey, repoKey, root string) { a.be().CloneRepo(sourceKey, repoKey, root) }
+
+// cloneRepoLocal is the local backend's CloneRepo.
+func (a *App) cloneRepoLocal(sourceKey, repoKey, root string) {
 	go func() {
 		a.mu.Lock()
 		var err error
@@ -1755,7 +1582,7 @@ func (a *App) CloneRepo(sourceKey, repoKey, root string) {
 		}
 		a.mu.Unlock()
 		if err != nil {
-			wailsrt.EventsEmit(a.ctx, "clone:done", map[string]string{
+			a.sink().Emit("clone:done", map[string]string{
 				"source": sourceKey, "repo": repoKey, "error": err.Error(),
 			})
 			return
@@ -1763,7 +1590,7 @@ func (a *App) CloneRepo(sourceKey, repoKey, root string) {
 
 		// The git transfer runs without the config lock.
 		err = plan.Run(func(p git.CloneProgress) {
-			wailsrt.EventsEmit(a.ctx, "clone:progress", map[string]any{
+			a.sink().Emit("clone:progress", map[string]any{
 				"source": sourceKey, "repo": repoKey,
 				"phase": p.Phase, "percent": p.Percent,
 			})
@@ -1791,7 +1618,7 @@ func (a *App) CloneRepo(sourceKey, repoKey, root string) {
 				result["fixes"] = report.Fixed
 			}
 		}
-		wailsrt.EventsEmit(a.ctx, "clone:done", result)
+		a.sink().Emit("clone:done", result)
 	}()
 }
 
@@ -1807,12 +1634,15 @@ func failedCloneError(dest string, cloneErr error) error {
 // ─── Pull ─────────────────────────────────────────────────────
 
 // PullRepo pulls a single repo. Emits pull:done event.
-func (a *App) PullRepo(sourceKey, repoKey string) {
+func (a *App) PullRepo(sourceKey, repoKey string) { a.be().PullRepo(sourceKey, repoKey) }
+
+// pullRepoLocal is the local backend's PullRepo.
+func (a *App) pullRepoLocal(sourceKey, repoKey string) {
 	go func() {
 		cfg := a.snapshotRefreshConfig()
 		src, ok := cfg.Sources[sourceKey]
 		if !ok {
-			wailsrt.EventsEmit(a.ctx, "pull:done", map[string]string{
+			a.sink().Emit("pull:done", map[string]string{
 				"source": sourceKey, "repo": repoKey,
 				"error": fmt.Sprintf("source %q not found", sourceKey),
 			})
@@ -1820,7 +1650,7 @@ func (a *App) PullRepo(sourceKey, repoKey string) {
 		}
 		repo, ok := src.Repos[repoKey]
 		if !ok {
-			wailsrt.EventsEmit(a.ctx, "pull:done", map[string]string{
+			a.sink().Emit("pull:done", map[string]string{
 				"source": sourceKey, "repo": repoKey,
 				"error": fmt.Sprintf("repo %q not found in source %q", repoKey, sourceKey),
 			})
@@ -1850,7 +1680,7 @@ func (a *App) PullRepo(sourceKey, repoKey string) {
 		if err != nil {
 			result["error"] = err.Error()
 		}
-		wailsrt.EventsEmit(a.ctx, "pull:done", result)
+		a.sink().Emit("pull:done", result)
 	}()
 }
 
@@ -1871,6 +1701,11 @@ type RepoDetail struct {
 // GetRepoDetail returns local files, incoming commits and the latest upstream flag.
 // I share the bounded background probe without delaying expanded details.
 func (a *App) GetRepoDetail(sourceKey, repoKey string) RepoDetail {
+	return a.be().GetRepoDetail(sourceKey, repoKey)
+}
+
+// getRepoDetailLocal is the local backend's GetRepoDetail.
+func (a *App) getRepoDetailLocal(sourceKey, repoKey string) RepoDetail {
 	a.mu.Lock()
 	src, ok := a.cfg.Sources[sourceKey]
 	if !ok {
@@ -1916,7 +1751,10 @@ func (a *App) GetRepoDetail(sourceKey, repoKey string) RepoDetail {
 }
 
 // FetchRepo runs git fetch on a single repo and emits fetch:done + refreshes status.
-func (a *App) FetchRepo(sourceKey, repoKey string) {
+func (a *App) FetchRepo(sourceKey, repoKey string) { a.be().FetchRepo(sourceKey, repoKey) }
+
+// fetchRepoLocal is the local backend's FetchRepo.
+func (a *App) fetchRepoLocal(sourceKey, repoKey string) {
 	a.refreshMu.Lock()
 	if a.refreshClosed {
 		a.refreshMu.Unlock()
@@ -1952,6 +1790,11 @@ type AddAccountRequest struct {
 // SuggestAccountKey returns an unused account key such as "github-alice"
 // for the guided setup, which never asks for one.
 func (a *App) SuggestAccountKey(provider, username string) string {
+	return a.be().SuggestAccountKey(provider, username)
+}
+
+// suggestAccountKeyLocal is the local backend's SuggestAccountKey.
+func (a *App) suggestAccountKeyLocal(provider, username string) string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return ops.SuggestAccountKey(a.cfg, provider, username)
@@ -1959,7 +1802,10 @@ func (a *App) SuggestAccountKey(provider, username string) string {
 
 // DiscardAccount removes a just-added account (no repos yet) from the config
 // so the guided setup can start over. It never touches the disk.
-func (a *App) DiscardAccount(accountKey string) error {
+func (a *App) DiscardAccount(accountKey string) error { return a.be().DiscardAccount(accountKey) }
+
+// discardAccountLocal is the local backend's DiscardAccount.
+func (a *App) discardAccountLocal(accountKey string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if err := ops.DiscardAccount(a.cfg, accountKey); err != nil {
@@ -1970,7 +1816,10 @@ func (a *App) DiscardAccount(accountKey string) error {
 
 // AddAccount creates a new account and a matching source, then saves.
 // Populates the credential sub-objects (GCM/SSH/Token) based on credential type.
-func (a *App) AddAccount(req AddAccountRequest) error {
+func (a *App) AddAccount(req AddAccountRequest) error { return a.be().AddAccount(req) }
+
+// addAccountLocal is the local backend's AddAccount.
+func (a *App) addAccountLocal(req AddAccountRequest) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -1999,7 +1848,10 @@ type UpdateAccountRequest struct {
 }
 
 // UpdateAccount updates the editable fields of an existing account and saves.
-func (a *App) UpdateAccount(req UpdateAccountRequest) error {
+func (a *App) UpdateAccount(req UpdateAccountRequest) error { return a.be().UpdateAccount(req) }
+
+// updateAccountLocal is the local backend's UpdateAccount.
+func (a *App) updateAccountLocal(req UpdateAccountRequest) error {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
 	a.invalidateCredential(req.Key)
@@ -2035,7 +1887,10 @@ func (a *App) UpdateAccount(req UpdateAccountRequest) error {
 // RenameAccount renames an account key and migrates all related artifacts:
 // config references, source key + folder, stored tokens, SSH keys/config.
 // Existing clones are then reconfigured for the new key.
-func (a *App) RenameAccount(oldKey, newKey string) error {
+func (a *App) RenameAccount(oldKey, newKey string) error { return a.be().RenameAccount(oldKey, newKey) }
+
+// renameAccountLocal is the local backend's RenameAccount.
+func (a *App) renameAccountLocal(oldKey, newKey string) error {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
 	a.invalidateCredential(oldKey)
@@ -2062,11 +1917,19 @@ func (a *App) RenameAccount(oldKey, newKey string) error {
 
 // CheckGlobalIdentity returns whether ~/.gitconfig has user.name/user.email.
 func (a *App) CheckGlobalIdentity() identity.GlobalIdentityStatus {
+	return a.be().CheckGlobalIdentity()
+}
+
+// checkGlobalIdentityLocal is the local backend's CheckGlobalIdentity.
+func (a *App) checkGlobalIdentityLocal() identity.GlobalIdentityStatus {
 	return identity.CheckGlobalIdentity()
 }
 
 // RemoveGlobalIdentity removes user.name/user.email from ~/.gitconfig.
-func (a *App) RemoveGlobalIdentity() error {
+func (a *App) RemoveGlobalIdentity() error { return a.be().RemoveGlobalIdentity() }
+
+// removeGlobalIdentityLocal is the local backend's RemoveGlobalIdentity.
+func (a *App) removeGlobalIdentityLocal() error {
 	return identity.RemoveGlobalIdentity()
 }
 
@@ -2074,7 +1937,10 @@ func (a *App) RemoveGlobalIdentity() error {
 // should be evaluated at all — true when at least one account uses GCM.
 // Frontends gate the banner render on this so pure SSH/token users never
 // see it.
-func (a *App) IsGlobalGCMConfigNeeded() bool {
+func (a *App) IsGlobalGCMConfigNeeded() bool { return a.be().IsGlobalGCMConfigNeeded() }
+
+// isGlobalGCMConfigNeededLocal is the local backend's IsGlobalGCMConfigNeeded.
+func (a *App) isGlobalGCMConfigNeededLocal() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return credential.IsGlobalGCMConfigNeeded(a.cfg)
@@ -2085,6 +1951,11 @@ func (a *App) IsGlobalGCMConfigNeeded() bool {
 // credential.credentialStore). The frontend surfaces a yellow warning
 // banner whenever NeedsFix is true AND IsGlobalGCMConfigNeeded() is true.
 func (a *App) CheckGlobalGCMConfig() credential.GlobalGCMConfigStatus {
+	return a.be().CheckGlobalGCMConfig()
+}
+
+// checkGlobalGCMConfigLocal is the local backend's CheckGlobalGCMConfig.
+func (a *App) checkGlobalGCMConfigLocal() credential.GlobalGCMConfigStatus {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return credential.CheckGlobalGCMConfig(a.cfg)
@@ -2093,7 +1964,10 @@ func (a *App) CheckGlobalGCMConfig() credential.GlobalGCMConfigStatus {
 // FixGlobalGCMConfig writes the expected credential.helper and
 // credential.credentialStore to ~/.gitconfig and backfills OS defaults
 // into gitbox.json when the persisted config predates them.
-func (a *App) FixGlobalGCMConfig() error {
+func (a *App) FixGlobalGCMConfig() error { return a.be().FixGlobalGCMConfig() }
+
+// fixGlobalGCMConfigLocal is the local backend's FixGlobalGCMConfig.
+func (a *App) fixGlobalGCMConfigLocal() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return credential.FixGlobalGCMConfig(a.cfg, a.cfgPath)
@@ -2105,7 +1979,10 @@ func (a *App) FixGlobalGCMConfig() error {
 // block is installed and core.excludesfile is set. The frontend calls
 // this on startup so it can surface a notification when
 // status.NeedsAction is true.
-func (a *App) CheckGlobalGitignore() (gitignore.Status, error) {
+func (a *App) CheckGlobalGitignore() (gitignore.Status, error) { return a.be().CheckGlobalGitignore() }
+
+// checkGlobalGitignoreLocal is the local backend's CheckGlobalGitignore.
+func (a *App) checkGlobalGitignoreLocal() (gitignore.Status, error) {
 	return gitignore.Check()
 }
 
@@ -2115,20 +1992,31 @@ func (a *App) CheckGlobalGitignore() (gitignore.Status, error) {
 // is already up to date and the config key is already set, this is a
 // no-op (no rewrite, no backup).
 func (a *App) InstallGlobalGitignore() (gitignore.InstallResult, error) {
+	return a.be().InstallGlobalGitignore()
+}
+
+// installGlobalGitignoreLocal is the local backend's InstallGlobalGitignore.
+func (a *App) installGlobalGitignoreLocal() (gitignore.InstallResult, error) {
 	return gitignore.Install()
 }
 
 // RecommendedGlobalGitignoreBody returns the canonical body of the
 // managed block (without sentinel markers) so the GUI can render a
 // preview to the user before they install it.
-func (a *App) RecommendedGlobalGitignoreBody() string {
+func (a *App) RecommendedGlobalGitignoreBody() string { return a.be().RecommendedGlobalGitignoreBody() }
+
+// recommendedGlobalGitignoreBodyLocal is the local backend's RecommendedGlobalGitignoreBody.
+func (a *App) recommendedGlobalGitignoreBodyLocal() string {
 	return gitignore.RecommendedBody()
 }
 
 // GetCheckGlobalGitignore returns the user's preference for whether
 // the GUI runs an automatic startup check of ~/.gitignore_global.
 // Defaults to true when the field is missing from gitbox.json.
-func (a *App) GetCheckGlobalGitignore() bool {
+func (a *App) GetCheckGlobalGitignore() bool { return a.be().GetCheckGlobalGitignore() }
+
+// getCheckGlobalGitignoreLocal is the local backend's GetCheckGlobalGitignore.
+func (a *App) getCheckGlobalGitignoreLocal() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.cfg.Global.ShouldCheckGlobalGitignore()
@@ -2138,6 +2026,11 @@ func (a *App) GetCheckGlobalGitignore() bool {
 // global section of gitbox.json. The setting only gates the automatic
 // startup check; an explicit Install click always runs.
 func (a *App) SetCheckGlobalGitignore(enabled bool) error {
+	return a.be().SetCheckGlobalGitignore(enabled)
+}
+
+// setCheckGlobalGitignoreLocal is the local backend's SetCheckGlobalGitignore.
+func (a *App) setCheckGlobalGitignoreLocal(enabled bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	v := enabled
@@ -2208,6 +2101,11 @@ func gcmSignInTimeoutMessage(username, host string) string {
 
 // CredentialSetupGCM triggers GCM browser authentication for an account.
 func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
+	return a.be().CredentialSetupGCM(accountKey)
+}
+
+// credentialSetupGCMLocal is the local backend's CredentialSetupGCM.
+func (a *App) credentialSetupGCMLocal(accountKey string) CredentialSetupResult {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
 	a.invalidateCredential(accountKey)
@@ -2328,6 +2226,11 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 
 // CredentialStoreToken stores a PAT in the credential file for an account.
 func (a *App) CredentialStoreToken(accountKey, token string) CredentialSetupResult {
+	return a.be().CredentialStoreToken(accountKey, token)
+}
+
+// credentialStoreTokenLocal is the local backend's CredentialStoreToken.
+func (a *App) credentialStoreTokenLocal(accountKey, token string) CredentialSetupResult {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
 	a.invalidateCredential(accountKey)
@@ -2366,6 +2269,11 @@ type TokenGuideInfo struct {
 
 // GetTokenGuide returns provider-specific PAT creation info.
 func (a *App) GetTokenGuide(accountKey string) TokenGuideInfo {
+	return a.be().GetTokenGuide(accountKey)
+}
+
+// getTokenGuideLocal is the local backend's GetTokenGuide.
+func (a *App) getTokenGuideLocal(accountKey string) TokenGuideInfo {
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
 	a.mu.Unlock()
@@ -2381,6 +2289,11 @@ func (a *App) GetTokenGuide(accountKey string) TokenGuideInfo {
 
 // CredentialSetupSSH generates an SSH key and configures ~/.ssh/config.
 func (a *App) CredentialSetupSSH(accountKey string) CredentialSetupResult {
+	return a.be().CredentialSetupSSH(accountKey)
+}
+
+// credentialSetupSSHLocal is the local backend's CredentialSetupSSH.
+func (a *App) credentialSetupSSHLocal(accountKey string) CredentialSetupResult {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
 	return a.setupSSH(accountKey)
@@ -2495,6 +2408,11 @@ func (a *App) setupSSH(accountKey string) CredentialSetupResult {
 // CredentialRegenerateSSH deletes the existing SSH key and config entry,
 // then runs CredentialSetupSSH to create fresh ones.
 func (a *App) CredentialRegenerateSSH(accountKey string) CredentialSetupResult {
+	return a.be().CredentialRegenerateSSH(accountKey)
+}
+
+// credentialRegenerateSSHLocal is the local backend's CredentialRegenerateSSH.
+func (a *App) credentialRegenerateSSHLocal(accountKey string) CredentialSetupResult {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
 	a.invalidateCredential(accountKey)
@@ -2531,6 +2449,11 @@ func (a *App) CredentialRegenerateSSH(accountKey string) CredentialSetupResult {
 
 // DeleteRepo removes a repo from the config and deletes its local folder.
 func (a *App) DeleteRepo(sourceKey, repoKey string) error {
+	return a.be().DeleteRepo(sourceKey, repoKey)
+}
+
+// deleteRepoLocal is the local backend's DeleteRepo.
+func (a *App) deleteRepoLocal(sourceKey, repoKey string) error {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
 	a.mu.Lock()
@@ -2557,6 +2480,11 @@ type AccountDeletionImpactDTO struct {
 // plus the total repo count and how many are currently cloned on disk.
 // Read-only.
 func (a *App) AccountDeletionImpact(accountKey string) AccountDeletionImpactDTO {
+	return a.be().AccountDeletionImpact(accountKey)
+}
+
+// accountDeletionImpactLocal is the local backend's AccountDeletionImpact.
+func (a *App) accountDeletionImpactLocal(accountKey string) AccountDeletionImpactDTO {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	r := a.cfg.AccountDeletionImpact(accountKey)
@@ -2578,7 +2506,10 @@ func (a *App) AccountDeletionImpact(accountKey string) AccountDeletionImpactDTO 
 
 // DeleteAccount removes an account, every source and mirror that references
 // it, and all its local clone folders (see ops.DeleteAccount).
-func (a *App) DeleteAccount(accountKey string) error {
+func (a *App) DeleteAccount(accountKey string) error { return a.be().DeleteAccount(accountKey) }
+
+// deleteAccountLocal is the local backend's DeleteAccount.
+func (a *App) deleteAccountLocal(accountKey string) error {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
 	a.invalidateCredential(accountKey)
@@ -2595,6 +2526,11 @@ func (a *App) DeleteAccount(accountKey string) error {
 // ChangeCredentialType removes the account's current credential artifacts,
 // switches it to newType, and reconfigures existing clones.
 func (a *App) ChangeCredentialType(accountKey, newType string) error {
+	return a.be().ChangeCredentialType(accountKey, newType)
+}
+
+// changeCredentialTypeLocal is the local backend's ChangeCredentialType.
+func (a *App) changeCredentialTypeLocal(accountKey, newType string) error {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
 	a.invalidateCredential(accountKey)
@@ -2615,6 +2551,11 @@ func (a *App) ChangeCredentialType(accountKey, newType string) error {
 // CredentialDelete removes the credential artifacts for an account and clears
 // its credential configuration so it can be set up from scratch.
 func (a *App) CredentialDelete(accountKey string) CredentialSetupResult {
+	return a.be().CredentialDelete(accountKey)
+}
+
+// credentialDeleteLocal is the local backend's CredentialDelete.
+func (a *App) credentialDeleteLocal(accountKey string) CredentialSetupResult {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
 	a.invalidateCredential(accountKey)
@@ -2644,14 +2585,17 @@ type DiscoverResult struct {
 }
 
 // Discover lists remote repos for an account. Emits discover:done event.
-func (a *App) Discover(accountKey string) {
+func (a *App) Discover(accountKey string) { a.be().Discover(accountKey) }
+
+// discoverLocal is the local backend's Discover.
+func (a *App) discoverLocal(accountKey string) {
 	go func() {
 		a.mu.Lock()
 		acct, ok := a.cfg.Accounts[accountKey]
 		a.mu.Unlock()
 
 		if !ok {
-			wailsrt.EventsEmit(a.ctx, "discover:done", map[string]any{
+			a.sink().Emit("discover:done", map[string]any{
 				"accountKey": accountKey,
 				"error":      fmt.Sprintf("account %q not found", accountKey),
 			})
@@ -2660,7 +2604,7 @@ func (a *App) Discover(accountKey string) {
 
 		repos, err := ops.ListRemoteRepos(context.Background(), acct, accountKey)
 		if err != nil {
-			wailsrt.EventsEmit(a.ctx, "discover:done", map[string]any{
+			a.sink().Emit("discover:done", map[string]any{
 				"accountKey": accountKey,
 				"error":      err.Error(),
 			})
@@ -2678,7 +2622,7 @@ func (a *App) Discover(accountKey string) {
 			}
 		}
 
-		wailsrt.EventsEmit(a.ctx, "discover:done", map[string]any{
+		a.sink().Emit("discover:done", map[string]any{
 			"accountKey": accountKey,
 			"repos":      results,
 		})
@@ -2689,6 +2633,11 @@ func (a *App) Discover(accountKey string) {
 // The key can be either a source key or an account key — if it's an account
 // key, the first source referencing that account is used.
 func (a *App) AddDiscoveredRepos(key string, repoNames []string) error {
+	return a.be().AddDiscoveredRepos(key, repoNames)
+}
+
+// addDiscoveredReposLocal is the local backend's AddDiscoveredRepos.
+func (a *App) addDiscoveredReposLocal(key string, repoNames []string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -2718,7 +2667,10 @@ type CredentialStatus struct {
 
 // GetMirrorStatus checks live sync status for all repos in a mirror group.
 // Runs async; emits "mirror:status" event with []MirrorStatusResult.
-func (a *App) GetMirrorStatus(mirrorKey string) {
+func (a *App) GetMirrorStatus(mirrorKey string) { a.be().GetMirrorStatus(mirrorKey) }
+
+// getMirrorStatusLocal is the local backend's GetMirrorStatus.
+func (a *App) getMirrorStatusLocal(mirrorKey string) {
 	go func() {
 		a.mu.Lock()
 		cfg := a.cfg
@@ -2750,7 +2702,7 @@ func (a *App) GetMirrorStatus(mirrorKey string) {
 				Error:      r.Error,
 			})
 		}
-		wailsrt.EventsEmit(a.ctx, "mirror:status", results)
+		a.sink().Emit("mirror:status", results)
 	}()
 }
 
@@ -2758,7 +2710,10 @@ func (a *App) GetMirrorStatus(mirrorKey string) {
 // Runs async; emits "mirror:setup:done" event with MirrorSetupResult.
 // On success, stamps MirrorRepo.LastSync so CheckStatus can tell "never set up"
 // from "set up and target is genuinely missing" (issue #59).
-func (a *App) SetupMirrorRepo(mirrorKey, repoKey string) {
+func (a *App) SetupMirrorRepo(mirrorKey, repoKey string) { a.be().SetupMirrorRepo(mirrorKey, repoKey) }
+
+// setupMirrorRepoLocal is the local backend's SetupMirrorRepo.
+func (a *App) setupMirrorRepoLocal(mirrorKey, repoKey string) {
 	go func() {
 		a.mu.Lock()
 		cfg := a.cfg
@@ -2791,12 +2746,17 @@ func (a *App) SetupMirrorRepo(mirrorKey, repoKey string) {
 			a.mu.Unlock()
 		}
 
-		wailsrt.EventsEmit(a.ctx, "mirror:setup:done", result)
+		a.sink().Emit("mirror:setup:done", result)
 	}()
 }
 
 // AddMirrorGroup creates a new mirror group pairing two accounts.
 func (a *App) AddMirrorGroup(key, accountSrc, accountDst string) error {
+	return a.be().AddMirrorGroup(key, accountSrc, accountDst)
+}
+
+// addMirrorGroupLocal is the local backend's AddMirrorGroup.
+func (a *App) addMirrorGroupLocal(key, accountSrc, accountDst string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -2811,7 +2771,10 @@ func (a *App) AddMirrorGroup(key, accountSrc, accountDst string) error {
 }
 
 // DeleteMirrorGroup removes a mirror group and all its repos.
-func (a *App) DeleteMirrorGroup(key string) error {
+func (a *App) DeleteMirrorGroup(key string) error { return a.be().DeleteMirrorGroup(key) }
+
+// deleteMirrorGroupLocal is the local backend's DeleteMirrorGroup.
+func (a *App) deleteMirrorGroupLocal(key string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -2823,6 +2786,11 @@ func (a *App) DeleteMirrorGroup(key string) error {
 
 // AddMirrorRepo adds a repo to a mirror group.
 func (a *App) AddMirrorRepo(mirrorKey, repoKey, direction, origin string) error {
+	return a.be().AddMirrorRepo(mirrorKey, repoKey, direction, origin)
+}
+
+// addMirrorRepoLocal is the local backend's AddMirrorRepo.
+func (a *App) addMirrorRepoLocal(mirrorKey, repoKey, direction, origin string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -2838,6 +2806,11 @@ func (a *App) AddMirrorRepo(mirrorKey, repoKey, direction, origin string) error 
 
 // DeleteMirrorRepo removes a repo from a mirror group.
 func (a *App) DeleteMirrorRepo(mirrorKey, repoKey string) error {
+	return a.be().DeleteMirrorRepo(mirrorKey, repoKey)
+}
+
+// deleteMirrorRepoLocal is the local backend's DeleteMirrorRepo.
+func (a *App) deleteMirrorRepoLocal(mirrorKey, repoKey string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -2849,6 +2822,11 @@ func (a *App) DeleteMirrorRepo(mirrorKey, repoKey string) error {
 
 // ListRemoteRepos returns the repo list for an account, for use in mirror repo pickers.
 func (a *App) ListRemoteRepos(accountKey string) []DiscoverResult {
+	return a.be().ListRemoteRepos(accountKey)
+}
+
+// listRemoteReposLocal is the local backend's ListRemoteRepos.
+func (a *App) listRemoteReposLocal(accountKey string) []DiscoverResult {
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
 	a.mu.Unlock()
@@ -2880,6 +2858,11 @@ func (a *App) ListRemoteRepos(accountKey string) []DiscoverResult {
 // ListAccountOrgs returns the organizations/namespaces available for an account.
 // The first entry is always the personal username.
 func (a *App) ListAccountOrgs(accountKey string) ([]string, error) {
+	return a.be().ListAccountOrgs(accountKey)
+}
+
+// listAccountOrgsLocal is the local backend's ListAccountOrgs.
+func (a *App) listAccountOrgsLocal(accountKey string) ([]string, error) {
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
 	a.mu.Unlock()
@@ -2895,6 +2878,11 @@ func (a *App) ListAccountOrgs(accountKey string) ([]string, error) {
 // CreateNewRepo creates a repository on the provider and optionally adds it
 // to the config and clones it locally.
 func (a *App) CreateNewRepo(accountKey, owner, repoName, description string, private, cloneAfter bool, root string) error {
+	return a.be().CreateNewRepo(accountKey, owner, repoName, description, private, cloneAfter, root)
+}
+
+// createNewRepoLocal is the local backend's CreateNewRepo.
+func (a *App) createNewRepoLocal(accountKey, owner, repoName, description string, private, cloneAfter bool, root string) error {
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
 	a.mu.Unlock()
@@ -2940,7 +2928,10 @@ func (a *App) CreateNewRepo(accountKey, owner, repoName, description string, pri
 
 // DiscoverMirrors scans all account pairs to detect mirror relationships.
 // Runs async; emits "mirror:discover:done" event with results.
-func (a *App) DiscoverMirrors() {
+func (a *App) DiscoverMirrors() { a.be().DiscoverMirrors() }
+
+// discoverMirrorsLocal is the local backend's DiscoverMirrors.
+func (a *App) discoverMirrorsLocal() {
 	go func() {
 		a.mu.Lock()
 		cfg := a.cfg
@@ -2950,7 +2941,7 @@ func (a *App) DiscoverMirrors() {
 		defer cancel()
 
 		results, err := mirror.DiscoverMirrors(ctx, cfg, func(p mirror.DiscoverProgress) {
-			wailsrt.EventsEmit(a.ctx, "mirror:discover:progress", map[string]any{
+			a.sink().Emit("mirror:discover:progress", map[string]any{
 				"phase":   p.Phase,
 				"account": p.Account,
 				"current": p.Current,
@@ -2958,19 +2949,22 @@ func (a *App) DiscoverMirrors() {
 			})
 		})
 		if err != nil {
-			wailsrt.EventsEmit(a.ctx, "mirror:discover:done", map[string]any{
+			a.sink().Emit("mirror:discover:done", map[string]any{
 				"error": err.Error(),
 			})
 			return
 		}
-		wailsrt.EventsEmit(a.ctx, "mirror:discover:done", map[string]any{
+		a.sink().Emit("mirror:discover:done", map[string]any{
 			"results": results,
 		})
 	}()
 }
 
 // ApplyDiscoveredMirrors merges discovered mirrors into the config.
-func (a *App) ApplyDiscoveredMirrors() error {
+func (a *App) ApplyDiscoveredMirrors() error { return a.be().ApplyDiscoveredMirrors() }
+
+// applyDiscoveredMirrorsLocal is the local backend's ApplyDiscoveredMirrors.
+func (a *App) applyDiscoveredMirrorsLocal() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -2991,6 +2985,11 @@ func (a *App) ApplyDiscoveredMirrors() error {
 // CheckMirrorCredentials checks whether an account has the portable PAT
 // needed for mirror operations (remote servers can't use GCM OAuth tokens).
 func (a *App) CheckMirrorCredentials(accountKey string) MirrorCredentialCheck {
+	return a.be().CheckMirrorCredentials(accountKey)
+}
+
+// checkMirrorCredentialsLocal is the local backend's CheckMirrorCredentials.
+func (a *App) checkMirrorCredentialsLocal(accountKey string) MirrorCredentialCheck {
 	a.mu.Lock()
 	acct, ok := a.cfg.GetAccountByKey(accountKey)
 	a.mu.Unlock()
@@ -3059,7 +3058,10 @@ type DoctorPrecheckDTO struct {
 // DoctorRun probes every tool gitbox knows about and annotates each with
 // whether it's required for the current config. Used by the GUI Settings
 // "System check" row.
-func (a *App) DoctorRun() DoctorReport {
+func (a *App) DoctorRun() DoctorReport { return a.be().DoctorRun() }
+
+// doctorRunLocal is the local backend's DoctorRun.
+func (a *App) doctorRunLocal() DoctorReport {
 	a.mu.Lock()
 	cfg := a.cfg
 	a.mu.Unlock()
@@ -3104,6 +3106,11 @@ func makeDoctorReport(results []doctor.Result, required map[string]string, findi
 // user commits, so they learn about a missing dependency with an install
 // command instead of hitting a cryptic error at auth time.
 func (a *App) DoctorPrecheck(credentialType string) DoctorPrecheckDTO {
+	return a.be().DoctorPrecheck(credentialType)
+}
+
+// doctorPrecheckLocal is the local backend's DoctorPrecheck.
+func (a *App) doctorPrecheckLocal(credentialType string) DoctorPrecheckDTO {
 	pc := doctor.PrecheckForCredentialType(credentialType)
 	out := DoctorPrecheckDTO{OK: pc.OK, Summary: pc.Summary, Hint: pc.Hint}
 	for _, m := range pc.Missing {
@@ -3219,6 +3226,11 @@ type MoveReadinessDTO struct {
 // whenever the user changes the destination account or toggles the
 // "Delete source" opt-in, so the readiness panel stays live.
 func (a *App) CheckMoveReadiness(sourceSourceKey, destAccountKey string, deleteSource bool) MoveReadinessDTO {
+	return a.be().CheckMoveReadiness(sourceSourceKey, destAccountKey, deleteSource)
+}
+
+// checkMoveReadinessLocal is the local backend's CheckMoveReadiness.
+func (a *App) checkMoveReadinessLocal(sourceSourceKey, destAccountKey string, deleteSource bool) MoveReadinessDTO {
 	a.mu.Lock()
 	cfg := a.cfg
 	src, srcOK := cfg.Sources[sourceSourceKey]
@@ -3310,6 +3322,11 @@ type MoveResultDTO struct {
 // listing is best-effort per account; failures fall back to just the
 // account's personal username.
 func (a *App) ListMoveDestinationOwners(sourceKey string) []MoveOwnerOption {
+	return a.be().ListMoveDestinationOwners(sourceKey)
+}
+
+// listMoveDestinationOwnersLocal is the local backend's ListMoveDestinationOwners.
+func (a *App) listMoveDestinationOwnersLocal(sourceKey string) []MoveOwnerOption {
 	a.mu.Lock()
 	cfg := a.cfg
 	a.mu.Unlock()
@@ -3371,7 +3388,10 @@ func (a *App) ListMoveDestinationOwners(sourceKey string) []MoveOwnerOption {
 // PreflightMove runs the move preflight and returns the result without
 // executing anything. Callers should invoke this before showing the
 // red type-to-confirm modal.
-func (a *App) PreflightMove(req MoveRequestDTO) MovePreflightDTO {
+func (a *App) PreflightMove(req MoveRequestDTO) MovePreflightDTO { return a.be().PreflightMove(req) }
+
+// preflightMoveLocal is the local backend's PreflightMove.
+func (a *App) preflightMoveLocal(req MoveRequestDTO) MovePreflightDTO {
 	a.mu.Lock()
 	cfg := a.cfg
 	a.mu.Unlock()
@@ -3428,14 +3448,17 @@ func (a *App) PreflightMove(req MoveRequestDTO) MovePreflightDTO {
 // The frontend is expected to have already surfaced PreflightMove
 // errors — a failing preflight here re-emits on "move:done" so the
 // progress overlay can unwind cleanly.
-func (a *App) MoveRepo(req MoveRequestDTO) {
+func (a *App) MoveRepo(req MoveRequestDTO) { a.be().MoveRepo(req) }
+
+// moveRepoLocal is the local backend's MoveRepo.
+func (a *App) moveRepoLocal(req MoveRequestDTO) {
 	a.mu.Lock()
 	cfg := a.cfg
 	cfgPath := a.cfgPath
 	src, ok := cfg.Sources[req.SourceSourceKey]
 	a.mu.Unlock()
 	if !ok {
-		wailsrt.EventsEmit(a.ctx, "move:done", MoveResultDTO{Error: fmt.Sprintf("source %q not found", req.SourceSourceKey)})
+		a.sink().Emit("move:done", MoveResultDTO{Error: fmt.Sprintf("source %q not found", req.SourceSourceKey)})
 		return
 	}
 	repo := src.Repos[req.SourceRepoKey]
@@ -3461,7 +3484,7 @@ func (a *App) MoveRepo(req MoveRequestDTO) {
 			if p.Err != nil {
 				event.Error = p.Err.Error()
 			}
-			wailsrt.EventsEmit(a.ctx, "move:progress", event)
+			a.sink().Emit("move:progress", event)
 		})
 		dto := MoveResultDTO{
 			NewOrigin:           result.NewOrigin,
@@ -3480,7 +3503,7 @@ func (a *App) MoveRepo(req MoveRequestDTO) {
 		// GUI-side mutation scheduled between now and the refresh
 		// doesn't lose state.
 		_ = a.saveConfig()
-		wailsrt.EventsEmit(a.ctx, "move:done", dto)
+		a.sink().Emit("move:done", dto)
 
 		// Auto-clone the destination when the user opted to delete
 		// the local source. The repo now lives only on the

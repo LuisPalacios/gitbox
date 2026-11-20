@@ -18,7 +18,6 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/heal"
 	"github.com/LuisPalacios/gitbox/pkg/status"
-	wailsrt "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type statusFlight struct {
@@ -48,7 +47,6 @@ type refreshHooks struct {
 	fetch      func(context.Context, string) (string, error)
 	heal       func(*config.Config, string, string) heal.Report
 	credential func(context.Context, config.Account, string, *config.Config) credential.StatusResult
-	emit       func(string, ...any)
 }
 
 // I detach only the inputs refresh workers read, preserving configured order.
@@ -116,16 +114,6 @@ func (a *App) stopRefresh() {
 	a.refreshMu.Unlock()
 	a.refreshWG.Wait()
 }
-func (a *App) emitRefreshEvent(name string, args ...any) {
-	if a.refreshHooks != nil && a.refreshHooks.emit != nil {
-		a.refreshHooks.emit(name, args...)
-		return
-	}
-	if a.ctx != nil {
-		wailsrt.EventsEmit(a.ctx, name, args...)
-	}
-}
-
 func (a *App) overlayStatus(local []StatusResult) []StatusResult {
 	out := make([]StatusResult, len(local))
 	copy(out, local)
@@ -179,7 +167,7 @@ func (a *App) requestStatus(emit, dirty bool) *statusFlight {
 			a.cachedStatusConfig = cfg
 			call.results = local
 			if call.emit && !a.refreshClosed {
-				a.emitRefreshEvent("status:updated", a.overlayStatus(local))
+				a.sink().Emit("status:updated", a.overlayStatus(local))
 			}
 			a.statusRun = nil
 			close(call.done)
@@ -191,14 +179,20 @@ func (a *App) requestStatus(emit, dirty bool) *statusFlight {
 }
 
 // GetAllStatus shares an active local sweep; a later independent request stays fresh.
-func (a *App) GetAllStatus() []StatusResult {
+func (a *App) GetAllStatus() []StatusResult { return a.be().GetAllStatus() }
+
+// getAllStatusLocal is the local backend's GetAllStatus.
+func (a *App) getAllStatusLocal() []StatusResult {
 	call := a.requestStatus(false, false)
 	<-call.done
 	return a.overlayStatus(call.results)
 }
 
 // RefreshStatus retains at most one pending invalidation while local work runs.
-func (a *App) RefreshStatus() { a.requestStatus(true, true); a.probeUpstreamExistenceAsync() }
+func (a *App) RefreshStatus() { a.be().RefreshStatus() }
+
+// refreshStatusLocal is the local backend's RefreshStatus.
+func (a *App) refreshStatusLocal() { a.requestStatus(true, true); a.probeUpstreamExistenceAsync() }
 
 // I overlay provider results without spawning another fleet of git processes.
 func (a *App) emitCachedStatus() {
@@ -206,7 +200,7 @@ func (a *App) emitCachedStatus() {
 	a.refreshMu.Lock()
 	defer a.refreshMu.Unlock()
 	if a.cachedStatusConfig != nil && reflect.DeepEqual(current, a.cachedStatusConfig) && !a.refreshClosed {
-		a.emitRefreshEvent("status:updated", a.overlayStatus(a.cachedStatus))
+		a.sink().Emit("status:updated", a.overlayStatus(a.cachedStatus))
 	}
 }
 
@@ -226,13 +220,13 @@ func (a *App) fetchOne(cfg *config.Config, source, repo string) error {
 	src, ok := cfg.Sources[source]
 	if !ok {
 		err := fmt.Errorf("source %q not found", source)
-		a.emitRefreshEvent("fetch:done", map[string]string{"source": source, "repo": repo, "error": err.Error()})
+		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": err.Error()})
 		return err
 	}
 	r, ok := src.Repos[repo]
 	if !ok {
 		err := fmt.Errorf("repo %q not found", repo)
-		a.emitRefreshEvent("fetch:done", map[string]string{"source": source, "repo": repo, "error": err.Error()})
+		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": err.Error()})
 		return err
 	}
 	path := status.RepoPath(cfg, source, repo, r)
@@ -317,10 +311,10 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 	if !a.sameRefreshRepo(cfg, source, repo) {
 		a.maintenanceMu.RUnlock()
 		err := fmt.Errorf("repository settings changed during refresh")
-		a.emitRefreshEvent("fetch:done", map[string]string{"source": source, "repo": repo, "error": err.Error()})
+		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": err.Error()})
 		return err
 	}
-	a.emitRefreshEvent("fetch:start", map[string]string{"source": source, "repo": repo})
+	a.sink().Emit("fetch:start", map[string]string{"source": source, "repo": repo})
 	repair := heal.Repo
 	if a.refreshHooks != nil && a.refreshHooks.heal != nil {
 		repair = a.refreshHooks.heal
@@ -363,12 +357,15 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 			a.markUpstreamGone(source, repo, true)
 		}
 	}
-	a.emitRefreshEvent("fetch:done", payload)
+	a.sink().Emit("fetch:done", payload)
 	return err
 }
 
 // FetchAllRepos joins the active cycle, including its final status and provider work.
-func (a *App) FetchAllRepos() error {
+func (a *App) FetchAllRepos() error { return a.be().FetchAllRepos() }
+
+// fetchAllReposLocal is the local backend's FetchAllRepos.
+func (a *App) fetchAllReposLocal() error {
 	a.refreshMu.Lock()
 	if a.refreshClosed {
 		a.refreshMu.Unlock()
@@ -382,13 +379,13 @@ func (a *App) FetchAllRepos() error {
 	call := &fetchFlight{done: make(chan struct{})}
 	a.fetchRun = call
 	a.refreshWG.Go(func() {
-		a.emitRefreshEvent("fetch:allstart")
+		a.sink().Emit("fetch:allstart")
 		err := a.fetchCycle()
 		payload := map[string]string{}
 		if err != nil {
 			payload["error"] = err.Error()
 		}
-		a.emitRefreshEvent("fetch:alldone", payload)
+		a.sink().Emit("fetch:alldone", payload)
 		a.refreshMu.Lock()
 		call.err = err
 		a.fetchRun = nil
@@ -471,7 +468,7 @@ func (a *App) verifyRefreshCredentials(cfg *config.Config) {
 		}
 	}
 	if reflect.DeepEqual(cfg.Accounts, current.Accounts) && reflect.DeepEqual(cfg.Global, current.Global) {
-		a.emitRefreshEvent("credentials:updated", results)
+		a.sink().Emit("credentials:updated", results)
 	}
 }
 
@@ -563,7 +560,10 @@ func (a *App) invalidateCredential(key string) {
 }
 
 // CredentialVerify is explicitly fresh after each completed check; only active work is shared.
-func (a *App) CredentialVerify(key string) CredentialStatus {
+func (a *App) CredentialVerify(key string) CredentialStatus { return a.be().CredentialVerify(key) }
+
+// credentialVerifyLocal is the local backend's CredentialVerify.
+func (a *App) credentialVerifyLocal(key string) CredentialStatus {
 	a.refreshMu.Lock()
 	if a.refreshClosed {
 		a.refreshMu.Unlock()

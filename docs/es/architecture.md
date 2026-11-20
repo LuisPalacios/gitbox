@@ -85,7 +85,20 @@ Cambiar la raíz de un source o la raíz predeterminada fija la raíz por la que
 
 `cmd/gui/app.go` expone los métodos que el frontend Svelte llama mediante bindings TypeScript autogenerados. Los métodos enlazados toman el bloqueo de config para el estado compartido, llaman a `pkg/ops` o a otro paquete de `pkg/` para hacer el trabajo, guardan los cambios y emiten eventos Wails de progreso. Los archivos vecinos contienen asuntos exclusivos de la GUI: perfiles de terminal (`profiles.go`), contenedores multi-repo y sus archivos de workspace (`containers.go`), raíces de clonado (`roots.go`), reconcile de disco (`reconcile.go`), badges de PR (`pr.go`), autostart y ciclo de vida de procesos por OS. Cada `exec.Command` de `cmd/gui/` pasa por `git.HideWindow`, así que no parpadea ninguna ventana de consola en Windows.
 
-`main.go` gestiona dos flags antes de que arranque Wails: `--version` imprime la versión del build y termina, y `--test-mode` enruta la config a través de un directorio temporal construido desde el fixture `test-gitbox.json` (consulta [testing.md](testing.md)).
+`main.go` gestiona tres flags antes de que arranque Wails: `--version` imprime la versión del build y termina, `--test-mode` enruta la config a través de un directorio temporal construido desde el fixture `test-gitbox.json` (consulta [testing.md](testing.md)), y `--experimental-remote` activa el modo remoto, que por ahora está inactivo.
+
+#### Costura del backend
+
+El struct `App` hace dos trabajos, y `cmd/gui` los mantiene separados para que el modo remoto pueda ejecutar el primero en otro host:
+
+- **El trabajo** (config, git, credenciales, proveedores) queda detrás de la interfaz `Backend` en `backend.go`. Cada método enlazado que hace trabajo llama a `a.be()`, y `localBackend` ejecuta el cuerpo original, que sigue en `*App` como un método no exportado `<nombre>Local`. `localBackend` no posee estado. `Init`, `Start` y `Close` son la mitad de backend de los hooks de ciclo de vida de Wails.
+- **La ventana** (geometría, diálogos, el actualizador, el autoarranque, lanzar apps locales) es el shell local. Esos métodos nunca pasan por `Backend`. Los que llaman al runtime de Wails viven en `shell.go`.
+
+Cada evento pasa por un único `EventSink` (`events.go`): el código llama a `a.sink().Emit("nombre", …)` con un nombre literal, `Startup` instala el sink de Wails, y un `App` sin sink descarta los eventos.
+
+`classification.go` registra cada método enlazado, hook de ciclo de vida y evento como LOCAL, REMOTE o MIXED, con la fase del modo remoto que lo posee y si cambia estado en el host. Los tests de guarda fallan cuando se añade un método o un evento sin su fila, y cuando una fila no concuerda con `Backend`.
+
+`gitbox-server`, el proceso que el modo remoto ejecuta en el otro host, es este mismo paquete construido con `-tags gitboxserver` y `CGO_ENABLED=0`. Un segundo binario no puede importar `package main`, así que un build tag es la forma de que el servidor reutilice el código del backend y sus DTOs. Cada archivo que importa Wails lleva `//go:build !gitboxserver` (`main.go`, `shell.go`, `events_wails.go`), un test de guarda lo impone, y la comprobación de salud compila el build del servidor para Linux, macOS y Windows. Hoy ese build es un marcador que termina.
 
 El arranque devuelve la config, las preferencias, el estado de plegado y la anidación derivada de las rutas en una única instantánea independiente. El frontend la renderiza antes de que llegue el estado local y muestra indicadores de espera hasta que termina la comprobación o el fetch. Los hijos de otros sources se quedan bajo sus contenedores, pero conservan su propio source para el estado, las acciones y la propiedad. La detección de editores y perfiles de terminal se ejecuta fuera del bloqueo de config y se combina con los ajustes actuales, así que las ediciones concurrentes se conservan.
 

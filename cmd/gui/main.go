@@ -1,3 +1,5 @@
+//go:build !gitboxserver
+
 package main
 
 import (
@@ -14,12 +16,6 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	wailsrt "github.com/wailsapp/wails/v2/pkg/runtime"
-)
-
-// Build-time variables (set via -ldflags).
-var (
-	version = "dev"
-	commit  = "none"
 )
 
 //go:embed all:frontend/dist
@@ -54,6 +50,7 @@ func main() {
 	//                         own OS window so the editor can scroll on its
 	//                         own and the parent window stays interactive).
 	parentPID := 0
+	experimentalRemote := false
 	for _, arg := range os.Args[1:] {
 		// --version prints the build version and exits without opening a
 		// window, so scripts can smoke-test an installed GitboxApp.
@@ -73,6 +70,12 @@ func main() {
 		}
 		if arg == "--terminals-window" {
 			app.windowMode = "terminals"
+		}
+		// --experimental-remote opts in to remote mode (#233). It is
+		// dormant: selectBackend builds the local backend either way
+		// until the remote path lands.
+		if arg == "--experimental-remote" {
+			experimentalRemote = true
 		}
 		// --parent-pid=<PID> tells the Manager subprocess which gitbox.exe
 		// to watch. When that PID disappears, the watcher self-terminates
@@ -131,6 +134,10 @@ func main() {
 			}
 		}
 	}
+
+	// Decide the backend after the preload. The terminals subprocess
+	// returned above and always runs the local backend.
+	app.backend = selectBackend(app, experimentalRemote)
 
 	windowTitle := "gitbox"
 	if app.testMode {
@@ -236,7 +243,7 @@ func runTerminalsWindow(app *App) {
 				// wezterm.lua. Then nudge the frontend to reload from
 				// disk and reveal the window.
 				app.SyncProfiles()
-				wailsrt.EventsEmit(app.ctx, "profiles:reloaded")
+				app.sink().Emit("profiles:reloaded")
 				wailsrt.WindowUnminimise(app.ctx)
 				wailsrt.WindowShow(app.ctx)
 			},

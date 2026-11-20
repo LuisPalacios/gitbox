@@ -21,7 +21,7 @@ Un carril borra su clon tras pasar (`GATE_KEEP=1` lo conserva) y lo conserva tra
 
 ## Qué ejecuta cada carril
 
-Cada carril construye el frontend embebido con `npm ci && npm run build`, construye la GUI con la versión de la CLI de Wails que fija CI (`go run github.com/wailsapp/wails/v2/cmd/wails@v2.16.0 build`) y comprueba que `GitboxApp --version` imprime el SHA corto del commit.
+Cada carril construye el frontend embebido con `npm ci && npm run build`, construye la GUI con la versión de la CLI de Wails que fija CI (`go run github.com/wailsapp/wails/v2/cmd/wails@v2.16.0 build`) comprueba que los bindings que ese build regeneró coinciden con los del commit, y comprueba que `GitboxApp --version` imprime el SHA corto del commit.
 
 - **mac:** `HEALTH_FUZZ=1 ./scripts/health.sh` (todos los comprobadores, incluidos vet y staticcheck para linux, darwin y windows, las pruebas unitarias, los fixtures del bootstrap, el lint de Markdown y la comprobación del espejo del arnés), más las dos suites de coordinación. El build apunta a macOS 13 como la release.
 - **linux:** `go vet ./...`, `go test -short ./...` y `bash scripts/test-bootstrap.sh`, y después el build con `-tags webkit2_41`.

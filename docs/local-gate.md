@@ -21,7 +21,7 @@ A lane deletes its clone after a pass (`GATE_KEEP=1` keeps it) and keeps it afte
 
 ## What each lane runs
 
-Every lane builds the embedded frontend with `npm ci && npm run build`, builds the GUI with the Wails CLI version that CI pins (`go run github.com/wailsapp/wails/v2/cmd/wails@v2.16.0 build`), and checks that `GitboxApp --version` prints the commit's short SHA.
+Every lane builds the embedded frontend with `npm ci && npm run build`, builds the GUI with the Wails CLI version that CI pins (`go run github.com/wailsapp/wails/v2/cmd/wails@v2.16.0 build`), checks that the bindings that build regenerated match the committed ones, and checks that `GitboxApp --version` prints the commit's short SHA.
 
 - **mac:** `HEALTH_FUZZ=1 ./scripts/health.sh` (every checker, including vet and staticcheck for linux, darwin and windows, the unit tests, bootstrap fixtures, Markdown lint and the harness mirror check), plus both coordination suites. The build targets macOS 13 like the release.
 - **linux:** `go vet ./...`, `go test -short ./...` and `bash scripts/test-bootstrap.sh`, then the build with `-tags webkit2_41`.

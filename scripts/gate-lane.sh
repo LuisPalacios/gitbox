@@ -135,6 +135,13 @@ gui_build() {
     (cd cmd/gui && go run "$WAILS" build -s -ldflags "$ldflags" "${extra[@]}")
 }
 
+# The clean clone's `wails build` regenerated the bindings, so any difference
+# from the committed ones is drift. Wails rewrites trailing whitespace and
+# file modes on every run; those are not drift.
+bindings() {
+    git -c core.fileMode=false diff --exit-code --ignore-space-at-eol -- cmd/gui/frontend/wailsjs/go
+}
+
 smoke() {
     local exe out
     case "$lane" in
@@ -169,6 +176,7 @@ case "$lane" in
         ;;
 esac
 step "gui build" gui_build
+step "bindings" bindings
 step "smoke" smoke
 
 cd "$cache"

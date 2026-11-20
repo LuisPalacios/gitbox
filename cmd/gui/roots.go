@@ -54,7 +54,10 @@ func ensureRootDir(path string) error {
 // InitRoot sets the first clone root and saves the config; onboarding
 // finishes here. A new install starts in Simple mode. On a config that
 // already has roots, the folder becomes the default one.
-func (a *App) InitRoot(folder string) error {
+func (a *App) InitRoot(folder string) error { return a.be().InitRoot(folder) }
+
+// initRootLocal is the local backend's InitRoot.
+func (a *App) initRootLocal(folder string) error {
 	folder = strings.TrimSpace(folder)
 	if err := ensureRootDir(folder); err != nil {
 		return err
@@ -88,7 +91,10 @@ func (a *App) InitRoot(folder string) error {
 
 // ListRoots returns the clone roots, the default first. Always a non-nil
 // slice so it serializes to a JSON array.
-func (a *App) ListRoots() []RootDTO {
+func (a *App) ListRoots() []RootDTO { return a.be().ListRoots() }
+
+// listRootsLocal is the local backend's ListRoots.
+func (a *App) listRootsLocal() []RootDTO {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	out := make([]RootDTO, 0, len(a.cfg.Global.Roots))
@@ -100,7 +106,10 @@ func (a *App) ListRoots() []RootDTO {
 }
 
 // AddRoot adds a clone root (created when missing, deduped) and persists.
-func (a *App) AddRoot(path string) error {
+func (a *App) AddRoot(path string) error { return a.be().AddRoot(path) }
+
+// addRootLocal is the local backend's AddRoot.
+func (a *App) addRootLocal(path string) error {
 	path = strings.TrimSpace(path)
 	if err := ensureRootDir(path); err != nil {
 		return err
@@ -117,6 +126,11 @@ func (a *App) AddRoot(path string) error {
 // under it, nothing changes unless forget is set: then those repos leave the
 // config, and their files stay on disk.
 func (a *App) RemoveRoot(path string, forget bool) (RemoveRootDTO, error) {
+	return a.be().RemoveRoot(path, forget)
+}
+
+// removeRootLocal is the local backend's RemoveRoot.
+func (a *App) removeRootLocal(path string, forget bool) (RemoveRootDTO, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	refs, err := a.cfg.RemoveRoot(path, forget)
@@ -134,7 +148,10 @@ func (a *App) RemoveRoot(path string, forget bool) (RemoveRootDTO, error) {
 
 // SetDefaultRoot makes a listed root the default and persists. No clone
 // moves: accounts that followed the old default stay on it.
-func (a *App) SetDefaultRoot(path string) error {
+func (a *App) SetDefaultRoot(path string) error { return a.be().SetDefaultRoot(path) }
+
+// setDefaultRootLocal is the local backend's SetDefaultRoot.
+func (a *App) setDefaultRootLocal(path string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if !a.cfg.HasRoot(path) {

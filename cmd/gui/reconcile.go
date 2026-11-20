@@ -155,7 +155,10 @@ func (a *App) scanConfig() (reconcile.Result, error) {
 // Reconcile runs one pass: re-link moved clones, adopt confident ones in
 // place, and return what needs me. Emits "reconcile:done" when the config
 // changed.
-func (a *App) Reconcile() ReconcileDTO {
+func (a *App) Reconcile() ReconcileDTO { return a.be().Reconcile() }
+
+// reconcileLocal is the local backend's Reconcile.
+func (a *App) reconcileLocal() ReconcileDTO {
 	return a.reconcilePass(true)
 }
 
@@ -214,7 +217,7 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 		out.Error = saveErr.Error()
 	}
 	if changed || wsChanged {
-		a.emitRefreshEvent("reconcile:done", out)
+		a.sink().Emit("reconcile:done", out)
 	}
 	return out
 }
@@ -259,7 +262,10 @@ func (a *App) workspaceTree() ([]WorkspaceFolderDTO, []string) {
 // AdoptClones adopts unmatched or ignored clones into the accounts I
 // picked, in place (an ignored one stops being ignored), then runs a fresh
 // pass and returns it.
-func (a *App) AdoptClones(reqs []AdoptRequestDTO) ReconcileDTO {
+func (a *App) AdoptClones(reqs []AdoptRequestDTO) ReconcileDTO { return a.be().AdoptClones(reqs) }
+
+// adoptClonesLocal is the local backend's AdoptClones.
+func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
 	a.reconcileMu.Lock()
 	res, err := a.scanConfig()
 	if err != nil {
@@ -312,7 +318,10 @@ func (a *App) AdoptClones(reqs []AdoptRequestDTO) ReconcileDTO {
 
 // IgnoreClone remembers (or forgets) that I don't want the clone at path
 // tracked, and persists.
-func (a *App) IgnoreClone(path string, ignore bool) error {
+func (a *App) IgnoreClone(path string, ignore bool) error { return a.be().IgnoreClone(path, ignore) }
+
+// ignoreCloneLocal is the local backend's IgnoreClone.
+func (a *App) ignoreCloneLocal(path string, ignore bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.cfg.IgnoreClone(path, ignore) {

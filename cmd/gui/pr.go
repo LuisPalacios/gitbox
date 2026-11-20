@@ -10,7 +10,6 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
-	wailsrt "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // ─── PR / review indicators ──────────────────────────────────────
@@ -58,7 +57,10 @@ var (
 )
 
 // GetPRSettings returns the current PR badge feature flags.
-func (a *App) GetPRSettings() PRSettingsDTO {
+func (a *App) GetPRSettings() PRSettingsDTO { return a.be().GetPRSettings() }
+
+// getPRSettingsLocal is the local backend's GetPRSettings.
+func (a *App) getPRSettingsLocal() PRSettingsDTO {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return PRSettingsDTO{
@@ -70,7 +72,10 @@ func (a *App) GetPRSettings() PRSettingsDTO {
 // SetPRBadgesEnabled toggles the feature and persists the config.
 // When disabled the frontend should clear its store; this function does not
 // evict the process cache (cheap and silent).
-func (a *App) SetPRBadgesEnabled(enabled bool) error {
+func (a *App) SetPRBadgesEnabled(enabled bool) error { return a.be().SetPRBadgesEnabled(enabled) }
+
+// setPRBadgesEnabledLocal is the local backend's SetPRBadgesEnabled.
+func (a *App) setPRBadgesEnabledLocal(enabled bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	v := enabled
@@ -79,7 +84,10 @@ func (a *App) SetPRBadgesEnabled(enabled bool) error {
 }
 
 // SetPRIncludeDrafts toggles counting draft PRs as "authored" and persists.
-func (a *App) SetPRIncludeDrafts(enabled bool) error {
+func (a *App) SetPRIncludeDrafts(enabled bool) error { return a.be().SetPRIncludeDrafts(enabled) }
+
+// setPRIncludeDraftsLocal is the local backend's SetPRIncludeDrafts.
+func (a *App) setPRIncludeDraftsLocal(enabled bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	v := enabled
@@ -92,6 +100,11 @@ func (a *App) SetPRIncludeDrafts(enabled bool) error {
 // config.Source.Repos. Returns an empty summary when nothing is cached or
 // when the feature is disabled.
 func (a *App) GetPRsForRepo(sourceKey, repoKey string) PRSummaryDTO {
+	return a.be().GetPRsForRepo(sourceKey, repoKey)
+}
+
+// getPRsForRepoLocal is the local backend's GetPRsForRepo.
+func (a *App) getPRsForRepoLocal(sourceKey, repoKey string) PRSummaryDTO {
 	a.mu.Lock()
 	if !a.cfg.Global.PRBadgesOn() {
 		a.mu.Unlock()
@@ -116,7 +129,10 @@ func (a *App) GetPRsForRepo(sourceKey, repoKey string) PRSummaryDTO {
 // implementation. Per-account errors are silent (they surface only on the
 // emitted event's Error field). Emits "pr:refreshed" once per account, so
 // the frontend can merge results incrementally.
-func (a *App) RefreshAllPRs() {
+func (a *App) RefreshAllPRs() { a.be().RefreshAllPRs() }
+
+// refreshAllPRsLocal is the local backend's RefreshAllPRs.
+func (a *App) refreshAllPRsLocal() {
 	a.mu.Lock()
 	enabled := a.cfg.Global.PRBadgesOn()
 	includeDrafts := a.cfg.Global.PRDraftsIncluded()
@@ -133,9 +149,7 @@ func (a *App) RefreshAllPRs() {
 	go func() {
 		for _, snap := range accounts {
 			upd := fetchPRsForAccount(snap, includeDrafts)
-			if a.ctx != nil {
-				wailsrt.EventsEmit(a.ctx, "pr:refreshed", upd)
-			}
+			a.sink().Emit("pr:refreshed", upd)
 		}
 	}()
 }

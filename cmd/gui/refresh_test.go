@@ -20,33 +20,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/status"
 )
 
-type refreshTestEvent struct {
-	name string
-	args []any
-}
-
-type refreshTestEvents struct {
-	mu     sync.Mutex
-	events []refreshTestEvent
-}
-
-func (e *refreshTestEvents) emit(name string, args ...any) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.events = append(e.events, refreshTestEvent{name, args})
-}
-
-func (e *refreshTestEvents) named(name string) []refreshTestEvent {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	var found []refreshTestEvent
-	for _, event := range e.events {
-		if event.name == name {
-			found = append(found, event)
-		}
-	}
-	return found
-}
+type refreshTestEvents = recordingSink
 
 func refreshTestApp(t *testing.T, count int) (*App, *refreshTestEvents) {
 	t.Helper()
@@ -74,7 +48,7 @@ func refreshTestApp(t *testing.T, count int) (*App, *refreshTestEvents) {
 		SourceOrder: []string{"source-a"},
 	}
 	events := &refreshTestEvents{}
-	a := &App{cfg: cfg, refreshHooks: &refreshHooks{
+	a := &App{cfg: cfg, events: events, refreshHooks: &refreshHooks{
 		status: func(cfg *config.Config) []status.RepoStatus {
 			var results []status.RepoStatus
 			for source, src := range cfg.Sources {
@@ -89,7 +63,6 @@ func refreshTestApp(t *testing.T, count int) (*App, *refreshTestEvents) {
 		credential: func(context.Context, config.Account, string, *config.Config) credential.StatusResult {
 			return refreshCredentialOK()
 		},
-		emit: events.emit,
 	}}
 	return a, events
 }
