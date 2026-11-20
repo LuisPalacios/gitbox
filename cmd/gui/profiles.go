@@ -183,7 +183,10 @@ func (a *App) SyncProfiles() {
 }
 
 // RedetectProfiles re-runs SyncProfiles and returns the refreshed config DTO.
-func (a *App) RedetectProfiles() (ConfigDTO, error) {
+func (a *App) RedetectProfiles() (ConfigDTO, error) { return a.be().RedetectProfiles() }
+
+// redetectProfilesLocal is the local backend's RedetectProfiles.
+func (a *App) redetectProfilesLocal() (ConfigDTO, error) {
 	a.SyncProfiles()
 	return a.GetConfig()
 }
@@ -209,6 +212,11 @@ func (a *App) OpenProfile(path, profileID string) error {
 // OpenAccountProfile launches the given profile in the account's parent
 // folder.
 func (a *App) OpenAccountProfile(accountKey, profileID string) error {
+	return a.be().OpenAccountProfile(accountKey, profileID)
+}
+
+// openAccountProfileLocal is the local backend's OpenAccountProfile.
+func (a *App) openAccountProfileLocal(accountKey, profileID string) error {
 	path, err := a.resolveAccountFolder(accountKey)
 	if err != nil {
 		return err

@@ -179,14 +179,20 @@ func (a *App) requestStatus(emit, dirty bool) *statusFlight {
 }
 
 // GetAllStatus shares an active local sweep; a later independent request stays fresh.
-func (a *App) GetAllStatus() []StatusResult {
+func (a *App) GetAllStatus() []StatusResult { return a.be().GetAllStatus() }
+
+// getAllStatusLocal is the local backend's GetAllStatus.
+func (a *App) getAllStatusLocal() []StatusResult {
 	call := a.requestStatus(false, false)
 	<-call.done
 	return a.overlayStatus(call.results)
 }
 
 // RefreshStatus retains at most one pending invalidation while local work runs.
-func (a *App) RefreshStatus() { a.requestStatus(true, true); a.probeUpstreamExistenceAsync() }
+func (a *App) RefreshStatus() { a.be().RefreshStatus() }
+
+// refreshStatusLocal is the local backend's RefreshStatus.
+func (a *App) refreshStatusLocal() { a.requestStatus(true, true); a.probeUpstreamExistenceAsync() }
 
 // I overlay provider results without spawning another fleet of git processes.
 func (a *App) emitCachedStatus() {
@@ -356,7 +362,10 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 }
 
 // FetchAllRepos joins the active cycle, including its final status and provider work.
-func (a *App) FetchAllRepos() error {
+func (a *App) FetchAllRepos() error { return a.be().FetchAllRepos() }
+
+// fetchAllReposLocal is the local backend's FetchAllRepos.
+func (a *App) fetchAllReposLocal() error {
 	a.refreshMu.Lock()
 	if a.refreshClosed {
 		a.refreshMu.Unlock()
@@ -551,7 +560,10 @@ func (a *App) invalidateCredential(key string) {
 }
 
 // CredentialVerify is explicitly fresh after each completed check; only active work is shared.
-func (a *App) CredentialVerify(key string) CredentialStatus {
+func (a *App) CredentialVerify(key string) CredentialStatus { return a.be().CredentialVerify(key) }
+
+// credentialVerifyLocal is the local backend's CredentialVerify.
+func (a *App) credentialVerifyLocal(key string) CredentialStatus {
 	a.refreshMu.Lock()
 	if a.refreshClosed {
 		a.refreshMu.Unlock()
