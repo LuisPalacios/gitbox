@@ -1,3 +1,5 @@
+//go:build !gitboxserver
+
 package main
 
 import (
@@ -14,12 +16,6 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	wailsrt "github.com/wailsapp/wails/v2/pkg/runtime"
-)
-
-// Build-time variables (set via -ldflags).
-var (
-	version = "dev"
-	commit  = "none"
 )
 
 //go:embed all:frontend/dist
