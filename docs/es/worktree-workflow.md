@@ -4,27 +4,41 @@ Uso este flujo para trabajar en varios issues de GitHub a la vez, cada uno en su
 
 Los skills aplican mi regla de publicación: nada llega a GitHub hasta que yo lo digo. En Codex ejecuto `$work-issue <N>` y `$merge-pr <PR#>` con los mismos argumentos y puertas. Ambas herramientas cargan las instrucciones y skills compartidas que describo en [developer-guide.md](developer-guide.md#trabajar-con-claude-code-y-codex).
 
+## Issues independientes y work units
+
+Uso dos formas de trabajo: un issue independiente sin padre ni hijos, o una work unit que contiene tareas. Una work unit lleva la etiqueta `work-unit` y no tiene padre. Sus tareas son sub-issues directas de GitHub en el mismo repositorio, sin hijos propios. Mantengo exactamente estos dos niveles; no añado un paraguas por encima de la work unit. Un título, una referencia en el cuerpo o una checklist no establece una relación entre padre e hijo.
+
+Creo el contenedor con `$wu-container <description>` en Codex o `/wu-container <description>` en Claude Code. El skill redacta su propósito, el problema, el alcance y las exclusiones, requisitos de alto nivel con identificadores estables `HLR1`, y criterios de aceptación completos con identificadores `AC1` vinculados a esos requisitos. Comprueba el trabajo existente y presenta el issue concreto antes de cualquier publicación que necesite mi aprobación. Para un issue independiente uso `wu-container --independent`; implemento ese issue con `work-issue`.
+
+Después uso `wu-tasks <N>` para descomponer una work unit. El skill lee el contenedor completo y sus hijos existentes, propone tareas que cubran sus criterios de aceptación e identifica dependencias y un orden de ejecución útil. Redacta los cuerpos de las tareas antes de solicitar cualquier autorización de publicación que falte. Crea y vincula solo las tareas aprobadas, verifica las relaciones nativas y el orden de la lista, y reanuda el trabajo parcial inspeccionando los efectos existentes antes de reintentar. No reescribe los requisitos ni los criterios de aceptación del contenedor para ajustarlos a las tareas.
+
 ## Un supervisor para un lote
 
-Uso `coordinate-issues` cuando quiero que una conversación seleccione y supervise hasta tres issues independientes. El supervisor comprueba issues actuales, comentarios, dependencias, PR abiertas y archivos afectados antes de elegir un lote finito. Puede elegir menos issues si los solapamientos o la capacidad disponible de agentes impiden trabajar con tres de forma segura. Reserva una plaza de agente para sí mismo y delega cada issue a un agente en su propio worktree.
+Uso `wu-coordinate-tasks` cuando quiero que una conversación seleccione y supervise hasta tres tareas pendientes compatibles de una work unit. El supervisor comprueba issues actuales, comentarios, dependencias, PR abiertas y archivos afectados antes de elegir un lote finito. Selecciona solo sub-issues directas abiertas y excluye requisitos previos sin resolver. Puede elegir menos tareas si los solapamientos o la capacidad disponible de agentes impiden trabajar con tres de forma segura. Reserva una plaza de agente para sí mismo y delega cada tarea a un agente en su propio worktree.
 
-En Codex puedo empezar con un issue paraguas, declarar trabajo que ya está en marcha en otra sesión o seleccionar del repositorio sin paraguas:
+En Codex paso el número de issue de la work unit y declaro trabajo que ya está en marcha en otra sesión:
 
 ```text
-$coordinate-issues --roadmap 214 --count 3 --active none
-$coordinate-issues --roadmap 214 --count 3 --active 162,170
-$coordinate-issues --no-roadmap --count 3 --active none
+$wu-coordinate-tasks <N> --count 3 --active none
+$wu-coordinate-tasks <N> --count 3 --active <issue-numbers>
+$wu-coordinate-tasks <N> --resume <owner>
 ```
 
-En Claude Code sustituyo `$coordinate-issues` por `/coordinate-issues`. Si omito la información sobre sesiones activas, el supervisor la pregunta una vez antes de elegir el lote. Las casillas del roadmap aportan contexto; el estado actual de issues y PR determina qué trabajo queda. No necesito abrir una conversación por agente.
+En Claude Code sustituyo `$wu-coordinate-tasks` por `/wu-coordinate-tasks`. El número de work unit es obligatorio, también al reanudar: si lo omito, el supervisor lo pregunta y nunca deduce un contenedor ni recurre al backlog global. Si omito la información sobre sesiones activas, la pregunta una vez antes de reservar el lote. Las casillas aportan contexto; las relaciones nativas y el estado actual de issues y PR determinan qué trabajo pertenece a esta unidad y sigue pendiente. No necesito abrir una conversación por agente.
 
-La invocación autoriza selección, planificación, implementación, verificación y commits locales. Puedo autorizar explícitamente la publicación del lote seleccionado con `--publish`, que cubre los pushes de sus ramas y la creación o actualización de PR después de superar las comprobaciones. `--create-subissues` autoriza subissues justificadas; `--update-roadmap` autoriza actualizaciones de finalización en el paraguas seleccionado. Estas opciones no autorizan un merge, un push forzado, cambios de credenciales reales ni staging remoto. El supervisor mantiene la publicación y las preguntas en la conversación principal; los agentes no publican. Preguntar cómo funciona el skill no inicia un lote.
+La invocación autoriza selección, planificación, implementación, verificación y commits locales. Puedo autorizar explícitamente la publicación del lote seleccionado con `--publish`, que cubre los pushes de sus ramas y la creación o actualización de PR después de superar las comprobaciones. `--update-work-unit` autoriza actualizaciones mínimas de casillas de finalización en ese contenedor tras verificar la resolución. Creo tareas adicionales mediante `wu-tasks`; el coordinador no las crea. Estas opciones no autorizan un merge, un push forzado, cambios de credenciales reales ni staging remoto. El supervisor mantiene la publicación y las preguntas en la conversación principal; los agentes no publican. Preguntar cómo funciona el skill no inicia un lote.
+
+`wu-coordinate-tasks` sustituye a `coordinate-issues`; `--roadmap`, `--no-roadmap`, `--create-subissues` y `--update-roadmap` ya no se aplican. Los roadmaps existentes, como #214, necesitan una revisión explícita y una conversión autorizada antes de cumplir los requisitos de una work unit. Los skills no los etiquetan silenciosamente ni convierten sus referencias en sub-issues nativas.
 
 ### Reservas y recuperación
 
 Las sesiones de Claude y Codex que cooperan comparten un registro SQLite atómico en `<git-common-dir>/gitbox-coordination/registry.sqlite`. El registro cubre un clon local y sus worktrees; no coordina clones o máquinas independientes. Sigo declarando las sesiones externas para que el supervisor tenga en cuenta sus issues y archivos asignados.
 
-El supervisor reserva juntos los issues seleccionados antes de crear worktrees. Un conflicto deja toda la solicitud sin reservar, para que pueda reconsiderar el lote. Registra el propietario y su generación, worktree, rama, agente, progreso y evidencias de verificación. Un heartbeat antiguo no libera una reserva: el supervisor comprueba los agentes que siguen activos, el estado de Git y las PR antes de recuperarla con una generación nueva. Una PR abierta mantiene su issue ocupado. Tras una interrupción, pido al supervisor que reanude el lote registrado; comprueba los efectos existentes antes de reintentar un push o la creación de una PR o subissue.
+El supervisor reserva juntas las tareas seleccionadas antes de crear worktrees. Un conflicto deja toda la solicitud sin reservar, para que pueda reconsiderar el lote. El registro también excluye otro lote para la misma work unit hasta que el supervisor libere todas las reservas de sus tareas. Registra el propietario y su generación, work unit, worktree, rama, agente, progreso y evidencias de verificación. Un heartbeat antiguo no libera una reserva: el supervisor comprueba los agentes que siguen activos, el estado de Git y las PR antes de recuperarla con una generación nueva. Una PR abierta mantiene su tarea ocupada. Tras una interrupción, paso el número de work unit y el propietario registrado para reanudar; el supervisor comprueba los efectos existentes antes de reintentar un push o la creación de una PR.
+
+El helper exige `work_unit` al iniciar un lote. Acepta una reserva sin ámbito con `external: true` solo para excluir trabajo de otra sesión. El registro conserva su campo histórico `roadmap` por compatibilidad; ese campo por sí solo nunca demuestra la pertenencia nativa. Al reanudar un lote antiguo, el supervisor valida la work unit elegida y cada tarea pendiente contra GitHub antes de continuar. Conserva los registros antiguos y el trabajo sin terminar.
+
+Puedo ejecutar sesiones de supervisor separadas para distintas work units. Sus tareas siguen compartiendo un repositorio y pueden solaparse en archivos, API o resultados generados, así que el supervisor comprueba esos límites antes de delegar trabajo.
 
 Las sesiones de GUI, la configuración compartida, las operaciones de credenciales y los destinos de staging necesitan coordinación exclusiva. Una reserva no concede permiso para usar un recurso. El supervisor serializa los smoke tests de GUI porque las instancias en modo de prueba comparten una identidad de aplicación, y comprueba qué binario y ventana está probando.
 
@@ -32,7 +46,7 @@ Las sesiones de GUI, la configuración compartida, las operaciones de credencial
 
 El supervisor vincula cada comprobación obligatoria al commit y la base probados, con PASS, FAIL o PENDING y las evidencias del comando o interacción. Un rebase o un cambio nuevo invalida las evidencias anteriores. Un smoke automatizado puede satisfacer un criterio interactivo cuando verifica el binario y commit correctos, el fixture aislado, la ventana, las acciones y el comportamiento esperado. Una cadena de versión o una captura por sí sola no demuestra que funcione la interacción. Solo realizo los pasos obligatorios que las herramientas disponibles no pueden verificar.
 
-Las comprobaciones obligatorias fallidas o pendientes bloquean la publicación. Cuando la publicación cuenta con autorización y pasan las comprobaciones locales, el supervisor abre la PR y confirma que el gate local pasó sobre su head antes de declararla lista. Se detiene antes del merge; uso `merge-pr` por separado. Con autorización para actualizar el paraguas, el flujo de merge o un supervisor reanudado marca solo las entradas cuya PR integrada resuelve todo el issue. Una PR parcial o un gate o una CI correctos por sí solos no completan una entrada del roadmap.
+Las comprobaciones obligatorias fallidas o pendientes bloquean la publicación. Cuando la publicación cuenta con autorización y pasan las comprobaciones locales, el supervisor abre la PR y confirma que el gate local pasó sobre su head antes de declararla lista. Se detiene antes del merge; uso `merge-pr` por separado. Con autorización para actualizar la work unit, el flujo de merge o un supervisor reanudado marca solo las entradas existentes de la checklist cuya PR integrada resuelve toda la tarea. El helper opcional de checklist conserva el nombre de archivo `roadmap.py`; una checklist nunca sustituye la pertenencia nativa. Una PR parcial o un gate o una CI correctos por sí solos no completan una tarea, y terminar un lote no cierra automáticamente su contenedor ni demuestra todos sus criterios de aceptación.
 
 ## Qué me da este flujo
 

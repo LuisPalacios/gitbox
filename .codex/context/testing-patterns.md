@@ -32,7 +32,7 @@ For changes limited to `ai/` and its rendered trees, I run `uv run ai/scripts/te
 
 I also assert that the health gate and formatter pin the same markdownlint package. A separate POSIX fixture runs the real `health.sh harness` without `frontend/dist`, records its five uv calls with a stub to avoid recursive tests, and rejects any npm invocation. Its checkout snapshot must remain unchanged.
 
-I test the coordination registry with temporary Git repositories and separate processes: competing claims, all-or-none batches, recovery fencing, resource exclusion and evidence invalidation. I separately test minimal roadmap checkbox edits, idempotency, ambiguous references and unrelated text preservation. The tests need no GitHub credentials or live agents. The local gate's macOS and Windows lanes run both coordination suites, and the release workflow runs them on all three platforms; I report native results only after one of them runs.
+I test the coordination registry with temporary Git repositories and separate processes: competing claims, required work-unit scope, same-container exclusion, independent-container concurrency, legacy registry preservation, all-or-none batches, recovery fencing, resource exclusion and evidence invalidation. I separately test minimal optional work-unit checkbox edits, idempotency, ambiguous references and unrelated text preservation. The tests need no GitHub credentials or live agents. The local gate's macOS and Windows lanes run both coordination suites, and the release workflow runs them on all three platforms; I report native results only after one of them runs.
 
 ## Bootstrap verification tests
 

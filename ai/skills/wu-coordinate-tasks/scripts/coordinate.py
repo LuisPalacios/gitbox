@@ -3,11 +3,13 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Coordinate cooperating issue batches in one local Git clone.
+"""Coordinate tasks from one work unit in one local Git clone.
 
 Run with uv run. `status` reads the registry; `apply --request-file -` reads a
 JSON request from stdin. This helper records state; it never publishes or runs
 workers. Ownership fencing applies to this registry, not to external processes.
+The v1 roadmap column stores the work-unit number without rewriting old journals.
+This offline helper does not verify GitHub parent/child relationships.
 """
 
 from __future__ import annotations
@@ -86,6 +88,9 @@ def snapshot(db: sqlite3.Connection) -> dict:
     for table in TABLES:
         rows = [dict(r) for r in db.execute(f"SELECT * FROM {table} ORDER BY 1")]
         for row in rows:
+            if table == "sessions":
+                # Old roadmap values need live validation before resuming a WU.
+                row["work_unit"] = row["roadmap"]
             for field in ("detail", "request", "result") if table == "actions" else ("detail",):
                 if field in row and row[field] is not None:
                     row[field] = json.loads(row[field])
@@ -151,20 +156,37 @@ def start(db: sqlite3.Connection, request: dict) -> dict:
     if not isinstance(issues, list) or not issues:
         raise Conflict("issues must be a nonempty list")
     issues = sorted({positive(n, "issue") for n in issues})
-    roadmap = request.get("roadmap")
-    if roadmap is not None:
-        positive(roadmap, "roadmap")
+    if "roadmap" in request:
+        raise Conflict("use work_unit for a validated container; roadmap selection is no longer supported")
+    external = request.get("external", False)
+    if type(external) is not bool:
+        raise Conflict("external must be a boolean")
+    work_unit = request.get("work_unit")
+    if external:
+        if "work_unit" in request:
+            raise Conflict("external reservations cannot select a work unit")
+    else:
+        positive(work_unit, "work_unit")
+        if work_unit in issues:
+            raise Conflict("reserve child tasks, not the work-unit container")
     previous = db.execute("SELECT * FROM sessions WHERE owner=?", (owner,)).fetchone()
     if previous:
         owned = [r[0] for r in db.execute("SELECT issue FROM claims WHERE owner=? AND state!='released' ORDER BY issue", (owner,))]
-        if previous["active"] and owned == issues and previous["roadmap"] == roadmap:
+        if previous["active"] and owned == issues and previous["roadmap"] == work_unit:
             return {"owner": owner, "generation": previous["generation"], "issues": issues}
         raise Conflict("owner already exists with different or inactive work; use a new owner ID")
+    if work_unit is not None:
+        occupied = db.execute(
+            "SELECT s.owner FROM sessions s JOIN claims c ON c.owner=s.owner "
+            "WHERE s.active=1 AND s.roadmap=? AND c.state!='released' LIMIT 1", (work_unit,),
+        ).fetchone()
+        if occupied:
+            raise Conflict(f"work unit {work_unit} is reserved by {occupied['owner']}")
     for issue in issues:
         row = db.execute("SELECT owner, state FROM claims WHERE issue=?", (issue,)).fetchone()
         if row and row["state"] != "released":
             raise Conflict(f"issue {issue} is reserved by {row['owner']}")
-    db.execute("INSERT INTO sessions VALUES (?,1,?,1,?)", (owner, time.time(), roadmap))
+    db.execute("INSERT INTO sessions VALUES (?,1,?,1,?)", (owner, time.time(), work_unit))
     for issue in issues:
         db.execute("INSERT OR REPLACE INTO claims VALUES (?,?,1,'reserved','{}')", (issue, owner))
         db.execute("DELETE FROM evidence WHERE issue=?", (issue,))
@@ -175,6 +197,10 @@ def takeover(db: sqlite3.Connection, request: dict) -> dict:
     old = session(db, request)
     if request.get("confirmed_stopped") is not True:
         raise Conflict("confirm old supervisor and workers stopped before takeover")
+    if old["roadmap"] is None:
+        raise Conflict("unscoped legacy/external session needs review and release; it cannot resume as a work-unit batch")
+    if positive(request.get("work_unit"), "work_unit") != old["roadmap"]:
+        raise Conflict("work_unit does not match the recorded container")
     owner = identifier(request.get("new_owner"), "new_owner")
     generation = old["generation"] + 1
     if db.execute("SELECT 1 FROM sessions WHERE owner=?", (owner,)).fetchone():

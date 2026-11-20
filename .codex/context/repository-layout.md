@@ -82,7 +82,9 @@ ai/                       Agent harness masters: the only hand-edited agent guid
     guideline_skills.md   Skill-authoring quick reference
     testing-patterns.md   Which tests to run, test levels, helpers, naming conventions
   skills/
-    coordinate-issues/    Supervisor + up to three issue workers; shared local reservations
+    wu-container/        Define a work-unit container or independent issue; shared issue rules
+    wu-tasks/            Decompose one work unit into native task sub-issues with AC coverage
+    wu-coordinate-tasks/ Supervisor + up to three task workers within one explicit work unit; shared reservations
     fixing-markdown/      Markdown lint + format
     merge-pr/             Merge a PR (post-work-issue), clean up worktree + branch
     preparing-brand-logos/  Find tool logos, fit them into the 150x150 brand template (tmp/), draft -dark versions

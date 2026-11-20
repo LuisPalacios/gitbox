@@ -110,7 +110,6 @@ Codex discovers repository skills from `.agents/skills/` and supplies their name
 
 | Skill | Purpose |
 | --- | --- |
-| `$coordinate-issues` | Coordinates a finite batch of independent GitHub issues through a supervisor, worker agents and isolated worktrees. |
 | `$fixing-markdown` | Validate and fix markdown formatting in files and folders. |
 | `$merge-pr` | Merge a verified PR and clean up its worktree and branch. |
 | `$preparing-brand-logos` | Finds, downloads and prepares tool logos (terminals, editors, AI harnesses, shells) for assets/svg/brand/ in gitbox's 150x150 template, and drafts their single-colour -dark versions. |
@@ -118,6 +117,9 @@ Codex discovers repository skills from `.agents/skills/` and supplies their name
 | `$syncing-ai-harness` | Render the Claude Code and Codex harnesses from the neutral masters in ai/ and check them for drift. |
 | `$test-plan` | Run the gitbox test plan. |
 | `$work-issue` | Drive a GitHub issue through an isolated worktree, planning, implementation, verification, and PR creation. |
+| `$wu-container` | Create a work-unit container with purpose, problem, high-level requirements and acceptance criteria, or a standalone issue with no children. |
+| `$wu-coordinate-tasks` | Coordinates up to three pending task sub-issues of one explicit work unit through a supervisor and isolated workers. |
+| `$wu-tasks` | Decompose an existing work unit into native GitHub task sub-issues, with acceptance-criteria coverage and explicit dependencies. |
 
 <!-- /index:skills -->
 
@@ -192,7 +194,7 @@ The protocol has two shapes depending on what was changed:
 
 Explicit authorization in the current session can cover named publication actions for a specific task, including "push this branch and create a PR when checks pass". Complete the required checks and honor that authorization without asking again. Approval to create a PR does not authorize its merge. A blanket approval from a previous session does not count; authorization applies only to the actions and scope granted.
 
-For a batch explicitly started with `$coordinate-issues`, the supervisor approves local worker plans and can satisfy the smoke gate with equivalent automated behavioral evidence under that skill's criteria. Ask me for checks that cannot be automated. Publication still requires current-session authorization for the named actions and scope; workers never publish.
+For a batch explicitly started with `$wu-coordinate-tasks`, the supervisor approves local worker plans and can satisfy the smoke gate with equivalent automated behavioral evidence under that skill's criteria. Ask me for checks that cannot be automated. Publication still requires current-session authorization for the named actions and scope; workers never publish.
 
 When in doubt, ask. It is never wrong to pause; it is sometimes wrong to push.
 
@@ -257,7 +259,9 @@ Every English doc under `docs/` has a counterpart under `docs/es/`; update both 
 
 ## Worktree-based parallel workflow
 
-For one supervisor selecting and governing up to three parallel issue workers, use `$coordinate-issues --roadmap <N> --count 3 --active none` (or `--no-roadmap` for the open backlog). Declare other sessions with `--active <issues>`; the skill combines that information with live evidence and atomic local reservations. Its default authority covers local work. `--publish` explicitly adds push and PR publication for the selected batch; merge remains separate.
+I use two work modes: an independent issue without children, or a top-level `work-unit` container with native task sub-issues. `$wu-container` defines the purpose, problem, HLR and acceptance criteria (`--independent` selects the first mode); `$wu-tasks <N>` creates the container's task breakdown. There is no umbrella above work units and no task nesting.
+
+For one supervisor governing up to three parallel tasks of one work unit, use `$wu-coordinate-tasks <N> --count 3 --active none`. The container number is required; if missing, ask. Never select from the global backlog or infer membership from body references. Declare other sessions with `--active <issues>`; the skill combines that information with live evidence and atomic local reservations. Its default authority covers local work. `--publish` explicitly adds push and PR publication for the selected batch; merge remains separate.
 
 For multi-issue work where several agent sessions run in parallel, use the `$work-issue <N>` skill. It creates a sibling worktree at `../gitbox-<N>-<slug>`, drives the plan → code → auto-test → user-smoke-test → sync → push → PR flow, and stops before merge. `$merge-pr <PR#>` handles rebase check, local gate check, merge, and worktree cleanup as a separate, deliberate action.
 
