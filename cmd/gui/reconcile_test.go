@@ -216,7 +216,7 @@ func TestReconcile_StalePlanCoalescesOneRetryAfterRefresh(t *testing.T) {
 			t.Fatal(err)
 		}
 		events := &refreshTestEvents{}
-		a.refreshHooks = &refreshHooks{emit: events.emit}
+		a.events = events
 		fetchDone, statusDone := make(chan struct{}), make(chan struct{})
 		a.fetchRun = &fetchFlight{done: fetchDone}
 		a.statusRun = &statusFlight{done: statusDone}
@@ -296,7 +296,7 @@ func TestReconcile_RetryAppliesFreshPlanAndEmitsOnce(t *testing.T) {
 		a, cfgPath := newWorkspaceTestApp(t)
 		defer a.stopRefresh()
 		events := &refreshTestEvents{}
-		a.refreshHooks = &refreshHooks{emit: events.emit}
+		a.events = events
 		done := make(chan struct{})
 		a.statusRun = &statusFlight{done: done}
 		freshPath := filepath.Join(t.TempDir(), "fresh")

@@ -40,7 +40,10 @@ import (
 // App is the Wails application struct. All exported methods become
 // frontend bindings via window.go.main.App.<Method>().
 type App struct {
-	ctx                context.Context
+	ctx context.Context
+	// events carries every event to the frontend; nil means nopSink (see
+	// events.go). Startup installs the Wails sink.
+	events             EventSink
 	cfg                *config.Config
 	cfgPath            string
 	cfgLoaded          bool // true if config was loaded from disk (safe to save back)
@@ -131,6 +134,7 @@ func NewApp() *App {
 // Startup is called by Wails at application start.
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
+	a.events = wailsSink{ctx}
 	if a.cfgPath == "" {
 		a.cfgPath = config.DefaultV2Path()
 	}
@@ -268,7 +272,7 @@ func (a *App) DomReady(_ context.Context) {
 	a.toolsOnce.Do(func() {
 		a.toolsWG.Go(func() {
 			a.syncDetected()
-			wailsrt.EventsEmit(a.ctx, "tools:updated")
+			a.sink().Emit("tools:updated")
 		})
 	})
 	// AI harnesses are detected off the startup path: startHarnessWatcher
@@ -356,7 +360,7 @@ func (a *App) checkForUpdate() {
 	if result.Release != nil {
 		info.URL = result.Release.HTMLURL
 	}
-	wailsrt.EventsEmit(a.ctx, "update:available", info)
+	a.sink().Emit("update:available", info)
 }
 
 // ApplyUpdate downloads and applies the latest release, then restarts the
@@ -380,7 +384,7 @@ func (a *App) ApplyUpdate() error {
 		return fmt.Errorf("no update available")
 	}
 
-	wailsrt.EventsEmit(a.ctx, "update:progress", "Downloading...")
+	a.sink().Emit("update:progress", "Downloading...")
 
 	zipPath, err := update.DownloadRelease(ctx, result.Release, opts)
 	if err != nil {
@@ -388,7 +392,7 @@ func (a *App) ApplyUpdate() error {
 	}
 	defer os.RemoveAll(filepath.Dir(zipPath))
 
-	wailsrt.EventsEmit(a.ctx, "update:progress", "Applying...")
+	a.sink().Emit("update:progress", "Applying...")
 
 	// Extract first so we can retry with elevation if the in-place
 	// install fails due to permissions (e.g. Program Files on Windows).
@@ -407,13 +411,13 @@ func (a *App) ApplyUpdate() error {
 	if err := update.InstallExtracted(extractDir, installDir); err != nil {
 		if errors.Is(err, update.ErrNeedElevation) {
 			// Don't clean extractDir — the elevated script needs it.
-			wailsrt.EventsEmit(a.ctx, "update:progress", "Requesting admin privileges...")
+			a.sink().Emit("update:progress", "Requesting admin privileges...")
 			if elevErr := update.ApplyElevated(extractDir, installDir, exe); elevErr != nil {
 				os.RemoveAll(extractDir)
 				return fmt.Errorf("elevated update: %w", elevErr)
 			}
 			// Elevated script will copy files after we exit.
-			wailsrt.EventsEmit(a.ctx, "update:quit", result.Latest)
+			a.sink().Emit("update:quit", result.Latest)
 			return nil
 		}
 		os.RemoveAll(extractDir)
@@ -425,14 +429,14 @@ func (a *App) ApplyUpdate() error {
 	// Start the new version, which waits for this process to exit, then
 	// quit. Quit runs BeforeClose, so the window state is saved as usual.
 	if exe != "" && update.Relaunch(exe, os.Getpid(), os.Args[1:]) == nil {
-		wailsrt.EventsEmit(a.ctx, "update:restarting", result.Latest)
+		a.sink().Emit("update:restarting", result.Latest)
 		go func() {
 			time.Sleep(time.Second) // let the pill show "Restarting…"
 			wailsrt.Quit(a.ctx)
 		}()
 		return nil
 	}
-	wailsrt.EventsEmit(a.ctx, "update:done", result.Latest)
+	a.sink().Emit("update:done", result.Latest)
 	return nil
 }
 
@@ -1210,8 +1214,8 @@ func (a *App) syncAIHarnessesAsync(force bool) {
 			list = cloneHarnesses(a.cfg.Global.AIHarnesses)
 		}
 		a.mu.Unlock()
-		if changed && a.ctx != nil {
-			wailsrt.EventsEmit(a.ctx, "harnesses:updated", list)
+		if changed {
+			a.sink().Emit("harnesses:updated", list)
 		}
 	}()
 }
@@ -1755,7 +1759,7 @@ func (a *App) CloneRepo(sourceKey, repoKey, root string) {
 		}
 		a.mu.Unlock()
 		if err != nil {
-			wailsrt.EventsEmit(a.ctx, "clone:done", map[string]string{
+			a.sink().Emit("clone:done", map[string]string{
 				"source": sourceKey, "repo": repoKey, "error": err.Error(),
 			})
 			return
@@ -1763,7 +1767,7 @@ func (a *App) CloneRepo(sourceKey, repoKey, root string) {
 
 		// The git transfer runs without the config lock.
 		err = plan.Run(func(p git.CloneProgress) {
-			wailsrt.EventsEmit(a.ctx, "clone:progress", map[string]any{
+			a.sink().Emit("clone:progress", map[string]any{
 				"source": sourceKey, "repo": repoKey,
 				"phase": p.Phase, "percent": p.Percent,
 			})
@@ -1791,7 +1795,7 @@ func (a *App) CloneRepo(sourceKey, repoKey, root string) {
 				result["fixes"] = report.Fixed
 			}
 		}
-		wailsrt.EventsEmit(a.ctx, "clone:done", result)
+		a.sink().Emit("clone:done", result)
 	}()
 }
 
@@ -1812,7 +1816,7 @@ func (a *App) PullRepo(sourceKey, repoKey string) {
 		cfg := a.snapshotRefreshConfig()
 		src, ok := cfg.Sources[sourceKey]
 		if !ok {
-			wailsrt.EventsEmit(a.ctx, "pull:done", map[string]string{
+			a.sink().Emit("pull:done", map[string]string{
 				"source": sourceKey, "repo": repoKey,
 				"error": fmt.Sprintf("source %q not found", sourceKey),
 			})
@@ -1820,7 +1824,7 @@ func (a *App) PullRepo(sourceKey, repoKey string) {
 		}
 		repo, ok := src.Repos[repoKey]
 		if !ok {
-			wailsrt.EventsEmit(a.ctx, "pull:done", map[string]string{
+			a.sink().Emit("pull:done", map[string]string{
 				"source": sourceKey, "repo": repoKey,
 				"error": fmt.Sprintf("repo %q not found in source %q", repoKey, sourceKey),
 			})
@@ -1850,7 +1854,7 @@ func (a *App) PullRepo(sourceKey, repoKey string) {
 		if err != nil {
 			result["error"] = err.Error()
 		}
-		wailsrt.EventsEmit(a.ctx, "pull:done", result)
+		a.sink().Emit("pull:done", result)
 	}()
 }
 
@@ -2651,7 +2655,7 @@ func (a *App) Discover(accountKey string) {
 		a.mu.Unlock()
 
 		if !ok {
-			wailsrt.EventsEmit(a.ctx, "discover:done", map[string]any{
+			a.sink().Emit("discover:done", map[string]any{
 				"accountKey": accountKey,
 				"error":      fmt.Sprintf("account %q not found", accountKey),
 			})
@@ -2660,7 +2664,7 @@ func (a *App) Discover(accountKey string) {
 
 		repos, err := ops.ListRemoteRepos(context.Background(), acct, accountKey)
 		if err != nil {
-			wailsrt.EventsEmit(a.ctx, "discover:done", map[string]any{
+			a.sink().Emit("discover:done", map[string]any{
 				"accountKey": accountKey,
 				"error":      err.Error(),
 			})
@@ -2678,7 +2682,7 @@ func (a *App) Discover(accountKey string) {
 			}
 		}
 
-		wailsrt.EventsEmit(a.ctx, "discover:done", map[string]any{
+		a.sink().Emit("discover:done", map[string]any{
 			"accountKey": accountKey,
 			"repos":      results,
 		})
@@ -2750,7 +2754,7 @@ func (a *App) GetMirrorStatus(mirrorKey string) {
 				Error:      r.Error,
 			})
 		}
-		wailsrt.EventsEmit(a.ctx, "mirror:status", results)
+		a.sink().Emit("mirror:status", results)
 	}()
 }
 
@@ -2791,7 +2795,7 @@ func (a *App) SetupMirrorRepo(mirrorKey, repoKey string) {
 			a.mu.Unlock()
 		}
 
-		wailsrt.EventsEmit(a.ctx, "mirror:setup:done", result)
+		a.sink().Emit("mirror:setup:done", result)
 	}()
 }
 
@@ -2950,7 +2954,7 @@ func (a *App) DiscoverMirrors() {
 		defer cancel()
 
 		results, err := mirror.DiscoverMirrors(ctx, cfg, func(p mirror.DiscoverProgress) {
-			wailsrt.EventsEmit(a.ctx, "mirror:discover:progress", map[string]any{
+			a.sink().Emit("mirror:discover:progress", map[string]any{
 				"phase":   p.Phase,
 				"account": p.Account,
 				"current": p.Current,
@@ -2958,12 +2962,12 @@ func (a *App) DiscoverMirrors() {
 			})
 		})
 		if err != nil {
-			wailsrt.EventsEmit(a.ctx, "mirror:discover:done", map[string]any{
+			a.sink().Emit("mirror:discover:done", map[string]any{
 				"error": err.Error(),
 			})
 			return
 		}
-		wailsrt.EventsEmit(a.ctx, "mirror:discover:done", map[string]any{
+		a.sink().Emit("mirror:discover:done", map[string]any{
 			"results": results,
 		})
 	}()
@@ -3435,7 +3439,7 @@ func (a *App) MoveRepo(req MoveRequestDTO) {
 	src, ok := cfg.Sources[req.SourceSourceKey]
 	a.mu.Unlock()
 	if !ok {
-		wailsrt.EventsEmit(a.ctx, "move:done", MoveResultDTO{Error: fmt.Sprintf("source %q not found", req.SourceSourceKey)})
+		a.sink().Emit("move:done", MoveResultDTO{Error: fmt.Sprintf("source %q not found", req.SourceSourceKey)})
 		return
 	}
 	repo := src.Repos[req.SourceRepoKey]
@@ -3461,7 +3465,7 @@ func (a *App) MoveRepo(req MoveRequestDTO) {
 			if p.Err != nil {
 				event.Error = p.Err.Error()
 			}
-			wailsrt.EventsEmit(a.ctx, "move:progress", event)
+			a.sink().Emit("move:progress", event)
 		})
 		dto := MoveResultDTO{
 			NewOrigin:           result.NewOrigin,
@@ -3480,7 +3484,7 @@ func (a *App) MoveRepo(req MoveRequestDTO) {
 		// GUI-side mutation scheduled between now and the refresh
 		// doesn't lose state.
 		_ = a.saveConfig()
-		wailsrt.EventsEmit(a.ctx, "move:done", dto)
+		a.sink().Emit("move:done", dto)
 
 		// Auto-clone the destination when the user opted to delete
 		// the local source. The repo now lives only on the

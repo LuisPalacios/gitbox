@@ -10,7 +10,6 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
-	wailsrt "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // ─── PR / review indicators ──────────────────────────────────────
@@ -133,9 +132,7 @@ func (a *App) RefreshAllPRs() {
 	go func() {
 		for _, snap := range accounts {
 			upd := fetchPRsForAccount(snap, includeDrafts)
-			if a.ctx != nil {
-				wailsrt.EventsEmit(a.ctx, "pr:refreshed", upd)
-			}
+			a.sink().Emit("pr:refreshed", upd)
 		}
 	}()
 }

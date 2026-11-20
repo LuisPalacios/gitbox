@@ -214,7 +214,7 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 		out.Error = saveErr.Error()
 	}
 	if changed || wsChanged {
-		a.emitRefreshEvent("reconcile:done", out)
+		a.sink().Emit("reconcile:done", out)
 	}
 	return out
 }
