@@ -302,6 +302,9 @@ func validate(cfg *Config) error {
 	default:
 		return fmt.Errorf("global.language must be \"en\" or \"es\"")
 	}
+	if err := ValidateRemotes(cfg.Global.Remotes); err != nil {
+		return err
+	}
 	for name, acct := range cfg.Accounts {
 		if acct.Provider == "" {
 			return fmt.Errorf("account %q: provider is required", name)

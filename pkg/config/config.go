@@ -104,6 +104,12 @@ type GlobalConfig struct {
 	// Pointer semantics so an absent field defaults to true — existing
 	// configs and fresh installs both opt in by default.
 	CheckGlobalGitignore *bool `json:"check_global_gitignore,omitempty"`
+
+	// ExperimentalRemote turns remote mode (#233) on for this machine, like
+	// the --experimental-remote flag. Remotes are its destinations. Both are
+	// client preferences: see ClientPrefs in prefs.go.
+	ExperimentalRemote bool          `json:"experimental_remote,omitempty"`
+	Remotes            []RemoteEntry `json:"remotes,omitempty"`
 }
 
 // DefaultNestedScanDepth is the depth gitbox descends below a container repo
