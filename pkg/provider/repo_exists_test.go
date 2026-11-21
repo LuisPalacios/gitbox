@@ -9,9 +9,9 @@ import (
 	"testing"
 )
 
-type repoExistsTransport func(*http.Request) (*http.Response, error)
+type repoExistsDoer func(*http.Request) (*http.Response, error)
 
-func (f repoExistsTransport) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+func (f repoExistsDoer) Do(req *http.Request) (*http.Response, error) { return f(req) }
 
 func TestRepoExists_HTTPStatus(t *testing.T) {
 	for _, name := range []string{"github", "gitlab", "gitea", "forgejo", "bitbucket"} {
@@ -30,11 +30,9 @@ func TestRepoExists_HTTPStatus(t *testing.T) {
 				{name: "forbidden", repo: "repo404", status: http.StatusForbidden, body: "404", wantError: "insufficient permissions (HTTP 403) — token needs broader scopes"},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
-					previous := http.DefaultClient
-					t.Cleanup(func() { http.DefaultClient = previous })
 					// I intercept every request, including Bitbucket's fixed public API URL.
 					var requestURL, requestHost string
-					http.DefaultClient = &http.Client{Transport: repoExistsTransport(func(req *http.Request) (*http.Response, error) {
+					SetDoerForTest(t, repoExistsDoer(func(req *http.Request) (*http.Response, error) {
 						w := httptest.NewRecorder()
 						w.Header().Set("Content-Type", "application/json")
 						if strings.HasSuffix(req.URL.Path, "/api/v1/user/repos") {
@@ -45,7 +43,7 @@ func TestRepoExists_HTTPStatus(t *testing.T) {
 							_, _ = w.Write([]byte(tc.body))
 						}
 						return w.Result(), nil
-					})}
+					}))
 					p, err := ByName(name)
 					if err != nil {
 						t.Fatal(err)

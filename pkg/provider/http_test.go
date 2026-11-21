@@ -148,3 +148,45 @@ func TestDoDelete404(t *testing.T) {
 		t.Errorf("expected 404 error, got %v", err)
 	}
 }
+
+// doerFunc answers requests without a network.
+type doerFunc func(*http.Request) (*http.Response, error)
+
+func (f doerFunc) Do(req *http.Request) (*http.Response, error) { return f(req) }
+
+// Every request goes through the package's Doer: with a fake in place no
+// connection is made, and the previous Doer comes back when the test ends.
+func TestRequestsGoThroughTheDoer(t *testing.T) {
+	before := httpDoer
+	var methods []string
+	t.Run("with a fake", func(t *testing.T) {
+		SetDoerForTest(t, doerFunc(func(req *http.Request) (*http.Response, error) {
+			methods = append(methods, req.Method)
+			rec := httptest.NewRecorder()
+			rec.WriteHeader(http.StatusOK)
+			_, _ = rec.WriteString(`{"ok":true}`)
+			return rec.Result(), nil
+		}))
+		// Port 1 refuses every connection: only the fake can answer.
+		const unreachable = "http://127.0.0.1:1/api"
+		var out map[string]any
+		if _, err := doGet(context.Background(), unreachable, nil, &out); err != nil || out["ok"] != true {
+			t.Errorf("doGet = %v, %v", out, err)
+		}
+		if _, err := doPost(context.Background(), unreachable, nil, strings.NewReader(`{}`), nil); err != nil {
+			t.Errorf("doPost: %v", err)
+		}
+		if err := doDelete(context.Background(), unreachable, nil); err != nil {
+			t.Errorf("doDelete: %v", err)
+		}
+	})
+	if strings.Join(methods, " ") != "GET POST DELETE" {
+		t.Errorf("the fake saw %v, want GET POST DELETE", methods)
+	}
+	if httpDoer != before {
+		t.Errorf("the Doer was not restored after the test")
+	}
+	if httpDoer == Doer(http.DefaultClient) {
+		t.Errorf("the package must own its client, not share http.DefaultClient")
+	}
+}

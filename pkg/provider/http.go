@@ -7,6 +7,29 @@ import (
 	"net/http"
 )
 
+// Doer sends one HTTP request. Every provider API request goes through the
+// package's Doer, so tests can answer without a network and the transport
+// rules that apply to every request live in one place.
+type Doer interface {
+	Do(*http.Request) (*http.Response, error)
+}
+
+// httpDoer is the Doer every request uses: one client shared by all
+// providers, owned by this package instead of the process-wide
+// http.DefaultClient. Tests replace it with SetDoerForTest.
+var httpDoer Doer = &http.Client{}
+
+// SetDoerForTest replaces the package's Doer until the test ends.
+func SetDoerForTest(t interface {
+	Helper()
+	Cleanup(func())
+}, d Doer) {
+	t.Helper()
+	previous := httpDoer
+	httpDoer = d
+	t.Cleanup(func() { httpDoer = previous })
+}
+
 // doGet performs an authenticated GET request, decodes the JSON response into target,
 // and returns the response headers. The authHeader is sent as-is in the Authorization
 // (or provider-specific) header.
@@ -22,7 +45,7 @@ func doGet(ctx context.Context, url string, headers map[string]string, target an
 	}
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpDoer.Do(req)
 	if err != nil {
 		return nil, transportError(method, url, err)
 	}
@@ -55,7 +78,7 @@ func doPost(ctx context.Context, url string, headers map[string]string, body io.
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpDoer.Do(req)
 	if err != nil {
 		return nil, transportError(method, url, err)
 	}
@@ -89,7 +112,7 @@ func doDelete(ctx context.Context, url string, headers map[string]string) error 
 	}
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpDoer.Do(req)
 	if err != nil {
 		return transportError(method, url, err)
 	}
