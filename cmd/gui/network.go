@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net"
+	"net/http"
 	"net/url"
 	"slices"
 	"sync"
@@ -46,12 +47,21 @@ type networkFlight struct {
 }
 
 // serverAddr returns the host:port that tells whether an account's server is
-// reachable: the one in its URL. "" means the URL cannot be read, and the
-// account is then never held back.
+// reachable: the one in its URL, or the proxy's when the environment routes
+// that URL through one (a direct connect would then fail on a working
+// network). "" means the URL cannot be read, and the account is then never
+// held back.
 func serverAddr(acct config.Account) string {
+	return serverAddrVia(acct, http.ProxyFromEnvironment)
+}
+
+func serverAddrVia(acct config.Account, proxyFor func(*http.Request) (*url.URL, error)) string {
 	u, err := url.Parse(acct.URL)
 	if err != nil || u.Hostname() == "" {
 		return ""
+	}
+	if proxy, err := proxyFor(&http.Request{URL: u}); err == nil && proxy != nil && proxy.Hostname() != "" {
+		u = proxy
 	}
 	port := u.Port()
 	if port == "" {

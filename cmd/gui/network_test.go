@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -35,10 +37,25 @@ func TestServerAddr(t *testing.T) {
 		"":                               "",
 		"not a url":                      "",
 	}
+	direct := func(*http.Request) (*url.URL, error) { return nil, nil }
 	for in, want := range tests {
-		if got := serverAddr(config.Account{URL: in}); got != want {
+		if got := serverAddrVia(config.Account{URL: in}, direct); got != want {
 			t.Errorf("serverAddr(%q) = %q, want %q", in, got, want)
 		}
+	}
+
+	// Behind a proxy, the proxy is what must answer.
+	proxy := func(r *http.Request) (*url.URL, error) {
+		if r.URL.Hostname() == "gitea.lan" {
+			return nil, nil // not proxied
+		}
+		return url.Parse("http://proxy.corp:3128")
+	}
+	if got := serverAddrVia(config.Account{URL: "https://github.com"}, proxy); got != "proxy.corp:3128" {
+		t.Errorf("proxied account = %q, want the proxy", got)
+	}
+	if got := serverAddrVia(config.Account{URL: "http://gitea.lan:3000"}, proxy); got != "gitea.lan:3000" {
+		t.Errorf("account outside the proxy = %q, want its own server", got)
 	}
 }
 
