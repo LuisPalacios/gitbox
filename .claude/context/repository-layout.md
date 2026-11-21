@@ -57,7 +57,7 @@ scripts/
   stamp.sh                 The build identity (VERSION, COMMIT, LDFLAGS) that GitboxApp and gitbox-server share; every build path evals it
   build-server.sh          Cross-compile gitbox-server for GITBOX_SERVER_TARGETS and generate what cmd/gui/serverbin embeds
   check-gui-artifact.sh    Check a built GitboxApp: identity against the stamp, embedded targets, size against size-ceilings.txt
-  size-ceilings.txt        Baseline and ceiling of the main executable per platform (baseline + 25 MiB)
+  size-ceilings.txt        Baseline and ceiling of the main executable per platform (baseline + 30 MiB)
   ship.sh                  Build GitboxApp on each remote host in .env and stage it
   smoke.sh                 Run `GitboxApp --version` locally and on staged remotes
   gate.sh                  Local merge gate: verify HEAD on macOS, Linux and Windows hosts in parallel; per-SHA marker, --report status
