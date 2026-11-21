@@ -84,6 +84,9 @@ func (f *fakeRunner) Calls() []Request {
 	return slices.Clone(f.calls)
 }
 
+// contractObject is the object name git gives the input "contract\n".
+const contractObject = "4f20aab5d23c15070b8be7029c5f28031c4e898a"
+
 // contractScript answers the commands of TestRunnerContract the way git does.
 func contractScript(repo string) func(Request, []byte) fakeReply {
 	return func(req Request, stdin []byte) fakeReply {
@@ -99,7 +102,7 @@ func contractScript(repo string) func(Request, []byte) fakeReply {
 			if string(stdin) != "contract\n" {
 				return fakeReply{Stderr: "unexpected input\n", Exit: 1}
 			}
-			return fakeReply{Stdout: "ab7d51d1bb1c1aeb6fa4b6a5ad4cb4f3c6d64d0c\n"}
+			return fakeReply{Stdout: contractObject + "\n"}
 		case "config --get contract.missing":
 			return fakeReply{Exit: 1}
 		case "var GIT_TERMINAL_PROMPT_PROBE":
@@ -165,8 +168,8 @@ func TestRunnerContract(t *testing.T) {
 
 			t.Run("stdin reaches the command", func(t *testing.T) {
 				res, err := r.Run(ctx, Request{Dir: repo, Args: []string{"hash-object", "--stdin"}, Stdin: strings.NewReader("contract\n")})
-				if err != nil || len(strings.TrimSpace(string(res.Stdout))) != 40 {
-					t.Errorf("res = %+v, err = %v, want a 40-character object name", res, err)
+				if got := strings.TrimSpace(string(res.Stdout)); err != nil || got != contractObject {
+					t.Errorf("object = %q, err = %v; want %s, the name of what was sent", got, err, contractObject)
 				}
 			})
 

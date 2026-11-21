@@ -36,6 +36,8 @@ DEADCODE="golang.org/x/tools/cmd/deadcode@v0.50.0"
 # kept as part of a small public API. One regex per line.
 # I retain standalone sync/cache wrappers and the legacy raw-token writer
 # for library callers and their compatibility tests.
+# SetRunnerForTest and SetDoerForTest are the test seams for git and HTTP:
+# only tests call them, by design.
 # Remote mode (#233) lands in phases: the file-backed preference store and the
 # server half of the client-preference boundary are tested now and get their
 # first callers with the server and the SSH bootstrap. Drop these two entries
@@ -44,6 +46,7 @@ DEADCODE_ALLOW='pkg[/\\]credential[/\\]credential[.]go:[0-9]+:[0-9]+: unreachabl
 unreachable func: (PSDecode|resetLookupCachesForTest|Version\.String)$
 pkg[/\\]terminals[/\\]sync[.]go:[0-9]+:[0-9]+: unreachable func: Sync$
 pkg[/\\]workspace[/\\]workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCache$
+unreachable func: (SetRunnerForTest|SetDoerForTest)$
 cmd[/\\]gui[/\\]prefs[.]go:[0-9]+:[0-9]+: unreachable func: (newFilePrefs|filePrefs[.](load|Reload|Get|Update))$
 pkg[/\\]config[/\\]prefs[.]go:[0-9]+:[0-9]+: unreachable func: (StripClientPrefs|PreserveClientPrefs)$'
 

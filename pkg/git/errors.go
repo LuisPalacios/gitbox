@@ -62,14 +62,9 @@ func (e *GitError) Error() string {
 
 func (e *GitError) Unwrap() error { return e.Err }
 
-// newGitError builds the error for a failed git command. output is whatever
-// git printed (stderr, or stdout and stderr combined).
-func newGitError(op string, err error, output []byte) *GitError {
-	return newGitErrorContext(context.Background(), op, err, output)
-}
-
-// newGitErrorContext is newGitError for a command that ran under ctx: a
-// cancelled or expired context decides the code.
+// newGitErrorContext builds the error for a failed git command that ran
+// under ctx: a cancelled or expired context decides the code. output is
+// whatever git printed (stderr, or stdout and stderr combined).
 func newGitErrorContext(ctx context.Context, op string, err error, output []byte) *GitError {
 	if len(output) == 0 {
 		if exit, ok := errors.AsType[*exec.ExitError](err); ok {
@@ -232,19 +227,3 @@ func RedactURL(raw string) string {
 	}
 	return u.String()
 }
-
-// tailBuffer is an io.Writer that keeps the last max bytes written to it.
-type tailBuffer struct {
-	max int
-	buf []byte
-}
-
-func (t *tailBuffer) Write(p []byte) (int, error) {
-	t.buf = append(t.buf, p...)
-	if over := len(t.buf) - t.max; over > 0 {
-		t.buf = t.buf[over:]
-	}
-	return len(p), nil
-}
-
-func (t *tailBuffer) Bytes() []byte { return t.buf }
