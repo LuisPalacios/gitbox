@@ -93,18 +93,22 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	if s.ToUserError == nil {
 		return errors.New("rpc: Server.ToUserError is not set")
 	}
+	// The outbox exists before the handshake ends: an event emitted the
+	// moment the client takes the connection as made is queued, and goes
+	// out after the verdict.
+	box := newOutbox()
+	s.setOutbox(box)
+	defer s.setOutbox(nil)
+
 	reader := bufio.NewReader(in)
 	if err := serverHandshake(out, reader, s.Self); err != nil {
+		box.close()
 		s.logf("handshake failed: %v", err)
 		return err
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-
-	box := newOutbox()
-	s.setOutbox(box)
-	defer s.setOutbox(nil)
 
 	// The writer is the only goroutine that writes to out.
 	writerDone := make(chan error, 1)

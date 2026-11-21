@@ -1,7 +1,10 @@
 package rpc
 
 import (
+	"bufio"
+	"context"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -183,5 +186,94 @@ func TestOperationKey(t *testing.T) {
 	}
 	if operationKey("x:progress", nil) != "x:progress" || operationKey("x:progress", []any{42}) != "x:progress" {
 		t.Error("a payload that names no operation falls back to the event name")
+	}
+}
+
+// An event the server emits while the handshake is still in flight is not
+// lost: it goes out after the verdict. A client takes the connection as made
+// the moment it reads the verdict, and whatever the server emits from then
+// on must reach it.
+func TestEvents_EmittedDuringTheHandshakeArrive(t *testing.T) {
+	srv := newServer(nil)
+	c2sR, c2sW := io.Pipe()
+	s2cR, s2cW := io.Pipe()
+	served := make(chan error, 1)
+	go func() {
+		served <- srv.Serve(context.Background(), c2sR, s2cW)
+		_ = s2cW.Close()
+	}()
+	reader := bufio.NewReader(s2cR)
+
+	// The client's half by hand, stopping after the server's greeting.
+	if err := skipToMagic(reader); err != nil {
+		t.Fatal(err)
+	}
+	var hello Hello
+	if err := readJSONFrame(reader, &hello); err != nil {
+		t.Fatal(err)
+	}
+	srv.Emit("early:done", "kept")
+
+	if err := writeJSONFrame(c2sW, clientHello{Version: testVersion, Commit: testCommit}); err != nil {
+		t.Fatal(err)
+	}
+	var v verdict
+	if err := readJSONFrame(reader, &v); err != nil || !v.OK {
+		t.Fatalf("verdict %+v, %v", v, err)
+	}
+	type frame struct {
+		body []byte
+		err  error
+	}
+	next := make(chan frame, 1)
+	go func() {
+		body, err := ReadFrame(reader)
+		next <- frame{body, err}
+	}()
+	select {
+	case f := <-next:
+		if f.err != nil || !strings.Contains(string(f.body), `"early:done"`) || !strings.Contains(string(f.body), `"kept"`) {
+			t.Errorf("the first frame after the verdict is %q, %v; want the event", f.body, f.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Error("the event emitted during the handshake never arrived")
+	}
+	_ = c2sW.Close()
+	if err := <-served; err != nil {
+		t.Errorf("Serve = %v", err)
+	}
+
+	// A handshake that fails releases an emitter that was waiting for room
+	// in the queue, and later events are dropped without waiting.
+	in2R, in2W := io.Pipe()
+	out2R, out2W := io.Pipe()
+	go func() { served <- srv.Serve(context.Background(), in2R, out2W) }()
+	reader2 := bufio.NewReader(out2R)
+	if err := skipToMagic(reader2); err != nil {
+		t.Fatal(err)
+	}
+	if err := readJSONFrame(reader2, &hello); err != nil {
+		t.Fatal(err)
+	}
+	emitted := make(chan struct{})
+	go func() {
+		for range 2 * MaxQueuedMessages {
+			srv.Emit("late:done")
+		}
+		close(emitted)
+	}()
+	select {
+	case <-emitted:
+		t.Fatal("the queue took twice its bound without waiting: the test proves nothing")
+	case <-time.After(200 * time.Millisecond):
+	}
+	_ = in2W.Close()
+	if err := <-served; err == nil {
+		t.Fatal("a handshake the client abandons must fail")
+	}
+	select {
+	case <-emitted:
+	case <-time.After(5 * time.Second):
+		t.Error("an emitter stayed blocked after the handshake failed")
 	}
 }
