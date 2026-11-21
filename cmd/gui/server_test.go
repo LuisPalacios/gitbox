@@ -76,39 +76,79 @@ func hostConfig(t *testing.T, theme string) string {
 	})
 }
 
+// carriesGlobalConfig reports whether a value of type t holds the "global"
+// section of a config, at any depth.
+func carriesGlobalConfig(t reflect.Type, seen map[reflect.Type]bool) bool {
+	if seen[t] {
+		return false
+	}
+	seen[t] = true
+	if t == reflect.TypeFor[config.GlobalConfig]() {
+		return true
+	}
+	switch t.Kind() {
+	case reflect.Pointer, reflect.Slice, reflect.Array, reflect.Map:
+		return carriesGlobalConfig(t.Elem(), seen)
+	case reflect.Struct:
+		for f := range t.Fields() {
+			if carriesGlobalConfig(f.Type, seen) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // What the server sends carries the host's domain data and none of its
-// client preferences.
+// client preferences. The test finds by itself every Backend method whose
+// result holds a config, so a new one cannot leak them unnoticed.
 func TestServerSendsNoClientPrefs(t *testing.T) {
 	path := hostConfig(t, "dark")
 	a := newServerApp(path)
 	newRPCServer(a, io.Discard)
 	a.be().Init(context.Background())
-	host := hostBackend{localBackend{a}}
+	host := reflect.ValueOf(Backend(hostBackend{localBackend{a}}))
 
-	check := func(what string, dto ConfigDTO, err error) {
-		t.Helper()
+	var checked []string
+	for m := range reflect.TypeFor[Backend]().Methods() {
+		carries := false
+		for out := range m.Type.Outs() {
+			carries = carries || carriesGlobalConfig(out, map[reflect.Type]bool{})
+		}
+		if !carries {
+			continue
+		}
+		checked = append(checked, m.Name)
+		if m.Type.NumIn() != 0 {
+			t.Errorf("%s returns a config and takes parameters: teach this test to call it", m.Name)
+			continue
+		}
+		results := host.MethodByName(m.Name).Call(nil)
+		if err, _ := reflect.TypeAssert[error](results[len(results)-1]); err != nil {
+			t.Errorf("%s: %v", m.Name, err)
+			continue
+		}
+		sent, err := json.Marshal(results[0].Interface())
 		if err != nil {
-			t.Fatalf("%s: %v", what, err)
+			t.Fatal(err)
 		}
-		g := dto.Global
-		if g.Theme != "" || g.Language != "" || g.Editors != nil || g.Remotes != nil || g.Window != nil {
-			t.Errorf("%s sent client preferences: theme %q, language %q, editors %v, remotes %v, window %v",
-				what, g.Theme, g.Language, g.Editors, g.Remotes, g.Window)
+		for _, pref := range []string{`"theme":"dark"`, `"language":"es"`, "/usr/local/bin/code", "build-box", `"window":{`} {
+			if strings.Contains(string(sent), pref) {
+				t.Errorf("%s sent the host's client preference %s", m.Name, pref)
+			}
 		}
-		if len(g.IgnoredClones) != 1 || len(g.Roots) != 1 || len(dto.Accounts) != 1 {
-			t.Errorf("%s lost domain data: %+v", what, g)
+		if !strings.Contains(string(sent), "/host/ignored") || !strings.Contains(string(sent), `"accounts":{"acct"`) {
+			t.Errorf("%s lost domain data: %s", m.Name, sent)
 		}
 	}
-	dto, err := host.GetConfig()
-	check("GetConfig", dto, err)
-	snap, err := host.GetStartupSnapshot()
-	check("GetStartupSnapshot", snap.Config, err)
-	dto, err = host.ReloadConfig()
-	check("ReloadConfig", dto, err)
+	want := []string{"GetConfig", "GetStartupSnapshot", "RedetectProfiles", "ReloadConfig"}
+	if !slices.Equal(checked, want) {
+		t.Errorf("methods that return a config: %v, want %v", checked, want)
+	}
 
-	// The file itself is untouched by reading.
+	// The file itself keeps the host's preferences.
 	if got := string(globalKeys(t, path)["theme"]); got != `"dark"` {
-		t.Errorf("the host's file changed by being read: theme %s", got)
+		t.Errorf("the host's file lost its theme: %s", got)
 	}
 }
 
