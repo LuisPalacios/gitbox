@@ -48,6 +48,10 @@ type App struct {
 	// prefs holds the client preferences; nil means sharedPrefs{a}, the
 	// client keys of cfg (see prefs.go).
 	prefs prefsStore
+	// keepHostPrefs is set in gitbox-server. The client preferences in the
+	// host's gitbox.json belong to the host: before every save they are
+	// taken again from the file, so the server never changes them.
+	keepHostPrefs bool
 	// remoteAlias names the remote this window shows; empty is the local
 	// window. It selects where the window geometry is stored.
 	remoteAlias string
@@ -204,7 +208,21 @@ func (a *App) saveConfig() error {
 		}
 		return fmt.Errorf("refusing to save: config not loaded")
 	}
+	a.restoreHostPrefs()
 	return config.Save(a.cfg, a.cfgPath)
+}
+
+// restoreHostPrefs puts the client preferences that are on disk back into
+// the config about to be saved, when this process is a server. A host that
+// also runs GitboxApp may have changed its theme, editors or window since
+// the server loaded the file. Caller holds a.mu.
+func (a *App) restoreHostPrefs() {
+	if !a.keepHostPrefs {
+		return
+	}
+	if onDisk, err := config.Load(a.cfgPath); err == nil {
+		config.PreserveClientPrefs(a.cfg, onDisk)
+	}
 }
 
 // ─── Update ──────────────────────────────────────────────────
@@ -1299,6 +1317,7 @@ func (a *App) repairConfigLocal() ConfigRepairResult {
 	a.cfgLoaded = true
 	a.cfgLoadError = ""
 
+	a.restoreHostPrefs()
 	if err := config.Save(a.cfg, a.cfgPath); err != nil {
 		return ConfigRepairResult{Success: false, Error: userText(fmt.Sprintf("saving repaired config: %v", err))}
 	}
@@ -1394,6 +1413,7 @@ func (a *App) restoreFromBackupLocal(backupPath string) ConfigRepairResult {
 	a.cfg = cfg
 	a.cfgLoaded = true
 	a.cfgLoadError = ""
+	a.restoreHostPrefs()
 	if err := config.Save(a.cfg, a.cfgPath); err != nil {
 		return ConfigRepairResult{Success: false, Error: userText(fmt.Sprintf("saving restored config: %v", err))}
 	}
