@@ -1,0 +1,15 @@
+# Size ceilings for the main GitboxApp executable, read by
+# scripts/check-gui-artifact.sh. A build over its ceiling fails.
+#
+# baseline  the executable built from commit 6c10e9a, the last one before
+#           GitboxApp carried gitbox-server, as each gate lane builds it
+# ceiling   baseline + 25 MiB (26214400 bytes): the budget that
+#           docs/remote-spike.md fixed for the six embedded servers
+#
+# A platform without a line cannot be checked, and its build fails.
+#
+# <os>/<arch>   <baseline bytes>   <ceiling bytes>
+darwin/arm64    12035408           38249808
+darwin/amd64    13039552           39253952
+linux/amd64     12968448           39182848
+windows/amd64   14722048           40936448

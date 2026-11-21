@@ -58,13 +58,11 @@ platform_from_shortname() {
 # ---------------------------------------------------------------------------
 # Remote hosts tar the source without `.git`, so the runtime `git describe`
 # fallback in fullVersion() / GetAppVersion() returns empty and the binary
-# reports "dev-none". Compute the version/commit once on the local side and
-# pass them through -ldflags to the remote `wails build`. Matches the idiom
-# used by CI.
-_desc="$(git describe --tags --always 2>/dev/null || echo dev)"
-_sha="$(git rev-parse --short HEAD 2>/dev/null || echo none)"
-LDFLAGS="-X main.version=${_desc}-dev -X main.commit=${_sha}"
-unset _desc _sha
+# reports "dev-none". Compute the version and commit once on the local side
+# and pass them through -ldflags to the remote `wails build`. stamp.sh is the
+# one source every build path uses, so the GUI and the gitbox-server it
+# embeds carry the same identity.
+eval "$("$REPO_ROOT/scripts/stamp.sh")" || die "scripts/stamp.sh failed"
 
 # ---------------------------------------------------------------------------
 # Remote paths per platform
@@ -144,11 +142,15 @@ build_and_ship_gui() {
     # after bash expands $LDFLAGS into the outer double-quoted command string.
     local wails_flags="-s -ldflags '$LDFLAGS' -platform $target"
 
+    # serverbin: embed the gitbox-server binaries that build-server.sh left
+    # in the tree before the tar (they travel inside it).
     # Linux: Wails v2.9+ uses WebKitGTK 4.1 via the webkit2_41 build tag.
     # Ubuntu 24.04+ ships libwebkit2gtk-4.1-dev; without the tag, the Go
     # build fails with "Package webkit2gtk-4.0 not found".
     if [[ "$p" == "linux" ]]; then
-        wails_flags="$wails_flags -tags webkit2_41"
+        wails_flags="$wails_flags -tags webkit2_41,serverbin"
+    else
+        wails_flags="$wails_flags -tags serverbin"
     fi
 
     # macOS: Go's runtime targets macOS 13, so cgo and the linker get the same
@@ -170,6 +172,22 @@ build_and_ship_gui() {
     echo ">> wails build -platform $target (remote)"
     if ! ssh "$host" "$build_cmd"; then
         echo "!! wails build failed on $host — see output above" >&2
+        return 1
+    fi
+
+    # The built app must report this stamp and carry the server binaries of
+    # this same build. No size check: a development build embeds two targets.
+    local exe="$artifact"
+    [[ "$artifact" == *".app" ]] && exe="$artifact/Contents/MacOS/GitboxApp"
+    local check_cmd="export PATH=$path_prefix && cd ~/$remote_dir && \
+        VERSION='$VERSION' COMMIT='$COMMIT' GITBOX_SERVER_TARGETS='${GITBOX_SERVER_TARGETS:-}' \
+        bash scripts/check-gui-artifact.sh --no-size cmd/gui/$exe $target"
+    if is_win_platform "$p"; then
+        check_cmd="$(_win_scoop_path_prefix) $check_cmd"
+    fi
+    echo ">> check the artifact (remote)"
+    if ! ssh "$host" "$check_cmd"; then
+        echo "!! the built GitboxApp failed its check on $host — see output above" >&2
         return 1
     fi
 
@@ -248,6 +266,11 @@ fi
 # ---------------------------------------------------------------------------
 # Ship — parallel by default, one process per target.
 # ---------------------------------------------------------------------------
+
+# The gitbox-server binaries GitboxApp embeds are built here, once, and ship
+# inside every tar: the tar leaves out .git but not ignored files.
+header "gitbox-server binaries"
+"$REPO_ROOT/scripts/build-server.sh" || die "scripts/build-server.sh failed"
 
 header "Shipping:$targets"
 

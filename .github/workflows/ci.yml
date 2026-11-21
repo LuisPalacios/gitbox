@@ -62,11 +62,22 @@ jobs:
     runs-on: windows-latest
     needs: test
     env:
-      LDFLAGS: >-
-        -X main.version=${{ inputs.version || github.ref_name }}
-        -X main.commit=${{ github.sha }}
+      # scripts/stamp.sh turns this into the one build identity that the GUI
+      # and the gitbox-server binaries it embeds share.
+      GITBOX_VERSION: ${{ inputs.version || github.ref_name }}
+      GITBOX_SERVER_TARGETS: all
     steps:
       - uses: actions/checkout@v7
+      # First, before any step edits a tracked file.
+      - name: Stamp the build
+        shell: bash
+        run: |
+          eval "$(bash scripts/stamp.sh)"
+          {
+            echo "VERSION=$VERSION"
+            echo "COMMIT=$COMMIT"
+            echo "LDFLAGS=$LDFLAGS"
+          } >> "$GITHUB_ENV"
       - uses: actions/setup-go@v7
         with:
           go-version: 'stable'
@@ -87,10 +98,16 @@ jobs:
           VER="${{ inputs.version || github.ref_name }}"
           VER="${VER#v}"
           sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
+      - name: Build the embedded gitbox-server binaries
+        shell: bash
+        run: bash scripts/build-server.sh
       - name: Build GUI
         shell: bash
         working-directory: cmd/gui
-        run: wails build -ldflags "$LDFLAGS"
+        run: wails build -tags serverbin -ldflags "$LDFLAGS"
+      - name: Check the artifact
+        shell: bash
+        run: bash scripts/check-gui-artifact.sh cmd/gui/build/bin/GitboxApp.exe windows/amd64
       - uses: actions/upload-artifact@v7
         with:
           name: gui-windows
@@ -104,11 +121,22 @@ jobs:
     runs-on: ubuntu-22.04
     needs: test
     env:
-      LDFLAGS: >-
-        -X main.version=${{ inputs.version || github.ref_name }}
-        -X main.commit=${{ github.sha }}
+      # scripts/stamp.sh turns this into the one build identity that the GUI
+      # and the gitbox-server binaries it embeds share.
+      GITBOX_VERSION: ${{ inputs.version || github.ref_name }}
+      GITBOX_SERVER_TARGETS: all
     steps:
       - uses: actions/checkout@v7
+      # First, before any step edits a tracked file.
+      - name: Stamp the build
+        shell: bash
+        run: |
+          eval "$(bash scripts/stamp.sh)"
+          {
+            echo "VERSION=$VERSION"
+            echo "COMMIT=$COMMIT"
+            echo "LDFLAGS=$LDFLAGS"
+          } >> "$GITHUB_ENV"
       - uses: actions/setup-go@v7
         with:
           go-version: 'stable'
@@ -130,9 +158,13 @@ jobs:
           VER="${{ inputs.version || github.ref_name }}"
           VER="${VER#v}"
           sed -i.bak "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${VER}\"/" cmd/gui/wails.json && rm -f cmd/gui/wails.json.bak
+      - name: Build the embedded gitbox-server binaries
+        run: bash scripts/build-server.sh
       - name: Build GUI
         working-directory: cmd/gui
-        run: wails build -tags webkit2_41 -ldflags "$LDFLAGS"
+        run: wails build -tags webkit2_41,serverbin -ldflags "$LDFLAGS"
+      - name: Check the artifact
+        run: bash scripts/check-gui-artifact.sh cmd/gui/build/bin/GitboxApp linux/amd64
       - uses: actions/upload-artifact@v7
         with:
           name: gui-linux

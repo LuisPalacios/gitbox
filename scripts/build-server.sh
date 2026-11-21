@@ -48,7 +48,7 @@ if [[ "${1:-}" == "--targets" ]]; then
 fi
 [[ $# -eq 0 ]] || { echo "usage: build-server.sh [--targets]" >&2; exit 2; }
 
-eval "$(scripts/stamp.sh)"
+eval "$(bash scripts/stamp.sh)"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
