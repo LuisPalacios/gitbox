@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LuisPalacios/gitbox/cmd/gui/serverbin"
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/update"
 	"github.com/wailsapp/wails/v2"
@@ -56,6 +57,23 @@ func main() {
 		// window, so scripts can smoke-test an installed GitboxApp.
 		if arg == "--version" {
 			fmt.Printf("GitboxApp %s\n", app.GetAppVersion())
+			return
+		}
+		// --list-server-targets prints the gitbox-server binaries this
+		// build carries. It fails when the build cannot run remote mode
+		// with them, or when one does not match its pin. Build scripts
+		// check their artifact with it.
+		if arg == "--list-server-targets" {
+			build := thisServerBuild()
+			build.list(os.Stdout)
+			err := build.check()
+			if err == nil {
+				err = build.verify(serverbin.Binary)
+			}
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: %s\n", userMsg(err))
+				os.Exit(1)
+			}
 			return
 		}
 		if arg == "--test-mode" {
