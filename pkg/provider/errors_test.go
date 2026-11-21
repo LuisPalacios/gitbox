@@ -24,7 +24,12 @@ func assertProviderErrorSecretFree(t *testing.T, err error) {
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	for _, text := range []string{err.Error(), fmt.Sprintf("%+v", err), fmt.Sprintf("wrapped: %v", fmt.Errorf("github get repo: %w", err))} {
+	texts := []string{fmt.Sprintf("%+v", err), fmt.Sprintf("wrapped: %v", fmt.Errorf("github get repo: %w", err))}
+	// Every error in the chain, too: a caller may print what it unwraps.
+	for e := err; e != nil; e = errors.Unwrap(e) {
+		texts = append(texts, e.Error())
+	}
+	for _, text := range texts {
 		for _, secret := range []string{bodyMarker, queryMarker, pathMarker, "Bearer", "http://", "https://"} {
 			if strings.Contains(text, secret) {
 				t.Errorf("error leaks %q: %s", secret, text)

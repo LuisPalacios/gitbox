@@ -183,7 +183,7 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 		if retryStale && errors.Is(err, ErrStalePlan) {
 			a.retryReconcileAfterRefresh()
 		}
-		return emptyReconcile(err.Error())
+		return emptyReconcile(userMsg(err))
 	}
 	placed, changed := reconcile.Apply(a.cfg, res)
 	saveErr := wsErr
@@ -214,7 +214,7 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 		out.Ignored = append(out.Ignored, toOrphanDTO(u.OrphanRepo, u.Reason))
 	}
 	if saveErr != nil {
-		out.Error = saveErr.Error()
+		out.Error = userMsg(saveErr)
 	}
 	if changed || wsChanged {
 		a.sink().Emit("reconcile:done", out)
@@ -271,7 +271,7 @@ func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
 	if err != nil {
 		a.mu.Unlock()
 		a.reconcileMu.Unlock()
-		return emptyReconcile(err.Error())
+		return emptyReconcile(userMsg(err))
 	}
 	var setups []repoSetup
 	var errs []string
@@ -284,7 +284,7 @@ func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
 			found = true
 			source, err := reconcile.Adopt(a.cfg, u.OrphanRepo, req.Account)
 			if err != nil {
-				errs = append(errs, err.Error())
+				errs = append(errs, userMsg(err))
 				break
 			}
 			a.cfg.IgnoreClone(u.Path, false)
@@ -308,7 +308,7 @@ func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
 	out := a.Reconcile()
 	out.Adopted += len(setups)
 	if saveErr != nil {
-		errs = append(errs, saveErr.Error())
+		errs = append(errs, userMsg(saveErr))
 	}
 	if len(errs) > 0 && out.Error == "" {
 		out.Error = errs[0]

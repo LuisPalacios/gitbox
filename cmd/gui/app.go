@@ -710,11 +710,11 @@ func (a *App) PreviewSweep(sourceKey, repoKey string) SweepPreviewDTO {
 func (a *App) previewSweepLocal(sourceKey, repoKey string) SweepPreviewDTO {
 	path, err := a.resolveRepoPath(sourceKey, repoKey)
 	if err != nil {
-		return SweepPreviewDTO{Error: err.Error()}
+		return SweepPreviewDTO{Error: userMsg(err)}
 	}
 	result, err := git.SweepBranches(path)
 	if err != nil {
-		return SweepPreviewDTO{Error: err.Error()}
+		return SweepPreviewDTO{Error: userMsg(err)}
 	}
 	return SweepPreviewDTO{Merged: result.Merged, Gone: result.Gone, Squashed: result.Squashed}
 }
@@ -728,15 +728,15 @@ func (a *App) ConfirmSweep(sourceKey, repoKey string) SweepDeleteDTO {
 func (a *App) confirmSweepLocal(sourceKey, repoKey string) SweepDeleteDTO {
 	path, err := a.resolveRepoPath(sourceKey, repoKey)
 	if err != nil {
-		return SweepDeleteDTO{Error: err.Error()}
+		return SweepDeleteDTO{Error: userMsg(err)}
 	}
 	result, err := git.SweepBranches(path)
 	if err != nil {
-		return SweepDeleteDTO{Error: err.Error()}
+		return SweepDeleteDTO{Error: userMsg(err)}
 	}
 	deleted, errs := git.DeleteStaleBranches(path, result)
 	if len(errs) > 0 {
-		return SweepDeleteDTO{Deleted: deleted, Error: errs[0].Error()}
+		return SweepDeleteDTO{Deleted: deleted, Error: userMsg(errs[0])}
 	}
 	return SweepDeleteDTO{Deleted: deleted}
 }
@@ -1296,14 +1296,14 @@ func (a *App) repairConfigLocal() ConfigRepairResult {
 
 	cfg, repairs, err := config.LoadWithRepair(a.cfgPath)
 	if err != nil {
-		return ConfigRepairResult{Success: false, Error: err.Error()}
+		return ConfigRepairResult{Success: false, Error: userMsg(err)}
 	}
 	a.cfg = cfg
 	a.cfgLoaded = true
 	a.cfgLoadError = ""
 
 	if err := config.Save(a.cfg, a.cfgPath); err != nil {
-		return ConfigRepairResult{Success: false, Error: fmt.Sprintf("saving repaired config: %v", err)}
+		return ConfigRepairResult{Success: false, Error: userText(fmt.Sprintf("saving repaired config: %v", err))}
 	}
 
 	details := make([]string, 0, len(repairs))
@@ -1376,7 +1376,7 @@ func (a *App) restoreFromBackupLocal(backupPath string) ConfigRepairResult {
 	cfgDir := filepath.Dir(a.cfgPath)
 	absBackup, err := filepath.Abs(backupPath)
 	if err != nil {
-		return ConfigRepairResult{Success: false, Error: fmt.Sprintf("resolving backup path: %v", err)}
+		return ConfigRepairResult{Success: false, Error: userText(fmt.Sprintf("resolving backup path: %v", err))}
 	}
 	if filepath.Dir(absBackup) != cfgDir {
 		return ConfigRepairResult{Success: false, Error: fmt.Sprintf("backup must live under %s", cfgDir)}
@@ -1398,7 +1398,7 @@ func (a *App) restoreFromBackupLocal(backupPath string) ConfigRepairResult {
 	a.cfgLoaded = true
 	a.cfgLoadError = ""
 	if err := config.Save(a.cfg, a.cfgPath); err != nil {
-		return ConfigRepairResult{Success: false, Error: fmt.Sprintf("saving restored config: %v", err)}
+		return ConfigRepairResult{Success: false, Error: userText(fmt.Sprintf("saving restored config: %v", err))}
 	}
 	return ConfigRepairResult{
 		Success: true,
@@ -1651,7 +1651,7 @@ func (a *App) cloneRepoLocal(sourceKey, repoKey, root string) {
 		a.mu.Unlock()
 		if err != nil {
 			a.sink().Emit("clone:done", map[string]string{
-				"source": sourceKey, "repo": repoKey, "error": err.Error(),
+				"source": sourceKey, "repo": repoKey, "error": userMsg(err),
 			})
 			return
 		}
@@ -1670,7 +1670,7 @@ func (a *App) cloneRepoLocal(sourceKey, repoKey, root string) {
 		// action silently no-ops (#79).
 		result := map[string]any{"source": sourceKey, "repo": repoKey, "path": plan.Dest}
 		if err != nil {
-			result["error"] = failedCloneError(plan.Dest, err).Error()
+			result["error"] = userMsg(failedCloneError(plan.Dest, err))
 		} else {
 			// heal.Repo sets user.name/user.email, normalizes the origin
 			// URL, and configures per-repo credential isolation. Warnings are
@@ -1746,7 +1746,7 @@ func (a *App) pullRepoLocal(sourceKey, repoKey string) {
 
 		result := map[string]any{"source": sourceKey, "repo": repoKey}
 		if err != nil {
-			result["error"] = err.Error()
+			result["error"] = userMsg(err)
 		}
 		a.sink().Emit("pull:done", result)
 	}()
@@ -1797,7 +1797,7 @@ func (a *App) getRepoDetailLocal(sourceKey, repoKey string) RepoDetail {
 	branch, ahead, behind, changed, untracked, err := git.DetailedStatus(path)
 	if err != nil {
 		return RepoDetail{
-			Error:        err.Error(),
+			Error:        userMsg(err),
 			UpstreamGone: goneFlag,
 		}
 	}
@@ -1812,7 +1812,7 @@ func (a *App) getRepoDetailLocal(sourceKey, repoKey string) RepoDetail {
 	if behind > 0 {
 		detail.Incoming, err = git.IncomingCommits(path)
 		if err != nil {
-			detail.IncomingError = err.Error()
+			detail.IncomingError = userMsg(err)
 		}
 	}
 	return detail
@@ -2195,7 +2195,7 @@ func (a *App) credentialSetupGCMLocal(accountKey string) CredentialSetupResult {
 	fixErr := credential.FixGlobalGCMConfig(a.cfg, a.cfgPath)
 	a.mu.Unlock()
 	if fixErr != nil {
-		return CredentialSetupResult{OK: false, Message: fmt.Sprintf("Failed to repair global gitconfig: %v", fixErr)}
+		return CredentialSetupResult{OK: false, Message: userText(fmt.Sprintf("Failed to repair global gitconfig: %v", fixErr))}
 	}
 
 	host := ops.HostnameFromURL(acct.URL)
@@ -2233,7 +2233,7 @@ func (a *App) credentialSetupGCMLocal(accountKey string) CredentialSetupResult {
 		}
 		detail := strings.TrimSpace(stderrBuf.String())
 		if detail == "" {
-			detail = err.Error()
+			detail = userMsg(err)
 		}
 		return CredentialSetupResult{OK: false, Message: fmt.Sprintf("GCM authentication failed for %s@%s: %s", acct.Username, host, detail)}
 	}
@@ -2315,7 +2315,7 @@ func (a *App) credentialStoreTokenLocal(accountKey, token string) CredentialSetu
 	}
 
 	if err := credential.StoreTokenWithAccount(accountKey, strings.TrimSpace(token), acct); err != nil {
-		return CredentialSetupResult{OK: false, Message: err.Error()}
+		return CredentialSetupResult{OK: false, Message: userMsg(err)}
 	}
 
 	// Reconfigure existing clones to use the current credential type.
@@ -2393,7 +2393,7 @@ func (a *App) setupSSH(accountKey string) CredentialSetupResult {
 
 	// Ensure ~/.ssh exists.
 	if err := os.MkdirAll(sshFolder, 0o700); err != nil {
-		return CredentialSetupResult{OK: false, Message: fmt.Sprintf("Creating %s: %v", sshFolder, err)}
+		return CredentialSetupResult{OK: false, Message: userText(fmt.Sprintf("Creating %s: %v", sshFolder, err))}
 	}
 
 	// Write ~/.ssh/config entry if missing.
@@ -2409,7 +2409,7 @@ func (a *App) setupSSH(accountKey string) CredentialSetupResult {
 			URL:      acct.URL,
 		}
 		if err := credential.WriteSSHConfigEntry(sshFolder, opts); err != nil {
-			return CredentialSetupResult{OK: false, Message: fmt.Sprintf("Writing SSH config: %v", err)}
+			return CredentialSetupResult{OK: false, Message: userText(fmt.Sprintf("Writing SSH config: %v", err))}
 		}
 	}
 
@@ -2417,7 +2417,7 @@ func (a *App) setupSSH(accountKey string) CredentialSetupResult {
 	keyPath := credential.SSHKeyPath(sshFolder, accountKey)
 	if _, err := os.Stat(keyPath); err != nil {
 		if _, err := credential.GenerateSSHKey(sshFolder, accountKey, keyType); err != nil {
-			return CredentialSetupResult{OK: false, Message: fmt.Sprintf("Generating SSH key: %v", err)}
+			return CredentialSetupResult{OK: false, Message: userText(fmt.Sprintf("Generating SSH key: %v", err))}
 		}
 	}
 
@@ -2633,10 +2633,10 @@ func (a *App) credentialDeleteLocal(accountKey string) CredentialSetupResult {
 
 	msgs, err := ops.DeleteCredential(a.cfg, accountKey)
 	if err != nil {
-		return CredentialSetupResult{OK: false, Message: err.Error()}
+		return CredentialSetupResult{OK: false, Message: userMsg(err)}
 	}
 	if err := a.saveConfig(); err != nil {
-		return CredentialSetupResult{OK: false, Message: err.Error()}
+		return CredentialSetupResult{OK: false, Message: userMsg(err)}
 	}
 	return CredentialSetupResult{OK: true, Message: strings.Join(msgs, "\n")}
 }
@@ -2674,7 +2674,7 @@ func (a *App) discoverLocal(accountKey string) {
 		if err != nil {
 			a.sink().Emit("discover:done", map[string]any{
 				"accountKey": accountKey,
-				"error":      err.Error(),
+				"error":      userMsg(err),
 			})
 			return
 		}
@@ -2767,7 +2767,7 @@ func (a *App) getMirrorStatusLocal(mirrorKey string) {
 				BackupHead: r.BackupHead,
 				Warning:    r.Warning,
 				NeedsSetup: r.NeedsSetup,
-				Error:      r.Error,
+				Error:      userText(r.Error),
 			})
 		}
 		a.sink().Emit("mirror:status", results)
@@ -2798,7 +2798,7 @@ func (a *App) setupMirrorRepoLocal(mirrorKey, repoKey string) {
 			Mirrored:     r.Mirrored,
 			Method:       r.Method,
 			Instructions: r.Instructions,
-			Error:        r.Error,
+			Error:        userText(r.Error),
 		}
 
 		if r.Error == "" {
@@ -3018,7 +3018,7 @@ func (a *App) discoverMirrorsLocal() {
 		})
 		if err != nil {
 			a.sink().Emit("mirror:discover:done", map[string]any{
-				"error": err.Error(),
+				"error": userMsg(err),
 			})
 			return
 		}
@@ -3492,7 +3492,7 @@ func (a *App) preflightMoveLocal(req MoveRequestDTO) MovePreflightDTO {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	if _, err := move.Preflight(ctx, cfg, moveReq); err != nil {
-		out.Error = err.Error()
+		out.Error = userMsg(err)
 		return out
 	}
 
@@ -3550,7 +3550,7 @@ func (a *App) moveRepoLocal(req MoveRequestDTO) {
 		result := move.Move(ctx, cfg, cfgPath, moveReq, func(p move.Progress) {
 			event := MoveProgressEventDTO{Phase: string(p.Phase), Message: p.Message}
 			if p.Err != nil {
-				event.Error = p.Err.Error()
+				event.Error = userMsg(p.Err)
 			}
 			a.sink().Emit("move:progress", event)
 		})
@@ -3564,7 +3564,7 @@ func (a *App) moveRepoLocal(req MoveRequestDTO) {
 			Warnings:            result.Warnings,
 		}
 		if result.Err != nil {
-			dto.Error = result.Err.Error()
+			dto.Error = userMsg(result.Err)
 		}
 		// Re-save config here as a belt-and-suspenders — the move
 		// package saved when updating the entry, but re-persist so a

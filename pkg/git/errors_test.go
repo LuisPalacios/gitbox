@@ -25,6 +25,10 @@ func assertSecretFree(t *testing.T, err error) {
 		t.Fatal("expected an error")
 	}
 	texts := map[string]string{"Error()": err.Error(), "%v": fmt.Sprintf("%v", err), "%+v": fmt.Sprintf("%+v", err)}
+	// Every error in the chain, too: a caller may print what it unwraps.
+	for e, i := errors.Unwrap(err), 1; e != nil; e, i = errors.Unwrap(e), i+1 {
+		texts[fmt.Sprintf("unwrapped %d", i)] = e.Error()
+	}
 	if ge, ok := errors.AsType[*GitError](err); ok {
 		texts["Detail"], texts["Hint"], texts["Op"] = ge.Detail, ge.Hint, ge.Op
 	}

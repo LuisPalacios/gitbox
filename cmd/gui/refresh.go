@@ -220,13 +220,13 @@ func (a *App) fetchOne(cfg *config.Config, source, repo string) error {
 	src, ok := cfg.Sources[source]
 	if !ok {
 		err := fmt.Errorf("source %q not found", source)
-		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": err.Error()})
+		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": userMsg(err)})
 		return err
 	}
 	r, ok := src.Repos[repo]
 	if !ok {
 		err := fmt.Errorf("repo %q not found", repo)
-		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": err.Error()})
+		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": userMsg(err)})
 		return err
 	}
 	path := status.RepoPath(cfg, source, repo, r)
@@ -311,7 +311,7 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 	if !a.sameRefreshRepo(cfg, source, repo) {
 		a.maintenanceMu.RUnlock()
 		err := fmt.Errorf("repository settings changed during refresh")
-		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": err.Error()})
+		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": userMsg(err)})
 		return err
 	}
 	a.sink().Emit("fetch:start", map[string]string{"source": source, "repo": repo})
@@ -345,7 +345,7 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 	}
 	payload := map[string]any{"source": source, "repo": repo}
 	if err != nil {
-		payload["error"] = err.Error()
+		payload["error"] = userMsg(err)
 		if git.IsUpstreamGoneError(err) {
 			payload["upstreamGone"] = true
 		}
@@ -383,7 +383,7 @@ func (a *App) fetchAllReposLocal() error {
 		err := a.fetchCycle()
 		payload := map[string]string{}
 		if err != nil {
-			payload["error"] = err.Error()
+			payload["error"] = userMsg(err)
 		}
 		a.sink().Emit("fetch:alldone", payload)
 		a.refreshMu.Lock()
