@@ -203,6 +203,8 @@ Ejecuto esto antes de cada push o PR. `/test-plan` en Claude Code o `$test-plan`
 - [ ] `cmd/gui/build/bin/GitboxApp --version` imprime `GitboxApp <version> (<sha>)`
 - [ ] `./scripts/ship.sh` y `./scripts/smoke.sh` pasan en cada remoto de `.env` (se omite cuando `.env` no tiene ninguno)
 
+Cuando cambio la documentación, también ejecuto `./scripts/health.sh docs-parity` por separado para comprobar la estructura en inglés y español. Cuando cambio el propio comprobador, ejecuto `uv run scripts/test_docs_parity.py` para verificar sus diagnósticos con fixtures aislados.
+
 Cuando el cambio toca una de estas áreas, también lo compruebo en la máquina de desarrollo:
 
 - [ ] Config: GitboxApp carga la config, y el cambio sobrevive a un reinicio

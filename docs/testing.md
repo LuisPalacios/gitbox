@@ -203,6 +203,8 @@ I run these before every push or PR. `/test-plan` in Claude Code or `$test-plan`
 - [ ] `cmd/gui/build/bin/GitboxApp --version` prints `GitboxApp <version> (<sha>)`
 - [ ] `./scripts/ship.sh` and `./scripts/smoke.sh` pass on every remote in `.env` (skip when `.env` has none)
 
+For documentation changes I also run `./scripts/health.sh docs-parity` on its own to check the English and Spanish structure. When I change the checker itself, I run `uv run scripts/test_docs_parity.py` to verify its diagnostics on isolated fixtures.
+
 When the change touches one of these areas, I also check it on the dev machine:
 
 - [ ] Config: GitboxApp loads the config, and the change survives a restart

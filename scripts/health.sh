@@ -14,7 +14,7 @@
 #
 # Checks: gofmt vet server staticcheck modernize govulncheck deadcode test
 #         svelte frontend-test build npm-install npm-audit shellcheck actionlint markdown
-#         harness bootstrap fuzz (fuzz requires HEALTH_FUZZ=1)
+#         docs-parity harness bootstrap fuzz (fuzz requires HEALTH_FUZZ=1)
 #
 # Go analyzers are fetched at pinned versions (go run / go install into the
 # run's temp dir), so they need no install and give the same results
@@ -287,6 +287,8 @@ run_markdown() {
     return "$rc"
 }
 
+run_docs_parity() { uv run -q scripts/docs_parity.py; }
+
 run_harness() {
     # Test shared maintenance tools, then verify both renders against ai/.
     local suite
@@ -326,6 +328,7 @@ want shellcheck x   && need shellcheck shellcheck        && check shellcheck run
 want bootstrap x    && need ssh-keygen bootstrap        && check bootstrap run_bootstrap
 want actionlint x   && need actionlint actionlint        && check actionlint run_actionlint
 want markdown x     && need pnpm markdown               && check markdown   run_markdown
+want docs-parity x  && need uv docs-parity && check docs-parity run_docs_parity
 want harness x      && need uv harness && need pnpm harness && need node harness \
                     && check harness run_harness
 

@@ -92,6 +92,8 @@ I enable bounded mutation passes with `HEALTH_FUZZ=1 ./scripts/health.sh` (10 se
 
 I run Markdown tooling without global or project-local package installations: `pnpm dlx` resolves `markdownlint-cli2@0.23.3` and `prettier@3.8.0` into its cache, while `uv run` handles the skill's PEP 723 Python scripts. The Markdown health check runs markdownlint only and preserves configuration and execution failures. The `fixing-markdown` runner also checks structural fixes and Prettier formatting; it prepares both cached tools before editing. Its `--check` leaves source files unchanged, although a first run can populate the caches. A green Markdown health check does not imply that Prettier checked the selected files. Markdown/harness-only health checks do not install or build the application frontend.
 
+I run `./scripts/health.sh docs-parity` to compare each English document with its Spanish counterpart. The check compares the heading levels and fenced code languages in order, the link targets including duplicates, and the image count. It recognizes links to equivalent translated headings and reports differences with file and line locations. I list explicitly English-only documents in `docs/.parity-ignore`.
+
 The Go analyzers are installed into a temporary folder at versions pinned at the top of the script, so they need no install. Vet, staticcheck and modernize analyze linux, darwin and windows on every run, so platform-specific files are checked from any host. I need shellcheck, actionlint, uv, pnpm and Node on `PATH`; Prettier and markdownlint do not need to be there. I approve any required bootstrap installation separately:
 
 ```bash
