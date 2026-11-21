@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -117,6 +118,14 @@ func (a *App) DomReady(_ context.Context) {
 		w = a.savedCompactPos
 	}
 	if w != nil {
+		// The saved size is the whole window, title bar included, but on
+		// macOS Wails creates the window with that size as its content, so
+		// it came back one title bar taller on every launch (#256). Setting
+		// the size again makes the window what was saved. Compact mode
+		// fits its own height from the frontend.
+		if runtime.GOOS == "darwin" && a.savedViewMode != "compact" && w.Width >= 640 && w.Height >= 480 {
+			wailsrt.WindowSetSize(a.ctx, min(w.Width, maxWindowWidth), w.Height)
+		}
 		if a.isPositionOnScreen(w.X, w.Y, w.Width, w.Height) {
 			wailsrt.WindowSetPosition(a.ctx, w.X, w.Y)
 		} else {
