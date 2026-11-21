@@ -289,21 +289,16 @@ func (a *App) getAppVersionLocal() string {
 
 	// If not set by ldflags, try to detect from git at runtime.
 	if v == "dev" {
-		cmd := exec.Command(git.GitBin(), "describe", "--tags", "--always")
-		cmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
-		git.HideWindow(cmd)
-		if out, err := cmd.Output(); err == nil {
-			if tag := strings.TrimSpace(string(out)); tag != "" {
+		// git.Inherit keeps Homebrew dirs on PATH for macOS.
+		if res, err := git.Run(context.Background(), git.Request{Args: []string{"describe", "--tags", "--always"}, Env: git.Inherit}); err == nil {
+			if tag := strings.TrimSpace(string(res.Stdout)); tag != "" {
 				v = tag + "-dev"
 			}
 		}
 	}
 	if c == "none" {
-		cmd := exec.Command(git.GitBin(), "rev-parse", "--short", "HEAD")
-		cmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
-		git.HideWindow(cmd)
-		if out, err := cmd.Output(); err == nil {
-			if sha := strings.TrimSpace(string(out)); sha != "" {
+		if res, err := git.Run(context.Background(), git.Request{Args: []string{"rev-parse", "--short", "HEAD"}, Env: git.Inherit}); err == nil {
+			if sha := strings.TrimSpace(string(res.Stdout)); sha != "" {
 				c = sha
 			}
 		}
@@ -2236,23 +2231,18 @@ func (a *App) credentialSetupGCMLocal(accountKey string) CredentialSetupResult {
 	homeDir, _ := os.UserHomeDir()
 	fillCtx, cancelFill := context.WithTimeout(context.Background(), gcmSignInTimeout)
 	defer cancelFill()
-	fillCmd := exec.CommandContext(fillCtx, git.GitBin(), "credential", "fill")
-	// GCM may outlive the killed git and hold the pipes open; stop waiting.
-	fillCmd.WaitDelay = 2 * time.Second
-	fillCmd.Dir = homeDir
-	fillCmd.Env = gcmSignInEnv()
-	fillCmd.Stdin = strings.NewReader(input)
-	// Capture only: a GUI launched without a console has no valid stderr
-	// handle, so forwarding to os.Stderr would fail the whole fill.
-	var stderrBuf bytes.Buffer
-	fillCmd.Stderr = &stderrBuf
-	git.HideWindow(fillCmd)
-	out, err := fillCmd.Output()
+	// The runner captures the output (a GUI launched without a console has
+	// no valid stderr handle to forward to) and stops waiting two seconds
+	// after a timeout: GCM may outlive the killed git and hold the pipes open.
+	fill, err := git.Run(fillCtx, git.Request{Dir: homeDir, Args: []string{"credential", "fill"},
+		EnvExact: gcmSignInEnv(), Stdin: strings.NewReader(input)})
+	out := fill.Stdout
 	if err != nil {
 		if fillCtx.Err() != nil {
 			return CredentialSetupResult{OK: false, Message: gcmSignInTimeoutMessage(acct.Username, host)}
 		}
-		detail := strings.TrimSpace(stderrBuf.String())
+		// What the helper printed is external text: scrub it like any error.
+		detail := userText(string(fill.Stderr))
 		if detail == "" {
 			detail = userMsg(err)
 		}
@@ -2289,13 +2279,8 @@ func (a *App) credentialSetupGCMLocal(accountKey string) CredentialSetupResult {
 	// already persist during fill. We verify storage below.
 	approveCtx, cancelApprove := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelApprove()
-	approveCmd := exec.CommandContext(approveCtx, git.GitBin(), "credential", "approve")
-	approveCmd.WaitDelay = 2 * time.Second
-	approveCmd.Dir = homeDir
-	approveCmd.Env = gcmSignInEnv()
-	approveCmd.Stdin = strings.NewReader(string(out))
-	git.HideWindow(approveCmd)
-	_ = approveCmd.Run()
+	_, _ = git.Run(approveCtx, git.Request{Dir: homeDir, Args: []string{"credential", "approve"},
+		EnvExact: gcmSignInEnv(), Stdin: bytes.NewReader(out)})
 
 	// Verify the credential was actually stored.
 	if _, _, err := credential.ResolveGCMToken(acct.URL, realUsername); err != nil {

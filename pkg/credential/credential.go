@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -139,24 +138,16 @@ func ResolveGCMTokenContext(ctx context.Context, accountURL, username string) (t
 
 	input := fmt.Sprintf("protocol=%s\nhost=%s\nusername=%s\n\n", u.Scheme, u.Host, username)
 
-	cmd := exec.CommandContext(ctx, git.GitBin(), "credential", "fill")
-	cmd.WaitDelay = time.Second
-	cmd.Stdin = strings.NewReader(input)
 	// Run from home dir so repo-local .git/config credential helpers
 	// don't override the global GCM helper. Home has ~/.gitconfig with
 	// per-host settings but no .git/config to interfere.
-	cmd.Dir, _ = os.UserHomeDir()
-	// Use git.Environ() to ensure Homebrew dirs are on PATH (macOS).
-	// Without this, git-credential-manager is not found on macOS because
-	// the system git (/usr/bin/git) doesn't ship GCM and GUI/SSH sessions
-	// inherit a minimal PATH. Do not replace with bare os.Environ().
-	cmd.Env = append(git.Environ(),
-		"GIT_TERMINAL_PROMPT=0",
-		"GCM_INTERACTIVE=never",
-		"GIT_ASKPASS=",
-	)
-	git.HideWindow(cmd)
-	out, err := cmd.Output()
+	home, _ := os.UserHomeDir()
+	// The non-interactive environment keeps Homebrew dirs on PATH (macOS):
+	// without them git-credential-manager is not found, because the system
+	// git (/usr/bin/git) doesn't ship GCM and GUI/SSH sessions inherit a
+	// minimal PATH.
+	res, err := git.Run(ctx, git.Request{Dir: home, Args: []string{"credential", "fill"}, Stdin: strings.NewReader(input)})
+	out := res.Stdout
 	if err != nil {
 		if ctx.Err() != nil {
 			return "", "", fmt.Errorf("git credential fill failed: %w", ctx.Err())

@@ -1,9 +1,9 @@
 package ops
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -95,15 +95,11 @@ func removeStoredToken(accountKey string) bool {
 // credential for username@host.
 func rejectGCMCredential(host, username string) error {
 	input := fmt.Sprintf("protocol=https\nhost=%s\nusername=%s\n", host, username)
-	cmd := exec.Command(git.GitBin(), "credential", "reject")
 	// Run from home to avoid repo-local .git/config credential overrides.
-	if home, err := os.UserHomeDir(); err == nil {
-		cmd.Dir = home
-	}
-	cmd.Env = git.Environ()
-	git.HideWindow(cmd)
-	cmd.Stdin = strings.NewReader(input)
-	return cmd.Run()
+	home, _ := os.UserHomeDir()
+	_, err := git.Run(context.Background(), git.Request{Dir: home, Args: []string{"credential", "reject"},
+		Env: git.Inherit, Stdin: strings.NewReader(input)})
+	return err
 }
 
 // ChangeCredentialType removes the account's current credential artifacts

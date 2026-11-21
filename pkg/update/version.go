@@ -1,7 +1,7 @@
 package update
 
 import (
-	"os/exec"
+	"context"
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/git"
@@ -20,14 +20,11 @@ func ResolveVersion(rawVersion string) string {
 	if rawVersion != "dev" {
 		return rawVersion
 	}
-	cmd := exec.Command(git.GitBin(), "describe", "--tags", "--always")
-	cmd.Env = git.Environ()
-	git.HideWindow(cmd)
-	out, err := cmd.Output()
+	res, err := git.Run(context.Background(), git.Request{Args: []string{"describe", "--tags", "--always"}, Env: git.Inherit})
 	if err != nil {
 		return "dev"
 	}
-	tag := strings.TrimSpace(string(out))
+	tag := strings.TrimSpace(string(res.Stdout))
 	if tag == "" {
 		return "dev"
 	}
