@@ -2,6 +2,7 @@ package git
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -265,7 +266,7 @@ func TestCloneWithProgress(t *testing.T) {
 	_, barePath := initTestRepo(t)
 
 	dest := filepath.Join(t.TempDir(), "new-clone")
-	err := CloneWithProgress(barePath, dest, CloneOpts{}, func(CloneProgress) {})
+	err := CloneWithProgress(context.Background(), barePath, dest, CloneOpts{}, func(CloneProgress) {})
 	if err != nil {
 		t.Fatalf("CloneWithProgress: %v", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"os"
 	"os/exec"
 	"time"
 )
@@ -68,7 +69,7 @@ func (r Result) combined() []byte {
 
 const (
 	// DefaultMaxOutput bounds each output stream of a command.
-	DefaultMaxOutput = 32 << 20
+	DefaultMaxOutput = 8 << 20
 	// runnerWaitDelay is how long a cancelled command gets to exit after
 	// the interrupt, and how long a finished command's helpers may keep its
 	// output open, before the runner stops waiting.
@@ -134,7 +135,18 @@ func (r execRunner) Run(ctx context.Context, req Request) (Result, error) {
 	cmd := exec.CommandContext(ctx, bin, req.Args...)
 	cmd.Dir = req.Dir
 	cmd.Env = req.environ()
-	cmd.Stdin = req.Stdin
+	// The input goes through a pipe that the runner feeds itself. Handing
+	// req.Stdin to os/exec would make Wait block until that reader returns,
+	// so a cancelled command could not come back while its input stayed
+	// open.
+	var stdinRead, stdinWrite *os.File
+	if req.Stdin != nil {
+		var err error
+		if stdinRead, stdinWrite, err = os.Pipe(); err != nil {
+			return Result{ExitCode: -1}, err
+		}
+		cmd.Stdin = stdinRead
+	}
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	if req.Stderr != nil {
@@ -154,10 +166,24 @@ func (r execRunner) Run(ctx context.Context, req Request) (Result, error) {
 	cmd.WaitDelay = runnerWaitDelay
 
 	if err := cmd.Start(); err != nil {
+		if stdinRead != nil {
+			_ = stdinRead.Close()
+			_ = stdinWrite.Close()
+		}
 		return Result{ExitCode: -1}, err
 	}
 	tree.attach(cmd)
+	if stdinRead != nil {
+		_ = stdinRead.Close() // the command holds its own end
+		go func() {
+			_, _ = io.Copy(stdinWrite, req.Stdin)
+			_ = stdinWrite.Close()
+		}()
+	}
 	err := cmd.Wait()
+	if stdinWrite != nil {
+		_ = stdinWrite.Close() // stops the feeder if it is still writing
+	}
 	if ctx.Err() != nil {
 		// The command was cancelled: nothing it started may outlive it.
 		tree.kill(cmd)

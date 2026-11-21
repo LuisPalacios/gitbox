@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -61,9 +62,10 @@ func PlanClone(cfg *config.Config, sourceKey, repoKey string) (ClonePlan, error)
 }
 
 // Run clones the repo, reporting progress through onProgress (may be nil).
-func (p ClonePlan) Run(onProgress func(git.CloneProgress)) error {
+// It stops when ctx is cancelled.
+func (p ClonePlan) Run(ctx context.Context, onProgress func(git.CloneProgress)) error {
 	if onProgress == nil {
 		onProgress = func(git.CloneProgress) {}
 	}
-	return git.CloneWithProgress(p.URL, p.Dest, p.Opts, onProgress)
+	return git.CloneWithProgress(ctx, p.URL, p.Dest, p.Opts, onProgress)
 }

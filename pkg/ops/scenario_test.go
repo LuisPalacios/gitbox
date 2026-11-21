@@ -72,7 +72,7 @@ func TestScenario_FullLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("plan clone: %v", err)
 		}
-		if err := plan.Run(nil); err != nil {
+		if err := plan.Run(context.Background(), nil); err != nil {
 			t.Fatalf("clone: %v", err)
 		}
 		return plan.Dest, heal.Repo(cfg, srcKey, repoKey)

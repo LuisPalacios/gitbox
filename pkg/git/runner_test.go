@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -26,7 +27,8 @@ type fakeReply struct {
 // through one table), so a test written against it holds for real git too.
 type fakeRunner struct {
 	// Script answers a command. Nil answers every command with success.
-	Script func(req Request, stdin []byte) fakeReply
+	// stdin reads the command's input; a command that hangs never calls it.
+	Script func(req Request, stdin func() []byte) fakeReply
 
 	mu    sync.Mutex
 	calls []Request
@@ -46,11 +48,13 @@ func (f *fakeRunner) Run(ctx context.Context, req Request) (Result, error) {
 	if err := ctx.Err(); err != nil {
 		return Result{ExitCode: -1}, err
 	}
-	var stdin []byte
-	if req.Stdin != nil {
+	stdin := func() []byte {
+		if req.Stdin == nil {
+			return nil
+		}
 		var buf bytes.Buffer
 		_, _ = buf.ReadFrom(req.Stdin)
-		stdin = buf.Bytes()
+		return buf.Bytes()
 	}
 	var reply fakeReply
 	if f.Script != nil {
@@ -88,8 +92,8 @@ func (f *fakeRunner) Calls() []Request {
 const contractObject = "4f20aab5d23c15070b8be7029c5f28031c4e898a"
 
 // contractScript answers the commands of TestRunnerContract the way git does.
-func contractScript(repo string) func(Request, []byte) fakeReply {
-	return func(req Request, stdin []byte) fakeReply {
+func contractScript(repo string) func(Request, func() []byte) fakeReply {
+	return func(req Request, stdin func() []byte) fakeReply {
 		switch strings.Join(req.Args, " ") {
 		case "--version":
 			return fakeReply{Stdout: "git version 2.99.0\n"}
@@ -99,7 +103,7 @@ func contractScript(repo string) func(Request, []byte) fakeReply {
 			}
 			return fakeReply{Stdout: repo + "\n"}
 		case "hash-object --stdin":
-			if string(stdin) != "contract\n" {
+			if string(stdin()) != "contract\n" {
 				return fakeReply{Stderr: "unexpected input\n", Exit: 1}
 			}
 			return fakeReply{Stdout: contractObject + "\n"}
@@ -109,8 +113,8 @@ func contractScript(repo string) func(Request, []byte) fakeReply {
 			return fakeReply{Stdout: fmt.Sprint(slices.Contains(req.environ(), "GIT_TERMINAL_PROMPT=0")) + "\n"}
 		case "help -a":
 			return fakeReply{Stdout: strings.Repeat("git command list line\n", 200)}
-		case "hash-object --stdin --hang":
-			return fakeReply{Hang: true}
+		case "cat-file --batch":
+			return fakeReply{Hang: true} // waits for input that never comes
 		}
 		return fakeReply{Stderr: "git: unknown command\n", Exit: 1}
 	}
@@ -192,12 +196,48 @@ func TestRunnerContract(t *testing.T) {
 				cancelled, cancel := context.WithCancel(ctx)
 				cancel()
 				started := time.Now()
-				res, err := r.Run(cancelled, Request{Dir: repo, Args: []string{"hash-object", "--stdin", "--hang"}})
+				res, err := r.Run(cancelled, Request{Dir: repo, Args: []string{"cat-file", "--batch"}})
 				if err == nil || res.ExitCode != -1 {
 					t.Errorf("res = %+v, err = %v; want an error and status -1", res, err)
 				}
 				if spent := time.Since(started); spent > 5*time.Second {
 					t.Errorf("the cancelled command took %v", spent)
+				}
+			})
+
+			t.Run("a command in flight stops when its context is cancelled", func(t *testing.T) {
+				// git cat-file --batch reads requests from its input and
+				// waits; the pipe never delivers any.
+				pr, pw := io.Pipe()
+				defer pw.Close()
+				running, cancel := context.WithCancel(ctx)
+				defer cancel()
+				type outcome struct {
+					res Result
+					err error
+				}
+				done := make(chan outcome, 1)
+				go func() {
+					res, err := r.Run(running, Request{Dir: repo, Args: []string{"cat-file", "--batch"}, Stdin: pr})
+					done <- outcome{res, err}
+				}()
+				select {
+				case o := <-done:
+					t.Fatalf("the command ended before the cancel: %+v, %v", o.res, o.err)
+				case <-time.After(300 * time.Millisecond):
+				}
+				started := time.Now()
+				cancel()
+				select {
+				case o := <-done:
+					if o.err == nil {
+						t.Errorf("a cancelled command must report an error: %+v", o.res)
+					}
+				case <-time.After(runnerWaitDelay + 10*time.Second):
+					t.Fatal("the command did not stop after the cancel")
+				}
+				if spent := time.Since(started); spent > runnerWaitDelay+5*time.Second {
+					t.Errorf("the command took %v to stop", spent)
 				}
 			})
 		})
@@ -243,7 +283,7 @@ func TestRequestEnviron(t *testing.T) {
 // and read the outcome from the Result: no git process runs.
 func TestPackageFunctionsUseTheRunner(t *testing.T) {
 	const repo = "/work/repo"
-	fake := &fakeRunner{Script: func(req Request, _ []byte) fakeReply {
+	fake := &fakeRunner{Script: func(req Request, _ func() []byte) fakeReply {
 		switch cmd := strings.Join(req.Args, " "); {
 		case cmd == "rev-parse --abbrev-ref HEAD":
 			return fakeReply{Stdout: "main\n"}
@@ -291,7 +331,7 @@ func TestPackageFunctionsUseTheRunner(t *testing.T) {
 	}
 
 	var seen []int
-	if err := CloneWithProgress("https://git.example.org/x.git", "/work/dest", CloneOpts{}, func(p CloneProgress) { seen = append(seen, p.Percent) }); err != nil {
+	if err := CloneWithProgress(context.Background(), "https://git.example.org/x.git", "/work/dest", CloneOpts{}, func(p CloneProgress) { seen = append(seen, p.Percent) }); err != nil {
 		t.Errorf("clone: %v", err)
 	}
 	if !slices.Contains(seen, 50) || !slices.Contains(seen, 100) {
@@ -319,5 +359,26 @@ func TestSetRunnerForTestRestores(t *testing.T) {
 	})
 	if Default != before {
 		t.Errorf("Default = %T after the test, want it restored", Default)
+	}
+}
+
+// truncatingRunner answers every command with output that hit the bound.
+type truncatingRunner struct{}
+
+func (truncatingRunner) Run(context.Context, Request) (Result, error) {
+	return Result{Stdout: []byte("# branch.oid abc\n# branch.head ma"), Truncated: true}, nil
+}
+
+// Output that hit the runner's bound is never parsed: half a status must not
+// be taken for the whole.
+func TestTruncatedOutputIsAnError(t *testing.T) {
+	SetRunnerForTest(t, truncatingRunner{})
+	_, err := Status("/work/repo")
+	ge, ok := errors.AsType[*GitError](err)
+	if !ok || !errors.Is(err, errOutputTruncated) || ge.Op != "status" {
+		t.Fatalf("Status with cut output = %#v, want a status GitError for truncated output", err)
+	}
+	if _, err := ReadConfigSnapshot("/work/repo"); !errors.Is(err, errOutputTruncated) {
+		t.Errorf("ReadConfigSnapshot with cut output = %v, want the truncation error", err)
 	}
 }
