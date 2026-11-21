@@ -60,10 +60,9 @@ type TerminalProfileInfo struct {
 
 // ListTerminalApps returns the persisted TerminalApp list as a DTO slice.
 func (a *App) ListTerminalApps() []TerminalAppInfo {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	out := make([]TerminalAppInfo, 0, len(a.cfg.Global.TerminalApps))
-	for _, app := range a.cfg.Global.TerminalApps {
+	apps := a.clientPrefs().Get().TerminalApps
+	out := make([]TerminalAppInfo, 0, len(apps))
+	for _, app := range apps {
 		out = append(out, TerminalAppInfo{
 			ID:           app.ID,
 			Name:         app.Name,
@@ -76,10 +75,9 @@ func (a *App) ListTerminalApps() []TerminalAppInfo {
 
 // ListShells returns the persisted Shell list as a DTO slice.
 func (a *App) ListShells() []ShellInfo {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	out := make([]ShellInfo, 0, len(a.cfg.Global.Shells))
-	for _, s := range a.cfg.Global.Shells {
+	shells := a.clientPrefs().Get().Shells
+	out := make([]ShellInfo, 0, len(shells))
+	for _, s := range shells {
 		out = append(out, ShellInfo{
 			ID:      s.ID,
 			Name:    s.Name,
@@ -93,10 +91,9 @@ func (a *App) ListShells() []ShellInfo {
 // ListTerminalProfiles returns the persisted TerminalProfile list as a DTO
 // slice in on-disk order.
 func (a *App) ListTerminalProfiles() []TerminalProfileInfo {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	out := make([]TerminalProfileInfo, 0, len(a.cfg.Global.TerminalProfiles))
-	for _, p := range a.cfg.Global.TerminalProfiles {
+	profiles := a.clientPrefs().Get().TerminalProfiles
+	out := make([]TerminalProfileInfo, 0, len(profiles))
+	for _, p := range profiles {
 		out = append(out, TerminalProfileInfo{
 			ID:         p.ID,
 			Name:       p.Name,
@@ -158,14 +155,12 @@ func (a *App) SaveTerminalProfilesDTO(apps []TerminalAppInfo, shells []ShellInfo
 // the caller-supplied set, normalises the Default flag (exactly one), and
 // persists.
 func (a *App) SaveTerminalProfiles(apps []config.TerminalApp, shells []config.ShellEntry, profiles []config.TerminalProfile) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
 	terminals.EnforceSingleDefault(profiles)
-	a.cfg.Global.TerminalApps = append([]config.TerminalApp(nil), apps...)
-	a.cfg.Global.Shells = append([]config.ShellEntry(nil), shells...)
-	a.cfg.Global.TerminalProfiles = append([]config.TerminalProfile(nil), profiles...)
-	return a.saveConfig()
+	return a.clientPrefs().Update(func(p *config.ClientPrefs) {
+		p.TerminalApps = append([]config.TerminalApp(nil), apps...)
+		p.Shells = append([]config.ShellEntry(nil), shells...)
+		p.TerminalProfiles = append([]config.TerminalProfile(nil), profiles...)
+	})
 }
 
 // ─── Sync / re-detect / missing-modern bridges ────────────────────────────
@@ -175,15 +170,31 @@ func (a *App) SaveTerminalProfiles(apps []config.TerminalApp, shells []config.Sh
 // writes when the resulting payload differs from what's already persisted.
 func (a *App) SyncProfiles() {
 	detected := terminals.Detect(runtime.GOOS)
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if terminals.ApplyDetection(a.cfg, detected, runtime.GOOS) {
-		_ = a.saveConfig()
+	// ApplyDetection works on a Config and only touches the terminal keys,
+	// so it runs on a scratch one that holds just the preferences.
+	apply := func(p *config.ClientPrefs) bool {
+		scratch := &config.Config{}
+		config.ApplyPrefs(scratch, *p)
+		if !terminals.ApplyDetection(scratch, detected, runtime.GOOS) {
+			return false
+		}
+		*p = config.ExtractPrefs(scratch)
+		return true
 	}
+	store := a.clientPrefs()
+	if p := store.Get(); !apply(&p) {
+		return
+	}
+	_ = store.Update(func(p *config.ClientPrefs) { apply(p) })
 }
 
 // RedetectProfiles re-runs SyncProfiles and returns the refreshed config DTO.
-func (a *App) RedetectProfiles() (ConfigDTO, error) { return a.be().RedetectProfiles() }
+// Detection is local, so it never asks the backend; the config it returns
+// is the backend's with the refreshed preferences laid over it.
+func (a *App) RedetectProfiles() (ConfigDTO, error) {
+	a.SyncProfiles()
+	return a.GetConfig()
+}
 
 // redetectProfilesLocal is the local backend's RedetectProfiles.
 func (a *App) redetectProfilesLocal() (ConfigDTO, error) {

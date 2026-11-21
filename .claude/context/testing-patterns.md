@@ -122,6 +122,8 @@ func TestSomething(t *testing.T) {
 }
 ```
 
+For a test that needs the backend and the client apart, `newTestApp(backend, localPath)` (`prefs_test.go`) builds an `App` whose client preferences live in their own gitbox.json, `fileBackend(t, path)` gives it a backend that owns a different file, and `seedConfig` writes either one. Set `a.windowGeom` to run `BeforeClose` and `SetViewMode` without a Wails runtime.
+
 Keep business logic out of `cmd/gui`: if a test needs more than the `App` glue, the logic belongs in `pkg/` and the test goes with it.
 
 ## Refresh concurrency tests

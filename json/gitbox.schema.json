@@ -53,6 +53,67 @@
                     "default": true,
                     "description": "Gates the automatic startup check for the recommended ~/.gitignore_global heal. An explicit click on the GUI Install button always runs regardless. Defaults to true when missing."
                 },
+                "pr_badges_enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether PR and review indicators are fetched and shown on clone rows. Defaults to true when missing."
+                },
+                "pr_include_drafts": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether draft PRs count in the \"my PRs\" badge. Defaults to true when missing."
+                },
+                "experimental_remote": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Turns the experimental remote mode on for this machine, like the --experimental-remote flag. A client preference: it describes the machine that shows the window."
+                },
+                "remotes": {
+                    "type": "array",
+                    "description": "Remote-mode destinations of this machine. A client preference. Each entry names an ssh_config Host alias; gitbox stores no hostname, user or key.",
+                    "items": {
+                        "type": "object",
+                        "required": ["alias"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "alias": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9._][A-Za-z0-9._-]{0,63}$",
+                                "description": "The ssh_config Host alias, resolved only by the system ssh. Unique within the list."
+                            },
+                            "server_dir": {
+                                "type": "string",
+                                "description": "Overrides where gitbox-server is installed on the remote, for homes mounted noexec. Absolute, or starting with ~/. Absent means the default under the home."
+                            },
+                            "editor": {
+                                "type": "string",
+                                "description": "Remote-capable editor command for this remote. Absent means automatic."
+                            },
+                            "window": {
+                                "type": "object",
+                                "description": "Position and size of this remote's own window in full view. Saved automatically.",
+                                "additionalProperties": false,
+                                "properties": {
+                                    "x": { "type": "integer", "description": "Window horizontal position (pixels from left edge of screen)." },
+                                    "y": { "type": "integer", "description": "Window vertical position (pixels from top edge of screen)." },
+                                    "width": { "type": "integer", "description": "Window width in pixels." },
+                                    "height": { "type": "integer", "description": "Window height in pixels." }
+                                }
+                            },
+                            "compact_window": {
+                                "type": "object",
+                                "description": "Position and size of this remote's own window in compact view. Saved automatically.",
+                                "additionalProperties": false,
+                                "properties": {
+                                    "x": { "type": "integer", "description": "Window horizontal position (pixels from left edge of screen)." },
+                                    "y": { "type": "integer", "description": "Window vertical position (pixels from top edge of screen)." },
+                                    "width": { "type": "integer", "description": "Window width in pixels." },
+                                    "height": { "type": "integer", "description": "Window height in pixels." }
+                                }
+                            }
+                        }
+                    }
+                },
                 "window": {
                     "type": "object",
                     "description": "GUI window position and size. Saved automatically when the GUI is closed, restored on next launch.",

@@ -58,22 +58,27 @@ func (a *App) Shutdown(_ context.Context) {
 
 // BeforeClose is called while the window is still alive, before it is destroyed.
 // We capture and persist the window position and size to the active view mode slot.
+//
+// The store refuses to save over a config it failed to load.
 func (a *App) BeforeClose(_ context.Context) bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if !a.cfgLoaded {
-		return false // don't overwrite a config we failed to load
+	if x, y, w, h, ok := a.geometry(); ok {
+		ws := &config.WindowState{X: x, Y: y, Width: w, Height: h}
+		_ = a.clientPrefs().Update(func(p *config.ClientPrefs) {
+			p.SetWindow(a.remoteAlias, p.ViewMode == "compact", ws)
+		})
 	}
-	x, y := wailsrt.WindowGetPosition(a.ctx)
-	w, h := wailsrt.WindowGetSize(a.ctx)
-	ws := &config.WindowState{X: x, Y: y, Width: w, Height: h}
-	if a.cfg.Global.ViewMode == "compact" {
-		a.cfg.Global.CompactWindow = ws
-	} else {
-		a.cfg.Global.Window = ws
-	}
-	_ = a.saveConfig()
 	return false // don't prevent closing
+}
+
+// geometry returns the window position and size, from the test seam when
+// one is set.
+func (a *App) geometry() (x, y, w, h int, ok bool) {
+	if a.windowGeom != nil {
+		return a.windowGeom()
+	}
+	x, y = wailsrt.WindowGetPosition(a.ctx)
+	w, h = wailsrt.WindowGetSize(a.ctx)
+	return x, y, w, h, true
 }
 
 // DomReady is called after the frontend DOM is ready.
@@ -287,34 +292,27 @@ func (a *App) PickFolder(title string) string {
 // appropriate slot, then switches to the target mode. Returns the target
 // mode's previously saved window state (or nil if none was persisted).
 func (a *App) SetViewMode(mode string) *WindowStateDTO {
-	// Save current window position to the slot we're leaving.
-	x, y := wailsrt.WindowGetPosition(a.ctx)
-	w, h := wailsrt.WindowGetSize(a.ctx)
-	ws := &config.WindowState{X: x, Y: y, Width: w, Height: h}
+	x, y, w, h, ok := a.geometry()
 
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.cfg.Global.ViewMode == "compact" {
-		a.cfg.Global.CompactWindow = ws
-	} else {
-		a.cfg.Global.Window = ws
-	}
-
-	if mode == "compact" {
-		a.cfg.Global.ViewMode = "compact"
-	} else {
-		a.cfg.Global.ViewMode = ""
-	}
-	_ = a.saveConfig()
-
-	// Return the target mode's saved window state.
 	var target *config.WindowState
-	if mode == "compact" {
-		target = a.cfg.Global.CompactWindow
-	} else {
-		target = a.cfg.Global.Window
-	}
+	_ = a.clientPrefs().Update(func(p *config.ClientPrefs) {
+		// Save current window position to the slot we're leaving.
+		if ok {
+			p.SetWindow(a.remoteAlias, p.ViewMode == "compact", &config.WindowState{X: x, Y: y, Width: w, Height: h})
+		}
+		if mode == "compact" {
+			p.ViewMode = "compact"
+		} else {
+			p.ViewMode = ""
+		}
+		// Return the target mode's saved window state.
+		full, compact := p.WindowFor(a.remoteAlias)
+		if mode == "compact" {
+			target = compact
+		} else {
+			target = full
+		}
+	})
 	if target == nil {
 		return nil
 	}

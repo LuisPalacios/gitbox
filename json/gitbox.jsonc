@@ -57,6 +57,22 @@
         // the operating system.
         // "theme": "dark",
 
+        // Experimental remote mode (#233): GitboxApp as the window for a
+        // gitbox-server on another host. Off unless this is true or I launch
+        // with --experimental-remote.
+        // "experimental_remote": true,
+
+        // Remote-mode destinations of this machine. alias is an ssh_config
+        // Host alias that only the system ssh resolves: gitbox stores no
+        // hostname, user or key. server_dir overrides where gitbox-server is
+        // installed on the remote (absolute or starting with ~/), editor sets
+        // a remote-capable editor command, and GitboxApp saves each remote
+        // window's own position in window and compact_window.
+        // "remotes": [
+        //     { "alias": "my-server" },
+        //     { "alias": "build-box", "server_dir": "~/apps/gitbox-server", "editor": "code" }
+        // ],
+
         // GUI layout state. GitboxApp writes this when I click a chevron,
         // fold the sidebar or pick a view; absent means everything is
         // expanded and the app opens on Needs attention. Keys that no longer

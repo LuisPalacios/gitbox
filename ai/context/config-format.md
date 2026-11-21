@@ -17,8 +17,28 @@ Config file: `~/.config/gitbox/gitbox.json` — `accounts` + `sources`, real boo
 - `repo.container` (`bool`) — marks a clone as a multi-repo parent; gitbox descends into its working tree to discover and onboard nested clones the user provisioned there. A clone with a `.code-workspace` at its root becomes a container on its own (see `repo.workspace`). Nested clones onboard as plain repos under their real account/org with an absolute `clone_folder`, never relocated. Parent→child nesting is derived from paths by `status.ComputeNesting`.
 - `global.collapsed` (`{sources: [], repos: [], sidebar: bool, view: string}`) — GUI layout state: folded account groups (source keys), folded parent clones (`"source/repo"` keys), the sidebar folded to its icon rail, and the last selected view (`attention`, `all`, `mirrors` or `account:<key>`). Records what is collapsed, so absent means all expanded and Needs attention. `config.Save` prunes keys that no longer resolve, a view of a missing account and the retired `workspaces` view (`PruneCollapsed`), `RenameAccount` rewrites `account:<old>` to `account:<new>`, and the backup ring ignores layout-only changes, like window state. The old `cards_open` key is gone; `Parse` ignores it.
 - `global.theme` (`"light"`, `"dark"`, absent = follow the OS) — the GUI theme, set through `SetTheme`; theme-only saves skip the backup ring too.
+- `global.experimental_remote` (`bool`) and `global.remotes` (`[{alias, server_dir, editor, window, compact_window}]`) — remote mode (#233) on this machine and its destinations. `alias` is an `ssh_config` `Host` alias that only the system `ssh` resolves (1 to 64 of `[A-Za-z0-9._-]`, not starting with `-`, unique); `server_dir` is absolute or starts with `~/`; a remote window saves its own geometry in its entry. `validate` rejects a bad entry through `ValidateRemotes`.
 - `repo.clone_folder` (existing) — an absolute value (`/`, `~`) places a clone anywhere on disk; this is how non-standard and nested clones are stored. A `../` value is resolved against the repo's root.
 - `repo.workspace` (`string`, v5) — the `.code-workspace` file, relative to the clone root, that a container opens with. Never set it by hand in code: `pkg/workspace.Sync` keeps it in step with disk on every reconcile pass (one root file is recorded, several produce a `Choice` the GUI asks about, a vanished file is cleared) and `SetRepoWorkspace` records my pick.
 - `repo.workspace_preferred` (`string`) — the file I picked among several (`SetRepoWorkspace` sets it with `repo.workspace`). `Sync` opens it whenever it is at the root, lets another file stand in while it is missing and never clears it.
 
 **Workspaces live in the clone tree** (since `version: 5`): there is no Workspaces view and no cache. Every folder a container's workspace lists inside it is scanned for nested clones at any depth (`adopt.FindOrphansIn`); listed folders missing on disk come back as `placeholders` in the reconcile result and show as dimmed rows, and the clones it lists come back as `workspaceMembers`, shown with the container in the workspace colour (`--text-workspace`). The editor button opens the workspace file in VS Code-family editors. gitbox never creates, edits, generates, or deletes `.code-workspace` files, and tmuxinator support is removed.
+
+**Client preferences and domain data:** `config.ClientPrefs` (`pkg/config/prefs.go`) names the global keys that belong to the machine showing the window. In remote mode the client keeps them in its own gitbox.json and lays them over the config from the server; in local mode both are the same file.
+
+| Key | Class | Reason |
+| --- | --- | --- |
+| `theme`, `language`, `ui_mode`, `view_mode`, `window`, `compact_window` | client | how this machine shows the window |
+| `collapsed.sidebar` | client | layout of this window |
+| `collapsed.view`, `collapsed.sources`, `collapsed.repos` | domain | they name accounts, sources and repos; `PruneCollapsed` and `RenameAccount` keep them in step with the accounts |
+| `editors`, `terminal_apps`, `shells`, `terminal_profiles`, legacy `terminals` | client | apps on this machine |
+| `periodic_sync` | client | the timer runs in the frontend |
+| `experimental_remote`, `remotes` | client | this machine's features and destinations |
+| `ai_harnesses` | domain | detected where the CLI tools run |
+| `roots`, `ignored_clones`, `nested_scan_depth`, `pr_badges_enabled`, `pr_include_drafts`, `check_global_gitignore`, `credential_gcm`, `credential_ssh`, `credential_token` | domain | they control work on the host that has the data |
+
+- A new global key needs a row in `globalKeyClass` (`pkg/config/prefs_test.go`); a client key also goes in `ClientPrefs`, `ExtractPrefs` and `ApplyPrefs`. `TestStripClientPrefs` and `TestSchemaDeclaresGlobalKeys` fail otherwise.
+- In `cmd/gui`, read and write client keys only through `a.clientPrefs()` (`prefsStore`), never through `a.cfg` or `be()`.
+- A server strips client keys from what it sends (`StripClientPrefs`) and keeps the ones on disk when it saves (`PreserveClientPrefs`); it never zeroes them on disk.
+
+**Optional keys do not bump the version:** `decode` uses plain `json.Unmarshal`, so a v5 loader ignores keys it does not know, and `TestUnknownKeysIgnoredV5` pins that. Adding `remotes` and `experimental_remote` therefore kept `version: 5`. The cost is a downgrade: an older GitboxApp that saves a config written by a newer one silently drops the keys it does not know, which here means re-adding aliases and loses no domain data. Bumping to v6 would be worse, because older binaries refuse any version other than 5 and would not start.

@@ -10,19 +10,20 @@ Counts are top-level Go test functions (subtests from `t.Run` and `TestMain` are
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-The current total is 645 Go tests (554 in `pkg/`, 91 in `cmd/gui/`) and 52 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
+The current total is 658 Go tests (562 in `pkg/`, 96 in `cmd/gui/`) and 52 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
 
 ### Shared library (`pkg/`)
 
 - **`pkg/adopt`** (16) — orphan discovery and account scoring.
   - `adopt_test.go`: SSH host aliases, in-place discovery, account matching by embedded URL user, credential username and parent folder, ambiguous ties.
   - `nested_test.go`: nested clones under a container, extra and explicit nested roots, in-place adoption under a second clone root, confidence that needs more than the host.
-- **`pkg/config`** (119) — the config file.
+- **`pkg/config`** (127) — the config file.
   - `config_test.go`, `load_test.go`: parsing, validation, wrong versions, mirrors, round trips, `LoadWithRepair` for dangling mirrors and sources, global gitignore and PR badge defaults.
   - `migrate_v3_test.go`, `roots_test.go`, `migrate_v5_test.go`, `migrate_terminals_test.go`: migration v2 → v3 → v4 → v5 (v4 turns `global.folder` into `global.roots`, v5 drops the `workspaces` section), the nested scan depth default, legacy terminal lists.
   - `roots_test.go`: clone roots (add, make default, remove and forget, place a repo) with every clone path pinned.
   - `crud_test.go`, `clones_test.go`, `ai_harness_test.go`: account, source, repo and mirror CRUD, ignored clones, the deep copy used by unlocked scans, AI harness entries.
   - `collapsed_test.go`, `save_test.go`: layout-state pruning (folds, sidebar, the view of a deleted account, the retired `workspaces` view key), the backup ring, injected I/O failures that preserve the live config and clean temporary files, concurrent exclusive backup publication, same-second ordering, suffix exhaustion and unsupported hard-link failures, no backup for layout-only and theme-only saves, and a backup always kept for a file written by an older config version.
+  - `prefs_test.go`: client preferences. A round trip per `ClientPrefs` field, detached copies, a strip that leaves only domain keys and fails on a global key with no class, client keys (with `remotes`) surviving a save by another process, `remotes` validation, unknown keys ignored at version 5, per-destination window geometry, and the JSON schema declaring every Go key.
 - **`pkg/credential`** (52) — token resolution from `GITBOX_TOKEN_<KEY>` and `GIT_TOKEN`, token checks with expiry and rejected tokens, OS-default GCM helper and store, global gitconfig health for GCM (`CheckGlobalGCMConfig`, `FixGlobalGCMConfig`), SSH key and config lookup, cancellation with a stalled helper, compare-first per-repo credential config, and atomic credential-file writes with concurrent readers. Real helper queries check GitLab usernames and file paths with spaces and shell characters.
   - `atomic_test.go` (4): raw and account-aware formats, one trailing newline, Unix permissions, unchanged-file preservation, actual replacement failure preserving the previous file and cleaning the temporary file, and concurrent readers during rotation.
   - `atomic_windows_test.go` (1, Windows only): an external reader that denies delete sharing rejects replacement without changing the previous credential or leaving temporary files; replacement succeeds after the reader closes.
@@ -67,6 +68,7 @@ This boundary belongs to the test, not the config validator. Accepted configs ca
 - `reconcile_test.go` (9) — a confident clone adopted and saved, a retry when the config changes during the scan, adopting into a picked account, ignoring a clone and adopting it from the ignored list. I also inject scan and clone failures to verify the two-attempt limit, preserved config and suppressed events for stale plans, UI-only changes, one coalesced retry after active refresh work, shutdown cancellation and fresh retry persistence; I run these regressions with `-race`.
 - `containers_test.go` (8) — container flag persistence, nested scan depth, absolute `clone_folder` for onboarded clones, layout-state persistence and pruning (folds, sidebar, view), a workspace file making a container that adopts its nested clone and lists its missing folders in one pass, choosing among several workspace files.
 - `uimode_test.go` (5) — `ui_mode` defaults to Advanced, set and get validation, onboarding writes Simple only on a new install, `SetTheme` validates and persists the theme.
+- `prefs_test.go` (5) — with a backend that owns its own config file: client preferences laid over the backend's config and written only to the local file, `collapsed` split between both, window geometry written to `global.window` or to the remote's own entry through the geometry seam, and the save guard for a local file that fails to parse. In local mode, a session of preference and domain saves leaves exactly the expected single file.
 - `harness_test.go` (15) — AI harness detection, ordering, dedup, retired-harness pruning, missing and reinstalled tools, the `~/.local/bin` fallback, the launcher default profile, error paths.
 - `terminal_test.go`, `startup_sync_test.go` (3) — MSYS path and environment cleanup for spawned terminals, a first launch that never writes the legacy `global.terminals` list.
 - `gcm_setup_test.go` (4) — GCM sign-in survives an unusable stderr, forces GCM's own windows over per-user `GCM_GUI_PROMPT` and `GCM_INTERACTIVE` settings, times out with a message naming those variables, and reports the helper's stderr.
