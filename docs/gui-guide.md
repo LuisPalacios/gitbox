@@ -123,7 +123,9 @@ In Simple, every project answers one question, "is my work safe?", with one of s
 
 Names show without the organization prefix; hover a name to see it in full. Rows keep the three [launch buttons](#clone-actions), and the ⋯ menu offers Open on the web, the folder, editors, AI harnesses and **Delete from this computer…**.
 
-Simple hides the rest: the Mirrors view, delete mode, the compact view and theme buttons (the theme stays in Settings), container and branch badges, ahead, behind and changed counts, and the per-row fetch button. Badges for your open PRs (📝) and PRs awaiting your review (👀) show in both modes. The top bar keeps **Check all** and **Update all**. Account health reads in plain words, and **Reconnect** appears when a credential breaks. Settings hides the Config, PR / reviews, Global gitignore and Terminals rows. The compact view is the same in both modes.
+Simple hides the rest: the Mirrors view, delete mode, the compact view and theme buttons (the theme stays in Settings), container and branch badges, ahead, behind and changed counts, and the per-row fetch button. The top bar keeps **Check all** and **Update all**. Account health reads in plain words, and **Reconnect** appears when a credential breaks. Settings hides the Config, PR / reviews, Global gitignore and Terminals rows. The compact view is the same in both modes.
+
+With PR indicators enabled, Simple shows **Review requested** when someone asks for your review. Click the label to see the requests. Advanced shows badges with counts for your open PRs (📝) and the PRs awaiting your review (👀).
 
 ### Full view
 
@@ -464,7 +466,7 @@ Click the **gear icon** to open the settings panel:
 - **Theme** — System, Light or Dark.
 - **Periodic status check** (Simple: **Check for changes**) — the automatic fetch interval: Off, 5m, 15m or 30m.
 - **Run at startup** — launch Gitbox when you log in, where the platform supports it.
-- **PR / reviews** — show badges for your open PRs and the PRs awaiting your review, with **Include drafts** to count draft PRs.
+- **PR / reviews** — show review requests in Simple and badges with counts for your open PRs and review requests in Advanced. Use **Include drafts** to include draft PRs.
 - **Global gitignore** — the automatic startup check of `~/.gitignore_global` (see [Global gitignore warning](#global-gitignore-warning)).
 - **System check** — **Run** opens a report of every external tool Gitbox uses (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, and `wsl` on Windows): where it's installed, its version, and an install command for anything missing that your config needs. Each tool reads ok, missing (required by your config) or optional. The report also lists credential-directory and file permission findings, with the path, problem and suggested action. **Re-check** repeats both checks without changing permissions.
 - **Terminals** — **Manager** opens the terminal profile editor (see [Editors and terminal profiles](#editors-and-terminal-profiles)).
