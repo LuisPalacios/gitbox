@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -37,7 +38,10 @@ type GitError struct {
 	Code   GitCode // why it failed
 	Hint   string  // catalog key of the explanation for Code
 	Detail string  // allowlisted extra, such as "exit 128"; may be empty
-	Err    error   // the underlying error, kept for errors.Is and errors.As
+	// Host is the server git could not reach, for the offline and timeout
+	// codes when git names it. A bare host name, never a URL.
+	Host string
+	Err  error // the underlying error, kept for errors.Is and errors.As
 
 	// stderr is what git printed, bounded to maxStderr. It never leaves the
 	// package through Error: only the classifiers here read it.
@@ -76,6 +80,9 @@ func newGitErrorContext(ctx context.Context, op string, err error, output []byte
 		e.Detail = fmt.Sprintf("exit %d", exit.ExitCode())
 	}
 	e.Code = classify(ctx, err, strings.ToLower(e.stderr))
+	if e.Code == CodeOffline || e.Code == CodeTimeout {
+		e.Host = unreachableHost(e.stderr)
+	}
 	e.Hint = "error.git." + string(e.Code)
 	return e
 }
@@ -133,6 +140,30 @@ func upstreamGoneText(msg string) bool {
 		strings.Contains(msg, "error: 404") ||
 		strings.Contains(msg, "http 404") ||
 		strings.Contains(msg, "repository access denied")
+}
+
+// hostPatterns find the server in what git and ssh print when they cannot
+// connect. The first group is the candidate host.
+var hostPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)unable to access '[a-z+]+://(?:[^@/']*@)?([^/:']+)`),
+	regexp.MustCompile(`(?i)failed to connect to ([^\s:]+)`),
+	regexp.MustCompile(`(?i)could not resolve host(?:name)?:? ([^\s:']+)`),
+	regexp.MustCompile(`(?i)connect to host ([^\s:]+)`),
+}
+
+// hostNameRE accepts only what a host name or an IP address can hold, so
+// nothing else in git's output can pass as one.
+var hostNameRE = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]{0,252}[A-Za-z0-9])?$`)
+
+// unreachableHost returns the host that git's output says it could not
+// reach, or "" when the output does not name one.
+func unreachableHost(output string) string {
+	for _, re := range hostPatterns {
+		if m := re.FindStringSubmatch(output); m != nil && hostNameRE.MatchString(m[1]) {
+			return m[1]
+		}
+	}
+	return ""
 }
 
 // opName returns the git subcommand in args, skipping global options such as

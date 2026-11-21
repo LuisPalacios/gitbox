@@ -489,11 +489,19 @@
       sum.nowBehind > 0 && $t('result.nowBehind', { n: sum.nowBehind }),
       sum.skipped > 0 && $t('result.skipped', { n: sum.skipped, accounts: skippedAccounts }),
       ...unreachable,
-      sum.firstFailure && $t('result.failed', { n: sum.failed, error: `${sum.firstFailure.key}: ${sum.firstFailure.error}` }),
+      sum.firstFailure && $t('result.failed', { n: sum.failed, error: `${sum.firstFailure.key}: ${failureText(sum.firstFailure)}` }),
       lanHint,
       sum.localWork > 0 && $t('result.localUntouched'),
     ]);
     if (failedKind) fetchFailNotice = { id, keys: new Set(Object.keys(run.errors)) };
+  }
+
+  // failureText explains a failure: the catalog entry for its code when the
+  // backend classified it, its own text otherwise.
+  function failureText(failure: { error: string; code?: string }): string {
+    const key = failure.code ? `error.${failure.code}` : '';
+    const hint = key ? $t(key) : '';
+    return hint && hint !== key ? hint : failure.error;
   }
 
   function finishPull() {
@@ -1659,7 +1667,7 @@
       const key = `${data.source}/${data.repo}`;
       delete fetchingRepos[key];
       fetchingRepos = fetchingRepos;
-      if (fetchRun) fetchRun = noteDone(fetchRun, key, data.error);
+      if (fetchRun) fetchRun = noteDone(fetchRun, key, data.error, { code: data.code, host: data.host, fast: data.refusedFast });
       if (!data.error && fetchFailNotice?.keys.delete(key) && fetchFailNotice.keys.size === 0) clearFetchFailNotice();
       if (!data.error) recheckOfflineAccount(accountOfKey(key));
     });

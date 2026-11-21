@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -96,6 +97,47 @@ func TestToUserErrorCodes(t *testing.T) {
 	}
 	if ue := toUserError(errors.New("plain")); ue.Code != "" || ue.Hint != "" || ue.String() != "plain" {
 		t.Errorf("untyped error = %+v", ue)
+	}
+}
+
+// TestDescribeFetchFailure runs a real fetch against a remote that refuses
+// the connection and whose URL carries a token: the payload names the code,
+// the host and the instant refusal as data, and no value holds the token.
+func TestDescribeFetchFailure(t *testing.T) {
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), "gitconfig"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	const token = "CANARY-TOKEN-165"
+	repo := t.TempDir()
+	for _, args := range [][]string{{"init", "--quiet"}, {"remote", "add", "origin", "https://user:" + token + "@127.0.0.1:1/owner/x.git"}} {
+		cmd := exec.Command(git.GitBin(), args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v: %s", args[0], err, out)
+		}
+	}
+	_, err := git.FetchCapturedContext(t.Context(), repo)
+	if err == nil {
+		t.Fatal("the fetch must fail")
+	}
+
+	payload := map[string]any{"source": "s", "repo": "r"}
+	describeFetchFailure(payload, fmt.Errorf("refresh: %w", err))
+	if payload["code"] != "git.offline" || payload["host"] != "127.0.0.1" || payload["refusedFast"] != true {
+		t.Errorf("payload = %v, want code git.offline, host 127.0.0.1 and refusedFast", payload)
+	}
+	if payload["error"] != "refresh: git fetch: offline (exit 128)" {
+		t.Errorf("error text = %q", payload["error"])
+	}
+	for key, value := range payload {
+		if text := fmt.Sprint(value); strings.Contains(text, token) || strings.Contains(text, "user:") || strings.Contains(text, "x.git") {
+			t.Errorf("payload[%q] leaks the remote URL: %s", key, text)
+		}
+	}
+
+	plain := map[string]any{}
+	describeFetchFailure(plain, errors.New("repository maintenance: x"))
+	if len(plain) != 1 || plain["error"] != "repository maintenance: x" {
+		t.Errorf("an untyped failure = %v, want only its text", plain)
 	}
 }
 

@@ -31,6 +31,9 @@ func assertSecretFree(t *testing.T, err error) {
 	}
 	if ge, ok := errors.AsType[*GitError](err); ok {
 		texts["Detail"], texts["Hint"], texts["Op"] = ge.Detail, ge.Hint, ge.Op
+		if ge.Host != "" && ge.Host != "127.0.0.1" {
+			t.Errorf("Host = %q, want the bare host or nothing", ge.Host)
+		}
 	}
 	for name, text := range texts {
 		for _, secret := range []string{canaryToken, "127.0.0.1", "user:", "x.git"} {
@@ -200,6 +203,32 @@ func TestClassifiersReadTypedErrors(t *testing.T) {
 	}
 	if IsRefusedFast(slow) || IsRefusedFast(gone) || IsRefusedFast(nil) {
 		t.Errorf("IsRefusedFast matched a slow failure or an unrelated error")
+	}
+}
+
+func TestUnreachableHost(t *testing.T) {
+	exit := &exec.ExitError{}
+	tests := []struct{ output, host string }{
+		{"fatal: unable to access 'https://user:" + canaryToken + "@git.example.org/team/app.git/': Failed to connect to git.example.org port 443 after 5 ms: Couldn't connect to server", "git.example.org"},
+		{"fatal: no es posible acceder a 'https://git.example.org/team/app.git/': Failed to connect to git.example.org port 443 after 5 ms", "git.example.org"},
+		{"fatal: unable to access 'https://host.test/x.git/': Could not resolve host: host.test", "host.test"},
+		{"ssh: Could not resolve hostname gitea.lan: nodename nor servname provided", "gitea.lan"},
+		{"ssh: connect to host 192.168.1.20 port 22: Connection refused", "192.168.1.20"},
+		{"fatal: unable to access 'https://bad host/': Could not resolve host: bad;rm", ""},
+		{"error: connection refused", ""},
+	}
+	for _, tt := range tests {
+		e := newGitError("fetch", exit, []byte(tt.output))
+		if e.Host != tt.host {
+			t.Errorf("host of %q = %q, want %q", tt.output, e.Host, tt.host)
+		}
+		if strings.Contains(e.Host+e.Error(), canaryToken) {
+			t.Errorf("the host or the text leaks the token: %q %q", e.Host, e.Error())
+		}
+	}
+	// Only a connection failure names a host.
+	if e := newGitError("fetch", exit, []byte("fatal: Authentication failed for 'https://git.example.org/x.git/'")); e.Host != "" {
+		t.Errorf("an authentication failure carries host %q", e.Host)
 	}
 }
 

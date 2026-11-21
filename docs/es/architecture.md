@@ -143,6 +143,8 @@ Un texto de error que llega a la ventana, a un evento o al archivo de config nun
 
 `Hint` es una clave de catálogo, no prosa: `error.git.<code>` o `error.provider.<class>`, cada una con su entrada en inglés y en español en `i18n.ts`. Los campos que llevan errores siguen siendo cadenas, así que el frontend muestra hoy `Detail`.
 
+El frontend nunca parsea ese texto. Donde necesita saber qué ha pasado, el backend lo dice como dato: un `fetch:done` fallido lleva `code`, `host` (el servidor al que git no pudo llegar, un nombre de host sin más tomado de `GitError.Host`) y `refusedFast` junto a `error`. La tarjeta de resultado de Fetch all agrupa los servidores inalcanzables por esos campos y explica un fallo clasificado con la entrada de catálogo de su código.
+
 ### pkg/ops — operaciones de aplicación
 
 La capa de servicio entre los bindings de la GUI y los paquetes de nivel inferior. Contiene las operaciones que tocan varios paquetes a la vez: `AddAccount`, `RenameAccount`, `DeleteAccount`, `DeleteRepo`, `ChangeCredentialType`, `DeleteCredential`, `RemoveCredentialArtifacts`, `ReconfigureClones` (ejecuta `heal.Repo` en cada clon), `PlanClone` / `Clone`, `ListRemoteRepos`, `ListAccountOrgs`, `CreateRemoteRepo`, `AddDiscoveredRepos` y `ProviderClient`.

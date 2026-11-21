@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"path/filepath"
@@ -345,7 +346,7 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 	}
 	payload := map[string]any{"source": source, "repo": repo}
 	if err != nil {
-		payload["error"] = userMsg(err)
+		describeFetchFailure(payload, err)
 		if git.IsUpstreamGoneError(err) {
 			payload["upstreamGone"] = true
 		}
@@ -359,6 +360,24 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 	}
 	a.sink().Emit("fetch:done", payload)
 	return err
+}
+
+// describeFetchFailure adds what the frontend needs to explain a failed
+// fetch: the scrubbed text and, as data, the code, the server that could not
+// be reached and whether the connect was refused at once. The frontend
+// groups failures by these facts, never by reading the text.
+func describeFetchFailure(payload map[string]any, err error) {
+	ue := toUserError(err)
+	payload["error"] = ue.String()
+	if ue.Code != "" {
+		payload["code"] = ue.Code
+	}
+	if ge, ok := errors.AsType[*git.GitError](err); ok && ge.Host != "" {
+		payload["host"] = ge.Host
+	}
+	if git.IsRefusedFast(err) {
+		payload["refusedFast"] = true
+	}
 }
 
 // FetchAllRepos joins the active cycle, including its final status and provider work.

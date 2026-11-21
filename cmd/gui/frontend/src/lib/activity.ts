@@ -14,10 +14,24 @@ export interface Run {
   done: Set<string>;
   // Error message per key that failed.
   errors: Record<string, string>;
+  // What the backend says about each failure, as data: see Failure.
+  failures: Record<string, Failure>;
   // Fetch: each key's status when the run started, to tell what changed.
   before: Record<string, string>;
   // Pull: keys that were not cloned yet, so the run clones them.
   clones: Set<string>;
+}
+
+// Failure is what the backend reports about a failed repo besides its text.
+// Summaries group by these facts and never read the message, which is made
+// to be safe to show, not to be parsed.
+export interface Failure {
+  // Class of the error, such as "git.offline". Absent for an untyped error.
+  code?: string;
+  // The server that could not be reached, when the backend knows it.
+  host?: string;
+  // The connect was refused within a second instead of timing out.
+  fast?: boolean;
 }
 
 function start(kind: Run['kind'], keys: string[], accountOf: (key: string) => string, statusOf: (key: string) => string): Run {
@@ -27,7 +41,7 @@ function start(kind: Run['kind'], keys: string[], accountOf: (key: string) => st
   return {
     kind, keys: scope,
     accounts: new Set(scope.map(accountOf)).size,
-    done: new Set(), errors: {}, before,
+    done: new Set(), errors: {}, failures: {}, before,
     clones: new Set(kind === 'pull' ? scope.filter((key) => before[key] === 'not cloned') : []),
   };
 }
@@ -40,17 +54,18 @@ export function startPull(keys: string[], accountOf: (key: string) => string, st
   return start('pull', keys, accountOf, statusOf);
 }
 
-// noteDone records one repo reporting back, with its error if it failed.
-// Keys outside the run are ignored. It returns a new Run, so a Svelte
-// assignment picks up the change.
-export function noteDone(run: Run, key: string, error?: string): Run {
+// noteDone records one repo reporting back, with its error if it failed and
+// what the backend says about the failure. Keys outside the run are ignored.
+// It returns a new Run, so a Svelte assignment picks up the change.
+export function noteDone(run: Run, key: string, error?: string, failure?: Failure): Run {
   if (!run.keys.includes(key)) return run;
   const done = new Set(run.done);
   done.add(key);
   const errors = { ...run.errors };
-  if (error) errors[key] = error;
-  else delete errors[key];
-  return { ...run, done, errors };
+  const failures = { ...run.failures };
+  if (error) { errors[key] = error; failures[key] = failure || {}; }
+  else { delete errors[key]; delete failures[key]; }
+  return { ...run, done, errors, failures };
 }
 
 export function progress(run: Run): { done: number; total: number } {
@@ -76,7 +91,7 @@ export interface FetchSummary {
   unreachable: Unreachable[];
   // Repos that failed for any other reason, and the first of them.
   failed: number;
-  firstFailure: { key: string; error: string } | null;
+  firstFailure: { key: string; error: string; code?: string } | null;
   // Repos with local work, all left untouched.
   localWork: number;
   // Something worth a card on a background (periodic or startup) fetch.
@@ -96,16 +111,17 @@ export function summarizeFetch(run: Run, statusOf: (key: string) => string, acco
     const error = run.errors[key];
     if (error) {
       const account = accountOf(key);
-      const host = unreachableHost(error);
+      const failure = run.failures[key] || {};
       if (offline.has(account)) { skipped++; skippedAccounts.add(account); }
-      else if (host !== null) {
+      else if (UNREACHABLE.has(failure.code || '')) {
+        const host = failure.host || '';
         const u = hosts.get(host) || { host, count: 0, fast: false };
         u.count++;
-        u.fast = u.fast || refusedFast(error);
+        u.fast = u.fast || !!failure.fast;
         hosts.set(host, u);
       } else {
         failed++;
-        firstFailure = firstFailure || { key, error: cleanGitError(error) };
+        firstFailure = firstFailure || { key, error: cleanGitError(error), ...(failure.code ? { code: failure.code } : {}) };
       }
       continue;
     }
@@ -122,7 +138,7 @@ export function summarizeFetch(run: Run, statusOf: (key: string) => string, acco
 }
 
 export interface Unreachable {
-  // The server's host name, or '' when the error doesn't name it.
+  // The server's host name, or '' when the backend doesn't know it.
   host: string;
   count: number;
   // At least one connect was refused within a second instead of timing
@@ -132,28 +148,12 @@ export interface Unreachable {
 
 // Connection-level failures: the server couldn't be reached at all, as
 // opposed to git failing against a server it did reach.
-const UNREACHABLE = /couldn't connect to server|failed to connect to|could not resolve host|no route to host|connection refused|network is unreachable|connection timed out|operation timed out/i;
+const UNREACHABLE = new Set(['git.offline', 'git.timeout']);
 
-// unreachableHost returns the host a failed fetch couldn't reach ('' when
-// the message doesn't name it), or null when it isn't a connection failure.
-export function unreachableHost(error: string): string | null {
-  if (!UNREACHABLE.test(error)) return null;
-  const m = /unable to access '[a-z+]+:\/\/(?:[^@/']*@)?([^/:']+)/i.exec(error)
-    || /failed to connect to ([^\s:]+)/i.exec(error)
-    || /could not resolve host:? ([^\s:']+)/i.exec(error)
-    || /connect to host ([^\s:]+)/i.exec(error);
-  return m ? m[1] : '';
-}
-
-// refusedFast tells whether git gave up connecting within a second.
-export function refusedFast(error: string): boolean {
-  const m = /after (\d+) ms/i.exec(error);
-  return !!m && Number(m[1]) < 1000;
-}
-
-// cleanGitError drops git's wrapper so a card shows the reason itself.
+// cleanGitError drops a leading "fatal:" or "error:" so a card shows the
+// reason itself.
 export function cleanGitError(error: string): string {
-  return error.replace(/^git [\w-]+: exit status \d+:\s*/i, '').replace(/^(fatal|error):\s*/i, '').trim();
+  return error.replace(/^(fatal|error):\s*/i, '').trim();
 }
 
 export interface PullSummary {
