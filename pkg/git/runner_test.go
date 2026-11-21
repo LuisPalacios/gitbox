@@ -251,7 +251,7 @@ func TestGitSpeaksEnglishToTheClassifiers(t *testing.T) {
 	for _, kv := range [][2]string{{"LC_ALL", "es_ES.UTF-8"}, {"LANG", "es_ES.UTF-8"}, {"LANGUAGE", "es"}} {
 		t.Setenv(kv[0], kv[1])
 	}
-	_, err := Status(t.TempDir())
+	_, err := StatusContext(context.Background(), t.TempDir())
 	ge, ok := errors.AsType[*GitError](err)
 	if !ok || ge.Code != CodeNotARepo {
 		t.Errorf("status outside a repository = %#v, want code %q whatever the language", err, CodeNotARepo)
@@ -373,7 +373,7 @@ func (truncatingRunner) Run(context.Context, Request) (Result, error) {
 // be taken for the whole.
 func TestTruncatedOutputIsAnError(t *testing.T) {
 	SetRunnerForTest(t, truncatingRunner{})
-	_, err := Status("/work/repo")
+	_, err := StatusContext(context.Background(), "/work/repo")
 	ge, ok := errors.AsType[*GitError](err)
 	if !ok || !errors.Is(err, errOutputTruncated) || ge.Op != "status" {
 		t.Fatalf("Status with cut output = %#v, want a status GitError for truncated output", err)

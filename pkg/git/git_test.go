@@ -74,7 +74,7 @@ func TestIsRepo(t *testing.T) {
 func TestStatusClean(t *testing.T) {
 	clonePath, _ := initTestRepo(t)
 
-	st, err := Status(clonePath)
+	st, err := StatusContext(context.Background(), clonePath)
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestStatusDirty(t *testing.T) {
 	// Add an untracked file.
 	writeFile(t, filepath.Join(clonePath, "new.txt"), "new\n")
 
-	st, err := Status(clonePath)
+	st, err := StatusContext(context.Background(), clonePath)
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestStatus_ReadOnlyIndex(t *testing.T) {
 	}{
 		{"Status", func(t *testing.T, dir string) {
 			t.Helper()
-			got, err := Status(dir)
+			got, err := StatusContext(context.Background(), dir)
 			want := RepoStatus{Branch: "main", Modified: 1, Untracked: 1}
 			if err != nil || got != want {
 				t.Fatalf("Status = %+v, %v; want %+v", got, err, want)
@@ -228,7 +228,7 @@ func TestStatusAheadBehind(t *testing.T) {
 	runGit(t, clonePath, "add", "local.txt")
 	runGit(t, clonePath, "commit", "-m", "local commit")
 
-	st, err := Status(clonePath)
+	st, err := StatusContext(context.Background(), clonePath)
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestStatusAheadBehind(t *testing.T) {
 
 	// Fetch in original clone — now it should be behind.
 	runGit(t, clonePath, "fetch", "--all")
-	st2, err := Status(clonePath)
+	st2, err := StatusContext(context.Background(), clonePath)
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}

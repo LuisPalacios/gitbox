@@ -268,13 +268,9 @@ func PullQuietContext(ctx context.Context, repoPath string) error {
 	return nil
 }
 
-// Status runs git status and parses the result.
-// I disable optional locks to prevent background reads from refreshing the index.
-func Status(repoPath string) (RepoStatus, error) {
-	return StatusContext(context.Background(), repoPath)
-}
-
-// StatusContext is Status that stops when ctx is cancelled.
+// StatusContext runs git status and parses the result, and stops when ctx is
+// cancelled. I disable optional locks to prevent background reads from
+// refreshing the index.
 func StatusContext(ctx context.Context, repoPath string) (RepoStatus, error) {
 	out, err := outputContext(ctx, repoPath, "--no-optional-locks", "status", "--porcelain=v2", "--branch")
 	if err != nil {

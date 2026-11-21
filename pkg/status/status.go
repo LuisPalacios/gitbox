@@ -175,7 +175,7 @@ func checkWithin(ctx context.Context, repoPath string, perRepo time.Duration) Re
 	return CheckContext(ctx, repoPath)
 }
 
-// checkAllConcurrency bounds the number of in-flight Check calls in CheckAll.
+// checkAllConcurrency bounds the number of in-flight checks in CheckAllContext.
 // Each Check shells out to git, so on Windows (where subprocess spawn is
 // expensive) a cap of 8 keeps a useful amount of work in flight without
 // overwhelming the OS. A tight serial loop also starves Wails' IPC layer
@@ -183,18 +183,14 @@ func checkWithin(ctx context.Context, repoPath string, perRepo time.Duration) Re
 // updates — see issue #57.
 const checkAllConcurrency = 8
 
-// CheckAll checks the status of all repos in the configuration.
+// CheckAllContext checks the status of all repos in the configuration.
 // Up to checkAllConcurrency repos are checked in parallel; the returned
 // slice is ordered as cfg.OrderedSourceKeys() × Source.OrderedRepoKeys().
-func CheckAll(cfg *config.Config) []RepoStatus {
-	results, _ := CheckAllContext(context.Background(), cfg, 0)
-	return results
-}
-
-// CheckAllContext is CheckAll that stops when ctx is cancelled: a check
-// waiting for its turn does not start, and the ones in flight are stopped.
-// It then returns ctx's error, and the results are incomplete. perRepo, when
-// positive, bounds the check of each repo.
+//
+// It stops when ctx is cancelled: a check waiting for its turn does not
+// start, and the ones in flight are stopped. It then returns ctx's error,
+// and the results are incomplete. perRepo, when positive, bounds the check
+// of each repo.
 func CheckAllContext(ctx context.Context, cfg *config.Config, perRepo time.Duration) ([]RepoStatus, error) {
 	type job struct {
 		index      int

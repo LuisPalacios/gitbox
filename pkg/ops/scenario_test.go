@@ -160,7 +160,7 @@ func TestScenario_FullLifecycle(t *testing.T) {
 	})
 
 	t.Run("06_status", func(t *testing.T) {
-		statuses := status.CheckAll(cfg)
+		statuses, _ := status.CheckAllContext(context.Background(), cfg, 0)
 		if len(statuses) == 0 {
 			t.Fatal("no status entries")
 		}
