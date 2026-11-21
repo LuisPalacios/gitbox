@@ -254,9 +254,7 @@ func (c *serverConn) handle(body []byte) {
 	c.cancels[id] = cancel
 	c.mu.Unlock()
 
-	c.handlers.Add(1)
-	go func() {
-		defer c.handlers.Done()
+	c.handlers.Go(func() {
 		defer func() {
 			c.mu.Lock()
 			delete(c.cancels, id)
@@ -269,12 +267,10 @@ func (c *serverConn) handle(body []byte) {
 			err    *Error
 		}
 		done := make(chan outcome, 1)
-		c.handlers.Add(1) // closing waits for the handler itself, too
-		go func() {
-			defer c.handlers.Done()
+		c.handlers.Go(func() { // closing waits for the handler itself, too
 			result, err := c.runOnce(ctx, req, handler)
 			done <- outcome{result, err}
-		}()
+		})
 
 		select {
 		case o := <-done:
@@ -289,7 +285,7 @@ func (c *serverConn) handle(body []byte) {
 			// dropped.
 			c.send(errorResponse(req.ID, newError(CodeCancelled, ErrCodeCancelled, "")))
 		}
-	}()
+	})
 }
 
 // runOnce runs the handler, unless the request repeats a mutation the server

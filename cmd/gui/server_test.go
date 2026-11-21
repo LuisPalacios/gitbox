@@ -219,7 +219,7 @@ func TestProbeDir(t *testing.T) {
 // serve answers a client and reports how the connection ended through its
 // exit code, which is all a parent process sees.
 func TestServeExitCodes(t *testing.T) {
-	start := func(t *testing.T, opts rpc.ClientOptions) (*rpc.Client, error, <-chan int) {
+	start := func(t *testing.T, opts rpc.ClientOptions) (*rpc.Client, <-chan int, error) {
 		t.Helper()
 		c2sR, c2sW := io.Pipe()
 		s2cR, s2cW := io.Pipe()
@@ -233,7 +233,7 @@ func TestServeExitCodes(t *testing.T) {
 		if err != nil {
 			_ = c2sW.Close()
 		}
-		return client, err, exit
+		return client, exit, err
 	}
 	wait := func(t *testing.T, exit <-chan int) int {
 		t.Helper()
@@ -247,7 +247,7 @@ func TestServeExitCodes(t *testing.T) {
 	}
 
 	t.Run("a clean end", func(t *testing.T) {
-		client, err, exit := start(t, rpc.ClientOptions{Version: version, Commit: commit})
+		client, exit, err := start(t, rpc.ClientOptions{Version: version, Commit: commit})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -269,7 +269,7 @@ func TestServeExitCodes(t *testing.T) {
 	})
 
 	t.Run("a different build", func(t *testing.T) {
-		_, err, exit := start(t, rpc.ClientOptions{Version: version, Commit: "another-commit"})
+		_, exit, err := start(t, rpc.ClientOptions{Version: version, Commit: "another-commit"})
 		if !rpc.IsCode(err, rpc.ErrCodeVersionMismatch) {
 			t.Errorf("Dial = %v, want the version mismatch", err)
 		}

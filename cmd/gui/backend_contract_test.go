@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os/exec"
 	"path/filepath"
 	"reflect"
@@ -62,9 +63,7 @@ func serveRemote(t *testing.T, path string, extra map[string]rpc.Handler) *remot
 	t.Helper()
 	host := newServerApp(path)
 	srv := newRPCServer(host, io.Discard)
-	for name, h := range extra {
-		srv.Handlers[name] = h
-	}
+	maps.Copy(srv.Handlers, extra)
 	ctx, cancel := context.WithCancel(context.Background())
 	host.be().Init(ctx)
 
@@ -385,8 +384,7 @@ func TestRemoteBackendCallsEachMethodByName(t *testing.T) {
 	iface := reflect.TypeFor[Backend]()
 	value := reflect.ValueOf(remote)
 	checked := 0
-	for i := range iface.NumMethod() {
-		m := iface.Method(i)
+	for m := range iface.Methods() {
 		if m.Name == "Init" || m.Name == "Start" || m.Name == "Close" {
 			continue
 		}
