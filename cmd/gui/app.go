@@ -299,7 +299,11 @@ func (a *App) getOSLocal() string {
 // GetAppVersion returns the application version string for the frontend.
 // CI builds:    "v1.0.6 (abc1234)" — version and commit set via ldflags
 // Local builds: "v1.0.5-3-ga99cf17-dev (a99cf17)" — auto-detected from git
-func (a *App) GetAppVersion() string { return a.be().GetAppVersion() }
+//
+// It is always this build's own version, also when the backend is on another
+// host: the handshake only accepts a server of the same build, and its
+// version travels in StartupSnapshot.ServerVersion.
+func (a *App) GetAppVersion() string { return a.getAppVersionLocal() }
 
 // getAppVersionLocal is the local backend's GetAppVersion.
 func (a *App) getAppVersionLocal() string {
@@ -447,6 +451,9 @@ type StartupSnapshot struct {
 	AppVersion         string               `json:"appVersion"`
 	OS                 string               `json:"os"`
 	CredentialFindings []credential.Finding `json:"credentialFindings"`
+	// ServerVersion is the build of the gitbox-server this window talks
+	// to, as it stated it in the handshake. Empty in a local window.
+	ServerVersion string `json:"serverVersion,omitempty"`
 }
 
 // GetStartupSnapshot keeps preferences, configured rows and nesting consistent
@@ -457,6 +464,10 @@ func (a *App) GetStartupSnapshot() (StartupSnapshot, error) {
 		return StartupSnapshot{}, err
 	}
 	a.overlayPrefs(&snap.Config)
+	if remote, ok := a.be().(*RemoteBackend); ok {
+		snap.AppVersion = a.getAppVersionLocal()
+		snap.ServerVersion = remote.ServerVersion()
+	}
 	return snap, nil
 }
 

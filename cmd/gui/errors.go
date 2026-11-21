@@ -7,6 +7,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
+	"github.com/LuisPalacios/gitbox/pkg/rpc"
 	"github.com/LuisPalacios/gitbox/pkg/usererr"
 )
 
@@ -28,12 +29,33 @@ func toUserError(err error) usererr.UserError {
 		return usererr.UserError{}
 	}
 	out := usererr.UserError{Detail: userText(err.Error())}
+	if re, ok := errors.AsType[*rpc.Error](err); ok {
+		// An error that came from a gitbox-server is already a UserError,
+		// but the server is untrusted: its words get the same scrub, and
+		// its code and hint must look like the identifiers they are.
+		out.Code, out.Hint = identifier(re.Data.Code), identifier(re.Data.Hint)
+		return out
+	}
 	if ge, ok := errors.AsType[*git.GitError](err); ok {
 		out.Code, out.Hint = "git."+string(ge.Code), ge.Hint
 	} else if pe, ok := errors.AsType[*provider.ProviderError](err); ok {
 		out.Code, out.Hint = "provider."+string(pe.Class), "error.provider."+string(pe.Class)
 	}
 	return out
+}
+
+// identifier keeps s only if it is a short dotted name such as "git.offline"
+// or "error.git.offline": letters, digits, '.', '_' and '-'.
+func identifier(s string) string {
+	if len(s) == 0 || len(s) > 64 {
+		return ""
+	}
+	for _, r := range s {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '.' && r != '_' && r != '-' {
+			return ""
+		}
+	}
+	return s
 }
 
 // userMsg is the text of err that a string field or payload may carry.

@@ -21,3 +21,19 @@ const (
 
 // A clone has no bound: its size is not known in advance. It is cancelled
 // when the app closes.
+
+// A call to a gitbox-server may take as long as the work it asks for, plus
+// remoteCallMargin for the round trip. remoteWorkBounds lists the methods
+// whose work has its own bound; the rest get remoteDefaultBound.
+const (
+	remoteCallMargin   = 5 * time.Second
+	remoteDefaultBound = fetchTimeout
+)
+
+var remoteWorkBounds = map[string]time.Duration{
+	"GetConfig":         healReadTimeout,
+	"GetConfigPath":     healReadTimeout,
+	"IsFirstRun":        healReadTimeout,
+	"ListRoots":         healReadTimeout,
+	"SuggestAccountKey": healReadTimeout,
+}

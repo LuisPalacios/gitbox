@@ -1410,6 +1410,7 @@ export namespace main {
 	    appVersion: string;
 	    os: string;
 	    credentialFindings: credential.Finding[];
+	    serverVersion?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new StartupSnapshot(source);
@@ -1423,6 +1424,7 @@ export namespace main {
 	        this.appVersion = source["appVersion"];
 	        this.os = source["os"];
 	        this.credentialFindings = this.convertValues(source["credentialFindings"], credential.Finding);
+	        this.serverVersion = source["serverVersion"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
