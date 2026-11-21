@@ -373,20 +373,11 @@ func combineStatus(primary, pat Status) Status {
 	}
 }
 
-// isAPIAuthRejection reports whether an error from provider.CheckAuth looks
-// like the server rejecting the credential (HTTP 401 or text that names an
-// authentication failure), as opposed to a network error, a TLS error, or
-// some other HTTP failure mode. It's intentionally conservative — the only
-// place that wraps 401 as a human string is pkg/provider/http.go, so we
-// match on those signatures rather than on a numeric status.
+// isAPIAuthRejection reports whether an error from provider.CheckAuth is the
+// server rejecting the credential (HTTP 401), as opposed to a network error,
+// a TLS error or some other HTTP failure.
 func isAPIAuthRejection(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "HTTP 401") ||
-		strings.Contains(msg, "authentication failed") ||
-		strings.Contains(msg, "token is invalid")
+	return provider.IsUnauthorized(err)
 }
 
 // providerNeedsPATForAPI reports whether the provider's REST API refuses

@@ -113,7 +113,7 @@ func setupPushMirror(ctx context.Context, originProv, backupProv provider.Provid
 		if !exists {
 			if err := rc.CreateRepo(ctx, backupAcct.URL, backupToken, backupAcct.Username, targetOwner, targetName, "", true); err != nil {
 				// 422 "already exists" is not an error — race condition or previous attempt.
-				if !strings.Contains(err.Error(), "already exists") {
+				if !provider.IsAlreadyExists(err) {
 					result.Error = fmt.Sprintf("creating target repo: %v", err)
 					return result
 				}

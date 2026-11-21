@@ -208,7 +208,7 @@ func (g *GitLab) RepoExists(ctx context.Context, baseURL, token, _, owner, repoN
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%s", base, encoded)
 	var proj gitlabProject
 	if _, err := doGet(ctx, apiURL, g.authHeaders(token), &proj); err != nil {
-		if isNotFound(err) {
+		if IsNotFound(err) {
 			return false, nil
 		}
 		return false, fmt.Errorf("gitlab repo exists: %w", err)
