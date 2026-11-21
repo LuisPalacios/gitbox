@@ -128,6 +128,23 @@ El arranque devuelve la config, las preferencias, el estado de plegado y la anid
 - Límites: cuatro peticiones a la vez, 10 segundos por petición, 30 segundos por sondeo (incluida la resolución de credenciales) y al menos 60 segundos tras un sondeo completado antes del siguiente.
 - Los errores y la cancelación conservan el estado upstream conocido. Los resultados superados por fetches o cambios de credenciales más recientes se descartan.
 
+#### Frontera de errores
+
+Un texto de error que llega a la ventana, a un evento o al archivo de config nunca puede contener un secreto. Lo garantizan dos capas.
+
+**En el origen.** `pkg/git` y `pkg/provider` construyen sus errores solo con partes permitidas:
+
+- Cada comando de git falla con un `*git.GitError`: el subcomando (`Op`), un `Code` (`auth_failed`, `not_fast_forward`, `no_upstream`, `offline`, `timeout`, `cancelled`, `not_a_repo`, `lock_held`, `repo_not_found`, `unknown`), un `Hint` y el estado de salida. Su texto es `git <op>: <code> (exit N)`. Los argumentos, lo que imprimió git y la URL del remoto nunca entran en él.
+- Cada petición a la API de un proveedor falla con un `*provider.ProviderError`: el `Status` HTTP, una `Class` (`unauthorized`, `scope_denied`, `rate_limited`, `not_found`, `server_error`, `offline`, `timeout`, `unknown`) y un texto hecho con el método, el host y el estado. La ruta, la query, las cabeceras y el cuerpo de la respuesta nunca entran en él.
+- Lo que imprimió git (4 KiB como máximo) y el comienzo del cuerpo de la respuesta se quedan en campos no exportados que solo leen los clasificadores del mismo paquete: `git.IsUpstreamGoneError`, `git.IsRefusedFast`, `provider.IsAlreadyExists`. El código que necesita saber por qué falló algo pregunta al tipo (`errors.As`, `provider.IsNotFound`, `provider.IsUnauthorized`, `provider.IsForbiddenError`) y nunca lee el mensaje.
+- `git.ParseRemoteURL` informa del host y del problema de forma, nunca de la URL.
+
+**En la frontera.** `toUserError` en `cmd/gui/errors.go` convierte cualquier error en un `usererr.UserError{Code, Hint, Detail}`. El tipo vive en `pkg/usererr` para que el modo remoto pueda llevarlo por el cable. `Code` y `Hint` vienen del error tipado. `Detail` es el texto del error tras una limpieza que quita credenciales en URLs, cabeceras de autorización, valores largos de bearer o token y los formatos de token de los proveedores soportados, elimina los caracteres de control y limita el texto a 300 runas. Cada campo `Error` y `Message` de un DTO y cada payload `"error"` de un evento recibe `userMsg(err)` o `userText(…)`; un test de guarda falla cuando un binding llama a `.Error()` por su cuenta.
+
+`Hint` es una clave de catálogo, no prosa: `error.git.<code>` o `error.provider.<class>`, cada una con su entrada en inglés y en español en `i18n.ts`. Los campos que llevan errores siguen siendo cadenas, así que el frontend muestra hoy `Detail`.
+
+El frontend nunca parsea ese texto. Donde necesita saber qué ha pasado, el backend lo dice como dato: un `fetch:done` fallido lleva `code`, `host` (el servidor al que git no pudo llegar, un nombre de host sin más tomado de `GitError.Host`) y `refusedFast` junto a `error`. La tarjeta de resultado de Fetch all agrupa los servidores inalcanzables por esos campos y explica un fallo clasificado con la entrada de catálogo de su código.
+
 ### pkg/ops — operaciones de aplicación
 
 La capa de servicio entre los bindings de la GUI y los paquetes de nivel inferior. Contiene las operaciones que tocan varios paquetes a la vez: `AddAccount`, `RenameAccount`, `DeleteAccount`, `DeleteRepo`, `ChangeCredentialType`, `DeleteCredential`, `RemoveCredentialArtifacts`, `ReconfigureClones` (ejecuta `heal.Repo` en cada clon), `PlanClone` / `Clone`, `ListRemoteRepos`, `ListAccountOrgs`, `CreateRemoteRepo`, `AddDiscoveredRepos` y `ProviderClient`.
@@ -627,7 +644,7 @@ El usuario no necesita conocer los detalles internos de Git: las acciones son ve
 - **Las claves privadas SSH** son archivos estándar de `~/.ssh/` con permisos 0600.
 - **URLs de clonado sin secretos:** el clonado y las operaciones git posteriores se autentican mediante el helper de credenciales por repo. Las URLs y los argumentos del proceso nunca contienen el token. Si un clon falla, Gitbox conserva cualquier destino que quede en disco e informa de su ruta sin reescribir el origen.
 - **Aislamiento de credenciales por repo:** el `.git/config` de cada clon cancela los helpers de credenciales globales y define el suyo, lo que evita fugas de credenciales entre cuentas y credenciales fantasma de los refresh tokens OAuth de GCM.
-- **Sin secretos en la salida:** los tokens nunca se muestran, ni siquiera en los mensajes de error.
+- **Sin secretos en la salida:** los tokens nunca se muestran, ni siquiera en los mensajes de error. Los errores de git y de los proveedores se construyen con partes permitidas, y cada error pasa por una única frontera de limpieza antes de salir del proceso (consulta [Frontera de errores](#frontera-de-errores)).
 - **Repositorio público:** los archivos versionados no contienen hostnames, nombres de usuario, emails ni tokens reales.
 
 ---

@@ -311,7 +311,7 @@ func (g *GitHub) RepoExists(ctx context.Context, baseURL, token, _, owner, repoN
 	url := fmt.Sprintf("%s/repos/%s/%s", g.apiBase(baseURL), owner, repoName)
 	var repo githubRepo
 	if _, err := doGet(ctx, url, g.authHeaders(token), &repo); err != nil {
-		if isNotFound(err) {
+		if IsNotFound(err) {
 			return false, nil
 		}
 		return false, fmt.Errorf("github repo exists: %w", err)

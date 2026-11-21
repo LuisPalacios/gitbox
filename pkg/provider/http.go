@@ -3,31 +3,18 @@ package provider
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
 	"net/http"
 )
-
-type httpStatusError struct {
-	statusCode int
-	message    string
-}
-
-func (e *httpStatusError) Error() string { return e.message }
-
-func isNotFound(err error) bool {
-	var statusErr *httpStatusError
-	return errors.As(err, &statusErr) && statusErr.statusCode == http.StatusNotFound
-}
 
 // doGet performs an authenticated GET request, decodes the JSON response into target,
 // and returns the response headers. The authHeader is sent as-is in the Authorization
 // (or provider-specific) header.
 func doGet(ctx context.Context, url string, headers map[string]string, target any) (http.Header, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	const method = http.MethodGet
+	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+		return nil, requestError(method, url)
 	}
 
 	for k, v := range headers {
@@ -37,26 +24,16 @@ func doGet(ctx context.Context, url string, headers map[string]string, target an
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP GET %s: %w", url, err)
+		return nil, transportError(method, url, err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("authentication failed (HTTP 401) — token is invalid or expired")
-	}
-	if resp.StatusCode == http.StatusForbidden {
-		return nil, fmt.Errorf("insufficient permissions (HTTP 403) — token needs broader scopes")
-	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, &httpStatusError{
-			statusCode: resp.StatusCode,
-			message:    fmt.Sprintf("HTTP %d from %s: %s", resp.StatusCode, url, string(body)),
-		}
+		return nil, statusError(method, url, resp)
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(target); err != nil {
-		return nil, fmt.Errorf("decoding response from %s: %w", url, err)
+		return nil, decodeError(method, url)
 	}
 
 	return resp.Header, nil
@@ -66,9 +43,10 @@ func doGet(ctx context.Context, url string, headers map[string]string, target an
 // If target is non-nil, the response body is JSON-decoded into it.
 // Accepts 200 and 201 as success status codes.
 func doPost(ctx context.Context, url string, headers map[string]string, body io.Reader, target any) (http.Header, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
+	const method = http.MethodPost
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+		return nil, requestError(method, url)
 	}
 
 	for k, v := range headers {
@@ -79,24 +57,17 @@ func doPost(ctx context.Context, url string, headers map[string]string, body io.
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP POST %s: %w", url, err)
+		return nil, transportError(method, url, err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("authentication failed (HTTP 401) — token is invalid or expired")
-	}
-	if resp.StatusCode == http.StatusForbidden {
-		return nil, fmt.Errorf("insufficient permissions (HTTP 403) — token needs broader scopes")
-	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("HTTP %d from %s: %s", resp.StatusCode, url, string(body))
+		return nil, statusError(method, url, resp)
 	}
 
 	if target != nil {
 		if err := json.NewDecoder(resp.Body).Decode(target); err != nil {
-			return nil, fmt.Errorf("decoding response from %s: %w", url, err)
+			return nil, decodeError(method, url)
 		}
 	}
 
@@ -107,9 +78,10 @@ func doPost(ctx context.Context, url string, headers map[string]string, body io.
 // Accepts 200, 202, and 204 as success status codes. GitLab returns 202
 // Accepted when a project delete is queued; GitHub/Gitea return 204.
 func doDelete(ctx context.Context, url string, headers map[string]string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	const method = http.MethodDelete
+	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
-		return fmt.Errorf("creating request: %w", err)
+		return requestError(method, url)
 	}
 
 	for k, v := range headers {
@@ -119,19 +91,12 @@ func doDelete(ctx context.Context, url string, headers map[string]string) error 
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("HTTP DELETE %s: %w", url, err)
+		return transportError(method, url, err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("authentication failed (HTTP 401) — token is invalid or expired")
-	}
-	if resp.StatusCode == http.StatusForbidden {
-		return fmt.Errorf("insufficient permissions (HTTP 403) — token needs broader scopes")
-	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("HTTP %d from %s: %s", resp.StatusCode, url, string(body))
+		return statusError(method, url, resp)
 	}
 
 	return nil

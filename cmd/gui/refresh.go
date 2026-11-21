@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"path/filepath"
@@ -220,13 +221,13 @@ func (a *App) fetchOne(cfg *config.Config, source, repo string) error {
 	src, ok := cfg.Sources[source]
 	if !ok {
 		err := fmt.Errorf("source %q not found", source)
-		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": err.Error()})
+		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": userMsg(err)})
 		return err
 	}
 	r, ok := src.Repos[repo]
 	if !ok {
 		err := fmt.Errorf("repo %q not found", repo)
-		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": err.Error()})
+		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": userMsg(err)})
 		return err
 	}
 	path := status.RepoPath(cfg, source, repo, r)
@@ -311,7 +312,7 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 	if !a.sameRefreshRepo(cfg, source, repo) {
 		a.maintenanceMu.RUnlock()
 		err := fmt.Errorf("repository settings changed during refresh")
-		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": err.Error()})
+		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": userMsg(err)})
 		return err
 	}
 	a.sink().Emit("fetch:start", map[string]string{"source": source, "repo": repo})
@@ -345,7 +346,7 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 	}
 	payload := map[string]any{"source": source, "repo": repo}
 	if err != nil {
-		payload["error"] = err.Error()
+		describeFetchFailure(payload, err)
 		if git.IsUpstreamGoneError(err) {
 			payload["upstreamGone"] = true
 		}
@@ -359,6 +360,24 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 	}
 	a.sink().Emit("fetch:done", payload)
 	return err
+}
+
+// describeFetchFailure adds what the frontend needs to explain a failed
+// fetch: the scrubbed text and, as data, the code, the server that could not
+// be reached and whether the connect was refused at once. The frontend
+// groups failures by these facts, never by reading the text.
+func describeFetchFailure(payload map[string]any, err error) {
+	ue := toUserError(err)
+	payload["error"] = ue.String()
+	if ue.Code != "" {
+		payload["code"] = ue.Code
+	}
+	if ge, ok := errors.AsType[*git.GitError](err); ok && ge.Host != "" {
+		payload["host"] = ge.Host
+	}
+	if git.IsRefusedFast(err) {
+		payload["refusedFast"] = true
+	}
 }
 
 // FetchAllRepos joins the active cycle, including its final status and provider work.
@@ -383,7 +402,7 @@ func (a *App) fetchAllReposLocal() error {
 		err := a.fetchCycle()
 		payload := map[string]string{}
 		if err != nil {
-			payload["error"] = err.Error()
+			payload["error"] = userMsg(err)
 		}
 		a.sink().Emit("fetch:alldone", payload)
 		a.refreshMu.Lock()

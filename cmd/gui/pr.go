@@ -166,7 +166,7 @@ func fetchPRsForAccount(snap accountSnapshot, includeDrafts bool) PRAccountUpdat
 
 	prov, err := provider.ByName(snap.acct.Provider)
 	if err != nil {
-		dto.Error = err.Error()
+		dto.Error = userMsg(err)
 		return dto
 	}
 	lister, ok := prov.(provider.PRLister)
@@ -177,7 +177,7 @@ func fetchPRsForAccount(snap accountSnapshot, includeDrafts bool) PRAccountUpdat
 
 	token, _, err := credential.ResolveAPIToken(snap.acct, snap.key)
 	if err != nil {
-		dto.Error = fmt.Sprintf("no API token: %v", err)
+		dto.Error = userText(fmt.Sprintf("no API token: %v", err))
 		return dto
 	}
 
@@ -186,7 +186,7 @@ func fetchPRsForAccount(snap accountSnapshot, includeDrafts bool) PRAccountUpdat
 
 	res, err := lister.ListAccountPRs(ctx, snap.acct.URL, token, snap.acct.Username, includeDrafts)
 	if err != nil {
-		dto.Error = err.Error()
+		dto.Error = userMsg(err)
 		return dto
 	}
 

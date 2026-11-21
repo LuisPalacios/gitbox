@@ -73,26 +73,31 @@ test('I count local work across statuses', () => {
 });
 
 test('I group connection failures by host and spot an instant refusal', () => {
-  const lan = "git fetch: exit status 128: fatal: no es posible acceder a 'https://git.example.org/team/app.git/': Failed to connect to git.example.org port 443 after 5 ms: Couldn't connect to server";
-  assert.equal(a.unreachableHost(lan), 'git.example.org');
-  assert.equal(a.refusedFast(lan), true);
-  assert.equal(a.unreachableHost("fatal: unable to access 'https://user@host.test/x.git/': Could not resolve host: host.test"), 'host.test');
-  assert.equal(a.unreachableHost('ssh: connect to host gitea.lan port 22: Connection refused'), 'gitea.lan');
-  assert.equal(a.unreachableHost('fatal: Authentication failed'), null);
-  assert.equal(a.refusedFast("Failed to connect to h port 443 after 75003 ms: Couldn't connect to server"), false);
-  assert.equal(a.cleanGitError('git fetch: exit status 128: fatal: repository not found'), 'repository not found');
+  // The backend reports the class, the host and the instant refusal as
+  // data; the text is only shown, never parsed.
+  const text = 'git fetch: offline (exit 128)';
+  const lan = { code: 'git.offline', host: 'git.example.org', fast: true };
+  assert.equal(a.cleanGitError('fatal: repository not found'), 'repository not found');
+  assert.equal(a.cleanGitError(text), text);
 
-  let run = a.startFetch(['A/1', 'A/2', 'A/3', 'B/1', 'C/1'], accountOf, () => 'clean');
-  run = a.noteDone(run, 'A/1', lan);
-  run = a.noteDone(run, 'A/2', lan);
-  run = a.noteDone(run, 'A/3', 'git fetch: exit status 128: fatal: repository not found');
-  run = a.noteDone(run, 'B/1', lan);
+  let run = a.startFetch(['A/1', 'A/2', 'A/3', 'A/4', 'A/5', 'B/1', 'C/1'], accountOf, () => 'clean');
+  run = a.noteDone(run, 'A/1', text, lan);
+  run = a.noteDone(run, 'A/2', text, { code: 'git.timeout', host: 'git.example.org' });
+  run = a.noteDone(run, 'A/3', 'git fetch: repo_not_found (exit 128)', { code: 'git.repo_not_found' });
+  run = a.noteDone(run, 'A/4', text, { code: 'git.offline' });
+  // A message that only looks like a connection failure is not one.
+  run = a.noteDone(run, 'A/5', "Failed to connect to git.example.org port 443 after 5 ms: Couldn't connect to server");
+  run = a.noteDone(run, 'B/1', text, lan);
   run = a.noteDone(run, 'C/1');
   const sum = a.summarizeFetch(run, () => 'clean', accountOf, ['B']);
-  assert.deepEqual(sum.unreachable, [{ host: 'git.example.org', count: 2, fast: true }]);
+  assert.deepEqual(sum.unreachable, [{ host: 'git.example.org', count: 2, fast: true }, { host: '', count: 1, fast: false }]);
   assert.equal(sum.skipped, 1);
-  assert.equal(sum.failed, 1);
-  assert.deepEqual(sum.firstFailure, { key: 'A/3', error: 'repository not found' });
+  assert.equal(sum.failed, 2);
+  assert.deepEqual(sum.firstFailure, { key: 'A/3', error: 'git fetch: repo_not_found (exit 128)', code: 'git.repo_not_found' });
   assert.equal(sum.checked, 1);
-  assert.equal(sum.changed, true);
+
+  // A repo that later succeeds forgets its failure.
+  run = a.noteDone(run, 'A/1');
+  assert.equal(run.failures['A/1'], undefined);
+  assert.deepEqual(a.summarizeFetch(run, () => 'clean', accountOf, ['B']).unreachable, [{ host: '', count: 1, fast: false }, { host: 'git.example.org', count: 1, fast: false }]);
 });

@@ -33,14 +33,14 @@ func TestRepoExists_HTTPStatus(t *testing.T) {
 					previous := http.DefaultClient
 					t.Cleanup(func() { http.DefaultClient = previous })
 					// I intercept every request, including Bitbucket's fixed public API URL.
-					var requestURL string
+					var requestURL, requestHost string
 					http.DefaultClient = &http.Client{Transport: repoExistsTransport(func(req *http.Request) (*http.Response, error) {
 						w := httptest.NewRecorder()
 						w.Header().Set("Content-Type", "application/json")
 						if strings.HasSuffix(req.URL.Path, "/api/v1/user/repos") {
 							_, _ = w.Write([]byte(`[]`))
 						} else {
-							requestURL = req.URL.String()
+							requestURL, requestHost = req.URL.String(), req.URL.Host
 							w.WriteHeader(tc.status)
 							_, _ = w.Write([]byte(tc.body))
 						}
@@ -64,7 +64,8 @@ func TestRepoExists_HTTPStatus(t *testing.T) {
 						}
 						message := tc.wantError
 						if tc.status == http.StatusInternalServerError {
-							message = fmt.Sprintf("HTTP %d from %s: %s", tc.status, requestURL, tc.body)
+							// The host and the method only: never the path or the body.
+							message = fmt.Sprintf("HTTP %d from %s (GET)", tc.status, requestHost)
 						}
 						if want := prefix + " repo exists: " + message; err.Error() != want {
 							t.Fatalf("error = %q, want %q", err, want)

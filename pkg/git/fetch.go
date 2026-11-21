@@ -2,11 +2,9 @@ package git
 
 import (
 	"context"
-	"fmt"
 	"os/exec"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -23,7 +21,7 @@ func IsRefusedFast(err error) bool {
 	if err == nil {
 		return false
 	}
-	m := refusedFastRE.FindStringSubmatch(err.Error())
+	m := refusedFastRE.FindStringSubmatch(diagnosticText(err))
 	if m == nil {
 		return false
 	}
@@ -40,7 +38,7 @@ func FetchCapturedContext(ctx context.Context, repoPath string) (string, error) 
 	HideWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(out), fmt.Errorf("git fetch: %w: %s", err, strings.TrimSpace(string(out)))
+		return string(out), newGitErrorContext(ctx, "fetch", err, out)
 	}
 	return string(out), nil
 }

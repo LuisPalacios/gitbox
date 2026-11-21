@@ -168,19 +168,29 @@ func CloneWithProgress(url, dest string, opts CloneOpts, onProgress func(ClonePr
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return fmt.Errorf("git clone: %w", err)
+		return newGitError("clone", err, nil)
 	}
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("git clone: %w", err)
+		return newGitError("clone", err, nil)
 	}
 
 	// Git progress uses \r for in-place updates within a line.
-	// Read stderr splitting on both \r and \n.
-	go parseProgress(stderr, onProgress)
+	// Read stderr splitting on both \r and \n. The tail is kept only to
+	// classify a failure; it never reaches the error text.
+	tail := &tailBuffer{max: maxStderr}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		parseProgress(io.TeeReader(stderr, tail), onProgress)
+	}()
 
-	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("git clone: %w", err)
+	// Wait closes the pipe, which ends the reader even when a helper that
+	// git started still holds the write end.
+	err = cmd.Wait()
+	<-done
+	if err != nil {
+		return newGitError("clone", err, tail.Bytes())
 	}
 	return nil
 }
@@ -227,20 +237,7 @@ func IsUpstreamGoneError(err error) bool {
 	if err == nil {
 		return false
 	}
-	msg := strings.ToLower(err.Error())
-	// GitHub / generic: "remote: Repository not found." / "fatal:
-	//   repository '...' not found"
-	// GitLab: "fatal: repository '...' not found" / "HTTP 404"
-	// Gitea / Forgejo: "fatal: repository '...' not found" / HTTP 404
-	// Bitbucket: "fatal: repository access denied" once deleted, plus 404
-	// Any provider over HTTPS with hard 404: "the requested URL returned
-	//   error: 404"
-	return strings.Contains(msg, "repository not found") ||
-		strings.Contains(msg, "repository '") && strings.Contains(msg, "' not found") ||
-		strings.Contains(msg, "error: 404") ||
-		strings.Contains(msg, "returned error: 404") ||
-		strings.Contains(msg, "http 404") ||
-		strings.Contains(msg, "repository access denied")
+	return upstreamGoneText(strings.ToLower(diagnosticText(err)))
 }
 
 // PushMirror runs `git push --mirror <url>` from repoPath, pushing every
@@ -264,7 +261,7 @@ func PushMirror(repoPath, url string, extraConfig []string) (string, error) {
 	HideWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(out), fmt.Errorf("git push --mirror: %w: %s", err, strings.TrimSpace(string(out)))
+		return string(out), newGitError("push", err, out)
 	}
 	return string(out), nil
 }
@@ -785,8 +782,8 @@ func nonInteractiveEnv() []string {
 // safe to call from a GUI subsystem process on Windows — setting
 // Stdout = os.Stdout there fails CreateProcess with "The request is
 // not supported." because the GUI has no valid stdio handles.
-// Captured stderr is appended to the error so operators still see the
-// reason a git command failed.
+// The error is a *GitError: it names the subcommand and why it failed, and
+// never carries the arguments or what git printed.
 func run(dir string, args ...string) error {
 	cmd := exec.Command(GitBin(), args...)
 	cmd.Dir = dir
@@ -794,11 +791,7 @@ func run(dir string, args ...string) error {
 	HideWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		trimmed := strings.TrimSpace(string(out))
-		if trimmed == "" {
-			return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
-		}
-		return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, trimmed)
+		return newGitError(opName(args), err, out)
 	}
 	return nil
 }
@@ -811,7 +804,7 @@ func output(dir string, args ...string) (string, error) {
 	HideWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+		return "", newGitError(opName(args), err, nil)
 	}
 	return string(out), nil
 }

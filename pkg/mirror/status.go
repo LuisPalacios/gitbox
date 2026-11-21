@@ -3,7 +3,6 @@ package mirror
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
@@ -94,7 +93,7 @@ func CheckStatus(ctx context.Context, cfg *config.Config, mirrorKey, repoKey str
 	backupName := repoNameOnly(targetName)
 	dstInfo, err := backupInfo.GetRepoInfo(ctx, backupAcct.URL, backupToken, backupAcct.Username, backupOwner, backupName)
 	if err != nil {
-		if strings.Contains(err.Error(), "404") {
+		if provider.IsNotFound(err) {
 			// A 404 on the backup side means one of two things:
 			//   1. The user has never completed setup for this row yet — the
 			//      target is supposed to be missing. Render as neutral

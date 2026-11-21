@@ -128,6 +128,23 @@ Startup returns config, preferences, collapse state and path-derived nesting in 
 - Limits: four requests at a time, 10 seconds per request, 30 seconds per sweep (credential resolution included), and at least 60 seconds after a completed sweep before the next one.
 - Errors and cancellation keep the known upstream state. Results superseded by newer fetches or credential changes are discarded.
 
+#### Error boundary
+
+An error text that reaches the window, an event or the config file can never hold a secret. Two layers guarantee it.
+
+**At the source.** `pkg/git` and `pkg/provider` build their errors only from allowlisted parts:
+
+- Every git command fails with a `*git.GitError`: the subcommand (`Op`), a `Code` (`auth_failed`, `not_fast_forward`, `no_upstream`, `offline`, `timeout`, `cancelled`, `not_a_repo`, `lock_held`, `repo_not_found`, `unknown`), a `Hint` and the exit status. Its text is `git <op>: <code> (exit N)`. The arguments, what git printed and the remote URL never enter it.
+- Every provider API request fails with a `*provider.ProviderError`: the HTTP `Status`, a `Class` (`unauthorized`, `scope_denied`, `rate_limited`, `not_found`, `server_error`, `offline`, `timeout`, `unknown`) and a text made of the method, the host and the status. The path, the query, the headers and the response body never enter it.
+- What git printed (4 KiB at most) and the start of the response body stay in unexported fields that only the classifiers of the same package read: `git.IsUpstreamGoneError`, `git.IsRefusedFast`, `provider.IsAlreadyExists`. Code that needs to know why something failed asks the type (`errors.As`, `provider.IsNotFound`, `provider.IsUnauthorized`, `provider.IsForbiddenError`) and never reads the message.
+- `git.ParseRemoteURL` reports the host and the shape problem, never the URL.
+
+**At the boundary.** `toUserError` in `cmd/gui/errors.go` turns any error into a `usererr.UserError{Code, Hint, Detail}`. The type lives in `pkg/usererr` so that remote mode can carry it over the wire. `Code` and `Hint` come from the typed error. `Detail` is the error text after a scrub that removes credentials in URLs, authorization headers, long bearer or token values and the token formats of the supported providers, drops control characters and caps the text at 300 runes. Every `Error` and `Message` field of a DTO and every `"error"` event payload takes `userMsg(err)` or `userText(…)`; a guard test fails when a binding calls `.Error()` on its own.
+
+`Hint` is a catalog key, not prose: `error.git.<code>` or `error.provider.<class>`, each with an English and a Spanish entry in `i18n.ts`. The fields that carry errors are still strings, so the frontend shows `Detail` today.
+
+The frontend never parses that text. Where it needs to know what happened, the backend says so as data: a failed `fetch:done` carries `code`, `host` (the server git could not reach, a bare host name taken from `GitError.Host`) and `refusedFast` next to `error`. The Fetch all result card groups unreachable servers by those fields and explains a classified failure with the catalog entry for its code.
+
 ### pkg/ops — Application operations
 
 The service layer between the GUI bindings and the lower-level packages. It holds the operations that touch several packages at once: `AddAccount`, `RenameAccount`, `DeleteAccount`, `DeleteRepo`, `ChangeCredentialType`, `DeleteCredential`, `RemoveCredentialArtifacts`, `ReconfigureClones` (runs `heal.Repo` on each clone), `PlanClone` / `Clone`, `ListRemoteRepos`, `ListAccountOrgs`, `CreateRemoteRepo`, `AddDiscoveredRepos`, and `ProviderClient`.
@@ -627,7 +644,7 @@ The user doesn't need to know Git internals: actions are verbs that do what they
 - **SSH private keys** are standard `~/.ssh/` files with 0600 permissions.
 - **Secret-free clone URLs:** cloning and later git operations authenticate through the per-repo credential helper. URLs and process arguments never contain the token. If a clone fails, Gitbox leaves any remaining destination in place and reports its path without rewriting the origin.
 - **Per-repo credential isolation:** each clone's `.git/config` cancels global credential helpers and sets its own, which prevents credential leakage between accounts and ghost credentials from GCM's OAuth refresh tokens.
-- **No secrets in output:** tokens are never displayed, not even in error messages.
+- **No secrets in output:** tokens are never displayed, not even in error messages. Git and provider errors are built from allowlisted parts, and every error passes one scrubbing boundary before it leaves the process (see [Error boundary](#error-boundary)).
 - **Public repository:** tracked files contain no real hostnames, usernames, emails or tokens.
 
 ---
