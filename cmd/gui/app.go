@@ -44,7 +44,16 @@ type App struct {
 	// events.go). Startup installs the Wails sink.
 	events EventSink
 	// backend does the work; nil means localBackend{a} (see backend.go).
-	backend            Backend
+	backend Backend
+	// prefs holds the client preferences; nil means sharedPrefs{a}, the
+	// client keys of cfg (see prefs.go).
+	prefs prefsStore
+	// remoteAlias names the remote this window shows; empty is the local
+	// window. It selects where the window geometry is stored.
+	remoteAlias string
+	// windowGeom reads the window position and size; nil asks Wails. Tests
+	// set it to run without a Wails runtime.
+	windowGeom         func() (x, y, w, h int, ok bool)
 	cfg                *config.Config
 	cfgPath            string
 	cfgLoaded          bool // true if config was loaded from disk (safe to save back)
@@ -378,7 +387,14 @@ type MirrorCredentialCheck struct {
 }
 
 // GetConfig returns the full configuration for the frontend.
-func (a *App) GetConfig() (ConfigDTO, error) { return a.be().GetConfig() }
+func (a *App) GetConfig() (ConfigDTO, error) {
+	dto, err := a.be().GetConfig()
+	if err != nil {
+		return ConfigDTO{}, err
+	}
+	a.overlayPrefs(&dto)
+	return dto, nil
+}
 
 // getConfigLocal is the local backend's GetConfig.
 func (a *App) getConfigLocal() (ConfigDTO, error) {
@@ -420,7 +436,14 @@ type StartupSnapshot struct {
 
 // GetStartupSnapshot keeps preferences, configured rows and nesting consistent
 // in the first frontend update. Pending status never delays this response.
-func (a *App) GetStartupSnapshot() (StartupSnapshot, error) { return a.be().GetStartupSnapshot() }
+func (a *App) GetStartupSnapshot() (StartupSnapshot, error) {
+	snap, err := a.be().GetStartupSnapshot()
+	if err != nil {
+		return StartupSnapshot{}, err
+	}
+	a.overlayPrefs(&snap.Config)
+	return snap, nil
+}
 
 // getStartupSnapshotLocal is the local backend's GetStartupSnapshot.
 func (a *App) getStartupSnapshotLocal() (StartupSnapshot, error) {
@@ -439,7 +462,19 @@ func (a *App) getStartupSnapshotLocal() (StartupSnapshot, error) {
 
 // ReloadConfig re-reads the config from disk. Call after external edits
 // or when the window regains focus.
-func (a *App) ReloadConfig() (ConfigDTO, error) { return a.be().ReloadConfig() }
+func (a *App) ReloadConfig() (ConfigDTO, error) {
+	dto, err := a.be().ReloadConfig()
+	if err != nil {
+		return ConfigDTO{}, err
+	}
+	// A store with its own file re-reads it too; the shared one was just
+	// reloaded with the backend's config.
+	if r, ok := a.clientPrefs().(interface{ Reload() }); ok {
+		r.Reload()
+	}
+	a.overlayPrefs(&dto)
+	return dto, nil
+}
 
 // reloadConfigLocal is the local backend's ReloadConfig.
 func (a *App) reloadConfigLocal() (ConfigDTO, error) {
@@ -775,17 +810,15 @@ func (a *App) DetectEditors() []EditorInfo {
 			editors = append(editors, e)
 		}
 	}
-	if a.cfg != nil {
-		for _, e := range a.cfg.Global.Editors {
-			if claimedByHarness[e.Name] {
-				continue
-			}
-			editors = append(editors, EditorInfo{
-				ID:      e.Command,
-				Name:    e.Name,
-				Command: e.Command,
-			})
+	for _, e := range a.clientPrefs().Get().Editors {
+		if claimedByHarness[e.Name] {
+			continue
 		}
+		editors = append(editors, EditorInfo{
+			ID:      e.Command,
+			Name:    e.Name,
+			Command: e.Command,
+		})
 	}
 	return editors
 }
@@ -811,9 +844,19 @@ func (a *App) SyncEditors() {
 			detected = append(detected, config.EditorEntry{Name: known.Name, Command: fullPath})
 		}
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
+	store := a.clientPrefs()
+	if _, changed := mergeEditors(store.Get().Editors, detected); !changed {
+		return
+	}
+	_ = store.Update(func(p *config.ClientPrefs) {
+		p.Editors, _ = mergeEditors(p.Editors, detected)
+	})
+}
 
+// mergeEditors returns current with duplicates and harness-claimed names
+// removed and the missing detected editors appended, and whether that
+// differs from current.
+func mergeEditors(current, detected []config.EditorEntry) (merged []config.EditorEntry, changed bool) {
 	// Names claimed by AI harnesses (Cursor, Windsurf, Cline, …). Any editor
 	// entry with one of these names is pruned — those tools surface under
 	// the AI harness menu instead, and duplicating them as editors was
@@ -826,8 +869,7 @@ func (a *App) SyncEditors() {
 	// Step 1: deduplicate existing entries by name (keep first occurrence),
 	// dropping any entry whose name is claimed by the harness list.
 	seenName := make(map[string]bool)
-	var deduped []config.EditorEntry
-	for _, e := range a.cfg.Global.Editors {
+	for _, e := range current {
 		if claimedByHarness[e.Name] {
 			continue
 		}
@@ -835,10 +877,10 @@ func (a *App) SyncEditors() {
 			continue
 		}
 		seenName[e.Name] = true
-		deduped = append(deduped, e)
+		merged = append(merged, e)
 	}
 
-	changed := len(deduped) != len(a.cfg.Global.Editors)
+	changed = len(merged) != len(current)
 
 	// Step 2: append any detected editor not already present. Skip any
 	// candidate whose name overlaps the harness list — defence in depth;
@@ -848,15 +890,14 @@ func (a *App) SyncEditors() {
 		if claimedByHarness[editor.Name] || seenName[editor.Name] {
 			continue
 		}
-		deduped = append(deduped, editor)
+		merged = append(merged, editor)
 		seenName[editor.Name] = true
 		changed = true
 	}
-
-	if changed {
-		a.cfg.Global.Editors = deduped
-		_ = a.saveConfig()
+	if !changed {
+		return current, false
 	}
+	return merged, true
 }
 
 // sanitizeWindowsTerminalEnv scrubs MSYS / Git-Bash artefacts from the env
@@ -1366,7 +1407,15 @@ func (a *App) restoreFromBackupLocal(backupPath string) ConfigRepairResult {
 }
 
 // GetPeriodicSync returns the current periodic sync interval from config.
-func (a *App) GetPeriodicSync() string { return a.be().GetPeriodicSync() }
+//
+// The interval is a client preference: the timer runs in the frontend. The
+// backend half stays unused until the server runs the sync itself (P10).
+func (a *App) GetPeriodicSync() string {
+	if v := a.clientPrefs().Get().PeriodicSync; v != "" {
+		return v
+	}
+	return "off"
+}
 
 // getPeriodicSyncLocal is the local backend's GetPeriodicSync.
 func (a *App) getPeriodicSyncLocal() string {
@@ -1386,9 +1435,7 @@ const (
 // GetUIMode returns the GUI experience, "simple" or "advanced". An unset
 // mode (configs from before the setting) reads as advanced.
 func (a *App) GetUIMode() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.cfg.Global.UIMode == uiModeSimple {
+	if a.clientPrefs().Get().UIMode == uiModeSimple {
 		return uiModeSimple
 	}
 	return uiModeAdvanced
@@ -1399,10 +1446,7 @@ func (a *App) SetUIMode(mode string) error {
 	if mode != uiModeSimple && mode != uiModeAdvanced {
 		return fmt.Errorf("invalid UI mode: %s", mode)
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.cfg.Global.UIMode = mode
-	return a.saveConfig()
+	return a.clientPrefs().Update(func(p *config.ClientPrefs) { p.UIMode = mode })
 }
 
 // SetTheme saves the GUI colour theme: "system", "light" or "dark".
@@ -1415,31 +1459,30 @@ func (a *App) SetTheme(choice string) error {
 	default:
 		return fmt.Errorf("invalid theme: %s", choice)
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.cfg.Global.Theme = choice
-	return a.saveConfig()
+	return a.clientPrefs().Update(func(p *config.ClientPrefs) { p.Theme = choice })
 }
 
 // GetLanguage returns the configured human-facing UI language.
 func (a *App) GetLanguage() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return i18n.Normalize(a.cfg.Global.Language)
+	return i18n.Normalize(a.clientPrefs().Get().Language)
 }
 
 // SetLanguage saves the human-facing UI language to config.
 func (a *App) SetLanguage(lang string) error {
 	lang = i18n.Normalize(lang)
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.cfg.Global.Language = lang
-	return a.saveConfig()
+	return a.clientPrefs().Update(func(p *config.ClientPrefs) { p.Language = lang })
 }
 
 // GetCollapsed returns which account groups and parent clones are folded in
 // the full view. Empty means everything is expanded.
-func (a *App) GetCollapsed() config.CollapsedState { return a.be().GetCollapsed() }
+//
+// The sidebar rail is a client preference; the rest names accounts, sources
+// and repos, so it comes from the backend.
+func (a *App) GetCollapsed() config.CollapsedState {
+	state := a.be().GetCollapsed()
+	state.Sidebar = a.clientPrefs().Get().SidebarCollapsed
+	return state
+}
 
 // getCollapsedLocal is the local backend's GetCollapsed.
 func (a *App) getCollapsedLocal() config.CollapsedState {
@@ -1453,7 +1496,18 @@ func (a *App) getCollapsedLocal() config.CollapsedState {
 
 // SetCollapsed saves the folded account groups ("source") and parent clones
 // ("source/repo"). Save prunes keys that no longer exist.
-func (a *App) SetCollapsed(state config.CollapsedState) error { return a.be().SetCollapsed(state) }
+// The sidebar rail goes to the client preferences, and only when it changed;
+// the backend stores the rest and ignores it.
+func (a *App) SetCollapsed(state config.CollapsedState) error {
+	store := a.clientPrefs()
+	if store.Get().SidebarCollapsed != state.Sidebar {
+		err := store.Update(func(p *config.ClientPrefs) { p.SidebarCollapsed = state.Sidebar })
+		if err != nil {
+			return err
+		}
+	}
+	return a.be().SetCollapsed(state)
+}
 
 // setCollapsedLocal is the local backend's SetCollapsed.
 func (a *App) setCollapsedLocal(state config.CollapsedState) error {
@@ -1462,18 +1516,34 @@ func (a *App) setCollapsedLocal(state config.CollapsedState) error {
 	if a.cfg == nil {
 		return fmt.Errorf("config not loaded")
 	}
+	// The sidebar rail is a client preference: keep the one on this host.
+	state.Sidebar = a.cfg.Global.Collapsed != nil && a.cfg.Global.Collapsed.Sidebar
 	a.cfg.Global.Collapsed = &state
 	return a.saveConfig()
 }
 
 // SetPeriodicSync saves the periodic sync interval to config.
-func (a *App) SetPeriodicSync(interval string) error { return a.be().SetPeriodicSync(interval) }
+func (a *App) SetPeriodicSync(interval string) error {
+	if !validPeriodicSync(interval) {
+		return fmt.Errorf("invalid periodic sync interval: %s", interval)
+	}
+	if interval == "off" {
+		interval = ""
+	}
+	return a.clientPrefs().Update(func(p *config.ClientPrefs) { p.PeriodicSync = interval })
+}
+
+func validPeriodicSync(interval string) bool {
+	switch interval {
+	case "off", "5m", "15m", "30m":
+		return true
+	}
+	return false
+}
 
 // setPeriodicSyncLocal is the local backend's SetPeriodicSync.
 func (a *App) setPeriodicSyncLocal(interval string) error {
-	switch interval {
-	case "off", "5m", "15m", "30m":
-	default:
+	if !validPeriodicSync(interval) {
 		return fmt.Errorf("invalid periodic sync interval: %s", interval)
 	}
 	a.mu.Lock()
@@ -1488,9 +1558,7 @@ func (a *App) setPeriodicSyncLocal(interval string) error {
 
 // GetViewMode returns the persisted view mode ("full" or "compact").
 func (a *App) GetViewMode() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.cfg.Global.ViewMode == "compact" {
+	if a.clientPrefs().Get().ViewMode == "compact" {
 		return "compact"
 	}
 	return "full"

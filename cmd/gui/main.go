@@ -106,16 +106,21 @@ func main() {
 		preloadPath = app.cfgPath
 	}
 	if cfg, err := config.Load(preloadPath); err == nil {
-		app.savedViewMode = cfg.Global.ViewMode
-		if cfg.Global.Window != nil {
-			app.savedWindowPos = cfg.Global.Window
+		// The geometry is a client preference, stored per destination: the
+		// local window's own, or that of the remote this window shows.
+		prefs := config.ExtractPrefs(cfg)
+		fw, cw := prefs.WindowFor(app.remoteAlias)
+		experimentalRemote = experimentalRemote || prefs.ExperimentalRemote
+		app.savedViewMode = prefs.ViewMode
+		if fw != nil {
+			app.savedWindowPos = fw
 		}
-		if cfg.Global.CompactWindow != nil {
-			app.savedCompactPos = cfg.Global.CompactWindow
+		if cw != nil {
+			app.savedCompactPos = cw
 		}
-		if cfg.Global.ViewMode == "compact" {
+		if prefs.ViewMode == "compact" {
 			minWidth, minHeight = 200, 200
-			if cw := cfg.Global.CompactWindow; cw != nil {
+			if cw != nil {
 				if cw.Width >= 200 {
 					width = cw.Width
 				}
@@ -125,7 +130,7 @@ func main() {
 			} else {
 				width, height = 220, 400
 			}
-		} else if fw := cfg.Global.Window; fw != nil {
+		} else if fw != nil {
 			if fw.Width >= 640 {
 				width = min(fw.Width, maxWindowWidth)
 			}

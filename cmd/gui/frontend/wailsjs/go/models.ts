@@ -141,6 +141,44 @@ export namespace config {
 	        this.credential_store = source["credential_store"];
 	    }
 	}
+	export class RemoteEntry {
+	    alias: string;
+	    server_dir?: string;
+	    editor?: string;
+	    window?: WindowState;
+	    compact_window?: WindowState;
+	
+	    static createFrom(source: any = {}) {
+	        return new RemoteEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.alias = source["alias"];
+	        this.server_dir = source["server_dir"];
+	        this.editor = source["editor"];
+	        this.window = this.convertValues(source["window"], WindowState);
+	        this.compact_window = this.convertValues(source["compact_window"], WindowState);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class TerminalProfile {
 	    id: string;
 	    name: string;
@@ -288,6 +326,8 @@ export namespace config {
 	    pr_badges_enabled?: boolean;
 	    pr_include_drafts?: boolean;
 	    check_global_gitignore?: boolean;
+	    experimental_remote?: boolean;
+	    remotes?: RemoteEntry[];
 	
 	    static createFrom(source: any = {}) {
 	        return new GlobalConfig(source);
@@ -318,6 +358,8 @@ export namespace config {
 	        this.pr_badges_enabled = source["pr_badges_enabled"];
 	        this.pr_include_drafts = source["pr_include_drafts"];
 	        this.check_global_gitignore = source["check_global_gitignore"];
+	        this.experimental_remote = source["experimental_remote"];
+	        this.remotes = this.convertValues(source["remotes"], RemoteEntry);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -358,6 +400,7 @@ export namespace config {
 	        this.error = source["error"];
 	    }
 	}
+	
 	export class Repo {
 	    credential_type?: string;
 	    name?: string;
@@ -402,11 +445,11 @@ export namespace credential {
 	    problem: string;
 	    hint: string;
 	    exposed: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Finding(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.path = source["path"];
@@ -462,11 +505,11 @@ export namespace git {
 	    hash: string;
 	    author: string;
 	    subject: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new IncomingCommit(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.hash = source["hash"];
