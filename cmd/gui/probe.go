@@ -65,7 +65,15 @@ func (a *App) finishUpstreamProbe(flight *upstreamProbeFlight) {
 	defer cancel()
 	cfg := a.snapshotRefreshConfig()
 	revisions := a.snapshotProbeRevisions()
-	results := runUpstreamProbe(ctx, cfg, credential.ResolveAPITokenContext, probeRequestTimeout)
+	// An account whose server is unreachable is left out of the sweep: its
+	// requests would only time out.
+	resolve := func(ctx context.Context, acct config.Account, key string) (string, string, error) {
+		if !a.reachable(ctx, serverAddr(acct)) {
+			return "", "", errServerUnreachable
+		}
+		return credential.ResolveAPITokenContext(ctx, acct, key)
+	}
+	results := runUpstreamProbe(ctx, cfg, resolve, probeRequestTimeout)
 	flight.changed = a.applyUpstreamProbe(cfg, results, &revisions)
 	active := a.refreshContext().Err() == nil
 	// Credential edits clear the throttle. I retain that invalidation if an

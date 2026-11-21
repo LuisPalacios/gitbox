@@ -212,6 +212,8 @@ Otras acciones informan de sus errores de la misma forma, por ejemplo una herram
 
 Las comprobaciones del arranque, las periódicas y las manuales comparten un único ciclo de refresco. El estado local aparece en cuanto terminan las comprobaciones de Git; el indicador de fetch sigue activo hasta que terminan también las comprobaciones de credenciales y de proveedores. Un proveedor lento o inaccesible nunca convierte un clon conocido en un upstream ausente. Si Gitbox no puede restaurar la identidad, el origin o el aislamiento de credenciales configurados de un clon, muestra un aviso y omite el fetch de ese clon.
 
+Cuando no hay red, Gitbox se detiene en vez de intentarlo con cada clon. Antes de que salga una comprobación, una conexión corta por servidor dice si el servidor está ahí. Si no lo está, no se intenta nada de lo encolado para ese servidor, y un banner **Sin conexión** bajo la barra superior nombra los servidores a los que no llega. **Reintentar** vuelve a probar la red en el momento. Mientras tanto Gitbox lo sigue intentando en segundo plano sin molestar, más o menos cada 15 segundos; cuando el servidor responde, el banner desaparece y la comprobación que se detuvo se ejecuta sola. Los servidores que siguen respondiendo continúan funcionando mientras otro está caído.
+
 #### Ver detalles
 
 Haz clic en el nombre de un repo que muestre actualizaciones disponibles, cambios locales, conflictos u otros problemas. Un panel se abre justo debajo de su fila; haz clic otra vez en el nombre para cerrarlo. En Simple y Avanzado puedo revisar:

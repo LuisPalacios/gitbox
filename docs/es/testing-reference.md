@@ -10,7 +10,7 @@ Los recuentos son funciones de prueba Go de nivel superior (no se cuentan los su
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-El total actual es de 674 pruebas Go (571 en `pkg/`, 103 en `cmd/gui/`) y 52 pruebas del frontend. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
+El total actual es de 681 pruebas Go (571 en `pkg/`, 110 en `cmd/gui/`) y 52 pruebas del frontend. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
 
 ### Biblioteca compartida (`pkg/`)
 
@@ -74,6 +74,7 @@ Este límite pertenece a la prueba, no al validador de config. Las configs acept
 - `terminal_test.go`, `startup_sync_test.go` (3) — saneado de rutas MSYS y del entorno para las terminales lanzadas, un primer arranque que nunca escribe la lista legacy `global.terminals`.
 - `gcm_setup_test.go` (4) — el inicio de sesión de GCM sobrevive a un stderr inutilizable, fuerza las ventanas propias de GCM por encima de los ajustes por usuario `GCM_GUI_PROMPT` y `GCM_INTERACTIVE`, agota el tiempo con un mensaje que nombra esas variables, e informa del stderr del helper.
 - `refresh_test.go` (20) — ciclos de refresco compartidos, límites de workers, rotación de tokens, config obsoleta, apagado, fallos de mantenimiento, reintentos con back-off de los rechazos de conexión instantáneos, la caducidad del token que se pasa al frontend.
+- `network_test.go` (7) — sin red, un ciclo sobre 36 clones se detiene al instante: una conexión, ningún fetch, ninguna comprobación de credencial, cada clon informado como omitido y la ventana avisada de qué servidor está caído. Un reintento vuelve a probar la red; el vigilante conecta una vez por intervalo, limpia el estado y reanuda el fetch por sí solo cuando el servidor responde, y una segunda caída vuelve a arrancar un único vigilante. Un servidor que se pierde a mitad de ciclo pierde el resto de su cola, otros fallos no detienen nada, y quienes preguntan a la vez comparten una conexión.
 - `probe_test.go` (10) — sondeos upstream: concurrencia limitada, vuelos compartidos y throttling, cancelación, un plazo compartido para la búsqueda de credenciales, config obsoleta y tokens rotados, apagado.
 - `startup_test.go` (2 + `BenchmarkStartupSnapshot`) — anidamiento antes de que existan los clones, una instantánea independiente de la config viva.
 - `update_test.go` (1) — el build AppImage rechaza `ApplyUpdate` antes de cualquier descarga.

@@ -20,6 +20,7 @@
   import Onboarding from './lib/Onboarding.svelte';
   import ConfigErrorScreen from './lib/components/ConfigErrorScreen.svelte';
   import ReloadErrorBanner from './lib/components/ReloadErrorBanner.svelte';
+  import OfflineBanner from './lib/components/OfflineBanner.svelte';
   import CompactView from './lib/components/CompactView.svelte';
   import TopBar from './lib/components/TopBar.svelte';
   import Banners from './lib/components/Banners.svelte';
@@ -450,6 +451,10 @@
   // when those repos fetch fine again or the next fetch run starts, so a
   // momentary failure doesn't stay on screen after everything recovered.
   let fetchFailNotice: { id: number; keys: Set<string> } | null = null;
+  // Servers the backend cannot reach right now. While the list is not
+  // empty the offline banner shows, with Retry; the backend clears it when
+  // the servers answer again.
+  let networkDown: string[] = [];
   function clearFetchFailNotice() {
     if (fetchFailNotice) dismissNotice(fetchFailNotice.id);
     fetchFailNotice = null;
@@ -470,6 +475,9 @@
     const offline = Object.keys(credStatuses).filter((k) => credStatuses[k]?.status === 'offline');
     const sum = summarizeFetch(run, statusOfKey, accountOfKey, offline);
     if (!manual && !sum.changed) return;
+    // Nothing was fetched because no server answered: the offline banner
+    // already says so, and one card per attempt would only pile up.
+    if (networkDown.length > 0 && sum.checked === 0 && sum.failed === 0) return;
     const skippedAccounts = sum.skippedAccounts.join(', ');
     const unreachable = sum.unreachable.map((u) => $t(simple ? 'result.unreachableSimple' : 'result.unreachable', { n: u.count, host: u.host || $t('result.theServer') }));
     // A connect refused within milliseconds is the OS blocking it, not a
@@ -1672,6 +1680,10 @@
       if (!data.error) recheckOfflineAccount(accountOfKey(key));
     });
 
+    events.on('network:state', (data: { offline?: boolean; hosts?: string[] } | null) => {
+      networkDown = data?.offline ? (data.hosts || []) : [];
+    });
+
     events.on('fetch:allstart', () => {
       fetchingAll = true;
       clearFetchFailNotice();
@@ -1855,6 +1867,7 @@
 <div class="app">
 
   <ReloadErrorBanner bind:reloadError />
+  <OfflineBanner hosts={networkDown} retrying={fetchingAll} onRetry={() => runFetchAll(true)} />
   <CredentialWarning findings={credentialFindings} onReview={openDoctorModal} />
 
   {#if viewMode === 'compact'}

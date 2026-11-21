@@ -10,7 +10,7 @@ Counts are top-level Go test functions (subtests from `t.Run` and `TestMain` are
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-The current total is 674 Go tests (571 in `pkg/`, 103 in `cmd/gui/`) and 52 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
+The current total is 681 Go tests (571 in `pkg/`, 110 in `cmd/gui/`) and 52 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
 
 ### Shared library (`pkg/`)
 
@@ -74,6 +74,7 @@ This boundary belongs to the test, not the config validator. Accepted configs ca
 - `terminal_test.go`, `startup_sync_test.go` (3) — MSYS path and environment cleanup for spawned terminals, a first launch that never writes the legacy `global.terminals` list.
 - `gcm_setup_test.go` (4) — GCM sign-in survives an unusable stderr, forces GCM's own windows over per-user `GCM_GUI_PROMPT` and `GCM_INTERACTIVE` settings, times out with a message naming those variables, and reports the helper's stderr.
 - `refresh_test.go` (20) — shared refresh cycles, worker limits, token rotation, stale config, shutdown, maintenance failures, retries of instant connection refusals with back-off, the token expiry passed to the frontend.
+- `network_test.go` (7) — with no network a cycle over 36 clones stops at once: one connect, no fetch, no credential check, every clone reported as skipped and the window told which server is down. A retry tests the network afresh; the watcher connects once per interval, clears the state and resumes the fetch by itself when the server answers, and a second outage starts one watcher again. A server lost in the middle of a cycle loses the rest of its queue, other failures stop nothing, and simultaneous callers share one connect.
 - `probe_test.go` (10) — upstream probes: bounded concurrency, shared flights and throttling, cancellation, a shared deadline for credential lookup, stale config and rotated tokens, shutdown.
 - `startup_test.go` (2 + `BenchmarkStartupSnapshot`) — nesting before clones exist, a snapshot detached from the live config.
 - `update_test.go` (1) — the AppImage build refuses `ApplyUpdate` before any download.

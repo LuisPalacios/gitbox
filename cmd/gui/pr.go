@@ -148,6 +148,11 @@ func (a *App) refreshAllPRsLocal() {
 
 	go func() {
 		for _, snap := range accounts {
+			// An account whose server is unreachable keeps the PRs it had:
+			// asking would only time out.
+			if !a.reachable(a.refreshContext(), serverAddr(snap.acct)) {
+				continue
+			}
 			upd := fetchPRsForAccount(snap, includeDrafts)
 			a.sink().Emit("pr:refreshed", upd)
 		}

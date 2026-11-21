@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -48,6 +49,9 @@ type refreshHooks struct {
 	fetch      func(context.Context, string) (string, error)
 	heal       func(*config.Config, string, string) heal.Report
 	credential func(context.Context, config.Account, string, *config.Config) credential.StatusResult
+	// dial replaces the connect that decides whether a server is reachable.
+	// With hooks set and dial nil, every server counts as reachable.
+	dial func(ctx context.Context, addr string) error
 }
 
 // I detach only the inputs refresh workers read, preserving configured order.
@@ -362,6 +366,57 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 	return err
 }
 
+// errServerUnreachable is the failure of a repo whose fetch was not attempted
+// because its server is known to be unreachable.
+var errServerUnreachable = errors.New("cannot reach the server")
+
+// skipUnreachable reports a repo as failed without trying it: its server is
+// unreachable. The window gets the same facts as for a failed fetch, plus
+// skipped.
+func (a *App) skipUnreachable(source, repo, addr string) error {
+	payload := map[string]any{"source": source, "repo": repo, "error": userMsg(errServerUnreachable),
+		"code": "git." + string(git.CodeOffline), "skipped": true}
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		payload["host"] = host
+	}
+	a.sink().Emit("fetch:done", payload)
+	return errServerUnreachable
+}
+
+// isConnectionFailure reports whether a fetch failed because the server
+// could not be reached, as opposed to failing against a server it reached.
+func isConnectionFailure(err error) bool {
+	ge, ok := errors.AsType[*git.GitError](err)
+	return ok && (ge.Code == git.CodeOffline || ge.Code == git.CodeTimeout)
+}
+
+// probeServers connects once to the server of every account that has clones,
+// all at the same time, so the answer for each is known (and shared by every
+// later reachable call) within one connect timeout.
+func (a *App) probeServers(ctx context.Context, cfg *config.Config) {
+	var wg sync.WaitGroup
+	seen := make(map[string]bool)
+	for _, src := range cfg.Sources {
+		addr := serverAddr(cfg.Accounts[src.Account])
+		if addr == "" || seen[addr] {
+			continue
+		}
+		seen[addr] = true
+		wg.Go(func() { a.reachable(ctx, addr) })
+	}
+	wg.Wait()
+}
+
+// anyServerReachable reports whether at least one account's server answers.
+func (a *App) anyServerReachable(ctx context.Context, cfg *config.Config) bool {
+	for _, acct := range cfg.Accounts {
+		if a.reachable(ctx, serverAddr(acct)) {
+			return true
+		}
+	}
+	return len(cfg.Accounts) == 0
+}
+
 // describeFetchFailure adds what the frontend needs to explain a failed
 // fetch: the scrubbed text and, as data, the code, the server that could not
 // be reached and whether the connect was refused at once. The frontend
@@ -421,26 +476,54 @@ func (a *App) fetchCycle() error {
 	for range 2 {
 		errs = nil
 		cfg := a.snapshotRefreshConfig()
+		// One short connect per server decides, before anything is queued,
+		// which servers are there. Nothing goes out to one that is not.
+		ctx := a.refreshContext()
+		wasDown := a.forgetNetworkDown()
+		a.probeServers(ctx, cfg)
+		if wasDown && len(a.downServers()) == 0 {
+			a.publishNetworkState() // the network is back
+		}
 		var network sync.WaitGroup
-		network.Go(func() { a.probeUpstreamExistence() })
+		if a.anyServerReachable(ctx, cfg) {
+			network.Go(func() { a.probeUpstreamExistence() })
+		}
 		network.Go(func() { a.verifyRefreshCredentials(cfg) })
 		sem := make(chan struct{}, fetchAllConcurrency)
 		var workers sync.WaitGroup
 		var errorsMu sync.Mutex
+		fail := func(err error) {
+			errorsMu.Lock()
+			errs = append(errs, err)
+			errorsMu.Unlock()
+		}
+		// lost holds the servers a fetch of this cycle could not reach
+		// although the connect passed: the rest of their queue is skipped.
+		var lost sync.Map
 		for _, source := range cfg.SourceOrder {
 			src := cfg.Sources[source]
+			addr := serverAddr(cfg.Accounts[src.Account])
 			for _, repo := range src.RepoOrder {
 				path := status.RepoPath(cfg, source, repo, src.Repos[repo])
 				if !git.IsRepo(path) {
 					continue
 				}
+				if _, gone := lost.Load(addr); gone || !a.reachable(ctx, addr) {
+					fail(a.skipUnreachable(source, repo, addr))
+					continue
+				}
 				sem <- struct{}{}
 				workers.Go(func() {
 					defer func() { <-sem }()
+					if _, gone := lost.Load(addr); gone {
+						fail(a.skipUnreachable(source, repo, addr))
+						return
+					}
 					if err := a.fetchOne(cfg, source, repo); err != nil {
-						errorsMu.Lock()
-						errs = append(errs, err)
-						errorsMu.Unlock()
+						if isConnectionFailure(err) && addr != "" {
+							lost.Store(addr, true)
+						}
+						fail(err)
 					}
 				})
 			}
@@ -529,8 +612,13 @@ func (a *App) credentialVerify(cfg *config.Config, key string) CredentialStatus 
 		}
 		ctx, cancel := context.WithTimeout(a.refreshContext(), 30*time.Second)
 		started := time.Now()
-		r := check(ctx, acct, key, cfg)
-		if r.Overall == credential.StatusOffline {
+		var r credential.StatusResult
+		if !a.reachable(ctx, serverAddr(acct)) {
+			// The server is not there: say so at once instead of letting
+			// the check, and its retries, time out against it.
+			r = credential.StatusResult{Primary: credential.StatusOffline, Overall: credential.StatusOffline,
+				PrimaryDetail: userMsg(errServerUnreachable)}
+		} else if r = check(ctx, acct, key, cfg); r.Overall == credential.StatusOffline {
 			// Offline is a network failure (refused, unreachable, DNS):
 			// retry with backoff to ride out a refusal right after launch
 			// or a short disconnect. Authentication errors aren't retried:

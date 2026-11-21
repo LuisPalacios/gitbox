@@ -122,6 +122,13 @@ Startup returns config, preferences, collapse state and path-derived nesting in 
 - When the account changes or a re-check is requested during a credential check, the check runs again against the current config. Offline results retry with backoff; authentication errors don't.
 - A Fetch all cycle publishes local status before waiting for provider work. `fetch:alldone` follows its final status and remote checks.
 
+`cmd/gui/network.go` keeps the app from working against a server it cannot reach:
+
+- `reachable` answers with one TCP connect to the host and port of the account's URL, bounded to 3 seconds and retried once when it is refused at once. Callers that ask about the same server share that connect, and a good answer is reused for 10 seconds.
+- A fetch cycle starts by connecting to every server at the same time. Clones on a server that does not answer are reported as skipped without running git, their accounts read offline without a credential check, and the upstream and PR sweeps leave them out.
+- A server that accepts the connect but fails a fetch as offline or timed out loses the rest of its queue for that cycle.
+- `network:state` tells the window which servers are down. While any is, a watcher connects to each every 15 seconds; when one answers it clears it, publishes the state and starts a fetch cycle, so the work resumes by itself.
+
 `cmd/gui/probe.go` shares and throttles the sweeps that check whether each upstream still exists:
 
 - Credentials resolve once per account, and each upstream is probed once per sweep.

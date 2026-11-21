@@ -122,6 +122,13 @@ El arranque devuelve la config, las preferencias, el estado de plegado y la anid
 - Cuando la cuenta cambia o se pide una recomprobación durante una comprobación de credenciales, la comprobación se vuelve a ejecutar contra la config actual. Los resultados offline se reintentan con backoff; los errores de autenticación, no.
 - Un ciclo de Fetch de todo publica el estado local antes de esperar al trabajo del proveedor. `fetch:alldone` llega después de su estado final y de las comprobaciones remotas.
 
+`cmd/gui/network.go` evita que la app trabaje contra un servidor al que no puede llegar:
+
+- `reachable` responde con una conexión TCP al host y puerto de la URL de la cuenta, limitada a 3 segundos y reintentada una vez cuando se rechaza al instante. Quienes preguntan por el mismo servidor comparten esa conexión, y una respuesta buena se reutiliza durante 10 segundos.
+- Un ciclo de fetch empieza conectando a todos los servidores a la vez. Los clones de un servidor que no responde se informan como omitidos sin ejecutar git, sus cuentas figuran como offline sin comprobar la credencial, y los sondeos de upstream y de PRs los dejan fuera.
+- Un servidor que acepta la conexión pero falla un fetch por offline o por tiempo agotado pierde el resto de su cola en ese ciclo.
+- `network:state` le dice a la ventana qué servidores están caídos. Mientras haya alguno, un vigilante conecta a cada uno cada 15 segundos; cuando uno responde lo quita de la lista, publica el estado y lanza un ciclo de fetch, así que el trabajo se reanuda solo.
+
 `cmd/gui/probe.go` comparte y limita los sondeos que comprueban si cada upstream sigue existiendo:
 
 - Las credenciales se resuelven una vez por cuenta, y cada upstream se consulta una vez por sondeo.

@@ -106,11 +106,13 @@ type App struct {
 	// RefreshStatus calls from the frontend doesn't spawn N concurrent
 	// API sweeps. Separate from a.mu because probing takes seconds and
 	// would block every other state read.
-	probeMu            sync.Mutex
-	probeFlight        *upstreamProbeFlight
-	lastProbeAt        time.Time
-	maintenanceMu      sync.RWMutex
-	refreshMu          sync.Mutex
+	probeMu       sync.Mutex
+	probeFlight   *upstreamProbeFlight
+	lastProbeAt   time.Time
+	maintenanceMu sync.RWMutex
+	refreshMu     sync.Mutex
+	// network knows which servers are reachable: see network.go.
+	network            networkGuard
 	refreshCtx         context.Context
 	refreshCancel      context.CancelFunc
 	refreshClosed      bool
