@@ -173,7 +173,7 @@ func TestScenario_FullLifecycle(t *testing.T) {
 
 	t.Run("07_pull_and_fetch", func(t *testing.T) {
 		dest := clonePath(t, srcKey)
-		if err := git.PullQuiet(dest); err != nil {
+		if err := git.PullQuietContext(context.Background(), dest); err != nil {
 			t.Errorf("pull: %v", err)
 		}
 		if out, err := git.FetchCapturedContext(context.Background(), dest); err != nil {

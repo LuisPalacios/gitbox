@@ -122,6 +122,14 @@ El arranque devuelve la config, las preferencias, el estado de plegado y la anid
 - Cuando la cuenta cambia o se pide una recomprobación durante una comprobación de credenciales, la comprobación se vuelve a ejecutar contra la config actual. Los resultados offline se reintentan con backoff; los errores de autenticación, no.
 - Un ciclo de Fetch de todo publica el estado local antes de esperar al trabajo del proveedor. `fetch:alldone` llega después de su estado final y de las comprobaciones remotas.
 
+`cmd/gui/network.go` evita que la app trabaje contra un servidor al que no puede llegar. En cuanto un servidor deja de responder, se detiene todo lo que lo usa:
+
+- `reachable` responde con una conexión TCP al host y puerto de la URL de la cuenta (o del proxy que el entorno le asigna), limitada a 3 segundos y reintentada una vez cuando se rechaza al instante. Quienes preguntan por el mismo servidor comparten esa conexión, y una respuesta buena se reutiliza durante 10 segundos.
+- `onServer` ejecuta un trabajo de red bajo la guarda: no empieza cuando el servidor es inalcanzable, y su contexto se cancela cuando el servidor cae. Lo usan el fetch, el pull y el ciclo de fetch; el clone, el descubrimiento de repositorios y las comprobaciones de credenciales, upstream, PRs y mirrors preguntan antes a `reachable`.
+- Mientras hay trabajo en curso, un monitor conecta cada 3 segundos a cada servidor que tiene alguno. Una conexión fallida marca el servidor como caído y cancela ese trabajo, así que una red que muere a mitad de una ejecución la detiene en segundos.
+- El trabajo que no se intentó o que se detuvo se informa como `skipped` con el código `git.offline` y el host, y la ventana deja la fila como estaba.
+- `network:state` le dice a la ventana qué servidores están caídos. Mientras haya alguno, un vigilante conecta a cada uno cada 30 segundos; cuando uno responde lo quita de la lista, publica el estado y lanza un ciclo de fetch, así que el trabajo se reanuda solo.
+
 `cmd/gui/probe.go` comparte y limita los sondeos que comprueban si cada upstream sigue existiendo:
 
 - Las credenciales se resuelven una vez por cuenta, y cada upstream se consulta una vez por sondeo.

@@ -192,6 +192,7 @@ var eventClass = map[string]eventInfo{
 	"mirror:status":            {classRemote, "P4"},
 	"move:done":                {classRemote, "P5"},
 	"move:progress":            {classRemote, "P5"},
+	"network:state":            {classRemote, "P4"},
 	"pr:refreshed":             {classRemote, "P4"},
 	"profiles:reloaded":        {classLocal, "P1a"},
 	"pull:done":                {classRemote, "P5"},

@@ -111,6 +111,26 @@ func TestGitErrorsCarryNoSecrets(t *testing.T) {
 	})
 }
 
+// A pull whose context is cancelled stops and says so, without leaking the
+// remote URL.
+func TestPullQuietContextCancelled(t *testing.T) {
+	isolateGit(t)
+	repo := t.TempDir()
+	if err := run(repo, "init", "--quiet"); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(repo, "remote", "add", "origin", canaryURL); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := PullQuietContext(ctx, repo)
+	assertSecretFree(t, err)
+	if ge, ok := errors.AsType[*GitError](err); !ok || ge.Op != "pull" || ge.Code != CodeCancelled {
+		t.Errorf("cancelled pull = %#v, want a pull GitError with code %q", err, CodeCancelled)
+	}
+}
+
 func TestParseRemoteURLErrorsCarryNoSecrets(t *testing.T) {
 	for _, raw := range []string{
 		"https://user:" + canaryToken + "@/owner/x.git",           // no hostname

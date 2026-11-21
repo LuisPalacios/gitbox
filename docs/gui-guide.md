@@ -212,6 +212,8 @@ Other actions report their errors the same way, for example a tool that doesn't 
 
 Startup, periodic and manual checks share one refresh cycle. Local status shows as soon as the Git checks finish; the fetch indicator stays on until the credential and provider checks finish too. A slow or unreachable provider never turns a known clone into a missing upstream. If Gitbox can't restore a clone's configured identity, origin or credential isolation, it shows a warning and skips that clone's fetch.
 
+When there is no network, Gitbox stops instead of trying every clone. Before any network work goes out (a check, a pull, a clone, a mirror or PR check), one short connection per server tells whether the server is there. If it isn't, nothing queued for that server is attempted. While work is running, Gitbox tests each server it is using every 3 seconds; if one stops answering, the work in progress against it is stopped too. A **No connection** banner under the top bar names the servers it can't reach, and **Retry** tests the network again at once. Meanwhile Gitbox keeps trying quietly in the background, about every 30 seconds; when the server answers, the banner goes away and the check that was stopped runs by itself. Servers that still answer keep working while another is down.
+
 #### Viewing details
 
 Click the name of a repo that shows available updates, local changes, conflicts or other issues. A panel opens directly below its row; click the name again to close it. In Simple and Advanced, I can inspect:

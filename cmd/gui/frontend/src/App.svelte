@@ -20,6 +20,7 @@
   import Onboarding from './lib/Onboarding.svelte';
   import ConfigErrorScreen from './lib/components/ConfigErrorScreen.svelte';
   import ReloadErrorBanner from './lib/components/ReloadErrorBanner.svelte';
+  import OfflineBanner from './lib/components/OfflineBanner.svelte';
   import CompactView from './lib/components/CompactView.svelte';
   import TopBar from './lib/components/TopBar.svelte';
   import Banners from './lib/components/Banners.svelte';
@@ -450,6 +451,24 @@
   // when those repos fetch fine again or the next fetch run starts, so a
   // momentary failure doesn't stay on screen after everything recovered.
   let fetchFailNotice: { id: number; keys: Set<string> } | null = null;
+  // Servers the backend cannot reach right now. While the list is not
+  // empty the offline banner shows, with Retry; the backend clears it when
+  // the servers answer again.
+  let networkDown: string[] = [];
+  // The status each row had before a pull or clone started, to put it back
+  // when the backend did not attempt the work because the server is down.
+  const statusBeforeSync: Record<string, RepoState['status']> = {};
+  // notAttempted handles a pull or clone the backend stopped for lack of a
+  // server: the row goes back to what it was instead of turning into an
+  // error, and the run still counts it as reported.
+  function notAttempted(key: string, data: any) {
+    repoStates.update((s) => {
+      if (s[key]) s[key] = { ...s[key], status: statusBeforeSync[key] || s[key].status, progress: 0 };
+      return { ...s };
+    });
+    if (pullRun) pullRun = noteDone(pullRun, key, data.error, { code: data.code, host: data.host });
+    checkSyncDone();
+  }
   function clearFetchFailNotice() {
     if (fetchFailNotice) dismissNotice(fetchFailNotice.id);
     fetchFailNotice = null;
@@ -470,6 +489,9 @@
     const offline = Object.keys(credStatuses).filter((k) => credStatuses[k]?.status === 'offline');
     const sum = summarizeFetch(run, statusOfKey, accountOfKey, offline);
     if (!manual && !sum.changed) return;
+    // Nothing was fetched because no server answered: the offline banner
+    // already says so, and one card per attempt would only pile up.
+    if (networkDown.length > 0 && sum.checked === 0 && sum.failed === 0) return;
     const skippedAccounts = sum.skippedAccounts.join(', ');
     const unreachable = sum.unreachable.map((u) => $t(simple ? 'result.unreachableSimple' : 'result.unreachable', { n: u.count, host: u.host || $t('result.theServer') }));
     // A connect refused within milliseconds is the OS blocking it, not a
@@ -509,6 +531,10 @@
     pullRun = null;
     if (!run) return;
     const sum = summarizePull(run);
+    // Nothing was pulled because no server answered: the offline banner
+    // already says so.
+    const stoppedByNetwork = sum.failed > 0 && sum.failures.every((f) => run.failures[f.key]?.code === 'git.offline');
+    if (networkDown.length > 0 && stoppedByNetwork && sum.pulled === 0 && sum.cloned === 0) return;
     const first = sum.failures[0];
     const localWork = localWorkCount(Object.keys($repoStates), statusOfKey) > 0;
     pushNotice(sum.failed > 0 ? 'error' : 'success', $t(simple ? 'result.updateTitle' : 'result.pullTitle'), simple ? [
@@ -542,12 +568,14 @@
       const state = currentStates[key];
 
       if (state.status === 'not cloned') {
+        statusBeforeSync[key] = state.status;
         repoStates.update((s) => {
           s[key] = { ...s[key], status: 'cloning', progress: 0 };
           return { ...s };
         });
         bridge.cloneRepo(sourceKey, repoKey);
       } else {
+        statusBeforeSync[key] = state.status;
         repoStates.update((s) => {
           s[key] = { ...s[key], status: 'syncing', progress: 0 };
           return { ...s };
@@ -560,6 +588,7 @@
 
   function syncRepo(sourceKey: string, repoKey: string) {
     const key = `${sourceKey}/${repoKey}`;
+    statusBeforeSync[key] = $repoStates[key]?.status || 'unknown';
     repoStates.update((s) => {
       s[key] = { ...s[key], status: 'syncing', progress: 0 };
       return { ...s };
@@ -570,6 +599,7 @@
   // startClone clones one repo into root ('' = its account's own root).
   function startClone(sourceKey: string, repoKey: string, root = '') {
     const key = `${sourceKey}/${repoKey}`;
+    statusBeforeSync[key] = $repoStates[key]?.status || 'unknown';
     repoStates.update((s) => {
       s[key] = { ...s[key], status: 'cloning', progress: 0 };
       return { ...s };
@@ -1620,6 +1650,7 @@
 
     events.on('clone:done', (data: any) => {
       const key = `${data.source}/${data.repo}`;
+      if (data.skipped) { notAttempted(key, data); return; }
       repoStates.update((s) => {
         if (s[key]) {
           s[key] = {
@@ -1641,6 +1672,7 @@
 
     events.on('pull:done', (data: any) => {
       const key = `${data.source}/${data.repo}`;
+      if (data.skipped) { notAttempted(key, data); return; }
       if (pullRun) pullRun = noteDone(pullRun, key, data.error);
       repoStates.update((s) => {
         if (s[key]) {
@@ -1670,6 +1702,10 @@
       if (fetchRun) fetchRun = noteDone(fetchRun, key, data.error, { code: data.code, host: data.host, fast: data.refusedFast });
       if (!data.error && fetchFailNotice?.keys.delete(key) && fetchFailNotice.keys.size === 0) clearFetchFailNotice();
       if (!data.error) recheckOfflineAccount(accountOfKey(key));
+    });
+
+    events.on('network:state', (data: { offline?: boolean; hosts?: string[] } | null) => {
+      networkDown = data?.offline ? (data.hosts || []) : [];
     });
 
     events.on('fetch:allstart', () => {
@@ -1855,6 +1891,7 @@
 <div class="app">
 
   <ReloadErrorBanner bind:reloadError />
+  <OfflineBanner hosts={networkDown} retrying={fetchingAll} onRetry={() => runFetchAll(true)} />
   <CredentialWarning findings={credentialFindings} onReview={openDoctorModal} />
 
   {#if viewMode === 'compact'}
