@@ -139,6 +139,15 @@ Every `exec.Command` in the GUI binary (`cmd/gui/`) **MUST** call `git.HideWindo
 
 **Never run `wsl.exe` or a bare `bash` to probe the host.** On Windows both can resolve to System32 launchers, and without the WSL package they prompt to install it in their own window; `HideWindow` does not stop that. Use `doctor.WSLDistros` (registry) instead.
 
+### Error boundary rule
+
+An error text that reaches the window, an event or the config file must never hold a secret.
+
+- In `cmd/gui`, never put `err.Error()` in a DTO field or an event payload: use `userMsg(err)` or `userText(…)` (`cmd/gui/errors.go`).
+- In `pkg/git` and `pkg/provider`, build errors with `newGitError` and the `ProviderError` constructors. Never format arguments, git output, a URL or a response body into an error.
+- To learn why something failed, ask the type (`errors.As`, `provider.IsNotFound`, `git.IsUpstreamGoneError`). Never match on the message.
+- A new git code or provider class needs its `error.git.<code>` or `error.provider.<class>` entry in both catalogs of `i18n.ts`.
+
 ## Config format
 
 Config file: `~/.config/gitbox/gitbox.json`, `version: 5`. Read `.codex/context/config-format.md` before touching config keys, versioning, migration, clone roots, reconcile or workspaces.
