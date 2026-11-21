@@ -50,7 +50,7 @@ For a longer investigation I select one target explicitly:
 go test ./pkg/config/ -run='^$' -fuzz='^FuzzDecodeRoundTrip$' -fuzztime=1m -parallel=2
 ```
 
-`FuzzDecodeRoundTrip` checks migrated config intent, `FuzzStripJSONC` checks stripping properties, and `FuzzRepoPath` checks path resolution within its documented safe input domain; [testing-reference.md](testing-reference.md#fuzz-properties) describes the assertions. Go saves a failing input under the target's `testdata/fuzz/` directory and prints a reproduction command. I keep the minimized input as a regression seed after fixing its cause; I do not copy the fuzz cache into the repository.
+`FuzzDecodeRoundTrip` checks migrated config intent and stable serialization of preserved extension fields, `FuzzStripJSONC` checks stripping properties, and `FuzzRepoPath` checks path resolution within its documented safe input domain; [testing-reference.md](testing-reference.md#fuzz-properties) describes the assertions. Go saves a failing input under the target's `testdata/fuzz/` directory and prints a reproduction command. I keep the minimized input as a regression seed after fixing its cause; I do not copy the fuzz cache into the repository.
 
 ## Pre-push hook
 

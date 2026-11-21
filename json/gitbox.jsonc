@@ -1,8 +1,10 @@
-// Configuration file for gitbox (v4 format)
+// Configuration file for gitbox (v5 format)
 // Location: $HOME/.config/gitbox/gitbox.json
 //
 // REMOVE ALL COMMENTS BEFORE USING THIS FILE
 // (Standard JSON does not support comments; this file is a documented template only)
+// Unknown keys directly inside global, an account, a source or a repository
+// are preserved on save for v5 compatibility. They do not affect older builds.
 //
 // Structure:
 //   "accounts" → WHO you are on each server (credentials, identity)

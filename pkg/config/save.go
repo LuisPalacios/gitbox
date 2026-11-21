@@ -153,11 +153,11 @@ func EqualIgnoringUIState(a, b *Config) bool {
 	bc.Global.CompactWindow = nil
 	bc.Global.Collapsed = nil
 	bc.Global.Theme = ""
-	da, err := json.Marshal(&ac)
+	da, err := marshalConfig(&ac)
 	if err != nil {
 		return false
 	}
-	db, err := json.Marshal(&bc)
+	db, err := marshalConfig(&bc)
 	if err != nil {
 		return false
 	}
@@ -282,11 +282,14 @@ func pruneBackups(path string) {
 
 // Marshal serializes the configuration to indented JSON bytes.
 func Marshal(cfg *Config) ([]byte, error) {
-	data, err := json.MarshalIndent(cfg, "", "    ")
+	data, err := marshalConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling config: %w", err)
 	}
-	// Append a trailing newline for clean file output.
-	data = append(data, '\n')
-	return data, nil
+	var indented bytes.Buffer
+	if err := json.Indent(&indented, data, "", "    "); err != nil {
+		return nil, fmt.Errorf("indenting config: %w", err)
+	}
+	indented.WriteByte('\n')
+	return indented.Bytes(), nil
 }

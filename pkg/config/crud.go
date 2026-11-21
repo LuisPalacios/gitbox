@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 )
 
@@ -27,12 +28,14 @@ func (c *Config) AddAccount(key string, acct Account) error {
 
 // UpdateAccount updates an existing account. Returns error if not found.
 func (c *Config) UpdateAccount(key string, acct Account) error {
-	if _, exists := c.Accounts[key]; !exists {
+	previous, exists := c.Accounts[key]
+	if !exists {
 		return fmt.Errorf("account %q not found", key)
 	}
 	if err := validateAccount(key, acct); err != nil {
 		return err
 	}
+	acct.extra = previous.extra
 	c.Accounts[key] = acct
 	return nil
 }
@@ -226,7 +229,8 @@ func (c *Config) AddSource(key string, src Source) error {
 
 // UpdateSource updates an existing source. Returns error if not found.
 func (c *Config) UpdateSource(key string, src Source) error {
-	if _, exists := c.Sources[key]; !exists {
+	previous, exists := c.Sources[key]
+	if !exists {
 		return fmt.Errorf("source %q not found", key)
 	}
 	if src.Account == "" {
@@ -234,6 +238,18 @@ func (c *Config) UpdateSource(key string, src Source) error {
 	}
 	if _, ok := c.Accounts[src.Account]; !ok {
 		return fmt.Errorf("source %q: references unknown account %q", key, src.Account)
+	}
+	src.extra = previous.extra
+	cloned := false
+	for repoKey, repo := range src.Repos {
+		if old, exists := previous.Repos[repoKey]; exists && repo.extra != old.extra {
+			if !cloned {
+				src.Repos = maps.Clone(src.Repos)
+				cloned = true
+			}
+			repo.extra = old.extra
+			src.Repos[repoKey] = repo
+		}
 	}
 	c.Sources[key] = src
 	return nil
@@ -298,9 +314,11 @@ func (c *Config) UpdateRepo(sourceKey, repoKey string, repo Repo) error {
 	if !ok {
 		return fmt.Errorf("source %q not found", sourceKey)
 	}
-	if _, exists := src.Repos[repoKey]; !exists {
+	previous, exists := src.Repos[repoKey]
+	if !exists {
 		return fmt.Errorf("repo %q not found in source %q", repoKey, sourceKey)
 	}
+	repo.extra = previous.extra
 	src.Repos[repoKey] = repo
 	c.Sources[sourceKey] = src
 	return nil

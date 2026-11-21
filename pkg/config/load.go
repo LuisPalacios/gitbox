@@ -74,6 +74,10 @@ func decode(data []byte, repair bool) (*Config, []Repair, error) {
 		return nil, nil, fmt.Errorf("unsupported config version %d (expected 2 to %d)", from, CurrentVersion)
 	}
 
+	if err := loadExtensions(data, &cfg); err != nil {
+		return nil, nil, fmt.Errorf("reading config extensions: %w", err)
+	}
+
 	var repairs []Repair
 	if repair {
 		repairs = dropDanglingMirrors(&cfg)
