@@ -101,8 +101,9 @@ func TestToUserErrorCodes(t *testing.T) {
 }
 
 // TestDescribeFetchFailure runs a real fetch against a remote that refuses
-// the connection and whose URL carries a token: the payload names the code,
-// the host and the instant refusal as data, and no value holds the token.
+// the connection and whose URL carries a token: the payload names the code
+// and the host as data, flags an instant refusal, and no value holds the
+// token.
 func TestDescribeFetchFailure(t *testing.T) {
 	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), "gitconfig"))
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
@@ -122,8 +123,14 @@ func TestDescribeFetchFailure(t *testing.T) {
 
 	payload := map[string]any{"source": "s", "repo": "r"}
 	describeFetchFailure(payload, fmt.Errorf("refresh: %w", err))
-	if payload["code"] != "git.offline" || payload["host"] != "127.0.0.1" || payload["refusedFast"] != true {
-		t.Errorf("payload = %v, want code git.offline, host 127.0.0.1 and refusedFast", payload)
+	if payload["code"] != "git.offline" || payload["host"] != "127.0.0.1" {
+		t.Errorf("payload = %v, want code git.offline and host 127.0.0.1", payload)
+	}
+	// How fast the OS refuses a loopback connect depends on the platform
+	// (Windows retries for about two seconds), so the flag only has to
+	// agree with the classifier.
+	if _, flagged := payload["refusedFast"]; flagged != git.IsRefusedFast(err) {
+		t.Errorf("refusedFast in payload = %v, IsRefusedFast = %v", flagged, git.IsRefusedFast(err))
 	}
 	if payload["error"] != "refresh: git fetch: offline (exit 128)" {
 		t.Errorf("error text = %q", payload["error"])
