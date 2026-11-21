@@ -1635,7 +1635,7 @@ func (a *App) CloneRepo(sourceKey, repoKey, root string) { a.be().CloneRepo(sour
 
 // cloneRepoLocal is the local backend's CloneRepo.
 func (a *App) cloneRepoLocal(sourceKey, repoKey, root string) {
-	go func() {
+	a.goTracked(func() {
 		a.mu.Lock()
 		var err error
 		if root != "" && a.cfg.PlaceRepo(sourceKey, repoKey, root) {
@@ -1662,7 +1662,8 @@ func (a *App) cloneRepoLocal(sourceKey, repoKey, root string) {
 		}
 
 		// The git transfer runs without the config lock.
-		err = plan.Run(func(p git.CloneProgress) {
+		// A clone stops when the app closes; what git wrote stays in place.
+		err = plan.Run(a.refreshContext(), func(p git.CloneProgress) {
 			a.sink().Emit("clone:progress", map[string]any{
 				"source": sourceKey, "repo": repoKey,
 				"phase": p.Phase, "percent": p.Percent,
@@ -1692,7 +1693,7 @@ func (a *App) cloneRepoLocal(sourceKey, repoKey, root string) {
 			}
 		}
 		a.sink().Emit("clone:done", result)
-	}()
+	})
 }
 
 // failedCloneError reports a remaining destination without changing it. A path
@@ -1711,7 +1712,7 @@ func (a *App) PullRepo(sourceKey, repoKey string) { a.be().PullRepo(sourceKey, r
 
 // pullRepoLocal is the local backend's PullRepo.
 func (a *App) pullRepoLocal(sourceKey, repoKey string) {
-	go func() {
+	a.goTracked(func() {
 		cfg := a.snapshotRefreshConfig()
 		src, ok := cfg.Sources[sourceKey]
 		if !ok {
@@ -1737,11 +1738,7 @@ func (a *App) pullRepoLocal(sourceKey, repoKey string) {
 		a.maintenanceMu.RLock()
 		var report heal.Report
 		if a.sameRefreshRepo(cfg, sourceKey, repoKey) {
-			repair := heal.Repo
-			if a.refreshHooks != nil && a.refreshHooks.heal != nil {
-				repair = a.refreshHooks.heal
-			}
-			report = repair(cfg, sourceKey, repoKey)
+			report = a.healRepo(cfg, sourceKey, repoKey)
 		} else {
 			report.Warnings = []string{"repository settings changed during pull"}
 		}
@@ -1755,7 +1752,11 @@ func (a *App) pullRepoLocal(sourceKey, repoKey string) {
 			if a.refreshHooks != nil && a.refreshHooks.pull != nil {
 				pull = a.refreshHooks.pull
 			}
-			err = a.onServer(addr, func(ctx context.Context) error { return pull(ctx, path) })
+			err = a.onServer(addr, func(ctx context.Context) error {
+				ctx, cancel := context.WithTimeout(ctx, pullTimeout)
+				defer cancel()
+				return pull(ctx, path)
+			})
 		}
 
 		result := map[string]any{"source": sourceKey, "repo": repoKey}
@@ -1765,7 +1766,7 @@ func (a *App) pullRepoLocal(sourceKey, repoKey string) {
 			result["error"] = userMsg(err)
 		}
 		a.sink().Emit("pull:done", result)
-	}()
+	})
 }
 
 // RepoDetail holds human-readable status information for a single repo.
