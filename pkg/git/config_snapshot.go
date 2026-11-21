@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"strings"
 )
 
@@ -15,11 +16,17 @@ type ConfigSnapshot struct {
 
 // ReadConfigSnapshot reads a clone's configuration in two Git processes.
 func ReadConfigSnapshot(repoPath string) (ConfigSnapshot, error) {
-	effective, err := output(repoPath, "config", "--null", "--list", "--includes")
+	return ReadConfigSnapshotContext(context.Background(), repoPath)
+}
+
+// ReadConfigSnapshotContext is ReadConfigSnapshot that stops when ctx is
+// cancelled.
+func ReadConfigSnapshotContext(ctx context.Context, repoPath string) (ConfigSnapshot, error) {
+	effective, err := outputContext(ctx, repoPath, "config", "--null", "--list", "--includes")
 	if err != nil {
 		return ConfigSnapshot{}, err
 	}
-	local, err := output(repoPath, "config", "--null", "--list", "--local", "--no-includes")
+	local, err := outputContext(ctx, repoPath, "config", "--null", "--list", "--local", "--no-includes")
 	if err != nil {
 		return ConfigSnapshot{}, err
 	}

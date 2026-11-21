@@ -112,13 +112,49 @@ func (a *App) refreshContext() context.Context {
 	defer a.refreshMu.Unlock()
 	return a.refreshContextLocked()
 }
+
+// stopRefresh cancels every piece of work in flight and waits for it to
+// stop, for shutdownWait at most. The cancel already reached the git
+// processes and what they started, so a worker still running after that is
+// stuck outside git, and closing the app does not wait for it.
 func (a *App) stopRefresh() {
 	a.refreshMu.Lock()
 	a.refreshClosed = true
 	a.refreshContextLocked()
 	a.refreshCancel()
 	a.refreshMu.Unlock()
-	a.refreshWG.Wait()
+	done := make(chan struct{})
+	go func() {
+		a.refreshWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(shutdownWait):
+	}
+}
+
+// goTracked runs work as part of what stopRefresh waits for. It reports
+// false, without running it, when the app is closing.
+func (a *App) goTracked(work func()) bool {
+	a.refreshMu.Lock()
+	defer a.refreshMu.Unlock()
+	if a.refreshClosed {
+		return false
+	}
+	a.refreshWG.Go(work)
+	return true
+}
+
+// healRepo repairs a clone's configuration before network work. Its reads
+// are bounded and stop when the app closes.
+func (a *App) healRepo(cfg *config.Config, source, repo string) heal.Report {
+	if a.refreshHooks != nil && a.refreshHooks.heal != nil {
+		return a.refreshHooks.heal(cfg, source, repo)
+	}
+	ctx, cancel := context.WithTimeout(a.refreshContext(), healReadTimeout)
+	defer cancel()
+	return heal.RepoContext(ctx, cfg, source, repo)
 }
 func (a *App) overlayStatus(local []StatusResult) []StatusResult {
 	out := make([]StatusResult, len(local))
@@ -154,7 +190,12 @@ func (a *App) requestStatus(emit, dirty bool) *statusFlight {
 			call.dirty = false
 			a.refreshMu.Unlock()
 			cfg := a.snapshotRefreshConfig()
-			check := status.CheckAll
+			check := func(cfg *config.Config) []status.RepoStatus {
+				// A cancelled sweep is incomplete; it only happens when the
+				// app closes, and nothing is published then.
+				results, _ := status.CheckAllContext(a.refreshContext(), cfg, statusTimeout)
+				return results
+			}
 			if a.refreshHooks != nil && a.refreshHooks.status != nil {
 				check = a.refreshHooks.status
 			}
@@ -321,11 +362,7 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 		return err
 	}
 	a.sink().Emit("fetch:start", map[string]string{"source": source, "repo": repo})
-	repair := heal.Repo
-	if a.refreshHooks != nil && a.refreshHooks.heal != nil {
-		repair = a.refreshHooks.heal
-	}
-	report := repair(cfg, source, repo)
+	report := a.healRepo(cfg, source, repo)
 	a.maintenanceMu.RUnlock()
 	var err error
 	addr := serverAddr(cfg.Accounts[cfg.Sources[source].Account])
@@ -337,6 +374,8 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 			fetch = a.refreshHooks.fetch
 		}
 		err = a.onServer(addr, func(ctx context.Context) error {
+			ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
+			defer cancel()
 			started := time.Now()
 			_, err := fetch(ctx, path)
 			if git.IsRefusedFast(err) {
@@ -550,7 +589,18 @@ func (a *App) fetchCycle() error {
 					fail(a.skipUnreachable(source, repo, addr))
 					continue
 				}
-				sem <- struct{}{}
+				// Waiting for a turn ends when the app closes: nothing new
+				// starts then.
+				if ctx.Err() != nil {
+					fail(ctx.Err())
+					continue
+				}
+				select {
+				case sem <- struct{}{}:
+				case <-ctx.Done():
+					fail(ctx.Err())
+					continue
+				}
 				workers.Go(func() {
 					defer func() { <-sem }()
 					if _, gone := lost.Load(addr); gone {
@@ -590,8 +640,16 @@ func (a *App) verifyRefreshCredentials(cfg *config.Config) {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 4)
+	ctx := a.refreshContext()
 	for key := range cfg.Accounts {
-		sem <- struct{}{}
+		if ctx.Err() != nil {
+			break
+		}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			continue
+		}
 		wg.Go(func() {
 			defer func() { <-sem }()
 			result := a.credentialVerify(cfg, key)

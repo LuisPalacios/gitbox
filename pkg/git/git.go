@@ -4,6 +4,7 @@ package git
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -156,8 +157,9 @@ func cloneArgs(url, dest string, opts CloneOpts) []string {
 }
 
 // CloneWithProgress runs git clone --progress and calls onProgress with updates.
-// stderr is parsed for percentage lines; stdout is discarded.
-func CloneWithProgress(url, dest string, opts CloneOpts, onProgress func(CloneProgress)) error {
+// stderr is parsed for percentage lines; stdout is discarded. It stops when
+// ctx is cancelled and leaves whatever git wrote at dest in place.
+func CloneWithProgress(ctx context.Context, url, dest string, opts CloneOpts, onProgress func(CloneProgress)) error {
 	args := cloneArgs(url, dest, opts)
 
 	// Git progress uses \r for in-place updates within a line. The reader
@@ -169,13 +171,13 @@ func CloneWithProgress(url, dest string, opts CloneOpts, onProgress func(ClonePr
 		parseProgress(pr, onProgress)
 		_, _ = io.Copy(io.Discard, pr) // never block git on a reader that stopped
 	}()
-	res, err := Default.Run(context.Background(), Request{Dir: ".", Args: args, Stderr: pw})
+	res, err := Default.Run(ctx, Request{Dir: ".", Args: args, Stderr: pw})
 	_ = pw.Close()
 	<-done
 	if err != nil {
 		// What git printed only classifies the failure; it never reaches
 		// the error text.
-		return failure(context.Background(), "clone", err, res, res.Stderr)
+		return failure(ctx, "clone", err, res, res.Stderr)
 	}
 	return nil
 }
@@ -266,10 +268,11 @@ func PullQuietContext(ctx context.Context, repoPath string) error {
 	return nil
 }
 
-// Status runs git status and parses the result.
-// I disable optional locks to prevent background reads from refreshing the index.
-func Status(repoPath string) (RepoStatus, error) {
-	out, err := output(repoPath, "--no-optional-locks", "status", "--porcelain=v2", "--branch")
+// StatusContext runs git status and parses the result, and stops when ctx is
+// cancelled. I disable optional locks to prevent background reads from
+// refreshing the index.
+func StatusContext(ctx context.Context, repoPath string) (RepoStatus, error) {
+	out, err := outputContext(ctx, repoPath, "--no-optional-locks", "status", "--porcelain=v2", "--branch")
 	if err != nil {
 		return RepoStatus{}, err
 	}
@@ -519,8 +522,13 @@ type SweepResult struct {
 // DefaultBranch returns the default branch name (e.g. "main", "master").
 // It checks origin/HEAD first, then falls back to probing main/master locally.
 func DefaultBranch(repoPath string) (string, error) {
+	return DefaultBranchContext(context.Background(), repoPath)
+}
+
+// DefaultBranchContext is DefaultBranch that stops when ctx is cancelled.
+func DefaultBranchContext(ctx context.Context, repoPath string) (string, error) {
 	// Try origin/HEAD — set by git clone or git remote set-head.
-	out, err := output(repoPath, "symbolic-ref", "refs/remotes/origin/HEAD")
+	out, err := outputContext(ctx, repoPath, "symbolic-ref", "refs/remotes/origin/HEAD")
 	if err == nil {
 		ref := strings.TrimSpace(out)
 		// "refs/remotes/origin/main" → "main"
@@ -531,7 +539,7 @@ func DefaultBranch(repoPath string) (string, error) {
 
 	// Fallback: check if main or master exist locally.
 	for _, candidate := range []string{"main", "master"} {
-		if _, err := output(repoPath, "rev-parse", "--verify", "refs/heads/"+candidate); err == nil {
+		if _, err := outputContext(ctx, repoPath, "rev-parse", "--verify", "refs/heads/"+candidate); err == nil {
 			return candidate, nil
 		}
 	}
@@ -779,9 +787,26 @@ func run(dir string, args ...string) error {
 
 // output executes a git command and returns its stdout.
 func output(dir string, args ...string) (string, error) {
-	res, err := Default.Run(context.Background(), Request{Dir: dir, Args: args})
+	return outputContext(context.Background(), dir, args...)
+}
+
+// errOutputTruncated is the cause of the error for output that hit the
+// runner's bound.
+var errOutputTruncated = errors.New("output exceeds the limit")
+
+// outputContext executes a git command under ctx and returns its stdout.
+// Output that hit the runner's bound is an error: what the caller would
+// parse is incomplete, and half a status or half a config must never be
+// taken for the whole.
+func outputContext(ctx context.Context, dir string, args ...string) (string, error) {
+	res, err := Default.Run(ctx, Request{Dir: dir, Args: args})
 	if err != nil {
-		return "", failure(context.Background(), opName(args), err, res, res.Stderr)
+		return "", failure(ctx, opName(args), err, res, res.Stderr)
+	}
+	if res.Truncated {
+		e := failure(ctx, opName(args), errOutputTruncated, res, nil)
+		e.Detail = "output too large"
+		return "", e
 	}
 	return string(res.Stdout), nil
 }

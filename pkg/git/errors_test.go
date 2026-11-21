@@ -59,7 +59,7 @@ func TestGitErrorsCarryNoSecrets(t *testing.T) {
 	isolateGit(t)
 
 	t.Run("clone", func(t *testing.T) {
-		err := CloneWithProgress(canaryURL, filepath.Join(t.TempDir(), "dest"), CloneOpts{}, func(CloneProgress) {})
+		err := CloneWithProgress(context.Background(), canaryURL, filepath.Join(t.TempDir(), "dest"), CloneOpts{}, func(CloneProgress) {})
 		assertSecretFree(t, err)
 		ge, ok := errors.AsType[*GitError](err)
 		if !ok || ge.Op != "clone" {

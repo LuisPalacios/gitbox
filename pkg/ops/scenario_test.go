@@ -72,7 +72,7 @@ func TestScenario_FullLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("plan clone: %v", err)
 		}
-		if err := plan.Run(nil); err != nil {
+		if err := plan.Run(context.Background(), nil); err != nil {
 			t.Fatalf("clone: %v", err)
 		}
 		return plan.Dest, heal.Repo(cfg, srcKey, repoKey)
@@ -160,7 +160,7 @@ func TestScenario_FullLifecycle(t *testing.T) {
 	})
 
 	t.Run("06_status", func(t *testing.T) {
-		statuses := status.CheckAll(cfg)
+		statuses, _ := status.CheckAllContext(context.Background(), cfg, 0)
 		if len(statuses) == 0 {
 			t.Fatal("no status entries")
 		}

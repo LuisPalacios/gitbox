@@ -11,6 +11,7 @@
 package heal
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strings"
@@ -50,6 +51,12 @@ func (r Report) HasWork() bool {
 //   - The repo is not cloned on disk (Skipped: "not cloned").
 //   - The clone path is not a git repo (Skipped: "not a git repo").
 func Repo(cfg *config.Config, sourceKey, repoKey string) Report {
+	return RepoContext(context.Background(), cfg, sourceKey, repoKey)
+}
+
+// RepoContext is Repo whose reads stop when ctx is cancelled. The writes
+// that repair a clone are short and local, and are never cut short.
+func RepoContext(ctx context.Context, cfg *config.Config, sourceKey, repoKey string) Report {
 	r := Report{RepoKey: sourceKey + "/" + repoKey}
 
 	src, ok := cfg.Sources[sourceKey]
@@ -76,7 +83,7 @@ func Repo(cfg *config.Config, sourceKey, repoKey string) Report {
 		return r
 	}
 
-	snapshot, err := git.ReadConfigSnapshot(path)
+	snapshot, err := git.ReadConfigSnapshotContext(ctx, path)
 	if err != nil {
 		r.Warnings = append(r.Warnings, fmt.Sprintf("reading repo config: %v", err))
 		return r
@@ -127,7 +134,7 @@ func Repo(cfg *config.Config, sourceKey, repoKey string) Report {
 	if len(r.Fixed) > 0 {
 		// A later include or worktree config may override a successful local
 		// write. Surface that instead of fetching with another identity/origin.
-		after, err := git.ReadConfigSnapshot(path)
+		after, err := git.ReadConfigSnapshotContext(ctx, path)
 		if err != nil {
 			r.Warnings = append(r.Warnings, fmt.Sprintf("validating repo config: %v", err))
 		} else {

@@ -2,10 +2,12 @@
 package status
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
@@ -107,6 +109,12 @@ type RepoStatus struct {
 
 // Check determines the sync status of a single repo at the given path.
 func Check(repoPath string) RepoStatus {
+	return CheckContext(context.Background(), repoPath)
+}
+
+// CheckContext is Check that stops when ctx is cancelled. A check that was
+// cancelled reports the Error state; callers that cancelled it drop it.
+func CheckContext(ctx context.Context, repoPath string) RepoStatus {
 	rs := RepoStatus{Path: repoPath}
 
 	if !git.IsRepo(repoPath) {
@@ -114,7 +122,7 @@ func Check(repoPath string) RepoStatus {
 		return rs
 	}
 
-	st, err := git.Status(repoPath)
+	st, err := git.StatusContext(ctx, repoPath)
 	if err != nil {
 		rs.State = Error
 		rs.ErrorMsg = err.Error()
@@ -130,7 +138,7 @@ func Check(repoPath string) RepoStatus {
 
 	// Determine if current branch is the default.
 	if st.Branch != "" && st.Branch != "(detached)" {
-		if def, err := git.DefaultBranch(repoPath); err == nil {
+		if def, err := git.DefaultBranchContext(ctx, repoPath); err == nil {
 			rs.IsDefault = st.Branch == def
 		}
 	}
@@ -156,7 +164,18 @@ func Check(repoPath string) RepoStatus {
 	return rs
 }
 
-// checkAllConcurrency bounds the number of in-flight Check calls in CheckAll.
+// checkWithin runs CheckContext with its own deadline when perRepo is
+// positive.
+func checkWithin(ctx context.Context, repoPath string, perRepo time.Duration) RepoStatus {
+	if perRepo <= 0 {
+		return CheckContext(ctx, repoPath)
+	}
+	ctx, cancel := context.WithTimeout(ctx, perRepo)
+	defer cancel()
+	return CheckContext(ctx, repoPath)
+}
+
+// checkAllConcurrency bounds the number of in-flight checks in CheckAllContext.
 // Each Check shells out to git, so on Windows (where subprocess spawn is
 // expensive) a cap of 8 keeps a useful amount of work in flight without
 // overwhelming the OS. A tight serial loop also starves Wails' IPC layer
@@ -164,10 +183,15 @@ func Check(repoPath string) RepoStatus {
 // updates — see issue #57.
 const checkAllConcurrency = 8
 
-// CheckAll checks the status of all repos in the configuration.
+// CheckAllContext checks the status of all repos in the configuration.
 // Up to checkAllConcurrency repos are checked in parallel; the returned
 // slice is ordered as cfg.OrderedSourceKeys() × Source.OrderedRepoKeys().
-func CheckAll(cfg *config.Config) []RepoStatus {
+//
+// It stops when ctx is cancelled: a check waiting for its turn does not
+// start, and the ones in flight are stopped. It then returns ctx's error,
+// and the results are incomplete. perRepo, when positive, bounds the check
+// of each repo.
+func CheckAllContext(ctx context.Context, cfg *config.Config, perRepo time.Duration) ([]RepoStatus, error) {
 	type job struct {
 		index      int
 		sourceName string
@@ -195,15 +219,24 @@ func CheckAll(cfg *config.Config) []RepoStatus {
 	results := make([]RepoStatus, len(jobs))
 	sem := make(chan struct{}, checkAllConcurrency)
 	var wg sync.WaitGroup
+dispatch:
 	for _, j := range jobs {
+		// A cancelled sweep starts nothing more, even with a free slot.
+		if ctx.Err() != nil {
+			break
+		}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			break dispatch
+		}
 		wg.Add(1)
-		sem <- struct{}{}
 		go func(j job) {
 			defer wg.Done()
 			defer func() { <-sem }()
 			rs := RepoStatus{Path: j.path, State: RootOffline}
 			if !j.offline {
-				rs = Check(j.path)
+				rs = checkWithin(ctx, j.path, perRepo)
 			}
 			rs.Source = j.sourceName
 			rs.Repo = j.repoName
@@ -212,7 +245,7 @@ func CheckAll(cfg *config.Config) []RepoStatus {
 		}(j)
 	}
 	wg.Wait()
-	return results
+	return results, ctx.Err()
 }
 
 // RootOnline reports whether a clone root folder exists.

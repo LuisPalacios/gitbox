@@ -69,7 +69,7 @@ func (r Result) combined() []byte {
 
 const (
 	// DefaultMaxOutput bounds each output stream of a command.
-	DefaultMaxOutput = 32 << 20
+	DefaultMaxOutput = 8 << 20
 	// runnerWaitDelay is how long a cancelled command gets to exit after
 	// the interrupt, and how long a finished command's helpers may keep its
 	// output open, before the runner stops waiting.
@@ -115,39 +115,80 @@ func (r Request) environ() []string {
 
 // execRunner runs the system git. It is the only place that starts a git
 // process.
-type execRunner struct{}
+type execRunner struct {
+	// bin is the program to run; empty means GitBin(). Tests set it to run
+	// a stand-in for git.
+	bin string
+}
 
-func (execRunner) Run(ctx context.Context, req Request) (Result, error) {
+func (r execRunner) Run(ctx context.Context, req Request) (Result, error) {
+	bin := r.bin
+	if bin == "" {
+		bin = GitBin()
+	}
 	limit := req.MaxOutput
 	if limit <= 0 {
 		limit = DefaultMaxOutput
 	}
 	stdout, stderr := &boundedBuffer{max: limit}, &boundedBuffer{max: limit}
 
-	cmd := exec.CommandContext(ctx, GitBin(), req.Args...)
+	cmd := exec.CommandContext(ctx, bin, req.Args...)
 	cmd.Dir = req.Dir
 	cmd.Env = req.environ()
-	cmd.Stdin = req.Stdin
+	// The input goes through a pipe that the runner feeds itself. Handing
+	// req.Stdin to os/exec would make Wait block until that reader returns,
+	// so a cancelled command could not come back while its input stayed
+	// open.
+	var stdinRead, stdinWrite *os.File
+	if req.Stdin != nil {
+		var err error
+		if stdinRead, stdinWrite, err = os.Pipe(); err != nil {
+			return Result{ExitCode: -1}, err
+		}
+		cmd.Stdin = stdinRead
+	}
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	if req.Stderr != nil {
 		cmd.Stderr = io.MultiWriter(stderr, req.Stderr)
 	}
-	// A cancelled command is asked to stop, so git removes its lock files,
-	// and is killed only if it has not exited after runnerWaitDelay. Where
-	// the interrupt cannot be sent (Windows) it is killed at once.
-	cmd.Cancel = func() error {
-		if err := cmd.Process.Signal(os.Interrupt); err != nil {
-			return cmd.Process.Kill()
-		}
-		return nil
-	}
-	cmd.WaitDelay = runnerWaitDelay
 	// Every exec.Command in a GUI binary must hide its console window on
 	// Windows. For git this is the one place that does it.
 	HideWindow(cmd)
 
-	err := cmd.Run()
+	// A cancelled command is stopped together with everything it started
+	// (credential helpers, ssh, hooks). The tree is first asked to stop, so
+	// git removes its lock files where the platform allows it, and whatever
+	// is still alive after runnerWaitDelay is killed.
+	var tree procTree
+	tree.prepare(cmd)
+	cmd.Cancel = func() error { return tree.terminate(cmd) }
+	cmd.WaitDelay = runnerWaitDelay
+
+	if err := cmd.Start(); err != nil {
+		if stdinRead != nil {
+			_ = stdinRead.Close()
+			_ = stdinWrite.Close()
+		}
+		return Result{ExitCode: -1}, err
+	}
+	tree.attach(cmd)
+	if stdinRead != nil {
+		_ = stdinRead.Close() // the command holds its own end
+		go func() {
+			_, _ = io.Copy(stdinWrite, req.Stdin)
+			_ = stdinWrite.Close()
+		}()
+	}
+	err := cmd.Wait()
+	if stdinWrite != nil {
+		_ = stdinWrite.Close() // stops the feeder if it is still writing
+	}
+	if ctx.Err() != nil {
+		// The command was cancelled: nothing it started may outlive it.
+		tree.kill(cmd)
+	}
+	tree.release()
 	res := Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: -1, Truncated: stdout.truncated || stderr.truncated}
 	if cmd.ProcessState != nil {
 		res.ExitCode = cmd.ProcessState.ExitCode()
