@@ -38,17 +38,19 @@ DEADCODE="golang.org/x/tools/cmd/deadcode@v0.50.0"
 # for library callers and their compatibility tests.
 # SetRunnerForTest and SetDoerForTest are the test seams for git and HTTP:
 # only tests call them, by design.
-# Remote mode (#233) lands in phases: the file-backed preference store and the
-# server half of the client-preference boundary are tested now and get their
-# first callers with the server and the SSH bootstrap. Drop these two entries
-# then.
+# Remote mode (#233) lands in phases: the file-backed preference store, the
+# RemoteBackend and the client half of pkg/rpc are tested now and get their
+# first caller when the SSH connection selects them (P3b). Drop the last four
+# entries then.
 DEADCODE_ALLOW='pkg[/\\]credential[/\\]credential[.]go:[0-9]+:[0-9]+: unreachable func: StoreToken$
 unreachable func: (PSDecode|resetLookupCachesForTest|Version\.String)$
 pkg[/\\]terminals[/\\]sync[.]go:[0-9]+:[0-9]+: unreachable func: Sync$
 pkg[/\\]workspace[/\\]workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCache$
 unreachable func: (SetRunnerForTest|SetDoerForTest)$
 cmd[/\\]gui[/\\]prefs[.]go:[0-9]+:[0-9]+: unreachable func: (newFilePrefs|filePrefs[.](load|Reload|Get|Update))$
-pkg[/\\]config[/\\]prefs[.]go:[0-9]+:[0-9]+: unreachable func: (StripClientPrefs|PreserveClientPrefs)$'
+cmd[/\\]gui[/\\]backend_remote(_methods)?[.]go:[0-9]+:[0-9]+: unreachable func: [A-Za-z]
+pkg[/\\]rpc[/\\]client[.]go:[0-9]+:[0-9]+: unreachable func: [A-Za-z]
+pkg[/\\]rpc[/\\](errors|handshake)[.]go:[0-9]+:[0-9]+: unreachable func: (IsCode|wireError[.]asError|skipToMagic|clientHandshake)$'
 
 # Advisories npm audit may report: no fixed version exists yet and the package
 # never reaches the binary. A listed advisory that stops being reported fails
@@ -164,7 +166,15 @@ run_vet()         { per_os go vet ./...; }
 # The compile fails when Wails or a shell-only method leaks into that build;
 # go vet cannot run there, because the tests call the Wails lifecycle hooks.
 run_server_build() {
-    per_os go build -tags gitboxserver -o /dev/null ./cmd/gui || return 1
+    # One binary per host a client can install it on: every OS on both
+    # architectures.
+    local arch rc=0
+    for arch in amd64 arm64; do
+        GOARCH="$arch" per_os go build -tags gitboxserver -o /dev/null ./cmd/gui \
+            | sed "s/^/[$arch] /"
+        [ "${PIPESTATUS[0]}" -eq 0 ] || rc=1
+    done
+    [ "$rc" -eq 0 ] || return 1
     if go list -tags gitboxserver -deps ./cmd/gui | grep -q wailsapp; then
         echo "the gitboxserver build of cmd/gui depends on Wails"
         return 1
@@ -182,7 +192,7 @@ run_test() {
 # retaining the complete reproducer and corpus path on failure.
 run_fuzz() {
     local spec package target rc=0
-    for spec in config:FuzzDecodeRoundTrip workspace:FuzzStripJSONC status:FuzzRepoPath; do
+    for spec in config:FuzzDecodeRoundTrip workspace:FuzzStripJSONC status:FuzzRepoPath rpc:FuzzDecodeFrame; do
         package="${spec%%:*}"
         target="${spec#*:}"
         if ! go test "./pkg/$package/" -run='^$' -fuzz="^$target$" -fuzztime=10s -parallel=2 \
@@ -206,8 +216,13 @@ run_govulncheck() {
     grep -q '^No vulnerabilities found' <<<"$out" || echo "$out"
 }
 
+# The repo builds two programs from the same packages: GitboxApp and
+# gitbox-server (-tags gitboxserver). A function is dead only when neither
+# reaches it, so the check reports what both analyses agree on.
 run_deadcode() {
-    go run "$DEADCODE" ./... | grep -Ev "$DEADCODE_ALLOW"
+    go run "$DEADCODE" ./... | sort >"$tmp/deadcode.app" || return 1
+    go run "$DEADCODE" -tags gitboxserver ./... | sort >"$tmp/deadcode.server" || return 1
+    comm -12 "$tmp/deadcode.app" "$tmp/deadcode.server" | grep -Ev "$DEADCODE_ALLOW"
     return 0
 }
 
