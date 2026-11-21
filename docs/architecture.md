@@ -111,7 +111,7 @@ The LOCAL preference methods never ask the backend. The MIXED ones split their d
 
 A server uses the other half of the boundary: `config.StripClientPrefs` removes the client keys from what it sends, and `config.PreserveClientPrefs` keeps the ones on disk when it saves, so a host that also runs GitboxApp locally keeps its own theme, editors and window geometry.
 
-`gitbox-server`, the process remote mode runs on the other host, is this same package built with `-tags gitboxserver` and `CGO_ENABLED=0`. A second binary cannot import `package main`, so a build tag is how the server reuses the backend code and its DTOs. Every file that imports Wails carries `//go:build !gitboxserver` (`main.go`, `shell.go`, `events_wails.go`), a guard test enforces it, and the health check compiles the server build for Linux, macOS and Windows. Today that build is a placeholder that exits.
+`gitbox-server`, the process remote mode runs on the other host, is this same package built with `-tags gitboxserver` and `CGO_ENABLED=0`. A second binary cannot import `package main`, so a build tag is how the server reuses the backend code and its DTOs. Every file that imports Wails carries `//go:build !gitboxserver` (`main.go`, `shell.go`, `events_wails.go`), a guard test enforces it, and the health check compiles the server build for Linux, macOS and Windows on amd64 and arm64. [Server and protocol](#server-and-protocol) describes what it serves.
 
 Startup returns config, preferences, collapse state and path-derived nesting in one detached snapshot. The frontend renders it before local status arrives and shows pending spinners until checking or fetching finishes. Cross-source children stay under their containers but keep their own source for status, actions and ownership. Editor and terminal-profile detection runs outside the config lock and merges into the current settings, so concurrent edits survive.
 
@@ -154,6 +154,28 @@ An error text that reaches the window, an event or the config file can never hol
 `Hint` is a catalog key, not prose: `error.git.<code>` or `error.provider.<class>`, each with an English and a Spanish entry in `i18n.ts`. The fields that carry errors are still strings, so the frontend shows `Detail` today.
 
 The frontend never parses that text. Where it needs to know what happened, the backend says so as data: a failed `fetch:done` carries `code`, `host` (the server git could not reach, a bare host name taken from `GitError.Host`) and `refusedFast` next to `error`. The Fetch all result card groups unreachable servers by those fields and explains a classified failure with the catalog entry for its code.
+
+### Server and protocol
+
+`gitbox-server` runs the backend on another host and serves it on its stdin and stdout, so anything that carries two byte streams can connect a window to it. Remote mode will carry them over SSH. That connection does not exist yet: nothing selects `RemoteBackend` outside the tests, and the app behaves as before with or without `--experimental-remote`.
+
+**Commands.** `gitbox-server serve --stdio [--client-id <id>]` serves one client until its input ends. `gitbox-server --version` prints `<version> <commit>`. `gitbox-server --doctor` prints a JSON report about the host: OS, architecture, home, config path, whether the config folder accepts new files and lets them run, the git version and the credential folder audit. Stdout carries the protocol and nothing else; text for a person goes to stderr. The exit code is 0 for a clean end, 1 for a failure, 2 for wrong usage and 3 for a client of another build.
+
+**Framing.** `pkg/rpc` sends each message as a JSON-RPC 2.0 object behind the LSP base-protocol header: `Content-Length: N`, a blank line and N bytes. A frame holds at most 16 MiB and its headers 1 KiB. A malformed header closes the connection; neither side tries to find the next frame.
+
+**Handshake.** The server writes four magic bytes (`00 FE 67 62`) and a greeting with its version, commit, OS, architecture and process id. A login shell may print a banner first, so the client discards everything before the magic, up to 1 MiB, and fails with `banner_overflow` past that. The client answers with its own version and commit. Unless both match exactly, the server refuses with `version_mismatch` and exits.
+
+**Requests.** The server answers a closed list of methods, `servedMethods` in `cmd/gui/server.go`; any other name fails as `unsupported`. Today the list holds six read-only methods: `GetConfig`, `GetAllStatus`, `ListRoots`, `GetConfigPath`, `IsFirstRun` and `SuggestAccountKey`. It grows one phase at a time, each method with the checks its parameters need, and a test fails when a method that changes state on the host enters the list before that. Parameters are positional and batches are refused.
+
+**Cancellation and shutdown.** `$/cancelRequest` answers the cancelled request at once and drops its late result. `Backend` methods take no context, so the work itself stops when the connection ends: the end of the server's input is its only shutdown signal. It cancels everything in flight, which reaches the git processes and what they started, waits five seconds at most and exits.
+
+**Heartbeat and repeats.** The client sends `$/ping` every 10 seconds and declares the link dead after three misses; its pending calls fail as `disconnected`. A request can carry `meta.requestId`: the server remembers the last 256 of the session and answers a repeat with the stored result instead of running it again. `RemoteBackend` sends one with every method classified as mutating.
+
+**Events.** Each backend event crosses as an `event` notification with its name and payload. `*:progress` events collapse to one per operation every 100 ms, keeping the latest. The output queue holds 1024 messages; when it fills, the server drops progress, never a `*:done` event or a response.
+
+**Errors and trust.** A failure crosses as a `UserError` built by the same `toUserError` boundary the window uses, so no git output, URL or token reaches the wire. The client still treats the server as untrusted: results decode into the method's own types, error text goes through the scrub again, a code or a hint is kept only when it looks like an identifier, and an event with a name this build does not emit is dropped.
+
+**Client side.** `RemoteBackend` in `cmd/gui/backend_remote.go` implements `Backend` with one line per method, each calling the server method of the same name. A call may take as long as the work it asks for (`cmd/gui/limits.go`) plus five seconds. A method with no error to return answers its zero value and keeps the failure in `LastError`. `GetAppVersion` is always the client's own version; `StartupSnapshot.ServerVersion` carries the server's, taken from the handshake, and is empty in a local window.
 
 ### pkg/ops — Application operations
 

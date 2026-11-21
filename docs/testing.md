@@ -34,7 +34,7 @@ I also review the workflow in a fresh Codex and Claude Code session: `wu-contain
 I keep small Go seed corpora under each package's `testdata/fuzz/<target>/`. Ordinary `go test` and `go test -short` execute these inputs without generating mutations. I run the seeds directly with:
 
 ```bash
-go test ./pkg/config/ ./pkg/workspace/ ./pkg/status/
+go test ./pkg/config/ ./pkg/workspace/ ./pkg/status/ ./pkg/rpc/
 ```
 
 I opt into mutation passes with `HEALTH_FUZZ=1`; the default health check keeps running only the seeds. Each target gets 10 seconds and two workers. The Linux PR health job enables this flag. I can run just these passes or include them in the full gate:
@@ -50,7 +50,7 @@ For a longer investigation I select one target explicitly:
 go test ./pkg/config/ -run='^$' -fuzz='^FuzzDecodeRoundTrip$' -fuzztime=1m -parallel=2
 ```
 
-`FuzzDecodeRoundTrip` checks migrated config intent and stable serialization of preserved extension fields, `FuzzStripJSONC` checks stripping properties, and `FuzzRepoPath` checks path resolution within its documented safe input domain; [testing-reference.md](testing-reference.md#fuzz-properties) describes the assertions. Go saves a failing input under the target's `testdata/fuzz/` directory and prints a reproduction command. I keep the minimized input as a regression seed after fixing its cause; I do not copy the fuzz cache into the repository.
+`FuzzDecodeRoundTrip` checks migrated config intent and stable serialization of preserved extension fields, `FuzzStripJSONC` checks stripping properties, `FuzzRepoPath` checks path resolution within its documented safe input domain, and `FuzzDecodeFrame` checks that the frame reader of the server protocol never panics or reserves more than its cap; [testing-reference.md](testing-reference.md#fuzz-properties) describes the assertions. Go saves a failing input under the target's `testdata/fuzz/` directory and prints a reproduction command. I keep the minimized input as a regression seed after fixing its cause; I do not copy the fuzz cache into the repository.
 
 ## Pre-push hook
 

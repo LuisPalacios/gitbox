@@ -22,6 +22,7 @@ After any code change, always run the relevant tests:
 | GUI bindings (`cmd/gui/`)                   | `go test ./cmd/gui/`                               |
 | Update logic (`pkg/update/`)                | `go test ./pkg/update/`                            |
 | Doctor / tool detection (`pkg/doctor/`)     | `go test ./pkg/doctor/`                            |
+| Server protocol (`pkg/rpc/`)                | `go test -race ./pkg/rpc/ ./cmd/gui/`              |
 | Unsure what's affected                      | `go test ./...`                                    |
 
 `cmd/gui` tests (and `./...`) need `cmd/gui/frontend/dist` — build the frontend once if it is missing.
@@ -47,7 +48,7 @@ I run `bash scripts/test-bootstrap.sh` or `./scripts/health.sh bootstrap` for in
 
 I keep Go fuzz targets in `pkg/<package>/fuzz_test.go` and small checked-in corpora in `pkg/<package>/testdata/fuzz/<target>/`. Ordinary tests run the seeds; `HEALTH_FUZZ=1 ./scripts/health.sh fuzz` generates mutations for 10 seconds per target with two workers. The Linux PR health job opts in. A longer pass selects exactly one target, for example `go test ./pkg/config/ -run='^$' -fuzz='^FuzzDecodeRoundTrip$' -fuzztime=1m -parallel=2`.
 
-`FuzzDecodeRoundTrip` uses external `config_test` to compare repository intent through `status.RepoPath` without an import cycle, and checks migration to `CurrentVersion`. `FuzzStripJSONC` checks no panic, no growth and exact preservation of valid JSON. I keep a minimized failure in the target's corpus after fixing the cause, retain example tests with distinct assertions, and leave the generated fuzz cache untracked.
+`FuzzDecodeRoundTrip` uses external `config_test` to compare repository intent through `status.RepoPath` without an import cycle, and checks migration to `CurrentVersion`. `FuzzStripJSONC` checks no panic, no growth and exact preservation of valid JSON. `FuzzDecodeFrame` in `pkg/rpc` checks that the frame reader never panics or returns a body over its cap, and that an accepted frame survives a write and a second read. I keep a minimized failure in the target's corpus after fixing the cause, retain example tests with distinct assertions, and leave the generated fuzz cache untracked.
 
 `FuzzRepoPath` checks absolute results and lexical containment within the selected default/source/repo root for absolute roots and safe relative components. The relative-path domain allows empty and nested paths but excludes parent segments, backslashes, NUL and leading tildes. Separate branches check absolute clone overrides and one leading `../` followed by a safe relative path. Native temporary-root seeds keep the property active on Windows and POSIX. This is a test boundary, not config validation or a symlink guarantee; arbitrary accepted configs can still escape roots or resolve relatively.
 
@@ -130,6 +131,8 @@ func TestSomething(t *testing.T) {
 ```
 
 For a test that needs the backend and the client apart, `newTestApp(backend, localPath)` (`prefs_test.go`) builds an `App` whose client preferences live in their own gitbox.json, `fileBackend(t, path)` gives it a backend that owns a different file, and `seedConfig` writes either one. Set `a.windowGeom` to run `BeforeClose` and `SetViewMode` without a Wails runtime.
+
+For a test that needs a `gitbox-server` and its client joined, `serveRemote(t, path, extra)` (`backend_contract_test.go`) starts the server on a config and connects a `RemoteBackend` to it over in-memory pipes; `extra` adds handlers only that test needs, and `link.Sent` holds every byte the server wrote. A method added to `servedMethods` needs a row in the table of `TestBackendContract`, which runs it against the local backend and the remote one and fails when it is missing. In `pkg/rpc`, `connect(t, newServer(handlers))` (`harness_test.go`) does the same one level down.
 
 Keep business logic out of `cmd/gui`: if a test needs more than the `App` glue, the logic belongs in `pkg/` and the test goes with it.
 
