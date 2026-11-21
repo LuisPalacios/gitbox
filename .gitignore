@@ -71,3 +71,8 @@ tmp/
 
 # Wails caches a hash of package.json here on every build
 cmd/gui/frontend/package.json.md5
+
+# gitbox-server binaries and their pins, written by scripts/build-server.sh
+# and embedded by GitboxApp builds with -tags serverbin
+cmd/gui/serverbin/*.gz
+cmd/gui/serverbin/zz_generated.go
