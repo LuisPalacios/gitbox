@@ -1,12 +1,19 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 
-test('I show pending review text in Simple and both PR counts in Advanced', async () => {
+test('I show pending review text in Simple and both PR counts in Advanced', async (t) => {
+  // The credential component test starts a Vite server in another test process.
+  const cacheDir = await mkdtemp(join(tmpdir(), 'gitbox-repo-row-vite-'));
+  t.after(() => rm(cacheDir, { recursive: true, force: true }));
   const server = await createServer({
     root: fileURLToPath(new URL('../../', import.meta.url)),
     configFile: fileURLToPath(new URL('../../vite.config.ts', import.meta.url)),
+    cacheDir,
     logLevel: 'error',
     optimizeDeps: { noDiscovery: true, include: [] },
     server: { middlewareMode: true, watch: null, ws: false },
