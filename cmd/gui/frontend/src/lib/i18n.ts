@@ -821,6 +821,9 @@ const catalogs: Record<Language, Record<string, string>> = {
     'error.provider.offline': 'The server could not be reached.',
     'error.provider.timeout': 'The server took too long to answer.',
     'error.provider.unknown': 'The request to the server failed.',
+    'error.remote.unstamped_build': 'This GitboxApp has no build stamp, which remote mode needs.',
+    'error.remote.server_target_missing': 'This GitboxApp does not carry the server that remote mode installs.',
+    'error.remote.server_build_mismatch': 'The server this GitboxApp carries comes from another build.',
   },
   es: {
     'tab.accounts': 'Cuentas',
@@ -1638,6 +1641,9 @@ const catalogs: Record<Language, Record<string, string>> = {
     'error.provider.offline': 'No se ha podido conectar con el servidor.',
     'error.provider.timeout': 'El servidor ha tardado demasiado en responder.',
     'error.provider.unknown': 'La petición al servidor ha fallado.',
+    'error.remote.unstamped_build': 'Este GitboxApp no tiene sello de build, y el modo remoto lo necesita.',
+    'error.remote.server_target_missing': 'Este GitboxApp no lleva el servidor que el modo remoto instala.',
+    'error.remote.server_build_mismatch': 'El servidor que lleva este GitboxApp es de otro build.',
   },
 };
 

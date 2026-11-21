@@ -21,7 +21,9 @@ Un carril borra su clon tras pasar (`GATE_KEEP=1` lo conserva) y lo conserva tra
 
 ## Qué ejecuta cada carril
 
-Cada carril construye el frontend embebido con `npm ci && npm run build`, construye la GUI con la versión de la CLI de Wails que fija CI (`go run github.com/wailsapp/wails/v2/cmd/wails@v2.16.0 build`) comprueba que los bindings que ese build regeneró coinciden con los del commit, y comprueba que `GitboxApp --version` imprime el SHA corto del commit.
+Cada carril construye el frontend embebido con `npm ci && npm run build`, construye la GUI con la versión de la CLI de Wails que fija CI (`go run github.com/wailsapp/wails/v2/cmd/wails@v2.16.0 build`) comprueba que los bindings que ese build regeneró coinciden con los del commit, y comprueba el ejecutable construido.
+
+El build es el que hace una release. Cada carril compila los seis binarios de `gitbox-server` con `scripts/build-server.sh`, ejecuta la prueba que vuelve a leer cada uno contra su SHA-256 fijado, y construye la GUI con `-tags serverbin` para que los lleve. Después `scripts/check-gui-artifact.sh` hace fallar el carril salvo que `GitboxApp --version` y `GitboxApp --list-server-targets` informen exactamente de la versión y el commit del sello del carril con los seis targets, y salvo que el ejecutable principal esté dentro de su techo en `scripts/size-ceilings.txt`.
 
 - **mac:** `HEALTH_FUZZ=1 ./scripts/health.sh` (todos los comprobadores, incluidos vet y staticcheck para linux, darwin y windows, las pruebas unitarias, los fixtures del bootstrap, el lint de Markdown y la comprobación del espejo del arnés), más las dos suites de coordinación. El build apunta a macOS 13 como la release.
 - **linux:** `go vet ./...`, `go test -short ./...` y `bash scripts/test-bootstrap.sh`, y después el build con `-tags webkit2_41`.

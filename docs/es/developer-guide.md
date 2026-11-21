@@ -21,8 +21,9 @@ Para pruebas multiplataforma vía SSH, consulta [multiplatform.md](multiplatform
 Gitbox v2 construye un solo binario, la app de escritorio `GitboxApp`. La CLI y la TUI de v1 viven solo en la rama `release/v1`.
 
 ```bash
-# Sello de versión en build time. Sin él, la app recurre a `git describe` en runtime.
-LDFLAGS="-X main.version=$(git describe --tags --always)-dev -X main.commit=$(git rev-parse --short HEAD)"
+# Sello de versión en tiempo de build, el mismo que usan todos los caminos de build:
+# define VERSION, COMMIT y LDFLAGS. Sin él, la app recurre a `git describe` en ejecución.
+eval "$(scripts/stamp.sh)"
 
 # Copiar iconos de app desde assets/ al directorio de build de Wails (ahí no se versionan)
 cp assets/appicon.png cmd/gui/build/appicon.png
@@ -62,6 +63,26 @@ CGO_ENABLED=0 go build -tags gitboxserver -o gitbox-server ./cmd/gui
 
 `gitbox-server serve --stdio` habla un protocolo de tramas binarias por stdin y stdout, así que lo manejo desde una prueba en lugar de escribirle a mano: `TestGitboxServerBinary` en `cmd/gui` construye el binario, lo arranca como un proceso aparte y lo llama con el cliente real. [architecture.md](architecture.md#servidor-y-protocolo) describe el protocolo.
 
+### Embeber gitbox-server
+
+El modo remoto instala `gitbox-server` en el otro host desde dentro de GitboxApp y nunca lo descarga. Nada depende de internet ni de una release publicada, y un build de desarrollo se comporta como una release. Para eso, GitboxApp lleva dentro los binarios del servidor, compilados del mismo commit:
+
+```bash
+eval "$(scripts/stamp.sh)"
+GITBOX_SERVER_TARGETS=linux/amd64,linux/arm64 scripts/build-server.sh
+(cd cmd/gui && wails build -tags serverbin -ldflags "$LDFLAGS")
+cmd/gui/build/bin/GitboxApp --list-server-targets   # macOS: GitboxApp.app/Contents/MacOS/GitboxApp
+```
+
+- `scripts/stamp.sh` imprime la identidad del build: `VERSION`, `COMMIT` (siempre el SHA completo) y los `LDFLAGS` que estampan ambos en un binario. `VERSION` es `GITBOX_VERSION` cuando está definido, como hacen CI, el script de release y el gate; si no, es `git describe --tags --always --dirty` más `-dev`. Un GitboxApp solo habla con un `gitbox-server` de la misma versión y commit, así que todos los caminos de build toman ambos de aquí.
+- `scripts/build-server.sh` hace cross-compile del servidor para cada target de `GITBOX_SERVER_TARGETS`. `all` significa Linux, macOS y Windows en amd64 y arm64; el valor por defecto es `linux/amd64,linux/arm64`. Deja un archivo gzip por target y `zz_generated.go` en `cmd/gui/serverbin/`, y git ignora ambos. El archivo generado fija cada binario por el SHA-256 de sus bytes sin comprimir.
+- El build tag `serverbin` los embebe. Un build sin el tag no lleva servidor dentro y no necesita ninguno de esos archivos, y así es como `go vet`, `go test` y la comprobación de salud siguen funcionando en un checkout limpio.
+- `GitboxApp --list-server-targets` imprime el build del servidor embebido y una línea por target con su tamaño y su SHA-256. Vuelve a leer cada binario contra su hash fijado, y falla cuando la app no podría ejecutar el modo remoto: `unstamped_build`, `server_target_missing` o `server_build_mismatch`.
+
+`wails build` reescribe espacios en los bindings generados, así que el árbol parece modificado después y el siguiente sello de desarrollo dice `-dirty`. Es inofensivo, porque el sello se toma una vez y los dos binarios reciben el mismo; `git checkout -- cmd/gui/frontend/wailsjs` lo limpia.
+
+Los builds de release, el gate y CI embeben los seis targets y ejecutan `scripts/check-gui-artifact.sh` sobre el resultado. Comprueba que la app informa exactamente del sello con el que se construyó, que lleva los targets que se pidieron a `build-server.sh`, y que el ejecutable principal se mantiene dentro de su techo en `scripts/size-ceilings.txt`: su tamaño antes de llevar el servidor, más 25 MiB.
+
 ### Reglas de diseño
 
 Estas reglas se cumplen en cada cambio. [architecture.md](architecture.md) explica el resto del diseño.
@@ -73,6 +94,7 @@ Estas reglas se cumplen en cada cambio. [architecture.md](architecture.md) expli
 - **Cada punto de entrada está clasificado.** Un método o evento nuevo de `App` necesita una fila en `cmd/gui/classification.go`; un método que hace trabajo también va en `Backend` (consulta [Costura del backend](architecture.md#costura-del-backend)).
 - **Los imports de Wails se quedan en archivos `!gitboxserver`.** El código que llama al runtime de Wails va en `shell.go` o en otro archivo con `//go:build !gitboxserver`, para que el build del servidor siga libre de Wails.
 - **El servidor responde a una lista cerrada.** Un método de `Backend` llega a un cliente remoto solo a través de `servedMethods` en `cmd/gui/server.go`, junto con una fila en la tabla de `TestBackendContract`. Un método que cambia estado en el host espera a la validación de sus parámetros.
+- **Todo camino que construye la GUI hace los mismos cuatro pasos.** `scripts/stamp.sh`, `scripts/build-server.sh`, `wails build -tags serverbin` y `scripts/check-gui-artifact.sh`. Los carriles del gate, `ship.sh`, `release-macos.sh` y los jobs de GUI de CI los hacen; un camino nuevo también.
 
 ---
 
@@ -216,13 +238,17 @@ El ring de backups siempre conserva una copia de un archivo escrito con una vers
 
 ### Versionado
 
-Los builds locales detectan la versión desde los tags de git en runtime. Los builds de CI inyectan valores explícitos mediante ldflags:
+Todos los caminos de build toman su versión y su commit de `scripts/stamp.sh`. Un build hecho sin sello detecta la versión desde los tags de git en runtime:
 
 ```bash
-# Build de CI con versión explícita (el SHA completo se trunca a 7 caracteres en runtime)
-cd cmd/gui && wails build -ldflags "-X main.version=v2.0.0 -X main.commit=$(git rev-parse HEAD)"
+# Los builds de CI y de release fijan la versión; el commit es siempre el SHA completo
+# (se muestra truncado a 7 caracteres)
+eval "$(GITBOX_VERSION=v2.0.0 scripts/stamp.sh)"
+(cd cmd/gui && wails build -ldflags "$LDFLAGS")
 
-# Los builds locales sin ldflags ejecutan:
+# Los builds de desarrollo dejan GITBOX_VERSION sin definir, y stamp.sh usa:
+#   git describe --tags --always --dirty   → versión, con "-dev" añadido
+# Los builds sin ldflags ejecutan, cada vez que la app muestra su versión:
 #   git describe --tags --always   → versión, con "-dev" añadido
 #   git rev-parse --short HEAD     → SHA de commit (por ejemplo, "a99cf17")
 # Formato mostrado:

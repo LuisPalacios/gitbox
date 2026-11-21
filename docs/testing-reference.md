@@ -10,7 +10,7 @@ Counts are top-level Go test functions (subtests from `t.Run` and `TestMain` are
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-The current total is 760 Go tests (622 in `pkg/`, 138 in `cmd/gui/`) and 52 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
+The current total is 772 Go tests (622 in `pkg/`, 150 in `cmd/gui/`) and 52 frontend tests. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
 
 ### Shared library (`pkg/`)
 
@@ -70,6 +70,8 @@ This boundary belongs to the test, not the config validator. Accepted configs ca
 - `server_test.go` (6) — `gitbox-server`: the closed list holds only read-only methods, what it sends carries no client preferences, a save keeps the host's own preferences even when the host changed them meanwhile, `--version`, `--doctor` and usage errors, the folder probe, the exit codes of `serve`.
 - `backend_contract_test.go` (9) — `TestBackendContract` runs one table of calls against the local backend and against a `RemoteBackend` connected to a server on the same config, and demands the same results, errors and events. Also: every `RemoteBackend` method sends its own name, every argument in order and a request id only when it mutates (by reflection); server events relayed and unknown ones dropped; no token in any error or on the wire; a hostile code or hint discarded; a method outside the list; no goroutine left after `Close`; a hung git that dies when the connection ends; the server version in the startup snapshot.
 - `server_binary_test.go` (1) — builds the real `gitbox-server`, starts it as a separate process behind a shell that prints a banner, and calls it with the real client; checks the exit when the input ends and the exit code for a client of another build.
+- `serverbuild_test.go` (4) — the build identity check with injected values: a matching build passes, and an unstamped app, an app with no server inside and a server of another version or commit are refused with `unstamped_build`, `server_target_missing` and `server_build_mismatch`, each crossing the boundary with its code, its catalog key and the text that names the rebuild command; the `--list-server-targets` output; reading every embedded binary.
+- `serverbin/` (8) — the embedded `gitbox-server` binaries. Without the build tag (3): a read returns the binary only when it hashes to its pin (one changed bit, a shorter or longer stream, a truncated one and plain bytes are refused), file names per target, and a clean checkout that has no targets and needs no generated file. With `-tags serverbin` (1, `TestEmbeddedHashesMatch`, after `scripts/build-server.sh`): every embedded target decompresses to its pinned size and SHA-256, the commit is the full SHA, and a forged pin from the caller is ignored. The gate lanes run it. `gen/` (4): highest-level compression with no name or time in the header, target order, one file per target plus a Go file that only builds with the tag, stale files removed, bad versions, commits and targets refused.
 - `clone_test.go` (1) — report remaining clone destinations without changing repository config, directories or symlink targets.
 - `account_actions_test.go`, `browser_actions_test.go` (4) — account folder resolution, provider URLs, error paths for unknown accounts and repos.
 - `roots_test.go` (2) — add, make default and remove clone roots; account folders through the source root.

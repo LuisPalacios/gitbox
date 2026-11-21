@@ -23,9 +23,12 @@ After any code change, always run the relevant tests:
 | Update logic (`pkg/update/`)                | `go test ./pkg/update/`                            |
 | Doctor / tool detection (`pkg/doctor/`)     | `go test ./pkg/doctor/`                            |
 | Server protocol (`pkg/rpc/`)                | `go test -race ./pkg/rpc/ ./cmd/gui/`              |
+| Embedded server (`cmd/gui/serverbin/`)      | `go test ./cmd/gui/...`                            |
 | Unsure what's affected                      | `go test ./...`                                    |
 
 `cmd/gui` tests (and `./...`) need `cmd/gui/frontend/dist` — build the frontend once if it is missing.
+
+The embedded binaries themselves only exist in a `serverbin` build. After `scripts/build-server.sh`, `go test -tags serverbin ./cmd/gui/serverbin/` reads each one back against its pin; the gate lanes run it.
 
 ## Harness checks
 

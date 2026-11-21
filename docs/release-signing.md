@@ -23,6 +23,8 @@ The flow has three actors: CI, the maintainer, and the updater on every user's m
 
 The updater fails closed. A release without `checksums.sha256` or `checksums.sha256.sig` is refused before the artifact is downloaded, and a signature that doesn't verify, or a checksum that doesn't match, refuses the update. [architecture.md](architecture.md#pkgupdate--auto-update) describes the updater's design.
 
+The signature also covers the `gitbox-server` that remote mode installs on other hosts. That server is not a release asset: each `GitboxApp` carries the server binaries inside itself, pinned by SHA-256 at build time, so the checksum of a signed artifact covers the binaries and their pins with it.
+
 The tag inside the message binds a signature to one release, so an old signature can't be replayed onto a new tag. The `gitbox-release` namespace keeps a signature made with the same key for anything else, such as a git commit, from passing as a release signature.
 
 ## What lives where

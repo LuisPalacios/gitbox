@@ -40,6 +40,8 @@ func toUserError(err error) usererr.UserError {
 		out.Code, out.Hint = "git."+string(ge.Code), ge.Hint
 	} else if pe, ok := errors.AsType[*provider.ProviderError](err); ok {
 		out.Code, out.Hint = "provider."+string(pe.Class), "error.provider."+string(pe.Class)
+	} else if re, ok := errors.AsType[*remoteError](err); ok {
+		out.Code, out.Hint = "remote."+string(re.Code), "error.remote."+string(re.Code)
 	}
 	return out
 }

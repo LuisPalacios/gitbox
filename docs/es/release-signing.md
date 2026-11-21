@@ -23,6 +23,8 @@ El flujo tiene tres actores: CI, el mantenedor y el actualizador en la máquina 
 
 El actualizador falla en cerrado. Una release sin `checksums.sha256` o sin `checksums.sha256.sig` se rechaza antes de descargar el artefacto, y una firma que no se verifica, o un checksum que no coincide, rechaza la actualización. [architecture.md](architecture.md#pkgupdate--auto-update) describe el diseño del actualizador.
 
+La firma también cubre el `gitbox-server` que el modo remoto instala en otros hosts. Ese servidor no es un asset de la release: cada `GitboxApp` lleva dentro los binarios del servidor, fijados por SHA-256 en tiempo de build, así que el checksum de un artefacto firmado cubre con él los binarios y sus hashes fijados.
+
 El tag dentro del mensaje ata una firma a una release, así que una firma antigua no se puede reutilizar en un tag nuevo. El namespace `gitbox-release` impide que una firma hecha con la misma clave para otra cosa, como un commit de git, pase por firma de release.
 
 ## Qué se guarda dónde

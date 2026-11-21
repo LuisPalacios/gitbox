@@ -165,6 +165,9 @@ func TestHintKeysInCatalog(t *testing.T) {
 		provider.ClassNotFound, provider.ClassServerError, provider.ClassOffline, provider.ClassTimeout, provider.ClassUnknown} {
 		keys = append(keys, toUserError(&provider.ProviderError{Class: c}).Hint)
 	}
+	for _, c := range []remoteCode{remoteUnstampedBuild, remoteServerTargetMissing, remoteServerBuildMismatch} {
+		keys = append(keys, toUserError(&remoteError{Code: c}).Hint)
+	}
 	for _, key := range keys {
 		if n := strings.Count(catalog, "'"+key+"':"); n != 2 {
 			t.Errorf("hint %q has %d catalog entries, want one in en and one in es", key, n)

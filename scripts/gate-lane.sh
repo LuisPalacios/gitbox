@@ -12,11 +12,15 @@
 #
 # Lanes:
 #   mac    frontend, scripts/health.sh (HEALTH_FUZZ=1), coordination suites,
-#          Wails build, --version smoke
+#          server binaries, Wails build, artifact check
 #   linux  frontend, go vet, go test -short, bootstrap fixtures,
-#          Wails build (webkit2_41), smoke
+#          server binaries, Wails build (webkit2_41), artifact check
 #   win    frontend, coordination suites, go test -short, bootstrap fixtures,
-#          Wails build, smoke
+#          server binaries, Wails build, artifact check
+#
+# Every lane builds GitboxApp the way a release does: with the six
+# gitbox-server binaries inside (scripts/build-server.sh, -tags serverbin),
+# checked for identity and size by scripts/check-gui-artifact.sh.
 #
 # Environment:
 #   GATE_KEEP=1   keep the lane's clone after a pass (a failure always keeps it)
@@ -117,22 +121,28 @@ unit_tests() { go test -short ./...; }
 
 bootstrap() { bash scripts/test-bootstrap.sh; }
 
+# The six gitbox-server binaries GitboxApp embeds, and the test that reads
+# each one back against its pin.
+server_build() {
+    bash scripts/build-server.sh
+    go test -short -tags serverbin ./cmd/gui/serverbin/
+}
+
 gui_build() {
     mkdir -p cmd/gui/build/windows
     cp assets/appicon.png cmd/gui/build/appicon.png
     cp assets/icon.ico cmd/gui/build/windows/icon.ico
-    local ldflags
-    ldflags="-X main.version=$(git describe --tags --always)-gate -X main.commit=$(git rev-parse --short HEAD)"
-    local extra=()
+    eval "$(bash scripts/stamp.sh)"
+    local tags=serverbin
     case "$lane" in
-        linux) extra=(-tags webkit2_41) ;;
+        linux) tags=webkit2_41,serverbin ;;
         mac)
             # Go's runtime targets macOS 13; same minimum as ci.yml.
             export CGO_CFLAGS=-mmacosx-version-min=13.0 CGO_LDFLAGS=-mmacosx-version-min=13.0
             ;;
     esac
     # -s: the frontend step already built frontend/dist.
-    (cd cmd/gui && go run "$WAILS" build -s -ldflags "$ldflags" "${extra[@]}")
+    (cd cmd/gui && go run "$WAILS" build -s -tags "$tags" -ldflags "$LDFLAGS")
 }
 
 # The clean clone's `wails build` regenerated the bindings, so any difference
@@ -142,22 +152,26 @@ bindings() {
     git -c core.fileMode=false diff --exit-code --ignore-space-at-eol -- cmd/gui/frontend/wailsjs/go
 }
 
-smoke() {
-    local exe out
+# The built executable reports the stamp it was built from, carries the six
+# server binaries of that same build, and is within its size ceiling.
+artifact() {
+    local exe
     case "$lane" in
         mac)   exe=cmd/gui/build/bin/GitboxApp.app/Contents/MacOS/GitboxApp ;;
         linux) exe=cmd/gui/build/bin/GitboxApp ;;
         win)   exe=cmd/gui/build/bin/GitboxApp.exe ;;
     esac
-    out="$("$exe" --version 2>&1)" || { echo "$out"; return 1; }
-    echo "$out"
-    # Expected: "GitboxApp <version> (<short sha>)".
-    [[ "$out" == GitboxApp* && "$out" == *"$(git rev-parse --short HEAD)"* ]]
+    eval "$(bash scripts/stamp.sh)"
+    VERSION="$VERSION" COMMIT="$COMMIT" bash scripts/check-gui-artifact.sh \
+        "$exe" "$(go env GOOS)/$(go env GOARCH)"
 }
 
 printf 'lane %s on %s, commit %s\n' "$lane" "$(uname -sm)" "$sha"
 step "checkout" checkout
 cd "$work"
+# One identity for the whole lane, taken before any step changes the tree.
+GITBOX_VERSION="$(git describe --tags --always)-gate"
+export GITBOX_VERSION GITBOX_SERVER_TARGETS=all
 step "frontend" frontend
 case "$lane" in
     mac)
@@ -175,9 +189,10 @@ case "$lane" in
         step "bootstrap" bootstrap
         ;;
 esac
+step "server binaries" server_build
 step "gui build" gui_build
 step "bindings" bindings
-step "smoke" smoke
+step "artifact" artifact
 
 cd "$cache"
 [[ "${GATE_KEEP:-}" == "1" ]] || rm -rf "$work"

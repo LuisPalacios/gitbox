@@ -79,6 +79,15 @@ cp "$src/assets/appicon.png" "$src/cmd/gui/build/appicon.png"
 sed -i '' "s/\"productVersion\": \"0.0.0\"/\"productVersion\": \"${tag#v}\"/" "$src/cmd/gui/wails.json"
 ok "clean clone and Wails $WAILS_VERSION"
 
+# ── One build identity, and the six gitbox-server binaries both apps embed ──
+export GITBOX_VERSION="$tag" GITBOX_SERVER_TARGETS=all
+VERSION="" COMMIT="" LDFLAGS=""   # assigned by the eval below
+eval "$(bash "$src/scripts/stamp.sh")" || die "stamp.sh failed"
+[[ "$COMMIT" == "$commit" ]] || die "the clean clone is at $COMMIT, not at the tag's $commit"
+bash "$src/scripts/build-server.sh" >"$out/build-server.log" 2>&1 \
+    || die "building gitbox-server failed, see $out/build-server.log"
+ok "six gitbox-server binaries for $VERSION"
+
 # build_arch <arch>: GUI → zip → optional codesign → DMG (→ optional notarization)
 build_arch() {
     local arch="$1" bin="$src/cmd/gui/build/bin" stage="$out/stage-$1"
@@ -87,14 +96,20 @@ build_arch() {
         cd "$src/cmd/gui"
         # Go's runtime targets macOS 13; give cgo and the linker the same minimum.
         CGO_CFLAGS=-mmacosx-version-min=13.0 CGO_LDFLAGS=-mmacosx-version-min=13.0 GOARCH="$arch" \
-            "$out/bin/wails" build -clean -platform "darwin/$arch" \
-            -ldflags "-X main.version=$tag -X main.commit=$commit" >"$out/build-$arch.log" 2>&1
+            "$out/bin/wails" build -clean -platform "darwin/$arch" -tags serverbin \
+            -ldflags "$LDFLAGS" >"$out/build-$arch.log" 2>&1
     ) || die "build failed for $arch, see $out/build-$arch.log"
-    local v
-    v="$("$bin/GitboxApp.app/Contents/MacOS/GitboxApp" --version 2>/dev/null || true)"
-    if [[ "$arch" == "arm64" ]]; then
-        [[ "$v" == *"$tag"*"${commit:0:7}"* ]] || die "arm64 --version printed '$v'"
-    fi
+    # This machine runs the arm64 app, so that one answers for its identity;
+    # the amd64 app is only measured.
+    local v exe="$bin/GitboxApp.app/Contents/MacOS/GitboxApp" what="all"
+    v="$("$exe" --version 2>/dev/null || true)"
+    [[ "$arch" == "arm64" ]] || what="--size-only"
+    if [[ "$what" == "all" ]]; then
+        VERSION="$VERSION" COMMIT="$COMMIT" bash "$src/scripts/check-gui-artifact.sh" \
+            "$exe" "darwin/$arch" >>"$out/build-$arch.log" 2>&1
+    else
+        bash "$src/scripts/check-gui-artifact.sh" "$what" "$exe" "darwin/$arch" >>"$out/build-$arch.log" 2>&1
+    fi || die "the darwin/$arch app failed its check, see $out/build-$arch.log"
     (cd "$bin" && zip -qr "$out/dist/gitbox-macos-$arch.zip" GitboxApp.app)
 
     mkdir -p "$stage"

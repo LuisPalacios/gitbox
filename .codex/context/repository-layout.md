@@ -11,10 +11,12 @@ cmd/
       lib/                Shared modules (bridge, stores, status, views, activity, notices, theme, i18n, rich, repo-tree, repo-detail + *.test.mjs) and shared pieces (Card, Logo, Rich, LauncherMenu, CredentialResult, PrecheckBanner, …)
       lib/components/     Dashboard parts (top bar, activity strip, banners, settings, sidebar, Needs attention / All / account / Mirrors views, account card and menu, repo tree/row/detail, footer, notices, compact view)
       lib/modals/         One component per modal + modals.css (the shared dialog kit)
+    serverbin/            The gitbox-server binaries GitboxApp embeds with -tags serverbin, pinned by SHA-256; gen/ is the build tool that compresses them and writes the pins
 pkg/                      Shared Go library
   ops/                    Account, credential, clone and discovery service layer the GUI calls (+ TestScenario_FullLifecycle)
   config/                 Config v5 model (clone roots in roots.go), load/save, v2→v3→v4→v5 migration
   credential/             Credential verification (GCM, SSH, token); global GCM helper check accepts any helper resolving to git-credential-manager (short name or absolute path)
+  rpc/                    The JSON-RPC protocol between GitboxApp and gitbox-server: frames, handshake, server, client
   git/                    Git subprocess operations (os/exec); global config get/get-all/set/unset; incoming.go reads incoming commit history from local upstream refs
   provider/               Provider API clients + mirror interfaces (GitHub, GitLab, Gitea, Forgejo)
   mirror/                 Push/pull mirror setup, status, guides
@@ -52,6 +54,10 @@ scripts/
   appimage/                Linux AppImage build (build-appimage.sh + linuxdeploy, AppRun, desktop, AppStream metainfo, icon)
   dmg/                     macOS DMG installer script + README
   _common.sh               Shared helpers for the dev scripts (.env, SSH, GitboxApp paths)
+  stamp.sh                 The build identity (VERSION, COMMIT, LDFLAGS) that GitboxApp and gitbox-server share; every build path evals it
+  build-server.sh          Cross-compile gitbox-server for GITBOX_SERVER_TARGETS and generate what cmd/gui/serverbin embeds
+  check-gui-artifact.sh    Check a built GitboxApp: identity against the stamp, embedded targets, size against size-ceilings.txt
+  size-ceilings.txt        Baseline and ceiling of the main executable per platform (baseline + 25 MiB)
   ship.sh                  Build GitboxApp on each remote host in .env and stage it
   smoke.sh                 Run `GitboxApp --version` locally and on staged remotes
   gate.sh                  Local merge gate: verify HEAD on macOS, Linux and Windows hosts in parallel; per-SHA marker, --report status

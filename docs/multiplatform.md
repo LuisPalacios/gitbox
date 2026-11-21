@@ -89,10 +89,10 @@ Start on the machine you work on: build the GUI as described in [developer-guide
 ./scripts/ship.sh myhost     # only the host whose short name matches
 ```
 
-The short name is the host part of `user@host` without its domain; the full `user@host` value works too. For each remote, `ship.sh`:
+The short name is the host part of `user@host` without its domain; the full `user@host` value works too. Before it ships anything, `ship.sh` builds the `gitbox-server` binaries on this machine with `scripts/build-server.sh` (the two Linux targets, unless `GITBOX_SERVER_TARGETS` says otherwise), so every remote embeds the same ones. Then, for each remote, `ship.sh`:
 
-1. Sends the source with `tar | ssh` into `~/gitbox-remote-build`, without `.git`, `.env`, `node_modules` or build output.
-2. Builds the frontend, then runs `wails build -s` with the version and commit of the local checkout stamped through `-ldflags`, so the remote binary doesn't report `dev-none`.
+1. Sends the source with `tar | ssh` into `~/gitbox-remote-build`, without `.git`, `.env`, `node_modules` or build output. The server binaries travel inside it.
+2. Builds the frontend, then runs `wails build -s -tags serverbin` with the version and commit of the local checkout, taken from `scripts/stamp.sh` and stamped through `-ldflags`, so the remote binary doesn't report `dev-none`. It then runs `scripts/check-gui-artifact.sh --no-size` on the remote: the app must report that stamp and carry the server binaries of the same build.
 3. Stages the result at `/tmp/GitboxApp.app` on macOS, `/tmp/GitboxApp` on Linux and `~/GitboxApp.exe` on Windows.
 4. Copies `test-gitbox.json` to `~/test-gitbox.json` when it exists at the repo root.
 
