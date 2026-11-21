@@ -85,7 +85,7 @@ Changing a source's root or the default root pins the root every existing clone 
 
 `cmd/gui/app.go` exposes the methods the Svelte frontend calls through auto-generated TypeScript bindings. Bound methods take the config lock for shared state, call `pkg/ops` or another `pkg/` package for the work, save changes, and emit Wails events for progress. Neighbouring files hold GUI-only concerns: terminal profiles (`profiles.go`), multi-repo containers and their workspace files (`containers.go`), clone roots (`roots.go`), disk reconcile (`reconcile.go`), PR badges (`pr.go`), autostart, and per-OS process lifecycle. Every `exec.Command` in `cmd/gui/` goes through `git.HideWindow`, so no console window flashes on Windows.
 
-`main.go` handles three flags before Wails starts: `--version` prints the build version and exits, `--test-mode` routes the config through a temp directory built from the `test-gitbox.json` fixture (see [testing.md](testing.md)), and `--experimental-remote` opts in to remote mode, which is dormant for now; `global.experimental_remote` does the same from the config.
+`main.go` handles four flags before Wails starts: `--version` prints the build version and exits, `--list-server-targets` prints the `gitbox-server` binaries the build carries and checks them (see [developer-guide.md](developer-guide.md#embedding-gitbox-server)), `--test-mode` routes the config through a temp directory built from the `test-gitbox.json` fixture (see [testing.md](testing.md)), and `--experimental-remote` opts in to remote mode, which is dormant for now; `global.experimental_remote` does the same from the config.
 
 #### Backend seam
 
