@@ -347,9 +347,9 @@ func TestSchemaDeclaresGlobalKeys(t *testing.T) {
 	check := func(typ reflect.Type, optional []string, path ...string) {
 		t.Helper()
 		props, required := schemaProps(t, path...)
-		for i := 0; i < typ.NumField(); i++ {
-			if key := jsonKey(typ.Field(i)); props[key] == nil {
-				t.Errorf("schema %v does not declare %q (%s.%s)", path, key, typ.Name(), typ.Field(i).Name)
+		for f := range typ.Fields() {
+			if key := jsonKey(f); props[key] == nil {
+				t.Errorf("schema %v does not declare %q (%s.%s)", path, key, typ.Name(), f.Name)
 			}
 		}
 		for _, key := range optional {
@@ -360,8 +360,8 @@ func TestSchemaDeclaresGlobalKeys(t *testing.T) {
 			}
 		}
 	}
-	check(reflect.TypeOf(GlobalConfig{}), []string{"remotes", "experimental_remote"}, "properties", "global")
-	check(reflect.TypeOf(RemoteEntry{}), []string{"server_dir", "editor", "window", "compact_window"},
+	check(reflect.TypeFor[GlobalConfig](), []string{"remotes", "experimental_remote"}, "properties", "global")
+	check(reflect.TypeFor[RemoteEntry](), []string{"server_dir", "editor", "window", "compact_window"},
 		"properties", "global", "properties", "remotes", "items")
 
 	_, required := schemaProps(t, "properties", "global", "properties", "remotes", "items")
