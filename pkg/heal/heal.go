@@ -111,7 +111,7 @@ func Repo(cfg *config.Config, sourceKey, repoKey string) Report {
 		if err := git.SetRemoteURL(path, "origin", wantURL); err != nil {
 			r.Warnings = append(r.Warnings, fmt.Sprintf("origin URL: %v", err))
 		} else {
-			r.Fixed = append(r.Fixed, fmt.Sprintf("rewrote origin URL %q → %q", redactURL(curURL), wantURL))
+			r.Fixed = append(r.Fixed, fmt.Sprintf("rewrote origin URL %q → %q", git.RedactURL(curURL), wantURL))
 		}
 	} else if curURL == "" {
 		// A clone without an origin remote is highly unusual; surface
@@ -184,21 +184,4 @@ func stripScheme(raw string) string {
 		}
 	}
 	return raw
-}
-
-// redactURL masks a password component for safe logging.
-func redactURL(raw string) string {
-	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
-		return raw
-	}
-	u, err := url.Parse(raw)
-	if err != nil {
-		return raw
-	}
-	if u.User != nil {
-		if _, hasPW := u.User.Password(); hasPW {
-			u.User = url.UserPassword(u.User.Username(), "***")
-		}
-	}
-	return u.String()
 }

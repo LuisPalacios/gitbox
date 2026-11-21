@@ -68,7 +68,7 @@ func TestExpectedOriginURL_HTTPS_NoUsername(t *testing.T) {
 // TestRedactURL masks the password so tokens don't leak into logs.
 func TestRedactURL(t *testing.T) {
 	in := "https://alice:super-secret-token@github.com/alice/repo.git"
-	got := redactURL(in)
+	got := git.RedactURL(in)
 	if strings.Contains(got, "super-secret-token") {
 		t.Errorf("password leaked: %q", got)
 	}

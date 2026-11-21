@@ -29,14 +29,14 @@ func ParseRemoteURL(rawURL string) (host, owner, repo string, err error) {
 		rest := rawURL[i+1:]
 		h, path, ok := strings.Cut(rest, ":")
 		if !ok {
-			return "", "", "", fmt.Errorf("SSH URL %q missing colon after host", rawURL)
+			return "", "", "", fmt.Errorf("SSH remote URL is missing the colon after the host")
 		}
 		host = h
 		path = strings.TrimSuffix(path, ".git")
 		path = strings.Trim(path, "/")
 		owner, repo = splitOwnerRepo(path)
 		if owner == "" || repo == "" {
-			return "", "", "", fmt.Errorf("SSH URL path %q does not contain owner/repo", path)
+			return "", "", "", fmt.Errorf("SSH remote URL for host %q does not contain owner/repo", host)
 		}
 		return host, owner, repo, nil
 	}
@@ -44,17 +44,18 @@ func ParseRemoteURL(rawURL string) (host, owner, repo string, err error) {
 	// HTTPS format: use standard URL parser.
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return "", "", "", fmt.Errorf("parsing URL %q: %w", rawURL, err)
+		// url.Parse quotes the whole input in its error, userinfo included.
+		return "", "", "", fmt.Errorf("remote URL is malformed")
 	}
 	host = u.Hostname()
 	if host == "" {
-		return "", "", "", fmt.Errorf("URL %q has no hostname", rawURL)
+		return "", "", "", fmt.Errorf("remote URL has no hostname")
 	}
 	path := strings.Trim(u.Path, "/")
 	path = strings.TrimSuffix(path, ".git")
 	owner, repo = splitOwnerRepo(path)
 	if owner == "" || repo == "" {
-		return "", "", "", fmt.Errorf("URL path %q does not contain owner/repo", u.Path)
+		return "", "", "", fmt.Errorf("remote URL for host %q does not contain owner/repo", host)
 	}
 	return host, owner, repo, nil
 }
