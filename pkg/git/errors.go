@@ -42,6 +42,10 @@ type GitError struct {
 	// codes when git names it. A bare host name, never a URL.
 	Host string
 	Err  error // the underlying error, kept for errors.Is and errors.As
+	// ExitCode is git's exit status, or -1 when it did not exit by itself.
+	// Callers that tell outcomes apart by status read it here, not from the
+	// underlying error, so they work with any Runner.
+	ExitCode int
 
 	// stderr is what git printed, bounded to maxStderr. It never leaves the
 	// package through Error: only the classifiers here read it.
@@ -75,8 +79,9 @@ func newGitErrorContext(ctx context.Context, op string, err error, output []byte
 	if len(output) > maxStderr {
 		output = output[:maxStderr]
 	}
-	e := &GitError{Op: op, Err: err, stderr: string(output)}
+	e := &GitError{Op: op, Err: err, ExitCode: -1, stderr: string(output)}
 	if exit, ok := errors.AsType[*exec.ExitError](err); ok && exit.ExitCode() >= 0 {
+		e.ExitCode = exit.ExitCode()
 		e.Detail = fmt.Sprintf("exit %d", exit.ExitCode())
 	}
 	e.Code = classify(ctx, err, strings.ToLower(e.stderr))
@@ -85,6 +90,26 @@ func newGitErrorContext(ctx context.Context, op string, err error, output []byte
 	}
 	e.Hint = "error.git." + string(e.Code)
 	return e
+}
+
+// failure builds the error for a git command that the runner ran: the text
+// classifies it and the result supplies the exit status.
+func failure(ctx context.Context, op string, err error, res Result, text []byte) *GitError {
+	e := newGitErrorContext(ctx, op, err, text)
+	e.ExitCode = res.ExitCode
+	if e.Detail == "" && res.ExitCode > 0 {
+		e.Detail = fmt.Sprintf("exit %d", res.ExitCode)
+	}
+	return e
+}
+
+// exitCode returns git's exit status for a failed command, or -1 when err is
+// not the error of a git command.
+func exitCode(err error) int {
+	if e, ok := errors.AsType[*GitError](err); ok {
+		return e.ExitCode
+	}
+	return -1
 }
 
 // codePatterns maps fragments of git's output to a code, in priority order.

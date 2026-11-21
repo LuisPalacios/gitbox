@@ -2,10 +2,8 @@ package git
 
 import (
 	"context"
-	"os/exec"
 	"regexp"
 	"strconv"
-	"time"
 )
 
 // refusedFastRE matches curl's connect failure with its elapsed time, e.g.
@@ -31,14 +29,10 @@ func IsRefusedFast(err error) bool {
 
 // FetchCapturedContext lets refresh shutdown cancel an in-flight network transfer.
 func FetchCapturedContext(ctx context.Context, repoPath string) (string, error) {
-	cmd := exec.CommandContext(ctx, GitBin(), "fetch", "--all", "--prune")
-	cmd.Dir = repoPath
-	cmd.Env = nonInteractiveEnv()
-	cmd.WaitDelay = time.Second
-	HideWindow(cmd)
-	out, err := cmd.CombinedOutput()
+	res, err := Default.Run(ctx, Request{Dir: repoPath, Args: []string{"fetch", "--all", "--prune"}})
+	out := res.combined()
 	if err != nil {
-		return string(out), newGitErrorContext(ctx, "fetch", err, out)
+		return string(out), failure(ctx, "fetch", err, res, out)
 	}
 	return string(out), nil
 }

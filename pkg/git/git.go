@@ -4,7 +4,6 @@ package git
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 )
 
 // gitBin is the resolved path to the git binary. Resolved once on first use.
@@ -162,37 +160,22 @@ func cloneArgs(url, dest string, opts CloneOpts) []string {
 func CloneWithProgress(url, dest string, opts CloneOpts, onProgress func(CloneProgress)) error {
 	args := cloneArgs(url, dest, opts)
 
-	cmd := exec.Command(GitBin(), args...)
-	cmd.Dir = "."
-	cmd.Env = nonInteractiveEnv()
-	cmd.Stdout = nil
-	HideWindow(cmd)
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return newGitError("clone", err, nil)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return newGitError("clone", err, nil)
-	}
-
-	// Git progress uses \r for in-place updates within a line.
-	// Read stderr splitting on both \r and \n. The tail is kept only to
-	// classify a failure; it never reaches the error text.
-	tail := &tailBuffer{max: maxStderr}
+	// Git progress uses \r for in-place updates within a line. The reader
+	// splits what git prints to stderr, as it prints it, on both \r and \n.
+	pr, pw := io.Pipe()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		parseProgress(io.TeeReader(stderr, tail), onProgress)
+		parseProgress(pr, onProgress)
+		_, _ = io.Copy(io.Discard, pr) // never block git on a reader that stopped
 	}()
-
-	// Wait closes the pipe, which ends the reader even when a helper that
-	// git started still holds the write end.
-	err = cmd.Wait()
+	res, err := Default.Run(context.Background(), Request{Dir: ".", Args: args, Stderr: pw})
+	_ = pw.Close()
 	<-done
 	if err != nil {
-		return newGitError("clone", err, tail.Bytes())
+		// What git printed only classifies the failure; it never reaches
+		// the error text.
+		return failure(context.Background(), "clone", err, res, res.Stderr)
 	}
 	return nil
 }
@@ -257,13 +240,10 @@ func PushMirror(repoPath, url string, extraConfig []string) (string, error) {
 	}
 	args = append(args, "push", "--mirror", url)
 
-	cmd := exec.Command(GitBin(), args...)
-	cmd.Dir = repoPath
-	cmd.Env = nonInteractiveEnv()
-	HideWindow(cmd)
-	out, err := cmd.CombinedOutput()
+	res, err := Default.Run(context.Background(), Request{Dir: repoPath, Args: args})
+	out := res.combined()
 	if err != nil {
-		return string(out), newGitError("push", err, out)
+		return string(out), failure(context.Background(), "push", err, res, out)
 	}
 	return string(out), nil
 }
@@ -276,18 +256,12 @@ func FetchTagsAndPrune(repoPath string) error {
 }
 
 // PullQuietContext runs git pull --ff-only, capturing output instead of
-// forwarding it, and stops when ctx is cancelled. It asks git to stop with an
-// interrupt, so git removes its lock files, and only kills it if it has not
-// exited two seconds later.
+// forwarding it, and stops when ctx is cancelled: the runner asks git to stop
+// with an interrupt, so git removes its lock files.
 func PullQuietContext(ctx context.Context, repoPath string) error {
-	cmd := exec.CommandContext(ctx, GitBin(), "pull", "--ff-only")
-	cmd.Dir = repoPath
-	cmd.Env = nonInteractiveEnv()
-	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
-	cmd.WaitDelay = 2 * time.Second
-	HideWindow(cmd)
-	if _, err := cmd.Output(); err != nil {
-		return newGitErrorContext(ctx, "pull", err, nil)
+	res, err := Default.Run(ctx, Request{Dir: repoPath, Args: []string{"pull", "--ff-only"}})
+	if err != nil {
+		return failure(ctx, "pull", err, res, res.Stderr)
 	}
 	return nil
 }
@@ -430,8 +404,7 @@ func ConfigSet(repoPath, key, value string) error {
 func ConfigUnsetAll(repoPath, key string) error {
 	err := run(repoPath, "config", "--unset-all", key)
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() == 5 {
+		if exitCode(err) == 5 {
 			return nil
 		}
 	}
@@ -472,8 +445,7 @@ func GlobalConfigGetAll(key string) ([]string, error) {
 	out, err := output(".", "config", "--global", "--get-all", key)
 	if err != nil {
 		// git config --get-all exits with code 1 when the key does not exist.
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		if exitCode(err) == 1 {
 			return nil, nil
 		}
 		return nil, err
@@ -490,8 +462,7 @@ func GlobalConfigUnset(key string) error {
 	err := run(".", "config", "--global", "--unset", key)
 	if err != nil {
 		// git config --unset exits with code 5 if the key is not found.
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() == 5 {
+		if exitCode(err) == 5 {
 			return nil
 		}
 	}
@@ -770,11 +741,8 @@ func isSquashMerged(repoPath, baseBranch, branch string) bool {
 	}
 	synthetic := strings.TrimSpace(commitOut)
 
-	cmd := exec.Command(GitBin(), "merge-base", "--is-ancestor", synthetic, baseBranch)
-	cmd.Dir = repoPath
-	cmd.Env = nonInteractiveEnv()
-	HideWindow(cmd)
-	return cmd.Run() == nil
+	_, err = Default.Run(context.Background(), Request{Dir: repoPath, Args: []string{"merge-base", "--is-ancestor", synthetic, baseBranch}})
+	return err == nil
 }
 
 // --- Internal helpers ---
@@ -782,44 +750,40 @@ func isSquashMerged(repoPath, baseBranch, branch string) bool {
 // nonInteractiveEnv returns Environ() with flags that prevent any interactive
 // credential prompt (browser popup, terminal prompt). Git operations that need
 // credentials will fail silently rather than blocking the GUI.
+//
+// It also makes git speak English. The window never shows what git prints;
+// the classifiers in errors.go read it, and they know git's English
+// messages. Without this a translated git (a Spanish system, say) would turn
+// every failure into "unknown".
 func nonInteractiveEnv() []string {
 	return append(Environ(),
 		"GIT_TERMINAL_PROMPT=0",
 		"GCM_INTERACTIVE=never",
 		"GIT_ASKPASS=",
+		"LC_ALL=en_US.UTF-8",
+		"LANG=en_US.UTF-8",
+		"LANGUAGE=en",
 	)
 }
 
-// run executes a git command in the given directory. Output is
-// captured (not forwarded to os.Stdout/os.Stderr) so the helper is
-// safe to call from a GUI subsystem process on Windows — setting
-// Stdout = os.Stdout there fails CreateProcess with "The request is
-// not supported." because the GUI has no valid stdio handles.
-// The error is a *GitError: it names the subcommand and why it failed, and
-// never carries the arguments or what git printed.
+// run executes a git command in the given directory and discards what it
+// prints. The error is a *GitError: it names the subcommand and why it
+// failed, and never carries the arguments or what git printed.
 func run(dir string, args ...string) error {
-	cmd := exec.Command(GitBin(), args...)
-	cmd.Dir = dir
-	cmd.Env = nonInteractiveEnv()
-	HideWindow(cmd)
-	out, err := cmd.CombinedOutput()
+	res, err := Default.Run(context.Background(), Request{Dir: dir, Args: args})
 	if err != nil {
-		return newGitError(opName(args), err, out)
+		return failure(context.Background(), opName(args), err, res, res.combined())
 	}
 	return nil
 }
 
 // output executes a git command and returns its stdout.
 func output(dir string, args ...string) (string, error) {
-	cmd := exec.Command(GitBin(), args...)
-	cmd.Dir = dir
-	cmd.Env = nonInteractiveEnv()
-	HideWindow(cmd)
-	out, err := cmd.Output()
+	res, err := Default.Run(context.Background(), Request{Dir: dir, Args: args})
 	if err != nil {
-		return "", newGitError(opName(args), err, nil)
+		return "", failure(context.Background(), opName(args), err, res, res.Stderr)
 	}
-	return string(out), nil
+	return string(res.Stdout), nil
 }
 
 // parseStatus parses git status --porcelain=v2 --branch output.
