@@ -46,6 +46,7 @@ func installEntries(extractDir, installDir string, keep func(name string) bool) 
 		return fmt.Errorf("reading extracted files: %w", err)
 	}
 
+	ops := realReplaceOps()
 	installed := 0
 	for _, entry := range entries {
 		if !keep(entry.Name()) {
@@ -58,14 +59,14 @@ func installEntries(extractDir, installDir string, keep func(name string) bool) 
 			if !strings.HasSuffix(entry.Name(), ".app") {
 				continue
 			}
-			if err := replaceBundle(src, dst); err != nil {
+			if err := replaceBundle(src, dst, ops); err != nil {
 				return fmt.Errorf("replacing %s: %w", entry.Name(), err)
 			}
 			installed++
 			continue
 		}
 
-		if err := replaceExecutable(src, dst); err != nil {
+		if err := replaceExecutable(src, dst, ops); err != nil {
 			return fmt.Errorf("replacing %s: %w", entry.Name(), err)
 		}
 		installed++
@@ -115,28 +116,44 @@ func bundleOf(exePath string) string {
 	return ""
 }
 
+// replaceOps are the file operations of the replace steps. They are passed
+// in, with the real ones by default, so a test can make one step fail and
+// check that the installed app is still there.
+type replaceOps struct {
+	rename  func(oldpath, newpath string) error
+	copyDir func(src, dst string) error
+	// copyFile writes the new binary where the platform cannot rename it
+	// into place (Windows). Nil means the platform's own copy.
+	copyFile func(src, dst string) error
+}
+
+func realReplaceOps() replaceOps {
+	return replaceOps{rename: os.Rename, copyDir: copyDir}
+}
+
 // replaceBundle swaps the bundle at dst for src. The new bundle is staged
 // next to dst and renamed into place, so a failed copy never leaves a
 // half-written app behind.
-func replaceBundle(src, dst string) error {
+func replaceBundle(src, dst string, ops replaceOps) error {
 	staged := dst + ".new"
 	old := dst + ".old"
 	os.RemoveAll(staged)
 	os.RemoveAll(old)
 
-	if err := copyDir(src, staged); err != nil {
+	if err := ops.copyDir(src, staged); err != nil {
 		os.RemoveAll(staged)
 		return err
 	}
 	if _, err := os.Lstat(dst); err == nil {
-		if err := os.Rename(dst, old); err != nil {
+		if err := ops.rename(dst, old); err != nil {
 			os.RemoveAll(staged)
 			return err
 		}
 	}
-	if err := os.Rename(staged, dst); err != nil {
-		// Put the previous bundle back.
-		os.Rename(old, dst)
+	if err := ops.rename(staged, dst); err != nil {
+		// Put the previous bundle back and drop the staged copy.
+		_ = ops.rename(old, dst)
+		os.RemoveAll(staged)
 		return err
 	}
 	os.RemoveAll(old)

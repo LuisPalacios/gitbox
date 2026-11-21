@@ -1,6 +1,7 @@
 package update
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -120,5 +121,120 @@ func TestInstallEntries_SelfOnly(t *testing.T) {
 	}
 	if got := readFile(t, filepath.Join(install, "GitboxApp")); got != "v2-gui" {
 		t.Errorf("gui = %q, want v2-gui (a CLI update must not touch the GUI)", got)
+	}
+}
+
+var errReplaceInjected = errors.New("injected replace failure")
+
+// failingReplaceOps fails the step that puts the new version in place: the
+// rename into dst on Unix and for bundles, the copy on Windows. Restoring
+// the previous version still works.
+func failingReplaceOps(dst string) replaceOps {
+	ops := realReplaceOps()
+	ops.rename = func(oldpath, newpath string) error {
+		if newpath == dst && oldpath != dst+".old" {
+			return errReplaceInjected
+		}
+		return os.Rename(oldpath, newpath)
+	}
+	ops.copyFile = func(_, to string) error {
+		// Leave a half-written file behind, as a copy cut short does.
+		_ = os.WriteFile(to, []byte("partial"), 0o755)
+		return errReplaceInjected
+	}
+	return ops
+}
+
+// names returns the entries of dir, sorted.
+func names(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, e := range entries {
+		out = append(out, e.Name())
+	}
+	return out
+}
+
+// A replace that fails at its last step must leave the installed binary as
+// it was, with nothing half-written next to it.
+func TestReplaceExecutable_FailureKeepsThePreviousBinary(t *testing.T) {
+	install, extracted := t.TempDir(), t.TempDir()
+	dst := filepath.Join(install, "GitboxApp")
+	src := filepath.Join(extracted, "GitboxApp")
+	if err := os.WriteFile(dst, []byte("old version"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(src, []byte("new version"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := replaceExecutable(src, dst, failingReplaceOps(dst)); !errors.Is(err, errReplaceInjected) {
+		t.Fatalf("replaceExecutable = %v, want the injected failure", err)
+	}
+	if got, _ := os.ReadFile(dst); string(got) != "old version" {
+		t.Errorf("installed binary = %q, want the previous version untouched", got)
+	}
+	if got := names(t, install); len(got) != 1 || got[0] != "GitboxApp" {
+		t.Errorf("install folder holds %v, want only the previous binary", got)
+	}
+
+	// The real operations still replace it.
+	if err := replaceExecutable(src, dst, realReplaceOps()); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(dst); string(got) != "new version" {
+		t.Errorf("installed binary = %q after a clean replace", got)
+	}
+}
+
+func TestReplaceBundle_FailureKeepsThePreviousBundle(t *testing.T) {
+	install, extracted := t.TempDir(), t.TempDir()
+	dst := filepath.Join(install, "GitboxApp.app")
+	src := filepath.Join(extracted, "GitboxApp.app")
+	for path, content := range map[string]string{
+		filepath.Join(dst, "Contents", "version"): "old version",
+		filepath.Join(src, "Contents", "version"): "new version",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	version := filepath.Join(dst, "Contents", "version")
+
+	if err := replaceBundle(src, dst, failingReplaceOps(dst)); !errors.Is(err, errReplaceInjected) {
+		t.Fatalf("replaceBundle = %v, want the injected failure", err)
+	}
+	if got, _ := os.ReadFile(version); string(got) != "old version" {
+		t.Errorf("installed bundle holds %q, want the previous version back in place", got)
+	}
+	if got := names(t, install); len(got) != 1 || got[0] != "GitboxApp.app" {
+		t.Errorf("install folder holds %v, want only the previous bundle", got)
+	}
+
+	// A failed staging copy leaves the installed bundle alone too.
+	ops := realReplaceOps()
+	ops.copyDir = func(_, to string) error {
+		_ = os.MkdirAll(to, 0o755)
+		return errReplaceInjected
+	}
+	if err := replaceBundle(src, dst, ops); !errors.Is(err, errReplaceInjected) {
+		t.Fatalf("replaceBundle = %v, want the injected copy failure", err)
+	}
+	if got := names(t, install); len(got) != 1 {
+		t.Errorf("install folder holds %v after a failed staging copy", got)
+	}
+
+	if err := replaceBundle(src, dst, realReplaceOps()); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(version); string(got) != "new version" {
+		t.Errorf("installed bundle holds %q after a clean replace", got)
 	}
 }
