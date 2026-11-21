@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"bytes"
 	"maps"
 	"testing"
 
@@ -13,6 +14,7 @@ func FuzzDecodeRoundTrip(f *testing.F) {
 	// and the v2, v3 and v4 migration fixtures.
 	f.Add([]byte{})
 	f.Add([]byte(`{}`))
+	f.Add([]byte(`{"version":5,"global":{"roots":["~/fleet"],"future_flag":{"count":9007199254740993}},"accounts":{},"sources":{}}`))
 	home := f.TempDir()
 	f.Setenv("HOME", home)
 	f.Setenv("USERPROFILE", home)
@@ -38,6 +40,13 @@ func FuzzDecodeRoundTrip(f *testing.F) {
 		}
 		if got := configIntents(after); !maps.Equal(got, want) {
 			t.Fatalf("round-trip changed repository intent:\nbefore: %v\nafter: %v", want, got)
+		}
+		roundTrip, err := config.Marshal(after)
+		if err != nil {
+			t.Fatalf("Marshal reloaded config: %v", err)
+		}
+		if !bytes.Equal(roundTrip, encoded) {
+			t.Fatal("round-trip changed persisted config fields")
 		}
 	})
 }

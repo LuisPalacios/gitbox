@@ -110,6 +110,8 @@ type GlobalConfig struct {
 	// client preferences: see ClientPrefs in prefs.go.
 	ExperimentalRemote bool          `json:"experimental_remote,omitempty"`
 	Remotes            []RemoteEntry `json:"remotes,omitempty"`
+
+	extra extraJSON
 }
 
 // DefaultNestedScanDepth is the depth gitbox descends below a container repo
@@ -306,6 +308,8 @@ type Account struct {
 	DefaultCredentialType string     `json:"default_credential_type,omitempty"`
 	SSH                   *SSHConfig `json:"ssh,omitempty"`
 	GCM                   *GCMConfig `json:"gcm,omitempty"`
+
+	extra extraJSON
 }
 
 // SSHConfig holds SSH authentication settings for an account.
@@ -334,6 +338,8 @@ type Source struct {
 
 	// RepoOrder preserves the JSON key order for deterministic iteration.
 	RepoOrder []string `json:"-"`
+
+	extra extraJSON
 }
 
 // OrderedRepoKeys returns repo keys in JSON order (falling back to map order).
@@ -378,6 +384,8 @@ type Repo struct {
 	// WorkspacePreferred is the file I picked among several. Sync uses it
 	// whenever it is at the root and remembers it while it is missing.
 	WorkspacePreferred string `json:"workspace_preferred,omitempty"`
+
+	extra extraJSON
 }
 
 // EffectiveCredentialType returns the credential type for this repo.

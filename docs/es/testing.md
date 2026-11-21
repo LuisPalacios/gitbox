@@ -50,7 +50,7 @@ Para investigar durante más tiempo selecciono un solo target explícitamente:
 go test ./pkg/config/ -run='^$' -fuzz='^FuzzDecodeRoundTrip$' -fuzztime=1m -parallel=2
 ```
 
-`FuzzDecodeRoundTrip` comprueba la intención de la config migrada, `FuzzStripJSONC` comprueba las propiedades de la eliminación de comentarios y `FuzzRepoPath` comprueba la resolución de rutas dentro de su dominio de entrada seguro documentado; [testing-reference.md](testing-reference.md#propiedades-fuzz) describe las aserciones. Go guarda una entrada que falla en el directorio `testdata/fuzz/` del target e imprime un comando para reproducirla. Conservo la entrada minimizada como semilla de regresión después de corregir su causa; no copio la caché de fuzz al repositorio.
+`FuzzDecodeRoundTrip` comprueba la intención de la config migrada y que la serialización de los campos de extensión conservados sea estable, `FuzzStripJSONC` comprueba las propiedades de la eliminación de comentarios y `FuzzRepoPath` comprueba la resolución de rutas dentro de su dominio de entrada seguro documentado; [testing-reference.md](testing-reference.md#propiedades-fuzz) describe las aserciones. Go guarda una entrada que falla en el directorio `testdata/fuzz/` del target e imprime un comando para reproducirla. Conservo la entrada minimizada como semilla de regresión después de corregir su causa; no copio la caché de fuzz al repositorio.
 
 ## Pre-push hook
 

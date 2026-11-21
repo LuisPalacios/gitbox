@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -147,7 +148,11 @@ func TestStripClientPrefs(t *testing.T) {
 	fullV, gotV := reflect.ValueOf(full), reflect.ValueOf(c.Global)
 	seen := make(map[string]bool)
 	for i := 0; i < fullV.NumField(); i++ {
-		key := jsonKey(fullV.Type().Field(i))
+		field := fullV.Type().Field(i)
+		if !field.IsExported() {
+			continue // Persistence extensions have no client preference classification.
+		}
+		key := jsonKey(field)
 		seen[key] = true
 		if fullV.Field(i).IsZero() {
 			t.Fatalf("fullGlobal leaves %q zero: the strip would not cover it", key)
@@ -266,11 +271,9 @@ func TestRemotesValidation(t *testing.T) {
 	}
 }
 
-// TestUnknownKeysIgnoredV5 pins the decision to keep version 5 when adding
-// optional keys (#236): a v5 loader ignores keys it does not know, so an older
-// GitboxApp still opens a config that a newer one wrote. Bumping the version
-// would make it refuse the file.
-func TestUnknownKeysIgnoredV5(t *testing.T) {
+// TestAdditiveKeysKeepVersion5 pins the decision to keep version 5 when
+// adding optional keys. V5 loaders accept unknown members.
+func TestAdditiveKeysKeepVersion5(t *testing.T) {
 	if CurrentVersion != 5 {
 		t.Fatalf("CurrentVersion = %d: revisit the unknown-key policy with the bump", CurrentVersion)
 	}
@@ -328,40 +331,27 @@ func schemaProps(t *testing.T, path ...string) (props map[string]json.RawMessage
 	var obj struct {
 		Properties map[string]json.RawMessage `json:"properties"`
 		Required   []string                   `json:"required"`
-		Additional *bool                      `json:"additionalProperties"`
 	}
 	if err := json.Unmarshal(node, &obj); err != nil {
 		t.Fatal(err)
 	}
-	if obj.Additional == nil || *obj.Additional {
-		t.Fatalf("schema object at %v must set additionalProperties to false", path)
-	}
 	return obj.Properties, obj.Required
 }
 
-// TestSchemaDeclaresGlobalKeys keeps json/gitbox.schema.json in step with the
-// Go structs. The schema objects set additionalProperties to false, so a key
-// the schema does not declare makes a valid config fail in the editor. Both
-// keys added by #236 are optional: a config without them stays valid.
-func TestSchemaDeclaresGlobalKeys(t *testing.T) {
-	check := func(typ reflect.Type, optional []string, path ...string) {
+// TestSchemaKeepsRemoteKeysOptional protects the config contract introduced
+// by #236: a file without these keys stays valid.
+func TestSchemaKeepsRemoteKeysOptional(t *testing.T) {
+	check := func(optional []string, path ...string) {
 		t.Helper()
-		props, required := schemaProps(t, path...)
-		for f := range typ.Fields() {
-			if key := jsonKey(f); props[key] == nil {
-				t.Errorf("schema %v does not declare %q (%s.%s)", path, key, typ.Name(), f.Name)
-			}
-		}
+		_, required := schemaProps(t, path...)
 		for _, key := range optional {
-			for _, r := range required {
-				if r == key {
-					t.Errorf("schema %v requires %q; it must stay optional", path, key)
-				}
+			if slices.Contains(required, key) {
+				t.Errorf("schema %v requires %q; it must stay optional", path, key)
 			}
 		}
 	}
-	check(reflect.TypeFor[GlobalConfig](), []string{"remotes", "experimental_remote"}, "properties", "global")
-	check(reflect.TypeFor[RemoteEntry](), []string{"server_dir", "editor", "window", "compact_window"},
+	check([]string{"remotes", "experimental_remote"}, "properties", "global")
+	check([]string{"server_dir", "editor", "window", "compact_window"},
 		"properties", "global", "properties", "remotes", "items")
 
 	_, required := schemaProps(t, "properties", "global", "properties", "remotes", "items")

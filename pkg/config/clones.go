@@ -60,11 +60,25 @@ func (c *Config) Clone() (*Config, error) {
 	if err := json.Unmarshal(data, &out); err != nil {
 		return nil, err
 	}
+	// The ordinary JSON copy excludes persistence-only extensions. Strings
+	// are immutable, so copying each extension keeps the clone detached.
+	out.Global.extra = c.Global.extra
+	for key, account := range c.Accounts {
+		cloned := out.Accounts[key]
+		cloned.extra = account.extra
+		out.Accounts[key] = cloned
+	}
 	out.SourceOrder = append([]string(nil), c.SourceOrder...)
 	out.MirrorOrder = append([]string(nil), c.MirrorOrder...)
 	for key, src := range c.Sources {
 		dst := out.Sources[key]
 		dst.RepoOrder = append([]string(nil), src.RepoOrder...)
+		dst.extra = src.extra
+		for repoKey, repo := range src.Repos {
+			cloned := dst.Repos[repoKey]
+			cloned.extra = repo.extra
+			dst.Repos[repoKey] = cloned
+		}
 		out.Sources[key] = dst
 	}
 	for key, m := range c.Mirrors {

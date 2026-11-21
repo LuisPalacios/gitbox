@@ -1,0 +1,37 @@
+{
+    "version": 4,
+    "accounts": {
+        "sample": {
+            "provider": "github",
+            "url": "https://example.org",
+            "username": "user",
+            "name": "Fixture user",
+            "email": "user@example.org"
+        }
+    },
+    "sources": {
+        "sample": {
+            "account": "sample",
+            "folder": "projects",
+            "root": "~/other",
+            "repos": {
+                "org/repo": {
+                    "name": "Fixture repo",
+                    "clone_folder": "custom-repo"
+                }
+            }
+        }
+    },
+    "global": {
+        "roots": [
+            "~/fleet",
+            "~/other"
+        ]
+    },
+    "workspaces": {
+        "retired": {
+            "type": "codeWorkspace",
+            "members": []
+        }
+    }
+}
