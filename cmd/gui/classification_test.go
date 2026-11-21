@@ -106,10 +106,22 @@ func TestEveryAppMethodClassified(t *testing.T) {
 	}
 }
 
+// eventRelayFile holds the one Emit call whose name is not a literal: the
+// relay of the events a gitbox-server sent. It checks each name against
+// eventClass before it emits, so it can only repeat a name that some other
+// call site emits with a literal.
+const eventRelayFile = "backend_remote.go"
+
 // emittedEventNames walks the non-test Go files of this package, under every
 // build tag, and returns the literal first argument of each Emit call.
 func emittedEventNames(t *testing.T) map[string][]string {
 	t.Helper()
+	relays := 0
+	defer func() {
+		if relays != 1 {
+			t.Errorf("%s has %d Emit calls with a name that is not a literal, want exactly the relay", eventRelayFile, relays)
+		}
+	}()
 	files, err := filepath.Glob("*.go")
 	if err != nil {
 		t.Fatal(err)
@@ -140,6 +152,10 @@ func emittedEventNames(t *testing.T) map[string][]string {
 			}
 			lit, ok := call.Args[0].(*ast.BasicLit)
 			if !ok || lit.Kind != token.STRING {
+				if file == eventRelayFile {
+					relays++
+					return true
+				}
 				t.Errorf("%s: the event name passed to Emit must be a string literal", pos)
 				return true
 			}

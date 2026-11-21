@@ -52,6 +52,16 @@ npm run build
 
 Once the app is built, `GitboxApp --version` prints the version and exits.
 
+`gitbox-server`, the backend that remote mode runs on another host, is the same package with a build tag and no cgo, so it cross-compiles from any machine and needs neither Wails nor the frontend:
+
+```bash
+CGO_ENABLED=0 go build -tags gitboxserver -o gitbox-server ./cmd/gui
+./gitbox-server --version     # "<version> <commit>"
+./gitbox-server --doctor      # JSON report about this host
+```
+
+`gitbox-server serve --stdio` speaks a binary-framed protocol on stdin and stdout, so I drive it from a test instead of typing at it: `TestGitboxServerBinary` in `cmd/gui` builds the binary, starts it as a separate process and calls it with the real client. [architecture.md](architecture.md#server-and-protocol) describes the protocol.
+
 ### Design rules
 
 These rules hold for every change. [architecture.md](architecture.md) explains the rest of the design.
@@ -62,6 +72,7 @@ These rules hold for every change. [architecture.md](architecture.md) explains t
 - **No console flash on Windows.** Every `exec.Command` in `cmd/gui/` calls `git.HideWindow(cmd)` before it runs.
 - **Every entry point is classified.** A new `App` method or event needs a row in `cmd/gui/classification.go`; a method that does work also goes on `Backend` (see [Backend seam](architecture.md#backend-seam)).
 - **Wails imports stay in `!gitboxserver` files.** Code that calls the Wails runtime belongs in `shell.go` or another file with `//go:build !gitboxserver`, so the server build stays free of Wails.
+- **The server answers a closed list.** A `Backend` method reaches a remote client only through `servedMethods` in `cmd/gui/server.go`, together with a row in the table of `TestBackendContract`. A method that changes state on the host waits for the validation of its parameters.
 
 ---
 
@@ -86,7 +97,7 @@ Before opening a PR I run every code checker in one pass:
 ./scripts/health.sh -v           # every finding instead of the first 15
 ```
 
-It is read-only and exits non-zero when any check reports a finding. Go checks: `gofmt -s`, `go vet`, a CGO-off compile of the `gitboxserver` build of `cmd/gui`, staticcheck, modernize, govulncheck, deadcode (with an allowlist for functions kept on purpose) and `go test -short`. Frontend checks: pure clone-tree regressions (`npm test`), `svelte-check` (unused locals and parameters fail through `noUnusedLocals`/`noUnusedParameters`), warnings printed by `npm run build` (the same Svelte diagnostics CI shows in its build step), install warnings from a clean `npm ci` in a scratch copy (deprecated packages, install scripts not covered by `allowScripts`), and `npm audit` (with an allowlist, `NPM_AUDIT_ALLOW`, for advisories with no fix that never reach the binary; a listed advisory that stops being reported fails the check). The `npm ci` check needs npm 11.19 or newer. Repo checks: shellcheck on the shell scripts, actionlint on the workflows, markdownlint with the read-only `fixing-markdown` skill config, and the agent harness check, which runs the engine's tests and fails when a rendered harness file drifts from its master in `ai/`.
+It is read-only and exits non-zero when any check reports a finding. Go checks: `gofmt -s`, `go vet`, a CGO-off compile of the `gitboxserver` build of `cmd/gui` for every OS on amd64 and arm64, staticcheck, modernize, govulncheck, deadcode (over both programs, GitboxApp and `gitbox-server`, reporting what neither reaches, with an allowlist for functions kept on purpose) and `go test -short`. Frontend checks: pure clone-tree regressions (`npm test`), `svelte-check` (unused locals and parameters fail through `noUnusedLocals`/`noUnusedParameters`), warnings printed by `npm run build` (the same Svelte diagnostics CI shows in its build step), install warnings from a clean `npm ci` in a scratch copy (deprecated packages, install scripts not covered by `allowScripts`), and `npm audit` (with an allowlist, `NPM_AUDIT_ALLOW`, for advisories with no fix that never reach the binary; a listed advisory that stops being reported fails the check). The `npm ci` check needs npm 11.19 or newer. Repo checks: shellcheck on the shell scripts, actionlint on the workflows, markdownlint with the read-only `fixing-markdown` skill config, and the agent harness check, which runs the engine's tests and fails when a rendered harness file drifts from its master in `ai/`.
 
 I enable bounded mutation passes with `HEALTH_FUZZ=1 ./scripts/health.sh` (10 seconds per target, two workers); `HEALTH_FUZZ=1 ./scripts/health.sh fuzz` selects just fuzzing. The Linux PR health job enables the flag. Default runs execute only the checked-in seeds through `go test -short`. A fuzz failure writes its minimized reproducer to `testdata/fuzz/`; see [testing.md](testing.md#fuzz-tests).
 

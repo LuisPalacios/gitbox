@@ -111,7 +111,7 @@ Los métodos LOCAL de preferencias nunca preguntan al backend. Los MIXED reparte
 
 Un servidor usa la otra mitad de la frontera: `config.StripClientPrefs` quita las claves de cliente de lo que envía, y `config.PreserveClientPrefs` conserva las que hay en disco cuando guarda, de modo que un host que también ejecuta GitboxApp en local mantiene su tema, sus editores y la geometría de su ventana.
 
-`gitbox-server`, el proceso que el modo remoto ejecuta en el otro host, es este mismo paquete construido con `-tags gitboxserver` y `CGO_ENABLED=0`. Un segundo binario no puede importar `package main`, así que un build tag es la forma de que el servidor reutilice el código del backend y sus DTOs. Cada archivo que importa Wails lleva `//go:build !gitboxserver` (`main.go`, `shell.go`, `events_wails.go`), un test de guarda lo impone, y la comprobación de salud compila el build del servidor para Linux, macOS y Windows. Hoy ese build es un marcador que termina.
+`gitbox-server`, el proceso que el modo remoto ejecuta en el otro host, es este mismo paquete construido con `-tags gitboxserver` y `CGO_ENABLED=0`. Un segundo binario no puede importar `package main`, así que un build tag es la forma de que el servidor reutilice el código del backend y sus DTOs. Cada archivo que importa Wails lleva `//go:build !gitboxserver` (`main.go`, `shell.go`, `events_wails.go`), un test de guarda lo impone, y la comprobación de salud compila el build del servidor para Linux, macOS y Windows en amd64 y arm64. [Servidor y protocolo](#servidor-y-protocolo) describe lo que sirve.
 
 El arranque devuelve la config, las preferencias, el estado de plegado y la anidación derivada de las rutas en una única instantánea independiente. El frontend la renderiza antes de que llegue el estado local y muestra indicadores de espera hasta que termina la comprobación o el fetch. Los hijos de otros sources se quedan bajo sus contenedores, pero conservan su propio source para el estado, las acciones y la propiedad. La detección de editores y perfiles de terminal se ejecuta fuera del bloqueo de config y se combina con los ajustes actuales, así que las ediciones concurrentes se conservan.
 
@@ -154,6 +154,28 @@ Un texto de error que llega a la ventana, a un evento o al archivo de config nun
 `Hint` es una clave de catálogo, no prosa: `error.git.<code>` o `error.provider.<class>`, cada una con su entrada en inglés y en español en `i18n.ts`. Los campos que llevan errores siguen siendo cadenas, así que el frontend muestra hoy `Detail`.
 
 El frontend nunca parsea ese texto. Donde necesita saber qué ha pasado, el backend lo dice como dato: un `fetch:done` fallido lleva `code`, `host` (el servidor al que git no pudo llegar, un nombre de host sin más tomado de `GitError.Host`) y `refusedFast` junto a `error`. La tarjeta de resultado de Fetch all agrupa los servidores inalcanzables por esos campos y explica un fallo clasificado con la entrada de catálogo de su código.
+
+### Servidor y protocolo
+
+`gitbox-server` ejecuta el backend en otro host y lo sirve por su stdin y su stdout, así que cualquier cosa que transporte dos flujos de bytes puede conectarle una ventana. El modo remoto los llevará por SSH. Esa conexión todavía no existe: nada selecciona `RemoteBackend` fuera de las pruebas, y la app se comporta como antes con o sin `--experimental-remote`.
+
+**Comandos.** `gitbox-server serve --stdio [--client-id <id>]` sirve a un cliente hasta que su entrada termina. `gitbox-server --version` imprime `<version> <commit>`. `gitbox-server --doctor` imprime un informe JSON sobre el host: SO, arquitectura, home, ruta de la config, si la carpeta de config acepta archivos nuevos y los deja ejecutarse, la versión de git y la auditoría de la carpeta de credenciales. Stdout lleva el protocolo y nada más; el texto para una persona va a stderr. El código de salida es 0 para un final limpio, 1 para un fallo, 2 para un uso incorrecto y 3 para un cliente de otro build.
+
+**Tramas.** `pkg/rpc` envía cada mensaje como un objeto JSON-RPC 2.0 tras la cabecera del protocolo base de LSP: `Content-Length: N`, una línea en blanco y N bytes. Una trama contiene como máximo 16 MiB y sus cabeceras 1 KiB. Una cabecera mal formada cierra la conexión; ninguno de los dos lados intenta encontrar la trama siguiente.
+
+**Handshake.** El servidor escribe cuatro bytes mágicos (`00 FE 67 62`) y un saludo con su versión, commit, SO, arquitectura e id de proceso. Una shell de login puede imprimir antes un banner, así que el cliente descarta todo lo anterior a la magia, hasta 1 MiB, y falla con `banner_overflow` a partir de ahí. El cliente responde con su propia versión y commit. Salvo que ambos coincidan exactamente, el servidor rechaza con `version_mismatch` y termina.
+
+**Peticiones.** El servidor responde a una lista cerrada de métodos, `servedMethods` en `cmd/gui/server.go`; cualquier otro nombre falla como `unsupported`. Hoy la lista contiene seis métodos de solo lectura: `GetConfig`, `GetAllStatus`, `ListRoots`, `GetConfigPath`, `IsFirstRun` y `SuggestAccountKey`. Crece fase a fase, cada método con las comprobaciones que sus parámetros necesitan, y una prueba falla cuando un método que cambia estado en el host entra en la lista antes de eso. Los parámetros son posicionales y los lotes se rechazan.
+
+**Cancelación y apagado.** `$/cancelRequest` responde al momento a la petición cancelada y descarta su resultado tardío. Los métodos de `Backend` no reciben contexto, así que el trabajo en sí se detiene cuando la conexión termina: el final de la entrada del servidor es su única señal de apagado. Cancela todo lo que está en curso, lo que llega a los procesos git y a lo que arrancaron, espera cinco segundos como máximo y termina.
+
+**Latido y repeticiones.** El cliente envía `$/ping` cada 10 segundos y declara el enlace muerto tras tres fallos; sus llamadas pendientes fallan como `disconnected`. Una petición puede llevar `meta.requestId`: el servidor recuerda los últimos 256 de la sesión y responde a una repetición con el resultado guardado en lugar de ejecutarla otra vez. `RemoteBackend` envía uno con cada método clasificado como mutación.
+
+**Eventos.** Cada evento del backend cruza como una notificación `event` con su nombre y su payload. Los eventos `*:progress` se agrupan en uno por operación cada 100 ms, conservando el último. La cola de salida contiene 1024 mensajes; cuando se llena, el servidor descarta progreso, nunca un evento `*:done` ni una respuesta.
+
+**Errores y confianza.** Un fallo cruza como un `UserError` construido por la misma frontera `toUserError` que usa la ventana, así que ninguna salida de git, URL o token llega al cable. Aun así el cliente trata al servidor como no fiable: los resultados se decodifican en los tipos propios del método, el texto de error pasa otra vez por la limpieza, un código o un hint se conserva solo cuando parece un identificador, y un evento con un nombre que este build no emite se descarta.
+
+**Lado cliente.** `RemoteBackend` en `cmd/gui/backend_remote.go` implementa `Backend` con una línea por método, cada una llamando al método del servidor del mismo nombre. Una llamada puede durar lo que dure el trabajo que pide (`cmd/gui/limits.go`) más cinco segundos. Un método sin error que devolver responde su valor cero y guarda el fallo en `LastError`. `GetAppVersion` es siempre la versión del propio cliente; `StartupSnapshot.ServerVersion` lleva la del servidor, tomada del handshake, y está vacía en una ventana local.
 
 ### pkg/ops — operaciones de aplicación
 

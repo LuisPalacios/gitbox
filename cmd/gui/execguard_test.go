@@ -21,6 +21,7 @@ var execAllowed = map[string]string{
 	"pkg/update/relaunch.go":     "relaunches the app after an update",
 	"cmd/gui/app.go":             "opens files and folders with the system and launches editors",
 	"cmd/gui/profiles.go":        "launches terminals and shells",
+	"cmd/gui/server.go":          "gitbox-server --doctor runs a probe file to see whether the config folder allows execution",
 }
 
 // TestProcessesStartOnlyWhereAllowed fails when code outside the list starts

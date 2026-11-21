@@ -52,6 +52,16 @@ npm run build
 
 Una vez construida la app, `GitboxApp --version` imprime la versión y sale.
 
+`gitbox-server`, el backend que el modo remoto ejecuta en otro host, es el mismo paquete con un build tag y sin cgo, así que hace cross-compile desde cualquier máquina y no necesita ni Wails ni el frontend:
+
+```bash
+CGO_ENABLED=0 go build -tags gitboxserver -o gitbox-server ./cmd/gui
+./gitbox-server --version     # "<version> <commit>"
+./gitbox-server --doctor      # informe JSON sobre este host
+```
+
+`gitbox-server serve --stdio` habla un protocolo de tramas binarias por stdin y stdout, así que lo manejo desde una prueba en lugar de escribirle a mano: `TestGitboxServerBinary` en `cmd/gui` construye el binario, lo arranca como un proceso aparte y lo llama con el cliente real. [architecture.md](architecture.md#servidor-y-protocolo) describe el protocolo.
+
 ### Reglas de diseño
 
 Estas reglas se cumplen en cada cambio. [architecture.md](architecture.md) explica el resto del diseño.
@@ -62,6 +72,7 @@ Estas reglas se cumplen en cada cambio. [architecture.md](architecture.md) expli
 - **Sin console flash en Windows.** Cada `exec.Command` en `cmd/gui/` llama a `git.HideWindow(cmd)` antes de ejecutarse.
 - **Cada punto de entrada está clasificado.** Un método o evento nuevo de `App` necesita una fila en `cmd/gui/classification.go`; un método que hace trabajo también va en `Backend` (consulta [Costura del backend](architecture.md#costura-del-backend)).
 - **Los imports de Wails se quedan en archivos `!gitboxserver`.** El código que llama al runtime de Wails va en `shell.go` o en otro archivo con `//go:build !gitboxserver`, para que el build del servidor siga libre de Wails.
+- **El servidor responde a una lista cerrada.** Un método de `Backend` llega a un cliente remoto solo a través de `servedMethods` en `cmd/gui/server.go`, junto con una fila en la tabla de `TestBackendContract`. Un método que cambia estado en el host espera a la validación de sus parámetros.
 
 ---
 
@@ -86,7 +97,7 @@ Antes de abrir un PR ejecuto todos los comprobadores de código de una pasada:
 ./scripts/health.sh -v           # todos los hallazgos en lugar de los 15 primeros
 ```
 
-Es de solo lectura y termina con error cuando alguna comprobación encuentra algo. Comprobaciones de Go: `gofmt -s`, `go vet`, una compilación sin CGO del build `gitboxserver` de `cmd/gui`, staticcheck, modernize, govulncheck, deadcode (con una lista de funciones que se mantienen a propósito) y `go test -short`. Comprobaciones del frontend: regresiones puras del árbol de clones (`npm test`), `svelte-check` (las variables y parámetros sin usar fallan mediante `noUnusedLocals`/`noUnusedParameters`), los warnings que imprime `npm run build` (los mismos diagnósticos de Svelte que CI muestra en su paso de build), los warnings de instalación de un `npm ci` limpio en una copia temporal (paquetes obsoletos, scripts de instalación no cubiertos por `allowScripts`) y `npm audit` (con una lista, `NPM_AUDIT_ALLOW`, para avisos sin corrección que nunca llegan al binario; un aviso de la lista que deja de aparecer hace fallar la comprobación). La comprobación de `npm ci` necesita npm 11.19 o posterior. Comprobaciones del repo: shellcheck en los scripts de shell, actionlint en los workflows, markdownlint con la configuración de solo lectura de la skill `fixing-markdown`, y la comprobación del harness de agentes, que ejecuta las pruebas del motor y falla cuando un archivo renderizado del harness se desvía de su master en `ai/`.
+Es de solo lectura y termina con error cuando alguna comprobación encuentra algo. Comprobaciones de Go: `gofmt -s`, `go vet`, una compilación sin CGO del build `gitboxserver` de `cmd/gui` para cada SO en amd64 y arm64, staticcheck, modernize, govulncheck, deadcode (sobre los dos programas, GitboxApp y `gitbox-server`, informando de lo que ninguno alcanza, con una lista de funciones que se mantienen a propósito) y `go test -short`. Comprobaciones del frontend: regresiones puras del árbol de clones (`npm test`), `svelte-check` (las variables y parámetros sin usar fallan mediante `noUnusedLocals`/`noUnusedParameters`), los warnings que imprime `npm run build` (los mismos diagnósticos de Svelte que CI muestra en su paso de build), los warnings de instalación de un `npm ci` limpio en una copia temporal (paquetes obsoletos, scripts de instalación no cubiertos por `allowScripts`) y `npm audit` (con una lista, `NPM_AUDIT_ALLOW`, para avisos sin corrección que nunca llegan al binario; un aviso de la lista que deja de aparecer hace fallar la comprobación). La comprobación de `npm ci` necesita npm 11.19 o posterior. Comprobaciones del repo: shellcheck en los scripts de shell, actionlint en los workflows, markdownlint con la configuración de solo lectura de la skill `fixing-markdown`, y la comprobación del harness de agentes, que ejecuta las pruebas del motor y falla cuando un archivo renderizado del harness se desvía de su master en `ai/`.
 
 Activo las pasadas de mutaciones limitadas con `HEALTH_FUZZ=1 ./scripts/health.sh` (10 segundos por target, dos workers); `HEALTH_FUZZ=1 ./scripts/health.sh fuzz` selecciona solo fuzzing. El job de salud de PR en Linux activa esta variable. Las ejecuciones predeterminadas solo procesan las semillas versionadas mediante `go test -short`. Un fallo de fuzz escribe su reproducción minimizada en `testdata/fuzz/`; consulta [testing.md](testing.md#pruebas-fuzz).
 
