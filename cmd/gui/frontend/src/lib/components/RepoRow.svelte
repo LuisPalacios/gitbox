@@ -309,13 +309,12 @@
   </span>
 {/snippet}
 
-<!-- The open PR pills (issue #29): mine, and those awaiting my review.
-     Simple and Advanced rows show the same ones. -->
+<!-- Simple shows review requests as text. Advanced shows both PR counts. -->
 {#snippet prBadges()}
   {#if !deleteMode && $prSettings.enabled}
     {@const prSummary = lookupPRSummary($prsByAccount, rowAccountKey, repoName)}
     {@const acctForPRs = $accounts[rowAccountKey]}
-    {#if prSummary.authored.length > 0}
+    {#if !simple && prSummary.authored.length > 0}
       <div class="action-menu-container pr-badge-wrap">
         <button class="pr-badge pr-badge-authored" on:click|stopPropagation={() => togglePRPopover(`${repoKey}|authored`)} title={$t(prSummary.authored.length === 1 ? 'row.prAuthoredOne' : 'row.prAuthored', { n: prSummary.authored.length })}>
           &#128221; {prSummary.authored.length}
@@ -336,8 +335,10 @@
     {/if}
     {#if prSummary.reviewRequested.length > 0}
       <div class="action-menu-container pr-badge-wrap">
-        <button class="pr-badge pr-badge-review" on:click|stopPropagation={() => togglePRPopover(`${repoKey}|review`)} title={$t(prSummary.reviewRequested.length === 1 ? 'row.prReviewOne' : 'row.prReview', { n: prSummary.reviewRequested.length })}>
-          &#128064; {prSummary.reviewRequested.length}
+        <button class="pr-badge" class:pr-badge-review={!simple} class:pr-review-simple={simple}
+          on:click|stopPropagation={() => togglePRPopover(`${repoKey}|review`)}
+          title={simple ? undefined : $t(prSummary.reviewRequested.length === 1 ? 'row.prReviewOne' : 'row.prReview', { n: prSummary.reviewRequested.length })}>
+          {#if simple}{$t('simple.prReview')}{:else}&#128064; {prSummary.reviewRequested.length}{/if}
         </button>
         {#if openPRPopover === `${repoKey}|review`}
           <div transition:fade={{ duration: 80 }}>
@@ -621,6 +622,7 @@
   }
   .pr-badge:hover { background: var(--bg-row-hover); color: var(--text-primary); }
   .pr-badge-authored { color: var(--text-secondary); }
+  .pr-review-simple { background: transparent; color: var(--status-error, #D81E5B); }
   .pr-badge-review {
     color: var(--status-error, #D81E5B);
     border-color: color-mix(in srgb, var(--status-error, #D81E5B) 40%, transparent);

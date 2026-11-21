@@ -123,7 +123,9 @@ En Simple, cada proyecto responde a una pregunta, "¿está a salvo mi trabajo?",
 
 Los nombres se muestran sin el prefijo de la organización; pasa el ratón sobre un nombre para verlo completo. Las filas mantienen los tres [botones de lanzamiento](#acciones-de-clones), y el menú ⋯ ofrece Abrir en la web, la carpeta, los editores, los AI harnesses y **Borrar de este ordenador…**.
 
-Simple oculta el resto: la vista Mirrors, el modo borrar, los botones de vista compacta y de tema (el tema sigue en Ajustes), las insignias de contenedor y de rama, los conteos por delante, por detrás y de cambios, y el botón de fetch de cada fila. Las insignias de tus PR abiertos (📝) y de los PR que esperan tu revisión (👀) aparecen en los dos modos. La barra superior mantiene **Comprobar todo** y **Actualizar todo**. La salud de la cuenta se lee en palabras sencillas, y **Reconectar** aparece cuando una credencial se rompe. Ajustes oculta las filas Configuración, PR / revisiones, Gitignore global y Terminales. La vista compacta es igual en los dos modos.
+Simple oculta el resto: la vista Mirrors, el modo borrar, los botones de vista compacta y de tema (el tema sigue en Ajustes), las insignias de contenedor y de rama, los conteos por delante, por detrás y de cambios, y el botón de fetch de cada fila. La barra superior mantiene **Comprobar todo** y **Actualizar todo**. La salud de la cuenta se lee en palabras sencillas, y **Reconectar** aparece cuando una credencial se rompe. Ajustes oculta las filas Configuración, PR / revisiones, Gitignore global y Terminales. La vista compacta es igual en los dos modos.
+
+Con los indicadores de PR activados, Simple muestra **Revisión pendiente** cuando alguien te pide una revisión. Haz clic en el texto para ver las solicitudes. Avanzado muestra insignias con los conteos de tus PR abiertos (📝) y de los PR que esperan tu revisión (👀).
 
 ### Vista completa
 
@@ -464,7 +466,7 @@ Haz clic en el **icono de engranaje** para abrir el panel de ajustes:
 - **Tema** — Sistema, Claro u Oscuro.
 - **Comprobación periódica** (Simple: **Buscar cambios**) — el intervalo de fetch automático: No, 5m, 15m o 30m.
 - **Ejecutar al inicio** — abre Gitbox al iniciar sesión, donde la plataforma lo permite.
-- **PR / revisiones** — muestra insignias de tus PR abiertos y de los PR que esperan tu revisión, con **Incluir borradores** para contar los PR en borrador.
+- **PR / revisiones** — muestra las solicitudes de revisión en Simple y las insignias con los conteos de tus PR abiertos y de las solicitudes de revisión en Avanzado. Usa **Incluir borradores** para incluir los PR en borrador.
 - **Gitignore global** — la comprobación automática de `~/.gitignore_global` al arrancar (consulta [Aviso de gitignore global](#aviso-de-gitignore-global)).
 - **Comprobación del sistema** — **Ejecutar** abre un informe de cada herramienta externa que usa Gitbox (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add` y `wsl` en Windows): dónde está instalada, su versión y un comando de instalación para cualquier cosa ausente que tu config necesite. Cada herramienta se marca como ok, missing (requerida por tu config) u optional. El informe también lista los hallazgos de permisos del directorio y los archivos de credenciales, con la ruta, el problema y la acción sugerida. **Volver a comprobar** repite ambas comprobaciones sin cambiar permisos.
 - **Terminales** — **Gestor** abre el editor de perfiles de terminal (consulta [Editores y perfiles de terminal](#editores-y-perfiles-de-terminal)).
