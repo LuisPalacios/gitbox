@@ -10,6 +10,11 @@ import (
 	"testing"
 )
 
+// newGitError builds the error of a command that ran without a context.
+func newGitError(op string, err error, output []byte) *GitError {
+	return newGitErrorContext(context.Background(), op, err, output)
+}
+
 // canaryURL carries a token the way a remote URL can. Port 1 on loopback
 // refuses the connection at once, so the commands fail without a network.
 const (

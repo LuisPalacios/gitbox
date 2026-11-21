@@ -220,6 +220,8 @@ I use `IncomingCommits` in `pkg/git/incoming.go` to read `HEAD..@{upstream}` fro
 
 On macOS, `GitBin()` probes the Homebrew paths (`/opt/homebrew/bin/git`, `/usr/local/bin/git`) before falling back to `PATH`, so the GUI finds a GCM-enabled git even with the minimal `PATH` that macOS GUI apps inherit.
 
+Every git process starts in one place: the `Runner` in `pkg/git/runner.go`. A `Request` names the directory, the arguments, the environment policy (`NonInteractive` by default, which also asks git for English so the error classifiers can read its output), optional input and an output bound; a `Result` carries stdout, stderr, the exit status and whether the output was cut. The default runner hides the console window on Windows, and stops a cancelled command with an interrupt, so git removes its lock files, before killing it two seconds later. The package's functions and the few git commands outside it (the credential helper, version detection) all go through `git.Run`, and a guard test fails when any other file starts git. `SetRunnerForTest` replaces the runner in a test; `TestRunnerContract` holds the real runner and the scripted fake to the same table.
+
 ### pkg/status — Sync status checking
 
 Determines the sync state of local clones relative to their upstream. States: Clean, Dirty, Behind, Ahead, Diverged, Conflict, NotCloned, NoUpstream, Error, UpstreamGone, RootOffline. A repo whose clone root is missing reads RootOffline instead of NotCloned (`RepoRootOffline`), so an unplugged drive doesn't look like deleted clones. Priority: Conflict > Dirty > Diverged > Behind > Ahead > NoUpstream > Clean. `ComputeNesting` derives parent → child relationships between container clones and the clones nested inside them. See `pkg/status/status.go`.

@@ -28,7 +28,7 @@ func ApplyElevated(extractDir, installDir, relaunch string) error {
 // replaceExecutable atomically replaces the binary at dst with src.
 // On Unix, rename(2) is atomic within the same filesystem and the OS keeps
 // the old inode open for the running process.
-func replaceExecutable(src, dst string) error {
+func replaceExecutable(src, dst string, ops replaceOps) error {
 	// os.Rename fails across filesystem boundaries (e.g. /tmp → /usr/bin).
 	// Copy to a temp file in the same directory first, then rename.
 	dir := filepath.Dir(dst)
@@ -69,7 +69,7 @@ func replaceExecutable(src, dst string) error {
 	}
 
 	// Atomic rename.
-	if err := os.Rename(tmpPath, dst); err != nil {
+	if err := ops.rename(tmpPath, dst); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("renaming to %s: %w", filepath.Base(dst), err)
 	}

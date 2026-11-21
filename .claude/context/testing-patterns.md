@@ -106,6 +106,13 @@ func TestRenameAccount_Something(t *testing.T) {
 
 Other packages follow the same idea with their own local helpers. Prefer table-driven tests for parsers, URL handling and status logic.
 
+### Replacing git and HTTP in a test
+
+- `git.SetRunnerForTest(t, runner)` replaces the runner that starts every git process, and restores it when the test ends. A runner implements `Run(ctx, git.Request) (git.Result, error)`. Read the exit status from `Result.ExitCode` or `GitError.ExitCode`, never from the error's type. `pkg/git/runner_test.go` has a scripted `fakeRunner` and `TestRunnerContract`, the table that both the real runner and the fake must pass; extend the table when the fake learns something new.
+- `provider.SetDoerForTest(t, doer)` replaces the client that sends every provider API request.
+- Both setters change package state: a test that uses one must not call `t.Parallel()`.
+- File operations with failure tests are passed in instead: `saveWithFiles` in `pkg/config` and `replaceOps` in `pkg/update`. Follow that style for new ones.
+
 ## GUI binding tests (`cmd/gui/`)
 
 Build the `App` struct directly and call the bound method. No Wails runtime, no window:

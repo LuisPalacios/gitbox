@@ -20,14 +20,18 @@ var ErrNeedElevation = errors.New("administrator privileges required")
 // replaceExecutable replaces the binary at dst with src.
 // On Windows, a running exe cannot be deleted but can be renamed.
 // Strategy: rename dst → dst.old, then copy src → dst.
-func replaceExecutable(src, dst string) error {
+func replaceExecutable(src, dst string, ops replaceOps) error {
+	copyNew := ops.copyFile
+	if copyNew == nil {
+		copyNew = copyFile
+	}
 	oldPath := dst + ".old"
 
 	// If dst exists, rename it out of the way.
 	if _, err := os.Stat(dst); err == nil {
 		// Remove any previous .old file first.
 		os.Remove(oldPath)
-		if err := os.Rename(dst, oldPath); err != nil {
+		if err := ops.rename(dst, oldPath); err != nil {
 			if isPermissionError(err) {
 				return fmt.Errorf("%w: cannot write to %s", ErrNeedElevation, filepath.Dir(dst))
 			}
@@ -36,9 +40,10 @@ func replaceExecutable(src, dst string) error {
 	}
 
 	// Copy new binary to dst (can't use Rename across volumes).
-	if err := copyFile(src, dst); err != nil {
-		// Try to restore the old binary on failure.
-		os.Rename(oldPath, dst)
+	if err := copyNew(src, dst); err != nil {
+		// Drop whatever was written and restore the old binary.
+		os.Remove(dst)
+		_ = ops.rename(oldPath, dst)
 		if isPermissionError(err) {
 			return fmt.Errorf("%w: cannot write to %s", ErrNeedElevation, filepath.Dir(dst))
 		}
