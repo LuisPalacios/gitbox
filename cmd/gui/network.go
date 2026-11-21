@@ -13,11 +13,19 @@ import (
 )
 
 // The network guard keeps the app from working against a server it cannot
-// reach. Before any fetch, credential check or upstream probe goes out, one
-// short TCP connect per server decides whether the server is there. When it
-// is not, everything queued for that server stops at once, the window is told
-// (network:state) and a slow background watcher keeps trying. When the server
-// answers again the watcher clears the state and resumes the work by itself.
+// reach. The rule is one: the moment a server stops answering, everything
+// that uses it stops.
+//
+//   - Before any network work starts (fetch, pull, clone, credential check,
+//     upstream, PR and mirror sweeps), one short TCP connect per server
+//     decides whether the server is there. If it is not, the work is not
+//     attempted.
+//   - While work is in flight against a server, a monitor connects to it
+//     every few seconds. If the connect fails, the work in flight is
+//     cancelled and nothing queued for that server starts.
+//   - The window is told (network:state) and shows it with a Retry.
+//   - A slow watcher keeps trying the servers that are down. When one
+//     answers, it clears the state and resumes the work by itself.
 const (
 	// networkDialTimeout bounds the one connect that decides reachability.
 	networkDialTimeout = 3 * time.Second
@@ -25,26 +33,35 @@ const (
 	// was refused at once.
 	networkDialRetry = 500 * time.Millisecond
 	// networkFresh is how long a successful connect vouches for a server, so
-	// a cycle over many clones connects once per server.
+	// a run over many clones connects once per server.
 	networkFresh = 10 * time.Second
+	// networkMonitorInterval is how often a server with work in flight is
+	// checked.
+	networkMonitorInterval = 3 * time.Second
 	// networkWatchInterval is how often the watcher retries servers that are
 	// down: calm, one connect per server.
-	networkWatchInterval = 15 * time.Second
+	networkWatchInterval = 30 * time.Second
 )
 
 // networkGuard is the reachability state. The zero value is ready to use.
 type networkGuard struct {
-	mu       sync.Mutex
-	fresh    map[string]time.Time      // addr -> until when it is known reachable
-	down     map[string]bool           // addrs known unreachable
-	flights  map[string]*networkFlight // connects in progress, shared by callers
-	watching bool
+	mu      sync.Mutex
+	fresh   map[string]time.Time      // addr -> until when it is known reachable
+	down    map[string]bool           // addrs known unreachable
+	flights map[string]*networkFlight // connects in progress, shared by callers
+	// ops are the pieces of work in flight per server; each is cancelled
+	// when its server goes down.
+	ops        map[string]map[*networkOp]bool
+	watching   bool
+	monitoring bool
 }
 
 type networkFlight struct {
 	done chan struct{}
 	ok   bool
 }
+
+type networkOp struct{ cancel context.CancelFunc }
 
 // serverAddr returns the host:port that tells whether an account's server is
 // reachable: the one in its URL, or the proxy's when the environment routes
@@ -102,9 +119,9 @@ func (a *App) dialServer(ctx context.Context, addr string) error {
 }
 
 // reachable reports whether the server at addr answers. A server known to be
-// down answers false at once, without a connect: only the watcher and a new
-// cycle (forgetNetworkDown) try it again. Callers that ask about the same
-// server at the same time share one connect.
+// down answers false at once, without a connect: only the watcher and Retry
+// (forgetNetworkDown) try it again. Callers that ask about the same server
+// at the same time share one connect.
 func (a *App) reachable(ctx context.Context, addr string) bool {
 	if addr == "" {
 		return true
@@ -119,6 +136,29 @@ func (a *App) reachable(ctx context.Context, addr string) bool {
 		g.mu.Unlock()
 		return true
 	}
+	return a.connect(ctx, addr) // unlocks g.mu
+}
+
+// confirmReachable connects to addr now, whatever was known. Work that just
+// failed for lack of a connection calls it, and so does the monitor: a
+// failure here is what stops everything else on that server.
+func (a *App) confirmReachable(ctx context.Context, addr string) bool {
+	if addr == "" {
+		return true
+	}
+	g := &a.network
+	g.mu.Lock()
+	if g.down[addr] {
+		g.mu.Unlock()
+		return false
+	}
+	return a.connect(ctx, addr) // unlocks g.mu
+}
+
+// connect runs the connect to addr, or joins the one in progress, and
+// records the answer. The caller holds g.mu; connect releases it.
+func (a *App) connect(ctx context.Context, addr string) bool {
+	g := &a.network
 	if f := g.flights[addr]; f != nil {
 		g.mu.Unlock()
 		select {
@@ -141,7 +181,7 @@ func (a *App) reachable(ctx context.Context, addr string) bool {
 	g.mu.Lock()
 	delete(g.flights, addr)
 	f.ok = err == nil
-	changed := false
+	var stopped []*networkOp
 	switch {
 	case err == nil:
 		if g.fresh == nil {
@@ -153,20 +193,111 @@ func (a *App) reachable(ctx context.Context, addr string) bool {
 			g.down = make(map[string]bool)
 		}
 		g.down[addr] = true
-		changed = true
+		delete(g.fresh, addr)
+		for op := range g.ops[addr] {
+			stopped = append(stopped, op)
+		}
 	}
 	g.mu.Unlock()
 	close(f.done)
-	if changed {
+	if err != nil && !cancelled {
+		// The server is gone: stop what is in flight against it, tell the
+		// window and start watching for its return.
+		for _, op := range stopped {
+			op.cancel()
+		}
 		a.publishNetworkState()
 		a.watchNetwork()
 	}
 	return f.ok
 }
 
+// beginNetworkOp registers a piece of network work against addr. It returns
+// a context that is cancelled the moment that server goes down, and the
+// function to call when the work ends. ok is false, and nothing is
+// registered, when the server is not reachable: the work must not start.
+func (a *App) beginNetworkOp(parent context.Context, addr string) (ctx context.Context, end func(), ok bool) {
+	if !a.reachable(parent, addr) {
+		return parent, func() {}, false
+	}
+	if addr == "" {
+		return parent, func() {}, true
+	}
+	ctx, cancel := context.WithCancel(parent)
+	op := &networkOp{cancel: cancel}
+	g := &a.network
+	g.mu.Lock()
+	if g.down[addr] { // it went down between the check and now
+		g.mu.Unlock()
+		cancel()
+		return parent, func() {}, false
+	}
+	if g.ops == nil {
+		g.ops = make(map[string]map[*networkOp]bool)
+	}
+	if g.ops[addr] == nil {
+		g.ops[addr] = make(map[*networkOp]bool)
+	}
+	g.ops[addr][op] = true
+	g.mu.Unlock()
+	a.monitorNetwork()
+	return ctx, func() {
+		g.mu.Lock()
+		delete(g.ops[addr], op)
+		if len(g.ops[addr]) == 0 {
+			delete(g.ops, addr)
+		}
+		g.mu.Unlock()
+		cancel()
+	}, true
+}
+
+// monitorNetwork starts the monitor unless it is already running. While any
+// work is in flight it connects every networkMonitorInterval to each server
+// that has some. A failed connect marks the server down, which cancels that
+// work. It ends when no work is in flight.
+func (a *App) monitorNetwork() {
+	g := &a.network
+	a.refreshMu.Lock()
+	defer a.refreshMu.Unlock()
+	g.mu.Lock()
+	if a.refreshClosed || g.monitoring || len(g.ops) == 0 {
+		g.mu.Unlock()
+		return
+	}
+	g.monitoring = true
+	g.mu.Unlock()
+	ctx := a.refreshContextLocked()
+	a.refreshWG.Go(func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(networkMonitorInterval):
+			}
+			g.mu.Lock()
+			addrs := make([]string, 0, len(g.ops))
+			for addr := range g.ops {
+				addrs = append(addrs, addr)
+			}
+			if len(addrs) == 0 {
+				g.monitoring = false
+				g.mu.Unlock()
+				return
+			}
+			g.mu.Unlock()
+			var wg sync.WaitGroup
+			for _, addr := range addrs {
+				wg.Go(func() { a.confirmReachable(ctx, addr) })
+			}
+			wg.Wait()
+		}
+	})
+}
+
 // forgetNetworkDown makes the next reachable call connect again to every
-// server. A fetch cycle starts with it, so Retry and the periodic fetch
-// always test the network afresh. It reports whether any server was down.
+// server. Retry and each new fetch cycle start with it, so they always test
+// the network afresh. It reports whether any server was down.
 func (a *App) forgetNetworkDown() bool {
 	g := &a.network
 	g.mu.Lock()

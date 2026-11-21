@@ -297,3 +297,134 @@ func TestReachableSharesOneConnect(t *testing.T) {
 		}
 	})
 }
+
+// The network can die while work is in flight. The monitor notices within
+// its interval, the fetches that were running are cancelled, nothing else
+// starts, and every clone reports back: the run ends in seconds, not after
+// one timeout per clone.
+func TestFetchAllStopsWhenTheNetworkDiesMidway(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		const clones = 50
+		a, events := refreshTestApp(t, clones)
+		defer a.stopRefresh()
+		var up atomic.Bool
+		up.Store(true)
+		var fetches, cancelled atomic.Int32
+		a.refreshHooks.dial = func(context.Context, string) error {
+			if up.Load() {
+				return nil
+			}
+			return errors.New("network is unreachable")
+		}
+		// Every fetch hangs, as git does on a dead connection, until it is
+		// cancelled.
+		a.refreshHooks.fetch = func(ctx context.Context, _ string) (string, error) {
+			if fetches.Add(1) == 1 {
+				up.Store(false) // the network dies as the first fetch starts
+			}
+			<-ctx.Done()
+			cancelled.Add(1)
+			return "", ctx.Err()
+		}
+
+		started := time.Now()
+		if err := a.FetchAllRepos(); err == nil {
+			t.Fatal("the cycle must fail")
+		}
+		if spent := time.Since(started); spent > networkMonitorInterval+time.Second {
+			t.Errorf("the cycle took %v; it must stop within one monitor interval", spent)
+		}
+		if got := fetches.Load(); got != fetchAllConcurrency || cancelled.Load() != got {
+			t.Errorf("%d fetches started and %d were cancelled; want the %d in flight, all cancelled", got, cancelled.Load(), fetchAllConcurrency)
+		}
+		done := events.named("fetch:done")
+		if len(done) != clones {
+			t.Fatalf("%d of %d clones reported back", len(done), clones)
+		}
+		for _, event := range done {
+			if payload := event.args[0].(map[string]any); payload["skipped"] != true || payload["code"] != "git.offline" {
+				t.Fatalf("a clone stopped by the outage must read unreachable: %v", payload)
+			}
+		}
+		if offline, hosts, _ := networkState(t, events); !offline || len(hosts) != 1 {
+			t.Errorf("the window must be told: offline %v, hosts %v", offline, hosts)
+		}
+	})
+}
+
+// Pull is network work like any other: it does not start without a server,
+// and one in flight stops when the server goes away.
+func TestPullStopsWithoutNetwork(t *testing.T) {
+	pullDone := func(t *testing.T, events *refreshTestEvents) map[string]any {
+		t.Helper()
+		synctest.Wait()
+		done := events.named("pull:done")
+		if len(done) != 1 {
+			t.Fatalf("%d pull:done events, want 1", len(done))
+		}
+		return done[0].args[0].(map[string]any)
+	}
+
+	t.Run("not started", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			a, events := refreshTestApp(t, 1)
+			defer a.stopRefresh()
+			var pulls atomic.Int32
+			a.refreshHooks.dial = func(context.Context, string) error { return errors.New("network is unreachable") }
+			a.refreshHooks.pull = func(context.Context, string) error { pulls.Add(1); return nil }
+
+			a.PullRepo("source-a", "org/repo-0")
+			payload := pullDone(t, events)
+			if pulls.Load() != 0 || payload["skipped"] != true || payload["code"] != "git.offline" || payload["host"] != "example.invalid" {
+				t.Errorf("%d pulls ran; payload %v", pulls.Load(), payload)
+			}
+			if offline, _, _ := networkState(t, events); !offline {
+				t.Error("the window must be told that the server is down")
+			}
+		})
+	})
+
+	t.Run("stopped in flight", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			a, events := refreshTestApp(t, 1)
+			defer a.stopRefresh()
+			var up atomic.Bool
+			up.Store(true)
+			a.refreshHooks.dial = func(context.Context, string) error {
+				if up.Load() {
+					return nil
+				}
+				return errors.New("network is unreachable")
+			}
+			a.refreshHooks.pull = func(ctx context.Context, _ string) error {
+				up.Store(false)
+				<-ctx.Done()
+				return ctx.Err()
+			}
+			a.PullRepo("source-a", "org/repo-0")
+			synctest.Wait()
+			if len(events.named("pull:done")) != 0 {
+				t.Fatal("the pull must still be in flight")
+			}
+			// One monitor interval later the outage has been noticed.
+			time.Sleep(networkMonitorInterval + 100*time.Millisecond)
+			payload := pullDone(t, events)
+			if payload["skipped"] != true || payload["code"] != "git.offline" {
+				t.Errorf("payload %v, want the pull reported as unreachable", payload)
+			}
+		})
+	})
+
+	t.Run("with network", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			a, events := refreshTestApp(t, 1)
+			defer a.stopRefresh()
+			var pulls atomic.Int32
+			a.refreshHooks.pull = func(context.Context, string) error { pulls.Add(1); return nil }
+			a.PullRepo("source-a", "org/repo-0")
+			if payload := pullDone(t, events); pulls.Load() != 1 || payload["error"] != nil {
+				t.Errorf("%d pulls; payload %v", pulls.Load(), payload)
+			}
+		})
+	})
+}

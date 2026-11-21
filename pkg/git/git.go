@@ -3,6 +3,7 @@ package git
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // gitBin is the resolved path to the git binary. Resolved once on first use.
@@ -273,10 +275,21 @@ func FetchTagsAndPrune(repoPath string) error {
 	return run(repoPath, "fetch", "--prune", "--tags")
 }
 
-// PullQuiet runs git pull --ff-only, capturing output instead of forwarding it.
-func PullQuiet(repoPath string) error {
-	_, err := output(repoPath, "pull", "--ff-only")
-	return err
+// PullQuietContext runs git pull --ff-only, capturing output instead of
+// forwarding it, and stops when ctx is cancelled. It asks git to stop with an
+// interrupt, so git removes its lock files, and only kills it if it has not
+// exited two seconds later.
+func PullQuietContext(ctx context.Context, repoPath string) error {
+	cmd := exec.CommandContext(ctx, GitBin(), "pull", "--ff-only")
+	cmd.Dir = repoPath
+	cmd.Env = nonInteractiveEnv()
+	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	cmd.WaitDelay = 2 * time.Second
+	HideWindow(cmd)
+	if _, err := cmd.Output(); err != nil {
+		return newGitErrorContext(ctx, "pull", err, nil)
+	}
+	return nil
 }
 
 // Status runs git status and parses the result.

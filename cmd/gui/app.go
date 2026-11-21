@@ -1650,11 +1650,19 @@ func (a *App) cloneRepoLocal(sourceKey, repoKey, root string) {
 		if err == nil {
 			plan, err = ops.PlanClone(a.cfg, sourceKey, repoKey)
 		}
+		addr := serverAddr(a.cfg.Accounts[a.cfg.Sources[sourceKey].Account])
 		a.mu.Unlock()
 		if err != nil {
 			a.sink().Emit("clone:done", map[string]string{
 				"source": sourceKey, "repo": repoKey, "error": userMsg(err),
 			})
+			return
+		}
+		// A clone does not start against a server that does not answer.
+		if !a.reachable(a.refreshContext(), addr) {
+			result := map[string]any{"source": sourceKey, "repo": repoKey}
+			describeUnreachable(result, addr)
+			a.sink().Emit("clone:done", result)
 			return
 		}
 
@@ -1734,20 +1742,31 @@ func (a *App) pullRepoLocal(sourceKey, repoKey string) {
 		a.maintenanceMu.RLock()
 		var report heal.Report
 		if a.sameRefreshRepo(cfg, sourceKey, repoKey) {
-			report = heal.Repo(cfg, sourceKey, repoKey)
+			repair := heal.Repo
+			if a.refreshHooks != nil && a.refreshHooks.heal != nil {
+				repair = a.refreshHooks.heal
+			}
+			report = repair(cfg, sourceKey, repoKey)
 		} else {
 			report.Warnings = []string{"repository settings changed during pull"}
 		}
 		a.maintenanceMu.RUnlock()
 		var err error
+		addr := serverAddr(cfg.Accounts[src.Account])
 		if len(report.Warnings) > 0 {
 			err = fmt.Errorf("repository maintenance: %s", strings.Join(report.Warnings, "; "))
 		} else {
-			err = git.PullQuiet(path)
+			pull := git.PullQuietContext
+			if a.refreshHooks != nil && a.refreshHooks.pull != nil {
+				pull = a.refreshHooks.pull
+			}
+			err = a.onServer(addr, func(ctx context.Context) error { return pull(ctx, path) })
 		}
 
 		result := map[string]any{"source": sourceKey, "repo": repoKey}
-		if err != nil {
+		if errors.Is(err, errServerUnreachable) {
+			describeUnreachable(result, addr)
+		} else if err != nil {
 			result["error"] = userMsg(err)
 		}
 		a.sink().Emit("pull:done", result)
@@ -2672,7 +2691,11 @@ func (a *App) discoverLocal(accountKey string) {
 			return
 		}
 
-		repos, err := ops.ListRemoteRepos(context.Background(), acct, accountKey)
+		var repos []provider.RemoteRepo
+		err := errServerUnreachable
+		if a.reachable(a.refreshContext(), serverAddr(acct)) {
+			repos, err = ops.ListRemoteRepos(context.Background(), acct, accountKey)
+		}
 		if err != nil {
 			a.sink().Emit("discover:done", map[string]any{
 				"accountKey": accountKey,
@@ -2754,8 +2777,15 @@ func (a *App) getMirrorStatusLocal(mirrorKey string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
+		// A mirror needs both of its servers: without one, every repo reads
+		// unreachable at once instead of timing out one by one.
+		online := a.reachable(ctx, serverAddr(cfg.Accounts[m.AccountSrc])) && a.reachable(ctx, serverAddr(cfg.Accounts[m.AccountDst]))
 		var results []MirrorStatusResult
 		for repoKey := range m.Repos {
+			if !online {
+				results = append(results, MirrorStatusResult{MirrorKey: mirrorKey, RepoKey: repoKey, Error: userMsg(errServerUnreachable)})
+				continue
+			}
 			r := mirror.CheckStatus(ctx, cfg, mirrorKey, repoKey)
 			results = append(results, MirrorStatusResult{
 				MirrorKey:  mirrorKey,
@@ -3010,6 +3040,10 @@ func (a *App) discoverMirrorsLocal() {
 		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 
+		if !a.anyServerReachable(ctx, cfg) {
+			a.sink().Emit("mirror:discover:done", map[string]any{"error": userMsg(errServerUnreachable)})
+			return
+		}
 		results, err := mirror.DiscoverMirrors(ctx, cfg, func(p mirror.DiscoverProgress) {
 			a.sink().Emit("mirror:discover:progress", map[string]any{
 				"phase":   p.Phase,

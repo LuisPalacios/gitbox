@@ -49,6 +49,7 @@ type refreshHooks struct {
 	fetch      func(context.Context, string) (string, error)
 	heal       func(*config.Config, string, string) heal.Report
 	credential func(context.Context, config.Account, string, *config.Config) credential.StatusResult
+	pull       func(ctx context.Context, repoPath string) error
 	// dial replaces the connect that decides whether a server is reachable.
 	// With hooks set and dial nil, every server counts as reachable.
 	dial func(ctx context.Context, addr string) error
@@ -327,6 +328,7 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 	report := repair(cfg, source, repo)
 	a.maintenanceMu.RUnlock()
 	var err error
+	addr := serverAddr(cfg.Accounts[cfg.Sources[source].Account])
 	if len(report.Warnings) > 0 {
 		err = fmt.Errorf("repository maintenance: %s", strings.Join(report.Warnings, "; "))
 	} else {
@@ -334,22 +336,26 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 		if a.refreshHooks != nil && a.refreshHooks.fetch != nil {
 			fetch = a.refreshHooks.fetch
 		}
-		ctx := a.refreshContext()
-		started := time.Now()
-		_, err = fetch(ctx, path)
-		if git.IsRefusedFast(err) {
-			// A connect refused within milliseconds right after launch is
-			// usually macOS Local Network privacy still checking the new
-			// process; a few quick retries ride it out. A server that is
-			// really down times out instead and isn't retried.
-			retryWithBackoff(ctx, started, func() bool {
-				_, err = fetch(ctx, path)
-				return git.IsRefusedFast(err)
-			})
-		}
+		err = a.onServer(addr, func(ctx context.Context) error {
+			started := time.Now()
+			_, err := fetch(ctx, path)
+			if git.IsRefusedFast(err) {
+				// A connect refused within milliseconds right after launch is
+				// usually macOS Local Network privacy still checking the new
+				// process; a few quick retries ride it out. A server that is
+				// really down times out instead and isn't retried.
+				retryWithBackoff(ctx, started, func() bool {
+					_, err = fetch(ctx, path)
+					return git.IsRefusedFast(err)
+				})
+			}
+			return err
+		})
 	}
 	payload := map[string]any{"source": source, "repo": repo}
-	if err != nil {
+	if errors.Is(err, errServerUnreachable) {
+		describeUnreachable(payload, addr)
+	} else if err != nil {
 		describeFetchFailure(payload, err)
 		if git.IsUpstreamGoneError(err) {
 			payload["upstreamGone"] = true
@@ -366,19 +372,51 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 	return err
 }
 
-// errServerUnreachable is the failure of a repo whose fetch was not attempted
-// because its server is known to be unreachable.
+// errServerUnreachable is the failure of network work that was not attempted,
+// or was stopped, because its server does not answer.
 var errServerUnreachable = errors.New("cannot reach the server")
 
-// skipUnreachable reports a repo as failed without trying it: its server is
-// unreachable. The window gets the same facts as for a failed fetch, plus
-// skipped.
-func (a *App) skipUnreachable(source, repo, addr string) error {
-	payload := map[string]any{"source": source, "repo": repo, "error": userMsg(errServerUnreachable),
-		"code": "git." + string(git.CodeOffline), "skipped": true}
+// onServer runs a piece of network work against the server at addr under the
+// network guard. The work does not start when the server is unreachable, and
+// it is cancelled the moment the server stops answering; either way the
+// result is errServerUnreachable. Work that fails for lack of a connection
+// makes the guard test the server at once, which stops everything else that
+// uses it.
+func (a *App) onServer(addr string, work func(context.Context) error) error {
+	parent := a.refreshContext()
+	ctx, end, ok := a.beginNetworkOp(parent, addr)
+	if !ok {
+		return errServerUnreachable
+	}
+	err := work(ctx)
+	stopped := ctx.Err() != nil && parent.Err() == nil
+	end()
+	if err == nil {
+		return nil
+	}
+	if stopped || isConnectionFailure(err) && !a.confirmReachable(parent, addr) {
+		return errServerUnreachable
+	}
+	return err
+}
+
+// describeUnreachable fills the payload of work that did not run, or was
+// stopped, because its server does not answer: the same facts as a failed
+// fetch, plus skipped.
+func describeUnreachable(payload map[string]any, addr string) {
+	payload["error"] = userMsg(errServerUnreachable)
+	payload["code"] = "git." + string(git.CodeOffline)
+	payload["skipped"] = true
 	if host, _, err := net.SplitHostPort(addr); err == nil {
 		payload["host"] = host
 	}
+}
+
+// skipUnreachable reports a clone as failed without trying it: its server is
+// unreachable.
+func (a *App) skipUnreachable(source, repo, addr string) error {
+	payload := map[string]any{"source": source, "repo": repo}
+	describeUnreachable(payload, addr)
 	a.sink().Emit("fetch:done", payload)
 	return errServerUnreachable
 }
