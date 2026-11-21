@@ -152,7 +152,7 @@ func TestClassify(t *testing.T) {
 		{"", CodeUnknown},
 	}
 	for _, tt := range tests {
-		e := newGitError(nil, "fetch", exit, []byte(tt.output))
+		e := newGitError("fetch", exit, []byte(tt.output))
 		if e.Code != tt.want {
 			t.Errorf("classify(%q) = %q, want %q", tt.output, e.Code, tt.want)
 		}
@@ -167,14 +167,14 @@ func TestClassify(t *testing.T) {
 	deadline, cancel := context.WithTimeout(context.Background(), 0)
 	defer cancel()
 	<-deadline.Done()
-	if e := newGitError(deadline, "fetch", exit, []byte("fatal: Authentication failed")); e.Code != CodeTimeout {
+	if e := newGitErrorContext(deadline, "fetch", exit, []byte("fatal: Authentication failed")); e.Code != CodeTimeout {
 		t.Errorf("an expired context = %q, want %q", e.Code, CodeTimeout)
 	}
-	if e := newGitError(nil, "fetch", fmt.Errorf("wrapped: %w", context.Canceled), nil); e.Code != CodeCancelled || !errors.Is(e, context.Canceled) {
+	if e := newGitError("fetch", fmt.Errorf("wrapped: %w", context.Canceled), nil); e.Code != CodeCancelled || !errors.Is(e, context.Canceled) {
 		t.Errorf("a cancelled error = %q, errors.Is = %v", e.Code, errors.Is(e, context.Canceled))
 	}
 
-	long := newGitError(nil, "fetch", exit, []byte(strings.Repeat("x", maxStderr*2)))
+	long := newGitError("fetch", exit, []byte(strings.Repeat("x", maxStderr*2)))
 	if len(long.stderr) != maxStderr {
 		t.Errorf("kept %d bytes of output, want the %d-byte cap", len(long.stderr), maxStderr)
 	}
@@ -182,9 +182,9 @@ func TestClassify(t *testing.T) {
 
 func TestClassifiersReadTypedErrors(t *testing.T) {
 	exit := &exec.ExitError{}
-	gone := newGitError(nil, "fetch", exit, []byte("remote: Repository not found.\nfatal: repository 'https://host/o/r.git/' not found"))
-	refused := newGitError(nil, "fetch", exit, []byte("fatal: unable to access 'https://host/': Failed to connect to host port 443 after 5 ms: Couldn't connect to server"))
-	slow := newGitError(nil, "fetch", exit, []byte("fatal: unable to access 'https://host/': Failed to connect to host port 443 after 75002 ms: Timeout"))
+	gone := newGitError("fetch", exit, []byte("remote: Repository not found.\nfatal: repository 'https://host/o/r.git/' not found"))
+	refused := newGitError("fetch", exit, []byte("fatal: unable to access 'https://host/': Failed to connect to host port 443 after 5 ms: Couldn't connect to server"))
+	slow := newGitError("fetch", exit, []byte("fatal: unable to access 'https://host/': Failed to connect to host port 443 after 75002 ms: Timeout"))
 
 	if !IsUpstreamGoneError(gone) || !IsUpstreamGoneError(fmt.Errorf("refresh: %w", gone)) {
 		t.Errorf("IsUpstreamGoneError missed a typed repo-not-found error")

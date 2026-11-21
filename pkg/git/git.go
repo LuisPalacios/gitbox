@@ -168,11 +168,11 @@ func CloneWithProgress(url, dest string, opts CloneOpts, onProgress func(ClonePr
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return newGitError(nil, "clone", err, nil)
+		return newGitError("clone", err, nil)
 	}
 
 	if err := cmd.Start(); err != nil {
-		return newGitError(nil, "clone", err, nil)
+		return newGitError("clone", err, nil)
 	}
 
 	// Git progress uses \r for in-place updates within a line.
@@ -190,7 +190,7 @@ func CloneWithProgress(url, dest string, opts CloneOpts, onProgress func(ClonePr
 	err = cmd.Wait()
 	<-done
 	if err != nil {
-		return newGitError(nil, "clone", err, tail.Bytes())
+		return newGitError("clone", err, tail.Bytes())
 	}
 	return nil
 }
@@ -261,7 +261,7 @@ func PushMirror(repoPath, url string, extraConfig []string) (string, error) {
 	HideWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(out), newGitError(nil, "push", err, out)
+		return string(out), newGitError("push", err, out)
 	}
 	return string(out), nil
 }
@@ -791,7 +791,7 @@ func run(dir string, args ...string) error {
 	HideWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return newGitError(nil, opName(args), err, out)
+		return newGitError(opName(args), err, out)
 	}
 	return nil
 }
@@ -804,7 +804,7 @@ func output(dir string, args ...string) (string, error) {
 	HideWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
-		return "", newGitError(nil, opName(args), err, nil)
+		return "", newGitError(opName(args), err, nil)
 	}
 	return string(out), nil
 }

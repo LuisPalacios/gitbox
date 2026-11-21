@@ -54,10 +54,15 @@ func (e *GitError) Error() string {
 
 func (e *GitError) Unwrap() error { return e.Err }
 
-// newGitError builds the error for a failed git command. ctx may be nil; when
-// set, a cancelled or expired context decides the code. output is whatever
+// newGitError builds the error for a failed git command. output is whatever
 // git printed (stderr, or stdout and stderr combined).
-func newGitError(ctx context.Context, op string, err error, output []byte) *GitError {
+func newGitError(op string, err error, output []byte) *GitError {
+	return newGitErrorContext(context.Background(), op, err, output)
+}
+
+// newGitErrorContext is newGitError for a command that ran under ctx: a
+// cancelled or expired context decides the code.
+func newGitErrorContext(ctx context.Context, op string, err error, output []byte) *GitError {
 	if len(output) == 0 {
 		if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 			output = exit.Stderr
@@ -96,9 +101,9 @@ var codePatterns = []struct {
 
 func classify(ctx context.Context, err error, lowerOutput string) GitCode {
 	switch {
-	case errors.Is(err, context.Canceled), ctx != nil && errors.Is(ctx.Err(), context.Canceled):
+	case errors.Is(err, context.Canceled), errors.Is(ctx.Err(), context.Canceled):
 		return CodeCancelled
-	case errors.Is(err, context.DeadlineExceeded), ctx != nil && errors.Is(ctx.Err(), context.DeadlineExceeded):
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(ctx.Err(), context.DeadlineExceeded):
 		return CodeTimeout
 	}
 	if upstreamGoneText(lowerOutput) {

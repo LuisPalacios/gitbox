@@ -38,7 +38,7 @@ func FetchCapturedContext(ctx context.Context, repoPath string) (string, error) 
 	HideWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(out), newGitError(ctx, "fetch", err, out)
+		return string(out), newGitErrorContext(ctx, "fetch", err, out)
 	}
 	return string(out), nil
 }
