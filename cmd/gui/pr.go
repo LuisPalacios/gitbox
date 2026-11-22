@@ -29,6 +29,7 @@ type PullRequestDTO struct {
 type PRSummaryDTO struct {
 	Authored        []PullRequestDTO `json:"authored"`
 	ReviewRequested []PullRequestDTO `json:"reviewRequested"`
+	Partial         bool             `json:"partial,omitempty"`
 }
 
 // PRSettingsDTO exposes the user-controlled PR badge toggles.
@@ -273,6 +274,7 @@ func (a *App) fetchPRsForAccount(ctx context.Context, key string, req prRefresh)
 		var supported bool
 		lister, supported = prov.(provider.PRLister)
 		if !supported {
+			data.Complete = true
 			return data, upd, true
 		}
 	}
@@ -283,6 +285,7 @@ func (a *App) fetchPRsForAccount(ctx context.Context, key string, req prRefresh)
 		upd.Error = userText("no API token")
 		return data, upd, true
 	}
+	ctx = provider.WithPRRetry(provider.WithAccountCache(ctx, key, req.credentialRevision))
 	data, err = lister.ListAccountPRs(ctx, acct.URL, token, acct.Username, req.includeDrafts)
 	after, _ := os.Stat(path)
 	if !samePRCredentialFile(before, after) {
@@ -293,7 +296,7 @@ func (a *App) fetchPRsForAccount(ctx context.Context, key string, req prRefresh)
 		return data, upd, true
 	}
 	for repoFull, sum := range data.ByRepo {
-		upd.ByRepo[strings.ToLower(repoFull)] = toPRSummaryDTO(sum)
+		upd.ByRepo[strings.ToLower(repoFull)] = toPRSummaryDTO(sum, !data.Complete)
 	}
 	return data, upd, true
 }
@@ -332,16 +335,17 @@ func lookupRepoSummary(entry provider.AccountPRs, repoKey string) PRSummaryDTO {
 	needle := strings.ToLower(strings.TrimSpace(repoKey))
 	for full, sum := range entry.ByRepo {
 		if strings.ToLower(full) == needle {
-			return toPRSummaryDTO(sum)
+			return toPRSummaryDTO(sum, !entry.Complete)
 		}
 	}
-	return PRSummaryDTO{}
+	return PRSummaryDTO{Partial: !entry.Complete}
 }
 
-func toPRSummaryDTO(s provider.PRSummary) PRSummaryDTO {
+func toPRSummaryDTO(s provider.PRSummary, partial bool) PRSummaryDTO {
 	return PRSummaryDTO{
 		Authored:        convertPRList(s.Authored),
 		ReviewRequested: convertPRList(s.ReviewRequested),
+		Partial:         partial,
 	}
 }
 

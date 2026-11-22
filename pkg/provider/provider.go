@@ -38,7 +38,13 @@ type RepoCreator interface {
 
 // OrgLister can list organizations/groups the authenticated user belongs to.
 type OrgLister interface {
-	ListUserOrgs(ctx context.Context, baseURL, token, username string) ([]string, error)
+	ListUserOrgs(ctx context.Context, baseURL, token, username string) (OrgList, error)
+}
+
+// OrgList contains the names found and whether the provider returned all pages.
+type OrgList struct {
+	Names    []string
+	Complete bool
 }
 
 // PushMirrorInfo describes a server-side push mirror on a repository.
@@ -93,10 +99,11 @@ type PRSummary struct {
 	ReviewRequested []PullRequest `json:"reviewRequested"`
 }
 
-// AccountPRs is the full PR picture for one authenticated account,
+// AccountPRs is the current PR picture for one authenticated account,
 // keyed by repo full name ("owner/repo", case as reported by the API).
 type AccountPRs struct {
-	ByRepo map[string]PRSummary `json:"byRepo"`
+	ByRepo   map[string]PRSummary `json:"byRepo"`
+	Complete bool                 `json:"complete"`
 }
 
 // PRLister can list open PRs authored by, or requesting review from,
@@ -105,27 +112,16 @@ type PRLister interface {
 	ListAccountPRs(ctx context.Context, baseURL, token, username string, includeDrafts bool) (AccountPRs, error)
 }
 
-// authChecker is implemented by providers that can tell when the token
-// expires while verifying it.
-type authChecker interface {
-	checkAuth(ctx context.Context, baseURL, token, username string) (time.Time, error)
-}
-
-// CheckAuth makes a minimal API call (listing the repos) to verify the
+// CheckAuth makes a minimal authenticated API call to verify the
 // credentials work, and returns when the token expires, or the zero time when
 // the provider doesn't say (Gitea, Forgejo and Bitbucket never do; tokens
 // without an expiry neither).
 func CheckAuth(ctx context.Context, providerName, baseURL, token, username string) (time.Time, error) {
-	prov, err := ByName(providerName)
+	prov, err := byName(providerName)
 	if err != nil {
 		return time.Time{}, err
 	}
-	checker, ok := prov.(authChecker)
-	if !ok {
-		_, err := prov.ListRepos(ctx, baseURL, token, username)
-		return time.Time{}, err
-	}
-	expires, err := checker.checkAuth(ctx, baseURL, token, username)
+	expires, err := prov.checkAuth(ctx, baseURL, token, username)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -139,6 +135,15 @@ func CheckAuth(ctx context.Context, providerName, baseURL, token, username strin
 
 // ByName returns the Provider implementation for a given provider name.
 func ByName(name string) (Provider, error) {
+	return byName(name)
+}
+
+type credentialProvider interface {
+	Provider
+	checkAuth(ctx context.Context, baseURL, token, username string) (time.Time, error)
+}
+
+func byName(name string) (credentialProvider, error) {
 	switch name {
 	case "github":
 		return &GitHub{}, nil

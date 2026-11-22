@@ -3746,7 +3746,7 @@ func (a *App) listMoveDestinationOwnersLocal(sourceKey string) []MoveOwnerOption
 		if err != nil {
 			continue
 		}
-		for _, org := range orgs {
+		for _, org := range orgs.Names {
 			result = append(result, MoveOwnerOption{
 				Account:  accountKey,
 				Provider: acct.Provider,

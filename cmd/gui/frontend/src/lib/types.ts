@@ -364,6 +364,7 @@ export interface PullRequestDTO {
 export interface PRSummaryDTO {
   authored: PullRequestDTO[];
   reviewRequested: PullRequestDTO[];
+  partial?: boolean;
 }
 
 export interface PRSettingsDTO {

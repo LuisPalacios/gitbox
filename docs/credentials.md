@@ -155,16 +155,16 @@ Without the PAT, the account works for git operations but can't discover repos, 
 
 This is the reference for every PAT Gitbox uses: Token accounts, SSH companion PATs, and the PAT a GCM account stores for mirrors or the API. The first column is the minimum every account needs. Each other column adds what one capability needs on top. Give each account only the scopes it needs, and add the destructive ones (delete) only when you plan to use them.
 
-| Provider        | Discovery + clone + fetch      | Owner pickers (orgs) | Create repo (**Create repo**, move destination) | Delete repo (move with "delete source")        | Mirror                                  |
-| --------------- | ------------------------------ | -------------------- | ----------------------------------------------- | ---------------------------------------------- | --------------------------------------- |
-| GitHub          | `repo`                         | `read:org`           | `repo`                                          | `delete_repo` (sensitive — add only if needed) | `repo`                                  |
-| GitLab          | `api`                          | `api`                | `api`                                           | `api`                                          | `api`                                   |
-| Gitea / Forgejo | `read:repository`, `read:user` | `read:organization`  | `write:repository`                              | `write:repository`                             | `write:repository`                      |
-| Bitbucket Cloud | Repositories: Read, Write      | Account: Read        | Repositories: Admin                             | Repositories: Delete (sensitive)               | Not available through the Bitbucket API |
+| Provider        | Discovery + clone + fetch                | Owner pickers (orgs) | Create repo (**Create repo**, move destination) | Delete repo (move with "delete source")        | Mirror                                  |
+| --------------- | ---------------------------------------- | -------------------- | ----------------------------------------------- | ---------------------------------------------- | --------------------------------------- |
+| GitHub          | `repo`                                   | `read:org`           | `repo`                                          | `delete_repo` (sensitive — add only if needed) | `repo`                                  |
+| GitLab          | `api`                                    | `api`                | `api`                                           | `api`                                          | `api`                                   |
+| Gitea / Forgejo | `read:repository`, `read:user`           | `read:organization`  | `write:repository`                              | `write:repository`                             | `write:repository`                      |
+| Bitbucket Cloud | Repositories: Read, Write, Account: Read | —                    | Repositories: Admin                             | Repositories: Delete (sensitive)               | Not available through the Bitbucket API |
 
 On a Gitea or Forgejo token page, these scopes appear as permission levels: **repository** Read and Write, **user** Read, and **organization** Read cover every column. On Bitbucket, Gitbox opens the app password page.
 
-When a scope is missing, Gitbox shows a warning naming the scope and the page to regenerate the PAT, for example: _"Source repo delete refused: your github PAT is missing the `delete_repo` scope. Regenerate it at <https://github.com/settings/tokens> (keep existing scopes, add `delete_repo`), then store the new token in the account's credential settings."_
+Gitbox suggests changing token scopes when the provider signals a missing permission. A rate limit means the server wants fewer requests, and an HTTP 403 without a scope signal means it denied access. For a missing scope, use the token page and permission list for the action above.
 
 ## Changing credentials
 
@@ -183,7 +183,7 @@ Gitbox also repairs a clone's identity, remote and credential settings before ea
 You can verify credentials at any time:
 
 - Each account's sidebar entry and card show its health in words next to a mark: green (working), orange (limited), or red (broken or offline). Broken accounts also head the Needs attention view, with their fix button.
-- A GitHub or GitLab token that expires within 14 days turns the health words orange: "Token expires in N days". On GitLab this needs GitLab 15.5 or later and a personal access token. A Token account whose token the server rejects (HTTP 401, for example once it expires) shows as failing.
+- A GitHub or GitLab token that expires within 14 days turns the health words orange: "Token expires in N days". GitHub reads the expiry when it checks the authenticated user. On GitLab, reporting an expiry needs GitLab 15.5 or later and a personal access token. A Token account whose token the server rejects (HTTP 401, for example once it expires) shows as failing.
 - Pick **Change credential…** from the account's ⋯ menu to open the Change Credential modal. Its Current-status panel shows the real status of the primary credential and of the API token, with the underlying error message (if any).
 - Click **Re-check** in that panel to run the verification again.
 
@@ -206,7 +206,7 @@ Typical fix on each OS:
 
 Pick **Change credential…** from any account's ⋯ menu. The Current-status panel inside the Change Credential modal shows:
 
-- **Primary (GCM/SSH/TOKEN):** the status of the primary credential (OK / Warning / Offline / Error / Not configured) and, below the row, the underlying error. That error text is the first place to look: it names the failing URL, the HTTP code, and what the network or TLS stack reported.
+- **Primary (GCM/SSH/TOKEN):** the status of the primary credential (OK / Warning / Offline / Error / Not configured) and, below the row, the underlying error. That error text is the first place to look: it identifies the host and reports the HTTP status or a safe description of the connection failure.
 - **API token (PAT):** the status of the companion PAT (GCM and SSH only). When GCM already covers the API, the row reads _Not created_ and its detail starts with _API via GCM_. When no PAT covers the API, a **Setup API token** button appears next to the row; when a stored PAT fails, a **Replace API token** button appears instead.
 - A **Re-check** button re-runs the verification without leaving the modal.
 - A blue hint appears under the panel when the error looks like the OS blocking network access, with a link to the matching section below.

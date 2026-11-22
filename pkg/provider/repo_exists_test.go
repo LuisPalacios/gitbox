@@ -27,7 +27,7 @@ func TestRepoExists_HTTPStatus(t *testing.T) {
 				{name: "500 with 404 in URL", repo: "repo404", status: http.StatusInternalServerError, body: "server failed", wantError: "HTTP 500"},
 				{name: "500 with 404 in body", repo: "repo", status: http.StatusInternalServerError, body: "lookup 404 failed", wantError: "HTTP 500"},
 				{name: "unauthorized", repo: "repo404", status: http.StatusUnauthorized, body: "404", wantError: "authentication failed (HTTP 401) — token is invalid or expired"},
-				{name: "forbidden", repo: "repo404", status: http.StatusForbidden, body: "404", wantError: "insufficient permissions (HTTP 403) — token needs broader scopes"},
+				{name: "forbidden", repo: "repo404", status: http.StatusForbidden, body: "404", wantError: "HTTP 403 from "},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					// I intercept every request, including Bitbucket's fixed public API URL.
@@ -61,7 +61,7 @@ func TestRepoExists_HTTPStatus(t *testing.T) {
 							prefix = "gitea"
 						}
 						message := tc.wantError
-						if tc.status == http.StatusInternalServerError {
+						if tc.status == http.StatusForbidden || tc.status == http.StatusInternalServerError {
 							// The host and the method only: never the path or the body.
 							message = fmt.Sprintf("HTTP %d from %s (GET)", tc.status, requestHost)
 						}

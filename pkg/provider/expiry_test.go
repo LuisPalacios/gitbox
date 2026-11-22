@@ -29,21 +29,21 @@ func TestParseGitHubExpiry_Layouts(t *testing.T) {
 	}
 }
 
-// githubExpiryServer answers /user/repos with an empty list, sending header as
+// githubExpiryServer answers /user with an empty object, sending header as
 // the token's expiry when it isn't empty, and counts the requests.
 func githubExpiryServer(t *testing.T, header string) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
-		if !strings.HasSuffix(r.URL.Path, "/user/repos") {
+		if !strings.HasSuffix(r.URL.Path, "/api/v3/user") {
 			http.NotFound(w, r)
 			return
 		}
 		if header != "" {
 			w.Header().Set("GitHub-Authentication-Token-Expiration", header)
 		}
-		w.Write([]byte("[]"))
+		w.Write([]byte("{}"))
 	}))
 	t.Cleanup(srv.Close)
 	return srv, &hits
@@ -90,16 +90,16 @@ func TestCheckAuth_GitHubRejectedToken(t *testing.T) {
 	}
 }
 
-// gitlabExpiryServer answers the project list with projectsStatus and the
+// gitlabExpiryServer answers /user with userStatus and the
 // token's self endpoint with selfStatus and selfBody, and counts self hits.
-func gitlabExpiryServer(t *testing.T, projectsStatus, selfStatus int, selfBody string) (*httptest.Server, *atomic.Int32) {
+func gitlabExpiryServer(t *testing.T, userStatus, selfStatus int, selfBody string) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	var selfHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/v4/projects":
-			w.WriteHeader(projectsStatus)
-			w.Write([]byte("[]"))
+		case "/api/v4/user":
+			w.WriteHeader(userStatus)
+			w.Write([]byte("{}"))
 		case "/api/v4/personal_access_tokens/self":
 			selfHits.Add(1)
 			w.WriteHeader(selfStatus)
@@ -145,19 +145,22 @@ func TestCheckAuth_GitLabUnknownExpiryStillPasses(t *testing.T) {
 	}
 }
 
-func TestCheckAuth_GitLabSkipsExpiryWhenListFails(t *testing.T) {
-	srv, selfHits := gitlabExpiryServer(t, http.StatusUnauthorized, http.StatusOK, `{"expires_at":"2099-01-01"}`)
+func TestCheckAuth_GitLabRejectsInvalidCredentials(t *testing.T) {
+	srv, selfHits := gitlabExpiryServer(t, http.StatusUnauthorized, http.StatusUnauthorized, `{"error":"invalid_token"}`)
 	if _, err := CheckAuth(context.Background(), "gitlab", srv.URL, "tok", "user"); err == nil {
 		t.Fatal("CheckAuth passed with a rejected token")
 	}
-	if n := selfHits.Load(); n != 0 {
-		t.Errorf("self endpoint hit %d times after a failed check", n)
+	if n := selfHits.Load(); n != 1 {
+		t.Errorf("self endpoint hit %d times, want 1", n)
 	}
 }
 
 func TestCheckAuth_GiteaHasNoExpiry(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("[]"))
+		if r.URL.Path != "/api/v1/user" {
+			t.Errorf("path = %q, want /api/v1/user", r.URL.Path)
+		}
+		w.Write([]byte("{}"))
 	}))
 	defer srv.Close()
 	got, err := CheckAuth(context.Background(), "forgejo", srv.URL, "tok", "user")

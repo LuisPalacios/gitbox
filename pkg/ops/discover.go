@@ -29,7 +29,7 @@ func ListRemoteRepos(ctx context.Context, acct config.Account, accountKey string
 	if err != nil {
 		return nil, err
 	}
-	return prov.ListRepos(ctx, acct.URL, token, acct.Username)
+	return prov.ListRepos(provider.WithAccountCache(ctx, accountKey, 0), acct.URL, token, acct.Username)
 }
 
 // ListAccountOrgs returns the namespaces the account can own repos in: its
@@ -42,8 +42,8 @@ func ListAccountOrgs(ctx context.Context, acct config.Account, accountKey string
 	}
 	result := []string{acct.Username}
 	if ol, ok := prov.(provider.OrgLister); ok {
-		if orgs, err := ol.ListUserOrgs(ctx, acct.URL, token, acct.Username); err == nil {
-			result = append(result, orgs...)
+		if orgs, err := ol.ListUserOrgs(provider.WithAccountCache(ctx, accountKey, 0), acct.URL, token, acct.Username); err == nil {
+			result = append(result, orgs.Names...)
 		}
 	}
 	return result, nil

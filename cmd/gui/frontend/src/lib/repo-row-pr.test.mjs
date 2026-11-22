@@ -22,7 +22,7 @@ test('I show pending review text in Simple and both PR counts in Advanced', asyn
     const { default: RepoRow } = await server.ssrLoadModule('/src/lib/components/RepoRow.svelte');
     const { render } = await server.ssrLoadModule('svelte/server');
     const { languageStore } = await server.ssrLoadModule('/src/lib/i18n.ts');
-    const { prsByAccount, prSettings } = await server.ssrLoadModule('/src/lib/stores.ts');
+    const { applyPRUpdate, prsByAccount, prSettings } = await server.ssrLoadModule('/src/lib/stores.ts');
 
     const repoName = 'owner/project';
     const repoKey = 'source/' + repoName;
@@ -53,6 +53,19 @@ test('I show pending review text in Simple and both PR counts in Advanced', asyn
     assert.match(openReview, /First review fixture/);
     assert.match(openReview, /Second review fixture/);
     assert.doesNotMatch(openReview, /Authored fixture/);
+    assert.doesNotMatch(openReview, /lista puede estar incompleta/);
+
+    applyPRUpdate({ accountKey: 'account', byRepo: { [repoName]: { authored, reviewRequested, partial: true } } });
+    applyPRUpdate({ accountKey: 'account', byRepo: {}, error: 'Rate limited' });
+    for (const [language, note] of [['en', 'This list may be incomplete.'], ['es', 'La lista puede estar incompleta.']]) {
+      languageStore.set(language);
+      const openPartial = render(RepoRow, {
+        props: { ...props, simple: true, openPRPopover: repoKey + '|review' },
+      }).body;
+      assert.ok(openPartial.includes(note));
+      assert.match(openPartial, /First review fixture/);
+    }
+
 
     const advanced = render(RepoRow, { props: { ...props, simple: false } }).body.replace(/<!--[\s\S]*?-->/g, '');
     assert.match(advanced, /class="[^"]*pr-badge-authored[^"]*"[^>]*>\s*📝 1\s*<\/button>/u);

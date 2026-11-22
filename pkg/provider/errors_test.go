@@ -44,7 +44,7 @@ func TestProviderErrorsCarryNoSecrets(t *testing.T) {
 		class  ProviderClass
 	}{
 		{http.StatusUnauthorized, ClassUnauthorized},
-		{http.StatusForbidden, ClassScopeDenied},
+		{http.StatusForbidden, ClassForbidden},
 		{http.StatusNotFound, ClassNotFound},
 		{http.StatusTooManyRequests, ClassRateLimited},
 		{http.StatusUnprocessableEntity, ClassUnknown},

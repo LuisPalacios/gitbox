@@ -14,7 +14,7 @@ func TestCheckToken_ReportsExpiry(t *testing.T) {
 	expiry := time.Now().Add(6 * 24 * time.Hour).UTC().Truncate(time.Second)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("GitHub-Authentication-Token-Expiration", expiry.Format("2006-01-02 15:04:05 MST"))
-		w.Write([]byte("[]"))
+		w.Write([]byte("{}"))
 	}))
 	defer srv.Close()
 	t.Setenv(EnvVarName("test-expiry"), "test-token")

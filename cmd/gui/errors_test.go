@@ -162,7 +162,7 @@ func TestHintKeysInCatalog(t *testing.T) {
 		git.CodeTimeout, git.CodeCancelled, git.CodeNotARepo, git.CodeLockHeld, git.CodeRepoNotFound, git.CodeUnknown} {
 		keys = append(keys, toUserError(&git.GitError{Code: c, Hint: "error.git." + string(c)}).Hint)
 	}
-	for _, c := range []provider.ProviderClass{provider.ClassUnauthorized, provider.ClassScopeDenied, provider.ClassRateLimited,
+	for _, c := range []provider.ProviderClass{provider.ClassUnauthorized, provider.ClassScopeDenied, provider.ClassForbidden, provider.ClassRateLimited,
 		provider.ClassNotFound, provider.ClassServerError, provider.ClassOffline, provider.ClassTimeout, provider.ClassUnknown} {
 		keys = append(keys, toUserError(&provider.ProviderError{Class: c}).Hint)
 	}
