@@ -140,16 +140,12 @@ type runner struct {
 }
 
 func newRunner(alias string, o Options) (*runner, error) {
-	if !aliasRE.MatchString(alias) || strings.HasPrefix(alias, "-") {
+	if !ValidAlias(alias) {
 		return nil, newError(CodeSSHConfig, "%q is not a valid ssh_config alias", alias)
 	}
-	path := o.sshPath
-	if path == "" {
-		p, err := exec.LookPath("ssh")
-		if err != nil {
-			return nil, newError(CodeSSHMissing, "no ssh command was found on this computer")
-		}
-		path = p
+	path, err := SSHPath(o)
+	if err != nil {
+		return nil, err
 	}
 	return &runner{ssh: path, alias: alias, o: o, log: o.Log}, nil
 }

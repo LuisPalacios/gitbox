@@ -158,3 +158,36 @@ func TestRetiredToolsEmbeddedMarkdown(t *testing.T) {
 		}
 	}
 }
+
+// TestHarnessAllowlist: a remote window runs only a catalog command (#243).
+func TestHarnessAllowlist(t *testing.T) {
+	for _, tc := range []struct {
+		command string
+		args    []string
+		ok      bool
+	}{
+		{"claude", nil, true},
+		{"/home/me/.local/bin/claude", nil, true},
+		{"/usr/local/bin/codex", nil, true},
+		{"cursor-agent", nil, true},
+		{"/bin/sh", nil, false},
+		{"sh", nil, false},
+		{"claude", []string{"--dangerously-skip-permissions"}, false},
+		{"claude", []string{""}, false},
+		{"relative/claude", nil, false},
+		{"/home/me/../../bin/claude", nil, false},
+		{"/home/me/claude/", nil, false},
+		{`C:\bin\claude.exe`, nil, false},
+		{"claude\nrm -rf ~", nil, false},
+		{"claude\r", nil, false},
+		{"claude; id", nil, false},
+		{"$(id)", nil, false},
+		{"gemini", nil, false}, // retired
+		{"", nil, false},
+	} {
+		got, ok := RemoteCommand(tc.command, tc.args)
+		if ok != tc.ok || (ok && got != tc.command) {
+			t.Errorf("RemoteCommand(%q, %q) = %q, %v; want ok=%v", tc.command, tc.args, got, ok, tc.ok)
+		}
+	}
+}

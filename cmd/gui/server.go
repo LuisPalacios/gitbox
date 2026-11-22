@@ -30,11 +30,14 @@ import (
 // method that is not here does not exist for the client. The list grows one
 // phase at a time: P4 (#240) serves every read, the REMOTE methods it owns
 // and the read halves of the MIXED ones (the two browser methods only
-// resolve a link: the client opens it); P5 adds the mutations. Each method
+// resolve a link: the client opens it); P6 (#243) adds AccountFolder, the
+// read half of the account launchers, and the AI harness detection, which
+// runs where the harnesses run; P5 adds the mutations. Each method
 // decodes its parameters into their Go types, and nothing it does can save
 // the host's config: the server runs read-only (newServerApp).
 var servedMethods = []string{
 	"AccountDeletionImpact",
+	"AccountFolder",
 	"CheckGlobalGCMConfig",
 	"CheckGlobalGitignore",
 	"CheckGlobalIdentity",
@@ -73,6 +76,7 @@ var servedMethods = []string{
 	"PreflightMove",
 	"PreviewSweep",
 	"RecommendedGlobalGitignoreBody",
+	"RefreshAIHarnesses",
 	"RefreshAllPRs",
 	"RefreshStatus",
 	"ReloadConfig",
@@ -80,6 +84,7 @@ var servedMethods = []string{
 	"RepoWorkspaceFiles",
 	"ScanFolderForClones",
 	"SuggestAccountKey",
+	"SyncAIHarnesses",
 }
 
 // hostBackend is the local backend as the server exposes it. The config it

@@ -284,6 +284,14 @@ func contractRows(clone string) []contractRow {
 		{name: "OpenAccountInBrowser", call: func(b Backend) (any, error) { return b.OpenAccountInBrowser("acct") }},
 		{name: "OpenRepoInBrowser", call: func(b Backend) (any, error) { return b.OpenRepoInBrowser("acct", "org/repo") }},
 		{name: "OpenRepoInBrowser for an unknown repo", call: func(b Backend) (any, error) { return b.OpenRepoInBrowser("acct", "no/such") }},
+		{name: "AccountFolder", call: func(b Backend) (any, error) { return b.AccountFolder("acct") }},
+		{name: "AccountFolder for an unknown account", call: func(b Backend) (any, error) { return b.AccountFolder("nobody") }},
+		// The harness detection (#243) runs on the host and reports what it
+		// found with harnesses:updated; TestBackendContract stubs the
+		// lookup. The refresh comes first: it finds the stubbed harness and
+		// emits, then the sync finds nothing new.
+		{name: "RefreshAIHarnesses", call: func(b Backend) (any, error) { b.RefreshAIHarnesses(); return nil, nil }, until: []string{"harnesses:updated"}},
+		{name: "SyncAIHarnesses", call: func(b Backend) (any, error) { return b.SyncAIHarnesses(), nil }},
 	}
 }
 
@@ -293,6 +301,10 @@ func contractRows(clone string) []contractRow {
 // same error, and emit the same events. The table covers every served
 // method; P5 extends it with the mutations.
 func TestBackendContract(t *testing.T) {
+	if len(knownAIHarnesses) == 0 {
+		t.Fatal("the harness catalog is empty")
+	}
+	stubHarnessLookup(t, map[string]string{knownAIHarnesses[0].Command: "/opt/bin/" + knownAIHarnesses[0].Command})
 	path := contractHost(t)
 	clone := loadConfig(t, path).Sources["acct"].Repos["org/repo"].CloneFolder
 

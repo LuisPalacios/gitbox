@@ -2,7 +2,8 @@
   // Top bar: the sidebar button, logo, compact health rings (the repo ring, plus
   // the mirror ring in Advanced), the action buttons, the Simple/Advanced switch
   // and the Settings gear.
-  import { accounts, summary, simpleSummary, mirrorSummary, themeStore } from '../stores';
+  import { accounts, summary, simpleSummary, mirrorSummary, themeStore, remoteHost } from '../stores';
+  import { hostFromState } from '../remotehost';
   import { statusColor } from '../status';
   import { t } from '../i18n';
   import { tooltip } from '../tooltip';
@@ -31,6 +32,9 @@
   // remote is the state of a remote window's connection (#240); null in a
   // local window.
   export let remote: RemoteState | null = null;
+  // The launchers learn from the remote state which editors open the
+  // host's folders, and that the window is a remote one (#243).
+  $: remoteHost.set(hostFromState(remote));
   // The badge loads only in a remote window, so the main bundle does not
   // carry it or the connection log.
   let RemoteBadge: typeof import('./RemoteBadge.svelte').default | null = null;

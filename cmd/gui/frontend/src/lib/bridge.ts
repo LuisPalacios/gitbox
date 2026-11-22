@@ -184,6 +184,8 @@ export interface RemoteState {
   serverArch?: string;
   serverVersion?: string;
   truncated?: boolean;
+  // The editor commands that open folders of the host (#243).
+  remoteEditors?: string[] | null;
 }
 
 export interface RemoteResult {

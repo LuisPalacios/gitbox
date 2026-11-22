@@ -15,3 +15,6 @@ func SetSSHPath(o *Options, path string) { o.sshPath = path }
 
 // SetUploadFilter wraps the stream an install uploads.
 func SetUploadFilter(o *Options, f func(io.Reader) io.Reader) { o.uploadFilter = f }
+
+// ConfigArgs are the -F arguments SetConfigFile adds to every ssh call.
+func ConfigArgs(o Options) []string { return o.configArgs() }

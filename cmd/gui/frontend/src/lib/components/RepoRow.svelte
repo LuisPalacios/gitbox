@@ -53,7 +53,9 @@
   import { statusColor, simpleKind, simpleColor, rowBusy, rowGlyph, statusLabel, attentionRank, CALM_RANK, COUNT_BADGES } from '../status';
   import type { SimpleKind } from '../status';
   import { t } from '../i18n';
-  import { ro } from '../ro';
+  import { ro, remoteOff } from '../ro';
+  import { remoteHost } from '../stores';
+  import { editorOff } from '../remotehost';
   import { onActivateKey } from '../keyboard';
   import LauncherMenu from '../LauncherMenu.svelte';
   import PRPopover from '../PRPopover.svelte';
@@ -293,17 +295,17 @@
   <span class="launch-group">
     {#if quickHarness}
       {@const h = quickHarness}
-      <button use:ro class="icon-btn btn-launch" title={$t('simple.btnOpenWith', { name: h.name })} aria-label={$t('simple.btnOpenWith', { name: h.name })}
+      <button class="icon-btn btn-launch" title={$t('simple.btnOpenWith', { name: h.name })} aria-label={$t('simple.btnOpenWith', { name: h.name })}
         on:click|stopPropagation={() => openRepoInAIHarness(repoKey, h)}><BrandIcon name={harnessLogo(h)} /></button>
     {/if}
     {#if quickEditor}
       {@const ed = quickEditor}
-      <button use:ro class="icon-btn btn-launch" title={$t('simple.btnOpenWith', { name: ed.name })} aria-label={$t('simple.btnOpenWith', { name: ed.name })}
+      <button use:remoteOff={editorOff(ed.command, $remoteHost)} class="icon-btn btn-launch" title={$t('simple.btnOpenWith', { name: ed.name })} aria-label={$t('simple.btnOpenWith', { name: ed.name })}
         on:click|stopPropagation={() => openRepoInApp(repoKey, ed.command)}><BrandIcon name={editorLogo(ed)} /></button>
     {/if}
     {#if quickProfile}
       {@const pr = quickProfile}
-      <button use:ro class="icon-btn btn-launch" title={$t('simple.btnOpenWith', { name: pr.name })} aria-label={$t('simple.btnOpenWith', { name: pr.name })}
+      <button class="icon-btn btn-launch" title={$t('simple.btnOpenWith', { name: pr.name })} aria-label={$t('simple.btnOpenWith', { name: pr.name })}
         on:click|stopPropagation={() => openRepoProfile(repoKey, pr.id)}><BrandIcon name={terminalLogo(pr.terminal, pr.shell)} /></button>
     {/if}
   </span>

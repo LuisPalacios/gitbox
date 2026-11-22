@@ -5,8 +5,12 @@
 // of half-starting an action. Disabled buttons are only the visible part.
 // It has no runtime imports, so readonly.test.mjs can load it alone.
 
-// The bridge calls that change the host, or launch a local program on one
-// of its paths (P6). Every other call is a read or a client preference.
+// The bridge calls that change the host, and the three launches that have
+// no remote equivalent (the file manager, the account folder and the
+// host's config file: the Go side refuses them with not_available_remote).
+// The editor, terminal and AI harness launches open the host's folders
+// over ssh (#243), and the harness refresh is a read. Every other call is a
+// read or a client preference.
 export const READ_ONLY_BLOCKED: ReadonlySet<string> = new Set([
   'acknowledgeConfigError', 'addAccount', 'addDiscoveredRepos', 'addDiscoveredReposToFolder',
   'addMirrorGroup', 'addMirrorRepo', 'addRoot', 'adoptClones', 'applyDiscoveredMirrors',
@@ -14,12 +18,11 @@ export const READ_ONLY_BLOCKED: ReadonlySet<string> = new Set([
   'credentialRegenerateSSH', 'credentialSetupGCM', 'credentialSetupSSH', 'credentialStoreToken',
   'deleteAccount', 'deleteMirrorGroup', 'deleteMirrorRepo', 'deleteRepo', 'discardAccount',
   'fixGlobalGCMConfig', 'ignoreClone', 'initRoot', 'installGlobalGitignore', 'moveRepo',
-  'pullRepo', 'reconcile', 'refreshAIHarnesses', 'removeGlobalIdentity', 'removeRoot',
+  'pullRepo', 'reconcile', 'removeGlobalIdentity', 'removeRoot',
   'renameAccount', 'repairConfig', 'restoreFromBackup', 'setCheckGlobalGitignore',
   'setDefaultRoot', 'setNestedScanDepth', 'setPRBadgesEnabled', 'setPRIncludeDrafts',
   'setRepoContainer', 'setRepoWorkspace', 'setupMirrorRepo', 'updateAccount',
-  'openAccountFolder', 'openAccountInAIHarness', 'openAccountInApp', 'openAccountProfile',
-  'openFileInEditor', 'openInAIHarness', 'openInApp', 'openInExplorer', 'openProfile',
+  'openAccountFolder', 'openFileInEditor', 'openInExplorer',
 ]);
 
 // ReadOnlyError is what a blocked call rejects with.
@@ -107,8 +110,9 @@ export function clearsOnReconnect(previous: string | undefined, next: string): b
 }
 
 // The automatic work that starts when the window regains focus: a remote
-// window re-reads the host's config, but neither reconciles it nor
-// re-probes the AI harnesses, which both save.
+// window re-reads the host's config and re-probes its AI harnesses, which a
+// read-only server keeps in memory (#243), but does not reconcile, which
+// saves.
 export function focusWork(readOnly: boolean): { reload: boolean; reconcile: boolean; refreshHarnesses: boolean } {
-  return { reload: true, reconcile: !readOnly, refreshHarnesses: !readOnly };
+  return { reload: true, reconcile: !readOnly, refreshHarnesses: true };
 }

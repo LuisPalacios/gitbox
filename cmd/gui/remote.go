@@ -58,6 +58,9 @@ type RemoteStateDTO struct {
 	// Truncated says the server sent a list longer than a window takes, so
 	// what it shows is incomplete (#240).
 	Truncated bool `json:"truncated,omitempty"`
+	// RemoteEditors are the editor commands that open folders of the host
+	// (pkg/remote.RemoteEditors); the window disables every other (#243).
+	RemoteEditors []string `json:"remoteEditors"`
 }
 
 // RemoteResultDTO is the outcome of a remote action. Empty Error means it
@@ -148,7 +151,8 @@ type remoteSession struct {
 	mu     sync.Mutex
 	state  RemoteStateDTO
 	conn   remoteConn
-	gen    int // each connect and disconnect starts a new generation
+	probe  remote.Probe // what the host said before the server started
+	gen    int          // each connect and disconnect starts a new generation
 	cancel context.CancelFunc
 }
 
@@ -194,6 +198,7 @@ func (s *remoteSession) set(gen int, change func(*RemoteStateDTO)) {
 		return
 	}
 	change(&s.state)
+	s.state.RemoteEditors = remote.RemoteEditorCommands()
 	st := s.state
 	s.mu.Unlock()
 	s.a.sink().Emit("remote:state", st)
@@ -215,7 +220,9 @@ func (s *remoteSession) noteTruncated() {
 func (s *remoteSession) info() RemoteStateDTO {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.state
+	st := s.state
+	st.RemoteEditors = remote.RemoteEditorCommands()
+	return st
 }
 
 // failure is the code, hint and text of a connection failure.
@@ -292,6 +299,10 @@ func (s *remoteSession) run(ctx context.Context, cancel context.CancelFunc, gen 
 		return
 	}
 	s.conn = conn
+	s.probe = remote.Probe{}
+	if p, ok := conn.(interface{ Probe() remote.Probe }); ok {
+		s.probe = p.Probe()
+	}
 	s.mu.Unlock()
 	s.backend.Init(ctx)
 	hello := s.backend.Hello()

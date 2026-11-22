@@ -20,7 +20,9 @@
   import BrandIcon, { terminalLogo, harnessLogo, editorLogo } from './BrandIcon.svelte';
   import UIIcon from './UIIcon.svelte';
   import { t } from './i18n';
-  import { ro } from './ro';
+  import { ro, remoteOff } from './ro';
+  import { remoteHost } from './stores';
+  import { editorOff, unavailableOff } from './remotehost';
 
   export let kind: 'repo' | 'account' = 'repo';
   export let editors: EditorInfo[] = [];
@@ -160,26 +162,26 @@
   <button class="action-item" role="menuitem" on:click|stopPropagation={onOpenBrowser} title={browserLabel}>
     <span class="lm-icon">&#8599;</span> {browserLabel}
   </button>
-  <button use:ro class="action-item" role="menuitem" on:click|stopPropagation={onOpenFolder} title={revealText}>
+  <button use:remoteOff={unavailableOff($remoteHost)} class="action-item" role="menuitem" on:click|stopPropagation={onOpenFolder} title={revealText}>
     <span class="lm-icon">&#9636;</span> {revealText}
   </button>
 
   {#if hasOpenWith}
     <div class="lm-sec">{$t('menu.openWith')}</div>
     {#each aiHarnesses as harness, i}
-      <button use:ro class="action-item" role="menuitem" on:click|stopPropagation={() => onOpenAIHarness(harness)} title={harness.name}>
+      <button class="action-item" role="menuitem" on:click|stopPropagation={() => onOpenAIHarness(harness)} title={harness.name}>
         <span class="lm-icon lm-icon-brand"><BrandIcon name={harnessLogo(harness)} /></span> {harness.name}
         {#if i === 0}<span class="lm-tag">{$t('menu.default')}</span>{/if}
       </button>
     {/each}
     {#each editors as editor, i}
-      <button use:ro class="action-item" role="menuitem" on:click|stopPropagation={() => onOpenApp(editor.command)} title={editor.name}>
+      <button use:remoteOff={editorOff(editor.command, $remoteHost)} class="action-item" role="menuitem" on:click|stopPropagation={() => onOpenApp(editor.command)} title={editor.name}>
         <span class="lm-icon lm-icon-brand"><BrandIcon name={editorLogo(editor)} /></span> {editor.name}
         {#if i === 0}<span class="lm-tag">{$t('menu.default')}</span>{/if}
       </button>
     {/each}
     {#each menuProfiles as profile}
-      <button use:ro class="action-item" role="menuitem" on:click|stopPropagation={() => onOpenProfile(profile.id)} title={profile.name}>
+      <button class="action-item" role="menuitem" on:click|stopPropagation={() => onOpenProfile(profile.id)} title={profile.name}>
         <span class="lm-icon lm-icon-brand"><BrandIcon name={terminalLogo(profile.terminal, profile.shell)} /></span> {profile.name}
         {#if profile === defaultProfile}<span class="lm-tag">{$t('menu.default')}</span>{/if}
       </button>

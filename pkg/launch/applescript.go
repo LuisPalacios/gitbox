@@ -52,8 +52,15 @@ func MacHarnessShellLine(path string, harnessArgv []string) string {
 // fresh window with the default profile and write the command to its
 // current session. Returns "" for any other app name.
 func MacAppleScript(appName, path string, harnessArgv []string) string {
-	shell := MacHarnessShellLine(path, harnessArgv)
-	escaped := AppleScriptEscape(shell)
+	return MacAppleScriptLine(appName, MacHarnessShellLine(path, harnessArgv))
+}
+
+// MacAppleScriptLine returns the AppleScript source that runs one shell
+// command line in a new window of the named Terminal-family app, escaped as
+// an AppleScript string literal. A remote terminal (#243) passes its own
+// line, quoted for my local login shell. Returns "" for any other app name.
+func MacAppleScriptLine(appName, line string) string {
+	escaped := AppleScriptEscape(line)
 	switch appName {
 	case "Terminal":
 		return fmt.Sprintf(`tell application "Terminal"

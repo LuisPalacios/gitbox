@@ -110,8 +110,6 @@ func waitState(t *testing.T, a *App, want string) RemoteStateDTO {
 	}
 }
 
-func codeIs(err error, code string) bool { return toUserError(err).Code == "remote."+code }
-
 // TestRemoteLifecycle walks a remote window through its states with a
 // dialer that needs no ssh.
 func TestRemoteLifecycle(t *testing.T) {
@@ -387,9 +385,10 @@ func TestRemoteFailureCodes(t *testing.T) {
 }
 
 // A read-only remote window keeps every mutation on this side of the wire,
-// including the ones the frontend starts by itself (the focus-driven
-// Reconcile and the harness refresh), while its client preferences still
-// save to this machine's own gitbox.json (#240).
+// including the one the frontend starts by itself (the focus-driven
+// Reconcile), while its client preferences still save to this machine's own
+// gitbox.json (#240). The harness refresh is a read since P6 (#243): it
+// reaches the host, whose read-only server keeps what it finds in memory.
 func TestRemoteWindowReadOnly(t *testing.T) {
 	in, out, calls := answerEverything(t)
 	a, _ := remoteApp(t, nil)
@@ -408,7 +407,6 @@ func TestRemoteWindowReadOnly(t *testing.T) {
 		t.Errorf("DeleteRepo = %v, want read_only", err)
 	}
 	a.Reconcile()
-	a.RefreshAIHarnesses()
 	a.PullRepo("acct", "org/repo")
 	if got := calls()[before:]; len(got) != 0 {
 		t.Errorf("mutations reached the wire: %+v", got)
@@ -435,9 +433,11 @@ func TestRemoteWindowReadOnly(t *testing.T) {
 		t.Errorf("the client preferences were not saved locally: theme %q, language %q, ui %q, collapsed %+v", saved.Theme, saved.Language, saved.UIMode, saved.Collapsed)
 	}
 
-	// A read still goes to the host.
+	// A read still goes to the host, the harness refresh too, with no
+	// request id: it is not a mutation.
 	a.GetAllStatus()
-	if got := calls()[before:]; len(got) != 1 || got[0].Method != "GetAllStatus" {
-		t.Errorf("a read did not reach the host: %+v", got)
+	a.RefreshAIHarnesses()
+	if got := calls()[before:]; len(got) != 2 || got[0].Method != "GetAllStatus" || got[1].Method != "RefreshAIHarnesses" || got[1].RequestID != "" {
+		t.Errorf("the reads did not reach the host as reads: %+v", got)
 	}
 }

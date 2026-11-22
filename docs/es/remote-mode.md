@@ -2,7 +2,7 @@
 
 El modo remoto deja que GitboxApp, en mi portátil, gestione los repositorios de otro ordenador por SSH, como un servidor Linux sin escritorio. GitboxApp instala por sí mismo un `gitbox-server` que coincide con él en ese host: sin root, sin internet en el host y sin ningún puerto a la escucha. El diseño sigue a VS Code Remote-SSH.
 
-Esta versión conecta, instala, verifica y desinstala el servidor, y muestra los repositorios del host en solo lectura. Cambiar algo en el host llega en una versión posterior. Por ahora solo se admiten hosts Linux; los hosts macOS y Windows llegan después.
+Esta versión conecta, instala, verifica y desinstala el servidor, muestra los repositorios del host en solo lectura y abre sus carpetas en mi editor, mi terminal y mis harnesses de IA locales. Cambiar algo en el host llega en una versión posterior. Por ahora solo se admiten hosts Linux; los hosts macOS y Windows llegan después.
 
 ## Antes de empezar: un alias que no pida nada
 
@@ -56,17 +56,19 @@ Esto funciona, y todo se ejecuta en el host:
 - los detalles del repositorio, las insignias de pull requests y sus listas, y el estado de los espejos;
 - **Buscar proyectos** de una cuenta, que lista los repositorios del proveedor sin añadirlos;
 - las comprobaciones de credenciales, la vista previa de la limpieza y la comprobación previa del traslado;
-- **Comprobación del sistema**, que muestra las herramientas del host.
+- **Comprobación del sistema**, que muestra las herramientas del host;
+- abrir una carpeta de repositorio o de cuenta del host en VS Code, un perfil de terminal o un harness de IA de este ordenador: consulta [Abrir las carpetas del host](#abrir-las-carpetas-del-host).
 
 Esto está desactivado, con el aviso «Remoto de solo lectura (llega en una versión posterior)»:
 
 - todo lo que cambia el host: añadir, editar o borrar cuentas, clonar, actualizar, añadir repositorios descubiertos, espejos, raíces, la configuración de credenciales, la limpieza y el traslado, y los ajustes que viven en el `gitbox.json` del host;
-- abrir una carpeta del host en este ordenador, en el gestor de archivos, un editor, un terminal o un harness de IA;
 - la vista compacta y el arranque automático.
+
+Esto no tiene equivalente remoto, así que está desactivado con el aviso «No disponible para hosts remotos»: **Mostrar en Finder** o **Mostrar en el Explorador**, abrir la carpeta de la cuenta y **Abrir en editor** del archivo de configuración en Ajustes.
 
 Mis propias preferencias, como el idioma, el tema, Simple o Avanzado, la barra lateral y el tamaño de la ventana, siguen funcionando y se quedan en este ordenador.
 
-El propio servidor funciona en solo lectura. No guarda nada en el `gitbox.json` del host: un guardado rechazado falla con `read_only`, y la detección de harnesses de IA del host guarda lo que encuentra en memoria. El fetch solo actualiza las ramas de seguimiento remoto. En esta versión además se salta la reparación del `.git/config` de cada clon que un fetch local hace antes, y el registro del servidor lo dice una vez; una versión posterior lo quita. Una cuenta o un repositorio plegado sigue plegado solo en esta ventana.
+El propio servidor funciona en solo lectura. No guarda nada en el `gitbox.json` del host: un guardado rechazado falla con `read_only`, y la detección de harnesses de IA del host guarda lo que encuentra en memoria. La ventana pide al host que vuelva a detectar sus harnesses cuando recupera el foco, y muestra los que tiene el host. El fetch solo actualiza las ramas de seguimiento remoto. En esta versión además se salta la reparación del `.git/config` de cada clon que un fetch local hace antes, y el registro del servidor lo dice una vez; una versión posterior lo quita. Una cuenta o un repositorio plegado sigue plegado solo en esta ventana.
 
 ### La insignia y la conexión
 
@@ -77,6 +79,38 @@ Cuando la conexión se cae, la ventana conserva el último estado que recibió, 
 ### En qué confía la ventana
 
 Todo lo que envía el host es no fiable. Los enlaces solo se abren tras una comprobación en este ordenador: los enlaces `https` se abren en el navegador, un enlace `http` se abre después de que confirme la dirección completa, y cualquier otro, como `vscode:` o `ms-settings:`, se rechaza. Los nombres y las rutas se muestran como texto y nunca se ejecutan como un comando. La ventana admite como mucho 10.000 repositorios y 1.000 cuentas; una lista más larga se corta, la insignia avisa y el registro de conexión dice qué lista se cortó.
+
+## Abrir las carpetas del host
+
+Los lanzadores de una ventana remota abren la carpeta del host desde este ordenador, como hace VS Code Remote-SSH. La carpeta viene del host, así que GitboxApp nunca la mete como texto en una línea de comandos. Primero la comprueba: tiene que ser una ruta absoluta del host, de 4.096 bytes como mucho, sin NUL, CR ni LF. Cualquier otra cosa falla con `not_available_remote_path` antes de que arranque nada. El alias siempre sale de mi propia lista `remotes`, nunca del host.
+
+### Editores
+
+VS Code (`code`) y VS Code Insiders (`code-insiders`) abren la carpeta con `code --remote ssh-remote+<alias> <carpeta>`, cada parte como un argumento propio. VS Code necesita su extensión Remote-SSH, y conecta con mi propio `ssh` y el mismo alias. Un archivo de workspace de un contenedor se abre igual.
+
+Cualquier otro editor, como Zed o VSCodium, aparece desactivado con «Este editor no puede abrir carpetas en hosts remotos». La prueba de humo remota desde macOS y Windows cubre la entrada de VS Code; la entrada de Insiders usa la misma línea de comandos de la documentación de Remote-SSH.
+
+En Windows, `code` es un archivo por lotes que `cmd.exe` vuelve a leer, así que una carpeta con `%`, `!`, `^`, `&`, `|`, `<`, `>` o `"` falla con `not_available_remote_path`.
+
+### Terminales
+
+Un perfil de terminal abre un terminal local que ejecuta `ssh -t <alias>` y entra en la carpeta del host:
+
+```text
+ssh -t -- my-server 'cd -- '\''/srv/my repo'\'' && exec "$SHELL" -l'
+```
+
+El `cd` se escribe para el shell de inicio que informó el host: sh, bash, zsh, dash y ksh reciben comillas POSIX, y fish recibe las suyas. Cualquier otro shell pasa el `cd` a `sh` solo con palabras entre comillas simples. El modo remoto no añade aquí ninguna opción de `ssh`, así que decide mi `ssh_config`, y una pregunta de frase de paso o de clave del host aparece en el terminal. En un host sin un locale UTF-8, fish muestra estropeado en su prompt y en `pwd` el nombre de una carpeta con letras que no son ASCII, pero el terminal está en la carpeta correcta.
+
+Cómo arranca el terminal depende de este ordenador:
+
+- **macOS:** la app del perfil ejecuta `ssh`. Terminal.app e iTerm lo ejecutan a través de mi shell de inicio, con las comillas que necesita, fish incluido; un perfil cuya app no puede ejecutar un comando, como `open -a Warp`, se rechaza.
+- **Linux:** el terminal del perfil ejecuta `ssh` como su programa, sin ningún shell en medio.
+- **Windows:** `ssh.exe` arranca en una consola nueva propia, sin `cmd.exe` en medio, y Windows la muestra en su terminal predeterminado. La app del perfil no se usa: Windows Terminal y el lanzador `cmd.exe` vuelven a leer la línea de comandos. Respetar los perfiles de WezTerm y Alacritty llega en una versión posterior.
+
+### Harnesses de IA
+
+Un harness de IA se ejecuta en el host, en la carpeta, en un terminal de mi perfil predeterminado: el mismo `ssh -t` con `exec <harness>` después del `cd`. Los harnesses son los que se detectan en el host. Solo se ejecuta un harness del catálogo, por su nombre o por una ruta absoluta que termina en él, y sin argumentos; cualquier otra cosa que liste el host falla con `harness_not_allowed`.
 
 ## Qué se instala y dónde
 
@@ -168,6 +202,9 @@ El modo simple muestra una frase sencilla; el código en sí aparece en el regis
 - `server_crashed`: el servidor se detuvo durante la conexión. El registro muestra sus últimas líneas.
 - `not_connected`: la ventana no está conectada.
 - `not_implemented_remote`: la acción todavía no tiene lado remoto.
+- `not_available_remote`: la acción no tiene equivalente remoto, como el gestor de archivos.
+- `not_available_remote_path`: la carpeta no es una ruta absoluta válida del host, o una capa de este ordenador no puede llevarla con seguridad.
+- `harness_not_allowed`: el harness de IA no es del catálogo, o lleva argumentos.
 - `read_only`: el remoto es de solo lectura, así que la acción cambiaría el host. Una versión posterior lo permite.
 
 ## Clientes Windows y macOS
