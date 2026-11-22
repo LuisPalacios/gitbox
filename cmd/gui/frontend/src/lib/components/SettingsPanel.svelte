@@ -195,7 +195,7 @@
     {/if}
     {#if remotes.enabled}
     <div class="settings-row settings-row-top">
-      <span class="settings-label" use:tooltip={$t('settings.remotesTip')}>{$t('settings.remotes')}</span>
+      <span class="settings-label" use:tooltip={$t('settings.remotesTip')}>{$t('settings.remotes')}<span class="remote-badge">{$t('settings.remotes.experimental')}</span></span>
       <div class="remotes">
         {#each remotes.remotes as r (r.alias)}
           <div class="remote-row">
@@ -318,6 +318,11 @@
   .settings-doctor-summary { margin-left: 8px; }
   .settings-row-top { align-items: flex-start; }
   .settings-row-top .settings-label { padding-top: 4px; }
+  .remote-badge {
+    display: block; width: fit-content; margin-top: 3px; padding: 0 5px; border-radius: 3px;
+    font-size: 9px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    color: #b45309; background: rgba(245, 158, 11, 0.14);
+  }
   .remotes { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
   .remote-row { display: flex; align-items: center; gap: 8px; }
   .remote-alias { font-size: 12px; font-family: monospace; color: var(--text-primary); min-width: 90px; }
