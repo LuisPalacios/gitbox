@@ -10,6 +10,7 @@
 
   export let kind: 'authored' | 'review' = 'authored';
   export let prs: PullRequestDTO[] = [];
+  export let partial = false;
   export let providerAllURL: string = ''; // "open all PRs" footer link
   export let providerName: string = '';
 
@@ -103,6 +104,9 @@
   {/each}
   {#if remaining > 0}
     <div class="pr-more">{$t('pr.more', { n: remaining })}</div>
+  {/if}
+  {#if partial}
+    <div class="pr-more">{$t('pr.partial')}</div>
   {/if}
   {#if providerAllURL}
     <hr class="pr-sep" />

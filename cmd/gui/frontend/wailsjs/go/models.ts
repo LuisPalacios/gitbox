@@ -1214,6 +1214,7 @@ export namespace main {
 	export class PRSummaryDTO {
 	    authored: PullRequestDTO[];
 	    reviewRequested: PullRequestDTO[];
+	    partial?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new PRSummaryDTO(source);
@@ -1223,6 +1224,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.authored = this.convertValues(source["authored"], PullRequestDTO);
 	        this.reviewRequested = this.convertValues(source["reviewRequested"], PullRequestDTO);
+	        this.partial = source["partial"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

@@ -155,16 +155,16 @@ Sin el PAT, la cuenta funciona para las operaciones git, pero no puede descubrir
 
 Esta es la referencia de cada PAT que usa Gitbox: cuentas Token, PATs complementarios de SSH y el PAT que una cuenta GCM guarda para mirrors o para la API. La primera columna es el mínimo que necesita cada cuenta. Cada una de las demás columnas añade lo que necesita una capacidad encima de ese mínimo. Da a cada cuenta solo los scopes que necesita, y añade los destructivos (delete) solo cuando pienses usarlos.
 
-| Proveedor       | Discovery + clone + fetch      | Selectores de propietario (orgs) | Crear repo (**Crear repo**, destino de un move) | Eliminar repo (move con "delete source")              | Mirror                                        |
-| --------------- | ------------------------------ | -------------------------------- | ----------------------------------------------- | ----------------------------------------------------- | --------------------------------------------- |
-| GitHub          | `repo`                         | `read:org`                       | `repo`                                          | `delete_repo` (sensible — añádelo solo si hace falta) | `repo`                                        |
-| GitLab          | `api`                          | `api`                            | `api`                                           | `api`                                                 | `api`                                         |
-| Gitea / Forgejo | `read:repository`, `read:user` | `read:organization`              | `write:repository`                              | `write:repository`                                    | `write:repository`                            |
-| Bitbucket Cloud | Repositories: Read, Write      | Account: Read                    | Repositories: Admin                             | Repositories: Delete (sensible)                       | No disponible a través de la API de Bitbucket |
+| Proveedor       | Discovery + clone + fetch                | Selectores de propietario (orgs) | Crear repo (**Crear repo**, destino de un move) | Eliminar repo (move con "delete source")              | Mirror                                        |
+| --------------- | ---------------------------------------- | -------------------------------- | ----------------------------------------------- | ----------------------------------------------------- | --------------------------------------------- |
+| GitHub          | `repo`                                   | `read:org`                       | `repo`                                          | `delete_repo` (sensible — añádelo solo si hace falta) | `repo`                                        |
+| GitLab          | `api`                                    | `api`                            | `api`                                           | `api`                                                 | `api`                                         |
+| Gitea / Forgejo | `read:repository`, `read:user`           | `read:organization`              | `write:repository`                              | `write:repository`                                    | `write:repository`                            |
+| Bitbucket Cloud | Repositories: Read, Write, Account: Read | —                                | Repositories: Admin                             | Repositories: Delete (sensible)                       | No disponible a través de la API de Bitbucket |
 
 En la página de tokens de Gitea o Forgejo, estos scopes aparecen como niveles de permiso: **repository** Read y Write, **user** Read y **organization** Read cubren todas las columnas. En Bitbucket, Gitbox abre la página de app passwords.
 
-Cuando falta un scope, Gitbox muestra un aviso que nombra el scope y la página donde regenerar el PAT, por ejemplo: _"Source repo delete refused: your github PAT is missing the `delete_repo` scope. Regenerate it at <https://github.com/settings/tokens> (keep existing scopes, add `delete_repo`), then store the new token in the account's credential settings."_
+Gitbox sugiere cambiar los scopes del token cuando el proveedor indica que falta un permiso. Un límite de peticiones significa que el servidor pide menos peticiones, y un HTTP 403 sin indicación de scope significa que ha denegado el acceso. Si falta un scope, usa la página de tokens y la lista de permisos de la acción correspondiente.
 
 ## Cambiar credenciales
 
@@ -183,7 +183,7 @@ Gitbox también repara la identidad, el remote y los ajustes de credencial de un
 Puedes verificar las credenciales en cualquier momento:
 
 - La entrada de cada cuenta en la barra lateral y su tarjeta muestran su salud en palabras junto a una marca: verde (funciona), naranja (limitada) o roja (rota o sin conexión). Las cuentas rotas encabezan también la vista Requiere atención, con su botón para arreglarlas.
-- Un token de GitHub o GitLab que caduca en 14 días o menos pone en naranja la salud en palabras: "El token caduca en N días". En GitLab esto requiere GitLab 15.5 o posterior y un personal access token. Una cuenta Token cuyo token rechaza el servidor (HTTP 401, por ejemplo al caducar) aparece como fallida.
+- Un token de GitHub o GitLab que caduca en 14 días o menos pone en naranja la salud en palabras: "El token caduca en N días". GitHub lee la caducidad al comprobar el usuario autenticado. En GitLab, informar de la caducidad requiere GitLab 15.5 o posterior y un personal access token. Una cuenta Token cuyo token rechaza el servidor (HTTP 401, por ejemplo al caducar) aparece como fallida.
 - Elige **Cambiar credencial…** en el menú ⋯ de la cuenta para abrir el modal Cambiar credencial. Su panel Estado actual muestra el estado real de la credencial principal y del token de API, con el mensaje de error subyacente (si lo hay).
 - Haz clic en **Volver a comprobar** en ese panel para ejecutar de nuevo la verificación.
 
@@ -206,7 +206,7 @@ Arreglo típico en cada SO:
 
 Elige **Cambiar credencial…** en el menú ⋯ de cualquier cuenta. El panel Estado actual dentro del modal Cambiar credencial muestra:
 
-- **Principal (GCM/SSH/TOKEN):** el estado de la credencial principal (OK / Aviso / Sin conexión / Error / Sin configurar) y, debajo de la fila, el error subyacente. Ese texto de error es el primer sitio donde mirar: nombra la URL que falla, el código HTTP y lo que informó la red o la pila TLS.
+- **Principal (GCM/SSH/TOKEN):** el estado de la credencial principal (OK / Aviso / Sin conexión / Error / Sin configurar) y, debajo de la fila, el error subyacente. Ese texto de error es el primer sitio donde mirar: identifica el host e indica el estado HTTP o una descripción segura del fallo de conexión.
 - **Token de API (PAT):** el estado del PAT complementario (solo GCM y SSH). Cuando GCM ya cubre la API, la fila dice _No creado_ y su detalle empieza por _API via GCM_. Cuando ningún PAT cubre la API, aparece un botón **Configurar token de API** junto a la fila; cuando falla un PAT guardado, aparece en su lugar un botón **Sustituir token de API**.
 - Un botón **Volver a comprobar** ejecuta de nuevo la verificación sin salir del modal.
 - Aparece una pista azul bajo el panel cuando el error parece un bloqueo de acceso a la red por parte del SO, con un enlace a la sección correspondiente de más abajo.

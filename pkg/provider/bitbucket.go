@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net/url"
 	"strings"
+	"time"
 )
 
 // Bitbucket implements Provider for Bitbucket Cloud.
@@ -37,15 +39,27 @@ func (b *Bitbucket) authHeaders(token, username string) map[string]string {
 	}
 }
 
+func (b *Bitbucket) checkAuth(ctx context.Context, _, token, username string) (time.Time, error) {
+	var user struct{}
+	_, err := doGet(ctx, "https://api.bitbucket.org/2.0/user", b.authHeaders(token, username), &user)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("bitbucket: %w", err)
+	}
+	return time.Time{}, nil
+}
+
 func (b *Bitbucket) ListRepos(ctx context.Context, baseURL, token, username string) ([]RemoteRepo, error) {
+	ctx, cancel := context.WithTimeout(ctx, listingTimeout)
+	defer cancel()
 	headers := b.authHeaders(token, username)
 
 	url := fmt.Sprintf("https://api.bitbucket.org/2.0/repositories/%s?pagelen=100", username)
 	var all []RemoteRepo
+	var err error
 
 	for url != "" {
 		var resp bitbucketResponse
-		if _, err := doGet(ctx, url, headers, &resp); err != nil {
+		if _, err := doListGet(ctx, url, headers, &resp); err != nil {
 			return nil, fmt.Errorf("bitbucket: %w", err)
 		}
 		for _, r := range resp.Values {
@@ -65,7 +79,10 @@ func (b *Bitbucket) ListRepos(ctx context.Context, baseURL, token, username stri
 			}
 			all = append(all, repo)
 		}
-		url = resp.Next
+		url, err = bitbucketNext(resp.Next)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return all, nil
 }
@@ -115,7 +132,7 @@ func (b *Bitbucket) DeleteRepo(ctx context.Context, _, token, username, owner, r
 	}
 	apiURL := fmt.Sprintf("https://api.bitbucket.org/2.0/repositories/%s/%s", workspace, repoName)
 	if err := doDelete(ctx, apiURL, b.authHeaders(token, username)); err != nil {
-		if IsForbiddenError(err) {
+		if IsScopeDenied(err) {
 			return &InsufficientScopesError{
 				Provider:       "bitbucket",
 				Action:         ActionDeleteRepo,
@@ -131,23 +148,49 @@ func (b *Bitbucket) DeleteRepo(ctx context.Context, _, token, username, owner, r
 
 // --- OrgLister ---
 
-func (b *Bitbucket) ListUserOrgs(ctx context.Context, _, token, username string) ([]string, error) {
+func (b *Bitbucket) ListUserOrgs(ctx context.Context, _, token, username string) (OrgList, error) {
+	ctx, cancel := context.WithTimeout(ctx, listingTimeout)
+	defer cancel()
 	apiURL := "https://api.bitbucket.org/2.0/user/permissions/workspaces?pagelen=100"
-	var resp struct {
-		Values []struct {
-			Workspace struct {
-				Slug string `json:"slug"`
-			} `json:"workspace"`
-		} `json:"values"`
-	}
-	if _, err := doGet(ctx, apiURL, b.authHeaders(token, username), &resp); err != nil {
-		return nil, fmt.Errorf("bitbucket list workspaces: %w", err)
-	}
-	var result []string
-	for _, v := range resp.Values {
-		if v.Workspace.Slug != username {
-			result = append(result, v.Workspace.Slug)
+	headers := b.authHeaders(token, username)
+	var result OrgList
+	for range 10 {
+		var resp struct {
+			Values []struct {
+				Workspace struct {
+					Slug string `json:"slug"`
+				} `json:"workspace"`
+			} `json:"values"`
+			Next string `json:"next"`
 		}
+		if _, err := doListGet(ctx, apiURL, headers, &resp); err != nil {
+			return OrgList{}, fmt.Errorf("bitbucket list workspaces: %w", err)
+		}
+		for _, v := range resp.Values {
+			if v.Workspace.Slug != username {
+				result.Names = append(result.Names, v.Workspace.Slug)
+			}
+		}
+		next, err := bitbucketNext(resp.Next)
+		if err != nil {
+			return OrgList{}, err
+		}
+		if next == "" {
+			result.Complete = true
+			break
+		}
+		apiURL = next
 	}
 	return result, nil
+}
+
+func bitbucketNext(raw string) (string, error) {
+	if raw == "" {
+		return "", nil
+	}
+	next, err := url.Parse(raw)
+	if err != nil || next.Scheme != "https" || next.Host != "api.bitbucket.org" || next.User != nil {
+		return "", fmt.Errorf("bitbucket: invalid pagination link")
+	}
+	return raw, nil
 }

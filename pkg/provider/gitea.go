@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -27,32 +28,37 @@ type giteaRepo struct {
 // ("username:password") which works when the credential comes from GCM.
 // Returns the working headers map.
 func (g *Gitea) resolveAuth(ctx context.Context, baseURL, token, username string) (map[string]string, error) {
-	base := strings.TrimRight(baseURL, "/")
-	headers := map[string]string{
-		"Authorization": "token " + token,
-	}
+	testURL := strings.TrimRight(baseURL, "/") + "/api/v1/user/repos?limit=1&page=1"
+	return g.probeAuth(ctx, testURL, token, username)
+}
 
-	testURL := fmt.Sprintf("%s/api/v1/user/repos?limit=1&page=1", base)
-	var testBatch []giteaRepo
-	if _, err := doGet(ctx, testURL, headers, &testBatch); err != nil {
-		// If the first failure is a real network error, don't bother
-		// retrying with Basic — the outcome will be the same and retrying
-		// loses the original network-error type (wrapping may prefer the
-		// second call's error, which is the last in the chain).
-		if IsNetworkError(err) {
+func (g *Gitea) checkAuth(ctx context.Context, baseURL, token, username string) (time.Time, error) {
+	testURL := strings.TrimRight(baseURL, "/") + "/api/v1/user"
+	_, err := g.probeAuth(ctx, testURL, token, username)
+	return time.Time{}, err
+}
+
+func (g *Gitea) probeAuth(ctx context.Context, testURL, token, username string) (map[string]string, error) {
+	headers := map[string]string{"Authorization": "token " + token}
+	var response any
+	if _, err := doGet(ctx, testURL, headers, &response); err != nil {
+		// Passwords from GCM can work with Basic auth. Never retry for
+		// explicit scope failures, rate limiting or connection problems.
+		if !IsUnauthorized(err) && (!IsForbiddenError(err) || IsScopeDenied(err) || isRateLimited(err)) {
 			return nil, fmt.Errorf("gitea: %w", err)
 		}
 		basic := base64.StdEncoding.EncodeToString([]byte(username + ":" + token))
 		headers["Authorization"] = "Basic " + basic
-		testBatch = nil
-		if _, err2 := doGet(ctx, testURL, headers, &testBatch); err2 != nil {
-			return nil, fmt.Errorf("gitea: %w", err2)
+		if _, err := doGet(ctx, testURL, headers, &response); err != nil {
+			return nil, fmt.Errorf("gitea: %w", err)
 		}
 	}
 	return headers, nil
 }
 
 func (g *Gitea) ListRepos(ctx context.Context, baseURL, token, username string) ([]RemoteRepo, error) {
+	ctx, cancel := context.WithTimeout(ctx, listingTimeout)
+	defer cancel()
 	base := strings.TrimRight(baseURL, "/")
 
 	headers, err := g.resolveAuth(ctx, baseURL, token, username)
@@ -65,7 +71,7 @@ func (g *Gitea) ListRepos(ctx context.Context, baseURL, token, username string) 
 	for {
 		url := fmt.Sprintf("%s/api/v1/user/repos?limit=50&page=%d", base, page)
 		var batch []giteaRepo
-		if _, err := doGet(ctx, url, headers, &batch); err != nil {
+		if _, err := doListGet(ctx, url, headers, &batch); err != nil {
 			return nil, fmt.Errorf("gitea: %w", err)
 		}
 		if len(batch) == 0 {
@@ -150,22 +156,22 @@ func (g *Gitea) CreateRepo(ctx context.Context, baseURL, token, username, owner,
 
 // --- OrgLister ---
 
-func (g *Gitea) ListUserOrgs(ctx context.Context, baseURL, token, username string) ([]string, error) {
+func (g *Gitea) ListUserOrgs(ctx context.Context, baseURL, token, username string) (OrgList, error) {
 	headers, err := g.resolveAuth(ctx, baseURL, token, username)
 	if err != nil {
-		return nil, fmt.Errorf("gitea auth: %w", err)
+		return OrgList{}, fmt.Errorf("gitea auth: %w", err)
 	}
-	base := strings.TrimRight(baseURL, "/")
-	apiURL := fmt.Sprintf("%s/api/v1/user/orgs?limit=50", base)
-	var orgs []struct {
+	apiURL := strings.TrimRight(baseURL, "/") + "/api/v1/user/orgs?limit=50"
+	type organization struct {
 		Username string `json:"username"`
 	}
-	if _, err := doGet(ctx, apiURL, headers, &orgs); err != nil {
-		return nil, fmt.Errorf("gitea list orgs: %w", err)
+	orgs, complete, err := listNumberedPages[organization](ctx, apiURL, headers, 10, nextFullPage(50))
+	if err != nil {
+		return OrgList{}, fmt.Errorf("gitea list orgs: %w", err)
 	}
-	result := make([]string, len(orgs))
-	for i, o := range orgs {
-		result[i] = o.Username
+	result := OrgList{Names: make([]string, len(orgs)), Complete: complete}
+	for i, org := range orgs {
+		result.Names[i] = org.Username
 	}
 	return result, nil
 }
@@ -183,7 +189,7 @@ func (g *Gitea) DeleteRepo(ctx context.Context, baseURL, token, username, owner,
 	base := strings.TrimRight(baseURL, "/")
 	apiURL := fmt.Sprintf("%s/api/v1/repos/%s/%s", base, owner, repoName)
 	if err := doDelete(ctx, apiURL, headers); err != nil {
-		if IsForbiddenError(err) {
+		if IsScopeDenied(err) {
 			// Caller can't tell gitea from forgejo at this level;
 			// passing "gitea" is fine because ScopesForAction treats
 			// both identically and RemediationURL uses the same
@@ -236,7 +242,7 @@ type giteaIssue struct {
 }
 
 // ListAccountPRs implements PRLister for Gitea/Forgejo using the
-// `/repos/issues/search` endpoint. Two calls: created-by and review-requested.
+// `/repos/issues/search` endpoint with created-by and review-requested queries.
 func (g *Gitea) ListAccountPRs(ctx context.Context, baseURL, token, username string, includeDrafts bool) (AccountPRs, error) {
 	if username == "" {
 		return AccountPRs{}, fmt.Errorf("gitea list prs: empty username")
@@ -249,8 +255,8 @@ func (g *Gitea) ListAccountPRs(ctx context.Context, baseURL, token, username str
 
 	result := AccountPRs{ByRepo: map[string]PRSummary{}}
 
-	authoredURL := fmt.Sprintf("%s/api/v1/repos/issues/search?type=pulls&state=open&created_by=%s&limit=50", base, username)
-	authored, err := g.searchGiteaPRs(ctx, authoredURL, headers, includeDrafts, false)
+	authoredURL := fmt.Sprintf("%s/api/v1/repos/issues/search?type=pulls&state=open&created_by=%s&limit=50", base, url.QueryEscape(username))
+	authored, authoredComplete, err := g.searchGiteaPRs(ctx, authoredURL, headers, includeDrafts)
 	if err != nil {
 		return AccountPRs{}, fmt.Errorf("gitea authored PRs: %w", err)
 	}
@@ -261,62 +267,45 @@ func (g *Gitea) ListAccountPRs(ctx context.Context, baseURL, token, username str
 	}
 
 	reviewURL := fmt.Sprintf("%s/api/v1/repos/issues/search?type=pulls&state=open&review_requested=true&limit=50", base)
-	reviewer, err := g.searchGiteaPRs(ctx, reviewURL, headers, true, true)
+	reviewer, reviewComplete, err := g.searchGiteaPRs(ctx, reviewURL, headers, false)
 	if err != nil {
 		return AccountPRs{}, fmt.Errorf("gitea review-requested PRs: %w", err)
 	}
 	for _, pr := range reviewer {
-		if pr.IsDraft {
-			continue
-		}
 		sum := result.ByRepo[pr.RepoFull]
 		sum.ReviewRequested = append(sum.ReviewRequested, pr)
 		result.ByRepo[pr.RepoFull] = sum
 	}
 
+	result.Complete = authoredComplete && reviewComplete
 	return result, nil
 }
 
-// searchGiteaPRs walks a paginated issues/search endpoint. `reviewerFilter`
-// discards any result whose author is the current user (some Gitea versions
-// ignore review_requested=true).
-func (g *Gitea) searchGiteaPRs(ctx context.Context, baseURL string, headers map[string]string, includeDrafts, reviewerFilter bool) ([]PullRequest, error) {
-	var out []PullRequest
-	sep := "&"
-	if !strings.Contains(baseURL, "?") {
-		sep = "?"
+// searchGiteaPRs walks a bounded issue-search listing.
+func (g *Gitea) searchGiteaPRs(ctx context.Context, reqURL string, headers map[string]string, includeDrafts bool) ([]PullRequest, bool, error) {
+	issues, complete, err := listNumberedPages[giteaIssue](ctx, reqURL, headers, 3, nextFullPage(50))
+	if err != nil {
+		return nil, false, err
 	}
-	for page := 1; page <= 3; page++ {
-		reqURL := fmt.Sprintf("%s%spage=%d", baseURL, sep, page)
-		var issues []giteaIssue
-		if _, err := doGet(ctx, reqURL, headers, &issues); err != nil {
-			return nil, err
+	out := make([]PullRequest, 0, len(issues))
+	for _, it := range issues {
+		if it.PullRequest == nil || it.Draft && !includeDrafts {
+			continue
 		}
-		for _, it := range issues {
-			if it.PullRequest == nil {
-				continue
-			}
-			if it.Draft && !includeDrafts {
-				continue
-			}
-			pr := PullRequest{
-				Number:   it.Number,
-				Title:    it.Title,
-				URL:      it.HTMLURL,
-				Author:   it.User.Login,
-				IsDraft:  it.Draft,
-				RepoFull: it.Repository.FullName,
-			}
-			if t, err := time.Parse(time.RFC3339, it.UpdatedAt); err == nil {
-				pr.Updated = t
-			}
-			out = append(out, pr)
+		pr := PullRequest{
+			Number:   it.Number,
+			Title:    it.Title,
+			URL:      it.HTMLURL,
+			Author:   it.User.Login,
+			IsDraft:  it.Draft,
+			RepoFull: it.Repository.FullName,
 		}
-		if len(issues) < 50 {
-			break
+		if t, err := time.Parse(time.RFC3339, it.UpdatedAt); err == nil {
+			pr.Updated = t
 		}
+		out = append(out, pr)
 	}
-	return out, nil
+	return out, complete, nil
 }
 
 // --- PushMirrorProvider ---
@@ -356,7 +345,7 @@ func (g *Gitea) ListPushMirrors(ctx context.Context, baseURL, token, username, o
 	base := strings.TrimRight(baseURL, "/")
 	url := fmt.Sprintf("%s/api/v1/repos/%s/%s/push_mirrors", base, owner, repo)
 	var mirrors []giteaPushMirror
-	if _, err := doGet(ctx, url, headers, &mirrors); err != nil {
+	if _, err := doListGet(ctx, url, headers, &mirrors); err != nil {
 		return nil, fmt.Errorf("gitea list push mirrors: %w", err)
 	}
 	result := make([]PushMirrorInfo, len(mirrors))

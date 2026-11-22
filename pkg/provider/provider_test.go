@@ -4,8 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strconv"
+	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -708,6 +713,9 @@ func TestGitHubListAccountPRs(t *testing.T) {
 		t.Fatalf("ListAccountPRs: %v", err)
 	}
 
+	if !res.Complete {
+		t.Error("expected both searches to be complete")
+	}
 	mine := res.ByRepo["me/repo"]
 	if got := len(mine.Authored); got != 2 {
 		t.Errorf("authored in me/repo: got %d, want 2", got)
@@ -809,6 +817,9 @@ func TestGiteaListAccountPRs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Gitea ListAccountPRs: %v", err)
 	}
+	if !res.Complete {
+		t.Error("expected both paginated searches to be complete")
+	}
 	if len(res.ByRepo["me/project"].Authored) != 1 {
 		t.Errorf("authored me/project: %d", len(res.ByRepo["me/project"].Authored))
 	}
@@ -847,5 +858,121 @@ func TestByName(t *testing.T) {
 	_, err = ByName("unknown")
 	if err == nil {
 		t.Error("ByName(unknown) should return error")
+	}
+}
+
+func TestGitHubPRCompleteness(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		start func(*http.Request, http.ResponseWriter)
+		pages int
+	}{
+		{"search incomplete", func(_ *http.Request, w http.ResponseWriter) {
+			fmt.Fprint(w, `{"incomplete_results":true,"items":[]}`)
+		}, 1},
+		{"search capped", func(_ *http.Request, w http.ResponseWriter) {
+			w.Header().Set("Link", `<https://example.invalid/page>; rel="next"`)
+			fmt.Fprint(w, `{"total_count":500,"items":[]}`)
+		}, 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var hits atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.Contains(r.URL.Query().Get("q"), "author:me") {
+					hits.Add(1)
+					tc.start(r, w)
+					return
+				}
+				fmt.Fprint(w, `{"items":[]}`)
+			}))
+			defer server.Close()
+			result, err := (&GitHub{}).ListAccountPRs(t.Context(), server.URL, "token", "me", true)
+			if err != nil || result.Complete || hits.Load() != int32(tc.pages) {
+				t.Fatalf("complete=%v, pages=%d, err=%v; want incomplete, %d pages", result.Complete, hits.Load(), err, tc.pages)
+			}
+		})
+	}
+}
+
+func TestGitLabPRPagination(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		pages      int
+		want       int
+		isComplete bool
+	}{
+		{"three pages", 3, 3, true},
+		{"cap", 11, 10, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Query().Get("scope") != "created_by_me" {
+					fmt.Fprint(w, "[]")
+					return
+				}
+				page, err := strconv.Atoi(r.URL.Query().Get("page"))
+				if err != nil || page < 1 || page > tc.want {
+					t.Errorf("unexpected request for page %q", r.URL.Query().Get("page"))
+				}
+				if page < tc.pages {
+					w.Header().Set("X-Next-Page", strconv.Itoa(page+1))
+				}
+				fmt.Fprintf(w, `[{"iid":%d,"references":{"full":"group/project!%d"}}]`, page, page)
+			}))
+			defer server.Close()
+			result, err := (&GitLab{}).ListAccountPRs(t.Context(), server.URL, "token", "user", true)
+			if err != nil || result.Complete != tc.isComplete {
+				t.Fatalf("complete=%v, err=%v; want complete=%v", result.Complete, err, tc.isComplete)
+			}
+			prs := result.ByRepo["group/project"].Authored
+			if len(prs) != tc.want || prs[tc.want-1].Number != tc.want {
+				t.Fatalf("PRs = %+v; want %d pages in order", prs, tc.want)
+			}
+		})
+	}
+}
+
+func TestGitLabOrgPagination(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("page") {
+		case "1":
+			w.Header().Set("X-Next-Page", "3")
+			fmt.Fprint(w, `[{"full_path":"first"}]`)
+		case "3":
+			fmt.Fprint(w, `[{"full_path":"last"}]`)
+		default:
+			t.Errorf("unexpected page %s", r.URL.Query().Get("page"))
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	result, err := (&GitLab{}).ListUserOrgs(t.Context(), server.URL, "token", "user")
+	if err != nil || !result.Complete || !slices.Equal(result.Names, []string{"first", "last"}) {
+		t.Fatalf("result=%+v, err=%v; want complete with first and last names", result, err)
+	}
+}
+
+func TestBitbucketOrgPagination(t *testing.T) {
+	var hits int
+	SetDoerForTest(t, doerFunc(func(req *http.Request) (*http.Response, error) {
+		hits++
+		if req.URL.Host != "api.bitbucket.org" || req.Header.Get("Authorization") == "" {
+			t.Fatalf("unexpected Bitbucket request to %v", req.URL)
+		}
+		page := req.URL.Query().Get("page")
+		var body string
+		switch page {
+		case "":
+			body = `{"values":[{"workspace":{"slug":"first"}},{"workspace":{"slug":"me"}}],"next":"https://api.bitbucket.org/2.0/user/permissions/workspaces?page=2"}`
+		case "2":
+			body = `{"values":[{"workspace":{"slug":"last"}}]}`
+		default:
+			t.Fatalf("unexpected page %q", page)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+	}))
+	got, err := (&Bitbucket{}).ListUserOrgs(t.Context(), "", "token", "me")
+	if err != nil || hits != 2 || !got.Complete || !slices.Equal(got.Names, []string{"first", "last"}) {
+		t.Fatalf("result=%+v, hits=%d, err=%v; want two pages and both workspace names", got, hits, err)
 	}
 }

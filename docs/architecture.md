@@ -137,7 +137,7 @@ Startup returns config, preferences, collapse state and path-derived nesting in 
 - When the account changes or a re-check is requested during a credential check, the check runs again against the current config. Offline results retry with backoff; authentication errors don't.
 - A Fetch all cycle publishes local status before waiting for provider work. `fetch:alldone` follows its final status and remote checks.
 
-`cmd/gui/pr.go` keeps each App’s pull request results in memory. Overlapping refreshes share an account’s request, and at most two accounts refresh at once. Closing the app cancels the requests. Changes to an account or badge settings discard outdated results, and a failed refresh keeps the last successful data for the same account and draft setting.
+`cmd/gui/pr.go` keeps each App’s pull request results in memory. Overlapping refreshes share an account’s request, and at most two accounts refresh at once. Closing the app cancels the requests. Changes to an account or badge settings discard outdated results, and a failed refresh keeps the last successful data for the same account and draft setting. When a provider reports an incomplete search or a listing reaches its page limit, the PR popover labels the results as potentially incomplete.
 
 `cmd/gui/network.go` keeps the app from working against a server it cannot reach. The moment a server stops answering, everything that uses it stops:
 
@@ -160,7 +160,7 @@ An error text that reaches the window, an event or the config file can never hol
 **At the source.** `pkg/git` and `pkg/provider` build their errors only from allowlisted parts:
 
 - Every git command fails with a `*git.GitError`: the subcommand (`Op`), a `Code` (`auth_failed`, `not_fast_forward`, `no_upstream`, `offline`, `timeout`, `cancelled`, `not_a_repo`, `lock_held`, `repo_not_found`, `unknown`), a `Hint` and the exit status. Its text is `git <op>: <code> (exit N)`. The arguments, what git printed and the remote URL never enter it.
-- Every provider API request fails with a `*provider.ProviderError`: the HTTP `Status`, a `Class` (`unauthorized`, `scope_denied`, `rate_limited`, `not_found`, `server_error`, `offline`, `timeout`, `unknown`) and a text made of the method, the host and the status. The path, the query, the headers and the response body never enter it.
+- Every provider API request fails with a `*provider.ProviderError`: the HTTP `Status`, a `Class` (`unauthorized`, `scope_denied`, `forbidden`, `rate_limited`, `not_found`, `server_error`, `offline`, `timeout`, `unknown`) and a text made of the method, the host and the status. The path, the query, the headers and the response body never enter it.
 - What git printed (4 KiB at most) and the start of the response body stay in unexported fields that only the classifiers of the same package read: `git.IsUpstreamGoneError`, `git.IsRefusedFast`, `provider.IsAlreadyExists`. Code that needs to know why something failed asks the type (`errors.As`, `provider.IsNotFound`, `provider.IsUnauthorized`, `provider.IsForbiddenError`) and never reads the message.
 - `git.ParseRemoteURL` reports the host and the shape problem, never the URL.
 
@@ -270,7 +270,9 @@ Abstraction layer for Git hosting provider APIs. Each provider implements `ListR
 | Gitea/Forgejo | REST /api/v1 | Token + Basic auth fallback | Same API, same implementation |
 | Bitbucket     | REST v2      | HTTP Basic (app password)   | Cloud only                    |
 
-`CheckAuth()` validates a credential, and `TokenCreationURL()` and `TokenRequiredScopes()` give the GUI each provider's PAT page and scopes. `CheckAuth()` also returns the token's expiry: GitHub reads the `GitHub-Authentication-Token-Expiration` header of the existing repo-list call, and GitLab adds one `GET /personal_access_tokens/self` after a successful check. The other providers return no expiry. `credential.StatusResult.ExpiresAt` carries it to the GUI's `CredentialStatus.expiresAt`, and `accountHealth` in `src/lib/status.ts` turns a working token within 14 days of expiry into a warning.
+`CheckAuth()` validates a credential, and `TokenCreationURL()` and `TokenRequiredScopes()` give the GUI each provider's PAT page and scopes. `CheckAuth()` also returns the token's expiry: GitHub reads the `GitHub-Authentication-Token-Expiration` header from `GET /user`. GitLab starts with `GET /personal_access_tokens/self` and checks `GET /user` when the server or credential does not support the token endpoint. Gitea, Forgejo and Bitbucket use their authenticated user endpoint and return no expiry. `credential.StatusResult.ExpiresAt` carries it to the GUI's `CredentialStatus.expiresAt`, and `accountHealth` in `src/lib/status.ts` turns a working token within 14 days of expiry into a warning.
+
+The shared HTTP client uses context deadlines of 10 seconds for a resource and 20 seconds for a listing, subject to shorter caller deadlines. Rate limits stay separate from missing scopes and other forbidden responses. PR refresh may wait once for a provider-specified delay of up to five seconds. The bounded, in-memory ETag cache isolates listings by account, credential revision, effective authorization and request URL. PR and organization listings report whether their pages cover the entire result.
 
 **Optional interfaces** (via type assertions):
 

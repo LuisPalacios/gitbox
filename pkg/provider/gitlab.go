@@ -3,7 +3,9 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -25,6 +27,8 @@ type gitlabProject struct {
 }
 
 func (g *GitLab) ListRepos(ctx context.Context, baseURL, token, username string) ([]RemoteRepo, error) {
+	ctx, cancel := context.WithTimeout(ctx, listingTimeout)
+	defer cancel()
 	base := strings.TrimRight(baseURL, "/")
 	headers := map[string]string{
 		"PRIVATE-TOKEN": token,
@@ -35,7 +39,7 @@ func (g *GitLab) ListRepos(ctx context.Context, baseURL, token, username string)
 	for {
 		url := fmt.Sprintf("%s/api/v4/projects?membership=true&per_page=100&page=%d", base, page)
 		var batch []gitlabProject
-		hdrs, err := doGet(ctx, url, headers, &batch)
+		hdrs, err := doListGet(ctx, url, headers, &batch)
 		if err != nil {
 			return nil, fmt.Errorf("gitlab: %w", err)
 		}
@@ -63,19 +67,26 @@ func (g *GitLab) ListRepos(ctx context.Context, baseURL, token, username string)
 	return all, nil
 }
 
-// checkAuth lists the repos like CheckAuth does for any provider, then asks GitLab (15.5+) when the
-// token expires. That second call only answers for personal access tokens;
-// when it fails (OAuth tokens, older servers) the expiry stays unknown and
-// the check still passes.
-func (g *GitLab) checkAuth(ctx context.Context, baseURL, token, username string) (time.Time, error) {
-	if _, err := g.ListRepos(ctx, baseURL, token, username); err != nil {
-		return time.Time{}, err
-	}
+// checkAuth reads the token's expiry on GitLab 15.5 and newer. Older
+// instances and non-PAT credentials can still authenticate through /user.
+func (g *GitLab) checkAuth(ctx context.Context, baseURL, token, _ string) (time.Time, error) {
 	var self struct {
 		ExpiresAt *string `json:"expires_at"`
 	}
-	url := strings.TrimRight(baseURL, "/") + "/api/v4/personal_access_tokens/self"
-	if _, err := doGet(ctx, url, g.authHeaders(token), &self); err != nil || self.ExpiresAt == nil {
+	apiBase := strings.TrimRight(baseURL, "/") + "/api/v4"
+	headers := g.authHeaders(token)
+	if _, err := doGet(ctx, apiBase+"/personal_access_tokens/self", headers, &self); err != nil {
+		if !IsNotFound(err) && !IsUnauthorized(err) && !IsScopeDenied(err) {
+			return time.Time{}, fmt.Errorf("gitlab: %w", err)
+		}
+		var user struct{}
+		_, err := doGet(ctx, apiBase+"/user", headers, &user)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("gitlab: %w", err)
+		}
+		return time.Time{}, nil
+	}
+	if self.ExpiresAt == nil {
 		return time.Time{}, nil
 	}
 	// A date only: the token stops working on that day, UTC.
@@ -141,7 +152,7 @@ func (g *GitLab) CreateRepo(ctx context.Context, baseURL, token, _, owner, repoN
 			ID       int64  `json:"id"`
 			FullPath string `json:"full_path"`
 		}
-		if _, err := doGet(ctx, nsURL, g.authHeaders(token), &namespaces); err == nil {
+		if _, err := doListGet(ctx, nsURL, g.authHeaders(token), &namespaces); err == nil {
 			for _, ns := range namespaces {
 				if strings.EqualFold(ns.FullPath, owner) {
 					body.WriteString(fmt.Sprintf(`,"namespace_id":%d`, ns.ID))
@@ -160,21 +171,36 @@ func (g *GitLab) CreateRepo(ctx context.Context, baseURL, token, _, owner, repoN
 
 // --- OrgLister ---
 
-func (g *GitLab) ListUserOrgs(ctx context.Context, baseURL, token, _ string) ([]string, error) {
+func (g *GitLab) ListUserOrgs(ctx context.Context, baseURL, token, _ string) (OrgList, error) {
 	base := strings.TrimRight(baseURL, "/")
 	// min_access_level=30 = Developer or higher (can create projects).
 	apiURL := fmt.Sprintf("%s/api/v4/groups?min_access_level=30&per_page=100", base)
-	var groups []struct {
+	type group struct {
 		FullPath string `json:"full_path"`
 	}
-	if _, err := doGet(ctx, apiURL, g.authHeaders(token), &groups); err != nil {
-		return nil, fmt.Errorf("gitlab list groups: %w", err)
+	groups, complete, err := listNumberedPages[group](ctx, apiURL, g.authHeaders(token), 10, gitLabNextPage)
+	if err != nil {
+		return OrgList{}, fmt.Errorf("gitlab list groups: %w", err)
 	}
-	result := make([]string, len(groups))
-	for i, gr := range groups {
-		result[i] = gr.FullPath
+	result := OrgList{Names: make([]string, len(groups)), Complete: complete}
+	for i, group := range groups {
+		result.Names[i] = group.FullPath
 	}
 	return result, nil
+}
+
+func gitLabNextPage(headers http.Header, _ int, current int) int {
+	if next := headers.Get("X-Next-Page"); next != "" {
+		page, err := strconv.Atoi(next)
+		if err != nil || page <= current {
+			return -1
+		}
+		return page
+	}
+	if hasNextPage(headers) {
+		return current + 1
+	}
+	return 0
 }
 
 // --- RepoDeleter ---
@@ -187,7 +213,7 @@ func (g *GitLab) DeleteRepo(ctx context.Context, baseURL, token, _, owner, repoN
 	encoded := url.PathEscape(owner + "/" + repoName)
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%s", base, encoded)
 	if err := doDelete(ctx, apiURL, g.authHeaders(token)); err != nil {
-		if IsForbiddenError(err) {
+		if IsScopeDenied(err) {
 			return &InsufficientScopesError{
 				Provider:       "gitlab",
 				Action:         ActionDeleteRepo,
@@ -244,7 +270,7 @@ func (g *GitLab) ListAccountPRs(ctx context.Context, baseURL, token, username st
 	result := AccountPRs{ByRepo: map[string]PRSummary{}}
 
 	authoredURL := fmt.Sprintf("%s/api/v4/merge_requests?scope=created_by_me&state=opened&per_page=100", base)
-	authored, err := g.listMRs(ctx, authoredURL, headers, includeDrafts)
+	authored, authoredComplete, err := g.listMRs(ctx, authoredURL, headers, includeDrafts)
 	if err != nil {
 		return AccountPRs{}, fmt.Errorf("gitlab authored MRs: %w", err)
 	}
@@ -256,7 +282,7 @@ func (g *GitLab) ListAccountPRs(ctx context.Context, baseURL, token, username st
 
 	reviewerURL := fmt.Sprintf("%s/api/v4/merge_requests?scope=all&state=opened&reviewer_username=%s&per_page=100",
 		base, url.QueryEscape(username))
-	reviewer, err := g.listMRs(ctx, reviewerURL, headers, true) // reviewer list ignores draft filter
+	reviewer, reviewerComplete, err := g.listMRs(ctx, reviewerURL, headers, true) // reviewer list ignores draft filter
 	if err != nil {
 		return AccountPRs{}, fmt.Errorf("gitlab reviewer MRs: %w", err)
 	}
@@ -269,13 +295,14 @@ func (g *GitLab) ListAccountPRs(ctx context.Context, baseURL, token, username st
 		result.ByRepo[pr.RepoFull] = sum
 	}
 
+	result.Complete = authoredComplete && reviewerComplete
 	return result, nil
 }
 
-func (g *GitLab) listMRs(ctx context.Context, reqURL string, headers map[string]string, includeDrafts bool) ([]PullRequest, error) {
-	var mrs []gitlabMR
-	if _, err := doGet(ctx, reqURL, headers, &mrs); err != nil {
-		return nil, err
+func (g *GitLab) listMRs(ctx context.Context, reqURL string, headers map[string]string, includeDrafts bool) ([]PullRequest, bool, error) {
+	mrs, complete, err := listNumberedPages[gitlabMR](ctx, reqURL, headers, 10, gitLabNextPage)
+	if err != nil {
+		return nil, false, err
 	}
 	out := make([]PullRequest, 0, len(mrs))
 	for _, mr := range mrs {
@@ -299,7 +326,7 @@ func (g *GitLab) listMRs(ctx context.Context, reqURL string, headers map[string]
 		}
 		out = append(out, pr)
 	}
-	return out, nil
+	return out, complete, nil
 }
 
 // --- PushMirrorProvider ---
@@ -348,7 +375,7 @@ func (g *GitLab) ListPushMirrors(ctx context.Context, baseURL, token, _, owner, 
 	base := strings.TrimRight(baseURL, "/")
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/remote_mirrors", base, projectID)
 	var mirrors []gitlabRemoteMirror
-	if _, err := doGet(ctx, apiURL, g.authHeaders(token), &mirrors); err != nil {
+	if _, err := doListGet(ctx, apiURL, g.authHeaders(token), &mirrors); err != nil {
 		return nil, fmt.Errorf("gitlab list push mirrors: %w", err)
 	}
 	result := make([]PushMirrorInfo, len(mirrors))

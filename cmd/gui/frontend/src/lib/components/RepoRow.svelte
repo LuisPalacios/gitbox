@@ -334,6 +334,7 @@
             <PRPopover
               kind="authored"
               prs={prSummary.authored}
+              partial={prSummary.partial}
               providerName={acctForPRs?.provider || ''}
               providerAllURL={providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName)}
               onOpenPR={(url) => { openExternal(url); closePRPopover(); }}
@@ -355,6 +356,7 @@
             <PRPopover
               kind="review"
               prs={prSummary.reviewRequested}
+              partial={prSummary.partial}
               providerName={acctForPRs?.provider || ''}
               providerAllURL={providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName)}
               onOpenPR={(url) => { openExternal(url); closePRPopover(); }}

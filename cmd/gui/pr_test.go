@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -44,7 +44,7 @@ func prTestApp(t *testing.T, count int, lister prListerFunc) (*App, *recordingSi
 }
 
 func testAccountPRs(number int) provider.AccountPRs {
-	return provider.AccountPRs{ByRepo: map[string]provider.PRSummary{
+	return provider.AccountPRs{Complete: true, ByRepo: map[string]provider.PRSummary{
 		"Org/Repo": {Authored: []provider.PullRequest{{Number: number}}},
 	}}
 }
@@ -104,9 +104,11 @@ func TestPRRefreshKeepsLastGoodDataPerApp(t *testing.T) {
 		a, events := prTestApp(t, 1, func(context.Context, string, string, string, bool) (provider.AccountPRs, error) {
 			calls++
 			if calls == 1 {
-				return testAccountPRs(17), nil
+				data := testAccountPRs(17)
+				data.Complete = false
+				return data, nil
 			}
-			return provider.AccountPRs{}, errors.New("provider unavailable")
+			return provider.AccountPRs{}, &provider.ProviderError{Status: 429, Class: provider.ClassRateLimited, Detail: "rate limited"}
 		})
 		defer a.stopRefresh()
 		a.RefreshAllPRs()
@@ -119,7 +121,10 @@ func TestPRRefreshKeepsLastGoodDataPerApp(t *testing.T) {
 			t.Fatalf("wanted one successful update and one error, got %+v", updates)
 		}
 		summary := a.GetPRsForRepo("account-0", "org/repo")
-		if len(summary.Authored) != 1 || summary.Authored[0].Number != 17 {
+		if !updates[0].args[0].(PRAccountUpdateDTO).ByRepo["org/repo"].Partial {
+			t.Error("incremental update lost the provider's incomplete listing state")
+		}
+		if len(summary.Authored) != 1 || summary.Authored[0].Number != 17 || !summary.Partial {
 			t.Errorf("last good PR dropped: %+v", summary)
 		}
 		other, _ := prTestApp(t, 1, nil)
@@ -294,4 +299,19 @@ func TestPRRefreshDropsResultsAfterExternalTokenReplacement(t *testing.T) {
 			t.Errorf("wanted an update from the replacement credential, got %+v", got)
 		}
 	})
+}
+
+func TestRemotePRRefreshPreservesOptionalPartialField(t *testing.T) {
+	for _, field := range []string{"", `,"partial":true`} {
+		raw := json.RawMessage(`{"accountKey":"account","byRepo":{"org/repo":{"authored":[],"reviewRequested":[]` + field + `}}}`)
+		got, err := relayedEvents["pr:refreshed"](nil, raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		decoded := got.(map[string]any)["byRepo"].(map[string]any)["org/repo"].(map[string]any)
+		partial, present := decoded["partial"]
+		if present != (field != "") || present && partial != true {
+			t.Fatalf("relayed summary = %+v; input field = %q", decoded, field)
+		}
+	}
 }

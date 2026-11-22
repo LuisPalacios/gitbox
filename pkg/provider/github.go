@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -22,19 +21,14 @@ type githubRepo struct {
 	Archived bool   `json:"archived"`
 }
 
-func (g *GitHub) ListRepos(ctx context.Context, baseURL, token, username string) ([]RemoteRepo, error) {
-	repos, _, err := g.listRepos(ctx, baseURL, token)
-	return repos, err
-}
-
-// checkAuth lists the repos and reads the token's expiry from the first
-// response, so it costs no extra request.
+// checkAuth verifies the token and reads its expiry in a single request.
 func (g *GitHub) checkAuth(ctx context.Context, baseURL, token, _ string) (time.Time, error) {
-	_, hdrs, err := g.listRepos(ctx, baseURL, token)
+	var user struct{}
+	headers, err := doGet(ctx, g.apiBase(baseURL)+"/user", g.authHeaders(token), &user)
 	if err != nil {
-		return time.Time{}, err
+		return time.Time{}, fmt.Errorf("github: %w", err)
 	}
-	return parseGitHubExpiry(hdrs.Get("GitHub-Authentication-Token-Expiration")), nil
+	return parseGitHubExpiry(headers.Get("GitHub-Authentication-Token-Expiration")), nil
 }
 
 // parseGitHubExpiry parses the GitHub-Authentication-Token-Expiration header:
@@ -51,30 +45,20 @@ func parseGitHubExpiry(v string) time.Time {
 	return time.Time{}
 }
 
-// listRepos returns every repo plus the first page's response headers.
-func (g *GitHub) listRepos(ctx context.Context, baseURL, token string) ([]RemoteRepo, http.Header, error) {
-	apiBase := "https://api.github.com"
-	if baseURL != "" && baseURL != "https://github.com" {
-		// GitHub Enterprise: <baseURL>/api/v3
-		apiBase = strings.TrimRight(baseURL, "/") + "/api/v3"
-	}
-
-	headers := map[string]string{
-		"Authorization": "Bearer " + token,
-	}
+func (g *GitHub) ListRepos(ctx context.Context, baseURL, token, _ string) ([]RemoteRepo, error) {
+	ctx, cancel := context.WithTimeout(ctx, listingTimeout)
+	defer cancel()
+	apiBase := g.apiBase(baseURL)
+	headers := g.authHeaders(token)
 
 	var all []RemoteRepo
-	var first http.Header
 	page := 1
 	for {
 		url := fmt.Sprintf("%s/user/repos?per_page=100&type=all&page=%d", apiBase, page)
 		var batch []githubRepo
-		hdrs, err := doGet(ctx, url, headers, &batch)
+		_, err := doListGet(ctx, url, headers, &batch)
 		if err != nil {
-			return nil, nil, fmt.Errorf("github: %w", err)
-		}
-		if first == nil {
-			first = hdrs
+			return nil, fmt.Errorf("github: %w", err)
 		}
 		if len(batch) == 0 {
 			break
@@ -95,7 +79,7 @@ func (g *GitHub) listRepos(ctx context.Context, baseURL, token string) ([]Remote
 		}
 		page++
 	}
-	return all, first, nil
+	return all, nil
 }
 
 func (g *GitHub) apiBase(baseURL string) string {
@@ -163,17 +147,18 @@ func (g *GitHub) CreateRepo(ctx context.Context, baseURL, token, _, owner, repoN
 
 // --- OrgLister ---
 
-func (g *GitHub) ListUserOrgs(ctx context.Context, baseURL, token, _ string) ([]string, error) {
-	apiURL := fmt.Sprintf("%s/user/orgs?per_page=100", g.apiBase(baseURL))
-	var orgs []struct {
+func (g *GitHub) ListUserOrgs(ctx context.Context, baseURL, token, _ string) (OrgList, error) {
+	apiURL := g.apiBase(baseURL) + "/user/orgs?per_page=100"
+	type organization struct {
 		Login string `json:"login"`
 	}
-	if _, err := doGet(ctx, apiURL, g.authHeaders(token), &orgs); err != nil {
-		return nil, fmt.Errorf("github list orgs: %w", err)
+	orgs, complete, err := listNumberedPages[organization](ctx, apiURL, g.authHeaders(token), 10, nextFullPage(100))
+	if err != nil {
+		return OrgList{}, fmt.Errorf("github list orgs: %w", err)
 	}
-	result := make([]string, len(orgs))
-	for i, o := range orgs {
-		result[i] = o.Login
+	result := OrgList{Names: make([]string, len(orgs)), Complete: complete}
+	for i, org := range orgs {
+		result.Names[i] = org.Login
 	}
 	return result, nil
 }
@@ -196,11 +181,12 @@ type githubSearchItem struct {
 
 type githubSearchResponse struct {
 	IncompleteResults bool               `json:"incomplete_results"`
+	TotalCount        int                `json:"total_count"`
 	Items             []githubSearchItem `json:"items"`
 }
 
 // ListAccountPRs finds open PRs authored by the user and PRs where the user
-// is a requested reviewer. Uses GitHub's search API; two requests total.
+// is a requested reviewer using two paginated GitHub search queries.
 // Results are grouped by repo full name ("owner/repo").
 func (g *GitHub) ListAccountPRs(ctx context.Context, baseURL, token, username string, includeDrafts bool) (AccountPRs, error) {
 	if username == "" {
@@ -216,7 +202,7 @@ func (g *GitHub) ListAccountPRs(ctx context.Context, baseURL, token, username st
 	if !includeDrafts {
 		authoredQ += " draft:false"
 	}
-	authored, err := g.searchPRs(ctx, apiBase, headers, authoredQ)
+	authored, authoredComplete, err := g.searchPRs(ctx, apiBase, headers, authoredQ)
 	if err != nil {
 		return AccountPRs{}, fmt.Errorf("github authored PRs: %w", err)
 	}
@@ -227,7 +213,7 @@ func (g *GitHub) ListAccountPRs(ctx context.Context, baseURL, token, username st
 	}
 
 	reviewQ := fmt.Sprintf("is:open is:pr review-requested:%s archived:false draft:false", username)
-	reviewRequested, err := g.searchPRs(ctx, apiBase, headers, reviewQ)
+	reviewRequested, reviewComplete, err := g.searchPRs(ctx, apiBase, headers, reviewQ)
 	if err != nil {
 		return AccountPRs{}, fmt.Errorf("github review-requested PRs: %w", err)
 	}
@@ -237,19 +223,27 @@ func (g *GitHub) ListAccountPRs(ctx context.Context, baseURL, token, username st
 		result.ByRepo[pr.RepoFull] = sum
 	}
 
+	result.Complete = authoredComplete && reviewComplete
 	return result, nil
 }
 
 // searchPRs runs /search/issues with pagination (up to 300 results) and
 // returns normalized PullRequest values.
-func (g *GitHub) searchPRs(ctx context.Context, apiBase string, headers map[string]string, query string) ([]PullRequest, error) {
+func (g *GitHub) searchPRs(ctx context.Context, apiBase string, headers map[string]string, query string) ([]PullRequest, bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, listingTimeout)
+	defer cancel()
 	var out []PullRequest
+	complete := true
+	seen := 0
 	for page := 1; page <= 3; page++ {
 		reqURL := fmt.Sprintf("%s/search/issues?q=%s&per_page=100&page=%d", apiBase, url.QueryEscape(query), page)
 		var resp githubSearchResponse
-		if _, err := doGet(ctx, reqURL, headers, &resp); err != nil {
-			return nil, err
+		pageHeaders, err := doListGet(ctx, reqURL, headers, &resp)
+		if err != nil {
+			return nil, false, err
 		}
+		complete = complete && !resp.IncompleteResults
+		seen += len(resp.Items)
 		for _, it := range resp.Items {
 			if it.PullRequest == nil {
 				continue
@@ -268,11 +262,11 @@ func (g *GitHub) searchPRs(ctx context.Context, apiBase string, headers map[stri
 			}
 			out = append(out, pr)
 		}
-		if len(resp.Items) < 100 {
-			break
+		if len(resp.Items) < 100 && !hasNextPage(pageHeaders) && resp.TotalCount <= seen {
+			return out, complete, nil
 		}
 	}
-	return out, nil
+	return out, false, nil
 }
 
 // repoFullFromAPI extracts "owner/repo" from a repository_url like
@@ -293,7 +287,7 @@ func (g *GitHub) DeleteRepo(ctx context.Context, baseURL, token, _, owner, repoN
 	}
 	url := fmt.Sprintf("%s/repos/%s/%s", g.apiBase(baseURL), owner, repoName)
 	if err := doDelete(ctx, url, g.authHeaders(token)); err != nil {
-		if IsForbiddenError(err) {
+		if IsScopeDenied(err) {
 			return &InsufficientScopesError{
 				Provider:       "github",
 				Action:         ActionDeleteRepo,
