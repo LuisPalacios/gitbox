@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -263,7 +264,7 @@ func (a *App) sameRefreshRepo(cfg *config.Config, source, repo string) bool {
 	return ok && exists && old == now && reflect.DeepEqual(cfg.Accounts[s.Account], current.Accounts[n.Account]) && reflect.DeepEqual(cfg.Global, current.Global)
 }
 
-func (a *App) fetchOne(cfg *config.Config, source, repo string) error {
+func (a *App) fetchOne(cfg *config.Config, source, repo string, lost *sync.Map) error {
 	src, ok := cfg.Sources[source]
 	if !ok {
 		err := fmt.Errorf("source %q not found", source)
@@ -276,6 +277,10 @@ func (a *App) fetchOne(cfg *config.Config, source, repo string) error {
 		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": userMsg(err)})
 		return err
 	}
+	account := cfg.Accounts[src.Account]
+	host := fetchHostname(account.URL)
+	addr := serverAddr(account)
+	ctx := a.refreshContext()
 	path := status.RepoPath(cfg, source, repo, r)
 	key := filepath.Clean(path)
 	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
@@ -292,8 +297,15 @@ func (a *App) fetchOne(cfg *config.Config, source, repo string) error {
 		}
 		if active := a.repoFetches[key]; active != nil {
 			a.refreshMu.Unlock()
-			<-active.done
+			select {
+			case <-active.done:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 			if active.source == source && active.repo == repo && reflect.DeepEqual(active.cfg, cfg) {
+				if lost != nil && addr != "" && isConnectionFailure(active.err) {
+					lost.Store(addr, true)
+				}
 				return active.err
 			}
 			continue
@@ -301,19 +313,17 @@ func (a *App) fetchOne(cfg *config.Config, source, repo string) error {
 		call := &repoFetchFlight{done: make(chan struct{}), cfg: cfg, source: source, repo: repo}
 		a.repoFetches[key] = call
 		a.refreshMu.Unlock()
-		a.refreshMu.Lock()
-		if a.fetchSlots == nil {
-			a.fetchSlots = make(chan struct{}, fetchAllConcurrency)
-		}
-		slots := a.fetchSlots
-		a.refreshMu.Unlock()
-		var err error
-		select {
-		case slots <- struct{}{}:
-			err = a.performFetch(cfg, source, repo, path)
-			<-slots
-		case <-a.refreshContext().Done():
-			err = context.Canceled
+		release, err := a.fetches.acquire(ctx, host)
+		if err == nil {
+			if lost != nil && fetchEndpointLost(lost, addr) {
+				err = a.skipUnreachable(source, repo, addr)
+			} else {
+				err = a.performFetch(cfg, source, repo, path)
+				if lost != nil && addr != "" && isConnectionFailure(err) {
+					lost.Store(addr, true)
+				}
+			}
+			release()
 		}
 		a.refreshMu.Lock()
 		call.err = err
@@ -551,7 +561,6 @@ func (a *App) fetchAllReposLocal() error {
 func (a *App) fetchCycle() error {
 	var errs []error
 	for range 2 {
-		errs = nil
 		cfg := a.snapshotRefreshConfig()
 		// One short connect per server decides, before anything is queued,
 		// which servers are there. Nothing goes out to one that is not.
@@ -566,57 +575,7 @@ func (a *App) fetchCycle() error {
 			network.Go(func() { a.probeUpstreamExistence() })
 		}
 		network.Go(func() { a.verifyRefreshCredentials(cfg) })
-		sem := make(chan struct{}, fetchAllConcurrency)
-		var workers sync.WaitGroup
-		var errorsMu sync.Mutex
-		fail := func(err error) {
-			errorsMu.Lock()
-			errs = append(errs, err)
-			errorsMu.Unlock()
-		}
-		// lost holds the servers a fetch of this cycle could not reach
-		// although the connect passed: the rest of their queue is skipped.
-		var lost sync.Map
-		for _, source := range cfg.SourceOrder {
-			src := cfg.Sources[source]
-			addr := serverAddr(cfg.Accounts[src.Account])
-			for _, repo := range src.RepoOrder {
-				path := status.RepoPath(cfg, source, repo, src.Repos[repo])
-				if !git.IsRepo(path) {
-					continue
-				}
-				if _, gone := lost.Load(addr); gone || !a.reachable(ctx, addr) {
-					fail(a.skipUnreachable(source, repo, addr))
-					continue
-				}
-				// Waiting for a turn ends when the app closes: nothing new
-				// starts then.
-				if ctx.Err() != nil {
-					fail(ctx.Err())
-					continue
-				}
-				select {
-				case sem <- struct{}{}:
-				case <-ctx.Done():
-					fail(ctx.Err())
-					continue
-				}
-				workers.Go(func() {
-					defer func() { <-sem }()
-					if _, gone := lost.Load(addr); gone {
-						fail(a.skipUnreachable(source, repo, addr))
-						return
-					}
-					if err := a.fetchOne(cfg, source, repo); err != nil {
-						if isConnectionFailure(err) && addr != "" {
-							lost.Store(addr, true)
-						}
-						fail(err)
-					}
-				})
-			}
-		}
-		workers.Wait()
+		errs = a.fetchClones(ctx, cfg)
 		// I publish local changes before waiting for remote checks.
 		local := a.requestStatus(true, true)
 		<-local.done
@@ -633,6 +592,62 @@ func (a *App) fetchCycle() error {
 		return fmt.Errorf("%d repository fetches failed: %w", len(errs), errs[0])
 	}
 	return nil
+}
+
+func fetchEndpointLost(lost *sync.Map, addr string) bool {
+	_, gone := lost.Load(addr)
+	return gone
+}
+
+// fetchClones drains each host's queue independently, so waiting for a
+// busy host never blocks the collection or dispatch of another host's repos.
+func (a *App) fetchClones(ctx context.Context, cfg *config.Config) []error {
+	type job struct {
+		source string
+		repo   string
+		addr   string
+	}
+	queues := make(map[string][]job)
+	for _, source := range cfg.SourceOrder {
+		src := cfg.Sources[source]
+		account := cfg.Accounts[src.Account]
+		host, addr := fetchHostname(account.URL), serverAddr(account)
+		for _, repo := range src.RepoOrder {
+			if git.IsRepo(status.RepoPath(cfg, source, repo, src.Repos[repo])) {
+				queues[host] = append(queues[host], job{source, repo, addr})
+			}
+		}
+	}
+
+	var workers sync.WaitGroup
+	var mu sync.Mutex
+	var errs []error
+	// A connection can fail even after a successful reachability check.
+	// In that case skip the rest of the jobs for that endpoint this cycle.
+	var lost sync.Map
+	for _, jobs := range queues {
+		var next atomic.Int64
+		for range min(len(jobs), fetchPerHostConcurrency) {
+			workers.Go(func() {
+				for index := next.Add(1) - 1; index < int64(len(jobs)) && ctx.Err() == nil; index = next.Add(1) - 1 {
+					j := jobs[index]
+					var err error
+					if fetchEndpointLost(&lost, j.addr) || !a.reachable(ctx, j.addr) {
+						err = a.skipUnreachable(j.source, j.repo, j.addr)
+					} else {
+						err = a.fetchOne(cfg, j.source, j.repo, &lost)
+					}
+					if err != nil {
+						mu.Lock()
+						errs = append(errs, err)
+						mu.Unlock()
+					}
+				}
+			})
+		}
+	}
+	workers.Wait()
+	return errs
 }
 
 func (a *App) verifyRefreshCredentials(cfg *config.Config) {

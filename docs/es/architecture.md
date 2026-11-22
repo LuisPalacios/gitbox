@@ -120,6 +120,7 @@ El arranque devuelve la config, las preferencias, el estado de plegado y la anid
 `cmd/gui/refresh.go` coordina el trabajo de refresco:
 
 - Las llamadas solapadas comparten una única ejecución activa del estado local, Fetch de todo, el fetch por clon y la comprobación de credenciales de cada cuenta.
+- Los fetches individuales y en lote comparten ocho turnos de transferencia, con un máximo de dos por nombre de host. Fetch de todo procesa la cola de cada host de forma independiente, así que un host lento deja sitio a los demás.
 - Se conserva una invalidación pendiente del estado local, se descartan los resultados calculados a partir de una config que ha cambiado desde entonces, y cerrar la app cancela el trabajo de refresco.
 - Cuando la cuenta cambia o se pide una recomprobación durante una comprobación de credenciales, la comprobación se vuelve a ejecutar contra la config actual. Los resultados offline se reintentan con backoff; los errores de autenticación, no.
 - Un ciclo de Fetch de todo publica el estado local antes de esperar al trabajo del proveedor. `fetch:alldone` llega después de su estado final y de las comprobaciones remotas.

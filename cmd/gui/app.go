@@ -126,7 +126,7 @@ type App struct {
 	cachedStatus       []StatusResult
 	cachedStatusConfig *config.Config
 	fetchRun           *fetchFlight
-	fetchSlots         chan struct{}
+	fetches            fetchDispatcher
 	repoFetches        map[string]*repoFetchFlight
 	credentialRuns     map[string]*credentialFlight
 
@@ -1878,17 +1878,11 @@ func (a *App) fetchRepoLocal(sourceKey, repoKey string) {
 	}
 	a.refreshWG.Go(func() {
 		cfg := a.snapshotRefreshConfig()
-		_ = a.fetchOne(cfg, sourceKey, repoKey)
+		_ = a.fetchOne(cfg, sourceKey, repoKey, nil)
 		a.RefreshStatus()
 	})
 	a.refreshMu.Unlock()
 }
-
-// fetchAllConcurrency caps transfers across full refreshes and single-repo fetches. A tight serial loop on Windows/WebView2 coalesces the
-// per-repo Wails events so the top-bar and per-row spinners never
-// animate (issue #57); running fetches in a worker pool yields to the
-// Wails IPC layer between events and also cuts wall-clock fetch time.
-const fetchAllConcurrency = 8
 
 // ─── Account CRUD ─────────────────────────────────────────────
 

@@ -24,8 +24,8 @@ func TestClosingStopsTheFetchQueue(t *testing.T) {
 		done := make(chan error, 1)
 		go func() { done <- a.FetchAllRepos() }()
 		synctest.Wait()
-		if got := fetches.Load(); got != fetchAllConcurrency {
-			t.Fatalf("%d fetches in flight, want the %d slots", got, fetchAllConcurrency)
+		if got := fetches.Load(); got != fetchPerHostConcurrency {
+			t.Fatalf("%d fetches in flight, want the %d slots", got, fetchPerHostConcurrency)
 		}
 
 		started := time.Now()
@@ -36,9 +36,9 @@ func TestClosingStopsTheFetchQueue(t *testing.T) {
 		if err := <-done; err == nil {
 			t.Error("the interrupted cycle must report a failure")
 		}
-		if fetches.Load() != fetchAllConcurrency || stopped.Load() != fetchAllConcurrency {
+		if fetches.Load() != fetchPerHostConcurrency || stopped.Load() != fetchPerHostConcurrency {
 			t.Errorf("%d fetches started and %d stopped; the %d clones waiting for a turn must not start",
-				fetches.Load(), stopped.Load(), clones-fetchAllConcurrency)
+				fetches.Load(), stopped.Load(), clones-fetchPerHostConcurrency)
 		}
 	})
 }

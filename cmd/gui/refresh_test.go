@@ -181,26 +181,56 @@ func TestRefresh_StatusReadersAndInvalidationBurstCoalesce(t *testing.T) {
 	})
 }
 
+func splitFetchTestFleet(a *App, groupSizes ...int) {
+	original := a.cfg.Sources["source-a"]
+	a.cfg.Accounts = make(map[string]config.Account, len(groupSizes))
+	a.cfg.Sources = make(map[string]config.Source, len(groupSizes))
+	a.cfg.SourceOrder = nil
+	offset := 0
+	for i, size := range groupSizes {
+		source := fmt.Sprintf("source-%d", i)
+		account := fmt.Sprintf("account-%d", i)
+		a.cfg.Accounts[account] = config.Account{DefaultCredentialType: "token", URL: fmt.Sprintf("https://host-%d.invalid", i)}
+		order := original.RepoOrder[offset : offset+size]
+		repos := make(map[string]config.Repo, size)
+		for _, repo := range order {
+			repos[repo] = original.Repos[repo]
+		}
+		a.cfg.Sources[source] = config.Source{Account: account, Repos: repos, RepoOrder: order}
+		a.cfg.SourceOrder = append(a.cfg.SourceOrder, source)
+		offset += size
+	}
+}
+
 func TestRefresh_MixedSingleAndFullFetchesRespectGlobalWorkerLimit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		a, _ := refreshTestApp(t, 12)
 		defer a.stopRefresh()
+		splitFetchTestFleet(a, 2, 2, 2, 2, 2, 2)
 		release := make(chan struct{})
 		var active, maximum atomic.Int32
-		a.refreshHooks.fetch = func(context.Context, string) (string, error) {
+		a.refreshHooks.fetch = func(ctx context.Context, _ string) (string, error) {
 			n := active.Add(1)
 			defer active.Add(-1)
 			for old := maximum.Load(); n > old && !maximum.CompareAndSwap(old, n); old = maximum.Load() {
 			}
-			<-release
-			return "", nil
+			select {
+			case <-release:
+				return "", nil
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
 		}
+		for _, repo := range a.cfg.Sources["source-0"].RepoOrder {
+			a.FetchRepo("source-0", repo)
+		}
+		synctest.Wait()
+		if got := active.Load(); got != fetchPerHostConcurrency {
+			t.Fatalf("individual requests started %d simultaneous transfers, want %d", got, fetchPerHostConcurrency)
+		}
+
 		done := make(chan error, 1)
 		go func() { done <- a.FetchAllRepos() }()
-		synctest.Wait()
-		for i := range 12 {
-			a.FetchRepo("source-a", fmt.Sprintf("org/repo-%d", i))
-		}
 		synctest.Wait()
 		if got := active.Load(); got != fetchAllConcurrency {
 			t.Fatalf("mixed requests started %d simultaneous transfers, want %d", got, fetchAllConcurrency)
@@ -212,6 +242,60 @@ func TestRefresh_MixedSingleAndFullFetchesRespectGlobalWorkerLimit(t *testing.T)
 		}
 		if active.Load() != 0 || maximum.Load() > fetchAllConcurrency {
 			t.Fatalf("transfer limit or cleanup failed: active=%d peak=%d", active.Load(), maximum.Load())
+		}
+	})
+}
+
+func TestRefresh_FetchAllHealthyHostFinishesWhileSlowHostWaits(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a, events := refreshTestApp(t, 16)
+		defer a.stopRefresh()
+		splitFetchTestFleet(a, 6, 6, 4)
+		second := a.cfg.Accounts["account-1"]
+		second.URL = "https://HOST-0.invalid.:8443"
+		a.cfg.Accounts["account-1"] = second
+		healthyPaths := make(map[string]bool)
+		for _, repo := range a.cfg.Sources["source-2"].Repos {
+			healthyPaths[repo.CloneFolder] = true
+		}
+
+		release := make(chan struct{})
+		var slowStarted atomic.Int32
+		a.refreshHooks.fetch = func(ctx context.Context, path string) (string, error) {
+			if healthyPaths[path] {
+				return "", nil
+			}
+			slowStarted.Add(1)
+			select {
+			case <-release:
+				return "", nil
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
+
+		done := make(chan error, 1)
+		go func() { done <- a.FetchAllRepos() }()
+		synctest.Wait()
+		if got := slowStarted.Load(); got != fetchPerHostConcurrency {
+			t.Fatalf("slow hostname started %d fetches before it was released, want %d", got, fetchPerHostConcurrency)
+		}
+		var healthyDone int
+		for _, event := range events.named("fetch:done") {
+			payload := event.args[0].(map[string]any)
+			if payload["source"] == "source-2" && payload["error"] == nil {
+				healthyDone++
+			}
+		}
+		if healthyDone != len(healthyPaths) {
+			t.Fatalf("healthy host finished %d/%d fetches while slow host waited", healthyDone, len(healthyPaths))
+		}
+		if runs := events.named("fetch:alldone"); len(runs) != 0 {
+			t.Fatal("bulk fetch reported completion with transfers still queued")
+		}
+		close(release)
+		if err := <-done; err != nil {
+			t.Fatal(err)
 		}
 	})
 }
