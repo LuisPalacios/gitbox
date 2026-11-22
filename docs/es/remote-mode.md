@@ -72,7 +72,7 @@ La instalación solo se ejecuta cuando falta el servidor de este build:
 5. Ejecuta el archivo una vez con `--version`. En un home montado `noexec` esto falla, el archivo se borra, y el error dice que configure `server_dir` con una carpeta que permita ejecutar programas. GitboxApp nunca recurre a `/tmp`.
 6. Renombra el archivo a su sitio, que es atómico. Dos clientes que instalan a la vez acaban con el mismo archivo.
 
-Un archivo de servidor que ya está ahí con un hash equivocado nunca se sustituye en silencio. Falla la verificación, y la ventana ofrece **Reinstalar servidor**, que borra esa carpeta de build cuando confirmo y la instala de nuevo.
+Un archivo de servidor que ya está ahí con un hash equivocado, o que no se puede leer, nunca se sustituye en silencio. Falla la verificación, y la ventana ofrece **Reinstalar servidor**, que borra esa carpeta de build cuando confirmo y la instala de nuevo.
 
 ### Verificar antes de cada arranque
 
@@ -94,7 +94,7 @@ Un servidor en marcha refresca su marcador cada minuto y borra su propio marcado
 
 **Desinstalar servidor**, en la ventana del remoto o junto al remoto en Ajustes, desconecta y quita el servidor del host. Si otra ventana sigue usando el servidor allí, GitboxApp pregunta otra vez antes.
 
-Solo borra lo que puso gitbox: las carpetas de build, `logs/`, `.gc.lock/` y los archivos temporales de subida. Después quita la raíz del servidor si está vacía. Un archivo que yo mismo puse en la raíz del servidor se queda, y también la raíz que lo contiene. Los repositorios y el `gitbox.json` del host no se tocan.
+Solo borra lo que puso gitbox: las carpetas de build, los registros de build de `logs/`, `.gc.lock/` y los archivos temporales de subida. Quita `logs/` y después la raíz del servidor solo cuando están vacías. Un archivo que yo mismo puse en la raíz del servidor se queda, y también la raíz que lo contiene. Los repositorios y el `gitbox.json` del host no se tocan.
 
 **Quitar** en Ajustes solo olvida el remoto en este ordenador.
 
@@ -127,7 +127,7 @@ El modo simple muestra una frase sencilla; el código en sí aparece en el regis
 - `unsupported_arch`: el host no es ni amd64 ni arm64.
 - `server_target_missing`: este GitboxApp no lleva servidor para ese host. Un build de desarrollo solo lleva los de Linux; vuelve a compilar con los seis destinos.
 - `server_build_mismatch` y `unstamped_build`: este GitboxApp se compiló sin un sello que coincida. Vuelve a compilarlo como dice la guía de desarrollo.
-- `hash_mismatch`: el servidor del host no coincide con el pin y no se ejecutó. Usa **Reinstalar servidor**.
+- `hash_mismatch`: el servidor del host no coincide con el pin, o no se puede leer para comprobarlo, y no se ejecutó. Usa **Reinstalar servidor**.
 - `version_mismatch`: el servidor que respondió es otro build. Vuelve a conectar.
 - `disk_full`: la carpeta del servidor tiene menos espacio libre que el doble del servidor.
 - `no_hash_tool`: el host no tiene ni `sha256sum`, ni `shasum`, ni `openssl`.

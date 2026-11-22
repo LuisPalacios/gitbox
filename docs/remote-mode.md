@@ -72,7 +72,7 @@ The install runs only when the server of this build is missing:
 5. It runs the file once with `--version`. On a home mounted `noexec` this fails, the file is deleted, and the error says to set `server_dir` to a folder that allows programs to run. GitboxApp never falls back to `/tmp`.
 6. It renames the file into place, which is atomic. Two clients that install at once converge on the same file.
 
-A server file that is already there with the wrong hash is never replaced silently. It fails verification, and the window offers **Reinstall server**, which deletes that build folder after I confirm and installs it again.
+A server file that is already there with the wrong hash, or that cannot be read, is never replaced silently. It fails verification, and the window offers **Reinstall server**, which deletes that build folder after I confirm and installs it again.
 
 ### Verify before every start
 
@@ -94,7 +94,7 @@ A running server refreshes its marker every minute and deletes its own marker, a
 
 **Uninstall server**, in the remote window or next to the remote in Settings, disconnects and removes the server from the host. If another window still uses the server there, GitboxApp asks again first.
 
-It deletes only what gitbox put there: the build folders, `logs/`, `.gc.lock/` and temporary upload files. Then it removes the server root if it is empty. A file I put in the server root myself stays, and so does the root that holds it. The repositories and the `gitbox.json` of the host are not touched.
+It deletes only what gitbox put there: the build folders, the build logs in `logs/`, `.gc.lock/` and temporary upload files. It removes `logs/` and then the server root only when they are empty. A file I put in the server root myself stays, and so does the root that holds it. The repositories and the `gitbox.json` of the host are not touched.
 
 **Remove** in Settings only forgets the remote on this computer.
 
@@ -127,7 +127,7 @@ Simple mode shows a plain sentence; the code itself appears in the log.
 - `unsupported_arch`: the host is neither amd64 nor arm64.
 - `server_target_missing`: this GitboxApp carries no server for that host. A development build carries only the Linux ones; rebuild with the six targets.
 - `server_build_mismatch` and `unstamped_build`: this GitboxApp was built without a matching stamp. Rebuild it as the developer guide says.
-- `hash_mismatch`: the server on the host does not match the pin and did not run. Use **Reinstall server**.
+- `hash_mismatch`: the server on the host does not match the pin, or cannot be read to check it, and did not run. Use **Reinstall server**.
 - `version_mismatch`: the server that answered is another build. Connect again.
 - `disk_full`: the server folder has less free space than twice the server.
 - `no_hash_tool`: the host has none of `sha256sum`, `shasum` or `openssl`.

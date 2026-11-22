@@ -2,6 +2,7 @@ package remote
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -427,5 +428,105 @@ func TestFakeStartAnswerAfterLongBanner(t *testing.T) {
 		if err != nil || !missing || s != nil {
 			t.Fatalf("start %d: missing %v, err %v\n%s", i, missing, err, strings.Join(f.log.Lines(), "\n"))
 		}
+	}
+}
+
+// A server_dir can be a shared folder with a logs/ of its own: uninstall
+// deletes only the build logs in it, like garbage collection does.
+func TestFakeUninstallKeepsForeignLogs(t *testing.T) {
+	now := time.Now()
+	f := newFake(t, fakeServer)
+	f.opts.ServerDir = "~/work"
+	root := filepath.Join(f.home, "work")
+	logs := filepath.Join(root, LogsDir)
+	touch(t, filepath.Join(root, buildDir(1), BinaryName), 0, now)
+	own := []string{buildDir(1) + ".log", buildDir(1) + ".log.1", buildDir(1) + ".log.3", buildDir(2) + ".log.2"}
+	for _, name := range own {
+		touch(t, filepath.Join(logs, name), 0, now)
+	}
+	foreign := []string{"notes.txt", "app.log", "app.log.1", buildDir(1) + ".log.9"}
+	for _, name := range foreign {
+		touch(t, filepath.Join(logs, name), 0, now)
+	}
+	res, err := Uninstall(ctx(t), "host", f.opts, false)
+	if err != nil || !res.Done || !res.RootKept {
+		t.Fatalf("Uninstall = %+v, %v\n%s", res, err, strings.Join(f.log.Lines(), "\n"))
+	}
+	for _, name := range own {
+		if exists(filepath.Join(logs, name)) {
+			t.Errorf("the build log %s survived the uninstall", name)
+		}
+	}
+	for _, name := range foreign {
+		if !exists(filepath.Join(logs, name)) {
+			t.Errorf("logs/%s, which gitbox did not create, was deleted", name)
+		}
+	}
+	if exists(filepath.Join(root, buildDir(1))) {
+		t.Error("the build folder survived the uninstall")
+	}
+
+	// A logs/ that held only build logs goes with them.
+	for _, name := range foreign {
+		_ = os.Remove(filepath.Join(logs, name))
+	}
+	touch(t, filepath.Join(logs, buildDir(3)+".log"), 0, now)
+	if res, err := Uninstall(ctx(t), "host", f.opts, false); err != nil || !res.Done || res.RootKept {
+		t.Fatalf("second Uninstall = %+v, %v", res, err)
+	}
+	if exists(root) {
+		t.Error("a root left with only gitbox's logs was kept")
+	}
+}
+
+// A final file that exists but cannot be hashed is reported as a hash
+// mismatch: it never starts and is never replaced by a new install.
+func TestFakeUnreadableFinalNotReinstalled(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a mode 000 file")
+	}
+	f := newFake(t, fakeServer)
+	s, err := Dial(ctx(t), "host", f.opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Close()
+	want, err := os.ReadFile(f.server)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(f.server, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(f.server, 0o700) })
+	runs := f.runs(t)
+	installs := 0
+	f.opts.OnInstall = func() { installs++ }
+	before := len(f.log.Lines())
+
+	_, err = Dial(ctx(t), "host", f.opts)
+	if codeOf(err) != CodeHashMismatch {
+		t.Fatalf("err = %v, want hash_mismatch\n%s", err, strings.Join(f.log.Lines(), "\n"))
+	}
+	for _, line := range f.log.Lines()[before:] {
+		if strings.Contains(line, "install:") {
+			t.Errorf("an install step ran: %s", line)
+		}
+	}
+	if installs != 0 || f.runs(t) != runs {
+		t.Errorf("installs %d, runs %d → %d", installs, runs, f.runs(t))
+	}
+	info, err := os.Stat(f.server)
+	if err != nil || info.Mode().Perm() != 0 {
+		t.Fatalf("final file: %v, %v; want it in place with mode 000", info, err)
+	}
+	if err := os.Chmod(f.server, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(f.server); err != nil || !bytes.Equal(got, want) {
+		t.Errorf("the final file's bytes changed: %v", err)
+	}
+	if tmps, _ := filepath.Glob(filepath.Join(filepath.Dir(f.server), tmpPrefix+"*")); len(tmps) != 0 {
+		t.Errorf("an upload happened: %v", tmps)
 	}
 }

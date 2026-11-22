@@ -14,14 +14,16 @@ import (
 
 // startScript verifies the installed server and starts it, in one exec. It
 // prints the hash after the marker and runs the file only when the hash is
-// the pin the client passed. Arguments: mode, path, build, pin, action
+// the pin the client passed. Only a final file that does not exist answers
+// "missing", which leads to an install; one that exists but cannot be hashed
+// answers "unreadable", so it is never replaced silently. Arguments: mode, path, build, pin, action
 // ("serve" or "doctor"), client id.
 const startScript = rootPrelude + `
 f="$r/$3/gitbox-server";
 [ -f "$f" ] || { printf "\0GBX\0missing\0\0"; exit 0; };` + hashFunc + `
 x=$(gbxhash "$f"); c=$?;
 if [ "$c" -eq 127 ]; then printf "\0GBX\0nohash\0\0"; exit 0; fi;
-if [ "$c" -ne 0 ]; then printf "\0GBX\0missing\0\0"; exit 0; fi;
+if [ "$c" -ne 0 ]; then printf "\0GBX\0unreadable\0\0"; exit 97; fi;
 x=${x%% *};
 [ "$x" = "$4" ] || { printf "\0GBX\0mismatch\0%s\0" "$x"; exit 97; };
 printf "\0GBX\0ok\0%s\0" "$x";
@@ -184,6 +186,9 @@ func (r *runner) start(ctx context.Context, l layout, build, pin, action string)
 		return nil, true, nil
 	case "nohash":
 		return fail(newError(CodeNoHashTool, "%s has none of sha256sum, shasum or openssl to verify the server", r.alias))
+	case "unreadable":
+		r.log.Printf("start: the installed file cannot be hashed: not started, not reinstalled")
+		return fail(newError(CodeHashMismatch, "the server installed on %s cannot be read to verify it and was not started", r.alias))
 	case "mismatch":
 		r.log.Printf("start: installed file hash %s, pin %s: not started", clean(hash), pin)
 		return fail(newError(CodeHashMismatch, "the server installed on %s does not match its pin and was not started", r.alias))
@@ -404,7 +409,9 @@ find "$r" -mindepth 2 -maxdepth 2 -type f -name "in-use.*" -mmin -10 2>/dev/null
 `
 
 // uninstallScript deletes what gitbox put under the root and the root when
-// it is then empty. Anything else in the root stays. Arguments: mode, path.
+// it is then empty. Anything else in the root stays: in logs/ it deletes
+// only build logs, like garbage collection, and the folder when it is then
+// empty. Arguments: mode, path.
 const uninstallScript = rootPrelude + `
 [ -d "$r" ] || { printf "\0GBX\0absent\0"; exit 0; };` + refuseRoot + `
 cd "$real" || exit 1;
@@ -412,7 +419,14 @@ for e in * .gc.lock .gitbox-server.*.tmp; do
 [ -e "$e" ] || continue;
 case "$e" in
 -*) ;;
-logs|.gc.lock) rm -rf -- "$e";;
+.gc.lock) rm -rf -- "$e";;
+logs) if [ -d logs ] && [ -L logs ]; then :; elif [ -d logs ]; then
+for g in logs/*.log logs/*.log.1 logs/*.log.2 logs/*.log.3; do
+[ -f "$g" ] || continue;
+n=${g#logs/}; b=${n%.log*};
+if expr "$b" : "[A-Za-z0-9][A-Za-z0-9._+-]*-[0-9a-f]\{40\}-[0-9a-f]\{8\}\$" >/dev/null; then rm -f -- "$g"; fi;
+done;
+rmdir logs 2>/dev/null; fi;;
 .gitbox-server.*.tmp) rm -f -- "$e";;
 *) if expr "$e" : "[A-Za-z0-9][A-Za-z0-9._+-]*-[0-9a-f]\{40\}-[0-9a-f]\{8\}\$" >/dev/null; then rm -rf -- "$e"; fi;;
 esac;
