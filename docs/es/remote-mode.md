@@ -90,6 +90,8 @@ VS Code (`code`) y VS Code Insiders (`code-insiders`) abren la carpeta con `code
 
 Cualquier otro editor, como Zed o VSCodium, aparece desactivado con «Este editor no puede abrir carpetas en hosts remotos». La prueba de humo remota desde macOS y Windows cubre la entrada de VS Code; la entrada de Insiders usa la misma línea de comandos de la documentación de Remote-SSH.
 
+Cada remoto puede tener su propio editor. En Ajustes, en **Remotos**, la lista de editores de un remoto ofrece **Automático** y los editores configurados que abren carpetas remotas. Con un editor elegido, la ventana de ese remoto abre las carpetas solo en él: los demás editores siguen visibles, atenuados con «Este remoto se abre en el editor elegido en Ajustes → Remotos», y una llamada que nombra otro editor falla con `remote_editor_not_chosen`. **Automático** ofrece todos los editores que abren carpetas remotas. La elección se guarda en el campo `editor` de la entrada del remoto en el `gitbox.json` de este ordenador, y una ventana remota abierta la usa desde su siguiente lanzamiento. Si el editor elegido ya no está instalado, Ajustes lo muestra como no instalado.
+
 En Windows, `code` es un archivo por lotes que `cmd.exe` vuelve a leer, así que una carpeta con `%`, `!`, `^`, `&`, `|`, `<`, `>` o `"` falla con `not_available_remote_path`.
 
 ### Terminales

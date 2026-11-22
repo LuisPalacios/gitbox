@@ -26,6 +26,11 @@ import (
 const (
 	// remoteNotAvailable: the action has no remote equivalent.
 	remoteNotAvailable remoteCode = "not_available_remote"
+	// remoteEditorUnsupported: the editor chosen for a remote is not one
+	// that opens remote folders (#287).
+	remoteEditorUnsupported remoteCode = "remote_editor_unsupported"
+	// remoteEditorNotChosen: the remote has another editor chosen (#287).
+	remoteEditorNotChosen remoteCode = "remote_editor_not_chosen"
 )
 
 var (
@@ -114,6 +119,9 @@ func (a *App) openRemoteEditor(dir, command string) error {
 	t, err := a.remoteTarget()
 	if err != nil {
 		return err
+	}
+	if e, ok := findRemote(a.clientPrefs().Get().Remotes, t.alias); ok && e.Editor != "" && remote.EditorName(command) != e.Editor {
+		return &remoteError{remoteEditorNotChosen, "this remote opens folders in another editor"}
 	}
 	if err := remote.ValidateRemotePath(t.hostOS, dir); err != nil {
 		return err

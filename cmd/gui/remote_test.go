@@ -341,7 +341,7 @@ func TestRemotesSettings(t *testing.T) {
 	if len(got) != 1 || got[0].Alias != "my-server" || got[0].ServerDir != "~/srv/gitbox" {
 		t.Fatalf("remotes on disk = %+v", got)
 	}
-	if list := a.ListRemotes(); len(list.Remotes) != 1 || list.Remotes[0] != (RemoteEntryDTO{"my-server", "~/srv/gitbox"}) {
+	if list := a.ListRemotes(); len(list.Remotes) != 1 || list.Remotes[0] != (RemoteEntryDTO{Alias: "my-server", ServerDir: "~/srv/gitbox"}) {
 		t.Errorf("ListRemotes = %+v", list)
 	}
 	if res := a.ConnectRemote("nope"); res.Hint != "error.remote.unknown_alias" {

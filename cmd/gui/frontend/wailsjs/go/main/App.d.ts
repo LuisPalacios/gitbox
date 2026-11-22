@@ -266,6 +266,8 @@ export function SetPRIncludeDrafts(arg1:boolean):Promise<void>;
 
 export function SetPeriodicSync(arg1:string):Promise<void>;
 
+export function SetRemoteEditor(arg1:string,arg2:string):Promise<main.RemoteResultDTO>;
+
 export function SetRepoContainer(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
 export function SetRepoWorkspace(arg1:string,arg2:string,arg3:string):Promise<void>;

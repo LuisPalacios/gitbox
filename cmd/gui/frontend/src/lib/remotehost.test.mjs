@@ -30,15 +30,36 @@ test('I disable the editors the host cannot open and keep VS Code', () => {
 
 test('I disable the actions with no remote equivalent', () => {
   const host = rh.hostFromState({});
-  assert.deepEqual(host, { editors: [] });
+  assert.deepEqual(host, { editors: [], editor: '' });
   assert.equal(rh.unavailableOff(host), 'unavailable');
   assert.equal(rh.offTip('unavailable'), 'remote.notAvailableTip');
   assert.equal(rh.offTip(''), '');
-  assert.deepEqual(rh.hostFromState({ remoteEditors: ['code', 7, null] }), { editors: ['code'] });
+  assert.deepEqual(rh.hostFromState({ remoteEditors: ['code', 7, null], editor: 3 }), { editors: ['code'], editor: '' });
 });
 
 test('I name an editor the way the Go side does', () => {
   assert.equal(rh.editorName('/usr/local/bin/Code'), 'code');
   assert.equal(rh.editorName('C:\\x\\code.bat'), 'code');
   assert.equal(rh.editorName(''), '');
+});
+
+test('A remote with an editor chosen enables only that editor', () => {
+  const host = rh.hostFromState({ remoteEditors: goEditors, editor: 'code-insiders' });
+  assert.equal(rh.editorOff('/usr/local/bin/code-insiders', host), '');
+  assert.equal(rh.editorOff('/usr/local/bin/code', host), 'chosen');
+  assert.equal(rh.editorOff('/opt/homebrew/bin/zed', host), 'editor');
+  assert.equal(rh.offTip('chosen'), 'remote.editorNotChosenTip');
+  const auto = rh.hostFromState({ remoteEditors: goEditors, editor: '' });
+  assert.equal(rh.editorOff('/usr/local/bin/code', auto), '');
+  assert.equal(rh.editorOff('code-insiders', auto), '');
+});
+
+test('Settings offers only the configured editors that open remote folders', () => {
+  const editors = [
+    { name: 'VS Code', command: '/usr/local/bin/code' },
+    { name: 'Zed', command: '/opt/homebrew/bin/zed' },
+    { name: 'Insiders', command: 'C:\\x\\code-insiders.cmd' },
+  ];
+  assert.deepEqual(rh.remoteEditorChoices(editors, goEditors).map((e) => e.name), ['VS Code', 'Insiders']);
+  assert.deepEqual(rh.remoteEditorChoices(editors, []), []);
 });
