@@ -112,10 +112,12 @@ Part of `global` describes the machine that shows the window, not the host that 
 
 `cmd/gui` reads and writes client keys only through `prefsStore` (`prefs.go`):
 
-- `sharedPrefs` is local mode. The preferences are the client keys of the one in-memory config, saved to the one file, so local mode behaves as it always has.
-- `filePrefs` keeps the preferences in the client's own `gitbox.json`, apart from the backend's config. Non-local backends use it. It reloads the file before each change, writes only the client keys back, and refuses to save over a file it could not load.
+- `sharedPrefs` is local mode. The preferences are the client keys of the one in-memory config, saved to the one file. A change starts from the preferences on disk and writes the config with only its own keys changed (`savePrefs`).
+- `filePrefs` keeps the preferences in the client's own `gitbox.json`, apart from the backend's config. Non-local backends use it, and so does the terminals window, which writes no domain data (`useOwnPrefsFile`). It reloads the file before each change, writes only the client keys back, and refuses to save over a file it could not load.
 
 The LOCAL preference methods never ask the backend. The MIXED ones split their data: `GetConfig`, `GetStartupSnapshot` and `ReloadConfig` return the backend's config with the client preferences laid over it, and `SetCollapsed` sends the sidebar rail to the store and the rest to the backend. Window geometry is stored per destination: the local window uses `global.window`, and a remote window uses its own `remotes[]` entry.
+
+Several processes on one machine write the same `gitbox.json`: the local window, every remote window, the terminals window and, on a host, `gitbox-server`. Each saves its own preferences, so the file's are the latest. Before every save, `saveConfig` lays the client keys on disk over the config it writes (`takeDiskPrefs`), so a domain save, the harness watcher's included, never reverts a preference another process saved, and the process's memory then matches the file. A file that does not parse keeps the values in memory, with one log line, and nothing half-merged is written. Another process's change reaches a window on its next focus reload. One race remains: two processes that save between one's read and its atomic rename lose the earlier write. The cross-process guard of P5 removes it.
 
 A server uses the other half of the boundary: `config.StripClientPrefs` removes the client keys from what it sends, and `config.PreserveClientPrefs` keeps the ones on disk when it saves, so a host that also runs GitboxApp locally keeps its own theme, editors and window geometry.
 
