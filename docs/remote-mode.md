@@ -106,7 +106,7 @@ How the terminal starts depends on this computer:
 
 - **macOS:** the profile's app runs `ssh`. Terminal.app and iTerm run it through my login shell, quoted for it, fish included; a profile whose app cannot run a command, such as `open -a Warp`, is refused.
 - **Linux:** the profile's terminal runs `ssh` as its program, with no shell in between.
-- **Windows:** `ssh.exe` starts in a new console of its own, with no `cmd.exe` in between, and Windows shows it in its default terminal. The profile's app is not used: Windows Terminal and the `cmd.exe` launcher read the command line again. Honouring WezTerm and Alacritty profiles comes in a later version.
+- **Windows:** a WezTerm or Alacritty profile with its default arguments runs `ssh` as its program, the way it does on Linux. Every other profile, including Windows Terminal, a shell profile, a terminal I added myself, or WezTerm or Alacritty with edited arguments, starts `ssh.exe` in a new console of its own, with no `cmd.exe` in between, and Windows shows it in its default terminal: those launchers read the command line again.
 
 ### AI harnesses
 

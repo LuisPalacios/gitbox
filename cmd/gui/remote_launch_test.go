@@ -14,6 +14,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/launch"
 	"github.com/LuisPalacios/gitbox/pkg/remote"
 	"github.com/LuisPalacios/gitbox/pkg/rpc"
+	"github.com/LuisPalacios/gitbox/pkg/terminals"
 )
 
 // codeIs reports whether err is the remote failure code.
@@ -293,5 +294,106 @@ func TestRemoteStateListsRemoteEditors(t *testing.T) {
 	s := &remoteSession{a: &App{}, alias: "my-server"}
 	if got := s.info().RemoteEditors; !reflect.DeepEqual(got, remote.RemoteEditorCommands()) {
 		t.Errorf("RemoteEditors = %q", got)
+	}
+}
+
+// TestWindowsProfileSelection: on a Windows client a remote terminal runs
+// in a WezTerm or Alacritty profile with its catalog template, ssh spliced
+// in as the program (#286); every other profile, a customised template and
+// a missing default profile start ssh in a console of its own (#243).
+func TestWindowsProfileSelection(t *testing.T) {
+	spawned := recordRemoteSpawn(t)
+	ssh := fakeSSH(t)
+	prev := remoteClientOS
+	remoteClientOS = "windows"
+	t.Cleanup(func() { remoteClientOS = prev })
+	h := startHostile(t, nil)
+	attachSession(t, h.app)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wezterm := []string{"start", "--cwd", launch.TokenPath, "--", launch.TokenShellCommand, launch.TokenShellArgs}
+	alacritty := []string{"--working-directory", launch.TokenPath, "-e", launch.TokenShellCommand, launch.TokenShellArgs}
+	apps := []config.TerminalApp{
+		{ID: "wezterm", Name: "WezTerm", Command: `C:\bin\wezterm-gui.exe`, ArgsTemplate: wezterm},
+		{ID: "alacritty", Name: "Alacritty", Command: `C:\bin\alacritty.exe`, ArgsTemplate: alacritty},
+		{ID: "wt", Name: "Windows Terminal", Command: `C:\bin\wt.exe`, ArgsTemplate: []string{"-d", launch.TokenPath, launch.TokenShellCommand, launch.TokenShellArgs}},
+		{ID: "my-term", Name: "My term", Command: `C:\bin\my.exe`, ArgsTemplate: []string{"-e", launch.TokenShellCommand, launch.TokenShellArgs}},
+	}
+	shells := []config.ShellEntry{{ID: "pwsh", Name: "PowerShell", Command: `C:\bin\pwsh.exe`}, {ID: "cmd", Name: "cmd", Command: `C:\Windows\System32\cmd.exe`}}
+	use := func(profiles ...config.TerminalProfile) {
+		h.app.prefs = newFilePrefs(seedConfig(t, "client-win.json", func(c *config.Config) {
+			c.Global.Remotes = []config.RemoteEntry{{Alias: "my-server"}}
+			c.Global.TerminalApps = apps
+			c.Global.Shells = shells
+			c.Global.TerminalProfiles = profiles
+		}))
+	}
+
+	cmd := `cd -- '/srv/a;b' && exec "$SHELL" -l`
+	sshArgv := []string{ssh, "-t", "--", "my-server", cmd}
+	profile := func(id, terminal string, args ...string) config.TerminalProfile {
+		return config.TerminalProfile{ID: id, Name: id, TerminalID: terminal, ShellID: "pwsh", Args: args, Default: true}
+	}
+	cases := []struct {
+		name    string
+		profile config.TerminalProfile
+		want    terminals.Launch // empty: a console
+	}{
+		{"WezTerm", profile("p", "wezterm"),
+			terminals.Launch{Command: `C:\bin\wezterm-gui.exe`, Args: append([]string{"start", "--cwd", home, "--"}, sshArgv...)}},
+		{"Alacritty", profile("p", "alacritty"),
+			terminals.Launch{Command: `C:\bin\alacritty.exe`, Args: append([]string{"--working-directory", home, "-e"}, sshArgv...)}},
+		{"Windows Terminal", profile("p", "wt"), terminals.Launch{}},
+		{"a user-added terminal", profile("p", "my-term"), terminals.Launch{}},
+		{"WezTerm with a customised template", profile("p", "wezterm", "start", "--", "cmd.exe", "/k", launch.TokenShellCommand, launch.TokenShellArgs), terminals.Launch{}},
+		{"a DIRECT PowerShell profile", config.TerminalProfile{ID: "p", Name: "p", ShellID: "pwsh", Default: true}, terminals.Launch{}},
+		{"a DIRECT cmd profile", config.TerminalProfile{ID: "p", Name: "p", ShellID: "cmd", Default: true}, terminals.Launch{}},
+	}
+	for _, c := range cases {
+		use(c.profile)
+		for _, call := range []struct {
+			what string
+			run  func() error
+			argv []string
+		}{
+			{"OpenProfile", func() error { return h.app.OpenProfile("/srv/a;b", "p") }, sshArgv},
+			{"OpenInAIHarness", func() error { return h.app.OpenInAIHarness("/srv/a;b", "claude", nil) },
+				[]string{ssh, "-t", "--", "my-server", `cd -- '/srv/a;b' && exec 'claude'`}},
+		} {
+			before := len(*spawned)
+			if err := call.run(); err != nil {
+				t.Errorf("%s, %s: %v", c.name, call.what, err)
+				continue
+			}
+			if len(*spawned) != before+1 {
+				t.Errorf("%s, %s started %d launches", c.name, call.what, len(*spawned)-before)
+				continue
+			}
+			s := (*spawned)[before]
+			if c.want.Command == "" {
+				if !reflect.DeepEqual(s.Console, call.argv) || s.Terminal.Command != "" {
+					t.Errorf("%s, %s: want ssh in a console %q, got %+v", c.name, call.what, call.argv, s)
+				}
+				continue
+			}
+			want := c.want
+			if call.what == "OpenInAIHarness" {
+				want.Args = append(append([]string(nil), c.want.Args[:len(c.want.Args)-len(sshArgv)]...), call.argv...)
+			}
+			if len(s.Console) > 0 || !reflect.DeepEqual(s.Terminal, want) || s.Dir != home {
+				t.Errorf("%s, %s:\n got  %+v\n want %+v in %s", c.name, call.what, s, want, home)
+			}
+		}
+	}
+
+	// With no terminal profile at all, an AI harness still opens in a
+	// console on Windows.
+	use()
+	before := len(*spawned)
+	if err := h.app.OpenInAIHarness("/srv/r", "claude", nil); err != nil || len(*spawned) != before+1 || len((*spawned)[before].Console) == 0 {
+		t.Errorf("OpenInAIHarness without profiles = %v, %+v", err, (*spawned)[before:])
 	}
 }
