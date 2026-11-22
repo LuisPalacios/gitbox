@@ -322,14 +322,16 @@ func runRemoteWindow(app *App, f remoteFlags) {
 	app.remote = newRemoteSession(app, f.alias)
 	app.backend = selectBackend(app, true)
 
-	width, height := 720, 560
+	// The window shows the host's data in the full view (#240), so it
+	// opens at the main window's size; it has no compact view yet.
+	width, height := 1040, 700
 	p := prefs.Get()
 	if fw, _ := p.WindowFor(f.alias); fw != nil {
 		app.savedWindowPos = fw
-		if fw.Width >= 480 {
+		if fw.Width >= 640 {
 			width = min(fw.Width, maxWindowWidth)
 		}
-		if fw.Height >= 400 {
+		if fw.Height >= 480 {
 			height = fw.Height
 		}
 	}
@@ -342,8 +344,8 @@ func runRemoteWindow(app *App, f remoteFlags) {
 		Title:       title,
 		Width:       width,
 		Height:      height,
-		MinWidth:    480,
-		MinHeight:   400,
+		MinWidth:    640,
+		MinHeight:   480,
 		MaxWidth:    maxWindowWidth,
 		StartHidden: true,
 		AssetServer: &assetserver.Options{

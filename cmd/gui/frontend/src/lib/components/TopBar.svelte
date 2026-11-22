@@ -8,6 +8,8 @@
   import { tooltip } from '../tooltip';
   import UIIcon from '../UIIcon.svelte';
   import Logo from '../Logo.svelte';
+  import { ro } from '../ro';
+  import type { RemoteState } from '../bridge';
 
   export let simple: boolean;
   export let syncing: boolean;
@@ -26,6 +28,13 @@
   export let toggleSidebar: () => void;
   // A ring with something pending opens the view that lists it.
   export let setView: (view: string) => void;
+  // remote is the state of a remote window's connection (#240); null in a
+  // local window.
+  export let remote: RemoteState | null = null;
+  // The badge loads only in a remote window, so the main bundle does not
+  // carry it or the connection log.
+  let RemoteBadge: typeof import('./RemoteBadge.svelte').default | null = null;
+  $: if (remote && !RemoteBadge) import('./RemoteBadge.svelte').then((m) => (RemoteBadge = m.default));
 
   $: sc = (s: string) => statusColor(s, $themeStore);
   $: sideTip = $t(rail ? 'nav.expand' : 'nav.collapse', { key: sidebarShortcut });
@@ -50,6 +59,7 @@
   <div class="brand">
     <button class="logo-btn" on:click={toggleSidebar} aria-expanded={!rail} aria-label={sideTip} title={sideTip}><Logo class="logo-svg" /></button>
     <span class="title" translate="no">GitBox</span>
+    {#if remote && RemoteBadge}<svelte:component this={RemoteBadge} state={remote} {simple} />{/if}
   </div>
   <!-- Compact rings without labels, in both modes. The icon names what the
        ring tracks, the corner badge counts what is not there yet, and the
@@ -88,7 +98,7 @@
     {/if}
   </div>
   <div class="topbar-actions">
-    <button class="icon-btn" on:click={syncAll}
+    <button class="icon-btn" use:ro on:click={syncAll}
       disabled={syncing || ($summary.behind === 0 && $summary.notCloned === 0)}
       title={syncing ? $t(simple ? 'simple.updating' : 'top.pulling') : $t(simple ? 'simple.updateAll' : 'top.pullAll')}>
       <span class="icon-spin" class:spinning={syncing}><UIIcon name="pull" /></span>
@@ -98,8 +108,8 @@
       <span class="icon-spin" class:spinning={fetchingAll}><UIIcon name="fetch" /></span>
     </button>
     {#if !simple}
-    <button class="icon-btn" class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title={deleteMode ? $t('top.exitDeleteMode') : $t('top.deleteMode')}><UIIcon name="trash" /></button>
-    <button class="icon-btn" on:click={toggleViewMode} title={$t('top.compactView')}><UIIcon name="compact" /></button>
+    <button class="icon-btn" use:ro class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title={deleteMode ? $t('top.exitDeleteMode') : $t('top.deleteMode')}><UIIcon name="trash" /></button>
+    <button class="icon-btn" use:ro on:click={toggleViewMode} title={$t('top.compactView')}><UIIcon name="compact" /></button>
     <button class="icon-btn" on:click={cycleTheme} title={$t('top.themeTip', { name: $t(`theme.${themeChoice}`) })}><UIIcon name={themeChoice === 'light' || themeChoice === 'dark' ? `theme-${themeChoice}` : 'theme-system'} /></button>
     {/if}
     <button class="mode-switch" class:mode-switch-on={!simple} role="switch" aria-checked={!simple}

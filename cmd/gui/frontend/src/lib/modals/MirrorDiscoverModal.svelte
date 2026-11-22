@@ -5,6 +5,7 @@
   import { bridge } from '../bridge';
   import { pushNotice, errorText } from '../notices';
   import { t } from '../i18n';
+  import { ro } from '../ro';
   import { dismiss } from '../dismiss';
   import { configStore, mirrors } from '../stores';
 
@@ -92,7 +93,7 @@
                   {#if alreadyConfigured || justAdded}
                     <span class="mrp-badge" style="background: #166534; color: #dcfce7;">{$t('mirrorDiscover.configured')}</span>
                   {:else}
-                    <button class="btn-sm" style="margin-left: auto; padding: 1px 8px; font-size: 10px;" on:click={() => addDiscoveredRepo(dr, dm)}>{$t('mirrorDiscover.add')}</button>
+                    <button use:ro class="btn-sm" style="margin-left: auto; padding: 1px 8px; font-size: 10px;" on:click={() => addDiscoveredRepo(dr, dm)}>{$t('mirrorDiscover.add')}</button>
                   {/if}
                 </div>
               {/each}
@@ -103,7 +104,7 @@
       <div class="modal-foot">
         <button class="btn-cancel" on:click={() => mirrorDiscoverResults = null}>{$t('common.close')}</button>
         {#if mirrorDiscoverResults.length > 0}
-          <button class="btn-add" on:click={applyMirrorDiscovery}>{$t('mirrorDiscover.apply')}</button>
+          <button use:ro class="btn-add" on:click={applyMirrorDiscovery}>{$t('mirrorDiscover.apply')}</button>
         {/if}
       </div>
     </div>

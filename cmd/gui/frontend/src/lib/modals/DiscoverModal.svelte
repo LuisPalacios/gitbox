@@ -5,6 +5,7 @@
   import { bridge } from '../bridge';
   import { accounts, sources, repoStates } from '../stores';
   import { t } from '../i18n';
+  import { ro } from '../ro';
   import { dismiss } from '../dismiss';
   import { onActivateKey } from '../keyboard';
   import type { DiscoverResult } from '../types';
@@ -192,7 +193,7 @@
             {/if}
             <div class="discover-error-actions">
               <button class="btn-cancel" on:click={() => { if (discoverModal) { discoverLoading = true; discoverError = ''; bridge.discover(discoverModal); } }}>{$t('discover.retry')}</button>
-              <button class="btn-add" on:click={() => { const k = discoverModal; discoverModal = null; if (k) openCredChange(k, $accounts[k]?.default_credential_type || ''); }}>{$t('discover.openCredentials')}</button>
+              <button use:ro class="btn-add" on:click={() => { const k = discoverModal; discoverModal = null; if (k) openCredChange(k, $accounts[k]?.default_credential_type || ''); }}>{$t('discover.openCredentials')}</button>
             </div>
           </div>
         {:else if discoverRepos.length === 0}
@@ -254,7 +255,7 @@
       {#if !discoverLoading && discoverRepos.length > 0}
         <div class="modal-foot">
           <button class="btn-cancel" on:click={() => discoverModal = null}>{$t('common.cancel')}</button>
-          <button class="btn-add" on:click={addDiscovered} disabled={selectedCount === 0}>{$t('discover.addPull')} ({selectedCount})</button>
+          <button use:ro class="btn-add" on:click={addDiscovered} disabled={selectedCount === 0}>{$t('discover.addPull')} ({selectedCount})</button>
         </div>
       {/if}
     </div>

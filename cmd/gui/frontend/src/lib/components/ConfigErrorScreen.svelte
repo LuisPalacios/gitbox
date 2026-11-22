@@ -5,6 +5,7 @@
   import { Quit } from '../../../wailsjs/runtime/runtime';
   import type { ConfigBackupInfo } from '../types';
   import { t } from '../i18n';
+  import { ro } from '../ro';
   import Rich from '../Rich.svelte';
 
   export let configPath: string;
@@ -65,7 +66,7 @@
                 <div class="cfg-error-backup-time">{cfgFormatBackupTime(b.timestamp) || b.filename}</div>
                 <div class="cfg-error-backup-sub">{b.filename} · {cfgFormatBackupSize(b.size_bytes)}</div>
               </div>
-              <button class="cfg-error-btn cfg-error-btn-primary cfg-error-btn-small"
+              <button use:ro class="cfg-error-btn cfg-error-btn-primary cfg-error-btn-small"
                       on:click={() => cfgRestoreBackup(b.path)}
                       disabled={cfgLoadErrorBusy}>{$t('configError.restore')}</button>
             </li>
@@ -81,7 +82,7 @@
         {$t('configError.repairDesc')}
       </p>
       <div class="cfg-error-section-actions">
-        <button class="cfg-error-btn cfg-error-btn-secondary"
+        <button use:ro class="cfg-error-btn cfg-error-btn-secondary"
                 on:click={cfgDoRepair}
                 disabled={cfgLoadErrorBusy}>
           {cfgLoadErrorBusy ? $t('configError.working') : $t('configError.repair')}
@@ -92,7 +93,7 @@
     <!-- Footer: start fresh or exit. -->
     <div class="cfg-error-actions">
       <button class="cfg-error-btn cfg-error-btn-ghost" on:click={cfgExit} disabled={cfgLoadErrorBusy}>{$t('configError.exit')}</button>
-      <button class="cfg-error-btn cfg-error-btn-ghost" on:click={cfgStartFresh} disabled={cfgLoadErrorBusy}>{$t('configError.startFresh')}</button>
+      <button use:ro class="cfg-error-btn cfg-error-btn-ghost" on:click={cfgStartFresh} disabled={cfgLoadErrorBusy}>{$t('configError.startFresh')}</button>
     </div>
   </div>
 </div>

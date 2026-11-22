@@ -7,6 +7,7 @@
   import { accounts, repoStates } from '../stores';
   import { dismiss } from '../dismiss';
   import { t } from '../i18n';
+  import { ro } from '../ro';
   import Rich from '../Rich.svelte';
   import type { MoveOwnerOption, MovePreflightDTO, MoveProgressEventDTO, MoveResultDTO, MoveReadinessDTO } from '../types';
 
@@ -292,7 +293,7 @@
                       <div class="move-readiness-scopes">{r.scopesHint}</div>
                     {/if}
                     <div class="move-readiness-actions">
-                      <button type="button" class="btn-link" on:click={() => openCredentialsFromMove(r.accountKey)}>{$t('move.fixCredentials')}</button>
+                      <button use:ro type="button" class="btn-link" on:click={() => openCredentialsFromMove(r.accountKey)}>{$t('move.fixCredentials')}</button>
                       <button type="button" class="btn-link-subtle" on:click={refreshMoveReadiness} disabled={moveReadinessLoading}>{$t('common.recheck')}</button>
                     </div>
                   </div>
@@ -306,7 +307,7 @@
       <div class="modal-foot">
         <button class="btn-cancel" on:click={cancelMoveRepo}>{$t('common.cancel')}</button>
         {#if moveOwnerOptions.length > 0 && !moveLoadingOwners}
-          <button class="btn-add" on:click={advanceMoveToConfirm}>{$t('move.continue')}</button>
+          <button use:ro class="btn-add" on:click={advanceMoveToConfirm}>{$t('move.continue')}</button>
         {/if}
       </div>
     </div>
@@ -346,7 +347,7 @@
       </div>
       <div class="modal-foot">
         <button class="btn-cancel" on:click={cancelMoveRepo}>{$t('common.cancel')}</button>
-        <button class="btn-danger" disabled={moveTypeConfirm !== moveSourceRepoKey} on:click={confirmMoveRepo}>{$t('move.move')}</button>
+        <button use:ro class="btn-danger" disabled={moveTypeConfirm !== moveSourceRepoKey} on:click={confirmMoveRepo}>{$t('move.move')}</button>
       </div>
     </div>
   </div>

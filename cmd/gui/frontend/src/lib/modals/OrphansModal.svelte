@@ -6,6 +6,7 @@
   import { bridge } from '../bridge';
   import { pushNotice, errorText } from '../notices';
   import { t } from '../i18n';
+  import { ro } from '../ro';
   import { dismiss } from '../dismiss';
   import type { OrphanRepoDTO, ReconcileDTO } from '../types';
 
@@ -94,9 +95,9 @@
                     {/each}
                   </select>
                 </label>
-                <button class="btn-adopt" on:click={() => adoptOne(o)} disabled={!!busy}>{$t('unmatched.adopt')}</button>
+                <button use:ro class="btn-adopt" on:click={() => adoptOne(o)} disabled={!!busy}>{$t('unmatched.adopt')}</button>
               {/if}
-              <button class="btn-cancel" on:click={() => setIgnored(o, true)} disabled={!!busy}>{$t('unmatched.ignore')}</button>
+              <button use:ro class="btn-cancel" on:click={() => setIgnored(o, true)} disabled={!!busy}>{$t('unmatched.ignore')}</button>
             </div>
           </div>
         {/each}
@@ -122,9 +123,9 @@
                         {/each}
                       </select>
                     </label>
-                    <button class="btn-adopt" on:click={() => adoptOne(o)} disabled={!!busy}>{$t('unmatched.adopt')}</button>
+                    <button use:ro class="btn-adopt" on:click={() => adoptOne(o)} disabled={!!busy}>{$t('unmatched.adopt')}</button>
                   {/if}
-                  <button class="btn-cancel" on:click={() => setIgnored(o, false)} disabled={!!busy}>{$t('unmatched.unignore')}</button>
+                  <button use:ro class="btn-cancel" on:click={() => setIgnored(o, false)} disabled={!!busy}>{$t('unmatched.unignore')}</button>
                 </div>
               </div>
             {/each}

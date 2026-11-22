@@ -4,6 +4,7 @@
   import { bridge } from '../bridge';
   import { configStore, prSettings } from '../stores';
   import { t } from '../i18n';
+  import { ro } from '../ro';
   import { tooltip } from '../tooltip';
   import { openExternal } from '../external';
   import type { ThemeChoice } from '../theme';
@@ -105,13 +106,13 @@
     {#if !simple}
     <div class="settings-row">
       <span class="settings-label" use:tooltip={$t('settings.configTip')}>{$t('settings.config')}</span>
-      <button class="settings-action-btn" on:click={() => bridge.openFileInEditor(configPath)}>{$t('settings.openInEditor')}</button>
+      <button use:ro class="settings-action-btn" on:click={() => bridge.openFileInEditor(configPath)}>{$t('settings.openInEditor')}</button>
       <span class="settings-value">{configPath}</span>
     </div>
     {/if}
     <div class="settings-row">
       <span class="settings-label" use:tooltip={$t('settings.rootsTip')}>{$t('settings.roots')}</span>
-      <button class="settings-action-btn" on:click={openRoots}>{$t('settings.change')}</button>
+      <button use:ro class="settings-action-btn" on:click={openRoots}>{$t('settings.change')}</button>
       <span class="settings-value">{roots[0] || $t('settings.notSet')}{#if roots.length > 1}&nbsp;<span class="roots-more">{$t('settings.rootsMore', { n: roots.length - 1 })}</span>{/if}</span>
     </div>
     <div class="settings-row">
@@ -145,8 +146,8 @@
       <div class="settings-row">
         <span class="settings-label" use:tooltip={$t('settings.runAtStartupTip')}>{$t('settings.runAtStartup')}</span>
         <div class="theme-toggle">
-          <button class="theme-btn" class:theme-active={!autostartOn} on:click={() => { if (autostartOn) toggleAutostart(); }}>{$t('common.off')}</button>
-          <button class="theme-btn" class:theme-active={autostartOn} on:click={() => { if (!autostartOn) toggleAutostart(); }}>{$t('common.on')}</button>
+          <button use:ro class="theme-btn" class:theme-active={!autostartOn} on:click={() => { if (autostartOn) toggleAutostart(); }}>{$t('common.off')}</button>
+          <button use:ro class="theme-btn" class:theme-active={autostartOn} on:click={() => { if (!autostartOn) toggleAutostart(); }}>{$t('common.on')}</button>
         </div>
       </div>
     {/if}
@@ -154,22 +155,22 @@
     <div class="settings-row">
       <span class="settings-label" use:tooltip={$t('settings.prReviewsTip')}>{$t('settings.prReviews')}</span>
       <div class="theme-toggle">
-        <button class="theme-btn" class:theme-active={!$prSettings.enabled} on:click={() => { if ($prSettings.enabled) setPRBadgesEnabled(false); }}>{$t('common.off')}</button>
-        <button class="theme-btn" class:theme-active={$prSettings.enabled} on:click={() => { if (!$prSettings.enabled) setPRBadgesEnabled(true); }}>{$t('common.on')}</button>
+        <button use:ro class="theme-btn" class:theme-active={!$prSettings.enabled} on:click={() => { if ($prSettings.enabled) setPRBadgesEnabled(false); }}>{$t('common.off')}</button>
+        <button use:ro class="theme-btn" class:theme-active={$prSettings.enabled} on:click={() => { if (!$prSettings.enabled) setPRBadgesEnabled(true); }}>{$t('common.on')}</button>
       </div>
       {#if $prSettings.enabled}
         <span class="settings-sublabel" use:tooltip={$t('settings.includeDraftsTip')}>{$t('settings.includeDrafts')}</span>
         <div class="theme-toggle">
-          <button class="theme-btn" class:theme-active={!$prSettings.includeDrafts} on:click={() => { if ($prSettings.includeDrafts) setPRIncludeDrafts(false); }}>{$t('common.off')}</button>
-          <button class="theme-btn" class:theme-active={$prSettings.includeDrafts} on:click={() => { if (!$prSettings.includeDrafts) setPRIncludeDrafts(true); }}>{$t('common.on')}</button>
+          <button use:ro class="theme-btn" class:theme-active={!$prSettings.includeDrafts} on:click={() => { if ($prSettings.includeDrafts) setPRIncludeDrafts(false); }}>{$t('common.off')}</button>
+          <button use:ro class="theme-btn" class:theme-active={$prSettings.includeDrafts} on:click={() => { if (!$prSettings.includeDrafts) setPRIncludeDrafts(true); }}>{$t('common.on')}</button>
         </div>
       {/if}
     </div>
     <div class="settings-row">
       <span class="settings-label" use:tooltip={$t('settings.globalGitignoreTip')}>{$t('settings.globalGitignore')}</span>
       <div class="theme-toggle">
-        <button class="theme-btn" class:theme-active={!checkGitignorePref} on:click={() => { if (checkGitignorePref) setCheckGitignorePref(false); }}>{$t('common.off')}</button>
-        <button class="theme-btn" class:theme-active={checkGitignorePref} on:click={() => { if (!checkGitignorePref) setCheckGitignorePref(true); }}>{$t('common.on')}</button>
+        <button use:ro class="theme-btn" class:theme-active={!checkGitignorePref} on:click={() => { if (checkGitignorePref) setCheckGitignorePref(false); }}>{$t('common.off')}</button>
+        <button use:ro class="theme-btn" class:theme-active={checkGitignorePref} on:click={() => { if (!checkGitignorePref) setCheckGitignorePref(true); }}>{$t('common.on')}</button>
       </div>
     </div>
     {/if}

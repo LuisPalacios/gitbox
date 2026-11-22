@@ -1,10 +1,12 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { bridge, events } from './lib/bridge';
-  import type { DoctorPrecheckDTO } from './lib/bridge';
+  import { bridge, events, setReadOnlyRemote } from './lib/bridge';
+  import type { DoctorPrecheckDTO, RemoteState } from './lib/bridge';
+  import { focusWork } from './lib/readonly';
   import {
     configStore, accounts, sources, mirrors, repoStates, themeStore, applyStatusResults,
-    applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, workspacePlaceholders, workspaceMembers, workspaceUnknown
+    applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, workspacePlaceholders, workspaceMembers, workspaceUnknown,
+    remoteReadOnly
   } from './lib/stores';
   import { detailLocked, attentionRank, accountHealth, CALM_RANK } from './lib/status';
   import { createDetailLoader } from './lib/repo-detail';
@@ -16,7 +18,6 @@
   import type { Run } from './lib/activity';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit, EventsOn } from '../wailsjs/runtime/runtime';
   import type { CredentialFinding, RepoState, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, OrphanRepoDTO, ReconcileDTO, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
-  import TerminalsModal from './lib/TerminalsModal.svelte';
   import Onboarding from './lib/Onboarding.svelte';
   import ConfigErrorScreen from './lib/components/ConfigErrorScreen.svelte';
   import ReloadErrorBanner from './lib/components/ReloadErrorBanner.svelte';
@@ -98,6 +99,8 @@
   $: configProfiles = ($configStore?.global?.terminal_profiles || []) as TerminalProfileInfo[];
 
   async function toggleViewMode() {
+    // A remote window shows the full view only (#240).
+    if (windowMode === 'remote') return;
     // SetViewMode saves current position to the slot we're leaving,
     // then persists the new mode.
     if (viewMode === 'full') {
@@ -498,7 +501,8 @@
     const unreachable = sum.unreachable.map((u) => $t(simple ? 'result.unreachableSimple' : 'result.unreachable', { n: u.count, host: u.host || $t('result.theServer') }));
     // A connect refused within milliseconds is the OS blocking it, not a
     // slow or down server; on macOS that's usually Local Network privacy.
-    const lanHint = hostOS === 'darwin' && sum.unreachable.some((u) => u.fast) && $t('result.lanHint');
+    // The fetches ran on the host that has the data: its OS decides.
+    const lanHint = serverOS === 'darwin' && sum.unreachable.some((u) => u.fast) && $t('result.lanHint');
     const failedKind = sum.unreachable.length > 0 || sum.failed > 0;
     const id = pushNotice(failedKind ? 'error' : 'success', $t(simple ? 'result.checkTitle' : 'result.fetchTitle'), simple ? [
       $t('result.checked', { n: sum.checked }),
@@ -709,6 +713,8 @@
   const showOrphanModal = () => orphansDialog.showOrphanModal();
 
   async function runReconcile(): Promise<ReconcileDTO | null> {
+    // A read-only remote changes nothing on the host: no reconcile (#240).
+    if ($remoteReadOnly) return null;
     try {
       const res = await bridge.reconcile();
       await applyReconcile(res);
@@ -1290,6 +1296,9 @@
   let configPath = '';
   let appVersion = '';
   let hostOS = ''; // "darwin" | "windows" | "linux" — loaded on init
+  // serverOS is the system of the host whose data the window shows: hostOS
+  // in a local window, the remote's in a remote one (#240).
+  let serverOS = '';
   $: setLinkNoticeTitle($t('link.notOpened'));
   // windowMode tells the frontend which UI to render. The default "main"
   // shows the full gitbox app; "terminals" hides everything except the
@@ -1302,6 +1311,38 @@
   // The remote view loads only in a remote window, so the main bundle
   // does not carry it.
   let RemoteConnected: typeof import('./lib/components/RemoteConnected.svelte').default | null = null;
+  // Likewise the Profile editor loads only in the terminals window.
+  let TerminalsModal: typeof import('./lib/TerminalsModal.svelte').default | null = null;
+  // A remote window (#240) shows the connection card until the host's data
+  // first arrives, then the full UI, read-only. After a disconnect it keeps
+  // the last state, dimmed, under a Reconnect banner.
+  let remoteState: RemoteState | null = null;
+  let remoteLoaded = false;
+  let remoteNoConfig = false;
+  let remoteLoading = false;
+  $: remoteShowMain = windowMode === 'remote' && remoteLoaded;
+  $: remoteOffline = remoteShowMain && remoteState?.state !== 'connected';
+
+  async function onRemoteState(s: RemoteState) {
+    const wasConnected = remoteState?.state === 'connected';
+    remoteState = s;
+    if (s.state !== 'connected' || wasConnected || remoteLoading) return;
+    // Each connection, the first one and every reconnect, loads the host's
+    // data again.
+    remoteLoading = true;
+    try {
+      remoteReadOnly.set(true);
+      setReadOnlyRemote(true, $t('remote.readOnlyTip'));
+      await startMain();
+      remoteNoConfig = firstRun;
+      // A host without a config keeps the card, which says so.
+      remoteLoaded = !firstRun;
+    } catch (e) {
+      console.error(e);
+    } finally {
+      remoteLoading = false;
+    }
+  }
   let autostartOn = false;
   let autostartSupported = true;
 
@@ -1444,6 +1485,7 @@
     configPath = snapshot.configPath;
     appVersion = snapshot.appVersion;
     hostOS = snapshot.os;
+    serverOS = snapshot.serverOS || snapshot.os;
     fetchInterval = cfg.global?.periodic_sync || 'off';
     uiMode = cfg.global?.ui_mode === 'simple' ? 'simple' : 'advanced';
     if (uiMode === 'simple') enterSimple();
@@ -1452,7 +1494,7 @@
     repoStates.set(Object.fromEntries(Object.entries(cfg.sources).flatMap(([sourceKey, source]) =>
       Object.keys(source.repos).map(repoName => [`${sourceKey}/${repoName}`, { status: 'unknown' as const, progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }])
     )));
-    if (savedMode === 'compact') {
+    if (savedMode === 'compact' && windowMode !== 'remote') {
       viewMode = 'compact';
       await tick();
       // Fit to content, then show the window (it starts hidden in compact mode).
@@ -1496,8 +1538,8 @@
       checkGlobalGitignore();
     }
 
-    // Load autostart state.
-    loadAutostart();
+    // Load autostart state. A remote window has no autostart of its own.
+    if (windowMode !== 'remote') loadAutostart();
 
     // Sync the config with the clones on disk in the background.
     runReconcile();
@@ -1573,13 +1615,14 @@
 
     if (windowMode === 'remote') {
       // Language and UI mode are client preferences, so they are here
-      // before the connection; the theme follows the OS until P4 brings
-      // the config.
+      // before the connection; the theme follows the OS until the host's
+      // config arrives. The rest of the setup below runs too, and the
+      // host's data loads once the connection is up (onRemoteState).
       try { languageStore.set(normalizeLanguage(await bridge.getLanguage())); } catch (e) { console.error(e); }
       try { uiMode = (await bridge.getUIMode()) === 'simple' ? 'simple' : 'advanced'; } catch (e) { console.error(e); }
+      try { hostOS = await bridge.getOS(); } catch (e) { console.error(e); }
       applyTheme();
       RemoteConnected = (await import('./lib/components/RemoteConnected.svelte')).default;
-      return;
     }
 
     if (windowMode === 'terminals') {
@@ -1593,6 +1636,7 @@
         applyTheme();
       };
       try { hostOS = await bridge.getOS(); } catch (e) { console.error(e); }
+      TerminalsModal = (await import('./lib/TerminalsModal.svelte')).default;
       await hydrate();
       // The parent uses HideWindowOnClose, so a "second open" of the
       // Manager just re-shows this same hidden window. Re-hydrate the
@@ -1631,10 +1675,14 @@
     // and ask the Go side to re-probe AI harnesses (throttled there) so a
     // tool installed or removed while we were in the background shows up.
     let focusTimer: ReturnType<typeof setTimeout> | null = null;
+    // A read-only remote window re-reads the host's config but changes
+    // nothing there (#240, focusWork).
     window.addEventListener('focus', () => {
+      if (windowMode === 'remote' && !remoteShowMain) return;
+      const work = focusWork($remoteReadOnly);
       if (focusTimer) clearTimeout(focusTimer);
-      focusTimer = setTimeout(() => reloadFromDisk().then(() => runReconcile(), () => {}), 300);
-      bridge.refreshAIHarnesses().catch(() => {});
+      focusTimer = setTimeout(() => reloadFromDisk().then(() => { if (work.reconcile) runReconcile(); }, () => {}), 300);
+      if (work.refreshHarnesses) bridge.refreshAIHarnesses().catch(() => {});
     });
 
     // ── Event listeners (always registered) ──
@@ -1831,6 +1879,17 @@
 
     events.on('move:done', (r: any) => moveDialog.onDone(r));
 
+    if (windowMode === 'remote') {
+      events.on('remote:state', (st: RemoteState) => { void onRemoteState(st); });
+      try { await onRemoteState(await bridge.remoteInfo()); } catch (e) { console.error(e); }
+      return;
+    }
+    await startMain();
+  });
+
+  // startMain loads the config and the dashboard: at launch in a local
+  // window, on each connection in a remote one.
+  async function startMain() {
     // Check if config failed to parse (file exists but is broken/unsupported).
     // Render an in-app modal rather than window.confirm — macOS WebKit has
     // been observed to auto-dismiss confirm() without showing a dialog,
@@ -1855,7 +1914,7 @@
     if (firstRun) return; // Don't load dashboard until onboarding completes.
 
     await initDashboard();
-  });
+  }
 
   function checkSyncDone() {
     let states: Record<string, RepoState> = {};
@@ -1889,9 +1948,9 @@
 <!-- ════════════════════════════════════════════════════════════ -->
 
 <!-- ── TERMINALS SUB-PROCESS WINDOW (issue #69) ── -->
-{#if windowMode === 'terminals'}
+{#if windowMode === 'terminals' && TerminalsModal}
   <div class="terminals-window-host">
-    <TerminalsModal
+    <svelte:component this={TerminalsModal}
       open={true}
       mode="window"
       apps={configApps}
@@ -1904,12 +1963,13 @@
   </div>
 {/if}
 
-<!-- ── REMOTE WINDOW (#239) ── -->
-{#if windowMode === 'remote' && RemoteConnected}
-  <svelte:component this={RemoteConnected} {simple} />
+<!-- ── REMOTE WINDOW (#239, #240): the connection card until the host's
+     data arrives, then the full UI below, read-only ── -->
+{#if windowMode === 'remote' && RemoteConnected && !remoteShowMain}
+  <svelte:component this={RemoteConnected} {simple} noConfig={remoteNoConfig} />
 {/if}
 
-{#if windowMode === 'main'}
+{#if windowMode === 'main' || remoteShowMain}
 
 <!-- ── CONFIG LOAD ERROR ── -->
 {#if cfgLoadErrorModal}
@@ -1920,8 +1980,15 @@
 <Onboarding mode="first-run" onDone={finishOnboarding} />
 {:else}
 
-<div class="app">
+<div class="app" class:remote-offline={remoteOffline}>
 
+  {#if remoteOffline && remoteState}
+    <div class="remote-offline-banner" role="status">
+      <span>{$t('remote.offline', { alias: remoteState.alias })}</span>
+      <button class="remote-reconnect" disabled={remoteState.state === 'connecting' || remoteState.state === 'installing'}
+        on:click={() => bridge.remoteReconnect().catch(console.error)}>{$t('remote.reconnect')}</button>
+    </div>
+  {/if}
   <ReloadErrorBanner bind:reloadError />
   <OfflineBanner hosts={networkDown} retrying={fetchingAll} onRetry={() => runFetchAll(true)} />
   <CredentialWarning findings={credentialFindings} onReview={openDoctorModal} />
@@ -1933,7 +2000,7 @@
   <!-- ══════ FULL DASHBOARD VIEW ══════ -->
 
   <!-- ── TOP BAR ── -->
-  <TopBar {simple} {syncing} {fetchingAll} {themeChoice} bind:deleteMode bind:showSettings
+  <TopBar {simple} {syncing} {fetchingAll} {themeChoice} bind:deleteMode bind:showSettings remote={windowMode === 'remote' ? remoteState : null}
     {syncAll} runFetchAll={() => runFetchAll(true)} {toggleViewMode} {cycleTheme} {setUIMode} {rail} {sidebarShortcut} {toggleSidebar} {setView} />
 
   <!-- ── ACTIVITY STRIP (Fetch all / Pull all) ── -->
@@ -2015,7 +2082,7 @@
   <AddAccountModal bind:this={addAccountDialog} bind:credResult bind:credTokenInput bind:credPrecheck {credBusy} {credTokenGuide} {credTokenScopes} {sshKeyCopied} {copySSHKey} {resetCredState} {verifyAllCredentials} {reloadFromDisk} {runCredentialPrecheck} {runCredSetup} {fetchTokenGuide} {verifySSHConnection} {regenerateSSHKey} />
 
   <!-- ── CHANGE CREDENTIAL MODAL ── -->
-  <CredentialModal bind:this={credentialDialog} bind:credResult bind:credBusy bind:credTokenInput bind:credPrecheck bind:credStatuses {credTokenGuide} {credTokenScopes} {sshKeyCopied} {hostOS} {copySSHKey} {resetCredState} {verifyAllCredentials} {reloadFromDisk} {runCredentialPrecheck} {fetchTokenGuide} {credPostSetup} {storeCredToken} {verifySSHConnection} {regenerateSSHKey} />
+  <CredentialModal bind:this={credentialDialog} bind:credResult bind:credBusy bind:credTokenInput bind:credPrecheck bind:credStatuses {credTokenGuide} {credTokenScopes} {sshKeyCopied} {serverOS} {copySSHKey} {resetCredState} {verifyAllCredentials} {reloadFromDisk} {runCredentialPrecheck} {fetchTokenGuide} {credPostSetup} {storeCredToken} {verifySSHConnection} {regenerateSSHKey} />
 
   <!-- ── DELETE ACCOUNT MODAL ── -->
   <DeleteAccountModal bind:this={deleteAccountDialog} bind:reloadError bind:deleteMode {reloadFromDisk} />
@@ -2068,6 +2135,18 @@
 
 <style>
   .app { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  /* A remote window after a disconnect (#240): the last state stays,
+     dimmed and inert, under the banner. */
+  .app.remote-offline > :global(:not(.remote-offline-banner)) { opacity: 0.45; pointer-events: none; filter: grayscale(0.6); transition: opacity 0.2s; }
+  .remote-offline-banner {
+    display: flex; align-items: center; gap: 12px; padding: 8px 24px; font-size: 13px;
+    color: var(--text-primary); background: rgba(216, 30, 91, 0.10); border-bottom: 1px solid rgba(216, 30, 91, 0.35);
+  }
+  .remote-reconnect {
+    margin-left: auto; padding: 4px 14px; border-radius: 6px; border: 1px solid #2563eb; background: #2563eb;
+    color: #fff; font-size: 12px; font-weight: 500; cursor: pointer;
+  }
+  .remote-reconnect:disabled { opacity: 0.55; cursor: default; }
   /* Sidebar next to the view; each view scrolls on its own. */
   .body { flex: 1; min-height: 0; display: flex; position: relative; }
   .content { flex: 1; min-width: 0; display: flex; flex-direction: column; container: content / inline-size; }

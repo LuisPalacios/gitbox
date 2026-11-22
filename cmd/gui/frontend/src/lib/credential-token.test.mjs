@@ -121,7 +121,7 @@ test('I render the failed token and enabled retry, then hide the successful inpu
       credResult: { ok: false, message: 'Storage unavailable' },
       credTokenInput: 'fixture-token', credTokenGuide: 'https://example.test/tokens',
       credTokenScopes: '', credBusy: false, credPrecheck: null, credStatuses: {},
-      hostOS: 'darwin', sshKeyCopied: false,
+      serverOS: 'darwin', sshKeyCopied: false,
     };
     const failed = render(CredentialModal, { props }).body;
     assert.match(failed, /<input\b[^>]*id="cc-token"[^>]*value="fixture-token"/);

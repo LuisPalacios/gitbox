@@ -4,6 +4,7 @@
   import { bridge } from '../bridge';
   import { pushNotice } from '../notices';
   import { t } from '../i18n';
+  import { ro } from '../ro';
   import Rich from '../Rich.svelte';
   import { applyStatusResults } from '../stores';
   import { dismiss } from '../dismiss';
@@ -81,7 +82,7 @@
       </div>
       <div class="modal-foot">
         <button class="btn-cancel" on:click={() => sweepModal = null}>{$t('common.cancel')}</button>
-        <button class="btn-sweep-confirm" on:click={confirmSweepAction} disabled={sweepBusy}>
+        <button use:ro class="btn-sweep-confirm" on:click={confirmSweepAction} disabled={sweepBusy}>
           {sweepBusy ? $t('sweep.sweeping') : $t(sweepTotal === 1 ? 'sweep.deleteOne' : 'sweep.deleteN', { n: sweepTotal })}
         </button>
       </div>
