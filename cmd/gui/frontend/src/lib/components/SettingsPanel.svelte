@@ -4,7 +4,9 @@
   import { bridge } from '../bridge';
   import { configStore, prSettings } from '../stores';
   import { t } from '../i18n';
-  import { ro } from '../ro';
+  import { ro, remoteOff } from '../ro';
+  import { remoteHost } from '../stores';
+  import { unavailableOff } from '../remotehost';
   import { tooltip } from '../tooltip';
   import { openExternal } from '../external';
   import type { ThemeChoice } from '../theme';
@@ -106,7 +108,7 @@
     {#if !simple}
     <div class="settings-row">
       <span class="settings-label" use:tooltip={$t('settings.configTip')}>{$t('settings.config')}</span>
-      <button use:ro class="settings-action-btn" on:click={() => bridge.openFileInEditor(configPath)}>{$t('settings.openInEditor')}</button>
+      <button use:remoteOff={unavailableOff($remoteHost)} class="settings-action-btn" on:click={() => bridge.openFileInEditor(configPath)}>{$t('settings.openInEditor')}</button>
       <span class="settings-value">{configPath}</span>
     </div>
     {/if}

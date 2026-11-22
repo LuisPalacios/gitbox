@@ -88,6 +88,11 @@ type Backend interface {
 	ListRemoteRepos(accountKey string) []DiscoverResult
 	ListRoots() []RootDTO
 	MoveRepo(req MoveRequestDTO)
+	// AccountFolder resolves an account's folder on the host, for the
+	// client to open (#243). It is not Wails-bound: OpenAccountInApp,
+	// OpenAccountProfile and OpenAccountInAIHarness of a remote window use
+	// it (backendOnlyClass).
+	AccountFolder(accountKey string) (string, error)
 	OpenAccountFolder(accountKey string) error
 	OpenAccountInAIHarness(accountKey string, command string, args []string) error
 	OpenAccountInApp(accountKey string, command string) error
@@ -271,6 +276,9 @@ func (b localBackend) ListRemoteRepos(accountKey string) []DiscoverResult {
 }
 func (b localBackend) ListRoots() []RootDTO        { return b.a.listRootsLocal() }
 func (b localBackend) MoveRepo(req MoveRequestDTO) { b.a.moveRepoLocal(req) }
+func (b localBackend) AccountFolder(accountKey string) (string, error) {
+	return b.a.accountFolderLocal(accountKey)
+}
 func (b localBackend) OpenAccountFolder(accountKey string) error {
 	return b.a.openAccountFolderLocal(accountKey)
 }

@@ -360,16 +360,6 @@ func (a *App) remoteWindow() bool {
 	return ok
 }
 
-// refuseRemotePath stops a local launch in a remote window: its path names
-// a folder on the host, untrusted and absent here (#240). P6 opens remote
-// paths through shell escaping.
-func (a *App) refuseRemotePath() error {
-	if a.remoteWindow() {
-		return &remoteError{remoteNotImplemented, "opening a folder of the remote on this computer is not available yet"}
-	}
-	return nil
-}
-
 // getOSLocal is the local backend's GetOS.
 func (a *App) getOSLocal() string {
 	return runtime.GOOS
@@ -631,8 +621,10 @@ func (a *App) getConfigPathLocal() string {
 // On Windows we route through `cmd /c start`; HideWindow hides the cmd.exe
 // host without affecting the grandchild GUI (start → ShellExecute spawns
 // the target with its own STARTUPINFO, so SW_HIDE does not cascade).
+//
+// A remote window refuses it: the file is the host's (#243).
 func (a *App) OpenFileInEditor(path string) error {
-	if err := a.refuseRemotePath(); err != nil {
+	if err := a.refuseInRemote(); err != nil {
 		return err
 	}
 	var cmd *exec.Cmd
@@ -648,9 +640,10 @@ func (a *App) OpenFileInEditor(path string) error {
 	return cmd.Start()
 }
 
-// OpenInExplorer reveals a folder in the OS file manager.
+// OpenInExplorer reveals a folder in the OS file manager. A remote window
+// refuses it: there is no local file manager for the host (#243).
 func (a *App) OpenInExplorer(path string) error {
-	if err := a.refuseRemotePath(); err != nil {
+	if err := a.refuseInRemote(); err != nil {
 		return err
 	}
 	var cmd *exec.Cmd
@@ -699,8 +692,19 @@ func (a *App) resolveAccountFolder(accountKey string) (string, error) {
 }
 
 // OpenAccountFolder reveals the account's parent folder in the OS file
-// manager. Errors if the folder does not exist yet (no repos cloned).
-func (a *App) OpenAccountFolder(accountKey string) error { return a.be().OpenAccountFolder(accountKey) }
+// manager. Errors if the folder does not exist yet (no repos cloned). A
+// remote window refuses it, like OpenInExplorer.
+func (a *App) OpenAccountFolder(accountKey string) error {
+	if err := a.refuseInRemote(); err != nil {
+		return err
+	}
+	return a.be().OpenAccountFolder(accountKey)
+}
+
+// accountFolderLocal is the local backend's AccountFolder.
+func (a *App) accountFolderLocal(accountKey string) (string, error) {
+	return a.resolveAccountFolder(accountKey)
+}
 
 // openAccountFolderLocal is the local backend's OpenAccountFolder.
 func (a *App) openAccountFolderLocal(accountKey string) error {
@@ -722,7 +726,16 @@ func (a *App) openAccountFolderLocal(accountKey string) error {
 }
 
 // OpenAccountInApp opens the account's parent folder in a specific editor.
+// In a remote window the host resolves the folder and this computer opens
+// it in an editor that supports remote folders (#243).
 func (a *App) OpenAccountInApp(accountKey string, command string) error {
+	if a.remoteWindow() {
+		dir, err := a.remoteAccountFolder(accountKey)
+		if err != nil {
+			return err
+		}
+		return a.openRemoteEditor(dir, command)
+	}
 	return a.be().OpenAccountInApp(accountKey, command)
 }
 
@@ -874,14 +887,23 @@ func (a *App) confirmSweepLocal(sourceKey, repoKey string) SweepDeleteDTO {
 // OpenInApp opens a folder in a specific application (e.g. VS Code).
 // On Windows, editor launchers like code.cmd/cursor.cmd are batch wrappers;
 // HideWindow prevents the hosting cmd.exe from flashing before the GUI spawns.
+//
+// In a remote window the path is the host's: an editor that supports remote
+// folders opens it over ssh, and any other is refused (#243).
 func (a *App) OpenInApp(path string, command string) error {
-	if err := a.refuseRemotePath(); err != nil {
-		return err
-	}
 	if command == "" {
 		return fmt.Errorf("command is required")
 	}
-	cmd := exec.Command(command, path)
+	if a.remoteWindow() {
+		return a.openRemoteEditor(path, command)
+	}
+	return startEditor([]string{command, path})
+}
+
+// startEditor starts an editor's argv, with the Homebrew-augmented PATH on
+// macOS and no console window on Windows.
+func startEditor(argv []string) error {
+	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Env = git.Environ() // Homebrew PATH for macOS — do not remove.
 	git.HideWindow(cmd)
 	return cmd.Start()
@@ -1314,12 +1336,15 @@ func (a *App) harnessProfileID() (string, error) {
 // command + args directly (rather than looking up by ID) so both
 // auto-detected and config-stored entries call the same contract. Errors are
 // actionable strings the frontend can surface verbatim.
+//
+// In a remote window the harness runs on the host, in the folder, through a
+// local terminal that runs ssh -t; only a catalog harness runs (#243).
 func (a *App) OpenInAIHarness(path string, command string, args []string) error {
-	if err := a.refuseRemotePath(); err != nil {
-		return err
-	}
 	if command == "" {
 		return fmt.Errorf("AI harness command is required")
+	}
+	if a.remoteWindow() {
+		return a.openRemoteHarness(path, command, args)
 	}
 	profileID, err := a.harnessProfileID()
 	if err != nil {
@@ -1333,6 +1358,16 @@ func (a *App) OpenInAIHarness(path string, command string, args []string) error 
 // Profile's shell. Errors out when the account is unknown or the folder is
 // missing, matching OpenAccountProfile.
 func (a *App) OpenAccountInAIHarness(accountKey string, command string, args []string) error {
+	if a.remoteWindow() {
+		if command == "" {
+			return fmt.Errorf("AI harness command is required")
+		}
+		dir, err := a.remoteAccountFolder(accountKey)
+		if err != nil {
+			return err
+		}
+		return a.openRemoteHarness(dir, command, args)
+	}
 	return a.be().OpenAccountInAIHarness(accountKey, command, args)
 }
 

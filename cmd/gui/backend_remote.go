@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/mirror"
 	"github.com/LuisPalacios/gitbox/pkg/rpc"
 )
@@ -207,7 +208,7 @@ type networkStateDTO struct {
 type payloadDecoder func(r *RemoteBackend, raw json.RawMessage) (any, error)
 
 // relayedEvents are the events a remote window takes from its server: the
-// P4 events of eventClass. TestRelayedEventsAreRemote keeps the two in step.
+// P4 and P6 events of eventClass. TestRelayedEventsAreRemote keeps the two in step.
 var relayedEvents = map[string]payloadDecoder{
 	"status:updated": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
 		var list []StatusResult
@@ -227,6 +228,15 @@ var relayedEvents = map[string]payloadDecoder{
 	"mirror:discover:done":     typedPayload[mirrorDiscoverDoneDTO],
 	"pr:refreshed":             typedPayload[PRAccountUpdateDTO],
 	"network:state":            typedPayload[networkStateDTO],
+	// The host's AI harnesses, detected on the host (#243). A window runs
+	// only the catalog's (harness.RemoteCommand), whatever this list says.
+	"harnesses:updated": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
+		var list []config.AIHarnessEntry
+		if err := json.Unmarshal(raw, &list); err != nil {
+			return nil, err
+		}
+		return capList(r, "harnesses:updated", list, maxRemoteHarnesses), nil
+	},
 }
 
 // typedPayload decodes raw into T and encodes it again. For an object it
@@ -262,8 +272,9 @@ func typedPayload[T any](_ *RemoteBackend, raw json.RawMessage) (any, error) {
 // The longest lists a remote window takes from its server (#240). A longer
 // one is cut, with a log line, and the window says it is incomplete.
 const (
-	maxRemoteRepos    = 10_000
-	maxRemoteAccounts = 1_000
+	maxRemoteRepos     = 10_000
+	maxRemoteAccounts  = 1_000
+	maxRemoteHarnesses = 1_000
 )
 
 // capList cuts list to limit items.
@@ -332,13 +343,14 @@ func (r *RemoteBackend) invoke(method string, result any, args ...any) error {
 	if client == nil {
 		return &remoteError{remoteNotConnected, "not connected to the remote"}
 	}
-	if r.readOnly && methodClass[method].Mutating {
+	info, _ := classOf(method)
+	if r.readOnly && info.Mutating {
 		return &remoteError{remoteReadOnly, method + " is not available on a read-only remote"}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), remoteCallTimeout(method))
 	defer cancel()
 	var opts []rpc.CallOption
-	if methodClass[method].Mutating {
+	if info.Mutating {
 		opts = append(opts, rpc.WithRequestID(newRequestID()))
 	}
 	err := client.Call(ctx, method, args, result, opts...)

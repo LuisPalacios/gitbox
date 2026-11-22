@@ -36,6 +36,13 @@ type eventInfo struct {
 // lifecycleHooks are the exported methods Wails calls that are not bound.
 var lifecycleHooks = []string{"BeforeClose", "DomReady", "Shutdown", "Startup"}
 
+// The AI harness detection (RefreshAIHarnesses, SyncAIHarnesses) runs on
+// the host, where the harnesses run (#243). It is not marked Mutating: a
+// pass is idempotent (it finds the same harnesses every time), so a call
+// sent twice needs no request-id replay, and on a read-only server what it
+// finds stays in memory and never reaches the host's gitbox.json
+// (TestReadOnlyServerSavesNothing).
+
 // methodClass covers the Wails-bound methods of *App and the lifecycle hooks.
 var methodClass = map[string]methodInfo{
 	"AccountDeletionImpact":          {classRemote, "P4", false},
@@ -139,7 +146,7 @@ var methodClass = map[string]methodInfo{
 	"RecommendedGlobalGitignoreBody": {classRemote, "P4", false},
 	"Reconcile":                      {classRemote, "P5", true},
 	"RedetectProfiles":               {classMixed, "P1b", false},
-	"RefreshAIHarnesses":             {classRemote, "P6", true},
+	"RefreshAIHarnesses":             {classRemote, "P6", false}, // not Mutating: see the harness detection note
 	"RefreshAllPRs":                  {classRemote, "P4", false},
 	"RefreshStatus":                  {classRemote, "P4", false},
 	"ReloadConfig":                   {classMixed, "P1b", false},
@@ -180,10 +187,27 @@ var methodClass = map[string]methodInfo{
 	"Shutdown":                       {classMixed, "P1a", false},
 	"Startup":                        {classMixed, "P1a", false},
 	"SuggestAccountKey":              {classRemote, "P4", false},
-	"SyncAIHarnesses":                {classRemote, "P6", true},
+	"SyncAIHarnesses":                {classRemote, "P6", false}, // not Mutating: see the harness detection note
 	"SyncEditors":                    {classLocal, "P1b", false},
 	"SyncProfiles":                   {classLocal, "P1b", false},
 	"UpdateAccount":                  {classRemote, "P5", true},
+}
+
+// backendOnlyClass covers the Backend methods that are not Wails-bound: the
+// server serves them, and a bound method of *App calls them.
+var backendOnlyClass = map[string]methodInfo{
+	// AccountFolder is the host half of the account launchers of a remote
+	// window: the host resolves the folder, this computer opens it (#243).
+	"AccountFolder": {classRemote, "P6", false},
+}
+
+// classOf is the classification of a Backend method, bound or not.
+func classOf(method string) (methodInfo, bool) {
+	if info, ok := methodClass[method]; ok {
+		return info, true
+	}
+	info, ok := backendOnlyClass[method]
+	return info, ok
 }
 
 // eventClass covers every event name passed to EventSink.Emit.

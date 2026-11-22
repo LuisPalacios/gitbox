@@ -187,6 +187,9 @@ func (r *RemoteBackend) ListRoots() []RootDTO {
 	return remoteValue[[]RootDTO](r, "ListRoots")
 }
 func (r *RemoteBackend) MoveRepo(req MoveRequestDTO) { r.callVoid("MoveRepo", req) }
+func (r *RemoteBackend) AccountFolder(accountKey string) (string, error) {
+	return remoteCall[string](r, "AccountFolder", accountKey)
+}
 func (r *RemoteBackend) OpenAccountFolder(accountKey string) error {
 	return r.callErr("OpenAccountFolder", accountKey)
 }

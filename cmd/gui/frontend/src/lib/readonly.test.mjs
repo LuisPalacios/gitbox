@@ -36,10 +36,19 @@ test('I block every bridge call whose Go method changes the host', () => {
   for (const name of ro.READ_ONLY_BLOCKED) assert.ok(bridgeCalls.has(name), `${name} is blocked but is not a bridge call`);
 });
 
-test('I neither reconcile nor re-probe harnesses on focus in a read-only remote', () => {
-  assert.deepEqual(ro.focusWork(true), { reload: true, reconcile: false, refreshHarnesses: false });
+test('I do not reconcile on focus in a read-only remote, but I re-probe its harnesses', () => {
+  assert.deepEqual(ro.focusWork(true), { reload: true, reconcile: false, refreshHarnesses: true });
   assert.deepEqual(ro.focusWork(false), { reload: true, reconcile: true, refreshHarnesses: true });
-  assert.ok(ro.READ_ONLY_BLOCKED.has('reconcile') && ro.READ_ONLY_BLOCKED.has('refreshAIHarnesses'));
+  assert.ok(ro.READ_ONLY_BLOCKED.has('reconcile') && !ro.READ_ONLY_BLOCKED.has('refreshAIHarnesses'));
+});
+
+test('I let the remote launches through and keep the ones with no remote equivalent blocked', () => {
+  for (const name of ['openInApp', 'openProfile', 'openInAIHarness', 'openAccountInApp', 'openAccountProfile', 'openAccountInAIHarness']) {
+    assert.ok(!ro.READ_ONLY_BLOCKED.has(name), `${name} opens the host's folder over ssh`);
+  }
+  for (const name of ['openInExplorer', 'openAccountFolder', 'openFileInEditor']) {
+    assert.ok(ro.READ_ONLY_BLOCKED.has(name), `${name} has no remote equivalent`);
+  }
 });
 
 const tr = (key) => ({ 'error.remote.not_connected': 'No hay conexión con el host.' })[key] ?? key;

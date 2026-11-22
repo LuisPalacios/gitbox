@@ -215,17 +215,26 @@ func (a *App) MissingModernTerminal() bool {
 // openTerminal* path so the Windows console-flash workaround stays in one
 // place). ─────────────────────────────────────────────────────────────────
 
-// OpenProfile launches the given profile in the given folder.
+// OpenProfile launches the given profile in the given folder. In a remote
+// window the folder is the host's: the profile's terminal runs ssh -t into
+// it (#243, remote_launch.go).
 func (a *App) OpenProfile(path, profileID string) error {
-	if err := a.refuseRemotePath(); err != nil {
-		return err
+	if a.remoteWindow() {
+		return a.openRemoteTerminal(path, profileID, nil)
 	}
 	return a.launchProfile(path, profileID, nil)
 }
 
 // OpenAccountProfile launches the given profile in the account's parent
-// folder.
+// folder. In a remote window the host resolves the folder.
 func (a *App) OpenAccountProfile(accountKey, profileID string) error {
+	if a.remoteWindow() {
+		dir, err := a.remoteAccountFolder(accountKey)
+		if err != nil {
+			return err
+		}
+		return a.openRemoteTerminal(dir, profileID, nil)
+	}
 	return a.be().OpenAccountProfile(accountKey, profileID)
 }
 

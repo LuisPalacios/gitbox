@@ -32,7 +32,7 @@ func TestServedMethodsAreReadOnly(t *testing.T) {
 			t.Errorf("%s is served but is not a Backend method", name)
 			continue
 		}
-		info, ok := methodClass[name]
+		info, ok := classOf(name)
 		switch {
 		case !ok:
 			t.Errorf("%s is served but has no classification", name)
@@ -326,7 +326,8 @@ func TestServeExitCodes(t *testing.T) {
 
 // A server runs read-only until P5 (#240): its background workers run, and
 // what the harness watcher detects reaches the client as an event, but
-// neither it nor a refused save changes the host's gitbox.json.
+// neither it, the client's SyncAIHarnesses and RefreshAIHarnesses (#243),
+// nor a refused save changes the host's gitbox.json.
 func TestReadOnlyServerSavesNothing(t *testing.T) {
 	if len(knownAIHarnesses) == 0 {
 		t.Skip("no known harness to detect")
@@ -369,6 +370,21 @@ func TestReadOnlyServerSavesNothing(t *testing.T) {
 	}
 	if err := host.be().SetNestedScanDepth(3); toUserError(err).Code != "remote.read_only" {
 		t.Errorf("a save on the read-only server = %v, want remote.read_only", err)
+	}
+	// The window runs the harness detection on the host too (#243): it is
+	// served, it is not a mutation, and its result stays in memory. The
+	// watcher's pass already reported what it found.
+	waitFor := time.Now().Add(10 * time.Second)
+	for len(events.named("harnesses:updated")) == 0 && time.Now().Before(waitFor) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(events.named("harnesses:updated")) == 0 {
+		t.Error("the watcher's harnesses:updated did not reach the window")
+	}
+	remote.SyncAIHarnesses()
+	remote.RefreshAIHarnesses()
+	if err := remote.LastError(); err != nil {
+		t.Errorf("the harness detection did not run on the server: %v", err)
 	}
 	if fetchErr := remote.FetchAllRepos(); fetchErr != nil {
 		t.Errorf("FetchAllRepos: %v", fetchErr)

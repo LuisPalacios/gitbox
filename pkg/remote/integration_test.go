@@ -621,6 +621,67 @@ func TestFishLoginShell(t *testing.T) {
 	}
 }
 
+// TestRemoteTerminalOverSSH runs the remote command of a terminal (#243)
+// through a real ssh into bash and fish login shells, the way ssh -t hands
+// it to them: for each hostile folder, pwd after the cd prints exactly the
+// folder, the login-shell form lands there too, and no injected command
+// leaves a marker M behind. A path with CR or LF never gets this far
+// (TestRemoteTerminalArgv).
+func TestRemoteTerminalOverSSH(t *testing.T) {
+	names := []string{
+		"it's here", "$(id)", "`id`", "a;rm -rf ~", "a&&b", "%PATH%", "$env:HOME", `a b\c`,
+		`back\\slash\'quote`, "$(touch M)", "`touch M`", "a;touch M", "a&&touch M", "a|touch M",
+		"x'; touch M; '", "a & echo x > M & b", "ünïcödé ✓", "-dash",
+	}
+	for _, tc := range []struct {
+		shell  string
+		family remote.Family
+	}{
+		{"/bin/bash", remote.FamilyPOSIX},
+		{"/usr/bin/fish", remote.FamilyFish},
+		{"/bin/sh", remote.FamilyOther}, // the generic wrapper, read by dash
+	} {
+		t.Run(filepath.Base(tc.shell)+"-"+string(tc.family), func(t *testing.T) {
+			c := startContainer(t, ctOpts{shell: tc.shell})
+			s := c.client(t, "client-a", true)
+			ssh, err := remote.SSHPath(s.opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			base := testHome + "/hostile"
+			for _, name := range names {
+				dir := base + "/" + name
+				if out, err := exec.Command("docker", "exec", "-u", "test", c.id, "mkdir", "-p", "--", dir).CombinedOutput(); err != nil {
+					t.Fatalf("mkdir %q: %v %s", name, err, out)
+				}
+				for _, program := range [][]string{{"pwd"}, nil} {
+					cmdline, err := remote.RemoteCommand(tc.family, dir, program)
+					if err != nil {
+						t.Fatal(err)
+					}
+					argv, err := remote.TerminalArgv(ssh, alias, cmdline)
+					if err != nil {
+						t.Fatal(err)
+					}
+					// The production argv is ssh -t -- <alias> <command>;
+					// the test adds its config file and, with no terminal
+					// here, -T instead of -t. The command is the same word.
+					args := append(remote.ConfigArgs(s.opts), "-T", "-o", "BatchMode=yes", "--", argv[3], argv[4])
+					cmd := exec.Command(ssh, args...)
+					cmd.Stdin = strings.NewReader("pwd\nexit\n") // read by the login shell form
+					out, err := cmd.Output()
+					if got := strings.TrimSpace(string(out)); err != nil || got != dir {
+						t.Errorf("%q (program %q):\n command %s\n printed %q, %v", name, program, cmdline, got, err)
+					}
+				}
+			}
+			if found := c.sh("find " + testHome + " -name M"); found != "" {
+				t.Errorf("an injected command ran:\n%s", found)
+			}
+		})
+	}
+}
+
 // readOnlyCalls are the methods a gitbox-server serves to a read-only
 // client (#240), with arguments for the host that
 // TestReadOnlySessionLeavesConfigUntouched seeds. TestIntegrationCallsEveryServedMethod
@@ -630,6 +691,7 @@ var readOnlyCalls = []struct {
 	params []any
 }{
 	{"AccountDeletionImpact", []any{"acct"}},
+	{"AccountFolder", []any{"acct"}},
 	{"CheckGlobalGCMConfig", []any{}},
 	{"CheckGlobalGitignore", []any{}},
 	{"CheckGlobalIdentity", []any{}},
@@ -668,6 +730,7 @@ var readOnlyCalls = []struct {
 	{"PreflightMove", []any{map[string]any{"sourceSourceKey": "acct", "sourceRepoKey": "org/repo", "destAccountKey": "acct", "destOwner": "alice", "destRepoName": "copy"}}},
 	{"PreviewSweep", []any{"acct", "org/repo"}},
 	{"RecommendedGlobalGitignoreBody", []any{}},
+	{"RefreshAIHarnesses", []any{}},
 	{"RefreshAllPRs", []any{}},
 	{"RefreshStatus", []any{}},
 	{"ReloadConfig", []any{}},
@@ -675,6 +738,7 @@ var readOnlyCalls = []struct {
 	{"RepoWorkspaceFiles", []any{"acct", "org/repo"}},
 	{"ScanFolderForClones", []any{testHome + "/git"}},
 	{"SuggestAccountKey", []any{"gitea", "alice"}},
+	{"SyncAIHarnesses", []any{}},
 }
 
 // readOnlyHostConfig is the host's gitbox.json: one account on a server

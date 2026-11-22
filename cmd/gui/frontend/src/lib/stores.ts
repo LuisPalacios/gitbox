@@ -1,3 +1,4 @@
+import type { RemoteHost } from './remotehost';
 import { writable, derived } from 'svelte/store';
 import type { Placeholder } from './repo-tree';
 import { simpleKind } from './status';
@@ -208,3 +209,8 @@ export const themeStore = writable<'light' | 'dark'>('dark');
 // controls that would change the host show disabled (lib/ro.ts) and the
 // bridge refuses those calls (lib/readonly.ts). P5 lifts it.
 export const remoteReadOnly = writable(false);
+
+// remoteHost is the host of a remote window, for its launchers (#243): the
+// editors that open its folders. null outside a remote window. The top bar
+// sets it from the remote state it shows (lib/remotehost.ts).
+export const remoteHost = writable<RemoteHost>(null);

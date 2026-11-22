@@ -192,7 +192,10 @@ func TestHostileServer(t *testing.T) {
 	}
 
 	// Names and paths arrive as text, untouched, and nothing runs them: the
-	// local launchers refuse a remote path before anything starts.
+	// local launchers refuse a path that is not one of the host's, and the
+	// actions with no remote equivalent, before anything starts (#243).
+	spawned := recordRemoteSpawn(t)
+	attachSession(t, h.app)
 	got := h.app.GetAllStatus()
 	if len(got) != len(hostileText) {
 		t.Fatalf("GetAllStatus returned %d rows", len(got))
@@ -201,17 +204,24 @@ func TestHostileServer(t *testing.T) {
 		if row.Repo != hostileText[i] || row.Path != hostileText[i] {
 			t.Errorf("row %d was changed on the way: %.40q", i, row.Repo)
 		}
-		for name, launch := range map[string]func() error{
-			"OpenInExplorer":   func() error { return h.app.OpenInExplorer(row.Path) },
-			"OpenInApp":        func() error { return h.app.OpenInApp(row.Path, "code") },
-			"OpenFileInEditor": func() error { return h.app.OpenFileInEditor(row.Path) },
-			"OpenInAIHarness":  func() error { return h.app.OpenInAIHarness(row.Path, "claude", []string{row.Repo}) },
-			"OpenProfile":      func() error { return h.app.OpenProfile(row.Path, "wezterm-default") },
+		for name, c := range map[string]struct {
+			launch func() error
+			code   string
+		}{
+			"OpenInExplorer":   {func() error { return h.app.OpenInExplorer(row.Path) }, "not_available_remote"},
+			"OpenFileInEditor": {func() error { return h.app.OpenFileInEditor(row.Path) }, "not_available_remote"},
+			"OpenInApp":        {func() error { return h.app.OpenInApp(row.Path, "code") }, "not_available_remote_path"},
+			"OpenProfile":      {func() error { return h.app.OpenProfile(row.Path, "wezterm-default") }, "not_available_remote_path"},
+			"OpenInAIHarness":  {func() error { return h.app.OpenInAIHarness(row.Path, "claude", []string{row.Repo}) }, "harness_not_allowed"},
+			"OpenInAIHarness/": {func() error { return h.app.OpenInAIHarness(row.Path, "claude", nil) }, "not_available_remote_path"},
 		} {
-			if err := launch(); toUserError(err).Code != "remote.not_implemented_remote" {
-				t.Errorf("%s with a remote path = %v, want not_implemented_remote", name, err)
+			if err := c.launch(); !codeIs(err, c.code) {
+				t.Errorf("%s with the remote path %.20q = %v, want %s", name, row.Path, err, c.code)
 			}
 		}
+	}
+	if len(*spawned) != 0 {
+		t.Errorf("a refused launch started %+v", *spawned)
 	}
 	snap, err := h.app.GetStartupSnapshot()
 	if err != nil {
@@ -221,12 +231,14 @@ func TestHostileServer(t *testing.T) {
 		t.Errorf("snapshot OS %q, server OS %q: a malformed host OS must be dropped and the client's own kept", snap.OS, snap.ServerOS)
 	}
 
-	// Events: an unknown name, a LOCAL one and one of a later phase are
-	// dropped; unknown fields and wrong types are dropped; an oversized
-	// list is cut.
+	// Events: an unknown name and a LOCAL one are dropped; unknown fields
+	// and wrong types are dropped; an oversized list is cut. The host's
+	// harness list is relayed as data, and a harness it names that is not
+	// the catalog's never runs.
 	h.srv.Emit("made:up", "by a hostile server")
 	h.srv.Emit("update:quit", "v9")
-	h.srv.Emit("harnesses:updated", []config.AIHarnessEntry{{Name: "evil", Command: "/bin/sh"}})
+	h.srv.Emit("harnesses:updated", map[string]any{"not": "a list"})
+	h.srv.Emit("harnesses:updated", []map[string]any{{"name": "evil", "command": "/bin/sh", "evil": "<script>"}})
 	h.srv.Emit("fetch:done", map[string]any{"source": 7, "repo": "r"})
 	h.srv.Emit("fetch:done", map[string]any{"source": "a", "repo": "r", "error": "boom", "evil": "<script>"})
 	h.srv.Emit("status:updated", tooMany)
@@ -234,7 +246,16 @@ func TestHostileServer(t *testing.T) {
 	if n := len(updates[0].args[0].([]StatusResult)); n != maxRemoteRepos {
 		t.Errorf("status:updated carried %d rows, want %d", n, maxRemoteRepos)
 	}
-	for _, name := range []string{"made:up", "update:quit", "harnesses:updated"} {
+	harnesses := h.waitEvent(t, "harnesses:updated")
+	if len(harnesses) != 1 {
+		t.Errorf("harnesses:updated arrived %d times, want the well-typed one only", len(harnesses))
+	} else if payload := asJSON(t, harnesses[0].args[0]); strings.Contains(payload, "<script>") || !strings.Contains(payload, `"command":"/bin/sh"`) {
+		t.Errorf("harnesses:updated payload %s", payload)
+	}
+	if err := h.app.OpenInAIHarness("/srv/repo", "/bin/sh", nil); !codeIs(err, "harness_not_allowed") {
+		t.Errorf("the host's /bin/sh harness = %v, want harness_not_allowed", err)
+	}
+	for _, name := range []string{"made:up", "update:quit"} {
 		if len(h.events.named(name)) != 0 {
 			t.Errorf("the event %s reached the window", name)
 		}
@@ -330,16 +351,19 @@ func TestRemoteConfigIsCapped(t *testing.T) {
 	}
 }
 
-// Every P4 event of eventClass is relayed, and nothing else is.
+// Every P4 and P6 event of eventClass is relayed, and nothing else is.
 func TestRelayedEventsAreRemote(t *testing.T) {
+	served := func(info eventInfo) bool {
+		return info.Class == classRemote && (info.Owner == "P4" || info.Owner == "P6")
+	}
 	for name := range relayedEvents {
-		if info := eventClass[name]; info.Class != classRemote || info.Owner != "P4" {
+		if info := eventClass[name]; !served(info) {
 			t.Errorf("%s is relayed but classified %+v", name, info)
 		}
 	}
 	for name, info := range eventClass {
-		if _, ok := relayedEvents[name]; info.Owner == "P4" && info.Class == classRemote && !ok {
-			t.Errorf("%s is a P4 event that the relay drops", name)
+		if _, ok := relayedEvents[name]; served(info) && !ok {
+			t.Errorf("%s is a P4 or P6 event that the relay drops", name)
 		}
 	}
 }

@@ -1440,6 +1440,7 @@ export namespace main {
 	    serverArch?: string;
 	    serverVersion?: string;
 	    truncated?: boolean;
+	    remoteEditors: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new RemoteStateDTO(source);
@@ -1456,6 +1457,7 @@ export namespace main {
 	        this.serverArch = source["serverArch"];
 	        this.serverVersion = source["serverVersion"];
 	        this.truncated = source["truncated"];
+	        this.remoteEditors = source["remoteEditors"];
 	    }
 	}
 	export class RemoteUninstallDTO {
