@@ -29,6 +29,22 @@ var assets embed.FS
 const maxWindowWidth = 220 + 1100 + 48 + 16
 
 func main() {
+	if len(os.Args) > 1 {
+		var err error
+		switch os.Args[1] {
+		case update.ApplyUpdateFlag:
+			err = update.RunElevatedUpdate(version, os.Args[2:])
+		case update.RestartAfterUpdateFlag:
+			err = update.RestartAfterUpdate(os.Args[2:])
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if os.Args[1] == update.ApplyUpdateFlag || os.Args[1] == update.RestartAfterUpdateFlag {
+			return
+		}
+	}
 	// After an update, the new version starts with --wait-pid=<old PID> and
 	// waits for the old process to exit and release the single-instance lock.
 	for _, arg := range os.Args[1:] {

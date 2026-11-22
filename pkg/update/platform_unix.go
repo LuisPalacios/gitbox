@@ -21,9 +21,15 @@ var ErrNeedElevation = errors.New("administrator privileges required")
 var errElevationUnsupported = errors.New("elevated update not supported on this platform — run with sudo")
 
 // ApplyElevated is not supported on Unix — return a clear message.
-func ApplyElevated(extractDir, installDir, relaunch string) error {
+func ApplyElevated(archive, tag string, relaunch bool) error {
 	return errElevationUnsupported
 }
+
+// RunElevatedUpdate is only available to Windows applications.
+func RunElevatedUpdate(_ string, _ []string) error { return errElevationUnsupported }
+
+// RestartAfterUpdate is only available to Windows applications.
+func RestartAfterUpdate(_ []string) error { return errElevationUnsupported }
 
 // replaceExecutable atomically replaces the binary at dst with src.
 // On Unix, rename(2) is atomic within the same filesystem and the OS keeps

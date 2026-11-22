@@ -293,6 +293,7 @@ I launch GitboxApp on each platform with the commands `./scripts/run-commands.sh
 ### Update and upgrade (at least one platform)
 
 - [ ] With a newer signed release published, the update pill appears in the footer; clicking it verifies the signature and checksum, applies the update, and the app restarts on the new version
+- [ ] On Windows, I update a test installation under `Program Files` from a signed test release. The User Account Control prompt names `GitboxApp.exe`, the new version opens with my user's permissions, and the update creates no `.cmd` file
 - [ ] The Linux AppImage pill opens the release page instead of updating
 - [ ] A v1 install upgrades to v2 and keeps its `gitbox.json`
 

@@ -14,6 +14,8 @@ import (
 
 const windowsBackupSuffixBytes = 8
 
+var errInstalledUpdateChanged = errors.New("the installed executable changed before this update could be applied")
+
 var errUpdateRollback = errors.New("could not restore the installed executable")
 
 // windowsUpdateState identifies one backup and the exact binary that replaced it.
@@ -24,18 +26,14 @@ type windowsUpdateState struct {
 }
 
 func replaceWindowsExecutable(src, dst string, ops replaceOps) error {
-	staged, old, marker := dst+".new", dst+".old", dst+".update-state.json"
-	if _, err := os.Lstat(old); err == nil {
-		// A legacy updater may leave an unrecorded backup. Keep it and
-		// let the checked move reserve a fresh sibling filename.
-		var suffix [windowsBackupSuffixBytes]byte
-		rand.Read(suffix[:])
-		old += "." + hex.EncodeToString(suffix[:])
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("checking update backup: %w", err)
-	}
+	return replaceWindowsExecutableWith(dst, "", ops, func(staged string) (string, error) {
+		return stageUpdateExecutable(src, staged, ops.copyFile)
+	})
+}
 
-	newHash, err := stageUpdateExecutable(src, staged, ops.copyFile)
+func replaceWindowsExecutableWith(dst, expectedOld string, ops replaceOps, stage func(string) (string, error)) error {
+	staged, old, marker := dst+".new", dst+".old", dst+".update-state.json"
+	newHash, err := stage(staged)
 	if err != nil {
 		return fmt.Errorf("staging update: %w", err)
 	}
@@ -50,9 +48,27 @@ func replaceWindowsExecutable(src, dst string, ops replaceOps) error {
 	if err != nil {
 		return fmt.Errorf("checking installed executable: %w", err)
 	}
+	if expectedOld != "" && oldHash != expectedOld {
+		return errInstalledUpdateChanged
+	}
 	if oldHash == newHash {
 		return nil
 	}
+	if expectedOld != "" {
+		// The elevated transaction already holds the exclusive .new slot.
+		removeRecordedWindowsBackup(dst, marker, oldHash)
+	}
+
+	if _, err := os.Lstat(old); err == nil {
+		// A legacy updater may leave an unrecorded backup. Keep it and
+		// let the checked move reserve a fresh sibling filename.
+		var suffix [windowsBackupSuffixBytes]byte
+		rand.Read(suffix[:])
+		old += "." + hex.EncodeToString(suffix[:])
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("checking update backup: %w", err)
+	}
+
 	state := windowsUpdateState{
 		Old: filepath.Base(old), OldSHA256: oldHash, InstalledSHA256: newHash,
 	}
@@ -102,7 +118,12 @@ func stageUpdateExecutable(src, staged string, copyFile func(io.Writer, io.Reade
 		return "", err
 	}
 
-	out, err := os.OpenFile(staged, os.O_WRONLY|os.O_CREATE|os.O_EXCL, info.Mode().Perm())
+	return stageExecutable(from, staged, info.Size(), info.Mode().Perm(), expected, copyFile)
+}
+
+// stageExecutable also accepts bytes from the signed archive in the elevated helper.
+func stageExecutable(from io.Reader, staged string, size int64, mode os.FileMode, expected string, copyFile func(io.Writer, io.Reader) (int64, error)) (string, error) {
+	out, err := os.OpenFile(staged, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
 	if err != nil {
 		return "", err
 	}
@@ -132,7 +153,7 @@ func stageUpdateExecutable(src, staged string, copyFile func(io.Writer, io.Reade
 	if err != nil {
 		return "", err
 	}
-	if written != info.Size() || stagedInfo.Size() != info.Size() || actual != expected {
+	if written != size || stagedInfo.Size() != size || actual != expected {
 		return "", errors.New("staged executable does not match the extracted update")
 	}
 	keep = true
@@ -174,6 +195,13 @@ func cleanupWindowsBackup(exe string) {
 	if err := slot.Close(); err != nil {
 		return
 	}
+	activeHash, err := regularFileHash(exe)
+	if err == nil {
+		removeRecordedWindowsBackup(exe, marker, activeHash)
+	}
+}
+
+func removeRecordedWindowsBackup(exe, marker, activeHash string) {
 	info, err := os.Lstat(marker)
 	if err != nil || !info.Mode().IsRegular() || info.Size() > 4096 {
 		return
@@ -197,8 +225,7 @@ func cleanupWindowsBackup(exe string) {
 		}
 	}
 	old := filepath.Join(filepath.Dir(exe), state.Old)
-	activeHash, err := regularFileHash(exe)
-	if err != nil || activeHash != state.InstalledSHA256 {
+	if activeHash != state.InstalledSHA256 {
 		return
 	}
 	oldHash, err := regularFileHash(old)
