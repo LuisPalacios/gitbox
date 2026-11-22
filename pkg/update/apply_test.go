@@ -127,8 +127,7 @@ func TestInstallEntries_SelfOnly(t *testing.T) {
 var errReplaceInjected = errors.New("injected replace failure")
 
 // failingReplaceOps fails the step that puts the new version in place: the
-// rename into dst on Unix and for bundles, the copy on Windows. Restoring
-// the previous version still works.
+// move into dst. Restoring the previous version still works.
 func failingReplaceOps(dst string) replaceOps {
 	ops := realReplaceOps()
 	ops.rename = func(oldpath, newpath string) error {
@@ -137,11 +136,7 @@ func failingReplaceOps(dst string) replaceOps {
 		}
 		return os.Rename(oldpath, newpath)
 	}
-	ops.copyFile = func(_, to string) error {
-		// Leave a half-written file behind, as a copy cut short does.
-		_ = os.WriteFile(to, []byte("partial"), 0o755)
-		return errReplaceInjected
-	}
+	ops.moveFile = ops.rename
 	return ops
 }
 
