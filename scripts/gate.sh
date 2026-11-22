@@ -12,6 +12,8 @@
 #   mac    macOS arm64   local, or SSH_MAC_ARM_HOST
 #   linux  Linux amd64   local, or SSH_LINUX_HOST
 #   win    Windows amd64 local, or SSH_WIN_INTEL_HOST / SSH_WIN_HOST
+#   remote-it  the sshd integration tests of remote mode, on the linux
+#              lane's host, which needs Docker (scripts/remote-it.sh)
 #
 # When every lane passes, gate.sh records a marker for the SHA in the git
 # common dir (shared by all worktrees). .githooks/pre-push refuses to update
@@ -32,7 +34,7 @@
 # shellcheck source=_common.sh
 source "$(dirname "$0")/_common.sh"
 
-ALL_LANES="mac linux win"
+ALL_LANES="mac linux win remote-it"
 
 usage() {
     sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'
@@ -41,8 +43,8 @@ usage() {
 
 is_lane() {
     case "$1" in
-        mac|linux|win) return 0 ;;
-        *)             return 1 ;;
+        mac|linux|win|remote-it) return 0 ;;
+        *)                       return 1 ;;
     esac
 }
 
@@ -52,7 +54,7 @@ while [[ $# -gt 0 ]]; do
         -h|--help) usage 0 ;;
         --only|--skip)
             if [[ $# -lt 2 ]] || ! is_lane "$2"; then
-                die "$1 needs a lane: mac, linux or win"
+                die "$1 needs a lane: mac, linux, win or remote-it"
             fi
             if [[ "$1" == "--only" ]]; then only+=("$2"); else skip+=("$2"); fi
             shift 2 ;;
@@ -110,7 +112,7 @@ done
 lane_platform() {
     case "$1" in
         mac)   echo "mac-arm" ;;
-        linux) echo "linux" ;;
+        linux|remote-it) echo "linux" ;;
         win)   echo "win-intel" ;;
     esac
 }

@@ -4,6 +4,7 @@ import (
 	"go/build/constraint"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -79,5 +80,37 @@ func TestWailsImportsTagged(t *testing.T) {
 	}
 	if checked == 0 || tagged == 0 {
 		t.Fatalf("checked %d files and found %d that import Wails; the walker is broken", checked, tagged)
+	}
+}
+
+// TestSentinelOnlyInTests keeps the e2e_sentinel tag, whose server writes a
+// line to the home folder on every start, out of every path that builds a
+// server for users: only scripts/remote-it.sh may use it.
+func TestSentinelOnlyInTests(t *testing.T) {
+	root := filepath.Join("..", "..")
+	paths := []string{
+		"scripts/build-server.sh", "scripts/ship.sh", "scripts/release-macos.sh",
+		"scripts/gate-lane.sh", ".github/workflows/ci.yml", ".github/workflows/pr.yml",
+	}
+	gen, err := filepath.Glob(filepath.Join(root, "cmd/gui/serverbin/gen/*.go"))
+	if err != nil || len(gen) == 0 {
+		t.Fatalf("serverbin/gen not found: %v", err)
+	}
+	for _, g := range gen {
+		rel, _ := filepath.Rel(root, g)
+		paths = append(paths, rel)
+	}
+	for _, p := range paths {
+		data, err := os.ReadFile(filepath.Join(root, p))
+		if err != nil {
+			t.Fatalf("%s: %v", p, err)
+		}
+		if strings.Contains(string(data), "e2e_sentinel") {
+			t.Errorf("%s builds with the e2e_sentinel tag, which only the sshd integration tests may use", p)
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(root, "scripts/remote-it.sh"))
+	if err != nil || !strings.Contains(string(data), "gitboxserver,e2e_sentinel") {
+		t.Errorf("scripts/remote-it.sh no longer builds the sentinel server: %v", err)
 	}
 }
