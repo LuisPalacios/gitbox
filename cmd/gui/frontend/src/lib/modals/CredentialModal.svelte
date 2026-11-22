@@ -7,7 +7,7 @@
   import type { DoctorPrecheckDTO } from '../bridge';
   import { accounts } from '../stores';
   import { dismiss } from '../dismiss';
-  import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime';
+  import { openExternal } from '../external';
   import CredentialResult from '../CredentialResult.svelte';
   import PrecheckBanner from '../PrecheckBanner.svelte';
   import Rich from '../Rich.svelte';
@@ -240,7 +240,7 @@
             {#if lanHint}
               <div class="cred-status-lanhint">
                 <p class="cred-status-lanhint-title">{$t('cred.lanTitle')}</p>
-                <p>{$t(lanHint.summaryKey)} <a href={lanHint.link} on:click|preventDefault={() => BrowserOpenURL(lanHint.link)}>{$t('cred.troubleshooting')}</a>.</p>
+                <p>{$t(lanHint.summaryKey)} <a href={lanHint.link} on:click|preventDefault={() => openExternal(lanHint.link)}>{$t('cred.troubleshooting')}</a>.</p>
               </div>
             {/if}
           </div>
@@ -249,7 +249,7 @@
         <!-- Simplified PAT-only flow for mirror fix -->
         <p class="cred-step-desc"><Rich key="cred.mirrorNeedsPat" vars={{ type: currentAcct?.default_credential_type || 'none' }} /></p>
         {:else}
-        <p class="cred-doc-link"><a href="https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md" on:click|preventDefault={() => BrowserOpenURL('https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md')}>{$t('cred.learnTypes')}</a></p>
+        <p class="cred-doc-link"><a href="https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md" on:click|preventDefault={() => openExternal('https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md')}>{$t('cred.learnTypes')}</a></p>
         <div class="form-row">
           <label class="form-label" for="cc-type">{$t('cred.type')}</label>
           <select class="form-input" id="cc-type" bind:value={credChangeType} disabled={credBusy}>
@@ -274,7 +274,7 @@
           {#if credTokenScopes}
             <p class="cred-step-desc"><Rich key="cred.scopes" vars={{ scopes: credTokenScopes }} /></p>
           {/if}
-          <p class="cred-step-link"><a href={credTokenGuide} on:click|preventDefault={() => BrowserOpenURL(credTokenGuide)}>{credTokenGuide}</a></p>
+          <p class="cred-step-link"><a href={credTokenGuide} on:click|preventDefault={() => openExternal(credTokenGuide)}>{credTokenGuide}</a></p>
           <div class="form-row">
             <label class="form-label" for="cc-token">{$t('onboard.token')}</label>
             <input class="form-input" id="cc-token" type="password" bind:value={credTokenInput} placeholder="ghp_..." translate="no" />

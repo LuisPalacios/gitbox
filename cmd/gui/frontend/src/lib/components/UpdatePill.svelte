@@ -2,7 +2,8 @@
   // Footer pill for a pending update: install (or open the release page),
   // progress, done, error, and dismiss until the next launch.
   import { bridge } from '../bridge';
-  import { BrowserOpenURL, Quit } from '../../../wailsjs/runtime/runtime';
+  import { Quit } from '../../../wailsjs/runtime/runtime';
+  import { openExternal } from '../external';
   import type { UpdateInfo } from '../types';
   import { t } from '../i18n';
 
@@ -24,7 +25,7 @@
   <div class="update-pill update-error">
     <span>&#9888; {updateError}</span>
     {#if updateInfo?.url}
-      <button class="update-pill-btn" on:click={() => updateInfo && BrowserOpenURL(updateInfo.url)}>{$t('update.releasePage')}</button>
+      <button class="update-pill-btn" on:click={() => updateInfo && openExternal(updateInfo.url)}>{$t('update.releasePage')}</button>
     {/if}
     <button class="update-pill-dismiss" on:click={() => updateError = ''} title={$t('notice.dismiss')}>&#10005;</button>
   </div>
@@ -37,7 +38,7 @@
       {#if updateInfo.selfUpdate}
         <button class="update-pill-btn" on:click={() => { updateApplying = true; updateError = ''; bridge.applyUpdate().catch((e) => { updateApplying = false; updateError = typeof e === 'string' ? e : (e?.message || $t('update.failed')); }); }}>{$t('update.available', { version: updateInfo.latest })}</button>
       {:else}
-        <button class="update-pill-btn" title={$t('update.openReleaseTip')} on:click={() => updateInfo && BrowserOpenURL(updateInfo.url)}>{$t('update.available', { version: updateInfo.latest })}</button>
+        <button class="update-pill-btn" title={$t('update.openReleaseTip')} on:click={() => updateInfo && openExternal(updateInfo.url)}>{$t('update.available', { version: updateInfo.latest })}</button>
       {/if}
       <button class="update-pill-dismiss" on:click={() => { updateDismissed = updateInfo?.latest ?? ''; updateInfo = null; }} title={$t('update.dismissTip')}>&#10005;</button>
     {/if}

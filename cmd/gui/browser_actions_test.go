@@ -53,7 +53,7 @@ func TestOpenRepoInBrowser_ErrorPaths(t *testing.T) {
 	// launch a browser — with a "not found" error the UI can display.
 	t.Run("unknown source", func(t *testing.T) {
 		a := appWithCreatedRepo("https://github.com")
-		err := a.OpenRepoInBrowser("nope", "alice/newrepo")
+		_, err := a.OpenRepoInBrowser("nope", "alice/newrepo", false)
 		if err == nil || !strings.Contains(err.Error(), `source "nope" not found`) {
 			t.Errorf("expected source-not-found error, got %v", err)
 		}
@@ -61,7 +61,7 @@ func TestOpenRepoInBrowser_ErrorPaths(t *testing.T) {
 
 	t.Run("unknown repo in source", func(t *testing.T) {
 		a := appWithCreatedRepo("https://github.com")
-		err := a.OpenRepoInBrowser("github-alice", "alice/other")
+		_, err := a.OpenRepoInBrowser("github-alice", "alice/other", false)
 		if err == nil || !strings.Contains(err.Error(), `repo "alice/other" not found`) {
 			t.Errorf("expected repo-not-found error, got %v", err)
 		}
@@ -70,7 +70,7 @@ func TestOpenRepoInBrowser_ErrorPaths(t *testing.T) {
 	t.Run("source whose account is missing", func(t *testing.T) {
 		a := appWithCreatedRepo("https://github.com")
 		delete(a.cfg.Accounts, "github-alice")
-		err := a.OpenRepoInBrowser("github-alice", "alice/newrepo")
+		_, err := a.OpenRepoInBrowser("github-alice", "alice/newrepo", false)
 		if err == nil || !strings.Contains(err.Error(), `account "github-alice" not found`) {
 			t.Errorf("expected account-not-found error, got %v", err)
 		}

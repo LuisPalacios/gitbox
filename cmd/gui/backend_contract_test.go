@@ -272,6 +272,9 @@ func contractRows(clone string) []contractRow {
 		{name: "RepoWorkspaceFiles", call: func(b Backend) (any, error) { return b.RepoWorkspaceFiles("acct", "org/repo"), nil }, empty: "the clone holds no workspace file"},
 		{name: "ScanFolderForClones", call: func(b Backend) (any, error) { return b.ScanFolderForClones(filepath.Dir(clone)), nil }},
 		{name: "ListRoots", call: func(b Backend) (any, error) { return b.ListRoots(), nil }},
+		{name: "OpenAccountInBrowser", call: func(b Backend) (any, error) { return b.OpenAccountInBrowser("acct") }},
+		{name: "OpenRepoInBrowser", call: func(b Backend) (any, error) { return b.OpenRepoInBrowser("acct", "org/repo") }},
+		{name: "OpenRepoInBrowser for an unknown repo", call: func(b Backend) (any, error) { return b.OpenRepoInBrowser("acct", "no/such") }},
 	}
 }
 
@@ -317,10 +320,10 @@ func TestBackendContract(t *testing.T) {
 				t.Errorf("events differ:\n local  %s\n remote %s", w, g)
 			}
 			w := asJSON(t, want)
-			if nothing := w == "null" || w == `""` || w == "[]" || w == "{}" || w == "0"; nothing && len(wantEvents) == 0 && tt.empty == "" {
+			if nothing := w == "null" || w == `""` || w == "[]" || w == "{}" || w == "0"; nothing && wantErr == nil && len(wantEvents) == 0 && tt.empty == "" {
 				t.Errorf("the call returned nothing (%s) and emitted nothing: the comparison proves nothing", w)
 			}
-			if err := link.Remote.LastError(); err != nil {
+			if err := link.Remote.LastError(); err != nil && wantErr == nil {
 				t.Errorf("the remote call recorded a failure: %v", err)
 			}
 		})

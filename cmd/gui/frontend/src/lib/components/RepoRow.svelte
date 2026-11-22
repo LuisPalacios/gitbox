@@ -47,6 +47,7 @@
   // badges, branch, its words, launchers, fetch and ⋯).
   import { fade } from 'svelte/transition';
   import { bridge } from '../bridge';
+  import { openExternal, openRepoExternal } from '../external';
   import { pushNotice, errorText } from '../notices';
   import { accounts, repoStates, prSettings, prsByAccount, lookupPRSummary, sources, workspaceMembers, workspaceUnknown, isSynced, themeStore } from '../stores';
   import { statusColor, simpleKind, simpleColor, rowBusy, rowGlyph, statusLabel, attentionRank, CALM_RANK, COUNT_BADGES } from '../status';
@@ -190,13 +191,10 @@
 
   // The URL is resolved on the Go side from the authoritative config
   // (git.RepoWebURL), so a stale frontend store can't turn this into a
-  // silent no-op; lookup failures surface in a notice (#79).
+  // silent no-op; lookup failures surface in a notice (#79). The link opens
+  // through the funnel (external.ts).
   async function openRepoInBrowser(sourceKey: string, repoName: string) {
-    try {
-      await bridge.openRepoInBrowser(sourceKey, repoName);
-    } catch (e) {
-      pushNotice('error', $t('notice.openWebFailed'), [errorText(e)]);
-    }
+    await openRepoExternal(sourceKey, repoName);
     closeActionMenu();
   }
 
@@ -327,8 +325,8 @@
               prs={prSummary.authored}
               providerName={acctForPRs?.provider || ''}
               providerAllURL={providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName)}
-              onOpenPR={(url) => { bridge.openInBrowser(url); closePRPopover(); }}
-              onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); closePRPopover(); }}
+              onOpenPR={(url) => { openExternal(url); closePRPopover(); }}
+              onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) openExternal(u); closePRPopover(); }}
             />
           </div>
         {/if}
@@ -348,8 +346,8 @@
               prs={prSummary.reviewRequested}
               providerName={acctForPRs?.provider || ''}
               providerAllURL={providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName)}
-              onOpenPR={(url) => { bridge.openInBrowser(url); closePRPopover(); }}
-              onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); closePRPopover(); }}
+              onOpenPR={(url) => { openExternal(url); closePRPopover(); }}
+              onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) openExternal(u); closePRPopover(); }}
             />
           </div>
         {/if}

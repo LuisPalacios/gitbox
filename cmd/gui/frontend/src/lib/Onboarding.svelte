@@ -16,7 +16,7 @@
   import { providerLabel, providerURLs } from './theme';
   import Logo from './Logo.svelte';
   import { t } from './i18n';
-  import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
+  import { openExternal } from './external';
 
   export let mode: 'first-run' | 'add' = 'first-run';
   export let onDone: (result: { sourceKey: string; repos: string[] } | null) => void;
@@ -382,7 +382,7 @@
       {:else if phase === 'token'}
         <p class="ob-desc">{$t('onboard.tokenSteps')}</p>
         {#if tokenURL}
-          <p><a href={tokenURL} on:click|preventDefault={() => BrowserOpenURL(tokenURL)}>{$t('onboard.tokenLink')}</a></p>
+          <p><a href={tokenURL} on:click|preventDefault={() => openExternal(tokenURL)}>{$t('onboard.tokenLink')}</a></p>
         {/if}
         {#if tokenScopes}<p class="ob-small">{$t('onboard.tokenScopes', { scopes: tokenScopes })}</p>{/if}
         <label class="ob-label" for="ob-token">{$t('onboard.token')}</label>

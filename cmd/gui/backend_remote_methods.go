@@ -191,14 +191,14 @@ func (r *RemoteBackend) OpenAccountInAIHarness(accountKey string, command string
 func (r *RemoteBackend) OpenAccountInApp(accountKey string, command string) error {
 	return r.callErr("OpenAccountInApp", accountKey, command)
 }
-func (r *RemoteBackend) OpenAccountInBrowser(accountKey string) error {
-	return r.callErr("OpenAccountInBrowser", accountKey)
+func (r *RemoteBackend) OpenAccountInBrowser(accountKey string) (string, error) {
+	return remoteCall[string](r, "OpenAccountInBrowser", accountKey)
 }
 func (r *RemoteBackend) OpenAccountProfile(accountKey, profileID string) error {
 	return r.callErr("OpenAccountProfile", accountKey, profileID)
 }
-func (r *RemoteBackend) OpenRepoInBrowser(sourceKey, repoKey string) error {
-	return r.callErr("OpenRepoInBrowser", sourceKey, repoKey)
+func (r *RemoteBackend) OpenRepoInBrowser(sourceKey, repoKey string) (string, error) {
+	return remoteCall[string](r, "OpenRepoInBrowser", sourceKey, repoKey)
 }
 func (r *RemoteBackend) PreflightMove(req MoveRequestDTO) MovePreflightDTO {
 	return remoteValue[MovePreflightDTO](r, "PreflightMove", req)

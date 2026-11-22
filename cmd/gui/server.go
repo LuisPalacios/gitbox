@@ -29,7 +29,8 @@ import (
 // servedMethods is the closed list of Backend methods the server answers. A
 // method that is not here does not exist for the client. The list grows one
 // phase at a time: P4 (#240) serves every read, the REMOTE methods it owns
-// and the read halves of the MIXED ones; P5 adds the mutations. Each method
+// and the read halves of the MIXED ones (the two browser methods only
+// resolve a link: the client opens it); P5 adds the mutations. Each method
 // decodes its parameters into their Go types, and nothing it does can save
 // the host's config: the server runs read-only (newServerApp).
 var servedMethods = []string{
@@ -67,6 +68,8 @@ var servedMethods = []string{
 	"ListMoveDestinationOwners",
 	"ListRemoteRepos",
 	"ListRoots",
+	"OpenAccountInBrowser",
+	"OpenRepoInBrowser",
 	"PreflightMove",
 	"PreviewSweep",
 	"RecommendedGlobalGitignoreBody",

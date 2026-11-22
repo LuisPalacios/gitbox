@@ -987,6 +987,20 @@ export namespace main {
 	        this.command = source["command"];
 	    }
 	}
+	export class ExternalOpenDTO {
+	    needsConfirm: boolean;
+	    url?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExternalOpenDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.needsConfirm = source["needsConfirm"];
+	        this.url = source["url"];
+	    }
+	}
 	export class MirrorCredentialCheck {
 	    accountKey: string;
 	    hasMirrorToken: boolean;

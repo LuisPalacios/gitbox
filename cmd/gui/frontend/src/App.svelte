@@ -35,6 +35,8 @@
   import Footer from './lib/components/Footer.svelte';
   import ActivityStrip from './lib/components/ActivityStrip.svelte';
   import Notices from './lib/components/Notices.svelte';
+  import ExternalConfirm from './lib/components/ExternalConfirm.svelte';
+  import { setLinkNoticeTitle } from './lib/external';
   import DiscoverModal from './lib/modals/DiscoverModal.svelte';
   import DoctorModal from './lib/modals/DoctorModal.svelte';
   import SshTokenModal from './lib/modals/SshTokenModal.svelte';
@@ -1288,6 +1290,7 @@
   let configPath = '';
   let appVersion = '';
   let hostOS = ''; // "darwin" | "windows" | "linux" — loaded on init
+  $: setLinkNoticeTitle($t('link.notOpened'));
   // windowMode tells the frontend which UI to render. The default "main"
   // shows the full gitbox app; "terminals" hides everything except the
   // standalone Profile editor window spawned by openTerminalsManagerWindow
@@ -2051,6 +2054,7 @@
 
   <!-- ── RESULT CARDS AND MESSAGES ── -->
   <Notices />
+  <ExternalConfirm />
 
 </div>
 {/if}

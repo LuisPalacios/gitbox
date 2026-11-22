@@ -58,6 +58,8 @@ var remoteWorkBounds = map[string]time.Duration{
 	"GetTokenGuide":                  healReadTimeout,
 	"CheckMirrorCredentials":         healReadTimeout,
 	"ListMoveDestinationOwners":      healReadTimeout,
+	"OpenAccountInBrowser":           healReadTimeout,
+	"OpenRepoInBrowser":              healReadTimeout,
 	"GetRepoDetail":                  statusTimeout,
 	"PreviewSweep":                   statusTimeout,
 	"RepoWorkspaceFiles":             statusTimeout,

@@ -5,7 +5,7 @@
   import { configStore, prSettings } from '../stores';
   import { t } from '../i18n';
   import { tooltip } from '../tooltip';
-  import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime';
+  import { openExternal } from '../external';
   import type { ThemeChoice } from '../theme';
   import type { RemotesList, RemoteResult } from '../bridge';
 
@@ -234,7 +234,7 @@
     </div>
     <div class="settings-row">
       <span class="settings-label" use:tooltip={$t('settings.authorTip')}>{$t('settings.author')}</span>
-      <span class="settings-value" translate="no">Luis Palacios Derqui &mdash; <a href="https://github.com/LuisPalacios/gitbox" on:click|preventDefault={() => BrowserOpenURL('https://github.com/LuisPalacios/gitbox')}>github.com/LuisPalacios/gitbox</a></span>
+      <span class="settings-value" translate="no">Luis Palacios Derqui &mdash; <a href="https://github.com/LuisPalacios/gitbox" on:click|preventDefault={() => openExternal('https://github.com/LuisPalacios/gitbox')}>github.com/LuisPalacios/gitbox</a></span>
     </div>
   </div>
 {/if}

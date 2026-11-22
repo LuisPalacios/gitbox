@@ -597,10 +597,11 @@ func (a *App) OpenInExplorer(path string) error {
 	return cmd.Start()
 }
 
-// OpenInBrowser opens a URL in the default browser.
-// Do NOT use git.HideWindow here — same reason as OpenFileInEditor.
-func (a *App) OpenInBrowser(url string) error {
-	return git.OpenInBrowser(url)
+// OpenInBrowser opens a link in the default browser through the funnel
+// (external.go): https at once, http only when confirmed, nothing else. An
+// unconfirmed http link comes back as NeedsConfirm, and the frontend asks.
+func (a *App) OpenInBrowser(url string, confirmed bool) (ExternalOpenDTO, error) {
+	return openExternalDTO(url, confirmed)
 }
 
 // resolveAccountFolder returns the absolute path to the account's parent
@@ -671,21 +672,27 @@ func (a *App) openAccountInAppLocal(accountKey string, command string) error {
 	return cmd.Start()
 }
 
-// OpenAccountInBrowser opens the provider profile page for the account.
-func (a *App) OpenAccountInBrowser(accountKey string) error {
-	return a.be().OpenAccountInBrowser(accountKey)
+// OpenAccountInBrowser opens the provider profile page for the account. The
+// backend, which may be on another host, resolves the link; this machine
+// opens it through the funnel.
+func (a *App) OpenAccountInBrowser(accountKey string, confirmed bool) (ExternalOpenDTO, error) {
+	url, err := a.be().OpenAccountInBrowser(accountKey)
+	if err != nil {
+		return ExternalOpenDTO{}, err
+	}
+	return openExternalDTO(url, confirmed)
 }
 
-// openAccountInBrowserLocal is the local backend's OpenAccountInBrowser.
-func (a *App) openAccountInBrowserLocal(accountKey string) error {
+// openAccountInBrowserLocal is the local backend's OpenAccountInBrowser: it
+// resolves the link and opens nothing.
+func (a *App) openAccountInBrowserLocal(accountKey string) (string, error) {
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
 	a.mu.Unlock()
 	if !ok {
-		return fmt.Errorf("account %q not found", accountKey)
+		return "", fmt.Errorf("account %q not found", accountKey)
 	}
-	url := git.AccountProfileURL(acct.URL, acct.Username)
-	return git.OpenInBrowser(url)
+	return git.AccountProfileURL(acct.URL, acct.Username), nil
 }
 
 // repoWebURL resolves the provider web page for a configured repo from the
@@ -709,20 +716,21 @@ func (a *App) repoWebURL(sourceKey, repoKey string) (string, error) {
 }
 
 // OpenRepoInBrowser opens the provider page for a configured repo. The URL
-// is resolved on the Go side so a stale frontend store can never turn the
+// is resolved by the backend so a stale frontend store can never turn the
 // action into a silent no-op; lookup failures come back as errors the UI
-// shows in a dialog. No HideWindow: this launches the user's browser.
-func (a *App) OpenRepoInBrowser(sourceKey, repoKey string) error {
-	return a.be().OpenRepoInBrowser(sourceKey, repoKey)
+// shows in a dialog. This machine opens the link through the funnel.
+func (a *App) OpenRepoInBrowser(sourceKey, repoKey string, confirmed bool) (ExternalOpenDTO, error) {
+	url, err := a.be().OpenRepoInBrowser(sourceKey, repoKey)
+	if err != nil {
+		return ExternalOpenDTO{}, err
+	}
+	return openExternalDTO(url, confirmed)
 }
 
-// openRepoInBrowserLocal is the local backend's OpenRepoInBrowser.
-func (a *App) openRepoInBrowserLocal(sourceKey, repoKey string) error {
-	url, err := a.repoWebURL(sourceKey, repoKey)
-	if err != nil {
-		return err
-	}
-	return git.OpenInBrowser(url)
+// openRepoInBrowserLocal is the local backend's OpenRepoInBrowser: it
+// resolves the link and opens nothing.
+func (a *App) openRepoInBrowserLocal(sourceKey, repoKey string) (string, error) {
+	return a.repoWebURL(sourceKey, repoKey)
 }
 
 // SweepPreviewDTO holds the read-only preview of stale branches.
