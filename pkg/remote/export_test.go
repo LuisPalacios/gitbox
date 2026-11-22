@@ -18,3 +18,7 @@ func SetUploadFilter(o *Options, f func(io.Reader) io.Reader) { o.uploadFilter =
 
 // ConfigArgs are the -F arguments SetConfigFile adds to every ssh call.
 func ConfigArgs(o Options) []string { return o.configArgs() }
+
+// KillSession kills the ssh process of s at once, as a dropped connection
+// would (#294).
+func KillSession(s *Session) { s.kill() }

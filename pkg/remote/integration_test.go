@@ -907,9 +907,8 @@ var mutationCalls = []struct {
 // the sequence left.
 func TestMutationsOverSSH(t *testing.T) {
 	c := startContainer(t, ctOpts{})
-	cfgDir := testHome + "/.config/gitbox"
-	cfgPath := cfgDir + "/gitbox.json"
-	c.sh("mkdir -p " + cfgDir + " " + testHome + "/git/acct/org/repo && echo " + base64.StdEncoding.EncodeToString([]byte(readOnlyHostConfig)) + " | base64 -d > " + cfgPath)
+	cfgPath := seedMutationHost(c)
+	cfgDir := filepath.Dir(cfgPath)
 	conn := c.client(t, "client-m", true).connect(t)
 	defer conn.close()
 
@@ -944,5 +943,97 @@ func TestMutationsOverSSH(t *testing.T) {
 	}
 	if !c.exists(testHome + "/.gitignore_global") {
 		t.Error("InstallGlobalGitignore wrote no ~/.gitignore_global")
+	}
+}
+
+// hostAccounts reads the account keys of the host's gitbox.json; the file
+// must parse.
+func hostAccounts(t *testing.T, c *container, cfgPath string) []string {
+	t.Helper()
+	var m struct {
+		Accounts map[string]json.RawMessage `json:"accounts"`
+	}
+	if err := json.Unmarshal([]byte(c.sh("cat "+cfgPath)), &m); err != nil {
+		t.Fatalf("the host's gitbox.json does not parse: %v", err)
+	}
+	keys := make([]string, 0, len(m.Accounts))
+	for k := range m.Accounts {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+// seedMutationHost writes the host config TestMutationsOverSSH uses and
+// returns its path.
+func seedMutationHost(c *container) string {
+	cfgDir := testHome + "/.config/gitbox"
+	cfgPath := cfgDir + "/gitbox.json"
+	c.sh("mkdir -p " + cfgDir + " " + testHome + "/git/acct/org/repo && echo " + base64.StdEncoding.EncodeToString([]byte(readOnlyHostConfig)) + " | base64 -d > " + cfgPath)
+	return cfgPath
+}
+
+func addAccountParams(key string) []any {
+	return []any{map[string]any{"key": key, "provider": "gitea", "url": "https://" + key + ".example.invalid", "username": key, "name": key, "email": key + "@example.invalid", "credentialType": "token"}}
+}
+
+// TestCutSSHMidSave kills the client's ssh while AddAccount is in flight,
+// 20 times at different delays (#294). The host's gitbox.json always
+// parses and holds either the accounts it had or those plus the new one:
+// a save is old or new, never torn. The lock never outlives the server.
+func TestCutSSHMidSave(t *testing.T) {
+	c := startContainer(t, ctOpts{})
+	cfgPath := seedMutationHost(c)
+	s := c.client(t, "client-cut", true)
+	for i := range 20 {
+		before := hostAccounts(t, c, cfgPath)
+		key := fmt.Sprintf("cut%02d", i)
+		conn := s.connect(t)
+		done := make(chan error, 1)
+		go func() {
+			ctx, cancel := context.WithTimeout(testCtx(t), 30*time.Second)
+			defer cancel()
+			done <- conn.client.Call(ctx, "AddAccount", addAccountParams(key), nil, rpc.WithRequestID(fmt.Sprintf("00000000-0000-4000-8000-%012d", 100+i)))
+		}()
+		time.Sleep(time.Duration((i*7)%45) * time.Millisecond)
+		remote.KillSession(conn.sess)
+		<-done
+		conn.close()
+		eventually(t, "the config lock released", func() bool { return !c.exists(cfgPath + ".lock") })
+		after := hostAccounts(t, c, cfgPath)
+		withNew := slices.Sorted(slices.Values(append(slices.Clone(before), key)))
+		if !slices.Equal(after, before) && !slices.Equal(after, withNew) {
+			t.Fatalf("cut %d: accounts %v, want %v or %v", i, after, before, withNew)
+		}
+	}
+}
+
+// TestConfigChangedConflictOverSSH: two clients, so two servers, read the
+// same host config; one adds an account, then the other's add is refused
+// with config.changed, and its retry after the reload keeps both (#294).
+func TestConfigChangedConflictOverSSH(t *testing.T) {
+	c := startContainer(t, ctOpts{})
+	cfgPath := seedMutationHost(c)
+	a := c.client(t, "client-a", true).connect(t)
+	defer a.close()
+	b := c.client(t, "client-b", true).connect(t)
+	defer b.close()
+	call := func(conn connected, id int, params []any) error {
+		ctx, cancel := context.WithTimeout(testCtx(t), 30*time.Second)
+		defer cancel()
+		return conn.client.Call(ctx, "AddAccount", params, nil, rpc.WithRequestID(fmt.Sprintf("00000000-0000-4000-8000-%012d", id)))
+	}
+	if err := call(a, 201, addAccountParams("froma")); err != nil {
+		t.Fatalf("the first client's add = %v", err)
+	}
+	err := call(b, 202, addAccountParams("fromb"))
+	if e, ok := errors.AsType[*rpc.Error](err); !ok || e.Data.Code != "config.changed" {
+		t.Fatalf("the second client's add after the first = %v, want config.changed", err)
+	}
+	if err := call(b, 203, addAccountParams("fromb")); err != nil {
+		t.Fatalf("the retry after the reload = %v", err)
+	}
+	if got := hostAccounts(t, c, cfgPath); !slices.Contains(got, "froma") || !slices.Contains(got, "fromb") {
+		t.Errorf("accounts %v, want both adds kept", got)
 	}
 }
