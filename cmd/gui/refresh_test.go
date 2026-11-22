@@ -16,6 +16,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
+	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/heal"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 )
@@ -59,7 +60,10 @@ func refreshTestApp(t *testing.T, count int) (*App, *refreshTestEvents) {
 			return results
 		},
 		fetch: func(context.Context, string) (string, error) { return "", nil },
-		heal:  func(*config.Config, string, string) heal.Report { return heal.Report{} },
+		pullCheck: func(context.Context, string) (git.PullSkipReason, git.RepoStatus, error) {
+			return "", git.RepoStatus{}, nil
+		},
+		heal: func(*config.Config, string, string) heal.Report { return heal.Report{} },
 		credential: func(context.Context, config.Account, string, *config.Config) credential.StatusResult {
 			return refreshCredentialOK()
 		},

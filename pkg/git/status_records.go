@@ -21,8 +21,9 @@ type statusSnapshot struct {
 	records []statusRecord
 }
 
-func readStatus(ctx context.Context, repoPath string) (statusSnapshot, error) {
-	out, err := outputContext(ctx, repoPath, "--no-optional-locks", "status", "--porcelain=v2", "--branch", "-z")
+func readStatus(ctx context.Context, repoPath string, opts ...string) (statusSnapshot, error) {
+	args := append([]string{"--no-optional-locks", "status", "--porcelain=v2", "--branch", "-z"}, opts...)
+	out, err := outputContext(ctx, repoPath, args...)
 	if err != nil {
 		return statusSnapshot{}, err
 	}
@@ -146,6 +147,7 @@ func (s statusSnapshot) summary() RepoStatus {
 		case 'u':
 			summary.Conflicts++
 		case '1', '2':
+			summary.Changed++
 			index, work := record.xy[0], record.xy[1]
 			if index != '.' {
 				summary.Added++

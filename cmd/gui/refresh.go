@@ -51,6 +51,7 @@ type refreshHooks struct {
 	heal       func(*config.Config, string, string) heal.Report
 	credential func(context.Context, config.Account, string, *config.Config) credential.StatusResult
 	pull       func(ctx context.Context, repoPath string) error
+	pullCheck  func(context.Context, string) (git.PullSkipReason, git.RepoStatus, error)
 	// dial replaces the connect that decides whether a server is reachable.
 	// With hooks set and dial nil, every server counts as reachable.
 	dial func(ctx context.Context, addr string) error

@@ -27,7 +27,7 @@ func FuzzStatusRecords(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if want := (RepoStatus{Added: 1, Modified: 1, Conflicts: 1, Untracked: 1}); parsed.summary() != want {
+		if want := (RepoStatus{Added: 1, Modified: 1, Changed: 2, Conflicts: 1, Untracked: 1}); parsed.summary() != want {
 			t.Errorf("summary = %+v, want %+v", parsed.summary(), want)
 		}
 		changed, untracked := parsed.details()

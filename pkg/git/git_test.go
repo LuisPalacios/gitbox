@@ -135,7 +135,7 @@ func TestStatus_ReadOnlyIndex(t *testing.T) {
 		{"Status", func(t *testing.T, dir string) {
 			t.Helper()
 			got, err := StatusContext(context.Background(), dir)
-			want := RepoStatus{Branch: "main", Modified: 1, Untracked: 1}
+			want := RepoStatus{Branch: "main", Modified: 1, Changed: 1, Untracked: 1}
 			if err != nil || got != want {
 				t.Fatalf("Status = %+v, %v; want %+v", got, err, want)
 			}
@@ -581,7 +581,7 @@ func TestParseStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := RepoStatus{Branch: "main", Upstream: "origin/main", Ahead: 2, Behind: 1, Modified: 1, Untracked: 2, Conflicts: 1}
+	want := RepoStatus{Branch: "main", Upstream: "origin/main", Ahead: 2, Behind: 1, Modified: 1, Changed: 1, Untracked: 2, Conflicts: 1}
 	if got := parsed.summary(); got != want {
 		t.Errorf("summary = %+v, want %+v", got, want)
 	}

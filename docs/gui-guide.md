@@ -196,6 +196,8 @@ A repo checked out on a non-default branch shows a small branch badge next to it
 
 Click **Pull all** (down-arrow icon) in the top bar to bring everything up to date. It clones missing repos and pulls repos that are behind with fast-forward only (`git pull --ff-only`), so it never merges and never touches local changes. A behind row's own **Pull · FF only** button does the same for one repo. In Simple, the button is **Update all**.
 
+The status puts unresolved conflicts first and local changes ahead of branch history. Before an update, Gitbox checks the working tree again and skips the clone if it finds local changes, conflicts or an operation in progress. Hover over the row status to see why Gitbox skipped it. The Pull all result counts these skips separately from failures.
+
 #### Fetch all
 
 Click **Fetch all** (↻ icon) to check every remote for new commits without pulling. The status indicators update so you can see what changed before you pull. In Simple, the button is **Check all**.

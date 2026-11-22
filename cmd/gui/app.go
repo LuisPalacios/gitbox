@@ -1894,6 +1894,8 @@ func failedCloneError(dest string, cloneErr error) error {
 // PullRepo pulls a single repo. Emits pull:done event.
 func (a *App) PullRepo(sourceKey, repoKey string) { a.be().PullRepo(sourceKey, repoKey) }
 
+const pullSettingsChanged git.PullSkipReason = "settingsChanged"
+
 // pullRepoLocal is the local backend's PullRepo.
 func (a *App) pullRepoLocal(sourceKey, repoKey string) {
 	a.goTracked(func() {
@@ -1919,13 +1921,15 @@ func (a *App) pullRepoLocal(sourceKey, repoKey string) {
 		// manual edit, an older gitbox that didn't run the heal), fix
 		// it before the network op so auth uses the right credentials.
 		// I stop the pull if maintenance cannot restore the configured settings.
+		result := map[string]any{"source": sourceKey, "repo": repoKey}
 		a.maintenanceMu.RLock()
-		var report heal.Report
-		if a.sameRefreshRepo(cfg, sourceKey, repoKey) {
-			report = a.healRepo(cfg, sourceKey, repoKey)
-		} else {
-			report.Warnings = []string{"repository settings changed during pull"}
+		if !a.sameRefreshRepo(cfg, sourceKey, repoKey) {
+			a.maintenanceMu.RUnlock()
+			result["skipped"] = pullSettingsChanged
+			a.sink().Emit("pull:done", result)
+			return
 		}
+		report := a.healRepo(cfg, sourceKey, repoKey)
 		a.maintenanceMu.RUnlock()
 		var err error
 		addr := serverAddr(cfg.Accounts[src.Account])
@@ -1933,17 +1937,39 @@ func (a *App) pullRepoLocal(sourceKey, repoKey string) {
 			err = fmt.Errorf("repository maintenance: %s", strings.Join(report.Warnings, "; "))
 		} else {
 			pull := git.PullQuietContext
-			if a.refreshHooks != nil && a.refreshHooks.pull != nil {
-				pull = a.refreshHooks.pull
+			check := git.PullPreflightContext
+			if a.refreshHooks != nil {
+				if a.refreshHooks.pull != nil {
+					pull = a.refreshHooks.pull
+				}
+				if a.refreshHooks.pullCheck != nil {
+					check = a.refreshHooks.pullCheck
+				}
 			}
 			err = a.onServer(addr, func(ctx context.Context) error {
 				ctx, cancel := context.WithTimeout(ctx, pullTimeout)
 				defer cancel()
+				reason, st, err := check(ctx, path)
+				if err != nil {
+					return err
+				}
+				if !a.sameRefreshRepo(cfg, sourceKey, repoKey) {
+					result["skipped"] = pullSettingsChanged
+					return nil
+				}
+				if reason != "" {
+					result["skipped"] = reason
+					result["state"] = status.Classify(st).String()
+					result["modified"] = st.Changed
+					result["untracked"] = st.Untracked
+					result["ahead"] = st.Ahead
+					result["behind"] = st.Behind
+					return nil
+				}
 				return pull(ctx, path)
 			})
 		}
 
-		result := map[string]any{"source": sourceKey, "repo": repoKey}
 		if errors.Is(err, errServerUnreachable) {
 			describeUnreachable(result, addr)
 		} else if err != nil {
