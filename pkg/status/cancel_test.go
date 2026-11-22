@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -84,37 +85,37 @@ func TestCheckAllContext_CancelledBeforeStartRunsNoGit(t *testing.T) {
 // A sweep cancelled while it runs stops the checks in flight and starts none
 // of the ones still waiting for a turn.
 func TestCheckAllContext_CancelMidwayStartsNothingElse(t *testing.T) {
-	runner := &countingRunner{hang: true}
-	git.SetRunnerForTest(t, runner)
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() {
-		_, err := CheckAllContext(ctx, cloneConfig(t, 40), 0)
-		done <- err
-	}()
+	synctest.Test(t, func(t *testing.T) {
+		runner := &countingRunner{hang: true}
+		git.SetRunnerForTest(t, runner)
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		cfg := cloneConfig(t, 40)
+		done := make(chan error, 1)
+		go func() {
+			_, err := CheckAllContext(ctx, cfg, 0)
+			done <- err
+		}()
 
-	// Wait until every worker slot holds a check that hangs.
-	deadline := time.Now().Add(5 * time.Second)
-	for runner.calls.Load() < checkAllConcurrency && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	time.Sleep(50 * time.Millisecond)
-	if got := runner.calls.Load(); got != checkAllConcurrency {
-		t.Fatalf("%d checks in flight, want the %d slots", got, checkAllConcurrency)
-	}
-
-	cancel()
-	select {
-	case err := <-done:
-		if !errors.Is(err, context.Canceled) {
-			t.Errorf("err = %v, want the context's", err)
+		// The in-flight Git calls and the dispatcher are blocked.
+		synctest.Wait()
+		if got := runner.calls.Load(); got != checkAllConcurrency {
+			t.Fatalf("%d checks in flight, want the %d slots", got, checkAllConcurrency)
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("the sweep did not return after the cancel")
-	}
-	if got := runner.calls.Load(); got != checkAllConcurrency {
-		t.Errorf("%d git commands ran in all; the %d checks still waiting must not start", got, 40-checkAllConcurrency)
-	}
+
+		cancel()
+		select {
+		case err := <-done:
+			if !errors.Is(err, context.Canceled) {
+				t.Errorf("err = %v, want the context's", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("the sweep did not return after the cancel")
+		}
+		if got := runner.calls.Load(); got != checkAllConcurrency {
+			t.Errorf("%d git commands ran in all; the %d checks still waiting must not start", got, 40-checkAllConcurrency)
+		}
+	})
 }
 
 // Each check has its own bound: one that hangs ends as an error and the

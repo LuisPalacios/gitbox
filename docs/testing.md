@@ -197,6 +197,7 @@ I run them in this order, from fastest to slowest.
 
 - **Startup snapshot** — `go test ./cmd/gui/ -run TestStartupSnapshot` checks nesting before clones exist and detached snapshot data. `go test ./cmd/gui/ -run '^$' -bench BenchmarkStartupSnapshot -benchmem` measures snapshot construction, which is backend work, not visible startup time.
 - **Refresh and credential maintenance** — `go test -race ./cmd/gui/ ./pkg/credential/ ./pkg/heal/ ./pkg/git/` covers refresh coordination, cancellation, stale results, upstream probes and pre-fetch maintenance.
+- **Failure schedules** — `go test -race -short ./cmd/gui/ ./pkg/config/ ./pkg/git/...` checks overlapping config changes, partial save failures and stalled Git credential helpers in isolated fixtures. The health check runs this race pass on macOS and Linux.
 
 For visible startup time I measure on the native desktop: process launch to window, window to the first configured rows with container nesting, and time to complete status. I record the platform, clone count, container layout and number of runs. A browser navigation against a running `wails dev` backend measures a different path, and SSH timings can't show WebView2 row paint, so a Windows startup target stays open until I measure it on an interactive Windows desktop.
 

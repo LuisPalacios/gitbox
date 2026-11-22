@@ -155,6 +155,8 @@ Keep business logic out of `cmd/gui`: if a test needs more than the `App` glue, 
 
 I inject refresh work through `refreshHooks` in `cmd/gui` tests and use channels to coordinate overlapping callers. I assert shared active work, bounded follow-ups, event ordering, cancellation, and rejection of stale results without starting Wails. I use local HTTP servers for provider deadlines and cancellation. I isolate Git config and token files, and use `GIT_TRACE2_EVENT` to count real pre-fetch Git processes rather than mocking the config wrappers.
 
+For deterministic overlaps, `pkg/git/testutil` provides a scripted runner adapter and a channel barrier that announces entry. I use it in `cmd/gui/schedules_test.go` to pause a scan, clone or fetch while a binding changes the config, then check the persisted state. For real Git credential waits, `pkg/git/credential_schedule_test.go` uses a temporary bare repository, loopback HTTP and a helper that signals entry before blocking. I use file-operation seams in `pkg/config/save_fault_test.go` to inject errors after writes, sync and rename. The default health check adds `go test -race -short ./cmd/gui/ ./pkg/config/ ./pkg/git/...` on macOS and Linux.
+
 ## Frontend tree and status tests
 
 I test incoming history in `pkg/git/incoming_test.go` with isolated local Git repositories, including diverged branches, differently named upstreams, long lists and unchanged working files. `cmd/gui/repo_detail_test.go` checks that incoming commits and local-file details coexist and refresh after an update. `src/lib/repo-detail.test.mjs` uses deferred promises to check out-of-order loads, cancellation, refreshes and errors without Wails or a browser.
