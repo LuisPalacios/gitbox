@@ -50,10 +50,9 @@ type App struct {
 	// prefs holds the client preferences; nil means sharedPrefs{a}, the
 	// client keys of cfg (see prefs.go).
 	prefs prefsStore
-	// keepHostPrefs is set in gitbox-server. The client preferences in the
-	// host's gitbox.json belong to the host: before every save they are
-	// taken again from the file, so the server never changes them.
-	keepHostPrefs bool
+	// prefsMergeWarned logs once that the file's client preferences could
+	// not be read before a save (takeDiskPrefs).
+	prefsMergeWarned sync.Once
 	// readOnly is set in a gitbox-server that serves a read-only client
 	// (#240): saveConfig refuses, so neither a background worker nor a read
 	// can change the host's gitbox.json, and fetch skips the repair of a
@@ -215,13 +214,44 @@ func (a *App) closeLocal() {
 	a.stopHarnessWatcher()
 }
 
-// saveConfig persists the in-memory config to disk. It refuses to save when
-// the config was not successfully loaded — the guard prevents the empty
-// default fabricated in Startup() from being written over a real file we
-// failed to parse, which would destroy the user's data (see issue #60).
+// saveConfig persists the in-memory config to disk, with the client
+// preferences that are on disk (takeDiskPrefs). It refuses to save on a
+// read-only server, and when the config was not successfully loaded — the
+// guard prevents the empty default fabricated in Startup() from being
+// written over a real file we failed to parse, which would destroy the
+// user's data (see issue #60).
 //
 // Caller must hold a.mu.
 func (a *App) saveConfig() error {
+	if err := a.saveRefused(); err != nil {
+		return err
+	}
+	a.takeDiskPrefs()
+	return config.Save(a.cfg, a.cfgPath)
+}
+
+// savePrefs changes the client preferences and saves (#240). It starts
+// from the preferences on disk, not from the ones in memory, so it changes
+// only what change changes. When saving is refused, the change still
+// applies in memory and the refusal is returned. Caller holds a.mu.
+func (a *App) savePrefs(change func(*config.ClientPrefs) error) error {
+	refused := a.saveRefused()
+	if refused == nil {
+		a.takeDiskPrefs()
+	}
+	p := config.ExtractPrefs(a.cfg)
+	if err := change(&p); err != nil {
+		return err
+	}
+	config.ApplyPrefs(a.cfg, p)
+	if refused != nil {
+		return refused
+	}
+	return config.Save(a.cfg, a.cfgPath)
+}
+
+// saveRefused is why saveConfig would refuse, or nil. Caller holds a.mu.
+func (a *App) saveRefused() error {
 	if a.readOnly {
 		return &remoteError{remoteReadOnly, "the remote is read-only: nothing is saved on the host"}
 	}
@@ -231,21 +261,31 @@ func (a *App) saveConfig() error {
 		}
 		return fmt.Errorf("refusing to save: config not loaded")
 	}
-	a.restoreHostPrefs()
-	return config.Save(a.cfg, a.cfgPath)
+	return nil
 }
 
-// restoreHostPrefs puts the client preferences that are on disk back into
-// the config about to be saved, when this process is a server. A host that
-// also runs GitboxApp may have changed its theme, editors or window since
-// the server loaded the file. Caller holds a.mu.
-func (a *App) restoreHostPrefs() {
-	if !a.keepHostPrefs {
+// takeDiskPrefs lays the client preferences that are on disk over the
+// config about to be saved (#240). Several processes on one machine share
+// that file: the local window, a remote window, the terminals window, and
+// on a host also gitbox-server. Each one saves its own preferences, so the
+// file's are the latest, and a domain save never reverts them. A missing
+// file keeps the values in memory, and so does one that does not parse,
+// with one log line: nothing half-merged is ever written. Caller holds a.mu.
+func (a *App) takeDiskPrefs() {
+	onDisk, err := config.Load(a.cfgPath)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			a.prefsMergeWarned.Do(func() {
+				out := a.hostLog
+				if out == nil {
+					out = os.Stderr
+				}
+				fmt.Fprintln(out, "warning: the preferences in gitbox.json could not be read before saving; keeping the ones in memory")
+			})
+		}
 		return
 	}
-	if onDisk, err := config.Load(a.cfgPath); err == nil {
-		config.PreserveClientPrefs(a.cfg, onDisk)
-	}
+	config.PreserveClientPrefs(a.cfg, onDisk)
 }
 
 // ─── Update ──────────────────────────────────────────────────
@@ -1399,7 +1439,7 @@ func (a *App) repairConfigLocal() ConfigRepairResult {
 	a.cfgLoaded = true
 	a.cfgLoadError = ""
 
-	a.restoreHostPrefs()
+	a.takeDiskPrefs()
 	if err := config.Save(a.cfg, a.cfgPath); err != nil {
 		return ConfigRepairResult{Success: false, Error: userText(fmt.Sprintf("saving repaired config: %v", err))}
 	}
@@ -1496,7 +1536,7 @@ func (a *App) restoreFromBackupLocal(backupPath string) ConfigRepairResult {
 	a.cfg = cfg
 	a.cfgLoaded = true
 	a.cfgLoadError = ""
-	a.restoreHostPrefs()
+	a.takeDiskPrefs()
 	if err := config.Save(a.cfg, a.cfgPath); err != nil {
 		return ConfigRepairResult{Success: false, Error: userText(fmt.Sprintf("saving restored config: %v", err))}
 	}
@@ -1651,14 +1691,15 @@ func (a *App) setPeriodicSyncLocal(interval string) error {
 	if !validPeriodicSync(interval) {
 		return fmt.Errorf("invalid periodic sync interval: %s", interval)
 	}
+	if interval == "off" {
+		interval = ""
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if interval == "off" {
-		a.cfg.Global.PeriodicSync = ""
-	} else {
-		a.cfg.Global.PeriodicSync = interval
-	}
-	return a.saveConfig()
+	return a.savePrefs(func(p *config.ClientPrefs) error {
+		p.PeriodicSync = interval
+		return nil
+	})
 }
 
 // GetViewMode returns the persisted view mode ("full" or "compact").

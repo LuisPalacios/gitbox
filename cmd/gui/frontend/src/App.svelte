@@ -1636,9 +1636,11 @@
 
     if (windowMode === 'terminals') {
       // Terminals sub-process: just hydrate the bits the editor needs.
+      // reloadConfig re-reads the file, so preferences another window saved
+      // since this one opened show up too (#240).
       const hydrate = async () => {
         try {
-          const cfg = await bridge.getConfig();
+          const cfg = await bridge.reloadConfig();
           configStore.set(cfg);
           themeChoice = themeChoiceOf(cfg.global?.theme);
         } catch (e) { console.error(e); }

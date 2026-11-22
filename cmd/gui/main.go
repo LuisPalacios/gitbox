@@ -237,10 +237,14 @@ func main() {
 //     no workspace discovery, no probe loops) — App.DomReady checks
 //     a.windowMode and short-circuits when set to "terminals".
 //   - Opens a smaller window sized for the editor.
+//   - Writes only client preferences, through a store of its own
+//     (useOwnPrefsFile), so it never writes back the stale accounts, roots
+//     or preferences it loaded at launch (#240).
 //
 // The frontend reads a.GetWindowMode() on mount and renders only the
 // TerminalsModal contents in this mode (everything else is gated off).
 func runTerminalsWindow(app *App) {
+	app.useOwnPrefsFile()
 	const (
 		w, h       = 980, 720
 		minW, minH = 700, 480

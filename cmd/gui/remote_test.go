@@ -312,8 +312,12 @@ func TestRemotesSettings(t *testing.T) {
 		t.Errorf("ConnectRemote with remote mode off = %+v", res)
 	}
 
-	// The key turns it on like the flag does.
-	a.cfg.Global.ExperimentalRemote = true
+	// The key turns it on like the flag does. It is a client preference, so
+	// it goes through the store: a key set only in memory would give way to
+	// the file at the next save (#240).
+	if err := a.clientPrefs().Update(func(p *config.ClientPrefs) { p.ExperimentalRemote = true }); err != nil {
+		t.Fatal(err)
+	}
 	if !a.ListRemotes().Enabled {
 		t.Error("experimental_remote did not enable the Remotes section")
 	}

@@ -116,13 +116,13 @@ func (b hostBackend) GetStartupSnapshot() (StartupSnapshot, error) {
 }
 
 // newServerApp builds the App a server runs: no window, a config whose
-// client preferences are the host's own and never the server's to change,
+// client preferences are the host's own and never the server's to change
+// (saveConfig takes them from the file before every save),
 // and, until P5, no save at all: the client is read-only (#240). cfgPath
 // empty means the host's default gitbox.json.
 func newServerApp(cfgPath string) *App {
 	a := NewApp()
 	a.cfgPath = cfgPath
-	a.keepHostPrefs = true
 	a.readOnly = true
 	return a
 }

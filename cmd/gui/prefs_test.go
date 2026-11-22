@@ -2,11 +2,14 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -310,4 +313,192 @@ func TestSaveGuardLocalFile(t *testing.T) {
 			t.Errorf("Update saved a remote that the next load would reject: %v", err)
 		}
 	})
+}
+
+// crossWindow is one machine's gitbox.json with the processes that share it
+// (#240): the local window and the store of a remote window.
+type crossWindow struct {
+	path   string
+	local  *App
+	remote *filePrefs
+}
+
+func newCrossWindow(t *testing.T) crossWindow {
+	t.Helper()
+	path := seedConfig(t, "gitbox.json", func(c *config.Config) {
+		c.Global.Theme = "light"
+		c.Global.Language = "en"
+	})
+	local := &App{cfgPath: path}
+	local.be().Init(context.Background())
+	t.Cleanup(local.closeLocal)
+	return crossWindow{path: path, local: local, remote: newFilePrefs(path)}
+}
+
+func (w crossWindow) remoteSets(t *testing.T, change func(*config.ClientPrefs)) {
+	t.Helper()
+	if err := w.remote.Update(change); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A domain save in the local window keeps the preferences a remote window
+// saved meanwhile, whichever path saves: the harness watcher, a collapse,
+// a setting. Afterwards the local window's memory matches the file.
+func TestLocalSaveKeepsAnotherWindowsPrefs(t *testing.T) {
+	if len(knownAIHarnesses) == 0 {
+		t.Skip("no known harness to detect")
+	}
+	w := newCrossWindow(t)
+
+	w.remoteSets(t, func(p *config.ClientPrefs) { p.Theme, p.Language = "dark", "es" })
+	stubHarnessLookup(t, map[string]string{knownAIHarnesses[0].Command: "/opt/bin/" + knownAIHarnesses[0].Command})
+	if !w.local.syncAIHarnessesLocal() {
+		t.Fatal("the harness watcher found nothing to save")
+	}
+	disk := loadConfig(t, w.path).Global
+	if disk.Theme != "dark" || disk.Language != "es" || len(disk.AIHarnesses) == 0 {
+		t.Errorf("after the watcher's save: theme %q, language %q, %d harnesses", disk.Theme, disk.Language, len(disk.AIHarnesses))
+	}
+	if got := w.local.clientPrefs().Get(); got.Theme != "dark" || got.Language != "es" {
+		t.Errorf("the local window's memory says theme %q, language %q", got.Theme, got.Language)
+	}
+
+	w.remoteSets(t, func(p *config.ClientPrefs) { p.UIMode = uiModeSimple })
+	if err := w.local.SetCollapsed(config.CollapsedState{Sidebar: true, Sources: []string{"acct"}}); err != nil {
+		t.Fatal(err)
+	}
+	disk = loadConfig(t, w.path).Global
+	if disk.UIMode != uiModeSimple || disk.Collapsed == nil || !disk.Collapsed.Sidebar || !slices.Equal(disk.Collapsed.Sources, []string{"acct"}) {
+		t.Errorf("after SetCollapsed: ui mode %q, collapsed %+v", disk.UIMode, disk.Collapsed)
+	}
+
+	w.remoteSets(t, func(p *config.ClientPrefs) { p.Language = "en" })
+	if err := w.local.SetNestedScanDepth(3); err != nil {
+		t.Fatal(err)
+	}
+	disk = loadConfig(t, w.path).Global
+	if disk.Language != "en" || disk.NestedScanDepth != 3 || disk.Theme != "dark" {
+		t.Errorf("after SetNestedScanDepth: language %q, depth %d, theme %q", disk.Language, disk.NestedScanDepth, disk.Theme)
+	}
+}
+
+// A preference change in the local window touches only its own key, and a
+// remote window with a stale view keeps the local window's change.
+func TestLocalPrefChangeKeepsAnotherWindowsPrefs(t *testing.T) {
+	w := newCrossWindow(t)
+	w.remoteSets(t, func(p *config.ClientPrefs) { p.Language = "es" })
+	if err := w.local.SetTheme("dark"); err != nil {
+		t.Fatal(err)
+	}
+	if disk := loadConfig(t, w.path).Global; disk.Theme != "dark" || disk.Language != "es" {
+		t.Errorf("after the local SetTheme: theme %q, language %q", disk.Theme, disk.Language)
+	}
+
+	// The other way round: the remote window still holds theme dark.
+	if err := w.local.SetTheme("light"); err != nil {
+		t.Fatal(err)
+	}
+	w.remoteSets(t, func(p *config.ClientPrefs) { p.UIMode = uiModeSimple })
+	if disk := loadConfig(t, w.path).Global; disk.Theme != "light" || disk.UIMode != uiModeSimple || disk.Language != "es" {
+		t.Errorf("after the remote window's change: theme %q, ui mode %q, language %q", disk.Theme, disk.UIMode, disk.Language)
+	}
+	if got := w.remote.Get().Theme; got != "light" {
+		t.Errorf("the remote window's view says theme %q", got)
+	}
+}
+
+// The terminals window writes only preferences: a save there keeps what
+// the local window changed since the terminals window loaded the file,
+// accounts and roots as well as preferences.
+func TestTerminalsWindowWritesOnlyPrefs(t *testing.T) {
+	w := newCrossWindow(t)
+	term := &App{cfgPath: w.path, windowMode: "terminals"}
+	term.useOwnPrefsFile()
+	term.be().Init(context.Background())
+
+	root := t.TempDir()
+	if err := w.local.AddRoot(root); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.local.SetTheme("dark"); err != nil {
+		t.Fatal(err)
+	}
+	apps := []config.TerminalApp{{ID: "wezterm", Name: "WezTerm", Command: "/opt/wezterm"}}
+	profiles := []config.TerminalProfile{{ID: "p1", Name: "WezTerm", TerminalID: "wezterm", Default: true}}
+	if err := term.SaveTerminalProfiles(apps, nil, profiles); err != nil {
+		t.Fatal(err)
+	}
+	disk := loadConfig(t, w.path).Global
+	if !slices.Contains(disk.Roots, root) || disk.Theme != "dark" || len(disk.TerminalApps) != 1 || len(disk.TerminalProfiles) != 1 {
+		t.Errorf("after the terminals window's save: roots %v, theme %q, %d apps, %d profiles", disk.Roots, disk.Theme, len(disk.TerminalApps), len(disk.TerminalProfiles))
+	}
+}
+
+// Inside one process, preference changes and domain saves take the same
+// lock: running them side by side neither deadlocks nor loses an update.
+func TestPrefChangesAndDomainSavesInterleave(t *testing.T) {
+	w := newCrossWindow(t)
+	const rounds = 20
+	var wg sync.WaitGroup
+	errs := make(chan error, 3*rounds+1)
+	wg.Go(func() {
+		for i := 1; i <= rounds; i++ {
+			errs <- w.local.SetNestedScanDepth(i)
+		}
+	})
+	wg.Go(func() {
+		for i := range rounds {
+			errs <- w.local.SetTheme([]string{"light", "dark"}[i%2])
+		}
+		errs <- w.local.SetLanguage("es")
+	})
+	wg.Go(func() {
+		for range rounds {
+			errs <- w.local.SetCollapsed(config.CollapsedState{Sidebar: true, Sources: []string{"acct"}})
+		}
+	})
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("preference changes and domain saves deadlocked")
+	}
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	disk := loadConfig(t, w.path).Global
+	if disk.NestedScanDepth != rounds || disk.Theme != "dark" || disk.Language != "es" || disk.Collapsed == nil || !disk.Collapsed.Sidebar {
+		t.Errorf("an update was lost: depth %d, theme %q, language %q, collapsed %+v", disk.NestedScanDepth, disk.Theme, disk.Language, disk.Collapsed)
+	}
+	if got := w.local.clientPrefs().Get(); got.Theme != disk.Theme || got.Language != disk.Language {
+		t.Errorf("memory %q/%q, disk %q/%q", got.Theme, got.Language, disk.Theme, disk.Language)
+	}
+}
+
+// A file that no longer parses keeps the preferences in memory, logs once,
+// and a domain save still writes a whole config.
+func TestUnreadablePrefsKeepMemory(t *testing.T) {
+	w := newCrossWindow(t)
+	var log lockedBuffer
+	w.local.hostLog = &log
+	if err := os.WriteFile(w.path, []byte("{ not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for depth := 2; depth <= 3; depth++ {
+		if err := w.local.SetNestedScanDepth(depth); err != nil {
+			t.Fatal(err)
+		}
+	}
+	disk := loadConfig(t, w.path).Global
+	if disk.Theme != "light" || disk.Language != "en" || disk.NestedScanDepth != 3 {
+		t.Errorf("after saving over an unreadable file: theme %q, language %q, depth %d", disk.Theme, disk.Language, disk.NestedScanDepth)
+	}
+	if n := strings.Count(log.String(), "could not be read before saving"); n != 1 {
+		t.Errorf("the unreadable file was logged %d times, want once:\n%s", n, log.String())
+	}
 }

@@ -67,7 +67,8 @@ func (a *App) initRootLocal(folder string) error {
 	defer a.mu.Unlock()
 
 	// A new install (no root yet) starts in Simple mode. A config that
-	// already chose a mode keeps it.
+	// already chose a mode keeps it, also one another window saved.
+	a.takeDiskPrefs()
 	if len(a.cfg.Global.Roots) == 0 && a.cfg.Global.UIMode == "" {
 		a.cfg.Global.UIMode = uiModeSimple
 	}
