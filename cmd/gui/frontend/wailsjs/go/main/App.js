@@ -30,6 +30,10 @@ export function AddMirrorRepo(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddMirrorRepo'](arg1, arg2, arg3, arg4);
 }
 
+export function AddRemote(arg1, arg2) {
+  return window['go']['main']['App']['AddRemote'](arg1, arg2);
+}
+
 export function AddRoot(arg1) {
   return window['go']['main']['App']['AddRoot'](arg1);
 }
@@ -76,6 +80,10 @@ export function CloneRepo(arg1, arg2, arg3) {
 
 export function ConfirmSweep(arg1, arg2) {
   return window['go']['main']['App']['ConfirmSweep'](arg1, arg2);
+}
+
+export function ConnectRemote(arg1) {
+  return window['go']['main']['App']['ConnectRemote'](arg1);
 }
 
 export function CreateNewRepo(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
@@ -282,6 +290,10 @@ export function ListRemoteRepos(arg1) {
   return window['go']['main']['App']['ListRemoteRepos'](arg1);
 }
 
+export function ListRemotes() {
+  return window['go']['main']['App']['ListRemotes']();
+}
+
 export function ListRoots() {
   return window['go']['main']['App']['ListRoots']();
 }
@@ -402,8 +414,40 @@ export function ReloadConfig() {
   return window['go']['main']['App']['ReloadConfig']();
 }
 
+export function RemoteDisconnect() {
+  return window['go']['main']['App']['RemoteDisconnect']();
+}
+
+export function RemoteInfo() {
+  return window['go']['main']['App']['RemoteInfo']();
+}
+
+export function RemoteLog() {
+  return window['go']['main']['App']['RemoteLog']();
+}
+
+export function RemoteReconnect() {
+  return window['go']['main']['App']['RemoteReconnect']();
+}
+
+export function RemoteReinstall() {
+  return window['go']['main']['App']['RemoteReinstall']();
+}
+
+export function RemoteRunDoctor() {
+  return window['go']['main']['App']['RemoteRunDoctor']();
+}
+
+export function RemoteUninstall(arg1, arg2) {
+  return window['go']['main']['App']['RemoteUninstall'](arg1, arg2);
+}
+
 export function RemoveGlobalIdentity() {
   return window['go']['main']['App']['RemoveGlobalIdentity']();
+}
+
+export function RemoveRemote(arg1) {
+  return window['go']['main']['App']['RemoveRemote'](arg1);
 }
 
 export function RemoveRoot(arg1, arg2) {

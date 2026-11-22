@@ -23,6 +23,7 @@ var execAllowed = map[string]string{
 	"cmd/gui/profiles.go":        "launches terminals and shells",
 	"cmd/gui/server.go":          "gitbox-server --doctor runs a probe file to see whether the config folder allows execution",
 	"pkg/remote/ssh.go":          "runs the system ssh for remote mode, always with a hidden console window",
+	"cmd/gui/remote.go":          "starts the window of a remote: this GitboxApp with --remote",
 }
 
 // TestProcessesStartOnlyWhereAllowed fails when code outside the list starts

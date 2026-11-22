@@ -67,6 +67,14 @@ func newLayout(serverDir string) (layout, error) {
 	return l, nil
 }
 
+// ValidateServerDir reports a server_dir that remote mode refuses: one
+// that is not absolute or under the home, or that is the home or the root
+// folder itself.
+func ValidateServerDir(dir string) error {
+	_, err := newLayout(dir)
+	return err
+}
+
 func (l layout) args(more ...string) []string { return append([]string{l.mode, l.path}, more...) }
 
 // rootPrelude sets r to the server root from the first two arguments.

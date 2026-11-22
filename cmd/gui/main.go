@@ -52,6 +52,9 @@ func main() {
 	//                         own and the parent window stays interactive).
 	parentPID := 0
 	experimentalRemote := false
+	// --remote <alias> runs this process as the window of one remote
+	// (#239); see runRemoteWindow.
+	remoteArgs, remoteErr := parseRemoteFlags(os.Args[1:])
 	for _, arg := range os.Args[1:] {
 		// --version prints the build version and exits without opening a
 		// window, so scripts can smoke-test an installed GitboxApp.
@@ -76,7 +79,13 @@ func main() {
 			}
 			return
 		}
-		if arg == "--test-mode" {
+		if remoteErr != nil {
+			fmt.Fprintf(os.Stderr, "error: %s\n", remoteErr)
+			os.Exit(2)
+		}
+		// A remote window in test mode reads the remotes of the test
+		// window that started it (--prefs-file) instead of a fixture.
+		if arg == "--test-mode" && remoteArgs.alias == "" {
 			cfgPath, cleanup, err := config.SetupTestMode()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -89,11 +98,12 @@ func main() {
 		if arg == "--terminals-window" {
 			app.windowMode = "terminals"
 		}
-		// --experimental-remote opts in to remote mode (#233). It is
-		// dormant: selectBackend builds the local backend either way
-		// until the remote path lands.
+		// --experimental-remote opts in to remote mode (#233): it shows
+		// the Remotes section of Settings, like the experimental_remote
+		// key, and a remote window needs it.
 		if arg == "--experimental-remote" {
 			experimentalRemote = true
+			app.experimentalRemote = true
 		}
 		// --parent-pid=<PID> tells the Manager subprocess which gitbox.exe
 		// to watch. When that PID disappears, the watcher self-terminates
@@ -104,6 +114,11 @@ func main() {
 				parentPID = v
 			}
 		}
+	}
+
+	if remoteArgs.alias != "" {
+		runRemoteWindow(app, remoteArgs)
+		return
 	}
 
 	if app.windowMode == "terminals" {
@@ -280,5 +295,79 @@ func runTerminalsWindow(app *App) {
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "terminals window: %v\n", err)
+	}
+}
+
+// runRemoteWindow runs the window of one remote (#239): its own process,
+// with a single-instance lock per alias, so a second Connect focuses it.
+// It loads only the client preferences, from this machine's gitbox.json
+// (the test window's, in test mode), and connects from DomReady.
+func runRemoteWindow(app *App, f remoteFlags) {
+	path := f.prefsFile
+	if path == "" {
+		path = config.DefaultV2Path()
+	}
+	prefs := newFilePrefs(path)
+	if _, ok := findRemote(prefs.Get().Remotes, f.alias); !ok {
+		fmt.Fprintf(os.Stderr, "error: no remote named %s is configured; add it in Settings, Remotes (experimental)\n", f.alias)
+		os.Exit(2)
+	}
+	app.prefs = prefs
+	app.cfgPath = path
+	app.testMode = f.testMode
+	app.experimentalRemote = true
+	app.remoteAlias = f.alias
+	app.windowMode = "remote"
+	app.remote = newRemoteSession(app, f.alias)
+	app.backend = selectBackend(app, true)
+
+	width, height := 720, 560
+	p := prefs.Get()
+	if fw, _ := p.WindowFor(f.alias); fw != nil {
+		app.savedWindowPos = fw
+		if fw.Width >= 480 {
+			width = min(fw.Width, maxWindowWidth)
+		}
+		if fw.Height >= 400 {
+			height = fw.Height
+		}
+	}
+	title, lockID := "gitbox · "+f.alias, "com.luispalacios.gitbox.remote."+f.alias
+	if f.testMode {
+		title += " [test]"
+		lockID += ".test"
+	}
+	err := wails.Run(&options.App{
+		Title:       title,
+		Width:       width,
+		Height:      height,
+		MinWidth:    480,
+		MinHeight:   400,
+		MaxWidth:    maxWindowWidth,
+		StartHidden: true,
+		AssetServer: &assetserver.Options{
+			Assets: assets,
+		},
+		BackgroundColour: &options.RGBA{R: 9, G: 9, B: 11, A: 255},
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: lockID,
+			OnSecondInstanceLaunch: func(_ options.SecondInstanceData) {
+				if app.ctx == nil {
+					return
+				}
+				wailsrt.WindowUnminimise(app.ctx)
+				wailsrt.WindowShow(app.ctx)
+			},
+		},
+		OnStartup:     app.Startup,
+		OnShutdown:    app.Shutdown,
+		OnBeforeClose: app.BeforeClose,
+		OnDomReady:    app.DomReady,
+		Bind: []any{
+			app,
+		},
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "remote window: %v\n", err)
 	}
 }

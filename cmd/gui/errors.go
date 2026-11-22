@@ -7,6 +7,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
+	"github.com/LuisPalacios/gitbox/pkg/remote"
 	"github.com/LuisPalacios/gitbox/pkg/rpc"
 	"github.com/LuisPalacios/gitbox/pkg/usererr"
 )
@@ -41,6 +42,8 @@ func toUserError(err error) usererr.UserError {
 	} else if pe, ok := errors.AsType[*provider.ProviderError](err); ok {
 		out.Code, out.Hint = "provider."+string(pe.Class), "error.provider."+string(pe.Class)
 	} else if re, ok := errors.AsType[*remoteError](err); ok {
+		out.Code, out.Hint = "remote."+string(re.Code), "error.remote."+string(re.Code)
+	} else if re, ok := errors.AsType[*remote.Error](err); ok {
 		out.Code, out.Hint = "remote."+string(re.Code), "error.remote."+string(re.Code)
 	}
 	return out

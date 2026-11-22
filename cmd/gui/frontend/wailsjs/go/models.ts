@@ -1304,6 +1304,196 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class serverDoctorReport {
+	    version: string;
+	    commit: string;
+	    os: string;
+	    arch: string;
+	    home: string;
+	    configPath: string;
+	    configDirWritable: boolean;
+	    configDirExec: boolean;
+	    gitVersion: string;
+	    credentialFindings: credential.Finding[];
+	
+	    static createFrom(source: any = {}) {
+	        return new serverDoctorReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.commit = source["commit"];
+	        this.os = source["os"];
+	        this.arch = source["arch"];
+	        this.home = source["home"];
+	        this.configPath = source["configPath"];
+	        this.configDirWritable = source["configDirWritable"];
+	        this.configDirExec = source["configDirExec"];
+	        this.gitVersion = source["gitVersion"];
+	        this.credentialFindings = this.convertValues(source["credentialFindings"], credential.Finding);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RemoteDoctorDTO {
+	    error?: string;
+	    hint?: string;
+	    report?: serverDoctorReport;
+	
+	    static createFrom(source: any = {}) {
+	        return new RemoteDoctorDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.error = source["error"];
+	        this.hint = source["hint"];
+	        this.report = this.convertValues(source["report"], serverDoctorReport);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RemoteEntryDTO {
+	    alias: string;
+	    serverDir?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RemoteEntryDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.alias = source["alias"];
+	        this.serverDir = source["serverDir"];
+	    }
+	}
+	export class RemoteResultDTO {
+	    error?: string;
+	    hint?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RemoteResultDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.error = source["error"];
+	        this.hint = source["hint"];
+	    }
+	}
+	export class RemoteStateDTO {
+	    state: string;
+	    code?: string;
+	    hint?: string;
+	    detail?: string;
+	    alias: string;
+	    serverOS?: string;
+	    serverArch?: string;
+	    serverVersion?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RemoteStateDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.state = source["state"];
+	        this.code = source["code"];
+	        this.hint = source["hint"];
+	        this.detail = source["detail"];
+	        this.alias = source["alias"];
+	        this.serverOS = source["serverOS"];
+	        this.serverArch = source["serverArch"];
+	        this.serverVersion = source["serverVersion"];
+	    }
+	}
+	export class RemoteUninstallDTO {
+	    error?: string;
+	    hint?: string;
+	    needsConfirm: boolean;
+	    otherClients: number;
+	    done: boolean;
+	    rootKept: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new RemoteUninstallDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.error = source["error"];
+	        this.hint = source["hint"];
+	        this.needsConfirm = source["needsConfirm"];
+	        this.otherClients = source["otherClients"];
+	        this.done = source["done"];
+	        this.rootKept = source["rootKept"];
+	    }
+	}
+	export class RemotesDTO {
+	    enabled: boolean;
+	    remotes: RemoteEntryDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RemotesDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.remotes = this.convertValues(source["remotes"], RemoteEntryDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class RemoveRootDTO {
 	    inUse: number;
 	    forgotten: string[];
@@ -1411,6 +1601,7 @@ export namespace main {
 	    os: string;
 	    credentialFindings: credential.Finding[];
 	    serverVersion?: string;
+	    remoteAlias?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new StartupSnapshot(source);
@@ -1425,6 +1616,7 @@ export namespace main {
 	        this.os = source["os"];
 	        this.credentialFindings = this.convertValues(source["credentialFindings"], credential.Finding);
 	        this.serverVersion = source["serverVersion"];
+	        this.remoteAlias = source["remoteAlias"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1613,6 +1805,7 @@ export namespace main {
 	        this.height = source["height"];
 	    }
 	}
+	
 	
 
 }

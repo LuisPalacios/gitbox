@@ -20,6 +20,8 @@ export function AddMirrorGroup(arg1:string,arg2:string,arg3:string):Promise<void
 
 export function AddMirrorRepo(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
+export function AddRemote(arg1:string,arg2:string):Promise<main.RemoteResultDTO>;
+
 export function AddRoot(arg1:string):Promise<void>;
 
 export function AdoptClones(arg1:Array<main.AdoptRequestDTO>):Promise<main.ReconcileDTO>;
@@ -43,6 +45,8 @@ export function CheckMoveReadiness(arg1:string,arg2:string,arg3:boolean):Promise
 export function CloneRepo(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function ConfirmSweep(arg1:string,arg2:string):Promise<main.SweepDeleteDTO>;
+
+export function ConnectRemote(arg1:string):Promise<main.RemoteResultDTO>;
 
 export function CreateNewRepo(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean,arg6:boolean,arg7:string):Promise<void>;
 
@@ -146,6 +150,8 @@ export function ListMoveDestinationOwners(arg1:string):Promise<Array<main.MoveOw
 
 export function ListRemoteRepos(arg1:string):Promise<Array<main.DiscoverResult>>;
 
+export function ListRemotes():Promise<main.RemotesDTO>;
+
 export function ListRoots():Promise<Array<main.RootDTO>>;
 
 export function ListShells():Promise<Array<main.ShellInfo>>;
@@ -206,7 +212,23 @@ export function RefreshStatus():Promise<void>;
 
 export function ReloadConfig():Promise<main.ConfigDTO>;
 
+export function RemoteDisconnect():Promise<void>;
+
+export function RemoteInfo():Promise<main.RemoteStateDTO>;
+
+export function RemoteLog():Promise<Array<string>>;
+
+export function RemoteReconnect():Promise<void>;
+
+export function RemoteReinstall():Promise<main.RemoteResultDTO>;
+
+export function RemoteRunDoctor():Promise<main.RemoteDoctorDTO>;
+
+export function RemoteUninstall(arg1:string,arg2:boolean):Promise<main.RemoteUninstallDTO>;
+
 export function RemoveGlobalIdentity():Promise<void>;
+
+export function RemoveRemote(arg1:string):Promise<main.RemoteResultDTO>;
 
 export function RemoveRoot(arg1:string,arg2:boolean):Promise<main.RemoveRootDTO>;
 

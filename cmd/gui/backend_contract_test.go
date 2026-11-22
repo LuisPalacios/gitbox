@@ -294,12 +294,13 @@ func TestToUserErrorDistrustsTheServer(t *testing.T) {
 	}
 }
 
-// A method the server does not serve yet fails as unsupported, and one with
-// no error to return answers its zero value and keeps the failure.
+// A method the server does not serve yet fails as not_implemented_remote,
+// and one with no error to return answers its zero value and keeps the
+// failure.
 func TestRemoteMethodOutsideTheClosedList(t *testing.T) {
 	link := serveRemote(t, contractConfig(t), nil)
-	if err := link.Remote.AddRoot(t.TempDir()); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
-		t.Errorf("AddRoot = %v, want unsupported", err)
+	if err := link.Remote.AddRoot(t.TempDir()); toUserError(err).Code != "remote.not_implemented_remote" {
+		t.Errorf("AddRoot = %v, want not_implemented_remote", err)
 	}
 	if roots := link.Remote.ListRoots(); len(roots) != 1 {
 		t.Errorf("the refused mutation changed the host: %d roots", len(roots))
@@ -307,7 +308,7 @@ func TestRemoteMethodOutsideTheClosedList(t *testing.T) {
 	if depth := link.Remote.GetNestedScanDepth(); depth != 0 {
 		t.Errorf("GetNestedScanDepth = %d, want the zero value for a method that is not served", depth)
 	}
-	if err := link.Remote.LastError(); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
+	if err := link.Remote.LastError(); toUserError(err).Code != "remote.not_implemented_remote" {
 		t.Errorf("LastError = %v, want the failure of the call that had no error to return", err)
 	}
 }
