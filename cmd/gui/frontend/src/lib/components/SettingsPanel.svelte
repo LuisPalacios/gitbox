@@ -126,7 +126,7 @@
     {/if}
     <div class="settings-row">
       <span class="settings-label" use:tooltip={$t('settings.rootsTip')}>{$t('settings.roots')}</span>
-      <button use:ro class="settings-action-btn" on:click={openRoots}>{$t('settings.change')}</button>
+      <button class="settings-action-btn" on:click={openRoots}>{$t('settings.change')}</button>
       <span class="settings-value">{roots[0] || $t('settings.notSet')}{#if roots.length > 1}&nbsp;<span class="roots-more">{$t('settings.rootsMore', { n: roots.length - 1 })}</span>{/if}</span>
     </div>
     <div class="settings-row">

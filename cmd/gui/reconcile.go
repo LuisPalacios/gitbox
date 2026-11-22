@@ -451,6 +451,10 @@ func (a *App) IgnoreClone(path string, ignore bool) error { return a.be().Ignore
 
 // ignoreCloneLocal is the local backend's IgnoreClone.
 func (a *App) ignoreCloneLocal(path string, ignore bool) error {
+	path, err := hostPath(path)
+	if err != nil {
+		return err
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.cfg.IgnoreClone(path, ignore) {

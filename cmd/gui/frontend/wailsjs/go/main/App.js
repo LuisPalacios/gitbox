@@ -573,3 +573,7 @@ export function SyncProfiles() {
 export function UpdateAccount(arg1) {
   return window['go']['main']['App']['UpdateAccount'](arg1);
 }
+
+export function ValidateRemotePath(arg1) {
+  return window['go']['main']['App']['ValidateRemotePath'](arg1);
+}

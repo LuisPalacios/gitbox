@@ -1250,11 +1250,11 @@ export namespace main {
 	    parent: string;
 	    file: string;
 	    problem: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new WorkspaceDiagnosticDTO(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.parent = source["parent"];
@@ -1442,6 +1442,26 @@ export namespace main {
 	        this.alias = source["alias"];
 	        this.serverDir = source["serverDir"];
 	        this.editor = source["editor"];
+	    }
+	}
+	export class RemotePathDTO {
+	    abs: string;
+	    exists: boolean;
+	    isDir: boolean;
+	    writable: boolean;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RemotePathDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.abs = source["abs"];
+	        this.exists = source["exists"];
+	        this.isDir = source["isDir"];
+	        this.writable = source["writable"];
+	        this.error = source["error"];
 	    }
 	}
 	export class RemoteResultDTO {
@@ -1863,7 +1883,7 @@ export namespace main {
 	}
 	
 	
-
+	
 
 }
 

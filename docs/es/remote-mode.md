@@ -57,7 +57,8 @@ Esto funciona, y todo se ejecuta en el host:
 - **Buscar proyectos** de una cuenta, que lista los repositorios del proveedor sin añadirlos;
 - las comprobaciones de credenciales, la vista previa de la limpieza y la comprobación previa del traslado;
 - **Comprobación del sistema**, que muestra las herramientas del host;
-- abrir una carpeta de repositorio o de cuenta del host en VS Code, un perfil de terminal o un harness de IA de este ordenador: consulta [Abrir las carpetas del host](#abrir-las-carpetas-del-host).
+- abrir una carpeta de repositorio o de cuenta del host en VS Code, un perfil de terminal o un harness de IA de este ordenador: consulta [Abrir las carpetas del host](#abrir-las-carpetas-del-host);
+- la ventana de **Raíces**, que lista las raíces del host y acepta una carpeta escrita para el host: consulta [Escribir una carpeta del host](#escribir-una-carpeta-del-host).
 
 Esto está desactivado, con el aviso «Remoto de solo lectura (llega en una versión posterior)»:
 
@@ -67,6 +68,16 @@ Esto está desactivado, con el aviso «Remoto de solo lectura (llega en una vers
 Esto no tiene equivalente remoto, así que está desactivado con el aviso «No disponible para hosts remotos»: **Mostrar en Finder** o **Mostrar en el Explorador**, abrir la carpeta de la cuenta y **Abrir en editor** del archivo de configuración en Ajustes.
 
 Mis propias preferencias, como el idioma, el tema, Simple o Avanzado, la barra lateral y el tamaño de la ventana, siguen funcionando y se quedan en este ordenador.
+
+### Escribir una carpeta del host
+
+Una ventana remota nunca abre el diálogo de carpetas: elegiría una carpeta de este ordenador. El onboarding y la ventana de **Raíces** muestran en su lugar un campo de texto. Escribo una carpeta del host, como `~/git` o `/srv/git`, y 300 ms después de dejar de escribir el host dice a qué corresponde: la ruta absoluta, que se creará, que es un archivo o que no se puede escribir en ella. El botón sigue desactivado hasta que la carpeta se puede usar. Añadir una raíz desde una ventana remota llega en una versión posterior; el campo ya resuelve la ruta.
+
+El host comprueba cada carpeta por sí mismo, envíe lo que envíe la ventana: debe ser una ruta absoluta una vez expandido `~`, sin caracteres de control, o la acción falla con `remote_path_invalid`. Restaurar una copia de seguridad solo acepta un archivo de la lista de copias.
+
+### Cuando otra ventana guardó antes
+
+Varios procesos pueden guardar el `gitbox.json` del host: mis ventanas, un GitboxApp que se ejecuta en el host y su ventana de terminales. Un guardado nunca sobrescribe un cambio que otro hizo desde que leí el archivo. En su lugar falla con «La configuración cambió en otra ventana o proceso y se ha recargado. Inténtalo de nuevo.», y la ventana muestra lo que hay ahora en el archivo. Un cambio de mis propias preferencias nunca falla así.
 
 El propio servidor funciona en solo lectura. No guarda nada en el `gitbox.json` del host: un guardado rechazado falla con `read_only`, y la detección de harnesses de IA del host guarda lo que encuentra en memoria. La ventana pide al host que vuelva a detectar sus harnesses cuando recupera el foco, y muestra los que tiene el host. El fetch solo actualiza las ramas de seguimiento remoto. En esta versión además se salta la reparación del `.git/config` de cada clon que un fetch local hace antes, y el registro del servidor lo dice una vez; una versión posterior lo quita. Una cuenta o un repositorio plegado sigue plegado solo en esta ventana.
 
@@ -208,6 +219,7 @@ El modo simple muestra una frase sencilla; el código en sí aparece en el regis
 - `not_available_remote_path`: la carpeta no es una ruta absoluta válida del host, o una capa de este ordenador no puede llevarla con seguridad.
 - `harness_not_allowed`: el harness de IA no es del catálogo, o lleva argumentos.
 - `read_only`: el remoto es de solo lectura, así que la acción cambiaría el host. Una versión posterior lo permite.
+- `remote_path_invalid`: la carpeta no es una ruta absoluta del host, o contiene un carácter de control.
 
 ## Clientes Windows y macOS
 

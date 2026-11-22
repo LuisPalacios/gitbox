@@ -51,8 +51,13 @@ type App struct {
 	// client keys of cfg (see prefs.go).
 	prefs prefsStore
 	// prefsMergeWarned logs once that the file's client preferences could
-	// not be read before a save (takeDiskPrefs).
+	// not be read before a save (mergeDiskPrefs).
 	prefsMergeWarned sync.Once
+	// cfgBase is the domain last read from or written to cfgPath (#241).
+	// saveConfig saves only while the file still holds it, so a domain
+	// change another process saved meanwhile is never overwritten. The zero
+	// value means the file was never read. Guarded by mu.
+	cfgBase config.Hash
 	// readOnly is set in a gitbox-server that serves a read-only client
 	// (#240): saveConfig refuses, so neither a background worker nor a read
 	// can change the host's gitbox.json, and fetch skips the repair of a
@@ -192,6 +197,7 @@ func (a *App) initLocal(ctx context.Context) {
 		}
 	} else {
 		a.cfgLoaded = true
+		a.cfgBase = config.DomainHash(cfg)
 	}
 	a.cfg = cfg
 	a.refreshCredentialAudit()
@@ -218,7 +224,9 @@ func (a *App) closeLocal() {
 }
 
 // saveConfig persists the in-memory config to disk, with the client
-// preferences that are on disk (takeDiskPrefs). It refuses to save on a
+// preferences that are on disk (mergeDiskPrefs), and only while the file
+// still holds the domain it last read (config.SaveIfUnchanged, #241): a
+// conflict reloads the file and returns config.ChangedError. It refuses to save on a
 // read-only server, and when the config was not successfully loaded — the
 // guard prevents the empty default fabricated in Startup() from being
 // written over a real file we failed to parse, which would destroy the
@@ -229,8 +237,36 @@ func (a *App) saveConfig() error {
 	if err := a.saveRefused(); err != nil {
 		return err
 	}
-	a.takeDiskPrefs()
-	return config.Save(a.cfg, a.cfgPath)
+	h, err := config.SaveIfUnchanged(a.cfg, a.cfgPath, a.cfgBase, a.mergeDiskPrefs)
+	if err != nil {
+		if isConfigChanged(err) {
+			a.reloadAfterConflict()
+		}
+		return err
+	}
+	a.cfgBase = h
+	return nil
+}
+
+// isConfigChanged reports whether a save was refused because another
+// process saved the config meanwhile (#241).
+func isConfigChanged(err error) bool {
+	_, ok := errors.AsType[*config.ChangedError](err)
+	return ok
+}
+
+// reloadAfterConflict replaces the config in memory with the file, keeping
+// the pointer, after a save was refused (#241): the change that conflicted
+// is dropped, and the window shows what the other process saved. A file
+// that does not load leaves memory as it is. Caller holds a.mu.
+func (a *App) reloadAfterConflict() {
+	fresh, err := config.Load(a.cfgPath)
+	if err != nil {
+		return
+	}
+	a.refreshPRConfigLocked(fresh)
+	*a.cfg = *fresh
+	a.cfgBase = config.DomainHash(fresh)
 }
 
 // commitConfig applies change to the live config and saves it through
@@ -253,7 +289,10 @@ func (a *App) commitConfig(change func(*config.Config) error) (*config.Config, e
 		return nil, err
 	}
 	if err := a.saveConfig(); err != nil {
-		*a.cfg = *before
+		if !isConfigChanged(err) {
+			// A conflict already reloaded the file; anything else restores.
+			*a.cfg = *before
+		}
 		return nil, err
 	}
 	return a.cfg.Clone()
@@ -278,19 +317,45 @@ func (a *App) snapshotLocked() *config.Config {
 // only what change changes. When saving is refused, the change still
 // applies in memory and the refusal is returned. Caller holds a.mu.
 func (a *App) savePrefs(change func(*config.ClientPrefs) error) error {
-	refused := a.saveRefused()
-	if refused == nil {
-		a.takeDiskPrefs()
+	apply := func() error {
+		p := config.ExtractPrefs(a.cfg)
+		if err := change(&p); err != nil {
+			return err
+		}
+		config.ApplyPrefs(a.cfg, p)
+		return nil
 	}
-	p := config.ExtractPrefs(a.cfg)
-	if err := change(&p); err != nil {
-		return err
-	}
-	config.ApplyPrefs(a.cfg, p)
-	if refused != nil {
+	if refused := a.saveRefused(); refused != nil {
+		if err := apply(); err != nil {
+			return err
+		}
 		return refused
 	}
-	return config.Save(a.cfg, a.cfgPath)
+	save := func() (config.Hash, error) {
+		return config.SaveIfUnchanged(a.cfg, a.cfgPath, a.cfgBase, func(onDisk *config.Config) error {
+			_ = a.mergeDiskPrefs(onDisk)
+			return apply()
+		})
+	}
+	h, err := save()
+	if err != nil {
+		var ce *config.ChangedError
+		if !errors.As(err, &ce) || ce.Locked {
+			return err
+		}
+		// Another process saved a domain change meanwhile. A preference
+		// change does not touch the domain, so it applies on top of the
+		// file once reloaded (#241).
+		a.reloadAfterConflict()
+		if h, err = save(); err != nil {
+			if isConfigChanged(err) {
+				a.reloadAfterConflict()
+			}
+			return err
+		}
+	}
+	a.cfgBase = h
+	return nil
 }
 
 // saveRefused is why saveConfig would refuse, or nil. Caller holds a.mu.
@@ -307,17 +372,18 @@ func (a *App) saveRefused() error {
 	return nil
 }
 
-// takeDiskPrefs lays the client preferences that are on disk over the
+// mergeDiskPrefs lays the client preferences that are on disk over the
 // config about to be saved (#240). Several processes on one machine share
 // that file: the local window, a remote window, the terminals window, and
 // on a host also gitbox-server. Each one saves its own preferences, so the
-// file's are the latest, and a domain save never reverts them. A missing
-// file keeps the values in memory, and so does one that does not parse,
-// with one log line: nothing half-merged is ever written. Caller holds a.mu.
-func (a *App) takeDiskPrefs() {
-	onDisk, err := config.Load(a.cfgPath)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
+// file's are the latest, and a domain save never reverts them. It runs
+// inside config.SaveIfUnchanged's lock with the file it read (#241). No
+// readable file (onDisk nil) keeps the values in memory, with one log line
+// when the file exists but does not parse: nothing half-merged is ever
+// written. Caller holds a.mu.
+func (a *App) mergeDiskPrefs(onDisk *config.Config) error {
+	if onDisk == nil {
+		if _, err := os.Stat(a.cfgPath); err == nil {
 			a.prefsMergeWarned.Do(func() {
 				out := a.hostLog
 				if out == nil {
@@ -326,9 +392,10 @@ func (a *App) takeDiskPrefs() {
 				fmt.Fprintln(out, "warning: the preferences in gitbox.json could not be read before saving; keeping the ones in memory")
 			})
 		}
-		return
+		return nil
 	}
 	config.PreserveClientPrefs(a.cfg, onDisk)
+	return nil
 }
 
 // ─── Update ──────────────────────────────────────────────────
@@ -635,6 +702,7 @@ func (a *App) reloadConfigLocal() (ConfigDTO, error) {
 	}
 	a.refreshPRConfigLocked(cfg)
 	a.cfg = cfg
+	a.cfgBase = config.DomainHash(cfg)
 
 	return a.configDTO()
 }
@@ -1521,6 +1589,9 @@ func (a *App) repairConfigLocal() ConfigRepairResult {
 	a.cfg = cfg
 	a.cfgLoaded = true
 	a.cfgLoadError = ""
+	// The file on disk is the broken one being replaced: save over it
+	// whatever it holds (#241).
+	a.cfgBase = config.Hash{}
 
 	if err := a.saveConfig(); err != nil {
 		return ConfigRepairResult{Success: false, Error: userText(fmt.Sprintf("saving repaired config: %v", err))}
@@ -1550,6 +1621,21 @@ type ConfigBackupInfo struct {
 func (a *App) ListConfigBackups() []ConfigBackupInfo { return a.be().ListConfigBackups() }
 
 // listConfigBackupsLocal is the local backend's ListConfigBackups.
+// listedBackup reports whether path is one of the backups of cfgPath,
+// matched by name in the config folder.
+func listedBackup(cfgPath, path string) bool {
+	backups, err := config.ListBackups(cfgPath)
+	if err != nil {
+		return false
+	}
+	for _, b := range backups {
+		if filepath.Base(b.Path) == filepath.Base(path) && filepath.Dir(b.Path) == filepath.Dir(path) {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *App) listConfigBackupsLocal() []ConfigBackupInfo {
 	a.mu.Lock()
 	cfgPath := a.cfgPath
@@ -1604,6 +1690,10 @@ func (a *App) restoreFromBackupLocal(backupPath string) ConfigRepairResult {
 	if absBackup == a.cfgPath {
 		return ConfigRepairResult{Success: false, Error: "cannot restore the active config onto itself"}
 	}
+	// Only a file the backup list names is restored (#241).
+	if !listedBackup(a.cfgPath, absBackup) {
+		return ConfigRepairResult{Success: false, Error: "that file is not one of the config backups"}
+	}
 
 	// Strict-validate the backup. Refuse to adopt another broken file.
 	cfg, err := config.Load(absBackup)
@@ -1618,6 +1708,9 @@ func (a *App) restoreFromBackupLocal(backupPath string) ConfigRepairResult {
 	a.cfg = cfg
 	a.cfgLoaded = true
 	a.cfgLoadError = ""
+	// The file on disk is the broken one being replaced: save over it
+	// whatever it holds (#241).
+	a.cfgBase = config.Hash{}
 	if err := a.saveConfig(); err != nil {
 		return ConfigRepairResult{Success: false, Error: userText(fmt.Sprintf("saving restored config: %v", err))}
 	}
@@ -1852,9 +1945,12 @@ func (a *App) CloneRepo(sourceKey, repoKey, root string) { a.be().CloneRepo(sour
 // cloneRepoLocal is the local backend's CloneRepo.
 func (a *App) cloneRepoLocal(sourceKey, repoKey, root string) {
 	a.goTracked(func() {
-		a.mu.Lock()
 		var err error
-		if root != "" && a.cfg.PlaceRepo(sourceKey, repoKey, root) {
+		if root != "" {
+			_, err = hostPath(root)
+		}
+		a.mu.Lock()
+		if err == nil && root != "" && a.cfg.PlaceRepo(sourceKey, repoKey, root) {
 			err = a.saveConfig()
 		}
 		var plan ops.ClonePlan
@@ -2309,7 +2405,11 @@ func (a *App) fixGlobalGCMConfigLocked() error {
 	changed, err := credential.FixGlobalGCMConfig(a.cfg)
 	if changed {
 		if serr := a.saveConfig(); serr != nil {
-			a.cfg.Global.CredentialGCM = prev
+			if !isConfigChanged(serr) {
+				// A conflict already reloaded the file; anything else
+				// takes the backfill back out.
+				a.cfg.Global.CredentialGCM = prev
+			}
 			if err == nil {
 				err = serr
 			}
@@ -3235,6 +3335,12 @@ func (a *App) CreateNewRepo(accountKey, owner, repoName, description string, pri
 
 // createNewRepoLocal is the local backend's CreateNewRepo.
 func (a *App) createNewRepoLocal(accountKey, owner, repoName, description string, private, cloneAfter bool, root string) error {
+	// Checked before the repository is created on the provider (#241).
+	if root != "" {
+		if _, err := hostPath(root); err != nil {
+			return err
+		}
+	}
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
 	a.mu.Unlock()

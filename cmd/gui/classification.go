@@ -192,6 +192,7 @@ var methodClass = map[string]methodInfo{
 	"SyncEditors":                    {classLocal, "P1b", false},
 	"SyncProfiles":                   {classLocal, "P1b", false},
 	"UpdateAccount":                  {classRemote, "P5", true},
+	"ValidateRemotePath":             {classRemote, "P5", false},
 }
 
 // backendOnlyClass covers the Backend methods that are not Wails-bound: the

@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
 	"github.com/LuisPalacios/gitbox/pkg/remote"
@@ -44,6 +45,8 @@ func toUserError(err error) usererr.UserError {
 		out.Code, out.Hint = "provider."+string(pe.Class), "error.provider."+string(pe.Class)
 	} else if ee, ok := errors.AsType[*externalError](err); ok {
 		out.Code, out.Hint = "url."+string(ee.Code), "error.url."+string(ee.Code)
+	} else if _, ok := errors.AsType[*config.ChangedError](err); ok {
+		out.Code, out.Hint = "config.changed", "error.config.changed"
 	} else if re, ok := errors.AsType[*remoteError](err); ok {
 		out.Code, out.Hint = "remote."+string(re.Code), "error.remote."+string(re.Code)
 	} else if re, ok := errors.AsType[*remote.Error](err); ok {

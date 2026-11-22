@@ -200,6 +200,13 @@ func (a *App) AddDiscoveredReposToFolder(key string, repoNames []string, cloneFo
 
 // addDiscoveredReposToFolderLocal is the local backend's AddDiscoveredReposToFolder.
 func (a *App) addDiscoveredReposToFolderLocal(key string, repoNames []string, cloneFolder string) error {
+	if cloneFolder != "" {
+		abs, err := hostPath(cloneFolder)
+		if err != nil {
+			return err
+		}
+		cloneFolder = abs
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 

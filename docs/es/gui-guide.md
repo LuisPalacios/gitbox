@@ -510,6 +510,8 @@ El modo remoto gestiona los repositorios de otro ordenador por SSH. Viene desact
 - **Editor** — el editor en el que este remoto abre las carpetas: **Automático**, o uno de los editores configurados que abren carpetas remotas, como VS Code.
 - **Quitar** — olvida el remoto en este ordenador.
 
+En una ventana remota, el onboarding y **Raíces** aceptan una carpeta escrita para el host en lugar del diálogo de carpetas: la línea bajo el campo dice a qué la resuelve el host.
+
 Una vez conectada, la ventana del remoto es la ventana completa de Gitbox, con los repositorios del host en solo lectura:
 
 - **Qué funciona** — el estado, **Fetch de todo**, **Fetch**, los detalles del repositorio, las insignias de pull requests, el estado de los espejos, **Buscar proyectos**, las comprobaciones de credenciales y **Comprobación del sistema**, todo ejecutado en el host. Un enlace de PR se abre en el navegador de este ordenador.

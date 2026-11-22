@@ -10,6 +10,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
@@ -219,6 +220,7 @@ func contractRows(clone string) []contractRow {
 		{name: "IsFirstRun", call: func(b Backend) (any, error) { return b.IsFirstRun(), nil }},
 		{name: "GetConfigLoadError", call: func(b Backend) (any, error) { return b.GetConfigLoadError(), nil }, empty: "the host's config loads"},
 		{name: "ListConfigBackups", call: func(b Backend) (any, error) { return b.ListConfigBackups(), nil }},
+		{name: "ValidateRemotePath", call: func(b Backend) (any, error) { return b.ValidateRemotePath(os.TempDir()), nil }},
 		{name: "GetAllStatus", call: func(b Backend) (any, error) { return b.GetAllStatus(), nil }},
 		// The status pass and the upstream probe each publish the statuses.
 		{name: "RefreshStatus", call: func(b Backend) (any, error) { b.RefreshStatus(); return nil, nil }, until: []string{"status:updated"},

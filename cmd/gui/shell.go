@@ -293,10 +293,18 @@ func (a *App) IsPositionOnScreen(x, y, w, h int) bool {
 	return a.isPositionOnScreen(x, y, w, h)
 }
 
+// openDirectoryDialog is the native folder picker; tests replace it.
+var openDirectoryDialog = wailsrt.OpenDirectoryDialog
+
 // PickFolder opens the native OS directory picker and returns the selected path.
-// Returns empty string if the user cancels.
+// Returns empty string if the user cancels. A remote window never opens it:
+// it would pick a folder of this computer, not of the host, so the window
+// takes a typed path instead (ValidateRemotePath, #241).
 func (a *App) PickFolder(title string) string {
-	dir, err := wailsrt.OpenDirectoryDialog(a.ctx, wailsrt.OpenDialogOptions{
+	if a.remoteWindow() {
+		return ""
+	}
+	dir, err := openDirectoryDialog(a.ctx, wailsrt.OpenDialogOptions{
 		Title: title,
 	})
 	if err != nil {

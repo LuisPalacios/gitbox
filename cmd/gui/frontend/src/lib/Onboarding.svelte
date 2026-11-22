@@ -17,6 +17,8 @@
   import Logo from './Logo.svelte';
   import { t } from './i18n';
   import { openExternal } from './external';
+  import { remoteHost } from './stores';
+  import RemotePathInput from './RemotePathInput.svelte';
 
   export let mode: 'first-run' | 'add' = 'first-run';
   export let onDone: (result: { sourceKey: string; repos: string[] } | null) => void;
@@ -31,6 +33,8 @@
   let folder = '~/00.git';
   let folderError = '';
   let folderBusy = false;
+  // In a remote window the folder belongs to the host: typed, not picked (#241).
+  let folderUsable = false;
 
   async function browse() {
     const dir = await bridge.pickFolder($t('onboard.folderPick'));
@@ -298,10 +302,14 @@
       <p class="ob-desc">{$t('onboard.folderDesc')}</p>
       {#if folderError}<p class="ob-error">{folderError}</p>{/if}
       <div class="ob-row">
-        <input class="ob-input" bind:value={folder} placeholder="~/00.git" translate="no" />
-        <button class="ob-btn" on:click={browse}>{$t('onboard.browse')}</button>
+        {#if $remoteHost}
+          <div class="ob-remote-path"><RemotePathInput bind:value={folder} bind:usable={folderUsable} /></div>
+        {:else}
+          <input class="ob-input" bind:value={folder} placeholder="~/00.git" translate="no" />
+          <button class="ob-btn" on:click={browse}>{$t('onboard.browse')}</button>
+        {/if}
       </div>
-      <button class="ob-btn ob-primary ob-wide" on:click={saveFolder} disabled={folderBusy}>{$t('onboard.continue')}</button>
+      <button class="ob-btn ob-primary ob-wide" on:click={saveFolder} disabled={folderBusy || (!!$remoteHost && !folderUsable)}>{$t('onboard.continue')}</button>
 
     {:else if step === 'connect'}
       <h2 class="ob-heading">{$t('onboard.connectTitle')}</h2>
