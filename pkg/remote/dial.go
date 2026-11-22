@@ -115,7 +115,7 @@ func buildFor(o Options, t Target) (string, error) {
 // installed yet; the session is nil then.
 func (r *runner) start(ctx context.Context, l layout, build, pin, action string) (s *Session, missing bool, err error) {
 	t0 := time.Now()
-	cmd := r.command(argv(r.alias, r.o, r.control, remoteCommand(startScript, l.args(build, pin, action, r.o.ClientID)...))...)
+	cmd := r.command(Argv(r.alias, r.o, remoteCommand(startScript, l.args(build, pin, action, r.o.ClientID)...))...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, false, err

@@ -134,7 +134,7 @@ var errLocked = errors.New("another garbage collection holds the lock")
 // takeLock creates the lock, breaking one older than StaleLock first.
 func takeLock(root string, owner Marker, now time.Time, logf func(string, ...any)) (*gcLock, error) {
 	path := filepath.Join(root, lockName)
-	for attempt := 0; attempt < 2; attempt++ {
+	for range 2 {
 		err := os.Mkdir(path, 0o700)
 		if err == nil {
 			data, _ := json.Marshal(struct {

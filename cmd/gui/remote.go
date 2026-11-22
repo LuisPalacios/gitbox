@@ -344,8 +344,8 @@ func resultOf(err error) RemoteResultDTO {
 	}
 	ue := toUserError(err)
 	hint := ue.Hint
-	if strings.HasPrefix(ue.Code, "remote.") {
-		hint = "error.remote." + strings.TrimPrefix(ue.Code, "remote.")
+	if code, ok := strings.CutPrefix(ue.Code, "remote."); ok {
+		hint = "error.remote." + code
 	}
 	return RemoteResultDTO{Error: ue.String(), Hint: hint}
 }

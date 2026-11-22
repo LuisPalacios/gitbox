@@ -16,11 +16,12 @@ import (
 // never weakens or replaces the user's ssh configuration.
 func TestNoConfigOverrideInProduction(t *testing.T) {
 	o := Options{ServerDir: "~/x", ClientID: "c1", ControlDir: t.TempDir()}
-	r := &runner{alias: "my-server", o: o}
-	r.control = []string{"-o", "ControlMaster=auto", "-o", "ControlPersist=60", "-o", "ControlPath=/tmp/cm-%C"}
+	// The production path: a runner whose control options were chosen.
+	reuse := o
+	reuse.control = []string{"-o", "ControlMaster=auto", "-o", "ControlPersist=60", "-o", "ControlPath=/tmp/cm-%C"}
 	for _, args := range [][]string{
 		Argv("my-server", o, remoteCommand(probeScript)),
-		argv(r.alias, r.o, r.control, remoteCommand(startScript, "h", "x")),
+		Argv("my-server", reuse, remoteCommand(startScript, "h", "x")),
 	} {
 		for i, a := range args {
 			low := strings.ToLower(a)

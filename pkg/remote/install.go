@@ -206,7 +206,7 @@ func (r *runner) install(ctx context.Context, l layout, build string, t Target) 
 // runPlain runs a remote command whose output is not parsed and reports its
 // exit.
 func (r *runner) runPlain(ctx context.Context, step, script string, stdin io.Reader, args ...string) (int, error) {
-	cmd := r.command(argv(r.alias, r.o, r.control, remoteCommand(script, args...))...)
+	cmd := r.command(Argv(r.alias, r.o, remoteCommand(script, args...))...)
 	cmd.Stdin = stdin
 	stderr := newTail(64 << 10)
 	cmd.Stderr = stderr

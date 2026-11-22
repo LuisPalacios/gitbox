@@ -43,6 +43,9 @@ type Options struct {
 	// starts.
 	OnInstall func()
 
+	// control holds the connection-reuse options the runner chose.
+	control []string
+
 	// Test-only fields, set through export_test.go.
 	configFile   string                    // adds -F <configFile>
 	sshPath      string                    // replaces the system ssh
@@ -80,15 +83,11 @@ var baseOptions = []string{
 }
 
 // Argv returns the arguments of the system ssh that runs remoteCommand on
-// alias, without connection reuse.
+// alias. Every remote command of this package is built here.
 func Argv(alias string, o Options, remoteCommand string) []string {
-	return argv(alias, o, nil, remoteCommand)
-}
-
-func argv(alias string, o Options, control []string, remoteCommand string) []string {
 	args := append([]string(nil), baseOptions...)
 	args = append(args, o.configArgs()...)
-	args = append(args, control...)
+	args = append(args, o.control...)
 	return append(args, alias, remoteCommand)
 }
 
@@ -134,11 +133,10 @@ func oneLine(script string) string {
 
 // runner runs commands on one remote.
 type runner struct {
-	ssh     string
-	alias   string
-	o       Options
-	log     *Log
-	control []string
+	ssh   string
+	alias string
+	o     Options
+	log   *Log
 }
 
 func newRunner(alias string, o Options) (*runner, error) {
@@ -192,7 +190,7 @@ func (r *runner) setupControl(ctx context.Context) {
 		r.log.Printf("ssh: no connection reuse: the control folder cannot be created")
 		return
 	}
-	r.control = []string{
+	r.o.control = []string{
 		"-o", "ControlMaster=auto",
 		"-o", "ControlPersist=60",
 		"-o", "ControlPath=" + filepath.Join(r.o.ControlDir, "cm-%C"),
@@ -242,7 +240,7 @@ type result struct {
 // nil, is streamed to the command.
 func (r *runner) run(ctx context.Context, step, script string, stdin io.Reader, args ...string) (*result, error) {
 	t0 := time.Now()
-	cmd := r.command(argv(r.alias, r.o, r.control, remoteCommand(script, args...))...)
+	cmd := r.command(Argv(r.alias, r.o, remoteCommand(script, args...))...)
 	cmd.Stdin = stdin
 	stderr := newTail(64 << 10)
 	cmd.Stderr = stderr

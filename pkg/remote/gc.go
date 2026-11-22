@@ -116,15 +116,14 @@ func sweepLogs(dir string, builds map[string]bool, logf func(string, ...any)) {
 	}
 	for _, e := range entries {
 		name := e.Name()
-		i := strings.Index(name, ".log")
-		if e.IsDir() || i < 0 {
+		build, rest, found := strings.Cut(name, ".log")
+		if e.IsDir() || !found {
 			continue
 		}
-		build := name[:i]
 		if !BuildNameRE.MatchString(build) || builds[build] {
 			continue
 		}
-		if rest := name[i+len(".log"):]; rest != "" && rest != ".1" && rest != ".2" && rest != ".3" {
+		if rest != "" && rest != ".1" && rest != ".2" && rest != ".3" {
 			continue
 		}
 		if os.Remove(filepath.Join(dir, name)) == nil {
