@@ -57,7 +57,8 @@ These work, all run on the host:
 - **Find projects** of an account, which lists the repositories of the provider without adding them;
 - credential checks, the sweep preview and the move preflight;
 - **System check**, which shows the tools of the host;
-- opening a repository or account folder of the host in VS Code, a terminal profile or an AI harness of this computer: see [Opening the host's folders](#opening-the-hosts-folders).
+- opening a repository or account folder of the host in VS Code, a terminal profile or an AI harness of this computer: see [Opening the host's folders](#opening-the-hosts-folders);
+- the **Roots** window, which lists the host's roots and takes a folder typed for the host: see [Typing a folder of the host](#typing-a-folder-of-the-host).
 
 These are disabled, with the tooltip "Read-only remote (coming in a later version)":
 
@@ -67,6 +68,16 @@ These are disabled, with the tooltip "Read-only remote (coming in a later versio
 These have no remote equivalent, so they are disabled with the tooltip "Not available for remote hosts": **Reveal in Finder** or **Reveal in Explorer**, opening the account folder, and **Open in Editor** of the config file in Settings.
 
 My own preferences, such as language, theme, Simple or Advanced, the sidebar and the window size, still work and stay on this computer.
+
+### Typing a folder of the host
+
+A remote window never opens the folder dialog: it would pick a folder of this computer. Onboarding and the **Roots** window show a text field instead. I type a folder of the host, such as `~/git` or `/srv/git`, and 300 ms after I stop typing the host says what it resolves to: the absolute path, that it will be created, that it is a file, or that it cannot be written. The button stays off until the folder can be used. Adding a root from a remote window comes in a later version; the field already resolves the path.
+
+The host checks every folder itself, whatever the window sent: it must be an absolute path once `~` is expanded, with no control characters, or the action fails with `remote_path_invalid`. Restoring a backup takes only a file of the backup list.
+
+### When another window saved first
+
+Several processes can save the host's `gitbox.json`: my windows, a GitboxApp running on the host and its terminals window. A save never overwrites a change another one made since I read the file. Instead it fails with "The settings changed in another window or process and were reloaded. Try again.", and the window shows what is in the file now. A change of my own preferences never fails this way.
 
 The server itself runs read-only. It saves nothing to the host's `gitbox.json`: a refused save fails with `read_only`, and the AI harness detection on the host keeps what it finds in memory. The window asks the host to detect its harnesses again when it gets focus, and shows what the host has. Fetch updates only the remote-tracking branches. In this version it also skips the repair of each clone's `.git/config` that a local fetch runs first, and the server log says so once; a later version lifts this. A collapsed account or repository stays collapsed in this window only.
 
@@ -208,6 +219,7 @@ Simple mode shows a plain sentence; the code itself appears in the log.
 - `not_available_remote_path`: the folder is not a valid absolute path of the host, or a layer on this computer cannot carry it safely.
 - `harness_not_allowed`: the AI harness is not one of the catalog, or it has arguments.
 - `read_only`: the remote is read-only, so the action would change the host. A later version allows it.
+- `remote_path_invalid`: the folder is not an absolute path of the host, or it holds a control character.
 
 ## Windows and macOS clients
 

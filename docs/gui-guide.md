@@ -510,6 +510,8 @@ Remote mode manages the repositories of another computer over SSH. It is off by 
 - **Editor** — the editor this remote opens folders in: **Auto**, or one of the configured editors that open remote folders, such as VS Code.
 - **Remove** — forgets the remote on this computer.
 
+In a remote window, Onboarding and **Roots** take a folder typed for the host instead of the folder dialog: the line under the field says what the host resolves it to.
+
 Once connected, the remote window is the full Gitbox window, showing the repositories of the host read-only:
 
 - **What works** — status, **Fetch all**, **Fetch**, repository details, pull request badges, mirror status, **Find projects**, credential checks and **System check**, all run on the host. A PR link opens in the browser of this computer.
