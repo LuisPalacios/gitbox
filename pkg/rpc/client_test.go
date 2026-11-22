@@ -17,9 +17,14 @@ func TestClient_CloseLeavesNoGoroutines(t *testing.T) {
 	base := runtime.NumGoroutine()
 
 	for range 5 {
+		entered := make(chan struct{})
 		srv := newServer(map[string]Handler{
-			"Add":  Func(func(a, b int) int { return a + b }),
-			"Wait": Func(func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() }),
+			"Add": Func(func(a, b int) int { return a + b }),
+			"Wait": Func(func(ctx context.Context) error {
+				close(entered)
+				<-ctx.Done()
+				return ctx.Err()
+			}),
 		})
 		l := connect(t, srv)
 		var sum int
@@ -29,7 +34,11 @@ func TestClient_CloseLeavesNoGoroutines(t *testing.T) {
 		srv.Emit("status:updated", 1)
 		pending := make(chan error, 1)
 		go func() { pending <- l.Client.Call(context.Background(), "Wait", nil, nil) }()
-		time.Sleep(20 * time.Millisecond)
+		select {
+		case <-entered:
+		case <-time.After(5 * time.Second):
+			t.Fatal("the Wait handler did not start")
+		}
 
 		if err := l.Client.Close(); err != nil {
 			t.Fatalf("Close: %v", err)

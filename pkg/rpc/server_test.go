@@ -249,35 +249,54 @@ func (b *syncBuffer) String() string {
 func TestServe_CancelRequest(t *testing.T) {
 	stubborn := make(chan struct{})
 	defer close(stubborn)
-	var noticed atomic.Bool
+	waitStarted, stubbornStarted := make(chan struct{}), make(chan struct{})
+	noticed := make(chan struct{})
 	l := connect(t, newServer(map[string]Handler{
 		"Wait": Func(func(ctx context.Context) error {
+			close(waitStarted)
 			<-ctx.Done()
-			noticed.Store(true)
+			close(noticed)
 			return ctx.Err()
 		}),
-		"Stubborn": Func(func() string { <-stubborn; return "late" }),
-		"Add":      Func(func(a, b int) int { return a + b }),
+		"Stubborn": Func(func() string {
+			close(stubbornStarted)
+			<-stubborn
+			return "late"
+		}),
+		"Add": Func(func(a, b int) int { return a + b }),
 	}))
 
-	for _, method := range []string{"Wait", "Stubborn"} {
-		ctx, cancel := context.WithCancel(context.Background())
+	for _, request := range []struct {
+		method  string
+		entered <-chan struct{}
+	}{
+		{"Wait", waitStarted},
+		{"Stubborn", stubbornStarted},
+	} {
+		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
-		go func() { done <- l.Client.Call(ctx, method, nil, nil) }()
-		time.Sleep(50 * time.Millisecond) // let the request reach its handler
+		go func() { done <- l.Client.Call(ctx, request.method, nil, nil) }()
+		select {
+		case <-request.entered:
+		case <-time.After(5 * time.Second):
+			cancel()
+			t.Fatalf("%s: the handler did not start", request.method)
+		}
 		started := time.Now()
 		cancel()
 		select {
 		case err := <-done:
 			wantCode(t, err, CodeCancelled, ErrCodeCancelled)
 			if spent := time.Since(started); spent > time.Second {
-				t.Errorf("%s: the cancellation took %v, want under a second", method, spent)
+				t.Errorf("%s: the cancellation took %v, want under a second", request.method, spent)
 			}
 		case <-time.After(5 * time.Second):
-			t.Fatalf("%s: no answer to the cancellation", method)
+			t.Fatalf("%s: no answer to the cancellation", request.method)
 		}
 	}
-	if !noticed.Load() {
+	select {
+	case <-noticed:
+	case <-time.After(5 * time.Second):
 		t.Error("the handler that watches its context must see the cancellation")
 	}
 	var sum int
@@ -290,8 +309,10 @@ func TestServe_CancelRequest(t *testing.T) {
 // handlers and Serve returns.
 func TestServe_EndOfInputStopsTheServer(t *testing.T) {
 	var cancelled atomic.Bool
+	entered := make(chan struct{})
 	l := connect(t, newServer(map[string]Handler{
 		"Wait": Func(func(ctx context.Context) error {
+			close(entered)
 			<-ctx.Done()
 			cancelled.Store(true)
 			return ctx.Err()
@@ -299,7 +320,11 @@ func TestServe_EndOfInputStopsTheServer(t *testing.T) {
 	}))
 	pending := make(chan error, 1)
 	go func() { pending <- l.Client.Call(context.Background(), "Wait", nil, nil) }()
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the Wait handler did not start")
+	}
 
 	started := time.Now()
 	if err := l.toServer.Close(); err != nil {
@@ -365,7 +390,6 @@ func TestServe_ShutdownDoesNotWaitForever(t *testing.T) {
 // A repeated request id gets the stored outcome, not a second effect.
 func TestServe_RepeatedMutationRunsOnce(t *testing.T) {
 	var effects atomic.Int32
-	gate := make(chan struct{})
 	l := connect(t, newServer(map[string]Handler{
 		"AddRoot": Func(func(path string) (int, error) {
 			n := int(effects.Add(1))
@@ -374,7 +398,6 @@ func TestServe_RepeatedMutationRunsOnce(t *testing.T) {
 			}
 			return n, nil
 		}),
-		"Slow": Func(func() int { <-gate; return int(effects.Add(1)) }),
 	}))
 
 	var first, second, other int
@@ -402,21 +425,44 @@ func TestServe_RepeatedMutationRunsOnce(t *testing.T) {
 		t.Errorf("errors %v and %v after %d effects; the failure must be replayed", errA, errB, effects.Load())
 	}
 
-	// A repeat that arrives while the first attempt runs waits for it.
-	results := make(chan int, 2)
-	for range 2 {
-		go func() {
-			var n int
-			_ = l.call("Slow", nil, &n, WithRequestID("req-slow"))
-			results <- n
-		}()
-	}
-	time.Sleep(100 * time.Millisecond)
-	close(gate)
-	a, b := <-results, <-results
-	if a != b || effects.Load() != 5 {
-		t.Errorf("concurrent repeats got %d and %d after %d effects, want one effect and the same result", a, b, effects.Load())
-	}
+	t.Run("concurrent repeat", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			var calls atomic.Int32
+			gate := make(chan struct{})
+			release := sync.OnceFunc(func() { close(gate) })
+			defer release()
+			l := connect(t, newServer(map[string]Handler{
+				"Slow": Func(func() int {
+					n := int(calls.Add(1))
+					<-gate
+					return n
+				}),
+			}))
+			type outcome struct {
+				number int
+				err    error
+			}
+			results := make(chan outcome, 2)
+			for range 2 {
+				go func() {
+					var n int
+					err := l.call("Slow", nil, &n, WithRequestID("req-slow"))
+					results <- outcome{n, err}
+				}()
+			}
+			// Both callers are blocked while only one handler holds the gate.
+			synctest.Wait()
+			if n := calls.Load(); n != 1 || len(results) != 0 {
+				t.Fatalf("before release: %d handler calls and %d completed requests, want one call and no replies", n, len(results))
+			}
+			release()
+			for range 2 {
+				if got := <-results; got.err != nil || got.number != 1 {
+					t.Errorf("concurrent repeat returned %d, %v, want 1 and no error", got.number, got.err)
+				}
+			}
+		})
+	})
 }
 
 func TestServe_RemembersABoundedNumberOfRequests(t *testing.T) {
