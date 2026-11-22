@@ -568,36 +568,22 @@ func TestSweepBranches_NothingToSweep(t *testing.T) {
 }
 
 func TestParseStatus(t *testing.T) {
-	input := `# branch.oid abc123
-# branch.head main
-# branch.upstream origin/main
-# branch.ab +2 -1
-1 .M N... 100644 100644 100644 abc def file.go
-? untracked.txt
-? another.txt
-u UU N... 100644 100644 100644 100644 abc def ghi conflict.go
-`
-	s := parseStatus(input)
-	if s.Branch != "main" {
-		t.Errorf("branch = %q, want main", s.Branch)
+	input := "# branch.oid abc123\x00" +
+		"# branch.head main\x00" +
+		"# branch.upstream origin/main\x00" +
+		"# branch.ab +2 -1\x00" +
+		"# future.header some value\x00" +
+		"1 .M N... 100644 100644 100644 abc def file.go\x00" +
+		"? untracked.txt\x00? another.txt\x00" +
+		"u UU N... 100644 100644 100644 100644 abc def ghi conflict.go\x00" +
+		"! ignored.txt\x00"
+	parsed, err := parseStatusZ(input)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if s.Upstream != "origin/main" {
-		t.Errorf("upstream = %q, want origin/main", s.Upstream)
-	}
-	if s.Ahead != 2 {
-		t.Errorf("ahead = %d, want 2", s.Ahead)
-	}
-	if s.Behind != 1 {
-		t.Errorf("behind = %d, want 1", s.Behind)
-	}
-	if s.Modified != 1 {
-		t.Errorf("modified = %d, want 1", s.Modified)
-	}
-	if s.Untracked != 2 {
-		t.Errorf("untracked = %d, want 2", s.Untracked)
-	}
-	if s.Conflicts != 1 {
-		t.Errorf("conflicts = %d, want 1", s.Conflicts)
+	want := RepoStatus{Branch: "main", Upstream: "origin/main", Ahead: 2, Behind: 1, Modified: 1, Untracked: 2, Conflicts: 1}
+	if got := parsed.summary(); got != want {
+		t.Errorf("summary = %+v, want %+v", got, want)
 	}
 }
 
