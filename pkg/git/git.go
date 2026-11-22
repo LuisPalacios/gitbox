@@ -272,11 +272,11 @@ func PullQuietContext(ctx context.Context, repoPath string) error {
 // cancelled. I disable optional locks to prevent background reads from
 // refreshing the index.
 func StatusContext(ctx context.Context, repoPath string) (RepoStatus, error) {
-	out, err := outputContext(ctx, repoPath, "--no-optional-locks", "status", "--porcelain=v2", "--branch")
+	status, err := readStatus(ctx, repoPath)
 	if err != nil {
 		return RepoStatus{}, err
 	}
-	return parseStatus(out), nil
+	return status.summary(), nil
 }
 
 // FileChange describes a single changed file for human-readable display.
@@ -288,79 +288,12 @@ type FileChange struct {
 // DetailedStatus returns the list of changed and untracked files in a repo.
 // I disable optional locks to leave the index untouched when opening repo details.
 func DetailedStatus(repoPath string) (branch string, ahead, behind int, changed []FileChange, untracked []string, err error) {
-	out, err := output(repoPath, "--no-optional-locks", "status", "--porcelain=v2", "--branch")
+	status, err := readStatus(context.Background(), repoPath)
 	if err != nil {
 		return "", 0, 0, nil, nil, err
 	}
-
-	for line := range strings.SplitSeq(out, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		if after, ok := strings.CutPrefix(line, "# branch.head "); ok {
-			branch = after
-		} else if after, ok := strings.CutPrefix(line, "# branch.ab "); ok {
-			parts := strings.Fields(after)
-			if len(parts) == 2 {
-				ahead, _ = strconv.Atoi(strings.TrimPrefix(parts[0], "+"))
-				behind, _ = strconv.Atoi(strings.TrimPrefix(parts[1], "-"))
-			}
-		} else if strings.HasPrefix(line, "1 ") {
-			// Ordinary changed entry: 1 XY sub mH mI mW hH hI path
-			parts := strings.SplitN(line, " ", 9)
-			if len(parts) < 9 {
-				continue
-			}
-			xy, path := parts[1], parts[8]
-			changed = append(changed, FileChange{Kind: classifyXY(xy), Path: path})
-		} else if strings.HasPrefix(line, "2 ") {
-			// Renamed/copied entry: 2 XY sub mH mI mW hH hI X<score> path\torigPath
-			parts := strings.SplitN(line, " ", 10)
-			if len(parts) < 10 {
-				continue
-			}
-			pathPart := parts[9]
-			// path\torigPath — show as "origPath → path"
-			if idx := strings.IndexByte(pathPart, '\t'); idx >= 0 {
-				pathPart = pathPart[idx+1:] + " → " + pathPart[:idx]
-			}
-			changed = append(changed, FileChange{Kind: "renamed", Path: pathPart})
-		} else if strings.HasPrefix(line, "u ") {
-			// Unmerged (conflict): u XY sub m1 m2 m3 mW h1 h2 h3 path
-			parts := strings.SplitN(line, " ", 11)
-			if len(parts) >= 11 {
-				changed = append(changed, FileChange{Kind: "conflict", Path: parts[10]})
-			}
-		} else if after, ok := strings.CutPrefix(line, "? "); ok {
-			untracked = append(untracked, after)
-		}
-	}
-	// Ensure non-nil slices so JSON serialization produces [] instead of null.
-	if changed == nil {
-		changed = []FileChange{}
-	}
-	if untracked == nil {
-		untracked = []string{}
-	}
-	return branch, ahead, behind, changed, untracked, nil
-}
-
-func classifyXY(xy string) string {
-	if len(xy) < 2 {
-		return "modified"
-	}
-	// Prefer the working-tree status (2nd char), fall back to index (1st char).
-	wt := xy[1]
-	idx := xy[0]
-	if wt == 'D' || idx == 'D' {
-		return "deleted"
-	}
-	if wt == 'A' || idx == 'A' {
-		return "added"
-	}
-	return "modified"
+	changed, untracked = status.details()
+	return status.branch.Branch, status.branch.Ahead, status.branch.Behind, changed, untracked, nil
 }
 
 // RemoteURL returns the URL of the 'origin' remote.
@@ -809,55 +742,4 @@ func outputContext(ctx context.Context, dir string, args ...string) (string, err
 		return "", e
 	}
 	return string(res.Stdout), nil
-}
-
-// parseStatus parses git status --porcelain=v2 --branch output.
-func parseStatus(out string) RepoStatus {
-	var s RepoStatus
-	for line := range strings.SplitSeq(out, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		// Branch headers: # branch.oid, # branch.head, # branch.upstream, # branch.ab
-		if after, ok := strings.CutPrefix(line, "# branch.head "); ok {
-			s.Branch = after
-		} else if after, ok := strings.CutPrefix(line, "# branch.upstream "); ok {
-			s.Upstream = after
-		} else if after, ok := strings.CutPrefix(line, "# branch.ab "); ok {
-			parts := strings.Fields(after)
-			if len(parts) == 2 {
-				s.Ahead, _ = strconv.Atoi(strings.TrimPrefix(parts[0], "+"))
-				s.Behind, _ = strconv.Atoi(strings.TrimPrefix(parts[1], "-"))
-			}
-		} else if strings.HasPrefix(line, "1 ") || strings.HasPrefix(line, "2 ") {
-			// Changed entry (ordinary or renamed).
-			// Format: 1 XY sub mH mI mW hH hI path
-			parts := strings.Fields(line)
-			if len(parts) >= 2 {
-				xy := parts[1]
-				if len(xy) == 2 {
-					indexStatus := xy[0]
-					workStatus := xy[1]
-					if indexStatus != '.' {
-						s.Added++ // Staged change.
-					}
-					if workStatus == 'M' || workStatus == 'A' || workStatus == 'D' {
-						s.Modified++ // Working tree change.
-					}
-					if workStatus == 'D' || indexStatus == 'D' {
-						s.Deleted++
-					}
-				}
-			}
-		} else if strings.HasPrefix(line, "u ") {
-			// Unmerged entry (conflict).
-			s.Conflicts++
-		} else if strings.HasPrefix(line, "? ") {
-			// Untracked file.
-			s.Untracked++
-		}
-	}
-	return s
 }
