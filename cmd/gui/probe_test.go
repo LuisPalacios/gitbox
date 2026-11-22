@@ -270,7 +270,7 @@ func TestUpstreamProbe_NewerFetchObservationWins(t *testing.T) {
 			app := &App{cfg: cfg}
 			revisions := app.snapshotProbeRevisions()
 			// A successful fetch is a fresh observation even when no mark flips.
-			app.markUpstreamGone("source-a", "org/repo-0", fetchGone)
+			app.recordFetchStatus(cfg, "source-a", "org/repo-0", fetchGone, time.Now())
 			results := []upstreamProbeResult{{accountKey: "account-a", repoKey: "org/repo-0", exists: fetchGone}}
 			if app.applyUpstreamProbe(cfg, results, &revisions) {
 				t.Fatal("older provider response replaced the newer fetch result")

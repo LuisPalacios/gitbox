@@ -112,18 +112,20 @@ Close any dialog with **Escape** or by clicking outside it. Dialogs that are bus
 
 Gitbox has two experiences. **Simple** is for people who don't know git and only want their projects safe. **Advanced** shows every git detail and tool. Switch with the toggle in the top bar, left of the settings gear: grey is Simple, red is Advanced, the mode with destructive power. New installs start in Simple; configs from before the setting existed stay in Advanced. The choice is saved as `global.ui_mode` in `gitbox.json`.
 
-In Simple, every project answers one question, "is my work safe?", with one of six states:
+In Simple, each project shows what Gitbox observed and when to act.
 
-- **Saved** — everything is on the server.
-- **Work in progress · N files safe here** — files changed on this computer that aren't on the server yet. Open the project with your AI and ask it to save them.
-- **Saved here, not uploaded** — saved changes that haven't reached the server. Hover for the detail.
-- **Newer version online** — the server has newer work. **Update** only adds the newer version and never touches your work. Gitbox never updates on its own.
+- **No local changes** — the project has no changed files on this computer.
+- **Changes on this computer · N files changed here** — Gitbox found files changed on this computer. Open the project with your AI and ask it to save them.
+- **Saved here, not on the server yet** — saved changes are ahead of the last known server version. Hover for the detail. A separate local branch can show **Local branch**.
+- **Update available** — Gitbox saw newer work on the server. **Update** brings that work into the project when it can keep your local changes intact. Gitbox never updates on its own.
 - **Only online** — the project isn't on this computer yet. **Download** gets it.
-- **Needs help** — something went wrong, for example both copies changed. Click the project to see what's wrong, and open it with your AI to fix it.
+- **Needs help** — something went wrong, for example both copies changed. Click the project to see what happened, and open it with your AI to fix it.
+
+When an **Update available**, **Only online** or **Needs help** row reports a known server result, it shows when Gitbox checked it. Hover over that time for the date and time of the check.
 
 Names show without the organization prefix; hover a name to see it in full. Rows keep the three [launch buttons](#clone-actions), and the ⋯ menu offers Open on the web, the folder, editors, AI harnesses and **Delete from this computer…**.
 
-Simple hides the rest: the Mirrors view, delete mode, the compact view and theme buttons (the theme stays in Settings), container and branch badges, ahead, behind and changed counts, and the per-row fetch button. The top bar keeps **Check all** and **Update all**. Account health reads in plain words, and **Reconnect** appears when a credential breaks. Settings hides the Config, PR / reviews, Global gitignore and Terminals rows. The compact view is the same in both modes.
+Simple hides the rest: the Mirrors view, delete mode, the compact view and theme buttons (the theme stays in Settings), container and branch badges, ahead, behind and changed counts, and the per-row fetch button. The top bar keeps **Check all** and **Update all**. Account health shows **Connection needs checking** when the server is unreachable and **Reconnect** when a credential breaks. Settings hides the Config, PR / reviews, Global gitignore and Terminals rows. The compact view is the same in both modes.
 
 With PR indicators enabled, Simple shows **Review requested** when someone asks for your review. Click the label to see the requests. Advanced shows badges with counts for your open PRs (📝) and the PRs awaiting your review (👀).
 
@@ -131,7 +133,7 @@ With PR indicators enabled, Simple shows **Review requested** when someone asks 
 
 The full view shows the top bar, the sidebar, the selected view and the summary footer. The top bar holds the health rings and the Pull all, Fetch all, Delete mode, Compact view, theme, Simple/Advanced and Settings buttons; the GitBox logo at the far left folds the sidebar. The summary footer always shows both repo and mirror counts.
 
-The repo ring holds a branch icon and fills as clones get up to date (in Simple, as projects are saved). A small badge counts what isn't there yet, and hovering the ring shows the full `N of total up to date` (Simple: `N of total saved`) line. When the ring has something pending, clicking it opens **Needs attention** (Simple: **Needs you**). Advanced adds a [mirror ring](#mirror-health-ring) when mirrors are configured.
+The repo ring holds a branch icon and fills as clones get up to date. A small badge counts what isn't there yet, and hovering the ring shows the full `N of total up to date` line. When the ring has something pending, clicking it opens **Needs attention** (Simple: **Needs you**). Advanced adds a [mirror ring](#mirror-health-ring) when mirrors are configured.
 
 The window opens 1040 px wide the first time and can shrink to 640 × 480. It grows no wider than the sidebar plus 1100 px of content, and folding the sidebar gives its width to the content.
 

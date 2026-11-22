@@ -139,6 +139,7 @@ type upstreamProbeResult struct {
 	accountKey string
 	repoKey    string
 	exists     bool
+	checkedAt  time.Time
 }
 
 type probeTokenResolver func(context.Context, config.Account, string) (string, string, error)
@@ -199,7 +200,7 @@ func runUpstreamProbe(ctx context.Context, cfg *config.Config, resolveToken prob
 				valid := err == nil && requestCtx.Err() == nil
 				cancel()
 				if valid {
-					resultCh <- upstreamProbeResult{job.accountKey, job.repoKey, exists}
+					resultCh <- upstreamProbeResult{job.accountKey, job.repoKey, exists, time.Now()}
 				}
 			}
 		})
@@ -261,6 +262,15 @@ func (a *App) applyUpstreamProbe(snapshot *config.Config, results []upstreamProb
 			gone := !result.exists
 			if a.upstreamGone[key] != gone {
 				changed = true
+			}
+			checkKey := statusRepoKey{sourceKey, result.repoKey}
+			if identity, ok := statusRepoIdentity(a.cfg, checkKey); ok && !result.checkedAt.IsZero() {
+				check := a.networkChecksFor(checkKey, identity)
+				if result.checkedAt.After(check.existence) {
+					check.existence = result.checkedAt
+					a.statusNetwork[checkKey] = check
+					changed = true
+				}
 			}
 			if gone {
 				a.upstreamGone[key] = true

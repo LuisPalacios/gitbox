@@ -1,5 +1,5 @@
 import type { RemoteHost } from './remotehost';
-import { writable, derived } from 'svelte/store';
+import { writable, derived, readable } from 'svelte/store';
 import type { Placeholder } from './repo-tree';
 import { simpleKind } from './status';
 import type { ConfigDTO, Account, SourceDTO, MirrorDTO, MirrorStatusResult, RepoState, StatusResult, PRSummaryDTO, PRAccountUpdateDTO, WorkspaceDiagnosticDTO } from './types';
@@ -16,6 +16,13 @@ export const accounts = derived(configStore, ($cfg) =>
 export const sources = derived(configStore, ($cfg) =>
   $cfg ? $cfg.sources : {} as Record<string, SourceDTO>
 );
+
+// Keep relative status captions current with one clock for all rows.
+export const statusClock = readable(Date.now(), (set) => {
+  set(Date.now());
+  const timer = setInterval(() => set(Date.now()), 30_000);
+  return () => clearInterval(timer);
+});
 
 // ── Per-repo state (status + progress) ──
 // Key format: "sourceKey/repoKey"
@@ -58,6 +65,7 @@ export function applyStatusResults(results: StatusResult[]) {
           error: r.error,
           branch: r.branch,
           isDefault: r.isDefault,
+          checkedAt: r.checkedAt,
         };
       }
     }
@@ -87,7 +95,7 @@ export const summary = derived(repoStates, ($rs) => {
 export const simpleSummary = derived(repoStates, ($rs) => {
   const sum = { saved: 0, wip: 0, unpushed: 0, update: 0, online: 0, help: 0, total: 0 };
   for (const r of Object.values($rs)) {
-    const k = simpleKind(r.status);
+    const k = simpleKind(r.status, r.isDefault);
     if (k in sum) sum[k as keyof typeof sum]++;
     sum.total++;
   }

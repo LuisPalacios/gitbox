@@ -60,10 +60,7 @@ export function rowGlyph(status: string, fetching: boolean): string {
 }
 
 // ── Simple mode (issue #124) ──
-// Simple mode folds the git statuses into the one question a
-// non-developer asks: is my work safe? Each kind maps to one sentence and
-// one action in the repo row. Local work splits in two: work in progress
-// (changed files) and saved here but not uploaded (commits).
+// Each Simple kind maps to one sentence and one action in the repo row.
 export type SimpleKind = 'saved' | 'wip' | 'unpushed' | 'update' | 'online' | 'offline' | 'help' | 'checking' | 'busy';
 
 const simpleKinds: Record<string, SimpleKind> = {
@@ -77,7 +74,8 @@ const simpleKinds: Record<string, SimpleKind> = {
   syncing: 'busy', cloning: 'busy', fetching: 'busy',
 };
 
-export function simpleKind(status: string): SimpleKind {
+export function simpleKind(status: string, isDefault?: boolean): SimpleKind {
+  if (status === 'no upstream' && isDefault === false) return 'saved';
   return simpleKinds[status] || 'help';
 }
 
@@ -97,8 +95,8 @@ export function simpleLabelKey(kind: SimpleKind): string {
 }
 
 // Simple kinds that count as "not saved yet" in the Simple summaries.
-export function simpleUnsaved(status: string): boolean {
-  return ['wip', 'unpushed', 'help'].includes(simpleKind(status));
+export function simpleUnsaved(status: string, isDefault?: boolean): boolean {
+  return ['wip', 'unpushed', 'help'].includes(simpleKind(status, isDefault));
 }
 
 // ── Attention ──
@@ -135,8 +133,11 @@ export interface StatusLabel { key: string; vars?: Record<string, number>; note?
 export function statusLabel(st: LabelState, simple: boolean): StatusLabel {
   const changes = (st.modified || 0) + (st.untracked || 0);
   if (simple) {
-    const kind = simpleKind(st.status);
+    const kind = simpleKind(st.status, st.isDefault);
     const color = simpleColorKeys[kind];
+    if (st.status === 'no upstream' && st.isDefault === false) {
+      return { key: 'repo.localBranch', color, badges: false };
+    }
     if (kind === 'wip') {
       const one = changes === 1;
       return { key: 'simple.wip', note: one ? 'simple.wipSafeOne' : 'simple.wipSafe', noteVars: { n: changes },
@@ -229,6 +230,17 @@ export type HealthFix = 'retry' | 'reconnect' | 'change' | 'setup' | 'replace' |
 export interface AccountHealth { level: 'ok' | 'warn' | 'bad' | 'none' | 'pending'; mark: string; color: string; key: string; vars: Record<string, number>; fix: HealthFix; fixKey: string; attention: boolean }
 
 const DAY = 24 * 60 * 60 * 1000;
+
+export function checkedAgo(checkedAt: string, language: string, now: number): string | null {
+  const checked = Date.parse(checkedAt);
+  if (!Number.isFinite(checked)) return null;
+  const age = Math.max(0, now - checked);
+  const relative = new Intl.RelativeTimeFormat(language, { numeric: 'auto' });
+  if (age < 60_000) return relative.format(0, 'second');
+  if (age < 3_600_000) return relative.format(-Math.floor(age / 60_000), 'minute');
+  if (age < DAY) return relative.format(-Math.floor(age / 3_600_000), 'hour');
+  return relative.format(-Math.floor(age / DAY), 'day');
+}
 // A working token this close to its expiry turns the health line into a warning.
 export const EXPIRY_WARN_DAYS = 14;
 
@@ -241,7 +253,7 @@ export function daysToExpiry(expiresAt: string | undefined, now: number = Date.n
 export function accountHealth(status: string | undefined, simple: boolean, expiresAt?: string, now: number = Date.now()): AccountHealth {
   const h = (level: AccountHealth['level'], mark: string, color: string, word: string, fix: HealthFix): AccountHealth => ({
     level, mark, color, fix, vars: {},
-    key: `health.${word}${simple ? 'Simple' : ''}`,
+    key: simple && word === 'offline' ? 'simple.connectionCheck' : `health.${word}${simple ? 'Simple' : ''}`,
     fixKey: fix ? `health.fix.${fix}${simple && fix === 'retry' ? 'Simple' : ''}` : '',
     attention: level === 'bad' || level === 'none',
   });
