@@ -837,6 +837,17 @@ func TestRemoteBackendCloseLeavesNoGoroutines(t *testing.T) {
 	}
 }
 
+type waitingGitInput struct {
+	io.Reader
+	started chan struct{}
+}
+
+func (r waitingGitInput) Read(p []byte) (int, error) {
+	// The runner starts pumping stdin only after Git starts.
+	close(r.started)
+	return r.Reader.Read(p)
+}
+
 // The end of the connection is the server's only shutdown signal. It must
 // reach a git process that a handler started and that would never end by
 // itself.
@@ -851,8 +862,10 @@ func TestServerEndOfInputStopsGit(t *testing.T) {
 			// never delivers any.
 			pr, pw := io.Pipe()
 			defer pw.Close()
-			close(gitRunning)
-			_, err := git.Run(ctx, git.Request{Dir: repo, Args: []string{"cat-file", "--batch"}, Stdin: pr})
+			_, err := git.Run(ctx, git.Request{
+				Dir: repo, Args: []string{"cat-file", "--batch"},
+				Stdin: waitingGitInput{Reader: pr, started: gitRunning},
+			})
 			gitEnded <- err
 			return err
 		}),
@@ -864,7 +877,6 @@ func TestServerEndOfInputStopsGit(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the handler never started")
 	}
-	time.Sleep(200 * time.Millisecond) // let git start
 
 	started := time.Now()
 	link.Remote.Close()

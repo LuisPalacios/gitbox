@@ -18,6 +18,9 @@ import (
 const procTreeEnv = "GITBOX_TEST_PROCTREE"
 
 func TestMain(m *testing.M) {
+	if url := os.Getenv(credentialScheduleEnv); url != "" {
+		os.Exit(runCredentialScheduleHelper(url))
+	}
 	switch os.Getenv(procTreeEnv) {
 	case "parent":
 		// Start a child that shares this process's stderr, announce it, and

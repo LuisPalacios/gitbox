@@ -37,7 +37,8 @@ DEADCODE="golang.org/x/tools/cmd/deadcode@v0.50.0"
 # I retain standalone sync/cache wrappers and the legacy raw-token writer
 # for library callers and their compatibility tests.
 # SetRunnerForTest and SetDoerForTest are the test seams for git and HTTP:
-# only tests call them, by design.
+# only tests call them, by design. The scripted runner and barriers live in
+# a test fixture package outside either command's dependency tree.
 # Remote mode (#233): dialRemoteBackend connects a RemoteBackend over any
 # pair of streams; only tests do that, the remote window connects through
 # its session. Windows update helpers remain portable for fault-injection tests.
@@ -48,6 +49,7 @@ pkg[/\\]update[/\\]replace_windows_executable[.]go:[0-9]+:[0-9]+: unreachable fu
 pkg[/\\]terminals[/\\]sync[.]go:[0-9]+:[0-9]+: unreachable func: Sync$
 pkg[/\\]workspace[/\\]workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCache$
 unreachable func: (SetRunnerForTest|SetDoerForTest)$
+pkg[/\\]git[/\\]testutil[/\\]runner[.]go:[0-9]+:[0-9]+: unreachable func: (RunnerFunc[.]Run|NewBarrier|Barrier[.]Arrive)$
 cmd[/\\]gui[/\\]backend_remote[.]go:[0-9]+:[0-9]+: unreachable func: dialRemoteBackend$
 pkg[/\\]update[/\\]replace_windows_executable[.]go:[0-9]+:[0-9]+: unreachable func: (replaceWindowsExecutable|stageUpdateExecutable|writeUpdateState|cleanupWindowsBackup|regularFileHash)$'
 
@@ -192,9 +194,19 @@ run_server_build() {
 run_staticcheck() { local bin; bin="$(tool "$STATICCHECK")" || return 1; per_os "$bin" ./...; }
 run_modernize()   { local bin; bin="$(tool "$MODERNIZE")" || return 1; per_os "$bin" ./...; }
 run_test() {
-    go test -short ./... >"$tmp/test.full" 2>&1 && return 0
-    grep -Ev '^(ok |\?) ' "$tmp/test.full"
-    return 1
+    if ! go test -short ./... >"$tmp/test.full" 2>&1; then
+        grep -Ev '^(ok |\?) ' "$tmp/test.full"
+        return 1
+    fi
+    # Windows runs the same schedules above without requiring a C toolchain.
+    case "$(go env GOOS)" in
+        darwin|linux)
+            if ! go test -race -short ./cmd/gui/ ./pkg/config/ ./pkg/git/... >"$tmp/test.race" 2>&1; then
+                grep -Ev '^(ok |\?) ' "$tmp/test.race"
+                return 1
+            fi
+            ;;
+    esac
 }
 
 # A fuzz command accepts exactly one target. Keep successes quiet while
