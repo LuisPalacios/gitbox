@@ -18,6 +18,14 @@ The app needs no companion binary. It shells out only to tools already on the sy
 
 The v1 CLI and its embedded TUI were removed in v2. They live on in the v1 maintenance line on the `release/v1` branch.
 
+### Scope and positioning
+
+Gitbox manages identities, credentials and clones across accounts and providers. Each clone carries its identity and credential configuration in its own `.git/config`. Discovery only adds repositories to the inventory, root changes keep existing clones pinned, and fleet status shows what Gitbox observed and what needs attention.
+
+Gitbox handles clone setup, status and fast-forward updates. Use a terminal or editor to stage changes, commit, push a branch, rebase, merge or resolve conflicts. Use the browser to open the repository on its provider and work with pull requests. Those tools give you control over changes to code and history.
+
+Keep new features focused on managing accounts and clones. Force-deleting branches belongs in tools that let you inspect the branch and decide whether to discard it. The existing guided move and mirror flows manage repositories across accounts and providers. Cross-provider moves can change the repository’s destination and credentials. Evaluate changes to the guided Move flow through the [separate decision for Move](https://github.com/LuisPalacios/gitbox/issues/198).
+
 ## 2. Core concepts
 
 ### Accounts, sources, and repos

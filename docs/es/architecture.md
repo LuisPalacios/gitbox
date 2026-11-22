@@ -18,6 +18,14 @@ La app no necesita ningún binario acompañante. Solo llama a herramientas ya pr
 
 La CLI v1 y su TUI embebida se eliminaron en v2. Siguen vivas en la línea de mantenimiento v1, en la rama `release/v1`.
 
+### Alcance y posicionamiento
+
+Gitbox gestiona identidades, credenciales y clones de distintas cuentas y proveedores. Cada clon guarda su identidad y la configuración de sus credenciales en su propio `.git/config`. El descubrimiento solo añade repositorios al inventario, los cambios de raíz conservan la ubicación de los clones existentes y el estado del conjunto de clones muestra lo que Gitbox ha observado y lo que requiere atención.
+
+Gitbox se encarga de configurar los clones, consultar su estado y aplicar actualizaciones de avance rápido. Usa un terminal o un editor para preparar cambios, crear commits, publicar una rama, hacer un rebase o un merge, o resolver conflictos. Usa el navegador para abrir el repositorio en su proveedor y gestionar pull requests. Esas herramientas te dan el control sobre los cambios en el código y el historial.
+
+Centra las nuevas funciones en la gestión de cuentas y clones. Para forzar el borrado de una rama, usa herramientas que te permitan inspeccionarla y decidir si quieres descartarla. Los flujos guiados de traslado y mirroring que existen permiten gestionar repositorios entre cuentas y proveedores. Los traslados entre proveedores pueden cambiar el destino y las credenciales del repositorio. Evalúa los cambios en el flujo guiado Move a través de la [decisión específica sobre Move](https://github.com/LuisPalacios/gitbox/issues/198).
+
 ## 2. Conceptos principales
 
 ### Accounts, sources y repos
