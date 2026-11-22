@@ -11,8 +11,13 @@ package main
 // It needs a build that carries its server, stamped like the app:
 //
 //	eval "$(scripts/stamp.sh)" && scripts/build-server.sh
+//	pkg=github.com/LuisPalacios/gitbox/cmd/gui
 //	GITBOX_SMOKE_ALIAS=<ssh alias> GITBOX_SMOKE_SERVER_DIR='~/.cache/<scratch>' \
-//	  go test -tags serverbin,remote_smoke -ldflags "$LDFLAGS" -run TestRemoteSmoke -v ./cmd/gui/
+//	  go test -tags serverbin,remote_smoke -run TestRemoteSmoke -v \
+//	  -ldflags "-X $pkg.version=$VERSION -X $pkg.commit=$COMMIT" ./cmd/gui/
+//
+// A test binary takes the stamp under the package's import path, not as
+// main.version.
 //
 // The config, the client preferences and the ssh control sockets live in
 // a temporary folder; the user's gitbox.json and ssh files are only read.
