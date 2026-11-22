@@ -131,13 +131,22 @@ func (f *filePrefs) Update(change func(*config.ClientPrefs)) error {
 		}
 		return fmt.Errorf("refusing to save preferences: %s not loaded", f.path)
 	}
-	p := config.ExtractPrefs(f.cfg)
-	change(&p)
-	if err := config.ValidateRemotes(p.Remotes); err != nil {
+	// The reload, the change and the write run under the config lock, so
+	// a domain save of another process never falls in between (#241).
+	cfg, err := config.UpdateFile(f.path, func(c *config.Config) error {
+		p := config.ExtractPrefs(c)
+		change(&p)
+		if err := config.ValidateRemotes(p.Remotes); err != nil {
+			return err
+		}
+		config.ApplyPrefs(c, p)
+		return nil
+	})
+	if err != nil {
 		return err
 	}
-	config.ApplyPrefs(f.cfg, p)
-	return config.Save(f.cfg, f.path)
+	f.cfg = cfg
+	return nil
 }
 
 // overlayPrefs lays the client preferences over a config that came from the
