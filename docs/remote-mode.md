@@ -2,7 +2,7 @@
 
 Remote mode lets GitboxApp on my laptop manage the repositories of another computer over SSH, such as a headless Linux server. GitboxApp installs a matching `gitbox-server` on that host by itself: no root, no internet on the host, no listening port. The design follows VS Code Remote-SSH.
 
-This version connects, installs, verifies and uninstalls the server, and shows the repositories of the host read-only. Changing anything on the host comes in a later version. Only Linux hosts are supported for now; macOS and Windows hosts follow.
+This version connects, installs, verifies and uninstalls the server, shows the repositories of the host read-only, and opens its folders in my local editor, terminal and AI harnesses. Changing anything on the host comes in a later version. Only Linux hosts are supported for now; macOS and Windows hosts follow.
 
 ## Before I start: an alias that needs no prompt
 
@@ -56,17 +56,19 @@ These work, all run on the host:
 - the repository details, the pull request badges and their lists, and the mirror status;
 - **Find projects** of an account, which lists the repositories of the provider without adding them;
 - credential checks, the sweep preview and the move preflight;
-- **System check**, which shows the tools of the host.
+- **System check**, which shows the tools of the host;
+- opening a repository or account folder of the host in VS Code, a terminal profile or an AI harness of this computer: see [Opening the host's folders](#opening-the-hosts-folders).
 
 These are disabled, with the tooltip "Read-only remote (coming in a later version)":
 
 - everything that changes the host: adding, editing or deleting accounts, cloning, pulling, adding discovered repositories, mirrors, roots, credential setup, the sweep and the move, and the settings that live in the host's `gitbox.json`;
-- opening a folder of the host on this computer, in the file manager, an editor, a terminal or an AI harness;
 - the compact view, and autostart.
+
+These have no remote equivalent, so they are disabled with the tooltip "Not available for remote hosts": **Reveal in Finder** or **Reveal in Explorer**, opening the account folder, and **Open in Editor** of the config file in Settings.
 
 My own preferences, such as language, theme, Simple or Advanced, the sidebar and the window size, still work and stay on this computer.
 
-The server itself runs read-only. It saves nothing to the host's `gitbox.json`: a refused save fails with `read_only`, and the AI harness detection on the host keeps what it finds in memory. Fetch updates only the remote-tracking branches. In this version it also skips the repair of each clone's `.git/config` that a local fetch runs first, and the server log says so once; a later version lifts this. A collapsed account or repository stays collapsed in this window only.
+The server itself runs read-only. It saves nothing to the host's `gitbox.json`: a refused save fails with `read_only`, and the AI harness detection on the host keeps what it finds in memory. The window asks the host to detect its harnesses again when it gets focus, and shows what the host has. Fetch updates only the remote-tracking branches. In this version it also skips the repair of each clone's `.git/config` that a local fetch runs first, and the server log says so once; a later version lifts this. A collapsed account or repository stays collapsed in this window only.
 
 ### The badge and the connection
 
@@ -77,6 +79,38 @@ When the connection drops, the window keeps the last state it got, dimmed and in
 ### What the window trusts
 
 Everything the host sends is untrusted. Links open only through one check on this computer: `https` links open in the browser, an `http` link opens after I confirm the full address, and anything else, such as `vscode:` or `ms-settings:`, is refused. Names and paths show as text and never run as a command. The window takes at most 10,000 repositories and 1,000 accounts; a longer list is cut, the badge warns, and the connection log says which list was cut.
+
+## Opening the host's folders
+
+The launchers of a remote window open the folder of the host from this computer, the way VS Code Remote-SSH does. The folder comes from the host, so GitboxApp never puts it in a command line as text. It checks it first: it must be an absolute path of the host, at most 4,096 bytes, with no NUL, CR or LF. Anything else fails with `not_available_remote_path` before anything starts. The alias always comes from my own `remotes` list, never from the host.
+
+### Editors
+
+VS Code (`code`) and VS Code Insiders (`code-insiders`) open the folder with `code --remote ssh-remote+<alias> <folder>`, each part as an argument of its own. VS Code needs its Remote-SSH extension, and it connects with my own `ssh` and the same alias. A workspace file of a container opens the same way.
+
+Every other editor, such as Zed or VSCodium, shows disabled with "This editor can't open folders on remote hosts". The remote smoke test from macOS and Windows covers the VS Code entry; the Insiders entry takes the same command line from the Remote-SSH documentation.
+
+On Windows, `code` is a batch file that `cmd.exe` reads again, so a folder with `%`, `!`, `^`, `&`, `|`, `<`, `>` or `"` fails with `not_available_remote_path`.
+
+### Terminals
+
+A terminal profile opens a local terminal that runs `ssh -t <alias>` and changes into the folder on the host:
+
+```text
+ssh -t -- my-server 'cd -- '\''/srv/my repo'\'' && exec "$SHELL" -l'
+```
+
+The `cd` is written for the login shell the host reported: sh, bash, zsh, dash and ksh get POSIX quotes, and fish gets its own. Any other shell hands the `cd` to `sh` with single-quoted words only. Remote mode adds no `ssh` option here, so my `ssh_config` decides, and a passphrase or host key prompt shows in the terminal.
+
+How the terminal starts depends on this computer:
+
+- **macOS:** the profile's app runs `ssh`. Terminal.app and iTerm run it through my login shell, quoted for it, fish included; a profile whose app cannot run a command, such as `open -a Warp`, is refused.
+- **Linux:** the profile's terminal runs `ssh` as its program, with no shell in between.
+- **Windows:** `ssh.exe` starts in a new console of its own, with no `cmd.exe` in between, and Windows shows it in its default terminal. The profile's app is not used: Windows Terminal and the `cmd.exe` launcher read the command line again. Honouring WezTerm and Alacritty profiles comes in a later version.
+
+### AI harnesses
+
+An AI harness runs on the host, in the folder, in a terminal of my default profile: the same `ssh -t` with `exec <harness>` after the `cd`. The harnesses are the ones detected on the host. Only a harness of the catalog runs, by its name or by an absolute path that ends in it, and with no arguments; anything else the host lists fails with `harness_not_allowed`.
 
 ## What is installed and where
 
@@ -168,6 +202,9 @@ Simple mode shows a plain sentence; the code itself appears in the log.
 - `server_crashed`: the server stopped while connected. The log shows its last lines.
 - `not_connected`: the window is not connected.
 - `not_implemented_remote`: the action has no remote side yet.
+- `not_available_remote`: the action has no remote equivalent, such as the file manager.
+- `not_available_remote_path`: the folder is not a valid absolute path of the host, or a layer on this computer cannot carry it safely.
+- `harness_not_allowed`: the AI harness is not one of the catalog, or it has arguments.
 - `read_only`: the remote is read-only, so the action would change the host. A later version allows it.
 
 ## Windows and macOS clients
