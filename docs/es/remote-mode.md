@@ -72,7 +72,7 @@ El propio servidor funciona en solo lectura. No guarda nada en el `gitbox.json` 
 
 La barra de título muestra una insignia con el alias, el sistema del host en el modo avanzado, el estado de la conexión y **Solo lectura**. Al hacer clic se abre el registro de conexión.
 
-Cuando la conexión se cae, la ventana conserva el último estado que recibió, atenuado e inactivo, bajo **Desconectado de my-server** y un botón **Conectar**. **Conectar** vuelve a hacer la misma conexión y recarga todo.
+Cuando la conexión se cae, la ventana conserva el último estado que recibió, atenuado e inactivo, bajo **Desconectado de my-server.** y un botón **Conectar**. Mientras está desconectada, la ventana no lanza ninguna recarga en segundo plano ni la comprobación periódica, así que no aparece ningún otro error. **Conectar** vuelve a hacer la misma conexión, borra lo que dejó la desconexión y recarga todo.
 
 ### En qué confía la ventana
 

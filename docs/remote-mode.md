@@ -72,7 +72,7 @@ The server itself runs read-only. It saves nothing to the host's `gitbox.json`: 
 
 The title bar shows a badge with the alias, the system of the host in Advanced mode, the connection state and **Read-only**. Clicking it opens the connection log.
 
-When the connection drops, the window keeps the last state it got, dimmed and inert, under **Disconnected from my-server** and a **Connect** button. **Connect** runs the same connection again and reloads everything.
+When the connection drops, the window keeps the last state it got, dimmed and inert, under **Disconnected from my-server.** and a **Connect** button. While it is disconnected, the window starts no background reload or periodic check, so no other error appears. **Connect** runs the same connection again, clears what the disconnection left behind and reloads everything.
 
 ### What the window trusts
 

@@ -175,6 +175,7 @@ A link can come from a gitbox-server on another host, a provider API or the conf
 - **Opaque paths.** In a remote window a path names a folder on the host: the client never joins, resolves or opens it. The local launchers (`OpenInExplorer`, `OpenInApp`, `OpenFileInEditor`, `OpenInAIHarness`, `OpenProfile`) refuse with `not_implemented_remote` before anything starts.
 - **Closed shapes.** Results decode into their Go types, and each relayed event decodes into the shape this build emits, so an unknown event, an unknown field or a wrong type is dropped with a log line.
 - **Bounded lists.** A remote window takes at most 10,000 repositories and 1,000 accounts. A longer list is cut, logged, and marked as `truncated` in `remote:state`.
+- **Errors in my language.** A remote window sets Wails' `ErrorFormatter` to `windowError`: a failed call crosses as JSON text with the scrubbed message, its code and its catalog hint, because the Wails runtime keeps only text. The bridge decodes it into a `WindowError` whose message is the translated hint. While the window is disconnected it starts no background call, a `remote.not_connected` failure raises no other banner, and a new connection clears what the disconnection left.
 
 ### Server and protocol
 

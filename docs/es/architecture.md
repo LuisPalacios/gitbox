@@ -175,6 +175,7 @@ Un enlace puede venir de un gitbox-server en otro host, de la API de un proveedo
 - **Rutas opacas.** En una ventana remota una ruta nombra una carpeta del host: el cliente nunca la une, la resuelve ni la abre. Los lanzadores locales (`OpenInExplorer`, `OpenInApp`, `OpenFileInEditor`, `OpenInAIHarness`, `OpenProfile`) rechazan con `not_implemented_remote` antes de que arranque nada.
 - **Formas cerradas.** Los resultados se decodifican en sus tipos de Go, y cada evento retransmitido se decodifica en la forma que este build emite, así que un evento desconocido, un campo desconocido o un tipo equivocado se descarta con una línea en el registro.
 - **Listas acotadas.** Una ventana remota admite como mucho 10.000 repositorios y 1.000 cuentas. Una lista más larga se corta, se registra y se marca como `truncated` en `remote:state`.
+- **Errores en mi idioma.** Una ventana remota pone `windowError` como `ErrorFormatter` de Wails: una llamada fallida cruza como texto JSON con el mensaje limpio, su código y su hint del catálogo, porque el runtime de Wails solo conserva texto. El bridge lo decodifica en un `WindowError` cuyo mensaje es el hint traducido. Mientras la ventana está desconectada no lanza ninguna llamada en segundo plano, un fallo `remote.not_connected` no levanta ningún otro aviso, y una conexión nueva borra lo que dejó la desconexión.
 
 ### Servidor y protocolo
 
