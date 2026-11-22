@@ -2,7 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { bridge, events, setReadOnlyRemote } from './lib/bridge';
   import type { DoctorPrecheckDTO, RemoteState } from './lib/bridge';
-  import { focusWork } from './lib/readonly';
+  import { focusWork, backgroundAllowed, reloadErrorShown, clearsOnReconnect } from './lib/readonly';
   import {
     configStore, accounts, sources, mirrors, repoStates, themeStore, applyStatusResults,
     applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, workspacePlaceholders, workspaceMembers, workspaceUnknown,
@@ -287,7 +287,7 @@
       await checkGlobalGitignore();
     } catch (e: any) {
       console.error('Failed to install global gitignore:', e);
-      gitignoreError = String(e);
+      gitignoreError = errorText(e);
     } finally {
       gitignoreInstalling = false;
     }
@@ -1004,6 +1004,9 @@
   // file" banner behind on the dashboard.
   async function reloadFromDisk() {
     if (cfgLoadErrorModal || firstRun) return;
+    // A disconnected remote window has nothing to reload: the disconnect
+    // banner already says so, and the next connection reloads everything.
+    if (!backgroundAllowed(windowMode === 'remote', remoteState?.state)) return;
     const generation = ++reloadGeneration;
     try {
       await bridge.reloadConfig();
@@ -1028,7 +1031,7 @@
       }
       reloadError = '';
     } catch (err: any) {
-      if (generation === reloadGeneration) reloadError = err?.message || String(err);
+      if (generation === reloadGeneration && reloadErrorShown(err, windowMode === 'remote', remoteState?.state)) reloadError = errorText(err);
       throw err;
     }
   }
@@ -1325,6 +1328,8 @@
 
   async function onRemoteState(s: RemoteState) {
     const wasConnected = remoteState?.state === 'connected';
+    // A new connection clears what the disconnection left behind.
+    if (clearsOnReconnect(remoteState?.state, s.state)) reloadError = '';
     remoteState = s;
     if (s.state !== 'connected' || wasConnected || remoteLoading) return;
     // Each connection, the first one and every reconnect, loads the host's
@@ -1383,7 +1388,11 @@
     if (fetchTimerId) { clearInterval(fetchTimerId); fetchTimerId = null; }
     const minutes = val === '5m' ? 5 : val === '15m' ? 15 : val === '30m' ? 30 : 0;
     if (minutes > 0) {
-      fetchTimerId = setInterval(() => { runFetchAll(); checkAllMirrorStatus(); refreshAllPRs(); }, minutes * 60 * 1000);
+      fetchTimerId = setInterval(() => {
+        // A disconnected remote window waits for its next connection.
+        if (!backgroundAllowed(windowMode === 'remote', remoteState?.state)) return;
+        runFetchAll(); checkAllMirrorStatus(); refreshAllPRs();
+      }, minutes * 60 * 1000);
     }
   }
 
@@ -1442,7 +1451,7 @@
     try {
       await bridge.fetchAllRepos();
     } catch (e) {
-      lastFetchTime = $t('app.fetchAllError', { error: e instanceof Error ? e.message : String(e) });
+      lastFetchTime = $t('app.fetchAllError', { error: errorText(e) });
       if (fetchingAll) finishFetch(errorText(e));
     } finally {
       fetchingAll = false;
@@ -1510,7 +1519,7 @@
       applyStatusResults(await bridge.getAllStatus());
     } catch (e) {
       repoStates.update(states => Object.fromEntries(Object.entries(states).map(([key, state]) =>
-        [key, state.status === 'unknown' ? { ...state, status: 'error' as const, error: String(e) } : state]
+        [key, state.status === 'unknown' ? { ...state, status: 'error' as const, error: errorText(e) } : state]
       )));
     }
 
@@ -1678,7 +1687,7 @@
     // A read-only remote window re-reads the host's config but changes
     // nothing there (#240, focusWork).
     window.addEventListener('focus', () => {
-      if (windowMode === 'remote' && !remoteShowMain) return;
+      if (windowMode === 'remote' && (!remoteShowMain || !backgroundAllowed(true, remoteState?.state))) return;
       const work = focusWork($remoteReadOnly);
       if (focusTimer) clearTimeout(focusTimer);
       focusTimer = setTimeout(() => reloadFromDisk().then(() => { if (work.reconcile) runReconcile(); }, () => {}), 300);
@@ -1989,7 +1998,7 @@
         on:click={() => bridge.remoteReconnect().catch(console.error)}>{$t('remote.reconnect')}</button>
     </div>
   {/if}
-  <ReloadErrorBanner bind:reloadError />
+  <ReloadErrorBanner bind:reloadError remote={windowMode === 'remote'} />
   <OfflineBanner hosts={networkDown} retrying={fetchingAll} onRetry={() => runFetchAll(true)} />
   <CredentialWarning findings={credentialFindings} onReview={openDoctorModal} />
 

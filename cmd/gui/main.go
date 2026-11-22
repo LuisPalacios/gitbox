@@ -366,6 +366,9 @@ func runRemoteWindow(app *App, f remoteFlags) {
 		OnShutdown:    app.Shutdown,
 		OnBeforeClose: app.BeforeClose,
 		OnDomReady:    app.DomReady,
+		// A failed call carries its code and catalog hint, so the window
+		// translates what the host's backend raised (#240).
+		ErrorFormatter: windowError,
 		Bind: []any{
 			app,
 		},

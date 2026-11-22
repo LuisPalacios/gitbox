@@ -9,6 +9,7 @@
   import { bridge, events } from '../bridge';
   import type { RemoteState } from '../bridge';
   import { t } from '../i18n';
+  import { errorText } from '../notices';
   import ConnectionLog from './ConnectionLog.svelte';
 
   export let simple = false;
@@ -50,7 +51,7 @@
   async function run(action: () => Promise<void>) {
     busy = true;
     actionError = '';
-    try { await action(); } catch (e) { actionError = String(e); } finally { busy = false; }
+    try { await action(); } catch (e) { actionError = errorText(e); } finally { busy = false; }
   }
 
   const disconnect = () => run(() => bridge.remoteDisconnect());

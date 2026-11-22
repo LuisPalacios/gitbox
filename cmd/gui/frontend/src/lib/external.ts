@@ -7,7 +7,10 @@
 
 import { writable } from 'svelte/store';
 import { OpenInBrowser, OpenAccountInBrowser, OpenRepoInBrowser } from '../../wailsjs/go/main/App';
+import { get } from 'svelte/store';
 import { pushNotice, errorText } from './notices';
+import { decodeWindowError } from './readonly';
+import { t } from './i18n';
 
 interface OpenResult {
   needsConfirm: boolean;
@@ -30,7 +33,7 @@ async function run(open: (confirmed: boolean) => Promise<OpenResult>): Promise<v
     pendingLink.set(null);
     if (ok) await open(true);
   } catch (e) {
-    pushNotice('error', noticeTitle, [errorText(e)]);
+    pushNotice('error', noticeTitle, [errorText(decodeWindowError(e, get(t)))]);
   }
 }
 

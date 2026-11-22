@@ -3,13 +3,16 @@
   import { t } from '../i18n';
 
   export let reloadError: string;
+  // remote: a remote window, where reopening GitboxApp fixes nothing; the
+  // host's gitbox.json is what to check (#240).
+  export let remote = false;
 </script>
 
 {#if reloadError}
   <div class="reload-error-banner" role="alert">
     <span class="reload-error-label">{$t('reloadError.label')}</span>
     <span class="reload-error-msg">{reloadError}</span>
-    <span class="reload-error-hint">{$t('reloadError.hint')}</span>
+    <span class="reload-error-hint">{$t(remote ? 'reloadError.hintRemote' : 'reloadError.hint')}</span>
     <button class="reload-error-dismiss" on:click={() => reloadError = ''} title={$t('notice.dismiss')}>&#10005;</button>
   </div>
 {/if}

@@ -4,7 +4,9 @@
 
 import { GetStartupSnapshot, GetConfig, GetCollapsed, SetCollapsed, GetConfigPath, GetAllStatus, RefreshStatus, CloneRepo, PullRepo, Discover, AddDiscoveredRepos, CredentialVerify, CredentialDelete, ReloadConfig, DeleteRepo, AddAccount, SuggestAccountKey, DiscardAccount, UpdateAccount, RenameAccount, CredentialSetupGCM, CredentialStoreToken, CredentialSetupSSH, CredentialRegenerateSSH, GetTokenGuide, AccountDeletionImpact, DeleteAccount, ChangeCredentialType, OpenAccountFolder, OpenAccountInApp, OpenAccountInAIHarness, OpenFileInEditor, OpenInExplorer, OpenInApp, OpenInAIHarness,  DetectEditors, RefreshAIHarnesses, IsFirstRun, GetConfigLoadError, AcknowledgeConfigError, RepairConfig, ListConfigBackups, RestoreFromBackup, PickFolder, InitRoot, ListRoots, AddRoot, RemoveRoot, SetDefaultRoot, GetAppVersion, GetOS, FetchRepo, FetchAllRepos, GetRepoDetail, GetLanguage, SetLanguage, GetPeriodicSync, SetPeriodicSync, GetViewMode, SetViewMode, GetUIMode, SetUIMode, SetTheme, ShowWindow, CheckGlobalIdentity, RemoveGlobalIdentity, IsGlobalGCMConfigNeeded, CheckGlobalGCMConfig, FixGlobalGCMConfig, CheckGlobalGitignore, InstallGlobalGitignore, RecommendedGlobalGitignoreBody, GetCheckGlobalGitignore, SetCheckGlobalGitignore, GetAutostart, SetAutostart, GetMirrorStatus, SetupMirrorRepo, AddMirrorGroup, DeleteMirrorGroup, AddMirrorRepo, DeleteMirrorRepo, CheckMirrorCredentials, ListRemoteRepos, DiscoverMirrors, ApplyDiscoveredMirrors, ListAccountOrgs, CreateNewRepo, IsPositionOnScreen, ApplyUpdate, PreviewSweep, ConfirmSweep, Reconcile, AdoptClones, IgnoreClone, GetPRSettings, SetPRBadgesEnabled, SetPRIncludeDrafts, GetPRsForRepo, RefreshAllPRs, SetRepoContainer, SetRepoWorkspace, RepoWorkspaceFiles, GetNestedScanDepth, SetNestedScanDepth, ScanFolderForClones, AddDiscoveredReposToFolder, RepoNesting, DoctorRun, DoctorPrecheck, ListMoveDestinationOwners, PreflightMove, MoveRepo, CheckMoveReadiness, ListTerminalApps, ListShells, ListTerminalProfiles, OpenProfile, OpenAccountProfile, SaveTerminalProfilesDTO, RedetectProfiles, MissingModernTerminal, GetWindowMode, OpenTerminalsManagerWindow, RemoteInfo, RemoteLog, RemoteDisconnect, RemoteReconnect, RemoteReinstall, RemoteUninstall, RemoteRunDoctor, ListRemotes, AddRemote, RemoveRemote, ConnectRemote } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
-import { guardCalls } from './readonly';
+import { get } from 'svelte/store';
+import { guardCalls, decodeWindowError } from './readonly';
+import { t } from './i18n';
 
 import type { CredentialFinding, StartupSnapshot, ConfigDTO, CollapsedState, StatusResult, CredentialStatus, EditorInfo, OrphanRepoDTO, ReconcileDTO, AccountDeletionImpactDTO, ConfigRepairResult, ConfigBackupInfo, PRSettingsDTO, PRSummaryDTO, RootDTO, RemoveRootDTO, MoveOwnerOption, MoveRequestDTO, MovePreflightDTO, MoveReadinessDTO, TerminalAppInfo, ShellInfo, TerminalProfileInfo } from './types';
 
@@ -165,7 +167,9 @@ export function setReadOnlyRemote(on: boolean, message: string) {
   readOnlyMessage = message;
 }
 
-export const bridge = guardCalls(calls, () => readOnlyRemote, () => readOnlyMessage);
+// A remote window's calls fail with a WindowError in the user's language
+// (readonly.ts); a local window's come back as they are.
+export const bridge = guardCalls(calls, () => readOnlyRemote, () => readOnlyMessage, (e) => decodeWindowError(e, get(t)));
 
 // ── Remote mode types (mirror cmd/gui/remote.go) ──
 export type RemoteStateName = 'connecting' | 'installing' | 'connected' | 'failed' | 'disconnected';

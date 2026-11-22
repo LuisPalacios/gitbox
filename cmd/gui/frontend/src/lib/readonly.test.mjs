@@ -41,3 +41,46 @@ test('I neither reconcile nor re-probe harnesses on focus in a read-only remote'
   assert.deepEqual(ro.focusWork(false), { reload: true, reconcile: true, refreshHarnesses: true });
   assert.ok(ro.READ_ONLY_BLOCKED.has('reconcile') && ro.READ_ONLY_BLOCKED.has('refreshAIHarnesses'));
 });
+
+const tr = (key) => ({ 'error.remote.not_connected': 'No hay conexión con el host.' })[key] ?? key;
+const notConnected = new Error(JSON.stringify({ message: 'not connected to the remote', code: 'remote.not_connected', hint: 'error.remote.not_connected' }));
+
+test('I translate a remote window failure and keep its code', () => {
+  const e = ro.decodeWindowError(notConnected, tr);
+  assert.ok(e instanceof ro.WindowError);
+  assert.equal(e.message, 'No hay conexión con el host.');
+  assert.equal(e.code, 'remote.not_connected');
+  // No catalog entry: the backend's text, never the key.
+  const other = ro.decodeWindowError(new Error(JSON.stringify({ message: 'it broke', code: 'remote.x', hint: 'error.remote.x' })), tr);
+  assert.equal(other.message, 'it broke');
+  // A hostile code or hint is dropped; a local window's plain text passes.
+  const hostile = ro.decodeWindowError(new Error(JSON.stringify({ message: 'm', code: '"><script>', hint: 'a b' })), tr);
+  assert.equal(hostile.code, '');
+  assert.equal(hostile.message, 'm');
+  const plain = new Error('open gitbox.json: no such file');
+  assert.equal(ro.decodeWindowError(plain, tr), plain);
+  assert.equal(ro.decodeWindowError('{not json', tr), '{not json');
+});
+
+test('I pass every failure of the bridge through the decoder', async () => {
+  const calls = ro.guardCalls({ reloadConfig: () => Promise.reject(notConnected) }, () => false, () => 'read-only', (e) => ro.decodeWindowError(e, tr));
+  await assert.rejects(calls.reloadConfig(), (e) => ro.isDisconnectError(e) && e.message === 'No hay conexión con el host.');
+});
+
+test('I raise no config error for a disconnection, and a reconnect clears it', () => {
+  const failure = ro.decodeWindowError(notConnected, tr);
+  // The bug: the remote was killed, a reload failed with not_connected and
+  // raised the config banner, which outlived the reconnect.
+  assert.equal(ro.backgroundAllowed(true, 'failed'), false);
+  assert.equal(ro.backgroundAllowed(true, 'connecting'), false);
+  assert.equal(ro.backgroundAllowed(true, 'connected'), true);
+  assert.equal(ro.backgroundAllowed(false, undefined), true);
+  assert.equal(ro.reloadErrorShown(failure, true, 'connected'), false, 'a not_connected failure that raced the state');
+  assert.equal(ro.reloadErrorShown(new Error('dangling account'), true, 'failed'), false, 'any failure while disconnected');
+  assert.equal(ro.reloadErrorShown(new Error('dangling account'), true, 'connected'), true);
+  assert.equal(ro.reloadErrorShown(new Error('dangling account'), false, undefined), true);
+  assert.equal(ro.clearsOnReconnect('failed', 'connected'), true);
+  assert.equal(ro.clearsOnReconnect('connecting', 'connected'), true);
+  assert.equal(ro.clearsOnReconnect('connected', 'connected'), false);
+  assert.equal(ro.clearsOnReconnect('connected', 'failed'), false);
+});

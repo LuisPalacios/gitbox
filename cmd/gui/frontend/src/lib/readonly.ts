@@ -33,15 +33,77 @@ export class ReadOnlyError extends Error {
 type Calls = Record<string, (...args: never[]) => unknown>;
 
 // guardCalls returns calls with every blocked one refusing while
-// isReadOnly() holds. message() gives the translated refusal.
-export function guardCalls<T extends Calls>(calls: T, isReadOnly: () => boolean, message: () => string): T {
+// isReadOnly() holds, and every failure passed through normalize (see
+// decodeWindowError). message() gives the translated refusal.
+export function guardCalls<T extends Calls>(calls: T, isReadOnly: () => boolean, message: () => string, normalize: (e: unknown) => unknown = (e) => e): T {
   const out: Record<string, unknown> = {};
   for (const [name, fn] of Object.entries(calls)) {
+    const call = (...args: never[]) => {
+      const result = fn(...args);
+      return result instanceof Promise ? result.catch((e: unknown) => { throw normalize(e); }) : result;
+    };
     out[name] = READ_ONLY_BLOCKED.has(name)
-      ? (...args: never[]) => (isReadOnly() ? Promise.reject(new ReadOnlyError(message())) : fn(...args))
-      : fn;
+      ? (...args: never[]) => (isReadOnly() ? Promise.reject(new ReadOnlyError(message())) : call(...args))
+      : call;
   }
   return out as T;
+}
+
+// WindowError is a failed call of a remote window: its message is what to
+// show, and code and hint say what failed (cmd/gui/errors.go, WindowErrorDTO).
+export class WindowError extends Error {
+  code: string;
+  hint: string;
+  constructor(message: string, code: string, hint: string) {
+    super(message);
+    this.name = 'WindowError';
+    this.code = code;
+    this.hint = hint;
+  }
+}
+
+const IDENTIFIER = /^[A-Za-z0-9._-]{1,64}$/;
+
+// decodeWindowError turns the JSON text a remote window's calls fail with
+// back into a WindowError whose message is the translated hint, or the
+// backend's text when the catalog has none (tr returns the key itself).
+// Anything else, such as the plain text of a local window, comes back as it
+// came.
+export function decodeWindowError(e: unknown, tr: (key: string) => string): unknown {
+  const text = e instanceof Error ? e.message : typeof e === 'string' ? e : '';
+  if (!text.startsWith('{')) return e;
+  let dto: { message?: unknown; code?: unknown; hint?: unknown };
+  try { dto = JSON.parse(text); } catch { return e; }
+  if (!dto || typeof dto.message !== 'string') return e;
+  const code = typeof dto.code === 'string' && IDENTIFIER.test(dto.code) ? dto.code : '';
+  const hint = typeof dto.hint === 'string' && IDENTIFIER.test(dto.hint) ? dto.hint : '';
+  const translated = hint ? tr(hint) : '';
+  return new WindowError(translated && translated !== hint ? translated : dto.message, code, hint);
+}
+
+// isDisconnectError: the call failed because the remote window was not
+// connected.
+export function isDisconnectError(e: unknown): boolean {
+  return e instanceof WindowError && e.code === 'remote.not_connected';
+}
+
+// backgroundAllowed: a remote window starts no background call (the focus
+// reload, the periodic fetch) while it is not connected; the disconnect
+// banner already says why nothing changes.
+export function backgroundAllowed(remoteWindow: boolean, state: string | undefined): boolean {
+  return !remoteWindow || state === 'connected';
+}
+
+// reloadErrorShown: a failed reload raises the config error banner, unless
+// it failed because the remote window was not connected.
+export function reloadErrorShown(e: unknown, remoteWindow: boolean, state: string | undefined): boolean {
+  return !isDisconnectError(e) && backgroundAllowed(remoteWindow, state);
+}
+
+// clearsOnReconnect: a new connection clears the errors the disconnection
+// left behind.
+export function clearsOnReconnect(previous: string | undefined, next: string): boolean {
+  return next === 'connected' && previous !== 'connected';
 }
 
 // The automatic work that starts when the window regains focus: a remote
