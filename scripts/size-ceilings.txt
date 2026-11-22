@@ -3,13 +3,16 @@
 #
 # baseline  the executable built from commit 6c10e9a, the last one before
 #           GitboxApp carried gitbox-server, as each gate lane builds it
-# ceiling   baseline + 25 MiB (26214400 bytes): the budget that
-#           docs/remote-spike.md fixed for the six embedded servers
+# ceiling   baseline + 30 MiB (31457280 bytes). docs/remote-spike.md set
+#           25 MB for early warning and 30 MB as the limit of the design,
+#           measuring a server smaller than the real one. The six real
+#           servers take 23.4 to 25.3 MB compressed, depending on the Go
+#           toolchain, so the ceiling is the design limit.
 #
 # A platform without a line cannot be checked, and its build fails.
 #
 # <os>/<arch>   <baseline bytes>   <ceiling bytes>
-darwin/arm64    12035408           38249808
-darwin/amd64    13039552           39253952
-linux/amd64     12968448           39182848
-windows/amd64   14722048           40936448
+darwin/arm64    12035408           43492688
+darwin/amd64    13039552           44496832
+linux/amd64     12968448           44425728
+windows/amd64   14722048           46179328

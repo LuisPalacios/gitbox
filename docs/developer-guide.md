@@ -81,7 +81,9 @@ cmd/gui/build/bin/GitboxApp --list-server-targets   # macOS: GitboxApp.app/Conte
 
 `wails build` rewrites whitespace in the generated bindings, so the tree looks modified afterwards and the next development stamp says `-dirty`. That is harmless, because the stamp is taken once and both binaries get the same one; `git checkout -- cmd/gui/frontend/wailsjs` clears it.
 
-Release builds, the gate and CI embed all six targets and run `scripts/check-gui-artifact.sh` on the result. It checks that the app reports exactly the stamp it was built from, that it carries the targets `build-server.sh` was asked for, and that the main executable stays within its ceiling in `scripts/size-ceilings.txt`: its size before it carried the server, plus 25 MiB.
+Release builds, the gate and CI embed all six targets and run `scripts/check-gui-artifact.sh` on the result. It checks that the app reports exactly the stamp it was built from, that it carries the targets `build-server.sh` was asked for, and that the main executable stays within its ceiling in `scripts/size-ceilings.txt`: its size before it carried the server, plus 30 MiB.
+
+On a CI runner the server build takes about 100 seconds, because nothing of the six cross-compiled targets is cached there; with a warm cache, as in the gate, it takes 8 to 14. I accept that cost: it only applies to releases and dry runs.
 
 ### Design rules
 

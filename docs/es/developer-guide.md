@@ -81,7 +81,9 @@ cmd/gui/build/bin/GitboxApp --list-server-targets   # macOS: GitboxApp.app/Conte
 
 `wails build` reescribe espacios en los bindings generados, así que el árbol parece modificado después y el siguiente sello de desarrollo dice `-dirty`. Es inofensivo, porque el sello se toma una vez y los dos binarios reciben el mismo; `git checkout -- cmd/gui/frontend/wailsjs` lo limpia.
 
-Los builds de release, el gate y CI embeben los seis targets y ejecutan `scripts/check-gui-artifact.sh` sobre el resultado. Comprueba que la app informa exactamente del sello con el que se construyó, que lleva los targets que se pidieron a `build-server.sh`, y que el ejecutable principal se mantiene dentro de su techo en `scripts/size-ceilings.txt`: su tamaño antes de llevar el servidor, más 25 MiB.
+Los builds de release, el gate y CI embeben los seis targets y ejecutan `scripts/check-gui-artifact.sh` sobre el resultado. Comprueba que la app informa exactamente del sello con el que se construyó, que lleva los targets que se pidieron a `build-server.sh`, y que el ejecutable principal se mantiene dentro de su techo en `scripts/size-ceilings.txt`: su tamaño antes de llevar el servidor, más 30 MiB.
+
+En un runner de CI el build del servidor tarda unos 100 segundos, porque allí no hay nada en caché de los seis targets de cross-compile; con la caché caliente, como en el gate, tarda de 8 a 14. Acepto ese coste: solo se aplica a releases y dry runs.
 
 ### Reglas de diseño
 
