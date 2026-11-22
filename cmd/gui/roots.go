@@ -34,10 +34,10 @@ type RemoveRootDTO struct {
 // ensureRootDir creates path (tilde-expanded) when missing and checks it is
 // a directory.
 func ensureRootDir(path string) error {
-	if path == "" {
-		return fmt.Errorf("folder path cannot be empty")
+	expanded, err := hostPath(path)
+	if err != nil {
+		return err
 	}
-	expanded := config.ExpandTilde(path)
 	if err := os.MkdirAll(expanded, 0o755); err != nil {
 		return fmt.Errorf("creating folder %s: %w", expanded, err)
 	}
@@ -54,7 +54,23 @@ func ensureRootDir(path string) error {
 // InitRoot sets the first clone root and saves the config; onboarding
 // finishes here. A new install starts in Simple mode. On a config that
 // already has roots, the folder becomes the default one.
-func (a *App) InitRoot(folder string) error { return a.be().InitRoot(folder) }
+//
+// It is MIXED (#241): the backend creates and records the root, and in a
+// remote window the client half starts this computer's preferences in
+// Simple mode, which belong to the client and not to the host.
+func (a *App) InitRoot(folder string) error {
+	if err := a.be().InitRoot(folder); err != nil {
+		return err
+	}
+	if !a.remoteWindow() {
+		return nil
+	}
+	return a.clientPrefs().Update(func(p *config.ClientPrefs) {
+		if p.UIMode == "" {
+			p.UIMode = uiModeSimple
+		}
+	})
+}
 
 // initRootLocal is the local backend's InitRoot.
 func (a *App) initRootLocal(folder string) error {

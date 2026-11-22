@@ -1621,6 +1621,21 @@ type ConfigBackupInfo struct {
 func (a *App) ListConfigBackups() []ConfigBackupInfo { return a.be().ListConfigBackups() }
 
 // listConfigBackupsLocal is the local backend's ListConfigBackups.
+// listedBackup reports whether path is one of the backups of cfgPath,
+// matched by name in the config folder.
+func listedBackup(cfgPath, path string) bool {
+	backups, err := config.ListBackups(cfgPath)
+	if err != nil {
+		return false
+	}
+	for _, b := range backups {
+		if filepath.Base(b.Path) == filepath.Base(path) && filepath.Dir(b.Path) == filepath.Dir(path) {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *App) listConfigBackupsLocal() []ConfigBackupInfo {
 	a.mu.Lock()
 	cfgPath := a.cfgPath
@@ -1674,6 +1689,10 @@ func (a *App) restoreFromBackupLocal(backupPath string) ConfigRepairResult {
 	}
 	if absBackup == a.cfgPath {
 		return ConfigRepairResult{Success: false, Error: "cannot restore the active config onto itself"}
+	}
+	// Only a file the backup list names is restored (#241).
+	if !listedBackup(a.cfgPath, absBackup) {
+		return ConfigRepairResult{Success: false, Error: "that file is not one of the config backups"}
 	}
 
 	// Strict-validate the backup. Refuse to adopt another broken file.
@@ -1926,9 +1945,12 @@ func (a *App) CloneRepo(sourceKey, repoKey, root string) { a.be().CloneRepo(sour
 // cloneRepoLocal is the local backend's CloneRepo.
 func (a *App) cloneRepoLocal(sourceKey, repoKey, root string) {
 	a.goTracked(func() {
-		a.mu.Lock()
 		var err error
-		if root != "" && a.cfg.PlaceRepo(sourceKey, repoKey, root) {
+		if root != "" {
+			_, err = hostPath(root)
+		}
+		a.mu.Lock()
+		if err == nil && root != "" && a.cfg.PlaceRepo(sourceKey, repoKey, root) {
 			err = a.saveConfig()
 		}
 		var plan ops.ClonePlan
@@ -3313,6 +3335,12 @@ func (a *App) CreateNewRepo(accountKey, owner, repoName, description string, pri
 
 // createNewRepoLocal is the local backend's CreateNewRepo.
 func (a *App) createNewRepoLocal(accountKey, owner, repoName, description string, private, cloneAfter bool, root string) error {
+	// Checked before the repository is created on the provider (#241).
+	if root != "" {
+		if _, err := hostPath(root); err != nil {
+			return err
+		}
+	}
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
 	a.mu.Unlock()

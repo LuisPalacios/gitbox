@@ -85,6 +85,7 @@ var servedMethods = []string{
 	"ScanFolderForClones",
 	"SuggestAccountKey",
 	"SyncAIHarnesses",
+	"ValidateRemotePath",
 }
 
 // hostBackend is the local backend as the server exposes it. The config it

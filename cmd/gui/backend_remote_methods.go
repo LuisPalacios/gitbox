@@ -174,6 +174,14 @@ func (r *RemoteBackend) IsGlobalGCMConfigNeeded() bool {
 func (r *RemoteBackend) ListAccountOrgs(accountKey string) ([]string, error) {
 	return remoteCall[[]string](r, "ListAccountOrgs", accountKey)
 }
+func (r *RemoteBackend) ValidateRemotePath(p string) RemotePathDTO {
+	var out RemotePathDTO
+	if err := r.invoke("ValidateRemotePath", &out, p); err != nil {
+		r.note("ValidateRemotePath", err)
+		return RemotePathDTO{Error: userMsg(err)}
+	}
+	return out
+}
 func (r *RemoteBackend) ListConfigBackups() []ConfigBackupInfo {
 	return remoteValue[[]ConfigBackupInfo](r, "ListConfigBackups")
 }

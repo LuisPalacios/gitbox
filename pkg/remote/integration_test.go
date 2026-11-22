@@ -744,6 +744,7 @@ var readOnlyCalls = []struct {
 	{"ScanFolderForClones", []any{testHome + "/git"}},
 	{"SuggestAccountKey", []any{"gitea", "alice"}},
 	{"SyncAIHarnesses", []any{}},
+	{"ValidateRemotePath", []any{"~"}},
 }
 
 // readOnlyHostConfig is the host's gitbox.json: one account on a server

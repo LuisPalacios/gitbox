@@ -84,6 +84,7 @@ type Backend interface {
 	IsGlobalGCMConfigNeeded() bool
 	ListAccountOrgs(accountKey string) ([]string, error)
 	ListConfigBackups() []ConfigBackupInfo
+	ValidateRemotePath(p string) RemotePathDTO
 	ListMoveDestinationOwners(sourceKey string) []MoveOwnerOption
 	ListRemoteRepos(accountKey string) []DiscoverResult
 	ListRoots() []RootDTO
@@ -267,7 +268,8 @@ func (b localBackend) IsGlobalGCMConfigNeeded() bool { return b.a.isGlobalGCMCon
 func (b localBackend) ListAccountOrgs(accountKey string) ([]string, error) {
 	return b.a.listAccountOrgsLocal(accountKey)
 }
-func (b localBackend) ListConfigBackups() []ConfigBackupInfo { return b.a.listConfigBackupsLocal() }
+func (b localBackend) ListConfigBackups() []ConfigBackupInfo     { return b.a.listConfigBackupsLocal() }
+func (b localBackend) ValidateRemotePath(p string) RemotePathDTO { return validateRemotePathLocal(p) }
 func (b localBackend) ListMoveDestinationOwners(sourceKey string) []MoveOwnerOption {
 	return b.a.listMoveDestinationOwnersLocal(sourceKey)
 }

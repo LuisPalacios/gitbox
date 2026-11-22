@@ -291,3 +291,5 @@ export function SyncEditors():Promise<void>;
 export function SyncProfiles():Promise<void>;
 
 export function UpdateAccount(arg1:main.UpdateAccountRequest):Promise<void>;
+
+export function ValidateRemotePath(arg1:string):Promise<main.RemotePathDTO>;
