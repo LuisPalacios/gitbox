@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 )
 
@@ -63,10 +66,16 @@ func TestStatusFreshness_ConfirmedProbeDatesOnlyExistence(t *testing.T) {
 		exists:     true,
 		checkedAt:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
+	row := StatusResult{Source: source, Repo: repo, Account: "account-a", Path: path, State: "not cloned"}
+	app.cachedStatusConfig = snapshot
+	app.cachedStatus = []StatusResult{row}
 	if !app.applyUpstreamProbe(snapshot, []upstreamProbeResult{result}, nil) {
 		t.Fatal("an existence timestamp should cause a status update")
 	}
-	row := StatusResult{Source: source, Repo: repo, Account: "account-a", Path: path}
+	result.checkedAt = result.checkedAt.Add(time.Nanosecond)
+	if app.applyUpstreamProbe(snapshot, []upstreamProbeResult{result}, nil) {
+		t.Fatal("a subsecond change signaled a status update")
+	}
 	for _, state := range []string{"not cloned", "behind", "diverged", "conflict"} {
 		row.State = state
 		want := ""
@@ -84,6 +93,64 @@ func TestStatusFreshness_ConfirmedProbeDatesOnlyExistence(t *testing.T) {
 	got := app.overlayStatus([]StatusResult{row})[0]
 	if got.State != "upstream gone" || got.CheckedAt != result.checkedAt.Format(time.RFC3339) {
 		t.Fatalf("confirmed missing project did not include its upstream check: %#v", got)
+	}
+}
+
+func TestStatusFreshness_AsyncProbePublishesOnlyVisibleTimestamp(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		state     status.State
+		stillGone bool
+		wantEvent bool
+	}{
+		{name: "clone without upstream", state: status.NoUpstream},
+		{name: "online project", state: status.NotCloned, wantEvent: true},
+		{name: "upstream still missing", state: status.NoUpstream, stillGone: true, wantEvent: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if tc.stillGone {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				_, _ = w.Write([]byte("{}"))
+			}))
+			defer srv.Close()
+			const source, repo, account = "source-a", "org/repo-0", "account-a"
+			t.Setenv(credential.EnvVarName(account), "fixture-token")
+			app, events := refreshTestApp(t, 1)
+			defer app.stopRefresh()
+			acct := app.cfg.Accounts[account]
+			acct.URL, acct.Provider = srv.URL, "github"
+			app.cfg.Accounts[account] = acct
+			if tc.stillGone {
+				app.upstreamGone = map[string]bool{source + "/" + repo: true}
+			}
+			snapshot := app.snapshotRefreshConfig()
+			path := status.RepoPath(snapshot, source, repo, snapshot.Sources[source].Repos[repo])
+			app.cachedStatusConfig = snapshot
+			app.cachedStatus = []StatusResult{{Source: source, Repo: repo, Account: account, Path: path, State: tc.state.String()}}
+
+			app.probeUpstreamExistenceAsync()
+			app.refreshWG.Wait()
+			if check := app.statusNetwork[statusRepoKey{source, repo}]; check.existence.IsZero() {
+				t.Fatal("the definitive probe did not update its cached time")
+			}
+			published := events.named("status:updated")
+			if !tc.wantEvent {
+				if len(published) != 0 {
+					t.Fatalf("a timestamp the cloned row cannot show caused %d status updates", len(published))
+				}
+				return
+			}
+			if len(published) != 1 {
+				t.Fatalf("published %d status updates, want 1", len(published))
+			}
+			rows := published[0].args[0].([]StatusResult)
+			if len(rows) != 1 || rows[0].CheckedAt == "" {
+				t.Fatalf("status update omitted the visible check time: %+v", rows)
+			}
+		})
 	}
 }
 

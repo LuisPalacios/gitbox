@@ -12,6 +12,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
+	"github.com/LuisPalacios/gitbox/pkg/status"
 )
 
 const (
@@ -224,9 +225,14 @@ dispatch:
 }
 
 func (a *App) applyUpstreamProbe(snapshot *config.Config, results []upstreamProbeResult, revisions *upstreamProbeRevisions) bool {
+	if snapshot == nil || len(results) == 0 {
+		return false
+	}
+	a.refreshMu.Lock()
+	defer a.refreshMu.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if snapshot == nil || a.cfg == nil {
+	if a.cfg == nil {
 		return false
 	}
 	if !reflect.DeepEqual(a.cfg.Global.CredentialGCM, snapshot.Global.CredentialGCM) ||
@@ -236,6 +242,14 @@ func (a *App) applyUpstreamProbe(snapshot *config.Config, results []upstreamProb
 	}
 	if a.upstreamGone == nil {
 		a.upstreamGone = make(map[string]bool)
+	}
+	// Compare timestamp changes on the same local status cache the
+	// asynchronous probe will publish.
+	cachedRows := make(map[statusRepoKey]StatusResult)
+	if reflect.DeepEqual(a.cachedStatusConfig, snapshot) {
+		for _, row := range a.cachedStatus {
+			cachedRows[statusRepoKey{row.Source, row.Repo}] = row
+		}
 	}
 	changed := false
 	for _, result := range results {
@@ -267,9 +281,14 @@ func (a *App) applyUpstreamProbe(snapshot *config.Config, results []upstreamProb
 			if identity, ok := statusRepoIdentity(a.cfg, checkKey); ok && !result.checkedAt.IsZero() {
 				check := a.networkChecksFor(checkKey, identity)
 				if result.checkedAt.After(check.existence) {
+					row, cached := cachedRows[checkKey]
+					if gone {
+						row.State = status.UpstreamGone.String()
+					}
+					before := a.networkCheckedAt(row)
 					check.existence = result.checkedAt
 					a.statusNetwork[checkKey] = check
-					changed = true
+					changed = changed || (cached && before != a.networkCheckedAt(row))
 				}
 			}
 			if gone {
