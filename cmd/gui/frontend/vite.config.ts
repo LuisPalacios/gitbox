@@ -8,11 +8,17 @@ export default defineConfig({
   build: {
     rolldownOptions: {
       output: {
-        // The inlined logos (virtual:icons) get a chunk of their own, so the
-        // app chunk stays under the bundler's 500 kB warning as logos are
+        // The inlined logos (virtual:icons) and the English and Spanish text
+        // catalogs (lib/i18n.ts) get chunks of their own, so the app chunk
+        // stays under the bundler's 500 kB warning as logos and texts are
         // added. Everything ships inside the binary, so the split costs
         // nothing at load time.
-        codeSplitting: {groups: [{name: 'icons', test: /virtual:icons/}]},
+        codeSplitting: {
+          groups: [
+            {name: 'icons', test: /virtual:icons/},
+            {name: 'i18n', test: /src[\\/]lib[\\/]i18n\.ts$/},
+          ],
+        },
       },
     },
   },
