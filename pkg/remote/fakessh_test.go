@@ -403,3 +403,29 @@ func TestFakeUninstall(t *testing.T) {
 		}
 	})
 }
+
+// TestFakeStartAnswerAfterLongBanner pins a race: the start command exits
+// right after a short answer that follows a long banner, and that answer
+// must still be read after ssh has exited.
+func TestFakeStartAnswerAfterLongBanner(t *testing.T) {
+	f := newFake(t, fakeServer)
+	banner := filepath.Join(t.TempDir(), "banner")
+	if err := os.WriteFile(banner, []byte(strings.Repeat("noise\n", 40000)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FAKE_SSH_BANNER", banner)
+	r, err := newRunner("host", f.opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, err := newLayout("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 30 {
+		s, missing, err := r.start(ctx(t), l, f.build, f.pin, "serve")
+		if err != nil || !missing || s != nil {
+			t.Fatalf("start %d: missing %v, err %v\n%s", i, missing, err, strings.Join(f.log.Lines(), "\n"))
+		}
+	}
+}

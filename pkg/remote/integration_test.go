@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -521,14 +522,19 @@ func (k *killAt) Read(p []byte) (int, error) {
 
 func TestNoexecHome(t *testing.T) {
 	c := startContainer(t, ctOpts{noexecHome: true})
-	before := docker(t, "diff", c.id)
+	diff := func() string {
+		lines := strings.Split(docker(t, "diff", c.id), "\n")
+		slices.Sort(lines)
+		return strings.Join(lines, "\n")
+	}
+	before := diff()
 	s := c.client(t, "client-a", true)
 	err := s.dialErr(t)
 	if codeOf(err) != remote.CodeNoexec || !strings.Contains(err.Error(), "server_dir") {
 		s.dump(t)
 		t.Fatalf("err = %v, want noexec with the server_dir hint", err)
 	}
-	if after := docker(t, "diff", c.id); after != before {
+	if after := diff(); after != before {
 		t.Errorf("files changed outside the home:\nbefore:\n%s\nafter:\n%s", before, after)
 	}
 	if got := c.sh("ls -A /tmp"); got != "" {

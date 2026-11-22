@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -31,12 +32,13 @@ exec "$f" serve --stdio --client-id "$6"
 // Session is a running gitbox-server on a remote, verified against its pin
 // before it started.
 type Session struct {
-	r     *runner
-	probe Probe
-	cmd   *exec.Cmd
-	stdin io.WriteCloser
-	out   *bufio.Reader
-	errs  *tail
+	r      *runner
+	probe  Probe
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout *os.File // the read end of the server's stdout
+	out    *bufio.Reader
+	errs   *tail
 
 	done    chan struct{}
 	waitErr error
@@ -120,14 +122,21 @@ func (r *runner) start(ctx context.Context, l layout, build, pin, action string)
 	if err != nil {
 		return nil, false, err
 	}
-	stdout, err := cmd.StdoutPipe()
+	// The session owns the read end of stdout. With StdoutPipe, the Wait
+	// below would close it as soon as ssh exits, and a short answer still
+	// in the pipe after a long banner would be lost.
+	stdout, stdoutW, err := os.Pipe()
 	if err != nil {
 		return nil, false, err
 	}
-	s = &Session{r: r, cmd: cmd, stdin: stdin, errs: newTail(64 << 10), done: make(chan struct{})}
+	cmd.Stdout = stdoutW
+	s = &Session{r: r, cmd: cmd, stdin: stdin, stdout: stdout, errs: newTail(64 << 10), done: make(chan struct{})}
 	pr, pw := io.Pipe()
 	cmd.Stderr = pw
-	if err := cmd.Start(); err != nil {
+	err = cmd.Start()
+	_ = stdoutW.Close()
+	if err != nil {
+		_ = stdout.Close()
 		return nil, false, newError(CodeSSHMissing, "ssh could not be started")
 	}
 	go s.readStderr(pr)
@@ -153,6 +162,7 @@ func (r *runner) start(ctx context.Context, l layout, build, pin, action string)
 	fail := func(e *Error) (*Session, bool, error) {
 		s.kill()
 		<-s.done
+		_ = stdout.Close()
 		return nil, false, e
 	}
 	switch {
@@ -163,12 +173,14 @@ func (r *runner) start(ctx context.Context, l layout, build, pin, action string)
 	case !found || readErr != nil:
 		s.kill()
 		<-s.done
+		_ = stdout.Close()
 		return nil, false, s.exitError()
 	}
 	switch st {
 	case "missing":
 		_ = stdin.Close()
 		<-s.done
+		_ = stdout.Close()
 		return nil, true, nil
 	case "nohash":
 		return fail(newError(CodeNoHashTool, "%s has none of sha256sum, shasum or openssl to verify the server", r.alias))
@@ -288,6 +300,7 @@ func (s *Session) Close() error {
 			s.kill()
 			<-s.done
 		}
+		_ = s.stdout.Close()
 	})
 	return nil
 }
@@ -329,6 +342,7 @@ func Doctor(ctx context.Context, alias string, o Options) ([]byte, error) {
 	_ = s.stdin.Close()
 	report, rerr := io.ReadAll(io.LimitReader(s.out, maxParsed))
 	<-s.done
+	_ = s.stdout.Close()
 	if rerr != nil || s.waitErr != nil {
 		return nil, newError(CodeServerCrashed, "gitbox-server --doctor failed on %s", alias)
 	}
