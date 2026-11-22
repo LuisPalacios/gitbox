@@ -24,11 +24,21 @@ After any code change, always run the relevant tests:
 | Doctor / tool detection (`pkg/doctor/`)     | `go test ./pkg/doctor/`                            |
 | Server protocol (`pkg/rpc/`)                | `go test -race ./pkg/rpc/ ./cmd/gui/`              |
 | Embedded server (`cmd/gui/serverbin/`)      | `go test ./cmd/gui/...`                            |
+| SSH bootstrap (`pkg/remote/`)               | `go test -race ./pkg/remote/ ./cmd/gui/`           |
+| Server-side code (`gitboxserver` files)     | `go test -race -tags gitboxserver ./cmd/gui/`      |
 | Unsure what's affected                      | `go test ./...`                                    |
 
 `cmd/gui` tests (and `./...`) need `cmd/gui/frontend/dist` — build the frontend once if it is missing.
 
 The embedded binaries themselves only exist in a `serverbin` build. After `scripts/build-server.sh`, `go test -tags serverbin ./cmd/gui/serverbin/` reads each one back against its pin; the gate lanes run it.
+
+## Remote mode tests
+
+- `pkg/remote` unit tests run everywhere. `fakessh_test.go` points `remote.SetSSHPath` at a fake `ssh` that runs the real remote scripts with the local `sh` in a temp home (POSIX only); `export_test.go` holds the only hooks that add `-F` or wrap the upload, and `TestNoConfigOverrideInProduction` checks the production argv never does.
+- Files tagged `gitboxserver` (marker, server log) are tested with `go test -race -short -tags gitboxserver ./cmd/gui/`. A `cmd/gui` test that calls the window shell (`Startup`, `BeforeClose`, `SetViewMode`, the classification and DTO guards) carries `//go:build !gitboxserver`.
+- `TestRemoteLifecycle` (`remote_test.go`) builds a remote window's `App` with `remoteApp(t, dial)` and `pipeServer(t, path)`, a dialer that serves a real server over in-memory pipes. Swap `a.remote.dial` for failures and `a.checkAlias` for `ssh -G`.
+- The sshd integration tests (`pkg/remote/integration_test.go`, tag `sshd_integration`) run only through `scripts/remote-it.sh` on Linux with Docker: one fresh `gitbox-sshd` container per test on an `--internal` network, the server built with `e2e_sentinel` (its `ran.log` proves a file never ran). The gate runs them in its `remote-it` lane; this Mac has no Docker, so I run them on the `.env` Linux host from a scratch clone.
+- `remote_smoke_test.go` (tag `remote_smoke`) drives the client methods against a real host; it needs `scripts/build-server.sh` and `-ldflags "-X github.com/LuisPalacios/gitbox/cmd/gui.version=$VERSION -X github.com/LuisPalacios/gitbox/cmd/gui.commit=$COMMIT"`, because a test binary takes the stamp under the import path.
 
 ## Harness checks
 

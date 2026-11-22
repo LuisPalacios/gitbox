@@ -147,6 +147,7 @@ Copia el `~/.config/gitbox/gitbox.json` local a un remoto. Primero muestra un di
 | `ship.sh [short-name]`                  | Compila la GUI en cada remoto y la deja preparada para pruebas                 |
 | `smoke.sh [target]`                     | Smoke test no interactivo (`GitboxApp --version`)                              |
 | `gate.sh [--only/--skip lane]`          | Verifica HEAD en todos los carriles en paralelo ([Gate local](local-gate.md))  |
+| `remote-it.sh`                          | Pruebas de integración con sshd del modo remoto (Docker en Linux)              |
 | `test-commands.sh [target]`             | Imprime los comandos de lanzamiento en modo de prueba                          |
 | `run-commands.sh [target]`              | Imprime los comandos de lanzamiento en modo producción                         |
 | `setup-credentials.sh [target]`         | Verifica tokens y configura claves SSH en cada target                          |

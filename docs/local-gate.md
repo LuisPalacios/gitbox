@@ -1,6 +1,6 @@
 # Local gate
 
-`scripts/gate.sh` verifies one exact commit on macOS, Linux and Windows in parallel, on my own machines, and replaces the GitHub PR checks as the merge gate. This page explains how it works and how to reproduce it in another repository.
+`scripts/gate.sh` verifies one exact commit on macOS, Linux and Windows in parallel, plus the sshd integration tests of remote mode, on my own machines, and replaces the GitHub PR checks as the merge gate. This page explains how it works and how to reproduce it in another repository.
 
 ## Why I gate locally
 
@@ -21,13 +21,14 @@ A lane deletes its clone after a pass (`GATE_KEEP=1` keeps it) and keeps it afte
 
 ## What each lane runs
 
-Every lane builds the embedded frontend with `npm ci && npm run build`, builds the GUI with the Wails CLI version that CI pins (`go run github.com/wailsapp/wails/v2/cmd/wails@v2.16.0 build`), checks that the bindings that build regenerated match the committed ones, and checks the built executable.
+Every lane but remote-it builds the embedded frontend with `npm ci && npm run build`, builds the GUI with the Wails CLI version that CI pins (`go run github.com/wailsapp/wails/v2/cmd/wails@v2.16.0 build`), checks that the bindings that build regenerated match the committed ones, and checks the built executable.
 
-The build is the one a release makes. Each lane compiles the six `gitbox-server` binaries with `scripts/build-server.sh`, runs the test that reads each one back against its pinned SHA-256, and builds the GUI with `-tags serverbin` so that it carries them. `scripts/check-gui-artifact.sh` then fails the lane unless `GitboxApp --version` and `GitboxApp --list-server-targets` report exactly the version and commit of the lane's stamp with all six targets, and unless the main executable is within its ceiling in `scripts/size-ceilings.txt`.
+The build is the one a release makes. Each of those lanes compiles the six `gitbox-server` binaries with `scripts/build-server.sh`, runs the test that reads each one back against its pinned SHA-256, and builds the GUI with `-tags serverbin` so that it carries them. `scripts/check-gui-artifact.sh` then fails the lane unless `GitboxApp --version` and `GitboxApp --list-server-targets` report exactly the version and commit of the lane's stamp with all six targets, and unless the main executable is within its ceiling in `scripts/size-ceilings.txt`.
 
 - **mac:** `HEALTH_FUZZ=1 ./scripts/health.sh` (every checker, including vet and staticcheck for linux, darwin and windows, the unit tests, bootstrap fixtures, Markdown lint and the harness mirror check), plus both coordination suites. The build targets macOS 13 like the release.
 - **linux:** `go vet ./...`, `go test -short ./...` and `bash scripts/test-bootstrap.sh`, then the build with `-tags webkit2_41`.
 - **win:** both coordination suites, `go test -short ./...` and `bash scripts/test-bootstrap.sh`, then the build. The lane sets `core.autocrlf=false` and `core.longpaths=true` through `GIT_CONFIG_COUNT` for its own processes, so the host user's global Git config never changes.
+- **remote-it:** `bash scripts/remote-it.sh` on the linux lane's host, at the same time as the linux lane. It builds the `gitbox-sshd` image from `test/sshd`, builds a `linux/amd64` server with the `e2e_sentinel` tag, and runs `go test -race -tags sshd_integration ./pkg/remote/`: the bootstrap scenarios of remote mode, each against a fresh container on an internal Docker network. It builds no GUI. See [Testing › Remote mode tests](testing.md#remote-mode-tests).
 
 ## Hosts and prerequisites
 
@@ -35,13 +36,13 @@ The gate reads the hosts from `.env`, the same file as `ship.sh` and `smoke.sh` 
 
 ```bash
 SSH_WIN_HOST="user@windows-host"     # win lane (or SSH_WIN_INTEL_HOST)
-SSH_LINUX_HOST="user@linux-host"     # linux lane
+SSH_LINUX_HOST="user@linux-host"     # linux and remote-it lanes
 SSH_MAC_ARM_HOST=""                  # mac lane; empty when the gate runs on that Mac
 ```
 
 A linked worktree has no `.env` of its own, so the scripts fall back to the main clone's `.env`.
 
-Each host needs key-based SSH without prompts (`BatchMode`), `git`, Go, Node with npm, `ssh-keygen` from OpenSSH 8.2 or later for the bootstrap fixtures, and `bash` (Git Bash on Windows). The mac and win lanes also need `uv`. The mac lane runs the health check, so it needs the health tools from the [developer guide](developer-guide.md#health-check) (`shellcheck`, `actionlint`, `pnpm`). The Linux host needs the GTK 3 and WebKitGTK 4.1 development packages (`libgtk-3-dev libwebkit2gtk-4.1-dev` on Debian or Ubuntu). Debian works as well as Ubuntu; only the release AppImage depends on an Ubuntu base, and the release still builds on GitHub.
+Each host needs key-based SSH without prompts (`BatchMode`), `git`, Go, Node with npm, `ssh-keygen` from OpenSSH 8.2 or later for the bootstrap fixtures, and `bash` (Git Bash on Windows). The mac and win lanes also need `uv`. The mac lane runs the health check, so it needs the health tools from the [developer guide](developer-guide.md#health-check) (`shellcheck`, `actionlint`, `pnpm`). The Linux host needs the GTK 3 and WebKitGTK 4.1 development packages (`libgtk-3-dev libwebkit2gtk-4.1-dev` on Debian or Ubuntu). Debian works as well as Ubuntu; only the release AppImage depends on an Ubuntu base, and the release still builds on GitHub. The remote-it lane needs Docker on the Linux host, with the SSH user in the `docker` group; Docker Desktop on macOS cannot reach container IPs from the host, so that lane runs on Linux only. Its first run pulls `debian:bookworm-slim` and the OpenSSH and fish packages.
 
 The first run on a host downloads Go modules, npm packages and the Wails CLI. Later runs reuse those caches, which is where most of the speed comes from.
 
@@ -51,6 +52,7 @@ The first run on a host downloads Go modules, npm packages and the Wails CLI. La
 ./scripts/gate.sh                  # every lane
 ./scripts/gate.sh --only linux     # one lane (repeatable)
 ./scripts/gate.sh --skip win       # every lane but one (repeatable)
+./scripts/gate.sh --only remote-it # the sshd integration tests only
 ./scripts/gate.sh --report         # publish the HEAD marker as a commit status
 ```
 

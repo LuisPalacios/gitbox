@@ -21,6 +21,17 @@ const (
 	// remoteServerBuildMismatch: the binaries the app carries come from
 	// another build.
 	remoteServerBuildMismatch remoteCode = "server_build_mismatch"
+	// remoteNotConnected: a remote window called the backend before the
+	// connection was up, or after it ended.
+	remoteNotConnected remoteCode = "not_connected"
+	// remoteNotImplemented: the method has no remote side yet (#233).
+	remoteNotImplemented remoteCode = "not_implemented_remote"
+	// remoteServerCrashed: the server ended while connected.
+	remoteServerCrashed remoteCode = "server_crashed"
+	// remoteNotEnabled: remote mode is off on this machine.
+	remoteNotEnabled remoteCode = "not_enabled"
+	// remoteUnknownAlias: no remote with that alias is configured.
+	remoteUnknownAlias remoteCode = "unknown_alias"
 )
 
 // remoteError is a refusal of remote mode. Its text names builds and

@@ -8,6 +8,7 @@
 | ----------------------------- | ----------------------------------------------------------------------------- |
 | [GUI guide](gui-guide.md)     | Install, first launch, accounts, sync, actions, mirrors, containers, settings |
 | [Credentials](credentials.md) | GCM, token and SSH setup, token scopes, troubleshooting                       |
+| [Remote mode](remote-mode.md) | Experimental: repositories of another computer over SSH, setup, error codes   |
 
 ## For contributors
 

@@ -96,6 +96,7 @@ Estas reglas se cumplen en cada cambio. [architecture.md](architecture.md) expli
 - **Cada punto de entrada está clasificado.** Un método o evento nuevo de `App` necesita una fila en `cmd/gui/classification.go`; un método que hace trabajo también va en `Backend` (consulta [Costura del backend](architecture.md#costura-del-backend)).
 - **Los imports de Wails se quedan en archivos `!gitboxserver`.** El código que llama al runtime de Wails va en `shell.go` o en otro archivo con `//go:build !gitboxserver`, para que el build del servidor siga libre de Wails.
 - **El servidor responde a una lista cerrada.** Un método de `Backend` llega a un cliente remoto solo a través de `servedMethods` en `cmd/gui/server.go`, junto con una fila en la tabla de `TestBackendContract`. Un método que cambia estado en el host espera a la validación de sus parámetros.
+- **Los comandos remotos pasan por `pkg/remote`.** Es el único sitio que ejecuta `ssh`, siempre con la configuración del usuario intacta y `git.HideWindow`; un script remoto es una línea POSIX tras `sh -c`, y la salida analizada llega después del marcador `\0GBX\0` (consulta [Arranque por SSH](architecture.md#arranque-por-ssh)).
 - **Todo camino que construye la GUI hace los mismos cuatro pasos.** `scripts/stamp.sh`, `scripts/build-server.sh`, `wails build -tags serverbin` y `scripts/check-gui-artifact.sh`. Los carriles del gate, `ship.sh`, `release-macos.sh` y los jobs de GUI de CI los hacen; un camino nuevo también.
 
 ---
@@ -108,6 +109,8 @@ Inicio rápido:
 go test -short ./...    # pruebas unitarias (no necesitan preparación más allá de la carpeta dist del frontend)
 go test ./...           # todo (necesita test-gitbox.json para el escenario de pkg/ops)
 ```
+
+El arranque del modo remoto tiene sus propias pruebas de integración contra un `sshd` en contenedor: `scripts/remote-it.sh` las ejecuta en un host Linux con Docker, a partir de la imagen de `test/sshd`, y el gate lo ejecuta en su carril `remote-it` ([testing.md › Pruebas del modo remoto](testing.md#pruebas-del-modo-remoto)).
 
 Activo el pre-push hook una vez por clon con `git config core.hooksPath .githooks`. [testing.md](testing.md) cubre los niveles de prueba, el fixture, las pruebas del frontend y las checklists pre-PR y de release. Uso `/test-plan` en Claude Code o `$test-plan` en Codex para automatizar las comprobaciones pre-PR.
 

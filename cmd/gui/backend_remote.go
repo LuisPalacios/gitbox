@@ -21,32 +21,70 @@ import (
 // again on this side, and events with a name this build does not know are
 // dropped.
 type RemoteBackend struct {
-	client *rpc.Client
-	sink   func() EventSink
-	log    io.Writer
+	sink func() EventSink
+	log  io.Writer
 
 	mu      sync.Mutex
+	client  *rpc.Client // nil while not connected
 	lastErr error
 }
 
 var _ Backend = (*RemoteBackend)(nil)
 
+// newRemoteBackend returns a backend with no connection: every call fails
+// with not_connected until connect succeeds. sink says where the server's
+// events go.
+func newRemoteBackend(sink func() EventSink, log io.Writer) *RemoteBackend {
+	return &RemoteBackend{sink: sink, log: log}
+}
+
 // dialRemoteBackend runs the handshake with the server whose output is in
-// and whose input is out, and returns its backend. sink says where the
-// server's events go. The handshake fails unless the server is this same
-// build.
+// and whose input is out, and returns its backend. The handshake fails
+// unless the server is this same build.
 func dialRemoteBackend(in io.Reader, out io.WriteCloser, sink func() EventSink, log io.Writer) (*RemoteBackend, error) {
-	r := &RemoteBackend{sink: sink, log: log}
+	r := newRemoteBackend(sink, log)
+	if err := r.connect(in, out); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+// connect runs the handshake and attaches the connection.
+func (r *RemoteBackend) connect(in io.Reader, out io.WriteCloser) error {
 	client, err := rpc.Dial(in, out, rpc.ClientOptions{
 		Version: version, Commit: commit,
 		OnEvent: r.relayEvent,
-		Log:     log,
+		Log:     r.log,
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
+	r.mu.Lock()
+	old := r.client
 	r.client = client
-	return r, nil
+	r.mu.Unlock()
+	if old != nil {
+		_ = old.Close()
+	}
+	return nil
+}
+
+// detach ends the connection, which is the server's signal to stop, and
+// leaves the backend answering not_connected.
+func (r *RemoteBackend) detach() {
+	r.mu.Lock()
+	c := r.client
+	r.client = nil
+	r.mu.Unlock()
+	if c != nil {
+		_ = c.Close()
+	}
+}
+
+func (r *RemoteBackend) current() *rpc.Client {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.client
 }
 
 // The server loaded its own config and runs its own workers: there is
@@ -54,12 +92,24 @@ func dialRemoteBackend(in io.Reader, out io.WriteCloser, sink func() EventSink, 
 func (r *RemoteBackend) Init(context.Context) {}
 func (r *RemoteBackend) Start()               {}
 
-// Close ends the connection, which is the server's signal to stop.
-func (r *RemoteBackend) Close() { _ = r.client.Close() }
+// Close ends the connection.
+func (r *RemoteBackend) Close() { r.detach() }
+
+// Hello is what the server said about itself in the handshake, or the zero
+// value while not connected.
+func (r *RemoteBackend) Hello() rpc.Hello {
+	if c := r.current(); c != nil {
+		return c.Server()
+	}
+	return rpc.Hello{}
+}
 
 // ServerVersion is the server's build as it stated it in the handshake.
 func (r *RemoteBackend) ServerVersion() string {
-	hello := r.client.Server()
+	hello := r.Hello()
+	if hello.Version == "" && hello.Commit == "" {
+		return ""
+	}
 	return formatAppVersion(userText(hello.Version), userText(hello.Commit))
 }
 
@@ -77,11 +127,13 @@ func (r *RemoteBackend) logf(format string, args ...any) {
 	}
 }
 
-// relayEvent hands a server event to the window. The name must be one this
-// build emits itself; anything else is dropped.
+// relayEvent hands a server event to the window. The name must be a REMOTE
+// event this build emits itself; anything else is dropped, LOCAL events
+// such as remote:state or update:quit included, which only this process
+// may emit.
 func (r *RemoteBackend) relayEvent(name string, payload []json.RawMessage) {
-	if _, known := eventClass[name]; !known {
-		r.logf("dropping unknown event %q", userText(name))
+	if info, known := eventClass[name]; !known || info.Class != classRemote {
+		r.logf("dropping event %q, which a server may not send", userText(name))
 		return
 	}
 	items := make([]any, 0, len(payload))
@@ -98,14 +150,25 @@ func (r *RemoteBackend) relayEvent(name string, payload []json.RawMessage) {
 
 // invoke calls a method on the server. A method that changes state on the
 // host carries a request id, so a call that is sent twice takes effect once.
+// Before the connection and after it ends, every call fails with
+// not_connected; a method the server does not serve yet fails with
+// not_implemented_remote.
 func (r *RemoteBackend) invoke(method string, result any, args ...any) error {
+	client := r.current()
+	if client == nil {
+		return &remoteError{remoteNotConnected, "not connected to the remote"}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), remoteCallTimeout(method))
 	defer cancel()
 	var opts []rpc.CallOption
 	if methodClass[method].Mutating {
 		opts = append(opts, rpc.WithRequestID(newRequestID()))
 	}
-	return r.client.Call(ctx, method, args, result, opts...)
+	err := client.Call(ctx, method, args, result, opts...)
+	if rpc.IsCode(err, rpc.ErrCodeUnsupported) {
+		return &remoteError{remoteNotImplemented, method + " is not available in remote mode yet"}
+	}
+	return err
 }
 
 // remoteCallTimeout is how long a call may take: the bound of the work it

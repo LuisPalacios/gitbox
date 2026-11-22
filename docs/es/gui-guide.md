@@ -472,6 +472,7 @@ Haz clic en el **icono de engranaje** para abrir el panel de ajustes:
 - **Gitignore global** — la comprobación automática de `~/.gitignore_global` al arrancar (consulta [Aviso de gitignore global](#aviso-de-gitignore-global)).
 - **Comprobación del sistema** — **Ejecutar** abre un informe de cada herramienta externa que usa Gitbox (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add` y `wsl` en Windows): dónde está instalada, su versión y un comando de instalación para cualquier cosa ausente que tu config necesite. Cada herramienta se marca como ok, missing (requerida por tu config) u optional. El informe también lista los hallazgos de permisos del directorio y los archivos de credenciales, con la ruta, el problema y la acción sugerida. **Volver a comprobar** repite ambas comprobaciones sin cambiar permisos.
 - **Terminales** — **Gestor** abre el editor de perfiles de terminal (consulta [Editores y perfiles de terminal](#editores-y-perfiles-de-terminal)).
+- **Remotos** — experimental, solo aparece con el modo remoto activado (consulta [Remotos (experimental)](#remotos-experimental)).
 - **Versión** — la versión actual de la app.
 - **Autor** — el autor del proyecto y un enlace al repositorio de GitHub.
 
@@ -492,6 +493,17 @@ Abre **Ajustes** y luego **Cambiar** junto a **Raíces de clonado** para gestion
 Con dos o más raíces, un clonado explícito pregunta una vez adónde va: el **Clonar** de una fila (Simple: **Descargar**), **Buscar → Añadir y Pull** y los proyectos que eliges al añadir una cuenta. La opción por defecto es la raíz de la cuenta, y la cuenta la recuerda para su siguiente clonado. **Crear repositorio** muestra la misma opción como un campo. **Pull de todo** nunca pregunta: los clones ausentes van a la raíz de su cuenta.
 
 El mismo diálogo fija la **profundidad de escaneo anidado** para los [contenedores multi-repo](#contenedores-sin-archivo-de-workspace).
+
+### Remotos (experimental)
+
+El modo remoto gestiona los repositorios de otro ordenador por SSH. Viene desactivado: la opción `--experimental-remote` o `"experimental_remote": true` en `global` lo activan, y entonces Ajustes muestra **Remotos**.
+
+- **Añadir** — escribe el alias de `ssh_config` del host y, si su carpeta home no permite ejecutar programas, una carpeta del servidor. Gitbox comprueba el alias con `ssh -G`, que detecta una configuración de ssh rota pero no un host desconocido.
+- **Conectar** — abre el remoto en una ventana propia. La primera conexión instala `gitbox-server` en el host; después la ventana dice **Conectado a** el host, con **Desconectar**, **Ver registro** y **Desinstalar servidor**. Los repositorios del host llegan en una versión posterior.
+- **Desinstalar** — quita el servidor del host, tras una confirmación, y pregunta otra vez cuando otra ventana todavía lo usa.
+- **Quitar** — olvida el remoto en este ordenador.
+
+Antes, `ssh <alias>` tiene que entrar sin pedir nada. [Modo remoto](remote-mode.md) explica la configuración, qué se instala y dónde, el registro de conexión y cada código de error.
 
 ### Notificación de actualización
 

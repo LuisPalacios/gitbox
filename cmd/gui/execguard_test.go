@@ -22,6 +22,8 @@ var execAllowed = map[string]string{
 	"cmd/gui/app.go":             "opens files and folders with the system and launches editors",
 	"cmd/gui/profiles.go":        "launches terminals and shells",
 	"cmd/gui/server.go":          "gitbox-server --doctor runs a probe file to see whether the config folder allows execution",
+	"pkg/remote/ssh.go":          "runs the system ssh for remote mode, always with a hidden console window",
+	"cmd/gui/remote.go":          "starts the window of a remote: this GitboxApp with --remote",
 }
 
 // TestProcessesStartOnlyWhereAllowed fails when code outside the list starts
@@ -79,5 +81,56 @@ func TestProcessesStartOnlyWhereAllowed(t *testing.T) {
 	}
 	if len(found) == 0 {
 		t.Fatal("no process starts were found: the scan is broken")
+	}
+}
+
+// TestNoBareExecCommand fails when a process start in the remote-mode
+// packages does not hide its console window: each exec.Command there is
+// followed, in the same function, by git.HideWindow on the same command.
+func TestNoBareExecCommand(t *testing.T) {
+	root := filepath.Join("..", "..")
+	var files []string
+	for _, dir := range []string{"pkg/remote"} {
+		matches, err := filepath.Glob(filepath.Join(root, dir, "*.go"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range matches {
+			if !strings.HasSuffix(m, "_test.go") {
+				files = append(files, m)
+			}
+		}
+	}
+	if len(files) == 0 {
+		t.Fatal("no files found in pkg/remote: the scan is broken")
+	}
+	starts := 0
+	for _, file := range files {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.Split(string(data), "\n")
+		for i, line := range lines {
+			code, _, _ := strings.Cut(line, "//")
+			if !strings.Contains(code, "exec.Command(") && !strings.Contains(code, "exec.CommandContext(") {
+				continue
+			}
+			starts++
+			name, _, ok := strings.Cut(strings.TrimSpace(code), ":=")
+			name = strings.TrimSpace(name)
+			hidden := false
+			for _, next := range lines[i+1 : min(i+4, len(lines))] {
+				if ok && strings.Contains(next, "git.HideWindow("+name+")") {
+					hidden = true
+				}
+			}
+			if !hidden {
+				t.Errorf("%s:%d starts a process without git.HideWindow right after it:\n\t%s", file, i+1, strings.TrimSpace(line))
+			}
+		}
+	}
+	if starts == 0 {
+		t.Fatal("no process starts found in pkg/remote: the scan is broken")
 	}
 }

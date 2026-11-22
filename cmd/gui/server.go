@@ -104,6 +104,18 @@ func newRPCServer(a *App, log io.Writer) *rpc.Server {
 	return srv
 }
 
+// The installed gitbox-server (the gitboxserver build) sets these hooks; in
+// every other build, and when the binary is not installed under a server
+// root, serve runs without them.
+var (
+	// serverLog wraps the server's log, so it also lands in the rotating
+	// log file under the server root (server_logfile.go).
+	serverLog func(stderr io.Writer) io.Writer
+	// onServe runs when serving starts and returns what runs when it ends:
+	// the in-use marker and garbage collection (server_marker.go).
+	onServe func(clientID string, log io.Writer) (stop func())
+)
+
 // Exit codes of gitbox-server. A client tells a build mismatch (reinstall
 // the server) from every other failure by the code.
 const (
@@ -160,7 +172,14 @@ func serve(a *App, clientID string, stdin io.Reader, stdout, stderr io.Writer) i
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	srv := newRPCServer(a, stderr)
+	log := stderr
+	if serverLog != nil {
+		log = serverLog(stderr)
+	}
+	if onServe != nil {
+		defer onServe(clientID, log)()
+	}
+	srv := newRPCServer(a, log)
 	backend := a.be()
 	backend.Init(ctx)
 	// The background workers (harness watcher, upstream probes) stay off:
@@ -169,7 +188,7 @@ func serve(a *App, clientID string, stdin io.Reader, stdout, stderr io.Writer) i
 	defer backend.Close()
 
 	if clientID != "" {
-		fmt.Fprintf(stderr, "gitbox-server: serving client %s\n", clientID)
+		fmt.Fprintf(log, "gitbox-server: serving client %s\n", clientID)
 	}
 	switch err := srv.Serve(ctx, stdin, stdout); {
 	case err == nil:

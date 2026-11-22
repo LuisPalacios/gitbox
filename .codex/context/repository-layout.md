@@ -17,6 +17,7 @@ pkg/                      Shared Go library
   config/                 Config v5 model (clone roots in roots.go), load/save, v2→v3→v4→v5 migration
   credential/             Credential verification (GCM, SSH, token); global GCM helper check accepts any helper resolving to git-credential-manager (short name or absolute path)
   rpc/                    The JSON-RPC protocol between GitboxApp and gitbox-server: frames, handshake, server, client
+  remote/                 SSH bootstrap of remote mode: probe, install, verify, start, garbage collection, uninstall; system ssh only, user config untouched
   git/                    Git subprocess operations (os/exec); global config get/get-all/set/unset; incoming.go reads incoming commit history from local upstream refs
   provider/               Provider API clients + mirror interfaces (GitHub, GitLab, Gitea, Forgejo)
   mirror/                 Push/pull mirror setup, status, guides
@@ -62,6 +63,7 @@ scripts/
   smoke.sh                 Run `GitboxApp --version` locally and on staged remotes
   gate.sh                  Local merge gate: verify HEAD on macOS, Linux and Windows hosts in parallel; per-SHA marker, --report status
   gate-lane.sh             One gate lane, copied to each host: clean clone of the bundled commit + that platform's checks
+  remote-it.sh             sshd integration tests of remote mode (Docker on Linux); the gate's remote-it lane
   health.sh                Read-only run of every checker (gofmt, vet, staticcheck, modernize, govulncheck, deadcode, tests, svelte-check, frontend build warnings, npm ci warnings, npm audit, shellcheck, actionlint, markdownlint)
   test-commands.sh         Print GitboxApp --test-mode launch commands per platform
   run-commands.sh          Print GitboxApp launch commands per platform
@@ -71,6 +73,7 @@ scripts/
   release-macos.sh         Build the macOS zips and DMGs from a clean clone of a tag and add them to the draft release (--no-upload)
   sign-release.sh          Sign a draft release's checksums through the local SSH agent and publish it (--check, --dry-run); standalone, no .env
   demo-fleet/              Fake fleet + mock provider API + window capture for README screenshots (build.sh, run.sh, mock.py, shot.ps1)
+test/sshd/                The gitbox-sshd image of those tests: Debian slim, OpenSSH, fish, a key-only test user
 .githooks/pre-push        Pre-push hook (gofmt -s check + go vet + unit tests; builds the frontend if dist is missing)
 .claude/settings.json     Claude Code permission allowlist (hand-edited, not rendered)
 ai/                       Agent harness masters: the only hand-edited agent guidance

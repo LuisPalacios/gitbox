@@ -47,6 +47,10 @@ func (a *App) Shutdown(_ context.Context) {
 		// just killed.
 		_, _ = cmd.Process.Wait()
 	}
+	// A remote window stops its server: closing its input is the signal.
+	if a.remote != nil {
+		a.remote.disconnect()
+	}
 	// Stop the backend's workers before test cleanup removes the temp
 	// config dir, so a late pass can't recreate it via config.Save.
 	a.be().Close()
@@ -64,7 +68,8 @@ func (a *App) BeforeClose(_ context.Context) bool {
 	if x, y, w, h, ok := a.geometry(); ok {
 		ws := &config.WindowState{X: x, Y: y, Width: w, Height: h}
 		_ = a.clientPrefs().Update(func(p *config.ClientPrefs) {
-			p.SetWindow(a.remoteAlias, p.ViewMode == "compact", ws)
+			// A remote window has no compact view yet (#239).
+			p.SetWindow(a.remoteAlias, p.ViewMode == "compact" && a.windowMode != "remote", ws)
 		})
 	}
 	return false // don't prevent closing
@@ -90,6 +95,19 @@ func (a *App) DomReady(_ context.Context) {
 	// background workers. SyncProfiles still runs so the editor sees a
 	// fresh terminal/shell list, but upstream probing,
 	// update checks and editor/terminal sync are skipped.
+	// A remote window (#239) shows itself at once and connects in the
+	// background: Startup did no network work, so the window is never
+	// held up by ssh. It runs none of the local window's workers.
+	if a.windowMode == "remote" {
+		if w := a.savedWindowPos; w != nil && a.isPositionOnScreen(w.X, w.Y, w.Width, w.Height) {
+			wailsrt.WindowSetPosition(a.ctx, w.X, w.Y)
+		} else {
+			wailsrt.WindowCenter(a.ctx)
+		}
+		wailsrt.WindowShow(a.ctx)
+		a.remote.start()
+		return
+	}
 	if a.windowMode == "terminals" {
 		// Refresh the detected terminal/shell list before painting so the
 		// editor opens with a real table on first show.

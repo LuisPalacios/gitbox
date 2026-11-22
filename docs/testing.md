@@ -7,6 +7,7 @@ This guide covers the test levels, the `test-gitbox.json` fixture, and the check
 - **Package unit tests** — the Go tests under `pkg/`. They need no setup, no network and no provider, and isolate everything with `t.TempDir()` and `t.Setenv()`. The `pkg/ops` unit tests run against a temp `XDG_CONFIG_HOME`, a temp `GIT_CONFIG_GLOBAL` and a temp SSH folder, so nothing on the host changes.
 - **GUI tests** — the Go tests under `cmd/gui/`. They call `App` methods directly, without a Wails window. They need the compiled frontend in `cmd/gui/frontend/dist`, because the package embeds it.
 - **Frontend tests** — pure Node tests in `cmd/gui/frontend/src/lib/*.test.mjs`, run with `npm test`. They need neither Wails nor credentials.
+- **Remote mode integration tests** — `go test -tags sshd_integration ./pkg/remote/` against a containerized `sshd`, run by `scripts/remote-it.sh` on a Linux host with Docker. See [Remote mode tests](#remote-mode-tests).
 - **Scenario test** — `TestScenario_FullLifecycle` in `pkg/ops/scenario_test.go` drives the whole account lifecycle through `pkg/ops` against a real provider. It needs the fixture below, and `go test -short` skips it.
 
 `go test ./pkg/...` runs without the frontend build. Everything else under Go needs `cmd/gui/frontend/dist`; build it once:
@@ -51,6 +52,31 @@ go test ./pkg/config/ -run='^$' -fuzz='^FuzzDecodeRoundTrip$' -fuzztime=1m -para
 ```
 
 `FuzzDecodeRoundTrip` checks migrated config intent and stable serialization of preserved extension fields, `FuzzStripJSONC` checks stripping properties, `FuzzRepoPath` checks path resolution within its documented safe input domain, and `FuzzDecodeFrame` checks that the frame reader of the server protocol never panics or reserves more than its cap; [testing-reference.md](testing-reference.md#fuzz-properties) describes the assertions. Go saves a failing input under the target's `testdata/fuzz/` directory and prints a reproduction command. I keep the minimized input as a regression seed after fixing its cause; I do not copy the fuzz cache into the repository.
+
+## Remote mode tests
+
+The bootstrap of [remote mode](remote-mode.md) has three layers of tests.
+
+- **Unit tests** in `pkg/remote`, which every `go test -short` runs. They include `TestNoConfigOverrideInProduction` and a fake `ssh` that runs the real remote scripts with the local `sh` in a home folder of the test's own: install, hash checks, `noexec`, banners, uninstall and the refused roots. Windows skips the fake-ssh tests, which need a POSIX `sh`. `cmd/gui` adds `TestRemoteLifecycle`, which drives a remote window with a dialer that needs no ssh.
+- **The server build of `cmd/gui`.** `go test -race -short -tags gitboxserver ./cmd/gui/` runs the tests of the in-use marker and the rotating server log. Tests that need the window shell carry `//go:build !gitboxserver`, so this run compiles.
+- **sshd integration tests** behind the `sshd_integration` tag, in `pkg/remote/integration_test.go`:
+
+  ```bash
+  scripts/remote-it.sh                           # every scenario
+  GITBOX_IT_RUN=TestFishLoginShell scripts/remote-it.sh
+  ```
+
+  The script needs Docker on Linux. It builds the `gitbox-sshd` image from `test/sshd` (Debian slim with OpenSSH and fish, and a `test` user whose key lives outside the home) and a `linux/amd64` server with the `e2e_sentinel` tag, which appends a line to `$HOME/.gitbox-e2e/ran.log` on every start. Each test starts its own container on an `--internal` Docker network, with no route out, and connects through the real `ssh` with a config file and a `known_hosts` of its own, filled from the container's host key. "Never executed" means the line count of `ran.log` did not change. The local gate runs it in its `remote-it` lane.
+
+A remote smoke drives the client methods against a real host from my machine, with a temporary config: add, connect, log, doctor, disconnect and uninstall. It needs a build that carries its server and a scratch `server_dir`:
+
+```bash
+eval "$(scripts/stamp.sh)" && scripts/build-server.sh
+pkg=github.com/LuisPalacios/gitbox/cmd/gui
+GITBOX_SMOKE_ALIAS=my-server GITBOX_SMOKE_SERVER_DIR='~/.cache/gitbox-smoke' \
+  go test -tags serverbin,remote_smoke -run TestRemoteSmoke -v \
+  -ldflags "-X $pkg.version=$VERSION -X $pkg.commit=$COMMIT" ./cmd/gui/
+```
 
 ## Pre-push hook
 

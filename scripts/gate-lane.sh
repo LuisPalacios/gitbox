@@ -8,7 +8,7 @@
 # so it never touches a working checkout. It never runs from the repo itself.
 #
 # Usage:
-#   bash gate-lane.sh <mac|linux|win> <sha> <bundle>
+#   bash gate-lane.sh <mac|linux|win|remote-it> <sha> <bundle>
 #
 # Lanes:
 #   mac    frontend, scripts/health.sh (HEALTH_FUZZ=1), coordination suites,
@@ -17,8 +17,10 @@
 #          server binaries, Wails build (webkit2_41), artifact check
 #   win    frontend, coordination suites, go test -short, bootstrap fixtures,
 #          server binaries, Wails build, artifact check
+#   remote-it  the sshd integration tests of remote mode (scripts/remote-it.sh);
+#          needs Docker on a Linux host, and builds no GUI
 #
-# Every lane builds GitboxApp the way a release does: with the six
+# Every lane but remote-it builds GitboxApp the way a release does: with the six
 # gitbox-server binaries inside (scripts/build-server.sh, -tags serverbin),
 # checked for identity and size by scripts/check-gui-artifact.sh.
 #
@@ -28,12 +30,12 @@
 set -euo pipefail
 
 if [[ $# -ne 3 ]]; then
-    echo "usage: bash gate-lane.sh <mac|linux|win> <sha> <bundle>" >&2
+    echo "usage: bash gate-lane.sh <mac|linux|win|remote-it> <sha> <bundle>" >&2
     exit 2
 fi
 lane="$1" sha="$2" bundle="$3"
 case "$lane" in
-    mac|linux|win) ;;
+    mac|linux|win|remote-it) ;;
     *) echo "unknown lane: $lane" >&2; exit 2 ;;
 esac
 
@@ -166,9 +168,18 @@ artifact() {
         "$exe" "$(go env GOOS)/$(go env GOARCH)"
 }
 
+remote_it() { bash scripts/remote-it.sh; }
+
 printf 'lane %s on %s, commit %s\n' "$lane" "$(uname -sm)" "$sha"
 step "checkout" checkout
 cd "$work"
+if [[ "$lane" == "remote-it" ]]; then
+    step "remote-it" remote_it
+    cd "$cache"
+    [[ "${GATE_KEEP:-}" == "1" ]] || rm -rf "$work"
+    printf '\nlane %s passed\n' "$lane"
+    exit 0
+fi
 # One identity for the whole lane, taken before any step changes the tree.
 GITBOX_VERSION="$(git describe --tags --always)-gate"
 export GITBOX_VERSION GITBOX_SERVER_TARGETS=all

@@ -472,6 +472,7 @@ Click the **gear icon** to open the settings panel:
 - **Global gitignore** — the automatic startup check of `~/.gitignore_global` (see [Global gitignore warning](#global-gitignore-warning)).
 - **System check** — **Run** opens a report of every external tool Gitbox uses (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, and `wsl` on Windows): where it's installed, its version, and an install command for anything missing that your config needs. Each tool reads ok, missing (required by your config) or optional. The report also lists credential-directory and file permission findings, with the path, problem and suggested action. **Re-check** repeats both checks without changing permissions.
 - **Terminals** — **Manager** opens the terminal profile editor (see [Editors and terminal profiles](#editors-and-terminal-profiles)).
+- **Remotes** — experimental, shown only when remote mode is on (see [Remotes (experimental)](#remotes-experimental)).
 - **Version** — the current app version.
 - **Author** — the project author and a link to the GitHub repository.
 
@@ -492,6 +493,17 @@ Open **Settings**, then **Change** next to **Clone roots**, to manage them. Each
 With two or more roots, an explicit clone asks once where it goes: a row's **Clone** (Simple: **Download**), **Find → Add & Pull**, and the projects you pick when you add an account. The choice defaults to the account's root, and the account remembers it for its next clone. **Create repository** shows the same choice as a field. **Pull all** never asks: missing clones go to their account's root.
 
 The same dialog sets the **nested scan depth** for [multi-repo containers](#containers-without-a-workspace-file).
+
+### Remotes (experimental)
+
+Remote mode manages the repositories of another computer over SSH. It is off by default: the `--experimental-remote` flag or `"experimental_remote": true` in `global` turns it on, and then Settings shows **Remotes**.
+
+- **Add** — type the `ssh_config` alias of the host and, if the home folder there does not allow programs to run, a server folder. Gitbox checks the alias with `ssh -G`, which catches a broken ssh config but not an unknown host.
+- **Connect** — opens the remote in a window of its own. The first connection installs `gitbox-server` on the host; the window then says **Connected to** the host, with **Disconnect**, **Show log** and **Uninstall server**. The repositories of the host come in a later version.
+- **Uninstall** — removes the server from the host, after a confirmation, and asks again when another window still uses it.
+- **Remove** — forgets the remote on this computer.
+
+`ssh <alias>` must log in without any prompt first. [Remote mode](remote-mode.md) covers the setup, what is installed and where, the connection log and every error code.
 
 ### Update notification
 

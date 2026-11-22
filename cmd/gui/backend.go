@@ -364,11 +364,13 @@ func (a *App) be() Backend {
 	return a.backend
 }
 
-// selectBackend picks the Backend for the main window. Without the
-// --experimental-remote flag only the local backend can be built. With it,
-// the result is still local: RemoteBackend exists, but nothing can reach a
-// gitbox-server until the SSH connection lands (#233).
+// selectBackend picks the Backend of a window. Without the
+// --experimental-remote flag only the local backend can be built. With it, a
+// remote window (#239) gets the RemoteBackend of its session, which answers
+// not_connected until the connection is up; every other window stays local.
 func selectBackend(a *App, experimentalRemote bool) Backend {
-	_ = experimentalRemote
+	if experimentalRemote && a.remote != nil {
+		return a.remote.backend
+	}
 	return localBackend{a}
 }

@@ -56,6 +56,13 @@ type App struct {
 	// remoteAlias names the remote this window shows; empty is the local
 	// window. It selects where the window geometry is stored.
 	remoteAlias string
+	// remote is the connection of a remote window (remote.go); nil in the
+	// local window.
+	remote *remoteSession
+	// experimentalRemote is set by --experimental-remote.
+	experimentalRemote bool
+	// checkAlias replaces ssh -G in tests; nil runs it.
+	checkAlias func(ctx context.Context, alias string) error
 	// windowGeom reads the window position and size; nil asks Wails. Tests
 	// set it to run without a Wails runtime.
 	windowGeom         func() (x, y, w, h int, ok bool)
@@ -458,6 +465,8 @@ type StartupSnapshot struct {
 	// ServerVersion is the build of the gitbox-server this window talks
 	// to, as it stated it in the handshake. Empty in a local window.
 	ServerVersion string `json:"serverVersion,omitempty"`
+	// RemoteAlias is the remote this window shows. Empty in a local window.
+	RemoteAlias string `json:"remoteAlias,omitempty"`
 }
 
 // GetStartupSnapshot keeps preferences, configured rows and nesting consistent
@@ -472,6 +481,7 @@ func (a *App) GetStartupSnapshot() (StartupSnapshot, error) {
 		snap.AppVersion = a.getAppVersionLocal()
 		snap.ServerVersion = remote.ServerVersion()
 	}
+	snap.RemoteAlias = a.remoteAlias
 	return snap, nil
 }
 
