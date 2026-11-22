@@ -8,6 +8,7 @@ import (
 	"slices"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
@@ -147,7 +148,7 @@ func TestSchedule_FetchDoesNotChangeUpstreamAfterCredentialSwitchOrCancel(t *tes
 				if err := config.Save(a.cfg, a.cfgPath); err != nil {
 					t.Fatal(err)
 				}
-				a.markUpstreamGone(source, repo, true)
+				a.recordFetchStatus(a.snapshotRefreshConfig(), source, repo, true, time.Now())
 				before := a.snapshotProbeRevisions()
 				fetch := testutil.NewBarrier()
 				defer fetch.Release()

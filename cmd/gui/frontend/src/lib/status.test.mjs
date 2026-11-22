@@ -101,6 +101,9 @@ test('I label every Simple status by its kind', () => {
   assert.deepEqual(label('dirty'), { key: 'simple.wip', note: 'simple.wipSafe', noteVars: { n: 3 }, short: 'simple.wipShort', shortVars: { n: 3 }, color: 'dirty', badges: false });
   assert.equal(s.statusLabel({ status: 'dirty', modified: 1 }, true).note, 'simple.wipSafeOne');
   assert.equal(s.statusLabel({ status: 'dirty', modified: 1 }, true).short, 'simple.wipShortOne');
+  assert.equal(s.simpleKind('no upstream', false), 'saved');
+  assert.equal(s.simpleKind('no upstream', true), 'unpushed');
+  assert.deepEqual(s.statusLabel({ status: 'no upstream', isDefault: false }, true), { key: 'repo.localBranch', color: 'clean', badges: false });
   assert.ok(STATUSES.filter((x) => x !== 'dirty').every((x) => !label(x).short));
   assert.equal(label('ahead').color, 'ahead');
   assert.ok(STATUSES.every((x) => !label(x).badges));
@@ -113,7 +116,7 @@ test('I describe account health with its words and fix action per mode', () => {
   assert.deepEqual(pick(s.accountHealth('warning', false)), ['warn', '◆', 'dirty', 'health.warning', 'change', 'health.fix.change', false]);
   assert.deepEqual(pick(s.accountHealth('warning', true)), ['warn', '◆', 'dirty', 'health.warningSimple', null, '', false]);
   assert.deepEqual(pick(s.accountHealth('offline', false)), ['bad', '✕', 'error', 'health.offline', 'retry', 'health.fix.retry', true]);
-  assert.deepEqual(pick(s.accountHealth('offline', true)), ['bad', '✕', 'error', 'health.offlineSimple', 'retry', 'health.fix.retrySimple', true]);
+  assert.deepEqual(pick(s.accountHealth('offline', true)), ['bad', '✕', 'error', 'simple.connectionCheck', 'retry', 'health.fix.retrySimple', true]);
   assert.deepEqual(pick(s.accountHealth('error', false)), ['bad', '✕', 'error', 'health.error', 'change', 'health.fix.change', true]);
   assert.deepEqual(pick(s.accountHealth('error', true)), ['bad', '✕', 'error', 'health.errorSimple', 'reconnect', 'health.fix.reconnect', true]);
   assert.deepEqual(pick(s.accountHealth('none', false)), ['none', '○', 'ahead', 'health.none', 'setup', 'health.fix.setup', true]);
@@ -140,4 +143,16 @@ test('I warn about a working token within 14 days of its expiry', () => {
   for (const x of ['warning', 'offline', 'error', 'none', 'unknown']) {
     assert.deepEqual(s.accountHealth(x, false, inDays(3), now), s.accountHealth(x, false), x);
   }
+});
+
+
+test('I format the age of a known network check in the current language', () => {
+  const checkedAt = '2026-01-01T00:00:00Z';
+  const checked = Date.parse(checkedAt);
+  assert.equal(s.checkedAgo(checkedAt, 'en', checked), 'now');
+  assert.equal(s.checkedAgo(checkedAt, 'en', checked + 60_000), '1 minute ago');
+  assert.equal(s.checkedAgo(checkedAt, 'es', checked + 60_000), 'hace 1 minuto');
+  assert.equal(s.checkedAgo(checkedAt, 'en', checked + 3_600_000), '1 hour ago');
+  assert.equal(s.checkedAgo(checkedAt, 'en', checked + 86_400_000), 'yesterday');
+  assert.equal(s.checkedAgo('unknown', 'en', checked), null);
 });

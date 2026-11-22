@@ -51,11 +51,11 @@
   import { openExternal, openRepoExternal } from '../external';
   import { pushNotice, errorText } from '../notices';
   import { accounts, repoStates, prSettings, prsByAccount, lookupPRSummary, sources, workspaceMembers, workspaceUnknown, workspaceDiagnostics, isSynced, themeStore } from '../stores';
-  import { statusColor, simpleKind, simpleColor, rowBusy, rowGlyph, statusLabel, attentionRank, CALM_RANK, COUNT_BADGES } from '../status';
+  import { statusColor, simpleKind, simpleColor, rowBusy, rowGlyph, statusLabel, checkedAgo, attentionRank, CALM_RANK, COUNT_BADGES } from '../status';
   import type { SimpleKind } from '../status';
-  import { t } from '../i18n';
+  import { t, languageStore } from '../i18n';
   import { ro, remoteOff } from '../ro';
-  import { remoteHost } from '../stores';
+  import { remoteHost, statusClock } from '../stores';
   import { editorOff } from '../remotehost';
   import { onActivateKey } from '../keyboard';
   import LauncherMenu from '../LauncherMenu.svelte';
@@ -253,7 +253,7 @@
       case 'inProgress': return $t('pull.skipInProgress');
       case 'settingsChanged': return $t('pull.skipSettingsChanged');
     }
-    if (simple) return simpleTip(simpleKind(state.status), state);
+    if (simple) return simpleTip(simpleKind(state.status, state.isDefault), state);
     if (state.status === 'dirty') return $t('status.changesTip', { m: state.modified || 0, u: state.untracked || 0 });
     return '';
   }
@@ -272,7 +272,7 @@
 <!-- The status in the glossary words, with its dimmed note. A label with a
      short form swaps to it in a narrow row, so the count stays visible. -->
 {#snippet words()}
-  <span class="status-text" style="color: {sc(label.color)}" title={labelTip(state)}>{#if label.short}<span class="words-full">{$t(label.key, label.vars)}{#if label.note}<span class="safe-note">&nbsp;{$t(label.note, label.noteVars)}</span>{/if}</span><span class="words-short">{$t(label.short, label.shortVars)}</span>{:else}{$t(label.key, label.vars)}{#if label.note}<span class="safe-note">&nbsp;{$t(label.note, label.noteVars)}</span>{/if}{/if}</span>
+  <span class="status-text" style="color: {sc(label.color)}" title={labelTip(state) || $t(label.key, label.vars)}>{#if label.short}<span class="words-full">{$t(label.key, label.vars)}{#if label.note}<span class="safe-note">&nbsp;{$t(label.note, label.noteVars)}</span>{/if}</span><span class="words-short">{$t(label.short, label.shortVars)}</span>{:else}{$t(label.key, label.vars)}{#if label.note}<span class="safe-note">&nbsp;{$t(label.note, label.noteVars)}</span>{/if}{/if}</span>
 {/snippet}
 
 <!-- After the name: the account pill, the parent tag and a folded parent's
@@ -377,7 +377,7 @@
 {/snippet}
 
 <div class="repo-row" class:repo-row-clickable={rowOpensDetail}
-  class:repo-row-nested={depth > 0} class:calm
+  class:repo-row-nested={depth > 0} class:simple-row={simple} class:calm
   style="--depth: {depth}"
   role="button"
   tabindex={rowOpensDetail ? 0 : -1}
@@ -390,8 +390,11 @@
   {/if}
   {#if simple}
     <!-- Simple row (issue #124): dot, short name, one sentence, one button, ⋯ -->
-    {@const kind = simpleKind(state.status)}
+    {@const kind = simpleKind(state.status, state.isDefault)}
     {@const kindColor = simpleColor(kind, $themeStore)}
+    {@const checkedAt = state.checkedAt}
+    {@const ago = checkedAt && (kind === 'update' || kind === 'online' || kind === 'help')
+      ? checkedAgo(checkedAt, $languageStore, $statusClock) : null}
     {#if childCount > 0}{@render foldChevron()}{:else}<span class="dot" class:spinning={busy} style="color: {kindColor}">{busy ? '↻' : '●'}</span>{/if}
     {#if childCount > 0 && !rowOpensDetail}
       <span class="repo-name" class:ws-member={inWorkspace} title={repoName}><span class="repo-name-toggle" role="button" tabindex="-1"
@@ -409,7 +412,13 @@
       <span class="progress-pct" style="color:{kindColor}">{state.progress}%</span>
     {:else}
       {@render prBadges()}
-      {@render words()}
+      <span class="simple-status">
+        {@render words()}
+        {#if checkedAt && ago}
+          <time class="last-checked" datetime={checkedAt}
+            title={new Date(checkedAt).toLocaleString($languageStore)}>{$t('simple.lastChecked', { ago })}</time>
+        {/if}
+      </span>
       {#if kind === 'update'}
         <button use:ro class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)} title={$t('simple.updateTip')}>{$t('simple.btnUpdate')}</button>
       {:else if kind === 'online'}
@@ -583,6 +592,9 @@
   .status-text { font-size: 12px; white-space: nowrap; font-weight: 600; display: inline-flex; align-items: center; }
   .safe-note { color: var(--text-muted); font-weight: 500; }
   .words-short { display: none; }
+  .simple-status { display: flex; flex-direction: column; min-width: 0; }
+  .simple-status .status-text, .last-checked { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .last-checked { font-size: 11px; color: var(--text-muted); }
   .btn-tag { font-size: 10px; color: var(--text-muted); border-left: 1px solid var(--border); padding-left: 6px; margin-left: 2px; }
   /* A narrow content area (small window with the sidebar open): text gives
      way before the actions, so the launchers and ⋯ never get pushed out.
@@ -594,7 +606,7 @@
     .repo-name { min-width: 3.5rem; }
     .safe-note, .btn-tag, .words-full { display: none; }
     .words-short { display: inline; }
-    .repo-row.calm .status-text { display: none; }
+    .repo-row.calm:not(.simple-row) .status-text { display: none; }
     .status-text, .container-badge, .branch-badge { min-width: 0; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; }
   }
   .acct-pill {

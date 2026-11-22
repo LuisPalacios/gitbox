@@ -110,20 +110,22 @@ Cierra cualquier diálogo con **Escape** o haciendo clic fuera de él. Los diál
 
 ### Modos Simple y Avanzado
 
-Gitbox tiene dos experiencias. **Simple** es para quien no conoce git y solo quiere sus proyectos a salvo. **Avanzado** muestra cada detalle y herramienta de git. Cambia de modo con el interruptor de la barra superior, a la izquierda del engranaje de ajustes: gris es Simple, rojo es Avanzado, el modo con poder destructivo. Las instalaciones nuevas empiezan en Simple; las configs anteriores a este ajuste se quedan en Avanzado. La elección se guarda como `global.ui_mode` en `gitbox.json`.
+Gitbox tiene dos experiencias. **Simple** muestra el estado de los proyectos y las acciones en lenguaje sencillo. **Avanzado** muestra cada detalle y herramienta de git. Cambia de modo con el interruptor de la barra superior, a la izquierda del engranaje de ajustes: gris es Simple, rojo es Avanzado, el modo con poder destructivo. Las instalaciones nuevas empiezan en Simple; las configs anteriores a este ajuste se quedan en Avanzado. La elección se guarda como `global.ui_mode` en `gitbox.json`.
 
-En Simple, cada proyecto responde a una pregunta, "¿está a salvo mi trabajo?", con uno de seis estados:
+En Simple, cada proyecto muestra lo que Gitbox ha observado y cuándo hay que actuar.
 
-- **Guardado** — todo está en el servidor.
-- **Trabajo en curso · N archivos a salvo aquí** — archivos cambiados en este ordenador que todavía no están en el servidor. Abre el proyecto con tu IA y pídele que los guarde.
-- **Guardado aquí, sin subir** — cambios guardados que no han llegado al servidor. Pasa el ratón por encima para ver el detalle.
-- **Versión nueva en línea** — el servidor tiene trabajo más nuevo. **Actualizar** solo añade la versión nueva y nunca toca tu trabajo. Gitbox nunca actualiza por su cuenta.
+- **Sin cambios locales** — el proyecto no tiene archivos cambiados en este ordenador.
+- **Cambios en este ordenador · N archivos cambiados aquí** — Gitbox ha encontrado archivos cambiados en este ordenador. Abre el proyecto con tu IA y pídele que los guarde.
+- **Guardado aquí, aún no en el servidor** — los cambios guardados van por delante de la última versión conocida del servidor. Pasa el ratón por encima para ver el detalle. Una rama local independiente puede mostrar **Rama local**.
+- **Actualización disponible** — Gitbox ha visto trabajo más reciente en el servidor. **Actualizar** incorpora ese trabajo al proyecto cuando puede conservar tus cambios locales. Gitbox nunca actualiza por su cuenta.
 - **Solo en línea** — el proyecto aún no está en este ordenador. **Descargar** lo trae.
-- **Necesita ayuda** — algo ha ido mal, por ejemplo cambiaron las dos copias. Haz clic en el proyecto para ver qué pasa, y ábrelo con tu IA para arreglarlo.
+- **Necesita ayuda** — algo ha ido mal, por ejemplo cambiaron las dos copias. Haz clic en el proyecto para ver qué ha ocurrido y ábrelo con tu IA para arreglarlo.
+
+Cuando una fila con **Actualización disponible**, **Solo en línea** o **Necesita ayuda** muestra un resultado conocido del servidor, indica cuándo lo comprobó Gitbox. Pasa el ratón sobre ese texto para ver la fecha y la hora de la comprobación.
 
 Los nombres se muestran sin el prefijo de la organización; pasa el ratón sobre un nombre para verlo completo. Las filas mantienen los tres [botones de lanzamiento](#acciones-de-clones), y el menú ⋯ ofrece Abrir en la web, la carpeta, los editores, los AI harnesses y **Borrar de este ordenador…**.
 
-Simple oculta el resto: la vista Mirrors, el modo borrar, los botones de vista compacta y de tema (el tema sigue en Ajustes), las insignias de contenedor y de rama, los conteos por delante, por detrás y de cambios, y el botón de fetch de cada fila. La barra superior mantiene **Comprobar todo** y **Actualizar todo**. La salud de la cuenta se lee en palabras sencillas, y **Reconectar** aparece cuando una credencial se rompe. Ajustes oculta las filas Configuración, PR / revisiones, Gitignore global y Terminales. La vista compacta es igual en los dos modos.
+Simple oculta el resto: la vista Mirrors, el modo borrar, los botones de vista compacta y de tema (el tema sigue en Ajustes), las insignias de contenedor y de rama, los conteos por delante, por detrás y de cambios, y el botón de fetch de cada fila. La barra superior mantiene **Comprobar todo** y **Actualizar todo**. La salud de la cuenta muestra **Hay que revisar la conexión** cuando no se puede llegar al servidor y **Reconectar** cuando una credencial falla. Ajustes oculta las filas Configuración, PR / revisiones, Gitignore global y Terminales. La vista compacta es igual en los dos modos.
 
 Con los indicadores de PR activados, Simple muestra **Revisión pendiente** cuando alguien te pide una revisión. Haz clic en el texto para ver las solicitudes. Avanzado muestra insignias con los conteos de tus PR abiertos (📝) y de los PR que esperan tu revisión (👀).
 
@@ -131,7 +133,7 @@ Con los indicadores de PR activados, Simple muestra **Revisión pendiente** cuan
 
 La vista completa muestra la barra superior, la barra lateral, la vista seleccionada y el footer de resumen. La barra superior contiene los anillos de salud y los botones Pull de todo, Fetch de todo, Modo borrar, Vista compacta, tema, Simple/Avanzado y Ajustes; el logo de GitBox del extremo izquierdo pliega la barra lateral. El footer de resumen siempre muestra los conteos de repos y de mirrors.
 
-El anillo de repos lleva un icono de rama y se llena a medida que los clones se ponen al día (en Simple, a medida que los proyectos se guardan). Una pequeña insignia cuenta lo que aún falta, y al pasar el ratón sobre el anillo se ve la línea completa `N de total al día` (Simple: `N de total guardados`). Cuando el anillo tiene algo pendiente, al hacer clic se abre **Requiere atención** (Simple: **Te necesitan**). Avanzado añade un [anillo de mirrors](#anillo-de-salud-de-mirror) cuando hay mirrors configurados.
+El anillo de repos lleva un icono de rama y se llena a medida que los clones se ponen al día. Una pequeña insignia cuenta lo que aún falta, y al pasar el ratón sobre el anillo se ve la línea completa `N de total al día` (Simple: `Sin acciones pendientes en N de total`). Cuando el anillo tiene algo pendiente, al hacer clic se abre **Requiere atención** (Simple: **Te necesitan**). Avanzado añade un [anillo de mirrors](#anillo-de-salud-de-mirror) cuando hay mirrors configurados.
 
 La ventana se abre con 1040 px de ancho la primera vez y puede encogerse hasta 640 × 480. No crece más allá de la barra lateral más 1100 px de contenido, y al plegar la barra lateral su ancho pasa al contenido.
 
@@ -139,7 +141,7 @@ La ventana se abre con 1040 px de ancho la primera vez y puede encogerse hasta 6
 
 La barra lateral de la izquierda elige qué muestra el área principal:
 
-- **Requiere atención** (Simple: **Te necesitan**) — primero las cuentas cuya credencial necesita un arreglo, cada una con su botón de arreglo, y después cada repo que te necesita, agrupados como necesita ayuda, trabajo local, por detrás y no clonado. Dentro de cada grupo, las filas quedan bajo una cabecera por cuenta, en orden alfabético. Un contenedor anida los clones que tiene al lado, como en Todos los repos; un clon cuyo contenedor está en otro grupo muestra una etiqueta "en \<parent\>". Una fila que pasa a estar bien mientras miras, después de un pull por ejemplo, se queda en su sitio, atenuada, hasta que sales de la vista. Cuando nada te necesita, la vista lo dice.
+- **Requiere atención** (Simple: **Te necesitan**) — primero las cuentas cuya credencial necesita un arreglo, cada una con su botón de arreglo, y después cada repo que te necesita, agrupados como necesita ayuda, trabajo local, por detrás y no clonado. En Simple esos grupos se llaman **Necesita ayuda**, **Cambios locales**, **Actualizaciones encontradas** y **Solo en línea**. Dentro de cada grupo, las filas quedan bajo una cabecera por cuenta, en orden alfabético. Un contenedor anida los clones que tiene al lado, como en Todos los repos; un clon cuyo contenedor está en otro grupo muestra una etiqueta "en \<parent\>". Una fila que pasa a estar bien mientras miras, después de un pull por ejemplo, se queda en su sitio, atenuada, hasta que sales de la vista. Cuando nada te necesita, la vista lo dice.
 - **Todos los repos** (Simple: **Todos los proyectos**) — cada clon, agrupado por cuenta, en orden alfabético.
 - **Cuentas** — una entrada por cuenta con el logo de su proveedor, una pequeña marca de salud, su nombre, su salud en palabras y cuántos repos te necesitan. Haz clic en una para abrir la vista de la cuenta.
 - **Más** — bajo el separador inferior, todo lo que no es una cuenta:

@@ -157,6 +157,7 @@ export interface StatusResult {
   error?: string;
   branch?: string;
   isDefault?: boolean;
+  checkedAt?: string;
 }
 
 export interface DiscoverResult {
@@ -191,6 +192,7 @@ export interface RepoState {
   error?: string;
   branch?: string;
   isDefault?: boolean;
+  checkedAt?: string;
   pullSkipped?: PullSkipReason;
 }
 

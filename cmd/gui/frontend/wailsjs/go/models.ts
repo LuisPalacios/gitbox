@@ -1705,6 +1705,7 @@ export namespace main {
 	    error?: string;
 	    branch?: string;
 	    isDefault?: boolean;
+	    checkedAt?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new StatusResult(source);
@@ -1725,6 +1726,7 @@ export namespace main {
 	        this.error = source["error"];
 	        this.branch = source["branch"];
 	        this.isDefault = source["isDefault"];
+	        this.checkedAt = source["checkedAt"];
 	    }
 	}
 	export class SweepDeleteDTO {

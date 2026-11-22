@@ -43,6 +43,24 @@ test('I keep the same keys and placeholders in English and Spanish', async () =>
   assert.deepEqual(empty, [], 'empty translations');
 });
 
+test('I describe observed changes and updates in Simple attention and summaries', async () => {
+  const { en, es } = await loadCatalogs();
+  const labels = [
+    ['attention.group.localSimple', 'Local changes', 'Cambios locales'],
+    ['attention.group.behindSimple', 'Updates found', 'Actualizaciones encontradas'],
+    ['attention.emptyDetailSimple', 'Projects and connections that need attention appear here.',
+      'Aquí aparecen los proyectos y las conexiones que requieren atención.'],
+    ['result.newerOnline', 'Updates found for {n}', 'Se encontraron actualizaciones en {n}'],
+    ['simple.updateN', 'Updates found for {n}', 'Se encontraron actualizaciones en {n}'],
+    ['simple.wipN', '{n} with local changes', '{n} con cambios locales'],
+    ['simple.savedTip', 'No action needed for {n} of {total}', 'Sin acciones pendientes en {n} de {total}'],
+  ];
+  for (const [key, english, spanish] of labels) {
+    assert.equal(en.get(key), english, key);
+    assert.equal(es.get(key), spanish, key);
+  }
+});
+
 // ── Source files ──
 async function sourceFiles(dir, exts) {
   const out = [];

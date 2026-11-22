@@ -124,6 +124,7 @@ type App struct {
 	// the next periodic sync rather than persist a potentially-stale fact.
 	upstreamGone       map[string]bool
 	upstreamRevision   map[string]uint64
+	statusNetwork      map[statusRepoKey]statusNetworkChecks // guarded by mu
 	credentialRevision map[string]uint64
 	prs                prRefreshState
 
@@ -1802,22 +1803,28 @@ type WindowStateDTO struct {
 
 // StatusResult is the frontend-friendly repo status.
 type StatusResult struct {
-	Source    string `json:"source"`
-	Repo      string `json:"repo"`
-	Account   string `json:"account"`
-	Path      string `json:"path"`
-	State     string `json:"state"`
-	Ahead     int    `json:"ahead"`
-	Behind    int    `json:"behind"`
-	Modified  int    `json:"modified"`
-	Untracked int    `json:"untracked"`
-	Conflicts int    `json:"conflicts"`
-	Error     string `json:"error,omitempty"`
-	Branch    string `json:"branch,omitempty"`
-	IsDefault bool   `json:"isDefault,omitempty"`
+	Source       string `json:"source"`
+	Repo         string `json:"repo"`
+	Account      string `json:"account"`
+	Path         string `json:"path"`
+	State        string `json:"state"`
+	Ahead        int    `json:"ahead"`
+	Behind       int    `json:"behind"`
+	Modified     int    `json:"modified"`
+	Untracked    int    `json:"untracked"`
+	Conflicts    int    `json:"conflicts"`
+	Error        string `json:"error,omitempty"`
+	Branch       string `json:"branch,omitempty"`
+	IsDefault    *bool  `json:"isDefault,omitempty"`
+	CheckedAt    string `json:"checkedAt,omitempty"`
+	sweepStarted time.Time
 }
 
 func toStatusResult(rs status.RepoStatus) StatusResult {
+	var isDefault *bool
+	if rs.DefaultKnown {
+		isDefault = &rs.IsDefault
+	}
 	return StatusResult{
 		Source:    rs.Source,
 		Repo:      rs.Repo,
@@ -1831,27 +1838,7 @@ func toStatusResult(rs status.RepoStatus) StatusResult {
 		Conflicts: rs.Conflicts,
 		Error:     rs.ErrorMsg,
 		Branch:    rs.Branch,
-		IsDefault: rs.IsDefault,
-	}
-}
-
-// markUpstreamGone records that a repo's remote was confirmed missing.
-// Thread-safe; callers should not hold a.mu.
-func (a *App) markUpstreamGone(sourceKey, repoKey string, gone bool) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.upstreamGone == nil {
-		a.upstreamGone = make(map[string]bool)
-	}
-	key := sourceKey + "/" + repoKey
-	if a.upstreamRevision == nil {
-		a.upstreamRevision = make(map[string]uint64)
-	}
-	a.upstreamRevision[key]++
-	if gone {
-		a.upstreamGone[key] = true
-	} else {
-		delete(a.upstreamGone, key)
+		IsDefault: isDefault,
 	}
 }
 

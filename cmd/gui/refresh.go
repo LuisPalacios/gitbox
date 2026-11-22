@@ -174,10 +174,17 @@ func (a *App) overlayStatus(local []StatusResult) []StatusResult {
 	copy(out, local)
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for i := range out {
-		if a.upstreamGone[out[i].Source+"/"+out[i].Repo] {
-			out[i].State = status.UpstreamGone.String()
+	for key, check := range a.statusNetwork {
+		if live, ok := statusRepoIdentity(a.cfg, key); !ok || live != check.identity {
+			delete(a.statusNetwork, key)
 		}
+	}
+	for i := range out {
+		row := &out[i]
+		if a.upstreamGone[row.Source+"/"+row.Repo] {
+			row.State = status.UpstreamGone.String()
+		}
+		row.CheckedAt = a.networkCheckedAt(*row)
 	}
 	return out
 }
@@ -212,10 +219,12 @@ func (a *App) requestStatus(emit, dirty bool) *statusFlight {
 			if a.refreshHooks != nil && a.refreshHooks.status != nil {
 				check = a.refreshHooks.status
 			}
+			sweepStarted := time.Now()
 			raw := check(cfg)
 			local := make([]StatusResult, len(raw))
 			for i, r := range raw {
 				local[i] = toStatusResult(r)
+				local[i].sweepStarted = sweepStarted
 			}
 			current := a.snapshotRefreshConfig()
 			a.refreshMu.Lock()
@@ -422,12 +431,8 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 			payload["upstreamGone"] = true
 		}
 	}
-	if a.sameRefreshRepo(cfg, source, repo) {
-		if err == nil {
-			a.markUpstreamGone(source, repo, false)
-		} else if git.IsUpstreamGoneError(err) {
-			a.markUpstreamGone(source, repo, true)
-		}
+	if (err == nil || git.IsUpstreamGoneError(err)) && a.sameRefreshRepo(cfg, source, repo) {
+		a.recordFetchStatus(cfg, source, repo, err != nil, time.Now())
 	}
 	a.sink().Emit("fetch:done", payload)
 	return err

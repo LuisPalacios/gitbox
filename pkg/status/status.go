@@ -92,19 +92,20 @@ func (s State) Symbol() string {
 
 // RepoStatus holds the full status of a single repository.
 type RepoStatus struct {
-	Account   string `json:"account"`
-	Source    string `json:"source"`
-	Repo      string `json:"repo"`
-	Path      string `json:"path"`
-	State     State  `json:"state"`
-	Ahead     int    `json:"ahead,omitempty"`
-	Behind    int    `json:"behind,omitempty"`
-	Modified  int    `json:"modified,omitempty"`
-	Untracked int    `json:"untracked,omitempty"`
-	Conflicts int    `json:"conflicts,omitempty"`
-	ErrorMsg  string `json:"error,omitempty"`
-	Branch    string `json:"branch,omitempty"`     // Current branch name (or "(detached)")
-	IsDefault bool   `json:"is_default,omitempty"` // True when current branch is the repo's default branch
+	Account      string `json:"account"`
+	Source       string `json:"source"`
+	Repo         string `json:"repo"`
+	Path         string `json:"path"`
+	State        State  `json:"state"`
+	Ahead        int    `json:"ahead,omitempty"`
+	Behind       int    `json:"behind,omitempty"`
+	Modified     int    `json:"modified,omitempty"`
+	Untracked    int    `json:"untracked,omitempty"`
+	Conflicts    int    `json:"conflicts,omitempty"`
+	ErrorMsg     string `json:"error,omitempty"`
+	Branch       string `json:"branch,omitempty"`     // Current branch name (or "(detached)")
+	IsDefault    bool   `json:"is_default,omitempty"` // True when current branch is the repo's default branch
+	DefaultKnown bool   `json:"-"`
 }
 
 // Check determines the sync status of a single repo at the given path.
@@ -140,6 +141,7 @@ func CheckContext(ctx context.Context, repoPath string) RepoStatus {
 	if st.Branch != "" && st.Branch != "(detached)" {
 		if def, err := git.DefaultBranchContext(ctx, repoPath); err == nil {
 			rs.IsDefault = st.Branch == def
+			rs.DefaultKnown = true
 		}
 	}
 
