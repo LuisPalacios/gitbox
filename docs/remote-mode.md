@@ -2,7 +2,7 @@
 
 Remote mode lets GitboxApp on my laptop manage the repositories of another computer over SSH, such as a headless Linux server. GitboxApp installs a matching `gitbox-server` on that host by itself: no root, no internet on the host, no listening port. The design follows VS Code Remote-SSH.
 
-This version connects, installs, verifies and uninstalls the server, shows the repositories of the host read-only, and opens its folders in my local editor, terminal and AI harnesses. Changing anything on the host comes in a later version. Only Linux hosts are supported for now; macOS and Windows hosts follow.
+This version connects, installs, verifies and uninstalls the server, shows the repositories of the host, changes its config, and opens its folders in my local editor, terminal and AI harnesses. Cloning, pulling and the other repository actions, and setting up credentials on the host, come in later versions. Only Linux hosts are supported for now; macOS and Windows hosts follow.
 
 ## Before I start: an alias that needs no prompt
 
@@ -42,11 +42,11 @@ GitboxApp checks the alias with `ssh -G <alias>`, which reads the configuration 
 
 **Connect** opens the remote in a window of its own: a new GitboxApp process started as `GitboxApp --remote <alias> --experimental-remote`. A second **Connect** brings the open window to the front. The remote window keeps running when I close the main window.
 
-The window appears at once and connects in the background. It reads **Connecting to my-server…** and **Installing gitbox on my-server…** on the first connection, with **Disconnect**, **Show log** and **Uninstall server**. Until the repositories arrive, it follows the light or dark theme of the system. When the server answers, the window shows the repositories of the host, read-only: see [What works read-only](#what-works-read-only). Its title stays `gitbox · my-server`.
+The window appears at once and connects in the background. It reads **Connecting to my-server…** and **Installing gitbox on my-server…** on the first connection, with **Disconnect**, **Show log** and **Uninstall server**. Until the repositories arrive, it follows the light or dark theme of the system. When the server answers, the window shows the repositories of the host: see [What a remote window can do](#what-a-remote-window-can-do). Its title stays `gitbox · my-server`.
 
 `--remote` without `--experimental-remote` exits with a message.
 
-## What works read-only
+## What a remote window can do
 
 The remote window is the full gitbox window, fed by the host. It needs a host that already has a `gitbox.json` with working credentials, for example a computer that also runs GitboxApp. A host without one keeps the connection card, which says so; setting it up from here comes in a later version.
 
@@ -58,11 +58,22 @@ These work, all run on the host:
 - credential checks, the sweep preview and the move preflight;
 - **System check**, which shows the tools of the host;
 - opening a repository or account folder of the host in VS Code, a terminal profile or an AI harness of this computer: see [Opening the host's folders](#opening-the-hosts-folders);
-- the **Roots** window, which lists the host's roots and takes a folder typed for the host: see [Typing a folder of the host](#typing-a-folder-of-the-host).
+- the **Roots** window, which takes a folder typed for the host: see [Typing a folder of the host](#typing-a-folder-of-the-host).
+
+These change the host's config, and also run there:
+
+- editing, renaming and deleting an account;
+- adding, removing and choosing the default root, and the nested scan depth;
+- mirror groups and their repositories;
+- adding discovered repositories to the config, without cloning them, and ignoring a clone;
+- the settings that live in the host's `gitbox.json`, such as the pull request badges and the global gitignore check;
+- the fixes of the host's git config (the global identity, the GCM helper and the global gitignore);
+- repairing a broken `gitbox.json` or restoring one of its backups.
 
 These are disabled, with the tooltip "Read-only remote (coming in a later version)":
 
-- everything that changes the host: adding, editing or deleting accounts, cloning, pulling, adding discovered repositories, mirrors, roots, credential setup, the sweep and the move, and the settings that live in the host's `gitbox.json`;
+- cloning, pulling, deleting, creating and moving repositories, the sweep, mirror setup, adoption and the reconcile;
+- adding an account and every credential setup, which need credentials on the host;
 - the compact view, and autostart.
 
 These have no remote equivalent, so they are disabled with the tooltip "Not available for remote hosts": **Reveal in Finder** or **Reveal in Explorer**, opening the account folder, and **Open in Editor** of the config file in Settings.
@@ -71,7 +82,7 @@ My own preferences, such as language, theme, Simple or Advanced, the sidebar and
 
 ### Typing a folder of the host
 
-A remote window never opens the folder dialog: it would pick a folder of this computer. Onboarding and the **Roots** window show a text field instead. I type a folder of the host, such as `~/git` or `/srv/git`, and 300 ms after I stop typing the host says what it resolves to: the absolute path, that it will be created, that it is a file, or that it cannot be written. The button stays off until the folder can be used. Adding a root from a remote window comes in a later version; the field already resolves the path.
+A remote window never opens the folder dialog: it would pick a folder of this computer. Onboarding and the **Roots** window show a text field instead. I type a folder of the host, such as `~/git` or `/srv/git`, and 300 ms after I stop typing the host says what it resolves to: the absolute path, that it will be created, that it is a file, or that it cannot be written. The button stays off until the folder can be used.
 
 The host checks every folder itself, whatever the window sent: it must be an absolute path once `~` is expanded, with no control characters, or the action fails with `remote_path_invalid`. Restoring a backup takes only a file of the backup list.
 
@@ -79,11 +90,11 @@ The host checks every folder itself, whatever the window sent: it must be an abs
 
 Several processes can save the host's `gitbox.json`: my windows, a GitboxApp running on the host and its terminals window. A save never overwrites a change another one made since I read the file. Instead it fails with "The settings changed in another window or process and were reloaded. Try again.", and the window shows what is in the file now. A change of my own preferences never fails this way.
 
-The server itself runs read-only. It saves nothing to the host's `gitbox.json`: a refused save fails with `read_only`, and the AI harness detection on the host keeps what it finds in memory. The window asks the host to detect its harnesses again when it gets focus, and shows what the host has. Fetch updates only the remote-tracking branches. In this version it also skips the repair of each clone's `.git/config` that a local fetch runs first, and the server log says so once; a later version lifts this. A collapsed account or repository stays collapsed in this window only.
+If the connection drops while a change is being saved, the host's `gitbox.json` holds either the old version or the new one, never a mix: the file is replaced in one step. A change sent twice, for example after a timeout, is applied once: the host answers a repeat with the first answer, and after a reconnect a change that is already there fails with "That already exists" or "That no longer exists" instead of applying again. The AI harness detection on the host saves what it finds, and the window asks the host to detect its harnesses again when it gets focus. Fetch updates only the remote-tracking branches. In this version it also skips the repair of each clone's `.git/config` that a local fetch runs first, and the server log says so once; a later version lifts this. A collapsed account or repository stays collapsed in this window only.
 
 ### The badge and the connection
 
-The title bar shows a badge with the alias, the system of the host in Advanced mode, the connection state and **Read-only**. Clicking it opens the connection log.
+The title bar shows a badge with the alias, the system of the host in Advanced mode, the connection state and **Limited**, because some actions come in later versions. Clicking it opens the connection log.
 
 When the connection drops, the window keeps the last state it got, dimmed and inert, under **Disconnected from my-server.** and a **Connect** button. While it is disconnected, the window starts no background reload or periodic check, so no other error appears. **Connect** runs the same connection again, clears what the disconnection left behind and reloads everything.
 
@@ -218,7 +229,7 @@ Simple mode shows a plain sentence; the code itself appears in the log.
 - `not_available_remote`: the action has no remote equivalent, such as the file manager.
 - `not_available_remote_path`: the folder is not a valid absolute path of the host, or a layer on this computer cannot carry it safely.
 - `harness_not_allowed`: the AI harness is not one of the catalog, or it has arguments.
-- `read_only`: the remote is read-only, so the action would change the host. A later version allows it.
+- `read_only`: this remote does not serve the action yet, such as a clone or a credential setup. A later version allows it.
 - `remote_path_invalid`: the folder is not an absolute path of the host, or it holds a control character.
 
 ## Windows and macOS clients

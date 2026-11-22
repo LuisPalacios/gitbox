@@ -2,7 +2,7 @@
 
 El modo remoto deja que GitboxApp, en mi portátil, gestione los repositorios de otro ordenador por SSH, como un servidor Linux sin escritorio. GitboxApp instala por sí mismo un `gitbox-server` que coincide con él en ese host: sin root, sin internet en el host y sin ningún puerto a la escucha. El diseño sigue a VS Code Remote-SSH.
 
-Esta versión conecta, instala, verifica y desinstala el servidor, muestra los repositorios del host en solo lectura y abre sus carpetas en mi editor, mi terminal y mis harnesses de IA locales. Cambiar algo en el host llega en una versión posterior. Por ahora solo se admiten hosts Linux; los hosts macOS y Windows llegan después.
+Esta versión conecta, instala, verifica y desinstala el servidor, muestra los repositorios del host, cambia su configuración y abre sus carpetas en mi editor, mi terminal y mis harnesses de IA locales. Clonar, actualizar y las demás acciones sobre repositorios, y configurar credenciales en el host, llegan en versiones posteriores. Por ahora solo se admiten hosts Linux; los hosts macOS y Windows llegan después.
 
 ## Antes de empezar: un alias que no pida nada
 
@@ -42,11 +42,11 @@ GitboxApp comprueba el alias con `ssh -G <alias>`, que lee la configuración sin
 
 **Conectar** abre el remoto en una ventana propia: un proceso nuevo de GitboxApp arrancado como `GitboxApp --remote <alias> --experimental-remote`. Un segundo **Conectar** trae al frente la ventana abierta. La ventana del remoto sigue abierta cuando cierro la ventana principal.
 
-La ventana aparece enseguida y conecta en segundo plano. Dice **Conectando con my-server…** e **Instalando gitbox en my-server…** en la primera conexión, con **Desconectar**, **Ver registro** y **Desinstalar servidor**. Hasta que lleguen los repositorios, sigue el tema claro u oscuro del sistema. Cuando el servidor responde, la ventana muestra los repositorios del host en solo lectura: consulta [Qué funciona en solo lectura](#qué-funciona-en-solo-lectura). Su título sigue siendo `gitbox · my-server`.
+La ventana aparece enseguida y conecta en segundo plano. Dice **Conectando con my-server…** e **Instalando gitbox en my-server…** en la primera conexión, con **Desconectar**, **Ver registro** y **Desinstalar servidor**. Hasta que lleguen los repositorios, sigue el tema claro u oscuro del sistema. Cuando el servidor responde, la ventana muestra los repositorios del host: consulta [Qué puede hacer una ventana remota](#qué-puede-hacer-una-ventana-remota). Su título sigue siendo `gitbox · my-server`.
 
 `--remote` sin `--experimental-remote` sale con un mensaje.
 
-## Qué funciona en solo lectura
+## Qué puede hacer una ventana remota
 
 La ventana del remoto es la ventana completa de gitbox, alimentada por el host. Necesita un host que ya tenga un `gitbox.json` con credenciales que funcionen, por ejemplo un ordenador que también ejecuta GitboxApp. Un host sin él se queda en la tarjeta de conexión, que lo dice; configurarlo desde aquí llega en una versión posterior.
 
@@ -58,11 +58,22 @@ Esto funciona, y todo se ejecuta en el host:
 - las comprobaciones de credenciales, la vista previa de la limpieza y la comprobación previa del traslado;
 - **Comprobación del sistema**, que muestra las herramientas del host;
 - abrir una carpeta de repositorio o de cuenta del host en VS Code, un perfil de terminal o un harness de IA de este ordenador: consulta [Abrir las carpetas del host](#abrir-las-carpetas-del-host);
-- la ventana de **Raíces**, que lista las raíces del host y acepta una carpeta escrita para el host: consulta [Escribir una carpeta del host](#escribir-una-carpeta-del-host).
+- la ventana de **Raíces**, que acepta una carpeta escrita para el host: consulta [Escribir una carpeta del host](#escribir-una-carpeta-del-host).
+
+Esto cambia la configuración del host, y también se ejecuta allí:
+
+- editar, renombrar y borrar una cuenta;
+- añadir y quitar raíces, elegir la raíz predeterminada y la profundidad de búsqueda anidada;
+- los grupos de espejos y sus repositorios;
+- añadir repositorios descubiertos a la configuración, sin clonarlos, e ignorar un clon;
+- los ajustes que viven en el `gitbox.json` del host, como las insignias de pull requests y la comprobación del gitignore global;
+- los arreglos de la configuración de git del host (la identidad global, el helper de GCM y el gitignore global);
+- reparar un `gitbox.json` roto o restaurar una de sus copias de seguridad.
 
 Esto está desactivado, con el aviso «Remoto de solo lectura (llega en una versión posterior)»:
 
-- todo lo que cambia el host: añadir, editar o borrar cuentas, clonar, actualizar, añadir repositorios descubiertos, espejos, raíces, la configuración de credenciales, la limpieza y el traslado, y los ajustes que viven en el `gitbox.json` del host;
+- clonar, actualizar, borrar, crear y trasladar repositorios, la limpieza, la configuración de espejos, la adopción y la reconciliación;
+- añadir una cuenta y cualquier configuración de credenciales, que necesitan credenciales en el host;
 - la vista compacta y el arranque automático.
 
 Esto no tiene equivalente remoto, así que está desactivado con el aviso «No disponible para hosts remotos»: **Mostrar en Finder** o **Mostrar en el Explorador**, abrir la carpeta de la cuenta y **Abrir en editor** del archivo de configuración en Ajustes.
@@ -71,7 +82,7 @@ Mis propias preferencias, como el idioma, el tema, Simple o Avanzado, la barra l
 
 ### Escribir una carpeta del host
 
-Una ventana remota nunca abre el diálogo de carpetas: elegiría una carpeta de este ordenador. El onboarding y la ventana de **Raíces** muestran en su lugar un campo de texto. Escribo una carpeta del host, como `~/git` o `/srv/git`, y 300 ms después de dejar de escribir el host dice a qué corresponde: la ruta absoluta, que se creará, que es un archivo o que no se puede escribir en ella. El botón sigue desactivado hasta que la carpeta se puede usar. Añadir una raíz desde una ventana remota llega en una versión posterior; el campo ya resuelve la ruta.
+Una ventana remota nunca abre el diálogo de carpetas: elegiría una carpeta de este ordenador. El onboarding y la ventana de **Raíces** muestran en su lugar un campo de texto. Escribo una carpeta del host, como `~/git` o `/srv/git`, y 300 ms después de dejar de escribir el host dice a qué corresponde: la ruta absoluta, que se creará, que es un archivo o que no se puede escribir en ella. El botón sigue desactivado hasta que la carpeta se puede usar.
 
 El host comprueba cada carpeta por sí mismo, envíe lo que envíe la ventana: debe ser una ruta absoluta una vez expandido `~`, sin caracteres de control, o la acción falla con `remote_path_invalid`. Restaurar una copia de seguridad solo acepta un archivo de la lista de copias.
 
@@ -79,11 +90,11 @@ El host comprueba cada carpeta por sí mismo, envíe lo que envíe la ventana: d
 
 Varios procesos pueden guardar el `gitbox.json` del host: mis ventanas, un GitboxApp que se ejecuta en el host y su ventana de terminales. Un guardado nunca sobrescribe un cambio que otro hizo desde que leí el archivo. En su lugar falla con «La configuración cambió en otra ventana o proceso y se ha recargado. Inténtalo de nuevo.», y la ventana muestra lo que hay ahora en el archivo. Un cambio de mis propias preferencias nunca falla así.
 
-El propio servidor funciona en solo lectura. No guarda nada en el `gitbox.json` del host: un guardado rechazado falla con `read_only`, y la detección de harnesses de IA del host guarda lo que encuentra en memoria. La ventana pide al host que vuelva a detectar sus harnesses cuando recupera el foco, y muestra los que tiene el host. El fetch solo actualiza las ramas de seguimiento remoto. En esta versión además se salta la reparación del `.git/config` de cada clon que un fetch local hace antes, y el registro del servidor lo dice una vez; una versión posterior lo quita. Una cuenta o un repositorio plegado sigue plegado solo en esta ventana.
+Si la conexión se cae mientras se guarda un cambio, el `gitbox.json` del host contiene la versión anterior o la nueva, nunca una mezcla: el archivo se sustituye de una vez. Un cambio enviado dos veces, por ejemplo tras agotarse el tiempo, se aplica una sola vez: el host responde a la repetición con la primera respuesta, y tras una reconexión un cambio que ya está hecho falla con «Eso ya existe» o «Eso ya no existe» en lugar de aplicarse otra vez. La detección de harnesses de IA del host guarda lo que encuentra, y la ventana pide al host que vuelva a detectar sus harnesses cuando recupera el foco. El fetch solo actualiza las ramas de seguimiento remoto. En esta versión además se salta la reparación del `.git/config` de cada clon que un fetch local hace antes, y el registro del servidor lo dice una vez; una versión posterior lo quita. Una cuenta o un repositorio plegado sigue plegado solo en esta ventana.
 
 ### La insignia y la conexión
 
-La barra de título muestra una insignia con el alias, el sistema del host en el modo avanzado, el estado de la conexión y **Solo lectura**. Al hacer clic se abre el registro de conexión.
+La barra de título muestra una insignia con el alias, el sistema del host en el modo avanzado, el estado de la conexión y **Limitado**, porque algunas acciones llegan en versiones posteriores. Al hacer clic se abre el registro de conexión.
 
 Cuando la conexión se cae, la ventana conserva el último estado que recibió, atenuado e inactivo, bajo **Desconectado de my-server.** y un botón **Conectar**. Mientras está desconectada, la ventana no lanza ninguna recarga en segundo plano ni la comprobación periódica, así que no aparece ningún otro error. **Conectar** vuelve a hacer la misma conexión, borra lo que dejó la desconexión y recarga todo.
 
@@ -218,7 +229,7 @@ El modo simple muestra una frase sencilla; el código en sí aparece en el regis
 - `not_available_remote`: la acción no tiene equivalente remoto, como el gestor de archivos.
 - `not_available_remote_path`: la carpeta no es una ruta absoluta válida del host, o una capa de este ordenador no puede llevarla con seguridad.
 - `harness_not_allowed`: el harness de IA no es del catálogo, o lleva argumentos.
-- `read_only`: el remoto es de solo lectura, así que la acción cambiaría el host. Una versión posterior lo permite.
+- `read_only`: este remoto aún no ofrece la acción, como un clonado o una configuración de credenciales. Una versión posterior lo permite.
 - `remote_path_invalid`: la carpeta no es una ruta absoluta del host, o contiene un carácter de control.
 
 ## Clientes Windows y macOS
