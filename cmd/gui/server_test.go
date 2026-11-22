@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -160,7 +161,10 @@ func TestServerKeepsHostPrefs(t *testing.T) {
 		path := hostConfig(t, "dark")
 		var a *App
 		if server {
+			// A server that saves, as P5 runs it: until then the server is
+			// read-only (TestReadOnlyServerSavesNothing).
 			a = newServerApp(path)
+			a.readOnly = false
 			newRPCServer(a, io.Discard)
 		} else {
 			a = &App{cfgPath: path}
@@ -317,4 +321,93 @@ func TestServeExitCodes(t *testing.T) {
 			t.Errorf("exit %d for a different build, want %d", code, serverExitMismatch)
 		}
 	})
+}
+
+// A server runs read-only until P5 (#240): its background workers run, and
+// what the harness watcher detects reaches the client as an event, but
+// neither it nor a refused save changes the host's gitbox.json.
+func TestReadOnlyServerSavesNothing(t *testing.T) {
+	if len(knownAIHarnesses) == 0 {
+		t.Skip("no known harness to detect")
+	}
+	// Detection finds a harness the host's config does not list, so a
+	// background save would change the file.
+	stubHarnessLookup(t, map[string]string{knownAIHarnesses[0].Command: "/opt/bin/" + knownAIHarnesses[0].Command})
+	path := contractConfig(t)
+	before := stamp(t, path)
+
+	host := newServerApp(path)
+	c2sR, c2sW := io.Pipe()
+	s2cR, s2cW := io.Pipe()
+	var serverLog lockedBuffer
+	served := make(chan int, 1)
+	go func() {
+		code := serve(host, "", c2sR, s2cW, &serverLog)
+		_ = s2cW.Close()
+		served <- code
+	}()
+	events := &recordingSink{}
+	remote, err := dialRemoteBackend(s2cR, c2sW, func() EventSink { return events }, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The watcher's first pass runs after harnessInitialDelay and keeps
+	// what it found in memory.
+	detected := func() bool {
+		host.mu.Lock()
+		defer host.mu.Unlock()
+		return host.cfg != nil && len(host.cfg.Global.AIHarnesses) > 0
+	}
+	deadline := time.Now().Add(harnessInitialDelay + 10*time.Second)
+	for !detected() && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !detected() {
+		t.Fatal("the harness watcher did not run on the server")
+	}
+	if err := host.be().SetNestedScanDepth(3); toUserError(err).Code != "remote.read_only" {
+		t.Errorf("a save on the read-only server = %v, want remote.read_only", err)
+	}
+	if fetchErr := remote.FetchAllRepos(); fetchErr != nil {
+		t.Errorf("FetchAllRepos: %v", fetchErr)
+	}
+	eventually := time.Now().Add(10 * time.Second)
+	for len(events.named("fetch:alldone")) == 0 && time.Now().Before(eventually) {
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	remote.Close()
+	select {
+	case code := <-served:
+		if code != serverExitOK {
+			t.Errorf("serve ended with %d", code)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the server did not stop")
+	}
+	if after := stamp(t, path); after != before {
+		t.Errorf("the read-only server changed the host's gitbox.json")
+	}
+	if !strings.Contains(serverLog.String(), "fetch skips the repair") {
+		t.Errorf("the server did not log that fetch skips the repair of clones: %s", serverLog.String())
+	}
+}
+
+// lockedBuffer is a bytes.Buffer that several goroutines may write.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,6 +54,14 @@ type App struct {
 	// host's gitbox.json belong to the host: before every save they are
 	// taken again from the file, so the server never changes them.
 	keepHostPrefs bool
+	// readOnly is set in a gitbox-server that serves a read-only client
+	// (#240): saveConfig refuses, so neither a background worker nor a read
+	// can change the host's gitbox.json, and fetch skips the repair of a
+	// clone's .git/config. P5 lifts it.
+	readOnly bool
+	// hostLog is where a gitbox-server writes for a human; nil elsewhere.
+	hostLog     io.Writer
+	healSkipped sync.Once
 	// remoteAlias names the remote this window shows; empty is the local
 	// window. It selects where the window geometry is stored.
 	remoteAlias string
@@ -213,6 +222,9 @@ func (a *App) closeLocal() {
 //
 // Caller must hold a.mu.
 func (a *App) saveConfig() error {
+	if a.readOnly {
+		return &remoteError{remoteReadOnly, "the remote is read-only: nothing is saved on the host"}
+	}
 	if !a.cfgLoaded {
 		if a.cfgLoadError != "" {
 			return fmt.Errorf("refusing to save: config not loaded (%s)", a.cfgLoadError)

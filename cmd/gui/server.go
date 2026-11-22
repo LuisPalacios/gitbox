@@ -28,14 +28,54 @@ import (
 
 // servedMethods is the closed list of Backend methods the server answers. A
 // method that is not here does not exist for the client. The list grows one
-// phase at a time, each method with the checks its parameters need: P4 adds
-// the rest of the read-only ones, P5 the mutations.
+// phase at a time: P4 (#240) serves every read, the REMOTE methods it owns
+// and the read halves of the MIXED ones; P5 adds the mutations. Each method
+// decodes its parameters into their Go types, and nothing it does can save
+// the host's config: the server runs read-only (newServerApp).
 var servedMethods = []string{
+	"AccountDeletionImpact",
+	"CheckGlobalGCMConfig",
+	"CheckGlobalGitignore",
+	"CheckGlobalIdentity",
+	"CheckMirrorCredentials",
+	"CheckMoveReadiness",
+	"CredentialVerify",
+	"Discover",
+	"DiscoverMirrors",
+	"DoctorPrecheck",
+	"DoctorRun",
+	"FetchAllRepos",
+	"FetchRepo",
 	"GetAllStatus",
+	"GetCheckGlobalGitignore",
+	"GetCollapsed",
 	"GetConfig",
+	"GetConfigLoadError",
 	"GetConfigPath",
+	"GetMirrorStatus",
+	"GetNestedScanDepth",
+	"GetOS",
+	"GetPRSettings",
+	"GetPRsForRepo",
+	"GetRepoDetail",
+	"GetStartupSnapshot",
+	"GetTokenGuide",
 	"IsFirstRun",
+	"IsGlobalGCMConfigNeeded",
+	"ListAccountOrgs",
+	"ListConfigBackups",
+	"ListMoveDestinationOwners",
+	"ListRemoteRepos",
 	"ListRoots",
+	"PreflightMove",
+	"PreviewSweep",
+	"RecommendedGlobalGitignoreBody",
+	"RefreshAllPRs",
+	"RefreshStatus",
+	"ReloadConfig",
+	"RepoNesting",
+	"RepoWorkspaceFiles",
+	"ScanFolderForClones",
 	"SuggestAccountKey",
 }
 
@@ -72,13 +112,15 @@ func (b hostBackend) GetStartupSnapshot() (StartupSnapshot, error) {
 	return snap, err
 }
 
-// newServerApp builds the App a server runs: no window, and a config whose
-// client preferences are the host's own and never the server's to change.
-// cfgPath empty means the host's default gitbox.json.
+// newServerApp builds the App a server runs: no window, a config whose
+// client preferences are the host's own and never the server's to change,
+// and, until P5, no save at all: the client is read-only (#240). cfgPath
+// empty means the host's default gitbox.json.
 func newServerApp(cfgPath string) *App {
 	a := NewApp()
 	a.cfgPath = cfgPath
 	a.keepHostPrefs = true
+	a.readOnly = true
 	return a
 }
 
@@ -101,6 +143,7 @@ func newRPCServer(a *App, log io.Writer) *rpc.Server {
 		Log:         log,
 	}
 	a.events = srv
+	a.hostLog = log
 	return srv
 }
 
@@ -182,9 +225,10 @@ func serve(a *App, clientID string, stdin io.Reader, stdout, stderr io.Writer) i
 	srv := newRPCServer(a, log)
 	backend := a.be()
 	backend.Init(ctx)
-	// The background workers (harness watcher, upstream probes) stay off:
-	// they save to the config, and nothing of the kind may happen for a
-	// read-only client (P4 decides when they run).
+	// The background workers (harness watcher, upstream probes) run as on a
+	// desktop. The server is read-only, so the watcher keeps what it detects
+	// in memory and reports it, and nothing reaches the host's config.
+	backend.Start()
 	defer backend.Close()
 
 	if clientID != "" {

@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net/http"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -20,6 +22,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/provider"
 	"github.com/LuisPalacios/gitbox/pkg/rpc"
 )
 
@@ -137,47 +140,185 @@ func canonJSON(t *testing.T, v any) string {
 	return asJSON(t, generic)
 }
 
+// contractHost extends contractConfig with what the rest of the table needs:
+// a second account, a mirror between the two, and a saved backup. Provider
+// requests go to fakeProvider, so nothing leaves the process.
+func contractHost(t *testing.T) string {
+	t.Helper()
+	path := contractConfig(t)
+	cfg := loadConfig(t, path)
+	cfg.Accounts["other"] = config.Account{Provider: "github", URL: "https://github.com", Username: "bob", Name: "Bob", Email: "b@e"}
+	cfg.Sources["other"] = config.Source{Account: "other"}
+	cfg.Mirrors = map[string]config.Mirror{"mir": {AccountSrc: "acct", AccountDst: "other",
+		Repos: map[string]config.MirrorRepo{"org/repo": {Direction: "push", Origin: "src"}}}}
+	if err := config.Save(cfg, path); err != nil {
+		t.Fatal(err)
+	}
+	// A clone the config does not know, for ScanFolderForClones.
+	orphan := filepath.Join(filepath.Dir(cfg.Sources["acct"].Repos["org/repo"].CloneFolder), "orphan")
+	if out, err := exec.Command(git.GitBin(), "init", "--quiet", orphan).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	t.Setenv("GITBOX_TOKEN_ACCT", "contract-test-token-value")
+	t.Setenv("GITBOX_TOKEN_OTHER", "contract-test-token-value")
+	provider.SetDoerForTest(t, fakeProvider{})
+	return path
+}
+
+// fakeProvider answers every provider request with a small canned GitHub
+// response.
+type fakeProvider struct{}
+
+func (fakeProvider) Do(req *http.Request) (*http.Response, error) {
+	body := `{}`
+	switch p := req.URL.Path; {
+	case p == "/user":
+		body = `{"login":"alice","name":"Alice"}`
+	case p == "/user/orgs":
+		body = `[{"login":"org"}]`
+	case p == "/user/repos" || strings.HasPrefix(p, "/orgs/"):
+		body = `[]`
+		if req.URL.Query().Get("page") == "1" || req.URL.Query().Get("page") == "" {
+			body = `[{"full_name":"org/repo","name":"repo","owner":{"login":"org"},"private":true,"clone_url":"https://github.com/org/repo.git","description":"the repo"}]`
+		}
+	case strings.HasSuffix(p, "/pulls"):
+		body = `[]`
+	case strings.HasPrefix(p, "/search/"):
+		body = `{"total_count":0,"items":[]}`
+	case strings.HasPrefix(p, "/repos/"):
+		body = `{"full_name":"org/repo","default_branch":"main","private":true}`
+	}
+	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}},
+		Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
+}
+
+// contractRow is one call of TestBackendContract. until names the events
+// that end the call's work; empty says why an empty result proves enough;
+// anyOrder compares the events as a set, for work that runs per account in
+// parallel; project replaces the events by what of them is deterministic.
+type contractRow struct {
+	name     string
+	call     func(Backend) (any, error)
+	until    []string
+	empty    string
+	anyOrder bool
+	project  func(t *testing.T, events []contractEvent) any
+}
+
+func contractRows(clone string) []contractRow {
+	move := MoveRequestDTO{SourceSourceKey: "acct", SourceRepoKey: "org/repo", DestAccountKey: "other", DestOwner: "bob", DestRepoName: "repo"}
+	return []contractRow{
+		{name: "GetConfig", call: func(b Backend) (any, error) { return b.GetConfig() }},
+		{name: "GetStartupSnapshot", call: func(b Backend) (any, error) { return b.GetStartupSnapshot() }},
+		{name: "ReloadConfig", call: func(b Backend) (any, error) { return b.ReloadConfig() }},
+		{name: "GetCollapsed", call: func(b Backend) (any, error) { return b.GetCollapsed(), nil }, empty: "nothing is collapsed on the host"},
+		{name: "GetOS", call: func(b Backend) (any, error) { return b.GetOS(), nil }},
+		{name: "GetConfigPath", call: func(b Backend) (any, error) { return b.GetConfigPath(), nil }},
+		{name: "IsFirstRun", call: func(b Backend) (any, error) { return b.IsFirstRun(), nil }},
+		{name: "GetConfigLoadError", call: func(b Backend) (any, error) { return b.GetConfigLoadError(), nil }, empty: "the host's config loads"},
+		{name: "ListConfigBackups", call: func(b Backend) (any, error) { return b.ListConfigBackups(), nil }},
+		{name: "GetAllStatus", call: func(b Backend) (any, error) { return b.GetAllStatus(), nil }},
+		{name: "RefreshStatus", call: func(b Backend) (any, error) { b.RefreshStatus(); return nil, nil }, until: []string{"status:updated"}},
+		{name: "FetchRepo", call: func(b Backend) (any, error) { b.FetchRepo("acct", "org/repo"); return nil, nil }, until: []string{"fetch:done"}},
+		{name: "FetchAllRepos", call: func(b Backend) (any, error) { return nil, b.FetchAllRepos() }, until: []string{"fetch:alldone"}},
+		{name: "GetRepoDetail", call: func(b Backend) (any, error) { return b.GetRepoDetail("acct", "org/repo"), nil }},
+		{name: "CredentialVerify", call: func(b Backend) (any, error) { return b.CredentialVerify("acct"), nil }},
+		{name: "PreviewSweep", call: func(b Backend) (any, error) { return b.PreviewSweep("acct", "org/repo"), nil }},
+		{name: "SuggestAccountKey", call: func(b Backend) (any, error) { return b.SuggestAccountKey("github", "alice"), nil }},
+		{name: "SuggestAccountKey for a taken key", call: func(b Backend) (any, error) { return b.SuggestAccountKey("github", "acct"), nil }},
+		{name: "AccountDeletionImpact", call: func(b Backend) (any, error) { return b.AccountDeletionImpact("acct"), nil }},
+		{name: "CheckGlobalIdentity", call: func(b Backend) (any, error) { return b.CheckGlobalIdentity(), nil }},
+		{name: "IsGlobalGCMConfigNeeded", call: func(b Backend) (any, error) { return b.IsGlobalGCMConfigNeeded(), nil }},
+		{name: "CheckGlobalGCMConfig", call: func(b Backend) (any, error) { return b.CheckGlobalGCMConfig(), nil }},
+		{name: "CheckGlobalGitignore", call: func(b Backend) (any, error) { return b.CheckGlobalGitignore() }},
+		{name: "RecommendedGlobalGitignoreBody", call: func(b Backend) (any, error) { return b.RecommendedGlobalGitignoreBody(), nil }},
+		{name: "GetCheckGlobalGitignore", call: func(b Backend) (any, error) { return b.GetCheckGlobalGitignore(), nil }},
+		{name: "GetTokenGuide", call: func(b Backend) (any, error) { return b.GetTokenGuide("acct"), nil }},
+		{name: "Discover", call: func(b Backend) (any, error) { b.Discover("acct"); return nil, nil }, until: []string{"discover:done"}},
+		{name: "GetMirrorStatus", call: func(b Backend) (any, error) { b.GetMirrorStatus("mir"); return nil, nil }, until: []string{"mirror:status"}},
+		{name: "ListRemoteRepos", call: func(b Backend) (any, error) { return b.ListRemoteRepos("acct"), nil }},
+		{name: "ListAccountOrgs", call: func(b Backend) (any, error) { return b.ListAccountOrgs("acct") }},
+		{name: "DiscoverMirrors", call: func(b Backend) (any, error) { b.DiscoverMirrors(); return nil, nil }, until: []string{"mirror:discover:done"},
+			// Which account of a pair comes first follows map order, so
+			// only the number of pairs and repos found is stable.
+			project: func(t *testing.T, events []contractEvent) any {
+				var done struct {
+					Results []struct{ Discovered []any }
+				}
+				for _, e := range events {
+					if e.Name == "mirror:discover:done" && len(e.Args) == 1 {
+						if err := json.Unmarshal([]byte(asJSON(t, e.Args[0])), &done); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				found := 0
+				for _, r := range done.Results {
+					found += len(r.Discovered)
+				}
+				return []int{len(done.Results), found}
+			}},
+		{name: "CheckMirrorCredentials", call: func(b Backend) (any, error) { return b.CheckMirrorCredentials("acct"), nil }},
+		{name: "DoctorRun", call: func(b Backend) (any, error) { return b.DoctorRun(), nil }},
+		{name: "DoctorPrecheck", call: func(b Backend) (any, error) { return b.DoctorPrecheck("token"), nil }},
+		{name: "CheckMoveReadiness", call: func(b Backend) (any, error) { return b.CheckMoveReadiness("acct", "other", false), nil }},
+		{name: "ListMoveDestinationOwners", call: func(b Backend) (any, error) { return b.ListMoveDestinationOwners("other"), nil }},
+		{name: "PreflightMove", call: func(b Backend) (any, error) { return b.PreflightMove(move), nil }},
+		{name: "GetPRSettings", call: func(b Backend) (any, error) { return b.GetPRSettings(), nil }},
+		{name: "GetPRsForRepo", call: func(b Backend) (any, error) { return b.GetPRsForRepo("acct", "org/repo"), nil }},
+		{name: "RefreshAllPRs", call: func(b Backend) (any, error) { b.RefreshAllPRs(); return nil, nil }, until: []string{"pr:refreshed"}, anyOrder: true},
+		{name: "GetNestedScanDepth", call: func(b Backend) (any, error) { return b.GetNestedScanDepth(), nil }},
+		{name: "RepoNesting", call: func(b Backend) (any, error) { return b.RepoNesting(), nil }, empty: "the host has one clone, so nothing nests"},
+		{name: "RepoWorkspaceFiles", call: func(b Backend) (any, error) { return b.RepoWorkspaceFiles("acct", "org/repo"), nil }, empty: "the clone holds no workspace file"},
+		{name: "ScanFolderForClones", call: func(b Backend) (any, error) { return b.ScanFolderForClones(filepath.Dir(clone)), nil }},
+		{name: "ListRoots", call: func(b Backend) (any, error) { return b.ListRoots(), nil }},
+	}
+}
+
 // TestBackendContract runs one table of calls against two backends: the
 // local one, as a server exposes it, and a RemoteBackend connected to a
 // server on the same config. Every call must give the same result and the
-// same error, and emit the same events. P4 and P5 extend the table as they
-// extend the server's list.
+// same error, and emit the same events. The table covers every served
+// method; P5 extends it with the mutations.
 func TestBackendContract(t *testing.T) {
-	path := contractConfig(t)
+	path := contractHost(t)
+	clone := loadConfig(t, path).Sources["acct"].Repos["org/repo"].CloneFolder
 
-	local := &App{cfgPath: path, events: &recordingSink{}}
+	localSink := &recordingSink{}
+	// The reference is the host as a server runs it: read-only.
+	local := &App{cfgPath: path, events: localSink, upstreamGone: map[string]bool{}, readOnly: true}
 	local.be().Init(context.Background())
 	t.Cleanup(local.closeLocal)
 	direct := Backend(hostBackend{localBackend{local}})
 
 	link := serveRemote(t, path, nil)
 
-	table := []struct {
-		name string
-		call func(Backend) (any, error)
-	}{
-		{"GetConfig", func(b Backend) (any, error) { return b.GetConfig() }},
-		{"GetAllStatus", func(b Backend) (any, error) { return b.GetAllStatus(), nil }},
-		{"ListRoots", func(b Backend) (any, error) { return b.ListRoots(), nil }},
-		{"GetConfigPath", func(b Backend) (any, error) { return b.GetConfigPath(), nil }},
-		{"IsFirstRun", func(b Backend) (any, error) { return b.IsFirstRun(), nil }},
-		{"SuggestAccountKey", func(b Backend) (any, error) { return b.SuggestAccountKey("github", "alice"), nil }},
-		{"SuggestAccountKey for a taken key", func(b Backend) (any, error) { return b.SuggestAccountKey("github", "acct"), nil }},
-	}
 	covered := make(map[string]bool)
-	for _, tt := range table {
+	for _, tt := range contractRows(clone) {
 		covered[strings.Fields(tt.name)[0]] = true
 		t.Run(tt.name, func(t *testing.T) {
-			want, wantErr := tt.call(direct)
-			got, gotErr := tt.call(link.Remote)
+			want, wantErr, wantEvents := runContractCall(t, tt, direct, localSink)
+			got, gotErr, gotEvents := runContractCall(t, tt, link.Remote, link.Events)
 			if (wantErr == nil) != (gotErr == nil) || (wantErr != nil && userMsg(wantErr) != userMsg(gotErr)) {
 				t.Fatalf("errors differ: local %v, remote %v", wantErr, gotErr)
 			}
 			if w, g := asJSON(t, want), asJSON(t, got); w != g {
 				t.Errorf("results differ:\n local  %s\n remote %s", w, g)
 			}
-			if w := asJSON(t, want); w == "null" || w == `""` || w == "[]" {
-				t.Errorf("the call returned nothing (%s): the comparison proves nothing", w)
+			if tt.anyOrder {
+				sortEvents(t, wantEvents)
+				sortEvents(t, gotEvents)
+			}
+			var wantSeen, gotSeen any = wantEvents, gotEvents
+			if tt.project != nil {
+				wantSeen, gotSeen = tt.project(t, wantEvents), tt.project(t, gotEvents)
+			}
+			if w, g := canonJSON(t, wantSeen), canonJSON(t, gotSeen); w != g {
+				t.Errorf("events differ:\n local  %s\n remote %s", w, g)
+			}
+			w := asJSON(t, want)
+			if nothing := w == "null" || w == `""` || w == "[]" || w == "{}" || w == "0"; nothing && len(wantEvents) == 0 && tt.empty == "" {
+				t.Errorf("the call returned nothing (%s) and emitted nothing: the comparison proves nothing", w)
 			}
 			if err := link.Remote.LastError(); err != nil {
 				t.Errorf("the remote call recorded a failure: %v", err)
@@ -190,18 +331,74 @@ func TestBackendContract(t *testing.T) {
 		}
 	}
 
-	// The same events, in the same order.
-	localEvents, remoteEvents := local.events.(*recordingSink), link.Events
-	if w, g := eventsJSON(t, localEvents), eventsJSON(t, remoteEvents); w != g {
-		t.Errorf("events differ:\n local  %s\n remote %s", w, g)
-	}
-
-	// What crossed the wire held no client preference of the host.
-	for _, leaked := range []string{"/usr/local/bin/code", "build-box", `"theme"`} {
+	// What crossed the wire held no client preference of the host, and no
+	// token.
+	for _, leaked := range []string{"/usr/local/bin/code", "build-box", `"theme"`, "contract-test-token-value"} {
 		if strings.Contains(link.Sent.String(), leaked) {
-			t.Errorf("the server sent the host's client preference %q", leaked)
+			t.Errorf("the server sent %q", leaked)
 		}
 	}
+}
+
+func sortEvents(t *testing.T, events []contractEvent) {
+	slices.SortFunc(events, func(a, b contractEvent) int { return strings.Compare(canonJSON(t, a), canonJSON(t, b)) })
+}
+
+type contractEvent struct {
+	Name string `json:"name"`
+	Args []any  `json:"args"`
+}
+
+// runContractCall makes one call and returns its result, its error and the
+// events it emitted, once every event of row.until has arrived and the
+// stream has been quiet for a moment.
+func runContractCall(t *testing.T, row contractRow, b Backend, sink *recordingSink) (any, error, []contractEvent) {
+	t.Helper()
+	sink.mu.Lock()
+	start := len(sink.events)
+	sink.mu.Unlock()
+	result, err := row.call(b)
+	since := func() []recordedEvent {
+		sink.mu.Lock()
+		defer sink.mu.Unlock()
+		return slices.Clone(sink.events[start:])
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		events := since()
+		done := true
+		for _, name := range row.until {
+			if !slices.ContainsFunc(events, func(e recordedEvent) bool { return e.name == name }) {
+				done = false
+			}
+		}
+		if done {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s: waited for %v, got %d events", row.name, row.until, len(events))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	// Let stragglers of the same call arrive.
+	for n := -1; n != len(since()); {
+		n = len(since())
+		time.Sleep(60 * time.Millisecond)
+	}
+	out := []contractEvent{}
+	for _, e := range since() {
+		// The wire keeps only the latest progress of an operation per
+		// interval (pkg/rpc), so progress events are not compared.
+		if strings.HasSuffix(e.name, ":progress") {
+			continue
+		}
+		args := e.args
+		if args == nil {
+			args = []any{}
+		}
+		out = append(out, contractEvent{e.name, args})
+	}
+	return result, err, out
 }
 
 func eventsJSON(t *testing.T, sink *recordingSink) string {
@@ -305,8 +502,8 @@ func TestRemoteMethodOutsideTheClosedList(t *testing.T) {
 	if roots := link.Remote.ListRoots(); len(roots) != 1 {
 		t.Errorf("the refused mutation changed the host: %d roots", len(roots))
 	}
-	if depth := link.Remote.GetNestedScanDepth(); depth != 0 {
-		t.Errorf("GetNestedScanDepth = %d, want the zero value for a method that is not served", depth)
+	if res := link.Remote.Reconcile(); !reflect.DeepEqual(res, ReconcileDTO{}) {
+		t.Errorf("Reconcile = %+v, want the zero value for a method that is not served", res)
 	}
 	if err := link.Remote.LastError(); toUserError(err).Code != "remote.not_implemented_remote" {
 		t.Errorf("LastError = %v, want the failure of the call that had no error to return", err)
@@ -536,7 +733,8 @@ func TestServerEndOfInputStopsGit(t *testing.T) {
 // A window on a remote host shows its own version, and learns the server's
 // from the handshake.
 func TestStartupSnapshotCarriesTheServerVersion(t *testing.T) {
-	// GetStartupSnapshot is not served until P4: let this server answer it.
+	// The server says it runs another build's version; the window shows its
+	// own.
 	var link *remoteLink
 	link = serveRemote(t, contractConfig(t), map[string]rpc.Handler{
 		"GetStartupSnapshot": rpc.Func(func() (StartupSnapshot, error) {

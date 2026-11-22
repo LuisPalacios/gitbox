@@ -26,6 +26,9 @@ const (
 	remoteNotConnected remoteCode = "not_connected"
 	// remoteNotImplemented: the method has no remote side yet (#233).
 	remoteNotImplemented remoteCode = "not_implemented_remote"
+	// remoteReadOnly: a read-only server refused to save the host's
+	// config (#240).
+	remoteReadOnly remoteCode = "read_only"
 	// remoteServerCrashed: the server ended while connected.
 	remoteServerCrashed remoteCode = "server_crashed"
 	// remoteNotEnabled: remote mode is off on this machine.
