@@ -69,6 +69,10 @@ func (a *App) remoteTarget() (remoteTarget, error) {
 	return t, nil
 }
 
+// remoteClientOS is the system of this computer as the remote terminal
+// launch sees it. Tests set it to take the Windows branch on any host.
+var remoteClientOS = runtime.GOOS
+
 // remoteSpawn starts what a remote launch built. Tests replace it to see
 // the launch without starting anything.
 var remoteSpawn = spawnRemote
@@ -79,7 +83,8 @@ type remoteSpawnSpec struct {
 	Console []string
 	// Editor is an editor's argv.
 	Editor []string
-	// Terminal is a terminal emulator on macOS or Linux.
+	// Terminal is a terminal emulator on macOS or Linux, or an argv-safe
+	// one on Windows (terminals.ProgramArgvSafe).
 	Terminal terminals.Launch
 	// Dir is the local working folder of the terminal.
 	Dir string
@@ -135,11 +140,12 @@ func (a *App) openRemoteEditor(dir, command string) error {
 // the host, then program there, or the login shell when program is empty.
 //
 // On macOS and Linux the terminal profile's app runs ssh as its own
-// program (terminals.ResolveProgramLaunch). A Windows client starts ssh.exe
-// in a console of its own (remote.StartConsole) whatever the profile:
-// Windows Terminal, cmd.exe and the other launchers re-parse a command
-// line, and a console avoids all of them. A profile-honouring path for
-// terminals that take an argv can join here later.
+// program (terminals.ResolveProgramLaunch). On a Windows client only a
+// terminal that takes its program as argv does (WezTerm, Alacritty with
+// their catalog template: terminals.ProgramArgvSafe, #286); every other
+// profile starts ssh.exe in a console of its own (remote.StartConsole),
+// because Windows Terminal, cmd.exe and the other launchers re-parse a
+// command line.
 func (a *App) openRemoteTerminal(dir, profileID string, program []string) error {
 	t, err := a.remoteTarget()
 	if err != nil {
@@ -164,16 +170,18 @@ func (a *App) openRemoteTerminal(dir, profileID string, program []string) error 
 	if err != nil {
 		home = ""
 	}
-	if runtime.GOOS == "windows" {
+	global := a.prefsGlobal()
+	if remoteClientOS == "windows" && (profileID == "" || !terminals.ProgramArgvSafe(global, profileID, remoteClientOS)) {
 		return remoteSpawn(remoteSpawnSpec{Console: argv, Dir: home})
 	}
 	if profileID == "" {
 		return errProfileRequired
 	}
 	l, err := terminals.ResolveProgramLaunch(terminals.LaunchRequest{
-		Global:    a.prefsGlobal(),
+		Global:    global,
 		ProfileID: profileID,
 		Path:      home,
+		GOOS:      remoteClientOS,
 	}, argv, remote.LocalShellLine(os.Getenv("SHELL"), argv))
 	if err != nil {
 		return err
@@ -189,12 +197,11 @@ func (a *App) openRemoteHarness(dir, command string, args []string) error {
 		return &remote.Error{Code: remote.CodeHarnessNotAllowed, Detail: "only an AI harness of the catalog runs on a remote host"}
 	}
 	profileID := ""
-	if runtime.GOOS != "windows" {
-		p, ok := terminals.DefaultLaunchProfile(a.prefsGlobal())
-		if !ok {
-			return errNoTerminalProfile
-		}
+	if p, ok := terminals.DefaultLaunchProfile(a.prefsGlobal()); ok {
 		profileID = p.ID
+	} else if remoteClientOS != "windows" {
+		// A Windows client falls back to a console of its own.
+		return errNoTerminalProfile
 	}
 	return a.openRemoteTerminal(dir, profileID, []string{cmd})
 }
