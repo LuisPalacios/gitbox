@@ -226,7 +226,7 @@
                 <span class="cred-status-label">{$t('cred.patLabel')}</span>
                 <span class="cred-status-value">{patCoveredByGCM ? $t('cred.notCreated') : $t(credStatusKey(pat))}</span>
                 {#if pat === 'none' || pat === 'warning'}
-                  <button use:ro class="cred-status-pat-btn" on:click={() => credChangeModal && openTokenSetup(credChangeModal)} title={$t('cred.patTip')}>
+                  <button use:ro={'credentialStoreToken'} class="cred-status-pat-btn" on:click={() => credChangeModal && openTokenSetup(credChangeModal)} title={$t('cred.patTip')}>
                     {pat === 'warning' ? $t('cred.replacePat') : $t('cred.setupPat')}
                   </button>
                 {/if}
@@ -297,7 +297,7 @@
       </div>
       <div class="modal-foot">
         {#if currentAcct?.default_credential_type && !credResult && !credSetupStarted && credChangeType === (currentAcct?.default_credential_type || '')}
-          <button use:ro class="btn-delete cred-delete-btn" on:click={deleteCredential} disabled={credDeleteBusy || credBusy}>
+          <button use:ro={'credentialDelete'} class="btn-delete cred-delete-btn" on:click={deleteCredential} disabled={credDeleteBusy || credBusy}>
             {credDeleteBusy ? $t('cred.deleting') : $t('cred.deleteCurrent', { type: (currentAcct?.default_credential_type || '').toUpperCase() })}
           </button>
         {/if}
@@ -305,7 +305,7 @@
           <button class="btn-cancel" on:click={closeCredChange}>{credResult.ok ? $t('onboard.done') : $t('common.close')}</button>
         {:else if credChangeType === 'token' && credTokenGuide}
           {#if credTokenInput.trim()}
-            <button use:ro class="btn-add" on:click={() => credChangeModal && storeCredToken(credChangeModal)} disabled={credBusy}>
+            <button use:ro={'credentialStoreToken'} class="btn-add" on:click={() => credChangeModal && storeCredToken(credChangeModal)} disabled={credBusy}>
               {credBusy ? $t('cred.storing') : $t('cred.storeToken')}
             </button>
           {:else}
@@ -313,7 +313,7 @@
           {/if}
         {:else}
           <button class="btn-cancel" on:click={closeCredChange}>{$t('common.cancel')}</button>
-          <button use:ro class="btn-add" on:click={applyCredChange} disabled={credBusy || (credChangeType === (currentAcct?.default_credential_type || '') && credStatuses[credChangeModal || '']?.status === 'ok')}>
+          <button use:ro={['changeCredentialType', 'credentialSetupGCM', 'credentialSetupSSH']} class="btn-add" on:click={applyCredChange} disabled={credBusy || (credChangeType === (currentAcct?.default_credential_type || '') && credStatuses[credChangeModal || '']?.status === 'ok')}>
             {credBusy ? $t('cred.settingUp') : $t('cred.setup')}
           </button>
         {/if}

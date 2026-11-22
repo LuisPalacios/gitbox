@@ -102,7 +102,7 @@
     {/if}
   </div>
   <div class="topbar-actions">
-    <button class="icon-btn" use:ro on:click={syncAll}
+    <button class="icon-btn" use:ro={['cloneRepo', 'pullRepo']} on:click={syncAll}
       disabled={syncing || ($summary.behind === 0 && $summary.notCloned === 0)}
       title={syncing ? $t(simple ? 'simple.updating' : 'top.pulling') : $t(simple ? 'simple.updateAll' : 'top.pullAll')}>
       <span class="icon-spin" class:spinning={syncing}><UIIcon name="pull" /></span>
@@ -112,8 +112,8 @@
       <span class="icon-spin" class:spinning={fetchingAll}><UIIcon name="fetch" /></span>
     </button>
     {#if !simple}
-    <button class="icon-btn" use:ro class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title={deleteMode ? $t('top.exitDeleteMode') : $t('top.deleteMode')}><UIIcon name="trash" /></button>
-    <button class="icon-btn" use:ro on:click={toggleViewMode} title={$t('top.compactView')}><UIIcon name="compact" /></button>
+    <button class="icon-btn" use:ro={['deleteRepo']} class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title={deleteMode ? $t('top.exitDeleteMode') : $t('top.deleteMode')}><UIIcon name="trash" /></button>
+    <button class="icon-btn" use:ro={'setViewMode'} on:click={toggleViewMode} title={$t('top.compactView')}><UIIcon name="compact" /></button>
     <button class="icon-btn" on:click={cycleTheme} title={$t('top.themeTip', { name: $t(`theme.${themeChoice}`) })}><UIIcon name={themeChoice === 'light' || themeChoice === 'dark' ? `theme-${themeChoice}` : 'theme-system'} /></button>
     {/if}
     <button class="mode-switch" class:mode-switch-on={!simple} role="switch" aria-checked={!simple}

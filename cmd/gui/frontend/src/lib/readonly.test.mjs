@@ -10,35 +10,68 @@ const ro = await import(`data:text/javascript;base64,${Buffer.from(outputText).t
 const bridgeSource = await readFile(new URL('./bridge.ts', import.meta.url), 'utf8');
 const bridgeCalls = new Set([...bridgeSource.slice(0, bridgeSource.indexOf('\n};\n')).matchAll(/^ {2}(\w+): \(/gm)].map((m) => m[1]));
 const classification = await readFile(new URL('../../../classification.go', import.meta.url), 'utf8');
-const mutating = [...classification.matchAll(/^\t"(\w+)":\s+\{class\w+, "\w+", true\},/gm)].map((m) => m[1][0].toLowerCase() + m[1].slice(1));
+const lower = (name) => name[0].toLowerCase() + name.slice(1);
+const mutating = [...classification.matchAll(/^\t"(\w+)":\s+\{class\w+, "\w+", true\},/gm)].map((m) => lower(m[1]));
+const server = await readFile(new URL('../../../server.go', import.meta.url), 'utf8');
+const servedBlock = server.slice(server.indexOf('var servedMethods = []string{'));
+const served = new Set([...servedBlock.slice(0, servedBlock.indexOf('\n}\n')).matchAll(/^\t"(\w+)",$/gm)].map((m) => lower(m[1])));
+const UNAVAILABLE = ['openInExplorer', 'openAccountFolder', 'openFileInEditor'];
+const REMOTE_OFF = ['setAutostart', 'setViewMode'];
 
-test('I block a mutation while the remote is read-only and let it through otherwise', async () => {
+test('I block an unserved mutation in a remote window and let it through otherwise', async () => {
   const seen = [];
-  let readOnly = true;
+  let remote = true;
   const calls = ro.guardCalls({
     deleteRepo: (s, r) => { seen.push(['deleteRepo', s, r]); return Promise.resolve(); },
     getAllStatus: () => { seen.push(['getAllStatus']); return Promise.resolve([]); },
-  }, () => readOnly, () => 'read-only');
+  }, () => remote, () => 'read-only');
   await assert.rejects(calls.deleteRepo('a', 'b'), (e) => e instanceof ro.ReadOnlyError && e.message === 'read-only');
   await calls.getAllStatus();
   assert.deepEqual(seen, [['getAllStatus']]);
-  readOnly = false;
+  remote = false;
   await calls.deleteRepo('a', 'b');
   assert.deepEqual(seen, [['getAllStatus'], ['deleteRepo', 'a', 'b']]);
 });
 
-test('I block every bridge call whose Go method changes the host', () => {
+test('I block exactly the mutations the server does not serve', () => {
   assert.ok(bridgeCalls.size > 100, `only ${bridgeCalls.size} bridge calls found`);
   assert.ok(mutating.length > 30, `only ${mutating.length} mutating methods found`);
+  assert.ok(served.size > 70 && served.has('addRoot') && served.has('getConfig'), `servedMethods not parsed: ${served.size}`);
+  let servedMutations = 0;
   for (const name of mutating) {
-    if (bridgeCalls.has(name)) assert.ok(ro.READ_ONLY_BLOCKED.has(name), `${name} changes the host but is not blocked`);
+    if (!bridgeCalls.has(name)) continue;
+    if (served.has(name)) {
+      servedMutations++;
+      assert.ok(!ro.READ_ONLY_BLOCKED.has(name), `${name} is served but still blocked`);
+    } else {
+      assert.ok(ro.READ_ONLY_BLOCKED.has(name), `${name} changes the host and is not served, but is not blocked`);
+    }
   }
+  assert.ok(servedMutations >= 27, `only ${servedMutations} served mutations found`);
+  const expected = new Set([...mutating.filter((name) => bridgeCalls.has(name) && !served.has(name)), ...UNAVAILABLE, ...REMOTE_OFF]);
+  assert.deepEqual([...ro.READ_ONLY_BLOCKED].sort(), [...expected].sort());
   for (const name of ro.READ_ONLY_BLOCKED) assert.ok(bridgeCalls.has(name), `${name} is blocked but is not a bridge call`);
 });
 
-test('I do not reconcile on focus in a read-only remote, but I re-probe its harnesses', () => {
-  assert.deepEqual(ro.focusWork(true), { reload: true, reconcile: false, refreshHarnesses: true });
-  assert.deepEqual(ro.focusWork(false), { reload: true, reconcile: true, refreshHarnesses: true });
+test('I block a call only in a remote window', () => {
+  for (const name of ['cloneRepo', 'credentialStoreToken', 'setViewMode', 'openInExplorer']) {
+    assert.equal(ro.isBlocked(name, true), true, name);
+    assert.equal(ro.isBlocked(name, false), false, name);
+  }
+  for (const name of ['addRoot', 'setNestedScanDepth', 'updateAccount', 'getConfig', 'setTheme']) {
+    assert.equal(ro.isBlocked(name, true), false, name);
+  }
+  assert.equal(ro.anyBlocked(['addAccount', 'credentialStoreToken'], true), true);
+  assert.equal(ro.anyBlocked(['addAccount', 'credentialStoreToken'], false), false);
+  assert.equal(ro.anyBlocked(['updateAccount', 'renameAccount'], true), false);
+  assert.equal(ro.anyBlocked('pullRepo', true), true);
+  assert.equal(ro.anyBlocked([], true), false);
+});
+
+test('I do not reconcile on focus while Reconcile is blocked, but I re-probe the harnesses', () => {
+  assert.deepEqual(ro.focusWork((name) => ro.isBlocked(name, true)), { reload: true, reconcile: false, refreshHarnesses: true });
+  assert.deepEqual(ro.focusWork((name) => ro.isBlocked(name, false)), { reload: true, reconcile: true, refreshHarnesses: true });
+  assert.deepEqual(ro.focusWork(() => false), { reload: true, reconcile: true, refreshHarnesses: true });
   assert.ok(ro.READ_ONLY_BLOCKED.has('reconcile') && !ro.READ_ONLY_BLOCKED.has('refreshAIHarnesses'));
 });
 
@@ -46,9 +79,8 @@ test('I let the remote launches through and keep the ones with no remote equival
   for (const name of ['openInApp', 'openProfile', 'openInAIHarness', 'openAccountInApp', 'openAccountProfile', 'openAccountInAIHarness']) {
     assert.ok(!ro.READ_ONLY_BLOCKED.has(name), `${name} opens the host's folder over ssh`);
   }
-  for (const name of ['openInExplorer', 'openAccountFolder', 'openFileInEditor']) {
-    assert.ok(ro.READ_ONLY_BLOCKED.has(name), `${name} has no remote equivalent`);
-  }
+  for (const name of UNAVAILABLE) assert.ok(ro.READ_ONLY_BLOCKED.has(name), `${name} has no remote equivalent`);
+  for (const name of REMOTE_OFF) assert.ok(ro.READ_ONLY_BLOCKED.has(name), `${name} stays off in a remote window`);
 });
 
 const tr = (key) => ({ 'error.remote.not_connected': 'No hay conexión con el host.' })[key] ?? key;

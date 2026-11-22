@@ -4,6 +4,7 @@
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
   import { t } from '../i18n';
+  import { ro } from '../ro';
   import Rich from '../Rich.svelte';
   import { openExternal } from '../external';
 
@@ -79,7 +80,7 @@
       </div>
       <div class="modal-foot">
         <button class="btn-cancel" on:click={() => { sshDiscoverTokenModal = null; sshDiscoveryTokenInput = ''; }}>{$t('common.cancel')}</button>
-        <button class="btn-add" on:click={storeSSHDiscoveryToken} disabled={sshDiscoveryBusy || !sshDiscoveryTokenInput.trim()}>
+        <button use:ro={'credentialStoreToken'} class="btn-add" on:click={storeSSHDiscoveryToken} disabled={sshDiscoveryBusy || !sshDiscoveryTokenInput.trim()}>
           {sshDiscoveryBusy ? $t('cred.storing') : $t('cred.storeDiscover')}
         </button>
       </div>

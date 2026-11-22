@@ -161,7 +161,7 @@ code,
   -ms-user-select: text;
 }
 
-/* A control that would change the host, in a read-only remote window
-   (#240, lib/ro.ts). */
+/* A control that ends in a call a remote window refuses (#240, #294,
+   lib/ro.ts). */
 .ro-off { opacity: 0.42; cursor: not-allowed !important; filter: saturate(0.4); }
 .ro-off:hover { background: none !important; }

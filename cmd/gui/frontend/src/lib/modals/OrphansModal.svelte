@@ -7,6 +7,7 @@
   import { pushNotice, errorText } from '../notices';
   import { t } from '../i18n';
   import { ro } from '../ro';
+  import { blocked } from '../stores';
   import { dismiss } from '../dismiss';
   import type { OrphanRepoDTO, ReconcileDTO } from '../types';
 
@@ -69,7 +70,8 @@
     busy = o.path;
     try {
       await bridge.ignoreClone(o.path, ignore);
-      await applyReconcile(await bridge.reconcile());
+      // A remote window does not reconcile until its server serves it (#295).
+      if (!$blocked('reconcile')) await applyReconcile(await bridge.reconcile());
     } catch (e) {
       pushNotice('error', $t('notice.ignoreFailed'), [errorText(e)]);
     }
@@ -104,10 +106,10 @@
                     {/each}
                   </select>
                 </label>
-                <button use:ro class="btn-adopt" on:click={() => adoptOne(o)} disabled={!!busy}>{$t('unmatched.adopt')}</button>
+                <button use:ro={'adoptClones'} class="btn-adopt" on:click={() => adoptOne(o)} disabled={!!busy}>{$t('unmatched.adopt')}</button>
               {/if}
               {#if !workspaceSearch}
-                <button use:ro class="btn-cancel" on:click={() => setIgnored(o, true)} disabled={!!busy}>{$t('unmatched.ignore')}</button>
+                <button use:ro={'ignoreClone'} class="btn-cancel" on:click={() => setIgnored(o, true)} disabled={!!busy}>{$t('unmatched.ignore')}</button>
               {/if}
             </div>
           </div>
@@ -134,9 +136,9 @@
                         {/each}
                       </select>
                     </label>
-                    <button use:ro class="btn-adopt" on:click={() => adoptOne(o)} disabled={!!busy}>{$t('unmatched.adopt')}</button>
+                    <button use:ro={'adoptClones'} class="btn-adopt" on:click={() => adoptOne(o)} disabled={!!busy}>{$t('unmatched.adopt')}</button>
                   {/if}
-                  <button use:ro class="btn-cancel" on:click={() => setIgnored(o, false)} disabled={!!busy}>{$t('unmatched.unignore')}</button>
+                  <button use:ro={'ignoreClone'} class="btn-cancel" on:click={() => setIgnored(o, false)} disabled={!!busy}>{$t('unmatched.unignore')}</button>
                 </div>
               </div>
             {/each}
