@@ -306,6 +306,18 @@ func eventually(t *testing.T, what string, cond func() bool) {
 	}
 }
 
+// waitFor polls cond until it holds or d passes.
+func waitFor(d time.Duration, cond func() bool) bool {
+	deadline := time.Now().Add(d)
+	for !cond() {
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return true
+}
+
 func (s *session) logHas(sub string) bool {
 	for _, l := range s.log.Lines() {
 		if strings.Contains(l, sub) {
@@ -999,7 +1011,9 @@ func TestCutSSHMidSave(t *testing.T) {
 		remote.KillSession(conn.sess)
 		<-done
 		conn.close()
-		eventually(t, "the config lock released", func() bool { return !c.exists(cfgPath + ".lock") })
+		if !waitFor(20*time.Second, func() bool { return !c.exists(cfgPath + ".lock") }) {
+			t.Fatalf("cut %d: the config lock outlived the cut\nprocesses:\n%s\nserver log:\n%s", i, c.sh("ps -eo pid,stat,args | grep '[g]itbox' || true"), c.sh("tail -n 40 "+s.root+"/logs/"+s.build+".log 2>/dev/null || true"))
+		}
 		after := hostAccounts(t, c, cfgPath)
 		withNew := slices.Sorted(slices.Values(append(slices.Clone(before), key)))
 		if !slices.Equal(after, before) && !slices.Equal(after, withNew) {

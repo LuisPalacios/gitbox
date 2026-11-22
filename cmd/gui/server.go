@@ -8,11 +8,13 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"runtime"
 	"strings"
+	"syscall"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
@@ -303,6 +305,11 @@ func serverMain(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 func serve(a *App, clientID string, stdin io.Reader, stdout, stderr io.Writer) int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// When the ssh connection drops, a write to stdout or stderr would end
+	// the process with SIGPIPE at once, maybe while a save holds the config
+	// lock. Ignored, the write fails instead: the connection ends, and the
+	// handlers in flight finish and release what they hold.
+	signal.Ignore(syscall.SIGPIPE)
 
 	log := stderr
 	if serverLog != nil {
