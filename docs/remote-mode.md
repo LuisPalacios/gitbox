@@ -2,7 +2,7 @@
 
 Remote mode lets GitboxApp on my laptop manage the repositories of another computer over SSH, such as a headless Linux server. GitboxApp installs a matching `gitbox-server` on that host by itself: no root, no internet on the host, no listening port. The design follows VS Code Remote-SSH.
 
-This version connects, installs, verifies and uninstalls the server, and shows the connection. The repositories of the host appear in a later version. Only Linux hosts are supported for now; macOS and Windows hosts follow.
+This version connects, installs, verifies and uninstalls the server, and shows the repositories of the host read-only. Changing anything on the host comes in a later version. Only Linux hosts are supported for now; macOS and Windows hosts follow.
 
 ## Before I start: an alias that needs no prompt
 
@@ -42,9 +42,41 @@ GitboxApp checks the alias with `ssh -G <alias>`, which reads the configuration 
 
 **Connect** opens the remote in a window of its own: a new GitboxApp process started as `GitboxApp --remote <alias> --experimental-remote`. A second **Connect** brings the open window to the front. The remote window keeps running when I close the main window.
 
-The window appears at once and connects in the background. It reads **Connecting to my-server…**, **Installing gitbox on my-server…** on the first connection, and **Connected to my-server** when the server answers. Advanced mode also shows the system of the host and the build of its server. The window has **Disconnect**, **Show log** and **Uninstall server**. Until the repositories arrive, it follows the light or dark theme of the system.
+The window appears at once and connects in the background. It reads **Connecting to my-server…** and **Installing gitbox on my-server…** on the first connection, with **Disconnect**, **Show log** and **Uninstall server**. Until the repositories arrive, it follows the light or dark theme of the system. When the server answers, the window shows the repositories of the host, read-only: see [What works read-only](#what-works-read-only). Its title stays `gitbox · my-server`.
 
 `--remote` without `--experimental-remote` exits with a message.
+
+## What works read-only
+
+The remote window is the full gitbox window, fed by the host. It needs a host that already has a `gitbox.json` with working credentials, for example a computer that also runs GitboxApp. A host without one keeps the connection card, which says so; setting it up from here comes in a later version.
+
+These work, all run on the host:
+
+- the status of every repository, **Fetch all**, **Fetch** on one repository and the periodic status check;
+- the repository details, the pull request badges and their lists, and the mirror status;
+- **Find projects** of an account, which lists the repositories of the provider without adding them;
+- credential checks, the sweep preview and the move preflight;
+- **System check**, which shows the tools of the host.
+
+These are disabled, with the tooltip "Read-only remote (coming in a later version)":
+
+- everything that changes the host: adding, editing or deleting accounts, cloning, pulling, adding discovered repositories, mirrors, roots, credential setup, the sweep and the move, and the settings that live in the host's `gitbox.json`;
+- opening a folder of the host on this computer, in the file manager, an editor, a terminal or an AI harness;
+- the compact view, and autostart.
+
+My own preferences, such as language, theme, Simple or Advanced, the sidebar and the window size, still work and stay on this computer.
+
+The server itself runs read-only. It saves nothing to the host's `gitbox.json`: a refused save fails with `read_only`, and the AI harness detection on the host keeps what it finds in memory. Fetch updates only the remote-tracking branches. In this version it also skips the repair of each clone's `.git/config` that a local fetch runs first, and the server log says so once; a later version lifts this. A collapsed account or repository stays collapsed in this window only.
+
+### The badge and the connection
+
+The title bar shows a badge with the alias, the system of the host in Advanced mode, the connection state and **Read-only**. Clicking it opens the connection log.
+
+When the connection drops, the window keeps the last state it got, dimmed and inert, under **Disconnected from my-server** and a **Connect** button. **Connect** runs the same connection again and reloads everything.
+
+### What the window trusts
+
+Everything the host sends is untrusted. Links open only through one check on this computer: `https` links open in the browser, an `http` link opens after I confirm the full address, and anything else, such as `vscode:` or `ms-settings:`, is refused. Names and paths show as text and never run as a command. The window takes at most 10,000 repositories and 1,000 accounts; a longer list is cut, the badge warns, and the connection log says which list was cut.
 
 ## What is installed and where
 
@@ -136,6 +168,7 @@ Simple mode shows a plain sentence; the code itself appears in the log.
 - `server_crashed`: the server stopped while connected. The log shows its last lines.
 - `not_connected`: the window is not connected.
 - `not_implemented_remote`: the action has no remote side yet.
+- `read_only`: the remote is read-only, so the action would change the host. A later version allows it.
 
 ## Windows and macOS clients
 

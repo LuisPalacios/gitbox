@@ -499,11 +499,19 @@ The same dialog sets the **nested scan depth** for [multi-repo containers](#cont
 Remote mode manages the repositories of another computer over SSH. It is off by default: the `--experimental-remote` flag or `"experimental_remote": true` in `global` turns it on, and then Settings shows **Remotes**.
 
 - **Add** — type the `ssh_config` alias of the host and, if the home folder there does not allow programs to run, a server folder. Gitbox checks the alias with `ssh -G`, which catches a broken ssh config but not an unknown host.
-- **Connect** — opens the remote in a window of its own. The first connection installs `gitbox-server` on the host; the window then says **Connected to** the host, with **Disconnect**, **Show log** and **Uninstall server**. The repositories of the host come in a later version.
+- **Connect** — opens the remote in a window of its own, titled `gitbox · <alias>`. The first connection installs `gitbox-server` on the host. Until the server answers, the window shows the connection, with **Disconnect**, **Show log** and **Uninstall server**.
 - **Uninstall** — removes the server from the host, after a confirmation, and asks again when another window still uses it.
 - **Remove** — forgets the remote on this computer.
 
-`ssh <alias>` must log in without any prompt first. [Remote mode](remote-mode.md) covers the setup, what is installed and where, the connection log and every error code.
+Once connected, the remote window is the full Gitbox window, showing the repositories of the host read-only:
+
+- **What works** — status, **Fetch all**, **Fetch**, repository details, pull request badges, mirror status, **Find projects**, credential checks and **System check**, all run on the host. A PR link opens in the browser of this computer.
+- **What is disabled** — every control that would change the host, or open one of its folders on this computer, shows dimmed with the tooltip "Read-only remote (coming in a later version)". The compact view and autostart are off in this window. Language, theme, Simple or Advanced and the sidebar are preferences of this computer, and they keep working.
+- **The badge** — the title bar shows the alias, the system of the host (Advanced only), the connection state and **Read-only**. Click it to open the connection log. A red **!** means the host sent a longer list than the window shows.
+- **Reconnect** — when the connection drops, the last state stays on screen, dimmed, under a **Disconnected** banner with **Connect**, which connects again and reloads everything.
+- **Links** — an `https` link opens at once. An `http` link, such as a LAN Gitea account, opens after a dialog that shows the full address. Any other kind of link is refused. This applies to the main window too.
+
+`ssh <alias>` must log in without any prompt first, and the host needs a `gitbox.json` with working credentials. [Remote mode](remote-mode.md) covers the setup, what is installed and where, what works read-only, the connection log and every error code.
 
 ### Update notification
 
