@@ -300,8 +300,8 @@ func TestBackendContract(t *testing.T) {
 	for _, tt := range contractRows(clone) {
 		covered[strings.Fields(tt.name)[0]] = true
 		t.Run(tt.name, func(t *testing.T) {
-			want, wantErr, wantEvents := runContractCall(t, tt, direct, localSink)
-			got, gotErr, gotEvents := runContractCall(t, tt, link.Remote, link.Events)
+			want, wantEvents, wantErr := runContractCall(t, tt, direct, localSink)
+			got, gotEvents, gotErr := runContractCall(t, tt, link.Remote, link.Events)
 			if (wantErr == nil) != (gotErr == nil) || (wantErr != nil && userMsg(wantErr) != userMsg(gotErr)) {
 				t.Fatalf("errors differ: local %v, remote %v", wantErr, gotErr)
 			}
@@ -355,7 +355,7 @@ type contractEvent struct {
 // runContractCall makes one call and returns its result, its error and the
 // events it emitted, once every event of row.until has arrived and the
 // stream has been quiet for a moment.
-func runContractCall(t *testing.T, row contractRow, b Backend, sink *recordingSink) (any, error, []contractEvent) {
+func runContractCall(t *testing.T, row contractRow, b Backend, sink *recordingSink) (any, []contractEvent, error) {
 	t.Helper()
 	sink.mu.Lock()
 	start := len(sink.events)
@@ -401,26 +401,7 @@ func runContractCall(t *testing.T, row contractRow, b Backend, sink *recordingSi
 		}
 		out = append(out, contractEvent{e.name, args})
 	}
-	return result, err, out
-}
-
-func eventsJSON(t *testing.T, sink *recordingSink) string {
-	t.Helper()
-	sink.mu.Lock()
-	defer sink.mu.Unlock()
-	type ev struct {
-		Name string `json:"name"`
-		Args []any  `json:"args"`
-	}
-	out := make([]ev, 0, len(sink.events))
-	for _, e := range sink.events {
-		args := e.args
-		if args == nil {
-			args = []any{}
-		}
-		out = append(out, ev{e.name, args})
-	}
-	return canonJSON(t, out)
+	return result, out, err
 }
 
 // The server's events reach the window with the same name and payload, and
