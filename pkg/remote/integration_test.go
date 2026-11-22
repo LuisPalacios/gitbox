@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -617,5 +618,164 @@ func TestFishLoginShell(t *testing.T) {
 	if !s.logHas("shell /usr/bin/fish") {
 		s.dump(t)
 		t.Error("the probe did not report fish")
+	}
+}
+
+// readOnlyCalls are the methods a gitbox-server serves to a read-only
+// client (#240), with arguments for the host that
+// TestReadOnlySessionLeavesConfigUntouched seeds. TestIntegrationCallsEveryServedMethod
+// in cmd/gui keeps the list equal to servedMethods.
+var readOnlyCalls = []struct {
+	method string
+	params []any
+}{
+	{"AccountDeletionImpact", []any{"acct"}},
+	{"CheckGlobalGCMConfig", []any{}},
+	{"CheckGlobalGitignore", []any{}},
+	{"CheckGlobalIdentity", []any{}},
+	{"CheckMirrorCredentials", []any{"acct"}},
+	{"CheckMoveReadiness", []any{"acct", "acct", false}},
+	{"CredentialVerify", []any{"acct"}},
+	{"Discover", []any{"acct"}},
+	{"DiscoverMirrors", []any{}},
+	{"DoctorPrecheck", []any{"token"}},
+	{"DoctorRun", []any{}},
+	{"FetchAllRepos", []any{}},
+	{"FetchRepo", []any{"acct", "org/repo"}},
+	{"GetAllStatus", []any{}},
+	{"GetCheckGlobalGitignore", []any{}},
+	{"GetCollapsed", []any{}},
+	{"GetConfig", []any{}},
+	{"GetConfigLoadError", []any{}},
+	{"GetConfigPath", []any{}},
+	{"GetMirrorStatus", []any{"none"}},
+	{"GetNestedScanDepth", []any{}},
+	{"GetOS", []any{}},
+	{"GetPRSettings", []any{}},
+	{"GetPRsForRepo", []any{"acct", "org/repo"}},
+	{"GetRepoDetail", []any{"acct", "org/repo"}},
+	{"GetStartupSnapshot", []any{}},
+	{"GetTokenGuide", []any{"acct"}},
+	{"IsFirstRun", []any{}},
+	{"IsGlobalGCMConfigNeeded", []any{}},
+	{"ListAccountOrgs", []any{"acct"}},
+	{"ListConfigBackups", []any{}},
+	{"ListMoveDestinationOwners", []any{"acct"}},
+	{"ListRemoteRepos", []any{"acct"}},
+	{"ListRoots", []any{}},
+	{"OpenAccountInBrowser", []any{"acct"}},
+	{"OpenRepoInBrowser", []any{"acct", "org/repo"}},
+	{"PreflightMove", []any{map[string]any{"sourceSourceKey": "acct", "sourceRepoKey": "org/repo", "destAccountKey": "acct", "destOwner": "alice", "destRepoName": "copy"}}},
+	{"PreviewSweep", []any{"acct", "org/repo"}},
+	{"RecommendedGlobalGitignoreBody", []any{}},
+	{"RefreshAllPRs", []any{}},
+	{"RefreshStatus", []any{}},
+	{"ReloadConfig", []any{}},
+	{"RepoNesting", []any{}},
+	{"RepoWorkspaceFiles", []any{"acct", "org/repo"}},
+	{"ScanFolderForClones", []any{testHome + "/git"}},
+	{"SuggestAccountKey", []any{"gitea", "alice"}},
+}
+
+// readOnlyHostConfig is the host's gitbox.json: one account on a server
+// the container cannot reach, one clone, and an AI harness that detection
+// will mark missing, so a background save would change the file.
+const readOnlyHostConfig = `{
+  "version": 5,
+  "global": {
+    "roots": ["` + testHome + `/git"],
+    "theme": "dark",
+    "ai_harnesses": [{"name": "Seeded bot", "command": "/opt/seeded-bot", "source": "user"}]
+  },
+  "accounts": {
+    "acct": {"provider": "gitea", "url": "https://git.example.invalid", "username": "alice", "name": "Alice", "email": "a@example.invalid", "default_credential_type": "token"}
+  },
+  "sources": {
+    "acct": {"account": "acct", "repos": {"org/repo": {}}}
+  }
+}
+`
+
+// A read-only session changes nothing on the host (#240): after every
+// served method, a fetch-all and the harness watcher's first pass, the
+// host's gitbox.json has the same bytes and modification time, and its
+// folder holds the same files.
+func TestReadOnlySessionLeavesConfigUntouched(t *testing.T) {
+	c := startContainer(t, ctOpts{})
+	cfgDir := testHome + "/.config/gitbox"
+	cfgPath := cfgDir + "/gitbox.json"
+	clone := testHome + "/git/acct/org/repo"
+	c.sh("mkdir -p " + cfgDir + " && echo " + base64.StdEncoding.EncodeToString([]byte(readOnlyHostConfig)) + " | base64 -d > " + cfgPath)
+	c.sh("git init -q --bare " + testHome + "/origin.git" +
+		" && git init -q -b main " + clone +
+		" && git -C " + clone + " -c user.name=T -c user.email=t@e commit -q --allow-empty -m first" +
+		" && git -C " + clone + " remote add origin " + testHome + "/origin.git" +
+		" && git -C " + clone + " push -q origin main")
+	gitConfig := func() string { return c.sh("sha256sum " + clone + "/.git/config | cut -d' ' -f1") }
+	fingerprint := func() string {
+		return c.sh("sha256sum " + cfgPath + " && stat -c '%Y.%y' " + cfgPath + " && ls -la --time-style=+%s " + cfgDir + " | grep -v ' [.][.]$'")
+	}
+	before, cloneBefore := fingerprint(), gitConfig()
+
+	s := c.client(t, "client-a", true)
+	sess, err := remote.Dial(testCtx(t), alias, s.opts)
+	if err != nil {
+		s.dump(t)
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var events []string
+	conn := sess.Conn()
+	client, err := rpc.Dial(conn, conn, rpc.ClientOptions{
+		Version: it.version, Commit: it.commit, Log: s.log,
+		OnEvent: func(name string, _ []json.RawMessage) {
+			mu.Lock()
+			events = append(events, name)
+			mu.Unlock()
+		},
+	})
+	if err != nil {
+		_ = sess.Close()
+		t.Fatal(err)
+	}
+	seen := func(name string) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Contains(events, name)
+	}
+
+	for _, call := range readOnlyCalls {
+		ctx, cancel := context.WithTimeout(testCtx(t), 90*time.Second)
+		var out json.RawMessage
+		if err := client.Call(ctx, call.method, call.params, &out); err != nil && rpc.IsCode(err, rpc.ErrCodeUnsupported) {
+			t.Errorf("%s is not served", call.method)
+		}
+		cancel()
+	}
+	// A mutation is refused by the server itself, not only by the client.
+	ctx, cancel := context.WithTimeout(testCtx(t), 30*time.Second)
+	if err := client.Call(ctx, "AddRoot", []any{testHome + "/elsewhere"}, nil, rpc.WithRequestID("00000000-0000-4000-8000-000000000001")); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
+		t.Errorf("AddRoot on a read-only server = %v, want unsupported", err)
+	}
+	cancel()
+
+	// Fetch-all ran to its end, and the session stays open past the
+	// harness watcher's first pass (about 2 s after the server starts),
+	// which reports the seeded harness missing.
+	eventually(t, "fetch:alldone", func() bool { return seen("fetch:alldone") })
+	eventually(t, "harnesses:updated from the watcher", func() bool { return seen("harnesses:updated") })
+	time.Sleep(3 * time.Second)
+	_ = client.Close()
+	_ = sess.Close()
+
+	if after := fingerprint(); after != before {
+		s.dump(t)
+		t.Errorf("the host's config changed:\nbefore\n%s\nafter\n%s", before, after)
+	}
+	if after := gitConfig(); after != cloneBefore {
+		t.Errorf("the clone's .git/config changed: fetch repaired it on a read-only server")
+	}
+	if c.exists(testHome + "/elsewhere") {
+		t.Error("the refused AddRoot created its folder")
 	}
 }

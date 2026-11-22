@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -410,4 +411,26 @@ func (l *lockedBuffer) String() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.b.String()
+}
+
+// The sshd test of a read-only session (pkg/remote, #240) calls every
+// served method; this keeps its list in step with servedMethods.
+func TestIntegrationCallsEveryServedMethod(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "pkg", "remote", "integration_test.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(data)
+	start := strings.Index(src, "var readOnlyCalls = ")
+	if start < 0 {
+		t.Fatal("readOnlyCalls not found in pkg/remote/integration_test.go")
+	}
+	block := src[start : start+strings.Index(src[start:], "\n}\n")]
+	var called []string
+	for _, m := range regexp.MustCompile(`\{"(\w+)", \[\]any\{`).FindAllStringSubmatch(block, -1) {
+		called = append(called, m[1])
+	}
+	if !slices.Equal(called, servedMethods) {
+		t.Errorf("the sshd test calls %v,\nthe server serves %v", called, servedMethods)
+	}
 }
