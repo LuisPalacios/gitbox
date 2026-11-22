@@ -143,7 +143,9 @@ run_lane() {
     local p host in_dir="${2}" rc
     p="$(lane_platform "$lane")"
     host="$(ssh_host_for "$p")"
-    local name_bundle="gate-$sha.bundle" name_script="gate-lane-$sha.sh"
+    # Per lane: linux and remote-it share a host, and each lane deletes
+    # its bundle once it has fetched it.
+    local name_bundle="gate-$sha-$lane.bundle" name_script="gate-lane-$sha-$lane.sh"
 
     if [[ "$p" == "$LOCAL_OS" ]]; then
         echo "host: local ($(uname -sm))"

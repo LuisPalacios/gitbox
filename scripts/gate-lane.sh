@@ -60,7 +60,9 @@ if [[ "$lane" == "win" ]]; then
 fi
 
 cache="$HOME/.cache/gitbox-gate"
-repo="$cache/repo.git"
+# One cache repository per lane: lanes that share a host run at once, and a
+# shared repository makes them race on its config and refs.
+repo="$cache/repo-$lane.git"
 work="$cache/work-$lane-${sha:0:12}"
 bundle="$(cd "$(dirname "$bundle")" && pwd)/$(basename "$bundle")"
 
@@ -90,8 +92,12 @@ checkout() {
     [[ -d "$repo" ]] || git init -q --bare "$repo"
     # fetch would start a detached auto gc that repacks the cache while the
     # clone below hardlinks its objects ("hardlink different from source").
-    git -C "$repo" config gc.auto 0
-    git -C "$repo" config maintenance.auto false
+    # Written only when missing: a write takes the config lock, which a
+    # parallel gate of the same lane may hold.
+    [[ "$(git -C "$repo" config --get gc.auto || true)" == "0" ]] ||
+        git -C "$repo" config gc.auto 0
+    [[ "$(git -C "$repo" config --get maintenance.auto || true)" == "false" ]] ||
+        git -C "$repo" config maintenance.auto false
     # A per-SHA ref, so concurrent gates from parallel worktrees never
     # fight over the same ref lock.
     git -C "$repo" fetch -q --force "$bundle" \
