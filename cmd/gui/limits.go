@@ -19,6 +19,13 @@ const (
 	shutdownWait = 5 * time.Second
 )
 
+// I bound fetches across single-clone and bulk requests. Tune the per-host
+// starting point with the fetch-all benchmark that blackholes one host.
+const (
+	fetchAllConcurrency     = 8
+	fetchPerHostConcurrency = 2
+)
+
 // A clone has no bound: its size is not known in advance. It is cancelled
 // when the app closes.
 

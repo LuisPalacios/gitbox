@@ -231,8 +231,8 @@ func TestFetchAllSkipsTheQueueOfALostServer(t *testing.T) {
 		if err := a.FetchAllRepos(); err == nil {
 			t.Fatal("the cycle must fail")
 		}
-		if got := fetches.Load(); got < 1 || got > fetchAllConcurrency {
-			t.Errorf("%d fetches went out, want at most the %d that were already running", got, fetchAllConcurrency)
+		if got := fetches.Load(); got < 1 || got > fetchPerHostConcurrency {
+			t.Errorf("%d fetches went out, want at most the %d that were already running", got, fetchPerHostConcurrency)
 		}
 		skipped := 0
 		for _, event := range events.named("fetch:done") {
@@ -334,8 +334,8 @@ func TestFetchAllStopsWhenTheNetworkDiesMidway(t *testing.T) {
 		if spent := time.Since(started); spent > networkMonitorInterval+time.Second {
 			t.Errorf("the cycle took %v; it must stop within one monitor interval", spent)
 		}
-		if got := fetches.Load(); got != fetchAllConcurrency || cancelled.Load() != got {
-			t.Errorf("%d fetches started and %d were cancelled; want the %d in flight, all cancelled", got, cancelled.Load(), fetchAllConcurrency)
+		if got := fetches.Load(); got != fetchPerHostConcurrency || cancelled.Load() != got {
+			t.Errorf("%d fetches started and %d were cancelled; want the %d in flight, all cancelled", got, cancelled.Load(), fetchPerHostConcurrency)
 		}
 		done := events.named("fetch:done")
 		if len(done) != clones {

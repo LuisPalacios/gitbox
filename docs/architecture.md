@@ -120,6 +120,7 @@ Startup returns config, preferences, collapse state and path-derived nesting in 
 `cmd/gui/refresh.go` coordinates refresh work:
 
 - Overlapping callers share one active run of local status, Fetch all, per-clone fetch, and each account's credential check.
+- Bulk and individual fetches share eight transfer slots, with at most two per hostname. Fetch all drains each host's queue independently, so a slow host leaves room for the other hosts.
 - One pending local-status invalidation is kept, results computed from a config that has since changed are dropped, and closing the app cancels refresh work.
 - When the account changes or a re-check is requested during a credential check, the check runs again against the current config. Offline results retry with backoff; authentication errors don't.
 - A Fetch all cycle publishes local status before waiting for provider work. `fetch:alldone` follows its final status and remote checks.
