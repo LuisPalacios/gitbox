@@ -177,6 +177,7 @@ var methodClass = map[string]methodInfo{
 	"SetPRBadgesEnabled":             {classRemote, "P5", true},
 	"SetPRIncludeDrafts":             {classRemote, "P5", true},
 	"SetPeriodicSync":                {classMixed, "P1b", false},
+	"SetRemoteEditor":                {classLocal, "P6", false},
 	"SetRepoContainer":               {classRemote, "P5", true},
 	"SetRepoWorkspace":               {classRemote, "P5", true},
 	"SetTheme":                       {classLocal, "P1b", false},

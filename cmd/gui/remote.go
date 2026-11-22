@@ -61,6 +61,9 @@ type RemoteStateDTO struct {
 	// RemoteEditors are the editor commands that open folders of the host
 	// (pkg/remote.RemoteEditors); the window disables every other (#243).
 	RemoteEditors []string `json:"remoteEditors"`
+	// Editor is the editor chosen for this remote in its entry, empty for
+	// Auto: the window then enables only that editor (#287).
+	Editor string `json:"editor,omitempty"`
 }
 
 // RemoteResultDTO is the outcome of a remote action. Empty Error means it
@@ -91,6 +94,8 @@ type RemoteDoctorDTO struct {
 type RemoteEntryDTO struct {
 	Alias     string `json:"alias"`
 	ServerDir string `json:"serverDir,omitempty"`
+	// Editor is the editor chosen for this remote, empty for Auto (#287).
+	Editor string `json:"editor,omitempty"`
 }
 
 // RemotesDTO is what the Remotes section of Settings shows. Enabled is false
@@ -98,6 +103,9 @@ type RemoteEntryDTO struct {
 type RemotesDTO struct {
 	Enabled bool             `json:"enabled"`
 	Remotes []RemoteEntryDTO `json:"remotes"`
+	// RemoteEditors are the editor commands a remote can be set to
+	// (pkg/remote.RemoteEditors).
+	RemoteEditors []string `json:"remoteEditors"`
 }
 
 // remoteConn is a started gitbox-server: what a dialer returns.
@@ -192,6 +200,7 @@ func findRemote(remotes []config.RemoteEntry, alias string) (config.RemoteEntry,
 
 // set changes the state, unless gen is stale, and reports it.
 func (s *remoteSession) set(gen int, change func(*RemoteStateDTO)) {
+	editor := s.chosenEditor()
 	s.mu.Lock()
 	if gen != s.gen {
 		s.mu.Unlock()
@@ -199,6 +208,7 @@ func (s *remoteSession) set(gen int, change func(*RemoteStateDTO)) {
 	}
 	change(&s.state)
 	s.state.RemoteEditors = remote.RemoteEditorCommands()
+	s.state.Editor = editor
 	st := s.state
 	s.mu.Unlock()
 	s.a.sink().Emit("remote:state", st)
@@ -218,11 +228,23 @@ func (s *remoteSession) noteTruncated() {
 }
 
 func (s *remoteSession) info() RemoteStateDTO {
+	editor := s.chosenEditor()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st := s.state
 	st.RemoteEditors = remote.RemoteEditorCommands()
+	st.Editor = editor
 	return st
+}
+
+// chosenEditor is the editor of this window's remote entry, empty for Auto
+// or when the entry is gone. The preferences re-read the shared file, so a
+// choice made in the main window reaches an open remote window.
+func (s *remoteSession) chosenEditor() string {
+	if e, ok := findRemote(s.a.clientPrefs().Get().Remotes, s.alias); ok {
+		return e.Editor
+	}
+	return ""
 }
 
 // failure is the code, hint and text of a connection failure.
@@ -522,11 +544,32 @@ func (a *App) remoteEnabled() bool {
 
 // ListRemotes is what the Remotes section of Settings shows.
 func (a *App) ListRemotes() RemotesDTO {
-	out := RemotesDTO{Enabled: a.remoteEnabled(), Remotes: []RemoteEntryDTO{}}
+	out := RemotesDTO{Enabled: a.remoteEnabled(), Remotes: []RemoteEntryDTO{}, RemoteEditors: remote.RemoteEditorCommands()}
 	for _, r := range a.clientPrefs().Get().Remotes {
-		out.Remotes = append(out.Remotes, RemoteEntryDTO{Alias: r.Alias, ServerDir: r.ServerDir})
+		out.Remotes = append(out.Remotes, RemoteEntryDTO{Alias: r.Alias, ServerDir: r.ServerDir, Editor: r.Editor})
 	}
 	return out
+}
+
+// SetRemoteEditor chooses the editor a remote's window opens folders in
+// (#287): the command name of an editor that opens remote folders
+// (pkg/remote.RemoteEditors), or empty for Auto. It saves only this
+// computer's gitbox.json.
+func (a *App) SetRemoteEditor(alias, editor string) RemoteResultDTO {
+	editor = strings.TrimSpace(editor)
+	if _, ok := findRemote(a.clientPrefs().Get().Remotes, alias); !ok {
+		return resultOf(&remoteError{remoteUnknownAlias, fmt.Sprintf("no remote named %s is configured", alias)})
+	}
+	if editor != "" && (remote.EditorName(editor) != editor || !remote.EditorSupportsRemote(editor)) {
+		return resultOf(&remoteError{remoteEditorUnsupported, "this editor cannot open folders on remote hosts"})
+	}
+	return resultOf(a.clientPrefs().Update(func(p *config.ClientPrefs) {
+		for i := range p.Remotes {
+			if p.Remotes[i].Alias == alias {
+				p.Remotes[i].Editor = editor
+			}
+		}
+	}))
 }
 
 // AddRemote checks an ssh_config alias with ssh -G, which does not connect,

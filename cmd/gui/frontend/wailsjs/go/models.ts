@@ -1405,6 +1405,7 @@ export namespace main {
 	export class RemoteEntryDTO {
 	    alias: string;
 	    serverDir?: string;
+	    editor?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new RemoteEntryDTO(source);
@@ -1414,6 +1415,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.alias = source["alias"];
 	        this.serverDir = source["serverDir"];
+	        this.editor = source["editor"];
 	    }
 	}
 	export class RemoteResultDTO {
@@ -1441,6 +1443,7 @@ export namespace main {
 	    serverVersion?: string;
 	    truncated?: boolean;
 	    remoteEditors: string[];
+	    editor?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new RemoteStateDTO(source);
@@ -1458,6 +1461,7 @@ export namespace main {
 	        this.serverVersion = source["serverVersion"];
 	        this.truncated = source["truncated"];
 	        this.remoteEditors = source["remoteEditors"];
+	        this.editor = source["editor"];
 	    }
 	}
 	export class RemoteUninstallDTO {
@@ -1485,6 +1489,7 @@ export namespace main {
 	export class RemotesDTO {
 	    enabled: boolean;
 	    remotes: RemoteEntryDTO[];
+	    remoteEditors: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new RemotesDTO(source);
@@ -1494,6 +1499,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.enabled = source["enabled"];
 	        this.remotes = this.convertValues(source["remotes"], RemoteEntryDTO);
+	        this.remoteEditors = source["remoteEditors"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

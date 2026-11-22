@@ -6,16 +6,20 @@
 
 // RemoteHost is what a launcher needs to know: null outside a remote
 // window. editors are the editor command names that open remote folders
-// (pkg/remote.RemoteEditors, sent in the remote state).
-export type RemoteHost = { editors: string[] } | null;
+// (pkg/remote.RemoteEditors, sent in the remote state); editor is the one
+// chosen for this remote in Settings, '' for Auto (#287).
+export type RemoteHost = { editors: string[]; editor: string } | null;
 
 // The reason a launcher is off in a remote window, or '' when it works.
-export type RemoteOff = '' | 'unavailable' | 'editor';
+export type RemoteOff = '' | 'unavailable' | 'editor' | 'chosen';
 
 // hostFromState turns the remote state of a remote window into its host.
-export function hostFromState(state: { remoteEditors?: string[] | null } | null | undefined): RemoteHost {
+export function hostFromState(state: { remoteEditors?: string[] | null; editor?: string | null } | null | undefined): RemoteHost {
   if (!state) return null;
-  return { editors: Array.isArray(state.remoteEditors) ? state.remoteEditors.filter((e) => typeof e === 'string') : [] };
+  return {
+    editors: Array.isArray(state.remoteEditors) ? state.remoteEditors.filter((e) => typeof e === 'string') : [],
+    editor: typeof state.editor === 'string' ? state.editor : '',
+  };
 }
 
 // editorName is the name of an editor command: its last path element,
@@ -25,10 +29,19 @@ export function editorName(command: string): string {
 }
 
 // editorOff: '' when the editor opens folders of the host (or the window
-// is local), 'editor' otherwise.
+// is local), 'editor' when it cannot, and 'chosen' when this remote has
+// another editor chosen in Settings.
 export function editorOff(command: string, host: RemoteHost): RemoteOff {
   if (!host) return '';
-  return host.editors.includes(editorName(command)) ? '' : 'editor';
+  const name = editorName(command);
+  if (!host.editors.includes(name)) return 'editor';
+  return host.editor && host.editor !== name ? 'chosen' : '';
+}
+
+// remoteEditorChoices are the configured editors a remote can be set to in
+// Settings: those whose command opens remote folders.
+export function remoteEditorChoices<E extends { command: string }>(editors: E[], remoteEditors: string[]): E[] {
+  return editors.filter((e) => remoteEditors.includes(editorName(e.command)));
 }
 
 // unavailableOff: the file manager, the account folder and the host's
@@ -39,5 +52,10 @@ export function unavailableOff(host: RemoteHost): RemoteOff {
 
 // offTip is the catalog key of the tooltip of a control that is off.
 export function offTip(off: RemoteOff): string {
-  return off === 'editor' ? 'remote.editorNoRemoteTip' : off === 'unavailable' ? 'remote.notAvailableTip' : '';
+  switch (off) {
+    case 'editor': return 'remote.editorNoRemoteTip';
+    case 'chosen': return 'remote.editorNotChosenTip';
+    case 'unavailable': return 'remote.notAvailableTip';
+  }
+  return '';
 }

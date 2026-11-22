@@ -522,6 +522,10 @@ export function SetPeriodicSync(arg1) {
   return window['go']['main']['App']['SetPeriodicSync'](arg1);
 }
 
+export function SetRemoteEditor(arg1, arg2) {
+  return window['go']['main']['App']['SetRemoteEditor'](arg1, arg2);
+}
+
 export function SetRepoContainer(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetRepoContainer'](arg1, arg2, arg3);
 }

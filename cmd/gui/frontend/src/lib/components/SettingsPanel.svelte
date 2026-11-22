@@ -6,7 +6,8 @@
   import { t } from '../i18n';
   import { ro, remoteOff } from '../ro';
   import { remoteHost } from '../stores';
-  import { unavailableOff } from '../remotehost';
+  import { unavailableOff, remoteEditorChoices, editorName } from '../remotehost';
+  import type { EditorInfo } from '../types';
   import { tooltip } from '../tooltip';
   import { openExternal } from '../external';
   import type { ThemeChoice } from '../theme';
@@ -82,6 +83,17 @@
     remoteBusy = 'connect:' + alias;
     try { say(await bridge.connectRemote(alias), $t('settings.remotes.opening', { alias })); }
     finally { remoteBusy = ''; }
+  }
+
+  // The editors a remote can open folders in (#287): the configured ones
+  // whose command opens remote folders.
+  $: remoteEditorOptions = remoteEditorChoices(($configStore?.global?.editors || []) as EditorInfo[], remotes.remoteEditors || []);
+
+  async function setRemoteEditor(alias: string, editor: string) {
+    remoteBusy = 'editor:' + alias;
+    try {
+      if (say(await bridge.setRemoteEditor(alias, editor), $t('settings.remotes.editorSaved', { alias }))) await loadRemotes();
+    } finally { remoteBusy = ''; }
   }
 
   async function removeRemote(alias: string) {
@@ -204,6 +216,16 @@
           <div class="remote-row">
             <span class="remote-alias" translate="no">{r.alias}</span>
             {#if r.serverDir}<span class="remote-dir" translate="no">{r.serverDir}</span>{/if}
+            <select class="remote-input remote-select" aria-label={$t('settings.remotes.editor')} use:tooltip={$t('settings.remotes.editorTip')}
+              value={r.editor || ''} disabled={remoteBusy !== ''} on:change={(e) => setRemoteEditor(r.alias, e.currentTarget.value)}>
+              <option value="">{$t('settings.remotes.editorAuto')}</option>
+              {#each remoteEditorOptions as ed (ed.command)}
+                <option value={editorName(ed.command)}>{ed.name}</option>
+              {/each}
+              {#if r.editor && !remoteEditorOptions.some((ed) => editorName(ed.command) === r.editor)}
+                <option value={r.editor}>{$t('settings.remotes.editorMissing', { editor: r.editor })}</option>
+              {/if}
+            </select>
             <button class="settings-action-btn" on:click={() => connectRemote(r.alias)} disabled={remoteBusy !== ''}>{$t('settings.remotes.connect')}</button>
             <button class="theme-btn" on:click={() => (uninstallAsk = { alias: r.alias, others: 0 })} disabled={remoteBusy !== ''}>{$t('settings.remotes.uninstall')}</button>
             <button class="theme-btn" on:click={() => removeRemote(r.alias)} disabled={remoteBusy !== ''}>{$t('settings.remotes.remove')}</button>
@@ -339,6 +361,7 @@
     border: 1px solid var(--border); border-radius: 5px; background: var(--bg-base); color: var(--text-primary);
   }
   .remote-input-dir { width: 170px; }
+  .remote-select { width: auto; font-family: inherit; }
   .remote-msg { font-size: 11px; color: var(--text-muted); }
   .remote-msg-bad { color: var(--alert); }
 </style>
