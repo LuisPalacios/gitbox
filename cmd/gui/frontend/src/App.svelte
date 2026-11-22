@@ -1292,7 +1292,12 @@
   // standalone Profile editor window spawned by openTerminalsManagerWindow
   // (issue #69 — keeps the editor in its own OS window so the parent
   // stays interactive).
-  let windowMode: 'main' | 'terminals' = 'main';
+  // "remote" is the window of one remote (#239), which shows only the
+  // connected view until P4.
+  let windowMode: 'main' | 'terminals' | 'remote' = 'main';
+  // The remote view loads only in a remote window, so the main bundle
+  // does not carry it.
+  let RemoteConnected: typeof import('./lib/components/RemoteConnected.svelte').default | null = null;
   let autostartOn = false;
   let autostartSupported = true;
 
@@ -1557,8 +1562,21 @@
       const mode = await bridge.getWindowMode();
       if (mode === 'terminals') {
         windowMode = 'terminals';
+      } else if (mode === 'remote') {
+        windowMode = 'remote';
       }
     } catch { /* fall back to main mode */ }
+
+    if (windowMode === 'remote') {
+      // Language and UI mode are client preferences, so they are here
+      // before the connection; the theme follows the OS until P4 brings
+      // the config.
+      try { languageStore.set(normalizeLanguage(await bridge.getLanguage())); } catch (e) { console.error(e); }
+      try { uiMode = (await bridge.getUIMode()) === 'simple' ? 'simple' : 'advanced'; } catch (e) { console.error(e); }
+      applyTheme();
+      RemoteConnected = (await import('./lib/components/RemoteConnected.svelte')).default;
+      return;
+    }
 
     if (windowMode === 'terminals') {
       // Terminals sub-process: just hydrate the bits the editor needs.
@@ -1875,6 +1893,11 @@
       onClose={() => { /* no-op — closing happens via the OS window chrome */ }}
     />
   </div>
+{/if}
+
+<!-- ── REMOTE WINDOW (#239) ── -->
+{#if windowMode === 'remote' && RemoteConnected}
+  <svelte:component this={RemoteConnected} {simple} />
 {/if}
 
 {#if windowMode === 'main'}
