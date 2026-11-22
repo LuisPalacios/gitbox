@@ -177,6 +177,8 @@ export interface CredentialStatus {
   expiresAt?: string;  // RFC 3339 expiry of the token that passed the API check; absent when unknown
 }
 
+export type PullSkipReason = 'dirty' | 'conflict' | 'inProgress' | 'settingsChanged';
+
 // Frontend-only UI state for a single repo row
 export interface RepoState {
   status: 'clean' | 'dirty' | 'behind' | 'ahead' | 'diverged' | 'conflict' | 'not cloned' | 'no upstream' | 'upstream gone' | 'root offline' | 'error' | 'syncing' | 'cloning' | 'unknown';
@@ -189,6 +191,7 @@ export interface RepoState {
   error?: string;
   branch?: string;
   isDefault?: boolean;
+  pullSkipped?: PullSkipReason;
 }
 
 // Banner states from the global git config checks (App.svelte).

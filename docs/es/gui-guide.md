@@ -196,6 +196,8 @@ Un repo con checkout en una rama no predeterminada muestra una pequeña insignia
 
 Haz clic en **Pull de todo** (icono de flecha hacia abajo) en la barra superior para ponerlo todo al día. Clona los repos ausentes y hace pull de los repos que están por detrás solo con avance rápido (`git pull --ff-only`), así que nunca fusiona y nunca toca los cambios locales. El botón **Pull · solo FF** propio de una fila por detrás hace lo mismo para un repo. En Simple, el botón es **Actualizar todo**.
 
+El estado da prioridad a los conflictos sin resolver y muestra los cambios locales antes que el historial de la rama. Antes de actualizar, Gitbox vuelve a comprobar el árbol de trabajo y omite el clon si encuentra cambios locales, conflictos o una operación en curso. Pasa el ratón sobre el estado de la fila para ver por qué Gitbox lo omitió. El resultado de Pull de todo cuenta estas omisiones por separado de los fallos.
+
 #### Fetch de todo
 
 Haz clic en **Fetch de todo** (icono ↻) para consultar todos los remotos en busca de commits nuevos sin hacer pull. Los indicadores de estado se actualizan para que veas qué cambió antes de hacer pull. En Simple, el botón es **Comprobar todo**.

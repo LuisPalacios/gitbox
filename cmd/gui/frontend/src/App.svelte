@@ -17,7 +17,7 @@
   import { startFetch, startPull, noteDone, summarizeFetch, summarizePull, localWorkCount } from './lib/activity';
   import type { Run } from './lib/activity';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit, EventsOn } from '../wailsjs/runtime/runtime';
-  import type { CredentialFinding, RepoState, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, OrphanRepoDTO, ReconcileDTO, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
+  import type { CredentialFinding, RepoState, PullSkipReason, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, OrphanRepoDTO, ReconcileDTO, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
   import Onboarding from './lib/Onboarding.svelte';
   import ConfigErrorScreen from './lib/components/ConfigErrorScreen.svelte';
   import ReloadErrorBanner from './lib/components/ReloadErrorBanner.svelte';
@@ -540,17 +540,19 @@
     // Nothing was pulled because no server answered: the offline banner
     // already says so.
     const stoppedByNetwork = sum.failed > 0 && sum.failures.every((f) => run.failures[f.key]?.code === 'git.offline');
-    if (networkDown.length > 0 && stoppedByNetwork && sum.pulled === 0 && sum.cloned === 0) return;
+    if (networkDown.length > 0 && stoppedByNetwork && sum.pulled === 0 && sum.cloned === 0 && sum.skipped === 0) return;
     const first = sum.failures[0];
     const localWork = localWorkCount(Object.keys($repoStates), statusOfKey) > 0;
     pushNotice(sum.failed > 0 ? 'error' : 'success', $t(simple ? 'result.updateTitle' : 'result.pullTitle'), simple ? [
       sum.pulled > 0 && $t('result.updated', { n: sum.pulled }),
       sum.cloned > 0 && $t('result.downloaded', { n: sum.cloned }),
+      sum.skipped > 0 && $t('result.pullSkipped', { n: sum.skipped }),
       sum.failed > 0 && $t('result.needHelp', { n: sum.failed }),
       localWork && $t('result.wipUntouched'),
     ] : [
       sum.pulled > 0 && $t('result.pulled', { n: sum.pulled }),
       sum.cloned > 0 && $t('result.cloned', { n: sum.cloned }),
+      sum.skipped > 0 && $t('result.pullSkipped', { n: sum.skipped }),
       first && $t('result.failed', { n: sum.failed, error: `${first.key}: ${first.error}` }),
       localWork && $t('result.localUntouched'),
     ]);
@@ -583,7 +585,7 @@
       } else {
         statusBeforeSync[key] = state.status;
         repoStates.update((s) => {
-          s[key] = { ...s[key], status: 'syncing', progress: 0 };
+          s[key] = { ...s[key], status: 'syncing', progress: 0, pullSkipped: undefined };
           return { ...s };
         });
         bridge.pullRepo(sourceKey, repoKey);
@@ -596,7 +598,7 @@
     const key = `${sourceKey}/${repoKey}`;
     statusBeforeSync[key] = $repoStates[key]?.status || 'unknown';
     repoStates.update((s) => {
-      s[key] = { ...s[key], status: 'syncing', progress: 0 };
+      s[key] = { ...s[key], status: 'syncing', progress: 0, pullSkipped: undefined };
       return { ...s };
     });
     bridge.pullRepo(sourceKey, repoKey);
@@ -1767,17 +1769,37 @@
       checkSyncDone();
     });
 
-    events.on('pull:done', (data: any) => {
+    events.on('pull:done', (data: {
+      source: string; repo: string; skipped?: true | PullSkipReason;
+      error?: string; code?: string; host?: string;
+      state?: RepoState['status']; modified?: number; untracked?: number; ahead?: number; behind?: number;
+    }) => {
       const key = `${data.source}/${data.repo}`;
-      if (data.skipped) { notAttempted(key, data); return; }
-      if (pullRun) pullRun = noteDone(pullRun, key, data.error);
+      const skipped = data.skipped;
+      if (skipped === true) { notAttempted(key, data); return; }
+      if (pullRun) pullRun = noteDone(pullRun, key, data.error, undefined, skipped);
       repoStates.update((s) => {
-        if (s[key]) {
+        const row = s[key];
+        if (!row) return s;
+        if (skipped) {
           s[key] = {
-            ...s[key],
+            ...row,
+            status: data.state ?? statusBeforeSync[key] ?? 'unknown',
+            progress: 0,
+            modified: data.modified ?? row.modified,
+            untracked: data.untracked ?? row.untracked,
+            ahead: data.ahead ?? row.ahead,
+            behind: data.behind ?? row.behind,
+            pullSkipped: skipped,
+            error: undefined,
+          };
+        } else {
+          s[key] = {
+            ...row,
             status: data.error ? 'error' : 'clean',
             progress: 0,
             behind: 0,
+            pullSkipped: undefined,
             error: data.error,
           };
         }

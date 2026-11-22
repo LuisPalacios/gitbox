@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/git"
 )
 
 func runGit(t *testing.T, dir string, args ...string) {
@@ -439,5 +440,25 @@ func TestCheckAll_RootOffline(t *testing.T) {
 	want := map[string]State{"org/here": NotCloned, "org/away": RootOffline, "org/pinned": NotCloned}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("states = %v, want %v", got, want)
+	}
+}
+
+func TestClassify_StatusPriority(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		git  git.RepoStatus
+		want State
+	}{
+		{"modified and behind", git.RepoStatus{Upstream: "origin/main", Changed: 1, Behind: 2}, Dirty},
+		{"conflict and behind", git.RepoStatus{Upstream: "origin/main", Conflicts: 1, Behind: 2}, Conflict},
+		{"ahead and behind", git.RepoStatus{Upstream: "origin/main", Ahead: 1, Behind: 2}, Diverged},
+		{"no upstream", git.RepoStatus{}, NoUpstream},
+		{"untracked without upstream", git.RepoStatus{Untracked: 1}, Dirty},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Classify(tc.git); got != tc.want {
+				t.Errorf("status = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

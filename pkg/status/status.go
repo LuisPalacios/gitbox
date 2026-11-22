@@ -131,7 +131,7 @@ func CheckContext(ctx context.Context, repoPath string) RepoStatus {
 
 	rs.Ahead = st.Ahead
 	rs.Behind = st.Behind
-	rs.Modified = st.Modified
+	rs.Modified = st.Changed
 	rs.Untracked = st.Untracked
 	rs.Conflicts = st.Conflicts
 	rs.Branch = st.Branch
@@ -143,25 +143,28 @@ func CheckContext(ctx context.Context, repoPath string) RepoStatus {
 		}
 	}
 
-	// Determine state.
+	rs.State = Classify(st)
+	return rs
+}
+
+// Classify determines the presentation state of a successful Git status.
+func Classify(st git.RepoStatus) State {
 	switch {
 	case st.Conflicts > 0:
-		rs.State = Conflict
-	case st.Upstream == "":
-		rs.State = NoUpstream
+		return Conflict
+	case st.Changed > 0 || st.Untracked > 0:
+		return Dirty
 	case st.Ahead > 0 && st.Behind > 0:
-		rs.State = Diverged
+		return Diverged
 	case st.Behind > 0:
-		rs.State = Behind
+		return Behind
 	case st.Ahead > 0:
-		rs.State = Ahead
-	case st.Modified > 0 || st.Untracked > 0 || st.Added > 0 || st.Deleted > 0:
-		rs.State = Dirty
+		return Ahead
+	case st.Upstream == "":
+		return NoUpstream
 	default:
-		rs.State = Clean
+		return Clean
 	}
-
-	return rs
 }
 
 // checkWithin runs CheckContext with its own deadline when perRepo is

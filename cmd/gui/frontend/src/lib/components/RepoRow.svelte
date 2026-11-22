@@ -247,6 +247,12 @@
   // The words' tooltip: Simple explains its kind, Advanced splits local
   // changes into changed and untracked files.
   function labelTip(state: RepoState): string {
+    switch (state.pullSkipped) {
+      case 'dirty': return $t('pull.skipDirty');
+      case 'conflict': return $t('pull.skipConflict');
+      case 'inProgress': return $t('pull.skipInProgress');
+      case 'settingsChanged': return $t('pull.skipSettingsChanged');
+    }
     if (simple) return simpleTip(simpleKind(state.status), state);
     if (state.status === 'dirty') return $t('status.changesTip', { m: state.modified || 0, u: state.untracked || 0 });
     return '';

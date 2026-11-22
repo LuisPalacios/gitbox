@@ -4,6 +4,8 @@
 // Kept free of runtime imports so lib/activity.test.mjs can load it on its
 // own: statuses and accounts come in as functions.
 
+import type { PullSkipReason } from './types';
+
 export interface Run {
   kind: 'fetch' | 'pull';
   // Repo keys ("source/repo") the run covers, without duplicates.
@@ -16,6 +18,8 @@ export interface Run {
   errors: Record<string, string>;
   // What the backend says about each failure, as data: see Failure.
   failures: Record<string, Failure>;
+  // Pull: reasons the backend skipped clones that have local work or changed settings.
+  skips: Record<string, PullSkipReason>;
   // Fetch: each key's status when the run started, to tell what changed.
   before: Record<string, string>;
   // Pull: keys that were not cloned yet, so the run clones them.
@@ -41,7 +45,7 @@ function start(kind: Run['kind'], keys: string[], accountOf: (key: string) => st
   return {
     kind, keys: scope,
     accounts: new Set(scope.map(accountOf)).size,
-    done: new Set(), errors: {}, failures: {}, before,
+    done: new Set(), errors: {}, failures: {}, skips: {}, before,
     clones: new Set(kind === 'pull' ? scope.filter((key) => before[key] === 'not cloned') : []),
   };
 }
@@ -57,7 +61,7 @@ export function startPull(keys: string[], accountOf: (key: string) => string, st
 // noteDone records one repo reporting back, with its error if it failed and
 // what the backend says about the failure. Keys outside the run are ignored.
 // It returns a new Run, so a Svelte assignment picks up the change.
-export function noteDone(run: Run, key: string, error?: string, failure?: Failure): Run {
+export function noteDone(run: Run, key: string, error?: string, failure?: Failure, skip?: PullSkipReason): Run {
   if (!run.keys.includes(key)) return run;
   const done = new Set(run.done);
   done.add(key);
@@ -65,7 +69,10 @@ export function noteDone(run: Run, key: string, error?: string, failure?: Failur
   const failures = { ...run.failures };
   if (error) { errors[key] = error; failures[key] = failure || {}; }
   else { delete errors[key]; delete failures[key]; }
-  return { ...run, done, errors, failures };
+  const skips = { ...run.skips };
+  if (skip) skips[key] = skip;
+  else delete skips[key];
+  return { ...run, done, errors, failures, skips };
 }
 
 export function progress(run: Run): { done: number; total: number } {
@@ -159,19 +166,21 @@ export function cleanGitError(error: string): string {
 export interface PullSummary {
   pulled: number;
   cloned: number;
+  skipped: number;
   failed: number;
   // The failed keys and their errors, in run order.
   failures: Array<{ key: string; error: string }>;
 }
 
 export function summarizePull(run: Run): PullSummary {
-  let pulled = 0, cloned = 0;
+  let pulled = 0, cloned = 0, skipped = 0;
   const failures: PullSummary['failures'] = [];
   for (const key of run.keys) {
     if (!run.done.has(key)) continue;
     if (run.errors[key]) failures.push({ key, error: run.errors[key] });
+    else if (run.skips[key]) skipped++;
     else if (run.clones.has(key)) cloned++;
     else pulled++;
   }
-  return { pulled, cloned, failed: failures.length, failures };
+  return { pulled, cloned, skipped, failed: failures.length, failures };
 }

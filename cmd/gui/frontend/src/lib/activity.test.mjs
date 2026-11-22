@@ -56,15 +56,16 @@ test('I report nothing changed when a fetch finds nothing new', () => {
 });
 
 test('I split a pull run into pulls and clones and summarize it', () => {
-  const statuses = { 'A/1': 'behind', 'A/2': 'not cloned', 'B/1': 'behind', 'B/2': 'not cloned' };
+  const statuses = { 'A/1': 'behind', 'A/2': 'not cloned', 'B/1': 'behind', 'B/2': 'behind', 'B/3': 'not cloned' };
   let run = a.startPull(Object.keys(statuses), accountOf, (k) => statuses[k]);
   assert.equal(run.kind, 'pull');
-  assert.deepEqual([...run.clones], ['A/2', 'B/2']);
+  assert.deepEqual([...run.clones], ['A/2', 'B/3']);
   run = a.noteDone(run, 'A/1');
   run = a.noteDone(run, 'A/2');
   run = a.noteDone(run, 'B/1', 'not possible to fast-forward');
-  assert.deepEqual(a.summarizePull(run), { pulled: 1, cloned: 1, failed: 1, failures: [{ key: 'B/1', error: 'not possible to fast-forward' }] });
-  assert.deepEqual(a.progress(run), { done: 3, total: 4 });
+  run = a.noteDone(run, 'B/2', undefined, undefined, 'dirty');
+  assert.deepEqual(a.summarizePull(run), { pulled: 1, cloned: 1, skipped: 1, failed: 1, failures: [{ key: 'B/1', error: 'not possible to fast-forward' }] });
+  assert.deepEqual(a.progress(run), { done: 4, total: 5 });
 });
 
 test('I count local work across statuses', () => {

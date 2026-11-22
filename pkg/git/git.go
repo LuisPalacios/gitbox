@@ -119,6 +119,7 @@ type RepoStatus struct {
 	Ahead     int    // Commits ahead of upstream
 	Behind    int    // Commits behind upstream
 	Modified  int    // Modified files count
+	Changed   int    // Tracked files with staged or unstaged changes
 	Added     int    // Added (staged) files count
 	Deleted   int    // Deleted files count
 	Untracked int    // Untracked files count
