@@ -103,9 +103,11 @@ type App struct {
 	toolsWG   sync.WaitGroup
 	// reconcileMu serializes reconcile passes and manual adoptions (#149);
 	// reconcileScan replaces reconcile.Plan in tests.
-	reconcileMu      sync.Mutex
-	reconcileScan    func(*config.Config) (reconcile.Result, error)
-	reconcileClone   func(*config.Config) (*config.Config, error)
+	reconcileMu    sync.Mutex
+	reconcileScan  func(*config.Config) (reconcile.Result, error)
+	reconcileClone func(*config.Config) (*config.Config, error)
+	// discoverMirrors replaces mirror.DiscoverMirrors in tests.
+	discoverMirrors  func(context.Context, *config.Config, func(mirror.DiscoverProgress)) ([]mirror.DiscoveryResult, error)
 	workspaceSync    workspace.SyncState // guarded by reconcileMu
 	workspaceUnknown []string            // guarded by reconcileMu
 	reconcilePending bool                // guarded by mu; one asynchronous stale-plan retry
@@ -254,6 +256,20 @@ func (a *App) commitConfig(change func(*config.Config) error) (*config.Config, e
 		return nil, err
 	}
 	return a.cfg.Clone()
+}
+
+// snapshotLocked is a copy of the config for work that runs after a.mu is
+// released (#173): nothing may keep the live pointer, or a map inside it,
+// once the lock is gone. A copy that cannot be made (the config does not
+// encode) is logged and replaced by an empty config, so the work finds
+// nothing instead of touching live state. Caller holds a.mu.
+func (a *App) snapshotLocked() *config.Config {
+	snap, err := a.cfg.Clone()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: config snapshot failed: %v\n", err)
+		return &config.Config{Accounts: map[string]config.Account{}, Sources: map[string]config.Source{}, Mirrors: map[string]config.Mirror{}}
+	}
+	return snap
 }
 
 // savePrefs changes the client preferences and saves (#240). It starts
@@ -2636,7 +2652,7 @@ func (a *App) setupSSH(accountKey string) CredentialSetupResult {
 	defer a.invalidateCredential(accountKey)
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
-	cfg := a.cfg
+	cfg := a.snapshotLocked()
 	a.mu.Unlock()
 
 	if !ok {
@@ -2685,16 +2701,21 @@ func (a *App) setupSSH(accountKey string) CredentialSetupResult {
 		}
 	}
 
-	// Update account SSH config in gitbox.json.
+	// Update account SSH config in gitbox.json. The account is read again
+	// under the lock, so a change made meanwhile is kept, and its SSH block
+	// is replaced by a new value instead of written through the pointer a
+	// copy of the account may share (#173).
 	a.mu.Lock()
-	if acct.SSH == nil || acct.SSH.Host != hostAlias {
-		if acct.SSH == nil {
-			acct.SSH = &config.SSHConfig{}
+	if cur, ok := a.cfg.Accounts[accountKey]; ok && (cur.SSH == nil || cur.SSH.Host != hostAlias) {
+		var ssh config.SSHConfig
+		if cur.SSH != nil {
+			ssh = *cur.SSH
 		}
-		acct.SSH.Host = hostAlias
-		acct.SSH.Hostname = hostname
-		acct.SSH.KeyType = keyType
-		_ = a.cfg.UpdateAccount(accountKey, acct)
+		ssh.Host = hostAlias
+		ssh.Hostname = hostname
+		ssh.KeyType = keyType
+		cur.SSH = &ssh
+		_ = a.cfg.UpdateAccount(accountKey, cur)
 		_ = a.saveConfig()
 	}
 	a.mu.Unlock()
@@ -2751,7 +2772,7 @@ func (a *App) credentialRegenerateSSHLocal(accountKey string) CredentialSetupRes
 	defer a.invalidateCredential(accountKey)
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
-	cfg := a.cfg
+	cfg := a.snapshotLocked()
 	a.mu.Unlock()
 
 	if !ok {
@@ -3010,7 +3031,7 @@ func (a *App) GetMirrorStatus(mirrorKey string) { a.be().GetMirrorStatus(mirrorK
 func (a *App) getMirrorStatusLocal(mirrorKey string) {
 	go func() {
 		a.mu.Lock()
-		cfg := a.cfg
+		cfg := a.snapshotLocked()
 		a.mu.Unlock()
 
 		m, ok := cfg.Mirrors[mirrorKey]
@@ -3060,7 +3081,7 @@ func (a *App) SetupMirrorRepo(mirrorKey, repoKey string) { a.be().SetupMirrorRep
 func (a *App) setupMirrorRepoLocal(mirrorKey, repoKey string) {
 	go func() {
 		a.mu.Lock()
-		cfg := a.cfg
+		cfg := a.snapshotLocked()
 		a.mu.Unlock()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -3278,7 +3299,7 @@ func (a *App) DiscoverMirrors() { a.be().DiscoverMirrors() }
 func (a *App) discoverMirrorsLocal() {
 	go func() {
 		a.mu.Lock()
-		cfg := a.cfg
+		cfg := a.snapshotLocked()
 		a.mu.Unlock()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
@@ -3313,16 +3334,27 @@ func (a *App) ApplyDiscoveredMirrors() error { return a.be().ApplyDiscoveredMirr
 
 // applyDiscoveredMirrorsLocal is the local backend's ApplyDiscoveredMirrors.
 func (a *App) applyDiscoveredMirrorsLocal() error {
+	// The discovery talks to every server for up to two minutes: it runs on
+	// a snapshot without the lock (#173). ApplyDiscovery only adds, so it is
+	// safe against a config that changed meanwhile.
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	snap := a.snapshotLocked()
+	a.mu.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	results, err := mirror.DiscoverMirrors(ctx, a.cfg, nil)
+	discover := a.discoverMirrors
+	if discover == nil {
+		discover = mirror.DiscoverMirrors
+	}
+	results, err := discover(ctx, snap, nil)
 	if err != nil {
 		return err
 	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	added, _ := mirror.ApplyDiscovery(a.cfg, results)
 	if added > 0 {
 		return a.saveConfig()
@@ -3411,7 +3443,7 @@ func (a *App) DoctorRun() DoctorReport { return a.be().DoctorRun() }
 // doctorRunLocal is the local backend's DoctorRun.
 func (a *App) doctorRunLocal() DoctorReport {
 	a.mu.Lock()
-	cfg := a.cfg
+	cfg := a.snapshotLocked()
 	a.mu.Unlock()
 
 	results := doctor.Check(doctor.StandardTools())
@@ -3580,7 +3612,7 @@ func (a *App) CheckMoveReadiness(sourceSourceKey, destAccountKey string, deleteS
 // checkMoveReadinessLocal is the local backend's CheckMoveReadiness.
 func (a *App) checkMoveReadinessLocal(sourceSourceKey, destAccountKey string, deleteSource bool) MoveReadinessDTO {
 	a.mu.Lock()
-	cfg := a.cfg
+	cfg := a.snapshotLocked()
 	src, srcOK := cfg.Sources[sourceSourceKey]
 	a.mu.Unlock()
 
@@ -3611,7 +3643,7 @@ func (a *App) moveReadinessSide(accountKey string, actions []provider.ActionScop
 	dto := MoveReadinessSideDTO{AccountKey: accountKey}
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
-	cfg := a.cfg
+	cfg := a.snapshotLocked()
 	a.mu.Unlock()
 	if !ok {
 		dto.Message = fmt.Sprintf("%s account %q not found", role, accountKey)
@@ -3676,7 +3708,7 @@ func (a *App) ListMoveDestinationOwners(sourceKey string) []MoveOwnerOption {
 // listMoveDestinationOwnersLocal is the local backend's ListMoveDestinationOwners.
 func (a *App) listMoveDestinationOwnersLocal(sourceKey string) []MoveOwnerOption {
 	a.mu.Lock()
-	cfg := a.cfg
+	cfg := a.snapshotLocked()
 	a.mu.Unlock()
 	if cfg == nil {
 		return []MoveOwnerOption{}
@@ -3741,7 +3773,7 @@ func (a *App) PreflightMove(req MoveRequestDTO) MovePreflightDTO { return a.be()
 // preflightMoveLocal is the local backend's PreflightMove.
 func (a *App) preflightMoveLocal(req MoveRequestDTO) MovePreflightDTO {
 	a.mu.Lock()
-	cfg := a.cfg
+	cfg := a.snapshotLocked()
 	a.mu.Unlock()
 	out := MovePreflightDTO{}
 	src, ok := cfg.Sources[req.SourceSourceKey]

@@ -112,7 +112,40 @@ type repoSetup struct {
 func setupFor(cfg *config.Config, p reconcile.Placed) repoSetup {
 	acct := cfg.Accounts[p.Account]
 	repo := cfg.Sources[p.Source].Repos[p.Repo]
-	return repoSetup{path: p.Path, accountKey: p.Account, repoKey: p.Repo, credType: repo.EffectiveCredentialType(&acct), acct: acct, global: cfg.Global}
+	return repoSetup{path: p.Path, accountKey: p.Account, repoKey: p.Repo, credType: repo.EffectiveCredentialType(&acct), acct: detachAccount(acct), global: detachCredentials(cfg.Global)}
+}
+
+// detachAccount copies the credential blocks an account points at, so a
+// copy used after a.mu is released shares nothing with the live config
+// (#173).
+func detachAccount(acct config.Account) config.Account {
+	if acct.SSH != nil {
+		v := *acct.SSH
+		acct.SSH = &v
+	}
+	if acct.GCM != nil {
+		v := *acct.GCM
+		acct.GCM = &v
+	}
+	return acct
+}
+
+// detachCredentials does the same for the global credential blocks that
+// the .git/config setup reads.
+func detachCredentials(g config.GlobalConfig) config.GlobalConfig {
+	if g.CredentialSSH != nil {
+		v := *g.CredentialSSH
+		g.CredentialSSH = &v
+	}
+	if g.CredentialGCM != nil {
+		v := *g.CredentialGCM
+		g.CredentialGCM = &v
+	}
+	if g.CredentialToken != nil {
+		v := *g.CredentialToken
+		g.CredentialToken = &v
+	}
+	return g
 }
 
 // run points origin, the credential helper and the identity at the account,
