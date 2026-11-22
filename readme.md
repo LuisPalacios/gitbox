@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>One desktop app for every Git account you own.</strong><br>
-  <em>Accounts and clones, nothing else. Gitbox never commits, pushes, or touches your working trees.</em>
+  <em>Manage your Git identities, credentials and clones in one place.</em>
 </p>
 
 <p align="center">
@@ -24,6 +24,8 @@
 Working across several Git accounts, such as a personal GitHub, a work GitHub and a self-hosted Forgejo, tends to end in tangled credentials, commits under the wrong identity and re-cloning by hand on every new machine.
 
 Gitbox handles that setup. You add each account once, with its own credential (GCM, SSH or token). Gitbox discovers your repos through the provider APIs, clones each one with the right identity into a predictable folder tree, and shows the state of every clone in one place.
+
+Gitbox keeps each clone’s identity and credential setup visible in its `.git/config`. Use Gitbox to find and sync clones and check their status across accounts. For everyday Git work such as staging, committing, pushing changes, rebasing or resolving conflicts, open the clone in your terminal or editor, or open its page in your browser for provider workflows.
 
 It runs on Windows, macOS and Linux, and works with GitHub, GitLab, Gitea, Forgejo and Bitbucket. Gitbox doesn't reimplement Git: it drives the `git`, `ssh` and Git Credential Manager already on your system.
 

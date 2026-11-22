@@ -10,6 +10,10 @@ A multi-component project for managing Git multi-account environments across pro
 
 **Go app** (`cmd/gui/`, `pkg/`) — the Wails GUI `GitboxApp` on top of a shared Go library. Since v2 the GUI is the only interface; the v1 CLI + TUI live on the `release/v1` branch (1.x tags).
 
+## Product scope
+
+Keep new features focused on managing Git identities, credentials and clones. Hand staging, commits, general branch pushes, rebases, merges, conflict resolution and history rewriting to the user's terminal, editor or provider. Follow the existing product decisions for guided moves and mirroring.
+
 ## Core Principles
 
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.
