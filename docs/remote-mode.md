@@ -100,7 +100,7 @@ A terminal profile opens a local terminal that runs `ssh -t <alias>` and changes
 ssh -t -- my-server 'cd -- '\''/srv/my repo'\'' && exec "$SHELL" -l'
 ```
 
-The `cd` is written for the login shell the host reported: sh, bash, zsh, dash and ksh get POSIX quotes, and fish gets its own. Any other shell hands the `cd` to `sh` with single-quoted words only. Remote mode adds no `ssh` option here, so my `ssh_config` decides, and a passphrase or host key prompt shows in the terminal.
+The `cd` is written for the login shell the host reported: sh, bash, zsh, dash and ksh get POSIX quotes, and fish gets its own. Any other shell hands the `cd` to `sh` with single-quoted words only. Remote mode adds no `ssh` option here, so my `ssh_config` decides, and a passphrase or host key prompt shows in the terminal. On a host without a UTF-8 locale, fish shows a folder name with non-ASCII letters garbled in its prompt and `pwd`, but the terminal is in the right folder.
 
 How the terminal starts depends on this computer:
 

@@ -100,7 +100,7 @@ Un perfil de terminal abre un terminal local que ejecuta `ssh -t <alias>` y entr
 ssh -t -- my-server 'cd -- '\''/srv/my repo'\'' && exec "$SHELL" -l'
 ```
 
-El `cd` se escribe para el shell de inicio que informó el host: sh, bash, zsh, dash y ksh reciben comillas POSIX, y fish recibe las suyas. Cualquier otro shell pasa el `cd` a `sh` solo con palabras entre comillas simples. El modo remoto no añade aquí ninguna opción de `ssh`, así que decide mi `ssh_config`, y una pregunta de frase de paso o de clave del host aparece en el terminal.
+El `cd` se escribe para el shell de inicio que informó el host: sh, bash, zsh, dash y ksh reciben comillas POSIX, y fish recibe las suyas. Cualquier otro shell pasa el `cd` a `sh` solo con palabras entre comillas simples. El modo remoto no añade aquí ninguna opción de `ssh`, así que decide mi `ssh_config`, y una pregunta de frase de paso o de clave del host aparece en el terminal. En un host sin un locale UTF-8, fish muestra estropeado en su prompt y en `pwd` el nombre de una carpeta con letras que no son ASCII, pero el terminal está en la carpeta correcta.
 
 Cómo arranca el terminal depende de este ordenador:
 
