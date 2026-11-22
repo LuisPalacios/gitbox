@@ -224,3 +224,64 @@ func macAppleScriptApp(tmpl []string) (string, bool) {
 	}
 	return "", false
 }
+
+// ResolveProgramLaunch builds the launch that runs argv as the terminal's
+// own program, with no local shell around it: a remote terminal (#243),
+// whose argv is ssh -t <alias> <remote command>. req.Path is the local
+// working folder of the terminal, and req.HarnessArgv is ignored. line is
+// argv as one command line for my local login shell, which only macOS
+// Terminal.app and iTerm need: they take a line, not an argv.
+//
+//  1. A bare-shell DIRECT profile → argv itself, IsConsole = true.
+//  2. macOS Terminal.app / iTerm (`open -a <App>`) → AppleScript of line.
+//  3. A template without a shell or {command} slot → the error that names
+//     the profile.
+//  4. Otherwise argv is spliced into the shell tokens and {command}. A
+//     single-slot template ({shell_command} without {shell_args}) gets argv
+//     as one POSIX-quoted string, which those terminals split themselves.
+//
+// The #72 wezterm.lua / settings.json overrides are not applied: they name
+// a local shell, and this launch runs none.
+func ResolveProgramLaunch(req LaunchRequest, argv []string, line string) (Launch, error) {
+	if len(argv) == 0 || argv[0] == "" {
+		return Launch{}, fmt.Errorf("the program to run is empty")
+	}
+	goos := req.GOOS
+	if goos == "" {
+		goos = runtime.GOOS
+	}
+	profile, app, _, err := LookupProfile(req.Global, req.ProfileID)
+	if err != nil {
+		return Launch{}, err
+	}
+	if app.Command == "" {
+		return Launch{}, fmt.Errorf("terminal command for profile %q is empty", profile.ID)
+	}
+	if profile.TerminalID == "" {
+		return Launch{Command: argv[0], Args: append([]string(nil), argv[1:]...), IsConsole: true}, nil
+	}
+	if goos == "darwin" && app.Command == "open" {
+		if name, ok := macAppleScriptApp(app.ArgsTemplate); ok {
+			return Launch{AppleScript: launch.MacAppleScriptLine(name, line)}, nil
+		}
+	}
+	template := profile.Args
+	if len(template) == 0 {
+		template = app.ArgsTemplate
+	}
+	if !launch.TemplateAcceptsCommand(template) {
+		return Launch{}, fmt.Errorf("profile %q (%s) cannot run a command; pick a profile that hosts a shell (Windows Terminal, WezTerm, GNOME Terminal, iTerm, Terminal.app, …) or set it as default", profile.Name, app.Name)
+	}
+	cmd, args := argv[0], append([]string(nil), argv[1:]...)
+	if launch.TemplateHasToken(template, launch.TokenShellCommand) && !launch.TemplateHasToken(template, launch.TokenShellArgs) {
+		cmd, args = launch.JoinPOSIX(argv), nil
+	}
+	resolved := launch.ResolveArgs(launch.ProfileArgs{
+		Template:     template,
+		Path:         req.Path,
+		ShellCommand: cmd,
+		ShellArgs:    args,
+		HarnessArgv:  append([]string(nil), argv...),
+	})
+	return Launch{Command: app.Command, Args: resolved}, nil
+}

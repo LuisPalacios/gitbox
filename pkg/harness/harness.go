@@ -9,6 +9,7 @@ package harness
 import (
 	_ "embed"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -229,4 +230,33 @@ func cleanName(cell string) string {
 // transforms). Used for Category.
 func cleanPlainCell(cell string) string {
 	return strings.TrimSpace(cell)
+}
+
+// RemoteCommand checks an AI harness command that a remote window wants to
+// run on its host (#243), and returns it as the one program word. The
+// command comes from the host's gitbox.json, which the client does not
+// trust, so it is never taken as free text: it must be a catalog command,
+// bare or as an absolute POSIX path whose last element is that command,
+// with no control character, and it takes no arguments (catalog entries
+// carry none).
+func RemoteCommand(command string, args []string) (string, bool) {
+	if len(args) > 0 || command == "" || strings.ContainsAny(command, "\x00\r\n\\") {
+		return "", false
+	}
+	name := command
+	if strings.Contains(command, "/") {
+		if !strings.HasPrefix(command, "/") || strings.HasSuffix(command, "/") || strings.Contains(command, "/../") || strings.HasSuffix(command, "/..") {
+			return "", false
+		}
+		name = command[strings.LastIndexByte(command, '/')+1:]
+	}
+	if !cmdTokenRE.MatchString(name) {
+		return "", false
+	}
+	for _, tool := range KnownTools() {
+		if slices.Contains(tool.Commands, name) {
+			return command, true
+		}
+	}
+	return "", false
 }

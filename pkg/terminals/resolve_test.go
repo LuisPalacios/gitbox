@@ -317,3 +317,72 @@ func TestResolveLaunch_Errors(t *testing.T) {
 		t.Errorf("missing terminal app: %v", err)
 	}
 }
+
+// A remote terminal (#243) runs ssh as the terminal's own program: no local
+// shell, the remote command as one argv element, whatever the profile.
+func TestResolveProgramLaunch(t *testing.T) {
+	argv := []string{"/usr/bin/ssh", "-t", "--", "my-host", `cd -- '/srv/a;b' && exec "$SHELL" -l`}
+	line := `exec '/usr/bin/ssh' '-t' '--' 'my-host' 'cd -- '\''/srv/a;b'\'' && exec "$SHELL" -l'`
+	mac := func(app string) config.TerminalApp {
+		return config.TerminalApp{ID: strings.ToLower(app), Name: app, Command: "open", ArgsTemplate: []string{"-a", app, launch.TokenPath}}
+	}
+	cases := []struct {
+		name    string
+		goos    string
+		app     config.TerminalApp
+		shell   config.ShellEntry
+		direct  bool
+		want    Launch
+		wantErr bool
+	}{
+		{name: "direct console profile", goos: "windows", shell: pwshShell(), direct: true,
+			want: Launch{Command: argv[0], Args: argv[1:], IsConsole: true}},
+		{name: "Windows Terminal ignores the profile shell", goos: "windows", app: wtApp(), shell: pwshShell(),
+			want: Launch{Command: `C:\wt\wt.exe`, Args: append([]string{"-d", "/home/me"}, argv...)}},
+		{name: "gnome-terminal", goos: "linux",
+			app:  config.TerminalApp{ID: "gnome-terminal", Name: "GNOME Terminal", Command: "gnome-terminal", ArgsTemplate: []string{"--working-directory=" + launch.TokenPath, "--", launch.TokenShellCommand, launch.TokenShellArgs}},
+			want: Launch{Command: "gnome-terminal", Args: append([]string{"--working-directory=/home/me", "--"}, argv...)}},
+		{name: "single-slot template gets one POSIX line", goos: "linux",
+			app:  config.TerminalApp{ID: "tilda", Name: "Tilda", Command: "tilda", ArgsTemplate: []string{"--working-dir=" + launch.TokenPath, "--command", launch.TokenShellCommand}},
+			want: Launch{Command: "tilda", Args: []string{"--working-dir=/home/me", "--command", launch.JoinPOSIX(argv)}}},
+		{name: "command token", goos: "linux",
+			app:  config.TerminalApp{ID: "x", Name: "X", Command: "x-term", ArgsTemplate: []string{"-e", launch.TokenCommand}},
+			want: Launch{Command: "x-term", Args: append([]string{"-e"}, argv...)}},
+		{name: "Terminal.app gets the line", goos: "darwin", app: mac("Terminal"),
+			want: Launch{AppleScript: launch.MacAppleScriptLine("Terminal", line)}},
+		{name: "iTerm gets the line", goos: "darwin", app: mac("iTerm"),
+			want: Launch{AppleScript: launch.MacAppleScriptLine("iTerm", line)}},
+		{name: "a template with no command slot is refused", goos: "darwin", app: mac("Warp"), wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			g := config.GlobalConfig{}
+			p := config.TerminalProfile{ID: "p", Name: "P"}
+			if tc.shell.ID != "" {
+				g.Shells = []config.ShellEntry{tc.shell}
+				p.ShellID = tc.shell.ID
+			}
+			if !tc.direct {
+				g.TerminalApps = []config.TerminalApp{tc.app}
+				p.TerminalID = tc.app.ID
+			}
+			g.TerminalProfiles = []config.TerminalProfile{p}
+			got, err := ResolveProgramLaunch(LaunchRequest{Global: g, ProfileID: "p", Path: "/home/me", GOOS: tc.goos, HarnessArgv: []string{"ignored"}}, argv, line)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("got %+v, want an error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got  %#v\nwant %#v", got, tc.want)
+			}
+		})
+	}
+	if _, err := ResolveProgramLaunch(LaunchRequest{ProfileID: "p"}, nil, ""); err == nil {
+		t.Error("an empty argv was accepted")
+	}
+}
