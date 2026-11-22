@@ -13,7 +13,7 @@ The local gate keeps the verification on hardware I control and never runs code 
 1. The gate refuses to run when tracked files have uncommitted changes, because it tests the committed `HEAD`, not the working tree.
 2. It bundles `HEAD` and its tags with `git bundle`. The tags let `git describe` work, as the CI checkout's `fetch-depth: 0` does.
 3. For each lane it copies the bundle and `scripts/gate-lane.sh` to the lane's host, under `~/.cache/gitbox-gate/in/`.
-4. All lanes run at once. Each lane fetches the bundle into a cache repository, clones the commit into a clean directory under `~/.cache/gitbox-gate/`, and runs its checks.
+4. All lanes run at once. Each lane fetches its own bundle into its own cache repository, so lanes that share a host never race on the same files, clones the commit into a clean directory under `~/.cache/gitbox-gate/`, and runs its checks.
 5. The gate prints one summary line per lane and keeps each lane's full log under `${TMPDIR:-/tmp}/gitbox-gate/<sha>/<lane>.log`.
 6. When every lane passes, the gate records a marker for the SHA.
 
