@@ -110,7 +110,7 @@ Close any dialog with **Escape** or by clicking outside it. Dialogs that are bus
 
 ### Simple and Advanced modes
 
-Gitbox has two experiences. **Simple** is for people who don't know git and only want their projects safe. **Advanced** shows every git detail and tool. Switch with the toggle in the top bar, left of the settings gear: grey is Simple, red is Advanced, the mode with destructive power. New installs start in Simple; configs from before the setting existed stay in Advanced. The choice is saved as `global.ui_mode` in `gitbox.json`.
+Gitbox has two experiences. **Simple** shows project status and actions in plain language. **Advanced** shows every git detail and tool. Switch with the toggle in the top bar, left of the settings gear: grey is Simple, red is Advanced, the mode with destructive power. New installs start in Simple; configs from before the setting existed stay in Advanced. The choice is saved as `global.ui_mode` in `gitbox.json`.
 
 In Simple, each project shows what Gitbox observed and when to act.
 
@@ -133,7 +133,7 @@ With PR indicators enabled, Simple shows **Review requested** when someone asks 
 
 The full view shows the top bar, the sidebar, the selected view and the summary footer. The top bar holds the health rings and the Pull all, Fetch all, Delete mode, Compact view, theme, Simple/Advanced and Settings buttons; the GitBox logo at the far left folds the sidebar. The summary footer always shows both repo and mirror counts.
 
-The repo ring holds a branch icon and fills as clones get up to date. A small badge counts what isn't there yet, and hovering the ring shows the full `N of total up to date` line. When the ring has something pending, clicking it opens **Needs attention** (Simple: **Needs you**). Advanced adds a [mirror ring](#mirror-health-ring) when mirrors are configured.
+The repo ring holds a branch icon and fills as clones get up to date. A small badge counts what isn't there yet, and hovering the ring shows the full `N of total up to date` line (Simple: `No action needed for N of total`). When the ring has something pending, clicking it opens **Needs attention** (Simple: **Needs you**). Advanced adds a [mirror ring](#mirror-health-ring) when mirrors are configured.
 
 The window opens 1040 px wide the first time and can shrink to 640 × 480. It grows no wider than the sidebar plus 1100 px of content, and folding the sidebar gives its width to the content.
 
@@ -141,7 +141,7 @@ The window opens 1040 px wide the first time and can shrink to 640 × 480. It gr
 
 The sidebar on the left picks what the main area shows:
 
-- **Needs attention** (Simple: **Needs you**) — first the accounts whose credential needs a fix, each with its fix button, then every repo that needs you, grouped as needs help, local work, behind, and not cloned. Inside each group, rows sit under a header per account, in alphabetical order. A container nests the clones beside it, as in All repos; a clone whose container is in another group shows an "in \<parent\>" tag. A row that turns fine while you watch, after a pull for example, stays in place, faded, until you leave the view. When nothing needs you, the view says so.
+- **Needs attention** (Simple: **Needs you**) — first the accounts whose credential needs a fix, each with its fix button, then every repo that needs you, grouped as needs help, local work, behind, and not cloned. In Simple the same groups are **Needs help**, **Local changes**, **Updates found**, and **Only online**. Inside each group, rows sit under a header per account, in alphabetical order. A container nests the clones beside it, as in All repos; a clone whose container is in another group shows an "in \<parent\>" tag. A row that turns fine while you watch, after a pull for example, stays in place, faded, until you leave the view. When nothing needs you, the view says so.
 - **All repos** (Simple: **All projects**) — every clone, grouped by account, in alphabetical order.
 - **Accounts** — one entry per account with its provider logo, a small health mark, its name, its health in words, and how many repos need you. Click one to open the account's view.
 - **More** — below the bottom separator, everything that isn't an account:
