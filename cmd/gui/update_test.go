@@ -1,3 +1,5 @@
+//go:build !gitboxserver
+
 package main
 
 import (
