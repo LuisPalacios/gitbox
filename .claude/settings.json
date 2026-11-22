@@ -6,7 +6,27 @@
       "Bash(gh run:*)",
       "Bash(gh release:*)",
       "Bash(magick convert:*)",
-      "Bash(magick cmd/gui/build/appicon.png -define icon:auto-resize=256,128,64,48,32,16 cmd/gui/build/windows/icon.ico)"
+      "Bash(magick cmd/gui/build/appicon.png -define icon:auto-resize=256,128,64,48,32,16 cmd/gui/build/windows/icon.ico)",
+      "Bash(uv run ai/scripts/*)",
+      "Bash(uv run -q ai/scripts/*)",
+      "Bash(uv run .claude/skills/*)",
+      "Bash(uv run -q .claude/skills/*)",
+      "Bash(./scripts/health.sh *)",
+      "Bash(./scripts/health.sh)",
+      "Bash(go test *)",
+      "Bash(go build *)",
+      "Bash(gofmt -s -l *)",
+      "Bash(git fetch origin)",
+      "Bash(git worktree list *)",
+      "Bash(git worktree list)",
+      "Bash(git worktree add *)",
+      "Bash(gh auth status *)",
+      "Bash(gh auth status)",
+      "Bash(gh auth switch *)",
+      "Bash(gh issue view *)",
+      "Bash(gh issue list *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr list *)"
     ]
   }
 }
