@@ -9,6 +9,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/adopt"
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/reconcile"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 	"github.com/LuisPalacios/gitbox/pkg/workspace"
 )
@@ -153,8 +154,27 @@ func (a *App) ScanFolderForClones(path string) []OrphanRepoDTO {
 // scanFolderForClonesLocal is the local backend's ScanFolderForClones.
 func (a *App) scanFolderForClonesLocal(path string) []OrphanRepoDTO {
 	a.mu.Lock()
-	cfg := a.cfg
+	cfg, err := a.cfg.Clone()
 	a.mu.Unlock()
+	if err != nil {
+		return nil
+	}
+
+	if path != "" {
+		rows, found, err := reconcile.WorkspaceCandidates(cfg, workspace.Inspect(cfg), path)
+		if err != nil {
+			return nil
+		}
+		if found {
+			out := make([]OrphanRepoDTO, 0, len(rows))
+			for _, row := range rows {
+				dto := toOrphanDTO(row.OrphanRepo, row.Reason)
+				dto.WorkspaceRoot = path
+				out = append(out, dto)
+			}
+			return out
+		}
+	}
 
 	var extra []string
 	if path != "" {

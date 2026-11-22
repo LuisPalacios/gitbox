@@ -2,7 +2,7 @@ import type { RemoteHost } from './remotehost';
 import { writable, derived } from 'svelte/store';
 import type { Placeholder } from './repo-tree';
 import { simpleKind } from './status';
-import type { ConfigDTO, Account, SourceDTO, MirrorDTO, MirrorStatusResult, RepoState, StatusResult, PRSummaryDTO, PRAccountUpdateDTO } from './types';
+import type { ConfigDTO, Account, SourceDTO, MirrorDTO, MirrorStatusResult, RepoState, StatusResult, PRSummaryDTO, PRAccountUpdateDTO, WorkspaceDiagnosticDTO } from './types';
 
 // ── Config store — loaded once from Go backend ──
 export const configStore = writable<ConfigDTO | null>(null);
@@ -201,6 +201,7 @@ export const workspacePlaceholders = writable<Record<string, Placeholder[]>>({})
 export const workspaceMembers = writable<Set<string>>(new Set());
 // Containers whose last workspace scan could not read the clone root.
 export const workspaceUnknown = writable<Set<string>>(new Set());
+export const workspaceDiagnostics = writable<Record<string, WorkspaceDiagnosticDTO>>({});
 
 // ── Theme store ──
 export const themeStore = writable<'light' | 'dark'>('dark');

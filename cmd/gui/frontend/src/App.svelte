@@ -5,7 +5,7 @@
   import { focusWork, backgroundAllowed, reloadErrorShown, clearsOnReconnect } from './lib/readonly';
   import {
     configStore, accounts, sources, mirrors, repoStates, themeStore, applyStatusResults,
-    applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, workspacePlaceholders, workspaceMembers, workspaceUnknown,
+    applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, workspacePlaceholders, workspaceMembers, workspaceUnknown, workspaceDiagnostics,
     remoteReadOnly
   } from './lib/stores';
   import { detailLocked, attentionRank, accountHealth, CALM_RANK } from './lib/status';
@@ -738,15 +738,26 @@
       applyStatusResults(await bridge.getAllStatus());
     }
     const byParent: Record<string, Placeholder[]> = {};
-    for (const p of res.placeholders || []) (byParent[p.parent] ??= []).push({ name: p.name, path: p.path });
+    for (const p of res.placeholders || []) (byParent[p.parent] ??= []).push({ name: p.name, path: p.path, outsidePath: p.outsidePath });
     $workspacePlaceholders = byParent;
     $workspaceMembers = new Set(res.workspaceMembers || []);
+    $workspaceDiagnostics = Object.fromEntries((res.workspaceDiagnostics || []).map(d => [d.parent, d]));
     workspaceChoices = new Set((res.workspaceChoices || []).map(c => `${c.source}/${c.repo}`));
     await loadNesting();
     askWorkspaceChoices(res.workspaceChoices || []);
   }
 
   // ── Container workspace files ──
+  async function findWorkspaceFolder(path: string) {
+    try {
+      const found = await bridge.scanFolderForClones(path);
+      orphansDialog.showWorkspaceSearch((found || []).filter(o => o.workspaceRoot === path));
+    } catch (e) {
+      pushNotice('error', $t('notice.reconcileFailed'), [errorText(e)]);
+    }
+  }
+
+
   // Containers whose root holds several .code-workspace files and no pick;
   // each is asked once per session, then keeps a "choose workspace" hint.
   let workspaceChoices: Set<string> = new Set();
@@ -1469,7 +1480,7 @@
     expandedRepo, repoDetail, detailLoading,
     activateRepoRow, askDelete, syncRepo, cloneRepo, fetchRepo, toggleActionMenu, closeActionMenu,
     togglePRPopover, closePRPopover, sweepBranches, openMoveRepo,
-    toggleContainer, rescanContainer, chooseWorkspace, toggleRepoCollapsed, isContainerRepo, showAccountView,
+    toggleContainer, rescanContainer, chooseWorkspace, findWorkspaceFolder, toggleRepoCollapsed, isContainerRepo, showAccountView,
   };
 
   // ── Credential status cache ──

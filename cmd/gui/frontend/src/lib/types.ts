@@ -232,6 +232,7 @@ export interface OrphanRepoDTO {
   // Accounts it could go to, best first.
   candidates?: string[];
   nested: boolean;
+  workspaceRoot?: string;
 }
 
 // One reconcile pass: what it adopted and re-linked, and what needs me.
@@ -245,6 +246,7 @@ export interface ReconcileDTO {
   placeholders: WorkspaceFolderDTO[];
   workspaceMembers: string[];
   workspaceUnknown?: string[] | null;
+  workspaceDiagnostics?: WorkspaceDiagnosticDTO[];
   error?: string;
 }
 
@@ -255,12 +257,18 @@ export interface WorkspaceChoiceDTO {
   files: string[];
 }
 
-// A folder a container's workspace lists that is not cloned yet. parent is
-// the container's "source/repo" key; path is relative to it.
+// A missing or external folder in a container's workspace.
 export interface WorkspaceFolderDTO {
   parent: string;
   name: string;
   path: string;
+  outsidePath?: string;
+}
+
+export interface WorkspaceDiagnosticDTO {
+  parent: string;
+  file: string;
+  problem: string;
 }
 
 export interface AccountDeletionImpactDTO {

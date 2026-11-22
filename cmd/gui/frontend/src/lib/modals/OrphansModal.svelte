@@ -18,6 +18,8 @@
   let open = false;
   let showIgnored = false;
   let busy = '';
+  let workspaceSearch: OrphanRepoDTO[] | null = null;
+  $: visibleUnmatched = workspaceSearch ?? unmatched;
   // The account picked per row, keyed by path.
   let picked: Record<string, string> = {};
 
@@ -37,18 +39,25 @@
   export function showOrphanModal() {
     picked = {};
     showIgnored = false;
+    workspaceSearch = null;
     open = true;
   }
 
-  $: for (const o of [...unmatched, ...ignored]) {
+  export function showWorkspaceSearch(found: OrphanRepoDTO[]) {
+    showOrphanModal();
+    workspaceSearch = found;
+  }
+
+  $: for (const o of [...visibleUnmatched, ...ignored]) {
     if (adoptable(o) && !picked[o.path]) picked[o.path] = o.matchedAccount || o.candidates![0];
   }
 
   async function adoptOne(o: OrphanRepoDTO) {
     busy = o.path;
     try {
-      const res = await bridge.adoptClones([{ path: o.path, account: picked[o.path] }]);
+      const res = await bridge.adoptClones([{ path: o.path, account: picked[o.path], workspaceRoot: o.workspaceRoot }]);
       if (res.error) pushNotice('error', $t('notice.adoptFailed'), [res.error]);
+      if (workspaceSearch && res.adopted > 0) workspaceSearch = workspaceSearch.filter(row => row.path !== o.path);
       await applyReconcile(res);
     } catch (e) {
       pushNotice('error', $t('notice.adoptFailed'), [errorText(e)]);
@@ -76,8 +85,8 @@
         <button class="btn-x" on:click={() => open = false}>&#10005;</button>
       </div>
       <div class="modal-body">
-        <p class="intro">{unmatched.length ? $t('unmatched.intro') : $t('unmatched.empty')}</p>
-        {#each unmatched as o (o.path)}
+        <p class="intro">{visibleUnmatched.length ? $t('unmatched.intro') : workspaceSearch ? $t('unmatched.workspaceEmpty') : $t('unmatched.empty')}</p>
+        {#each visibleUnmatched as o (o.path)}
           <div class="clone">
             <div class="clone-head">
               <span class="clone-name">{o.repoKey || o.relPath}</span>
@@ -97,11 +106,13 @@
                 </label>
                 <button use:ro class="btn-adopt" on:click={() => adoptOne(o)} disabled={!!busy}>{$t('unmatched.adopt')}</button>
               {/if}
-              <button use:ro class="btn-cancel" on:click={() => setIgnored(o, true)} disabled={!!busy}>{$t('unmatched.ignore')}</button>
+              {#if !workspaceSearch}
+                <button use:ro class="btn-cancel" on:click={() => setIgnored(o, true)} disabled={!!busy}>{$t('unmatched.ignore')}</button>
+              {/if}
             </div>
           </div>
         {/each}
-        {#if ignored.length}
+        {#if !workspaceSearch && ignored.length}
           <button class="link" on:click={() => showIgnored = !showIgnored}>
             {showIgnored ? $t('unmatched.hideIgnored') : $t('unmatched.showIgnored', { n: ignored.length })}
           </button>

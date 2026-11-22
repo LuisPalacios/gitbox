@@ -34,6 +34,7 @@ type OrphanRepoDTO struct {
 	Reason         string   `json:"reason"`               // reconcile.Reason*
 	Candidates     []string `json:"candidates,omitempty"` // accounts it could go to, best first
 	Nested         bool     `json:"nested"`
+	WorkspaceRoot  string   `json:"workspaceRoot,omitempty"`
 }
 
 // ReconcileDTO answers a reconcile pass.
@@ -51,8 +52,9 @@ type ReconcileDTO struct {
 	// workspace file lists inside it.
 	WorkspaceMembers []string `json:"workspaceMembers"`
 	// WorkspaceUnknown lists the saved workspaces whose clone roots could not be read.
-	WorkspaceUnknown []string `json:"workspaceUnknown"`
-	Error            string   `json:"error,omitempty"`
+	WorkspaceUnknown     []string                 `json:"workspaceUnknown"`
+	WorkspaceDiagnostics []WorkspaceDiagnosticDTO `json:"workspaceDiagnostics,omitempty"`
+	Error                string                   `json:"error,omitempty"`
 }
 
 // WorkspaceChoiceDTO is a container whose root holds several workspace
@@ -63,12 +65,19 @@ type WorkspaceChoiceDTO struct {
 	Files  []string `json:"files"`
 }
 
-// WorkspaceFolderDTO is a folder a container's workspace lists that is not
-// cloned yet. Parent is the container's "source/repo" key.
+// WorkspaceFolderDTO describes a waiting or outside workspace folder.
+// Parent is the container's "source/repo" key.
 type WorkspaceFolderDTO struct {
-	Parent string `json:"parent"`
-	Name   string `json:"name"`
-	Path   string `json:"path"`
+	Parent      string `json:"parent"`
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	OutsidePath string `json:"outsidePath,omitempty"`
+}
+
+type WorkspaceDiagnosticDTO struct {
+	Parent  string `json:"parent"`
+	File    string `json:"file"`
+	Problem string `json:"problem"`
 }
 
 // emptyReconcile is a pass with no results, its lists non-nil for the
@@ -80,8 +89,9 @@ func emptyReconcile(errText string) ReconcileDTO {
 
 // AdoptRequestDTO asks to adopt the clone at Path into Account.
 type AdoptRequestDTO struct {
-	Path    string `json:"path"`
-	Account string `json:"account"`
+	Path          string `json:"path"`
+	Account       string `json:"account"`
+	WorkspaceRoot string `json:"workspaceRoot,omitempty"`
 }
 
 func toOrphanDTO(o adopt.OrphanRepo, reason string) OrphanRepoDTO {
@@ -125,6 +135,10 @@ func (a *App) scanConfig() (reconcile.Result, error) {
 	if scan == nil {
 		scan = reconcile.Plan
 	}
+	return a.scanConfigWith(scan)
+}
+
+func (a *App) scanConfigWith(scan func(*config.Config) (reconcile.Result, error)) (reconcile.Result, error) {
 	clone := a.reconcileClone
 	if clone == nil {
 		clone = (*config.Config).Clone
@@ -223,7 +237,7 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 	for _, c := range choices {
 		out.WorkspaceChoices = append(out.WorkspaceChoices, WorkspaceChoiceDTO{Source: c.Source, Repo: c.Repo, Files: c.Files})
 	}
-	out.Placeholders, out.WorkspaceMembers = a.workspaceTree()
+	out.Placeholders, out.WorkspaceMembers, out.WorkspaceDiagnostics = a.workspaceTree()
 	for _, u := range res.Unmatched {
 		out.Unmatched = append(out.Unmatched, toOrphanDTO(u.OrphanRepo, u.Reason))
 	}
@@ -271,23 +285,27 @@ func (a *App) syncWorkspaces() (choices []workspace.Choice, unknown []string, ch
 	return choices, unknown, changed, len(stale) > 0, err
 }
 
-// workspaceTree lists, for every container's workspace, the folders not
-// cloned yet and the clones it lists, reading disk without the lock.
-func (a *App) workspaceTree() ([]WorkspaceFolderDTO, []string) {
+// workspaceTree inspects selected workspaces without holding the app lock.
+func (a *App) workspaceTree() ([]WorkspaceFolderDTO, []string, []WorkspaceDiagnosticDTO) {
 	placeholders, members := []WorkspaceFolderDTO{}, []string{}
 	a.mu.Lock()
 	snap, err := a.cfg.Clone()
 	a.mu.Unlock()
 	if err != nil {
-		return placeholders, members
+		return placeholders, members, nil
 	}
-	for _, p := range workspace.Placeholders(snap) {
-		placeholders = append(placeholders, WorkspaceFolderDTO{Parent: p.Parent.Source + "/" + p.Parent.Repo, Name: p.Name, Path: p.Path})
+	tree := workspace.Inspect(snap)
+	for _, p := range tree.Placeholders {
+		placeholders = append(placeholders, WorkspaceFolderDTO{Parent: p.Parent.Source + "/" + p.Parent.Repo, Name: p.Name, Path: p.Path, OutsidePath: p.OutsidePath})
 	}
-	for _, r := range workspace.MemberRepos(snap) {
+	for _, r := range tree.Members {
 		members = append(members, r.Source+"/"+r.Repo)
 	}
-	return placeholders, members
+	var issues []WorkspaceDiagnosticDTO
+	for _, d := range tree.Diagnostics {
+		issues = append(issues, WorkspaceDiagnosticDTO{Parent: d.Parent.Source + "/" + d.Parent.Repo, File: d.File, Problem: d.Problem})
+	}
+	return placeholders, members, issues
 }
 
 // AdoptClones adopts unmatched or ignored clones into the accounts I
@@ -298,7 +316,7 @@ func (a *App) AdoptClones(reqs []AdoptRequestDTO) ReconcileDTO { return a.be().A
 // adoptClonesLocal is the local backend's AdoptClones.
 func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
 	a.reconcileMu.Lock()
-	res, err := a.scanConfig()
+	res, workspaceRows, err := a.scanAdoptionRequests(reqs)
 	if err != nil {
 		a.mu.Unlock()
 		a.reconcileMu.Unlock()
@@ -308,8 +326,16 @@ func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
 	var errs []string
 	for _, req := range reqs {
 		found := false
-		for _, u := range append(append([]reconcile.Unmatched{}, res.Unmatched...), res.Ignored...) {
-			if !config.SamePath(u.Path, req.Path) {
+		rows := append(append([]reconcile.Unmatched{}, res.Unmatched...), res.Ignored...)
+		if req.WorkspaceRoot != "" {
+			rows = workspaceRows[req.WorkspaceRoot]
+		}
+		for _, u := range rows {
+			if req.WorkspaceRoot == "" {
+				if !config.SamePath(u.Path, req.Path) {
+					continue
+				}
+			} else if u.Path != req.Path || u.Reason == reconcile.ReasonWorktree || !slices.Contains(u.Candidates, req.Account) {
 				continue
 			}
 			found = true
@@ -323,7 +349,11 @@ func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
 			break
 		}
 		if !found {
-			errs = append(errs, fmt.Sprintf("%s is no longer waiting to be adopted", req.Path))
+			if req.WorkspaceRoot != "" {
+				errs = append(errs, "The clone or selected account is no longer available for adoption")
+			} else {
+				errs = append(errs, fmt.Sprintf("%s is no longer waiting to be adopted", req.Path))
+			}
 		}
 	}
 	var saveErr error
@@ -345,6 +375,41 @@ func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
 		out.Error = errs[0]
 	}
 	return out
+}
+
+// scanAdoptionRequests revalidates deliberate workspace searches outside the
+// config lock, under the same snapshot check as ordinary adoption.
+func (a *App) scanAdoptionRequests(reqs []AdoptRequestDTO) (reconcile.Result, map[string][]reconcile.Unmatched, error) {
+	roots := map[string]bool{}
+	ordinary := len(reqs) == 0
+	for _, req := range reqs {
+		if req.WorkspaceRoot == "" {
+			ordinary = true
+		} else {
+			roots[req.WorkspaceRoot] = true
+		}
+	}
+	if len(roots) == 0 {
+		res, err := a.scanConfig()
+		return res, nil, err
+	}
+	var external map[string][]reconcile.Unmatched
+	res, err := a.scanConfigWith(func(cfg *config.Config) (reconcile.Result, error) {
+		tree := workspace.Inspect(cfg)
+		external = make(map[string][]reconcile.Unmatched, len(roots))
+		for root := range roots {
+			rows, _, err := reconcile.WorkspaceCandidates(cfg, tree, root)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			external[root] = rows
+		}
+		if ordinary {
+			return reconcile.Plan(cfg)
+		}
+		return reconcile.Result{}, nil
+	})
+	return res, external, err
 }
 
 // IgnoreClone remembers (or forgets) that I don't want the clone at path

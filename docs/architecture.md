@@ -348,7 +348,7 @@ Ties VS Code `.code-workspace` files to the clones that hold them. Gitbox never 
 
 - `Sync` reads each clone root. One workspace file makes the clone a container and sets `repo.workspace`. With several files, Gitbox uses the preferred file if present, keeps the current file if it still exists, or asks the user to choose. A successful read with no workspace files clears the current file and keeps the container flag. On a read failure, Gitbox preserves both and marks the workspace as stale.
 - `Apply` writes each change only if the clone path, container flag, current file and preferred file still match the scan. Gitbox schedules one coalesced retry if it skips a stale change. It clears a preferred file only after two consecutive successful reads of the same clone root that both show the file is missing.
-- `Members` reads the folders a workspace file lists inside its container. `Placeholders` keeps those that aren't on disk, that no configured repo resolves to, and that don't sit inside another clone (a submodule, say). `MemberRepos` lists the configured clones it names, which the GUI shows in the workspace colour.
+- `Members` reads up to 1 MiB from a workspace file and resolves the existing folders it lists inside its container. `Inspect` returns file diagnostics, configured members for the workspace colour, and dimmed rows for missing or external folders. Missing folders that already have a clone row or live inside a nested clone stay out of the workspace rows.
 
 Workspace files are JSON with comments, so comments and trailing commas are stripped before parsing. The disk reconcile binding runs `Sync` on a snapshot without the config lock, applies the changes under it, then runs the reconcile scan, so a container that just gained a workspace file has its nested clones adopted in the same pass.
 
@@ -366,7 +366,7 @@ Scans every root in `global.roots` and the working trees of container repos for 
 
 If two or more accounts share the top score (including a bare host-only tie), the match is ambiguous and no account is picked. A unique match is **confident** when its score is above the host-only baseline, so something beyond the server ties the clone to the account. Adoption never moves files: a clone at its standard spot under a root records that root, and any other clone gets an absolute `clone_folder`. Adopted clones get credential isolation, identity, and a remote URL rewritten to match the credential type.
 
-Ordinary orphan discovery stops at each clone boundary, including a `.git` file used by a worktree. Explicit roots are scanned independently. The container scan uses `nested_scan_depth` to find nested clones, and also scans every folder a container's workspace file lists inside it, at any depth.
+Ordinary orphan discovery stops at each clone boundary, including a `.git` file used by a worktree. Explicit roots are scanned independently. The container scan uses `nested_scan_depth` to find nested clones, and also scans the folders listed in a container’s workspace file that resolve inside the container, at any depth. **Find on disk** searches a resolved external folder on request. Adoption rechecks that the workspace still lists the external folder and that the chosen clone and account still match.
 
 ### pkg/reconcile — Disk reconcile
 

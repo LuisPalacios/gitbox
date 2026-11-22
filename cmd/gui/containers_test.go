@@ -1,13 +1,18 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"strings"
 	"sync"
+	"syscall"
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/workspace"
 )
 
 // newWorkspaceTestApp builds an App with a populated config and a real on-disk
@@ -200,6 +205,80 @@ func TestReconcile_WorkspaceFileMakesContainer(t *testing.T) {
 	}
 	if res := a.Reconcile(); res.WorkspacesChanged {
 		t.Error("second pass changed workspaces again")
+	}
+}
+
+func TestReconcile_ReportsOversizedWorkspace(t *testing.T) {
+	a, _ := newWorkspaceTestApp(t)
+	containerClone(t, a, map[string]string{
+		"large.code-workspace": `{"folders":[{"path":"missing"}]}` + strings.Repeat(" ", 2<<20),
+	})
+	res := a.Reconcile()
+	want := []WorkspaceDiagnosticDTO{{Parent: "github-alice/team/frontend", File: "large.code-workspace", Problem: workspace.TooLarge}}
+	if res.Error != "" || len(res.Placeholders) != 0 || !reflect.DeepEqual(res.WorkspaceDiagnostics, want) {
+		t.Fatalf("reconcile = %+v, want oversized diagnostic and no workspace folders", res)
+	}
+}
+
+func TestReconcile_ExternalWorkspaceCloneRequiresExplicitAdoption(t *testing.T) {
+	a, cfgPath := newWorkspaceTestApp(t)
+	dir := containerClone(t, a, map[string]string{
+		"front.code-workspace": `{"folders":[{"path":"external/outside-clone"}]}`,
+	})
+	outside, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	remoteClone := filepath.Join(outside, "outside-clone")
+	initClone(t, remoteClone, "git@github.com:alice/outside-clone.git")
+	link := filepath.Join(dir, "external")
+	if err := os.Symlink(outside, link); err != nil {
+		if runtime.GOOS == "windows" && (errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.Errno(1314))) {
+			t.Skipf("creating symlinks requires privileges: %v", err)
+		}
+		t.Fatal(err)
+	}
+	other := t.TempDir()
+	unrelated := filepath.Join(other, "unrelated")
+	initClone(t, unrelated, "git@github.com:alice/unrelated.git")
+	res := a.Reconcile()
+	want := []WorkspaceFolderDTO{{Parent: "github-alice/team/frontend", Name: "outside-clone", Path: "external/outside-clone", OutsidePath: remoteClone}}
+	if res.Error != "" || res.Adopted != 0 || len(res.Unmatched) != 0 || len(res.WorkspaceMembers) != 0 || !reflect.DeepEqual(res.Placeholders, want) {
+		t.Fatalf("automatic reconcile = %+v, want only the outside workspace row", res)
+	}
+	found := a.ScanFolderForClones(remoteClone)
+	if len(found) != 1 || found[0].Path != remoteClone || found[0].WorkspaceRoot != remoteClone || found[0].MatchedAccount != "github-alice" {
+		t.Fatalf("explicit scan = %+v, want the external clone", found)
+	}
+	for _, req := range []AdoptRequestDTO{
+		{Path: remoteClone, Account: "github-alice"},
+		{Path: unrelated, Account: "github-alice", WorkspaceRoot: remoteClone},
+		{Path: unrelated, Account: "github-alice", WorkspaceRoot: other},
+		{Path: remoteClone, Account: "another-account", WorkspaceRoot: remoteClone},
+	} {
+		if res := a.AdoptClones([]AdoptRequestDTO{req}); res.Error == "" || res.Adopted != 0 {
+			t.Fatalf("unverified adoption %+v = %+v", req, res)
+		}
+	}
+	req := AdoptRequestDTO{Path: remoteClone, Account: "github-alice", WorkspaceRoot: remoteClone}
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if res := a.AdoptClones([]AdoptRequestDTO{req}); res.Error == "" || res.Adopted != 0 {
+		t.Fatalf("stale workspace search authorized adoption: %+v", res)
+	}
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	if res := a.AdoptClones([]AdoptRequestDTO{req}); res.Error != "" || res.Adopted != 1 {
+		t.Fatalf("explicit adoption = %+v, want one adoption", res)
+	}
+	reloaded, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo := reloaded.Sources["github-alice"].Repos["alice/outside-clone"]; repo.CloneFolder != remoteClone {
+		t.Fatalf("persisted clone = %+v, want absolute original location %q", repo, remoteClone)
 	}
 }
 
