@@ -12,7 +12,7 @@ El gate local mantiene la verificación en hardware que controlo y nunca ejecuta
 
 1. El gate se niega a ejecutarse cuando hay cambios sin commitear en archivos rastreados, porque prueba el `HEAD` commiteado, no el árbol de trabajo.
 2. Empaqueta `HEAD` y sus tags con `git bundle`. Los tags permiten que `git describe` funcione, como hace el `fetch-depth: 0` del checkout de CI.
-3. Para cada carril copia el bundle y `scripts/gate-lane.sh` al host del carril, bajo `~/.cache/gitbox-gate/in/`.
+3. Para cada carril copia el bundle y `scripts/gate-lane.sh` al host del carril, bajo `~/.cache/gitbox-gate/in/`. El carril borra los dos al terminar, tanto si pasa como si falla, y elimina los archivos que una ejecución interrumpida dejó allí hace más de un día.
 4. Todos los carriles se ejecutan a la vez. Cada carril trae su propio bundle a su propio repositorio de caché, para que los carriles que comparten host no compitan por los mismos archivos, clona el commit en un directorio limpio bajo `~/.cache/gitbox-gate/` y ejecuta sus comprobaciones.
 5. El gate imprime una línea de resumen por carril y guarda el log completo de cada carril en `${TMPDIR:-/tmp}/gitbox-gate/<sha>/<lane>.log`.
 6. Cuando todos los carriles pasan, el gate registra un marcador para el SHA.
