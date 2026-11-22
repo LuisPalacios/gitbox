@@ -760,6 +760,9 @@ func TestStartupSnapshotCarriesTheServerVersion(t *testing.T) {
 	if want := formatAppVersion(version, commit); remoteSnap.ServerVersion != want {
 		t.Errorf("the snapshot's ServerVersion = %q, want %q", remoteSnap.ServerVersion, want)
 	}
+	if remoteSnap.OS != runtime.GOOS || remoteSnap.ServerOS != runtime.GOOS {
+		t.Errorf("the snapshot's OS = %q and ServerOS = %q, want this machine's and the server's", remoteSnap.OS, remoteSnap.ServerOS)
+	}
 	if len(remoteSnap.Config.Accounts) != 1 {
 		t.Errorf("the snapshot lost the host's config: %+v", remoteSnap.Config)
 	}
@@ -768,6 +771,9 @@ func TestStartupSnapshotCarriesTheServerVersion(t *testing.T) {
 	local := &App{cfgPath: contractConfig(t)}
 	local.be().Init(context.Background())
 	snap, err := local.GetStartupSnapshot()
+	if snap.ServerOS != snap.OS || snap.OS != runtime.GOOS {
+		t.Errorf("a local snapshot's OS %q and ServerOS %q differ", snap.OS, snap.ServerOS)
+	}
 	if err != nil || snap.ServerVersion != "" || snap.AppVersion == "" {
 		t.Errorf("local snapshot: server %q, app %q, %v", snap.ServerVersion, snap.AppVersion, err)
 	}

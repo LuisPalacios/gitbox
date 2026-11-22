@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
+	"slices"
 	"sync"
 	"time"
 
+	"github.com/LuisPalacios/gitbox/pkg/mirror"
 	"github.com/LuisPalacios/gitbox/pkg/rpc"
 )
 
@@ -23,6 +26,11 @@ import (
 type RemoteBackend struct {
 	sink func() EventSink
 	log  io.Writer
+	// onTruncate runs when a list from the server was cut (capList).
+	onTruncate func()
+	// readOnly refuses every method that changes state on the host before
+	// it reaches the wire (#240). A remote window sets it until P5.
+	readOnly bool
 
 	mu      sync.Mutex
 	client  *rpc.Client // nil while not connected
@@ -127,19 +135,26 @@ func (r *RemoteBackend) logf(format string, args ...any) {
 	}
 }
 
-// relayEvent hands a server event to the window. The name must be a REMOTE
-// event this build emits itself; anything else is dropped, LOCAL events
-// such as remote:state or update:quit included, which only this process
-// may emit.
+// relayEvent hands a server event to the window. Only the events of the
+// relay table pass: an unknown name, a LOCAL event such as remote:state or
+// update:quit, which only this process may emit, and an event of a later
+// phase are dropped with a log line. Each payload is decoded into the shape
+// this build emits and encoded again, so a field this build does not know,
+// or one of the wrong type, never reaches the window.
 func (r *RemoteBackend) relayEvent(name string, payload []json.RawMessage) {
-	if info, known := eventClass[name]; !known || info.Class != classRemote {
-		r.logf("dropping event %q, which a server may not send", userText(name))
+	decode, known := relayedEvents[name]
+	if info, ok := eventClass[name]; !known || !ok || info.Class != classRemote {
+		r.logf("dropping event %q, which this window does not take from a server", userText(name))
 		return
 	}
-	items := make([]any, 0, len(payload))
-	for _, raw := range payload {
-		var item any
-		if err := json.Unmarshal(raw, &item); err != nil {
+	if len(payload) > 1 || (len(payload) == 0) != (decode == nil) {
+		r.logf("dropping event %s: it carries %d payloads", name, len(payload))
+		return
+	}
+	var items []any
+	if decode != nil {
+		item, err := decode(r, payload[0])
+		if err != nil {
 			r.logf("dropping event %s: its payload cannot be decoded", name)
 			return
 		}
@@ -148,15 +163,177 @@ func (r *RemoteBackend) relayEvent(name string, payload []json.RawMessage) {
 	r.sink().Emit(name, items...)
 }
 
+// Payloads that this build emits as maps, as structs with the same keys.
+type fetchEventDTO struct {
+	Source       string `json:"source"`
+	Repo         string `json:"repo"`
+	Error        string `json:"error"`
+	Code         string `json:"code"`
+	Host         string `json:"host"`
+	Skipped      bool   `json:"skipped"`
+	RefusedFast  bool   `json:"refusedFast"`
+	UpstreamGone bool   `json:"upstreamGone"`
+}
+
+type fetchAllDoneDTO struct {
+	Error string `json:"error"`
+}
+
+type discoverDoneDTO struct {
+	AccountKey string           `json:"accountKey"`
+	Error      string           `json:"error"`
+	Repos      []DiscoverResult `json:"repos"`
+}
+
+type mirrorDiscoverProgressDTO struct {
+	Phase   string `json:"phase"`
+	Account string `json:"account"`
+	Current int    `json:"current"`
+	Total   int    `json:"total"`
+}
+
+type mirrorDiscoverDoneDTO struct {
+	Error   string                   `json:"error"`
+	Results []mirror.DiscoveryResult `json:"results"`
+}
+
+type networkStateDTO struct {
+	Offline bool     `json:"offline"`
+	Hosts   []string `json:"hosts"`
+}
+
+// payloadDecoder decodes one relayed payload; nil means the event carries
+// none.
+type payloadDecoder func(r *RemoteBackend, raw json.RawMessage) (any, error)
+
+// relayedEvents are the events a remote window takes from its server: the
+// P4 events of eventClass. TestRelayedEventsAreRemote keeps the two in step.
+var relayedEvents = map[string]payloadDecoder{
+	"status:updated": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
+		var list []StatusResult
+		if err := json.Unmarshal(raw, &list); err != nil {
+			return nil, err
+		}
+		return capList(r, "status:updated", list, maxRemoteRepos), nil
+	},
+	"fetch:start":              typedPayload[fetchEventDTO],
+	"fetch:done":               typedPayload[fetchEventDTO],
+	"fetch:allstart":           nil,
+	"fetch:alldone":            typedPayload[fetchAllDoneDTO],
+	"credentials:updated":      typedPayload[map[string]CredentialStatus],
+	"discover:done":            typedPayload[discoverDoneDTO],
+	"mirror:status":            typedPayload[[]MirrorStatusResult],
+	"mirror:discover:progress": typedPayload[mirrorDiscoverProgressDTO],
+	"mirror:discover:done":     typedPayload[mirrorDiscoverDoneDTO],
+	"pr:refreshed":             typedPayload[PRAccountUpdateDTO],
+	"network:state":            typedPayload[networkStateDTO],
+}
+
+// typedPayload decodes raw into T and encodes it again. For an object it
+// keeps only the keys the server sent that T knows, so a key the emitting
+// side leaves out stays out.
+func typedPayload[T any](_ *RemoteBackend, raw json.RawMessage) (any, error) {
+	var typed T
+	if err := json.Unmarshal(raw, &typed); err != nil {
+		return nil, err
+	}
+	clean, err := json.Marshal(typed)
+	if err != nil {
+		return nil, err
+	}
+	var sent map[string]json.RawMessage
+	if json.Unmarshal(raw, &sent) == nil && sent != nil {
+		var out map[string]any
+		if err := json.Unmarshal(clean, &out); err != nil {
+			return nil, err
+		}
+		for key := range out {
+			if _, ok := sent[key]; !ok {
+				delete(out, key)
+			}
+		}
+		return out, nil
+	}
+	var out any
+	err = json.Unmarshal(clean, &out)
+	return out, err
+}
+
+// The longest lists a remote window takes from its server (#240). A longer
+// one is cut, with a log line, and the window says it is incomplete.
+const (
+	maxRemoteRepos    = 10_000
+	maxRemoteAccounts = 1_000
+)
+
+// capList cuts list to limit items.
+func capList[T any](r *RemoteBackend, what string, list []T, limit int) []T {
+	if len(list) <= limit {
+		return list
+	}
+	r.truncated(what, len(list), limit)
+	return list[:limit]
+}
+
+// capConfig keeps the first maxRemoteAccounts accounts, by key, and the
+// first maxRemoteRepos repos of the sources left, in key order.
+func capConfig(r *RemoteBackend, dto *ConfigDTO) {
+	if len(dto.Accounts) > maxRemoteAccounts {
+		keys := slices.Sorted(maps.Keys(dto.Accounts))
+		r.truncated("accounts", len(keys), maxRemoteAccounts)
+		for _, key := range keys[maxRemoteAccounts:] {
+			delete(dto.Accounts, key)
+		}
+		for key, src := range dto.Sources {
+			if _, ok := dto.Accounts[src.Account]; !ok {
+				delete(dto.Sources, key)
+			}
+		}
+	}
+	total := 0
+	for _, src := range dto.Sources {
+		total += len(src.Repos)
+	}
+	if total <= maxRemoteRepos {
+		return
+	}
+	r.truncated("repos", total, maxRemoteRepos)
+	left := maxRemoteRepos
+	for _, key := range slices.Sorted(maps.Keys(dto.Sources)) {
+		src := dto.Sources[key]
+		repos := slices.Sorted(maps.Keys(src.Repos))
+		if len(repos) > left {
+			for _, repo := range repos[left:] {
+				delete(src.Repos, repo)
+			}
+			src.RepoOrder = slices.DeleteFunc(src.RepoOrder, func(repo string) bool { _, ok := src.Repos[repo]; return !ok })
+			dto.Sources[key] = src
+		}
+		left = max(0, left-len(src.Repos))
+	}
+}
+
+// truncated logs a cut list and tells the window.
+func (r *RemoteBackend) truncated(what string, had, kept int) {
+	r.logf("the server sent %d %s; the window shows the first %d", had, what, kept)
+	if r.onTruncate != nil {
+		r.onTruncate()
+	}
+}
+
 // invoke calls a method on the server. A method that changes state on the
 // host carries a request id, so a call that is sent twice takes effect once.
 // Before the connection and after it ends, every call fails with
-// not_connected; a method the server does not serve yet fails with
+// not_connected; on a read-only backend a mutation fails with read_only
+// without being sent; a method the server does not serve yet fails with
 // not_implemented_remote.
 func (r *RemoteBackend) invoke(method string, result any, args ...any) error {
 	client := r.current()
 	if client == nil {
 		return &remoteError{remoteNotConnected, "not connected to the remote"}
+	}
+	if r.readOnly && methodClass[method].Mutating {
+		return &remoteError{remoteReadOnly, method + " is not available on a read-only remote"}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), remoteCallTimeout(method))
 	defer cancel()

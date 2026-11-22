@@ -217,6 +217,9 @@ func (a *App) MissingModernTerminal() bool {
 
 // OpenProfile launches the given profile in the given folder.
 func (a *App) OpenProfile(path, profileID string) error {
+	if err := a.refuseRemotePath(); err != nil {
+		return err
+	}
 	return a.launchProfile(path, profileID, nil)
 }
 

@@ -24,7 +24,7 @@ import (
 // process, GitboxApp --remote <alias> --experimental-remote: it loads only
 // the client preferences, shows its window at once, and connects from
 // DomReady through pkg/remote to a gitbox-server it installs and verifies.
-// Until P4 the window shows only the connected view. The main window lists
+// Once connected it shows the host's data read-only (P4, #240). The main window lists
 // the remotes in Settings, adds and removes them, uninstalls the server and
 // starts the remote windows.
 
@@ -55,6 +55,9 @@ type RemoteStateDTO struct {
 	ServerOS      string `json:"serverOS,omitempty"`
 	ServerArch    string `json:"serverArch,omitempty"`
 	ServerVersion string `json:"serverVersion,omitempty"`
+	// Truncated says the server sent a list longer than a window takes, so
+	// what it shows is incomplete (#240).
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // RemoteResultDTO is the outcome of a remote action. Empty Error means it
@@ -153,6 +156,8 @@ func newRemoteSession(a *App, alias string) *remoteSession {
 	s := &remoteSession{a: a, alias: alias, clientID: newClientID(), dial: dialSSH}
 	s.log = remote.NewLog(func(line string) { a.sink().Emit("remote:log", userText(line)) })
 	s.backend = newRemoteBackend(a.sink, s.log)
+	s.backend.onTruncate = s.noteTruncated
+	s.backend.readOnly = true // until P5 (#240)
 	s.state = RemoteStateDTO{State: remoteDisconnected, Alias: alias}
 	return s
 }
@@ -189,6 +194,19 @@ func (s *remoteSession) set(gen int, change func(*RemoteStateDTO)) {
 		return
 	}
 	change(&s.state)
+	st := s.state
+	s.mu.Unlock()
+	s.a.sink().Emit("remote:state", st)
+}
+
+// noteTruncated marks the state incomplete, once per connection.
+func (s *remoteSession) noteTruncated() {
+	s.mu.Lock()
+	if s.state.Truncated {
+		s.mu.Unlock()
+		return
+	}
+	s.state.Truncated = true
 	st := s.state
 	s.mu.Unlock()
 	s.a.sink().Emit("remote:state", st)

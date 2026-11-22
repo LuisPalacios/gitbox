@@ -1439,6 +1439,7 @@ export namespace main {
 	    serverOS?: string;
 	    serverArch?: string;
 	    serverVersion?: string;
+	    truncated?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new RemoteStateDTO(source);
@@ -1454,6 +1455,7 @@ export namespace main {
 	        this.serverOS = source["serverOS"];
 	        this.serverArch = source["serverArch"];
 	        this.serverVersion = source["serverVersion"];
+	        this.truncated = source["truncated"];
 	    }
 	}
 	export class RemoteUninstallDTO {
@@ -1616,6 +1618,7 @@ export namespace main {
 	    appVersion: string;
 	    os: string;
 	    credentialFindings: credential.Finding[];
+	    serverOS: string;
 	    serverVersion?: string;
 	    remoteAlias?: string;
 	
@@ -1631,6 +1634,7 @@ export namespace main {
 	        this.appVersion = source["appVersion"];
 	        this.os = source["os"];
 	        this.credentialFindings = this.convertValues(source["credentialFindings"], credential.Finding);
+	        this.serverOS = source["serverOS"];
 	        this.serverVersion = source["serverVersion"];
 	        this.remoteAlias = source["remoteAlias"];
 	    }

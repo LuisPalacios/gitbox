@@ -309,10 +309,26 @@ func (a *App) checkForUpdate() {
 	a.sink().Emit("update:available", info)
 }
 
-// GetOS returns the Go runtime GOOS value so the frontend can render
-// platform-specific hints (e.g. macOS Local Network permission guidance).
-// Values: "darwin", "windows", "linux".
-func (a *App) GetOS() string { return a.be().GetOS() }
+// GetOS returns the GOOS of the machine that shows the window, for its
+// shortcut labels and wording: "darwin", "windows", "linux". The host's own
+// is StartupSnapshot.ServerOS; Backend.GetOS is what a server answers.
+func (a *App) GetOS() string { return a.getOSLocal() }
+
+// remoteWindow reports whether this window shows another host.
+func (a *App) remoteWindow() bool {
+	_, ok := a.be().(*RemoteBackend)
+	return ok
+}
+
+// refuseRemotePath stops a local launch in a remote window: its path names
+// a folder on the host, untrusted and absent here (#240). P6 opens remote
+// paths through shell escaping.
+func (a *App) refuseRemotePath() error {
+	if a.remoteWindow() {
+		return &remoteError{remoteNotImplemented, "opening a folder of the remote on this computer is not available yet"}
+	}
+	return nil
+}
 
 // getOSLocal is the local backend's GetOS.
 func (a *App) getOSLocal() string {
@@ -474,6 +490,10 @@ type StartupSnapshot struct {
 	AppVersion         string               `json:"appVersion"`
 	OS                 string               `json:"os"`
 	CredentialFindings []credential.Finding `json:"credentialFindings"`
+	// OS is the system of the machine that shows the window, ServerOS that
+	// of the host whose data it shows. Both are runtime.GOOS in a local
+	// window.
+	ServerOS string `json:"serverOS"`
 	// ServerVersion is the build of the gitbox-server this window talks
 	// to, as it stated it in the handshake. Empty in a local window.
 	ServerVersion string `json:"serverVersion,omitempty"`
@@ -489,9 +509,12 @@ func (a *App) GetStartupSnapshot() (StartupSnapshot, error) {
 		return StartupSnapshot{}, err
 	}
 	a.overlayPrefs(&snap.Config)
+	snap.ServerOS = snap.OS
 	if remote, ok := a.be().(*RemoteBackend); ok {
 		snap.AppVersion = a.getAppVersionLocal()
 		snap.ServerVersion = remote.ServerVersion()
+		snap.ServerOS = identifier(snap.OS)
+		snap.OS = a.getOSLocal()
 	}
 	snap.RemoteAlias = a.remoteAlias
 	return snap, nil
@@ -569,6 +592,9 @@ func (a *App) getConfigPathLocal() string {
 // host without affecting the grandchild GUI (start → ShellExecute spawns
 // the target with its own STARTUPINFO, so SW_HIDE does not cascade).
 func (a *App) OpenFileInEditor(path string) error {
+	if err := a.refuseRemotePath(); err != nil {
+		return err
+	}
 	var cmd *exec.Cmd
 	switch {
 	case isWindows():
@@ -584,6 +610,9 @@ func (a *App) OpenFileInEditor(path string) error {
 
 // OpenInExplorer reveals a folder in the OS file manager.
 func (a *App) OpenInExplorer(path string) error {
+	if err := a.refuseRemotePath(); err != nil {
+		return err
+	}
 	var cmd *exec.Cmd
 	switch {
 	case isWindows():
@@ -806,6 +835,9 @@ func (a *App) confirmSweepLocal(sourceKey, repoKey string) SweepDeleteDTO {
 // On Windows, editor launchers like code.cmd/cursor.cmd are batch wrappers;
 // HideWindow prevents the hosting cmd.exe from flashing before the GUI spawns.
 func (a *App) OpenInApp(path string, command string) error {
+	if err := a.refuseRemotePath(); err != nil {
+		return err
+	}
 	if command == "" {
 		return fmt.Errorf("command is required")
 	}
@@ -1243,6 +1275,9 @@ func (a *App) harnessProfileID() (string, error) {
 // auto-detected and config-stored entries call the same contract. Errors are
 // actionable strings the frontend can surface verbatim.
 func (a *App) OpenInAIHarness(path string, command string, args []string) error {
+	if err := a.refuseRemotePath(); err != nil {
+		return err
+	}
 	if command == "" {
 		return fmt.Errorf("AI harness command is required")
 	}
@@ -1570,6 +1605,11 @@ func (a *App) SetCollapsed(state config.CollapsedState) error {
 		if err != nil {
 			return err
 		}
+	}
+	if a.remoteWindow() {
+		// The host half (sources, repos) is saved on the host from P5; until
+		// then it lives in this window only.
+		return nil
 	}
 	return a.be().SetCollapsed(state)
 }
