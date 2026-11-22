@@ -765,12 +765,16 @@ func (a *App) credentialStillCurrent(cfg *config.Config, key string, revision ui
 	return sameRevision && reflect.DeepEqual(cfg.Accounts[key], current.Accounts[key]) && reflect.DeepEqual(cfg.Global.CredentialSSH, current.Global.CredentialSSH)
 }
 
-func (a *App) invalidateCredential(key string) {
-	a.mu.Lock()
+func (a *App) bumpCredentialRevisionLocked(key string) {
 	if a.credentialRevision == nil {
 		a.credentialRevision = make(map[string]uint64)
 	}
 	a.credentialRevision[key]++
+}
+
+func (a *App) invalidateCredential(key string) {
+	a.mu.Lock()
+	a.bumpCredentialRevisionLocked(key)
 	a.mu.Unlock()
 	a.probeMu.Lock()
 	a.lastProbeAt = time.Time{}

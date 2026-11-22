@@ -2,9 +2,8 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -47,14 +46,41 @@ type PRAccountUpdateDTO struct {
 	Error      string                  `json:"error,omitempty"`
 }
 
-// prCache is a process-local cache of the most recent PR data per account.
-// The frontend owns its own copy in a Svelte store; this cache is only
-// consulted by direct GetPRsForRepo calls (e.g. popover on a clone row
-// before the first refresh has propagated).
-var (
-	prCacheMu sync.RWMutex
-	prCache   = map[string]provider.AccountPRs{} // accountKey → AccountPRs
-)
+const prRefreshConcurrency = 2
+
+// prAccount describes the account fields used for listing and authenticating PRs.
+type prAccount struct {
+	provider, url, username, credentialType string
+}
+
+func prAccountFor(account config.Account) prAccount {
+	return prAccount{account.Provider, account.URL, account.Username, account.DefaultCredentialType}
+}
+
+type prRefresh struct {
+	account            prAccount
+	credentialRevision uint64
+	settingsRevision   uint64
+	includeDrafts      bool
+}
+
+type prEntry struct {
+	account       prAccount
+	includeDrafts bool
+	data          provider.AccountPRs
+}
+
+// prRefreshState belongs to one App. The App mutex guards its queue,
+// in-flight requests, cache and settings revision.
+type prRefreshState struct {
+	cache            map[string]prEntry
+	pending          map[string]prRefresh
+	active           map[string]prRefresh
+	workers          int
+	settingsRevision uint64
+	// Tests can supply a lister while using the real refresh and token paths.
+	lister provider.PRLister
+}
 
 // GetPRSettings returns the current PR badge feature flags.
 func (a *App) GetPRSettings() PRSettingsDTO { return a.be().GetPRSettings() }
@@ -70,14 +96,16 @@ func (a *App) getPRSettingsLocal() PRSettingsDTO {
 }
 
 // SetPRBadgesEnabled toggles the feature and persists the config.
-// When disabled the frontend should clear its store; this function does not
-// evict the process cache (cheap and silent).
+// When disabled the frontend clears its store and in-flight results are dropped.
 func (a *App) SetPRBadgesEnabled(enabled bool) error { return a.be().SetPRBadgesEnabled(enabled) }
 
 // setPRBadgesEnabledLocal is the local backend's SetPRBadgesEnabled.
 func (a *App) setPRBadgesEnabledLocal(enabled bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if enabled != a.cfg.Global.PRBadgesOn() {
+		a.prs.settingsRevision++
+	}
 	v := enabled
 	a.cfg.Global.PRBadgesEnabled = &v
 	return a.saveConfig()
@@ -90,6 +118,9 @@ func (a *App) SetPRIncludeDrafts(enabled bool) error { return a.be().SetPRInclud
 func (a *App) setPRIncludeDraftsLocal(enabled bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if enabled != a.cfg.Global.PRDraftsIncluded() {
+		a.prs.settingsRevision++
+	}
 	v := enabled
 	a.cfg.Global.PRIncludeDrafts = &v
 	return a.saveConfig()
@@ -106,103 +137,194 @@ func (a *App) GetPRsForRepo(sourceKey, repoKey string) PRSummaryDTO {
 // getPRsForRepoLocal is the local backend's GetPRsForRepo.
 func (a *App) getPRsForRepoLocal(sourceKey, repoKey string) PRSummaryDTO {
 	a.mu.Lock()
+	defer a.mu.Unlock()
 	if !a.cfg.Global.PRBadgesOn() {
-		a.mu.Unlock()
 		return PRSummaryDTO{}
 	}
 	src, ok := a.cfg.Sources[sourceKey]
-	a.mu.Unlock()
 	if !ok {
 		return PRSummaryDTO{}
 	}
-
-	prCacheMu.RLock()
-	entry, ok := prCache[src.Account]
-	prCacheMu.RUnlock()
-	if !ok {
+	account, ok := a.cfg.Accounts[src.Account]
+	entry, cached := a.prs.cache[src.Account]
+	if !ok || !cached || entry.account != prAccountFor(account) || entry.includeDrafts != a.cfg.Global.PRDraftsIncluded() {
 		return PRSummaryDTO{}
 	}
-	return lookupRepoSummary(entry, repoKey)
+	return lookupRepoSummary(entry.data, repoKey)
 }
 
-// RefreshAllPRs kicks off PR fetches for every account that has a PRLister
-// implementation. Per-account errors are silent (they surface only on the
-// emitted event's Error field). Emits "pr:refreshed" once per account, so
-// the frontend can merge results incrementally.
+// RefreshAllPRs schedules an incremental refresh for each account.
 func (a *App) RefreshAllPRs() { a.be().RefreshAllPRs() }
 
 // refreshAllPRsLocal is the local backend's RefreshAllPRs.
 func (a *App) refreshAllPRsLocal() {
-	a.mu.Lock()
-	enabled := a.cfg.Global.PRBadgesOn()
-	includeDrafts := a.cfg.Global.PRDraftsIncluded()
-	accounts := make([]accountSnapshot, 0, len(a.cfg.Accounts))
-	for key, acct := range a.cfg.Accounts {
-		accounts = append(accounts, accountSnapshot{key: key, acct: acct})
-	}
-	a.mu.Unlock()
-
-	if !enabled {
+	a.refreshMu.Lock()
+	defer a.refreshMu.Unlock()
+	if a.refreshClosed {
 		return
 	}
+	ctx := a.refreshContextLocked()
 
-	go func() {
-		for _, snap := range accounts {
-			// An account whose server is unreachable keeps the PRs it had:
-			// asking would only time out.
-			if !a.reachable(a.refreshContext(), serverAddr(snap.acct)) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.cfg.Global.PRBadgesOn() {
+		return
+	}
+	if a.prs.pending == nil {
+		a.prs.pending = make(map[string]prRefresh)
+		a.prs.active = make(map[string]prRefresh)
+	}
+	for key, account := range a.cfg.Accounts {
+		req := a.prRefreshLocked(key, account)
+		if active, ok := a.prs.active[key]; ok && active == req {
+			continue
+		}
+		a.prs.pending[key] = req
+	}
+	for a.prs.workers < min(prRefreshConcurrency, len(a.prs.pending)+len(a.prs.active)) {
+		a.prs.workers++
+		a.refreshWG.Go(func() { a.refreshPRAccounts(ctx) })
+	}
+}
+
+func (a *App) prRefreshLocked(key string, account config.Account) prRefresh {
+	return prRefresh{
+		account:            prAccountFor(account),
+		credentialRevision: a.credentialRevision[key],
+		settingsRevision:   a.prs.settingsRevision,
+		includeDrafts:      a.cfg.Global.PRDraftsIncluded(),
+	}
+}
+
+func (a *App) prRefreshIsCurrentLocked(key string, req prRefresh) bool {
+	account, ok := a.cfg.Accounts[key]
+	return ok && a.cfg.Global.PRBadgesOn() && a.prRefreshLocked(key, account) == req
+}
+
+func (a *App) nextPRRefresh(ctx context.Context) (string, prRefresh, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if ctx.Err() != nil {
+		clear(a.prs.pending)
+	} else {
+		for key, req := range a.prs.pending {
+			if !a.prRefreshIsCurrentLocked(key, req) {
+				delete(a.prs.pending, key)
 				continue
 			}
-			upd := fetchPRsForAccount(snap, includeDrafts)
+			if _, busy := a.prs.active[key]; !busy {
+				delete(a.prs.pending, key)
+				a.prs.active[key] = req
+				return key, req, true
+			}
+		}
+	}
+	a.prs.workers--
+	return "", prRefresh{}, false
+}
+
+func (a *App) refreshPRAccounts(ctx context.Context) {
+	for {
+		key, req, ok := a.nextPRRefresh(ctx)
+		if !ok {
+			return
+		}
+		data, upd, publish := a.fetchPRsForAccount(ctx, key, req)
+		// Credential changes bracket their work with revision bumps under the
+		// maintenance lock. Wait for the last bump before checking the result.
+		a.maintenanceMu.RLock()
+		a.mu.Lock()
+		if publish && ctx.Err() == nil && a.prRefreshIsCurrentLocked(key, req) {
+			if upd.Error == "" {
+				if a.prs.cache == nil {
+					a.prs.cache = make(map[string]prEntry)
+				}
+				a.prs.cache[key] = prEntry{req.account, req.includeDrafts, data}
+			}
 			a.sink().Emit("pr:refreshed", upd)
 		}
-	}()
+		delete(a.prs.active, key)
+		a.mu.Unlock()
+		a.maintenanceMu.RUnlock()
+	}
 }
 
-type accountSnapshot struct {
-	key  string
-	acct config.Account
-}
-
-// fetchPRsForAccount looks up a PRLister for the account's provider, fetches
-// PRs, updates the process cache, and returns a DTO ready to emit.
-func fetchPRsForAccount(snap accountSnapshot, includeDrafts bool) PRAccountUpdateDTO {
-	dto := PRAccountUpdateDTO{AccountKey: snap.key, ByRepo: map[string]PRSummaryDTO{}}
-
-	prov, err := provider.ByName(snap.acct.Provider)
-	if err != nil {
-		dto.Error = userMsg(err)
-		return dto
+// fetchPRsForAccount does network and credential work outside the App lock.
+func (a *App) fetchPRsForAccount(ctx context.Context, key string, req prRefresh) (data provider.AccountPRs, upd PRAccountUpdateDTO, publish bool) {
+	acct := config.Account{
+		Provider: req.account.provider, URL: req.account.url, Username: req.account.username,
+		DefaultCredentialType: req.account.credentialType,
 	}
-	lister, ok := prov.(provider.PRLister)
-	if !ok {
-		// Provider does not support PR listing (e.g. Bitbucket) — silent.
-		return dto
-	}
-
-	token, _, err := credential.ResolveAPIToken(snap.acct, snap.key)
-	if err != nil {
-		dto.Error = userText(fmt.Sprintf("no API token: %v", err))
-		return dto
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	res, err := lister.ListAccountPRs(ctx, snap.acct.URL, token, snap.acct.Username, includeDrafts)
+	// Unreachable accounts retain their last known PRs.
+	if !a.reachable(ctx, serverAddr(acct)) {
+		return data, upd, false
+	}
+	upd = PRAccountUpdateDTO{AccountKey: key, ByRepo: map[string]PRSummaryDTO{}}
+	lister := a.prs.lister
+	if lister == nil {
+		prov, err := provider.ByName(acct.Provider)
+		if err != nil {
+			upd.Error = userMsg(err)
+			return data, upd, true
+		}
+		var supported bool
+		lister, supported = prov.(provider.PRLister)
+		if !supported {
+			return data, upd, true
+		}
+	}
+	path := credential.CredentialFilePath(key)
+	before, _ := os.Stat(path)
+	token, _, err := credential.ResolveAPITokenContext(ctx, acct, key)
 	if err != nil {
-		dto.Error = userMsg(err)
-		return dto
+		upd.Error = userText("no API token")
+		return data, upd, true
 	}
-
-	prCacheMu.Lock()
-	prCache[snap.key] = res
-	prCacheMu.Unlock()
-
-	for repoFull, sum := range res.ByRepo {
-		dto.ByRepo[strings.ToLower(repoFull)] = toPRSummaryDTO(sum)
+	data, err = lister.ListAccountPRs(ctx, acct.URL, token, acct.Username, req.includeDrafts)
+	after, _ := os.Stat(path)
+	if !samePRCredentialFile(before, after) {
+		return data, upd, false
 	}
-	return dto
+	if err != nil {
+		upd.Error = userMsg(err)
+		return data, upd, true
+	}
+	for repoFull, sum := range data.ByRepo {
+		upd.ByRepo[strings.ToLower(repoFull)] = toPRSummaryDTO(sum)
+	}
+	return data, upd, true
+}
+
+// samePRCredentialFile checks for updates from outside the App without
+// reading or retaining the token. Atomic writes may replace the file even
+// when its size and timestamp match.
+func samePRCredentialFile(before, after os.FileInfo) bool {
+	if before == nil || after == nil {
+		return before == nil && after == nil
+	}
+	return os.SameFile(before, after) && before.Size() == after.Size() && before.ModTime().Equal(after.ModTime())
+}
+
+// refreshPRConfigLocked applies changes loaded from disk to PR state before
+// replacing a.cfg. Unrelated changes leave active requests in place.
+func (a *App) refreshPRConfigLocked(next *config.Config) {
+	if a.cfg == nil {
+		return
+	}
+	if a.cfg.Global.PRBadgesOn() != next.Global.PRBadgesOn() ||
+		a.cfg.Global.PRDraftsIncluded() != next.Global.PRDraftsIncluded() {
+		a.prs.settingsRevision++
+	}
+	for key, old := range a.cfg.Accounts {
+		account, exists := next.Accounts[key]
+		if !exists || prAccountFor(old) != prAccountFor(account) {
+			a.bumpCredentialRevisionLocked(key)
+			delete(a.prs.cache, key)
+		}
+	}
 }
 
 // lookupRepoSummary case-insensitively finds a repo inside an AccountPRs.

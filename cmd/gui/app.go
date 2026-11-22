@@ -105,6 +105,7 @@ type App struct {
 	upstreamGone       map[string]bool
 	upstreamRevision   map[string]uint64
 	credentialRevision map[string]uint64
+	prs                prRefreshState
 
 	// probeMu serializes upstream-existence probes so a burst of
 	// RefreshStatus calls from the frontend doesn't spawn N concurrent
@@ -511,6 +512,7 @@ func (a *App) reloadConfigLocal() (ConfigDTO, error) {
 	if err != nil {
 		return ConfigDTO{}, fmt.Errorf("reloading config: %w", err)
 	}
+	a.refreshPRConfigLocked(cfg)
 	a.cfg = cfg
 
 	return a.configDTO()
@@ -1324,6 +1326,7 @@ func (a *App) repairConfigLocal() ConfigRepairResult {
 	if err != nil {
 		return ConfigRepairResult{Success: false, Error: userMsg(err)}
 	}
+	a.refreshPRConfigLocked(cfg)
 	a.cfg = cfg
 	a.cfgLoaded = true
 	a.cfgLoadError = ""
@@ -1421,6 +1424,7 @@ func (a *App) restoreFromBackupLocal(backupPath string) ConfigRepairResult {
 	// Adopt + save. config.Save's internal backupBeforeSave() snapshots
 	// the current (broken) gitbox.json to gitbox-<now>.json before the
 	// overwrite.
+	a.refreshPRConfigLocked(cfg)
 	a.cfg = cfg
 	a.cfgLoaded = true
 	a.cfgLoadError = ""
@@ -1921,6 +1925,8 @@ func (a *App) discardAccountLocal(accountKey string) error {
 	if err := ops.DiscardAccount(a.cfg, accountKey); err != nil {
 		return err
 	}
+	a.bumpCredentialRevisionLocked(accountKey)
+	delete(a.prs.cache, accountKey)
 	return a.saveConfig()
 }
 
@@ -2015,6 +2021,10 @@ func (a *App) renameAccountLocal(oldKey, newKey string) error {
 	}
 	if oldKey == newKey {
 		return nil
+	}
+	if entry, ok := a.prs.cache[oldKey]; ok {
+		a.prs.cache[newKey] = entry
+		delete(a.prs.cache, oldKey)
 	}
 	if err := a.saveConfig(); err != nil {
 		return err
@@ -2620,6 +2630,7 @@ func (a *App) deleteAccountLocal(accountKey string) error {
 	if err := ops.DeleteAccount(a.cfg, accountKey); err != nil {
 		return err
 	}
+	delete(a.prs.cache, accountKey)
 	return a.saveConfig()
 }
 
