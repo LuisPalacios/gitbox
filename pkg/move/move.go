@@ -81,9 +81,19 @@ type Result struct {
 	Err                 error
 }
 
-// Move runs the full flow. onProgress is called synchronously before
-// each phase starts; pass nil if no progress reporting is needed.
-func Move(ctx context.Context, cfg *config.Config, cfgPath string, req Request, onProgress func(Progress)) Result {
+// Commit applies a change to the config its owner holds, under the owner's
+// lock, saves it, and returns a copy of the result (#173). This package
+// never saves the config or holds the live one: Move reads a snapshot and
+// hands its one config change to Commit. When change fails, the owner's
+// config stays as it was.
+type Commit func(change func(*config.Config) error) (*config.Config, error)
+
+// Move runs the full flow on snap, a copy of the config that Move only
+// reads; commit applies the config change of phase 6 to the owner's config.
+// onProgress is called synchronously before each phase starts; pass nil if
+// no progress reporting is needed.
+func Move(ctx context.Context, snap *config.Config, req Request, commit Commit, onProgress func(Progress)) Result {
+	cfg := snap
 	report := func(phase Phase, msg string, err error) {
 		if onProgress != nil {
 			onProgress(Progress{Phase: phase, Message: msg, Err: err})
@@ -152,10 +162,14 @@ func Move(ctx context.Context, cfg *config.Config, cfgPath string, req Request, 
 	// home of the repo. After this, heal.Repo can apply the destination
 	// account's credential/identity spec to the local clone.
 	report(PhaseUpdateConfig, "Updating gitbox config...", nil)
-	destSourceKey, newRepoKey, cfgErr := updateConfig(cfg, cfgPath, req)
+	// The remote effects above are done whatever happens here. When the
+	// config changed meanwhile and the change no longer applies, that is
+	// reported as a partial outcome, never retried (I3).
+	updated, destSourceKey, newRepoKey, cfgErr := commitMove(commit, req)
 	if cfgErr != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("update config: %v", cfgErr))
 	} else {
+		cfg = updated
 		result.DestSourceKey = destSourceKey
 		result.NewRepoKey = newRepoKey
 		// Reconcile the local clone's .git/config to match the dest
@@ -335,8 +349,9 @@ func humaniseSourceDeleteError(err error, providerName, accountKey string) (shor
 // so they can re-clone it locally when they want.
 //
 // Returns the (destSourceKey, newRepoKey) that the entry now lives
-// under so the caller can run heal.Repo against the fresh spec.
-func updateConfig(cfg *config.Config, cfgPath string, req Request) (destSourceKey, newRepoKey string, err error) {
+// under so the caller can run heal.Repo against the fresh spec. It only
+// changes cfg; the owner of cfg saves it (Commit).
+func updateConfig(cfg *config.Config, req Request) (destSourceKey, newRepoKey string, err error) {
 	srcBlock, ok := cfg.Sources[req.SourceSourceKey]
 	if !ok {
 		return "", "", fmt.Errorf("source %q missing", req.SourceSourceKey)
@@ -386,10 +401,24 @@ func updateConfig(cfg *config.Config, cfgPath string, req Request) (destSourceKe
 	}
 	dstBlock.Repos[newRepoKey] = repoEntry
 	cfg.Sources[destSourceKey] = dstBlock
-	if err := config.Save(cfg, cfgPath); err != nil {
-		return "", "", err
-	}
 	return destSourceKey, newRepoKey, nil
+}
+
+// commitMove hands the config change of a move to its owner and returns the
+// owner's updated copy and where the entry now lives.
+func commitMove(commit Commit, req Request) (updated *config.Config, destSourceKey, newRepoKey string, err error) {
+	if commit == nil {
+		return nil, "", "", fmt.Errorf("no owner to commit the config change")
+	}
+	updated, err = commit(func(c *config.Config) error {
+		var err error
+		destSourceKey, newRepoKey, err = updateConfig(c, req)
+		return err
+	})
+	if err != nil {
+		return nil, "", "", err
+	}
+	return updated, destSourceKey, newRepoKey, nil
 }
 
 // resolvedPlan holds everything Move() computes once up front so each

@@ -192,7 +192,7 @@ func TestGlobalGCMConfig_WindowsEscapedPathChainIsOK(t *testing.T) {
 		t.Errorf("NeedsFix=%v HelperValue=%q, want false and %q", s.NeedsFix, s.HelperValue, escaped)
 	}
 
-	if err := FixGlobalGCMConfig(&config.Config{}, ""); err != nil {
+	if _, err := FixGlobalGCMConfig(&config.Config{}); err != nil {
 		t.Fatalf("FixGlobalGCMConfig: %v", err)
 	}
 	got, err := git.GlobalConfigGetAll("credential.helper")
@@ -266,8 +266,12 @@ func TestFixGlobalGCMConfig_BackfillsDefaults(t *testing.T) {
 		Sources:  map[string]config.Source{},
 	}
 
-	if err := FixGlobalGCMConfig(cfg, cfgPath); err != nil {
+	changed, err := FixGlobalGCMConfig(cfg)
+	if err != nil {
 		t.Fatalf("FixGlobalGCMConfig: %v", err)
+	}
+	if !changed {
+		t.Error("changed = false after a backfill")
 	}
 
 	// cfg.Global.CredentialGCM populated with defaults.
@@ -281,9 +285,9 @@ func TestFixGlobalGCMConfig_BackfillsDefaults(t *testing.T) {
 		t.Errorf("CredentialStore = %q, want %q", cfg.Global.CredentialGCM.CredentialStore, DefaultCredentialStore())
 	}
 
-	// gitbox.json persisted.
-	if _, err := os.Stat(cfgPath); err != nil {
-		t.Errorf("gitbox.json not saved: %v", err)
+	// The caller owns the config and saves it (#173): nothing is written here.
+	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
+		t.Errorf("gitbox.json written by the credential package (err=%v)", err)
 	}
 
 	// ~/.gitconfig (sandbox) updated.
@@ -299,8 +303,6 @@ func TestFixGlobalGCMConfig_BackfillsDefaults(t *testing.T) {
 
 func TestFixGlobalGCMConfig_OverwritesExistingHelper(t *testing.T) {
 	isolateGlobalGitconfig(t)
-	cfgDir := t.TempDir()
-	cfgPath := filepath.Join(cfgDir, "gitbox.json")
 
 	if err := git.GlobalConfigSet("credential.helper", "store"); err != nil {
 		t.Fatalf("seeding helper: %v", err)
@@ -313,7 +315,7 @@ func TestFixGlobalGCMConfig_OverwritesExistingHelper(t *testing.T) {
 		Sources:  map[string]config.Source{},
 	}
 
-	if err := FixGlobalGCMConfig(cfg, cfgPath); err != nil {
+	if _, err := FixGlobalGCMConfig(cfg); err != nil {
 		t.Fatalf("FixGlobalGCMConfig: %v", err)
 	}
 
@@ -342,7 +344,7 @@ func TestFixGlobalGCMConfig_KeepsSatisfyingMultiValueHelper(t *testing.T) {
 		t.Fatalf("seeding store: %v", err)
 	}
 
-	if err := FixGlobalGCMConfig(&config.Config{}, filepath.Join(t.TempDir(), "gitbox.json")); err != nil {
+	if _, err := FixGlobalGCMConfig(&config.Config{}); err != nil {
 		t.Fatalf("FixGlobalGCMConfig: %v", err)
 	}
 
@@ -365,7 +367,7 @@ func TestFixGlobalGCMConfig_ReplacesNonGCMMultiValueHelper(t *testing.T) {
 		}
 	}
 
-	if err := FixGlobalGCMConfig(&config.Config{}, filepath.Join(t.TempDir(), "gitbox.json")); err != nil {
+	if _, err := FixGlobalGCMConfig(&config.Config{}); err != nil {
 		t.Fatalf("FixGlobalGCMConfig: %v", err)
 	}
 
@@ -399,8 +401,13 @@ func TestFixGlobalGCMConfig_NoCfgSaveWhenAlreadyPopulated(t *testing.T) {
 		Sources:  map[string]config.Source{},
 	}
 
-	if err := FixGlobalGCMConfig(cfg, cfgPath); err != nil {
+	before := cfg.Global.CredentialGCM
+	changed, err := FixGlobalGCMConfig(cfg)
+	if err != nil {
 		t.Fatalf("FixGlobalGCMConfig: %v", err)
+	}
+	if changed || cfg.Global.CredentialGCM != before {
+		t.Errorf("changed = %v, pointer replaced = %v; a populated config must stay as it is", changed, cfg.Global.CredentialGCM != before)
 	}
 
 	// gitbox.json should NOT be created — cfg was already populated, nothing to persist.
@@ -410,7 +417,26 @@ func TestFixGlobalGCMConfig_NoCfgSaveWhenAlreadyPopulated(t *testing.T) {
 }
 
 func TestFixGlobalGCMConfig_NilCfg(t *testing.T) {
-	if err := FixGlobalGCMConfig(nil, ""); err == nil {
+	if _, err := FixGlobalGCMConfig(nil); err == nil {
 		t.Errorf("FixGlobalGCMConfig(nil) returned nil, want error")
+	}
+}
+
+// TestFixGlobalGCMConfig_ReplacesPartialPointer: a partly filled
+// CredentialGCM is completed in a new value, so a copy of the config taken
+// before the fix keeps the old, consistent value (#173).
+func TestFixGlobalGCMConfig_ReplacesPartialPointer(t *testing.T) {
+	isolateGlobalGitconfig(t)
+	old := &config.GCMGlobal{Helper: DefaultCredentialHelper()}
+	cfg := &config.Config{Global: config.GlobalConfig{CredentialGCM: old}}
+	changed, err := FixGlobalGCMConfig(cfg)
+	if err != nil || !changed {
+		t.Fatalf("FixGlobalGCMConfig = %v, %v; want changed", changed, err)
+	}
+	if cfg.Global.CredentialGCM == old || old.CredentialStore != "" {
+		t.Error("the backfill wrote through the existing pointer")
+	}
+	if cfg.Global.CredentialGCM.CredentialStore != DefaultCredentialStore() || cfg.Global.CredentialGCM.Helper != DefaultCredentialHelper() {
+		t.Errorf("CredentialGCM = %+v", *cfg.Global.CredentialGCM)
 	}
 }
