@@ -15,6 +15,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/status"
+	"github.com/LuisPalacios/gitbox/pkg/workspace"
 )
 
 // Why a found clone waits for me instead of being adopted.
@@ -134,6 +135,34 @@ func Plan(cfg *config.Config) (Result, error) {
 		res.Adopt = append(res.Adopt, o)
 	}
 	return res, nil
+}
+
+// WorkspaceCandidates scans one external directory still listed by a
+// workspace. It returns rows for explicit review and never plans auto-adopts
+// or re-links. The boolean tells the caller whether the root matched.
+func WorkspaceCandidates(cfg *config.Config, tree workspace.Tree, root string) ([]Unmatched, bool, error) {
+	for _, row := range tree.Placeholders {
+		if root == "" || row.OutsidePath != root {
+			continue
+		}
+		orphans, err := adopt.FindOrphansUnder(cfg, root)
+		if err != nil {
+			return nil, true, err
+		}
+		out := make([]Unmatched, 0, len(orphans))
+		for _, o := range orphans {
+			var reason string
+			switch {
+			case git.IsLinkedWorktree(o.Path):
+				reason = ReasonWorktree
+			case o.LocalOnly:
+				reason = ReasonNoRemote
+			}
+			out = append(out, Unmatched{o, reason})
+		}
+		return out, true, nil
+	}
+	return nil, false, nil
 }
 
 // Placed is a clone Apply or Adopt added to the config.

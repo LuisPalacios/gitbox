@@ -2,9 +2,13 @@ package workspace
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -318,7 +322,7 @@ func TestPlaceholders_ListsMissingFoldersInside(t *testing.T) {
 }`
 	writeFile(t, filepath.Join(dir, "w.code-workspace"), body)
 
-	got := Placeholders(cfg)
+	got := Inspect(cfg).Placeholders
 	parent := status.RepoRef{Source: "github-test", Repo: "team/frontend"}
 	want := []Placeholder{
 		{Parent: parent, Name: "Missing lib", Path: "libs/missing"},
@@ -339,7 +343,7 @@ func TestPlaceholders_SkipsFoldersInsideNestedClones(t *testing.T) {
 	src.Repos["team/frontend"] = config.Repo{Container: true, Workspace: "w.code-workspace"}
 	writeCodeWorkspace(t, filepath.Join(dir, "w.code-workspace"), "Browser/ext/common/lib", "Missing")
 
-	got := Placeholders(cfg)
+	got := Inspect(cfg).Placeholders
 	want := []Placeholder{{Parent: status.RepoRef{Source: "github-test", Repo: "team/frontend"}, Name: "Missing", Path: "Missing"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Placeholders = %+v, want %+v", got, want)
@@ -356,7 +360,7 @@ func TestMemberRepos_ListsClonesTheWorkspaceNames(t *testing.T) {
 	writeCodeWorkspace(t, filepath.Join(dir, "w.code-workspace"), ".", "Backend", "missing")
 
 	want := []status.RepoRef{{Source: "github-test", Repo: "team/backend"}}
-	if got := MemberRepos(cfg); !reflect.DeepEqual(got, want) {
+	if got := Inspect(cfg).Members; !reflect.DeepEqual(got, want) {
 		t.Errorf("MemberRepos = %+v, want %+v (infra is nested but not listed)", got, want)
 	}
 }
@@ -367,8 +371,72 @@ func TestPlaceholders_IgnoresContainersWithoutWorkspace(t *testing.T) {
 	writeCodeWorkspace(t, filepath.Join(dir, "w.code-workspace"), "missing")
 	src := cfg.Sources["github-test"]
 	src.Repos["team/frontend"] = config.Repo{Container: true}
-	if got := Placeholders(cfg); len(got) != 0 {
+	if got := Inspect(cfg).Placeholders; len(got) != 0 {
 		t.Errorf("Placeholders = %+v, want none without a picked workspace", got)
+	}
+}
+
+func TestMembers_WorkspaceSizeLimit(t *testing.T) {
+	dir := t.TempDir()
+	const name = "fixture.code-workspace"
+	body := `{"folders":[{"path":"missing"}]}`
+	writeFile(t, filepath.Join(dir, name), body+strings.Repeat(" ", workspaceLimit-len(body)))
+	members, issues := Members(dir, name)
+	if len(issues) != 0 || len(members) != 1 || members[0].Exists || !members[0].missing || members[0].Physical != "" {
+		t.Fatalf("members = %+v, diagnostics = %+v at the size limit", members, issues)
+	}
+	writeFile(t, filepath.Join(dir, name), body+strings.Repeat(" ", 2*workspaceLimit-len(body)))
+	members, issues = Members(dir, name)
+	if len(members) != 0 || !reflect.DeepEqual(issues, []Diagnostic{{File: name, Problem: TooLarge}}) {
+		t.Fatalf("members = %+v, diagnostics = %+v for an oversized file", members, issues)
+	}
+}
+
+func symlink(t *testing.T, target, path string) {
+	t.Helper()
+	if err := os.Symlink(target, path); err != nil {
+		if runtime.GOOS == "windows" && (errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.Errno(1314))) {
+			t.Skipf("creating symlinks requires privileges: %v", err)
+		}
+		t.Fatal(err)
+	}
+}
+
+func TestMembers_ResolvesFoldersInsideAndOutside(t *testing.T) {
+	dir := t.TempDir()
+	outside := t.TempDir()
+	for _, path := range []string{filepath.Join(outside, "nested"), filepath.Join(dir, "actual")} {
+		if err := os.Mkdir(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	symlink(t, outside, filepath.Join(dir, "external-link"))
+	symlink(t, filepath.Join(dir, "actual"), filepath.Join(dir, "internal-link"))
+	writeCodeWorkspace(t, filepath.Join(dir, "fixture.code-workspace"), "external-link", "external-link/nested", "internal-link", "../escaped")
+	members, issues := Members(dir, "fixture.code-workspace")
+	if len(issues) != 0 || len(members) != 3 {
+		t.Fatalf("members = %+v, diagnostics = %+v", members, issues)
+	}
+	for _, m := range members[:2] {
+		physical, err := filepath.EvalSymlinks(m.Path)
+		if err != nil || !m.Escapes || !m.Exists || m.Physical != physical || m.ScanPath != "" {
+			t.Errorf("escaped member = %+v, resolve = %q / %v", m, physical, err)
+		}
+	}
+	inner := members[2]
+	if inner.Escapes || !inner.Exists || inner.ScanPath != filepath.Join(dir, "actual") {
+		t.Errorf("internal link = %+v", inner)
+	}
+}
+
+func TestMembers_RejectsInvalidFilePath(t *testing.T) {
+	dir := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.code-workspace")
+	writeCodeWorkspace(t, outside, "missing")
+	symlink(t, outside, filepath.Join(dir, "linked.code-workspace"))
+	members, issues := Members(dir, "linked.code-workspace")
+	if len(members) != 0 || !reflect.DeepEqual(issues, []Diagnostic{{File: "linked.code-workspace", Problem: Unreadable}}) {
+		t.Fatalf("members = %+v, diagnostics = %+v", members, issues)
 	}
 }
 

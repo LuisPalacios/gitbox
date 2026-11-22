@@ -647,6 +647,7 @@ export namespace main {
 	export class AdoptRequestDTO {
 	    path: string;
 	    account: string;
+	    workspaceRoot?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AdoptRequestDTO(source);
@@ -656,6 +657,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.path = source["path"];
 	        this.account = source["account"];
+	        this.workspaceRoot = source["workspaceRoot"];
 	    }
 	}
 	export class ConfigBackupInfo {
@@ -1152,6 +1154,7 @@ export namespace main {
 	    reason: string;
 	    candidates?: string[];
 	    nested: boolean;
+	    workspaceRoot?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new OrphanRepoDTO(source);
@@ -1167,6 +1170,7 @@ export namespace main {
 	        this.reason = source["reason"];
 	        this.candidates = source["candidates"];
 	        this.nested = source["nested"];
+	        this.workspaceRoot = source["workspaceRoot"];
 	    }
 	}
 	export class PRSettingsDTO {
@@ -1240,10 +1244,27 @@ export namespace main {
 		}
 	}
 	
+	export class WorkspaceDiagnosticDTO {
+	    parent: string;
+	    file: string;
+	    problem: string;
+
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceDiagnosticDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.parent = source["parent"];
+	        this.file = source["file"];
+	        this.problem = source["problem"];
+	    }
+	}
 	export class WorkspaceFolderDTO {
 	    parent: string;
 	    name: string;
 	    path: string;
+	    outsidePath?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new WorkspaceFolderDTO(source);
@@ -1254,6 +1275,7 @@ export namespace main {
 	        this.parent = source["parent"];
 	        this.name = source["name"];
 	        this.path = source["path"];
+	        this.outsidePath = source["outsidePath"];
 	    }
 	}
 	export class WorkspaceChoiceDTO {
@@ -1282,6 +1304,7 @@ export namespace main {
 	    placeholders: WorkspaceFolderDTO[];
 	    workspaceMembers: string[];
 	    workspaceUnknown: string[];
+	    workspaceDiagnostics?: WorkspaceDiagnosticDTO[];
 	    error?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -1299,6 +1322,7 @@ export namespace main {
 	        this.placeholders = this.convertValues(source["placeholders"], WorkspaceFolderDTO);
 	        this.workspaceMembers = source["workspaceMembers"];
 	        this.workspaceUnknown = source["workspaceUnknown"];
+	        this.workspaceDiagnostics = this.convertValues(source["workspaceDiagnostics"], WorkspaceDiagnosticDTO);
 	        this.error = source["error"];
 	    }
 	
@@ -1829,6 +1853,7 @@ export namespace main {
 	}
 	
 	
+
 
 }
 

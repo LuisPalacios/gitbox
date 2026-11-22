@@ -35,6 +35,7 @@
     toggleContainer: (sourceKey: string, repoName: string) => Promise<void>;
     rescanContainer: () => Promise<void>;
     chooseWorkspace: (sourceKey: string, repoName: string) => Promise<void>;
+    findWorkspaceFolder: (path: string) => Promise<void>;
     toggleRepoCollapsed: (repoKey: string, descendants: string[]) => void;
     isContainerRepo: (sourceKey: string, repoName: string) => boolean;
     showAccountView: (accountKey: string) => void;
@@ -49,7 +50,7 @@
   import { bridge } from '../bridge';
   import { openExternal, openRepoExternal } from '../external';
   import { pushNotice, errorText } from '../notices';
-  import { accounts, repoStates, prSettings, prsByAccount, lookupPRSummary, sources, workspaceMembers, workspaceUnknown, isSynced, themeStore } from '../stores';
+  import { accounts, repoStates, prSettings, prsByAccount, lookupPRSummary, sources, workspaceMembers, workspaceUnknown, workspaceDiagnostics, isSynced, themeStore } from '../stores';
   import { statusColor, simpleKind, simpleColor, rowBusy, rowGlyph, statusLabel, attentionRank, CALM_RANK, COUNT_BADGES } from '../status';
   import type { SimpleKind } from '../status';
   import { t } from '../i18n';
@@ -124,6 +125,7 @@
   $: wsFile = $sources[rowSourceKey]?.repos[repoName]?.workspace || '';
   $: wsPending = workspaceChoices.has(repoKey);
   $: wsStale = $workspaceUnknown.has(repoKey);
+  $: wsIssue = $workspaceDiagnostics[repoKey];
   // A container with a workspace file and the clones that file lists show
   // their names in the workspace colour: what VS Code opens.
   $: inWorkspace = (isContainer && !!wsFile) || $workspaceMembers.has(repoKey);
@@ -361,8 +363,9 @@
 
 {#snippet containerIcon()}
   {@const tip = wsFile ? $t('row.containerWsTip', { file: wsFile }) : $t('row.containerTip')}
-  {@const label = wsStale ? `${tip} · ${$t('row.workspaceStale')}` : tip}
-  <span class="container-icon" class:workspace-stale={wsStale} title={label} aria-label={label} role="img">📁</span>
+  {@const issue = wsIssue?.problem === 'too large' ? $t('row.workspaceTooLarge') : wsIssue?.problem === 'invalid' ? $t('row.workspaceInvalid') : wsIssue || wsStale ? $t('row.workspaceStale') : ''}
+  {@const label = issue ? `${tip} · ${issue}` : tip}
+  <span class="container-icon" class:workspace-stale={!!issue} title={label} aria-label={label} role="img">📁</span>
 {/snippet}
 
 <div class="repo-row" class:repo-row-clickable={rowOpensDetail}
@@ -390,7 +393,7 @@
       <span class="repo-name" class:ws-member={inWorkspace} title={repoName}>{shortName(repoName)}</span>
     {/if}
     {@render rowTags()}
-    {#if isContainer && wsStale}{@render containerIcon()}{/if}
+    {#if isContainer && (wsStale || wsIssue)}{@render containerIcon()}{/if}
     {#if state.status === 'syncing' || state.status === 'cloning'}
       <div class="progress-track">
         <div class="progress-fill" style="width:{state.progress}%; background:{kindColor}"></div>

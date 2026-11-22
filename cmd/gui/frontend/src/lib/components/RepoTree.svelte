@@ -20,12 +20,12 @@
   // Parent label per row key, for rows shown away from their container.
   export let parentLabels: Record<string, string> = {};
 
-  $: ({ expandedRepo, repoDetail, detailLoading, ...shared } = rowProps);
+  $: ({ expandedRepo, repoDetail, detailLoading, findWorkspaceFolder, ...shared } = rowProps);
 </script>
 
 {#each rows as { key, sourceKey: rowSourceKey, repoName, depth, childCount, descendants, placeholders, placeholder } (key)}
   {#if placeholder}
-    <PlaceholderRow {placeholder} {depth} />
+    <PlaceholderRow {placeholder} {depth} onFind={findWorkspaceFolder} />
   {:else}
   {@const repoKey = `${rowSourceKey}/${repoName}`}
   {@const state = $repoStates[repoKey] || { status: 'unknown' as const, progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}

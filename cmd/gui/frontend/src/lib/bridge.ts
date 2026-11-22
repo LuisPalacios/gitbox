@@ -105,7 +105,7 @@ const calls = {
   confirmSweep: (sourceKey: string, repoKey: string): Promise<any> => ConfirmSweep(sourceKey, repoKey),
   // Disk reconcile (#149): adopt confident clones, re-link moved ones, list the rest.
   reconcile: (): Promise<ReconcileDTO> => Reconcile() as Promise<ReconcileDTO>,
-  adoptClones: (reqs: { path: string; account: string }[]): Promise<ReconcileDTO> => AdoptClones(reqs) as Promise<ReconcileDTO>,
+  adoptClones: (reqs: { path: string; account: string; workspaceRoot?: string }[]): Promise<ReconcileDTO> => AdoptClones(reqs) as Promise<ReconcileDTO>,
   ignoreClone: (path: string, ignore: boolean): Promise<void> => IgnoreClone(path, ignore),
   getPRSettings: (): Promise<PRSettingsDTO> => GetPRSettings() as Promise<PRSettingsDTO>,
   setPRBadgesEnabled: (enabled: boolean): Promise<void> => SetPRBadgesEnabled(enabled),

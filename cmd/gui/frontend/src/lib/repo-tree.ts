@@ -14,9 +14,9 @@ export interface RepoRow {
   placeholder?: Placeholder;
 }
 
-// A folder a container's .code-workspace lists that is not cloned yet; path
+// A missing or external folder in a container's .code-workspace; path
 // is relative to the container.
-export interface Placeholder { name: string; path: string }
+export interface Placeholder { name: string; path: string; outsidePath?: string }
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 

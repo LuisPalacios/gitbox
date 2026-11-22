@@ -1,20 +1,25 @@
 <script lang="ts">
-  // A folder a container's .code-workspace lists that is not cloned yet:
-  // a dimmed row under the container, with no actions, its name in the
-  // workspace colour like the clones the workspace lists. It reads like a
-  // nested clone row so the tree keeps its shape.
+  // A missing or external folder in a container's workspace.
   import { t } from '../i18n';
+  import { ro } from '../ro';
   import type { Placeholder } from '../repo-tree';
 
   export let placeholder: Placeholder;
   export let depth: number;
+  export let onFind: (path: string) => Promise<void>;
 </script>
 
-<div class="placeholder-row" style="--depth: {depth}" title={$t('row.placeholderTip', { path: placeholder.path })}>
+<div class="placeholder-row" style="--depth: {depth}" title={placeholder.outsidePath || $t('row.placeholderTip', { path: placeholder.path })}>
   <span class="dot">○</span>
   <span class="name">{placeholder.name}</span>
   <span class="path" translate="no">{placeholder.path}</span>
-  <span class="words">{$t('row.placeholder')}</span>
+  {#if placeholder.outsidePath}
+    {@const outsidePath = placeholder.outsidePath}
+    <span class="words">{$t('row.workspaceOutside')}</span>
+    <button use:ro type="button" on:click={() => onFind(outsidePath)}>{$t('row.workspaceFindOnDisk')}</button>
+  {:else}
+    <span class="words">{$t('row.placeholder')}</span>
+  {/if}
 </div>
 
 <style>
@@ -31,6 +36,11 @@
   .name { font-size: 13px; color: var(--text-workspace); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .path { flex: 1; font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .words { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+  button {
+    flex-shrink: 0; padding: 2px 5px; border: 0; background: none;
+    color: var(--text-primary); cursor: pointer; font-size: 11px; text-decoration: underline;
+  }
+  .placeholder-row:focus-within, .placeholder-row:hover { opacity: 1; }
   @container content (max-width: 620px) {
     .placeholder-row { gap: 4px; --indent: 12px; }
     .path { display: none; }

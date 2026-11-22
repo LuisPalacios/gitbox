@@ -8,6 +8,7 @@ package workspace
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -52,12 +53,37 @@ type Result struct {
 	Unknown []Unknown
 }
 
-// Placeholder is a folder a container's workspace file lists inside the
-// container that is not on disk and that no configured repo resolves to.
+// Placeholder is a folder a container's workspace lists that is either
+// missing on disk or resolves outside the container.
 type Placeholder struct {
+	Parent      status.RepoRef
+	Name        string // the folder's name in the workspace file, else its base name
+	Path        string // relative to the container, slash-separated
+	OutsidePath string // resolved externally, for an explicit search only
+}
+
+// Problem codes describe why a workspace file could not be used.
+const (
+	TooLarge   = "too large"
+	Unreadable = "unreadable"
+	Invalid    = "invalid"
+)
+
+type Diagnostic struct {
+	File    string
+	Problem string
+}
+
+type WorkspaceDiagnostic struct {
 	Parent status.RepoRef
-	Name   string // the folder's name in the workspace file, else its base name
-	Path   string // relative to the container, slash-separated
+	Diagnostic
+}
+
+// Tree describes the workspace rows and file diagnostics for the GUI.
+type Tree struct {
+	Placeholders []Placeholder
+	Members      []status.RepoRef
+	Diagnostics  []WorkspaceDiagnostic
 }
 
 // RootFiles returns the workspace file names directly in dir, sorted. It
@@ -181,51 +207,9 @@ func (s *SyncState) Apply(cfg *config.Config, changes []Change) (changed bool, s
 	return changed, skipped
 }
 
-// Placeholders returns, for every container with a workspace file, the
-// folders that file lists inside the container that are missing on disk
-// and that no configured repo resolves to. A configured repo there already
-// nests under the container (status.ComputeNesting) with its Clone action.
-// Folders inside another clone (a submodule, say) and folders outside the
-// container are skipped: the tree stays path-based.
-func Placeholders(cfg *config.Config) []Placeholder {
-	known := make(map[string]bool)
-	for _, srcKey := range cfg.OrderedSourceKeys() {
-		src := cfg.Sources[srcKey]
-		for _, repoKey := range src.OrderedRepoKeys() {
-			known[normPath(status.RepoPath(cfg, srcKey, repoKey, src.Repos[repoKey]))] = true
-		}
-	}
-	var out []Placeholder
-	for _, srcKey := range cfg.OrderedSourceKeys() {
-		src := cfg.Sources[srcKey]
-		for _, repoKey := range src.OrderedRepoKeys() {
-			repo := src.Repos[repoKey]
-			if !repo.Container || repo.Workspace == "" {
-				continue
-			}
-			dir := status.RepoPath(cfg, srcKey, repoKey, repo)
-			for _, m := range Members(dir, repo.Workspace) {
-				if known[normPath(m.Path)] || insideClone(normPath(m.Path), normPath(dir), known) {
-					continue
-				}
-				if _, err := os.Stat(m.Path); err == nil {
-					continue
-				}
-				out = append(out, Placeholder{
-					Parent: status.RepoRef{Source: srcKey, Repo: repoKey},
-					Name:   m.Name,
-					Path:   m.Rel,
-				})
-			}
-		}
-	}
-	return out
-}
-
-// MemberRepos returns the configured repos that a container's workspace
-// file lists inside it, so the GUI can show what the workspace opens. The
-// container itself is not listed.
-func MemberRepos(cfg *config.Config) []status.RepoRef {
+// Inspect reads each selected workspace once for the tree. A missing
+// configured repo already has its own row and Clone action.
+func Inspect(cfg *config.Config) Tree {
 	byPath := make(map[string]status.RepoRef)
 	for _, srcKey := range cfg.OrderedSourceKeys() {
 		src := cfg.Sources[srcKey]
@@ -233,7 +217,7 @@ func MemberRepos(cfg *config.Config) []status.RepoRef {
 			byPath[normPath(status.RepoPath(cfg, srcKey, repoKey, src.Repos[repoKey]))] = status.RepoRef{Source: srcKey, Repo: repoKey}
 		}
 	}
-	var out []status.RepoRef
+	var out Tree
 	for _, srcKey := range cfg.OrderedSourceKeys() {
 		src := cfg.Sources[srcKey]
 		for _, repoKey := range src.OrderedRepoKeys() {
@@ -241,9 +225,27 @@ func MemberRepos(cfg *config.Config) []status.RepoRef {
 			if !repo.Container || repo.Workspace == "" {
 				continue
 			}
-			for _, m := range Members(status.RepoPath(cfg, srcKey, repoKey, repo), repo.Workspace) {
-				if ref, ok := byPath[normPath(m.Path)]; ok {
-					out = append(out, ref)
+			parent := status.RepoRef{Source: srcKey, Repo: repoKey}
+			dir := status.RepoPath(cfg, srcKey, repoKey, repo)
+			members, issues := Members(dir, repo.Workspace)
+			for _, issue := range issues {
+				out.Diagnostics = append(out.Diagnostics, WorkspaceDiagnostic{Parent: parent, Diagnostic: issue})
+			}
+			for _, m := range members {
+				row := Placeholder{Parent: parent, Name: m.Name, Path: m.Rel}
+				if m.Escapes {
+					row.OutsidePath = m.Physical
+					out.Placeholders = append(out.Placeholders, row)
+					continue
+				}
+				ref, tracked := byPath[normPath(m.Path)]
+				if !tracked && m.ScanPath != "" {
+					ref, tracked = byPath[normPath(m.ScanPath)]
+				}
+				if tracked {
+					out.Members = append(out.Members, ref)
+				} else if m.missing && !insideClone(normPath(m.Path), normPath(dir), byPath) {
+					out.Placeholders = append(out.Placeholders, row)
 				}
 			}
 		}
@@ -254,38 +256,55 @@ func MemberRepos(cfg *config.Config) []status.RepoRef {
 // insideClone reports whether p lies inside a known clone nested in the
 // container dir: a folder of that clone (a submodule, say) is not a clone
 // gitbox could provide.
-func insideClone(p, dir string, known map[string]bool) bool {
+func insideClone(p, dir string, known map[string]status.RepoRef) bool {
 	for parent := filepath.Dir(p); parent != dir && strings.HasPrefix(parent, dir+string(filepath.Separator)); parent = filepath.Dir(parent) {
-		if known[parent] {
+		if _, ok := known[parent]; ok {
 			return true
 		}
 	}
 	return false
 }
 
-// Member is a folder a container's workspace file lists inside the
-// container.
+// Member is a folder a workspace file lists lexically inside its container.
 type Member struct {
-	Path string // absolute
-	Rel  string // relative to the container, slash-separated
-	Name string // the folder's name in the workspace file, else its base name
+	Path     string // absolute as listed
+	Rel      string // relative to the container, slash-separated
+	Name     string // the folder's name in the workspace file, else its base name
+	Physical string // resolved path, empty when unknown
+	ScanPath string // verified in-container directory, empty when absent or unsafe
+	Exists   bool
+	Escapes  bool
+	missing  bool
 }
 
-// Members reads the workspace file (relative to dir) and returns the folders
-// it lists strictly inside dir, once each, in file order. Folders outside
-// dir and dir itself are skipped.
-func Members(dir, file string) []Member {
+// Members returns the folders a workspace lists lexically inside dir, once
+// each in file order. It resolves existing folders before allowing discovery.
+func Members(dir, file string) ([]Member, []Diagnostic) {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, []Diagnostic{{File: filepath.Base(file), Problem: Unreadable}}
+	}
+	defer root.Close()
+
+	listed, problem := folders(root, file)
+	if problem != "" {
+		return nil, []Diagnostic{{File: filepath.Base(file), Problem: problem}}
+	}
+	physicalDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return nil, []Diagnostic{{File: filepath.Base(file), Problem: Unreadable}}
+	}
 	var out []Member
 	seen := make(map[string]bool)
-	for _, f := range folders(filepath.Join(dir, file)) {
+	for _, f := range listed {
 		abs := f.Path
 		if !filepath.IsAbs(abs) {
 			abs = filepath.Join(dir, abs)
 		}
 		abs = filepath.Clean(abs)
-		rel, err := filepath.Rel(dir, abs)
+		rel, inside := relativeInside(dir, abs)
 		n := normPath(abs)
-		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || seen[n] {
+		if !inside || seen[n] {
 			continue
 		}
 		seen[n] = true
@@ -293,9 +312,31 @@ func Members(dir, file string) []Member {
 		if name == "" {
 			name = filepath.Base(abs)
 		}
-		out = append(out, Member{Path: abs, Rel: filepath.ToSlash(rel), Name: name})
+		m := Member{Path: abs, Rel: filepath.ToSlash(rel), Name: name}
+		physical, err := filepath.EvalSymlinks(abs)
+		if err != nil {
+			m.missing = os.IsNotExist(err)
+		} else if info, err := os.Stat(physical); err == nil && info.IsDir() {
+			m.Physical, m.Exists = physical, true
+			if resolvedRel, inside := relativeInside(physicalDir, physical); inside {
+				// Use the resolved name under the original container path.
+				// This avoids retraversing a workspace member symlink and
+				// preserves the spelling of configured clone roots.
+				m.ScanPath = filepath.Join(dir, resolvedRel)
+			} else if physical != physicalDir {
+				m.Escapes = true
+			} else {
+				continue
+			}
+		}
+		out = append(out, m)
 	}
-	return out
+	return out, nil
+}
+
+func relativeInside(dir, path string) (string, bool) {
+	rel, err := filepath.Rel(dir, path)
+	return rel, err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 type folder struct {
@@ -303,20 +344,47 @@ type folder struct {
 	Name string `json:"name"`
 }
 
-// folders reads the folders a workspace file lists; nil when it can't be
-// read or parsed.
-func folders(file string) []folder {
-	data, err := os.ReadFile(file)
+const workspaceLimit = 1 << 20
+
+// folders reads a root workspace file without following links out of the
+// container or loading more than the size limit.
+func folders(root *os.Root, file string) ([]folder, string) {
+	if file != filepath.Base(file) || !strings.HasSuffix(strings.ToLower(file), Ext) {
+		return nil, Invalid
+	}
+	info, err := root.Stat(file)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, Unreadable
+	}
+	if info.Size() > workspaceLimit {
+		return nil, TooLarge
+	}
+	in, err := root.Open(file)
 	if err != nil {
-		return nil
+		return nil, Unreadable
+	}
+	defer in.Close()
+	info, err = in.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, Unreadable
+	}
+	if info.Size() > workspaceLimit {
+		return nil, TooLarge
+	}
+	data, err := io.ReadAll(io.LimitReader(in, workspaceLimit+1))
+	if err != nil {
+		return nil, Unreadable
+	}
+	if len(data) > workspaceLimit {
+		return nil, TooLarge
 	}
 	var raw struct {
 		Folders []folder `json:"folders"`
 	}
 	if json.Unmarshal(stripJSONC(data), &raw) != nil {
-		return nil
+		return nil, Invalid
 	}
-	return raw.Folders
+	return raw.Folders, ""
 }
 
 // stripJSONC turns VS Code's JSON-with-comments into plain JSON: it drops
