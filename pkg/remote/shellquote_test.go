@@ -23,7 +23,9 @@ var hostileNames = []struct {
 	{name: "a;rm -rf ~"},
 	{name: "a&&b"},
 	{name: "%PATH%"},
-	{name: "$env:HOME"},
+	{name: "$env:HOME", posixOnly: true}, // ':' is not allowed in an NTFS name
+	{name: "$HOME"},                      // PowerShell's own variable, legal on NTFS
+	{name: "${HOME}"},
 	{name: `a b\c`, posixOnly: true},
 	{name: `back\\slash\'quote`, posixOnly: true},
 	{name: "$(touch M)"},

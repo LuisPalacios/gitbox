@@ -95,7 +95,6 @@ const stubSource = `package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 )
 

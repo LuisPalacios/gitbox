@@ -623,9 +623,9 @@ func TestFishLoginShell(t *testing.T) {
 
 // TestRemoteTerminalOverSSH runs the remote command of a terminal (#243)
 // through a real ssh into bash and fish login shells, the way ssh -t hands
-// it to them: for each hostile folder, pwd after the cd prints exactly the
-// folder, the login-shell form lands there too, and no injected command
-// leaves a marker M behind. A path with CR or LF never gets this far
+// it to them: for each hostile folder, the external pwd after the cd prints
+// exactly the folder's bytes, the login-shell form lands there too, and no
+// injected command leaves a marker M behind. A path with CR or LF never gets this far
 // (TestRemoteTerminalArgv).
 func TestRemoteTerminalOverSSH(t *testing.T) {
 	names := []string{
@@ -668,7 +668,12 @@ func TestRemoteTerminalOverSSH(t *testing.T) {
 					// here, -T instead of -t. The command is the same word.
 					args := append(remote.ConfigArgs(s.opts), "-T", "-o", "BatchMode=yes", "--", argv[3], argv[4])
 					cmd := exec.Command(ssh, args...)
-					cmd.Stdin = strings.NewReader("pwd\nexit\n") // read by the login shell form
+					// The login-shell form reads its commands from stdin. The
+					// external /bin/pwd prints getcwd() byte for byte; fish's
+					// builtin pwd renders a non-ASCII folder in the locale,
+					// and the container has none (C), so it would print
+					// mojibake for the right folder.
+					cmd.Stdin = strings.NewReader("/bin/pwd\nexit\n")
 					out, err := cmd.Output()
 					if got := strings.TrimSpace(string(out)); err != nil || got != dir {
 						t.Errorf("%q (program %q):\n command %s\n printed %q, %v", name, program, cmdline, got, err)
