@@ -147,6 +147,7 @@ Copies the local `~/.config/gitbox/gitbox.json` to one remote. It shows a diff a
 | `ship.sh [short-name]`                  | Build the GUI on each remote and stage it for testing               |
 | `smoke.sh [target]`                     | Non-interactive smoke test (`GitboxApp --version`)                  |
 | `gate.sh [--only/--skip lane]`          | Verify HEAD on every lane in parallel ([Local gate](local-gate.md)) |
+| `remote-it.sh`                          | sshd integration tests of remote mode (Docker on Linux)             |
 | `test-commands.sh [target]`             | Print the test-mode launch commands                                 |
 | `run-commands.sh [target]`              | Print the production-mode launch commands                           |
 | `setup-credentials.sh [target]`         | Verify tokens and set up SSH keys on each target                    |

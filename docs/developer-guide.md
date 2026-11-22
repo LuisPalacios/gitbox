@@ -96,6 +96,7 @@ These rules hold for every change. [architecture.md](architecture.md) explains t
 - **Every entry point is classified.** A new `App` method or event needs a row in `cmd/gui/classification.go`; a method that does work also goes on `Backend` (see [Backend seam](architecture.md#backend-seam)).
 - **Wails imports stay in `!gitboxserver` files.** Code that calls the Wails runtime belongs in `shell.go` or another file with `//go:build !gitboxserver`, so the server build stays free of Wails.
 - **The server answers a closed list.** A `Backend` method reaches a remote client only through `servedMethods` in `cmd/gui/server.go`, together with a row in the table of `TestBackendContract`. A method that changes state on the host waits for the validation of its parameters.
+- **Remote commands go through `pkg/remote`.** It is the only place that runs `ssh`, always with the user's configuration untouched and `git.HideWindow`; a remote script is one POSIX line behind `sh -c`, and parsed output comes after the `\0GBX\0` marker (see [SSH bootstrap](architecture.md#ssh-bootstrap)).
 - **Every path that builds the GUI does the same four steps.** `scripts/stamp.sh`, `scripts/build-server.sh`, `wails build -tags serverbin` and `scripts/check-gui-artifact.sh`. The gate lanes, `ship.sh`, `release-macos.sh` and the CI GUI jobs do; a new path does too.
 
 ---
@@ -108,6 +109,8 @@ Quick start:
 go test -short ./...    # unit tests (no setup needed beyond the frontend dist folder)
 go test ./...           # everything (needs test-gitbox.json for the pkg/ops scenario)
 ```
+
+The bootstrap of remote mode has its own integration tests against a containerized `sshd`: `scripts/remote-it.sh` runs them on a Linux host with Docker, from the image in `test/sshd`, and the gate runs it in its `remote-it` lane ([testing.md › Remote mode tests](testing.md#remote-mode-tests)).
 
 I activate the pre-push hook once per clone with `git config core.hooksPath .githooks`. [testing.md](testing.md) covers the test levels, the fixture, the frontend tests, and the pre-PR and release checklists. I use `/test-plan` in Claude Code or `$test-plan` in Codex to automate the pre-PR checks.
 

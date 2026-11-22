@@ -1,6 +1,6 @@
 # Gate local
 
-`scripts/gate.sh` verifica un commit concreto en macOS, Linux y Windows en paralelo, en mis propias máquinas, y sustituye a las comprobaciones de PR de GitHub como barrera de merge. Esta página explica cómo funciona y cómo reproducirlo en otro repositorio.
+`scripts/gate.sh` verifica un commit concreto en macOS, Linux y Windows en paralelo, además de las pruebas de integración con sshd del modo remoto, en mis propias máquinas, y sustituye a las comprobaciones de PR de GitHub como barrera de merge. Esta página explica cómo funciona y cómo reproducirlo en otro repositorio.
 
 ## Por qué verifico en local
 
@@ -21,13 +21,14 @@ Un carril borra su clon tras pasar (`GATE_KEEP=1` lo conserva) y lo conserva tra
 
 ## Qué ejecuta cada carril
 
-Cada carril construye el frontend embebido con `npm ci && npm run build`, construye la GUI con la versión de la CLI de Wails que fija CI (`go run github.com/wailsapp/wails/v2/cmd/wails@v2.16.0 build`) comprueba que los bindings que ese build regeneró coinciden con los del commit, y comprueba el ejecutable construido.
+Cada carril salvo remote-it construye el frontend embebido con `npm ci && npm run build`, construye la GUI con la versión de la CLI de Wails que fija CI (`go run github.com/wailsapp/wails/v2/cmd/wails@v2.16.0 build`) comprueba que los bindings que ese build regeneró coinciden con los del commit, y comprueba el ejecutable construido.
 
-El build es el que hace una release. Cada carril compila los seis binarios de `gitbox-server` con `scripts/build-server.sh`, ejecuta la prueba que vuelve a leer cada uno contra su SHA-256 fijado, y construye la GUI con `-tags serverbin` para que los lleve. Después `scripts/check-gui-artifact.sh` hace fallar el carril salvo que `GitboxApp --version` y `GitboxApp --list-server-targets` informen exactamente de la versión y el commit del sello del carril con los seis targets, y salvo que el ejecutable principal esté dentro de su techo en `scripts/size-ceilings.txt`.
+El build es el que hace una release. Cada uno de esos carriles compila los seis binarios de `gitbox-server` con `scripts/build-server.sh`, ejecuta la prueba que vuelve a leer cada uno contra su SHA-256 fijado, y construye la GUI con `-tags serverbin` para que los lleve. Después `scripts/check-gui-artifact.sh` hace fallar el carril salvo que `GitboxApp --version` y `GitboxApp --list-server-targets` informen exactamente de la versión y el commit del sello del carril con los seis targets, y salvo que el ejecutable principal esté dentro de su techo en `scripts/size-ceilings.txt`.
 
 - **mac:** `HEALTH_FUZZ=1 ./scripts/health.sh` (todos los comprobadores, incluidos vet y staticcheck para linux, darwin y windows, las pruebas unitarias, los fixtures del bootstrap, el lint de Markdown y la comprobación del espejo del arnés), más las dos suites de coordinación. El build apunta a macOS 13 como la release.
 - **linux:** `go vet ./...`, `go test -short ./...` y `bash scripts/test-bootstrap.sh`, y después el build con `-tags webkit2_41`.
 - **win:** las dos suites de coordinación, `go test -short ./...` y `bash scripts/test-bootstrap.sh`, y después el build. El carril fija `core.autocrlf=false` y `core.longpaths=true` mediante `GIT_CONFIG_COUNT` para sus propios procesos, así que la configuración global de Git del usuario del host nunca cambia.
+- **remote-it:** `bash scripts/remote-it.sh` en el host del carril linux, a la vez que el carril linux. Construye la imagen `gitbox-sshd` a partir de `test/sshd`, construye un servidor `linux/amd64` con el tag `e2e_sentinel` y ejecuta `go test -race -tags sshd_integration ./pkg/remote/`: los escenarios del arranque del modo remoto, cada uno contra un contenedor nuevo en una red interna de Docker. No construye ninguna GUI. Consulta [Pruebas › Pruebas del modo remoto](testing.md#pruebas-del-modo-remoto).
 
 ## Hosts y requisitos previos
 
@@ -35,13 +36,13 @@ El gate lee los hosts de `.env`, el mismo archivo que usan `ship.sh` y `smoke.sh
 
 ```bash
 SSH_WIN_HOST="user@windows-host"     # win lane (or SSH_WIN_INTEL_HOST)
-SSH_LINUX_HOST="user@linux-host"     # linux lane
+SSH_LINUX_HOST="user@linux-host"     # linux and remote-it lanes
 SSH_MAC_ARM_HOST=""                  # mac lane; empty when the gate runs on that Mac
 ```
 
 Un worktree enlazado no tiene `.env` propio, así que los scripts recurren al `.env` del clon principal.
 
-Cada host necesita SSH por clave sin preguntas (`BatchMode`), `git`, Go, Node con npm, `ssh-keygen` de OpenSSH 8.2 o posterior para los fixtures del bootstrap y `bash` (Git Bash en Windows). Los carriles mac y win también necesitan `uv`. El carril mac ejecuta la comprobación de salud, así que necesita las herramientas de salud de la [guía de desarrollo](developer-guide.md#comprobación-de-salud) (`shellcheck`, `actionlint`, `pnpm`). El host Linux necesita los paquetes de desarrollo de GTK 3 y WebKitGTK 4.1 (`libgtk-3-dev libwebkit2gtk-4.1-dev` en Debian o Ubuntu). Debian funciona igual que Ubuntu; solo el AppImage de la release depende de una base Ubuntu, y la release sigue construyéndose en GitHub.
+Cada host necesita SSH por clave sin preguntas (`BatchMode`), `git`, Go, Node con npm, `ssh-keygen` de OpenSSH 8.2 o posterior para los fixtures del bootstrap y `bash` (Git Bash en Windows). Los carriles mac y win también necesitan `uv`. El carril mac ejecuta la comprobación de salud, así que necesita las herramientas de salud de la [guía de desarrollo](developer-guide.md#comprobación-de-salud) (`shellcheck`, `actionlint`, `pnpm`). El host Linux necesita los paquetes de desarrollo de GTK 3 y WebKitGTK 4.1 (`libgtk-3-dev libwebkit2gtk-4.1-dev` en Debian o Ubuntu). Debian funciona igual que Ubuntu; solo el AppImage de la release depende de una base Ubuntu, y la release sigue construyéndose en GitHub. El carril remote-it necesita Docker en el host Linux, con el usuario de SSH en el grupo `docker`; Docker Desktop en macOS no llega a las IP de los contenedores desde el host, así que ese carril solo se ejecuta en Linux. Su primera ejecución descarga `debian:bookworm-slim` y los paquetes de OpenSSH y fish.
 
 La primera ejecución en un host descarga los módulos de Go, los paquetes npm y la CLI de Wails. Las siguientes reutilizan esas cachés, y de ahí sale la mayor parte de la velocidad.
 
@@ -51,6 +52,7 @@ La primera ejecución en un host descarga los módulos de Go, los paquetes npm y
 ./scripts/gate.sh                  # every lane
 ./scripts/gate.sh --only linux     # one lane (repeatable)
 ./scripts/gate.sh --skip win       # every lane but one (repeatable)
+./scripts/gate.sh --only remote-it # the sshd integration tests only
 ./scripts/gate.sh --report         # publish the HEAD marker as a commit status
 ```
 

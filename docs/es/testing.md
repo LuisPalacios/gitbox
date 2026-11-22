@@ -7,6 +7,7 @@ Esta guía cubre los niveles de prueba, el fixture `test-gitbox.json` y las chec
 - **Pruebas unitarias de paquete** — las pruebas Go bajo `pkg/`. No necesitan preparación, ni red, ni proveedor, y lo aíslan todo con `t.TempDir()` y `t.Setenv()`. Las pruebas unitarias de `pkg/ops` se ejecutan contra un `XDG_CONFIG_HOME` temporal, un `GIT_CONFIG_GLOBAL` temporal y una carpeta SSH temporal, así que nada cambia en el host.
 - **Pruebas de GUI** — las pruebas Go bajo `cmd/gui/`. Llaman directamente a los métodos de `App`, sin ventana de Wails. Necesitan el frontend compilado en `cmd/gui/frontend/dist`, porque el paquete lo embebe.
 - **Pruebas del frontend** — pruebas puras de Node en `cmd/gui/frontend/src/lib/*.test.mjs`, que se ejecutan con `npm test`. No necesitan ni Wails ni credenciales.
+- **Pruebas de integración del modo remoto** — `go test -tags sshd_integration ./pkg/remote/` contra un `sshd` en contenedor, que ejecuta `scripts/remote-it.sh` en un host Linux con Docker. Consulta [Pruebas del modo remoto](#pruebas-del-modo-remoto).
 - **Prueba de escenario** — `TestScenario_FullLifecycle` en `pkg/ops/scenario_test.go` recorre el ciclo de vida completo de una cuenta a través de `pkg/ops` contra un proveedor real. Necesita el fixture descrito más abajo, y `go test -short` la salta.
 
 `go test ./pkg/...` se ejecuta sin el build del frontend. Todo lo demás en Go necesita `cmd/gui/frontend/dist`; constrúyelo una vez:
@@ -51,6 +52,31 @@ go test ./pkg/config/ -run='^$' -fuzz='^FuzzDecodeRoundTrip$' -fuzztime=1m -para
 ```
 
 `FuzzDecodeRoundTrip` comprueba la intención de la config migrada y que la serialización de los campos de extensión conservados sea estable, `FuzzStripJSONC` comprueba las propiedades de la eliminación de comentarios, `FuzzRepoPath` comprueba la resolución de rutas dentro de su dominio de entrada seguro documentado y `FuzzDecodeFrame` comprueba que el lector de tramas del protocolo del servidor nunca entra en pánico ni reserva más que su tope; [testing-reference.md](testing-reference.md#propiedades-fuzz) describe las aserciones. Go guarda una entrada que falla en el directorio `testdata/fuzz/` del target e imprime un comando para reproducirla. Conservo la entrada minimizada como semilla de regresión después de corregir su causa; no copio la caché de fuzz al repositorio.
+
+## Pruebas del modo remoto
+
+El arranque del [modo remoto](remote-mode.md) tiene tres capas de pruebas.
+
+- **Pruebas unitarias** en `pkg/remote`, que ejecuta cualquier `go test -short`. Incluyen `TestNoConfigOverrideInProduction` y un `ssh` falso que ejecuta los scripts remotos reales con el `sh` local en una carpeta home propia de la prueba: instalación, comprobaciones de hash, `noexec`, banners, desinstalación y las raíces rechazadas. Windows salta las pruebas del ssh falso, que necesitan un `sh` POSIX. `cmd/gui` añade `TestRemoteLifecycle`, que maneja una ventana remota con un conector que no necesita ssh.
+- **El build de servidor de `cmd/gui`.** `go test -race -short -tags gitboxserver ./cmd/gui/` ejecuta las pruebas del marcador de uso y del registro rotativo del servidor. Las pruebas que necesitan el shell de la ventana llevan `//go:build !gitboxserver`, así que esta ejecución compila.
+- **Pruebas de integración con sshd** tras el tag `sshd_integration`, en `pkg/remote/integration_test.go`:
+
+  ```bash
+  scripts/remote-it.sh                           # every scenario
+  GITBOX_IT_RUN=TestFishLoginShell scripts/remote-it.sh
+  ```
+
+  El script necesita Docker en Linux. Construye la imagen `gitbox-sshd` a partir de `test/sshd` (Debian slim con OpenSSH y fish, y un usuario `test` cuya clave vive fuera del home) y un servidor `linux/amd64` con el tag `e2e_sentinel`, que añade una línea a `$HOME/.gitbox-e2e/ran.log` en cada arranque. Cada prueba arranca su propio contenedor en una red `--internal` de Docker, sin ruta de salida, y se conecta mediante el `ssh` real con un archivo de config y un `known_hosts` propios, rellenado con la clave del host del contenedor. "Nunca se ejecutó" significa que el número de líneas de `ran.log` no cambió. El gate local lo ejecuta en su carril `remote-it`.
+
+Un smoke remoto maneja los métodos del cliente contra un host real desde mi máquina, con una config temporal: añadir, conectar, registro, diagnóstico, desconectar y desinstalar. Necesita un build que lleve su servidor y un `server_dir` de prueba:
+
+```bash
+eval "$(scripts/stamp.sh)" && scripts/build-server.sh
+pkg=github.com/LuisPalacios/gitbox/cmd/gui
+GITBOX_SMOKE_ALIAS=my-server GITBOX_SMOKE_SERVER_DIR='~/.cache/gitbox-smoke' \
+  go test -tags serverbin,remote_smoke -run TestRemoteSmoke -v \
+  -ldflags "-X $pkg.version=$VERSION -X $pkg.commit=$COMMIT" ./cmd/gui/
+```
 
 ## Pre-push hook
 

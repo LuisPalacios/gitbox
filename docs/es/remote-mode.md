@@ -1,0 +1,144 @@
+# Modo remoto (experimental)
+
+El modo remoto deja que GitboxApp, en mi portátil, gestione los repositorios de otro ordenador por SSH, como un servidor Linux sin escritorio. GitboxApp instala por sí mismo un `gitbox-server` que coincide con él en ese host: sin root, sin internet en el host y sin ningún puerto a la escucha. El diseño sigue a VS Code Remote-SSH.
+
+Esta versión conecta, instala, verifica y desinstala el servidor, y muestra la conexión. Los repositorios del host aparecen en una versión posterior. Por ahora solo se admiten hosts Linux; los hosts macOS y Windows llegan después.
+
+## Antes de empezar: un alias que no pida nada
+
+El modo remoto usa el `ssh` del sistema y mi propia configuración de SSH: `~/.ssh/config`, `known_hosts`, `ProxyJump` y mi agente se aplican sin cambios. Nunca añade `StrictHostKeyChecking`, `UserKnownHostsFile` ni `-F`.
+
+Cada remoto es un alias `Host` de mi `ssh_config`. GitboxApp guarda el alias y nada más: ni nombre de host, ni usuario, ni clave.
+
+```text
+Host my-server
+  HostName my-server.example.org
+  User me
+```
+
+El modo remoto ejecuta `ssh` con `BatchMode=yes`, así que nunca responde a una pregunta. Antes de añadir un remoto, `ssh my-server` tiene que entrar sin pedir nada:
+
+- La clave está cargada en un agente, o no tiene frase de paso. Un host que solo acepta contraseñas, o una clave cifrada sin agente, falla con `ssh_auth`.
+- La clave del host ya está en `known_hosts`. Si no lo está, la conexión falla enseguida con `ssh_hostkey`. Ejecuto `ssh my-server` una vez en un terminal y acepto la clave.
+- Lo mismo vale para cada salto de un `ProxyJump`.
+
+## Activar el modo remoto
+
+El modo remoto viene desactivado. Se activa con la opción `--experimental-remote` o con esta clave en mi `gitbox.json`:
+
+```json
+"global": { "experimental_remote": true }
+```
+
+Cualquiera de las dos muestra **Remotos (experimental)** en Ajustes.
+
+## Añadir un remoto
+
+En Ajustes, en **Remotos (experimental)**, escribo el alias y, si la necesito, una carpeta del servidor (`server_dir`), y luego **Añadir**.
+
+GitboxApp comprueba el alias con `ssh -G <alias>`, que lee la configuración sin conectar. Eso detecta un `ssh_config` roto, no un host desconocido: `ssh` resuelve cualquier nombre. Un host equivocado solo se nota al conectar. El remoto se guarda en la lista `remotes` del `gitbox.json` de este ordenador.
+
+## Conectar
+
+**Conectar** abre el remoto en una ventana propia: un proceso nuevo de GitboxApp arrancado como `GitboxApp --remote <alias> --experimental-remote`. Un segundo **Conectar** trae al frente la ventana abierta. La ventana del remoto sigue abierta cuando cierro la ventana principal.
+
+La ventana aparece enseguida y conecta en segundo plano. Dice **Conectando con my-server…**, **Instalando gitbox en my-server…** en la primera conexión, y **Conectado a my-server** cuando el servidor responde. El modo avanzado muestra además el sistema del host y el build de su servidor. La ventana tiene **Desconectar**, **Ver registro** y **Desinstalar servidor**. Hasta que lleguen los repositorios, sigue el tema claro u oscuro del sistema.
+
+`--remote` sin `--experimental-remote` sale con un mensaje.
+
+## Qué se instala y dónde
+
+Todo vive bajo la **raíz del servidor**: el `server_dir` del remoto si lo configuro, y si no `~/.gitbox-server`.
+
+```text
+<root>/<build>/gitbox-server       el servidor, modo 0700
+<root>/<build>/in-use.<client id>  uno por cada servidor en marcha
+<root>/.gc.lock/                   el bloqueo de la recolección de basura
+<root>/logs/<build>.log[.1..3]     el registro del servidor
+```
+
+`<build>` es `<version>-<commit>-<pin8>`, y `<pin8>` es el principio del SHA-256 que este GitboxApp fija para el binario. Dos builds del mismo commit pueden llevar bytes distintos, así que se instalan uno al lado del otro. Todas las carpetas se crean con modo 0700, y nada va a `/tmp`.
+
+La raíz del servidor tiene que ser una carpeta propia. GitboxApp rechaza con `server_dir_unsafe` un `server_dir` que sea la carpeta home o la carpeta raíz, también a través de un enlace.
+
+### Instalación
+
+La instalación solo se ejecuta cuando falta el servidor de este build:
+
+1. GitboxApp sondea el sistema y la arquitectura del host en un solo comando.
+2. Comprueba el espacio libre con `df` y necesita el doble del tamaño del servidor.
+3. Envía el servidor, que lleva dentro, a un archivo temporal en la carpeta del build.
+4. Comprueba el SHA-256 de ese archivo contra el pin. Si no coincide, borra el archivo antes de que llegue a ejecutarse.
+5. Ejecuta el archivo una vez con `--version`. En un home montado `noexec` esto falla, el archivo se borra, y el error dice que configure `server_dir` con una carpeta que permita ejecutar programas. GitboxApp nunca recurre a `/tmp`.
+6. Renombra el archivo a su sitio, que es atómico. Dos clientes que instalan a la vez acaban con el mismo archivo.
+
+Un archivo de servidor que ya está ahí con un hash equivocado nunca se sustituye en silencio. Falla la verificación, y la ventana ofrece **Reinstalar servidor**, que borra esa carpeta de build cuando confirmo y la instala de nuevo.
+
+### Verificar antes de cada arranque
+
+Cada arranque verifica el servidor y lo arranca en el mismo comando remoto, así que conectar con un servidor instalado cuesta dos comandos SSH: el sondeo y el arranque. El comando solo ejecuta el servidor cuando su hash es igual al pin, y el cliente comprueba el hash otra vez antes de hablar con el servidor.
+
+Esto detecta la corrupción, una subida truncada y un archivo sustituido por error. No puede parar a un atacante que ya ejecuta código como mi usuario remoto y cambia el archivo entre la comprobación y el arranque. Frente a ese atacante, el cliente trata como no fiable todo lo que dice el servidor.
+
+### Recolección de basura
+
+Después de cada arranque, el servidor borra lo que ya nadie usa:
+
+- cualquier otra carpeta de build sin un marcador de uso refrescado en los últimos 10 minutos y sin una subida en curso;
+- los archivos temporales de subida con más de una hora;
+- los registros de los builds que ya no están.
+
+Un servidor en marcha refresca su marcador cada minuto y borra su propio marcador, y ningún otro, cuando se detiene. La recolección toma el bloqueo creando `.gc.lock`, que también funciona en NFS, y rompe un bloqueo con más de 5 minutos, y lo dice en el registro. Solo toca nombres que crea gitbox, así que el resto de archivos de la raíz del servidor se quedan.
+
+## Desinstalar
+
+**Desinstalar servidor**, en la ventana del remoto o junto al remoto en Ajustes, desconecta y quita el servidor del host. Si otra ventana sigue usando el servidor allí, GitboxApp pregunta otra vez antes.
+
+Solo borra lo que puso gitbox: las carpetas de build, `logs/`, `.gc.lock/` y los archivos temporales de subida. Después quita la raíz del servidor si está vacía. Un archivo que yo mismo puse en la raíz del servidor se queda, y también la raíz que lo contiene. Los repositorios y el `gitbox.json` del host no se tocan.
+
+**Quitar** en Ajustes solo olvida el remoto en este ordenador.
+
+## Leer el registro de conexión
+
+**Ver registro** abre el registro de conexión de la ventana: las últimas 2.000 líneas, cada una con su hora. Registra:
+
+- cada paso con su código de salida y su duración, y el tamaño del banner de inicio de sesión como `[banner: N bytes]`;
+- las decisiones de instalación, el hash del archivo subido y el pin;
+- lo que `ssh` y el servidor imprimen en stderr.
+
+**Copiar registro** lo copia. **Diagnosticar** ejecuta `gitbox-server --doctor` en el host en un comando aparte, verificado como un arranque, y muestra el build del servidor, la versión de git, la ruta de la configuración y si esa carpeta permite escribir y ejecutar programas.
+
+En el host, el servidor también escribe `<root>/logs/<build>.log`, que rota a 1 MiB y guarda tres archivos anteriores.
+
+El registro nunca contiene un token ni una contraseña: GitboxApp limpia cada línea antes de mostrarla.
+
+## Códigos de error
+
+El modo simple muestra una frase sencilla; el código en sí aparece en el registro.
+
+- `ssh_missing`: no hay ningún comando `ssh` en este ordenador. Instala OpenSSH.
+- `ssh_auth`: `ssh` no pudo entrar sin pedir nada. Carga la clave en un agente o usa una clave sin frase de paso, y luego ejecuta `ssh <alias>` una vez.
+- `ssh_hostkey`: la clave del host no está en `known_hosts`, o ha cambiado. Ejecuta `ssh <alias>` una vez en un terminal.
+- `ssh_timeout`: el host no respondió a tiempo.
+- `ssh_config`: `ssh` no puede leer la configuración del alias. Corrige `ssh_config`.
+- `ssh_failed`: cualquier otro fallo de `ssh`, como un host desconocido o una conexión rechazada. El registro muestra lo que imprimió `ssh`.
+- `banner_overflow`: el shell de inicio de sesión imprimió más de 1 MiB antes de la respuesta. Silencia los archivos de arranque del shell en las sesiones no interactivas.
+- `unsupported_os`: el host no es Linux. Los hosts macOS y Windows llegan en una versión posterior.
+- `unsupported_arch`: el host no es ni amd64 ni arm64.
+- `server_target_missing`: este GitboxApp no lleva servidor para ese host. Un build de desarrollo solo lleva los de Linux; vuelve a compilar con los seis destinos.
+- `server_build_mismatch` y `unstamped_build`: este GitboxApp se compiló sin un sello que coincida. Vuelve a compilarlo como dice la guía de desarrollo.
+- `hash_mismatch`: el servidor del host no coincide con el pin y no se ejecutó. Usa **Reinstalar servidor**.
+- `version_mismatch`: el servidor que respondió es otro build. Vuelve a conectar.
+- `disk_full`: la carpeta del servidor tiene menos espacio libre que el doble del servidor.
+- `no_hash_tool`: el host no tiene ni `sha256sum`, ni `shasum`, ni `openssl`.
+- `noexec`: la carpeta del servidor no permite ejecutar programas. Configura `server_dir` con una carpeta que lo permita.
+- `server_dir_unsafe`: `server_dir` es la carpeta home o la raíz. Elige una carpeta propia.
+- `server_crashed`: el servidor se detuvo durante la conexión. El registro muestra sus últimas líneas.
+- `not_connected`: la ventana no está conectada.
+- `not_implemented_remote`: la acción todavía no tiene lado remoto.
+
+## Clientes Windows y macOS
+
+En macOS y Linux, GitboxApp reutiliza una sola conexión SSH para todos sus comandos. Si mi `ssh_config` ya tiene un control master en marcha para el alias, usa ese; si no, arranca el suyo, con el socket en la carpeta de configuración de gitbox, y lo mantiene 60 segundos.
+
+Win32-OpenSSH no tiene control master, así que en Windows cada comando se autentica por su cuenta: dos por cada conexión con un servidor instalado, y algunos más durante una instalación. Con la clave en el agente no se nota.
