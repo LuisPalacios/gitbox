@@ -65,6 +65,12 @@ cache="$HOME/.cache/gitbox-gate"
 repo="$cache/repo-$lane.git"
 work="$cache/work-$lane-${sha:0:12}"
 bundle="$(cd "$(dirname "$bundle")" && pwd)/$(basename "$bundle")"
+inbox="$(dirname "$bundle")"
+self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+
+# gate.sh copies this script and the bundle into the inbox for one run.
+# Remove both however the lane ends; the subshells of step() do not run it.
+trap 'rm -f "$bundle" "$self"' EXIT
 
 # Each step runs in a subshell outside any condition: bash ignores set -e
 # inside a function called from an `if`, which would let a failed command
@@ -89,6 +95,8 @@ checkout() {
     mkdir -p "$cache"
     # Clones from a failed or abandoned run older than a day.
     find "$cache" -maxdepth 1 -name 'work-*' -mtime +1 -exec rm -rf {} + 2>/dev/null || true
+    # Inbox files of a run killed before its exit trap, older than a day.
+    find "$inbox" -maxdepth 1 -type f -name 'gate-*' -mtime +1 -delete 2>/dev/null || true
     [[ -d "$repo" ]] || git init -q --bare "$repo"
     # fetch would start a detached auto gc that repacks the cache while the
     # clone below hardlinks its objects ("hardlink different from source").
