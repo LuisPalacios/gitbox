@@ -133,6 +133,8 @@ El arranque devuelve la config, las preferencias, el estado de plegado y la anid
 - Cuando la cuenta cambia o se pide una recomprobación durante una comprobación de credenciales, la comprobación se vuelve a ejecutar contra la config actual. Los resultados offline se reintentan con backoff; los errores de autenticación, no.
 - Un ciclo de Fetch de todo publica el estado local antes de esperar al trabajo del proveedor. `fetch:alldone` llega después de su estado final y de las comprobaciones remotas.
 
+`cmd/gui/pr.go` guarda en memoria los resultados de pull requests de cada App. Los refrescos solapados comparten la petición de cada cuenta y se refrescan como máximo dos cuentas a la vez. Cerrar la app cancela las peticiones. Si cambian una cuenta o los ajustes de los indicadores, se descartan los resultados obsoletos. Cuando falla un refresco, se conservan los últimos datos obtenidos para la misma cuenta y el mismo ajuste de borradores.
+
 `cmd/gui/network.go` evita que la app trabaje contra un servidor al que no puede llegar. En cuanto un servidor deja de responder, se detiene todo lo que lo usa:
 
 - `reachable` responde con una conexión TCP al host y puerto de la URL de la cuenta (o del proxy que el entorno le asigna), limitada a 3 segundos y reintentada una vez cuando se rechaza al instante. Quienes preguntan por el mismo servidor comparten esa conexión, y una respuesta buena se reutiliza durante 10 segundos.

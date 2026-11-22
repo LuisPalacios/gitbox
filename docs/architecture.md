@@ -133,6 +133,8 @@ Startup returns config, preferences, collapse state and path-derived nesting in 
 - When the account changes or a re-check is requested during a credential check, the check runs again against the current config. Offline results retry with backoff; authentication errors don't.
 - A Fetch all cycle publishes local status before waiting for provider work. `fetch:alldone` follows its final status and remote checks.
 
+`cmd/gui/pr.go` keeps each App’s pull request results in memory. Overlapping refreshes share an account’s request, and at most two accounts refresh at once. Closing the app cancels the requests. Changes to an account or badge settings discard outdated results, and a failed refresh keeps the last successful data for the same account and draft setting.
+
 `cmd/gui/network.go` keeps the app from working against a server it cannot reach. The moment a server stops answering, everything that uses it stops:
 
 - `reachable` answers with one TCP connect to the host and port of the account's URL (or of the proxy the environment sets for it), bounded to 3 seconds and retried once when it is refused at once. Callers that ask about the same server share that connect, and a good answer is reused for 10 seconds.
