@@ -226,6 +226,11 @@ func (a *App) addDiscoveredReposToFolderLocal(key string, repoNames []string, cl
 	}
 
 	for _, name := range repoNames {
+		// A repo already in the source is skipped, like AddDiscoveredRepos:
+		// a repeat adds the rest instead of failing halfway (#294).
+		if _, exists := a.cfg.Sources[sourceKey].Repos[name]; exists {
+			continue
+		}
 		repo := config.Repo{}
 		if cloneFolder != "" {
 			// A single custom folder hosts one repo; store the absolute path.

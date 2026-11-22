@@ -28,6 +28,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -766,11 +767,12 @@ const readOnlyHostConfig = `{
 }
 `
 
-// A read-only session changes nothing on the host (#240): after every
-// served method, a fetch-all and the harness watcher's first pass, the
-// host's gitbox.json has the same bytes and modification time, and its
-// folder holds the same files.
-func TestReadOnlySessionLeavesConfigUntouched(t *testing.T) {
+// The reads change nothing on the host (#240): after every served read, a
+// fetch-all and the harness watcher's first pass, the host's gitbox.json
+// holds the same domain (the watcher may save what it detected, #294), the
+// clone's .git/config is untouched (#295 serves its repair), and a
+// repository mutation is refused by the server itself.
+func TestReadsLeaveTheDomainUntouched(t *testing.T) {
 	c := startContainer(t, ctOpts{})
 	cfgDir := testHome + "/.config/gitbox"
 	cfgPath := cfgDir + "/gitbox.json"
@@ -782,10 +784,17 @@ func TestReadOnlySessionLeavesConfigUntouched(t *testing.T) {
 		" && git -C " + clone + " remote add origin " + testHome + "/origin.git" +
 		" && git -C " + clone + " push -q origin main")
 	gitConfig := func() string { return c.sh("sha256sum " + clone + "/.git/config | cut -d' ' -f1") }
-	fingerprint := func() string {
-		return c.sh("sha256sum " + cfgPath + " && stat -c '%Y.%y' " + cfgPath + " && ls -la --time-style=+%s " + cfgDir + " | grep -v ' [.][.]$'")
+	domain := func() map[string]any {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(c.sh("cat "+cfgPath)), &m); err != nil {
+			t.Fatalf("the host's gitbox.json does not parse: %v", err)
+		}
+		if g, ok := m["global"].(map[string]any); ok {
+			delete(g, "ai_harnesses")
+		}
+		return m
 	}
-	before, cloneBefore := fingerprint(), gitConfig()
+	before, cloneBefore := domain(), gitConfig()
 
 	s := c.client(t, "client-a", true)
 	sess, err := remote.Dial(testCtx(t), alias, s.opts)
@@ -822,10 +831,11 @@ func TestReadOnlySessionLeavesConfigUntouched(t *testing.T) {
 		}
 		cancel()
 	}
-	// A mutation is refused by the server itself, not only by the client.
+	// A repository mutation is refused by the server itself, not only by
+	// the client, until #295 serves it.
 	ctx, cancel := context.WithTimeout(testCtx(t), 30*time.Second)
-	if err := client.Call(ctx, "AddRoot", []any{testHome + "/elsewhere"}, nil, rpc.WithRequestID("00000000-0000-4000-8000-000000000001")); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
-		t.Errorf("AddRoot on a read-only server = %v, want unsupported", err)
+	if err := client.Call(ctx, "DeleteRepo", []any{"acct", "org/repo"}, nil, rpc.WithRequestID("00000000-0000-4000-8000-000000000001")); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
+		t.Errorf("DeleteRepo = %v, want unsupported", err)
 	}
 	cancel()
 
@@ -838,14 +848,101 @@ func TestReadOnlySessionLeavesConfigUntouched(t *testing.T) {
 	_ = client.Close()
 	_ = sess.Close()
 
-	if after := fingerprint(); after != before {
+	if after := domain(); !reflect.DeepEqual(after, before) {
 		s.dump(t)
-		t.Errorf("the host's config changed:\nbefore\n%s\nafter\n%s", before, after)
+		t.Errorf("the reads changed the host's domain:\nbefore %v\nafter  %v", before, after)
 	}
 	if after := gitConfig(); after != cloneBefore {
-		t.Errorf("the clone's .git/config changed: fetch repaired it on a read-only server")
+		t.Errorf("the clone's .git/config changed: fetch repaired it before #295")
 	}
-	if c.exists(testHome + "/elsewhere") {
-		t.Error("the refused AddRoot created its folder")
+	if !c.exists(clone) {
+		t.Error("the refused DeleteRepo removed the clone")
+	}
+}
+
+// mutationCalls are the config mutations a gitbox-server serves (#294), in
+// an order where each one finds what it needs, against the host that
+// TestMutationsOverSSH seeds. TestIntegrationCallsEveryServedMethod in
+// cmd/gui keeps the set equal to the served mutations. RestoreFromBackup
+// gets the path of a backup the earlier saves made.
+var mutationCalls = []struct {
+	method string
+	params []any
+}{
+	{"AddRoot", []any{testHome + "/git2"}},
+	{"SetDefaultRoot", []any{testHome + "/git2"}},
+	{"SetDefaultRoot", []any{testHome + "/git"}},
+	{"RemoveRoot", []any{testHome + "/git2", false}},
+	{"InitRoot", []any{testHome + "/git"}},
+	{"SetNestedScanDepth", []any{3}},
+	{"SetPRBadgesEnabled", []any{false}},
+	{"SetPRIncludeDrafts", []any{true}},
+	{"SetCheckGlobalGitignore", []any{false}},
+	{"AddAccount", []any{map[string]any{"key": "other", "provider": "gitea", "url": "https://git2.example.invalid", "username": "bob", "name": "Bob", "email": "b@example.invalid", "credentialType": "token"}}},
+	{"UpdateAccount", []any{map[string]any{"key": "other", "provider": "gitea", "url": "https://git2.example.invalid", "username": "bob", "name": "Bob B", "email": "b@example.invalid"}}},
+	{"RenameAccount", []any{"other", "other2"}},
+	{"AddMirrorGroup", []any{"m", "acct", "other2"}},
+	{"AddMirrorRepo", []any{"m", "org/repo", "push", "src"}},
+	{"DeleteMirrorRepo", []any{"m", "org/repo"}},
+	{"DeleteMirrorGroup", []any{"m"}},
+	{"DiscardAccount", []any{"other2"}},
+	{"AddAccount", []any{map[string]any{"key": "third", "provider": "gitea", "url": "https://git3.example.invalid", "username": "carol", "name": "Carol", "email": "c@example.invalid", "credentialType": "token"}}},
+	{"DeleteAccount", []any{"third"}},
+	{"AddDiscoveredRepos", []any{"acct", []string{"org/new"}}},
+	{"AddDiscoveredReposToFolder", []any{"acct", []string{"org/new2"}, testHome + "/custom"}},
+	{"SetRepoContainer", []any{"acct", "org/repo", true}},
+	{"SetRepoWorkspace", []any{"acct", "org/repo", ""}},
+	{"IgnoreClone", []any{testHome + "/git/stray", true}},
+	{"RemoveGlobalIdentity", []any{}},
+	{"FixGlobalGCMConfig", []any{}},
+	{"InstallGlobalGitignore", []any{}},
+	{"AcknowledgeConfigError", []any{}},
+	{"RepairConfig", []any{}},
+	{"RestoreFromBackup", []any{"<backup>"}},
+}
+
+// TestMutationsOverSSH runs every served config mutation once over a real
+// ssh session (#294). Each succeeds, the host's gitbox.json parses after
+// every step and keeps the host's own theme, and the end state holds what
+// the sequence left.
+func TestMutationsOverSSH(t *testing.T) {
+	c := startContainer(t, ctOpts{})
+	cfgDir := testHome + "/.config/gitbox"
+	cfgPath := cfgDir + "/gitbox.json"
+	c.sh("mkdir -p " + cfgDir + " " + testHome + "/git/acct/org/repo && echo " + base64.StdEncoding.EncodeToString([]byte(readOnlyHostConfig)) + " | base64 -d > " + cfgPath)
+	conn := c.client(t, "client-m", true).connect(t)
+	defer conn.close()
+
+	host := func() map[string]any {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(c.sh("cat "+cfgPath)), &m); err != nil {
+			t.Fatalf("the host's gitbox.json does not parse: %v", err)
+		}
+		return m
+	}
+	for i, call := range mutationCalls {
+		params := call.params
+		if call.method == "RestoreFromBackup" {
+			params = []any{c.sh("ls -1t " + cfgDir + "/gitbox-*.json | head -1")}
+		}
+		ctx, cancel := context.WithTimeout(testCtx(t), 60*time.Second)
+		var out json.RawMessage
+		err := conn.client.Call(ctx, call.method, params, &out, rpc.WithRequestID(fmt.Sprintf("00000000-0000-4000-8000-%012d", i+1)))
+		cancel()
+		if err != nil {
+			t.Fatalf("step %d, %s: %v", i+1, call.method, err)
+		}
+		if g, _ := host()["global"].(map[string]any); g["theme"] != "dark" {
+			t.Errorf("step %d, %s: the host's theme is %v, want its own dark", i+1, call.method, g["theme"])
+		}
+	}
+	end := host()
+	g, _ := end["global"].(map[string]any)
+	accounts, _ := end["accounts"].(map[string]any)
+	if g["nested_scan_depth"] != float64(3) || len(accounts) != 1 {
+		t.Errorf("end state: depth %v, accounts %v", g["nested_scan_depth"], accounts)
+	}
+	if !c.exists(testHome + "/.gitignore_global") {
+		t.Error("InstallGlobalGitignore wrote no ~/.gitignore_global")
 	}
 }

@@ -22,7 +22,10 @@ import (
 // The closed list may only hold read-only backend methods until the phase
 // that validates mutations lands (P5). Adding one here by mistake would
 // expose it to every client.
-func TestServedMethodsAreReadOnly(t *testing.T) {
+// TestServedMutationsHaveIdempotence: every served method exists, runs on
+// the server, and when it changes the host, says in mutationIdempotence what
+// a duplicate does (#294); every row of that table is a served mutation.
+func TestServedMutationsHaveIdempotence(t *testing.T) {
 	if !slices.IsSorted(servedMethods) || len(slices.Compact(slices.Clone(servedMethods))) != len(servedMethods) {
 		t.Errorf("servedMethods must be sorted and without repeats: %v", servedMethods)
 	}
@@ -38,8 +41,13 @@ func TestServedMethodsAreReadOnly(t *testing.T) {
 			t.Errorf("%s is served but has no classification", name)
 		case info.Class != classRemote && info.Class != classMixed:
 			t.Errorf("%s is served but is classified %s: only REMOTE and MIXED methods run on the server", name, info.Class)
-		case info.Mutating:
-			t.Errorf("%s is served but changes state on the host: mutations wait for their validation (P5)", name)
+		case info.Mutating && mutationIdempotence[name] == "":
+			t.Errorf("%s is served and changes the host, but mutationIdempotence does not say what a duplicate does", name)
+		}
+	}
+	for name := range mutationIdempotence {
+		if info, ok := classOf(name); !servedSet[name] || !ok || !info.Mutating {
+			t.Errorf("mutationIdempotence has %s, which is not a served mutation", name)
 		}
 	}
 	// Every served method has a handler, and nothing else does.
@@ -162,10 +170,8 @@ func TestServerKeepsHostPrefs(t *testing.T) {
 		path := hostConfig(t, "dark")
 		var a *App
 		if server {
-			// A server that saves, as P5 runs it: until then the server is
-			// read-only (TestReadOnlyServerSavesNothing).
+			// A server saves the served config mutations (#294).
 			a = newServerApp(path)
-			a.readOnly = false
 			newRPCServer(a, io.Discard)
 		} else {
 			a = &App{cfgPath: path}
@@ -302,7 +308,7 @@ func TestServeExitCodes(t *testing.T) {
 		if err := client.Call(ctx, "GetConfigPath", nil, &path); err != nil || !strings.HasSuffix(path, "gitbox.json") {
 			t.Errorf("GetConfigPath = %q, %v", path, err)
 		}
-		if err := client.Call(ctx, "AddRoot", []any{"/tmp/x"}, nil); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
+		if err := client.Call(ctx, "DeleteRepo", []any{"acct", "org/repo"}, nil); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
 			t.Errorf("a method outside the closed list = %v, want unsupported", err)
 		}
 		if err := client.Close(); err != nil {
@@ -328,7 +334,11 @@ func TestServeExitCodes(t *testing.T) {
 // what the harness watcher detects reaches the client as an event, but
 // neither it, the client's SyncAIHarnesses and RefreshAIHarnesses (#243),
 // nor a refused save changes the host's gitbox.json.
-func TestReadOnlyServerSavesNothing(t *testing.T) {
+// TestServerSavesThroughTheGuard: a server saves the served config
+// mutations and the harness watcher's detection (#294), through the guard
+// of #241, and still skips the repair of each clone's .git/config until the
+// repository mutations are served (#295).
+func TestServerSavesThroughTheGuard(t *testing.T) {
 	if len(knownAIHarnesses) == 0 {
 		t.Skip("no known harness to detect")
 	}
@@ -368,8 +378,11 @@ func TestReadOnlyServerSavesNothing(t *testing.T) {
 	if !detected() {
 		t.Fatal("the harness watcher did not run on the server")
 	}
-	if err := host.be().SetNestedScanDepth(3); toUserError(err).Code != "remote.read_only" {
-		t.Errorf("a save on the read-only server = %v, want remote.read_only", err)
+	if err := remote.SetNestedScanDepth(3); err != nil {
+		t.Errorf("a served mutation on the server = %v", err)
+	}
+	if got := loadConfig(t, path).Global.NestedScanDepth; got != 3 {
+		t.Errorf("the host's nested scan depth = %d after the served mutation, want 3", got)
 	}
 	// The window runs the harness detection on the host too (#243): it is
 	// served, it is not a mutation, and its result stays in memory. The
@@ -403,8 +416,11 @@ func TestReadOnlyServerSavesNothing(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the server did not stop")
 	}
-	if after := stamp(t, path); after != before {
-		t.Errorf("the read-only server changed the host's gitbox.json")
+	if after := stamp(t, path); after == before {
+		t.Error("the server saved nothing to the host's gitbox.json")
+	}
+	if got := loadConfig(t, path).Global.AIHarnesses; len(got) == 0 {
+		t.Error("the harness watcher's detection was not saved on the host")
 	}
 	if !strings.Contains(serverLog.String(), "fetch skips the repair") {
 		t.Errorf("the server did not log that fetch skips the repair of clones: %s", serverLog.String())
@@ -429,24 +445,41 @@ func (l *lockedBuffer) String() string {
 	return l.b.String()
 }
 
-// The sshd test of a read-only session (pkg/remote, #240) calls every
-// served method; this keeps its list in step with servedMethods.
+// The sshd tests (pkg/remote) call every served method: the reads in
+// readOnlyCalls (#240) and the config mutations in mutationCalls (#294).
+// This keeps both lists in step with servedMethods.
 func TestIntegrationCallsEveryServedMethod(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "pkg", "remote", "integration_test.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	src := string(data)
-	start := strings.Index(src, "var readOnlyCalls = ")
-	if start < 0 {
-		t.Fatal("readOnlyCalls not found in pkg/remote/integration_test.go")
+	list := func(name string) []string {
+		start := strings.Index(src, "var "+name+" = ")
+		if start < 0 {
+			t.Fatalf("%s not found in pkg/remote/integration_test.go", name)
+		}
+		block := src[start : start+strings.Index(src[start:], "\n}\n")]
+		var called []string
+		for _, m := range regexp.MustCompile(`\{"(\w+)", \[\]any\{`).FindAllStringSubmatch(block, -1) {
+			called = append(called, m[1])
+		}
+		return called
 	}
-	block := src[start : start+strings.Index(src[start:], "\n}\n")]
-	var called []string
-	for _, m := range regexp.MustCompile(`\{"(\w+)", \[\]any\{`).FindAllStringSubmatch(block, -1) {
-		called = append(called, m[1])
+	var reads, mutations []string
+	for _, name := range servedMethods {
+		if info, _ := classOf(name); info.Mutating {
+			mutations = append(mutations, name)
+		} else {
+			reads = append(reads, name)
+		}
 	}
-	if !slices.Equal(called, servedMethods) {
-		t.Errorf("the sshd test calls %v,\nthe server serves %v", called, servedMethods)
+	if called := list("readOnlyCalls"); !slices.Equal(called, reads) {
+		t.Errorf("the sshd read test calls %v,\nthe server serves the reads %v", called, reads)
+	}
+	called := list("mutationCalls")
+	slices.Sort(called)
+	if !slices.Equal(slices.Compact(called), mutations) {
+		t.Errorf("the sshd mutation test calls %v,\nthe server serves the mutations %v", called, mutations)
 	}
 }

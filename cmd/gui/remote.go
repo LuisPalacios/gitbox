@@ -169,7 +169,7 @@ func newRemoteSession(a *App, alias string) *remoteSession {
 	s.log = remote.NewLog(func(line string) { a.sink().Emit("remote:log", userText(line)) })
 	s.backend = newRemoteBackend(a.sink, s.log)
 	s.backend.onTruncate = s.noteTruncated
-	s.backend.readOnly = true // until P5 (#240)
+	s.backend.refuseUnserved = true // the unserved mutations (#294)
 	s.state = RemoteStateDTO{State: remoteDisconnected, Alias: alias}
 	return s
 }

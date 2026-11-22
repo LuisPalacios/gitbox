@@ -32,24 +32,38 @@ import (
 // and the read halves of the MIXED ones (the two browser methods only
 // resolve a link: the client opens it); P6 (#243) adds AccountFolder, the
 // read half of the account launchers, and the AI harness detection, which
-// runs where the harnesses run; P5 adds the mutations. Each method
-// decodes its parameters into their Go types, and nothing it does can save
-// the host's config: the server runs read-only (newServerApp).
+// runs where the harnesses run; P5 (#294) adds the config mutations, each
+// with its row in mutationIdempotence. Each method decodes its parameters
+// into their Go types and checks what it is given (hostPath, #241). The
+// repository mutations (#295) and the credential methods (#242, #244) are
+// not served yet, so a remote window refuses them itself.
 var servedMethods = []string{
 	"AccountDeletionImpact",
 	"AccountFolder",
+	"AcknowledgeConfigError",
+	"AddAccount",
+	"AddDiscoveredRepos",
+	"AddDiscoveredReposToFolder",
+	"AddMirrorGroup",
+	"AddMirrorRepo",
+	"AddRoot",
 	"CheckGlobalGCMConfig",
 	"CheckGlobalGitignore",
 	"CheckGlobalIdentity",
 	"CheckMirrorCredentials",
 	"CheckMoveReadiness",
 	"CredentialVerify",
+	"DeleteAccount",
+	"DeleteMirrorGroup",
+	"DeleteMirrorRepo",
+	"DiscardAccount",
 	"Discover",
 	"DiscoverMirrors",
 	"DoctorPrecheck",
 	"DoctorRun",
 	"FetchAllRepos",
 	"FetchRepo",
+	"FixGlobalGCMConfig",
 	"GetAllStatus",
 	"GetCheckGlobalGitignore",
 	"GetCollapsed",
@@ -64,6 +78,9 @@ var servedMethods = []string{
 	"GetRepoDetail",
 	"GetStartupSnapshot",
 	"GetTokenGuide",
+	"IgnoreClone",
+	"InitRoot",
+	"InstallGlobalGitignore",
 	"IsFirstRun",
 	"IsGlobalGCMConfigNeeded",
 	"ListAccountOrgs",
@@ -80,11 +97,24 @@ var servedMethods = []string{
 	"RefreshAllPRs",
 	"RefreshStatus",
 	"ReloadConfig",
+	"RemoveGlobalIdentity",
+	"RemoveRoot",
+	"RenameAccount",
+	"RepairConfig",
 	"RepoNesting",
 	"RepoWorkspaceFiles",
+	"RestoreFromBackup",
 	"ScanFolderForClones",
+	"SetCheckGlobalGitignore",
+	"SetDefaultRoot",
+	"SetNestedScanDepth",
+	"SetPRBadgesEnabled",
+	"SetPRIncludeDrafts",
+	"SetRepoContainer",
+	"SetRepoWorkspace",
 	"SuggestAccountKey",
 	"SyncAIHarnesses",
+	"UpdateAccount",
 	"ValidateRemotePath",
 }
 
@@ -121,16 +151,61 @@ func (b hostBackend) GetStartupSnapshot() (StartupSnapshot, error) {
 	return snap, err
 }
 
-// newServerApp builds the App a server runs: no window, a config whose
+// newServerApp builds the App a server runs: no window, and a config whose
 // client preferences are the host's own and never the server's to change
-// (saveConfig takes them from the file before every save),
-// and, until P5, no save at all: the client is read-only (#240). cfgPath
+// (saveConfig takes them from the file before every save, under the guard
+// of #241). The served config mutations save (#294); the repair of each
+// clone's .git/config waits for the repository mutations (#295). cfgPath
 // empty means the host's default gitbox.json.
 func newServerApp(cfgPath string) *App {
 	a := NewApp()
 	a.cfgPath = cfgPath
-	a.readOnly = true
+	a.skipCloneRepair = true
 	return a
+}
+
+// servedSet is servedMethods as a set, for the client's per-method gate.
+var servedSet = func() map[string]bool {
+	m := make(map[string]bool, len(servedMethods))
+	for _, name := range servedMethods {
+		m[name] = true
+	}
+	return m
+}()
+
+// mutationIdempotence says, for every served method that changes the host,
+// what a duplicate does (#294). Within a session the server replays a
+// repeated request id; across sessions, after a reconnect, idempotence comes
+// from the domain. TestServedMutationsHaveIdempotence keeps it complete.
+var mutationIdempotence = map[string]string{
+	"AcknowledgeConfigError":     "clears a pending load error; a second call finds none and does nothing",
+	"AddAccount":                 "an existing key returns config.exists and changes nothing",
+	"AddDiscoveredRepos":         "a repo already in the source is skipped; the others are added",
+	"AddDiscoveredReposToFolder": "a repo already in the source is skipped; the others are added",
+	"AddMirrorGroup":             "an existing key returns config.exists and changes nothing",
+	"AddMirrorRepo":              "an existing repo in the group returns config.exists",
+	"AddRoot":                    "an existing root is a no-op",
+	"DeleteAccount":              "a missing account returns config.not_found",
+	"DeleteMirrorGroup":          "a missing group returns config.not_found",
+	"DeleteMirrorRepo":           "a missing repo returns config.not_found",
+	"DiscardAccount":             "a missing account returns config.not_found",
+	"FixGlobalGCMConfig":         "writes only what is missing; a second call finds nothing to fix",
+	"IgnoreClone":                "setting the same ignore state again changes nothing",
+	"InitRoot":                   "an existing root is kept and becomes the default; the mode is kept",
+	"InstallGlobalGitignore":     "the managed block is written once; a second call finds it in place",
+	"RemoveGlobalIdentity":       "a missing identity is a no-op",
+	"RemoveRoot":                 "a root that is not configured is a no-op",
+	"RenameAccount":              "a missing old key returns config.not_found; an existing new key config.exists",
+	"RepairConfig":               "repairs and saves; a second call reloads the repaired file",
+	"RestoreFromBackup":          "restoring the same backup again writes the same config",
+	"SetCheckGlobalGitignore":    "setting the same value again changes nothing",
+	"SetDefaultRoot":             "the default root already being the default is a no-op",
+	"SetNestedScanDepth":         "setting the same value again changes nothing",
+	"SetPRBadgesEnabled":         "setting the same value again changes nothing",
+	"SetPRIncludeDrafts":         "setting the same value again changes nothing",
+	"SetRepoContainer":           "setting the same flag again changes nothing",
+	"SetRepoWorkspace":           "setting the same workspace again changes nothing",
+	"UpdateAccount":              "writing the same fields again changes nothing; a missing account returns config.not_found",
 }
 
 // newRPCServer returns the server that answers servedMethods from a's
@@ -150,6 +225,11 @@ func newRPCServer(a *App, log io.Writer) *rpc.Server {
 		ToUserError: toUserError,
 		Self:        rpc.Hello{Version: version, Commit: commit, OS: runtime.GOOS, Arch: runtime.GOARCH, PID: os.Getpid()},
 		Log:         log,
+		// Only a mutation is replayed on a repeated request id (#294).
+		Remember: func(method string) bool {
+			info, ok := classOf(method)
+			return ok && info.Mutating
+		},
 	}
 	a.events = srv
 	a.hostLog = log
