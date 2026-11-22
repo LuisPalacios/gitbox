@@ -30,8 +30,7 @@ const maxWindowWidth = 220 + 1100 + 48 + 16
 
 func main() {
 	// After an update, the new version starts with --wait-pid=<old PID> and
-	// waits for the old process to exit: then the single-instance lock is
-	// free and, on Windows, the renamed .old binary can be removed.
+	// waits for the old process to exit and release the single-instance lock.
 	for _, arg := range os.Args[1:] {
 		if after, ok := strings.CutPrefix(arg, update.WaitPIDFlag); ok {
 			if pid, err := strconv.Atoi(after); err == nil {
@@ -39,7 +38,6 @@ func main() {
 			}
 		}
 	}
-	update.CleanupOldBinary()
 
 	app := NewApp()
 
@@ -139,6 +137,9 @@ func main() {
 		preloadPath = app.cfgPath
 	}
 	if cfg, err := config.Load(preloadPath); err == nil {
+		if !app.testMode {
+			update.CleanupOldBinary()
+		}
 		// The geometry is a client preference, stored per destination: the
 		// local window's own, or that of the remote this window shows.
 		prefs := config.ExtractPrefs(cfg)

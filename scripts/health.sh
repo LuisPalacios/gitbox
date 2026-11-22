@@ -40,8 +40,8 @@ DEADCODE="golang.org/x/tools/cmd/deadcode@v0.50.0"
 # only tests call them, by design.
 # Remote mode (#233) lands in phases: the file-backed preference store, the
 # RemoteBackend and the client half of pkg/rpc are tested now and get their
-# first caller when the SSH connection selects them (P3b). Drop the last four
-# entries then.
+# first caller when the SSH connection selects them (P3b). Drop its four
+# entries then. Windows update helpers remain portable for fault-injection tests.
 DEADCODE_ALLOW='pkg[/\\]credential[/\\]credential[.]go:[0-9]+:[0-9]+: unreachable func: StoreToken$
 unreachable func: (PSDecode|resetLookupCachesForTest|Version\.String)$
 pkg[/\\]terminals[/\\]sync[.]go:[0-9]+:[0-9]+: unreachable func: Sync$
@@ -50,7 +50,8 @@ unreachable func: (SetRunnerForTest|SetDoerForTest)$
 cmd[/\\]gui[/\\]prefs[.]go:[0-9]+:[0-9]+: unreachable func: (newFilePrefs|filePrefs[.](load|Reload|Get|Update))$
 cmd[/\\]gui[/\\]backend_remote(_methods)?[.]go:[0-9]+:[0-9]+: unreachable func: [A-Za-z]
 pkg[/\\]rpc[/\\]client[.]go:[0-9]+:[0-9]+: unreachable func: [A-Za-z]
-pkg[/\\]rpc[/\\](errors|handshake)[.]go:[0-9]+:[0-9]+: unreachable func: (IsCode|wireError[.]asError|skipToMagic|clientHandshake)$'
+pkg[/\\]rpc[/\\](errors|handshake)[.]go:[0-9]+:[0-9]+: unreachable func: (IsCode|wireError[.]asError|skipToMagic|clientHandshake)$
+pkg[/\\]update[/\\]replace_windows_executable[.]go:[0-9]+:[0-9]+: unreachable func: (replaceWindowsExecutable|stageUpdateExecutable|writeUpdateState|cleanupWindowsBackup|regularFileHash)$'
 
 # Advisories npm audit may report: no fixed version exists yet and the package
 # never reaches the binary. A listed advisory that stops being reported fails

@@ -5,52 +5,43 @@ package update
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 // ErrNeedElevation signals that the operation failed due to insufficient
 // privileges and should be retried with UAC elevation.
 var ErrNeedElevation = errors.New("administrator privileges required")
 
-// replaceExecutable replaces the binary at dst with src.
-// On Windows, a running exe cannot be deleted but can be renamed.
-// Strategy: rename dst → dst.old, then copy src → dst.
+// replaceExecutable stages and verifies the update before moving the running binary.
 func replaceExecutable(src, dst string, ops replaceOps) error {
-	copyNew := ops.copyFile
-	if copyNew == nil {
-		copyNew = copyFile
+	if ops.moveFile == nil {
+		ops.moveFile = moveUpdateFile
 	}
-	oldPath := dst + ".old"
-
-	// If dst exists, rename it out of the way.
-	if _, err := os.Stat(dst); err == nil {
-		// Remove any previous .old file first.
-		os.Remove(oldPath)
-		if err := ops.rename(dst, oldPath); err != nil {
-			if isPermissionError(err) {
-				return fmt.Errorf("%w: cannot write to %s", ErrNeedElevation, filepath.Dir(dst))
-			}
-			return fmt.Errorf("renaming %s to .old: %w", filepath.Base(dst), err)
-		}
+	err := replaceWindowsExecutable(src, dst, ops)
+	if isPermissionError(err) && !errors.Is(err, errUpdateRollback) {
+		return fmt.Errorf("%w: cannot write to %s", ErrNeedElevation, filepath.Dir(dst))
 	}
+	return err
+}
 
-	// Copy new binary to dst (can't use Rename across volumes).
-	if err := copyNew(src, dst); err != nil {
-		// Drop whatever was written and restore the old binary.
-		os.Remove(dst)
-		_ = ops.rename(oldPath, dst)
-		if isPermissionError(err) {
-			return fmt.Errorf("%w: cannot write to %s", ErrNeedElevation, filepath.Dir(dst))
-		}
-		return fmt.Errorf("writing new %s: %w", filepath.Base(dst), err)
+// moveUpdateFile changes names in the install directory without replacing a
+// file owned by another process and waits for Windows to finish the move.
+func moveUpdateFile(src, dst string) error {
+	from, err := windows.UTF16PtrFromString(src)
+	if err != nil {
+		return err
 	}
-
-	return nil
+	to, err := windows.UTF16PtrFromString(dst)
+	if err != nil {
+		return err
+	}
+	return windows.MoveFileEx(from, to, windows.MOVEFILE_WRITE_THROUGH)
 }
 
 // isPermissionError returns true for access-denied / privilege errors.
@@ -157,45 +148,10 @@ func shellExecuteRunas(script string) error {
 	return nil
 }
 
-// CleanupOldBinary removes .old files left from a previous update.
-// Call this early at startup.
+// CleanupOldBinary removes the backup for the running version after startup.
 func CleanupOldBinary() {
-	selfPath, err := os.Executable()
-	if err != nil {
-		return
+	self, err := SelfPath()
+	if err == nil {
+		cleanupWindowsBackup(self)
 	}
-	selfPath, _ = filepath.EvalSymlinks(selfPath)
-	dir := filepath.Dir(selfPath)
-
-	entries, _ := os.ReadDir(dir)
-	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), ".old") {
-			os.Remove(filepath.Join(dir, e.Name()))
-		}
-	}
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	info, err := in.Stat()
-	if err != nil {
-		return err
-	}
-
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode())
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, in)
-	if err != nil {
-		return err
-	}
-	return out.Close()
 }

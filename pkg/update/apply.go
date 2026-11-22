@@ -122,9 +122,9 @@ func bundleOf(exePath string) string {
 type replaceOps struct {
 	rename  func(oldpath, newpath string) error
 	copyDir func(src, dst string) error
-	// copyFile writes the new binary where the platform cannot rename it
-	// into place (Windows). Nil means the platform's own copy.
-	copyFile func(src, dst string) error
+	// Windows stages the replacement before moving either executable.
+	copyFile func(dst io.Writer, src io.Reader) (int64, error)
+	moveFile func(src, dst string) error
 }
 
 func realReplaceOps() replaceOps {
