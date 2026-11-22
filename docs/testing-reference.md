@@ -10,7 +10,7 @@ Counts are top-level Go test functions (subtests from `t.Run` and `TestMain` are
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-The current total is 862 Go tests (672 in `pkg/`, 190 in `cmd/gui/`) and 59 frontend tests. The counts include the tests behind the `sshd_integration` and `remote_smoke` tags. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
+The current total is 866 Go tests (676 in `pkg/`, 190 in `cmd/gui/`) and 59 frontend tests. The counts include the tests behind the `sshd_integration` and `remote_smoke` tags. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
 
 ### Shared library (`pkg/`)
 

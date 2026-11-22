@@ -1875,8 +1875,8 @@
     });
 
     events.on('update:quit', (latest: string) => {
-      // Elevated update script is running — quit so it can overwrite the
-      // binaries; the script starts the new version once it has copied them.
+      // The elevated helper has verified the release and waits for this
+      // process to exit before it can replace the executable.
       updateProgress = $t('app.restarting', { version: latest });
       // Auto-quit after a brief moment so the user sees the message.
       setTimeout(() => Quit(), 1500);
