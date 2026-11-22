@@ -18,8 +18,15 @@ const WaitPIDFlag = "--wait-pid="
 // earlier WaitPIDFlag. The caller quits right after a nil return.
 func Relaunch(exe string, pid int, args []string) error {
 	name, argv := relaunchCommand(runtime.GOOS, exe, pid, args)
+	return startDetached(name, argv, nil)
+}
+
+func startDetached(name string, argv []string, prepare func(*exec.Cmd)) error {
 	cmd := exec.Command(name, argv...)
 	detach(cmd)
+	if prepare != nil {
+		prepare(cmd)
+	}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("starting %s: %w", name, err)
 	}

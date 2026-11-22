@@ -293,6 +293,7 @@ Lanzo GitboxApp en cada plataforma con los comandos que imprimen `./scripts/run-
 ### Actualización y upgrade (al menos una plataforma)
 
 - [ ] Con un release firmado más nuevo publicado, la píldora de actualización aparece en el pie; un clic en ella verifica la firma y el checksum, aplica la actualización, y la app se reinicia en la versión nueva
+- [ ] En Windows, actualizo una instalación de prueba en `Program Files` desde un release de prueba firmado. El aviso de control de cuentas de usuario (UAC) identifica a `GitboxApp.exe`, se abre la nueva versión con los permisos de mi usuario y la actualización no crea archivos `.cmd`
 - [ ] La píldora del AppImage de Linux abre la página del release en lugar de actualizar
 - [ ] Una instalación v1 se actualiza a v2 y conserva su `gitbox.json`
 

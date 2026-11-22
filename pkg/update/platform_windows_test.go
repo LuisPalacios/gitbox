@@ -5,6 +5,8 @@ package update
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,25 +15,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
-
-func TestElevatedScript_Relaunch(t *testing.T) {
-	copyLines := []string{`copy /Y "C:\tmp\x\GitboxApp.exe" "C:\Program Files\gitbox\GitboxApp.exe"`}
-
-	script := elevatedScript(copyLines, `C:\tmp\x`, `C:\Program Files\gitbox\GitboxApp.exe`)
-	launch := "explorer.exe \"C:\\Program Files\\gitbox\\GitboxApp.exe\""
-	if !strings.Contains(script, launch) {
-		t.Errorf("script does not relaunch through explorer.exe:\n%s", script)
-	}
-	if strings.Index(script, copyLines[0]) > strings.Index(script, launch) {
-		t.Errorf("script relaunches before copying the files:\n%s", script)
-	}
-
-	script = elevatedScript(copyLines, `C:\tmp\x`, "")
-	if strings.Contains(script, "explorer.exe") {
-		t.Errorf("script relaunches although relaunch is empty:\n%s", script)
-	}
-}
 
 // I use disposable copies of this PE executable to exercise the same native
 // move and startup-cleanup paths without updating an installed GitboxApp.
@@ -117,5 +103,84 @@ func TestWindowsExecutable_RunningUpdateAndStartupCleanup(t *testing.T) {
 	}
 	if got := readFile(t, sibling); got != "keep" {
 		t.Fatalf("unrelated .old contains %q, want keep", got)
+	}
+}
+
+func TestInstallElevatedPayload_SecondTransactionCleansOnlyRecordedBackup(t *testing.T) {
+	exe := filepath.Join(t.TempDir(), windowsExecutableName)
+	writeFile(t, exe, "first version")
+	unrelated := exe + ".old"
+	writeFile(t, unrelated, "legacy backup")
+
+	if err := installElevatedPayload(exe, sha("first version"), []byte("second version")); err != nil {
+		t.Fatal(err)
+	}
+	firstBackup := elevatedTestBackup(t, exe)
+	if got := readFile(t, firstBackup); got != "first version" {
+		t.Fatalf("first recorded backup = %q", got)
+	}
+	if err := installElevatedPayload(exe, sha("first version"), []byte("stale candidate")); !errors.Is(err, errInstalledUpdateChanged) {
+		t.Fatalf("update prepared against the previous executable returned %v", err)
+	}
+	if got := readFile(t, firstBackup); got != "first version" {
+		t.Fatalf("stale update changed the previous backup: %q", got)
+	}
+	// Simulate Program Files by leaving the previous marker and backup
+	// intact, as they would be after an unprivileged startup.
+	if err := installElevatedPayload(exe, sha("second version"), []byte("third version")); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, exe); got != "third version" {
+		t.Fatalf("installed bytes = %q", got)
+	}
+	if _, err := os.Lstat(firstBackup); !os.IsNotExist(err) {
+		t.Fatalf("first recorded backup still exists: %v", err)
+	}
+	if got := readFile(t, elevatedTestBackup(t, exe)); got != "second version" {
+		t.Fatalf("second recorded backup = %q", got)
+	}
+	if got := readFile(t, unrelated); got != "legacy backup" {
+		t.Fatalf("unrelated backup changed: %q", got)
+	}
+}
+
+func elevatedTestBackup(t *testing.T, exe string) string {
+	t.Helper()
+	var state windowsUpdateState
+	if err := json.Unmarshal([]byte(readFile(t, exe+".update-state.json")), &state); err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(filepath.Dir(exe), state.Old)
+}
+
+func TestReadUpdateHandle_DuplicatesOnlyBoundedFileInputs(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "update")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	if _, err := file.WriteString("release bytes"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	raw := formatUpdateHandle(windows.Handle(file.Fd()))
+	if data, err := readUpdateHandle(windows.CurrentProcess(), raw, 6); err == nil || data != nil {
+		t.Fatalf("oversized input = %q, %v", data, err)
+	}
+	if data, err := readUpdateHandle(windows.CurrentProcess(), raw, 20); err != nil || string(data) != "release bytes" {
+		t.Fatalf("bounded input = %q, %v", data, err)
+	}
+	event, err := windows.CreateEvent(nil, 1, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(event)
+	if data, err := readUpdateHandle(windows.CurrentProcess(), formatUpdateHandle(event), 20); err == nil || data != nil {
+		t.Fatalf("non-file input = %q, %v", data, err)
+	}
+	if _, err := parseUpdateHandle("18446744073709551615"); err == nil {
+		t.Fatal("accepted a pseudo-handle")
 	}
 }

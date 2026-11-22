@@ -184,7 +184,7 @@ func (a *App) ShowWindow() {
 // ApplyUpdate downloads and applies the latest release, then restarts the
 // app on the new version. On Windows, if the install directory requires
 // admin privileges (e.g. Program Files), it falls back to a UAC-elevated
-// helper process, which restarts the app once it has copied the files.
+// helper process that verifies and installs the update.
 func (a *App) ApplyUpdate() error {
 	if !update.SelfUpdateSupported() {
 		return errors.New("this build can't update itself; download the new version from the release page")
@@ -228,13 +228,12 @@ func (a *App) ApplyUpdate() error {
 
 	if err := update.InstallExtracted(extractDir, installDir); err != nil {
 		if errors.Is(err, update.ErrNeedElevation) {
-			// Don't clean extractDir — the elevated script needs it.
+			os.RemoveAll(extractDir)
 			a.sink().Emit("update:progress", "Requesting admin privileges...")
-			if elevErr := update.ApplyElevated(extractDir, installDir, exe); elevErr != nil {
-				os.RemoveAll(extractDir)
+			if elevErr := update.ApplyElevated(zipPath, result.Release.TagName, exe != ""); elevErr != nil {
 				return fmt.Errorf("elevated update: %w", elevErr)
 			}
-			// Elevated script will copy files after we exit.
+			// The helper holds the verified payload and waits for this process to exit.
 			a.sink().Emit("update:quit", result.Latest)
 			return nil
 		}

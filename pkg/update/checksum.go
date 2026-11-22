@@ -33,7 +33,10 @@ func findExpectedHash(checksumsFile, artifactName string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("reading checksums file: %w", err)
 	}
+	return expectedArtifactHash(data, artifactName)
+}
 
+func expectedArtifactHash(data []byte, artifactName string) (string, error) {
 	for line := range strings.SplitSeq(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
