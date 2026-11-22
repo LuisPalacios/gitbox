@@ -90,6 +90,8 @@ VS Code (`code`) and VS Code Insiders (`code-insiders`) open the folder with `co
 
 Every other editor, such as Zed or VSCodium, shows disabled with "This editor can't open folders on remote hosts". The remote smoke test from macOS and Windows covers the VS Code entry; the Insiders entry takes the same command line from the Remote-SSH documentation.
 
+Each remote can have its own editor. In Settings, under **Remotes**, the editor list of a remote offers **Auto** and the configured editors that open remote folders. With an editor chosen, the window of that remote opens folders only in it: the other editors stay visible, dimmed with "This remote opens in the editor chosen in Settings → Remotes", and a call that names another editor fails with `remote_editor_not_chosen`. **Auto** offers every editor that opens remote folders. The choice is saved in the `editor` field of the remote's entry in this computer's `gitbox.json`, and an open remote window uses it from its next launch. If the chosen editor is no longer installed, Settings shows it as not installed.
+
 On Windows, `code` is a batch file that `cmd.exe` reads again, so a folder with `%`, `!`, `^`, `&`, `|`, `<`, `>` or `"` fails with `not_available_remote_path`.
 
 ### Terminals
