@@ -167,7 +167,10 @@ func RenameAccount(cfg *config.Config, oldKey, newKey string) error {
 		})
 
 		if acct.SSH != nil {
-			acct.SSH.Host = newAlias
+			// A new value, not a write through the shared pointer (#173).
+			ssh := *acct.SSH
+			ssh.Host = newAlias
+			acct.SSH = &ssh
 			cfg.Accounts[oldKey] = acct
 		}
 	}

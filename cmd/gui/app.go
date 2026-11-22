@@ -103,9 +103,11 @@ type App struct {
 	toolsWG   sync.WaitGroup
 	// reconcileMu serializes reconcile passes and manual adoptions (#149);
 	// reconcileScan replaces reconcile.Plan in tests.
-	reconcileMu      sync.Mutex
-	reconcileScan    func(*config.Config) (reconcile.Result, error)
-	reconcileClone   func(*config.Config) (*config.Config, error)
+	reconcileMu    sync.Mutex
+	reconcileScan  func(*config.Config) (reconcile.Result, error)
+	reconcileClone func(*config.Config) (*config.Config, error)
+	// discoverMirrors replaces mirror.DiscoverMirrors in tests.
+	discoverMirrors  func(context.Context, *config.Config, func(mirror.DiscoverProgress)) ([]mirror.DiscoveryResult, error)
 	workspaceSync    workspace.SyncState // guarded by reconcileMu
 	workspaceUnknown []string            // guarded by reconcileMu
 	reconcilePending bool                // guarded by mu; one asynchronous stale-plan retry
@@ -228,6 +230,46 @@ func (a *App) saveConfig() error {
 	}
 	a.takeDiskPrefs()
 	return config.Save(a.cfg, a.cfgPath)
+}
+
+// commitConfig applies change to the live config and saves it through
+// saveConfig, all under a.mu, and returns a copy of the result (#173). It is
+// how work that ran on a snapshot outside the lock writes its outcome: the
+// change re-checks what it needs against the live config. A failing change
+// or a refused save restores the config as it was, keeping the pointer.
+func (a *App) commitConfig(change func(*config.Config) error) (*config.Config, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if err := a.saveRefused(); err != nil {
+		return nil, err
+	}
+	before, err := a.cfg.Clone()
+	if err != nil {
+		return nil, err
+	}
+	if err := change(a.cfg); err != nil {
+		*a.cfg = *before
+		return nil, err
+	}
+	if err := a.saveConfig(); err != nil {
+		*a.cfg = *before
+		return nil, err
+	}
+	return a.cfg.Clone()
+}
+
+// snapshotLocked is a copy of the config for work that runs after a.mu is
+// released (#173): nothing may keep the live pointer, or a map inside it,
+// once the lock is gone. A copy that cannot be made (the config does not
+// encode) is logged and replaced by an empty config, so the work finds
+// nothing instead of touching live state. Caller holds a.mu.
+func (a *App) snapshotLocked() *config.Config {
+	snap, err := a.cfg.Clone()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: config snapshot failed: %v\n", err)
+		return &config.Config{Accounts: map[string]config.Account{}, Sources: map[string]config.Source{}, Mirrors: map[string]config.Mirror{}}
+	}
+	return snap
 }
 
 // savePrefs changes the client preferences and saves (#240). It starts
@@ -1423,6 +1465,8 @@ func (a *App) GetConfigLoadError() string { return a.be().GetConfigLoadError() }
 
 // getConfigLoadErrorLocal is the local backend's GetConfigLoadError.
 func (a *App) getConfigLoadErrorLocal() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	return a.cfgLoadError
 }
 
@@ -1464,6 +1508,9 @@ func (a *App) RepairConfig() ConfigRepairResult { return a.be().RepairConfig() }
 func (a *App) repairConfigLocal() ConfigRepairResult {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.readOnly {
+		return ConfigRepairResult{Success: false, Error: userMsg(a.saveRefused())}
+	}
 
 	cfg, repairs, err := config.LoadWithRepair(a.cfgPath)
 	if err != nil {
@@ -1474,8 +1521,7 @@ func (a *App) repairConfigLocal() ConfigRepairResult {
 	a.cfgLoaded = true
 	a.cfgLoadError = ""
 
-	a.takeDiskPrefs()
-	if err := config.Save(a.cfg, a.cfgPath); err != nil {
+	if err := a.saveConfig(); err != nil {
 		return ConfigRepairResult{Success: false, Error: userText(fmt.Sprintf("saving repaired config: %v", err))}
 	}
 
@@ -1571,8 +1617,7 @@ func (a *App) restoreFromBackupLocal(backupPath string) ConfigRepairResult {
 	a.cfg = cfg
 	a.cfgLoaded = true
 	a.cfgLoadError = ""
-	a.takeDiskPrefs()
-	if err := config.Save(a.cfg, a.cfgPath); err != nil {
+	if err := a.saveConfig(); err != nil {
 		return ConfigRepairResult{Success: false, Error: userText(fmt.Sprintf("saving restored config: %v", err))}
 	}
 	return ConfigRepairResult{
@@ -2265,7 +2310,25 @@ func (a *App) FixGlobalGCMConfig() error { return a.be().FixGlobalGCMConfig() }
 func (a *App) fixGlobalGCMConfigLocal() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return credential.FixGlobalGCMConfig(a.cfg, a.cfgPath)
+	return a.fixGlobalGCMConfigLocked()
+}
+
+// fixGlobalGCMConfigLocked repairs the global gitconfig for GCM and saves
+// the defaults it backfilled into the config (#173). The backfill is saved
+// even when the gitconfig write fails, so a retry succeeds; a refused save
+// takes the backfill back out. Caller holds a.mu.
+func (a *App) fixGlobalGCMConfigLocked() error {
+	prev := a.cfg.Global.CredentialGCM
+	changed, err := credential.FixGlobalGCMConfig(a.cfg)
+	if changed {
+		if serr := a.saveConfig(); serr != nil {
+			a.cfg.Global.CredentialGCM = prev
+			if err == nil {
+				err = serr
+			}
+		}
+	}
+	return err
 }
 
 // ─── Global Gitignore ────────────────────────────────────────
@@ -2419,7 +2482,7 @@ func (a *App) credentialSetupGCMLocal(accountKey string) CredentialSetupResult {
 	// config predates onboarding — belt-and-braces for users who dismissed
 	// the top-level "Global gitconfig needs fixing" banner.
 	a.mu.Lock()
-	fixErr := credential.FixGlobalGCMConfig(a.cfg, a.cfgPath)
+	fixErr := a.fixGlobalGCMConfigLocked()
 	a.mu.Unlock()
 	if fixErr != nil {
 		return CredentialSetupResult{OK: false, Message: userText(fmt.Sprintf("Failed to repair global gitconfig: %v", fixErr))}
@@ -2589,7 +2652,7 @@ func (a *App) setupSSH(accountKey string) CredentialSetupResult {
 	defer a.invalidateCredential(accountKey)
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
-	cfg := a.cfg
+	cfg := a.snapshotLocked()
 	a.mu.Unlock()
 
 	if !ok {
@@ -2638,16 +2701,21 @@ func (a *App) setupSSH(accountKey string) CredentialSetupResult {
 		}
 	}
 
-	// Update account SSH config in gitbox.json.
+	// Update account SSH config in gitbox.json. The account is read again
+	// under the lock, so a change made meanwhile is kept, and its SSH block
+	// is replaced by a new value instead of written through the pointer a
+	// copy of the account may share (#173).
 	a.mu.Lock()
-	if acct.SSH == nil || acct.SSH.Host != hostAlias {
-		if acct.SSH == nil {
-			acct.SSH = &config.SSHConfig{}
+	if cur, ok := a.cfg.Accounts[accountKey]; ok && (cur.SSH == nil || cur.SSH.Host != hostAlias) {
+		var ssh config.SSHConfig
+		if cur.SSH != nil {
+			ssh = *cur.SSH
 		}
-		acct.SSH.Host = hostAlias
-		acct.SSH.Hostname = hostname
-		acct.SSH.KeyType = keyType
-		_ = a.cfg.UpdateAccount(accountKey, acct)
+		ssh.Host = hostAlias
+		ssh.Hostname = hostname
+		ssh.KeyType = keyType
+		cur.SSH = &ssh
+		_ = a.cfg.UpdateAccount(accountKey, cur)
 		_ = a.saveConfig()
 	}
 	a.mu.Unlock()
@@ -2704,7 +2772,7 @@ func (a *App) credentialRegenerateSSHLocal(accountKey string) CredentialSetupRes
 	defer a.invalidateCredential(accountKey)
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
-	cfg := a.cfg
+	cfg := a.snapshotLocked()
 	a.mu.Unlock()
 
 	if !ok {
@@ -2963,7 +3031,7 @@ func (a *App) GetMirrorStatus(mirrorKey string) { a.be().GetMirrorStatus(mirrorK
 func (a *App) getMirrorStatusLocal(mirrorKey string) {
 	go func() {
 		a.mu.Lock()
-		cfg := a.cfg
+		cfg := a.snapshotLocked()
 		a.mu.Unlock()
 
 		m, ok := cfg.Mirrors[mirrorKey]
@@ -3013,7 +3081,7 @@ func (a *App) SetupMirrorRepo(mirrorKey, repoKey string) { a.be().SetupMirrorRep
 func (a *App) setupMirrorRepoLocal(mirrorKey, repoKey string) {
 	go func() {
 		a.mu.Lock()
-		cfg := a.cfg
+		cfg := a.snapshotLocked()
 		a.mu.Unlock()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -3231,7 +3299,7 @@ func (a *App) DiscoverMirrors() { a.be().DiscoverMirrors() }
 func (a *App) discoverMirrorsLocal() {
 	go func() {
 		a.mu.Lock()
-		cfg := a.cfg
+		cfg := a.snapshotLocked()
 		a.mu.Unlock()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
@@ -3266,16 +3334,27 @@ func (a *App) ApplyDiscoveredMirrors() error { return a.be().ApplyDiscoveredMirr
 
 // applyDiscoveredMirrorsLocal is the local backend's ApplyDiscoveredMirrors.
 func (a *App) applyDiscoveredMirrorsLocal() error {
+	// The discovery talks to every server for up to two minutes: it runs on
+	// a snapshot without the lock (#173). ApplyDiscovery only adds, so it is
+	// safe against a config that changed meanwhile.
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	snap := a.snapshotLocked()
+	a.mu.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	results, err := mirror.DiscoverMirrors(ctx, a.cfg, nil)
+	discover := a.discoverMirrors
+	if discover == nil {
+		discover = mirror.DiscoverMirrors
+	}
+	results, err := discover(ctx, snap, nil)
 	if err != nil {
 		return err
 	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	added, _ := mirror.ApplyDiscovery(a.cfg, results)
 	if added > 0 {
 		return a.saveConfig()
@@ -3364,7 +3443,7 @@ func (a *App) DoctorRun() DoctorReport { return a.be().DoctorRun() }
 // doctorRunLocal is the local backend's DoctorRun.
 func (a *App) doctorRunLocal() DoctorReport {
 	a.mu.Lock()
-	cfg := a.cfg
+	cfg := a.snapshotLocked()
 	a.mu.Unlock()
 
 	results := doctor.Check(doctor.StandardTools())
@@ -3533,7 +3612,7 @@ func (a *App) CheckMoveReadiness(sourceSourceKey, destAccountKey string, deleteS
 // checkMoveReadinessLocal is the local backend's CheckMoveReadiness.
 func (a *App) checkMoveReadinessLocal(sourceSourceKey, destAccountKey string, deleteSource bool) MoveReadinessDTO {
 	a.mu.Lock()
-	cfg := a.cfg
+	cfg := a.snapshotLocked()
 	src, srcOK := cfg.Sources[sourceSourceKey]
 	a.mu.Unlock()
 
@@ -3564,7 +3643,7 @@ func (a *App) moveReadinessSide(accountKey string, actions []provider.ActionScop
 	dto := MoveReadinessSideDTO{AccountKey: accountKey}
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
-	cfg := a.cfg
+	cfg := a.snapshotLocked()
 	a.mu.Unlock()
 	if !ok {
 		dto.Message = fmt.Sprintf("%s account %q not found", role, accountKey)
@@ -3629,7 +3708,7 @@ func (a *App) ListMoveDestinationOwners(sourceKey string) []MoveOwnerOption {
 // listMoveDestinationOwnersLocal is the local backend's ListMoveDestinationOwners.
 func (a *App) listMoveDestinationOwnersLocal(sourceKey string) []MoveOwnerOption {
 	a.mu.Lock()
-	cfg := a.cfg
+	cfg := a.snapshotLocked()
 	a.mu.Unlock()
 	if cfg == nil {
 		return []MoveOwnerOption{}
@@ -3694,7 +3773,7 @@ func (a *App) PreflightMove(req MoveRequestDTO) MovePreflightDTO { return a.be()
 // preflightMoveLocal is the local backend's PreflightMove.
 func (a *App) preflightMoveLocal(req MoveRequestDTO) MovePreflightDTO {
 	a.mu.Lock()
-	cfg := a.cfg
+	cfg := a.snapshotLocked()
 	a.mu.Unlock()
 	out := MovePreflightDTO{}
 	src, ok := cfg.Sources[req.SourceSourceKey]
@@ -3753,11 +3832,16 @@ func (a *App) MoveRepo(req MoveRequestDTO) { a.be().MoveRepo(req) }
 
 // moveRepoLocal is the local backend's MoveRepo.
 func (a *App) moveRepoLocal(req MoveRequestDTO) {
+	// The move reads a snapshot and writes its one config change through
+	// commitConfig (#173): no live pointer leaves the lock.
 	a.mu.Lock()
-	cfg := a.cfg
-	cfgPath := a.cfgPath
-	src, ok := cfg.Sources[req.SourceSourceKey]
+	cfg, err := a.cfg.Clone()
 	a.mu.Unlock()
+	if err != nil {
+		a.sink().Emit("move:done", MoveResultDTO{Error: userMsg(err)})
+		return
+	}
+	src, ok := cfg.Sources[req.SourceSourceKey]
 	if !ok {
 		a.sink().Emit("move:done", MoveResultDTO{Error: fmt.Sprintf("source %q not found", req.SourceSourceKey)})
 		return
@@ -3780,7 +3864,7 @@ func (a *App) moveRepoLocal(req MoveRequestDTO) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
-		result := move.Move(ctx, cfg, cfgPath, moveReq, func(p move.Progress) {
+		result := move.Move(ctx, cfg, moveReq, a.commitConfig, func(p move.Progress) {
 			event := MoveProgressEventDTO{Phase: string(p.Phase), Message: p.Message}
 			if p.Err != nil {
 				event.Error = userMsg(p.Err)
@@ -3799,11 +3883,6 @@ func (a *App) moveRepoLocal(req MoveRequestDTO) {
 		if result.Err != nil {
 			dto.Error = userMsg(result.Err)
 		}
-		// Re-save config here as a belt-and-suspenders — the move
-		// package saved when updating the entry, but re-persist so a
-		// GUI-side mutation scheduled between now and the refresh
-		// doesn't lose state.
-		_ = a.saveConfig()
 		a.sink().Emit("move:done", dto)
 
 		// Auto-clone the destination when the user opted to delete

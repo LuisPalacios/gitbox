@@ -159,41 +159,40 @@ func isGCMHelper(value string) bool {
 
 // FixGlobalGCMConfig repairs the global gitconfig so GCM-backed fills work:
 //
-//  1. When cfg.Global.CredentialGCM is nil or empty, backfill OS defaults
-//     and persist them to gitbox.json (cfgPath).
+//  1. When cfg.Global.CredentialGCM is nil or has empty fields, backfill the
+//     OS defaults into cfg. changed reports it, and the caller, which owns
+//     the config, saves it (#173): this package never saves.
 //  2. Write credential.helper and credential.credentialStore to ~/.gitconfig.
 //
-// The persist-then-write order means a gitconfig write failure still leaves
-// gitbox.json healed, so a user retry succeeds. The function also supersedes
-// the older EnsureGlobalGCMConfig which silently no-op'd when gitbox.json
+// changed is reported even when the gitconfig write fails, so the caller
+// can persist the backfill and a retry succeeds. The backfill replaces the
+// CredentialGCM pointer instead of writing through it, so a copy of the
+// config made earlier never sees the change half done. It supersedes the
+// older EnsureGlobalGCMConfig, which silently no-op'd when gitbox.json
 // lacked defaults.
-func FixGlobalGCMConfig(cfg *config.Config, cfgPath string) error {
+func FixGlobalGCMConfig(cfg *config.Config) (changed bool, err error) {
 	if cfg == nil {
-		return fmt.Errorf("cfg is nil")
+		return false, fmt.Errorf("cfg is nil")
 	}
 
 	helper, store := expectedGCMDefaults(cfg)
 
-	// Backfill cfg.Global.CredentialGCM so future callers see populated defaults
-	// and subsequent fixes are idempotent. Save only when we actually changed
-	// something, to avoid touching the file unnecessarily.
-	changed := false
-	if cfg.Global.CredentialGCM == nil {
-		cfg.Global.CredentialGCM = &config.GCMGlobal{}
+	var gcm config.GCMGlobal
+	if cfg.Global.CredentialGCM != nil {
+		gcm = *cfg.Global.CredentialGCM
+	} else {
 		changed = true
 	}
-	if cfg.Global.CredentialGCM.Helper == "" {
-		cfg.Global.CredentialGCM.Helper = helper
+	if gcm.Helper == "" {
+		gcm.Helper = helper
 		changed = true
 	}
-	if cfg.Global.CredentialGCM.CredentialStore == "" {
-		cfg.Global.CredentialGCM.CredentialStore = store
+	if gcm.CredentialStore == "" {
+		gcm.CredentialStore = store
 		changed = true
 	}
-	if changed && cfgPath != "" {
-		if err := config.Save(cfg, cfgPath); err != nil {
-			return fmt.Errorf("saving gitbox config: %w", err)
-		}
+	if changed {
+		cfg.Global.CredentialGCM = &gcm
 	}
 
 	// Write only what CheckGlobalGCMConfig would flag. A helper chain that
@@ -203,13 +202,13 @@ func FixGlobalGCMConfig(cfg *config.Config, cfgPath string) error {
 	values, _ := git.GlobalConfigGetAll("credential.helper")
 	if !helperSatisfies(effectiveHelpers(values), helper) {
 		if err := git.GlobalConfigReplaceAll("credential.helper", helper); err != nil {
-			return fmt.Errorf("setting global credential.helper: %w", err)
+			return changed, fmt.Errorf("setting global credential.helper: %w", err)
 		}
 	}
 	if current, err := git.GlobalConfigGet("credential.credentialStore"); err != nil || current != store {
 		if err := git.GlobalConfigReplaceAll("credential.credentialStore", store); err != nil {
-			return fmt.Errorf("setting global credential.credentialStore: %w", err)
+			return changed, fmt.Errorf("setting global credential.credentialStore: %w", err)
 		}
 	}
-	return nil
+	return changed, nil
 }

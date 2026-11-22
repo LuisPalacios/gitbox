@@ -92,3 +92,68 @@ func TestPreflightRejectsMissingFields(t *testing.T) {
 		}
 	}
 }
+
+// moveCommitFixture is a config with one repo under the source account and
+// an empty destination account.
+func moveCommitFixture() *config.Config {
+	return &config.Config{
+		Accounts: map[string]config.Account{"src": {}, "dst": {}},
+		Sources: map[string]config.Source{
+			"src": {Account: "src", Repos: map[string]config.Repo{"acme/widget": {}}},
+		},
+	}
+}
+
+// TestCommitMove: the config change of a move runs on the owner's config
+// through Commit and saves nothing itself (#173). The owner's copy comes
+// back for heal; a change that no longer applies leaves the owner's config
+// as it was and is reported, not retried.
+func TestCommitMove(t *testing.T) {
+	req := Request{SourceAccountKey: "src", SourceSourceKey: "src", SourceRepoKey: "acme/widget", DestAccountKey: "dst", DestOwner: "newco", DestRepoName: "widget"}
+	owner := moveCommitFixture()
+	calls := 0
+	commit := func(change func(*config.Config) error) (*config.Config, error) {
+		calls++
+		work, err := owner.Clone()
+		if err != nil {
+			return nil, err
+		}
+		if err := change(work); err != nil {
+			return nil, err
+		}
+		owner = work
+		return owner.Clone()
+	}
+
+	updated, destSource, newKey, err := commitMove(commit, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if destSource != "dst" || newKey != "newco/widget" || calls != 1 {
+		t.Fatalf("commitMove = %q, %q after %d commits", destSource, newKey, calls)
+	}
+	if _, ok := owner.Sources["dst"].Repos["newco/widget"]; !ok {
+		t.Errorf("the owner's config did not get the move: %+v", owner.Sources)
+	}
+	if _, ok := owner.Sources["src"].Repos["acme/widget"]; ok {
+		t.Error("the source entry is still in the owner's config")
+	}
+	if updated == owner {
+		t.Error("commitMove returned the owner's live config instead of a copy")
+	}
+
+	// The entry moved away meanwhile: the change fails once, the owner's
+	// config is untouched, and nothing retries.
+	before, _ := owner.Clone()
+	calls = 0
+	if _, _, _, err := commitMove(commit, req); err == nil || calls != 1 {
+		t.Fatalf("a stale move = %v after %d commits, want one failed commit", err, calls)
+	}
+	if !config.EqualIgnoringUIState(before, owner) {
+		t.Error("a failed change altered the owner's config")
+	}
+
+	if _, _, _, err := commitMove(nil, req); err == nil {
+		t.Error("a move without an owner was accepted")
+	}
+}
