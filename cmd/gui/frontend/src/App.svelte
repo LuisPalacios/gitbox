@@ -4,7 +4,7 @@
   import type { DoctorPrecheckDTO } from './lib/bridge';
   import {
     configStore, accounts, sources, mirrors, repoStates, themeStore, applyStatusResults,
-    applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, workspacePlaceholders, workspaceMembers
+    applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, workspacePlaceholders, workspaceMembers, workspaceUnknown
   } from './lib/stores';
   import { detailLocked, attentionRank, accountHealth, CALM_RANK } from './lib/status';
   import { createDetailLoader } from './lib/repo-detail';
@@ -720,6 +720,7 @@
   // applyReconcile shows a pass: the lists, and the config and statuses when
   // it added or moved anything.
   async function applyReconcile(res: ReconcileDTO) {
+    if (res.workspaceUnknown) $workspaceUnknown = new Set(res.workspaceUnknown);
     orphanList = res.unmatched || [];
     ignoredClones = res.ignored || [];
     orphanCount = orphanList.length;
@@ -1624,6 +1625,11 @@
 
     events.on('tools:updated', () => {
       bridge.getConfig().then(cfg => configStore.update(current => current ? { ...current, global: { ...current.global, editors: cfg.global.editors, terminal_apps: cfg.global.terminal_apps, shells: cfg.global.shells, terminal_profiles: cfg.global.terminal_profiles } } : current)).catch(console.error);
+    });
+
+    events.on('reconcile:done', (res: ReconcileDTO | null) => {
+      // The coalesced background retry has no caller to apply its result.
+      if (res?.workspaceUnknown) $workspaceUnknown = new Set(res.workspaceUnknown);
     });
 
     events.on('status:updated', (results: any) => {

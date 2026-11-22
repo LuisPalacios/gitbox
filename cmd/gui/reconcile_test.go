@@ -329,3 +329,42 @@ func TestReconcile_RetryAppliesFreshPlanAndEmitsOnce(t *testing.T) {
 		}
 	})
 }
+
+func TestReconcile_WorkspaceReadFailurePreservesSavedWorkspace(t *testing.T) {
+	a, cfgPath := newWorkspaceTestApp(t)
+	a.reconcileScan = func(*config.Config) (reconcile.Result, error) { return reconcile.Result{}, nil }
+	dir := containerClone(t, a, map[string]string{"saved.code-workspace": "{}"})
+	if err := a.SetRepoWorkspace("github-alice", "team/frontend", "saved.code-workspace"); err != nil {
+		t.Fatal(err)
+	}
+
+	moved := dir + ".offline"
+	if err := os.Rename(dir, moved); err != nil {
+		t.Fatal(err)
+	}
+	events := &refreshTestEvents{}
+	a.events = events
+	res := a.reconcilePass(false)
+	if res.WorkspacesChanged || !reflect.DeepEqual(res.WorkspaceUnknown, []string{"github-alice/team/frontend"}) {
+		t.Fatalf("workspace scan = %+v, want stale workspace and no changes", res)
+	}
+	if len(events.named("reconcile:done")) != 1 {
+		t.Fatal("background pass did not report the first stale workspace")
+	}
+	reloaded, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := reloaded.Sources["github-alice"].Repos["team/frontend"]
+	if !repo.Container || repo.Workspace != "saved.code-workspace" || repo.WorkspacePreferred != "saved.code-workspace" {
+		t.Fatalf("saved workspace changed: %+v", repo)
+	}
+
+	if err := os.Rename(moved, dir); err != nil {
+		t.Fatal(err)
+	}
+	res = a.reconcilePass(false)
+	if res.WorkspacesChanged || res.WorkspaceUnknown == nil || len(res.WorkspaceUnknown) != 0 || len(events.named("reconcile:done")) != 2 {
+		t.Fatalf("workspace scan = %+v, want a recovery event without a config change", res)
+	}
+}

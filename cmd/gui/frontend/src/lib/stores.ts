@@ -198,6 +198,8 @@ export function lookupPRSummary(
 export const workspacePlaceholders = writable<Record<string, Placeholder[]>>({});
 // The clones ("source/repo") a container's workspace lists inside it.
 export const workspaceMembers = writable<Set<string>>(new Set());
+// Containers whose last workspace scan could not read the clone root.
+export const workspaceUnknown = writable<Set<string>>(new Set());
 
 // ── Theme store ──
 export const themeStore = writable<'light' | 'dark'>('dark');

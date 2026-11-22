@@ -106,10 +106,17 @@ func (a *App) setRepoWorkspaceLocal(sourceKey, repoKey, file string) error {
 	if !ok {
 		return fmt.Errorf("unknown repo %q in source %q", repoKey, sourceKey)
 	}
-	if !slices.Contains(workspace.RootFiles(status.RepoPath(a.cfg, sourceKey, repoKey, repo)), file) {
-		return fmt.Errorf("%s is not a workspace file at the root of %s", file, repoKey)
+	if file != "" {
+		files, err := workspace.RootFiles(status.RepoPath(a.cfg, sourceKey, repoKey, repo))
+		if err != nil {
+			return fmt.Errorf("cannot read the workspace directory for %s", repoKey)
+		}
+		if !slices.Contains(files, file) {
+			return fmt.Errorf("%s is not a workspace file at the root of %s", file, repoKey)
+		}
+		repo.Container = true
 	}
-	repo.Container, repo.Workspace, repo.WorkspacePreferred = true, file, file
+	repo.Workspace, repo.WorkspacePreferred = file, file
 	src.Repos[repoKey] = repo
 	return a.saveConfig()
 }
@@ -128,7 +135,7 @@ func (a *App) repoWorkspaceFilesLocal(sourceKey, repoKey string) []string {
 	if !ok {
 		return []string{}
 	}
-	if files := workspace.RootFiles(dir); files != nil {
+	if files, err := workspace.RootFiles(dir); err == nil && files != nil {
 		return files
 	}
 	return []string{}
