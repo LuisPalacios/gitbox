@@ -55,18 +55,24 @@ go test ./pkg/config/ -run='^$' -fuzz='^FuzzDecodeRoundTrip$' -fuzztime=1m -para
 
 ## Remote mode tests
 
-The bootstrap of [remote mode](remote-mode.md) has three layers of tests.
+The bootstrap and the read-only window of [remote mode](remote-mode.md) have three layers of tests.
 
-- **Unit tests** in `pkg/remote`, which every `go test -short` runs. They include `TestNoConfigOverrideInProduction` and a fake `ssh` that runs the real remote scripts with the local `sh` in a home folder of the test's own: install, hash checks, `noexec`, banners, uninstall and the refused roots. Windows skips the fake-ssh tests, which need a POSIX `sh`. `cmd/gui` adds `TestRemoteLifecycle`, which drives a remote window with a dialer that needs no ssh.
+- **Unit tests** in `pkg/remote`, which every `go test -short` runs. They include `TestNoConfigOverrideInProduction` and a fake `ssh` that runs the real remote scripts with the local `sh` in a home folder of the test's own: install, hash checks, `noexec`, banners, uninstall and the refused roots. Windows skips the fake-ssh tests, which need a POSIX `sh`. `cmd/gui` adds `TestRemoteLifecycle`, which drives a remote window with a dialer that needs no ssh, and the read-only checks: `TestBackendContract` over every served method, `TestHostileServer`, `TestOpenExternal`, `TestRemoteWindowReadOnly` and `TestReadOnlyServerSavesNothing`:
+
+  ```bash
+  go test -race -short ./cmd/gui/ -run 'TestBackendContract|TestHostileServer|TestOpenExternal|TestRemoteWindowReadOnly|TestReadOnlyServerSavesNothing'
+  ```
+
 - **The server build of `cmd/gui`.** `go test -race -short -tags gitboxserver ./cmd/gui/` runs the tests of the in-use marker and the rotating server log. Tests that need the window shell carry `//go:build !gitboxserver`, so this run compiles.
 - **sshd integration tests** behind the `sshd_integration` tag, in `pkg/remote/integration_test.go`:
 
   ```bash
   scripts/remote-it.sh                           # every scenario
   GITBOX_IT_RUN=TestFishLoginShell scripts/remote-it.sh
+  GITBOX_IT_RUN=TestReadOnlySessionLeavesConfigUntouched scripts/remote-it.sh
   ```
 
-  The script needs Docker on Linux. It builds the `gitbox-sshd` image from `test/sshd` (Debian slim with OpenSSH and fish, and a `test` user whose key lives outside the home) and a `linux/amd64` server with the `e2e_sentinel` tag, which appends a line to `$HOME/.gitbox-e2e/ran.log` on every start. Each test starts its own container on an `--internal` Docker network, with no route out, and connects through the real `ssh` with a config file and a `known_hosts` of its own, filled from the container's host key. "Never executed" means the line count of `ran.log` did not change. The local gate runs it in its `remote-it` lane.
+  The script needs Docker on Linux. It builds the `gitbox-sshd` image from `test/sshd` (Debian slim with OpenSSH, fish and git, and a `test` user whose key lives outside the home) and a `linux/amd64` server with the `e2e_sentinel` tag, which appends a line to `$HOME/.gitbox-e2e/ran.log` on every start. Each test starts its own container on an `--internal` Docker network, with no route out, and connects through the real `ssh` with a config file and a `known_hosts` of its own, filled from the container's host key. "Never executed" means the line count of `ran.log` did not change. The local gate runs it in its `remote-it` lane.
 
 A remote smoke drives the client methods against a real host from my machine, with a temporary config: add, connect, log, doctor, disconnect and uninstall. It needs a build that carries its server and a scratch `server_dir`:
 

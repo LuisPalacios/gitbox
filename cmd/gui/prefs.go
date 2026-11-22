@@ -32,8 +32,11 @@ func (a *App) clientPrefs() prefsStore {
 }
 
 // sharedPrefs is local mode: the preferences are the client keys of the one
-// in-memory config, saved to the one file by saveConfig. A domain save can
-// never revert a preference, or the other way round.
+// in-memory config, saved to the one file. Other processes on this machine
+// save to that file too (a remote window, the terminals window), so a
+// preference change starts from the preferences on disk and a domain save
+// keeps them (savePrefs, saveConfig): neither reverts what another process
+// saved (#240).
 type sharedPrefs struct{ a *App }
 
 func (s sharedPrefs) Get() config.ClientPrefs {
@@ -51,13 +54,23 @@ func (s sharedPrefs) Update(change func(*config.ClientPrefs)) error {
 	if s.a.cfg == nil {
 		return fmt.Errorf("config not loaded")
 	}
-	p := config.ExtractPrefs(s.a.cfg)
-	change(&p)
-	if err := config.ValidateRemotes(p.Remotes); err != nil {
-		return err
+	// Only the keys change touches change on disk: another process may
+	// have saved the others since this one loaded the file (#240).
+	return s.a.savePrefs(func(p *config.ClientPrefs) error {
+		change(p)
+		return config.ValidateRemotes(p.Remotes)
+	})
+}
+
+// useOwnPrefsFile gives a process that writes no domain data, the terminals
+// window, a preference store of its own on this machine's gitbox.json: each
+// change reloads the file and writes only the preference keys (#240).
+func (a *App) useOwnPrefsFile() {
+	path := a.cfgPath
+	if path == "" {
+		path = config.DefaultV2Path()
 	}
-	config.ApplyPrefs(s.a.cfg, p)
-	return s.a.saveConfig()
+	a.prefs = newFilePrefs(path)
 }
 
 // filePrefs keeps the preferences in the client's own gitbox.json, apart

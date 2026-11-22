@@ -13,7 +13,7 @@
 #   ./scripts/health.sh -v              # print every finding, not just the first 15
 #
 # Checks: gofmt vet server staticcheck modernize govulncheck deadcode test
-#         svelte frontend-test build npm-install npm-audit shellcheck actionlint markdown
+#         svelte frontend-test build funnel npm-install npm-audit shellcheck actionlint markdown
 #         docs-parity harness bootstrap fuzz (fuzz requires HEALTH_FUZZ=1)
 #
 # Go analyzers are fetched at pinned versions (go run / go install into the
@@ -38,19 +38,15 @@ DEADCODE="golang.org/x/tools/cmd/deadcode@v0.50.0"
 # for library callers and their compatibility tests.
 # SetRunnerForTest and SetDoerForTest are the test seams for git and HTTP:
 # only tests call them, by design.
-# Remote mode (#233) lands in phases: the file-backed preference store, the
-# RemoteBackend and the client half of pkg/rpc are tested now and get their
-# first caller when the SSH connection selects them (P3b). Drop its four
-# entries then. Windows update helpers remain portable for fault-injection tests.
+# Remote mode (#233): dialRemoteBackend connects a RemoteBackend over any
+# pair of streams; only tests do that, the remote window connects through
+# its session. Windows update helpers remain portable for fault-injection tests.
 DEADCODE_ALLOW='pkg[/\\]credential[/\\]credential[.]go:[0-9]+:[0-9]+: unreachable func: StoreToken$
 unreachable func: (PSDecode|resetLookupCachesForTest|Version\.String)$
 pkg[/\\]terminals[/\\]sync[.]go:[0-9]+:[0-9]+: unreachable func: Sync$
 pkg[/\\]workspace[/\\]workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCache$
 unreachable func: (SetRunnerForTest|SetDoerForTest)$
-cmd[/\\]gui[/\\]prefs[.]go:[0-9]+:[0-9]+: unreachable func: (newFilePrefs|filePrefs[.](load|Reload|Get|Update))$
-cmd[/\\]gui[/\\]backend_remote(_methods)?[.]go:[0-9]+:[0-9]+: unreachable func: [A-Za-z]
-pkg[/\\]rpc[/\\]client[.]go:[0-9]+:[0-9]+: unreachable func: [A-Za-z]
-pkg[/\\]rpc[/\\](errors|handshake)[.]go:[0-9]+:[0-9]+: unreachable func: (IsCode|wireError[.]asError|skipToMagic|clientHandshake)$
+cmd[/\\]gui[/\\]backend_remote[.]go:[0-9]+:[0-9]+: unreachable func: dialRemoteBackend$
 pkg[/\\]update[/\\]replace_windows_executable[.]go:[0-9]+:[0-9]+: unreachable func: (replaceWindowsExecutable|stageUpdateExecutable|writeUpdateState|cleanupWindowsBackup|regularFileHash)$'
 
 # Advisories npm audit may report: no fixed version exists yet and the package
@@ -59,6 +55,16 @@ pkg[/\\]update[/\\]replace_windows_executable[.]go:[0-9]+:[0-9]+: unreachable fu
 NPM_AUDIT_ALLOW=""
 
 FRONTEND="cmd/gui/frontend"
+
+# The browser funnel (#240): lib/external.ts is the only way the frontend
+# opens a link, and it names Wails' BrowserOpenURL only in a comment. A
+# {@html} may render compile-time markup only, never a field that a server
+# or the config supplies. One "file<TAB>fixed text" pair per allowed use,
+# path relative to the frontend's src/.
+FUNNEL_FILE="lib/external.ts"
+HTML_ALLOW='lib/UIIcon.svelte	{@html ui[name] || '"''"'}
+lib/BrandIcon.svelte	{@html entry.mono}
+lib/CredentialResult.svelte	{@html sshKeyCopied ? '"'"'<svg'
 MD_CONFIG="ai/skills/fixing-markdown/.markdownlint-cli2.jsonc"
 MARKDOWNLINT="markdownlint-cli2@0.23.3"
 HARNESS="ai/scripts"
@@ -211,6 +217,32 @@ run_frontend_test() {
     return 1
 }
 
+run_funnel() {
+    local src="$FRONTEND/src" line file text allowed rc=0
+    # Every BrowserOpenURL outside the funnel file is a finding; inside it,
+    # only comment lines may name it.
+    grep -rn --include='*.ts' --include='*.js' --include='*.svelte' 'BrowserOpenURL' "$src" \
+        | grep -v "^$src/$FUNNEL_FILE:" \
+        | sed 's/$/  (open links with openExternal from lib\/external.ts)/'
+    grep -n 'BrowserOpenURL' "$src/$FUNNEL_FILE" | grep -Ev '^[0-9]+:[[:space:]]*//' \
+        | sed "s|^|$src/$FUNNEL_FILE:|; s|\$|  (the funnel must not import or call it)|"
+    grep -q 'BrowserOpenURL' "$src/$FUNNEL_FILE" \
+        || echo "$src/$FUNNEL_FILE: the comment that bans BrowserOpenURL is missing"
+    while IFS= read -r line; do
+        file="${line%%:*}"; file="${file#"$src"/}"
+        text="${line#*:}"; text="${text#*:}"
+        allowed=0
+        while IFS=$'\t' read -r afile apattern; do
+            [[ -n $afile && $file == "$afile" && $text == *"$apattern"* ]] && allowed=1
+        done <<<"$HTML_ALLOW"
+        if [[ $allowed -eq 0 ]]; then
+            echo "$src/$file: {@html} renders a value that is not compile-time markup; render it as text"
+            rc=1
+        fi
+    done < <(grep -rn --include='*.svelte' '{@html' "$src")
+    return "$rc"
+}
+
 run_govulncheck() {
     local out
     out="$(go run "$GOVULNCHECK" ./... 2>&1)" || { echo "$out"; return 1; }
@@ -341,6 +373,7 @@ want test go        && check test        run_test
 want svelte fe      && check svelte      run_svelte
 want frontend-test fe && check frontend-test run_frontend_test
 want build fe       && check build       run_build
+want funnel fe      && check funnel      run_funnel
 want npm-install fe && check npm-install run_npm_install
 want npm-audit fe   && check npm-audit   run_npm_audit
 want shellcheck x   && need shellcheck shellcheck        && check shellcheck run_shellcheck

@@ -499,11 +499,19 @@ El mismo diálogo fija la **profundidad de escaneo anidado** para los [contenedo
 El modo remoto gestiona los repositorios de otro ordenador por SSH. Viene desactivado: la opción `--experimental-remote` o `"experimental_remote": true` en `global` lo activan, y entonces Ajustes muestra **Remotos**.
 
 - **Añadir** — escribe el alias de `ssh_config` del host y, si su carpeta home no permite ejecutar programas, una carpeta del servidor. Gitbox comprueba el alias con `ssh -G`, que detecta una configuración de ssh rota pero no un host desconocido.
-- **Conectar** — abre el remoto en una ventana propia. La primera conexión instala `gitbox-server` en el host; después la ventana dice **Conectado a** el host, con **Desconectar**, **Ver registro** y **Desinstalar servidor**. Los repositorios del host llegan en una versión posterior.
+- **Conectar** — abre el remoto en una ventana propia, con el título `gitbox · <alias>`. La primera conexión instala `gitbox-server` en el host. Hasta que el servidor responde, la ventana muestra la conexión, con **Desconectar**, **Ver registro** y **Desinstalar servidor**.
 - **Desinstalar** — quita el servidor del host, tras una confirmación, y pregunta otra vez cuando otra ventana todavía lo usa.
 - **Quitar** — olvida el remoto en este ordenador.
 
-Antes, `ssh <alias>` tiene que entrar sin pedir nada. [Modo remoto](remote-mode.md) explica la configuración, qué se instala y dónde, el registro de conexión y cada código de error.
+Una vez conectada, la ventana del remoto es la ventana completa de Gitbox, con los repositorios del host en solo lectura:
+
+- **Qué funciona** — el estado, **Fetch de todo**, **Fetch**, los detalles del repositorio, las insignias de pull requests, el estado de los espejos, **Buscar proyectos**, las comprobaciones de credenciales y **Comprobación del sistema**, todo ejecutado en el host. Un enlace de PR se abre en el navegador de este ordenador.
+- **Qué está desactivado** — cada control que cambiaría el host, o abriría una de sus carpetas en este ordenador, aparece atenuado con el aviso «Remoto de solo lectura (llega en una versión posterior)». La vista compacta y el arranque automático están apagados en esta ventana. El idioma, el tema, Simple o Avanzado y la barra lateral son preferencias de este ordenador y siguen funcionando. La ventana local y las ventanas remotas las comparten: un cambio en una aparece en otra la siguiente vez que recupera el foco, y el guardado de ninguna ventana lo deshace.
+- **La insignia** — la barra de título muestra el alias, el sistema del host (solo en Avanzado), el estado de la conexión y **Solo lectura**. Haz clic en ella para abrir el registro de conexión. Un **!** rojo significa que el host envió una lista más larga de lo que la ventana muestra.
+- **Reconectar** — cuando la conexión se cae, el último estado se queda en pantalla, atenuado, bajo un aviso **Desconectado de** el host con **Conectar**, que vuelve a conectar, borra cualquier error que dejó la desconexión y recarga todo.
+- **Enlaces** — un enlace `https` se abre enseguida. Un enlace `http`, como el de una cuenta de Gitea en la red local, se abre tras un diálogo que muestra la dirección completa. Cualquier otro tipo de enlace se rechaza. Esto vale también para la ventana principal.
+
+Antes, `ssh <alias>` tiene que entrar sin pedir nada, y el host necesita un `gitbox.json` con credenciales que funcionen. [Modo remoto](remote-mode.md) explica la configuración, qué se instala y dónde, qué funciona en solo lectura, el registro de conexión y cada código de error.
 
 ### Notificación de actualización
 

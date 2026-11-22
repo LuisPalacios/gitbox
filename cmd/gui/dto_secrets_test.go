@@ -84,6 +84,7 @@ func TestDTOsCarryNoSecrets(t *testing.T) {
 		reflect.TypeFor[MoveProgressEventDTO](), reflect.TypeFor[MoveResultDTO](),
 		reflect.TypeFor[PRAccountUpdateDTO](), reflect.TypeFor[AdoptRequestDTO](),
 		reflect.TypeFor[MoveRequestDTO](), reflect.TypeFor[MirrorStatusResult](),
+		reflect.TypeFor[WindowErrorDTO](),
 	} {
 		inspectSecretFields(typ, seen, report)
 	}

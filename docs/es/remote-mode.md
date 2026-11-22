@@ -2,7 +2,7 @@
 
 El modo remoto deja que GitboxApp, en mi portátil, gestione los repositorios de otro ordenador por SSH, como un servidor Linux sin escritorio. GitboxApp instala por sí mismo un `gitbox-server` que coincide con él en ese host: sin root, sin internet en el host y sin ningún puerto a la escucha. El diseño sigue a VS Code Remote-SSH.
 
-Esta versión conecta, instala, verifica y desinstala el servidor, y muestra la conexión. Los repositorios del host aparecen en una versión posterior. Por ahora solo se admiten hosts Linux; los hosts macOS y Windows llegan después.
+Esta versión conecta, instala, verifica y desinstala el servidor, y muestra los repositorios del host en solo lectura. Cambiar algo en el host llega en una versión posterior. Por ahora solo se admiten hosts Linux; los hosts macOS y Windows llegan después.
 
 ## Antes de empezar: un alias que no pida nada
 
@@ -42,9 +42,41 @@ GitboxApp comprueba el alias con `ssh -G <alias>`, que lee la configuración sin
 
 **Conectar** abre el remoto en una ventana propia: un proceso nuevo de GitboxApp arrancado como `GitboxApp --remote <alias> --experimental-remote`. Un segundo **Conectar** trae al frente la ventana abierta. La ventana del remoto sigue abierta cuando cierro la ventana principal.
 
-La ventana aparece enseguida y conecta en segundo plano. Dice **Conectando con my-server…**, **Instalando gitbox en my-server…** en la primera conexión, y **Conectado a my-server** cuando el servidor responde. El modo avanzado muestra además el sistema del host y el build de su servidor. La ventana tiene **Desconectar**, **Ver registro** y **Desinstalar servidor**. Hasta que lleguen los repositorios, sigue el tema claro u oscuro del sistema.
+La ventana aparece enseguida y conecta en segundo plano. Dice **Conectando con my-server…** e **Instalando gitbox en my-server…** en la primera conexión, con **Desconectar**, **Ver registro** y **Desinstalar servidor**. Hasta que lleguen los repositorios, sigue el tema claro u oscuro del sistema. Cuando el servidor responde, la ventana muestra los repositorios del host en solo lectura: consulta [Qué funciona en solo lectura](#qué-funciona-en-solo-lectura). Su título sigue siendo `gitbox · my-server`.
 
 `--remote` sin `--experimental-remote` sale con un mensaje.
+
+## Qué funciona en solo lectura
+
+La ventana del remoto es la ventana completa de gitbox, alimentada por el host. Necesita un host que ya tenga un `gitbox.json` con credenciales que funcionen, por ejemplo un ordenador que también ejecuta GitboxApp. Un host sin él se queda en la tarjeta de conexión, que lo dice; configurarlo desde aquí llega en una versión posterior.
+
+Esto funciona, y todo se ejecuta en el host:
+
+- el estado de cada repositorio, **Fetch de todo**, **Fetch** en un repositorio y la comprobación periódica del estado;
+- los detalles del repositorio, las insignias de pull requests y sus listas, y el estado de los espejos;
+- **Buscar proyectos** de una cuenta, que lista los repositorios del proveedor sin añadirlos;
+- las comprobaciones de credenciales, la vista previa de la limpieza y la comprobación previa del traslado;
+- **Comprobación del sistema**, que muestra las herramientas del host.
+
+Esto está desactivado, con el aviso «Remoto de solo lectura (llega en una versión posterior)»:
+
+- todo lo que cambia el host: añadir, editar o borrar cuentas, clonar, actualizar, añadir repositorios descubiertos, espejos, raíces, la configuración de credenciales, la limpieza y el traslado, y los ajustes que viven en el `gitbox.json` del host;
+- abrir una carpeta del host en este ordenador, en el gestor de archivos, un editor, un terminal o un harness de IA;
+- la vista compacta y el arranque automático.
+
+Mis propias preferencias, como el idioma, el tema, Simple o Avanzado, la barra lateral y el tamaño de la ventana, siguen funcionando y se quedan en este ordenador.
+
+El propio servidor funciona en solo lectura. No guarda nada en el `gitbox.json` del host: un guardado rechazado falla con `read_only`, y la detección de harnesses de IA del host guarda lo que encuentra en memoria. El fetch solo actualiza las ramas de seguimiento remoto. En esta versión además se salta la reparación del `.git/config` de cada clon que un fetch local hace antes, y el registro del servidor lo dice una vez; una versión posterior lo quita. Una cuenta o un repositorio plegado sigue plegado solo en esta ventana.
+
+### La insignia y la conexión
+
+La barra de título muestra una insignia con el alias, el sistema del host en el modo avanzado, el estado de la conexión y **Solo lectura**. Al hacer clic se abre el registro de conexión.
+
+Cuando la conexión se cae, la ventana conserva el último estado que recibió, atenuado e inactivo, bajo **Desconectado de my-server.** y un botón **Conectar**. Mientras está desconectada, la ventana no lanza ninguna recarga en segundo plano ni la comprobación periódica, así que no aparece ningún otro error. **Conectar** vuelve a hacer la misma conexión, borra lo que dejó la desconexión y recarga todo.
+
+### En qué confía la ventana
+
+Todo lo que envía el host es no fiable. Los enlaces solo se abren tras una comprobación en este ordenador: los enlaces `https` se abren en el navegador, un enlace `http` se abre después de que confirme la dirección completa, y cualquier otro, como `vscode:` o `ms-settings:`, se rechaza. Los nombres y las rutas se muestran como texto y nunca se ejecutan como un comando. La ventana admite como mucho 10.000 repositorios y 1.000 cuentas; una lista más larga se corta, la insignia avisa y el registro de conexión dice qué lista se cortó.
 
 ## Qué se instala y dónde
 
@@ -136,6 +168,7 @@ El modo simple muestra una frase sencilla; el código en sí aparece en el regis
 - `server_crashed`: el servidor se detuvo durante la conexión. El registro muestra sus últimas líneas.
 - `not_connected`: la ventana no está conectada.
 - `not_implemented_remote`: la acción todavía no tiene lado remoto.
+- `read_only`: el remoto es de solo lectura, así que la acción cambiaría el host. Una versión posterior lo permite.
 
 ## Clientes Windows y macOS
 

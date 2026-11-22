@@ -153,6 +153,17 @@ func (a *App) healRepo(cfg *config.Config, source, repo string) heal.Report {
 	if a.refreshHooks != nil && a.refreshHooks.heal != nil {
 		return a.refreshHooks.heal(cfg, source, repo)
 	}
+	if a.readOnly {
+		// A read-only server changes nothing on the host, a clone's
+		// .git/config included: fetch runs with the clone as it is (P5
+		// lifts this).
+		a.healSkipped.Do(func() {
+			if a.hostLog != nil {
+				fmt.Fprintln(a.hostLog, "gitbox-server: read-only: fetch skips the repair of each clone's .git/config")
+			}
+		})
+		return heal.Report{}
+	}
 	ctx, cancel := context.WithTimeout(a.refreshContext(), healReadTimeout)
 	defer cancel()
 	return heal.RepoContext(ctx, cfg, source, repo)

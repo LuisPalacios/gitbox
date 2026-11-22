@@ -203,3 +203,8 @@ export const workspaceUnknown = writable<Set<string>>(new Set());
 
 // ── Theme store ──
 export const themeStore = writable<'light' | 'dark'>('dark');
+
+// remoteReadOnly is set in a remote window once it connects (#240): the
+// controls that would change the host show disabled (lib/ro.ts) and the
+// bridge refuses those calls (lib/readonly.ts). P5 lifts it.
+export const remoteReadOnly = writable(false);

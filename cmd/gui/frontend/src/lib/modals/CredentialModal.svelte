@@ -7,11 +7,12 @@
   import type { DoctorPrecheckDTO } from '../bridge';
   import { accounts } from '../stores';
   import { dismiss } from '../dismiss';
-  import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime';
+  import { openExternal } from '../external';
   import CredentialResult from '../CredentialResult.svelte';
   import PrecheckBanner from '../PrecheckBanner.svelte';
   import Rich from '../Rich.svelte';
   import { t } from '../i18n';
+  import { ro } from '../ro';
 
   // Shared credential operation state (App).
   export let credResult: { ok: boolean; message: string; needsPAT?: boolean; sshPublicKey?: string; sshAddURL?: string; sshVerified?: boolean } | null;
@@ -32,7 +33,9 @@
   export let credStatuses: Record<string, any>;
   export let credPostSetup: (accountKey: string) => Promise<void>;
   export let storeCredToken: (accountKey: string) => Promise<void>;
-  export let hostOS: string;
+  // serverOS is the system of the host whose credentials these are: its
+  // network hints apply there, not on the machine that shows the window.
+  export let serverOS: string;
 
   let credChangeModal: string | null = null; // account key
   let credChangeType = '';
@@ -101,13 +104,13 @@
     const isConnectRefused = m.includes('no route to host') || m.includes('host is unreachable') || m.includes('wsaehostunreach') || m.includes('host is down');
     if (!isConnectRefused) return null;
     const docBase = 'https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md';
-    if (hostOS === 'darwin') {
+    if (serverOS === 'darwin') {
       return {
         summaryKey: 'cred.lanMac',
         link: docBase + '#macos-local-network-permission',
       };
     }
-    if (hostOS === 'windows') {
+    if (serverOS === 'windows') {
       return {
         summaryKey: 'cred.lanWindows',
         link: docBase + '#windows-firewall',
@@ -223,7 +226,7 @@
                 <span class="cred-status-label">{$t('cred.patLabel')}</span>
                 <span class="cred-status-value">{patCoveredByGCM ? $t('cred.notCreated') : $t(credStatusKey(pat))}</span>
                 {#if pat === 'none' || pat === 'warning'}
-                  <button class="cred-status-pat-btn" on:click={() => credChangeModal && openTokenSetup(credChangeModal)} title={$t('cred.patTip')}>
+                  <button use:ro class="cred-status-pat-btn" on:click={() => credChangeModal && openTokenSetup(credChangeModal)} title={$t('cred.patTip')}>
                     {pat === 'warning' ? $t('cred.replacePat') : $t('cred.setupPat')}
                   </button>
                 {/if}
@@ -240,7 +243,7 @@
             {#if lanHint}
               <div class="cred-status-lanhint">
                 <p class="cred-status-lanhint-title">{$t('cred.lanTitle')}</p>
-                <p>{$t(lanHint.summaryKey)} <a href={lanHint.link} on:click|preventDefault={() => BrowserOpenURL(lanHint.link)}>{$t('cred.troubleshooting')}</a>.</p>
+                <p>{$t(lanHint.summaryKey)} <a href={lanHint.link} on:click|preventDefault={() => openExternal(lanHint.link)}>{$t('cred.troubleshooting')}</a>.</p>
               </div>
             {/if}
           </div>
@@ -249,7 +252,7 @@
         <!-- Simplified PAT-only flow for mirror fix -->
         <p class="cred-step-desc"><Rich key="cred.mirrorNeedsPat" vars={{ type: currentAcct?.default_credential_type || 'none' }} /></p>
         {:else}
-        <p class="cred-doc-link"><a href="https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md" on:click|preventDefault={() => BrowserOpenURL('https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md')}>{$t('cred.learnTypes')}</a></p>
+        <p class="cred-doc-link"><a href="https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md" on:click|preventDefault={() => openExternal('https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md')}>{$t('cred.learnTypes')}</a></p>
         <div class="form-row">
           <label class="form-label" for="cc-type">{$t('cred.type')}</label>
           <select class="form-input" id="cc-type" bind:value={credChangeType} disabled={credBusy}>
@@ -274,7 +277,7 @@
           {#if credTokenScopes}
             <p class="cred-step-desc"><Rich key="cred.scopes" vars={{ scopes: credTokenScopes }} /></p>
           {/if}
-          <p class="cred-step-link"><a href={credTokenGuide} on:click|preventDefault={() => BrowserOpenURL(credTokenGuide)}>{credTokenGuide}</a></p>
+          <p class="cred-step-link"><a href={credTokenGuide} on:click|preventDefault={() => openExternal(credTokenGuide)}>{credTokenGuide}</a></p>
           <div class="form-row">
             <label class="form-label" for="cc-token">{$t('onboard.token')}</label>
             <input class="form-input" id="cc-token" type="password" bind:value={credTokenInput} placeholder="ghp_..." translate="no" />
@@ -294,7 +297,7 @@
       </div>
       <div class="modal-foot">
         {#if currentAcct?.default_credential_type && !credResult && !credSetupStarted && credChangeType === (currentAcct?.default_credential_type || '')}
-          <button class="btn-delete cred-delete-btn" on:click={deleteCredential} disabled={credDeleteBusy || credBusy}>
+          <button use:ro class="btn-delete cred-delete-btn" on:click={deleteCredential} disabled={credDeleteBusy || credBusy}>
             {credDeleteBusy ? $t('cred.deleting') : $t('cred.deleteCurrent', { type: (currentAcct?.default_credential_type || '').toUpperCase() })}
           </button>
         {/if}
@@ -302,7 +305,7 @@
           <button class="btn-cancel" on:click={closeCredChange}>{credResult.ok ? $t('onboard.done') : $t('common.close')}</button>
         {:else if credChangeType === 'token' && credTokenGuide}
           {#if credTokenInput.trim()}
-            <button class="btn-add" on:click={() => credChangeModal && storeCredToken(credChangeModal)} disabled={credBusy}>
+            <button use:ro class="btn-add" on:click={() => credChangeModal && storeCredToken(credChangeModal)} disabled={credBusy}>
               {credBusy ? $t('cred.storing') : $t('cred.storeToken')}
             </button>
           {:else}
@@ -310,7 +313,7 @@
           {/if}
         {:else}
           <button class="btn-cancel" on:click={closeCredChange}>{$t('common.cancel')}</button>
-          <button class="btn-add" on:click={applyCredChange} disabled={credBusy || (credChangeType === (currentAcct?.default_credential_type || '') && credStatuses[credChangeModal || '']?.status === 'ok')}>
+          <button use:ro class="btn-add" on:click={applyCredChange} disabled={credBusy || (credChangeType === (currentAcct?.default_credential_type || '') && credStatuses[credChangeModal || '']?.status === 'ok')}>
             {credBusy ? $t('cred.settingUp') : $t('cred.setup')}
           </button>
         {/if}

@@ -20,6 +20,7 @@
   import BrandIcon, { terminalLogo, harnessLogo, editorLogo } from './BrandIcon.svelte';
   import UIIcon from './UIIcon.svelte';
   import { t } from './i18n';
+  import { ro } from './ro';
 
   export let kind: 'repo' | 'account' = 'repo';
   export let editors: EditorInfo[] = [];
@@ -159,26 +160,26 @@
   <button class="action-item" role="menuitem" on:click|stopPropagation={onOpenBrowser} title={browserLabel}>
     <span class="lm-icon">&#8599;</span> {browserLabel}
   </button>
-  <button class="action-item" role="menuitem" on:click|stopPropagation={onOpenFolder} title={revealText}>
+  <button use:ro class="action-item" role="menuitem" on:click|stopPropagation={onOpenFolder} title={revealText}>
     <span class="lm-icon">&#9636;</span> {revealText}
   </button>
 
   {#if hasOpenWith}
     <div class="lm-sec">{$t('menu.openWith')}</div>
     {#each aiHarnesses as harness, i}
-      <button class="action-item" role="menuitem" on:click|stopPropagation={() => onOpenAIHarness(harness)} title={harness.name}>
+      <button use:ro class="action-item" role="menuitem" on:click|stopPropagation={() => onOpenAIHarness(harness)} title={harness.name}>
         <span class="lm-icon lm-icon-brand"><BrandIcon name={harnessLogo(harness)} /></span> {harness.name}
         {#if i === 0}<span class="lm-tag">{$t('menu.default')}</span>{/if}
       </button>
     {/each}
     {#each editors as editor, i}
-      <button class="action-item" role="menuitem" on:click|stopPropagation={() => onOpenApp(editor.command)} title={editor.name}>
+      <button use:ro class="action-item" role="menuitem" on:click|stopPropagation={() => onOpenApp(editor.command)} title={editor.name}>
         <span class="lm-icon lm-icon-brand"><BrandIcon name={editorLogo(editor)} /></span> {editor.name}
         {#if i === 0}<span class="lm-tag">{$t('menu.default')}</span>{/if}
       </button>
     {/each}
     {#each menuProfiles as profile}
-      <button class="action-item" role="menuitem" on:click|stopPropagation={() => onOpenProfile(profile.id)} title={profile.name}>
+      <button use:ro class="action-item" role="menuitem" on:click|stopPropagation={() => onOpenProfile(profile.id)} title={profile.name}>
         <span class="lm-icon lm-icon-brand"><BrandIcon name={terminalLogo(profile.terminal, profile.shell)} /></span> {profile.name}
         {#if profile === defaultProfile}<span class="lm-tag">{$t('menu.default')}</span>{/if}
       </button>
@@ -193,27 +194,27 @@
       </button>
     {/if}
     {#if onMove}
-      <button class="action-item" class:lm-disabled={!moveEnabled} role="menuitem" disabled={!moveEnabled}
+      <button use:ro class="action-item" class:lm-disabled={!moveEnabled} role="menuitem" disabled={!moveEnabled}
         on:click|stopPropagation={onMove}
         title={moveEnabled ? $t('launcher.moveTip') : (moveDisabledReason || $t('launcher.moveNeedsClean'))}>
         <span class="lm-icon">&#8644;</span> {$t('launcher.move')}
       </button>
     {/if}
     {#if onToggleContainer}
-      <button class="action-item" role="menuitem" on:click|stopPropagation={onToggleContainer}
+      <button use:ro class="action-item" role="menuitem" on:click|stopPropagation={onToggleContainer}
         title={$t('launcher.containerTip')}>
         <span class="lm-icon">&#9638;</span>
         {isContainer ? $t('launcher.unmarkContainer') : $t('launcher.markContainer')}
       </button>
     {/if}
     {#if onChooseWorkspace}
-      <button class="action-item" role="menuitem" on:click|stopPropagation={onChooseWorkspace}
+      <button use:ro class="action-item" role="menuitem" on:click|stopPropagation={onChooseWorkspace}
         title={$t('launcher.chooseWorkspaceTip')}>
         <span class="lm-icon">&#9638;</span> {$t('launcher.chooseWorkspace')}
       </button>
     {/if}
     {#if isContainer && onRescanContainer}
-      <button class="action-item" role="menuitem" on:click|stopPropagation={onRescanContainer}
+      <button use:ro class="action-item" role="menuitem" on:click|stopPropagation={onRescanContainer}
         title={$t('launcher.rescanTip')}>
         <span class="lm-icon"><UIIcon name="fetch" /></span> {$t('launcher.rescan')}
       </button>
@@ -230,14 +231,14 @@
       </button>
     {/if}
     {#if onCreate}
-      <button class="action-item" class:lm-disabled={!createEnabled} role="menuitem" disabled={!createEnabled}
+      <button use:ro class="action-item" class:lm-disabled={!createEnabled} role="menuitem" disabled={!createEnabled}
         on:click|stopPropagation={onCreate}
         title={createEnabled ? $t('launcher.createTip') : createDisabledReason}>
         <span class="lm-icon"><UIIcon name="plus" /></span> {$t('account.createRepo')}…
       </button>
     {/if}
     {#each extraItems as item}
-      <button class="action-item" role="menuitem" on:click|stopPropagation={item.onClick} title={item.title || item.label}>
+      <button use:ro class="action-item" role="menuitem" on:click|stopPropagation={item.onClick} title={item.title || item.label}>
         <span class="lm-icon">{item.icon}</span> {item.label}
       </button>
     {/each}
@@ -245,7 +246,7 @@
 
   {#if kind === 'repo' && onDelete}
     <hr class="lm-sep" />
-    <button class="action-item lm-danger" role="menuitem" on:click|stopPropagation={onDelete} title={deleteLabel || $t('menu.delete')}>
+    <button use:ro class="action-item lm-danger" role="menuitem" on:click|stopPropagation={onDelete} title={deleteLabel || $t('menu.delete')}>
       <span class="lm-icon"><UIIcon name="x" /></span> {deleteLabel || $t('menu.delete')}
     </button>
   {/if}

@@ -151,8 +151,8 @@ func TestRemoteLifecycle(t *testing.T) {
 	if err != nil || len(cfg.Accounts) != 1 {
 		t.Errorf("GetConfig once connected = %+v, %v", cfg, err)
 	}
-	if err := a.AddRoot(t.TempDir()); !codeIs(err, "not_implemented_remote") {
-		t.Errorf("AddRoot = %v, want not_implemented_remote", err)
+	if err := a.AddRoot(t.TempDir()); !codeIs(err, "read_only") {
+		t.Errorf("AddRoot = %v, want read_only", err)
 	}
 	if len(sink.named("remote:log")) == 0 || len(a.RemoteLog()) == 0 {
 		t.Error("the connection log is empty")
@@ -312,8 +312,12 @@ func TestRemotesSettings(t *testing.T) {
 		t.Errorf("ConnectRemote with remote mode off = %+v", res)
 	}
 
-	// The key turns it on like the flag does.
-	a.cfg.Global.ExperimentalRemote = true
+	// The key turns it on like the flag does. It is a client preference, so
+	// it goes through the store: a key set only in memory would give way to
+	// the file at the next save (#240).
+	if err := a.clientPrefs().Update(func(p *config.ClientPrefs) { p.ExperimentalRemote = true }); err != nil {
+		t.Fatal(err)
+	}
 	if !a.ListRemotes().Enabled {
 		t.Error("experimental_remote did not enable the Remotes section")
 	}
@@ -379,5 +383,61 @@ func TestRemoteFailureCodes(t *testing.T) {
 		if code != c.code || hint != "error.remote."+c.code {
 			t.Errorf("%v = %s, %s", c.err, code, hint)
 		}
+	}
+}
+
+// A read-only remote window keeps every mutation on this side of the wire,
+// including the ones the frontend starts by itself (the focus-driven
+// Reconcile and the harness refresh), while its client preferences still
+// save to this machine's own gitbox.json (#240).
+func TestRemoteWindowReadOnly(t *testing.T) {
+	in, out, calls := answerEverything(t)
+	a, _ := remoteApp(t, nil)
+	if err := a.remote.backend.connect(in, out); err != nil {
+		t.Fatal(err)
+	}
+	defer a.remote.backend.Close()
+	local := a.prefs.(*filePrefs).path
+	before := len(calls())
+
+	// Mutations, typed and automatic.
+	if err := a.AddRoot("/srv/x"); !codeIs(err, "read_only") {
+		t.Errorf("AddRoot = %v, want read_only", err)
+	}
+	if err := a.DeleteRepo("acct", "org/repo"); !codeIs(err, "read_only") {
+		t.Errorf("DeleteRepo = %v, want read_only", err)
+	}
+	a.Reconcile()
+	a.RefreshAIHarnesses()
+	a.PullRepo("acct", "org/repo")
+	if got := calls()[before:]; len(got) != 0 {
+		t.Errorf("mutations reached the wire: %+v", got)
+	}
+
+	// Client preferences save here and nothing is sent.
+	if err := a.SetTheme("light"); err != nil {
+		t.Errorf("SetTheme: %v", err)
+	}
+	if err := a.SetLanguage("es"); err != nil {
+		t.Errorf("SetLanguage: %v", err)
+	}
+	if err := a.SetUIMode("simple"); err != nil {
+		t.Errorf("SetUIMode: %v", err)
+	}
+	if err := a.SetCollapsed(config.CollapsedState{Sidebar: true, Sources: []string{"acct"}}); err != nil {
+		t.Errorf("SetCollapsed: %v", err)
+	}
+	if got := calls()[before:]; len(got) != 0 {
+		t.Errorf("a client preference reached the wire: %+v", got)
+	}
+	saved := loadConfig(t, local).Global
+	if saved.Theme != "light" || saved.Language != "es" || saved.UIMode != "simple" || saved.Collapsed == nil || !saved.Collapsed.Sidebar {
+		t.Errorf("the client preferences were not saved locally: theme %q, language %q, ui %q, collapsed %+v", saved.Theme, saved.Language, saved.UIMode, saved.Collapsed)
+	}
+
+	// A read still goes to the host.
+	a.GetAllStatus()
+	if got := calls()[before:]; len(got) != 1 || got[0].Method != "GetAllStatus" {
+		t.Errorf("a read did not reach the host: %+v", got)
 	}
 }

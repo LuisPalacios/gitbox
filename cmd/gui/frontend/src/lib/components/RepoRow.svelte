@@ -47,11 +47,13 @@
   // badges, branch, its words, launchers, fetch and ⋯).
   import { fade } from 'svelte/transition';
   import { bridge } from '../bridge';
+  import { openExternal, openRepoExternal } from '../external';
   import { pushNotice, errorText } from '../notices';
   import { accounts, repoStates, prSettings, prsByAccount, lookupPRSummary, sources, workspaceMembers, workspaceUnknown, isSynced, themeStore } from '../stores';
   import { statusColor, simpleKind, simpleColor, rowBusy, rowGlyph, statusLabel, attentionRank, CALM_RANK, COUNT_BADGES } from '../status';
   import type { SimpleKind } from '../status';
   import { t } from '../i18n';
+  import { ro } from '../ro';
   import { onActivateKey } from '../keyboard';
   import LauncherMenu from '../LauncherMenu.svelte';
   import PRPopover from '../PRPopover.svelte';
@@ -190,13 +192,10 @@
 
   // The URL is resolved on the Go side from the authoritative config
   // (git.RepoWebURL), so a stale frontend store can't turn this into a
-  // silent no-op; lookup failures surface in a notice (#79).
+  // silent no-op; lookup failures surface in a notice (#79). The link opens
+  // through the funnel (external.ts).
   async function openRepoInBrowser(sourceKey: string, repoName: string) {
-    try {
-      await bridge.openRepoInBrowser(sourceKey, repoName);
-    } catch (e) {
-      pushNotice('error', $t('notice.openWebFailed'), [errorText(e)]);
-    }
+    await openRepoExternal(sourceKey, repoName);
     closeActionMenu();
   }
 
@@ -294,17 +293,17 @@
   <span class="launch-group">
     {#if quickHarness}
       {@const h = quickHarness}
-      <button class="icon-btn btn-launch" title={$t('simple.btnOpenWith', { name: h.name })} aria-label={$t('simple.btnOpenWith', { name: h.name })}
+      <button use:ro class="icon-btn btn-launch" title={$t('simple.btnOpenWith', { name: h.name })} aria-label={$t('simple.btnOpenWith', { name: h.name })}
         on:click|stopPropagation={() => openRepoInAIHarness(repoKey, h)}><BrandIcon name={harnessLogo(h)} /></button>
     {/if}
     {#if quickEditor}
       {@const ed = quickEditor}
-      <button class="icon-btn btn-launch" title={$t('simple.btnOpenWith', { name: ed.name })} aria-label={$t('simple.btnOpenWith', { name: ed.name })}
+      <button use:ro class="icon-btn btn-launch" title={$t('simple.btnOpenWith', { name: ed.name })} aria-label={$t('simple.btnOpenWith', { name: ed.name })}
         on:click|stopPropagation={() => openRepoInApp(repoKey, ed.command)}><BrandIcon name={editorLogo(ed)} /></button>
     {/if}
     {#if quickProfile}
       {@const pr = quickProfile}
-      <button class="icon-btn btn-launch" title={$t('simple.btnOpenWith', { name: pr.name })} aria-label={$t('simple.btnOpenWith', { name: pr.name })}
+      <button use:ro class="icon-btn btn-launch" title={$t('simple.btnOpenWith', { name: pr.name })} aria-label={$t('simple.btnOpenWith', { name: pr.name })}
         on:click|stopPropagation={() => openRepoProfile(repoKey, pr.id)}><BrandIcon name={terminalLogo(pr.terminal, pr.shell)} /></button>
     {/if}
   </span>
@@ -327,8 +326,8 @@
               prs={prSummary.authored}
               providerName={acctForPRs?.provider || ''}
               providerAllURL={providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName)}
-              onOpenPR={(url) => { bridge.openInBrowser(url); closePRPopover(); }}
-              onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); closePRPopover(); }}
+              onOpenPR={(url) => { openExternal(url); closePRPopover(); }}
+              onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) openExternal(u); closePRPopover(); }}
             />
           </div>
         {/if}
@@ -348,8 +347,8 @@
               prs={prSummary.reviewRequested}
               providerName={acctForPRs?.provider || ''}
               providerAllURL={providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName)}
-              onOpenPR={(url) => { bridge.openInBrowser(url); closePRPopover(); }}
-              onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) bridge.openInBrowser(u); closePRPopover(); }}
+              onOpenPR={(url) => { openExternal(url); closePRPopover(); }}
+              onOpenAll={() => { const u = providerPRsURL(acctForPRs?.provider || '', acctForPRs?.url || '', repoName); if (u) openExternal(u); closePRPopover(); }}
             />
           </div>
         {/if}
@@ -374,7 +373,7 @@
   on:keydown={onActivateKey(() => activateRepoRow(rowSourceKey, repoName, state.status))}>
   {#if rowSourceKey !== sourceKey && !showAccount}<span class="container-badge" title={rowSourceKey}>{rowAccountKey}</span>{/if}
   {#if deleteMode}
-    <button class="icon-btn icon-btn-danger btn-delete-x" on:click|stopPropagation={() => askDelete(rowSourceKey, repoName, state.status)} title={$t('row.delete', { name: repoName })} aria-label={$t('row.delete', { name: repoName })}><UIIcon name="x" /></button>
+    <button use:ro class="icon-btn icon-btn-danger btn-delete-x" on:click|stopPropagation={() => askDelete(rowSourceKey, repoName, state.status)} title={$t('row.delete', { name: repoName })} aria-label={$t('row.delete', { name: repoName })}><UIIcon name="x" /></button>
   {/if}
   {#if simple}
     <!-- Simple row (issue #124): dot, short name, one sentence, one button, ⋯ -->
@@ -399,9 +398,9 @@
       {@render prBadges()}
       {@render words()}
       {#if kind === 'update'}
-        <button class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)} title={$t('simple.updateTip')}>{$t('simple.btnUpdate')}</button>
+        <button use:ro class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)} title={$t('simple.updateTip')}>{$t('simple.btnUpdate')}</button>
       {:else if kind === 'online'}
-        <button class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('simple.btnDownload')}</button>
+        <button use:ro class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('simple.btnDownload')}</button>
       {/if}
       {#if kind !== 'online' && kind !== 'offline' && kind !== 'busy'}
         {@render quickLaunch(repoKey)}
@@ -444,7 +443,7 @@
   {#if isContainer}
     {@render containerIcon()}
     {#if wsPending}
-      <button class="choose-workspace-badge"
+      <button use:ro class="choose-workspace-badge"
               on:click|stopPropagation={() => chooseWorkspace(rowSourceKey, repoName)}
               title={$t('row.chooseWorkspaceTip')}>{$t('row.chooseWorkspace')}</button>
     {/if}
@@ -473,9 +472,9 @@
       {/if}
     </span>
     {#if state.status === 'behind'}
-      <button class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)} title={$t('repo.pullTip')}>{$t('repo.pull')} <span class="btn-tag">{$t('repo.ffOnly')}</span></button>
+      <button use:ro class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)} title={$t('repo.pullTip')}>{$t('repo.pull')} <span class="btn-tag">{$t('repo.ffOnly')}</span></button>
     {:else if state.status === 'not cloned'}
-      <button class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('repo.clone')}</button>
+      <button use:ro class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('repo.clone')}</button>
     {/if}
     {/if}
     {#if !deleteMode && state.status !== 'not cloned' && state.status !== 'root offline'}

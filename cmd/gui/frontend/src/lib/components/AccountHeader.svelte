@@ -9,6 +9,7 @@
   import type { HealthFix } from '../status';
   import { providerLabel } from '../theme';
   import { t } from '../i18n';
+  import { ro } from '../ro';
   import UIIcon from '../UIIcon.svelte';
   import AccountMenu from './AccountMenu.svelte';
   import type { RowProps } from './RepoRow.svelte';
@@ -45,12 +46,12 @@
 <div class="acct-card" class:bad={health.level === 'bad' || health.level === 'none'} class:warn={health.level === 'warn'}>
   <div class="line">
     {#if deleteMode}
-      <button class="icon-btn icon-btn-danger" on:click={() => askDeleteAccount(accountKey)}
+      <button use:ro class="icon-btn icon-btn-danger" on:click={() => askDeleteAccount(accountKey)}
         title="{$t('account.delete')} {accountKey}" aria-label="{$t('account.delete')} {accountKey}"><UIIcon name="x" /></button>
     {:else}
       <span class="mark" style="color: {sc(health.color)}" aria-hidden="true">{health.mark}</span>
     {/if}
-    <button class="name" title={$t('account.edit')} on:click={() => openEditAccount(accountKey)}>{accountKey}</button>
+    <button use:ro class="name" title={$t('account.edit')} on:click={() => openEditAccount(accountKey)}>{accountKey}</button>
     <span class="right">
       <span class="provider">{providerLabel(acct.provider)}</span>
       <AccountMenu {accountKey} credStatus={cred.status} {actionMenuAccount} {rowProps}
@@ -61,7 +62,7 @@
     <span class="words" style={health.level === 'ok' || health.level === 'pending' ? '' : `color: ${sc(health.color)}`}
       title={simple ? undefined : credTip}>{$t(health.key, health.vars)}</span>
     {#if health.fix}
-      <span class="right"><button class="text-btn" on:click={() => fixCredential(accountKey, health.fix)}>{$t(health.fixKey)}</button></span>
+      <span class="right"><button use:ro class="text-btn" on:click={() => fixCredential(accountKey, health.fix)}>{$t(health.fixKey)}</button></span>
     {/if}
   </div>
   <div class="line">
@@ -78,7 +79,7 @@
     <span class="right">
       <button class="text-btn" on:click={() => openDiscover(accountKey)} disabled={!canDiscover}
         title={canDiscover ? $t('account.findProjects') : $t(DISCOVER_DISABLED)}>{$t('account.find')}</button>
-      <button class="text-btn" on:click={() => openCreateRepo(accountKey)} disabled={!canCreate}
+      <button use:ro class="text-btn" on:click={() => openCreateRepo(accountKey)} disabled={!canCreate}
         title={canCreate ? $t('account.createRepo') : $t(CREATE_DISABLED)}>+ {$t('account.new')}</button>
     </span>
   </div>

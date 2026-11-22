@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"regexp"
 	"strings"
@@ -41,6 +42,8 @@ func toUserError(err error) usererr.UserError {
 		out.Code, out.Hint = "git."+string(ge.Code), ge.Hint
 	} else if pe, ok := errors.AsType[*provider.ProviderError](err); ok {
 		out.Code, out.Hint = "provider."+string(pe.Class), "error.provider."+string(pe.Class)
+	} else if ee, ok := errors.AsType[*externalError](err); ok {
+		out.Code, out.Hint = "url."+string(ee.Code), "error.url."+string(ee.Code)
 	} else if re, ok := errors.AsType[*remoteError](err); ok {
 		out.Code, out.Hint = "remote."+string(re.Code), "error.remote."+string(re.Code)
 	} else if re, ok := errors.AsType[*remote.Error](err); ok {
@@ -61,6 +64,28 @@ func identifier(s string) string {
 		}
 	}
 	return s
+}
+
+// WindowErrorDTO is how a remote window's bound methods fail (#240): the
+// scrubbed text with its code and catalog hint, so the frontend shows the
+// translated hint instead of the backend's English.
+type WindowErrorDTO struct {
+	Message string `json:"message"`
+	Code    string `json:"code,omitempty"`
+	Hint    string `json:"hint,omitempty"`
+}
+
+// windowError is the Wails ErrorFormatter of a remote window. The Wails
+// runtime turns whatever it returns into the message of a JavaScript Error,
+// so it returns the DTO as JSON text, which the bridge decodes
+// (readonly.ts, windowError).
+func windowError(err error) any {
+	ue := toUserError(err)
+	data, jerr := json.Marshal(WindowErrorDTO{Message: ue.String(), Code: ue.Code, Hint: ue.Hint})
+	if jerr != nil {
+		return ue.String()
+	}
+	return string(data)
 }
 
 // userMsg is the text of err that a string field or payload may carry.

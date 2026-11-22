@@ -75,7 +75,7 @@ func TestOpenAccountInBrowser_UnknownAccount(t *testing.T) {
 		Accounts: map[string]config.Account{},
 	}
 	a := &App{cfg: cfg, cfgPath: "", mu: sync.Mutex{}}
-	err := a.OpenAccountInBrowser("nope")
+	_, err := a.OpenAccountInBrowser("nope", false)
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected 'not found' error, got %v", err)
 	}

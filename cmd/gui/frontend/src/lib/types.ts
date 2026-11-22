@@ -440,5 +440,10 @@ export interface StartupSnapshot {
   nesting: Record<string, string>;
   configPath: string;
   appVersion: string;
+  // os is the machine that shows the window, serverOS the host whose data
+  // it shows (#240); the same in a local window.
   os: string;
+  serverOS: string;
+  serverVersion?: string;
+  remoteAlias?: string;
 }

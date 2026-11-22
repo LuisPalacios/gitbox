@@ -330,8 +330,8 @@ export function OpenAccountInApp(arg1, arg2) {
   return window['go']['main']['App']['OpenAccountInApp'](arg1, arg2);
 }
 
-export function OpenAccountInBrowser(arg1) {
-  return window['go']['main']['App']['OpenAccountInBrowser'](arg1);
+export function OpenAccountInBrowser(arg1, arg2) {
+  return window['go']['main']['App']['OpenAccountInBrowser'](arg1, arg2);
 }
 
 export function OpenAccountProfile(arg1, arg2) {
@@ -350,8 +350,8 @@ export function OpenInApp(arg1, arg2) {
   return window['go']['main']['App']['OpenInApp'](arg1, arg2);
 }
 
-export function OpenInBrowser(arg1) {
-  return window['go']['main']['App']['OpenInBrowser'](arg1);
+export function OpenInBrowser(arg1, arg2) {
+  return window['go']['main']['App']['OpenInBrowser'](arg1, arg2);
 }
 
 export function OpenInExplorer(arg1) {
@@ -362,8 +362,8 @@ export function OpenProfile(arg1, arg2) {
   return window['go']['main']['App']['OpenProfile'](arg1, arg2);
 }
 
-export function OpenRepoInBrowser(arg1, arg2) {
-  return window['go']['main']['App']['OpenRepoInBrowser'](arg1, arg2);
+export function OpenRepoInBrowser(arg1, arg2, arg3) {
+  return window['go']['main']['App']['OpenRepoInBrowser'](arg1, arg2, arg3);
 }
 
 export function OpenTerminalsManagerWindow() {

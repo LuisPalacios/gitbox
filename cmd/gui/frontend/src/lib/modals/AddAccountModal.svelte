@@ -6,7 +6,7 @@
   import type { DoctorPrecheckDTO } from '../bridge';
   import { providerURLs } from '../theme';
   import { dismiss } from '../dismiss';
-  import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime';
+  import { openExternal } from '../external';
   import CredentialResult from '../CredentialResult.svelte';
   import PrecheckBanner from '../PrecheckBanner.svelte';
   import Rich from '../Rich.svelte';
@@ -157,7 +157,7 @@
               <p class="cred-step-desc"><Rich key="cred.scopes" vars={{ scopes: credTokenScopes }} /></p>
             {/if}
             {#if credTokenGuide}
-              <p class="cred-step-link"><a href={credTokenGuide} on:click|preventDefault={() => BrowserOpenURL(credTokenGuide)}>{credTokenGuide}</a></p>
+              <p class="cred-step-link"><a href={credTokenGuide} on:click|preventDefault={() => openExternal(credTokenGuide)}>{credTokenGuide}</a></p>
             {/if}
             <div class="form-row">
               <label class="form-label" for="aa-token">{$t('onboard.token')}</label>

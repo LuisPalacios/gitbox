@@ -6,6 +6,7 @@
   import { bridge } from '../bridge';
   import type { RemoteDoctorReport } from '../bridge';
   import { t } from '../i18n';
+  import { errorText } from '../notices';
 
   export let lines: string[] = [];
   export let onClose: () => void;
@@ -44,7 +45,7 @@
       if (res.error) doctorError = res.hint ? $t(res.hint) : res.error;
       else report = res.report ?? null;
     } catch (e) {
-      doctorError = String(e);
+      doctorError = errorText(e);
     } finally {
       doctorBusy = false;
     }

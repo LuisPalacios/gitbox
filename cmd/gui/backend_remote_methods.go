@@ -8,7 +8,8 @@ import (
 )
 
 // The Backend methods of RemoteBackend. Each one calls the server method of
-// the same name with the same arguments. TestRemoteBackendCallsEachMethodByName
+// the same name with the same arguments; the ones that return a long list
+// cut it (capList, capConfig). TestRemoteBackendCallsEachMethodByName
 // fails when a line names the wrong method or drops an argument, and the
 // compiler fails when Backend gains a method that has no line here.
 
@@ -108,7 +109,7 @@ func (r *RemoteBackend) FetchRepo(sourceKey, repoKey string) {
 }
 func (r *RemoteBackend) FixGlobalGCMConfig() error { return r.callErr("FixGlobalGCMConfig") }
 func (r *RemoteBackend) GetAllStatus() []StatusResult {
-	return remoteValue[[]StatusResult](r, "GetAllStatus")
+	return capList(r, "statuses", remoteValue[[]StatusResult](r, "GetAllStatus"), maxRemoteRepos)
 }
 func (r *RemoteBackend) GetAppVersion() string {
 	return remoteValue[string](r, "GetAppVersion")
@@ -120,7 +121,9 @@ func (r *RemoteBackend) GetCollapsed() config.CollapsedState {
 	return remoteValue[config.CollapsedState](r, "GetCollapsed")
 }
 func (r *RemoteBackend) GetConfig() (ConfigDTO, error) {
-	return remoteCall[ConfigDTO](r, "GetConfig")
+	dto, err := remoteCall[ConfigDTO](r, "GetConfig")
+	capConfig(r, &dto)
+	return dto, err
 }
 func (r *RemoteBackend) GetConfigLoadError() string {
 	return remoteValue[string](r, "GetConfigLoadError")
@@ -148,7 +151,9 @@ func (r *RemoteBackend) GetRepoDetail(sourceKey, repoKey string) RepoDetail {
 	return remoteValue[RepoDetail](r, "GetRepoDetail", sourceKey, repoKey)
 }
 func (r *RemoteBackend) GetStartupSnapshot() (StartupSnapshot, error) {
-	return remoteCall[StartupSnapshot](r, "GetStartupSnapshot")
+	snap, err := remoteCall[StartupSnapshot](r, "GetStartupSnapshot")
+	capConfig(r, &snap.Config)
+	return snap, err
 }
 func (r *RemoteBackend) GetTokenGuide(accountKey string) TokenGuideInfo {
 	return remoteValue[TokenGuideInfo](r, "GetTokenGuide", accountKey)
@@ -176,7 +181,7 @@ func (r *RemoteBackend) ListMoveDestinationOwners(sourceKey string) []MoveOwnerO
 	return remoteValue[[]MoveOwnerOption](r, "ListMoveDestinationOwners", sourceKey)
 }
 func (r *RemoteBackend) ListRemoteRepos(accountKey string) []DiscoverResult {
-	return remoteValue[[]DiscoverResult](r, "ListRemoteRepos", accountKey)
+	return capList(r, "remote repos", remoteValue[[]DiscoverResult](r, "ListRemoteRepos", accountKey), maxRemoteRepos)
 }
 func (r *RemoteBackend) ListRoots() []RootDTO {
 	return remoteValue[[]RootDTO](r, "ListRoots")
@@ -191,14 +196,14 @@ func (r *RemoteBackend) OpenAccountInAIHarness(accountKey string, command string
 func (r *RemoteBackend) OpenAccountInApp(accountKey string, command string) error {
 	return r.callErr("OpenAccountInApp", accountKey, command)
 }
-func (r *RemoteBackend) OpenAccountInBrowser(accountKey string) error {
-	return r.callErr("OpenAccountInBrowser", accountKey)
+func (r *RemoteBackend) OpenAccountInBrowser(accountKey string) (string, error) {
+	return remoteCall[string](r, "OpenAccountInBrowser", accountKey)
 }
 func (r *RemoteBackend) OpenAccountProfile(accountKey, profileID string) error {
 	return r.callErr("OpenAccountProfile", accountKey, profileID)
 }
-func (r *RemoteBackend) OpenRepoInBrowser(sourceKey, repoKey string) error {
-	return r.callErr("OpenRepoInBrowser", sourceKey, repoKey)
+func (r *RemoteBackend) OpenRepoInBrowser(sourceKey, repoKey string) (string, error) {
+	return remoteCall[string](r, "OpenRepoInBrowser", sourceKey, repoKey)
 }
 func (r *RemoteBackend) PreflightMove(req MoveRequestDTO) MovePreflightDTO {
 	return remoteValue[MovePreflightDTO](r, "PreflightMove", req)
@@ -222,7 +227,9 @@ func (r *RemoteBackend) RefreshAIHarnesses() { r.callVoid("RefreshAIHarnesses") 
 func (r *RemoteBackend) RefreshAllPRs()      { r.callVoid("RefreshAllPRs") }
 func (r *RemoteBackend) RefreshStatus()      { r.callVoid("RefreshStatus") }
 func (r *RemoteBackend) ReloadConfig() (ConfigDTO, error) {
-	return remoteCall[ConfigDTO](r, "ReloadConfig")
+	dto, err := remoteCall[ConfigDTO](r, "ReloadConfig")
+	capConfig(r, &dto)
+	return dto, err
 }
 func (r *RemoteBackend) RemoveGlobalIdentity() error { return r.callErr("RemoveGlobalIdentity") }
 func (r *RemoteBackend) RemoveRoot(path string, forget bool) (RemoveRootDTO, error) {

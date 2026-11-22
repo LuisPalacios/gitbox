@@ -1,6 +1,7 @@
 <script lang="ts">
-  // The view of a remote window until P4 (#239): who it talks to and how
-  // the connection is doing, with Disconnect, Show log, Run doctor (in the
+  // The view of a remote window before its first connection, and when the
+  // host has no config to show (#239, #240): who it talks to and how the
+  // connection is doing, with Disconnect, Show log, Run doctor (in the
   // log) and Uninstall server. Simple mode says it in one plain sentence;
   // error codes appear only in the connection log.
   import { onMount, onDestroy } from 'svelte';
@@ -8,9 +9,12 @@
   import { bridge, events } from '../bridge';
   import type { RemoteState } from '../bridge';
   import { t } from '../i18n';
+  import { errorText } from '../notices';
   import ConnectionLog from './ConnectionLog.svelte';
 
   export let simple = false;
+  // noConfig: connected, but the host has no gitbox.json to show (#240).
+  export let noConfig = false;
 
   let st: RemoteState = { state: 'connecting', alias: '' };
   let lines: string[] = [];
@@ -47,7 +51,7 @@
   async function run(action: () => Promise<void>) {
     busy = true;
     actionError = '';
-    try { await action(); } catch (e) { actionError = String(e); } finally { busy = false; }
+    try { await action(); } catch (e) { actionError = errorText(e); } finally { busy = false; }
   }
 
   const disconnect = () => run(() => bridge.remoteDisconnect());
@@ -87,7 +91,9 @@
         <dt>{$t('remote.fact.system')}</dt><dd>{st.serverOS}/{st.serverArch}</dd>
         <dt>{$t('remote.fact.server')}</dt><dd>{st.serverVersion}</dd>
       </dl>
-      <p class="note">{$t('remote.previewNote')}</p>
+    {/if}
+    {#if st.state === 'connected' && noConfig}
+      <p class="note">{$t('remote.noConfig', { alias: st.alias })}</p>
     {/if}
 
     {#if actionError}<p class="reason">{actionError}</p>{/if}

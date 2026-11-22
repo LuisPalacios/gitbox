@@ -2,7 +2,7 @@
   // The result of a credential setup, shared by Add account and Change
   // credential: the SSH key block (copy the public key, verify the
   // connection, regenerate the key) or the plain result message.
-  import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
+  import { openExternal } from './external';
   import { t } from './i18n';
 
   export let credResult: { ok: boolean; message: string; needsPAT?: boolean; sshPublicKey?: string; sshAddURL?: string; sshVerified?: boolean };
@@ -28,7 +28,7 @@
       <button class="ssh-key-copy" on:click={() => credResult?.sshPublicKey && copySSHKey(credResult.sshPublicKey)} title={$t('cred.copyClipboard')}>{@html sshKeyCopied ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'}</button>
     </div>
     {#if credResult.sshAddURL}
-      <p class="cred-step-link"><a href={credResult.sshAddURL} on:click|preventDefault={() => credResult?.sshAddURL && BrowserOpenURL(credResult.sshAddURL)}>{credResult.sshAddURL}</a></p>
+      <p class="cred-step-link"><a href={credResult.sshAddURL} on:click|preventDefault={() => credResult?.sshAddURL && openExternal(credResult.sshAddURL)}>{credResult.sshAddURL}</a></p>
     {/if}
   {/if}
   <div style="display: flex; gap: 8px; margin-top: 8px;">

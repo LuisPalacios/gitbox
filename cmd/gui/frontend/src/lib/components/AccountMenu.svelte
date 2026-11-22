@@ -6,6 +6,7 @@
   // and the account card share it.
   import { fade } from 'svelte/transition';
   import { bridge } from '../bridge';
+  import { openAccountExternal } from '../external';
   import { pushNotice, errorText } from '../notices';
   import { accounts } from '../stores';
   import { canDiscoverWith, canCreateWith, credBroken, DISCOVER_DISABLED, CREATE_DISABLED } from '../status';
@@ -54,7 +55,7 @@
   }
 
   async function openAccountInBrowser() {
-    try { await bridge.openAccountInBrowser(accountKey); } catch (e) { console.error(e); }
+    await openAccountExternal(accountKey);
     closeAccountMenu();
   }
 

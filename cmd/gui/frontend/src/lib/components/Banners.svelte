@@ -4,6 +4,7 @@
   // gitignore install result.
   import type { GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled } from '../types';
   import { t } from '../i18n';
+  import { ro } from '../ro';
   import Rich from '../Rich.svelte';
 
   export let globalIdentityWarn: GlobalIdentityWarn | null;
@@ -31,7 +32,7 @@
       <Rich key="banner.identityEmail" vars={{ email: globalIdentityWarn.email }} />
     {/if}
   </span>
-  <button class="identity-warn-fix" on:click={fixGlobalIdentity}>{$t('common.remove')}</button>
+  <button use:ro class="identity-warn-fix" on:click={fixGlobalIdentity}>{$t('common.remove')}</button>
   <button class="identity-warn-dismiss" on:click={() => globalIdentityWarn = null}>&#10005;</button>
 </div>
 {/if}
@@ -57,7 +58,7 @@
     {/if}
     {$t('banner.gcmOutro')}
   </span>
-  <button class="identity-warn-fix" on:click={fixGlobalGCM} disabled={globalGCMFixing}>{globalGCMFixing ? $t('banner.fixing') : $t('banner.configure')}</button>
+  <button use:ro class="identity-warn-fix" on:click={fixGlobalGCM} disabled={globalGCMFixing}>{globalGCMFixing ? $t('banner.fixing') : $t('banner.configure')}</button>
   <button class="identity-warn-dismiss" on:click={() => globalGCMWarn = null}>&#10005;</button>
 </div>
 {/if}
@@ -83,7 +84,7 @@
       <Rich key="banner.excludesUnset" vars={{ path: gitignoreWarn.path }} />
     {/if}
   </span>
-  <button class="identity-warn-fix" on:click={installGlobalGitignore} disabled={gitignoreInstalling}>
+  <button use:ro class="identity-warn-fix" on:click={installGlobalGitignore} disabled={gitignoreInstalling}>
     {gitignoreInstalling ? $t('banner.installing') : $t('banner.install')}
   </button>
   <button class="identity-warn-dismiss" on:click={() => gitignoreWarn = null}>&#10005;</button>

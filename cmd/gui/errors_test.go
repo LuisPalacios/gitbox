@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -165,8 +166,12 @@ func TestHintKeysInCatalog(t *testing.T) {
 		provider.ClassNotFound, provider.ClassServerError, provider.ClassOffline, provider.ClassTimeout, provider.ClassUnknown} {
 		keys = append(keys, toUserError(&provider.ProviderError{Class: c}).Hint)
 	}
-	for _, c := range []remoteCode{remoteUnstampedBuild, remoteServerTargetMissing, remoteServerBuildMismatch} {
+	for _, c := range []remoteCode{remoteUnstampedBuild, remoteServerTargetMissing, remoteServerBuildMismatch,
+		remoteNotConnected, remoteNotImplemented, remoteServerCrashed, remoteNotEnabled, remoteUnknownAlias, remoteReadOnly} {
 		keys = append(keys, toUserError(&remoteError{Code: c}).Hint)
+	}
+	for _, c := range []externalCode{externalNeedsConfirmation, externalRejected} {
+		keys = append(keys, toUserError(&externalError{Code: c}).Hint)
 	}
 	for _, key := range keys {
 		if n := strings.Count(catalog, "'"+key+"':"); n != 2 {
@@ -215,5 +220,31 @@ func TestErrorsLeaveThroughTheBoundary(t *testing.T) {
 	}
 	if seen != len(allowed) {
 		t.Errorf("found %d allowed .Error() calls, want %d: the allowlist is stale", seen, len(allowed))
+	}
+}
+
+// A remote window's bound methods fail with the scrubbed text, the code and
+// the catalog hint (#240), so a disconnection reads in the user's language
+// instead of the backend's English, and nothing secret crosses.
+func TestWindowErrorCarriesCodeAndHint(t *testing.T) {
+	decode := func(v any) WindowErrorDTO {
+		t.Helper()
+		text, ok := v.(string)
+		if !ok {
+			t.Fatalf("windowError returned %T, want the JSON text the Wails runtime keeps", v)
+		}
+		var dto WindowErrorDTO
+		if err := json.Unmarshal([]byte(text), &dto); err != nil {
+			t.Fatalf("windowError returned %q: %v", text, err)
+		}
+		return dto
+	}
+	got := decode(windowError(&remoteError{remoteNotConnected, "not connected to the remote"}))
+	if got.Code != "remote.not_connected" || got.Hint != "error.remote.not_connected" || got.Message != "not connected to the remote" {
+		t.Errorf("not_connected = %+v", got)
+	}
+	leak := decode(windowError(fmt.Errorf("push https://bob:ghp_CANARYCANARYCANARYCANARY0123456789@host/x.git failed")))
+	if strings.Contains(leak.Message, "ghp_") || strings.Contains(leak.Message, "bob:") || leak.Code != "" || leak.Hint != "" {
+		t.Errorf("an untyped error crossed as %+v", leak)
 	}
 }

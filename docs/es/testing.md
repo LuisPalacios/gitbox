@@ -55,18 +55,24 @@ go test ./pkg/config/ -run='^$' -fuzz='^FuzzDecodeRoundTrip$' -fuzztime=1m -para
 
 ## Pruebas del modo remoto
 
-El arranque del [modo remoto](remote-mode.md) tiene tres capas de pruebas.
+El arranque y la ventana de solo lectura del [modo remoto](remote-mode.md) tienen tres capas de pruebas.
 
-- **Pruebas unitarias** en `pkg/remote`, que ejecuta cualquier `go test -short`. Incluyen `TestNoConfigOverrideInProduction` y un `ssh` falso que ejecuta los scripts remotos reales con el `sh` local en una carpeta home propia de la prueba: instalación, comprobaciones de hash, `noexec`, banners, desinstalación y las raíces rechazadas. Windows salta las pruebas del ssh falso, que necesitan un `sh` POSIX. `cmd/gui` añade `TestRemoteLifecycle`, que maneja una ventana remota con un conector que no necesita ssh.
+- **Pruebas unitarias** en `pkg/remote`, que ejecuta cualquier `go test -short`. Incluyen `TestNoConfigOverrideInProduction` y un `ssh` falso que ejecuta los scripts remotos reales con el `sh` local en una carpeta home propia de la prueba: instalación, comprobaciones de hash, `noexec`, banners, desinstalación y las raíces rechazadas. Windows salta las pruebas del ssh falso, que necesitan un `sh` POSIX. `cmd/gui` añade `TestRemoteLifecycle`, que maneja una ventana remota con un conector que no necesita ssh, y las comprobaciones de solo lectura: `TestBackendContract` sobre cada método servido, `TestHostileServer`, `TestOpenExternal`, `TestRemoteWindowReadOnly` y `TestReadOnlyServerSavesNothing`:
+
+  ```bash
+  go test -race -short ./cmd/gui/ -run 'TestBackendContract|TestHostileServer|TestOpenExternal|TestRemoteWindowReadOnly|TestReadOnlyServerSavesNothing'
+  ```
+
 - **El build de servidor de `cmd/gui`.** `go test -race -short -tags gitboxserver ./cmd/gui/` ejecuta las pruebas del marcador de uso y del registro rotativo del servidor. Las pruebas que necesitan el shell de la ventana llevan `//go:build !gitboxserver`, así que esta ejecución compila.
 - **Pruebas de integración con sshd** tras el tag `sshd_integration`, en `pkg/remote/integration_test.go`:
 
   ```bash
   scripts/remote-it.sh                           # every scenario
   GITBOX_IT_RUN=TestFishLoginShell scripts/remote-it.sh
+  GITBOX_IT_RUN=TestReadOnlySessionLeavesConfigUntouched scripts/remote-it.sh
   ```
 
-  El script necesita Docker en Linux. Construye la imagen `gitbox-sshd` a partir de `test/sshd` (Debian slim con OpenSSH y fish, y un usuario `test` cuya clave vive fuera del home) y un servidor `linux/amd64` con el tag `e2e_sentinel`, que añade una línea a `$HOME/.gitbox-e2e/ran.log` en cada arranque. Cada prueba arranca su propio contenedor en una red `--internal` de Docker, sin ruta de salida, y se conecta mediante el `ssh` real con un archivo de config y un `known_hosts` propios, rellenado con la clave del host del contenedor. "Nunca se ejecutó" significa que el número de líneas de `ran.log` no cambió. El gate local lo ejecuta en su carril `remote-it`.
+  El script necesita Docker en Linux. Construye la imagen `gitbox-sshd` a partir de `test/sshd` (Debian slim con OpenSSH, fish y git, y un usuario `test` cuya clave vive fuera del home) y un servidor `linux/amd64` con el tag `e2e_sentinel`, que añade una línea a `$HOME/.gitbox-e2e/ran.log` en cada arranque. Cada prueba arranca su propio contenedor en una red `--internal` de Docker, sin ruta de salida, y se conecta mediante el `ssh` real con un archivo de config y un `known_hosts` propios, rellenado con la clave del host del contenedor. "Nunca se ejecutó" significa que el número de líneas de `ran.log` no cambió. El gate local lo ejecuta en su carril `remote-it`.
 
 Un smoke remoto maneja los métodos del cliente contra un host real desde mi máquina, con una config temporal: añadir, conectar, registro, diagnóstico, desconectar y desinstalar. Necesita un build que lleve su servidor y un `server_dir` de prueba:
 

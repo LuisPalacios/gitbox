@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -49,10 +50,17 @@ type App struct {
 	// prefs holds the client preferences; nil means sharedPrefs{a}, the
 	// client keys of cfg (see prefs.go).
 	prefs prefsStore
-	// keepHostPrefs is set in gitbox-server. The client preferences in the
-	// host's gitbox.json belong to the host: before every save they are
-	// taken again from the file, so the server never changes them.
-	keepHostPrefs bool
+	// prefsMergeWarned logs once that the file's client preferences could
+	// not be read before a save (takeDiskPrefs).
+	prefsMergeWarned sync.Once
+	// readOnly is set in a gitbox-server that serves a read-only client
+	// (#240): saveConfig refuses, so neither a background worker nor a read
+	// can change the host's gitbox.json, and fetch skips the repair of a
+	// clone's .git/config. P5 lifts it.
+	readOnly bool
+	// hostLog is where a gitbox-server writes for a human; nil elsewhere.
+	hostLog     io.Writer
+	healSkipped sync.Once
 	// remoteAlias names the remote this window shows; empty is the local
 	// window. It selects where the window geometry is stored.
 	remoteAlias string
@@ -206,34 +214,78 @@ func (a *App) closeLocal() {
 	a.stopHarnessWatcher()
 }
 
-// saveConfig persists the in-memory config to disk. It refuses to save when
-// the config was not successfully loaded — the guard prevents the empty
-// default fabricated in Startup() from being written over a real file we
-// failed to parse, which would destroy the user's data (see issue #60).
+// saveConfig persists the in-memory config to disk, with the client
+// preferences that are on disk (takeDiskPrefs). It refuses to save on a
+// read-only server, and when the config was not successfully loaded — the
+// guard prevents the empty default fabricated in Startup() from being
+// written over a real file we failed to parse, which would destroy the
+// user's data (see issue #60).
 //
 // Caller must hold a.mu.
 func (a *App) saveConfig() error {
+	if err := a.saveRefused(); err != nil {
+		return err
+	}
+	a.takeDiskPrefs()
+	return config.Save(a.cfg, a.cfgPath)
+}
+
+// savePrefs changes the client preferences and saves (#240). It starts
+// from the preferences on disk, not from the ones in memory, so it changes
+// only what change changes. When saving is refused, the change still
+// applies in memory and the refusal is returned. Caller holds a.mu.
+func (a *App) savePrefs(change func(*config.ClientPrefs) error) error {
+	refused := a.saveRefused()
+	if refused == nil {
+		a.takeDiskPrefs()
+	}
+	p := config.ExtractPrefs(a.cfg)
+	if err := change(&p); err != nil {
+		return err
+	}
+	config.ApplyPrefs(a.cfg, p)
+	if refused != nil {
+		return refused
+	}
+	return config.Save(a.cfg, a.cfgPath)
+}
+
+// saveRefused is why saveConfig would refuse, or nil. Caller holds a.mu.
+func (a *App) saveRefused() error {
+	if a.readOnly {
+		return &remoteError{remoteReadOnly, "the remote is read-only: nothing is saved on the host"}
+	}
 	if !a.cfgLoaded {
 		if a.cfgLoadError != "" {
 			return fmt.Errorf("refusing to save: config not loaded (%s)", a.cfgLoadError)
 		}
 		return fmt.Errorf("refusing to save: config not loaded")
 	}
-	a.restoreHostPrefs()
-	return config.Save(a.cfg, a.cfgPath)
+	return nil
 }
 
-// restoreHostPrefs puts the client preferences that are on disk back into
-// the config about to be saved, when this process is a server. A host that
-// also runs GitboxApp may have changed its theme, editors or window since
-// the server loaded the file. Caller holds a.mu.
-func (a *App) restoreHostPrefs() {
-	if !a.keepHostPrefs {
+// takeDiskPrefs lays the client preferences that are on disk over the
+// config about to be saved (#240). Several processes on one machine share
+// that file: the local window, a remote window, the terminals window, and
+// on a host also gitbox-server. Each one saves its own preferences, so the
+// file's are the latest, and a domain save never reverts them. A missing
+// file keeps the values in memory, and so does one that does not parse,
+// with one log line: nothing half-merged is ever written. Caller holds a.mu.
+func (a *App) takeDiskPrefs() {
+	onDisk, err := config.Load(a.cfgPath)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			a.prefsMergeWarned.Do(func() {
+				out := a.hostLog
+				if out == nil {
+					out = os.Stderr
+				}
+				fmt.Fprintln(out, "warning: the preferences in gitbox.json could not be read before saving; keeping the ones in memory")
+			})
+		}
 		return
 	}
-	if onDisk, err := config.Load(a.cfgPath); err == nil {
-		config.PreserveClientPrefs(a.cfg, onDisk)
-	}
+	config.PreserveClientPrefs(a.cfg, onDisk)
 }
 
 // ─── Update ──────────────────────────────────────────────────
@@ -297,10 +349,26 @@ func (a *App) checkForUpdate() {
 	a.sink().Emit("update:available", info)
 }
 
-// GetOS returns the Go runtime GOOS value so the frontend can render
-// platform-specific hints (e.g. macOS Local Network permission guidance).
-// Values: "darwin", "windows", "linux".
-func (a *App) GetOS() string { return a.be().GetOS() }
+// GetOS returns the GOOS of the machine that shows the window, for its
+// shortcut labels and wording: "darwin", "windows", "linux". The host's own
+// is StartupSnapshot.ServerOS; Backend.GetOS is what a server answers.
+func (a *App) GetOS() string { return a.getOSLocal() }
+
+// remoteWindow reports whether this window shows another host.
+func (a *App) remoteWindow() bool {
+	_, ok := a.be().(*RemoteBackend)
+	return ok
+}
+
+// refuseRemotePath stops a local launch in a remote window: its path names
+// a folder on the host, untrusted and absent here (#240). P6 opens remote
+// paths through shell escaping.
+func (a *App) refuseRemotePath() error {
+	if a.remoteWindow() {
+		return &remoteError{remoteNotImplemented, "opening a folder of the remote on this computer is not available yet"}
+	}
+	return nil
+}
 
 // getOSLocal is the local backend's GetOS.
 func (a *App) getOSLocal() string {
@@ -462,6 +530,10 @@ type StartupSnapshot struct {
 	AppVersion         string               `json:"appVersion"`
 	OS                 string               `json:"os"`
 	CredentialFindings []credential.Finding `json:"credentialFindings"`
+	// OS is the system of the machine that shows the window, ServerOS that
+	// of the host whose data it shows. Both are runtime.GOOS in a local
+	// window.
+	ServerOS string `json:"serverOS"`
 	// ServerVersion is the build of the gitbox-server this window talks
 	// to, as it stated it in the handshake. Empty in a local window.
 	ServerVersion string `json:"serverVersion,omitempty"`
@@ -477,9 +549,12 @@ func (a *App) GetStartupSnapshot() (StartupSnapshot, error) {
 		return StartupSnapshot{}, err
 	}
 	a.overlayPrefs(&snap.Config)
+	snap.ServerOS = snap.OS
 	if remote, ok := a.be().(*RemoteBackend); ok {
 		snap.AppVersion = a.getAppVersionLocal()
 		snap.ServerVersion = remote.ServerVersion()
+		snap.ServerOS = identifier(snap.OS)
+		snap.OS = a.getOSLocal()
 	}
 	snap.RemoteAlias = a.remoteAlias
 	return snap, nil
@@ -557,6 +632,9 @@ func (a *App) getConfigPathLocal() string {
 // host without affecting the grandchild GUI (start → ShellExecute spawns
 // the target with its own STARTUPINFO, so SW_HIDE does not cascade).
 func (a *App) OpenFileInEditor(path string) error {
+	if err := a.refuseRemotePath(); err != nil {
+		return err
+	}
 	var cmd *exec.Cmd
 	switch {
 	case isWindows():
@@ -572,6 +650,9 @@ func (a *App) OpenFileInEditor(path string) error {
 
 // OpenInExplorer reveals a folder in the OS file manager.
 func (a *App) OpenInExplorer(path string) error {
+	if err := a.refuseRemotePath(); err != nil {
+		return err
+	}
 	var cmd *exec.Cmd
 	switch {
 	case isWindows():
@@ -585,10 +666,11 @@ func (a *App) OpenInExplorer(path string) error {
 	return cmd.Start()
 }
 
-// OpenInBrowser opens a URL in the default browser.
-// Do NOT use git.HideWindow here — same reason as OpenFileInEditor.
-func (a *App) OpenInBrowser(url string) error {
-	return git.OpenInBrowser(url)
+// OpenInBrowser opens a link in the default browser through the funnel
+// (external.go): https at once, http only when confirmed, nothing else. An
+// unconfirmed http link comes back as NeedsConfirm, and the frontend asks.
+func (a *App) OpenInBrowser(url string, confirmed bool) (ExternalOpenDTO, error) {
+	return openExternalDTO(url, confirmed)
 }
 
 // resolveAccountFolder returns the absolute path to the account's parent
@@ -659,21 +741,27 @@ func (a *App) openAccountInAppLocal(accountKey string, command string) error {
 	return cmd.Start()
 }
 
-// OpenAccountInBrowser opens the provider profile page for the account.
-func (a *App) OpenAccountInBrowser(accountKey string) error {
-	return a.be().OpenAccountInBrowser(accountKey)
+// OpenAccountInBrowser opens the provider profile page for the account. The
+// backend, which may be on another host, resolves the link; this machine
+// opens it through the funnel.
+func (a *App) OpenAccountInBrowser(accountKey string, confirmed bool) (ExternalOpenDTO, error) {
+	url, err := a.be().OpenAccountInBrowser(accountKey)
+	if err != nil {
+		return ExternalOpenDTO{}, err
+	}
+	return openExternalDTO(url, confirmed)
 }
 
-// openAccountInBrowserLocal is the local backend's OpenAccountInBrowser.
-func (a *App) openAccountInBrowserLocal(accountKey string) error {
+// openAccountInBrowserLocal is the local backend's OpenAccountInBrowser: it
+// resolves the link and opens nothing.
+func (a *App) openAccountInBrowserLocal(accountKey string) (string, error) {
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
 	a.mu.Unlock()
 	if !ok {
-		return fmt.Errorf("account %q not found", accountKey)
+		return "", fmt.Errorf("account %q not found", accountKey)
 	}
-	url := git.AccountProfileURL(acct.URL, acct.Username)
-	return git.OpenInBrowser(url)
+	return git.AccountProfileURL(acct.URL, acct.Username), nil
 }
 
 // repoWebURL resolves the provider web page for a configured repo from the
@@ -697,20 +785,21 @@ func (a *App) repoWebURL(sourceKey, repoKey string) (string, error) {
 }
 
 // OpenRepoInBrowser opens the provider page for a configured repo. The URL
-// is resolved on the Go side so a stale frontend store can never turn the
+// is resolved by the backend so a stale frontend store can never turn the
 // action into a silent no-op; lookup failures come back as errors the UI
-// shows in a dialog. No HideWindow: this launches the user's browser.
-func (a *App) OpenRepoInBrowser(sourceKey, repoKey string) error {
-	return a.be().OpenRepoInBrowser(sourceKey, repoKey)
+// shows in a dialog. This machine opens the link through the funnel.
+func (a *App) OpenRepoInBrowser(sourceKey, repoKey string, confirmed bool) (ExternalOpenDTO, error) {
+	url, err := a.be().OpenRepoInBrowser(sourceKey, repoKey)
+	if err != nil {
+		return ExternalOpenDTO{}, err
+	}
+	return openExternalDTO(url, confirmed)
 }
 
-// openRepoInBrowserLocal is the local backend's OpenRepoInBrowser.
-func (a *App) openRepoInBrowserLocal(sourceKey, repoKey string) error {
-	url, err := a.repoWebURL(sourceKey, repoKey)
-	if err != nil {
-		return err
-	}
-	return git.OpenInBrowser(url)
+// openRepoInBrowserLocal is the local backend's OpenRepoInBrowser: it
+// resolves the link and opens nothing.
+func (a *App) openRepoInBrowserLocal(sourceKey, repoKey string) (string, error) {
+	return a.repoWebURL(sourceKey, repoKey)
 }
 
 // SweepPreviewDTO holds the read-only preview of stale branches.
@@ -786,6 +875,9 @@ func (a *App) confirmSweepLocal(sourceKey, repoKey string) SweepDeleteDTO {
 // On Windows, editor launchers like code.cmd/cursor.cmd are batch wrappers;
 // HideWindow prevents the hosting cmd.exe from flashing before the GUI spawns.
 func (a *App) OpenInApp(path string, command string) error {
+	if err := a.refuseRemotePath(); err != nil {
+		return err
+	}
 	if command == "" {
 		return fmt.Errorf("command is required")
 	}
@@ -1223,6 +1315,9 @@ func (a *App) harnessProfileID() (string, error) {
 // auto-detected and config-stored entries call the same contract. Errors are
 // actionable strings the frontend can surface verbatim.
 func (a *App) OpenInAIHarness(path string, command string, args []string) error {
+	if err := a.refuseRemotePath(); err != nil {
+		return err
+	}
 	if command == "" {
 		return fmt.Errorf("AI harness command is required")
 	}
@@ -1344,7 +1439,7 @@ func (a *App) repairConfigLocal() ConfigRepairResult {
 	a.cfgLoaded = true
 	a.cfgLoadError = ""
 
-	a.restoreHostPrefs()
+	a.takeDiskPrefs()
 	if err := config.Save(a.cfg, a.cfgPath); err != nil {
 		return ConfigRepairResult{Success: false, Error: userText(fmt.Sprintf("saving repaired config: %v", err))}
 	}
@@ -1441,7 +1536,7 @@ func (a *App) restoreFromBackupLocal(backupPath string) ConfigRepairResult {
 	a.cfg = cfg
 	a.cfgLoaded = true
 	a.cfgLoadError = ""
-	a.restoreHostPrefs()
+	a.takeDiskPrefs()
 	if err := config.Save(a.cfg, a.cfgPath); err != nil {
 		return ConfigRepairResult{Success: false, Error: userText(fmt.Sprintf("saving restored config: %v", err))}
 	}
@@ -1551,6 +1646,11 @@ func (a *App) SetCollapsed(state config.CollapsedState) error {
 			return err
 		}
 	}
+	if a.remoteWindow() {
+		// The host half (sources, repos) is saved on the host from P5; until
+		// then it lives in this window only.
+		return nil
+	}
 	return a.be().SetCollapsed(state)
 }
 
@@ -1591,14 +1691,15 @@ func (a *App) setPeriodicSyncLocal(interval string) error {
 	if !validPeriodicSync(interval) {
 		return fmt.Errorf("invalid periodic sync interval: %s", interval)
 	}
+	if interval == "off" {
+		interval = ""
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if interval == "off" {
-		a.cfg.Global.PeriodicSync = ""
-	} else {
-		a.cfg.Global.PeriodicSync = interval
-	}
-	return a.saveConfig()
+	return a.savePrefs(func(p *config.ClientPrefs) error {
+		p.PeriodicSync = interval
+		return nil
+	})
 }
 
 // GetViewMode returns the persisted view mode ("full" or "compact").

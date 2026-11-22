@@ -91,9 +91,11 @@ type Backend interface {
 	OpenAccountFolder(accountKey string) error
 	OpenAccountInAIHarness(accountKey string, command string, args []string) error
 	OpenAccountInApp(accountKey string, command string) error
-	OpenAccountInBrowser(accountKey string) error
+	// OpenAccountInBrowser and OpenRepoInBrowser resolve the link only: the
+	// window's machine opens it (external.go).
+	OpenAccountInBrowser(accountKey string) (string, error)
 	OpenAccountProfile(accountKey, profileID string) error
-	OpenRepoInBrowser(sourceKey, repoKey string) error
+	OpenRepoInBrowser(sourceKey, repoKey string) (string, error)
 	PreflightMove(req MoveRequestDTO) MovePreflightDTO
 	PreviewSweep(sourceKey, repoKey string) SweepPreviewDTO
 	PullRepo(sourceKey, repoKey string)
@@ -278,13 +280,13 @@ func (b localBackend) OpenAccountInAIHarness(accountKey string, command string, 
 func (b localBackend) OpenAccountInApp(accountKey string, command string) error {
 	return b.a.openAccountInAppLocal(accountKey, command)
 }
-func (b localBackend) OpenAccountInBrowser(accountKey string) error {
+func (b localBackend) OpenAccountInBrowser(accountKey string) (string, error) {
 	return b.a.openAccountInBrowserLocal(accountKey)
 }
 func (b localBackend) OpenAccountProfile(accountKey, profileID string) error {
 	return b.a.openAccountProfileLocal(accountKey, profileID)
 }
-func (b localBackend) OpenRepoInBrowser(sourceKey, repoKey string) error {
+func (b localBackend) OpenRepoInBrowser(sourceKey, repoKey string) (string, error) {
 	return b.a.openRepoInBrowserLocal(sourceKey, repoKey)
 }
 func (b localBackend) PreflightMove(req MoveRequestDTO) MovePreflightDTO {

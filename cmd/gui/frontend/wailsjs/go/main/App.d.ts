@@ -170,7 +170,7 @@ export function OpenAccountInAIHarness(arg1:string,arg2:string,arg3:Array<string
 
 export function OpenAccountInApp(arg1:string,arg2:string):Promise<void>;
 
-export function OpenAccountInBrowser(arg1:string):Promise<void>;
+export function OpenAccountInBrowser(arg1:string,arg2:boolean):Promise<main.ExternalOpenDTO>;
 
 export function OpenAccountProfile(arg1:string,arg2:string):Promise<void>;
 
@@ -180,13 +180,13 @@ export function OpenInAIHarness(arg1:string,arg2:string,arg3:Array<string>):Prom
 
 export function OpenInApp(arg1:string,arg2:string):Promise<void>;
 
-export function OpenInBrowser(arg1:string):Promise<void>;
+export function OpenInBrowser(arg1:string,arg2:boolean):Promise<main.ExternalOpenDTO>;
 
 export function OpenInExplorer(arg1:string):Promise<void>;
 
 export function OpenProfile(arg1:string,arg2:string):Promise<void>;
 
-export function OpenRepoInBrowser(arg1:string,arg2:string):Promise<void>;
+export function OpenRepoInBrowser(arg1:string,arg2:string,arg3:boolean):Promise<main.ExternalOpenDTO>;
 
 export function OpenTerminalsManagerWindow():Promise<void>;
 

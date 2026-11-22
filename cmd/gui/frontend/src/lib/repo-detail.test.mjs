@@ -70,7 +70,7 @@ test('I display current errors and ignore failures from superseded reads', async
   assert.equal(await first, null);
   requests[1].reject(new Error('Cannot read clone'));
   const result = await second;
-  assert.equal(result.error, 'Error: Cannot read clone');
+  assert.equal(result.error, 'Cannot read clone');
   assert.deepEqual(result.incoming, []);
 });
 

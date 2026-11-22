@@ -13,6 +13,7 @@
   import { attentionItems, pinAttention, accountView } from '../views';
   import type { AttentionItem } from '../views';
   import { t } from '../i18n';
+  import { ro } from '../ro';
   import { onActivateKey } from '../keyboard';
   import UIIcon from '../UIIcon.svelte';
   import RepoTree from './RepoTree.svelte';
@@ -71,7 +72,7 @@
   {#if accountCount === 0}
     <div class="empty">
       <p>{$t('attention.noAccounts')}</p>
-      <button class="text-btn" on:click={onAddAccount}>{simple ? $t('nav.connect') : $t('account.add')}</button>
+      <button use:ro class="text-btn" on:click={onAddAccount}>{simple ? $t('nav.connect') : $t('account.add')}</button>
     </div>
   {:else if broken.length === 0 && groups.length === 0}
     <div class="empty">
@@ -87,7 +88,7 @@
           <span class="mark" style="color: {sc(h.color)}" aria-hidden="true">{h.mark}</span>
           <button class="acct-name" on:click={() => setView(accountView(key))}>{key}</button>
           <span class="acct-words" style="color: {sc(h.color)}">{$t(h.key)}</span>
-          {#if h.fix}<button class="text-btn acct-fix" on:click={() => fixCredential(key, h.fix)}>{$t(h.fixKey)}</button>{/if}
+          {#if h.fix}<button use:ro class="text-btn acct-fix" on:click={() => fixCredential(key, h.fix)}>{$t(h.fixKey)}</button>{/if}
         </div>
       {/each}
     {/if}

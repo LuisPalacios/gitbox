@@ -1,10 +1,11 @@
 # The sshd that the remote-mode integration tests connect to (#239):
-# OpenSSH and fish on Debian slim, with a "test" user that logs in with a
-# key only. scripts/remote-it.sh builds it as gitbox-sshd.
+# OpenSSH, fish and git on Debian slim, with a "test" user that logs in with
+# a key only. git lets the read-only session test (#240) check real clones.
+# scripts/remote-it.sh builds it as gitbox-sshd.
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssh-server fish \
+    && apt-get install -y --no-install-recommends openssh-server fish git \
     && rm -rf /var/lib/apt/lists/*
 
 # The key lives outside the home folder, so a noexec tmpfs mounted over the

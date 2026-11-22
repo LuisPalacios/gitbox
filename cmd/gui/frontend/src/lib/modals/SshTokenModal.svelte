@@ -5,7 +5,7 @@
   import { bridge } from '../bridge';
   import { t } from '../i18n';
   import Rich from '../Rich.svelte';
-  import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime';
+  import { openExternal } from '../external';
 
   export let openDiscover: (accountKey: string) => void;
 
@@ -70,7 +70,7 @@
           <p class="cred-step-desc" style="margin-top: 6px;"><Rich key="cred.scopes" vars={{ scopes: sshDiscoveryScopes }} /></p>
         {/if}
         {#if sshDiscoveryGuide}
-          <p class="cred-step-link" style="margin-top: 4px;"><a href={sshDiscoveryGuide} on:click|preventDefault={() => BrowserOpenURL(sshDiscoveryGuide)}>{sshDiscoveryGuide}</a></p>
+          <p class="cred-step-link" style="margin-top: 4px;"><a href={sshDiscoveryGuide} on:click|preventDefault={() => openExternal(sshDiscoveryGuide)}>{sshDiscoveryGuide}</a></p>
         {/if}
         <div class="form-row" style="margin-top: 10px;">
           <label class="form-label" for="ssh-disc-token">{$t('onboard.token')}</label>

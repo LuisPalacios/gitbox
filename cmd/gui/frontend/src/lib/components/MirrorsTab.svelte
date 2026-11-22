@@ -5,6 +5,7 @@
   import { mirrors, mirrorStates, themeStore } from '../stores';
   import { statusColor } from '../status';
   import { t } from '../i18n';
+  import { ro } from '../ro';
   import Rich from '../Rich.svelte';
   import Card from '../Card.svelte';
   import UIIcon from '../UIIcon.svelte';
@@ -28,13 +29,13 @@
 
   $: sc = (s: string) => statusColor(s, $themeStore);
 
-  function mirrorDirLabelHtml(repo: MirrorRepo, m: MirrorDTO): string {
-    const origin = repo.origin === 'src' ? m.account_src : m.account_dst;
-    const backup = repo.origin === 'src' ? m.account_dst : m.account_src;
-    const src = `<span class="mir-origin">${origin}</span>`;
-    const dst = `<span class="mir-backup">${backup}</span>`;
-    if (repo.direction === 'push') return `${src} <span class="mir-arrow">⟶</span> ${dst}`;
-    return `${dst} <span class="mir-arrow">⟵</span> ${src}`;
+  // The two accounts of a mirror repo, the source of truth first. Account
+  // keys come from the config, which in a remote window is the host's, so
+  // they render as text (#240).
+  function mirrorEnds(repo: MirrorRepo, m: MirrorDTO): { origin: string; backup: string } {
+    return repo.origin === 'src'
+      ? { origin: m.account_src, backup: m.account_dst }
+      : { origin: m.account_dst, backup: m.account_src };
   }
 
   function mirrorStatusColor(_repo: MirrorRepo, live: MirrorStatusResult | undefined, theme: string): string {
@@ -133,7 +134,7 @@
       provider="MIRROR" count={{ text: `${mstats.active}/${mstats.total}`, title: mstate, style: `color: ${mcolor}` }}
       actions={[{ label: $t('mirror.check'), onClick: () => checkMirrorStatus(mirrorKey), title: $t('mirror.checkStatus') }]} />
   {/each}
-  <button class="card card-add" on:click={onAddGroup} title={$t('mirror.addGroup')}>
+  <button use:ro class="card card-add" on:click={onAddGroup} title={$t('mirror.addGroup')}>
     <span class="card-add-icon">+</span>
   </button>
 </div>
@@ -150,9 +151,9 @@
           {#if mirrorChecking[mirrorKey]}
             <span class="mirror-checking"><div class="spinner-sm"></div></span>
           {/if}
-          <button class="btn-tab-action" on:click={() => onAddRepo(mirrorKey)}>{$t('mirror.addRepo')}</button>
+          <button use:ro class="btn-tab-action" on:click={() => onAddRepo(mirrorKey)}>{$t('mirror.addRepo')}</button>
           {#if deleteMode}
-            <button class="icon-btn icon-btn-danger btn-delete-x" on:click={() => onDeleteGroup(mirrorKey)} title={$t('mirror.deleteGroup', { name: mirrorKey })} aria-label={$t('mirror.deleteGroup', { name: mirrorKey })}><UIIcon name="x" /></button>
+            <button use:ro class="icon-btn icon-btn-danger btn-delete-x" on:click={() => onDeleteGroup(mirrorKey)} title={$t('mirror.deleteGroup', { name: mirrorKey })} aria-label={$t('mirror.deleteGroup', { name: mirrorKey })}><UIIcon name="x" /></button>
           {/if}
         </div>
       </div>
@@ -168,7 +169,13 @@
             <span class="mirror-dot" style="color:{mirrorStatusColor(repo, live, $themeStore)}">{mirrorStatusSymbol(repo, live)}</span>
           {/if}
           <span class="mirror-repo-name">{repoName}</span>
-          <span class="mirror-direction">{@html mirrorDirLabelHtml(repo, mir)}</span>
+          <span class="mirror-direction" translate="no">
+            {#if repo.direction === 'push'}
+              <span class="mir-origin">{mirrorEnds(repo, mir).origin}</span> <span class="mir-arrow">⟶</span> <span class="mir-backup">{mirrorEnds(repo, mir).backup}</span>
+            {:else}
+              <span class="mir-backup">{mirrorEnds(repo, mir).backup}</span> <span class="mir-arrow">⟵</span> <span class="mir-origin">{mirrorEnds(repo, mir).origin}</span>
+            {/if}
+          </span>
           {#if settingUp}
             <span class="mirror-status-text">{$t('mirror.settingUp')}</span>
           {:else}
@@ -179,12 +186,12 @@
           {/if}
           {#if live?.error && live.error.startsWith('missing API token in ') && !deleteMode}
             {@const errAcct = live.error.replace('missing API token in ', '')}
-            <button class="btn-sm btn-fix" on:click={() => openTokenSetup(errAcct)} title={$t('mirror.setupToken', { account: errAcct })}>{$t('mirror.fixCredentials')}</button>
+            <button use:ro class="btn-sm btn-fix" on:click={() => openTokenSetup(errAcct)} title={$t('mirror.setupToken', { account: errAcct })}>{$t('mirror.fixCredentials')}</button>
           {:else if !deleteMode}
-            <button class="btn-sm btn-setup" on:click={() => setupMirrorRepo(mirrorKey, repoName)} disabled={settingUp}>{$t('mirror.setup')}</button>
+            <button use:ro class="btn-sm btn-setup" on:click={() => setupMirrorRepo(mirrorKey, repoName)} disabled={settingUp}>{$t('mirror.setup')}</button>
           {/if}
           {#if deleteMode}
-            <button class="icon-btn icon-btn-danger btn-delete-x" on:click={() => onDeleteRepo(mirrorKey, repoName)} title={$t('mirror.deleteRepo', { repo: repoName, group: mirrorKey })} aria-label={$t('mirror.deleteRepo', { repo: repoName, group: mirrorKey })}><UIIcon name="x" /></button>
+            <button use:ro class="icon-btn icon-btn-danger btn-delete-x" on:click={() => onDeleteRepo(mirrorKey, repoName)} title={$t('mirror.deleteRepo', { repo: repoName, group: mirrorKey })} aria-label={$t('mirror.deleteRepo', { repo: repoName, group: mirrorKey })}><UIIcon name="x" /></button>
           {/if}
         </div>
       {/each}
@@ -255,7 +262,7 @@
   .mirror-dot { font-size: 11px; flex-shrink: 0; width: 14px; text-align: center; }
   .mirror-repo-name { font-weight: 500; color: var(--text-primary); min-width: 120px; }
   .mirror-direction { font-size: 11px; flex-shrink: 0; }
-  /* Spans of mirrorDirLabelHtml(), rendered with {@html}. */
+  /* The two ends of a mirror repo and the arrow between them. */
   :global(.mir-origin) { color: #61fd5f; font-weight: 500; }
   :global(.mir-backup) { color: #F07623; font-weight: 500; }
   :global(.mir-arrow) { font-size: 14px; font-weight: 700; color: #F07623; vertical-align: middle; }
