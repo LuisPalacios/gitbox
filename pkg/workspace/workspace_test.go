@@ -103,11 +103,13 @@ func TestRootFiles_ListsOnlyRootWorkspaceFiles(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "A.Code-Workspace"), "{}")
 	writeFile(t, filepath.Join(dir, "notes.md"), "")
 	writeFile(t, filepath.Join(dir, "sub", "deep.code-workspace"), "{}")
-	if got, want := RootFiles(dir), []string{"A.Code-Workspace", "b.code-workspace"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("RootFiles = %v, want %v", got, want)
+	got, err := RootFiles(dir)
+	want := []string{"A.Code-Workspace", "b.code-workspace"}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("RootFiles = %v, %v, want %v", got, err, want)
 	}
-	if got := RootFiles(filepath.Join(dir, "missing")); got != nil {
-		t.Errorf("RootFiles(missing) = %v, want nil", got)
+	if got, err := RootFiles(filepath.Join(dir, "missing")); got != nil || !os.IsNotExist(err) {
+		t.Errorf("RootFiles(missing) = %v, %v, want no files and not-exist error", got, err)
 	}
 }
 
@@ -121,7 +123,8 @@ func TestSync_OneFileFlagsContainer(t *testing.T) {
 	if len(res.Choices) != 0 || len(res.Changes) != 1 {
 		t.Fatalf("Sync = %+v, want one change", res)
 	}
-	if !Apply(cfg, res.Changes) {
+	var state SyncState
+	if changed, _ := state.Apply(cfg, res.Changes); !changed {
 		t.Fatal("Apply reported no change")
 	}
 	if r := repoOf(cfg, "github-test", "team/frontend"); !r.Container || r.Workspace != "front.code-workspace" {
@@ -133,6 +136,7 @@ func TestSync_OneFileFlagsContainer(t *testing.T) {
 }
 
 func TestSync_SeveralFilesAskOnceAndKeepPick(t *testing.T) {
+	var state SyncState
 	cfg := newTestConfig(t)
 	dir := makeRepoDir(t, cfg, "github-test", "team/frontend")
 	writeFile(t, filepath.Join(dir, "a.code-workspace"), "{}")
@@ -143,7 +147,7 @@ func TestSync_SeveralFilesAskOnceAndKeepPick(t *testing.T) {
 	if !reflect.DeepEqual(res.Choices, want) {
 		t.Fatalf("Choices = %+v, want %+v", res.Choices, want)
 	}
-	Apply(cfg, res.Changes)
+	state.Apply(cfg, res.Changes)
 	if r := repoOf(cfg, "github-test", "team/frontend"); !r.Container || r.Workspace != "" {
 		t.Errorf("repo = %+v, want container without a pick", r)
 	}
@@ -164,7 +168,7 @@ func TestSync_SeveralFilesAskOnceAndKeepPick(t *testing.T) {
 	if len(res.Choices) != 1 {
 		t.Fatalf("Sync after the pick vanished = %+v, want a choice", res)
 	}
-	Apply(cfg, res.Changes)
+	state.Apply(cfg, res.Changes)
 	if r := repoOf(cfg, "github-test", "team/frontend"); r.Workspace != "" {
 		t.Errorf("stale pick kept: %+v", r)
 	}
@@ -174,13 +178,14 @@ func TestSync_SeveralFilesAskOnceAndKeepPick(t *testing.T) {
 // in while it is away, and it takes over again, without asking, when it
 // comes back.
 func TestSync_PreferredFileComesBack(t *testing.T) {
+	var state SyncState
 	cfg := newTestConfig(t)
 	dir := makeRepoDir(t, cfg, "github-test", "team/frontend")
 	writeFile(t, filepath.Join(dir, "other.code-workspace"), "{}")
 	src := cfg.Sources["github-test"]
 	src.Repos["team/frontend"] = config.Repo{Container: true, Workspace: "mine.code-workspace", WorkspacePreferred: "mine.code-workspace"}
 
-	Apply(cfg, Sync(cfg).Changes)
+	state.Apply(cfg, Sync(cfg).Changes)
 	if r := repoOf(cfg, "github-test", "team/frontend"); r.Workspace != "other.code-workspace" || r.WorkspacePreferred != "mine.code-workspace" {
 		t.Fatalf("while away: repo = %+v, want other open and mine remembered", r)
 	}
@@ -190,19 +195,20 @@ func TestSync_PreferredFileComesBack(t *testing.T) {
 	if len(res.Choices) != 0 {
 		t.Errorf("asked although the preferred file is back: %+v", res.Choices)
 	}
-	Apply(cfg, res.Changes)
+	state.Apply(cfg, res.Changes)
 	if r := repoOf(cfg, "github-test", "team/frontend"); r.Workspace != "mine.code-workspace" {
 		t.Errorf("back: repo = %+v, want mine open again", r)
 	}
 }
 
 func TestSync_FileGoneClearsPickKeepsContainer(t *testing.T) {
+	var state SyncState
 	cfg := newTestConfig(t)
 	makeRepoDir(t, cfg, "github-test", "team/frontend")
 	src := cfg.Sources["github-test"]
 	src.Repos["team/frontend"] = config.Repo{Container: true, Workspace: "gone.code-workspace"}
 
-	Apply(cfg, Sync(cfg).Changes)
+	state.Apply(cfg, Sync(cfg).Changes)
 	if r := repoOf(cfg, "github-test", "team/frontend"); !r.Container || r.Workspace != "" {
 		t.Errorf("repo = %+v, want container without a workspace", r)
 	}
@@ -212,15 +218,78 @@ func TestSync_SkipsClonesNotOnDisk(t *testing.T) {
 	cfg := newTestConfig(t)
 	src := cfg.Sources["github-test"]
 	src.Repos["team/frontend"] = config.Repo{Container: true, Workspace: "w.code-workspace"}
-	if res := Sync(cfg); len(res.Changes) != 0 {
-		t.Errorf("Sync = %+v, want a missing clone left alone", res)
+	res := Sync(cfg)
+	if len(res.Changes) != 0 || len(res.Unknown) != 1 || !os.IsNotExist(res.Unknown[0].Err) {
+		t.Errorf("Sync = %+v, want a missing clone left alone and marked unknown", res)
+	}
+}
+
+func TestSync_UnreadableRootPreservesWorkspaceAndResetsMiss(t *testing.T) {
+	cfg := newTestConfig(t)
+	dir := makeRepoDir(t, cfg, "github-test", "team/frontend")
+	repos := cfg.Sources["github-test"].Repos
+	repos["team/frontend"] = config.Repo{Container: true, Workspace: "current.code-workspace", WorkspacePreferred: "preferred.code-workspace"}
+	writeFile(t, filepath.Join(dir, "current.code-workspace"), "{}")
+	var state SyncState
+	state.Apply(cfg, Sync(cfg).Changes)
+
+	offline := dir + ".offline"
+	if err := os.Rename(dir, offline); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, dir, "")
+	res := Sync(cfg)
+	if len(res.Unknown) != 1 || res.Unknown[0].Err == nil || len(res.Changes) != 0 {
+		t.Fatalf("Sync = %+v, want one failed read with no changes", res)
+	}
+	state.Apply(cfg, res.Changes)
+	if got := repos["team/frontend"]; !got.Container || got.Workspace != "current.code-workspace" || got.WorkspacePreferred != "preferred.code-workspace" {
+		t.Fatalf("unreadable root changed workspace: %+v", got)
+	}
+	if err := os.Remove(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(offline, dir); err != nil {
+		t.Fatal(err)
+	}
+	state.Apply(cfg, Sync(cfg).Changes)
+	if got := repos["team/frontend"].WorkspacePreferred; got != "preferred.code-workspace" {
+		t.Fatalf("the first successful read after a failure cleared %q", got)
+	}
+	if changed, skipped := state.Apply(cfg, Sync(cfg).Changes); !changed || len(skipped) != 0 || repos["team/frontend"].WorkspacePreferred != "" {
+		t.Errorf("second confirmed absence did not clear the preference: changed=%v skipped=%v", changed, skipped)
+	}
+}
+
+func TestApply_SkipsChangedWorkspaceAndClonePath(t *testing.T) {
+	cfg := newTestConfig(t)
+	makeRepoDir(t, cfg, "github-test", "team/frontend")
+	repos := cfg.Sources["github-test"].Repos
+	saved := config.Repo{Container: true, Workspace: "gone.code-workspace", WorkspacePreferred: "gone.code-workspace"}
+	repos["team/frontend"] = saved
+	plan := Sync(cfg)
+	for name, current := range map[string]config.Repo{
+		"new pick": {Container: true, Workspace: "new.code-workspace", WorkspacePreferred: "new.code-workspace"},
+		"new path": {Container: true, Workspace: saved.Workspace, WorkspacePreferred: saved.WorkspacePreferred, CloneFolder: t.TempDir()},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repos["team/frontend"] = current
+			var state SyncState
+			changed, skipped := state.Apply(cfg, plan.Changes)
+			if changed || !reflect.DeepEqual(skipped, []status.RepoRef{{Source: "github-test", Repo: "team/frontend"}}) ||
+				repos["team/frontend"] != current {
+				t.Errorf("stale Apply reported %v / %v, repo now %+v", changed, skipped, repos["team/frontend"])
+			}
+		})
 	}
 }
 
 func TestApply_SkipsRemovedRepos(t *testing.T) {
 	cfg := newTestConfig(t)
-	if Apply(cfg, []Change{{Source: "github-test", Repo: "gone/repo", Container: true}, {Source: "nope", Repo: "x"}}) {
-		t.Error("Apply changed a repo that is not in the config")
+	var state SyncState
+	changed, skipped := state.Apply(cfg, []Change{{Source: "github-test", Repo: "gone/repo", Container: true}, {Source: "nope", Repo: "x"}})
+	if changed || len(skipped) != 2 {
+		t.Errorf("Apply = %v / %v, want both removed repos skipped", changed, skipped)
 	}
 }
 

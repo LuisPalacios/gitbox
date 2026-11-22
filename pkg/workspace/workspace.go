@@ -21,12 +21,21 @@ import (
 // Ext is the VS Code workspace file extension.
 const Ext = ".code-workspace"
 
-// Change is one repo update Sync decided: its new container flag and
-// workspace file.
+// Change records what the scan read and the workspace values it proposes.
 type Change struct {
+	Source, Repo            string
+	Path                    string
+	OldContainer, Container bool
+	OldWorkspace, Workspace string
+	OldPreferred            string
+	preferredMissing        bool
+}
+
+// Unknown records a clone whose root could not be read.
+type Unknown struct {
 	Source, Repo string
-	Container    bool
-	Workspace    string
+	Path         string
+	Err          error
 }
 
 // Choice is a container whose root holds several workspace files and no
@@ -40,6 +49,7 @@ type Choice struct {
 type Result struct {
 	Changes []Change
 	Choices []Choice
+	Unknown []Unknown
 }
 
 // Placeholder is a folder a container's workspace file lists inside the
@@ -52,10 +62,10 @@ type Placeholder struct {
 
 // RootFiles returns the workspace file names directly in dir, sorted. It
 // does not recurse.
-func RootFiles(dir string) []string {
+func RootFiles(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	var out []string
 	for _, e := range entries {
@@ -64,7 +74,7 @@ func RootFiles(dir string) []string {
 		}
 	}
 	slices.Sort(out)
-	return out
+	return out, nil
 }
 
 // Sync compares every clone on disk with the workspace files at its root.
@@ -76,9 +86,8 @@ func RootFiles(dir string) []string {
 //   - None: a stale file is cleared. The container flag stays, so a
 //     container I flagged by hand keeps working.
 //
-// The preferred file is never cleared: it wins again when it comes back.
-//
-// Clones that are not on disk (not cloned, root offline) are left alone.
+// Failed reads preserve the current file and preference, including when
+// the root of a clone with a recorded workspace is offline.
 func Sync(cfg *config.Config) Result {
 	var res Result
 	for _, srcKey := range cfg.OrderedSourceKeys() {
@@ -86,11 +95,15 @@ func Sync(cfg *config.Config) Result {
 		for _, repoKey := range src.OrderedRepoKeys() {
 			repo := src.Repos[repoKey]
 			dir := status.RepoPath(cfg, srcKey, repoKey, repo)
-			if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+			files, err := RootFiles(dir)
+			if err != nil {
+				if repo.Workspace != "" || repo.WorkspacePreferred != "" {
+					res.Unknown = append(res.Unknown, Unknown{srcKey, repoKey, dir, err})
+				}
 				continue
 			}
-			files := RootFiles(dir)
 			container, ws := repo.Container, repo.Workspace
+			choose := false
 			switch {
 			case len(files) == 1:
 				container, ws = true, files[0]
@@ -100,38 +113,72 @@ func Sync(cfg *config.Config) Result {
 				case slices.Contains(files, repo.WorkspacePreferred):
 					ws = repo.WorkspacePreferred
 				case !slices.Contains(files, ws):
-					ws = ""
+					ws, choose = "", true
 					res.Choices = append(res.Choices, Choice{Source: srcKey, Repo: repoKey, Files: files})
 				}
 			default:
 				ws = ""
 			}
-			if container != repo.Container || ws != repo.Workspace {
-				res.Changes = append(res.Changes, Change{Source: srcKey, Repo: repoKey, Container: container, Workspace: ws})
+			preferredMissing := repo.WorkspacePreferred != "" && !slices.Contains(files, repo.WorkspacePreferred)
+			if container != repo.Container || ws != repo.Workspace || preferredMissing || choose {
+				res.Changes = append(res.Changes, Change{
+					Source: srcKey, Repo: repoKey, Path: dir,
+					OldContainer: repo.Container, Container: container,
+					OldWorkspace: repo.Workspace, Workspace: ws,
+					OldPreferred: repo.WorkspacePreferred, preferredMissing: preferredMissing,
+				})
 			}
 		}
 	}
 	return res
 }
 
-// Apply writes Sync's changes into cfg, skipping repos removed meanwhile,
-// and reports whether anything changed. The caller saves.
-func Apply(cfg *config.Config, changes []Change) bool {
-	changed := false
+type absence struct {
+	path string
+	file string
+}
+
+// SyncState remembers first confirmed absences across passes in this session.
+// Its zero value is ready to use. The caller serializes calls to Apply.
+type SyncState struct {
+	absent map[status.RepoRef]absence
+}
+
+// Apply writes a change only while the clone and workspace values it read
+// still match. A second consecutive successful read of the same root can
+// clear an absent preference. The caller saves changes and retries skips.
+func (s *SyncState) Apply(cfg *config.Config, changes []Change) (changed bool, skipped []status.RepoRef) {
+	var next map[status.RepoRef]absence
 	for _, c := range changes {
-		src, ok := cfg.Sources[c.Source]
-		if !ok {
-			continue
-		}
+		src := cfg.Sources[c.Source]
 		repo, ok := src.Repos[c.Repo]
-		if !ok || (repo.Container == c.Container && repo.Workspace == c.Workspace) {
+		ref := status.RepoRef{Source: c.Source, Repo: c.Repo}
+		if !ok || repo.Container != c.OldContainer || repo.Workspace != c.OldWorkspace ||
+			repo.WorkspacePreferred != c.OldPreferred || status.RepoPath(cfg, c.Source, c.Repo, repo) != c.Path {
+			skipped = append(skipped, ref)
 			continue
 		}
-		repo.Container, repo.Workspace = c.Container, c.Workspace
+		preferred := repo.WorkspacePreferred
+		if c.preferredMissing {
+			miss := absence{path: c.Path, file: preferred}
+			if s.absent[ref] == miss {
+				preferred = ""
+			} else {
+				if next == nil {
+					next = make(map[status.RepoRef]absence)
+				}
+				next[ref] = miss
+			}
+		}
+		if repo.Container == c.Container && repo.Workspace == c.Workspace && repo.WorkspacePreferred == preferred {
+			continue
+		}
+		repo.Container, repo.Workspace, repo.WorkspacePreferred = c.Container, c.Workspace, preferred
 		src.Repos[c.Repo] = repo
 		changed = true
 	}
-	return changed
+	s.absent = next
+	return changed, skipped
 }
 
 // Placeholders returns, for every container with a workspace file, the

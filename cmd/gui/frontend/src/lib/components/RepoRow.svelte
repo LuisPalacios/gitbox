@@ -48,7 +48,7 @@
   import { fade } from 'svelte/transition';
   import { bridge } from '../bridge';
   import { pushNotice, errorText } from '../notices';
-  import { accounts, repoStates, prSettings, prsByAccount, lookupPRSummary, sources, workspaceMembers, isSynced, themeStore } from '../stores';
+  import { accounts, repoStates, prSettings, prsByAccount, lookupPRSummary, sources, workspaceMembers, workspaceUnknown, isSynced, themeStore } from '../stores';
   import { statusColor, simpleKind, simpleColor, rowBusy, rowGlyph, statusLabel, attentionRank, CALM_RANK, COUNT_BADGES } from '../status';
   import type { SimpleKind } from '../status';
   import { t } from '../i18n';
@@ -119,6 +119,7 @@
   // have to pick one among several.
   $: wsFile = $sources[rowSourceKey]?.repos[repoName]?.workspace || '';
   $: wsPending = workspaceChoices.has(repoKey);
+  $: wsStale = $workspaceUnknown.has(repoKey);
   // A container with a workspace file and the clones that file lists show
   // their names in the workspace colour: what VS Code opens.
   $: inWorkspace = (isContainer && !!wsFile) || $workspaceMembers.has(repoKey);
@@ -357,6 +358,12 @@
   {/if}
 {/snippet}
 
+{#snippet containerIcon()}
+  {@const tip = wsFile ? $t('row.containerWsTip', { file: wsFile }) : $t('row.containerTip')}
+  {@const label = wsStale ? `${tip} · ${$t('row.workspaceStale')}` : tip}
+  <span class="container-icon" class:workspace-stale={wsStale} title={label} aria-label={label} role="img">📁</span>
+{/snippet}
+
 <div class="repo-row" class:repo-row-clickable={rowOpensDetail}
   class:repo-row-nested={depth > 0} class:calm
   style="--depth: {depth}"
@@ -382,6 +389,7 @@
       <span class="repo-name" class:ws-member={inWorkspace} title={repoName}>{shortName(repoName)}</span>
     {/if}
     {@render rowTags()}
+    {#if isContainer && wsStale}{@render containerIcon()}{/if}
     {#if state.status === 'syncing' || state.status === 'cloning'}
       <div class="progress-track">
         <div class="progress-fill" style="width:{state.progress}%; background:{kindColor}"></div>
@@ -434,8 +442,7 @@
   {/if}
   {@render rowTags()}
   {#if isContainer}
-    {@const tip = wsFile ? $t('row.containerWsTip', { file: wsFile }) : $t('row.containerTip')}
-    <span class="container-icon" title={tip} aria-label={tip} role="img">📁</span>
+    {@render containerIcon()}
     {#if wsPending}
       <button class="choose-workspace-badge"
               on:click|stopPropagation={() => chooseWorkspace(rowSourceKey, repoName)}
@@ -556,6 +563,7 @@
   .repo-row:hover { background: var(--bg-row-hover); }
   .dot { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; }
   .repo-name { font-size: 13px; color: var(--text-repo); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .workspace-stale { opacity: 0.5; }
   .repo-name.ws-member { color: var(--text-workspace); font-weight: 500; }
   .progress-track { width: 110px; height: 4px; background: var(--ring-bg); border-radius: 2px; overflow: hidden; flex-shrink: 0; }
   .progress-fill { height: 100%; border-radius: 2px; transition: width 0.12s ease-out; }

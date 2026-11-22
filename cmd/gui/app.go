@@ -34,6 +34,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/status"
 	"github.com/LuisPalacios/gitbox/pkg/terminals"
 	"github.com/LuisPalacios/gitbox/pkg/update"
+	"github.com/LuisPalacios/gitbox/pkg/workspace"
 )
 
 // App is the Wails application struct. All exported methods become
@@ -90,7 +91,9 @@ type App struct {
 	reconcileMu      sync.Mutex
 	reconcileScan    func(*config.Config) (reconcile.Result, error)
 	reconcileClone   func(*config.Config) (*config.Config, error)
-	reconcilePending bool // guarded by mu; one asynchronous stale-plan retry
+	workspaceSync    workspace.SyncState // guarded by reconcileMu
+	workspaceUnknown []string            // guarded by reconcileMu
+	reconcilePending bool                // guarded by mu; one asynchronous stale-plan retry
 	mu               sync.Mutex
 	savedWindowPos   *config.WindowState // full-mode window state pre-loaded from config
 	savedCompactPos  *config.WindowState // compact-mode window state pre-loaded from config

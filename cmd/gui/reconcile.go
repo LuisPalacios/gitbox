@@ -12,12 +12,14 @@ package main
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/LuisPalacios/gitbox/pkg/adopt"
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/reconcile"
+	"github.com/LuisPalacios/gitbox/pkg/status"
 	"github.com/LuisPalacios/gitbox/pkg/workspace"
 )
 
@@ -48,6 +50,8 @@ type ReconcileDTO struct {
 	// WorkspaceMembers lists the clones ("source/repo") a container's
 	// workspace file lists inside it.
 	WorkspaceMembers []string `json:"workspaceMembers"`
+	// WorkspaceUnknown lists the saved workspaces whose clone roots could not be read.
+	WorkspaceUnknown []string `json:"workspaceUnknown"`
 	Error            string   `json:"error,omitempty"`
 }
 
@@ -154,7 +158,7 @@ func (a *App) scanConfig() (reconcile.Result, error) {
 
 // Reconcile runs one pass: re-link moved clones, adopt confident ones in
 // place, and return what needs me. Emits "reconcile:done" when the config
-// changed.
+// or workspace availability changed.
 func (a *App) Reconcile() ReconcileDTO { return a.be().Reconcile() }
 
 // reconcileLocal is the local backend's Reconcile.
@@ -176,14 +180,26 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 		return emptyReconcile("")
 	}
 
-	choices, wsChanged, wsErr := a.syncWorkspaces()
+	choices, unknown, wsChanged, wsSkipped, wsErr := a.syncWorkspaces()
+	unknownChanged := unknown != nil && !slices.Equal(a.workspaceUnknown, unknown)
+	if unknownChanged {
+		a.workspaceUnknown = unknown
+	}
+	if retryStale && wsSkipped {
+		a.retryReconcileAfterRefresh()
+	}
 	res, err := a.scanConfig()
 	if err != nil {
 		a.mu.Unlock()
 		if retryStale && errors.Is(err, ErrStalePlan) {
 			a.retryReconcileAfterRefresh()
 		}
-		return emptyReconcile(userMsg(err))
+		out := emptyReconcile(userMsg(err))
+		out.WorkspaceUnknown = unknown
+		if unknownChanged {
+			a.sink().Emit("reconcile:done", out)
+		}
+		return out
 	}
 	placed, changed := reconcile.Apply(a.cfg, res)
 	saveErr := wsErr
@@ -203,6 +219,7 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 	}
 	out := emptyReconcile("")
 	out.Adopted, out.Relinked, out.WorkspacesChanged = len(placed), len(res.Relink), wsChanged
+	out.WorkspaceUnknown = unknown
 	for _, c := range choices {
 		out.WorkspaceChoices = append(out.WorkspaceChoices, WorkspaceChoiceDTO{Source: c.Source, Repo: c.Repo, Files: c.Files})
 	}
@@ -216,7 +233,7 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 	if saveErr != nil {
 		out.Error = userMsg(saveErr)
 	}
-	if changed || wsChanged {
+	if changed || wsChanged || unknownChanged {
 		a.sink().Emit("reconcile:done", out)
 	}
 	return out
@@ -224,20 +241,34 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 
 // syncWorkspaces runs workspace.Sync on a snapshot without the lock, then
 // applies its changes to the live config and saves.
-func (a *App) syncWorkspaces() ([]workspace.Choice, bool, error) {
+func (a *App) syncWorkspaces() (choices []workspace.Choice, unknown []string, changed, skipped bool, err error) {
 	a.mu.Lock()
 	snap, err := a.cfg.Clone()
 	a.mu.Unlock()
 	if err != nil {
-		return nil, false, err
+		return nil, nil, false, false, err
 	}
 	ws := workspace.Sync(snap)
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if !workspace.Apply(a.cfg, ws.Changes) {
-		return ws.Choices, false, nil
+	changed, stale := a.workspaceSync.Apply(a.cfg, ws.Changes)
+	unknown = []string{}
+	for _, u := range ws.Unknown {
+		repo, ok := a.cfg.Sources[u.Source].Repos[u.Repo]
+		if ok && (repo.Workspace != "" || repo.WorkspacePreferred != "") &&
+			status.RepoPath(a.cfg, u.Source, u.Repo, repo) == u.Path {
+			unknown = append(unknown, u.Source+"/"+u.Repo)
+		}
 	}
-	return ws.Choices, true, a.saveConfig()
+	for _, choice := range ws.Choices {
+		if !slices.Contains(stale, status.RepoRef{Source: choice.Source, Repo: choice.Repo}) {
+			choices = append(choices, choice)
+		}
+	}
+	if changed {
+		err = a.saveConfig()
+	}
+	return choices, unknown, changed, len(stale) > 0, err
 }
 
 // workspaceTree lists, for every container's workspace, the folders not

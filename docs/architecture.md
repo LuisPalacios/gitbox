@@ -309,8 +309,8 @@ Installs a curated managed block of OS-junk patterns (`.DS_Store`, `Thumbs.db`, 
 
 Ties VS Code `.code-workspace` files to the clones that hold them. Gitbox never creates, edits, generates or deletes workspace files.
 
-- `Sync` reads the root of every clone on disk (it doesn't recurse). One workspace file makes the clone a container with that file in `repo.workspace`. Several make it a container that opens the preferred file (`repo.workspace_preferred`, set when the user picks one) when it is there, else keeps its current file, else reports a `Choice` for the GUI to ask about. None clears a stale pick and leaves the container flag alone.
-- `Apply` writes those changes into the config.
+- `Sync` reads each clone root. One workspace file makes the clone a container and sets `repo.workspace`. With several files, Gitbox uses the preferred file if present, keeps the current file if it still exists, or asks the user to choose. A successful read with no workspace files clears the current file and keeps the container flag. On a read failure, Gitbox preserves both and marks the workspace as stale.
+- `Apply` writes each change only if the clone path, container flag, current file and preferred file still match the scan. Gitbox schedules one coalesced retry if it skips a stale change. It clears a preferred file only after two consecutive successful reads of the same clone root that both show the file is missing.
 - `Members` reads the folders a workspace file lists inside its container. `Placeholders` keeps those that aren't on disk, that no configured repo resolves to, and that don't sit inside another clone (a submodule, say). `MemberRepos` lists the configured clones it names, which the GUI shows in the workspace colour.
 
 Workspace files are JSON with comments, so comments and trailing commas are stripped before parsing. The disk reconcile binding runs `Sync` on a snapshot without the config lock, applies the changes under it, then runs the reconcile scan, so a container that just gained a workspace file has its nested clones adopted in the same pass.
@@ -340,7 +340,7 @@ Ordinary orphan discovery stops at each clone boundary, including a `.git` file 
 - A confident match is **adopted** in place.
 - Everything else waits in the Unmatched list with its reason: host-only, ambiguous, unknown host, no remote, already tracked, or worktree.
 
-Paths in `global.ignored_clones` are reported apart. `Apply` writes the decisions into the config; neither step touches files. The GUI runs a pass at startup, on window focus, after a manual Fetch all, after clone-root changes and on a container rescan. I first sync container workspace files (`pkg/workspace`), then snapshot the config, scan without the lock and re-check the config under the lock before applying. I try at most two scans and reject the plan if config intent still changes; window geometry, collapsed groups and theme do not invalidate a scan. A clone failure returns immediately. A stale pass requests one asynchronous, coalesced follow-up after the current fetch and status work; that follow-up never reschedules itself. I emit `reconcile:done` only after applying changes, never for a stale plan. Repos under a missing root are never re-linked or forgotten.
+Paths in `global.ignored_clones` are reported apart. `Apply` writes the decisions into the config; neither step touches files. The GUI runs a pass at startup, on window focus, after a manual Fetch all, after clone-root changes and on a container rescan. I first sync container workspace files (`pkg/workspace`), then snapshot the config, scan without the lock and re-check the config under the lock before applying. I try at most two scans and reject the plan if config intent still changes; window geometry, collapsed groups and theme do not invalidate a scan. A clone failure returns immediately. A stale pass requests one asynchronous, coalesced follow-up after the current fetch and status work; that follow-up never reschedules itself. I emit `reconcile:done` when I apply changes or workspace availability changes. Repos under a missing root are never re-linked or forgotten.
 
 ### pkg/mirror — Repository mirroring
 
@@ -497,7 +497,7 @@ An account is unique by `(hostname, username)`. Deleting an account cascades thr
 | `root`                | string | No       | Clone root, set only when it differs from the source's.                                                              |
 | `container`           | bool   | No       | Marks a multi-repo container; Gitbox scans inside it for nested clones.                                              |
 | `workspace`           | string | No       | The container's `.code-workspace` file, relative to the clone root. `pkg/workspace.Sync` keeps it in step with disk. |
-| `workspace_preferred` | string | No       | The file the user picked among several. It wins whenever it is at the root, and survives while it is missing.        |
+| `workspace_preferred` | string | No       | The preferred file. Gitbox clears it after two successful reads confirm it is missing.                               |
 
 ### Mirrors
 
