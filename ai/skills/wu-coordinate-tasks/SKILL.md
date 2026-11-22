@@ -1,6 +1,8 @@
 ---
 name: wu-coordinate-tasks
 description: Coordinates up to three pending task sub-issues of one explicit work unit through a supervisor and isolated workers. Requires the container issue number, including on resume; never selects from the global backlog.
+claude:
+  argument-hint: "<work-unit> [--count 1-3] [--active none|N,M] [--resume <owner>] [--publish] [--update-work-unit]"
 ---
 
 # {{INVOKE}}wu-coordinate-tasks — Supervise tasks within one work unit
@@ -39,6 +41,16 @@ uv run {{SKILLS}}/wu-coordinate-tasks/scripts/coordinate.py --repo . apply --req
 The shared registry lives in `<git-common-dir>/gitbox-coordination/registry.sqlite`. Keep requests, reports and evidence under that private coordination directory, never in tracked documentation or PR bodies. Cooperating sessions in this clone and its worktrees share atomic reservations. Independent clones, machines and non-cooperating sessions require explicit coordination. Do not put the SQLite registry on a network share.
 
 Use the available agent creation, messaging, inspection and waiting capabilities. Do not assume a particular tool name or claim to have launched workers without tool evidence. If delegation is unavailable, report the limitation and offer serial work or separate sessions; do not silently call that parallel execution.
+
+<!-- harness:claude -->
+### Claude Code mechanics
+
+- Launch each worker with the Agent tool as a fresh agent, not a fork, and never with `isolation: "worktree"`: that option creates a temporary worktree and branch of its own instead of the sibling worktree this workflow records. A fresh worker knows only its prompt, so give it the complete contract and tell it to read `{{SKILLS}}/work-issue/SKILL.md` and this skill first.
+- Workers run in the background and a notification resumes this conversation when one stops. Waiting for that notification is supervision: do not poll, sleep or duplicate a worker's task meanwhile. The batch still ends only when every issue has a recorded outcome.
+- A worker that stops to report its plan, a question or a blocker keeps its context. Answer it with SendMessage and record its agent ID as the claim's `worker`. Workers cannot ask the user; relay their questions.
+- A worker can spawn agents of its own here, so the contract's ban on nested delegation is the only limit. Keep that line in every contract.
+- The sibling worktrees sit outside this session's working directory, so each `cd` and edit there asks for permission, and a background worker's prompts appear in this conversation. After creating the worktrees and before launching workers, ask the user once to run `/add-dir <absolute-worktree>` for each one. Never change `.claude/settings.json` to grant that access yourself.
+<!-- /harness -->
 
 ## Workflow
 

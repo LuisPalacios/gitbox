@@ -35,6 +35,8 @@ When a supervisor assigns a reserved issue through `/wu-coordinate-tasks`, read 
 
 Only in this coordinated mode, evidence of an equivalent automated behavioral smoke can satisfy Step 7 under `wu-coordinate-tasks` criteria. Missing coverage still requires the user's check. This mode grants no worker publication authority and does not change the standalone workflow below.
 
+A delegated worker runs as a subagent: it has no plan mode and cannot ask the user. In Step 4 it writes the plan as its report to the supervisor and edits only after the supervisor's go-ahead message; the confirmations of Steps 1 and 3 go to the supervisor the same way.
+
 ## Universal gh-user detection
 
 Run this before every `gh` command. It is portable across Git Bash (Windows), macOS, and Linux.
