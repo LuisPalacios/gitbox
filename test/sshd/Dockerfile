@@ -9,11 +9,13 @@ RUN apt-get update \
 
 # The key lives outside the home folder, so a noexec tmpfs mounted over the
 # home does not block the login. The account has no password and is not
-# locked.
+# locked. pam_motd is off: sshd would write /run/motd.dynamic on every
+# login, which the noexec test counts as a file written outside the home.
 RUN useradd --create-home --uid 1000 --shell /bin/bash test \
     && usermod --password '*' test \
     && mkdir -p /run/sshd /etc/ssh/authorized_keys \
-    && ssh-keygen -A
+    && ssh-keygen -A \
+    && sed -i '/pam_motd/d' /etc/pam.d/sshd
 
 COPY sshd.conf /etc/ssh/sshd_config.d/gitbox.conf
 COPY entrypoint.sh /entrypoint.sh
