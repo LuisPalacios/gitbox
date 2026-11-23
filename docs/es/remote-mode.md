@@ -2,7 +2,7 @@
 
 El modo remoto deja que GitboxApp, en mi portátil, gestione los repositorios de otro ordenador por SSH, como un servidor Linux sin escritorio. GitboxApp instala por sí mismo un `gitbox-server` que coincide con él en ese host: sin root, sin internet en el host y sin ningún puerto a la escucha. El diseño sigue a VS Code Remote-SSH.
 
-Esta versión conecta, instala, verifica y desinstala el servidor, muestra los repositorios del host, cambia su configuración y abre sus carpetas en mi editor, mi terminal y mis harnesses de IA locales. Clonar, actualizar y las demás acciones sobre repositorios, y configurar credenciales en el host, llegan en versiones posteriores. Por ahora solo se admiten hosts Linux; los hosts macOS y Windows llegan después.
+Esta versión conecta, instala, verifica y desinstala el servidor, muestra los repositorios del host, cambia su configuración y sus clones, guarda en él credenciales de token y abre sus carpetas en mi editor, mi terminal y mis harnesses de IA locales. Configurar una clave SSH en el host llega en una versión posterior. Por ahora solo se admiten hosts Linux; los hosts macOS y Windows llegan después.
 
 ## Antes de empezar: un alias que no pida nada
 
@@ -48,7 +48,7 @@ La ventana aparece enseguida y conecta en segundo plano. Dice **Conectando con m
 
 ## Qué puede hacer una ventana remota
 
-La ventana del remoto es la ventana completa de gitbox, alimentada por el host. Necesita un host que ya tenga un `gitbox.json` con credenciales que funcionen, por ejemplo un ordenador que también ejecuta GitboxApp. Un host sin él se queda en la tarjeta de conexión, que lo dice; configurarlo desde aquí llega en una versión posterior.
+La ventana del remoto es la ventana completa de gitbox, alimentada por el host. Necesita un host que ya tenga un `gitbox.json`, por ejemplo un ordenador que también ejecuta GitboxApp; las credenciales de token se pueden configurar desde la ventana. Un host sin él se queda en la tarjeta de conexión, que lo dice; configurarlo desde aquí llega en una versión posterior.
 
 Un texto que habla de este ordenador nombra el host en su lugar, porque la acción se ejecuta allí por SSH: el menú de la fila dice **Borrar de my-server…**, y los diálogos de borrar y mover dicen de qué host es la carpeta que se va.
 
@@ -78,9 +78,14 @@ Esto cambia los clones del host y los proveedores, y también se ejecuta allí:
 - la limpieza de ramas fusionadas, la configuración de espejos y añadir los espejos que encontró el descubrimiento;
 - la reconciliación con los clones del disco, que también se ejecuta cuando la ventana recupera el foco, y adoptar los clones que encuentra.
 
+Esto configura las credenciales del host, y también se ejecuta allí (consulta [Hosts remotos](credentials.md#hosts-remotos)):
+
+- añadir una cuenta con token, y guardar, sustituir o borrar su token;
+- cambiar el tipo de credencial de una cuenta, salvo a GCM, que un host rechaza.
+
 Esto está desactivado, con el aviso «Aún no disponible en un remoto (llega en una versión posterior)»:
 
-- añadir una cuenta y cualquier configuración de credenciales, que necesitan credenciales en el host;
+- configurar una clave SSH en el host;
 - la vista compacta y el arranque automático.
 
 Esto no tiene equivalente remoto, así que está desactivado con el aviso «No disponible para hosts remotos»: **Mostrar en Finder** o **Mostrar en el Explorador**, abrir la carpeta de la cuenta y **Abrir en editor** del archivo de configuración en Ajustes.
@@ -112,7 +117,7 @@ La ventana marca la acción como fallida con el error de la conexión, así que 
 
 ### La insignia y la conexión
 
-La barra de título muestra una insignia con el alias, el sistema del host en el modo avanzado, el estado de la conexión y **Limitado**, porque la configuración de credenciales llega en una versión posterior. Al hacer clic se abre el registro de conexión.
+La barra de título muestra una insignia con el alias, el sistema del host en el modo avanzado, el estado de la conexión y **Limitado**, porque configurar una clave SSH llega en una versión posterior. Al hacer clic se abre el registro de conexión.
 
 Cuando la conexión se cae, la ventana conserva el último estado que recibió, atenuado e inactivo, bajo **Desconectado de my-server.** y un botón **Conectar**. Mientras está desconectada, la ventana no lanza ninguna recarga en segundo plano ni la comprobación periódica, así que no aparece ningún otro error. **Conectar** vuelve a hacer la misma conexión, borra lo que dejó la desconexión y recarga todo. Después la ventana reconcilia los clones del host y actualiza su estado antes de volver a ofrecer acciones, bajo **Reconectado a my-server. Leyendo sus clones antes de devolver las acciones…**
 
@@ -218,7 +223,7 @@ Solo borra lo que puso gitbox: las carpetas de build, los registros de build de 
 
 En el host, el servidor también escribe `<root>/logs/<build>.log`, que rota a 1 MiB y guarda tres archivos anteriores.
 
-El registro nunca contiene un token ni una contraseña: GitboxApp limpia cada línea antes de mostrarla.
+El registro nunca contiene un token ni una contraseña: GitboxApp limpia cada línea antes de mostrarla. Un token que escribo viaja al host una vez y ninguno de los dos lados lo registra.
 
 ## Códigos de error
 
@@ -248,7 +253,8 @@ El modo simple muestra una frase sencilla; el código en sí aparece en el regis
 - `not_available_remote`: la acción no tiene equivalente remoto, como el gestor de archivos.
 - `not_available_remote_path`: la carpeta no es una ruta absoluta válida del host, o una capa de este ordenador no puede llevarla con seguridad.
 - `harness_not_allowed`: el harness de IA no es del catálogo, o lleva argumentos.
-- `read_only`: este remoto aún no ofrece la acción, como una configuración de credenciales. Una versión posterior lo permite.
+- `gcm_unsupported_remote`: el host no ejecuta GCM, cuyo inicio de sesión y almacén necesitan una sesión de escritorio. Usa un token: consulta [Hosts remotos](credentials.md#hosts-remotos).
+- `read_only`: este remoto aún no ofrece la acción, como configurar una clave SSH. Una versión posterior lo permite.
 - `remote_path_invalid`: la carpeta no es una ruta absoluta del host, o contiene un carácter de control.
 
 ## Clientes Windows y macOS

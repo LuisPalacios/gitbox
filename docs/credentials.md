@@ -204,6 +204,23 @@ Typical fix on each OS:
 - Linux: install your distro's GCM package (see the [GCM install docs](https://github.com/git-ecosystem/git-credential-manager/blob/main/docs/install.md)); `sudo apt install openssh-client` for SSH.
 - Windows: GCM comes with Git for Windows and doesn't need to be on `PATH`: Gitbox asks `git credential-manager --version` first, then checks the Git for Windows and standalone GCM install folders. The OpenSSH client is a built-in optional feature.
 
+## Remote hosts
+
+In a [remote window](remote-mode.md), the credentials live on the host, because the host clones, fetches and calls the provider. Only the token works there for now:
+
+- **Token**: works. You paste the token in the remote window. It travels to the host once, inside the SSH connection, and the host stores it as on a desktop: `~/.config/gitbox/credentials/<accountKey>`, mode `0600` in a `0700` folder. It never comes back to the window, and no log, error or command line on either computer holds it. Right after the store, the window shows what the [permission audit](#credential-file-permissions) found on the host, never the file's contents.
+- **GCM**: not offered. GCM signs in with a browser or a window on the computer that runs it, which on a host nobody sees, and it keeps the credential in a store an SSH session cannot use reliably. The host refuses it with `gcm_unsupported_remote` without trying, because whether GCM works there depends on the state of its keyring:
+  - Linux: the Secret Service keyring (`secretservice`) needs an unlocked desktop session, which a headless server does not have.
+  - macOS: the login keychain stays locked in an SSH session.
+  - Windows: Windows Credential Manager (`wincredman`) does not work reliably over SSH.
+- **SSH**: setting up an SSH key on the host comes in a later version.
+
+Only Linux hosts are supported for now. On a Windows host the token file will get an ACL that only my user can read, which comes with Windows host support.
+
+### Switching a GCM account to a token
+
+An account that the host's `gitbox.json` already sets to GCM shows **Not supported on remote hosts** in the Change Credential modal, with the reason for the host's system and a **Switch to token** button. The button changes the account to a token and shows the token steps; you paste the token and click **Store token**. A new account on a remote host starts with a token, and onboarding connects with one.
+
 ## Troubleshooting
 
 ### Reading the GUI Current-status panel
