@@ -34,6 +34,10 @@ type ClientOptions struct {
 	// Log receives one line per event worth a human's attention. Nil
 	// discards them.
 	Log io.Writer
+	// SecretParams marks the parameters that carry a secret (#242). The
+	// server is untrusted: if its answer to such a request repeats the
+	// secret, the client removes it before anyone sees the answer.
+	SecretParams SecretParams
 }
 
 // Client is the calling end of a connection. Everything the server sends is
@@ -144,9 +148,10 @@ func (c *Client) Call(ctx context.Context, method string, params []any, result a
 		return c.fail(err)
 	}
 
+	secrets := c.opts.SecretParams.values(method, raw)
 	select {
 	case m, ok := <-reply:
-		return c.finish(m, ok, result)
+		return c.finish(m, ok, result, secrets)
 	case <-ctx.Done():
 	}
 
@@ -158,7 +163,7 @@ func (c *Client) Call(ctx context.Context, method string, params []any, result a
 	defer timer.Stop()
 	select {
 	case m, ok := <-reply:
-		return c.finish(m, ok, result)
+		return c.finish(m, ok, result, secrets)
 	case <-timer.C:
 		forget()
 		return newError(CodeCancelled, ErrCodeCancelled, "")
@@ -166,20 +171,25 @@ func (c *Client) Call(ctx context.Context, method string, params []any, result a
 }
 
 // finish turns a response into the outcome of a call. ok is false when the
-// connection died before the response came.
-func (c *Client) finish(m message, ok bool, result any) error {
+// connection died before the response came. secrets are the secret values
+// the request carried; none of them survives into the outcome.
+func (c *Client) finish(m message, ok bool, result any, secrets []string) error {
 	if !ok {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		return c.dead
 	}
 	if m.Error != nil {
-		return m.Error.asError()
+		err := m.Error.asError()
+		if e, isRPC := errors.AsType[*Error](err); isRPC && len(secrets) > 0 {
+			e.Data = scrubUserError(e.Data, secrets)
+		}
+		return err
 	}
 	if result == nil {
 		return nil
 	}
-	if err := json.Unmarshal(m.Result, result); err != nil {
+	if err := json.Unmarshal(scrubJSON(m.Result, secrets), result); err != nil {
 		return newError(CodeInternalError, ErrCodeInternal, "the server's answer has an unexpected shape")
 	}
 	return nil
@@ -336,7 +346,7 @@ func (c *Client) ping(ctx context.Context) error {
 	}
 	select {
 	case m, ok := <-reply:
-		return c.finish(m, ok, nil)
+		return c.finish(m, ok, nil, nil)
 	case <-ctx.Done():
 		c.mu.Lock()
 		delete(c.pending, id)
