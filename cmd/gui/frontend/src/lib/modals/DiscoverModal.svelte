@@ -3,7 +3,7 @@
   // the picked ones (then clones them).
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
-  import { accounts, sources, repoStates, blocked } from '../stores';
+  import { accounts, sources, repoStates } from '../stores';
   import { t } from '../i18n';
   import { ro } from '../ro';
   import { dismiss } from '../dismiss';
@@ -132,8 +132,6 @@
     if (selected.length > 0) {
       await bridge.addDiscoveredRepos(sourceKey, selected);
       await reloadFromDisk();
-      // A remote window adds them only, until its server clones (#295).
-      if ($blocked('cloneRepo')) { discoverModal = null; return; }
       // Clone each newly added repo that isn't already local, asking once
       // which root they go to.
       const missing = selected.filter((repoName) => {
@@ -257,7 +255,7 @@
       {#if !discoverLoading && discoverRepos.length > 0}
         <div class="modal-foot">
           <button class="btn-cancel" on:click={() => discoverModal = null}>{$t('common.cancel')}</button>
-          <button use:ro={'addDiscoveredRepos'} class="btn-add" on:click={addDiscovered} disabled={selectedCount === 0}>{$blocked('cloneRepo') ? $t('discover.addOnly') : $t('discover.addPull')} ({selectedCount})</button>
+          <button use:ro={'addDiscoveredRepos'} class="btn-add" on:click={addDiscovered} disabled={selectedCount === 0}>{$t('discover.addPull')} ({selectedCount})</button>
         </div>
       {/if}
     </div>

@@ -5,7 +5,7 @@
   import { pushNotice, errorText } from '../notices';
   import { t } from '../i18n';
   import { dismiss } from '../dismiss';
-  import { configStore, mirrors, blocked } from '../stores';
+  import { configStore, mirrors } from '../stores';
 
   export let setupMirrorRepo: (mirrorKey: string, repoKey: string) => Promise<void>;
 
@@ -19,8 +19,6 @@
   let mirrorRepoPickerLoading = false;
   let mirrorRepoPickerFilter = '';
   let mirrorRepoPickerLoaded = false;
-  // A remote window sets mirrors up once its server serves it (#295).
-  $: if ($blocked('setupMirrorRepo')) newMirrorRepoAutoSetup = false;
 
   export function open(mirrorKey: string) {
     addMirrorRepoModal = mirrorKey; newMirrorRepoKey = ''; newMirrorRepoDirection = 'push'; newMirrorRepoOrigin = 'src'; newMirrorRepoAutoSetup = false; mirrorRepoPickerRepos = []; mirrorRepoPickerLoaded = false; mirrorRepoPickerFilter = '';
@@ -54,7 +52,7 @@
       const repoKey = newMirrorRepoKey;
       addMirrorRepoModal = null;
       newMirrorRepoKey = ''; newMirrorRepoDirection = 'push'; newMirrorRepoOrigin = 'src';
-      if (newMirrorRepoAutoSetup && !$blocked('setupMirrorRepo')) {
+      if (newMirrorRepoAutoSetup) {
         newMirrorRepoAutoSetup = false;
         await setupMirrorRepo(mirrorKey, repoKey);
       }
@@ -117,7 +115,7 @@
           </div>
 
           <span class="mirror-form-label">{$t('mirrorRepo.options')}</span>
-          <label style="font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 4px;" title={$blocked('setupMirrorRepo') ? $t('remote.readOnlyTip') : undefined}><input type="checkbox" bind:checked={newMirrorRepoAutoSetup} disabled={$blocked('setupMirrorRepo')} /> {$t('mirrorRepo.autoSetup')}</label>
+          <label style="font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 4px;"><input type="checkbox" bind:checked={newMirrorRepoAutoSetup} /> {$t('mirrorRepo.autoSetup')}</label>
         </div>
       </div>
       <div class="modal-foot">

@@ -2,11 +2,11 @@
   import { onMount, tick } from 'svelte';
   import { bridge, events, setRemoteWindow } from './lib/bridge';
   import type { DoctorPrecheckDTO, RemoteState } from './lib/bridge';
-  import { focusWork, backgroundAllowed, reloadErrorShown, clearsOnReconnect } from './lib/readonly';
+  import { backgroundAllowed, reloadErrorShown, clearsOnReconnect } from './lib/readonly';
   import {
     configStore, accounts, sources, mirrors, repoStates, themeStore, applyStatusResults,
     applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, workspacePlaceholders, workspaceMembers, workspaceUnknown, workspaceDiagnostics,
-    remoteWindow, blocked
+    remoteWindow
   } from './lib/stores';
   import { detailLocked, accountHealth } from './lib/status';
   import { derivePresentation, CALM_RANK } from './lib/presentation';
@@ -738,8 +738,6 @@
   const showOrphanModal = () => orphansDialog.showOrphanModal();
 
   async function runReconcile(): Promise<ReconcileDTO | null> {
-    // A remote window reconciles once its server serves Reconcile (#295).
-    if ($blocked('reconcile')) return null;
     try {
       const res = await bridge.reconcile();
       await applyReconcile(res);
@@ -1365,7 +1363,19 @@
   let remoteNoConfig = false;
   let remoteLoading = false;
   $: remoteShowMain = windowMode === 'remote' && remoteLoaded;
-  $: remoteOffline = remoteShowMain && remoteState?.state !== 'connected';
+  // Actions stay off from the disconnect until the host's state is known
+  // again: through the reload, the reconcile and the status refresh that
+  // follow each reconnect (#295).
+  $: remoteOffline = remoteShowMain && (remoteState?.state !== 'connected' || remoteLoading);
+
+  // nextStatus resolves on the next status:updated, or after ms.
+  let statusWaiters: Array<() => void> = [];
+  function nextStatus(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(resolve, ms);
+      statusWaiters.push(() => { clearTimeout(timer); resolve(); });
+    });
+  }
 
   async function onRemoteState(s: RemoteState) {
     const wasConnected = remoteState?.state === 'connected';
@@ -1379,10 +1389,24 @@
     try {
       remoteWindow.set(true);
       setRemoteWindow(true, $t('remote.readOnlyTip'));
+      // Work that was in flight when the connection dropped ended with it;
+      // its rows come back from the host's status.
+      syncing = false;
+      pullRun = null;
+      mirrorSettingUp = {};
+      fetchingRepos = {};
       await startMain();
       remoteNoConfig = firstRun;
       // A host without a config keeps the card, which says so.
       remoteLoaded = !firstRun;
+      if (!firstRun) {
+        // What the host's clones are now: a clone the cut stopped shows as
+        // missing or incomplete before any action is offered.
+        await runReconcile();
+        const refreshed = nextStatus(30_000);
+        await bridge.refreshStatus();
+        await refreshed;
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -1591,8 +1615,10 @@
     // Load autostart state. A remote window has no autostart of its own.
     if (windowMode !== 'remote') loadAutostart();
 
-    // Sync the config with the clones on disk in the background.
-    runReconcile();
+    // Sync the config with the clones on disk in the background. A remote
+    // window runs it itself after each connection, before it takes actions
+    // again (onRemoteState).
+    if (windowMode !== 'remote') runReconcile();
 
     // Start periodic status check if previously configured.
     if (fetchInterval !== 'off') applyFetchInterval(fetchInterval);
@@ -1727,14 +1753,13 @@
     // and ask the Go side to re-probe AI harnesses (throttled there) so a
     // tool installed or removed while we were in the background shows up.
     let focusTimer: ReturnType<typeof setTimeout> | null = null;
-    // A remote window re-reads the host's config and reconciles only when
-    // its server serves Reconcile (#294, focusWork).
+    // A remote window does the same on the host (#295), only while it is
+    // connected and not still syncing after a reconnect.
     window.addEventListener('focus', () => {
-      if (windowMode === 'remote' && (!remoteShowMain || !backgroundAllowed(true, remoteState?.state))) return;
-      const work = focusWork($blocked);
+      if (windowMode === 'remote' && (!remoteShowMain || remoteLoading || !backgroundAllowed(true, remoteState?.state))) return;
       if (focusTimer) clearTimeout(focusTimer);
-      focusTimer = setTimeout(() => reloadFromDisk().then(() => { if (work.reconcile) runReconcile(); }, () => {}), 300);
-      if (work.refreshHarnesses) bridge.refreshAIHarnesses().catch(() => {});
+      focusTimer = setTimeout(() => reloadFromDisk().then(() => { runReconcile(); }, () => {}), 300);
+      bridge.refreshAIHarnesses().catch(() => {});
     });
 
     // ── Event listeners (always registered) ──
@@ -1756,6 +1781,7 @@
     events.on('status:updated', (results: any) => {
       statusGeneration++;
       applyStatusResults(results);
+      for (const resolve of statusWaiters.splice(0)) resolve();
       // Refresh expanded detail if a repo is still open (reactive $: handles auto-collapse).
       if (expandedRepo && !detailLocked($repoStates[expandedRepo]?.status)) {
         const slash = expandedRepo.indexOf('/');
@@ -2073,10 +2099,14 @@
 
   {#if remoteOffline && remoteState}
     <div class="remote-offline-banner" role="status">
-      <span>{$t('remote.offline', { alias: remoteState.alias })}</span>
-      {#if remoteState.state === 'connecting' && remoteState.waiting}<span class="remote-waiting" role="status"><span aria-hidden="true">&#9888;</span> {$t(`remote.waiting.${remoteState.waiting}`)}</span>{/if}
-      <button class="remote-reconnect" disabled={remoteState.state === 'connecting' || remoteState.state === 'installing'}
-        on:click={() => bridge.remoteReconnect().catch(console.error)}>{$t('remote.reconnect')}</button>
+      {#if remoteState.state === 'connected'}
+        <span>{$t('remote.syncing', { alias: remoteState.alias })}</span>
+      {:else}
+        <span>{$t('remote.offline', { alias: remoteState.alias })}</span>
+        {#if remoteState.state === 'connecting' && remoteState.waiting}<span class="remote-waiting" role="status"><span aria-hidden="true">&#9888;</span> {$t(`remote.waiting.${remoteState.waiting}`)}</span>{/if}
+        <button class="remote-reconnect" disabled={remoteState.state === 'connecting' || remoteState.state === 'installing'}
+          on:click={() => bridge.remoteReconnect().catch(console.error)}>{$t('remote.reconnect')}</button>
+      {/if}
     </div>
   {/if}
   <ReloadErrorBanner bind:reloadError remote={windowMode === 'remote'} />
