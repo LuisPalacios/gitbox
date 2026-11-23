@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -141,7 +142,49 @@ func mutationRows(root, firstRoot string) []mutationRow {
 		{name: "ChangeCredentialType", call: func(b Backend, _ mutationSide) (any, error) { return none(b.ChangeCredentialType("acct", "token")) }},
 		{name: "CredentialDelete", call: func(b Backend, _ mutationSide) (any, error) { return b.CredentialDelete("acct"), nil }},
 		{name: "CredentialDelete again", call: func(b Backend, _ mutationSide) (any, error) { return b.CredentialDelete("acct"), nil }},
+		// The SSH keys (#244), on an account whose host does not resolve, so
+		// the connection test fails fast. Each side makes its own key in its
+		// own home.
+		{name: "AddAccount ssh", call: func(b Backend, _ mutationSide) (any, error) {
+			req := acct("sshacct", "https://forge.example.invalid")
+			req.CredentialType = "ssh"
+			return none(b.AddAccount(req))
+		}},
+		{name: "CredentialSetupSSH", call: func(b Backend, _ mutationSide) (any, error) { return b.CredentialSetupSSH("sshacct"), nil }, project: withoutSSHKey},
+		{name: "CredentialSetupSSH again", call: func(b Backend, _ mutationSide) (any, error) { return b.CredentialSetupSSH("sshacct"), nil }, project: withoutSSHKey},
+		{name: "CredentialSSHAgentReport", call: func(b Backend, _ mutationSide) (any, error) { return b.CredentialSSHAgentReport("sshacct"), nil }, project: withoutKeyFile},
+		{name: "CredentialRegenerateSSH", call: func(b Backend, _ mutationSide) (any, error) { return b.CredentialRegenerateSSH("sshacct"), nil }, project: withoutSSHKey},
+		{name: "CredentialSetupSSH missing account", call: func(b Backend, _ mutationSide) (any, error) { return b.CredentialSetupSSH("nobody"), nil }},
+		{name: "CredentialSSHAgentReport missing account", call: func(b Backend, _ mutationSide) (any, error) { return b.CredentialSSHAgentReport("nobody"), nil }},
+		{name: "DeleteAccount ssh", call: func(b Backend, s mutationSide) (any, error) {
+			if err := b.DeleteAccount("sshacct"); err != nil {
+				return nil, err
+			}
+			// The key went with the account (#244).
+			_, err := os.Stat(filepath.Join(s.home, ".ssh", "gitbox-sshacct-sshkey"))
+			return os.IsNotExist(err), nil
+		}},
 	}
+}
+
+// withoutSSHKey keeps an SSH setup result but not its public key, which
+// each side made on its own; it must be there.
+func withoutSSHKey(v any) any {
+	r, _ := v.(CredentialSetupResult)
+	if strings.HasPrefix(r.SSHPublicKey, "ssh-ed25519 ") {
+		r.SSHPublicKey = "<key>"
+	}
+	return r
+}
+
+// withoutKeyFile keeps an agent report but not its key file and that key's
+// fingerprint, which name each side's own key; both must be there.
+func withoutKeyFile(v any) any {
+	r, _ := v.(SSHAgentReportDTO)
+	if strings.HasSuffix(r.KeyFile, "gitbox-sshacct-sshkey") && strings.HasPrefix(r.KeyFileFingerprint, "SHA256:") {
+		r.KeyFile, r.KeyFileFingerprint = "<key file>", "<fingerprint>"
+	}
+	return r
 }
 
 // withoutFindingPaths keeps the credential findings of a setup result but
@@ -245,11 +288,28 @@ func TestReplayRequestID(t *testing.T) {
 	}
 }
 
+// unserve takes method off the served list for the test, as a method is
+// before its phase serves it: a server built after the call does not answer
+// it, and a remote window refuses it if it is a mutation. Every Backend
+// mutation is served since #244, so the tests of that gate make their own
+// unserved method.
+func unserve(t *testing.T, method string) {
+	t.Helper()
+	before := slices.Clone(servedMethods)
+	servedMethods = slices.DeleteFunc(slices.Clone(servedMethods), func(m string) bool { return m == method })
+	delete(servedSet, method)
+	t.Cleanup(func() {
+		servedMethods = before
+		servedSet[method] = true
+	})
+}
+
 // TestUnservedMutationsRefused: a remote window refuses, before the wire,
-// the mutations the server does not serve yet, the SSH key methods (#244);
-// a served one goes through.
+// a mutation the server does not serve; a served one goes through.
 func TestUnservedMutationsRefused(t *testing.T) {
 	path := contractHost(t)
+	unserve(t, "CredentialSetupSSH")
+	unserve(t, "CredentialRegenerateSSH")
 	// The test server answers CredentialSetupSSH, so a call that reached it
 	// would show.
 	var reached atomic.Bool

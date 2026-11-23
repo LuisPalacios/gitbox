@@ -63,6 +63,8 @@ export function CredentialDelete(arg1:string):Promise<main.CredentialSetupResult
 
 export function CredentialRegenerateSSH(arg1:string):Promise<main.CredentialSetupResult>;
 
+export function CredentialSSHAgentReport(arg1:string):Promise<main.SSHAgentReportDTO>;
+
 export function CredentialSetupGCM(arg1:string):Promise<main.CredentialSetupResult>;
 
 export function CredentialSetupSSH(arg1:string):Promise<main.CredentialSetupResult>;

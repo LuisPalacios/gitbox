@@ -726,6 +726,7 @@ var readOnlyCalls = []struct {
 	{"CheckGlobalIdentity", []any{}},
 	{"CheckMirrorCredentials", []any{"acct"}},
 	{"CheckMoveReadiness", []any{"acct", "acct", false}},
+	{"CredentialSSHAgentReport", []any{"acct"}},
 	{"CredentialVerify", []any{"acct"}},
 	{"Discover", []any{"acct"}},
 	{"DiscoverMirrors", []any{}},
@@ -857,11 +858,11 @@ func TestReadsLeaveTheDomainUntouched(t *testing.T) {
 		}
 		cancel()
 	}
-	// The SSH key setup is refused by the server itself, not only by the
-	// client, until #244 serves it.
+	// A method outside the closed list is refused by the server itself,
+	// not only by the client: the account launchers run on the client.
 	ctx, cancel := context.WithTimeout(testCtx(t), 30*time.Second)
-	if err := client.Call(ctx, "CredentialSetupSSH", []any{"acct"}, nil, rpc.WithRequestID("00000000-0000-4000-8000-000000000001")); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
-		t.Errorf("CredentialSetupSSH = %v, want unsupported", err)
+	if err := client.Call(ctx, "OpenAccountFolder", []any{"acct"}, nil); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
+		t.Errorf("OpenAccountFolder = %v, want unsupported", err)
 	}
 	cancel()
 
@@ -947,6 +948,10 @@ var mutationCalls = []struct {
 	{"CredentialStoreToken", []any{"acct", "it-token"}, false},
 	{"ChangeCredentialType", []any{"acct", "token"}, false},
 	{"CredentialSetupGCM", []any{"acct"}, true},
+	// The SSH keys (#244): the key is made on the host; the provider is
+	// unreachable, so the connection is not verified.
+	{"CredentialSetupSSH", []any{"acct"}, false},
+	{"CredentialRegenerateSSH", []any{"acct"}, false},
 	{"CredentialDelete", []any{"acct"}, false},
 }
 

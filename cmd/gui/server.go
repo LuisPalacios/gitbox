@@ -38,10 +38,10 @@ import (
 // runs where the harnesses run; P5 adds the config mutations (#294) and the
 // repository mutations (#295), each with its row in mutationIdempotence;
 // P5b (#242) adds the token credentials, and serves the GCM setup only to
-// refuse it (hostCredentialHandlers). Each method decodes its parameters
-// into their Go types and checks what it is given (hostPath, #241). The SSH
-// key methods (#244) are not served yet, so a remote window refuses them
-// itself.
+// refuse it (hostCredentialHandlers); P7 (#244) adds the SSH key methods,
+// whose keys stay on the host, and the agent report. Each method decodes
+// its parameters into their Go types and checks what it is given
+// (hostPath, #241).
 var servedMethods = []string{
 	"AccountDeletionImpact",
 	"AccountFolder",
@@ -66,7 +66,10 @@ var servedMethods = []string{
 	"ConfirmSweep",
 	"CreateNewRepo",
 	"CredentialDelete",
+	"CredentialRegenerateSSH",
+	"CredentialSSHAgentReport",
 	"CredentialSetupGCM",
+	"CredentialSetupSSH",
 	"CredentialStoreToken",
 	"CredentialVerify",
 	"DeleteAccount",
@@ -214,7 +217,9 @@ var mutationIdempotence = map[string]string{
 	"ConfirmSweep":               "a branch already deleted is no longer stale, so a second sweep deletes nothing",
 	"CreateNewRepo":              "an existing repository on the provider fails with the provider's error and changes nothing",
 	"CredentialDelete":           "a credential already gone is a no-op",
+	"CredentialRegenerateSSH":    "each call makes a new key; a repeated request id replays the first answer, and after a reconnect a retry makes another key whose public half the window shows",
 	"CredentialSetupGCM":         "always refused on a host; changes nothing",
+	"CredentialSetupSSH":         "an existing key and Host entry are kept; a second call only tests the connection again",
 	"CredentialStoreToken":       "storing the same token again writes the same file",
 	"DeleteAccount":              "a missing account returns config.not_found",
 	"DeleteMirrorGroup":          "a missing group returns config.not_found",

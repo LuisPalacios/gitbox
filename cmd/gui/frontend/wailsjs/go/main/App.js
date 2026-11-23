@@ -114,6 +114,10 @@ export function CredentialRegenerateSSH(arg1) {
   return window['go']['main']['App']['CredentialRegenerateSSH'](arg1);
 }
 
+export function CredentialSSHAgentReport(arg1) {
+  return window['go']['main']['App']['CredentialSSHAgentReport'](arg1);
+}
+
 export function CredentialSetupGCM(arg1) {
   return window['go']['main']['App']['CredentialSetupGCM'](arg1);
 }
