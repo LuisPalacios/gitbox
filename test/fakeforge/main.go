@@ -13,7 +13,9 @@ package main
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -54,6 +56,7 @@ func main() {
 		user, token, ok := strings.Cut(strings.TrimSpace(scanner.Text()), " ")
 		if ok {
 			f.tokens[token] = user
+			log.Printf("token of %s: %s", user, fingerprint("token", token))
 		}
 	}
 	_ = file.Close()
@@ -80,6 +83,22 @@ func (f *forge) user(r *http.Request) string {
 	return ""
 }
 
+// fingerprint names a credential in the log without showing it: the Basic
+// username and the first bytes of the secret's SHA-256.
+func fingerprint(scheme, value string) string {
+	secret := value
+	name := ""
+	if scheme == "Basic" {
+		raw, _ := base64.StdEncoding.DecodeString(value)
+		name, secret, _ = strings.Cut(string(raw), ":")
+	}
+	if secret == "" {
+		return name + ":-"
+	}
+	sum := sha256.Sum256([]byte(secret))
+	return name + ":" + hex.EncodeToString(sum[:4])
+}
+
 func reply(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
@@ -96,6 +115,9 @@ func (f *forge) repoPath(owner, repo string) (string, bool) {
 
 func (f *forge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	user := f.user(r)
+	// One line per request for the test's failure output: never a header.
+	scheme, value, _ := strings.Cut(r.Header.Get("Authorization"), " ")
+	log.Printf("%s %s auth=%s cred=%s user=%q", r.Method, r.URL.Path, scheme, fingerprint(scheme, value), user)
 	if !strings.HasPrefix(r.URL.Path, "/api/") {
 		if user == "" {
 			w.Header().Set("WWW-Authenticate", `Basic realm="fakeforge"`)

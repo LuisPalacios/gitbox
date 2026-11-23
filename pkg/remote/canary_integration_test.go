@@ -202,10 +202,11 @@ func TestTokenCanary(t *testing.T) {
 		t.Errorf("the mirror setup failed: %s", e)
 	}
 	var status struct {
-		Status string `json:"status"`
+		Status     string `json:"status"`
+		PrimaryMsg string `json:"primaryMsg"`
 	}
 	if err := json.Unmarshal(call("CredentialVerify", "acct"), &status); err != nil || status.Status != "ok" {
-		t.Errorf("the forge did not accept the stored token: %+v %v", status, err)
+		t.Errorf("the forge did not accept the stored token: %+v %v\nforge log:\n%s", status, err, c.sh("cat /tmp/forge.log"))
 	}
 	call("ChangeCredentialType", "acct", "token")
 	call("ChangeCredentialType", "acct", "gcm")
