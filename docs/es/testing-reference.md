@@ -10,7 +10,7 @@ Los recuentos son funciones de prueba Go de nivel superior (no se cuentan los su
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-El total actual es de 961 pruebas Go (733 en `pkg/`, 228 en `cmd/gui/`) y 75 pruebas del frontend. Los recuentos incluyen las pruebas tras los tags `sshd_integration` y `remote_smoke`. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
+El total actual es de 975 pruebas Go (744 en `pkg/`, 231 en `cmd/gui/`) y 74 pruebas del frontend. Los recuentos incluyen las pruebas tras los tags `sshd_integration` y `remote_smoke`. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
 
 ### Biblioteca compartida (`pkg/`)
 
