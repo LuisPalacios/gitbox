@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"maps"
+	"slices"
 	"sort"
 )
 
@@ -90,6 +91,7 @@ func (c *Config) CascadeDeleteAccount(key string) (*AccountDeletionReport, error
 	for _, s := range report.Sources {
 		delete(c.Sources, s)
 	}
+	c.SourceOrder = slices.DeleteFunc(slices.Clone(c.SourceOrder), func(k string) bool { return slices.Contains(report.Sources, k) })
 	for _, m := range report.Mirrors {
 		delete(c.Mirrors, m)
 	}
@@ -224,6 +226,11 @@ func (c *Config) AddSource(key string, src Source) error {
 		src.Repos = make(map[string]Repo)
 	}
 	c.Sources[key] = src
+	// SourceOrder is replaced, never written through: a copy of the config
+	// may share its backing array (#173).
+	if len(c.SourceOrder) > 0 {
+		c.SourceOrder = append(slices.Clip(c.SourceOrder), key)
+	}
 	return nil
 }
 
@@ -261,11 +268,14 @@ func (c *Config) DeleteSource(key string) error {
 		return notFoundError("source %q not found", key)
 	}
 	delete(c.Sources, key)
+	c.SourceOrder = slices.DeleteFunc(slices.Clone(c.SourceOrder), func(k string) bool { return k == key })
 	return nil
 }
 
 // RenameSource moves a source from oldKey to newKey.
 // Returns error if oldKey not found or newKey already exists.
+// The source keeps its place in SourceOrder: OrderedSourceKeys, and every
+// caller that walks it, sees the new key.
 func (c *Config) RenameSource(oldKey, newKey string) error {
 	if newKey == "" {
 		return fmt.Errorf("new source key cannot be empty")
@@ -278,6 +288,11 @@ func (c *Config) RenameSource(oldKey, newKey string) error {
 	}
 	c.Sources[newKey] = c.Sources[oldKey]
 	delete(c.Sources, oldKey)
+	if i := slices.Index(c.SourceOrder, oldKey); i >= 0 {
+		order := slices.Clone(c.SourceOrder)
+		order[i] = newKey
+		c.SourceOrder = order
+	}
 	return nil
 }
 
