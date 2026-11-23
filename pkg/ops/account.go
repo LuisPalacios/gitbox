@@ -227,13 +227,21 @@ func moveSourceFolder(cfg *config.Config, oldKey, newKey string) error {
 	return nil
 }
 
-// DeleteAccount removes an account together with every clone folder and
-// source directory it owns on disk, then cascades through every source,
-// mirror and workspace member referencing it. Leaving a dangling mirror
-// reference behind would corrupt the config (see issue #60).
+// DeleteAccount removes an account together with its credential file, every
+// clone folder and source directory it owns on disk, then cascades through
+// every source, mirror and workspace member referencing it. Leaving a
+// dangling mirror reference behind would corrupt the config (see issue #60).
+//
+// The credential file goes first: a token left behind would outlive the
+// account and be picked up by a new account with the same key (#242). If it
+// cannot be removed, nothing else is. SSH keys and the entries of Git
+// Credential Manager stay; the credential change flow removes those.
 func DeleteAccount(cfg *config.Config, accountKey string) error {
 	if _, ok := cfg.Accounts[accountKey]; !ok {
 		return fmt.Errorf("account %q not found", accountKey)
+	}
+	if err := credential.DeleteToken(accountKey); err != nil {
+		return err
 	}
 
 	for sourceKey, src := range cfg.Sources {

@@ -33,7 +33,7 @@ Gitbox's credential check tells you which situation you're in. If the account re
 
 ## PAT storage
 
-I keep each Personal Access Token (PAT) in one file per account, `~/.config/gitbox/credentials/<accountKey>`. On macOS and Linux, Gitbox creates the directory with mode `0700` and files with mode `0600`. On Windows, access-control lists (ACLs) determine access; the Unix mode does not establish who can read a file.
+I keep each Personal Access Token (PAT) in one file per account, `~/.config/gitbox/credentials/<accountKey>`. On macOS and Linux, Gitbox creates the directory with mode `0700` and files with mode `0600`. On Windows, access-control lists (ACLs) determine access; the Unix mode does not establish who can read a file. Deleting an account removes its file, so a new account with the same key never inherits the old token.
 
 Saving a PAT or renaming an account writes **git-credential-store format** (`https://user:token@host`):
 

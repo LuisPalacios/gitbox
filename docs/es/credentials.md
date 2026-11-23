@@ -33,7 +33,7 @@ La comprobación de credenciales de Gitbox te dice en qué situación estás. Si
 
 ## Almacenamiento de PAT
 
-Guardo cada Personal Access Token (PAT) en un archivo por cuenta, `~/.config/gitbox/credentials/<accountKey>`. En macOS y Linux, Gitbox crea el directorio con modo `0700` y los archivos con modo `0600`. En Windows, las listas de control de acceso (ACL) determinan el acceso; el modo Unix no establece quién puede leer un archivo.
+Guardo cada Personal Access Token (PAT) en un archivo por cuenta, `~/.config/gitbox/credentials/<accountKey>`. En macOS y Linux, Gitbox crea el directorio con modo `0700` y los archivos con modo `0600`. En Windows, las listas de control de acceso (ACL) determinan el acceso; el modo Unix no establece quién puede leer un archivo. Eliminar una cuenta elimina su archivo, así que una cuenta nueva con la misma clave nunca hereda el token anterior.
 
 Guardar un PAT o renombrar una cuenta escribe el **formato git-credential-store** (`https://user:token@host`):
 
