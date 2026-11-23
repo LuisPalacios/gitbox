@@ -1003,6 +1003,22 @@ export namespace main {
 	        this.url = source["url"];
 	    }
 	}
+	export class IncompleteCloneDTO {
+	    source: string;
+	    repo: string;
+	    path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new IncompleteCloneDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.repo = source["repo"];
+	        this.path = source["path"];
+	    }
+	}
 	export class MirrorCredentialCheck {
 	    accountKey: string;
 	    hasMirrorToken: boolean;
@@ -1341,6 +1357,7 @@ export namespace main {
 	    workspaceMembers: string[];
 	    workspaceUnknown: string[];
 	    workspaceDiagnostics?: WorkspaceDiagnosticDTO[];
+	    incomplete: IncompleteCloneDTO[];
 	    error?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -1359,6 +1376,7 @@ export namespace main {
 	        this.workspaceMembers = source["workspaceMembers"];
 	        this.workspaceUnknown = source["workspaceUnknown"];
 	        this.workspaceDiagnostics = this.convertValues(source["workspaceDiagnostics"], WorkspaceDiagnosticDTO);
+	        this.incomplete = this.convertValues(source["incomplete"], IncompleteCloneDTO);
 	        this.error = source["error"];
 	    }
 	
