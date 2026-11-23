@@ -55,7 +55,8 @@ func (s repoSide) unfold(text string) string {
 	return text
 }
 
-// domain is the side's config domain with its folder named <dir>.
+// domain is the side's config domain with its folder named <dir> and the
+// time of a mirror setup left out.
 func (s repoSide) domain(t *testing.T) config.Hash {
 	t.Helper()
 	data, err := os.ReadFile(s.path)
@@ -68,7 +69,19 @@ func (s repoSide) domain(t *testing.T) config.Hash {
 	if err := os.WriteFile(neutral, []byte(strings.ReplaceAll(s.unfold(string(data)), "<dir>", same)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return config.DomainHash(loadConfig(t, neutral))
+	cfg := loadConfig(t, neutral)
+	// A mirror setup stamps the time it ran, to the second: the sides run
+	// it a moment apart.
+	for mk, m := range cfg.Mirrors {
+		for rk, r := range m.Repos {
+			if r.LastSync != "" {
+				r.LastSync = "<when>"
+			}
+			m.Repos[rk] = r
+		}
+		cfg.Mirrors[mk] = m
+	}
+	return config.DomainHash(cfg)
 }
 
 // repoHost builds a side: upstreams org/repo, org/fresh and org/orphan with
