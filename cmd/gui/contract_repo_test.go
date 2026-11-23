@@ -41,7 +41,18 @@ func (s repoSide) use(t *testing.T) {
 // sides compare.
 func (s repoSide) neutral(t *testing.T, v any) string {
 	t.Helper()
-	return strings.ReplaceAll(canonJSON(t, v), s.dir, "<dir>")
+	return s.unfold(canonJSON(t, v))
+}
+
+// unfold names the side's folder <dir> in text, in every spelling it takes
+// there: as is, escaped in JSON, with forward slashes (a file:// URL) and,
+// on Windows, with no volume (a repo key derived from such a URL).
+func (s repoSide) unfold(text string) string {
+	slashed := filepath.ToSlash(s.dir)
+	for _, form := range []string{strings.ReplaceAll(s.dir, `\`, `\\`), s.dir, slashed, strings.TrimPrefix(slashed, filepath.VolumeName(s.dir)+"/")} {
+		text = strings.ReplaceAll(text, form, "<dir>")
+	}
+	return text
 }
 
 // domain is the side's config domain with its folder named <dir>.
@@ -52,7 +63,9 @@ func (s repoSide) domain(t *testing.T) config.Hash {
 		t.Fatal(err)
 	}
 	neutral := filepath.Join(t.TempDir(), "gitbox.json")
-	if err := os.WriteFile(neutral, []byte(strings.ReplaceAll(string(data), s.dir, "/<dir>")), 0o600); err != nil {
+	// The same absolute folder for both sides, as it reads inside JSON.
+	same := strings.ReplaceAll(filepath.Join(filepath.VolumeName(s.dir)+string(filepath.Separator), "dir"), `\`, `\\`)
+	if err := os.WriteFile(neutral, []byte(strings.ReplaceAll(s.unfold(string(data)), "<dir>", same)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return config.DomainHash(loadConfig(t, neutral))
