@@ -500,6 +500,12 @@ With two or more roots, an explicit clone asks once where it goes: a row's **Clo
 
 The same dialog sets the **nested scan depth** for [multi-repo containers](#containers-without-a-workspace-file).
 
+### Portable fleet recipes
+
+In the main window, open **Settings → Fleet recipe → Export recipe**. Review the exact JSON before saving it. The recipe carries provider servers, usernames, credential types, tracked projects, mirror definitions and logical root slots. Gitbox omits local account keys, Git author identities, credential material and absolute clone folders. A clone with a machine-specific folder uses the normal folder layout on import.
+
+On the destination machine, configure its clone roots and choose **Import recipe**. Map each slot to a local root and enter the Git author name and email for each new account. Review the table before applying. An occupied destination or ambiguous mapping needs attention first. Gitbox keeps existing entries and only adds configuration. Use **Fix credential** to sign in and download the projects you want.
+
 ### Remotes (experimental)
 
 Remote mode manages the repositories of another computer over SSH. It is off by default: the `--experimental-remote` flag or `"experimental_remote": true` in `global` turns it on, and then Settings shows **Remotes**.

@@ -23,6 +23,7 @@ pkg/                      Shared Go library
   mirror/                 Push/pull mirror setup, status, guides
   workspace/              Container .code-workspace files: Sync (flag containers, record repo.workspace), Members, Placeholders; never writes them
   adopt/                  Orphan repo discovery + account scoring (multi-root scan, container nested-clone discovery, confident matches)
+  recipe/                 Portable v1 fleet recipe, local export and add-only import planning
   reconcile/              Disk reconcile: adopt recognised clones in place, re-link moved ones, list the rest (Unmatched clones)
   status/                 Clone status checking
   update/                 Auto-update: version check, signature + checksum verified download, self-replace (AppImage build is notify-only); release-signing-key.pub is the pinned release key
@@ -110,6 +111,7 @@ AGENTS.md, .codex/rules/, .codex/context/, .agents/skills/   Rendered from ai/ f
 .github/workflows/pr.yml  Informational PR + main check on Linux: frontend build, scripts/health.sh, Linux GUI build smoke (the merge gate is scripts/gate.sh)
 allowed_signers           Release public key for manual ssh-keygen -Y verify (must match pkg/update/release-signing-key.pub)
 json/
+  gitbox-recipe.schema.json  Portable fleet recipe v1
   gitbox.schema.json      v3 JSON Schema
   gitbox.jsonc            v3 annotated example (Spanish comments)
 go.mod / go.sum           Go module

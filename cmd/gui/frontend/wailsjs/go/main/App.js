@@ -46,6 +46,10 @@ export function ApplyDiscoveredMirrors() {
   return window['go']['main']['App']['ApplyDiscoveredMirrors']();
 }
 
+export function ApplyRecipeImport(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ApplyRecipeImport'](arg1, arg2, arg3);
+}
+
 export function ApplyUpdate() {
   return window['go']['main']['App']['ApplyUpdate']();
 }
@@ -152,6 +156,10 @@ export function DoctorPrecheck(arg1) {
 
 export function DoctorRun() {
   return window['go']['main']['App']['DoctorRun']();
+}
+
+export function ExportRecipe(arg1) {
+  return window['go']['main']['App']['ExportRecipe'](arg1);
 }
 
 export function FetchAllRepos() {
@@ -362,6 +370,10 @@ export function OpenProfile(arg1, arg2) {
   return window['go']['main']['App']['OpenProfile'](arg1, arg2);
 }
 
+export function OpenRecipeImport() {
+  return window['go']['main']['App']['OpenRecipeImport']();
+}
+
 export function OpenRepoInBrowser(arg1, arg2, arg3) {
   return window['go']['main']['App']['OpenRepoInBrowser'](arg1, arg2, arg3);
 }
@@ -376,6 +388,14 @@ export function PickFolder(arg1) {
 
 export function PreflightMove(arg1) {
   return window['go']['main']['App']['PreflightMove'](arg1);
+}
+
+export function PreviewRecipeExport() {
+  return window['go']['main']['App']['PreviewRecipeExport']();
+}
+
+export function PreviewRecipeImport(arg1, arg2) {
+  return window['go']['main']['App']['PreviewRecipeImport'](arg1, arg2);
 }
 
 export function PreviewSweep(arg1, arg2) {

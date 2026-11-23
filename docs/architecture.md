@@ -383,6 +383,10 @@ Ordinary orphan discovery stops at each clone boundary, including a `.git` file 
 
 Paths in `global.ignored_clones` are reported apart. `Apply` writes the decisions into the config; neither step touches files. The GUI runs a pass at startup, on window focus, after a manual Fetch all, after clone-root changes and on a container rescan. I first sync container workspace files (`pkg/workspace`), then snapshot the config, scan without the lock and re-check the config under the lock before applying. I try at most two scans and reject the plan if config intent still changes; window geometry, collapsed groups and theme do not invalidate a scan. A clone failure returns immediately. A stale pass requests one asynchronous, coalesced follow-up after the current fetch and status work; that follow-up never reschedules itself. I emit `reconcile:done` when I apply changes or workspace availability changes. Repos under a missing root are never re-linked or forgotten.
 
+### pkg/recipe — portable fleet recipes
+
+The local window projects configuration onto the v1 allowlist in `json/gitbox-recipe.schema.json`. Accounts use provider server and username references, and clone roots use ordered slots. Import plans run on a detached configuration with destination-machine identities and root mappings. Apply recomputes the reviewed plan under the config owner's lock and saves through the existing cross-process check. Neither operation prepares credentials or changes clone folders on disk.
+
 ### pkg/mirror — Repository mirroring
 
 Handles push and pull mirror setup, status checking, discovery and manual setup guides. Mirrors keep backup copies of repos on another provider without cloning locally.

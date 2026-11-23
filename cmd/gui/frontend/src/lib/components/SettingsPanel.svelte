@@ -5,15 +5,17 @@
   import { configStore, prSettings } from '../stores';
   import { t } from '../i18n';
   import { ro, remoteOff } from '../ro';
-  import { remoteHost } from '../stores';
+  import { remoteHost, remoteWindow } from '../stores';
+  import FleetRecipe from './FleetRecipe.svelte';
   import { unavailableOff, remoteEditorChoices, editorName } from '../remotehost';
-  import type { EditorInfo } from '../types';
+  import type { ConfigDTO, EditorInfo } from '../types';
   import { tooltip } from '../tooltip';
   import { openExternal } from '../external';
   import type { ThemeChoice } from '../theme';
   import type { RemotesList, RemoteResult } from '../bridge';
 
   export let showSettings: boolean;
+  export let onRecipeImported: (cfg: ConfigDTO, added: string[]) => void;
   export let simple: boolean;
   export let configPath: string;
   export let languageChoice: 'en' | 'es';
@@ -124,6 +126,7 @@
       <span class="settings-value">{configPath}</span>
     </div>
     {/if}
+    {#if !$remoteWindow}<FleetRecipe {roots} onImported={onRecipeImported} />{/if}
     <div class="settings-row">
       <span class="settings-label" use:tooltip={$t('settings.rootsTip')}>{$t('settings.roots')}</span>
       <button class="settings-action-btn" on:click={openRoots}>{$t('settings.change')}</button>
