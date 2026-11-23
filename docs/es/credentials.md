@@ -134,6 +134,8 @@ Las claves SSH **no pueden** llamar a la API de tu proveedor, así que el discov
 5. Gitbox verifica la conexión SSH.
 6. Guardas un PAT para el acceso a la API (discovery, creación de repos, mirrors).
 
+Eliminar una cuenta también elimina su par de claves y su entrada `Host`, así que una cuenta nueva con la misma clave recibe una clave nueva.
+
 ### PAT complementario de SSH
 
 El PAT complementario cubre:
@@ -206,16 +208,26 @@ Arreglo típico en cada SO:
 
 ## Hosts remotos
 
-En una [ventana remota](remote-mode.md), las credenciales viven en el host, porque es el host quien clona, hace fetch y llama al proveedor. Por ahora solo funciona el token:
+En una [ventana remota](remote-mode.md), las credenciales viven en el host, porque es el host quien clona, hace fetch y llama al proveedor. Allí funcionan el token y SSH; GCM no:
 
 - **Token**: funciona. Pegas el token en la ventana remota. Viaja al host una vez, dentro de la conexión SSH, y el host lo guarda como en un escritorio: `~/.config/gitbox/credentials/<accountKey>`, con modo `0600` en una carpeta `0700`. Nunca vuelve a la ventana, y ningún log, error ni línea de comandos de ninguno de los dos ordenadores lo contiene. Justo después de guardarlo, la ventana muestra lo que encontró la [auditoría de permisos](#permisos-de-los-archivos-de-credenciales) en el host, nunca el contenido del archivo.
 - **GCM**: no se ofrece. GCM inicia sesión con un navegador o una ventana en el ordenador que lo ejecuta, que en un host nadie ve, y guarda la credencial en un almacén que una sesión SSH no puede usar de forma fiable. El host lo rechaza con `gcm_unsupported_remote` sin intentarlo, porque que GCM funcione allí depende del estado de su llavero:
   - Linux: el llavero Secret Service (`secretservice`) necesita una sesión de escritorio desbloqueada, que un servidor sin pantalla no tiene.
   - macOS: el llavero de inicio de sesión sigue bloqueado en una sesión SSH.
   - Windows: el Administrador de credenciales de Windows (`wincredman`) no funciona de forma fiable por SSH.
-- **SSH**: configurar una clave SSH en el host llega en una versión posterior.
+- **SSH**: funciona. El host crea el par de claves en su propio `~/.ssh/`, junto a su entrada `Host gitbox-<accountKey>`, y se queda la clave privada: solo la clave pública vuelve a la ventana. **Copiar al portapapeles** la pone en el portapapeles de este ordenador, y el enlace del proveedor se abre en el navegador de este ordenador. Cuando añado la clave en el proveedor, **Verificar conexión** la prueba desde el host. **Regenerar clave SSH** sustituye la clave en el host, y añado la nueva en el proveedor.
 
 Por ahora solo se admiten hosts Linux. En un host Windows el archivo del token tendrá una ACL que solo mi usuario puede leer, que llega con la compatibilidad con hosts Windows.
+
+### Reenvío del agente SSH y claves de cuenta
+
+Cuando mi conexión SSH con el host reenvía el agente de este ordenador (`ssh -A`, o `ForwardAgent yes` en mi `~/.ssh/config`), git en el host también puede llegar a las claves de este ordenador. La configuración de la clave SSH y el estado de **Cambiar credencial** de una cuenta SSH en una ventana remota dicen qué clave usa git allí:
+
+- La entrada `Host` que escribe Gitbox dice `IdentitiesOnly yes`, así que ssh en el host solo ofrece la clave de la cuenta a través del alias `gitbox-<accountKey>`, aunque el agente tenga otras. La ventana dice que las claves de este ordenador llegan al host y que git sigue usando la clave de la cuenta.
+- Si alguien editó la entrada y quitó `IdentitiesOnly yes`, ssh puede ofrecer antes una clave reenviada, y git llega al proveedor como quien sea el dueño de esa clave. La ventana avisa, y en el modo Avanzado nombra la línea que hay que volver a añadir.
+- Si el agente de este ordenador tiene la propia clave de la cuenta, git entra como la cuenta de todos modos.
+
+Gitbox solo compara huellas SHA-256: las que lista `ssh-add -l` en el host y la del archivo `.pub` de la cuenta. Ningún material de clave cruza la conexión, y los comentarios de las claves del agente se quedan en el host.
 
 ### Cambiar una cuenta GCM a token
 

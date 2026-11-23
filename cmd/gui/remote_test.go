@@ -149,7 +149,9 @@ func TestRemoteLifecycle(t *testing.T) {
 	if err != nil || len(cfg.Accounts) != 1 {
 		t.Errorf("GetConfig once connected = %+v, %v", cfg, err)
 	}
-	// A mutation the server does not serve yet (#244) is refused here.
+	// A mutation the server does not serve is refused here. Every one is
+	// served since #244, so the test takes one off the list.
+	unserve(t, "CredentialSetupSSH")
 	if res := a.CredentialSetupSSH("acct"); res.OK || !codeIs(a.remote.backend.LastError(), "read_only") {
 		t.Errorf("CredentialSetupSSH = %+v (%v), want read_only", res, a.remote.backend.LastError())
 	}
@@ -406,8 +408,8 @@ func TestRemoteFailureCodes(t *testing.T) {
 	}
 }
 
-// A remote window keeps every mutation its server does not serve yet (the
-// SSH key methods of #244) on this side of the wire, while its
+// A remote window keeps every mutation its server does not serve on this
+// side of the wire, while its
 // client preferences still save to this machine's own gitbox.json (#240).
 // The harness refresh is a read since P6 (#243): it reaches the host.
 func TestRemoteWindowReadOnly(t *testing.T) {
@@ -420,7 +422,10 @@ func TestRemoteWindowReadOnly(t *testing.T) {
 	local := a.prefs.(*filePrefs).path
 	before := len(calls())
 
-	// Mutations the server does not serve yet (#244).
+	// Mutations the server does not serve. Every one is served since #244,
+	// so the test takes two off the list.
+	unserve(t, "CredentialSetupSSH")
+	unserve(t, "CredentialRegenerateSSH")
 	if res := a.CredentialSetupSSH("acct"); res.OK || !codeIs(a.remote.backend.LastError(), "read_only") {
 		t.Errorf("CredentialSetupSSH = %+v (%v), want read_only", res, a.remote.backend.LastError())
 	}

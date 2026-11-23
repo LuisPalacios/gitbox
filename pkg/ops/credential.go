@@ -63,18 +63,8 @@ func RemoveCredentialArtifacts(cfg *config.Config, accountKey string) []string {
 			msgs = append(msgs, "Removed companion PAT from credential file")
 		}
 	case "ssh":
-		sshFolder := credential.SSHFolder(cfg)
-		hostAlias := credential.SSHHostAlias(accountKey)
-		keyPath := credential.SSHKeyPath(sshFolder, accountKey)
-		if err := os.Remove(keyPath); err == nil {
-			msgs = append(msgs, fmt.Sprintf("Removed SSH key: %s", keyPath))
-		}
-		if err := os.Remove(keyPath + ".pub"); err == nil {
-			msgs = append(msgs, fmt.Sprintf("Removed SSH public key: %s.pub", keyPath))
-		}
-		if err := credential.RemoveSSHConfigEntry(sshFolder, hostAlias); err == nil {
-			msgs = append(msgs, fmt.Sprintf("Removed Host %s from ~/.ssh/config", hostAlias))
-		}
+		removed, _ := removeSSHKey(cfg, accountKey)
+		msgs = append(msgs, removed...)
 		if removeStoredToken(accountKey) {
 			msgs = append(msgs, "Removed companion PAT from credential file")
 		}

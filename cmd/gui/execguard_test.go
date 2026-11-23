@@ -18,6 +18,7 @@ var execAllowed = map[string]string{
 	"pkg/git/browser.go":         "opens a URL with the system's handler",
 	"pkg/doctor/doctor.go":       "probes external tools, including candidate git binaries, for their version",
 	"pkg/credential/validate.go": "runs ssh and ssh-keygen",
+	"pkg/credential/agent.go":    "lists the ssh agent's key fingerprints with ssh-add",
 	"pkg/update/relaunch.go":     "relaunches the app after an update",
 	"cmd/gui/app.go":             "opens files and folders with the system and launches editors",
 	"cmd/gui/profiles.go":        "launches terminals and shells",

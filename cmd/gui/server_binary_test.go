@@ -107,8 +107,10 @@ func TestGitboxServerBinary(t *testing.T) {
 	if err := remote.LastError(); err != nil {
 		t.Errorf("a call failed: %v", err)
 	}
-	if res := remote.CredentialSetupSSH("acct"); res.OK || toUserError(remote.LastError()).Code != "remote.not_implemented_remote" {
-		t.Errorf("CredentialSetupSSH = %+v (%v), want not_implemented_remote", res, remote.LastError())
+	// A Backend method outside the closed list: the account launchers run
+	// on the client, so the server does not know them.
+	if err := remote.invoke("OpenAccountFolder", nil, "acct"); toUserError(err).Code != "remote.not_implemented_remote" {
+		t.Errorf("OpenAccountFolder = %v, want not_implemented_remote", err)
 	}
 
 	// The end of its input is the server's signal to exit.

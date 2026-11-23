@@ -2664,6 +2664,14 @@ func (a *App) credentialSetupSSHLocal(accountKey string) CredentialSetupResult {
 }
 
 func (a *App) setupSSH(accountKey string) CredentialSetupResult {
+	return a.runSSHSetup(accountKey, ops.SetupSSHCredential)
+}
+
+// runSSHSetup runs setup (pkg/ops, #244) on a snapshot of the config, then
+// points the account's SSH block at the result, saves, and reconfigures the
+// account's clones. On a remote host all of it happens on the host: the key
+// stays there and only its public half comes back.
+func (a *App) runSSHSetup(accountKey string, setup func(context.Context, *config.Config, string) (ops.SSHSetup, error)) CredentialSetupResult {
 	a.invalidateCredential(accountKey)
 	defer a.invalidateCredential(accountKey)
 	a.mu.Lock()
@@ -2675,102 +2683,38 @@ func (a *App) setupSSH(accountKey string) CredentialSetupResult {
 		return CredentialSetupResult{OK: false, Message: "Account not found"}
 	}
 
-	hostAlias := credential.SSHHostAlias(accountKey)
-	keyType := "ed25519"
-	if acct.SSH != nil && acct.SSH.KeyType != "" {
-		keyType = acct.SSH.KeyType
-	}
-	hostname := ops.HostnameFromURL(acct.URL)
-	if acct.SSH != nil && acct.SSH.Hostname != "" {
-		hostname = acct.SSH.Hostname
+	s, err := setup(context.Background(), cfg, accountKey)
+	if err != nil {
+		return CredentialSetupResult{OK: false, Message: userMsg(err)}
 	}
 
-	sshFolder := credential.SSHFolder(cfg)
-
-	// Ensure ~/.ssh exists.
-	if err := os.MkdirAll(sshFolder, 0o700); err != nil {
-		return CredentialSetupResult{OK: false, Message: userText(fmt.Sprintf("Creating %s: %v", sshFolder, err))}
-	}
-
-	// Write ~/.ssh/config entry if missing.
-	found, _ := credential.FindSSHConfigEntry(sshFolder, hostAlias)
-	if !found {
-		opts := credential.SSHConfigEntryOpts{
-			Host:     hostAlias,
-			Hostname: hostname,
-			KeyFile:  credential.SSHKeyPath(sshFolder, accountKey),
-			Username: acct.Username,
-			Name:     acct.Name,
-			Email:    acct.Email,
-			URL:      acct.URL,
-		}
-		if err := credential.WriteSSHConfigEntry(sshFolder, opts); err != nil {
-			return CredentialSetupResult{OK: false, Message: userText(fmt.Sprintf("Writing SSH config: %v", err))}
-		}
-	}
-
-	// Generate SSH key if missing.
-	keyPath := credential.SSHKeyPath(sshFolder, accountKey)
-	if _, err := os.Stat(keyPath); err != nil {
-		if _, err := credential.GenerateSSHKey(sshFolder, accountKey, keyType); err != nil {
-			return CredentialSetupResult{OK: false, Message: userText(fmt.Sprintf("Generating SSH key: %v", err))}
-		}
-	}
-
-	// Update account SSH config in gitbox.json. The account is read again
-	// under the lock, so a change made meanwhile is kept, and its SSH block
-	// is replaced by a new value instead of written through the pointer a
-	// copy of the account may share (#173).
+	// The account is read again under the lock, so a change made meanwhile
+	// is kept.
 	a.mu.Lock()
-	if cur, ok := a.cfg.Accounts[accountKey]; ok && (cur.SSH == nil || cur.SSH.Host != hostAlias) {
-		var ssh config.SSHConfig
-		if cur.SSH != nil {
-			ssh = *cur.SSH
-		}
-		ssh.Host = hostAlias
-		ssh.Hostname = hostname
-		ssh.KeyType = keyType
-		cur.SSH = &ssh
+	if cur, ok := a.cfg.Accounts[accountKey]; ok && ops.ApplySSHSetup(&cur, s) {
 		_ = a.cfg.UpdateAccount(accountKey, cur)
 		_ = a.saveConfig()
 	}
-	a.mu.Unlock()
-
-	// Read public key for display.
-	pubKey, _ := credential.ReadPublicKey(keyPath)
-	addURL := credential.SSHPublicKeyURL(acct.Provider, acct.URL)
-
-	// Test SSH connection.
-	sshVerified := false
-	if _, sshErr := credential.TestSSHConnection(sshFolder, hostAlias); sshErr == nil {
-		sshVerified = true
-	}
-
 	// Reconfigure existing clones to use the current credential type.
-	a.mu.Lock()
 	n := len(ops.ReconfigureClones(a.cfg, accountKey))
 	a.mu.Unlock()
 
 	keyName := fmt.Sprintf("gitbox-%s-sshkey", accountKey)
-	msg := fmt.Sprintf("SSH Host %s and %s available.", hostAlias, keyName)
-	if sshVerified {
-		msg = fmt.Sprintf("SSH Host %s and %s available.", hostAlias, keyName)
-	}
+	msg := fmt.Sprintf("SSH Host %s and %s available.", s.Host, keyName)
 	if n > 0 {
 		msg += fmt.Sprintf("\n%d clone(s) reconfigured.", n)
 	}
 
 	// Check whether a PAT exists for API discovery.
 	_, _, apiErr := credential.ResolveToken(acct, accountKey)
-	needsPAT := apiErr != nil
 
 	return CredentialSetupResult{
 		OK:           true,
 		Message:      msg,
-		NeedsPAT:     needsPAT,
-		SSHPublicKey: pubKey,
-		SSHAddURL:    addURL,
-		SSHVerified:  sshVerified,
+		NeedsPAT:     apiErr != nil,
+		SSHPublicKey: s.PublicKey,
+		SSHAddURL:    s.AddURL,
+		SSHVerified:  s.Verified,
 	}
 }
 
@@ -2784,34 +2728,50 @@ func (a *App) CredentialRegenerateSSH(accountKey string) CredentialSetupResult {
 func (a *App) credentialRegenerateSSHLocal(accountKey string) CredentialSetupResult {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
-	a.invalidateCredential(accountKey)
-	defer a.invalidateCredential(accountKey)
+	return a.runSSHSetup(accountKey, ops.RegenerateSSHCredential)
+}
+
+// SSHAgentReportDTO compares an SSH account's key with the keys of the ssh
+// agent the machine that runs git sees (#244): on a remote host, the
+// client's agent when the connection forwards it. Fingerprints only, never
+// key material.
+type SSHAgentReportDTO struct {
+	KeyFile            string   `json:"keyFile"`
+	KeyFileFingerprint string   `json:"keyFileFingerprint"`
+	AgentFingerprints  []string `json:"agentFingerprints"`
+	AgentForwarded     bool     `json:"agentForwarded"`
+	Match              bool     `json:"match"`
+	IdentitiesOnly     bool     `json:"identitiesOnly"`
+}
+
+// CredentialSSHAgentReport reports which key git uses for an SSH account:
+// its own key file or one of the agent's.
+func (a *App) CredentialSSHAgentReport(accountKey string) SSHAgentReportDTO {
+	return a.be().CredentialSSHAgentReport(accountKey)
+}
+
+// credentialSSHAgentReportLocal is the local backend's
+// CredentialSSHAgentReport. A missing account reports nothing.
+func (a *App) credentialSSHAgentReportLocal(accountKey string) SSHAgentReportDTO {
 	a.mu.Lock()
-	acct, ok := a.cfg.Accounts[accountKey]
+	_, ok := a.cfg.Accounts[accountKey]
 	cfg := a.snapshotLocked()
 	a.mu.Unlock()
-
 	if !ok {
-		return CredentialSetupResult{OK: false, Message: "Account not found"}
+		return SSHAgentReportDTO{AgentFingerprints: []string{}}
 	}
-
-	sshFolder := credential.SSHFolder(cfg)
-
-	hostAlias := credential.SSHHostAlias(accountKey)
-	keyPath := credential.SSHKeyPath(sshFolder, accountKey)
-
-	// Remove old key files.
-	_ = os.Remove(keyPath)
-	_ = os.Remove(keyPath + ".pub")
-
-	// Remove old ssh/config entry so it gets re-created.
-	_ = credential.RemoveSSHConfigEntry(sshFolder, hostAlias)
-
-	// Also remove from provider reminder.
-	_ = acct
-
-	// Re-run setup from scratch — creates config entry + key + tests connection.
-	return a.setupSSH(accountKey)
+	r := credential.SSHAgentReport(context.Background(), cfg, accountKey)
+	if r.AgentFingerprints == nil {
+		r.AgentFingerprints = []string{}
+	}
+	return SSHAgentReportDTO{
+		KeyFile:            r.KeyFile,
+		KeyFileFingerprint: r.KeyFileFingerprint,
+		AgentFingerprints:  r.AgentFingerprints,
+		AgentForwarded:     r.AgentForwarded,
+		Match:              r.Match,
+		IdentitiesOnly:     r.IdentitiesOnly,
+	}
 }
 
 // ─── Delete ───────────────────────────────────────────────────

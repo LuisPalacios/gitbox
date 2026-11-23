@@ -44,6 +44,7 @@ type Backend interface {
 	CreateNewRepo(accountKey, owner, repoName, description string, private, cloneAfter bool, root string) error
 	CredentialDelete(accountKey string) CredentialSetupResult
 	CredentialRegenerateSSH(accountKey string) CredentialSetupResult
+	CredentialSSHAgentReport(accountKey string) SSHAgentReportDTO
 	CredentialSetupGCM(accountKey string) CredentialSetupResult
 	CredentialSetupSSH(accountKey string) CredentialSetupResult
 	CredentialStoreToken(accountKey, token string) CredentialSetupResult
@@ -199,6 +200,9 @@ func (b localBackend) CredentialDelete(accountKey string) CredentialSetupResult 
 }
 func (b localBackend) CredentialRegenerateSSH(accountKey string) CredentialSetupResult {
 	return b.a.credentialRegenerateSSHLocal(accountKey)
+}
+func (b localBackend) CredentialSSHAgentReport(accountKey string) SSHAgentReportDTO {
+	return b.a.credentialSSHAgentReportLocal(accountKey)
 }
 func (b localBackend) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 	return b.a.credentialSetupGCMLocal(accountKey)
