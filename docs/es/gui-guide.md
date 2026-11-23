@@ -497,6 +497,8 @@ Gitbox guarda los clones bajo una o más **raíces de clonado**, por ejemplo `~/
 
 Abre **Ajustes** y luego **Cambiar** junto a **Raíces de clonado** para gestionarlas. Cada fila muestra la carpeta, cuántos repos viven bajo ella y una insignia **Predeterminada** en la predeterminada. Una raíz que no está en disco aparece tachada.
 
+Si dos entradas registradas apuntan a la misma carpeta, **Requiere atención** muestra ambos nombres. Revisa sus carpetas de clonado y corrige la entrada en conflicto. Gitbox conserva ambos registros y sus rutas originales.
+
 - **+ Añadir raíz…** — elige una carpeta; Gitbox la crea si no existe.
 - **Hacer predeterminada** — las cuentas nuevas clonan en esta raíz a partir de ahora. Las cuentas que ya usan la predeterminada anterior siguen en ella, y ningún clon se mueve.
 - **✕** — quita una raíz. Cuando todavía viven repos bajo ella, Gitbox pregunta si olvidarlos; sus archivos se quedan en disco.

@@ -2,10 +2,10 @@ package status
 
 import (
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/pathkey"
 )
 
 // RepoRef identifies a configured repository by its source and repo keys.
@@ -53,7 +53,7 @@ func ComputeNesting(cfg *config.Config) Nesting {
 			p := RepoPath(cfg, srcKey, repoKey, repo)
 			n.Path[ref] = p
 			if repo.Container {
-				containers = append(containers, container{ref: ref, path: normNestPath(p)})
+				containers = append(containers, container{ref: ref, path: pathkey.Compare(p)})
 			}
 		}
 	}
@@ -66,7 +66,7 @@ func ComputeNesting(cfg *config.Config) Nesting {
 		src := cfg.Sources[srcKey]
 		for _, repoKey := range src.OrderedRepoKeys() {
 			ref := RepoRef{Source: srcKey, Repo: repoKey}
-			childPath := normNestPath(n.Path[ref])
+			childPath := pathkey.Compare(n.Path[ref])
 			var best container
 			bestLen := -1
 			for _, c := range containers {
@@ -97,14 +97,4 @@ func isUnder(child, parent string) bool {
 		parent += sep
 	}
 	return strings.HasPrefix(child, parent)
-}
-
-// normNestPath normalizes a path for containment comparison: cleaned, and
-// case-folded on case-insensitive filesystems (Windows, macOS default).
-func normNestPath(p string) string {
-	p = filepath.Clean(p)
-	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
-		p = strings.ToLower(p)
-	}
-	return p
 }

@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"net"
-	"path/filepath"
 	"reflect"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -20,6 +18,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/heal"
+	"github.com/LuisPalacios/gitbox/pkg/pathkey"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 )
 
@@ -295,10 +294,7 @@ func (a *App) fetchOne(cfg *config.Config, source, repo string, lost *sync.Map) 
 	addr := serverAddr(account)
 	ctx := a.refreshContext()
 	path := status.RepoPath(cfg, source, repo, r)
-	key := filepath.Clean(path)
-	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
-		key = strings.ToLower(key)
-	}
+	key := pathkey.Compare(path)
 	for {
 		a.refreshMu.Lock()
 		if a.refreshClosed {

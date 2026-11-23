@@ -955,7 +955,10 @@
     return byAccount;
   })();
   $: brokenAccounts = Object.keys($accounts).filter((k) => accountHealth(credStatuses[k]?.status, simple).attention);
-  $: attention = attentionCounts(keysByAccount, rankOf, CALM_RANK, brokenAccounts);
+  $: attention = (() => {
+    const counts = attentionCounts(keysByAccount, rankOf, CALM_RANK, brokenAccounts);
+    return { ...counts, total: counts.total + ($configStore?.pathConflicts?.length ?? 0) };
+  })();
   $: totalRepos = Object.values(keysByAccount).reduce((n, keys) => n + keys.length, 0);
 
   // ── Sweep branches modal ──

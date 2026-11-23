@@ -504,6 +504,7 @@ func capList[T any](r *RemoteBackend, what string, list []T, limit int) []T {
 // capConfig keeps the first maxRemoteAccounts accounts, by key, and the
 // first maxRemoteRepos repos of the sources left, in key order.
 func capConfig(r *RemoteBackend, dto *ConfigDTO) {
+	dto.PathConflicts = capList(r, "folder conflicts", dto.PathConflicts, maxRemoteRepos)
 	if len(dto.Accounts) > maxRemoteAccounts {
 		keys := slices.Sorted(maps.Keys(dto.Accounts))
 		r.truncated("accounts", len(keys), maxRemoteAccounts)

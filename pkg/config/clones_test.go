@@ -10,7 +10,7 @@ func TestIgnoreClone(t *testing.T) {
 	if !c.IgnoreClone("/r1/scratch/thing", true) || c.IgnoreClone("/r1/scratch/thing/", true) {
 		t.Fatal("first ignore must change the list, an equivalent path must not")
 	}
-	if !c.IsIgnoredClone("/R1/scratch/thing") {
+	if !c.IsIgnoredClone("/r1/scratch/thing") {
 		t.Error("ignored path not recognised")
 	}
 	if !c.IgnoreClone("/r1/scratch/thing", false) || len(c.Global.IgnoredClones) != 0 {

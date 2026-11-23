@@ -2,15 +2,16 @@ package config
 
 import (
 	"encoding/json"
-	"path/filepath"
 	"strings"
+
+	"github.com/LuisPalacios/gitbox/pkg/pathkey"
 )
 
 // IsIgnoredClone reports whether path is in Global.IgnoredClones.
 func (c *Config) IsIgnoredClone(path string) bool {
-	want := clonePathKey(path)
+	want := pathkey.Compare(path)
 	for _, p := range c.Global.IgnoredClones {
-		if clonePathKey(p) == want {
+		if pathkey.Compare(p) == want {
 			return true
 		}
 	}
@@ -28,10 +29,10 @@ func (c *Config) IgnoreClone(path string, ignore bool) bool {
 		c.Global.IgnoredClones = append(c.Global.IgnoredClones, path)
 		return true
 	}
-	want := clonePathKey(path)
+	want := pathkey.Compare(path)
 	kept := c.Global.IgnoredClones[:0]
 	for _, p := range c.Global.IgnoredClones {
-		if clonePathKey(p) != want {
+		if pathkey.Compare(p) != want {
 			kept = append(kept, p)
 		}
 	}
@@ -41,12 +42,7 @@ func (c *Config) IgnoreClone(path string, ignore bool) bool {
 
 // SamePath reports whether two clone paths name the same folder.
 func SamePath(a, b string) bool {
-	return clonePathKey(a) == clonePathKey(b)
-}
-
-// clonePathKey normalizes a clone path for comparison, like rootKey.
-func clonePathKey(p string) string {
-	return strings.ToLower(filepath.ToSlash(filepath.Clean(ExpandTilde(strings.TrimSpace(p)))))
+	return pathkey.Compare(a) == pathkey.Compare(b)
 }
 
 // Clone returns a deep copy of the config, key orders included, so a scan

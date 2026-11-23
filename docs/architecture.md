@@ -85,6 +85,8 @@ Each level can be overridden:
 
 Changing a source's root or the default root pins the root every existing clone already resolves through, so no clone path moves. Clones outside this tree (nested clones inside a multi-repo container, clones found away from the standard layout) always carry an absolute `clone_folder`, so Gitbox never moves them.
 
+I use `pkg/pathkey` to compare resolved clone paths according to the filesystem containing each directory. Windows folds case, macOS queries the volume and Linux checks the directory. A missing child inherits the rule of its nearest existing parent. Gitbox stores the original spelling, refuses an inaccessible destination or a collision before placement, adoption or relinking, and reports existing collisions in the log and **Needs attention**.
+
 ---
 
 ## 3. Component design

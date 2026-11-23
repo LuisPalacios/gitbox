@@ -15,6 +15,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/ops"
+	"github.com/LuisPalacios/gitbox/pkg/pathkey"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 )
 
@@ -138,7 +139,7 @@ func Plan(c *config.Config, r Recipe, options Options) (ImportPlan, error) {
 	paths := map[string]bool{}
 	for sk, s := range planned.Sources {
 		for k, v := range s.Repos {
-			paths[pathKey(status.RepoPath(planned, sk, k, v))] = true
+			paths[pathkey.Compare(status.RepoPath(planned, sk, k, v))] = true
 		}
 	}
 	for _, s := range r.Sources {
@@ -205,7 +206,9 @@ func (p *ImportPlan) addSource(s Source, account string, slots map[string]string
 		if err := cfg.AddSource(key, config.Source{Account: account, Folder: folder}); err != nil {
 			return ErrInvalid
 		}
-		cfg.SetSourceRoot(key, slots[s.RootSlot])
+		if err := cfg.SetSourceRoot(key, slots[s.RootSlot]); err != nil {
+			return err
+		}
 		p.row("source", name, "add")
 	} else {
 		p.row("source", name, "keep")
@@ -225,7 +228,7 @@ func (p *ImportPlan) addSource(s Source, account string, slots map[string]string
 		}
 		root = config.ExpandTilde(cfg.ListedRoot(root))
 		path := status.RepoPath(cfg, key, v.Key, entry)
-		id := pathKey(path)
+		id := pathkey.Compare(path)
 		if paths[id] || cfg.IsIgnoredClone(path) || !availablePath(root, path) {
 			p.row("repo", v.Key, "collision")
 			continue
@@ -242,24 +245,6 @@ func (p *ImportPlan) addSource(s Source, account string, slots map[string]string
 		p.row("repo", v.Key, "add")
 	}
 	return nil
-}
-
-// Resolve the existing prefix before comparing paths, including a symlink
-// used as a configured root, and fold case consistently with config.SamePath.
-func pathKey(path string) string {
-	path = filepath.Clean(path)
-	parent := path
-	for {
-		if real, err := filepath.EvalSymlinks(parent); err == nil {
-			tail, _ := filepath.Rel(parent, path)
-			return strings.ToLower(filepath.Clean(filepath.Join(real, tail)))
-		}
-		next := filepath.Dir(parent)
-		if next == parent {
-			return strings.ToLower(path)
-		}
-		parent = next
-	}
 }
 
 func availablePath(root, path string) bool {

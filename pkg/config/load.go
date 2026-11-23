@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 )
@@ -144,11 +145,7 @@ func migrateRoots(cfg *Config, data []byte) {
 	if legacy.Global.Folder == "" && len(legacy.Global.ExtraFolders) == 0 {
 		return
 	}
-	cfg.Global.Roots = nil
-	cfg.AddRoot(legacy.Global.Folder)
-	for _, p := range legacy.Global.ExtraFolders {
-		cfg.AddRoot(p)
-	}
+	cfg.Global.Roots = append([]string{legacy.Global.Folder}, legacy.Global.ExtraFolders...)
 }
 
 // listRoots drops blank and duplicate roots and adds any root a source or
@@ -156,14 +153,23 @@ func migrateRoots(cfg *Config, data []byte) {
 func listRoots(cfg *Config) {
 	roots := cfg.Global.Roots
 	cfg.Global.Roots = nil
+	seen := map[string]bool{}
+	add := func(r string) {
+		r = strings.TrimSpace(r)
+		key := filepath.Clean(ExpandTilde(r))
+		if r != "" && !seen[key] {
+			cfg.Global.Roots = append(cfg.Global.Roots, r)
+			seen[key] = true
+		}
+	}
 	for _, r := range roots {
-		cfg.AddRoot(r)
+		add(r)
 	}
 	for _, sk := range slices.Sorted(maps.Keys(cfg.Sources)) {
 		src := cfg.Sources[sk]
-		cfg.AddRoot(src.Root)
+		add(src.Root)
 		for _, rk := range slices.Sorted(maps.Keys(src.Repos)) {
-			cfg.AddRoot(src.Repos[rk].Root)
+			add(src.Repos[rk].Root)
 		}
 	}
 }

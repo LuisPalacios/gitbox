@@ -6,7 +6,7 @@
   // whose container is elsewhere keeps its parent tag. Rows keep their place
   // while the view is open: one that turns fine (after a pull, say) stays,
   // faded, until I leave the view and come back.
-  import { accounts, sources, themeStore } from '../stores';
+  import { accounts, sources, themeStore, configStore } from '../stores';
   import { statusColor, accountHealth } from '../status';
   import { ATTENTION_GROUPS, CALM_RANK } from '../presentation';
   import { providerColor } from '../theme';
@@ -61,7 +61,8 @@
   }
   $: broken = Object.keys($accounts).filter((k) => accountHealth(credStatuses[k]?.status, simple).attention);
   $: accountCount = Object.keys($accounts).length;
-  $: needYou = items.filter((i) => !i.settled).length + broken.length;
+  $: conflicts = $configStore?.pathConflicts ?? [];
+  $: needYou = conflicts.length + items.filter((i) => !i.settled).length + broken.length;
 </script>
 
 <section class="view-scroll">
@@ -70,12 +71,18 @@
     {#if needYou > 0}<span class="view-sub">{$t(needYou === 1 ? 'account.needYouOne' : 'account.needYou', { n: needYou })}</span>{/if}
   </div>
 
+  {#if conflicts.length}
+    <div class="group-h">{$t('attention.pathCollision')}</div>
+    {#each conflicts as conflict}
+      <div class="acct-row"><span class="mark" aria-hidden="true">!</span><span>{conflict.first} · {conflict.second}</span></div>
+    {/each}
+  {/if}
   {#if accountCount === 0}
     <div class="empty">
       <p>{$t('attention.noAccounts')}</p>
       <button use:ro={['addAccount', 'credentialStoreToken']} class="text-btn" on:click={onAddAccount}>{simple ? $t('nav.connect') : $t('account.add')}</button>
     </div>
-  {:else if broken.length === 0 && groups.length === 0}
+  {:else if broken.length === 0 && groups.length === 0 && conflicts.length === 0}
     <div class="empty">
       <p class="empty-title"><span style="color: {sc('clean')}">●</span> {$t('attention.empty')}</p>
       <p>{$t(simple ? 'attention.emptyDetailSimple' : 'attention.emptyDetail')}</p>

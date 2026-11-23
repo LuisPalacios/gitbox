@@ -400,6 +400,20 @@ export namespace config {
 	        this.error = source["error"];
 	    }
 	}
+	export class PathConflict {
+	    first: string;
+	    second: string;
+
+	    static createFrom(source: any = {}) {
+	        return new PathConflict(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.first = source["first"];
+	        this.second = source["second"];
+	    }
+	}
 	
 	export class Repo {
 	    fetch_all_remotes?: boolean;
@@ -758,6 +772,7 @@ export namespace main {
 	    accounts: Record<string, config.Account>;
 	    sources: Record<string, SourceDTO>;
 	    mirrors: Record<string, MirrorDTO>;
+	    pathConflicts?: config.PathConflict[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ConfigDTO(source);
@@ -770,6 +785,7 @@ export namespace main {
 	        this.accounts = this.convertValues(source["accounts"], config.Account, true);
 	        this.sources = this.convertValues(source["sources"], SourceDTO, true);
 	        this.mirrors = this.convertValues(source["mirrors"], MirrorDTO, true);
+	        this.pathConflicts = this.convertValues(source["pathConflicts"], config.PathConflict);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

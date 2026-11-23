@@ -6,6 +6,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
+	"github.com/LuisPalacios/gitbox/pkg/pathkey"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
 )
 
@@ -85,15 +86,40 @@ func ResolveSourceKey(cfg *config.Config, key string) (string, error) {
 // or to the account's source when key is an account key. Repos already in
 // the source are skipped.
 func AddDiscoveredRepos(cfg *config.Config, key string, repoNames []string) error {
+	return AddDiscoveredReposToFolder(cfg, key, repoNames, "")
+}
+
+// AddDiscoveredReposToFolder checks all destinations before adding any repos.
+func AddDiscoveredReposToFolder(cfg *config.Config, key string, repoNames []string, folder string) error {
 	sourceKey, err := ResolveSourceKey(cfg, key)
 	if err != nil {
 		return err
 	}
+	claimed := map[string]bool{}
+	for sk, src := range cfg.Sources {
+		for rk, repo := range src.Repos {
+			claimed[pathkey.Compare(config.RepoPath(cfg, sk, rk, repo))] = true
+		}
+	}
+	entry := config.Repo{CloneFolder: folder}
+	pending := make([]string, 0, len(repoNames))
+	names := map[string]bool{}
 	for _, name := range repoNames {
-		if _, exists := cfg.Sources[sourceKey].Repos[name]; exists {
+		if _, exists := cfg.Sources[sourceKey].Repos[name]; exists || names[name] {
 			continue
 		}
-		if err := cfg.AddRepo(sourceKey, name, config.Repo{}); err != nil {
+		dest := pathkey.Of(config.RepoPath(cfg, sourceKey, name, entry))
+		if dest.Access == pathkey.Unknown {
+			return config.ErrPathUnavailable
+		}
+		if claimed[dest.Cmp] {
+			return config.ErrPathCollision
+		}
+		claimed[dest.Cmp], names[name] = true, true
+		pending = append(pending, name)
+	}
+	for _, name := range pending {
+		if err := cfg.AddRepo(sourceKey, name, entry); err != nil {
 			return err
 		}
 	}

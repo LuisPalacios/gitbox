@@ -51,6 +51,21 @@ func ensureRootDir(path string) error {
 	return nil
 }
 
+// ensureListedRoot validates the placement before creating a directory.
+// The caller holds a.mu; a failed mkdir leaves the list untouched.
+func ensureListedRoot(cfg *config.Config, path string) (bool, error) {
+	roots := cfg.Global.Roots
+	changed, err := cfg.AddRootChecked(path)
+	if err != nil {
+		return false, err
+	}
+	if err := ensureRootDir(path); err != nil {
+		cfg.Global.Roots = roots
+		return false, err
+	}
+	return changed, nil
+}
+
 // InitRoot sets the first clone root and saves the config; onboarding
 // finishes here. A new install starts in Simple mode. On a config that
 // already has roots, the folder becomes the default one.
@@ -75,10 +90,6 @@ func (a *App) InitRoot(folder string) error {
 // initRootLocal is the local backend's InitRoot.
 func (a *App) initRootLocal(folder string) error {
 	folder = strings.TrimSpace(folder)
-	if err := ensureRootDir(folder); err != nil {
-		return err
-	}
-
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -87,10 +98,13 @@ func (a *App) initRootLocal(folder string) error {
 	if onDisk, err := config.Load(a.cfgPath); err == nil {
 		_ = a.mergeDiskPrefs(onDisk)
 	}
-	if len(a.cfg.Global.Roots) == 0 && a.cfg.Global.UIMode == "" {
+	first := len(a.cfg.Global.Roots) == 0
+	if _, err := ensureListedRoot(a.cfg, folder); err != nil {
+		return err
+	}
+	if first && a.cfg.Global.UIMode == "" {
 		a.cfg.Global.UIMode = uiModeSimple
 	}
-	a.cfg.AddRoot(folder)
 	a.cfg.SetDefaultRoot(folder)
 	// Onboarding completes here: promote the in-memory config to "loaded"
 	// before the first save so saveConfig() accepts it. Only reachable on
@@ -132,12 +146,13 @@ func (a *App) AddRoot(path string) error { return a.be().AddRoot(path) }
 // addRootLocal is the local backend's AddRoot.
 func (a *App) addRootLocal(path string) error {
 	path = strings.TrimSpace(path)
-	if err := ensureRootDir(path); err != nil {
-		return err
-	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.cfg.AddRoot(path) {
+	changed, err := ensureListedRoot(a.cfg, path)
+	if err != nil {
+		return err
+	}
+	if changed {
 		return a.saveConfig()
 	}
 	return nil

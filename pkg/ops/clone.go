@@ -39,11 +39,15 @@ func PlanClone(cfg *config.Config, sourceKey, repoKey string) (ClonePlan, error)
 		return ClonePlan{}, fmt.Errorf("account %q not found", src.Account)
 	}
 
+	dest := status.RepoPath(cfg, sourceKey, repoKey, repo)
+	if err := cfg.CheckClonePath(sourceKey, repoKey, dest); err != nil {
+		return ClonePlan{}, err
+	}
 	credType := repo.EffectiveCredentialType(&acct)
 	plan := ClonePlan{
 		SourceKey: sourceKey,
 		RepoKey:   repoKey,
-		Dest:      status.RepoPath(cfg, sourceKey, repoKey, repo),
+		Dest:      dest,
 		URL:       heal.ExpectedOriginURL(acct, repoKey, credType),
 		Opts:      git.CloneOpts{Quiet: true},
 	}

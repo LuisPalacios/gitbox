@@ -83,6 +83,17 @@ func TestAddDiscoveredReposToFolder_StoresAbsoluteCloneFolder(t *testing.T) {
 	a, cfgPath := newWorkspaceTestApp(t)
 
 	custom := filepath.Join(t.TempDir(), "custom-loc")
+	before, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.AddDiscoveredReposToFolder("github-alice", []string{"team/newrepo", "team/another"}, custom); !errors.Is(err, config.ErrPathCollision) {
+		t.Fatalf("shared custom destination = %v", err)
+	}
+	after, err := os.ReadFile(cfgPath)
+	if err != nil || string(before) != string(after) || len(a.cfg.Sources["github-alice"].Repos) != 2 {
+		t.Fatal("refused batch changed the config")
+	}
 	if err := a.AddDiscoveredReposToFolder("github-alice", []string{"team/newrepo"}, custom); err != nil {
 		t.Fatalf("AddDiscoveredReposToFolder: %v", err)
 	}
