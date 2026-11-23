@@ -49,6 +49,7 @@ pkg[/\\]config[/\\]testmode[.]go:[0-9]+:[0-9]+: unreachable func: SetupTestMode$
 unreachable func: (PSDecode|resetLookupCachesForTest|Version\.String)$
 pkg[/\\]update[/\\]apply_helper[.]go:[0-9]+:[0-9]+: unreachable func: (readUpdateBytes|verifiedWindowsExecutable)$
 pkg[/\\]update[/\\]replace_windows_executable[.]go:[0-9]+:[0-9]+: unreachable func: (stageExecutable|removeRecordedWindowsBackup|replaceWindowsExecutableWith)$
+pkg[/\\]git[/\\]sweep[.]go:[0-9]+:[0-9]+: unreachable func: DeleteStaleBranches$
 pkg[/\\]terminals[/\\]sync[.]go:[0-9]+:[0-9]+: unreachable func: Sync$
 pkg[/\\]workspace[/\\]workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCache$
 pkg[/\\]update[/\\]platform_(unix|windows)[.]go:[0-9]+:[0-9]+: unreachable func: CleanupOldBinary$

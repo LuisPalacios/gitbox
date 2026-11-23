@@ -360,6 +360,18 @@ func TestDefaultBranch(t *testing.T) {
 	if branch != "master" {
 		t.Errorf("DefaultBranch = %q, want master", branch)
 	}
+	runGit(t, clonePath, "branch", "release/stable")
+	runGit(t, clonePath, "update-ref", "refs/remotes/origin/release/stable", "HEAD")
+	runGit(t, clonePath, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/release/stable")
+	branch, err = DefaultBranch(clonePath)
+	if err != nil || branch != "release/stable" {
+		t.Fatalf("default branch with slash = %q, %v", branch, err)
+	}
+	result, err := SweepBranches(clonePath)
+	if err != nil || len(result.Tips) != 0 {
+		t.Fatalf("default or current branch appeared in preview: %+v, %v", result, err)
+	}
+
 }
 
 func TestSweepBranches_Merged(t *testing.T) {
@@ -468,6 +480,40 @@ func TestDeleteStaleBranches(t *testing.T) {
 			t.Errorf("branch %s should have been deleted", name)
 		}
 	}
+	t.Run("changed and protected branches survive", func(t *testing.T) {
+		for _, name := range []string{"moved", "in-use", "recovered", "bisecting", "configured"} {
+			runGit(t, clonePath, "branch", name)
+		}
+		runGit(t, clonePath, "config", "branch.recovered.remote", "origin")
+		runGit(t, clonePath, "config", "branch.recovered.merge", "refs/heads/recovered")
+		runGit(t, clonePath, "config", "branch.configured.description", "cleanup")
+		preview, err := SweepBranches(clonePath)
+		if err != nil || !slices.Equal(preview.Gone, []string{"recovered"}) {
+			t.Fatalf("preview = %+v, %v", preview, err)
+		}
+		runGit(t, clonePath, "branch", "new-since-preview")
+		runGit(t, clonePath, "branch", "-f", "moved", "HEAD~1")
+		runGit(t, clonePath, "update-ref", "refs/remotes/origin/recovered", "HEAD")
+		runGit(t, clonePath, "worktree", "add", filepath.Join(t.TempDir(), "linked"), "in-use")
+		wt := filepath.Join(t.TempDir(), "bisect")
+		runGit(t, clonePath, "worktree", "add", wt, "bisecting")
+		runGit(t, wt, "bisect", "start", "HEAD", "HEAD~2")
+		deleted, skipped, errs := DeletePreviewedBranches(clonePath, preview)
+		if len(errs) > 0 || !slices.Equal(deleted, []string{"configured"}) {
+			t.Fatalf("deleted=%v skipped=%v errors=%v", deleted, skipped, errs)
+		}
+		slices.Sort(skipped)
+		if !slices.Equal(skipped, []string{"bisecting", "in-use", "moved", "recovered"}) {
+			t.Fatalf("skipped %v", skipped)
+		}
+		for _, name := range append(skipped, "new-since-preview") {
+			runGit(t, clonePath, "show-ref", "--verify", "refs/heads/"+name)
+		}
+		if _, err := output(clonePath, "config", "--get", "branch.configured.description"); err == nil {
+			t.Fatal("deleted branch retained its local settings")
+		}
+	})
+
 }
 
 func TestSweepBranches_SquashMerged(t *testing.T) {
@@ -550,6 +596,70 @@ func TestSweepBranches_SquashMergedLocalOnly(t *testing.T) {
 		t.Errorf("local-squash not found in Squashed. Squashed=%v, Merged=%v, Gone=%v",
 			result.Squashed, result.Merged, result.Gone)
 	}
+	// Advance the base on an unrelated path. The patch remains equivalent
+	// even though its tree is now different from the branch tree.
+	writeFile(t, filepath.Join(clonePath, "later"), "later work\n")
+	runGit(t, clonePath, "add", "later")
+	runGit(t, clonePath, "commit", "-m", "advance default")
+	// A merge-only branch can have a unique recorded resolution even if
+	// cherry prints nothing. It must never qualify for forced deletion.
+	runGit(t, clonePath, "checkout", "-b", "merge-only", "master~1")
+	runGit(t, clonePath, "merge", "--no-commit", "--no-ff", "master")
+	writeFile(t, filepath.Join(clonePath, "resolution"), "unique resolution\n")
+	runGit(t, clonePath, "add", "resolution")
+	runGit(t, clonePath, "commit", "-m", "merge with unique resolution")
+	runGit(t, clonePath, "checkout", "master")
+	count := func() string {
+		t.Helper()
+		n, err := output(clonePath, "count-objects", "-v")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	before := count()
+	result, err = SweepBranches(clonePath)
+	if err != nil || !slices.Equal(result.Squashed, []string{"local-squash"}) {
+		t.Fatalf("advanced base: %+v, %v", result, err)
+	}
+	if after := count(); after != before {
+		t.Errorf("preview wrote objects: before %s after %s", before, after)
+	}
+	t.Run("promised blobs stay missing", func(t *testing.T) {
+		remote := filepath.Join(t.TempDir(), "remote.git")
+		runGit(t, clonePath, "clone", "--bare", clonePath, remote)
+		runGit(t, remote, "config", "uploadpack.allowFilter", "true")
+		partial := filepath.Join(t.TempDir(), "partial")
+		url := "file:///" + strings.TrimPrefix(filepath.ToSlash(remote), "/")
+		runGit(t, clonePath, "clone", "--filter=blob:none", "--no-checkout", url, partial)
+		runGit(t, partial, "branch", "local-squash", "origin/local-squash")
+		objects := func() string {
+			t.Helper()
+			out, err := output(partial, "count-objects", "-v")
+			if err != nil {
+				t.Fatal(err)
+			}
+			return out
+		}
+		before := objects()
+		p, err := SweepBranches(partial)
+		if err != nil || len(p.Squashed) > 0 {
+			t.Fatalf("partial preview = %+v, %v", p, err)
+		}
+		deleted, skipped, errs := DeletePreviewedBranches(partial, result)
+		if len(errs) > 0 || len(deleted) > 0 || !slices.Contains(skipped, "local-squash") {
+			t.Fatalf("partial confirm: deleted=%v skipped=%v errors=%v", deleted, skipped, errs)
+		}
+		if after := objects(); before != after {
+			t.Fatalf("fetched promised objects: before %s after %s", before, after)
+		}
+	})
+	runGit(t, clonePath, "revert", "--no-edit", "master~1")
+	result, err = SweepBranches(clonePath)
+	if err != nil || len(result.Squashed) != 0 {
+		t.Fatalf("reverted patch: %+v, %v", result, err)
+	}
+
 }
 
 func TestSweepBranches_NothingToSweep(t *testing.T) {

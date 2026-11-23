@@ -42,7 +42,7 @@ type Backend interface {
 	CheckMirrorCredentials(accountKey string) MirrorCredentialCheck
 	CheckMoveReadiness(sourceSourceKey, destAccountKey string, deleteSource bool) MoveReadinessDTO
 	CloneRepo(sourceKey, repoKey, root string)
-	ConfirmSweep(sourceKey, repoKey string) SweepDeleteDTO
+	ConfirmSweep(sourceKey, repoKey string, selection SweepPreviewDTO) SweepDeleteDTO
 	CreateNewRepo(accountKey, owner, repoName, description string, private, cloneAfter bool, root string) error
 	CredentialDelete(accountKey string) CredentialSetupResult
 	CredentialRegenerateSSH(accountKey string) CredentialSetupResult
@@ -190,8 +190,8 @@ func (b localBackend) CheckMoveReadiness(sourceSourceKey, destAccountKey string,
 func (b localBackend) CloneRepo(sourceKey, repoKey, root string) {
 	b.a.cloneRepoLocal(sourceKey, repoKey, root)
 }
-func (b localBackend) ConfirmSweep(sourceKey, repoKey string) SweepDeleteDTO {
-	return b.a.confirmSweepLocal(sourceKey, repoKey)
+func (b localBackend) ConfirmSweep(sourceKey, repoKey string, selection SweepPreviewDTO) SweepDeleteDTO {
+	return b.a.confirmSweepLocal(sourceKey, repoKey, selection)
 }
 func (b localBackend) CreateNewRepo(accountKey, owner, repoName, description string, private, cloneAfter bool, root string) error {
 	return b.a.createNewRepoLocal(accountKey, owner, repoName, description, private, cloneAfter, root)

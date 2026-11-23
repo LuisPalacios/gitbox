@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -165,8 +166,10 @@ func repoMutationRows() []contractRow {
 		{name: "CloneRepo unknown repo", until: []string{"clone:done"}, call: func(b Backend) (any, error) { b.CloneRepo("acct", "org/none", ""); return nil, nil }},
 		{name: "PullRepo", until: []string{"pull:done"}, call: func(b Backend) (any, error) { b.PullRepo("acct", "org/repo"); return nil, nil }},
 		{name: "PullRepo unknown repo", until: []string{"pull:done"}, call: func(b Backend) (any, error) { b.PullRepo("acct", "org/none"); return nil, nil }},
-		{name: "ConfirmSweep", call: func(b Backend) (any, error) { return b.ConfirmSweep("acct", "org/repo"), nil }},
-		{name: "ConfirmSweep unknown repo", call: func(b Backend) (any, error) { return b.ConfirmSweep("acct", "org/none"), nil }},
+		{name: "ConfirmSweep", call: func(b Backend) (any, error) {
+			return b.ConfirmSweep("acct", "org/repo", b.PreviewSweep("acct", "org/repo")), nil
+		}},
+		{name: "ConfirmSweep unknown repo", call: func(b Backend) (any, error) { return b.ConfirmSweep("acct", "org/none", SweepPreviewDTO{}), nil }},
 		{name: "Reconcile", call: func(b Backend) (any, error) { return b.Reconcile(), nil }},
 		{name: "AdoptClones", call: func(b Backend) (any, error) { return b.AdoptClones(nil), nil }},
 		{name: "AdoptClones unknown account", call: func(b Backend) (any, error) {
@@ -229,6 +232,49 @@ func TestBackendContractRepoMutations(t *testing.T) {
 	right := repoHost(t, serverURL)
 	link := serveRemote(t, right.path, nil)
 	right.b, right.events = link.Remote, link.Events
+
+	for _, host := range []struct {
+		name string
+		side repoSide
+	}{{"local", left}, {"remote", right}} {
+		t.Run("confirm the previewed branches/"+host.name, func(t *testing.T) {
+			s := host.side
+			s.use(t)
+			cfg := loadConfig(t, s.path)
+			path := status.RepoPath(cfg, "acct", "org/repo", cfg.Sources["acct"].Repos["org/repo"])
+			run := func(args ...string) {
+				t.Helper()
+				if _, err := git.Run(t.Context(), git.Request{Dir: path, Args: args}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			run("branch", "a")
+			run("branch", "b")
+			preview := s.b.PreviewSweep("acct", "org/repo")
+			if preview.ID == "" || !slices.Equal(preview.Merged, []string{"a", "b"}) {
+				t.Fatalf("preview: %+v", preview)
+			}
+			run("branch", "c")
+			altered := preview
+			altered.Merged = []string{"a", "b", "c"}
+			if d := s.b.ConfirmSweep("acct", "org/repo", altered); len(d.Deleted) != 0 || len(d.Skipped) != 3 {
+				t.Fatalf("altered preview: %+v", d)
+			}
+			if d := s.b.ConfirmSweep("acct", "org/repo", preview); d.Error != "" || len(d.Skipped) != 0 || !slices.Equal(d.Deleted, []string{"a", "b"}) {
+				t.Fatalf("confirm: %+v", d)
+			}
+			run("show-ref", "--verify", "refs/heads/c")
+			next := s.b.PreviewSweep("acct", "org/repo")
+			if next.ID == "" {
+				t.Fatalf("missing fresh preview: %+v", next)
+			}
+			s.b.PreviewSweep("acct", "org/missing")
+			if d := s.b.ConfirmSweep("acct", "org/repo", next); !slices.Equal(d.Skipped, []string{"c"}) {
+				t.Fatalf("expired preview: %+v", d)
+			}
+			run("show-ref", "--verify", "refs/heads/c")
+		})
+	}
 
 	for _, row := range repoMutationRows() {
 		t.Run(row.name, func(t *testing.T) {

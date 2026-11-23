@@ -292,11 +292,13 @@ El editor y el AI harness predeterminados son las primeras entradas de `global.e
 
 Cuando el clon no ha terminado o su estado todavía no se ha cargado, las entradas de carpeta, editor, terminal y AI harness dicen que primero hay que clonar en lugar de no hacer nada.
 
-**🧹 Limpiar ramas** encuentra y elimina ramas locales obsoletas. Un diálogo de confirmación las lista antes de eliminar nada, y la rama actual y la rama predeterminada nunca se tocan. Detecta tres tipos:
+**🧹 Limpiar ramas** muestra las ramas locales obsoletas en tres grupos:
 
-- **Eliminadas** — la rama de remote tracking se eliminó, por ejemplo después de fusionar una PR y borrar su rama en el servidor. Se elimina con `git branch -D`.
-- **Fusionadas** — totalmente fusionadas en la rama predeterminada. Se eliminan con `git branch -d`.
-- **Squashed** — fusionadas con squash o con rebase en el servidor (commits distintos, mismos cambios). Se eliminan con `git branch -D`.
+- **Eliminadas** — desapareció el upstream configurado para la rama. Su último commit local aún puede contener trabajo sin fusionar.
+- **Fusionadas** — la rama predeterminada contiene los commits de la rama.
+- **Squashed** — los árboles de ambos extremos son idénticos, o la rama predeterminada contiene parches equivalentes y aún coincide con la rama en cada ruta que esta modificó. Si Gitbox no puede verificar un squash, la rama se conserva en el clon. En un clon parcial, Gitbox comprueba únicamente los objetos que ya están en disco.
+
+Revisa la lista antes de confirmar. Gitbox vuelve a comprobar cada rama mostrada y solo la elimina si conserva el mismo commit y la misma categoría. Las ramas abiertas en otro árbol de trabajo, implicadas en un rebase o bisect, o elegidas como predeterminadas se conservan en el clon. El resultado enumera las ramas omitidas para que puedas volver a previsualizarlas.
 
 ### Acciones de cuenta
 

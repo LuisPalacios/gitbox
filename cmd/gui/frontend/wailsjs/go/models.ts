@@ -1850,6 +1850,7 @@ export namespace main {
 	    }
 	}
 	export class SweepDeleteDTO {
+	    skipped: string[];
 	    deleted: string[];
 	    error?: string;
 	
@@ -1859,11 +1860,13 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.skipped = source["skipped"];
 	        this.deleted = source["deleted"];
 	        this.error = source["error"];
 	    }
 	}
 	export class SweepPreviewDTO {
+	    id: string;
 	    merged: string[];
 	    gone: string[];
 	    squashed: string[];
@@ -1875,6 +1878,7 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
 	        this.merged = source["merged"];
 	        this.gone = source["gone"];
 	        this.squashed = source["squashed"];

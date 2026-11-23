@@ -51,7 +51,7 @@ export function CheckUpdateRecovery(arg1:boolean):Promise<string>;
 
 export function CloneRepo(arg1:string,arg2:string,arg3:string):Promise<void>;
 
-export function ConfirmSweep(arg1:string,arg2:string):Promise<main.SweepDeleteDTO>;
+export function ConfirmSweep(arg1:string,arg2:string,arg3:main.SweepPreviewDTO):Promise<main.SweepDeleteDTO>;
 
 export function ConnectRemote(arg1:string):Promise<main.RemoteResultDTO>;
 

@@ -124,8 +124,8 @@ const calls = {
   checkUpdateRecovery: (started: boolean): Promise<string> => CheckUpdateRecovery(started),
   resolveUpdateRecovery: (rollback: boolean): Promise<void> => ResolveUpdateRecovery(rollback),
   applyUpdate: (): Promise<void> => ApplyUpdate(),
-  previewSweep: (sourceKey: string, repoKey: string): Promise<any> => PreviewSweep(sourceKey, repoKey),
-  confirmSweep: (sourceKey: string, repoKey: string): Promise<any> => ConfirmSweep(sourceKey, repoKey),
+  previewSweep: (sourceKey: string, repoKey: string) => PreviewSweep(sourceKey, repoKey),
+  confirmSweep: (sourceKey: string, repoKey: string, preview: Awaited<ReturnType<typeof PreviewSweep>>) => ConfirmSweep(sourceKey, repoKey, preview),
   // Disk reconcile (#149): adopt confident clones, re-link moved ones, list the rest.
   reconcile: (): Promise<ReconcileDTO> => Reconcile() as Promise<ReconcileDTO>,
   adoptClones: (reqs: { path: string; account: string; workspaceRoot?: string }[]): Promise<ReconcileDTO> => AdoptClones(reqs) as Promise<ReconcileDTO>,

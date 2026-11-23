@@ -27,6 +27,8 @@ const (
 	NonInteractive EnvPolicy = iota
 	// Inherit is Environ() as it is.
 	Inherit
+	// localObjectsOnly is noninteractive and keeps partial-clone reads on disk.
+	localObjectsOnly
 )
 
 // Request describes one git command.
@@ -108,6 +110,10 @@ func (r Request) environ() []string {
 		return r.EnvExact
 	case r.Env == Inherit:
 		return Environ()
+	case r.Env == localObjectsOnly:
+		// Older Git understands the empty transport allowlist even when
+		// it does not yet implement GIT_NO_LAZY_FETCH.
+		return append(nonInteractiveEnv(), "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=")
 	default:
 		return nonInteractiveEnv()
 	}

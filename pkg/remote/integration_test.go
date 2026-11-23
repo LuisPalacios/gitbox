@@ -934,7 +934,7 @@ var mutationCalls = []struct {
 	// the long ones end in their done event with that error and answer.
 	{"CloneRepo", []any{"acct", "org/none", ""}, false},
 	{"PullRepo", []any{"acct", "org/repo"}, false},
-	{"ConfirmSweep", []any{"acct", "org/repo"}, false},
+	{"ConfirmSweep", []any{"acct", "org/repo", map[string]any{}}, false},
 	{"Reconcile", []any{}, false},
 	{"AdoptClones", []any{[]any{}}, false},
 	{"SetupMirrorRepo", []any{"none", "org/repo"}, false},
