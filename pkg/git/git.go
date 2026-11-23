@@ -474,7 +474,7 @@ func SetRemoteURLContext(ctx context.Context, repoPath, remote, url string) erro
 
 // CurrentBranch returns the current branch name.
 func CurrentBranch(repoPath string) (string, error) {
-	out, err := output(repoPath, "rev-parse", "--abbrev-ref", "HEAD")
+	out, err := localObjectOutput(context.Background(), repoPath, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		return "", err
 	}
@@ -501,12 +501,8 @@ func DefaultBranch(repoPath string) (string, error) {
 
 // DefaultBranchContext is DefaultBranch that stops when ctx is cancelled.
 func DefaultBranchContext(ctx context.Context, repoPath string) (string, error) {
-	return defaultBranchWith(func(args ...string) (string, error) { return outputContext(ctx, repoPath, args...) })
-}
-
-func defaultBranchWith(read func(...string) (string, error)) (string, error) {
 	// Try origin/HEAD — set by git clone or git remote set-head.
-	out, err := read("symbolic-ref", "refs/remotes/origin/HEAD")
+	out, err := localObjectOutput(ctx, repoPath, "symbolic-ref", "refs/remotes/origin/HEAD")
 	if err == nil {
 		ref := strings.TrimSpace(out)
 		// "refs/remotes/origin/main" → "main"
@@ -517,7 +513,7 @@ func defaultBranchWith(read func(...string) (string, error)) (string, error) {
 
 	// Fallback: check if main or master exist locally.
 	for _, candidate := range []string{"main", "master"} {
-		if _, err := read("rev-parse", "--verify", "refs/heads/"+candidate); err == nil {
+		if _, err := localObjectOutput(ctx, repoPath, "rev-parse", "--verify", "refs/heads/"+candidate); err == nil {
 			return candidate, nil
 		}
 	}
@@ -576,6 +572,14 @@ var errOutputTruncated = errors.New("output exceeds the limit")
 // taken for the whole.
 func outputContext(ctx context.Context, dir string, args ...string) (string, error) {
 	return outputRequest(ctx, Request{Dir: dir, Args: args})
+}
+
+// A partial clone can fetch a promised blob even during a local Git read.
+// Deny all transports as well: older Git understands GIT_ALLOW_PROTOCOL
+// even when it does not yet implement GIT_NO_LAZY_FETCH.
+func localObjectOutput(ctx context.Context, dir string, args ...string) (string, error) {
+	env := append(nonInteractiveEnv(), "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=")
+	return outputRequest(ctx, Request{Dir: dir, Args: args, EnvExact: env})
 }
 
 func outputRequest(ctx context.Context, req Request) (string, error) {

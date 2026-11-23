@@ -11,16 +11,8 @@ import (
 	"strings"
 )
 
-// A partial clone can fetch a promised blob even during a local Git read.
-// Deny all transports as well: older Git understands GIT_ALLOW_PROTOCOL
-// even when it does not yet implement GIT_NO_LAZY_FETCH.
 func sweepRead(dir string, args ...string) (string, error) {
-	env := append(nonInteractiveEnv(), "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=")
-	return outputRequest(context.Background(), Request{Dir: dir, Args: args, EnvExact: env})
-}
-
-func sweepDefault(dir string) (string, error) {
-	return defaultBranchWith(func(args ...string) (string, error) { return sweepRead(dir, args...) })
+	return localObjectOutput(context.Background(), dir, args...)
 }
 
 // sweepRef pins the commit and tracks whether Git has the branch checked
@@ -180,12 +172,11 @@ func isSquashMerged(dir, base, tip string) bool {
 
 // SweepBranches reads local refs without modifying the repository.
 func SweepBranches(dir string) (SweepResult, error) {
-	def, err := sweepDefault(dir)
+	def, err := DefaultBranch(dir)
 	if err != nil {
 		return SweepResult{}, err
 	}
-	cur, err := sweepRead(dir, "rev-parse", "--abbrev-ref", "HEAD")
-	cur = strings.TrimSpace(cur)
+	cur, err := CurrentBranch(dir)
 	if err != nil {
 		return SweepResult{}, err
 	}
@@ -225,7 +216,7 @@ func SweepBranches(dir string) (SweepResult, error) {
 // observation is a skip. update-ref atomically compares the preview's OID
 // while removing the ref, including when a writer moves it after our check.
 func DeletePreviewedBranches(dir string, preview SweepResult) (deleted, skipped []string, errs []error) {
-	def, err := sweepDefault(dir)
+	def, err := DefaultBranch(dir)
 	if err != nil {
 		return nil, nil, []error{err}
 	}
@@ -278,7 +269,7 @@ func deleteCandidate(dir, def, base, name, category string, preview SweepResult)
 	}
 	// Category checks may run several Git commands. Refresh the default,
 	// operation state and worktree occupancy just before deleting the ref.
-	currentDefault, err := sweepDefault(dir)
+	currentDefault, err := DefaultBranch(dir)
 	if err != nil {
 		return false, err
 	}
