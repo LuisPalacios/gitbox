@@ -2,6 +2,7 @@
   // I show incoming commits alongside the clone's local file details.
   import { slide } from 'svelte/transition';
   import { themeStore } from '../stores';
+  import { derivePresentation } from '../presentation';
   import { statusColor, countBadge } from '../status';
   import { t } from '../i18n';
   import Rich from '../Rich.svelte';
@@ -96,7 +97,13 @@
       {/each}
     {/if}
     {#if repoDetail.changed.length === 0 && repoDetail.untracked.length === 0 && repoDetail.ahead === 0 && repoDetail.behind === 0}
-      <span class="detail-clean">{$t('detail.upToDate')}</span>
+      <!-- A quiet working tree alone cannot establish an upstream. -->
+      {#if state.status === 'no upstream'}
+        {@const row = derivePresentation(state, simple ? 'simple' : 'advanced')}
+        <span class="detail-clean">{$t(row.labelKey)}</span>
+      {:else}
+        <span class="detail-clean">{$t('detail.upToDate')}</span>
+      {/if}
     {/if}
   {/if}
 </div>

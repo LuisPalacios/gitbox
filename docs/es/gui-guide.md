@@ -116,7 +116,7 @@ En Simple, cada proyecto muestra lo que Gitbox ha observado y cuándo hay que ac
 
 - **Sin cambios locales** — el proyecto no tiene archivos cambiados en este ordenador.
 - **Cambios en este ordenador · N archivos cambiados aquí** — Gitbox ha encontrado archivos cambiados en este ordenador. Abre el proyecto con tu IA y pídele que los guarde.
-- **Guardado aquí, aún no en el servidor** — los cambios guardados van por delante de la última versión conocida del servidor. Pasa el ratón por encima para ver el detalle. Una rama local independiente puede mostrar **Rama local**.
+- **Guardado aquí, aún no en el servidor** — los cambios guardados van por delante de la última versión conocida del servidor. Pasa el ratón por encima para ver el detalle. Una rama local independiente muestra **Rama local** y cuenta como guardada. Cuando Gitbox no puede identificar la rama predeterminada, la fila muestra **Comprobando…** y solo cuenta para el total hasta que un escaneo la identifique.
 - **Actualización disponible** — Gitbox ha visto trabajo más reciente en el servidor. **Actualizar** incorpora ese trabajo al proyecto cuando puede conservar tus cambios locales. Gitbox nunca actualiza por su cuenta.
 - **Solo en línea** — el proyecto aún no está en este ordenador. **Descargar** lo trae.
 - **Necesita ayuda** — algo ha ido mal, por ejemplo cambiaron las dos copias. Haz clic en el proyecto para ver qué ha ocurrido y ábrelo con tu IA para arreglarlo.
@@ -188,7 +188,7 @@ Gitbox vigila tus proyectos y muestra su estado:
 - **No clonado** (gris) — el repo todavía no está en este ordenador; **Clonar** lo descarga.
 - **Raíz no disponible** (gris; Simple: **Carpeta no encontrada**) — su raíz de clonado no está, por ejemplo un disco desconectado. No se pierde nada: el repo vuelve cuando vuelve la raíz.
 - **Rama local** (verde) — en una feature branch sin upstream tracking, lo cual es normal.
-- **No upstream** (gris) — la rama predeterminada no tiene upstream tracking y requiere atención.
+- **No upstream** (gris) — la rama predeterminada no tiene upstream tracking y requiere atención. Ambos modos esperan a que Gitbox identifique la rama predeterminada antes de contabilizar una rama sin upstream como guardada o que requiere atención.
 
 Los clones aparecen siempre en orden alfabético del nombre que muestra la fila, también los anidados. Cuando alguna fila de una lista te necesita, las filas sin nada que hacer se atenúan ligeramente hasta que pasas el ratón por encima, para que los problemas destaquen.
 

@@ -8,7 +8,8 @@
     applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, workspacePlaceholders, workspaceMembers, workspaceUnknown, workspaceDiagnostics,
     remoteWindow, blocked
   } from './lib/stores';
-  import { detailLocked, attentionRank, accountHealth, CALM_RANK } from './lib/status';
+  import { detailLocked, accountHealth } from './lib/status';
+  import { derivePresentation, CALM_RANK } from './lib/presentation';
   import { createDetailLoader } from './lib/repo-detail';
   import type { HealthFix } from './lib/status';
   import { resolveView, viewAccount, accountView, attentionCounts } from './lib/views';
@@ -910,10 +911,9 @@
     saveLayout();
   }
 
-  // How much each clone needs me (status.ts), for Needs attention and the counts.
+  // How much each clone needs me, for Needs attention and the counts.
   $: rankOf = (key: string) => {
-    const st = $repoStates[key];
-    return st ? attentionRank(st.status, st.isDefault) : attentionRank('unknown');
+    return derivePresentation($repoStates[key]).attention;
   };
   // Clones in alphabetical order (repo-tree.ts).
   $: treeRows = repoTreeRows($sources, repoNesting, collapsedRepos, $workspacePlaceholders);

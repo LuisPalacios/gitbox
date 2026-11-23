@@ -10,7 +10,7 @@ Los recuentos son funciones de prueba Go de nivel superior (no se cuentan los su
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-El total actual es de 890 pruebas Go (692 en `pkg/`, 198 en `cmd/gui/`) y 64 pruebas del frontend. Los recuentos incluyen las pruebas tras los tags `sshd_integration` y `remote_smoke`. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
+El total actual es de 890 pruebas Go (692 en `pkg/`, 198 en `cmd/gui/`) y 74 pruebas del frontend. Los recuentos incluyen las pruebas tras los tags `sshd_integration` y `remote_smoke`. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
 
 ### Biblioteca compartida (`pkg/`)
 
@@ -124,8 +124,9 @@ Este límite pertenece a la prueba, no al validador de config. Las configs acept
 - `credential-token.test.mjs` (4) — ejecuto los manejadores reales con un bridge aislado: borro los tokens guardados antes del paso posterior, conservo los fallidos para corregirlos y reintentarlo, limpio el estado al cerrar y reabrir, y compilo el modal real de credenciales con un estado inicial de prueba para comprobar que muestra el campo fallido y el botón de reintento habilitado, y después oculta el campo tras el éxito.
 - `repo-tree.test.mjs` (8) — el árbol de clones: propiedad entre sources, ninguna fila duplicada, plegado de anidados, recuperación ante padres obsoletos y ciclos, orden alfabético, grupos de atención separados por cuenta, las filas placeholder de un contenedor.
 - `repo-detail.test.mjs` (6) — normalización de slices nulos, cambio de clon, cierre y reapertura durante una lectura, refrescos fuera de orden, errores actuales frente a sustituidos, listas entrantes completas y errores independientes del historial.
-- `status.test.mjs` (13) — la forma, el color, el spinner, el tipo Simple, los indicadores de conteo, la regla del panel de detalle, las reglas de credenciales, el rango de atención y la etiqueta del glosario de cada estado; la salud de la cuenta por modo; el aviso de caducidad del token; la antigüedad de la comprobación en cada idioma.
-- `views.test.mjs` (5) — resolución de la vista guardada, vistas de cuenta, la lista de Requiere atención y sus conteos.
+- `status.test.mjs` (9) — los símbolos de estado, la paleta, los indicadores de conteo, las reglas del panel de detalle y las credenciales, la salud de la cuenta, la caducidad del token y la antigüedad de la comprobación en cada idioma.
+- `presentation.test.mjs` (2) — las etiquetas de las filas, la visibilidad de los indicadores, los colores, las acciones principales, los rangos de atención y los estados pendientes para cada estado, modo e identidad de rama, incluidos los textos que dependen del conteo.
+- `views.test.mjs` (6) — resolución de la vista guardada, vistas de cuenta, la lista de Requiere atención y sus conteos, incluida la identidad de rama.
 - `activity.test.mjs` (7) — alcances y resúmenes de Fetch de todo y Pull de todo, fallos de conexión agrupados por host.
 - `notices.test.mjs` (4) — tarjetas de resultado: mostrarlas, descartarlas, cerrarlas automáticamente y limitarlas.
 - `theme.test.mjs` (2) — colores de proveedor de los nombres de cuenta en los dos temas, con el color de texto para un proveedor desconocido.

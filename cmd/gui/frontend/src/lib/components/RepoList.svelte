@@ -3,7 +3,8 @@
   // account ⋯ menu and summary), then its clones as a tree (RepoTree), in
   // alphabetical order.
   import { accounts, sources, repoStates, themeStore } from '../stores';
-  import { statusColor, attentionRank, CALM_RANK } from '../status';
+  import { statusColor } from '../status';
+  import { derivePresentation, CALM_RANK } from '../presentation';
   import { providerColor } from '../theme';
   import { t } from '../i18n';
   import { onActivateKey } from '../keyboard';
@@ -29,7 +30,7 @@
   $: sc = (s: string) => statusColor(s, $themeStore);
   $: simple = rowProps.simple;
   // Repos that need me (as in Needs attention); unknown ones are still checking.
-  $: needsMe = (key: string) => { const st = $repoStates[key]; return !!st && attentionRank(st.status, st.isDefault) < CALM_RANK; };
+  $: needsMe = (key: string) => derivePresentation($repoStates[key]).attention < CALM_RANK;
   $: total = Object.values($sources).reduce((n, s) => n + Object.keys(s.repos).length, 0);
   // Calm rows fade only when another row in the list needs me.
   $: anyNeedsMe = Object.entries($sources).some(([sk, s]) => Object.keys(s.repos).some((r) => needsMe(`${sk}/${r}`)));
@@ -62,7 +63,7 @@
         </span>
         <span class="collapse-summary">
           {simple ? $t('simple.projects', { n: sourceRepoKeys.length }) : $t('collapse.clones', { n: sourceRepoKeys.length })} ·
-          {#if sourceRepoKeys.some(key => !$repoStates[key] || $repoStates[key].status === 'unknown')}
+          {#if sourceRepoKeys.some(key => derivePresentation($repoStates[key]).stale)}
             {$t('simple.checking')}
           {:else if sourceIssues === 0}
             <span style="color:{sc('clean')}">{simple ? $t('simple.allSaved') : $t('account.allUpToDate')}</span>

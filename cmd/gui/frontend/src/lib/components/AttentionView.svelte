@@ -7,7 +7,8 @@
   // while the view is open: one that turns fine (after a pull, say) stays,
   // faded, until I leave the view and come back.
   import { accounts, sources, themeStore } from '../stores';
-  import { statusColor, accountHealth, ATTENTION_GROUPS, CALM_RANK } from '../status';
+  import { statusColor, accountHealth } from '../status';
+  import { ATTENTION_GROUPS, CALM_RANK } from '../presentation';
   import { providerColor } from '../theme';
   import type { HealthFix } from '../status';
   import { attentionItems, pinAttention, accountView } from '../views';

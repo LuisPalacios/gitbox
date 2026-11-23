@@ -1,7 +1,7 @@
 // Navigation views and the Needs attention list (issue #138).
 //
 // Kept free of runtime imports so lib/views.test.mjs can load it on its
-// own: the status rules come in as functions (rankOf) from lib/status.ts.
+// own: the status rules come in as functions (rankOf) from lib/presentation.ts.
 
 export type View = 'attention' | 'all' | 'mirrors' | `account:${string}`;
 

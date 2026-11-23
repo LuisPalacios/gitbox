@@ -116,7 +116,7 @@ In Simple, each project shows what Gitbox observed and when to act.
 
 - **No local changes** — the project has no changed files on this computer.
 - **Changes on this computer · N files changed here** — Gitbox found files changed on this computer. Open the project with your AI and ask it to save them.
-- **Saved here, not on the server yet** — saved changes are ahead of the last known server version. Hover for the detail. A separate local branch can show **Local branch**.
+- **Saved here, not on the server yet** — saved changes are ahead of the last known server version. Hover for the detail. A separate local branch shows **Local branch** and counts as saved. When Gitbox cannot identify the default branch, the row shows **Checking…** and counts only toward the total until a scan identifies it.
 - **Update available** — Gitbox saw newer work on the server. **Update** brings that work into the project when it can keep your local changes intact. Gitbox never updates on its own.
 - **Only online** — the project isn't on this computer yet. **Download** gets it.
 - **Needs help** — something went wrong, for example both copies changed. Click the project to see what happened, and open it with your AI to fix it.
@@ -188,7 +188,7 @@ Gitbox watches your projects and shows their status:
 - **Not cloned** (grey) — the repo isn't on this computer yet; **Clone** downloads it.
 - **Root offline** (grey; Simple: **Folder not found**) — its clone root isn't there, for example an unplugged drive. Nothing is lost: the repo comes back when the root does.
 - **Local branch** (green) — on a feature branch with no upstream tracking, which is normal.
-- **No upstream** (grey) — the default branch has no upstream tracking and needs attention.
+- **No upstream** (grey) — the default branch has no upstream tracking and needs attention. Both modes wait for the default branch to be identified before counting a branch without an upstream as saved or needing attention.
 
 Clones always appear in alphabetical order of the name the row shows, nested clones too. When some row in a list needs you, the rows with nothing to do fade slightly until you hover them, so the problems stand out.
 

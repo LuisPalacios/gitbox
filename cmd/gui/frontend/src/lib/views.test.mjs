@@ -3,11 +3,14 @@ import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
 
-const sourceCode = await readFile(new URL('./views.ts', import.meta.url), 'utf8');
-const { outputText } = ts.transpileModule(sourceCode, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } });
-const v = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+async function loadModule(name) {
+  const source = await readFile(new URL(name, import.meta.url), 'utf8');
+  const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } });
+  return import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+}
 
-const CALM = 4;
+const v = await loadModule('./views.ts');
+const { derivePresentation, CALM_RANK: CALM } = await loadModule('./presentation.ts');
 
 test('I resolve the saved view, falling back to Needs attention', () => {
   const accounts = ['account-A', 'account-B'];
@@ -54,4 +57,14 @@ test('I count attention per account and in total, with broken accounts on top', 
   const counts = v.attentionCounts({ A: ['a/1', 'a/2'], B: ['b/1', 'b/2', 'a/1'], C: [] }, (k) => ranks[k], CALM, ['C', 'C']);
   assert.deepEqual(counts, { total: 4, byAccount: { A: 1, B: 2, C: 0 } });
   assert.deepEqual(v.attentionCounts({}, () => 0, CALM), { total: 0, byAccount: {} });
+});
+
+test('I count only the default branch without an upstream in Needs attention', () => {
+  const keys = ['main', 'feature', 'unidentified'];
+  const states = { main: true, feature: false, unidentified: undefined };
+  for (const mode of ['simple', 'advanced']) {
+    const rankOf = key => derivePresentation({ status: 'no upstream', isDefault: states[key] }, mode).attention;
+    assert.deepEqual(v.attentionItems(keys, rankOf, CALM), [{ key: 'main', rank: 1, settled: false }]);
+    assert.deepEqual(v.attentionCounts({ account: keys }, rankOf, CALM), { total: 1, byAccount: { account: 1 } });
+  }
 });

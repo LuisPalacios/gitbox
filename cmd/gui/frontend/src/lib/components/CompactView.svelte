@@ -4,7 +4,8 @@
   // view buttons. App.svelte measures .compact-strip to fit the window.
   import { slide } from 'svelte/transition';
   import { accounts, accountStats, sources, repoStates, summary, mirrorSummary, themeStore } from '../stores';
-  import { statusColor, rowBusy, rowGlyph, statusCountBadge } from '../status';
+  import { derivePresentation } from '../presentation';
+  import { statusColor, rowGlyph, statusCountBadge } from '../status';
   import { t } from '../i18n';
   import type { RepoRow as TreeRow } from '../repo-tree';
 
@@ -18,9 +19,9 @@
   export let toggleViewMode: () => Promise<void>;
 
   $: sc = (s: string) => statusColor(s, $themeStore);
-  $: cpct = Math.round(($summary.clean / Math.max($summary.total, 1)) * 100);
-  $: pendingStatus = Object.values($repoStates).some(state => state.status === 'unknown');
-  $: callGood = !pendingStatus && $summary.clean === $summary.total;
+  $: cpct = Math.round(($summary.saved / Math.max($summary.total, 1)) * 100);
+  $: pendingStatus = $summary.checking > 0;
+  $: callGood = !pendingStatus && $summary.saved === $summary.total;
 
   function themeIcon(choice: string): string {
     return ({ system: '◐', light: '☀', dark: '☾' } as Record<string, string>)[choice] || '◐';
@@ -35,12 +36,12 @@
       <circle cx="18" cy="18" r="14" fill="none"
         stroke={callGood ? sc('clean') : sc('behind')}
         stroke-width="3" stroke-linecap="round"
-        stroke-dasharray="{($summary.clean / Math.max($summary.total, 1)) * 87.96} 87.96"
+        stroke-dasharray="{($summary.saved / Math.max($summary.total, 1)) * 87.96} 87.96"
         transform="rotate(-90 18 18)"/>
     </svg>
     <div class="compact-global-text">
       <span class="compact-global-pct" style="color: {callGood ? sc('clean') : sc('behind')}">{pendingStatus ? $t('simple.checking') : `${cpct}%`}</span>
-      <span class="compact-global-label">{$t('compact.upToDate', { n: $summary.clean, total: $summary.total })}</span>
+      <span class="compact-global-label">{$t('compact.upToDate', { n: $summary.saved, total: $summary.total })}</span>
     </div>
   </div>
 
@@ -48,7 +49,7 @@
 
   <!-- Account pills -->
   {#each Object.keys($accounts) as key}
-    {@const stats = $accountStats[key] || { total: 0, synced: 0, issues: 0 }}
+    {@const stats = $accountStats[key] || { total: 0, synced: 0, issues: 0, checking: false }}
     {@const compactCred = (credStatuses[key] || {status: 'unknown'}).status}
     <button class="compact-acct" class:compact-acct-expanded={compactExpanded[key]}
       class:compact-acct-cred-err={compactCred === 'none' || compactCred === 'error'}
@@ -66,7 +67,7 @@
       <div class="compact-acct-info">
         <span class="compact-acct-name">{key}</span>
         <span class="compact-acct-stat">
-          {#if Object.entries($sources).some(([sk, src]) => src.account === key && Object.keys(src.repos).some(rn => !$repoStates[`${sk}/${rn}`] || $repoStates[`${sk}/${rn}`].status === 'unknown'))}
+          {#if stats.checking}
             <span class="spinning">↻</span> {$t('simple.checking')}
           {:else if stats.issues === 0}
             <span style="color:{sc('clean')}">{$t('account.allUpToDate')}</span>
@@ -82,10 +83,12 @@
       <div class="compact-repo-list" transition:slide={{ duration: 120 }}>
         {#each Object.entries($sources).filter(([, source]) => source.account === key).flatMap(([sourceKey]) => (treeRows[sourceKey] || []).filter(row => !row.placeholder)) as { key: repoKey, sourceKey: rowSourceKey, repoName, depth }}
           {@const state = $repoStates[repoKey] || { status: 'unknown', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0, branch: '', isDefault: false }}
+          {@const row = derivePresentation(state)}
+          {@const busy = row.stale || !!fetchingRepos[repoKey]}
           {@const count = statusCountBadge(state.status)}
-          <div class="compact-row" style={`padding-left: ${depth * 12}px`} class:compact-row-ok={state.status === 'clean'}>
+          <div class="compact-row" style={`padding-left: ${depth * 12}px`} class:compact-row-ok={row.kind === 'saved'}>
             {#if rowSourceKey && $sources[rowSourceKey].account !== key}<span class="compact-badge">{$sources[rowSourceKey].account}</span>{/if}
-            <span class="compact-dot" class:spinning={rowBusy(state.status, !!fetchingRepos[repoKey])} style="color: {sc(state.status)}">{rowGlyph(state.status, !!fetchingRepos[repoKey])}</span>
+            <span class="compact-dot" class:spinning={busy} style="color: {sc(row.colour)}">{rowGlyph(state.status, busy)}</span>
             <span class="compact-repo-name">{repoName.includes('/') ? repoName.split('/').pop() : repoName}</span>
             {#if state.branch === '(detached)'}
               <span class="compact-badge" style="color: {sc('error')}">{$t('repo.detached')}</span>

@@ -2,7 +2,7 @@
   // Top bar: the sidebar button, logo, compact health rings (the repo ring, plus
   // the mirror ring in Advanced), the action buttons, the Simple/Advanced switch
   // and the Settings gear.
-  import { accounts, summary, simpleSummary, mirrorSummary, themeStore, remoteHost } from '../stores';
+  import { accounts, summary, mirrorSummary, themeStore, remoteHost } from '../stores';
   import { hostFromState } from '../remotehost';
   import { statusColor } from '../status';
   import { t } from '../i18n';
@@ -43,16 +43,16 @@
   $: sc = (s: string) => statusColor(s, $themeStore);
   $: sideTip = $t(rail ? 'nav.expand' : 'nav.collapse', { key: sidebarShortcut });
   // The repo ring: Simple counts saved projects, Advanced up-to-date clones.
-  $: repoDone = simple ? $simpleSummary.saved : $summary.clean;
-  $: repoTotal = simple ? $simpleSummary.total : $summary.total;
-  $: repoPending = repoTotal - repoDone;
+  $: repoDone = $summary.saved;
+  $: repoTotal = $summary.total;
+  $: repoPending = $summary.attention;
   // One fact per line in the hover tooltip.
   $: repoTip = (simple
     ? [$t('simple.savedTip', { n: repoDone, total: repoTotal }),
-       $simpleSummary.help > 0 ? $t('simple.needHelpN', { n: $simpleSummary.help }) : '',
-       $simpleSummary.wip + $simpleSummary.unpushed > 0 ? $t('simple.wipN', { n: $simpleSummary.wip + $simpleSummary.unpushed }) : '',
-       $simpleSummary.update > 0 ? $t('simple.updateN', { n: $simpleSummary.update }) : '',
-       $simpleSummary.online > 0 ? $t('simple.onlineN', { n: $simpleSummary.online }) : '']
+       $summary.help > 0 ? $t('simple.needHelpN', { n: $summary.help }) : '',
+       $summary.wip + $summary.unpushed > 0 ? $t('simple.wipN', { n: $summary.wip + $summary.unpushed }) : '',
+       $summary.update > 0 ? $t('simple.updateN', { n: $summary.update }) : '',
+       $summary.online > 0 ? $t('simple.onlineN', { n: $summary.online }) : '']
     : [$t('top.upToDateTip', { n: repoDone, total: repoTotal }),
        repoPending > 0 ? `${repoPending} ${repoPending === 1 ? $t('account.needsAttention') : $t('account.needAttentionPlural')}` : ''])
     .filter(Boolean).join('\n');
@@ -103,7 +103,7 @@
   </div>
   <div class="topbar-actions">
     <button class="icon-btn" use:ro={['cloneRepo', 'pullRepo']} on:click={syncAll}
-      disabled={syncing || ($summary.behind === 0 && $summary.notCloned === 0)}
+      disabled={syncing || ($summary.update === 0 && $summary.online === 0)}
       title={syncing ? $t(simple ? 'simple.updating' : 'top.pulling') : $t(simple ? 'simple.updateAll' : 'top.pullAll')}>
       <span class="icon-spin" class:spinning={syncing}><UIIcon name="pull" /></span>
     </button>
