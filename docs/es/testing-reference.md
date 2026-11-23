@@ -10,7 +10,7 @@ Los recuentos son funciones de prueba Go de nivel superior (no se cuentan los su
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-El total actual es de 961 pruebas Go (733 en `pkg/`, 228 en `cmd/gui/`) y 74 pruebas del frontend. Los recuentos incluyen las pruebas tras los tags `sshd_integration` y `remote_smoke`. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
+El total actual es de 961 pruebas Go (733 en `pkg/`, 228 en `cmd/gui/`) y 75 pruebas del frontend. Los recuentos incluyen las pruebas tras los tags `sshd_integration` y `remote_smoke`. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
 
 ### Biblioteca compartida (`pkg/`)
 
@@ -132,7 +132,7 @@ Este límite pertenece a la prueba, no al validador de config. Las configs acept
 - `activity.test.mjs` (7) — alcances y resúmenes de Fetch de todo y Pull de todo, fallos de conexión agrupados por host.
 - `notices.test.mjs` (4) — tarjetas de resultado: mostrarlas, descartarlas, cerrarlas automáticamente y limitarlas.
 - `theme.test.mjs` (2) — colores de proveedor de los nombres de cuenta en los dos temas, con el color de texto para un proveedor desconocido.
-- `i18n.test.mjs` (5) — claves y placeholders coincidentes en inglés y español, cambios y actualizaciones observados en el modo Simple, ninguna clave inexistente, ningún texto fijo en las plantillas, el marcado en línea de `src/lib/rich.ts`.
+- `i18n.test.mjs` (6) — claves y placeholders coincidentes en inglés y español, las variantes de ventana remota que nombran el host, cambios y actualizaciones observados en el modo Simple, ninguna clave inexistente, ningún texto fijo en las plantillas, el marcado en línea de `src/lib/rich.ts`.
 - `readonly.test.mjs` (7) — el respaldo de solo lectura de una ventana remota: una llamada bloqueada rechaza sin llegar al bridge, cada llamada del bridge cuyo método Go está clasificado como mutante está bloqueada, el foco no reconcilia pero vuelve a sondear los harnesses del host, y los lanzamientos de editor, terminal y harness pasan mientras el gestor de archivos, la carpeta de la cuenta y el archivo de configuración siguen bloqueados. Una llamada fallida se decodifica en un `WindowError` traducido que conserva su código, un código hostil se descarta y el texto de una ventana local pasa sin cambios; una desconexión no lanza ninguna llamada en segundo plano ni levanta un error de config, y una conexión nueva lo borra.
 - `remotepath.test.mjs` (3) — la línea bajo el campo de carpeta del host para cada respuesta del host, qué respuestas hacen usable la carpeta, y la espera de 300 ms tras escribir.
 - `remotehost.test.mjs` (6) — los lanzadores de una ventana remota: fuera de una no hay nada desactivado; con un editor elegido para el remoto solo ese editor sigue activo y el resto recibe su aviso; Ajustes ofrece solo los editores configurados que abren carpetas remotas; los editores fuera de la tabla Go de `pkg/remote/launch.go` (que lee la prueba) se desactivan con su aviso, VS Code en cualquier OS sigue activo; el gestor de archivos, la carpeta de la cuenta y el archivo de configuración se desactivan; los nombres de editor coinciden con los del lado Go.

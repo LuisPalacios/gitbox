@@ -50,6 +50,8 @@ La ventana aparece enseguida y conecta en segundo plano. Dice **Conectando con m
 
 La ventana del remoto es la ventana completa de gitbox, alimentada por el host. Necesita un host que ya tenga un `gitbox.json` con credenciales que funcionen, por ejemplo un ordenador que también ejecuta GitboxApp. Un host sin él se queda en la tarjeta de conexión, que lo dice; configurarlo desde aquí llega en una versión posterior.
 
+Un texto que habla de este ordenador nombra el host en su lugar, porque la acción se ejecuta allí por SSH: el menú de la fila dice **Borrar de my-server…**, y los diálogos de borrar y mover dicen de qué host es la carpeta que se va.
+
 Esto funciona, y todo se ejecuta en el host:
 
 - el estado de cada repositorio, **Fetch de todo**, **Fetch** en un repositorio y la comprobación periódica del estado;

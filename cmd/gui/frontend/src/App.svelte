@@ -13,7 +13,7 @@
   import { createDetailLoader } from './lib/repo-detail';
   import type { HealthFix } from './lib/status';
   import { resolveView, viewAccount, accountView, attentionCounts } from './lib/views';
-  import { languageStore, normalizeLanguage, t } from './lib/i18n';
+  import { languageStore, normalizeLanguage, remoteTextHost, t } from './lib/i18n';
   import { pushNotice, dismissNotice, errorText } from './lib/notices';
   import { startFetch, startPull, noteDone, summarizeFetch, summarizePull, localWorkCount } from './lib/activity';
   import type { Run } from './lib/activity';
@@ -1388,6 +1388,7 @@
     remoteLoading = true;
     try {
       remoteWindow.set(true);
+      remoteTextHost.set(s.alias);
       setRemoteWindow(true, $t('remote.readOnlyTip'));
       // Work that was in flight when the connection dropped ended with it;
       // its rows come back from the host's status.

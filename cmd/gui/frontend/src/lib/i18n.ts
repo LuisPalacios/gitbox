@@ -38,6 +38,7 @@ const catalogs: Record<Language, Record<string, string>> = {
     'repo.actions': 'Actions',
     'simple.saved': 'No local changes',
     'simple.wip': 'Changes on this computer',
+    'simple.wip.remote': 'Changes on {host}',
     'simple.wipSafe': '· {n} files changed here',
     'simple.wipSafeOne': '· {n} file changed here',
     'simple.wipShort': '{n} files changed',
@@ -51,6 +52,7 @@ const catalogs: Record<Language, Record<string, string>> = {
     'simple.lastChecked': 'checked {ago}',
     'simple.checking': 'Checking…',
     'simple.tipDirty': '{n} files changed on this computer',
+    'simple.tipDirty.remote': '{n} files changed on {host}',
     'simple.tipAhead': 'Saved here, not on the server yet',
     'simple.tipNoUpstream': 'This branch is not on the server',
     'simple.tipHelp': 'Click the project to see what is wrong',
@@ -113,6 +115,7 @@ const catalogs: Record<Language, Record<string, string>> = {
     'menu.account': 'Account',
     'menu.default': 'default',
     'menu.delete': 'Delete from this computer…',
+    'menu.delete.remote': 'Delete from {host}…',
     'menu.editAccount': 'Edit account…',
     'menu.changeCredential': 'Change credential…',
     'menu.reconnect': 'Reconnect…',
@@ -125,6 +128,7 @@ const catalogs: Record<Language, Record<string, string>> = {
     'nav.found': 'Found on disk',
     'nav.foundTip': '{n} clones on disk gitbox couldn\'t place on its own',
     'nav.foundTipSimple': '{n} projects on this computer gitbox couldn\'t place on its own',
+    'nav.foundTipSimple.remote': '{n} projects on {host} gitbox couldn\'t place on its own',
     'nav.more': 'More',
     'nav.collapse': 'Collapse sidebar ({key})',
     'nav.expand': 'Expand sidebar ({key})',
@@ -264,6 +268,7 @@ const catalogs: Record<Language, Record<string, string>> = {
     'discover.sshNeedsToken': 'SSH credentials cannot access provider APIs.',
     'discover.sshNeedsTokenAction': "To use 'Find projects', store a Personal Access Token for API access.",
     'launcher.cloneFirst': 'This repo is not on this computer yet. Clone it first.',
+    'launcher.cloneFirst.remote': 'This repo is not on {host} yet. Clone it first.',
     'settings.config': 'Config',
     'settings.openInEditor': 'Open in Editor',
     'settings.roots': 'Clone roots',
@@ -456,8 +461,11 @@ const catalogs: Record<Language, Record<string, string>> = {
     'detail.goneTitle': 'WARNING: The origin repository is gone',
     'detail.goneBody': 'The remote repository for this clone was not found on the provider. It was either deleted, made private without re-granting access, renamed without a redirect, or the credential lost permission to see it.',
     'detail.goneOptions': '**Your local clone is intact.** You have two options:',
+    'detail.goneOptions.remote': '**Your clone on {host} is intact.** You have two options:',
     'detail.goneKeep': '**Keep it as a local-only clone.** Do nothing — the folder stays on disk with its full git history. Gitbox will keep flagging it as "Upstream gone" until you remove the remote or the entry.',
+    'detail.goneKeep.remote': '**Keep it as a clone of {host} only.** Do nothing — the folder stays on the disk of {host} with its full git history. Gitbox will keep flagging it as "Upstream gone" until you remove the remote or the entry.',
     'detail.goneDelete': '**Delete it** (trash icon in the top bar) if you no longer need the code. Since the upstream is gone, this local copy may be the only remaining one — make sure before confirming.',
+    'detail.goneDelete.remote': '**Delete it** (trash icon in the top bar) if you no longer need the code. Since the upstream is gone, this copy on {host} may be the only remaining one — make sure before confirming.',
     'detail.loading': 'Loading...',
     'detail.title': 'Project details',
     'detail.incomingSimple': 'Updates to download',
@@ -602,7 +610,9 @@ const catalogs: Record<Language, Record<string, string>> = {
     'deleteAccount.typeName': 'Type the account name to confirm:',
     'deleteAccount.nameMismatch': 'Name does not match.',
     'deleteAccount.impact': 'This will permanently delete the account, {sources}, {repos} ({cloned}), and all their local folders.',
+    'deleteAccount.impact.remote': 'This will permanently delete the account, {sources}, {repos} ({cloned}), and all their folders on {host}.',
     'deleteAccount.impactFallback': 'This will permanently delete the account, {sources}, {repos}, and all their local clone folders.',
+    'deleteAccount.impactFallback.remote': 'This will permanently delete the account, {sources}, {repos}, and all their clone folders on {host}.',
     'deleteAccount.sourceOne': '{n} source',
     'deleteAccount.sourceN': '{n} sources',
     'deleteAccount.repoOne': '{n} repo',
@@ -628,6 +638,7 @@ const catalogs: Record<Language, Record<string, string>> = {
     'move.private': 'Private repository',
     'move.deleteSource': 'Delete source repository after successful move',
     'move.deleteLocal': 'Delete local clone after successful move',
+    'move.deleteLocal.remote': 'Delete the clone on {host} after a successful move',
     'move.readiness': 'Credential readiness',
     'move.checkingCredentials': 'Checking credentials…',
     'move.fixCredentials': 'Fix credentials…',
@@ -644,7 +655,9 @@ const catalogs: Record<Language, Record<string, string>> = {
     'move.sourceDeleted': 'Source repo on the origin provider **WILL** be deleted.',
     'move.sourceKept': 'Source repo on the origin provider will be kept.',
     'move.localRemoved': 'Local clone at `{path}` **WILL** be removed.',
+    'move.localRemoved.remote': 'The clone on {host} at `{path}` **WILL** be removed.',
     'move.localKept': 'Local clone will be kept; its `origin` will be rewired to the destination.',
+    'move.localKept.remote': 'The clone on {host} will be kept; its `origin` will be rewired to the destination.',
     'move.newOrigin': 'New origin: `{url}`',
     'move.typeToUnlock': 'Type **{repo}** to unlock:',
     'move.move': 'Move',
@@ -721,10 +734,14 @@ const catalogs: Record<Language, Record<string, string>> = {
     'unmatched.showIgnored': 'Show ignored ({n})',
     'unmatched.hideIgnored': 'Hide ignored',
     'deleteClone.title': 'Delete local clone',
+    'deleteClone.title.remote': 'Delete clone on {host}',
     'deleteClone.warnNotCloned': 'This will remove the config entry. No local folder exists.',
+    'deleteClone.warnNotCloned.remote': 'This will remove the config entry on {host}. No folder exists there.',
     'deleteClone.warnUpstreamGone': 'The remote repository no longer exists. This local clone may be your ONLY copy — deleting it is unrecoverable.',
+    'deleteClone.warnUpstreamGone.remote': 'The remote repository no longer exists. This clone on {host} may be your ONLY copy — deleting it is unrecoverable.',
     'deleteClone.warnDangerous': 'This repo has unpushed commits or local changes that will be permanently lost!',
     'deleteClone.warnDefault': 'The local folder and config entry will be permanently deleted.',
+    'deleteClone.warnDefault.remote': 'The folder on {host} and its config entry there will be permanently deleted over SSH.',
     'deleteClone.final': 'This action **cannot be undone**. Are you absolutely sure?',
     'deleteClone.deleting': 'Deleting...',
     'deleteClone.confirm': 'Yes, delete permanently',
@@ -735,6 +752,7 @@ const catalogs: Record<Language, Record<string, string>> = {
     'discover.hintRejected': 'The stored credential was rejected by the API. Open credential settings and replace it, or store a companion API token.',
     'discover.hintUnreachable': 'The OS blocked or could not reach the server. On macOS check Privacy & Security → Local Network; on Windows check the firewall; on Linux check routes and host firewalls.',
     'discover.hintDns': 'The server hostname can’t be resolved from this machine. Check VPN / DNS before retrying.',
+    'discover.hintDns.remote': 'The server hostname can’t be resolved from {host}. Check its VPN / DNS before retrying.',
     'discover.hintCertificate': 'TLS certificate validation failed. Install the server’s CA into your OS trust store before retrying.',
     'credentialAudit.title': 'Credential file permissions',
     'credentialAudit.tools': 'External tools',
@@ -1035,6 +1053,7 @@ const catalogs: Record<Language, Record<string, string>> = {
     'repo.actions': 'Acciones',
     'simple.saved': 'Sin cambios locales',
     'simple.wip': 'Cambios en este ordenador',
+    'simple.wip.remote': 'Cambios en {host}',
     'simple.wipSafe': '· {n} archivos cambiados aquí',
     'simple.wipSafeOne': '· {n} archivo cambiado aquí',
     'simple.wipShort': '{n} archivos cambiados',
@@ -1048,6 +1067,7 @@ const catalogs: Record<Language, Record<string, string>> = {
     'simple.lastChecked': 'comprobado {ago}',
     'simple.checking': 'Comprobando…',
     'simple.tipDirty': '{n} archivos cambiados en este ordenador',
+    'simple.tipDirty.remote': '{n} archivos cambiados en {host}',
     'simple.tipAhead': 'Guardado aquí, aún no en el servidor',
     'simple.tipNoUpstream': 'Esta rama no está en el servidor',
     'simple.tipHelp': 'Haz clic en el proyecto para ver qué pasa',
@@ -1110,6 +1130,7 @@ const catalogs: Record<Language, Record<string, string>> = {
     'menu.account': 'Cuenta',
     'menu.default': 'predeterminado',
     'menu.delete': 'Borrar de este ordenador…',
+    'menu.delete.remote': 'Borrar de {host}…',
     'menu.editAccount': 'Editar cuenta…',
     'menu.changeCredential': 'Cambiar credencial…',
     'menu.reconnect': 'Reconectar…',
@@ -1122,6 +1143,7 @@ const catalogs: Record<Language, Record<string, string>> = {
     'nav.found': 'Encontrados en disco',
     'nav.foundTip': '{n} clones en disco que gitbox no ha podido ubicar por sí solo',
     'nav.foundTipSimple': '{n} proyectos en este ordenador que gitbox no ha podido ubicar por sí solo',
+    'nav.foundTipSimple.remote': '{n} proyectos en {host} que gitbox no ha podido ubicar por sí solo',
     'nav.more': 'Más',
     'nav.collapse': 'Plegar la barra lateral ({key})',
     'nav.expand': 'Desplegar la barra lateral ({key})',
@@ -1261,6 +1283,7 @@ const catalogs: Record<Language, Record<string, string>> = {
     'discover.sshNeedsToken': 'Las credenciales SSH no pueden acceder a las APIs del proveedor.',
     'discover.sshNeedsTokenAction': "Para usar 'Buscar proyectos', guarda un Personal Access Token para acceso API.",
     'launcher.cloneFirst': 'Este repo aún no está en este ordenador. Clónalo primero.',
+    'launcher.cloneFirst.remote': 'Este repo aún no está en {host}. Clónalo primero.',
     'settings.config': 'Configuración',
     'settings.openInEditor': 'Abrir en editor',
     'settings.roots': 'Raíces de clonado',
@@ -1453,8 +1476,11 @@ const catalogs: Record<Language, Record<string, string>> = {
     'detail.goneTitle': 'AVISO: el repositorio de origen ha desaparecido',
     'detail.goneBody': 'El repositorio remoto de este clon no se ha encontrado en el proveedor. Se ha borrado, se ha hecho privado sin volver a dar acceso, se ha renombrado sin redirección o la credencial ha perdido permiso para verlo.',
     'detail.goneOptions': '**Tu clon local está intacto.** Tienes dos opciones:',
+    'detail.goneOptions.remote': '**Tu clon en {host} está intacto.** Tienes dos opciones:',
     'detail.goneKeep': '**Mantenerlo como clon solo local.** No hagas nada — la carpeta se queda en disco con todo su historial de git. Gitbox lo seguirá marcando como "Upstream eliminado" hasta que quites el remoto o la entrada.',
+    'detail.goneKeep.remote': '**Mantenerlo como clon solo de {host}.** No hagas nada — la carpeta se queda en el disco de {host} con todo su historial de git. Gitbox lo seguirá marcando como "Upstream eliminado" hasta que quites el remoto o la entrada.',
     'detail.goneDelete': '**Eliminarlo** (icono de papelera en la barra superior) si ya no necesitas el código. Como el upstream ha desaparecido, puede que esta copia local sea la única que queda — asegúrate antes de confirmar.',
+    'detail.goneDelete.remote': '**Eliminarlo** (icono de papelera en la barra superior) si ya no necesitas el código. Como el upstream ha desaparecido, puede que esta copia en {host} sea la única que queda — asegúrate antes de confirmar.',
     'detail.loading': 'Cargando...',
     'detail.title': 'Detalles del proyecto',
     'detail.incomingSimple': 'Actualizaciones por descargar',
@@ -1599,7 +1625,9 @@ const catalogs: Record<Language, Record<string, string>> = {
     'deleteAccount.typeName': 'Escribe el nombre de la cuenta para confirmar:',
     'deleteAccount.nameMismatch': 'El nombre no coincide.',
     'deleteAccount.impact': 'Esto eliminará para siempre la cuenta, {sources}, {repos} ({cloned}) y todas sus carpetas locales.',
+    'deleteAccount.impact.remote': 'Esto eliminará para siempre la cuenta, {sources}, {repos} ({cloned}) y todas sus carpetas en {host}.',
     'deleteAccount.impactFallback': 'Esto eliminará para siempre la cuenta, {sources}, {repos} y todas sus carpetas de clones locales.',
+    'deleteAccount.impactFallback.remote': 'Esto eliminará para siempre la cuenta, {sources}, {repos} y todas sus carpetas de clones en {host}.',
     'deleteAccount.sourceOne': '{n} source',
     'deleteAccount.sourceN': '{n} sources',
     'deleteAccount.repoOne': '{n} repo',
@@ -1625,6 +1653,7 @@ const catalogs: Record<Language, Record<string, string>> = {
     'move.private': 'Repositorio privado',
     'move.deleteSource': 'Eliminar el repositorio de origen tras mover con éxito',
     'move.deleteLocal': 'Eliminar el clon local tras mover con éxito',
+    'move.deleteLocal.remote': 'Eliminar el clon de {host} tras mover con éxito',
     'move.readiness': 'Estado de las credenciales',
     'move.checkingCredentials': 'Comprobando credenciales…',
     'move.fixCredentials': 'Arreglar credenciales…',
@@ -1641,7 +1670,9 @@ const catalogs: Record<Language, Record<string, string>> = {
     'move.sourceDeleted': 'El repo de origen en el proveedor de origen **SE ELIMINARÁ**.',
     'move.sourceKept': 'El repo de origen en el proveedor de origen se conservará.',
     'move.localRemoved': 'El clon local en `{path}` **SE ELIMINARÁ**.',
+    'move.localRemoved.remote': 'El clon de {host} en `{path}` **SE ELIMINARÁ**.',
     'move.localKept': 'El clon local se conservará; su `origin` se reconectará al destino.',
+    'move.localKept.remote': 'El clon de {host} se conservará; su `origin` se reconectará al destino.',
     'move.newOrigin': 'Nuevo origin: `{url}`',
     'move.typeToUnlock': 'Escribe **{repo}** para desbloquear:',
     'move.move': 'Mover',
@@ -1718,10 +1749,14 @@ const catalogs: Record<Language, Record<string, string>> = {
     'unmatched.showIgnored': 'Mostrar ignorados ({n})',
     'unmatched.hideIgnored': 'Ocultar ignorados',
     'deleteClone.title': 'Eliminar clon local',
+    'deleteClone.title.remote': 'Eliminar clon en {host}',
     'deleteClone.warnNotCloned': 'Esto quitará la entrada de la configuración. No existe ninguna carpeta local.',
+    'deleteClone.warnNotCloned.remote': 'Esto quitará la entrada de la configuración de {host}. Allí no existe ninguna carpeta.',
     'deleteClone.warnUpstreamGone': 'El repositorio remoto ya no existe. Este clon local puede ser tu ÚNICA copia — eliminarlo no tiene vuelta atrás.',
+    'deleteClone.warnUpstreamGone.remote': 'El repositorio remoto ya no existe. Este clon en {host} puede ser tu ÚNICA copia — eliminarlo no tiene vuelta atrás.',
     'deleteClone.warnDangerous': '¡Este repo tiene commits sin subir o cambios locales que se perderán para siempre!',
     'deleteClone.warnDefault': 'La carpeta local y la entrada de la configuración se eliminarán para siempre.',
+    'deleteClone.warnDefault.remote': 'La carpeta en {host} y su entrada de la configuración de allí se eliminarán para siempre por SSH.',
     'deleteClone.final': 'Esta acción **no se puede deshacer**. ¿Estás completamente seguro?',
     'deleteClone.deleting': 'Eliminando...',
     'deleteClone.confirm': 'Sí, eliminar para siempre',
@@ -1732,6 +1767,7 @@ const catalogs: Record<Language, Record<string, string>> = {
     'discover.hintRejected': 'La API ha rechazado la credencial guardada. Abre los ajustes de credenciales y sustitúyela, o guarda un token de API complementario.',
     'discover.hintUnreachable': 'El sistema operativo ha bloqueado el servidor o no ha podido llegar a él. En macOS revisa Privacidad y seguridad → Red local; en Windows revisa el firewall; en Linux revisa las rutas y los firewalls del host.',
     'discover.hintDns': 'No se puede resolver el nombre del servidor desde este ordenador. Revisa la VPN / DNS antes de reintentar.',
+    'discover.hintDns.remote': 'No se puede resolver el nombre del servidor desde {host}. Revisa su VPN / DNS antes de reintentar.',
     'discover.hintCertificate': 'Ha fallado la validación del certificado TLS. Instala la CA del servidor en el almacén de confianza del sistema operativo antes de reintentar.',
     'credentialAudit.title': 'Permisos de los archivos de credenciales',
     'credentialAudit.tools': 'Herramientas externas',
@@ -2019,10 +2055,21 @@ export function format(template: string, vars?: Vars): string {
   return value;
 }
 
+// remoteTextHost is the alias of the host a remote window shows (#295), null
+// in a local window. There, a key with a "<key>.remote" variant reads that
+// variant with {host} filled in, so a text about this computer names the
+// host the action reaches over SSH instead.
+export const remoteTextHost = writable<string | null>(null);
+
 // tpl returns a key's template with its {name} placeholders unfilled, for
 // Rich.svelte, which splits the markup before it fills them.
-export const tpl = derived(languageStore, ($lang) => {
-  return (key: string): string => catalogs[$lang]?.[key] ?? catalogs[fallback][key] ?? key;
+export const tpl = derived([languageStore, remoteTextHost], ([$lang, $host]) => {
+  const lookup = (key: string): string | undefined => catalogs[$lang]?.[key] ?? catalogs[fallback][key];
+  return (key: string): string => {
+    const remote = $host ? lookup(`${key}.remote`) : undefined;
+    if (remote !== undefined) return remote.replaceAll('{host}', $host as string);
+    return lookup(key) ?? key;
+  };
 });
 
 export const t = derived(tpl, ($tpl) => {

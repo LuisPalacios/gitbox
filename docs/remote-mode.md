@@ -50,6 +50,8 @@ The window appears at once and connects in the background. It reads **Connecting
 
 The remote window is the full gitbox window, fed by the host. It needs a host that already has a `gitbox.json` with working credentials, for example a computer that also runs GitboxApp. A host without one keeps the connection card, which says so; setting it up from here comes in a later version.
 
+A text that speaks of this computer names the host instead, because the action runs there over SSH: the row menu reads **Delete from my-server…**, and the delete and move dialogs say which host's folder goes.
+
 These work, all run on the host:
 
 - the status of every repository, **Fetch all**, **Fetch** on one repository and the periodic status check;
