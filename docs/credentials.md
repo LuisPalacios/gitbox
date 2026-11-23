@@ -221,7 +221,7 @@ Only Linux hosts are supported for now. On a Windows host the token file will ge
 
 ### SSH agent forwarding and account keys
 
-When my SSH connection to the host forwards this computer's agent (`ssh -A`, or `ForwardAgent yes` in my `~/.ssh/config`), git on the host can reach this computer's keys too. The setup result of a remote window says which key git uses there:
+When my SSH connection to the host forwards this computer's agent (`ssh -A`, or `ForwardAgent yes` in my `~/.ssh/config`), git on the host can reach this computer's keys too. The SSH key setup and the **Change credential** status of an SSH account in a remote window say which key git uses there:
 
 - The `Host` entry Gitbox writes says `IdentitiesOnly yes`, so ssh on the host offers only the account's key through the `gitbox-<accountKey>` alias, even when the agent holds others. The window says that this computer's keys reach the host and that git still uses the account's key.
 - If someone edited the entry and removed `IdentitiesOnly yes`, ssh may offer a forwarded key first, and git reaches the provider as whoever owns that key. The window warns, and in Advanced mode it names the line to add back.

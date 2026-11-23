@@ -10,6 +10,7 @@
   import { dismiss } from '../dismiss';
   import { openExternal } from '../external';
   import CredentialResult from '../CredentialResult.svelte';
+  import SSHAgentNote from '../SSHAgentNote.svelte';
   import PrecheckBanner from '../PrecheckBanner.svelte';
   import Rich from '../Rich.svelte';
   import { t } from '../i18n';
@@ -251,6 +252,9 @@
                   <p class="cred-status-detail">{cs.patMsg}</p>
                 {/if}
               {/if}
+            {/if}
+            {#if primaryType === 'ssh' && primary !== 'checking'}
+              <SSHAgentNote accountKey={credChangeModal || ''} {simple} tag={`${primary}:${cs.primaryMsg || ''}`} />
             {/if}
             {#if primaryType === 'gcm' && !gcmOffered($remoteWindow)}
               <div class="cred-status-lanhint cred-gcm-remote">

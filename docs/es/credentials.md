@@ -221,7 +221,7 @@ Por ahora solo se admiten hosts Linux. En un host Windows el archivo del token t
 
 ### Reenvío del agente SSH y claves de cuenta
 
-Cuando mi conexión SSH con el host reenvía el agente de este ordenador (`ssh -A`, o `ForwardAgent yes` en mi `~/.ssh/config`), git en el host también puede llegar a las claves de este ordenador. El resultado de la configuración en una ventana remota dice qué clave usa git allí:
+Cuando mi conexión SSH con el host reenvía el agente de este ordenador (`ssh -A`, o `ForwardAgent yes` en mi `~/.ssh/config`), git en el host también puede llegar a las claves de este ordenador. La configuración de la clave SSH y el estado de **Cambiar credencial** de una cuenta SSH en una ventana remota dicen qué clave usa git allí:
 
 - La entrada `Host` que escribe Gitbox dice `IdentitiesOnly yes`, así que ssh en el host solo ofrece la clave de la cuenta a través del alias `gitbox-<accountKey>`, aunque el agente tenga otras. La ventana dice que las claves de este ordenador llegan al host y que git sigue usando la clave de la cuenta.
 - Si alguien editó la entrada y quitó `IdentitiesOnly yes`, ssh puede ofrecer antes una clave reenviada, y git llega al proveedor como quien sea el dueño de esa clave. La ventana avisa, y en el modo Avanzado nombra la línea que hay que volver a añadir.
