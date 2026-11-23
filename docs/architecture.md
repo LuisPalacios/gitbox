@@ -387,7 +387,9 @@ Ordinary orphan discovery stops at each clone boundary, including a `.git` file 
 - A confident match is **adopted** in place.
 - Everything else waits in the Unmatched list with its reason: host-only, ambiguous, unknown host, no remote, already tracked, or worktree.
 
-Paths in `global.ignored_clones` are reported apart. `Apply` writes the decisions into the config; neither step touches files. The GUI runs a pass at startup, on window focus, after a manual Fetch all, after clone-root changes and on a container rescan. I first sync container workspace files (`pkg/workspace`), then snapshot the config, scan without the lock and re-check the config under the lock before applying. I try at most two scans and reject the plan if config intent still changes; window geometry, collapsed groups and theme do not invalidate a scan. A clone failure returns immediately. A stale pass requests one asynchronous, coalesced follow-up after the current fetch and status work; that follow-up never reschedules itself. I emit `reconcile:done` when I apply changes or workspace availability changes. Repos under a missing root are never re-linked or forgotten.
+The GUI runs a pass at startup, on window focus, after a manual Fetch all, after clone-root changes and on a container rescan. I sync workspace files and scan the roots without the config lock. Under the lock, I check each proposed adoption or re-link against the live source, account, repository key, path and workspace. A concurrent edit to another entry can proceed. If an entry moved, was renamed or is already tracked, I skip it and show its path in **Unmatched clones**. Paths in `global.ignored_clones` stay separate.
+
+Removing a scanned root or changing the nested scan scope invalidates the whole scan. I try twice, then request one coalesced follow-up after the current fetch and status work. Skipped entries request the same follow-up. It reports its result through `reconcile:done` and never reschedules itself. After a successful save I configure only the clones adopted in that pass. Repos under a missing root stay tracked.
 
 ### pkg/recipe — portable fleet recipes
 

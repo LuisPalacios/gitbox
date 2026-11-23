@@ -265,6 +265,7 @@ Todo lo demás espera en **Clones sin ubicar**, que se abre desde **Encontrados 
 - **sin remoto** — sin `origin`.
 - **ya gestionado en otra ruta** — un segundo checkout de un repo que Gitbox ya sigue.
 - **un worktree de git de otro clon**
+- **Este clon cambió durante el escaneo.** Gitbox conservó la configuración más reciente y programó otro escaneo. Pulsa **Volver a escanear** para actualizar la lista.
 
 Donde una cuenta puede aplicarse, elígela y haz clic en **Adoptar**; el clon se une a esa cuenta en su sitio. **Ignorar** oculta un clon para siempre, y **Mostrar ignorados** lista los ignorados, donde todavía puedes **Adoptar** uno o usar **Dejar de ignorar**. Las rutas ignoradas se guardan en `global.ignored_clones`. Las reglas de puntuación detrás del emparejamiento de cuenta están en [Arquitectura › pkg/adopt](architecture.md#pkgadopt--discovery-de-repos-huérfanos).
 

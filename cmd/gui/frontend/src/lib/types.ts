@@ -244,6 +244,8 @@ export interface OrphanRepoDTO {
 export interface ReconcileDTO {
   adopted: number;
   relinked: number;
+  skipped?: { path: string; reason: string }[];
+  background?: boolean;
   unmatched: OrphanRepoDTO[];
   ignored: OrphanRepoDTO[];
   workspacesChanged: boolean;

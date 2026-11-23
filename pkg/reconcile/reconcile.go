@@ -7,7 +7,9 @@ package reconcile
 
 import (
 	"fmt"
+	"maps"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -38,6 +40,29 @@ type Unmatched struct {
 // found somewhere else under a root.
 type Relink struct {
 	Source, Repo, Path string
+	expect             location
+	host               string
+	keyOwners          int
+}
+
+// location records the config values that determined a planned placement.
+type location struct {
+	account, root, folder          string
+	path, workspace, preferred     string
+	rootPin, cloneFolder, idFolder string
+}
+
+func repoLocation(cfg *config.Config, source, key string, repo config.Repo) location {
+	src := cfg.Sources[source]
+	return location{account: src.Account, root: cfg.RepoRoot(source, repo), folder: src.EffectiveFolder(source),
+		path: status.RepoPath(cfg, source, key, repo), workspace: repo.Workspace, preferred: repo.WorkspacePreferred,
+		rootPin: repo.Root, cloneFolder: repo.CloneFolder, idFolder: repo.IdFolder}
+}
+
+// Adoption records a confident match and its expected destination.
+type Adoption struct {
+	adopt.OrphanRepo
+	expect location
 }
 
 // Incomplete is a tracked repo whose clone git stopped before it finished
@@ -49,11 +74,57 @@ type Incomplete struct {
 
 // Result is what one pass decided.
 type Result struct {
-	Adopt      []adopt.OrphanRepo
+	scope      *scanScope
+	Adopt      []Adoption
 	Relink     []Relink
 	Unmatched  []Unmatched
 	Ignored    []Unmatched // with the reason they would wait for me, "" when adoptable
 	Incomplete []Incomplete
+}
+
+// scanScope records which directories the scan could traverse. Source
+// edits outside that scope can be validated separately for each entry.
+type scanScope struct {
+	roots      []string
+	depth      int
+	containers map[string]containerScope
+}
+
+type containerScope struct {
+	nested    bool
+	workspace string
+}
+
+func scopeOf(cfg *config.Config) *scanScope {
+	return &scanScope{roots: slices.Clone(cfg.Global.Roots), depth: cfg.Global.NestedScanDepth, containers: containerLocations(cfg)}
+}
+
+func containerLocations(cfg *config.Config) map[string]containerScope {
+	locations := map[string]containerScope{}
+	for sk, src := range cfg.Sources {
+		for rk, repo := range src.Repos {
+			if repo.Container || repo.Workspace != "" {
+				locations[status.RepoPath(cfg, sk, rk, repo)] = containerScope{repo.Container, repo.Workspace}
+			}
+		}
+	}
+	return locations
+}
+
+// SameScanScope reports whether the plan still describes the live roots,
+// nested depth and workspace locations. It never touches the filesystem.
+func (res Result) SameScanScope(cfg *config.Config) bool {
+	if res.scope == nil || res.scope.depth != cfg.Global.NestedScanDepth {
+		return false
+	}
+	if !slices.Equal(res.scope.roots, cfg.Global.Roots) {
+		for _, root := range res.scope.roots {
+			if !cfg.HasRoot(root) {
+				return false
+			}
+		}
+	}
+	return maps.Equal(res.scope.containers, containerLocations(cfg))
 }
 
 // Plan scans every root and decides, for each clone the config doesn't
@@ -68,16 +139,16 @@ func Plan(cfg *config.Config) (Result, error) {
 	}
 
 	// Tracked repos whose clone is missing while their root is online, and
-	// every tracked key per source, both keyed in lower case.
+	// every tracked key, both keyed in lower case.
 	type ref struct{ source, repo string }
 	missing := map[string][]ref{}
-	tracked := map[string]bool{}
-	var res Result
+	tracked := map[string]int{}
+	res := Result{scope: scopeOf(cfg)}
 	for _, sk := range sortedKeys(cfg.Sources) {
 		src := cfg.Sources[sk]
 		for _, rk := range sortedKeys(src.Repos) {
 			repo := src.Repos[rk]
-			tracked[sk+"/"+strings.ToLower(rk)] = true
+			tracked[strings.ToLower(rk)]++
 			p := status.RepoPath(cfg, sk, rk, repo)
 			if status.RepoRootOffline(cfg, sk, repo) || git.IsLinkedWorktree(p) {
 				continue
@@ -94,10 +165,6 @@ func Plan(cfg *config.Config) (Result, error) {
 
 	// reason says why a clone waits for me, or "" when it can be adopted.
 	reason := func(o adopt.OrphanRepo) string {
-		source := o.MatchedSource
-		if source == "" {
-			source = o.MatchedAccount
-		}
 		switch {
 		case git.IsLinkedWorktree(o.Path):
 			return ReasonWorktree
@@ -107,7 +174,7 @@ func Plan(cfg *config.Config) (Result, error) {
 			return ReasonAmbiguous
 		case o.MatchedAccount == "":
 			return ReasonUnknown
-		case tracked[source+"/"+strings.ToLower(o.RepoKey)]:
+		case tracked[strings.ToLower(o.RepoKey)] > 0:
 			return ReasonTracked
 		case !o.Confident:
 			return ReasonHostOnly
@@ -135,7 +202,9 @@ func Plan(cfg *config.Config) (Result, error) {
 		}
 		if len(hits) == 1 {
 			relinked[hits[0]] = true
-			res.Relink = append(res.Relink, Relink{Source: hits[0].source, Repo: hits[0].repo, Path: o.Path})
+			hit := hits[0]
+			expect := repoLocation(cfg, hit.source, hit.repo, cfg.Sources[hit.source].Repos[hit.repo])
+			res.Relink = append(res.Relink, Relink{Source: hit.source, Repo: hit.repo, Path: o.Path, expect: expect, host: o.Host, keyOwners: tracked[strings.ToLower(hit.repo)]})
 			continue
 		}
 		if r := reason(o); r != "" {
@@ -146,8 +215,8 @@ func Plan(cfg *config.Config) (Result, error) {
 		if source == "" {
 			source = o.MatchedAccount
 		}
-		tracked[source+"/"+strings.ToLower(o.RepoKey)] = true
-		res.Adopt = append(res.Adopt, o)
+		tracked[strings.ToLower(o.RepoKey)]++
+		res.Adopt = append(res.Adopt, Adoption{OrphanRepo: o, expect: repoLocation(cfg, source, o.RepoKey, config.Repo{})})
 	}
 	return res, nil
 }
@@ -185,32 +254,101 @@ type Placed struct {
 	Account, Source, Repo, Path string
 }
 
-// Apply writes a plan into the config: it returns the clones it adopted and
-// whether the config changed. Clones that can't be added (a source key
-// taken by another account) are skipped.
-func Apply(cfg *config.Config, res Result) ([]Placed, bool) {
-	changed := false
-	var placed []Placed
-	for _, r := range res.Relink {
-		src, ok := cfg.Sources[r.Source]
-		if !ok {
-			continue
+// Skip describes a decision whose preconditions no longer hold.
+type Skip struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
+}
+
+// Applied counts only changes actually written to the live config.
+type Applied struct {
+	Adopted  []Placed
+	Relinked int
+	Skipped  []Skip
+}
+
+// Apply checks each decision against current intent. It indexes the live
+// inventory once and checks adoptions before any of them creates a source.
+func Apply(cfg *config.Config, res Result) Applied {
+	var done Applied
+	if len(res.Adopt)+len(res.Relink) == 0 {
+		return done
+	}
+	if !res.SameScanScope(cfg) {
+		for _, r := range res.Relink {
+			done.Skipped = append(done.Skipped, Skip{Path: r.Path, Reason: "moved"})
 		}
-		repo, ok := src.Repos[r.Repo]
-		if !ok {
+		for _, o := range res.Adopt {
+			done.Skipped = append(done.Skipped, Skip{Path: o.Path, Reason: "moved"})
+		}
+		return done
+	}
+	keys, paths := map[string]int{}, map[string]bool{}
+	for sk, source := range cfg.Sources {
+		for key, repo := range source.Repos {
+			keys[strings.ToLower(key)]++
+			paths[pathKey(status.RepoPath(cfg, sk, key, repo))] = true
+		}
+	}
+	for _, r := range res.Relink {
+		src, exists := cfg.Sources[r.Source]
+		repo, tracked := src.Repos[r.Repo]
+		acct, accountExists := cfg.Accounts[src.Account]
+		reason := ""
+		switch {
+		case !exists || !accountExists || src.Account != r.expect.account || !adopt.HostMatches(acct, r.host):
+			reason = "sourceGone"
+		case !tracked:
+			reason = "renamed"
+		case cfg.IsIgnoredClone(r.Path) || repoLocation(cfg, r.Source, r.Repo, repo) != r.expect:
+			reason = "moved"
+		case paths[pathKey(r.Path)] || keys[strings.ToLower(r.Repo)] != r.keyOwners:
+			reason = "alreadyTracked"
+		}
+		if reason != "" {
+			done.Skipped = append(done.Skipped, Skip{Path: r.Path, Reason: reason})
 			continue
 		}
 		src.Repos[r.Repo] = locate(cfg, r.Source, r.Repo, r.Path, repo)
-		cfg.Sources[r.Source] = src
-		changed = true
+		paths[pathKey(r.Path)] = true
+		done.Relinked++
 	}
+	var pending []Adoption
 	for _, o := range res.Adopt {
-		if source, err := Adopt(cfg, o, o.MatchedAccount); err == nil {
-			placed = append(placed, Placed{Account: o.MatchedAccount, Source: source, Repo: o.RepoKey, Path: o.Path})
-			changed = true
+		source := o.MatchedSource
+		if source == "" {
+			source = o.MatchedAccount
 		}
+		reason := ""
+		switch {
+		case keys[strings.ToLower(o.RepoKey)] != 0 || paths[pathKey(o.Path)]:
+			reason = "alreadyTracked"
+		case !o.StillMatches(cfg):
+			reason = "sourceGone"
+		case cfg.IsIgnoredClone(o.Path) || repoLocation(cfg, source, o.RepoKey, config.Repo{}) != o.expect:
+			reason = "moved"
+		}
+		if reason != "" {
+			done.Skipped = append(done.Skipped, Skip{Path: o.Path, Reason: reason})
+			continue
+		}
+		keys[strings.ToLower(o.RepoKey)]++
+		paths[pathKey(o.Path)] = true
+		pending = append(pending, o)
 	}
-	return placed, changed
+	for _, o := range pending {
+		source, err := Adopt(cfg, o.OrphanRepo, o.MatchedAccount)
+		if err != nil {
+			done.Skipped = append(done.Skipped, Skip{Path: o.Path, Reason: "sourceGone"})
+			continue
+		}
+		done.Adopted = append(done.Adopted, Placed{Account: o.MatchedAccount, Source: source, Repo: o.RepoKey, Path: o.Path})
+	}
+	return done
+}
+
+func pathKey(path string) string {
+	return strings.ToLower(filepath.ToSlash(filepath.Clean(path)))
 }
 
 // Adopt adds a found clone to the config under accountKey, in place, and

@@ -428,7 +428,11 @@ func TestHostnameFromURL(t *testing.T) {
 
 // matchAccountEx unpacks matchAccount's winner, ties and source for the tests.
 func matchAccountEx(cfg *config.Config, mc MatchContext) (accountKey, sourceKey string, ambiguous []string) {
-	m := matchAccount(cfg, mc)
+	var users []string
+	if mc.RepoPath != "" {
+		users = git.CredentialUsernames(mc.RepoPath)
+	}
+	m := matchAccount(cfg, mc, users)
 	return m.accountKey, m.sourceKey, m.ambiguous
 }
 

@@ -265,6 +265,7 @@ Everything else waits in **Unmatched clones**, opened from **Found on disk** in 
 - **no remote** — no `origin`.
 - **already tracked at another path** — a second checkout of a repo Gitbox already tracks.
 - **a git worktree of another clone**
+- **This clone changed while scanning.** Gitbox kept the newer settings and queued another scan. Use **Scan again** to refresh the list.
 
 Where an account can apply, pick it and click **Adopt**; the clone joins that account in place. **Ignore** hides a clone for good, and **Show ignored** lists the ignored ones, where you can still **Adopt** one or **Stop ignoring** it. Ignored paths are saved in `global.ignored_clones`. The scoring rules behind the account match are in [Architecture › pkg/adopt](architecture.md#pkgadopt--orphan-repo-discovery).
 

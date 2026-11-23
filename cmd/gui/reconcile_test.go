@@ -60,30 +60,129 @@ func TestReconcile_AdoptsConfidentCloneAndSaves(t *testing.T) {
 	if got := gitConfigGet(t, clone, "user.email"); got != "a@e" {
 		t.Errorf("identity = %q, want the account's", got)
 	}
+
+	t.Run("a refused save leaves the clone configuration alone", func(t *testing.T) {
+		a, path := newWorkspaceTestApp(t)
+		if _, err := a.reloadConfigLocal(); err != nil {
+			t.Fatal(err)
+		}
+		clone := filepath.Join(a.cfg.Global.Roots[0], "github-alice", "alice", "conflict")
+		origin := "git@github.com:alice/conflict.git"
+		initClone(t, clone, origin)
+		a.reconcileScan = func(snap *config.Config) (reconcile.Result, error) {
+			result, err := reconcile.Plan(snap)
+			if err != nil {
+				return result, err
+			}
+			disk, err := config.Load(path)
+			if err != nil {
+				return result, err
+			}
+			if err := disk.AddRepo("github-alice", "team/external", config.Repo{}); err != nil {
+				return result, err
+			}
+			return result, config.Save(disk, path)
+		}
+		result := a.Reconcile()
+		if result.Error == "" || result.Adopted+result.Relinked != 0 || gitConfigGet(t, clone, "remote.origin.url") != origin {
+			t.Fatalf("refused save applied changes: %+v", result)
+		}
+		disk, err := config.Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, current := range []*config.Config{a.cfg, disk} {
+			repos := current.Sources["github-alice"].Repos
+			if _, ok := repos["team/external"]; !ok {
+				t.Fatal("external change lost")
+			}
+			if _, ok := repos["alice/conflict"]; ok {
+				t.Fatal("rejected adoption survived")
+			}
+		}
+	})
 }
 
-func TestReconcile_RetriesWhenTheConfigChangesDuringTheScan(t *testing.T) {
+func TestReconcile_AdoptsDuringUnrelatedEdits(t *testing.T) {
 	a, cfgPath := newWorkspaceTestApp(t)
-	calls := 0
-	a.reconcileScan = func(snap *config.Config) (reconcile.Result, error) {
-		calls++
-		if calls == 1 {
-			// An edit lands while the first scan runs.
+	clone := filepath.Join(a.cfg.Global.Roots[0], "github-alice", "alice", "fresh")
+	initClone(t, clone, "https://github.com/alice/fresh.git")
+	synctest.Test(t, func(t *testing.T) {
+		defer a.stopRefresh()
+		calls := 0
+		a.reconcileScan = func(snap *config.Config) (reconcile.Result, error) {
+			calls++
+			res, err := reconcile.Plan(snap)
 			a.mu.Lock()
-			_ = a.cfg.AddRepo("github-alice", "team/edited", config.Repo{})
-			_ = a.saveConfig()
-			a.mu.Unlock()
+			defer a.mu.Unlock()
+			if err := a.cfg.AddRepo("github-alice", fmt.Sprintf("team/edited%d", calls), config.Repo{}); err != nil {
+				t.Fatal(err)
+			}
+			if err := a.saveConfig(); err != nil {
+				t.Fatal(err)
+			}
+			return res, err
 		}
-		return reconcile.Result{}, nil
-	}
-	a.Reconcile()
-	if calls != 2 {
-		t.Errorf("scans = %d, want a retry after the edit", calls)
-	}
-	reloaded, _ := config.Load(cfgPath)
-	if _, ok := reloaded.Sources["github-alice"].Repos["team/edited"]; !ok {
-		t.Error("the concurrent edit was lost")
-	}
+		result := a.Reconcile()
+		synctest.Wait()
+		if calls != 1 || result.Adopted != 1 || len(result.Skipped) != 0 || result.Error != "" {
+			t.Fatalf("scans=%d result=%+v", calls, result)
+		}
+		reloaded, err := config.Load(cfgPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"alice/fresh", "team/edited1"} {
+			if _, ok := reloaded.Sources["github-alice"].Repos[key]; !ok {
+				t.Errorf("missing %s on disk", key)
+			}
+		}
+	})
+	t.Run("a concurrent adoption skips one entry and queues one rescan", func(t *testing.T) {
+		a, cfgPath := newWorkspaceTestApp(t)
+		root := a.cfg.Global.Roots[0]
+		first := filepath.Join(root, "github-alice", "alice", "first")
+		second := filepath.Join(root, "github-alice", "alice", "second")
+		initClone(t, first, "https://github.com/alice/first.git")
+		initClone(t, second, "https://github.com/alice/second.git")
+		synctest.Test(t, func(t *testing.T) {
+			defer a.stopRefresh()
+			done := make(chan struct{})
+			a.statusRun = &statusFlight{done: done}
+			scans := 0
+			a.reconcileScan = func(snap *config.Config) (reconcile.Result, error) {
+				scans++
+				result, err := reconcile.Plan(snap)
+				if scans == 1 {
+					a.mu.Lock()
+					addErr := a.cfg.AddRepo("github-alice", "alice/first", config.Repo{Name: "Keep"})
+					a.mu.Unlock()
+					if addErr != nil {
+						return reconcile.Result{}, addErr
+					}
+				}
+				return result, err
+			}
+			result := a.Reconcile()
+			close(done)
+			synctest.Wait()
+			if result.Error != "" || result.Adopted != 1 || scans != 2 || len(result.Skipped) != 1 ||
+				result.Skipped[0] != (reconcile.Skip{Path: first, Reason: "alreadyTracked"}) {
+				t.Fatalf("scans=%d result=%+v", scans, result)
+			}
+			reloaded, err := config.Load(cfgPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			repos := reloaded.Sources["github-alice"].Repos
+			if _, ok := repos["alice/second"]; !ok || repos["alice/first"].Name != "Keep" {
+				t.Fatalf("current intent missing from disk: %+v", repos)
+			}
+			if got := gitConfigGet(t, second, "user.email"); got != "a@e" {
+				t.Fatalf("applied clone identity = %q", got)
+			}
+		})
+	})
 }
 
 func TestAdoptClonesAndIgnoreClone(t *testing.T) {
@@ -141,7 +240,7 @@ func TestScanConfig_RejectsStalePlanAfterTwoAttempts(t *testing.T) {
 		a.mu.Unlock()
 		return reconcile.Result{Relink: []reconcile.Relink{{Source: "github-alice", Repo: "team/frontend", Path: "stale"}}}, nil
 	}
-	res, err := a.scanConfig()
+	res, _, err := a.scanConfig()
 	defer a.mu.Unlock()
 	if !errors.Is(err, ErrStalePlan) || calls != 2 || len(res.Relink) != 0 {
 		t.Fatalf("scans=%d result=%+v error=%v", calls, res, err)
@@ -168,7 +267,7 @@ func TestScanConfig_CloneFailureReturnsWithLock(t *testing.T) {
 			a.reconcileScan = func(*config.Config) (reconcile.Result, error) { return reconcile.Result{}, nil }
 			done := make(chan error, 1)
 			go func() {
-				_, err := a.scanConfig()
+				_, _, err := a.scanConfig()
 				if a.mu.TryLock() {
 					err = errors.New("scanConfig returned without the config lock")
 				}
@@ -200,7 +299,7 @@ func TestScanConfig_IgnoresOnlyUIState(t *testing.T) {
 		a.mu.Unlock()
 		return reconcile.Result{}, nil
 	}
-	_, err := a.scanConfig()
+	_, _, err := a.scanConfig()
 	a.mu.Unlock()
 	if err != nil || calls != 1 {
 		t.Fatalf("scans=%d error=%v", calls, err)
@@ -299,15 +398,16 @@ func TestReconcile_RetryAppliesFreshPlanAndEmitsOnce(t *testing.T) {
 		a.events = events
 		done := make(chan struct{})
 		a.statusRun = &statusFlight{done: done}
-		freshPath := filepath.Join(t.TempDir(), "fresh")
+		freshPath := filepath.Join(a.cfg.Global.Roots[0], "fresh")
+		initClone(t, freshPath, "https://github.com/team/frontend.git")
 		var scans atomic.Int32
-		a.reconcileScan = func(*config.Config) (reconcile.Result, error) {
+		a.reconcileScan = func(snap *config.Config) (reconcile.Result, error) {
 			if scans.Add(1) <= 2 {
 				a.mu.Lock()
 				a.cfg.Global.NestedScanDepth++
 				a.mu.Unlock()
 			}
-			return reconcile.Result{Relink: []reconcile.Relink{{Source: "github-alice", Repo: "team/frontend", Path: freshPath}}}, nil
+			return reconcile.Plan(snap)
 		}
 		if res := a.Reconcile(); res.Error != ErrStalePlan.Error() {
 			t.Fatalf("result = %+v", res)
