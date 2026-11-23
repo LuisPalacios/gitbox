@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Gitbox fleet recipe",
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "accounts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/account"
+      }
+    },
+    "roots": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/root"
+      },
+      "minItems": 1
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source"
+      }
+    },
+    "mirrors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/mirror"
+      }
+    }
+  },
+  "required": [
+    "version",
+    "accounts",
+    "roots",
+    "sources",
+    "mirrors"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "ref": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https?://"
+        },
+        "username": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]*$",
+          "maxLength": 255
+        }
+      },
+      "required": [
+        "server",
+        "username"
+      ],
+      "additionalProperties": false
+    },
+    "account": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https?://"
+        },
+        "username": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]*$",
+          "maxLength": 255
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "gitlab",
+            "bitbucket",
+            "gitea",
+            "forgejo"
+          ]
+        },
+        "credentialType": {
+          "enum": [
+            "ssh",
+            "token",
+            "gcm"
+          ]
+        }
+      },
+      "required": [
+        "server",
+        "username",
+        "provider",
+        "credentialType"
+      ],
+      "additionalProperties": false
+    },
+    "root": {
+      "type": "object",
+      "properties": {
+        "slot": {
+          "type": "string",
+          "pattern": "^(primary|secondary-[1-9][0-9]*)$"
+        }
+      },
+      "required": [
+        "slot"
+      ],
+      "additionalProperties": false
+    },
+    "repo": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Portable slash-separated folder components; the runtime also checks reserved device names and path containment."
+        },
+        "idFolder": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Portable slash-separated folder components; the runtime also checks reserved device names and path containment."
+        },
+        "cloneFolder": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Portable slash-separated folder components; the runtime also checks reserved device names and path containment."
+        },
+        "rootSlot": {
+          "type": "string",
+          "pattern": "^(primary|secondary-[1-9][0-9]*)$"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "accountRef": {
+          "$ref": "#/$defs/ref"
+        },
+        "folder": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Portable slash-separated folder components; the runtime also checks reserved device names and path containment."
+        },
+        "rootSlot": {
+          "type": "string",
+          "pattern": "^(primary|secondary-[1-9][0-9]*)$"
+        },
+        "repos": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/repo"
+          }
+        }
+      },
+      "required": [
+        "accountRef",
+        "rootSlot",
+        "repos"
+      ],
+      "additionalProperties": false
+    },
+    "mirrorRepo": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Portable slash-separated folder components; the runtime also checks reserved device names and path containment."
+        },
+        "direction": {
+          "enum": [
+            "push",
+            "pull"
+          ]
+        },
+        "origin": {
+          "enum": [
+            "src",
+            "dst"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Portable slash-separated folder components; the runtime also checks reserved device names and path containment."
+        }
+      },
+      "required": [
+        "key",
+        "direction",
+        "origin"
+      ],
+      "additionalProperties": false
+    },
+    "mirror": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/ref"
+        },
+        "to": {
+          "$ref": "#/$defs/ref"
+        },
+        "repos": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/mirrorRepo"
+          }
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "repos"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

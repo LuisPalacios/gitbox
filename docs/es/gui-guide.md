@@ -500,6 +500,12 @@ Con dos o más raíces, un clonado explícito pregunta una vez adónde va: el **
 
 El mismo diálogo fija la **profundidad de escaneo anidado** para los [contenedores multi-repo](#contenedores-sin-archivo-de-workspace).
 
+### Recetas de flota portátiles
+
+En la ventana principal, abre **Ajustes → Receta de flota → Exportar receta**. Revisa el JSON exacto antes de guardarlo. La receta contiene servidores de proveedores, nombres de usuario, tipos de credenciales, proyectos registrados, definiciones de mirrors e identificadores lógicos de raíz. Gitbox omite las claves de cuenta locales, las identidades de autor de Git, las credenciales y las carpetas absolutas de clonado. Al importar, un clon con una carpeta específica de la máquina usa la estructura de carpetas habitual.
+
+En la máquina de destino, configura sus raíces de clonado y elige **Importar receta**. Asigna cada identificador a una raíz local e introduce el nombre y el correo del autor de Git para cada cuenta nueva. Revisa la tabla antes de aplicar los cambios. Resuelve primero los destinos ocupados o las asignaciones ambiguas. Gitbox conserva las entradas existentes y solo añade configuración. Usa **Reparar credencial** para iniciar sesión y descarga los proyectos que quieras.
+
 ### Remotos (experimental)
 
 El modo remoto gestiona los repositorios de otro ordenador por SSH. Viene desactivado: la opción `--experimental-remote` o `"experimental_remote": true` en `global` lo activan, y entonces Ajustes muestra **Remotos**.

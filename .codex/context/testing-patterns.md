@@ -18,6 +18,7 @@ After any code change, always run the relevant tests:
 | Account/credential/clone flows (`pkg/ops/`) | `go test ./pkg/ops/`                               |
 | Credential logic (`pkg/credential/`)        | `go test ./pkg/credential/ ./pkg/ops/ ./cmd/gui/`  |
 | Config logic (`pkg/config/`)                | `go test ./pkg/config/ ./pkg/ops/ ./cmd/gui/`      |
+| Fleet recipes (`pkg/recipe/`)               | `go test ./pkg/recipe/ ./cmd/gui/`                 |
 | Disk reconcile (`pkg/reconcile/`)           | `go test ./pkg/reconcile/ ./pkg/adopt/ ./cmd/gui/` |
 | GUI bindings (`cmd/gui/`)                   | `go test ./cmd/gui/`                               |
 | Update logic (`pkg/update/`)                | `go test ./pkg/update/`                            |

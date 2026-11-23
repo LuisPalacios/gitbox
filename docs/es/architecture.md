@@ -383,6 +383,10 @@ El discovery ordinario de huérfanos se detiene en el límite de cada clon, incl
 
 Las rutas de `global.ignored_clones` se informan aparte. `Apply` escribe las decisiones en la config; ningún paso toca archivos. La GUI ejecuta una pasada al arrancar, al recuperar el foco la ventana, tras un Fetch de todo manual, tras cambios en las raíces de clonado y al reescanear un contenedor. Primero sincronizo los archivos de workspace de los contenedores (`pkg/workspace`), después tomo una instantánea de la config, escaneo sin el bloqueo y vuelvo a comprobar la config bajo el bloqueo antes de aplicar. Intento como máximo dos escaneos y rechazo el plan si la intención de la config sigue cambiando; la geometría de las ventanas, los grupos plegados y el tema no invalidan un escaneo. Un fallo al copiar la config devuelve el error de inmediato. Una pasada obsoleta solicita un único reintento asíncrono que agrupa las solicitudes y espera a que terminen el fetch y la comprobación de estado actuales; ese reintento nunca se vuelve a programar a sí mismo. Emito `reconcile:done` cuando aplico cambios o cambia la disponibilidad de un workspace. Los repos bajo una raíz que falta nunca se vuelven a enlazar ni se olvidan.
 
+### pkg/recipe — recetas de flota portátiles
+
+La ventana local exporta únicamente los campos admitidos por la versión 1 de `json/gitbox-recipe.schema.json`. Las cuentas se identifican por el servidor del proveedor y el nombre de usuario, y las raíces de clonado usan identificadores ordenados. El plan de importación trabaja con una copia de la configuración, las identidades y la asignación de raíces de la máquina de destino. Al aplicar los cambios, Gitbox recalcula el plan revisado bajo el bloqueo del propietario de la configuración y guarda con la comprobación entre procesos existente. Ambas operaciones conservan las credenciales y las carpetas de clonado en disco.
+
 ### pkg/mirror — mirroring de repositorios
 
 Gestiona la configuración de push y pull mirrors, la comprobación de estado, el discovery y las guías de configuración manual. Los mirrors mantienen copias de respaldo de los repos en otro proveedor sin clonarlos en local.

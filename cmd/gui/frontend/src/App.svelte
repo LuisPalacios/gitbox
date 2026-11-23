@@ -17,7 +17,7 @@
   import { startFetch, startPull, noteDone, summarizeFetch, summarizePull, localWorkCount } from './lib/activity';
   import type { Run } from './lib/activity';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit, EventsOn } from '../wailsjs/runtime/runtime';
-  import type { CredentialFinding, RepoState, PullSkipReason, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, OrphanRepoDTO, ReconcileDTO, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
+  import type { ConfigDTO, CredentialFinding, RepoState, PullSkipReason, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, OrphanRepoDTO, ReconcileDTO, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
   import Onboarding from './lib/Onboarding.svelte';
   import ConfigErrorScreen from './lib/components/ConfigErrorScreen.svelte';
   import ReloadErrorBanner from './lib/components/ReloadErrorBanner.svelte';
@@ -675,6 +675,15 @@
     await bridge.saveTerminalProfiles(apps, shells, profiles);
     const fresh = await bridge.reloadConfig();
     configStore.set(fresh);
+  }
+
+  function onRecipeImported(cfg: ConfigDTO, added: string[]) {
+    // Every account created by import still needs local sign-in.
+    const refs = new Set(added);
+    for (const [key, account] of Object.entries(cfg.accounts)) {
+      if (refs.has(account.url + '/' + account.username)) credStatuses[key] = {status: 'none'};
+    }
+    configStore.set(cfg);
   }
 
   async function reloadConfigFromDisk() {
@@ -2087,7 +2096,7 @@
     {globalGCMFixing} {gitignoreInstalling} {fixGlobalIdentity} {fixGlobalGCM} {installGlobalGitignore} />
 
   <!-- ── SETTINGS PANEL ── -->
-  <SettingsPanel {showSettings} {simple} {configPath} {languageChoice} {themeChoice} {fetchInterval} {lastFetchTime}
+  <SettingsPanel {onRecipeImported} {showSettings} {simple} {configPath} {languageChoice} {themeChoice} {fetchInterval} {lastFetchTime}
     {autostartSupported} {autostartOn} {checkGitignorePref} {doctorSummary} {terminalsManagerOpening} {appVersion}
     {openRoots} {setLanguage} {setTheme} {setFetchInterval} {toggleAutostart} {setPRBadgesEnabled}
     {setPRIncludeDrafts} {setCheckGitignorePref} {openDoctorModal} {openTerminalsManagerWindow} />
