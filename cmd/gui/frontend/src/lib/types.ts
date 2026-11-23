@@ -252,7 +252,15 @@ export interface ReconcileDTO {
   workspaceMembers: string[];
   workspaceUnknown?: string[] | null;
   workspaceDiagnostics?: WorkspaceDiagnosticDTO[];
+  // Tracked clones git never finished (#295); their folders are left alone.
+  incomplete?: IncompleteCloneDTO[] | null;
   error?: string;
+}
+
+export interface IncompleteCloneDTO {
+  source: string;
+  repo: string;
+  path: string;
 }
 
 // A container whose root holds several .code-workspace files and no pick.

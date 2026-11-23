@@ -430,6 +430,38 @@ func IsRepo(path string) bool {
 	return false
 }
 
+// IsIncompleteClone reports a clone that git stopped before it finished:
+// one whose HEAD is git's placeholder for a head not known yet, or one
+// whose HEAD names no commit while the clone never got its fetch refspec.
+// A clone of an empty repository has the refspec, so it is complete. A
+// clone killed outright leaves such a folder behind; one that git was asked
+// to stop removes its own folder. It reads files only.
+func IsIncompleteClone(path string) bool {
+	gitDir := filepath.Join(path, ".git")
+	head, err := os.ReadFile(filepath.Join(gitDir, "HEAD"))
+	if err != nil {
+		return false
+	}
+	ref, symbolic := strings.CutPrefix(strings.TrimSpace(string(head)), "ref: ")
+	if !symbolic {
+		return false // a detached HEAD names a commit
+	}
+	if ref == "refs/heads/.invalid" {
+		return true
+	}
+	if _, err := os.Stat(filepath.Join(gitDir, "reftable")); err == nil {
+		return false // refs this reader does not parse
+	}
+	if _, err := os.Stat(filepath.Join(gitDir, filepath.FromSlash(ref))); err == nil {
+		return false
+	}
+	if packed, err := os.ReadFile(filepath.Join(gitDir, "packed-refs")); err == nil && strings.Contains(string(packed), " "+ref+"\n") {
+		return false
+	}
+	cfg, err := os.ReadFile(filepath.Join(gitDir, "config"))
+	return err == nil && !strings.Contains(string(cfg), "fetch = ")
+}
+
 // SetRemoteURL sets the URL of a remote (typically "origin").
 func SetRemoteURL(repoPath, remote, url string) error {
 	return SetRemoteURLContext(context.Background(), repoPath, remote, url)

@@ -243,3 +243,34 @@ func TestPlan_NeverAdoptsALinkedWorktree(t *testing.T) {
 		}
 	}
 }
+
+// TestPlan_ReportsAnIncompleteClone: a tracked repo whose clone git never
+// finished is reported, never adopted or relinked, and left on disk.
+func TestPlan_ReportsAnIncompleteClone(t *testing.T) {
+	root := t.TempDir()
+	cfg := testConfig(root)
+	path := status.RepoPath(cfg, "github-me", "me/tracked", cfg.Sources["github-me"].Repos["me/tracked"])
+	initRepo(t, path, "")
+	if err := os.WriteFile(filepath.Join(path, ".git", "HEAD"), []byte("ref: refs/heads/.invalid\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res := planAndApply(t, cfg)
+	if len(res.Incomplete) != 1 || res.Incomplete[0] != (Incomplete{Source: "github-me", Repo: "me/tracked", Path: path}) {
+		t.Fatalf("incomplete = %+v, want the tracked clone", res.Incomplete)
+	}
+	if len(res.Relink)+len(res.Adopt)+len(res.Unmatched) != 0 {
+		t.Errorf("an incomplete clone was acted on: %+v", res)
+	}
+	if !git.IsRepo(path) {
+		t.Error("the incomplete clone's folder was touched")
+	}
+
+	// A finished clone of the same repo is not reported.
+	if err := os.WriteFile(filepath.Join(path, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	initRepo(t, path, "https://github.com/me/tracked.git")
+	if res := planAndApply(t, cfg); len(res.Incomplete) != 0 {
+		t.Errorf("a clone with its refspec is reported incomplete: %+v", res.Incomplete)
+	}
+}

@@ -750,6 +750,7 @@
     }
   }
 
+  const incompleteShown = new Set<string>();
   // applyReconcile shows a pass: the lists, and the config and statuses when
   // it added or moved anything.
   async function applyReconcile(res: ReconcileDTO) {
@@ -758,6 +759,10 @@
     ignoredClones = res.ignored || [];
     orphanCount = orphanList.length;
     if (res.error) pushNotice('error', $t('notice.reconcileFailed'), [res.error]);
+    // A clone git never finished is reported once per session (#295).
+    const incomplete = (res.incomplete || []).filter(c => !incompleteShown.has(c.path));
+    for (const c of incomplete) incompleteShown.add(c.path);
+    if (incomplete.length) pushNotice('error', $t('notice.incompleteClone'), incomplete.map(c => `${c.repo}: ${c.path}`));
     if (res.adopted + res.relinked > 0 || res.workspacesChanged) {
       $configStore = await bridge.reloadConfig();
       applyStatusResults(await bridge.getAllStatus());
