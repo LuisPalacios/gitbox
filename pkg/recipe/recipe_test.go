@@ -100,15 +100,44 @@ func TestCollisionAndStalePreview(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := &r.Sources[0]
-	src.Repos = append(src.Repos, Repo{Key: "other/path", IDFolder: "my équipe", CloneFolder: "client/app one", RootSlot: "secondary-1"})
+	src.Repos = append(src.Repos, Repo{Key: "other/path", IDFolder: "My équipe", CloneFolder: "client/app one", RootSlot: "secondary-1"})
 	options := Options{Slots: map[string]string{"primary": cfg.Global.Roots[0], "secondary-1": cfg.Global.Roots[1]}}
 	p, err := Plan(cfg, r, options)
 	if err != nil || p.Collisions != 1 {
-		t.Fatalf("case-folded destination collision: %+v %v", p, err)
+		t.Fatalf("identical destination: %+v %v", p, err)
 	}
 	if Apply(cfg, p) == nil {
 		t.Fatal("collision applied")
 	}
+	t.Run("case-only difference on the destination volume", func(t *testing.T) {
+		parent := filepath.Join(cfg.Global.Roots[1], "private-key")
+		if err := os.MkdirAll(filepath.Join(parent, "My équipe"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		_, err := os.Stat(filepath.Join(parent, "my équipe"))
+		if err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		folds := err == nil
+		src.Repos[len(src.Repos)-1].IDFolder = "my équipe"
+		plan, err := Plan(cfg, r, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if folds && plan.Collisions != 1 || !folds && plan.Collisions != 0 {
+			t.Fatalf("folds=%v, plan=%+v", folds, plan)
+		}
+		dest, err := cfg.Clone()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := Apply(dest, plan); (err != nil) != folds {
+			t.Fatalf("folds=%v, apply=%v", folds, err)
+		}
+		if !folds && dest.Sources["private-key"].Repos["other/path"].IdFolder != "my équipe" {
+			t.Fatal("import lost the distinct folder spelling")
+		}
+	})
 	src.Repos[len(src.Repos)-1] = Repo{Key: "other/path"}
 	dest := filepath.Join(cfg.Global.Roots[0], "private-key", "other", "path")
 	if err := os.MkdirAll(dest, 0o755); err != nil {

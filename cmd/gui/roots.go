@@ -31,13 +31,8 @@ type RemoveRootDTO struct {
 	Forgotten []string `json:"forgotten"`
 }
 
-// ensureRootDir creates path (tilde-expanded) when missing and checks it is
-// a directory.
-func ensureRootDir(path string) error {
-	expanded, err := hostPath(path)
-	if err != nil {
-		return err
-	}
+// ensureRootDir creates a validated, expanded host path when missing.
+func ensureRootDir(expanded string) error {
 	if err := os.MkdirAll(expanded, 0o755); err != nil {
 		return fmt.Errorf("creating folder %s: %w", expanded, err)
 	}
@@ -54,12 +49,16 @@ func ensureRootDir(path string) error {
 // ensureListedRoot validates the placement before creating a directory.
 // The caller holds a.mu; a failed mkdir leaves the list untouched.
 func ensureListedRoot(cfg *config.Config, path string) (bool, error) {
+	expanded, err := hostPath(path)
+	if err != nil {
+		return false, err
+	}
 	roots := cfg.Global.Roots
 	changed, err := cfg.AddRootChecked(path)
 	if err != nil {
 		return false, err
 	}
-	if err := ensureRootDir(path); err != nil {
+	if err := ensureRootDir(expanded); err != nil {
 		cfg.Global.Roots = roots
 		return false, err
 	}
@@ -167,6 +166,10 @@ func (a *App) RemoveRoot(path string, forget bool) (RemoveRootDTO, error) {
 
 // removeRootLocal is the local backend's RemoveRoot.
 func (a *App) removeRootLocal(path string, forget bool) (RemoveRootDTO, error) {
+	path, err := hostPath(path)
+	if err != nil {
+		return RemoveRootDTO{}, err
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	refs, err := a.cfg.RemoveRoot(path, forget)
@@ -188,6 +191,10 @@ func (a *App) SetDefaultRoot(path string) error { return a.be().SetDefaultRoot(p
 
 // setDefaultRootLocal is the local backend's SetDefaultRoot.
 func (a *App) setDefaultRootLocal(path string) error {
+	path, err := hostPath(path)
+	if err != nil {
+		return err
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if !a.cfg.HasRoot(path) {

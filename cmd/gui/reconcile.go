@@ -376,6 +376,21 @@ func (a *App) AdoptClones(reqs []AdoptRequestDTO) ReconcileDTO { return a.be().A
 
 // adoptClonesLocal is the local backend's AdoptClones.
 func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
+	reqs = slices.Clone(reqs)
+	for i, req := range reqs {
+		path, err := hostPath(req.Path)
+		if err != nil {
+			return emptyReconcile(userMsg(err))
+		}
+		reqs[i].Path = path
+		if req.WorkspaceRoot != "" {
+			root, err := hostPath(req.WorkspaceRoot)
+			if err != nil {
+				return emptyReconcile(userMsg(err))
+			}
+			reqs[i].WorkspaceRoot = root
+		}
+	}
 	a.reconcileMu.Lock()
 	res, workspaceRows, err := a.scanAdoptionRequests(reqs)
 	if err != nil {
