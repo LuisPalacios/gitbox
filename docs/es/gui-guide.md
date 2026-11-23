@@ -472,7 +472,7 @@ Haz clic en el **icono de engranaje** para abrir el panel de ajustes:
 - **Raíces de clonado** — las carpetas donde viven los proyectos, la predeterminada primero, con un botón **Cambiar** (consulta [Raíces de clonado](#raíces-de-clonado)).
 - **Idioma** — English o Español. El cambio se aplica al momento.
 - **Tema** — Sistema, Claro u Oscuro.
-- **Comprobación periódica** (Simple: **Buscar cambios**) — el intervalo de fetch automático: No, 5m, 15m o 30m.
+- **Comprobación periódica** (Simple: **Buscar cambios**) — elige No, 5m, 15m o 30m para comprobar repositorios, mirrors y pull requests. El intervalo de cada comprobación empieza cuando termina la anterior. En Avanzado, **Comprobación del sistema → Ejecutar** muestra el último resultado, si hay una comprobación en curso y su próxima hora programada. **Volver a comprobar** actualiza esos datos.
 - **Ejecutar al inicio** — abre Gitbox al iniciar sesión, donde la plataforma lo permite.
 - **PR / revisiones** — muestra las solicitudes de revisión en Simple y las insignias con los conteos de tus PR abiertos y de las solicitudes de revisión en Avanzado. Usa **Incluir borradores** para incluir los PR en borrador.
 - **Gitignore global** — la comprobación automática de `~/.gitignore_global` al arrancar (consulta [Aviso de gitignore global](#aviso-de-gitignore-global)).

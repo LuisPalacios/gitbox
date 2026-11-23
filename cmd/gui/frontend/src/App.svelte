@@ -1059,7 +1059,7 @@
       const shown = viewAccount(view);
       if (shown && !snapshot.config.accounts?.[shown]) view = snapshot.config.global?.collapsed?.view || 'attention';
       const saved = snapshot.config.global.periodic_sync || 'off';
-      if (saved !== fetchInterval) applyFetchInterval(saved);
+      fetchInterval = saved;
       if (!fetchingAll) {
         const statusVersion = statusGeneration;
         const statuses = await bridge.getAllStatus();
@@ -1283,10 +1283,13 @@
   }
 
   async function checkAllMirrorStatus() {
-    for (const key of Object.keys($mirrors)) {
-      mirrorChecking = { ...mirrorChecking, [key]: true };
-      await bridge.getMirrorStatus(key);
-    }
+    const keys = Object.keys($mirrors);
+    if (!keys.length) return;
+    for (const key of keys) mirrorChecking = { ...mirrorChecking, [key]: true };
+    try {
+      await bridge.runTask('mirror-status');
+    } catch (e) { console.error(e); }
+    for (const key of keys) mirrorChecking = { ...mirrorChecking, [key]: false };
   }
 
   async function setupMirrorRepo(mirrorKey: string, repoKey: string) {
@@ -1445,22 +1448,8 @@
 
   // ── Periodic status check ──
   let fetchInterval: string = 'off';
-  let fetchTimerId: ReturnType<typeof setInterval> | null = null;
   let lastFetchTime: string = '';
   let fetchingAll = false;
-
-  function applyFetchInterval(val: string) {
-    fetchInterval = val;
-    if (fetchTimerId) { clearInterval(fetchTimerId); fetchTimerId = null; }
-    const minutes = val === '5m' ? 5 : val === '15m' ? 15 : val === '30m' ? 30 : 0;
-    if (minutes > 0) {
-      fetchTimerId = setInterval(() => {
-        // A disconnected remote window waits for its next connection.
-        if (!backgroundAllowed(windowMode === 'remote', remoteState?.state)) return;
-        runFetchAll(); checkAllMirrorStatus(); refreshAllPRs();
-      }, minutes * 60 * 1000);
-    }
-  }
 
   // ── PR badges (issue #29) ──
   async function loadPRSettings() {
@@ -1474,7 +1463,7 @@
     let enabled = false;
     prSettings.subscribe((v) => { enabled = v.enabled; })();
     if (!enabled) return;
-    bridge.refreshAllPRs().catch((e) => console.error(e));
+    bridge.runTask('pr-refresh').catch((e) => console.error(e));
   }
 
   async function setPRBadgesEnabled(enabled: boolean) {
@@ -1503,9 +1492,14 @@
     openPRPopover = null;
   }
 
-  function setFetchInterval(val: string) {
-    applyFetchInterval(val);
-    bridge.setPeriodicSync(val);
+  async function setFetchInterval(val: string) {
+    try {
+      await bridge.setPeriodicSync(val);
+      fetchInterval = val;
+    } catch (e) {
+      fetchInterval = await bridge.getPeriodicSync();
+      pushNotice('error', errorText(e));
+    }
   }
 
   // runFetchAll fetches every clone. A manual run (the top-bar button)
@@ -1515,11 +1509,10 @@
     if (fetchingAll) return;
     fetchingAll = true;
     try {
-      await bridge.fetchAllRepos();
+      if (await bridge.runTask('fetch-all') === 'already-running') return;
     } catch (e) {
       lastFetchTime = $t('app.fetchAllError', { error: errorText(e) });
       if (fetchingAll) finishFetch(errorText(e));
-    } finally {
       fetchingAll = false;
       fetchingRepos = {};
     }
@@ -1620,9 +1613,6 @@
     // window runs it itself after each connection, before it takes actions
     // again (onRemoteState).
     if (windowMode !== 'remote') runReconcile();
-
-    // Start periodic status check if previously configured.
-    if (fetchInterval !== 'off') applyFetchInterval(fetchInterval);
 
     // Load PR badge feature flags and kick off initial PR fetch.
     await loadPRSettings();
@@ -2178,7 +2168,7 @@
        (subprocess spawn), so no in-app modal is mounted here. -->
 
   <!-- ── DOCTOR (SYSTEM CHECK) MODAL ── -->
-  <DoctorModal bind:this={doctorModal} bind:doctorSummary bind:credentialFindings />
+  <DoctorModal advanced={!simple} bind:this={doctorModal} bind:doctorSummary bind:credentialFindings />
 
   <!-- ── SSH DISCOVERY TOKEN MODAL ── -->
   <SshTokenModal bind:this={sshTokenDialog} {openDiscover} />

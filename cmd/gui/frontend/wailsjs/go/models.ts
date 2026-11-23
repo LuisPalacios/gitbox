@@ -1700,6 +1700,24 @@ export namespace main {
 	        this.repos = source["repos"];
 	    }
 	}
+	export class ScheduledTaskDTO {
+	    name: string;
+	    nextAt: number;
+	    inFlight: boolean;
+	    lastResult: string;
+
+	    static createFrom(source: any = {}) {
+	        return new ScheduledTaskDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.nextAt = source["nextAt"];
+	        this.inFlight = source["inFlight"];
+	        this.lastResult = source["lastResult"];
+	    }
+	}
 	export class ShellInfo {
 	    id: string;
 	    name: string;

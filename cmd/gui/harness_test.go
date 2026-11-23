@@ -350,27 +350,7 @@ func TestRefreshAIHarnessesWithoutContextDoesNotPanic(t *testing.T) {
 	stubHarnessLookup(t, map[string]string{})
 	a := harnessTestApp(t, nil)
 	a.RefreshAIHarnesses() // ctx == nil → EventsEmit must be skipped
-	// Wait for the goroutine to release harnessMu before the temp dir goes.
-	a.harnessMu.Lock()
-	defer a.harnessMu.Unlock()
-}
-
-func TestHarnessWatcherStartStopIdempotent(t *testing.T) {
-	a := harnessTestApp(t, nil)
-	a.stopHarnessWatcher() // never started: no-op
-	a.startHarnessWatcher()
-	first := a.harnessQuit
-	a.startHarnessWatcher() // second start must not replace the channel
-	if a.harnessQuit != first {
-		t.Fatal("startHarnessWatcher replaced the quit channel")
-	}
-	a.stopHarnessWatcher()
-	a.stopHarnessWatcher() // double close must be safe
-	select {
-	case <-first:
-	default:
-		t.Fatal("quit channel not closed")
-	}
+	a.refreshWG.Wait()
 }
 
 func TestLookPathUserLocalBinFallback(t *testing.T) {

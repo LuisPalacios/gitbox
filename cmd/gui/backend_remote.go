@@ -555,7 +555,10 @@ func (r *RemoteBackend) truncated(what string, had, kept int) {
 //
 // A method in remoteUnbounded has no deadline of its own.
 func (r *RemoteBackend) invoke(method string, result any, args ...any) error {
-	ctx := context.Background()
+	return r.invokeContext(context.Background(), method, result, args...)
+}
+
+func (r *RemoteBackend) invokeContext(ctx context.Context, method string, result any, args ...any) error {
 	client := r.current()
 	if client == nil {
 		return &remoteError{remoteNotConnected, "not connected to the remote"}

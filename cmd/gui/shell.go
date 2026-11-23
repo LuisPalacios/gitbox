@@ -47,6 +47,7 @@ func (a *App) Startup(ctx context.Context) {
 
 // Shutdown is called by Wails when the app is closing.
 func (a *App) Shutdown(_ context.Context) {
+	a.tasks.stop()
 	if a.recoveryExpiry != nil {
 		a.recoveryExpiry.Stop()
 	}
@@ -71,6 +72,9 @@ func (a *App) Shutdown(_ context.Context) {
 	// Stop the backend's workers before test cleanup removes the temp
 	// config dir, so a late pass can't recreate it via config.Save.
 	a.be().Close()
+	if a.remote != nil {
+		a.tasks.wg.Wait()
+	}
 	a.toolsWG.Wait()
 	if a.testCleanup != nil {
 		a.testCleanup()
@@ -122,6 +126,7 @@ func (a *App) DomReady(_ context.Context) {
 			wailsrt.WindowCenter(a.ctx)
 		}
 		wailsrt.WindowShow(a.ctx)
+		a.ensureWindowTasks()
 		a.remote.start()
 		return
 	}
@@ -178,12 +183,14 @@ func (a *App) DomReady(_ context.Context) {
 			a.sink().Emit("tools:updated")
 		})
 	})
-	// Start the backend's background workers (harness watcher, upstream
-	// existence probe).
+	// Start the backend's upstream existence probe.
 	a.be().Start()
 
-	// Check for updates now and every updateCheckInterval.
-	a.startUpdateChecks()
+	// Remove the obsolete update throttle used by older releases.
+	_ = os.Remove(filepath.Join(config.ConfigRoot(), config.V2ConfigDir, ".update-check"))
+
+	// Start the window-owned registry after the renderer can receive events.
+	a.ensureWindowTasks()
 
 	// In compact mode, delay WindowShow — the frontend calls ShowWindow()
 	// after fitCompactHeight() to avoid flickering during resize.

@@ -16,7 +16,6 @@ import (
 )
 
 const (
-	probeMinInterval    = 60 * time.Second
 	probeSweepTimeout   = 30 * time.Second
 	probeRequestTimeout = 10 * time.Second
 	probeConcurrency    = 4

@@ -242,6 +242,10 @@ export function GetRepoDetail(arg1, arg2) {
   return window['go']['main']['App']['GetRepoDetail'](arg1, arg2);
 }
 
+export function GetScheduledTasks() {
+  return window['go']['main']['App']['GetScheduledTasks']();
+}
+
 export function GetStartupSnapshot() {
   return window['go']['main']['App']['GetStartupSnapshot']();
 }
@@ -500,6 +504,10 @@ export function ResolveUpdateRecovery(arg1) {
 
 export function RestoreFromBackup(arg1) {
   return window['go']['main']['App']['RestoreFromBackup'](arg1);
+}
+
+export function RunTask(arg1) {
+  return window['go']['main']['App']['RunTask'](arg1);
 }
 
 export function SaveTerminalProfiles(arg1, arg2, arg3) {
