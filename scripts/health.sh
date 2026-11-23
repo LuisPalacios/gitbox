@@ -32,6 +32,7 @@ MODERNIZE="golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize@v0.50.0
 GOVULNCHECK="golang.org/x/vuln/cmd/govulncheck@v1.8.0"
 DEADCODE="golang.org/x/tools/cmd/deadcode@v0.50.0"
 
+# The blocking status and discovery wrappers remain public for existing callers.
 # Functions deadcode may report: kept on purpose, used only from tests or
 # kept as part of a small public API. One regex per line.
 # I retain standalone sync/cache wrappers and the legacy raw-token writer
@@ -50,6 +51,9 @@ unreachable func: (PSDecode|resetLookupCachesForTest|Version\.String)$
 pkg[/\\]update[/\\]apply_helper[.]go:[0-9]+:[0-9]+: unreachable func: (readUpdateBytes|verifiedWindowsExecutable)$
 pkg[/\\]update[/\\]replace_windows_executable[.]go:[0-9]+:[0-9]+: unreachable func: (stageExecutable|removeRecordedWindowsBackup|replaceWindowsExecutableWith)$
 pkg[/\\]git[/\\]sweep[.]go:[0-9]+:[0-9]+: unreachable func: DeleteStaleBranches$
+pkg[/\\]git[/\\]find[.]go:[0-9]+:[0-9]+: unreachable func: FindNestedRepos$
+pkg[/\\]adopt[/\\]adopt[.]go:[0-9]+:[0-9]+: unreachable func: FindOrphans$
+pkg[/\\]status[/\\]status[.]go:[0-9]+:[0-9]+: unreachable func: CheckAllContext$
 pkg[/\\]terminals[/\\]sync[.]go:[0-9]+:[0-9]+: unreachable func: Sync$
 pkg[/\\]workspace[/\\]workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCache$
 pkg[/\\]update[/\\]platform_(unix|windows)[.]go:[0-9]+:[0-9]+: unreachable func: CleanupOldBinary$

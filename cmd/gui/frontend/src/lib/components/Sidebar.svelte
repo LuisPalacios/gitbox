@@ -21,6 +21,7 @@
   export let attention: { total: number; byAccount: Record<string, number> };
   export let totalRepos: number;
   export let orphanCount: number;
+  export let scanIncomplete = false;
   // Ignored clones keep the entry reachable, without a count (#149).
   export let ignoredCount = 0;
   export let setView: (view: string) => void;
@@ -70,7 +71,7 @@
     {/each}
     <span class="rail-sep"></span>
     <button use:ro={['addAccount', 'credentialStoreToken']} class="rail-btn" aria-label={addLabel} use:tooltip={{ text: addLabel, delay: 150 }} on:click={onAddAccount}><UIIcon name="plus" /></button>
-    {#if orphanCount > 0 || ignoredCount > 0}
+    {#if orphanCount > 0 || ignoredCount > 0 || scanIncomplete}
       <button class="rail-btn" aria-label={foundTip} use:tooltip={{ text: foundTip, delay: 150 }} on:click={showOrphanModal}>
         <UIIcon name="search" />{#if orphanCount > 0}<span class="rail-cnt" style="--cnt: {sc('dirty')}">{badge(orphanCount)}</span>{/if}
       </button>
@@ -108,7 +109,7 @@
       <span class="navi"><UIIcon name="plus" /></span>
       <span class="nav-label">{addLabel}</span>
     </button>
-    {#if orphanCount > 0 || ignoredCount > 0}
+    {#if orphanCount > 0 || ignoredCount > 0 || scanIncomplete}
       <button class="nav" title={foundTip} on:click={showOrphanModal}>
         <span class="navi"><UIIcon name="search" /></span>
         <span class="nav-label">{foundLabel}</span>

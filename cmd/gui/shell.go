@@ -183,8 +183,6 @@ func (a *App) DomReady(_ context.Context) {
 			a.sink().Emit("tools:updated")
 		})
 	})
-	// Start the backend's upstream existence probe.
-	a.be().Start()
 
 	// Remove the obsolete update throttle used by older releases.
 	_ = os.Remove(filepath.Join(config.ConfigRoot(), config.V2ConfigDir, ".update-check"))

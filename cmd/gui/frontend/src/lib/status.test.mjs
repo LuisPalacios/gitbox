@@ -98,3 +98,11 @@ test('I format the age of a known network check in the current language', () => 
   assert.equal(s.checkedAgo(checkedAt, 'en', checked + 86_400_000), 'yesterday');
   assert.equal(s.checkedAgo('unknown', 'en', checked), null);
 });
+
+test('a status batch belongs to exactly one snapshot and startup pass', () => {
+  const batch = { passID: 3, revision: 8, items: [], done: true };
+  assert.equal(s.acceptStatusBatch(batch, 3, 8), true);
+  for (const [passID, revision] of [[3, 7], [3, 9], [3, undefined], [4, 8], [2, 8]]) {
+    assert.equal(s.acceptStatusBatch(batch, passID, revision), false);
+  }
+});

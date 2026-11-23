@@ -1,3 +1,5 @@
+import type { StatusResult } from './types';
+
 // Shared palette, glyphs, count badges, account health and formatting.
 
 // ── Colours (palettes matching prototype-final.svelte) ──
@@ -173,4 +175,15 @@ export function credBadgeClass(status: string): string {
 // Text of the account card's credential badge.
 export function credBadgeLabel(status: string, credentialType: string | undefined): string {
   return status === 'unknown' ? '···' : status === 'none' ? 'config' : status === 'offline' ? 'offline' : credentialType || 'gcm';
+}
+
+export interface StatusBatch {
+  passID: number;
+  revision: number;
+  items: StatusResult[] | null;
+  done: boolean;
+}
+
+export function acceptStatusBatch(batch: StatusBatch, passID: number, revision: number | undefined): boolean {
+  return batch.passID === passID && batch.revision === revision;
 }

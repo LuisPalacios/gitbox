@@ -16,10 +16,8 @@ import (
 // SSH. Client-only behaviour (window, updater, dialogs, launching local
 // apps) stays outside, in the local shell (shell.go).
 type Backend interface {
-	// Init loads the host's config. Start launches background workers.
-	// Close stops them. None is Wails-bound.
+	// Init loads the host's config. Close stops its workers. Neither is Wails-bound.
 	Init(ctx context.Context)
-	Start()
 	Close()
 	RunFleetCheck(context.Context, string) error
 
@@ -62,6 +60,7 @@ type Backend interface {
 	FetchAllRepos() error
 	FetchRepo(sourceKey, repoKey string)
 	FixGlobalGCMConfig() error
+	BeginStatus(passID uint64) error
 	GetAllStatus() []StatusResult
 	GetAppVersion() string
 	GetCheckGlobalGitignore() bool
@@ -144,7 +143,6 @@ type Backend interface {
 type localBackend struct{ a *App }
 
 func (b localBackend) Init(ctx context.Context) { b.a.initLocal(ctx) }
-func (b localBackend) Start()                   { b.a.startLocal() }
 func (b localBackend) Close()                   { b.a.closeLocal() }
 
 func (b localBackend) AccountDeletionImpact(accountKey string) AccountDeletionImpactDTO {
@@ -236,6 +234,10 @@ func (b localBackend) DoctorRun() DoctorReport             { return b.a.doctorRu
 func (b localBackend) FetchAllRepos() error                { return b.a.fetchAllReposLocal() }
 func (b localBackend) FetchRepo(sourceKey, repoKey string) { b.a.fetchRepoLocal(sourceKey, repoKey) }
 func (b localBackend) FixGlobalGCMConfig() error           { return b.a.fixGlobalGCMConfigLocal() }
+func (b localBackend) BeginStatus(passID uint64) error {
+	b.a.requestStatusStream(false, false, passID)
+	return nil
+}
 func (b localBackend) GetAllStatus() []StatusResult        { return b.a.getAllStatusLocal() }
 func (b localBackend) GetAppVersion() string               { return b.a.getAppVersionLocal() }
 func (b localBackend) GetCheckGlobalGitignore() bool       { return b.a.getCheckGlobalGitignoreLocal() }

@@ -39,12 +39,13 @@ type OrphanRepoDTO struct {
 
 // ReconcileDTO answers a reconcile pass.
 type ReconcileDTO struct {
-	Adopted    int              `json:"adopted"`
-	Relinked   int              `json:"relinked"`
-	Unmatched  []OrphanRepoDTO  `json:"unmatched"`
-	Ignored    []OrphanRepoDTO  `json:"ignored"`
-	Skipped    []reconcile.Skip `json:"skipped,omitempty"`
-	Background bool             `json:"background,omitempty"` // completion of a coalesced retry
+	Adopted        int              `json:"adopted"`
+	Relinked       int              `json:"relinked"`
+	Unmatched      []OrphanRepoDTO  `json:"unmatched"`
+	Ignored        []OrphanRepoDTO  `json:"ignored"`
+	SkippedFolders int              `json:"skippedFolders,omitempty"`
+	Skipped        []reconcile.Skip `json:"skipped,omitempty"`
+	Background     bool             `json:"background,omitempty"` // completion of a coalesced retry
 	// WorkspacesChanged is set when the pass flagged a container or changed
 	// a repo's workspace file.
 	WorkspacesChanged bool                 `json:"workspacesChanged"`
@@ -181,7 +182,9 @@ var ErrStalePlan = errors.New("reconcile plan is stale")
 func (a *App) scanConfig() (reconcile.Result, *config.Config, error) {
 	scan := a.reconcileScan
 	if scan == nil {
-		scan = reconcile.Plan
+		scan = func(cfg *config.Config) (reconcile.Result, error) {
+			return reconcile.PlanContext(a.refreshContext(), cfg)
+		}
 	}
 	return a.scanConfigWith(scan, true)
 }
@@ -287,6 +290,7 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 	}
 	out := emptyReconcile("")
 	out.Adopted, out.Relinked, out.WorkspacesChanged = len(placed), applied.Relinked, wsChanged
+	out.SkippedFolders = res.SkippedFolders
 	out.Skipped, out.Background = applied.Skipped, !retryStale
 	if retryStale && len(applied.Skipped) > 0 {
 		a.retryReconcileAfterRefresh()

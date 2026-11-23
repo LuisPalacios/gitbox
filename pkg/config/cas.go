@@ -144,6 +144,9 @@ func jsonHash(v any) Hash {
 	return sha256.Sum256(b)
 }
 
+// SameDomain reports whether both reads describe the same saved domain.
+func (r FileRevision) SameDomain(other FileRevision) bool { return r.domain == other.domain }
+
 func revision(data []byte, cfg *Config) FileRevision {
 	r := FileRevision{known: true}
 	if data != nil {

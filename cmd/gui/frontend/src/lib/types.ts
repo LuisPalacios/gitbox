@@ -126,6 +126,7 @@ export interface MirrorCredentialCheck {
 }
 
 export interface ConfigDTO {
+  revision: number;
   version: number;
   global: GlobalConfig;
   accounts: Record<string, Account>;
@@ -242,6 +243,7 @@ export interface OrphanRepoDTO {
 
 // One reconcile pass: what it adopted and re-linked, and what needs me.
 export interface ReconcileDTO {
+  skippedFolders?: number;
   adopted: number;
   relinked: number;
   skipped?: { path: string; reason: string }[];

@@ -58,6 +58,10 @@ export function ApplyUpdate() {
   return window['go']['main']['App']['ApplyUpdate']();
 }
 
+export function BeginStatus(arg1) {
+  return window['go']['main']['App']['BeginStatus'](arg1);
+}
+
 export function ChangeCredentialType(arg1, arg2) {
   return window['go']['main']['App']['ChangeCredentialType'](arg1, arg2);
 }
@@ -254,6 +258,10 @@ export function GetStartupSnapshot() {
   return window['go']['main']['App']['GetStartupSnapshot']();
 }
 
+export function GetStartupTiming() {
+  return window['go']['main']['App']['GetStartupTiming']();
+}
+
 export function GetTokenGuide(arg1) {
   return window['go']['main']['App']['GetTokenGuide'](arg1);
 }
@@ -328,6 +336,10 @@ export function ListTerminalApps() {
 
 export function ListTerminalProfiles() {
   return window['go']['main']['App']['ListTerminalProfiles']();
+}
+
+export function MarkStartup(arg1) {
+  return window['go']['main']['App']['MarkStartup'](arg1);
 }
 
 export function MissingModernTerminal() {

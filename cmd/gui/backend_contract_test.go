@@ -223,6 +223,7 @@ func contractRows(clone string) []contractRow {
 		{name: "PreviewRoot", call: func(b Backend) (any, error) { return b.PreviewRoot(filepath.Dir(clone)) }},
 		{name: "PreviewClonePath", call: func(b Backend) (any, error) { return b.PreviewClonePath("acct", "org/repo") }},
 		{name: "ValidateRemotePath", call: func(b Backend) (any, error) { return b.ValidateRemotePath(os.TempDir()), nil }},
+		{name: "BeginStatus", call: func(b Backend) (any, error) { return nil, b.BeginStatus(1) }},
 		{name: "GetAllStatus", call: func(b Backend) (any, error) { return b.GetAllStatus(), nil }},
 		// The status pass and the upstream probe each publish the statuses.
 		{name: "RefreshStatus", call: func(b Backend) (any, error) { b.RefreshStatus(); return nil, nil }, until: []string{"status:updated"},
@@ -774,7 +775,7 @@ func TestRemoteBackendCallsEachMethodByName(t *testing.T) {
 	value := reflect.ValueOf(remote)
 	checked := 0
 	for m := range iface.Methods() {
-		if m.Name == "Init" || m.Name == "Start" || m.Name == "Close" {
+		if m.Name == "Init" || m.Name == "Close" {
 			continue
 		}
 		// One distinct, recognisable value per argument.

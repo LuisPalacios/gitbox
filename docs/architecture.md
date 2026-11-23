@@ -99,7 +99,7 @@ Changing a source's root or the default root pins the root every existing clone 
 
 The `App` struct does two jobs, and `cmd/gui` keeps them apart so that remote mode can run the first one on another host:
 
-- **The work** (config, git, credentials, providers) sits behind the `Backend` interface in `backend.go`. Each bound method that does work calls `a.be()`, and `localBackend` runs the original body, which stays on `*App` as an unexported `<name>Local` method. `localBackend` owns no state. `Init`, `Start` and `Close` are the backend half of the Wails lifecycle hooks.
+- **The work** (config, git, credentials, providers) sits behind the `Backend` interface in `backend.go`. Each bound method that does work calls `a.be()`, and `localBackend` runs the original body, which stays on `*App` as an unexported `<name>Local` method. `localBackend` owns no state. `Init` and `Close` are the backend half of the Wails lifecycle hooks.
 - **The window** (geometry, dialogs, the updater, autostart, launching local apps) is the local shell. Those methods never go through `Backend`. The ones that call the Wails runtime live in `shell.go`.
 
 Every event goes through one `EventSink` (`events.go`): code calls `a.sink().Emit("name", …)` with a literal name, `Startup` installs the Wails sink, and an `App` without a sink drops events.
@@ -376,7 +376,7 @@ Scans every root in `global.roots` and the working trees of container repos for 
 
 If two or more accounts share the top score (including a bare host-only tie), the match is ambiguous and no account is picked. A unique match is **confident** when its score is above the host-only baseline, so something beyond the server ties the clone to the account. Adoption never moves files: a clone at its standard spot under a root records that root, and any other clone gets an absolute `clone_folder`. Adopted clones get credential isolation, identity, and a remote URL rewritten to match the credential type.
 
-Ordinary orphan discovery stops at each clone boundary, including a `.git` file used by a worktree. Explicit roots are scanned independently. The container scan uses `nested_scan_depth` to find nested clones, and also scans the folders listed in a container’s workspace file that resolve inside the container, at any depth. **Find on disk** searches a resolved external folder on request. Adoption rechecks that the workspace still lists the external folder and that the chosen clone and account still match.
+Ordinary orphan discovery stops at each clone boundary, including a `.git` file used by a worktree. Explicit roots are scanned independently. Each ordinary root has a depth limit of eight. Each container and each workspace folder resolved inside it starts a separate walk down to `nested_scan_depth`. Reconcile counts inaccessible and depth-limited branches and applies only changes supported by observed clones. **Find on disk** searches a resolved external folder on request. Adoption rechecks that the workspace still lists the external folder and that the chosen clone and account still match.
 
 ### pkg/reconcile — Disk reconcile
 
@@ -695,6 +695,8 @@ What step 1 removes depends only on the old type, so no ghost credentials outliv
 ## 6. GUI architecture
 
 The Go backend (`cmd/gui/app.go`) exposes methods the Svelte frontend calls through auto-generated TypeScript bindings, wrapped by `cmd/gui/frontend/src/lib/bridge.ts`. Long-running operations (clone, status refresh, pull, mirror discovery, repo moves) run in goroutines and push progress to the frontend through Wails events.
+
+The startup snapshot initializes the repository rows. Eight workers check local status and send `status:batch` after eight results or 250 ms. The renderer accepts batches for its own pass and configuration revision, preserves other rows, and schedules fetch, mirrors and PR work after the first result or an empty completion. A completed sweep also serves blocking `GetAllStatus` callers in configuration order.
 
 **Frontend structure:**
 

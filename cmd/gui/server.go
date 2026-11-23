@@ -52,6 +52,7 @@ var servedMethods = []string{
 	"AdoptClones",
 	"AdoptFirstProject",
 	"ApplyDiscoveredMirrors",
+	"BeginStatus",
 	"CheckGlobalGCMConfig",
 	"CheckGlobalGitignore",
 	"CheckGlobalIdentity",
@@ -394,7 +395,6 @@ func serve(a *App, clientID string, stdin io.Reader, stdout, stderr io.Writer) i
 	// Detect tools on this host and save through its config guard. The
 	// connected window owns the timer for fleet checks.
 	a.tasks.start(ctx, []*scheduledTask{a.hostHarnessTask()})
-	backend.Start()
 	defer backend.Close()
 
 	if clientID != "" {

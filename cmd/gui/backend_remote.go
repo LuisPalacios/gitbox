@@ -190,7 +190,6 @@ func (r *RemoteBackend) current() *rpc.Client {
 // The server loaded its own config and runs its own workers: there is
 // nothing to start here.
 func (r *RemoteBackend) Init(context.Context) {}
-func (r *RemoteBackend) Start()               {}
 
 // Close ends the connection.
 func (r *RemoteBackend) Close() { r.detach() }
@@ -373,6 +372,14 @@ type payloadDecoder func(r *RemoteBackend, raw json.RawMessage) (any, error)
 // relayedEvents are the events a remote window takes from its server: the
 // P4 and P6 events of eventClass. TestRelayedEventsAreRemote keeps the two in step.
 var relayedEvents = map[string]payloadDecoder{
+	"status:batch": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
+		var batch StatusBatch
+		if err := json.Unmarshal(raw, &batch); err != nil {
+			return nil, err
+		}
+		batch.Items = capList(r, "status:batch", batch.Items, 8)
+		return batch, nil
+	},
 	"status:updated": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
 		var list []StatusResult
 		if err := json.Unmarshal(raw, &list); err != nil {

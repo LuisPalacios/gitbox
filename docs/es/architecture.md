@@ -99,7 +99,7 @@ Cambiar la raíz de un source o la raíz predeterminada fija la raíz por la que
 
 El struct `App` hace dos trabajos, y `cmd/gui` los mantiene separados para que el modo remoto pueda ejecutar el primero en otro host:
 
-- **El trabajo** (config, git, credenciales, proveedores) queda detrás de la interfaz `Backend` en `backend.go`. Cada método enlazado que hace trabajo llama a `a.be()`, y `localBackend` ejecuta el cuerpo original, que sigue en `*App` como un método no exportado `<nombre>Local`. `localBackend` no posee estado. `Init`, `Start` y `Close` son la mitad de backend de los hooks de ciclo de vida de Wails.
+- **El trabajo** (config, git, credenciales, proveedores) queda detrás de la interfaz `Backend` en `backend.go`. Cada método enlazado que hace trabajo llama a `a.be()`, y `localBackend` ejecuta el cuerpo original, que sigue en `*App` como un método no exportado `<nombre>Local`. `localBackend` no posee estado. `Init` y `Close` son la mitad de backend de los hooks de ciclo de vida de Wails.
 - **La ventana** (geometría, diálogos, el actualizador, el autoarranque, lanzar apps locales) es el shell local. Esos métodos nunca pasan por `Backend`. Los que llaman al runtime de Wails viven en `shell.go`.
 
 Cada evento pasa por un único `EventSink` (`events.go`): el código llama a `a.sink().Emit("nombre", …)` con un nombre literal, `Startup` instala el sink de Wails, y un `App` sin sink descarta los eventos.
@@ -376,7 +376,7 @@ Escanea cada raíz de `global.roots` y los árboles de trabajo de los repos cont
 
 Si dos o más cuentas comparten la puntuación máxima (incluido un empate solo por host), el match es ambiguo y no se elige ninguna cuenta. Un match único es **seguro** cuando su puntuación supera la base de solo host, de modo que algo más allá del servidor vincula el clon a la cuenta. La adopción nunca mueve archivos: un clon en su sitio estándar bajo una raíz registra esa raíz, y cualquier otro clon recibe un `clone_folder` absoluto. Los clones adoptados reciben aislamiento de credenciales, identidad y una URL remota reescrita para coincidir con el tipo de credencial.
 
-El discovery ordinario de huérfanos se detiene en el límite de cada clon, incluido un archivo `.git` usado por un worktree. Las raíces explícitas se escanean de forma independiente. El escaneo de contenedores usa `nested_scan_depth` para encontrar clones anidados, y también escanea, a cualquier profundidad, las carpetas que el archivo de workspace lista y que se resuelven dentro del contenedor. **Buscar en disco** busca clones en una carpeta externa cuando lo solicitas. Al adoptar, Gitbox comprueba de nuevo que el workspace aún lista la carpeta externa y que el clon y la cuenta elegidos siguen coincidiendo.
+El discovery ordinario de huérfanos se detiene en el límite de cada clon, incluido un archivo `.git` usado por un worktree. Las raíces explícitas se escanean de forma independiente. Cada raíz ordinaria tiene un límite de ocho niveles. Cada contenedor y cada carpeta del workspace resuelta en su interior inicia un recorrido independiente de hasta `nested_scan_depth` niveles. La reconciliación cuenta las ramas inaccesibles y las que superan el límite de profundidad y solo aplica cambios respaldados por los clones observados. **Buscar en disco** busca clones en una carpeta externa cuando lo solicitas. Al adoptar, Gitbox comprueba de nuevo que el workspace aún lista la carpeta externa y que el clon y la cuenta elegidos siguen coincidiendo.
 
 ### pkg/reconcile — reconcile de disco
 
@@ -695,6 +695,8 @@ Lo que elimina el paso 1 depende solo del tipo anterior, así que ninguna creden
 ## 6. Arquitectura de la GUI
 
 El backend Go (`cmd/gui/app.go`) expone métodos que el frontend Svelte llama mediante bindings TypeScript autogenerados, envueltos por `cmd/gui/frontend/src/lib/bridge.ts`. Las operaciones largas (clonado, refresco de estado, pull, discovery de mirrors, movimientos de repos) se ejecutan en goroutines y envían el progreso al frontend mediante eventos Wails.
+
+La instantánea de arranque inicializa las filas de repositorios. Ocho trabajadores comprueban el estado local y envían `status:batch` al reunir ocho resultados o tras 250 ms. La interfaz acepta lotes de su propia pasada y revisión de configuración, conserva las demás filas y programa la consulta de remotos, mirrors y PR tras el primer resultado o al terminar una pasada vacía. La pasada completa también atiende a quienes esperan `GetAllStatus` en el orden de la configuración.
 
 **Estructura del frontend:**
 

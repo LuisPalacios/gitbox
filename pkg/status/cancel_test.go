@@ -141,3 +141,69 @@ func TestCheckAllContext_PerRepoBound(t *testing.T) {
 		}
 	}
 }
+
+type slowFleetRunner struct {
+	countingRunner
+	hold chan struct{}
+}
+
+func (r *slowFleetRunner) Run(ctx context.Context, request git.Request) (git.Result, error) {
+	if filepath.Base(request.Dir) != "clone-00" {
+		select {
+		case <-ctx.Done():
+			return git.Result{}, ctx.Err()
+		case <-r.hold:
+		}
+	}
+	return r.countingRunner.Run(ctx, request)
+}
+
+func TestCheckAllBatches(t *testing.T) {
+	t.Run("bounded size and stable final order", func(t *testing.T) {
+		git.SetRunnerForTest(t, &countingRunner{})
+		cfg := cloneConfig(t, 20)
+		seen := make(map[string]bool)
+		batches := 0
+		rows, err := CheckAllBatches(t.Context(), cfg, 0, func(rows []RepoStatus) {
+			if len(rows) == 0 || len(rows) > 8 {
+				t.Fatalf("batch length = %d", len(rows))
+			}
+			batches++
+			for _, row := range rows {
+				if seen[row.Repo] {
+					t.Errorf("duplicate row %s", row.Repo)
+				}
+				seen[row.Repo] = true
+			}
+		})
+		if err != nil || batches < 3 || len(seen) != 20 || len(rows) != 20 {
+			t.Fatalf("batches=%d rows=%d err=%v", batches, len(seen), err)
+		}
+		for i, key := range cfg.Sources["src"].RepoOrder {
+			if rows[i].Repo != key {
+				t.Errorf("row %d = %s, want %s", i, rows[i].Repo, key)
+			}
+		}
+	})
+	t.Run("slow workers publish early and cancel", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			r := &slowFleetRunner{hold: make(chan struct{})}
+			git.SetRunnerForTest(t, r)
+			cfg := cloneConfig(t, 20)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			start := time.Now()
+			batches := 0
+			_, err := CheckAllBatches(ctx, cfg, 0, func(rows []RepoStatus) {
+				batches++
+				if time.Since(start) != 250*time.Millisecond || len(rows) != 1 || rows[0].Repo != "org/repo-00" {
+					t.Errorf("first batch at %v: %+v", time.Since(start), rows)
+				}
+				cancel()
+			})
+			if batches != 1 || !errors.Is(err, context.Canceled) {
+				t.Fatalf("%d batches, err=%v", batches, err)
+			}
+		})
+	})
+}

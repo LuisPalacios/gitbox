@@ -121,7 +121,9 @@ func (r *RemoteBackend) FetchAllRepos() error { return r.callErr("FetchAllRepos"
 func (r *RemoteBackend) FetchRepo(sourceKey, repoKey string) {
 	r.callVoid("FetchRepo", sourceKey, repoKey)
 }
-func (r *RemoteBackend) FixGlobalGCMConfig() error { return r.callErr("FixGlobalGCMConfig") }
+func (r *RemoteBackend) FixGlobalGCMConfig() error       { return r.callErr("FixGlobalGCMConfig") }
+func (r *RemoteBackend) BeginStatus(passID uint64) error { return r.invoke("BeginStatus", nil, passID) }
+
 func (r *RemoteBackend) GetAllStatus() []StatusResult {
 	return capList(r, "statuses", remoteValue[[]StatusResult](r, "GetAllStatus"), maxRemoteRepos)
 }

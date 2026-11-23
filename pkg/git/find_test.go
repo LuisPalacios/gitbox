@@ -1,9 +1,13 @@
 package git
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"sort"
 	"testing"
 )
@@ -81,4 +85,52 @@ func TestFindRepos_StopsAtCloneBoundary(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestFindReposContextCoverage(t *testing.T) {
+	root := t.TempDir()
+	found := filepath.Join(root, "found")
+	skipped := filepath.Join(root, "group", "deeper")
+	for _, repo := range []string{found, skipped} {
+		if err := os.MkdirAll(filepath.Join(repo, ".git"), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c, err := FindReposContext(t.Context(), root, 1)
+	if err != nil || c.Complete || !slices.Equal(c.Skipped, []string{skipped}) || !slices.Equal(c.Repos, []string{found}) {
+		t.Fatalf("depth-limited walk = %+v, %v", c, err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	c, err = FindReposContext(ctx, root, 5)
+	if !errors.Is(err, context.Canceled) || c.Complete || len(c.Repos) != 0 {
+		t.Fatalf("cancelled walk = %+v, %v", c, err)
+	}
+	t.Run("symlink root", func(t *testing.T) {
+		alias := filepath.Join(t.TempDir(), "alias")
+		if err := os.Symlink(root, alias); err != nil {
+			t.Skipf("symlink unavailable: %v", err)
+		}
+		c, err := FindReposContext(t.Context(), alias, 8)
+		if err != nil || !c.Complete || len(c.Repos) != 0 {
+			t.Fatalf("symlink root: %+v, %v", c, err)
+		}
+	})
+	t.Run("permission denied", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("Unix mode bits")
+		}
+		denied := filepath.Join(t.TempDir(), "denied")
+		if err := os.Mkdir(denied, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(denied, 0700) })
+		if _, err := os.ReadDir(denied); err == nil {
+			t.Skip("privileged reader")
+		}
+		c, err := FindReposContext(t.Context(), filepath.Dir(denied), 8)
+		if err != nil || c.Complete || !slices.Equal(c.Skipped, []string{denied}) || len(c.Errors) != 1 || !errors.Is(c.Errors[0], os.ErrPermission) {
+			t.Fatalf("unreadable directory = %+v, %v", c, err)
+		}
+	})
 }
