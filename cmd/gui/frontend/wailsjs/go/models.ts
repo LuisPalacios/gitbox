@@ -2133,15 +2133,15 @@ export namespace recipe {
 }
 
 export namespace reconcile {
-
+	
 	export class Skip {
 	    path: string;
 	    reason: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Skip(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.path = source["path"];
