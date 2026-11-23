@@ -1757,6 +1757,7 @@
     // A remote window does the same on the host (#295), only while it is
     // connected and not still syncing after a reconnect.
     window.addEventListener('focus', () => {
+      if (firstRun) return; // The wizard owns the choice of the first project.
       if (windowMode === 'remote' && (!remoteShowMain || remoteLoading || !backgroundAllowed(true, remoteState?.state))) return;
       if (focusTimer) clearTimeout(focusTimer);
       focusTimer = setTimeout(() => reloadFromDisk().then(() => { runReconcile(); }, () => {}), 300);

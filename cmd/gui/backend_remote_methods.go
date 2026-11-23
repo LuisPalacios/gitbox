@@ -30,6 +30,16 @@ func (r *RemoteBackend) AddMirrorGroup(key, accountSrc, accountDst string) error
 func (r *RemoteBackend) AddMirrorRepo(mirrorKey, repoKey, direction, origin string) error {
 	return r.callErr("AddMirrorRepo", mirrorKey, repoKey, direction, origin)
 }
+func (r *RemoteBackend) PreviewRoot(path string) (OnboardingRootPreviewDTO, error) {
+	return remoteCall[OnboardingRootPreviewDTO](r, "PreviewRoot", path)
+}
+func (r *RemoteBackend) PreviewClonePath(source, repo string) (string, error) {
+	return remoteCall[string](r, "PreviewClonePath", source, repo)
+}
+func (r *RemoteBackend) AdoptFirstProject(account, repo, path string) (bool, error) {
+	return remoteCall[bool](r, "AdoptFirstProject", account, repo, path)
+}
+
 func (r *RemoteBackend) AddRoot(path string) error { return r.callErr("AddRoot", path) }
 func (r *RemoteBackend) AdoptClones(reqs []AdoptRequestDTO) ReconcileDTO {
 	res := remoteValue[ReconcileDTO](r, "AdoptClones", reqs)

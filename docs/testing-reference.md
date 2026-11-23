@@ -10,7 +10,7 @@ Counts are top-level Go test functions (subtests from `t.Run` and `TestMain` are
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-The current total is 975 Go tests (744 in `pkg/`, 231 in `cmd/gui/`) and 74 frontend tests. The counts include the tests behind the `sshd_integration` and `remote_smoke` tags. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
+The current total is 978 Go tests (744 in `pkg/`, 234 in `cmd/gui/`) and 76 frontend tests. The counts include the tests behind the `sshd_integration` and `remote_smoke` tags. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
 
 ### Shared library (`pkg/`)
 
@@ -117,6 +117,7 @@ This boundary belongs to the test, not the config validator. Accepted configs ca
 - `status_freshness_test.go` (4) — confirmed network timestamps and status publication only when a row can show the new time, changed repository/account identity, status wire data for local branches.
 - `startup_test.go` (2 + `BenchmarkStartupSnapshot`) — nesting before clones exist, a snapshot detached from the live config.
 - `update_test.go` (2) — the AppImage build refuses `ApplyUpdate` before any download, and a new version is confirmed as started only after the config loads.
+- `onboarding_test.go` (3) — I check that root and destination previews leave the filesystem and config unchanged, adopt one chosen clone while keeping its neighbors untouched, and exercise the first-launch fixture inside its temporary root.
 - `repo_detail_test.go` (1) — incoming commits and local file details coexist, and the preview clears after the clone receives the commits.
 
 ### Frontend (`cmd/gui/frontend/src/lib/`)
@@ -124,6 +125,7 @@ This boundary belongs to the test, not the config validator. Accepted configs ca
 `npm test` in `cmd/gui/frontend` runs these with `node --test`; `./scripts/health.sh frontend-test` runs the same suite.
 
 - `credential-token.test.mjs` (4) — I execute the real handlers with an isolated bridge: clear saved tokens before post-setup, retain failed tokens for correction and retry, reset on close and reopen, and compile the real credential modal with fixture initial state to check its rendered failed input and enabled retry button, then its hidden successful input.
+- `first-project.test.mjs` (2) — I check that a download only reaches the ready screen after the selected checkout appears. A failed or skipped transfer stays out of the success screen, and identity warnings stay visible.
 - `repo-tree.test.mjs` (8) — the clone tree: cross-source ownership, no duplicate rows, nested collapse, recovery from stale parents and cycles, alphabetical order, attention groups split by account, a container's placeholder rows.
 - `repo-detail.test.mjs` (6) — nil-slice normalisation, switching clones, closing and reopening during a read, out-of-order refreshes, current versus superseded errors, complete incoming lists and independent history errors.
 - `status.test.mjs` (9) — status glyphs, palette, count badges, detail-panel and credential rules, account health, token expiry and localized check age.
@@ -177,7 +179,7 @@ The scenario then sets a temp `XDG_CONFIG_HOME`, builds a fresh config whose onl
 
 ### Test mode
 
-`GitboxApp --test-mode` goes through `config.SetupTestMode()` in `pkg/config/testmode.go`. It finds `test-gitbox.json` by walking up from the current directory, applies the same path checks, writes a throwaway config with `global.roots` replaced by one temp directory (clearing every `source.root` and `repo.root`), sets `GIT_SSH_COMMAND`, and injects the fixture tokens as environment variables. The GUI removes the temp directory on exit.
+`GitboxApp --test-mode` uses `config.PrepareTestFixture()` in `pkg/config/testmode.go`. It finds `test-gitbox.json` by walking up from the current directory, applies the same path checks, writes a throwaway config with `global.roots` replaced by one temp directory (clearing every `source.root` and `repo.root`), sets `GIT_SSH_COMMAND`, and injects the fixture tokens as environment variables. An empty fixture with the top-level `_test.firstRun` flag opens the setup wizard. The GUI removes the temp directory on exit.
 
 ### Concurrency and process tests
 

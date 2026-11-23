@@ -11,6 +11,8 @@ import { guardCalls, decodeWindowError } from './readonly';
 import { t } from './i18n';
 import { CheckUpdateRecovery, ResolveUpdateRecovery } from '../../wailsjs/go/main/App';
 
+import { AdoptFirstProject, PreviewClonePath, PreviewRoot } from '../../wailsjs/go/main/App';
+
 import type { CredentialFinding, StartupSnapshot, ConfigDTO, CollapsedState, StatusResult, CredentialStatus, EditorInfo, OrphanRepoDTO, ReconcileDTO, AccountDeletionImpactDTO, ConfigRepairResult, ConfigBackupInfo, PRSettingsDTO, PRSummaryDTO, RootDTO, RemoveRootDTO, MoveOwnerOption, MoveRequestDTO, MovePreflightDTO, MoveReadinessDTO, TerminalAppInfo, ShellInfo, TerminalProfileInfo } from './types';
 
 export type RecipeOptions = { slots: Record<string, string>; identities: Record<string, {name: string; email: string}> };
@@ -67,6 +69,9 @@ const calls = {
   // A folder typed for the host in a remote window (#241).
   validateRemotePath: (p: string): Promise<RemotePathDTO> => ValidateRemotePath(p) as Promise<RemotePathDTO>,
   // Clone roots (#149).
+  previewRoot: (path: string) => PreviewRoot(path),
+  previewClonePath: (source: string, repo: string) => PreviewClonePath(source, repo),
+  adoptFirstProject: (account: string, repo: string, path: string) => AdoptFirstProject(account, repo, path),
   initRoot: (folder: string): Promise<void> => InitRoot(folder),
   listRoots: (): Promise<RootDTO[]> => ListRoots() as Promise<RootDTO[]>,
   addRoot: (path: string): Promise<void> => AddRoot(path),

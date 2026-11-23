@@ -756,6 +756,8 @@ var readOnlyCalls = []struct {
 	{"OpenAccountInBrowser", []any{"acct"}},
 	{"OpenRepoInBrowser", []any{"acct", "org/repo"}},
 	{"PreflightMove", []any{map[string]any{"sourceSourceKey": "acct", "sourceRepoKey": "org/repo", "destAccountKey": "acct", "destOwner": "alice", "destRepoName": "copy"}}},
+	{"PreviewClonePath", []any{"acct", "org/first"}},
+	{"PreviewRoot", []any{testHome + "/git"}},
 	{"PreviewSweep", []any{"acct", "org/repo"}},
 	{"RecommendedGlobalGitignoreBody", []any{}},
 	{"RefreshAIHarnesses", []any{}},
@@ -896,6 +898,7 @@ var mutationCalls = []struct {
 	// the domain's error; it must still be served.
 	mayFail bool
 }{
+	{"AdoptFirstProject", []any{"acct", "org/first", testHome + "/git/picked"}, false},
 	{"AddRoot", []any{testHome + "/git2"}, false},
 	{"SetDefaultRoot", []any{testHome + "/git2"}, false},
 	{"SetDefaultRoot", []any{testHome + "/git"}, false},
@@ -947,6 +950,8 @@ var mutationCalls = []struct {
 func TestMutationsOverSSH(t *testing.T) {
 	c := startContainer(t, ctOpts{})
 	cfgPath := seedMutationHost(c)
+	picked := testHome + "/git/picked"
+	c.sh("git init -q " + picked + " && git -C " + picked + " remote add origin https://git.example.invalid/org/first.git")
 	cfgDir := filepath.Dir(cfgPath)
 	conn := c.client(t, "client-m", true).connect(t)
 	defer conn.close()
