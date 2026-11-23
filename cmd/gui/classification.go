@@ -108,6 +108,7 @@ var methodClass = map[string]methodInfo{
 	"GetPRsForRepo":                  {classRemote, "P4", false},
 	"GetPeriodicSync":                {classMixed, "P1b", false},
 	"GetRepoDetail":                  {classRemote, "P4", false},
+	"GetScheduledTasks":              {classLocal, "scheduler", false},
 	"GetStartupSnapshot":             {classMixed, "P1b", false},
 	"GetTokenGuide":                  {classRemote, "P4", false},
 	"GetUIMode":                      {classLocal, "P1b", false},
@@ -177,6 +178,7 @@ var methodClass = map[string]methodInfo{
 	"RestoreFromBackup":              {classRemote, "P5", true},
 	"SaveTerminalProfiles":           {classLocal, "P1b", false},
 	"SaveTerminalProfilesDTO":        {classLocal, "P1b", false},
+	"RunTask":                        {classLocal, "scheduler", false},
 	"ScanFolderForClones":            {classRemote, "P4", false},
 	"SetAutostart":                   {classLocal, "P1a", false},
 	"SetCheckGlobalGitignore":        {classRemote, "P5", true},
@@ -211,6 +213,7 @@ var backendOnlyClass = map[string]methodInfo{
 	// AccountFolder is the host half of the account launchers of a remote
 	// window: the host resolves the folder, this computer opens it (#243).
 	"AccountFolder": {classRemote, "P6", false},
+	"RunFleetCheck": {classRemote, "scheduler", false},
 }
 
 // classOf is the classification of a Backend method, bound or not.

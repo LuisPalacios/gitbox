@@ -248,6 +248,7 @@ func contractRows(clone string) []contractRow {
 		{name: "GetCheckGlobalGitignore", call: func(b Backend) (any, error) { return b.GetCheckGlobalGitignore(), nil }},
 		{name: "GetTokenGuide", call: func(b Backend) (any, error) { return b.GetTokenGuide("acct"), nil }},
 		{name: "Discover", call: func(b Backend) (any, error) { b.Discover("acct"); return nil, nil }, until: []string{"discover:done"}},
+		{name: "RunFleetCheck mirror status", call: func(b Backend) (any, error) { return nil, b.RunFleetCheck(context.Background(), taskMirrors) }, until: []string{"mirror:status"}},
 		{name: "GetMirrorStatus", call: func(b Backend) (any, error) { b.GetMirrorStatus("mir"); return nil, nil }, until: []string{"mirror:status"}},
 		{name: "ListRemoteRepos", call: func(b Backend) (any, error) { return b.ListRemoteRepos("acct"), nil }},
 		{name: "ListAccountOrgs", call: func(b Backend) (any, error) { return b.ListAccountOrgs("acct") }},
@@ -778,10 +779,15 @@ func TestRemoteBackendCallsEachMethodByName(t *testing.T) {
 		}
 		// One distinct, recognisable value per argument.
 		args := make([]reflect.Value, m.Type.NumIn())
-		wantParams := make([]any, m.Type.NumIn())
+		wantParams := make([]any, 0, m.Type.NumIn())
 		for a := range m.Type.NumIn() {
+			if a == 0 && m.Type.In(a) == reflect.TypeFor[context.Context]() {
+				// RPC supplies the request context on the host, outside the wire parameters.
+				args[a] = reflect.ValueOf(t.Context())
+				continue
+			}
 			args[a] = distinctValue(m.Type.In(a), a)
-			wantParams[a] = args[a].Interface()
+			wantParams = append(wantParams, args[a].Interface())
 		}
 		before := len(calls())
 		value.MethodByName(m.Name).Call(args)

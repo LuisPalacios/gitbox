@@ -2,6 +2,15 @@ package main
 
 import "time"
 
+// Background check and focus refresh intervals.
+const (
+	updateCheckInterval = 6 * time.Hour
+	harnessInitialDelay = 2 * time.Second
+	harnessSyncInterval = 10 * time.Minute
+	harnessMinInterval  = time.Minute
+	probeMinInterval    = time.Minute
+)
+
 // How long each kind of work may take. Everything is also cancelled when
 // the app closes, and network work when its server stops answering; these
 // bounds catch the command that neither finishes nor fails.
@@ -44,7 +53,12 @@ const (
 
 // remoteUnbounded are the calls to a gitbox-server with no deadline: the
 // work has none, and the connection's pings tell a dead host.
-var remoteUnbounded = map[string]bool{"CloneRepo": true}
+var remoteUnbounded = map[string]bool{
+	"CloneRepo": true,
+	// Individual git and provider calls are bounded. A complete pass may
+	// take several of those bounds and stops with its window or connection.
+	"RunFleetCheck": true,
+}
 
 // A call to a gitbox-server may take as long as the work it asks for, plus
 // remoteCallMargin for the round trip. remoteWorkBounds lists the methods

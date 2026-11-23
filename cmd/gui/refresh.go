@@ -547,6 +547,10 @@ func (a *App) FetchAllRepos() error { return a.be().FetchAllRepos() }
 
 // fetchAllReposLocal is the local backend's FetchAllRepos.
 func (a *App) fetchAllReposLocal() error {
+	return a.fetchAllReposContext(a.refreshContext())
+}
+
+func (a *App) fetchAllReposContext(ctx context.Context) error {
 	a.refreshMu.Lock()
 	if a.refreshClosed {
 		a.refreshMu.Unlock()
@@ -554,8 +558,12 @@ func (a *App) fetchAllReposLocal() error {
 	}
 	if active := a.fetchRun; active != nil {
 		a.refreshMu.Unlock()
-		<-active.done
-		return active.err
+		select {
+		case <-active.done:
+			return active.err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 	call := &fetchFlight{done: make(chan struct{})}
 	a.fetchRun = call
@@ -574,8 +582,12 @@ func (a *App) fetchAllReposLocal() error {
 		a.refreshMu.Unlock()
 	})
 	a.refreshMu.Unlock()
-	<-call.done
-	return call.err
+	select {
+	case <-call.done:
+		return call.err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (a *App) fetchCycle() error {

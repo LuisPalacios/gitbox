@@ -472,7 +472,7 @@ Click the **gear icon** to open the settings panel:
 - **Clone roots** — the folders where projects live, the default first, with a **Change** button (see [Clone roots](#clone-roots)).
 - **Language** — English or Español. The change applies at once.
 - **Theme** — System, Light or Dark.
-- **Periodic status check** (Simple: **Check for changes**) — the automatic fetch interval: Off, 5m, 15m or 30m.
+- **Periodic status check** (Simple: **Check for changes**) — choose Off, 5m, 15m or 30m for fetch, mirror status and pull request checks. Each check starts its next interval when it finishes. In Advanced, **System check → Run** shows the last result, whether a check is running and its next scheduled time. **Re-check** refreshes that snapshot.
 - **Run at startup** — launch Gitbox when you log in, where the platform supports it.
 - **PR / reviews** — show review requests in Simple and badges with counts for your open PRs and review requests in Advanced. Use **Include drafts** to include draft PRs.
 - **Global gitignore** — the automatic startup check of `~/.gitignore_global` (see [Global gitignore warning](#global-gitignore-warning)).

@@ -118,6 +118,7 @@ var servedMethods = []string{
 	"RepoNesting",
 	"RepoWorkspaceFiles",
 	"RestoreFromBackup",
+	"RunFleetCheck",
 	"ScanFolderForClones",
 	"SetCheckGlobalGitignore",
 	"SetDefaultRoot",
@@ -390,8 +391,9 @@ func serve(a *App, clientID string, stdin io.Reader, stdout, stderr io.Writer) i
 	srv := newRPCServer(a, log)
 	backend := a.be()
 	backend.Init(ctx)
-	// The background workers (harness watcher, upstream probes) run as on a
-	// desktop, and save through the cross-process guard (#241).
+	// Detect tools on this host and save through its config guard. The
+	// connected window owns the timer for fleet checks.
+	a.tasks.start(ctx, []*scheduledTask{a.hostHarnessTask()})
 	backend.Start()
 	defer backend.Close()
 

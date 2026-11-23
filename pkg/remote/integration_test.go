@@ -766,6 +766,7 @@ var readOnlyCalls = []struct {
 	{"ReloadConfig", []any{}},
 	{"RepoNesting", []any{}},
 	{"RepoWorkspaceFiles", []any{"acct", "org/repo"}},
+	{"RunFleetCheck", []any{"mirror-status"}},
 	{"ScanFolderForClones", []any{testHome + "/git"}},
 	{"SuggestAccountKey", []any{"gitea", "alice"}},
 	{"SyncAIHarnesses", []any{}},

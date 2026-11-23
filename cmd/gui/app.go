@@ -162,14 +162,12 @@ type App struct {
 	repoFetches        map[string]*repoFetchFlight
 	credentialRuns     map[string]*credentialFlight
 
-	// harnessMu serializes AI harness detection passes (background
-	// ticker, window-focus refresh) the same way probeMu does for upstream
-	// probes. harnessQuit stops the background watcher on Shutdown — Wails
-	// never cancels a.ctx, so the watcher can't select on ctx.Done().
+	// tasks owns the periodic checks for this window or headless host.
+	tasks             taskRegistry
+	windowTasksOnce   sync.Once
+	taskPrefsMu       sync.Mutex
 	harnessMu         sync.Mutex
 	lastHarnessSyncAt time.Time
-	harnessQuit       chan struct{}
-	harnessQuitOnce   sync.Once
 }
 
 // NewApp creates a new App instance.
@@ -214,11 +212,6 @@ func (a *App) initLocal(ctx context.Context) {
 
 // startLocal launches the local backend's background workers.
 func (a *App) startLocal() {
-	// AI harnesses are detected off the startup path: startHarnessWatcher
-	// runs a first pass ~2s after launch and then re-probes periodically,
-	// emitting harnesses:updated so the menu refreshes without a reload.
-	a.startHarnessWatcher()
-
 	// Ask each provider API whether every configured repo still exists.
 	// Without this, a deleted upstream only surfaces after the user clicks
 	// "Fetch all" — on launch, the card would show Error/Synced and lie.
@@ -228,8 +221,9 @@ func (a *App) startLocal() {
 
 // closeLocal stops the local backend's background workers.
 func (a *App) closeLocal() {
+	a.tasks.stop()
 	a.stopRefresh()
-	a.stopHarnessWatcher()
+	a.tasks.wg.Wait()
 }
 
 // saveConfig persists the in-memory config to disk, with the client
@@ -420,10 +414,6 @@ type UpdateInfo struct {
 	SelfUpdate bool `json:"selfUpdate"`
 }
 
-// updateCheckInterval is how often a running app re-checks for a release,
-// so a session left open also sees one published after launch.
-const updateCheckInterval = 6 * time.Hour
-
 func (a *App) updateOpts() update.Options {
 	return update.Options{
 		CurrentVersion: update.ResolveVersion(version),
@@ -431,29 +421,15 @@ func (a *App) updateOpts() update.Options {
 	}
 }
 
-// startUpdateChecks checks for an update now and then every
-// updateCheckInterval. Each check that finds one emits "update:available",
-// so the pill shows on every launch while an update is pending.
-func (a *App) startUpdateChecks() {
-	// Earlier versions throttled the check to once a day through this file.
-	_ = os.Remove(filepath.Join(config.ConfigRoot(), config.V2ConfigDir, ".update-check"))
-	go func() {
-		for {
-			a.checkForUpdate()
-			time.Sleep(updateCheckInterval)
-		}
-	}()
-}
-
 // checkForUpdate emits "update:available" if a newer version exists.
 // Network errors and rate limits stay silent: no pill, no error.
-func (a *App) checkForUpdate() {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+func (a *App) checkForUpdate(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
 	result, err := update.CheckLatest(ctx, a.updateOpts())
 	if err != nil || !result.Available {
-		return
+		return err
 	}
 
 	info := UpdateInfo{
@@ -466,6 +442,7 @@ func (a *App) checkForUpdate() {
 		info.URL = result.Release.HTMLURL
 	}
 	a.sink().Emit("update:available", info)
+	return nil
 }
 
 // GetOS returns the GOOS of the machine that shows the window, for its
@@ -658,6 +635,7 @@ func (a *App) GetStartupSnapshot() (StartupSnapshot, error) {
 		return StartupSnapshot{}, err
 	}
 	a.overlayPrefs(&snap.Config)
+	a.syncTaskInterval()
 	snap.ServerOS = snap.OS
 	if remote, ok := a.be().(*RemoteBackend); ok {
 		snap.AppVersion = a.getAppVersionLocal()
@@ -697,6 +675,7 @@ func (a *App) ReloadConfig() (ConfigDTO, error) {
 		r.Reload()
 	}
 	a.overlayPrefs(&dto)
+	a.syncTaskInterval()
 	return dto, nil
 }
 
@@ -1272,15 +1251,6 @@ var knownAIHarnesses = harness.KnownTools()
 // tests can swap in a deterministic fake instead of probing the real host.
 var harnessLookupFn harness.LookupFunc = harness.DefaultLookup
 
-// Background detection cadence. The first pass runs shortly after launch
-// so the menu fills without blocking first paint; later passes catch
-// installs and uninstalls while the app stays open.
-const (
-	harnessInitialDelay = 2 * time.Second
-	harnessSyncInterval = 10 * time.Minute
-	harnessMinInterval  = 60 * time.Second // throttle for focus-triggered refreshes
-)
-
 // SyncAIHarnesses reconciles config's global.ai_harnesses with the embedded
 // catalog and the host (see pkg/harness.Sync for the rules: catalog order,
 // missing flag instead of deletion, user entries untouched). The host probe
@@ -1335,90 +1305,43 @@ func cloneHarnesses(in []config.AIHarnessEntry) []config.AIHarnessEntry {
 	return out
 }
 
-// syncAIHarnessesAsync runs one detection pass in a goroutine, throttled
-// to once per harnessMinInterval unless force is set. Emits
-// harnesses:updated with the new list when something changed so the
-// frontend menu refreshes without re-reading config. Safe to call
-// repeatedly; overlapping calls are dropped.
-func (a *App) syncAIHarnessesAsync(force bool) {
-	if !a.harnessMu.TryLock() {
-		return // a pass is already running
+// detectHarnesses publishes a changed catalog after the host probe finishes.
+func (a *App) detectHarnesses(ctx context.Context) error {
+	a.harnessMu.Lock()
+	defer a.harnessMu.Unlock()
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
-	go func() {
-		defer a.harnessMu.Unlock()
-		a.mu.Lock()
-		since := time.Since(a.lastHarnessSyncAt)
-		a.mu.Unlock()
-		if !force && since < harnessMinInterval {
-			return
-		}
-		changed := a.SyncAIHarnesses()
-		a.mu.Lock()
-		a.lastHarnessSyncAt = time.Now()
-		var list []config.AIHarnessEntry
-		if a.cfg != nil {
-			list = cloneHarnesses(a.cfg.Global.AIHarnesses)
-		}
-		a.mu.Unlock()
-		if changed {
-			a.sink().Emit("harnesses:updated", list)
-		}
-	}()
+	changed := a.SyncAIHarnesses()
+	a.mu.Lock()
+	a.lastHarnessSyncAt = time.Now()
+	var list []config.AIHarnessEntry
+	if changed && a.cfg != nil {
+		list = cloneHarnesses(a.cfg.Global.AIHarnesses)
+	}
+	a.mu.Unlock()
+	if changed && ctx.Err() == nil {
+		a.sink().Emit("harnesses:updated", list)
+	}
+	return ctx.Err()
 }
 
-// RefreshAIHarnesses is the frontend hook for window focus: re-probe the
-// host (throttled) so a harness installed or removed while the app was in
-// the background shows up without a restart.
+// RefreshAIHarnesses rechecks the host catalog on focus, subject to a cooldown.
 func (a *App) RefreshAIHarnesses() { a.be().RefreshAIHarnesses() }
 
-// refreshAIHarnessesLocal is the local backend's RefreshAIHarnesses.
 func (a *App) refreshAIHarnessesLocal() {
-	a.syncAIHarnessesAsync(false)
-}
-
-// startHarnessWatcher launches the background detection loop: one pass
-// after harnessInitialDelay, then every harnessSyncInterval until
-// stopHarnessWatcher closes harnessQuit. Idempotent.
-func (a *App) startHarnessWatcher() {
 	a.mu.Lock()
-	if a.harnessQuit != nil {
-		a.mu.Unlock()
-		return
-	}
-	quit := make(chan struct{})
-	a.harnessQuit = quit
+	due := time.Since(a.lastHarnessSyncAt) >= harnessMinInterval
 	a.mu.Unlock()
-
-	go func() {
-		select {
-		case <-time.After(harnessInitialDelay):
-			a.syncAIHarnessesAsync(true)
-		case <-quit:
-			return
-		}
-		ticker := time.NewTicker(harnessSyncInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				a.syncAIHarnessesAsync(true)
-			case <-quit:
-				return
+	if due {
+		a.goTracked(func() {
+			if _, err := a.tasks.runNow(taskHarness); errors.Is(err, errTaskStopped) && a.refreshContext().Err() == nil {
+				// A host without a periodic worker (e.g. a backend embedded on its own)
+				// can still honor an explicit refresh.
+				_ = a.detectHarnesses(a.refreshContext())
 			}
-		}
-	}()
-}
-
-// stopHarnessWatcher ends the background loop. Safe when the watcher was
-// never started (terminals-window subprocess) and when called twice.
-func (a *App) stopHarnessWatcher() {
-	a.mu.Lock()
-	quit := a.harnessQuit
-	a.mu.Unlock()
-	if quit == nil {
-		return
+		})
 	}
-	a.harnessQuitOnce.Do(func() { close(quit) })
 }
 
 // buildHarnessArgv returns the harness argv: the harness binary followed by
@@ -1731,8 +1654,7 @@ func (a *App) restoreFromBackupLocal(backupPath string) ConfigRepairResult {
 
 // GetPeriodicSync returns the current periodic sync interval from config.
 //
-// The interval is a client preference: the timer runs in the frontend. The
-// backend half stays unused until the server runs the sync itself (P10).
+// The window owns the interval even when its fleet lives on another host.
 func (a *App) GetPeriodicSync() string {
 	if v := a.clientPrefs().Get().PeriodicSync; v != "" {
 		return v
@@ -1858,7 +1780,9 @@ func (a *App) SetPeriodicSync(interval string) error {
 	if interval == "off" {
 		interval = ""
 	}
-	return a.clientPrefs().Update(func(p *config.ClientPrefs) { p.PeriodicSync = interval })
+	err := a.clientPrefs().Update(func(p *config.ClientPrefs) { p.PeriodicSync = interval })
+	a.syncTaskInterval()
+	return err
 }
 
 func validPeriodicSync(interval string) bool {
@@ -3138,46 +3062,58 @@ func (a *App) GetMirrorStatus(mirrorKey string) { a.be().GetMirrorStatus(mirrorK
 
 // getMirrorStatusLocal is the local backend's GetMirrorStatus.
 func (a *App) getMirrorStatusLocal(mirrorKey string) {
-	go func() {
+	a.goTracked(func() {
 		a.mu.Lock()
 		cfg := a.snapshotLocked()
 		a.mu.Unlock()
+		_ = a.checkMirrorStatus(a.refreshContext(), cfg, mirrorKey)
+	})
+}
 
-		m, ok := cfg.Mirrors[mirrorKey]
-		if !ok {
-			return
+func (a *App) checkMirrorStatus(ctx context.Context, cfg *config.Config, mirrorKey string) error {
+	m, ok := cfg.Mirrors[mirrorKey]
+	if !ok {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	// A mirror needs both of its servers: without one, every repo reads
+	// unreachable at once instead of timing out one by one.
+	online := a.reachable(ctx, serverAddr(cfg.Accounts[m.AccountSrc])) && a.reachable(ctx, serverAddr(cfg.Accounts[m.AccountDst]))
+	var results []MirrorStatusResult
+	var err error
+	for repoKey := range m.Repos {
+		if !online {
+			err = errTaskPartial
+			results = append(results, MirrorStatusResult{MirrorKey: mirrorKey, RepoKey: repoKey, Error: userMsg(errServerUnreachable)})
+			continue
 		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-
-		// A mirror needs both of its servers: without one, every repo reads
-		// unreachable at once instead of timing out one by one.
-		online := a.reachable(ctx, serverAddr(cfg.Accounts[m.AccountSrc])) && a.reachable(ctx, serverAddr(cfg.Accounts[m.AccountDst]))
-		var results []MirrorStatusResult
-		for repoKey := range m.Repos {
-			if !online {
-				results = append(results, MirrorStatusResult{MirrorKey: mirrorKey, RepoKey: repoKey, Error: userMsg(errServerUnreachable)})
-				continue
-			}
-			r := mirror.CheckStatus(ctx, cfg, mirrorKey, repoKey)
-			results = append(results, MirrorStatusResult{
-				MirrorKey:  mirrorKey,
-				RepoKey:    r.RepoKey,
-				Direction:  r.Direction,
-				OriginAcct: r.OriginAcct,
-				BackupAcct: r.BackupAcct,
-				SyncStatus: r.SyncStatus,
-				HeadCommit: r.HeadCommit,
-				OriginHead: r.OriginHead,
-				BackupHead: r.BackupHead,
-				Warning:    r.Warning,
-				NeedsSetup: r.NeedsSetup,
-				Error:      userText(r.Error),
-			})
+		r := mirror.CheckStatus(ctx, cfg, mirrorKey, repoKey)
+		if r.Error != "" {
+			err = errTaskPartial
 		}
-		a.sink().Emit("mirror:status", results)
-	}()
+		results = append(results, MirrorStatusResult{
+			MirrorKey:  mirrorKey,
+			RepoKey:    r.RepoKey,
+			Direction:  r.Direction,
+			OriginAcct: r.OriginAcct,
+			BackupAcct: r.BackupAcct,
+			SyncStatus: r.SyncStatus,
+			HeadCommit: r.HeadCommit,
+			OriginHead: r.OriginHead,
+			BackupHead: r.BackupHead,
+			Warning:    r.Warning,
+			NeedsSetup: r.NeedsSetup,
+			Error:      userText(r.Error),
+		})
+	}
+	a.sink().Emit("mirror:status", results)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return err
 }
 
 // SetupMirrorRepo runs API setup for a single mirror repo.

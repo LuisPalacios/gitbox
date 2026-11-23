@@ -21,6 +21,7 @@ type Backend interface {
 	Init(ctx context.Context)
 	Start()
 	Close()
+	RunFleetCheck(context.Context, string) error
 
 	// The REMOTE and MIXED entry points of classification.go, with the
 	// signatures of their Wails-bound methods on *App.

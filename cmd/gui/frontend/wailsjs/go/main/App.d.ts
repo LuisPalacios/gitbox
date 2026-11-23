@@ -129,6 +129,8 @@ export function GetPeriodicSync():Promise<string>;
 
 export function GetRepoDetail(arg1:string,arg2:string):Promise<main.RepoDetail>;
 
+export function GetScheduledTasks():Promise<Array<main.ScheduledTaskDTO>>;
+
 export function GetStartupSnapshot():Promise<main.StartupSnapshot>;
 
 export function GetTokenGuide(arg1:string):Promise<main.TokenGuideInfo>;
@@ -262,6 +264,8 @@ export function RepoWorkspaceFiles(arg1:string,arg2:string):Promise<Array<string
 export function ResolveUpdateRecovery(arg1:boolean):Promise<void>;
 
 export function RestoreFromBackup(arg1:string):Promise<main.ConfigRepairResult>;
+
+export function RunTask(arg1:string):Promise<string>;
 
 export function SaveTerminalProfiles(arg1:Array<config.TerminalApp>,arg2:Array<config.ShellEntry>,arg3:Array<config.TerminalProfile>):Promise<void>;
 
