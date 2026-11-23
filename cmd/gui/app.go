@@ -24,7 +24,6 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/gitignore"
 	"github.com/LuisPalacios/gitbox/pkg/harness"
-	"github.com/LuisPalacios/gitbox/pkg/heal"
 	"github.com/LuisPalacios/gitbox/pkg/i18n"
 	"github.com/LuisPalacios/gitbox/pkg/identity"
 	"github.com/LuisPalacios/gitbox/pkg/mirror"
@@ -144,6 +143,7 @@ type App struct {
 	probeFlight   *upstreamProbeFlight
 	lastProbeAt   time.Time
 	maintenanceMu sync.RWMutex
+	repairPaths   pathGate
 	refreshMu     sync.Mutex
 	// network knows which servers are reachable: see network.go.
 	network            networkGuard
@@ -1876,8 +1876,12 @@ func (a *App) cloneRepoRun(ctx context.Context, sourceKey, repoKey, root string)
 		}
 	}
 	var plan ops.ClonePlan
+	var cfg *config.Config
 	if err == nil {
 		plan, err = ops.PlanClone(a.cfg, sourceKey, repoKey)
+		if err == nil {
+			cfg = a.refreshConfigLocked()
+		}
 	}
 	addr := serverAddr(a.cfg.Accounts[a.cfg.Sources[sourceKey].Account])
 	a.mu.Unlock()
@@ -1915,9 +1919,10 @@ func (a *App) cloneRepoRun(ctx context.Context, sourceKey, repoKey, root string)
 		// URL, and configures per-repo credential isolation. Warnings are
 		// returned instead of panicking so a partial heal (e.g. token
 		// file missing) still reports clone success.
-		a.mu.Lock()
-		report := heal.Repo(a.cfg, sourceKey, repoKey)
-		a.mu.Unlock()
+		report, current := a.repairClone(cfg, sourceKey, repoKey)
+		if !current {
+			report.Warnings = []string{"Repository settings changed before clone repair"}
+		}
 		if len(report.Warnings) > 0 {
 			result["warnings"] = report.Warnings
 		}
@@ -1976,15 +1981,15 @@ func (a *App) pullRepoRun(ctx context.Context, sourceKey, repoKey string) {
 	// it before the network op so auth uses the right credentials.
 	// I stop the pull if maintenance cannot restore the configured settings.
 	result := map[string]any{"source": sourceKey, "repo": repoKey}
-	a.maintenanceMu.RLock()
-	if !a.sameRefreshRepo(cfg, sourceKey, repoKey) {
-		a.maintenanceMu.RUnlock()
+	report, current := a.repairClone(cfg, sourceKey, repoKey)
+	if !current {
 		result["skipped"] = pullSettingsChanged
 		a.sink().Emit("pull:done", result)
 		return
 	}
-	report := a.healRepo(cfg, sourceKey, repoKey)
-	a.maintenanceMu.RUnlock()
+	if report.Skipped == "" && !a.readOnly {
+		result["repairWarnings"] = append([]string{}, report.Warnings...)
+	}
 	var err error
 	addr := serverAddr(cfg.Accounts[src.Account])
 	if len(report.Warnings) > 0 {
@@ -2201,10 +2206,10 @@ func (a *App) updateAccountLocal(req UpdateAccountRequest) error {
 	a.invalidateCredential(req.Key)
 	defer a.invalidateCredential(req.Key)
 	a.mu.Lock()
-	defer a.mu.Unlock()
 
 	acct, ok := a.cfg.Accounts[req.Key]
 	if !ok {
+		a.mu.Unlock()
 		return fmt.Errorf("account %q not found", req.Key)
 	}
 
@@ -2217,14 +2222,17 @@ func (a *App) updateAccountLocal(req UpdateAccountRequest) error {
 	acct.Email = req.Email
 
 	if err := a.cfg.UpdateAccount(req.Key, acct); err != nil {
+		a.mu.Unlock()
 		return err
 	}
 	if err := a.saveConfig(); err != nil {
+		a.mu.Unlock()
 		return err
 	}
 
 	// Bring existing clones in line: identity, origin URL, credential config.
-	ops.ReconfigureClones(a.cfg, req.Key)
+	a.mu.Unlock()
+	a.reconfigureClones(req.Key)
 	return nil
 }
 
@@ -2242,12 +2250,13 @@ func (a *App) renameAccountLocal(oldKey, newKey string) error {
 	defer a.invalidateCredential(oldKey)
 	defer a.invalidateCredential(newKey)
 	a.mu.Lock()
-	defer a.mu.Unlock()
 
 	if err := ops.RenameAccount(a.cfg, oldKey, newKey); err != nil {
+		a.mu.Unlock()
 		return err
 	}
 	if oldKey == newKey {
+		a.mu.Unlock()
 		return nil
 	}
 	if entry, ok := a.prs.cache[oldKey]; ok {
@@ -2255,9 +2264,11 @@ func (a *App) renameAccountLocal(oldKey, newKey string) error {
 		delete(a.prs.cache, oldKey)
 	}
 	if err := a.saveConfig(); err != nil {
+		a.mu.Unlock()
 		return err
 	}
-	ops.ReconfigureClones(a.cfg, newKey)
+	a.mu.Unlock()
+	a.reconfigureClones(newKey)
 	return nil
 }
 
@@ -2578,9 +2589,7 @@ func (a *App) credentialSetupGCMLocal(accountKey string) CredentialSetupResult {
 	}
 
 	// Reconfigure existing clones to use the current credential type.
-	a.mu.Lock()
-	n := len(ops.ReconfigureClones(a.cfg, accountKey))
-	a.mu.Unlock()
+	n := a.reconfigureClones(accountKey)
 	msg := fmt.Sprintf("GCM credential stored for %s@%s", realUsername, host)
 	if n > 0 {
 		msg += fmt.Sprintf("\n%d clone(s) reconfigured", n)
@@ -2615,9 +2624,7 @@ func (a *App) credentialStoreTokenLocal(accountKey, token string) CredentialSetu
 	}
 
 	// Reconfigure existing clones to use the current credential type.
-	a.mu.Lock()
-	n := len(ops.ReconfigureClones(a.cfg, accountKey))
-	a.mu.Unlock()
+	n := a.reconfigureClones(accountKey)
 	msg := "Token stored in credential file"
 	if n > 0 {
 		msg += fmt.Sprintf("\n%d clone(s) reconfigured", n)
@@ -2695,9 +2702,9 @@ func (a *App) runSSHSetup(accountKey string, setup func(context.Context, *config
 		_ = a.cfg.UpdateAccount(accountKey, cur)
 		_ = a.saveConfig()
 	}
-	// Reconfigure existing clones to use the current credential type.
-	n := len(ops.ReconfigureClones(a.cfg, accountKey))
 	a.mu.Unlock()
+
+	n := a.reconfigureClones(accountKey)
 
 	keyName := fmt.Sprintf("gitbox-%s-sshkey", accountKey)
 	msg := fmt.Sprintf("SSH Host %s and %s available.", s.Host, keyName)
@@ -2866,15 +2873,17 @@ func (a *App) changeCredentialTypeLocal(accountKey, newType string) error {
 	a.invalidateCredential(accountKey)
 	defer a.invalidateCredential(accountKey)
 	a.mu.Lock()
-	defer a.mu.Unlock()
 
 	if err := ops.ChangeCredentialType(a.cfg, accountKey, newType); err != nil {
+		a.mu.Unlock()
 		return err
 	}
 	if err := a.saveConfig(); err != nil {
+		a.mu.Unlock()
 		return err
 	}
-	ops.ReconfigureClones(a.cfg, accountKey)
+	a.mu.Unlock()
+	a.reconfigureClones(accountKey)
 	return nil
 }
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { acceptStatusBatch, statusPaintQueue, type StatusBatch } from './lib/status';
+  import { acceptStatusBatch, applyRepairReports, statusPaintQueue, type StatusBatch } from './lib/status';
   import { onMount, tick } from 'svelte';
   import { settingsSaveFailed, bridge, events, setRemoteWindow } from './lib/bridge';
   import type { DoctorPrecheckDTO, RemoteState } from './lib/bridge';
@@ -761,10 +761,17 @@
     }
   }
 
+  function updateRepairWarning(source: string, repo: string, warnings?: string[]) {
+    if (warnings && $repoStates[`${source}/${repo}`]?.repairWarnings) {
+      $repoStates = applyRepairReports($repoStates, [{ source, repo, warnings }]);
+    }
+  }
+
   const incompleteShown = new Set<string>();
   // applyReconcile shows a pass: the lists, and the config and statuses when
   // it added or moved anything.
   async function applyReconcile(res: ReconcileDTO) {
+    if (res.repairs?.length) $repoStates = applyRepairReports($repoStates, res.repairs);
     if (res.workspaceUnknown) $workspaceUnknown = new Set(res.workspaceUnknown);
     orphanList = res.unmatched || [];
     ignoredClones = res.ignored || [];
@@ -1959,6 +1966,7 @@
             path: data.path || s[key].path,
             progress: 0,
             error: data.error,
+            repairWarnings: data.error ? s[key].repairWarnings : data.warnings,
           };
         }
         return { ...s };
@@ -1969,10 +1977,11 @@
 
     events.on('pull:done', (data: {
       source: string; repo: string; skipped?: true | PullSkipReason;
-      error?: string; code?: string; host?: string;
+      error?: string; code?: string; host?: string; repairWarnings?: string[];
       state?: RepoState['status']; modified?: number; untracked?: number; ahead?: number; behind?: number;
     }) => {
       const key = `${data.source}/${data.repo}`;
+      updateRepairWarning(data.source, data.repo, data.repairWarnings);
       const skipped = data.skipped;
       if (skipped === true) { notAttempted(key, data); return; }
       if (pullRun) pullRun = noteDone(pullRun, key, data.error, undefined, skipped);
@@ -2013,6 +2022,7 @@
     });
 
     events.on('fetch:done', (data: any) => {
+      updateRepairWarning(data.source, data.repo, data.repairWarnings);
       const key = `${data.source}/${data.repo}`;
       if (fetchingRepos[key]) {
         delete fetchingRepos[key];

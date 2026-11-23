@@ -122,3 +122,16 @@ test('a status batch belongs to exactly one snapshot and startup pass', (t) => {
   t.mock.timers.tick(250);
   assert.deepEqual(paints, [[1], [2, 3, 4], [5]]);
 });
+
+test('I retain adoption warnings until the same clone reports another repair', () => {
+  const clone = { source: 'account', repo: 'team/project' };
+  const key = 'account/team/project';
+  const states = s.applyRepairReports({}, [{ ...clone, warnings: ['identity', 'origin'] }]);
+  assert.equal(states[key].status, 'unknown');
+  assert.deepEqual(states[key].repairWarnings, ['identity', 'origin']);
+  const unrelated = s.applyRepairReports(states, [{ source: 'other', repo: clone.repo, fixed: ['origin'] }]);
+  assert.deepEqual(unrelated, states);
+  assert.deepEqual(s.applyRepairReports(states, []), states);
+  assert.deepEqual(s.applyRepairReports(states, [{ ...clone, warnings: ['identity'] }])[key].repairWarnings, ['identity']);
+  assert.equal(s.applyRepairReports(states, [{ ...clone, warnings: [] }])[key].repairWarnings, undefined);
+});

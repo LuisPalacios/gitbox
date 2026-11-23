@@ -69,6 +69,7 @@ export function applyStatusResults(results: StatusResult[], partial = false) {
           branch: r.branch,
           isDefault: r.isDefault,
           checkedAt: r.checkedAt,
+          repairWarnings: status !== 'not cloned' && (!existing?.path || existing.path === r.path) ? existing?.repairWarnings : undefined,
         };
       }
     }

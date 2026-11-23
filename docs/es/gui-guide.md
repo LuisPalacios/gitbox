@@ -271,6 +271,8 @@ Todo lo demás espera en **Clones sin ubicar**, que se abre desde **Encontrados 
 
 Donde una cuenta puede aplicarse, elígela y haz clic en **Adoptar**; el clon se une a esa cuenta en su sitio. **Ignorar** oculta un clon para siempre, y **Mostrar ignorados** lista los ignorados, donde todavía puedes **Adoptar** uno o usar **Dejar de ignorar**. Las rutas ignoradas se guardan en `global.ignored_clones`. Las reglas de puntuación detrás del emparejamiento de cuenta están en [Arquitectura › pkg/adopt](architecture.md#pkgadopt--discovery-de-repos-huérfanos).
 
+Si Gitbox adopta un clon pero no puede reparar su configuración de Git, conserva el clon en la cuenta. Abre **Requiere atención** para ver qué clon necesita una reparación y qué ha fallado. Una vez resuelta la causa, pulsa **Reintentar reparación** en la fila del clon. Gitbox comprueba los ajustes antes de hacer fetch.
+
 ## Acciones de repo y de cuenta
 
 ### Acciones de clones

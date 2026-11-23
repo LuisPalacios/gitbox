@@ -4,7 +4,6 @@ package adopt
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -559,22 +558,6 @@ func HostMatches(acct config.Account, host string) bool {
 		return true
 	}
 	return acct.SSH != nil && acct.SSH.Host != "" && strings.EqualFold(host, acct.SSH.Host)
-}
-
-// PlainRemoteURL builds a remote URL without embedded credentials.
-// SSH: git@host:repo.git, HTTPS: https://user@host/repo.git
-func PlainRemoteURL(acct config.Account, repoKey, credType string) string {
-	switch credType {
-	case "ssh":
-		host := HostnameFromURL(acct.URL)
-		if acct.SSH != nil && acct.SSH.Host != "" {
-			host = acct.SSH.Host
-		}
-		return fmt.Sprintf("git@%s:%s.git", host, repoKey)
-	default:
-		hostname := HostnameFromURL(acct.URL)
-		return fmt.Sprintf("https://%s@%s/%s.git", acct.Username, hostname, repoKey)
-	}
 }
 
 // HostnameFromURL extracts the hostname from a URL like "https://github.com".

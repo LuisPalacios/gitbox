@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/reconcile"
 )
 
@@ -41,13 +42,26 @@ func gitConfigGet(t *testing.T, path, key string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// Use a configured credential type so adoption exercises the real repair.
+func newAdoptionTestApp(t *testing.T) (*App, string) {
+	t.Helper()
+	a, path := newWorkspaceTestApp(t)
+	acct := a.cfg.Accounts["github-alice"]
+	acct.DefaultCredentialType = "ssh"
+	a.cfg.Accounts["github-alice"] = acct
+	if err := config.Save(a.cfg, path); err != nil {
+		t.Fatal(err)
+	}
+	return a, path
+}
+
 func TestReconcile_AdoptsConfidentCloneAndSaves(t *testing.T) {
-	a, cfgPath := newWorkspaceTestApp(t)
+	a, cfgPath := newAdoptionTestApp(t)
 	clone := filepath.Join(a.cfg.Global.Roots[0], "github-alice", "alice", "fresh")
 	initClone(t, clone, "git@github.com:alice/fresh.git")
 
 	res := a.Reconcile()
-	if res.Error != "" || res.Adopted != 1 || len(res.Unmatched) != 0 {
+	if res.Error != "" || res.Adopted != 1 || len(res.Unmatched) != 0 || len(res.Repairs) != 1 || len(res.Repairs[0].Fixed) == 0 || len(res.Repairs[0].Warnings) != 0 {
 		t.Fatalf("reconcile = %+v", res)
 	}
 	reloaded, err := config.Load(cfgPath)
@@ -61,8 +75,82 @@ func TestReconcile_AdoptsConfidentCloneAndSaves(t *testing.T) {
 		t.Errorf("identity = %q, want the account's", got)
 	}
 
+	for _, mode := range []string{"automatic", "manual"} {
+		t.Run(mode+" repair failure preserves adoption", func(t *testing.T) {
+			a, path := newAdoptionTestApp(t)
+			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+			acct := a.cfg.Accounts["github-alice"]
+			owner := "alice"
+			if mode == "manual" {
+				owner = "other"
+			}
+			repo := owner + "/locked"
+			clone := filepath.Join(a.cfg.Global.Roots[0], "scratch", "locked")
+			initClone(t, clone, "git@github.com:"+repo+".git")
+			// Only user.email needs repair. Git's config lock refuses this write
+			// on every OS, even when the test runs as an administrator.
+			for key, value := range map[string]string{"user.name": acct.Name, "user.email": "old@example.invalid", "credential.helper": ""} {
+				if err := git.ConfigSet(clone, key, value); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(clone, ".git", "config.lock"), nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+			var result ReconcileDTO
+			if mode == "manual" {
+				result = a.AdoptClones([]AdoptRequestDTO{{Path: clone, Account: "github-alice"}})
+			} else {
+				result = a.Reconcile()
+			}
+			if result.Error != "" || result.Adopted != 1 || len(result.Repairs) != 1 {
+				t.Fatalf("adoption = %+v", result)
+			}
+			repair := result.Repairs[0]
+			if repair.Source != "github-alice" || repair.Repo != repo || len(repair.Warnings) != 1 || len(repair.Fixed) != 0 {
+				t.Fatalf("repair = %+v", repair)
+			}
+			saved, err := config.Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := saved.Sources[repair.Source].Repos[repair.Repo]; !ok {
+				t.Fatal("the repair failure discarded the saved adoption")
+			}
+			if got := gitConfigGet(t, clone, "user.email"); got != "old@example.invalid" {
+				t.Fatalf("email = %q after a refused repair", got)
+			}
+		})
+	}
+	t.Run("a reassigned source uses no stale repair inputs", func(t *testing.T) {
+		a, _ := newAdoptionTestApp(t)
+		const source = "github-alice"
+		const repo = "team/frontend"
+		clone := filepath.Join(a.cfg.Global.Roots[0], source, "team", "frontend")
+		origin := "https://github.com/team/frontend.git"
+		initClone(t, clone, origin)
+		if err := git.ConfigSet(clone, "user.name", "Before"); err != nil {
+			t.Fatal(err)
+		}
+		acct := a.cfg.Accounts[source]
+		snap := a.snapshotRefreshConfig()
+		replacement := acct
+		replacement.Name = "Replacement"
+		a.cfg.Accounts["other"] = replacement
+		src := a.cfg.Sources[source]
+		src.Account = "other"
+		a.cfg.Sources[source] = src
+		rows := a.repairAdoptions(snap, []reconcile.Placed{{Source: source, Repo: repo, Account: source, Path: clone}})
+		if len(rows) != 1 || len(rows[0].Warnings) != 1 || len(rows[0].Fixed) != 0 {
+			t.Fatalf("stale repair: %+v", rows)
+		}
+		if got := gitConfigGet(t, clone, "user.name"); got != "Before" {
+			t.Fatalf("stale repair set user.name=%q", got)
+		}
+	})
 	t.Run("a refused save leaves the clone configuration alone", func(t *testing.T) {
-		a, path := newWorkspaceTestApp(t)
+		a, path := newAdoptionTestApp(t)
 		if _, err := a.reloadConfigLocal(); err != nil {
 			t.Fatal(err)
 		}
@@ -104,7 +192,7 @@ func TestReconcile_AdoptsConfidentCloneAndSaves(t *testing.T) {
 }
 
 func TestReconcile_AdoptsDuringUnrelatedEdits(t *testing.T) {
-	a, cfgPath := newWorkspaceTestApp(t)
+	a, cfgPath := newAdoptionTestApp(t)
 	clone := filepath.Join(a.cfg.Global.Roots[0], "github-alice", "alice", "fresh")
 	initClone(t, clone, "https://github.com/alice/fresh.git")
 	synctest.Test(t, func(t *testing.T) {
@@ -139,7 +227,7 @@ func TestReconcile_AdoptsDuringUnrelatedEdits(t *testing.T) {
 		}
 	})
 	t.Run("a concurrent adoption skips one entry and queues one rescan", func(t *testing.T) {
-		a, cfgPath := newWorkspaceTestApp(t)
+		a, cfgPath := newAdoptionTestApp(t)
 		root := a.cfg.Global.Roots[0]
 		first := filepath.Join(root, "github-alice", "alice", "first")
 		second := filepath.Join(root, "github-alice", "alice", "second")
@@ -186,7 +274,7 @@ func TestReconcile_AdoptsDuringUnrelatedEdits(t *testing.T) {
 }
 
 func TestAdoptClonesAndIgnoreClone(t *testing.T) {
-	a, cfgPath := newWorkspaceTestApp(t)
+	a, cfgPath := newAdoptionTestApp(t)
 	root := a.cfg.Global.Roots[0]
 	linux := filepath.Join(root, "scratch", "linux")
 	initClone(t, linux, "https://github.com/torvalds/linux.git")
@@ -228,6 +316,32 @@ func TestAdoptClonesAndIgnoreClone(t *testing.T) {
 	if _, ok := reloaded.Sources["github-alice"].Repos["someone/other"]; !ok || reloaded.IsIgnoredClone(other) {
 		t.Errorf("adopted=%v still ignored=%v", ok, reloaded.IsIgnoredClone(other))
 	}
+	t.Run("failed save preserves ignored clone in memory and on disk", func(t *testing.T) {
+		a, path := newAdoptionTestApp(t)
+		clone := filepath.Join(a.cfg.Global.Roots[0], "scratch", "new")
+		initClone(t, clone, "https://github.com/other/new.git")
+		if err := a.IgnoreClone(clone, true); err != nil {
+			t.Fatal(err)
+		}
+		a.readOnly = true
+		result := a.AdoptClones([]AdoptRequestDTO{{Path: clone, Account: "github-alice"}})
+		if result.Error == "" || result.Adopted != 0 || len(result.Repairs) != 0 {
+			t.Fatalf("refused save: %+v", result)
+		}
+		saved, err := config.Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, cfg := range []*config.Config{a.cfg, saved} {
+			if _, ok := cfg.Sources["github-alice"].Repos["other/new"]; ok || !cfg.IsIgnoredClone(clone) {
+				t.Fatal("rejected adoption changed tracked or ignored clones")
+			}
+		}
+		if got := gitConfigGet(t, clone, "remote.origin.url"); got != "https://github.com/other/new.git" {
+			t.Fatalf("unsaved clone origin = %q", got)
+		}
+	})
+
 }
 
 func TestScanConfig_RejectsStalePlanAfterTwoAttempts(t *testing.T) {

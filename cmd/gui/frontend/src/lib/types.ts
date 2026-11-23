@@ -196,6 +196,7 @@ export interface RepoState {
   isDefault?: boolean;
   checkedAt?: string;
   pullSkipped?: PullSkipReason;
+  repairWarnings?: string[];
 }
 
 // Banner states from the global git config checks (App.svelte).
@@ -242,8 +243,16 @@ export interface OrphanRepoDTO {
   workspaceRoot?: string;
 }
 
+export interface RepairDTO {
+  source: string;
+  repo: string;
+  fixed?: string[];
+  warnings?: string[];
+}
+
 // One reconcile pass: what it adopted and re-linked, and what needs me.
 export interface ReconcileDTO {
+  repairs?: RepairDTO[];
   skippedFolders?: number;
   adopted: number;
   relinked: number;

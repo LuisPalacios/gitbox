@@ -1,4 +1,17 @@
-import type { StatusResult } from './types';
+import type { RepairDTO, RepoState, StatusResult } from './types';
+
+// Adoption can report a clone before its first status arrives. Later status
+// scans describe the working tree; only another repair can settle its warning.
+export function applyRepairReports(states: Record<string, RepoState>, reports: RepairDTO[]): Record<string, RepoState> {
+  const next = { ...states };
+  for (const report of reports) {
+    const key = `${report.source}/${report.repo}`;
+    if (!next[key]?.repairWarnings && !report.warnings?.length) continue;
+    const row = next[key] ?? { status: 'unknown', progress: 0, ahead: 0, behind: 0, modified: 0, untracked: 0 };
+    next[key] = { ...row, repairWarnings: report.warnings?.length ? report.warnings : undefined };
+  }
+  return next;
+}
 
 // Shared palette, glyphs, count badges, account health and formatting.
 

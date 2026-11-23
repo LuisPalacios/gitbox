@@ -56,7 +56,7 @@ The JSON config file (`~/.config/gitbox/gitbox.json`) is the **desired state**: 
 
 **Discovery** is a northbound query. It asks the provider API which repos exist and lets the user add them to the config. Discovery only adds, on demand, and never removes repos.
 
-**Reconcile** is its counterpart on disk: Gitbox reads back which clones exist under the clone roots. The config stays the record of intent (accounts, roots, mirrors, overrides, repos wanted but not cloned yet), and `pkg/reconcile` keeps the inventory in step. It adopts the clones it recognises in place, re-links moved ones, and leaves the rest for the user. It never touches files and never forgets a repo whose clone is gone.
+**Reconcile** is its counterpart on disk: Gitbox reads back which clones exist under the clone roots. The config stays the record of intent (accounts, roots, mirrors, overrides, repos wanted but not cloned yet), and `pkg/reconcile` keeps the inventory in step. It adopts the clones it recognises in place, re-links moved ones, and leaves the rest for the user. It preserves working-tree files and keeps repos whose clones are missing.
 
 ### Folder structure
 
@@ -393,7 +393,7 @@ Ordinary orphan discovery stops at each clone boundary, including a `.git` file 
 
 The GUI runs a pass at startup, on window focus, after a manual Fetch all, after clone-root changes and on a container rescan. I sync workspace files and scan the roots without the config lock. Under the lock, I check each proposed adoption or re-link against the live source, account, repository key, path and workspace. A concurrent edit to another entry can proceed. If an entry moved, was renamed or is already tracked, I skip it and show its path in **Unmatched clones**. Paths in `global.ignored_clones` stay separate.
 
-Removing a scanned root or changing the nested scan scope invalidates the whole scan. I try twice, then request one coalesced follow-up after the current fetch and status work. Skipped entries request the same follow-up. It reports its result through `reconcile:done` and never reschedules itself. After a successful save I configure only the clones adopted in that pass. Repos under a missing root stay tracked.
+Removing a scanned root or changing the nested scan scope invalidates the whole scan. I try twice, then request one coalesced follow-up after the current fetch and status work. Skipped entries request the same follow-up. It reports its result through `reconcile:done` and never reschedules itself. After saving an adoption, I use `pkg/heal` to check the clone’s origin, Git identity and credential settings. Within the clone, repairs write only to `.git/config`. Fetch, pull, clone completion and account reconfiguration coordinate repairs by filesystem path. Repairs to different clones can proceed concurrently. If a repair fails, the clone stays tracked and **Needs attention** shows the warning. Repos under a missing root stay tracked.
 
 ### pkg/recipe — portable fleet recipes
 
