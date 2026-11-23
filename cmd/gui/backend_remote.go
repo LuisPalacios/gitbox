@@ -30,15 +30,27 @@ type RemoteBackend struct {
 	// onTruncate runs when a list from the server was cut (capList).
 	onTruncate func()
 	// refuseUnserved refuses, before it reaches the wire, every method that
-	// changes state on the host and that the server does not serve yet
-	// (#294): the repository mutations and the credential methods. Client
-	// and server are the same build, so servedMethods is exact. A remote
-	// window sets it.
+	// changes state on the host and that the server does not serve yet: the
+	// credential methods (#242, #244). Client and server are the same
+	// build, so servedMethods is exact. A remote window sets it.
 	refuseUnserved bool
 
 	mu      sync.Mutex
 	client  *rpc.Client // nil while not connected
 	lastErr error
+	// gen counts connections: an event from a connection this backend
+	// replaced or detached is dropped, so nothing it sends after the end
+	// reaches the window.
+	gen uint64
+	// long are the calls goLong waits for in the background.
+	long map[*longCall]struct{}
+}
+
+// longCall is one clone, pull, move or mirror setup in flight (goLong).
+type longCall struct {
+	done string // the event that ends it
+	key  string // which operation, as doneKey says
+	seen bool   // its done event arrived; guarded by RemoteBackend.mu
 }
 
 var _ Backend = (*RemoteBackend)(nil)
@@ -63,10 +75,21 @@ func dialRemoteBackend(in io.Reader, out io.WriteCloser, sink func() EventSink, 
 
 // connect runs the handshake and attaches the connection.
 func (r *RemoteBackend) connect(in io.Reader, out io.WriteCloser) error {
+	r.mu.Lock()
+	r.gen++
+	gen := r.gen
+	r.mu.Unlock()
 	client, err := rpc.Dial(in, out, rpc.ClientOptions{
 		Version: version, Commit: commit,
-		OnEvent: r.relayEvent,
-		Log:     r.log,
+		OnEvent: func(name string, payload []json.RawMessage) {
+			r.mu.Lock()
+			live := r.gen == gen
+			r.mu.Unlock()
+			if live {
+				r.relayEvent(name, payload)
+			}
+		},
+		Log: r.log,
 	})
 	if err != nil {
 		return err
@@ -82,14 +105,79 @@ func (r *RemoteBackend) connect(in io.Reader, out io.WriteCloser) error {
 }
 
 // detach ends the connection, which is the server's signal to stop, and
-// leaves the backend answering not_connected.
+// leaves the backend answering not_connected. On the host that cancels the
+// long calls in flight and their git processes (#295); here they fail as
+// disconnected.
 func (r *RemoteBackend) detach() {
 	r.mu.Lock()
 	c := r.client
 	r.client = nil
+	r.gen++
 	r.mu.Unlock()
 	if c != nil {
 		_ = c.Close()
+	}
+}
+
+// goLong runs a clone, pull, move or mirror setup on the host and returns at
+// once, as the local backend does: the server answers when the work is
+// done, and its events tell the window how it went. Detaching ends it on
+// both sides. When it fails before the server sent done (the
+// connection dropped, or the call never left), goLong hands the window a
+// done of its own with the error, through the same relay as the server's,
+// so nothing in the window waits for an event that will not come. On the
+// server the done event is queued before the answer, so a call that ends
+// after done never adds a second one.
+func (r *RemoteBackend) goLong(method, done string, failed func(msg string) any, args ...any) {
+	call := &longCall{done: done, key: doneKey(done, failed(""))}
+	r.mu.Lock()
+	if r.long == nil {
+		r.long = make(map[*longCall]struct{})
+	}
+	r.long[call] = struct{}{}
+	r.mu.Unlock()
+	go func() {
+		err := r.invoke(method, nil, args...)
+		r.mu.Lock()
+		delete(r.long, call)
+		seen := call.seen
+		r.mu.Unlock()
+		if err != nil {
+			r.note(method, err)
+			if raw, merr := json.Marshal(failed(userMsg(err))); merr == nil && !seen {
+				r.relayEvent(done, []json.RawMessage{raw})
+			}
+		}
+	}()
+}
+
+// doneKey names the operation a done event ends, from its payload: the
+// repo for a clone or a pull, the mirror repo for a setup. A move has one
+// key: the window runs one move at a time.
+func doneKey(event string, payload any) string {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return event
+	}
+	var p struct {
+		Source    string `json:"source"`
+		Repo      string `json:"repo"`
+		MirrorKey string `json:"mirrorKey"`
+		RepoKey   string `json:"repoKey"`
+	}
+	_ = json.Unmarshal(b, &p)
+	return event + "\x00" + p.Source + "\x00" + p.Repo + "\x00" + p.MirrorKey + "\x00" + p.RepoKey
+}
+
+// sawDone marks the long calls that a relayed done event ends.
+func (r *RemoteBackend) sawDone(event string, payload any) {
+	key := doneKey(event, payload)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for c := range r.long {
+		if c.done == event && c.key == key {
+			c.seen = true
+		}
 	}
 }
 
@@ -163,9 +251,15 @@ func (r *RemoteBackend) relayEvent(name string, payload []json.RawMessage) {
 			return
 		}
 		items = append(items, item)
+		if longDoneEvents[name] {
+			r.sawDone(name, item)
+		}
 	}
 	r.sink().Emit(name, items...)
 }
+
+// longDoneEvents end a long call (goLong).
+var longDoneEvents = map[string]bool{"clone:done": true, "pull:done": true, "move:done": true, "mirror:setup:done": true}
 
 // Payloads that this build emits as maps, as structs with the same keys.
 type fetchEventDTO struct {
@@ -206,6 +300,72 @@ type networkStateDTO struct {
 	Hosts   []string `json:"hosts"`
 }
 
+type cloneProgressDTO struct {
+	Source  string `json:"source"`
+	Repo    string `json:"repo"`
+	Phase   string `json:"phase"`
+	Percent int    `json:"percent"`
+}
+
+// cloneDoneDTO is clone:done: the path of the new clone, or why it failed,
+// with what heal.Repo fixed or warned about, or the unreachable server
+// (describeUnreachable).
+type cloneDoneDTO struct {
+	Source   string   `json:"source"`
+	Repo     string   `json:"repo"`
+	Path     string   `json:"path"`
+	Error    string   `json:"error"`
+	Code     string   `json:"code"`
+	Host     string   `json:"host"`
+	Skipped  bool     `json:"skipped"`
+	Warnings []string `json:"warnings"`
+	Fixes    []string `json:"fixes"`
+}
+
+// pullDoneDTO is pull:done. Skipped is a pull skip reason, or true for an
+// unreachable server.
+type pullDoneDTO struct {
+	Source    string     `json:"source"`
+	Repo      string     `json:"repo"`
+	Error     string     `json:"error"`
+	Code      string     `json:"code"`
+	Host      string     `json:"host"`
+	Skipped   skipReason `json:"skipped"`
+	State     string     `json:"state"`
+	Modified  int        `json:"modified"`
+	Untracked int        `json:"untracked"`
+	Ahead     int        `json:"ahead"`
+	Behind    int        `json:"behind"`
+}
+
+// skipReason holds what pull:done says in skipped: true, false or an
+// identifier such as "settingsChanged". Anything else does not decode.
+type skipReason struct{ v any }
+
+func (s *skipReason) UnmarshalJSON(b []byte) error {
+	var flag bool
+	if json.Unmarshal(b, &flag) == nil {
+		s.v = flag
+		return nil
+	}
+	var reason string
+	if err := json.Unmarshal(b, &reason); err != nil {
+		return err
+	}
+	if reason == "" || identifier(reason) != reason {
+		return fmt.Errorf("skipped is not an identifier")
+	}
+	s.v = reason
+	return nil
+}
+
+func (s skipReason) MarshalJSON() ([]byte, error) {
+	if s.v == nil {
+		return []byte("false"), nil
+	}
+	return json.Marshal(s.v)
+}
+
 // payloadDecoder decodes one relayed payload; nil means the event carries
 // none.
 type payloadDecoder func(r *RemoteBackend, raw json.RawMessage) (any, error)
@@ -231,6 +391,37 @@ var relayedEvents = map[string]payloadDecoder{
 	"mirror:discover:done":     typedPayload[mirrorDiscoverDoneDTO],
 	"pr:refreshed":             typedPayload[PRAccountUpdateDTO],
 	"network:state":            typedPayload[networkStateDTO],
+	// The repository mutations (#295). Progress keeps the server's
+	// coalescing: at most one per operation every rpc.ProgressInterval.
+	"clone:progress": typedPayload[cloneProgressDTO],
+	"clone:done": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
+		var done cloneDoneDTO
+		if err := json.Unmarshal(raw, &done); err != nil {
+			return nil, err
+		}
+		done.Warnings = capList(r, "clone warnings", done.Warnings, maxRemoteNotes)
+		done.Fixes = capList(r, "clone fixes", done.Fixes, maxRemoteNotes)
+		return keepSentKeys(raw, done)
+	},
+	"pull:done":         typedPayload[pullDoneDTO],
+	"mirror:setup:done": typedPayload[MirrorSetupResult],
+	"move:progress":     typedPayload[MoveProgressEventDTO],
+	"move:done": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
+		var done MoveResultDTO
+		if err := json.Unmarshal(raw, &done); err != nil {
+			return nil, err
+		}
+		done.Warnings = capList(r, "move warnings", done.Warnings, maxRemoteNotes)
+		return done, nil
+	},
+	"reconcile:done": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
+		var res ReconcileDTO
+		if err := json.Unmarshal(raw, &res); err != nil {
+			return nil, err
+		}
+		capReconcile(r, &res)
+		return res, nil
+	},
 	// The host's AI harnesses, detected on the host (#243). A window runs
 	// only the catalog's (harness.RemoteCommand), whatever this list says.
 	"harnesses:updated": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
@@ -250,6 +441,12 @@ func typedPayload[T any](_ *RemoteBackend, raw json.RawMessage) (any, error) {
 	if err := json.Unmarshal(raw, &typed); err != nil {
 		return nil, err
 	}
+	return keepSentKeys(raw, typed)
+}
+
+// keepSentKeys encodes typed, the decoded raw, keeping only the keys raw
+// had.
+func keepSentKeys(raw json.RawMessage, typed any) (any, error) {
 	clean, err := json.Marshal(typed)
 	if err != nil {
 		return nil, err
@@ -278,7 +475,21 @@ const (
 	maxRemoteRepos     = 10_000
 	maxRemoteAccounts  = 1_000
 	maxRemoteHarnesses = 1_000
+	// maxRemoteNotes caps the warnings and fixes of one clone or move.
+	maxRemoteNotes = 100
 )
+
+// capReconcile cuts every list of a reconcile pass to maxRemoteRepos.
+func capReconcile(r *RemoteBackend, res *ReconcileDTO) {
+	res.Unmatched = capList(r, "unmatched clones", res.Unmatched, maxRemoteRepos)
+	res.Ignored = capList(r, "ignored clones", res.Ignored, maxRemoteRepos)
+	res.Incomplete = capList(r, "incomplete clones", res.Incomplete, maxRemoteRepos)
+	res.WorkspaceChoices = capList(r, "workspace choices", res.WorkspaceChoices, maxRemoteRepos)
+	res.Placeholders = capList(r, "workspace folders", res.Placeholders, maxRemoteRepos)
+	res.WorkspaceMembers = capList(r, "workspace members", res.WorkspaceMembers, maxRemoteRepos)
+	res.WorkspaceUnknown = capList(r, "unknown workspaces", res.WorkspaceUnknown, maxRemoteRepos)
+	res.WorkspaceDiagnostics = capList(r, "workspace diagnostics", res.WorkspaceDiagnostics, maxRemoteRepos)
+}
 
 // capList cuts list to limit items.
 func capList[T any](r *RemoteBackend, what string, list []T, limit int) []T {
@@ -341,7 +552,10 @@ func (r *RemoteBackend) truncated(what string, had, kept int) {
 // not_connected; on a read-only backend a mutation fails with read_only
 // without being sent; a method the server does not serve yet fails with
 // not_implemented_remote.
+//
+// A method in remoteUnbounded has no deadline of its own.
 func (r *RemoteBackend) invoke(method string, result any, args ...any) error {
+	ctx := context.Background()
 	client := r.current()
 	if client == nil {
 		return &remoteError{remoteNotConnected, "not connected to the remote"}
@@ -350,7 +564,10 @@ func (r *RemoteBackend) invoke(method string, result any, args ...any) error {
 	if r.refuseUnserved && info.Mutating && !servedSet[method] {
 		return &remoteError{remoteReadOnly, method + " is not available on a remote yet"}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), remoteCallTimeout(method))
+	cancel := func() {}
+	if !remoteUnbounded[method] {
+		ctx, cancel = context.WithTimeout(ctx, remoteCallTimeout(method))
+	}
 	defer cancel()
 	var opts []rpc.CallOption
 	if info.Mutating {

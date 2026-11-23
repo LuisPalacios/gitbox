@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/rpc"
 )
 
@@ -308,7 +309,7 @@ func TestServeExitCodes(t *testing.T) {
 		if err := client.Call(ctx, "GetConfigPath", nil, &path); err != nil || !strings.HasSuffix(path, "gitbox.json") {
 			t.Errorf("GetConfigPath = %q, %v", path, err)
 		}
-		if err := client.Call(ctx, "DeleteRepo", []any{"acct", "org/repo"}, nil); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
+		if err := client.Call(ctx, "ChangeCredentialType", []any{"acct", "ssh"}, nil); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
 			t.Errorf("a method outside the closed list = %v, want unsupported", err)
 		}
 		if err := client.Close(); err != nil {
@@ -336,8 +337,7 @@ func TestServeExitCodes(t *testing.T) {
 // nor a refused save changes the host's gitbox.json.
 // TestServerSavesThroughTheGuard: a server saves the served config
 // mutations and the harness watcher's detection (#294), through the guard
-// of #241, and still skips the repair of each clone's .git/config until the
-// repository mutations are served (#295).
+// of #241, and repairs each clone's .git/config before a fetch (#295).
 func TestServerSavesThroughTheGuard(t *testing.T) {
 	if len(knownAIHarnesses) == 0 {
 		t.Skip("no known harness to detect")
@@ -346,9 +346,31 @@ func TestServerSavesThroughTheGuard(t *testing.T) {
 	// background save would change the file.
 	stubHarnessLookup(t, map[string]string{knownAIHarnesses[0].Command: "/opt/bin/" + knownAIHarnesses[0].Command})
 	path := contractConfig(t)
+	cfg := loadConfig(t, path)
+	acct := cfg.Accounts["acct"]
+	acct.DefaultCredentialType = "token"
+	cfg.Accounts["acct"] = acct
+	if err := config.Save(cfg, path); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GITBOX_TOKEN_ACCT", "contract-token")
+	clone := cfg.Sources["acct"].Repos["org/repo"].CloneFolder
+	if _, err := git.Default.Run(t.Context(), git.Request{Dir: clone, Args: []string{"remote", "add", "origin", "https://alice@github.com/org/repo.git"}}); err != nil {
+		t.Fatal(err)
+	}
+	gitConfig := func() string {
+		data, err := os.ReadFile(filepath.Join(clone, ".git", "config"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+	cloneBefore := gitConfig()
 	before := stamp(t, path)
 
 	host := newServerApp(path)
+	// The fetch itself stays on this machine; the repair before it is real.
+	host.refreshHooks = &refreshHooks{fetch: func(context.Context, string) (string, error) { return "", nil }}
 	c2sR, c2sW := io.Pipe()
 	s2cR, s2cW := io.Pipe()
 	var serverLog lockedBuffer
@@ -422,8 +444,8 @@ func TestServerSavesThroughTheGuard(t *testing.T) {
 	if got := loadConfig(t, path).Global.AIHarnesses; len(got) == 0 {
 		t.Error("the harness watcher's detection was not saved on the host")
 	}
-	if !strings.Contains(serverLog.String(), "fetch skips the repair") {
-		t.Errorf("the server did not log that fetch skips the repair of clones: %s", serverLog.String())
+	if gitConfig() == cloneBefore {
+		t.Error("the server fetched without repairing the clone's .git/config")
 	}
 }
 

@@ -54,7 +54,18 @@ type ReconcileDTO struct {
 	// WorkspaceUnknown lists the saved workspaces whose clone roots could not be read.
 	WorkspaceUnknown     []string                 `json:"workspaceUnknown"`
 	WorkspaceDiagnostics []WorkspaceDiagnosticDTO `json:"workspaceDiagnostics,omitempty"`
-	Error                string                   `json:"error,omitempty"`
+	// Incomplete lists the tracked clones git never finished (#295): a
+	// clone killed mid-transfer. Their folders are left as they are.
+	Incomplete []IncompleteCloneDTO `json:"incomplete"`
+	Error      string               `json:"error,omitempty"`
+}
+
+// IncompleteCloneDTO is a tracked repo whose clone git stopped before it
+// finished.
+type IncompleteCloneDTO struct {
+	Source string `json:"source"`
+	Repo   string `json:"repo"`
+	Path   string `json:"path"`
 }
 
 // WorkspaceChoiceDTO is a container whose root holds several workspace
@@ -84,7 +95,8 @@ type WorkspaceDiagnosticDTO struct {
 // frontend.
 func emptyReconcile(errText string) ReconcileDTO {
 	return ReconcileDTO{Unmatched: []OrphanRepoDTO{}, Ignored: []OrphanRepoDTO{},
-		WorkspaceChoices: []WorkspaceChoiceDTO{}, Placeholders: []WorkspaceFolderDTO{}, WorkspaceMembers: []string{}, Error: errText}
+		WorkspaceChoices: []WorkspaceChoiceDTO{}, Placeholders: []WorkspaceFolderDTO{}, WorkspaceMembers: []string{},
+		Incomplete: []IncompleteCloneDTO{}, Error: errText}
 }
 
 // AdoptRequestDTO asks to adopt the clone at Path into Account.
@@ -276,6 +288,9 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 	}
 	for _, u := range res.Ignored {
 		out.Ignored = append(out.Ignored, toOrphanDTO(u.OrphanRepo, u.Reason))
+	}
+	for _, c := range res.Incomplete {
+		out.Incomplete = append(out.Incomplete, IncompleteCloneDTO{Source: c.Source, Repo: c.Repo, Path: c.Path})
 	}
 	if saveErr != nil {
 		out.Error = userMsg(saveErr)

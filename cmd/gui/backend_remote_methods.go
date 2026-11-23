@@ -32,7 +32,9 @@ func (r *RemoteBackend) AddMirrorRepo(mirrorKey, repoKey, direction, origin stri
 }
 func (r *RemoteBackend) AddRoot(path string) error { return r.callErr("AddRoot", path) }
 func (r *RemoteBackend) AdoptClones(reqs []AdoptRequestDTO) ReconcileDTO {
-	return remoteValue[ReconcileDTO](r, "AdoptClones", reqs)
+	res := remoteValue[ReconcileDTO](r, "AdoptClones", reqs)
+	capReconcile(r, &res)
+	return res
 }
 func (r *RemoteBackend) ApplyDiscoveredMirrors() error { return r.callErr("ApplyDiscoveredMirrors") }
 func (r *RemoteBackend) ChangeCredentialType(accountKey, newType string) error {
@@ -54,7 +56,9 @@ func (r *RemoteBackend) CheckMoveReadiness(sourceSourceKey, destAccountKey strin
 	return remoteValue[MoveReadinessDTO](r, "CheckMoveReadiness", sourceSourceKey, destAccountKey, deleteSource)
 }
 func (r *RemoteBackend) CloneRepo(sourceKey, repoKey, root string) {
-	r.callVoid("CloneRepo", sourceKey, repoKey, root)
+	r.goLong("CloneRepo", "clone:done", func(msg string) any {
+		return map[string]string{"source": sourceKey, "repo": repoKey, "error": msg}
+	}, sourceKey, repoKey, root)
 }
 func (r *RemoteBackend) ConfirmSweep(sourceKey, repoKey string) SweepDeleteDTO {
 	return remoteValue[SweepDeleteDTO](r, "ConfirmSweep", sourceKey, repoKey)
@@ -194,7 +198,9 @@ func (r *RemoteBackend) ListRemoteRepos(accountKey string) []DiscoverResult {
 func (r *RemoteBackend) ListRoots() []RootDTO {
 	return remoteValue[[]RootDTO](r, "ListRoots")
 }
-func (r *RemoteBackend) MoveRepo(req MoveRequestDTO) { r.callVoid("MoveRepo", req) }
+func (r *RemoteBackend) MoveRepo(req MoveRequestDTO) {
+	r.goLong("MoveRepo", "move:done", func(msg string) any { return MoveResultDTO{Error: msg} }, req)
+}
 func (r *RemoteBackend) AccountFolder(accountKey string) (string, error) {
 	return remoteCall[string](r, "AccountFolder", accountKey)
 }
@@ -223,13 +229,17 @@ func (r *RemoteBackend) PreviewSweep(sourceKey, repoKey string) SweepPreviewDTO 
 	return remoteValue[SweepPreviewDTO](r, "PreviewSweep", sourceKey, repoKey)
 }
 func (r *RemoteBackend) PullRepo(sourceKey, repoKey string) {
-	r.callVoid("PullRepo", sourceKey, repoKey)
+	r.goLong("PullRepo", "pull:done", func(msg string) any {
+		return map[string]string{"source": sourceKey, "repo": repoKey, "error": msg}
+	}, sourceKey, repoKey)
 }
 func (r *RemoteBackend) RecommendedGlobalGitignoreBody() string {
 	return remoteValue[string](r, "RecommendedGlobalGitignoreBody")
 }
 func (r *RemoteBackend) Reconcile() ReconcileDTO {
-	return remoteValue[ReconcileDTO](r, "Reconcile")
+	res := remoteValue[ReconcileDTO](r, "Reconcile")
+	capReconcile(r, &res)
+	return res
 }
 func (r *RemoteBackend) RedetectProfiles() (ConfigDTO, error) {
 	return remoteCall[ConfigDTO](r, "RedetectProfiles")
@@ -290,7 +300,9 @@ func (r *RemoteBackend) SetRepoWorkspace(sourceKey, repoKey, file string) error 
 	return r.callErr("SetRepoWorkspace", sourceKey, repoKey, file)
 }
 func (r *RemoteBackend) SetupMirrorRepo(mirrorKey, repoKey string) {
-	r.callVoid("SetupMirrorRepo", mirrorKey, repoKey)
+	r.goLong("SetupMirrorRepo", "mirror:setup:done", func(msg string) any {
+		return MirrorSetupResult{MirrorKey: mirrorKey, RepoKey: repoKey, Error: msg}
+	}, mirrorKey, repoKey)
 }
 func (r *RemoteBackend) SuggestAccountKey(provider, username string) string {
 	return remoteValue[string](r, "SuggestAccountKey", provider, username)

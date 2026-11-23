@@ -70,9 +70,10 @@ The bootstrap and the read-only window of [remote mode](remote-mode.md) have thr
   scripts/remote-it.sh                           # every scenario
   GITBOX_IT_RUN=TestFishLoginShell scripts/remote-it.sh
   GITBOX_IT_RUN='TestReadsLeaveTheDomainUntouched|TestMutationsOverSSH|TestCutSSHMidSave' scripts/remote-it.sh
+  GITBOX_IT_RUN='TestCutSSHMidClone|TestLatency300ms' scripts/remote-it.sh
   ```
 
-  The script needs Docker on Linux. It builds the `gitbox-sshd` image from `test/sshd` (Debian slim with OpenSSH, fish and git, and a `test` user whose key lives outside the home) and a `linux/amd64` server with the `e2e_sentinel` tag, which appends a line to `$HOME/.gitbox-e2e/ran.log` on every start. Each test starts its own container on an `--internal` Docker network, with no route out, and connects through the real `ssh` with a config file and a `known_hosts` of its own, filled from the container's host key. "Never executed" means the line count of `ran.log` did not change. The local gate runs it in its `remote-it` lane.
+  The script needs Docker on Linux. It builds the `gitbox-sshd` image from `test/sshd` (Debian slim with OpenSSH, fish, git, `iproute2` and `procps`, a `test` user whose key lives outside the home, and a 60 MB fixture repository that `git daemon` serves on `127.0.0.1:9418` when the container starts with `GIT_DAEMON=1`) and a `linux/amd64` server with the `e2e_sentinel` tag, which appends a line to `$HOME/.gitbox-e2e/ran.log` on every start. Each test starts its own container on an `--internal` Docker network, with no route out, and connects through the real `ssh` with a config file and a `known_hosts` of its own, filled from the container's host key. The fault tests start theirs with `--cap-add NET_ADMIN` and shape its network with `tc netem`. "Never executed" means the line count of `ran.log` did not change. The local gate runs it in its `remote-it` lane.
 
 A remote smoke drives the client methods against a real host from my machine, with a temporary config: add, connect, log, doctor, disconnect and uninstall. It needs a build that carries its server and a scratch `server_dir`:
 

@@ -212,3 +212,43 @@ test('I split a sentence into text, code, strong and emphasis', () => {
   assert.deepEqual(rich.richSegments('Plain'), [{ kind: 'text', text: 'Plain' }]);
   assert.deepEqual(rich.richSegments('patterns (*~, Thumbs.db)'), [{ kind: 'text', text: 'patterns (*~, Thumbs.db)' }]);
 });
+
+// ── Remote window texts (#295) ──
+// A remote window acts on the host over SSH, so a text that says "this
+// computer" has a "<key>.remote" variant that names the host instead.
+test('I name the host, not this computer, in a remote window', async () => {
+  const { en, es } = await loadCatalogs();
+  for (const [lang, catalog] of [['en', en], ['es', es]]) {
+    for (const [key, value] of catalog) {
+      if (!key.endsWith('.remote')) continue;
+      const base = key.slice(0, -'.remote'.length);
+      assert.ok(catalog.has(base), `${lang} ${key} has no base key`);
+      assert.ok(value.includes('{host}'), `${lang} ${key} does not name the host`);
+      const others = (v) => placeholders(v).split(',').filter((p) => p && p !== 'host').join(',');
+      assert.equal(others(value), others(catalog.get(base)), `${lang} ${key} placeholders`);
+    }
+    for (const [key, value] of catalog) {
+      if (key.endsWith('.remote') || catalog.has(`${key}.remote`)) continue;
+      if (/this computer|este ordenador/.test(value) && (key.startsWith('menu.') || key.startsWith('deleteClone.') || key.startsWith('move.'))) {
+        assert.fail(`${lang} ${key} speaks of this computer without a remote variant`);
+      }
+    }
+  }
+
+  const code = await readFile(join(libDir, 'i18n.ts'), 'utf8');
+  const { outputText } = ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } });
+  const store = import.meta.resolve('svelte/store');
+  const i18n = await import(`data:text/javascript;base64,${Buffer.from(outputText.replace("'svelte/store'", `'${store}'`)).toString('base64')}`);
+  const { get } = await import(store);
+  const say = (key, vars) => get(i18n.t)(key, vars);
+
+  assert.equal(say('menu.delete'), 'Delete from this computer…');
+  i18n.remoteTextHost.set('my-server');
+  assert.equal(say('menu.delete'), 'Delete from my-server…');
+  assert.equal(say('move.localRemoved', { path: '/srv/x' }), 'The clone on my-server at `/srv/x` **WILL** be removed.');
+  assert.equal(say('repo.pullTip'), en.get('repo.pullTip'), 'a key without a variant reads as before');
+  i18n.languageStore.set('es');
+  assert.equal(say('menu.delete'), 'Borrar de my-server…');
+  i18n.remoteTextHost.set(null);
+  assert.equal(say('menu.delete'), 'Borrar de este ordenador…');
+});

@@ -351,10 +351,10 @@ func TestRemoteConfigIsCapped(t *testing.T) {
 	}
 }
 
-// Every P4 and P6 event of eventClass is relayed, and nothing else is.
+// Every P4, P5 and P6 event of eventClass is relayed, and nothing else is.
 func TestRelayedEventsAreRemote(t *testing.T) {
 	served := func(info eventInfo) bool {
-		return info.Class == classRemote && (info.Owner == "P4" || info.Owner == "P6")
+		return info.Class == classRemote && (info.Owner == "P4" || info.Owner == "P5" || info.Owner == "P6")
 	}
 	for name := range relayedEvents {
 		if info := eventClass[name]; !served(info) {

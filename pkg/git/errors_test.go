@@ -94,7 +94,7 @@ func TestGitErrorsCarryNoSecrets(t *testing.T) {
 		assertSecretFree(t, run(repo, "-c", "http.extraHeader=Authorization: Bearer "+canaryToken, "ls-remote", canaryURL))
 		_, err := output(repo, "ls-remote", canaryURL)
 		assertSecretFree(t, err)
-		_, err = PushMirror(repo, canaryURL, []string{"credential.helper="})
+		_, err = PushMirror(context.Background(), repo, canaryURL, []string{"credential.helper="})
 		assertSecretFree(t, err)
 	})
 

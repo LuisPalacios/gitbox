@@ -50,6 +50,8 @@ The window appears at once and connects in the background. It reads **Connecting
 
 The remote window is the full gitbox window, fed by the host. It needs a host that already has a `gitbox.json` with working credentials, for example a computer that also runs GitboxApp. A host without one keeps the connection card, which says so; setting it up from here comes in a later version.
 
+A text that speaks of this computer names the host instead, because the action runs there over SSH: the row menu reads **Delete from my-server…**, and the delete and move dialogs say which host's folder goes.
+
 These work, all run on the host:
 
 - the status of every repository, **Fetch all**, **Fetch** on one repository and the periodic status check;
@@ -65,14 +67,19 @@ These change the host's config, and also run there:
 - editing, renaming and deleting an account;
 - adding, removing and choosing the default root, and the nested scan depth;
 - mirror groups and their repositories;
-- adding discovered repositories to the config, without cloning them, and ignoring a clone;
+- adding discovered repositories to the config, and ignoring a clone;
 - the settings that live in the host's `gitbox.json`, such as the pull request badges and the global gitignore check;
 - the fixes of the host's git config (the global identity, the GCM helper and the global gitignore);
 - repairing a broken `gitbox.json` or restoring one of its backups.
 
-These are disabled, with the tooltip "Read-only remote (coming in a later version)":
+These change the host's clones and the providers, and also run there:
 
-- cloning, pulling, deleting, creating and moving repositories, the sweep, mirror setup, adoption and the reconcile;
+- cloning, pulling, deleting, creating and moving repositories;
+- the sweep of merged branches, mirror setup and adding the mirrors that discovery found;
+- the reconcile with the clones on disk, which also runs when the window gets focus, and adopting the clones it finds.
+
+These are disabled, with the tooltip "Not available on a remote yet (coming in a later version)":
+
 - adding an account and every credential setup, which need credentials on the host;
 - the compact view, and autostart.
 
@@ -90,13 +97,24 @@ The host checks every folder itself, whatever the window sent: it must be an abs
 
 Several processes can save the host's `gitbox.json`: my windows, a GitboxApp running on the host and its terminals window. A save never overwrites a change another one made since I read the file. Instead it fails with "The settings changed in another window or process and were reloaded. Try again.", and the window shows what is in the file now. A change of my own preferences never fails this way.
 
-If the connection drops while a change is being saved, the host's `gitbox.json` holds either the old version or the new one, never a mix: the file is replaced in one step. A change sent twice, for example after a timeout, is applied once: the host answers a repeat with the first answer, and after a reconnect a change that is already there fails with "That already exists" or "That no longer exists" instead of applying again. The AI harness detection on the host saves what it finds, and the window asks the host to detect its harnesses again when it gets focus. Fetch updates only the remote-tracking branches. In this version it also skips the repair of each clone's `.git/config` that a local fetch runs first, and the server log says so once; a later version lifts this. A collapsed account or repository stays collapsed in this window only.
+If the connection drops while a change is being saved, the host's `gitbox.json` holds either the old version or the new one, never a mix: the file is replaced in one step. A change sent twice, for example after a timeout, is applied once: the host answers a repeat with the first answer, and after a reconnect a change that is already there fails with "That already exists" or "That no longer exists" instead of applying again. The AI harness detection on the host saves what it finds, and the window asks the host to detect its harnesses again when it gets focus. Fetch and pull repair each clone's `.git/config` first, as on a desktop. A collapsed account or repository stays collapsed in this window only.
+
+### When the connection drops during a long action
+
+A clone, pull, move or mirror setup runs on the host while the window that started it stays connected. Closing the window, disconnecting or losing the connection stops it there, together with its git processes:
+
+- A clone stops, and git removes the folder it created. If the host killed git outright, the folder stays: the next reconcile reports it as a clone that stopped before it finished, and I delete the folder and clone again. Gitbox never deletes it for me.
+- A pull stops, and git leaves the clone as it was or fast-forwarded.
+- A move stops between two steps and never starts deleting the source repository or the local clone. A destination it already created stays on the provider, and the move reports it; once the origin points at the destination, the config says so too.
+- A mirror setup stops, and what the provider already created stays.
+
+The window marks the action as failed with the connection error, so nothing waits for an answer that will not come.
 
 ### The badge and the connection
 
-The title bar shows a badge with the alias, the system of the host in Advanced mode, the connection state and **Limited**, because some actions come in later versions. Clicking it opens the connection log.
+The title bar shows a badge with the alias, the system of the host in Advanced mode, the connection state and **Limited**, because the credential setup comes in a later version. Clicking it opens the connection log.
 
-When the connection drops, the window keeps the last state it got, dimmed and inert, under **Disconnected from my-server.** and a **Connect** button. While it is disconnected, the window starts no background reload or periodic check, so no other error appears. **Connect** runs the same connection again, clears what the disconnection left behind and reloads everything.
+When the connection drops, the window keeps the last state it got, dimmed and inert, under **Disconnected from my-server.** and a **Connect** button. While it is disconnected, the window starts no background reload or periodic check, so no other error appears. **Connect** runs the same connection again, clears what the disconnection left behind and reloads everything. The window then reconciles the host's clones and refreshes their status before it offers actions again, under **Reconnected to my-server. Reading its clones before the actions come back…**
 
 ### What the window trusts
 
@@ -230,7 +248,7 @@ Simple mode shows a plain sentence; the code itself appears in the log.
 - `not_available_remote`: the action has no remote equivalent, such as the file manager.
 - `not_available_remote_path`: the folder is not a valid absolute path of the host, or a layer on this computer cannot carry it safely.
 - `harness_not_allowed`: the AI harness is not one of the catalog, or it has arguments.
-- `read_only`: this remote does not serve the action yet, such as a clone or a credential setup. A later version allows it.
+- `read_only`: this remote does not serve the action yet, such as a credential setup. A later version allows it.
 - `remote_path_invalid`: the folder is not an absolute path of the host, or it holds a control character.
 
 ## Windows and macOS clients

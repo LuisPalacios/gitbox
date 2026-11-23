@@ -154,15 +154,8 @@ func (a *App) healRepo(cfg *config.Config, source, repo string) heal.Report {
 	if a.refreshHooks != nil && a.refreshHooks.heal != nil {
 		return a.refreshHooks.heal(cfg, source, repo)
 	}
-	if a.readOnly || a.skipCloneRepair {
-		// A server does not change a clone's .git/config yet: fetch runs
-		// with the clone as it is (#295 lifts this).
-		a.healSkipped.Do(func() {
-			if a.hostLog != nil {
-				fmt.Fprintln(a.hostLog, "gitbox-server: fetch skips the repair of each clone's .git/config until the repository mutations are served")
-			}
-		})
-		return heal.Report{}
+	if a.readOnly {
+		return heal.Report{} // the clone stays as it is
 	}
 	ctx, cancel := context.WithTimeout(a.refreshContext(), healReadTimeout)
 	defer cancel()
@@ -448,7 +441,12 @@ var errServerUnreachable = errors.New("cannot reach the server")
 // makes the guard test the server at once, which stops everything else that
 // uses it.
 func (a *App) onServer(addr string, work func(context.Context) error) error {
-	parent := a.refreshContext()
+	return a.onServerCtx(a.refreshContext(), addr, work)
+}
+
+// onServerCtx is onServer for work that parent can also stop, such as a
+// pull a remote window asked for: its request ends with the connection.
+func (a *App) onServerCtx(parent context.Context, addr string, work func(context.Context) error) error {
 	ctx, end, ok := a.beginNetworkOp(parent, addr)
 	if !ok {
 		return errServerUnreachable

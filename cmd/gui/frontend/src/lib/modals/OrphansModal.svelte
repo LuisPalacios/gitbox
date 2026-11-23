@@ -7,7 +7,6 @@
   import { pushNotice, errorText } from '../notices';
   import { t } from '../i18n';
   import { ro } from '../ro';
-  import { blocked } from '../stores';
   import { dismiss } from '../dismiss';
   import type { OrphanRepoDTO, ReconcileDTO } from '../types';
 
@@ -70,8 +69,7 @@
     busy = o.path;
     try {
       await bridge.ignoreClone(o.path, ignore);
-      // A remote window does not reconcile until its server serves it (#295).
-      if (!$blocked('reconcile')) await applyReconcile(await bridge.reconcile());
+      await applyReconcile(await bridge.reconcile());
     } catch (e) {
       pushNotice('error', $t('notice.ignoreFailed'), [errorText(e)]);
     }

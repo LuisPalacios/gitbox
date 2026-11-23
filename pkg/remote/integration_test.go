@@ -103,6 +103,10 @@ type ctOpts struct {
 	noexecHome bool
 	shell      string
 	bashrc     string
+	// netAdmin lets the test shape the container's network with tc (#295).
+	netAdmin bool
+	// gitDaemon serves the fixture repository on git://127.0.0.1:9418.
+	gitDaemon bool
 }
 
 type container struct {
@@ -131,6 +135,12 @@ func startContainer(t *testing.T, o ctOpts) *container {
 	}
 	if o.noexecHome {
 		args = append(args, "--tmpfs", testHome+":noexec,uid=1000,gid=1000,mode=0755")
+	}
+	if o.netAdmin {
+		args = append(args, "--cap-add", "NET_ADMIN")
+	}
+	if o.gitDaemon {
+		args = append(args, "-e", "GIT_DAEMON=1")
 	}
 	c := &container{t: t, id: docker(t, append(args, it.image)...)}
 	t.Cleanup(func() { _ = exec.Command("docker", "rm", "-f", c.id).Run() })
@@ -843,11 +853,11 @@ func TestReadsLeaveTheDomainUntouched(t *testing.T) {
 		}
 		cancel()
 	}
-	// A repository mutation is refused by the server itself, not only by
-	// the client, until #295 serves it.
+	// A credential mutation is refused by the server itself, not only by
+	// the client, until #242 serves it.
 	ctx, cancel := context.WithTimeout(testCtx(t), 30*time.Second)
-	if err := client.Call(ctx, "DeleteRepo", []any{"acct", "org/repo"}, nil, rpc.WithRequestID("00000000-0000-4000-8000-000000000001")); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
-		t.Errorf("DeleteRepo = %v, want unsupported", err)
+	if err := client.Call(ctx, "ChangeCredentialType", []any{"acct", "ssh"}, nil, rpc.WithRequestID("00000000-0000-4000-8000-000000000001")); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
+		t.Errorf("ChangeCredentialType = %v, want unsupported", err)
 	}
 	cancel()
 
@@ -864,11 +874,13 @@ func TestReadsLeaveTheDomainUntouched(t *testing.T) {
 		s.dump(t)
 		t.Errorf("the reads changed the host's domain:\nbefore %v\nafter  %v", before, after)
 	}
-	if after := gitConfig(); after != cloneBefore {
-		t.Errorf("the clone's .git/config changed: fetch repaired it before #295")
+	// Since #295 a fetch on the host repairs the clone's .git/config first,
+	// as on a desktop: only the domain must stay as it was.
+	if after := gitConfig(); after == cloneBefore {
+		t.Errorf("the clone's .git/config is unchanged: fetch did not repair it")
 	}
 	if !c.exists(clone) {
-		t.Error("the refused DeleteRepo removed the clone")
+		t.Error("a read removed the clone")
 	}
 }
 
@@ -880,37 +892,52 @@ func TestReadsLeaveTheDomainUntouched(t *testing.T) {
 var mutationCalls = []struct {
 	method string
 	params []any
+	// mayFail: the host has no provider to reach, so the call fails with
+	// the domain's error; it must still be served.
+	mayFail bool
 }{
-	{"AddRoot", []any{testHome + "/git2"}},
-	{"SetDefaultRoot", []any{testHome + "/git2"}},
-	{"SetDefaultRoot", []any{testHome + "/git"}},
-	{"RemoveRoot", []any{testHome + "/git2", false}},
-	{"InitRoot", []any{testHome + "/git"}},
-	{"SetNestedScanDepth", []any{3}},
-	{"SetPRBadgesEnabled", []any{false}},
-	{"SetPRIncludeDrafts", []any{true}},
-	{"SetCheckGlobalGitignore", []any{false}},
-	{"AddAccount", []any{map[string]any{"key": "other", "provider": "gitea", "url": "https://git2.example.invalid", "username": "bob", "name": "Bob", "email": "b@example.invalid", "credentialType": "token"}}},
-	{"UpdateAccount", []any{map[string]any{"key": "other", "provider": "gitea", "url": "https://git2.example.invalid", "username": "bob", "name": "Bob B", "email": "b@example.invalid"}}},
-	{"RenameAccount", []any{"other", "other2"}},
-	{"AddMirrorGroup", []any{"m", "acct", "other2"}},
-	{"AddMirrorRepo", []any{"m", "org/repo", "push", "src"}},
-	{"DeleteMirrorRepo", []any{"m", "org/repo"}},
-	{"DeleteMirrorGroup", []any{"m"}},
-	{"DiscardAccount", []any{"other2"}},
-	{"AddAccount", []any{map[string]any{"key": "third", "provider": "gitea", "url": "https://git3.example.invalid", "username": "carol", "name": "Carol", "email": "c@example.invalid", "credentialType": "token"}}},
-	{"DeleteAccount", []any{"third"}},
-	{"AddDiscoveredRepos", []any{"acct", []string{"org/new"}}},
-	{"AddDiscoveredReposToFolder", []any{"acct", []string{"org/new2"}, testHome + "/custom"}},
-	{"SetRepoContainer", []any{"acct", "org/repo", true}},
-	{"SetRepoWorkspace", []any{"acct", "org/repo", ""}},
-	{"IgnoreClone", []any{testHome + "/git/stray", true}},
-	{"RemoveGlobalIdentity", []any{}},
-	{"FixGlobalGCMConfig", []any{}},
-	{"InstallGlobalGitignore", []any{}},
-	{"AcknowledgeConfigError", []any{}},
-	{"RepairConfig", []any{}},
-	{"RestoreFromBackup", []any{"<backup>"}},
+	{"AddRoot", []any{testHome + "/git2"}, false},
+	{"SetDefaultRoot", []any{testHome + "/git2"}, false},
+	{"SetDefaultRoot", []any{testHome + "/git"}, false},
+	{"RemoveRoot", []any{testHome + "/git2", false}, false},
+	{"InitRoot", []any{testHome + "/git"}, false},
+	{"SetNestedScanDepth", []any{3}, false},
+	{"SetPRBadgesEnabled", []any{false}, false},
+	{"SetPRIncludeDrafts", []any{true}, false},
+	{"SetCheckGlobalGitignore", []any{false}, false},
+	{"AddAccount", []any{map[string]any{"key": "other", "provider": "gitea", "url": "https://git2.example.invalid", "username": "bob", "name": "Bob", "email": "b@example.invalid", "credentialType": "token"}}, false},
+	{"UpdateAccount", []any{map[string]any{"key": "other", "provider": "gitea", "url": "https://git2.example.invalid", "username": "bob", "name": "Bob B", "email": "b@example.invalid"}}, false},
+	{"RenameAccount", []any{"other", "other2"}, false},
+	{"AddMirrorGroup", []any{"m", "acct", "other2"}, false},
+	{"AddMirrorRepo", []any{"m", "org/repo", "push", "src"}, false},
+	{"DeleteMirrorRepo", []any{"m", "org/repo"}, false},
+	{"DeleteMirrorGroup", []any{"m"}, false},
+	{"DiscardAccount", []any{"other2"}, false},
+	{"AddAccount", []any{map[string]any{"key": "third", "provider": "gitea", "url": "https://git3.example.invalid", "username": "carol", "name": "Carol", "email": "c@example.invalid", "credentialType": "token"}}, false},
+	{"DeleteAccount", []any{"third"}, false},
+	{"AddDiscoveredRepos", []any{"acct", []string{"org/new"}}, false},
+	{"AddDiscoveredReposToFolder", []any{"acct", []string{"org/new2"}, testHome + "/custom"}, false},
+	{"SetRepoContainer", []any{"acct", "org/repo", true}, false},
+	{"SetRepoWorkspace", []any{"acct", "org/repo", ""}, false},
+	{"IgnoreClone", []any{testHome + "/git/stray", true}, false},
+	{"RemoveGlobalIdentity", []any{}, false},
+	{"FixGlobalGCMConfig", []any{}, false},
+	{"InstallGlobalGitignore", []any{}, false},
+	{"AcknowledgeConfigError", []any{}, false},
+	{"RepairConfig", []any{}, false},
+	{"RestoreFromBackup", []any{"<backup>"}, false},
+	// The repository mutations (#295). The host's provider is unreachable:
+	// the long ones end in their done event with that error and answer.
+	{"CloneRepo", []any{"acct", "org/none", ""}, false},
+	{"PullRepo", []any{"acct", "org/repo"}, false},
+	{"ConfirmSweep", []any{"acct", "org/repo"}, false},
+	{"Reconcile", []any{}, false},
+	{"AdoptClones", []any{[]any{}}, false},
+	{"SetupMirrorRepo", []any{"none", "org/repo"}, false},
+	{"ApplyDiscoveredMirrors", []any{}, true},
+	{"CreateNewRepo", []any{"acct", "", "made", "", true, false, ""}, true},
+	{"MoveRepo", []any{map[string]any{"sourceSourceKey": "acct", "sourceRepoKey": "org/repo", "destAccountKey": "nobody", "destOwner": "alice", "destRepoName": "moved"}}, false},
+	{"DeleteRepo", []any{"acct", "org/repo"}, false},
 }
 
 // TestMutationsOverSSH runs every served config mutation once over a real
@@ -940,7 +967,7 @@ func TestMutationsOverSSH(t *testing.T) {
 		var out json.RawMessage
 		err := conn.client.Call(ctx, call.method, params, &out, rpc.WithRequestID(fmt.Sprintf("00000000-0000-4000-8000-%012d", i+1)))
 		cancel()
-		if err != nil {
+		if err != nil && (!call.mayFail || rpc.IsCode(err, rpc.ErrCodeUnsupported)) {
 			t.Fatalf("step %d, %s: %v", i+1, call.method, err)
 		}
 		if g, _ := host()["global"].(map[string]any); g["theme"] != "dark" {
@@ -1049,5 +1076,255 @@ func TestConfigChangedConflictOverSSH(t *testing.T) {
 	}
 	if got := hostAccounts(t, c, cfgPath); !slices.Contains(got, "froma") || !slices.Contains(got, "fromb") {
 		t.Errorf("accounts %v, want both adds kept", got)
+	}
+}
+
+// cloneHostConfig is the host's gitbox.json of the fault tests (#295): one
+// account whose server is the container's git daemon, so the reachability
+// check connects, and the fixture repository, not cloned yet. The account
+// uses ssh credentials, whose origin the test user's git config rewrites
+// to the daemon (seedCloneHost): no token is involved.
+const cloneHostConfig = `{
+  "version": 5,
+  "global": {"roots": ["` + testHome + `/git"], "theme": "dark"},
+  "accounts": {
+    "acct": {"provider": "gitea", "url": "http://127.0.0.1:9418", "username": "alice", "name": "Alice", "email": "a@example.invalid", "default_credential_type": "ssh"}
+  },
+  "sources": {
+    "acct": {"account": "acct", "repos": {"org/fixture": {}}}
+  }
+}
+`
+
+// fixtureClone is where the fixture clones on the host.
+const fixtureClone = testHome + "/git/acct/org/fixture"
+
+// seedCloneHost writes cloneHostConfig and the rewrite of the fixture's
+// origin, and returns the config's path.
+func seedCloneHost(c *container) string {
+	cfgDir := testHome + "/.config/gitbox"
+	cfgPath := cfgDir + "/gitbox.json"
+	c.sh("mkdir -p " + cfgDir + " " + testHome + "/git && echo " + base64.StdEncoding.EncodeToString([]byte(cloneHostConfig)) + " | base64 -d > " + cfgPath +
+		" && git config --global url.git://127.0.0.1:9418/.insteadOf git@127.0.0.1:9418:")
+	return cfgPath
+}
+
+// progressEvent is one clone:progress as the client received it.
+type progressEvent struct {
+	at      time.Time
+	phase   string
+	percent int
+}
+
+// eventLog records the events a client receives.
+type eventLog struct {
+	mu       sync.Mutex
+	names    []string
+	payloads map[string][]json.RawMessage
+	progress []progressEvent
+	onEvent  func(name string, payload json.RawMessage)
+}
+
+func (l *eventLog) record(name string, payload []json.RawMessage) {
+	l.mu.Lock()
+	l.names = append(l.names, name)
+	if l.payloads == nil {
+		l.payloads = map[string][]json.RawMessage{}
+	}
+	var raw json.RawMessage
+	if len(payload) == 1 {
+		raw = payload[0]
+	}
+	l.payloads[name] = append(l.payloads[name], raw)
+	if name == "clone:progress" {
+		var p struct {
+			Phase   string `json:"phase"`
+			Percent int    `json:"percent"`
+		}
+		_ = json.Unmarshal(raw, &p)
+		l.progress = append(l.progress, progressEvent{time.Now(), p.Phase, p.Percent})
+	}
+	hook := l.onEvent
+	l.mu.Unlock()
+	if hook != nil {
+		hook(name, raw)
+	}
+}
+
+// last is the latest payload of name, or nil.
+func (l *eventLog) last(name string) json.RawMessage {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if p := l.payloads[name]; len(p) > 0 {
+		return p[len(p)-1]
+	}
+	return nil
+}
+
+// connectEvents is connect with the server's events recorded in log.
+func (s *session) connectEvents(t *testing.T, log *eventLog) connected {
+	t.Helper()
+	sess, err := remote.Dial(testCtx(t), alias, s.opts)
+	if err != nil {
+		s.dump(t)
+		t.Fatal(err)
+	}
+	conn := sess.Conn()
+	client, err := rpc.Dial(conn, conn, rpc.ClientOptions{Version: it.version, Commit: it.commit, Log: s.log, OnEvent: log.record})
+	if err != nil {
+		_ = sess.Close()
+		t.Fatal(err)
+	}
+	return connected{sess, client}
+}
+
+// gitProcesses lists the test user's git processes on the host.
+func (c *container) gitProcesses() string {
+	return strings.TrimSpace(c.sh("pgrep -a -u test -x git || true"))
+}
+
+// doneError is the error field of a done event's payload.
+func doneError(t *testing.T, raw json.RawMessage) string {
+	t.Helper()
+	var p struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		t.Fatalf("a done event does not decode: %v (%s)", err, raw)
+	}
+	return p.Error
+}
+
+// TestCutSSHMidClone kills the client's ssh once a clone of the 60 MB
+// fixture is past 30 % (#295). The server stops git, which removes its
+// folder, so after a reconnect the host's gitbox.json is the one before the
+// clone, no git process is left, the folder is gone or Reconcile reports it
+// incomplete (never adopted), and the same clone then succeeds.
+func TestCutSSHMidClone(t *testing.T) {
+	c := startContainer(t, ctOpts{netAdmin: true, gitDaemon: true})
+	cfgPath := seedCloneHost(c)
+	// The daemon serves on the loopback: slowing it keeps the clone running
+	// for several seconds.
+	docker(t, "exec", c.id, "tc", "qdisc", "add", "dev", "lo", "root", "netem", "rate", "40mbit")
+	before := c.sh("sha256sum " + cfgPath)
+	s := c.client(t, "client-cut-clone", true)
+
+	log := &eventLog{}
+	cut := make(chan struct{})
+	var once sync.Once
+	log.onEvent = func(name string, raw json.RawMessage) {
+		var p struct {
+			Phase   string `json:"phase"`
+			Percent int    `json:"percent"`
+		}
+		if name == "clone:progress" && json.Unmarshal(raw, &p) == nil && strings.HasPrefix(p.Phase, "Receiving") && p.Percent > 30 {
+			once.Do(func() { close(cut) })
+		}
+	}
+	conn := s.connectEvents(t, log)
+	done := make(chan error, 1)
+	go func() {
+		done <- conn.client.Call(testCtx(t), "CloneRepo", []any{"acct", "org/fixture", ""}, nil, rpc.WithRequestID("00000000-0000-4000-8000-000000000301"))
+	}()
+	select {
+	case <-cut:
+	case err := <-done:
+		t.Fatalf("the clone ended before it passed 30 %%: %v; progress %+v", err, log.progress)
+	case <-time.After(90 * time.Second):
+		t.Fatalf("the clone never passed 30 %%; progress %+v", log.progress)
+	}
+	remote.KillSession(conn.sess)
+	<-done
+	conn.close()
+
+	if !waitFor(20*time.Second, func() bool { return c.gitProcesses() == "" }) {
+		t.Fatalf("git still runs on the host after the cut:\n%s", c.gitProcesses())
+	}
+
+	// Reconnect, as the window does, and look at the host.
+	log2 := &eventLog{}
+	conn2 := s.connectEvents(t, log2)
+	defer conn2.close()
+	if after := c.sh("sha256sum " + cfgPath); after != before {
+		t.Errorf("the host's gitbox.json changed with the cut clone:\n%s", c.sh("cat "+cfgPath))
+	}
+	var pass struct {
+		Adopted    int `json:"adopted"`
+		Incomplete []struct {
+			Path string `json:"path"`
+		} `json:"incomplete"`
+	}
+	if err := conn2.client.Call(testCtx(t), "Reconcile", nil, &pass, rpc.WithRequestID("00000000-0000-4000-8000-000000000302")); err != nil {
+		t.Fatal(err)
+	}
+	if pass.Adopted != 0 {
+		t.Errorf("Reconcile adopted %d clones after the cut", pass.Adopted)
+	}
+	if c.exists(fixtureClone) {
+		if len(pass.Incomplete) != 1 || pass.Incomplete[0].Path != fixtureClone {
+			t.Fatalf("the cut clone's folder is still there and Reconcile does not report it: %+v", pass)
+		}
+		// I delete what the cut left, as the window asks me to.
+		c.sh("rm -rf " + fixtureClone)
+		t.Log("the cut left an incomplete clone, and Reconcile reported it")
+	}
+	if after := c.sh("sha256sum " + cfgPath); after != before {
+		t.Errorf("the host's gitbox.json changed after the reconcile:\n%s", c.sh("cat "+cfgPath))
+	}
+
+	if err := conn2.client.Call(testCtx(t), "CloneRepo", []any{"acct", "org/fixture", ""}, nil, rpc.WithRequestID("00000000-0000-4000-8000-000000000303")); err != nil {
+		t.Fatalf("the repeated clone = %v", err)
+	}
+	if msg := doneError(t, log2.last("clone:done")); msg != "" {
+		t.Fatalf("the repeated clone failed: %s", msg)
+	}
+	c.sh("git -C " + fixtureClone + " rev-parse --verify -q HEAD") // fails the test without a commit
+}
+
+// TestLatency300ms adds 300 ms to every round trip between client and
+// host (#295): clone, pull and fetch-all complete without timing out, and
+// the clone's progress arrives coalesced, one event per rpc.ProgressInterval
+// at most.
+func TestLatency300ms(t *testing.T) {
+	c := startContainer(t, ctOpts{netAdmin: true, gitDaemon: true})
+	seedCloneHost(c)
+	docker(t, "exec", c.id, "tc", "qdisc", "add", "dev", "eth0", "root", "netem", "delay", "300ms")
+	s := c.client(t, "client-latency", true)
+	log := &eventLog{}
+	conn := s.connectEvents(t, log)
+	defer conn.close()
+
+	call := func(id int, method string, params []any) time.Duration {
+		t.Helper()
+		started := time.Now()
+		if err := conn.client.Call(testCtx(t), method, params, nil, rpc.WithRequestID(fmt.Sprintf("00000000-0000-4000-8000-%012d", 400+id))); err != nil {
+			t.Fatalf("%s over 300 ms = %v", method, err)
+		}
+		return time.Since(started)
+	}
+	took := call(1, "CloneRepo", []any{"acct", "org/fixture", ""})
+	if msg := doneError(t, log.last("clone:done")); msg != "" {
+		t.Fatalf("the clone failed: %s", msg)
+	}
+	call(2, "PullRepo", []any{"acct", "org/fixture"})
+	if msg := doneError(t, log.last("pull:done")); msg != "" {
+		t.Fatalf("the pull failed: %s", msg)
+	}
+	call(3, "FetchAllRepos", []any{})
+	eventually(t, "fetch:alldone", func() bool { return log.last("fetch:alldone") != nil })
+	if msg := doneError(t, log.last("fetch:alldone")); msg != "" {
+		t.Fatalf("fetch-all failed: %s", msg)
+	}
+
+	log.mu.Lock()
+	progress := slices.Clone(log.progress)
+	log.mu.Unlock()
+	if len(progress) == 0 {
+		t.Fatal("no clone:progress arrived")
+	}
+	// Coalesced: no more events than intervals in the clone, with one of
+	// slack at each end.
+	if most := int(took/rpc.ProgressInterval) + 2; len(progress) > most {
+		t.Errorf("%d progress events in %v, want at most %d", len(progress), took, most)
 	}
 }

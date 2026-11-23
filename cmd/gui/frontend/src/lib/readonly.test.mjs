@@ -22,15 +22,15 @@ test('I block an unserved mutation in a remote window and let it through otherwi
   const seen = [];
   let remote = true;
   const calls = ro.guardCalls({
-    deleteRepo: (s, r) => { seen.push(['deleteRepo', s, r]); return Promise.resolve(); },
+    credentialDelete: (a) => { seen.push(['credentialDelete', a]); return Promise.resolve(); },
     getAllStatus: () => { seen.push(['getAllStatus']); return Promise.resolve([]); },
   }, () => remote, () => 'read-only');
-  await assert.rejects(calls.deleteRepo('a', 'b'), (e) => e instanceof ro.ReadOnlyError && e.message === 'read-only');
+  await assert.rejects(calls.credentialDelete('a'), (e) => e instanceof ro.ReadOnlyError && e.message === 'read-only');
   await calls.getAllStatus();
   assert.deepEqual(seen, [['getAllStatus']]);
   remote = false;
-  await calls.deleteRepo('a', 'b');
-  assert.deepEqual(seen, [['getAllStatus'], ['deleteRepo', 'a', 'b']]);
+  await calls.credentialDelete('a');
+  assert.deepEqual(seen, [['getAllStatus'], ['credentialDelete', 'a']]);
 });
 
 test('I block exactly the mutations the server does not serve', () => {
@@ -47,32 +47,25 @@ test('I block exactly the mutations the server does not serve', () => {
       assert.ok(ro.READ_ONLY_BLOCKED.has(name), `${name} changes the host and is not served, but is not blocked`);
     }
   }
-  assert.ok(servedMutations >= 27, `only ${servedMutations} served mutations found`);
+  assert.ok(servedMutations >= 37, `only ${servedMutations} served mutations found`);
   const expected = new Set([...mutating.filter((name) => bridgeCalls.has(name) && !served.has(name)), ...UNAVAILABLE, ...REMOTE_OFF]);
   assert.deepEqual([...ro.READ_ONLY_BLOCKED].sort(), [...expected].sort());
   for (const name of ro.READ_ONLY_BLOCKED) assert.ok(bridgeCalls.has(name), `${name} is blocked but is not a bridge call`);
 });
 
 test('I block a call only in a remote window', () => {
-  for (const name of ['cloneRepo', 'credentialStoreToken', 'setViewMode', 'openInExplorer']) {
+  for (const name of ['credentialStoreToken', 'changeCredentialType', 'setViewMode', 'openInExplorer']) {
     assert.equal(ro.isBlocked(name, true), true, name);
     assert.equal(ro.isBlocked(name, false), false, name);
   }
-  for (const name of ['addRoot', 'setNestedScanDepth', 'updateAccount', 'getConfig', 'setTheme']) {
+  for (const name of ['addRoot', 'setNestedScanDepth', 'updateAccount', 'getConfig', 'setTheme', 'cloneRepo', 'pullRepo', 'reconcile', 'moveRepo', 'setupMirrorRepo']) {
     assert.equal(ro.isBlocked(name, true), false, name);
   }
   assert.equal(ro.anyBlocked(['addAccount', 'credentialStoreToken'], true), true);
   assert.equal(ro.anyBlocked(['addAccount', 'credentialStoreToken'], false), false);
   assert.equal(ro.anyBlocked(['updateAccount', 'renameAccount'], true), false);
-  assert.equal(ro.anyBlocked('pullRepo', true), true);
+  assert.equal(ro.anyBlocked('pullRepo', true), false);
   assert.equal(ro.anyBlocked([], true), false);
-});
-
-test('I do not reconcile on focus while Reconcile is blocked, but I re-probe the harnesses', () => {
-  assert.deepEqual(ro.focusWork((name) => ro.isBlocked(name, true)), { reload: true, reconcile: false, refreshHarnesses: true });
-  assert.deepEqual(ro.focusWork((name) => ro.isBlocked(name, false)), { reload: true, reconcile: true, refreshHarnesses: true });
-  assert.deepEqual(ro.focusWork(() => false), { reload: true, reconcile: true, refreshHarnesses: true });
-  assert.ok(ro.READ_ONLY_BLOCKED.has('reconcile') && !ro.READ_ONLY_BLOCKED.has('refreshAIHarnesses'));
 });
 
 test('I let the remote launches through and keep the ones with no remote equivalent blocked', () => {

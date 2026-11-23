@@ -17,6 +17,10 @@ const (
 	// shutdownWait is how long closing the app waits for work in flight to
 	// stop. That work was already cancelled, and its processes with it.
 	shutdownWait = 5 * time.Second
+	// moveTimeout bounds a whole move, and mirrorSetupTimeout one mirror
+	// setup, which is provider calls only.
+	moveTimeout        = 10 * time.Minute
+	mirrorSetupTimeout = 60 * time.Second
 )
 
 // I bound fetches across single-clone and bulk requests. Tune the per-host
@@ -27,7 +31,20 @@ const (
 )
 
 // A clone has no bound: its size is not known in advance. It is cancelled
-// when the app closes.
+// when the app closes, and a remote clone when its connection ends.
+//
+// createRepoTimeout bounds the provider call that creates a repository,
+// discoverMirrorsTimeout the discovery behind ApplyDiscoveredMirrors, and
+// reconcileBound a reconcile pass over every root.
+const (
+	createRepoTimeout      = 30 * time.Second
+	discoverMirrorsTimeout = 120 * time.Second
+	reconcileBound         = 2 * time.Minute
+)
+
+// remoteUnbounded are the calls to a gitbox-server with no deadline: the
+// work has none, and the connection's pings tell a dead host.
+var remoteUnbounded = map[string]bool{"CloneRepo": true}
 
 // A call to a gitbox-server may take as long as the work it asks for, plus
 // remoteCallMargin for the round trip. remoteWorkBounds lists the methods
@@ -38,6 +55,16 @@ const (
 )
 
 var remoteWorkBounds = map[string]time.Duration{
+	// The repository mutations (#295), as long as their work may take.
+	"PullRepo":                       healReadTimeout + pullTimeout,
+	"MoveRepo":                       moveTimeout,
+	"SetupMirrorRepo":                mirrorSetupTimeout,
+	"CreateNewRepo":                  createRepoTimeout,
+	"ApplyDiscoveredMirrors":         discoverMirrorsTimeout,
+	"Reconcile":                      reconcileBound,
+	"AdoptClones":                    reconcileBound,
+	"DeleteRepo":                     statusTimeout,
+	"ConfirmSweep":                   statusTimeout,
 	"GetConfig":                      healReadTimeout,
 	"GetStartupSnapshot":             healReadTimeout,
 	"ReloadConfig":                   healReadTimeout,

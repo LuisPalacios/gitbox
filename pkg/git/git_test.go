@@ -653,3 +653,51 @@ func TestCloneArgs_TokenStoreHelper(t *testing.T) {
 		})
 	}
 }
+
+// TestIsIncompleteClone tells a clone git stopped before it finished from
+// a finished one, an empty one and a plain repository.
+func TestIsIncompleteClone(t *testing.T) {
+	clonePath, barePath := initTestRepo(t)
+	dir := t.TempDir()
+
+	emptyBare := filepath.Join(dir, "empty.git")
+	runGit(t, dir, "init", "--bare", emptyBare)
+	emptyClone := filepath.Join(dir, "empty")
+	runGit(t, dir, "clone", emptyBare, emptyClone)
+
+	packed := filepath.Join(dir, "packed")
+	runGit(t, dir, "clone", barePath, packed)
+	runGit(t, packed, "pack-refs", "--all")
+
+	// What a clone killed mid-transfer leaves: git's placeholder head and
+	// no refspec yet.
+	placeholder := filepath.Join(dir, "placeholder")
+	runGit(t, dir, "init", placeholder)
+	writeFile(t, filepath.Join(placeholder, ".git", "HEAD"), "ref: refs/heads/.invalid\n")
+	runGit(t, placeholder, "config", "remote.origin.url", barePath)
+
+	noRefspec := filepath.Join(dir, "norefspec")
+	runGit(t, dir, "init", noRefspec)
+	runGit(t, noRefspec, "config", "remote.origin.url", barePath)
+
+	withRemote := filepath.Join(dir, "withremote")
+	runGit(t, dir, "init", withRemote)
+	runGit(t, withRemote, "remote", "add", "origin", barePath)
+
+	for _, tc := range []struct {
+		name, path string
+		want       bool
+	}{
+		{"finished clone", clonePath, false},
+		{"packed refs", packed, false},
+		{"empty repository", emptyClone, false},
+		{"git init with a remote", withRemote, false},
+		{"not a repository", t.TempDir(), false},
+		{"placeholder head", placeholder, true},
+		{"no commit and no refspec", noRefspec, true},
+	} {
+		if got := IsIncompleteClone(tc.path); got != tc.want {
+			t.Errorf("%s: IsIncompleteClone = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

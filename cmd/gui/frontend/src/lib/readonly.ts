@@ -1,14 +1,14 @@
-// The limited remote (#240, #294): a remote window changes the host only
-// through the methods its server serves. The Go side refuses every other
-// mutation before it leaves this machine; this module is the frontend's
-// backstop, so a control that was missed fails at once with the read-only
-// message instead of half-starting an action. Dimmed controls (lib/ro.ts)
-// are only the visible part. It has no runtime imports, so
+// The limited remote (#240, #294, #295): a remote window changes the host
+// only through the methods its server serves. The Go side refuses every
+// other mutation before it leaves this machine; this module is the
+// frontend's backstop, so a control that was missed fails at once with the
+// refusal message instead of half-starting an action. Dimmed controls
+// (lib/ro.ts) are only the visible part. It has no runtime imports, so
 // readonly.test.mjs can load it alone.
 
 // The calls a remote window refuses: the mutations its server does not
-// serve yet (the repository mutations of #295 and the credential methods of
-// #242 and #244; the config mutations are served since #294), the three
+// serve yet (the credential methods of #242 and #244; the config mutations
+// are served since #294 and the repository mutations since #295), the three
 // launches with no remote equivalent (the file manager, the account folder
 // and the host's config file: the Go side refuses them with
 // not_available_remote), and autostart and the compact view, which a
@@ -17,10 +17,8 @@
 // read. Every other call is a read, a served mutation or a client
 // preference.
 export const READ_ONLY_BLOCKED: ReadonlySet<string> = new Set([
-  'adoptClones', 'applyDiscoveredMirrors', 'changeCredentialType', 'cloneRepo', 'confirmSweep',
-  'createNewRepo', 'credentialDelete', 'credentialRegenerateSSH', 'credentialSetupGCM',
-  'credentialSetupSSH', 'credentialStoreToken', 'deleteRepo', 'moveRepo', 'pullRepo', 'reconcile',
-  'setupMirrorRepo',
+  'changeCredentialType', 'credentialDelete', 'credentialRegenerateSSH', 'credentialSetupGCM',
+  'credentialSetupSSH', 'credentialStoreToken',
   'openAccountFolder', 'openFileInEditor', 'openInExplorer',
   'setAutostart', 'setViewMode',
 ]);
@@ -118,12 +116,4 @@ export function reloadErrorShown(e: unknown, remoteWindow: boolean, state: strin
 // left behind.
 export function clearsOnReconnect(previous: string | undefined, next: string): boolean {
   return next === 'connected' && previous !== 'connected';
-}
-
-// The automatic work that starts when the window regains focus: a remote
-// window re-reads the host's config and re-probes its AI harnesses, which
-// the server keeps (#243), and reconciles only once the server serves
-// Reconcile (#295). blocked says whether a call is refused here.
-export function focusWork(blocked: (name: 'reconcile') => boolean): { reload: boolean; reconcile: boolean; refreshHarnesses: boolean } {
-  return { reload: true, reconcile: !blocked('reconcile'), refreshHarnesses: true };
 }

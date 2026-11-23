@@ -40,19 +40,27 @@ type Relink struct {
 	Source, Repo, Path string
 }
 
+// Incomplete is a tracked repo whose clone git stopped before it finished
+// (git.IsIncompleteClone). Its folder is left as it is: the window says so,
+// and I delete it and clone again.
+type Incomplete struct {
+	Source, Repo, Path string
+}
+
 // Result is what one pass decided.
 type Result struct {
-	Adopt     []adopt.OrphanRepo
-	Relink    []Relink
-	Unmatched []Unmatched
-	Ignored   []Unmatched // with the reason they would wait for me, "" when adoptable
+	Adopt      []adopt.OrphanRepo
+	Relink     []Relink
+	Unmatched  []Unmatched
+	Ignored    []Unmatched // with the reason they would wait for me, "" when adoptable
+	Incomplete []Incomplete
 }
 
 // Plan scans every root and decides, for each clone the config doesn't
 // track: re-link it to a tracked repo whose clone went missing, adopt it
 // (a confident match, see adopt.OrphanRepo.Confident), or leave it for me.
-// Ignored clones are reported apart. Repos under a missing root are never
-// considered missing.
+// Ignored clones are reported apart, and so are tracked clones that git
+// never finished. Repos under a missing root are never considered missing.
 func Plan(cfg *config.Config) (Result, error) {
 	orphans, err := adopt.FindOrphans(cfg)
 	if err != nil {
@@ -64,12 +72,20 @@ func Plan(cfg *config.Config) (Result, error) {
 	type ref struct{ source, repo string }
 	missing := map[string][]ref{}
 	tracked := map[string]bool{}
+	var res Result
 	for _, sk := range sortedKeys(cfg.Sources) {
 		src := cfg.Sources[sk]
 		for _, rk := range sortedKeys(src.Repos) {
 			repo := src.Repos[rk]
 			tracked[sk+"/"+strings.ToLower(rk)] = true
-			if p := status.RepoPath(cfg, sk, rk, repo); status.RepoRootOffline(cfg, sk, repo) || git.IsRepo(p) || git.IsLinkedWorktree(p) {
+			p := status.RepoPath(cfg, sk, rk, repo)
+			if status.RepoRootOffline(cfg, sk, repo) || git.IsLinkedWorktree(p) {
+				continue
+			}
+			if git.IsRepo(p) {
+				if git.IsIncompleteClone(p) {
+					res.Incomplete = append(res.Incomplete, Incomplete{Source: sk, Repo: rk, Path: p})
+				}
 				continue
 			}
 			missing[strings.ToLower(rk)] = append(missing[strings.ToLower(rk)], ref{sk, rk})
@@ -99,7 +115,6 @@ func Plan(cfg *config.Config) (Result, error) {
 		return ""
 	}
 
-	var res Result
 	relinked := map[ref]bool{}
 	for _, o := range orphans {
 		// Ignored clones keep their reason, so the list can still offer

@@ -311,13 +311,16 @@ func TestBackendContract(t *testing.T) {
 	clone := loadConfig(t, path).Sources["acct"].Repos["org/repo"].CloneFolder
 
 	localSink := &recordingSink{}
-	// The reference is the host as a server runs it: read-only.
+	// Both sides run read-only: this table holds the reads, and a read
+	// must never save nor repair a clone. The mutations have their tables
+	// (contract_mutations_test.go, contract_repo_test.go).
 	local := &App{cfgPath: path, events: localSink, upstreamGone: map[string]bool{}, readOnly: true}
 	local.be().Init(context.Background())
 	t.Cleanup(local.closeLocal)
 	direct := Backend(hostBackend{localBackend{local}})
 
 	link := serveRemote(t, path, nil)
+	link.Host.readOnly = true
 
 	covered := make(map[string]bool)
 	for _, tt := range contractRows(clone) {
@@ -353,6 +356,9 @@ func TestBackendContract(t *testing.T) {
 		})
 	}
 	for name := range mutationRowMethods() {
+		covered[name] = true
+	}
+	for name := range repoMutationRowMethods() {
 		covered[name] = true
 	}
 	for _, name := range servedMethods {
@@ -676,15 +682,16 @@ func TestToUserErrorDistrustsTheServer(t *testing.T) {
 func TestRemoteMethodOutsideTheClosedList(t *testing.T) {
 	path := contractConfig(t)
 	link := serveRemote(t, path, nil)
-	// DeleteRepo waits for the repository mutations (#295).
-	if err := link.Remote.DeleteRepo("acct", "org/repo"); toUserError(err).Code != "remote.not_implemented_remote" {
-		t.Errorf("DeleteRepo = %v, want not_implemented_remote", err)
+	// The credential methods wait for #242 and #244.
+	before := loadConfig(t, path).Accounts["acct"]
+	if err := link.Remote.ChangeCredentialType("acct", "ssh"); toUserError(err).Code != "remote.not_implemented_remote" {
+		t.Errorf("ChangeCredentialType = %v, want not_implemented_remote", err)
 	}
-	if _, ok := loadConfig(t, path).Sources["acct"].Repos["org/repo"]; !ok {
-		t.Error("the refused mutation changed the host: the repo is gone")
+	if after := loadConfig(t, path).Accounts["acct"]; !reflect.DeepEqual(after, before) {
+		t.Errorf("the refused mutation changed the host: account %+v, was %+v", after, before)
 	}
-	if res := link.Remote.Reconcile(); !reflect.DeepEqual(res, ReconcileDTO{}) {
-		t.Errorf("Reconcile = %+v, want the zero value for a method that is not served", res)
+	if res := link.Remote.CredentialDelete("acct"); !reflect.DeepEqual(res, CredentialSetupResult{}) {
+		t.Errorf("CredentialDelete = %+v, want the zero value for a method that is not served", res)
 	}
 	if err := link.Remote.LastError(); toUserError(err).Code != "remote.not_implemented_remote" {
 		t.Errorf("LastError = %v, want the failure of the call that had no error to return", err)
@@ -777,6 +784,11 @@ func TestRemoteBackendCallsEachMethodByName(t *testing.T) {
 		before := len(calls())
 		value.MethodByName(m.Name).Call(args)
 		got := calls()
+		// A long call returns at once and reaches the wire in the
+		// background (goLong).
+		for deadline := time.Now().Add(5 * time.Second); len(got) == before && time.Now().Before(deadline); got = calls() {
+			time.Sleep(time.Millisecond)
+		}
 		if len(got) != before+1 {
 			t.Errorf("%s made %d calls, want 1", m.Name, len(got)-before)
 			continue
@@ -969,5 +981,61 @@ func TestStartupSnapshotCarriesTheServerVersion(t *testing.T) {
 	}
 	if strings.Contains(asJSON(t, snap), "serverVersion") {
 		t.Error("a local snapshot must not carry the serverVersion key")
+	}
+}
+
+// The repository events (#295) reach the window as this build emits them,
+// and a pull:done whose skipped is neither a flag nor an identifier is
+// dropped.
+func TestRepositoryEventsAreRelayed(t *testing.T) {
+	link := serveRemote(t, contractConfig(t), nil)
+	sent := []struct {
+		name    string
+		payload any
+	}{
+		{"clone:progress", map[string]any{"source": "acct", "repo": "org/repo", "phase": "Receiving objects", "percent": 42}},
+		{"clone:done", map[string]any{"source": "acct", "repo": "org/repo", "path": "/h/git/org/repo", "fixes": []string{"set user.name"}}},
+		{"pull:done", map[string]any{"source": "acct", "repo": "org/repo", "skipped": "dirty", "state": "dirty", "modified": 2, "untracked": 1, "ahead": 0, "behind": 3}},
+		{"pull:done", map[string]any{"source": "acct", "repo": "org/other", "error": "offline", "code": "git.offline", "skipped": true, "host": "github.com"}},
+		{"mirror:setup:done", MirrorSetupResult{MirrorKey: "mir", RepoKey: "org/repo", Created: true, Mirrored: true, Method: "api"}},
+		{"move:progress", MoveProgressEventDTO{Phase: "fetch", Message: "Fetching"}},
+		{"move:done", MoveResultDTO{NewOrigin: "https://example.invalid/o/r.git", DestRepoCreated: true, Warnings: []string{"w"}}},
+		{"reconcile:done", ReconcileDTO{Adopted: 1, Unmatched: []OrphanRepoDTO{}, Ignored: []OrphanRepoDTO{}, Incomplete: []IncompleteCloneDTO{{Source: "acct", Repo: "org/x", Path: "/h/x"}}}},
+	}
+	for _, e := range sent {
+		link.Host.sink().Emit(e.name, e.payload)
+	}
+	link.Host.sink().Emit("pull:done", map[string]any{"source": "acct", "repo": "org/evil", "skipped": "<img src=x>"})
+	link.Host.sink().Emit("reconcile:done", map[string]any{"adopted": "many"})
+
+	deadline := time.Now().Add(5 * time.Second)
+	for len(link.Events.named("reconcile:done")) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	time.Sleep(200 * time.Millisecond) // the hostile ones, sent last, would be in by now
+	counts := map[string]int{}
+	for _, e := range sent {
+		got := link.Events.named(e.name)
+		i := counts[e.name]
+		counts[e.name]++
+		if e.name == "clone:progress" || e.name == "move:progress" {
+			if len(got) == 0 {
+				t.Errorf("%s was not relayed", e.name)
+			}
+			continue
+		}
+		if i >= len(got) {
+			t.Errorf("%s #%d was not relayed", e.name, i+1)
+			continue
+		}
+		if w, g := canonJSON(t, []any{e.payload}), canonJSON(t, got[i].args); w != g {
+			t.Errorf("%s arrived as %s, want %s", e.name, g, w)
+		}
+	}
+	if n := len(link.Events.named("pull:done")); n != 2 {
+		t.Errorf("pull:done arrived %d times, want the two valid ones", n)
+	}
+	if n := len(link.Events.named("reconcile:done")); n != 1 {
+		t.Errorf("reconcile:done arrived %d times, want the valid one", n)
 	}
 }
