@@ -7,9 +7,10 @@
   import type { DiscoverResult } from './types';
   import { providerLabel, providerURLs } from './theme';
   import Logo from './Logo.svelte';
-  import { t } from './i18n';
+  import { remoteTextHost, t } from './i18n';
   import { openExternal } from './external';
-  import { remoteHost } from './stores';
+  import { remoteHost, remoteWindow } from './stores';
+  import { gcmOffered } from './gcmRemote';
   import FirstProject from './FirstProject.svelte';
 
   export let mode: 'first-run' | 'add' = 'first-run';
@@ -93,6 +94,13 @@
 
   async function checkGCM() {
     gcm = null;
+    // A remote host refuses GCM (#242): the person connects with a token,
+    // and nothing asks the host whether GCM is installed.
+    if (!gcmOffered($remoteWindow)) {
+      gcm = { ok: false };
+      useToken = true;
+      return;
+    }
     try {
       gcm = await bridge.doctorPrecheck('gcm');
     } catch {
@@ -217,6 +225,8 @@
     try {
       const res = await bridge.credentialStoreToken(accountKey, token.trim());
       if (!res?.ok) throw new Error(res?.message || '');
+      // Stored: the token leaves the window's memory (#163, #242).
+      token = '';
       const status = await bridge.credentialVerify(accountKey);
       if (status.status === 'ok' || status.status === 'warning') {
         startProjects();
@@ -406,7 +416,11 @@
           {/if}
         {/if}
 
-        {#if gcm && !gcm.ok}
+        {#if !gcmOffered($remoteWindow)}
+          <div class="ob-note">
+            <p>{$t('onboard.gcmRemote', { host: $remoteTextHost || '' })}</p>
+          </div>
+        {:else if gcm && !gcm.ok}
           <div class="ob-note">
             <p>{$t('onboard.gcmMissing')}</p>
             {#each gcm.missing || [] as m}

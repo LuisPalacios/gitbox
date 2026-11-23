@@ -89,7 +89,8 @@ func (r *RemoteBackend) connect(in io.Reader, out io.WriteCloser) error {
 				r.relayEvent(name, payload)
 			}
 		},
-		Log: r.log,
+		Log:          r.log,
+		SecretParams: secretParams,
 	})
 	if err != nil {
 		return err

@@ -33,7 +33,7 @@ La comprobación de credenciales de Gitbox te dice en qué situación estás. Si
 
 ## Almacenamiento de PAT
 
-Guardo cada Personal Access Token (PAT) en un archivo por cuenta, `~/.config/gitbox/credentials/<accountKey>`. En macOS y Linux, Gitbox crea el directorio con modo `0700` y los archivos con modo `0600`. En Windows, las listas de control de acceso (ACL) determinan el acceso; el modo Unix no establece quién puede leer un archivo.
+Guardo cada Personal Access Token (PAT) en un archivo por cuenta, `~/.config/gitbox/credentials/<accountKey>`. En macOS y Linux, Gitbox crea el directorio con modo `0700` y los archivos con modo `0600`. En Windows, las listas de control de acceso (ACL) determinan el acceso; el modo Unix no establece quién puede leer un archivo. Eliminar una cuenta elimina su archivo, así que una cuenta nueva con la misma clave nunca hereda el token anterior.
 
 Guardar un PAT o renombrar una cuenta escribe el **formato git-credential-store** (`https://user:token@host`):
 
@@ -203,6 +203,23 @@ Arreglo típico en cada SO:
 - macOS: `brew install --cask git-credential-manager` (`ssh` y `ssh-keygen` vienen preinstalados).
 - Linux: instala el paquete de GCM de tu distro (consulta la [documentación de instalación de GCM](https://github.com/git-ecosystem/git-credential-manager/blob/main/docs/install.md)); `sudo apt install openssh-client` para SSH.
 - Windows: GCM viene con Git for Windows y no necesita estar en el `PATH`: Gitbox pregunta primero a `git credential-manager --version` y luego comprueba las carpetas de instalación de Git for Windows y de GCM independiente. El cliente OpenSSH es una característica opcional integrada.
+
+## Hosts remotos
+
+En una [ventana remota](remote-mode.md), las credenciales viven en el host, porque es el host quien clona, hace fetch y llama al proveedor. Por ahora solo funciona el token:
+
+- **Token**: funciona. Pegas el token en la ventana remota. Viaja al host una vez, dentro de la conexión SSH, y el host lo guarda como en un escritorio: `~/.config/gitbox/credentials/<accountKey>`, con modo `0600` en una carpeta `0700`. Nunca vuelve a la ventana, y ningún log, error ni línea de comandos de ninguno de los dos ordenadores lo contiene. Justo después de guardarlo, la ventana muestra lo que encontró la [auditoría de permisos](#permisos-de-los-archivos-de-credenciales) en el host, nunca el contenido del archivo.
+- **GCM**: no se ofrece. GCM inicia sesión con un navegador o una ventana en el ordenador que lo ejecuta, que en un host nadie ve, y guarda la credencial en un almacén que una sesión SSH no puede usar de forma fiable. El host lo rechaza con `gcm_unsupported_remote` sin intentarlo, porque que GCM funcione allí depende del estado de su llavero:
+  - Linux: el llavero Secret Service (`secretservice`) necesita una sesión de escritorio desbloqueada, que un servidor sin pantalla no tiene.
+  - macOS: el llavero de inicio de sesión sigue bloqueado en una sesión SSH.
+  - Windows: el Administrador de credenciales de Windows (`wincredman`) no funciona de forma fiable por SSH.
+- **SSH**: configurar una clave SSH en el host llega en una versión posterior.
+
+Por ahora solo se admiten hosts Linux. En un host Windows el archivo del token tendrá una ACL que solo mi usuario puede leer, que llega con la compatibilidad con hosts Windows.
+
+### Cambiar una cuenta GCM a token
+
+Una cuenta que el `gitbox.json` del host ya tiene en GCM muestra **No disponible en hosts remotos** en el modal Cambiar credencial, con el motivo para el sistema del host y un botón **Cambiar a token**. El botón cambia la cuenta a token y muestra los pasos del token; pegas el token y haces clic en **Guardar token**. Una cuenta nueva en un host remoto empieza con token, y el onboarding se conecta con uno.
 
 ## Resolución de problemas
 

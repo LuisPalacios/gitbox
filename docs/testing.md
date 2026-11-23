@@ -73,10 +73,10 @@ go test ./pkg/config/ -run='^$' -fuzz='^FuzzDecodeRoundTrip$' -fuzztime=1m -para
 
 The bootstrap and the read-only window of [remote mode](remote-mode.md) have three layers of tests.
 
-- **Unit tests** in `pkg/remote`, which every `go test -short` runs. They include `TestNoConfigOverrideInProduction` and a fake `ssh` that runs the real remote scripts with the local `sh` in a home folder of the test's own: install, hash checks, `noexec`, banners, uninstall and the refused roots. Windows skips the fake-ssh tests, which need a POSIX `sh`. `cmd/gui` adds `TestRemoteLifecycle`, which drives a remote window with a dialer that needs no ssh, and the read-only checks: `TestBackendContract` over every served method, `TestHostileServer`, `TestOpenExternal`, `TestRemoteWindowReadOnly`, `TestServerSavesThroughTheGuard` and `TestBackendContractMutations`:
+- **Unit tests** in `pkg/remote`, which every `go test -short` runs. They include `TestNoConfigOverrideInProduction` and a fake `ssh` that runs the real remote scripts with the local `sh` in a home folder of the test's own: install, hash checks, `noexec`, banners, uninstall and the refused roots. Windows skips the fake-ssh tests, which need a POSIX `sh`. `cmd/gui` adds `TestRemoteLifecycle`, which drives a remote window with a dialer that needs no ssh, and the read-only checks: `TestBackendContract` over every served method, `TestHostileServer`, `TestOpenExternal`, `TestRemoteWindowReadOnly`, `TestServerSavesThroughTheGuard` and `TestBackendContractMutations`, and the token checks of #242, `TestTokenCanary` and `TestHostRefusesGCM`:
 
   ```bash
-  go test -race -short ./cmd/gui/ -run 'TestBackendContract|TestHostileServer|TestOpenExternal|TestRemoteWindowReadOnly|TestServerSavesThroughTheGuard|TestBackendContractMutations'
+  go test -race -short ./cmd/gui/ -run 'TestBackendContract|TestHostileServer|TestOpenExternal|TestRemoteWindowReadOnly|TestServerSavesThroughTheGuard|TestBackendContractMutations|TestTokenCanary|TestHostRefusesGCM'
   ```
 
 - **The server build of `cmd/gui`.** `go test -race -short -tags gitboxserver ./cmd/gui/` runs the tests of the in-use marker and the rotating server log. Tests that need the window shell carry `//go:build !gitboxserver`, so this run compiles.
@@ -87,9 +87,10 @@ The bootstrap and the read-only window of [remote mode](remote-mode.md) have thr
   GITBOX_IT_RUN=TestFishLoginShell scripts/remote-it.sh
   GITBOX_IT_RUN='TestReadsLeaveTheDomainUntouched|TestMutationsOverSSH|TestCutSSHMidSave' scripts/remote-it.sh
   GITBOX_IT_RUN='TestCutSSHMidClone|TestLatency300ms' scripts/remote-it.sh
+  GITBOX_IT_RUN=TestTokenCanary scripts/remote-it.sh
   ```
 
-  The script needs Docker on Linux. It builds the `gitbox-sshd` image from `test/sshd` (Debian slim with OpenSSH, fish, git, `iproute2` and `procps`, a `test` user whose key lives outside the home, and a 60 MB fixture repository that `git daemon` serves on `127.0.0.1:9418` when the container starts with `GIT_DAEMON=1`) and a `linux/amd64` server with the `e2e_sentinel` tag, which appends a line to `$HOME/.gitbox-e2e/ran.log` on every start. Each test starts its own container on an `--internal` Docker network, with no route out, and connects through the real `ssh` with a config file and a `known_hosts` of its own, filled from the container's host key. The fault tests start theirs with `--cap-add NET_ADMIN` and shape its network with `tc netem`. "Never executed" means the line count of `ran.log` did not change. The local gate runs it in its `remote-it` lane.
+  The script needs Docker on Linux. It builds the `gitbox-sshd` image from `test/sshd` (Debian slim with OpenSSH, fish, git, `iproute2` and `procps`, a `test` user whose key lives outside the home, and a 60 MB fixture repository that `git daemon` serves on `127.0.0.1:9418` when the container starts with `GIT_DAEMON=1`), a `linux/amd64` server with the `e2e_sentinel` tag, which appends a line to `$HOME/.gitbox-e2e/ran.log` on every start, and the fake forge of `test/fakeforge`, which `TestTokenCanary` copies into its container: Gitea's API and git over HTTP behind the tokens of a file. Each test starts its own container on an `--internal` Docker network, with no route out, and connects through the real `ssh` with a config file and a `known_hosts` of its own, filled from the container's host key. The fault tests start theirs with `--cap-add NET_ADMIN` and shape its network with `tc netem`. "Never executed" means the line count of `ran.log` did not change. The local gate runs it in its `remote-it` lane.
 
 A remote smoke drives the client methods against a real host from my machine, with a temporary config: add, connect, log, doctor, disconnect and uninstall. It needs a build that carries its server and a scratch `server_dir`:
 

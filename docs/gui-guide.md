@@ -399,7 +399,7 @@ Both sides need the token scopes listed in [Token scopes by capability](credenti
 
 ### Deleting repos and accounts
 
-Click the **trash icon** in the top bar to enter delete mode. Red ✕ buttons appear on the account card in an account's view, on mirror group cards and on repo rows; click one to remove that item. Deleting an account also removes its local clone folders. Click the trash icon again to leave delete mode.
+Click the **trash icon** in the top bar to enter delete mode. Red ✕ buttons appear on the account card in an account's view, on mirror group cards and on repo rows; click one to remove that item. Deleting an account also removes its local clone folders and its stored token file. Click the trash icon again to leave delete mode.
 
 ## Mirrors
 

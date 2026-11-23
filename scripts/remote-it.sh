@@ -3,7 +3,8 @@
 # remote-it.sh — sshd integration tests of the remote-mode bootstrap (#239).
 #
 # Builds the gitbox-sshd test image (test/sshd) and a linux/amd64
-# gitbox-server with the e2e_sentinel tag, then runs the sshd_integration
+# gitbox-server with the e2e_sentinel tag and the fake forge of the token
+# canary (test/fakeforge, #242), then runs the sshd_integration
 # tests of pkg/remote against fresh containers on an internal Docker network.
 # It needs Docker and a Linux host: Docker Desktop on macOS cannot reach
 # container IPs from the host. The local gate runs it in its remote-it lane.
@@ -34,8 +35,12 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
     -tags gitboxserver,e2e_sentinel -ldflags "$LDFLAGS" \
     -o "$out/gitbox-server" ./cmd/gui
 
+echo ">> fakeforge linux/amd64"
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o "$out/fakeforge" ./test/fakeforge
+
 echo ">> go test -race -tags sshd_integration ./pkg/remote/"
 GITBOX_IT_SERVER="$out/gitbox-server" \
+GITBOX_IT_FAKEFORGE="$out/fakeforge" \
 GITBOX_IT_VERSION="$VERSION" \
 GITBOX_IT_COMMIT="$COMMIT" \
 GITBOX_IT_IMAGE=gitbox-sshd \

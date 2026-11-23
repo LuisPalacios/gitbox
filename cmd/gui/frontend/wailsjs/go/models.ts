@@ -815,6 +815,7 @@ export namespace main {
 	    sshPublicKey?: string;
 	    sshAddURL?: string;
 	    sshVerified?: boolean;
+	    findings?: credential.Finding[];
 	
 	    static createFrom(source: any = {}) {
 	        return new CredentialSetupResult(source);
@@ -828,7 +829,26 @@ export namespace main {
 	        this.sshPublicKey = source["sshPublicKey"];
 	        this.sshAddURL = source["sshAddURL"];
 	        this.sshVerified = source["sshVerified"];
+	        this.findings = this.convertValues(source["findings"], credential.Finding);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class CredentialStatus {
 	    status: string;
@@ -1172,11 +1192,11 @@ export namespace main {
 	    writable: boolean;
 	    existingClones: number;
 	    sampled: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new OnboardingRootPreviewDTO(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.abs = source["abs"];
@@ -1292,18 +1312,18 @@ export namespace main {
 	    document: string;
 	    slots: string[];
 	    newAccounts: recipe.AccountRef[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RecipeFile(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.document = source["document"];
 	        this.slots = source["slots"];
 	        this.newAccounts = this.convertValues(source["newAccounts"], recipe.AccountRef);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1737,11 +1757,11 @@ export namespace main {
 	    nextAt: number;
 	    inFlight: boolean;
 	    lastResult: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ScheduledTaskDTO(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -1996,15 +2016,15 @@ export namespace main {
 }
 
 export namespace recipe {
-
+	
 	export class AccountRef {
 	    server: string;
 	    username: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new AccountRef(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.server = source["server"];
@@ -2014,11 +2034,11 @@ export namespace recipe {
 	export class Identity {
 	    name: string;
 	    email: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Identity(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -2029,11 +2049,11 @@ export namespace recipe {
 	    kind: string;
 	    item: string;
 	    state: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Row(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.kind = source["kind"];
@@ -2048,11 +2068,11 @@ export namespace recipe {
 	    accounts: number;
 	    sources: number;
 	    repos: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ImportPlan(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.rows = this.convertValues(source["rows"], Row);
@@ -2062,7 +2082,7 @@ export namespace recipe {
 	        this.sources = source["sources"];
 	        this.repos = source["repos"];
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -2084,17 +2104,17 @@ export namespace recipe {
 	export class Options {
 	    slots: Record<string, string>;
 	    identities: Record<string, Identity>;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Options(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.slots = source["slots"];
 	        this.identities = this.convertValues(source["identities"], Identity, true);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -2117,15 +2137,15 @@ export namespace recipe {
 }
 
 export namespace reconcile {
-
+	
 	export class Skip {
 	    path: string;
 	    reason: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Skip(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.path = source["path"];

@@ -66,7 +66,9 @@
   function accountItems(simple: boolean, credStatus: string | undefined) {
     const credType = $accounts[accountKey]?.default_credential_type || 'gcm';
     const cred = () => { closeAccountMenu(); openCredChange(accountKey, credType); };
-    const credCalls: CallName[] = ['changeCredentialType', 'credentialSetupGCM', 'credentialSetupSSH', 'credentialStoreToken'];
+    // The dialog opens on any host; its own buttons name the setup each one
+    // runs, so a remote window dims only the SSH key setup it refuses (#242).
+    const credCalls: CallName[] = ['changeCredentialType', 'credentialStoreToken'];
     const items = [{ label: $t('menu.editAccount'), icon: '✎', onClick: () => { closeAccountMenu(); openEditAccount(accountKey); }, ro: ['updateAccount', 'renameAccount'] as CallName[] }];
     if (!simple) items.push({ label: $t('menu.changeCredential'), icon: '⚿', onClick: cred, ro: credCalls });
     else if (credBroken(credStatus)) items.push({ label: $t('menu.reconnect'), icon: '⚿', onClick: cred, ro: credCalls });

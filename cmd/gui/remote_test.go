@@ -149,9 +149,9 @@ func TestRemoteLifecycle(t *testing.T) {
 	if err != nil || len(cfg.Accounts) != 1 {
 		t.Errorf("GetConfig once connected = %+v, %v", cfg, err)
 	}
-	// A mutation the server does not serve yet (#242) is refused here.
-	if err := a.ChangeCredentialType("acct", "ssh"); !codeIs(err, "read_only") {
-		t.Errorf("ChangeCredentialType = %v, want read_only", err)
+	// A mutation the server does not serve yet (#244) is refused here.
+	if res := a.CredentialSetupSSH("acct"); res.OK || !codeIs(a.remote.backend.LastError(), "read_only") {
+		t.Errorf("CredentialSetupSSH = %+v (%v), want read_only", res, a.remote.backend.LastError())
 	}
 	if len(sink.named("remote:log")) == 0 || len(a.RemoteLog()) == 0 {
 		t.Error("the connection log is empty")
@@ -407,7 +407,7 @@ func TestRemoteFailureCodes(t *testing.T) {
 }
 
 // A remote window keeps every mutation its server does not serve yet (the
-// credential methods of #242 and #244) on this side of the wire, while its
+// SSH key methods of #244) on this side of the wire, while its
 // client preferences still save to this machine's own gitbox.json (#240).
 // The harness refresh is a read since P6 (#243): it reaches the host.
 func TestRemoteWindowReadOnly(t *testing.T) {
@@ -420,12 +420,11 @@ func TestRemoteWindowReadOnly(t *testing.T) {
 	local := a.prefs.(*filePrefs).path
 	before := len(calls())
 
-	// Mutations the server does not serve yet (#242, #244).
-	if err := a.ChangeCredentialType("acct", "ssh"); !codeIs(err, "read_only") {
-		t.Errorf("ChangeCredentialType = %v, want read_only", err)
+	// Mutations the server does not serve yet (#244).
+	if res := a.CredentialSetupSSH("acct"); res.OK || !codeIs(a.remote.backend.LastError(), "read_only") {
+		t.Errorf("CredentialSetupSSH = %+v (%v), want read_only", res, a.remote.backend.LastError())
 	}
-	a.CredentialStoreToken("acct", "not-a-token")
-	a.CredentialDelete("acct")
+	a.CredentialRegenerateSSH("acct")
 	if got := calls()[before:]; len(got) != 0 {
 		t.Errorf("mutations reached the wire: %+v", got)
 	}

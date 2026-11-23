@@ -2,7 +2,7 @@
 
 Remote mode lets GitboxApp on my laptop manage the repositories of another computer over SSH, such as a headless Linux server. GitboxApp installs a matching `gitbox-server` on that host by itself: no root, no internet on the host, no listening port. The design follows VS Code Remote-SSH.
 
-This version connects, installs, verifies and uninstalls the server, shows the repositories of the host, changes its config, and opens its folders in my local editor, terminal and AI harnesses. Cloning, pulling and the other repository actions, and setting up credentials on the host, come in later versions. Only Linux hosts are supported for now; macOS and Windows hosts follow.
+This version connects, installs, verifies and uninstalls the server, shows the repositories of the host, changes its config and its clones, stores token credentials on it, and opens its folders in my local editor, terminal and AI harnesses. Setting up an SSH key on the host comes in a later version. Only Linux hosts are supported for now; macOS and Windows hosts follow.
 
 ## Before I start: an alias that needs no prompt
 
@@ -48,7 +48,7 @@ The window appears at once and connects in the background. It reads **Connecting
 
 ## What a remote window can do
 
-The remote window is the full gitbox window, fed by the host. It needs a host that already has a `gitbox.json` with working credentials, for example a computer that also runs GitboxApp. A host without one keeps the connection card, which says so; setting it up from here comes in a later version.
+The remote window is the full gitbox window, fed by the host. It needs a host that already has a `gitbox.json`, for example a computer that also runs GitboxApp; token credentials can be set up from the window. A host without one keeps the connection card, which says so; setting it up from here comes in a later version.
 
 A text that speaks of this computer names the host instead, because the action runs there over SSH: the row menu reads **Delete from my-server…**, and the delete and move dialogs say which host's folder goes.
 
@@ -78,9 +78,14 @@ These change the host's clones and the providers, and also run there:
 - the sweep of merged branches, mirror setup and adding the mirrors that discovery found;
 - the reconcile with the clones on disk, which also runs when the window gets focus, and adopting the clones it finds.
 
+These set up the host's credentials, and also run there (see [Remote hosts](credentials.md#remote-hosts)):
+
+- adding an account with a token, and storing, replacing or deleting its token;
+- changing an account's credential type, except to GCM, which a host refuses.
+
 These are disabled, with the tooltip "Not available on a remote yet (coming in a later version)":
 
-- adding an account and every credential setup, which need credentials on the host;
+- setting up an SSH key on the host;
 - the compact view, and autostart.
 
 These have no remote equivalent, so they are disabled with the tooltip "Not available for remote hosts": **Reveal in Finder** or **Reveal in Explorer**, opening the account folder, and **Open in Editor** of the config file in Settings.
@@ -112,7 +117,7 @@ The window marks the action as failed with the connection error, so nothing wait
 
 ### The badge and the connection
 
-The title bar shows a badge with the alias, the system of the host in Advanced mode, the connection state and **Limited**, because the credential setup comes in a later version. Clicking it opens the connection log.
+The title bar shows a badge with the alias, the system of the host in Advanced mode, the connection state and **Limited**, because setting up an SSH key comes in a later version. Clicking it opens the connection log.
 
 When the connection drops, the window keeps the last state it got, dimmed and inert, under **Disconnected from my-server.** and a **Connect** button. While it is disconnected, the window starts no background reload or periodic check, so no other error appears. **Connect** runs the same connection again, clears what the disconnection left behind and reloads everything. The window then reconciles the host's clones and refreshes their status before it offers actions again, under **Reconnected to my-server. Reading its clones before the actions come back…**
 
@@ -218,7 +223,7 @@ It deletes only what gitbox put there: the build folders, the build logs in `log
 
 On the host, the server also writes `<root>/logs/<build>.log`, rotated at 1 MiB with three older files kept.
 
-The log never holds a token or a password: GitboxApp scrubs every line before it shows it.
+The log never holds a token or a password: GitboxApp scrubs every line before it shows it. A token I type travels to the host once and is never logged on either side.
 
 ## Error codes
 
@@ -248,7 +253,8 @@ Simple mode shows a plain sentence; the code itself appears in the log.
 - `not_available_remote`: the action has no remote equivalent, such as the file manager.
 - `not_available_remote_path`: the folder is not a valid absolute path of the host, or a layer on this computer cannot carry it safely.
 - `harness_not_allowed`: the AI harness is not one of the catalog, or it has arguments.
-- `read_only`: this remote does not serve the action yet, such as a credential setup. A later version allows it.
+- `gcm_unsupported_remote`: the host does not run GCM, whose sign-in and store need a desktop session. Use a token: see [Remote hosts](credentials.md#remote-hosts).
+- `read_only`: this remote does not serve the action yet, such as setting up an SSH key. A later version allows it.
 - `remote_path_invalid`: the folder is not an absolute path of the host, or it holds a control character.
 
 ## Windows and macOS clients

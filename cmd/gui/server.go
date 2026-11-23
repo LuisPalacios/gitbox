@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -35,10 +36,12 @@ import (
 // resolve a link: the client opens it); P6 (#243) adds AccountFolder, the
 // read half of the account launchers, and the AI harness detection, which
 // runs where the harnesses run; P5 adds the config mutations (#294) and the
-// repository mutations (#295), each with its row in mutationIdempotence.
-// Each method decodes its parameters into their Go types and checks what it
-// is given (hostPath, #241). The credential methods (#242, #244) are not
-// served yet, so a remote window refuses them itself.
+// repository mutations (#295), each with its row in mutationIdempotence;
+// P5b (#242) adds the token credentials, and serves the GCM setup only to
+// refuse it (hostCredentialHandlers). Each method decodes its parameters
+// into their Go types and checks what it is given (hostPath, #241). The SSH
+// key methods (#244) are not served yet, so a remote window refuses them
+// itself.
 var servedMethods = []string{
 	"AccountDeletionImpact",
 	"AccountFolder",
@@ -53,6 +56,7 @@ var servedMethods = []string{
 	"AdoptFirstProject",
 	"ApplyDiscoveredMirrors",
 	"BeginStatus",
+	"ChangeCredentialType",
 	"CheckGlobalGCMConfig",
 	"CheckGlobalGitignore",
 	"CheckGlobalIdentity",
@@ -61,6 +65,9 @@ var servedMethods = []string{
 	"CloneRepo",
 	"ConfirmSweep",
 	"CreateNewRepo",
+	"CredentialDelete",
+	"CredentialSetupGCM",
+	"CredentialStoreToken",
 	"CredentialVerify",
 	"DeleteAccount",
 	"DeleteMirrorGroup",
@@ -202,9 +209,13 @@ var mutationIdempotence = map[string]string{
 	"AdoptClones":                "a clone already adopted is tracked, so it is no longer offered; the pass that follows finds nothing to adopt",
 	"AdoptFirstProject":          "the same project stays at its selected path and its identity is checked again",
 	"ApplyDiscoveredMirrors":     "a mirror repo already in its group is skipped; the others are added",
+	"ChangeCredentialType":       "the type the account already has changes nothing; GCM is always refused and changes nothing",
 	"CloneRepo":                  "a clone already on disk fails with the clone error and changes nothing",
 	"ConfirmSweep":               "a branch already deleted is no longer stale, so a second sweep deletes nothing",
 	"CreateNewRepo":              "an existing repository on the provider fails with the provider's error and changes nothing",
+	"CredentialDelete":           "a credential already gone is a no-op",
+	"CredentialSetupGCM":         "always refused on a host; changes nothing",
+	"CredentialStoreToken":       "storing the same token again writes the same file",
 	"DeleteAccount":              "a missing account returns config.not_found",
 	"DeleteMirrorGroup":          "a missing group returns config.not_found",
 	"DeleteMirrorRepo":           "a missing repo returns config.not_found",
@@ -238,6 +249,7 @@ var mutationIdempotence = map[string]string{
 func newRPCServer(a *App, log io.Writer) *rpc.Server {
 	backend := reflect.ValueOf(Backend(hostBackend{localBackend{a}}))
 	requestBound := requestBoundHandlers(a)
+	maps.Copy(requestBound, hostCredentialHandlers(a))
 	handlers := make(map[string]rpc.Handler, len(servedMethods))
 	for _, name := range servedMethods {
 		method := backend.MethodByName(name)
@@ -251,10 +263,11 @@ func newRPCServer(a *App, log io.Writer) *rpc.Server {
 		handlers[name] = rpc.Func(method.Interface())
 	}
 	srv := &rpc.Server{
-		Handlers:    handlers,
-		ToUserError: toUserError,
-		Self:        rpc.Hello{Version: version, Commit: commit, OS: runtime.GOOS, Arch: runtime.GOARCH, PID: os.Getpid()},
-		Log:         log,
+		Handlers:     handlers,
+		ToUserError:  toUserError,
+		Self:         rpc.Hello{Version: version, Commit: commit, OS: runtime.GOOS, Arch: runtime.GOARCH, PID: os.Getpid()},
+		Log:          log,
+		SecretParams: secretParams,
 		// Only a mutation is replayed on a repeated request id (#294).
 		Remember: func(method string) bool {
 			info, ok := classOf(method)
@@ -289,6 +302,35 @@ func requestBoundHandlers(a *App) map[string]rpc.Handler {
 		}),
 	}
 }
+
+// secretParams marks the one parameter that carries a secret: the token of
+// CredentialStoreToken (#242). It travels from the window to the host once,
+// in that request, and neither end logs it or lets it back into an answer.
+var secretParams = rpc.SecretParams{"CredentialStoreToken": {1}}
+
+// hostCredentialHandlers keep GCM off a host (#242). Its sign-in runs git
+// credential fill with a browser or a window on the machine that runs it,
+// which on a host nobody sees, and the stores it relies on are unreliable
+// in an ssh session. The refusal is deterministic: the server never tries
+// GCM first, because whether it works depends on the state of the host's
+// keyring. Switching an account to GCM is refused the same way.
+func hostCredentialHandlers(a *App) map[string]rpc.Handler {
+	b := hostBackend{localBackend{a}}
+	return map[string]rpc.Handler{
+		"CredentialSetupGCM": rpc.Func(func(accountKey string) (CredentialSetupResult, error) {
+			return CredentialSetupResult{}, gcmOnHost()
+		}),
+		"ChangeCredentialType": rpc.Func(func(accountKey, newType string) error {
+			if strings.EqualFold(strings.TrimSpace(newType), "gcm") {
+				return gcmOnHost()
+			}
+			return b.ChangeCredentialType(accountKey, newType)
+		}),
+	}
+}
+
+// gcmOnHost is the refusal of GCM on this host.
+func gcmOnHost() error { return &gcmRemoteError{OS: runtime.GOOS} }
 
 // errServerClosing answers a request that arrives while the server stops.
 var errServerClosing = &remoteError{remoteNotConnected, "the server is closing"}
