@@ -33,6 +33,7 @@
 
   export async function openRoots() {
     confirming = null;
+    typedRoot = '';
     await loadRoots();
     try { nestedScanDepth = (await bridge.getNestedScanDepth()) || 1; } catch { nestedScanDepth = 1; }
     open = true;
@@ -43,6 +44,8 @@
     if (!dir) return;
     try {
       await bridge.addRoot(dir);
+      // The typed folder is a root now; a failed add keeps it for a fix.
+      typedRoot = '';
       await loadRoots();
       $configStore = await bridge.reloadConfig();
       await runReconcile();
