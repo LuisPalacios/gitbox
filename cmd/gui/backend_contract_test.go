@@ -377,11 +377,13 @@ func TestBackendContract(t *testing.T) {
 // the rest form one more; inside each chain, the events not named in
 // concurrent keep their order. Work that runs per repository or per
 // account in parallel therefore interleaves freely, and so do the events
-// that independent goroutines emit.
+// that independent goroutines emit. A concurrent event counts once per
+// payload: the status sweeps a fetch requests can coalesce, so how many
+// identical status:updated arrive depends on timing, not on the backend.
 // It returns what differs, or "".
 func contractEventsDiffer(t *testing.T, concurrent []string, want, got []contractEvent) string {
 	t.Helper()
-	if w, g := eventMultiset(t, want), eventMultiset(t, got); w != g {
+	if w, g := eventMultiset(t, concurrent, want), eventMultiset(t, concurrent, got); w != g {
 		return fmt.Sprintf("events differ:\n local  %s\n remote %s", canonJSON(t, want), canonJSON(t, got))
 	}
 	if w, g := orderedChains(t, concurrent, want), orderedChains(t, concurrent, got); w != g {
@@ -390,11 +392,19 @@ func contractEventsDiffer(t *testing.T, concurrent []string, want, got []contrac
 	return ""
 }
 
-func eventMultiset(t *testing.T, events []contractEvent) string {
+func eventMultiset(t *testing.T, concurrent []string, events []contractEvent) string {
 	t.Helper()
 	items := make([]string, 0, len(events))
+	seen := map[string]bool{}
 	for _, e := range events {
-		items = append(items, canonJSON(t, e))
+		item := canonJSON(t, e)
+		if slices.Contains(concurrent, e.Name) {
+			if seen[item] {
+				continue
+			}
+			seen[item] = true
+		}
+		items = append(items, item)
 	}
 	slices.Sort(items)
 	return strings.Join(items, "\n")
@@ -488,6 +498,8 @@ func TestContractEventComparison(t *testing.T) {
 		// credentials:updated after status:updated, as on the Windows lane.
 		"concurrent event moved":   {run[0], run[1], run[3], run[4], run[5], status, creds, run[7]},
 		"repositories interleaved": {run[0], run[1], run[4], run[2], run[3], run[5], run[6], run[7]},
+		// Two status sweeps coalesced into one, as on the Windows lane.
+		"concurrent event coalesced": {run[0], run[1], run[2], status, run[3], run[4], run[5], run[6], run[7]},
 	}
 	for name, other := range same {
 		if p := eventOrderProblem(other); p != "" {
@@ -500,7 +512,10 @@ func TestContractEventComparison(t *testing.T) {
 
 	differ := map[string][]contractEvent{
 		"an event missing": run[:len(run)-1],
-		"an event twice":   append(slices.Clone(run), creds),
+		"an event twice":   append(slices.Clone(run), run[3]),
+		"a concurrent payload missing": moved(func(e []contractEvent) []contractEvent {
+			return slices.DeleteFunc(e, func(x contractEvent) bool { return x.Name == "credentials:updated" })
+		}),
 		"another payload": moved(func(e []contractEvent) []contractEvent {
 			e[3] = ev("fetch:done", map[string]any{"source": "acct", "repo": "a", "error": "x"})
 			return e
