@@ -378,6 +378,10 @@ func classifySSH(alias string, code int, stderr []byte) *Error {
 	switch {
 	case has("host key verification failed", "remote host identification has changed", "host key for", "no matching host key"):
 		return newError(CodeSSHHostKey, "ssh does not trust the host key of %s; run ssh %s once in a terminal", alias, alias)
+	// An agent that asks for approval, such as 1Password, fails the signature
+	// when nobody approves: ssh then also prints "permission denied".
+	case has("communication with agent failed", "agent refused operation"):
+		return newError(CodeSSHAgent, "the ssh agent did not sign the login to %s; approve the request in the agent and connect again", alias)
 	case has("permission denied", "too many authentication failures", "no supported authentication methods"):
 		return newError(CodeSSHAuth, "ssh could not log in to %s without a prompt; run ssh %s once in a terminal", alias, alias)
 	case has("timed out", "timeout, server", "operation timed out"):

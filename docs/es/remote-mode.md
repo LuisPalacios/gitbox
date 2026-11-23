@@ -18,7 +18,7 @@ Host my-server
 
 El modo remoto ejecuta `ssh` con `BatchMode=yes`, así que nunca responde a una pregunta. Antes de añadir un remoto, `ssh my-server` tiene que entrar sin pedir nada:
 
-- La clave está cargada en un agente, o no tiene frase de paso. Un host que solo acepta contraseñas, o una clave cifrada sin agente, falla con `ssh_auth`.
+- La clave está cargada en un agente, o no tiene frase de paso. Un host que solo acepta contraseñas, o una clave cifrada sin agente, falla con `ssh_auth`. Un agente que pide aprobación para cada aplicación, como 1Password, muestra la petición de Gitbox en su icono de la barra de menús o de la bandeja y no en una ventana; si nadie la responde, falla con `ssh_agent` al cabo de un minuto.
 - La clave del host ya está en `known_hosts`. Si no lo está, la conexión falla enseguida con `ssh_hostkey`. Ejecuto `ssh my-server` una vez en un terminal y acepto la clave.
 - Lo mismo vale para cada salto de un `ProxyJump`.
 
@@ -208,6 +208,7 @@ El modo simple muestra una frase sencilla; el código en sí aparece en el regis
 
 - `ssh_missing`: no hay ningún comando `ssh` en este ordenador. Instala OpenSSH.
 - `ssh_auth`: `ssh` no pudo entrar sin pedir nada. Carga la clave en un agente o usa una clave sin frase de paso, y luego ejecuta `ssh <alias>` una vez.
+- `ssh_agent`: el agente no firmó el inicio de sesión. Un agente que pide aprobación, como 1Password, muestra la petición en su icono de la barra de menús o de la bandeja y desiste al cabo de un minuto. Pulsa **Conectar** y apruébala a tiempo.
 - `ssh_hostkey`: la clave del host no está en `known_hosts`, o ha cambiado. Ejecuta `ssh <alias>` una vez en un terminal.
 - `ssh_timeout`: el host no respondió a tiempo.
 - `ssh_config`: `ssh` no puede leer la configuración del alias. Corrige `ssh_config`.

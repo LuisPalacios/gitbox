@@ -20,6 +20,7 @@ const (
 	// SSH and the connection.
 	CodeSSHMissing     Code = "ssh_missing"
 	CodeSSHAuth        Code = "ssh_auth"
+	CodeSSHAgent       Code = "ssh_agent"
 	CodeSSHHostKey     Code = "ssh_hostkey"
 	CodeSSHTimeout     Code = "ssh_timeout"
 	CodeSSHConfig      Code = "ssh_config"

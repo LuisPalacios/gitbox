@@ -166,11 +166,13 @@ func TestClassifySSH(t *testing.T) {
 		"No ED25519 host key is known for 10.0.0.2 and you have requested strict": CodeSSHFailed,
 		"@@@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @@@":                CodeSSHHostKey,
 		"test@10.0.0.2: Permission denied (publickey).":                           CodeSSHAuth,
-		"ssh: connect to host 10.0.0.2 port 22: Connection timed out":             CodeSSHTimeout,
-		"Timeout, server 10.0.0.2 not responding.":                                CodeSSHTimeout,
-		"/tmp/cfg: line 3: Bad configuration option: foo":                         CodeSSHConfig,
-		"ssh: Could not resolve hostname nope: Name or service not known":         CodeSSHFailed,
-		"ssh: connect to host 10.0.0.2 port 22: Connection refused":               CodeSSHFailed,
+		"sign_and_send_pubkey: signing failed for ED25519 \"/k.pub\" from agent: communication with agent failed\ntest@10.0.0.2: Permission denied (publickey).": CodeSSHAgent,
+		"sign_and_send_pubkey: signing failed for ED25519 \"/k.pub\" from agent: agent refused operation\ntest@10.0.0.2: Permission denied (publickey).":         CodeSSHAgent,
+		"ssh: connect to host 10.0.0.2 port 22: Connection timed out":                                                                                            CodeSSHTimeout,
+		"Timeout, server 10.0.0.2 not responding.":                        CodeSSHTimeout,
+		"/tmp/cfg: line 3: Bad configuration option: foo":                 CodeSSHConfig,
+		"ssh: Could not resolve hostname nope: Name or service not known": CodeSSHFailed,
+		"ssh: connect to host 10.0.0.2 port 22: Connection refused":       CodeSSHFailed,
 	}
 	// "No ... host key is known" comes with "Host key verification failed".
 	cases["No ED25519 host key is known for 10.0.0.2\nHost key verification failed."] = CodeSSHHostKey

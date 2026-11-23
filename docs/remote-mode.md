@@ -18,7 +18,7 @@ Host my-server
 
 Remote mode runs `ssh` with `BatchMode=yes`, so it never answers a prompt. Before I add a remote, `ssh my-server` must log in without asking anything:
 
-- The key is loaded in an agent, or it has no passphrase. A host that only accepts passwords, or an encrypted key with no agent, fails with `ssh_auth`.
+- The key is loaded in an agent, or it has no passphrase. A host that only accepts passwords, or an encrypted key with no agent, fails with `ssh_auth`. An agent that asks for approval for each app, such as 1Password, shows the request of Gitbox in its menu bar or tray icon rather than in a window; an unanswered one fails with `ssh_agent` after about a minute.
 - The host key is already in `known_hosts`. If it is not, the connection fails at once with `ssh_hostkey`. I run `ssh my-server` once in a terminal and accept the key.
 - The same holds for every hop of a `ProxyJump`.
 
@@ -208,6 +208,7 @@ Simple mode shows a plain sentence; the code itself appears in the log.
 
 - `ssh_missing`: no `ssh` command on this computer. Install OpenSSH.
 - `ssh_auth`: `ssh` could not log in without a prompt. Load the key in an agent or use a key without a passphrase, then run `ssh <alias>` once.
+- `ssh_agent`: the agent did not sign the login. An agent that asks for approval, such as 1Password, shows the request in its menu bar or tray icon and gives up after about a minute. Click **Connect** and approve it in time.
 - `ssh_hostkey`: the host key is not in `known_hosts`, or it changed. Run `ssh <alias>` once in a terminal.
 - `ssh_timeout`: the host did not answer in time.
 - `ssh_config`: `ssh` cannot read the configuration of the alias. Fix `ssh_config`.
