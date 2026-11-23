@@ -39,7 +39,8 @@ DEADCODE="golang.org/x/tools/cmd/deadcode@v0.50.0"
 # keeps its domain-only save and repair loader for callers without a file revision.
 # SetRunnerForTest and SetDoerForTest are the test seams for git and HTTP:
 # only tests call them, by design. The scripted runner and barriers live in
-# a test fixture package outside either command's dependency tree.
+# a test fixture package outside either command's dependency tree, and so
+# does the structural secret canary of internal/secretcheck (#242).
 # Remote mode (#233): dialRemoteBackend connects a RemoteBackend over any
 # pair of streams; only tests do that, the remote window connects through
 # its session. Windows update helpers remain portable for fault-injection tests.
@@ -55,6 +56,7 @@ pkg[/\\]workspace[/\\]workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCac
 pkg[/\\]update[/\\]platform_(unix|windows)[.]go:[0-9]+:[0-9]+: unreachable func: CleanupOldBinary$
 unreachable func: (SetRunnerForTest|SetDoerForTest)$
 pkg[/\\]git[/\\]testutil[/\\]runner[.]go:[0-9]+:[0-9]+: unreachable func: (RunnerFunc[.]Run|NewBarrier|Barrier[.]Arrive)$
+internal[/\\]secretcheck[/\\]secretcheck[.]go:[0-9]+:[0-9]+: unreachable func: Checker[.]Inspect$
 cmd[/\\]gui[/\\]backend_remote[.]go:[0-9]+:[0-9]+: unreachable func: dialRemoteBackend$
 pkg[/\\]update[/\\]replace_windows_executable[.]go:[0-9]+:[0-9]+: unreachable func: (replaceWindowsExecutable|stageUpdateExecutable|writeUpdateState|cleanupWindowsBackup|regularFileHash)$'
 
