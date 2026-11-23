@@ -9,6 +9,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/adopt"
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/ops"
 	"github.com/LuisPalacios/gitbox/pkg/reconcile"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 	"github.com/LuisPalacios/gitbox/pkg/workspace"
@@ -210,35 +211,8 @@ func (a *App) addDiscoveredReposToFolderLocal(key string, repoNames []string, cl
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	sourceKey := key
-	if _, ok := a.cfg.Sources[sourceKey]; !ok {
-		found := false
-		for sk, src := range a.cfg.Sources {
-			if src.Account == key {
-				sourceKey = sk
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("no source found for key %q", key)
-		}
-	}
-
-	for _, name := range repoNames {
-		// A repo already in the source is skipped, like AddDiscoveredRepos:
-		// a repeat adds the rest instead of failing halfway (#294).
-		if _, exists := a.cfg.Sources[sourceKey].Repos[name]; exists {
-			continue
-		}
-		repo := config.Repo{}
-		if cloneFolder != "" {
-			// A single custom folder hosts one repo; store the absolute path.
-			repo.CloneFolder = cloneFolder
-		}
-		if err := a.cfg.AddRepo(sourceKey, name, repo); err != nil {
-			return err
-		}
+	if err := ops.AddDiscoveredReposToFolder(a.cfg, key, repoNames, cloneFolder); err != nil {
+		return err
 	}
 	return a.saveConfig()
 }

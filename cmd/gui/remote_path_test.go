@@ -66,9 +66,24 @@ func TestRemotePathValidation(t *testing.T) {
 
 	path := seedConfig(t, "gitbox.json", nil)
 	a := windowOn(t, path)
-	for _, bad := range []string{"relative/root", "../up", "/a\nb"} {
+	for _, bad := range []string{"relative/root", "../up", "/a\nb", filepath.Join(dir, "bad\x00name")} {
 		if err := a.AddRoot(bad); !codeIs(err, string(remotePathInvalid)) {
 			t.Errorf("AddRoot(%q) = %v, want remote_path_invalid", bad, err)
+		}
+		if err := a.InitRoot(bad); !codeIs(err, string(remotePathInvalid)) {
+			t.Errorf("InitRoot(%q) = %v, want remote_path_invalid", bad, err)
+		}
+		if err := a.SetDefaultRoot(bad); !codeIs(err, string(remotePathInvalid)) {
+			t.Errorf("SetDefaultRoot(%q) = %v, want remote_path_invalid", bad, err)
+		}
+		if _, err := a.RemoveRoot(bad, false); !codeIs(err, string(remotePathInvalid)) {
+			t.Errorf("RemoveRoot(%q) = %v, want remote_path_invalid", bad, err)
+		}
+		_, invalid := hostPath(bad)
+		for _, req := range []AdoptRequestDTO{{Path: bad}, {Path: dir, WorkspaceRoot: bad}} {
+			if got := a.AdoptClones([]AdoptRequestDTO{req}); got.Error != userMsg(invalid) {
+				t.Errorf("invalid adoption path = %q, want %q", got.Error, userMsg(invalid))
+			}
 		}
 		if err := a.IgnoreClone(bad, true); !codeIs(err, string(remotePathInvalid)) {
 			t.Errorf("IgnoreClone(%q) = %v, want remote_path_invalid", bad, err)

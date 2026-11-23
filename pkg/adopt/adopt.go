@@ -12,6 +12,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/pathkey"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 	"github.com/LuisPalacios/gitbox/pkg/workspace"
 )
@@ -80,14 +81,14 @@ func FindOrphansIn(cfg *config.Config, extraRoots []string) ([]OrphanRepo, error
 	for _, cp := range containerPaths {
 		for _, np := range git.FindNestedRepos(cp, depth) {
 			candidates = append(candidates, np)
-			nestedSet[normPath(np)] = true
+			nestedSet[pathkey.Compare(np)] = true
 		}
 	}
 	// The folders a container's workspace file lists are nested clones at
 	// any depth.
 	for _, np := range workspaceClones(cfg) {
 		candidates = append(candidates, np)
-		nestedSet[normPath(np)] = true
+		nestedSet[pathkey.Compare(np)] = true
 	}
 	relRoots := append(append([]string{}, roots...), containerPaths...)
 	return inspectOrphans(cfg, dedupPaths(candidates), relRoots, nestedSet), nil
@@ -117,11 +118,11 @@ func inspectOrphans(cfg *config.Config, candidates, relRoots []string, nestedSet
 	var orphans []OrphanRepo
 	for _, repoPath := range candidates {
 		absPath, _ := filepath.Abs(repoPath)
-		if tracked[normPath(absPath)] {
+		if tracked[pathkey.Compare(absPath)] {
 			continue
 		}
 
-		o := OrphanRepo{Path: absPath, Nested: nestedSet[normPath(absPath)]}
+		o := OrphanRepo{Path: absPath, Nested: nestedSet[pathkey.Compare(absPath)]}
 		o.RelPath = relToRoots(relRoots, absPath)
 
 		// Read origin remote URL.
@@ -174,12 +175,12 @@ func inspectOrphans(cfg *config.Config, candidates, relRoots []string, nestedSet
 			sourceFolder := src.EffectiveFolder(srcKey)
 			o.ExpectedRoot = cfg.SourceRoot(srcKey)
 			if root != "" {
-				if inPlace := status.ResolveRepoPath(root, sourceFolder, o.RepoKey, config.Repo{}); normPath(inPlace) == normPath(absPath) {
+				if inPlace := status.ResolveRepoPath(root, sourceFolder, o.RepoKey, config.Repo{}); pathkey.Compare(inPlace) == pathkey.Compare(absPath) {
 					o.ExpectedRoot = root
 				}
 			}
 			o.ExpectedPath = status.ResolveRepoPath(o.ExpectedRoot, sourceFolder, o.RepoKey, config.Repo{})
-			o.NeedsRelocate = normPath(absPath) != normPath(o.ExpectedPath)
+			o.NeedsRelocate = pathkey.Compare(absPath) != pathkey.Compare(o.ExpectedPath)
 		}
 
 		orphans = append(orphans, o)
@@ -203,7 +204,7 @@ func gatherRoots(configured, callerExtra []string) []string {
 			return
 		}
 		abs := filepath.Clean(config.ExpandTilde(p))
-		key := normPath(abs)
+		key := pathkey.Compare(abs)
 		if seen[key] {
 			return
 		}
@@ -269,7 +270,7 @@ func dedupPaths(paths []string) []string {
 	seen := make(map[string]bool, len(paths))
 	out := paths[:0]
 	for _, p := range paths {
-		k := normPath(p)
+		k := pathkey.Compare(p)
 		if seen[k] {
 			continue
 		}
@@ -283,31 +284,59 @@ func dedupPaths(paths []string) []string {
 // (so nested clones display relative to their container), or the absolute path
 // when no root contains it.
 func relToRoots(roots []string, absPath string) string {
-	bestRoot := ""
-	for _, r := range roots {
-		if r == "" {
+	child := pathkey.Compare(absPath)
+	bestRoot, bestRel := "", ""
+	for _, root := range roots {
+		if root == "" {
 			continue
 		}
-		if (normPath(absPath) == normPath(r) || isPathUnder(absPath, r)) && len(r) > len(bestRoot) {
-			bestRoot = r
+		parent := pathkey.Compare(root)
+		if len(parent) <= len(bestRoot) {
+			continue
+		}
+		if rel, ok := relativeFolder(parent, child, absPath); ok {
+			bestRoot, bestRel = parent, rel
 		}
 	}
 	if bestRoot != "" {
-		if rel, err := filepath.Rel(bestRoot, absPath); err == nil {
-			return filepath.ToSlash(rel)
-		}
+		return filepath.ToSlash(bestRel)
 	}
 	return filepath.ToSlash(absPath)
 }
 
+// relativeFolder counts components in the physical comparison keys but
+// keeps the spelling of the displayed path whenever its tail matches.
+func relativeFolder(parent, child, original string) (string, bool) {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	if rel == "." {
+		return rel, true
+	}
+	tail := filepath.Clean(original)
+	var result string
+	for remaining := rel; remaining != "."; remaining = filepath.Dir(remaining) {
+		part := filepath.Base(remaining)
+		name := filepath.Base(tail)
+		if !strings.EqualFold(name, part) {
+			// A symlink can have a different name from its target.
+			return rel, true
+		}
+		result = filepath.Join(name, result)
+		tail = filepath.Dir(tail)
+	}
+	return result, true
+}
+
 // isPathUnder reports whether child is strictly inside parent.
 func isPathUnder(child, parent string) bool {
-	c := normPath(child)
-	p := normPath(parent)
+	c := pathkey.Compare(child)
+	p := pathkey.Compare(parent)
 	if c == p {
 		return false
 	}
-	return strings.HasPrefix(c, p+"/")
+	return strings.HasPrefix(c, strings.TrimSuffix(p, string(filepath.Separator))+string(filepath.Separator))
 }
 
 // trackedPaths builds a set of normalized absolute paths for all configured repos.
@@ -316,7 +345,7 @@ func trackedPaths(cfg *config.Config) map[string]bool {
 	for _, srcKey := range cfg.OrderedSourceKeys() {
 		src := cfg.Sources[srcKey]
 		for _, repoKey := range src.OrderedRepoKeys() {
-			paths[normPath(status.RepoPath(cfg, srcKey, repoKey, src.Repos[repoKey]))] = true
+			paths[pathkey.Compare(status.RepoPath(cfg, srcKey, repoKey, src.Repos[repoKey]))] = true
 		}
 	}
 	return paths
@@ -398,7 +427,7 @@ func matchAccount(cfg *config.Config, mc MatchContext, credUsers []string) match
 	// still the source folder name. That's the signal we want.
 	repoSourceFolder := ""
 	if mc.RepoPath != "" && mc.ParentFolder != "" {
-		if rel, err := filepath.Rel(mc.ParentFolder, mc.RepoPath); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+		if rel, ok := relativeFolder(pathkey.Compare(mc.ParentFolder), pathkey.Compare(mc.RepoPath), mc.RepoPath); ok && rel != "." {
 			parts := strings.Split(filepath.ToSlash(rel), "/")
 			if len(parts) > 0 {
 				repoSourceFolder = parts[0]
@@ -449,7 +478,7 @@ func matchAccount(cfg *config.Config, mc MatchContext, credUsers []string) match
 				if src.Account != acctKey {
 					continue
 				}
-				if strings.EqualFold(repoSourceFolder, src.EffectiveFolder(sk)) {
+				if config.SamePath(filepath.Join(mc.ParentFolder, repoSourceFolder), filepath.Join(mc.ParentFolder, src.EffectiveFolder(sk))) {
 					score += parentFolderScore
 					break
 				}
@@ -537,11 +566,4 @@ func HostnameFromURL(rawURL string) string {
 		return h
 	}
 	return rawURL
-}
-
-// normPath normalizes a path for comparison (lowercase on Windows, clean).
-func normPath(p string) string {
-	p = filepath.Clean(p)
-	// Case-insensitive comparison on Windows.
-	return strings.ToLower(filepath.ToSlash(p))
 }

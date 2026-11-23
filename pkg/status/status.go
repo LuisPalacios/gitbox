@@ -270,62 +270,12 @@ func RepoRootOffline(cfg *config.Config, sourceKey string, repo config.Repo) boo
 	return root != "" && !RootOnline(root)
 }
 
-// ResolveRepoPath computes the clone path for a repository.
-//
-// Path structure: root / sourceFolder / idFolder / cloneFolder
-//
-// Repo key format: "org/repo" (e.g., "myorg/my-project")
-//   - idFolder defaults to "org" (part before /)
-//   - cloneFolder defaults to "repo" (part after /)
-//
-// Overrides:
-//   - repo.IdFolder overrides the 2nd level (org) dir
-//   - repo.CloneFolder overrides the 3rd level (clone) dir
-//   - If cloneFolder is absolute (starts with / or ~), it replaces the entire
-//     path; one starting with ../ replaces it too, relative to the root
-//
-// root is the repo's root, already tilde-expanded (see RepoPath).
+// ResolveRepoPath resolves the configured clone layout and folder overrides.
 func ResolveRepoPath(root, sourceFolder, repoName string, repo config.Repo) string {
-	// If clone_folder is absolute, it replaces everything.
-	if repo.CloneFolder != "" {
-		expanded := config.ExpandTilde(repo.CloneFolder)
-		if filepath.IsAbs(expanded) || strings.HasPrefix(repo.CloneFolder, "~") {
-			return expanded
-		}
-		if strings.HasPrefix(repo.CloneFolder, "../") {
-			return filepath.Join(root, repo.CloneFolder)
-		}
-	}
-
-	// Split repo key into org and repo parts.
-	orgPart, repoPart := splitRepoKey(repoName)
-
-	// Apply overrides.
-	if repo.IdFolder != "" {
-		orgPart = repo.IdFolder
-	}
-	if repo.CloneFolder != "" {
-		repoPart = repo.CloneFolder
-	}
-
-	if orgPart != "" {
-		return filepath.Join(root, sourceFolder, orgPart, repoPart)
-	}
-	return filepath.Join(root, sourceFolder, repoPart)
+	return config.ResolveRepoPath(root, sourceFolder, repoName, repo)
 }
 
-// RepoPath returns where a repo of a source lives on disk: its root, then
-// the standard layout and overrides of ResolveRepoPath.
+// RepoPath returns where a tracked clone lives on disk.
 func RepoPath(cfg *config.Config, sourceKey, repoKey string, repo config.Repo) string {
-	src := cfg.Sources[sourceKey]
-	return ResolveRepoPath(cfg.RepoRoot(sourceKey, repo), src.EffectiveFolder(sourceKey), repoKey, repo)
-}
-
-// splitRepoKey splits "org/repo" into ("org", "repo").
-// If no slash, returns ("", repoName).
-func splitRepoKey(repoName string) (string, string) {
-	if before, after, ok := strings.Cut(repoName, "/"); ok {
-		return before, after
-	}
-	return "", repoName
+	return config.RepoPath(cfg, sourceKey, repoKey, repo)
 }

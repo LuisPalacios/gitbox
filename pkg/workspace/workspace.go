@@ -11,11 +11,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/pathkey"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 )
 
@@ -214,7 +214,7 @@ func Inspect(cfg *config.Config) Tree {
 	for _, srcKey := range cfg.OrderedSourceKeys() {
 		src := cfg.Sources[srcKey]
 		for _, repoKey := range src.OrderedRepoKeys() {
-			byPath[normPath(status.RepoPath(cfg, srcKey, repoKey, src.Repos[repoKey]))] = status.RepoRef{Source: srcKey, Repo: repoKey}
+			byPath[pathkey.Compare(status.RepoPath(cfg, srcKey, repoKey, src.Repos[repoKey]))] = status.RepoRef{Source: srcKey, Repo: repoKey}
 		}
 	}
 	var out Tree
@@ -238,13 +238,13 @@ func Inspect(cfg *config.Config) Tree {
 					out.Placeholders = append(out.Placeholders, row)
 					continue
 				}
-				ref, tracked := byPath[normPath(m.Path)]
+				ref, tracked := byPath[pathkey.Compare(m.Path)]
 				if !tracked && m.ScanPath != "" {
-					ref, tracked = byPath[normPath(m.ScanPath)]
+					ref, tracked = byPath[pathkey.Compare(m.ScanPath)]
 				}
 				if tracked {
 					out.Members = append(out.Members, ref)
-				} else if m.missing && !insideClone(normPath(m.Path), normPath(dir), byPath) {
+				} else if m.missing && !insideClone(pathkey.Compare(m.Path), pathkey.Compare(dir), byPath) {
 					out.Placeholders = append(out.Placeholders, row)
 				}
 			}
@@ -303,7 +303,7 @@ func Members(dir, file string) ([]Member, []Diagnostic) {
 		}
 		abs = filepath.Clean(abs)
 		rel, inside := relativeInside(dir, abs)
-		n := normPath(abs)
+		n := pathkey.Compare(abs)
 		if !inside || seen[n] {
 			continue
 		}
@@ -430,14 +430,4 @@ func stripJSONC(in []byte) []byte {
 		}
 	}
 	return out
-}
-
-// normPath cleans a path for comparison, case-folded on case-insensitive
-// filesystems (Windows, macOS default), like status.ComputeNesting.
-func normPath(p string) string {
-	p = filepath.Clean(p)
-	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
-		p = strings.ToLower(p)
-	}
-	return p
 }

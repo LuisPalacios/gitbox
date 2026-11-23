@@ -497,6 +497,8 @@ Gitbox keeps clones under one or more **clone roots**, for example `~/00.git` fo
 
 Open **Settings**, then **Change** next to **Clone roots**, to manage them. Each row shows the folder, how many repos live under it, and a **Default** badge on the default one. A root that isn't on disk shows struck through.
 
+If two tracked entries resolve to the same folder, **Needs attention** lists both names. Check their clone folders and correct the conflicting entry. Gitbox keeps both records and their original paths.
+
 - **+ Add root…** — pick a folder; Gitbox creates it if it doesn't exist.
 - **Make default** — new accounts clone into this root from now on. Accounts that already use the old default stay on it, and no clone moves.
 - **✕** — removes a root. When repos still live under it, Gitbox asks whether to forget them; their files stay on disk.

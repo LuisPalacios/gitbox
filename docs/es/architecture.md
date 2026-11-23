@@ -85,6 +85,8 @@ Cada nivel puede sobrescribirse:
 
 Cambiar la raíz de un source o la raíz predeterminada fija la raíz por la que ya se resuelve cada clon existente, así que ninguna ruta de clon se mueve. Los clones fuera de este árbol (clones anidados dentro de un contenedor multi-repo, clones encontrados fuera de la estructura estándar) siempre llevan un `clone_folder` absoluto, así que Gitbox nunca los mueve.
 
+Uso `pkg/pathkey` para comparar las rutas resueltas de los clones según el sistema de archivos de cada directorio. Windows ignora las diferencias entre mayúsculas y minúsculas, macOS consulta el volumen y Linux comprueba el directorio. Una carpeta que falta hereda la regla de su antecesor existente más cercano. Gitbox guarda la grafía original, rechaza un destino inaccesible o una colisión antes de ubicar, adoptar o volver a vincular un clon, y muestra las colisiones existentes en el registro y en **Requiere atención**.
+
 ---
 
 ## 3. Diseño de componentes

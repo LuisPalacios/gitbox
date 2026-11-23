@@ -158,6 +158,11 @@ type App struct {
 	repoFetches        map[string]*repoFetchFlight
 	credentialRuns     map[string]*credentialFlight
 
+	// Cache collision checks for the configuration shown in Needs attention.
+	pathAuditBase config.FileRevision
+	pathConflicts []config.PathConflict
+	pathsAudited  bool
+
 	// tasks owns the periodic checks for this window or headless host.
 	tasks             taskRegistry
 	windowTasksOnce   sync.Once
@@ -501,6 +506,9 @@ type ConfigDTO struct {
 	Accounts map[string]config.Account `json:"accounts"`
 	Sources  map[string]SourceDTO      `json:"sources"`
 	Mirrors  map[string]MirrorDTO      `json:"mirrors"`
+
+	// PathConflicts lists configured entries that share a folder on this host.
+	PathConflicts []config.PathConflict `json:"pathConflicts,omitempty"`
 }
 
 // SourceDTO mirrors config.Source but exposes repos as a map.
@@ -574,12 +582,16 @@ func (a *App) getConfigLocal() (ConfigDTO, error) {
 // configDTO detaches the response from mutable config before Wails serializes it.
 // Caller holds a.mu.
 func (a *App) configDTO() (ConfigDTO, error) {
+	if !a.pathsAudited || a.pathAuditBase != a.cfgBase {
+		a.auditClonePaths()
+	}
 	sources := make(map[string]SourceDTO, len(a.cfg.Sources))
 	for key, src := range a.cfg.Sources {
 		sources[key] = SourceDTO{Account: src.Account, Folder: src.Folder, Repos: src.Repos, RepoOrder: src.OrderedRepoKeys()}
 	}
 	dto := ConfigDTO{Version: a.cfg.Version, Global: a.cfg.Global, Accounts: a.cfg.Accounts,
 		Sources: sources, Mirrors: buildMirrorsDTO(a.cfg)}
+	dto.PathConflicts = a.pathConflicts
 	data, err := json.Marshal(dto)
 	if err != nil {
 		return ConfigDTO{}, fmt.Errorf("copying config: %w", err)
@@ -676,8 +688,24 @@ func (a *App) reloadConfigLocal() (ConfigDTO, error) {
 	a.cfg = cfg
 	a.cfgBase = base
 	a.cfgLoaded, a.cfgLoadError = true, ""
+	a.pathsAudited = false
 
 	return a.configDTO()
+}
+
+// auditClonePaths records changes to the collisions visible in Needs attention.
+func (a *App) auditClonePaths() {
+	conflicts := a.cfg.PathConflicts()
+	if len(conflicts) > 0 && !slices.Equal(conflicts, a.pathConflicts) {
+		out := a.hostLog
+		if out == nil {
+			out = os.Stderr
+		}
+		for _, conflict := range conflicts {
+			fmt.Fprintf(out, "warning: folder collision between %q and %q; see Needs attention\n", userText(conflict.First), userText(conflict.Second))
+		}
+	}
+	a.pathConflicts, a.pathAuditBase, a.pathsAudited = conflicts, a.cfgBase, true
 }
 
 func buildMirrorsDTO(cfg *config.Config) map[string]MirrorDTO {
@@ -1835,8 +1863,12 @@ func (a *App) cloneRepoRun(ctx context.Context, sourceKey, repoKey, root string)
 		_, err = hostPath(root)
 	}
 	a.mu.Lock()
-	if err == nil && root != "" && a.cfg.PlaceRepo(sourceKey, repoKey, root) {
-		err = a.saveConfig()
+	if err == nil && root != "" {
+		var changed bool
+		changed, err = a.cfg.PlaceRepoChecked(sourceKey, repoKey, root)
+		if changed && err == nil {
+			err = a.saveConfig()
+		}
 	}
 	var plan ops.ClonePlan
 	if err == nil {

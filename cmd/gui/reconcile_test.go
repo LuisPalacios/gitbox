@@ -167,7 +167,7 @@ func TestReconcile_AdoptsDuringUnrelatedEdits(t *testing.T) {
 			close(done)
 			synctest.Wait()
 			if result.Error != "" || result.Adopted != 1 || scans != 2 || len(result.Skipped) != 1 ||
-				result.Skipped[0] != (reconcile.Skip{Path: first, Reason: "alreadyTracked"}) {
+				result.Skipped[0] != (reconcile.Skip{Path: first, Reason: "pathCollision"}) {
 				t.Fatalf("scans=%d result=%+v", scans, result)
 			}
 			reloaded, err := config.Load(cfgPath)

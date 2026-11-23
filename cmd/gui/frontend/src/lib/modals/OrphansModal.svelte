@@ -127,7 +127,7 @@
         {#if !workspaceSearch && skipped.length}
           {#each skipped as row (row.path)}
             <div class="clone">
-              <div class="clone-name">{$t('unmatched.changed')}</div>
+              <div class="clone-name">{$t(row.reason === 'pathCollision' ? 'error.config.path_collision' : row.reason === 'pathUnavailable' ? 'error.config.path_unavailable' : 'unmatched.changed')}</div>
               <div class="clone-path" title={row.path}>{row.path}</div>
             </div>
           {/each}

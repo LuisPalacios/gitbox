@@ -131,6 +131,7 @@ export interface ConfigDTO {
   accounts: Record<string, Account>;
   sources: Record<string, SourceDTO>;
   mirrors: Record<string, MirrorDTO>;
+  pathConflicts?: { first: string; second: string }[];
 }
 
 // CollapsedState is the GUI's layout state: folded source keys and

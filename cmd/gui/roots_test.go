@@ -1,13 +1,42 @@
 package main
 
 import (
+	"bytes"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 )
 
 func TestRoots_AddDefaultRemove(t *testing.T) {
+	t.Run("existing collision in Needs attention", func(t *testing.T) {
+		a, cfgPath := newWorkspaceTestApp(t)
+		dest := filepath.Join(t.TempDir(), "shared")
+		for rk, repo := range a.cfg.Sources["github-alice"].Repos {
+			repo.CloneFolder = dest
+			a.cfg.Sources["github-alice"].Repos[rk] = repo
+		}
+		if err := config.Save(a.cfg, cfgPath); err != nil {
+			t.Fatal(err)
+		}
+		var logs bytes.Buffer
+		a.hostLog = &logs
+		dto, err := a.reloadConfigLocal()
+		if err != nil || len(dto.PathConflicts) != 1 {
+			t.Fatalf("conflicts = %v, error = %v", dto.PathConflicts, err)
+		}
+		for _, key := range []string{"github-alice/team/backend", "github-alice/team/frontend"} {
+			clash := dto.PathConflicts[0]
+			if (clash.First != key && clash.Second != key) || !strings.Contains(logs.String(), key) {
+				t.Fatalf("%s absent from %+v or %s", key, clash, logs.String())
+			}
+		}
+		before := logs.Len()
+		if _, err := a.getConfigLocal(); err != nil || logs.Len() != before {
+			t.Fatalf("repeated snapshot: %v, logs = %s", err, logs.String())
+		}
+	})
 	a, cfgPath := newWorkspaceTestApp(t)
 	first := a.cfg.Global.Roots[0]
 	second := filepath.Join(t.TempDir(), "second")

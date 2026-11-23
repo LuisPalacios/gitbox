@@ -1,6 +1,7 @@
 package reconcile
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -141,7 +142,11 @@ func TestPlan_AdoptsConfidentClonesInPlace(t *testing.T) {
 				cfg.Sources["other"].Repos[key] = config.Repo{}
 			}
 			done := Apply(cfg, plan)
-			if len(done.Adopted) != 0 || len(done.Skipped) != 1 || done.Skipped[0].Reason != "alreadyTracked" {
+			want := "pathCollision"
+			if key == "ME/FIRST" {
+				want = "alreadyTracked"
+			}
+			if len(done.Adopted) != 0 || len(done.Skipped) != 1 || done.Skipped[0].Reason != want {
 				t.Fatalf("key=%s result=%+v", key, done)
 			}
 		}
@@ -202,6 +207,19 @@ func TestPlan_RelinksAMovedClone(t *testing.T) {
 		t.Errorf("repos = %v, want the one tracked repo, not a duplicate", cfg.Sources["github-me"].Repos)
 	}
 
+	t.Run("another repo claimed the relink destination", func(t *testing.T) {
+		cfg := testConfig(root)
+		plan, err := Plan(cfg)
+		if err != nil || len(plan.Relink) != 1 {
+			t.Fatalf("plan = %+v, %v", plan, err)
+		}
+		cfg.Sources["github-me"].Repos["me/another"] = config.Repo{CloneFolder: moved}
+		done := Apply(cfg, plan)
+		if done.Relinked != 0 || len(done.Skipped) != 1 || done.Skipped[0].Reason != "pathCollision" ||
+			cfg.Sources["github-me"].Repos["me/tracked"].CloneFolder != "" {
+			t.Fatalf("relink collision = %+v", done)
+		}
+	})
 	t.Run("an edit to the old location wins", func(t *testing.T) {
 		cfg := testConfig(root)
 		plan, err := Plan(cfg)
@@ -278,6 +296,12 @@ func TestAdopt_IntoAPickedAccount(t *testing.T) {
 	if r := cfg.Sources["github-me"].Repos["torvalds/linux"]; r.CloneFolder != path {
 		t.Errorf("adopted repo = %+v, want clone_folder %s", r, path)
 	}
+	other := res.Unmatched[0].OrphanRepo
+	other.RepoKey = "someone/another"
+	if _, err := Adopt(cfg, other, "github-me"); !errors.Is(err, config.ErrPathCollision) {
+		t.Fatalf("manual adoption at tracked path = %v", err)
+	}
+
 }
 
 func equal(a, b map[string]string) bool {

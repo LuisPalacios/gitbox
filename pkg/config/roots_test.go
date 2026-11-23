@@ -2,7 +2,10 @@ package config
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -33,6 +36,7 @@ func repoRoots(c *Config) map[string]string {
 }
 
 func TestRoots_Resolution(t *testing.T) {
+	t.Run("deduplicate roots", testAddDedup)
 	c := rootsConfig()
 	if got := c.DefaultRoot(); got != "/r1" {
 		t.Errorf("default = %q", got)
@@ -48,7 +52,7 @@ func TestRoots_Resolution(t *testing.T) {
 	}
 }
 
-func TestRoots_AddDedup(t *testing.T) {
+func testAddDedup(t *testing.T) {
 	c := rootsConfig()
 	if c.AddRoot("/r1/") || c.AddRoot("  ") {
 		t.Error("an equivalent or blank root must not be added")
@@ -150,6 +154,7 @@ func TestParse_RequiresARoot(t *testing.T) {
 }
 
 func TestRoots_PlaceRepo(t *testing.T) {
+	t.Run("collision", testCloneFolderCollisions)
 	c := rootsConfig()
 	if !c.PlaceRepo("one", "org/x", "/r2") {
 		t.Fatal("placing into another root must change the config")
@@ -167,4 +172,63 @@ func TestRoots_PlaceRepo(t *testing.T) {
 	if c.PlaceRepo("one", "org/y", "/r2") {
 		t.Error("placing again must be a no-op")
 	}
+}
+
+func testCloneFolderCollisions(t *testing.T) {
+	root, other := t.TempDir(), t.TempDir()
+	c := rootsConfig()
+	c.Global.Roots = []string{root}
+	src := c.Sources["two"]
+	target := filepath.Join(other, "one", "org", "x")
+	src.Repos["org/z"] = Repo{CloneFolder: target}
+	c.Sources["two"] = src
+	before, err := c.Clone()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.PlaceRepoChecked("one", "org/x", other); !errors.Is(err, ErrPathCollision) {
+		t.Fatalf("placement = %v", err)
+	}
+	if !reflect.DeepEqual(c, before) {
+		t.Fatal("collision changed stored configuration")
+	}
+	if c.PlaceRepo("one", "org/x", other) {
+		t.Fatal("compatibility API accepted collision")
+	}
+	t.Run("loaded conflict keeps both entries", func(t *testing.T) {
+		src := c.Sources["one"]
+		src.Repos["org/x"] = Repo{CloneFolder: target}
+		c.Sources["one"] = src
+		data, err := Marshal(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := Parse(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []PathConflict{{First: "one/org/x", Second: "two/org/z"}}
+		if !reflect.DeepEqual(loaded.PathConflicts(), want) {
+			t.Fatalf("collisions = %+v", loaded.PathConflicts())
+		}
+		for _, key := range []string{"one", "two"} {
+			if _, ok := loaded.Sources[key]; !ok {
+				t.Fatalf("source %s gone", key)
+			}
+		}
+	})
+	t.Run("alias of root", func(t *testing.T) {
+		alias := filepath.Join(t.TempDir(), "alias")
+		if err := os.Symlink(root, alias); err != nil && runtime.GOOS == "windows" {
+			t.Skip(err)
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		if added, err := c.AddRootChecked(alias); added || !errors.Is(err, ErrPathCollision) {
+			t.Fatalf("add root alias = %v, %v", added, err)
+		}
+		if err := c.SetSourceRoot("one", alias); !errors.Is(err, ErrPathCollision) {
+			t.Fatalf("set source root = %v", err)
+		}
+	})
 }

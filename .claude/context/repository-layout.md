@@ -14,6 +14,7 @@ cmd/
     serverbin/            The gitbox-server binaries GitboxApp embeds with -tags serverbin, pinned by SHA-256; gen/ is the build tool that compresses them and writes the pins
 pkg/                      Shared Go library
   ops/                    Account, credential, clone and discovery service layer the GUI calls (+ TestScenario_FullLifecycle)
+  pathkey/                Native filesystem comparison keys for local paths
   config/                 Config v5 model (clone roots in roots.go), load/save, v2→v3→v4→v5 migration
   credential/             Credential verification (GCM, SSH, token); global GCM helper check accepts any helper resolving to git-credential-manager (short name or absolute path)
   rpc/                    The JSON-RPC protocol between GitboxApp and gitbox-server: frames, handshake, server, client

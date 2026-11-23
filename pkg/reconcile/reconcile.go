@@ -16,6 +16,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/adopt"
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/pathkey"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 	"github.com/LuisPalacios/gitbox/pkg/workspace"
 )
@@ -287,13 +288,14 @@ func Apply(cfg *config.Config, res Result) Applied {
 	for sk, source := range cfg.Sources {
 		for key, repo := range source.Repos {
 			keys[strings.ToLower(key)]++
-			paths[pathKey(status.RepoPath(cfg, sk, key, repo))] = true
+			paths[pathkey.Compare(status.RepoPath(cfg, sk, key, repo))] = true
 		}
 	}
 	for _, r := range res.Relink {
 		src, exists := cfg.Sources[r.Source]
 		repo, tracked := src.Repos[r.Repo]
 		acct, accountExists := cfg.Accounts[src.Account]
+		target := pathkey.Of(r.Path)
 		reason := ""
 		switch {
 		case !exists || !accountExists || src.Account != r.expect.account || !adopt.HostMatches(acct, r.host):
@@ -302,7 +304,11 @@ func Apply(cfg *config.Config, res Result) Applied {
 			reason = "renamed"
 		case cfg.IsIgnoredClone(r.Path) || repoLocation(cfg, r.Source, r.Repo, repo) != r.expect:
 			reason = "moved"
-		case paths[pathKey(r.Path)] || keys[strings.ToLower(r.Repo)] != r.keyOwners:
+		case paths[target.Cmp]:
+			reason = "pathCollision"
+		case target.Access == pathkey.Unknown:
+			reason = "pathUnavailable"
+		case keys[strings.ToLower(r.Repo)] != r.keyOwners:
 			reason = "alreadyTracked"
 		}
 		if reason != "" {
@@ -310,7 +316,7 @@ func Apply(cfg *config.Config, res Result) Applied {
 			continue
 		}
 		src.Repos[r.Repo] = locate(cfg, r.Source, r.Repo, r.Path, repo)
-		paths[pathKey(r.Path)] = true
+		paths[target.Cmp] = true
 		done.Relinked++
 	}
 	var pending []Adoption
@@ -319,9 +325,14 @@ func Apply(cfg *config.Config, res Result) Applied {
 		if source == "" {
 			source = o.MatchedAccount
 		}
+		target := pathkey.Of(o.Path)
 		reason := ""
 		switch {
-		case keys[strings.ToLower(o.RepoKey)] != 0 || paths[pathKey(o.Path)]:
+		case target.Access == pathkey.Unknown:
+			reason = "pathUnavailable"
+		case paths[target.Cmp]:
+			reason = "pathCollision"
+		case keys[strings.ToLower(o.RepoKey)] != 0:
 			reason = "alreadyTracked"
 		case !o.StillMatches(cfg):
 			reason = "sourceGone"
@@ -333,11 +344,11 @@ func Apply(cfg *config.Config, res Result) Applied {
 			continue
 		}
 		keys[strings.ToLower(o.RepoKey)]++
-		paths[pathKey(o.Path)] = true
+		paths[target.Cmp] = true
 		pending = append(pending, o)
 	}
 	for _, o := range pending {
-		source, err := Adopt(cfg, o.OrphanRepo, o.MatchedAccount)
+		source, err := adoptAtValidatedPath(cfg, o.OrphanRepo, o.MatchedAccount)
 		if err != nil {
 			done.Skipped = append(done.Skipped, Skip{Path: o.Path, Reason: "sourceGone"})
 			continue
@@ -347,15 +358,18 @@ func Apply(cfg *config.Config, res Result) Applied {
 	return done
 }
 
-func pathKey(path string) string {
-	return strings.ToLower(filepath.ToSlash(filepath.Clean(path)))
-}
-
 // Adopt adds a found clone to the config under accountKey, in place, and
 // returns the source it went to: the matched one when accountKey is the
 // matched account, else the account's first source, else a new source
 // keyed like the account.
 func Adopt(cfg *config.Config, o adopt.OrphanRepo, accountKey string) (string, error) {
+	if err := cfg.CheckClonePath("", "", o.Path); err != nil {
+		return "", err
+	}
+	return adoptAtValidatedPath(cfg, o, accountKey)
+}
+
+func adoptAtValidatedPath(cfg *config.Config, o adopt.OrphanRepo, accountKey string) (string, error) {
 	if _, ok := cfg.Accounts[accountKey]; !ok {
 		return "", fmt.Errorf("account %q not found", accountKey)
 	}

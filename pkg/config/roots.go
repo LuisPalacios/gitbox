@@ -2,8 +2,9 @@ package config
 
 import (
 	"errors"
-	"path/filepath"
 	"strings"
+
+	"github.com/LuisPalacios/gitbox/pkg/pathkey"
 )
 
 // Roots (issue #149): global.roots is the ordered list of folders gitbox
@@ -19,14 +20,9 @@ var ErrRootInUse = errors.New("root still holds tracked clones")
 // ErrLastRoot reports an attempt to remove the only root.
 var ErrLastRoot = errors.New("gitbox needs at least one root")
 
-// rootKey normalizes a root path for equality comparison.
-func rootKey(p string) string {
-	return strings.ToLower(filepath.ToSlash(filepath.Clean(ExpandTilde(strings.TrimSpace(p)))))
-}
-
 // SameRoot reports whether two root paths name the same folder.
 func SameRoot(a, b string) bool {
-	return rootKey(a) == rootKey(b)
+	return pathkey.Compare(a) == pathkey.Compare(b)
 }
 
 // DefaultRoot returns the first root, tilde-expanded, or "" when none is set.
@@ -59,9 +55,9 @@ func (c *Config) HasRoot(path string) bool {
 }
 
 func (c *Config) rootIndex(path string) int {
-	want := rootKey(path)
+	want := pathkey.Compare(path)
 	for i, r := range c.Global.Roots {
-		if rootKey(r) == want {
+		if pathkey.Compare(r) == want {
 			return i
 		}
 	}
@@ -86,23 +82,37 @@ func (c *Config) RootRefs(path string) []string {
 // AddRoot appends path unless an equivalent root is already listed. Empty
 // input is a no-op. Returns true when the list changed.
 func (c *Config) AddRoot(path string) bool {
+	changed, _ := c.AddRootChecked(path)
+	return changed
+}
+
+// AddRootChecked reports a collision when a different configured spelling already owns the root.
+func (c *Config) AddRootChecked(path string) (bool, error) {
 	path = strings.TrimSpace(path)
-	if path == "" || c.HasRoot(path) {
-		return false
+	if path == "" {
+		return false, nil
+	}
+	if listed, err := c.checkRoot(path); err != nil || listed {
+		return false, err
 	}
 	c.Global.Roots = append(c.Global.Roots, path)
-	return true
+	return true, nil
 }
 
 // SetSourceRoot makes root the one a source clones into next. Repos that
 // followed the source's previous root are pinned to it first, so they stay
 // where they are on disk. root is added to the list when missing.
-func (c *Config) SetSourceRoot(sourceKey, root string) {
+func (c *Config) SetSourceRoot(sourceKey, root string) error {
 	src, ok := c.Sources[sourceKey]
-	if !ok || SameRoot(c.SourceRoot(sourceKey), root) {
-		return
+	if !ok || strings.TrimSpace(root) == "" {
+		return nil
 	}
-	c.AddRoot(root)
+	if _, err := c.AddRootChecked(root); err != nil {
+		return err
+	}
+	if SameRoot(c.SourceRoot(sourceKey), root) {
+		return nil
+	}
 	prev := c.ListedRoot(c.SourceRoot(sourceKey))
 	for rk, repo := range src.Repos {
 		if repo.Root == "" {
@@ -122,6 +132,7 @@ func (c *Config) SetSourceRoot(sourceKey, root string) {
 		}
 	}
 	c.Sources[sourceKey] = src
+	return nil
 }
 
 // SetDefaultRoot moves path to the front of the list. Sources that followed
@@ -160,6 +171,10 @@ func (c *Config) RemoveRoot(path string, forget bool) ([]string, error) {
 	if i < 0 {
 		return nil, nil
 	}
+	// An ambiguous legacy root must never forget another entry's clones.
+	if _, err := c.checkRoot(c.Global.Roots[i]); errors.Is(err, ErrPathCollision) {
+		return nil, err
+	}
 	if len(c.Global.Roots) == 1 {
 		return nil, ErrLastRoot
 	}
@@ -195,16 +210,31 @@ func (c *Config) ListedRoot(path string) string {
 // picked: the source remembers it for its next clone (SetSourceRoot) and the
 // repo drops any pin so it follows. Returns true when the config changed.
 func (c *Config) PlaceRepo(sourceKey, repoKey, root string) bool {
+	changed, _ := c.PlaceRepoChecked(sourceKey, repoKey, root)
+	return changed
+}
+
+// PlaceRepoChecked returns the reason a requested placement was refused.
+func (c *Config) PlaceRepoChecked(sourceKey, repoKey, root string) (bool, error) {
 	src, ok := c.Sources[sourceKey]
 	if !ok {
-		return false
+		return false, nil
 	}
 	if _, ok := src.Repos[repoKey]; !ok || strings.TrimSpace(root) == "" {
-		return false
+		return false, nil
+	}
+	dest := ResolveRepoPath(ExpandTilde(root), src.EffectiveFolder(sourceKey), repoKey, src.Repos[repoKey])
+	if err := c.CheckClonePath(sourceKey, repoKey, dest); err != nil {
+		return false, err
+	}
+	if _, err := c.checkRoot(root); err != nil {
+		return false, err
 	}
 	changed := false
 	if !SameRoot(c.SourceRoot(sourceKey), root) {
-		c.SetSourceRoot(sourceKey, root)
+		if err := c.SetSourceRoot(sourceKey, root); err != nil {
+			return false, err
+		}
 		changed = true
 	}
 	src = c.Sources[sourceKey]
@@ -214,5 +244,5 @@ func (c *Config) PlaceRepo(sourceKey, repoKey, root string) bool {
 		c.Sources[sourceKey] = src
 		changed = true
 	}
-	return changed
+	return changed, nil
 }
