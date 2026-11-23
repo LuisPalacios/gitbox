@@ -23,6 +23,7 @@ const (
 	CodeNotARepo       GitCode = "not_a_repo"
 	CodeLockHeld       GitCode = "lock_held"
 	CodeRepoNotFound   GitCode = "repo_not_found"
+	CodeUnsafeConfig   GitCode = "unsafe_config"
 	CodeUnknown        GitCode = "unknown"
 )
 

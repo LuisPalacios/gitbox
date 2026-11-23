@@ -111,7 +111,7 @@ func TestCredentialSchedule_FetchAndPullPreserveRefs(t *testing.T) {
 					if op == "pull" {
 						done <- PullQuietContext(ctx, clone)
 					} else {
-						_, err := FetchCapturedContext(ctx, clone)
+						_, err := FetchCapturedContext(ctx, clone, "origin")
 						done <- err
 					}
 				}()

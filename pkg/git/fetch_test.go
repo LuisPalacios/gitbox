@@ -26,3 +26,24 @@ func TestIsRefusedFast(t *testing.T) {
 		})
 	}
 }
+
+func TestFetchUsesSelectedRemote(t *testing.T) {
+	clone, origin := initTestRepo(t)
+	other := t.TempDir()
+	runGit(t, other, "init", "--bare")
+	runGit(t, clone, "remote", "add", "other", other)
+	runGit(t, clone, "push", "other", "HEAD:refs/heads/other-only")
+	runGit(t, clone, "update-ref", "-d", "refs/remotes/other/other-only")
+	runGit(t, origin, "update-ref", "refs/heads/origin-only", "HEAD")
+	if _, err := FetchCapturedContext(t.Context(), clone, "origin"); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, clone, "show-ref", "--verify", "refs/remotes/origin/origin-only")
+	if err := run(clone, "show-ref", "--verify", "--quiet", "refs/remotes/other/other-only"); exitCode(err) != 1 {
+		t.Fatalf("second remote was fetched or the ref check failed: %v", err)
+	}
+	if _, err := FetchCapturedContext(t.Context(), clone, "--all"); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, clone, "show-ref", "--verify", "refs/remotes/other/other-only")
+}

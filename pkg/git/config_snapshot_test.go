@@ -71,3 +71,39 @@ func TestReadConfigSnapshot_LinkedWorktree(t *testing.T) {
 		t.Fatalf("linked worktree settings lost: %+v", s)
 	}
 }
+
+func TestReadConfigSnapshot_PreservesInspectionOverrides(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(root, "global"))
+	snapshotGit(t, root, "init")
+	snapshotGit(t, root, "config", "core.hooksPath", "ordinary-hooks")
+	snapshotGit(t, root, "config", "core.fsmonitor", "false")
+	s, err := ReadConfigSnapshot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := s.All("core.hooksPath"); !reflect.DeepEqual(got, []string{"ordinary-hooks"}) {
+		t.Errorf("effective hooks path: %q", got)
+	}
+	if got := s.All("core.fsmonitor"); !reflect.DeepEqual(got, []string{"false"}) {
+		t.Errorf("effective monitor: %q", got)
+	}
+	if len(s.All("protocol.file.allow")) != 0 || len(s.All("core.sshCommand")) != 0 {
+		t.Fatal("inspection settings leaked into the snapshot")
+	}
+}
+
+func TestHooksInsideChecksPhysicalAncestors(t *testing.T) {
+	clone := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(clone, "linked")); err != nil {
+		t.Skipf("creating directory symlink: %v", err)
+	}
+	if hooksInside(clone, filepath.Join("linked", "future-hooks")) || hooksInside(clone, outside) {
+		t.Error("accepted hooks outside clone")
+	}
+	if !hooksInside(clone, filepath.Join(".git", "future-hooks")) {
+		t.Error("rejected hooks inside clone")
+	}
+}

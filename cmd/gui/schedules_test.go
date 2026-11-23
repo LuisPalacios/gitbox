@@ -154,7 +154,7 @@ func TestSchedule_FetchDoesNotChangeUpstreamAfterCredentialSwitchOrCancel(t *tes
 				defer fetch.Release()
 				a.refreshHooks.fetch = nil
 				git.SetRunnerForTest(t, testutil.RunnerFunc(func(ctx context.Context, request git.Request) (git.Result, error) {
-					if slices.Equal(request.Args, []string{"fetch", "--all", "--prune"}) {
+					if slices.Equal(request.Args, []string{"fetch", "--prune", "--", "origin"}) {
 						return git.Result{}, fetch.Arrive(ctx)
 					}
 					// The credential switches use Git for local clone configuration.
