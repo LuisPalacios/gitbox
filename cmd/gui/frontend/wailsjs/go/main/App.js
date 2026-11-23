@@ -90,8 +90,8 @@ export function CloneRepo(arg1, arg2, arg3) {
   return window['go']['main']['App']['CloneRepo'](arg1, arg2, arg3);
 }
 
-export function ConfirmSweep(arg1, arg2) {
-  return window['go']['main']['App']['ConfirmSweep'](arg1, arg2);
+export function ConfirmSweep(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ConfirmSweep'](arg1, arg2, arg3);
 }
 
 export function ConnectRemote(arg1) {

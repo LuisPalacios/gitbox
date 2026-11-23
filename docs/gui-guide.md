@@ -289,11 +289,13 @@ The default editor and AI harness are the first entries of `global.editors` and 
 
 When the clone hasn't finished or its status hasn't loaded yet, the folder, editor, terminal and AI harness entries say to clone first instead of doing nothing.
 
-**🧹 Sweep branches** finds and deletes stale local branches. A confirmation dialog lists them before anything is deleted, and the current branch and the default branch are never touched. It detects three kinds:
+**🧹 Sweep branches** previews stale local branches in three groups:
 
-- **Gone** — the remote tracking branch was deleted, for example after a PR merged and its branch was deleted on the server. Deleted with `git branch -D`.
-- **Merged** — fully merged into the default branch. Deleted with `git branch -d`.
-- **Squashed** — squash-merged or rebase-merged on the server (different commits, same changes). Deleted with `git branch -D`.
+- **Gone** — the branch's configured upstream disappeared. Its local tip may still contain unmerged work.
+- **Merged** — the default branch contains the branch's commits.
+- **Squashed** — the tips have identical trees, or the default branch has equivalent patches and still matches the branch on every path it changed. A squash that Gitbox cannot verify stays in the clone.
+
+Review the list before confirming. Gitbox rechecks each displayed branch and deletes it only while its tip and category still match. A branch checked out in another worktree, involved in a rebase or bisect, or selected as the default stays in the clone. The result lists skipped branches so you can preview them again.
 
 ### Account actions
 

@@ -41,6 +41,7 @@ import (
 // App is the Wails application struct. All exported methods become
 // frontend bindings via window.go.main.App.<Method>().
 type App struct {
+	sweepPreview      *pendingSweep // guarded by mu
 	ctx               context.Context
 	recoveryMu        sync.Mutex
 	updateRecovery    *update.Recovery
@@ -914,20 +915,6 @@ func (a *App) openRepoInBrowserLocal(sourceKey, repoKey string) (string, error) 
 	return a.repoWebURL(sourceKey, repoKey)
 }
 
-// SweepPreviewDTO holds the read-only preview of stale branches.
-type SweepPreviewDTO struct {
-	Merged   []string `json:"merged"`
-	Gone     []string `json:"gone"`
-	Squashed []string `json:"squashed"`
-	Error    string   `json:"error,omitempty"`
-}
-
-// SweepDeleteDTO holds the result of actually deleting branches.
-type SweepDeleteDTO struct {
-	Deleted []string `json:"deleted"`
-	Error   string   `json:"error,omitempty"`
-}
-
 // resolveRepoPath looks up a repo's local path from config. Returns ("", error) if not found.
 func (a *App) resolveRepoPath(sourceKey, repoKey string) (string, error) {
 	a.mu.Lock()
@@ -941,46 +928,6 @@ func (a *App) resolveRepoPath(sourceKey, repoKey string) (string, error) {
 		return "", fmt.Errorf("repo %q not found", repoKey)
 	}
 	return status.RepoPath(a.cfg, sourceKey, repoKey, repo), nil
-}
-
-// PreviewSweep scans for stale branches without deleting anything.
-func (a *App) PreviewSweep(sourceKey, repoKey string) SweepPreviewDTO {
-	return a.be().PreviewSweep(sourceKey, repoKey)
-}
-
-// previewSweepLocal is the local backend's PreviewSweep.
-func (a *App) previewSweepLocal(sourceKey, repoKey string) SweepPreviewDTO {
-	path, err := a.resolveRepoPath(sourceKey, repoKey)
-	if err != nil {
-		return SweepPreviewDTO{Error: userMsg(err)}
-	}
-	result, err := git.SweepBranches(path)
-	if err != nil {
-		return SweepPreviewDTO{Error: userMsg(err)}
-	}
-	return SweepPreviewDTO{Merged: result.Merged, Gone: result.Gone, Squashed: result.Squashed}
-}
-
-// ConfirmSweep deletes the stale branches found by PreviewSweep.
-func (a *App) ConfirmSweep(sourceKey, repoKey string) SweepDeleteDTO {
-	return a.be().ConfirmSweep(sourceKey, repoKey)
-}
-
-// confirmSweepLocal is the local backend's ConfirmSweep.
-func (a *App) confirmSweepLocal(sourceKey, repoKey string) SweepDeleteDTO {
-	path, err := a.resolveRepoPath(sourceKey, repoKey)
-	if err != nil {
-		return SweepDeleteDTO{Error: userMsg(err)}
-	}
-	result, err := git.SweepBranches(path)
-	if err != nil {
-		return SweepDeleteDTO{Error: userMsg(err)}
-	}
-	deleted, errs := git.DeleteStaleBranches(path, result)
-	if len(errs) > 0 {
-		return SweepDeleteDTO{Deleted: deleted, Error: userMsg(errs[0])}
-	}
-	return SweepDeleteDTO{Deleted: deleted}
 }
 
 // OpenInApp opens a folder in a specific application (e.g. VS Code).

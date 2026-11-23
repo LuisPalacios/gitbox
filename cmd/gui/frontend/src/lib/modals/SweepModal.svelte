@@ -11,7 +11,7 @@
 
   export let closeActionMenu: () => void;
 
-  let sweepModal: { sourceKey: string; repoKey: string; merged: string[]; gone: string[]; squashed: string[]; } | null = null;
+  let sweepModal: { sourceKey: string; repoKey: string; preview: Awaited<ReturnType<typeof bridge.previewSweep>>; merged: string[]; gone: string[]; squashed: string[]; } | null = null;
   let sweepBusy = false;
 
   export async function sweepBranches(sourceKey: string, repoKey: string) {
@@ -28,7 +28,7 @@
       pushNotice('info', $t('notice.sweepNone'), [repoKey]);
       return;
     }
-    sweepModal = { sourceKey, repoKey, merged, gone, squashed };
+    sweepModal = { sourceKey, repoKey, preview, merged, gone, squashed };
   }
 
   $: sweepTotal = sweepModal ? sweepModal.merged.length + sweepModal.gone.length + sweepModal.squashed.length : 0;
@@ -36,12 +36,16 @@
   async function confirmSweepAction() {
     if (!sweepModal) return;
     sweepBusy = true;
-    const result = await bridge.confirmSweep(sweepModal.sourceKey, sweepModal.repoKey);
+    const result = await bridge.confirmSweep(sweepModal.sourceKey, sweepModal.repoKey, sweepModal.preview);
     sweepBusy = false;
     sweepModal = null;
     if (result.error) {
       pushNotice('error', $t('notice.sweepFailed'), [result.error]);
-    } else if (result.deleted?.length > 0) {
+    }
+    if (result.skipped?.length) {
+      pushNotice('info', $t('notice.sweepSkipped'), [result.skipped.join(', ')]);
+    }
+    if (result.deleted?.length > 0) {
       pushNotice('success', $t('notice.swept'), [$t(result.deleted.length === 1 ? 'notice.sweptOne' : 'notice.sweptN', { n: result.deleted.length }), result.deleted.join(', ')]);
     }
     bridge.getAllStatus().then(results => { applyStatusResults(results); });

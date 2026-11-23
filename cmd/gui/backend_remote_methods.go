@@ -70,8 +70,8 @@ func (r *RemoteBackend) CloneRepo(sourceKey, repoKey, root string) {
 		return map[string]string{"source": sourceKey, "repo": repoKey, "error": msg}
 	}, sourceKey, repoKey, root)
 }
-func (r *RemoteBackend) ConfirmSweep(sourceKey, repoKey string) SweepDeleteDTO {
-	return remoteValue[SweepDeleteDTO](r, "ConfirmSweep", sourceKey, repoKey)
+func (r *RemoteBackend) ConfirmSweep(sourceKey, repoKey string, selection SweepPreviewDTO) SweepDeleteDTO {
+	return remoteValue[SweepDeleteDTO](r, "ConfirmSweep", sourceKey, repoKey, selection)
 }
 func (r *RemoteBackend) CreateNewRepo(accountKey, owner, repoName, description string, private, cloneAfter bool, root string) error {
 	return r.callErr("CreateNewRepo", accountKey, owner, repoName, description, private, cloneAfter, root)
