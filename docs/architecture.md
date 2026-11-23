@@ -696,7 +696,7 @@ What step 1 removes depends only on the old type, so no ghost credentials outliv
 
 The Go backend (`cmd/gui/app.go`) exposes methods the Svelte frontend calls through auto-generated TypeScript bindings, wrapped by `cmd/gui/frontend/src/lib/bridge.ts`. Long-running operations (clone, status refresh, pull, mirror discovery, repo moves) run in goroutines and push progress to the frontend through Wails events.
 
-The startup snapshot initializes the repository rows. Eight workers check local status and send `status:batch` after eight results or 250 ms. The renderer accepts batches for its own pass and configuration revision, preserves other rows, and schedules fetch, mirrors and PR work after the first result or an empty completion. A completed sweep also serves blocking `GetAllStatus` callers in configuration order.
+The startup snapshot initializes the repository rows. Eight workers check local status and send `status:batch` after eight results or 250 ms. The renderer accepts batches for its own pass and configuration revision, preserves other rows, and schedules fetch, mirrors and PR work after the first result or an empty completion. The frontend paints the first batch immediately and groups later results into updates at most 125 ms apart while work arrives. It flushes pending rows at completion and then starts local discovery. A completed sweep also serves blocking `GetAllStatus` callers in configuration order.
 
 **Frontend structure:**
 

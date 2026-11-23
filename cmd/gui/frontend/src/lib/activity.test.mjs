@@ -30,6 +30,12 @@ test('I count each repo once, ignore strangers and keep the run immutable', () =
   assert.deepEqual(next.errors, { 'A/2': 'boom' });
   next = a.noteDone(next, 'A/2');
   assert.deepEqual(next.errors, {});
+  const batch = a.noteCompletions(run, [
+    { key: 'A/1', error: 'first' }, { key: 'A/1' }, { key: 'A/2', error: 'second' }, { key: 'Z/9' },
+  ]);
+  assert.deepEqual(batch.done, new Set(['A/1', 'A/2']));
+  assert.deepEqual(batch.errors, { 'A/2': 'second' });
+  assert.equal(run.done.size, 0);
 });
 
 test('I summarize a fetch: now behind, offline skips, failures and local work', () => {

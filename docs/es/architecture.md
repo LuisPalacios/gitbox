@@ -696,7 +696,7 @@ Lo que elimina el paso 1 depende solo del tipo anterior, así que ninguna creden
 
 El backend Go (`cmd/gui/app.go`) expone métodos que el frontend Svelte llama mediante bindings TypeScript autogenerados, envueltos por `cmd/gui/frontend/src/lib/bridge.ts`. Las operaciones largas (clonado, refresco de estado, pull, discovery de mirrors, movimientos de repos) se ejecutan en goroutines y envían el progreso al frontend mediante eventos Wails.
 
-La instantánea de arranque inicializa las filas de repositorios. Ocho trabajadores comprueban el estado local y envían `status:batch` al reunir ocho resultados o tras 250 ms. La interfaz acepta lotes de su propia pasada y revisión de configuración, conserva las demás filas y programa la consulta de remotos, mirrors y PR tras el primer resultado o al terminar una pasada vacía. La pasada completa también atiende a quienes esperan `GetAllStatus` en el orden de la configuración.
+La instantánea de arranque inicializa las filas de repositorios. Ocho trabajadores comprueban el estado local y envían `status:batch` al reunir ocho resultados o tras 250 ms. La interfaz acepta lotes de su propia pasada y revisión de configuración, conserva las demás filas y programa la consulta de remotos, mirrors y PR tras el primer resultado o al terminar una pasada vacía. La interfaz muestra el primer lote de inmediato y agrupa los resultados siguientes en actualizaciones separadas por un máximo de 125 ms mientras llegan resultados. Al terminar, muestra las filas pendientes e inicia el descubrimiento local. La pasada completa también atiende a quienes esperan `GetAllStatus` en el orden de la configuración.
 
 **Estructura del frontend:**
 

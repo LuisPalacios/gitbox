@@ -62,17 +62,28 @@ export function startPull(keys: string[], accountOf: (key: string) => string, st
 // what the backend says about the failure. Keys outside the run are ignored.
 // It returns a new Run, so a Svelte assignment picks up the change.
 export function noteDone(run: Run, key: string, error?: string, failure?: Failure, skip?: PullSkipReason): Run {
-  if (!run.keys.includes(key)) return run;
-  const done = new Set(run.done);
-  done.add(key);
-  const errors = { ...run.errors };
-  const failures = { ...run.failures };
-  if (error) { errors[key] = error; failures[key] = failure || {}; }
-  else { delete errors[key]; delete failures[key]; }
-  const skips = { ...run.skips };
-  if (skip) skips[key] = skip;
-  else delete skips[key];
-  return { ...run, done, errors, failures, skips };
+  return noteCompletions(run, [{ key, error, failure, skip }]);
+}
+
+export interface Completion {
+  key: string;
+  error?: string;
+  failure?: Failure;
+  skip?: PullSkipReason;
+}
+
+// Several fetch completions may arrive before the next progress paint.
+export function noteCompletions(run: Run, events: Completion[]): Run {
+  const next = { ...run, done: new Set(run.done), errors: { ...run.errors }, failures: { ...run.failures }, skips: { ...run.skips } };
+  for (const { key, error, failure, skip } of events) {
+    if (!Object.hasOwn(run.before, key)) continue;
+    next.done.add(key);
+    if (error) { next.errors[key] = error; next.failures[key] = failure || {}; }
+    else { delete next.errors[key]; delete next.failures[key]; }
+    if (skip) next.skips[key] = skip;
+    else delete next.skips[key];
+  }
+  return next;
 }
 
 export function progress(run: Run): { done: number; total: number } {

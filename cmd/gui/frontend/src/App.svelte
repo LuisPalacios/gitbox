@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { acceptStatusBatch, type StatusBatch } from './lib/status';
+  import { acceptStatusBatch, statusPaintQueue, type StatusBatch } from './lib/status';
   import { onMount, tick } from 'svelte';
   import { settingsSaveFailed, bridge, events, setRemoteWindow } from './lib/bridge';
   import type { DoctorPrecheckDTO, RemoteState } from './lib/bridge';
@@ -16,8 +16,8 @@
   import { resolveView, viewAccount, accountView, attentionCounts } from './lib/views';
   import { languageStore, normalizeLanguage, remoteTextHost, t } from './lib/i18n';
   import { pushNotice, dismissNotice, errorText } from './lib/notices';
-  import { startFetch, startPull, noteDone, summarizeFetch, summarizePull, localWorkCount } from './lib/activity';
-  import type { Run } from './lib/activity';
+  import { startFetch, startPull, noteDone, noteCompletions, summarizeFetch, summarizePull, localWorkCount } from './lib/activity';
+  import type { Run, Completion } from './lib/activity';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit, EventsOn } from '../wailsjs/runtime/runtime';
   import type { ConfigDTO, CredentialFinding, RepoState, PullSkipReason, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, OrphanRepoDTO, ReconcileDTO, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
   import Onboarding from './lib/Onboarding.svelte';
@@ -497,7 +497,17 @@
   const statusOfKey = (key: string) => $repoStates[key]?.status || 'unknown';
   const accountOfKey = (key: string) => $sources[key.slice(0, key.indexOf('/'))]?.account || key.slice(0, key.indexOf('/'));
 
+  let fetchCompletions: Completion[] = [];
+  let fetchProgressTimer: ReturnType<typeof setTimeout> | undefined;
+  function flushFetchProgress() {
+    clearTimeout(fetchProgressTimer);
+    fetchProgressTimer = undefined;
+    if (fetchRun && fetchCompletions.length) fetchRun = noteCompletions(fetchRun, fetchCompletions);
+    fetchCompletions = [];
+  }
+
   function finishFetch(error?: string) {
+    flushFetchProgress();
     const run = fetchRun;
     const manual = fetchManual;
     fetchRun = null;
@@ -1393,8 +1403,7 @@
     if (s.state !== 'connected') {
       if (wasConnected && currentStream) {
         statusPass++;
-        currentStream.first();
-        currentStream = null;
+        retireStream();
       }
       if (s.state === 'disconnected' || s.state === 'failed') markStartup('finished');
       return;
@@ -1550,7 +1559,22 @@
   let credentialGeneration = 0;
 
   let statusPass = 0;
-  let currentStream: { id: number; first: () => void; full: boolean; pending: Set<string> } | null = null;
+  interface StartupStream {
+    id: number;
+    first: () => void;
+    finish: () => void;
+    full: boolean;
+    painted: boolean;
+    pending: Set<string>;
+    paint: ReturnType<typeof statusPaintQueue>;
+  }
+  let currentStream: StartupStream | null = null;
+  function retireStream() {
+    currentStream?.paint.discard();
+    currentStream?.first();
+    currentStream?.finish();
+    currentStream = null;
+  }
   const observedStages = new Set<string>();
   let timingQueue = Promise.resolve();
   function markStartup(stage: string) {
@@ -1620,10 +1644,17 @@
     }
 
     const id = ++statusPass;
-    currentStream?.first();
+    retireStream();
     let first!: () => void;
     const firstReady = new Promise<void>(resolve => { first = resolve; });
-    currentStream = { id, first, full: false, pending: new Set(Object.keys($repoStates)) };
+    let finish!: () => void;
+    const completed = new Promise<void>(resolve => { finish = resolve; });
+    const paint = statusPaintQueue(rows => {
+      if (currentStream?.id !== id || $configStore?.revision !== cfg.revision) return;
+      for (const row of rows) currentStream.pending.delete(`${row.source}/${row.repo}`);
+      applyStatusResults(rows, true);
+    });
+    currentStream = { id, first, finish, full: false, painted: false, pending: new Set(Object.keys($repoStates)), paint };
     remoteScheduled = false;
     try {
       await bridge.beginStatus(id);
@@ -1633,6 +1664,7 @@
       repoStates.update(states => Object.fromEntries(Object.entries(states).map(([key, state]) =>
         [key, state.status === 'unknown' ? { ...state, status: 'error' as const, error: errorText(e) } : state]
       )));
+      finish();
       markStartup('finished');
     }
     if (id !== statusPass) return;
@@ -1667,14 +1699,17 @@
     // Load autostart state. A remote window has no autostart of its own.
     if (windowMode !== 'remote') loadAutostart();
 
-    // Sync the config with the clones on disk in the background. A remote
-    // window runs it itself after each connection, before it takes actions
-    // again (onRemoteState).
-    if (windowMode !== 'remote') runReconcile();
-
-    // Load PR badge feature flags and kick off initial PR fetch.
+    // Start fleet work on the first batch, including the optional PR fetch.
     await loadPRSettings();
     refreshAllPRs();
+
+    // Reconcile walks the same clone trees as local status. Let the first
+    // sweep finish before starting that second disk traversal.
+    if (windowMode === 'remote') {
+      await completed; // The reconnect flow starts its own reconcile after init.
+    } else {
+      void completed.then(() => { if (id === statusPass) void runReconcile(); });
+    }
   }
 
   async function setUIMode(mode: 'simple' | 'advanced') {
@@ -1804,9 +1839,14 @@
     // and ask the Go side to re-probe AI harnesses (throttled there) so a
     // tool installed or removed while we were in the background shows up.
     let focusTimer: ReturnType<typeof setTimeout> | null = null;
+    let lostFocus = false;
+    window.addEventListener('blur', () => { lostFocus = true; });
     // A remote window does the same on the host (#295), only while it is
     // connected and not still syncing after a reconnect.
     window.addEventListener('focus', () => {
+      // Showing this window for the first time already has a fresh snapshot.
+      if (!lostFocus && !currentStream?.full) return;
+      lostFocus = false;
       if (firstRun) return; // The wizard owns the choice of the first project.
       if (windowMode === 'remote' && (!remoteShowMain || remoteLoading || !backgroundAllowed(true, remoteState?.state))) return;
       if (focusTimer) clearTimeout(focusTimer);
@@ -1837,14 +1877,19 @@
       if (!stream || stream.full || batch.passID !== stream.id) return;
       if (acceptStatusBatch(batch, stream.id, $configStore?.revision)) {
         if (batch.items?.length) {
-          for (const row of batch.items) stream.pending.delete(`${row.source}/${row.repo}`);
-          applyStatusResults(batch.items, true);
-          await tick();
-          markStartup('firstStatus');
-          stream.first();
+          stream.paint.push(batch.items);
+          if (!stream.painted) {
+            stream.painted = true;
+            await tick();
+            if (stream !== currentStream || batch.revision !== $configStore?.revision) return;
+            markStartup('firstStatus');
+            stream.first();
+          }
         }
         if (batch.done) {
+          stream.paint.flush();
           await tick();
+          if (stream !== currentStream || batch.revision !== $configStore?.revision) return;
           if (stream.pending.size) {
             // A remote transport may miss an event. Recover the authoritative sweep.
             const rows = await bridge.getAllStatus();
@@ -1858,6 +1903,7 @@
           stream.full = true;
           stream.first();
           finishTiming();
+          stream.finish();
         }
       } else if (batch.done) {
         // A config change superseded this pass. A fresh snapshot owns the next one.
@@ -1865,6 +1911,7 @@
       }
     });
     events.on('status:updated', (results: any) => {
+      currentStream?.paint.flush();
       statusGeneration++;
       applyStatusResults(results);
       for (const resolve of statusWaiters.splice(0)) resolve();
@@ -1956,9 +2003,14 @@
 
     events.on('fetch:done', (data: any) => {
       const key = `${data.source}/${data.repo}`;
-      delete fetchingRepos[key];
-      fetchingRepos = fetchingRepos;
-      if (fetchRun) fetchRun = noteDone(fetchRun, key, data.error, { code: data.code, host: data.host, fast: data.refusedFast });
+      if (fetchingRepos[key]) {
+        delete fetchingRepos[key];
+        fetchingRepos = fetchingRepos;
+      }
+      if (fetchRun) {
+        fetchCompletions.push({ key, error: data.error, failure: { code: data.code, host: data.host, fast: data.refusedFast } });
+        fetchProgressTimer ??= setTimeout(flushFetchProgress, 125);
+      }
       if (!data.error && fetchFailNotice?.keys.delete(key) && fetchFailNotice.keys.size === 0) clearFetchFailNotice();
       if (!data.error) recheckOfflineAccount(accountOfKey(key));
     });
