@@ -66,8 +66,9 @@ type Progress struct {
 	Err     error
 }
 
-// Result summarizes the move outcome. Err is set only when a fatal
-// phase (1-5) failed. Best-effort failures populate Warnings.
+// Result summarizes the move outcome. Err is set when a fatal phase
+// (1-5) failed or the move was cancelled; a cancelled move never starts
+// the delete phases. Best-effort failures populate Warnings.
 // DestSourceKey + NewRepoKey identify where the config entry now
 // lives so callers can re-clone or navigate to it.
 type Result struct {
@@ -100,9 +101,23 @@ func Move(ctx context.Context, snap *config.Config, req Request, commit Commit, 
 		}
 	}
 	result := Result{}
+	// begin reports a phase and says whether it may start: once ctx is
+	// cancelled no further phase starts, and the move ends with what it
+	// had done. A cancel lands between phases or stops the git or HTTP
+	// call in flight; there is no rollback, Result says what happened.
+	begin := func(phase Phase, msg string) bool {
+		report(phase, msg, nil)
+		if err := ctx.Err(); err != nil {
+			result.Err = fmt.Errorf("%s: move stopped: %w", phase, err)
+			return false
+		}
+		return true
+	}
 
 	// --- Phase 1: preflight ----------------------------------------
-	report(PhasePreflight, "Checking clone status and credentials...", nil)
+	if !begin(PhasePreflight, "Checking clone status and credentials...") {
+		return result
+	}
 	plan, err := Preflight(ctx, cfg, req)
 	if err != nil {
 		result.Err = fmt.Errorf("preflight: %w", err)
@@ -110,14 +125,18 @@ func Move(ctx context.Context, snap *config.Config, req Request, commit Commit, 
 	}
 
 	// --- Phase 2: fetch --------------------------------------------
-	report(PhaseFetch, "Fetching tags and pruning stale refs...", nil)
-	if err := git.FetchTagsAndPrune(req.SourceRepoPath); err != nil {
+	if !begin(PhaseFetch, "Fetching tags and pruning stale refs...") {
+		return result
+	}
+	if err := git.FetchTagsAndPrune(ctx, req.SourceRepoPath); err != nil {
 		result.Err = fmt.Errorf("fetch: %w", err)
 		return result
 	}
 
 	// --- Phase 3: create destination -------------------------------
-	report(PhaseCreateDest, fmt.Sprintf("Creating %s/%s on %s...", req.DestOwner, req.DestRepoName, plan.destAcct.Provider), nil)
+	if !begin(PhaseCreateDest, fmt.Sprintf("Creating %s/%s on %s...", req.DestOwner, req.DestRepoName, plan.destAcct.Provider)) {
+		return result
+	}
 	apiOwner := req.DestOwner
 	if apiOwner == plan.destAcct.Username {
 		apiOwner = ""
@@ -129,22 +148,26 @@ func Move(ctx context.Context, snap *config.Config, req Request, commit Commit, 
 	result.DestRepoCreated = true
 
 	// --- Phase 4: push --mirror to dest ----------------------------
-	report(PhasePushMirror, "Pushing every ref and tag to the destination...", nil)
+	if !begin(PhasePushMirror, "Pushing every ref and tag to the destination...") {
+		return result
+	}
 	destPlainURL := buildHTTPSCloneURL(plan.destAcct, req.DestOwner, req.DestRepoName)
 	destAuthURL, pushExtraConfig, err := buildDestPushURL(plan.destAcct, req.DestOwner, req.DestRepoName, destPlainURL, plan.destAPIToken)
 	if err != nil {
 		result.Err = fmt.Errorf("build destination push URL: %w", err)
 		return result
 	}
-	if _, err := git.PushMirror(req.SourceRepoPath, destAuthURL, pushExtraConfig); err != nil {
+	if _, err := git.PushMirror(ctx, req.SourceRepoPath, destAuthURL, pushExtraConfig); err != nil {
 		result.Err = fmt.Errorf("push --mirror: %w", err)
 		return result
 	}
 
 	// --- Phase 5: rewire origin ------------------------------------
-	report(PhaseRewireOrigin, "Rewiring local origin to the destination...", nil)
+	if !begin(PhaseRewireOrigin, "Rewiring local origin to the destination...") {
+		return result
+	}
 	result.NewOrigin = destPlainURL
-	if err := git.SetRemoteURL(req.SourceRepoPath, "origin", destPlainURL); err != nil {
+	if err := git.SetRemoteURLContext(ctx, req.SourceRepoPath, "origin", destPlainURL); err != nil {
 		result.Err = fmt.Errorf("rewire origin: %w", err)
 		return result
 	}
@@ -160,7 +183,9 @@ func Move(ctx context.Context, snap *config.Config, req Request, commit Commit, 
 	// Update before the destructive phases so that even if delete-source
 	// or delete-local fail, the gitbox config already reflects the new
 	// home of the repo. After this, heal.Repo can apply the destination
-	// account's credential/identity spec to the local clone.
+	// account's credential/identity spec to the local clone. It runs even
+	// after a cancel: the origin already points at the destination, and
+	// the config must say so.
 	report(PhaseUpdateConfig, "Updating gitbox config...", nil)
 	// The remote effects above are done whatever happens here. When the
 	// config changed meanwhile and the change no longer applies, that is
@@ -186,8 +211,11 @@ func Move(ctx context.Context, snap *config.Config, req Request, commit Commit, 
 	}
 
 	// --- Phase 7: delete source remote (best-effort) ---------------
+	// A cancelled move never starts deleting.
 	if req.DeleteSourceRemote {
-		report(PhaseDeleteSource, "Deleting source remote repository...", nil)
+		if !begin(PhaseDeleteSource, "Deleting source remote repository...") {
+			return result
+		}
 		if plan.sourceDeleter == nil {
 			warn := fmt.Sprintf("Source provider %q doesn't expose a repo-delete API — delete %s manually.", plan.sourceAcct.Provider, req.SourceRepoKey)
 			result.Warnings = append(result.Warnings, warn)
@@ -206,7 +234,9 @@ func Move(ctx context.Context, snap *config.Config, req Request, commit Commit, 
 
 	// --- Phase 8: delete local clone (best-effort) -----------------
 	if req.DeleteLocalClone {
-		report(PhaseDeleteLocal, "Removing local clone folder...", nil)
+		if !begin(PhaseDeleteLocal, "Removing local clone folder...") {
+			return result
+		}
 		if err := os.RemoveAll(req.SourceRepoPath); err != nil {
 			warn := fmt.Sprintf("delete local clone: %v", err)
 			result.Warnings = append(result.Warnings, warn)

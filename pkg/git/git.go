@@ -236,26 +236,28 @@ func IsUpstreamGoneError(err error) bool {
 //
 // Output is captured so the caller can surface provider-side errors
 // (e.g. "remote: Repository is empty" vs. permission issues).
-func PushMirror(repoPath, url string, extraConfig []string) (string, error) {
+// It stops when ctx is cancelled, and the processes git started with it.
+func PushMirror(ctx context.Context, repoPath, url string, extraConfig []string) (string, error) {
 	args := make([]string, 0, len(extraConfig)*2+3)
 	for _, kv := range extraConfig {
 		args = append(args, "-c", kv)
 	}
 	args = append(args, "push", "--mirror", url)
 
-	res, err := Default.Run(context.Background(), Request{Dir: repoPath, Args: args})
+	res, err := Default.Run(ctx, Request{Dir: repoPath, Args: args})
 	out := res.combined()
 	if err != nil {
-		return string(out), failure(context.Background(), "push", err, res, out)
+		return string(out), failure(ctx, "push", err, res, out)
 	}
 	return string(out), nil
 }
 
 // FetchTagsAndPrune runs `git fetch --prune --tags` in repoPath. Used
 // as the first move-flow step so the upcoming push --mirror carries
-// every ref (tags included) and stale remote branches are dropped.
-func FetchTagsAndPrune(repoPath string) error {
-	return run(repoPath, "fetch", "--prune", "--tags")
+// every ref (tags included) and stale remote branches are dropped. It
+// stops when ctx is cancelled.
+func FetchTagsAndPrune(ctx context.Context, repoPath string) error {
+	return runContext(ctx, repoPath, "fetch", "--prune", "--tags")
 }
 
 // PullQuietContext runs git pull --ff-only, capturing output instead of
@@ -430,7 +432,12 @@ func IsRepo(path string) bool {
 
 // SetRemoteURL sets the URL of a remote (typically "origin").
 func SetRemoteURL(repoPath, remote, url string) error {
-	return run(repoPath, "remote", "set-url", remote, url)
+	return SetRemoteURLContext(context.Background(), repoPath, remote, url)
+}
+
+// SetRemoteURLContext is SetRemoteURL that stops when ctx is cancelled.
+func SetRemoteURLContext(ctx context.Context, repoPath, remote, url string) error {
+	return runContext(ctx, repoPath, "remote", "set-url", remote, url)
 }
 
 // CurrentBranch returns the current branch name.
@@ -712,9 +719,14 @@ func nonInteractiveEnv() []string {
 // prints. The error is a *GitError: it names the subcommand and why it
 // failed, and never carries the arguments or what git printed.
 func run(dir string, args ...string) error {
-	res, err := Default.Run(context.Background(), Request{Dir: dir, Args: args})
+	return runContext(context.Background(), dir, args...)
+}
+
+// runContext is run that stops when ctx is cancelled.
+func runContext(ctx context.Context, dir string, args ...string) error {
+	res, err := Default.Run(ctx, Request{Dir: dir, Args: args})
 	if err != nil {
-		return failure(context.Background(), opName(args), err, res, res.combined())
+		return failure(ctx, opName(args), err, res, res.combined())
 	}
 	return nil
 }
