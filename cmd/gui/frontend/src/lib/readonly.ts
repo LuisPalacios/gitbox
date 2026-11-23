@@ -1,4 +1,4 @@
-// The limited remote (#240, #294, #295): a remote window changes the host
+// The limited remote (#240, #294, #295, #242): a remote window changes the host
 // only through the methods its server serves. The Go side refuses every
 // other mutation before it leaves this machine; this module is the
 // frontend's backstop, so a control that was missed fails at once with the
@@ -7,8 +7,9 @@
 // readonly.test.mjs can load it alone.
 
 // The calls a remote window refuses: the mutations its server does not
-// serve yet (the credential methods of #242 and #244; the config mutations
-// are served since #294 and the repository mutations since #295), the three
+// serve yet (the SSH key methods of #244; the config mutations are served
+// since #294, the repository mutations since #295 and the token credentials
+// since #242, whose host refuses GCM itself), the three
 // launches with no remote equivalent (the file manager, the account folder
 // and the host's config file: the Go side refuses them with
 // not_available_remote), and autostart and the compact view, which a
@@ -17,8 +18,7 @@
 // read. Every other call is a read, a served mutation or a client
 // preference.
 export const READ_ONLY_BLOCKED: ReadonlySet<string> = new Set([
-  'changeCredentialType', 'credentialDelete', 'credentialRegenerateSSH', 'credentialSetupGCM',
-  'credentialSetupSSH', 'credentialStoreToken',
+  'credentialRegenerateSSH', 'credentialSetupSSH',
   'openAccountFolder', 'openFileInEditor', 'openInExplorer',
   'setAutostart', 'setViewMode',
 ]);
