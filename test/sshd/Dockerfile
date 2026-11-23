@@ -1,12 +1,27 @@
 # The sshd that the remote-mode integration tests connect to (#239):
 # OpenSSH, fish and git on Debian slim, with a "test" user that logs in with
-# a key only. git lets the read-only session test (#240) check real clones.
+# a key only. git lets the session tests (#240) check real clones; iproute2
+# lets the fault tests (#295) shape the network with tc netem, given
+# --cap-add NET_ADMIN, and procps lets them look for git processes.
 # scripts/remote-it.sh builds it as gitbox-sshd.
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssh-server fish git \
+    && apt-get install -y --no-install-recommends openssh-server fish git iproute2 procps \
     && rm -rf /var/lib/apt/lists/*
+
+# A fixture repository of 60 MB that does not compress, served read-only by
+# git daemon on 127.0.0.1:9418 when the container starts with GIT_DAEMON=1:
+# big enough that a clone is still running when a test cuts it.
+RUN git init -q -b main /tmp/fixture \
+    && for i in 1 2 3 4 5 6; do \
+         head -c 10M /dev/urandom > /tmp/fixture/blob$i \
+         && git -C /tmp/fixture add blob$i \
+         && git -C /tmp/fixture -c user.name=fixture -c user.email=f@example.invalid commit -q -m "blob $i"; \
+       done \
+    && git clone -q --bare /tmp/fixture /srv/git/org/fixture.git \
+    && rm -rf /tmp/fixture \
+    && chmod -R a+rX /srv/git
 
 # The key lives outside the home folder, so a noexec tmpfs mounted over the
 # home does not block the login. The account has no password and is not
