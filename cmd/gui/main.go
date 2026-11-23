@@ -12,6 +12,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/cmd/gui/serverbin"
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/update"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -29,6 +30,7 @@ var assets embed.FS
 const maxWindowWidth = 220 + 1100 + 48 + 16
 
 func main() {
+	defer git.CloseInspectionProfile()
 	if len(os.Args) > 1 {
 		var err error
 		switch os.Args[1] {

@@ -402,6 +402,7 @@ export namespace config {
 	}
 	
 	export class Repo {
+	    fetch_all_remotes?: boolean;
 	    credential_type?: string;
 	    name?: string;
 	    email?: string;
@@ -418,6 +419,7 @@ export namespace config {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.fetch_all_remotes = source["fetch_all_remotes"];
 	        this.credential_type = source["credential_type"];
 	        this.name = source["name"];
 	        this.email = source["email"];

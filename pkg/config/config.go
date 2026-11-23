@@ -366,11 +366,12 @@ func (s *Source) EffectiveFolder(sourceKey string) string {
 // Repo represents a single repository configuration.
 // Repo names use "org/repo" format — the org part becomes the second-level folder.
 type Repo struct {
-	CredentialType string `json:"credential_type,omitempty"`
-	Name           string `json:"name,omitempty"`
-	Email          string `json:"email,omitempty"`
-	IdFolder       string `json:"id_folder,omitempty"`    // overrides 2nd level dir (org). Default: part before / in repo key.
-	CloneFolder    string `json:"clone_folder,omitempty"` // overrides 3rd level dir (clone name). If absolute (/ ~ ../), replaces entire path.
+	FetchAllRemotes bool   `json:"fetch_all_remotes,omitempty"`
+	CredentialType  string `json:"credential_type,omitempty"`
+	Name            string `json:"name,omitempty"`
+	Email           string `json:"email,omitempty"`
+	IdFolder        string `json:"id_folder,omitempty"`    // overrides 2nd level dir (org). Default: part before / in repo key.
+	CloneFolder     string `json:"clone_folder,omitempty"` // overrides 3rd level dir (clone name). If absolute (/ ~ ../), replaces entire path.
 	// Root is set only when this clone lives in a root other than its
 	// source's; empty means the source's root.
 	Root string `json:"root,omitempty"`

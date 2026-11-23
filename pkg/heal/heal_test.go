@@ -372,3 +372,42 @@ func TestRepo_FixesDriftedIdentity(t *testing.T) {
 		t.Fatal("drifted identity not repaired")
 	}
 }
+
+func TestRepo_TrustWarningsPreserveConfiguration(t *testing.T) {
+	cfg, path := healFixture(t)
+	_ = Repo(cfg, "repos", "team/project")
+	origin := ExpectedOriginURL(cfg.Accounts["account-a"], "team/project", "ssh")
+	for _, tc := range []struct{ key, value, warning string }{
+		{"core.fsmonitor", "disabled-test-monitor", "core.fsmonitor"},
+		{"core.fsmonitor", "false", ""},
+		{"core.hooksPath", t.TempDir(), "core.hooksPath"},
+		{"core.hooksPath", ".git/missing-hooks", ""},
+		{"core.sshCommand", "custom-ssh-setting", ""},
+		{"url.https://other.example/canary/.insteadOf", origin, "url.*.insteadOf"},
+		{"url.https://example.org/team/replacement.git.insteadOf", origin, ""},
+		{"url.https://example.org:8443/team/project.git.insteadOf", origin, "url.*.insteadOf"},
+	} {
+		t.Run(tc.key+"="+tc.value, func(t *testing.T) {
+			if err := git.ConfigSet(path, tc.key, tc.value); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := git.ConfigUnsetAll(path, tc.key); err != nil {
+					t.Error(err)
+				}
+			})
+			r := Repo(cfg, "repos", "team/project")
+			var want []string
+			if tc.warning != "" {
+				want = []string{"git config: unsafe_config (" + tc.warning + ")"}
+			}
+			if !slices.Equal(r.Warnings, want) || len(r.Fixed) != 0 {
+				t.Fatalf("warnings %v fixes %v, want %v and no fixes", r.Warnings, r.Fixed, want)
+			}
+			snapshot, err := git.ReadConfigSnapshot(path)
+			if err != nil || snapshot.Get(tc.key) != tc.value {
+				t.Fatalf("setting changed during heal: %v", err)
+			}
+		})
+	}
+}

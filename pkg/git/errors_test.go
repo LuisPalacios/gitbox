@@ -81,7 +81,7 @@ func TestGitErrorsCarryNoSecrets(t *testing.T) {
 		if err := run(repo, "remote", "add", "origin", canaryURL); err != nil {
 			t.Fatal(err)
 		}
-		_, err := FetchCapturedContext(context.Background(), repo)
+		_, err := FetchCapturedContext(context.Background(), repo, "origin")
 		assertSecretFree(t, err)
 		if ge, ok := errors.AsType[*GitError](err); !ok || ge.Op != "fetch" {
 			t.Errorf("fetch error = %#v, want a *GitError for fetch", err)
@@ -108,7 +108,7 @@ func TestGitErrorsCarryNoSecrets(t *testing.T) {
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		_, err := FetchCapturedContext(ctx, repo)
+		_, err := FetchCapturedContext(ctx, repo, "origin")
 		assertSecretFree(t, err)
 		if ge, ok := errors.AsType[*GitError](err); !ok || ge.Code != CodeCancelled {
 			t.Errorf("cancelled fetch = %#v, want code %q", err, CodeCancelled)

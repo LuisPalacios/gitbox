@@ -178,6 +178,10 @@ No hace falta volver a clonar nada.
 
 Gitbox también repara la identidad, el remote y los ajustes de credencial de un clone antes de cada fetch. Si un include de git sigue sobrescribiéndolos, avisa y omite el fetch de ese clone.
 
+## Fetch de remotos
+
+Al actualizar un clon, Gitbox obtiene las referencias de `origin` y elimina las obsoletas. Para incluir todos los remotos configurados en un clon concreto, pongo `fetch_all_remotes` a `true` en la entrada de ese repo en `gitbox.json`. Compruebo los destinos de sus remotos antes de activar esta opción.
+
 ## Verificar credenciales
 
 Puedes verificar las credenciales en cualquier momento:

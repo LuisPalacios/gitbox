@@ -117,7 +117,7 @@ func TestDescribeFetchFailure(t *testing.T) {
 			t.Fatalf("git %s: %v: %s", args[0], err, out)
 		}
 	}
-	_, err := git.FetchCapturedContext(t.Context(), repo)
+	_, err := git.FetchCapturedContext(t.Context(), repo, "origin")
 	if err == nil {
 		t.Fatal("the fetch must fail")
 	}
@@ -159,7 +159,7 @@ func TestHintKeysInCatalog(t *testing.T) {
 	catalog := string(data)
 	var keys []string
 	for _, c := range []git.GitCode{git.CodeAuthFailed, git.CodeNotFastForward, git.CodeNoUpstream, git.CodeOffline,
-		git.CodeTimeout, git.CodeCancelled, git.CodeNotARepo, git.CodeLockHeld, git.CodeRepoNotFound, git.CodeUnknown} {
+		git.CodeTimeout, git.CodeCancelled, git.CodeNotARepo, git.CodeLockHeld, git.CodeRepoNotFound, git.CodeUnsafeConfig, git.CodeUnknown} {
 		keys = append(keys, toUserError(&git.GitError{Code: c, Hint: "error.git." + string(c)}).Hint)
 	}
 	for _, c := range []provider.ProviderClass{provider.ClassUnauthorized, provider.ClassScopeDenied, provider.ClassForbidden, provider.ClassRateLimited,

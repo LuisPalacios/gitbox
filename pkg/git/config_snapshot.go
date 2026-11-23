@@ -14,23 +14,43 @@ type ConfigSnapshot struct {
 	Local  map[string][]string
 }
 
-// ReadConfigSnapshot reads a clone's configuration in two Git processes.
+// ReadConfigSnapshot reads configuration during credential setup, including
+// adoption. Its inspection overrides are excluded from the returned snapshot.
 func ReadConfigSnapshot(repoPath string) (ConfigSnapshot, error) {
-	return ReadConfigSnapshotContext(context.Background(), repoPath)
+	profile, err := InspectionProfile()
+	if err != nil {
+		return ConfigSnapshot{}, err
+	}
+	return readConfigSnapshot(context.Background(), repoPath, profile)
 }
 
-// ReadConfigSnapshotContext is ReadConfigSnapshot that stops when ctx is
-// cancelled.
+// ReadConfigSnapshotContext reads a tracked clone's effective settings for heal.
 func ReadConfigSnapshotContext(ctx context.Context, repoPath string) (ConfigSnapshot, error) {
-	effective, err := outputContext(ctx, repoPath, "config", "--null", "--list", "--includes")
+	return readConfigSnapshot(ctx, repoPath, nil)
+}
+
+func readConfigSnapshot(ctx context.Context, repoPath string, profile []string) (ConfigSnapshot, error) {
+	effective, err := outputContext(ctx, repoPath, append(profile, "config", "--null", "--list", "--includes")...)
 	if err != nil {
 		return ConfigSnapshot{}, err
 	}
-	local, err := outputContext(ctx, repoPath, "config", "--null", "--list", "--local", "--no-includes")
+	local, err := outputContext(ctx, repoPath, append(profile, "config", "--null", "--list", "--local", "--no-includes")...)
 	if err != nil {
 		return ConfigSnapshot{}, err
 	}
-	return ConfigSnapshot{Values: parseConfigList(effective), Local: parseConfigList(local)}, nil
+	values := parseConfigList(effective)
+	// Git lists command-line -c settings last. Preserve values from files and
+	// the caller's environment, including any identical earlier settings.
+	for i := 1; i < len(profile); i += 2 {
+		key, _, _ := strings.Cut(profile[i], "=")
+		key = configKey(key)
+		if entries := values[key]; len(entries) > 1 {
+			values[key] = entries[:len(entries)-1]
+		} else {
+			delete(values, key)
+		}
+	}
+	return ConfigSnapshot{Values: values, Local: parseConfigList(local)}, nil
 }
 
 func parseConfigList(raw string) map[string][]string {

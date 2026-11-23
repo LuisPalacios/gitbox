@@ -1087,13 +1087,13 @@ func TestConfigChangedConflictOverSSH(t *testing.T) {
 // cloneHostConfig is the host's gitbox.json of the fault tests (#295): one
 // account whose server is the container's git daemon, so the reachability
 // check connects, and the fixture repository, not cloned yet. The account
-// uses ssh credentials, whose origin the test user's git config rewrites
-// to the daemon (seedCloneHost): no token is involved.
+// uses a GCM HTTP origin. The fixture serves that repository without
+// authentication through git daemon on the same host and port.
 const cloneHostConfig = `{
   "version": 5,
   "global": {"roots": ["` + testHome + `/git"], "theme": "dark"},
   "accounts": {
-    "acct": {"provider": "gitea", "url": "http://127.0.0.1:9418", "username": "alice", "name": "Alice", "email": "a@example.invalid", "default_credential_type": "ssh"}
+    "acct": {"provider": "gitea", "url": "http://127.0.0.1:9418", "username": "alice", "name": "Alice", "email": "a@example.invalid", "default_credential_type": "gcm"}
   },
   "sources": {
     "acct": {"account": "acct", "repos": {"org/fixture": {}}}
@@ -1110,7 +1110,7 @@ func seedCloneHost(c *container) string {
 	cfgDir := testHome + "/.config/gitbox"
 	cfgPath := cfgDir + "/gitbox.json"
 	c.sh("mkdir -p " + cfgDir + " " + testHome + "/git && echo " + base64.StdEncoding.EncodeToString([]byte(cloneHostConfig)) + " | base64 -d > " + cfgPath +
-		" && git config --global url.git://127.0.0.1:9418/.insteadOf git@127.0.0.1:9418:")
+		" && git config --global url.git://127.0.0.1:9418/org/fixture.git.insteadOf http://alice@127.0.0.1:9418/org/fixture.git")
 	return cfgPath
 }
 

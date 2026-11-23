@@ -1,12 +1,17 @@
 package adopt
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/git/testutil"
 )
 
 // initBareRepo creates a minimal git repo at path with the given origin remote.
@@ -425,4 +430,45 @@ func TestHostnameFromURL(t *testing.T) {
 func matchAccountEx(cfg *config.Config, mc MatchContext) (accountKey, sourceKey string, ambiguous []string) {
 	m := matchAccount(cfg, mc)
 	return m.accountKey, m.sourceKey, m.ambiguous
+}
+
+func TestFindOrphansInspectsWithPrivateSettings(t *testing.T) {
+	root := t.TempDir()
+	clone := filepath.Join(root, "clone")
+	initBareRepo(t, clone, "https://github.com/example/project.git")
+	configuredHooks := t.TempDir()
+	if err := git.ConfigSet(clone, "core.hooksPath", configuredHooks); err != nil {
+		t.Fatal(err)
+	}
+	profile, err := git.InspectionProfile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(git.CloseInspectionProfile)
+	original := git.Default
+	var reads []string
+	git.SetRunnerForTest(t, testutil.RunnerFunc(func(ctx context.Context, req git.Request) (git.Result, error) {
+		if len(req.Args) <= len(profile) || !slices.Equal(req.Args[:len(profile)], profile) {
+			t.Fatalf("unprotected orphan inspection: %q", req.Args)
+		}
+		reads = append(reads, req.Args[len(profile)])
+		return original.Run(ctx, req)
+	}))
+	orphans, err := FindOrphans(testConfig(root))
+	if err != nil || len(orphans) != 1 || orphans[0].RepoKey != "example/project" || !slices.Equal(reads, []string{"remote", "config"}) {
+		t.Fatalf("orphans %v, reads %v, error %v", orphans, reads, err)
+	}
+	for _, arg := range []string{"core.fsmonitor=false", "core.sshCommand=", "protocol.file.allow=never"} {
+		if !slices.Contains(profile, arg) {
+			t.Errorf("missing %s", arg)
+		}
+	}
+	for _, arg := range profile {
+		if dir, ok := strings.CutPrefix(arg, "core.hooksPath="); ok && filepath.IsAbs(dir) && dir != configuredHooks {
+			if files, err := os.ReadDir(dir); err == nil && len(files) == 0 {
+				return
+			}
+		}
+	}
+	t.Fatal("inspection needs its own empty hooks directory")
 }

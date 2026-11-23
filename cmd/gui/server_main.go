@@ -2,11 +2,17 @@
 
 package main
 
-import "os"
+import (
+	"os"
+
+	"github.com/LuisPalacios/gitbox/pkg/git"
+)
 
 // main is the entry point of gitbox-server, the gitboxserver build of this
 // package: the same backend code as GitboxApp, with no Wails and no window.
 // The server itself is in server.go.
 func main() {
-	os.Exit(serverMain(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	code := serverMain(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+	git.CloseInspectionProfile()
+	os.Exit(code)
 }
