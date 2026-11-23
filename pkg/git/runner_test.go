@@ -269,6 +269,12 @@ func TestRequestEnviron(t *testing.T) {
 			t.Errorf("the default environment lacks %q", kv)
 		}
 	}
+	local := Request{Env: localObjectsOnly}.environ()
+	for _, kv := range []string{"GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=never", "GIT_ASKPASS=", "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=", "GITBOX_RUNNER_PROBE=1"} {
+		if !has(local, kv) {
+			t.Errorf("the local-object environment lacks %q", kv)
+		}
+	}
 	inherit := Request{Env: Inherit}.environ()
 	if has(inherit, "GIT_TERMINAL_PROMPT=0") || !has(inherit, "GITBOX_RUNNER_PROBE=1") {
 		t.Errorf("Inherit must be the process environment without the prompt settings")
@@ -339,8 +345,12 @@ func TestPackageFunctionsUseTheRunner(t *testing.T) {
 	}
 
 	for _, req := range fake.Calls() {
-		if req.Env != NonInteractive || req.EnvExact != nil {
-			t.Errorf("git %v ran with environment policy %v; the package's commands never prompt", req.Args, req.Env)
+		want := NonInteractive
+		if req.Args[0] == "rev-parse" {
+			want = localObjectsOnly
+		}
+		if req.Env != want || req.EnvExact != nil {
+			t.Errorf("git %v ran with environment policy %v, want %v without overrides", req.Args, req.Env, want)
 		}
 	}
 	if n := len(fake.Calls()); n != 7 {

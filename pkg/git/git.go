@@ -574,12 +574,9 @@ func outputContext(ctx context.Context, dir string, args ...string) (string, err
 	return outputRequest(ctx, Request{Dir: dir, Args: args})
 }
 
-// A partial clone can fetch a promised blob even during a local Git read.
-// Deny all transports as well: older Git understands GIT_ALLOW_PROTOCOL
-// even when it does not yet implement GIT_NO_LAZY_FETCH.
+// localObjectOutput keeps reference and patch reads inside a partial clone.
 func localObjectOutput(ctx context.Context, dir string, args ...string) (string, error) {
-	env := append(nonInteractiveEnv(), "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=")
-	return outputRequest(ctx, Request{Dir: dir, Args: args, EnvExact: env})
+	return outputRequest(ctx, Request{Dir: dir, Args: args, Env: localObjectsOnly})
 }
 
 func outputRequest(ctx context.Context, req Request) (string, error) {
