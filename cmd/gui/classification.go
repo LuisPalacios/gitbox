@@ -74,6 +74,7 @@ var methodClass = map[string]methodInfo{
 	"CreateNewRepo":                  {classRemote, "P5", true},
 	"CredentialDelete":               {classRemote, "P5b", true},
 	"CredentialRegenerateSSH":        {classRemote, "P7", true},
+	"CredentialSSHAgentReport":       {classRemote, "P7", false},
 	"CredentialSetupGCM":             {classMixed, "P5b", true},
 	"CredentialSetupSSH":             {classRemote, "P7", true},
 	"CredentialStoreToken":           {classRemote, "P5b", true},

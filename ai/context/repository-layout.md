@@ -77,7 +77,7 @@ scripts/
   release-macos.sh         Build the macOS zips and DMGs from a clean clone of a tag and add them to the draft release (--no-upload)
   sign-release.sh          Sign a draft release's checksums through the local SSH agent and publish it (--check, --dry-run); standalone, no .env
   demo-fleet/              Fake fleet + mock provider API + window capture for README screenshots (build.sh, run.sh, mock.py, shot.ps1)
-test/sshd/                The gitbox-sshd image of those tests: Debian slim, OpenSSH, fish, a key-only test user
+test/sshd/                The gitbox-sshd image of those tests: Debian slim, OpenSSH, fish, a key-only test user, and a git-shell git user for the SSH account tests
 test/fakeforge/           Fake Gitea API + git smart HTTP behind file tokens, copied into the container by TestTokenCanary
 .githooks/pre-push        Pre-push hook (gofmt -s check + go vet + unit tests; builds the frontend if dist is missing)
 .claude/settings.json     Claude Code permission allowlist (hand-edited, not rendered)

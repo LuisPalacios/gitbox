@@ -1789,6 +1789,28 @@ export namespace main {
 	        this.repos = source["repos"];
 	    }
 	}
+	export class SSHAgentReportDTO {
+	    keyFile: string;
+	    keyFileFingerprint: string;
+	    agentFingerprints: string[];
+	    agentForwarded: boolean;
+	    match: boolean;
+	    identitiesOnly: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SSHAgentReportDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.keyFile = source["keyFile"];
+	        this.keyFileFingerprint = source["keyFileFingerprint"];
+	        this.agentFingerprints = source["agentFingerprints"];
+	        this.agentForwarded = source["agentForwarded"];
+	        this.match = source["match"];
+	        this.identitiesOnly = source["identitiesOnly"];
+	    }
+	}
 	export class ScheduledTaskDTO {
 	    name: string;
 	    nextAt: number;

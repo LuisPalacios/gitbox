@@ -80,13 +80,21 @@ func (r *RemoteBackend) CredentialDelete(accountKey string) CredentialSetupResul
 	return r.remoteSetup("CredentialDelete", accountKey)
 }
 func (r *RemoteBackend) CredentialRegenerateSSH(accountKey string) CredentialSetupResult {
-	return remoteValue[CredentialSetupResult](r, "CredentialRegenerateSSH", accountKey)
+	return r.remoteSetup("CredentialRegenerateSSH", accountKey)
+}
+func (r *RemoteBackend) CredentialSSHAgentReport(accountKey string) SSHAgentReportDTO {
+	out := remoteValue[SSHAgentReportDTO](r, "CredentialSSHAgentReport", accountKey)
+	out.AgentFingerprints = capList(r, "agent keys", out.AgentFingerprints, maxRemoteNotes)
+	if out.AgentFingerprints == nil {
+		out.AgentFingerprints = []string{}
+	}
+	return out
 }
 func (r *RemoteBackend) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 	return r.remoteSetup("CredentialSetupGCM", accountKey)
 }
 func (r *RemoteBackend) CredentialSetupSSH(accountKey string) CredentialSetupResult {
-	return remoteValue[CredentialSetupResult](r, "CredentialSetupSSH", accountKey)
+	return r.remoteSetup("CredentialSetupSSH", accountKey)
 }
 func (r *RemoteBackend) CredentialStoreToken(accountKey, token string) CredentialSetupResult {
 	return r.remoteSetup("CredentialStoreToken", accountKey, token)

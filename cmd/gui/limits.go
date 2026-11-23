@@ -81,10 +81,16 @@ var remoteWorkBounds = map[string]time.Duration{
 	"ConfirmSweep":           statusTimeout,
 	// The token credentials (#242): a store or a type change reconfigures
 	// every clone of the account.
-	"CredentialStoreToken":           reconcileBound,
-	"ChangeCredentialType":           reconcileBound,
-	"CredentialDelete":               statusTimeout,
-	"CredentialSetupGCM":             healReadTimeout,
+	"CredentialStoreToken": reconcileBound,
+	"ChangeCredentialType": reconcileBound,
+	"CredentialDelete":     statusTimeout,
+	"CredentialSetupGCM":   healReadTimeout,
+	// The SSH keys (#244): ssh-keygen, a connection test of up to 15 s and
+	// every clone of the account reconfigured; the agent report runs
+	// ssh-add for at most 5 s.
+	"CredentialSetupSSH":             reconcileBound,
+	"CredentialRegenerateSSH":        reconcileBound,
+	"CredentialSSHAgentReport":       healReadTimeout,
 	"GetConfig":                      healReadTimeout,
 	"GetStartupSnapshot":             healReadTimeout,
 	"ReloadConfig":                   healReadTimeout,

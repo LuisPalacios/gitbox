@@ -2360,10 +2360,10 @@
     <Onboarding mode="add" onDone={finishConnect} onCancel={() => { connectModal = false; reloadFromDisk(); }} />
   {/if}
 
-  <AddAccountModal bind:this={addAccountDialog} bind:credResult bind:credTokenInput bind:credPrecheck {credBusy} {credTokenGuide} {credTokenScopes} {sshKeyCopied} {copySSHKey} {resetCredState} {verifyAllCredentials} {reloadFromDisk} {runCredentialPrecheck} {runCredSetup} {fetchTokenGuide} {verifySSHConnection} {regenerateSSHKey} />
+  <AddAccountModal bind:this={addAccountDialog} {simple} bind:credResult bind:credTokenInput bind:credPrecheck {credBusy} {credTokenGuide} {credTokenScopes} {sshKeyCopied} {copySSHKey} {resetCredState} {verifyAllCredentials} {reloadFromDisk} {runCredentialPrecheck} {runCredSetup} {fetchTokenGuide} {verifySSHConnection} {regenerateSSHKey} />
 
   <!-- ── CHANGE CREDENTIAL MODAL ── -->
-  <CredentialModal bind:this={credentialDialog} bind:credResult bind:credBusy bind:credTokenInput bind:credPrecheck bind:credStatuses {credTokenGuide} {credTokenScopes} {sshKeyCopied} {serverOS} {copySSHKey} {resetCredState} {verifyAllCredentials} {reloadFromDisk} {runCredentialPrecheck} {fetchTokenGuide} {credPostSetup} {storeCredToken} {verifySSHConnection} {regenerateSSHKey} />
+  <CredentialModal bind:this={credentialDialog} {simple} bind:credResult bind:credBusy bind:credTokenInput bind:credPrecheck bind:credStatuses {credTokenGuide} {credTokenScopes} {sshKeyCopied} {serverOS} {copySSHKey} {resetCredState} {verifyAllCredentials} {reloadFromDisk} {runCredentialPrecheck} {fetchTokenGuide} {credPostSetup} {storeCredToken} {verifySSHConnection} {regenerateSSHKey} />
 
   <!-- ── DELETE ACCOUNT MODAL ── -->
   <DeleteAccountModal bind:this={deleteAccountDialog} bind:reloadError bind:deleteMode {reloadFromDisk} />

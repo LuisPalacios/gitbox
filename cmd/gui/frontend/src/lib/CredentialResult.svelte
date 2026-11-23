@@ -1,9 +1,13 @@
 <script lang="ts">
   // The result of a credential setup, shared by Add account and Change
   // credential: the SSH key block (copy the public key, verify the
-  // connection, regenerate the key) or the plain result message.
+  // connection, regenerate the key) or the plain result message. In a
+  // remote window the key was made on the host (#244): the copy goes to
+  // this computer's clipboard, the link opens here, and a note says when
+  // this computer's forwarded keys reach git on the host.
   import { openExternal } from './external';
   import { t } from './i18n';
+  import SSHAgentNote from './SSHAgentNote.svelte';
 
   export let credResult: { ok: boolean; message: string; needsPAT?: boolean; sshPublicKey?: string; sshAddURL?: string; sshVerified?: boolean };
   export let credBusy: boolean;
@@ -11,6 +15,9 @@
   export let copySSHKey: (text: string) => void;
   export let verifySSHConnection: () => void;
   export let regenerateSSHKey: () => void;
+  export let accountKey = '';
+  export let simple = false;
+
 </script>
 
 {#if credResult.sshPublicKey}
@@ -21,6 +28,7 @@
     <span class="ssh-status-dot"></span>
     <span>{credResult.sshVerified ? $t('cred.connVerified') : $t('cred.connNotVerified')}</span>
   </div>
+  <SSHAgentNote {accountKey} {simple} tag={credResult.sshPublicKey} />
   {#if !credResult.sshVerified}
     <p class="cred-step-desc" style="margin-top: 8px;">{$t('cred.copyKey')}</p>
     <div class="ssh-key-box">

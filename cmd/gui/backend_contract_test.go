@@ -768,17 +768,26 @@ func TestToUserErrorDistrustsTheServer(t *testing.T) {
 // failure.
 func TestRemoteMethodOutsideTheClosedList(t *testing.T) {
 	path := contractConfig(t)
+	// Every mutation is served since #244; a newer client meets an older
+	// server this way.
+	unserve(t, "CredentialSetupSSH")
+	unserve(t, "CredentialSSHAgentReport")
 	link := serveRemote(t, path, nil)
-	// The SSH key methods wait for #244.
 	before := loadConfig(t, path).Accounts["acct"]
-	if res := link.Remote.CredentialSetupSSH("acct"); !reflect.DeepEqual(res, CredentialSetupResult{}) {
-		t.Errorf("CredentialSetupSSH = %+v, want the zero value for a method that is not served", res)
+	if res := link.Remote.CredentialSSHAgentReport("acct"); !reflect.DeepEqual(res, SSHAgentReportDTO{AgentFingerprints: []string{}}) {
+		t.Errorf("CredentialSSHAgentReport = %+v, want the zero value for a method that is not served", res)
+	}
+	if err := link.Remote.LastError(); toUserError(err).Code != "remote.not_implemented_remote" {
+		t.Errorf("LastError = %v, want the failure of the call that had no error to return", err)
+	}
+	if res := link.Remote.CredentialSetupSSH("acct"); res.OK || res.Message == "" {
+		t.Errorf("CredentialSetupSSH = %+v, want the failure in its message", res)
 	}
 	if after := loadConfig(t, path).Accounts["acct"]; !reflect.DeepEqual(after, before) {
 		t.Errorf("the refused mutation changed the host: account %+v, was %+v", after, before)
 	}
 	if err := link.Remote.LastError(); toUserError(err).Code != "remote.not_implemented_remote" {
-		t.Errorf("LastError = %v, want the failure of the call that had no error to return", err)
+		t.Errorf("LastError = %v, want the failure of the setup", err)
 	}
 }
 
