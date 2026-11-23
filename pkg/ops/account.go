@@ -232,15 +232,21 @@ func moveSourceFolder(cfg *config.Config, oldKey, newKey string) error {
 // every source, mirror and workspace member referencing it. Leaving a
 // dangling mirror reference behind would corrupt the config (see issue #60).
 //
-// The credential file goes first: a token left behind would outlive the
-// account and be picked up by a new account with the same key (#242). If it
-// cannot be removed, nothing else is. SSH keys and the entries of Git
-// Credential Manager stay; the credential change flow removes those.
+// The credential file and the SSH key pair with its Host entry go first: a
+// token or key left behind would outlive the account and be picked up by a
+// new account with the same key (#242, #244). If they cannot be removed,
+// nothing else is. The entries of Git Credential Manager stay; the
+// credential change flow removes those.
 func DeleteAccount(cfg *config.Config, accountKey string) error {
 	if _, ok := cfg.Accounts[accountKey]; !ok {
 		return fmt.Errorf("account %q not found", accountKey)
 	}
 	if err := credential.DeleteToken(accountKey); err != nil {
+		return err
+	}
+	// The key pair and Host entry go too, so a new account with the same
+	// key does not pick up the old key (#244).
+	if _, err := removeSSHKey(cfg, accountKey); err != nil {
 		return err
 	}
 

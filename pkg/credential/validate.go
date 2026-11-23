@@ -64,6 +64,14 @@ func FindSSHKey(sshFolder, host, keyType string) (string, error) {
 // findIdentityFileInConfig parses ~/.ssh/config and returns the IdentityFile
 // for the given Host alias. Returns empty string if not found.
 func findIdentityFileInConfig(sshFolder, host string) string {
+	return hostEntryOption(sshFolder, host, "identityfile")
+}
+
+// hostEntryOption returns the value of the first option named option
+// (case-insensitive) in the Host block of <sshFolder>/config that names
+// host, or "" when there is none. "Option value" and "Option=value" both
+// count.
+func hostEntryOption(sshFolder, host, option string) string {
 	configPath := filepath.Join(sshFolder, "config")
 	f, err := os.Open(configPath)
 	if err != nil {
@@ -83,11 +91,17 @@ func findIdentityFileInConfig(sshFolder, host string) string {
 			inHost = containsWord(line[5:], host)
 			continue
 		}
-		if inHost && strings.HasPrefix(lower, "identityfile") {
-			parts := strings.SplitN(line, " ", 2)
-			if len(parts) == 2 {
-				return strings.TrimSpace(parts[1])
-			}
+		if !inHost {
+			continue
+		}
+		i := strings.IndexAny(line, " \t=")
+		if i < 0 {
+			continue
+		}
+		name := line[:i]
+		value := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line[i:]), "="))
+		if value != "" && strings.EqualFold(name, option) {
+			return value
 		}
 	}
 	return ""
