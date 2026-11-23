@@ -199,16 +199,11 @@ func containsWord(s, word string) bool {
 	return slices.Contains(strings.Fields(s), word)
 }
 
-// TestSSHConnection tests SSH connectivity by running ssh -T.
-// Uses -F to read the SSH config from <sshFolder>/config, ensuring full isolation
-// from the user's ~/.ssh/config.
-// Returns the greeting message (e.g., "Hi MyUser!") or an error.
-func TestSSHConnection(sshFolder, host string) (string, error) {
-	return TestSSHConnectionContext(context.Background(), sshFolder, host)
-}
-
-// TestSSHConnectionContext bounds SSH verification to 15 seconds or the
-// caller's earlier cancellation, including stalled authentication.
+// TestSSHConnectionContext tests SSH connectivity by running ssh -T, bounded
+// to 15 seconds or the caller's earlier cancellation, including stalled
+// authentication. It uses -F to read the SSH config from <sshFolder>/config,
+// ensuring full isolation from the user's ~/.ssh/config, and returns the
+// greeting message (e.g., "Hi MyUser!") or an error.
 func TestSSHConnectionContext(ctx context.Context, sshFolder, host string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
