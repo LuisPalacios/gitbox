@@ -501,8 +501,12 @@ func DefaultBranch(repoPath string) (string, error) {
 
 // DefaultBranchContext is DefaultBranch that stops when ctx is cancelled.
 func DefaultBranchContext(ctx context.Context, repoPath string) (string, error) {
+	return defaultBranchWith(func(args ...string) (string, error) { return outputContext(ctx, repoPath, args...) })
+}
+
+func defaultBranchWith(read func(...string) (string, error)) (string, error) {
 	// Try origin/HEAD — set by git clone or git remote set-head.
-	out, err := outputContext(ctx, repoPath, "symbolic-ref", "refs/remotes/origin/HEAD")
+	out, err := read("symbolic-ref", "refs/remotes/origin/HEAD")
 	if err == nil {
 		ref := strings.TrimSpace(out)
 		// "refs/remotes/origin/main" → "main"
@@ -513,7 +517,7 @@ func DefaultBranchContext(ctx context.Context, repoPath string) (string, error) 
 
 	// Fallback: check if main or master exist locally.
 	for _, candidate := range []string{"main", "master"} {
-		if _, err := outputContext(ctx, repoPath, "rev-parse", "--verify", "refs/heads/"+candidate); err == nil {
+		if _, err := read("rev-parse", "--verify", "refs/heads/"+candidate); err == nil {
 			return candidate, nil
 		}
 	}
@@ -571,12 +575,16 @@ var errOutputTruncated = errors.New("output exceeds the limit")
 // parse is incomplete, and half a status or half a config must never be
 // taken for the whole.
 func outputContext(ctx context.Context, dir string, args ...string) (string, error) {
-	res, err := Default.Run(ctx, Request{Dir: dir, Args: args})
+	return outputRequest(ctx, Request{Dir: dir, Args: args})
+}
+
+func outputRequest(ctx context.Context, req Request) (string, error) {
+	res, err := Default.Run(ctx, req)
 	if err != nil {
-		return "", failure(ctx, opName(args), err, res, res.Stderr)
+		return "", failure(ctx, opName(req.Args), err, res, res.Stderr)
 	}
 	if res.Truncated {
-		e := failure(ctx, opName(args), errOutputTruncated, res, nil)
+		e := failure(ctx, opName(req.Args), errOutputTruncated, res, nil)
 		e.Detail = "output too large"
 		return "", e
 	}

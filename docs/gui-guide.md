@@ -293,7 +293,7 @@ When the clone hasn't finished or its status hasn't loaded yet, the folder, edit
 
 - **Gone** — the branch's configured upstream disappeared. Its local tip may still contain unmerged work.
 - **Merged** — the default branch contains the branch's commits.
-- **Squashed** — the tips have identical trees, or the default branch has equivalent patches and still matches the branch on every path it changed. A squash that Gitbox cannot verify stays in the clone.
+- **Squashed** — the tips have identical trees, or the default branch has equivalent patches and still matches the branch on every path it changed. A squash that Gitbox cannot verify stays in the clone. In a partial clone, Gitbox checks only the objects already on disk.
 
 Review the list before confirming. Gitbox rechecks each displayed branch and deletes it only while its tip and category still match. A branch checked out in another worktree, involved in a rebase or bisect, or selected as the default stays in the clone. The result lists skipped branches so you can preview them again.
 

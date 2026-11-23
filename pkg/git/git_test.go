@@ -625,6 +625,35 @@ func TestSweepBranches_SquashMergedLocalOnly(t *testing.T) {
 	if after := count(); after != before {
 		t.Errorf("preview wrote objects: before %s after %s", before, after)
 	}
+	t.Run("promised blobs stay missing", func(t *testing.T) {
+		remote := filepath.Join(t.TempDir(), "remote.git")
+		runGit(t, clonePath, "clone", "--bare", clonePath, remote)
+		runGit(t, remote, "config", "uploadpack.allowFilter", "true")
+		partial := filepath.Join(t.TempDir(), "partial")
+		url := "file:///" + strings.TrimPrefix(filepath.ToSlash(remote), "/")
+		runGit(t, clonePath, "clone", "--filter=blob:none", "--no-checkout", url, partial)
+		runGit(t, partial, "branch", "local-squash", "origin/local-squash")
+		objects := func() string {
+			t.Helper()
+			out, err := output(partial, "count-objects", "-v")
+			if err != nil {
+				t.Fatal(err)
+			}
+			return out
+		}
+		before := objects()
+		p, err := SweepBranches(partial)
+		if err != nil || len(p.Squashed) > 0 {
+			t.Fatalf("partial preview = %+v, %v", p, err)
+		}
+		deleted, skipped, errs := DeletePreviewedBranches(partial, result)
+		if len(errs) > 0 || len(deleted) > 0 || !slices.Contains(skipped, "local-squash") {
+			t.Fatalf("partial confirm: deleted=%v skipped=%v errors=%v", deleted, skipped, errs)
+		}
+		if after := objects(); before != after {
+			t.Fatalf("fetched promised objects: before %s after %s", before, after)
+		}
+	})
 	runGit(t, clonePath, "revert", "--no-edit", "master~1")
 	result, err = SweepBranches(clonePath)
 	if err != nil || len(result.Squashed) != 0 {

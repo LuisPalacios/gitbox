@@ -11,6 +11,18 @@ import (
 	"strings"
 )
 
+// A partial clone can fetch a promised blob even during a local Git read.
+// Deny all transports as well: older Git understands GIT_ALLOW_PROTOCOL
+// even when it does not yet implement GIT_NO_LAZY_FETCH.
+func sweepRead(dir string, args ...string) (string, error) {
+	env := append(nonInteractiveEnv(), "GIT_NO_LAZY_FETCH=1", "GIT_ALLOW_PROTOCOL=")
+	return outputRequest(context.Background(), Request{Dir: dir, Args: args, EnvExact: env})
+}
+
+func sweepDefault(dir string) (string, error) {
+	return defaultBranchWith(func(args ...string) (string, error) { return sweepRead(dir, args...) })
+}
+
 // sweepRef pins the commit and tracks whether Git has the branch checked
 // out in any worktree. Never follow a symbolic branch ref during a sweep.
 type sweepRef struct {
@@ -20,7 +32,7 @@ type sweepRef struct {
 
 func sweepRefs(dir string, patterns []string) ([]sweepRef, error) {
 	const format = "--format=%(refname:lstrip=2)%00%(objectname)%00%(upstream)%00%(upstream:track)%00%(symref)%00%(worktreepath)%00"
-	out, err := output(dir, append([]string{"for-each-ref", format, "--"}, patterns...)...)
+	out, err := sweepRead(dir, append([]string{"for-each-ref", format, "--"}, patterns...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -41,14 +53,14 @@ func sweepRefs(dir string, patterns []string) ([]sweepRef, error) {
 }
 
 func commitID(dir, ref string) (string, error) {
-	out, err := output(dir, "rev-parse", "--verify", ref+"^{commit}")
+	out, err := sweepRead(dir, "rev-parse", "--verify", ref+"^{commit}")
 	return strings.TrimSpace(out), err
 }
 
 // operationBranches finds the branches reserved by a rebase or a bisect.
 // During either operation HEAD is detached and %(worktreepath) is empty.
 func operationBranches(dir string) (map[string]bool, error) {
-	raw, err := output(dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	raw, err := sweepRead(dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +122,7 @@ func sweepCategory(dir, base string, ref sweepRef) string {
 	if ref.gone {
 		return "gone"
 	}
-	if err := run(dir, "merge-base", "--is-ancestor", ref.tip, base); err == nil {
+	if _, err := sweepRead(dir, "merge-base", "--is-ancestor", ref.tip, base); err == nil {
 		return "merged"
 	} else if ge, ok := errors.AsType[*GitError](err); !ok || ge.ExitCode != 1 {
 		return ""
@@ -123,7 +135,7 @@ func sweepCategory(dir, base string, ref sweepRef) string {
 
 func isSquashMerged(dir, base, tip string) bool {
 	// Identical trees also cover a squash of several commits into one.
-	trees, err := output(dir, "rev-parse", base+"^{tree}", tip+"^{tree}")
+	trees, err := sweepRead(dir, "rev-parse", base+"^{tree}", tip+"^{tree}")
 	if err != nil {
 		return false
 	}
@@ -134,7 +146,7 @@ func isSquashMerged(dir, base, tip string) bool {
 	if pair[0] == pair[1] {
 		return true
 	}
-	cherry, err := output(dir, "cherry", base, tip)
+	cherry, err := sweepRead(dir, "cherry", base, tip)
 	if err != nil || strings.TrimSpace(cherry) == "" {
 		return false
 	}
@@ -146,11 +158,11 @@ func isSquashMerged(dir, base, tip string) bool {
 	// Patch IDs survive a later revert, and cherry skips merge commits.
 	// Require the current base to still contain the same final content
 	// on every path changed by the branch, including merge resolutions.
-	changed, err := output(dir, "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "--name-only", "-z", base+"..."+tip, "--")
+	changed, err := sweepRead(dir, "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "--name-only", "-z", base+"..."+tip, "--")
 	if err != nil || changed == "" {
 		return false
 	}
-	different, err := output(dir, "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "--name-only", "-z", base, tip, "--")
+	different, err := sweepRead(dir, "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "--name-only", "-z", base, tip, "--")
 	if err != nil {
 		return false
 	}
@@ -168,11 +180,12 @@ func isSquashMerged(dir, base, tip string) bool {
 
 // SweepBranches reads local refs without modifying the repository.
 func SweepBranches(dir string) (SweepResult, error) {
-	def, err := DefaultBranch(dir)
+	def, err := sweepDefault(dir)
 	if err != nil {
 		return SweepResult{}, err
 	}
-	cur, err := CurrentBranch(dir)
+	cur, err := sweepRead(dir, "rev-parse", "--abbrev-ref", "HEAD")
+	cur = strings.TrimSpace(cur)
 	if err != nil {
 		return SweepResult{}, err
 	}
@@ -212,7 +225,7 @@ func SweepBranches(dir string) (SweepResult, error) {
 // observation is a skip. update-ref atomically compares the preview's OID
 // while removing the ref, including when a writer moves it after our check.
 func DeletePreviewedBranches(dir string, preview SweepResult) (deleted, skipped []string, errs []error) {
-	def, err := DefaultBranch(dir)
+	def, err := sweepDefault(dir)
 	if err != nil {
 		return nil, nil, []error{err}
 	}
@@ -259,13 +272,13 @@ func deleteCandidate(dir, def, base, name, category string, preview SweepResult)
 		if up == "" {
 			up = "HEAD"
 		}
-		if run(dir, "merge-base", "--is-ancestor", tip, up) != nil {
+		if _, err := sweepRead(dir, "merge-base", "--is-ancestor", tip, up); err != nil {
 			return false, nil
 		}
 	}
 	// Category checks may run several Git commands. Refresh the default,
 	// operation state and worktree occupancy just before deleting the ref.
-	currentDefault, err := DefaultBranch(dir)
+	currentDefault, err := sweepDefault(dir)
 	if err != nil {
 		return false, err
 	}
