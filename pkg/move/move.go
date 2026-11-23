@@ -152,12 +152,14 @@ func Move(ctx context.Context, snap *config.Config, req Request, commit Commit, 
 		return result
 	}
 	destPlainURL := buildHTTPSCloneURL(plan.destAcct, req.DestOwner, req.DestRepoName)
-	destAuthURL, pushExtraConfig, err := buildDestPushURL(plan.destAcct, req.DestOwner, req.DestRepoName, destPlainURL, plan.destAPIToken)
+	destPushURL, pushExtraConfig, cleanupPush, err := buildDestPush(plan.destAcct, req.DestOwner, req.DestRepoName, destPlainURL, plan.destAPIToken)
 	if err != nil {
-		result.Err = fmt.Errorf("build destination push URL: %w", err)
+		result.Err = fmt.Errorf("prepare the destination push: %w", err)
 		return result
 	}
-	if _, err := git.PushMirror(ctx, req.SourceRepoPath, destAuthURL, pushExtraConfig); err != nil {
+	_, err = git.PushMirror(ctx, req.SourceRepoPath, destPushURL, pushExtraConfig)
+	cleanupPush()
+	if err != nil {
 		result.Err = fmt.Errorf("push --mirror: %w", err)
 		return result
 	}
@@ -251,8 +253,8 @@ func Move(ctx context.Context, snap *config.Config, req Request, commit Commit, 
 }
 
 // buildHTTPSCloneURL returns the public HTTPS clone URL for a repo on
-// an account. It is independent of credential type — embedded-auth
-// handling lives in buildDestPushURL.
+// an account. It is independent of credential type — authentication
+// lives in buildDestPush.
 func buildHTTPSCloneURL(acct config.Account, owner, repoName string) string {
 	base := strings.TrimRight(acct.URL, "/")
 	full := owner + "/" + repoName
@@ -266,28 +268,28 @@ func buildHTTPSCloneURL(acct config.Account, owner, repoName string) string {
 	return fmt.Sprintf("https://%s/%s.git", base, full)
 }
 
-// buildDestPushURL builds the URL passed to `git push --mirror` for
-// the destination, plus any `-c key=value` config args git should be
-// invoked with.
+// buildDestPush returns the URL passed to `git push --mirror` for the
+// destination, the `-c key=value` config git runs with, and a cleanup to
+// call once git is done.
 //
-//   - ssh:  "git@<host>:<owner>/<name>.git" — no embedded creds; SSH
-//     agent / ssh config handles auth. No extraConfig.
-//   - other: "https://<username>:<apiToken>@<host>/<owner>/<name>.git"
-//     with extraConfig = ["credential.helper="] so a GCM helper
-//     configured for the same host doesn't override the
-//     embedded credential.
+//   - ssh: "git@<host>:<owner>/<name>.git". The SSH agent or ssh config
+//     authenticates; there is no extra config.
+//   - other: the plain HTTPS URL, with credential.helper reset and then set
+//     to a git-credential-store file of its own that holds apiToken
+//     (credential.WriteTempStoreFile). The token never appears in git's
+//     argv, where any process on the host could read it (#242), and a GCM
+//     helper configured for the same host does not take over.
 //
 // apiToken must be the token already resolved by the preflight
 // (plan.destAPIToken). For GCM-only destinations, that token is what
 // `git credential fill` returned during the RepoExists / CreateRepo
-// API calls — embedding it side-steps the "GCM must be cached at
-// push time" problem, because we captured the cred once and reuse
-// it inline for the push URL.
+// API calls: storing it for the push side-steps the "GCM must be cached
+// at push time" problem, because the credential is captured once.
 //
-// Username is acct.Username (not the literal "token"). Some Forgejo
+// Username is acct.Username, or "token" when it is empty. Some Forgejo
 // versions reject Basic auth when the username is "token" even with a
 // valid PAT.
-func buildDestPushURL(acct config.Account, owner, repoName, plainHTTPSURL, apiToken string) (string, []string, error) {
+func buildDestPush(acct config.Account, owner, repoName, plainHTTPSURL, apiToken string) (string, []string, func(), error) {
 	if acct.DefaultCredentialType == "ssh" {
 		host := acct.URL
 		if acct.SSH != nil && acct.SSH.Host != "" {
@@ -295,18 +297,19 @@ func buildDestPushURL(acct config.Account, owner, repoName, plainHTTPSURL, apiTo
 		} else {
 			host = stripScheme(host)
 		}
-		return fmt.Sprintf("git@%s:%s/%s.git", host, owner, repoName), nil, nil
+		return fmt.Sprintf("git@%s:%s/%s.git", host, owner, repoName), nil, func() {}, nil
 	}
-	u, err := url.Parse(plainHTTPSURL)
+	if _, err := url.Parse(plainHTTPSURL); err != nil {
+		return "", nil, func() {}, fmt.Errorf("parsing destination URL: %w", err)
+	}
+	if acct.Username == "" {
+		acct.Username = "token"
+	}
+	storeFile, cleanup, err := credential.WriteTempStoreFile(acct, apiToken)
 	if err != nil {
-		return "", nil, fmt.Errorf("parsing destination URL: %w", err)
+		return "", nil, func() {}, err
 	}
-	username := acct.Username
-	if username == "" {
-		username = "token"
-	}
-	u.User = url.UserPassword(username, apiToken)
-	return u.String(), []string{"credential.helper="}, nil
+	return plainHTTPSURL, []string{"credential.helper=", "credential.helper=" + credential.StoreHelper(storeFile)}, cleanup, nil
 }
 
 // stripScheme removes "https://" or "http://" from a URL so the host
