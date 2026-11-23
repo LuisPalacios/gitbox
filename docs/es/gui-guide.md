@@ -527,6 +527,8 @@ Antes, `ssh <alias>` tiene que entrar sin pedir nada, y el host necesita un `git
 
 Gitbox comprueba si hay actualizaciones al arrancar y cada seis horas mientras está abierto. Cuando hay una versión más nueva, aparece una píldora ámbar a la derecha del footer con la nueva versión. Haz clic en ella para descargar y aplicar la actualización en su sitio. Gitbox verifica la firma y el checksum de la release y rechaza una actualización que falle cualquiera de las dos comprobaciones; consulta [Firma de releases](release-signing.md). Reemplaza solo lo que ya está instalado junto a la app (en macOS, el bundle `GitboxApp.app` completo) y se reinicia en la nueva versión. Si la nueva versión no puede arrancar por su cuenta, la píldora lo indica: haz clic en **Salir** y vuelve a abrir la app. La píldora aparece en cada arranque hasta que actualizas; la ✕ la oculta hasta el siguiente arranque.
 
+Si el primer arranque se interrumpe, vuelve a abrir Gitbox. Elige **Volver a la versión anterior** para restaurarla o **Conservar esta versión** después de comprobar que funciona. Gitbox conserva la copia durante un máximo de siete días y comprueba su integridad antes de restaurarla.
+
 La AppImage de Linux solo avisa: al hacer clic en la píldora se abre la página de la release, y tú descargas la nueva AppImage y sustituyes el archivo antiguo.
 
 El actualizador sigue la release que GitHub marca como latest, así que una GUI v1 pasa a v2 de la misma forma.

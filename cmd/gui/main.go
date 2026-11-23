@@ -32,6 +32,8 @@ func main() {
 	if len(os.Args) > 1 {
 		var err error
 		switch os.Args[1] {
+		case update.RecoveryFlag:
+			err = update.RunRecoveryHelper(os.Args[2:])
 		case update.ApplyUpdateFlag:
 			err = update.RunElevatedUpdate(version, os.Args[2:])
 		case update.RestartAfterUpdateFlag:
@@ -41,7 +43,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		if os.Args[1] == update.ApplyUpdateFlag || os.Args[1] == update.RestartAfterUpdateFlag {
+		if os.Args[1] == update.RecoveryFlag || os.Args[1] == update.ApplyUpdateFlag || os.Args[1] == update.RestartAfterUpdateFlag {
 			return
 		}
 	}
@@ -153,9 +155,6 @@ func main() {
 		preloadPath = app.cfgPath
 	}
 	if cfg, err := config.Load(preloadPath); err == nil {
-		if !app.testMode {
-			update.CleanupOldBinary()
-		}
 		// The geometry is a client preference, stored per destination: the
 		// local window's own, or that of the remote this window shows.
 		prefs := config.ExtractPrefs(cfg)

@@ -28,11 +28,28 @@ import (
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	a.events = wailsSink{ctx}
+	if a.windowMode == "" && !a.testMode {
+		if exe, err := update.SelfPath(); err == nil {
+			a.updateRecovery, a.updateRecoveryErr = update.BeginRecovery(exe, filepath.Dir(config.DefaultV2Path()))
+		}
+	}
 	a.be().Init(ctx)
+	if r := a.updateRecovery; r != nil && r.Remaining() > 0 {
+		a.recoveryExpiry = time.AfterFunc(r.Remaining(), func() {
+			a.recoveryMu.Lock()
+			defer a.recoveryMu.Unlock()
+			if a.updateRecovery == r && a.finishUpdateRecovery(false) == nil {
+				a.sink().Emit("update:recoveryExpired")
+			}
+		})
+	}
 }
 
 // Shutdown is called by Wails when the app is closing.
 func (a *App) Shutdown(_ context.Context) {
+	if a.recoveryExpiry != nil {
+		a.recoveryExpiry.Stop()
+	}
 	// Tear down the Profile-editor subprocess (issue #69) so the user can't
 	// end up with an orphaned terminals window after closing the main app.
 	// Only fires in the parent process — the subprocess never spawns its
@@ -181,6 +198,83 @@ func (a *App) ShowWindow() {
 	wailsrt.WindowShow(a.ctx)
 }
 
+// CheckUpdateRecovery runs only after a bridge call from the main frontend.
+// A failed previous launch leaves the choice with the user.
+func (a *App) CheckUpdateRecovery(started bool) (string, error) {
+	a.recoveryMu.Lock()
+	defer a.recoveryMu.Unlock()
+	if a.updateRecoveryErr != nil {
+		return "", errors.New("could not verify the retained update")
+	}
+	r := a.updateRecovery
+	if r == nil {
+		return "", nil
+	}
+	if offered := r.OfferedVersion(); offered != "" {
+		return offered, nil
+	}
+	if !started {
+		return "", nil
+	}
+	if r.NeedsCleanup() {
+		return "", a.finishUpdateRecovery(false)
+	}
+	if a.configHealthy() {
+		if err := r.Confirm(); err != nil {
+			return "", errors.New("could not confirm update startup")
+		}
+		return "", a.finishUpdateRecovery(false)
+	}
+	return "", nil
+}
+
+func (a *App) configHealthy() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.cfgLoaded && a.cfgLoadError == ""
+}
+
+// ResolveUpdateRecovery acts only on the local, previously offered record.
+func (a *App) ResolveUpdateRecovery(rollback bool) error {
+	a.recoveryMu.Lock()
+	defer a.recoveryMu.Unlock()
+	r := a.updateRecovery
+	if r == nil || r.OfferedVersion() == "" {
+		return errors.New("no retained update is available")
+	}
+	if !rollback {
+		if !a.configHealthy() {
+			return errors.New("restore the configuration before confirming this version")
+		}
+		if err := r.Confirm(); err != nil {
+			return errors.New("could not confirm update startup")
+		}
+	}
+	return a.finishUpdateRecovery(rollback)
+}
+
+func (a *App) finishUpdateRecovery(rollback bool) error {
+	var exe string
+	if rollback {
+		var err error
+		exe, err = update.SelfPath()
+		if err != nil {
+			return errors.New("cannot locate the running application")
+		}
+	}
+	if err := a.updateRecovery.Finish(rollback); err != nil {
+		return errors.New("could not finish update recovery")
+	}
+	a.updateRecovery = nil
+	if rollback {
+		if update.Relaunch(exe, os.Getpid(), os.Args[1:]) != nil {
+			return errors.New("rollback succeeded; restart GitboxApp")
+		}
+		wailsrt.Quit(a.ctx)
+	}
+	return nil
+}
+
 // ApplyUpdate downloads and applies the latest release, then restarts the
 // app on the new version. On Windows, if the install directory requires
 // admin privileges (e.g. Program Files), it falls back to a UAC-elevated
@@ -188,6 +282,13 @@ func (a *App) ShowWindow() {
 func (a *App) ApplyUpdate() error {
 	if !update.SelfUpdateSupported() {
 		return errors.New("this build can't update itself; download the new version from the release page")
+	}
+
+	a.recoveryMu.Lock()
+	pending := a.updateRecovery != nil || a.updateRecoveryErr != nil
+	a.recoveryMu.Unlock()
+	if pending {
+		return errors.New("finish recovering the previous update first")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -226,7 +327,7 @@ func (a *App) ApplyUpdate() error {
 		exe = ""
 	}
 
-	if err := update.InstallExtracted(extractDir, installDir); err != nil {
+	if err := update.InstallVersion(extractDir, installDir, version); err != nil {
 		if errors.Is(err, update.ErrNeedElevation) {
 			os.RemoveAll(extractDir)
 			a.sink().Emit("update:progress", "Requesting admin privileges...")

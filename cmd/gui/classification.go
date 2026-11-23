@@ -64,6 +64,7 @@ var methodClass = map[string]methodInfo{
 	"CheckGlobalIdentity":            {classRemote, "P4", false},
 	"CheckMirrorCredentials":         {classRemote, "P4", false},
 	"CheckMoveReadiness":             {classRemote, "P4", false},
+	"CheckUpdateRecovery":            {classLocal, "P1a", false},
 	"CloneRepo":                      {classRemote, "P5", true},
 	"ConfirmSweep":                   {classRemote, "P5", true},
 	"ConnectRemote":                  {classLocal, "P3b", false},
@@ -164,6 +165,7 @@ var methodClass = map[string]methodInfo{
 	"RepairConfig":                   {classRemote, "P5", true},
 	"RepoNesting":                    {classRemote, "P4", false},
 	"RepoWorkspaceFiles":             {classRemote, "P4", false},
+	"ResolveUpdateRecovery":          {classLocal, "P1a", false},
 	"RestoreFromBackup":              {classRemote, "P5", true},
 	"SaveTerminalProfiles":           {classLocal, "P1b", false},
 	"SaveTerminalProfilesDTO":        {classLocal, "P1b", false},
@@ -242,5 +244,6 @@ var eventClass = map[string]eventInfo{
 	"update:done":              {classLocal, "P1a"},
 	"update:progress":          {classLocal, "P1a"},
 	"update:quit":              {classLocal, "P1a"},
+	"update:recoveryExpired":   {classLocal, "P1a"},
 	"update:restarting":        {classLocal, "P1a"},
 }

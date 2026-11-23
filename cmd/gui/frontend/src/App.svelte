@@ -309,6 +309,19 @@
   // Rendered as a full-screen Svelte view (NOT a window.confirm) because
   // macOS WebKit was observed to auto-dismiss confirm() without showing a
   // dialog, causing the app to flash and exit on corrupted configs.
+  let rollbackVersion = '';
+  let rollbackBusy = false;
+  let rollbackError = false;
+  async function resolveUpdate(rollback: boolean) {
+    rollbackBusy = true;
+    rollbackError = false;
+    try {
+      await bridge.resolveUpdateRecovery(rollback);
+      rollbackVersion = '';
+    } catch { rollbackError = true; }
+    finally { rollbackBusy = false; }
+  }
+
   let cfgLoadErrorModal = false;
   let cfgLoadErrorMsg = '';
   let cfgLoadErrorBusy = false;
@@ -1892,6 +1905,7 @@
       if (info?.latest !== updateDismissed) updateInfo = info;
     });
 
+    events.on('update:recoveryExpired', () => { rollbackVersion = ''; });
     events.on('update:progress', (msg: string) => {
       updateProgress = msg;
     });
@@ -1929,7 +1943,13 @@
       try { await onRemoteState(await bridge.remoteInfo()); } catch (e) { console.error(e); }
       return;
     }
+    try { rollbackVersion = await bridge.checkUpdateRecovery(false); }
+    catch { pushNotice('error', $t('app.rollbackFailed')); }
     await startMain();
+    // Let the first frame paint before confirmation and backup cleanup.
+    if (!rollbackVersion) requestAnimationFrame(() => setTimeout(() => {
+      bridge.checkUpdateRecovery(true).catch(() => pushNotice('error', $t('app.rollbackFailed')));
+    }, 0));
   });
 
   // startMain loads the config and the dashboard: at launch in a local
@@ -2016,6 +2036,16 @@
 
 {#if windowMode === 'main' || remoteShowMain}
 
+{#if rollbackVersion}
+  <div class="rollback-notice" role="status">
+    <span class="rollback-title">{$t(rollbackVersion === 'previous' ? 'app.rollbackUnknown' : 'app.rollbackNotice', { version: rollbackVersion })}</span>
+    <button class="text-btn" disabled={rollbackBusy} on:click={() => resolveUpdate(true)}>{$t('app.rollback')}</button>
+    {#if !cfgLoadErrorModal}
+      <button class="text-btn" disabled={rollbackBusy} on:click={() => resolveUpdate(false)}>{$t('app.keepUpdate')}</button>
+    {/if}
+    {#if rollbackError}<span role="alert">{$t('app.rollbackFailed')}</span>{/if}
+  </div>
+{/if}
 <!-- ── CONFIG LOAD ERROR ── -->
 {#if cfgLoadErrorModal}
 <ConfigErrorScreen {configPath} {cfgLoadErrorMsg} {cfgRepairFailure} {cfgBackups} {cfgLoadErrorBusy} {cfgRestoreBackup} {cfgDoRepair} {cfgStartFresh} />
@@ -2180,6 +2210,14 @@
 <!-- ════════════════════════════════════════════════════════════ -->
 
 <style>
+  .rollback-notice {
+    position: fixed; top: 12px; right: 12px; z-index: 10001;
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    width: min(400px, calc(100vw - 24px)); box-sizing: border-box;
+    padding: 12px; background: var(--bg-card); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 28px #0004;
+  }
+  .rollback-title { width: 100%; }
   .app { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
   /* A remote window after a disconnect (#240): the last state stays,
      dimmed and inert, under the banner. */

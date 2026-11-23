@@ -7,6 +7,7 @@ import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { get } from 'svelte/store';
 import { guardCalls, decodeWindowError } from './readonly';
 import { t } from './i18n';
+import { CheckUpdateRecovery, ResolveUpdateRecovery } from '../../wailsjs/go/main/App';
 
 import type { CredentialFinding, StartupSnapshot, ConfigDTO, CollapsedState, StatusResult, CredentialStatus, EditorInfo, OrphanRepoDTO, ReconcileDTO, AccountDeletionImpactDTO, ConfigRepairResult, ConfigBackupInfo, PRSettingsDTO, PRSummaryDTO, RootDTO, RemoveRootDTO, MoveOwnerOption, MoveRequestDTO, MovePreflightDTO, MoveReadinessDTO, TerminalAppInfo, ShellInfo, TerminalProfileInfo } from './types';
 
@@ -102,6 +103,8 @@ const calls = {
   applyDiscoveredMirrors: (): Promise<void> => ApplyDiscoveredMirrors(),
   listAccountOrgs: (accountKey: string): Promise<string[]> => ListAccountOrgs(accountKey),
   createNewRepo: (accountKey: string, owner: string, repoName: string, description: string, isPrivate: boolean, cloneAfter: boolean, root = ''): Promise<void> => CreateNewRepo(accountKey, owner, repoName, description, isPrivate, cloneAfter, root),
+  checkUpdateRecovery: (started: boolean): Promise<string> => CheckUpdateRecovery(started),
+  resolveUpdateRecovery: (rollback: boolean): Promise<void> => ResolveUpdateRecovery(rollback),
   applyUpdate: (): Promise<void> => ApplyUpdate(),
   previewSweep: (sourceKey: string, repoKey: string): Promise<any> => PreviewSweep(sourceKey, repoKey),
   confirmSweep: (sourceKey: string, repoKey: string): Promise<any> => ConfirmSweep(sourceKey, repoKey),

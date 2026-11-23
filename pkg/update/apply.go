@@ -2,8 +2,10 @@ package update
 
 import (
 	"archive/zip"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,7 +33,19 @@ func ExtractUpdate(zipPath string) (string, string, error) {
 // GUI update from dropping the CLI into /Applications, and a CLI update from
 // creating a GitboxApp.app next to ~/bin/gitbox.
 func InstallExtracted(extractDir, installDir string) error {
-	return installEntries(extractDir, installDir, func(name string) bool {
+	return installVersion(extractDir, installDir, "")
+}
+
+// InstallVersion retains the current version for a possible rollback.
+func InstallVersion(extractDir, installDir, previousVersion string) error {
+	if previousVersion == "" {
+		return InstallExtracted(extractDir, installDir)
+	}
+	return installVersion(extractDir, installDir, previousVersion)
+}
+
+func installVersion(extractDir, installDir, previousVersion string) error {
+	return installEntries(extractDir, installDir, previousVersion, func(name string) bool {
 		_, err := os.Lstat(filepath.Join(installDir, name))
 		return err == nil
 	})
@@ -40,13 +54,14 @@ func InstallExtracted(extractDir, installDir string) error {
 // installEntries copies the zip entries accepted by keep into installDir.
 // Files replace executables in place; .app directories (macOS bundles)
 // replace the whole bundle.
-func installEntries(extractDir, installDir string, keep func(name string) bool) error {
+func installEntries(extractDir, installDir, previousVersion string, keep func(name string) bool) error {
 	entries, err := os.ReadDir(extractDir)
 	if err != nil {
 		return fmt.Errorf("reading extracted files: %w", err)
 	}
 
 	ops := realReplaceOps()
+	ops.previousVersion = previousVersion
 	installed := 0
 	for _, entry := range entries {
 		if !keep(entry.Name()) {
@@ -120,98 +135,120 @@ func bundleOf(exePath string) string {
 // in, with the real ones by default, so a test can make one step fail and
 // check that the installed app is still there.
 type replaceOps struct {
-	rename  func(oldpath, newpath string) error
-	copyDir func(src, dst string) error
+	previousVersion string
+	exchange        func(string, string) error
+	rename          func(oldpath, newpath string) error
+	copyDir         func(src, dst string) error
 	// Windows stages the replacement before moving either executable.
 	copyFile func(dst io.Writer, src io.Reader) (int64, error)
 	moveFile func(src, dst string) error
 }
 
 func realReplaceOps() replaceOps {
-	return replaceOps{rename: os.Rename, copyDir: copyDir}
+	return replaceOps{rename: os.Rename, copyDir: copyDir, exchange: bundleExchange()}
 }
 
 // replaceBundle swaps the bundle at dst for src. The new bundle is staged
 // next to dst and renamed into place, so a failed copy never leaves a
 // half-written app behind.
 func replaceBundle(src, dst string, ops replaceOps) error {
-	staged := dst + ".new"
-	old := dst + ".old"
-	os.RemoveAll(staged)
-	os.RemoveAll(old)
-
+	staged, err := os.MkdirTemp(filepath.Dir(dst), ".gitbox-update-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(staged)
 	if err := ops.copyDir(src, staged); err != nil {
-		os.RemoveAll(staged)
 		return err
 	}
-	if _, err := os.Lstat(dst); err == nil {
-		if err := ops.rename(dst, old); err != nil {
-			os.RemoveAll(staged)
-			return err
-		}
-	}
-	if err := ops.rename(staged, dst); err != nil {
-		// Put the previous bundle back and drop the staged copy.
-		_ = ops.rename(old, dst)
-		os.RemoveAll(staged)
+	if err := os.Chmod(staged, 0755); err != nil {
 		return err
 	}
-	os.RemoveAll(old)
-	return nil
+	return installPrevious(staged, dst, ops)
 }
 
+// ErrInvalidArchive identifies an update that cannot be extracted safely.
+var ErrInvalidArchive = errors.New("invalid update archive")
+
+const (
+	maxArchiveEntries = 2000
+	maxArchiveBytes   = 512 << 20
+)
+
 func extractZip(zipPath string) (string, error) {
-	extractDir, err := os.MkdirTemp("", "gitbox-extract-*")
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		if r != nil {
+			_ = r.Close()
+		}
+		return "", fmt.Errorf("%w: opening zip: %w", ErrInvalidArchive, err)
+	}
+	defer r.Close()
+	if len(r.File) > maxArchiveEntries {
+		return "", fmt.Errorf("%w: too many entries", ErrInvalidArchive)
+	}
+	var total uint64
+	for _, f := range r.File {
+		if _, err := archivePath(f); err != nil {
+			return "", err
+		}
+		if f.UncompressedSize64 > maxArchiveBytes-total {
+			return "", fmt.Errorf("%w: size limit exceeded", ErrInvalidArchive)
+		}
+		total += f.UncompressedSize64
+	}
+
+	dir, err := os.MkdirTemp("", "gitbox-extract-*")
 	if err != nil {
 		return "", err
 	}
-
-	r, err := zip.OpenReader(zipPath)
-	if err != nil {
-		os.RemoveAll(extractDir)
-		return "", fmt.Errorf("opening zip: %w", err)
-	}
-	defer r.Close()
-
 	for _, f := range r.File {
-		destPath := filepath.Join(extractDir, f.Name)
-
-		// Guard against zip slip.
-		if !strings.HasPrefix(filepath.Clean(destPath), filepath.Clean(extractDir)+string(os.PathSeparator)) {
-			continue
-		}
-
-		if f.FileInfo().IsDir() {
-			os.MkdirAll(destPath, f.Mode())
-			continue
-		}
-
-		// Ensure parent directory exists.
-		os.MkdirAll(filepath.Dir(destPath), 0o755)
-
-		outFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
-		if err != nil {
-			os.RemoveAll(extractDir)
-			return "", fmt.Errorf("creating %s: %w", f.Name, err)
-		}
-
-		rc, err := f.Open()
-		if err != nil {
-			outFile.Close()
-			os.RemoveAll(extractDir)
-			return "", fmt.Errorf("opening %s in zip: %w", f.Name, err)
-		}
-
-		_, err = io.Copy(outFile, rc)
-		rc.Close()
-		outFile.Close()
-		if err != nil {
-			os.RemoveAll(extractDir)
-			return "", fmt.Errorf("extracting %s: %w", f.Name, err)
+		name, _ := archivePath(f)
+		if err := extractEntry(f, filepath.Join(dir, name)); err != nil {
+			_ = os.RemoveAll(dir)
+			return "", err
 		}
 	}
+	return dir, nil
+}
 
-	return extractDir, nil
+func archivePath(f *zip.File) (string, error) {
+	name := strings.TrimSuffix(f.Name, "/")
+	if name == "." || !fs.ValidPath(name) || strings.ContainsAny(name, `\:`) ||
+		(f.Mode().Type() != 0 && f.Mode().Type() != fs.ModeDir) || (f.Mode().IsDir() && f.UncompressedSize64 != 0) {
+		return "", fmt.Errorf("%w: unsupported entry", ErrInvalidArchive)
+	}
+	local, err := filepath.Localize(name)
+	if err != nil {
+		return "", fmt.Errorf("%w: invalid path", ErrInvalidArchive)
+	}
+	return local, nil
+}
+
+func extractEntry(f *zip.File, dst string) error {
+	if f.FileInfo().IsDir() {
+		return os.MkdirAll(dst, 0755)
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	in, err := f.Open()
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, f.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	size := int64(f.UncompressedSize64) // bounded in extractZip
+	n, copyErr := io.Copy(out, io.LimitReader(in, size+1))
+	if err := errors.Join(copyErr, out.Close()); err != nil {
+		return err
+	}
+	if n != size {
+		return fmt.Errorf("%w: entry size mismatch", ErrInvalidArchive)
+	}
+	return nil
 }
 
 // copyDir recursively copies a directory tree.

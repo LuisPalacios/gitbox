@@ -42,6 +42,8 @@ export function CheckMirrorCredentials(arg1:string):Promise<main.MirrorCredentia
 
 export function CheckMoveReadiness(arg1:string,arg2:string,arg3:boolean):Promise<main.MoveReadinessDTO>;
 
+export function CheckUpdateRecovery(arg1:boolean):Promise<string>;
+
 export function CloneRepo(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function ConfirmSweep(arg1:string,arg2:string):Promise<main.SweepDeleteDTO>;
@@ -239,6 +241,8 @@ export function RepairConfig():Promise<main.ConfigRepairResult>;
 export function RepoNesting():Promise<Record<string, string>>;
 
 export function RepoWorkspaceFiles(arg1:string,arg2:string):Promise<Array<string>>;
+
+export function ResolveUpdateRecovery(arg1:boolean):Promise<void>;
 
 export function RestoreFromBackup(arg1:string):Promise<main.ConfigRepairResult>;
 

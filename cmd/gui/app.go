@@ -41,7 +41,11 @@ import (
 // App is the Wails application struct. All exported methods become
 // frontend bindings via window.go.main.App.<Method>().
 type App struct {
-	ctx context.Context
+	ctx               context.Context
+	recoveryMu        sync.Mutex
+	updateRecovery    *update.Recovery
+	updateRecoveryErr error
+	recoveryExpiry    *time.Timer
 	// events carries every event to the frontend; nil means nopSink (see
 	// events.go). Startup installs the Wails sink.
 	events EventSink

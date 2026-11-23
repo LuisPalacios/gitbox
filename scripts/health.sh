@@ -48,6 +48,7 @@ pkg[/\\]update[/\\]apply_helper[.]go:[0-9]+:[0-9]+: unreachable func: (readUpdat
 pkg[/\\]update[/\\]replace_windows_executable[.]go:[0-9]+:[0-9]+: unreachable func: (stageExecutable|removeRecordedWindowsBackup|replaceWindowsExecutableWith)$
 pkg[/\\]terminals[/\\]sync[.]go:[0-9]+:[0-9]+: unreachable func: Sync$
 pkg[/\\]workspace[/\\]workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCache$
+pkg[/\\]update[/\\]platform_(unix|windows)[.]go:[0-9]+:[0-9]+: unreachable func: CleanupOldBinary$
 unreachable func: (SetRunnerForTest|SetDoerForTest)$
 pkg[/\\]git[/\\]testutil[/\\]runner[.]go:[0-9]+:[0-9]+: unreachable func: (RunnerFunc[.]Run|NewBarrier|Barrier[.]Arrive)$
 cmd[/\\]gui[/\\]backend_remote[.]go:[0-9]+:[0-9]+: unreachable func: dialRemoteBackend$
