@@ -104,8 +104,8 @@ func TestGitboxServerBinary(t *testing.T) {
 	if len(statuses) != 1 || statuses[0].Repo != "org/repo" || statuses[0].State != "no upstream" || statuses[0].Branch != "main" {
 		t.Errorf("GetAllStatus = %+v, want the one clone, on main with no upstream", statuses)
 	}
-	if err := remote.DeleteRepo("acct", "org/repo"); toUserError(err).Code != "remote.not_implemented_remote" {
-		t.Errorf("DeleteRepo = %v, want not_implemented_remote", err)
+	if err := remote.ChangeCredentialType("acct", "ssh"); toUserError(err).Code != "remote.not_implemented_remote" {
+		t.Errorf("ChangeCredentialType = %v, want not_implemented_remote", err)
 	}
 	if err := remote.LastError(); err != nil {
 		t.Errorf("a call failed: %v", err)

@@ -215,18 +215,19 @@ func TestReplayRequestID(t *testing.T) {
 }
 
 // TestUnservedMutationsRefused: a remote window refuses, before the wire,
-// the mutations the server does not serve yet: the repository mutations
-// (#295) and the credential methods (#242, #244); a served one goes through.
+// the mutations the server does not serve yet, the credential methods
+// (#242, #244); a served one goes through.
 func TestUnservedMutationsRefused(t *testing.T) {
 	path := contractHost(t)
-	// The test server answers DeleteRepo, so a call that reached it would show.
+	// The test server answers ChangeCredentialType, so a call that reached
+	// it would show.
 	var reached atomic.Bool
 	link := serveRemote(t, path, map[string]rpc.Handler{
-		"DeleteRepo": rpc.Func(func(string, string) error { reached.Store(true); return nil }),
+		"ChangeCredentialType": rpc.Func(func(string, string) error { reached.Store(true); return nil }),
 	})
 	link.Remote.refuseUnserved = true
-	if err := link.Remote.DeleteRepo("acct", "org/repo"); toUserError(err).Code != "remote.read_only" {
-		t.Errorf("DeleteRepo = %v, want remote.read_only", err)
+	if err := link.Remote.ChangeCredentialType("acct", "ssh"); toUserError(err).Code != "remote.read_only" {
+		t.Errorf("ChangeCredentialType = %v, want remote.read_only", err)
 	}
 	if res := link.Remote.CredentialDelete("acct"); res.OK || toUserError(link.Remote.LastError()).Code != "remote.read_only" {
 		t.Errorf("CredentialDelete = %+v (%v), want refused with remote.read_only", res, link.Remote.LastError())

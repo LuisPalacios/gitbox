@@ -34,11 +34,11 @@ import (
 // and the read halves of the MIXED ones (the two browser methods only
 // resolve a link: the client opens it); P6 (#243) adds AccountFolder, the
 // read half of the account launchers, and the AI harness detection, which
-// runs where the harnesses run; P5 (#294) adds the config mutations, each
-// with its row in mutationIdempotence. Each method decodes its parameters
-// into their Go types and checks what it is given (hostPath, #241). The
-// repository mutations (#295) and the credential methods (#242, #244) are
-// not served yet, so a remote window refuses them itself.
+// runs where the harnesses run; P5 adds the config mutations (#294) and the
+// repository mutations (#295), each with its row in mutationIdempotence.
+// Each method decodes its parameters into their Go types and checks what it
+// is given (hostPath, #241). The credential methods (#242, #244) are not
+// served yet, so a remote window refuses them itself.
 var servedMethods = []string{
 	"AccountDeletionImpact",
 	"AccountFolder",
@@ -49,15 +49,21 @@ var servedMethods = []string{
 	"AddMirrorGroup",
 	"AddMirrorRepo",
 	"AddRoot",
+	"AdoptClones",
+	"ApplyDiscoveredMirrors",
 	"CheckGlobalGCMConfig",
 	"CheckGlobalGitignore",
 	"CheckGlobalIdentity",
 	"CheckMirrorCredentials",
 	"CheckMoveReadiness",
+	"CloneRepo",
+	"ConfirmSweep",
+	"CreateNewRepo",
 	"CredentialVerify",
 	"DeleteAccount",
 	"DeleteMirrorGroup",
 	"DeleteMirrorRepo",
+	"DeleteRepo",
 	"DiscardAccount",
 	"Discover",
 	"DiscoverMirrors",
@@ -90,11 +96,14 @@ var servedMethods = []string{
 	"ListMoveDestinationOwners",
 	"ListRemoteRepos",
 	"ListRoots",
+	"MoveRepo",
 	"OpenAccountInBrowser",
 	"OpenRepoInBrowser",
 	"PreflightMove",
 	"PreviewSweep",
+	"PullRepo",
 	"RecommendedGlobalGitignoreBody",
+	"Reconcile",
 	"RefreshAIHarnesses",
 	"RefreshAllPRs",
 	"RefreshStatus",
@@ -114,6 +123,7 @@ var servedMethods = []string{
 	"SetPRIncludeDrafts",
 	"SetRepoContainer",
 	"SetRepoWorkspace",
+	"SetupMirrorRepo",
 	"SuggestAccountKey",
 	"SyncAIHarnesses",
 	"UpdateAccount",
@@ -156,13 +166,10 @@ func (b hostBackend) GetStartupSnapshot() (StartupSnapshot, error) {
 // newServerApp builds the App a server runs: no window, and a config whose
 // client preferences are the host's own and never the server's to change
 // (saveConfig takes them from the file before every save, under the guard
-// of #241). The served config mutations save (#294); the repair of each
-// clone's .git/config waits for the repository mutations (#295). cfgPath
-// empty means the host's default gitbox.json.
+// of #241). cfgPath empty means the host's default gitbox.json.
 func newServerApp(cfgPath string) *App {
 	a := NewApp()
 	a.cfgPath = cfgPath
-	a.skipCloneRepair = true
 	return a
 }
 
@@ -187,14 +194,23 @@ var mutationIdempotence = map[string]string{
 	"AddMirrorGroup":             "an existing key returns config.exists and changes nothing",
 	"AddMirrorRepo":              "an existing repo in the group returns config.exists",
 	"AddRoot":                    "an existing root is a no-op",
+	"AdoptClones":                "a clone already adopted is tracked, so it is no longer offered; the pass that follows finds nothing to adopt",
+	"ApplyDiscoveredMirrors":     "a mirror repo already in its group is skipped; the others are added",
+	"CloneRepo":                  "a clone already on disk fails with the clone error and changes nothing",
+	"ConfirmSweep":               "a branch already deleted is no longer stale, so a second sweep deletes nothing",
+	"CreateNewRepo":              "an existing repository on the provider fails with the provider's error and changes nothing",
 	"DeleteAccount":              "a missing account returns config.not_found",
 	"DeleteMirrorGroup":          "a missing group returns config.not_found",
 	"DeleteMirrorRepo":           "a missing repo returns config.not_found",
+	"DeleteRepo":                 "a missing repo returns config.not_found",
 	"DiscardAccount":             "a missing account returns config.not_found",
 	"FixGlobalGCMConfig":         "writes only what is missing; a second call finds nothing to fix",
 	"IgnoreClone":                "setting the same ignore state again changes nothing",
 	"InitRoot":                   "an existing root is kept and becomes the default; the mode is kept",
 	"InstallGlobalGitignore":     "the managed block is written once; a second call finds it in place",
+	"MoveRepo":                   "a moved repo is no longer in its source, so a second move fails in preflight and changes nothing",
+	"PullRepo":                   "a second fast-forward pull finds nothing to pull",
+	"Reconcile":                  "a second pass finds what the first adopted already tracked",
 	"RemoveGlobalIdentity":       "a missing identity is a no-op",
 	"RemoveRoot":                 "a root that is not configured is a no-op",
 	"RenameAccount":              "a missing old key returns config.not_found; an existing new key config.exists",
@@ -207,6 +223,7 @@ var mutationIdempotence = map[string]string{
 	"SetPRIncludeDrafts":         "setting the same value again changes nothing",
 	"SetRepoContainer":           "setting the same flag again changes nothing",
 	"SetRepoWorkspace":           "setting the same workspace again changes nothing",
+	"SetupMirrorRepo":            "a mirror already set up is found on the provider and kept",
 	"UpdateAccount":              "writing the same fields again changes nothing; a missing account returns config.not_found",
 }
 
@@ -214,11 +231,16 @@ var mutationIdempotence = map[string]string{
 // backend and carries a's events to the client.
 func newRPCServer(a *App, log io.Writer) *rpc.Server {
 	backend := reflect.ValueOf(Backend(hostBackend{localBackend{a}}))
+	requestBound := requestBoundHandlers(a)
 	handlers := make(map[string]rpc.Handler, len(servedMethods))
 	for _, name := range servedMethods {
 		method := backend.MethodByName(name)
 		if !method.IsValid() {
 			panic("gitbox-server: served method " + name + " is not a Backend method")
+		}
+		if h, ok := requestBound[name]; ok {
+			handlers[name] = h
+			continue
 		}
 		handlers[name] = rpc.Func(method.Interface())
 	}
@@ -236,6 +258,49 @@ func newRPCServer(a *App, log io.Writer) *rpc.Server {
 	a.events = srv
 	a.hostLog = log
 	return srv
+}
+
+// requestBoundHandlers serve the methods whose work a desktop starts in the
+// background and returns from at once: clone, pull, move and mirror setup.
+// On a server that work runs inside its request (#295), so the client's
+// $/cancelRequest and the end of the connection cancel it, and the runner's
+// tree kill stops its git processes. Each answers once its done event is
+// queued, which is before the answer on the same connection. The window's
+// backend returns at once and waits in the background (RemoteBackend.goLong).
+func requestBoundHandlers(a *App) map[string]rpc.Handler {
+	return map[string]rpc.Handler{
+		"CloneRepo": rpc.Func(func(ctx context.Context, sourceKey, repoKey, root string) error {
+			return a.inRequest(ctx, func(ctx context.Context) { a.cloneRepoRun(ctx, sourceKey, repoKey, root) })
+		}),
+		"PullRepo": rpc.Func(func(ctx context.Context, sourceKey, repoKey string) error {
+			return a.inRequest(ctx, func(ctx context.Context) { a.pullRepoRun(ctx, sourceKey, repoKey) })
+		}),
+		"MoveRepo": rpc.Func(func(ctx context.Context, req MoveRequestDTO) error {
+			return a.inRequest(ctx, func(ctx context.Context) { a.moveRepoRun(ctx, req) })
+		}),
+		"SetupMirrorRepo": rpc.Func(func(ctx context.Context, mirrorKey, repoKey string) error {
+			return a.inRequest(ctx, func(ctx context.Context) { a.setupMirrorRepoRun(ctx, mirrorKey, repoKey) })
+		}),
+	}
+}
+
+// errServerClosing answers a request that arrives while the server stops.
+var errServerClosing = &remoteError{remoteNotConnected, "the server is closing"}
+
+// inRequest runs work as tracked work of a (closing the app waits for it)
+// under a ctx that ends with the request or with the app, and returns when
+// work does.
+func (a *App) inRequest(ctx context.Context, work func(context.Context)) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(a.refreshContext(), cancel)
+	defer stop()
+	done := make(chan struct{})
+	if !a.goTracked(func() { defer close(done); work(ctx) }) {
+		return errServerClosing
+	}
+	<-done
+	return nil
 }
 
 // The installed gitbox-server (the gitboxserver build) sets these hooks; in
@@ -322,8 +387,7 @@ func serve(a *App, clientID string, stdin io.Reader, stdout, stderr io.Writer) i
 	backend := a.be()
 	backend.Init(ctx)
 	// The background workers (harness watcher, upstream probes) run as on a
-	// desktop. The server is read-only, so the watcher keeps what it detects
-	// in memory and reports it, and nothing reaches the host's config.
+	// desktop, and save through the cross-process guard (#241).
 	backend.Start()
 	defer backend.Close()
 

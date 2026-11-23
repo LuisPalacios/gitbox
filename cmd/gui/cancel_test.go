@@ -2,10 +2,22 @@ package main
 
 import (
 	"context"
+	"net"
+	"os"
+	"path/filepath"
+	"runtime"
+	"slices"
+	"strconv"
+	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/git/testutil"
+	"github.com/LuisPalacios/gitbox/pkg/rpc"
 )
 
 // Closing the app while a fetch cycle runs stops the fetches in flight and
@@ -129,4 +141,94 @@ func TestNoPullStartsAfterClosing(t *testing.T) {
 			t.Errorf("%d pulls ran and %d events were sent after closing", pulls.Load(), len(events.named("pull:done")))
 		}
 	})
+}
+
+// TestCancelReachesBackgroundWork: a clone a remote window started runs
+// inside its request on the server (#295), so cancelling the request from
+// the client ($/cancelRequest), or dropping the connection, stops git and
+// the processes it started on the host. The clone's transport is a shell
+// that records its pid and sleeps, a real child of git. Either way the
+// window hears clone:done once: from the server after a cancel, from its
+// own backend after a disconnect.
+func TestCancelReachesBackgroundWork(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the hanging transport is a POSIX shell")
+	}
+	for _, how := range []string{"cancel", "disconnect"} {
+		t.Run(how, func(t *testing.T) {
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = ln.Close() })
+			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+			t.Setenv("GITBOX_TOKEN_ACCT", "contract-test-token-value")
+			side := repoHost(t, "http://"+ln.Addr().String())
+
+			pidFile := filepath.Join(t.TempDir(), "pid")
+			hang := "ext::sh -c echo% $$% >% " + pidFile + ";% exec% sleep% 60"
+			real := git.Default
+			git.SetRunnerForTest(t, testutil.RunnerFunc(func(ctx context.Context, req git.Request) (git.Result, error) {
+				if len(req.Args) > 2 && req.Args[0] == "clone" {
+					args := slices.Clone(req.Args)
+					args[len(args)-2] = hang
+					req.Args = append([]string{"-c", "protocol.ext.allow=always"}, args...)
+				}
+				return real.Run(ctx, req)
+			}))
+
+			link := serveRemote(t, side.path, nil)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			if how == "cancel" {
+				go func() {
+					_ = link.Remote.current().Call(ctx, "CloneRepo", []any{"acct", "org/fresh", ""}, nil, rpc.WithRequestID(newRequestID()))
+				}()
+			} else {
+				link.Remote.CloneRepo("acct", "org/fresh", "")
+			}
+			var pid int
+			deadline := time.Now().Add(15 * time.Second)
+			for pid == 0 && time.Now().Before(deadline) {
+				if data, err := os.ReadFile(pidFile); err == nil {
+					pid, _ = strconv.Atoi(strings.TrimSpace(string(data)))
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			if pid == 0 {
+				t.Fatal("the clone's transport never started on the host")
+			}
+			alive := func() bool {
+				p, err := os.FindProcess(pid)
+				return err == nil && p.Signal(syscall.Signal(0)) == nil
+			}
+			if !alive() {
+				t.Fatal("the transport is not running: the test proves nothing")
+			}
+
+			if how == "cancel" {
+				cancel()
+			} else {
+				link.Remote.Close()
+			}
+			for deadline := time.Now().Add(10 * time.Second); alive() && time.Now().Before(deadline); {
+				time.Sleep(20 * time.Millisecond)
+			}
+			if alive() {
+				t.Fatalf("after the %s, git's child %d still runs on the host", how, pid)
+			}
+			// The window hears how the clone ended, from the server or, once
+			// the connection is gone, from its own backend.
+			for deadline := time.Now().Add(10 * time.Second); len(link.Events.named("clone:done")) == 0 && time.Now().Before(deadline); {
+				time.Sleep(20 * time.Millisecond)
+			}
+			done := link.Events.named("clone:done")
+			if len(done) != 1 {
+				t.Fatalf("clone:done arrived %d times, want once", len(done))
+			}
+			if payload, _ := done[0].args[0].(map[string]any); payload["error"] == "" || payload["error"] == nil {
+				t.Errorf("clone:done = %v, want the cancelled clone's error", done[0].args)
+			}
+		})
+	}
 }

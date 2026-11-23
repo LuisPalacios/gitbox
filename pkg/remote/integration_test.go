@@ -843,11 +843,11 @@ func TestReadsLeaveTheDomainUntouched(t *testing.T) {
 		}
 		cancel()
 	}
-	// A repository mutation is refused by the server itself, not only by
-	// the client, until #295 serves it.
+	// A credential mutation is refused by the server itself, not only by
+	// the client, until #242 serves it.
 	ctx, cancel := context.WithTimeout(testCtx(t), 30*time.Second)
-	if err := client.Call(ctx, "DeleteRepo", []any{"acct", "org/repo"}, nil, rpc.WithRequestID("00000000-0000-4000-8000-000000000001")); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
-		t.Errorf("DeleteRepo = %v, want unsupported", err)
+	if err := client.Call(ctx, "ChangeCredentialType", []any{"acct", "ssh"}, nil, rpc.WithRequestID("00000000-0000-4000-8000-000000000001")); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
+		t.Errorf("ChangeCredentialType = %v, want unsupported", err)
 	}
 	cancel()
 
@@ -864,11 +864,13 @@ func TestReadsLeaveTheDomainUntouched(t *testing.T) {
 		s.dump(t)
 		t.Errorf("the reads changed the host's domain:\nbefore %v\nafter  %v", before, after)
 	}
-	if after := gitConfig(); after != cloneBefore {
-		t.Errorf("the clone's .git/config changed: fetch repaired it before #295")
+	// Since #295 a fetch on the host repairs the clone's .git/config first,
+	// as on a desktop: only the domain must stay as it was.
+	if after := gitConfig(); after == cloneBefore {
+		t.Errorf("the clone's .git/config is unchanged: fetch did not repair it")
 	}
 	if !c.exists(clone) {
-		t.Error("the refused DeleteRepo removed the clone")
+		t.Error("a read removed the clone")
 	}
 }
 
@@ -880,37 +882,52 @@ func TestReadsLeaveTheDomainUntouched(t *testing.T) {
 var mutationCalls = []struct {
 	method string
 	params []any
+	// mayFail: the host has no provider to reach, so the call fails with
+	// the domain's error; it must still be served.
+	mayFail bool
 }{
-	{"AddRoot", []any{testHome + "/git2"}},
-	{"SetDefaultRoot", []any{testHome + "/git2"}},
-	{"SetDefaultRoot", []any{testHome + "/git"}},
-	{"RemoveRoot", []any{testHome + "/git2", false}},
-	{"InitRoot", []any{testHome + "/git"}},
-	{"SetNestedScanDepth", []any{3}},
-	{"SetPRBadgesEnabled", []any{false}},
-	{"SetPRIncludeDrafts", []any{true}},
-	{"SetCheckGlobalGitignore", []any{false}},
-	{"AddAccount", []any{map[string]any{"key": "other", "provider": "gitea", "url": "https://git2.example.invalid", "username": "bob", "name": "Bob", "email": "b@example.invalid", "credentialType": "token"}}},
-	{"UpdateAccount", []any{map[string]any{"key": "other", "provider": "gitea", "url": "https://git2.example.invalid", "username": "bob", "name": "Bob B", "email": "b@example.invalid"}}},
-	{"RenameAccount", []any{"other", "other2"}},
-	{"AddMirrorGroup", []any{"m", "acct", "other2"}},
-	{"AddMirrorRepo", []any{"m", "org/repo", "push", "src"}},
-	{"DeleteMirrorRepo", []any{"m", "org/repo"}},
-	{"DeleteMirrorGroup", []any{"m"}},
-	{"DiscardAccount", []any{"other2"}},
-	{"AddAccount", []any{map[string]any{"key": "third", "provider": "gitea", "url": "https://git3.example.invalid", "username": "carol", "name": "Carol", "email": "c@example.invalid", "credentialType": "token"}}},
-	{"DeleteAccount", []any{"third"}},
-	{"AddDiscoveredRepos", []any{"acct", []string{"org/new"}}},
-	{"AddDiscoveredReposToFolder", []any{"acct", []string{"org/new2"}, testHome + "/custom"}},
-	{"SetRepoContainer", []any{"acct", "org/repo", true}},
-	{"SetRepoWorkspace", []any{"acct", "org/repo", ""}},
-	{"IgnoreClone", []any{testHome + "/git/stray", true}},
-	{"RemoveGlobalIdentity", []any{}},
-	{"FixGlobalGCMConfig", []any{}},
-	{"InstallGlobalGitignore", []any{}},
-	{"AcknowledgeConfigError", []any{}},
-	{"RepairConfig", []any{}},
-	{"RestoreFromBackup", []any{"<backup>"}},
+	{"AddRoot", []any{testHome + "/git2"}, false},
+	{"SetDefaultRoot", []any{testHome + "/git2"}, false},
+	{"SetDefaultRoot", []any{testHome + "/git"}, false},
+	{"RemoveRoot", []any{testHome + "/git2", false}, false},
+	{"InitRoot", []any{testHome + "/git"}, false},
+	{"SetNestedScanDepth", []any{3}, false},
+	{"SetPRBadgesEnabled", []any{false}, false},
+	{"SetPRIncludeDrafts", []any{true}, false},
+	{"SetCheckGlobalGitignore", []any{false}, false},
+	{"AddAccount", []any{map[string]any{"key": "other", "provider": "gitea", "url": "https://git2.example.invalid", "username": "bob", "name": "Bob", "email": "b@example.invalid", "credentialType": "token"}}, false},
+	{"UpdateAccount", []any{map[string]any{"key": "other", "provider": "gitea", "url": "https://git2.example.invalid", "username": "bob", "name": "Bob B", "email": "b@example.invalid"}}, false},
+	{"RenameAccount", []any{"other", "other2"}, false},
+	{"AddMirrorGroup", []any{"m", "acct", "other2"}, false},
+	{"AddMirrorRepo", []any{"m", "org/repo", "push", "src"}, false},
+	{"DeleteMirrorRepo", []any{"m", "org/repo"}, false},
+	{"DeleteMirrorGroup", []any{"m"}, false},
+	{"DiscardAccount", []any{"other2"}, false},
+	{"AddAccount", []any{map[string]any{"key": "third", "provider": "gitea", "url": "https://git3.example.invalid", "username": "carol", "name": "Carol", "email": "c@example.invalid", "credentialType": "token"}}, false},
+	{"DeleteAccount", []any{"third"}, false},
+	{"AddDiscoveredRepos", []any{"acct", []string{"org/new"}}, false},
+	{"AddDiscoveredReposToFolder", []any{"acct", []string{"org/new2"}, testHome + "/custom"}, false},
+	{"SetRepoContainer", []any{"acct", "org/repo", true}, false},
+	{"SetRepoWorkspace", []any{"acct", "org/repo", ""}, false},
+	{"IgnoreClone", []any{testHome + "/git/stray", true}, false},
+	{"RemoveGlobalIdentity", []any{}, false},
+	{"FixGlobalGCMConfig", []any{}, false},
+	{"InstallGlobalGitignore", []any{}, false},
+	{"AcknowledgeConfigError", []any{}, false},
+	{"RepairConfig", []any{}, false},
+	{"RestoreFromBackup", []any{"<backup>"}, false},
+	// The repository mutations (#295). The host's provider is unreachable:
+	// the long ones end in their done event with that error and answer.
+	{"CloneRepo", []any{"acct", "org/none", ""}, false},
+	{"PullRepo", []any{"acct", "org/repo"}, false},
+	{"ConfirmSweep", []any{"acct", "org/repo"}, false},
+	{"Reconcile", []any{}, false},
+	{"AdoptClones", []any{[]any{}}, false},
+	{"SetupMirrorRepo", []any{"none", "org/repo"}, false},
+	{"ApplyDiscoveredMirrors", []any{}, true},
+	{"CreateNewRepo", []any{"acct", "", "made", "", true, false, ""}, true},
+	{"MoveRepo", []any{map[string]any{"sourceSourceKey": "acct", "sourceRepoKey": "org/repo", "destAccountKey": "nobody", "destOwner": "alice", "destRepoName": "moved"}}, false},
+	{"DeleteRepo", []any{"acct", "org/repo"}, false},
 }
 
 // TestMutationsOverSSH runs every served config mutation once over a real
@@ -940,7 +957,7 @@ func TestMutationsOverSSH(t *testing.T) {
 		var out json.RawMessage
 		err := conn.client.Call(ctx, call.method, params, &out, rpc.WithRequestID(fmt.Sprintf("00000000-0000-4000-8000-%012d", i+1)))
 		cancel()
-		if err != nil {
+		if err != nil && (!call.mayFail || rpc.IsCode(err, rpc.ErrCodeUnsupported)) {
 			t.Fatalf("step %d, %s: %v", i+1, call.method, err)
 		}
 		if g, _ := host()["global"].(map[string]any); g["theme"] != "dark" {

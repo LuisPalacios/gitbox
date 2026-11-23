@@ -149,9 +149,9 @@ func TestRemoteLifecycle(t *testing.T) {
 	if err != nil || len(cfg.Accounts) != 1 {
 		t.Errorf("GetConfig once connected = %+v, %v", cfg, err)
 	}
-	// A mutation the server does not serve yet (#295) is refused here.
-	if err := a.DeleteRepo("acct", "org/repo"); !codeIs(err, "read_only") {
-		t.Errorf("DeleteRepo = %v, want read_only", err)
+	// A mutation the server does not serve yet (#242) is refused here.
+	if err := a.ChangeCredentialType("acct", "ssh"); !codeIs(err, "read_only") {
+		t.Errorf("ChangeCredentialType = %v, want read_only", err)
 	}
 	if len(sink.named("remote:log")) == 0 || len(a.RemoteLog()) == 0 {
 		t.Error("the connection log is empty")
@@ -406,11 +406,10 @@ func TestRemoteFailureCodes(t *testing.T) {
 	}
 }
 
-// A read-only remote window keeps every mutation on this side of the wire,
-// including the one the frontend starts by itself (the focus-driven
-// Reconcile), while its client preferences still save to this machine's own
-// gitbox.json (#240). The harness refresh is a read since P6 (#243): it
-// reaches the host, whose read-only server keeps what it finds in memory.
+// A remote window keeps every mutation its server does not serve yet (the
+// credential methods of #242 and #244) on this side of the wire, while its
+// client preferences still save to this machine's own gitbox.json (#240).
+// The harness refresh is a read since P6 (#243): it reaches the host.
 func TestRemoteWindowReadOnly(t *testing.T) {
 	in, out, calls := answerEverything(t)
 	a, _ := remoteApp(t, nil)
@@ -421,12 +420,12 @@ func TestRemoteWindowReadOnly(t *testing.T) {
 	local := a.prefs.(*filePrefs).path
 	before := len(calls())
 
-	// Mutations the server does not serve yet (#295), typed and automatic.
-	if err := a.DeleteRepo("acct", "org/repo"); !codeIs(err, "read_only") {
-		t.Errorf("DeleteRepo = %v, want read_only", err)
+	// Mutations the server does not serve yet (#242, #244).
+	if err := a.ChangeCredentialType("acct", "ssh"); !codeIs(err, "read_only") {
+		t.Errorf("ChangeCredentialType = %v, want read_only", err)
 	}
-	a.Reconcile()
-	a.PullRepo("acct", "org/repo")
+	a.CredentialStoreToken("acct", "not-a-token")
+	a.CredentialDelete("acct")
 	if got := calls()[before:]; len(got) != 0 {
 		t.Errorf("mutations reached the wire: %+v", got)
 	}

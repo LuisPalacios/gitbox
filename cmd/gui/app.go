@@ -62,18 +62,14 @@ type App struct {
 	// change another process saved meanwhile is never overwritten. The zero
 	// value means the file was never read. Guarded by mu.
 	cfgBase config.Hash
-	// skipCloneRepair keeps a gitbox-server from repairing each clone's
-	// .git/config before a fetch until the repository mutations are served
-	// (#295): fetch runs with the clone as it is.
-	skipCloneRepair bool
-	// readOnly is set in a gitbox-server that serves a read-only client
-	// (#240): saveConfig refuses, so neither a background worker nor a read
-	// can change the host's gitbox.json, and fetch skips the repair of a
-	// clone's .git/config. P5 lifts it.
+	// readOnly makes an App that changes nothing it reads: saveConfig
+	// refuses and fetch skips the repair of a clone's .git/config. No
+	// gitbox-server sets it since the mutations are served (#294, #295);
+	// the contract tests set it on the side that answers only reads, to
+	// prove a read never saves.
 	readOnly bool
 	// hostLog is where a gitbox-server writes for a human; nil elsewhere.
-	hostLog     io.Writer
-	healSkipped sync.Once
+	hostLog io.Writer
 	// remoteAlias names the remote this window shows; empty is the local
 	// window. It selects where the window geometry is stored.
 	remoteAlias string
@@ -1950,70 +1946,78 @@ func toStatusResult(rs status.RepoStatus) StatusResult {
 // its account remembers it for the next clone (#149).
 func (a *App) CloneRepo(sourceKey, repoKey, root string) { a.be().CloneRepo(sourceKey, repoKey, root) }
 
-// cloneRepoLocal is the local backend's CloneRepo.
+// cloneRepoLocal is the local backend's CloneRepo: the clone runs in the
+// background until the app closes.
 func (a *App) cloneRepoLocal(sourceKey, repoKey, root string) {
-	a.goTracked(func() {
-		var err error
-		if root != "" {
-			_, err = hostPath(root)
-		}
-		a.mu.Lock()
-		if err == nil && root != "" && a.cfg.PlaceRepo(sourceKey, repoKey, root) {
-			err = a.saveConfig()
-		}
-		var plan ops.ClonePlan
-		if err == nil {
-			plan, err = ops.PlanClone(a.cfg, sourceKey, repoKey)
-		}
-		addr := serverAddr(a.cfg.Accounts[a.cfg.Sources[sourceKey].Account])
-		a.mu.Unlock()
-		if err != nil {
-			a.sink().Emit("clone:done", map[string]string{
-				"source": sourceKey, "repo": repoKey, "error": userMsg(err),
-			})
-			return
-		}
-		// A clone does not start against a server that does not answer.
-		if !a.reachable(a.refreshContext(), addr) {
-			result := map[string]any{"source": sourceKey, "repo": repoKey}
-			describeUnreachable(result, addr)
-			a.sink().Emit("clone:done", result)
-			return
-		}
+	a.goTracked(func() { a.cloneRepoRun(a.refreshContext(), sourceKey, repoKey, root) })
+}
 
-		// The git transfer runs without the config lock.
-		// A clone stops when the app closes; what git wrote stays in place.
-		err = plan.Run(a.refreshContext(), func(p git.CloneProgress) {
-			a.sink().Emit("clone:progress", map[string]any{
-				"source": sourceKey, "repo": repoKey,
-				"phase": p.Phase, "percent": p.Percent,
-			})
+// cloneRepoRun clones one repo and emits clone:progress and clone:done. It
+// stops when ctx is cancelled, and git with it. What git leaves behind is
+// never removed (#161): a clone git is asked to stop removes its own
+// folder, and one killed outright leaves a folder that Reconcile reports as
+// incomplete. Its origin is already the token-free URL the plan cloned
+// from, so nothing needs resetting.
+func (a *App) cloneRepoRun(ctx context.Context, sourceKey, repoKey, root string) {
+	var err error
+	if root != "" {
+		_, err = hostPath(root)
+	}
+	a.mu.Lock()
+	if err == nil && root != "" && a.cfg.PlaceRepo(sourceKey, repoKey, root) {
+		err = a.saveConfig()
+	}
+	var plan ops.ClonePlan
+	if err == nil {
+		plan, err = ops.PlanClone(a.cfg, sourceKey, repoKey)
+	}
+	addr := serverAddr(a.cfg.Accounts[a.cfg.Sources[sourceKey].Account])
+	a.mu.Unlock()
+	if err != nil {
+		a.sink().Emit("clone:done", map[string]string{
+			"source": sourceKey, "repo": repoKey, "error": userMsg(err),
 		})
-
-		// "path" lets the frontend fill repoStates[key].path for rows cloned
-		// in-session (create-repo, Bring Local). Until the next full status
-		// refresh the row otherwise has no path and every path-based kebab
-		// action silently no-ops (#79).
-		result := map[string]any{"source": sourceKey, "repo": repoKey, "path": plan.Dest}
-		if err != nil {
-			result["error"] = userMsg(failedCloneError(plan.Dest, err))
-		} else {
-			// heal.Repo sets user.name/user.email, normalizes the origin
-			// URL, and configures per-repo credential isolation. Warnings are
-			// returned instead of panicking so a partial heal (e.g. token
-			// file missing) still reports clone success.
-			a.mu.Lock()
-			report := heal.Repo(a.cfg, sourceKey, repoKey)
-			a.mu.Unlock()
-			if len(report.Warnings) > 0 {
-				result["warnings"] = report.Warnings
-			}
-			if len(report.Fixed) > 0 {
-				result["fixes"] = report.Fixed
-			}
-		}
+		return
+	}
+	// A clone does not start against a server that does not answer.
+	if !a.reachable(ctx, addr) {
+		result := map[string]any{"source": sourceKey, "repo": repoKey}
+		describeUnreachable(result, addr)
 		a.sink().Emit("clone:done", result)
+		return
+	}
+
+	// The git transfer runs without the config lock.
+	err = plan.Run(ctx, func(p git.CloneProgress) {
+		a.sink().Emit("clone:progress", map[string]any{
+			"source": sourceKey, "repo": repoKey,
+			"phase": p.Phase, "percent": p.Percent,
+		})
 	})
+
+	// "path" lets the frontend fill repoStates[key].path for rows cloned
+	// in-session (create-repo, Bring Local). Until the next full status
+	// refresh the row otherwise has no path and every path-based kebab
+	// action silently no-ops (#79).
+	result := map[string]any{"source": sourceKey, "repo": repoKey, "path": plan.Dest}
+	if err != nil {
+		result["error"] = userMsg(failedCloneError(plan.Dest, err))
+	} else {
+		// heal.Repo sets user.name/user.email, normalizes the origin
+		// URL, and configures per-repo credential isolation. Warnings are
+		// returned instead of panicking so a partial heal (e.g. token
+		// file missing) still reports clone success.
+		a.mu.Lock()
+		report := heal.Repo(a.cfg, sourceKey, repoKey)
+		a.mu.Unlock()
+		if len(report.Warnings) > 0 {
+			result["warnings"] = report.Warnings
+		}
+		if len(report.Fixed) > 0 {
+			result["fixes"] = report.Fixed
+		}
+	}
+	a.sink().Emit("clone:done", result)
 }
 
 // failedCloneError reports a remaining destination without changing it. A path
@@ -2032,87 +2036,92 @@ func (a *App) PullRepo(sourceKey, repoKey string) { a.be().PullRepo(sourceKey, r
 
 const pullSettingsChanged git.PullSkipReason = "settingsChanged"
 
-// pullRepoLocal is the local backend's PullRepo.
+// pullRepoLocal is the local backend's PullRepo: the pull runs in the
+// background until the app closes.
 func (a *App) pullRepoLocal(sourceKey, repoKey string) {
-	a.goTracked(func() {
-		cfg := a.snapshotRefreshConfig()
-		src, ok := cfg.Sources[sourceKey]
-		if !ok {
-			a.sink().Emit("pull:done", map[string]string{
-				"source": sourceKey, "repo": repoKey,
-				"error": fmt.Sprintf("source %q not found", sourceKey),
-			})
-			return
-		}
-		repo, ok := src.Repos[repoKey]
-		if !ok {
-			a.sink().Emit("pull:done", map[string]string{
-				"source": sourceKey, "repo": repoKey,
-				"error": fmt.Sprintf("repo %q not found in source %q", repoKey, sourceKey),
-			})
-			return
-		}
-		path := status.RepoPath(cfg, sourceKey, repoKey, repo)
-		// Pre-pull self-heal: if .git/config drifted from spec (e.g. a
-		// manual edit, an older gitbox that didn't run the heal), fix
-		// it before the network op so auth uses the right credentials.
-		// I stop the pull if maintenance cannot restore the configured settings.
-		result := map[string]any{"source": sourceKey, "repo": repoKey}
-		a.maintenanceMu.RLock()
-		if !a.sameRefreshRepo(cfg, sourceKey, repoKey) {
-			a.maintenanceMu.RUnlock()
-			result["skipped"] = pullSettingsChanged
-			a.sink().Emit("pull:done", result)
-			return
-		}
-		report := a.healRepo(cfg, sourceKey, repoKey)
-		a.maintenanceMu.RUnlock()
-		var err error
-		addr := serverAddr(cfg.Accounts[src.Account])
-		if len(report.Warnings) > 0 {
-			err = fmt.Errorf("repository maintenance: %s", strings.Join(report.Warnings, "; "))
-		} else {
-			pull := git.PullQuietContext
-			check := git.PullPreflightContext
-			if a.refreshHooks != nil {
-				if a.refreshHooks.pull != nil {
-					pull = a.refreshHooks.pull
-				}
-				if a.refreshHooks.pullCheck != nil {
-					check = a.refreshHooks.pullCheck
-				}
-			}
-			err = a.onServer(addr, func(ctx context.Context) error {
-				ctx, cancel := context.WithTimeout(ctx, pullTimeout)
-				defer cancel()
-				reason, st, err := check(ctx, path)
-				if err != nil {
-					return err
-				}
-				if !a.sameRefreshRepo(cfg, sourceKey, repoKey) {
-					result["skipped"] = pullSettingsChanged
-					return nil
-				}
-				if reason != "" {
-					result["skipped"] = reason
-					result["state"] = status.Classify(st).String()
-					result["modified"] = st.Changed
-					result["untracked"] = st.Untracked
-					result["ahead"] = st.Ahead
-					result["behind"] = st.Behind
-					return nil
-				}
-				return pull(ctx, path)
-			})
-		}
+	a.goTracked(func() { a.pullRepoRun(a.refreshContext(), sourceKey, repoKey) })
+}
 
-		if errors.Is(err, errServerUnreachable) {
-			describeUnreachable(result, addr)
-		} else if err != nil {
-			result["error"] = userMsg(err)
-		}
+// pullRepoRun pulls one repo and emits pull:done. It stops when ctx is
+// cancelled.
+func (a *App) pullRepoRun(ctx context.Context, sourceKey, repoKey string) {
+	cfg := a.snapshotRefreshConfig()
+	src, ok := cfg.Sources[sourceKey]
+	if !ok {
+		a.sink().Emit("pull:done", map[string]string{
+			"source": sourceKey, "repo": repoKey,
+			"error": fmt.Sprintf("source %q not found", sourceKey),
+		})
+		return
+	}
+	repo, ok := src.Repos[repoKey]
+	if !ok {
+		a.sink().Emit("pull:done", map[string]string{
+			"source": sourceKey, "repo": repoKey,
+			"error": fmt.Sprintf("repo %q not found in source %q", repoKey, sourceKey),
+		})
+		return
+	}
+	path := status.RepoPath(cfg, sourceKey, repoKey, repo)
+	// Pre-pull self-heal: if .git/config drifted from spec (e.g. a
+	// manual edit, an older gitbox that didn't run the heal), fix
+	// it before the network op so auth uses the right credentials.
+	// I stop the pull if maintenance cannot restore the configured settings.
+	result := map[string]any{"source": sourceKey, "repo": repoKey}
+	a.maintenanceMu.RLock()
+	if !a.sameRefreshRepo(cfg, sourceKey, repoKey) {
+		a.maintenanceMu.RUnlock()
+		result["skipped"] = pullSettingsChanged
 		a.sink().Emit("pull:done", result)
-	})
+		return
+	}
+	report := a.healRepo(cfg, sourceKey, repoKey)
+	a.maintenanceMu.RUnlock()
+	var err error
+	addr := serverAddr(cfg.Accounts[src.Account])
+	if len(report.Warnings) > 0 {
+		err = fmt.Errorf("repository maintenance: %s", strings.Join(report.Warnings, "; "))
+	} else {
+		pull := git.PullQuietContext
+		check := git.PullPreflightContext
+		if a.refreshHooks != nil {
+			if a.refreshHooks.pull != nil {
+				pull = a.refreshHooks.pull
+			}
+			if a.refreshHooks.pullCheck != nil {
+				check = a.refreshHooks.pullCheck
+			}
+		}
+		err = a.onServerCtx(ctx, addr, func(ctx context.Context) error {
+			ctx, cancel := context.WithTimeout(ctx, pullTimeout)
+			defer cancel()
+			reason, st, err := check(ctx, path)
+			if err != nil {
+				return err
+			}
+			if !a.sameRefreshRepo(cfg, sourceKey, repoKey) {
+				result["skipped"] = pullSettingsChanged
+				return nil
+			}
+			if reason != "" {
+				result["skipped"] = reason
+				result["state"] = status.Classify(st).String()
+				result["modified"] = st.Changed
+				result["untracked"] = st.Untracked
+				result["ahead"] = st.Ahead
+				result["behind"] = st.Behind
+				return nil
+			}
+			return pull(ctx, path)
+		})
+	}
+
+	if errors.Is(err, errServerUnreachable) {
+		describeUnreachable(result, addr)
+	} else if err != nil {
+		result["error"] = userMsg(err)
+	}
+	a.sink().Emit("pull:done", result)
 }
 
 // RepoDetail holds human-readable status information for a single repo.
@@ -3172,42 +3181,47 @@ func (a *App) getMirrorStatusLocal(mirrorKey string) {
 // from "set up and target is genuinely missing" (issue #59).
 func (a *App) SetupMirrorRepo(mirrorKey, repoKey string) { a.be().SetupMirrorRepo(mirrorKey, repoKey) }
 
-// setupMirrorRepoLocal is the local backend's SetupMirrorRepo.
+// setupMirrorRepoLocal is the local backend's SetupMirrorRepo: the setup
+// runs in the background until the app closes.
 func (a *App) setupMirrorRepoLocal(mirrorKey, repoKey string) {
-	go func() {
+	a.goTracked(func() { a.setupMirrorRepoRun(a.refreshContext(), mirrorKey, repoKey) })
+}
+
+// setupMirrorRepoRun sets up one mirror repo and emits mirror:setup:done.
+// It stops when ctx is cancelled, and after mirrorSetupTimeout.
+func (a *App) setupMirrorRepoRun(ctx context.Context, mirrorKey, repoKey string) {
+	a.mu.Lock()
+	cfg := a.snapshotLocked()
+	a.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(ctx, mirrorSetupTimeout)
+	defer cancel()
+
+	r := mirror.SetupMirror(ctx, cfg, mirrorKey, repoKey)
+	result := MirrorSetupResult{
+		MirrorKey:    mirrorKey,
+		RepoKey:      r.RepoKey,
+		Created:      r.Created,
+		Mirrored:     r.Mirrored,
+		Method:       r.Method,
+		Instructions: r.Instructions,
+		Error:        userText(r.Error),
+	}
+
+	if r.Error == "" {
 		a.mu.Lock()
-		cfg := a.snapshotLocked()
-		a.mu.Unlock()
-
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-
-		r := mirror.SetupMirror(ctx, cfg, mirrorKey, repoKey)
-		result := MirrorSetupResult{
-			MirrorKey:    mirrorKey,
-			RepoKey:      r.RepoKey,
-			Created:      r.Created,
-			Mirrored:     r.Mirrored,
-			Method:       r.Method,
-			Instructions: r.Instructions,
-			Error:        userText(r.Error),
-		}
-
-		if r.Error == "" {
-			a.mu.Lock()
-			if m, ok := a.cfg.Mirrors[mirrorKey]; ok {
-				if mr, ok := m.Repos[repoKey]; ok {
-					mr.LastSync = time.Now().UTC().Format(time.RFC3339)
-					m.Repos[repoKey] = mr
-					a.cfg.Mirrors[mirrorKey] = m
-					_ = a.saveConfig()
-				}
+		if m, ok := a.cfg.Mirrors[mirrorKey]; ok {
+			if mr, ok := m.Repos[repoKey]; ok {
+				mr.LastSync = time.Now().UTC().Format(time.RFC3339)
+				m.Repos[repoKey] = mr
+				a.cfg.Mirrors[mirrorKey] = m
+				_ = a.saveConfig()
 			}
-			a.mu.Unlock()
 		}
+		a.mu.Unlock()
+	}
 
-		a.sink().Emit("mirror:setup:done", result)
-	}()
+	a.sink().Emit("mirror:setup:done", result)
 }
 
 // AddMirrorGroup creates a new mirror group pairing two accounts.
@@ -3356,7 +3370,7 @@ func (a *App) createNewRepoLocal(accountKey, owner, repoName, description string
 		return fmt.Errorf("account %q not found", accountKey)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), createRepoTimeout)
 	defer cancel()
 
 	if err := ops.CreateRemoteRepo(ctx, acct, accountKey, owner, repoName, description, private); err != nil {
@@ -3442,7 +3456,7 @@ func (a *App) applyDiscoveredMirrorsLocal() error {
 	snap := a.snapshotLocked()
 	a.mu.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), discoverMirrorsTimeout)
 	defer cancel()
 
 	discover := a.discoverMirrors
@@ -3931,8 +3945,16 @@ func (a *App) preflightMoveLocal(req MoveRequestDTO) MovePreflightDTO {
 // progress overlay can unwind cleanly.
 func (a *App) MoveRepo(req MoveRequestDTO) { a.be().MoveRepo(req) }
 
-// moveRepoLocal is the local backend's MoveRepo.
+// moveRepoLocal is the local backend's MoveRepo: the move runs in the
+// background until the app closes.
 func (a *App) moveRepoLocal(req MoveRequestDTO) {
+	a.goTracked(func() { a.moveRepoRun(a.refreshContext(), req) })
+}
+
+// moveRepoRun moves one repo and emits move:progress and move:done. It
+// stops when ctx is cancelled, between phases or in the git or HTTP call
+// in flight, and never starts deleting after that (move.Move).
+func (a *App) moveRepoRun(ctx context.Context, req MoveRequestDTO) {
 	// The move reads a snapshot and writes its one config change through
 	// commitConfig (#173): no live pointer leaves the lock.
 	a.mu.Lock()
@@ -3962,40 +3984,38 @@ func (a *App) moveRepoLocal(req MoveRequestDTO) {
 		DeleteSourceRemote: req.DeleteSourceRemote,
 		DeleteLocalClone:   req.DeleteLocalClone,
 	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-		defer cancel()
-		result := move.Move(ctx, cfg, moveReq, a.commitConfig, func(p move.Progress) {
-			event := MoveProgressEventDTO{Phase: string(p.Phase), Message: p.Message}
-			if p.Err != nil {
-				event.Error = userMsg(p.Err)
-			}
-			a.sink().Emit("move:progress", event)
-		})
-		dto := MoveResultDTO{
-			NewOrigin:           result.NewOrigin,
-			DestRepoCreated:     result.DestRepoCreated,
-			SourceRemoteDeleted: result.SourceRemoteDeleted,
-			LocalCloneDeleted:   result.LocalCloneDeleted,
-			DestSourceKey:       result.DestSourceKey,
-			NewRepoKey:          result.NewRepoKey,
-			Warnings:            result.Warnings,
+	ctx, cancel := context.WithTimeout(ctx, moveTimeout)
+	defer cancel()
+	result := move.Move(ctx, cfg, moveReq, a.commitConfig, func(p move.Progress) {
+		event := MoveProgressEventDTO{Phase: string(p.Phase), Message: p.Message}
+		if p.Err != nil {
+			event.Error = userMsg(p.Err)
 		}
-		if result.Err != nil {
-			dto.Error = userMsg(result.Err)
-		}
-		a.sink().Emit("move:done", dto)
+		a.sink().Emit("move:progress", event)
+	})
+	dto := MoveResultDTO{
+		NewOrigin:           result.NewOrigin,
+		DestRepoCreated:     result.DestRepoCreated,
+		SourceRemoteDeleted: result.SourceRemoteDeleted,
+		LocalCloneDeleted:   result.LocalCloneDeleted,
+		DestSourceKey:       result.DestSourceKey,
+		NewRepoKey:          result.NewRepoKey,
+		Warnings:            result.Warnings,
+	}
+	if result.Err != nil {
+		dto.Error = userMsg(result.Err)
+	}
+	a.sink().Emit("move:done", dto)
 
-		// Auto-clone the destination when the user opted to delete
-		// the local source. The repo now lives only on the
-		// destination provider + in gitbox config as "not cloned";
-		// start a clone into the destination account's folder so
-		// "move" feels like a relocation, not a removal. Runs after
-		// the move:done event so the UI closes the progress modal
-		// and the frontend can watch the new clone via its normal
-		// clone:progress / clone:done channel.
-		if result.Err == nil && result.LocalCloneDeleted && result.DestSourceKey != "" && result.NewRepoKey != "" {
-			a.CloneRepo(result.DestSourceKey, result.NewRepoKey, "")
-		}
-	}()
+	// Auto-clone the destination when the user opted to delete
+	// the local source. The repo now lives only on the
+	// destination provider + in gitbox config as "not cloned";
+	// start a clone into the destination account's folder so
+	// "move" feels like a relocation, not a removal. Runs after
+	// the move:done event so the UI closes the progress modal
+	// and the frontend can watch the new clone via its normal
+	// clone:progress / clone:done channel.
+	if result.Err == nil && result.LocalCloneDeleted && result.DestSourceKey != "" && result.NewRepoKey != "" {
+		a.CloneRepo(result.DestSourceKey, result.NewRepoKey, "")
+	}
 }
