@@ -1,9 +1,15 @@
 <script lang="ts">
   // The result of a credential setup, shared by Add account and Change
   // credential: the SSH key block (copy the public key, verify the
-  // connection, regenerate the key) or the plain result message.
+  // connection, regenerate the key) or the plain result message. In a
+  // remote window the key was made on the host (#244): the copy goes to
+  // this computer's clipboard, the link opens here, and a note says when
+  // this computer's forwarded keys reach git on the host.
+  import { bridge } from './bridge';
   import { openExternal } from './external';
   import { t } from './i18n';
+  import { remoteWindow } from './stores';
+  import { agentNote, agentNoteKey, type AgentReport } from './sshAgent';
 
   export let credResult: { ok: boolean; message: string; needsPAT?: boolean; sshPublicKey?: string; sshAddURL?: string; sshVerified?: boolean };
   export let credBusy: boolean;
@@ -11,6 +17,29 @@
   export let copySSHKey: (text: string) => void;
   export let verifySSHConnection: () => void;
   export let regenerateSSHKey: () => void;
+  export let accountKey = '';
+  export let simple = false;
+
+  // The agent report of the key on show, asked once per key.
+  let report: AgentReport | null = null;
+  let reportFor = '';
+  $: reportTag = $remoteWindow && accountKey && credResult?.sshPublicKey ? `${accountKey}\n${credResult.sshPublicKey}` : '';
+  $: if (reportTag !== reportFor) loadReport(reportTag);
+
+  async function loadReport(tag: string) {
+    reportFor = tag;
+    report = null;
+    if (!tag) return;
+    try {
+      const r = await bridge.credentialSSHAgentReport(accountKey);
+      if (reportFor === tag) report = r;
+    } catch {
+      // The note is optional: no report, no note.
+    }
+  }
+
+  $: note = agentNote(report, $remoteWindow);
+  $: noteVars = { alias: `gitbox-${accountKey}`, n: report?.agentFingerprints?.length ?? 0, fp: report?.keyFileFingerprint ?? '' };
 </script>
 
 {#if credResult.sshPublicKey}
@@ -21,6 +50,9 @@
     <span class="ssh-status-dot"></span>
     <span>{credResult.sshVerified ? $t('cred.connVerified') : $t('cred.connNotVerified')}</span>
   </div>
+  {#if note}
+    <p class="ssh-agent-note" class:ssh-agent-warn={note === 'unpinned'}>{$t(agentNoteKey(note, simple), noteVars)}</p>
+  {/if}
   {#if !credResult.sshVerified}
     <p class="cred-step-desc" style="margin-top: 8px;">{$t('cred.copyKey')}</p>
     <div class="ssh-key-box">
@@ -56,6 +88,8 @@
   .ssh-key-text { font-family: monospace; font-size: 9px; word-break: break-all; white-space: nowrap; color: var(--text-primary); flex: 1; overflow-x: auto; user-select: all; }
   .ssh-key-copy { background: none; border: 1px solid var(--border, #444); border-radius: 3px; padding: 3px 6px; cursor: pointer; color: var(--text-muted); font-size: 12px; flex-shrink: 0; transition: all 0.15s; }
   .ssh-key-copy:hover { color: var(--text-primary); border-color: var(--border-hover, #666); background: var(--bg-card, #2a2a2a); }
+  .ssh-agent-note { margin: 8px 0 0; padding: 6px 8px; border-left: 3px solid var(--border, #444); font-size: 12px; color: var(--text-muted); }
+  .ssh-agent-warn { border-left-color: #d97706; color: var(--text-primary); }
   .ssh-connection-status { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; font-weight: 600; }
   .ssh-status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
   .ssh-connected .ssh-status-dot { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }

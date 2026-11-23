@@ -31,6 +31,9 @@
   export let regenerateSSHKey: (accountKey: string) => Promise<void>;
   export let credBusy: boolean;
   export let runCredSetup: (accountKey: string, credType: string) => Promise<void>;
+  // simple: the window is in Simple mode (the SSH agent note names no ssh
+  // options there).
+  export let simple = false;
 
   let addAccountModal = false;
   let addAccountError = '';
@@ -177,7 +180,7 @@
           {/if}
 
           {#if credResult}
-            <CredentialResult {credResult} {credBusy} {sshKeyCopied} {copySSHKey}
+            <CredentialResult {credResult} {credBusy} {sshKeyCopied} {copySSHKey} accountKey={addAcct.key} {simple}
               verifySSHConnection={() => verifySSHConnection(addAcct.key)}
               regenerateSSHKey={() => regenerateSSHKey(addAcct.key)} />
           {:else if addAcct.credentialType === 'ssh'}

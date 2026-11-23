@@ -37,6 +37,9 @@
   // serverOS is the system of the host whose credentials these are: its
   // network hints apply there, not on the machine that shows the window.
   export let serverOS: string;
+  // simple: the window is in Simple mode (the SSH agent note names no ssh
+  // options there).
+  export let simple = false;
 
   let credChangeModal: string | null = null; // account key
   let credChangeType = '';
@@ -305,7 +308,7 @@
         {/if}
 
         {#if credResult}
-          <CredentialResult {credResult} {credBusy} {sshKeyCopied} {copySSHKey}
+          <CredentialResult {credResult} {credBusy} {sshKeyCopied} {copySSHKey} accountKey={credChangeModal || ''} {simple}
             verifySSHConnection={() => credChangeModal && verifySSHConnection(credChangeModal)}
             regenerateSSHKey={() => credChangeModal && regenerateSSHKey(credChangeModal)} />
         {/if}

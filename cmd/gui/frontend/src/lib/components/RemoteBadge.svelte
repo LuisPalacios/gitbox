@@ -1,9 +1,9 @@
 <script lang="ts">
   // The title-bar badge of a remote window (#240): which host this window
-  // shows, its system and how the connection is doing, and that it is
-  // limited: some actions are not served yet (#294). Simple mode says only
-  // the host and "Limited". A click opens the connection log over the
-  // window.
+  // shows, its system and how the connection is doing. Since #244 the host
+  // serves every action a remote window offers, so the badge no longer says
+  // "Limited". Simple mode says only the host. A click opens the connection
+  // log over the window.
   import { onDestroy } from 'svelte';
   import { fade, fly } from 'svelte/transition';
   import { bridge, events } from '../bridge';
@@ -34,7 +34,6 @@
   <span class="dot" class:pulse={state.state === 'connecting' || state.state === 'installing'} aria-hidden="true"></span>
   <span class="alias" translate="no">{state.alias}</span>
   {#if !simple && state.serverOS}<span class="os" translate="no">{state.serverOS}</span>{/if}
-  <span class="ro">{$t('remote.limited')}</span>
   {#if state.truncated}<span class="trunc" aria-hidden="true" translate="no">!</span>{/if}
 </button>
 
@@ -63,10 +62,6 @@
   @keyframes pulse { 50% { opacity: 0.4; } }
   .alias { font-weight: 600; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .os { color: var(--text-muted); font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; font-size: 11px; }
-  .ro {
-    padding: 1px 6px; border-radius: 6px; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
-    color: #b45309; background: rgba(245, 158, 11, 0.14);
-  }
   .trunc {
     width: 15px; height: 15px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
     font-size: 10px; font-weight: 700; color: #fff; background: var(--alert);
