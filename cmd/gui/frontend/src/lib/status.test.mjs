@@ -27,21 +27,6 @@ test('I show a spinning glyph while a row is unscanned or fetching', () => {
   assert.equal(s.rowBusy('unknown', false), true);
 });
 
-test('I fold every status into one Simple kind with its colour and label', () => {
-  assert.deepEqual(STATUSES.map(s.simpleKind), ['saved', 'wip', 'update', 'unpushed', 'help', 'help', 'online', 'unpushed', 'help', 'offline', 'help', 'busy', 'busy', 'busy', 'checking']);
-  assert.equal(s.simpleKind('bogus'), 'help');
-  assert.equal(s.simpleColor('saved', 'dark'), '#61fd5f');
-  assert.equal(s.simpleColor('wip', 'light'), '#c2410c');
-  assert.equal(s.simpleColor('unpushed', 'dark'), '#4B95E9');
-  assert.equal(s.simpleLabelKey('wip'), 'simple.wip');
-  assert.equal(s.simpleLabelKey('unpushed'), 'simple.unpushed');
-  assert.equal(s.simpleColor('busy', 'dark'), '#4B95E9');
-  assert.equal(s.simpleColor('checking', 'light'), '#52525b');
-  assert.equal(s.simpleLabelKey('busy'), 'simple.checking');
-  assert.equal(s.simpleLabelKey('online'), 'simple.online');
-  assert.deepEqual(STATUSES.filter(s.simpleUnsaved), ['dirty', 'ahead', 'diverged', 'conflict', 'no upstream', 'upstream gone', 'error']);
-});
-
 test('I describe count badges in a fixed order and pick the compact one', () => {
   assert.deepEqual(s.COUNT_BADGES.map((b) => `${b.glyph}${b.field}:${b.color}:${b.word}`), ['↓behind:behind:count.behind', '↑ahead:ahead:count.ahead', '✎modified:dirty:count.changed', '?untracked:not cloned:count.untracked']);
   assert.equal(s.statusCountBadge('behind').field, 'behind');
@@ -64,49 +49,6 @@ test('I apply the credential rules for cards and kebabs', () => {
   assert.deepEqual(['ok', 'error', 'warning', 'offline', 'none', 'unknown', 'checking'].map(s.credBadgeClass), ['ok', 'err', 'warn', 'offline', 'none', 'pending', '']);
   assert.deepEqual(['unknown', 'none', 'offline', 'ok', 'error'].map((x) => s.credBadgeLabel(x, 'ssh')), ['···', 'config', 'offline', 'ssh', 'ssh']);
   assert.equal(s.credBadgeLabel('ok', ''), 'gcm');
-});
-
-test('I rank every status by how much it needs me, worst first', () => {
-  assert.deepEqual(STATUSES.map((x) => s.attentionRank(x)), [4, 1, 2, 1, 0, 0, 3, 1, 0, 4, 0, 2, 3, 4, 4]);
-  assert.equal(s.attentionRank('no upstream', true), 1);
-  assert.equal(s.attentionRank('no upstream', false), 4);
-  assert.equal(s.attentionRank('bogus'), s.CALM_RANK);
-  assert.deepEqual([...s.ATTENTION_GROUPS], ['help', 'local', 'behind', 'notCloned']);
-  assert.equal(s.CALM_RANK, 4);
-});
-
-test('I label every Advanced status in the glossary words', () => {
-  const st = { ahead: 2, behind: 3, modified: 4, untracked: 1, isDefault: true };
-  const label = (status, extra = {}) => s.statusLabel({ ...st, status, ...extra }, false);
-  assert.deepEqual(label('clean'), { key: 'status.upToDate', color: 'clean', badges: false });
-  assert.deepEqual(label('behind'), { key: 'status.behind', vars: { n: 3 }, color: 'behind', badges: false });
-  assert.deepEqual(label('ahead'), { key: 'status.ahead', vars: { n: 2 }, color: 'ahead', badges: false });
-  assert.deepEqual(label('dirty'), { key: 'status.localChanges', vars: { n: 5 }, note: 'status.protected', color: 'dirty', badges: false });
-  assert.equal(label('dirty', { modified: 1, untracked: 0 }).key, 'status.localChange');
-  assert.equal(label('dirty', { modified: 1, untracked: 0 }).note, 'status.protectedOne');
-  assert.deepEqual(label('diverged'), { key: 'status.diverged', color: 'diverged', badges: true });
-  assert.deepEqual(label('conflict'), { key: 'status.conflict', color: 'conflict', badges: true });
-  assert.deepEqual(label('upstream gone'), { key: 'status.upstreamGone', color: 'upstream gone', badges: false });
-  assert.deepEqual(label('error'), { key: 'status.error', color: 'error', badges: false });
-  assert.deepEqual(label('not cloned'), { key: 'status.notCloned', color: 'not cloned', badges: false });
-  assert.deepEqual(label('root offline'), { key: 'status.rootOffline', color: 'root offline', badges: false });
-  assert.deepEqual(label('no upstream'), { key: 'repo.noUpstream', color: 'no upstream', badges: false });
-  assert.deepEqual(label('no upstream', { isDefault: false }), { key: 'repo.localBranch', color: 'clean', badges: false });
-  assert.equal(label('unknown').key, 'simple.checking');
-});
-
-test('I label every Simple status by its kind', () => {
-  const label = (status) => s.statusLabel({ status, modified: 2, untracked: 1 }, true);
-  assert.deepEqual(STATUSES.map((x) => label(x).key), ['simple.saved', 'simple.wip', 'simple.update', 'simple.unpushed', 'simple.help', 'simple.help', 'simple.online', 'simple.unpushed', 'simple.help', 'simple.offline', 'simple.help', 'simple.checking', 'simple.checking', 'simple.checking', 'simple.checking']);
-  assert.deepEqual(label('dirty'), { key: 'simple.wip', note: 'simple.wipSafe', noteVars: { n: 3 }, short: 'simple.wipShort', shortVars: { n: 3 }, color: 'dirty', badges: false });
-  assert.equal(s.statusLabel({ status: 'dirty', modified: 1 }, true).note, 'simple.wipSafeOne');
-  assert.equal(s.statusLabel({ status: 'dirty', modified: 1 }, true).short, 'simple.wipShortOne');
-  assert.equal(s.simpleKind('no upstream', false), 'saved');
-  assert.equal(s.simpleKind('no upstream', true), 'unpushed');
-  assert.deepEqual(s.statusLabel({ status: 'no upstream', isDefault: false }, true), { key: 'repo.localBranch', color: 'clean', badges: false });
-  assert.ok(STATUSES.filter((x) => x !== 'dirty').every((x) => !label(x).short));
-  assert.equal(label('ahead').color, 'ahead');
-  assert.ok(STATUSES.every((x) => !label(x).badges));
 });
 
 test('I describe account health with its words and fix action per mode', () => {

@@ -10,7 +10,7 @@ Counts are top-level Go test functions (subtests from `t.Run` and `TestMain` are
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-The current total is 890 Go tests (692 in `pkg/`, 198 in `cmd/gui/`) and 64 frontend tests. The counts include the tests behind the `sshd_integration` and `remote_smoke` tags. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
+The current total is 890 Go tests (692 in `pkg/`, 198 in `cmd/gui/`) and 74 frontend tests. The counts include the tests behind the `sshd_integration` and `remote_smoke` tags. Windows-only files (`*_windows_test.go`) are included in the counts but run only on Windows.
 
 ### Shared library (`pkg/`)
 
@@ -125,8 +125,9 @@ This boundary belongs to the test, not the config validator. Accepted configs ca
 - `credential-token.test.mjs` (4) — I execute the real handlers with an isolated bridge: clear saved tokens before post-setup, retain failed tokens for correction and retry, reset on close and reopen, and compile the real credential modal with fixture initial state to check its rendered failed input and enabled retry button, then its hidden successful input.
 - `repo-tree.test.mjs` (8) — the clone tree: cross-source ownership, no duplicate rows, nested collapse, recovery from stale parents and cycles, alphabetical order, attention groups split by account, a container's placeholder rows.
 - `repo-detail.test.mjs` (6) — nil-slice normalisation, switching clones, closing and reopening during a read, out-of-order refreshes, current versus superseded errors, complete incoming lists and independent history errors.
-- `status.test.mjs` (13) — each status's shape, colour, spinner, Simple kind, count badges, detail-panel rule, credential rules, attention rank and glossary label; account health per mode; the token-expiry warning; the localized check age.
-- `views.test.mjs` (5) — saved-view resolution, account views, the Needs attention list and its counts.
+- `status.test.mjs` (9) — status glyphs, palette, count badges, detail-panel and credential rules, account health, token expiry and localized check age.
+- `presentation.test.mjs` (2) — row labels, badge visibility, colours, primary actions, attention ranks and stale status for every status, mode and branch identity, including count-dependent wording.
+- `views.test.mjs` (6) — saved-view resolution, account views, the Needs attention list and its counts, including branch identity.
 - `activity.test.mjs` (7) — Fetch all and Pull all scopes and summaries, connection failures grouped by host.
 - `notices.test.mjs` (4) — result cards: showing, dismissing, auto-closing and capping them.
 - `theme.test.mjs` (2) — provider colours of account names in both themes, with the text colour for an unknown provider.

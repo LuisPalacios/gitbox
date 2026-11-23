@@ -50,9 +50,9 @@
   import { bridge } from '../bridge';
   import { openExternal, openRepoExternal } from '../external';
   import { pushNotice, errorText } from '../notices';
-  import { accounts, repoStates, prSettings, prsByAccount, lookupPRSummary, sources, workspaceMembers, workspaceUnknown, workspaceDiagnostics, isSynced, themeStore } from '../stores';
-  import { statusColor, simpleKind, simpleColor, rowBusy, rowGlyph, statusLabel, checkedAgo, attentionRank, CALM_RANK, COUNT_BADGES } from '../status';
-  import type { SimpleKind } from '../status';
+  import { accounts, repoStates, prSettings, prsByAccount, lookupPRSummary, sources, workspaceMembers, workspaceUnknown, workspaceDiagnostics, themeStore } from '../stores';
+  import { statusColor, rowGlyph, checkedAgo, COUNT_BADGES } from '../status';
+  import { derivePresentation, CALM_RANK, type Presentation } from '../presentation';
   import { t, languageStore } from '../i18n';
   import { ro, remoteOff } from '../ro';
   import { remoteHost, statusClock } from '../stores';
@@ -116,10 +116,10 @@
   export let showAccountView: (accountKey: string) => void;
 
   $: sc = (s: string) => statusColor(s, $themeStore);
-  $: busy = rowBusy(state.status, !!fetchingRepos[repoKey]);
-  $: label = statusLabel(state, simple);
+  $: presentation = derivePresentation(state, simple ? 'simple' : 'advanced');
+  $: busy = presentation.stale || !!fetchingRepos[repoKey];
   // Nested clones below a folded parent, and how many of them need me.
-  $: belowNeed = descendants.filter((d) => { const st = $repoStates[d]; return !!st && attentionRank(st.status, st.isDefault) < CALM_RANK; }).length;
+  $: belowNeed = descendants.filter((d) => derivePresentation($repoStates[d]).attention < CALM_RANK).length;
   // The .code-workspace file a container opens with, and whether I still
   // have to pick one among several.
   $: wsFile = $sources[rowSourceKey]?.repos[repoName]?.workspace || '';
@@ -130,7 +130,7 @@
   // their names in the workspace colour: what VS Code opens.
   $: inWorkspace = (isContainer && !!wsFile) || $workspaceMembers.has(repoKey);
   // A folded parent hiding clones that need me stays at full strength.
-  $: calm = fadeHealthy && !busy && isSynced(state) && !(belowNeed > 0 && collapsedRepos.has(repoKey));
+  $: calm = fadeHealthy && !busy && presentation.kind === 'saved' && !(belowNeed > 0 && collapsedRepos.has(repoKey));
 
   // requireRepoPath returns the row's local clone path, or shows the
   // "clone first" notice and returns null. Path-based kebab actions used
@@ -237,7 +237,7 @@
   function shortName(repoName: string): string {
     return repoName.split('/').pop() || repoName;
   }
-  function simpleTip(kind: SimpleKind, state: { status: string; modified: number; untracked: number }): string {
+  function simpleTip(kind: Presentation['kind'], state: { status: string; modified: number; untracked: number }): string {
     if (kind === 'help') return $t('simple.tipHelp');
     if (kind !== 'wip' && kind !== 'unpushed') return '';
     if (state.status === 'ahead') return $t('simple.tipAhead');
@@ -246,14 +246,14 @@
   }
   // The words' tooltip: Simple explains its kind, Advanced splits local
   // changes into changed and untracked files.
-  function labelTip(state: RepoState): string {
+  function labelTip(state: RepoState, row: Presentation): string {
     switch (state.pullSkipped) {
       case 'dirty': return $t('pull.skipDirty');
       case 'conflict': return $t('pull.skipConflict');
       case 'inProgress': return $t('pull.skipInProgress');
       case 'settingsChanged': return $t('pull.skipSettingsChanged');
     }
-    if (simple) return simpleTip(simpleKind(state.status, state.isDefault), state);
+    if (simple) return simpleTip(row.kind, state);
     if (state.status === 'dirty') return $t('status.changesTip', { m: state.modified || 0, u: state.untracked || 0 });
     return '';
   }
@@ -272,7 +272,7 @@
 <!-- The status in the glossary words, with its dimmed note. A label with a
      short form swaps to it in a narrow row, so the count stays visible. -->
 {#snippet words()}
-  <span class="status-text" style="color: {sc(label.color)}" title={labelTip(state) || $t(label.key, label.vars)}>{#if label.short}<span class="words-full">{$t(label.key, label.vars)}{#if label.note}<span class="safe-note">&nbsp;{$t(label.note, label.noteVars)}</span>{/if}</span><span class="words-short">{$t(label.short, label.shortVars)}</span>{:else}{$t(label.key, label.vars)}{#if label.note}<span class="safe-note">&nbsp;{$t(label.note, label.noteVars)}</span>{/if}{/if}</span>
+  <span class="status-text" style="color: {sc(presentation.colour)}" title={labelTip(state, presentation) || $t(presentation.labelKey, presentation.vars)}>{#if presentation.short}<span class="words-full">{$t(presentation.labelKey, presentation.vars)}{#if presentation.note}<span class="safe-note">&nbsp;{$t(presentation.note, presentation.noteVars)}</span>{/if}</span><span class="words-short">{$t(presentation.short, presentation.shortVars)}</span>{:else}{$t(presentation.labelKey, presentation.vars)}{#if presentation.note}<span class="safe-note">&nbsp;{$t(presentation.note, presentation.noteVars)}</span>{/if}{/if}</span>
 {/snippet}
 
 <!-- After the name: the account pill, the parent tag and a folded parent's
@@ -390,8 +390,8 @@
   {/if}
   {#if simple}
     <!-- Simple row (issue #124): dot, short name, one sentence, one button, ⋯ -->
-    {@const kind = simpleKind(state.status, state.isDefault)}
-    {@const kindColor = simpleColor(kind, $themeStore)}
+    {@const kind = presentation.kind}
+    {@const kindColor = sc(presentation.colour)}
     {@const checkedAt = state.checkedAt}
     {@const ago = checkedAt && (kind === 'update' || kind === 'online' || kind === 'help')
       ? checkedAgo(checkedAt, $languageStore, $statusClock) : null}
@@ -419,9 +419,9 @@
             title={new Date(checkedAt).toLocaleString($languageStore)}>{$t('simple.lastChecked', { ago })}</time>
         {/if}
       </span>
-      {#if kind === 'update'}
+      {#if presentation.primaryAction === 'update'}
         <button use:ro={'pullRepo'} class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)} title={$t('simple.updateTip')}>{$t('simple.btnUpdate')}</button>
-      {:else if kind === 'online'}
+      {:else if presentation.primaryAction === 'clone'}
         <button use:ro={'cloneRepo'} class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('simple.btnDownload')}</button>
       {/if}
       {#if kind !== 'online' && kind !== 'offline' && kind !== 'busy'}
@@ -451,7 +451,7 @@
       </div>
     {/if}
   {:else}
-  {#if childCount > 0}{@render foldChevron()}{:else}<span class="dot" class:spinning={busy} style="color: {sc(state.status)}">{rowGlyph(state.status, !!fetchingRepos[repoKey])}</span>{/if}
+  {#if childCount > 0}{@render foldChevron()}{:else}<span class="dot" class:spinning={busy} style="color: {sc(presentation.colour)}">{rowGlyph(state.status, busy)}</span>{/if}
   {#if childCount > 0 && !rowOpensDetail}
     <!-- I keep name-based folding when this clone has no details. -->
     <span class="repo-name" class:ws-member={inWorkspace}><span class="repo-name-toggle" role="button" tabindex="-1"
@@ -482,20 +482,20 @@
     </div>
     <span class="progress-pct" style="color:{sc(state.status)}">{state.progress}%</span>
   {:else}
-    {#if state.status === 'unknown'}<span class="status-pending">{$t('simple.checking')}</span>{/if}
+    {#if state.status === 'unknown'}<span class="status-pending">{$t(presentation.labelKey)}</span>{/if}
     {#if state.status !== 'unknown'}
     {@render prBadges()}
     <span class="status-badges">
       {@render words()}
-      {#if label.badges}
+      {#if presentation.badges}
         {#each COUNT_BADGES as b}
           {#if state[b.field] > 0}<span class="sbadge" style="color:{sc(b.color)}" title="{state[b.field]} {$t(b.word)}">{b.glyph}{state[b.field]}</span>{/if}
         {/each}
       {/if}
     </span>
-    {#if state.status === 'behind'}
+    {#if presentation.primaryAction === 'update'}
       <button use:ro={'pullRepo'} class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)} title={$t('repo.pullTip')}>{$t('repo.pull')} <span class="btn-tag">{$t('repo.ffOnly')}</span></button>
-    {:else if state.status === 'not cloned'}
+    {:else if presentation.primaryAction === 'clone'}
       <button use:ro={'cloneRepo'} class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('repo.clone')}</button>
     {/if}
     {/if}

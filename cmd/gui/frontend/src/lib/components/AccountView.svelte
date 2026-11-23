@@ -4,7 +4,7 @@
   // here at the top level with an "in <parent>" tag; the All view keeps
   // that cross-account nesting.
   import { sources, repoStates, workspacePlaceholders } from '../stores';
-  import { CALM_RANK } from '../status';
+  import { derivePresentation, CALM_RANK } from '../presentation';
   import type { HealthFix } from '../status';
   import { repoTreeRows } from '../repo-tree';
   import AccountHeader from './AccountHeader.svelte';
@@ -33,7 +33,7 @@
   $: parentLabels = Object.fromEntries(rows.filter((r) => r.depth === 0 && repoNesting[r.key] && repoNesting[r.key] !== r.key).map((r) => [r.key, repoNesting[r.key]]));
   $: keys = Object.entries(own).flatMap(([sk, s]) => Object.keys(s.repos).map((r) => `${sk}/${r}`));
   $: needYou = keys.filter((k) => rankOf(k) < CALM_RANK).length;
-  $: checking = keys.some((k) => !$repoStates[k] || $repoStates[k].status === 'unknown');
+  $: checking = keys.some((k) => derivePresentation($repoStates[k]).stale);
 </script>
 
 <section class="view-scroll">

@@ -3,7 +3,7 @@ import { isBlocked } from './readonly';
 import type { CallName } from './bridge';
 import { writable, derived, readable } from 'svelte/store';
 import type { Placeholder } from './repo-tree';
-import { simpleKind } from './status';
+import { CALM_RANK, derivePresentation } from './presentation';
 import type { ConfigDTO, Account, SourceDTO, MirrorDTO, MirrorStatusResult, RepoState, StatusResult, PRSummaryDTO, PRAccountUpdateDTO, WorkspaceDiagnosticDTO } from './types';
 
 // ── Config store — loaded once from Go backend ──
@@ -75,56 +75,40 @@ export function applyStatusResults(results: StatusResult[]) {
   });
 }
 
-// ── Derived: global summary ──
+// The ring fills for known saved clones. Rows still being classified count
+// towards the total, and only actionable rows contribute to the badge.
 export const summary = derived(repoStates, ($rs) => {
-  const vals = Object.values($rs);
-  return {
-    clean: vals.filter((r) => r.status === 'clean').length,
-    behind: vals.filter((r) => r.status === 'behind').length,
-    dirty: vals.filter((r) => r.status === 'dirty').length,
-    ahead: vals.filter((r) => r.status === 'ahead').length,
-    syncing: vals.filter((r) => r.status === 'syncing' || r.status === 'cloning').length,
-    notCloned: vals.filter((r) => r.status === 'not cloned').length,
-    error: vals.filter((r) => r.status === 'error').length,
-    // Needs help: diverged, conflict, upstream gone or error.
-    problems: vals.filter((r) => ['diverged', 'conflict', 'upstream gone', 'error'].includes(r.status)).length,
-    total: vals.length,
-  };
-});
-
-// ── Derived: Simple mode summary (issue #124) ──
-// Counts per simpleKind; busy and checking rows count toward the total only.
-export const simpleSummary = derived(repoStates, ($rs) => {
-  const sum = { saved: 0, wip: 0, unpushed: 0, update: 0, online: 0, help: 0, total: 0 };
-  for (const r of Object.values($rs)) {
-    const k = simpleKind(r.status, r.isDefault);
-    if (k in sum) sum[k as keyof typeof sum]++;
-    sum.total++;
+  const counts = { saved: 0, wip: 0, update: 0, unpushed: 0, online: 0, offline: 0, help: 0, busy: 0, checking: 0,
+    attention: 0, ahead: 0, syncing: 0, total: 0 };
+  for (const state of Object.values($rs)) {
+    const row = derivePresentation(state);
+    counts[row.kind]++;
+    counts.total++;
+    if (row.attention < CALM_RANK) counts.attention++;
+    // The Advanced footer reports measured commits ahead and transfers in progress.
+    if (state.status === 'ahead') counts.ahead++;
+    if (state.status === 'syncing' || state.status === 'cloning') counts.syncing++;
   }
-  return sum;
+  return counts;
 });
-
-// isSynced is the "nothing to do" rule shared by every attention count:
-// clean, or a feature branch that simply has no upstream yet.
-export function isSynced(state: RepoState): boolean {
-  return state.status === 'clean' || (state.status === 'no upstream' && !state.isDefault);
-}
 
 // ── Derived: per-account stats ──
 export const accountStats = derived([sources, repoStates], ([$src, $rs]) => {
-  const stats: Record<string, { total: number; synced: number; issues: number }> = {};
+  const stats: Record<string, { total: number; synced: number; issues: number; checking: boolean }> = {};
   for (const [sourceKey, source] of Object.entries($src)) {
     const acctKey = source.account;
-    if (!stats[acctKey]) stats[acctKey] = { total: 0, synced: 0, issues: 0 };
+    if (!stats[acctKey]) stats[acctKey] = { total: 0, synced: 0, issues: 0, checking: false };
     const repoKeys = source.repoOrder && source.repoOrder.length > 0
       ? source.repoOrder
       : Object.keys(source.repos);
     for (const repoName of repoKeys) {
       const state = $rs[`${sourceKey}/${repoName}`];
-      if (!state) continue;
-      stats[acctKey].total++;
-      if (isSynced(state)) stats[acctKey].synced++;
-      else if (state.status !== 'unknown') stats[acctKey].issues++;
+      const row = derivePresentation(state);
+      const account = stats[acctKey];
+      account.total++;
+      if (row.kind === 'saved') account.synced++;
+      if (row.attention < CALM_RANK) account.issues++;
+      if (row.stale) account.checking = true;
     }
   }
   return stats;
