@@ -8,74 +8,34 @@ import (
 	"go/token"
 	"os"
 	"reflect"
-	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/LuisPalacios/gitbox/internal/secretcheck"
 	"github.com/LuisPalacios/gitbox/pkg/config"
 )
 
-var secretFieldName = regexp.MustCompile(`(?i)token|secret|password|pat$`)
-
-type secretMetadataField struct {
-	owner reflect.Type
-	name  string
-}
-
 // I allow only these exact metadata fields and types, never a whole DTO.
-type secretMetadataType struct {
-	typ      reflect.Type
-	jsonName string
-}
-
-var secretMetadataTypes = map[secretMetadataField]secretMetadataType{
+var secretMetadataTypes = map[secretcheck.Field]secretcheck.Allowed{
 	// Empty credential settings carry no token; I still inspect nested fields.
-	{reflect.TypeFor[config.GlobalConfig](), "CredentialToken"}: {reflect.TypeFor[*config.TokenGlobal](), "credential_token"},
+	{Owner: reflect.TypeFor[config.GlobalConfig](), Name: "CredentialToken"}: {Type: reflect.TypeFor[*config.TokenGlobal](), JSONName: "credential_token"},
 	// These flags describe credential presence or a required setup action.
-	{reflect.TypeFor[MirrorCredentialCheck](), "HasMirrorToken"}: {reflect.TypeFor[bool](), "hasMirrorToken"},
-	{reflect.TypeFor[MirrorCredentialCheck](), "NeedsPAT"}:       {reflect.TypeFor[bool](), "needsPat"},
-	{reflect.TypeFor[CredentialSetupResult](), "NeedsPAT"}:       {reflect.TypeFor[bool](), "needsPAT"},
+	{Owner: reflect.TypeFor[MirrorCredentialCheck](), Name: "HasMirrorToken"}: {Type: reflect.TypeFor[bool](), JSONName: "hasMirrorToken"},
+	{Owner: reflect.TypeFor[MirrorCredentialCheck](), Name: "NeedsPAT"}:       {Type: reflect.TypeFor[bool](), JSONName: "needsPat"},
+	{Owner: reflect.TypeFor[CredentialSetupResult](), Name: "NeedsPAT"}:       {Type: reflect.TypeFor[bool](), JSONName: "needsPAT"},
 	// PAT is a status label (ok/warning/error/none), not the credential value.
-	{reflect.TypeFor[CredentialStatus](), "PAT"}: {reflect.TypeFor[string](), "pat"},
-}
-
-func inspectSecretFields(typ reflect.Type, seen map[reflect.Type]bool, report func(string)) {
-	if seen[typ] {
-		return
-	}
-	seen[typ] = true
-	switch typ.Kind() {
-	case reflect.Pointer, reflect.Slice, reflect.Array:
-		inspectSecretFields(typ.Elem(), seen, report)
-	case reflect.Map:
-		inspectSecretFields(typ.Key(), seen, report)
-		inspectSecretFields(typ.Elem(), seen, report)
-	case reflect.Struct:
-		for field := range typ.Fields() {
-			if !field.IsExported() || field.Tag.Get("json") == "-" {
-				continue
-			}
-			jsonName, _, _ := strings.Cut(field.Tag.Get("json"), ",")
-			if secretFieldName.MatchString(field.Name) || secretFieldName.MatchString(jsonName) {
-				allowed, ok := secretMetadataTypes[secretMetadataField{typ, field.Name}]
-				if !ok || allowed.typ != field.Type || allowed.jsonName != jsonName {
-					report(typ.String() + "." + field.Name)
-				}
-			}
-			inspectSecretFields(field.Type, seen, report)
-		}
-	}
+	{Owner: reflect.TypeFor[CredentialStatus](), Name: "PAT"}: {Type: reflect.TypeFor[string](), JSONName: "pat"},
 }
 
 func TestDTOsCarryNoSecrets(t *testing.T) {
-	seen := make(map[reflect.Type]bool)
+	check := secretcheck.Checker{Allow: secretMetadataTypes}
 	report := func(field string) { t.Errorf("secret-shaped output field: %s", field) }
 	// Reflection discovers every bound method's output, including snapshots,
 	// config accounts, status results and DTOs nested in containers.
 	app := reflect.TypeFor[*App]()
 	for method := range app.Methods() {
 		for output := range method.Type.Outs() {
-			inspectSecretFields(output, seen, report)
+			check.Inspect(output, report)
 		}
 	}
 	// I register event-only DTOs and input DTOs explicitly, so the source
@@ -86,10 +46,10 @@ func TestDTOsCarryNoSecrets(t *testing.T) {
 		reflect.TypeFor[MoveRequestDTO](), reflect.TypeFor[MirrorStatusResult](),
 		reflect.TypeFor[WindowErrorDTO](),
 	} {
-		inspectSecretFields(typ, seen, report)
+		check.Inspect(typ, report)
 	}
 	covered := make(map[string]bool)
-	for typ := range seen {
+	for typ := range check.Seen {
 		if typ.PkgPath() == reflect.TypeFor[App]().PkgPath() {
 			covered[typ.Name()] = true
 		}
@@ -114,23 +74,5 @@ func TestDTOsCarryNoSecrets(t *testing.T) {
 			}
 			return true
 		})
-	}
-}
-
-func TestDTOSecretCanary_RejectsNestedSecrets(t *testing.T) {
-	type secret struct {
-		Value string `json:"password"`
-		Token string
-	}
-	type nested struct {
-		Items map[string][]*secret
-		Next  *nested
-	}
-	var fields []string
-	inspectSecretFields(reflect.TypeFor[nested](), make(map[reflect.Type]bool), func(field string) {
-		fields = append(fields, field)
-	})
-	if len(fields) != 2 || !strings.HasSuffix(fields[0], ".Value") || !strings.HasSuffix(fields[1], ".Token") {
-		t.Fatalf("reported fields = %v; want nested JSON password and Token", fields)
 	}
 }

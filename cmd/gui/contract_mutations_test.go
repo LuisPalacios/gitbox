@@ -30,6 +30,7 @@ func (s mutationSide) use(t *testing.T) {
 	t.Setenv("HOME", s.home)
 	t.Setenv("USERPROFILE", s.home)
 	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(s.home, ".gitconfig"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(s.home, ".config"))
 }
 
 // mutationRow is one step of TestBackendContractMutations. project replaces
@@ -123,7 +124,34 @@ func mutationRows(root, firstRoot string) []mutationRow {
 			r, _ := v.(ConfigRepairResult)
 			return r.Success
 		}},
+		// The token credentials (#242), each side in its own credentials
+		// folder. GCM is not symmetric: a host refuses it (TestHostRefusesGCM).
+		{name: "CredentialStoreToken", call: func(b Backend, _ mutationSide) (any, error) {
+			return b.CredentialStoreToken("acct", "contract-store-token"), nil
+		}, project: withoutFindingPaths},
+		{name: "CredentialStoreToken again", call: func(b Backend, _ mutationSide) (any, error) {
+			return b.CredentialStoreToken("acct", "contract-store-token"), nil
+		}, project: withoutFindingPaths},
+		{name: "CredentialStoreToken empty", call: func(b Backend, _ mutationSide) (any, error) {
+			return b.CredentialStoreToken("acct", "  "), nil
+		}},
+		{name: "CredentialStoreToken missing account", call: func(b Backend, _ mutationSide) (any, error) {
+			return b.CredentialStoreToken("nobody", "contract-store-token"), nil
+		}},
+		{name: "ChangeCredentialType", call: func(b Backend, _ mutationSide) (any, error) { return none(b.ChangeCredentialType("acct", "token")) }},
+		{name: "CredentialDelete", call: func(b Backend, _ mutationSide) (any, error) { return b.CredentialDelete("acct"), nil }},
+		{name: "CredentialDelete again", call: func(b Backend, _ mutationSide) (any, error) { return b.CredentialDelete("acct"), nil }},
 	}
+}
+
+// withoutFindingPaths keeps the credential findings of a setup result but
+// not their paths, which name each side's own folder.
+func withoutFindingPaths(v any) any {
+	r, _ := v.(CredentialSetupResult)
+	for i := range r.Findings {
+		r.Findings[i].Path = ""
+	}
+	return r
 }
 
 // TestBackendContractMutations runs the served config mutations (#294) in
@@ -218,22 +246,22 @@ func TestReplayRequestID(t *testing.T) {
 }
 
 // TestUnservedMutationsRefused: a remote window refuses, before the wire,
-// the mutations the server does not serve yet, the credential methods
-// (#242, #244); a served one goes through.
+// the mutations the server does not serve yet, the SSH key methods (#244);
+// a served one goes through.
 func TestUnservedMutationsRefused(t *testing.T) {
 	path := contractHost(t)
-	// The test server answers ChangeCredentialType, so a call that reached
-	// it would show.
+	// The test server answers CredentialSetupSSH, so a call that reached it
+	// would show.
 	var reached atomic.Bool
 	link := serveRemote(t, path, map[string]rpc.Handler{
-		"ChangeCredentialType": rpc.Func(func(string, string) error { reached.Store(true); return nil }),
+		"CredentialSetupSSH": rpc.Func(func(string) CredentialSetupResult { reached.Store(true); return CredentialSetupResult{OK: true} }),
 	})
 	link.Remote.refuseUnserved = true
-	if err := link.Remote.ChangeCredentialType("acct", "ssh"); toUserError(err).Code != "remote.read_only" {
-		t.Errorf("ChangeCredentialType = %v, want remote.read_only", err)
+	if res := link.Remote.CredentialSetupSSH("acct"); res.OK || toUserError(link.Remote.LastError()).Code != "remote.read_only" {
+		t.Errorf("CredentialSetupSSH = %+v (%v), want refused with remote.read_only", res, link.Remote.LastError())
 	}
-	if res := link.Remote.CredentialDelete("acct"); res.OK || toUserError(link.Remote.LastError()).Code != "remote.read_only" {
-		t.Errorf("CredentialDelete = %+v (%v), want refused with remote.read_only", res, link.Remote.LastError())
+	if res := link.Remote.CredentialRegenerateSSH("acct"); res.OK || toUserError(link.Remote.LastError()).Code != "remote.read_only" {
+		t.Errorf("CredentialRegenerateSSH = %+v (%v), want refused with remote.read_only", res, link.Remote.LastError())
 	}
 	if reached.Load() {
 		t.Error("a refused mutation reached the server")

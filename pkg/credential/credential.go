@@ -58,15 +58,41 @@ func GetToken(accountKey string) (string, error) {
 
 	// Try parsing as git-credential-store format: https://user:token@host
 	if strings.HasPrefix(line, "https://") || strings.HasPrefix(line, "http://") {
-		if u, err := url.Parse(line); err == nil && u.User != nil {
-			if tok, ok := u.User.Password(); ok && tok != "" {
-				return tok, nil
-			}
+		if tok := storeLineToken(line); tok != "" {
+			return tok, nil
 		}
 	}
 
 	// Fall back to raw token (single line, no URL format).
 	return line, nil
+}
+
+// storeLineToken is the password of a git-credential-store line, or "".
+// Git rewrites the line it approves with the port's colon escaped
+// (http://user:token@host%3a3000), which url.Parse refuses in a host, so
+// the user information is read on its own (#242).
+func storeLineToken(line string) string {
+	first, _, _ := strings.Cut(line, "\n")
+	if u, err := url.Parse(first); err == nil && u.User != nil {
+		if tok, ok := u.User.Password(); ok && tok != "" {
+			return tok
+		}
+		return ""
+	}
+	_, rest, _ := strings.Cut(first, "://")
+	at := strings.LastIndex(rest, "@")
+	if at < 0 {
+		return ""
+	}
+	_, pass, ok := strings.Cut(rest[:at], ":")
+	if !ok {
+		return ""
+	}
+	tok, err := url.PathUnescape(pass)
+	if err != nil {
+		return ""
+	}
+	return tok
 }
 
 // DeleteToken removes the credential file for the given account.
