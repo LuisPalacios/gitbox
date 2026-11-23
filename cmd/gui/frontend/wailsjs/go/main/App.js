@@ -42,6 +42,10 @@ export function AdoptClones(arg1) {
   return window['go']['main']['App']['AdoptClones'](arg1);
 }
 
+export function AdoptFirstProject(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AdoptFirstProject'](arg1, arg2, arg3);
+}
+
 export function ApplyDiscoveredMirrors() {
   return window['go']['main']['App']['ApplyDiscoveredMirrors']();
 }
@@ -398,12 +402,20 @@ export function PreflightMove(arg1) {
   return window['go']['main']['App']['PreflightMove'](arg1);
 }
 
+export function PreviewClonePath(arg1, arg2) {
+  return window['go']['main']['App']['PreviewClonePath'](arg1, arg2);
+}
+
 export function PreviewRecipeExport() {
   return window['go']['main']['App']['PreviewRecipeExport']();
 }
 
 export function PreviewRecipeImport(arg1, arg2) {
   return window['go']['main']['App']['PreviewRecipeImport'](arg1, arg2);
+}
+
+export function PreviewRoot(arg1) {
+  return window['go']['main']['App']['PreviewRoot'](arg1);
 }
 
 export function PreviewSweep(arg1, arg2) {

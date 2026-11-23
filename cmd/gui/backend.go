@@ -79,6 +79,9 @@ type Backend interface {
 	GetStartupSnapshot() (StartupSnapshot, error)
 	GetTokenGuide(accountKey string) TokenGuideInfo
 	IgnoreClone(path string, ignore bool) error
+	PreviewRoot(path string) (OnboardingRootPreviewDTO, error)
+	PreviewClonePath(source, repo string) (string, error)
+	AdoptFirstProject(account, repo, path string) (bool, error)
 	InitRoot(folder string) error
 	InstallGlobalGitignore() (gitignore.InstallResult, error)
 	IsFirstRun() bool

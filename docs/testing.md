@@ -105,6 +105,8 @@ I copy the template and fill in real accounts:
 cp json/test-gitbox.json.example test-gitbox.json
 ```
 
+To test first launch, I use a fixture with no accounts, sources or mirrors and add `"_test": {"firstRun": true}` at its top level. I keep a valid `global.roots` entry and set `global.language` to `en` or `es`. The wizard suggests the temporary test root.
+
 The file is gitignored because it holds real secrets. Never commit it.
 
 Each account that the tests may call gets a `_test` key with a personal access token:

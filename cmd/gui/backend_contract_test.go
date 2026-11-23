@@ -220,6 +220,8 @@ func contractRows(clone string) []contractRow {
 		{name: "IsFirstRun", call: func(b Backend) (any, error) { return b.IsFirstRun(), nil }},
 		{name: "GetConfigLoadError", call: func(b Backend) (any, error) { return b.GetConfigLoadError(), nil }, empty: "the host's config loads"},
 		{name: "ListConfigBackups", call: func(b Backend) (any, error) { return b.ListConfigBackups(), nil }},
+		{name: "PreviewRoot", call: func(b Backend) (any, error) { return b.PreviewRoot(filepath.Dir(clone)) }},
+		{name: "PreviewClonePath", call: func(b Backend) (any, error) { return b.PreviewClonePath("acct", "org/repo") }},
 		{name: "ValidateRemotePath", call: func(b Backend) (any, error) { return b.ValidateRemotePath(os.TempDir()), nil }},
 		{name: "GetAllStatus", call: func(b Backend) (any, error) { return b.GetAllStatus(), nil }},
 		// The status pass and the upstream probe each publish the statuses.

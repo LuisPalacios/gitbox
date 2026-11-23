@@ -10,7 +10,7 @@ Los recuentos son funciones de prueba Go de nivel superior (no se cuentan los su
 rg -c '^func Test\w*\(t \*testing\.T\)' -g '*_test.go' pkg cmd
 ```
 
-El total actual es de 985 pruebas Go (749 en `pkg/`, 236 en `cmd/gui/`) y 74 pruebas del frontend. Los recuentos incluyen las pruebas tras los tags `sshd_integration` y `remote_smoke`. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
+El total actual es de 988 pruebas Go (749 en `pkg/`, 239 en `cmd/gui/`) y 76 pruebas del frontend. Los recuentos incluyen las pruebas tras los tags `sshd_integration` y `remote_smoke`. Los archivos solo de Windows (`*_windows_test.go`) se incluyen en los recuentos, pero solo se ejecutan en Windows.
 
 ### Biblioteca compartida (`pkg/`)
 
@@ -118,6 +118,7 @@ Este límite pertenece a la prueba, no al validador de config. Las configs acept
 - `status_freshness_test.go` (4) — fechas de comprobaciones de red confirmadas y publicación solo cuando una fila puede mostrar la nueva hora, cambios de identidad del repositorio o de la cuenta y datos de estado transmitidos para ramas locales.
 - `startup_test.go` (2 + `BenchmarkStartupSnapshot`) — anidamiento antes de que existan los clones, una instantánea independiente de la config viva.
 - `update_test.go` (2) — el build AppImage rechaza `ApplyUpdate` antes de cualquier descarga, y una versión nueva se confirma como arrancada solo después de cargar la config.
+- `onboarding_test.go` (3) — Compruebo que las vistas previas de la raíz y el destino conservan el sistema de archivos y la configuración, adopto un único clon sin tocar los de alrededor y pruebo el fixture de primer arranque dentro de su raíz temporal.
 - `repo_detail_test.go` (1) — los commits entrantes y los detalles de archivos locales conviven, y la vista previa se vacía cuando el clon recibe los commits.
 
 ### Frontend (`cmd/gui/frontend/src/lib/`)
@@ -125,6 +126,7 @@ Este límite pertenece a la prueba, no al validador de config. Las configs acept
 `npm test` en `cmd/gui/frontend` las ejecuta con `node --test`; `./scripts/health.sh frontend-test` ejecuta la misma suite.
 
 - `credential-token.test.mjs` (4) — ejecuto los manejadores reales con un bridge aislado: borro los tokens guardados antes del paso posterior, conservo los fallidos para corregirlos y reintentarlo, limpio el estado al cerrar y reabrir, y compilo el modal real de credenciales con un estado inicial de prueba para comprobar que muestra el campo fallido y el botón de reintento habilitado, y después oculta el campo tras el éxito.
+- `first-project.test.mjs` (2) — Compruebo que una descarga solo llega a la pantalla de proyecto listo cuando aparece el clon seleccionado. Una transferencia fallida u omitida queda fuera de esa pantalla y los avisos de identidad siguen visibles.
 - `repo-tree.test.mjs` (8) — el árbol de clones: propiedad entre sources, ninguna fila duplicada, plegado de anidados, recuperación ante padres obsoletos y ciclos, orden alfabético, grupos de atención separados por cuenta, las filas placeholder de un contenedor.
 - `repo-detail.test.mjs` (6) — normalización de slices nulos, cambio de clon, cierre y reapertura durante una lectura, refrescos fuera de orden, errores actuales frente a sustituidos, listas entrantes completas y errores independientes del historial.
 - `status.test.mjs` (9) — los símbolos de estado, la paleta, los indicadores de conteo, las reglas del panel de detalle y las credenciales, la salud de la cuenta, la caducidad del token y la antigüedad de la comprobación en cada idioma.
@@ -178,7 +180,7 @@ Después, el escenario define un `XDG_CONFIG_HOME` temporal, construye una confi
 
 ### Modo de prueba
 
-`GitboxApp --test-mode` pasa por `config.SetupTestMode()` en `pkg/config/testmode.go`. Busca `test-gitbox.json` subiendo desde el directorio actual, aplica las mismas comprobaciones de rutas, escribe una config descartable con `global.roots` sustituido por un único directorio temporal (vaciando cada `source.root` y `repo.root`), define `GIT_SSH_COMMAND` e inyecta los tokens del fixture como variables de entorno. La GUI borra el directorio temporal al salir.
+`GitboxApp --test-mode` usa `config.PrepareTestFixture()` en `pkg/config/testmode.go`. Busca `test-gitbox.json` subiendo desde el directorio actual, aplica las mismas comprobaciones de rutas, escribe una config descartable con `global.roots` sustituido por un único directorio temporal (vaciando cada `source.root` y `repo.root`), define `GIT_SSH_COMMAND` e inyecta los tokens del fixture como variables de entorno. Un fixture vacío con el indicador de nivel superior `_test.firstRun` abre el asistente de configuración. La GUI borra el directorio temporal al salir.
 
 ### Pruebas de concurrencia y de procesos
 

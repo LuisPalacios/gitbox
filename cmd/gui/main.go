@@ -104,13 +104,14 @@ func main() {
 		// A remote window in test mode reads the remotes of the test
 		// window that started it (--prefs-file) instead of a fixture.
 		if arg == "--test-mode" && remoteArgs.alias == "" {
-			cfgPath, cleanup, err := config.SetupTestMode()
+			cfgPath, firstRun, cleanup, err := config.PrepareTestFixture()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error: %v\n", err)
 				os.Exit(1)
 			}
 			app.cfgPath = cfgPath
 			app.testMode = true
+			app.testFirstRun = firstRun
 			app.testCleanup = cleanup
 		}
 		if arg == "--terminals-window" {

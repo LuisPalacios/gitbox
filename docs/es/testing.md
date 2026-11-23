@@ -105,6 +105,8 @@ Copio la plantilla y la relleno con cuentas reales:
 cp json/test-gitbox.json.example test-gitbox.json
 ```
 
+Para probar el primer arranque, uso un fixture sin cuentas, fuentes ni mirrors y añado `"_test": {"firstRun": true}` en el nivel superior. Conservo una entrada válida en `global.roots` y fijo `global.language` en `en` o `es`. El asistente sugiere la raíz temporal de la prueba.
+
 El archivo está en el gitignore porque contiene secretos reales. No lo commitees nunca.
 
 Cada cuenta a la que las pruebas pueden llamar recibe una clave `_test` con un personal access token:

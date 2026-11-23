@@ -89,6 +89,7 @@ type App struct {
 	credentialAuditMu  sync.Mutex
 	credentialFindings []credential.Finding // cached metadata-only audit, guarded by mu
 	cfgLoadError       string               // non-empty if config exists but failed to parse
+	testFirstRun       bool                 // explicitly empty test fixture for the first-launch wizard
 	testMode           bool                 // true when launched with --test-mode
 	testCleanup        func()               // cleanup function for test-mode temp dir
 	// windowMode selects which UI the frontend should render. Empty (or
@@ -200,6 +201,10 @@ func (a *App) initLocal(ctx context.Context) {
 	} else {
 		a.cfgLoaded = true
 		a.cfgBase = config.DomainHash(cfg)
+		if a.testFirstRun {
+			cfg.Global.Roots = nil
+			a.testFirstRun = false
+		}
 	}
 	a.cfg = cfg
 	a.refreshCredentialAudit()

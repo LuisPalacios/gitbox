@@ -59,13 +59,13 @@ The app needs a desktop environment with a display server (X11 or Wayland).
 
 The first time you open Gitbox, a short guided setup walks you through three steps:
 
-1. **Where do you keep your projects?** — pick your first **clone root**, the folder where your projects live on disk, such as `~/00.git` or `C:\repos`. You can add more roots later in Settings.
-2. **Connect where your projects are stored** — pick GitHub, GitLab, Bitbucket, or the **Forgejo** and **Gitea** tile (then choose which one and type the server address). Type your username, your name and your email. The name and email are prefilled from your global git identity when it has one, and they appear on the changes you save. Click **Sign in with the browser** and log in. Gitbox uses Git Credential Manager (GCM) for this.
-3. **Pick projects to download** — Gitbox lists the repositories your account can see. Tick the ones you want and click **Download**. They start cloning as soon as the main screen opens.
+1. **Where do you keep your projects?** — pick your first **clone root**, the folder where your projects live on disk, such as `~/00.git` or `C:\repos`. The preview shows the folder layout and counts nearby projects. Existing clones stay where they are. Choose **Download a project** or **Use an existing project**. You can add more roots later in Settings.
+2. **Connect where your projects are stored** — pick GitHub, GitLab, Bitbucket, or the **Forgejo** and **Gitea** tile (then choose which one and type the server address). Type your username, your name and your email. The name and email are prefilled from your global git identity when it has one, and they appear on the changes you save. Gitbox suggests an account folder name, such as `github-alice`. Choose **Edit folder name** to change it before signing in. Click **Sign in with the browser** and log in. Gitbox uses Git Credential Manager (GCM) for this.
+3. **Choose your first project** — check the connected provider, server and username. Pick one project to download or one of the existing clones for that account. Check the exact project folder and confirm. Once the project is ready, open the dashboard. You can add more projects from the account view.
 
 If GCM isn't installed, step 2 shows how to install it and offers **Use a token instead**, which links to the page where you create a token and asks you to paste it. If sign-in fails, you can **Try again**, switch to a token, or go back with **Change details**.
 
-You never type an account key: Gitbox picks one for you, such as `github-alice`, which is also the account's folder name on disk. You can **Skip for now** at steps 2 and 3 and add accounts later. New installs start in [Simple mode](#simple-and-advanced-modes). If you quit after the first step, the next launch opens the main screen; finish from **Connect an account** in the sidebar.
+You can **Skip for now** at steps 2 and 3 and add accounts later. New installs start in [Simple mode](#simple-and-advanced-modes). If you quit after the first step, the next launch opens the main screen; finish from **Connect an account** in the sidebar.
 
 On later launches, Gitbox shows your clones, preferences and container nesting right away, before the status checks finish. Spinners mark the clones it is still checking or fetching.
 
@@ -73,7 +73,7 @@ On later launches, Gitbox shows your clones, preferences and container nesting r
 
 An account tells Gitbox who you are on a particular server, for example your GitHub account or your company's GitLab.
 
-In Simple mode, **Connect an account** in the sidebar runs the same connect and pick-projects steps as the first launch. In Advanced mode, **Add account** opens the full form, which also offers SSH and lets you choose the account key. Fill in:
+In Simple mode, **Connect an account** in the sidebar uses the same sign-in form, then lets you select projects to download. In Advanced mode, **Add account** opens the full form, which also offers SSH and lets you choose the account key. Fill in:
 
 1. **Account key** — a short name you choose, such as `github-personal`. It also becomes the folder name on disk.
 2. **Provider** — GitHub, GitLab, Gitea, Forgejo or Bitbucket.

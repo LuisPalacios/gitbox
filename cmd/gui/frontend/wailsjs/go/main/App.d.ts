@@ -27,6 +27,8 @@ export function AddRoot(arg1:string):Promise<void>;
 
 export function AdoptClones(arg1:Array<main.AdoptRequestDTO>):Promise<main.ReconcileDTO>;
 
+export function AdoptFirstProject(arg1:string,arg2:string,arg3:string):Promise<boolean>;
+
 export function ApplyDiscoveredMirrors():Promise<void>;
 
 export function ApplyRecipeImport(arg1:string,arg2:recipe.Options,arg3:string):Promise<void>;
@@ -205,9 +207,13 @@ export function PickFolder(arg1:string):Promise<string>;
 
 export function PreflightMove(arg1:main.MoveRequestDTO):Promise<main.MovePreflightDTO>;
 
+export function PreviewClonePath(arg1:string,arg2:string):Promise<string>;
+
 export function PreviewRecipeExport():Promise<string>;
 
 export function PreviewRecipeImport(arg1:string,arg2:recipe.Options):Promise<recipe.ImportPlan>;
+
+export function PreviewRoot(arg1:string):Promise<main.OnboardingRootPreviewDTO>;
 
 export function PreviewSweep(arg1:string,arg2:string):Promise<main.SweepPreviewDTO>;
 

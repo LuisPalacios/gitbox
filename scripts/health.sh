@@ -43,6 +43,7 @@ DEADCODE="golang.org/x/tools/cmd/deadcode@v0.50.0"
 # pair of streams; only tests do that, the remote window connects through
 # its session. Windows update helpers remain portable for fault-injection tests.
 DEADCODE_ALLOW='pkg[/\\]credential[/\\]credential[.]go:[0-9]+:[0-9]+: unreachable func: StoreToken$
+pkg[/\\]config[/\\]testmode[.]go:[0-9]+:[0-9]+: unreachable func: SetupTestMode$
 unreachable func: (PSDecode|resetLookupCachesForTest|Version\.String)$
 pkg[/\\]update[/\\]apply_helper[.]go:[0-9]+:[0-9]+: unreachable func: (readUpdateBytes|verifiedWindowsExecutable)$
 pkg[/\\]update[/\\]replace_windows_executable[.]go:[0-9]+:[0-9]+: unreachable func: (stageExecutable|removeRecordedWindowsBackup|replaceWindowsExecutableWith)$

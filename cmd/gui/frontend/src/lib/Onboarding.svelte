@@ -1,14 +1,6 @@
 <script lang="ts">
-  // Onboarding — the guided setup for people who don't know git (#124,
-  // phase 3). First run walks three steps: where projects live, connect the
-  // service that stores them, pick projects to download. Simple mode's
-  // "Add account" reuses the last two (mode='add').
-  //
-  // The person never sees an account key or a credential type: the key is
-  // suggested by Go, browser sign-in (GCM) is the default and a token is the
-  // fallback when GCM is missing or sign-in fails. Cloning is left to the
-  // host (onDone), which owns the clone progress and status state.
-
+  // First launch previews the root, connects an account, and prepares one
+  // project. The account sidebar also uses the connect form.
   import { onDestroy, onMount } from 'svelte';
   import { bridge, events } from './bridge';
   import type { DoctorPrecheckDTO } from './bridge';
@@ -18,7 +10,7 @@
   import { t } from './i18n';
   import { openExternal } from './external';
   import { remoteHost } from './stores';
-  import RemotePathInput from './RemotePathInput.svelte';
+  import FirstProject from './FirstProject.svelte';
 
   export let mode: 'first-run' | 'add' = 'first-run';
   export let onDone: (result: { sourceKey: string; repos: string[] } | null) => void;
@@ -30,18 +22,38 @@
   $: stepNumber = steps.indexOf(step) + 1;
 
   // ── Step 1: folder ──
-  let folder = '~/00.git';
+  let folder = '';
+  let rootPreview: Awaited<ReturnType<typeof bridge.previewRoot>> | null = null;
+  let route: 'download' | 'adopt' = 'download';
+  let previewTimer: ReturnType<typeof setTimeout>;
+  let folderRevision = 0;
+  let destroyed = false;
   let folderError = '';
   let folderBusy = false;
-  // In a remote window the folder belongs to the host: typed, not picked (#241).
-  let folderUsable = false;
-
+  function previewFolder(path: string) {
+    clearTimeout(previewTimer);
+    const rev = ++folderRevision;
+    rootPreview = null;
+    folderError = '';
+    if (!path.trim()) return;
+    previewTimer = setTimeout(async () => {
+      try {
+        const result = await bridge.previewRoot(path);
+        if (rev === folderRevision && !destroyed) rootPreview = result;
+      } catch {
+        if (rev === folderRevision && !destroyed) folderError = $t('onboard.previewFailed');
+      }
+    }, 250);
+  }
+  $: if (step === 'folder') previewFolder(folder);
   async function browse() {
     const dir = await bridge.pickFolder($t('onboard.folderPick'));
     if (dir) folder = dir;
   }
 
-  async function saveFolder() {
+  async function saveFolder(choice: 'download' | 'adopt') {
+    if (!rootPreview?.writable || folderBusy) return;
+    route = choice;
     folderError = '';
     if (!folder.trim()) { folderError = $t('onboard.folderRequired'); return; }
     folderBusy = true;
@@ -91,6 +103,12 @@
 
   onMount(async () => {
     checkGCM();
+    if (mode === 'first-run') {
+      try {
+        const suggested = await bridge.previewRoot('');
+        if (!folder && !destroyed) folder = suggested.abs;
+      } catch { folderError = $t('onboard.previewFailed'); }
+    }
     try {
       const id = await bridge.checkGlobalIdentity();
       if (!name) name = id?.name || '';
@@ -98,8 +116,23 @@
     } catch { /* nothing to prefill */ }
   });
 
+  let suggestedKey = '';
+  let customKey = '';
+  let editingKey = false;
+  let keyRevision = 0;
+  async function suggestKey(kind: string, user: string) {
+    const rev = ++keyRevision;
+    suggestedKey = '';
+    if (!user.trim()) return;
+    try {
+      const suggestion = await bridge.suggestAccountKey(kind, user.trim());
+      if (rev === keyRevision && !destroyed) suggestedKey = suggestion;
+    } catch { /* Connect can request a new suggestion. */ }
+  }
+  $: if (mode === 'first-run' && phase === 'form') suggestKey(provider, username);
+
   async function createAccount(credentialType: 'gcm' | 'token') {
-    accountKey = await bridge.suggestAccountKey(provider, username.trim());
+    accountKey = (editingKey && customKey.trim()) || await bridge.suggestAccountKey(provider, username.trim());
     await bridge.addAccount({
       key: accountKey, provider, url, username: username.trim(),
       name: name.trim(), email: email.trim(), defaultBranch: 'main', credentialType,
@@ -111,6 +144,10 @@
     connectDetail = '';
     if (!url || !username.trim() || !name.trim() || !email.trim()) {
       connectError = $t('onboard.fieldsRequired');
+      return;
+    }
+    if (editingKey && customKey.trim() && !/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(customKey.trim())) {
+      connectError = $t('onboard.invalidFolderName');
       return;
     }
     busy = true;
@@ -229,7 +266,7 @@
 
   function startProjects() {
     step = 'projects';
-    listRepos();
+    if (mode === 'add') listRepos();
   }
 
   function listRepos() {
@@ -252,7 +289,11 @@
     bridge.discover(accountKey);
   }
 
-  onDestroy(() => stopListening?.());
+  onDestroy(() => {
+    destroyed = true;
+    clearTimeout(previewTimer);
+    stopListening?.();
+  });
 
   function toggleAllShown() {
     const value = !allShownChosen;
@@ -302,14 +343,19 @@
       <p class="ob-desc">{$t('onboard.folderDesc')}</p>
       {#if folderError}<p class="ob-error">{folderError}</p>{/if}
       <div class="ob-row">
-        {#if $remoteHost}
-          <div class="ob-remote-path"><RemotePathInput bind:value={folder} bind:usable={folderUsable} /></div>
-        {:else}
-          <input class="ob-input" bind:value={folder} placeholder="~/00.git" translate="no" />
-          <button class="ob-btn" on:click={browse}>{$t('onboard.browse')}</button>
-        {/if}
+        <input class="ob-input" id="ob-root" bind:value={folder} aria-label={$t('onboard.folderPick')} translate="no" />
+        {#if !$remoteHost}<button class="ob-btn" on:click={browse}>{$t('onboard.browse')}</button>{/if}
       </div>
-      <button class="ob-btn ob-primary ob-wide" on:click={saveFolder} disabled={folderBusy || (!!$remoteHost && !folderUsable)}>{$t('onboard.continue')}</button>
+      {#if rootPreview}
+        <p class="ob-small"><code>{rootPreview.abs}</code> / {$t('onboard.tree')}</p>
+        {#if !rootPreview.writable}<p class="ob-error">{$t('onboard.rootUnavailable')}</p>{/if}
+        <p class="ob-desc">{$t(rootPreview.sampled ? 'onboard.sampledClones' : 'onboard.cloneCount', { count: rootPreview.existingClones })}</p>
+      {/if}
+      <p class="ob-hint">{$t('onboard.stayPut')}</p>
+      <button class="ob-btn ob-primary ob-wide" on:click={() => saveFolder('download')} disabled={folderBusy || !rootPreview?.writable}>{$t('onboard.downloadProject')}</button>
+      {#if rootPreview?.exists && (rootPreview.existingClones || rootPreview.sampled)}
+        <button class="ob-btn ob-wide" on:click={() => saveFolder('adopt')} disabled={folderBusy || !rootPreview.writable}>{$t('onboard.adoptProject')}</button>
+      {/if}
 
     {:else if step === 'connect'}
       <h2 class="ob-heading">{$t('onboard.connectTitle')}</h2>
@@ -349,6 +395,16 @@
           </div>
         </div>
         <p class="ob-hint">{$t('onboard.identityHint')}</p>
+        {#if mode === 'first-run' && username.trim()}
+          {#if editingKey}
+            <label class="ob-label" for="ob-account-folder">{$t('onboard.accountFolder')}</label>
+            <input id="ob-account-folder" class="ob-input ob-full" bind:value={customKey} placeholder={suggestedKey} spellcheck="false" />
+          {:else if suggestedKey}
+            <div class="ob-row"><span>{$t('onboard.accountFolder')} <code>{suggestedKey}</code></span>
+              <button class="ob-link" on:click={() => { customKey = suggestedKey; editingKey = true; }}>{$t('onboard.editFolder')}</button>
+            </div>
+          {/if}
+        {/if}
 
         {#if gcm && !gcm.ok}
           <div class="ob-note">
@@ -403,6 +459,8 @@
         </div>
       {/if}
 
+    {:else if step === 'projects' && mode === 'first-run'}
+      <FirstProject {accountKey} {provider} {url} {username} {folder} initialRoute={route} onDone={skip} />
     {:else if step === 'projects'}
       <h2 class="ob-heading">{$t('onboard.projectsTitle')}</h2>
       {#if listing}

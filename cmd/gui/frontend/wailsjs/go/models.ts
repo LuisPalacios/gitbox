@@ -1163,6 +1163,28 @@ export namespace main {
 	        this.deleteLocalClone = source["deleteLocalClone"];
 	    }
 	}
+	export class OnboardingRootPreviewDTO {
+	    abs: string;
+	    exists: boolean;
+	    isDir: boolean;
+	    writable: boolean;
+	    existingClones: number;
+	    sampled: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new OnboardingRootPreviewDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.abs = source["abs"];
+	        this.exists = source["exists"];
+	        this.isDir = source["isDir"];
+	        this.writable = source["writable"];
+	        this.existingClones = source["existingClones"];
+	        this.sampled = source["sampled"];
+	    }
+	}
 	export class OrphanRepoDTO {
 	    path: string;
 	    relPath: string;

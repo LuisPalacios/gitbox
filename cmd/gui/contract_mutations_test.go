@@ -50,6 +50,9 @@ func mutationRows(root, firstRoot string) []mutationRow {
 	return []mutationRow{
 		{name: "AddRoot", call: func(b Backend, _ mutationSide) (any, error) { return none(b.AddRoot(root + "/r2")) }},
 		{name: "AddRoot existing", call: func(b Backend, _ mutationSide) (any, error) { return none(b.AddRoot(root + "/r2")) }},
+		{name: "AdoptFirstProject relative", code: "remote.remote_path_invalid", call: func(b Backend, _ mutationSide) (any, error) {
+			return b.AdoptFirstProject("acct", "org/project", "relative/path")
+		}},
 		{name: "AddRoot relative", code: "remote.remote_path_invalid", call: func(b Backend, _ mutationSide) (any, error) { return none(b.AddRoot("relative/root")) }},
 		{name: "SetDefaultRoot", call: func(b Backend, _ mutationSide) (any, error) { return none(b.SetDefaultRoot(root + "/r2")) }},
 		{name: "SetDefaultRoot back", call: func(b Backend, _ mutationSide) (any, error) { return none(b.SetDefaultRoot(firstRoot)) }},

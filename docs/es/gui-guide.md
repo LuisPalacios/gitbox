@@ -59,13 +59,13 @@ La app necesita un entorno de escritorio con servidor de pantalla (X11 o Wayland
 
 La primera vez que abres Gitbox, una configuración guiada corta te lleva por tres pasos:
 
-1. **¿Dónde guardas tus proyectos?** — elige tu primera **raíz de clonado**, la carpeta donde viven tus proyectos en disco, como `~/00.git` o `C:\repos`. Puedes añadir más raíces después en Ajustes.
-2. **Conecta dónde están guardados tus proyectos** — elige GitHub, GitLab, Bitbucket o la tarjeta **Forgejo** y **Gitea** (después elige cuál y escribe la dirección del servidor). Escribe tu usuario, tu nombre y tu email. El nombre y el email vienen rellenos desde tu identidad global de git cuando la tiene, y aparecen en los cambios que guardes. Haz clic en **Iniciar sesión con el navegador** e inicia sesión. Gitbox usa Git Credential Manager (GCM) para esto.
-3. **Elige los proyectos que quieres descargar** — Gitbox lista los repositorios que tu cuenta puede ver. Marca los que quieras y haz clic en **Descargar**. Empiezan a clonarse en cuanto se abre la pantalla principal.
+1. **¿Dónde guardas tus proyectos?** — elige tu primera **raíz de clonado**, la carpeta donde viven tus proyectos en disco, como `~/00.git` o `C:\repos`. La vista previa muestra la estructura de carpetas y cuenta los proyectos cercanos. Los clones existentes conservan su ubicación. Elige **Descargar un proyecto** o **Usar un proyecto existente**. Puedes añadir más raíces después en Ajustes.
+2. **Conecta dónde están guardados tus proyectos** — elige GitHub, GitLab, Bitbucket o la tarjeta **Forgejo** y **Gitea** (después elige cuál y escribe la dirección del servidor). Escribe tu usuario, tu nombre y tu email. El nombre y el email vienen rellenos desde tu identidad global de git cuando la tiene, y aparecen en los cambios que guardes. Gitbox sugiere un nombre para la carpeta de la cuenta, como `github-alice`. Elige **Editar nombre de carpeta** para cambiarlo antes de iniciar sesión. Haz clic en **Iniciar sesión con el navegador** e inicia sesión. Gitbox usa Git Credential Manager (GCM) para esto.
+3. **Elige tu primer proyecto** — comprueba el proveedor, el servidor y el usuario conectados. Elige un proyecto para descargar o uno de los clones existentes para esa cuenta. Comprueba la carpeta exacta del proyecto y confirma. Cuando el proyecto esté listo, abre el panel. Puedes añadir más proyectos desde la vista de la cuenta.
 
 Si GCM no está instalado, el paso 2 muestra cómo instalarlo y ofrece **Usar un token**, que enlaza a la página donde creas un token y te pide pegarlo. Si el inicio de sesión falla, puedes usar **Reintentar**, cambiar a un token o volver atrás con **Cambiar los datos**.
 
-Nunca escribes una clave de cuenta: Gitbox elige una por ti, como `github-alice`, que también es el nombre de la carpeta de la cuenta en disco. Puedes usar **Omitir por ahora** en los pasos 2 y 3 y añadir cuentas más tarde. Las instalaciones nuevas empiezan en [modo Simple](#modos-simple-y-avanzado). Si sales después del primer paso, el siguiente arranque abre la pantalla principal; termina desde **Conectar una cuenta** en la barra lateral.
+Puedes usar **Omitir por ahora** en los pasos 2 y 3 y añadir cuentas más tarde. Las instalaciones nuevas empiezan en [modo Simple](#modos-simple-y-avanzado). Si sales después del primer paso, el siguiente arranque abre la pantalla principal; termina desde **Conectar una cuenta** en la barra lateral.
 
 En los arranques posteriores, Gitbox muestra tus clones, preferencias y la anidación de contenedores al instante, antes de que terminen las comprobaciones de estado. Los indicadores giratorios marcan los clones que todavía está comprobando o a los que está haciendo fetch.
 
@@ -73,7 +73,7 @@ En los arranques posteriores, Gitbox muestra tus clones, preferencias y la anida
 
 Una cuenta le dice a Gitbox quién eres en un servidor concreto, por ejemplo tu cuenta de GitHub o el GitLab de tu empresa.
 
-En modo Simple, **Conectar una cuenta** en la barra lateral ejecuta los mismos pasos de conectar y elegir proyectos que el primer arranque. En modo Avanzado, **Añadir cuenta** abre el formulario completo, que también ofrece SSH y te deja elegir la clave de cuenta. Rellena:
+En modo Simple, **Conectar una cuenta** en la barra lateral usa el mismo formulario de inicio de sesión y después te permite elegir los proyectos para descargar. En modo Avanzado, **Añadir cuenta** abre el formulario completo, que también ofrece SSH y te deja elegir la clave de cuenta. Rellena:
 
 1. **Clave de cuenta** — un nombre corto que eliges, como `github-personal`. También se convierte en el nombre de la carpeta en disco.
 2. **Proveedor** — GitHub, GitLab, Gitea, Forgejo o Bitbucket.
