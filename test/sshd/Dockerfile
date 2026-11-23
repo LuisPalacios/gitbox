@@ -2,7 +2,9 @@
 # OpenSSH, fish and git on Debian slim, with a "test" user that logs in with
 # a key only. git lets the session tests (#240) check real clones; iproute2
 # lets the fault tests (#295) shape the network with tc netem, given
-# --cap-add NET_ADMIN, and procps lets them look for git processes.
+# --cap-add NET_ADMIN, and procps lets them look for git processes. A "git"
+# user whose shell is git-shell lets a second container act as the git host
+# of an SSH account (#244).
 # scripts/remote-it.sh builds it as gitbox-sshd.
 FROM debian:bookworm-slim
 
@@ -29,6 +31,8 @@ RUN git init -q -b main /tmp/fixture \
 # login, which the noexec test counts as a file written outside the home.
 RUN useradd --create-home --uid 1000 --shell /bin/bash test \
     && usermod --password '*' test \
+    && useradd --create-home --home-dir /srv/githost --uid 1001 --shell /usr/bin/git-shell git \
+    && usermod --password '*' git \
     && mkdir -p /run/sshd /etc/ssh/authorized_keys \
     && ssh-keygen -A \
     && sed -i '/pam_motd/d' /etc/pam.d/sshd

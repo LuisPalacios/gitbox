@@ -107,6 +107,9 @@ type ctOpts struct {
 	netAdmin bool
 	// gitDaemon serves the fixture repository on git://127.0.0.1:9418.
 	gitDaemon bool
+	// gitHost makes the container the git host of an SSH account (#244):
+	// the git user, with git-shell, owns org/small.git.
+	gitHost bool
 }
 
 type container struct {
@@ -141,6 +144,9 @@ func startContainer(t *testing.T, o ctOpts) *container {
 	}
 	if o.gitDaemon {
 		args = append(args, "-e", "GIT_DAEMON=1")
+	}
+	if o.gitHost {
+		args = append(args, "-e", "GIT_HOST=1")
 	}
 	c := &container{t: t, id: docker(t, append(args, it.image)...)}
 	t.Cleanup(func() { _ = exec.Command("docker", "rm", "-f", c.id).Run() })
@@ -200,6 +206,13 @@ const alias = "it-host"
 
 func (c *container) client(t *testing.T, clientID string, knownHost bool) *session {
 	t.Helper()
+	return c.clientWith(t, clientID, knownHost, "")
+}
+
+// clientWith is client with extra options in the Host block of its ssh
+// config, such as ForwardAgent (#244).
+func (c *container) clientWith(t *testing.T, clientID string, knownHost bool, extra string) *session {
+	t.Helper()
 	dir := t.TempDir()
 	known := filepath.Join(dir, "known_hosts")
 	content := ""
@@ -210,8 +223,8 @@ func (c *container) client(t *testing.T, clientID string, knownHost bool) *sessi
 		t.Fatal(err)
 	}
 	cfg := filepath.Join(dir, "config")
-	conf := fmt.Sprintf("Host %s\n  HostName %s\n  User test\n  IdentityFile %s\n  IdentitiesOnly yes\n  IdentityAgent none\n  UserKnownHostsFile %s\n  GlobalKnownHostsFile /dev/null\n",
-		alias, c.ip, filepath.Join(it.keyDir, "id"), known)
+	conf := fmt.Sprintf("Host %s\n  HostName %s\n  User test\n  IdentityFile %s\n  IdentitiesOnly yes\n  IdentityAgent none\n  UserKnownHostsFile %s\n  GlobalKnownHostsFile /dev/null\n%s",
+		alias, c.ip, filepath.Join(it.keyDir, "id"), known, extra)
 	if err := os.WriteFile(cfg, []byte(conf), 0o600); err != nil {
 		t.Fatal(err)
 	}
