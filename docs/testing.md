@@ -57,10 +57,10 @@ go test ./pkg/config/ -run='^$' -fuzz='^FuzzDecodeRoundTrip$' -fuzztime=1m -para
 
 The bootstrap and the read-only window of [remote mode](remote-mode.md) have three layers of tests.
 
-- **Unit tests** in `pkg/remote`, which every `go test -short` runs. They include `TestNoConfigOverrideInProduction` and a fake `ssh` that runs the real remote scripts with the local `sh` in a home folder of the test's own: install, hash checks, `noexec`, banners, uninstall and the refused roots. Windows skips the fake-ssh tests, which need a POSIX `sh`. `cmd/gui` adds `TestRemoteLifecycle`, which drives a remote window with a dialer that needs no ssh, and the read-only checks: `TestBackendContract` over every served method, `TestHostileServer`, `TestOpenExternal`, `TestRemoteWindowReadOnly` and `TestReadOnlyServerSavesNothing`:
+- **Unit tests** in `pkg/remote`, which every `go test -short` runs. They include `TestNoConfigOverrideInProduction` and a fake `ssh` that runs the real remote scripts with the local `sh` in a home folder of the test's own: install, hash checks, `noexec`, banners, uninstall and the refused roots. Windows skips the fake-ssh tests, which need a POSIX `sh`. `cmd/gui` adds `TestRemoteLifecycle`, which drives a remote window with a dialer that needs no ssh, and the read-only checks: `TestBackendContract` over every served method, `TestHostileServer`, `TestOpenExternal`, `TestRemoteWindowReadOnly`, `TestServerSavesThroughTheGuard` and `TestBackendContractMutations`:
 
   ```bash
-  go test -race -short ./cmd/gui/ -run 'TestBackendContract|TestHostileServer|TestOpenExternal|TestRemoteWindowReadOnly|TestReadOnlyServerSavesNothing'
+  go test -race -short ./cmd/gui/ -run 'TestBackendContract|TestHostileServer|TestOpenExternal|TestRemoteWindowReadOnly|TestServerSavesThroughTheGuard|TestBackendContractMutations'
   ```
 
 - **The server build of `cmd/gui`.** `go test -race -short -tags gitboxserver ./cmd/gui/` runs the tests of the in-use marker and the rotating server log. Tests that need the window shell carry `//go:build !gitboxserver`, so this run compiles.
@@ -69,7 +69,7 @@ The bootstrap and the read-only window of [remote mode](remote-mode.md) have thr
   ```bash
   scripts/remote-it.sh                           # every scenario
   GITBOX_IT_RUN=TestFishLoginShell scripts/remote-it.sh
-  GITBOX_IT_RUN=TestReadOnlySessionLeavesConfigUntouched scripts/remote-it.sh
+  GITBOX_IT_RUN='TestReadsLeaveTheDomainUntouched|TestMutationsOverSSH|TestCutSSHMidSave' scripts/remote-it.sh
   ```
 
   The script needs Docker on Linux. It builds the `gitbox-sshd` image from `test/sshd` (Debian slim with OpenSSH, fish and git, and a `test` user whose key lives outside the home) and a `linux/amd64` server with the `e2e_sentinel` tag, which appends a line to `$HOME/.gitbox-e2e/ran.log` on every start. Each test starts its own container on an `--internal` Docker network, with no route out, and connects through the real `ssh` with a config file and a `known_hosts` of its own, filled from the container's host key. "Never executed" means the line count of `ran.log` did not change. The local gate runs it in its `remote-it` lane.

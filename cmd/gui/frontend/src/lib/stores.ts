@@ -1,4 +1,6 @@
 import type { RemoteHost } from './remotehost';
+import { isBlocked } from './readonly';
+import type { CallName } from './bridge';
 import { writable, derived, readable } from 'svelte/store';
 import type { Placeholder } from './repo-tree';
 import { simpleKind } from './status';
@@ -214,10 +216,12 @@ export const workspaceDiagnostics = writable<Record<string, WorkspaceDiagnosticD
 // ── Theme store ──
 export const themeStore = writable<'light' | 'dark'>('dark');
 
-// remoteReadOnly is set in a remote window once it connects (#240): the
-// controls that would change the host show disabled (lib/ro.ts) and the
-// bridge refuses those calls (lib/readonly.ts). P5 lifts it.
-export const remoteReadOnly = writable(false);
+// remoteWindow is set in a remote window once it connects (#240). Only the
+// calls its server does not serve are refused there (#294): blocked says
+// which, the controls that end in one show dimmed (lib/ro.ts) and the
+// bridge refuses them (lib/readonly.ts).
+export const remoteWindow = writable(false);
+export const blocked = derived(remoteWindow, ($remote) => (name: CallName) => isBlocked(name, $remote));
 
 // remoteHost is the host of a remote window, for its launchers (#243): the
 // editors that open its folders. null outside a remote window. The top bar

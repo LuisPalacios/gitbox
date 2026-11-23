@@ -69,7 +69,7 @@
       </button>
     {/each}
     <span class="rail-sep"></span>
-    <button use:ro class="rail-btn" aria-label={addLabel} use:tooltip={{ text: addLabel, delay: 150 }} on:click={onAddAccount}><UIIcon name="plus" /></button>
+    <button use:ro={['addAccount', 'credentialStoreToken']} class="rail-btn" aria-label={addLabel} use:tooltip={{ text: addLabel, delay: 150 }} on:click={onAddAccount}><UIIcon name="plus" /></button>
     {#if orphanCount > 0 || ignoredCount > 0}
       <button class="rail-btn" aria-label={foundTip} use:tooltip={{ text: foundTip, delay: 150 }} on:click={showOrphanModal}>
         <UIIcon name="search" />{#if orphanCount > 0}<span class="rail-cnt" style="--cnt: {sc('dirty')}">{badge(orphanCount)}</span>{/if}
@@ -104,7 +104,7 @@
       </button>
     {/each}
     <div class="side-sec">{$t('nav.more')}</div>
-    <button use:ro class="nav" on:click={onAddAccount}>
+    <button use:ro={['addAccount', 'credentialStoreToken']} class="nav" on:click={onAddAccount}>
       <span class="navi"><UIIcon name="plus" /></span>
       <span class="nav-label">{addLabel}</span>
     </button>

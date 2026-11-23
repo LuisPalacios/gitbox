@@ -458,6 +458,10 @@ func TestListBackups_OnlyRecognizedFiles(t *testing.T) {
 			t.Errorf("backup %d = %s, want %s", i, backups[i].Path, want)
 		}
 	}
+	// A stamp is the local wall clock of the save, not UTC.
+	if ts := backups[0].Timestamp; ts.Location() != time.Local || ts.Format("20060102-150405") != "20260402-120000" {
+		t.Errorf("timestamp = %v in %v, want 2026-04-02 12:00:00 local", ts, ts.Location())
+	}
 }
 
 func TestSave_PreservesPrivatePermissions(t *testing.T) {

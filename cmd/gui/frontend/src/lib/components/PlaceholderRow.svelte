@@ -16,7 +16,7 @@
   {#if placeholder.outsidePath}
     {@const outsidePath = placeholder.outsidePath}
     <span class="words">{$t('row.workspaceOutside')}</span>
-    <button use:ro type="button" on:click={() => onFind(outsidePath)}>{$t('row.workspaceFindOnDisk')}</button>
+    <button use:ro={'adoptClones'} type="button" on:click={() => onFind(outsidePath)}>{$t('row.workspaceFindOnDisk')}</button>
   {:else}
     <span class="words">{$t('row.placeholder')}</span>
   {/if}

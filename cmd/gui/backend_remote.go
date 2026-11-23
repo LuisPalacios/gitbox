@@ -29,9 +29,12 @@ type RemoteBackend struct {
 	log  io.Writer
 	// onTruncate runs when a list from the server was cut (capList).
 	onTruncate func()
-	// readOnly refuses every method that changes state on the host before
-	// it reaches the wire (#240). A remote window sets it until P5.
-	readOnly bool
+	// refuseUnserved refuses, before it reaches the wire, every method that
+	// changes state on the host and that the server does not serve yet
+	// (#294): the repository mutations and the credential methods. Client
+	// and server are the same build, so servedMethods is exact. A remote
+	// window sets it.
+	refuseUnserved bool
 
 	mu      sync.Mutex
 	client  *rpc.Client // nil while not connected
@@ -344,8 +347,8 @@ func (r *RemoteBackend) invoke(method string, result any, args ...any) error {
 		return &remoteError{remoteNotConnected, "not connected to the remote"}
 	}
 	info, _ := classOf(method)
-	if r.readOnly && info.Mutating {
-		return &remoteError{remoteReadOnly, method + " is not available on a read-only remote"}
+	if r.refuseUnserved && info.Mutating && !servedSet[method] {
+		return &remoteError{remoteReadOnly, method + " is not available on a remote yet"}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), remoteCallTimeout(method))
 	defer cancel()

@@ -516,3 +516,91 @@ func TestFunc_RejectsShapesItCannotServe(t *testing.T) {
 		}
 	}
 }
+
+// TestServe_RemembersOnlyWhatRememberAllows: with Remember set, a repeated
+// id is replayed only for the methods it names; any other method runs
+// every time (#294).
+func TestServe_RemembersOnlyWhatRememberAllows(t *testing.T) {
+	var reads, writes atomic.Int32
+	srv := newServer(map[string]Handler{
+		"Read":  Func(func() int { return int(reads.Add(1)) }),
+		"Write": Func(func() int { return int(writes.Add(1)) }),
+	})
+	srv.Remember = func(method string) bool { return method == "Write" }
+	l := connect(t, srv)
+	for range 2 {
+		var n int
+		if err := l.call("Read", nil, &n, WithRequestID("same")); err != nil {
+			t.Fatal(err)
+		}
+		if err := l.call("Write", nil, &n, WithRequestID("same")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if reads.Load() != 2 || writes.Load() != 1 {
+		t.Errorf("reads ran %d times and writes %d, want 2 and 1", reads.Load(), writes.Load())
+	}
+}
+
+// TestServe_SameIDOtherMethodRuns: the method is part of the key, so an id
+// repeated on another method is a new request (#294).
+func TestServe_SameIDOtherMethodRuns(t *testing.T) {
+	var a, b atomic.Int32
+	l := connect(t, newServer(map[string]Handler{
+		"A": Func(func() int { return int(a.Add(1)) }),
+		"B": Func(func() int { return int(b.Add(1)) }),
+	}))
+	var n int
+	if err := l.call("A", nil, &n, WithRequestID("x")); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.call("B", nil, &n, WithRequestID("x")); err != nil {
+		t.Fatal(err)
+	}
+	if a.Load() != 1 || b.Load() != 1 {
+		t.Errorf("A ran %d times and B %d, want 1 each", a.Load(), b.Load())
+	}
+}
+
+// TestServe_CancelledIsNotRemembered: a cancelled attempt did not finish,
+// so a repeat with the same id runs again instead of replaying the
+// cancellation (#294).
+func TestServe_CancelledIsNotRemembered(t *testing.T) {
+	var calls atomic.Int32
+	started := make(chan struct{}, 1)
+	l := connect(t, newServer(map[string]Handler{
+		"Slow": Func(func(ctx context.Context) (int, error) {
+			n := int(calls.Add(1))
+			if n == 1 {
+				started <- struct{}{}
+				<-ctx.Done()
+				return 0, ctx.Err()
+			}
+			return n, nil
+		}),
+	}))
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- l.Client.Call(ctx, "Slow", nil, nil, WithRequestID("r")) }()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		cancel()
+		t.Fatal("the handler did not start")
+	}
+	cancel()
+	wantCode(t, <-done, CodeCancelled, ErrCodeCancelled)
+	var n int
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if err := l.call("Slow", nil, &n, WithRequestID("r")); err == nil {
+			break
+		} else if time.Now().After(deadline) {
+			t.Fatalf("the repeat after a cancellation = %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n != 2 || calls.Load() != 2 {
+		t.Errorf("the repeat returned %d after %d calls, want a fresh run (2)", n, calls.Load())
+	}
+}

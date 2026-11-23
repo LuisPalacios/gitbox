@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"runtime/debug"
+	"slices"
 	"sync"
 	"time"
 
@@ -36,6 +37,11 @@ type Server struct {
 	// Log receives one line per event worth a human's attention: a refused
 	// handshake, a malformed frame, a panic. Nil discards them.
 	Log io.Writer
+	// Remember reports whether a request of method that carries a request id
+	// is remembered and replayed on a repeat. Nil remembers every such
+	// request. The app passes its mutating methods, so a read is never
+	// answered from the cache (#294).
+	Remember func(method string) bool
 
 	mu  sync.Mutex
 	out *outbox // set while Serve runs
@@ -292,10 +298,12 @@ func (c *serverConn) handle(body []byte) {
 // remembers: then it returns that outcome, waiting for it if the first
 // attempt is still running.
 func (c *serverConn) runOnce(ctx context.Context, req message, handler Handler) (json.RawMessage, *Error) {
-	if req.Meta == nil || req.Meta.RequestID == "" {
+	if req.Meta == nil || req.Meta.RequestID == "" || (c.s.Remember != nil && !c.s.Remember(req.Method)) {
 		return c.run(ctx, req, handler)
 	}
-	id := req.Meta.RequestID
+	// The method is part of the key: an id repeated on another method is a
+	// different request (#294).
+	id := req.Method + "\x00" + req.Meta.RequestID
 	c.mu.Lock()
 	if prior := c.remembered[id]; prior != nil {
 		c.mu.Unlock()
@@ -316,6 +324,20 @@ func (c *serverConn) runOnce(ctx context.Context, req message, handler Handler) 
 	c.mu.Unlock()
 
 	entry.result, entry.err = c.run(ctx, req, handler)
+	if entry.err != nil && (entry.err.Code == CodeCancelled || ctx.Err() != nil) {
+		// A cancelled attempt that failed did not finish: a repeat must run
+		// again, not replay the cancellation (#294). A success that finished
+		// despite a late cancel stays remembered, so a retry never repeats
+		// its effect. Waiters already parked still get the outcome.
+		c.mu.Lock()
+		if c.remembered[id] == entry {
+			delete(c.remembered, id)
+			if i := slices.Index(c.order, id); i >= 0 {
+				c.order = slices.Delete(c.order, i, i+1)
+			}
+		}
+		c.mu.Unlock()
+	}
 	close(entry.done)
 	return entry.result, entry.err
 }

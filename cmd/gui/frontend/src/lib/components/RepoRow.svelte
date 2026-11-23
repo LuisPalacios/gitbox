@@ -386,7 +386,7 @@
   on:keydown={onActivateKey(() => activateRepoRow(rowSourceKey, repoName, state.status))}>
   {#if rowSourceKey !== sourceKey && !showAccount}<span class="container-badge" title={rowSourceKey}>{rowAccountKey}</span>{/if}
   {#if deleteMode}
-    <button use:ro class="icon-btn icon-btn-danger btn-delete-x" on:click|stopPropagation={() => askDelete(rowSourceKey, repoName, state.status)} title={$t('row.delete', { name: repoName })} aria-label={$t('row.delete', { name: repoName })}><UIIcon name="x" /></button>
+    <button use:ro={'deleteRepo'} class="icon-btn icon-btn-danger btn-delete-x" on:click|stopPropagation={() => askDelete(rowSourceKey, repoName, state.status)} title={$t('row.delete', { name: repoName })} aria-label={$t('row.delete', { name: repoName })}><UIIcon name="x" /></button>
   {/if}
   {#if simple}
     <!-- Simple row (issue #124): dot, short name, one sentence, one button, ⋯ -->
@@ -420,9 +420,9 @@
         {/if}
       </span>
       {#if kind === 'update'}
-        <button use:ro class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)} title={$t('simple.updateTip')}>{$t('simple.btnUpdate')}</button>
+        <button use:ro={'pullRepo'} class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)} title={$t('simple.updateTip')}>{$t('simple.btnUpdate')}</button>
       {:else if kind === 'online'}
-        <button use:ro class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('simple.btnDownload')}</button>
+        <button use:ro={'cloneRepo'} class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('simple.btnDownload')}</button>
       {/if}
       {#if kind !== 'online' && kind !== 'offline' && kind !== 'busy'}
         {@render quickLaunch(repoKey)}
@@ -465,7 +465,7 @@
   {#if isContainer}
     {@render containerIcon()}
     {#if wsPending}
-      <button use:ro class="choose-workspace-badge"
+      <button use:ro={'setRepoWorkspace'} class="choose-workspace-badge"
               on:click|stopPropagation={() => chooseWorkspace(rowSourceKey, repoName)}
               title={$t('row.chooseWorkspaceTip')}>{$t('row.chooseWorkspace')}</button>
     {/if}
@@ -494,9 +494,9 @@
       {/if}
     </span>
     {#if state.status === 'behind'}
-      <button use:ro class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)} title={$t('repo.pullTip')}>{$t('repo.pull')} <span class="btn-tag">{$t('repo.ffOnly')}</span></button>
+      <button use:ro={'pullRepo'} class="btn-action" on:click|stopPropagation={() => syncRepo(rowSourceKey, repoName)} title={$t('repo.pullTip')}>{$t('repo.pull')} <span class="btn-tag">{$t('repo.ffOnly')}</span></button>
     {:else if state.status === 'not cloned'}
-      <button use:ro class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('repo.clone')}</button>
+      <button use:ro={'cloneRepo'} class="btn-action" on:click|stopPropagation={() => cloneRepo(rowSourceKey, repoName)}>{$t('repo.clone')}</button>
     {/if}
     {/if}
     {#if !deleteMode && state.status !== 'not cloned' && state.status !== 'root offline'}

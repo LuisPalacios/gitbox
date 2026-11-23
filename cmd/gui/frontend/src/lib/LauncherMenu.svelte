@@ -21,6 +21,7 @@
   import UIIcon from './UIIcon.svelte';
   import { t } from './i18n';
   import { ro, remoteOff } from './ro';
+  import type { CallName } from './bridge';
   import { remoteHost } from './stores';
   import { editorOff, unavailableOff } from './remotehost';
 
@@ -79,8 +80,9 @@
   export let onDelete: (() => void) | null = null;
   export let deleteLabel: string = '';
   // Extra account actions after Find and New (Edit account, Change
-  // credential or Reconnect). icon is a short glyph.
-  export let extraItems: { label: string; icon: string; onClick: () => void; title?: string }[] = [];
+  // credential or Reconnect). icon is a short glyph; ro names the bridge
+  // calls the action ends in (lib/ro.ts).
+  export let extraItems: { label: string; icon: string; onClick: () => void; ro: readonly CallName[]; title?: string }[] = [];
 
   // Root element of the dropdown, used to measure and place it.
   let rootEl: HTMLDivElement | undefined;
@@ -196,27 +198,27 @@
       </button>
     {/if}
     {#if onMove}
-      <button use:ro class="action-item" class:lm-disabled={!moveEnabled} role="menuitem" disabled={!moveEnabled}
+      <button use:ro={'moveRepo'} class="action-item" class:lm-disabled={!moveEnabled} role="menuitem" disabled={!moveEnabled}
         on:click|stopPropagation={onMove}
         title={moveEnabled ? $t('launcher.moveTip') : (moveDisabledReason || $t('launcher.moveNeedsClean'))}>
         <span class="lm-icon">&#8644;</span> {$t('launcher.move')}
       </button>
     {/if}
     {#if onToggleContainer}
-      <button use:ro class="action-item" role="menuitem" on:click|stopPropagation={onToggleContainer}
+      <button use:ro={'setRepoContainer'} class="action-item" role="menuitem" on:click|stopPropagation={onToggleContainer}
         title={$t('launcher.containerTip')}>
         <span class="lm-icon">&#9638;</span>
         {isContainer ? $t('launcher.unmarkContainer') : $t('launcher.markContainer')}
       </button>
     {/if}
     {#if onChooseWorkspace}
-      <button use:ro class="action-item" role="menuitem" on:click|stopPropagation={onChooseWorkspace}
+      <button use:ro={'setRepoWorkspace'} class="action-item" role="menuitem" on:click|stopPropagation={onChooseWorkspace}
         title={$t('launcher.chooseWorkspaceTip')}>
         <span class="lm-icon">&#9638;</span> {$t('launcher.chooseWorkspace')}
       </button>
     {/if}
     {#if isContainer && onRescanContainer}
-      <button use:ro class="action-item" role="menuitem" on:click|stopPropagation={onRescanContainer}
+      <button use:ro={'reconcile'} class="action-item" role="menuitem" on:click|stopPropagation={onRescanContainer}
         title={$t('launcher.rescanTip')}>
         <span class="lm-icon"><UIIcon name="fetch" /></span> {$t('launcher.rescan')}
       </button>
@@ -233,14 +235,14 @@
       </button>
     {/if}
     {#if onCreate}
-      <button use:ro class="action-item" class:lm-disabled={!createEnabled} role="menuitem" disabled={!createEnabled}
+      <button use:ro={'createNewRepo'} class="action-item" class:lm-disabled={!createEnabled} role="menuitem" disabled={!createEnabled}
         on:click|stopPropagation={onCreate}
         title={createEnabled ? $t('launcher.createTip') : createDisabledReason}>
         <span class="lm-icon"><UIIcon name="plus" /></span> {$t('account.createRepo')}…
       </button>
     {/if}
     {#each extraItems as item}
-      <button use:ro class="action-item" role="menuitem" on:click|stopPropagation={item.onClick} title={item.title || item.label}>
+      <button use:ro={item.ro} class="action-item" role="menuitem" on:click|stopPropagation={item.onClick} title={item.title || item.label}>
         <span class="lm-icon">{item.icon}</span> {item.label}
       </button>
     {/each}
@@ -248,7 +250,7 @@
 
   {#if kind === 'repo' && onDelete}
     <hr class="lm-sep" />
-    <button use:ro class="action-item lm-danger" role="menuitem" on:click|stopPropagation={onDelete} title={deleteLabel || $t('menu.delete')}>
+    <button use:ro={'deleteRepo'} class="action-item lm-danger" role="menuitem" on:click|stopPropagation={onDelete} title={deleteLabel || $t('menu.delete')}>
       <span class="lm-icon"><UIIcon name="x" /></span> {deleteLabel || $t('menu.delete')}
     </button>
   {/if}

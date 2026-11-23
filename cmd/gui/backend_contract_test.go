@@ -352,9 +352,12 @@ func TestBackendContract(t *testing.T) {
 			}
 		})
 	}
+	for name := range mutationRowMethods() {
+		covered[name] = true
+	}
 	for _, name := range servedMethods {
 		if !covered[name] {
-			t.Errorf("%s is served but the contract table does not call it", name)
+			t.Errorf("%s is served but neither contract table calls it", name)
 		}
 	}
 
@@ -656,12 +659,14 @@ func TestToUserErrorDistrustsTheServer(t *testing.T) {
 // and one with no error to return answers its zero value and keeps the
 // failure.
 func TestRemoteMethodOutsideTheClosedList(t *testing.T) {
-	link := serveRemote(t, contractConfig(t), nil)
-	if err := link.Remote.AddRoot(t.TempDir()); toUserError(err).Code != "remote.not_implemented_remote" {
-		t.Errorf("AddRoot = %v, want not_implemented_remote", err)
+	path := contractConfig(t)
+	link := serveRemote(t, path, nil)
+	// DeleteRepo waits for the repository mutations (#295).
+	if err := link.Remote.DeleteRepo("acct", "org/repo"); toUserError(err).Code != "remote.not_implemented_remote" {
+		t.Errorf("DeleteRepo = %v, want not_implemented_remote", err)
 	}
-	if roots := link.Remote.ListRoots(); len(roots) != 1 {
-		t.Errorf("the refused mutation changed the host: %d roots", len(roots))
+	if _, ok := loadConfig(t, path).Sources["acct"].Repos["org/repo"]; !ok {
+		t.Error("the refused mutation changed the host: the repo is gone")
 	}
 	if res := link.Remote.Reconcile(); !reflect.DeepEqual(res, ReconcileDTO{}) {
 		t.Errorf("Reconcile = %+v, want the zero value for a method that is not served", res)

@@ -240,6 +240,36 @@ func TestRenameAccount_MigratesEverything(t *testing.T) {
 	}
 }
 
+// TestRenameAccount_ReconfiguresClonesOfALoadedConfig: a config loaded from
+// disk carries SourceOrder. After the rename, ReconfigureClones must still
+// find the renamed source and point its clones at the moved token file.
+func TestRenameAccount_ReconfiguresClonesOfALoadedConfig(t *testing.T) {
+	_, cfg := isolate(t)
+	if err := AddAccount(cfg, "old", testAccount("token")); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.AddRepo("old", "alice/repo", config.Repo{}); err != nil {
+		t.Fatal(err)
+	}
+	cfg.SourceOrder = []string{"old"}
+	if err := credential.StoreToken("old", "pat-123"); err != nil {
+		t.Fatal(err)
+	}
+	clone := makeClone(t, cfg, "old", "alice/repo", "https://alice@github.com/alice/repo.git")
+	ReconfigureClones(cfg, "old")
+
+	if err := RenameAccount(cfg, "old", "new"); err != nil {
+		t.Fatalf("RenameAccount: %v", err)
+	}
+	ReconfigureClones(cfg, "new")
+	moved := strings.Replace(clone, string(os.PathSeparator)+"old"+string(os.PathSeparator),
+		string(os.PathSeparator)+"new"+string(os.PathSeparator), 1)
+	helpers := gitRun(t, moved, "config", "--local", "--get-all", "credential.helper")
+	if want := credential.StoreHelper(credential.CredentialFilePath("new")); !strings.Contains(helpers, want) {
+		t.Errorf("credential.helper = %q, want it to contain %q", helpers, want)
+	}
+}
+
 func TestRenameAccount_Rejects(t *testing.T) {
 	_, cfg := isolate(t)
 	if err := AddAccount(cfg, "a", testAccount("gcm")); err != nil {

@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { bridge, events, setReadOnlyRemote } from './lib/bridge';
+  import { bridge, events, setRemoteWindow } from './lib/bridge';
   import type { DoctorPrecheckDTO, RemoteState } from './lib/bridge';
   import { focusWork, backgroundAllowed, reloadErrorShown, clearsOnReconnect } from './lib/readonly';
   import {
     configStore, accounts, sources, mirrors, repoStates, themeStore, applyStatusResults,
     applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, workspacePlaceholders, workspaceMembers, workspaceUnknown, workspaceDiagnostics,
-    remoteReadOnly
+    remoteWindow, blocked
   } from './lib/stores';
   import { detailLocked, attentionRank, accountHealth, CALM_RANK } from './lib/status';
   import { createDetailLoader } from './lib/repo-detail';
@@ -715,8 +715,8 @@
   const showOrphanModal = () => orphansDialog.showOrphanModal();
 
   async function runReconcile(): Promise<ReconcileDTO | null> {
-    // A read-only remote changes nothing on the host: no reconcile (#240).
-    if ($remoteReadOnly) return null;
+    // A remote window reconciles once its server serves Reconcile (#295).
+    if ($blocked('reconcile')) return null;
     try {
       const res = await bridge.reconcile();
       await applyReconcile(res);
@@ -1330,7 +1330,8 @@
   // Likewise the Profile editor loads only in the terminals window.
   let TerminalsModal: typeof import('./lib/TerminalsModal.svelte').default | null = null;
   // A remote window (#240) shows the connection card until the host's data
-  // first arrives, then the full UI, read-only. After a disconnect it keeps
+  // first arrives, then the full UI, limited to what its server serves
+  // (#294). After a disconnect it keeps
   // the last state, dimmed, under a Reconnect banner.
   let remoteState: RemoteState | null = null;
   let remoteLoaded = false;
@@ -1349,8 +1350,8 @@
     // data again.
     remoteLoading = true;
     try {
-      remoteReadOnly.set(true);
-      setReadOnlyRemote(true, $t('remote.readOnlyTip'));
+      remoteWindow.set(true);
+      setRemoteWindow(true, $t('remote.readOnlyTip'));
       await startMain();
       remoteNoConfig = firstRun;
       // A host without a config keeps the card, which says so.
@@ -1699,11 +1700,11 @@
     // and ask the Go side to re-probe AI harnesses (throttled there) so a
     // tool installed or removed while we were in the background shows up.
     let focusTimer: ReturnType<typeof setTimeout> | null = null;
-    // A read-only remote window re-reads the host's config but changes
-    // nothing there (#240, focusWork).
+    // A remote window re-reads the host's config and reconciles only when
+    // its server serves Reconcile (#294, focusWork).
     window.addEventListener('focus', () => {
       if (windowMode === 'remote' && (!remoteShowMain || !backgroundAllowed(true, remoteState?.state))) return;
-      const work = focusWork($remoteReadOnly);
+      const work = focusWork($blocked);
       if (focusTimer) clearTimeout(focusTimer);
       focusTimer = setTimeout(() => reloadFromDisk().then(() => { if (work.reconcile) runReconcile(); }, () => {}), 300);
       if (work.refreshHarnesses) bridge.refreshAIHarnesses().catch(() => {});
@@ -2008,7 +2009,7 @@
 {/if}
 
 <!-- ── REMOTE WINDOW (#239, #240): the connection card until the host's
-     data arrives, then the full UI below, read-only ── -->
+     data arrives, then the full UI below, limited ── -->
 {#if windowMode === 'remote' && RemoteConnected && !remoteShowMain}
   <svelte:component this={RemoteConnected} {simple} noConfig={remoteNoConfig} />
 {/if}

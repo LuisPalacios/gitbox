@@ -58,6 +58,10 @@ type App struct {
 	// change another process saved meanwhile is never overwritten. The zero
 	// value means the file was never read. Guarded by mu.
 	cfgBase config.Hash
+	// skipCloneRepair keeps a gitbox-server from repairing each clone's
+	// .git/config before a fetch until the repository mutations are served
+	// (#295): fetch runs with the clone as it is.
+	skipCloneRepair bool
 	// readOnly is set in a gitbox-server that serves a read-only client
 	// (#240): saveConfig refuses, so neither a background worker nor a read
 	// can change the host's gitbox.json, and fetch skips the repair of a

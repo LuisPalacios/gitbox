@@ -149,8 +149,9 @@ func TestRemoteLifecycle(t *testing.T) {
 	if err != nil || len(cfg.Accounts) != 1 {
 		t.Errorf("GetConfig once connected = %+v, %v", cfg, err)
 	}
-	if err := a.AddRoot(t.TempDir()); !codeIs(err, "read_only") {
-		t.Errorf("AddRoot = %v, want read_only", err)
+	// A mutation the server does not serve yet (#295) is refused here.
+	if err := a.DeleteRepo("acct", "org/repo"); !codeIs(err, "read_only") {
+		t.Errorf("DeleteRepo = %v, want read_only", err)
 	}
 	if len(sink.named("remote:log")) == 0 || len(a.RemoteLog()) == 0 {
 		t.Error("the connection log is empty")
@@ -399,10 +400,7 @@ func TestRemoteWindowReadOnly(t *testing.T) {
 	local := a.prefs.(*filePrefs).path
 	before := len(calls())
 
-	// Mutations, typed and automatic.
-	if err := a.AddRoot("/srv/x"); !codeIs(err, "read_only") {
-		t.Errorf("AddRoot = %v, want read_only", err)
-	}
+	// Mutations the server does not serve yet (#295), typed and automatic.
 	if err := a.DeleteRepo("acct", "org/repo"); !codeIs(err, "read_only") {
 		t.Errorf("DeleteRepo = %v, want read_only", err)
 	}

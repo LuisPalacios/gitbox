@@ -90,7 +90,7 @@ func AddAccount(cfg *config.Config, key string, acct config.Account) error {
 // refuses once any of the account's sources has repos.
 func DiscardAccount(cfg *config.Config, accountKey string) error {
 	if _, ok := cfg.Accounts[accountKey]; !ok {
-		return fmt.Errorf("account %q not found", accountKey)
+		return fmt.Errorf("account %q %w", accountKey, config.ErrNotFound)
 	}
 	for sourceKey, src := range cfg.Sources {
 		if src.Account == accountKey && len(src.Repos) > 0 {

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"maps"
+	"slices"
 	"sort"
 )
 
@@ -14,7 +15,7 @@ func (c *Config) AddAccount(key string, acct Account) error {
 		return fmt.Errorf("account key cannot be empty")
 	}
 	if _, exists := c.Accounts[key]; exists {
-		return fmt.Errorf("account %q already exists", key)
+		return existsError("account %q already exists", key)
 	}
 	if err := validateAccount(key, acct); err != nil {
 		return err
@@ -30,7 +31,7 @@ func (c *Config) AddAccount(key string, acct Account) error {
 func (c *Config) UpdateAccount(key string, acct Account) error {
 	previous, exists := c.Accounts[key]
 	if !exists {
-		return fmt.Errorf("account %q not found", key)
+		return notFoundError("account %q not found", key)
 	}
 	if err := validateAccount(key, acct); err != nil {
 		return err
@@ -45,7 +46,7 @@ func (c *Config) UpdateAccount(key string, acct Account) error {
 // semantics should use CascadeDeleteAccount instead.
 func (c *Config) DeleteAccount(key string) error {
 	if _, exists := c.Accounts[key]; !exists {
-		return fmt.Errorf("account %q not found", key)
+		return notFoundError("account %q not found", key)
 	}
 	for srcName, src := range c.Sources {
 		if src.Account == key {
@@ -82,7 +83,7 @@ type AccountDeletionReport struct {
 // issue #60's other fixes, cause total config loss on the next launch.
 func (c *Config) CascadeDeleteAccount(key string) (*AccountDeletionReport, error) {
 	if _, exists := c.Accounts[key]; !exists {
-		return nil, fmt.Errorf("account %q not found", key)
+		return nil, notFoundError("account %q not found", key)
 	}
 
 	report := accountDeletionReport(c, key)
@@ -90,6 +91,7 @@ func (c *Config) CascadeDeleteAccount(key string) (*AccountDeletionReport, error
 	for _, s := range report.Sources {
 		delete(c.Sources, s)
 	}
+	c.SourceOrder = slices.DeleteFunc(slices.Clone(c.SourceOrder), func(k string) bool { return slices.Contains(report.Sources, k) })
 	for _, m := range report.Mirrors {
 		delete(c.Mirrors, m)
 	}
@@ -132,10 +134,10 @@ func (c *Config) RenameAccount(oldKey, newKey string) error {
 		return fmt.Errorf("new account key cannot be empty")
 	}
 	if _, exists := c.Accounts[oldKey]; !exists {
-		return fmt.Errorf("account %q not found", oldKey)
+		return notFoundError("account %q not found", oldKey)
 	}
 	if _, exists := c.Accounts[newKey]; exists {
-		return fmt.Errorf("account %q already exists", newKey)
+		return existsError("account %q already exists", newKey)
 	}
 	c.Accounts[newKey] = c.Accounts[oldKey]
 	delete(c.Accounts, oldKey)
@@ -209,7 +211,7 @@ func (c *Config) AddSource(key string, src Source) error {
 		return fmt.Errorf("source key cannot be empty")
 	}
 	if _, exists := c.Sources[key]; exists {
-		return fmt.Errorf("source %q already exists", key)
+		return existsError("source %q already exists", key)
 	}
 	if src.Account == "" {
 		return fmt.Errorf("source %q: account is required", key)
@@ -224,6 +226,11 @@ func (c *Config) AddSource(key string, src Source) error {
 		src.Repos = make(map[string]Repo)
 	}
 	c.Sources[key] = src
+	// SourceOrder is replaced, never written through: a copy of the config
+	// may share its backing array (#173).
+	if len(c.SourceOrder) > 0 {
+		c.SourceOrder = append(slices.Clip(c.SourceOrder), key)
+	}
 	return nil
 }
 
@@ -231,7 +238,7 @@ func (c *Config) AddSource(key string, src Source) error {
 func (c *Config) UpdateSource(key string, src Source) error {
 	previous, exists := c.Sources[key]
 	if !exists {
-		return fmt.Errorf("source %q not found", key)
+		return notFoundError("source %q not found", key)
 	}
 	if src.Account == "" {
 		return fmt.Errorf("source %q: account is required", key)
@@ -258,26 +265,34 @@ func (c *Config) UpdateSource(key string, src Source) error {
 // DeleteSource removes a source and all its repos.
 func (c *Config) DeleteSource(key string) error {
 	if _, exists := c.Sources[key]; !exists {
-		return fmt.Errorf("source %q not found", key)
+		return notFoundError("source %q not found", key)
 	}
 	delete(c.Sources, key)
+	c.SourceOrder = slices.DeleteFunc(slices.Clone(c.SourceOrder), func(k string) bool { return k == key })
 	return nil
 }
 
 // RenameSource moves a source from oldKey to newKey.
 // Returns error if oldKey not found or newKey already exists.
+// The source keeps its place in SourceOrder: OrderedSourceKeys, and every
+// caller that walks it, sees the new key.
 func (c *Config) RenameSource(oldKey, newKey string) error {
 	if newKey == "" {
 		return fmt.Errorf("new source key cannot be empty")
 	}
 	if _, exists := c.Sources[oldKey]; !exists {
-		return fmt.Errorf("source %q not found", oldKey)
+		return notFoundError("source %q not found", oldKey)
 	}
 	if _, exists := c.Sources[newKey]; exists {
-		return fmt.Errorf("source %q already exists", newKey)
+		return existsError("source %q already exists", newKey)
 	}
 	c.Sources[newKey] = c.Sources[oldKey]
 	delete(c.Sources, oldKey)
+	if i := slices.Index(c.SourceOrder, oldKey); i >= 0 {
+		order := slices.Clone(c.SourceOrder)
+		order[i] = newKey
+		c.SourceOrder = order
+	}
 	return nil
 }
 
@@ -292,13 +307,13 @@ func (c *Config) ListSources() map[string]Source {
 func (c *Config) AddRepo(sourceKey, repoKey string, repo Repo) error {
 	src, ok := c.Sources[sourceKey]
 	if !ok {
-		return fmt.Errorf("source %q not found", sourceKey)
+		return notFoundError("source %q not found", sourceKey)
 	}
 	if repoKey == "" {
 		return fmt.Errorf("repo key cannot be empty")
 	}
 	if _, exists := src.Repos[repoKey]; exists {
-		return fmt.Errorf("repo %q already exists in source %q", repoKey, sourceKey)
+		return existsError("repo %q already exists in source %q", repoKey, sourceKey)
 	}
 	if src.Repos == nil {
 		src.Repos = make(map[string]Repo)
@@ -312,11 +327,11 @@ func (c *Config) AddRepo(sourceKey, repoKey string, repo Repo) error {
 func (c *Config) UpdateRepo(sourceKey, repoKey string, repo Repo) error {
 	src, ok := c.Sources[sourceKey]
 	if !ok {
-		return fmt.Errorf("source %q not found", sourceKey)
+		return notFoundError("source %q not found", sourceKey)
 	}
 	previous, exists := src.Repos[repoKey]
 	if !exists {
-		return fmt.Errorf("repo %q not found in source %q", repoKey, sourceKey)
+		return notFoundError("repo %q not found in source %q", repoKey, sourceKey)
 	}
 	repo.extra = previous.extra
 	src.Repos[repoKey] = repo
@@ -328,10 +343,10 @@ func (c *Config) UpdateRepo(sourceKey, repoKey string, repo Repo) error {
 func (c *Config) DeleteRepo(sourceKey, repoKey string) error {
 	src, ok := c.Sources[sourceKey]
 	if !ok {
-		return fmt.Errorf("source %q not found", sourceKey)
+		return notFoundError("source %q not found", sourceKey)
 	}
 	if _, exists := src.Repos[repoKey]; !exists {
-		return fmt.Errorf("repo %q not found in source %q", repoKey, sourceKey)
+		return notFoundError("repo %q not found in source %q", repoKey, sourceKey)
 	}
 	delete(src.Repos, repoKey)
 	c.Sources[sourceKey] = src
@@ -342,7 +357,7 @@ func (c *Config) DeleteRepo(sourceKey, repoKey string) error {
 func (c *Config) ListRepos(sourceKey string) (map[string]Repo, error) {
 	src, ok := c.Sources[sourceKey]
 	if !ok {
-		return nil, fmt.Errorf("source %q not found", sourceKey)
+		return nil, notFoundError("source %q not found", sourceKey)
 	}
 	return src.Repos, nil
 }
@@ -355,7 +370,7 @@ func (c *Config) AddMirror(key string, m Mirror) error {
 		return fmt.Errorf("mirror key cannot be empty")
 	}
 	if _, exists := c.Mirrors[key]; exists {
-		return fmt.Errorf("mirror %q already exists", key)
+		return existsError("mirror %q already exists", key)
 	}
 	if err := c.validateMirror(key, m); err != nil {
 		return err
@@ -373,7 +388,7 @@ func (c *Config) AddMirror(key string, m Mirror) error {
 // UpdateMirror updates an existing mirror group. Returns error if not found.
 func (c *Config) UpdateMirror(key string, m Mirror) error {
 	if _, exists := c.Mirrors[key]; !exists {
-		return fmt.Errorf("mirror %q not found", key)
+		return notFoundError("mirror %q not found", key)
 	}
 	if err := c.validateMirror(key, m); err != nil {
 		return err
@@ -385,7 +400,7 @@ func (c *Config) UpdateMirror(key string, m Mirror) error {
 // DeleteMirror removes a mirror group and all its repos.
 func (c *Config) DeleteMirror(key string) error {
 	if _, exists := c.Mirrors[key]; !exists {
-		return fmt.Errorf("mirror %q not found", key)
+		return notFoundError("mirror %q not found", key)
 	}
 	delete(c.Mirrors, key)
 	return nil
@@ -397,10 +412,10 @@ func (c *Config) RenameMirror(oldKey, newKey string) error {
 		return fmt.Errorf("new mirror key cannot be empty")
 	}
 	if _, exists := c.Mirrors[oldKey]; !exists {
-		return fmt.Errorf("mirror %q not found", oldKey)
+		return notFoundError("mirror %q not found", oldKey)
 	}
 	if _, exists := c.Mirrors[newKey]; exists {
-		return fmt.Errorf("mirror %q already exists", newKey)
+		return existsError("mirror %q already exists", newKey)
 	}
 	c.Mirrors[newKey] = c.Mirrors[oldKey]
 	delete(c.Mirrors, oldKey)
@@ -416,13 +431,13 @@ func (c *Config) ListMirrors() map[string]Mirror {
 func (c *Config) AddMirrorRepo(mirrorKey, repoKey string, repo MirrorRepo) error {
 	m, ok := c.Mirrors[mirrorKey]
 	if !ok {
-		return fmt.Errorf("mirror %q not found", mirrorKey)
+		return notFoundError("mirror %q not found", mirrorKey)
 	}
 	if repoKey == "" {
 		return fmt.Errorf("repo key cannot be empty")
 	}
 	if _, exists := m.Repos[repoKey]; exists {
-		return fmt.Errorf("repo %q already exists in mirror %q", repoKey, mirrorKey)
+		return existsError("repo %q already exists in mirror %q", repoKey, mirrorKey)
 	}
 	if err := validateMirrorRepo(mirrorKey, repoKey, repo); err != nil {
 		return err
@@ -439,10 +454,10 @@ func (c *Config) AddMirrorRepo(mirrorKey, repoKey string, repo MirrorRepo) error
 func (c *Config) UpdateMirrorRepo(mirrorKey, repoKey string, repo MirrorRepo) error {
 	m, ok := c.Mirrors[mirrorKey]
 	if !ok {
-		return fmt.Errorf("mirror %q not found", mirrorKey)
+		return notFoundError("mirror %q not found", mirrorKey)
 	}
 	if _, exists := m.Repos[repoKey]; !exists {
-		return fmt.Errorf("repo %q not found in mirror %q", repoKey, mirrorKey)
+		return notFoundError("repo %q not found in mirror %q", repoKey, mirrorKey)
 	}
 	if err := validateMirrorRepo(mirrorKey, repoKey, repo); err != nil {
 		return err
@@ -456,10 +471,10 @@ func (c *Config) UpdateMirrorRepo(mirrorKey, repoKey string, repo MirrorRepo) er
 func (c *Config) DeleteMirrorRepo(mirrorKey, repoKey string) error {
 	m, ok := c.Mirrors[mirrorKey]
 	if !ok {
-		return fmt.Errorf("mirror %q not found", mirrorKey)
+		return notFoundError("mirror %q not found", mirrorKey)
 	}
 	if _, exists := m.Repos[repoKey]; !exists {
-		return fmt.Errorf("repo %q not found in mirror %q", repoKey, mirrorKey)
+		return notFoundError("repo %q not found in mirror %q", repoKey, mirrorKey)
 	}
 	delete(m.Repos, repoKey)
 	c.Mirrors[mirrorKey] = m
@@ -470,7 +485,7 @@ func (c *Config) DeleteMirrorRepo(mirrorKey, repoKey string) error {
 func (c *Config) ListMirrorRepos(mirrorKey string) (map[string]MirrorRepo, error) {
 	m, ok := c.Mirrors[mirrorKey]
 	if !ok {
-		return nil, fmt.Errorf("mirror %q not found", mirrorKey)
+		return nil, notFoundError("mirror %q not found", mirrorKey)
 	}
 	return m.Repos, nil
 }

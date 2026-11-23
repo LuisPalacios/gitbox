@@ -134,7 +134,7 @@
       provider="MIRROR" count={{ text: `${mstats.active}/${mstats.total}`, title: mstate, style: `color: ${mcolor}` }}
       actions={[{ label: $t('mirror.check'), onClick: () => checkMirrorStatus(mirrorKey), title: $t('mirror.checkStatus') }]} />
   {/each}
-  <button use:ro class="card card-add" on:click={onAddGroup} title={$t('mirror.addGroup')}>
+  <button use:ro={'addMirrorGroup'} class="card card-add" on:click={onAddGroup} title={$t('mirror.addGroup')}>
     <span class="card-add-icon">+</span>
   </button>
 </div>
@@ -151,9 +151,9 @@
           {#if mirrorChecking[mirrorKey]}
             <span class="mirror-checking"><div class="spinner-sm"></div></span>
           {/if}
-          <button use:ro class="btn-tab-action" on:click={() => onAddRepo(mirrorKey)}>{$t('mirror.addRepo')}</button>
+          <button use:ro={'addMirrorRepo'} class="btn-tab-action" on:click={() => onAddRepo(mirrorKey)}>{$t('mirror.addRepo')}</button>
           {#if deleteMode}
-            <button use:ro class="icon-btn icon-btn-danger btn-delete-x" on:click={() => onDeleteGroup(mirrorKey)} title={$t('mirror.deleteGroup', { name: mirrorKey })} aria-label={$t('mirror.deleteGroup', { name: mirrorKey })}><UIIcon name="x" /></button>
+            <button use:ro={'deleteMirrorGroup'} class="icon-btn icon-btn-danger btn-delete-x" on:click={() => onDeleteGroup(mirrorKey)} title={$t('mirror.deleteGroup', { name: mirrorKey })} aria-label={$t('mirror.deleteGroup', { name: mirrorKey })}><UIIcon name="x" /></button>
           {/if}
         </div>
       </div>
@@ -186,12 +186,12 @@
           {/if}
           {#if live?.error && live.error.startsWith('missing API token in ') && !deleteMode}
             {@const errAcct = live.error.replace('missing API token in ', '')}
-            <button use:ro class="btn-sm btn-fix" on:click={() => openTokenSetup(errAcct)} title={$t('mirror.setupToken', { account: errAcct })}>{$t('mirror.fixCredentials')}</button>
+            <button use:ro={'credentialStoreToken'} class="btn-sm btn-fix" on:click={() => openTokenSetup(errAcct)} title={$t('mirror.setupToken', { account: errAcct })}>{$t('mirror.fixCredentials')}</button>
           {:else if !deleteMode}
-            <button use:ro class="btn-sm btn-setup" on:click={() => setupMirrorRepo(mirrorKey, repoName)} disabled={settingUp}>{$t('mirror.setup')}</button>
+            <button use:ro={'setupMirrorRepo'} class="btn-sm btn-setup" on:click={() => setupMirrorRepo(mirrorKey, repoName)} disabled={settingUp}>{$t('mirror.setup')}</button>
           {/if}
           {#if deleteMode}
-            <button use:ro class="icon-btn icon-btn-danger btn-delete-x" on:click={() => onDeleteRepo(mirrorKey, repoName)} title={$t('mirror.deleteRepo', { repo: repoName, group: mirrorKey })} aria-label={$t('mirror.deleteRepo', { repo: repoName, group: mirrorKey })}><UIIcon name="x" /></button>
+            <button use:ro={'deleteMirrorRepo'} class="icon-btn icon-btn-danger btn-delete-x" on:click={() => onDeleteRepo(mirrorKey, repoName)} title={$t('mirror.deleteRepo', { repo: repoName, group: mirrorKey })} aria-label={$t('mirror.deleteRepo', { repo: repoName, group: mirrorKey })}><UIIcon name="x" /></button>
           {/if}
         </div>
       {/each}

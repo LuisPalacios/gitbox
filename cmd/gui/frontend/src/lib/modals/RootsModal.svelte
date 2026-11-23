@@ -7,7 +7,7 @@
   import { pushNotice, errorText } from '../notices';
   import { t } from '../i18n';
   import Rich from '../Rich.svelte';
-  import { configStore, remoteHost, remoteReadOnly } from '../stores';
+  import { configStore, remoteHost, blocked } from '../stores';
   import { ro } from '../ro';
   import RemotePathInput from '../RemotePathInput.svelte';
   import { dismiss } from '../dismiss';
@@ -33,6 +33,7 @@
 
   export async function openRoots() {
     confirming = null;
+    typedRoot = '';
     await loadRoots();
     try { nestedScanDepth = (await bridge.getNestedScanDepth()) || 1; } catch { nestedScanDepth = 1; }
     open = true;
@@ -43,6 +44,8 @@
     if (!dir) return;
     try {
       await bridge.addRoot(dir);
+      // The typed folder is a root now; a failed add keeps it for a fix.
+      typedRoot = '';
       await loadRoots();
       $configStore = await bridge.reloadConfig();
       await runReconcile();
@@ -104,10 +107,10 @@
             {#if r.isDefault}<span class="badge">{$t('roots.default')}</span>{/if}
             <span class="root-n">{$t(r.repos === 1 ? 'roots.reposOne' : 'roots.repos', { n: r.repos })}</span>
             {#if !r.isDefault}
-              <button use:ro class="settings-btn" on:click={() => makeDefault(r.path)}>{$t('roots.makeDefault')}</button>
+              <button use:ro={'setDefaultRoot'} class="settings-btn" on:click={() => makeDefault(r.path)}>{$t('roots.makeDefault')}</button>
             {/if}
             {#if roots.length > 1}
-              <button use:ro class="btn-sm btn-danger" on:click={() => removeRoot(r.path, false)} title={$t('roots.remove')} aria-label={$t('roots.remove')}>✕</button>
+              <button use:ro={'removeRoot'} class="btn-sm btn-danger" on:click={() => removeRoot(r.path, false)} title={$t('roots.remove')} aria-label={$t('roots.remove')}>✕</button>
             {/if}
           </div>
           {#if confirming?.path === r.path}
@@ -115,14 +118,14 @@
             <div class="confirm">
               <span>{$t(n === 1 ? 'roots.confirmForgetOne' : 'roots.confirmForget', { n })}</span>
               <button class="btn-cancel" on:click={() => confirming = null}>{$t('common.cancel')}</button>
-              <button class="btn-sm btn-danger" on:click={() => removeRoot(r.path, true)}>{$t('roots.forget')}</button>
+              <button use:ro={'removeRoot'} class="btn-sm btn-danger" on:click={() => removeRoot(r.path, true)}>{$t('roots.forget')}</button>
             </div>
           {/if}
         {/each}
         {#if $remoteHost}
           <div class="remote-add">
             <RemotePathInput bind:value={typedRoot} bind:usable={typedUsable} />
-            <button use:ro class="settings-btn add" on:click={addRoot} disabled={!typedUsable}>{$t('roots.addTyped')}</button>
+            <button use:ro={'addRoot'} class="settings-btn add" on:click={addRoot} disabled={!typedUsable}>{$t('roots.addTyped')}</button>
           </div>
         {:else}
           <button class="settings-btn add" on:click={addRoot}>{$t('roots.add')}</button>
@@ -131,7 +134,7 @@
         <div class="form-row" style="margin-top:14px;">
           <label class="form-label" for="nested-scan-depth">{$t('roots.nestedDepth')}</label>
           <input id="nested-scan-depth" class="form-input" type="number" min="1" style="max-width:90px;"
-            bind:value={nestedScanDepth} on:change={saveNestedScanDepth} disabled={$remoteReadOnly} title={$remoteReadOnly ? $t('remote.readOnlyTip') : undefined} />
+            bind:value={nestedScanDepth} on:change={saveNestedScanDepth} disabled={$blocked('setNestedScanDepth')} title={$blocked('setNestedScanDepth') ? $t('remote.readOnlyTip') : undefined} />
           <span class="settings-value">{$t('roots.nestedDepthHint')}</span>
         </div>
         {#if nestedDepthError}<p class="form-error">{nestedDepthError}</p>{/if}

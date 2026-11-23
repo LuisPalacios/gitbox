@@ -6,6 +6,7 @@
   // and the account card share it.
   import { fade } from 'svelte/transition';
   import { bridge } from '../bridge';
+  import type { CallName } from '../bridge';
   import { openAccountExternal } from '../external';
   import { pushNotice, errorText } from '../notices';
   import { accounts } from '../stores';
@@ -61,12 +62,14 @@
 
   // The account menu's own actions after Find and New: Edit account, and
   // Change credential (Advanced) or Reconnect (Simple, broken credential).
+  // ro names the calls each one ends in, for a remote window (lib/ro.ts).
   function accountItems(simple: boolean, credStatus: string | undefined) {
     const credType = $accounts[accountKey]?.default_credential_type || 'gcm';
     const cred = () => { closeAccountMenu(); openCredChange(accountKey, credType); };
-    const items = [{ label: $t('menu.editAccount'), icon: '✎', onClick: () => { closeAccountMenu(); openEditAccount(accountKey); } }];
-    if (!simple) items.push({ label: $t('menu.changeCredential'), icon: '⚿', onClick: cred });
-    else if (credBroken(credStatus)) items.push({ label: $t('menu.reconnect'), icon: '⚿', onClick: cred });
+    const credCalls: CallName[] = ['changeCredentialType', 'credentialSetupGCM', 'credentialSetupSSH', 'credentialStoreToken'];
+    const items = [{ label: $t('menu.editAccount'), icon: '✎', onClick: () => { closeAccountMenu(); openEditAccount(accountKey); }, ro: ['updateAccount', 'renameAccount'] as CallName[] }];
+    if (!simple) items.push({ label: $t('menu.changeCredential'), icon: '⚿', onClick: cred, ro: credCalls });
+    else if (credBroken(credStatus)) items.push({ label: $t('menu.reconnect'), icon: '⚿', onClick: cred, ro: credCalls });
     return items;
   }
 </script>

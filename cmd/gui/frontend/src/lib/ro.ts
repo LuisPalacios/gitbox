@@ -1,15 +1,23 @@
-// The read-only remote action (#240). Put use:ro on a control that would
-// change the host, or launch a local program on one of its paths: in a
-// read-only remote window it shows disabled, its title explains why, and
-// a click does nothing. Elsewhere it changes nothing. The bridge refuses
-// the same calls (readonly.ts), so a control without it still fails safely.
+// The limited remote action (#240, #294). Put use:ro={calls} on a control
+// that would change the host, or launch a local program on one of its
+// paths, naming the bridge call it ends in, or several. In a remote window,
+// while any of them is refused there (readonly.ts), it shows disabled, its
+// title explains why, and a click does nothing. Elsewhere it changes
+// nothing. The bridge refuses the same calls, so a control without it still
+// fails safely; ro-names.test.mjs keeps every name a bridge call.
 
 import { get } from 'svelte/store';
-import { remoteReadOnly } from './stores';
+import { remoteWindow } from './stores';
 import { t } from './i18n';
 import { offTip, type RemoteOff } from './remotehost';
+import { anyBlocked } from './readonly';
+import type { CallName } from './bridge';
 
-export function ro(node: HTMLElement) {
+export type RoCalls = CallName | readonly CallName[];
+
+export function ro(node: HTMLElement, calls: RoCalls) {
+  let names = calls;
+  let remote = false;
   let active = false;
   let savedTitle: string | null = null;
   const block = (e: Event) => {
@@ -37,9 +45,11 @@ export function ro(node: HTMLElement) {
       node.removeAttribute('aria-disabled');
     }
   };
-  const offStore = remoteReadOnly.subscribe(apply);
+  const refresh = () => apply(anyBlocked(names, remote));
+  const offStore = remoteWindow.subscribe((on) => { remote = on; refresh(); });
   const offLang = t.subscribe(() => apply(active));
   return {
+    update(next: RoCalls) { names = next; refresh(); },
     destroy() {
       offStore();
       offLang();

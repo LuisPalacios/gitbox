@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func newTestConfig() *Config {
 	return &Config{
@@ -164,6 +167,41 @@ func TestDeleteSource(t *testing.T) {
 	}
 	if len(cfg.Sources) != 0 {
 		t.Errorf("sources = %d, want 0", len(cfg.Sources))
+	}
+}
+
+// TestSourceOrderFollowsSourceCRUD: a loaded config carries SourceOrder,
+// and OrderedSourceKeys returns it as is. Each source change keeps it in
+// step with Sources, without writing through a slice a copy shares.
+func TestSourceOrderFollowsSourceCRUD(t *testing.T) {
+	cfg := newTestConfig()
+	cfg.Sources["forgejo-test"] = Source{Account: "forgejo-test"}
+	cfg.SourceOrder = []string{"github-test", "forgejo-test"}
+	shared := cfg.SourceOrder
+
+	steps := []struct {
+		name string
+		run  func() error
+		want []string
+	}{
+		{"rename keeps the place", func() error { return cfg.RenameSource("github-test", "renamed") }, []string{"renamed", "forgejo-test"}},
+		{"add appends", func() error { return cfg.AddSource("added", Source{Account: "github-test"}) }, []string{"renamed", "forgejo-test", "added"}},
+		{"delete drops the key", func() error { return cfg.DeleteSource("forgejo-test") }, []string{"renamed", "added"}},
+		{"cascade delete drops every source of the account", func() error {
+			_, err := cfg.CascadeDeleteAccount("github-test")
+			return err
+		}, nil},
+	}
+	for _, s := range steps {
+		if err := s.run(); err != nil {
+			t.Fatalf("%s: %v", s.name, err)
+		}
+		if got := cfg.OrderedSourceKeys(); !slices.Equal(got, s.want) && (len(got) != 0 || len(s.want) != 0) {
+			t.Fatalf("%s: OrderedSourceKeys = %v, want %v", s.name, got, s.want)
+		}
+	}
+	if !slices.Equal(shared, []string{"github-test", "forgejo-test"}) {
+		t.Errorf("a copy's SourceOrder changed: %v", shared)
 	}
 }
 

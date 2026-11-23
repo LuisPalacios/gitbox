@@ -82,7 +82,7 @@
       </div>
       <div class="modal-foot">
         <button class="btn-cancel" on:click={() => sweepModal = null}>{$t('common.cancel')}</button>
-        <button use:ro class="btn-sweep-confirm" on:click={confirmSweepAction} disabled={sweepBusy}>
+        <button use:ro={'confirmSweep'} class="btn-sweep-confirm" on:click={confirmSweepAction} disabled={sweepBusy}>
           {sweepBusy ? $t('sweep.sweeping') : $t(sweepTotal === 1 ? 'sweep.deleteOne' : 'sweep.deleteN', { n: sweepTotal })}
         </button>
       </div>

@@ -161,18 +161,21 @@ const calls = {
   connectRemote: (alias: string): Promise<RemoteResult> => ConnectRemote(alias) as Promise<RemoteResult>,
 };
 
-// readOnlyRemote is set once a remote window connects (#240); see
-// readonly.ts.
-let readOnlyRemote = false;
+// remoteWindow is set once a remote window connects (#240): it refuses the
+// calls in READ_ONLY_BLOCKED (readonly.ts).
+let remoteWindow = false;
 let readOnlyMessage = 'Read-only remote (coming in a later version)';
-export function setReadOnlyRemote(on: boolean, message: string) {
-  readOnlyRemote = on;
+export function setRemoteWindow(on: boolean, message: string) {
+  remoteWindow = on;
   readOnlyMessage = message;
 }
 
 // A remote window's calls fail with a WindowError in the user's language
 // (readonly.ts); a local window's come back as they are.
-export const bridge = guardCalls(calls, () => readOnlyRemote, () => readOnlyMessage, (e) => decodeWindowError(e, get(t)));
+export const bridge = guardCalls(calls, () => remoteWindow, () => readOnlyMessage, (e) => decodeWindowError(e, get(t)));
+
+// CallName is the name of a bridge call, as use:ro and blocked take it.
+export type CallName = keyof typeof calls;
 
 // ── Remote mode types (mirror cmd/gui/remote.go) ──
 export type RemoteStateName = 'connecting' | 'installing' | 'connected' | 'failed' | 'disconnected';

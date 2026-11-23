@@ -1,8 +1,9 @@
 <script lang="ts">
   // The title-bar badge of a remote window (#240): which host this window
   // shows, its system and how the connection is doing, and that it is
-  // read-only. Simple mode says only the host and "Read-only". A click opens
-  // the connection log over the window.
+  // limited: some actions are not served yet (#294). Simple mode says only
+  // the host and "Limited". A click opens the connection log over the
+  // window.
   import { onDestroy } from 'svelte';
   import { fade, fly } from 'svelte/transition';
   import { bridge, events } from '../bridge';
@@ -33,7 +34,7 @@
   <span class="dot" class:pulse={state.state === 'connecting' || state.state === 'installing'} aria-hidden="true"></span>
   <span class="alias" translate="no">{state.alias}</span>
   {#if !simple && state.serverOS}<span class="os" translate="no">{state.serverOS}</span>{/if}
-  <span class="ro">{$t('remote.readOnly')}</span>
+  <span class="ro">{$t('remote.limited')}</span>
   {#if state.truncated}<span class="trunc" aria-hidden="true" translate="no">!</span>{/if}
 </button>
 
