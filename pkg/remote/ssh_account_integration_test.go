@@ -26,12 +26,15 @@ import (
 // it.
 
 // sshHostConfig is the host's gitbox.json: one SSH account at gitHostIP.
+// The URL names port 22 because the git host serves only SSH: the network
+// guard of a clone checks the account's URL first, and the Host entry takes
+// only the host name from it.
 func sshHostConfig(gitHostIP string) string {
 	return `{
   "version": 5,
   "global": {"roots": ["` + testHome + `/git"], "theme": "dark"},
   "accounts": {
-    "acct": {"provider": "gitea", "url": "http://` + gitHostIP + `", "username": "org", "name": "Org", "email": "o@example.invalid", "default_credential_type": "ssh"}
+    "acct": {"provider": "gitea", "url": "http://` + gitHostIP + `:22", "username": "org", "name": "Org", "email": "o@example.invalid", "default_credential_type": "ssh"}
   },
   "sources": {"acct": {"account": "acct", "repos": {"org/small": {}}}}
 }
