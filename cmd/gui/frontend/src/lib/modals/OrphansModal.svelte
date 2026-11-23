@@ -11,6 +11,7 @@
   import type { OrphanRepoDTO, ReconcileDTO } from '../types';
 
   export let unmatched: OrphanRepoDTO[];
+  export let skipped: NonNullable<ReconcileDTO['skipped']>;
   export let ignored: OrphanRepoDTO[];
   // Shows a fresh reconcile result (lists, config and status reload).
   export let applyReconcile: (res: ReconcileDTO) => Promise<void>;
@@ -52,6 +53,17 @@
     if (adoptable(o) && !picked[o.path]) picked[o.path] = o.matchedAccount || o.candidates![0];
   }
 
+  async function rescan() {
+    busy = 'rescan';
+    try {
+      await applyReconcile(await bridge.reconcile());
+    } catch (e) {
+      pushNotice('error', $t('notice.reconcileFailed'), [errorText(e)]);
+    } finally {
+      busy = '';
+    }
+  }
+
   async function adoptOne(o: OrphanRepoDTO) {
     busy = o.path;
     try {
@@ -85,7 +97,7 @@
         <button class="btn-x" on:click={() => open = false}>&#10005;</button>
       </div>
       <div class="modal-body">
-        <p class="intro">{visibleUnmatched.length ? $t('unmatched.intro') : workspaceSearch ? $t('unmatched.workspaceEmpty') : $t('unmatched.empty')}</p>
+        <p class="intro">{(visibleUnmatched.length || (!workspaceSearch && skipped.length)) ? $t('unmatched.intro') : workspaceSearch ? $t('unmatched.workspaceEmpty') : $t('unmatched.empty')}</p>
         {#each visibleUnmatched as o (o.path)}
           <div class="clone">
             <div class="clone-head">
@@ -112,6 +124,15 @@
             </div>
           </div>
         {/each}
+        {#if !workspaceSearch && skipped.length}
+          {#each skipped as row (row.path)}
+            <div class="clone">
+              <div class="clone-name">{$t('unmatched.changed')}</div>
+              <div class="clone-path" title={row.path}>{row.path}</div>
+            </div>
+          {/each}
+          <button use:ro={'reconcile'} class="btn-cancel" disabled={!!busy} on:click={rescan}>{$t('unmatched.rescan')}</button>
+        {/if}
         {#if !workspaceSearch && ignored.length}
           <button class="link" on:click={() => showIgnored = !showIgnored}>
             {showIgnored ? $t('unmatched.hideIgnored') : $t('unmatched.showIgnored', { n: ignored.length })}

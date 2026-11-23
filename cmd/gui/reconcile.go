@@ -39,10 +39,12 @@ type OrphanRepoDTO struct {
 
 // ReconcileDTO answers a reconcile pass.
 type ReconcileDTO struct {
-	Adopted   int             `json:"adopted"`
-	Relinked  int             `json:"relinked"`
-	Unmatched []OrphanRepoDTO `json:"unmatched"`
-	Ignored   []OrphanRepoDTO `json:"ignored"`
+	Adopted    int              `json:"adopted"`
+	Relinked   int              `json:"relinked"`
+	Unmatched  []OrphanRepoDTO  `json:"unmatched"`
+	Ignored    []OrphanRepoDTO  `json:"ignored"`
+	Skipped    []reconcile.Skip `json:"skipped,omitempty"`
+	Background bool             `json:"background,omitempty"` // completion of a coalesced retry
 	// WorkspacesChanged is set when the pass flagged a container or changed
 	// a repo's workspace file.
 	WorkspacesChanged bool                 `json:"workspacesChanged"`
@@ -169,21 +171,22 @@ func (s repoSetup) run() {
 	_ = git.ConfigSet(s.path, "user.email", s.acct.Email)
 }
 
-// ErrStalePlan means both scans observed concurrent changes to config intent.
+// ErrStalePlan means neither scan could safely use the new configuration.
 var ErrStalePlan = errors.New("reconcile plan is stale")
 
 // scanConfig snapshots the config and runs the reconcile scan without the
-// lock, retrying when the config changed meanwhile. It returns with a.mu
-// held and the plan for the live config; the caller unlocks.
-func (a *App) scanConfig() (reconcile.Result, error) {
+// lock. Changes to the scan scope require a fresh scan. Other edits are
+// validated per entry by Apply under a.mu, which the caller releases. It
+// also returns the live pre-apply snapshot for rollback if persistence fails.
+func (a *App) scanConfig() (reconcile.Result, *config.Config, error) {
 	scan := a.reconcileScan
 	if scan == nil {
 		scan = reconcile.Plan
 	}
-	return a.scanConfigWith(scan)
+	return a.scanConfigWith(scan, true)
 }
 
-func (a *App) scanConfigWith(scan func(*config.Config) (reconcile.Result, error)) (reconcile.Result, error) {
+func (a *App) scanConfigWith(scan func(*config.Config) (reconcile.Result, error), perEntry bool) (reconcile.Result, *config.Config, error) {
 	clone := a.reconcileClone
 	if clone == nil {
 		clone = (*config.Config).Clone
@@ -194,25 +197,25 @@ func (a *App) scanConfigWith(scan func(*config.Config) (reconcile.Result, error)
 		a.mu.Unlock()
 		if err != nil {
 			a.mu.Lock()
-			return reconcile.Result{}, err
+			return reconcile.Result{}, nil, err
 		}
 		res, err := scan(snap)
 		a.mu.Lock()
 		if err != nil {
-			return reconcile.Result{}, err
+			return reconcile.Result{}, nil, err
 		}
 		cur, err := clone(a.cfg)
 		if err != nil {
-			return reconcile.Result{}, err
+			return reconcile.Result{}, nil, err
 		}
-		if config.EqualIgnoringUIState(cur, snap) {
-			return res, nil
+		if config.EqualIgnoringUIState(cur, snap) || (perEntry && res.SameScanScope(cur)) {
+			return res, cur, nil
 		}
 		if attempt == 0 {
 			a.mu.Unlock()
 		}
 	}
-	return reconcile.Result{}, ErrStalePlan
+	return reconcile.Result{}, nil, ErrStalePlan
 }
 
 // Reconcile runs one pass: re-link moved clones, adopt confident ones in
@@ -247,7 +250,7 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 	if retryStale && wsSkipped {
 		a.retryReconcileAfterRefresh()
 	}
-	res, err := a.scanConfig()
+	res, before, err := a.scanConfig()
 	if err != nil {
 		a.mu.Unlock()
 		if retryStale && errors.Is(err, ErrStalePlan) {
@@ -260,11 +263,17 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 		}
 		return out
 	}
-	placed, changed := reconcile.Apply(a.cfg, res)
+	applied := reconcile.Apply(a.cfg, res)
+	placed := applied.Adopted
+	changed := len(placed)+applied.Relinked > 0
 	saveErr := wsErr
 	if changed {
 		if err := a.saveConfig(); err != nil {
 			saveErr = err
+			if !isConfigChanged(err) {
+				*a.cfg = *before
+			}
+			placed, applied.Relinked, changed = nil, 0, false
 		}
 	}
 	setups := make([]repoSetup, 0, len(placed))
@@ -277,7 +286,11 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 		s.run()
 	}
 	out := emptyReconcile("")
-	out.Adopted, out.Relinked, out.WorkspacesChanged = len(placed), len(res.Relink), wsChanged
+	out.Adopted, out.Relinked, out.WorkspacesChanged = len(placed), applied.Relinked, wsChanged
+	out.Skipped, out.Background = applied.Skipped, !retryStale
+	if retryStale && len(applied.Skipped) > 0 {
+		a.retryReconcileAfterRefresh()
+	}
 	out.WorkspaceUnknown = unknown
 	for _, c := range choices {
 		out.WorkspaceChoices = append(out.WorkspaceChoices, WorkspaceChoiceDTO{Source: c.Source, Repo: c.Repo, Files: c.Files})
@@ -295,7 +308,7 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 	if saveErr != nil {
 		out.Error = userMsg(saveErr)
 	}
-	if changed || wsChanged || unknownChanged {
+	if changed || wsChanged || unknownChanged || out.Background || len(out.Skipped) > 0 {
 		a.sink().Emit("reconcile:done", out)
 	}
 	return out
@@ -438,11 +451,11 @@ func (a *App) scanAdoptionRequests(reqs []AdoptRequestDTO) (reconcile.Result, ma
 		}
 	}
 	if len(roots) == 0 {
-		res, err := a.scanConfig()
+		res, _, err := a.scanConfigWith(reconcile.Plan, false)
 		return res, nil, err
 	}
 	var external map[string][]reconcile.Unmatched
-	res, err := a.scanConfigWith(func(cfg *config.Config) (reconcile.Result, error) {
+	res, _, err := a.scanConfigWith(func(cfg *config.Config) (reconcile.Result, error) {
 		tree := workspace.Inspect(cfg)
 		external = make(map[string][]reconcile.Unmatched, len(roots))
 		for root := range roots {
@@ -456,7 +469,7 @@ func (a *App) scanAdoptionRequests(reqs []AdoptRequestDTO) (reconcile.Result, ma
 			return reconcile.Plan(cfg)
 		}
 		return reconcile.Result{}, nil
-	})
+	}, false)
 	return res, external, err
 }
 

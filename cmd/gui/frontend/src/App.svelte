@@ -732,6 +732,7 @@
   // A pass adopts the clones gitbox recognises and re-links moved ones by
   // itself; orphanList holds the clones that need me (Unmatched clones).
   let orphanList: OrphanRepoDTO[] = [];
+  let skippedClones: NonNullable<ReconcileDTO['skipped']> = [];
   let ignoredClones: OrphanRepoDTO[] = [];
   let orphanCount = 0;
   let orphansDialog: OrphansModal;
@@ -755,7 +756,8 @@
     if (res.workspaceUnknown) $workspaceUnknown = new Set(res.workspaceUnknown);
     orphanList = res.unmatched || [];
     ignoredClones = res.ignored || [];
-    orphanCount = orphanList.length;
+    skippedClones = res.skipped || [];
+    orphanCount = orphanList.length + skippedClones.length;
     if (res.error) pushNotice('error', $t('notice.reconcileFailed'), [res.error]);
     // A clone git never finished is reported once per session (#295).
     const incomplete = (res.incomplete || []).filter(c => !incompleteShown.has(c.path));
@@ -1767,7 +1769,9 @@
 
     events.on('reconcile:done', (res: ReconcileDTO | null) => {
       // The coalesced background retry has no caller to apply its result.
-      if (res?.workspaceUnknown) $workspaceUnknown = new Set(res.workspaceUnknown);
+      if (res?.background) {
+        void applyReconcile(res).catch(console.error);
+      } else if (res?.workspaceUnknown) $workspaceUnknown = new Set(res.workspaceUnknown);
     });
 
     events.on('status:updated', (results: any) => {
@@ -2184,7 +2188,7 @@
   <SweepModal bind:this={sweepDialog} {closeActionMenu} />
 
   <!-- ── ORPHAN ADOPTION MODAL ── -->
-  <OrphansModal bind:this={orphansDialog} unmatched={orphanList} ignored={ignoredClones} {applyReconcile} />
+  <OrphansModal bind:this={orphansDialog} unmatched={orphanList} ignored={ignoredClones} skipped={skippedClones} {applyReconcile} />
 
   <!-- ── ADD ACCOUNT MODAL ── -->
   {#if connectModal}

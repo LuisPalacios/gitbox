@@ -37,29 +37,33 @@ func TestSchedule_RenameDuringReconcile(t *testing.T) {
 		a.events = events
 		scans := 0
 		stalePath := filepath.Join(a.cfg.Global.Roots[0], "stale")
+		initClone(t, stalePath, "https://github.com/team/frontend.git")
 		scan := testutil.NewBarrier()
 		defer scan.Release()
 		a.reconcileScan = func(cfg *config.Config) (reconcile.Result, error) {
 			scans++
-			if _, stillOld := cfg.Sources[old]; !stillOld {
-				return reconcile.Result{}, nil
+			plan, err := reconcile.Plan(cfg)
+			if err == nil && scans == 1 {
+				err = scan.Arrive(a.refreshContext())
 			}
-			if err := scan.Arrive(a.refreshContext()); err != nil {
-				return reconcile.Result{}, err
-			}
-			return reconcile.Result{Relink: []reconcile.Relink{{Source: old, Repo: repo, Path: stalePath}}}, nil
+			return plan, err
 		}
 
 		done := make(chan ReconcileDTO, 1)
 		go func() { done <- a.Reconcile() }()
 		<-scan.Entered
 		err := a.RenameAccount(old, renamed)
+		if err := os.Rename(stalePath, filepath.Join(t.TempDir(), "outside")); err != nil {
+			t.Fatal(err)
+		}
 		scan.Release()
 		result := <-done
+		synctest.Wait()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if scans != 2 || result.Error != "" || result.Relinked != 0 || len(events.named("reconcile:done")) != 0 {
+		if scans != 2 || result.Error != "" || result.Relinked != 0 || len(result.Skipped) != 1 ||
+			result.Skipped[0] != (reconcile.Skip{Path: stalePath, Reason: "sourceGone"}) || len(events.named("reconcile:done")) != 2 {
 			t.Fatalf("reconcile completed %d scans with result %+v, want one retry and no stale result", scans, result)
 		}
 		saved, err := config.Load(path)

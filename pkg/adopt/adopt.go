@@ -18,6 +18,7 @@ import (
 
 // OrphanRepo describes a git repo on disk not tracked in gitbox.json.
 type OrphanRepo struct {
+	credentialUsers     []string // captured during discovery for in-memory match revalidation
 	Path                string   // absolute path on disk
 	RelPath             string   // relative to the deepest scanned root
 	RemoteURL           string   // origin remote URL (empty if local-only)
@@ -153,7 +154,8 @@ func inspectOrphans(cfg *config.Config, candidates, relRoots []string, nestedSet
 			RepoPath:     absPath,
 			ParentFolder: root,
 		}
-		m := matchAccount(cfg, mc)
+		o.credentialUsers = git.CredentialUsernames(absPath)
+		m := matchAccount(cfg, mc, o.credentialUsers)
 		acctKey, srcKey := m.accountKey, m.sourceKey
 		o.MatchedAccount = acctKey
 		o.MatchedSource = srcKey
@@ -366,11 +368,19 @@ type match struct {
 	candidates            []string
 }
 
+// StillMatches checks whether the same account and source still win with
+// the identity signals read from this clone during discovery.
+func (o OrphanRepo) StillMatches(cfg *config.Config) bool {
+	m := matchAccount(cfg, MatchContext{Host: o.Host, Owner: o.Owner, RemoteURL: o.RemoteURL,
+		RepoPath: o.Path, ParentFolder: containingRoot(cfg.Global.Roots, o.Path)}, o.credentialUsers)
+	return m.score > hostWeight && m.accountKey == o.MatchedAccount && m.sourceKey == o.MatchedSource
+}
+
 // matchAccount scores every host-matching account against the signals in mc
 // and returns the best match. The winner is empty when no account matches
 // the host or when the top score is tied across ≥2 accounts (the tied
 // candidates are returned in ambiguous).
-func matchAccount(cfg *config.Config, mc MatchContext) match {
+func matchAccount(cfg *config.Config, mc MatchContext, credUsers []string) match {
 	type candidate struct {
 		accountKey string
 		sourceKey  string
@@ -381,10 +391,6 @@ func matchAccount(cfg *config.Config, mc MatchContext) match {
 	embeddedUser := ""
 	if mc.RemoteURL != "" {
 		embeddedUser = git.RemoteURLUser(mc.RemoteURL)
-	}
-	var credUsers []string
-	if mc.RepoPath != "" {
-		credUsers = git.CredentialUsernames(mc.RepoPath)
 	}
 	// First path component of the repo relative to the root holding it.
 	// For a canonical layout "root/sourceFolder/owner/repo" this is the

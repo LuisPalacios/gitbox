@@ -1375,6 +1375,8 @@ export namespace main {
 	    relinked: number;
 	    unmatched: OrphanRepoDTO[];
 	    ignored: OrphanRepoDTO[];
+	    skipped?: reconcile.Skip[];
+	    background?: boolean;
 	    workspacesChanged: boolean;
 	    workspaceChoices: WorkspaceChoiceDTO[];
 	    placeholders: WorkspaceFolderDTO[];
@@ -1394,6 +1396,8 @@ export namespace main {
 	        this.relinked = source["relinked"];
 	        this.unmatched = this.convertValues(source["unmatched"], OrphanRepoDTO);
 	        this.ignored = this.convertValues(source["ignored"], OrphanRepoDTO);
+	        this.skipped = this.convertValues(source["skipped"], reconcile.Skip);
+	        this.background = source["background"];
 	        this.workspacesChanged = source["workspacesChanged"];
 	        this.workspaceChoices = this.convertValues(source["workspaceChoices"], WorkspaceChoiceDTO);
 	        this.placeholders = this.convertValues(source["placeholders"], WorkspaceFolderDTO);
@@ -2100,6 +2104,25 @@ export namespace recipe {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace reconcile {
+
+	export class Skip {
+	    path: string;
+	    reason: string;
+
+	    static createFrom(source: any = {}) {
+	        return new Skip(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.reason = source["reason"];
+	    }
 	}
 
 }

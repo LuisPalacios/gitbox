@@ -246,6 +246,7 @@ When the change touches one of these areas, I also check it on the dev machine:
 - [ ] Config: GitboxApp loads the config, and the change survives a restart
 - [ ] Credentials: the account's health words in the sidebar and on its card match the real credential state
 - [ ] Disk reconcile or containers: a clone dropped under a root is adopted or listed in **Unmatched clones** on the next window focus
+- [ ] Edit a different repository during a scan. Its edit and the new adoption both survive a restart
 - [ ] GUI: the changed screen renders in Simple and in Advanced, in light and dark themes
 - [ ] Windows: no console window flashes when the changed action runs
 

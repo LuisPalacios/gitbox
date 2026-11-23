@@ -102,6 +102,65 @@ func TestPlan_AdoptsConfidentClonesInPlace(t *testing.T) {
 			}
 		}
 	}
+
+	t.Run("a concurrent source rename only skips its own clone", func(t *testing.T) {
+		root := t.TempDir()
+		cfg := testConfig(root)
+		github := filepath.Join(root, "github-me", "me", "first")
+		forge := filepath.Join(root, "forge")
+		initRepo(t, github, "https://github.com/me/first.git")
+		initRepo(t, forge, "https://git.example.org/me/second.git")
+		plan, err := Plan(cfg)
+		if err != nil || len(plan.Adopt) != 2 {
+			t.Fatalf("plan=%+v err=%v", plan, err)
+		}
+		if err := cfg.RenameSource("github-me", "renamed"); err != nil {
+			t.Fatal(err)
+		}
+		done := Apply(cfg, plan)
+		if len(done.Adopted) != 1 || done.Adopted[0].Path != forge || len(done.Skipped) != 1 ||
+			done.Skipped[0] != (Skip{Path: github, Reason: "sourceGone"}) {
+			t.Fatalf("applied = %+v", done)
+		}
+		if _, exists := cfg.Sources["github-me"]; exists {
+			t.Fatal("the scan recreated the renamed source")
+		}
+	})
+	t.Run("a new key or path in another source wins", func(t *testing.T) {
+		root := t.TempDir()
+		cfg := testConfig(root)
+		path := filepath.Join(root, "github-me", "me", "first")
+		initRepo(t, path, "https://github.com/me/first.git")
+		plan, err := Plan(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"ME/FIRST", "other/name"} {
+			cfg.Sources["other"] = config.Source{Account: "gitea-me", Repos: map[string]config.Repo{key: {CloneFolder: path}}}
+			if key == "ME/FIRST" {
+				cfg.Sources["other"].Repos[key] = config.Repo{}
+			}
+			done := Apply(cfg, plan)
+			if len(done.Adopted) != 0 || len(done.Skipped) != 1 || done.Skipped[0].Reason != "alreadyTracked" {
+				t.Fatalf("key=%s result=%+v", key, done)
+			}
+		}
+	})
+	t.Run("dropping a scanned root invalidates the plan", func(t *testing.T) {
+		primary, scanned := t.TempDir(), t.TempDir()
+		cfg := testConfig(primary, scanned)
+		path := filepath.Join(scanned, "github-me", "me", "elsewhere")
+		initRepo(t, path, "https://github.com/me/elsewhere.git")
+		plan, err := Plan(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg.Global.Roots = []string{primary}
+		done := Apply(cfg, plan)
+		if plan.SameScanScope(cfg) || len(done.Adopted) != 0 || len(done.Skipped) != 1 || done.Skipped[0].Path != path {
+			t.Fatalf("removed scan root: %+v", done)
+		}
+	})
 }
 
 func TestPlan_LeavesUndecidedClonesForMe(t *testing.T) {
@@ -142,6 +201,21 @@ func TestPlan_RelinksAMovedClone(t *testing.T) {
 	if len(cfg.Sources["github-me"].Repos) != 1 {
 		t.Errorf("repos = %v, want the one tracked repo, not a duplicate", cfg.Sources["github-me"].Repos)
 	}
+
+	t.Run("an edit to the old location wins", func(t *testing.T) {
+		cfg := testConfig(root)
+		plan, err := Plan(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		intent := config.Repo{CloneFolder: filepath.Join(root, "chosen"), Workspace: "chosen.code-workspace"}
+		cfg.Sources["github-me"].Repos["me/tracked"] = intent
+		done := Apply(cfg, plan)
+		if done.Relinked != 0 || len(done.Skipped) != 1 || done.Skipped[0] != (Skip{Path: moved, Reason: "moved"}) ||
+			cfg.Sources["github-me"].Repos["me/tracked"].CloneFolder != intent.CloneFolder {
+			t.Fatalf("relink overwrote newer intent: %+v", done)
+		}
+	})
 }
 
 func TestPlan_KeepsADeletedCloneTracked(t *testing.T) {

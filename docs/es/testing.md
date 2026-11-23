@@ -246,6 +246,7 @@ Cuando el cambio toca una de estas áreas, también lo compruebo en la máquina 
 - [ ] Config: GitboxApp carga la config, y el cambio sobrevive a un reinicio
 - [ ] Credenciales: las palabras de salud de la cuenta en la barra lateral y en su tarjeta coinciden con el estado real de la credencial
 - [ ] Reconcile de disco o contenedores: un clon puesto bajo una raíz se adopta o aparece en **Clones sin ubicar** la próxima vez que la ventana recupera el foco
+- [ ] Editar otro repositorio durante un escaneo. Tanto su cambio como la nueva adopción se conservan al reiniciar
 - [ ] GUI: la pantalla cambiada se renderiza en Simple y en Avanzado, en los temas claro y oscuro
 - [ ] Windows: no aparece ninguna ventana de consola al ejecutar la acción cambiada
 
