@@ -246,7 +246,7 @@ Simple mode shows a plain sentence; the code itself appears in the log.
 - `not_available_remote`: the action has no remote equivalent, such as the file manager.
 - `not_available_remote_path`: the folder is not a valid absolute path of the host, or a layer on this computer cannot carry it safely.
 - `harness_not_allowed`: the AI harness is not one of the catalog, or it has arguments.
-- `read_only`: this remote does not serve the action yet, such as a clone or a credential setup. A later version allows it.
+- `read_only`: this remote does not serve the action yet, such as a credential setup. A later version allows it.
 - `remote_path_invalid`: the folder is not an absolute path of the host, or it holds a control character.
 
 ## Windows and macOS clients

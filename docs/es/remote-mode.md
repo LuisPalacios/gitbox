@@ -246,7 +246,7 @@ El modo simple muestra una frase sencilla; el código en sí aparece en el regis
 - `not_available_remote`: la acción no tiene equivalente remoto, como el gestor de archivos.
 - `not_available_remote_path`: la carpeta no es una ruta absoluta válida del host, o una capa de este ordenador no puede llevarla con seguridad.
 - `harness_not_allowed`: el harness de IA no es del catálogo, o lleva argumentos.
-- `read_only`: este remoto aún no ofrece la acción, como un clonado o una configuración de credenciales. Una versión posterior lo permite.
+- `read_only`: este remoto aún no ofrece la acción, como una configuración de credenciales. Una versión posterior lo permite.
 - `remote_path_invalid`: la carpeta no es una ruta absoluta del host, o contiene un carácter de control.
 
 ## Clientes Windows y macOS
