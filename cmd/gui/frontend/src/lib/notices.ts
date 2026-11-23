@@ -13,6 +13,7 @@ export interface Notice {
   kind: NoticeKind;
   title: string;
   lines: string[];
+  retry?: () => void;
 }
 
 // How long info and success notices stay, and how many show at once (the
@@ -41,9 +42,10 @@ export const notices = {
 };
 
 // pushNotice shows a notice and returns its id. Empty lines are dropped.
-export function pushNotice(kind: NoticeKind, title: string, lines: Array<string | false | null | undefined> = []): number {
+export function pushNotice(kind: NoticeKind, title: string, lines: Array<string | false | null | undefined> = [], retry?: () => void): number {
   const id = nextId++;
   const notice: Notice = { id, kind, title, lines: lines.filter((l): l is string => !!l) };
+  if (retry) notice.retry = retry;
   const kept = [...list, notice];
   while (kept.length > MAX_NOTICES) dismissTimer(kept.shift()!.id);
   publish(kept);

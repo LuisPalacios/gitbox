@@ -57,15 +57,19 @@ func configFiles() configFileOps {
 
 func saveWithFiles(cfg *Config, path string, files configFileOps) error {
 	cfg.PruneCollapsed()
+	data, err := Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	return saveBytes(cfg, path, data, files)
+}
+
+func saveBytes(cfg *Config, path string, data []byte, files configFileOps) error {
 
 	if err := EnsureDir(path); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
 
-	data, err := Marshal(cfg)
-	if err != nil {
-		return err
-	}
 	mode := os.FileMode(0o644)
 	if info, err := os.Stat(path); err == nil {
 		mode = info.Mode().Perm()

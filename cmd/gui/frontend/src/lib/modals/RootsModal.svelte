@@ -3,7 +3,7 @@
   // one (asking to forget the repos still under it), and the nested scan
   // depth. No clone moves on disk from here.
   import { fade, slide } from 'svelte/transition';
-  import { bridge } from '../bridge';
+  import { bridge, settingsSaveFailed } from '../bridge';
   import { pushNotice, errorText } from '../notices';
   import { t } from '../i18n';
   import Rich from '../Rich.svelte';
@@ -76,18 +76,15 @@
     } catch (err: any) { pushNotice('error', $t('notice.rootRemoveFailed'), [errorText(err)]); }
   }
 
-  let nestedDepthError = '';
-  async function saveNestedScanDepth() {
-    const d = Math.max(1, Math.floor(nestedScanDepth || 1));
+  async function saveNestedScanDepth(d = Math.max(1, Math.floor(nestedScanDepth || 1))) {
     nestedScanDepth = d;
-    nestedDepthError = '';
     // Persist only. Deliberately no config reload, dashboard re-render, or disk
     // re-scan here — those would block this dialog. Re-scan explicitly afterward
     // via a container repo's ⋮ → "Re-scan for nested clones".
     try {
       await bridge.setNestedScanDepth(d);
     } catch (err: any) {
-      nestedDepthError = err?.message || String(err);
+      settingsSaveFailed(err, () => saveNestedScanDepth(d));
     }
   }
 </script>
@@ -134,10 +131,9 @@
         <div class="form-row" style="margin-top:14px;">
           <label class="form-label" for="nested-scan-depth">{$t('roots.nestedDepth')}</label>
           <input id="nested-scan-depth" class="form-input" type="number" min="1" style="max-width:90px;"
-            bind:value={nestedScanDepth} on:change={saveNestedScanDepth} disabled={$blocked('setNestedScanDepth')} title={$blocked('setNestedScanDepth') ? $t('remote.readOnlyTip') : undefined} />
+            bind:value={nestedScanDepth} on:change={() => saveNestedScanDepth()} disabled={$blocked('setNestedScanDepth')} title={$blocked('setNestedScanDepth') ? $t('remote.readOnlyTip') : undefined} />
           <span class="settings-value">{$t('roots.nestedDepthHint')}</span>
         </div>
-        {#if nestedDepthError}<p class="form-error">{nestedDepthError}</p>{/if}
       </div>
       <div class="modal-foot">
         <button class="btn-cancel" on:click={() => open = false}>{$t('common.close')}</button>

@@ -54,14 +54,9 @@ type App struct {
 	// prefs holds the client preferences; nil means sharedPrefs{a}, the
 	// client keys of cfg (see prefs.go).
 	prefs prefsStore
-	// prefsMergeWarned logs once that the file's client preferences could
-	// not be read before a save (mergeDiskPrefs).
-	prefsMergeWarned sync.Once
-	// cfgBase is the domain last read from or written to cfgPath (#241).
-	// saveConfig saves only while the file still holds it, so a domain
-	// change another process saved meanwhile is never overwritten. The zero
-	// value means the file was never read. Guarded by mu.
-	cfgBase config.Hash
+	// cfgBase identifies the config bytes observed at the last load or save.
+	// Guarded by mu.
+	cfgBase config.FileRevision
 	// readOnly makes an App that changes nothing it reads: saveConfig
 	// refuses and fetch skips the repair of a clone's .git/config. No
 	// gitbox-server sets it since the mutations are served (#294, #295);
@@ -184,7 +179,8 @@ func (a *App) initLocal(ctx context.Context) {
 	if a.cfgPath == "" {
 		a.cfgPath = config.DefaultV2Path()
 	}
-	cfg, err := config.Load(a.cfgPath)
+	cfg, _, base, err := config.LoadRevision(a.cfgPath, false)
+	a.cfgBase = base
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			// Config exists but failed to parse — store error for the frontend to display.
@@ -200,7 +196,6 @@ func (a *App) initLocal(ctx context.Context) {
 		}
 	} else {
 		a.cfgLoaded = true
-		a.cfgBase = config.DomainHash(cfg)
 		if a.testFirstRun {
 			cfg.Global.Roots = nil
 			a.testFirstRun = false
@@ -227,9 +222,8 @@ func (a *App) closeLocal() {
 }
 
 // saveConfig persists the in-memory config to disk, with the client
-// preferences that are on disk (mergeDiskPrefs), and only while the file
-// still holds the domain it last read (config.SaveIfUnchanged, #241): a
-// conflict reloads the file and returns config.ChangedError. It refuses to save on a
+// preferences that are on disk (mergeDiskPrefs). A conflicting file revision
+// reloads the file and returns config.ChangedError. It refuses to save on a
 // read-only server, and when the config was not successfully loaded — the
 // guard prevents the empty default fabricated in Startup() from being
 // written over a real file we failed to parse, which would destroy the
@@ -240,7 +234,7 @@ func (a *App) saveConfig() error {
 	if err := a.saveRefused(); err != nil {
 		return err
 	}
-	h, err := config.SaveIfUnchanged(a.cfg, a.cfgPath, a.cfgBase, a.mergeDiskPrefs)
+	h, err := a.cfgBase.Save(a.cfg, a.cfgPath, a.mergeDiskPrefs)
 	if err != nil {
 		if isConfigChanged(err) {
 			a.reloadAfterConflict()
@@ -260,16 +254,20 @@ func isConfigChanged(err error) bool {
 
 // reloadAfterConflict replaces the config in memory with the file, keeping
 // the pointer, after a save was refused (#241): the change that conflicted
-// is dropped, and the window shows what the other process saved. A file
-// that does not load leaves memory as it is. Caller holds a.mu.
+// is dropped, and the window shows what the other process saved. If the file no longer loads,
+// clear the pending mutation and block edits until recovery. Caller holds a.mu.
 func (a *App) reloadAfterConflict() {
-	fresh, err := config.Load(a.cfgPath)
+	fresh, _, base, err := config.LoadRevision(a.cfgPath, false)
+	a.cfgBase = base
 	if err != nil {
+		a.cfgLoaded = false
+		a.cfgLoadError = userMsg(err)
+		*a.cfg = config.Config{Version: config.CurrentVersion, Accounts: make(map[string]config.Account), Sources: make(map[string]config.Source)}
 		return
 	}
+	a.cfgLoaded, a.cfgLoadError = true, ""
 	a.refreshPRConfigLocked(fresh)
 	*a.cfg = *fresh
-	a.cfgBase = config.DomainHash(fresh)
 }
 
 // commitConfig applies change to the live config and saves it through
@@ -334,8 +332,8 @@ func (a *App) savePrefs(change func(*config.ClientPrefs) error) error {
 		}
 		return refused
 	}
-	save := func() (config.Hash, error) {
-		return config.SaveIfUnchanged(a.cfg, a.cfgPath, a.cfgBase, func(onDisk *config.Config) error {
+	save := func() (config.FileRevision, error) {
+		return a.cfgBase.Save(a.cfg, a.cfgPath, func(onDisk *config.Config) error {
 			_ = a.mergeDiskPrefs(onDisk)
 			return apply()
 		})
@@ -350,6 +348,9 @@ func (a *App) savePrefs(change func(*config.ClientPrefs) error) error {
 		// change does not touch the domain, so it applies on top of the
 		// file once reloaded (#241).
 		a.reloadAfterConflict()
+		if !a.cfgLoaded {
+			return err
+		}
 		if h, err = save(); err != nil {
 			if isConfigChanged(err) {
 				a.reloadAfterConflict()
@@ -375,29 +376,11 @@ func (a *App) saveRefused() error {
 	return nil
 }
 
-// mergeDiskPrefs lays the client preferences that are on disk over the
-// config about to be saved (#240). Several processes on one machine share
-// that file: the local window, a remote window, the terminals window, and
-// on a host also gitbox-server. Each one saves its own preferences, so the
-// file's are the latest, and a domain save never reverts them. It runs
-// inside config.SaveIfUnchanged's lock with the file it read (#241). No
-// readable file (onDisk nil) keeps the values in memory, with one log line
-// when the file exists but does not parse: nothing half-merged is ever
-// written. Caller holds a.mu.
+// mergeDiskPrefs keeps client settings saved by other windows. Caller holds a.mu.
 func (a *App) mergeDiskPrefs(onDisk *config.Config) error {
-	if onDisk == nil {
-		if _, err := os.Stat(a.cfgPath); err == nil {
-			a.prefsMergeWarned.Do(func() {
-				out := a.hostLog
-				if out == nil {
-					out = os.Stderr
-				}
-				fmt.Fprintln(out, "warning: the preferences in gitbox.json could not be read before saving; keeping the ones in memory")
-			})
-		}
-		return nil
+	if onDisk != nil {
+		config.PreserveClientPrefs(a.cfg, onDisk)
 	}
-	config.PreserveClientPrefs(a.cfg, onDisk)
 	return nil
 }
 
@@ -684,13 +667,14 @@ func (a *App) reloadConfigLocal() (ConfigDTO, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	cfg, err := config.Load(a.cfgPath)
+	cfg, _, base, err := config.LoadRevision(a.cfgPath, false)
 	if err != nil {
 		return ConfigDTO{}, fmt.Errorf("reloading config: %w", err)
 	}
 	a.refreshPRConfigLocked(cfg)
 	a.cfg = cfg
-	a.cfgBase = config.DomainHash(cfg)
+	a.cfgBase = base
+	a.cfgLoaded, a.cfgLoadError = true, ""
 
 	return a.configDTO()
 }
@@ -1513,20 +1497,12 @@ func (a *App) repairConfigLocal() ConfigRepairResult {
 		return ConfigRepairResult{Success: false, Error: userMsg(a.saveRefused())}
 	}
 
-	cfg, repairs, err := config.LoadWithRepair(a.cfgPath)
+	cfg, repairs, base, err := config.LoadRevision(a.cfgPath, true)
 	if err != nil {
 		return ConfigRepairResult{Success: false, Error: userMsg(err)}
 	}
-	a.refreshPRConfigLocked(cfg)
-	a.cfg = cfg
-	a.cfgLoaded = true
-	a.cfgLoadError = ""
-	// The file on disk is the broken one being replaced: save over it
-	// whatever it holds (#241).
-	a.cfgBase = config.Hash{}
-
-	if err := a.saveConfig(); err != nil {
-		return ConfigRepairResult{Success: false, Error: userText(fmt.Sprintf("saving repaired config: %v", err))}
+	if err := a.saveReplacement(cfg, base); err != nil {
+		return ConfigRepairResult{Success: false, Error: userMsg(err)}
 	}
 
 	details := make([]string, 0, len(repairs))
@@ -1633,23 +1609,34 @@ func (a *App) restoreFromBackupLocal(backupPath string) ConfigRepairResult {
 		return ConfigRepairResult{Success: false, Error: fmt.Sprintf("backup %s is also invalid: %v", filepath.Base(absBackup), err)}
 	}
 
-	// Adopt + save. config.Save's internal backupBeforeSave() snapshots
-	// the current (broken) gitbox.json to gitbox-<now>.json before the
-	// overwrite.
-	a.refreshPRConfigLocked(cfg)
-	a.cfg = cfg
-	a.cfgLoaded = true
-	a.cfgLoadError = ""
-	// The file on disk is the broken one being replaced: save over it
-	// whatever it holds (#241).
-	a.cfgBase = config.Hash{}
-	if err := a.saveConfig(); err != nil {
-		return ConfigRepairResult{Success: false, Error: userText(fmt.Sprintf("saving restored config: %v", err))}
+	if err := a.saveReplacement(cfg, a.cfgBase); err != nil {
+		return ConfigRepairResult{Success: false, Error: userMsg(err)}
 	}
+
 	return ConfigRepairResult{
 		Success: true,
 		Repairs: []string{fmt.Sprintf("Restored from %s", filepath.Base(absBackup))},
 	}
+}
+
+// saveReplacement adopts a repair or restore only once the file it replaces
+// has been checked and the replacement written. Caller holds a.mu.
+func (a *App) saveReplacement(cfg *config.Config, base config.FileRevision) error {
+	next, err := base.Save(cfg, a.cfgPath, func(disk *config.Config) error {
+		if disk != nil {
+			config.PreserveClientPrefs(cfg, disk)
+		}
+		return nil
+	})
+	if err != nil {
+		if isConfigChanged(err) {
+			a.reloadAfterConflict()
+		}
+		return err
+	}
+	a.refreshPRConfigLocked(cfg)
+	a.cfg, a.cfgBase, a.cfgLoaded, a.cfgLoadError = cfg, next, true, ""
+	return nil
 }
 
 // GetPeriodicSync returns the current periodic sync interval from config.
@@ -1766,10 +1753,18 @@ func (a *App) setCollapsedLocal(state config.CollapsedState) error {
 	if a.cfg == nil {
 		return fmt.Errorf("config not loaded")
 	}
-	// The sidebar rail is a client preference: keep the one on this host.
-	state.Sidebar = a.cfg.Global.Collapsed != nil && a.cfg.Global.Collapsed.Sidebar
-	a.cfg.Global.Collapsed = &state
-	return a.saveConfig()
+	// Folding is pure layout. Apply it once more against the new accounts
+	// after an external domain change; pruning drops obsolete keys.
+	save := func() error {
+		state.Sidebar = a.cfg.Global.Collapsed != nil && a.cfg.Global.Collapsed.Sidebar
+		a.cfg.Global.Collapsed = &state
+		return a.saveConfig()
+	}
+	err := save()
+	if changed, ok := errors.AsType[*config.ChangedError](err); ok && !changed.Locked && a.cfgLoaded {
+		return save()
+	}
+	return err
 }
 
 // SetPeriodicSync saves the periodic sync interval to config.

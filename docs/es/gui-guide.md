@@ -112,6 +112,8 @@ Cierra cualquier diálogo con **Escape** o haciendo clic fuera de él. Los diál
 
 Gitbox tiene dos experiencias. **Simple** muestra el estado de los proyectos y las acciones en lenguaje sencillo. **Avanzado** muestra cada detalle y herramienta de git. Cambia de modo con el interruptor de la barra superior, a la izquierda del engranaje de ajustes: gris es Simple, rojo es Avanzado, el modo con poder destructivo. Las instalaciones nuevas empiezan en Simple; las configs anteriores a este ajuste se quedan en Avanzado. La elección se guarda como `global.ui_mode` en `gitbox.json`.
 
+Si otra ventana o un editor cambia el archivo de configuración mientras trabajo, Gitbox conserva la edición externa. El aviso ofrece **Reintentar** para ajustes como los indicadores de pull requests, la comprobación del gitignore global y la profundidad del escaneo anidado.
+
 En Simple, cada proyecto muestra lo que Gitbox ha observado y cuándo hay que actuar.
 
 - **Sin cambios locales** — el proyecto no tiene archivos cambiados en este ordenador.

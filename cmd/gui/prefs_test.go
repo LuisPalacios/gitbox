@@ -480,25 +480,23 @@ func TestPrefChangesAndDomainSavesInterleave(t *testing.T) {
 	}
 }
 
-// A file that no longer parses keeps the preferences in memory, logs once,
-// and a domain save still writes a whole config.
+// A file that no longer parses stays untouched until the user repairs it.
 func TestUnreadablePrefsKeepMemory(t *testing.T) {
 	w := newCrossWindow(t)
-	var log lockedBuffer
-	w.local.hostLog = &log
 	if err := os.WriteFile(w.path, []byte("{ not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for depth := 2; depth <= 3; depth++ {
-		if err := w.local.SetNestedScanDepth(depth); err != nil {
-			t.Fatal(err)
-		}
+	if err := w.local.SetNestedScanDepth(3); !isConfigChanged(err) {
+		t.Fatalf("expected conflict: %v", err)
 	}
-	disk := loadConfig(t, w.path).Global
-	if disk.Theme != "light" || disk.Language != "en" || disk.NestedScanDepth != 3 {
-		t.Errorf("after saving over an unreadable file: theme %q, language %q, depth %d", disk.Theme, disk.Language, disk.NestedScanDepth)
+	if w.local.cfgLoaded || w.local.cfgLoadError == "" {
+		t.Fatal("editing should be blocked until reload or repair")
 	}
-	if n := strings.Count(log.String(), "could not be read before saving"); n != 1 {
-		t.Errorf("the unreadable file was logged %d times, want once:\n%s", n, log.String())
+	if err := w.local.SetTheme("dark"); err == nil {
+		t.Fatal("saved preference over invalid JSON")
+	}
+	data, err := os.ReadFile(w.path)
+	if err != nil || string(data) != "{ not json" {
+		t.Fatalf("invalid file overwritten: %q, %v", data, err)
 	}
 }

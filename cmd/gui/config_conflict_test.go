@@ -1,6 +1,13 @@
 package main
 
 import (
+	"bufio"
+	"fmt"
+	"github.com/LuisPalacios/gitbox/pkg/git"
+	"io"
+	"os"
+	"os/exec"
+	"slices"
 	"sync"
 	"testing"
 
@@ -11,8 +18,11 @@ import (
 // window that started on that file would (#241).
 func windowOn(t *testing.T, path string) *App {
 	t.Helper()
-	cfg := loadConfig(t, path)
-	return &App{cfg: cfg, cfgPath: path, cfgLoaded: true, cfgBase: config.DomainHash(cfg)}
+	cfg, _, base, err := config.LoadRevision(path, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &App{cfg: cfg, cfgPath: path, cfgLoaded: true, cfgBase: base}
 }
 
 // TestConfigChangedConflict: two windows on one gitbox.json and a plain
@@ -74,6 +84,74 @@ func TestConfigChangedConflict(t *testing.T) {
 // TestFilePrefsUpdateUnderLock: a preference store on the file (the
 // terminals window) racing domain saves keeps every change (#241).
 func TestFilePrefsUpdateUnderLock(t *testing.T) {
+	// Start the launcher editor in a second process. Both processes have already
+	// loaded the same file before either begins writing.
+	const envPath = "GITBOX_TEST_TERMINALS_CONFIG"
+	if path := os.Getenv(envPath); path != "" {
+		child := &App{cfgPath: path}
+		child.useOwnPrefsFile()
+		fmt.Println("ready")
+		if _, err := io.ReadAll(os.Stdin); err != nil {
+			t.Fatal(err)
+		}
+		err := child.SaveTerminalProfiles(
+			[]config.TerminalApp{{ID: "term", Name: "Terminal", Command: "term"}}, nil,
+			[]config.TerminalProfile{{ID: "fixture", Name: "Fixture", TerminalID: "term", Source: "user"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	t.Run("two processes preserve roots, profiles and layout", func(t *testing.T) {
+		path := seedConfig(t, "gitbox.json", nil)
+		parent, stale := windowOn(t, path), windowOn(t, path)
+		child := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestFilePrefsUpdateUnderLock$")
+		git.HideWindow(child)
+		child.Env = append(os.Environ(), envPath+"="+path)
+		child.Stderr = os.Stderr
+		input, err := child.StdinPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer input.Close()
+		output, err := child.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := child.Start(); err != nil {
+			t.Fatal(err)
+		}
+		ready, err := bufio.NewReader(output).ReadString('\n')
+		if err != nil || ready != "ready\n" {
+			t.Fatalf("child readiness: %q %v", ready, err)
+		}
+		root := t.TempDir()
+		if err := parent.AddRoot(root); err != nil {
+			t.Fatal(err)
+		}
+		if err := parent.SetTheme("dark"); err != nil {
+			t.Fatal(err)
+		}
+		if err := parent.clientPrefs().Update(func(p *config.ClientPrefs) { p.Window = &config.WindowState{Width: 900, Height: 600} }); err != nil {
+			t.Fatal(err)
+		}
+		if err := input.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := child.Wait(); err != nil {
+			t.Fatal(err)
+		}
+		if err := stale.SetCollapsed(config.CollapsedState{View: "all"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := parent.SetNestedScanDepth(4); err != nil {
+			t.Fatal(err)
+		}
+		g := loadConfig(t, path).Global
+		if !slices.Contains(g.Roots, root) || g.Theme != "dark" || g.Window == nil || g.Window.Width != 900 || len(g.TerminalProfiles) != 1 || g.TerminalProfiles[0].ID != "fixture" || g.Collapsed == nil || g.Collapsed.View != "all" || g.NestedScanDepth != 4 {
+			t.Fatalf("a file update was lost: %+v", g)
+		}
+	})
 	path := seedConfig(t, "gitbox.json", nil)
 	win := windowOn(t, path)
 	store := newFilePrefs(path)

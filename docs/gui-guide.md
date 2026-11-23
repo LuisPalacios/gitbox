@@ -112,6 +112,8 @@ Close any dialog with **Escape** or by clicking outside it. Dialogs that are bus
 
 Gitbox has two experiences. **Simple** shows project status and actions in plain language. **Advanced** shows every git detail and tool. Switch with the toggle in the top bar, left of the settings gear: grey is Simple, red is Advanced, the mode with destructive power. New installs start in Simple; configs from before the setting existed stay in Advanced. The choice is saved as `global.ui_mode` in `gitbox.json`.
 
+If another window or an editor changes the settings file while I work, Gitbox preserves the external edit. The notice offers **Retry** for settings such as pull request badges, the global gitignore check and nested scan depth.
+
 In Simple, each project shows what Gitbox observed and when to act.
 
 - **No local changes** — the project has no changed files on this computer.
