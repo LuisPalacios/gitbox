@@ -134,6 +134,8 @@ SSH keys **cannot** call your provider's API, so discovery and repo creation nee
 5. Gitbox verifies the SSH connection.
 6. You store a PAT for API access (discovery, repo creation, mirrors).
 
+Deleting an account removes its key pair and its `Host` entry too, so a new account with the same key gets a new key.
+
 ### SSH companion PAT
 
 The companion PAT covers:
@@ -206,16 +208,26 @@ Typical fix on each OS:
 
 ## Remote hosts
 
-In a [remote window](remote-mode.md), the credentials live on the host, because the host clones, fetches and calls the provider. Only the token works there for now:
+In a [remote window](remote-mode.md), the credentials live on the host, because the host clones, fetches and calls the provider. The token and SSH work there; GCM does not:
 
 - **Token**: works. You paste the token in the remote window. It travels to the host once, inside the SSH connection, and the host stores it as on a desktop: `~/.config/gitbox/credentials/<accountKey>`, mode `0600` in a `0700` folder. It never comes back to the window, and no log, error or command line on either computer holds it. Right after the store, the window shows what the [permission audit](#credential-file-permissions) found on the host, never the file's contents.
 - **GCM**: not offered. GCM signs in with a browser or a window on the computer that runs it, which on a host nobody sees, and it keeps the credential in a store an SSH session cannot use reliably. The host refuses it with `gcm_unsupported_remote` without trying, because whether GCM works there depends on the state of its keyring:
   - Linux: the Secret Service keyring (`secretservice`) needs an unlocked desktop session, which a headless server does not have.
   - macOS: the login keychain stays locked in an SSH session.
   - Windows: Windows Credential Manager (`wincredman`) does not work reliably over SSH.
-- **SSH**: setting up an SSH key on the host comes in a later version.
+- **SSH**: works. The host makes the key pair in its own `~/.ssh/`, next to its `Host gitbox-<accountKey>` entry, and keeps the private key: only the public key comes back to the window. **Copy to clipboard** puts it in this computer's clipboard, and the provider link opens in this computer's browser. Once I add the key on the provider, **Verify connection** tests it from the host. **Regenerate SSH key** replaces the key on the host, and I add the new one on the provider.
 
 Only Linux hosts are supported for now. On a Windows host the token file will get an ACL that only my user can read, which comes with Windows host support.
+
+### SSH agent forwarding and account keys
+
+When my SSH connection to the host forwards this computer's agent (`ssh -A`, or `ForwardAgent yes` in my `~/.ssh/config`), git on the host can reach this computer's keys too. The setup result of a remote window says which key git uses there:
+
+- The `Host` entry Gitbox writes says `IdentitiesOnly yes`, so ssh on the host offers only the account's key through the `gitbox-<accountKey>` alias, even when the agent holds others. The window says that this computer's keys reach the host and that git still uses the account's key.
+- If someone edited the entry and removed `IdentitiesOnly yes`, ssh may offer a forwarded key first, and git reaches the provider as whoever owns that key. The window warns, and in Advanced mode it names the line to add back.
+- If this computer's agent holds the account's key itself, git signs in as the account either way.
+
+Gitbox compares SHA-256 fingerprints only: those `ssh-add -l` lists on the host and the one of the account's `.pub` file. No key material crosses the connection, and the agent's key comments stay on the host.
 
 ### Switching a GCM account to a token
 
