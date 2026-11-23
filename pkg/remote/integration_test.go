@@ -856,11 +856,11 @@ func TestReadsLeaveTheDomainUntouched(t *testing.T) {
 		}
 		cancel()
 	}
-	// A credential mutation is refused by the server itself, not only by
-	// the client, until #242 serves it.
+	// The SSH key setup is refused by the server itself, not only by the
+	// client, until #244 serves it.
 	ctx, cancel := context.WithTimeout(testCtx(t), 30*time.Second)
-	if err := client.Call(ctx, "ChangeCredentialType", []any{"acct", "ssh"}, nil, rpc.WithRequestID("00000000-0000-4000-8000-000000000001")); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
-		t.Errorf("ChangeCredentialType = %v, want unsupported", err)
+	if err := client.Call(ctx, "CredentialSetupSSH", []any{"acct"}, nil, rpc.WithRequestID("00000000-0000-4000-8000-000000000001")); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
+		t.Errorf("CredentialSetupSSH = %v, want unsupported", err)
 	}
 	cancel()
 
