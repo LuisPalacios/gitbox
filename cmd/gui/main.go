@@ -232,10 +232,11 @@ func main() {
 				wailsrt.WindowShow(app.ctx)
 			},
 		},
-		OnStartup:     app.Startup,
-		OnShutdown:    app.Shutdown,
-		OnBeforeClose: app.BeforeClose,
-		OnDomReady:    app.DomReady,
+		OnStartup:      app.Startup,
+		OnShutdown:     app.Shutdown,
+		OnBeforeClose:  app.BeforeClose,
+		OnDomReady:     app.DomReady,
+		ErrorFormatter: localWindowError,
 		Bind: []any{
 			app,
 		},
@@ -243,6 +244,15 @@ func main() {
 	if err != nil {
 		println("Error:", err.Error())
 	}
+}
+
+// Local bindings historically return plain messages. Give a settings
+// conflict its stable code so the window can offer the user's action again.
+func localWindowError(err error) any {
+	if isConfigChanged(err) {
+		return windowError(err)
+	}
+	return userMsg(err)
 }
 
 // runTerminalsWindow runs the dedicated Terminals manager subprocess
@@ -309,9 +319,10 @@ func runTerminalsWindow(app *App) {
 				wailsrt.WindowShow(app.ctx)
 			},
 		},
-		OnStartup:  app.Startup,
-		OnShutdown: app.Shutdown,
-		OnDomReady: app.DomReady,
+		OnStartup:      app.Startup,
+		OnShutdown:     app.Shutdown,
+		OnDomReady:     app.DomReady,
+		ErrorFormatter: localWindowError,
 		Bind: []any{
 			app,
 		},

@@ -2,10 +2,14 @@ package config
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -60,14 +64,14 @@ func (e *ChangedError) Error() string {
 
 const (
 	// lockStale is the age after which a lock file is taken to be left by a
-	// writer that died, and is broken.
+	// writer that may have died. Its PID and identity are checked before removal.
 	lockStale = 30 * time.Second
 	// lockPoll is how often a writer retries a held lock.
 	lockPoll = 20 * time.Millisecond
 )
 
 // lockWait is how long a writer waits for a held lock; tests shorten it.
-var lockWait = 5 * time.Second
+var lockWait = 2 * time.Second
 
 // lockWarn reports a broken lock; tests replace it.
 var lockWarn = func(path string) {
@@ -75,81 +79,168 @@ var lockWarn = func(path string) {
 }
 
 // acquireLock takes path.lock with O_EXCL, which works the same on every
-// supported system, breaking a lock older than lockStale.
+// supported system, reclaiming only a dead writer’s stale lock.
 func acquireLock(path string) (release func(), err error) {
 	lock := path + ".lock"
 	deadline := time.Now().Add(lockWait)
 	for {
 		f, err := os.OpenFile(lock, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 		if err == nil {
-			_, _ = fmt.Fprintf(f, "%d\n", os.Getpid())
-			_ = f.Close()
+			_, writeErr := fmt.Fprintf(f, "%d\n", os.Getpid())
+			if err := errors.Join(writeErr, f.Close()); err != nil {
+				_ = os.Remove(lock)
+				return nil, err
+			}
 			return func() { _ = os.Remove(lock) }, nil
 		}
 		if !errors.Is(err, fs.ErrExist) {
 			return nil, fmt.Errorf("locking config: %w", err)
 		}
-		if info, serr := os.Stat(lock); serr == nil && time.Since(info.ModTime()) > lockStale {
-			lockWarn(lock)
-			_ = os.Remove(lock)
-			continue
-		}
-		if time.Now().After(deadline) {
+		if !time.Now().Before(deadline) {
 			return nil, &ChangedError{Locked: true}
 		}
-		time.Sleep(lockPoll)
+		if info, err := os.Stat(lock); err == nil && time.Since(info.ModTime()) > lockStale && removeDeadLock(lock) {
+			lockWarn(lock)
+			continue
+		}
+		time.Sleep(min(lockPoll, time.Until(deadline)))
 	}
 }
 
-// SaveIfUnchanged saves cfg to path when the file still holds the domain
-// base (#241). Under the lock it reads the file and, when its domain hash
-// differs from base, returns ChangedError without writing. Otherwise it
-// calls merge with the config on disk (nil when there is no file or it
-// does not parse), so the caller can lay the
-// preferences on disk over cfg, and writes cfg. It returns the domain hash
-// written. A zero base means the caller never read the file: the save goes
-// ahead whatever the file holds, as before this guard. A file that does not
-// parse cannot be compared, so the save replaces it, as before (#240).
-func SaveIfUnchanged(cfg *Config, path string, base Hash, merge func(onDisk *Config) error) (Hash, error) {
+// Lock the stale inode before examining its owner. A second reaper may
+// already have removed it and a new writer may own the name.
+func removeDeadLock(path string) bool {
+	f, err := openReaper(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, 32))
+	if err != nil {
+		return false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || pid <= 0 || !processGone(pid) {
+		return false
+	}
+	held, err := f.Stat()
+	if err != nil || time.Since(held.ModTime()) <= lockStale {
+		return false
+	}
+	current, err := os.Stat(path)
+	return err == nil && os.SameFile(held, current) && os.Remove(path) == nil
+}
+
+// FileRevision identifies the bytes a window loaded or saved. Keeping the
+// domain and presentation fingerprints lets concurrent windows merge a change
+// confined to preferences or layout. A missing file also has a revision.
+type FileRevision struct {
+	known                                  bool
+	bytes, domain, presentation, collapsed Hash
+}
+
+func jsonHash(v any) Hash {
+	b, _ := json.Marshal(v) // preferences and layout contain only JSON field types
+	return sha256.Sum256(b)
+}
+
+func revision(data []byte, cfg *Config) FileRevision {
+	r := FileRevision{known: true}
+	if data != nil {
+		r.bytes = sha256.Sum256(data)
+	}
+	if cfg != nil {
+		r.domain = DomainHash(cfg)
+		r.collapsed = jsonHash(cfg.Global.Collapsed)
+		r.presentation = presentationHash(cfg)
+	}
+	return r
+}
+
+func presentationHash(c *Config) Hash {
+	return jsonHash(struct {
+		Prefs     ClientPrefs
+		Collapsed *CollapsedState
+	}{ExtractPrefs(c), c.Global.Collapsed})
+}
+
+// LoadRevision decodes and fingerprints the same bytes. On a parse failure
+// the raw revision can still guard an explicit repair or restore.
+func LoadRevision(path string, repair bool) (*Config, []Repair, FileRevision, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil, FileRevision{known: true}, err
+	}
+	c, repairs, err := decode(data, repair)
+	r := revision(data, c)
+	if repair {
+		r.domain = Hash{} // a repair must match the original bytes exactly
+	}
+	return c, repairs, r, err
+}
+
+func (r FileRevision) matches(data []byte, disk *Config) bool {
+	if !r.known {
+		return r.domain.IsZero() || r.domain == DomainHash(disk)
+	}
+	var sum Hash
+	if data != nil {
+		sum = sha256.Sum256(data)
+	}
+	if r.bytes == sum {
+		return true
+	}
+	return disk != nil && !r.domain.IsZero() && r.domain == DomainHash(disk) && r.presentation != presentationHash(disk)
+}
+
+// SaveIfUnchanged saves against a domain fingerprint for existing callers.
+// A window that has read the file uses FileRevision.Save to guard its bytes.
+func SaveIfUnchanged(cfg *Config, path string, base Hash, merge func(*Config) error) (Hash, error) {
+	r, err := (FileRevision{domain: base}).Save(cfg, path, merge)
+	return r.domain, err
+}
+
+// Save rechecks the revision under the lock, then merges the latest preferences
+// and writes atomically. Keep an external collapse change when the caller did
+// not change it (account renames, for example, can update the selected view).
+func (r FileRevision) Save(cfg *Config, path string, merge func(*Config) error) (FileRevision, error) {
 	if err := EnsureDir(path); err != nil {
-		return Hash{}, fmt.Errorf("creating config directory: %w", err)
+		return r, fmt.Errorf("creating config directory: %w", err)
 	}
 	release, err := acquireLock(path)
 	if err != nil {
-		return Hash{}, err
+		return r, err
 	}
 	defer release()
 
-	data, rerr := os.ReadFile(path)
-	switch {
-	case rerr == nil:
-		onDisk, perr := Parse(data)
-		if perr != nil {
-			// A file that does not parse cannot be compared: the save
-			// replaces it, as before this guard (#240).
-			onDisk = nil
-		} else if !base.IsZero() && DomainHash(onDisk) != base {
-			return Hash{}, &ChangedError{}
-		}
-		if merge != nil {
-			if err := merge(onDisk); err != nil {
-				return Hash{}, err
-			}
-		}
-	case errors.Is(rerr, fs.ErrNotExist):
-		if merge != nil {
-			if err := merge(nil); err != nil {
-				return Hash{}, err
-			}
-		}
-	default:
-		return Hash{}, fmt.Errorf("reading config: %w", rerr)
+	data, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return r, fmt.Errorf("reading config: %w", err)
 	}
-
-	if err := saveWithFiles(cfg, path, configFiles()); err != nil {
-		return Hash{}, err
+	var onDisk *Config
+	if data != nil {
+		onDisk, _ = Parse(data)
 	}
-	return DomainHash(cfg), nil
+	if !r.matches(data, onDisk) {
+		return r, &ChangedError{}
+	}
+	if onDisk != nil && r.known && r.collapsed == jsonHash(cfg.Global.Collapsed) {
+		cfg.Global.Collapsed = onDisk.Global.Collapsed
+	}
+	if merge != nil {
+		if err := merge(onDisk); err != nil {
+			return r, err
+		}
+	}
+	cfg.PruneCollapsed()
+	data, err = Marshal(cfg)
+	if err != nil {
+		return r, err
+	}
+	if err := saveBytes(cfg, path, data, configFiles()); err != nil {
+		return r, err
+	}
+	return revision(data, cfg), nil
 }
 
 // UpdateFile reads the config at path, lets change edit it, and saves the

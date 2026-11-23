@@ -1,9 +1,12 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -104,7 +107,11 @@ func TestCASSave(t *testing.T) {
 	t.Run("a stale lock is broken", func(t *testing.T) {
 		cfg, path, base := casFixture(t)
 		lock := path + ".lock"
-		if err := os.WriteFile(lock, []byte("1\n"), 0o600); err != nil {
+		child := exec.Command(os.Args[0], "-test.run=^$")
+		if err := child.Run(); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(lock, []byte(strconv.Itoa(child.Process.Pid)), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		old := time.Now().Add(-2 * lockStale)
@@ -129,6 +136,15 @@ func TestCASSave(t *testing.T) {
 	t.Run("a held lock is waited for and then refused", func(t *testing.T) {
 		cfg, path, base := casFixture(t)
 		if err := os.WriteFile(path+".lock", []byte("1\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		// Age alone cannot evict a live writer.
+		lock := path + ".lock"
+		if err := os.WriteFile(lock, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		old := time.Now().Add(-2 * lockStale)
+		if err := os.Chtimes(lock, old, old); err != nil {
 			t.Fatal(err)
 		}
 		prev := lockWait
@@ -210,22 +226,54 @@ func TestUpdateFile(t *testing.T) {
 	}
 }
 
-// TestCASSaveOverUnreadableFile: a file that does not parse cannot be
-// compared, so the save replaces it and merge sees no config (#240).
+// A window comparing the bytes it read refuses external rewrites, invalid
+// content and removal. A first-run save refuses a file that appeared.
 func TestCASSaveOverUnreadableFile(t *testing.T) {
-	cfg, path, base := casFixture(t)
-	if err := os.WriteFile(path, []byte("{ not json"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	var saw *Config
-	merged := false
-	if _, err := SaveIfUnchanged(cfg, path, base, func(onDisk *Config) error { merged, saw = true, onDisk; return nil }); err != nil {
-		t.Fatal(err)
-	}
-	if !merged || saw != nil {
-		t.Errorf("merge called=%v with %v, want once with nil", merged, saw)
-	}
-	if _, err := Load(path); err != nil {
-		t.Errorf("the save did not replace the unreadable file: %v", err)
+	for _, tc := range []string{"formatting", "invalid JSON", "removed", "appeared", "changed after repair"} {
+		t.Run(tc, func(t *testing.T) {
+			cfg, path, _ := casFixture(t)
+			if tc == "appeared" {
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, _, base, err := LoadRevision(path, tc == "changed after repair")
+			if err != nil && !(tc == "appeared" && errors.Is(err, os.ErrNotExist)) {
+				t.Fatal(err)
+			}
+			var data []byte
+			switch tc {
+			case "invalid JSON":
+				data = []byte("{")
+			case "removed":
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+			default:
+				data, err = Marshal(cfg)
+				if err != nil {
+					t.Fatal(err)
+				}
+				data = append(data, '\n')
+			}
+			if data != nil {
+				if err := os.WriteFile(path, data, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc == "invalid JSON" || tc == "removed" {
+				if _, err := SaveIfUnchanged(cfg, path, DomainHash(cfg), nil); err == nil {
+					t.Fatal("domain-only save accepted a missing or invalid replacement")
+				}
+			}
+			_, err = base.Save(cfg, path, func(*Config) error { t.Fatal("merging refused save"); return nil })
+			if _, ok := errors.AsType[*ChangedError](err); !ok {
+				t.Fatalf("expected a conflict, got %v", err)
+			}
+			fresh, err := os.ReadFile(path)
+			if data == nil && !errors.Is(err, os.ErrNotExist) || data != nil && (err != nil || !bytes.Equal(data, fresh)) {
+				t.Fatalf("external file changed: %v", err)
+			}
+		})
 	}
 }

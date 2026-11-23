@@ -15,6 +15,13 @@ test('I show notices, drop empty lines and dismiss them', async () => {
   assert.deepEqual(current(n), [{ id, kind: 'error', title: 'Open failed', lines: ['boom'] }]);
   n.dismissNotice(id);
   assert.deepEqual(current(n), []);
+  let retried = false;
+  const conflict = n.pushNotice('error', 'Settings changed', [], () => { retried = true; });
+  const [notice] = current(n);
+  assert.equal(retried, false);
+  n.dismissNotice(conflict);
+  notice.retry();
+  assert.equal(retried, true);
   n.dismissNotice(id);
   assert.deepEqual(current(n), []);
 });

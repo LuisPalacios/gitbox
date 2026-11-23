@@ -20,6 +20,9 @@
         <span class="title">{n.title}</span>
         <button class="icon-btn" on:click={() => dismissNotice(n.id)} title={$t('notice.dismiss')} aria-label={$t('notice.dismiss')}><UIIcon name="x" /></button>
       </div>
+      {#if n.retry}
+        <button class="btn" on:click={() => { dismissNotice(n.id); n.retry?.(); }}>{$t('notice.retry')}</button>
+      {/if}
       {#if n.lines.length > 0}
         <ul>
           {#each n.lines as line}<li class="selectable">{line}</li>{/each}

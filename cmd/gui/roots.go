@@ -102,7 +102,9 @@ func (a *App) initRootLocal(folder string) error {
 	}
 	a.cfgLoaded = true
 	if err := a.saveConfig(); err != nil {
-		a.cfgLoaded = false
+		if !isConfigChanged(err) {
+			a.cfgLoaded = false
+		}
 		return err
 	}
 	return nil

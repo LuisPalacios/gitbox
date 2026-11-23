@@ -47,12 +47,12 @@ type Calls = Record<string, (...args: never[]) => unknown>;
 // guardCalls returns calls with every blocked one refusing while
 // isRemote() holds, and every failure passed through normalize (see
 // decodeWindowError). message() gives the translated refusal.
-export function guardCalls<T extends Calls>(calls: T, isRemote: () => boolean, message: () => string, normalize: (e: unknown) => unknown = (e) => e): T {
+export function guardCalls<T extends Calls>(calls: T, isRemote: () => boolean, message: () => string, normalize: (e: unknown, name: string) => unknown = (e) => e): T {
   const out: Record<string, unknown> = {};
   for (const [name, fn] of Object.entries(calls)) {
     const call = (...args: never[]) => {
       const result = fn(...args);
-      return result instanceof Promise ? result.catch((e: unknown) => { throw normalize(e); }) : result;
+      return result instanceof Promise ? result.catch((e: unknown) => { throw normalize(e, name); }) : result;
     };
     out[name] = READ_ONLY_BLOCKED.has(name)
       ? (...args: never[]) => (isRemote() ? Promise.reject(new ReadOnlyError(message())) : call(...args))

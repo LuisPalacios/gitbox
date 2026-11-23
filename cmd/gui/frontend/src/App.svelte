@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { bridge, events, setRemoteWindow } from './lib/bridge';
+  import { settingsSaveFailed, bridge, events, setRemoteWindow } from './lib/bridge';
   import type { DoctorPrecheckDTO, RemoteState } from './lib/bridge';
   import { backgroundAllowed, reloadErrorShown, clearsOnReconnect } from './lib/readonly';
   import {
@@ -260,7 +260,7 @@
         gitignoreWarn = null;
       }
     } catch (e: any) {
-      console.error('Failed to save check_global_gitignore preference:', e);
+      settingsSaveFailed(e, () => setCheckGitignorePref(enabled));
     }
   }
 
@@ -1472,7 +1472,7 @@
       prSettings.update((v) => ({ ...v, enabled }));
       if (enabled) refreshAllPRs();
       else prsByAccount.set({});
-    } catch (e) { console.error(e); }
+    } catch (e) { settingsSaveFailed(e, () => setPRBadgesEnabled(enabled)); }
   }
 
   async function setPRIncludeDrafts(include: boolean) {
@@ -1480,7 +1480,7 @@
       await bridge.setPRIncludeDrafts(include);
       prSettings.update((v) => ({ ...v, includeDrafts: include }));
       refreshAllPRs();
-    } catch (e) { console.error(e); }
+    } catch (e) { settingsSaveFailed(e, () => setPRIncludeDrafts(include)); }
   }
 
   // Which PR popover is open: key is `${sourceKey}/${repoName}|${kind}` or null.

@@ -66,8 +66,7 @@ func TestSchedulerCadenceAndConcurrentRunNow(t *testing.T) {
 func TestSchedulerReloadAndDisable(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		path := seedConfig(t, "gitbox.json", nil)
-		cfg := loadConfig(t, path)
-		a := &App{cfg: cfg, cfgPath: path, cfgLoaded: true, cfgBase: config.DomainHash(cfg)}
+		a := windowOn(t, path)
 		runs := 0
 		a.tasks.start(t.Context(), []*scheduledTask{{name: taskFetch, run: func(context.Context) error { runs++; return nil }}})
 		t.Cleanup(func() { a.tasks.stop(); a.tasks.wg.Wait() })
