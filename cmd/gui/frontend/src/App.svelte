@@ -2030,6 +2030,7 @@
   {#if remoteOffline && remoteState}
     <div class="remote-offline-banner" role="status">
       <span>{$t('remote.offline', { alias: remoteState.alias })}</span>
+      {#if remoteState.state === 'connecting' && remoteState.waiting}<span class="remote-waiting">{$t(`remote.waiting.${remoteState.waiting}`)}</span>{/if}
       <button class="remote-reconnect" disabled={remoteState.state === 'connecting' || remoteState.state === 'installing'}
         on:click={() => bridge.remoteReconnect().catch(console.error)}>{$t('remote.reconnect')}</button>
     </div>
@@ -2192,6 +2193,7 @@
     color: #fff; font-size: 12px; font-weight: 500; cursor: pointer;
   }
   .remote-reconnect:disabled { opacity: 0.55; cursor: default; }
+  .remote-waiting { font-weight: 500; }
   /* Sidebar next to the view; each view scrolls on its own. */
   .body { flex: 1; min-height: 0; display: flex; position: relative; }
   .content { flex: 1; min-width: 0; display: flex; flex-direction: column; container: content / inline-size; }

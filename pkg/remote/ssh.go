@@ -42,6 +42,11 @@ type Options struct {
 	// OnInstall is called when the server is missing and the install
 	// starts.
 	OnInstall func()
+	// OnSlowLogin is called once when the first ssh of a connection has not
+	// logged in after loginWait: an agent may be waiting for the user to
+	// approve the signature. agent is AgentOnePassword when the agent ssh
+	// uses is 1Password's, empty otherwise.
+	OnSlowLogin func(agent string)
 
 	// control holds the connection-reuse options the runner chose.
 	control []string
@@ -54,6 +59,24 @@ type Options struct {
 
 // DefaultServerDir is the server root when a remote sets none.
 const DefaultServerDir = "~/.gitbox-server"
+
+// AgentOnePassword names 1Password's ssh agent for OnSlowLogin. It asks for
+// approval per app and shows a request from a GUI app only in its menu bar
+// or tray icon, so the window points there.
+const AgentOnePassword = "1password"
+
+// loginWait is how long the first ssh of a connection may take to log in
+// before OnSlowLogin runs. A key in an agent logs in well under a second.
+var loginWait = 3 * time.Second
+
+// agentKind recognizes the agent behind a socket path: 1Password's sockets
+// live under a folder named after it on macOS and Linux.
+func agentKind(sock string) string {
+	if strings.Contains(strings.ToLower(sock), "1password") {
+		return AgentOnePassword
+	}
+	return ""
+}
 
 // maxParsed caps what the client reads, after the marker, from a remote
 // command whose output it parses, and maxBanner what it discards before the
@@ -137,6 +160,8 @@ type runner struct {
 	alias string
 	o     Options
 	log   *Log
+	// agent is the kind of ssh agent the alias uses (agentKind).
+	agent string
 }
 
 func newRunner(alias string, o Options) (*runner, error) {
@@ -170,16 +195,26 @@ func (r *runner) setupControl(ctx context.Context) {
 	}
 	cfg := r.command(append(r.o.configArgs(), "-G", r.alias)...)
 	out, err := outputCtx(ctx, cfg)
+	agent, controlPath := os.Getenv("SSH_AUTH_SOCK"), ""
 	if err == nil {
 		for line := range strings.SplitSeq(string(out), "\n") {
 			key, value, _ := strings.Cut(strings.TrimSpace(line), " ")
-			if key == "controlpath" && value != "" && value != "none" {
-				check := r.command(append(r.o.configArgs(), "-o", "BatchMode=yes", "-O", "check", r.alias)...)
-				if _, err := outputCtx(ctx, check); err == nil {
-					r.log.Printf("ssh: reusing the control master of the ssh config")
-					return
+			switch key {
+			case "identityagent":
+				if value != "" && value != "none" && value != "SSH_AUTH_SOCK" && value != "$SSH_AUTH_SOCK" {
+					agent = value
 				}
+			case "controlpath":
+				controlPath = value
 			}
+		}
+	}
+	r.agent = agentKind(agent)
+	if controlPath != "" && controlPath != "none" {
+		check := r.command(append(r.o.configArgs(), "-o", "BatchMode=yes", "-O", "check", r.alias)...)
+		if _, err := outputCtx(ctx, check); err == nil {
+			r.log.Printf("ssh: reusing the control master of the ssh config")
+			return
 		}
 	}
 	if err := os.MkdirAll(r.o.ControlDir, 0o700); err != nil {
@@ -188,7 +223,9 @@ func (r *runner) setupControl(ctx context.Context) {
 	}
 	r.o.control = []string{
 		"-o", "ControlMaster=auto",
-		"-o", "ControlPersist=60",
+		// Ten minutes, like a common ssh_config: a reconnect in that time
+		// needs no new signature, which an approving agent would ask for.
+		"-o", "ControlPersist=600",
 		"-o", "ControlPath=" + filepath.Join(r.o.ControlDir, "cm-%C"),
 	}
 }

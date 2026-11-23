@@ -216,6 +216,27 @@ func TestRemoteLifecycleDialFailure(t *testing.T) {
 	if got := states(sink2); !slices.Equal(got, []string{remoteConnecting, remoteInstalling, remoteFailed}) {
 		t.Errorf("remote:state went %v", got)
 	}
+	// A slow login names the agent while connecting; the install clears it.
+	a3, sink3 := remoteApp(t, func(_ context.Context, _ string, o remote.Options) (remoteConn, error) {
+		o.OnSlowLogin(remote.AgentOnePassword)
+		o.OnInstall()
+		return nil, &remote.Error{Code: remote.CodeNoexec, Detail: "noexec"}
+	})
+	a3.events = sink3
+	a3.remote.start()
+	waitState(t, a3, remoteFailed)
+	var waiting []string
+	for _, e := range sink3.named("remote:state") {
+		st := e.args[0].(RemoteStateDTO)
+		waiting = append(waiting, st.State+":"+st.Waiting)
+	}
+	want := []string{remoteConnecting + ":", remoteConnecting + ":1password", remoteInstalling + ":", remoteFailed + ":"}
+	if !slices.Equal(waiting, want) {
+		t.Errorf("remote:state went %v, want %v", waiting, want)
+	}
+	if waitingFor("") != "agent" {
+		t.Errorf("waitingFor(another agent) = %q, want agent", waitingFor(""))
+	}
 }
 
 // A server may not emit the client's own LOCAL events: remote:state could

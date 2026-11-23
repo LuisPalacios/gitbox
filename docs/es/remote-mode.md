@@ -18,7 +18,7 @@ Host my-server
 
 El modo remoto ejecuta `ssh` con `BatchMode=yes`, así que nunca responde a una pregunta. Antes de añadir un remoto, `ssh my-server` tiene que entrar sin pedir nada:
 
-- La clave está cargada en un agente, o no tiene frase de paso. Un host que solo acepta contraseñas, o una clave cifrada sin agente, falla con `ssh_auth`. Un agente que pide aprobación para cada aplicación, como 1Password, muestra la petición de Gitbox en su icono de la barra de menús o de la bandeja y no en una ventana; si nadie la responde, falla con `ssh_agent` al cabo de un minuto.
+- La clave está cargada en un agente, o no tiene frase de paso. Un host que solo acepta contraseñas, o una clave cifrada sin agente, falla con `ssh_auth`. Un agente que pide aprobación para cada aplicación, como 1Password, muestra la petición de Gitbox en su icono de la barra de menús o de la bandeja y no en una ventana; si nadie la responde, falla con `ssh_agent` al cabo de un minuto. Cuando el inicio de sesión tarda más de 3 segundos, la ventana de conexión lo dice y, con 1Password, señala su icono.
 - La clave del host ya está en `known_hosts`. Si no lo está, la conexión falla enseguida con `ssh_hostkey`. Ejecuto `ssh my-server` una vez en un terminal y acepto la clave.
 - Lo mismo vale para cada salto de un `ProxyJump`.
 
@@ -235,6 +235,6 @@ El modo simple muestra una frase sencilla; el código en sí aparece en el regis
 
 ## Clientes Windows y macOS
 
-En macOS y Linux, GitboxApp reutiliza una sola conexión SSH para todos sus comandos. Si mi `ssh_config` ya tiene un control master en marcha para el alias, usa ese; si no, arranca el suyo, con el socket en la carpeta de configuración de gitbox, y lo mantiene 60 segundos.
+En macOS y Linux, GitboxApp reutiliza una sola conexión SSH para todos sus comandos. Si mi `ssh_config` ya tiene un control master en marcha para el alias, usa ese; si no, arranca el suyo, con el socket en la carpeta de configuración de gitbox, y lo mantiene 10 minutos. Una reconexión en ese tiempo entra sin otra firma, así que un agente que pide aprobación la pide una vez.
 
 Win32-OpenSSH no tiene control master, así que en Windows cada comando se autentica por su cuenta: dos por cada conexión con un servidor instalado, y algunos más durante una instalación. Con la clave en el agente no se nota.

@@ -1488,6 +1488,7 @@ export namespace main {
 	    serverArch?: string;
 	    serverVersion?: string;
 	    truncated?: boolean;
+	    waiting?: string;
 	    remoteEditors: string[];
 	    editor?: string;
 	
@@ -1506,6 +1507,7 @@ export namespace main {
 	        this.serverArch = source["serverArch"];
 	        this.serverVersion = source["serverVersion"];
 	        this.truncated = source["truncated"];
+	        this.waiting = source["waiting"];
 	        this.remoteEditors = source["remoteEditors"];
 	        this.editor = source["editor"];
 	    }

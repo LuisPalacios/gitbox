@@ -18,7 +18,7 @@ func TestNoConfigOverrideInProduction(t *testing.T) {
 	o := Options{ServerDir: "~/x", ClientID: "c1", ControlDir: t.TempDir()}
 	// The production path: a runner whose control options were chosen.
 	reuse := o
-	reuse.control = []string{"-o", "ControlMaster=auto", "-o", "ControlPersist=60", "-o", "ControlPath=/tmp/cm-%C"}
+	reuse.control = []string{"-o", "ControlMaster=auto", "-o", "ControlPersist=600", "-o", "ControlPath=/tmp/cm-%C"}
 	for _, args := range [][]string{
 		Argv("my-server", o, remoteCommand(probeScript)),
 		Argv("my-server", reuse, remoteCommand(startScript, "h", "x")),

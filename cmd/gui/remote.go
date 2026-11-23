@@ -58,6 +58,10 @@ type RemoteStateDTO struct {
 	// Truncated says the server sent a list longer than a window takes, so
 	// what it shows is incomplete (#240).
 	Truncated bool `json:"truncated,omitempty"`
+	// Waiting says, while connecting, that ssh has not logged in after a
+	// few seconds: "agent", or "1password" when the alias uses 1Password's
+	// agent, whose approval request shows only in its menu bar or tray icon.
+	Waiting string `json:"waiting,omitempty"`
 	// RemoteEditors are the editor commands that open folders of the host
 	// (pkg/remote.RemoteEditors); the window disables every other (#243).
 	RemoteEditors []string `json:"remoteEditors"`
@@ -247,6 +251,14 @@ func (s *remoteSession) chosenEditor() string {
 	return ""
 }
 
+// waitingFor is the Waiting value of a slow login with agent.
+func waitingFor(agent string) string {
+	if agent == remote.AgentOnePassword {
+		return "1password"
+	}
+	return "agent"
+}
+
 // failure is the code, hint and text of a connection failure.
 func remoteFailure(err error) (code, hint, detail string) {
 	ue := toUserError(err)
@@ -294,7 +306,14 @@ func (s *remoteSession) run(ctx context.Context, cancel context.CancelFunc, gen 
 		fail(err)
 		return
 	}
-	o.OnInstall = func() { s.set(gen, func(st *RemoteStateDTO) { st.State = remoteInstalling }) }
+	o.OnInstall = func() { s.set(gen, func(st *RemoteStateDTO) { st.State = remoteInstalling; st.Waiting = "" }) }
+	o.OnSlowLogin = func(agent string) {
+		s.set(gen, func(st *RemoteStateDTO) {
+			if st.State == remoteConnecting {
+				st.Waiting = waitingFor(agent)
+			}
+		})
+	}
 	conn, err := s.dial(ctx, s.alias, o)
 	if err != nil {
 		fail(err)

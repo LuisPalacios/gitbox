@@ -10,7 +10,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -34,10 +36,13 @@ done
 alias=$1; shift
 case $mode in
   G) [ "$alias" = broken ] && { echo "Bad configuration option: x" >&2; exit 255; }
-     echo "hostname $alias"; echo "controlpath none"; exit 0 ;;
+     echo "hostname $alias"; echo "controlpath none"
+     [ -n "$FAKE_SSH_AGENT" ] && echo "identityagent $FAKE_SSH_AGENT"
+     exit 0 ;;
   O) exit 255 ;;
 esac
 if [ "$alias" = untrusted ]; then echo "Host key verification failed." >&2; exit 255; fi
+[ -n "$FAKE_SSH_DELAY" ] && sleep "$FAKE_SSH_DELAY"
 [ -n "$FAKE_SSH_BANNER" ] && cat "$FAKE_SSH_BANNER"
 PATH="$FAKE_SSH_BIN:$PATH" HOME="$FAKE_SSH_HOME" exec /bin/sh -c "$*"
 `
@@ -528,5 +533,50 @@ func TestFakeUnreadableFinalNotReinstalled(t *testing.T) {
 	}
 	if tmps, _ := filepath.Glob(filepath.Join(filepath.Dir(f.server), tmpPrefix+"*")); len(tmps) != 0 {
 		t.Errorf("an upload happened: %v", tmps)
+	}
+}
+
+// TestSlowLoginNamesTheAgent: a first ssh that has not logged in after
+// loginWait calls OnSlowLogin once, with 1Password named when the alias's
+// IdentityAgent, or SSH_AUTH_SOCK without one, is its socket. A fast login
+// calls nothing.
+func TestSlowLoginNamesTheAgent(t *testing.T) {
+	f := newFake(t, fakeServer)
+	old := loginWait
+	loginWait = 100 * time.Millisecond
+	t.Cleanup(func() { loginWait = old })
+	const onePassword = "/Users/x/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+	for _, tc := range []struct {
+		name, agent, authSock, delay string
+		want                         []string
+	}{
+		{name: "fast login", agent: onePassword},
+		{name: "slow, 1Password in the ssh config", agent: onePassword, delay: "1", want: []string{AgentOnePassword}},
+		{name: "slow, 1Password in SSH_AUTH_SOCK", authSock: "/home/x/.1password/agent.sock", delay: "1", want: []string{AgentOnePassword}},
+		{name: "slow, another agent", agent: "/tmp/ssh-x/agent.1", delay: "1", want: []string{""}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("FAKE_SSH_AGENT", tc.agent)
+			t.Setenv("SSH_AUTH_SOCK", tc.authSock)
+			t.Setenv("FAKE_SSH_DELAY", tc.delay)
+			o := f.opts
+			o.ControlDir = t.TempDir()
+			var mu sync.Mutex
+			var got []string
+			o.OnSlowLogin = func(agent string) { mu.Lock(); got = append(got, agent); mu.Unlock() }
+			r, err := newRunner("host", o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r.setupControl(ctx(t))
+			if _, err := r.probe(ctx(t)); err != nil {
+				t.Fatalf("probe: %v", err)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("OnSlowLogin calls = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

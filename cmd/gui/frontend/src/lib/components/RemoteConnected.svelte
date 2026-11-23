@@ -37,6 +37,7 @@
     : st.state === 'failed' ? $t('remote.failed', { alias: st.alias })
     : $t('remote.disconnected', { alias: st.alias });
   $: reason = st.state === 'failed' && st.hint ? $t(st.hint) : '';
+  $: waiting = st.state === 'connecting' && st.waiting ? $t(`remote.waiting.${st.waiting}`) : '';
 
   onMount(async () => {
     offs.push(events.on('remote:state', (s: RemoteState) => { st = s; if (s.state === 'failed') showLog = showLog || !simple; }));
@@ -84,6 +85,7 @@
       <h1>{headline}</h1>
     </div>
     {#if reason}<p class="reason">{reason}</p>{/if}
+    {#if waiting}<p class="waiting" role="status" in:fade={{ duration: 180 }}>{waiting}</p>{/if}
 
     {#if st.state === 'connected' && !simple}
       <dl class="facts" translate="no">
@@ -154,6 +156,7 @@
   .pulse { animation: pulse 1.2s ease-in-out infinite; }
   @keyframes pulse { 50% { box-shadow: 0 0 0 7px rgba(59, 130, 246, 0.0); opacity: 0.55; } 0%, 100% { box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35); } }
   .reason { margin: 10px 0 0 23px; font-size: 13px; color: var(--alert); line-height: 1.5; }
+  .waiting { margin: 10px 0 0 23px; font-size: 13px; color: var(--text-primary); line-height: 1.5; }
   .facts {
     margin: 16px 0 0 23px; display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px;
     font-size: 12px;

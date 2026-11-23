@@ -3,6 +3,7 @@ package remote
 import (
 	"context"
 	"strings"
+	"time"
 )
 
 // Probe is what the host said about itself.
@@ -27,6 +28,14 @@ const probeScript = `printf "\0GBX\0%s\0%s\0%s\0%s\0%s\0" "$(uname -s)" "$(uname
 // probe asks the host for its operating system, architecture, shell and
 // home in one exec.
 func (r *runner) probe(ctx context.Context) (Probe, error) {
+	// The probe is the connection's first ssh, the one that logs in.
+	slow := time.AfterFunc(loginWait, func() {
+		r.log.Printf("probe: ssh has not logged in after %s; the ssh agent may be waiting for approval", loginWait)
+		if r.o.OnSlowLogin != nil {
+			r.o.OnSlowLogin(r.agent)
+		}
+	})
+	defer slow.Stop()
 	res, err := r.run(ctx, "probe", probeScript, nil)
 	if err != nil {
 		// A Windows host whose shell is cmd or PowerShell cannot run sh.

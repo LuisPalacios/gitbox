@@ -18,7 +18,7 @@ Host my-server
 
 Remote mode runs `ssh` with `BatchMode=yes`, so it never answers a prompt. Before I add a remote, `ssh my-server` must log in without asking anything:
 
-- The key is loaded in an agent, or it has no passphrase. A host that only accepts passwords, or an encrypted key with no agent, fails with `ssh_auth`. An agent that asks for approval for each app, such as 1Password, shows the request of Gitbox in its menu bar or tray icon rather than in a window; an unanswered one fails with `ssh_agent` after about a minute.
+- The key is loaded in an agent, or it has no passphrase. A host that only accepts passwords, or an encrypted key with no agent, fails with `ssh_auth`. An agent that asks for approval for each app, such as 1Password, shows the request of Gitbox in its menu bar or tray icon rather than in a window; an unanswered one fails with `ssh_agent` after about a minute. When the login takes more than 3 seconds, the connecting window says so and, for 1Password, points at its icon.
 - The host key is already in `known_hosts`. If it is not, the connection fails at once with `ssh_hostkey`. I run `ssh my-server` once in a terminal and accept the key.
 - The same holds for every hop of a `ProxyJump`.
 
@@ -235,6 +235,6 @@ Simple mode shows a plain sentence; the code itself appears in the log.
 
 ## Windows and macOS clients
 
-On macOS and Linux, GitboxApp reuses one SSH connection for all its commands. When my `ssh_config` already runs a control master for the alias, it uses that one; otherwise it starts its own, with its socket in the gitbox config folder, kept for 60 seconds.
+On macOS and Linux, GitboxApp reuses one SSH connection for all its commands. When my `ssh_config` already runs a control master for the alias, it uses that one; otherwise it starts its own, with its socket in the gitbox config folder, kept for 10 minutes. A reconnect in that time logs in without a new signature, so an agent that asks for approval asks once.
 
 Win32-OpenSSH has no control master, so on Windows each command authenticates on its own: two per connection to an installed server, a few more during an install. With a key in the agent this is invisible.

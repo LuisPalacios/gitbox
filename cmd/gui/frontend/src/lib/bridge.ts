@@ -190,6 +190,9 @@ export interface RemoteState {
   serverArch?: string;
   serverVersion?: string;
   truncated?: boolean;
+  // While connecting, ssh has not logged in after a few seconds: an agent
+  // may be waiting for approval, 1Password's in its menu bar or tray icon.
+  waiting?: 'agent' | '1password';
   // The editor commands that open folders of the host (#243).
   remoteEditors?: string[] | null;
   // The editor chosen for this remote, absent for Auto (#287).
