@@ -178,6 +178,10 @@ You don't need to re-clone anything.
 
 Gitbox also repairs a clone's identity, remote and credential settings before each fetch. If a git include keeps overriding them, it warns and skips that clone's fetch.
 
+## Fetch remotes
+
+When Gitbox refreshes a clone, it fetches and prunes `origin`. To include every remote configured in a particular clone, I set `fetch_all_remotes` to `true` on that repo entry in `gitbox.json`. I check its remote destinations before enabling this option.
+
 ## Verifying credentials
 
 You can verify credentials at any time:

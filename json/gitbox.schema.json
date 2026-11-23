@@ -516,6 +516,10 @@
                             "description": "Configuration for a single repository. All fields are optional — repos inherit defaults from the account.",
                             "additionalProperties": true,
                             "properties": {
+                                "fetch_all_remotes": {
+                                    "type": "boolean",
+                                    "description": "Fetch all configured remotes for this clone. By default Gitbox fetches only origin."
+                                },
                                 "credential_type": {
                                     "type": "string",
                                     "enum": ["gcm", "ssh", "token"],

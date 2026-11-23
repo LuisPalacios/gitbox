@@ -28,8 +28,12 @@ func IsRefusedFast(err error) bool {
 }
 
 // FetchCapturedContext lets refresh shutdown cancel an in-flight network transfer.
-func FetchCapturedContext(ctx context.Context, repoPath string) (string, error) {
-	res, err := Default.Run(ctx, Request{Dir: repoPath, Args: []string{"fetch", "--all", "--prune"}})
+func FetchCapturedContext(ctx context.Context, repoPath, remote string) (string, error) {
+	args := []string{"fetch", "--prune"}
+	if remote != "--all" {
+		args = append(args, "--")
+	}
+	res, err := Default.Run(ctx, Request{Dir: repoPath, Args: append(args, remote)})
 	out := res.combined()
 	if err != nil {
 		return string(out), failure(ctx, "fetch", err, res, out)

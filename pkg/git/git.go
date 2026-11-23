@@ -299,9 +299,9 @@ func DetailedStatus(repoPath string) (branch string, ahead, behind int, changed 
 	return status.branch.Branch, status.branch.Ahead, status.branch.Behind, changed, untracked, nil
 }
 
-// RemoteURL returns the URL of the 'origin' remote.
+// RemoteURL inspects the origin of a discovered clone with command-scoped settings.
 func RemoteURL(repoPath string) (string, error) {
-	out, err := output(repoPath, "remote", "get-url", "origin")
+	out, err := inspectOutput(repoPath, "remote", "get-url", "origin")
 	if err != nil {
 		return "", err
 	}
@@ -313,7 +313,7 @@ func RemoteURL(repoPath string) (string, error) {
 // git (including "no match", which exits 1) are swallowed — a repo without
 // credential usernames is a normal case, not a failure.
 func CredentialUsernames(repoPath string) []string {
-	out, err := output(repoPath, "config", "--get-regexp", `^credential\..*\.username$`)
+	out, err := inspectOutput(repoPath, "config", "--get-regexp", `^credential\..*\.username$`)
 	if err != nil {
 		return nil
 	}
