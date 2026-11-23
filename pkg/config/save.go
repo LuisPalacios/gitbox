@@ -254,7 +254,9 @@ func ListBackups(path string) ([]Backup, error) {
 			sequence = int(stamp[16] - '0')
 			stamp = stamp[:15]
 		}
-		timestamp, err := time.Parse("20060102-150405", stamp)
+		// The stamp is the wall clock of the computer that saved
+		// (backupBeforeSave formats time.Now()), so it reads in local time.
+		timestamp, err := time.ParseInLocation("20060102-150405", stamp, time.Local)
 		if err != nil {
 			continue
 		}

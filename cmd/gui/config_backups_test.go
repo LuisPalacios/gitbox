@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestListConfigBackups_SameSecondSnapshots(t *testing.T) {
@@ -18,9 +19,10 @@ func TestListConfigBackups_SameSecondSnapshots(t *testing.T) {
 	if len(backups) != 3 {
 		t.Fatalf("backups = %v", backups)
 	}
+	want := time.Date(2026, 4, 1, 12, 0, 0, 0, time.Local).Format(time.RFC3339)
 	for i, name := range []string{"gitbox-20260401-120000-9.json", "gitbox-20260401-120000-1.json", "gitbox-20260401-120000.json"} {
 		backup := backups[i]
-		if backup.Filename != name || backup.Path != filepath.Join(dir, name) || backup.Timestamp != "2026-04-01T12:00:00Z" || backup.SizeBytes != 2 {
+		if backup.Filename != name || backup.Path != filepath.Join(dir, name) || backup.Timestamp != want || backup.SizeBytes != 2 {
 			t.Errorf("backup %d = %+v", i, backup)
 		}
 		if data, err := os.ReadFile(backup.Path); err != nil || string(data) != "{}" {
