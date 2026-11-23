@@ -309,7 +309,7 @@ func TestServeExitCodes(t *testing.T) {
 		if err := client.Call(ctx, "GetConfigPath", nil, &path); err != nil || !strings.HasSuffix(path, "gitbox.json") {
 			t.Errorf("GetConfigPath = %q, %v", path, err)
 		}
-		if err := client.Call(ctx, "ChangeCredentialType", []any{"acct", "ssh"}, nil); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
+		if err := client.Call(ctx, "CredentialSetupSSH", []any{"acct"}, nil); !rpc.IsCode(err, rpc.ErrCodeUnsupported) {
 			t.Errorf("a method outside the closed list = %v, want unsupported", err)
 		}
 		if err := client.Close(); err != nil {

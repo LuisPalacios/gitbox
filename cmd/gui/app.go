@@ -2393,6 +2393,10 @@ type CredentialSetupResult struct {
 	SSHPublicKey string `json:"sshPublicKey,omitempty"` // public key to copy (SSH setup)
 	SSHAddURL    string `json:"sshAddURL,omitempty"`    // provider URL to add key (SSH setup)
 	SSHVerified  bool   `json:"sshVerified,omitempty"`  // true when SSH connection test passed
+	// Findings are what the credential audit reports right after a token is
+	// stored (#242): a file or folder others can read. Paths and problems
+	// only, never the file's contents.
+	Findings []credential.Finding `json:"findings,omitempty"`
 }
 
 // gcmSignInTimeout bounds the interactive GCM sign-in: long enough to type a
@@ -2581,7 +2585,7 @@ func (a *App) credentialStoreTokenLocal(accountKey, token string) CredentialSetu
 	if n > 0 {
 		msg += fmt.Sprintf("\n%d clone(s) reconfigured", n)
 	}
-	return CredentialSetupResult{OK: true, Message: msg}
+	return CredentialSetupResult{OK: true, Message: msg, Findings: a.refreshCredentialAudit()}
 }
 
 // TokenGuideInfo holds where to create an account's PAT and the scopes it needs.

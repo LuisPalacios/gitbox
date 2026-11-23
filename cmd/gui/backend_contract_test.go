@@ -56,24 +56,39 @@ type remoteLink struct {
 	// Host is the server's App: the same code gitbox-server runs.
 	Host   *App
 	Events *recordingSink
-	// Sent is everything the server wrote to the client.
-	Sent   *wireTap
-	served chan error
+	// Sent is everything the server wrote to the client, Received
+	// everything the client wrote to the server (#242).
+	Sent     *wireTap
+	Received *wireTap
+	// ServerLog and ClientLog are what each end logged.
+	ServerLog *wireTap
+	ClientLog *wireTap
+	served    chan error
 }
+
+// closingTap is a wireTap in front of a pipe the client closes.
+type closingTap struct {
+	*wireTap
+	c io.Closer
+}
+
+func (t closingTap) Close() error { return t.c.Close() }
 
 // serveRemote starts a server on the config at path and connects a
 // RemoteBackend to it. extra adds handlers that only a test needs.
 func serveRemote(t *testing.T, path string, extra map[string]rpc.Handler) *remoteLink {
 	t.Helper()
 	host := newServerApp(path)
-	srv := newRPCServer(host, io.Discard)
+	serverLog, clientLog := &wireTap{w: io.Discard}, &wireTap{w: io.Discard}
+	srv := newRPCServer(host, serverLog)
 	maps.Copy(srv.Handlers, extra)
 	ctx, cancel := context.WithCancel(context.Background())
 	host.be().Init(ctx)
 
 	c2sR, c2sW := io.Pipe()
 	s2cR, s2cW := io.Pipe()
-	l := &remoteLink{Host: host, Events: &recordingSink{}, Sent: &wireTap{w: s2cW}, served: make(chan error, 1)}
+	l := &remoteLink{Host: host, Events: &recordingSink{}, Sent: &wireTap{w: s2cW}, Received: &wireTap{w: c2sW},
+		ServerLog: serverLog, ClientLog: clientLog, served: make(chan error, 1)}
 	go func() {
 		err := srv.Serve(ctx, c2sR, l.Sent)
 		host.be().Close()
@@ -81,7 +96,7 @@ func serveRemote(t *testing.T, path string, extra map[string]rpc.Handler) *remot
 		_ = c2sR.Close()
 		l.served <- err
 	}()
-	remote, err := dialRemoteBackend(s2cR, c2sW, func() EventSink { return l.Events }, io.Discard)
+	remote, err := dialRemoteBackend(s2cR, closingTap{l.Received, c2sW}, func() EventSink { return l.Events }, clientLog)
 	if err != nil {
 		cancel()
 		t.Fatalf("dial: %v", err)
@@ -100,6 +115,8 @@ func serveRemote(t *testing.T, path string, extra map[string]rpc.Handler) *remot
 func contractConfig(t *testing.T) string {
 	t.Helper()
 	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), "gitconfig"))
+	// A token a test stores, or a clone repair writes, stays in the test.
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	clone := filepath.Join(t.TempDir(), "clone")
 	for _, args := range [][]string{
@@ -364,6 +381,9 @@ func TestBackendContract(t *testing.T) {
 	for name := range repoMutationRowMethods() {
 		covered[name] = true
 	}
+	// A host refuses GCM where a desktop runs it (#242), so the two sides
+	// cannot match; TestHostRefusesGCM covers it.
+	covered["CredentialSetupGCM"] = true
 	for _, name := range servedMethods {
 		if !covered[name] {
 			t.Errorf("%s is served but neither contract table calls it", name)
@@ -685,16 +705,13 @@ func TestToUserErrorDistrustsTheServer(t *testing.T) {
 func TestRemoteMethodOutsideTheClosedList(t *testing.T) {
 	path := contractConfig(t)
 	link := serveRemote(t, path, nil)
-	// The credential methods wait for #242 and #244.
+	// The SSH key methods wait for #244.
 	before := loadConfig(t, path).Accounts["acct"]
-	if err := link.Remote.ChangeCredentialType("acct", "ssh"); toUserError(err).Code != "remote.not_implemented_remote" {
-		t.Errorf("ChangeCredentialType = %v, want not_implemented_remote", err)
+	if res := link.Remote.CredentialSetupSSH("acct"); !reflect.DeepEqual(res, CredentialSetupResult{}) {
+		t.Errorf("CredentialSetupSSH = %+v, want the zero value for a method that is not served", res)
 	}
 	if after := loadConfig(t, path).Accounts["acct"]; !reflect.DeepEqual(after, before) {
 		t.Errorf("the refused mutation changed the host: account %+v, was %+v", after, before)
-	}
-	if res := link.Remote.CredentialDelete("acct"); !reflect.DeepEqual(res, CredentialSetupResult{}) {
-		t.Errorf("CredentialDelete = %+v, want the zero value for a method that is not served", res)
 	}
 	if err := link.Remote.LastError(); toUserError(err).Code != "remote.not_implemented_remote" {
 		t.Errorf("LastError = %v, want the failure of the call that had no error to return", err)

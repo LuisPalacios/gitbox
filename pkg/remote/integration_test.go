@@ -887,7 +887,7 @@ func TestReadsLeaveTheDomainUntouched(t *testing.T) {
 	}
 }
 
-// mutationCalls are the config mutations a gitbox-server serves (#294), in
+// mutationCalls are the mutations a gitbox-server serves (#294, #295, #242), in
 // an order where each one finds what it needs, against the host that
 // TestMutationsOverSSH seeds. TestIntegrationCallsEveryServedMethod in
 // cmd/gui keeps the set equal to the served mutations. RestoreFromBackup
@@ -942,6 +942,11 @@ var mutationCalls = []struct {
 	{"CreateNewRepo", []any{"acct", "", "made", "", true, false, ""}, true},
 	{"MoveRepo", []any{map[string]any{"sourceSourceKey": "acct", "sourceRepoKey": "org/repo", "destAccountKey": "nobody", "destOwner": "alice", "destRepoName": "moved"}}, false},
 	{"DeleteRepo", []any{"acct", "org/repo"}, false},
+	// The token credentials (#242). GCM is served only to be refused.
+	{"CredentialStoreToken", []any{"acct", "it-token"}, false},
+	{"ChangeCredentialType", []any{"acct", "token"}, false},
+	{"CredentialSetupGCM", []any{"acct"}, true},
+	{"CredentialDelete", []any{"acct"}, false},
 }
 
 // TestMutationsOverSSH runs every served config mutation once over a real
