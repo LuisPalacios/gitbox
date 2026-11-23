@@ -32,6 +32,8 @@ pkg/                      Shared Go library
   harness/                Embedded AI-tool catalog (tools-directory.md: alternates + well-known locations) + pure `Sync` that flags uninstalled harnesses `missing` instead of deleting them
   identity/               Global `~/.gitconfig` user.name/user.email detection + removal
   gitignore/              Global `~/.gitignore_global` managed-block install with sentinel dedup + timestamped backups
+internal/
+  secretcheck/            Structural secret canary shared by the tests of cmd/gui and pkg/rpc (test-only import)
 docs/
   README.md               Documentation index
   gui-guide.md            GUI guide
@@ -76,6 +78,7 @@ scripts/
   sign-release.sh          Sign a draft release's checksums through the local SSH agent and publish it (--check, --dry-run); standalone, no .env
   demo-fleet/              Fake fleet + mock provider API + window capture for README screenshots (build.sh, run.sh, mock.py, shot.ps1)
 test/sshd/                The gitbox-sshd image of those tests: Debian slim, OpenSSH, fish, a key-only test user
+test/fakeforge/           Fake Gitea API + git smart HTTP behind file tokens, copied into the container by TestTokenCanary
 .githooks/pre-push        Pre-push hook (gofmt -s check + go vet + unit tests; builds the frontend if dist is missing)
 .claude/settings.json     Claude Code permission allowlist (hand-edited, not rendered)
 ai/                       Agent harness masters: the only hand-edited agent guidance

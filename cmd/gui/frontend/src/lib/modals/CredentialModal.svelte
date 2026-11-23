@@ -5,7 +5,8 @@
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
   import type { DoctorPrecheckDTO } from '../bridge';
-  import { accounts } from '../stores';
+  import { accounts, remoteWindow } from '../stores';
+  import { gcmOffered, gcmRemoteReasonKey } from '../gcmRemote';
   import { dismiss } from '../dismiss';
   import { openExternal } from '../external';
   import CredentialResult from '../CredentialResult.svelte';
@@ -169,6 +170,7 @@
     credBusy = true;
     credResult = null;
     try {
+      if (credChangeType === 'gcm' && !gcmOffered($remoteWindow)) throw new Error($t(gcmRemoteReasonKey(serverOS)));
       await bridge.changeCredentialType(credChangeModal, credChangeType);
       await reloadFromDisk();
       if (credChangeType === 'gcm') {
@@ -185,6 +187,13 @@
     }
     credBusy = false;
     await credPostSetup(credChangeModal);
+  }
+
+  // switchToToken is the way out of a GCM account on a remote host (#242):
+  // the host refuses GCM, so the account changes to a token.
+  async function switchToToken() {
+    credChangeType = 'token';
+    await applyCredChange();
   }
 </script>
 
@@ -240,6 +249,13 @@
                 {/if}
               {/if}
             {/if}
+            {#if primaryType === 'gcm' && !gcmOffered($remoteWindow)}
+              <div class="cred-status-lanhint cred-gcm-remote">
+                <p class="cred-status-lanhint-title">{$t('cred.gcmRemoteUnavailable')}</p>
+                <p>{$t(gcmRemoteReasonKey(serverOS))}</p>
+                <button use:ro={'changeCredentialType'} class="cred-status-pat-btn" on:click={switchToToken} disabled={credBusy}>{$t('cred.switchToToken')}</button>
+              </div>
+            {/if}
             {#if lanHint}
               <div class="cred-status-lanhint">
                 <p class="cred-status-lanhint-title">{$t('cred.lanTitle')}</p>
@@ -256,7 +272,7 @@
         <div class="form-row">
           <label class="form-label" for="cc-type">{$t('cred.type')}</label>
           <select class="form-input" id="cc-type" bind:value={credChangeType} disabled={credBusy}>
-            <option value="gcm" translate="no">Git Credential Manager (GCM)</option>
+            <option value="gcm" translate="no" disabled={!gcmOffered($remoteWindow)}>{gcmOffered($remoteWindow) ? 'Git Credential Manager (GCM)' : $t('cred.gcmOptionRemote')}</option>
             <option value="ssh">SSH</option>
             <option value="token">{$t('onboard.token')}</option>
           </select>
@@ -313,9 +329,16 @@
           {/if}
         {:else}
           <button class="btn-cancel" on:click={closeCredChange}>{$t('common.cancel')}</button>
-          <button use:ro={['changeCredentialType', 'credentialSetupGCM', 'credentialSetupSSH']} class="btn-add" on:click={applyCredChange} disabled={credBusy || (credChangeType === (currentAcct?.default_credential_type || '') && credStatuses[credChangeModal || '']?.status === 'ok')}>
-            {credBusy ? $t('cred.settingUp') : $t('cred.setup')}
-          </button>
+          {@const setupOff = credBusy || (credChangeType === 'gcm' && !gcmOffered($remoteWindow)) || (credChangeType === (currentAcct?.default_credential_type || '') && credStatuses[credChangeModal || '']?.status === 'ok')}
+          {#if credChangeType === 'ssh'}
+            <button use:ro={['changeCredentialType', 'credentialSetupSSH']} class="btn-add" on:click={applyCredChange} disabled={setupOff}>
+              {credBusy ? $t('cred.settingUp') : $t('cred.setup')}
+            </button>
+          {:else}
+            <button use:ro={['changeCredentialType', 'credentialSetupGCM']} class="btn-add" on:click={applyCredChange} disabled={setupOff}>
+              {credBusy ? $t('cred.settingUp') : $t('cred.setup')}
+            </button>
+          {/if}
         {/if}
       </div>
     </div>

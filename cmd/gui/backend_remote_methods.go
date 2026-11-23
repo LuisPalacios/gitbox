@@ -77,19 +77,19 @@ func (r *RemoteBackend) CreateNewRepo(accountKey, owner, repoName, description s
 	return r.callErr("CreateNewRepo", accountKey, owner, repoName, description, private, cloneAfter, root)
 }
 func (r *RemoteBackend) CredentialDelete(accountKey string) CredentialSetupResult {
-	return remoteValue[CredentialSetupResult](r, "CredentialDelete", accountKey)
+	return r.remoteSetup("CredentialDelete", accountKey)
 }
 func (r *RemoteBackend) CredentialRegenerateSSH(accountKey string) CredentialSetupResult {
 	return remoteValue[CredentialSetupResult](r, "CredentialRegenerateSSH", accountKey)
 }
 func (r *RemoteBackend) CredentialSetupGCM(accountKey string) CredentialSetupResult {
-	return remoteValue[CredentialSetupResult](r, "CredentialSetupGCM", accountKey)
+	return r.remoteSetup("CredentialSetupGCM", accountKey)
 }
 func (r *RemoteBackend) CredentialSetupSSH(accountKey string) CredentialSetupResult {
 	return remoteValue[CredentialSetupResult](r, "CredentialSetupSSH", accountKey)
 }
 func (r *RemoteBackend) CredentialStoreToken(accountKey, token string) CredentialSetupResult {
-	return remoteValue[CredentialSetupResult](r, "CredentialStoreToken", accountKey, token)
+	return r.remoteSetup("CredentialStoreToken", accountKey, token)
 }
 func (r *RemoteBackend) CredentialVerify(key string) CredentialStatus {
 	return remoteValue[CredentialStatus](r, "CredentialVerify", key)
@@ -322,4 +322,18 @@ func (r *RemoteBackend) SyncAIHarnesses() bool {
 }
 func (r *RemoteBackend) UpdateAccount(req UpdateAccountRequest) error {
 	return r.callErr("UpdateAccount", req)
+}
+
+// remoteSetup calls a credential setup method. A failure that has no answer
+// (not connected, refused, cancelled) becomes the result's message, so the
+// window says why instead of showing an empty failure (#242).
+func (r *RemoteBackend) remoteSetup(method string, args ...any) CredentialSetupResult {
+	var out CredentialSetupResult
+	err := r.invoke(method, &out, args...)
+	r.note(method, err)
+	if err != nil {
+		return CredentialSetupResult{Message: userMsg(err)}
+	}
+	out.Findings = capList(r, "credential findings", out.Findings, maxRemoteNotes)
+	return out
 }

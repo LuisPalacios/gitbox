@@ -55,12 +55,42 @@ func toUserError(err error) usererr.UserError {
 		out.Code, out.Hint = "config.exists", "error.config.exists"
 	} else if errors.Is(err, config.ErrNotFound) {
 		out.Code, out.Hint = "config.not_found", "error.config.not_found"
+	} else if ge, ok := errors.AsType[*gcmRemoteError](err); ok {
+		out.Code, out.Hint = "gcm_unsupported_remote", ge.hint()
 	} else if re, ok := errors.AsType[*remoteError](err); ok {
 		out.Code, out.Hint = "remote."+string(re.Code), "error.remote."+string(re.Code)
 	} else if re, ok := errors.AsType[*remote.Error](err); ok {
 		out.Code, out.Hint = "remote."+string(re.Code), "error.remote."+string(re.Code)
 	}
 	return out
+}
+
+// gcmRemoteError refuses Git Credential Manager on a host (#242). OS is
+// the host's, so the reason names the store GCM would use there.
+type gcmRemoteError struct{ OS string }
+
+// gcmStores names, per OS, the store GCM keeps credentials in.
+var gcmStores = map[string]string{
+	"linux":   "the Secret Service keyring (secretservice)",
+	"darwin":  "the macOS keychain",
+	"windows": "Windows Credential Manager (wincredman)",
+}
+
+func (e *gcmRemoteError) Error() string {
+	store, ok := gcmStores[e.OS]
+	if !ok {
+		store = "the system's credential store"
+	}
+	return "Git Credential Manager is not available for this host: it would keep credentials in " + store +
+		", which a session over ssh cannot use reliably. Use a token instead."
+}
+
+// hint is the catalog key of the reason for e's OS.
+func (e *gcmRemoteError) hint() string {
+	if _, ok := gcmStores[e.OS]; ok {
+		return "error.gcm_unsupported_remote." + e.OS
+	}
+	return "error.gcm_unsupported_remote"
 }
 
 // identifier keeps s only if it is a short dotted name such as "git.offline"

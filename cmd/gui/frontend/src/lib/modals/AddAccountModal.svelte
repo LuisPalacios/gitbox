@@ -11,6 +11,8 @@
   import PrecheckBanner from '../PrecheckBanner.svelte';
   import Rich from '../Rich.svelte';
   import { t } from '../i18n';
+  import { remoteWindow } from '../stores';
+  import { defaultCredentialType, gcmOffered } from '../gcmRemote';
 
   // Shared credential operation state (App).
   export let credResult: { ok: boolean; message: string; needsPAT?: boolean; sshPublicKey?: string; sshAddURL?: string; sshVerified?: boolean } | null;
@@ -36,6 +38,9 @@
   let addAcct = { key: '', provider: 'github', url: 'https://github.com', username: '', name: '', email: '', defaultBranch: 'main', credentialType: 'gcm' };
 
   export function open() {
+    // A remote host refuses GCM (#242): a new account there starts with a
+    // token.
+    if (addAcct.credentialType === 'gcm' && !gcmOffered($remoteWindow)) addAcct.credentialType = defaultCredentialType($remoteWindow);
     addAccountModal = true;
   }
 
@@ -131,7 +136,7 @@
           <div class="form-row">
             <label class="form-label" for="aa-cred">{$t('addAccount.credType')}</label>
             <select class="form-input" id="aa-cred" bind:value={addAcct.credentialType}>
-              <option value="gcm">GCM</option>
+              <option value="gcm" disabled={!gcmOffered($remoteWindow)}>{gcmOffered($remoteWindow) ? 'GCM' : $t('cred.gcmOptionRemote')}</option>
               <option value="ssh">SSH</option>
               <option value="token">{$t('onboard.token')}</option>
             </select>

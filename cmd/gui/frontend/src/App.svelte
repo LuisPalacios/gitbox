@@ -1093,7 +1093,7 @@
 
   // Shared credential operation state — used by BOTH add-account and change-credential flows.
   // Only one modal can be active at a time, so sharing is safe.
-  let credResult: { ok: boolean; message: string; needsPAT?: boolean; sshPublicKey?: string; sshAddURL?: string; sshVerified?: boolean } | null = null;
+  let credResult: { ok: boolean; message: string; needsPAT?: boolean; sshPublicKey?: string; sshAddURL?: string; sshVerified?: boolean; findings?: CredentialFinding[] } | null = null;
   let credBusy = false;
   let credTokenInput = '';
   let credTokenGuide = '';
@@ -1163,7 +1163,7 @@
         credResult = await bridge.credentialSetupGCM(accountKey);
       } else if (credType === 'token') {
         credResult = await bridge.credentialStoreToken(accountKey, credTokenInput);
-        if (credResult?.ok) credTokenInput = '';
+        if (credResult?.ok) tokenStored(credResult);
       } else if (credType === 'ssh') {
         credResult = await bridge.credentialSetupSSH(accountKey);
       }
@@ -1174,13 +1174,21 @@
     await credPostSetup(accountKey);
   }
 
+  // tokenStored clears the token field once the host has the token (#163,
+  // #242) and shows what the credential audit found right after the store:
+  // nothing found clears an earlier warning.
+  function tokenStored(res: { findings?: CredentialFinding[] }) {
+    credTokenInput = '';
+    credentialFindings = res.findings || [];
+  }
+
   // Store a token for the account of the open credential modal (the
   // modal passes its account key).
   async function storeCredToken(key: string) {
     credBusy = true;
     try {
       credResult = await bridge.credentialStoreToken(key, credTokenInput);
-      if (credResult?.ok) credTokenInput = '';
+      if (credResult?.ok) tokenStored(credResult);
     } catch (err: any) {
       credResult = { ok: false, message: err?.message || String(err) };
     }

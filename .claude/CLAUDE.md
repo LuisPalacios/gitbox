@@ -51,7 +51,7 @@ When translating documentation into any supported language, preserve the English
 ## Repository layout
 
 - `cmd/gui/`: Wails v2 + Svelte GUI, the only binary (`GitboxApp`).
-- `pkg/`: shared Go library; business flows live in `pkg/ops/`.
+- `pkg/`: shared Go library; business flows live in `pkg/ops/`. `internal/`: test-only helpers; `test/`: integration-test containers and fakes.
 - `docs/`: canonical English documentation; `docs/es/` mirrors it in Spanish.
 - `assets/`: icons, brand SVGs, and screenshots; `scripts/`: builds, checks, shipping, and release tooling.
 - `ai/`: the agent harness masters (entry instructions, rules, context, skills) and the engine that renders them into `.claude/`, `AGENTS.md`, `.codex/` and `.agents/skills/`.

@@ -70,15 +70,21 @@ const (
 
 var remoteWorkBounds = map[string]time.Duration{
 	// The repository mutations (#295), as long as their work may take.
-	"PullRepo":                       healReadTimeout + pullTimeout,
-	"MoveRepo":                       moveTimeout,
-	"SetupMirrorRepo":                mirrorSetupTimeout,
-	"CreateNewRepo":                  createRepoTimeout,
-	"ApplyDiscoveredMirrors":         discoverMirrorsTimeout,
-	"Reconcile":                      reconcileBound,
-	"AdoptClones":                    reconcileBound,
-	"DeleteRepo":                     statusTimeout,
-	"ConfirmSweep":                   statusTimeout,
+	"PullRepo":               healReadTimeout + pullTimeout,
+	"MoveRepo":               moveTimeout,
+	"SetupMirrorRepo":        mirrorSetupTimeout,
+	"CreateNewRepo":          createRepoTimeout,
+	"ApplyDiscoveredMirrors": discoverMirrorsTimeout,
+	"Reconcile":              reconcileBound,
+	"AdoptClones":            reconcileBound,
+	"DeleteRepo":             statusTimeout,
+	"ConfirmSweep":           statusTimeout,
+	// The token credentials (#242): a store or a type change reconfigures
+	// every clone of the account.
+	"CredentialStoreToken":           reconcileBound,
+	"ChangeCredentialType":           reconcileBound,
+	"CredentialDelete":               statusTimeout,
+	"CredentialSetupGCM":             healReadTimeout,
 	"GetConfig":                      healReadTimeout,
 	"GetStartupSnapshot":             healReadTimeout,
 	"ReloadConfig":                   healReadTimeout,

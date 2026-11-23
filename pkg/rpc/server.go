@@ -42,6 +42,10 @@ type Server struct {
 	// request. The app passes its mutating methods, so a read is never
 	// answered from the cache (#294).
 	Remember func(method string) bool
+	// SecretParams marks the parameters that carry a secret (#242). The
+	// server withholds the panic value of such a request and removes the
+	// secret from its answer, success or error.
+	SecretParams SecretParams
 
 	mu  sync.Mutex
 	out *outbox // set while Serve runs
@@ -344,11 +348,17 @@ func (c *serverConn) runOnce(ctx context.Context, req message, handler Handler) 
 
 // run calls the handler and turns what it returns into what may cross the
 // wire. A panic becomes an internal error with no detail; the stack goes to
-// the server's log.
+// the server's log, and so does the panic value unless the request carries
+// a secret. The secrets of a request never come back in its answer.
 func (c *serverConn) run(ctx context.Context, req message, handler Handler) (result json.RawMessage, rpcErr *Error) {
+	secrets := c.s.SecretParams.values(req.Method, req.Params)
 	defer func() {
 		if p := recover(); p != nil {
-			c.s.logf("panic in %s: %v\n%s", sanitizeToken(req.Method), p, debug.Stack())
+			var value any = p
+			if len(c.s.SecretParams[req.Method]) > 0 {
+				value = secretMark
+			}
+			c.s.logf("panic in %s: %v\n%s", sanitizeToken(req.Method), value, debug.Stack())
 			result, rpcErr = nil, newError(CodeInternalError, ErrCodeInternal, "")
 		}
 	}()
@@ -357,12 +367,12 @@ func (c *serverConn) run(ctx context.Context, req message, handler Handler) (res
 		if pe, ok := errors.AsType[*paramsError](err); ok {
 			return nil, newError(CodeInvalidParams, ErrCodeInvalidParams, pe.detail)
 		}
-		return nil, &Error{Code: CodeApplication, Data: c.s.ToUserError(err)}
+		return nil, &Error{Code: CodeApplication, Data: scrubUserError(c.s.ToUserError(err), secrets)}
 	}
 	data, err := json.Marshal(value)
 	if err != nil {
 		c.s.logf("the result of %s cannot be encoded", sanitizeToken(req.Method))
 		return nil, newError(CodeInternalError, ErrCodeInternal, "")
 	}
-	return data, nil
+	return scrubJSON(data, secrets), nil
 }

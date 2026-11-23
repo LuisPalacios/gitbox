@@ -399,7 +399,7 @@ Los dos lados necesitan los scopes de token que se listan en [Scopes de token po
 
 ### Eliminar repos y cuentas
 
-Haz clic en el **icono de papelera** de la barra superior para entrar en el modo borrar. Aparecen botones ✕ rojos en la tarjeta de cuenta de la vista de una cuenta, en las tarjetas de grupo mirror y en las filas de repo; haz clic en uno para quitar ese elemento. Eliminar una cuenta también elimina sus carpetas de clones locales. Haz clic de nuevo en el icono de papelera para salir del modo borrar.
+Haz clic en el **icono de papelera** de la barra superior para entrar en el modo borrar. Aparecen botones ✕ rojos en la tarjeta de cuenta de la vista de una cuenta, en las tarjetas de grupo mirror y en las filas de repo; haz clic en uno para quitar ese elemento. Eliminar una cuenta también elimina sus carpetas de clones locales y su archivo de token guardado. Haz clic de nuevo en el icono de papelera para salir del modo borrar.
 
 ## Mirrors
 

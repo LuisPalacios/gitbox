@@ -381,6 +381,37 @@ func TestDeleteAccount_RemovesClonesAndCascades(t *testing.T) {
 	}
 }
 
+// TestDeleteAccount_RemovesTheTokenFile: deleting an account removes its
+// credential file, so a new account with the same key does not inherit the
+// old token (#242). Another account's file stays.
+func TestDeleteAccount_RemovesTheTokenFile(t *testing.T) {
+	_, cfg := isolate(t)
+	for _, key := range []string{"tok", "other"} {
+		if err := AddAccount(cfg, key, testAccount("token")); err != nil {
+			t.Fatal(err)
+		}
+		if err := credential.StoreToken(key, key+"-token-value"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := DeleteAccount(cfg, "tok"); err != nil {
+		t.Fatalf("DeleteAccount: %v", err)
+	}
+	if _, err := os.Stat(credential.CredentialFilePath("tok")); !os.IsNotExist(err) {
+		t.Errorf("the deleted account's credential file is still on disk: %v", err)
+	}
+	if tok, err := credential.GetToken("other"); err != nil || tok != "other-token-value" {
+		t.Errorf("the other account's token = %q, %v", tok, err)
+	}
+	// An account with no credential file deletes as before.
+	if err := AddAccount(cfg, "nofile", testAccount("token")); err != nil {
+		t.Fatal(err)
+	}
+	if err := DeleteAccount(cfg, "nofile"); err != nil {
+		t.Fatalf("DeleteAccount without a file: %v", err)
+	}
+}
+
 func TestDeleteRepo(t *testing.T) {
 	_, cfg := isolate(t)
 	if err := AddAccount(cfg, "gh", testAccount("gcm")); err != nil {
