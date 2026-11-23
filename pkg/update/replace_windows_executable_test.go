@@ -72,7 +72,7 @@ func TestWindowsExecutable_RollbackPreservesRunnableBackup(t *testing.T) {
 	if got := readFile(t, dst+".old"); got != "old version" {
 		t.Fatalf("backup has %q, want the old version", got)
 	}
-	cleanupWindowsBackup(dst)
+	cleanupWindowsBackup(dst, false)
 	if got := names(t, filepath.Dir(dst)); !slices.Equal(got, []string{"GitboxApp.exe.old", "GitboxApp.exe.update-state.json"}) {
 		t.Fatalf("rollback evidence changed: %v", got)
 	}
@@ -116,33 +116,33 @@ func TestWindowsExecutable_CleanupHonorsTheRecordedBackup(t *testing.T) {
 	}
 	original := readFile(t, marker)
 	writeFile(t, dst, "unexpected running version")
-	cleanupWindowsBackup(dst)
+	cleanupWindowsBackup(dst, false)
 	if got := readFile(t, dst+".old"); got != "old version" {
 		t.Fatalf("unexpected version changed backup to %q", got)
 	}
 	writeFile(t, dst, "new version")
 	writeFile(t, marker, strings.Replace(original, "GitboxApp.exe.old", "../other.old", 1))
-	cleanupWindowsBackup(dst)
+	cleanupWindowsBackup(dst, false)
 	if got := readFile(t, dst+".old"); got != "old version" {
 		t.Fatalf("invalid record changed backup to %q", got)
 	}
 	writeFile(t, marker, original)
 	writeFile(t, dst+".old", "substituted backup")
-	cleanupWindowsBackup(dst)
+	cleanupWindowsBackup(dst, false)
 	if got := readFile(t, dst+".old"); got != "substituted backup" {
 		t.Fatalf("cleanup touched a different backup: %q", got)
 	}
 	writeFile(t, dst+".old", "old version")
 	writeFile(t, dst+".new", "another update in progress")
-	cleanupWindowsBackup(dst)
+	cleanupWindowsBackup(dst, false)
 	if got := readFile(t, dst+".old"); got != "old version" {
 		t.Fatalf("cleanup interfered with another update and changed the backup to %q", got)
 	}
 	if err := os.Remove(dst + ".new"); err != nil {
 		t.Fatal(err)
 	}
-	cleanupWindowsBackup(dst)
-	cleanupWindowsBackup(dst)
+	cleanupWindowsBackup(dst, false)
+	cleanupWindowsBackup(dst, false)
 	if got := names(t, filepath.Dir(dst)); !slices.Equal(got, []string{"GitboxApp.exe", "other.old"}) {
 		t.Fatalf("cleanup left or removed the wrong files: %v", got)
 	}
@@ -163,7 +163,7 @@ func TestWindowsExecutable_PreservesLegacyBackup(t *testing.T) {
 	if err := replaceWindowsExecutable(src, dst, replaceOps{moveFile: os.Rename}); err != nil {
 		t.Fatal(err)
 	}
-	var state windowsUpdateState
+	var state updateState
 	if err := json.Unmarshal([]byte(readFile(t, marker)), &state); err != nil {
 		t.Fatal(err)
 	}
@@ -177,11 +177,40 @@ func TestWindowsExecutable_PreservesLegacyBackup(t *testing.T) {
 	if got := readFile(t, dst); got != "new version" {
 		t.Fatalf("install contains %q, want new version", got)
 	}
-	cleanupWindowsBackup(dst)
+	cleanupWindowsBackup(dst, false)
 	if got := names(t, filepath.Dir(dst)); !slices.Equal(got, []string{"GitboxApp.exe", "GitboxApp.exe.old"}) {
 		t.Fatalf("cleanup left or removed the wrong files: %v", got)
 	}
 	if got := readFile(t, old); got != "legacy version" {
 		t.Fatalf("unrecorded backup contains %q, want legacy version", got)
+	}
+}
+
+func TestLegacyCleanupPreservesUnconfirmedUpdate(t *testing.T) {
+	dst := filepath.Join(t.TempDir(), "GitboxApp.exe")
+	src := filepath.Join(t.TempDir(), "GitboxApp.exe")
+	writeFile(t, dst, "old")
+	writeFile(t, src, "new")
+	if err := replaceWindowsExecutable(src, dst, replaceOps{moveFile: os.Rename}); err != nil {
+		t.Fatal(err)
+	}
+	cleanupWindowsBackup(dst, true)
+	if got := readFile(t, dst+".old"); got != "old" {
+		t.Fatalf("unconfirmed backup changed to %q", got)
+	}
+	var record map[string]any
+	marker := dst + ".update-state.json"
+	if err := json.Unmarshal([]byte(readFile(t, marker)), &record); err != nil {
+		t.Fatal(err)
+	}
+	delete(record, "created")
+	b, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, marker, string(b))
+	cleanupWindowsBackup(dst, true)
+	if _, err := os.Stat(dst + ".old"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("legacy backup survived cleanup")
 	}
 }

@@ -9,7 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
+	"time"
 )
 
 const windowsBackupSuffixBytes = 8
@@ -18,11 +18,14 @@ var errInstalledUpdateChanged = errors.New("the installed executable changed bef
 
 var errUpdateRollback = errors.New("could not restore the installed executable")
 
-// windowsUpdateState identifies one backup and the exact binary that replaced it.
-type windowsUpdateState struct {
-	Old             string `json:"old"`
-	OldSHA256       string `json:"oldSHA256"`
-	InstalledSHA256 string `json:"installedSHA256"`
+// updateState identifies one backup and the exact binary that replaced it.
+type updateState struct {
+	legacy          bool
+	Version         string    `json:"version,omitempty"`
+	Created         time.Time `json:"created,omitzero"`
+	Old             string    `json:"old"`
+	OldSHA256       string    `json:"oldSHA256"`
+	InstalledSHA256 string    `json:"installedSHA256"`
 }
 
 func replaceWindowsExecutable(src, dst string, ops replaceOps) error {
@@ -69,7 +72,7 @@ func replaceWindowsExecutableWith(dst, expectedOld string, ops replaceOps, stage
 		return fmt.Errorf("checking update backup: %w", err)
 	}
 
-	state := windowsUpdateState{
+	state := updateState{Version: ops.previousVersion, Created: time.Now().UTC(),
 		Old: filepath.Base(old), OldSHA256: oldHash, InstalledSHA256: newHash,
 	}
 	if err := writeUpdateState(marker, state); err != nil {
@@ -160,26 +163,24 @@ func stageExecutable(from io.Reader, staged string, size int64, mode os.FileMode
 	return expected, nil
 }
 
-func writeUpdateState(path string, state windowsUpdateState) error {
-	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+func writeUpdateState(path string, state updateState) error {
+	// Publish the complete record in one step. A killed process must never
+	// leave half a JSON document in the installation's exclusive marker.
+	out, err := os.CreateTemp(filepath.Dir(path), ".gitbox-update-record-*")
 	if err != nil {
 		return err
 	}
+	defer os.Remove(out.Name())
 	encodeErr := json.NewEncoder(out).Encode(state)
-	var syncErr error
-	if encodeErr == nil {
-		syncErr = out.Sync()
-	}
-	if err := errors.Join(encodeErr, syncErr, out.Close()); err != nil {
-		_ = os.Remove(path)
+	if err := errors.Join(encodeErr, out.Sync(), out.Close()); err != nil {
 		return err
 	}
-	return nil
+	return publishRecord(out.Name(), path)
 }
 
 // cleanupWindowsBackup accepts only a backup name derived from the running
 // executable. The record must identify the current executable and its backup.
-func cleanupWindowsBackup(exe string) {
+func cleanupWindowsBackup(exe string, legacyOnly bool) {
 	marker := exe + ".update-state.json"
 	if _, err := os.Lstat(marker); err != nil {
 		return
@@ -195,6 +196,12 @@ func cleanupWindowsBackup(exe string) {
 	if err := slot.Close(); err != nil {
 		return
 	}
+	if legacyOnly {
+		state, err := readUpdateState(exe)
+		if err != nil || !state.legacy {
+			return
+		}
+	}
 	activeHash, err := regularFileHash(exe)
 	if err == nil {
 		removeRecordedWindowsBackup(exe, marker, activeHash)
@@ -202,27 +209,9 @@ func cleanupWindowsBackup(exe string) {
 }
 
 func removeRecordedWindowsBackup(exe, marker, activeHash string) {
-	info, err := os.Lstat(marker)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > 4096 {
-		return
-	}
-	data, err := os.ReadFile(marker)
+	state, err := readUpdateState(exe)
 	if err != nil {
 		return
-	}
-	var state windowsUpdateState
-	if err := json.Unmarshal(data, &state); err != nil {
-		return
-	}
-	canonical := filepath.Base(exe) + ".old"
-	if state.Old != canonical {
-		suffix, ok := strings.CutPrefix(state.Old, canonical+".")
-		if !ok || len(suffix) != hex.EncodedLen(windowsBackupSuffixBytes) {
-			return
-		}
-		if _, err := hex.DecodeString(suffix); err != nil {
-			return
-		}
 	}
 	old := filepath.Join(filepath.Dir(exe), state.Old)
 	if activeHash != state.InstalledSHA256 {

@@ -527,6 +527,8 @@ Once connected, the remote window is the full Gitbox window, showing and changin
 
 Gitbox checks for updates at launch and every six hours while it runs. When a newer version is available, an amber pill appears on the right of the footer with the new version. Click it to download and apply the update in place. Gitbox verifies the release signature and checksum and refuses an update that fails either check; see [Release signing](release-signing.md). It replaces only what is already installed next to the app (on macOS, the whole `GitboxApp.app` bundle) and restarts on the new version. If the new version can't start on its own, the pill says so: click **Quit** and start the app again. The pill shows on every launch until you update; the ✕ hides it until the next launch.
 
+If the first launch is interrupted, reopen Gitbox. Choose **Roll back** to restore the previous version, or **Keep this version** after confirming it works. Gitbox retains the backup for up to seven days and checks its integrity before restoring it.
+
 The Linux AppImage only notifies: clicking the pill opens the release page, and you download the new AppImage and replace the old file yourself.
 
 The updater follows the release GitHub marks as latest, so a v1 GUI moves to v2 the same way.

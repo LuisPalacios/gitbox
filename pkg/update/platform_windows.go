@@ -3,11 +3,13 @@
 package update
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"golang.org/x/sys/windows"
 )
@@ -53,10 +55,51 @@ func isPermissionError(err error) bool {
 	return false
 }
 
-// CleanupOldBinary removes the backup for the running version after startup.
+func removeReplaced(r *Recovery, dir, exe string) (bool, error) {
+	if os.RemoveAll(dir) == nil {
+		return false, nil
+	}
+	old := filepath.Join(filepath.Dir(r.dst), r.state.Old)
+	if err := moveUpdateFile(exe, old); err != nil {
+		return false, err
+	}
+	_ = os.Remove(dir)
+	state := updateState{Old: r.state.Old, OldSHA256: r.state.InstalledSHA256, InstalledSHA256: r.state.OldSHA256, Created: time.Now().Add(-retention)}
+	out, err := os.CreateTemp(filepath.Dir(r.dst), ".gitbox-rollback-record-*")
+	if err != nil {
+		return false, err
+	}
+	defer os.Remove(out.Name())
+	writeErr := json.NewEncoder(out).Encode(state)
+	if err := errors.Join(writeErr, out.Sync(), out.Close()); err != nil {
+		return false, err
+	}
+	if err := os.Rename(out.Name(), r.dst+".update-state.json"); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func lockInstall(dst string) (func(), error) {
+	slot, err := os.OpenFile(dst+".new", os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return nil, err
+	}
+	if err := slot.Close(); err != nil {
+		_ = os.Remove(slot.Name())
+		return nil, err
+	}
+	return func() { _ = os.Remove(slot.Name()) }, nil
+}
+
+func publishRecord(tmp, path string) error { return moveUpdateFile(tmp, path) }
+
+// CleanupOldBinary confirms startup for callers of the legacy Windows API.
+// The GUI uses BeginRecovery after installing its lifecycle handlers.
 func CleanupOldBinary() {
-	self, err := SelfPath()
-	if err == nil {
-		cleanupWindowsBackup(self)
+	if exe, err := SelfPath(); err == nil {
+		cleanupWindowsBackup(exe, true)
 	}
 }
+
+func canReplaceRunningFile(dst string) bool { return false }

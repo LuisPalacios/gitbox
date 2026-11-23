@@ -188,7 +188,7 @@ func RunElevatedUpdate(current string, args []string) error {
 		return reportElevatedFailure("GitboxApp did not close in time. The update was not installed.")
 	}
 
-	if err := installElevatedPayload(exe, oldHash, payload); err != nil {
+	if err := installElevatedPayload(exe, oldHash, current, payload); err != nil {
 		if errors.Is(err, errInstalledUpdateChanged) {
 			return reportElevatedFailure("Another update changed GitboxApp. Open GitboxApp to continue.")
 		}
@@ -318,13 +318,14 @@ func validUpdateTarget(exe string) bool {
 	return true
 }
 
-func installElevatedPayload(exe, oldHash string, payload []byte) error {
+func installElevatedPayload(exe, oldHash, previousVersion string, payload []byte) error {
 	if !validUpdateTarget(exe) {
 		return errUpdateHandoff
 	}
 
 	ops := realReplaceOps()
 	ops.moveFile = moveUpdateFile
+	ops.previousVersion = previousVersion
 	hash := fmt.Sprintf("%x", sha256.Sum256(payload))
 	return replaceWindowsExecutableWith(exe, oldHash, ops, func(staged string) (string, error) {
 		return stageExecutable(bytes.NewReader(payload), staged, int64(len(payload)), 0o755, hash, ops.copyFile)

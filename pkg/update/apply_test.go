@@ -112,7 +112,7 @@ func TestInstallEntries_SelfOnly(t *testing.T) {
 	writeFile(t, filepath.Join(install, "gitbox"), "old-cli")
 	writeFile(t, filepath.Join(install, "GitboxApp"), "v2-gui")
 
-	err := installEntries(extract, install, func(name string) bool { return name == "gitbox" })
+	err := installEntries(extract, install, "v1.2.3", func(name string) bool { return name == "gitbox" })
 	if err != nil {
 		t.Fatalf("installEntries: %v", err)
 	}
@@ -131,12 +131,15 @@ var errReplaceInjected = errors.New("injected replace failure")
 func failingReplaceOps(dst string) replaceOps {
 	ops := realReplaceOps()
 	ops.rename = func(oldpath, newpath string) error {
-		if newpath == dst && oldpath != dst+".old" {
+		if newpath == dst && oldpath != dst+".old" && oldpath != previousPath(dst) {
 			return errReplaceInjected
 		}
 		return os.Rename(oldpath, newpath)
 	}
 	ops.moveFile = ops.rename
+	if ops.exchange != nil {
+		ops.exchange = func(string, string) error { return errReplaceInjected }
+	}
 	return ops
 }
 

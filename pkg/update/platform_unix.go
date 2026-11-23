@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"golang.org/x/sys/unix"
 )
 
 // ErrNeedElevation signals that the operation failed due to insufficient
@@ -65,8 +67,10 @@ func replaceExecutable(src, dst string, ops replaceOps) error {
 		os.Remove(tmpPath)
 		return fmt.Errorf("copying binary: %w", err)
 	}
-	srcFile.Close()
-	tmp.Close()
+	if err := errors.Join(srcFile.Close(), tmp.Sync(), tmp.Close()); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
 
 	// Preserve executable permissions.
 	if err := os.Chmod(tmpPath, srcInfo.Mode()|0o111); err != nil {
@@ -74,14 +78,35 @@ func replaceExecutable(src, dst string, ops replaceOps) error {
 		return err
 	}
 
-	// Atomic rename.
-	if err := ops.rename(tmpPath, dst); err != nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("renaming to %s: %w", filepath.Base(dst), err)
-	}
-
-	return nil
+	defer os.Remove(tmpPath)
+	return installPrevious(tmpPath, dst, ops)
 }
 
-// CleanupOldBinary is a no-op on Unix — atomic rename doesn't leave .old files.
+func finishRecovery(r *Recovery, rollback bool) error         { return finishFiles(r, rollback, os.Rename) }
+func removeReplaced(_ *Recovery, dir, _ string) (bool, error) { return false, os.RemoveAll(dir) }
+
+func RunRecoveryHelper(_ []string) error { return errElevationUnsupported }
+
+// Lock the install directory across prepare, replacement and cleanup. The
+// kernel releases the lock even when the process exits during an update.
+func lockInstall(dst string) (func(), error) {
+	f, err := os.Open(filepath.Dir(dst))
+	if err != nil {
+		return nil, err
+	}
+	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	return func() { _ = f.Close() }, nil
+}
+
+func publishRecord(tmp, path string) error { return os.Link(tmp, path) }
+
+// CleanupOldBinary is the legacy Windows startup confirmation.
 func CleanupOldBinary() {}
+
+func canReplaceRunningFile(dst string) bool {
+	info, err := os.Lstat(dst)
+	return err == nil && info.Mode().IsRegular()
+}

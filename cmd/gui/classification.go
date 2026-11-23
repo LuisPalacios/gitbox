@@ -56,6 +56,8 @@ var methodClass = map[string]methodInfo{
 	"AddRoot":                        {classRemote, "P5", true},
 	"AdoptClones":                    {classRemote, "P5", true},
 	"ApplyDiscoveredMirrors":         {classRemote, "P5", true},
+	"CheckUpdateRecovery":            {classLocal, "P1a", false},
+	"ResolveUpdateRecovery":          {classLocal, "P1a", false},
 	"ApplyUpdate":                    {classLocal, "P1a", false},
 	"BeforeClose":                    {classMixed, "P1a", false},
 	"ChangeCredentialType":           {classRemote, "P5b", true},
@@ -242,5 +244,6 @@ var eventClass = map[string]eventInfo{
 	"update:done":              {classLocal, "P1a"},
 	"update:progress":          {classLocal, "P1a"},
 	"update:quit":              {classLocal, "P1a"},
+	"update:recoveryExpired":   {classLocal, "P1a"},
 	"update:restarting":        {classLocal, "P1a"},
 }

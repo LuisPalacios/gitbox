@@ -74,6 +74,10 @@ export function CheckMoveReadiness(arg1, arg2, arg3) {
   return window['go']['main']['App']['CheckMoveReadiness'](arg1, arg2, arg3);
 }
 
+export function CheckUpdateRecovery(arg1) {
+  return window['go']['main']['App']['CheckUpdateRecovery'](arg1);
+}
+
 export function CloneRepo(arg1, arg2, arg3) {
   return window['go']['main']['App']['CloneRepo'](arg1, arg2, arg3);
 }
@@ -468,6 +472,10 @@ export function RepoNesting() {
 
 export function RepoWorkspaceFiles(arg1, arg2) {
   return window['go']['main']['App']['RepoWorkspaceFiles'](arg1, arg2);
+}
+
+export function ResolveUpdateRecovery(arg1) {
+  return window['go']['main']['App']['ResolveUpdateRecovery'](arg1);
 }
 
 export function RestoreFromBackup(arg1) {
