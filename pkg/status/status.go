@@ -197,6 +197,12 @@ const checkAllConcurrency = 8
 // and the results are incomplete. perRepo, when positive, bounds the check
 // of each repo.
 func CheckAllContext(ctx context.Context, cfg *config.Config, perRepo time.Duration) ([]RepoStatus, error) {
+	return CheckAllBatches(ctx, cfg, perRepo, nil)
+}
+
+// CheckAllBatches streams completed probes while preserving config order in
+// the returned inventory. A slow clone never delays an already ready row.
+func CheckAllBatches(ctx context.Context, cfg *config.Config, perRepo time.Duration, onBatch func([]RepoStatus)) ([]RepoStatus, error) {
 	type job struct {
 		index      int
 		sourceName string
@@ -206,6 +212,13 @@ func CheckAllContext(ctx context.Context, cfg *config.Config, perRepo time.Durat
 		offline    bool
 	}
 	var jobs []job
+	if ctx.Err() != nil {
+		count := 0
+		for _, source := range cfg.Sources {
+			count += len(source.Repos)
+		}
+		return make([]RepoStatus, count), ctx.Err()
+	}
 	for _, sourceName := range cfg.OrderedSourceKeys() {
 		source := cfg.Sources[sourceName]
 		for _, repoName := range source.OrderedRepoKeys() {
@@ -222,34 +235,73 @@ func CheckAllContext(ctx context.Context, cfg *config.Config, perRepo time.Durat
 	}
 
 	results := make([]RepoStatus, len(jobs))
-	sem := make(chan struct{}, checkAllConcurrency)
+	if len(jobs) == 0 || ctx.Err() != nil {
+		return results, ctx.Err()
+	}
+	type result struct {
+		index int
+		repo  RepoStatus
+	}
+	work := make(chan job)
+	finished := make(chan result, checkAllConcurrency)
 	var wg sync.WaitGroup
-dispatch:
-	for _, j := range jobs {
-		// A cancelled sweep starts nothing more, even with a free slot.
-		if ctx.Err() != nil {
-			break
+	for range min(len(jobs), checkAllConcurrency) {
+		wg.Go(func() {
+			for j := range work {
+				if ctx.Err() != nil {
+					return
+				}
+				rs := RepoStatus{Path: j.path, State: RootOffline}
+				if !j.offline {
+					rs = checkWithin(ctx, j.path, perRepo)
+				}
+				rs.Source, rs.Repo, rs.Account = j.sourceName, j.repoName, j.sourceAcct
+				select {
+				case finished <- result{j.index, rs}:
+				case <-ctx.Done():
+					return
+				}
+			}
+		})
+	}
+	defer func() { close(work); wg.Wait() }()
+	var pending []RepoStatus
+	flush := func() {
+		if len(pending) > 0 {
+			onBatch(pending)
+			pending = nil
+		}
+	}
+	tick := time.NewTicker(250 * time.Millisecond)
+	defer tick.Stop()
+	dispatched := 0
+	for complete := 0; complete < len(jobs) && ctx.Err() == nil; {
+		var send chan job
+		var j job
+		if dispatched < len(jobs) {
+			send = work
+			j = jobs[dispatched]
 		}
 		select {
-		case sem <- struct{}{}:
 		case <-ctx.Done():
-			break dispatch
-		}
-		wg.Add(1)
-		go func(j job) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			rs := RepoStatus{Path: j.path, State: RootOffline}
-			if !j.offline {
-				rs = checkWithin(ctx, j.path, perRepo)
+		case send <- j:
+			dispatched++
+		case <-tick.C:
+			flush()
+		case r := <-finished:
+			complete++
+			results[r.index] = r.repo
+			if onBatch != nil {
+				pending = append(pending, r.repo)
+				if len(pending) == 8 {
+					flush()
+				}
 			}
-			rs.Source = j.sourceName
-			rs.Repo = j.repoName
-			rs.Account = j.sourceAcct
-			results[j.index] = rs
-		}(j)
+		}
 	}
-	wg.Wait()
+	if ctx.Err() == nil {
+		flush()
+	}
 	return results, ctx.Err()
 }
 

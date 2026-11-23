@@ -57,7 +57,9 @@ type App struct {
 	prefs prefsStore
 	// cfgBase identifies the config bytes observed at the last load or save.
 	// Guarded by mu.
-	cfgBase config.FileRevision
+	cfgBase        config.FileRevision
+	configRevision uint64
+	timing         startupTiming
 	// readOnly makes an App that changes nothing it reads: saveConfig
 	// refuses and fetch skips the repair of a clone's .git/config. No
 	// gitbox-server sets it since the mutations are served (#294, #295);
@@ -173,7 +175,7 @@ type App struct {
 
 // NewApp creates a new App instance.
 func NewApp() *App {
-	return &App{upstreamGone: make(map[string]bool)}
+	return &App{upstreamGone: make(map[string]bool), timing: startupTiming{start: time.Now()}}
 }
 
 // ─── Lifecycle ────────────────────────────────────────────────
@@ -186,7 +188,7 @@ func (a *App) initLocal(ctx context.Context) {
 		a.cfgPath = config.DefaultV2Path()
 	}
 	cfg, _, base, err := config.LoadRevision(a.cfgPath, false)
-	a.cfgBase = base
+	a.setRevision(base)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			// Config exists but failed to parse — store error for the frontend to display.
@@ -202,6 +204,7 @@ func (a *App) initLocal(ctx context.Context) {
 		}
 	} else {
 		a.cfgLoaded = true
+		a.timing.mark("decode")
 		if a.testFirstRun {
 			cfg.Global.Roots = nil
 			a.testFirstRun = false
@@ -209,15 +212,6 @@ func (a *App) initLocal(ctx context.Context) {
 	}
 	a.cfg = cfg
 	a.refreshCredentialAudit()
-}
-
-// startLocal launches the local backend's background workers.
-func (a *App) startLocal() {
-	// Ask each provider API whether every configured repo still exists.
-	// Without this, a deleted upstream only surfaces after the user clicks
-	// "Fetch all" — on launch, the card would show Error/Synced and lie.
-	// Throttled to once per 60s; safe to call repeatedly.
-	a.probeUpstreamExistenceAsync()
 }
 
 // closeLocal stops the local backend's background workers.
@@ -247,7 +241,7 @@ func (a *App) saveConfig() error {
 		}
 		return err
 	}
-	a.cfgBase = h
+	a.setRevision(h)
 	return nil
 }
 
@@ -264,7 +258,7 @@ func isConfigChanged(err error) bool {
 // clear the pending mutation and block edits until recovery. Caller holds a.mu.
 func (a *App) reloadAfterConflict() {
 	fresh, _, base, err := config.LoadRevision(a.cfgPath, false)
-	a.cfgBase = base
+	a.setRevision(base)
 	if err != nil {
 		a.cfgLoaded = false
 		a.cfgLoadError = userMsg(err)
@@ -364,7 +358,7 @@ func (a *App) savePrefs(change func(*config.ClientPrefs) error) error {
 			return err
 		}
 	}
-	a.cfgBase = h
+	a.setRevision(h)
 	return nil
 }
 
@@ -497,10 +491,19 @@ func minInt(a, b int) int {
 	return b
 }
 
+// setRevision advances the status snapshot when saved domain data changes.
+func (a *App) setRevision(next config.FileRevision) {
+	if !a.cfgBase.SameDomain(next) {
+		a.configRevision++
+	}
+	a.cfgBase = next
+}
+
 // ─── Config ───────────────────────────────────────────────────
 
 // ConfigDTO is the JSON-friendly config sent to the frontend.
 type ConfigDTO struct {
+	Revision uint64                    `json:"revision"`
 	Version  int                       `json:"version"`
 	Global   config.GlobalConfig       `json:"global"`
 	Accounts map[string]config.Account `json:"accounts"`
@@ -589,7 +592,7 @@ func (a *App) configDTO() (ConfigDTO, error) {
 	for key, src := range a.cfg.Sources {
 		sources[key] = SourceDTO{Account: src.Account, Folder: src.Folder, Repos: src.Repos, RepoOrder: src.OrderedRepoKeys()}
 	}
-	dto := ConfigDTO{Version: a.cfg.Version, Global: a.cfg.Global, Accounts: a.cfg.Accounts,
+	dto := ConfigDTO{Revision: a.configRevision, Version: a.cfg.Version, Global: a.cfg.Global, Accounts: a.cfg.Accounts,
 		Sources: sources, Mirrors: buildMirrorsDTO(a.cfg)}
 	dto.PathConflicts = a.pathConflicts
 	data, err := json.Marshal(dto)
@@ -639,6 +642,7 @@ func (a *App) GetStartupSnapshot() (StartupSnapshot, error) {
 		snap.ServerOS = identifier(snap.OS)
 		snap.OS = a.getOSLocal()
 	}
+	a.timing.mark("snapshot")
 	snap.RemoteAlias = a.remoteAlias
 	return snap, nil
 }
@@ -686,7 +690,7 @@ func (a *App) reloadConfigLocal() (ConfigDTO, error) {
 	}
 	a.refreshPRConfigLocked(cfg)
 	a.cfg = cfg
-	a.cfgBase = base
+	a.setRevision(base)
 	a.cfgLoaded, a.cfgLoadError = true, ""
 	a.pathsAudited = false
 
@@ -1610,7 +1614,8 @@ func (a *App) saveReplacement(cfg *config.Config, base config.FileRevision) erro
 		return err
 	}
 	a.refreshPRConfigLocked(cfg)
-	a.cfg, a.cfgBase, a.cfgLoaded, a.cfgLoadError = cfg, next, true, ""
+	a.setRevision(next)
+	a.cfg, a.cfgLoaded, a.cfgLoadError = cfg, true, ""
 	return nil
 }
 

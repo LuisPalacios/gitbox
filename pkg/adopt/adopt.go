@@ -3,6 +3,7 @@
 package adopt
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"os"
@@ -54,24 +55,32 @@ func FindOrphans(cfg *config.Config) ([]OrphanRepo, error) {
 // reported with NeedsRelocate set, so adoption moves it under its source's
 // root or stores an absolute clone_folder.
 func FindOrphansIn(cfg *config.Config, extraRoots []string) ([]OrphanRepo, error) {
+	orphans, _, err := FindOrphansContext(context.Background(), cfg, extraRoots)
+	return orphans, err
+}
+
+// FindOrphansContext returns confirmed observations and the number of directory branches skipped.
+func FindOrphansContext(ctx context.Context, cfg *config.Config, extraRoots []string) ([]OrphanRepo, int, error) {
+	skipped := map[string]bool{}
+	var candidates []string
+	recordSkipped := func(c git.Coverage) {
+		for _, p := range c.Skipped {
+			skipped[p] = true
+		}
+	}
 	// Pass 1 — flat scan of every root: the configured roots and any
 	// caller-supplied ones. FindRepos stops at each .git boundary, so this
 	// yields top-level clones only.
 	roots := gatherRoots(cfg.Global.Roots, extraRoots)
-	var flat []string
 	for _, root := range roots {
-		paths, err := git.FindRepos(root)
+		c, err := git.FindReposContext(ctx, root, git.DiscoveryDepth)
+		recordSkipped(c)
+		candidates = append(candidates, c.Repos...)
 		if err != nil {
-			continue // best-effort per root
+			return nil, len(skipped), err
 		}
-		flat = append(flat, paths...)
 	}
-	sort.Strings(flat)
-	flat = dedupPaths(flat)
-	// Each flat scan already stops at clone boundaries. Keep results from
-	// explicitly requested nested roots instead of filtering across roots.
-	candidates := flat
-
+	sort.Strings(candidates)
 	// Pass 2 — nested clones inside container repos. These live inside another
 	// clone's working tree and the flat scan stops at clone boundaries. Container
 	// paths also join the root set so RelPath resolves against them.
@@ -79,19 +88,31 @@ func FindOrphansIn(cfg *config.Config, extraRoots []string) ([]OrphanRepo, error
 	containerPaths := containerRepoPaths(cfg)
 	nestedSet := make(map[string]bool)
 	for _, cp := range containerPaths {
-		for _, np := range git.FindNestedRepos(cp, depth) {
+		c, err := git.FindNestedReposContext(ctx, cp, depth)
+		recordSkipped(c)
+		if err != nil {
+			return nil, len(skipped), err
+		}
+		for _, np := range c.Repos {
 			candidates = append(candidates, np)
 			nestedSet[pathkey.Compare(np)] = true
 		}
 	}
-	// The folders a container's workspace file lists are nested clones at
-	// any depth.
-	for _, np := range workspaceClones(cfg) {
+	var workspaceMatches []string
+	for _, member := range workspaceFolders(cfg) {
+		c, err := git.FindReposContext(ctx, member, depth)
+		recordSkipped(c)
+		if err != nil {
+			return nil, len(skipped), err
+		}
+		workspaceMatches = append(workspaceMatches, c.Repos...)
+	}
+	for _, np := range workspaceMatches {
 		candidates = append(candidates, np)
 		nestedSet[pathkey.Compare(np)] = true
 	}
 	relRoots := append(append([]string{}, roots...), containerPaths...)
-	return inspectOrphans(cfg, dedupPaths(candidates), relRoots, nestedSet), nil
+	return inspectOrphans(ctx, cfg, dedupPaths(candidates), relRoots, nestedSet), len(skipped), ctx.Err()
 }
 
 // FindOrphansUnder inspects only an explicitly selected directory. The
@@ -110,13 +131,16 @@ func FindOrphansUnder(cfg *config.Config, root string) ([]OrphanRepo, error) {
 			verified = append(verified, path)
 		}
 	}
-	return inspectOrphans(cfg, verified, []string{root}, nil), nil
+	return inspectOrphans(context.Background(), cfg, verified, []string{root}, nil), nil
 }
 
-func inspectOrphans(cfg *config.Config, candidates, relRoots []string, nestedSet map[string]bool) []OrphanRepo {
+func inspectOrphans(ctx context.Context, cfg *config.Config, candidates, relRoots []string, nestedSet map[string]bool) []OrphanRepo {
 	tracked := trackedPaths(cfg)
 	var orphans []OrphanRepo
 	for _, repoPath := range candidates {
+		if ctx.Err() != nil {
+			break
+		}
 		absPath, _ := filepath.Abs(repoPath)
 		if tracked[pathkey.Compare(absPath)] {
 			continue
@@ -240,9 +264,8 @@ func containerRepoPaths(cfg *config.Config) []string {
 	return paths
 }
 
-// workspaceClones returns the git clones among the folders each container's
-// workspace file lists inside it.
-func workspaceClones(cfg *config.Config) []string {
+// workspaceFolders returns the verified in-root scan paths listed by workspace files.
+func workspaceFolders(cfg *config.Config) []string {
 	var out []string
 	for _, srcKey := range cfg.OrderedSourceKeys() {
 		src := cfg.Sources[srcKey]
@@ -256,9 +279,7 @@ func workspaceClones(cfg *config.Config) []string {
 				if m.ScanPath == "" {
 					continue
 				}
-				if _, err := os.Stat(filepath.Join(m.ScanPath, ".git")); err == nil {
-					out = append(out, m.ScanPath)
-				}
+				out = append(out, m.ScanPath)
 			}
 		}
 	}

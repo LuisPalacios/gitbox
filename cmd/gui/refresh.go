@@ -23,6 +23,7 @@ import (
 )
 
 type statusFlight struct {
+	stream  uint64
 	done    chan struct{}
 	results []StatusResult
 	emit    bool
@@ -58,8 +59,17 @@ type refreshHooks struct {
 
 // I detach only the inputs refresh workers read, preserving configured order.
 func (a *App) snapshotRefreshConfig() *config.Config {
+	cfg, _ := a.refreshSnapshot()
+	return cfg
+}
+
+func (a *App) refreshSnapshot() (*config.Config, uint64) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	return a.refreshConfigLocked(), a.configRevision
+}
+
+func (a *App) refreshConfigLocked() *config.Config {
 	c := a.cfg
 	if c == nil {
 		return &config.Config{Accounts: map[string]config.Account{}, Sources: map[string]config.Source{}}
@@ -181,6 +191,10 @@ func (a *App) overlayStatus(local []StatusResult) []StatusResult {
 }
 
 func (a *App) requestStatus(emit, dirty bool) *statusFlight {
+	return a.requestStatusStream(emit, dirty, 0)
+}
+
+func (a *App) requestStatusStream(emit, dirty bool, stream uint64) *statusFlight {
 	a.refreshMu.Lock()
 	defer a.refreshMu.Unlock()
 	if a.refreshClosed {
@@ -189,37 +203,57 @@ func (a *App) requestStatus(emit, dirty bool) *statusFlight {
 		return &statusFlight{done: done}
 	}
 	if call := a.statusRun; call != nil {
+		if stream != 0 {
+			call.stream = stream
+			call.dirty = true
+		}
 		call.emit = call.emit || emit
 		call.dirty = call.dirty || dirty
 		return call
 	}
-	call := &statusFlight{done: make(chan struct{}), emit: emit}
+	call := &statusFlight{done: make(chan struct{}), emit: emit, stream: stream}
 	a.statusRun = call
 	a.refreshWG.Go(func() {
 		for {
 			a.refreshMu.Lock()
 			call.dirty = false
+			pass := call.stream
 			a.refreshMu.Unlock()
-			cfg := a.snapshotRefreshConfig()
-			check := func(cfg *config.Config) []status.RepoStatus {
-				// A cancelled sweep is incomplete; it only happens when the
-				// app closes, and nothing is published then.
-				results, _ := status.CheckAllContext(a.refreshContext(), cfg, statusTimeout)
-				return results
-			}
-			if a.refreshHooks != nil && a.refreshHooks.status != nil {
-				check = a.refreshHooks.status
-			}
+			cfg, revision := a.refreshSnapshot()
 			sweepStarted := time.Now()
-			raw := check(cfg)
-			local := make([]StatusResult, len(raw))
-			for i, r := range raw {
-				local[i] = toStatusResult(r)
-				local[i].sweepStarted = sweepStarted
+			convert := func(raw []status.RepoStatus) []StatusResult {
+				rows := make([]StatusResult, len(raw))
+				for i, r := range raw {
+					rows[i] = toStatusResult(r)
+					rows[i].sweepStarted = sweepStarted
+				}
+				return rows
 			}
-			current := a.snapshotRefreshConfig()
+			var publish func([]status.RepoStatus)
+			if pass != 0 {
+				publish = func(raw []status.RepoStatus) {
+					a.refreshMu.Lock()
+					defer a.refreshMu.Unlock()
+					if !a.refreshClosed && !call.dirty && call.stream == pass {
+						a.sink().Emit("status:batch", StatusBatch{PassID: pass, Revision: revision, Items: a.overlayStatus(convert(raw))})
+					}
+				}
+			}
+			var raw []status.RepoStatus
+			if a.refreshHooks != nil && a.refreshHooks.status != nil {
+				raw = a.refreshHooks.status(cfg)
+				if publish != nil {
+					for i := 0; i < len(raw); i += 8 {
+						publish(raw[i:min(i+8, len(raw))])
+					}
+				}
+			} else {
+				raw, _ = status.CheckAllBatches(a.refreshContext(), cfg, statusTimeout, publish)
+			}
+			local := convert(raw)
+			current, currentRevision := a.refreshSnapshot()
 			a.refreshMu.Lock()
-			if !a.refreshClosed && (call.dirty || !reflect.DeepEqual(cfg, current)) {
+			if !a.refreshClosed && (call.dirty || revision != currentRevision || !reflect.DeepEqual(cfg, current)) {
 				a.refreshMu.Unlock()
 				continue
 			}
@@ -229,6 +263,9 @@ func (a *App) requestStatus(emit, dirty bool) *statusFlight {
 			if call.emit && !a.refreshClosed {
 				a.sink().Emit("status:updated", a.overlayStatus(local))
 			}
+			if pass != 0 && !a.refreshClosed {
+				a.sink().Emit("status:batch", StatusBatch{PassID: pass, Revision: revision, Done: true})
+			}
 			a.statusRun = nil
 			close(call.done)
 			a.refreshMu.Unlock()
@@ -237,6 +274,17 @@ func (a *App) requestStatus(emit, dirty bool) *statusFlight {
 	})
 	return call
 }
+
+// StatusBatch belongs to one renderer request and one observed configuration.
+type StatusBatch struct {
+	PassID   uint64         `json:"passID"`
+	Revision uint64         `json:"revision"`
+	Items    []StatusResult `json:"items"`
+	Done     bool           `json:"done"`
+}
+
+// BeginStatus starts a shared local sweep without waiting for every clone.
+func (a *App) BeginStatus(passID uint64) error { return a.be().BeginStatus(passID) }
 
 // GetAllStatus shares an active local sweep; a later independent request stays fresh.
 func (a *App) GetAllStatus() []StatusResult { return a.be().GetAllStatus() }
@@ -599,13 +647,14 @@ func (a *App) fetchCycle() error {
 			a.publishNetworkState() // the network is back
 		}
 		var network sync.WaitGroup
-		if a.anyServerReachable(ctx, cfg) {
+		reachable := a.anyServerReachable(ctx, cfg)
+		if reachable {
 			network.Go(func() { a.probeUpstreamExistence() })
 		}
 		network.Go(func() { a.verifyRefreshCredentials(cfg) })
 		errs = a.fetchClones(ctx, cfg)
 		// I publish local changes before waiting for remote checks.
-		local := a.requestStatus(true, true)
+		local := a.requestStatus(true, reachable)
 		<-local.done
 		network.Wait()
 		a.emitCachedStatus()

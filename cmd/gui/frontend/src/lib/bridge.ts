@@ -13,13 +13,16 @@ import { guardCalls, decodeWindowError, WindowError } from './readonly';
 import { t } from './i18n';
 import { CheckUpdateRecovery, ResolveUpdateRecovery } from '../../wailsjs/go/main/App';
 
-import { AdoptFirstProject, PreviewClonePath, PreviewRoot } from '../../wailsjs/go/main/App';
+import { BeginStatus, GetStartupTiming, MarkStartup, AdoptFirstProject, PreviewClonePath, PreviewRoot } from '../../wailsjs/go/main/App';
 
 import type { CredentialFinding, StartupSnapshot, ConfigDTO, CollapsedState, StatusResult, CredentialStatus, EditorInfo, OrphanRepoDTO, ReconcileDTO, AccountDeletionImpactDTO, ConfigRepairResult, ConfigBackupInfo, PRSettingsDTO, PRSummaryDTO, RootDTO, RemoveRootDTO, MoveOwnerOption, MoveRequestDTO, MovePreflightDTO, MoveReadinessDTO, TerminalAppInfo, ShellInfo, TerminalProfileInfo } from './types';
 
 export type RecipeOptions = { slots: Record<string, string>; identities: Record<string, {name: string; email: string}> };
 
 const calls = {
+  beginStatus: BeginStatus,
+  getStartupTiming: GetStartupTiming,
+  markStartup: MarkStartup,
   getScheduledTasks: GetScheduledTasks,
   runTask: (name: string) => RunTask(name),
   previewRecipeExport: () => PreviewRecipeExport(),

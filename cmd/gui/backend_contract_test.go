@@ -220,12 +220,52 @@ type contractRow struct {
 	name       string
 	call       func(Backend) (any, error)
 	until      []string
+	terminal   func(recordedEvent) bool
 	empty      string
 	concurrent []string
 	project    func(t *testing.T, events []contractEvent) any
 }
 
-func contractRows(clone string) []contractRow {
+// The fixture has one configured clone. Require its actual status followed by
+// the final batch, both tagged with the requested pass and loaded revision.
+func startupStatusContract(revision uint64) contractRow {
+	const passID = 37
+	return contractRow{
+		name: "BeginStatus",
+		call: func(b Backend) (any, error) { return nil, b.BeginStatus(passID) },
+		terminal: func(e recordedEvent) bool {
+			if e.name != "status:batch" || len(e.args) != 1 {
+				return false
+			}
+			b, ok := e.args[0].(StatusBatch)
+			return ok && b.Done && b.PassID == passID && b.Revision == revision
+		},
+		project: func(t *testing.T, events []contractEvent) any {
+			t.Helper()
+			if len(events) != 2 {
+				t.Fatalf("expected a data batch and its completion, got %+v", events)
+			}
+			for i, e := range events {
+				if e.Name != "status:batch" || len(e.Args) != 1 {
+					t.Fatalf("unexpected status event %+v", e)
+				}
+				b, ok := e.Args[0].(StatusBatch)
+				if !ok || b.PassID != passID || b.Revision != revision || b.Done != (i == 1) {
+					t.Fatalf("invalid status batch %d: %+v", i, e)
+				}
+				if i == 0 && (len(b.Items) != 1 || b.Items[0].Source != "acct" || b.Items[0].Repo != "org/repo" || b.Items[0].State == "") {
+					t.Fatalf("expected the configured clone's status, got %+v", b.Items)
+				}
+				if b.Done && len(b.Items) != 0 {
+					t.Fatalf("completion carries unexpected rows: %+v", b.Items)
+				}
+			}
+			return events
+		},
+	}
+}
+
+func contractRows(clone string, revision uint64) []contractRow {
 	move := MoveRequestDTO{SourceSourceKey: "acct", SourceRepoKey: "org/repo", DestAccountKey: "other", DestOwner: "bob", DestRepoName: "repo"}
 	return []contractRow{
 		{name: "GetConfig", call: func(b Backend) (any, error) { return b.GetConfig() }},
@@ -240,6 +280,7 @@ func contractRows(clone string) []contractRow {
 		{name: "PreviewRoot", call: func(b Backend) (any, error) { return b.PreviewRoot(filepath.Dir(clone)) }},
 		{name: "PreviewClonePath", call: func(b Backend) (any, error) { return b.PreviewClonePath("acct", "org/repo") }},
 		{name: "ValidateRemotePath", call: func(b Backend) (any, error) { return b.ValidateRemotePath(os.TempDir()), nil }},
+		startupStatusContract(revision),
 		{name: "GetAllStatus", call: func(b Backend) (any, error) { return b.GetAllStatus(), nil }},
 		// The status pass and the upstream probe each publish the statuses.
 		{name: "RefreshStatus", call: func(b Backend) (any, error) { b.RefreshStatus(); return nil, nil }, until: []string{"status:updated"},
@@ -343,7 +384,7 @@ func TestBackendContract(t *testing.T) {
 	link.Host.readOnly = true
 
 	covered := make(map[string]bool)
-	for _, tt := range contractRows(clone) {
+	for _, tt := range contractRows(clone, local.configRevision) {
 		covered[strings.Fields(tt.name)[0]] = true
 		t.Run(tt.name, func(t *testing.T) {
 			want, wantEvents, wantErr := runContractCall(t, tt, direct, localSink)
@@ -578,7 +619,7 @@ type contractEvent struct {
 
 // runContractCall makes one call and returns its result, its error and the
 // events it emitted, once every event of row.until has arrived and the
-// stream has been quiet for a moment.
+// stream has been quiet for a moment, or its explicit terminal event arrives.
 func runContractCall(t *testing.T, row contractRow, b Backend, sink *recordingSink) (any, []contractEvent, error) {
 	t.Helper()
 	sink.mu.Lock()
@@ -590,27 +631,50 @@ func runContractCall(t *testing.T, row contractRow, b Backend, sink *recordingSi
 		defer sink.mu.Unlock()
 		return slices.Clone(sink.events[start:])
 	}
-	deadline := time.Now().Add(20 * time.Second)
-	for {
-		events := since()
-		done := true
-		for _, name := range row.until {
-			if !slices.ContainsFunc(events, func(e recordedEvent) bool { return e.name == name }) {
-				done = false
+	if row.terminal != nil {
+		// Emit records and signals under the same lock. This also handles a
+		// synchronous delivery before the method returns or before we subscribe.
+		deadline := time.After(20 * time.Second)
+		for {
+			sink.mu.Lock()
+			done := slices.ContainsFunc(sink.events[start:], row.terminal)
+			if !done && sink.changed == nil {
+				sink.changed = make(chan struct{})
+			}
+			changed := sink.changed
+			sink.mu.Unlock()
+			if done {
+				break
+			}
+			select {
+			case <-changed:
+			case <-deadline:
+				t.Fatalf("%s: missing terminal event, got %+v", row.name, since())
 			}
 		}
-		if done {
-			break
+	} else {
+		deadline := time.Now().Add(20 * time.Second)
+		for {
+			events := since()
+			done := true
+			for _, name := range row.until {
+				if !slices.ContainsFunc(events, func(e recordedEvent) bool { return e.name == name }) {
+					done = false
+				}
+			}
+			if done {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s: waited for %v, got %d events", row.name, row.until, len(events))
+			}
+			time.Sleep(10 * time.Millisecond)
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("%s: waited for %v, got %d events", row.name, row.until, len(events))
+		// Let stragglers of the same call arrive.
+		for n := -1; n != len(since()); {
+			n = len(since())
+			time.Sleep(60 * time.Millisecond)
 		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	// Let stragglers of the same call arrive.
-	for n := -1; n != len(since()); {
-		n = len(since())
-		time.Sleep(60 * time.Millisecond)
 	}
 	out := []contractEvent{}
 	for _, e := range since() {
@@ -791,7 +855,7 @@ func TestRemoteBackendCallsEachMethodByName(t *testing.T) {
 	value := reflect.ValueOf(remote)
 	checked := 0
 	for m := range iface.Methods() {
-		if m.Name == "Init" || m.Name == "Start" || m.Name == "Close" {
+		if m.Name == "Init" || m.Name == "Close" {
 			continue
 		}
 		// One distinct, recognisable value per argument.

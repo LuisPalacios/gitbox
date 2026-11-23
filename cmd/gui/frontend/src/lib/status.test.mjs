@@ -98,3 +98,27 @@ test('I format the age of a known network check in the current language', () => 
   assert.equal(s.checkedAgo(checkedAt, 'en', checked + 86_400_000), 'yesterday');
   assert.equal(s.checkedAgo('unknown', 'en', checked), null);
 });
+
+test('a status batch belongs to exactly one snapshot and startup pass', (t) => {
+  const batch = { passID: 3, revision: 8, items: [], done: true };
+  assert.equal(s.acceptStatusBatch(batch, 3, 8), true);
+  for (const [passID, revision] of [[3, 7], [3, 9], [3, undefined], [4, 8], [2, 8]]) {
+    assert.equal(s.acceptStatusBatch(batch, passID, revision), false);
+  }
+
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const paints = [];
+  const queue = s.statusPaintQueue(rows => paints.push(rows));
+  queue.push([1]);
+  queue.push([2, 3]);
+  queue.push([4]);
+  assert.deepEqual(paints, [[1]]);
+  t.mock.timers.tick(125);
+  assert.deepEqual(paints, [[1], [2, 3, 4]]);
+  queue.push([5]);
+  queue.flush(); // completion applies the remaining rows immediately
+  queue.push([6]);
+  queue.discard(); // superseded pass
+  t.mock.timers.tick(250);
+  assert.deepEqual(paints, [[1], [2, 3, 4], [5]]);
+});

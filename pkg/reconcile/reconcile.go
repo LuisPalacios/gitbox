@@ -6,8 +6,11 @@
 package reconcile
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -75,12 +78,13 @@ type Incomplete struct {
 
 // Result is what one pass decided.
 type Result struct {
-	scope      *scanScope
-	Adopt      []Adoption
-	Relink     []Relink
-	Unmatched  []Unmatched
-	Ignored    []Unmatched // with the reason they would wait for me, "" when adoptable
-	Incomplete []Incomplete
+	SkippedFolders int
+	scope          *scanScope
+	Adopt          []Adoption
+	Relink         []Relink
+	Unmatched      []Unmatched
+	Ignored        []Unmatched // with the reason they would wait for me, "" when adoptable
+	Incomplete     []Incomplete
 }
 
 // scanScope records which directories the scan could traverse. Source
@@ -134,7 +138,12 @@ func (res Result) SameScanScope(cfg *config.Config) bool {
 // Ignored clones are reported apart, and so are tracked clones that git
 // never finished. Repos under a missing root are never considered missing.
 func Plan(cfg *config.Config) (Result, error) {
-	orphans, err := adopt.FindOrphans(cfg)
+	return PlanContext(context.Background(), cfg)
+}
+
+// PlanContext stops discovery when the caller leaves the scan.
+func PlanContext(ctx context.Context, cfg *config.Config) (Result, error) {
+	orphans, skipped, err := adopt.FindOrphansContext(ctx, cfg, nil)
 	if err != nil {
 		return Result{}, err
 	}
@@ -144,10 +153,13 @@ func Plan(cfg *config.Config) (Result, error) {
 	type ref struct{ source, repo string }
 	missing := map[string][]ref{}
 	tracked := map[string]int{}
-	res := Result{scope: scopeOf(cfg)}
+	res := Result{scope: scopeOf(cfg), SkippedFolders: skipped}
 	for _, sk := range sortedKeys(cfg.Sources) {
 		src := cfg.Sources[sk]
 		for _, rk := range sortedKeys(src.Repos) {
+			if err := ctx.Err(); err != nil {
+				return Result{}, err
+			}
 			repo := src.Repos[rk]
 			tracked[strings.ToLower(rk)]++
 			p := status.RepoPath(cfg, sk, rk, repo)
@@ -160,7 +172,11 @@ func Plan(cfg *config.Config) (Result, error) {
 				}
 				continue
 			}
-			missing[strings.ToLower(rk)] = append(missing[strings.ToLower(rk)], ref{sk, rk})
+			// A failed lookup can also mean an unreadable folder. Only positive
+			// evidence that the original clone is missing supports re-linking.
+			if _, err := os.Stat(filepath.Join(p, ".git")); errors.Is(err, os.ErrNotExist) {
+				missing[strings.ToLower(rk)] = append(missing[strings.ToLower(rk)], ref{sk, rk})
+			}
 		}
 	}
 
@@ -185,6 +201,9 @@ func Plan(cfg *config.Config) (Result, error) {
 
 	relinked := map[ref]bool{}
 	for _, o := range orphans {
+		if err := ctx.Err(); err != nil {
+			return Result{}, err
+		}
 		// Ignored clones keep their reason, so the list can still offer
 		// Adopt where it applies.
 		if cfg.IsIgnoredClone(o.Path) {

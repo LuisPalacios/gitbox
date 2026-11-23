@@ -767,6 +767,7 @@ export namespace main {
 		}
 	}
 	export class ConfigDTO {
+	    revision: number;
 	    version: number;
 	    global: config.GlobalConfig;
 	    accounts: Record<string, config.Account>;
@@ -780,6 +781,7 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.revision = source["revision"];
 	        this.version = source["version"];
 	        this.global = this.convertValues(source["global"], config.GlobalConfig);
 	        this.accounts = this.convertValues(source["accounts"], config.Account, true);
@@ -1411,6 +1413,7 @@ export namespace main {
 	    relinked: number;
 	    unmatched: OrphanRepoDTO[];
 	    ignored: OrphanRepoDTO[];
+	    skippedFolders?: number;
 	    skipped?: reconcile.Skip[];
 	    background?: boolean;
 	    workspacesChanged: boolean;
@@ -1432,6 +1435,7 @@ export namespace main {
 	        this.relinked = source["relinked"];
 	        this.unmatched = this.convertValues(source["unmatched"], OrphanRepoDTO);
 	        this.ignored = this.convertValues(source["ignored"], OrphanRepoDTO);
+	        this.skippedFolders = source["skippedFolders"];
 	        this.skipped = this.convertValues(source["skipped"], reconcile.Skip);
 	        this.background = source["background"];
 	        this.workspacesChanged = source["workspacesChanged"];

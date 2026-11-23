@@ -439,6 +439,8 @@ Bajo las tarjetas, cada grupo lista sus repos replicados con:
 - **Configurar** para los repos que todavía no se han configurado mediante la API.
 - **+ Repo** para añadir repos al grupo.
 
+El escaneo ordinario de una raíz llega hasta ocho niveles de carpetas. Abre **Clones sin ubicar** para ver cuántas carpetas omitió Gitbox por profundidad o falta de acceso, incluso si no encontró clones sin asociar.
+
 ## Workspaces de VS Code y contenedores multi-repo
 
 Un **contenedor multi-repo** es un clon que contiene otros clones en su árbol de trabajo, por ejemplo un repo de proyecto cuyo `.code-workspace` agrupa varios clones hermanos. Los workspaces viven en la lista de clones, en el contenedor que los contiene; no hay una vista de workspaces aparte. Gitbox nunca crea, edita ni borra archivos `.code-workspace`: son tuyos.
@@ -451,7 +453,7 @@ Gitbox comprueba al arrancar, cuando la ventana recupera el foco, tras un Fetch 
 
 ### Clones bajo un contenedor
 
-Cada clon dentro del árbol de trabajo de un contenedor aparece debajo de él, sangrado, y se pliega con él. Gitbox los busca hasta la **profundidad de escaneo anidado** por debajo del contenedor, y en las carpetas que lista el archivo de workspace dentro del contenedor, a cualquier profundidad. Los clones anidados se unen a su cuenta y organización reales en su sitio, se guardan con una `clone_folder` absoluta dentro del contenedor y nunca se mueven. Una carpeta que el archivo de workspace lista dentro del contenedor y que todavía no está en disco aparece como una fila atenuada **sin clonar** con su ruta, salvo que esté dentro de otro clon, como un submódulo sin hacer checkout. Las carpetas que el workspace lista fuera del contenedor mantienen su sitio normal bajo su propia cuenta.
+Cada clon dentro del árbol de trabajo de un contenedor aparece debajo de él, sangrado, y se pliega con él. Gitbox los busca hasta la **profundidad de escaneo anidado** por debajo del contenedor, y hasta esa misma profundidad bajo cada carpeta que el workspace lista dentro del contenedor. Los clones anidados se unen a su cuenta y organización reales en su sitio, se guardan con una `clone_folder` absoluta dentro del contenedor y nunca se mueven. Una carpeta que el archivo de workspace lista dentro del contenedor y que todavía no está en disco aparece como una fila atenuada **sin clonar** con su ruta, salvo que esté dentro de otro clon, como un submódulo sin hacer checkout. Las carpetas que el workspace lista fuera del contenedor mantienen su sitio normal bajo su propia cuenta.
 
 Si un enlace dentro del contenedor apunta fuera de él, Gitbox muestra una fila atenuada **Fuera del contenedor** y omite esa carpeta en la búsqueda automática. Pulsa **Buscar en disco** para buscar clones sin seguimiento en la carpeta de destino. Después elige una cuenta y confirma cada clon que quieras seguir. Gitbox lee hasta 1 MiB por archivo de workspace. Si no puede leer o interpretar el archivo, o si este supera el límite, pasa el ratón sobre el icono de workspace del contenedor para ver los detalles.
 
@@ -486,6 +488,8 @@ Haz clic en el **icono de engranaje** para abrir el panel de ajustes:
 - **Remotos** — experimental, solo aparece con el modo remoto activado (consulta [Remotos (experimental)](#remotos-experimental)).
 - **Versión** — la versión actual de la app.
 - **Autor** — el autor del proyecto y un enlace al repositorio de GitHub.
+
+En modo Avanzado, **Ajustes → Comprobación del sistema → Ejecutar** también muestra los milisegundos transcurridos desde que se abre la aplicación hasta cada etapa observada del arranque, incluidas la primera fila de repositorio, el primer estado, la pasada completa de estados y la primera tarea de red de la flota programada.
 
 Al arrancar, Gitbox comprueba los permisos de las credenciales sin leer el contenido de los tokens. Si detecta exposición, aparece un aviso sobre el panel, incluida la vista Compacta, que abre Comprobación del sistema. La auditoría informa de problemas y permisos que no puede verificar; nunca los repara automáticamente. Consulta [Permisos de los archivos de credenciales](credentials.md#permisos-de-los-archivos-de-credenciales).
 

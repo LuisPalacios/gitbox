@@ -9,14 +9,19 @@ type recordedEvent struct {
 
 // recordingSink keeps every emitted event in order, for tests.
 type recordingSink struct {
-	mu     sync.Mutex
-	events []recordedEvent
+	mu      sync.Mutex
+	events  []recordedEvent
+	changed chan struct{}
 }
 
 func (e *recordingSink) Emit(name string, args ...any) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.events = append(e.events, recordedEvent{name, args})
+	if e.changed != nil {
+		close(e.changed)
+		e.changed = nil
+	}
 }
 
 func (e *recordingSink) named(name string) []recordedEvent {

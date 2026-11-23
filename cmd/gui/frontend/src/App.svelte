@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { acceptStatusBatch, statusPaintQueue, type StatusBatch } from './lib/status';
   import { onMount, tick } from 'svelte';
   import { settingsSaveFailed, bridge, events, setRemoteWindow } from './lib/bridge';
   import type { DoctorPrecheckDTO, RemoteState } from './lib/bridge';
@@ -15,8 +16,8 @@
   import { resolveView, viewAccount, accountView, attentionCounts } from './lib/views';
   import { languageStore, normalizeLanguage, remoteTextHost, t } from './lib/i18n';
   import { pushNotice, dismissNotice, errorText } from './lib/notices';
-  import { startFetch, startPull, noteDone, summarizeFetch, summarizePull, localWorkCount } from './lib/activity';
-  import type { Run } from './lib/activity';
+  import { startFetch, startPull, noteDone, noteCompletions, summarizeFetch, summarizePull, localWorkCount } from './lib/activity';
+  import type { Run, Completion } from './lib/activity';
   import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit, EventsOn } from '../wailsjs/runtime/runtime';
   import type { ConfigDTO, CredentialFinding, RepoState, PullSkipReason, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, OrphanRepoDTO, ReconcileDTO, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
   import Onboarding from './lib/Onboarding.svelte';
@@ -496,7 +497,17 @@
   const statusOfKey = (key: string) => $repoStates[key]?.status || 'unknown';
   const accountOfKey = (key: string) => $sources[key.slice(0, key.indexOf('/'))]?.account || key.slice(0, key.indexOf('/'));
 
+  let fetchCompletions: Completion[] = [];
+  let fetchProgressTimer: ReturnType<typeof setTimeout> | undefined;
+  function flushFetchProgress() {
+    clearTimeout(fetchProgressTimer);
+    fetchProgressTimer = undefined;
+    if (fetchRun && fetchCompletions.length) fetchRun = noteCompletions(fetchRun, fetchCompletions);
+    fetchCompletions = [];
+  }
+
   function finishFetch(error?: string) {
+    flushFetchProgress();
     const run = fetchRun;
     const manual = fetchManual;
     fetchRun = null;
@@ -735,6 +746,7 @@
   let skippedClones: NonNullable<ReconcileDTO['skipped']> = [];
   let ignoredClones: OrphanRepoDTO[] = [];
   let orphanCount = 0;
+  let skippedFolders = 0;
   let orphansDialog: OrphansModal;
   const showOrphanModal = () => orphansDialog.showOrphanModal();
 
@@ -756,6 +768,7 @@
     if (res.workspaceUnknown) $workspaceUnknown = new Set(res.workspaceUnknown);
     orphanList = res.unmatched || [];
     ignoredClones = res.ignored || [];
+    skippedFolders = res.skippedFolders || 0;
     skippedClones = res.skipped || [];
     orphanCount = orphanList.length + skippedClones.length;
     if (res.error) pushNotice('error', $t('notice.reconcileFailed'), [res.error]);
@@ -1398,7 +1411,15 @@
     // A new connection clears what the disconnection left behind.
     if (clearsOnReconnect(remoteState?.state, s.state)) reloadError = '';
     remoteState = s;
-    if (s.state !== 'connected' || wasConnected || remoteLoading) return;
+    if (s.state !== 'connected') {
+      if (wasConnected && currentStream) {
+        statusPass++;
+        retireStream();
+      }
+      if (s.state === 'disconnected' || s.state === 'failed') markStartup('finished');
+      return;
+    }
+    if (wasConnected || remoteLoading) return;
     // Each connection, the first one and every reconnect, loads the host's
     // data again.
     remoteLoading = true;
@@ -1548,6 +1569,51 @@
   let credStatuses: Record<string, any> = {};
   let credentialGeneration = 0;
 
+  let statusPass = 0;
+  interface StartupStream {
+    id: number;
+    first: () => void;
+    finish: () => void;
+    full: boolean;
+    painted: boolean;
+    pending: Set<string>;
+    paint: ReturnType<typeof statusPaintQueue>;
+  }
+  let currentStream: StartupStream | null = null;
+  function retireStream() {
+    currentStream?.paint.discard();
+    currentStream?.first();
+    currentStream?.finish();
+    currentStream = null;
+  }
+  const observedStages = new Set<string>();
+  let timingQueue = Promise.resolve();
+  function markStartup(stage: string) {
+    if (observedStages.has(stage)) return;
+    observedStages.add(stage);
+    timingQueue = timingQueue.then(() => bridge.markStartup(stage)).catch(console.error);
+  }
+  let rowObserver: MutationObserver | undefined;
+  function observeFirstRow() {
+    if (observedStages.has('firstRow')) return;
+    const detect = () => {
+      if (!document.querySelector('.repo-row, .compact-row')) return;
+      markStartup('firstRow');
+      rowObserver?.disconnect();
+      rowObserver = undefined;
+    };
+    rowObserver?.disconnect();
+    rowObserver = new MutationObserver(detect);
+    rowObserver.observe(document.body, { childList: true, subtree: true });
+    detect();
+  }
+  let remoteScheduled = false;
+  const finishTiming = () => {
+    if (currentStream?.full && remoteScheduled) {
+      markStartup('finished');
+    }
+  };
+
   // ── Lifecycle ──
   async function initDashboard() {
     const snapshot = await bridge.getStartupSnapshot();
@@ -1571,9 +1637,10 @@
     uiMode = cfg.global?.ui_mode === 'simple' ? 'simple' : 'advanced';
     if (uiMode === 'simple') enterSimple();
     const savedMode = cfg.global?.view_mode;
+    observeFirstRow();
     configStore.set(cfg);
     repoStates.set(Object.fromEntries(Object.entries(cfg.sources).flatMap(([sourceKey, source]) =>
-      Object.keys(source.repos).map(repoName => [`${sourceKey}/${repoName}`, { status: 'unknown' as const, progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }])
+      Object.keys(source.repos).map(repoName => [`${sourceKey}/${repoName}`, $repoStates[`${sourceKey}/${repoName}`] ?? { status: 'unknown' as const, progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }])
     )));
     if (savedMode === 'compact' && windowMode !== 'remote') {
       viewMode = 'compact';
@@ -1587,13 +1654,34 @@
       setTimeout(() => fitCompactHeight(), 800);
     }
 
+    const id = ++statusPass;
+    retireStream();
+    let first!: () => void;
+    const firstReady = new Promise<void>(resolve => { first = resolve; });
+    let finish!: () => void;
+    const completed = new Promise<void>(resolve => { finish = resolve; });
+    const paint = statusPaintQueue(rows => {
+      if (currentStream?.id !== id || $configStore?.revision !== cfg.revision) return;
+      for (const row of rows) currentStream.pending.delete(`${row.source}/${row.repo}`);
+      applyStatusResults(rows, true);
+    });
+    currentStream = { id, first, finish, full: false, painted: false, pending: new Set(Object.keys($repoStates)), paint };
+    remoteScheduled = false;
     try {
-      applyStatusResults(await bridge.getAllStatus());
+      await bridge.beginStatus(id);
+      await firstReady;
     } catch (e) {
+      if (id !== statusPass) return;
       repoStates.update(states => Object.fromEntries(Object.entries(states).map(([key, state]) =>
         [key, state.status === 'unknown' ? { ...state, status: 'error' as const, error: errorText(e) } : state]
       )));
+      finish();
+      markStartup('finished');
     }
+    if (id !== statusPass) return;
+    if (Object.keys(cfg.accounts).length) markStartup('firstRemote');
+    remoteScheduled = true;
+    finishTiming();
 
     // Fetch all repos on startup to detect behind/ahead changes.
     runFetchAll();
@@ -1622,14 +1710,17 @@
     // Load autostart state. A remote window has no autostart of its own.
     if (windowMode !== 'remote') loadAutostart();
 
-    // Sync the config with the clones on disk in the background. A remote
-    // window runs it itself after each connection, before it takes actions
-    // again (onRemoteState).
-    if (windowMode !== 'remote') runReconcile();
-
-    // Load PR badge feature flags and kick off initial PR fetch.
+    // Start fleet work on the first batch, including the optional PR fetch.
     await loadPRSettings();
     refreshAllPRs();
+
+    // Reconcile walks the same clone trees as local status. Let the first
+    // sweep finish before starting that second disk traversal.
+    if (windowMode === 'remote') {
+      await completed; // The reconnect flow starts its own reconcile after init.
+    } else {
+      void completed.then(() => { if (id === statusPass) void runReconcile(); });
+    }
   }
 
   async function setUIMode(mode: 'simple' | 'advanced') {
@@ -1681,6 +1772,7 @@
   }
 
   onMount(async () => {
+    markStartup('mount');
     // Load the window mode before anything else — the terminals sub-process
     // skips most of the heavy init below and renders only the Profile
     // editor.
@@ -1720,6 +1812,7 @@
       try { hostOS = await bridge.getOS(); } catch (e) { console.error(e); }
       TerminalsModal = (await import('./lib/TerminalsModal.svelte')).default;
       await hydrate();
+      markStartup('finished');
       // The parent uses HideWindowOnClose, so a "second open" of the
       // Manager just re-shows this same hidden window. Re-hydrate the
       // config on focus so the table reflects any wezterm.lua /
@@ -1757,9 +1850,14 @@
     // and ask the Go side to re-probe AI harnesses (throttled there) so a
     // tool installed or removed while we were in the background shows up.
     let focusTimer: ReturnType<typeof setTimeout> | null = null;
+    let lostFocus = false;
+    window.addEventListener('blur', () => { lostFocus = true; });
     // A remote window does the same on the host (#295), only while it is
     // connected and not still syncing after a reconnect.
     window.addEventListener('focus', () => {
+      // Showing this window for the first time already has a fresh snapshot.
+      if (!lostFocus && !currentStream?.full) return;
+      lostFocus = false;
       if (firstRun) return; // The wizard owns the choice of the first project.
       if (windowMode === 'remote' && (!remoteShowMain || remoteLoading || !backgroundAllowed(true, remoteState?.state))) return;
       if (focusTimer) clearTimeout(focusTimer);
@@ -1785,7 +1883,46 @@
       } else if (res?.workspaceUnknown) $workspaceUnknown = new Set(res.workspaceUnknown);
     });
 
+    events.on('status:batch', async (batch: StatusBatch) => {
+      const stream = currentStream;
+      if (!stream || stream.full || batch.passID !== stream.id) return;
+      if (acceptStatusBatch(batch, stream.id, $configStore?.revision)) {
+        if (batch.items?.length) {
+          stream.paint.push(batch.items);
+          if (!stream.painted) {
+            stream.painted = true;
+            await tick();
+            if (stream !== currentStream || batch.revision !== $configStore?.revision) return;
+            markStartup('firstStatus');
+            stream.first();
+          }
+        }
+        if (batch.done) {
+          stream.paint.flush();
+          await tick();
+          if (stream !== currentStream || batch.revision !== $configStore?.revision) return;
+          if (stream.pending.size) {
+            // A remote transport may miss an event. Recover the authoritative sweep.
+            const rows = await bridge.getAllStatus();
+            if (stream !== currentStream || batch.revision !== $configStore?.revision) return;
+            applyStatusResults(rows, true);
+            for (const row of rows) stream.pending.delete(`${row.source}/${row.repo}`);
+            if (rows.length) markStartup('firstStatus');
+            await tick();
+          }
+          if (!stream.pending.size) markStartup('fullStatus');
+          stream.full = true;
+          stream.first();
+          finishTiming();
+          stream.finish();
+        }
+      } else if (batch.done) {
+        // A config change superseded this pass. A fresh snapshot owns the next one.
+        void initDashboard().catch(console.error);
+      }
+    });
     events.on('status:updated', (results: any) => {
+      currentStream?.paint.flush();
       statusGeneration++;
       applyStatusResults(results);
       for (const resolve of statusWaiters.splice(0)) resolve();
@@ -1877,9 +2014,14 @@
 
     events.on('fetch:done', (data: any) => {
       const key = `${data.source}/${data.repo}`;
-      delete fetchingRepos[key];
-      fetchingRepos = fetchingRepos;
-      if (fetchRun) fetchRun = noteDone(fetchRun, key, data.error, { code: data.code, host: data.host, fast: data.refusedFast });
+      if (fetchingRepos[key]) {
+        delete fetchingRepos[key];
+        fetchingRepos = fetchingRepos;
+      }
+      if (fetchRun) {
+        fetchCompletions.push({ key, error: data.error, failure: { code: data.code, host: data.host, fast: data.refusedFast } });
+        fetchProgressTimer ??= setTimeout(flushFetchProgress, 125);
+      }
       if (!data.error && fetchFailNotice?.keys.delete(key) && fetchFailNotice.keys.size === 0) clearFetchFailNotice();
       if (!data.error) recheckOfflineAccount(accountOfKey(key));
     });
@@ -2017,15 +2159,17 @@
       } catch { /* fall back to the template's default placeholder */ }
       await cfgLoadBackups();
       cfgLoadErrorModal = true;
+      markStartup('finished');
       return; // onMount stops here; dashboard init resumes after the user
               // picks Restore / Auto-repair / Start fresh / Exit.
     }
 
     // Check first run — show onboarding if no folder configured.
     firstRun = await bridge.isFirstRun();
-    if (firstRun) return; // Don't load dashboard until onboarding completes.
+    if (firstRun) { markStartup('finished'); return; }
 
-    await initDashboard();
+    try { await initDashboard(); }
+    catch (e) { markStartup('finished'); throw e; }
   }
 
   function checkSyncDone() {
@@ -2145,7 +2289,7 @@
 
   <div class="body">
     <!-- ── SIDEBAR ── -->
-    <Sidebar view={currentView} {rail} {simple} {credStatuses} {attention} {totalRepos} {orphanCount} ignoredCount={ignoredClones.length}
+    <Sidebar view={currentView} {rail} {simple} {credStatuses} {attention} {totalRepos} {orphanCount} scanIncomplete={skippedFolders > 0} ignoredCount={ignoredClones.length}
       {setView} onAddAccount={addAccount} {showOrphanModal} />
 
     <main class="content">
@@ -2199,7 +2343,7 @@
   <SweepModal bind:this={sweepDialog} {closeActionMenu} />
 
   <!-- ── ORPHAN ADOPTION MODAL ── -->
-  <OrphansModal bind:this={orphansDialog} unmatched={orphanList} ignored={ignoredClones} skipped={skippedClones} {applyReconcile} />
+  <OrphansModal bind:this={orphansDialog} unmatched={orphanList} ignored={ignoredClones} skipped={skippedClones} {skippedFolders} {applyReconcile} />
 
   <!-- ── ADD ACCOUNT MODAL ── -->
   {#if connectModal}

@@ -1,6 +1,7 @@
 package adopt
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -54,6 +55,34 @@ func TestFindOrphans_NestedClonesUnderContainer(t *testing.T) {
 			t.Errorf("%q should report NeedsRelocate (path differs from standard)", key)
 		}
 	}
+	t.Run("each listed folder has its own depth budget", func(t *testing.T) {
+		repo.Workspace = "fleet.code-workspace"
+		src.Repos["LuisPalacios/tracked-repo"] = repo
+		cfg.Global.NestedScanDepth = 1
+		if err := os.WriteFile(filepath.Join(containerPath, repo.Workspace), []byte(`{"folders":[{"path":"deep/listed"}]}`), 0600); err != nil {
+			t.Fatal(err)
+		}
+		member := filepath.Join(containerPath, "deep", "listed")
+		initBareRepo(t, filepath.Join(member, "visible"), "https://github.com/LuisPalacios/visible.git")
+		initBareRepo(t, filepath.Join(member, "layer", "hidden"), "https://github.com/LuisPalacios/hidden.git")
+		found, skipped, err := FindOrphansContext(t.Context(), cfg, nil)
+		if err != nil || skipped == 0 {
+			t.Fatalf("coverage: %d skipped, %v", skipped, err)
+		}
+		var visible bool
+		for _, o := range found {
+			if o.Repo == "visible" {
+				visible = o.Nested
+			}
+			if o.Repo == "hidden" {
+				t.Fatal("discovered a clone beyond the workspace limit")
+			}
+		}
+		if !visible {
+			t.Fatal("clone one level below a deep workspace folder was not discovered")
+		}
+	})
+
 }
 
 // TestFindOrphansIn_ExtraRoot verifies a clone in a caller-supplied folder is

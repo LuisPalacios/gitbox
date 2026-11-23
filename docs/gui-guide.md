@@ -439,6 +439,8 @@ Below the cards, each group lists its mirrored repos with:
 - **Setup** for repos not yet configured through the API.
 - **+ Repo** to add repos to the group.
 
+An ordinary root scan reaches eight directory levels. Open **Unmatched clones** to see how many folders Gitbox skipped because they were deeper or inaccessible, even when it found no unmatched clones.
+
 ## VS Code workspaces and multi-repo containers
 
 A **multi-repo container** is a clone that holds other clones in its working tree, for example a project repo whose `.code-workspace` ties together several sibling clones. Workspaces live in the clone list, on the container that holds them; there is no separate workspaces view. Gitbox never creates, edits or deletes `.code-workspace` files: they're yours.
@@ -451,7 +453,7 @@ Gitbox checks at startup, on window focus, after a manual Fetch all and after yo
 
 ### Clones below a container
 
-Every clone inside a container's working tree shows below it, indented, and folds with it. Gitbox looks for them down to the **nested scan depth** below the container, and in the folders the container's workspace file lists inside it, at any depth. Nested clones join their real account and organization in place, stored with an absolute `clone_folder` inside the container, and never move. A folder the workspace file lists inside the container that isn't on disk yet shows as a dimmed **not cloned** row with its path, unless it sits inside another clone, like a submodule that isn't checked out. Folders the workspace lists outside the container keep their normal place under their own account.
+Every clone inside a container's working tree shows below it, indented, and folds with it. Gitbox looks for them down to the **nested scan depth** below the container, and to the same depth below each folder the workspace lists inside the container. Nested clones join their real account and organization in place, stored with an absolute `clone_folder` inside the container, and never move. A folder the workspace file lists inside the container that isn't on disk yet shows as a dimmed **not cloned** row with its path, unless it sits inside another clone, like a submodule that isn't checked out. Folders the workspace lists outside the container keep their normal place under their own account.
 
 If a link inside the container resolves outside it, Gitbox shows a dimmed **Outside the container** row and skips that folder during automatic discovery. Click **Find on disk** to look for untracked clones in the resolved folder, then pick an account and confirm each clone you want to track. Gitbox reads up to 1 MiB per workspace file. If reading or parsing fails, or the file exceeds the limit, hover over the container’s workspace icon for details.
 
@@ -486,6 +488,8 @@ Click the **gear icon** to open the settings panel:
 - **Remotes** — experimental, shown only when remote mode is on (see [Remotes (experimental)](#remotes-experimental)).
 - **Version** — the current app version.
 - **Author** — the project author and a link to the GitHub repository.
+
+In Advanced mode, **Settings → System check → Run** also shows the elapsed milliseconds from opening the application to each observed startup stage, including the first repository row, the first status, the complete status pass and the first scheduled fleet network task.
 
 At startup, Gitbox checks credential permissions without reading token contents. If it detects exposure, a warning appears above the dashboard, including Compact view, and opens System check. The audit reports problems and unverifiable permissions; it never repairs them automatically. See [Credential file permissions](credentials.md#credential-file-permissions).
 

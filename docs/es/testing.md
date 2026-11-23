@@ -30,6 +30,22 @@ El gate del harness incluye `ai/scripts/test_coordinate_issues.py` y `ai/scripts
 
 También reviso el flujo en una sesión nueva de Codex y otra de Claude Code: `wu-container` redacta HLR y criterios de aceptación completos, `wu-tasks` vincula las tareas a esos criterios y `wu-coordinate-tasks` pregunta el número de contenedor si falta. Compruebo que la coordinación rechace issues independientes, tareas de otro padre y dependencias sin resolver, y que la reanudación conserve la work unit indicada. Uso escenarios de solo lectura para estas comprobaciones; probar el descubrimiento no autoriza la publicación. Los cambios limitados al harness omiten las pruebas Go y las compilaciones de GUI; aun así ejecuto la comprobación de salud completa antes de una PR.
 
+## Medición del arranque
+
+Compilo la interfaz nativa y asigno a `binary` la ruta absoluta de su ejecutable. Creo flotas limpias de 50, 200 y 500 clones locales en directorios vacíos separados. Su cuenta y sus remotos usan la interfaz de bucle local, su vista inicial es **Todos los repos** y su configuración y ajustes de Git se guardan en el directorio de prueba. Para el primer tamaño ejecuto:
+
+```bash
+fleet=$(mktemp -d)
+scripts/demo-fleet/benchmark.sh 50 "$fleet"
+HOME="$fleet/home" XDG_CONFIG_HOME="$fleet/config" GIT_CONFIG_GLOBAL="$fleet/gitconfig" \
+  GIT_CONFIG_NOSYSTEM=1 HTTP_PROXY=http://127.0.0.1:1 HTTPS_PROXY=http://127.0.0.1:1 \
+  NO_PROXY=127.0.0.1 "$binary" --print-timing
+```
+
+Cierro la ventana cuando aparece la única línea JSON `startup-timing`. Para cada tamaño y compilación repito el arranque tres veces en la misma máquina con copias nuevas de la flota y registro la mediana de cada etapa. Comparo con las mismas opciones de compilación nativa y condiciones de caché. Para una revisión anterior a la opción, instrumento los mismos puntos de observación antes de compilarla.
+
+Los valores son milisegundos de un reloj monotónico desde que se crea el objeto de aplicación Go de la ventana. `decode` registra la carga de la configuración, `mount` el montaje de la interfaz, `snapshot` la instantánea independiente, `firstRow` la primera fila de repositorio insertada en la vista actual, `firstStatus` el primer estado aplicado, `fullStatus` la pasada local completa y `firstRemote` la primera tarea de red de la flota programada. Mantengo los campos ausentes como observaciones sin registrar. El informe solo contiene tiempos y permanece en la máquina.
+
 ## Pruebas fuzz
 
 Mantengo pequeños corpus de semillas de Go en `testdata/fuzz/<target>/` dentro de cada paquete. `go test` y `go test -short` normales ejecutan estas entradas sin generar mutaciones. Ejecuto las semillas directamente con:

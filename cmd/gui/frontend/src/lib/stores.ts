@@ -31,11 +31,12 @@ export const statusClock = readable(Date.now(), (set) => {
 export const repoStates = writable<Record<string, RepoState>>({});
 
 // Apply status results from Go backend into repoStates store
-export function applyStatusResults(results: StatusResult[]) {
+export function applyStatusResults(results: StatusResult[], partial = false) {
   repoStates.update((states) => {
-    const next: Record<string, RepoState> = {};
+    const next: Record<string, RepoState> = partial ? { ...states } : {};
     for (const r of results) {
       const key = `${r.source}/${r.repo}`;
+      if (partial && !states[key]) continue;
       // Map Go status.State strings to our frontend states
       let status: RepoState['status'];
       switch (r.state) {

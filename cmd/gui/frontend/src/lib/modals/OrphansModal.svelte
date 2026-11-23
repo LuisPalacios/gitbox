@@ -12,6 +12,7 @@
 
   export let unmatched: OrphanRepoDTO[];
   export let skipped: NonNullable<ReconcileDTO['skipped']>;
+  export let skippedFolders = 0;
   export let ignored: OrphanRepoDTO[];
   // Shows a fresh reconcile result (lists, config and status reload).
   export let applyReconcile: (res: ReconcileDTO) => Promise<void>;
@@ -97,7 +98,10 @@
         <button class="btn-x" on:click={() => open = false}>&#10005;</button>
       </div>
       <div class="modal-body">
-        <p class="intro">{(visibleUnmatched.length || (!workspaceSearch && skipped.length)) ? $t('unmatched.intro') : workspaceSearch ? $t('unmatched.workspaceEmpty') : $t('unmatched.empty')}</p>
+        {#if skippedFolders && !workspaceSearch}<p role="status">{$t('unmatched.scanIncomplete', { n: skippedFolders })}</p>{/if}
+        {#if workspaceSearch || visibleUnmatched.length || skipped.length || !skippedFolders}
+          <p class="intro">{(visibleUnmatched.length || (!workspaceSearch && skipped.length)) ? $t('unmatched.intro') : workspaceSearch ? $t('unmatched.workspaceEmpty') : $t('unmatched.empty')}</p>
+        {/if}
         {#each visibleUnmatched as o (o.path)}
           <div class="clone">
             <div class="clone-head">

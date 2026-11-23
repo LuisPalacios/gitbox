@@ -720,6 +720,7 @@ var readOnlyCalls = []struct {
 }{
 	{"AccountDeletionImpact", []any{"acct"}},
 	{"AccountFolder", []any{"acct"}},
+	{"BeginStatus", []any{1}},
 	{"CheckGlobalGCMConfig", []any{}},
 	{"CheckGlobalGitignore", []any{}},
 	{"CheckGlobalIdentity", []any{}},

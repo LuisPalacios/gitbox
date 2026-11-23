@@ -35,6 +35,8 @@ export function ApplyRecipeImport(arg1:string,arg2:recipe.Options,arg3:string):P
 
 export function ApplyUpdate():Promise<void>;
 
+export function BeginStatus(arg1:number):Promise<void>;
+
 export function ChangeCredentialType(arg1:string,arg2:string):Promise<void>;
 
 export function CheckGlobalGCMConfig():Promise<credential.GlobalGCMConfigStatus>;
@@ -133,6 +135,8 @@ export function GetScheduledTasks():Promise<Array<main.ScheduledTaskDTO>>;
 
 export function GetStartupSnapshot():Promise<main.StartupSnapshot>;
 
+export function GetStartupTiming():Promise<Record<string, number>>;
+
 export function GetTokenGuide(arg1:string):Promise<main.TokenGuideInfo>;
 
 export function GetUIMode():Promise<string>;
@@ -170,6 +174,8 @@ export function ListShells():Promise<Array<main.ShellInfo>>;
 export function ListTerminalApps():Promise<Array<main.TerminalAppInfo>>;
 
 export function ListTerminalProfiles():Promise<Array<main.TerminalProfileInfo>>;
+
+export function MarkStartup(arg1:string):Promise<void>;
 
 export function MissingModernTerminal():Promise<boolean>;
 

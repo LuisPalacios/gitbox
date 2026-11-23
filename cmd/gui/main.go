@@ -62,7 +62,8 @@ func main() {
 	app := NewApp()
 
 	// Check CLI flags before Wails starts (Wails has no CLI arg support of
-	// its own). We support two side-modes:
+	// its own). Additional startup options include:
+	//   --print-timing      : print observed startup milestones in milliseconds.
 	//   --test-mode         : route config through a temp dir for the test fixture.
 	//   --terminals-window  : run as the dedicated Terminals editor sub-process
 	//                         (issue #69 — opens the Profile manager in its
@@ -113,6 +114,9 @@ func main() {
 			app.testMode = true
 			app.testFirstRun = firstRun
 			app.testCleanup = cleanup
+		}
+		if arg == "--print-timing" {
+			app.timing.print = true
 		}
 		if arg == "--terminals-window" {
 			app.windowMode = "terminals"

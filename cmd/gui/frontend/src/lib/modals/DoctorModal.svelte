@@ -11,6 +11,8 @@
   // One-line result shown next to the Run button in Settings.
   export let advanced = false;
   let tasks: Awaited<ReturnType<typeof bridge.getScheduledTasks>> = [];
+  let timing: Record<string, number> = {};
+  const stages = ['decode', 'mount', 'snapshot', 'firstRow', 'firstStatus', 'fullStatus', 'firstRemote'];
   export let doctorSummary = '';
   export let credentialFindings: CredentialFinding[] = [];
 
@@ -25,10 +27,15 @@
     doctorLoading = true;
     doctorReport = null;
     try {
-      const [report, snapshot] = await Promise.all([bridge.doctorRun(), advanced ? bridge.getScheduledTasks() : []]);
+      const [report, snapshot, marks] = await Promise.all([
+        bridge.doctorRun(),
+        advanced ? bridge.getScheduledTasks() : [],
+        advanced ? bridge.getStartupTiming() : {},
+      ]);
       if (generation !== doctorGeneration) return;
       doctorReport = report;
       tasks = snapshot;
+      timing = marks || {};
       credentialFindings = report.credentialFindings || [];
     } finally {
       if (generation === doctorGeneration) doctorLoading = false;
@@ -79,6 +86,14 @@
                 </div>
               {/each}
             </div>
+          {/if}
+          {#if advanced && Object.keys(timing).length}
+            <h4>{$t('doctor.startup')}</h4>
+            <dl>
+              {#each stages.filter(stage => stage in timing) as stage}
+                <dt>{$t(`doctor.timing.${stage}`)}</dt><dd>{$t('doctor.milliseconds', { n: timing[stage] })}</dd>
+              {/each}
+            </dl>
           {/if}
           {#if advanced && tasks.length}
             <h4>{$t('schedule.heading')}</h4>

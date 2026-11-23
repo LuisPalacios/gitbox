@@ -30,6 +30,22 @@ The harness gate includes `ai/scripts/test_coordinate_issues.py` and `ai/scripts
 
 I also review the workflow in a fresh Codex and Claude Code session: `wu-container` drafts populated HLR and acceptance criteria, `wu-tasks` maps tasks to those criteria, and `wu-coordinate-tasks` asks for a missing container number. I check that coordination rejects standalone issues, tasks from another parent and unresolved dependencies, and that resumption preserves the specified work unit. I use read-only scenarios for these checks; testing discovery does not authorize publication. Changes limited to the harness skip Go tests and GUI builds; I still run the full health check before a PR.
 
+## Startup benchmark
+
+I build the native GUI and set `binary` to the absolute path of its executable. I create clean fleets of 50, 200 and 500 local clones in separate empty directories. Their account and remotes use loopback, their default view is **All repos**, and their configuration and Git settings live in the fixture. For the first size I run:
+
+```bash
+fleet=$(mktemp -d)
+scripts/demo-fleet/benchmark.sh 50 "$fleet"
+HOME="$fleet/home" XDG_CONFIG_HOME="$fleet/config" GIT_CONFIG_GLOBAL="$fleet/gitconfig" \
+  GIT_CONFIG_NOSYSTEM=1 HTTP_PROXY=http://127.0.0.1:1 HTTPS_PROXY=http://127.0.0.1:1 \
+  NO_PROXY=127.0.0.1 "$binary" --print-timing
+```
+
+I close the window after the single `startup-timing` JSON line appears. For each size and build I repeat the launch three times on the same machine with fresh copies of the fixture and record the median per stage. I compare the same native build options and cache conditions. For a revision predating the flag I instrument the same observation points before building it.
+
+Values are monotonic milliseconds since the window’s Go application object was created. `decode` records the configuration load, `mount` the renderer mount, `snapshot` the detached snapshot, `firstRow` the first repository row inserted in the current view, `firstStatus` the first applied status, `fullStatus` the completed local sweep and `firstRemote` the first fleet network task scheduled. I retain absent fields as missing observations. The report contains timing only and stays on the machine.
+
 ## Fuzz tests
 
 I keep small Go seed corpora under each package's `testdata/fuzz/<target>/`. Ordinary `go test` and `go test -short` execute these inputs without generating mutations. I run the seeds directly with:

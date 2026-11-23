@@ -1,3 +1,5 @@
+import type { StatusResult } from './types';
+
 // Shared palette, glyphs, count badges, account health and formatting.
 
 // ── Colours (palettes matching prototype-final.svelte) ──
@@ -173,4 +175,47 @@ export function credBadgeClass(status: string): string {
 // Text of the account card's credential badge.
 export function credBadgeLabel(status: string, credentialType: string | undefined): string {
   return status === 'unknown' ? '···' : status === 'none' ? 'config' : status === 'offline' ? 'offline' : credentialType || 'gcm';
+}
+
+export interface StatusBatch {
+  passID: number;
+  revision: number;
+  items: StatusResult[] | null;
+  done: boolean;
+}
+
+export function acceptStatusBatch(batch: StatusBatch, passID: number, revision: number | undefined): boolean {
+  return batch.passID === passID && batch.revision === revision;
+}
+
+
+// Paint the first results immediately. Later backend events share a render
+// while local git processes, fleet checks and the webview compete for CPU.
+export function statusPaintQueue(apply: (rows: StatusResult[]) => void) {
+  let rows: StatusResult[] = [];
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let first = true;
+  const discard = () => {
+    clearTimeout(timer);
+    timer = undefined;
+    rows = [];
+  };
+  const flush = () => {
+    const ready = rows;
+    discard();
+    if (ready.length) apply(ready);
+  };
+  return {
+    push(batch: StatusResult[]) {
+      if (first) {
+        first = false;
+        apply(batch);
+      } else {
+        rows.push(...batch);
+        timer ??= setTimeout(flush, 125);
+      }
+    },
+    flush,
+    discard,
+  };
 }

@@ -732,3 +732,43 @@ func TestCredentialVerify_ExposesTokenExpiry(t *testing.T) {
 		t.Fatalf("unknown expiry reached the frontend: %s", raw)
 	}
 }
+
+func TestRefresh_StartupStreamSupersedesOlderPass(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a, events := refreshTestApp(t, 20)
+		defer a.stopRefresh()
+		original := a.refreshHooks.status
+		release := make(chan struct{})
+		a.refreshHooks.status = func(cfg *config.Config) []status.RepoStatus {
+			<-release
+			return original(cfg)
+		}
+		if err := a.BeginStatus(1); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		a.mu.Lock()
+		a.configRevision++
+		delete(a.cfg.Sources["source-a"].Repos, "org/repo-0")
+		a.mu.Unlock()
+		if err := a.BeginStatus(2); err != nil {
+			t.Fatal(err)
+		}
+		close(release)
+		synctest.Wait()
+		messages := events.named("status:batch")
+		seen := map[string]bool{}
+		for i, m := range messages {
+			b := m.args[0].(StatusBatch)
+			if b.PassID != 2 || b.Revision != 1 || b.Done != (i == len(messages)-1) || len(b.Items) > 8 {
+				t.Fatalf("unexpected batch %d: %+v", i, b)
+			}
+			for _, r := range b.Items {
+				seen[r.Repo] = true
+			}
+		}
+		if len(messages) != 4 || len(seen) != 19 || seen["org/repo-0"] {
+			t.Fatalf("events=%d repos=%v", len(messages), seen)
+		}
+	})
+}
