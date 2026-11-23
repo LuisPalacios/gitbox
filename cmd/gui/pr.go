@@ -71,9 +71,18 @@ type prEntry struct {
 	data          provider.AccountPRs
 }
 
+// A scheduler caller waits for every worker in the pass to finish. It also
+// needs an updated settings request if the user changes a filter mid-pass.
+type prPass struct {
+	scheduled bool
+	done      chan struct{}
+	err       error
+}
+
 // prRefreshState belongs to one App. The App mutex guards its queue,
 // in-flight requests, cache and settings revision.
 type prRefreshState struct {
+	pass             *prPass
 	cache            map[string]prEntry
 	pending          map[string]prRefresh
 	active           map[string]prRefresh
@@ -109,6 +118,9 @@ func (a *App) setPRBadgesEnabledLocal(enabled bool) error {
 	}
 	v := enabled
 	a.cfg.Global.PRBadgesEnabled = &v
+	if enabled && a.prs.pass != nil && a.prs.pass.scheduled {
+		a.queuePRAccountsLocked()
+	}
 	return a.saveConfig()
 }
 
@@ -124,6 +136,9 @@ func (a *App) setPRIncludeDraftsLocal(enabled bool) error {
 	}
 	v := enabled
 	a.cfg.Global.PRIncludeDrafts = &v
+	if a.cfg.Global.PRBadgesOn() && a.prs.pass != nil && a.prs.pass.scheduled {
+		a.queuePRAccountsLocked()
+	}
 	return a.saveConfig()
 }
 
@@ -158,33 +173,48 @@ func (a *App) getPRsForRepoLocal(sourceKey, repoKey string) PRSummaryDTO {
 func (a *App) RefreshAllPRs() { a.be().RefreshAllPRs() }
 
 // refreshAllPRsLocal is the local backend's RefreshAllPRs.
-func (a *App) refreshAllPRsLocal() {
+func (a *App) refreshAllPRsLocal() { a.queuePRs(false) }
+
+func (a *App) queuePRs(scheduled bool) *prPass {
 	a.refreshMu.Lock()
 	defer a.refreshMu.Unlock()
 	if a.refreshClosed {
-		return
+		return nil
 	}
 	ctx := a.refreshContextLocked()
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if !a.cfg.Global.PRBadgesOn() {
-		return
+		return nil
 	}
 	if a.prs.pending == nil {
 		a.prs.pending = make(map[string]prRefresh)
 		a.prs.active = make(map[string]prRefresh)
 	}
+	a.queuePRAccountsLocked()
+	if len(a.prs.pending) > 0 && a.prs.pass == nil {
+		a.prs.pass = &prPass{done: make(chan struct{})}
+	}
+	if scheduled && a.prs.pass != nil {
+		a.prs.pass.scheduled = true
+	}
+	for a.prs.workers < min(prRefreshConcurrency, len(a.prs.pending)+len(a.prs.active)) {
+		a.prs.workers++
+		a.refreshWG.Go(func() { a.refreshPRAccounts(ctx) })
+	}
+	return a.prs.pass
+}
+
+// A settings change during a fleet check supersedes each old request in its
+// existing queue. The busy check stays one pass, including the new settings.
+func (a *App) queuePRAccountsLocked() {
 	for key, account := range a.cfg.Accounts {
 		req := a.prRefreshLocked(key, account)
 		if active, ok := a.prs.active[key]; ok && active == req {
 			continue
 		}
 		a.prs.pending[key] = req
-	}
-	for a.prs.workers < min(prRefreshConcurrency, len(a.prs.pending)+len(a.prs.active)) {
-		a.prs.workers++
-		a.refreshWG.Go(func() { a.refreshPRAccounts(ctx) })
 	}
 }
 
@@ -221,6 +251,10 @@ func (a *App) nextPRRefresh(ctx context.Context) (string, prRefresh, bool) {
 		}
 	}
 	a.prs.workers--
+	if a.prs.workers == 0 && a.prs.pass != nil {
+		close(a.prs.pass.done)
+		a.prs.pass = nil
+	}
 	return "", prRefresh{}, false
 }
 
@@ -235,7 +269,12 @@ func (a *App) refreshPRAccounts(ctx context.Context) {
 		// maintenance lock. Wait for the last bump before checking the result.
 		a.maintenanceMu.RLock()
 		a.mu.Lock()
-		if publish && ctx.Err() == nil && a.prRefreshIsCurrentLocked(key, req) {
+		current := a.prRefreshIsCurrentLocked(key, req)
+		_, retry := a.prs.pending[key]
+		if !retry && (!publish || upd.Error != "" || !data.Complete || !current) && a.prs.pass != nil {
+			a.prs.pass.err = errTaskPartial
+		}
+		if publish && ctx.Err() == nil && current {
 			if upd.Error == "" {
 				if a.prs.cache == nil {
 					a.prs.cache = make(map[string]prEntry)

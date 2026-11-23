@@ -9,6 +9,8 @@
   import { t } from '../i18n';
 
   // One-line result shown next to the Run button in Settings.
+  export let advanced = false;
+  let tasks: Awaited<ReturnType<typeof bridge.getScheduledTasks>> = [];
   export let doctorSummary = '';
   export let credentialFindings: CredentialFinding[] = [];
 
@@ -23,9 +25,10 @@
     doctorLoading = true;
     doctorReport = null;
     try {
-      const report = await bridge.doctorRun();
+      const [report, snapshot] = await Promise.all([bridge.doctorRun(), advanced ? bridge.getScheduledTasks() : []]);
       if (generation !== doctorGeneration) return;
       doctorReport = report;
+      tasks = snapshot;
       credentialFindings = report.credentialFindings || [];
     } finally {
       if (generation === doctorGeneration) doctorLoading = false;
@@ -72,6 +75,22 @@
                     <div class="doctor-name">{$t(`credentialAudit.problem.${finding.problem}`)}</div>
                     <code class="doctor-path">{finding.path}</code>
                     <div class="doctor-purpose">{$t(`credentialAudit.hint.${finding.hint}`)}</div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+          {#if advanced && tasks.length}
+            <h4>{$t('schedule.heading')}</h4>
+            <div class="doctor-list">
+              {#each tasks as task (task.name)}
+                <div class="doctor-row">
+                  <div class="doctor-main">
+                    <div class="doctor-name">{$t(`schedule.${task.name}`)}</div>
+                    <div class="doctor-purpose">
+                      {task.inFlight ? $t('schedule.running') : $t(`schedule.${task.lastResult || 'pending'}`)}
+                      {#if task.nextAt} · {$t('schedule.next', { time: new Date(task.nextAt).toLocaleTimeString() })}{/if}
+                    </div>
                   </div>
                 </div>
               {/each}
