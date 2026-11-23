@@ -110,6 +110,7 @@ func RepoContext(ctx context.Context, cfg *config.Config, sourceKey, repoKey str
 
 	// --- origin URL ---------------------------------------------
 	wantURL := ExpectedOriginURL(acct, repoKey, credType)
+	r.Warnings = append(r.Warnings, snapshot.TrustWarnings(ctx, path, wantURL)...)
 	curURL := ""
 	if urls := snapshot.All("remote.origin.url"); len(urls) > 0 {
 		curURL = urls[0]

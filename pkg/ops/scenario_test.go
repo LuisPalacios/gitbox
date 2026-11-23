@@ -176,7 +176,7 @@ func TestScenario_FullLifecycle(t *testing.T) {
 		if err := git.PullQuietContext(context.Background(), dest); err != nil {
 			t.Errorf("pull: %v", err)
 		}
-		if out, err := git.FetchCapturedContext(context.Background(), dest); err != nil {
+		if out, err := git.FetchCapturedContext(context.Background(), dest, "origin"); err != nil {
 			t.Errorf("fetch: %v\n%s", err, out)
 		}
 	})

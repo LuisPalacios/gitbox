@@ -392,7 +392,13 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 	if len(report.Warnings) > 0 {
 		err = fmt.Errorf("repository maintenance: %s", strings.Join(report.Warnings, "; "))
 	} else {
-		fetch := git.FetchCapturedContext
+		remote := "origin"
+		if cfg.Sources[source].Repos[repo].FetchAllRemotes {
+			remote = "--all"
+		}
+		fetch := func(ctx context.Context, path string) (string, error) {
+			return git.FetchCapturedContext(ctx, path, remote)
+		}
 		if a.refreshHooks != nil && a.refreshHooks.fetch != nil {
 			fetch = a.refreshHooks.fetch
 		}

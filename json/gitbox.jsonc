@@ -284,6 +284,7 @@
     //   "MyGitHubUser/my-repo"     → folder: github-MyGitHubUser/MyGitHubUser/my-repo/
     //
     // Optional fields per repo:
+    //   fetch_all_remotes  Set true to fetch all remotes for this clone (default: origin only).
     //   credential_type  Overrides the account default ("gcm", "ssh", "token")
     //   name             Overrides git user.name
     //   email            Overrides git user.email

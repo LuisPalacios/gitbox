@@ -295,7 +295,7 @@ func TestPackageFunctionsUseTheRunner(t *testing.T) {
 			return fakeReply{Stderr: "error: could not lock config file .git/config: File exists\n", Exit: 255}
 		case cmd == "pull --ff-only":
 			return fakeReply{Stderr: "fatal: Not possible to fast-forward, aborting.\n", Exit: 128}
-		case cmd == "fetch --all --prune":
+		case cmd == "fetch --prune -- origin":
 			return fakeReply{Stderr: "fatal: unable to access 'https://user:TOKEN@git.example.org/x.git/': Could not resolve host: git.example.org\n", Exit: 128}
 		case strings.HasPrefix(cmd, "clone "):
 			return fakeReply{Stderr: "Receiving objects:  50% (5/10)\rReceiving objects: 100% (10/10)\n"}
@@ -324,7 +324,7 @@ func TestPackageFunctionsUseTheRunner(t *testing.T) {
 		t.Errorf("pull error = %#v, want not_fast_forward with status 128", err)
 	}
 
-	_, err = FetchCapturedContext(context.Background(), repo)
+	_, err = FetchCapturedContext(context.Background(), repo, "origin")
 	ge, ok := errors.AsType[*GitError](err)
 	if !ok || ge.Code != CodeOffline || ge.Host != "git.example.org" || strings.Contains(err.Error(), "TOKEN") {
 		t.Errorf("fetch error = %#v, want offline for git.example.org without the URL", err)
