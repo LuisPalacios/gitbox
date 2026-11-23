@@ -56,7 +56,7 @@ El archivo JSON de config (`~/.config/gitbox/gitbox.json`) es el **estado desead
 
 **Discovery** es una consulta hacia el norte. Pregunta a la API del proveedor qué repos existen y deja que el usuario los añada a la config. Discovery solo añade, bajo demanda, y nunca elimina repos.
 
-**Reconcile** es su contrapartida en disco: Gitbox lee qué clones existen bajo las raíces de clonado. La config sigue siendo el registro de la intención (cuentas, raíces, mirrors, sobrescrituras, repos que se quieren pero aún no se han clonado), y `pkg/reconcile` mantiene el inventario al día. Adopta en su sitio los clones que reconoce, vuelve a enlazar los que se han movido y deja el resto al usuario. Nunca toca archivos y nunca olvida un repo cuyo clon ha desaparecido.
+**Reconcile** es su contrapartida en disco: Gitbox lee qué clones existen bajo las raíces de clonado. La config sigue siendo el registro de la intención (cuentas, raíces, mirrors, sobrescrituras, repos que se quieren pero aún no se han clonado), y `pkg/reconcile` mantiene el inventario al día. Adopta en su sitio los clones que reconoce, vuelve a enlazar los que se han movido y deja el resto al usuario. Conserva los archivos del árbol de trabajo y mantiene los repos cuyo clon ha desaparecido.
 
 ### Estructura de carpetas
 
@@ -393,7 +393,7 @@ El discovery ordinario de huérfanos se detiene en el límite de cada clon, incl
 
 La GUI ejecuta una pasada al arrancar, al recuperar el foco de la ventana, tras un Fetch de todo manual, tras cambiar las raíces de clonado y al volver a escanear un contenedor. Sincronizo los archivos de workspace y escaneo las raíces sin el bloqueo de la configuración. Bajo el bloqueo compruebo la fuente, la cuenta, la clave del repositorio, la ruta y el workspace actuales de cada adopción o nuevo enlace propuesto. Un cambio concurrente en otra entrada puede continuar. Si una entrada se ha movido, ha cambiado de nombre o ya está registrada, la omito y muestro su ruta en **Clones sin ubicar**. Las rutas de `global.ignored_clones` se muestran aparte.
 
-Eliminar una raíz escaneada o cambiar el alcance del escaneo anidado invalida todo el escaneo. Lo intento dos veces y después solicito un único reintento agrupado que espera al fetch y al cálculo de estado en curso. Las entradas omitidas solicitan el mismo reintento. Este comunica su resultado mediante `reconcile:done` y nunca se reprograma. Tras guardar correctamente, configuro solo los clones adoptados en esa pasada. Los repos de una raíz que falta siguen registrados.
+Eliminar una raíz escaneada o cambiar el alcance del escaneo anidado invalida todo el escaneo. Lo intento dos veces y después solicito un único reintento agrupado que espera al fetch y al cálculo de estado en curso. Las entradas omitidas solicitan el mismo reintento. Este comunica su resultado mediante `reconcile:done` y nunca se reprograma. Tras guardar una adopción, uso `pkg/heal` para comprobar el remoto origin, la identidad Git y la configuración de credenciales del clon. Dentro del clon, las reparaciones escriben únicamente en `.git/config`. Fetch, pull, la finalización de un clonado y la reconfiguración de cuentas coordinan las reparaciones por ruta en el sistema de archivos. Las reparaciones de clones distintos pueden ejecutarse en paralelo. Si una reparación falla, el clon sigue registrado y **Requiere atención** muestra el aviso. Los repos de una raíz que falta siguen registrados.
 
 ### pkg/recipe — recetas de flota portátiles
 

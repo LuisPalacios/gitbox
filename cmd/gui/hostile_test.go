@@ -349,6 +349,26 @@ func TestRemoteConfigIsCapped(t *testing.T) {
 	if len(raw) == 0 {
 		t.Fatal("the capped config does not encode")
 	}
+	t.Run("repair feedback", func(t *testing.T) {
+		for _, name := range []string{"pull:done", "fetch:done"} {
+			decode := relayedEvents[name]
+			for _, raw := range []string{`{"source":"a"}`, `{"source":"a","repairWarnings":[]}`} {
+				event, err := decode(r, json.RawMessage(raw))
+				if err != nil || canonJSON(t, event) != canonJSON(t, json.RawMessage(raw)) {
+					t.Fatalf("%s: %s became %v (%v)", name, raw, event, err)
+				}
+			}
+		}
+		report := ReconcileDTO{Repairs: make([]RepairDTO, maxRemoteRepos+1)}
+		report.Repairs[0].Warnings = make([]string, maxRemoteNotes+1)
+		report.Repairs[0].Warnings[0] = "line one\nline two"
+		report.Repairs[0].Fixed = make([]string, maxRemoteNotes+1)
+		capReconcile(r, &report)
+		if len(report.Repairs) != maxRemoteRepos || len(report.Repairs[0].Fixed) != maxRemoteNotes || len(report.Repairs[0].Warnings) != maxRemoteNotes || report.Repairs[0].Warnings[0] != "line one line two" {
+			t.Fatal("unexpected remote repair report")
+		}
+	})
+
 }
 
 // Every P4, P5 and P6 event of eventClass is relayed, and nothing else is.

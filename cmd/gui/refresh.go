@@ -8,6 +8,7 @@ import (
 	"maps"
 	"net"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -313,7 +314,12 @@ func (a *App) emitCachedStatus() {
 }
 
 func (a *App) sameRefreshRepo(cfg *config.Config, source, repo string) bool {
-	current := a.snapshotRefreshConfig()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	current := a.cfg
+	if current == nil {
+		return false
+	}
 	s, ok := cfg.Sources[source]
 	n, exists := current.Sources[source]
 	if !ok || !exists || s.Account != n.Account || s.Folder != n.Folder || s.Root != n.Root {
@@ -321,7 +327,13 @@ func (a *App) sameRefreshRepo(cfg *config.Config, source, repo string) bool {
 	}
 	old, ok := s.Repos[repo]
 	now, exists := n.Repos[repo]
-	return ok && exists && old == now && reflect.DeepEqual(cfg.Accounts[s.Account], current.Accounts[n.Account]) && reflect.DeepEqual(cfg.Global, current.Global)
+	account, hadAccount := cfg.Accounts[s.Account]
+	live, hasAccount := current.Accounts[n.Account]
+	return ok && exists && old == now && hadAccount && hasAccount && reflect.DeepEqual(account, live) &&
+		slices.Equal(cfg.Global.Roots, current.Global.Roots) &&
+		reflect.DeepEqual(cfg.Global.CredentialGCM, current.Global.CredentialGCM) &&
+		reflect.DeepEqual(cfg.Global.CredentialSSH, current.Global.CredentialSSH) &&
+		reflect.DeepEqual(cfg.Global.CredentialToken, current.Global.CredentialToken)
 }
 
 func (a *App) fetchOne(cfg *config.Config, source, repo string, lost *sync.Map) error {
@@ -422,15 +434,15 @@ func retryWithBackoff(ctx context.Context, started time.Time, again func() bool)
 
 func (a *App) performFetch(cfg *config.Config, source, repo, path string) error {
 	a.maintenanceMu.RLock()
-	if !a.sameRefreshRepo(cfg, source, repo) {
-		a.maintenanceMu.RUnlock()
+	report, current := a.repairUnderMaintenance(cfg, source, repo, func() {
+		a.sink().Emit("fetch:start", map[string]string{"source": source, "repo": repo})
+	})
+	a.maintenanceMu.RUnlock()
+	if !current {
 		err := fmt.Errorf("repository settings changed during refresh")
 		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": userMsg(err)})
 		return err
 	}
-	a.sink().Emit("fetch:start", map[string]string{"source": source, "repo": repo})
-	report := a.healRepo(cfg, source, repo)
-	a.maintenanceMu.RUnlock()
 	var err error
 	addr := serverAddr(cfg.Accounts[cfg.Sources[source].Account])
 	if len(report.Warnings) > 0 {
@@ -465,6 +477,9 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 		})
 	}
 	payload := map[string]any{"source": source, "repo": repo}
+	if report.Skipped == "" && !a.readOnly {
+		payload["repairWarnings"] = append([]string{}, report.Warnings...)
+	}
 	if errors.Is(err, errServerUnreachable) {
 		describeUnreachable(payload, addr)
 	} else if err != nil {

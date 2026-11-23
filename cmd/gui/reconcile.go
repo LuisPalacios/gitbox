@@ -16,8 +16,6 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/adopt"
 	"github.com/LuisPalacios/gitbox/pkg/config"
-	"github.com/LuisPalacios/gitbox/pkg/credential"
-	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/reconcile"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 	"github.com/LuisPalacios/gitbox/pkg/workspace"
@@ -40,6 +38,7 @@ type OrphanRepoDTO struct {
 // ReconcileDTO answers a reconcile pass.
 type ReconcileDTO struct {
 	Adopted        int              `json:"adopted"`
+	Repairs        []RepairDTO      `json:"repairs,omitempty"`
 	Relinked       int              `json:"relinked"`
 	Unmatched      []OrphanRepoDTO  `json:"unmatched"`
 	Ignored        []OrphanRepoDTO  `json:"ignored"`
@@ -116,60 +115,42 @@ func toOrphanDTO(o adopt.OrphanRepo, reason string) OrphanRepoDTO {
 	}
 }
 
-// repoSetup is the .git/config work for a clone just added to the config,
-// captured under the lock and run after it.
-type repoSetup struct {
-	path, accountKey, repoKey, credType string
-	acct                                config.Account
-	global                              config.GlobalConfig
+// RepairDTO describes the .git/config repair of a saved adoption.
+type RepairDTO struct {
+	Source   string   `json:"source"`
+	Repo     string   `json:"repo"`
+	Fixed    []string `json:"fixed,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
 }
 
-func setupFor(cfg *config.Config, p reconcile.Placed) repoSetup {
-	acct := cfg.Accounts[p.Account]
-	repo := cfg.Sources[p.Source].Repos[p.Repo]
-	return repoSetup{path: p.Path, accountKey: p.Account, repoKey: p.Repo, credType: repo.EffectiveCredentialType(&acct), acct: detachAccount(acct), global: detachCredentials(cfg.Global)}
+// The caller holds a.mu. Capture the inputs for heal only after a successful
+// save and only when there are new clones to repair.
+func (a *App) savePlacements(before *config.Config, placed []reconcile.Placed) (*config.Config, error) {
+	if err := a.saveConfig(); err != nil {
+		if !isConfigChanged(err) {
+			*a.cfg = *before
+		}
+		return nil, err
+	}
+	if len(placed) == 0 {
+		return nil, nil
+	}
+	return a.refreshConfigLocked(), nil
 }
 
-// detachAccount copies the credential blocks an account points at, so a
-// copy used after a.mu is released shares nothing with the live config
-// (#173).
-func detachAccount(acct config.Account) config.Account {
-	if acct.SSH != nil {
-		v := *acct.SSH
-		acct.SSH = &v
+func (a *App) repairAdoptions(snap *config.Config, placed []reconcile.Placed) []RepairDTO {
+	var repairs []RepairDTO
+	for _, p := range placed {
+		report, current := a.repairClone(snap, p.Source, p.Repo)
+		row := RepairDTO{Source: p.Source, Repo: p.Repo, Fixed: report.Fixed, Warnings: report.Warnings}
+		if !current {
+			row.Warnings = []string{"repository settings changed before repair"}
+		} else if report.Skipped != "" {
+			row.Warnings = append(row.Warnings, userText(report.Skipped))
+		}
+		repairs = append(repairs, row)
 	}
-	if acct.GCM != nil {
-		v := *acct.GCM
-		acct.GCM = &v
-	}
-	return acct
-}
-
-// detachCredentials does the same for the global credential blocks that
-// the .git/config setup reads.
-func detachCredentials(g config.GlobalConfig) config.GlobalConfig {
-	if g.CredentialSSH != nil {
-		v := *g.CredentialSSH
-		g.CredentialSSH = &v
-	}
-	if g.CredentialGCM != nil {
-		v := *g.CredentialGCM
-		g.CredentialGCM = &v
-	}
-	if g.CredentialToken != nil {
-		v := *g.CredentialToken
-		g.CredentialToken = &v
-	}
-	return g
-}
-
-// run points origin, the credential helper and the identity at the account,
-// as adoption always did.
-func (s repoSetup) run() {
-	_ = git.SetRemoteURL(s.path, "origin", adopt.PlainRemoteURL(s.acct, s.repoKey, s.credType))
-	_ = credential.ConfigureRepoCredential(s.path, s.acct, s.accountKey, s.credType, s.global)
-	_ = git.ConfigSet(s.path, "user.name", s.acct.Name)
-	_ = git.ConfigSet(s.path, "user.email", s.acct.Email)
+	return repairs
 }
 
 // ErrStalePlan means neither scan could safely use the new configuration.
@@ -269,26 +250,19 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 	applied := reconcile.Apply(a.cfg, res)
 	placed := applied.Adopted
 	changed := len(placed)+applied.Relinked > 0
+	var snap *config.Config
 	saveErr := wsErr
 	if changed {
-		if err := a.saveConfig(); err != nil {
+		snap, err = a.savePlacements(before, placed)
+		if err != nil {
 			saveErr = err
-			if !isConfigChanged(err) {
-				*a.cfg = *before
-			}
 			placed, applied.Relinked, changed = nil, 0, false
 		}
 	}
-	setups := make([]repoSetup, 0, len(placed))
-	for _, p := range placed {
-		setups = append(setups, setupFor(a.cfg, p))
-	}
 	a.mu.Unlock()
 
-	for _, s := range setups {
-		s.run()
-	}
 	out := emptyReconcile("")
+	out.Repairs = a.repairAdoptions(snap, placed)
 	out.Adopted, out.Relinked, out.WorkspacesChanged = len(placed), applied.Relinked, wsChanged
 	out.SkippedFolders = res.SkippedFolders
 	out.Skipped, out.Background = applied.Skipped, !retryStale
@@ -396,13 +370,13 @@ func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
 		}
 	}
 	a.reconcileMu.Lock()
-	res, workspaceRows, err := a.scanAdoptionRequests(reqs)
+	res, workspaceRows, before, err := a.scanAdoptionRequests(reqs)
 	if err != nil {
 		a.mu.Unlock()
 		a.reconcileMu.Unlock()
 		return emptyReconcile(userMsg(err))
 	}
-	var setups []repoSetup
+	var placed []reconcile.Placed
 	var errs []string
 	for _, req := range reqs {
 		found := false
@@ -425,7 +399,7 @@ func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
 				break
 			}
 			a.cfg.IgnoreClone(u.Path, false)
-			setups = append(setups, setupFor(a.cfg, reconcile.Placed{Account: req.Account, Source: source, Repo: u.RepoKey, Path: u.Path}))
+			placed = append(placed, reconcile.Placed{Account: req.Account, Source: source, Repo: u.RepoKey, Path: u.Path})
 			break
 		}
 		if !found {
@@ -436,21 +410,20 @@ func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
 			}
 		}
 	}
-	var saveErr error
-	if len(setups) > 0 {
-		saveErr = a.saveConfig()
+	var snap *config.Config
+	if len(placed) > 0 {
+		snap, err = a.savePlacements(before, placed)
 	}
 	a.mu.Unlock()
 	a.reconcileMu.Unlock()
+	if err != nil {
+		return emptyReconcile(userMsg(err))
+	}
 
-	for _, s := range setups {
-		s.run()
-	}
+	repairs := a.repairAdoptions(snap, placed)
 	out := a.Reconcile()
-	out.Adopted += len(setups)
-	if saveErr != nil {
-		errs = append(errs, userMsg(saveErr))
-	}
+	out.Adopted += len(placed)
+	out.Repairs = append(repairs, out.Repairs...)
 	if len(errs) > 0 && out.Error == "" {
 		out.Error = errs[0]
 	}
@@ -459,7 +432,7 @@ func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
 
 // scanAdoptionRequests revalidates deliberate workspace searches outside the
 // config lock, under the same snapshot check as ordinary adoption.
-func (a *App) scanAdoptionRequests(reqs []AdoptRequestDTO) (reconcile.Result, map[string][]reconcile.Unmatched, error) {
+func (a *App) scanAdoptionRequests(reqs []AdoptRequestDTO) (reconcile.Result, map[string][]reconcile.Unmatched, *config.Config, error) {
 	roots := map[string]bool{}
 	ordinary := len(reqs) == 0
 	for _, req := range reqs {
@@ -470,11 +443,11 @@ func (a *App) scanAdoptionRequests(reqs []AdoptRequestDTO) (reconcile.Result, ma
 		}
 	}
 	if len(roots) == 0 {
-		res, _, err := a.scanConfigWith(reconcile.Plan, false)
-		return res, nil, err
+		res, before, err := a.scanConfigWith(reconcile.Plan, false)
+		return res, nil, before, err
 	}
 	var external map[string][]reconcile.Unmatched
-	res, _, err := a.scanConfigWith(func(cfg *config.Config) (reconcile.Result, error) {
+	res, before, err := a.scanConfigWith(func(cfg *config.Config) (reconcile.Result, error) {
 		tree := workspace.Inspect(cfg)
 		external = make(map[string][]reconcile.Unmatched, len(roots))
 		for root := range roots {
@@ -489,7 +462,7 @@ func (a *App) scanAdoptionRequests(reqs []AdoptRequestDTO) (reconcile.Result, ma
 		}
 		return reconcile.Result{}, nil
 	}, false)
-	return res, external, err
+	return res, external, before, err
 }
 
 // IgnoreClone remembers (or forgets) that I don't want the clone at path

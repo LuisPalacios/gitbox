@@ -9,6 +9,7 @@ type Action = 'update' | 'open' | 'fix' | 'clone' | 'none';
 
 interface State {
   status: string;
+  repairWarnings?: string[];
   isDefault?: boolean;
   ahead?: number;
   behind?: number;
@@ -85,7 +86,7 @@ export function derivePresentation(state: State = { status: 'unknown' }, mode: M
   const { kind, attention } = rule;
   const simple = mode === 'simple';
   const presentation: Presentation = {
-    kind, attention, primaryAction: kinds[kind].action, stale: kind === 'checking',
+    kind, attention: state.repairWarnings?.length ? 0 : attention, primaryAction: kinds[kind].action, stale: kind === 'checking',
     labelKey: simple ? rule.simpleKey ?? `simple.${kind === 'busy' ? 'checking' : kind}` : rule.advancedKey,
     colour: simple ? kinds[kind].colour : rule.advancedColour ?? state.status,
     badges: !simple && !!rule.badges,

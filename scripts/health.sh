@@ -39,6 +39,8 @@ DEADCODE="golang.org/x/tools/cmd/deadcode@v0.50.0"
 # for library callers and their compatibility tests. The config library also
 # keeps its domain-only save and repair loader for callers without a file revision.
 # AddRoot and PlaceRepo retain their boolean result for library callers.
+# Library callers can configure one clone without a saved snapshot and
+# reconfigure an account without installing a repair callback.
 # SetRunnerForTest and SetDoerForTest are the test seams for git and HTTP:
 # only tests call them, by design. The scripted runner and barriers live in
 # a test fixture package outside either command's dependency tree, and so
@@ -56,6 +58,8 @@ pkg[/\\]update[/\\]replace_windows_executable[.]go:[0-9]+:[0-9]+: unreachable fu
 pkg[/\\]git[/\\]sweep[.]go:[0-9]+:[0-9]+: unreachable func: DeleteStaleBranches$
 pkg[/\\]git[/\\]find[.]go:[0-9]+:[0-9]+: unreachable func: FindNestedRepos$
 pkg[/\\]adopt[/\\]adopt[.]go:[0-9]+:[0-9]+: unreachable func: FindOrphans$
+pkg[/\\]ops[/\\]account[.]go:[0-9]+:[0-9]+: unreachable func: ReconfigureClones$
+pkg[/\\]credential[/\\]repoconfig[.]go:[0-9]+:[0-9]+: unreachable func: ConfigureRepoCredential$
 pkg[/\\]status[/\\]status[.]go:[0-9]+:[0-9]+: unreachable func: CheckAllContext$
 pkg[/\\]terminals[/\\]sync[.]go:[0-9]+:[0-9]+: unreachable func: Sync$
 pkg[/\\]workspace[/\\]workspace[.]go:[0-9]+:[0-9]+: unreachable func: RefreshCache$

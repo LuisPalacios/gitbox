@@ -273,6 +273,11 @@ type fetchEventDTO struct {
 	UpstreamGone bool   `json:"upstreamGone"`
 }
 
+type fetchDoneDTO struct {
+	fetchEventDTO
+	RepairWarnings []string `json:"repairWarnings"`
+}
+
 type fetchAllDoneDTO struct {
 	Error string `json:"error"`
 }
@@ -325,17 +330,18 @@ type cloneDoneDTO struct {
 // pullDoneDTO is pull:done. Skipped is a pull skip reason, or true for an
 // unreachable server.
 type pullDoneDTO struct {
-	Source    string     `json:"source"`
-	Repo      string     `json:"repo"`
-	Error     string     `json:"error"`
-	Code      string     `json:"code"`
-	Host      string     `json:"host"`
-	Skipped   skipReason `json:"skipped"`
-	State     string     `json:"state"`
-	Modified  int        `json:"modified"`
-	Untracked int        `json:"untracked"`
-	Ahead     int        `json:"ahead"`
-	Behind    int        `json:"behind"`
+	RepairWarnings []string   `json:"repairWarnings"`
+	Source         string     `json:"source"`
+	Repo           string     `json:"repo"`
+	Error          string     `json:"error"`
+	Code           string     `json:"code"`
+	Host           string     `json:"host"`
+	Skipped        skipReason `json:"skipped"`
+	State          string     `json:"state"`
+	Modified       int        `json:"modified"`
+	Untracked      int        `json:"untracked"`
+	Ahead          int        `json:"ahead"`
+	Behind         int        `json:"behind"`
 }
 
 // skipReason holds what pull:done says in skipped: true, false or an
@@ -388,8 +394,15 @@ var relayedEvents = map[string]payloadDecoder{
 		}
 		return capList(r, "status:updated", list, maxRemoteRepos), nil
 	},
-	"fetch:start":              typedPayload[fetchEventDTO],
-	"fetch:done":               typedPayload[fetchEventDTO],
+	"fetch:start": typedPayload[fetchEventDTO],
+	"fetch:done": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
+		var done fetchDoneDTO
+		if err := json.Unmarshal(raw, &done); err != nil {
+			return nil, err
+		}
+		done.RepairWarnings = remoteRepairNotes(r, done.RepairWarnings)
+		return keepSentKeys(raw, done)
+	},
 	"fetch:allstart":           nil,
 	"fetch:alldone":            typedPayload[fetchAllDoneDTO],
 	"credentials:updated":      typedPayload[map[string]CredentialStatus],
@@ -411,7 +424,14 @@ var relayedEvents = map[string]payloadDecoder{
 		done.Fixes = capList(r, "clone fixes", done.Fixes, maxRemoteNotes)
 		return keepSentKeys(raw, done)
 	},
-	"pull:done":         typedPayload[pullDoneDTO],
+	"pull:done": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
+		var done pullDoneDTO
+		if err := json.Unmarshal(raw, &done); err != nil {
+			return nil, err
+		}
+		done.RepairWarnings = remoteRepairNotes(r, done.RepairWarnings)
+		return keepSentKeys(raw, done)
+	},
 	"mirror:setup:done": typedPayload[MirrorSetupResult],
 	"move:progress":     typedPayload[MoveProgressEventDTO],
 	"move:done": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
@@ -487,8 +507,22 @@ const (
 	maxRemoteNotes = 100
 )
 
+func remoteRepairNotes(r *RemoteBackend, notes []string) []string {
+	notes = capList(r, "repair notes", notes, maxRemoteNotes)
+	for i, note := range notes {
+		notes[i] = userText(note)
+	}
+	return notes
+}
+
 // capReconcile cuts every list of a reconcile pass to maxRemoteRepos.
 func capReconcile(r *RemoteBackend, res *ReconcileDTO) {
+	res.Repairs = capList(r, "clone repairs", res.Repairs, maxRemoteRepos)
+	for i := range res.Repairs {
+		row := &res.Repairs[i]
+		row.Fixed = remoteRepairNotes(r, row.Fixed)
+		row.Warnings = remoteRepairNotes(r, row.Warnings)
+	}
 	res.Unmatched = capList(r, "unmatched clones", res.Unmatched, maxRemoteRepos)
 	res.Skipped = capList(r, "skipped clones", res.Skipped, maxRemoteRepos)
 	res.Ignored = capList(r, "ignored clones", res.Ignored, maxRemoteRepos)

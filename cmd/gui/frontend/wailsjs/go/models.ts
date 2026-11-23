@@ -1408,8 +1408,27 @@ export namespace main {
 	        this.files = source["files"];
 	    }
 	}
+	export class RepairDTO {
+	    source: string;
+	    repo: string;
+	    fixed?: string[];
+	    warnings?: string[];
+
+	    static createFrom(source: any = {}) {
+	        return new RepairDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.repo = source["repo"];
+	        this.fixed = source["fixed"];
+	        this.warnings = source["warnings"];
+	    }
+	}
 	export class ReconcileDTO {
 	    adopted: number;
+	    repairs?: RepairDTO[];
 	    relinked: number;
 	    unmatched: OrphanRepoDTO[];
 	    ignored: OrphanRepoDTO[];
@@ -1432,6 +1451,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.adopted = source["adopted"];
+	        this.repairs = this.convertValues(source["repairs"], RepairDTO);
 	        this.relinked = source["relinked"];
 	        this.unmatched = this.convertValues(source["unmatched"], OrphanRepoDTO);
 	        this.ignored = this.convertValues(source["ignored"], OrphanRepoDTO);
@@ -1702,6 +1722,7 @@ export namespace main {
 	        this.forgotten = source["forgotten"];
 	    }
 	}
+
 	export class RepoDetail {
 	    branch: string;
 	    ahead: number;

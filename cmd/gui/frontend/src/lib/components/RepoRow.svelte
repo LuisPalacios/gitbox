@@ -130,7 +130,7 @@
   // their names in the workspace colour: what VS Code opens.
   $: inWorkspace = (isContainer && !!wsFile) || $workspaceMembers.has(repoKey);
   // A folded parent hiding clones that need me stays at full strength.
-  $: calm = fadeHealthy && !busy && presentation.kind === 'saved' && !(belowNeed > 0 && collapsedRepos.has(repoKey));
+  $: calm = fadeHealthy && !busy && presentation.attention === CALM_RANK && presentation.kind === 'saved' && !(belowNeed > 0 && collapsedRepos.has(repoKey));
 
   // requireRepoPath returns the row's local clone path, or shows the
   // "clone first" notice and returns null. Path-based kebab actions used
@@ -534,8 +534,21 @@
   {/if}
   {/if}
 </div>
+{#if state.repairWarnings?.length}
+  <div class="repair-warning" style:margin-left={depth * 16 + 20 + 'px'}>
+    <div>
+      <strong>{$t('attention.repairFailed')}</strong>
+      <ul>{#each state.repairWarnings as warning}<li>{warning}</li>{/each}</ul>
+    </div>
+    <button use:ro={'fetchRepo'} class="text-btn" disabled={busy || state.status === 'root offline'}
+      on:click={() => fetchRepo(rowSourceKey, repoName)}>{$t('attention.retryRepair')}</button>
+  </div>
+{/if}
 
 <style>
+  .repair-warning { display: flex; align-items: flex-start; gap: 12px; padding: 2px 6px 8px; font-size: 12px; color: var(--text-primary); }
+  .repair-warning ul { margin: 3px 0 0; padding-left: 16px; overflow-wrap: anywhere; }
+  .repair-warning button { margin-left: auto; flex: none; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .spinning { animation: spin 0.8s linear infinite; color: var(--spin-color) !important; stroke: var(--spin-color); stroke-width: 2.5; font-weight: 900; }
   /* The tree guide drops from the top-level dot's centre (padding 6 + half

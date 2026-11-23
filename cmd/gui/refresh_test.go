@@ -772,3 +772,122 @@ func TestRefresh_StartupStreamSupersedesOlderPass(t *testing.T) {
 		}
 	})
 }
+
+func TestHealGate(t *testing.T) {
+	t.Run("fetch and pull share the clone gate", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			a, events := refreshTestApp(t, 2)
+			const source, first, second = "source-a", "org/repo-0", "org/repo-1"
+			release := make(chan struct{})
+			var calls atomic.Int32
+			a.refreshHooks.heal = func(_ *config.Config, _, repo string) heal.Report {
+				if repo == first {
+					calls.Add(1)
+					<-release
+				}
+				return heal.Report{}
+			}
+			a.refreshHooks.pull = func(context.Context, string) error { return nil }
+			a.FetchRepo(source, first)
+			synctest.Wait()
+			a.PullRepo(source, first)
+			a.PullRepo(source, second)
+			synctest.Wait()
+			active := calls.Load()
+			completed := events.named("pull:done")
+			close(release)
+			synctest.Wait()
+			a.stopRefresh()
+			if active != 1 || len(completed) != 1 || completed[0].args[0].(map[string]any)["repo"] != second {
+				t.Fatalf("while fetching first clone: entered %d, completed %+v", active, completed)
+			}
+			if calls.Load() != 2 || len(events.named("pull:done")) != 2 || len(events.named("fetch:done")) != 1 || len(a.repairPaths.tails) != 0 {
+				t.Fatal("repairs did not finish once each and release their gates")
+			}
+		})
+	})
+	t.Run("directory aliases share one queue", func(t *testing.T) {
+		root := t.TempDir()
+		clone := filepath.Join(root, "clone")
+		if err := os.Mkdir(clone, 0700); err != nil {
+			t.Fatal(err)
+		}
+		alias := filepath.Join(root, "alias")
+		if err := os.Symlink(clone, alias); err != nil {
+			t.Skipf("directory symlink unavailable: %v", err)
+		}
+		synctest.Test(t, func(t *testing.T) {
+			var gate pathGate
+			release := gate.lock(clone)
+			entered := make(chan struct{})
+			go func() {
+				unlock := gate.lock(alias)
+				close(entered)
+				unlock()
+			}()
+			synctest.Wait()
+			select {
+			case <-entered:
+				t.Error("alias entered before the first repair finished")
+			default:
+			}
+			release()
+			<-entered
+		})
+	})
+	t.Run("queued repair rechecks account ownership", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			a, _ := refreshTestApp(t, 1)
+			const source, repo = "source-a", "org/repo-0"
+			cfg := a.snapshotRefreshConfig()
+			path := status.RepoPath(cfg, source, repo, cfg.Sources[source].Repos[repo])
+			release := a.repairPaths.lock(path)
+			a.refreshHooks.heal = func(*config.Config, string, string) heal.Report {
+				t.Error("old account repaired the clone")
+				return heal.Report{}
+			}
+			done := make(chan bool, 1)
+			go func() {
+				_, current := a.repairClone(cfg, source, repo)
+				done <- current
+			}()
+			synctest.Wait()
+			a.mu.Lock()
+			s := a.cfg.Sources[source]
+			s.Account = "new-owner"
+			a.cfg.Sources[source] = s
+			a.mu.Unlock()
+			release()
+			if <-done {
+				t.Fatal("expected a stale repair after the clone changed hands")
+			}
+		})
+	})
+	t.Run("account reconfiguration releases the config lock", func(t *testing.T) {
+		a, cfgPath := newWorkspaceTestApp(t)
+		a.refreshHooks = &refreshHooks{}
+		var calls int
+		a.refreshHooks.heal = func(cfg *config.Config, source, repo string) heal.Report {
+			calls++
+			if cfg == a.cfg || cfg.Accounts["github-alice"].Name != "Updated" {
+				t.Fatal("repair did not receive a snapshot of the saved account")
+			}
+			if !a.mu.TryLock() {
+				t.Fatal("account reconfiguration held the config lock across git")
+			}
+			a.mu.Unlock()
+			if a.maintenanceMu.TryRLock() {
+				a.maintenanceMu.RUnlock()
+				t.Fatal("clone repairs may race this account change")
+			}
+			return heal.Report{Fixed: []string{"set identity"}}
+		}
+		err := a.UpdateAccount(UpdateAccountRequest{Key: "github-alice", URL: "https://github.com", Username: "alice", Name: "Updated", Email: "alice@example.invalid"})
+		if err != nil || calls != 2 {
+			t.Fatalf("update repaired %d entries, err %v", calls, err)
+		}
+		if got := loadConfig(t, cfgPath).Accounts["github-alice"].Name; got != "Updated" {
+			t.Fatalf("saved account name = %q", got)
+		}
+	})
+}

@@ -271,6 +271,8 @@ Everything else waits in **Unmatched clones**, opened from **Found on disk** in 
 
 Where an account can apply, pick it and click **Adopt**; the clone joins that account in place. **Ignore** hides a clone for good, and **Show ignored** lists the ignored ones, where you can still **Adopt** one or **Stop ignoring** it. Ignored paths are saved in `global.ignored_clones`. The scoring rules behind the account match are in [Architecture › pkg/adopt](architecture.md#pkgadopt--orphan-repo-discovery).
 
+If Gitbox adopts a clone but cannot repair its Git settings, it keeps the clone in the account. Open **Needs attention** to see which clone needs a repair and what failed. After resolving the cause, click **Retry repair** on the clone’s row. Gitbox checks the settings before fetching.
+
 ## Repo and account actions
 
 ### Clone actions

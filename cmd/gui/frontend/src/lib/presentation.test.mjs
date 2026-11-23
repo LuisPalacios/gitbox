@@ -30,6 +30,9 @@ const { derivePresentation } = await import(`data:text/javascript;base64,${Buffe
 
 test('I classify every status in both modes for each branch identity', () => {
   for (const [status, kind, rank, advancedKey, advancedColour, simpleColour, action] of rows) {
+    for (const mode of ['simple', 'advanced']) {
+      assert.equal(derivePresentation({ status, repairWarnings: ['identity'] }, mode).attention, 0);
+    }
     for (const isDefault of [true, false, undefined]) {
       for (const mode of ['simple', 'advanced']) {
         const context = JSON.stringify({ status, isDefault, mode });

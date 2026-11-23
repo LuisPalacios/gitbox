@@ -175,23 +175,26 @@ func TestApplyDiscoveredMirrorsUnlocked(t *testing.T) {
 	}
 }
 
-// TestDetachedCredentials: the account and global credential blocks that a
-// clone setup uses after the lock is released are copies, not the live
-// pointers (#173).
+// TestDetachedCredentials covers the snapshot used after saving an adoption.
 func TestDetachedCredentials(t *testing.T) {
-	acct := config.Account{SSH: &config.SSHConfig{Host: "h"}, GCM: &config.GCMConfig{}}
-	got := detachAccount(acct)
+	a, _ := newWorkspaceTestApp(t)
+	const key = "github-alice"
+	acct := a.cfg.Accounts[key]
+	acct.SSH = &config.SSHConfig{Host: "h"}
+	acct.GCM = &config.GCMConfig{}
+	a.cfg.Accounts[key] = acct
+	g := &a.cfg.Global
+	g.CredentialSSH = &config.SSHGlobal{}
+	g.CredentialGCM = &config.GCMGlobal{Helper: "x"}
+	g.CredentialToken = &config.TokenGlobal{}
+	snap := a.snapshotRefreshConfig()
+	got := snap.Accounts[key]
 	if got.SSH == acct.SSH || got.GCM == acct.GCM || got.SSH.Host != "h" {
-		t.Errorf("detachAccount shares a pointer or lost a value: %+v", got)
+		t.Errorf("account snapshot shares a pointer or lost a value: %+v", got)
 	}
-	g := config.GlobalConfig{CredentialSSH: &config.SSHGlobal{}, CredentialGCM: &config.GCMGlobal{Helper: "x"}, CredentialToken: &config.TokenGlobal{}}
-	dg := detachCredentials(g)
-	// TokenGlobal has no fields: Go gives every zero-size value one address,
-	// so only its presence is checked.
+	dg := snap.Global
+	// Go can give zero-sized TokenGlobal values the same address.
 	if dg.CredentialSSH == g.CredentialSSH || dg.CredentialGCM == g.CredentialGCM || dg.CredentialToken == nil || dg.CredentialGCM.Helper != "x" {
-		t.Errorf("detachCredentials shares a pointer or lost a value: %+v", dg)
-	}
-	if empty := detachAccount(config.Account{}); empty.SSH != nil || empty.GCM != nil {
-		t.Error("detachAccount invented a credential block")
+		t.Errorf("global snapshot shares a pointer or lost a value: %+v", dg)
 	}
 }
