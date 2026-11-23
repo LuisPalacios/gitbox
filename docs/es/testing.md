@@ -70,9 +70,10 @@ El arranque y la ventana de solo lectura del [modo remoto](remote-mode.md) tiene
   scripts/remote-it.sh                           # every scenario
   GITBOX_IT_RUN=TestFishLoginShell scripts/remote-it.sh
   GITBOX_IT_RUN='TestReadsLeaveTheDomainUntouched|TestMutationsOverSSH|TestCutSSHMidSave' scripts/remote-it.sh
+  GITBOX_IT_RUN='TestCutSSHMidClone|TestLatency300ms' scripts/remote-it.sh
   ```
 
-  El script necesita Docker en Linux. Construye la imagen `gitbox-sshd` a partir de `test/sshd` (Debian slim con OpenSSH, fish y git, y un usuario `test` cuya clave vive fuera del home) y un servidor `linux/amd64` con el tag `e2e_sentinel`, que añade una línea a `$HOME/.gitbox-e2e/ran.log` en cada arranque. Cada prueba arranca su propio contenedor en una red `--internal` de Docker, sin ruta de salida, y se conecta mediante el `ssh` real con un archivo de config y un `known_hosts` propios, rellenado con la clave del host del contenedor. "Nunca se ejecutó" significa que el número de líneas de `ran.log` no cambió. El gate local lo ejecuta en su carril `remote-it`.
+  El script necesita Docker en Linux. Construye la imagen `gitbox-sshd` a partir de `test/sshd` (Debian slim con OpenSSH, fish, git, `iproute2` y `procps`, un usuario `test` cuya clave vive fuera del home, y un repositorio de prueba de 60 MB que `git daemon` sirve en `127.0.0.1:9418` cuando el contenedor arranca con `GIT_DAEMON=1`) y un servidor `linux/amd64` con el tag `e2e_sentinel`, que añade una línea a `$HOME/.gitbox-e2e/ran.log` en cada arranque. Cada prueba arranca su propio contenedor en una red `--internal` de Docker, sin ruta de salida, y se conecta mediante el `ssh` real con un archivo de config y un `known_hosts` propios, rellenado con la clave del host del contenedor. Las pruebas de fallos arrancan el suyo con `--cap-add NET_ADMIN` y modelan su red con `tc netem`. "Nunca se ejecutó" significa que el número de líneas de `ran.log` no cambió. El gate local lo ejecuta en su carril `remote-it`.
 
 Un smoke remoto maneja los métodos del cliente contra un host real desde mi máquina, con una config temporal: añadir, conectar, registro, diagnóstico, desconectar y desinstalar. Necesita un build que lleve su servidor y un `server_dir` de prueba:
 

@@ -65,14 +65,19 @@ Esto cambia la configuración del host, y también se ejecuta allí:
 - editar, renombrar y borrar una cuenta;
 - añadir y quitar raíces, elegir la raíz predeterminada y la profundidad de búsqueda anidada;
 - los grupos de espejos y sus repositorios;
-- añadir repositorios descubiertos a la configuración, sin clonarlos, e ignorar un clon;
+- añadir repositorios descubiertos a la configuración, e ignorar un clon;
 - los ajustes que viven en el `gitbox.json` del host, como las insignias de pull requests y la comprobación del gitignore global;
 - los arreglos de la configuración de git del host (la identidad global, el helper de GCM y el gitignore global);
 - reparar un `gitbox.json` roto o restaurar una de sus copias de seguridad.
 
-Esto está desactivado, con el aviso «Remoto de solo lectura (llega en una versión posterior)»:
+Esto cambia los clones del host y los proveedores, y también se ejecuta allí:
 
-- clonar, actualizar, borrar, crear y trasladar repositorios, la limpieza, la configuración de espejos, la adopción y la reconciliación;
+- clonar, actualizar, borrar, crear y trasladar repositorios;
+- la limpieza de ramas fusionadas, la configuración de espejos y añadir los espejos que encontró el descubrimiento;
+- la reconciliación con los clones del disco, que también se ejecuta cuando la ventana recupera el foco, y adoptar los clones que encuentra.
+
+Esto está desactivado, con el aviso «Aún no disponible en un remoto (llega en una versión posterior)»:
+
 - añadir una cuenta y cualquier configuración de credenciales, que necesitan credenciales en el host;
 - la vista compacta y el arranque automático.
 
@@ -90,13 +95,24 @@ El host comprueba cada carpeta por sí mismo, envíe lo que envíe la ventana: d
 
 Varios procesos pueden guardar el `gitbox.json` del host: mis ventanas, un GitboxApp que se ejecuta en el host y su ventana de terminales. Un guardado nunca sobrescribe un cambio que otro hizo desde que leí el archivo. En su lugar falla con «La configuración cambió en otra ventana o proceso y se ha recargado. Inténtalo de nuevo.», y la ventana muestra lo que hay ahora en el archivo. Un cambio de mis propias preferencias nunca falla así.
 
-Si la conexión se cae mientras se guarda un cambio, el `gitbox.json` del host contiene la versión anterior o la nueva, nunca una mezcla: el archivo se sustituye de una vez. Un cambio enviado dos veces, por ejemplo tras agotarse el tiempo, se aplica una sola vez: el host responde a la repetición con la primera respuesta, y tras una reconexión un cambio que ya está hecho falla con «Eso ya existe» o «Eso ya no existe» en lugar de aplicarse otra vez. La detección de harnesses de IA del host guarda lo que encuentra, y la ventana pide al host que vuelva a detectar sus harnesses cuando recupera el foco. El fetch solo actualiza las ramas de seguimiento remoto. En esta versión además se salta la reparación del `.git/config` de cada clon que un fetch local hace antes, y el registro del servidor lo dice una vez; una versión posterior lo quita. Una cuenta o un repositorio plegado sigue plegado solo en esta ventana.
+Si la conexión se cae mientras se guarda un cambio, el `gitbox.json` del host contiene la versión anterior o la nueva, nunca una mezcla: el archivo se sustituye de una vez. Un cambio enviado dos veces, por ejemplo tras agotarse el tiempo, se aplica una sola vez: el host responde a la repetición con la primera respuesta, y tras una reconexión un cambio que ya está hecho falla con «Eso ya existe» o «Eso ya no existe» en lugar de aplicarse otra vez. La detección de harnesses de IA del host guarda lo que encuentra, y la ventana pide al host que vuelva a detectar sus harnesses cuando recupera el foco. El fetch y el pull reparan antes el `.git/config` de cada clon, como en un escritorio. Una cuenta o un repositorio plegado sigue plegado solo en esta ventana.
+
+### Cuando la conexión se cae durante una acción larga
+
+Un clon, una actualización, un traslado o una configuración de espejo se ejecuta en el host mientras la ventana que lo empezó sigue conectada. Cerrar la ventana, desconectar o perder la conexión lo detiene allí, junto con sus procesos de git:
+
+- Un clon se detiene, y git borra la carpeta que creó. Si el host mató a git de golpe, la carpeta se queda: la siguiente reconciliación la señala como un clon que se detuvo antes de terminar, y yo borro la carpeta y vuelvo a clonar. Gitbox nunca la borra por mí.
+- Una actualización se detiene, y git deja el clon como estaba o avanzado.
+- Un traslado se detiene entre dos pasos y nunca empieza a borrar el repositorio de origen ni el clon local. Un destino que ya creó se queda en el proveedor, y el traslado lo indica; una vez que el origin apunta al destino, la configuración también lo dice.
+- Una configuración de espejo se detiene, y lo que el proveedor ya creó se queda.
+
+La ventana marca la acción como fallida con el error de la conexión, así que nada espera una respuesta que no va a llegar.
 
 ### La insignia y la conexión
 
-La barra de título muestra una insignia con el alias, el sistema del host en el modo avanzado, el estado de la conexión y **Limitado**, porque algunas acciones llegan en versiones posteriores. Al hacer clic se abre el registro de conexión.
+La barra de título muestra una insignia con el alias, el sistema del host en el modo avanzado, el estado de la conexión y **Limitado**, porque la configuración de credenciales llega en una versión posterior. Al hacer clic se abre el registro de conexión.
 
-Cuando la conexión se cae, la ventana conserva el último estado que recibió, atenuado e inactivo, bajo **Desconectado de my-server.** y un botón **Conectar**. Mientras está desconectada, la ventana no lanza ninguna recarga en segundo plano ni la comprobación periódica, así que no aparece ningún otro error. **Conectar** vuelve a hacer la misma conexión, borra lo que dejó la desconexión y recarga todo.
+Cuando la conexión se cae, la ventana conserva el último estado que recibió, atenuado e inactivo, bajo **Desconectado de my-server.** y un botón **Conectar**. Mientras está desconectada, la ventana no lanza ninguna recarga en segundo plano ni la comprobación periódica, así que no aparece ningún otro error. **Conectar** vuelve a hacer la misma conexión, borra lo que dejó la desconexión y recarga todo. Después la ventana reconcilia los clones del host y actualiza su estado antes de volver a ofrecer acciones, bajo **Reconectado a my-server. Leyendo sus clones antes de devolver las acciones…**
 
 ### En qué confía la ventana
 
