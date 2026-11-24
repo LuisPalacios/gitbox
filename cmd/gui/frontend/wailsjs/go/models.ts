@@ -311,6 +311,7 @@ export namespace config {
 	    compact_window?: WindowState;
 	    view_mode?: string;
 	    ui_mode?: string;
+	    show_pull_plan?: boolean;
 	    theme?: string;
 	    collapsed?: CollapsedState;
 	    credential_ssh?: SSHGlobal;
@@ -344,6 +345,7 @@ export namespace config {
 	        this.compact_window = this.convertValues(source["compact_window"], WindowState);
 	        this.view_mode = source["view_mode"];
 	        this.ui_mode = source["ui_mode"];
+	        this.show_pull_plan = source["show_pull_plan"];
 	        this.theme = source["theme"];
 	        this.collapsed = this.convertValues(source["collapsed"], CollapsedState);
 	        this.credential_ssh = this.convertValues(source["credential_ssh"], SSHGlobal);
@@ -1436,6 +1438,83 @@ export namespace main {
 		}
 	}
 	
+	export class PullPlanItem {
+	    source: string;
+	    repo: string;
+	    behind?: number;
+	    reason?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new PullPlanItem(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.repo = source["repo"];
+	        this.behind = source["behind"];
+	        this.reason = source["reason"];
+	    }
+	}
+	export class repoRef {
+	    source: string;
+	    repo: string;
+
+	    static createFrom(source: any = {}) {
+	        return new repoRef(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.repo = source["repo"];
+	    }
+	}
+	export class PullPlanDTO {
+	    planID: string;
+	    configRevision: number;
+	    stale: boolean;
+	    willClone: repoRef[];
+	    willUpdate: PullPlanItem[];
+	    skipped: PullPlanItem[];
+	    offline: repoRef[];
+	    repairsPending: repoRef[];
+
+	    static createFrom(source: any = {}) {
+	        return new PullPlanDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.planID = source["planID"];
+	        this.configRevision = source["configRevision"];
+	        this.stale = source["stale"];
+	        this.willClone = this.convertValues(source["willClone"], repoRef);
+	        this.willUpdate = this.convertValues(source["willUpdate"], PullPlanItem);
+	        this.skipped = this.convertValues(source["skipped"], PullPlanItem);
+	        this.offline = this.convertValues(source["offline"], repoRef);
+	        this.repairsPending = this.convertValues(source["repairsPending"], repoRef);
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
 
 	export class RecipeFile {
 	    document: string;
@@ -2227,6 +2306,7 @@ export namespace main {
 	
 	
 	
+
 
 }
 

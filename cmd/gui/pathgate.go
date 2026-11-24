@@ -94,7 +94,7 @@ var errCloneSettingsChanged = errors.New("repository settings changed during ref
 // account maintenance lock protects heal, then lets a new account revision
 // persist while the old transfer finishes. Its follow-up heal must still
 // wait for the clone gate.
-func (a *App) prepareClone(ctx context.Context, cfg *config.Config, ref repoRef, path string, started func()) (heal.Report, func(), error) {
+func (a *App) prepareClone(ctx context.Context, cfg *config.Config, ref repoRef, path string, started func(), precheck func() error) (heal.Report, func(), error) {
 	for {
 		unlock, err := a.repairPaths.acquire(ctx, path)
 		if err != nil {
@@ -120,6 +120,12 @@ func (a *App) prepareClone(ctx context.Context, cfg *config.Config, ref repoRef,
 			unlock()
 			return heal.Report{}, nil, errCloneSettingsChanged
 		}
+		if precheck != nil {
+			if err := precheck(); err != nil {
+				unlock()
+				return heal.Report{}, nil, err
+			}
+		}
 		if started != nil {
 			started()
 		}
@@ -130,7 +136,7 @@ func (a *App) prepareClone(ctx context.Context, cfg *config.Config, ref repoRef,
 // The caller supplies a detached config for the entire repair.
 func (a *App) repairClone(cfg *config.Config, source, repo string) (heal.Report, bool) {
 	path := status.RepoPath(cfg, source, repo, cfg.Sources[source].Repos[repo])
-	report, unlock, err := a.prepareClone(a.refreshContext(), cfg, repoRef{source, repo}, path, nil)
+	report, unlock, err := a.prepareClone(a.refreshContext(), cfg, repoRef{source, repo}, path, nil, nil)
 	if err != nil {
 		return report, false
 	}
@@ -152,6 +158,19 @@ func (a *App) repairUnderMaintenance(cfg *config.Config, source, repo string) (h
 
 func (a *App) healLocked(ctx context.Context, cfg *config.Config, source, repo string) heal.Report {
 	report := a.healRepoContext(ctx, cfg, source, repo)
+	key := statusRepoKey{source, repo}
+	a.mu.Lock()
+	if a.sameRefreshRepoLocked(cfg, source, repo) {
+		if identity, ok := statusRepoIdentity(cfg, key); ok && len(report.Warnings) > 0 {
+			if a.pullRepairs == nil {
+				a.pullRepairs = make(map[statusRepoKey]statusIdentity)
+			}
+			a.pullRepairs[key] = identity
+		} else {
+			delete(a.pullRepairs, key)
+		}
+	}
+	a.mu.Unlock()
 	for i, warning := range report.Warnings {
 		report.Warnings[i] = userText(warning)
 	}

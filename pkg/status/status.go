@@ -93,21 +93,31 @@ func (s State) Symbol() string {
 
 // RepoStatus holds the full status of a single repository.
 type RepoStatus struct {
-	Account      string `json:"account"`
-	Source       string `json:"source"`
-	Repo         string `json:"repo"`
-	Path         string `json:"path"`
-	State        State  `json:"state"`
-	Ahead        int    `json:"ahead,omitempty"`
-	Behind       int    `json:"behind,omitempty"`
-	Modified     int    `json:"modified,omitempty"`
-	Untracked    int    `json:"untracked,omitempty"`
-	Conflicts    int    `json:"conflicts,omitempty"`
-	ErrorMsg     string `json:"error,omitempty"`
-	Failure      error  `json:"-"`
-	Branch       string `json:"branch,omitempty"`     // Current branch name (or "(detached)")
-	IsDefault    bool   `json:"is_default,omitempty"` // True when current branch is the repo's default branch
-	DefaultKnown bool   `json:"-"`
+	Account      string       `json:"account"`
+	Source       string       `json:"source"`
+	Repo         string       `json:"repo"`
+	Path         string       `json:"path"`
+	State        State        `json:"state"`
+	Ahead        int          `json:"ahead,omitempty"`
+	Behind       int          `json:"behind,omitempty"`
+	Modified     int          `json:"modified,omitempty"`
+	Untracked    int          `json:"untracked,omitempty"`
+	Conflicts    int          `json:"conflicts,omitempty"`
+	ErrorMsg     string       `json:"error,omitempty"`
+	Failure      error        `json:"-"`
+	Branch       string       `json:"branch,omitempty"`     // Current branch name (or "(detached)")
+	IsDefault    bool         `json:"is_default,omitempty"` // True when current branch is the repo's default branch
+	DefaultKnown bool         `json:"-"`
+	Pull         PullEvidence `json:"-"`
+}
+
+// PullEvidence captures the checkout and destination facts used by Pull all.
+type PullEvidence struct {
+	Upstream        string
+	Blocked         git.PullSkipReason
+	Unknown         bool
+	CloneMissing    bool
+	CloneObstructed bool
 }
 
 // Check determines the sync status of a single repo at the given path.
@@ -118,19 +128,34 @@ func Check(repoPath string) RepoStatus {
 // CheckContext is Check that stops when ctx is cancelled. A check that was
 // cancelled reports the Error state; callers that cancelled it drop it.
 func CheckContext(ctx context.Context, repoPath string) RepoStatus {
+	return checkContext(ctx, repoPath, false)
+}
+
+func checkContext(ctx context.Context, repoPath string, forPull bool) RepoStatus {
 	rs := RepoStatus{Path: repoPath}
 
 	regular := git.IsRepo(repoPath)
 	if !regular && !git.IsLinkedWorktree(repoPath) {
 		rs.State = NotCloned
+		if forPull {
+			_, err := os.Lstat(repoPath)
+			rs.Pull.CloneMissing = errors.Is(err, os.ErrNotExist)
+			rs.Pull.CloneObstructed = !rs.Pull.CloneMissing
+		}
 		return rs
 	}
 
-	st, err := git.StatusContext(ctx, repoPath)
+	read := git.StatusContext
+	if forPull {
+		rs.Pull.CloneObstructed = git.IsIncompleteClone(repoPath)
+		read = git.PullStatusContext
+	}
+	st, err := read(ctx, repoPath)
 	if err != nil {
 		// A .git file can have a gitdir pointer whose target disappeared.
 		if ge, ok := errors.AsType[*git.GitError](err); !regular && ok && ge.Code == git.CodeNotARepo {
 			rs.State = NotCloned
+			rs.Pull.CloneObstructed = forPull
 			return rs
 		}
 		rs.State = Error
@@ -139,6 +164,11 @@ func CheckContext(ctx context.Context, repoPath string) RepoStatus {
 		return rs
 	}
 
+	if forPull {
+		rs.Pull.Blocked, err = git.StatusPullWorkReason(ctx, repoPath, st)
+		rs.Pull.Unknown = err != nil || st.Branch == ""
+		rs.Pull.Upstream = st.Upstream
+	}
 	rs.Ahead = st.Ahead
 	rs.Behind = st.Behind
 	rs.Modified = st.Changed
@@ -182,11 +212,11 @@ func Classify(st git.RepoStatus) State {
 // positive.
 func checkWithin(ctx context.Context, repoPath string, perRepo time.Duration) RepoStatus {
 	if perRepo <= 0 {
-		return CheckContext(ctx, repoPath)
+		return checkContext(ctx, repoPath, true)
 	}
 	ctx, cancel := context.WithTimeout(ctx, perRepo)
 	defer cancel()
-	return CheckContext(ctx, repoPath)
+	return checkContext(ctx, repoPath, true)
 }
 
 // checkAllConcurrency bounds the number of in-flight checks in CheckAllContext.

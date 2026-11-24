@@ -184,6 +184,11 @@ func (a *App) overlayStatus(local []StatusResult) []StatusResult {
 			delete(a.statusNetwork, key)
 		}
 	}
+	for key, identity := range a.pullRepairs {
+		if live, ok := statusRepoIdentity(a.cfg, key); !ok || live != identity {
+			delete(a.pullRepairs, key)
+		}
+	}
 	for i := range out {
 		row := &out[i]
 		if a.upstreamGone[row.Source+"/"+row.Repo] {
@@ -448,7 +453,7 @@ func (a *App) performFetch(op eventOperation, cfg *config.Config, source, repo, 
 	ctx := a.refreshContext()
 	report, unlock, err := a.prepareClone(ctx, cfg, repoRef{source, repo}, path, func() {
 		emit(op, "fetch:start", fetchEventDTO{Source: source, Repo: repo})
-	})
+	}, nil)
 	if err != nil {
 		emit(op, "fetch:done", fetchDoneDTO{fetchEventDTO: fetchEventDTO{Source: source, Repo: repo, Error: userMsg(err)}})
 		return err

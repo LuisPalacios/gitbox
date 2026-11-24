@@ -285,6 +285,14 @@ func contractRows(clone string, revision uint64) []contractRow {
 		startupStatusContract(revision),
 		{name: "GetIdentityProof", call: func(b Backend) (any, error) { return b.GetIdentityProof("acct", "org/repo") }},
 		{name: "GetAllStatus", call: func(b Backend) (any, error) { return b.GetAllStatus(), nil }},
+		{name: "PreviewPullAll", call: func(b Backend) (any, error) {
+			plan, err := b.PreviewPullAll()
+			if err == nil && (len(plan.PlanID) != 32 || plan.ConfigRevision != revision || len(plan.Skipped) == 0 || plan.Stale) {
+				err = fmt.Errorf("missing cached preview scope: %+v", plan)
+			}
+			plan.PlanID = ""
+			return plan, err
+		}},
 		// The status pass and the upstream probe each publish the statuses.
 		{name: "RefreshStatus", call: func(b Backend) (any, error) { b.RefreshStatus(); return nil, nil }, until: []string{"status:updated"},
 			concurrent: []string{"status:updated"}},

@@ -160,7 +160,7 @@ func TestCancelReachesBackgroundWork(t *testing.T) {
 			cancelRequest := strings.HasSuffix(how, "cancel")
 			method, event, args := "CloneRepo", "clone:done", []any{"acct", "org/fresh", ""}
 			if bulk {
-				method, event, args = "PullAll", "pull:alldone", []any{"cancelled-fleet"}
+				method, event, args = "PullAll", "pull:alldone", []any{"cancelled-fleet", ""}
 			}
 			ln, err := net.Listen("tcp", "127.0.0.1:0")
 			if err != nil {
@@ -191,7 +191,7 @@ func TestCancelReachesBackgroundWork(t *testing.T) {
 					_ = link.Remote.current().Call(ctx, method, args, nil, rpc.WithRequestID(newRequestID()))
 				}()
 			} else if bulk {
-				link.Remote.PullAll("cancelled-fleet")
+				link.Remote.PullAll("cancelled-fleet", "")
 			} else {
 				link.Remote.CloneRepo("acct", "org/fresh", "")
 			}

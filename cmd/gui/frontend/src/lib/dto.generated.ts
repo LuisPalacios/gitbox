@@ -202,6 +202,9 @@ export interface PRAccountUpdateDTO {
 export interface pullAllDoneDTO {
   run: string;
   error?: string;
+  planID?: string;
+  skippedSincePreview?: number;
+  planExpired?: boolean;
 }
 
 export interface repoRef {
@@ -211,6 +214,7 @@ export interface repoRef {
 
 export interface pullAllStartDTO {
   run: string;
+  planID?: string;
   pulls: repoRef[];
   clones: repoRef[];
 }

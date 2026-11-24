@@ -208,6 +208,10 @@ A repo checked out on a non-default branch shows a small branch badge next to it
 
 Click **Pull all** (down-arrow icon) in the top bar to check the configured clones for updates. Gitbox pulls clean clones that are behind their known upstream with `git pull --ff-only --no-autostash`, then clones repositories whose destination is missing. A behind row's **Pull · FF only** button checks the same local conditions and can discover newer upstream commits on demand. In Simple, the button is **Update all**.
 
+In Simple, **Update all** opens a plan by default. It shows how many projects Gitbox reviewed, what it can download or update, and which projects it will leave alone. Advanced opens the plan only if I enable it, and lists each repository, its proposed action and any reason to skip it. In Settings, **Show plan before Pull all** (Simple: **Show plan before Update all**) can follow the mode or stay on or off in both modes. Gitbox saves an explicit choice as `global.show_pull_plan`.
+
+The plan uses the last completed local status check. Gitbox marks it as potentially out of date if the check is missing, belongs to an older config or predates a fetch. **Cancel** closes it. **Go** rechecks the proposed downloads and updates before starting them. New candidates wait for the next run. The result card counts projects Gitbox had planned to change but had to skip, for example when I edited files after opening the plan.
+
 The status puts unresolved conflicts first and local changes ahead of branch history. Before a pull, Gitbox rechecks the working tree and skips the clone if it finds local changes, conflicts or an operation in progress. Hover over the row status to see why Gitbox skipped it. The result counts these skips separately from failures. An editor can still write after the last check. If Git refuses a pull because that edit overlaps the update, the row reports the new local work without stashing it.
 
 #### What the messages mean
@@ -543,7 +547,7 @@ If two tracked entries resolve to the same folder, **Needs attention** lists bot
 - **Make default** — new accounts clone into this root from now on. Accounts that already use the old default stay on it, and no clone moves.
 - **✕** — removes a root. When repos still live under it, Gitbox asks whether to forget them; their files stay on disk.
 
-With two or more roots, an explicit clone asks once where it goes: a row's **Clone** (Simple: **Download**), **Find → Add & Pull**, and the projects you pick when you add an account. The choice defaults to the account's root, and the account remembers it for its next clone. **Create repository** shows the same choice as a field. **Pull all** never asks: missing clones go to their account's root.
+With two or more roots, an explicit clone asks once where it goes: a row's **Clone** (Simple: **Download**), **Find → Add & Pull**, and the projects you pick when you add an account. The choice defaults to the account's root, and the account remembers it for its next clone. **Create repository** shows the same choice as a field. **Pull all** uses no root picker. Missing clones go to their account's root.
 
 The same dialog sets the **nested scan depth** for [multi-repo containers](#containers-without-a-workspace-file).
 

@@ -18,6 +18,7 @@
   export let themeChoice: 'system' | 'light' | 'dark';
   export let deleteMode: boolean;
   export let showSettings: boolean;
+  export let pullPlanBusy = false;
   export let syncAll: () => Promise<void>;
   export let runFetchAll: () => Promise<void>;
   export let toggleViewMode: () => Promise<void>;
@@ -103,7 +104,7 @@
   </div>
   <div class="topbar-actions">
     <button class="icon-btn" use:ro={'pullAll'} on:click={syncAll}
-      disabled={syncing || ($summary.update === 0 && $summary.online === 0)}
+      disabled={syncing || pullPlanBusy || ($summary.update === 0 && $summary.online === 0)}
       title={syncing ? $t(simple ? 'simple.updating' : 'top.pulling') : $t(simple ? 'simple.updateAll' : 'top.pullAll')}>
       <span class="icon-spin" class:spinning={syncing}><UIIcon name="pull" /></span>
     </button>

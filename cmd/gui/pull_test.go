@@ -15,6 +15,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/git/testutil"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 )
 
@@ -267,10 +268,100 @@ func TestPullAll_UpdatesOnlyEligibleClonesThenDownloadsMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 	src.Repos["org/blocked"] = config.Repo{CloneFolder: blocked}
-	src.RepoOrder = append(src.RepoOrder, missing, "org/blocked")
+	src.Repos["org/offline"] = config.Repo{Root: filepath.Join(root, "offline-root")}
+	src.RepoOrder = append(src.RepoOrder, missing, "org/blocked", "org/offline")
 	a.cfg.Sources["source-a"] = src
 
-	a.PullAll("fixture")
+	// Status and execution read the same local work signals. Preview itself
+	// must run no Git, provider calls, or writes.
+	a.refreshHooks.status = nil
+	_ = a.GetAllStatus()
+	a.mu.Lock()
+	a.configRevision++ // an unrelated domain change leaves these checkout settings intact
+	a.mu.Unlock()
+	batch := func() PullPlanDTO {
+		t.Helper()
+		plan, err := a.PreviewPullAll()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return plan
+	}
+	var plan PullPlanDTO
+	t.Run("cache-only preview", func(t *testing.T) {
+		git.SetRunnerForTest(t, testutil.RunnerFunc(func(context.Context, git.Request) (git.Result, error) {
+			t.Fatal("preview started a Git command")
+			return git.Result{}, nil
+		}))
+		plan = batch()
+	})
+	if plan.Stale || len(plan.WillUpdate) != 2 || len(plan.WillClone) != 1 ||
+		len(plan.Skipped) != 8 || len(plan.RepairsPending) != 1 || len(plan.Offline) != 1 || plan.Offline[0].Repo != "org/offline" {
+		t.Fatalf("unexpected cached pull plan: %+v", plan)
+	}
+	a.recordFetchStatus(a.snapshotRefreshConfig(), "source-a", "org/repo-4", false, time.Now())
+	if fresh := batch(); !fresh.Stale || len(fresh.WillUpdate) != 2 {
+		t.Fatalf("fetch must mark cached results stale: %+v", fresh)
+	}
+
+	dirty := filepath.Join(paths["org/repo-4"], "after-preview.txt")
+	if err := os.WriteFile(dirty, []byte("keep this work"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a destination appearing and a previously skipped clone
+	// becoming eligible. Confirmation must not include the latter.
+	if err := os.WriteFile(download, []byte("destination occupied"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	newlyEligible := filepath.Join(paths["org/repo-1"], "untracked.txt")
+	if err := os.Remove(newlyEligible); err != nil {
+		t.Fatal(err)
+	}
+	linked := paths["org/repo-3"]
+	pullFixtureGit(t, linked, "switch", "-c", "changed-branch", "--track", "origin/main")
+
+	a.PullAll("confirmed", plan.PlanID)
+	a.refreshWG.Wait()
+	completedPlan := events.named("pull:alldone")
+	if len(completedPlan) != 1 {
+		t.Fatalf("planned completion = %v", completedPlan)
+	}
+	if done := completedPlan[0].args[0].(pullAllDoneDTO); done.PlanID != plan.PlanID || done.SkippedSincePreview != 3 || done.Error != "" {
+		t.Errorf("planned completion = %+v, want 3 skipped since preview", done)
+	}
+	for _, event := range events.named("pull:done") {
+		result := event.args[0].(pullDoneDTO)
+		if result.Repo == "org/repo-4" && result.Skipped.v == git.PullDirty ||
+			result.Repo == "org/repo-3" && result.Skipped.v == pullSettingsChanged {
+			continue
+		}
+		t.Errorf("planned run changed its scope: %+v", result)
+	}
+	if head := pullFixtureGit(t, paths["org/repo-1"], "rev-parse", "HEAD"); head != beforeHeads["org/repo-1"] {
+		t.Error("confirmed run updated a project outside its plan")
+	}
+	a.PullAll("repeat-confirm", plan.PlanID)
+	a.refreshWG.Wait()
+	replay := events.named("pull:alldone")
+	if len(replay) != 2 || !replay[1].args[0].(pullAllDoneDTO).PlanExpired || len(events.named("pull:allstart")) != 1 {
+		t.Fatalf("replay unexpectedly ran: %v", replay)
+	}
+
+	if err := os.Remove(dirty); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(download); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newlyEligible, []byte("local work"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pullFixtureGit(t, linked, "switch", "linked")
+	events.mu.Lock()
+	events.events = nil
+	events.mu.Unlock()
+
+	a.PullAll("fixture", "")
 	a.refreshWG.Wait()
 	results := events.named("pull:done")
 	if len(results) != 10 {
@@ -397,13 +488,13 @@ func TestPullAll_SerializesTransferWithFetchAll(t *testing.T) {
 				}
 				startFetch := func() { go func() { _ = a.FetchAllRepos() }() }
 				if first == "pull" {
-					a.PullAll("serialized")
+					a.PullAll("serialized", "")
 					synctest.Wait()
 					startFetch()
 				} else {
 					startFetch()
 					synctest.Wait()
-					a.PullAll("serialized")
+					a.PullAll("serialized", "")
 				}
 				synctest.Wait()
 				earlyPull, earlyFetch := pullEntered, fetchEntered

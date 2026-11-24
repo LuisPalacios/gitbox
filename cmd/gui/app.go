@@ -138,6 +138,7 @@ type App struct {
 	upstreamGone       map[string]bool
 	upstreamRevision   map[string]uint64
 	statusNetwork      map[statusRepoKey]statusNetworkChecks // guarded by mu
+	pullRepairs        map[statusRepoKey]statusIdentity      // guarded by mu
 	credentialRevision map[string]uint64
 	proofChecks        map[string]proofVerification // guarded by refreshMu
 	prs                prRefreshState
@@ -166,6 +167,8 @@ type App struct {
 	fetches            fetchDispatcher
 	repoFetches        map[string]*repoFetchFlight
 	credentialRuns     map[string]*credentialFlight
+
+	pullPlans []pendingPullPlan // guarded by refreshMu
 
 	// Cache collision checks for the configuration shown in Needs attention.
 	pathAuditBase config.FileRevision
@@ -1690,6 +1693,20 @@ func (a *App) SetUIMode(mode string) error {
 	return a.clientPrefs().Update(func(p *config.ClientPrefs) { p.UIMode = mode })
 }
 
+// SetShowPullPlan saves an explicit preference, or clears it to follow the mode.
+func (a *App) SetShowPullPlan(choice string) error {
+	var show *bool
+	switch choice {
+	case "auto":
+	case "on", "off":
+		enabled := choice == "on"
+		show = &enabled
+	default:
+		return fmt.Errorf("invalid pull plan preference")
+	}
+	return a.clientPrefs().Update(func(p *config.ClientPrefs) { p.ShowPullPlan = show })
+}
+
 // SetTheme saves the GUI colour theme: "system", "light" or "dark".
 // "system" is stored as an empty value, so the app follows the OS.
 func (a *App) SetTheme(choice string) error {
@@ -1849,6 +1866,7 @@ type StatusResult struct {
 	IsDefault    *bool       `json:"isDefault,omitempty"`
 	CheckedAt    string      `json:"checkedAt,omitempty"`
 	sweepStarted time.Time
+	pullEvidence status.PullEvidence
 }
 
 func toStatusResult(rs status.RepoStatus) StatusResult {
@@ -1857,20 +1875,21 @@ func toStatusResult(rs status.RepoStatus) StatusResult {
 		isDefault = &rs.IsDefault
 	}
 	return StatusResult{
-		Source:    rs.Source,
-		Repo:      rs.Repo,
-		Account:   rs.Account,
-		Path:      rs.Path,
-		State:     rs.State.String(),
-		Ahead:     rs.Ahead,
-		Behind:    rs.Behind,
-		Modified:  rs.Modified,
-		Untracked: rs.Untracked,
-		Conflicts: rs.Conflicts,
-		Error:     userText(rs.ErrorMsg),
-		Problem:   problem(rs.Failure),
-		Branch:    rs.Branch,
-		IsDefault: isDefault,
+		Source:       rs.Source,
+		Repo:         rs.Repo,
+		Account:      rs.Account,
+		Path:         rs.Path,
+		State:        rs.State.String(),
+		Ahead:        rs.Ahead,
+		Behind:       rs.Behind,
+		Modified:     rs.Modified,
+		Untracked:    rs.Untracked,
+		Conflicts:    rs.Conflicts,
+		Error:        userText(rs.ErrorMsg),
+		Problem:      problem(rs.Failure),
+		Branch:       rs.Branch,
+		IsDefault:    isDefault,
+		pullEvidence: rs.Pull,
 	}
 }
 
@@ -1894,10 +1913,10 @@ func (a *App) cloneRepoLocal(sourceKey, repoKey, root string) {
 // incomplete. Its origin is already the token-free URL the plan cloned
 // from, so nothing needs resetting.
 func (a *App) cloneRepoRun(ctx context.Context, sourceKey, repoKey, root string) {
-	a.cloneRepoForRun(ctx, sourceKey, repoKey, root, nil, "")
+	a.cloneRepoForRun(ctx, sourceKey, repoKey, root, nil, "", false)
 }
 
-func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root string, expected *config.Config, run string) {
+func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root string, expected *config.Config, run string, confirmed bool) bool {
 	op := a.newOperation()
 	started := time.Now()
 	var err error
@@ -1910,13 +1929,13 @@ func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root stri
 	a.mu.Lock()
 	if expected != nil {
 		if !a.sameRefreshRepoLocked(expected, sourceKey, repoKey) {
-			err = fmt.Errorf("repository settings changed before cloning")
+			err = errCloneSettingsChanged
 		} else {
 			repo := expected.Sources[sourceKey].Repos[repoKey]
 			path := status.RepoPath(expected, sourceKey, repoKey, repo)
 			if _, statErr := os.Lstat(path); !errors.Is(statErr, os.ErrNotExist) ||
 				status.RepoRootOffline(expected, sourceKey, repo) {
-				err = fmt.Errorf("clone destination is no longer available")
+				err = errPullPlanChanged
 			}
 		}
 	}
@@ -1938,8 +1957,12 @@ func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root stri
 	op = op.atRevision(a.configRevision)
 	a.mu.Unlock()
 	if err != nil {
+		if confirmed && (errors.Is(err, errCloneSettingsChanged) || errors.Is(err, errPullPlanChanged)) {
+			emit(op, "clone:done", cloneDoneDTO{Run: run, Source: sourceKey, Repo: repoKey, Skipped: true})
+			return true
+		}
 		emit(op, "clone:done", cloneDoneDTO{Run: run, Source: sourceKey, Repo: repoKey, Error: userMsg(err)})
-		return
+		return false
 	}
 	emit(op, "clone:start", repoRunDTO{Run: run, Source: sourceKey, Repo: repoKey})
 	// A clone does not start against a server that does not answer.
@@ -1948,7 +1971,7 @@ func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root stri
 		err = errServerUnreachable
 		errorText, code, host := unreachableDetails(addr)
 		emit(op, "clone:done", cloneDoneDTO{Run: run, Source: sourceKey, Repo: repoKey, Error: errorText, Code: code, Host: host, Skipped: true})
-		return
+		return false
 	}
 
 	// The git transfer runs without the config lock.
@@ -1959,12 +1982,18 @@ func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root stri
 		queueDepth = &depth
 	}
 	if err == nil {
-		err = a.transferClone(ctx, cfg, sourceKey, repoKey, plan, func(p git.CloneProgress) {
+		err = a.transferClone(ctx, cfg, sourceKey, repoKey, plan, confirmed, func(p git.CloneProgress) {
 			emit(op, "clone:progress", cloneProgressDTO{Run: run, Source: sourceKey, Repo: repoKey, Phase: p.Phase, Percent: p.Percent})
 		})
 	}
 	if release != nil {
 		release()
+	}
+
+	if confirmed && (errors.Is(err, errCloneSettingsChanged) || errors.Is(err, errPullPlanChanged)) {
+		op = a.currentRepoOperation(op, cfg, sourceKey, repoKey)
+		emit(op, "clone:done", cloneDoneDTO{Run: run, Source: sourceKey, Repo: repoKey, Skipped: true})
+		return true
 	}
 
 	// "path" lets the frontend fill repoStates[key].path for rows cloned
@@ -1996,11 +2025,12 @@ func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root stri
 	if err == nil {
 		a.publishCompletionStatus(ctx, op, cfg, sourceKey, repoKey, plan.Dest)
 	}
+	return false
 }
 
 // Protect the destination only during the transfer; repair acquires the
 // same gate separately. A queued clone rechecks that it is still tracked.
-func (a *App) transferClone(ctx context.Context, cfg *config.Config, source, repo string, plan ops.ClonePlan, progress func(git.CloneProgress)) error {
+func (a *App) transferClone(ctx context.Context, cfg *config.Config, source, repo string, plan ops.ClonePlan, confirmed bool, progress func(git.CloneProgress)) error {
 	unlock, err := a.repairPaths.acquire(ctx, plan.Dest)
 	if err != nil {
 		return err
@@ -2008,6 +2038,12 @@ func (a *App) transferClone(ctx context.Context, cfg *config.Config, source, rep
 	defer unlock()
 	if !a.sameRefreshRepo(cfg, source, repo) {
 		return errCloneSettingsChanged
+	}
+	if confirmed {
+		item := cfg.Sources[source].Repos[repo]
+		if _, err := os.Lstat(plan.Dest); !errors.Is(err, os.ErrNotExist) || status.RepoRootOffline(cfg, source, item) {
+			return errPullPlanChanged
+		}
 	}
 	return plan.Run(ctx, progress)
 }
@@ -2027,7 +2063,10 @@ func failedCloneError(dest string, cloneErr error) error {
 func (a *App) PullRepo(sourceKey, repoKey string) { a.be().PullRepo(sourceKey, repoKey) }
 
 // PullAll updates eligible clones, then downloads configured missing clones.
-func (a *App) PullAll(run string) { a.be().PullAll(run) }
+func (a *App) PullAll(run, planID string) { a.be().PullAll(run, planID) }
+
+// PreviewPullAll summarizes the cached status without touching the checkouts.
+func (a *App) PreviewPullAll() (PullPlanDTO, error) { return a.be().PreviewPullAll() }
 
 // RepoDetail holds human-readable status information for a single repo.
 type RepoDetail struct {

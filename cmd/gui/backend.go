@@ -111,7 +111,8 @@ type Backend interface {
 	OpenRepoInBrowser(sourceKey, repoKey string) (string, error)
 	PreflightMove(req MoveRequestDTO) MovePreflightDTO
 	PreviewSweep(sourceKey, repoKey string) SweepPreviewDTO
-	PullAll(run string)
+	PreviewPullAll() (PullPlanDTO, error)
+	PullAll(run, planID string)
 	PullRepo(sourceKey, repoKey string)
 	RecommendedGlobalGitignoreBody() string
 	Reconcile() ReconcileDTO
@@ -322,8 +323,9 @@ func (b localBackend) PreflightMove(req MoveRequestDTO) MovePreflightDTO {
 func (b localBackend) PreviewSweep(sourceKey, repoKey string) SweepPreviewDTO {
 	return b.a.previewSweepLocal(sourceKey, repoKey)
 }
-func (b localBackend) PullAll(run string)                 { b.a.pullAllLocal(run) }
-func (b localBackend) PullRepo(sourceKey, repoKey string) { b.a.pullRepoLocal(sourceKey, repoKey) }
+func (b localBackend) PreviewPullAll() (PullPlanDTO, error) { return b.a.previewPullAllLocal(), nil }
+func (b localBackend) PullAll(run, planID string)           { b.a.pullAllLocal(run, planID) }
+func (b localBackend) PullRepo(sourceKey, repoKey string)   { b.a.pullRepoLocal(sourceKey, repoKey) }
 func (b localBackend) RecommendedGlobalGitignoreBody() string {
 	return b.a.recommendedGlobalGitignoreBodyLocal()
 }

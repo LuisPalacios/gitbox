@@ -251,10 +251,13 @@ func (r *RemoteBackend) PreflightMove(req MoveRequestDTO) MovePreflightDTO {
 func (r *RemoteBackend) PreviewSweep(sourceKey, repoKey string) SweepPreviewDTO {
 	return remoteValue[SweepPreviewDTO](r, "PreviewSweep", sourceKey, repoKey)
 }
-func (r *RemoteBackend) PullAll(run string) {
+func (r *RemoteBackend) PreviewPullAll() (PullPlanDTO, error) {
+	return remoteCall[PullPlanDTO](r, "PreviewPullAll")
+}
+func (r *RemoteBackend) PullAll(run, planID string) {
 	r.goLong("PullAll", "pull:alldone", func(msg string) any {
-		return pullAllDoneDTO{Run: run, Error: msg}
-	}, run)
+		return pullAllDoneDTO{Run: run, PlanID: planID, Error: msg}
+	}, run, planID)
 }
 func (r *RemoteBackend) PullRepo(sourceKey, repoKey string) {
 	r.goLong("PullRepo", "pull:done", func(msg string) any {

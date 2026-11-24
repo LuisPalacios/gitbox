@@ -115,6 +115,7 @@ var servedMethods = []string{
 	"OpenRepoInBrowser",
 	"PreflightMove",
 	"PreviewClonePath",
+	"PreviewPullAll",
 	"PreviewRoot",
 	"PreviewSweep",
 	"PullAll",
@@ -304,8 +305,8 @@ func requestBoundHandlers(a *App) map[string]rpc.Handler {
 		"CloneRepo": rpc.Func(func(ctx context.Context, sourceKey, repoKey, root string) error {
 			return a.inRequest(ctx, func(ctx context.Context) { a.cloneRepoRun(ctx, sourceKey, repoKey, root) })
 		}),
-		"PullAll": rpc.Func(func(ctx context.Context, run string) error {
-			return a.inRequest(ctx, func(ctx context.Context) { a.pullAllRun(ctx, run) })
+		"PullAll": rpc.Func(func(ctx context.Context, run, planID string) error {
+			return a.inRequest(ctx, func(ctx context.Context) { a.pullAllRun(ctx, run, planID) })
 		}),
 		"PullRepo": rpc.Func(func(ctx context.Context, sourceKey, repoKey string) error {
 			return a.inRequest(ctx, func(ctx context.Context) { a.pullRepoRun(ctx, sourceKey, repoKey) })

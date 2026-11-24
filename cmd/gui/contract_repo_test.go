@@ -225,7 +225,7 @@ func repoMutationRows() []contractRow {
 		{name: "CloneRepo unknown repo", terminal: checkoutTerminal("clone:done"), call: func(b Backend) (any, error) { b.CloneRepo("acct", "org/none", ""); return nil, nil }},
 		{name: "PullAll", terminal: func(events []recordedEvent) bool {
 			return slices.ContainsFunc(events, func(e recordedEvent) bool { return e.name == "pull:alldone" })
-		}, call: func(b Backend) (any, error) { b.PullAll("contract"); return nil, nil }},
+		}, call: func(b Backend) (any, error) { b.PullAll("contract", ""); return nil, nil }},
 		{name: "PullRepo", terminal: checkoutTerminal("pull:done"), call: func(b Backend) (any, error) { b.PullRepo("acct", "org/repo"); return nil, nil }},
 		{name: "PullRepo unknown repo", terminal: checkoutTerminal("pull:done"), call: func(b Backend) (any, error) { b.PullRepo("acct", "org/none"); return nil, nil }},
 		{name: "RepairRepoIdentity", call: func(b Backend) (any, error) { return none(b.RepairRepoIdentity("acct", "org/repo")) }},

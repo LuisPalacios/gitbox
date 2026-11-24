@@ -438,6 +438,10 @@ export function PreviewDiagnostics() {
   return window['go']['main']['App']['PreviewDiagnostics']();
 }
 
+export function PreviewPullAll() {
+  return window['go']['main']['App']['PreviewPullAll']();
+}
+
 export function PreviewRecipeExport() {
   return window['go']['main']['App']['PreviewRecipeExport']();
 }
@@ -454,8 +458,8 @@ export function PreviewSweep(arg1, arg2) {
   return window['go']['main']['App']['PreviewSweep'](arg1, arg2);
 }
 
-export function PullAll(arg1) {
-  return window['go']['main']['App']['PullAll'](arg1);
+export function PullAll(arg1, arg2) {
+  return window['go']['main']['App']['PullAll'](arg1, arg2);
 }
 
 export function PullRepo(arg1, arg2) {
@@ -620,6 +624,10 @@ export function SetRepoContainer(arg1, arg2, arg3) {
 
 export function SetRepoWorkspace(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetRepoWorkspace'](arg1, arg2, arg3);
+}
+
+export function SetShowPullPlan(arg1) {
+  return window['go']['main']['App']['SetShowPullPlan'](arg1);
 }
 
 export function SetTheme(arg1) {
