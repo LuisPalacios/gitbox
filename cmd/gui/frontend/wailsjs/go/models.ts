@@ -403,11 +403,11 @@ export namespace config {
 	export class PathConflict {
 	    first: string;
 	    second: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new PathConflict(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.first = source["first"];
@@ -1413,11 +1413,11 @@ export namespace main {
 	    repo: string;
 	    fixed?: string[];
 	    warnings?: string[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RepairDTO(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.source = source["source"];
@@ -1486,6 +1486,20 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class doctorRoot {
+	    path: string;
+	    state: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new doctorRoot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.state = source["state"];
+	    }
+	}
 	export class serverDoctorReport {
 	    version: string;
 	    commit: string;
@@ -1497,6 +1511,7 @@ export namespace main {
 	    configDirExec: boolean;
 	    gitVersion: string;
 	    credentialFindings: credential.Finding[];
+	    roots?: doctorRoot[];
 	
 	    static createFrom(source: any = {}) {
 	        return new serverDoctorReport(source);
@@ -1514,6 +1529,7 @@ export namespace main {
 	        this.configDirExec = source["configDirExec"];
 	        this.gitVersion = source["gitVersion"];
 	        this.credentialFindings = this.convertValues(source["credentialFindings"], credential.Finding);
+	        this.roots = this.convertValues(source["roots"], doctorRoot);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1722,7 +1738,7 @@ export namespace main {
 	        this.forgotten = source["forgotten"];
 	    }
 	}
-
+	
 	export class RepoDetail {
 	    branch: string;
 	    ahead: number;
@@ -2068,6 +2084,7 @@ export namespace main {
 	        this.height = source["height"];
 	    }
 	}
+	
 	
 	
 	
