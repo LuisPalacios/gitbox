@@ -40,11 +40,6 @@ type eventStream struct {
 	next     uint64
 }
 
-type repoEventDTO struct {
-	Source string `json:"source"`
-	Repo   string `json:"repo"`
-}
-
 type eventOperation struct {
 	app      *App
 	id       string

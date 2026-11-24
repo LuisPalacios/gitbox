@@ -156,6 +156,7 @@ var methodClass = map[string]methodInfo{
 	"PreviewRecipeImport":            {classLocal, "fleet recipes", false},
 	"PreviewRoot":                    {classRemote, "P4", false},
 	"PreviewSweep":                   {classRemote, "P4", false},
+	"PullAll":                        {classRemote, "P5", true},
 	"PullRepo":                       {classRemote, "P5", true},
 	"RecommendedGlobalGitignoreBody": {classRemote, "P4", false},
 	"Reconcile":                      {classRemote, "P5", true},
@@ -231,8 +232,8 @@ func classOf(method string) (methodInfo, bool) {
 
 // eventClass covers every event name passed to EventSink.Emit.
 var eventClass = map[string]eventInfo{
-	"clone:done":               {classRemote, "P5"},
 	"clone:start":              {classRemote, "P5"},
+	"clone:done":               {classRemote, "P5"},
 	"clone:progress":           {classRemote, "P5"},
 	"credentials:updated":      {classRemote, "P4"},
 	"discover:done":            {classRemote, "P4"},
@@ -251,6 +252,8 @@ var eventClass = map[string]eventInfo{
 	"pr:refreshed":             {classRemote, "P4"},
 	"profiles:reloaded":        {classLocal, "P1a"},
 	"pull:start":               {classRemote, "P5"},
+	"pull:allstart":            {classRemote, "P5"},
+	"pull:alldone":             {classRemote, "P5"},
 	"pull:done":                {classRemote, "P5"},
 	"reconcile:done":           {classRemote, "P5"},
 	"remote:log":               {classLocal, "P3b"},

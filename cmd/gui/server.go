@@ -116,6 +116,7 @@ var servedMethods = []string{
 	"PreviewClonePath",
 	"PreviewRoot",
 	"PreviewSweep",
+	"PullAll",
 	"PullRepo",
 	"RecommendedGlobalGitignoreBody",
 	"Reconcile",
@@ -232,6 +233,7 @@ var mutationIdempotence = map[string]string{
 	"InitRoot":                   "an existing root is kept and becomes the default; the mode is kept",
 	"InstallGlobalGitignore":     "the managed block is written once; a second call finds it in place",
 	"MoveRepo":                   "a moved repo is no longer in its source, so a second move fails in preflight and changes nothing",
+	"PullAll":                    "clones already updated or downloaded need no further changes",
 	"PullRepo":                   "a second fast-forward pull finds nothing to pull",
 	"Reconcile":                  "a second pass finds what the first adopted already tracked",
 	"RemoveGlobalIdentity":       "a missing identity is a no-op",
@@ -296,6 +298,9 @@ func requestBoundHandlers(a *App) map[string]rpc.Handler {
 	return map[string]rpc.Handler{
 		"CloneRepo": rpc.Func(func(ctx context.Context, sourceKey, repoKey, root string) error {
 			return a.inRequest(ctx, func(ctx context.Context) { a.cloneRepoRun(ctx, sourceKey, repoKey, root) })
+		}),
+		"PullAll": rpc.Func(func(ctx context.Context, run string) error {
+			return a.inRequest(ctx, func(ctx context.Context) { a.pullAllRun(ctx, run) })
 		}),
 		"PullRepo": rpc.Func(func(ctx context.Context, sourceKey, repoKey string) error {
 			return a.inRequest(ctx, func(ctx context.Context) { a.pullRepoRun(ctx, sourceKey, repoKey) })

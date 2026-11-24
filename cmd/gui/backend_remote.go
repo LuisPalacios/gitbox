@@ -168,9 +168,10 @@ func doneKey(event string, payload any) string {
 		Repo      string `json:"repo"`
 		MirrorKey string `json:"mirrorKey"`
 		RepoKey   string `json:"repoKey"`
+		Run       string `json:"run"`
 	}
 	_ = json.Unmarshal(b, &p)
-	return event + "\x00" + p.Source + "\x00" + p.Repo + "\x00" + p.MirrorKey + "\x00" + p.RepoKey
+	return event + "\x00" + p.Source + "\x00" + p.Repo + "\x00" + p.MirrorKey + "\x00" + p.RepoKey + "\x00" + p.Run
 }
 
 // sawDone marks the long calls that a relayed done event ends.
@@ -283,7 +284,7 @@ func (r *RemoteBackend) relayPayload(name string, event Envelope[json.RawMessage
 }
 
 // longDoneEvents end a long call (goLong).
-var longDoneEvents = map[string]bool{"clone:done": true, "pull:done": true, "move:done": true, "mirror:setup:done": true}
+var longDoneEvents = map[string]bool{"clone:done": true, "pull:done": true, "pull:alldone": true, "move:done": true, "mirror:setup:done": true}
 
 // Payloads that this build emits as maps, as structs with the same keys.
 type fetchEventDTO struct {
@@ -329,7 +330,14 @@ type networkStateDTO struct {
 	Hosts   []string `json:"hosts"`
 }
 
+type repoRunDTO struct {
+	Run    string `json:"run,omitempty"`
+	Source string `json:"source"`
+	Repo   string `json:"repo"`
+}
+
 type cloneProgressDTO struct {
+	Run     string `json:"run,omitempty"`
 	Source  string `json:"source"`
 	Repo    string `json:"repo"`
 	Phase   string `json:"phase"`
@@ -340,6 +348,7 @@ type cloneProgressDTO struct {
 // with what heal.Repo fixed or warned about, or the unreachable server
 // (unreachableDetails).
 type cloneDoneDTO struct {
+	Run      string   `json:"run,omitempty"`
 	Source   string   `json:"source"`
 	Repo     string   `json:"repo"`
 	Path     string   `json:"path,omitempty"`
@@ -354,6 +363,9 @@ type cloneDoneDTO struct {
 // pullDoneDTO is pull:done. Skipped is a pull skip reason, or true for an
 // unreachable server.
 type pullDoneDTO struct {
+	Run            string     `json:"run,omitempty"`
+	BehindBefore   int        `json:"behindBefore"`
+	Unchanged      bool       `json:"unchanged,omitempty"`
 	RepairWarnings []string   `json:"repairWarnings,omitzero"`
 	Source         string     `json:"source"`
 	Repo           string     `json:"repo"`
@@ -448,8 +460,7 @@ var relayedEvents = map[string]payloadDecoder{
 	"network:state":            typedPayload[networkStateDTO],
 	// The repository mutations (#295). Progress keeps the server's
 	// coalescing: at most one per operation every rpc.ProgressInterval.
-	"clone:start":    typedPayload[repoEventDTO],
-	"pull:start":     typedPayload[repoEventDTO],
+	"clone:start":    typedPayload[repoRunDTO],
 	"clone:progress": typedPayload[cloneProgressDTO],
 	"clone:done": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
 		var done cloneDoneDTO
@@ -460,6 +471,20 @@ var relayedEvents = map[string]payloadDecoder{
 		done.Fixes = capList(r, "clone fixes", done.Fixes, maxRemoteNotes)
 		return keepSentKeys(raw, done)
 	},
+	"pull:start": typedPayload[repoRunDTO],
+	"pull:allstart": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
+		var start pullAllStartDTO
+		if err := json.Unmarshal(raw, &start); err != nil {
+			return nil, err
+		}
+		if identifier(start.Run) == "" || start.Pulls == nil || start.Clones == nil {
+			return nil, fmt.Errorf("invalid fleet pull scope")
+		}
+		start.Pulls = capList(r, "pulls", start.Pulls, maxRemoteRepos)
+		start.Clones = capList(r, "clones", start.Clones, maxRemoteRepos)
+		return start, nil
+	},
+	"pull:alldone": typedPayload[pullAllDoneDTO],
 	"pull:done": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
 		var done pullDoneDTO
 		if err := json.Unmarshal(raw, &done); err != nil {

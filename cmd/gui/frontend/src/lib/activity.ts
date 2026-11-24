@@ -23,6 +23,8 @@ export interface Run {
   skips: Record<string, PullSkipReason>;
   // Fetch: each key's status when the run started, to tell what changed.
   before: Record<string, string>;
+  // Pull: clones already current or otherwise ineligible without a refusal.
+  unchanged: Set<string>;
   // Pull: keys that were not cloned yet, so the run clones them.
   clones: Set<string>;
 }
@@ -47,7 +49,7 @@ function start(kind: Run['kind'], keys: string[], accountOf: (key: string) => st
     kind, keys: scope,
     accounts: new Set(scope.map(accountOf)).size,
     done: new Set(), operations: new Set(), errors: {}, failures: {}, skips: {}, before,
-    clones: new Set(kind === 'pull' ? scope.filter((key) => before[key] === 'not cloned') : []),
+    unchanged: new Set(), clones: new Set(),
   };
 }
 
@@ -55,15 +57,17 @@ export function startFetch(keys: string[], accountOf: (key: string) => string, s
   return start('fetch', keys, accountOf, statusOf);
 }
 
-export function startPull(keys: string[], accountOf: (key: string) => string, statusOf: (key: string) => string): Run {
-  return start('pull', keys, accountOf, statusOf);
+export function startPull(pulls: string[], clones: string[], accountOf: (key: string) => string, statusOf: (key: string) => string): Run {
+  const run = start('pull', [...pulls, ...clones], accountOf, statusOf);
+  run.clones = new Set(clones);
+  return run;
 }
 
 // noteDone records one repo reporting back, with its error if it failed and
 // what the backend says about the failure. Keys outside the run are ignored.
 // It returns a new Run, so a Svelte assignment picks up the change.
-export function noteDone(run: Run, key: string, error?: string, failure?: Failure, skip?: PullSkipReason, operationID?: string): Run {
-  return noteCompletions(run, [{ key, error, failure, skip, operationID }]);
+export function noteDone(run: Run, key: string, error?: string, failure?: Failure, skip?: PullSkipReason, operationID?: string, unchanged?: boolean): Run {
+  return noteCompletions(run, [{ key, error, failure, skip, operationID, unchanged }]);
 }
 
 export interface Completion {
@@ -72,12 +76,13 @@ export interface Completion {
   error?: string;
   failure?: Failure;
   skip?: PullSkipReason;
+  unchanged?: boolean;
 }
 
 // Several fetch completions may arrive before the next progress paint.
 export function noteCompletions(run: Run, events: Completion[]): Run {
-  const next = { ...run, done: new Set(run.done), operations: new Set(run.operations), errors: { ...run.errors }, failures: { ...run.failures }, skips: { ...run.skips } };
-  for (const { key, operationID, error, failure, skip } of events) {
+  const next = { ...run, done: new Set(run.done), operations: new Set(run.operations), errors: { ...run.errors }, failures: { ...run.failures }, skips: { ...run.skips }, unchanged: new Set(run.unchanged) };
+  for (const { key, operationID, error, failure, skip, unchanged } of events) {
     if (!Object.hasOwn(run.before, key) || (operationID && next.operations.has(operationID))) continue;
     if (operationID) next.operations.add(operationID);
     next.done.add(key);
@@ -85,6 +90,8 @@ export function noteCompletions(run: Run, events: Completion[]): Run {
     else { delete next.errors[key]; delete next.failures[key]; }
     if (skip) next.skips[key] = skip;
     else delete next.skips[key];
+    if (unchanged) next.unchanged.add(key);
+    else next.unchanged.delete(key);
   }
   return next;
 }
@@ -194,7 +201,7 @@ export function summarizePull(run: Run): PullSummary {
     if (run.errors[key]) failures.push({ key, error: run.errors[key] });
     else if (run.skips[key]) skipped++;
     else if (run.clones.has(key)) cloned++;
-    else pulled++;
+    else if (!run.unchanged.has(key)) pulled++;
   }
   return { pulled, cloned, skipped, failed: failures.length, failures };
 }

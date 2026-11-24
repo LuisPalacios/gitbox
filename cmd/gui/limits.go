@@ -58,6 +58,7 @@ var remoteUnbounded = map[string]bool{
 	// Individual git and provider calls are bounded. A complete pass may
 	// take several of those bounds and stops with its window or connection.
 	"RunFleetCheck": true,
+	"PullAll":       true,
 }
 
 // A call to a gitbox-server may take as long as the work it asks for, plus
@@ -70,7 +71,7 @@ const (
 
 var remoteWorkBounds = map[string]time.Duration{
 	// The repository mutations (#295), as long as their work may take.
-	"PullRepo":               healReadTimeout + pullTimeout,
+	"PullRepo":               healReadTimeout + pullTimeout + fetchTimeout,
 	"MoveRepo":               moveTimeout,
 	"SetupMirrorRepo":        mirrorSetupTimeout,
 	"CreateNewRepo":          createRepoTimeout,

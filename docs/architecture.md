@@ -136,10 +136,12 @@ Startup returns config, preferences, collapse state and path-derived nesting in 
 `cmd/gui/refresh.go` coordinates refresh work:
 
 - Overlapping callers share one active run of local status, Fetch all, per-clone fetch, and each account's credential check.
-- Bulk and individual fetches share eight transfer slots, with at most two per hostname. Fetch all drains each host's queue independently, so a slow host leaves room for the other hosts.
+- Fetch and pull share eight transfer slots, with at most two per hostname. Bulk fetches, pulls and downloads drain each host's queue independently, so a slow host leaves room for the other hosts.
 - One pending local-status invalidation is kept, results computed from a config that has since changed are dropped, and closing the app cancels refresh work.
 - When the account changes or a re-check is requested during a credential check, the check runs again against the current config. Offline results retry with backoff; authentication errors don't.
 - A Fetch all cycle publishes local status before waiting for provider work. `fetch:alldone` follows its final status and remote checks.
+
+`cmd/gui/safepull.go` uses the same gate per physical path for fetch, repair and pull. Account changes can save during an existing transfer. The follow-up repair waits for that path, and Gitbox discards a fetch result whose account settings changed. A pull rechecks repository settings, repairs the clone and inspects the working tree and operation markers before calling `git pull --ff-only --no-autostash`. Pull all takes a configuration snapshot, uses the same safety check for clones that are known to be behind and queues missing downloads after the pull phase. The frontend reads the scope and per-clone outcomes from backend events. The batch has its own operation ID. Each successful pull or download reports authoritative `status:one` for its repository using the same operation ID as that row’s completion. Other processes can still write after the final check. When Git refuses an update and the checkout now has local work, Gitbox reports the skip with the observed status.
 
 `cmd/gui/pr.go` keeps each App’s pull request results in memory. Overlapping refreshes share an account’s request, and at most two accounts refresh at once. Closing the app cancels the requests. Changes to an account or badge settings discard outdated results, and a failed refresh keeps the last successful data for the same account and draft setting. When a provider reports an incomplete search or a listing reaches its page limit, the PR popover labels the results as potentially incomplete.
 

@@ -1871,12 +1871,28 @@ func (a *App) cloneRepoLocal(sourceKey, repoKey, root string) {
 // incomplete. Its origin is already the token-free URL the plan cloned
 // from, so nothing needs resetting.
 func (a *App) cloneRepoRun(ctx context.Context, sourceKey, repoKey, root string) {
+	a.cloneRepoForRun(ctx, sourceKey, repoKey, root, nil, "")
+}
+
+func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root string, expected *config.Config, run string) {
 	op := a.newOperation()
 	var err error
 	if root != "" {
 		_, err = hostPath(root)
 	}
 	a.mu.Lock()
+	if expected != nil {
+		if !a.sameRefreshRepoLocked(expected, sourceKey, repoKey) {
+			err = fmt.Errorf("repository settings changed before cloning")
+		} else {
+			repo := expected.Sources[sourceKey].Repos[repoKey]
+			path := status.RepoPath(expected, sourceKey, repoKey, repo)
+			if _, statErr := os.Lstat(path); !errors.Is(statErr, os.ErrNotExist) ||
+				status.RepoRootOffline(expected, sourceKey, repo) {
+				err = fmt.Errorf("clone destination is no longer available")
+			}
+		}
+	}
 	if err == nil && root != "" {
 		var changed bool
 		changed, err = a.cfg.PlaceRepoChecked(sourceKey, repoKey, root)
@@ -1892,31 +1908,44 @@ func (a *App) cloneRepoRun(ctx context.Context, sourceKey, repoKey, root string)
 			cfg = a.refreshConfigLocked()
 		}
 	}
-	addr := serverAddr(a.cfg.Accounts[a.cfg.Sources[sourceKey].Account])
+	account := a.cfg.Accounts[a.cfg.Sources[sourceKey].Account]
 	op = op.atRevision(a.configRevision)
 	a.mu.Unlock()
 	if err != nil {
-		emit(op, "clone:done", cloneDoneDTO{Source: sourceKey, Repo: repoKey, Error: userMsg(err)})
+		emit(op, "clone:done", cloneDoneDTO{Run: run, Source: sourceKey, Repo: repoKey, Error: userMsg(err)})
 		return
 	}
-	emit(op, "clone:start", repoEventDTO{Source: sourceKey, Repo: repoKey})
+	emit(op, "clone:start", repoRunDTO{Run: run, Source: sourceKey, Repo: repoKey})
 	// A clone does not start against a server that does not answer.
+	addr := serverAddr(account)
 	if !a.reachable(ctx, addr) {
 		errorText, code, host := unreachableDetails(addr)
-		emit(op, "clone:done", cloneDoneDTO{Source: sourceKey, Repo: repoKey, Error: errorText, Code: code, Host: host, Skipped: true})
+		emit(op, "clone:done", cloneDoneDTO{Run: run, Source: sourceKey, Repo: repoKey, Error: errorText, Code: code, Host: host, Skipped: true})
 		return
 	}
 
 	// The git transfer runs without the config lock.
-	err = plan.Run(ctx, func(p git.CloneProgress) {
-		emit(op, "clone:progress", cloneProgressDTO{Source: sourceKey, Repo: repoKey, Phase: p.Phase, Percent: p.Percent})
-	})
+	var release func()
+	if run != "" {
+		release, err = a.fetches.acquire(ctx, fetchHostname(account.URL))
+		if err == nil && !a.sameRefreshRepo(expected, sourceKey, repoKey) {
+			err = errCloneSettingsChanged
+		}
+	}
+	if err == nil {
+		err = plan.Run(ctx, func(p git.CloneProgress) {
+			emit(op, "clone:progress", cloneProgressDTO{Run: run, Source: sourceKey, Repo: repoKey, Phase: p.Phase, Percent: p.Percent})
+		})
+	}
+	if release != nil {
+		release()
+	}
 
 	// "path" lets the frontend fill repoStates[key].path for rows cloned
 	// in-session (create-repo, Bring Local). Until the next full status
 	// refresh the row otherwise has no path and every path-based kebab
 	// action silently no-ops (#79).
-	result := cloneDoneDTO{Source: sourceKey, Repo: repoKey, Path: plan.Dest}
+	result := cloneDoneDTO{Run: run, Source: sourceKey, Repo: repoKey, Path: plan.Dest}
 	if err != nil {
 		result.Error = userMsg(failedCloneError(plan.Dest, err))
 	} else {
@@ -1956,96 +1985,8 @@ func failedCloneError(dest string, cloneErr error) error {
 // PullRepo pulls a single repo. Emits pull:done event.
 func (a *App) PullRepo(sourceKey, repoKey string) { a.be().PullRepo(sourceKey, repoKey) }
 
-const pullSettingsChanged git.PullSkipReason = "settingsChanged"
-
-// pullRepoLocal is the local backend's PullRepo: the pull runs in the
-// background until the app closes.
-func (a *App) pullRepoLocal(sourceKey, repoKey string) {
-	a.goTracked(func() { a.pullRepoRun(a.refreshContext(), sourceKey, repoKey) })
-}
-
-// pullRepoRun pulls one repo and emits pull:done. It stops when ctx is
-// cancelled.
-func (a *App) pullRepoRun(ctx context.Context, sourceKey, repoKey string) {
-	cfg, revision := a.refreshSnapshot()
-	op := a.newOperation().atRevision(revision)
-	src, ok := cfg.Sources[sourceKey]
-	if !ok {
-		emit(op, "pull:done", pullDoneDTO{Source: sourceKey, Repo: repoKey, Error: fmt.Sprintf("source %q not found", sourceKey)})
-		return
-	}
-	repo, ok := src.Repos[repoKey]
-	if !ok {
-		emit(op, "pull:done", pullDoneDTO{Source: sourceKey, Repo: repoKey, Error: fmt.Sprintf("repo %q not found in source %q", repoKey, sourceKey)})
-		return
-	}
-	emit(op, "pull:start", repoEventDTO{Source: sourceKey, Repo: repoKey})
-	path := status.RepoPath(cfg, sourceKey, repoKey, repo)
-	// Pre-pull self-heal: if .git/config drifted from spec (e.g. a
-	// manual edit, an older gitbox that didn't run the heal), fix
-	// it before the network op so auth uses the right credentials.
-	// I stop the pull if maintenance cannot restore the configured settings.
-	result := pullDoneDTO{Source: sourceKey, Repo: repoKey}
-	report, current := a.repairClone(cfg, sourceKey, repoKey)
-	if !current {
-		result.Skipped = skipReason{v: pullSettingsChanged}
-		emit(op, "pull:done", result)
-		return
-	}
-	if report.Skipped == "" && !a.readOnly {
-		result.RepairWarnings = append([]string{}, report.Warnings...)
-	}
-	var err error
-	addr := serverAddr(cfg.Accounts[src.Account])
-	if len(report.Warnings) > 0 {
-		err = fmt.Errorf("repository maintenance: %s", strings.Join(report.Warnings, "; "))
-	} else {
-		pull := git.PullQuietContext
-		check := git.PullPreflightContext
-		if a.refreshHooks != nil {
-			if a.refreshHooks.pull != nil {
-				pull = a.refreshHooks.pull
-			}
-			if a.refreshHooks.pullCheck != nil {
-				check = a.refreshHooks.pullCheck
-			}
-		}
-		err = a.onServerCtx(ctx, addr, func(ctx context.Context) error {
-			ctx, cancel := context.WithTimeout(ctx, pullTimeout)
-			defer cancel()
-			reason, st, err := check(ctx, path)
-			if err != nil {
-				return err
-			}
-			if !a.sameRefreshRepo(cfg, sourceKey, repoKey) {
-				result.Skipped = skipReason{v: pullSettingsChanged}
-				return nil
-			}
-			if reason != "" {
-				result.Skipped = skipReason{v: reason}
-				result.State = status.Classify(st).String()
-				result.Modified = &st.Changed
-				result.Untracked = &st.Untracked
-				result.Ahead = &st.Ahead
-				result.Behind = &st.Behind
-				return nil
-			}
-			return pull(ctx, path)
-		})
-	}
-
-	if errors.Is(err, errServerUnreachable) {
-		result.Error, result.Code, result.Host = unreachableDetails(addr)
-		result.Skipped = skipReason{v: true}
-	} else if err != nil {
-		result.Error = userMsg(err)
-	}
-	op = a.currentRepoOperation(op, cfg, sourceKey, repoKey)
-	emit(op, "pull:done", result)
-	if err == nil && result.Skipped.IsZero() {
-		a.publishCompletionStatus(ctx, op, cfg, sourceKey, repoKey, path)
-	}
-}
+// PullAll updates eligible clones, then downloads configured missing clones.
+func (a *App) PullAll(run string) { a.be().PullAll(run) }
 
 // RepoDetail holds human-readable status information for a single repo.
 type RepoDetail struct {

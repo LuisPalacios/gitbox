@@ -154,8 +154,14 @@ func TestCancelReachesBackgroundWork(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the hanging transport is a POSIX shell")
 	}
-	for _, how := range []string{"cancel", "disconnect"} {
+	for _, how := range []string{"cancel", "disconnect", "bulk cancel", "bulk disconnect"} {
 		t.Run(how, func(t *testing.T) {
+			bulk := strings.HasPrefix(how, "bulk ")
+			cancelRequest := strings.HasSuffix(how, "cancel")
+			method, event, args := "CloneRepo", "clone:done", []any{"acct", "org/fresh", ""}
+			if bulk {
+				method, event, args = "PullAll", "pull:alldone", []any{"cancelled-fleet"}
+			}
 			ln, err := net.Listen("tcp", "127.0.0.1:0")
 			if err != nil {
 				t.Fatal(err)
@@ -180,10 +186,12 @@ func TestCancelReachesBackgroundWork(t *testing.T) {
 			link := serveRemote(t, side.path, nil)
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			if how == "cancel" {
+			if cancelRequest {
 				go func() {
-					_ = link.Remote.current().Call(ctx, "CloneRepo", []any{"acct", "org/fresh", ""}, nil, rpc.WithRequestID(newRequestID()))
+					_ = link.Remote.current().Call(ctx, method, args, nil, rpc.WithRequestID(newRequestID()))
 				}()
+			} else if bulk {
+				link.Remote.PullAll("cancelled-fleet")
 			} else {
 				link.Remote.CloneRepo("acct", "org/fresh", "")
 			}
@@ -206,7 +214,7 @@ func TestCancelReachesBackgroundWork(t *testing.T) {
 				t.Fatal("the transport is not running: the test proves nothing")
 			}
 
-			if how == "cancel" {
+			if cancelRequest {
 				cancel()
 			} else {
 				link.Remote.Close()
@@ -219,15 +227,15 @@ func TestCancelReachesBackgroundWork(t *testing.T) {
 			}
 			// The window hears how the clone ended, from the server or, once
 			// the connection is gone, from its own backend.
-			for deadline := time.Now().Add(10 * time.Second); len(link.Events.named("clone:done")) == 0 && time.Now().Before(deadline); {
+			for deadline := time.Now().Add(10 * time.Second); len(link.Events.named(event)) == 0 && time.Now().Before(deadline); {
 				time.Sleep(20 * time.Millisecond)
 			}
-			done := link.Events.named("clone:done")
+			done := link.Events.named(event)
 			if len(done) != 1 {
-				t.Fatalf("clone:done arrived %d times, want once", len(done))
+				t.Fatalf("%s arrived %d times, want once", event, len(done))
 			}
 			if payload, _ := done[0].args[0].(map[string]any); payload["error"] == "" || payload["error"] == nil {
-				t.Errorf("clone:done = %v, want the cancelled clone's error", done[0].args)
+				t.Errorf("%s = %v, want the cancellation error", event, done[0].args)
 			}
 		})
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -156,16 +157,77 @@ func (repoProvider) Do(req *http.Request) (*http.Response, error) {
 		Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 }
 
+// checkoutTerminal follows the same completion boundary as the window.
+// A successful transfer needs the authoritative row from the same operation.
+// An error, skip, or no-op finishes with its done event.
+func checkoutTerminal(name string) func([]recordedEvent) bool {
+	return func(events []recordedEvent) bool {
+		for i, done := range events {
+			if done.name != name || len(done.args) != 1 {
+				continue
+			}
+			b, err := json.Marshal(done.args[0])
+			if err != nil {
+				continue
+			}
+			var result struct {
+				Error     string     `json:"error"`
+				Skipped   skipReason `json:"skipped"`
+				Unchanged bool       `json:"unchanged"`
+			}
+			if err := json.Unmarshal(b, &result); err != nil {
+				continue
+			}
+			skip := result.Skipped.v
+			if result.Error != "" || (skip != nil && skip != false) || result.Unchanged {
+				return true
+			}
+			if slices.ContainsFunc(events[i+1:], func(e recordedEvent) bool {
+				return e.name == "status:one" && e.meta.OperationID == done.meta.OperationID
+			}) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+func TestCheckoutContractWaitsForAuthoritativeStatus(t *testing.T) {
+	terminal := checkoutTerminal("pull:done")
+	done := func(payload any) recordedEvent {
+		return recordedEvent{name: "pull:done", meta: EventMetadata{OperationID: "2"}, args: []any{payload}}
+	}
+	success := done(pullDoneDTO{Source: "acct", Repo: "org/repo"})
+	unrelated := recordedEvent{name: "status:one", meta: EventMetadata{OperationID: "1"}}
+	related := recordedEvent{name: "status:one", meta: EventMetadata{OperationID: "2"}}
+	if terminal([]recordedEvent{success}) || terminal([]recordedEvent{success, unrelated}) ||
+		!terminal([]recordedEvent{success, unrelated, related}) {
+		t.Fatal("successful checkout must wait for its own status:one")
+	}
+	for _, payload := range []any{
+		cloneDoneDTO{Error: "failed"},
+		map[string]any{"skipped": "dirty"},
+		pullDoneDTO{Unchanged: true},
+	} {
+		if !terminal([]recordedEvent{done(payload)}) {
+			t.Errorf("completion waited for a status after %+v", payload)
+		}
+	}
+}
+
 // repoMutationRows are the steps of TestBackendContractRepoMutations, in
-// order, failures included. Each waits for the events in until.
+// order, failures included.
 func repoMutationRows() []contractRow {
 	none := func(err error) (any, error) { return nil, err }
 	return []contractRow{
-		{name: "CloneRepo", until: []string{"clone:done"}, call: func(b Backend) (any, error) { b.CloneRepo("acct", "org/fresh", ""); return nil, nil }},
-		{name: "CloneRepo again", until: []string{"clone:done"}, call: func(b Backend) (any, error) { b.CloneRepo("acct", "org/fresh", ""); return nil, nil }},
-		{name: "CloneRepo unknown repo", until: []string{"clone:done"}, call: func(b Backend) (any, error) { b.CloneRepo("acct", "org/none", ""); return nil, nil }},
-		{name: "PullRepo", until: []string{"pull:done"}, call: func(b Backend) (any, error) { b.PullRepo("acct", "org/repo"); return nil, nil }},
-		{name: "PullRepo unknown repo", until: []string{"pull:done"}, call: func(b Backend) (any, error) { b.PullRepo("acct", "org/none"); return nil, nil }},
+		{name: "CloneRepo", terminal: checkoutTerminal("clone:done"), call: func(b Backend) (any, error) { b.CloneRepo("acct", "org/fresh", ""); return nil, nil }},
+		{name: "CloneRepo again", terminal: checkoutTerminal("clone:done"), call: func(b Backend) (any, error) { b.CloneRepo("acct", "org/fresh", ""); return nil, nil }},
+		{name: "CloneRepo unknown repo", terminal: checkoutTerminal("clone:done"), call: func(b Backend) (any, error) { b.CloneRepo("acct", "org/none", ""); return nil, nil }},
+		{name: "PullAll", terminal: func(events []recordedEvent) bool {
+			return slices.ContainsFunc(events, func(e recordedEvent) bool { return e.name == "pull:alldone" })
+		}, call: func(b Backend) (any, error) { b.PullAll("contract"); return nil, nil }},
+		{name: "PullRepo", terminal: checkoutTerminal("pull:done"), call: func(b Backend) (any, error) { b.PullRepo("acct", "org/repo"); return nil, nil }},
+		{name: "PullRepo unknown repo", terminal: checkoutTerminal("pull:done"), call: func(b Backend) (any, error) { b.PullRepo("acct", "org/none"); return nil, nil }},
 		{name: "ConfirmSweep", call: func(b Backend) (any, error) {
 			return b.ConfirmSweep("acct", "org/repo", b.PreviewSweep("acct", "org/repo")), nil
 		}},
@@ -287,6 +349,16 @@ func TestBackendContractRepoMutations(t *testing.T) {
 			}
 			if w, g := left.neutral(t, want), right.neutral(t, got); w != g {
 				t.Errorf("results differ:\n local  %s\n remote %s", w, g)
+			}
+			if row.name == "PullAll" {
+				// Hosts drain independently, so compare the events without
+				// assuming a shared schedule for the two servers.
+				slices.SortFunc(wantEvents, func(a, b contractEvent) int {
+					return strings.Compare(left.neutral(t, a), left.neutral(t, b))
+				})
+				slices.SortFunc(gotEvents, func(a, b contractEvent) int {
+					return strings.Compare(right.neutral(t, a), right.neutral(t, b))
+				})
 			}
 			if w, g := left.neutral(t, wantEvents), right.neutral(t, gotEvents); w != g {
 				t.Errorf("events differ:\n local  %s\n remote %s", w, g)

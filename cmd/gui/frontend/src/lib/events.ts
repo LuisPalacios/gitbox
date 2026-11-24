@@ -21,6 +21,7 @@ function channel(name: Name, value: unknown): string {
   const payload = value as Record<string, unknown>;
   if ('source' in payload && 'repo' in payload) return `${name}:${payload.source}/${payload.repo}`;
   if ('mirrorKey' in payload) return `${name}:${payload.mirrorKey}/${payload.repoKey ?? ''}`;
+  if ('run' in payload) return `${name}:${payload.run}`;
   if ('accountKey' in payload) return `${name}:${payload.accountKey}`;
   return name;
 }
@@ -40,7 +41,7 @@ export function createEventRouter(subscribe: Subscribe) {
   function on<K extends Name>(
     name: K,
     handler: (payload: EventPayloads[K], meta: EventMetadata) => void,
-    onStaleRevision?: (payload: EventPayloads[K]) => void,
+    onStaleRevision?: (payload: EventPayloads[K], meta: EventMetadata) => void,
   ) {
     let active = true;
     const hostLatest = new Map<string, number>();
@@ -52,7 +53,7 @@ export function createEventRouter(subscribe: Subscribe) {
         if (!active) return;
         if (!value.client && value.sequence <= watermark) return;
         if (!value.client && value.configRevision < revision()) {
-          onStaleRevision?.(value.payload as EventPayloads[K]);
+          onStaleRevision?.(value.payload as EventPayloads[K], value);
           return;
         }
         const latest = value.client ? clientLatest : hostLatest;

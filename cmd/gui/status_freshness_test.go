@@ -37,7 +37,7 @@ func TestStatusFreshness_FetchedRefsNeedACompatibleStatusSweep(t *testing.T) {
 	app.refreshHooks.fetch = func(context.Context, string) (string, error) {
 		return "", errors.New("fetch did not complete")
 	}
-	if err := app.performFetch(app.newOperation(), snapshot, source, repo, path); err == nil {
+	if err := app.performFetch(app.newOperation(), snapshot, source, repo, path, nil); err == nil {
 		t.Fatal("expected fetch failure")
 	}
 	if got := app.overlayStatus(rows)[0].CheckedAt; got != want {

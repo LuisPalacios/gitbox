@@ -260,11 +260,11 @@ func FetchTagsAndPrune(ctx context.Context, repoPath string) error {
 	return runContext(ctx, repoPath, "fetch", "--prune", "--tags")
 }
 
-// PullQuietContext runs git pull --ff-only, capturing output instead of
+// PullQuietContext runs git pull --ff-only --no-autostash, capturing output instead of
 // forwarding it, and stops when ctx is cancelled: the runner asks git to stop
 // with an interrupt, so git removes its lock files.
 func PullQuietContext(ctx context.Context, repoPath string) error {
-	res, err := Default.Run(ctx, Request{Dir: repoPath, Args: []string{"pull", "--ff-only"}})
+	res, err := Default.Run(ctx, Request{Dir: repoPath, Args: []string{"pull", "--ff-only", "--no-autostash"}})
 	if err != nil {
 		return failure(ctx, "pull", err, res, res.Stderr)
 	}

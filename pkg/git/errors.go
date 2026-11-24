@@ -121,7 +121,7 @@ var codePatterns = []struct {
 	{CodeNotFastForward, []string{"not possible to fast-forward", "non-fast-forward", "diverging branches"}},
 	{CodeNoUpstream, []string{"no tracking information", "no upstream configured", "has no upstream branch"}},
 	{CodeLockHeld, []string{"index.lock", ".lock': file exists"}},
-	{CodeNotARepo, []string{"not a git repository"}},
+	{CodeNotARepo, []string{"not a git repository", "gitfile does not point to a valid repository", "invalid gitfile format"}},
 	{CodeTimeout, []string{"timed out", "timeout"}},
 	{CodeOffline, []string{"could not resolve host", "failed to connect to", "connection refused",
 		"network is unreachable", "no route to host", "connection reset"}},

@@ -891,6 +891,7 @@ var mutationCalls = []struct {
 	// The repository mutations (#295). The host's provider is unreachable:
 	// the long ones end in their done event with that error and answer.
 	{"CloneRepo", []any{"acct", "org/none", ""}, false},
+	{"PullAll", []any{"ssh-contract"}, false},
 	{"PullRepo", []any{"acct", "org/repo"}, false},
 	{"ConfirmSweep", []any{"acct", "org/repo", map[string]any{}}, false},
 	{"Reconcile", []any{}, false},
@@ -1091,11 +1092,12 @@ type progressEvent struct {
 
 // eventLog records the events a client receives.
 type eventLog struct {
-	mu       sync.Mutex
-	names    []string
-	payloads map[string][]json.RawMessage
-	progress []progressEvent
-	onEvent  func(name string, payload json.RawMessage)
+	mu         sync.Mutex
+	names      []string
+	payloads   map[string][]json.RawMessage
+	operations map[string]string
+	progress   []progressEvent
+	onEvent    func(name string, payload json.RawMessage)
 }
 
 func (l *eventLog) record(name string, payload []json.RawMessage) {
@@ -1103,15 +1105,18 @@ func (l *eventLog) record(name string, payload []json.RawMessage) {
 	l.names = append(l.names, name)
 	if l.payloads == nil {
 		l.payloads = map[string][]json.RawMessage{}
+		l.operations = map[string]string{}
 	}
 	var raw json.RawMessage
 	if len(payload) == 1 {
 		var envelope struct {
-			Schema  int             `json:"schema"`
-			Payload json.RawMessage `json:"payload"`
+			Schema      int             `json:"schema"`
+			OperationID string          `json:"operationID"`
+			Payload     json.RawMessage `json:"payload"`
 		}
 		if json.Unmarshal(payload[0], &envelope) == nil && envelope.Schema == 1 {
 			raw = envelope.Payload
+			l.operations[name] = envelope.OperationID
 		}
 	}
 	l.payloads[name] = append(l.payloads[name], raw)
@@ -1138,6 +1143,12 @@ func (l *eventLog) last(name string) json.RawMessage {
 		return p[len(p)-1]
 	}
 	return nil
+}
+
+func (l *eventLog) operation(name string) string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.operations[name]
 }
 
 // connectEvents is connect with the server's events recorded in log.
@@ -1261,7 +1272,7 @@ func TestCutSSHMidClone(t *testing.T) {
 }
 
 // TestLatency300ms adds 300 ms to every round trip between client and
-// host (#295): clone, pull and fetch-all complete without timing out, and
+// host (#295): clone, pull, fleet pull and fetch-all complete without timing out, and
 // the clone's progress arrives coalesced, one event per rpc.ProgressInterval
 // at most.
 func TestLatency300ms(t *testing.T) {
@@ -1289,7 +1300,38 @@ func TestLatency300ms(t *testing.T) {
 	if msg := doneError(t, log.last("pull:done")); msg != "" {
 		t.Fatalf("the pull failed: %s", msg)
 	}
-	call(3, "FetchAllRepos", []any{})
+	// Reset only the synthetic checkout. Its tracking ref still points at
+	// the last commit, so the fleet must actually fast-forward this clone.
+	c.sh("git -C " + fixtureClone + " reset -q --hard HEAD~1")
+	call(3, "PullAll", []any{"delayed-fleet"})
+	var pulled struct {
+		Run          string `json:"run"`
+		Error        string `json:"error"`
+		BehindBefore int    `json:"behindBefore"`
+	}
+	if err := json.Unmarshal(log.last("pull:done"), &pulled); err != nil ||
+		pulled.Run != "delayed-fleet" || pulled.Error != "" || pulled.BehindBefore != 1 {
+		t.Fatalf("bulk pull result = %+v, decode error = %v", pulled, err)
+	}
+	var status struct {
+		Repo   string `json:"repo"`
+		State  string `json:"state"`
+		Behind int    `json:"behind"`
+	}
+	if err := json.Unmarshal(log.last("status:one"), &status); err != nil ||
+		status.Repo != "org/fixture" || status.State != "clean" || status.Behind != 0 {
+		t.Fatalf("authoritative row = %+v, decode error = %v", status, err)
+	}
+	if op := log.operation("pull:done"); op == "" || op != log.operation("status:one") || op != log.operation("pull:start") {
+		t.Fatal("pull start, completion and authoritative status do not share an operation")
+	}
+	if op := log.operation("pull:allstart"); op == "" || op != log.operation("pull:alldone") || op == log.operation("pull:done") {
+		t.Fatal("fleet start and completion must share a separate operation")
+	}
+	if msg := doneError(t, log.last("pull:alldone")); msg != "" {
+		t.Fatalf("bulk pull failed: %s", msg)
+	}
+	call(4, "FetchAllRepos", []any{})
 	eventually(t, "fetch:alldone", func() bool { return log.last("fetch:alldone") != nil })
 	if msg := doneError(t, log.last("fetch:alldone")); msg != "" {
 		t.Fatalf("fetch-all failed: %s", msg)

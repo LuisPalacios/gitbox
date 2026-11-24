@@ -198,9 +198,9 @@ A repo checked out on a non-default branch shows a small branch badge next to it
 
 #### Pull all
 
-Click **Pull all** (down-arrow icon) in the top bar to bring everything up to date. It clones missing repos and pulls repos that are behind with fast-forward only (`git pull --ff-only`), so it never merges and never touches local changes. A behind row's own **Pull · FF only** button does the same for one repo. In Simple, the button is **Update all**.
+Click **Pull all** (down-arrow icon) in the top bar to check the configured clones for updates. Gitbox pulls clean clones that are behind their known upstream with `git pull --ff-only --no-autostash`, then clones repositories whose destination is missing. A behind row's **Pull · FF only** button checks the same local conditions and can discover newer upstream commits on demand. In Simple, the button is **Update all**.
 
-The status puts unresolved conflicts first and local changes ahead of branch history. Before an update, Gitbox checks the working tree again and skips the clone if it finds local changes, conflicts or an operation in progress. Hover over the row status to see why Gitbox skipped it. The Pull all result counts these skips separately from failures.
+The status puts unresolved conflicts first and local changes ahead of branch history. Before a pull, Gitbox rechecks the working tree and skips the clone if it finds local changes, conflicts or an operation in progress. Hover over the row status to see why Gitbox skipped it. The result counts these skips separately from failures. An editor can still write after the last check. If Git refuses a pull because that edit overlaps the update, the row reports the new local work without stashing it.
 
 #### Fetch all
 
@@ -208,7 +208,7 @@ Click **Fetch all** (↻ icon) to check every remote for new commits without pul
 
 #### Activity and result cards
 
-While Fetch all or Pull all runs, a strip under the top bar says what it covers, such as "Fetching 17 clones across 3 accounts" or "Pulling 2 (fast-forward only) and cloning 1", with a progress bar. When it ends, a result card in the bottom-right corner sums it up: how many clones it fetched, how many are now behind and ready to pull, which ones it skipped because their account is offline, any failures with the first error, and that local changes were left untouched. Success cards go away after a few seconds; a card with a failure stays until you close it. Startup and periodic fetches leave a card only when something changed or failed.
+While Fetch all or Pull all runs, a strip under the top bar says what it covers, such as "Fetching 17 clones across 3 accounts" or "Checking 2 for fast-forward updates, then cloning 1", with a progress bar. When it ends, a result card in the bottom-right corner sums it up: how many clones it fetched, how many are now behind and ready to pull, which ones it skipped because their account is offline, any failures with the first error, and that local changes were left untouched. Success cards go away after a few seconds; a card with a failure stays until you close it. Startup and periodic fetches leave a card only when something changed or failed.
 
 When a clone or pull finishes, the row shows **Checking…** while Gitbox checks the local files. If it finds changes, the row shows **Changes on this computer** in Simple mode.
 

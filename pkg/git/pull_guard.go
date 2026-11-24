@@ -21,7 +21,7 @@ const (
 // PullPreflightContext checks local work immediately before a pull. It reports
 // the status it observed so the caller can explain a skip without rescanning.
 func PullPreflightContext(ctx context.Context, repoPath string) (PullSkipReason, RepoStatus, error) {
-	st, err := readStatus(ctx, repoPath, "--untracked-files=normal", "--ignore-submodules=none")
+	st, err := readStatus(ctx, repoPath, "--untracked-files=normal", "--ignore-submodules=none", "--ahead-behind")
 	if err != nil {
 		return "", RepoStatus{}, err
 	}

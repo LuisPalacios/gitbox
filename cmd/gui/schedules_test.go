@@ -13,6 +13,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/git/testutil"
+	"github.com/LuisPalacios/gitbox/pkg/heal"
 	"github.com/LuisPalacios/gitbox/pkg/reconcile"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 )
@@ -166,20 +167,42 @@ func TestSchedule_FetchDoesNotChangeUpstreamAfterCredentialSwitchOrCancel(t *tes
 				}))
 				snapshot := a.snapshotRefreshConfig()
 				path := status.RepoPath(snapshot, source, repo, snapshot.Sources[source].Repos[repo])
+				var repaired bool
+				a.refreshHooks.heal = func(cfg *config.Config, _, _ string) heal.Report {
+					if cfg.Accounts[account].DefaultCredentialType == "gcm" {
+						repaired = true
+					}
+					return heal.Report{}
+				}
 				done := make(chan error, 1)
-				go func() { done <- a.performFetch(a.newOperation(), snapshot, source, repo, path) }()
+				go func() { done <- a.performFetch(a.newOperation(), snapshot, source, repo, path, nil) }()
 				<-fetch.Entered
-				var err error
+				var credentialChange chan error
 				if tc.switchCredential {
-					err = a.ChangeCredentialType(account, "gcm")
+					if !a.maintenanceMu.TryLock() {
+						t.Fatal("an in-flight fetch blocks account settings")
+					}
+					a.maintenanceMu.Unlock()
+					credentialChange = make(chan error, 1)
+					go func() { credentialChange <- a.ChangeCredentialType(account, "gcm") }()
+					synctest.Wait()
+					saved, err := config.Load(a.cfgPath)
+					if err != nil || saved.Accounts[account].DefaultCredentialType != "gcm" || repaired {
+						t.Errorf("the account change must be saved before the clone can be repaired")
+					}
 				}
 				if tc.cancel {
 					a.refreshCancel()
 				}
 				fetch.Release()
 				fetchErr := <-done
-				if err != nil {
-					t.Fatal(err)
+				if credentialChange != nil {
+					if err := <-credentialChange; err != nil {
+						t.Fatal(err)
+					}
+					if !repaired {
+						t.Fatal("credential change did not repair the clone after fetch")
+					}
 				}
 				if tc.cancel != errors.Is(fetchErr, context.Canceled) || !tc.cancel && fetchErr != nil {
 					t.Fatalf("unexpected fetch result: %v", fetchErr)

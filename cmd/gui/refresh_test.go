@@ -61,7 +61,7 @@ func refreshTestApp(t *testing.T, count int) (*App, *refreshTestEvents) {
 		},
 		fetch: func(context.Context, string) (string, error) { return "", nil },
 		pullCheck: func(context.Context, string) (git.PullSkipReason, git.RepoStatus, error) {
-			return "", git.RepoStatus{}, nil
+			return "", git.RepoStatus{Behind: 1}, nil
 		},
 		heal: func(*config.Config, string, string) heal.Report { return heal.Report{} },
 		credential: func(context.Context, config.Account, string, *config.Config) credential.StatusResult {
@@ -791,6 +791,7 @@ func TestHealGate(t *testing.T) {
 			a.FetchRepo(source, first)
 			synctest.Wait()
 			a.PullRepo(source, first)
+			synctest.Wait() // The queued pull must not consume the last host slot.
 			a.PullRepo(source, second)
 			synctest.Wait()
 			active := calls.Load()
@@ -801,7 +802,7 @@ func TestHealGate(t *testing.T) {
 			if active != 1 || len(completed) != 1 || completed[0].args[0].(pullDoneDTO).Repo != second {
 				t.Fatalf("while fetching first clone: entered %d, completed %+v", active, completed)
 			}
-			if calls.Load() != 2 || len(events.named("pull:done")) != 2 || len(events.named("fetch:done")) != 1 || len(a.repairPaths.tails) != 0 {
+			if calls.Load() != 2 || len(events.named("pull:done")) != 2 || len(events.named("fetch:done")) != 1 || len(a.repairPaths.entries) != 0 {
 				t.Fatal("repairs did not finish once each and release their gates")
 			}
 		})
