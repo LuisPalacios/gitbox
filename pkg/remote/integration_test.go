@@ -716,6 +716,7 @@ var readOnlyCalls = []struct {
 	{"OpenRepoInBrowser", []any{"acct", "org/repo"}},
 	{"PreflightMove", []any{map[string]any{"sourceSourceKey": "acct", "sourceRepoKey": "org/repo", "destAccountKey": "acct", "destOwner": "alice", "destRepoName": "copy"}}},
 	{"PreviewClonePath", []any{"acct", "org/first"}},
+	{"PreviewPullAll", []any{}},
 	{"PreviewRoot", []any{testHome + "/git"}},
 	{"PreviewSweep", []any{"acct", "org/repo"}},
 	{"RecommendedGlobalGitignoreBody", []any{}},
@@ -897,7 +898,7 @@ var mutationCalls = []struct {
 	// The repository mutations (#295). The host's provider is unreachable:
 	// the long ones end in their done event with that error and answer.
 	{"CloneRepo", []any{"acct", "org/none", ""}, false},
-	{"PullAll", []any{"ssh-contract"}, false},
+	{"PullAll", []any{"ssh-contract", ""}, false},
 	{"PullRepo", []any{"acct", "org/repo"}, false},
 	{"ConfirmSweep", []any{"acct", "org/repo", map[string]any{}}, false},
 	{"Reconcile", []any{}, false},
@@ -1347,7 +1348,7 @@ func TestLatency300ms(t *testing.T) {
 	// Reset only the synthetic checkout. Its tracking ref still points at
 	// the last commit, so the fleet must actually fast-forward this clone.
 	c.sh("git -C " + fixtureClone + " reset -q --hard HEAD~1")
-	call(3, "PullAll", []any{"delayed-fleet"})
+	call(3, "PullAll", []any{"delayed-fleet", ""})
 	var pulled struct {
 		Run          string `json:"run"`
 		Error        string `json:"error"`

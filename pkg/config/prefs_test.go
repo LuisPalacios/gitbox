@@ -22,6 +22,7 @@ var globalKeyClass = map[string]string{
 	"compact_window":         "client",
 	"view_mode":              "client",
 	"ui_mode":                "client",
+	"show_pull_plan":         "client",
 	"theme":                  "client",
 	"collapsed":              "split", // sidebar is client, the rest is domain
 	"credential_ssh":         "domain",
@@ -45,6 +46,7 @@ func fullPrefs() ClientPrefs {
 		Theme:            "dark",
 		Language:         "es",
 		UIMode:           "simple",
+		ShowPullPlan:     new(false),
 		ViewMode:         "compact",
 		Window:           &WindowState{X: 1, Y: 2, Width: 900, Height: 700},
 		CompactWindow:    &WindowState{X: 3, Y: 4, Width: 220, Height: 400},

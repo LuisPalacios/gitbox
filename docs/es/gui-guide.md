@@ -208,6 +208,10 @@ Un repo con checkout en una rama no predeterminada muestra una pequeña insignia
 
 Haz clic en **Pull de todo** (icono de flecha hacia abajo) en la barra superior para comprobar si hay actualizaciones para los clones configurados. Gitbox actualiza los clones limpios que están por detrás de su upstream conocido con `git pull --ff-only --no-autostash` y luego clona los repositorios cuyo destino no existe. El botón **Pull · solo FF** de una fila por detrás comprueba las mismas condiciones locales y puede descubrir commits más recientes en el upstream al pulsarlo. En Simple, el botón es **Actualizar todo**.
 
+En Simple, **Actualizar todo** abre un plan por defecto. Muestra cuántos proyectos revisó Gitbox, qué puede descargar o actualizar y qué proyectos dejará como están. Avanzado solo abre el plan si lo activo e indica cada repositorio, la acción prevista y el motivo para omitirlo, si lo hay. En Ajustes, **Mostrar plan antes de Pull de todo** (Simple: **Mostrar plan antes de Actualizar todo**) puede seguir el modo o mantenerse activado o desactivado en ambos modos. Gitbox guarda una elección explícita como `global.show_pull_plan`.
+
+El plan usa la última comprobación completa del estado local. Gitbox avisa de que el plan puede estar desactualizado si falta la comprobación, si corresponde a una configuración anterior o si se hizo antes de un fetch. **Cancelar** lo cierra. **Continuar** vuelve a comprobar las descargas y actualizaciones previstas antes de iniciarlas. Los nuevos candidatos esperan a la siguiente ejecución. La tarjeta de resultado cuenta los proyectos que Gitbox pensaba cambiar pero tuvo que omitir, por ejemplo si edité archivos después de abrir el plan.
+
 El estado da prioridad a los conflictos sin resolver y a los cambios locales sobre el historial de la rama. Antes de un pull, Gitbox vuelve a comprobar el árbol de trabajo y omite el clon si encuentra cambios locales, conflictos o una operación en curso. Pasa el puntero sobre el estado de la fila para ver por qué Gitbox lo omitió. El resultado cuenta estas omisiones por separado de los fallos. Un editor aún puede escribir después de la última comprobación. Si Git rechaza el pull porque la edición coincide con la actualización, la fila muestra el nuevo trabajo local sin guardarlo en el stash.
 
 #### Qué significan los mensajes
@@ -543,7 +547,7 @@ Si dos entradas registradas apuntan a la misma carpeta, **Requiere atención** m
 - **Hacer predeterminada** — las cuentas nuevas clonan en esta raíz a partir de ahora. Las cuentas que ya usan la predeterminada anterior siguen en ella, y ningún clon se mueve.
 - **✕** — quita una raíz. Cuando todavía viven repos bajo ella, Gitbox pregunta si olvidarlos; sus archivos se quedan en disco.
 
-Con dos o más raíces, un clonado explícito pregunta una vez adónde va: el **Clonar** de una fila (Simple: **Descargar**), **Buscar → Añadir y Pull** y los proyectos que eliges al añadir una cuenta. La opción por defecto es la raíz de la cuenta, y la cuenta la recuerda para su siguiente clonado. **Crear repositorio** muestra la misma opción como un campo. **Pull de todo** nunca pregunta: los clones ausentes van a la raíz de su cuenta.
+Con dos o más raíces, un clonado explícito pregunta una vez adónde va: el **Clonar** de una fila (Simple: **Descargar**), **Buscar → Añadir y Pull** y los proyectos que eliges al añadir una cuenta. La opción por defecto es la raíz de la cuenta, y la cuenta la recuerda para su siguiente clonado. **Crear repositorio** muestra la misma opción como un campo. **Pull de todo** prescinde del selector de raíz. Los clones ausentes van a la raíz de su cuenta.
 
 El mismo diálogo fija la **profundidad de escaneo anidado** para los [contenedores multi-repo](#contenedores-sin-archivo-de-workspace).
 

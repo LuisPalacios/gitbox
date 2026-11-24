@@ -225,6 +225,8 @@ export function PreviewClonePath(arg1:string,arg2:string):Promise<string>;
 
 export function PreviewDiagnostics():Promise<string>;
 
+export function PreviewPullAll():Promise<main.PullPlanDTO>;
+
 export function PreviewRecipeExport():Promise<string>;
 
 export function PreviewRecipeImport(arg1:string,arg2:recipe.Options):Promise<recipe.ImportPlan>;
@@ -233,7 +235,7 @@ export function PreviewRoot(arg1:string):Promise<main.OnboardingRootPreviewDTO>;
 
 export function PreviewSweep(arg1:string,arg2:string):Promise<main.SweepPreviewDTO>;
 
-export function PullAll(arg1:string):Promise<void>;
+export function PullAll(arg1:string,arg2:string):Promise<void>;
 
 export function PullRepo(arg1:string,arg2:string):Promise<void>;
 
@@ -316,6 +318,8 @@ export function SetRemoteEditor(arg1:string,arg2:string):Promise<main.RemoteResu
 export function SetRepoContainer(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
 export function SetRepoWorkspace(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function SetShowPullPlan(arg1:string):Promise<void>;
 
 export function SetTheme(arg1:string):Promise<void>;
 

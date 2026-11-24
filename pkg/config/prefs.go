@@ -34,6 +34,7 @@ type ClientPrefs struct {
 	Theme            string
 	Language         string
 	UIMode           string
+	ShowPullPlan     *bool
 	ViewMode         string
 	Window           *WindowState
 	CompactWindow    *WindowState
@@ -56,6 +57,7 @@ func ExtractPrefs(c *Config) ClientPrefs {
 		Theme:              g.Theme,
 		Language:           g.Language,
 		UIMode:             g.UIMode,
+		ShowPullPlan:       g.ShowPullPlan,
 		ViewMode:           g.ViewMode,
 		Window:             g.Window,
 		CompactWindow:      g.CompactWindow,
@@ -80,6 +82,7 @@ func ApplyPrefs(c *Config, p ClientPrefs) {
 	g.Theme = p.Theme
 	g.Language = p.Language
 	g.UIMode = p.UIMode
+	g.ShowPullPlan = p.ShowPullPlan
 	g.ViewMode = p.ViewMode
 	g.Window = p.Window
 	g.CompactWindow = p.CompactWindow
@@ -160,6 +163,10 @@ func (p *ClientPrefs) remote(alias string) *RemoteEntry {
 }
 
 func (p ClientPrefs) clone() ClientPrefs {
+	if p.ShowPullPlan != nil {
+		show := *p.ShowPullPlan
+		p.ShowPullPlan = &show
+	}
 	p.Window = cloneWindow(p.Window)
 	p.CompactWindow = cloneWindow(p.CompactWindow)
 	p.Editors = slices.Clone(p.Editors)

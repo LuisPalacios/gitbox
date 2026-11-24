@@ -16,7 +16,7 @@ function status(repo, state) {
   }
 }
 
-async function dashboard(t) {
+async function dashboard(t, global = {}) {
   const ui = await mount(t)
   const { App, render, fakeBridge, waitFor, window } = ui
   let rows = [status(target, 'behind'), status(saved, 'clean')]
@@ -25,7 +25,7 @@ async function dashboard(t) {
     eventWatermark: revision === 1 ? 10 : 19,
     config: {
       version: 5, revision,
-      global: { roots: ['/fixture'], language: 'en', collapsed: { view: 'attention' } },
+      global: { roots: ['/fixture'], language: 'en', collapsed: { view: 'attention' }, ...global },
       accounts: { [account]: {
         provider: 'github', url: 'https://example.invalid', username: 'demo',
         name: 'Demo User', email: 'demo@example.invalid', default_credential_type: 'token',
@@ -67,6 +67,14 @@ async function dashboard(t) {
     RepoNesting: async () => ({}),
     SetCollapsed: async () => {},
     SetUIMode: async () => {},
+    SetShowPullPlan: async () => {},
+    ListRemotes: async () => ({ enabled: false, entries: [] }),
+    PreviewPullAll: async () => ({
+      planID: 'fixture-plan', configRevision: revision, stale: false,
+      willClone: [], willUpdate: [{ ...row, behind: 1 }],
+      skipped: [{ source, repo: saved, reason: 'dirty' }], offline: [], repairsPending: [],
+    }),
+    PullAll: async () => {},
     StopTrackingRepo: async (givenSource, repo) => {
       assert.equal(givenSource, source)
       rows = rows.filter(item => item.repo !== repo)
@@ -255,4 +263,66 @@ test('unmount cancels hydration while the startup snapshot is pending', async t 
   await tick()
   assert.deepEqual(native.activeEvents(), [])
   assert.equal(native.calls.some(call => call.name === 'BeginStatus'), false)
+})
+
+test('Simple previews before updating, cancels without pulling, and reports a changed plan', async t => {
+  const { hydrate, screen, within, fireEvent, completed, native, emit, finish } = await dashboard(t, { ui_mode: 'simple' })
+  await hydrate()
+  const launch = () => fireEvent.click(screen.getByTitle('Update all'))
+  await launch()
+  const dialog = await screen.findByRole('dialog', { name: 'Update plan' })
+  assert.ok(within(dialog).getByText('I’ll update 1 project.'))
+  assert.ok(within(dialog).getByText('I’ll leave 1 project with changes on this computer alone.'))
+  assert.equal(within(dialog).queryByRole('table'), null)
+  await fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+  assert.equal(completed('PullAll'), undefined)
+
+  await launch()
+  assert.equal(native.calls.filter(call => call.name === 'PreviewPullAll').length, 2)
+  await fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Go' }))
+  const [run, planID] = completed('PullAll').args
+  assert.equal(planID, 'fixture-plan')
+  emit('pull:allstart', 15, '9', { run, planID, pulls: [row], clones: [] })
+  emit('pull:done', 16, '10', { ...row, run, behindBefore: 2, skipped: 'dirty', state: 'dirty' })
+  emit('pull:alldone', 17, '9', { run, planID, skippedSincePreview: 1 })
+  assert.ok(await screen.findByText('1 skipped since preview'))
+  await finish()
+})
+
+test('Advanced uses direct Pull all by default and can opt into the detailed plan', async t => {
+  const { hydrate, screen, within, fireEvent, completed, native, emit, finish } = await dashboard(t)
+  await hydrate()
+  await fireEvent.click(screen.getByTitle('Pull all'))
+  assert.equal(completed('PreviewPullAll'), undefined)
+  const [run, planID] = completed('PullAll').args
+  assert.equal(planID, '')
+  emit('pull:allstart', 15, '9', { run, pulls: [row], clones: [] })
+  emit('pull:alldone', 16, '9', { run })
+  await fireEvent.click(screen.getByTitle('Settings'))
+  await fireEvent.click(screen.getByText('Show plan before Pull all').parentElement.querySelectorAll('button')[1])
+  assert.deepEqual(completed('SetShowPullPlan')?.args, ['on'])
+  await fireEvent.click(screen.getByTitle('Pull all'))
+  const dialog = await screen.findByRole('dialog', { name: 'Pull all plan' })
+  assert.ok(within(dialog).getByRole('table'))
+  assert.ok(within(dialog).getByText('Fast-forward (behind by 1)'))
+  assert.ok(within(dialog).getByText('Skip · Local changes'))
+  await fireEvent.keyDown(dialog, { key: 'Escape' })
+  assert.equal(screen.queryByRole('dialog'), null)
+  assert.equal(native.calls.filter(call => call.name === 'PullAll').length, 1)
+  await finish()
+})
+
+test('Spanish Advanced previews one pending commit and reports one omitted project', async t => {
+  const { hydrate, screen, within, fireEvent, completed, emit, finish } = await dashboard(t, { language: 'es', show_pull_plan: true })
+  await hydrate()
+  await fireEvent.click(screen.getByTitle('Pull de todo'))
+  const dialog = within(await screen.findByRole('dialog', { name: 'Plan de Pull de todo' }))
+  assert.ok(dialog.getByText('Avance rápido (commits pendientes: 1)'))
+  await fireEvent.click(dialog.getByRole('button', { name: 'Continuar' }))
+  const [run, planID] = completed('PullAll').args
+  emit('pull:allstart', 15, '9', { run, planID, pulls: [row], clones: [] })
+  emit('pull:done', 16, '10', { ...row, run, behindBefore: 1, skipped: 'dirty', state: 'dirty' })
+  emit('pull:alldone', 17, '9', { run, planID, skippedSincePreview: 1 })
+  assert.ok(await screen.findByText('Proyectos omitidos desde la vista previa: 1'))
+  await finish()
 })

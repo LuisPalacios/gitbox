@@ -8,6 +8,7 @@ import type { PullSkipReason } from './types';
 
 export interface Run {
   kind: 'fetch' | 'pull';
+  planID?: string;
   // Repo keys ("source/repo") the run covers, without duplicates.
   keys: string[];
   // Distinct accounts among those keys, for "across N accounts".
@@ -57,9 +58,10 @@ export function startFetch(keys: string[], accountOf: (key: string) => string, s
   return start('fetch', keys, accountOf, statusOf);
 }
 
-export function startPull(pulls: string[], clones: string[], accountOf: (key: string) => string, statusOf: (key: string) => string): Run {
+export function startPull(pulls: string[], clones: string[], accountOf: (key: string) => string, statusOf: (key: string) => string, planID?: string): Run {
   const run = start('pull', [...pulls, ...clones], accountOf, statusOf);
   run.clones = new Set(clones);
+  run.planID = planID;
   return run;
 }
 

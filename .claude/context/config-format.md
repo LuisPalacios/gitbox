@@ -30,7 +30,7 @@ Config file: `~/.config/gitbox/gitbox.json` — `accounts` + `sources`, real boo
 
 | Key | Class | Reason |
 | --- | --- | --- |
-| `theme`, `language`, `ui_mode`, `view_mode`, `window`, `compact_window` | client | how this machine shows the window |
+| `theme`, `language`, `ui_mode`, `show_pull_plan`, `view_mode`, `window`, `compact_window` | client | how this machine shows the window |
 | `collapsed.sidebar` | client | layout of this window |
 | `collapsed.view`, `collapsed.sources`, `collapsed.repos` | domain | they name accounts, sources and repos; `PruneCollapsed` and `RenameAccount` keep them in step with the accounts |
 | `editors`, `terminal_apps`, `shells`, `terminal_profiles`, legacy `terminals` | client | apps on this machine |

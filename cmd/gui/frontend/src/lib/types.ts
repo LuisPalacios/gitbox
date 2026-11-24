@@ -10,6 +10,7 @@ export interface GlobalConfig {
   language?: string;
   periodic_sync?: string;
   ui_mode?: string;
+  show_pull_plan?: boolean;
   // GUI colour theme: 'light' or 'dark'; absent follows the OS.
   theme?: string;
   view_mode?: string;

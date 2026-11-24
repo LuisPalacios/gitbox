@@ -55,6 +55,10 @@
         // "simple" on a new install.
         "ui_mode": "simple",
 
+        // Show the plan before Pull all. Omit to follow the GUI experience
+        // (on in Simple, off in Advanced).
+        // "show_pull_plan": true,
+
         // GUI colour theme: "light" or "dark". Absent means the app follows
         // the operating system.
         // "theme": "dark",

@@ -4,6 +4,8 @@
   import type { EventMetadata, EventPayloads } from './lib/dto.generated';
   import { onDestroy, onMount, tick } from 'svelte';
   import { settingsSaveFailed, bridge, events, setRemoteWindow } from './lib/bridge';
+  import type { main } from '../wailsjs/go/models';
+  import PullPlanModal from './lib/modals/PullPlanModal.svelte';
   import type { DoctorPrecheckDTO, RemoteState } from './lib/bridge';
   import { backgroundAllowed, reloadErrorShown, clearsOnReconnect } from './lib/readonly';
   import {
@@ -577,41 +579,71 @@
     return hint && hint !== key ? hint : failure.error;
   }
 
-  function finishPull() {
+  function finishPull(skippedSincePreview = 0) {
     const run = pullRun;
     pullRun = null;
     if (!run) return;
     const sum = summarizePull(run);
-    if (sum.pulled + sum.cloned + sum.skipped + sum.failed === 0) return;
+    if (sum.pulled + sum.cloned + sum.skipped + sum.failed + skippedSincePreview === 0) return;
     // Nothing was pulled because no server answered: the offline banner
     // already says so.
     const stoppedByNetwork = sum.failed > 0 && sum.failures.every((f) => run.failures[f.key]?.code === 'git.offline');
-    if (networkDown.length > 0 && stoppedByNetwork && sum.pulled === 0 && sum.cloned === 0 && sum.skipped === 0) return;
+    if (networkDown.length > 0 && stoppedByNetwork && sum.pulled === 0 && sum.cloned === 0 && sum.skipped === 0 && skippedSincePreview === 0) return;
     const first = sum.failures[0];
     const localWork = localWorkCount(Object.keys($repoStates), statusOfKey) > 0;
     pushNotice(sum.failed > 0 ? 'error' : 'success', $t(simple ? 'result.updateTitle' : 'result.pullTitle'), simple ? [
       sum.pulled > 0 && $t('result.updated', { n: sum.pulled }),
       sum.cloned > 0 && $t('result.downloaded', { n: sum.cloned }),
-      sum.skipped > 0 && $t('result.pullSkipped', { n: sum.skipped }),
+      !run.planID && sum.skipped > 0 && $t('result.pullSkipped', { n: sum.skipped }),
+      skippedSincePreview > 0 && $t('result.pullPlanSkipped', { n: skippedSincePreview }),
       sum.failed > 0 && $t('result.needHelp', { n: sum.failed }),
       localWork && $t('result.wipUntouched'),
     ] : [
       sum.pulled > 0 && $t('result.pulled', { n: sum.pulled }),
       sum.cloned > 0 && $t('result.cloned', { n: sum.cloned }),
-      sum.skipped > 0 && $t('result.pullSkipped', { n: sum.skipped }),
+      !run.planID && sum.skipped > 0 && $t('result.pullSkipped', { n: sum.skipped }),
+      skippedSincePreview > 0 && $t('result.pullPlanSkipped', { n: skippedSincePreview }),
       first && $t('result.failed', { n: sum.failed, error: `${first.key}: ${first.error}` }),
       localWork && $t('result.localUntouched'),
     ]);
   }
 
-  async function syncAll() {
-    if (syncing) return;
-    syncing = true;
+  let pullPlan: main.PullPlanDTO | null = null;
+  let loadingPullPlan = false;
+  let pullRunPlanID = '';
+  $: if (remoteOffline) pullPlan = null;
 
+  async function syncAll() {
+    if (syncing || loadingPullPlan || pullPlan || remoteOffline) return;
+    if (!($configStore?.global?.show_pull_plan ?? simple)) {
+      await executePullAll('');
+      return;
+    }
+    loadingPullPlan = true;
+    try {
+      const plan = await bridge.previewPullAll();
+      if (!lifetime.signal.aborted && !remoteOffline) pullPlan = plan;
+    } catch (error) {
+      failPullAll(String(error));
+    } finally {
+      loadingPullPlan = false;
+    }
+  }
+
+  function confirmPullPlan() {
+    if (!pullPlan) return;
+    const { planID } = pullPlan;
+    pullPlan = null;
+    if (planID && !remoteOffline) void executePullAll(planID);
+  }
+
+  async function executePullAll(planID: string) {
+    syncing = true;
     const run = crypto.getRandomValues(new Uint32Array(4)).join('-');
     pullRunID = run;
+    pullRunPlanID = planID;
     try {
-      await bridge.pullAll(run);
+      await bridge.pullAll(run, planID);
     } catch (error) {
       if (pullRunID === run) failPullAll(String(error));
     }
@@ -621,6 +653,7 @@
     syncing = false;
     pullRunID = null;
     pullRunOperation = '';
+    pullRunPlanID = '';
     pullRun = null;
     pushNotice('error', $t(simple ? 'result.updateTitle' : 'result.pullTitle'), [error]);
   }
@@ -2038,24 +2071,26 @@
 
     const repoKey = ({ source, repo }: { source: string; repo: string }) => `${source}/${repo}`;
     const startPullRun = (data: EventPayloads['pull:allstart'], meta: EventMetadata) => {
-      if (data.run !== pullRunID || pullRunOperation) return;
+      if (data.run !== pullRunID || (data.planID || '') !== pullRunPlanID || pullRunOperation) return;
       pullRunOperation = meta.operationID;
-      pullRun = startPull(data.pulls.map(repoKey), data.clones.map(repoKey), accountOfKey, statusOfKey);
+      pullRun = startPull(data.pulls.map(repoKey), data.clones.map(repoKey), accountOfKey, statusOfKey, data.planID);
     };
     const finishPullRun = (data: EventPayloads['pull:alldone'], meta: EventMetadata) => {
-      if (data.run !== pullRunID || (!meta.client && pullRunOperation && pullRunOperation !== meta.operationID)) return;
+      if (data.run !== pullRunID || (data.planID || '') !== pullRunPlanID || (!meta.client && pullRunOperation && pullRunOperation !== meta.operationID)) return;
+      if (data.planExpired) { failPullAll($t('pullPlan.expired')); return; }
       if (data.error) { failPullAll(data.error); return; }
       syncing = false;
       pullRunID = null;
       pullRunOperation = '';
-      finishPull();
+      pullRunPlanID = '';
+      finishPull(data.skippedSincePreview);
     };
     onEvent('pull:allstart', startPullRun, startPullRun);
     onEvent('pull:alldone', finishPullRun, finishPullRun);
 
     const noteClone = (data: EventPayloads['clone:done'], meta: EventMetadata) => {
       if (pullRun && data.run === pullRunID) {
-        pullRun = noteDone(pullRun, repoKey(data), data.error, { code: data.code, host: data.host }, undefined, meta.operationID);
+        pullRun = noteDone(pullRun, repoKey(data), data.error, { code: data.code, host: data.host }, data.skipped ? 'settingsChanged' : undefined, meta.operationID);
       }
     };
     const notePull = (data: EventPayloads['pull:done'], meta: EventMetadata) => {
@@ -2449,7 +2484,7 @@
   <!-- ══════ FULL DASHBOARD VIEW ══════ -->
 
   <!-- ── TOP BAR ── -->
-  <TopBar {simple} {syncing} {fetchingAll} {themeChoice} bind:deleteMode bind:showSettings remote={windowMode === 'remote' ? remoteState : null}
+  <TopBar {simple} {syncing} pullPlanBusy={loadingPullPlan || !!pullPlan} {fetchingAll} {themeChoice} bind:deleteMode bind:showSettings remote={windowMode === 'remote' ? remoteState : null}
     {syncAll} runFetchAll={() => runFetchAll(true)} {toggleViewMode} {cycleTheme} {setUIMode} {rail} {sidebarShortcut} {toggleSidebar} {setView} />
 
   <!-- ── ACTIVITY STRIP (Fetch all / Pull all) ── -->
@@ -2497,6 +2532,10 @@
 
   {/if}
   <!-- end viewMode -->
+
+  {#if pullPlan}
+    <PullPlanModal plan={pullPlan} {simple} onCancel={() => { pullPlan = null; }} onConfirm={confirmPullPlan} />
+  {/if}
 
   <!-- ── DISCOVER MODAL ── -->
   <DiscoverModal bind:this={discoverDialog} {reloadFromDisk} {cloneRepos} {openCredChange} onNeedsToken={(acctKey) => sshTokenDialog.openFor(acctKey)} />

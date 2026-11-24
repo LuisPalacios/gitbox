@@ -1,7 +1,7 @@
 <script lang="ts">
   // The Settings panel under the top bar (gear button).
   import { slide } from 'svelte/transition';
-  import { bridge } from '../bridge';
+  import { bridge, settingsSaveFailed } from '../bridge';
   import { configStore, prSettings } from '../stores';
   import { t } from '../i18n';
   import { ro, remoteOff } from '../ro';
@@ -13,6 +13,23 @@
   import { openExternal } from '../external';
   import type { ThemeChoice } from '../theme';
   import type { RemotesList, RemoteResult } from '../bridge';
+
+  const pullPlanChoices = ['auto', 'on', 'off'] as const;
+  $: pullPlanChoice = $configStore?.global?.show_pull_plan === undefined
+    ? 'auto'
+    : $configStore.global.show_pull_plan ? 'on' : 'off';
+
+  async function setShowPullPlan(choice: typeof pullPlanChoices[number]) {
+    if (choice === pullPlanChoice) return;
+    try {
+      await bridge.setShowPullPlan(choice);
+      configStore.update(cfg => cfg && {
+        ...cfg, global: { ...cfg.global, show_pull_plan: choice === 'auto' ? undefined : choice === 'on' },
+      });
+    } catch (error) {
+      settingsSaveFailed(error, () => setShowPullPlan(choice));
+    }
+  }
 
   export let showSettings: boolean;
   export let onRecipeImported: (cfg: ConfigDTO, added: string[]) => void;
@@ -158,6 +175,15 @@
       {#if lastFetchTime}
         <span class="settings-value" style="font-size:10px; margin-left:4px">{$t('settings.lastFetch', { time: lastFetchTime })}</span>
       {/if}
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">{$t(simple ? 'settings.showUpdatePlan' : 'settings.showPullPlan')}</span>
+      <div class="theme-toggle">
+        {#each pullPlanChoices as choice}
+          <button class="theme-btn" class:theme-active={pullPlanChoice === choice} aria-pressed={pullPlanChoice === choice}
+            on:click={() => setShowPullPlan(choice)}>{$t(`pullPlan.preference.${choice}`)}</button>
+        {/each}
+      </div>
     </div>
     {#if autostartSupported}
       <div class="settings-row">

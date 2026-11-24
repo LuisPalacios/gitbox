@@ -58,7 +58,8 @@ type GlobalConfig struct {
 	// UIMode is the GUI experience: "simple" (plain words, fewer controls) or
 	// "advanced" (everything). Empty means advanced, so configs written before
 	// the setting existed keep today's screen; onboarding writes "simple".
-	UIMode string `json:"ui_mode,omitempty"`
+	UIMode       string `json:"ui_mode,omitempty"`
+	ShowPullPlan *bool  `json:"show_pull_plan,omitempty"` // nil follows the UI mode
 	// Theme is the GUI colour theme: "light" or "dark". Empty follows the
 	// operating system.
 	Theme string `json:"theme,omitempty"`
