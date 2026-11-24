@@ -58,13 +58,14 @@
   export let openTerminalsManagerWindow: () => Promise<void>;
 
   // ── Remotes (experimental, #239) ──
-  // Shown only when remote mode is on, by --experimental-remote or the
-  // experimental_remote key. The hosts are managed in the Remote hosts
-  // window (#330); each one opens in a window of its own.
+  // Shown only in the local window when remote mode is on, by
+  // --experimental-remote or the experimental_remote key. The hosts are
+  // managed in the Remote hosts window (#330), which a remote window opens
+  // from its host switcher; each host opens in a window of its own.
   let remotesEnabled = false;
   let remotesError = '';
 
-  $: if (showSettings) loadRemotes();
+  $: if (showSettings && !$remoteWindow) loadRemotes();
 
   async function loadRemotes() {
     try { remotesEnabled = (await bridge.listRemotes()).enabled; } catch (e) { console.error(e); }
@@ -182,7 +183,7 @@
       </button>
     </div>
     {/if}
-    {#if remotesEnabled}
+    {#if remotesEnabled && !$remoteWindow}
     <div class="settings-row">
       <span class="settings-label" use:tooltip={$t('settings.remotesTip')}>{$t('settings.remotes')}<span class="remote-badge">{$t('settings.remotes.experimental')}</span></span>
       <button class="settings-action-btn" on:click={openRemotesWindow}>{$t('settings.manager')}</button>

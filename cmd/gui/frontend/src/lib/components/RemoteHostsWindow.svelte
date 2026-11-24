@@ -16,6 +16,9 @@
 
   let remotes: RemotesList = { enabled: true, remotes: [] };
   let suggestions: SSHHost[] = [];
+  // The ssh lines arrive after the configured hosts, so the window never
+  // waits for them.
+  let sshLoading = true;
   // query is what I typed in the alias field, without the completion the
   // field proposes after it.
   let query = '';
@@ -42,11 +45,13 @@
   };
 
   export async function load() {
-    try {
-      remotes = await bridge.listRemotes();
-      suggestions = await bridge.listSSHHosts();
-    } catch (e) { say({ error: errorText(e) }, ''); }
+    loadSSH();
+    try { remotes = await bridge.listRemotes(); } catch (e) { say({ error: errorText(e) }, ''); }
     if (!remotes.remotes.some((r) => r.alias === selected)) selected = remotes.remotes[0]?.alias || '';
+  }
+
+  async function loadSSH() {
+    try { suggestions = await bridge.listSSHHosts(); } catch (e) { console.error(e); } finally { sshLoading = false; }
   }
 
   onMount(() => {
@@ -166,7 +171,10 @@
         </button>
       </div>
       <input class="rh-input mono" bind:value={newServerDir} placeholder={$t('settings.remotes.serverDirPlaceholder')} aria-label={$t('settings.remotes.serverDir')} spellcheck="false" autocapitalize="off" />
-      {#if suggestions.length}
+      {#if sshLoading}
+        <span class="rh-label">{$t('remotesWindow.suggestions')}</span>
+        <p class="ssh-none" role="status">{$t('remotesWindow.readingSSH')}</p>
+      {:else if suggestions.length}
         <span class="rh-label">{$t('remotesWindow.suggestions')}</span>
         <ul class="rh-ssh" aria-label={$t('remotesWindow.suggestions')}>
           {#each shown as h (h.alias)}
@@ -288,7 +296,7 @@
   }
   .ssh-line:hover, .ssh-line:focus-visible { background: var(--bg-hover); color: var(--text-primary); }
   .ssh-line.chosen { background: var(--bg-hover); color: var(--text-primary); box-shadow: inset 0 0 0 1px var(--border-hover); }
-  .ssh-none { padding: 5px 8px; font-size: 11px; color: var(--text-muted); }
+  .ssh-none { margin: 0; padding: 5px 8px; font-size: 11px; color: var(--text-muted); }
   .rh-main { flex: 1; min-width: 0; overflow-y: auto; padding: 26px 32px; display: flex; flex-direction: column; gap: 20px; }
   .rh-title { display: flex; align-items: center; gap: 12px; }
   .rh-title h2 { margin: 0; font-size: 20px; font-weight: 700; font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; }

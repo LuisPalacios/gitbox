@@ -87,11 +87,16 @@ test('the Remote hosts window keeps every remote action and suggests ssh aliases
   const ui = await mount(t)
   const { RemoteHostsWindow, render, screen, fireEvent, waitFor, within } = ui
   let uninstalls = 0
+  // The ssh lines arrive late: the configured hosts never wait for them.
+  const sshRead = Promise.withResolvers()
   const native = bridge(ui, {
-    ListSSHHosts: async () => [
-      { alias: 'build-box', names: ['build-box', 'build-box.example.org', '192.0.2.10'] },
-      { alias: 'nas-backup', names: ['nas-backup'] },
-    ],
+    ListSSHHosts: async () => {
+      await sshRead.promise
+      return [
+        { alias: 'build-box', names: ['build-box', 'build-box.example.org', '192.0.2.10'] },
+        { alias: 'nas-backup', names: ['nas-backup'] },
+      ]
+    },
     ConnectRemote: ok, ShowRemoteLog: ok, SetRemoteEditor: ok, RemoveRemote: ok, AddRemote: ok,
     RemoteUninstall: async () => (++uninstalls === 1
       ? { needsConfirm: true, otherClients: 2, done: false, rootKept: false }
@@ -100,6 +105,9 @@ test('the Remote hosts window keeps every remote action and suggests ssh aliases
   render(RemoteHostsWindow)
 
   await waitFor(() => assert.ok(screen.getByRole('heading', { name: 'my-server' })))
+  assert.ok(screen.getByText('Reading your ssh configuration…'))
+  sshRead.resolve()
+  await waitFor(() => assert.equal(screen.queryByText('Reading your ssh configuration…'), null))
   assert.ok(screen.getByText('linux/amd64'))
   assert.ok(screen.getByText('v2.9.0'))
   const list = within(screen.getByRole('listbox'))
@@ -184,4 +192,26 @@ test('Settings keeps one row that opens the Remote hosts window', async (t) => {
   assert.equal(screen.queryByText('my-server'), null, 'the inline list is gone')
   await fireEvent.click(screen.getByRole('button', { name: 'Manager' }))
   await waitFor(() => assert.equal(called(native, 'OpenRemotesWindow').length, 1))
+})
+
+test('the Settings of a remote window have no Remote hosts row', async (t) => {
+  const ui = await mount(t)
+  const { SettingsPanel, render, screen, remoteWindow } = ui
+  const native = bridge(ui, { GetCheckGlobalGitignore: async () => false, GetPRSettings: async () => ({ enabled: false, includeDrafts: false }) })
+  remoteWindow.set(true)
+  const noop = () => {}
+  const later = async () => {}
+  render(SettingsPanel, {
+    props: {
+      showSettings: true, onRecipeImported: noop, simple: true, configPath: '/fixture/gitbox.json', languageChoice: 'en',
+      themeChoice: 'system', fetchInterval: 'off', lastFetchTime: '', autostartSupported: false, autostartOn: false,
+      checkGitignorePref: false, doctorSummary: '', terminalsManagerOpening: false, appVersion: 'test',
+      openRoots: noop, setLanguage: later, setTheme: noop, setFetchInterval: noop, toggleAutostart: later,
+      setPRBadgesEnabled: later, setPRIncludeDrafts: later, setCheckGitignorePref: later, openDoctorModal: noop,
+      openTerminalsManagerWindow: later,
+    },
+  })
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  assert.equal(screen.queryByText('Remote hosts'), null)
+  assert.equal(called(native, 'ListRemotes').length, 0)
 })
