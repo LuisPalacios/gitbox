@@ -7,6 +7,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/gitignore"
 	"github.com/LuisPalacios/gitbox/pkg/identity"
+	"github.com/LuisPalacios/gitbox/pkg/ops"
 )
 
 // Backend is the work half of the app: config, git, credentials and
@@ -33,7 +34,7 @@ type Backend interface {
 	AddRoot(path string) error
 	AdoptClones(reqs []AdoptRequestDTO) ReconcileDTO
 	ApplyDiscoveredMirrors() error
-	ChangeCredentialType(accountKey, newType string) error
+	ChangeCredentialType(accountKey, newType, token string) (ops.StepReport, error)
 	CheckGlobalGCMConfig() credential.GlobalGCMConfigStatus
 	CheckGlobalGitignore() (gitignore.Status, error)
 	CheckGlobalIdentity() identity.GlobalIdentityStatus
@@ -123,7 +124,7 @@ type Backend interface {
 	ReloadConfig() (ConfigDTO, error)
 	RemoveGlobalIdentity() error
 	RemoveRoot(path string, forget bool) (RemoveRootDTO, error)
-	RenameAccount(oldKey, newKey string) error
+	RenameAccount(oldKey, newKey string) (ops.StepReport, error)
 	RepairConfig() ConfigRepairResult
 	RepoNesting() map[string]string
 	RepoWorkspaceFiles(sourceKey, repoKey string) []string
@@ -173,8 +174,8 @@ func (b localBackend) AdoptClones(reqs []AdoptRequestDTO) ReconcileDTO {
 	return b.a.adoptClonesLocal(reqs)
 }
 func (b localBackend) ApplyDiscoveredMirrors() error { return b.a.applyDiscoveredMirrorsLocal() }
-func (b localBackend) ChangeCredentialType(accountKey, newType string) error {
-	return b.a.changeCredentialTypeLocal(accountKey, newType)
+func (b localBackend) ChangeCredentialType(accountKey, newType, token string) (ops.StepReport, error) {
+	return b.a.changeCredentialTypeLocal(accountKey, newType, token)
 }
 func (b localBackend) CheckGlobalGCMConfig() credential.GlobalGCMConfigStatus {
 	return b.a.checkGlobalGCMConfigLocal()
@@ -339,7 +340,7 @@ func (b localBackend) RemoveGlobalIdentity() error          { return b.a.removeG
 func (b localBackend) RemoveRoot(path string, forget bool) (RemoveRootDTO, error) {
 	return b.a.removeRootLocal(path, forget)
 }
-func (b localBackend) RenameAccount(oldKey, newKey string) error {
+func (b localBackend) RenameAccount(oldKey, newKey string) (ops.StepReport, error) {
 	return b.a.renameAccountLocal(oldKey, newKey)
 }
 func (b localBackend) RepairConfig() ConfigRepairResult { return b.a.repairConfigLocal() }

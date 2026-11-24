@@ -48,7 +48,7 @@ Cada tipo de credencial es **autosuficiente** para la cuenta. El aislamiento de 
 - **GCM** usa `helper = manager` con `username` y `provider` por host, acotados a cada repo, más `credential.credentialStore`. GCM guarda sus secretos en el almacén de credenciales del OS.
 - **SSH** solo cancela helpers (la autenticación va por `~/.ssh/config`). Discovery necesita un PAT opcional, guardado en el mismo archivo de credenciales que el de una cuenta token.
 
-**Ciclo de vida de las credenciales:** cambiar de tipo elimina los artefactos del tipo anterior antes de configurar el nuevo, y después reconfigura los clones existentes (URL remota y config de credenciales). Renombrar la clave de una cuenta migra todos los artefactos: claves de config, la carpeta del source, el archivo de credenciales, las claves SSH y el alias de la config SSH.
+**Ciclo de vida de las credenciales.** Gitbox verifica la credencial nueva antes de guardar un cambio de tipo, reconfigura los clones y luego retira los artefactos sin uso. Los cambios de clave de cuenta conservan las rutas de los clones y preparan copias de las credenciales administradas antes de cambiar las referencias. La cuenta guarda la información necesaria para reintentar una reparación o limpieza interrumpida.
 
 ### Config como base de datos local
 

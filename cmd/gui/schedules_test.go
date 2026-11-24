@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,6 +15,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/git/testutil"
 	"github.com/LuisPalacios/gitbox/pkg/heal"
+	"github.com/LuisPalacios/gitbox/pkg/provider"
 	"github.com/LuisPalacios/gitbox/pkg/reconcile"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 )
@@ -53,7 +55,10 @@ func TestSchedule_RenameDuringReconcile(t *testing.T) {
 		done := make(chan ReconcileDTO, 1)
 		go func() { done <- a.Reconcile() }()
 		<-scan.Entered
-		err := a.RenameAccount(old, renamed)
+		report, err := a.RenameAccount(old, renamed)
+		if err == nil && !report.OK {
+			err = fmt.Errorf("rename failed: %+v", report)
+		}
 		if err := os.Rename(stalePath, filepath.Join(t.TempDir(), "outside")); err != nil {
 			t.Fatal(err)
 		}
@@ -149,7 +154,9 @@ func TestSchedule_FetchDoesNotChangeUpstreamAfterCredentialSwitchOrCancel(t *tes
 				defer a.stopRefresh()
 				const source, repo, account = "source-a", "org/repo-0", "account-a"
 				acct := a.cfg.Accounts[account]
-				acct.Provider, acct.Username, acct.Name, acct.Email = "github", "fixture", "Fixture", "fixture@example.invalid"
+				acct.DefaultCredentialType = "ssh"
+				provider.SetDoerForTest(t, repoProvider{})
+				acct.Provider, acct.Username, acct.Name, acct.Email = "gitea", "alice", "Fixture", "fixture@example.invalid"
 				a.cfg.Accounts[account] = acct
 				a.cfgPath = filepath.Join(a.cfg.Global.Roots[0], "gitbox.json")
 				a.cfgLoaded = true
@@ -172,7 +179,7 @@ func TestSchedule_FetchDoesNotChangeUpstreamAfterCredentialSwitchOrCancel(t *tes
 				path := status.RepoPath(snapshot, source, repo, snapshot.Sources[source].Repos[repo])
 				var repaired bool
 				a.refreshHooks.heal = func(cfg *config.Config, _, _ string) heal.Report {
-					if cfg.Accounts[account].DefaultCredentialType == "gcm" {
+					if cfg.Accounts[account].DefaultCredentialType == "token" {
 						repaired = true
 					}
 					return heal.Report{}
@@ -193,10 +200,16 @@ func TestSchedule_FetchDoesNotChangeUpstreamAfterCredentialSwitchOrCancel(t *tes
 					}
 					a.maintenanceMu.Unlock()
 					credentialChange = make(chan error, 1)
-					go func() { credentialChange <- a.ChangeCredentialType(account, "gcm") }()
+					go func() {
+						report, err := a.ChangeCredentialType(account, "token", "fixture-token")
+						if err == nil && !report.OK {
+							err = fmt.Errorf("credential change failed: %+v", report)
+						}
+						credentialChange <- err
+					}()
 					synctest.Wait()
 					saved, err := config.Load(a.cfgPath)
-					if err != nil || saved.Accounts[account].DefaultCredentialType != "gcm" || repaired {
+					if err != nil || saved.Accounts[account].DefaultCredentialType != "token" || repaired {
 						t.Errorf("the account change must be saved before the clone can be repaired")
 					}
 				}
@@ -224,7 +237,7 @@ func TestSchedule_FetchDoesNotChangeUpstreamAfterCredentialSwitchOrCancel(t *tes
 					if err != nil {
 						t.Fatal(err)
 					}
-					if got := saved.Accounts[account].DefaultCredentialType; got != "gcm" {
+					if got := saved.Accounts[account].DefaultCredentialType; got != "token" {
 						t.Fatalf("saved credential type = %q, want gcm", got)
 					}
 				}

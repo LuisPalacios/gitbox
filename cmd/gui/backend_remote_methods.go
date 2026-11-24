@@ -5,6 +5,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/gitignore"
 	"github.com/LuisPalacios/gitbox/pkg/identity"
+	"github.com/LuisPalacios/gitbox/pkg/ops"
 )
 
 // The Backend methods of RemoteBackend. Each one calls the server method of
@@ -47,8 +48,8 @@ func (r *RemoteBackend) AdoptClones(reqs []AdoptRequestDTO) ReconcileDTO {
 	return res
 }
 func (r *RemoteBackend) ApplyDiscoveredMirrors() error { return r.callErr("ApplyDiscoveredMirrors") }
-func (r *RemoteBackend) ChangeCredentialType(accountKey, newType string) error {
-	return r.callErr("ChangeCredentialType", accountKey, newType)
+func (r *RemoteBackend) ChangeCredentialType(accountKey, newType, token string) (ops.StepReport, error) {
+	return remoteCall[ops.StepReport](r, "ChangeCredentialType", accountKey, newType, token)
 }
 func (r *RemoteBackend) CheckGlobalGCMConfig() credential.GlobalGCMConfigStatus {
 	return remoteValue[credential.GlobalGCMConfigStatus](r, "CheckGlobalGCMConfig")
@@ -287,8 +288,8 @@ func (r *RemoteBackend) RemoveGlobalIdentity() error { return r.callErr("RemoveG
 func (r *RemoteBackend) RemoveRoot(path string, forget bool) (RemoveRootDTO, error) {
 	return remoteCall[RemoveRootDTO](r, "RemoveRoot", path, forget)
 }
-func (r *RemoteBackend) RenameAccount(oldKey, newKey string) error {
-	return r.callErr("RenameAccount", oldKey, newKey)
+func (r *RemoteBackend) RenameAccount(oldKey, newKey string) (ops.StepReport, error) {
+	return remoteCall[ops.StepReport](r, "RenameAccount", oldKey, newKey)
 }
 func (r *RemoteBackend) RepairConfig() ConfigRepairResult {
 	return remoteValue[ConfigRepairResult](r, "RepairConfig")

@@ -29,7 +29,7 @@ function credentialFixture(store) {
   const context = vm.createContext({
     credTokenInput: 'fixture-token', credResult: null, credBusy: false,
     credTokenGuide: 'https://example.test/tokens', credTokenScopes: '', credPrecheck: null,
-    credChangeModal: 'account', credChangeType: 'token', credForceToken: false,
+    report: null, credChangeModal: 'account', credChangeType: 'token', credForceToken: false,
     credDeleteBusy: false, credSetupStarted: false, sshTokenDialog: null, credentialFindings: [{ path: 'stale' }],
     document: { activeElement: null }, HTMLElement: class {}, invoker: null, dialog: null,
     tick: async () => {}, verifyAllCredentials() {}, fetchTokenGuide: async () => {},
@@ -98,7 +98,7 @@ test('I show what the audit found right after a store, and clear an old warning 
 // Onboarding keeps its own token field (#163, #242).
 function onboardingFixture(store) {
   const context = vm.createContext({
-    token: 'fixture-token', accountKey: 'account', busy: false, connectError: '', connectProblem: undefined,
+    switchingToToken: false, switchReport: null, switchSaved: false, token: 'fixture-token', accountKey: 'account', busy: false, connectError: '', connectProblem: undefined,
     errorInfo: (_, detail) => ({ detail }),
     caughtIssue: () => ({}),
     started: false, $t: (key) => key,

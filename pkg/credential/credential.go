@@ -121,24 +121,32 @@ func EnvVarName(accountKey string) string {
 //
 // Returns the token string and the source description, or an error.
 func ResolveToken(acct config.Account, accountKey string) (token, source string, err error) {
-	// 1. Account-specific env var.
-	envName := EnvVarName(accountKey)
-	if val := os.Getenv(envName); val != "" {
-		return val, fmt.Sprintf("environment variable %s", envName), nil
+	if token, source, ok := EnvironmentToken(accountKey); ok {
+		return token, source, nil
 	}
-
-	// 2. Generic fallback env var.
-	if val := os.Getenv("GIT_TOKEN"); val != "" {
-		return val, "environment variable GIT_TOKEN", nil
-	}
-
 	// 3. Credential file.
 	tok, err := GetToken(accountKey)
 	if err != nil {
 		return "", "", fmt.Errorf("token not found for account %q: checked env var %s, GIT_TOKEN, and credential file",
-			accountKey, envName)
+			accountKey, EnvVarName(accountKey))
 	}
 	return tok, "credential file", nil
+}
+
+// EnvironmentToken returns the account's effective environment override.
+func EnvironmentToken(accountKey string) (token, source string, ok bool) {
+	// 1. Account-specific env var.
+	envName := EnvVarName(accountKey)
+	if val := os.Getenv(envName); val != "" {
+		return val, fmt.Sprintf("environment variable %s", envName), true
+	}
+
+	// 2. Generic fallback env var.
+	if val := os.Getenv("GIT_TOKEN"); val != "" {
+		return val, "environment variable GIT_TOKEN", true
+	}
+
+	return "", "", false
 }
 
 // ResolveGCMToken extracts a stored credential from Git Credential Manager
@@ -152,6 +160,15 @@ func ResolveGCMToken(accountURL, username string) (token, source string, err err
 // ResolveGCMTokenContext extracts a cached GCM credential without prompting and
 // bounds the subprocess to 15 seconds or the caller's earlier cancellation.
 func ResolveGCMTokenContext(ctx context.Context, accountURL, username string) (token, source string, err error) {
+	return resolveGCMToken(ctx, accountURL, username, nil)
+}
+
+// ResolveConfiguredGCMToken uses the same helper settings as managed clones.
+func ResolveConfiguredGCMToken(ctx context.Context, acct config.Account, global config.GlobalConfig) (string, string, error) {
+	return resolveGCMToken(ctx, acct.URL, acct.Username, GCMHelperArgs(acct, global))
+}
+
+func resolveGCMToken(ctx context.Context, accountURL, username string, settings []string) (token, source string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	if err := ctx.Err(); err != nil {
@@ -172,7 +189,7 @@ func ResolveGCMTokenContext(ctx context.Context, accountURL, username string) (t
 	// without them git-credential-manager is not found, because the system
 	// git (/usr/bin/git) doesn't ship GCM and GUI/SSH sessions inherit a
 	// minimal PATH.
-	res, err := git.Run(ctx, git.Request{Dir: home, Args: []string{"credential", "fill"}, Stdin: strings.NewReader(input)})
+	res, err := git.Run(ctx, git.Request{Dir: home, Args: append(settings, "credential", "fill"), Stdin: strings.NewReader(input)})
 	out := res.Stdout
 	if err != nil {
 		if ctx.Err() != nil {

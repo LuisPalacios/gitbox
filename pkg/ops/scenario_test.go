@@ -230,11 +230,11 @@ func TestScenario_FullLifecycle(t *testing.T) {
 	})
 
 	t.Run("11_rename_account", func(t *testing.T) {
-		// Renaming moves the same-key source and its folder; the fixture's
+		// Renaming keeps source folders in place; the fixture's
 		// source key may differ from the account key, so only the account
 		// key is asserted here.
 		newKey := acctKey + "-renamed"
-		if err := RenameAccount(cfg, acctKey, newKey); err != nil {
+		if err := renameAccountInMemory(t, cfg, acctKey, newKey); err != nil {
 			t.Fatalf("rename: %v", err)
 		}
 		persist(t)

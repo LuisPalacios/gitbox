@@ -911,7 +911,7 @@ var mutationCalls = []struct {
 	{"DeleteRepoFolder", []any{"acct", "org/repo"}, false},
 	// The token credentials (#242). GCM is served only to be refused.
 	{"CredentialStoreToken", []any{"acct", "it-token"}, false},
-	{"ChangeCredentialType", []any{"acct", "token"}, false},
+	{"ChangeCredentialType", []any{"acct", "token", ""}, false},
 	{"CredentialSetupGCM", []any{"acct"}, true},
 	// The SSH keys (#244): the key is made on the host; the provider is
 	// unreachable, so the connection is not verified.

@@ -401,7 +401,7 @@ Creation works on every provider and credential type, with the same API token di
 
 Click the account name on its card, or pick **Edit account…** from the account's ⋯ menu. You can change:
 
-- **Account key** — on a rename, Gitbox renames the folder on disk, updates your SSH keys and config, migrates stored tokens and fixes every internal reference.
+- **Account key** — on a rename, Gitbox preserves clone folders, migrates managed credentials and updates account references. If a step fails, I resolve the problem and click **Retry**.
 - **Provider** — in case you picked the wrong one.
 - **All other fields** — URL, username, name, email, default branch.
 
@@ -411,7 +411,7 @@ Pick **Change credential…** from the account's ⋯ menu to open the credential
 
 #### Changing credential type
 
-Pick GCM, Token or SSH in the dropdown and click **Setup**. Gitbox removes the old credential and its artifacts, sets up the new one, and reconfigures every existing clone.
+Pick GCM, Token or SSH in the dropdown and follow the setup steps. Gitbox verifies the replacement, saves the change, updates existing clones and removes unused artifacts from the previous method.
 
 #### Deleting a credential
 

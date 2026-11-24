@@ -17,6 +17,7 @@
   export let regenerateSSHKey: () => void;
   export let accountKey = '';
   export let simple = false;
+  export let allowRegenerate = true;
 
 </script>
 
@@ -45,9 +46,11 @@
         {credBusy ? $t('cred.verifying') : $t('cred.verify')}
       </button>
     {/if}
+    {#if allowRegenerate}
     <button class="btn-cancel cred-action-btn" on:click={regenerateSSHKey} disabled={credBusy}>
       {credBusy ? $t('cred.regenerating') : $t('cred.regenerate')}
     </button>
+    {/if}
   </div>
 {:else}
   <div class="cred-result" class:cred-result-ok={credResult.ok} class:cred-result-err={!credResult.ok}>

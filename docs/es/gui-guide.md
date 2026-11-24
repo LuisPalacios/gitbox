@@ -401,7 +401,7 @@ La creación funciona con todos los proveedores y tipos de credencial, con el mi
 
 Haz clic en el nombre de la cuenta en su tarjeta, o elige **Editar cuenta…** en el menú ⋯ de la cuenta. Puedes cambiar:
 
-- **Clave de cuenta** — al renombrarla, Gitbox renombra la carpeta en disco, actualiza tus claves SSH y tu config, migra los tokens guardados y corrige todas las referencias internas.
+- **Clave de cuenta** — al renombrarla, Gitbox conserva las carpetas de los clones, migra las credenciales administradas y actualiza las referencias a la cuenta. Si falla un paso, resuelvo el problema y hago clic en **Reintentar**.
 - **Proveedor** — por si elegiste el equivocado.
 - **Todos los demás campos** — URL, usuario, nombre, email, rama predeterminada.
 
@@ -411,7 +411,7 @@ Elige **Cambiar credencial…** en el menú ⋯ de la cuenta para abrir la panta
 
 #### Cambiar tipo de credencial
 
-Elige GCM, Token o SSH en el desplegable y haz clic en **Configurar**. Gitbox elimina la credencial antigua y sus artefactos, configura la nueva y reconfigura todos los clones existentes.
+Elige GCM, Token o SSH en el desplegable y sigue los pasos de configuración. Gitbox verifica la credencial nueva, guarda el cambio, actualiza los clones existentes y elimina los artefactos sin uso del método anterior.
 
 #### Eliminar una credencial
 

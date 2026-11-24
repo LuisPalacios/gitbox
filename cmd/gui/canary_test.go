@@ -83,6 +83,7 @@ func TestTokenCanary(t *testing.T) {
 	argv := &argvRecorder{}
 	argv.install(t)
 	canary := newCanary(t)
+	switchCanary := "switch-" + newCanary(t)
 
 	link := serveRemote(t, side.path, nil)
 	var results []any
@@ -116,7 +117,6 @@ func TestTokenCanary(t *testing.T) {
 		}
 	}
 
-	none := func(err error) (any, error) { return nil, err }
 	for _, row := range []contractRow{
 		{name: "CloneRepo", until: []string{"clone:done"}, call: func(b Backend) (any, error) { b.CloneRepo("acct", "org/fresh", ""); return nil, nil }},
 		{name: "FetchRepo", until: []string{"fetch:done"}, call: func(b Backend) (any, error) { b.FetchRepo("acct", "org/repo"); return nil, nil }},
@@ -126,8 +126,8 @@ func TestTokenCanary(t *testing.T) {
 			b.MoveRepo(MoveRequestDTO{SourceSourceKey: "acct", SourceRepoKey: "org/fresh", DestAccountKey: "acct", DestOwner: "alice", DestRepoName: "moved"})
 			return nil, nil
 		}},
-		{name: "ChangeCredentialType", call: func(b Backend) (any, error) { return none(b.ChangeCredentialType("acct", "token")) }},
-		{name: "ChangeCredentialType gcm", call: func(b Backend) (any, error) { return none(b.ChangeCredentialType("acct", "gcm")) }},
+		{name: "ChangeCredentialType", call: func(b Backend) (any, error) { return b.ChangeCredentialType("acct", "token", switchCanary) }},
+		{name: "ChangeCredentialType gcm", call: func(b Backend) (any, error) { return b.ChangeCredentialType("acct", "gcm", "") }},
 		{name: "CredentialSetupGCM", call: func(b Backend) (any, error) { return b.CredentialSetupGCM("acct"), nil }},
 		{name: "CredentialVerify", call: func(b Backend) (any, error) { return b.CredentialVerify("acct"), nil }},
 	} {
@@ -164,6 +164,9 @@ func TestTokenCanary(t *testing.T) {
 	if n := strings.Count(link.Received.String(), canary); n != 1 {
 		t.Errorf("the token crossed the wire to the host %d times, want once", n)
 	}
+	if n := strings.Count(link.Received.String(), switchCanary); n != 1 {
+		t.Errorf("the switch token crossed the wire to the host %d times, want once", n)
+	}
 	if _, err := os.Stat(storeFile); !os.IsNotExist(err) {
 		t.Errorf("CredentialDelete left the store file: %v", err)
 	}
@@ -191,7 +194,7 @@ func TestTokenCanary(t *testing.T) {
 		"the client log":                link.ClientLog.String(),
 		"the argv of git":               argv.String(),
 	} {
-		if strings.Contains(text, canary) {
+		if strings.Contains(text, canary) || strings.Contains(text, switchCanary) {
 			t.Errorf("the token leaked into %s", where)
 		}
 	}

@@ -3,8 +3,10 @@ package ops
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
@@ -92,23 +94,19 @@ func rejectGCMCredential(host, username string) error {
 	return err
 }
 
-// ChangeCredentialType removes the account's current credential artifacts
-// and switches it to newType with default settings. Run ReconfigureClones
-// after saving so existing clones follow the new credential type.
-func ChangeCredentialType(cfg *config.Config, accountKey, newType string) error {
-	acct, ok := cfg.Accounts[accountKey]
-	if !ok {
-		return fmt.Errorf("account %q not found", accountKey)
+func rejectConfiguredGCMCredential(ctx context.Context, cfg *config.Config, acct config.Account) error {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	origin, err := url.Parse(acct.URL)
+	if err != nil {
+		return err
 	}
-	switch newType {
-	case "gcm", "ssh", "token":
-	default:
-		return fmt.Errorf("unknown credential type %q", newType)
-	}
-
-	RemoveCredentialArtifacts(cfg, accountKey)
-	applyCredentialType(&acct, accountKey, newType)
-	return cfg.UpdateAccount(accountKey, acct)
+	input := fmt.Sprintf("protocol=%s\nhost=%s\nusername=%s\n\n", origin.Scheme, origin.Host, acct.Username)
+	home, _ := os.UserHomeDir()
+	args := append(credential.GCMHelperArgs(acct, cfg.Global), "credential", "reject")
+	_, err = git.Run(ctx, git.Request{Dir: home, Args: args,
+		Stdin: strings.NewReader(input)})
+	return err
 }
 
 // DeleteCredential removes the account's credential artifacts and clears its
@@ -118,6 +116,9 @@ func DeleteCredential(cfg *config.Config, accountKey string) ([]string, error) {
 	acct, ok := cfg.Accounts[accountKey]
 	if !ok {
 		return nil, fmt.Errorf("account %q not found", accountKey)
+	}
+	if acct.CredentialTransition != nil {
+		return nil, ErrCredentialTransitionPending
 	}
 	if acct.DefaultCredentialType == "" {
 		return []string{"No credential configured"}, nil

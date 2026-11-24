@@ -9,12 +9,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/git/testutil"
 )
 
 func TestCheckContextCancelsInFlightProviderRequest(t *testing.T) {
@@ -144,5 +147,29 @@ func TestSSHConnectionContextAlreadyCancelled(t *testing.T) {
 	cancel()
 	if _, err := TestSSHConnectionContext(ctx, t.TempDir(), "example.invalid"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled SSH check returned %v", err)
+	}
+}
+
+func TestResolveConfiguredGCMTokenResetsOtherHelpers(t *testing.T) {
+	acct := config.Account{
+		URL: "https://example.invalid:8443", Username: "fixture",
+		GCM: &config.GCMConfig{Provider: "github"},
+	}
+	global := config.GlobalConfig{CredentialGCM: &config.GCMGlobal{
+		Helper: "fixture-gcm", CredentialStore: "fixture-store",
+	}}
+	called := false
+	git.SetRunnerForTest(t, testutil.RunnerFunc(func(_ context.Context, request git.Request) (git.Result, error) {
+		called = true
+		want := []string{"-c", "credential.helper=", "-c", "credential.helper=fixture-gcm",
+			"-c", "credential.credentialStore=fixture-store", "-c", "credential.useHttpPath=false",
+			"-c", "credential.provider=github", "credential", "fill"}
+		if !slices.Equal(request.Args, want) {
+			t.Fatalf("git args = %v, want %v", request.Args, want)
+		}
+		return git.Result{Stdout: []byte("password=fixture-gcm-secret\n")}, nil
+	}))
+	if tok, _, err := ResolveConfiguredGCMToken(t.Context(), acct, global); err != nil || tok != "fixture-gcm-secret" || !called {
+		t.Fatalf("selected helper did not return its credential: %v", err)
 	}
 }

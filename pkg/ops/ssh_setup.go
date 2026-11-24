@@ -36,6 +36,16 @@ func SetupSSHCredential(ctx context.Context, cfg *config.Config, accountKey stri
 	if !ok {
 		return SSHSetup{}, fmt.Errorf("account %q: %w", accountKey, config.ErrNotFound)
 	}
+	s, err := prepareSSHCredential(cfg, accountKey, acct)
+	if err != nil {
+		return SSHSetup{}, err
+	}
+	_, err = credential.TestSSHConnectionContext(ctx, credential.SSHFolder(cfg), s.Host)
+	s.Verified = err == nil
+	return s, nil
+}
+
+func prepareSSHCredential(cfg *config.Config, accountKey string, acct config.Account) (SSHSetup, error) {
 	s := SSHSetup{
 		Host:     credential.SSHHostAlias(accountKey),
 		Hostname: HostnameFromURL(acct.URL),
@@ -53,7 +63,11 @@ func SetupSSHCredential(ctx context.Context, cfg *config.Config, accountKey stri
 		return SSHSetup{}, fmt.Errorf("creating %s: %w", sshFolder, err)
 	}
 	keyPath := credential.SSHKeyPath(sshFolder, accountKey)
-	if found, _ := credential.FindSSHConfigEntry(sshFolder, s.Host); !found {
+	found, err := credential.FindSSHConfigEntry(sshFolder, s.Host)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return SSHSetup{}, err
+	}
+	if !found {
 		opts := credential.SSHConfigEntryOpts{
 			Host:     s.Host,
 			Hostname: s.Hostname,
@@ -67,16 +81,19 @@ func SetupSSHCredential(ctx context.Context, cfg *config.Config, accountKey stri
 			return SSHSetup{}, fmt.Errorf("writing SSH config: %w", err)
 		}
 	}
-	if _, err := os.Stat(keyPath); err != nil {
+	if _, err := os.Stat(keyPath); errors.Is(err, fs.ErrNotExist) {
 		if _, err := credential.GenerateSSHKey(sshFolder, accountKey, s.KeyType); err != nil {
 			return SSHSetup{}, fmt.Errorf("generating SSH key: %w", err)
 		}
+	} else if err != nil {
+		return SSHSetup{}, err
 	}
 
-	s.PublicKey, _ = credential.ReadPublicKey(keyPath)
+	s.PublicKey, err = credential.ReadPublicKey(keyPath)
+	if err != nil {
+		return SSHSetup{}, err
+	}
 	s.AddURL = credential.SSHPublicKeyURL(acct.Provider, acct.URL)
-	_, err := credential.TestSSHConnectionContext(ctx, sshFolder, s.Host)
-	s.Verified = err == nil
 	return s, nil
 }
 
@@ -129,7 +146,11 @@ func removeSSHKey(cfg *config.Config, accountKey string) ([]string, error) {
 			return msgs, fmt.Errorf("removing the SSH key: %w", err)
 		}
 	}
-	if found, _ := credential.FindSSHConfigEntry(sshFolder, hostAlias); found {
+	found, err := credential.FindSSHConfigEntry(sshFolder, hostAlias)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return msgs, err
+	}
+	if found {
 		if err := credential.RemoveSSHConfigEntry(sshFolder, hostAlias); err != nil {
 			return msgs, fmt.Errorf("removing Host %s from the SSH config: %w", hostAlias, err)
 		}
