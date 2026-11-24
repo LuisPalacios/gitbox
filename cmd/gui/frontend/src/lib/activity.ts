@@ -14,6 +14,7 @@ export interface Run {
   accounts: number;
   // Keys that reported back. A Set, so a repeated event never counts twice.
   done: Set<string>;
+  operations: Set<string>;
   // Error message per key that failed.
   errors: Record<string, string>;
   // What the backend says about each failure, as data: see Failure.
@@ -45,7 +46,7 @@ function start(kind: Run['kind'], keys: string[], accountOf: (key: string) => st
   return {
     kind, keys: scope,
     accounts: new Set(scope.map(accountOf)).size,
-    done: new Set(), errors: {}, failures: {}, skips: {}, before,
+    done: new Set(), operations: new Set(), errors: {}, failures: {}, skips: {}, before,
     clones: new Set(kind === 'pull' ? scope.filter((key) => before[key] === 'not cloned') : []),
   };
 }
@@ -61,12 +62,13 @@ export function startPull(keys: string[], accountOf: (key: string) => string, st
 // noteDone records one repo reporting back, with its error if it failed and
 // what the backend says about the failure. Keys outside the run are ignored.
 // It returns a new Run, so a Svelte assignment picks up the change.
-export function noteDone(run: Run, key: string, error?: string, failure?: Failure, skip?: PullSkipReason): Run {
-  return noteCompletions(run, [{ key, error, failure, skip }]);
+export function noteDone(run: Run, key: string, error?: string, failure?: Failure, skip?: PullSkipReason, operationID?: string): Run {
+  return noteCompletions(run, [{ key, error, failure, skip, operationID }]);
 }
 
 export interface Completion {
   key: string;
+  operationID?: string;
   error?: string;
   failure?: Failure;
   skip?: PullSkipReason;
@@ -74,9 +76,10 @@ export interface Completion {
 
 // Several fetch completions may arrive before the next progress paint.
 export function noteCompletions(run: Run, events: Completion[]): Run {
-  const next = { ...run, done: new Set(run.done), errors: { ...run.errors }, failures: { ...run.failures }, skips: { ...run.skips } };
-  for (const { key, error, failure, skip } of events) {
-    if (!Object.hasOwn(run.before, key)) continue;
+  const next = { ...run, done: new Set(run.done), operations: new Set(run.operations), errors: { ...run.errors }, failures: { ...run.failures }, skips: { ...run.skips } };
+  for (const { key, operationID, error, failure, skip } of events) {
+    if (!Object.hasOwn(run.before, key) || (operationID && next.operations.has(operationID))) continue;
+    if (operationID) next.operations.add(operationID);
     next.done.add(key);
     if (error) { next.errors[key] = error; next.failures[key] = failure || {}; }
     else { delete next.errors[key]; delete next.failures[key]; }

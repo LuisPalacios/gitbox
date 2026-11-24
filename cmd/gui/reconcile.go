@@ -243,7 +243,7 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 		out := emptyReconcile(userMsg(err))
 		out.WorkspaceUnknown = unknown
 		if unknownChanged {
-			a.sink().Emit("reconcile:done", out)
+			emit(a.newOperation(), "reconcile:done", out)
 		}
 		return out
 	}
@@ -287,7 +287,7 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 		out.Error = userMsg(saveErr)
 	}
 	if changed || wsChanged || unknownChanged || out.Background || len(out.Skipped) > 0 {
-		a.sink().Emit("reconcile:done", out)
+		emit(a.newOperation(), "reconcile:done", out)
 	}
 	return out
 }

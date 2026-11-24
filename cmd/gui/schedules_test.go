@@ -167,7 +167,7 @@ func TestSchedule_FetchDoesNotChangeUpstreamAfterCredentialSwitchOrCancel(t *tes
 				snapshot := a.snapshotRefreshConfig()
 				path := status.RepoPath(snapshot, source, repo, snapshot.Sources[source].Repos[repo])
 				done := make(chan error, 1)
-				go func() { done <- a.performFetch(snapshot, source, repo, path) }()
+				go func() { done <- a.performFetch(a.newOperation(), snapshot, source, repo, path) }()
 				<-fetch.Entered
 				var err error
 				if tc.switchCredential {

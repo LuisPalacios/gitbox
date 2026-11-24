@@ -120,8 +120,8 @@ func emittedEventNames(t *testing.T) map[string][]string {
 	t.Helper()
 	relays := 0
 	defer func() {
-		if relays != 1 {
-			t.Errorf("%s has %d Emit calls with a name that is not a literal, want exactly the relay", eventRelayFile, relays)
+		if relays != 2 {
+			t.Errorf("%s has %d Emit calls with a name that is not a literal, want the host relay and client failure publication", eventRelayFile, relays)
 		}
 	}()
 	files, err := filepath.Glob("*.go")
@@ -143,16 +143,26 @@ func emittedEventNames(t *testing.T) map[string][]string {
 			if !ok {
 				return true
 			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok || sel.Sel.Name != "Emit" {
+			nameArg := 0
+			switch fn := call.Fun.(type) {
+			case *ast.Ident:
+				if fn.Name != "emit" {
+					return true
+				}
+				nameArg = 1
+			case *ast.SelectorExpr:
+				if fn.Sel.Name != "Emit" || file == "events.go" {
+					return true
+				}
+			default:
 				return true
 			}
 			pos := fset.Position(call.Pos()).String()
-			if len(call.Args) == 0 {
-				t.Errorf("%s: Emit call without an event name", pos)
+			if len(call.Args) <= nameArg {
+				t.Errorf("%s: event call without an event name", pos)
 				return true
 			}
-			lit, ok := call.Args[0].(*ast.BasicLit)
+			lit, ok := call.Args[nameArg].(*ast.BasicLit)
 			if !ok || lit.Kind != token.STRING {
 				if file == eventRelayFile {
 					relays++

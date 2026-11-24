@@ -193,6 +193,30 @@ func TestOperationKey(t *testing.T) {
 // lost: it goes out after the verdict. A client takes the connection as made
 // the moment it reads the verdict, and whatever the server emits from then
 // on must reach it.
+func TestProgressEnvelopeClosesOnlyItsOperation(t *testing.T) {
+	box := newOutbox()
+	defer box.close()
+	key := func(name, id string) string {
+		return operationKey(name, []any{map[string]string{"operationID": id}})
+	}
+	first, second := key("clone:progress", "1"), key("clone:progress", "2")
+	// Queue both pending updates by seeding their previous progress at the
+	// current time. Completion should flush the first without affecting the second.
+	box.lastProgress[first], box.lastProgress[second] = time.Now(), time.Now()
+	box.pending[first] = outItem{progress: true, name: "clone:progress", body: []byte("first progress")}
+	box.pending[second] = outItem{progress: true, name: "clone:progress", body: []byte("second progress")}
+	box.event("clone:done", key("clone:done", "1"), []byte("first done"))
+	if len(box.queue) != 2 || string(box.queue[0].body) != "first progress" || string(box.queue[1].body) != "first done" {
+		t.Fatalf("first operation closed out of order: %v", box.queue)
+	}
+	if _, kept := box.lastProgress[first]; kept {
+		t.Fatal("closed operation kept its throttling timestamp")
+	}
+	if _, queued := box.pending[second]; !queued {
+		t.Fatal("closing the first operation flushed progress of the second")
+	}
+}
+
 func TestEvents_EmittedDuringTheHandshakeArrive(t *testing.T) {
 	srv := newServer(nil)
 	c2sR, c2sW := io.Pipe()

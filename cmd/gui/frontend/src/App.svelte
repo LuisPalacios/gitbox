@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { acceptStatusBatch, applyRepairReports, statusPaintQueue, type StatusBatch } from './lib/status';
+  import { acceptStatusBatch, applyRepairReports, statusPaintQueue } from './lib/status';
+  import { completionStatuses, hasConfiguredRepo } from './lib/events';
+  import type { EventPayloads } from './lib/dto.generated';
   import { onMount, tick } from 'svelte';
   import { settingsSaveFailed, bridge, events, setRemoteWindow } from './lib/bridge';
   import type { DoctorPrecheckDTO, RemoteState } from './lib/bridge';
@@ -18,8 +20,8 @@
   import { pushNotice, dismissNotice, errorText } from './lib/notices';
   import { startFetch, startPull, noteDone, noteCompletions, summarizeFetch, summarizePull, localWorkCount } from './lib/activity';
   import type { Run, Completion } from './lib/activity';
-  import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit, EventsOn } from '../wailsjs/runtime/runtime';
-  import type { ConfigDTO, CredentialFinding, RepoState, PullSkipReason, CredentialStatus, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, PRAccountUpdateDTO, OrphanRepoDTO, ReconcileDTO, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
+  import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit } from '../wailsjs/runtime/runtime';
+  import type { ConfigDTO, CredentialFinding, RepoState, PullSkipReason, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, OrphanRepoDTO, ReconcileDTO, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
   import Onboarding from './lib/Onboarding.svelte';
   import ConfigErrorScreen from './lib/components/ConfigErrorScreen.svelte';
   import ReloadErrorBanner from './lib/components/ReloadErrorBanner.svelte';
@@ -481,12 +483,12 @@
   // notAttempted handles a pull or clone the backend stopped for lack of a
   // server: the row goes back to what it was instead of turning into an
   // error, and the run still counts it as reported.
-  function notAttempted(key: string, data: any) {
+  function notAttempted(key: string, data: EventPayloads['clone:done'] | EventPayloads['pull:done'], operationID: string) {
     repoStates.update((s) => {
       if (s[key]) s[key] = { ...s[key], status: statusBeforeSync[key] || s[key].status, progress: 0 };
       return { ...s };
     });
-    if (pullRun) pullRun = noteDone(pullRun, key, data.error, { code: data.code, host: data.host });
+    if (pullRun) pullRun = noteDone(pullRun, key, data.error, { code: data.code, host: data.host }, undefined, operationID);
     checkSyncDone();
   }
   function clearFetchFailNotice() {
@@ -494,6 +496,16 @@
     fetchFailNotice = null;
   }
   let pullRun: Run | null = null;
+  const completion = completionStatuses();
+  let mirrorDiscoveryDone = '';
+  let fetchOperation = '';
+  const fetchOperations = new Map<string, string>();
+  const configuredRepo = (source: string, repo: string) => hasConfiguredRepo($configStore, source, repo);
+  function publishCompletionRow(row: EventPayloads['status:one']) {
+    currentStream?.paint.flush();
+    statusGeneration++;
+    applyStatusResults([row], true, true);
+  }
   const statusOfKey = (key: string) => $repoStates[key]?.status || 'unknown';
   const accountOfKey = (key: string) => $sources[key.slice(0, key.indexOf('/'))]?.account || key.slice(0, key.indexOf('/'));
 
@@ -1078,6 +1090,7 @@
       repoNesting = snapshot.nesting || {};
       credentialFindings = snapshot.credentialFindings || [];
       configStore.set(snapshot.config);
+      events.snapshot(snapshot.eventWatermark, () => $configStore?.revision ?? 0);
       configPath = snapshot.configPath;
       // A renamed account: Go already moved the saved view to its new key.
       // A deleted one: Go cleared it, so Needs attention shows.
@@ -1286,9 +1299,9 @@
 
   // Mirror discovery
   let mirrorDiscoverLoading = false;
-  let mirrorDiscoverResults: any[] | null = null;
+  let mirrorDiscoverResults: NonNullable<EventPayloads['mirror:discover:done']['results']> | null = null;
   let mirrorDiscoverError = '';
-  let mirrorDiscoverProgress: { phase: string; account: string; current: number; total: number } | null = null;
+  let mirrorDiscoverProgress: EventPayloads['mirror:discover:progress'] | null = null;
 
   async function runMirrorDiscover() {
     mirrorDiscoverLoading = true;
@@ -1419,6 +1432,13 @@
     if (clearsOnReconnect(remoteState?.state, s.state)) reloadError = '';
     remoteState = s;
     if (s.state !== 'connected') {
+      if (wasConnected) {
+        events.reset();
+        completion.clear();
+        fetchOperations.clear();
+        fetchOperation = '';
+        mirrorDiscoveryDone = '';
+      }
       if (wasConnected && currentStream) {
         statusPass++;
         retireStream();
@@ -1440,6 +1460,7 @@
       pullRun = null;
       mirrorSettingUp = {};
       fetchingRepos = {};
+      repoStates.set({});
       await startMain();
       remoteNoConfig = firstRun;
       // A host without a config keeps the card, which says so.
@@ -1649,6 +1670,7 @@
     repoStates.set(Object.fromEntries(Object.entries(cfg.sources).flatMap(([sourceKey, source]) =>
       Object.keys(source.repos).map(repoName => [`${sourceKey}/${repoName}`, $repoStates[`${sourceKey}/${repoName}`] ?? { status: 'unknown' as const, progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }])
     )));
+    events.snapshot(snapshot.eventWatermark, () => $configStore?.revision ?? 0);
     if (savedMode === 'compact' && windowMode !== 'remote') {
       viewMode = 'compact';
       await tick();
@@ -1829,7 +1851,7 @@
       // listen for that explicitly so we pick the refresh up even if
       // the focus event timing is flaky on Linux/Windows.
       window.addEventListener('focus', () => { hydrate(); });
-      EventsOn('profiles:reloaded', () => { hydrate(); });
+      events.on('profiles:reloaded', () => { hydrate(); });
       // The Wails subprocess starts hidden so the user never sees a
       // dark-empty-webview flash before Svelte mounts. Reveal the
       // window only after Svelte has flushed the DOM AND the browser
@@ -1875,7 +1897,7 @@
     // ── Event listeners (always registered) ──
     // Background harness detection changed global.ai_harnesses and saved
     // it; swap the list in the store without a full config reload.
-    events.on('harnesses:updated', (list: AIHarnessInfo[] | null) => {
+    events.on('harnesses:updated', (list) => {
       configStore.update((c) => c ? { ...c, global: { ...c.global, ai_harnesses: list || [] } } : c);
     });
 
@@ -1883,14 +1905,14 @@
       bridge.getConfig().then(cfg => configStore.update(current => current ? { ...current, global: { ...current.global, editors: cfg.global.editors, terminal_apps: cfg.global.terminal_apps, shells: cfg.global.shells, terminal_profiles: cfg.global.terminal_profiles } } : current)).catch(console.error);
     });
 
-    events.on('reconcile:done', (res: ReconcileDTO | null) => {
+    events.on('reconcile:done', (res) => {
       // The coalesced background retry has no caller to apply its result.
       if (res?.background) {
         void applyReconcile(res).catch(console.error);
       } else if (res?.workspaceUnknown) $workspaceUnknown = new Set(res.workspaceUnknown);
     });
 
-    events.on('status:batch', async (batch: StatusBatch) => {
+    events.on('status:batch', async (batch) => {
       const stream = currentStream;
       if (!stream || stream.full || batch.passID !== stream.id) return;
       if (acceptStatusBatch(batch, stream.id, $configStore?.revision)) {
@@ -1927,11 +1949,15 @@
         // A config change superseded this pass. A fresh snapshot owns the next one.
         void initDashboard().catch(console.error);
       }
+    }, batch => {
+      if (batch.done && batch.passID === currentStream?.id && !currentStream.full) {
+        void initDashboard().catch(console.error);
+      }
     });
-    events.on('status:updated', (results: any) => {
+    events.on('status:updated', (results) => {
       currentStream?.paint.flush();
       statusGeneration++;
-      applyStatusResults(results);
+      applyStatusResults((results || []).filter(row => configuredRepo(row.source, row.repo)));
       for (const resolve of statusWaiters.splice(0)) resolve();
       // Refresh expanded detail if a repo is still open (reactive $: handles auto-collapse).
       if (expandedRepo && !detailLocked($repoStates[expandedRepo]?.status)) {
@@ -1942,8 +1968,16 @@
       }
     });
 
-    events.on('clone:progress', (data: any) => {
+    for (const name of ['clone:start', 'pull:start'] as const) {
+      events.on(name, ({ source, repo }, meta) => {
+        if (configuredRepo(source, repo)) completion.start(`${source}/${repo}`, meta.operationID);
+      });
+    }
+
+    events.on('clone:progress', (data, meta) => {
+      if (!configuredRepo(data.source, data.repo)) return;
       const key = `${data.source}/${data.repo}`;
+      if (!completion.start(key, meta.operationID)) return;
       repoStates.update((s) => {
         if (s[key]) {
           s[key] = { ...s[key], progress: data.percent };
@@ -1952,14 +1986,19 @@
       });
     });
 
-    events.on('clone:done', (data: any) => {
+    events.on('clone:done', (data, meta) => {
+      if (!configuredRepo(data.source, data.repo)) return;
       const key = `${data.source}/${data.repo}`;
-      if (data.skipped) { notAttempted(key, data); return; }
+      const checked = meta.client ? { accept: true } : completion.done(key, meta.operationID, !data.error && !data.skipped);
+      if (!checked.accept) return;
+      const operationID = meta.client ? `client/${meta.operationID}` : meta.operationID;
+      if (data.skipped) { notAttempted(key, data, operationID); return; }
       repoStates.update((s) => {
         if (s[key]) {
           s[key] = {
             ...s[key],
-            status: data.error ? 'error' : 'clean',
+            status: data.error ? 'error' : 'pending',
+            statusCheckRevision: meta.configRevision,
             // Rows seeded in-session (create-repo, Bring Local) have no path
             // until the next full status refresh; take it from the event so
             // path-based kebab actions work right away (#79).
@@ -1971,82 +2010,103 @@
         }
         return { ...s };
       });
-      if (pullRun) pullRun = noteDone(pullRun, key, data.error);
+      if (pullRun) pullRun = noteDone(pullRun, key, data.error, undefined, undefined, operationID);
+      if ('row' in checked && checked.row) publishCompletionRow(checked.row);
       checkSyncDone();
     });
 
-    events.on('pull:done', (data: {
-      source: string; repo: string; skipped?: true | PullSkipReason;
-      error?: string; code?: string; host?: string; repairWarnings?: string[];
-      state?: RepoState['status']; modified?: number; untracked?: number; ahead?: number; behind?: number;
-    }) => {
+    events.on('pull:done', (data, meta) => {
+      if (!configuredRepo(data.source, data.repo)) return;
       const key = `${data.source}/${data.repo}`;
-      updateRepairWarning(data.source, data.repo, data.repairWarnings);
       const skipped = data.skipped;
-      if (skipped === true) { notAttempted(key, data); return; }
-      if (pullRun) pullRun = noteDone(pullRun, key, data.error, undefined, skipped);
+      const checked = meta.client ? { accept: true } : completion.done(key, meta.operationID, !data.error && !skipped);
+      if (!checked.accept) return;
+      updateRepairWarning(data.source, data.repo, data.repairWarnings);
+      const operationID = meta.client ? `client/${meta.operationID}` : meta.operationID;
+      if (skipped === true) { notAttempted(key, data, operationID); return; }
+      const reason = skipped ? skipped as PullSkipReason : undefined;
+      if (pullRun) pullRun = noteDone(pullRun, key, data.error, undefined, reason, operationID);
       repoStates.update((s) => {
         const row = s[key];
         if (!row) return s;
         if (skipped) {
           s[key] = {
             ...row,
-            status: data.state ?? statusBeforeSync[key] ?? 'unknown',
+            status: (data.state as RepoState['status'] | undefined) ?? statusBeforeSync[key] ?? 'unknown',
             progress: 0,
             modified: data.modified ?? row.modified,
             untracked: data.untracked ?? row.untracked,
             ahead: data.ahead ?? row.ahead,
             behind: data.behind ?? row.behind,
-            pullSkipped: skipped,
+            pullSkipped: reason,
             error: undefined,
           };
         } else {
           s[key] = {
             ...row,
-            status: data.error ? 'error' : 'clean',
+            status: data.error ? 'error' : 'pending',
+            statusCheckRevision: meta.configRevision,
             progress: 0,
-            behind: 0,
             pullSkipped: undefined,
             error: data.error,
           };
         }
         return { ...s };
       });
+      if ('row' in checked && checked.row) publishCompletionRow(checked.row);
       checkSyncDone();
     });
 
-    events.on('fetch:start', (data: any) => {
+    events.on('status:one', (row, meta) => {
+      if (!configuredRepo(row.source, row.repo)) return;
+      const key = `${row.source}/${row.repo}`;
+      const result = completion.status(key, meta.operationID, row);
+      if (result && $repoStates[key]?.status === 'pending') publishCompletionRow(result);
+      checkSyncDone();
+    });
+
+    events.on('fetch:start', (data, meta) => {
+      if (!configuredRepo(data.source, data.repo)) return;
       const key = `${data.source}/${data.repo}`;
+      fetchOperations.set(key, meta.operationID);
       fetchingRepos[key] = true;
       fetchingRepos = fetchingRepos;
     });
 
-    events.on('fetch:done', (data: any) => {
-      updateRepairWarning(data.source, data.repo, data.repairWarnings);
+    events.on('fetch:done', (data, meta) => {
+      if (!configuredRepo(data.source, data.repo)) return;
       const key = `${data.source}/${data.repo}`;
+      const active = fetchOperations.get(key);
+      if (active && BigInt(active) > BigInt(meta.operationID)) return;
+      fetchOperations.delete(key);
+      updateRepairWarning(data.source, data.repo, data.repairWarnings);
       if (fetchingRepos[key]) {
         delete fetchingRepos[key];
         fetchingRepos = fetchingRepos;
       }
       if (fetchRun) {
-        fetchCompletions.push({ key, error: data.error, failure: { code: data.code, host: data.host, fast: data.refusedFast } });
+        fetchCompletions.push({ key, operationID: meta.operationID, error: data.error, failure: { code: data.code, host: data.host, fast: data.refusedFast } });
         fetchProgressTimer ??= setTimeout(flushFetchProgress, 125);
       }
       if (!data.error && fetchFailNotice?.keys.delete(key) && fetchFailNotice.keys.size === 0) clearFetchFailNotice();
       if (!data.error) recheckOfflineAccount(accountOfKey(key));
     });
 
-    events.on('network:state', (data: { offline?: boolean; hosts?: string[] } | null) => {
+    events.on('network:state', (data) => {
       networkDown = data?.offline ? (data.hosts || []) : [];
     });
 
-    events.on('fetch:allstart', () => {
+    events.on('fetch:allstart', (_, meta) => {
+      fetchOperation = meta.operationID;
       fetchingAll = true;
       clearFetchFailNotice();
       if (!fetchRun) fetchRun = startFetch(Object.keys($repoStates).filter((k) => !['not cloned', 'root offline'].includes(statusOfKey(k))), accountOfKey, statusOfKey);
     });
 
-    events.on('fetch:alldone', (data: { error?: string } | null) => {
+    events.on('fetch:alldone', (data, meta) => {
+      if (fetchOperation && fetchOperation !== meta.operationID) return;
+      fetchOperation = '';
+      fetchOperations.clear();
       fetchingAll = false;
       fetchingRepos = {};
       finishFetch(data?.error);
@@ -2055,16 +2115,16 @@
         : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     });
 
-    events.on('credentials:updated', (statuses: Record<string, CredentialStatus>) => {
+    events.on('credentials:updated', (statuses) => {
       credentialGeneration++;
-      credStatuses = statuses || {};
+      credStatuses = Object.fromEntries(Object.entries(statuses || {}).filter(([key]) => !!$configStore?.accounts[key]));
     });
 
-    events.on('discover:done', (data: any) => discoverDialog.onDone(data));
+    events.on('discover:done', (data) => discoverDialog?.onDone(data));
 
-    events.on('mirror:status', (results: any) => {
-      if (Array.isArray(results)) {
-        applyMirrorStatusResults(results);
+    events.on('mirror:status', (results) => {
+      if (results) {
+        applyMirrorStatusResults(results.filter(row => !!$configStore?.mirrors[row.mirrorKey]?.repos?.[row.repoKey]));
         // Clear checking flag for the mirror group.
         for (const r of results) {
           if (r.mirrorKey) mirrorChecking = { ...mirrorChecking, [r.mirrorKey]: false };
@@ -2072,11 +2132,13 @@
       }
     });
 
-    events.on('mirror:discover:progress', (data: any) => {
+    events.on('mirror:discover:progress', (data, meta) => {
+      if (mirrorDiscoveryDone && BigInt(meta.operationID) <= BigInt(mirrorDiscoveryDone)) return;
       mirrorDiscoverProgress = data;
     });
 
-    events.on('mirror:discover:done', (data: any) => {
+    events.on('mirror:discover:done', (data, meta) => {
+      mirrorDiscoveryDone = meta.operationID;
       mirrorDiscoverLoading = false;
       mirrorDiscoverProgress = null;
       if (data.error) {
@@ -2087,7 +2149,7 @@
       }
     });
 
-    events.on('mirror:setup:done', async (data: any) => {
+    events.on('mirror:setup:done', async (data) => {
       mirrorSetupResultModal = data;
       // Clear the per-row spinner. The Go side now emits the mirrorKey too
       // (issue #59) so we can key off ${mirrorKey}/${repoKey} directly.
@@ -2100,7 +2162,7 @@
       checkAllMirrorStatus();
     });
 
-    events.on('update:available', (info: any) => {
+    events.on('update:available', (info) => {
       if (info?.latest !== updateDismissed) updateInfo = info;
     });
 
@@ -2129,16 +2191,16 @@
       setTimeout(() => Quit(), 1500);
     });
 
-    events.on('pr:refreshed', (upd: any) => {
-      applyPRUpdate(upd as PRAccountUpdateDTO);
+    events.on('pr:refreshed', (upd) => {
+      if ($configStore?.accounts[upd.accountKey]) applyPRUpdate(upd);
     });
 
-    events.on('move:progress', (p: any) => moveDialog.onProgress(p));
+    events.on('move:progress', (p) => moveDialog.onProgress(p));
 
-    events.on('move:done', (r: any) => moveDialog.onDone(r));
+    events.on('move:done', (r) => moveDialog.onDone(r));
 
     if (windowMode === 'remote') {
-      events.on('remote:state', (st: RemoteState) => { void onRemoteState(st); });
+      events.on('remote:state', (st) => { void onRemoteState(st as RemoteState); });
       try { await onRemoteState(await bridge.remoteInfo()); } catch (e) { console.error(e); }
       return;
     }
@@ -2176,7 +2238,11 @@
 
     // Check first run — show onboarding if no folder configured.
     firstRun = await bridge.isFirstRun();
-    if (firstRun) { markStartup('finished'); return; }
+    if (firstRun) {
+      events.snapshot(0, () => 0);
+      markStartup('finished');
+      return;
+    }
 
     try { await initDashboard(); }
     catch (e) { markStartup('finished'); throw e; }
@@ -2185,9 +2251,11 @@
   function checkSyncDone() {
     let states: Record<string, RepoState> = {};
     repoStates.subscribe((v) => (states = v))();
-    const stillRunning = Object.values(states).some(
-      (r) => r.status === 'syncing' || r.status === 'cloning'
-    );
+    const stillRunning = Object.entries(states).some(([key, row]) => {
+      const slash = key.indexOf('/');
+      return configuredRepo(key.slice(0, slash), key.slice(slash + 1)) &&
+        (row.status === 'syncing' || row.status === 'cloning' || row.status === 'pending');
+    });
     if (!stillRunning) {
       syncing = false;
       finishPull();

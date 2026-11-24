@@ -72,7 +72,7 @@ func TestFetchIsBounded(t *testing.T) {
 			t.Errorf("the cycle took %v, want the fetch cut at %v", spent, fetchTimeout)
 		}
 		done := events.named("fetch:done")
-		if len(done) != 1 || done[0].args[0].(map[string]any)["error"] == nil {
+		if len(done) != 1 || done[0].args[0].(fetchDoneDTO).Error == "" {
 			t.Errorf("fetch:done = %v, want one event with an error", done)
 		}
 	})
@@ -96,7 +96,7 @@ func TestPullIsBounded(t *testing.T) {
 		time.Sleep(2 * time.Second)
 		synctest.Wait()
 		done := events.named("pull:done")
-		if len(done) != 1 || done[0].args[0].(map[string]any)["error"] == nil {
+		if len(done) != 1 || done[0].args[0].(pullDoneDTO).Error == "" {
 			t.Errorf("pull:done = %v, want one event with an error once the bound passed", done)
 		}
 	})

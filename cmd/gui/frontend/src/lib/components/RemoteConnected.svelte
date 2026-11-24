@@ -40,7 +40,7 @@
   $: waiting = st.state === 'connecting' && st.waiting ? $t(`remote.waiting.${st.waiting}`) : '';
 
   onMount(async () => {
-    offs.push(events.on('remote:state', (s: RemoteState) => { st = s; if (s.state === 'failed') showLog = showLog || !simple; }));
+    offs.push(events.on('remote:state', (s) => { st = s as RemoteState; if (s.state === 'failed') showLog = showLog || !simple; }));
     offs.push(events.on('remote:log', (line: string) => { lines = [...lines.slice(-1999), line]; }));
     try {
       st = await bridge.remoteInfo();

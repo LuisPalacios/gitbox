@@ -702,6 +702,10 @@ The Go backend (`cmd/gui/app.go`) exposes methods the Svelte frontend calls thro
 
 The startup snapshot initializes the repository rows. Eight workers check local status and send `status:batch` after eight results or 250 ms. The renderer accepts batches for its own pass and configuration revision, preserves other rows, and schedules fetch, mirrors and PR work after the first result or an empty completion. The frontend paints the first batch immediately and groups later results into updates at most 125 ms apart while work arrives. It flushes pending rows at completion and then starts local discovery. A completed sweep also serves blocking `GetAllStatus` callers in configuration order.
 
+Long-running events carry a schema, the host configuration revision, a stable operation ID and a sequence that increases per app instance. The startup snapshot captures the latest sequence together with the configuration. The renderer drops events covered by the snapshot and events from older revisions, and checks that each repo still exists in configuration before updating its row. Reconnecting starts a new host sequence. The RPC relay preserves the metadata and applies its event allowlist and payload filters. I run `go generate ./cmd/gui` to update the TypeScript event types.
+
+When a clone or pull succeeds, the row shows **Checking…** until Git reports the working-tree status. The backend checks that repo and emits `status:one` with the same operation ID. An older check cannot replace the result of a newer operation on the same row.
+
 **Frontend structure:**
 
 - `App.svelte` composes the shell and holds the app-level state, the event listeners and the actions several parts share.

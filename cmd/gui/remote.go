@@ -170,8 +170,8 @@ type remoteSession struct {
 
 func newRemoteSession(a *App, alias string) *remoteSession {
 	s := &remoteSession{a: a, alias: alias, clientID: newClientID(), dial: dialSSH}
-	s.log = remote.NewLog(func(line string) { a.sink().Emit("remote:log", userText(line)) })
-	s.backend = newRemoteBackend(a.sink, s.log)
+	s.log = remote.NewLog(func(line string) { emit(a.newOperation(), "remote:log", userText(line)) })
+	s.backend = newRemoteBackend(a, s.log)
 	s.backend.onTruncate = s.noteTruncated
 	s.backend.refuseUnserved = true // the unserved mutations (#294)
 	s.state = RemoteStateDTO{State: remoteDisconnected, Alias: alias}
@@ -215,7 +215,7 @@ func (s *remoteSession) set(gen int, change func(*RemoteStateDTO)) {
 	s.state.Editor = editor
 	st := s.state
 	s.mu.Unlock()
-	s.a.sink().Emit("remote:state", st)
+	emit(s.a.newOperation(), "remote:state", st)
 }
 
 // noteTruncated marks the state incomplete, once per connection.
@@ -228,7 +228,7 @@ func (s *remoteSession) noteTruncated() {
 	s.state.Truncated = true
 	st := s.state
 	s.mu.Unlock()
-	s.a.sink().Emit("remote:state", st)
+	emit(s.a.newOperation(), "remote:state", st)
 }
 
 func (s *remoteSession) info() RemoteStateDTO {

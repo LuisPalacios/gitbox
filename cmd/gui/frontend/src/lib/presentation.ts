@@ -41,6 +41,7 @@ const rules: Record<string, Rule> = {
   syncing:         { kind: 'busy',     attention: 2, advancedKey: 'simple.checking', advancedColour: 'not cloned' },
   cloning:         { kind: 'busy',     attention: 3, advancedKey: 'simple.checking', advancedColour: 'not cloned' },
   fetching:        { kind: 'busy',     attention: CALM_RANK, advancedKey: 'simple.checking', advancedColour: 'not cloned' },
+  pending:         { kind: 'busy',     attention: 2, advancedKey: 'simple.checking', advancedColour: 'not cloned' },
   unknown:         { kind: 'checking', attention: CALM_RANK, advancedKey: 'simple.checking', advancedColour: 'not cloned' },
 };
 const localBranch: Rule = { kind: 'saved', attention: CALM_RANK, advancedKey: 'repo.localBranch', simpleKey: 'repo.localBranch', advancedColour: 'clean' };

@@ -7,6 +7,7 @@ import { ApplyRecipeImport, ExportRecipe, OpenRecipeImport, PreviewRecipeExport,
 import { recipe } from '../../wailsjs/go/models';
 import { GetStartupSnapshot, GetConfig, GetCollapsed, SetCollapsed, GetConfigPath, GetAllStatus, RefreshStatus, CloneRepo, PullRepo, Discover, AddDiscoveredRepos, CredentialVerify, CredentialDelete, ReloadConfig, DeleteRepo, AddAccount, SuggestAccountKey, DiscardAccount, UpdateAccount, RenameAccount, CredentialSetupGCM, CredentialStoreToken, CredentialSetupSSH, CredentialRegenerateSSH, CredentialSSHAgentReport, GetTokenGuide, AccountDeletionImpact, DeleteAccount, ChangeCredentialType, OpenAccountFolder, OpenAccountInApp, OpenAccountInAIHarness, OpenFileInEditor, OpenInExplorer, OpenInApp, OpenInAIHarness,  DetectEditors, RefreshAIHarnesses, IsFirstRun, GetConfigLoadError, AcknowledgeConfigError, RepairConfig, ListConfigBackups, RestoreFromBackup, PickFolder, InitRoot, ListRoots, AddRoot, RemoveRoot, SetDefaultRoot, GetAppVersion, GetOS, FetchRepo, FetchAllRepos, GetRepoDetail, GetLanguage, SetLanguage, GetPeriodicSync, SetPeriodicSync, GetViewMode, SetViewMode, GetUIMode, SetUIMode, SetTheme, ShowWindow, CheckGlobalIdentity, RemoveGlobalIdentity, IsGlobalGCMConfigNeeded, CheckGlobalGCMConfig, FixGlobalGCMConfig, CheckGlobalGitignore, InstallGlobalGitignore, RecommendedGlobalGitignoreBody, GetCheckGlobalGitignore, SetCheckGlobalGitignore, GetAutostart, SetAutostart, GetMirrorStatus, SetupMirrorRepo, AddMirrorGroup, DeleteMirrorGroup, AddMirrorRepo, DeleteMirrorRepo, CheckMirrorCredentials, ListRemoteRepos, DiscoverMirrors, ApplyDiscoveredMirrors, ListAccountOrgs, CreateNewRepo, IsPositionOnScreen, ApplyUpdate, PreviewSweep, ConfirmSweep, Reconcile, AdoptClones, IgnoreClone, GetPRSettings, SetPRBadgesEnabled, SetPRIncludeDrafts, GetPRsForRepo, RefreshAllPRs, SetRepoContainer, SetRepoWorkspace, RepoWorkspaceFiles, GetNestedScanDepth, SetNestedScanDepth, ScanFolderForClones, AddDiscoveredReposToFolder, RepoNesting, DoctorRun, DoctorPrecheck, ListMoveDestinationOwners, PreflightMove, MoveRepo, CheckMoveReadiness, ListTerminalApps, ListShells, ListTerminalProfiles, OpenProfile, OpenAccountProfile, SaveTerminalProfilesDTO, RedetectProfiles, MissingModernTerminal, GetWindowMode, OpenTerminalsManagerWindow, RemoteInfo, RemoteLog, RemoteDisconnect, RemoteReconnect, RemoteReinstall, RemoteUninstall, RemoteRunDoctor, ListRemotes, ValidateRemotePath, SetRemoteEditor, AddRemote, RemoveRemote, ConnectRemote } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
+import { createEventRouter } from './events';
 import { get } from 'svelte/store';
 import { pushNotice } from './notices';
 import { guardCalls, decodeWindowError, WindowError } from './readonly';
@@ -323,6 +324,4 @@ export interface DoctorPrecheckDTO {
   missing?: DoctorToolDTO[];
 }
 
-export const events = {
-  on: EventsOn,
-};
+export const events = createEventRouter(EventsOn);

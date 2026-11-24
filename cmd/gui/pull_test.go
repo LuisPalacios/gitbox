@@ -128,18 +128,18 @@ func TestPullRepo_ChecksLocalWorkBeforeFastForward(t *testing.T) {
 			if len(done) != 1 {
 				t.Fatalf("pull:done = %v, want one completion", done)
 			}
-			payload := done[0].args[0].(map[string]any)
-			if payload["error"] != nil {
+			payload := done[0].args[0].(pullDoneDTO)
+			if payload.Error != "" {
 				t.Fatalf("pull failed: %v", payload)
 			}
 			gotHead := pullFixtureGit(t, work, "rev-parse", "HEAD")
 			if tc.skip == "" {
-				if want := pullFixtureGit(t, writer, "rev-parse", "HEAD"); gotHead != want || payload["skipped"] != nil {
+				if want := pullFixtureGit(t, writer, "rev-parse", "HEAD"); gotHead != want || !payload.Skipped.IsZero() {
 					t.Fatalf("git HEAD = %s, want %s; pull:done = %v", gotHead, want, payload)
 				}
 				return
 			}
-			if gotHead != head || payload["skipped"] != tc.skip || payload["state"] != tc.state.String() {
+			if gotHead != head || payload.Skipped.v != tc.skip || payload.State != tc.state.String() {
 				t.Fatalf("git HEAD changed: %t; pull:done = %v, want skipped = %q, state = %q", gotHead != head, payload, tc.skip, tc.state)
 			}
 			if tc.payloadPath != "" {
@@ -167,7 +167,7 @@ func TestPullRepo_SkipsWhenSettingsChangeDuringPreflight(t *testing.T) {
 	a.PullRepo("source-a", "org/repo-0")
 	a.refreshWG.Wait()
 	done := events.named("pull:done")
-	if len(done) != 1 || done[0].args[0].(map[string]any)["skipped"] != pullSettingsChanged {
+	if len(done) != 1 || done[0].args[0].(pullDoneDTO).Skipped.v != pullSettingsChanged {
 		t.Fatalf("pull:done = %v, want settingsChanged skip", done)
 	}
 }

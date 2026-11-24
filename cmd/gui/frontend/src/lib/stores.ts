@@ -1,7 +1,7 @@
 import type { RemoteHost } from './remotehost';
 import { isBlocked } from './readonly';
 import type { CallName } from './bridge';
-import { writable, derived, readable } from 'svelte/store';
+import { writable, derived, readable, get } from 'svelte/store';
 import type { Placeholder } from './repo-tree';
 import { CALM_RANK, derivePresentation } from './presentation';
 import type { ConfigDTO, Account, SourceDTO, MirrorDTO, MirrorStatusResult, RepoState, StatusResult, PRSummaryDTO, PRAccountUpdateDTO, WorkspaceDiagnosticDTO } from './types';
@@ -31,7 +31,8 @@ export const statusClock = readable(Date.now(), (set) => {
 export const repoStates = writable<Record<string, RepoState>>({});
 
 // Apply status results from Go backend into repoStates store
-export function applyStatusResults(results: StatusResult[], partial = false) {
+export function applyStatusResults(results: StatusResult[], partial = false, completion = false) {
+  const revision = get(configStore)?.revision ?? 0;
   repoStates.update((states) => {
     const next: Record<string, RepoState> = partial ? { ...states } : {};
     for (const r of results) {
@@ -54,7 +55,7 @@ export function applyStatusResults(results: StatusResult[], partial = false) {
       }
       // Preserve in-flight progress if repo is syncing/cloning
       const existing = states[key];
-      if (existing && (existing.status === 'syncing' || existing.status === 'cloning')) {
+      if (existing && (existing.status === 'syncing' || existing.status === 'cloning' || (existing.status === 'pending' && !completion && (existing.statusCheckRevision ?? 0) >= revision))) {
         next[key] = existing;
       } else {
         next[key] = {

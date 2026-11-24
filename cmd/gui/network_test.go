@@ -23,8 +23,8 @@ func networkState(t *testing.T, events *refreshTestEvents) (offline bool, hosts 
 	if len(all) == 0 {
 		return false, nil, 0
 	}
-	payload := all[len(all)-1].args[0].(map[string]any)
-	return payload["offline"].(bool), payload["hosts"].([]string), len(all)
+	payload := all[len(all)-1].args[0].(networkStateDTO)
+	return payload.Offline, payload.Hosts, len(all)
 }
 
 func TestServerAddr(t *testing.T) {
@@ -97,8 +97,8 @@ func TestFetchAllStopsWhenTheServerIsUnreachable(t *testing.T) {
 			t.Fatalf("%d fetch:done and %d fetch:start events, want %d and 0", len(done), len(events.named("fetch:start")), clones)
 		}
 		for _, event := range done {
-			payload := event.args[0].(map[string]any)
-			if payload["skipped"] != true || payload["code"] != "git.offline" || payload["host"] != "example.invalid" {
+			payload := event.args[0].(fetchDoneDTO)
+			if !payload.Skipped || payload.Code != "git.offline" || payload.Host != "example.invalid" {
 				t.Fatalf("skipped clone payload = %v", payload)
 			}
 		}
@@ -236,7 +236,7 @@ func TestFetchAllSkipsTheQueueOfALostServer(t *testing.T) {
 		}
 		skipped := 0
 		for _, event := range events.named("fetch:done") {
-			if event.args[0].(map[string]any)["skipped"] == true {
+			if event.args[0].(fetchDoneDTO).Skipped {
 				skipped++
 			}
 		}
@@ -342,7 +342,7 @@ func TestFetchAllStopsWhenTheNetworkDiesMidway(t *testing.T) {
 			t.Fatalf("%d of %d clones reported back", len(done), clones)
 		}
 		for _, event := range done {
-			if payload := event.args[0].(map[string]any); payload["skipped"] != true || payload["code"] != "git.offline" {
+			if payload := event.args[0].(fetchDoneDTO); !payload.Skipped || payload.Code != "git.offline" {
 				t.Fatalf("a clone stopped by the outage must read unreachable: %v", payload)
 			}
 		}
@@ -355,14 +355,14 @@ func TestFetchAllStopsWhenTheNetworkDiesMidway(t *testing.T) {
 // Pull is network work like any other: it does not start without a server,
 // and one in flight stops when the server goes away.
 func TestPullStopsWithoutNetwork(t *testing.T) {
-	pullDone := func(t *testing.T, events *refreshTestEvents) map[string]any {
+	pullDone := func(t *testing.T, events *refreshTestEvents) pullDoneDTO {
 		t.Helper()
 		synctest.Wait()
 		done := events.named("pull:done")
 		if len(done) != 1 {
 			t.Fatalf("%d pull:done events, want 1", len(done))
 		}
-		return done[0].args[0].(map[string]any)
+		return done[0].args[0].(pullDoneDTO)
 	}
 
 	t.Run("not started", func(t *testing.T) {
@@ -375,7 +375,7 @@ func TestPullStopsWithoutNetwork(t *testing.T) {
 
 			a.PullRepo("source-a", "org/repo-0")
 			payload := pullDone(t, events)
-			if pulls.Load() != 0 || payload["skipped"] != true || payload["code"] != "git.offline" || payload["host"] != "example.invalid" {
+			if pulls.Load() != 0 || payload.Skipped.v != true || payload.Code != "git.offline" || payload.Host != "example.invalid" {
 				t.Errorf("%d pulls ran; payload %v", pulls.Load(), payload)
 			}
 			if offline, _, _ := networkState(t, events); !offline {
@@ -409,7 +409,7 @@ func TestPullStopsWithoutNetwork(t *testing.T) {
 			// One monitor interval later the outage has been noticed.
 			time.Sleep(networkMonitorInterval + 100*time.Millisecond)
 			payload := pullDone(t, events)
-			if payload["skipped"] != true || payload["code"] != "git.offline" {
+			if payload.Skipped.v != true || payload.Code != "git.offline" {
 				t.Errorf("payload %v, want the pull reported as unreachable", payload)
 			}
 		})
@@ -422,7 +422,7 @@ func TestPullStopsWithoutNetwork(t *testing.T) {
 			var pulls atomic.Int32
 			a.refreshHooks.pull = func(context.Context, string) error { pulls.Add(1); return nil }
 			a.PullRepo("source-a", "org/repo-0")
-			if payload := pullDone(t, events); pulls.Load() != 1 || payload["error"] != nil {
+			if payload := pullDone(t, events); pulls.Load() != 1 || payload.Error != "" {
 				t.Errorf("%d pulls; payload %v", pulls.Load(), payload)
 			}
 		})

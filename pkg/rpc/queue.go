@@ -30,6 +30,8 @@ type outbox struct {
 	dropped      int
 }
 
+const eventOperationPrefix = "operationID="
+
 type outItem struct {
 	body     []byte
 	progress bool
@@ -92,7 +94,14 @@ func (o *outbox) event(name, key string, body []byte) {
 	if !strings.HasSuffix(name, ":progress") {
 		// An event that closes an operation must come after the last
 		// progress of that operation: send what was waiting first.
-		o.flushPrefixLocked(eventPrefix(name))
+		if strings.HasPrefix(key, eventOperationPrefix) {
+			if strings.HasSuffix(name, ":done") {
+				o.flushKeyLocked(key)
+				delete(o.lastProgress, key)
+			}
+		} else {
+			o.flushPrefixLocked(eventPrefix(name))
+		}
 		o.putLocked(outItem{body: body})
 		return
 	}
@@ -194,9 +203,8 @@ func (o *outbox) close() {
 	o.items.Broadcast()
 }
 
-// operationKey identifies the operation an event belongs to: its name plus
-// the fields that say which clone, account or mirror it is about. Two
-// progress events with the same key replace each other.
+// operationKey lets progress and completion share one operation ID. Other
+// callers of the RPC package can still key progress by their entity fields.
 func operationKey(name string, payload []any) string {
 	key := name
 	if len(payload) == 0 {
@@ -209,6 +217,9 @@ func operationKey(name string, payload []any) string {
 	var fields map[string]json.RawMessage
 	if json.Unmarshal(data, &fields) != nil {
 		return key
+	}
+	if id := fields["operationID"]; len(id) != 0 {
+		return eventOperationPrefix + string(id) + "|" + eventPrefix(name)
 	}
 	for _, f := range [...]string{"source", "repo", "accountKey", "account", "mirror", "mirrorKey", "key"} {
 		if v, ok := fields[f]; ok {

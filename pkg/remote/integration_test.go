@@ -1106,7 +1106,13 @@ func (l *eventLog) record(name string, payload []json.RawMessage) {
 	}
 	var raw json.RawMessage
 	if len(payload) == 1 {
-		raw = payload[0]
+		var envelope struct {
+			Schema  int             `json:"schema"`
+			Payload json.RawMessage `json:"payload"`
+		}
+		if json.Unmarshal(payload[0], &envelope) == nil && envelope.Schema == 1 {
+			raw = envelope.Payload
+		}
 	}
 	l.payloads[name] = append(l.payloads[name], raw)
 	if name == "clone:progress" {

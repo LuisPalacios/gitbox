@@ -36,12 +36,13 @@
   }
 
   // discover:done — the provider listing arrived (or failed).
-  export function onDone(data: any) {
+  export function onDone(data: import('../dto.generated').EventPayloads['discover:done']) {
+    if (!discoverModal || data.accountKey !== discoverModal) return;
+    const acctKey = discoverModal;
     discoverLoading = false;
     if (data.error) {
       // If SSH account has no API token, close discover modal and show the token setup modal.
-      const acctKey = data.accountKey || discoverModal;
-      const acct = acctKey ? $accounts[acctKey] : null;
+      const acct = $accounts[acctKey];
       if (acct?.default_credential_type === 'ssh' && String(data.error).includes('no API token')) {
         discoverModal = null;
         onNeedsToken(acctKey);

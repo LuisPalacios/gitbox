@@ -48,7 +48,8 @@ type App struct {
 	recoveryExpiry    *time.Timer
 	// events carries every event to the frontend; nil means nopSink (see
 	// events.go). Startup installs the Wails sink.
-	events EventSink
+	events      EventSink
+	eventStream eventStream
 	// backend does the work; nil means localBackend{a} (see backend.go).
 	backend Backend
 	// prefs holds the client preferences; nil means sharedPrefs{a}, the
@@ -424,7 +425,7 @@ func (a *App) checkForUpdate(ctx context.Context) error {
 	if result.Release != nil {
 		info.URL = result.Release.HTMLURL
 	}
-	a.sink().Emit("update:available", info)
+	emit(a.newOperation(), "update:available", info)
 	return nil
 }
 
@@ -494,7 +495,10 @@ func minInt(a, b int) int {
 // setRevision advances the status snapshot when saved domain data changes.
 func (a *App) setRevision(next config.FileRevision) {
 	if !a.cfgBase.SameDomain(next) {
+		a.eventStream.mu.Lock()
 		a.configRevision++
+		a.eventStream.revision = a.configRevision
+		a.eventStream.mu.Unlock()
 	}
 	a.cfgBase = next
 }
@@ -609,6 +613,7 @@ func (a *App) configDTO() (ConfigDTO, error) {
 // StartupSnapshot contains only information available without disk scanning,
 // subprocesses or provider requests.
 type StartupSnapshot struct {
+	EventWatermark     uint64               `json:"eventWatermark"`
 	Config             ConfigDTO            `json:"config"`
 	Nesting            map[string]string    `json:"nesting"`
 	ConfigPath         string               `json:"configPath"`
@@ -659,7 +664,10 @@ func (a *App) getStartupSnapshotLocal() (StartupSnapshot, error) {
 	for child, parent := range status.ComputeNesting(a.cfg).ParentOf {
 		nesting[child.Source+"/"+child.Repo] = parent.Source + "/" + parent.Repo
 	}
-	return StartupSnapshot{Config: cfg, Nesting: nesting, ConfigPath: a.cfgPath, AppVersion: formatAppVersion(version, commit), OS: runtime.GOOS, CredentialFindings: slices.Clone(a.credentialFindings)}, nil
+	a.eventStream.mu.Lock()
+	watermark := a.eventStream.sequence
+	a.eventStream.mu.Unlock()
+	return StartupSnapshot{EventWatermark: watermark, Config: cfg, Nesting: nesting, ConfigPath: a.cfgPath, AppVersion: formatAppVersion(version, commit), OS: runtime.GOOS, CredentialFindings: slices.Clone(a.credentialFindings)}, nil
 }
 
 // ReloadConfig re-reads the config from disk. Call after external edits
@@ -1284,7 +1292,7 @@ func (a *App) detectHarnesses(ctx context.Context) error {
 	}
 	a.mu.Unlock()
 	if changed && ctx.Err() == nil {
-		a.sink().Emit("harnesses:updated", list)
+		emit(a.newOperation(), "harnesses:updated", list)
 	}
 	return ctx.Err()
 }
@@ -1863,6 +1871,7 @@ func (a *App) cloneRepoLocal(sourceKey, repoKey, root string) {
 // incomplete. Its origin is already the token-free URL the plan cloned
 // from, so nothing needs resetting.
 func (a *App) cloneRepoRun(ctx context.Context, sourceKey, repoKey, root string) {
+	op := a.newOperation()
 	var err error
 	if root != "" {
 		_, err = hostPath(root)
@@ -1884,36 +1893,32 @@ func (a *App) cloneRepoRun(ctx context.Context, sourceKey, repoKey, root string)
 		}
 	}
 	addr := serverAddr(a.cfg.Accounts[a.cfg.Sources[sourceKey].Account])
+	op = op.atRevision(a.configRevision)
 	a.mu.Unlock()
 	if err != nil {
-		a.sink().Emit("clone:done", map[string]string{
-			"source": sourceKey, "repo": repoKey, "error": userMsg(err),
-		})
+		emit(op, "clone:done", cloneDoneDTO{Source: sourceKey, Repo: repoKey, Error: userMsg(err)})
 		return
 	}
+	emit(op, "clone:start", repoEventDTO{Source: sourceKey, Repo: repoKey})
 	// A clone does not start against a server that does not answer.
 	if !a.reachable(ctx, addr) {
-		result := map[string]any{"source": sourceKey, "repo": repoKey}
-		describeUnreachable(result, addr)
-		a.sink().Emit("clone:done", result)
+		errorText, code, host := unreachableDetails(addr)
+		emit(op, "clone:done", cloneDoneDTO{Source: sourceKey, Repo: repoKey, Error: errorText, Code: code, Host: host, Skipped: true})
 		return
 	}
 
 	// The git transfer runs without the config lock.
 	err = plan.Run(ctx, func(p git.CloneProgress) {
-		a.sink().Emit("clone:progress", map[string]any{
-			"source": sourceKey, "repo": repoKey,
-			"phase": p.Phase, "percent": p.Percent,
-		})
+		emit(op, "clone:progress", cloneProgressDTO{Source: sourceKey, Repo: repoKey, Phase: p.Phase, Percent: p.Percent})
 	})
 
 	// "path" lets the frontend fill repoStates[key].path for rows cloned
 	// in-session (create-repo, Bring Local). Until the next full status
 	// refresh the row otherwise has no path and every path-based kebab
 	// action silently no-ops (#79).
-	result := map[string]any{"source": sourceKey, "repo": repoKey, "path": plan.Dest}
+	result := cloneDoneDTO{Source: sourceKey, Repo: repoKey, Path: plan.Dest}
 	if err != nil {
-		result["error"] = userMsg(failedCloneError(plan.Dest, err))
+		result.Error = userMsg(failedCloneError(plan.Dest, err))
 	} else {
 		// heal.Repo sets user.name/user.email, normalizes the origin
 		// URL, and configures per-repo credential isolation. Warnings are
@@ -1924,13 +1929,17 @@ func (a *App) cloneRepoRun(ctx context.Context, sourceKey, repoKey, root string)
 			report.Warnings = []string{"Repository settings changed before clone repair"}
 		}
 		if len(report.Warnings) > 0 {
-			result["warnings"] = report.Warnings
+			result.Warnings = report.Warnings
 		}
 		if len(report.Fixed) > 0 {
-			result["fixes"] = report.Fixed
+			result.Fixes = report.Fixed
 		}
 	}
-	a.sink().Emit("clone:done", result)
+	op = a.currentRepoOperation(op, cfg, sourceKey, repoKey)
+	emit(op, "clone:done", result)
+	if err == nil {
+		a.publishCompletionStatus(ctx, op, cfg, sourceKey, repoKey, plan.Dest)
+	}
 }
 
 // failedCloneError reports a remaining destination without changing it. A path
@@ -1958,37 +1967,33 @@ func (a *App) pullRepoLocal(sourceKey, repoKey string) {
 // pullRepoRun pulls one repo and emits pull:done. It stops when ctx is
 // cancelled.
 func (a *App) pullRepoRun(ctx context.Context, sourceKey, repoKey string) {
-	cfg := a.snapshotRefreshConfig()
+	cfg, revision := a.refreshSnapshot()
+	op := a.newOperation().atRevision(revision)
 	src, ok := cfg.Sources[sourceKey]
 	if !ok {
-		a.sink().Emit("pull:done", map[string]string{
-			"source": sourceKey, "repo": repoKey,
-			"error": fmt.Sprintf("source %q not found", sourceKey),
-		})
+		emit(op, "pull:done", pullDoneDTO{Source: sourceKey, Repo: repoKey, Error: fmt.Sprintf("source %q not found", sourceKey)})
 		return
 	}
 	repo, ok := src.Repos[repoKey]
 	if !ok {
-		a.sink().Emit("pull:done", map[string]string{
-			"source": sourceKey, "repo": repoKey,
-			"error": fmt.Sprintf("repo %q not found in source %q", repoKey, sourceKey),
-		})
+		emit(op, "pull:done", pullDoneDTO{Source: sourceKey, Repo: repoKey, Error: fmt.Sprintf("repo %q not found in source %q", repoKey, sourceKey)})
 		return
 	}
+	emit(op, "pull:start", repoEventDTO{Source: sourceKey, Repo: repoKey})
 	path := status.RepoPath(cfg, sourceKey, repoKey, repo)
 	// Pre-pull self-heal: if .git/config drifted from spec (e.g. a
 	// manual edit, an older gitbox that didn't run the heal), fix
 	// it before the network op so auth uses the right credentials.
 	// I stop the pull if maintenance cannot restore the configured settings.
-	result := map[string]any{"source": sourceKey, "repo": repoKey}
+	result := pullDoneDTO{Source: sourceKey, Repo: repoKey}
 	report, current := a.repairClone(cfg, sourceKey, repoKey)
 	if !current {
-		result["skipped"] = pullSettingsChanged
-		a.sink().Emit("pull:done", result)
+		result.Skipped = skipReason{v: pullSettingsChanged}
+		emit(op, "pull:done", result)
 		return
 	}
 	if report.Skipped == "" && !a.readOnly {
-		result["repairWarnings"] = append([]string{}, report.Warnings...)
+		result.RepairWarnings = append([]string{}, report.Warnings...)
 	}
 	var err error
 	addr := serverAddr(cfg.Accounts[src.Account])
@@ -2013,16 +2018,16 @@ func (a *App) pullRepoRun(ctx context.Context, sourceKey, repoKey string) {
 				return err
 			}
 			if !a.sameRefreshRepo(cfg, sourceKey, repoKey) {
-				result["skipped"] = pullSettingsChanged
+				result.Skipped = skipReason{v: pullSettingsChanged}
 				return nil
 			}
 			if reason != "" {
-				result["skipped"] = reason
-				result["state"] = status.Classify(st).String()
-				result["modified"] = st.Changed
-				result["untracked"] = st.Untracked
-				result["ahead"] = st.Ahead
-				result["behind"] = st.Behind
+				result.Skipped = skipReason{v: reason}
+				result.State = status.Classify(st).String()
+				result.Modified = &st.Changed
+				result.Untracked = &st.Untracked
+				result.Ahead = &st.Ahead
+				result.Behind = &st.Behind
 				return nil
 			}
 			return pull(ctx, path)
@@ -2030,11 +2035,16 @@ func (a *App) pullRepoRun(ctx context.Context, sourceKey, repoKey string) {
 	}
 
 	if errors.Is(err, errServerUnreachable) {
-		describeUnreachable(result, addr)
+		result.Error, result.Code, result.Host = unreachableDetails(addr)
+		result.Skipped = skipReason{v: true}
 	} else if err != nil {
-		result["error"] = userMsg(err)
+		result.Error = userMsg(err)
 	}
-	a.sink().Emit("pull:done", result)
+	op = a.currentRepoOperation(op, cfg, sourceKey, repoKey)
+	emit(op, "pull:done", result)
+	if err == nil && result.Skipped.IsZero() {
+		a.publishCompletionStatus(ctx, op, cfg, sourceKey, repoKey, path)
+	}
 }
 
 // RepoDetail holds human-readable status information for a single repo.
@@ -2114,8 +2124,8 @@ func (a *App) fetchRepoLocal(sourceKey, repoKey string) {
 		return
 	}
 	a.refreshWG.Go(func() {
-		cfg := a.snapshotRefreshConfig()
-		_ = a.fetchOne(cfg, sourceKey, repoKey, nil)
+		cfg, revision := a.refreshSnapshot()
+		_ = a.fetchOne(cfg, revision, sourceKey, repoKey, nil)
 		a.RefreshStatus()
 	})
 	a.refreshMu.Unlock()
@@ -2931,13 +2941,11 @@ func (a *App) discoverLocal(accountKey string) {
 	go func() {
 		a.mu.Lock()
 		acct, ok := a.cfg.Accounts[accountKey]
+		op := a.newOperation().atRevision(a.configRevision)
 		a.mu.Unlock()
 
 		if !ok {
-			a.sink().Emit("discover:done", map[string]any{
-				"accountKey": accountKey,
-				"error":      fmt.Sprintf("account %q not found", accountKey),
-			})
+			emit(op, "discover:done", discoverDoneDTO{AccountKey: accountKey, Error: fmt.Sprintf("account %q not found", accountKey)})
 			return
 		}
 
@@ -2947,10 +2955,7 @@ func (a *App) discoverLocal(accountKey string) {
 			repos, err = ops.ListRemoteRepos(context.Background(), acct, accountKey)
 		}
 		if err != nil {
-			a.sink().Emit("discover:done", map[string]any{
-				"accountKey": accountKey,
-				"error":      userMsg(err),
-			})
+			emit(op, "discover:done", discoverDoneDTO{AccountKey: accountKey, Error: userMsg(err)})
 			return
 		}
 
@@ -2965,10 +2970,7 @@ func (a *App) discoverLocal(accountKey string) {
 			}
 		}
 
-		a.sink().Emit("discover:done", map[string]any{
-			"accountKey": accountKey,
-			"repos":      results,
-		})
+		emit(op, "discover:done", discoverDoneDTO{AccountKey: accountKey, Repos: results})
 	}()
 }
 
@@ -3061,7 +3063,7 @@ func (a *App) checkMirrorStatus(ctx context.Context, cfg *config.Config, mirrorK
 			Error:      userText(r.Error),
 		})
 	}
-	a.sink().Emit("mirror:status", results)
+	emit(a.newOperation(), "mirror:status", results)
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -3114,7 +3116,7 @@ func (a *App) setupMirrorRepoRun(ctx context.Context, mirrorKey, repoKey string)
 		a.mu.Unlock()
 	}
 
-	a.sink().Emit("mirror:setup:done", result)
+	emit(a.newOperation(), "mirror:setup:done", result)
 }
 
 // AddMirrorGroup creates a new mirror group pairing two accounts.
@@ -3308,32 +3310,24 @@ func (a *App) discoverMirrorsLocal() {
 	go func() {
 		a.mu.Lock()
 		cfg := a.snapshotLocked()
+		op := a.newOperation().atRevision(a.configRevision)
 		a.mu.Unlock()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 
 		if !a.anyServerReachable(ctx, cfg) {
-			a.sink().Emit("mirror:discover:done", map[string]any{"error": userMsg(errServerUnreachable)})
+			emit(op, "mirror:discover:done", mirrorDiscoverDoneDTO{Error: userMsg(errServerUnreachable)})
 			return
 		}
 		results, err := mirror.DiscoverMirrors(ctx, cfg, func(p mirror.DiscoverProgress) {
-			a.sink().Emit("mirror:discover:progress", map[string]any{
-				"phase":   p.Phase,
-				"account": p.Account,
-				"current": p.Current,
-				"total":   p.Total,
-			})
+			emit(op, "mirror:discover:progress", mirrorDiscoverProgressDTO(p))
 		})
 		if err != nil {
-			a.sink().Emit("mirror:discover:done", map[string]any{
-				"error": userMsg(err),
-			})
+			emit(op, "mirror:discover:done", mirrorDiscoverDoneDTO{Error: userMsg(err)})
 			return
 		}
-		a.sink().Emit("mirror:discover:done", map[string]any{
-			"results": results,
-		})
+		emit(op, "mirror:discover:done", mirrorDiscoverDoneDTO{Results: results})
 	}()
 }
 
@@ -3848,18 +3842,19 @@ func (a *App) moveRepoLocal(req MoveRequestDTO) {
 // stops when ctx is cancelled, between phases or in the git or HTTP call
 // in flight, and never starts deleting after that (move.Move).
 func (a *App) moveRepoRun(ctx context.Context, req MoveRequestDTO) {
+	op := a.newOperation()
 	// The move reads a snapshot and writes its one config change through
 	// commitConfig (#173): no live pointer leaves the lock.
 	a.mu.Lock()
 	cfg, err := a.cfg.Clone()
 	a.mu.Unlock()
 	if err != nil {
-		a.sink().Emit("move:done", MoveResultDTO{Error: userMsg(err)})
+		emit(op, "move:done", MoveResultDTO{Error: userMsg(err)})
 		return
 	}
 	src, ok := cfg.Sources[req.SourceSourceKey]
 	if !ok {
-		a.sink().Emit("move:done", MoveResultDTO{Error: fmt.Sprintf("source %q not found", req.SourceSourceKey)})
+		emit(op, "move:done", MoveResultDTO{Error: fmt.Sprintf("source %q not found", req.SourceSourceKey)})
 		return
 	}
 	repo := src.Repos[req.SourceRepoKey]
@@ -3884,7 +3879,7 @@ func (a *App) moveRepoRun(ctx context.Context, req MoveRequestDTO) {
 		if p.Err != nil {
 			event.Error = userMsg(p.Err)
 		}
-		a.sink().Emit("move:progress", event)
+		emit(op, "move:progress", event)
 	})
 	dto := MoveResultDTO{
 		NewOrigin:           result.NewOrigin,
@@ -3898,7 +3893,7 @@ func (a *App) moveRepoRun(ctx context.Context, req MoveRequestDTO) {
 	if result.Err != nil {
 		dto.Error = userMsg(result.Err)
 	}
-	a.sink().Emit("move:done", dto)
+	emit(op, "move:done", dto)
 
 	// Auto-clone the destination when the user opted to delete
 	// the local source. The repo now lives only on the

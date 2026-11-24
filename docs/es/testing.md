@@ -325,6 +325,7 @@ Lanzo GitboxApp en cada plataforma con los comandos que imprimen `./scripts/run-
 - [ ] La configuración de credenciales funciona para token, GCM y SSH
 - [ ] Discovery: **Buscar** → seleccionar repos → **Añadir y Pull** los clona en la raíz de la cuenta
 - [ ] Clonar, **Pull de todo** y **Fetch de todo** actualizan los puntos de estado; la tira de actividad muestra el alcance mientras se ejecutan, y una tarjeta de resultado los resume
+- [ ] En un repo de prueba cuyo checkout deja un archivo sin seguimiento, descargo el repo en Simple y compruebo que la fila pasa de **Comprobando…** a **Cambios en este ordenador**. Repito en inglés.
 - [ ] El panel de detalle del repo muestra la rama y ahead/behind en Avanzado, y los archivos cambiados en ambos modos; un clon con actualizaciones entrantes abre una lista con scroll de todos los commits con autor y mensaje, conserva los detalles de archivos locales y se refresca después de actualizar
 - [ ] Vista previa entrante: una lista larga cabe en una ventana pequeña; cambiar de clon o cerrar y reabrir mientras carga nunca muestra los resultados de otro clon; abrir solo el panel no ejecuta fetch ni pull
 - [ ] Raíces de clonado: en Ajustes añado una raíz, la hago predeterminada y la quito; con dos raíces, el **Clonar** de una fila pregunta qué raíz y acaba ahí, y **Pull de todo** no pregunta

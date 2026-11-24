@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/git/testutil"
 )
 
 func TestFailedCloneError_PreservesDestination(t *testing.T) {
@@ -89,5 +91,56 @@ func TestFailedCloneError_PreservesDestination(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCloneCompletionPublishesDirtyWorkingTree(t *testing.T) {
+	isolateSchedule(t)
+	a, _ := newWorkspaceTestApp(t)
+	defer a.stopRefresh()
+	a.refreshHooks = &refreshHooks{dial: func(context.Context, string) error { return nil }}
+	events := &recordingSink{}
+	a.events = events
+
+	const source, repo = "github-alice", "team/frontend"
+	origin := t.TempDir()
+	pullFixtureGit(t, origin, "init", "-b", "main")
+	pullFixtureGit(t, origin, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--allow-empty", "-m", "initial")
+	templates := t.TempDir()
+	if err := os.Mkdir(filepath.Join(templates, "hooks"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(templates, "hooks", "post-checkout"),
+		[]byte("#!/bin/sh\nprintf 'created by checkout\\n' > checkout-extra.txt\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	realGit := git.Default
+	git.SetRunnerForTest(t, testutil.RunnerFunc(func(ctx context.Context, req git.Request) (git.Result, error) {
+		if req.Args[0] == "clone" {
+			// Exercise real Git and a real post-checkout hook, with the
+			// origin and hook template isolated from the user's config.
+			req.Args = []string{"clone", "--template=" + templates, origin, req.Args[len(req.Args)-1]}
+		}
+		return realGit.Run(ctx, req)
+	}))
+
+	a.CloneRepo(source, repo, "")
+	a.refreshWG.Wait()
+	done, checked := events.named("clone:done"), events.named("status:one")
+	if len(done) != 1 || len(checked) != 1 {
+		t.Fatalf("clone completions = %v; status publishes = %v", done, checked)
+	}
+	if transfer := done[0].args[0].(cloneDoneDTO); transfer.Error != "" {
+		t.Fatalf("clone failed: %+v", transfer)
+	}
+	if done[0].meta.OperationID != checked[0].meta.OperationID || done[0].meta.Sequence >= checked[0].meta.Sequence {
+		t.Fatalf("completion and check are not one ordered operation: %+v, %+v", done[0].meta, checked[0].meta)
+	}
+	if row := checked[0].args[0].(StatusResult); row.State != "dirty" || row.Untracked != 1 {
+		t.Fatalf("post-clone status = %+v, want dirty with one untracked file", row)
+	}
+	snapshot, err := a.GetStartupSnapshot()
+	if err != nil || snapshot.EventWatermark != checked[0].meta.Sequence || snapshot.Config.Revision != checked[0].meta.ConfigRevision {
+		t.Fatalf("snapshot watermark = %d, revision = %d, error = %v", snapshot.EventWatermark, snapshot.Config.Revision, err)
 	}
 }

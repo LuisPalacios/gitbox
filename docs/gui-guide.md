@@ -210,6 +210,8 @@ Click **Fetch all** (↻ icon) to check every remote for new commits without pul
 
 While Fetch all or Pull all runs, a strip under the top bar says what it covers, such as "Fetching 17 clones across 3 accounts" or "Pulling 2 (fast-forward only) and cloning 1", with a progress bar. When it ends, a result card in the bottom-right corner sums it up: how many clones it fetched, how many are now behind and ready to pull, which ones it skipped because their account is offline, any failures with the first error, and that local changes were left untouched. Success cards go away after a few seconds; a card with a failure stays until you close it. Startup and periodic fetches leave a card only when something changed or failed.
 
+When a clone or pull finishes, the row shows **Checking…** while Gitbox checks the local files. If it finds changes, the row shows **Changes on this computer** in Simple mode.
+
 Other actions report their errors the same way, for example a tool that doesn't open or a mirror that can't be added.
 
 #### Periodic fetch
