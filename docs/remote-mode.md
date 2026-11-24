@@ -30,11 +30,11 @@ Remote mode is off by default. It turns on with the `--experimental-remote` flag
 "global": { "experimental_remote": true }
 ```
 
-Either one shows **Remotes (experimental)** in Settings.
+Either one shows the host switcher next to the title, and **Remote hosts** in Settings, whose **Manager** opens the Remote hosts window.
 
 ## Adding a remote
 
-In Settings, under **Remotes (experimental)**, I type the alias and, if I need one, a server folder (`server_dir`), then **Add**.
+In the Remote hosts window, which the host switcher's **Manage remote hosts…** also opens, I type the alias, or pick one of the aliases it suggests from my SSH configuration, and, if I need one, a server folder (`server_dir`), then **Add**. The suggestions come from `~/.ssh/config` and the files it includes, leaving out patterns and the hosts already added; GitboxApp only reads that configuration.
 
 GitboxApp checks the alias with `ssh -G <alias>`, which reads the configuration without connecting. That catches a broken `ssh_config`, not an unknown host: `ssh` resolves any name. A wrong host only shows when I connect. The remote is saved in the `remotes` list of this computer's `gitbox.json`.
 
@@ -106,7 +106,7 @@ If the connection drops while a change is being saved, the host's `gitbox.json` 
 
 A clone, pull, mirror setup or **Fetch all** runs on the host, in its daemon (see [The daemon](#the-daemon)). Closing the window, **Disconnect** or a dropped link only detaches the window: the action goes on there, together with its git processes, and nothing on this computer cancels it.
 
-When the link drops, the window connects again by itself, as [The badge and the connection](#the-badge-and-the-connection) describes. The new connection gets the results of what finished meanwhile, and an action still in flight asks the host again with the same request id: the host answers with the outcome of the first attempt and never runs it twice. A **Fetch all** that the drop interrupted ends with its usual result card. Any other call the window makes while it connects again waits for the new connection instead of failing. After **Disconnect**, the next **Connect** does the same. An action fails in the window only when the window gives up connecting again or closes.
+When the link drops, the window connects again by itself, as [The host switcher and the connection](#the-host-switcher-and-the-connection) describes. The new connection gets the results of what finished meanwhile, and an action still in flight asks the host again with the same request id: the host answers with the outcome of the first attempt and never runs it twice. A **Fetch all** that the drop interrupted ends with its usual result card. Any other call the window makes while it connects again waits for the new connection instead of failing. After **Disconnect**, the next **Connect** does the same. An action fails in the window only when the window gives up connecting again or closes.
 
 A session that the host serves without the daemon behaves as before: closing the window, disconnecting or losing the connection stops the action there, together with its git processes:
 
@@ -116,9 +116,9 @@ A session that the host serves without the daemon behaves as before: closing the
 
 The window then marks the action as failed with the connection error, so nothing waits for an answer that will not come.
 
-### The badge and the connection
+### The host switcher and the connection
 
-The title bar shows a badge with the alias, the system of the host in Advanced mode, and the connection state. Clicking it opens the connection log.
+In a remote window the host switcher next to the title shows the alias, the system of the host in Advanced mode, and the connection state. Its menu opens the connection log, another remote host already added, the local window, and the Remote hosts window. The **Connection log** button of the Remote hosts window brings an open window of the host to the front with its log, and each window records its connection state so the switcher of every other window can show it.
 
 When the link to the daemon drops, from a dead `ssh`, a closed laptop lid or three missed heartbeats 10 seconds apart, the window connects again by itself. From the moment the link drops it says **The link dropped; the host keeps running its work. Connecting again, attempt 1 of 3…**, and its actions stay off until the next connection. It makes three attempts, after 2, 5 and 10 seconds. A new connection must reach the same build of the server, as a first one does. When every attempt fails, or when the host serves the session without the daemon, the window shows the failure as follows.
 
@@ -138,7 +138,7 @@ VS Code (`code`) and VS Code Insiders (`code-insiders`) open the folder with `co
 
 Every other editor, such as Zed or VSCodium, shows disabled with "This editor can't open folders on remote hosts". The remote smoke test from macOS and Windows covers the VS Code entry; the Insiders entry takes the same command line from the Remote-SSH documentation.
 
-Each remote can have its own editor. In Settings, under **Remotes**, the editor list of a remote offers **Auto** and the configured editors that open remote folders. With an editor chosen, the window of that remote opens folders only in it: the other editors stay visible, dimmed with "This remote opens in the editor chosen in Settings → Remotes", and a call that names another editor fails with `remote_editor_not_chosen`. **Auto** offers every editor that opens remote folders. The choice is saved in the `editor` field of the remote's entry in this computer's `gitbox.json`, and an open remote window uses it from its next launch. If the chosen editor is no longer installed, Settings shows it as not installed.
+Each remote can have its own editor. In the Remote hosts window, the editor list of a remote offers **Auto** and the configured editors that open remote folders. With an editor chosen, the window of that remote opens folders only in it: the other editors stay visible, dimmed with "This remote opens in the editor chosen in the Remote hosts window", and a call that names another editor fails with `remote_editor_not_chosen`. **Auto** offers every editor that opens remote folders. The choice is saved in the `editor` field of the remote's entry in this computer's `gitbox.json`, and an open remote window uses it from its next launch. If the chosen editor is no longer installed, the Remote hosts window shows it as not installed.
 
 On Windows, `code` is a batch file that `cmd.exe` reads again, so a folder with `%`, `!`, `^`, `&`, `|`, `<`, `>` or `"` fails with `not_available_remote_path`.
 

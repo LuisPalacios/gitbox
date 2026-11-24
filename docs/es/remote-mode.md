@@ -30,11 +30,11 @@ El modo remoto viene desactivado. Se activa con la opción `--experimental-remot
 "global": { "experimental_remote": true }
 ```
 
-Cualquiera de las dos muestra **Remotos (experimental)** en Ajustes.
+Cualquiera de las dos muestra el selector de equipo junto al título, y **Equipos remotos** en Ajustes, cuyo **Gestor** abre la ventana Equipos remotos.
 
 ## Añadir un remoto
 
-En Ajustes, en **Remotos (experimental)**, escribo el alias y, si la necesito, una carpeta del servidor (`server_dir`), y luego **Añadir**.
+En la ventana Equipos remotos, que también abre **Gestionar equipos remotos…** del selector de equipo, escribo el alias, o elijo uno de los alias que sugiere de mi configuración de SSH, y, si la necesito, una carpeta del servidor (`server_dir`), y luego **Añadir**. Las sugerencias vienen de `~/.ssh/config` y de los archivos que incluye, sin los patrones ni los equipos ya añadidos; GitboxApp solo lee esa configuración.
 
 GitboxApp comprueba el alias con `ssh -G <alias>`, que lee la configuración sin conectar. Eso detecta un `ssh_config` roto, no un host desconocido: `ssh` resuelve cualquier nombre. Un host equivocado solo se nota al conectar. El remoto se guarda en la lista `remotes` del `gitbox.json` de este ordenador.
 
@@ -106,7 +106,7 @@ Si la conexión se cae mientras se guarda un cambio, el `gitbox.json` del host c
 
 Un clon, una actualización, una configuración de espejo o un **Fetch de todo** se ejecuta en el host, en su daemon (consulta [El daemon](#el-daemon)). Cerrar la ventana, **Desconectar** o una conexión caída solo separan la ventana: la acción sigue allí, junto con sus procesos de git, y nada en este ordenador la cancela.
 
-Cuando la conexión se cae, la ventana vuelve a conectarse por sí sola, como describe [La insignia y la conexión](#la-insignia-y-la-conexión). La nueva conexión recibe los resultados de lo que terminó mientras tanto, y una acción todavía en curso vuelve a preguntar al host con el mismo id de petición: el host responde con el resultado del primer intento y nunca la ejecuta dos veces. Un **Fetch de todo** que la caída interrumpió termina con su tarjeta de resultado habitual. Cualquier otra llamada que la ventana hace mientras vuelve a conectarse espera a la nueva conexión en lugar de fallar. Después de **Desconectar**, el siguiente **Conectar** hace lo mismo. Una acción solo falla en la ventana cuando la ventana deja de intentar volver a conectarse o se cierra.
+Cuando la conexión se cae, la ventana vuelve a conectarse por sí sola, como describe [El selector de equipo y la conexión](#el-selector-de-equipo-y-la-conexión). La nueva conexión recibe los resultados de lo que terminó mientras tanto, y una acción todavía en curso vuelve a preguntar al host con el mismo id de petición: el host responde con el resultado del primer intento y nunca la ejecuta dos veces. Un **Fetch de todo** que la caída interrumpió termina con su tarjeta de resultado habitual. Cualquier otra llamada que la ventana hace mientras vuelve a conectarse espera a la nueva conexión en lugar de fallar. Después de **Desconectar**, el siguiente **Conectar** hace lo mismo. Una acción solo falla en la ventana cuando la ventana deja de intentar volver a conectarse o se cierra.
 
 Una sesión que el host sirve sin el daemon se comporta como antes: cerrar la ventana, desconectar o perder la conexión detiene la acción allí, junto con sus procesos de git:
 
@@ -116,9 +116,9 @@ Una sesión que el host sirve sin el daemon se comporta como antes: cerrar la ve
 
 La ventana marca entonces la acción como fallida con el error de la conexión, así que nada espera una respuesta que no va a llegar.
 
-### La insignia y la conexión
+### El selector de equipo y la conexión
 
-La barra de título muestra una insignia con el alias, el sistema del host en el modo avanzado y el estado de la conexión. Al hacer clic se abre el registro de conexión.
+En una ventana remota el selector de equipo junto al título muestra el alias, el sistema del host en el modo avanzado y el estado de la conexión. Su menú abre el registro de conexión, otro equipo remoto ya añadido, la ventana local y la ventana Equipos remotos. El botón **Registro de conexión** de la ventana Equipos remotos trae al frente una ventana abierta del equipo con su registro, y cada ventana registra el estado de su conexión para que el selector de las demás ventanas pueda mostrarlo.
 
 Cuando se cae la conexión con el daemon, por un `ssh` que muere, la tapa del portátil cerrada o tres latidos perdidos con 10 segundos entre ellos, la ventana vuelve a conectarse por sí sola. Desde el momento en que se cae la conexión dice **Se cortó la conexión; el host sigue con su trabajo. Conectando de nuevo, intento 1 de 3…**, y sus acciones quedan desactivadas hasta la siguiente conexión. Hace tres intentos, tras 2, 5 y 10 segundos. Una conexión nueva tiene que llegar al mismo build del servidor, como la primera. Cuando fallan todos los intentos, o cuando el host sirve la sesión sin el daemon, la ventana muestra el fallo como sigue.
 
@@ -138,7 +138,7 @@ VS Code (`code`) y VS Code Insiders (`code-insiders`) abren la carpeta con `code
 
 Cualquier otro editor, como Zed o VSCodium, aparece desactivado con «Este editor no puede abrir carpetas en hosts remotos». La prueba de humo remota desde macOS y Windows cubre la entrada de VS Code; la entrada de Insiders usa la misma línea de comandos de la documentación de Remote-SSH.
 
-Cada remoto puede tener su propio editor. En Ajustes, en **Remotos**, la lista de editores de un remoto ofrece **Automático** y los editores configurados que abren carpetas remotas. Con un editor elegido, la ventana de ese remoto abre las carpetas solo en él: los demás editores siguen visibles, atenuados con «Este remoto se abre en el editor elegido en Ajustes → Remotos», y una llamada que nombra otro editor falla con `remote_editor_not_chosen`. **Automático** ofrece todos los editores que abren carpetas remotas. La elección se guarda en el campo `editor` de la entrada del remoto en el `gitbox.json` de este ordenador, y una ventana remota abierta la usa desde su siguiente lanzamiento. Si el editor elegido ya no está instalado, Ajustes lo muestra como no instalado.
+Cada remoto puede tener su propio editor. En la ventana Equipos remotos, la lista de editores de un remoto ofrece **Automático** y los editores configurados que abren carpetas remotas. Con un editor elegido, la ventana de ese remoto abre las carpetas solo en él: los demás editores siguen visibles, atenuados con «Este remoto se abre en el editor elegido en la ventana Equipos remotos», y una llamada que nombra otro editor falla con `remote_editor_not_chosen`. **Automático** ofrece todos los editores que abren carpetas remotas. La elección se guarda en el campo `editor` de la entrada del remoto en el `gitbox.json` de este ordenador, y una ventana remota abierta la usa desde su siguiente lanzamiento. Si el editor elegido ya no está instalado, la ventana Equipos remotos lo muestra como no instalado.
 
 En Windows, `code` es un archivo por lotes que `cmd.exe` vuelve a leer, así que una carpeta con `%`, `!`, `^`, `&`, `|`, `<`, `>` o `"` falla con `not_available_remote_path`.
 
