@@ -72,6 +72,11 @@ type RemoteStateDTO struct {
 	// the host's daemon dropped, which attempt this is (#247).
 	Attempt  int `json:"attempt,omitempty"`
 	Attempts int `json:"attempts,omitempty"`
+	// Resumed says, once connected, that the connection resumed the
+	// host's daemon where the last one left, with every event it missed:
+	// the window keeps what it shows and refreshes status instead of
+	// reloading everything (#247).
+	Resumed bool `json:"resumed,omitempty"`
 }
 
 // RemoteResultDTO is the outcome of a remote action. Empty Error means it
@@ -365,9 +370,11 @@ func (s *remoteSession) connectOnce(ctx context.Context, gen int) error {
 	hello := s.backend.Hello()
 	s.log.Printf("connect: connected to %s %s/%s, build %s", s.alias, userText(hello.OS), userText(hello.Arch), s.backend.ServerVersion())
 	s.logSession(hello)
+	outcome, had := s.backend.resumeOutcome()
 	s.set(gen, func(st *RemoteStateDTO) {
 		*st = RemoteStateDTO{State: remoteConnected, Alias: s.alias,
-			ServerOS: userText(hello.OS), ServerArch: userText(hello.Arch), ServerVersion: s.backend.ServerVersion()}
+			ServerOS: userText(hello.OS), ServerArch: userText(hello.Arch), ServerVersion: s.backend.ServerVersion(),
+			Resumed: had && outcome.Resumed && !outcome.Gap}
 	})
 	s.a.syncTaskInterval()
 	go s.watch(gen, conn)
@@ -412,40 +419,52 @@ func (s *remoteSession) pushSchedule(interval string) {
 }
 
 // watch turns the end of a connection that nobody closed into a failure.
-// After the link to a daemon dropped it first connects again, up to the
-// policy's attempts: the daemon kept running what the window started, and
-// the new connection gets what the window missed.
+// The end is the ssh session ending, or the link dying: its reader ended,
+// or the heartbeat declared it dead. After the link to a daemon dropped it
+// first connects again, up to the policy's attempts: the daemon kept
+// running what the window started, and the new connection gets what the
+// window missed.
 func (s *remoteSession) watch(gen int, conn remoteConn) {
-	var linkDead <-chan struct{}
-	if c := s.backend.current(); c != nil {
-		linkDead = c.Done()
-	}
+	linkDead := s.backend.linkDone()
 	select {
 	case <-conn.Done():
 	case <-linkDead:
 	}
+	// From here until the next connection to a daemon the window has none,
+	// and its calls wait for the next one instead of failing. A Disconnect
+	// that came first wins: it moved to another generation.
+	daemon := s.backend.isPersistent()
 	s.mu.Lock()
 	current := gen == s.gen
 	if current {
 		s.conn = nil
+		if daemon {
+			s.backend.setReconnecting(true)
+		}
 	}
 	s.mu.Unlock()
 	if !current {
 		return
 	}
-	err := conn.Err()
-	if err == nil {
-		err = &remoteError{remoteServerCrashed, "the server ended the connection"}
-	}
-	daemon := s.backend.isPersistent()
-	s.backend.detach()
-	_ = conn.Close()
 	if !daemon {
+		err := endError(conn, linkEndGrace)
+		s.backend.detach()
+		_ = conn.Close()
 		s.backend.markLost()
 		s.fail(gen, "connect: the connection ended", err)
 		return
 	}
-	code, _, detail := remoteFailure(err)
+	// The window says so at once, before it lets the connection go and
+	// waits for the first attempt.
+	attempts := s.policy.Attempts()
+	s.set(gen, func(st *RemoteStateDTO) {
+		*st = RemoteStateDTO{State: remoteConnecting, Alias: s.alias, Attempt: 1, Attempts: attempts}
+	})
+	// A link the heartbeat declared dead may still have its ssh running:
+	// closing it may wait for ssh to end, which must not delay the attempts.
+	go func() { _ = conn.Close() }()
+	s.backend.detach()
+	code, _, detail := remoteFailure(endError(conn, 0))
 	s.log.Printf("connect: the link dropped: %s (%s); connecting again", detail, code)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -456,11 +475,12 @@ func (s *remoteSession) watch(gen int, conn remoteConn) {
 	}
 	s.cancel = cancel
 	s.mu.Unlock()
-	attempts := s.policy.Attempts()
-	err = s.policy.Run(ctx, func(ctx context.Context, n int) error {
-		s.set(gen, func(st *RemoteStateDTO) {
-			*st = RemoteStateDTO{State: remoteConnecting, Alias: s.alias, Attempt: n, Attempts: attempts}
-		})
+	err := s.policy.Run(ctx, func(ctx context.Context, n int) error {
+		if n > 1 {
+			s.set(gen, func(st *RemoteStateDTO) {
+				*st = RemoteStateDTO{State: remoteConnecting, Alias: s.alias, Attempt: n, Attempts: attempts}
+			})
+		}
 		actx, acancel := context.WithTimeout(ctx, remoteConnectTimeout)
 		defer acancel()
 		err := s.connectOnce(actx, gen)
@@ -479,6 +499,27 @@ func (s *remoteSession) watch(gen int, conn remoteConn) {
 	s.fail(gen, "connect: gave up connecting again", err)
 }
 
+// linkEndGrace is how long the end of a link waits for its ssh session to
+// end too, before it counts as a host that stopped answering.
+const linkEndGrace = 2 * time.Second
+
+// endError is why a connection ended, waiting up to wait for its session
+// to end. The session's own error is meaningful only once it ended; a link
+// that died while its ssh still runs stopped answering.
+func endError(conn remoteConn, wait time.Duration) error {
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-conn.Done():
+	case <-timer.C:
+		return &remote.Error{Code: remote.CodeSSHTimeout, Detail: "the host stopped answering"}
+	}
+	if err := conn.Err(); err != nil {
+		return err
+	}
+	return &remoteError{remoteServerCrashed, "the server ended the connection"}
+}
+
 // disconnect ends the connection, or the connect under way.
 func (s *remoteSession) disconnect() {
 	s.mu.Lock()
@@ -490,6 +531,7 @@ func (s *remoteSession) disconnect() {
 	if cancel != nil {
 		cancel()
 	}
+	s.backend.setReconnecting(false)
 	s.backend.detach()
 	if conn != nil {
 		_ = conn.Close()

@@ -151,13 +151,15 @@ func (b localBackend) RunFleetCheck(ctx context.Context, name string) error {
 }
 
 // RunFleetCheck runs a check on the host. On a daemon the window's end
-// never cancels it (#247): closing the window detaches, and the check
-// finishes on the host.
+// never cancels it (#247): closing the window, Disconnect or a dropped
+// link only detaches, and the check finishes on the host. Like a clone or
+// a pull, the call then waits for the next connection and asks again with
+// the same request id, which joins the run instead of starting another.
 func (r *RemoteBackend) RunFleetCheck(ctx context.Context, name string) error {
-	if r.isPersistent() {
-		ctx = context.WithoutCancel(ctx)
+	if !r.isPersistent() {
+		return r.invokeContext(ctx, "RunFleetCheck", nil, name)
 	}
-	return r.invokeContext(ctx, "RunFleetCheck", nil, name)
+	return r.invokeAcross(context.WithoutCancel(ctx), "RunFleetCheck", nil, true, name)
 }
 
 // testFleetInterval, set only in the e2e_sentinel build of the server,

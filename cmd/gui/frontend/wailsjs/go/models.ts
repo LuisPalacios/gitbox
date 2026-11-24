@@ -1882,6 +1882,7 @@ export namespace main {
 	    editor?: string;
 	    attempt?: number;
 	    attempts?: number;
+	    resumed?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new RemoteStateDTO(source);
@@ -1903,6 +1904,7 @@ export namespace main {
 	        this.editor = source["editor"];
 	        this.attempt = source["attempt"];
 	        this.attempts = source["attempts"];
+	        this.resumed = source["resumed"];
 	    }
 	}
 	export class RemoteUninstallDTO {

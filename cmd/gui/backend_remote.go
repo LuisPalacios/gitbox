@@ -50,15 +50,20 @@ type RemoteBackend struct {
 
 	// A host's daemon outlives the connection (#247). resume is where the
 	// last connection to it left; persistent says the current or last
-	// connection reached a daemon, so a long call whose link dropped waits
-	// for the next connection instead of failing; lost says no next one is
+	// connection reached a daemon, so a call whose link dropped waits for
+	// the next connection instead of failing; reconnecting says the window
+	// is connecting again by itself; lost says no next connection is
 	// coming. changed is closed, and replaced, when any of them changes.
-	resume     rpc.ResumePoint
-	resumed    rpc.ResumeOutcome
-	hadResume  bool
-	persistent bool
-	lost       bool
-	changed    chan struct{}
+	resume       rpc.ResumePoint
+	resumed      rpc.ResumeOutcome
+	hadResume    bool
+	persistent   bool
+	reconnecting bool
+	lost         bool
+	changed      chan struct{}
+	// dead is closed when the current connection dies: its reader ended,
+	// or the heartbeat declared the link dead.
+	dead chan struct{}
 }
 
 // longCall is one clone, pull, move or mirror setup in flight (goLong).
@@ -100,8 +105,11 @@ func (r *RemoteBackend) connect(in io.Reader, out io.WriteCloser) error {
 		resume = &point
 	}
 	r.mu.Unlock()
+	dead := make(chan struct{})
+	var deadOnce sync.Once
 	client, err := rpc.Dial(in, out, rpc.ClientOptions{
 		Version: version, Commit: commit,
+		OnDead: func(error) { deadOnce.Do(func() { close(dead) }) },
 		OnEvent: func(name string, payload []json.RawMessage) {
 			r.mu.Lock()
 			live := r.gen == gen
@@ -125,13 +133,13 @@ func (r *RemoteBackend) connect(in io.Reader, out io.WriteCloser) error {
 	}
 	r.mu.Lock()
 	old := r.client
-	r.client = client
+	r.client, r.dead = client, dead
 	r.persistent = client.Server().Daemon != nil
 	r.resumed, r.hadResume = client.Resumed(), resume != nil
 	if !r.persistent {
 		r.resume = rpc.ResumePoint{}
 	}
-	r.lost = false
+	r.lost, r.reconnecting = false, false
 	r.signalLocked()
 	r.mu.Unlock()
 	if old != nil {
@@ -159,13 +167,34 @@ func (r *RemoteBackend) detach() {
 	}
 }
 
-// markLost says no connection will follow: the long calls that wait for
-// one fail.
+// markLost says no connection will follow: the calls that wait for one
+// fail.
 func (r *RemoteBackend) markLost() {
 	r.mu.Lock()
-	r.lost = true
+	r.lost, r.reconnecting = true, false
 	r.signalLocked()
 	r.mu.Unlock()
+}
+
+// setReconnecting says whether the window is connecting again by itself
+// after the link to a daemon dropped. Meanwhile a call waits for the next
+// connection instead of failing with not_connected.
+func (r *RemoteBackend) setReconnecting(on bool) {
+	r.mu.Lock()
+	r.reconnecting = on
+	r.signalLocked()
+	r.mu.Unlock()
+}
+
+// linkDone is closed when the current connection dies, or is nil while
+// there is none.
+func (r *RemoteBackend) linkDone() <-chan struct{} {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.client == nil {
+		return nil
+	}
+	return r.dead
 }
 
 func (r *RemoteBackend) signalLocked() {
@@ -199,25 +228,54 @@ func (r *RemoteBackend) link() (*rpc.Client, bool) {
 }
 
 // awaitLink waits for a connection other than prev and reports whether it
-// reaches a daemon. It reports false when none will come.
-func (r *RemoteBackend) awaitLink(prev *rpc.Client) bool {
+// reaches a daemon. It reports false when none will come: the window
+// closed, ctx ended, or, unless acrossDisconnect, the window is neither
+// connected nor connecting again by itself. A long call waits across a
+// Disconnect for the next Connect (D2); any other call does not.
+func (r *RemoteBackend) awaitLink(ctx context.Context, prev *rpc.Client, acrossDisconnect bool) bool {
 	for {
 		r.mu.Lock()
-		if r.lost {
+		switch {
+		case r.lost:
 			r.mu.Unlock()
 			return false
-		}
-		if r.client != nil && r.client != prev {
+		case r.client != nil && r.client != prev:
 			ok := r.persistent
 			r.mu.Unlock()
 			return ok
+		case r.client == nil && !r.reconnecting && !acrossDisconnect:
+			r.mu.Unlock()
+			return false
 		}
 		if r.changed == nil {
 			r.changed = make(chan struct{})
 		}
 		ch := r.changed
 		r.mu.Unlock()
-		<-ch
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			return false
+		}
+	}
+}
+
+// invokeAcross calls method, and on a link to a daemon goes on calling it
+// across reconnects until it gets an answer (#247). Every attempt carries
+// the same request id when the host remembers the method, so a host that
+// still runs the first attempt, or finished it, answers a repeat with its
+// outcome instead of doing the work again; a read is simply asked again.
+func (r *RemoteBackend) invokeAcross(ctx context.Context, method string, result any, acrossDisconnect bool, args ...any) error {
+	id := ""
+	if rememberedMethod(method) {
+		id = newRequestID()
+	}
+	for {
+		client, persistent := r.link()
+		err := r.invokeOn(client, ctx, method, result, id, args...)
+		if err == nil || !persistent || !linkDropped(err) || !r.awaitLink(ctx, client, acrossDisconnect) {
+			return err
+		}
 	}
 }
 
@@ -248,18 +306,7 @@ func (r *RemoteBackend) goLong(method, done string, failed func(msg string) any,
 	r.long[call] = struct{}{}
 	r.mu.Unlock()
 	go func() {
-		// One request id for every attempt: a daemon that still runs the
-		// first one, or finished it, answers a repeat with its outcome
-		// instead of starting the work again (#247).
-		id := newRequestID()
-		var err error
-		for {
-			client, persistent := r.link()
-			err = r.invokeOn(client, context.Background(), method, nil, id, args...)
-			if err == nil || !persistent || !linkDropped(err) || !r.awaitLink(client) {
-				break
-			}
-		}
+		err := r.invokeAcross(context.Background(), method, nil, true, args...)
 		r.mu.Lock()
 		delete(r.long, call)
 		seen := call.seen
@@ -785,16 +832,25 @@ func (r *RemoteBackend) truncated(what string, had, kept int) {
 // not_implemented_remote.
 //
 // A method in remoteUnbounded has no deadline of its own.
+//
+// While the window connects again to a host's daemon, a call waits for the
+// new connection, within its own bound, and a call that the drop cut short
+// is asked again there (invokeAcross).
 func (r *RemoteBackend) invoke(method string, result any, args ...any) error {
 	return r.invokeContext(context.Background(), method, result, args...)
 }
 
 func (r *RemoteBackend) invokeContext(ctx context.Context, method string, result any, args ...any) error {
-	return r.invokeOn(r.current(), ctx, method, result, "", args...)
+	if !remoteUnbounded[method] {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, remoteCallTimeout(method))
+		defer cancel()
+	}
+	return r.invokeAcross(ctx, method, result, false, args...)
 }
 
-// invokeOn is invoke on one connection. id is the request id of a
-// mutation; empty picks a new one.
+// invokeOn is invoke on one connection. id is the request id of the call;
+// empty picks a new one for a mutation, and a read goes without.
 func (r *RemoteBackend) invokeOn(client *rpc.Client, ctx context.Context, method string, result any, id string, args ...any) error {
 	if client == nil {
 		return &remoteError{remoteNotConnected, "not connected to the remote"}
@@ -809,10 +865,10 @@ func (r *RemoteBackend) invokeOn(client *rpc.Client, ctx context.Context, method
 	}
 	defer cancel()
 	var opts []rpc.CallOption
-	if info.Mutating {
-		if id == "" {
-			id = newRequestID()
-		}
+	if id == "" && info.Mutating {
+		id = newRequestID()
+	}
+	if id != "" {
 		opts = append(opts, rpc.WithRequestID(id))
 	}
 	err := client.Call(ctx, method, args, result, opts...)

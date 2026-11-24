@@ -234,6 +234,16 @@ var backendOnlyClass = map[string]methodInfo{
 	"FleetSchedule":    {classRemote, "P10", false},
 }
 
+// rememberedMethod reports whether a host remembers a call of method by
+// its request id and answers a repeat with the first outcome: every
+// mutation (#294), and the fleet checks, whose repeat after a reconnect
+// joins the run the first attempt started instead of starting another
+// (#247).
+func rememberedMethod(method string) bool {
+	info, ok := classOf(method)
+	return ok && (info.Mutating || method == "RunFleetCheck")
+}
+
 // classOf is the classification of a Backend method, bound or not.
 func classOf(method string) (methodInfo, bool) {
 	if info, ok := methodClass[method]; ok {

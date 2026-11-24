@@ -285,11 +285,9 @@ func newRPCServer(a *App, log io.Writer) *rpc.Server {
 		Self:         rpc.Hello{Version: version, Commit: commit, OS: runtime.GOOS, Arch: runtime.GOARCH, PID: os.Getpid()},
 		Log:          log,
 		SecretParams: secretParams,
-		// Only a mutation is replayed on a repeated request id (#294).
-		Remember: func(method string) bool {
-			info, ok := classOf(method)
-			return ok && info.Mutating
-		},
+		// Only a mutation, or a fleet check, is replayed on a repeated
+		// request id (#294, #247): a read is never answered from the cache.
+		Remember: rememberedMethod,
 	}
 	a.events = srv
 	a.hostLog = log

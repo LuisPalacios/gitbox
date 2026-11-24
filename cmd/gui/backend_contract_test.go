@@ -930,8 +930,10 @@ func TestRemoteBackendCallsEachMethodByName(t *testing.T) {
 		if want := asJSON(t, wantParams); call.Params != want {
 			t.Errorf("%s sent params %s, want %s", m.Name, call.Params, want)
 		}
-		if mutating := methodClass[m.Name].Mutating; (call.RequestID != "") != mutating {
-			t.Errorf("%s: request id %q, but the method is classified mutating=%v", m.Name, call.RequestID, mutating)
+		// A mutation carries a request id, and so does a fleet check, which
+		// the host remembers too (#247); a read never does.
+		if remembered := rememberedMethod(m.Name); (call.RequestID != "") != remembered {
+			t.Errorf("%s: request id %q, but the host remembers the method: %v", m.Name, call.RequestID, remembered)
 		}
 		checked++
 	}

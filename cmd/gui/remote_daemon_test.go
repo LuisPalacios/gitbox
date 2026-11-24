@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/remote"
@@ -366,4 +368,255 @@ func TestRemoteWindowCloseNeverCancelsHostChecks(t *testing.T) {
 	if cancelled.Load() {
 		t.Error("closing the window cancelled the host's check")
 	}
+}
+
+// fleetFetchHost is a daemon whose fetch-all stands in for the real one:
+// it counts its runs, emits the events of a run and holds before the
+// last ones until the test releases it.
+type fleetFetchHost struct {
+	repos    []string
+	runs     atomic.Int32
+	started  chan struct{}
+	release  chan struct{}
+	finished chan struct{}
+}
+
+func newFleetFetchHost(t *testing.T, h *daemonHost) *fleetFetchHost {
+	f := &fleetFetchHost{
+		repos:   []string{"org/a", "org/b", "org/c", "org/d"},
+		started: make(chan struct{}, 4), release: make(chan struct{}), finished: make(chan struct{}, 4),
+	}
+	d := h.config(time.Hour)
+	d.prepare = func(host *App, srv *rpc.Server) {
+		srv.Handlers["RunFleetCheck"] = rpc.Func(func(ctx context.Context, name string) error {
+			if name != taskFetch {
+				return errTaskUnknown
+			}
+			f.runs.Add(1)
+			op := host.newOperation()
+			emit(op, "fetch:allstart", any(nil))
+			f.started <- struct{}{}
+			<-f.release
+			for _, repo := range f.repos {
+				emit(host.newOperation(), "fetch:done", fetchDoneDTO{fetchEventDTO: fetchEventDTO{Source: "acct", Repo: repo}})
+			}
+			emit(op, "fetch:alldone", fetchAllDoneDTO{})
+			f.finished <- struct{}{}
+			return nil
+		})
+	}
+	h.startDaemon(t, d)
+	return f
+}
+
+// connectingAt reports whether the window says, within d, that it is
+// connecting again, attempt 1 of attempts.
+func connectingAt(a *App, d time.Duration, attempts int) bool {
+	for deadline := time.Now().Add(d); ; time.Sleep(5 * time.Millisecond) {
+		st := a.RemoteInfo()
+		if st.State == remoteConnecting && st.Attempt == 1 && st.Attempts == attempts {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+	}
+}
+
+// TestRemoteWindowFetchAllSurvivesACut is the lid-close smoke through the
+// entry point of the top bar's Fetch all, App.RunTask: the link drops in
+// the middle of the run. The window says at once that it is connecting
+// again, the call waits for the next connection, its repeat joins the
+// host's run instead of starting another, and the window gets every
+// event of the run once: replayed when the run ended while it was away,
+// live otherwise.
+func TestRemoteWindowFetchAllSurvivesACut(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		away bool // the run ends before the window is back
+	}{
+		{"the run ends while the window is away", true},
+		{"the run ends after the window is back", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newDaemonHost(t)
+			f := newFleetFetchHost(t, h)
+			dialer := &daemonDialer{}
+			a, sink := remoteApp(t, dialer.dialer(h.env))
+			a.remote.policy = remote.ReconnectPolicy{Backoff: []time.Duration{300 * time.Millisecond, time.Second, time.Second}}
+			a.Startup(context.Background())
+			a.events = sink
+			a.remote.start()
+			waitState(t, a, remoteConnected)
+
+			type outcome struct {
+				result string
+				err    error
+			}
+			done := make(chan outcome, 1)
+			go func() {
+				result, err := a.RunTask(taskFetch)
+				done <- outcome{result, err}
+			}()
+			<-f.started
+			dialer.failNext(tc.away)
+			dialer.last().cut()
+			if !connectingAt(a, 150*time.Millisecond, 3) {
+				t.Errorf("150ms after the cut the window says %+v, want connecting, attempt 1 of 3", a.RemoteInfo())
+			}
+			// A call made now waits for the next connection instead of
+			// failing with not_connected.
+			osDone := make(chan string, 1)
+			go func() { osDone <- a.be().GetOS() }()
+			if tc.away {
+				close(f.release)
+				<-f.finished
+				dialer.failNext(false)
+			}
+			waitFor(t, "the window to connect again", func() bool { return dialer.count() >= 2 && a.RemoteInfo().State == remoteConnected })
+			if !tc.away {
+				close(f.release)
+			}
+
+			select {
+			case got := <-done:
+				if got.err != nil || got.result != "finished" {
+					t.Errorf("RunTask = %q, %v; want finished, nil", got.result, got.err)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("RunTask did not return after the run ended on the host")
+			}
+			if got := <-osDone; got != runtime.GOOS {
+				t.Errorf("a call made while connecting again returned %q (%v), want the host's OS", got, a.be().(*RemoteBackend).LastError())
+			}
+			waitFor(t, "fetch:alldone", func() bool { return len(sink.named("fetch:alldone")) >= 1 })
+			time.Sleep(200 * time.Millisecond)
+			if n := f.runs.Load(); n != 1 {
+				t.Errorf("the host ran fetch-all %d times, want once", n)
+			}
+			if n, m := len(sink.named("fetch:done")), len(sink.named("fetch:alldone")); n != len(f.repos) || m != 1 {
+				t.Errorf("the window got %d fetch:done and %d fetch:alldone, want %d and 1", n, m, len(f.repos))
+			}
+			states := sink.named("remote:state")
+			if last := states[len(states)-1].args[0].(RemoteStateDTO); last.State != remoteConnected || !last.Resumed {
+				t.Errorf("the last state is %+v, want connected and resumed", last)
+			}
+			a.Shutdown(context.Background())
+		})
+	}
+}
+
+// frozenLink is a session with a daemon that can stop answering without
+// ending, as a link whose network went away does: freeze drops what
+// crosses it in either direction, and nothing closes.
+type frozenLink struct {
+	rwc     pipeRWC
+	done    chan struct{}
+	frozen  chan struct{}
+	closers []io.Closer
+	wg      sync.WaitGroup
+	once    sync.Once
+}
+
+func newFrozenLink(ctx context.Context, srv *rpc.Server, clientID string) *frozenLink {
+	c2sR, c2sW := io.Pipe()
+	s2cR, s2cW := io.Pipe()
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	l := &frozenLink{rwc: pipeRWC{s2cR, c2sW}, done: make(chan struct{}), frozen: make(chan struct{}),
+		closers: []io.Closer{c2sR, c2sW, s2cR, s2cW, inR, inW, outR, outW}}
+	relay := func(src io.Reader, dst io.Writer) {
+		buf := make([]byte, 32<<10)
+		for {
+			n, err := src.Read(buf)
+			if err != nil {
+				return
+			}
+			select {
+			case <-l.frozen:
+			default:
+				if _, err := dst.Write(buf[:n]); err != nil {
+					return
+				}
+			}
+		}
+	}
+	l.wg.Go(func() { relay(c2sR, inW) })
+	l.wg.Go(func() { relay(outR, s2cW) })
+	l.wg.Go(func() { _ = srv.ServeConn(ctx, inR, outW, rpc.Peer{ClientID: clientID}) })
+	return l
+}
+
+func (l *frozenLink) freeze()                  { close(l.frozen) }
+func (l *frozenLink) Conn() io.ReadWriteCloser { return l.rwc }
+func (l *frozenLink) Done() <-chan struct{}    { return l.done }
+func (l *frozenLink) Err() error               { return nil }
+
+func (l *frozenLink) Close() error {
+	l.once.Do(func() {
+		for _, c := range l.closers {
+			_ = c.Close()
+		}
+		l.wg.Wait()
+		close(l.done)
+	})
+	return nil
+}
+
+// TestRemoteWindowReconnectsAfterAHeartbeatDeath: the link to the daemon
+// stops answering while its ssh goes on running, as after a laptop lid
+// closed. The heartbeat declares it dead within three missed pings and a
+// margin, and the window starts connecting again at once instead of
+// waiting for ssh to give up. Time is virtual (testing/synctest).
+func TestRemoteWindowReconnectsAfterAHeartbeatDeath(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		srv := &rpc.Server{
+			Handlers: map[string]rpc.Handler{}, ToUserError: toUserError,
+			Self:       rpc.Hello{Version: version, Commit: commit, OS: "linux", Arch: "amd64"},
+			Persistent: &rpc.Persistent{Instance: "dheartbeat"},
+		}
+		var mu sync.Mutex
+		var links []*frozenLink
+		dial := func(_ context.Context, _ string, o remote.Options) (remoteConn, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			if len(links) > 0 {
+				return nil, &remote.Error{Code: remote.CodeSSHTimeout, Detail: "the host does not answer"}
+			}
+			links = append(links, newFrozenLink(ctx, srv, o.ClientID))
+			return links[0], nil
+		}
+		a, sink := remoteApp(t, dial)
+		a.events = sink
+		a.remote.start()
+		synctest.Wait()
+		if st := a.RemoteInfo(); st.State != remoteConnected {
+			t.Fatalf("state %+v, want connected", st)
+		}
+
+		links[0].freeze()
+		frozen := time.Now()
+		// The last answered ping may be one interval old when the link
+		// freezes; a margin covers the polling.
+		limit := time.Duration(rpc.MaxMissedPings+1)*rpc.PingInterval + time.Second
+		for !connectingAt(a, 0, 3) && time.Since(frozen) < limit+5*time.Second {
+			time.Sleep(100 * time.Millisecond)
+		}
+		if took := time.Since(frozen); !connectingAt(a, 0, 3) || took > limit {
+			t.Errorf("%v after the link froze the window says %+v, want connecting, attempt 1 of 3, within %v", took, a.RemoteInfo(), limit)
+		}
+
+		// Every attempt fails: the window gives up and shows why.
+		for a.RemoteInfo().State != remoteFailed && time.Since(frozen) < 2*time.Minute {
+			time.Sleep(time.Second)
+		}
+		if st := a.RemoteInfo(); st.State != remoteFailed {
+			t.Errorf("state %+v, want failed after the attempts", st)
+		}
+		a.remote.disconnect()
+		_ = links[0].Close()
+		cancel()
+	})
 }

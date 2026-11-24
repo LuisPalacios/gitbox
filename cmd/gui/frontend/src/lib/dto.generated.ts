@@ -320,6 +320,7 @@ export interface RemoteStateDTO {
   editor?: string;
   attempt?: number;
   attempts?: number;
+  resumed?: boolean;
 }
 
 export interface StatusResult {
