@@ -58,7 +58,7 @@ test('I block a call only in a remote window', () => {
     assert.equal(ro.isBlocked(name, true), true, name);
     assert.equal(ro.isBlocked(name, false), false, name);
   }
-  for (const name of ['addRoot', 'setNestedScanDepth', 'updateAccount', 'getConfig', 'setTheme', 'cloneRepo', 'pullAll', 'pullRepo', 'reconcile', 'moveRepo', 'setupMirrorRepo', 'credentialStoreToken', 'changeCredentialType', 'credentialDelete', 'credentialSetupGCM', 'credentialSetupSSH', 'credentialRegenerateSSH']) {
+  for (const name of ['addRoot', 'setNestedScanDepth', 'updateAccount', 'getConfig', 'setTheme', 'cloneRepo', 'pullAll', 'pullRepo', 'reconcile', 'setupMirrorRepo', 'credentialStoreToken', 'changeCredentialType', 'credentialDelete', 'credentialSetupGCM', 'credentialSetupSSH', 'credentialRegenerateSSH']) {
     assert.equal(ro.isBlocked(name, true), false, name);
   }
   assert.equal(ro.anyBlocked(['addAccount', 'openInExplorer'], true), true);

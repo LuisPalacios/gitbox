@@ -48,8 +48,6 @@ export function CheckGlobalIdentity():Promise<identity.GlobalIdentityStatus>;
 
 export function CheckMirrorCredentials(arg1:string):Promise<main.MirrorCredentialCheck>;
 
-export function CheckMoveReadiness(arg1:string,arg2:string,arg3:boolean):Promise<main.MoveReadinessDTO>;
-
 export function CheckUpdateRecovery(arg1:boolean):Promise<string>;
 
 export function CloneRepo(arg1:string,arg2:string,arg3:string):Promise<void>;
@@ -168,8 +166,6 @@ export function ListAccountOrgs(arg1:string):Promise<Array<string>>;
 
 export function ListConfigBackups():Promise<Array<main.ConfigBackupInfo>>;
 
-export function ListMoveDestinationOwners(arg1:string):Promise<Array<main.MoveOwnerOption>>;
-
 export function ListRemoteRepos(arg1:string):Promise<Array<main.DiscoverResult>>;
 
 export function ListRemotes():Promise<main.RemotesDTO>;
@@ -185,8 +181,6 @@ export function ListTerminalProfiles():Promise<Array<main.TerminalProfileInfo>>;
 export function MarkStartup(arg1:string):Promise<void>;
 
 export function MissingModernTerminal():Promise<boolean>;
-
-export function MoveRepo(arg1:main.MoveRequestDTO):Promise<void>;
 
 export function OpenAccountFolder(arg1:string):Promise<void>;
 
@@ -219,8 +213,6 @@ export function OpenRepoInBrowser(arg1:string,arg2:string,arg3:boolean):Promise<
 export function OpenTerminalsManagerWindow():Promise<void>;
 
 export function PickFolder(arg1:string):Promise<string>;
-
-export function PreflightMove(arg1:main.MoveRequestDTO):Promise<main.MovePreflightDTO>;
 
 export function PreviewClonePath(arg1:string,arg2:string):Promise<string>;
 

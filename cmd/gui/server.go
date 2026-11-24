@@ -63,7 +63,6 @@ var servedMethods = []string{
 	"CheckGlobalGitignore",
 	"CheckGlobalIdentity",
 	"CheckMirrorCredentials",
-	"CheckMoveReadiness",
 	"CloneRepo",
 	"ConfirmSweep",
 	"CreateNewRepo",
@@ -109,13 +108,10 @@ var servedMethods = []string{
 	"IsGlobalGCMConfigNeeded",
 	"ListAccountOrgs",
 	"ListConfigBackups",
-	"ListMoveDestinationOwners",
 	"ListRemoteRepos",
 	"ListRoots",
-	"MoveRepo",
 	"OpenAccountInBrowser",
 	"OpenRepoInBrowser",
-	"PreflightMove",
 	"PreviewClonePath",
 	"PreviewPullAll",
 	"PreviewRoot",
@@ -240,7 +236,6 @@ var mutationIdempotence = map[string]string{
 	"IgnoreClone":                "setting the same ignore state again changes nothing",
 	"InitRoot":                   "an existing root is kept and becomes the default; the mode is kept",
 	"InstallGlobalGitignore":     "the managed block is written once; a second call finds it in place",
-	"MoveRepo":                   "a moved repo is no longer in its source, so a second move fails in preflight and changes nothing",
 	"PullAll":                    "clones already updated or downloaded need no further changes",
 	"PullRepo":                   "a second fast-forward pull finds nothing to pull",
 	"Reconcile":                  "a second pass finds what the first adopted already tracked",
@@ -295,7 +290,7 @@ func newRPCServer(a *App, log io.Writer) *rpc.Server {
 }
 
 // requestBoundHandlers serve the methods whose work a desktop starts in the
-// background and returns from at once: clone, pull, move and mirror setup.
+// background and returns from at once: clone, pull and mirror setup.
 // On a server that work runs inside its request (#295), so the client's
 // $/cancelRequest and the end of the connection cancel it, and the runner's
 // tree kill stops its git processes. Each answers once its done event is
@@ -311,9 +306,6 @@ func requestBoundHandlers(a *App) map[string]rpc.Handler {
 		}),
 		"PullRepo": rpc.Func(func(ctx context.Context, sourceKey, repoKey string) error {
 			return a.inRequest(ctx, func(ctx context.Context) { a.pullRepoRun(ctx, sourceKey, repoKey) })
-		}),
-		"MoveRepo": rpc.Func(func(ctx context.Context, req MoveRequestDTO) error {
-			return a.inRequest(ctx, func(ctx context.Context) { a.moveRepoRun(ctx, req) })
 		}),
 		"SetupMirrorRepo": rpc.Func(func(ctx context.Context, mirrorKey, repoKey string) error {
 			return a.inRequest(ctx, func(ctx context.Context) { a.setupMirrorRepoRun(ctx, mirrorKey, repoKey) })

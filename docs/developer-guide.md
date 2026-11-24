@@ -207,7 +207,7 @@ Providers live in `pkg/provider/`. GitHub, GitLab, Gitea/Forgejo, and Bitbucket 
        return &NewProvider{}, nil
    ```
 
-3. Add the provider to the per-provider switches: token guidance and scopes in `pkg/provider/guide.go` and `ScopesForAction` in `pkg/provider/errors.go`, `SSHPublicKeyURL` in `pkg/credential/validate.go`, `providerDisplayName` in `pkg/credential/status.go`, and `GCMProviderFor` in `pkg/ops/credential.go` when GCM has a native provider for it.
+3. Add the provider to the per-provider switches: token guidance and scopes in `pkg/provider/guide.go`, `SSHPublicKeyURL` in `pkg/credential/validate.go`, `providerDisplayName` in `pkg/credential/status.go`, and `GCMProviderFor` in `pkg/ops/credential.go` when GCM has a native provider for it.
 4. Add `"newprovider"` to the `provider` enum in `json/gitbox.schema.json`, and to the provider options in `cmd/gui/frontend/src/lib/modals/AddAccountModal.svelte` and `EditAccountModal.svelte`.
 5. Write `httptest`-backed tests in `pkg/provider/`, following `provider_test.go`.
 

@@ -244,14 +244,6 @@ func repoMutationRows() []contractRow {
 		{name: "ApplyDiscoveredMirrors", call: func(b Backend) (any, error) { return none(b.ApplyDiscoveredMirrors()) }},
 		{name: "CreateNewRepo", call: func(b Backend) (any, error) { return none(b.CreateNewRepo("acct", "", "made", "", true, false, "")) }},
 		{name: "CreateNewRepo unknown account", call: func(b Backend) (any, error) { return none(b.CreateNewRepo("nobody", "", "made", "", true, false, "")) }},
-		{name: "MoveRepo unknown destination", until: []string{"move:done"}, call: func(b Backend) (any, error) {
-			b.MoveRepo(MoveRequestDTO{SourceSourceKey: "acct", SourceRepoKey: "org/repo", DestAccountKey: "nobody", DestOwner: "alice", DestRepoName: "moved"})
-			return nil, nil
-		}},
-		{name: "MoveRepo unknown source", until: []string{"move:done"}, call: func(b Backend) (any, error) {
-			b.MoveRepo(MoveRequestDTO{SourceSourceKey: "none", SourceRepoKey: "org/repo", DestAccountKey: "acct", DestOwner: "alice", DestRepoName: "moved"})
-			return nil, nil
-		}},
 		{name: "DeleteRepoFolder", call: func(b Backend) (any, error) { return none(b.DeleteRepoFolder("acct", "org/fresh")) }},
 		{name: "DeleteRepoFolder missing", call: func(b Backend) (any, error) { return none(b.DeleteRepoFolder("acct", "org/fresh")) }},
 		{name: "StopTrackingRepo", call: func(b Backend) (any, error) { return none(b.StopTrackingRepo("acct", "org/repo")) }},
@@ -316,19 +308,23 @@ func TestBackendContractRepoMutations(t *testing.T) {
 			}
 			run("branch", "a")
 			run("branch", "b")
+			run("branch", "gone")
+			run("config", "branch.gone.remote", "origin")
+			run("config", "branch.gone.merge", "refs/heads/gone")
 			preview := s.b.PreviewSweep("acct", "org/repo")
-			if preview.ID == "" || !slices.Equal(preview.Merged, []string{"a", "b"}) {
+			if preview.ID == "" || !slices.Equal(preview.Merged, []string{"a", "b"}) || !slices.Equal(preview.Gone, []string{"gone"}) {
 				t.Fatalf("preview: %+v", preview)
 			}
 			run("branch", "c")
 			altered := preview
-			altered.Merged = []string{"a", "b", "c"}
+			altered.Merged = []string{"a", "b", "gone"}
 			if d := s.b.ConfirmSweep("acct", "org/repo", altered); len(d.Deleted) != 0 || len(d.Skipped) != 3 {
 				t.Fatalf("altered preview: %+v", d)
 			}
 			if d := s.b.ConfirmSweep("acct", "org/repo", preview); d.Error != "" || len(d.Skipped) != 0 || !slices.Equal(d.Deleted, []string{"a", "b"}) {
 				t.Fatalf("confirm: %+v", d)
 			}
+			run("show-ref", "--verify", "refs/heads/gone")
 			run("show-ref", "--verify", "refs/heads/c")
 			next := s.b.PreviewSweep("acct", "org/repo")
 			if next.ID == "" {
@@ -339,6 +335,11 @@ func TestBackendContractRepoMutations(t *testing.T) {
 				t.Fatalf("expired preview: %+v", d)
 			}
 			run("show-ref", "--verify", "refs/heads/c")
+			run("branch", "-d", "c")
+			manual := s.b.PreviewSweep("acct", "org/repo")
+			if manual.ID != "" || !slices.Equal(manual.Gone, []string{"gone"}) {
+				t.Fatalf("handoff-only preview: %+v", manual)
+			}
 		})
 	}
 

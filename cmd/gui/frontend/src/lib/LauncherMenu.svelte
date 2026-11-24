@@ -8,7 +8,7 @@
   //                      default profile and the Preferred ones), each with
   //                      its logo; the one the row's launch button uses is
   //                      tagged "default"
-  //   Maintenance        repo menu, Advanced: sweep, move, container toggle,
+  //   Maintenance        repo menu, Advanced: sweep, container toggle,
   //                      re-scan (shown when their handlers are passed)
   //   Account            account menu: Find, New and extraItems
   //   Stop showing this project / Delete clone folder
@@ -47,13 +47,6 @@
   export let onOpenProfile: (profileID: string) => void = () => {};
   export let onOpenAIHarness: (harness: AIHarnessInfo) => void;
   export let onSweep: (() => void) | null = null;
-  // onMove is the "Move repository…" action (issue #64). Shown only on
-  // the repo kebab. moveEnabled gates the click; when false the entry is
-  // rendered disabled with moveDisabledReason as the tooltip so users
-  // learn WHY the action isn't available.
-  export let onMove: (() => void) | null = null;
-  export let moveEnabled: boolean = true;
-  export let moveDisabledReason: string = '';
   // onToggleContainer marks/unmarks a repo as a multi-repo container. Shown
   // only on the repo kebab when provided; isContainer drives the label.
   export let onToggleContainer: (() => void) | null = null;
@@ -67,7 +60,7 @@
   // onFind / onCreate are the account card's Find and New actions (issue
   // #123), repeated on the account kebab so they stay reachable while the
   // cards panel is collapsed. *Enabled gates the click; *DisabledReason is
-  // the tooltip, like the Move entry.
+  // the tooltip.
   export let onFind: (() => void) | null = null;
   export let findEnabled: boolean = true;
   export let findDisabledReason: string = '';
@@ -150,7 +143,7 @@
   $: defaultProfile = visibleProfiles.find(p => p.default) || visibleProfiles[0] || null;
   $: menuProfiles = visibleProfiles.filter(p => p === defaultProfile || p.preferred);
   $: hasOpenWith = aiHarnesses.length > 0 || editors.length > 0 || menuProfiles.length > 0;
-  $: hasMaintenance = kind === 'repo' && (!!onSweep || !!onMove || !!onToggleContainer || !!onChooseWorkspace || (isContainer && !!onRescanContainer));
+  $: hasMaintenance = kind === 'repo' && (!!onSweep || !!onToggleContainer || !!onChooseWorkspace || (isContainer && !!onRescanContainer));
   $: hasAccountActions = kind === 'account' && (!!onFind || !!onCreate || extraItems.length > 0);
 
   // Browser action label is kind-aware: repo kebab navigates to the repo
@@ -196,13 +189,6 @@
     {#if onSweep}
       <button class="action-item" role="menuitem" on:click|stopPropagation={onSweep}>
         <span class="lm-icon">&#8997;</span> {$t('launcher.sweep')}
-      </button>
-    {/if}
-    {#if onMove}
-      <button use:ro={'moveRepo'} class="action-item" class:lm-disabled={!moveEnabled} role="menuitem" disabled={!moveEnabled}
-        on:click|stopPropagation={onMove}
-        title={moveEnabled ? $t('launcher.moveTip') : (moveDisabledReason || $t('launcher.moveNeedsClean'))}>
-        <span class="lm-icon">&#8644;</span> {$t('launcher.move')}
       </button>
     {/if}
     {#if onToggleContainer}

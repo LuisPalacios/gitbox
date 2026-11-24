@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -32,8 +31,7 @@ func newCanary(t *testing.T) string {
 	return "gbx-canary-" + hex.EncodeToString(b[:])
 }
 
-// argvRecorder records the arguments of every git the process starts, and
-// answers a push --mirror itself: its destination exists only in the test.
+// argvRecorder records the arguments of every git the process starts.
 type argvRecorder struct {
 	mu   sync.Mutex
 	argv []string
@@ -46,9 +44,6 @@ func (r *argvRecorder) install(t *testing.T) {
 		r.mu.Lock()
 		r.argv = append(r.argv, strings.Join(req.Args, " "))
 		r.mu.Unlock()
-		if slices.Contains(req.Args, "--mirror") {
-			return git.Result{}, nil
-		}
 		return real.Run(ctx, req)
 	}))
 }
@@ -65,7 +60,7 @@ func (r *argvRecorder) String() string {
 // CredentialStoreToken request, and never comes back: not in an answer, an
 // event, a log line of either end, an error, a decoded result, or the
 // command line of a git the host starts, through a clone, a fetch, a pull,
-// a mirror setup, a move that pushes a mirror, a type change, a refused GCM
+// a mirror setup, a type change, a refused GCM
 // setup and the delete.
 func TestTokenCanary(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -122,10 +117,6 @@ func TestTokenCanary(t *testing.T) {
 		{name: "FetchRepo", until: []string{"fetch:done"}, call: func(b Backend) (any, error) { b.FetchRepo("acct", "org/repo"); return nil, nil }},
 		{name: "PullRepo", until: []string{"pull:done"}, call: func(b Backend) (any, error) { b.PullRepo("acct", "org/repo"); return nil, nil }},
 		{name: "SetupMirrorRepo", until: []string{"mirror:setup:done"}, call: func(b Backend) (any, error) { b.SetupMirrorRepo("mir", "org/repo"); return nil, nil }},
-		{name: "MoveRepo", until: []string{"move:done"}, call: func(b Backend) (any, error) {
-			b.MoveRepo(MoveRequestDTO{SourceSourceKey: "acct", SourceRepoKey: "org/fresh", DestAccountKey: "acct", DestOwner: "alice", DestRepoName: "moved"})
-			return nil, nil
-		}},
 		{name: "ChangeCredentialType", call: func(b Backend) (any, error) { return b.ChangeCredentialType("acct", "token", switchCanary) }},
 		{name: "ChangeCredentialType gcm", call: func(b Backend) (any, error) { return b.ChangeCredentialType("acct", "gcm", "") }},
 		{name: "CredentialSetupGCM", call: func(b Backend) (any, error) { return b.CredentialSetupGCM("acct"), nil }},
@@ -154,12 +145,17 @@ func TestTokenCanary(t *testing.T) {
 	results = append(results, proof)
 	run(contractRow{name: "CredentialDelete", call: func(b Backend) (any, error) { return b.CredentialDelete("acct"), nil }})
 
-	// Positive controls: the work really ran with the token.
-	if !strings.Contains(argv.String(), "push --mirror") || !strings.Contains(argv.String(), "clone") {
-		t.Fatalf("the flows did not run git:\n%s", argv)
+	// Positive controls: the clone uses the credential store and mirror
+	// setup still succeeds through the provider without pushing from Git.
+	if !strings.Contains(argv.String(), "clone --progress") || !strings.Contains(argv.String(), "credential.helper=store") {
+		t.Fatal("the clone did not use the account credential store")
 	}
-	if done := link.Events.named("move:done"); len(done) != 1 || strings.Contains(asJSON(t, done[0].args), `"error"`) && !strings.Contains(asJSON(t, done[0].args), `"error":""`) {
-		t.Errorf("the move did not finish cleanly: %s", asJSON(t, done))
+	if strings.Contains(argv.String(), "push --mirror") {
+		t.Fatal("the provider mirror ran a local Git push")
+	}
+	done := link.Events.named("mirror:setup:done")
+	if len(done) != 1 || !strings.Contains(asJSON(t, done[0].args), `"mirrored":true`) {
+		t.Fatal("the server-side mirror was not set up")
 	}
 	if n := strings.Count(link.Received.String(), canary); n != 1 {
 		t.Errorf("the token crossed the wire to the host %d times, want once", n)

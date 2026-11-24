@@ -60,7 +60,6 @@ func TestToUserErrorKeepsProse(t *testing.T) {
 		"missing API token in github-MyAccount",
 		"authentication failed (HTTP 401) — token is invalid or expired",
 		"insufficient permissions (HTTP 403) — token needs broader scopes",
-		"delete_repo on github needs token scope: delete_repo",
 		"git fetch: offline (exit 128)",
 		"github get repo: HTTP 500 from api.example.com (GET)",
 		`repo "org/name" not found in source "github-MyAccount"`,

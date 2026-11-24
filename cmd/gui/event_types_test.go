@@ -31,8 +31,6 @@ var eventPayloadTypes = map[string]reflect.Type{
 	"mirror:discover:progress": reflect.TypeFor[mirrorDiscoverProgressDTO](),
 	"mirror:setup:done":        reflect.TypeFor[MirrorSetupResult](),
 	"mirror:status":            reflect.TypeFor[[]MirrorStatusResult](),
-	"move:done":                reflect.TypeFor[MoveResultDTO](),
-	"move:progress":            reflect.TypeFor[MoveProgressEventDTO](),
 	"network:state":            reflect.TypeFor[networkStateDTO](),
 	"pr:refreshed":             reflect.TypeFor[PRAccountUpdateDTO](),
 	"profiles:reloaded":        nil,

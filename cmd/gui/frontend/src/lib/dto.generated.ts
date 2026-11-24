@@ -155,23 +155,6 @@ export interface MirrorStatusResult {
   error: string;
 }
 
-export interface MoveResultDTO {
-  newOrigin: string;
-  destRepoCreated: boolean;
-  sourceRemoteDeleted: boolean;
-  localCloneDeleted: boolean;
-  destSourceKey?: string;
-  newRepoKey?: string;
-  warnings?: string[];
-  error?: string;
-}
-
-export interface MoveProgressEventDTO {
-  phase: string;
-  message: string;
-  error?: string;
-}
-
 export interface networkStateDTO {
   offline: boolean;
   hosts: string[];
@@ -375,8 +358,6 @@ export interface EventPayloads {
   "mirror:discover:progress": mirrorDiscoverProgressDTO;
   "mirror:setup:done": MirrorSetupResult;
   "mirror:status": MirrorStatusResult[] | null;
-  "move:done": MoveResultDTO;
-  "move:progress": MoveProgressEventDTO;
   "network:state": networkStateDTO;
   "pr:refreshed": PRAccountUpdateDTO;
   "profiles:reloaded": null;

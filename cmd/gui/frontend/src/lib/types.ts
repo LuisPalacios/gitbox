@@ -422,67 +422,6 @@ export interface PRAccountUpdateDTO {
   error?: string;
 }
 
-// ── Move repository (issue #64) ──
-
-export interface MoveOwnerOption {
-  account: string;
-  provider: string;
-  owner: string;
-  isOrg: boolean;
-}
-
-export interface MoveRequestDTO {
-  sourceSourceKey: string;
-  sourceRepoKey: string;
-  destAccountKey: string;
-  destOwner: string;
-  destRepoName: string;
-  destPrivate: boolean;
-  deleteSourceRemote: boolean;
-  deleteLocalClone: boolean;
-}
-
-export interface MovePreflightDTO {
-  ok: boolean;
-  error?: string;
-  sourceRepoPath: string;
-  destCloneUrl: string;
-  sourceDeletable: boolean;
-  warnings?: string[];
-}
-
-export interface MoveProgressEventDTO {
-  phase: string;
-  message: string;
-  error?: string;
-}
-
-export interface MoveReadinessSideDTO {
-  accountKey: string;
-  provider: string;
-  credentialType: string;
-  status: string;
-  message: string;
-  requiredScopes?: string[];
-  scopesHint: string;
-}
-
-export interface MoveReadinessDTO {
-  source: MoveReadinessSideDTO;
-  dest: MoveReadinessSideDTO;
-}
-
-export interface MoveResultDTO {
-  newOrigin: string;
-  destRepoCreated: boolean;
-  sourceRemoteDeleted: boolean;
-  localCloneDeleted: boolean;
-  destSourceKey?: string;
-  newRepoKey?: string;
-  warnings?: string[];
-  error?: string;
-}
-
 export interface CredentialFinding {
   path: string;
   problem: string;

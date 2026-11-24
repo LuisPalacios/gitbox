@@ -66,7 +66,6 @@
   import MirrorSetupResultModal from './lib/modals/MirrorSetupResultModal.svelte';
   import MirrorDiscoverModal from './lib/modals/MirrorDiscoverModal.svelte';
   import MirrorTokenModal from './lib/modals/MirrorTokenModal.svelte';
-  import MoveRepoModal from './lib/modals/MoveRepoModal.svelte';
   import CreateRepoModal from './lib/modals/CreateRepoModal.svelte';
   import { repoTreeRows } from './lib/repo-tree';
   import type { Placeholder } from './lib/repo-tree';
@@ -1026,7 +1025,11 @@
 
   // ── Sweep branches modal ──
   let sweepDialog: SweepModal;
-  const sweepBranches = (sourceKey: string, repoKey: string) => sweepDialog.sweepBranches(sourceKey, repoKey);
+  const sweepBranches = (sourceKey: string, repoKey: string) => {
+    const state = $repoStates[`${sourceKey}/${repoKey}`];
+    const terminal = state && repoActions(sourceKey, repoKey, state, false).terminal;
+    return sweepDialog.sweepBranches(sourceKey, repoKey, terminal);
+  };
 
   // ── Repo detail panel ──
   let expandedRepo: string | null = null;
@@ -1395,10 +1398,6 @@
     };
   }
 
-  // ── Move repository (issue #64) ──
-  let moveDialog: MoveRepoModal;
-  const openMoveRepo = (sourceKey: string, repoKey: string) => moveDialog.openMoveRepo(sourceKey, repoKey);
-
   async function checkMirrorStatus(mirrorKey: string) {
     mirrorChecking = { ...mirrorChecking, [mirrorKey]: true };
     await bridge.getMirrorStatus(mirrorKey);
@@ -1708,7 +1707,7 @@
     revealLabel, configEditors, configProfiles, configAIHarnesses, actionMenuRepo, openPRPopover,
     expandedRepo, repoDetail, detailLoading, repoActions, credentialStatuses: credStatuses, fixProofCredential,
     activateRepoRow, askDelete, syncRepo, cloneRepo, fetchRepo, toggleActionMenu, closeActionMenu,
-    togglePRPopover, closePRPopover, sweepBranches, openMoveRepo,
+    togglePRPopover, closePRPopover, sweepBranches,
     toggleContainer, rescanContainer, chooseWorkspace, findWorkspaceFolder, toggleRepoCollapsed, isContainerRepo, showAccountView,
   };
 
@@ -2376,10 +2375,6 @@
       if ($configStore?.accounts[upd.accountKey]) applyPRUpdate(upd);
     });
 
-    onEvent('move:progress', (p) => moveDialog.onProgress(p));
-
-    onEvent('move:done', (r) => moveDialog.onDone(r));
-
     if (windowMode === 'remote') {
       onEvent('remote:state', (st) => { void onRemoteState(st as RemoteState); });
       try { await onRemoteState(await bridge.remoteInfo()); } catch (e) { console.error(e); }
@@ -2637,9 +2632,6 @@
 
   <!-- ── MIRROR CREDENTIAL WARNING MODAL ── -->
   <MirrorTokenModal bind:mirrorCredWarning storeMirrorPat={openTokenSetup} />
-
-  <!-- ── MOVE REPO MODAL (issue #64) ── -->
-  <MoveRepoModal bind:this={moveDialog} {reloadFromDisk} {openCredChange} {openTokenSetup} />
 
   <!-- ── CREATE REPO MODAL ── -->
   <CreateRepoModal bind:this={createRepoDialog} />

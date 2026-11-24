@@ -63,9 +63,6 @@ func (r *RemoteBackend) CheckGlobalIdentity() identity.GlobalIdentityStatus {
 func (r *RemoteBackend) CheckMirrorCredentials(accountKey string) MirrorCredentialCheck {
 	return remoteValue[MirrorCredentialCheck](r, "CheckMirrorCredentials", accountKey)
 }
-func (r *RemoteBackend) CheckMoveReadiness(sourceSourceKey, destAccountKey string, deleteSource bool) MoveReadinessDTO {
-	return remoteValue[MoveReadinessDTO](r, "CheckMoveReadiness", sourceSourceKey, destAccountKey, deleteSource)
-}
 func (r *RemoteBackend) CloneRepo(sourceKey, repoKey, root string) {
 	r.goLong("CloneRepo", "clone:done", func(msg string) any {
 		return map[string]string{"source": sourceKey, "repo": repoKey, "error": msg}
@@ -213,17 +210,11 @@ func (r *RemoteBackend) ValidateRemotePath(p string) RemotePathDTO {
 func (r *RemoteBackend) ListConfigBackups() []ConfigBackupInfo {
 	return remoteValue[[]ConfigBackupInfo](r, "ListConfigBackups")
 }
-func (r *RemoteBackend) ListMoveDestinationOwners(sourceKey string) []MoveOwnerOption {
-	return remoteValue[[]MoveOwnerOption](r, "ListMoveDestinationOwners", sourceKey)
-}
 func (r *RemoteBackend) ListRemoteRepos(accountKey string) []DiscoverResult {
 	return capList(r, "remote repos", remoteValue[[]DiscoverResult](r, "ListRemoteRepos", accountKey), maxRemoteRepos)
 }
 func (r *RemoteBackend) ListRoots() []RootDTO {
 	return remoteValue[[]RootDTO](r, "ListRoots")
-}
-func (r *RemoteBackend) MoveRepo(req MoveRequestDTO) {
-	r.goLong("MoveRepo", "move:done", func(msg string) any { return MoveResultDTO{Error: msg} }, req)
 }
 func (r *RemoteBackend) AccountFolder(accountKey string) (string, error) {
 	return remoteCall[string](r, "AccountFolder", accountKey)
@@ -245,9 +236,6 @@ func (r *RemoteBackend) OpenAccountProfile(accountKey, profileID string) error {
 }
 func (r *RemoteBackend) OpenRepoInBrowser(sourceKey, repoKey string) (string, error) {
 	return remoteCall[string](r, "OpenRepoInBrowser", sourceKey, repoKey)
-}
-func (r *RemoteBackend) PreflightMove(req MoveRequestDTO) MovePreflightDTO {
-	return remoteValue[MovePreflightDTO](r, "PreflightMove", req)
 }
 func (r *RemoteBackend) PreviewSweep(sourceKey, repoKey string) SweepPreviewDTO {
 	return remoteValue[SweepPreviewDTO](r, "PreviewSweep", sourceKey, repoKey)

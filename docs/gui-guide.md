@@ -313,7 +313,7 @@ Next to them, the **⋯ menu** is one flat list in sections, with no submenus:
 
 1. **Open** — **Navigate to repo** opens the repo on the provider, and **Reveal in Finder** (Explorer, or the file manager on Linux) opens its folder.
 2. **Open with** — every AI harness and editor, then the default terminal profile and the ones marked Preferred, each with its logo. The tool the row's own launch button uses carries a **default** tag.
-3. **Maintenance** (Advanced) — **Sweep branches**, **Move repository…**, **Mark as multi-repo container** or **Unmark as multi-repo container**, **Choose workspace…** on a container with workspace files, and **Re-scan for nested clones**.
+3. **Maintenance** (Advanced) — **Sweep branches**, **Mark as multi-repo container** or **Unmark as multi-repo container**, **Choose workspace…** on a container with workspace files, and **Re-scan for nested clones**.
 4. **Stop showing this project** in either mode. **Delete clone folder…** also appears in Advanced.
 
 <p align="center">
@@ -326,11 +326,11 @@ When the clone hasn't finished or its status hasn't loaded yet, the folder, edit
 
 **🧹 Sweep branches** previews stale local branches in three groups:
 
-- **Gone** — the branch's configured upstream disappeared. Its local tip may still contain unmerged work.
+- **Upstream gone** — the branch's configured upstream disappeared. Its local tip may still contain unmerged work.
 - **Merged** — the default branch contains the branch's commits.
 - **Squashed** — the tips have identical trees, or the default branch has equivalent patches and still matches the branch on every path it changed. A squash that Gitbox cannot verify stays in the clone. In a partial clone, Gitbox checks only the objects already on disk.
 
-Review the list before confirming. Gitbox rechecks each displayed branch and deletes it only while its tip and category still match. A branch checked out in another worktree, involved in a rebase or bisect, or selected as the default stays in the clone. The result lists skipped branches so you can preview them again.
+Review the list before confirming. Gitbox deletes only merged branches. Before deleting, it checks that the tip matches the preview and that the branch is still merged into both the default branch and its upstream, or `HEAD` when it has no upstream. A branch checked out in another worktree, involved in a rebase or bisect, or selected as the default stays in the clone. For branches with a missing upstream or squash-equivalent changes, use **Open in a terminal** to open the default profile at the clone and review them in your Git client.
 
 ### Account actions
 
@@ -417,17 +417,9 @@ Pick GCM, Token or SSH in the dropdown and follow the setup steps. Gitbox verifi
 
 While viewing the current credential type, click the red **Delete** button to remove all stored authentication data, for example to start clean after a token expired. The card then turns red and reads **No credential set up**; click **Set up credential** to start again.
 
-### Move a repository across accounts / providers
+### Transfer a repository across accounts or providers
 
-Open the ⋯ menu on a repo row and pick **Move repository…** under **Maintenance**. The entry is disabled, with the reason on hover, unless the clone is clean and in sync. The dialog has three stages:
-
-1. **Form** — pick the destination account and owner (personal or an organization), confirm the new repo name, set the visibility, and optionally delete the source repo and the local clone after a successful move. Both delete options start unchecked.
-2. **Confirm** — a red-bordered summary lists every destructive side effect. Type the source repo key, such as `acme/widget`, to unlock **Move**.
-3. **Progress** — each phase (preflight → fetch → create destination → push mirror → rewire origin → optional deletes → update config) shows as its own line with a live status.
-
-The move keeps every ref and tag (`git push --mirror`), points `origin` on the local clone at the new URL, and moves the repo to the destination account in your config. If deleting the source repo or the local clone fails, you get a warning; the move itself is already done.
-
-Both sides need the token scopes listed in [Token scopes by capability](credentials.md#token-scopes-by-capability).
+Use the provider’s transfer feature when available. To copy refs to a new repository on another provider, check the destination, create a mirror clone with `git clone --mirror <source-url>`, and run `git push --mirror <destination-url>` from it. Use an empty destination because a mirror push also deletes destination refs absent from the source. When finished, import the destination repository from the corresponding account in Gitbox.
 
 ### Deleting repos and accounts
 
@@ -571,14 +563,14 @@ In a remote window, Onboarding and **Roots** take a folder typed for the host in
 
 Once connected, the remote window is the full Gitbox window, showing and changing the host:
 
-- **What works** — status, **Fetch all**, **Fetch**, repository details, pull request badges, mirror status, **Find projects**, credential checks and **System check**, all run on the host. So do the changes to the host's config: editing, renaming and deleting accounts, roots, mirror groups, adding discovered repositories to the config, ignoring clones, the host's settings and git config fixes, and repairing or restoring its `gitbox.json`. Adding an account and its credential setup run there too: a token is stored on the host, and an SSH key is made and kept there, with its public key copied to this computer's clipboard (see [Remote hosts](credentials.md#remote-hosts)). Cloning, pulling, deleting, creating and moving repositories, the sweep, mirror setup, adoption and the reconcile run on the host too, and stop there when the connection drops. A PR link opens in the browser of this computer.
+- **What works** — status, **Fetch all**, **Fetch**, repository details, pull request badges, mirror status, **Find projects**, credential checks and **System check**, all run on the host. So do the changes to the host's config: editing, renaming and deleting accounts, roots, mirror groups, adding discovered repositories to the config, ignoring clones, the host's settings and git config fixes, and repairing or restoring its `gitbox.json`. Adding an account and its credential setup run there too: a token is stored on the host, and an SSH key is made and kept there, with its public key copied to this computer's clipboard (see [Remote hosts](credentials.md#remote-hosts)). Cloning, pulling, deleting clones and creating repositories, the sweep, mirror setup, adoption and the reconcile also run on the host. Its daemon keeps long-running actions going when the connection drops. A PR link opens in the browser of this computer.
 - **Opening folders** — VS Code, a terminal profile and an AI harness open the folder on the host: VS Code with its Remote-SSH extension, and the terminal and the harness in a local terminal that runs `ssh -t` into the folder. On Windows a WezTerm or Alacritty profile opens the terminal in its own app, and every other profile in a new console. Other editors show dimmed with "This editor can't open folders on remote hosts", and with an editor chosen for the remote, the rest show dimmed with "This remote opens in the editor chosen in Settings → Remotes". **Reveal in Finder** or **Reveal in Explorer**, the account folder and **Open in Editor** of the config file show dimmed with "Not available for remote hosts".
 - **What is disabled** — the compact view and autostart are off in this window, with the tooltip "Not available in a remote window". GCM is not offered, because a host refuses it. Language, theme, Simple or Advanced and the sidebar are preferences of this computer, and they keep working. The local window and the remote windows share them: a change in one shows in another the next time it gets focus, and no window's save undoes it.
 - **The badge** — the title bar shows the alias, the system of the host (Advanced only), and the connection state. Click it to open the connection log. A red **!** means the host sent a longer list than the window shows.
 - **Reconnect** — when the connection drops, the last state stays on screen, dimmed, under a **Disconnected from** the host banner with **Connect**, which connects again, clears any error the disconnection left and reloads everything. The actions come back once the host's clones are reconciled and their status refreshed.
 - **Links** — an `https` link opens at once. An `http` link, such as a LAN Gitea account, opens after a dialog that shows the full address. Any other kind of link is refused. This applies to the main window too.
 
-`ssh <alias>` must log in without any prompt first, and the host needs a `gitbox.json` with working credentials. [Remote mode](remote-mode.md) covers the setup, what is installed and where, what works on a remote, what a dropped connection does to a clone or a move, the connection log and every error code.
+`ssh <alias>` must log in without any prompt first, and the host needs a `gitbox.json` with working credentials. [Remote mode](remote-mode.md) covers the setup, what is installed and where, what works on a remote, what a dropped connection does to a clone, the connection log and every error code.
 
 ### Update notification
 

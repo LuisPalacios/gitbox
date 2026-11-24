@@ -26,9 +26,7 @@ const (
 	// shutdownWait is how long closing the app waits for work in flight to
 	// stop. That work was already cancelled, and its processes with it.
 	shutdownWait = 5 * time.Second
-	// moveTimeout bounds a whole move, and mirrorSetupTimeout one mirror
-	// setup, which is provider calls only.
-	moveTimeout        = 10 * time.Minute
+	// Only provider calls are involved in mirror setup.
 	mirrorSetupTimeout = 60 * time.Second
 )
 
@@ -72,7 +70,6 @@ const (
 var remoteWorkBounds = map[string]time.Duration{
 	// The repository mutations (#295), as long as their work may take.
 	"PullRepo":               healReadTimeout + pullTimeout + fetchTimeout,
-	"MoveRepo":               moveTimeout,
 	"SetupMirrorRepo":        mirrorSetupTimeout,
 	"CreateNewRepo":          createRepoTimeout,
 	"ApplyDiscoveredMirrors": discoverMirrorsTimeout,
@@ -113,7 +110,6 @@ var remoteWorkBounds = map[string]time.Duration{
 	"RecommendedGlobalGitignoreBody": healReadTimeout,
 	"GetTokenGuide":                  healReadTimeout,
 	"CheckMirrorCredentials":         healReadTimeout,
-	"ListMoveDestinationOwners":      healReadTimeout,
 	"OpenAccountInBrowser":           healReadTimeout,
 	"OpenRepoInBrowser":              healReadTimeout,
 	"GetRepoDetail":                  statusTimeout,

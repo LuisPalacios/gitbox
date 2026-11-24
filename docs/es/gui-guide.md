@@ -313,7 +313,7 @@ Junto a ellos, el **menú ⋯** es una lista plana por secciones, sin submenús:
 
 1. **Abrir** — **Ir al repo** abre el repo en el proveedor, y **Mostrar en Finder** (el Explorador, o el gestor de archivos en Linux) abre su carpeta.
 2. **Abrir con** — cada AI harness y editor, y después el perfil de terminal predeterminado y los marcados como Preferido, cada uno con su logo. La herramienta que usa el botón de lanzamiento propio de la fila lleva una etiqueta **predeterminado**.
-3. **Mantenimiento** (Avanzado) — **Limpiar ramas**, **Mover repositorio…**, **Marcar como contenedor multi-repo** o **Desmarcar como contenedor multi-repo**, **Elegir workspace…** en un contenedor con archivos de workspace, y **Volver a buscar clones anidados**.
+3. **Mantenimiento** (Avanzado) — **Limpiar ramas**, **Marcar como contenedor multi-repo** o **Desmarcar como contenedor multi-repo**, **Elegir workspace…** en un contenedor con archivos de workspace, y **Volver a buscar clones anidados**.
 4. **Dejar de mostrar este proyecto** en cualquiera de los dos modos. **Eliminar carpeta del clon…** también aparece en Avanzado.
 
 <p align="center">
@@ -326,11 +326,11 @@ Cuando el clon no ha terminado o su estado todavía no se ha cargado, las entrad
 
 **🧹 Limpiar ramas** muestra las ramas locales obsoletas en tres grupos:
 
-- **Eliminadas** — desapareció el upstream configurado para la rama. Su último commit local aún puede contener trabajo sin fusionar.
+- **Upstream desaparecido** — desapareció el upstream configurado para la rama. Su último commit local aún puede contener trabajo sin fusionar.
 - **Fusionadas** — la rama predeterminada contiene los commits de la rama.
 - **Squashed** — los árboles de ambos extremos son idénticos, o la rama predeterminada contiene parches equivalentes y aún coincide con la rama en cada ruta que esta modificó. Si Gitbox no puede verificar un squash, la rama se conserva en el clon. En un clon parcial, Gitbox comprueba únicamente los objetos que ya están en disco.
 
-Revisa la lista antes de confirmar. Gitbox vuelve a comprobar cada rama mostrada y solo la elimina si conserva el mismo commit y la misma categoría. Las ramas abiertas en otro árbol de trabajo, implicadas en un rebase o bisect, o elegidas como predeterminadas se conservan en el clon. El resultado enumera las ramas omitidas para que puedas volver a previsualizarlas.
+Revisa la lista antes de confirmar. Gitbox solo elimina ramas fusionadas. Antes de borrar, comprueba que el commit coincide con el de la vista previa y que la rama sigue fusionada tanto en la predeterminada como en el upstream o, si no tiene upstream, en `HEAD`. Las ramas abiertas en otro árbol de trabajo, implicadas en un rebase o bisect, o elegidas como predeterminadas se conservan en el clon. Para las ramas con el upstream desaparecido o con cambios equivalentes a un squash, usa **Abrir en una terminal** para abrir el perfil predeterminado en el clon y revísalas en tu cliente Git.
 
 ### Acciones de cuenta
 
@@ -417,17 +417,9 @@ Elige GCM, Token o SSH en el desplegable y sigue los pasos de configuración. Gi
 
 Mientras ves el tipo de credencial actual, haz clic en el botón rojo **Eliminar** para borrar todos los datos de autenticación guardados, por ejemplo para empezar limpio después de que caducara un token. La tarjeta se vuelve entonces roja e indica **Sin credencial configurada**; haz clic en **Configurar credencial** para empezar de nuevo.
 
-### Mover un repositorio entre cuentas / proveedores
+### Transferir un repositorio entre cuentas o proveedores
 
-Abre el menú ⋯ de una fila de repo y elige **Mover repositorio…** bajo **Mantenimiento**. La entrada está deshabilitada, con el motivo al pasar el ratón, salvo que el clon esté limpio y sincronizado. El diálogo tiene tres etapas:
-
-1. **Formulario** — elige la cuenta y el propietario de destino (personal o una organización), confirma el nombre nuevo del repo, define la visibilidad y, opcionalmente, elimina el repo de origen y el clon local después de un movimiento correcto. Las dos opciones de eliminar empiezan desmarcadas.
-2. **Confirmación** — un resumen con borde rojo lista cada efecto destructivo. Escribe la clave del repo de origen, como `acme/widget`, para desbloquear **Mover**.
-3. **Progreso** — cada fase (preflight → fetch → create destination → push mirror → rewire origin → optional deletes → update config) aparece como una línea propia con su estado en vivo.
-
-El movimiento conserva cada ref y cada tag (`git push --mirror`), apunta `origin` del clon local a la URL nueva y mueve el repo a la cuenta de destino en tu config. Si falla eliminar el repo de origen o el clon local, recibes un aviso; el movimiento en sí ya está hecho.
-
-Los dos lados necesitan los scopes de token que se listan en [Scopes de token por capacidad](credentials.md#scopes-de-token-por-capacidad).
+Usa la opción de transferencia del proveedor cuando esté disponible. Para copiar refs a un repositorio nuevo en otro proveedor, revisa el destino, crea un clon de espejo con `git clone --mirror <source-url>` y ejecuta `git push --mirror <destination-url>` desde él. Usa un destino vacío, porque el push de espejo también elimina las refs del destino que faltan en el origen. Al terminar, importa el repositorio de destino desde la cuenta correspondiente en Gitbox.
 
 ### Eliminar repos y cuentas
 
@@ -571,14 +563,14 @@ En una ventana remota, el onboarding y **Raíces** aceptan una carpeta escrita p
 
 Una vez conectada, la ventana del remoto es la ventana completa de Gitbox, que muestra y cambia el host:
 
-- **Qué funciona** — el estado, **Fetch de todo**, **Fetch**, los detalles del repositorio, las insignias de pull requests, el estado de los espejos, **Buscar proyectos**, las comprobaciones de credenciales y **Comprobación del sistema**, todo ejecutado en el host. También los cambios de la configuración del host: editar, renombrar y borrar cuentas, las raíces, los grupos de espejos, añadir repositorios descubiertos a la configuración, ignorar clones, los ajustes y los arreglos de la configuración de git del host, y reparar o restaurar su `gitbox.json`. Añadir una cuenta y configurar sus credenciales también se ejecutan allí: un token se guarda en el host, y una clave SSH se crea y se queda allí, con su clave pública copiada al portapapeles de este ordenador (consulta [Hosts remotos](credentials.md#hosts-remotos)). Clonar, actualizar, borrar, crear y trasladar repositorios, la limpieza, la configuración de espejos, la adopción y la reconciliación también se ejecutan en el host, y se detienen allí cuando la conexión se cae. Un enlace de PR se abre en el navegador de este ordenador.
+- **Qué funciona** — el estado, **Fetch de todo**, **Fetch**, los detalles del repositorio, las insignias de pull requests, el estado de los espejos, **Buscar proyectos**, las comprobaciones de credenciales y **Comprobación del sistema**, todo ejecutado en el host. También los cambios de la configuración del host: editar, renombrar y borrar cuentas, las raíces, los grupos de espejos, añadir repositorios descubiertos a la configuración, ignorar clones, los ajustes y los arreglos de la configuración de git del host, y reparar o restaurar su `gitbox.json`. Añadir una cuenta y configurar sus credenciales también se ejecutan allí: un token se guarda en el host, y una clave SSH se crea y se queda allí, con su clave pública copiada al portapapeles de este ordenador (consulta [Hosts remotos](credentials.md#hosts-remotos)). Clonar, actualizar, borrar clones y crear repositorios, la limpieza, la configuración de espejos, la adopción y la reconciliación también se ejecutan en el host. Su daemon mantiene en marcha las operaciones largas cuando la conexión se cae. Un enlace de PR se abre en el navegador de este ordenador.
 - **Abrir carpetas** — VS Code, un perfil de terminal y un AI harness abren la carpeta en el host: VS Code con su extensión Remote-SSH, y el terminal y el harness en un terminal local que ejecuta `ssh -t` hasta la carpeta. En Windows un perfil de WezTerm o Alacritty abre el terminal en su propia app, y cualquier otro perfil en una consola nueva. Los demás editores aparecen atenuados con «Este editor no puede abrir carpetas en hosts remotos», y con un editor elegido para el remoto, el resto aparece atenuado con «Este remoto se abre en el editor elegido en Ajustes → Remotos». **Mostrar en Finder** o **Mostrar en el Explorador**, la carpeta de la cuenta y **Abrir en editor** del archivo de configuración aparecen atenuados con «No disponible para hosts remotos».
 - **Qué está desactivado** — la vista compacta y el arranque automático están apagados en esta ventana, con el aviso «No disponible en una ventana remota». GCM no se ofrece, porque un host lo rechaza. El idioma, el tema, Simple o Avanzado y la barra lateral son preferencias de este ordenador y siguen funcionando. La ventana local y las ventanas remotas las comparten: un cambio en una aparece en otra la siguiente vez que recupera el foco, y el guardado de ninguna ventana lo deshace.
 - **La insignia** — la barra de título muestra el alias, el sistema del host (solo en Avanzado) y el estado de la conexión. Haz clic en ella para abrir el registro de conexión. Un **!** rojo significa que el host envió una lista más larga de lo que la ventana muestra.
 - **Reconectar** — cuando la conexión se cae, el último estado se queda en pantalla, atenuado, bajo un aviso **Desconectado de** el host con **Conectar**, que vuelve a conectar, borra cualquier error que dejó la desconexión y recarga todo. Las acciones vuelven cuando los clones del host están reconciliados y su estado actualizado.
 - **Enlaces** — un enlace `https` se abre enseguida. Un enlace `http`, como el de una cuenta de Gitea en la red local, se abre tras un diálogo que muestra la dirección completa. Cualquier otro tipo de enlace se rechaza. Esto vale también para la ventana principal.
 
-Antes, `ssh <alias>` tiene que entrar sin pedir nada, y el host necesita un `gitbox.json` con credenciales que funcionen. [Modo remoto](remote-mode.md) explica la configuración, qué se instala y dónde, qué funciona en un remoto, qué hace una conexión caída con un clon o un traslado, el registro de conexión y cada código de error.
+Antes, `ssh <alias>` tiene que entrar sin pedir nada, y el host necesita un `gitbox.json` con credenciales que funcionen. [Modo remoto](remote-mode.md) explica la configuración, qué se instala y dónde, qué funciona en un remoto, qué hace una conexión caída con un clon, el registro de conexión y cada código de error.
 
 ### Notificación de actualización
 

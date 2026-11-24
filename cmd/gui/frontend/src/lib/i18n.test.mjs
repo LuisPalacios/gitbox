@@ -229,7 +229,7 @@ test('I name the host, not this computer, in a remote window', async () => {
     }
     for (const [key, value] of catalog) {
       if (key.endsWith('.remote') || catalog.has(`${key}.remote`)) continue;
-      if (/this computer|este ordenador/.test(value) && (key.startsWith('menu.') || key.startsWith('deleteClone.') || key.startsWith('move.'))) {
+      if (/this computer|este ordenador/.test(value) && (key.startsWith('menu.') || key.startsWith('deleteClone.'))) {
         assert.fail(`${lang} ${key} speaks of this computer without a remote variant`);
       }
     }
@@ -245,7 +245,6 @@ test('I name the host, not this computer, in a remote window', async () => {
   assert.equal(say('menu.delete'), 'Delete clone folder…');
   i18n.remoteTextHost.set('my-server');
   assert.equal(say('menu.delete'), 'Delete clone folder on my-server…');
-  assert.equal(say('move.localRemoved', { path: '/srv/x' }), 'The clone on my-server at `/srv/x` **WILL** be removed.');
   assert.equal(say('repo.pullTip'), en.get('repo.pullTip'), 'a key without a variant reads as before');
   i18n.languageStore.set('es');
   assert.equal(say('menu.delete'), 'Eliminar carpeta del clon en my-server…');

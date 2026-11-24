@@ -228,38 +228,6 @@ func IsUpstreamGoneError(err error) bool {
 	return upstreamGoneText(strings.ToLower(diagnosticText(err)))
 }
 
-// PushMirror runs `git push --mirror <url>` from repoPath, pushing every
-// ref and tag to the target URL. extraConfig, if non-nil, is passed as
-// `-c <key=value>` args before the push subcommand — used to inject
-// `credential.helper=` so an embedded user:PAT in the URL isn't
-// overridden by a GCM-managed credential for the same host.
-//
-// Output is captured so the caller can surface provider-side errors
-// (e.g. "remote: Repository is empty" vs. permission issues).
-// It stops when ctx is cancelled, and the processes git started with it.
-func PushMirror(ctx context.Context, repoPath, url string, extraConfig []string) (string, error) {
-	args := make([]string, 0, len(extraConfig)*2+3)
-	for _, kv := range extraConfig {
-		args = append(args, "-c", kv)
-	}
-	args = append(args, "push", "--mirror", url)
-
-	res, err := Default.Run(ctx, Request{Dir: repoPath, Args: args})
-	out := res.combined()
-	if err != nil {
-		return string(out), failure(ctx, "push", err, res, out)
-	}
-	return string(out), nil
-}
-
-// FetchTagsAndPrune runs `git fetch --prune --tags` in repoPath. Used
-// as the first move-flow step so the upcoming push --mirror carries
-// every ref (tags included) and stale remote branches are dropped. It
-// stops when ctx is cancelled.
-func FetchTagsAndPrune(ctx context.Context, repoPath string) error {
-	return runContext(ctx, repoPath, "fetch", "--prune", "--tags")
-}
-
 // PullQuietContext runs git pull --ff-only --no-autostash, capturing output instead of
 // forwarding it, and stops when ctx is cancelled: the runner asks git to stop
 // with an interrupt, so git removes its lock files.
@@ -485,7 +453,7 @@ func CurrentBranch(repoPath string) (string, error) {
 
 // SweepResult holds the outcome of scanning for stale branches.
 type SweepResult struct {
-	Tips          map[string]string `json:"tips"` // previewed object ID by branch name
+	Tips          map[string]string `json:"tips"` // previewed object ID by merged branch name
 	DefaultBranch string            `json:"defaultBranch"`
 	CurrentBranch string            `json:"currentBranch"`
 	Merged        []string          `json:"merged"`   // merged into default branch

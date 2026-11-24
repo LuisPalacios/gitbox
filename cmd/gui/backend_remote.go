@@ -66,7 +66,7 @@ type RemoteBackend struct {
 	dead chan struct{}
 }
 
-// longCall is one clone, pull, move or mirror setup in flight (goLong).
+// longCall is one clone, pull or mirror setup in flight (goLong).
 type longCall struct {
 	done string // the event that ends it
 	key  string // which operation, as doneKey says
@@ -288,7 +288,7 @@ func linkDropped(err error) bool {
 	return ok && re.Code == remoteNotConnected
 }
 
-// goLong runs a clone, pull, move or mirror setup on the host and returns at
+// goLong runs a clone, pull or mirror setup on the host and returns at
 // once, as the local backend does: the server answers when the work is
 // done, and its events tell the window how it went. Detaching ends it on
 // both sides. When it fails before the server sent done (the
@@ -324,8 +324,7 @@ func (r *RemoteBackend) goLong(method, done string, failed func(msg string) any,
 }
 
 // doneKey names the operation a done event ends, from its payload: the
-// repo for a clone or a pull, the mirror repo for a setup. A move has one
-// key: the window runs one move at a time.
+// repo for a clone or a pull, or the mirror repo for a setup.
 func doneKey(event string, payload any) string {
 	b, err := json.Marshal(payload)
 	if err != nil {
@@ -456,7 +455,7 @@ func (r *RemoteBackend) relayPayload(name string, event Envelope[json.RawMessage
 }
 
 // longDoneEvents end a long call (goLong).
-var longDoneEvents = map[string]bool{"clone:done": true, "pull:done": true, "pull:alldone": true, "move:done": true, "mirror:setup:done": true}
+var longDoneEvents = map[string]bool{"clone:done": true, "pull:done": true, "pull:alldone": true, "mirror:setup:done": true}
 
 // Payloads that this build emits as maps, as structs with the same keys.
 type fetchEventDTO struct {
@@ -667,15 +666,6 @@ var relayedEvents = map[string]payloadDecoder{
 		return keepSentKeys(raw, done)
 	},
 	"mirror:setup:done": typedPayload[MirrorSetupResult],
-	"move:progress":     typedPayload[MoveProgressEventDTO],
-	"move:done": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
-		var done MoveResultDTO
-		if err := json.Unmarshal(raw, &done); err != nil {
-			return nil, err
-		}
-		done.Warnings = capList(r, "move warnings", done.Warnings, maxRemoteNotes)
-		return done, nil
-	},
 	"reconcile:done": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
 		var res ReconcileDTO
 		if err := json.Unmarshal(raw, &res); err != nil {
@@ -737,7 +727,7 @@ const (
 	maxRemoteRepos     = 10_000
 	maxRemoteAccounts  = 1_000
 	maxRemoteHarnesses = 1_000
-	// maxRemoteNotes caps the warnings and fixes of one clone or move.
+	// maxRemoteNotes caps the warnings and fixes of one clone.
 	maxRemoteNotes = 100
 )
 

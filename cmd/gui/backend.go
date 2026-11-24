@@ -42,7 +42,6 @@ type Backend interface {
 	CheckGlobalGitignore() (gitignore.Status, error)
 	CheckGlobalIdentity() identity.GlobalIdentityStatus
 	CheckMirrorCredentials(accountKey string) MirrorCredentialCheck
-	CheckMoveReadiness(sourceSourceKey, destAccountKey string, deleteSource bool) MoveReadinessDTO
 	CloneRepo(sourceKey, repoKey, root string)
 	ConfirmSweep(sourceKey, repoKey string, selection SweepPreviewDTO) SweepDeleteDTO
 	CreateNewRepo(accountKey, owner, repoName, description string, private, cloneAfter bool, root string) error
@@ -96,10 +95,8 @@ type Backend interface {
 	ListAccountOrgs(accountKey string) ([]string, error)
 	ListConfigBackups() []ConfigBackupInfo
 	ValidateRemotePath(p string) RemotePathDTO
-	ListMoveDestinationOwners(sourceKey string) []MoveOwnerOption
 	ListRemoteRepos(accountKey string) []DiscoverResult
 	ListRoots() []RootDTO
-	MoveRepo(req MoveRequestDTO)
 	// AccountFolder resolves an account's folder on the host, for the
 	// client to open (#243). It is not Wails-bound: OpenAccountInApp,
 	// OpenAccountProfile and OpenAccountInAIHarness of a remote window use
@@ -113,7 +110,6 @@ type Backend interface {
 	OpenAccountInBrowser(accountKey string) (string, error)
 	OpenAccountProfile(accountKey, profileID string) error
 	OpenRepoInBrowser(sourceKey, repoKey string) (string, error)
-	PreflightMove(req MoveRequestDTO) MovePreflightDTO
 	PreviewSweep(sourceKey, repoKey string) SweepPreviewDTO
 	PreviewPullAll() (PullPlanDTO, error)
 	PullAll(run, planID string)
@@ -191,9 +187,6 @@ func (b localBackend) CheckGlobalIdentity() identity.GlobalIdentityStatus {
 }
 func (b localBackend) CheckMirrorCredentials(accountKey string) MirrorCredentialCheck {
 	return b.a.checkMirrorCredentialsLocal(accountKey)
-}
-func (b localBackend) CheckMoveReadiness(sourceSourceKey, destAccountKey string, deleteSource bool) MoveReadinessDTO {
-	return b.a.checkMoveReadinessLocal(sourceSourceKey, destAccountKey, deleteSource)
 }
 func (b localBackend) CloneRepo(sourceKey, repoKey, root string) {
 	b.a.cloneRepoLocal(sourceKey, repoKey, root)
@@ -292,14 +285,10 @@ func (b localBackend) ListAccountOrgs(accountKey string) ([]string, error) {
 }
 func (b localBackend) ListConfigBackups() []ConfigBackupInfo     { return b.a.listConfigBackupsLocal() }
 func (b localBackend) ValidateRemotePath(p string) RemotePathDTO { return validateRemotePathLocal(p) }
-func (b localBackend) ListMoveDestinationOwners(sourceKey string) []MoveOwnerOption {
-	return b.a.listMoveDestinationOwnersLocal(sourceKey)
-}
 func (b localBackend) ListRemoteRepos(accountKey string) []DiscoverResult {
 	return b.a.listRemoteReposLocal(accountKey)
 }
-func (b localBackend) ListRoots() []RootDTO        { return b.a.listRootsLocal() }
-func (b localBackend) MoveRepo(req MoveRequestDTO) { b.a.moveRepoLocal(req) }
+func (b localBackend) ListRoots() []RootDTO { return b.a.listRootsLocal() }
 func (b localBackend) AccountFolder(accountKey string) (string, error) {
 	return b.a.accountFolderLocal(accountKey)
 }
@@ -320,9 +309,6 @@ func (b localBackend) OpenAccountProfile(accountKey, profileID string) error {
 }
 func (b localBackend) OpenRepoInBrowser(sourceKey, repoKey string) (string, error) {
 	return b.a.openRepoInBrowserLocal(sourceKey, repoKey)
-}
-func (b localBackend) PreflightMove(req MoveRequestDTO) MovePreflightDTO {
-	return b.a.preflightMoveLocal(req)
 }
 func (b localBackend) PreviewSweep(sourceKey, repoKey string) SweepPreviewDTO {
 	return b.a.previewSweepLocal(sourceKey, repoKey)

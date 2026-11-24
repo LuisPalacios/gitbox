@@ -50,14 +50,14 @@ The window appears at once and connects in the background. It reads **Connecting
 
 The remote window is the full gitbox window, fed by the host. It needs a host that already has a `gitbox.json`, for example a computer that also runs GitboxApp; token and SSH credentials can be set up from the window. A host without one keeps the connection card, which says so; setting it up from here comes in a later version.
 
-A text that speaks of this computer names the host instead, because the action runs there over SSH: the row menu reads **Delete from my-server…**, and the delete and move dialogs say which host's folder goes.
+A text that speaks of this computer names the host instead, because the action runs there over SSH: the row menu reads **Delete from my-server…**, and the delete dialog says which host's folder goes.
 
 These work, all run on the host:
 
 - the status of every repository, **Fetch all**, **Fetch** on one repository and the periodic status check, which the host runs on its own (see [The daemon](#the-daemon));
 - the repository details, the pull request badges and their lists, and the mirror status;
 - **Find projects** of an account, which lists the repositories of the provider without adding them;
-- credential checks, the sweep preview and the move preflight;
+- credential checks, the sweep preview;
 - **System check**, which shows the tools of the host;
 - opening a repository or account folder of the host in VS Code, a terminal profile or an AI harness of this computer: see [Opening the host's folders](#opening-the-hosts-folders);
 - the **Roots** window, which takes a folder typed for the host: see [Typing a folder of the host](#typing-a-folder-of-the-host).
@@ -74,7 +74,7 @@ These change the host's config, and also run there:
 
 These change the host's clones and the providers, and also run there:
 
-- cloning, pulling, deleting, creating and moving repositories;
+- cloning, pulling, deleting clones and creating repositories;
 - the sweep of merged branches, mirror setup and adding the mirrors that discovery found;
 - the reconcile with the clones on disk, which also runs when the window gets focus, and adopting the clones it finds.
 
@@ -104,7 +104,7 @@ If the connection drops while a change is being saved, the host's `gitbox.json` 
 
 ### When the connection drops during a long action
 
-A clone, pull, move, mirror setup or **Fetch all** runs on the host, in its daemon (see [The daemon](#the-daemon)). Closing the window, **Disconnect** or a dropped link only detaches the window: the action goes on there, together with its git processes, and nothing on this computer cancels it.
+A clone, pull, mirror setup or **Fetch all** runs on the host, in its daemon (see [The daemon](#the-daemon)). Closing the window, **Disconnect** or a dropped link only detaches the window: the action goes on there, together with its git processes, and nothing on this computer cancels it.
 
 When the link drops, the window connects again by itself, as [The badge and the connection](#the-badge-and-the-connection) describes. The new connection gets the results of what finished meanwhile, and an action still in flight asks the host again with the same request id: the host answers with the outcome of the first attempt and never runs it twice. A **Fetch all** that the drop interrupted ends with its usual result card. Any other call the window makes while it connects again waits for the new connection instead of failing. After **Disconnect**, the next **Connect** does the same. An action fails in the window only when the window gives up connecting again or closes.
 
@@ -112,7 +112,6 @@ A session that the host serves without the daemon behaves as before: closing the
 
 - A clone stops, and git removes the folder it created. If the host killed git outright, the folder stays: the next reconcile reports it as a clone that stopped before it finished, and I delete the folder and clone again. Gitbox never deletes it for me.
 - A pull stops, and git leaves the clone as it was or fast-forwarded.
-- A move stops between two steps and never starts deleting the source repository or the local clone. A destination it already created stays on the provider, and the move reports it; once the origin points at the destination, the config says so too.
 - A mirror setup stops, and what the provider already created stays.
 
 The window then marks the action as failed with the connection error, so nothing waits for an answer that will not come.

@@ -41,9 +41,7 @@ func TestDTOsCarryNoSecrets(t *testing.T) {
 	// I register event-only DTOs and input DTOs explicitly, so the source
 	// inventory below can guard every exported type whose name ends in DTO.
 	for _, typ := range []reflect.Type{
-		reflect.TypeFor[MoveProgressEventDTO](), reflect.TypeFor[MoveResultDTO](),
 		reflect.TypeFor[PRAccountUpdateDTO](), reflect.TypeFor[AdoptRequestDTO](),
-		reflect.TypeFor[MoveRequestDTO](), reflect.TypeFor[MirrorStatusResult](),
 		reflect.TypeFor[WindowErrorDTO](),
 	} {
 		check.Inspect(typ, report)

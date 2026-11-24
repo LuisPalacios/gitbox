@@ -1,20 +1,19 @@
 <script lang="ts">
-  // Previews stale local branches (gone, merged, squashed) and deletes them.
+  // Only merged branches can be deleted from this preview.
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
   import { pushNotice } from '../notices';
   import { t } from '../i18n';
   import { ro } from '../ro';
-  import Rich from '../Rich.svelte';
   import { applyStatusResults } from '../stores';
   import { dismiss } from '../dismiss';
 
   export let closeActionMenu: () => void;
 
-  let sweepModal: { sourceKey: string; repoKey: string; preview: Awaited<ReturnType<typeof bridge.previewSweep>>; merged: string[]; gone: string[]; squashed: string[]; } | null = null;
+  let sweepModal: { sourceKey: string; repoKey: string; preview: Awaited<ReturnType<typeof bridge.previewSweep>>; merged: string[]; gone: string[]; squashed: string[]; terminal?: () => void; } | null = null;
   let sweepBusy = false;
 
-  export async function sweepBranches(sourceKey: string, repoKey: string) {
+  export async function sweepBranches(sourceKey: string, repoKey: string, terminal?: () => void) {
     closeActionMenu();
     const preview = await bridge.previewSweep(sourceKey, repoKey);
     if (preview.error) {
@@ -28,17 +27,19 @@
       pushNotice('info', $t('notice.sweepNone'), [repoKey]);
       return;
     }
-    sweepModal = { sourceKey, repoKey, preview, merged, gone, squashed };
+    sweepModal = { sourceKey, repoKey, preview, merged, gone, squashed, terminal };
   }
 
-  $: sweepTotal = sweepModal ? sweepModal.merged.length + sweepModal.gone.length + sweepModal.squashed.length : 0;
+  $: sweepTotal = sweepModal?.merged.length ?? 0;
+  $: manual = !!(sweepModal?.gone.length || sweepModal?.squashed.length);
 
   async function confirmSweepAction() {
-    if (!sweepModal) return;
+    const selection = sweepModal;
+    if (!selection?.preview.id || sweepBusy) return;
     sweepBusy = true;
-    const result = await bridge.confirmSweep(sweepModal.sourceKey, sweepModal.repoKey, sweepModal.preview);
-    sweepBusy = false;
-    sweepModal = null;
+    const result = await bridge.confirmSweep(selection.sourceKey, selection.repoKey, selection.preview)
+      .finally(() => { sweepBusy = false; });
+    if (sweepModal === selection) sweepModal = manual ? { ...selection, merged: [] } : null;
     if (result.error) {
       pushNotice('error', $t('notice.sweepFailed'), [result.error]);
     }
@@ -61,7 +62,7 @@
       </div>
       <div class="modal-body">
         <p class="sweep-repo-name">{$t('sweep.clone', { repo: sweepModal.repoKey })}</p>
-        <p class="sweep-explain"><Rich key="sweep.explain" /></p>
+        {#if manual}<p class="sweep-explain">{$t('sweep.manual')}</p>{/if}
         {#if sweepModal.gone.length > 0}
           <div class="sweep-group">
             <span class="sweep-label sweep-label-gone">{$t('sweep.gone', { n: sweepModal.gone.length })}</span>
@@ -85,10 +86,15 @@
         {/if}
       </div>
       <div class="modal-foot">
-        <button class="btn-cancel" on:click={() => sweepModal = null}>{$t('common.cancel')}</button>
-        <button use:ro={'confirmSweep'} class="btn-sweep-confirm" on:click={confirmSweepAction} disabled={sweepBusy}>
-          {sweepBusy ? $t('sweep.sweeping') : $t(sweepTotal === 1 ? 'sweep.deleteOne' : 'sweep.deleteN', { n: sweepTotal })}
-        </button>
+        <button class="btn-cancel" on:click={() => sweepModal = null}>{$t(sweepTotal ? 'common.cancel' : 'common.close')}</button>
+        {#if manual && sweepModal.terminal}
+          <button class="btn-cancel" on:click={sweepModal.terminal}>{$t('notice.openTerminal')}</button>
+        {/if}
+        {#if sweepTotal > 0}
+          <button use:ro={'confirmSweep'} class="btn-sweep-confirm" on:click={confirmSweepAction} disabled={sweepBusy || !sweepModal.preview.id}>
+            {sweepBusy ? $t('sweep.sweeping') : $t(sweepTotal === 1 ? 'sweep.deleteOne' : 'sweep.deleteN', { n: sweepTotal })}
+          </button>
+        {/if}
       </div>
     </div>
   </div>

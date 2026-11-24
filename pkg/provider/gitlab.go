@@ -203,30 +203,6 @@ func gitLabNextPage(headers http.Header, _ int, current int) int {
 	return 0
 }
 
-// --- RepoDeleter ---
-
-func (g *GitLab) DeleteRepo(ctx context.Context, baseURL, token, _, owner, repoName string) error {
-	if owner == "" || repoName == "" {
-		return fmt.Errorf("gitlab delete repo: owner and repo name required")
-	}
-	base := strings.TrimRight(baseURL, "/")
-	encoded := url.PathEscape(owner + "/" + repoName)
-	apiURL := fmt.Sprintf("%s/api/v4/projects/%s", base, encoded)
-	if err := doDelete(ctx, apiURL, g.authHeaders(token)); err != nil {
-		if IsScopeDenied(err) {
-			return &InsufficientScopesError{
-				Provider:       "gitlab",
-				Action:         ActionDeleteRepo,
-				RequiredScopes: ScopesForAction("gitlab", ActionDeleteRepo),
-				BaseURL:        baseURL,
-				cause:          err,
-			}
-		}
-		return fmt.Errorf("gitlab delete repo: %w", err)
-	}
-	return nil
-}
-
 func (g *GitLab) RepoExists(ctx context.Context, baseURL, token, _, owner, repoName string) (bool, error) {
 	base := strings.TrimRight(baseURL, "/")
 	// GitLab uses URL-encoded "owner/repo" as the project ID.
