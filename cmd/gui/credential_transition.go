@@ -64,7 +64,7 @@ func (a *App) changeCredentialTypeLocal(key, typ, token string) (ops.StepReport,
 			if _, err := credential.FixGlobalGCMConfig(cfg); err != nil {
 				return "", err
 			}
-			return signInGCM(acct)
+			return signInGCM(acct, &cfg.Global)
 		},
 	})
 }

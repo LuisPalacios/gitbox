@@ -160,6 +160,15 @@ func ResolveGCMToken(accountURL, username string) (token, source string, err err
 // ResolveGCMTokenContext extracts a cached GCM credential without prompting and
 // bounds the subprocess to 15 seconds or the caller's earlier cancellation.
 func ResolveGCMTokenContext(ctx context.Context, accountURL, username string) (token, source string, err error) {
+	return resolveGCMToken(ctx, accountURL, username, nil)
+}
+
+// ResolveConfiguredGCMToken uses the same helper settings as managed clones.
+func ResolveConfiguredGCMToken(ctx context.Context, acct config.Account, global config.GlobalConfig) (string, string, error) {
+	return resolveGCMToken(ctx, acct.URL, acct.Username, GCMHelperArgs(acct, global))
+}
+
+func resolveGCMToken(ctx context.Context, accountURL, username string, settings []string) (token, source string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	if err := ctx.Err(); err != nil {
@@ -180,7 +189,7 @@ func ResolveGCMTokenContext(ctx context.Context, accountURL, username string) (t
 	// without them git-credential-manager is not found, because the system
 	// git (/usr/bin/git) doesn't ship GCM and GUI/SSH sessions inherit a
 	// minimal PATH.
-	res, err := git.Run(ctx, git.Request{Dir: home, Args: []string{"credential", "fill"}, Stdin: strings.NewReader(input)})
+	res, err := git.Run(ctx, git.Request{Dir: home, Args: append(settings, "credential", "fill"), Stdin: strings.NewReader(input)})
 	out := res.Stdout
 	if err != nil {
 		if ctx.Err() != nil {

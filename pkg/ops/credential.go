@@ -3,8 +3,10 @@ package ops
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
@@ -89,6 +91,21 @@ func rejectGCMCredential(host, username string) error {
 	home, _ := os.UserHomeDir()
 	_, err := git.Run(context.Background(), git.Request{Dir: home, Args: []string{"credential", "reject"},
 		Env: git.Inherit, Stdin: strings.NewReader(input)})
+	return err
+}
+
+func rejectConfiguredGCMCredential(ctx context.Context, cfg *config.Config, acct config.Account) error {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	origin, err := url.Parse(acct.URL)
+	if err != nil {
+		return err
+	}
+	input := fmt.Sprintf("protocol=%s\nhost=%s\nusername=%s\n\n", origin.Scheme, origin.Host, acct.Username)
+	home, _ := os.UserHomeDir()
+	args := append(credential.GCMHelperArgs(acct, cfg.Global), "credential", "reject")
+	_, err = git.Run(ctx, git.Request{Dir: home, Args: args,
+		Stdin: strings.NewReader(input)})
 	return err
 }
 

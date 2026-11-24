@@ -63,6 +63,18 @@ func expectedGCMDefaults(cfg *config.Config) (helper, store string) {
 	return helper, store
 }
 
+// GCMHelperArgs scopes a managed credential operation to its configured
+// helper and store, even when the user has other global helpers.
+func GCMHelperArgs(acct config.Account, global config.GlobalConfig) []string {
+	helper, store := expectedGCMDefaults(&config.Config{Global: global})
+	args := []string{"-c", "credential.helper=", "-c", "credential.helper=" + helper,
+		"-c", "credential.credentialStore=" + store, "-c", "credential.useHttpPath=false"}
+	if acct.GCM != nil && acct.GCM.Provider != "" {
+		args = append(args, "-c", "credential.provider="+acct.GCM.Provider)
+	}
+	return args
+}
+
 // CheckGlobalGCMConfig reads the current state of ~/.gitconfig and compares
 // it against the expected helper + credentialStore. NeedsFix is true when
 // either value is missing or does not match expectations.

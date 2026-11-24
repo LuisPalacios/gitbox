@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -2527,7 +2528,7 @@ func (a *App) credentialSetupGCMLocal(accountKey string) CredentialSetupResult {
 		return CredentialSetupResult{OK: false, Message: userText(fmt.Sprintf("Failed to repair global gitconfig: %v", fixErr))}
 	}
 
-	realUsername, err := signInGCM(acct)
+	realUsername, err := signInGCM(acct, nil)
 	if err != nil {
 		return CredentialSetupResult{OK: false, Message: userMsg(err)}
 	}
@@ -2551,17 +2552,35 @@ func (a *App) credentialSetupGCMLocal(accountKey string) CredentialSetupResult {
 }
 
 // signInGCM prepares GCM's helper entry without changing the account.
-func signInGCM(acct config.Account) (string, error) {
+func signInGCM(acct config.Account, managed *config.GlobalConfig) (string, error) {
 	host := ops.HostnameFromURL(acct.URL)
+	resolve := credential.ResolveGCMToken
+	var settings []string
+	if managed != nil {
+		settings = credential.GCMHelperArgs(acct, *managed)
+		resolve = func(accountURL, username string) (string, string, error) {
+			target := acct
+			target.URL, target.Username = accountURL, username
+			return credential.ResolveConfiguredGCMToken(context.Background(), target, *managed)
+		}
+	}
+
 	// Check if GCM already has a stored credential.
-	_, _, err := credential.ResolveGCMToken(acct.URL, acct.Username)
+	_, _, err := resolve(acct.URL, acct.Username)
 	if err == nil {
 		return acct.Username, nil
 	}
 
 	// Trigger interactive git credential fill — GCM opens its sign-in window
 	// (password dialog or browser).
-	input := fmt.Sprintf("protocol=https\nhost=%s\nusername=%s\n\n", host, acct.Username)
+	scheme := "https"
+	gitHost := host
+	if managed != nil {
+		if u, err := url.Parse(acct.URL); err == nil && u.Host != "" {
+			scheme, gitHost = u.Scheme, u.Host
+		}
+	}
+	input := fmt.Sprintf("protocol=%s\nhost=%s\nusername=%s\n\n", scheme, gitHost, acct.Username)
 
 	// Run from home dir so repo-local .git/config credential overrides
 	// don't interfere with GCM. Home has ~/.gitconfig with per-host settings.
@@ -2571,7 +2590,7 @@ func signInGCM(acct config.Account) (string, error) {
 	// The runner captures the output (a GUI launched without a console has
 	// no valid stderr handle to forward to) and stops waiting two seconds
 	// after a timeout: GCM may outlive the killed git and hold the pipes open.
-	fill, err := git.Run(fillCtx, git.Request{Dir: homeDir, Args: []string{"credential", "fill"},
+	fill, err := git.Run(fillCtx, git.Request{Dir: homeDir, Args: append(slices.Clone(settings), "credential", "fill"),
 		EnvExact: gcmSignInEnv(), Stdin: strings.NewReader(input)})
 	out := fill.Stdout
 	if err != nil {
@@ -2606,11 +2625,11 @@ func signInGCM(acct config.Account) (string, error) {
 	// already persist during fill. We verify storage below.
 	approveCtx, cancelApprove := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelApprove()
-	_, _ = git.Run(approveCtx, git.Request{Dir: homeDir, Args: []string{"credential", "approve"},
+	_, _ = git.Run(approveCtx, git.Request{Dir: homeDir, Args: append(slices.Clone(settings), "credential", "approve"),
 		EnvExact: gcmSignInEnv(), Stdin: bytes.NewReader(out)})
 
 	// Verify the credential was actually stored.
-	if _, _, err := credential.ResolveGCMToken(acct.URL, realUsername); err != nil {
+	if _, _, err := resolve(acct.URL, realUsername); err != nil {
 		return "", fmt.Errorf("GCM authentication completed but credential was not stored for %s@%s. Try running: git credential approve manually", realUsername, host)
 	}
 

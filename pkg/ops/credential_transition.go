@@ -207,7 +207,7 @@ func verifyCredentialTransition(ctx context.Context, cfg *config.Config, key str
 		// Check the GCM credential itself. A companion PAT cannot attest
 		// that the new helper authenticated.
 		var err error
-		token, _, err = credential.ResolveGCMTokenContext(ctx, acct.URL, acct.Username)
+		token, _, err = credential.ResolveConfiguredGCMToken(ctx, acct, cfg.Global)
 		if err != nil {
 			return err
 		}
@@ -305,7 +305,7 @@ func finishCredentialTransition(ctx context.Context, cfg *config.Config, key str
 		if !report.record(StepRetire, retireRenamedCredentials(cfg, key, pending)) {
 			return report
 		}
-	} else if !report.record(StepRetire, retirePreviousType(cfg, key, acct, pending)) {
+	} else if !report.record(StepRetire, retirePreviousType(ctx, cfg, key, acct, pending)) {
 		return report
 	}
 	_, err := owner.Commit(func(current *config.Config) error {
@@ -354,7 +354,7 @@ func accountOwnsSSH(cfg *config.Config, key string, acct config.Account) bool {
 	return err == nil && pathkey.Compare(file) == pathkey.Compare(credential.SSHKeyPath(folder, key))
 }
 
-func retirePreviousType(cfg *config.Config, key string, acct config.Account, pending *config.CredentialTransition) error {
+func retirePreviousType(ctx context.Context, cfg *config.Config, key string, acct config.Account, pending *config.CredentialTransition) error {
 	typ := pending.PreviousType
 	if typ == acct.DefaultCredentialType || accountUsesOverride(cfg, key, typ) {
 		return nil
@@ -376,7 +376,7 @@ func retirePreviousType(cfg *config.Config, key string, acct config.Account, pen
 				return nil
 			}
 		}
-		return rejectGCMCredential(host, acct.Username)
+		return rejectConfiguredGCMCredential(ctx, cfg, acct)
 	}
 	return nil
 }
