@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -15,6 +16,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/mirror"
 	"github.com/LuisPalacios/gitbox/pkg/rpc"
+	"github.com/LuisPalacios/gitbox/pkg/usererr"
 )
 
 // RemoteBackend is the Backend of a window that shows another host: every
@@ -45,6 +47,18 @@ type RemoteBackend struct {
 	gen uint64
 	// long are the calls goLong waits for in the background.
 	long map[*longCall]struct{}
+
+	// A host's daemon outlives the connection (#247). resume is where the
+	// last connection to it left; persistent says the current or last
+	// connection reached a daemon, so a long call whose link dropped waits
+	// for the next connection instead of failing; lost says no next one is
+	// coming. changed is closed, and replaced, when any of them changes.
+	resume     rpc.ResumePoint
+	resumed    rpc.ResumeOutcome
+	hadResume  bool
+	persistent bool
+	lost       bool
+	changed    chan struct{}
 }
 
 // longCall is one clone, pull, move or mirror setup in flight (goLong).
@@ -73,11 +87,18 @@ func dialRemoteBackend(in io.Reader, out io.WriteCloser, sink func() EventSink, 
 	return r, nil
 }
 
-// connect runs the handshake and attaches the connection.
+// connect runs the handshake and attaches the connection. A connection to
+// a daemon resumes from where the last one left, when it is the same
+// daemon. The server must be this build, on every connection.
 func (r *RemoteBackend) connect(in io.Reader, out io.WriteCloser) error {
 	r.mu.Lock()
 	r.gen++
 	gen := r.gen
+	var resume *rpc.ResumePoint
+	if r.resume.Instance != "" {
+		point := r.resume
+		resume = &point
+	}
 	r.mu.Unlock()
 	client, err := rpc.Dial(in, out, rpc.ClientOptions{
 		Version: version, Commit: commit,
@@ -91,13 +112,27 @@ func (r *RemoteBackend) connect(in io.Reader, out io.WriteCloser) error {
 		},
 		Log:          r.log,
 		SecretParams: secretParams,
+		Resume:       resume,
 	})
 	if err != nil {
 		return err
 	}
+	// The handshake already refused another build; the answer is checked
+	// here too, so a reconnect never resumes into a daemon of another build.
+	if hello := client.Server(); hello.Version != version || hello.Commit != commit {
+		_ = client.Close()
+		return &rpc.Error{Code: rpc.CodeApplication, Data: usererr.UserError{Code: rpc.ErrCodeVersionMismatch}}
+	}
 	r.mu.Lock()
 	old := r.client
 	r.client = client
+	r.persistent = client.Server().Daemon != nil
+	r.resumed, r.hadResume = client.Resumed(), resume != nil
+	if !r.persistent {
+		r.resume = rpc.ResumePoint{}
+	}
+	r.lost = false
+	r.signalLocked()
 	r.mu.Unlock()
 	if old != nil {
 		_ = old.Close()
@@ -105,19 +140,94 @@ func (r *RemoteBackend) connect(in io.Reader, out io.WriteCloser) error {
 	return nil
 }
 
-// detach ends the connection, which is the server's signal to stop, and
-// leaves the backend answering not_connected. On the host that cancels the
-// long calls in flight and their git processes (#295); here they fail as
-// disconnected.
+// detach ends the connection. A server for one session takes that as its
+// signal to stop, and the long calls in flight end with it (#295). A
+// daemon keeps running them, and nothing here asks it to cancel them
+// (#247): their outcomes come with the next connection.
 func (r *RemoteBackend) detach() {
 	r.mu.Lock()
 	c := r.client
 	r.client = nil
 	r.gen++
+	if c != nil && r.persistent {
+		r.resume = c.ResumePoint()
+	}
+	r.signalLocked()
 	r.mu.Unlock()
 	if c != nil {
 		_ = c.Close()
 	}
+}
+
+// markLost says no connection will follow: the long calls that wait for
+// one fail.
+func (r *RemoteBackend) markLost() {
+	r.mu.Lock()
+	r.lost = true
+	r.signalLocked()
+	r.mu.Unlock()
+}
+
+func (r *RemoteBackend) signalLocked() {
+	if r.changed != nil {
+		close(r.changed)
+		r.changed = nil
+	}
+}
+
+// isPersistent reports whether the current or last connection reached a
+// daemon.
+func (r *RemoteBackend) isPersistent() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.persistent
+}
+
+// resumeOutcome is what the resume of the current connection did, and
+// whether it had a point to resume from.
+func (r *RemoteBackend) resumeOutcome() (rpc.ResumeOutcome, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.resumed, r.hadResume
+}
+
+// link is the current connection and whether it reaches a daemon.
+func (r *RemoteBackend) link() (*rpc.Client, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.client, r.persistent
+}
+
+// awaitLink waits for a connection other than prev and reports whether it
+// reaches a daemon. It reports false when none will come.
+func (r *RemoteBackend) awaitLink(prev *rpc.Client) bool {
+	for {
+		r.mu.Lock()
+		if r.lost {
+			r.mu.Unlock()
+			return false
+		}
+		if r.client != nil && r.client != prev {
+			ok := r.persistent
+			r.mu.Unlock()
+			return ok
+		}
+		if r.changed == nil {
+			r.changed = make(chan struct{})
+		}
+		ch := r.changed
+		r.mu.Unlock()
+		<-ch
+	}
+}
+
+// linkDropped reports a call that got no answer because the link ended.
+func linkDropped(err error) bool {
+	if rpc.IsCode(err, rpc.ErrCodeDisconnected) {
+		return true
+	}
+	re, ok := errors.AsType[*remoteError](err)
+	return ok && re.Code == remoteNotConnected
 }
 
 // goLong runs a clone, pull, move or mirror setup on the host and returns at
@@ -138,7 +248,18 @@ func (r *RemoteBackend) goLong(method, done string, failed func(msg string) any,
 	r.long[call] = struct{}{}
 	r.mu.Unlock()
 	go func() {
-		err := r.invoke(method, nil, args...)
+		// One request id for every attempt: a daemon that still runs the
+		// first one, or finished it, answers a repeat with its outcome
+		// instead of starting the work again (#247).
+		id := newRequestID()
+		var err error
+		for {
+			client, persistent := r.link()
+			err = r.invokeOn(client, context.Background(), method, nil, id, args...)
+			if err == nil || !persistent || !linkDropped(err) || !r.awaitLink(client) {
+				break
+			}
+		}
 		r.mu.Lock()
 		delete(r.long, call)
 		seen := call.seen
@@ -196,8 +317,12 @@ func (r *RemoteBackend) current() *rpc.Client {
 // nothing to start here.
 func (r *RemoteBackend) Init(context.Context) {}
 
-// Close ends the connection.
-func (r *RemoteBackend) Close() { r.detach() }
+// Close ends the connection, and with it the wait of every long call: the
+// window is closing. A daemon keeps running them.
+func (r *RemoteBackend) Close() {
+	r.detach()
+	r.markLost()
+}
 
 // Hello is what the server said about itself in the handshake, or the zero
 // value while not connected.
@@ -665,7 +790,12 @@ func (r *RemoteBackend) invoke(method string, result any, args ...any) error {
 }
 
 func (r *RemoteBackend) invokeContext(ctx context.Context, method string, result any, args ...any) error {
-	client := r.current()
+	return r.invokeOn(r.current(), ctx, method, result, "", args...)
+}
+
+// invokeOn is invoke on one connection. id is the request id of a
+// mutation; empty picks a new one.
+func (r *RemoteBackend) invokeOn(client *rpc.Client, ctx context.Context, method string, result any, id string, args ...any) error {
 	if client == nil {
 		return &remoteError{remoteNotConnected, "not connected to the remote"}
 	}
@@ -680,7 +810,10 @@ func (r *RemoteBackend) invokeContext(ctx context.Context, method string, result
 	defer cancel()
 	var opts []rpc.CallOption
 	if info.Mutating {
-		opts = append(opts, rpc.WithRequestID(newRequestID()))
+		if id == "" {
+			id = newRequestID()
+		}
+		opts = append(opts, rpc.WithRequestID(id))
 	}
 	err := client.Call(ctx, method, args, result, opts...)
 	if rpc.IsCode(err, rpc.ErrCodeUnsupported) {

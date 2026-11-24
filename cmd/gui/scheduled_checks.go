@@ -59,8 +59,16 @@ func (a *App) syncTaskInterval() {
 	a.taskPrefsMu.Lock()
 	defer a.taskPrefsMu.Unlock()
 	var every time.Duration
-	if v := a.GetPeriodicSync(); validPeriodicSync(v) {
+	v := a.GetPeriodicSync()
+	if validPeriodicSync(v) {
 		every, _ = time.ParseDuration(v)
+	}
+	// The daemon of a host runs the fleet checks itself, connected window or
+	// not (#247): the window sends it the interval and keeps no timer.
+	if a.remote != nil && a.remote.hostSchedules() {
+		a.tasks.setFleetInterval(0)
+		go a.remote.pushSchedule(v)
+		return
 	}
 	a.tasks.setFleetInterval(every)
 }
@@ -142,7 +150,13 @@ func (b localBackend) RunFleetCheck(ctx context.Context, name string) error {
 	}
 }
 
+// RunFleetCheck runs a check on the host. On a daemon the window's end
+// never cancels it (#247): closing the window detaches, and the check
+// finishes on the host.
 func (r *RemoteBackend) RunFleetCheck(ctx context.Context, name string) error {
+	if r.isPersistent() {
+		ctx = context.WithoutCancel(ctx)
+	}
 	return r.invokeContext(ctx, "RunFleetCheck", nil, name)
 }
 

@@ -57,6 +57,9 @@ type daemonConfig struct {
 	peerUID func(net.Conn) (int, error)
 	// ready, when set, is closed once the daemon listens.
 	ready chan<- struct{}
+	// prepare, when set, sees the App and the server before the daemon
+	// serves: tests add handlers there.
+	prepare func(*App, *rpc.Server)
 }
 
 // replayedEvent names the events a reconnecting client gets again: those
@@ -95,6 +98,9 @@ func runDaemon(ctx context.Context, d daemonConfig) error {
 	a := newServerApp(d.cfgPath)
 	srv := newRPCServer(a, d.log)
 	srv.Persistent = &rpc.Persistent{Instance: newInstanceID(), Journal: journal, Replay: replayedEvent}
+	if d.prepare != nil {
+		d.prepare(a, srv)
+	}
 	backend := a.be()
 	backend.Init(ctx)
 	a.tasks.start(ctx, append([]*scheduledTask{a.hostHarnessTask()}, a.fleetTasks()...))

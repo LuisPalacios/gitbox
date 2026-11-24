@@ -2468,6 +2468,7 @@
       {:else}
         <span>{$t('remote.offline', { alias: remoteState.alias })}</span>
         {#if remoteState.state === 'connecting' && remoteState.waiting}<span class="remote-waiting" role="status"><span aria-hidden="true">&#9888;</span> {$t(`remote.waiting.${remoteState.waiting}`)}</span>{/if}
+        {#if remoteState.state === 'connecting' && remoteState.attempt}<span class="remote-attempt">{$t('remote.reconnecting', { attempt: remoteState.attempt, attempts: remoteState.attempts ?? remoteState.attempt })}</span>{/if}
         <button class="remote-reconnect" disabled={remoteState.state === 'connecting' || remoteState.state === 'installing'}
           on:click={() => bridge.remoteReconnect().catch(console.error)}>{$t('remote.reconnect')}</button>
       {/if}

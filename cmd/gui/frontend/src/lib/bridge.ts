@@ -253,6 +253,10 @@ export interface RemoteState {
   remoteEditors?: string[] | null;
   // The editor chosen for this remote, absent for Auto (#287).
   editor?: string;
+  // While connecting again after the link to the host's daemon dropped,
+  // which attempt this is (#247).
+  attempt?: number;
+  attempts?: number;
 }
 
 export interface RemoteResult {

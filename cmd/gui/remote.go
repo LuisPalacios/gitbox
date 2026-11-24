@@ -68,6 +68,10 @@ type RemoteStateDTO struct {
 	// Editor is the editor chosen for this remote in its entry, empty for
 	// Auto: the window then enables only that editor (#287).
 	Editor string `json:"editor,omitempty"`
+	// Attempt and Attempts say, while connecting again after the link to
+	// the host's daemon dropped, which attempt this is (#247).
+	Attempt  int `json:"attempt,omitempty"`
+	Attempts int `json:"attempts,omitempty"`
 }
 
 // RemoteResultDTO is the outcome of a remote action. Empty Error means it
@@ -166,10 +170,12 @@ type remoteSession struct {
 	probe  remote.Probe // what the host said before the server started
 	gen    int          // each connect and disconnect starts a new generation
 	cancel context.CancelFunc
+	// policy paces the attempts after the link to a daemon dropped.
+	policy remote.ReconnectPolicy
 }
 
 func newRemoteSession(a *App, alias string) *remoteSession {
-	s := &remoteSession{a: a, alias: alias, clientID: newClientID(), dial: dialSSH}
+	s := &remoteSession{a: a, alias: alias, clientID: newClientID(), dial: dialSSH, policy: remote.DefaultReconnect}
 	s.log = remote.NewLog(func(line string) { emit(a.newOperation(), "remote:log", userText(line)) })
 	s.backend = newRemoteBackend(a, s.log)
 	s.backend.onTruncate = s.noteTruncated
@@ -189,6 +195,8 @@ func (a *App) remoteOptions(alias, clientID string, log *remote.Log) (remote.Opt
 		ServerDir: entry.ServerDir, ClientID: clientID, Version: version, Commit: commit,
 		Target: serverTarget, Log: log,
 		ControlDir: filepath.Join(config.ConfigRoot(), config.V2ConfigDir),
+		// Every session goes through the host's daemon (#247).
+		Daemon: true,
 	}
 	return o, nil
 }
@@ -293,18 +301,28 @@ func (s *remoteSession) start() {
 
 func (s *remoteSession) run(ctx context.Context, cancel context.CancelFunc, gen int) {
 	defer cancel()
-	fail := func(err error) {
-		code, hint, detail := remoteFailure(err)
-		s.log.Printf("connect: failed: %s (%s)", detail, code)
-		s.set(gen, func(st *RemoteStateDTO) {
-			*st = RemoteStateDTO{State: remoteFailed, Code: code, Hint: hint, Detail: detail, Alias: s.alias}
-		})
+	if err := s.connectOnce(ctx, gen); err != nil {
+		s.fail(gen, "connect: failed", err)
 	}
+}
+
+// fail reports a connection that failed or ended, with what says why.
+func (s *remoteSession) fail(gen int, what string, err error) {
+	code, hint, detail := remoteFailure(err)
+	s.log.Printf("%s: %s (%s)", what, detail, code)
+	s.set(gen, func(st *RemoteStateDTO) {
+		*st = RemoteStateDTO{State: remoteFailed, Code: code, Hint: hint, Detail: detail, Alias: s.alias}
+	})
+}
+
+// connectOnce starts the server, attaches the backend and watches the
+// connection. A stale gen means a disconnect came meanwhile: the new
+// connection is closed, and that is no failure.
+func (s *remoteSession) connectOnce(ctx context.Context, gen int) error {
 	s.log.Printf("connect: %s, client %s, build %s", s.alias, s.clientID, formatAppVersion(version, commit))
 	o, err := s.a.remoteOptions(s.alias, s.clientID, s.log)
 	if err != nil {
-		fail(err)
-		return
+		return err
 	}
 	o.OnInstall = func() { s.set(gen, func(st *RemoteStateDTO) { st.State = remoteInstalling; st.Waiting = "" }) }
 	o.OnSlowLogin = func(agent string) {
@@ -316,8 +334,7 @@ func (s *remoteSession) run(ctx context.Context, cancel context.CancelFunc, gen 
 	}
 	conn, err := s.dial(ctx, s.alias, o)
 	if err != nil {
-		fail(err)
-		return
+		return err
 	}
 	// The handshake is bounded by the same deadline.
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
@@ -329,15 +346,14 @@ func (s *remoteSession) run(ctx context.Context, cancel context.CancelFunc, gen 
 		if err == nil {
 			err = &remote.Error{Code: remote.CodeSSHTimeout, Detail: "the server did not answer in time"}
 		}
-		fail(err)
-		return
+		return err
 	}
 	s.mu.Lock()
 	if gen != s.gen {
 		s.mu.Unlock()
 		s.backend.detach()
 		_ = conn.Close()
-		return
+		return nil
 	}
 	s.conn = conn
 	s.probe = remote.Probe{}
@@ -348,14 +364,57 @@ func (s *remoteSession) run(ctx context.Context, cancel context.CancelFunc, gen 
 	s.backend.Init(ctx)
 	hello := s.backend.Hello()
 	s.log.Printf("connect: connected to %s %s/%s, build %s", s.alias, userText(hello.OS), userText(hello.Arch), s.backend.ServerVersion())
+	s.logSession(hello)
 	s.set(gen, func(st *RemoteStateDTO) {
 		*st = RemoteStateDTO{State: remoteConnected, Alias: s.alias,
 			ServerOS: userText(hello.OS), ServerArch: userText(hello.Arch), ServerVersion: s.backend.ServerVersion()}
 	})
+	s.a.syncTaskInterval()
 	go s.watch(gen, conn)
+	return nil
+}
+
+// logSession says in the connection log how the host serves this session
+// (#247): through its daemon, resumed or not, or in a process of its own.
+func (s *remoteSession) logSession(hello rpc.Hello) {
+	switch {
+	case hello.Fallback != "":
+		s.log.Printf("connect: the host serves this session without the daemon (%s): work stops if the link drops", userText(hello.Fallback))
+		return
+	case hello.Daemon == nil:
+		return
+	case hello.Daemon.Resumed:
+		s.log.Printf("connect: joined the host's daemon")
+	default:
+		s.log.Printf("connect: the host started its daemon")
+	}
+	switch outcome, had := s.backend.resumeOutcome(); {
+	case outcome.Resumed && outcome.Gap:
+		s.log.Printf("connect: resumed with %d missed events; older ones were no longer kept, and the window reloads everything", outcome.Replayed)
+	case outcome.Resumed:
+		s.log.Printf("connect: resumed with %d missed events", outcome.Replayed)
+	case had:
+		s.log.Printf("connect: the host's daemon restarted; what it did meanwhile is not replayed, and the window reloads everything")
+	}
+}
+
+// hostSchedules reports whether the host's daemon runs the fleet checks of
+// this window (#247): the window is connected to one.
+func (s *remoteSession) hostSchedules() bool {
+	return s.connected() && s.backend.isPersistent()
+}
+
+// pushSchedule sends the periodic_sync preference to the host's daemon.
+func (s *remoteSession) pushSchedule(interval string) {
+	if err := s.backend.SetFleetSchedule(interval); err != nil {
+		s.log.Printf("schedule: the host did not take the interval: %s", userMsg(err))
+	}
 }
 
 // watch turns the end of a connection that nobody closed into a failure.
+// After the link to a daemon dropped it first connects again, up to the
+// policy's attempts: the daemon kept running what the window started, and
+// the new connection gets what the window missed.
 func (s *remoteSession) watch(gen int, conn remoteConn) {
 	var linkDead <-chan struct{}
 	if c := s.backend.current(); c != nil {
@@ -378,13 +437,46 @@ func (s *remoteSession) watch(gen int, conn remoteConn) {
 	if err == nil {
 		err = &remoteError{remoteServerCrashed, "the server ended the connection"}
 	}
+	daemon := s.backend.isPersistent()
 	s.backend.detach()
 	_ = conn.Close()
-	code, hint, detail := remoteFailure(err)
-	s.log.Printf("connect: the connection ended: %s (%s)", detail, code)
-	s.set(gen, func(st *RemoteStateDTO) {
-		*st = RemoteStateDTO{State: remoteFailed, Code: code, Hint: hint, Detail: detail, Alias: s.alias}
+	if !daemon {
+		s.backend.markLost()
+		s.fail(gen, "connect: the connection ended", err)
+		return
+	}
+	code, _, detail := remoteFailure(err)
+	s.log.Printf("connect: the link dropped: %s (%s); connecting again", detail, code)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.mu.Lock()
+	if gen != s.gen {
+		s.mu.Unlock()
+		return
+	}
+	s.cancel = cancel
+	s.mu.Unlock()
+	attempts := s.policy.Attempts()
+	err = s.policy.Run(ctx, func(ctx context.Context, n int) error {
+		s.set(gen, func(st *RemoteStateDTO) {
+			*st = RemoteStateDTO{State: remoteConnecting, Alias: s.alias, Attempt: n, Attempts: attempts}
+		})
+		actx, acancel := context.WithTimeout(ctx, remoteConnectTimeout)
+		defer acancel()
+		err := s.connectOnce(actx, gen)
+		if err != nil {
+			s.log.Printf("connect: attempt %d of %d failed: %s", n, attempts, userMsg(err))
+		}
+		return err
 	})
+	s.mu.Lock()
+	stale := gen != s.gen
+	s.mu.Unlock()
+	if err == nil || stale {
+		return
+	}
+	s.backend.markLost()
+	s.fail(gen, "connect: gave up connecting again", err)
 }
 
 // disconnect ends the connection, or the connect under way.

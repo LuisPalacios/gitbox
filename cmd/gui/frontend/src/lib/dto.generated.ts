@@ -318,6 +318,8 @@ export interface RemoteStateDTO {
   waiting?: string;
   remoteEditors: string[];
   editor?: string;
+  attempt?: number;
+  attempts?: number;
 }
 
 export interface StatusResult {
