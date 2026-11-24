@@ -242,13 +242,13 @@ test('I name the host, not this computer, in a remote window', async () => {
   const { get } = await import(store);
   const say = (key, vars) => get(i18n.t)(key, vars);
 
-  assert.equal(say('menu.delete'), 'Delete from this computer…');
+  assert.equal(say('menu.delete'), 'Delete clone folder…');
   i18n.remoteTextHost.set('my-server');
-  assert.equal(say('menu.delete'), 'Delete from my-server…');
+  assert.equal(say('menu.delete'), 'Delete clone folder on my-server…');
   assert.equal(say('move.localRemoved', { path: '/srv/x' }), 'The clone on my-server at `/srv/x` **WILL** be removed.');
   assert.equal(say('repo.pullTip'), en.get('repo.pullTip'), 'a key without a variant reads as before');
   i18n.languageStore.set('es');
-  assert.equal(say('menu.delete'), 'Borrar de my-server…');
+  assert.equal(say('menu.delete'), 'Eliminar carpeta del clon en my-server…');
   i18n.remoteTextHost.set(null);
-  assert.equal(say('menu.delete'), 'Borrar de este ordenador…');
+  assert.equal(say('menu.delete'), 'Eliminar carpeta del clon…');
 });

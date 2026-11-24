@@ -125,7 +125,7 @@ In Simple, each project shows what Gitbox observed and when to act.
 
 When an **Update available**, **Only online** or **Needs help** row reports a known server result, it shows when Gitbox checked it. Hover over that time for the date and time of the check.
 
-Names show without the organization prefix; hover a name to see it in full. Rows keep the three [launch buttons](#clone-actions), and the ⋯ menu offers Open on the web, the folder, editors, AI harnesses and **Delete from this computer…**.
+Names show without the organization prefix; hover a name to see it in full. Rows keep the three [launch buttons](#clone-actions), and the ⋯ menu offers Open on the web, the folder, editors, AI harnesses and **Stop showing this project**.
 
 Simple hides the rest: the Mirrors view, delete mode, the compact view and theme buttons (the theme stays in Settings), container and branch badges, ahead, behind and changed counts, and the per-row fetch button. The top bar keeps **Check all** and **Update all**. Account health shows **Connection needs checking** when the server is unreachable and **Reconnect** when a credential breaks. Settings hides the Config, PR / reviews, Global gitignore and Terminals rows. The compact view is the same in both modes.
 
@@ -286,10 +286,10 @@ Next to them, the **⋯ menu** is one flat list in sections, with no submenus:
 1. **Open** — **Navigate to repo** opens the repo on the provider, and **Reveal in Finder** (Explorer, or the file manager on Linux) opens its folder.
 2. **Open with** — every AI harness and editor, then the default terminal profile and the ones marked Preferred, each with its logo. The tool the row's own launch button uses carries a **default** tag.
 3. **Maintenance** (Advanced) — **Sweep branches**, **Move repository…**, **Mark as multi-repo container** or **Unmark as multi-repo container**, **Choose workspace…** on a container with workspace files, and **Re-scan for nested clones**.
-4. **Delete from this computer…** — in both modes.
+4. **Stop showing this project** in either mode. **Delete clone folder…** also appears in Advanced.
 
 <p align="center">
-  <img src="../assets/screenshot-menu.png" alt="A clone's ⋯ menu: Open, Open with every AI harness, editor and terminal, Maintenance, and Delete from this computer" width="560" />
+  <img src="../assets/screenshot-menu.png" alt="A clone's ⋯ menu: Open, Open with every AI harness, editor and terminal, Maintenance, and the options to stop tracking or delete the clone" width="560" />
 </p>
 
 The default editor and AI harness are the first entries of `global.editors` and `global.ai_harnesses` in `gitbox.json`; reorder those arrays to change them, and the menu follows the config order. The default terminal is the profile marked Default in **Settings → Terminals → Manager** (see [Editors and terminal profiles](#editors-and-terminal-profiles)).
@@ -403,7 +403,13 @@ Both sides need the token scopes listed in [Token scopes by capability](credenti
 
 ### Deleting repos and accounts
 
-Click the **trash icon** in the top bar to enter delete mode. Red ✕ buttons appear on the account card in an account's view, on mirror group cards and on repo rows; click one to remove that item. Deleting an account also removes its local clone folders, its stored token file and its SSH key with its `Host` entry. Click the trash icon again to leave delete mode.
+Open the project's ⋯ menu and choose **Stop showing this project** in either mode. Gitbox removes the project from its list and leaves the folder and its contents on disk. To make the clone available to track again, open **Unmatched clones**, select **Show ignored**, and stop ignoring it.
+
+In Advanced, the same menu offers **Delete clone folder…**. Confirm permanent deletion to remove both the folder and the project entry. Gitbox keeps the entry and shows the failure if it cannot verify or remove the folder. A clone that contains another Git repo or has linked worktrees requires separate handling. In Advanced, the top bar's **trash icon** also reveals removal controls for projects, accounts and mirrors.
+
+In the account's ⋯ menu, choose **Delete account** and type the account name. The confirmation lists the affected sources, projects and mirrors. Gitbox removes the account, its stored token and its SSH key with its `Host` entry, and keeps its clone folders on disk by default. In Advanced, select **Also delete the tracked clone folders on disk** and confirm to remove those folders too. If any folder cannot be removed, Gitbox lists the failures and keeps the account so you can resolve them and retry. Some folders may already have been removed.
+
+In a remote window, these actions affect the account, project entries and clone folders on the connected host.
 
 ## Mirrors
 

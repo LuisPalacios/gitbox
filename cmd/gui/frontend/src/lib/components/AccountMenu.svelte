@@ -2,7 +2,7 @@
   // The account ⋯ button and its menu: open the account on the web or in
   // the file manager, open its folder with a terminal, editor or AI
   // harness, Find, New, Edit account, and Change credential (Advanced) or
-  // Reconnect (Simple, broken credential). The All view's group headers
+  // Reconnect (Simple, broken credential), and Delete account. The All view's group headers
   // and the account card share it.
   import { fade } from 'svelte/transition';
   import { bridge } from '../bridge';
@@ -22,6 +22,7 @@
   export let actionMenuAccount: string | null;
   export let toggleAccountMenu: (accountKey: string) => void;
   export let closeAccountMenu: () => void;
+  export let askDeleteAccount: (key: string) => Promise<void>;
   export let openDiscover: (accountKey: string) => void;
   export let openCreateRepo: (accountKey: string) => Promise<void>;
   export let openEditAccount: (accountKey: string) => void;
@@ -72,6 +73,7 @@
     const items = [{ label: $t('menu.editAccount'), icon: '✎', onClick: () => { closeAccountMenu(); openEditAccount(accountKey); }, ro: ['updateAccount', 'renameAccount'] as CallName[] }];
     if (!simple) items.push({ label: $t('menu.changeCredential'), icon: '⚿', onClick: cred, ro: credCalls });
     else if (credBroken(credStatus)) items.push({ label: $t('menu.reconnect'), icon: '⚿', onClick: cred, ro: credCalls });
+    items.push({ label: $t('account.delete'), icon: '✕', onClick: () => { closeAccountMenu(); void askDeleteAccount(accountKey); }, ro: ['deleteAccount'] });
     return items;
   }
 </script>

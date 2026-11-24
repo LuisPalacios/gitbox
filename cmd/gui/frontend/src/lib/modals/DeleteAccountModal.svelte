@@ -1,14 +1,15 @@
 <script lang="ts">
   // Three-step confirm (type the name, read the impact, confirm) that
-  // deletes an account with its sources, clones and dependent mirrors.
+  // removes an account with its sources and dependent mirrors.
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
   import { sources } from '../stores';
   import { dismiss } from '../dismiss';
+  import { errorText } from '../notices';
   import Rich from '../Rich.svelte';
   import { t } from '../i18n';
 
-  export let reloadError: string;
+  export let simple: boolean;
   export let deleteMode: boolean;
   export let reloadFromDisk: () => Promise<void>;
 
@@ -17,6 +18,8 @@
   let deleteAcctBusy = false;
   let deleteAcctInput = '';
   let deleteAcctError = '';
+  let folderFailures: string[] = [];
+  let removeFolders = false;
   // Cascade impact from the backend — populated on modal open so the warning
   // step lists every mirror that will be removed along with the account.
   let deleteAcctImpact: {
@@ -31,6 +34,8 @@
     deleteAcctStep = 1;
     deleteAcctInput = '';
     deleteAcctError = '';
+    folderFailures = [];
+    removeFolders = false;
     deleteAcctImpact = null;
     try {
       const dto = await bridge.accountDeletionImpact(accountKey);
@@ -47,10 +52,13 @@
   }
 
   function cancelDeleteAccount() {
+    if (deleteAcctBusy) return;
     deleteAcctConfirm = null;
     deleteAcctStep = 0;
     deleteAcctInput = '';
     deleteAcctError = '';
+    folderFailures = [];
+    removeFolders = false;
     deleteAcctImpact = null;
   }
 
@@ -64,21 +72,22 @@
   }
 
   async function confirmDeleteAccount() {
-    if (!deleteAcctConfirm) return;
+    if (!deleteAcctConfirm || deleteAcctBusy) return;
     if (deleteAcctStep === 2) { deleteAcctStep = 3; return; }
     deleteAcctBusy = true;
+    deleteAcctError = '';
+    folderFailures = [];
     try {
-      await bridge.deleteAccount(deleteAcctConfirm);
+      folderFailures = await bridge.deleteAccount(deleteAcctConfirm, !simple && removeFolders);
       await reloadFromDisk();
-    } catch (err: any) {
-      reloadError = err?.message || String(err);
+      if (folderFailures.length === 0) {
+        deleteAcctConfirm = null;
+        deleteMode = false;
+      }
+    } catch (err) {
+      deleteAcctError = errorText(err);
     } finally {
       deleteAcctBusy = false;
-      deleteAcctConfirm = null;
-      deleteAcctStep = 0;
-      deleteAcctInput = '';
-      deleteAcctImpact = null;
-      deleteMode = false;
     }
   }
 </script>
@@ -122,9 +131,26 @@
               {$t('deleteAccount.impactFallback', { sources: $t(acctSources.length === 1 ? 'deleteAccount.sourceOne' : 'deleteAccount.sourceN', { n: acctSources.length }), repos: $t(repoCount === 1 ? 'deleteAccount.repoOne' : 'deleteAccount.repoN', { n: repoCount }) })}
             </p>
           {/if}
+          {#if !simple}
+            <label class="delete-warning">
+              <input type="checkbox" bind:checked={removeFolders} />
+              {$t('deleteAccount.alsoFolders')}
+            </label>
+          {/if}
         {:else}
           <p class="delete-repo-name">{deleteAcctConfirm}</p>
-          <p class="delete-final"><Rich key="deleteAccount.final" /></p>
+          <p class="delete-final"><Rich key={removeFolders && !simple ? 'deleteAccount.finalFolders' : 'deleteAccount.final'} /></p>
+          {#if deleteAcctError}
+            <p role="alert" class="delete-danger">{deleteAcctError}</p>
+          {/if}
+          {#if folderFailures.length > 0}
+            <div role="alert" class="delete-danger">
+              <p>{$t('deleteAccount.folderFailures')}</p>
+              <ul>
+                {#each folderFailures as failure}<li>{failure}</li>{/each}
+              </ul>
+            </div>
+          {/if}
         {/if}
       </div>
       <div class="modal-foot">

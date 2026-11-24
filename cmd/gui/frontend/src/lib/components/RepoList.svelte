@@ -21,6 +21,7 @@
   export let toggleSourceCollapsed: (sourceKey: string) => void;
   export let toggleAccountMenu: (accountKey: string) => void;
   export let closeAccountMenu: () => void;
+  export let askDeleteAccount: (key: string) => Promise<void>;
   export let openDiscover: (accountKey: string) => void;
   export let openCreateRepo: (accountKey: string) => Promise<void>;
   export let openEditAccount: (accountKey: string) => void;
@@ -59,7 +60,7 @@
         <span class="source-header-title" style:color={providerColor($accounts[accountKey]?.provider, $themeStore) || null}>{sourceKey}</span>
         <span class="source-header-kebab">
           <AccountMenu {accountKey} credStatus={credStatuses[accountKey]?.status} {actionMenuAccount} {rowProps}
-            {toggleAccountMenu} {closeAccountMenu} {openDiscover} {openCreateRepo} {openEditAccount} {openCredChange} />
+            {toggleAccountMenu} {closeAccountMenu} {askDeleteAccount} {openDiscover} {openCreateRepo} {openEditAccount} {openCredChange} />
         </span>
         <span class="collapse-summary">
           {simple ? $t('simple.projects', { n: sourceRepoKeys.length }) : $t('collapse.clones', { n: sourceRepoKeys.length })} ·

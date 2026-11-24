@@ -235,7 +235,7 @@ Un enlace puede venir de un gitbox-server en otro host, de la API de un proveedo
 
 ### pkg/ops — operaciones de aplicación
 
-La capa de servicio entre los bindings de la GUI y los paquetes de nivel inferior. Contiene las operaciones que tocan varios paquetes a la vez: `AddAccount`, `RenameAccount`, `DeleteAccount`, `DeleteRepo`, `ChangeCredentialType`, `DeleteCredential`, `RemoveCredentialArtifacts`, `ReconfigureClones` (ejecuta `heal.Repo` en cada clon), `PlanClone` / `Clone`, `ListRemoteRepos`, `ListAccountOrgs`, `CreateRemoteRepo`, `AddDiscoveredRepos` y `ProviderClient`.
+La capa de servicio entre los bindings de la GUI y los paquetes de nivel inferior. Contiene las operaciones que tocan varios paquetes a la vez: `AddAccount`, `RenameAccount`, `DeleteAccount`, `StopTrackingRepo`, `DeleteRepoClone`, `ChangeCredentialType`, `DeleteCredential`, `RemoveCredentialArtifacts`, `ReconfigureClones` (ejecuta `heal.Repo` en cada clon), `PlanClone` / `Clone`, `ListRemoteRepos`, `ListAccountOrgs`, `CreateRemoteRepo`, `AddDiscoveredRepos` y `ProviderClient`.
 
 Cada operación trabaja sobre un `*config.Config` más los archivos que posee en disco (clones, claves SSH, archivos de credenciales). Las operaciones nunca guardan la config ni toman bloqueos: quien llama serializa el acceso y persiste después. Las operaciones que tocan cada clon de una cuenta (`ReconfigureClones`) están separadas, así que quien llama puede ejecutarlas después de un guardado correcto.
 

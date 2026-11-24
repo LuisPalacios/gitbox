@@ -191,7 +191,7 @@ func TestPRRefreshDropsStaleCredentialsDraftsAndDeletedAccounts(t *testing.T) {
 			}
 			return a.SetPRIncludeDrafts(true)
 		}},
-		{"deleted account", func(a *App) error { return a.DeleteAccount("account-0") }},
+		{"deleted account", func(a *App) error { _, err := a.DeleteAccount("account-0", false); return err }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {

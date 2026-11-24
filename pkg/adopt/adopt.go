@@ -110,6 +110,18 @@ func FindOrphansContext(ctx context.Context, cfg *config.Config, extraRoots []st
 		candidates = append(candidates, np)
 		nestedSet[pathkey.Compare(np)] = true
 	}
+	// A stopped clone can live outside the scan roots or below a clone
+	// boundary. Inspect its exact ignored path so the user can un-ignore
+	// it without broadening the search to files around it.
+	for _, ignored := range cfg.Global.IgnoredClones {
+		if err := ctx.Err(); err != nil {
+			return nil, len(skipped), err
+		}
+		path := config.ExpandTilde(ignored)
+		if filepath.IsAbs(path) && (git.IsRepo(path) || git.IsLinkedWorktree(path)) {
+			candidates = append(candidates, path)
+		}
+	}
 	relRoots := append(append([]string{}, roots...), containerPaths...)
 	return inspectOrphans(ctx, cfg, dedupPaths(candidates), relRoots, nestedSet), len(skipped), ctx.Err()
 }

@@ -78,7 +78,9 @@ var remoteWorkBounds = map[string]time.Duration{
 	"ApplyDiscoveredMirrors": discoverMirrorsTimeout,
 	"Reconcile":              reconcileBound,
 	"AdoptClones":            reconcileBound,
-	"DeleteRepo":             statusTimeout,
+	"DeleteAccount":          reconcileBound,
+	"DeleteRepoFolder":       statusTimeout,
+	"StopTrackingRepo":       statusTimeout,
 	"ConfirmSweep":           statusTimeout,
 	// The token credentials (#242): a store or a type change reconfigures
 	// every clone of the account.

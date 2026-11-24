@@ -73,13 +73,13 @@ export function CredentialStoreToken(arg1:string,arg2:string):Promise<main.Crede
 
 export function CredentialVerify(arg1:string):Promise<main.CredentialStatus>;
 
-export function DeleteAccount(arg1:string):Promise<void>;
+export function DeleteAccount(arg1:string,arg2:boolean):Promise<Array<string>>;
 
 export function DeleteMirrorGroup(arg1:string):Promise<void>;
 
 export function DeleteMirrorRepo(arg1:string,arg2:string):Promise<void>;
 
-export function DeleteRepo(arg1:string,arg2:string):Promise<void>;
+export function DeleteRepoFolder(arg1:string,arg2:string):Promise<void>;
 
 export function DetectEditors():Promise<Array<main.EditorInfo>>;
 
@@ -316,6 +316,8 @@ export function SetViewMode(arg1:string):Promise<main.WindowStateDTO>;
 export function SetupMirrorRepo(arg1:string,arg2:string):Promise<void>;
 
 export function ShowWindow():Promise<void>;
+
+export function StopTrackingRepo(arg1:string,arg2:string):Promise<void>;
 
 export function SuggestAccountKey(arg1:string,arg2:string):Promise<string>;
 

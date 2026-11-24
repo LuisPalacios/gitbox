@@ -11,7 +11,7 @@
   //   Maintenance        repo menu, Advanced: sweep, move, container toggle,
   //                      re-scan (shown when their handlers are passed)
   //   Account            account menu: Find, New and extraItems
-  //   Delete from this computer…   repo menu, when onDelete is passed
+  //   Stop showing this project / Delete clone folder
   //
   // Simple passes no profiles and no maintenance handlers.
 
@@ -39,7 +39,7 @@
   $: revealText = revealLabel || $t('launcher.revealDefault');
 
   export let onOpenBrowser: () => void;
-  export let onOpenFolder: () => void;
+  export let onOpenFolder: (() => void) | null;
   export let onOpenApp: (command: string) => void;
   // onOpenProfile is the v2.1 launch handler — receives the Profile id and
   // routes through bridge.openProfile / bridge.openAccountProfile in the
@@ -74,11 +74,10 @@
   export let onCreate: (() => void) | null = null;
   export let createEnabled: boolean = true;
   export let createDisabledReason: string = '';
-  // Simple mode (issue #124) passes plain labels and moves "delete local
-  // clone" from the top bar's delete mode into the row menu.
+  // Simple mode passes plain labels and offers only stop tracking.
   export let browserLabelOverride: string = '';
   export let onDelete: (() => void) | null = null;
-  export let deleteLabel: string = '';
+  export let onDeleteFolder: (() => void) | null = null;
   // Extra account actions after Find and New (Edit account, Change
   // credential or Reconnect). icon is a short glyph; ro names the bridge
   // calls the action ends in (lib/ro.ts).
@@ -164,9 +163,11 @@
   <button class="action-item" role="menuitem" on:click|stopPropagation={onOpenBrowser} title={browserLabel}>
     <span class="lm-icon">&#8599;</span> {browserLabel}
   </button>
-  <button use:remoteOff={unavailableOff($remoteHost)} class="action-item" role="menuitem" on:click|stopPropagation={onOpenFolder} title={revealText}>
-    <span class="lm-icon">&#9636;</span> {revealText}
-  </button>
+  {#if onOpenFolder}
+    <button use:remoteOff={unavailableOff($remoteHost)} class="action-item" role="menuitem" on:click|stopPropagation={onOpenFolder} title={revealText}>
+      <span class="lm-icon">&#9636;</span> {revealText}
+    </button>
+  {/if}
 
   {#if hasOpenWith}
     <div class="lm-sec">{$t('menu.openWith')}</div>
@@ -250,9 +251,14 @@
 
   {#if kind === 'repo' && onDelete}
     <hr class="lm-sep" />
-    <button use:ro={'deleteRepo'} class="action-item lm-danger" role="menuitem" on:click|stopPropagation={onDelete} title={deleteLabel || $t('menu.delete')}>
-      <span class="lm-icon"><UIIcon name="x" /></span> {deleteLabel || $t('menu.delete')}
+    <button use:ro={'stopTrackingRepo'} class="action-item" role="menuitem" on:click|stopPropagation={onDelete}>
+      <span class="lm-icon"><UIIcon name="x" /></span> {$t('deleteClone.stop')}
     </button>
+    {#if onDeleteFolder}
+      <button use:ro={'deleteRepoFolder'} class="action-item lm-danger" role="menuitem" on:click|stopPropagation={onDeleteFolder}>
+        <span class="lm-icon"><UIIcon name="trash" /></span> {$t('menu.delete')}
+      </button>
+    {/if}
   {/if}
 </div>
 

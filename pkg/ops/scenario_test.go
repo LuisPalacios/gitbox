@@ -251,15 +251,15 @@ func TestScenario_FullLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 		dest := clonePath(t, sk)
-		if err := DeleteRepo(cfg, sk, repoKey); err != nil {
+		if err := DeleteRepoClone(cfg, sk, repoKey); err != nil {
 			t.Fatalf("delete repo: %v", err)
 		}
 		if _, err := os.Stat(dest); err == nil {
-			t.Error("clone still on disk after DeleteRepo")
+			t.Error("clone still on disk after DeleteRepoClone")
 		}
 		for _, k := range []string{acctKey, "dummy-gitlab"} {
-			if err := DeleteAccount(cfg, k); err != nil {
-				t.Fatalf("delete account %s: %v", k, err)
+			if _, errs := DeleteAccount(cfg, k, true); len(errs) != 0 {
+				t.Fatalf("delete account %s: %v", k, errs)
 			}
 		}
 		persist(t)

@@ -47,6 +47,8 @@ func toUserError(err error) usererr.UserError {
 		out.Code, out.Hint = "url."+string(ee.Code), "error.url."+string(ee.Code)
 	} else if _, ok := errors.AsType[*config.ChangedError](err); ok {
 		out.Code, out.Hint = "config.changed", "error.config.changed"
+	} else if errors.Is(err, errCloneTransferActive) {
+		out.Code, out.Hint = "repo.busy", "error.repo.busy"
 	} else if errors.Is(err, config.ErrPathCollision) {
 		out.Code, out.Hint = "config.path_collision", "error.config.path_collision"
 	} else if errors.Is(err, config.ErrPathUnavailable) {

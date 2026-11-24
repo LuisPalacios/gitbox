@@ -849,7 +849,7 @@ func TestReadsLeaveTheDomainUntouched(t *testing.T) {
 // an order where each one finds what it needs, against the host that
 // TestMutationsOverSSH seeds. TestIntegrationCallsEveryServedMethod in
 // cmd/gui keeps the set equal to the served mutations. RestoreFromBackup
-// gets the path of a backup the earlier saves made.
+// gets the path of the known fixture snapshot.
 var mutationCalls = []struct {
 	method string
 	params []any
@@ -875,8 +875,6 @@ var mutationCalls = []struct {
 	{"DeleteMirrorRepo", []any{"m", "org/repo"}, false},
 	{"DeleteMirrorGroup", []any{"m"}, false},
 	{"DiscardAccount", []any{"other2"}, false},
-	{"AddAccount", []any{map[string]any{"key": "third", "provider": "gitea", "url": "https://git3.example.invalid", "username": "carol", "name": "Carol", "email": "c@example.invalid", "credentialType": "token"}}, false},
-	{"DeleteAccount", []any{"third"}, false},
 	{"AddDiscoveredRepos", []any{"acct", []string{"org/new"}}, false},
 	{"AddDiscoveredReposToFolder", []any{"acct", []string{"org/new2"}, testHome + "/custom"}, false},
 	{"SetRepoContainer", []any{"acct", "org/repo", true}, false},
@@ -888,6 +886,12 @@ var mutationCalls = []struct {
 	{"AcknowledgeConfigError", []any{}, false},
 	{"RepairConfig", []any{}, false},
 	{"RestoreFromBackup", []any{"<backup>"}, false},
+	{"AddAccount", []any{map[string]any{"key": "third", "provider": "gitea", "url": "https://git3.example.invalid", "username": "carol", "name": "Carol", "email": "c@example.invalid", "credentialType": "token"}}, false},
+	{"AddDiscoveredRepos", []any{"third", []string{"carol/keep"}}, false},
+	{"DeleteAccount", []any{"third", false}, false},
+	{"AddAccount", []any{map[string]any{"key": "fourth", "provider": "gitea", "url": "https://git4.example.invalid", "username": "dana", "name": "Dana", "email": "d@example.invalid", "credentialType": "token"}}, false},
+	{"AddDiscoveredRepos", []any{"fourth", []string{"dana/remove"}}, false},
+	{"DeleteAccount", []any{"fourth", true}, false},
 	// The repository mutations (#295). The host's provider is unreachable:
 	// the long ones end in their done event with that error and answer.
 	{"CloneRepo", []any{"acct", "org/none", ""}, false},
@@ -900,7 +904,8 @@ var mutationCalls = []struct {
 	{"ApplyDiscoveredMirrors", []any{}, true},
 	{"CreateNewRepo", []any{"acct", "", "made", "", true, false, ""}, true},
 	{"MoveRepo", []any{map[string]any{"sourceSourceKey": "acct", "sourceRepoKey": "org/repo", "destAccountKey": "nobody", "destOwner": "alice", "destRepoName": "moved"}}, false},
-	{"DeleteRepo", []any{"acct", "org/repo"}, false},
+	{"StopTrackingRepo", []any{"acct", "org/first"}, false},
+	{"DeleteRepoFolder", []any{"acct", "org/repo"}, false},
 	// The token credentials (#242). GCM is served only to be refused.
 	{"CredentialStoreToken", []any{"acct", "it-token"}, false},
 	{"ChangeCredentialType", []any{"acct", "token"}, false},
@@ -920,7 +925,13 @@ func TestMutationsOverSSH(t *testing.T) {
 	c := startContainer(t, ctOpts{})
 	cfgPath := seedMutationHost(c)
 	picked := testHome + "/git/picked"
+	clone := testHome + "/git/acct/org/repo"
+	kept := testHome + "/git/third/carol/keep"
+	removed := testHome + "/git/fourth/dana/remove"
+	c.sh("git init -q " + kept + " && git -C " + kept + " remote add origin https://git3.example.invalid/carol/keep.git")
+	c.sh("git init -q " + removed + " && git -C " + removed + " remote add origin https://git4.example.invalid/dana/remove.git")
 	c.sh("git init -q " + picked + " && git -C " + picked + " remote add origin https://git.example.invalid/org/first.git")
+	c.sh("git init -q " + clone + " && git -C " + clone + " remote add origin https://git.example.invalid/org/repo.git")
 	cfgDir := filepath.Dir(cfgPath)
 	conn := c.client(t, "client-m", true).connect(t)
 	defer conn.close()
@@ -935,7 +946,12 @@ func TestMutationsOverSSH(t *testing.T) {
 	for i, call := range mutationCalls {
 		params := call.params
 		if call.method == "RestoreFromBackup" {
-			params = []any{c.sh("ls -1t " + cfgDir + "/gitbox-*.json | head -1")}
+			// Backups may share a modification time in the container. Use
+			// the exact state before this step, without the accounts added
+			// and deleted later in the sequence.
+			backup := cfgDir + "/gitbox-20000101-000000.json"
+			c.sh("cp " + cfgPath + " " + backup)
+			params = []any{backup}
 		}
 		ctx, cancel := context.WithTimeout(testCtx(t), 60*time.Second)
 		var out json.RawMessage
@@ -944,7 +960,27 @@ func TestMutationsOverSSH(t *testing.T) {
 		if err != nil && (!call.mayFail || rpc.IsCode(err, rpc.ErrCodeUnsupported)) {
 			t.Fatalf("step %d, %s: %v", i+1, call.method, err)
 		}
-		if g, _ := host()["global"].(map[string]any); g["theme"] != "dark" {
+		state := host()
+		if call.method == "RestoreFromBackup" {
+			var result struct {
+				Success bool   `json:"success"`
+				Error   string `json:"error"`
+			}
+			if err := json.Unmarshal(out, &result); err != nil || !result.Success {
+				t.Fatalf("restore: result=%+v, error=%v", result, err)
+			}
+		}
+		if call.method == "DeleteAccount" {
+			var failures []string
+			if err := json.Unmarshal(out, &failures); err != nil || len(failures) != 0 {
+				t.Fatalf("delete account %v: failures=%v, error=%v", params[0], failures, err)
+			}
+			accounts, _ := state["accounts"].(map[string]any)
+			if _, exists := accounts[params[0].(string)]; exists {
+				t.Fatalf("delete account left %v in the config", params[0])
+			}
+		}
+		if g, _ := state["global"].(map[string]any); g["theme"] != "dark" {
 			t.Errorf("step %d, %s: the host's theme is %v, want its own dark", i+1, call.method, g["theme"])
 		}
 	}
@@ -956,6 +992,12 @@ func TestMutationsOverSSH(t *testing.T) {
 	}
 	if !c.exists(testHome + "/.gitignore_global") {
 		t.Error("InstallGlobalGitignore wrote no ~/.gitignore_global")
+	}
+	if !c.exists(picked+"/.git") || c.exists(clone) {
+		t.Error("the ignored clone must survive and the explicitly deleted clone must be gone")
+	}
+	if !c.exists(kept+"/.git") || c.exists(removed) {
+		t.Error("default account deletion must keep its clone and opt-in must remove its clone")
 	}
 }
 

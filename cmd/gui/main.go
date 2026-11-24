@@ -4,6 +4,7 @@ package main
 
 import (
 	"embed"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -253,7 +254,7 @@ func main() {
 // Local bindings historically return plain messages. Give a settings
 // conflict its stable code so the window can offer the user's action again.
 func localWindowError(err error) any {
-	if isConfigChanged(err) {
+	if isConfigChanged(err) || errors.Is(err, errCloneTransferActive) {
 		return windowError(err)
 	}
 	return userMsg(err)

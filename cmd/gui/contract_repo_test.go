@@ -250,8 +250,10 @@ func repoMutationRows() []contractRow {
 			b.MoveRepo(MoveRequestDTO{SourceSourceKey: "none", SourceRepoKey: "org/repo", DestAccountKey: "acct", DestOwner: "alice", DestRepoName: "moved"})
 			return nil, nil
 		}},
-		{name: "DeleteRepo", call: func(b Backend) (any, error) { return none(b.DeleteRepo("acct", "org/fresh")) }},
-		{name: "DeleteRepo missing", call: func(b Backend) (any, error) { return none(b.DeleteRepo("acct", "org/fresh")) }},
+		{name: "DeleteRepoFolder", call: func(b Backend) (any, error) { return none(b.DeleteRepoFolder("acct", "org/fresh")) }},
+		{name: "DeleteRepoFolder missing", call: func(b Backend) (any, error) { return none(b.DeleteRepoFolder("acct", "org/fresh")) }},
+		{name: "StopTrackingRepo", call: func(b Backend) (any, error) { return none(b.StopTrackingRepo("acct", "org/repo")) }},
+		{name: "Reconcile after stop tracking", call: func(b Backend) (any, error) { return b.Reconcile(), nil }},
 	}
 }
 
@@ -373,10 +375,15 @@ func TestBackendContractRepoMutations(t *testing.T) {
 	for _, s := range []repoSide{left, right} {
 		cfg := loadConfig(t, s.path)
 		if _, ok := cfg.Sources["acct"].Repos["org/fresh"]; ok {
-			t.Errorf("%s: DeleteRepo kept org/fresh", s.dir)
+			t.Errorf("%s: DeleteRepoFolder kept org/fresh", s.dir)
 		}
-		if !git.IsRepo(status.RepoPath(cfg, "acct", "org/repo", cfg.Sources["acct"].Repos["org/repo"])) {
-			t.Errorf("%s: the clone of org/repo is gone", s.dir)
+		fresh := status.RepoPath(cfg, "acct", "org/fresh", config.Repo{})
+		if _, err := os.Stat(fresh); !os.IsNotExist(err) {
+			t.Errorf("%s: DeleteRepoFolder did not remove the folder: %v", s.dir, err)
+		}
+		repo := status.RepoPath(cfg, "acct", "org/repo", config.Repo{})
+		if _, ok := cfg.Sources["acct"].Repos["org/repo"]; ok || !cfg.IsIgnoredClone(repo) || !git.IsRepo(repo) {
+			t.Errorf("%s: StopTrackingRepo did not preserve and ignore the folder", s.dir)
 		}
 	}
 }

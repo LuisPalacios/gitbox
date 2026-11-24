@@ -134,8 +134,8 @@ export function CredentialVerify(arg1) {
   return window['go']['main']['App']['CredentialVerify'](arg1);
 }
 
-export function DeleteAccount(arg1) {
-  return window['go']['main']['App']['DeleteAccount'](arg1);
+export function DeleteAccount(arg1, arg2) {
+  return window['go']['main']['App']['DeleteAccount'](arg1, arg2);
 }
 
 export function DeleteMirrorGroup(arg1) {
@@ -146,8 +146,8 @@ export function DeleteMirrorRepo(arg1, arg2) {
   return window['go']['main']['App']['DeleteMirrorRepo'](arg1, arg2);
 }
 
-export function DeleteRepo(arg1, arg2) {
-  return window['go']['main']['App']['DeleteRepo'](arg1, arg2);
+export function DeleteRepoFolder(arg1, arg2) {
+  return window['go']['main']['App']['DeleteRepoFolder'](arg1, arg2);
 }
 
 export function DetectEditors() {
@@ -620,6 +620,10 @@ export function SetupMirrorRepo(arg1, arg2) {
 
 export function ShowWindow() {
   return window['go']['main']['App']['ShowWindow']();
+}
+
+export function StopTrackingRepo(arg1, arg2) {
+  return window['go']['main']['App']['StopTrackingRepo'](arg1, arg2);
 }
 
 export function SuggestAccountKey(arg1, arg2) {

@@ -122,8 +122,8 @@ func TestDeleteAccount_RemovesTheSSHKey(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := DeleteAccount(cfg, "acct"); err != nil {
-		t.Fatalf("DeleteAccount: %v", err)
+	if _, errs := DeleteAccount(cfg, "acct", false); len(errs) != 0 {
+		t.Fatalf("DeleteAccount: %v", errs)
 	}
 	folder := credential.SSHFolder(cfg)
 	for _, p := range []string{credential.SSHKeyPath(folder, "acct"), credential.SSHKeyPath(folder, "acct") + ".pub"} {
